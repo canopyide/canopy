@@ -45,6 +45,10 @@ vi.mock("../../../persistence/panelPersistence", () => ({
   },
 }));
 
+vi.mock("@/lib/notify", () => ({
+  notify: vi.fn(() => "mock-notification-id"),
+}));
+
 const { usePanelStore } = await import("../../../panelStore");
 
 describe("dev-preview lifecycle integration", () => {

@@ -20,8 +20,6 @@ interface PreferencesState {
   setAssignWorktreeToSelf: (value: boolean) => void;
   reduceAnimations: boolean;
   setReduceAnimations: (value: boolean) => void;
-  skipWorkingCloseConfirm: boolean;
-  setSkipWorkingCloseConfirm: (value: boolean) => void;
   lastSelectedWorktreeRecipeIdByProject: Record<string, string | null | undefined>;
   setLastSelectedWorktreeRecipeIdByProject: (
     projectId: string,
@@ -46,8 +44,6 @@ export const usePreferencesStore = create<PreferencesState>()(
       setAssignWorktreeToSelf: (value) => set({ assignWorktreeToSelf: value }),
       reduceAnimations: false,
       setReduceAnimations: (value) => set({ reduceAnimations: value }),
-      skipWorkingCloseConfirm: false,
-      setSkipWorkingCloseConfirm: (value) => set({ skipWorkingCloseConfirm: value }),
       lastSelectedWorktreeRecipeIdByProject: {},
       setLastSelectedWorktreeRecipeIdByProject: (projectId, id) =>
         set((state) => ({
@@ -60,7 +56,7 @@ export const usePreferencesStore = create<PreferencesState>()(
     {
       name: "daintree-preferences",
       storage: createSafeJSONStorage(),
-      version: 5,
+      version: 6,
       migrate: (persisted, version) => {
         if (version === 0 || version === undefined) {
           if (persisted && typeof persisted === "object") {
@@ -90,10 +86,13 @@ export const usePreferencesStore = create<PreferencesState>()(
             state.reduceAnimations ??= false;
           }
         }
-        if (version < 5) {
+        if (version < 6) {
+          // skipWorkingCloseConfirm was retired with the close-confirm dialog
+          // (issue #6920). Drop the field so persisted state matches the
+          // current schema.
           if (persisted && typeof persisted === "object") {
             const state = persisted as Record<string, unknown>;
-            state.skipWorkingCloseConfirm ??= false;
+            delete state.skipWorkingCloseConfirm;
           }
         }
         return persisted as PreferencesState;
@@ -106,5 +105,5 @@ registerPersistedStore({
   storeId: "preferencesStore",
   store: usePreferencesStore,
   persistedStateType:
-    "{ showProjectPulse: boolean; showDeveloperTools: boolean; showGridAgentHighlights: boolean; showDockAgentHighlights: boolean; dockDensity: DockDensity; assignWorktreeToSelf: boolean; reduceAnimations: boolean; skipWorkingCloseConfirm: boolean; lastSelectedWorktreeRecipeIdByProject: Record<string, string | null | undefined> }",
+    "{ showProjectPulse: boolean; showDeveloperTools: boolean; showGridAgentHighlights: boolean; showDockAgentHighlights: boolean; dockDensity: DockDensity; assignWorktreeToSelf: boolean; reduceAnimations: boolean; lastSelectedWorktreeRecipeIdByProject: Record<string, string | null | undefined> }",
 });

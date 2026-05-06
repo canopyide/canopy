@@ -36,12 +36,59 @@ import { logInfo, logWarn, logError } from "@/utils/logger";
 import { clearTerminalRestartGuard } from "./restartExitSuppression";
 import { buildPanelSnapshotOptions } from "@/services/terminal/panelDuplicationService";
 import { setPanelStoreGetter } from "./projectStore";
+import { notify } from "@/lib/notify";
+import { panelKindHasPty } from "@shared/config/panelKindRegistry";
 
 export type { TerminalInstance, AddPanelOptions, QueuedCommand, CrashType };
 export { isAgentReady };
 export type { TerminalMruSlice, WatchedPanelsSlice };
 
 const PROJECT_SWITCH_RESIZE_SUPPRESSION_MS = 10_000;
+
+const UNDO_TOAST_COALESCE_KEY = "terminal:close-undo";
+// Hold the toast for 8 seconds — long enough for an Undo glance, short enough
+// that a quietly-trashed terminal doesn't block the corner indefinitely. The
+// coalesce window matches so a second close inside that range collapses into
+// the same toast and resets its dismiss timer (count change forces contentKey
+// bump in notify()).
+const UNDO_TOAST_DURATION_MS = 8_000;
+const UNDO_TOAST_WINDOW_MS = 8_000;
+
+function fireUndoToast(title: string, restore: () => void): void {
+  // Per-fire restore closure: each close captures its own panel/group, and
+  // coalesce.buildAction returns the closure from the latest call. That
+  // matches the issue's "Undo restores the most recently closed terminal"
+  // semantics even when other panels are trashed in between (`restoreLastTrashed`
+  // would race against unrelated trashes from non-PTY panels that don't
+  // emit a toast).
+  const action = { label: "Undo", onClick: restore };
+  notify({
+    type: "success",
+    transient: true,
+    duration: UNDO_TOAST_DURATION_MS,
+    message: `Closed ${formatTitle(title)}`,
+    action,
+    coalesce: {
+      key: UNDO_TOAST_COALESCE_KEY,
+      windowMs: UNDO_TOAST_WINDOW_MS,
+      buildMessage: (count) =>
+        count === 1 ? `Closed ${formatTitle(title)}` : `Closed ${count} terminals`,
+      buildAction: () => action,
+    },
+  });
+}
+
+function formatTitle(title: string): string {
+  const trimmed = title.trim();
+  return trimmed.length > 0 ? `'${trimmed}'` : "terminal";
+}
+
+function shouldNotifyUndo(panel: TerminalInstance | undefined): boolean {
+  if (!panel) return false;
+  if (panel.location === "trash") return false;
+  if (panel.ephemeral === true) return false;
+  return panelKindHasPty(panel.kind ?? "terminal");
+}
 
 export function getTerminalRefreshTier(
   terminal: TerminalInstance | undefined,
@@ -289,7 +336,21 @@ export const usePanelStore = create<PanelGridState>()(
           }
         }
 
+        const shouldFireUndo = shouldNotifyUndo(terminalToTrash);
+        const undoTitle = shouldFireUndo ? (terminalToTrash?.title ?? "") : "";
+
         registrySlice.trashPanel(id);
+
+        if (shouldFireUndo) {
+          fireUndoToast(undoTitle, () => {
+            const trashed = usePanelStore.getState().trashedTerminals.get(id);
+            if (trashed?.groupRestoreId) {
+              usePanelStore.getState().restoreTrashedGroup(trashed.groupRestoreId);
+            } else {
+              usePanelStore.getState().restoreTerminal(id);
+            }
+          });
+        }
 
         // Clear watch when panel is trashed (onTerminalRemoved only fires on full removal)
         get().unwatchPanel(id);
@@ -348,7 +409,25 @@ export const usePanelStore = create<PanelGridState>()(
           }
         }
 
+        // For multi-tab groups the snapshot source is the active tab; for
+        // single-panel groups it's just the panel itself. Use that title for
+        // the toast so the user sees a name they recognize.
+        const shouldFireUndo = shouldNotifyUndo(snapshotSource);
+        const undoTitle = shouldFireUndo ? (snapshotSource?.title ?? "") : "";
+        const restoreSourceId = snapshotSource?.id ?? panelId;
+
         registrySlice.trashPanelGroup(panelId);
+
+        if (shouldFireUndo) {
+          fireUndoToast(undoTitle, () => {
+            const trashed = usePanelStore.getState().trashedTerminals.get(restoreSourceId);
+            if (trashed?.groupRestoreId) {
+              usePanelStore.getState().restoreTrashedGroup(trashed.groupRestoreId);
+            } else {
+              usePanelStore.getState().restoreTerminal(restoreSourceId);
+            }
+          });
+        }
 
         const updates: Partial<PanelGridState> = {};
 

@@ -53,9 +53,8 @@ vi.mock("@/store", () => ({
   useFocusStore: (
     selector: (s: { isFocusMode: boolean; gestureSidebarHidden: boolean }) => unknown
   ) => selector({ isFocusMode: false, gestureSidebarHidden: false }),
-  usePreferencesStore: (
-    selector: (s: { showDockAgentHighlights: boolean; skipWorkingCloseConfirm: boolean }) => unknown
-  ) => selector({ showDockAgentHighlights: false, skipWorkingCloseConfirm: false }),
+  usePreferencesStore: (selector: (s: { showDockAgentHighlights: boolean }) => unknown) =>
+    selector({ showDockAgentHighlights: false }),
 }));
 
 vi.mock("@/hooks", () => ({

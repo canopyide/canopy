@@ -233,13 +233,6 @@ const LazyCelebrationConfetti = lazy(() =>
   preloadCelebrationConfetti().then((m) => ({ default: m.CelebrationConfetti }))
 );
 
-function preloadTerminalCloseConfirmHost() {
-  return import("./components/Terminal/TerminalCloseConfirmHost");
-}
-const LazyTerminalCloseConfirmHost = lazy(() =>
-  preloadTerminalCloseConfirmHost().then((m) => ({ default: m.TerminalCloseConfirmHost }))
-);
-
 function preloadFileViewerModalHost() {
   return import("./components/FileViewer/FileViewerModalHost");
 }
@@ -1048,11 +1041,6 @@ function App() {
             )}
 
             <TerminalInfoDialogHost />
-            {isStateLoaded && (
-              <Suspense fallback={null}>
-                <LazyTerminalCloseConfirmHost />
-              </Suspense>
-            )}
             {isStateLoaded && (
               <Suspense fallback={null}>
                 <LazyMcpConfirmDialog />

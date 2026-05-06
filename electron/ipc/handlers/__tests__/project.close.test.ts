@@ -150,7 +150,7 @@ describe("project:close handler", () => {
       name: "Background Project",
       status: "active",
       path: "/test/project-bg",
-    } as any);
+    } as ReturnType<typeof projectStoreMock.getProjectById>);
 
     const ptyClient = {
       getProjectStats: vi.fn(async () => ({
@@ -203,7 +203,7 @@ describe("project:close handler", () => {
       name: "Active Project",
       status: "active",
       path: "/test/project-active",
-    } as any);
+    } as ReturnType<typeof projectStoreMock.getProjectById>);
     projectStoreMock.clearProjectState.mockResolvedValue(undefined);
 
     const ptyClient = {

@@ -1,6 +1,5 @@
-import React, { useCallback, useMemo, useEffect, useEffectEvent, useRef, useState } from "react";
+import React, { useCallback, useMemo, useEffect, useEffectEvent, useRef } from "react";
 import { usePanelStore, type TerminalInstance } from "@/store";
-import { usePreferencesStore } from "@/store/preferencesStore";
 import { logError } from "@/utils/logger";
 import { useAgentSettingsStore } from "@/store/agentSettingsStore";
 import { useCcrPresetsStore } from "@/store/ccrPresetsStore";
@@ -13,8 +12,6 @@ import { buildPanelDuplicateOptions } from "@/services/terminal/panelDuplication
 import { focusPanelInput } from "./terminalFocusRegistry";
 import { getGroupAmbientAgentState } from "@/components/Layout/useDockBlockedState";
 import { deriveTerminalChrome } from "@/utils/terminalChrome";
-import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { CLOSE_CONFIRM_AGENT_STATES } from "@shared/types/agent";
 
 export interface GridTabGroupProps {
   group: TabGroup;
@@ -124,9 +121,6 @@ export const GridTabGroup = React.memo(function GridTabGroup({
   const addPanelToGroup = usePanelStore((state) => state.addPanelToGroup);
   const reorderPanelsInGroup = usePanelStore((state) => state.reorderPanelsInGroup);
   const updateTitle = usePanelStore((state) => state.updateTitle);
-  const skipWorkingCloseConfirm = usePreferencesStore((s) => s.skipWorkingCloseConfirm);
-
-  const [pendingCloseTabId, setPendingCloseTabId] = useState<string | null>(null);
 
   // Subscribe to registry's active tab for reactive updates
   const storedActiveTabId = usePanelStore(
@@ -281,7 +275,7 @@ export const GridTabGroup = React.memo(function GridTabGroup({
     [updateTitle]
   );
 
-  const doCloseTab = useCallback(
+  const handleTabClose = useCallback(
     (tabId: string) => {
       if (tabId === activeTabId) {
         const currentIndex = panels.findIndex((p) => p.id === tabId);
@@ -295,35 +289,6 @@ export const GridTabGroup = React.memo(function GridTabGroup({
     },
     [activeTabId, panels, group.id, setActiveTab, setFocused, trashPanel]
   );
-
-  // Confirm before closing a tab whose agent is mid-task; idle/completed/exited
-  // tabs close immediately. Alt+Click force-close from PanelHeader bypasses this
-  // entirely (it goes through usePanelHandlers → removePanel).
-  const handleTabClose = useCallback(
-    (tabId: string) => {
-      const panel = panels.find((p) => p.id === tabId);
-      if (
-        !skipWorkingCloseConfirm &&
-        panel?.agentState &&
-        CLOSE_CONFIRM_AGENT_STATES.has(panel.agentState)
-      ) {
-        setPendingCloseTabId(tabId);
-        return;
-      }
-      doCloseTab(tabId);
-    },
-    [panels, doCloseTab, skipWorkingCloseConfirm]
-  );
-
-  const handleConfirmClose = useCallback(() => {
-    const tabId = pendingCloseTabId;
-    setPendingCloseTabId(null);
-    if (tabId) doCloseTab(tabId);
-  }, [pendingCloseTabId, doCloseTab]);
-
-  const handleCancelClose = useCallback(() => {
-    setPendingCloseTabId(null);
-  }, []);
 
   // Handle tab reorder - update group panel order
   const handleTabReorder = useCallback(
@@ -357,31 +322,20 @@ export const GridTabGroup = React.memo(function GridTabGroup({
   const isFocused = activePanel.id === focusedId;
 
   return (
-    <>
-      <GridPanel
-        terminal={activePanel}
-        isFocused={isFocused}
-        isMaximized={isMaximized}
-        gridPanelCount={gridPanelCount}
-        gridCols={gridCols}
-        ambientAgentState={groupAmbientState}
-        tabs={tabs}
-        groupId={group.id}
-        onTabClick={handleTabClick}
-        onTabClose={handleTabClose}
-        onTabRename={handleTabRename}
-        onAddTab={handleAddTab}
-        onTabReorder={handleTabReorder}
-      />
-      <ConfirmDialog
-        isOpen={pendingCloseTabId !== null}
-        onClose={handleCancelClose}
-        title="Stop this agent?"
-        description="The agent is currently working. Closing this tab will stop it."
-        confirmLabel="Stop and close"
-        onConfirm={handleConfirmClose}
-        variant="destructive"
-      />
-    </>
+    <GridPanel
+      terminal={activePanel}
+      isFocused={isFocused}
+      isMaximized={isMaximized}
+      gridPanelCount={gridPanelCount}
+      gridCols={gridCols}
+      ambientAgentState={groupAmbientState}
+      tabs={tabs}
+      groupId={group.id}
+      onTabClick={handleTabClick}
+      onTabClose={handleTabClose}
+      onTabRename={handleTabRename}
+      onAddTab={handleAddTab}
+      onTabReorder={handleTabReorder}
+    />
   );
 }, gridTabGroupPropsAreEqual);

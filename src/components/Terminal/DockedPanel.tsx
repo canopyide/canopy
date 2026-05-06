@@ -1,6 +1,5 @@
-import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { usePanelStore, type TerminalInstance } from "@/store";
-import { usePreferencesStore } from "@/store/preferencesStore";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import {
   getPanelKindDefinition,
@@ -12,8 +11,6 @@ import { ContentPanel, PluginMissingPanel, triggerPanelTransition } from "@/comp
 import { usePanelLifecycle } from "@/hooks/usePanelLifecycle";
 import { usePanelHandlers } from "@/hooks/usePanelHandlers";
 import { buildPanelProps } from "@/utils/panelProps";
-import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { CLOSE_CONFIRM_AGENT_STATES } from "@shared/types/agent";
 
 export interface DockedPanelProps {
   terminal: TerminalInstance;
@@ -24,8 +21,6 @@ export interface DockedPanelProps {
 export function DockedPanel({ terminal, onPopoverClose, onAddTab }: DockedPanelProps) {
   const moveTerminalToGrid = usePanelStore((state) => state.moveTerminalToGrid);
   const closeDockTerminal = usePanelStore((state) => state.closeDockTerminal);
-  const openDockTerminal = usePanelStore((state) => state.openDockTerminal);
-  const skipWorkingCloseConfirm = usePreferencesStore((s) => s.skipWorkingCloseConfirm);
 
   const lifecycle = usePanelLifecycle();
   const { handleFocus, handleClose, handleTitleChange } = usePanelHandlers({
@@ -33,44 +28,6 @@ export function DockedPanel({ terminal, onPopoverClose, onAddTab }: DockedPanelP
     lifecycle,
     onAfterClose: onPopoverClose,
   });
-
-  // Mirror the GridPanel header-X guard for the dock popover. Without this,
-  // single-tab dock groups have no confirmation when closing a working agent,
-  // and multi-tab dock groups bypass the per-tab guard via the header X.
-  // The dock popover collapses when a body-portalled dialog mounts (Radix's
-  // onInteractOutside), so close it before showing the dialog and reopen on
-  // cancel — same pattern as DockedTabGroup.handleTabClose.
-  const [pendingHeaderClose, setPendingHeaderClose] = useState(false);
-  const guardedHandleClose = useCallback(
-    (force?: boolean) => {
-      if (force) {
-        handleClose(true);
-        return;
-      }
-      if (skipWorkingCloseConfirm) {
-        handleClose(false);
-        return;
-      }
-      const agentState = terminal.agentState;
-      if (agentState && CLOSE_CONFIRM_AGENT_STATES.has(agentState)) {
-        closeDockTerminal();
-        setPendingHeaderClose(true);
-        return;
-      }
-      handleClose(false);
-    },
-    [handleClose, closeDockTerminal, skipWorkingCloseConfirm, terminal.agentState]
-  );
-
-  const handleConfirmHeaderClose = useCallback(() => {
-    setPendingHeaderClose(false);
-    handleClose(false);
-  }, [handleClose]);
-
-  const handleCancelHeaderClose = useCallback(() => {
-    setPendingHeaderClose(false);
-    openDockTerminal(terminal.id);
-  }, [openDockTerminal, terminal.id]);
 
   const handleRestore = useCallback(() => {
     const moveSucceeded = moveTerminalToGrid(terminal.id);
@@ -125,7 +82,7 @@ export function DockedPanel({ terminal, onPopoverClose, onAddTab }: DockedPanelP
         overrides: {
           location: "dock" as const,
           onFocus: handleFocus,
-          onClose: guardedHandleClose,
+          onClose: handleClose,
           onRestore: handleRestore,
           onMinimize: handleMinimize,
           onTitleChange: handleTitleChange,
@@ -137,7 +94,7 @@ export function DockedPanel({ terminal, onPopoverClose, onAddTab }: DockedPanelP
       isFocused,
       lifecycle.isTrashing,
       handleFocus,
-      guardedHandleClose,
+      handleClose,
       handleRestore,
       handleMinimize,
       handleTitleChange,
@@ -151,47 +108,36 @@ export function DockedPanel({ terminal, onPopoverClose, onAddTab }: DockedPanelP
       console.warn(`[DockedPanel] No component registered for kind: ${kind}`);
     }
     return (
-      <>
-        <ContentPanel
-          id={terminal.id}
-          title={terminal.title}
-          kind={kind}
-          isFocused={isFocused}
-          location="dock"
-          onFocus={handleFocus}
-          onClose={guardedHandleClose}
-          onRestore={handleRestore}
-          onMinimize={handleMinimize}
-          onTitleChange={handleTitleChange}
-        >
-          {isPluginOwned ? (
-            <PluginMissingPanel
-              kind={kind}
-              pluginId={terminal.pluginId}
-              onRemove={() => handleClose(true)}
-            />
-          ) : (
-            <div className="flex flex-1 items-center justify-center bg-surface-panel text-text-muted">
-              <div className="text-center">
-                <p className="text-sm font-medium">Unknown Panel Type</p>
-                <p className="text-xs mt-1 text-daintree-text/50">Kind: {kind}</p>
-                <p className="text-xs mt-2 text-daintree-text/40">
-                  No component registered for this panel kind
-                </p>
-              </div>
+      <ContentPanel
+        id={terminal.id}
+        title={terminal.title}
+        kind={kind}
+        isFocused={isFocused}
+        location="dock"
+        onFocus={handleFocus}
+        onClose={handleClose}
+        onRestore={handleRestore}
+        onMinimize={handleMinimize}
+        onTitleChange={handleTitleChange}
+      >
+        {isPluginOwned ? (
+          <PluginMissingPanel
+            kind={kind}
+            pluginId={terminal.pluginId}
+            onRemove={() => handleClose(true)}
+          />
+        ) : (
+          <div className="flex flex-1 items-center justify-center bg-surface-panel text-text-muted">
+            <div className="text-center">
+              <p className="text-sm font-medium">Unknown Panel Type</p>
+              <p className="text-xs mt-1 text-daintree-text/50">Kind: {kind}</p>
+              <p className="text-xs mt-2 text-daintree-text/40">
+                No component registered for this panel kind
+              </p>
             </div>
-          )}
-        </ContentPanel>
-        <ConfirmDialog
-          isOpen={pendingHeaderClose}
-          title="Stop this agent?"
-          description="The agent is currently working. Closing this tab will stop it."
-          confirmLabel="Stop and close"
-          variant="destructive"
-          onConfirm={handleConfirmHeaderClose}
-          onClose={handleCancelHeaderClose}
-        />
-      </>
+          </div>
+        )}
+      </ContentPanel>
     );
   }
 
@@ -208,15 +154,6 @@ export function DockedPanel({ terminal, onPopoverClose, onAddTab }: DockedPanelP
       context={{ terminalId: terminal.id, worktreeId: terminal.worktreeId }}
     >
       <PanelComponent {...panelProps} />
-      <ConfirmDialog
-        isOpen={pendingHeaderClose}
-        title="Stop this agent?"
-        description="The agent is currently working. Closing this tab will stop it."
-        confirmLabel="Stop and close"
-        variant="destructive"
-        onConfirm={handleConfirmHeaderClose}
-        onClose={handleCancelHeaderClose}
-      />
     </ErrorBoundary>
   );
 }
