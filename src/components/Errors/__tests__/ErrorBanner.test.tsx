@@ -64,6 +64,22 @@ describe("ErrorBanner", () => {
     });
   });
 
+  describe("type label microcopy", () => {
+    const labels: Array<[ErrorRecord["type"], string]> = [
+      ["git", "Git error"],
+      ["process", "Process error"],
+      ["filesystem", "File system error"],
+      ["network", "Network error"],
+      ["config", "Configuration error"],
+      ["unknown", "Error"],
+    ];
+
+    it.each(labels)("renders sentence-case label for %s type", (type, expected) => {
+      render(<ErrorBanner error={makeError({ type })} onDismiss={onDismiss} />);
+      expect(screen.getByText(expected)).toBeTruthy();
+    });
+  });
+
   it("displays error message", () => {
     render(<ErrorBanner error={makeError({ message: "Git push failed" })} onDismiss={onDismiss} />);
     expect(screen.getByText("Git push failed")).toBeTruthy();
