@@ -50,7 +50,6 @@ type TrashDisplayItem = GroupedTrashItem | GroupedTrashGroup;
 export function TrashContainer({ trashedTerminals, compact = false }: TrashContainerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isTrashPulsing, setIsTrashPulsing] = useState(false);
-  const isPulsingRef = useRef(false);
   const prevLengthRef = useRef(trashedTerminals.length);
   const { worktreeMap } = useWorktrees();
   // Only show the ghost pill for panel drags — worktree-card sort drags also flip
@@ -65,28 +64,22 @@ export function TrashContainer({ trashedTerminals, compact = false }: TrashConta
     prevLengthRef.current = trashedTerminals.length;
     if (!increased) {
       setIsTrashPulsing(false);
-      isPulsingRef.current = false;
       return;
     }
     setIsTrashPulsing(true);
-    isPulsingRef.current = true;
     const shortcut = isMac() ? "Cmd+Shift+T" : "Ctrl+Shift+T";
     useAnnouncerStore.getState().announce(`Panel closed — press ${shortcut} to restore`);
   }, [trashedTerminals.length]);
 
   const handleTrashAnimationEnd = useCallback(() => {
     setIsTrashPulsing(false);
-    isPulsingRef.current = false;
   }, []);
 
   // Safety timeout — under reduced-motion CSS sets `animation: none`, so
   // `animationend` never fires and isTrashPulsing would latch true.
   useEffect(() => {
     if (!isTrashPulsing) return;
-    const timer = setTimeout(() => {
-      setIsTrashPulsing(false);
-      isPulsingRef.current = false;
-    }, DURATION_200 + 50);
+    const timer = setTimeout(() => setIsTrashPulsing(false), DURATION_200 + 50);
     return () => clearTimeout(timer);
   }, [isTrashPulsing]);
 

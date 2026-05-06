@@ -132,7 +132,6 @@ export const NotificationCenterToolbarButton = memo(function NotificationCenterT
   // no will-change layer hint lingers on the long-lived toolbar element.
   const prevEvictedRef = useRef(evictedToInboxCount);
   const [isBellBlipping, setIsBellBlipping] = useState(false);
-  const isBlippingRef = useRef(false);
   useEffect(() => {
     const prev = prevEvictedRef.current;
     prevEvictedRef.current = evictedToInboxCount;
@@ -140,29 +139,23 @@ export const NotificationCenterToolbarButton = memo(function NotificationCenterT
     // Count decreased — clear any in-flight animation state.
     if (evictedToInboxCount < prev) {
       setIsBellBlipping(false);
-      isBlippingRef.current = false;
       return;
     }
 
     if (evictedToInboxCount > prev && !isDndActive) {
       setIsBellBlipping(true);
-      isBlippingRef.current = true;
     }
   }, [evictedToInboxCount, isDndActive]);
 
   const handleBellAnimationEnd = useCallback(() => {
     setIsBellBlipping(false);
-    isBlippingRef.current = false;
   }, []);
 
   // Safety timeout — under reduced-motion CSS sets `animation: none`, so
   // `animationend` never fires and isBellBlipping would latch true.
   useEffect(() => {
     if (!isBellBlipping) return;
-    const timer = setTimeout(() => {
-      setIsBellBlipping(false);
-      isBlippingRef.current = false;
-    }, DURATION_200 + 50);
+    const timer = setTimeout(() => setIsBellBlipping(false), DURATION_200 + 50);
     return () => clearTimeout(timer);
   }, [isBellBlipping]);
 
