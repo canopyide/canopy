@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { performance } from "node:perf_hooks";
 import { PtyHealthWatchdog } from "../PtyHealthWatchdog.js";
 import type { HostCrashPayload, PtyHostRequest } from "../../../../shared/types/pty-host.js";
 
