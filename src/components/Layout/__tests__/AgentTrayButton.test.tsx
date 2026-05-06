@@ -880,8 +880,10 @@ describe("AgentTrayButton", () => {
     mockWelcomeCardDismissed = true;
     mockSeenAgentIds = ["gemini"];
 
-    const { queryByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
-    expect(queryByTestId("agent-tray-discovery-badge")).toBeTruthy();
+    const { getByTestId, queryByTestId } = render(
+      <AgentTrayButton agentAvailability={availability} />
+    );
+    expect(getByTestId("agent-tray-discovery-badge").getAttribute("data-visible")).toBe("true");
     expect(queryByTestId("agent-tray-new-pill-claude")).toBeTruthy();
     expect(queryByTestId("agent-tray-new-pill-gemini")).toBeNull();
   });

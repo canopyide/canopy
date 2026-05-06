@@ -204,7 +204,11 @@ html[data-shortcut-reveal] .shortcut-reveal-chip {
  */
 .toolbar-overflow-badge {
   background-color: var(--overflow-badge-color);
-  transition: --overflow-badge-color 150ms ease;
+  transition:
+    --overflow-badge-color 150ms ease,
+    display 120ms allow-discrete,
+    opacity 120ms ease,
+    transform 120ms ease;
 }
 
 .toolbar-overflow-badge[data-severity="critical"] {
@@ -228,11 +232,22 @@ html[data-shortcut-reveal] .shortcut-reveal-chip {
  */
 .toolbar-problems-badge {
   background-color: var(--problems-dot-color);
-  transition: --problems-dot-color 150ms ease;
+  transition:
+    --problems-dot-color 150ms ease,
+    display 120ms allow-discrete,
+    opacity 120ms ease,
+    transform 120ms ease;
 }
 
 .toolbar-problems-badge[data-visible="true"] {
   --problems-dot-color: var(--color-status-error);
+}
+
+/* DND dims the notification dot so muted and active unread states are
+ * visually distinct. The data-dnd-active attribute is set on the badge
+ * span itself, mirroring the button's attribute. */
+.toolbar-badge[data-dnd-active="true"] {
+  opacity: 0.3;
 }
 
 /* ── Reduced motion ──

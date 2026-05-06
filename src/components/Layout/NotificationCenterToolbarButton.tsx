@@ -193,6 +193,7 @@ export const NotificationCenterToolbarButton = memo(function NotificationCenterT
             <span
               data-testid="notification-unread-dot"
               data-visible={notificationUnreadCount > 0}
+              data-dnd-active={isDndActive ? "true" : undefined}
               className="toolbar-badge absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-daintree-text/50 ring-1 ring-daintree-bg/60"
             />
           </Button>
