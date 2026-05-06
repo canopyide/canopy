@@ -43,7 +43,9 @@ function stubMatchMedia(matches: boolean) {
   );
 }
 
-function mountChecklistAnchor(rect: Partial<DOMRect> = { left: 1000, top: 800, width: 280, height: 120 }) {
+function mountChecklistAnchor(
+  rect: Partial<DOMRect> = { left: 1000, top: 800, width: 280, height: 120 }
+) {
   const div = document.createElement("div");
   div.setAttribute("data-getting-started-checklist", "");
   Object.defineProperty(div, "getBoundingClientRect", {

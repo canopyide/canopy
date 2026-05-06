@@ -61,7 +61,9 @@ vi.mock("@/store/appThemeStore", () => ({
 }));
 
 vi.mock("@/clients", () => ({ cliAvailabilityClient: { refresh: () => Promise.resolve({}) } }));
-vi.mock("@/clients/appThemeClient", () => ({ appThemeClient: { setColorScheme: () => Promise.resolve() } }));
+vi.mock("@/clients/appThemeClient", () => ({
+  appThemeClient: { setColorScheme: () => Promise.resolve() },
+}));
 vi.mock("../useAgentSetupPoll", () => ({ useAgentSetupPoll: () => undefined }));
 vi.mock("@/lib/notify", () => ({ notify: vi.fn() }));
 vi.mock("../SystemRequirementsSection", () => ({ SystemRequirementsSection: () => null }));
