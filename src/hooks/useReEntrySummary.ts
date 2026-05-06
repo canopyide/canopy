@@ -3,45 +3,89 @@ import {
   useNotificationHistoryStore,
   type NotificationHistoryEntry,
 } from "@/store/slices/notificationHistorySlice";
+import { getCurrentViewStoreOrNull } from "@/store/createWorktreeStore";
 
 const MIN_BLUR_MS = 3000;
 
-export interface ReEntryCounts {
-  warning: number;
-  error: number;
-  success: number;
-  info: number;
+const SEVERITY_WEIGHTS: Record<NotificationHistoryEntry["type"], number> = {
+  error: 3,
+  warning: 2,
+  info: 1,
+  success: 0,
+};
+
+export interface WorktreeRow {
+  worktreeId: string;
+  worktreeName: string;
+  worstType: NotificationHistoryEntry["type"];
+  highlightTitle: string;
+  entryCount: number;
 }
 
 export interface ReEntrySummaryState {
   visible: boolean;
   entries: NotificationHistoryEntry[];
-  counts: ReEntryCounts;
-  singleWorktreeId: string | null;
+  rows: WorktreeRow[];
+  overflowCount: number;
   dismiss: () => void;
 }
 
-function computeCounts(entries: NotificationHistoryEntry[]): ReEntryCounts {
-  const counts: ReEntryCounts = { warning: 0, error: 0, success: 0, info: 0 };
-  for (const e of entries) {
-    counts[e.type]++;
-  }
-  return counts;
-}
+function buildWorktreeRows(entries: NotificationHistoryEntry[]): WorktreeRow[] {
+  const byWorktree = new Map<string, NotificationHistoryEntry[]>();
 
-function getSingleWorktreeId(entries: NotificationHistoryEntry[]): string | null {
-  const ids = new Set<string>();
   for (const e of entries) {
-    if (e.context?.worktreeId) ids.add(e.context.worktreeId);
+    const wid = e.context?.worktreeId;
+    if (!wid) continue;
+    const group = byWorktree.get(wid);
+    if (group) {
+      group.push(e);
+    } else {
+      byWorktree.set(wid, [e]);
+    }
   }
-  return ids.size === 1 ? ([...ids][0] ?? null) : null;
+
+  const worktrees = getCurrentViewStoreOrNull()?.getState().worktrees ?? new Map();
+
+  const rows: WorktreeRow[] = [];
+
+  for (const [worktreeId, groupEntries] of byWorktree) {
+    let worst = groupEntries[0]!;
+    for (let i = 1; i < groupEntries.length; i++) {
+      const e = groupEntries[i]!;
+      const ww = SEVERITY_WEIGHTS[e.type];
+      const cw = SEVERITY_WEIGHTS[worst.type];
+      if (ww > cw || (ww === cw && e.timestamp > worst.timestamp)) {
+        worst = e;
+      }
+    }
+
+    const worktreeName = worktrees.get(worktreeId)?.name?.trim() || worktreeId.slice(0, 12);
+
+    rows.push({
+      worktreeId,
+      worktreeName,
+      worstType: worst.type,
+      highlightTitle: worst.title?.trim() || worst.message,
+      entryCount: groupEntries.length,
+    });
+  }
+
+  rows.sort((a, b) => {
+    const sv = SEVERITY_WEIGHTS[b.worstType] - SEVERITY_WEIGHTS[a.worstType];
+    if (sv !== 0) return sv;
+    const cv = b.entryCount - a.entryCount;
+    if (cv !== 0) return cv;
+    return a.worktreeName.localeCompare(b.worktreeName);
+  });
+
+  return rows;
 }
 
 const EMPTY: ReEntrySummaryState = {
   visible: false,
   entries: [],
-  counts: { warning: 0, error: 0, success: 0, info: 0 },
-  singleWorktreeId: null,
+  rows: [],
+  overflowCount: 0,
   dismiss: () => {},
 };
 
@@ -50,8 +94,8 @@ export function useReEntrySummary(): ReEntrySummaryState {
   const [state, setState] = useState<Omit<ReEntrySummaryState, "dismiss">>({
     visible: false,
     entries: [],
-    counts: { warning: 0, error: 0, success: 0, info: 0 },
-    singleWorktreeId: null,
+    rows: [],
+    overflowCount: 0,
   });
 
   const dismiss = useCallback(() => {
@@ -73,11 +117,14 @@ export function useReEntrySummary(): ReEntrySummaryState {
       if (unseen.length === 0) return;
 
       markSummarized(unseen.map((e) => e.id));
+
+      const allRows = buildWorktreeRows(unseen);
+      if (allRows.length === 0) return;
       setState({
         visible: true,
         entries: unseen,
-        counts: computeCounts(unseen),
-        singleWorktreeId: getSingleWorktreeId(unseen),
+        rows: allRows.slice(0, 3),
+        overflowCount: Math.max(0, allRows.length - 3),
       });
     };
 
