@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { Trash2 } from "lucide-react";
 import { useDroppable } from "@dnd-kit/core";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { isMac } from "@/lib/platform";
@@ -17,6 +18,11 @@ import type { TerminalInstance } from "@/store";
 import type { TrashedTerminal, TrashedTerminalGroupMetadata } from "@/store/slices";
 import { TrashBinItem } from "./TrashBinItem";
 import { TrashGroupItem } from "./TrashGroupItem";
+
+// How long the "Moved to trash" hint stays visible above the trash icon after
+// a panel is closed. One second is enough to draw the eye to the trash without
+// dwelling — discovery cue, not an undo affordance (the trash itself is that).
+const MOVED_HINT_DURATION_MS = 1_000;
 
 interface TrashContainerProps {
   trashedTerminals: Array<{
@@ -50,6 +56,7 @@ type TrashDisplayItem = GroupedTrashItem | GroupedTrashGroup;
 export function TrashContainer({ trashedTerminals, compact = false }: TrashContainerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isTrashPulsing, setIsTrashPulsing] = useState(false);
+  const [showMovedHint, setShowMovedHint] = useState(false);
   const prevLengthRef = useRef(trashedTerminals.length);
   const { worktreeMap } = useWorktrees();
   // Only show the ghost pill for panel drags — worktree-card sort drags also flip
@@ -67,6 +74,7 @@ export function TrashContainer({ trashedTerminals, compact = false }: TrashConta
       return;
     }
     setIsTrashPulsing(true);
+    setShowMovedHint(true);
     const shortcut = isMac() ? "Cmd+Shift+T" : "Ctrl+Shift+T";
     useAnnouncerStore.getState().announce(`Panel closed — press ${shortcut} to restore`);
   }, [trashedTerminals.length]);
@@ -82,6 +90,14 @@ export function TrashContainer({ trashedTerminals, compact = false }: TrashConta
     const timer = setTimeout(() => setIsTrashPulsing(false), DURATION_200 + 50);
     return () => clearTimeout(timer);
   }, [isTrashPulsing]);
+
+  // Hold the "Moved to trash" hint for 1s; restart the timer on each new close
+  // so back-to-back closes keep showing the hint instead of flickering off.
+  useEffect(() => {
+    if (!showMovedHint) return;
+    const timer = setTimeout(() => setShowMovedHint(false), MOVED_HINT_DURATION_MS);
+    return () => clearTimeout(timer);
+  }, [showMovedHint, trashedTerminals.length]);
 
   // Group trash items by groupRestoreId
   const displayItems = useMemo((): TrashDisplayItem[] => {
@@ -188,38 +204,49 @@ export function TrashContainer({ trashedTerminals, compact = false }: TrashConta
     );
   }
 
+  // Suppress the hint while the trash popover is open — the user is already
+  // looking at the trash, redundant labelling would be noise.
+  const hintOpen = showMovedHint && !isOpen;
+
   return (
     <div ref={setNodeRef} className="shrink-0">
       <Popover open={isOpen} onOpenChange={setIsOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            variant="pill"
-            size="sm"
-            data-testid="trash-container"
-            className={cn(
-              compact ? "px-1.5 min-w-0" : "px-3",
-              isOpen && "bg-overlay-emphasis border-border-default",
-              isOver && "bg-overlay-soft ring-2 ring-inset ring-border-default"
-            )}
-            aria-haspopup="dialog"
-            aria-expanded={isOpen}
-            aria-controls={contentId}
-            aria-label={`Trash: ${count} terminal${count === 1 ? "" : "s"}`}
-          >
-            <span
-              className={cn("relative", isTrashPulsing && "animate-trash-pulse")}
-              onAnimationEnd={handleTrashAnimationEnd}
-            >
-              <Trash2 className="w-3.5 h-3.5 text-daintree-text/60" aria-hidden="true" />
-              {compact && count > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 z-10 flex items-center justify-center min-w-[14px] h-[14px] px-0.5 rounded-full bg-daintree-text/40 text-[10px] font-bold tabular-nums text-text-inverse">
-                  {count > 9 ? "9+" : count}
+        <Tooltip open={hintOpen}>
+          <TooltipTrigger asChild>
+            <PopoverTrigger asChild>
+              <Button
+                variant="pill"
+                size="sm"
+                data-testid="trash-container"
+                className={cn(
+                  compact ? "px-1.5 min-w-0" : "px-3",
+                  isOpen && "bg-overlay-emphasis border-border-default",
+                  isOver && "bg-overlay-soft ring-2 ring-inset ring-border-default"
+                )}
+                aria-haspopup="dialog"
+                aria-expanded={isOpen}
+                aria-controls={contentId}
+                aria-label={`Trash: ${count} terminal${count === 1 ? "" : "s"}`}
+              >
+                <span
+                  className={cn("relative", isTrashPulsing && "animate-trash-pulse")}
+                  onAnimationEnd={handleTrashAnimationEnd}
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-daintree-text/60" aria-hidden="true" />
+                  {compact && count > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 z-10 flex items-center justify-center min-w-[14px] h-[14px] px-0.5 rounded-full bg-daintree-text/40 text-[10px] font-bold tabular-nums text-text-inverse">
+                      {count > 9 ? "9+" : count}
+                    </span>
+                  )}
                 </span>
-              )}
-            </span>
-            {!compact && <span className="font-medium tabular-nums">Trash ({count})</span>}
-          </Button>
-        </PopoverTrigger>
+                {!compact && <span className="font-medium tabular-nums">Trash ({count})</span>}
+              </Button>
+            </PopoverTrigger>
+          </TooltipTrigger>
+          <TooltipContent side="top" align="center" sideOffset={6}>
+            Moved to trash
+          </TooltipContent>
+        </Tooltip>
 
         <PopoverContent
           id={contentId}

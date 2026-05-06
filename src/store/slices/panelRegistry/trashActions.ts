@@ -26,8 +26,8 @@ export const createTrashActions = (
   | "markAsTrashed"
   | "markAsRestored"
   | "isInTrash"
-> => ({
-  trashPanel: (id) => {
+> => {
+  const trashPanel: PanelRegistrySlice["trashPanel"] = (id) => {
     const terminal = get().panelsById[id];
     if (!terminal) return;
 
@@ -115,15 +115,18 @@ export const createTrashActions = (
       terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.VISIBLE);
       return;
     }
-  },
+  };
 
-  trashPanelGroup: (panelId) => {
+  const trashPanelGroup: PanelRegistrySlice["trashPanelGroup"] = (panelId) => {
     // Find the group this panel belongs to
     const group = get().getPanelGroup(panelId);
 
-    // If no group, fall back to single panel trash
+    // If no group, fall back to single panel trash. Call the registry's own
+    // implementation directly — `get().trashPanel` resolves to the wrapped
+    // store-level dispatch, which would re-fire the undo toast already
+    // emitted by the wrapped `trashPanelGroup` caller.
     if (!group) {
-      get().trashPanel(panelId);
+      trashPanel(panelId);
       return;
     }
 
@@ -215,142 +218,41 @@ export const createTrashActions = (
         terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.VISIBLE);
       }
     }
-  },
+  };
 
-  restoreTerminal: (id, targetWorktreeId) => {
-    clearTrashExpiryTimer(id);
-    const trashedInfo = get().trashedTerminals.get(id);
-    const restoreLocation = trashedInfo?.originalLocation ?? "grid";
-    const terminal = get().panelsById[id];
+  return {
+    trashPanel,
+    trashPanelGroup,
 
-    if (terminal && panelKindHasPty(terminal.kind ?? "terminal")) {
-      terminalClient.restore(id).catch((error) => {
-        logError("Failed to restore terminal", error);
-      });
-    }
-
-    set((state) => {
-      const t = state.panelsById[id];
-      if (!t) return state;
-      const newById = {
-        ...state.panelsById,
-        [id]: {
-          ...t,
-          location: restoreLocation,
-          worktreeId: targetWorktreeId !== undefined ? targetWorktreeId : t.worktreeId,
-        },
-      };
-      const newTrashed = new Map(state.trashedTerminals);
-      newTrashed.delete(id);
-      saveNormalized(newById, state.panelIds);
-      return { panelsById: newById, trashedTerminals: newTrashed };
-    });
-
-    if (terminal && panelKindHasPty(terminal.kind ?? "terminal")) {
-      if (restoreLocation === "dock") {
-        optimizeForDock(id);
-      } else {
-        terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.VISIBLE);
-      }
-    }
-  },
-
-  restoreTrashedGroup: (groupRestoreId, targetWorktreeId) => {
-    const trashedTerminals = get().trashedTerminals;
-
-    const groupPanels: Array<{
-      id: string;
-      trashed: ReturnType<typeof trashedTerminals.get>;
-    }> = [];
-    let anchorPanel: ReturnType<typeof trashedTerminals.get> | undefined;
-
-    for (const [id, trashed] of trashedTerminals.entries()) {
-      if (trashed.groupRestoreId === groupRestoreId) {
-        groupPanels.push({ id, trashed });
-        if (trashed.groupMetadata) {
-          anchorPanel = trashed;
-        }
-      }
-    }
-
-    if (groupPanels.length === 0) {
-      return;
-    }
-
-    for (const { id } of groupPanels) {
+    restoreTerminal: (id, targetWorktreeId) => {
       clearTrashExpiryTimer(id);
+      const trashedInfo = get().trashedTerminals.get(id);
+      const restoreLocation = trashedInfo?.originalLocation ?? "grid";
       const terminal = get().panelsById[id];
+
       if (terminal && panelKindHasPty(terminal.kind ?? "terminal")) {
         terminalClient.restore(id).catch((error) => {
           logError("Failed to restore terminal", error);
         });
       }
-    }
 
-    const restoreLocation =
-      anchorPanel?.groupMetadata?.location ?? groupPanels[0]?.trashed?.originalLocation ?? "grid";
-    const worktreeId =
-      targetWorktreeId !== undefined
-        ? targetWorktreeId
-        : (anchorPanel?.groupMetadata?.worktreeId ?? undefined);
-
-    set((state) => {
-      const panelIdsInGroup = new Set(groupPanels.map(({ id }) => id));
-      const newById = { ...state.panelsById };
-      for (const pid of panelIdsInGroup) {
-        const t = newById[pid];
-        if (t) {
-          newById[pid] = {
+      set((state) => {
+        const t = state.panelsById[id];
+        if (!t) return state;
+        const newById = {
+          ...state.panelsById,
+          [id]: {
             ...t,
-            location: restoreLocation as "dock" | "grid",
-            worktreeId: worktreeId ?? t.worktreeId,
-          };
-        }
-      }
-
-      const newTrashed = new Map(state.trashedTerminals);
-      for (const { id } of groupPanels) {
+            location: restoreLocation,
+            worktreeId: targetWorktreeId !== undefined ? targetWorktreeId : t.worktreeId,
+          },
+        };
+        const newTrashed = new Map(state.trashedTerminals);
         newTrashed.delete(id);
-      }
+        saveNormalized(newById, state.panelIds);
+        return { panelsById: newById, trashedTerminals: newTrashed };
+      });
 
-      saveNormalized(newById, state.panelIds);
-      return { panelsById: newById, trashedTerminals: newTrashed };
-    });
-
-    // Recreate the tab group if we have multiple panels
-    const restoredPanelIds = groupPanels.map(({ id }) => id);
-    const existingIds = new Set(get().panelIds);
-    const validPanelIds = restoredPanelIds.filter((id) => existingIds.has(id));
-
-    if (validPanelIds.length > 1) {
-      let orderedPanelIds = validPanelIds;
-      let activeTabId = validPanelIds[0];
-
-      if (anchorPanel?.groupMetadata) {
-        const { panelIds, activeTabId: metadataActiveTabId } = anchorPanel.groupMetadata;
-        orderedPanelIds = panelIds.filter((id) => validPanelIds.includes(id));
-        for (const id of validPanelIds) {
-          if (!orderedPanelIds.includes(id)) {
-            orderedPanelIds.push(id);
-          }
-        }
-        activeTabId = orderedPanelIds.includes(metadataActiveTabId)
-          ? metadataActiveTabId
-          : orderedPanelIds[0];
-      }
-
-      if (orderedPanelIds.length > 1) {
-        get().createTabGroup(
-          restoreLocation as "dock" | "grid",
-          worktreeId,
-          orderedPanelIds,
-          activeTabId
-        );
-      }
-    }
-
-    for (const { id } of groupPanels) {
-      const terminal = get().panelsById[id];
       if (terminal && panelKindHasPty(terminal.kind ?? "terminal")) {
         if (restoreLocation === "dock") {
           optimizeForDock(id);
@@ -358,92 +260,198 @@ export const createTrashActions = (
           terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.VISIBLE);
         }
       }
-    }
-  },
+    },
 
-  markAsTrashed: (id, expiresAt, originalLocation) => {
-    const terminal = get().panelsById[id];
-    if (!terminal) {
-      clearTrashExpiryTimer(id);
+    restoreTrashedGroup: (groupRestoreId, targetWorktreeId) => {
+      const trashedTerminals = get().trashedTerminals;
+
+      const groupPanels: Array<{
+        id: string;
+        trashed: ReturnType<typeof trashedTerminals.get>;
+      }> = [];
+      let anchorPanel: ReturnType<typeof trashedTerminals.get> | undefined;
+
+      for (const [id, trashed] of trashedTerminals.entries()) {
+        if (trashed.groupRestoreId === groupRestoreId) {
+          groupPanels.push({ id, trashed });
+          if (trashed.groupMetadata) {
+            anchorPanel = trashed;
+          }
+        }
+      }
+
+      if (groupPanels.length === 0) {
+        return;
+      }
+
+      for (const { id } of groupPanels) {
+        clearTrashExpiryTimer(id);
+        const terminal = get().panelsById[id];
+        if (terminal && panelKindHasPty(terminal.kind ?? "terminal")) {
+          terminalClient.restore(id).catch((error) => {
+            logError("Failed to restore terminal", error);
+          });
+        }
+      }
+
+      const restoreLocation =
+        anchorPanel?.groupMetadata?.location ?? groupPanels[0]?.trashed?.originalLocation ?? "grid";
+      const worktreeId =
+        targetWorktreeId !== undefined
+          ? targetWorktreeId
+          : (anchorPanel?.groupMetadata?.worktreeId ?? undefined);
+
       set((state) => {
-        if (!state.trashedTerminals.has(id)) return state;
+        const panelIdsInGroup = new Set(groupPanels.map(({ id }) => id));
+        const newById = { ...state.panelsById };
+        for (const pid of panelIdsInGroup) {
+          const t = newById[pid];
+          if (t) {
+            newById[pid] = {
+              ...t,
+              location: restoreLocation as "dock" | "grid",
+              worktreeId: worktreeId ?? t.worktreeId,
+            };
+          }
+        }
+
         const newTrashed = new Map(state.trashedTerminals);
-        newTrashed.delete(id);
-        return { trashedTerminals: newTrashed };
-      });
-      return;
-    }
+        for (const { id } of groupPanels) {
+          newTrashed.delete(id);
+        }
 
-    set((state) => {
-      if (terminal && terminal.location !== "trash") {
-        return state;
+        saveNormalized(newById, state.panelIds);
+        return { panelsById: newById, trashedTerminals: newTrashed };
+      });
+
+      // Recreate the tab group if we have multiple panels
+      const restoredPanelIds = groupPanels.map(({ id }) => id);
+      const existingIds = new Set(get().panelIds);
+      const validPanelIds = restoredPanelIds.filter((id) => existingIds.has(id));
+
+      if (validPanelIds.length > 1) {
+        let orderedPanelIds = validPanelIds;
+        let activeTabId = validPanelIds[0];
+
+        if (anchorPanel?.groupMetadata) {
+          const { panelIds, activeTabId: metadataActiveTabId } = anchorPanel.groupMetadata;
+          orderedPanelIds = panelIds.filter((id) => validPanelIds.includes(id));
+          for (const id of validPanelIds) {
+            if (!orderedPanelIds.includes(id)) {
+              orderedPanelIds.push(id);
+            }
+          }
+          activeTabId = orderedPanelIds.includes(metadataActiveTabId)
+            ? metadataActiveTabId
+            : orderedPanelIds[0];
+        }
+
+        if (orderedPanelIds.length > 1) {
+          get().createTabGroup(
+            restoreLocation as "dock" | "grid",
+            worktreeId,
+            orderedPanelIds,
+            activeTabId
+          );
+        }
       }
 
-      const newTrashed = new Map(state.trashedTerminals);
-      const existingTrashed = state.trashedTerminals.get(id);
-      const location = existingTrashed?.originalLocation ?? originalLocation;
-      newTrashed.set(id, {
-        id,
-        expiresAt,
-        originalLocation: location,
-        ...(existingTrashed?.groupRestoreId && {
-          groupRestoreId: existingTrashed.groupRestoreId,
-        }),
-        ...(existingTrashed?.groupMetadata && { groupMetadata: existingTrashed.groupMetadata }),
-      });
-      const existing = state.panelsById[id];
-      if (!existing) {
-        saveNormalized(state.panelsById, state.panelIds);
-        return { trashedTerminals: newTrashed };
+      for (const { id } of groupPanels) {
+        const terminal = get().panelsById[id];
+        if (terminal && panelKindHasPty(terminal.kind ?? "terminal")) {
+          if (restoreLocation === "dock") {
+            optimizeForDock(id);
+          } else {
+            terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.VISIBLE);
+          }
+        }
       }
-      const newById: Record<string, TerminalInstance> = {
-        ...state.panelsById,
-        [id]: { ...existing, location: "trash" as const },
-      };
-      saveNormalized(newById, state.panelIds);
-      return { trashedTerminals: newTrashed, panelsById: newById };
-    });
+    },
 
-    scheduleTrashExpiry(id, expiresAt);
+    markAsTrashed: (id, expiresAt, originalLocation) => {
+      const terminal = get().panelsById[id];
+      if (!terminal) {
+        clearTrashExpiryTimer(id);
+        set((state) => {
+          if (!state.trashedTerminals.has(id)) return state;
+          const newTrashed = new Map(state.trashedTerminals);
+          newTrashed.delete(id);
+          return { trashedTerminals: newTrashed };
+        });
+        return;
+      }
 
-    if (terminal && panelKindHasPty(terminal.kind ?? "terminal")) {
-      terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.VISIBLE);
-    }
-  },
+      set((state) => {
+        if (terminal && terminal.location !== "trash") {
+          return state;
+        }
 
-  markAsRestored: (id) => {
-    clearTrashExpiryTimer(id);
-    const terminal = get().panelsById[id];
+        const newTrashed = new Map(state.trashedTerminals);
+        const existingTrashed = state.trashedTerminals.get(id);
+        const location = existingTrashed?.originalLocation ?? originalLocation;
+        newTrashed.set(id, {
+          id,
+          expiresAt,
+          originalLocation: location,
+          ...(existingTrashed?.groupRestoreId && {
+            groupRestoreId: existingTrashed.groupRestoreId,
+          }),
+          ...(existingTrashed?.groupMetadata && { groupMetadata: existingTrashed.groupMetadata }),
+        });
+        const existing = state.panelsById[id];
+        if (!existing) {
+          saveNormalized(state.panelsById, state.panelIds);
+          return { trashedTerminals: newTrashed };
+        }
+        const newById: Record<string, TerminalInstance> = {
+          ...state.panelsById,
+          [id]: { ...existing, location: "trash" as const },
+        };
+        saveNormalized(newById, state.panelIds);
+        return { trashedTerminals: newTrashed, panelsById: newById };
+      });
 
-    const trashedInfo = get().trashedTerminals.get(id);
-    const restoreLocation =
-      terminal && terminal.location !== "trash"
-        ? terminal.location
-        : (trashedInfo?.originalLocation ?? "grid");
+      scheduleTrashExpiry(id, expiresAt);
 
-    set((state) => {
-      const newTrashed = new Map(state.trashedTerminals);
-      newTrashed.delete(id);
-      const t = state.panelsById[id];
-      if (!t) return { trashedTerminals: newTrashed };
-      const newById = {
-        ...state.panelsById,
-        [id]: { ...t, location: restoreLocation },
-      };
-      saveNormalized(newById, state.panelIds);
-      return { trashedTerminals: newTrashed, panelsById: newById };
-    });
-
-    if (terminal && panelKindHasPty(terminal.kind ?? "terminal")) {
-      if (restoreLocation === "dock") {
-        optimizeForDock(id);
-      } else {
+      if (terminal && panelKindHasPty(terminal.kind ?? "terminal")) {
         terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.VISIBLE);
       }
-    }
-  },
+    },
 
-  isInTrash: (id) => {
-    return get().trashedTerminals.has(id);
-  },
-});
+    markAsRestored: (id) => {
+      clearTrashExpiryTimer(id);
+      const terminal = get().panelsById[id];
+
+      const trashedInfo = get().trashedTerminals.get(id);
+      const restoreLocation =
+        terminal && terminal.location !== "trash"
+          ? terminal.location
+          : (trashedInfo?.originalLocation ?? "grid");
+
+      set((state) => {
+        const newTrashed = new Map(state.trashedTerminals);
+        newTrashed.delete(id);
+        const t = state.panelsById[id];
+        if (!t) return { trashedTerminals: newTrashed };
+        const newById = {
+          ...state.panelsById,
+          [id]: { ...t, location: restoreLocation },
+        };
+        saveNormalized(newById, state.panelIds);
+        return { trashedTerminals: newTrashed, panelsById: newById };
+      });
+
+      if (terminal && panelKindHasPty(terminal.kind ?? "terminal")) {
+        if (restoreLocation === "dock") {
+          optimizeForDock(id);
+        } else {
+          terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.VISIBLE);
+        }
+      }
+    },
+
+    isInTrash: (id) => {
+      return get().trashedTerminals.has(id);
+    },
+  };
+};
