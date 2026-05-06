@@ -373,13 +373,19 @@ function SettingsDialogInner({
   ) => {
     markTabVisited(tab);
     setSearchQuery("");
-    setScrollToSection(sectionId ?? null);
     setHiddenSettingBanner(requiresEnabled ?? null);
     if (subtab !== undefined) {
       setActiveSubtabs((prev) => ({ ...prev, [tab]: subtab }));
     }
     searchInputRef.current?.blur();
-    startTransition(() => setActiveTab(tab));
+    // Defer scrollToSection together with the tab change. Setting it
+    // urgently would let the previously-active tab's effect consume the
+    // pending id (it sees isActive=true after the urgent commit but
+    // before the transition makes the new tab active).
+    startTransition(() => {
+      setActiveTab(tab);
+      setScrollToSection(sectionId ?? null);
+    });
   };
 
   const [activeResultIndex, setActiveResultIndex] = useState(-1);
@@ -1098,13 +1104,15 @@ function SettingsDialogInner({
                           tabIndex={0}
                           className={activeTab === "project:github" ? "" : "hidden"}
                         >
-                          {visitedTabs.has("project:github") && projectForm.currentProject && (
+                          {visitedTabs.has("project:github") && (
                             <>
-                              <ProjectGitHubTab
-                                githubRemote={projectForm.githubRemote}
-                                onGithubRemoteChange={projectForm.setGithubRemote}
-                                projectPath={projectForm.currentProject.path}
-                              />
+                              {projectForm.currentProject && (
+                                <ProjectGitHubTab
+                                  githubRemote={projectForm.githubRemote}
+                                  onGithubRemoteChange={projectForm.setGithubRemote}
+                                  projectPath={projectForm.currentProject.path}
+                                />
+                              )}
                               <SettingsTabScrollEffect
                                 isActive={activeTab === "project:github" && !isSearching}
                                 scrollToSectionId={scrollToSection}
