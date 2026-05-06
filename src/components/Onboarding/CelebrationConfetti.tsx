@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, m } from "framer-motion";
 
@@ -45,16 +45,59 @@ function generateParticles(): Particle[] {
   });
 }
 
+function isReducedMotion(): boolean {
+  if (typeof window === "undefined") return false;
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return true;
+  if (typeof document !== "undefined") {
+    return document.body.getAttribute("data-reduce-animations") === "true";
+  }
+  return false;
+}
+
+// Falls back to viewport center if the checklist isn't mounted (e.g. user
+// dismissed it before the 4th item completed).
+function readAnchor(): { x: number; y: number } {
+  if (typeof document === "undefined" || typeof window === "undefined") {
+    return { x: 0, y: 0 };
+  }
+  const el = document.querySelector("[data-getting-started-checklist]");
+  if (el instanceof HTMLElement) {
+    const rect = el.getBoundingClientRect();
+    if (rect.width > 0 || rect.height > 0) {
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    }
+  }
+  return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+}
+
 export function CelebrationConfetti() {
-  const reducedMotion =
-    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
+  const [reducedMotion] = useState(isReducedMotion);
   const [particles] = useState(generateParticles);
+  const [anchor, setAnchor] = useState<{ x: number; y: number } | null>(null);
 
-  if (reducedMotion) return null;
+  useEffect(() => {
+    if (reducedMotion) return;
+    setAnchor(readAnchor());
+  }, [reducedMotion]);
+
+  if (reducedMotion) {
+    return createPortal(
+      <div
+        aria-hidden="true"
+        className="fixed inset-0 pointer-events-none z-[var(--z-toast)] bg-status-success/15 animate-checklist-complete-flash"
+      />,
+      document.body
+    );
+  }
+
+  if (!anchor) return null;
 
   return createPortal(
-    <div className="fixed inset-0 pointer-events-none z-[var(--z-toast)] flex items-center justify-center">
+    <div
+      aria-hidden="true"
+      className="fixed pointer-events-none z-[var(--z-toast)]"
+      style={{ left: anchor.x, top: anchor.y, width: 0, height: 0 }}
+    >
       <AnimatePresence>
         {particles.map((p) => (
           <m.div

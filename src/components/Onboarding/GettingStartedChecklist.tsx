@@ -33,6 +33,7 @@ export function GettingStartedChecklist({
 
   return createPortal(
     <div
+      data-getting-started-checklist=""
       className={cn(
         "fixed bottom-4 z-[var(--z-toast)] pointer-events-none p-4",
         "flex justify-end w-full max-w-[320px]"

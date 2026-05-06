@@ -12,6 +12,7 @@ const onboardingMock = {
         openedProject: false,
         launchedAgent: false,
         createdWorktree: false,
+        ranSecondParallelAgent: false,
       },
       dismissed: false,
       celebrationShown: false,
@@ -29,7 +30,25 @@ vi.stubGlobal("window", {
   removeEventListener: vi.fn(),
 });
 
-vi.mock("@/lib/notify", () => ({ notify: vi.fn(() => "") }));
+interface NotifyArgs {
+  type: string;
+  title: string;
+  message: string;
+  duration?: number;
+  transient?: boolean;
+}
+const { notifyMock, getDisplayComboMock } = vi.hoisted(() => ({
+  notifyMock: vi.fn<(args: NotifyArgs) => string>(() => ""),
+  getDisplayComboMock: vi.fn<(actionId: string) => string>(() => ""),
+}));
+
+vi.mock("@/lib/notify", () => ({ notify: notifyMock }));
+
+vi.mock("@/services/KeybindingService", () => ({
+  keybindingService: {
+    getDisplayCombo: getDisplayComboMock,
+  },
+}));
 
 vi.mock("../../useElectron", () => ({
   isElectronAvailable: () => true,
@@ -109,7 +128,12 @@ describe("useGettingStartedChecklist", () => {
     worktreeSubscribers = [];
     onboardingMock.get.mockResolvedValue({ completed: true });
     onboardingMock.getChecklist.mockResolvedValue({
-      items: { openedProject: false, launchedAgent: false, createdWorktree: false },
+      items: {
+        openedProject: false,
+        launchedAgent: false,
+        createdWorktree: false,
+        ranSecondParallelAgent: false,
+      },
       dismissed: false,
       celebrationShown: false,
     });
@@ -254,5 +278,70 @@ describe("useGettingStartedChecklist", () => {
     });
 
     expect(onboardingMock.markChecklistItem).toHaveBeenCalledWith("createdWorktree");
+  });
+
+  describe("completion toast", () => {
+    beforeEach(() => {
+      // Use real timers so Promise.all hydration microtasks resolve naturally.
+      vi.useRealTimers();
+      onboardingMock.getChecklist.mockResolvedValue({
+        items: {
+          openedProject: true,
+          launchedAgent: true,
+          createdWorktree: true,
+          ranSecondParallelAgent: false,
+        },
+        dismissed: false,
+        celebrationShown: false,
+      });
+    });
+
+    async function flushHydration() {
+      // Two microtask rounds for Promise.all + .then chain, then act flush.
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+    }
+
+    it("includes the panel.palette keybinding in the completion toast when bound", async () => {
+      getDisplayComboMock.mockReturnValue("⌘+N");
+
+      const { result } = renderHook(() => useGettingStartedChecklist(true));
+      await flushHydration();
+
+      expect(result.current.checklist).not.toBeNull();
+      expect(result.current.checklist?.items.ranSecondParallelAgent).toBe(false);
+
+      await act(async () => {
+        result.current.markItem("ranSecondParallelAgent");
+      });
+
+      expect(onboardingMock.markChecklistItem).toHaveBeenCalledWith("ranSecondParallelAgent");
+      expect(getDisplayComboMock).toHaveBeenCalledWith("panel.palette");
+      expect(notifyMock).toHaveBeenCalledTimes(1);
+      const args = notifyMock.mock.calls[0]![0];
+      expect(args.type).toBe("success");
+      expect(args.title).toBe("Checklist complete!");
+      expect(args.message).toBe("You're all set. Open the panel palette (⌘+N) to launch an agent");
+      expect(args.transient).toBe(true);
+    });
+
+    it("omits the keybinding parens when panel.palette is unbound", async () => {
+      getDisplayComboMock.mockReturnValue("");
+
+      const { result } = renderHook(() => useGettingStartedChecklist(true));
+      await flushHydration();
+
+      await act(async () => {
+        result.current.markItem("ranSecondParallelAgent");
+      });
+
+      expect(notifyMock).toHaveBeenCalledTimes(1);
+      const args = notifyMock.mock.calls[0]![0];
+      expect(args.message).toBe("You're all set. Open the panel palette to launch an agent");
+      expect(args.message).not.toContain("(");
+    });
   });
 });

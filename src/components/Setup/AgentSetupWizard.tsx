@@ -634,7 +634,9 @@ export function AgentSetupWizard({
                   }}
                 />
               )}
-              {state.step.type === "complete" && <CompleteStep installedAgents={installedAgents} />}
+              {state.step.type === "complete" && (
+                <CompleteStep installedAgents={installedAgents} onClose={onClose} />
+              )}
             </m.div>
           </AnimatePresence>
         </div>
@@ -921,7 +923,20 @@ function SelectionStep({
 
 // --- Complete step ---
 
-function CompleteStep({ installedAgents }: { installedAgents: string[] }) {
+export function CompleteStep({
+  installedAgents,
+  onClose,
+}: {
+  installedAgents: string[];
+  onClose: () => void;
+}) {
+  const hasAgents = installedAgents.length > 0;
+
+  const handleLaunch = useCallback(() => {
+    void actionService.dispatch("panel.palette", undefined, { source: "user" });
+    onClose();
+  }, [onClose]);
+
   return (
     <div className="space-y-6 text-center py-4">
       <div>
@@ -930,13 +945,13 @@ function CompleteStep({ installedAgents }: { installedAgents: string[] }) {
         </div>
         <h3 className="text-base font-semibold text-daintree-text mb-2">Setup Complete</h3>
         <p className="text-sm text-daintree-text/60">
-          {installedAgents.length > 0
+          {hasAgents
             ? `You have ${installedAgents.length} agent${installedAgents.length === 1 ? "" : "s"} ready to use. Launch them from the toolbar or with keyboard shortcuts.`
             : "No agents were installed. You can install them later from Settings > Agents."}
         </p>
       </div>
 
-      {installedAgents.length > 0 && (
+      {hasAgents && (
         <div className="space-y-2">
           {installedAgents.map((id) => {
             const agent = AGENT_REGISTRY[id];
@@ -969,6 +984,15 @@ function CompleteStep({ installedAgents }: { installedAgents: string[] }) {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {hasAgents && (
+        <div className="flex justify-center">
+          <Button onClick={handleLaunch} data-testid="complete-step-launch-agent">
+            <Sparkles className="w-4 h-4 mr-1" />
+            Launch an agent
+          </Button>
         </div>
       )}
 
