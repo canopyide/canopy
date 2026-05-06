@@ -21,7 +21,9 @@ import {
   AGENT_WORKING_RECOVERY_MIN_CHANGED_FRAMES,
   AGENT_WORKING_RECOVERY_WINDOW_MS,
   SustainedChangeTracker,
-  hashStrings,
+  createVisibleContentSnapshot,
+  measureVisibleContentDelta,
+  type VisibleContentSnapshot,
 } from "./pty/SustainedChangeTracker.js";
 import {
   detectPrompt,
@@ -199,7 +201,7 @@ export class ActivityMonitor {
     minChangedFrames: AGENT_WORKING_RECOVERY_MIN_CHANGED_FRAMES,
     maxQuietMs: AGENT_WORKING_RECOVERY_MAX_QUIET_MS,
   });
-  private simpleOutputFingerprint: number | undefined;
+  private simpleOutputSnapshot: VisibleContentSnapshot | undefined;
 
   // Polling interval configuration
   private POLLING_INTERVAL_MS: number;
@@ -387,7 +389,7 @@ export class ActivityMonitor {
       }
       this.lastDataTimestamp = now;
       if (!this.getVisibleLines) {
-        this.noteSimpleOutputFingerprint(hashStrings([data]), now);
+        this.noteSimpleOutputSnapshot(createVisibleContentSnapshot(stripAnsi(data)), now);
       }
       return;
     }
@@ -616,25 +618,25 @@ export class ActivityMonitor {
     }
   }
 
-  private captureSimpleOutputFingerprint(): number | undefined {
+  private captureSimpleOutputSnapshot(): VisibleContentSnapshot | undefined {
     if (!this.getVisibleLines) {
       return undefined;
     }
-    return hashStrings(this.getVisibleLines(SIMPLE_VISIBLE_LINE_COUNT));
+    return createVisibleContentSnapshot(this.getVisibleLines(SIMPLE_VISIBLE_LINE_COUNT));
   }
 
-  private noteSimpleOutputFingerprint(fingerprint: number, now: number): void {
-    const previousFingerprint = this.simpleOutputFingerprint;
-    this.simpleOutputFingerprint = fingerprint;
+  private noteSimpleOutputSnapshot(snapshot: VisibleContentSnapshot, now: number): void {
+    const previousSnapshot = this.simpleOutputSnapshot;
+    this.simpleOutputSnapshot = snapshot;
 
-    if (previousFingerprint === undefined) {
+    if (previousSnapshot === undefined) {
       this.simpleOutputChangeTracker.reset();
       return;
     }
 
-    const changed = previousFingerprint !== fingerprint;
-    if (!changed) {
-      this.simpleOutputChangeTracker.observe(now, false);
+    const delta = measureVisibleContentDelta(previousSnapshot, snapshot);
+    if (!delta.changed) {
+      this.simpleOutputChangeTracker.observe(now, { changedChars: 0 });
       return;
     }
 
@@ -647,7 +649,7 @@ export class ActivityMonitor {
       return;
     }
 
-    if (this.simpleOutputChangeTracker.observe(now, true)) {
+    if (this.simpleOutputChangeTracker.observe(now, { changedChars: delta.changedChars })) {
       this.simpleOutputChangeTracker.reset();
       this.becomeBusy({ trigger: "output" }, now);
     }
@@ -702,7 +704,7 @@ export class ActivityMonitor {
     this.lastOutputActivityAt = 0;
     this.lastWorkingIndicatorTimestamp = 0;
     this.promptStableSince = 0;
-    this.simpleOutputFingerprint = undefined;
+    this.simpleOutputSnapshot = undefined;
   }
 
   getLastPatternResult(): PatternDetectionResult | undefined {
@@ -730,7 +732,7 @@ export class ActivityMonitor {
     // signal that the agent identity changed — discard accumulated state.
     this.synchronizedFrameAnalyzer.reset();
     this.simpleOutputChangeTracker.reset();
-    this.simpleOutputFingerprint = undefined;
+    this.simpleOutputSnapshot = undefined;
   }
 
   notifySubmission(): void {
@@ -746,7 +748,7 @@ export class ActivityMonitor {
     // first post-resize frame doesn't compare against pre-resize cells.
     this.synchronizedFrameAnalyzer.reset();
     this.simpleOutputChangeTracker.reset();
-    this.simpleOutputFingerprint = undefined;
+    this.simpleOutputSnapshot = undefined;
   }
 
   private isResizeSuppressed(now: number): boolean {
@@ -777,7 +779,7 @@ export class ActivityMonitor {
     }
 
     if (this.simpleOutputState) {
-      this.simpleOutputFingerprint = this.captureSimpleOutputFingerprint();
+      this.simpleOutputSnapshot = this.captureSimpleOutputSnapshot();
       if (this.state === "busy") {
         this.resetDebounceTimer();
       }
@@ -794,12 +796,12 @@ export class ActivityMonitor {
 
     if (this.simpleOutputState) {
       if (!this.isResizeSuppressed(now)) {
-        const fingerprint = this.captureSimpleOutputFingerprint();
-        if (fingerprint !== undefined) {
-          this.noteSimpleOutputFingerprint(fingerprint, now);
+        const snapshot = this.captureSimpleOutputSnapshot();
+        if (snapshot !== undefined) {
+          this.noteSimpleOutputSnapshot(snapshot, now);
         }
       } else {
-        this.simpleOutputChangeTracker.observe(now, false);
+        this.simpleOutputChangeTracker.observe(now, { changedChars: 0 });
       }
 
       if (

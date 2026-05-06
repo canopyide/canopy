@@ -79,7 +79,9 @@ import {
   AGENT_WORKING_RECOVERY_MIN_CHANGED_FRAMES,
   AGENT_WORKING_RECOVERY_WINDOW_MS,
   SustainedChangeTracker,
-  hashStrings,
+  createVisibleContentSnapshot,
+  measureVisibleContentDelta,
+  type VisibleContentSnapshot,
 } from "./SustainedChangeTracker.js";
 
 type CursorBuffer = {
@@ -128,7 +130,7 @@ export class TerminalProcess {
     minChangedFrames: AGENT_WORKING_RECOVERY_MIN_CHANGED_FRAMES,
     maxQuietMs: AGENT_WORKING_RECOVERY_MAX_QUIET_MS,
   });
-  private agentOutputContentFingerprint: number | undefined;
+  private agentOutputContentSnapshot: VisibleContentSnapshot | undefined;
 
   private readonly terminalInfo: TerminalInfo;
 
@@ -470,7 +472,7 @@ export class TerminalProcess {
   private disposeHeadless(): void {
     const terminal = this.terminalInfo;
     this.agentOutputRecoveryTracker.reset();
-    this.agentOutputContentFingerprint = undefined;
+    this.agentOutputContentSnapshot = undefined;
     if (!terminal.headlessTerminal) {
       return;
     }
@@ -896,6 +898,8 @@ export class TerminalProcess {
       if (this.activityMonitor) {
         this.activityMonitor.notifyResize();
       }
+      this.agentOutputRecoveryTracker.reset();
+      this.agentOutputContentSnapshot = undefined;
     } catch (error) {
       console.error(`Failed to resize terminal ${this.id}:`, error);
     }
@@ -1248,17 +1252,17 @@ export class TerminalProcess {
     this.exitObservers.dispose();
   }
 
-  private getAgentOutputContentFingerprint(): number | undefined {
+  private getAgentOutputContentSnapshot(): VisibleContentSnapshot | undefined {
     if (!this.terminalInfo.headlessTerminal) {
       return undefined;
     }
-    return hashStrings(this.getLastNLines(50));
+    return createVisibleContentSnapshot(this.getLastNLines(50));
   }
 
-  private noteAgentOutputActivity(beforeFingerprint: number | undefined): void {
+  private noteAgentOutputActivity(beforeSnapshot: VisibleContentSnapshot | undefined): void {
     if (!this.isAgentLive) {
       this.agentOutputRecoveryTracker.reset();
-      this.agentOutputContentFingerprint = undefined;
+      this.agentOutputContentSnapshot = undefined;
       return;
     }
 
@@ -1268,20 +1272,19 @@ export class TerminalProcess {
       return;
     }
 
-    const afterFingerprint = this.getAgentOutputContentFingerprint();
-    if (afterFingerprint === undefined) {
+    const afterSnapshot = this.getAgentOutputContentSnapshot();
+    if (afterSnapshot === undefined) {
       return;
     }
 
-    const changed =
-      beforeFingerprint !== undefined
-        ? beforeFingerprint !== afterFingerprint
-        : this.agentOutputContentFingerprint !== undefined &&
-          this.agentOutputContentFingerprint !== afterFingerprint;
-    this.agentOutputContentFingerprint = afterFingerprint;
+    const delta = measureVisibleContentDelta(
+      beforeSnapshot ?? this.agentOutputContentSnapshot,
+      afterSnapshot
+    );
+    this.agentOutputContentSnapshot = afterSnapshot;
 
     if (
-      this.agentOutputRecoveryTracker.observe(Date.now(), changed) &&
+      this.agentOutputRecoveryTracker.observe(Date.now(), { changedChars: delta.changedChars }) &&
       this.terminalInfo.agentState === state
     ) {
       this.agentOutputRecoveryTracker.reset();
@@ -1300,7 +1303,7 @@ export class TerminalProcess {
       }
 
       terminal.lastOutputTime = Date.now();
-      const beforeContentFingerprint = this.getAgentOutputContentFingerprint();
+      const beforeContentSnapshot = this.getAgentOutputContentSnapshot();
 
       if (this.activityMonitor) {
         this.activityMonitor.onData(data);
@@ -1328,10 +1331,10 @@ export class TerminalProcess {
 
       if (terminal.headlessTerminal) {
         terminal.headlessTerminal.write(data, () => {
-          this.noteAgentOutputActivity(beforeContentFingerprint);
+          this.noteAgentOutputActivity(beforeContentSnapshot);
         });
       } else {
-        this.noteAgentOutputActivity(beforeContentFingerprint);
+        this.noteAgentOutputActivity(beforeContentSnapshot);
       }
       this.sessionSnapshotter.schedule();
 

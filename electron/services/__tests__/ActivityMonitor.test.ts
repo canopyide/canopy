@@ -671,7 +671,7 @@ describe("ActivityMonitor", () => {
   describe("Simple output-driven agent state", () => {
     it("requires sustained visible changes before recovering to working", () => {
       const onStateChange = vi.fn();
-      let visible = "waiting";
+      let visible = "waiting 0";
       const monitor = new ActivityMonitor("agent-simple-1", 1000, onStateChange, {
         agentId: "claude",
         getVisibleLines: () => [visible],
@@ -682,21 +682,23 @@ describe("ActivityMonitor", () => {
 
       monitor.startPolling();
 
-      vi.advanceTimersByTime(400);
+      vi.advanceTimersByTime(100);
       visible = "tick 1";
       vi.advanceTimersByTime(50);
       expect(monitor.getState()).toBe("idle");
 
-      vi.advanceTimersByTime(250);
+      vi.advanceTimersByTime(650);
       visible = "tick 2";
       vi.advanceTimersByTime(50);
       expect(monitor.getState()).toBe("idle");
 
-      vi.advanceTimersByTime(350);
+      vi.advanceTimersByTime(650);
+      visible = "tick 3";
+      vi.advanceTimersByTime(50);
       expect(monitor.getState()).toBe("idle");
 
-      vi.advanceTimersByTime(300);
-      visible = "tick 3";
+      vi.advanceTimersByTime(650);
+      visible = "tick 4";
       vi.advanceTimersByTime(50);
 
       expect(monitor.getState()).toBe("busy");
@@ -711,6 +713,70 @@ describe("ActivityMonitor", () => {
       expect(monitor.getState()).toBe("idle");
       expect(onStateChange).toHaveBeenCalledWith("agent-simple-1", 1000, "idle", {
         trigger: "timeout",
+      });
+
+      monitor.dispose();
+    });
+
+    it("ignores line-wrap-only reflows while idle", () => {
+      const onStateChange = vi.fn();
+      let visibleLines = ["Claude Code is waiting for input"];
+      const monitor = new ActivityMonitor("agent-simple-reflow", 1000, onStateChange, {
+        agentId: "claude",
+        getVisibleLines: () => visibleLines,
+        getCursorLine: () => visibleLines[visibleLines.length - 1],
+        initialState: "idle",
+        skipInitialStateEmit: true,
+      });
+
+      monitor.startPolling();
+      vi.advanceTimersByTime(100);
+      onStateChange.mockClear();
+
+      visibleLines = ["Claude Code", "is waiting", "for input"];
+      vi.advanceTimersByTime(3000);
+
+      expect(monitor.getState()).toBe("idle");
+      expect(onStateChange).not.toHaveBeenCalled();
+
+      monitor.dispose();
+    });
+
+    it("recovers from a sustained one-character activity indicator", () => {
+      const onStateChange = vi.fn();
+      let visible = "Working |";
+      const monitor = new ActivityMonitor("agent-simple-spinner", 1000, onStateChange, {
+        agentId: "claude",
+        getVisibleLines: () => [visible],
+        getCursorLine: () => visible,
+        initialState: "idle",
+        skipInitialStateEmit: true,
+      });
+
+      monitor.startPolling();
+      vi.advanceTimersByTime(100);
+
+      visible = "Working /";
+      vi.advanceTimersByTime(50);
+      expect(monitor.getState()).toBe("idle");
+
+      vi.advanceTimersByTime(650);
+      visible = "Working -";
+      vi.advanceTimersByTime(50);
+      expect(monitor.getState()).toBe("idle");
+
+      vi.advanceTimersByTime(650);
+      visible = "Working \\";
+      vi.advanceTimersByTime(50);
+      expect(monitor.getState()).toBe("idle");
+
+      vi.advanceTimersByTime(650);
+      visible = "Working |";
+      vi.advanceTimersByTime(50);
+
+      expect(monitor.getState()).toBe("busy");
+      expect(onStateChange).toHaveBeenCalledWith("agent-simple-spinner", 1000, "busy", {
+        trigger: "output",
       });
 
       monitor.dispose();

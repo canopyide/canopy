@@ -279,20 +279,68 @@ describe("TerminalProcess — observer-driven exit handlers", () => {
       await emitDataAndFlush(pty, "\rworking 1");
       expect(handleActivityState).not.toHaveBeenCalled();
 
-      vi.advanceTimersByTime(400);
+      vi.advanceTimersByTime(700);
       await emitDataAndFlush(pty, "\rworking 2");
       expect(handleActivityState).not.toHaveBeenCalled();
 
-      vi.advanceTimersByTime(350);
-      await emitDataAndFlush(pty, "\rworking 2");
-      expect(handleActivityState).not.toHaveBeenCalled();
-
-      vi.advanceTimersByTime(400);
+      vi.advanceTimersByTime(700);
       await emitDataAndFlush(pty, "\rworking 3");
+      expect(handleActivityState).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(700);
+      await emitDataAndFlush(pty, "\rworking 4");
 
       expect(handleActivityState).toHaveBeenCalledWith(terminal.getInfo(), "busy", {
         trigger: "output",
       });
+    } finally {
+      terminal.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not carry output-recovery heat across a resize without a monitor", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const pty = createControllablePty();
+    const handleActivityState = vi.fn();
+    const terminal = createTerminal(
+      pty,
+      { kind: "terminal", launchAgentId: "claude" },
+      {
+        agentStateService: {
+          handleActivityState,
+          updateAgentState: () => {},
+          emitAgentKilled: () => {},
+          emitAgentCompleted: () => {},
+        } as unknown as TerminalProcessDeps["agentStateService"],
+      },
+      "t-output-resize"
+    );
+
+    try {
+      terminal.stopActivityMonitor();
+      terminal.getInfo().agentState = "waiting";
+
+      await emitDataAndFlush(pty, "waiting");
+      vi.advanceTimersByTime(1300);
+      handleActivityState.mockClear();
+
+      await emitDataAndFlush(pty, "\rworking 1");
+      vi.advanceTimersByTime(700);
+      await emitDataAndFlush(pty, "\rworking 2");
+      expect(handleActivityState).not.toHaveBeenCalled();
+
+      terminal.resize(40, 24);
+
+      vi.advanceTimersByTime(700);
+      await emitDataAndFlush(pty, "\rworking 3");
+      vi.advanceTimersByTime(700);
+      await emitDataAndFlush(pty, "\rworking 4");
+      vi.advanceTimersByTime(700);
+      await emitDataAndFlush(pty, "\rworking 5");
+
+      expect(handleActivityState).not.toHaveBeenCalled();
     } finally {
       terminal.dispose();
       vi.useRealTimers();
