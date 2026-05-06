@@ -125,12 +125,12 @@ describe("GettingStartedChecklist", () => {
     });
   });
 
-  it("dispatches worktree.createDialog.open when 'Run two agents in parallel' is clicked and does NOT mark the item (auto-marked by useGettingStartedChecklist when 2+ agents run concurrently)", () => {
+  it("dispatches panel.palette when 'Run two agents in parallel' is clicked and does NOT mark the item (auto-marked by useGettingStartedChecklist when 2+ agents run concurrently)", () => {
     render(<GettingStartedChecklist {...defaultProps} checklist={allIncomplete} />);
 
     fireEvent.click(screen.getByRole("button", { name: /run two agents in parallel/i }));
     expect(dispatchMock).toHaveBeenCalledTimes(1);
-    expect(dispatchMock).toHaveBeenCalledWith("worktree.createDialog.open", undefined, {
+    expect(dispatchMock).toHaveBeenCalledWith("panel.palette", undefined, {
       source: "user",
     });
     expect(defaultProps.onMarkItem).not.toHaveBeenCalled();

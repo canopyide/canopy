@@ -19,6 +19,14 @@ function getThemeParticleColors(): string[] {
   ];
 }
 
+function getStatusSuccessColor(): string {
+  if (typeof document === "undefined") return "#34d399";
+  const value = getComputedStyle(document.documentElement)
+    .getPropertyValue("--theme-status-success")
+    .trim();
+  return value || "#34d399";
+}
+
 interface Particle {
   id: number;
   x: number;
@@ -50,8 +58,31 @@ export function CelebrationConfetti() {
     typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   const [particles] = useState(generateParticles);
+  const [successColor] = useState(getStatusSuccessColor);
 
-  if (reducedMotion) return null;
+  if (reducedMotion) {
+    return createPortal(
+      <div
+        aria-hidden="true"
+        className="fixed inset-0 pointer-events-none z-[var(--z-toast)] flex items-center justify-center"
+      >
+        <m.div
+          data-testid="celebration-flash"
+          className="rounded-full"
+          style={{
+            width: 96,
+            height: 96,
+            boxShadow: `0 0 0 4px ${successColor}`,
+            backgroundColor: "transparent",
+          }}
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: [0.8, 1.15, 1], opacity: [0, 1, 0] }}
+          transition={{ duration: 0.5, ease: "easeOut" }}
+        />
+      </div>,
+      document.body
+    );
+  }
 
   return createPortal(
     <div className="fixed inset-0 pointer-events-none z-[var(--z-toast)] flex items-center justify-center">

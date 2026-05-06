@@ -531,6 +531,11 @@ export function AgentSetupWizard({
     onClose();
   }, [onClose]);
 
+  const handleLaunchAgent = useCallback(() => {
+    void actionService.dispatch("panel.palette", undefined, { source: "user" });
+    onClose();
+  }, [onClose]);
+
   const notifyTelemetryDefault = useCallback(() => {
     notify({
       type: "info",
@@ -698,7 +703,20 @@ export function AgentSetupWizard({
                 <ChevronRight className="w-4 h-4 ml-1" />
               </Button>
             )}
-            {state.step.type === "complete" && <Button onClick={handleFinish}>Finish Setup</Button>}
+            {state.step.type === "complete" &&
+              (installedAgents.length > 0 ? (
+                <>
+                  <Button variant="ghost" onClick={handleFinish}>
+                    Close
+                  </Button>
+                  <Button onClick={handleLaunchAgent}>
+                    Launch agent
+                    <ArrowRight className="w-4 h-4 ml-1" />
+                  </Button>
+                </>
+              ) : (
+                <Button onClick={handleFinish}>Finish setup</Button>
+              ))}
           </div>
         </div>
       </AppDialog.Footer>

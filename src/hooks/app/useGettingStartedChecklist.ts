@@ -4,6 +4,7 @@ import { useProjectStore } from "@/store/projectStore";
 import { usePanelStore } from "@/store/panelStore";
 import { getCurrentViewStore } from "@/store/createWorktreeStore";
 import { notify } from "@/lib/notify";
+import { keybindingService } from "@/services/KeybindingService";
 import { logError } from "@/utils/logger";
 import { safeFireAndForget } from "@/utils/safeFireAndForget";
 import type { ChecklistState, ChecklistItemId } from "@shared/types/ipc/maps";
@@ -103,10 +104,13 @@ export function useGettingStartedChecklist(isStateLoaded: boolean): GettingStart
       });
     }
     if (shouldCelebrate) {
+      const combo = keybindingService.getDisplayCombo("panel.palette");
       notify({
         type: "success",
         title: "Checklist complete!",
-        message: "You're all set! Open the Action Palette (Cmd+K) to explore shortcuts.",
+        message: combo
+          ? `You're all set. Open the panel palette (${combo}) to launch your next agent.`
+          : "You're all set. Open the panel palette to launch your next agent.",
         duration: 5000,
       });
       setShowCelebration(true);

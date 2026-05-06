@@ -42,6 +42,6 @@ export const CHECKLIST_ITEMS: ChecklistItemDef[] = [
     description:
       "Kick off a second agent while the first keeps working — that's the Daintree superpower.",
     icon: Plug,
-    actionId: "worktree.createDialog.open",
+    actionId: "panel.palette",
   },
 ];

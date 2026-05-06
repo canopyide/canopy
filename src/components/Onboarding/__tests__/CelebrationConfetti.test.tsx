@@ -55,12 +55,12 @@ describe("CelebrationConfetti", () => {
     expect(particles.length).toBeLessThanOrEqual(8);
   });
 
-  it("renders nothing when prefers-reduced-motion is active", () => {
+  it("renders a static flash element instead of particles when prefers-reduced-motion is active", () => {
     stubMatchMedia(true);
 
     render(<CelebrationConfetti />);
-    const particles = document.body.querySelectorAll("[class*='rounded-full']");
-    expect(particles.length).toBe(0);
+    const flash = document.body.querySelector("[data-testid='celebration-flash']");
+    expect(flash).not.toBeNull();
   });
 
   it("renders with pointer-events-none container", () => {
