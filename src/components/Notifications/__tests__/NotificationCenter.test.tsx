@@ -15,6 +15,10 @@ vi.mock("@/services/ActionService", () => ({
 }));
 
 vi.mock("@/lib/notify", () => ({
+  isNotificationEventKind: vi.fn(
+    (v: string | undefined) =>
+      v === "completed" || v === "waiting" || v === "workingPulse" || v === "uiFeedback"
+  ),
   muteForDuration: vi.fn(),
   muteUntilNextMorning: vi.fn().mockReturnValue(Date.now() + 3600_000),
   notify: vi.fn(),
