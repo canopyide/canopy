@@ -4,7 +4,8 @@ import { z } from "zod";
 import { projectClient } from "@/clients";
 import { useProjectStore } from "@/store/projectStore";
 import { getMruProjects } from "@/lib/projectMru";
-import { notify } from "@/lib/notify";
+import { notify, EVENT_KIND_TO_SETTING_KEY, EVENT_KIND_LABEL } from "@/lib/notify";
+import type { NotificationEventKind } from "@/lib/notify";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 async function runMruFallbackSwitch(direction: "older" | "newer"): Promise<void> {
@@ -290,6 +291,7 @@ export function registerProjectActions(actions: ActionRegistry, callbacks: Actio
       const { projectId } = args as { projectId: string };
       try {
         const current = await projectClient.getSettings(projectId);
+        const priorOverrides = { ...current.notificationOverrides };
         await projectClient.saveSettings(projectId, {
           ...current,
           notificationOverrides: {
@@ -301,13 +303,127 @@ export function registerProjectActions(actions: ActionRegistry, callbacks: Actio
         notify({
           type: "success",
           message: "Project notifications muted",
-          priority: "low",
+          priority: "high",
+          duration: 5000,
+          action: {
+            label: "Undo",
+            onClick: async () => {
+              try {
+                const currentNow = await projectClient.getSettings(projectId);
+                await projectClient.saveSettings(projectId, {
+                  ...currentNow,
+                  notificationOverrides: priorOverrides,
+                });
+              } catch {
+                // Undo failed silently — settings can be restored manually
+              }
+            },
+          },
         });
       } catch (error) {
         notify({
           type: "error",
           title: "Failed to mute notifications",
           message: formatErrorMessage(error, "Failed to mute project notifications"),
+          duration: 5000,
+        });
+        throw error;
+      }
+    },
+  }));
+
+  actions.set("project.silenceNotificationKind", () => ({
+    id: "project.silenceNotificationKind",
+    title: "Silence Notification Kind",
+    description: "Suppress a specific category of notifications",
+    category: "project",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    argsSchema: z.object({
+      kind: z.enum(["completed", "waiting", "workingPulse", "uiFeedback"]),
+      projectId: z.string().optional(),
+    }),
+    run: async (args: unknown) => {
+      const { kind, projectId } = args as { kind: NotificationEventKind; projectId?: string };
+      const label = EVENT_KIND_LABEL[kind] ?? kind;
+      const settingKey = EVENT_KIND_TO_SETTING_KEY[kind];
+
+      try {
+        const isGlobalOnly = kind === "uiFeedback";
+        let priorValue: boolean | undefined;
+        let priorGlobalSnapshot: Partial<Record<string, boolean>> | undefined;
+
+        if (projectId && !isGlobalOnly) {
+          const current = await projectClient.getSettings(projectId);
+          priorValue = (current.notificationOverrides as Record<string, unknown> | undefined)?.[
+            settingKey
+          ] as boolean | undefined;
+          await projectClient.saveSettings(projectId, {
+            ...current,
+            notificationOverrides: {
+              ...current.notificationOverrides,
+              [settingKey]: false,
+            },
+          });
+        } else {
+          const current = await window.electron?.notification?.getSettings();
+          if (current) {
+            priorValue = (current as unknown as Record<string, unknown>)[settingKey] as
+              | boolean
+              | undefined;
+            priorGlobalSnapshot = {
+              [settingKey]: (current as unknown as Record<string, unknown>)[settingKey] as
+                | boolean
+                | undefined,
+            };
+            await window.electron.notification.setSettings({ [settingKey]: false });
+          }
+        }
+
+        const scopeSuffix = isGlobalOnly
+          ? " for all projects"
+          : projectId
+            ? " for this project"
+            : "";
+
+        notify({
+          type: "success",
+          message: `Silenced ${label}${scopeSuffix}`,
+          priority: "high",
+          duration: 5000,
+          action: {
+            label: "Undo",
+            onClick: async () => {
+              try {
+                if (projectId && !isGlobalOnly) {
+                  const currentNow = await projectClient.getSettings(projectId);
+                  const overrides = {
+                    ...(currentNow.notificationOverrides as Record<string, unknown>),
+                  };
+                  if (priorValue === undefined) {
+                    delete overrides[settingKey];
+                  } else {
+                    overrides[settingKey] = priorValue;
+                  }
+                  await projectClient.saveSettings(projectId, {
+                    ...currentNow,
+                    notificationOverrides: overrides,
+                  });
+                } else if (priorGlobalSnapshot) {
+                  await window.electron?.notification?.setSettings(priorGlobalSnapshot);
+                }
+              } catch {
+                // Undo failed silently — settings can be restored manually
+              }
+            },
+          },
+        });
+      } catch (error) {
+        notify({
+          type: "error",
+          title: "Failed to silence notifications",
+          message: formatErrorMessage(error, `Failed to silence ${label}`),
           duration: 5000,
         });
         throw error;

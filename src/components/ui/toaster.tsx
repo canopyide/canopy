@@ -38,6 +38,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { actionService } from "@/services/ActionService";
+import { EVENT_KIND_LABEL, isNotificationEventKind } from "@/lib/notify";
 
 const ACCENT_CLASS: Record<string, string> = {
   success: "border-l-status-success",
@@ -401,38 +402,60 @@ function Toast({ notification }: { notification: Notification }) {
         })()}
       </div>
 
-      {notification.context?.projectId && (
-        <DropdownMenu onOpenChange={(open) => setIsPaused(open)}>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              aria-label="Notification options"
-              className={cn(
-                "shrink-0 rounded-[var(--radius-xs)]",
-                "h-6 w-6 flex items-center justify-center",
-                "text-daintree-text/40 transition-colors duration-150",
-                "hover:text-daintree-text/80 hover:bg-tint/10",
-                "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2",
-                "opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
-              )}
-            >
-              <MoreHorizontal className="h-3.5 w-3.5" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" sideOffset={4}>
-            <DropdownMenuItem
-              onSelect={() => {
-                const projectId = notification.context?.projectId;
-                if (!projectId) return;
-                handleDismiss();
-                void actionService.dispatch("project.muteNotifications", { projectId });
-              }}
-            >
-              Mute project notifications
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
+      {(notification.context?.projectId || notification.context?.eventKind) &&
+        (() => {
+          const eventKind = notification.context?.eventKind;
+          return (
+            <DropdownMenu onOpenChange={(open) => setIsPaused(open)}>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="Notification options"
+                  className={cn(
+                    "shrink-0 rounded-[var(--radius-xs)]",
+                    "h-6 w-6 flex items-center justify-center",
+                    "text-daintree-text/40 transition-colors duration-150",
+                    "hover:text-daintree-text/80 hover:bg-tint/10",
+                    "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2",
+                    "opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+                  )}
+                >
+                  <MoreHorizontal className="h-3.5 w-3.5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" sideOffset={4}>
+                {isNotificationEventKind(eventKind) && (
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      const projectId = notification.context?.projectId;
+                      if (!isNotificationEventKind(eventKind)) return;
+                      handleDismiss();
+                      void actionService.dispatch("project.silenceNotificationKind", {
+                        kind: eventKind,
+                        projectId,
+                      });
+                    }}
+                  >
+                    Silence {EVENT_KIND_LABEL[eventKind]}
+                    {notification.context?.projectId ? " from this project" : ""}
+                  </DropdownMenuItem>
+                )}
+                {notification.context?.projectId && (
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      const projectId = notification.context?.projectId;
+                      if (!projectId) return;
+                      handleDismiss();
+                      void actionService.dispatch("project.muteNotifications", { projectId });
+                    }}
+                  >
+                    Mute project notifications
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          );
+        })()}
 
       <button
         type="button"

@@ -13,6 +13,30 @@ import {
 import { useNotificationSettingsStore } from "@/store/notificationSettingsStore";
 import { isScheduledQuietNow, nextOccurrenceTimestamp } from "@shared/utils/quietHours";
 import type { ErrorType } from "@/store/errorStore";
+import type { NotificationSettings } from "@shared/types/ipc/api";
+
+export type NotificationEventKind = "completed" | "waiting" | "workingPulse" | "uiFeedback";
+
+export const EVENT_KIND_TO_SETTING_KEY: Record<NotificationEventKind, keyof NotificationSettings> =
+  {
+    completed: "completedEnabled",
+    waiting: "waitingEnabled",
+    workingPulse: "workingPulseEnabled",
+    uiFeedback: "uiFeedbackSoundEnabled",
+  };
+
+export const EVENT_KIND_LABEL: Record<NotificationEventKind, string> = {
+  completed: "completed notifications",
+  waiting: "waiting notifications",
+  workingPulse: "working pulse sound",
+  uiFeedback: "UI feedback sounds",
+};
+
+const EVENT_KIND_VALUES: ReadonlySet<string> = new Set(Object.keys(EVENT_KIND_LABEL));
+
+export function isNotificationEventKind(v: string | undefined): v is NotificationEventKind {
+  return v !== undefined && EVENT_KIND_VALUES.has(v);
+}
 
 /**
  * Default auto-dismiss durations (ms) by notification type.
@@ -80,6 +104,8 @@ export interface NotifyPayload {
     projectId?: string;
     worktreeId?: string;
     panelId?: string;
+    /** When set, per-kind silence affordances are surfaced on the toast and notification center kebab. */
+    eventKind?: NotificationEventKind;
   };
 }
 
