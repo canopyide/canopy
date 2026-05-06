@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Check, ChevronDown, ChevronUp, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { actionService } from "@/services/ActionService";
+import { AnimatedLabel } from "@/components/ui/AnimatedLabel";
 import type { ChecklistState, ChecklistItemId } from "@shared/types/ipc/maps";
 import { CHECKLIST_ITEMS } from "./checklistItems";
 
@@ -30,6 +31,9 @@ export function GettingStartedChecklist({
 
   const completedCount = Object.values(checklist.items).filter(Boolean).length;
   const totalCount = CHECKLIST_ITEMS.length;
+  const allComplete = completedCount === totalCount;
+  const counterLabel = allComplete ? "All done" : `${completedCount}/${totalCount}`;
+  const counterAnimateKey = allComplete ? "all-done" : String(completedCount);
 
   return createPortal(
     <div
@@ -63,9 +67,11 @@ export function GettingStartedChecklist({
             <h4 className="font-medium leading-tight tracking-tight text-xs font-mono text-daintree-accent">
               Getting Started
             </h4>
-            <span className="text-[10px] text-daintree-text/50 font-mono tabular-nums">
-              {completedCount}/{totalCount}
-            </span>
+            <AnimatedLabel
+              label={counterLabel}
+              animateKey={counterAnimateKey}
+              textClassName="text-[10px] text-daintree-text/50 font-mono tabular-nums"
+            />
             {collapsed ? (
               <ChevronUp className="h-3 w-3 text-daintree-text/50 shrink-0" />
             ) : (

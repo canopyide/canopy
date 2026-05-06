@@ -69,12 +69,14 @@ describe("CelebrationConfetti", () => {
   beforeEach(() => {
     stubMatchMedia(false);
     document.body.removeAttribute("data-reduce-animations");
+    document.body.removeAttribute("data-performance-mode");
   });
 
   afterEach(() => {
     cleanup();
     document.body.innerHTML = "";
     document.body.removeAttribute("data-reduce-animations");
+    document.body.removeAttribute("data-performance-mode");
     vi.unstubAllGlobals();
   });
 
@@ -99,6 +101,17 @@ describe("CelebrationConfetti", () => {
 
   it("renders a flash overlay when body[data-reduce-animations='true'] is set", () => {
     document.body.setAttribute("data-reduce-animations", "true");
+
+    render(<CelebrationConfetti />);
+    const particles = document.body.querySelectorAll("[class*='rounded-full']");
+    expect(particles.length).toBe(0);
+
+    const flash = document.body.querySelector(".animate-checklist-complete-flash");
+    expect(flash).not.toBeNull();
+  });
+
+  it("renders a flash overlay when body[data-performance-mode='true'] is set", () => {
+    document.body.setAttribute("data-performance-mode", "true");
 
     render(<CelebrationConfetti />);
     const particles = document.body.querySelectorAll("[class*='rounded-full']");

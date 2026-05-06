@@ -49,7 +49,10 @@ function isReducedMotion(): boolean {
   if (typeof window === "undefined") return false;
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return true;
   if (typeof document !== "undefined") {
-    return document.body.getAttribute("data-reduce-animations") === "true";
+    if (document.body.getAttribute("data-reduce-animations") === "true") return true;
+    // Performance mode skips the spring-driven particle system; the CSS
+    // flash overlay below is the lightweight fallback.
+    if (document.body.getAttribute("data-performance-mode") === "true") return true;
   }
   return false;
 }
