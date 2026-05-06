@@ -18,7 +18,6 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { SettingsSection } from "@/components/Settings/SettingsSection";
 import { SettingsSwitchCard } from "@/components/Settings/SettingsSwitchCard";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
-import { notify } from "@/lib/notify";
 import { logError } from "@/utils/logger";
 import {
   type McpAuditRecord,
@@ -77,7 +76,9 @@ export function McpServerSettingsTab() {
   const [portInput, setPortInput] = useState("");
   const [showApiKey, setShowApiKey] = useState(false);
   const [copiedKey, setCopiedKey] = useState(false);
+  const [copiedAudit, setCopiedAudit] = useState(false);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const auditCopyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [auditRecords, setAuditRecords] = useState<McpAuditRecord[]>([]);
   const [auditEnabled, setAuditEnabled] = useState(true);
@@ -102,12 +103,6 @@ export function McpServerSettingsTab() {
       settled = true;
       setError("Settings load timed out");
       setLoading(false);
-      notify({
-        type: "error",
-        title: "MCP status failed",
-        message: "Loading MCP server status timed out. The settings panel may be out of date.",
-        priority: "low",
-      });
       logError("MCP status load timed out");
     }, 10_000);
 
@@ -129,12 +124,6 @@ export function McpServerSettingsTab() {
       .catch((err) => {
         if (settled) return;
         setError(formatErrorMessage(err, "Failed to load MCP status"));
-        notify({
-          type: "error",
-          title: "MCP status failed",
-          message: "Couldn't load MCP server status. The settings panel may be out of date.",
-          priority: "low",
-        });
         logError("Failed to load MCP status", err);
       })
       .finally(() => {
@@ -147,6 +136,7 @@ export function McpServerSettingsTab() {
     return () => {
       clearTimeout(timer);
       if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+      if (auditCopyTimeoutRef.current) clearTimeout(auditCopyTimeoutRef.current);
     };
   }, []);
 
@@ -157,12 +147,6 @@ export function McpServerSettingsTab() {
       setStatus(newStatus);
     } catch (err) {
       setError(formatErrorMessage(err, "Failed to update MCP server"));
-      notify({
-        type: "error",
-        title: "MCP server update failed",
-        message: "Couldn't update the MCP server state. Try again.",
-        priority: "low",
-      });
       logError("Failed to update MCP server", err);
     }
   }, [status.enabled]);
@@ -175,12 +159,6 @@ export function McpServerSettingsTab() {
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       setError(formatErrorMessage(err, "Failed to copy config"));
-      notify({
-        type: "error",
-        title: "Config copy failed",
-        message: "Couldn't copy the MCP config. The server may not be running.",
-        priority: "low",
-      });
       logError("Failed to copy MCP config", err);
     }
   }, []);
@@ -199,12 +177,6 @@ export function McpServerSettingsTab() {
       setPortInput(newStatus.configuredPort?.toString() ?? "");
     } catch (err) {
       setError(formatErrorMessage(err, "Failed to update port"));
-      notify({
-        type: "error",
-        title: "Port update failed",
-        message: "Couldn't save the port setting. Check the value and try again.",
-        priority: "low",
-      });
       logError("Failed to update MCP port", err);
     }
   }, [portInput]);
@@ -216,20 +188,8 @@ export function McpServerSettingsTab() {
       setStatus((prev) => ({ ...prev, apiKey: key }));
       setShowApiKey(true);
       setCopiedKey(false);
-      notify({
-        type: "success",
-        title: "API key rotated",
-        message: "Update any external MCP clients with the new key.",
-        priority: "low",
-      });
     } catch (err) {
       setError(formatErrorMessage(err, "Failed to rotate API key"));
-      notify({
-        type: "error",
-        title: "API key rotation failed",
-        message: "Couldn't rotate the API key. Try again.",
-        priority: "low",
-      });
       logError("Failed to rotate MCP API key", err);
     }
   }, []);
@@ -252,13 +212,8 @@ export function McpServerSettingsTab() {
       setAuditEnabled(cfg.enabled);
       setAuditMaxRecords(cfg.maxRecords);
     } catch (err) {
+      setError(formatErrorMessage(err, "Failed to update audit logging"));
       logError("Failed to toggle MCP audit log", err);
-      notify({
-        type: "error",
-        title: "Audit log update failed",
-        message: "Couldn't update audit logging. Try again.",
-        priority: "low",
-      });
     }
   }, [auditEnabled]);
 
@@ -270,12 +225,7 @@ export function McpServerSettingsTab() {
       parsed < MCP_AUDIT_MIN_RECORDS ||
       parsed > MCP_AUDIT_MAX_RECORDS
     ) {
-      notify({
-        type: "error",
-        title: "Audit cap invalid",
-        message: `Enter a number between ${MCP_AUDIT_MIN_RECORDS} and ${MCP_AUDIT_MAX_RECORDS}.`,
-        priority: "low",
-      });
+      setError(`Enter a number between ${MCP_AUDIT_MIN_RECORDS} and ${MCP_AUDIT_MAX_RECORDS}.`);
       return;
     }
     try {
@@ -285,13 +235,8 @@ export function McpServerSettingsTab() {
       setMaxRecordsInput(cfg.maxRecords.toString());
       await refreshAuditRecords();
     } catch (err) {
+      setError(formatErrorMessage(err, "Failed to update audit cap"));
       logError("Failed to update audit cap", err);
-      notify({
-        type: "error",
-        title: "Audit cap update failed",
-        message: "Couldn't save the audit cap. Try again.",
-        priority: "low",
-      });
     }
   }, [maxRecordsInput, refreshAuditRecords]);
 
@@ -299,40 +244,21 @@ export function McpServerSettingsTab() {
     try {
       await window.electron.mcpServer.clearAuditLog();
       setAuditRecords([]);
-      notify({
-        type: "info",
-        title: "Audit log cleared",
-        message: "All recorded MCP tool dispatches were removed.",
-        priority: "low",
-      });
     } catch (err) {
+      setError(formatErrorMessage(err, "Failed to clear audit log"));
       logError("Failed to clear MCP audit log", err);
-      notify({
-        type: "error",
-        title: "Couldn't clear audit log",
-        message: "The audit log wasn't cleared. Try again.",
-        priority: "low",
-      });
     }
   }, []);
 
   const handleCopyAuditAsJson = useCallback(async (records: McpAuditRecord[]) => {
     try {
       await navigator.clipboard.writeText(JSON.stringify(records, null, 2));
-      notify({
-        type: "info",
-        title: "Audit log copied",
-        message: `${records.length} record${records.length === 1 ? "" : "s"} copied as JSON.`,
-        priority: "low",
-      });
+      setCopiedAudit(true);
+      if (auditCopyTimeoutRef.current) clearTimeout(auditCopyTimeoutRef.current);
+      auditCopyTimeoutRef.current = setTimeout(() => setCopiedAudit(false), 2000);
     } catch (err) {
+      setError(formatErrorMessage(err, "Failed to copy audit log"));
       logError("Failed to copy MCP audit log", err);
-      notify({
-        type: "error",
-        title: "Couldn't copy audit log",
-        message: "Clipboard access failed. Try again.",
-        priority: "low",
-      });
     }
   }, []);
 
@@ -695,12 +621,19 @@ export function McpServerSettingsTab() {
                     "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-[var(--radius-md)] border transition-colors",
                     filteredAuditRecords.length === 0
                       ? "border-daintree-border text-daintree-text/30 cursor-not-allowed"
-                      : "border-daintree-border text-daintree-text/70 hover:text-daintree-text hover:bg-overlay-soft"
+                      : copiedAudit
+                        ? "text-status-success border-status-success/30"
+                        : "border-daintree-border text-daintree-text/70 hover:text-daintree-text hover:bg-overlay-soft"
                   )}
                 >
-                  <Copy className="w-3.5 h-3.5" />
-                  Copy {filteredAuditRecords.length === auditRecords.length ? "all" : "filtered"} as
-                  JSON
+                  {copiedAudit ? (
+                    <Check className="w-3.5 h-3.5" />
+                  ) : (
+                    <Copy className="w-3.5 h-3.5" />
+                  )}
+                  {copiedAudit
+                    ? "Copied!"
+                    : `Copy ${filteredAuditRecords.length === auditRecords.length ? "all" : "filtered"} as JSON`}
                 </button>
                 <button
                   type="button"
