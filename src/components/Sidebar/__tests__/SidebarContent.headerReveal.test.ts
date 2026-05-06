@@ -4,18 +4,19 @@ import path from "path";
 
 const SIDEBAR_CONTENT_PATH = path.resolve(__dirname, "../SidebarContent.tsx");
 
-describe("SidebarContent header reveal — issue #6420", () => {
+describe("SidebarContent header reveal — issue #6964", () => {
   let source: string;
 
   beforeEach(async () => {
     source = await fs.readFile(SIDEBAR_CONTENT_PATH, "utf-8");
   });
 
-  it("does not use visibility:hidden (invisible/visible) for the header reveal — breaks keyboard focus", () => {
-    expect(source).not.toMatch(/invisible[^"']*group-(hover|focus-within)\/header:visible/);
+  it("uses invisible + group-*:visible to remove hidden buttons from the tab order", () => {
+    expect(source).toMatch(/\binvisible\b[^"']*group-hover\/header:visible/);
+    expect(source).toMatch(/\binvisible\b[^"']*group-focus-within\/header:visible/);
   });
 
-  it("hides the header reveal wrapper with opacity-0 + pointer-events-none so buttons stay in tab order", () => {
+  it("retains opacity + pointer-events for the visual fade and mouse-event gating", () => {
     expect(source).toContain("opacity-0");
     expect(source).toContain("pointer-events-none");
     expect(source).toContain("group-hover/header:opacity-100");
@@ -28,7 +29,27 @@ describe("SidebarContent header reveal — issue #6420", () => {
     expect(source).toMatch(/className="[^"]*\bgroup\/header\b/);
   });
 
-  it("uses Tier 1 transition-opacity duration-150 for the reveal", () => {
-    expect(source).toMatch(/transition-opacity[^"]*duration-150/);
+  it("uses a scoped transition covering opacity and visibility at Tier 1 duration-150", () => {
+    expect(source).toMatch(/transition-\[opacity,visibility\][^"]*duration-150/);
+  });
+
+  it("applies a 75ms hover-intent delay that focus bypasses with delay-0", () => {
+    expect(source).toContain("delay-75");
+    expect(source).toContain("group-hover/header:delay-0");
+    expect(source).toContain("group-focus-within/header:delay-0");
+  });
+
+  it("respects prefers-reduced-motion via motion-reduce:transition-none", () => {
+    expect(source).toContain("motion-reduce:transition-none");
+  });
+
+  it("gates the refresh spinner on useDeferredLoading + UI_DOHERTY_THRESHOLD to avoid sub-threshold flashes", () => {
+    expect(source).toContain("useDeferredLoading");
+    expect(source).toContain("UI_DOHERTY_THRESHOLD");
+    expect(source).toMatch(
+      /showRefreshSpinner\s*=\s*useDeferredLoading\(\s*isRefreshing\s*,\s*UI_DOHERTY_THRESHOLD\s*\)/
+    );
+    expect(source).toMatch(/showRefreshSpinner\s*\?\s*"animate-spin"/);
+    expect(source).not.toMatch(/isRefreshing\s*\?\s*"animate-spin"/);
   });
 });

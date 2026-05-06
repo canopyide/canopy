@@ -19,7 +19,9 @@ import {
   useWorktreeActions,
   useAriaKeyshortcuts,
   useKeybindingDisplay,
+  useDeferredLoading,
 } from "@/hooks";
+import { UI_DOHERTY_THRESHOLD } from "@/lib/animationUtils";
 import { createTooltipContent } from "@/lib/tooltipShortcut";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { WorktreeSidebarSearchBar, QuickStateFilterBar } from "@/components/Worktree";
@@ -81,6 +83,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   const { worktrees, isLoading, isReconnecting, error, refresh } = useWorktrees();
   const deferredWorktrees = useDeferredValue(worktrees);
   const [isRefreshing, startRefreshTransition] = useTransition();
+  const showRefreshSpinner = useDeferredLoading(isRefreshing, UI_DOHERTY_THRESHOLD);
   const currentProject = useProjectStore((state) => state.currentProject);
   useProjectSettings();
   const { availability, agentSettings } = useAgentLauncher();
@@ -603,7 +606,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
           )}
         </div>
         <div className="flex items-center gap-1">
-          <div className="opacity-0 pointer-events-none transition-opacity duration-150 group-hover/header:opacity-100 group-hover/header:pointer-events-auto group-focus-within/header:opacity-100 group-focus-within/header:pointer-events-auto flex items-center gap-1">
+          <div className="invisible opacity-0 pointer-events-none transition-[opacity,visibility] duration-150 delay-75 group-hover/header:visible group-hover/header:opacity-100 group-hover/header:pointer-events-auto group-hover/header:delay-0 group-focus-within/header:visible group-focus-within/header:opacity-100 group-focus-within/header:pointer-events-auto group-focus-within/header:delay-0 motion-reduce:transition-none flex items-center gap-1">
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
@@ -642,7 +645,9 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                   aria-label="Refresh sidebar"
                   aria-keyshortcuts={refreshAriaShortcut}
                 >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
+                  <RefreshCw
+                    className={`w-3.5 h-3.5 ${showRefreshSpinner ? "animate-spin" : ""}`}
+                  />
                 </button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
