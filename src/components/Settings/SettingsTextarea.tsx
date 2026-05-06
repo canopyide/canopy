@@ -78,7 +78,7 @@ export function SettingsTextarea({
         </p>
       )}
       {error && (
-        <p id={errorId} role="alert" className="text-xs text-status-error">
+        <p id={errorId} className="text-xs text-status-error">
           {error}
         </p>
       )}

@@ -96,7 +96,7 @@ export function SettingsCheckbox({
             </p>
           )}
           {isError && (
-            <p id={errorId} role="alert" className="text-xs text-status-error mt-0.5">
+            <p id={errorId} className="text-xs text-status-error mt-0.5">
               {error}
             </p>
           )}

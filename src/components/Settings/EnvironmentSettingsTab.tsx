@@ -253,6 +253,7 @@ export function EnvironmentSettingsTab() {
               const isVisible = visibleEnvVars.has(envVar.id);
               const shouldMask = isSensitive && !isVisible;
               const error = rowErrors[envVar.id];
+              const errorId = error ? `${envVar.id}-error` : undefined;
 
               return (
                 <div key={envVar.id}>
@@ -271,6 +272,8 @@ export function EnvironmentSettingsTab() {
                       className="flex-1 bg-transparent border border-border-strong rounded px-2 py-1 text-sm text-daintree-text font-mono focus:outline-hidden focus:border-daintree-accent focus:ring-1 focus:ring-daintree-accent/30"
                       placeholder="VARIABLE_NAME"
                       aria-label="Environment variable name"
+                      aria-invalid={!!error || undefined}
+                      aria-describedby={errorId}
                     />
                     <span className="text-daintree-text/60">=</span>
                     <div className="flex-1 relative">
@@ -287,6 +290,7 @@ export function EnvironmentSettingsTab() {
                         )}
                         placeholder="e.g. /usr/local/bin"
                         aria-label="Environment variable value"
+                        aria-describedby={errorId}
                       />
                       {isSensitive && (
                         <button
@@ -313,7 +317,11 @@ export function EnvironmentSettingsTab() {
                       <Trash2 className="h-4 w-4 text-status-error" />
                     </button>
                   </div>
-                  {error && <p className="text-[11px] text-status-error mt-1 ml-1">{error}</p>}
+                  {error && (
+                    <p id={errorId} className="text-[11px] text-status-error mt-1 ml-1">
+                      {error}
+                    </p>
+                  )}
                 </div>
               );
             })

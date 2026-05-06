@@ -132,6 +132,44 @@ describe("EnvironmentSettingsTab", () => {
     );
   });
 
+  it("wires aria-invalid and aria-describedby on row inputs when validation fails", async () => {
+    window.electron = {
+      globalEnv: {
+        get: vi.fn().mockResolvedValue({}),
+        set: vi.fn().mockResolvedValue(undefined),
+      },
+    } as unknown as typeof window.electron;
+
+    renderTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("No environment variables configured yet")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /add variable/i }));
+
+    const nameInput = screen.getByLabelText("Environment variable name");
+    const valueInput = screen.getByLabelText("Environment variable value");
+    fireEvent.change(nameInput, { target: { value: "1BAD-NAME" } });
+    fireEvent.change(valueInput, { target: { value: "anything" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => {
+      expect(nameInput.getAttribute("aria-invalid")).toBe("true");
+    });
+
+    const errorId = nameInput.getAttribute("aria-describedby");
+    expect(errorId).toBeTruthy();
+    expect(document.getElementById(errorId!)?.textContent).toContain("Invalid name");
+
+    expect(valueInput.getAttribute("aria-invalid")).toBeNull();
+    expect(valueInput.getAttribute("aria-describedby")).toBe(errorId);
+
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(window.electron.globalEnv.set).not.toHaveBeenCalled();
+  });
+
   it("adds new variable row and saves via globalEnv.set", async () => {
     window.electron = {
       globalEnv: {
