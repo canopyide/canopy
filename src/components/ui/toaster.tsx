@@ -93,6 +93,7 @@ function Toast({ notification }: { notification: Notification }) {
   // intermediate announcements (#6427). Trailing 300ms inactivity window so
   // the final value is announced once the burst settles.
   const [isCountBusy, setIsCountBusy] = useState(false);
+  const [countBumpKey, setCountBumpKey] = useState(0);
   const prevCountRef = useRef(notification.count ?? 0);
 
   useEffect(() => {
@@ -111,6 +112,7 @@ function Toast({ notification }: { notification: Notification }) {
     if (next === prevCountRef.current) return;
     prevCountRef.current = next;
     setIsCountBusy(true);
+    setCountBumpKey((k) => k + 1);
     if (busyTimerRef.current) clearTimeout(busyTimerRef.current);
     busyTimerRef.current = setTimeout(() => {
       if (!mountedRef.current) return;
@@ -267,8 +269,13 @@ function Toast({ notification }: { notification: Notification }) {
               Number.isFinite(notification.count) &&
               notification.count > 1 && (
                 <span
+                  key={countBumpKey}
                   aria-label={formatNotificationCountAriaLabel(notification.count)}
-                  className="shrink-0 rounded-full bg-tint/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-daintree-text/60 tabular-nums min-w-[3.5ch] text-center"
+                  className={cn(
+                    "shrink-0 rounded-full bg-tint/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-daintree-text/60 tabular-nums min-w-[3.5ch] text-center",
+                    countBumpKey > 0 && "animate-badge-bump"
+                  )}
+                  style={{ animationDuration: "150ms" }}
                 >
                   {formatNotificationCountGlyph(notification.count, "×")}
                 </span>
@@ -279,8 +286,13 @@ function Toast({ notification }: { notification: Notification }) {
           notification.count > 1 ? (
           <div>
             <span
+              key={countBumpKey}
               aria-label={formatNotificationCountAriaLabel(notification.count)}
-              className="inline-block rounded-full bg-tint/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-daintree-text/60 tabular-nums min-w-[3.5ch] text-center"
+              className={cn(
+                "inline-block rounded-full bg-tint/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-daintree-text/60 tabular-nums min-w-[3.5ch] text-center",
+                countBumpKey > 0 && "animate-badge-bump"
+              )}
+              style={{ animationDuration: "150ms" }}
             >
               {formatNotificationCountGlyph(notification.count, "×")}
             </span>
@@ -382,9 +394,7 @@ function Toast({ notification }: { notification: Notification }) {
             <div
               className={cn(
                 "mt-1.5 flex flex-wrap gap-1.5",
-                isSuccess && "scale-[1.02]",
-                "transition-transform duration-[75ms]",
-                "motion-reduce:scale-100 motion-reduce:transition-none"
+                isSuccess && "animate-action-row-bump"
               )}
             >
               {actions.map((action, index) => {
