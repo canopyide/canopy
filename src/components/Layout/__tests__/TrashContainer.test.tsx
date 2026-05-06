@@ -6,6 +6,15 @@ import { useAnnouncerStore } from "@/store/accessibilityAnnouncerStore";
 import type { TerminalInstance } from "@/store";
 import type { TrashedTerminal } from "@/store/slices";
 
+// jsdom does not ship AnimationEvent.
+if (typeof AnimationEvent === "undefined") {
+  (globalThis as Record<string, unknown>).AnimationEvent = class AnimationEvent extends Event {
+    constructor(type: string, init?: EventInit) {
+      super(type, init);
+    }
+  };
+}
+
 const dndMocks = vi.hoisted(() => ({
   isDragging: false,
   isWorktreeSortDragging: false,
@@ -140,15 +149,18 @@ describe("TrashContainer", () => {
     expect(container.querySelector(".animate-trash-pulse")).not.toBeNull();
   });
 
-  it("removes pulse class after timeout", () => {
+  it("removes pulse class via safety timeout after the animation completes", () => {
     const items = [makeTrashedItem("1")];
     const { container, rerender } = render(<TrashContainer trashedTerminals={items} />);
 
     rerender(<TrashContainer trashedTerminals={[...items, makeTrashedItem("2")]} />);
     expect(container.querySelector(".animate-trash-pulse")).not.toBeNull();
 
+    // Advance past the 250ms safety timeout (DURATION_200 + 50). In jsdom
+    // `animationend` doesn't fire via dispatchEvent, so the safety timeout
+    // is the testable cleanup path — same as AgentStatusIndicator.
     act(() => {
-      vi.advanceTimersByTime(500);
+      vi.advanceTimersByTime(300);
     });
     expect(container.querySelector(".animate-trash-pulse")).toBeNull();
   });
@@ -204,15 +216,15 @@ describe("TrashContainer", () => {
     rerender(<TrashContainer trashedTerminals={[...items, makeTrashedItem("2")]} />);
     expect(container.querySelector(".animate-trash-pulse")).not.toBeNull();
 
-    // Second increase before timeout — should still be pulsing
+    // Second increase before timeout — class already present, stays alive.
     rerender(
       <TrashContainer trashedTerminals={[...items, makeTrashedItem("2"), makeTrashedItem("3")]} />
     );
     expect(container.querySelector(".animate-trash-pulse")).not.toBeNull();
 
-    // Timer from second increase should clear the pulse
+    // Safety timeout from the second trigger clears the pulse.
     act(() => {
-      vi.advanceTimersByTime(500);
+      vi.advanceTimersByTime(300);
     });
     expect(container.querySelector(".animate-trash-pulse")).toBeNull();
   });

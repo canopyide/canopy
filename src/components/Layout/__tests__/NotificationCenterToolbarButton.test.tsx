@@ -12,6 +12,15 @@
  *  - aria-label / tooltip describes the muted state with a time-of-day when known
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
+
+// jsdom does not ship AnimationEvent.
+if (typeof AnimationEvent === "undefined") {
+  (globalThis as Record<string, unknown>).AnimationEvent = class AnimationEvent extends Event {
+    constructor(type: string, init?: EventInit) {
+      super(type, init);
+    }
+  };
+}
 import { render, act } from "@testing-library/react";
 import { NotificationCenterToolbarButton } from "../NotificationCenterToolbarButton";
 import { useNotificationHistoryStore } from "@/store/slices/notificationHistorySlice";
@@ -442,7 +451,9 @@ describe("NotificationCenterToolbarButton — DND state surface", () => {
   // Issue #6424 — when a notification lands in the inbox (toast eviction or
   // priority:"low" direct-to-inbox), the bell should play a brief one-shot
   // arrival animation. The animation must not fire during DND/quiet hours
-  // and must not fire on the initial mount baseline.
+  // and must not fire on the initial mount baseline. Cleanup uses the
+  // onAnimationEnd + safety-timeout pattern from AgentStatusIndicator so
+  // no will-change layer hint lingers on the toolbar element.
   describe("inbox arrival animation (issue #6424)", () => {
     it("does not animate on the initial render", () => {
       useNotificationHistoryStore.setState({ evictedToInboxCount: 0 });
@@ -482,19 +493,13 @@ describe("NotificationCenterToolbarButton — DND state surface", () => {
       await act(async () => {
         useNotificationHistoryStore.setState({ evictedToInboxCount: 1 });
       });
-      const firstWrapper = getByTestId("notification-bell-icon");
-      expect(firstWrapper.className).toContain("animate-activity-blip");
+      expect(getByTestId("notification-bell-icon").className).toContain("animate-activity-blip");
 
-      // Reset — count drops 1 → 0. evictedToInboxCount > prev is false, so the
-      // bumpKey does not increment and the bell wrapper is not remounted.
-      // (The CSS animation is `both`-fill at scale(1)/opacity(0.9), so a
-      // residual class on the existing wrapper is visually inert.)
+      // Reset — count drops 1 → 0. Decrease clears isBellBlipping so the
+      // next increase triggers a fresh animation cycle.
       await act(async () => {
         useNotificationHistoryStore.setState({ evictedToInboxCount: 0 });
       });
-      // Sanity: the count drop alone did not trigger another bump cycle.
-      // (We can't directly observe React's internal key, but a fresh
-      // increment from 0 → 1 below confirms the bumpKey path still works.)
       await act(async () => {
         useNotificationHistoryStore.setState({ evictedToInboxCount: 1 });
       });
@@ -550,7 +555,7 @@ describe("NotificationCenterToolbarButton — DND state surface", () => {
       expect(getByTestId("notification-bell-icon").className).toContain("animate-activity-blip");
     });
 
-    it("strips the animation class shortly after the blip so will-change does not linger", async () => {
+    it("removes the animation class via safety timeout when the animation completes", async () => {
       vi.useFakeTimers();
       const { getByTestId } = render(<NotificationCenterToolbarButton />);
       await act(async () => {
@@ -558,16 +563,17 @@ describe("NotificationCenterToolbarButton — DND state surface", () => {
       });
       expect(getByTestId("notification-bell-icon").className).toContain("animate-activity-blip");
 
-      // Advance past the BELL_BLIP_CLEANUP_MS timer (260ms blip + buffer).
+      // Advance past the 250ms safety timeout (DURATION_200 + 50). In jsdom
+      // `animationend` doesn't fire via dispatchEvent, so the safety timeout
+      // is the testable cleanup path — same as AgentStatusIndicator.
       await act(async () => {
-        vi.advanceTimersByTime(400);
+        vi.advanceTimersByTime(300);
       });
 
-      // After cleanup, the wrapper falls back to the no-animation className —
-      // the will-change layer-promotion hint is no longer applied.
       expect(getByTestId("notification-bell-icon").className).not.toContain(
         "animate-activity-blip"
       );
+      vi.useRealTimers();
     });
   });
 });
