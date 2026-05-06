@@ -141,6 +141,10 @@ export default tseslint.config(
   // Note: the renderer block below re-declares no-restricted-syntax at "warn"
   // level for src/** with additional selectors. That block's array is the
   // effective set for src/ files, so it must keep these selectors in sync.
+  // Renderer-only selectors (notify({type:"error",priority:"low"}) — #6885;
+  // Math.random in template literals; magic setTimeout/setInterval delays)
+  // intentionally live ONLY in the renderer block since their call sites are
+  // renderer-only — duplicating into the global block would add no coverage.
   {
     files: ["**/*.{ts,tsx}"],
     rules: {
@@ -274,6 +278,21 @@ export default tseslint.config(
             "CallExpression:matches([callee.name=/^(notify|addNotification)$/], [callee.property.name=/^(notify|addNotification)$/]) ObjectExpression > Property[key.name='message'] MemberExpression[property.name='message']:matches([object.name=/^(error|err|e)$/], [object.property.name=/^(error|err|e)$/])",
           message:
             "Don't pipe raw error.message into user-facing notifications. Use humanizeAppError(error) from @shared/utils/errorMessage to produce a friendly title and body, and stash the raw message in a 'Copy details' action. See #6050.",
+        },
+        {
+          // why: type:"error" + priority:"low" silently drops the error
+          // into the history inbox with no toast — users won't see it. If
+          // the failure is diagnostic-only (user can still finish their
+          // current task) demote to console.warn; if users need to see it,
+          // remove priority:"low" or raise to "high"/"normal". Direct-child
+          // combinator inside :has() prevents false positives from nested
+          // sub-objects (e.g. context payloads). Literal-only match — the
+          // computed-priority pattern in useErrors.ts is intentionally out
+          // of scope. See #6885.
+          selector:
+            "CallExpression:matches([callee.name=/^(notify|addNotification)$/], [callee.property.name=/^(notify|addNotification)$/]) > ObjectExpression:has(> Property[key.name='type'][value.value='error']):has(> Property[key.name='priority'][value.value='low'])",
+          message:
+            'Don\'t emit low-priority error notifications. Use console.warn for diagnostic-only failures (user can still finish their task), or remove priority:"low" so the error toasts. See #6885.',
         },
         {
           selector:

@@ -106,7 +106,6 @@ export function useAgentScope({
             type: "error",
             title: "Preset update failed",
             message: "Couldn't save the preset changes. Try again.",
-            priority: "low",
           });
         }
       })();
