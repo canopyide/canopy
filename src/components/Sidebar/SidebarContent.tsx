@@ -9,7 +9,8 @@ import {
   useState,
   useTransition,
 } from "react";
-import { FolderOpen, FilterX, LayoutGrid, Plus, RefreshCw, Zap } from "lucide-react";
+import { FolderOpen, LayoutGrid, Plus, RefreshCw, Zap } from "lucide-react";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { ScrollIndicator } from "@/components/Worktree/ScrollIndicator";
 import {
   useAgentLauncher,
@@ -151,7 +152,6 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   const collapsedWorktrees = useWorktreeFilterStore((state) => state.collapsedWorktrees);
   const expandWorktree = useWorktreeFilterStore((state) => state.expandWorktree);
   const setQuickStateFilter = useWorktreeFilterStore((state) => state.setQuickStateFilter);
-  const clearQuickStateFilter = useWorktreeFilterStore((state) => state.clearQuickStateFilter);
 
   // Terminal store for derived metadata
   const panelsById = usePanelStore((state) => state.panelsById);
@@ -514,18 +514,20 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
             <h2 className="text-daintree-text font-semibold text-sm tracking-wide">Worktrees</h2>
           </div>
 
-          <div className="flex flex-col items-center justify-center py-12 px-4 text-center flex-1">
-            <FolderOpen className="w-8 h-8 text-daintree-text/60 mb-3" aria-hidden="true" />
-
-            <h3 className="text-daintree-text font-medium mb-2">No worktrees yet</h3>
-
-            <p className="text-sm text-daintree-text/60 max-w-xs">
-              Open a Git repository to get started. Use{" "}
-              <kbd className="px-1.5 py-0.5 bg-tint/[0.06] rounded text-xs">
-                File → Open Directory
-              </kbd>
-            </p>
-          </div>
+          <EmptyState
+            variant="zero-data"
+            icon={<FolderOpen />}
+            title="Open a Git repository to get started"
+            description={
+              <>
+                Use{" "}
+                <kbd className="px-1.5 py-0.5 bg-tint/[0.06] rounded text-xs">
+                  File → Open Directory
+                </kbd>
+              </>
+            }
+            className="flex-1"
+          />
         </div>
         {newWorktreeDialogElement}
       </>
@@ -768,46 +770,34 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                 />
               )}
               {showQuickStateEmptyState ? (
-                <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-                  <FilterX className="w-10 h-10 text-daintree-text/40 mb-3" />
-                  <p className="text-sm text-daintree-text/80 mb-1">
-                    No {quickStateFilter} worktrees
-                  </p>
-                  <p className="text-xs text-daintree-text/50 mb-3">
-                    {hasPopoverFilters
-                      ? "Try a different state, or clear your other filters"
-                      : "Try a different state to see the rest"}
-                  </p>
-                  <div className="flex items-center gap-2">
+                <EmptyState
+                  variant="filtered-empty"
+                  title={`No ${quickStateFilter} worktrees`}
+                  description={
+                    hasPopoverFilters ? "Clear filters to show every worktree" : undefined
+                  }
+                  action={
                     <button
-                      onClick={clearQuickStateFilter}
-                      className="text-xs px-3 py-1.5 text-accent-primary hover:bg-overlay-soft rounded transition-colors font-medium"
+                      onClick={clearAllFilters}
+                      className="text-xs px-3 py-1.5 text-daintree-text/60 hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors"
                     >
-                      Show all states
+                      Clear filters
                     </button>
-                    {hasPopoverFilters ? (
-                      <button
-                        onClick={clearAllFilters}
-                        className="text-xs px-3 py-1.5 text-daintree-text/60 hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors"
-                      >
-                        Clear all filters
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
+                  }
+                />
               ) : filteredWorktrees.length === 0 && hasFilters && hasNonMainWorktrees ? (
-                <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-                  <FilterX className="w-10 h-10 text-daintree-text/40 mb-3" />
-                  <p className="text-sm text-daintree-text/60 mb-3">
-                    No worktrees match your filters
-                  </p>
-                  <button
-                    onClick={clearAllFilters}
-                    className="text-xs px-3 py-1.5 text-daintree-text/60 hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors"
-                  >
-                    Clear filters
-                  </button>
-                </div>
+                <EmptyState
+                  variant="filtered-empty"
+                  title="No worktrees match your filters"
+                  action={
+                    <button
+                      onClick={clearAllFilters}
+                      className="text-xs px-3 py-1.5 text-daintree-text/60 hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors"
+                    >
+                      Clear filters
+                    </button>
+                  }
+                />
               ) : groupedSections ? (
                 <div className="flex flex-col">
                   {groupedSections.map((section) => (
