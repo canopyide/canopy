@@ -274,6 +274,7 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
       priority: "high",
       duration: 3000,
       urgent: true,
+      transient: true,
     });
   };
 
@@ -286,6 +287,7 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
       priority: "high",
       duration: 3000,
       urgent: true,
+      transient: true,
     });
   };
 

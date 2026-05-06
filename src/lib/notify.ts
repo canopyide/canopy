@@ -92,6 +92,14 @@ export interface NotifyPayload {
   coalesce?: CoalesceOptions;
   /** When false, the history entry exists but does not increment the unread badge. Defaults to true. */
   countable?: boolean;
+  /**
+   * When true, the notification is shown as a toast only — no history entry is
+   * written and no unread badge increments. Use only for one-shot confirmations
+   * where the result is already visible elsewhere (clipboard write, file dialog
+   * outcome, in-place UI state). Stronger than `countable: false`, which still
+   * writes the entry; `transient` skips the inbox entirely.
+   */
+  transient?: boolean;
   /** When true, the notification bypasses the startup quiet period gate */
   urgent?: boolean;
   /** Fires exactly once when the user explicitly dismisses the toast via the close or action button */
@@ -373,6 +381,11 @@ export function isScheduledQuietHours(now: Date = new Date()): boolean {
  *
  * The `grid-bar` placement bypasses priority routing and always renders inline.
  *
+ * `transient: true` skips step 1 — no history entry, no badge tick. Use it
+ * only for one-shot confirmations whose result is already visible elsewhere
+ * (clipboard, file dialog, in-place UI). It is stronger than `countable:
+ * false`, which still writes the entry but suppresses the badge.
+ *
  * Only call for events the user could not otherwise observe: completion, failure,
  * or required action. Don't duplicate in-place UI state changes — those are
  * already visible without a notification.
@@ -411,6 +424,19 @@ export function notify(payload: NotifyPayload): string {
 
   const allActions = [...(payload.actions ?? []), ...(payload.action ? [payload.action] : [])];
 
+  if (import.meta.env.DEV && type === "error" && allActions.length === 0) {
+    // CLAUDE.md microcopy contract: error toasts use Title-Message-Action and
+    // need at least one action when there's a real recovery path. Surfaced
+    // here so callers find the gap during development. Not a runtime crash —
+    // some errors are genuinely action-free, but the prompt nudges authors to
+    // confirm before shipping.
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[notify] error notification has no actions — provide at least one action for the Title-Message-Action contract, or confirm there is no recovery path.",
+      payload
+    );
+  }
+
   // Action-bearing toasts persist by default so users can act; toaster's 3s fallback would otherwise dismiss them.
   if (payload.duration === undefined && allActions.length > 0) {
     payload = { ...payload, duration: 0 };
@@ -440,18 +466,19 @@ export function notify(payload: NotifyPayload): string {
   const isQuiet = !payload.urgent && (Date.now() < _quietUntil || isScheduledQuietHours());
 
   if (placement === "grid-bar") {
-    const entryId = historyMessage
-      ? useNotificationHistoryStore.getState().addEntry({
-          type,
-          title,
-          message: historyMessage,
-          correlationId,
-          seenAsToast: !isQuiet,
-          countable: payload.countable,
-          actions: historyActions.length > 0 ? historyActions : undefined,
-          context,
-        })
-      : undefined;
+    const entryId =
+      historyMessage && !payload.transient
+        ? useNotificationHistoryStore.getState().addEntry({
+            type,
+            title,
+            message: historyMessage,
+            correlationId,
+            seenAsToast: !isQuiet,
+            countable: payload.countable,
+            actions: historyActions.length > 0 ? historyActions : undefined,
+            context,
+          })
+        : undefined;
     if (!notificationsEnabled || isQuiet) return "";
     return useNotificationStore.getState().addNotification({
       ...payload,
@@ -466,18 +493,19 @@ export function notify(payload: NotifyPayload): string {
   const shouldToast = priority === "watch" || (priority === "high" && isFocused && !originVisible);
   const shouldNative = priority === "watch";
 
-  const historyEntryId = historyMessage
-    ? useNotificationHistoryStore.getState().addEntry({
-        type,
-        title,
-        message: historyMessage,
-        correlationId,
-        seenAsToast: !isQuiet && notificationsEnabled && (shouldToast || originVisible),
-        countable: payload.countable,
-        actions: historyActions.length > 0 ? historyActions : undefined,
-        context,
-      })
-    : undefined;
+  const historyEntryId =
+    historyMessage && !payload.transient
+      ? useNotificationHistoryStore.getState().addEntry({
+          type,
+          title,
+          message: historyMessage,
+          correlationId,
+          seenAsToast: !isQuiet && notificationsEnabled && (shouldToast || originVisible),
+          countable: payload.countable,
+          actions: historyActions.length > 0 ? historyActions : undefined,
+          context,
+        })
+      : undefined;
 
   if (!notificationsEnabled || isQuiet) return "";
 

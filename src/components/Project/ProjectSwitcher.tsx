@@ -88,7 +88,13 @@ export function ProjectSwitcher() {
 
   const handleCopyPath = useCallback((path: string) => {
     void navigator.clipboard.writeText(path);
-    notify({ type: "info", title: "Path copied", message: path, duration: 2000 });
+    notify({
+      type: "info",
+      title: "Path copied",
+      message: path,
+      duration: 2000,
+      transient: true,
+    });
   }, []);
 
   const handleSelectBackground = useCallback(
