@@ -222,7 +222,7 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
           return {
             agentId,
             state: panel.agentState ?? null,
-            waitingReason: panel.waitingReason ?? null,
+            waitingReason: panel.agentState === "waiting" ? (panel.waitingReason ?? null) : null,
             lastTransitionAt: panel.lastStateChange ?? null,
             terminalId: panel.id,
             found: true,

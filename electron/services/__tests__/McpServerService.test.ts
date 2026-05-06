@@ -4584,6 +4584,40 @@ describe("McpServerService", () => {
       expect(payload.waitingReason).toBe("prompt");
     });
 
+    it("omits waitingReason on working→waiting transitions without a classified reason", async () => {
+      const { events } = await import("../events.js");
+      const { terminalId, agentId } = nextIds();
+      await seedTerminalAgent(terminalId, agentId, "working");
+
+      const { window } = createMockWindow({ getManifest: () => [] });
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      const callPromise = client.callTool({
+        name: "terminal.waitUntilIdle",
+        arguments: { terminalId },
+      }) as Promise<TextToolResult & { structuredContent?: Record<string, unknown> }>;
+
+      await new Promise((r) => setTimeout(r, 30));
+
+      events.emit("agent:state-changed", {
+        agentId,
+        terminalId,
+        state: "waiting",
+        previousState: "working",
+        trigger: "output",
+        confidence: 1,
+        timestamp: Date.now(),
+      });
+
+      const result = await callPromise;
+      const payload = JSON.parse(result.content[0]!.text);
+      expect(payload.idleReason).toBe("waiting_for_user");
+      expect(payload.waitingReason).toBeUndefined();
+      expect(result.structuredContent?.waitingReason).toBeUndefined();
+    });
+
     it("returns the stored waitingReason for a terminal already in waiting state", async () => {
       const { terminalId, agentId } = nextIds();
       // Seed the terminal directly into "waiting" with a classified reason.
