@@ -8,10 +8,7 @@ import { resolve } from "path";
 // tint. The fix moves drop-target to a ring-inset axis, removes the redundant
 // absolute overlay div, and suppresses hover background while a drag is active.
 
-const cardSource = readFileSync(
-  resolve(__dirname, "../../WorktreeCard.tsx"),
-  "utf-8"
-);
+const cardSource = readFileSync(resolve(__dirname, "../../WorktreeCard.tsx"), "utf-8");
 const sidebarCss = readFileSync(
   resolve(__dirname, "../../../../styles/components/sidebar.css"),
   "utf-8"
@@ -25,20 +22,16 @@ describe("WorktreeCard interaction-state axes (issue #6963)", () => {
   });
 
   it("does not stack bg-overlay-soft on the isOver branch", () => {
-    expect(cardSource).not.toMatch(
-      /isOver\s*&&[^,]*bg-overlay-(soft|subtle|strong|emphasis)/
-    );
+    expect(cardSource).not.toMatch(/isOver\s*&&[^,]*bg-overlay-(soft|subtle|strong|emphasis)/);
   });
 
   it("does not render the redundant absolute isOver overlay div", () => {
     expect(cardSource).not.toMatch(/isOver && !isActive && \(\s*<div/);
-    expect(cardSource).not.toContain('z-50 bg-overlay-soft border-2 border-overlay');
+    expect(cardSource).not.toContain("z-50 bg-overlay-soft border-2 border-overlay");
   });
 
   it("suppresses the grid hover-shadow lift while a drag is active", () => {
-    expect(cardSource).toContain(
-      "[html[data-dragging='true']_&]:hover:shadow-none"
-    );
+    expect(cardSource).toContain("[html[data-dragging='true']_&]:hover:shadow-none");
   });
 
   it("suppresses sidebar hover background while a drag is active for both hover paths", () => {
