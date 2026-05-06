@@ -82,6 +82,7 @@ import {
   SettingsValidationProvider,
   SettingsValidationContext,
 } from "./SettingsValidationRegistry";
+import { SettingsFlushProvider, SettingsFlushContext } from "./SettingsFlushRegistry";
 
 let rememberedTab: SettingsTab = "general";
 let rememberedProjectTab: SettingsTab = "project:general";
@@ -112,7 +113,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
   // via useContext to render nav-sidebar error dots.
   return (
     <SettingsValidationProvider>
-      <SettingsDialogInner {...props} />
+      <SettingsFlushProvider>
+        <SettingsDialogInner {...props} />
+      </SettingsFlushProvider>
     </SettingsValidationProvider>
   );
 }
@@ -334,14 +337,25 @@ function SettingsDialogInner({
   const projectLabel =
     projectForm.currentProject?.name ?? projectForm.currentProject?.id ?? "project";
 
-  // Electron 41 WebContentsView detach (project switch, window close) does not
-  // fire beforeunload — visibilitychange is the reliable signal. Flushing on
-  // hide ensures debounced autosaves persist before the view is evicted.
-  useFlushOnHide(projectForm.flush, isOpen);
-
   // Validation error tracking from the registry provider
   const validationRegistry = useContext(SettingsValidationContext);
   const tabsWithErrors = validationRegistry?.tabsWithErrors ?? new Set();
+
+  // Tabs with their own dirty buffer (env vars, worktree pattern) register
+  // a flush callback here so the dialog can persist them on close or detach.
+  const flushRegistry = useContext(SettingsFlushContext);
+  const flushAllTabs = flushRegistry?.flushAll;
+
+  const flushDialog = useCallback(async () => {
+    if (flushAllTabs) await flushAllTabs();
+    await projectForm.flush();
+  }, [flushAllTabs, projectForm]);
+
+  // Electron 41 WebContentsView detach (project switch, window close) does not
+  // fire beforeunload — visibilitychange is the reliable signal. Flushing on
+  // hide ensures debounced autosaves and per-tab dirty state persist before
+  // the view is evicted.
+  useFlushOnHide(flushDialog, isOpen);
 
   const [globalEnvVars, setGlobalEnvVars] = useState<Record<string, string>>({});
   useEffect(() => {
@@ -357,14 +371,14 @@ function SettingsDialogInner({
   }, [isOpen]);
 
   const handleBeforeClose = useCallback(async () => {
-    await projectForm.flush();
+    await flushDialog();
     return true;
-  }, [projectForm]);
+  }, [flushDialog]);
 
   const handleClose = useCallback(async () => {
-    await projectForm.flush();
+    await flushDialog();
     onClose();
-  }, [onClose, projectForm]);
+  }, [onClose, flushDialog]);
 
   const searchResults = useMemo(
     () =>

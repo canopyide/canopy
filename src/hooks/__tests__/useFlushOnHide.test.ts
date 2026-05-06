@@ -114,17 +114,16 @@ describe("useFlushOnHide", () => {
     expect(second).toHaveBeenCalledTimes(1);
   });
 
-  it("swallows promise rejections from the callback", async () => {
+  it("does not throw synchronously when the callback rejects", () => {
     const fn = vi.fn().mockRejectedValue(new Error("boom"));
     renderHook(() => useFlushOnHide(fn, true));
 
-    act(() => {
-      setHidden(true);
-      fireVisibilityChange();
-    });
-
+    expect(() => {
+      act(() => {
+        setHidden(true);
+        fireVisibilityChange();
+      });
+    }).not.toThrow();
     expect(fn).toHaveBeenCalledTimes(1);
-    // Allow microtask queue to drain — test environment must not surface the rejection.
-    await Promise.resolve();
   });
 });
