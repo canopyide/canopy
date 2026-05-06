@@ -56,6 +56,7 @@ export function ContentGridFleetScope({
             <div className="col-span-full row-span-full">
               <ContentGridEmptyState
                 hasActiveWorktree={ctx.hasActiveWorktree}
+                hasWorktrees={ctx.worktreeMap.size > 0}
                 activeWorktreeName={ctx.activeWorktreeName}
                 activeWorktreeId={ctx.activeWorktreeId}
                 showProjectPulse={ctx.showProjectPulse}

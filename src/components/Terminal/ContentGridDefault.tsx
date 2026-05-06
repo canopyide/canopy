@@ -72,6 +72,7 @@ export function ContentGridDefault({
                   {ctx.emptyContent ?? (
                     <ContentGridEmptyState
                       hasActiveWorktree={ctx.hasActiveWorktree}
+                      hasWorktrees={ctx.worktreeMap.size > 0}
                       activeWorktreeName={ctx.activeWorktreeName}
                       activeWorktreeId={ctx.activeWorktreeId}
                       showProjectPulse={ctx.showProjectPulse}
