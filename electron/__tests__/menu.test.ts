@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockWebContents = vi.hoisted(() => ({
   toggleDevTools: vi.fn(),
@@ -36,13 +36,34 @@ const mockBrowserWindow = vi.hoisted(() => ({
 
 let capturedTemplate: Electron.MenuItemConstructorOptions[] = [];
 
+const menuItemRegistry = vi.hoisted(() => new Map<string, { label: string; enabled: boolean }>());
+const mockApplicationMenu = vi.hoisted(() => ({
+  getMenuItemById: vi.fn((id: string) => menuItemRegistry.get(id) ?? null),
+}));
+
 vi.mock("electron", () => ({
   Menu: {
     buildFromTemplate: vi.fn((template: Electron.MenuItemConstructorOptions[]) => {
       capturedTemplate = template;
-      return {};
+      menuItemRegistry.clear();
+      const collect = (items: Electron.MenuItemConstructorOptions[]): void => {
+        for (const item of items) {
+          if (item.id && typeof item.label === "string") {
+            menuItemRegistry.set(item.id, {
+              label: item.label,
+              enabled: item.enabled ?? true,
+            });
+          }
+          if (Array.isArray(item.submenu)) {
+            collect(item.submenu as Electron.MenuItemConstructorOptions[]);
+          }
+        }
+      };
+      collect(template);
+      return mockApplicationMenu;
     }),
     setApplicationMenu: vi.fn(),
+    getApplicationMenu: vi.fn(() => mockApplicationMenu),
   },
   dialog: { showOpenDialog: vi.fn() },
   BrowserWindow: vi.fn(),
@@ -92,8 +113,21 @@ vi.mock("../window/windowRef.js", () => ({
   getProjectViewManager: vi.fn(() => null),
 }));
 
+const autoUpdaterServiceMock = vi.hoisted(() => {
+  let menuState: "idle" | "checking" | "ready" = "idle";
+  return {
+    checkForUpdatesManually: vi.fn(),
+    quitAndInstallIfReady: vi.fn(),
+    getMenuState: vi.fn(() => menuState),
+    onMenuStateChange: vi.fn(() => vi.fn()),
+    __setMenuState: (state: "idle" | "checking" | "ready") => {
+      menuState = state;
+    },
+  };
+});
+
 vi.mock("../services/AutoUpdaterService.js", () => ({
-  autoUpdaterService: { checkForUpdatesManually: vi.fn() },
+  autoUpdaterService: autoUpdaterServiceMock,
 }));
 
 vi.mock("../services/pluginMenuRegistry.js", () => ({
@@ -105,7 +139,7 @@ vi.mock("../window/webContentsRegistry.js", () => ({
 }));
 
 import { createApplicationMenu } from "../menu.js";
-import { webContents } from "electron";
+import { webContents, app, Menu } from "electron";
 
 function findMenuItem(
   template: Electron.MenuItemConstructorOptions[],
@@ -249,6 +283,197 @@ describe("createApplicationMenu", () => {
       const item = findMenuItem(capturedTemplate, "View", "Zoom In");
       item!.click!({} as Electron.MenuItem, undefined, {} as Electron.KeyboardEvent);
       expect(mockWebContents.setZoomLevel).toHaveBeenCalledWith(1.5);
+    });
+  });
+});
+
+describe("update menu lifecycle", () => {
+  const originalPlatform = process.platform;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    capturedTemplate = [];
+    autoUpdaterServiceMock.__setMenuState("idle");
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
+    app.isPackaged = false;
+  });
+
+  function findUpdateItem(
+    template: Electron.MenuItemConstructorOptions[],
+    id: string
+  ): Electron.MenuItemConstructorOptions | undefined {
+    for (const top of template) {
+      if (Array.isArray(top.submenu)) {
+        for (const item of top.submenu as Electron.MenuItemConstructorOptions[]) {
+          if (item.id === id) return item;
+        }
+      }
+    }
+    return undefined;
+  }
+
+  describe("on macOS (packaged)", () => {
+    beforeEach(() => {
+      Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
+      app.isPackaged = true;
+      createApplicationMenu(mockBrowserWindow as unknown as Electron.BrowserWindow);
+    });
+
+    it("emits a Daintree-menu Check for Updates item with the canonical id", () => {
+      const item = findUpdateItem(capturedTemplate, "check-for-updates-mac");
+      expect(item).toBeDefined();
+      expect(item!.label).toBe("Check for Updates…");
+    });
+
+    it("does NOT emit a Help-menu Check for Updates item on darwin", () => {
+      const item = findUpdateItem(capturedTemplate, "check-for-updates-help");
+      expect(item).toBeUndefined();
+    });
+
+    it("registers a menu-state listener after Menu.setApplicationMenu", () => {
+      expect(autoUpdaterServiceMock.onMenuStateChange).toHaveBeenCalled();
+    });
+
+    it("applies the current state immediately after rebuild (sticky Ready)", () => {
+      autoUpdaterServiceMock.__setMenuState("ready");
+      capturedTemplate = [];
+      menuItemRegistry.clear();
+
+      createApplicationMenu(mockBrowserWindow as unknown as Electron.BrowserWindow);
+
+      const item = menuItemRegistry.get("check-for-updates-mac");
+      expect(item).toBeDefined();
+      expect(item!.label).toBe("Restart to Install Update");
+      expect(item!.enabled).toBe(true);
+    });
+
+    it("disposes the previous listener when createApplicationMenu is called again", () => {
+      const firstUnsubscribe = vi.fn();
+      const secondUnsubscribe = vi.fn();
+      autoUpdaterServiceMock.onMenuStateChange.mockReturnValueOnce(firstUnsubscribe);
+      autoUpdaterServiceMock.onMenuStateChange.mockReturnValueOnce(secondUnsubscribe);
+
+      createApplicationMenu(mockBrowserWindow as unknown as Electron.BrowserWindow);
+      createApplicationMenu(mockBrowserWindow as unknown as Electron.BrowserWindow);
+
+      expect(firstUnsubscribe).toHaveBeenCalledTimes(1);
+      expect(secondUnsubscribe).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("on linux/win (packaged)", () => {
+    beforeEach(() => {
+      Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+      app.isPackaged = true;
+      createApplicationMenu(mockBrowserWindow as unknown as Electron.BrowserWindow);
+    });
+
+    it("emits a Help-menu Check for Updates item with the canonical id", () => {
+      const item = findUpdateItem(capturedTemplate, "check-for-updates-help");
+      expect(item).toBeDefined();
+      expect(item!.label).toBe("Check for Updates…");
+    });
+
+    it("does NOT emit a Daintree-menu Check for Updates item on non-darwin", () => {
+      const item = findUpdateItem(capturedTemplate, "check-for-updates-mac");
+      expect(item).toBeUndefined();
+    });
+  });
+
+  describe("click handler branching", () => {
+    beforeEach(() => {
+      Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
+      app.isPackaged = true;
+      createApplicationMenu(mockBrowserWindow as unknown as Electron.BrowserWindow);
+    });
+
+    it("calls checkForUpdatesManually when state is idle", () => {
+      autoUpdaterServiceMock.__setMenuState("idle");
+      const item = findUpdateItem(capturedTemplate, "check-for-updates-mac");
+
+      item!.click!(
+        {} as Electron.MenuItem,
+        mockBrowserWindow as unknown as Electron.BaseWindow,
+        {} as Electron.KeyboardEvent
+      );
+
+      expect(autoUpdaterServiceMock.checkForUpdatesManually).toHaveBeenCalledTimes(1);
+      expect(autoUpdaterServiceMock.quitAndInstallIfReady).not.toHaveBeenCalled();
+    });
+
+    it("calls checkForUpdatesManually when state is checking (defensive — item is also disabled)", () => {
+      autoUpdaterServiceMock.__setMenuState("checking");
+      const item = findUpdateItem(capturedTemplate, "check-for-updates-mac");
+
+      item!.click!(
+        {} as Electron.MenuItem,
+        mockBrowserWindow as unknown as Electron.BaseWindow,
+        {} as Electron.KeyboardEvent
+      );
+
+      expect(autoUpdaterServiceMock.checkForUpdatesManually).toHaveBeenCalledTimes(1);
+      expect(autoUpdaterServiceMock.quitAndInstallIfReady).not.toHaveBeenCalled();
+    });
+
+    it("calls quitAndInstallIfReady when state is ready", () => {
+      autoUpdaterServiceMock.__setMenuState("ready");
+      const item = findUpdateItem(capturedTemplate, "check-for-updates-mac");
+
+      item!.click!(
+        {} as Electron.MenuItem,
+        mockBrowserWindow as unknown as Electron.BaseWindow,
+        {} as Electron.KeyboardEvent
+      );
+
+      expect(autoUpdaterServiceMock.quitAndInstallIfReady).toHaveBeenCalledTimes(1);
+      expect(autoUpdaterServiceMock.checkForUpdatesManually).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("applyUpdateMenuState (via the registered listener)", () => {
+    let dispatchUpdate: (state: "idle" | "checking" | "ready") => void;
+
+    beforeEach(() => {
+      Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
+      app.isPackaged = true;
+      createApplicationMenu(mockBrowserWindow as unknown as Electron.BrowserWindow);
+
+      // The most-recent createApplicationMenu call registers the listener via
+      // onMenuStateChange; pull it back out of the mock's call history.
+      const calls = autoUpdaterServiceMock.onMenuStateChange.mock.calls;
+      if (calls.length === 0) throw new Error("expected onMenuStateChange to be called");
+      dispatchUpdate = calls[calls.length - 1][0] as (state: "idle" | "checking" | "ready") => void;
+    });
+
+    it("checking state sets disabled label", () => {
+      dispatchUpdate("checking");
+      const item = menuItemRegistry.get("check-for-updates-mac");
+      expect(item!.label).toBe("Checking for Updates…");
+      expect(item!.enabled).toBe(false);
+    });
+
+    it("ready state sets restart label", () => {
+      dispatchUpdate("ready");
+      const item = menuItemRegistry.get("check-for-updates-mac");
+      expect(item!.label).toBe("Restart to Install Update");
+      expect(item!.enabled).toBe(true);
+    });
+
+    it("idle state restores default label", () => {
+      dispatchUpdate("checking");
+      dispatchUpdate("idle");
+      const item = menuItemRegistry.get("check-for-updates-mac");
+      expect(item!.label).toBe("Check for Updates…");
+      expect(item!.enabled).toBe(true);
+    });
+
+    it("does not throw when getApplicationMenu returns null", () => {
+      vi.mocked(Menu.getApplicationMenu).mockReturnValueOnce(null as never);
+
+      expect(() => dispatchUpdate("checking")).not.toThrow();
     });
   });
 });

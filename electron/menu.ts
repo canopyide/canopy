@@ -12,13 +12,8 @@ import {
   getWorktreePortBrokerRef,
 } from "./window/windowServices.js";
 import { distributePortsToView } from "./window/portDistribution.js";
-// Auto-updater is dynamically imported on click to keep it out of the eager
-// graph — the menu is built at startup but "Check for Updates" only fires on
-// user action.
-async function checkForUpdatesManually(): Promise<void> {
-  const { autoUpdaterService } = await import("./services/AutoUpdaterService.js");
-  autoUpdaterService.checkForUpdatesManually();
-}
+import { autoUpdaterService } from "./services/AutoUpdaterService.js";
+import type { UpdateMenuState } from "./services/AutoUpdaterService.js";
 import { getPluginMenuItems } from "./services/pluginMenuRegistry.js";
 import { getAppWebContents } from "./window/webContentsRegistry.js";
 import { PRODUCT_NAME, PRODUCT_WEBSITE, PRODUCT_COPYRIGHT_ORG } from "./utils/productBranding.js";
@@ -35,6 +30,48 @@ app.setAboutPanelOptions({
 function convertShortcutToAccelerator(shortcut: string): string {
   return shortcut.replace("Cmd/Ctrl", "CommandOrControl");
 }
+
+// IDs are scoped to each platform branch — Electron's getMenuItemById walks
+// the tree and returns the first match, so the macOS Daintree-menu copy and
+// the Win/Linux Help-menu copy must be addressable independently.
+const UPDATE_MENU_ITEM_IDS = ["check-for-updates-mac", "check-for-updates-help"] as const;
+
+const UPDATE_MENU_STATE_LABELS: Record<UpdateMenuState, { label: string; enabled: boolean }> = {
+  idle: { label: "Check for Updates…", enabled: true },
+  checking: { label: "Checking for Updates…", enabled: false },
+  ready: { label: "Restart to Install Update", enabled: true },
+};
+
+function applyUpdateMenuState(state: UpdateMenuState): void {
+  const menu = Menu.getApplicationMenu();
+  if (!menu) return;
+  const { label, enabled } = UPDATE_MENU_STATE_LABELS[state];
+  for (const id of UPDATE_MENU_ITEM_IDS) {
+    const item = menu.getMenuItemById(id);
+    if (!item) continue;
+    item.label = label;
+    item.enabled = enabled;
+  }
+}
+
+// MenuItem.click is baked at build time and is NOT live-mutable. The static
+// handler reads the current state at invocation time and branches: Ready
+// triggers quitAndInstall; everything else (Idle, Checking) initiates a
+// manual check. Checking is also disabled, so the click only fires for the
+// other two anyway.
+function handleUpdateMenuClick(): void {
+  if (autoUpdaterService.getMenuState() === "ready") {
+    autoUpdaterService.quitAndInstallIfReady();
+  } else {
+    autoUpdaterService.checkForUpdatesManually();
+  }
+}
+
+// Each createApplicationMenu rebuild allocates new MenuItem instances, so the
+// listener must be re-registered after Menu.setApplicationMenu. We track the
+// previous unsubscribe at module scope to avoid stacking listeners across
+// rebuilds — a stale listener would mutate items that no longer exist.
+let unsubscribeUpdateMenuState: (() => void) | null = null;
 
 export function createApplicationMenu(
   mainWindow: BrowserWindow,
@@ -421,12 +458,9 @@ export function createApplicationMenu(
           ? [
               { type: "separator" as const },
               {
-                label: "Check for Updates...",
-                click: () => {
-                  checkForUpdatesManually().catch((err) =>
-                    console.error("[menu] checkForUpdatesManually failed:", err)
-                  );
-                },
+                id: "check-for-updates-help",
+                label: "Check for Updates…",
+                click: handleUpdateMenuClick,
               },
             ]
           : []),
@@ -445,12 +479,9 @@ export function createApplicationMenu(
         ...(app.isPackaged
           ? [
               {
-                label: "Check for Updates...",
-                click: () => {
-                  checkForUpdatesManually().catch((err) =>
-                    console.error("[menu] checkForUpdatesManually failed:", err)
-                  );
-                },
+                id: "check-for-updates-mac",
+                label: "Check for Updates…",
+                click: handleUpdateMenuClick,
               },
             ]
           : []),
@@ -475,6 +506,13 @@ export function createApplicationMenu(
 
   const menu = Menu.buildFromTemplate(template);
   Menu.setApplicationMenu(menu);
+
+  unsubscribeUpdateMenuState?.();
+  unsubscribeUpdateMenuState = autoUpdaterService.onMenuStateChange(applyUpdateMenuState);
+  // Apply the current state immediately so a rebuild that completes mid-check
+  // (or with a downloaded update already staged) doesn't snap items back to
+  // the default "Check for Updates…" label.
+  applyUpdateMenuState(autoUpdaterService.getMenuState());
 }
 
 function buildRecentProjectsMenu(

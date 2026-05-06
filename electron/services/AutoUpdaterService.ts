@@ -54,6 +54,12 @@ const { autoUpdater } = electronUpdater;
 
 const RESUME_CHECK_DELAY_MS = 7_000;
 
+// 400ms Doherty threshold gates the "Checking…" menu label so a fast CDN
+// round-trip (sub-threshold) never flickers a transient label change.
+const CHECKING_MENU_DELAY_MS = 400;
+
+export type UpdateMenuState = "idle" | "checking" | "ready";
+
 class AutoUpdaterService {
   private checkInterval: NodeJS.Timeout | null = null;
   private startupJitterTimeout: NodeJS.Timeout | null = null;
@@ -67,6 +73,9 @@ class AutoUpdaterService {
   private updateDownloaded = false;
   private isManualCheck = false;
   private lastBroadcastVersion: string | null = null;
+  private menuState: UpdateMenuState = "idle";
+  private checkingMenuTimeout: NodeJS.Timeout | null = null;
+  private menuStateListeners: Set<(state: UpdateMenuState) => void> = new Set();
   private checkingHandler: (() => void) | null = null;
   private availableHandler: ((info: UpdateInfo) => void) | null = null;
   private notAvailableHandler: ((info: UpdateInfo) => void) | null = null;
@@ -84,6 +93,49 @@ class AutoUpdaterService {
   private resetRetryState(): void {
     this.clearRetryTimeout();
     this.retryCount = 0;
+  }
+
+  private clearCheckingMenuTimeout(): void {
+    if (this.checkingMenuTimeout) {
+      clearTimeout(this.checkingMenuTimeout);
+      this.checkingMenuTimeout = null;
+    }
+  }
+
+  private setMenuState(state: UpdateMenuState): void {
+    if (this.menuState === state) return;
+    this.menuState = state;
+    for (const listener of this.menuStateListeners) {
+      try {
+        listener(state);
+      } catch (err) {
+        console.error("[MAIN] Update menu state listener threw:", err);
+      }
+    }
+  }
+
+  getMenuState(): UpdateMenuState {
+    return this.menuState;
+  }
+
+  onMenuStateChange(cb: (state: UpdateMenuState) => void): () => void {
+    this.menuStateListeners.add(cb);
+    return () => {
+      this.menuStateListeners.delete(cb);
+    };
+  }
+
+  quitAndInstallIfReady(): boolean {
+    if (this.menuState !== "ready" || !this.updateDownloaded) return false;
+    try {
+      getCrashRecoveryService().cleanupOnExit();
+    } catch (err) {
+      console.error("[MAIN] Crash recovery cleanup before quit-and-install failed:", err);
+    }
+    // setImmediate defers past the menu-close animation frame so the OS doesn't
+    // tear the click target while we're walking away (Windows-sensitive).
+    setImmediate(() => autoUpdater.quitAndInstall());
+    return true;
   }
 
   // electron-updater 6.3.x doesn't surface a categorized error type, so classify
@@ -223,15 +275,34 @@ class AutoUpdaterService {
       return;
     }
     this.isManualCheck = true;
+    // Doherty gate: only flip the menu to "Checking…" when the round-trip
+    // exceeds 400ms. Re-arming on a second click cancels the pending flip
+    // and restarts the window — the menu only transitions after the latest
+    // call passes the threshold.
+    this.clearCheckingMenuTimeout();
+    if (this.menuState !== "ready") {
+      this.checkingMenuTimeout = setTimeout(() => {
+        this.checkingMenuTimeout = null;
+        if (this.isManualCheck && this.menuState !== "ready") {
+          this.setMenuState("checking");
+        }
+      }, CHECKING_MENU_DELAY_MS);
+    }
     try {
       const result = autoUpdater.checkForUpdates();
       Promise.resolve(result).catch((err) => {
         console.error("[MAIN] Manual update check failed:", err);
         this.isManualCheck = false;
+        this.clearCheckingMenuTimeout();
+        // The check rejected without an `error` event — restore Idle so the
+        // menu doesn't get stuck on "Checking…". Ready persists.
+        if (this.menuState !== "ready") this.setMenuState("idle");
       });
     } catch (err) {
       console.error("[MAIN] Manual update check failed:", err);
       this.isManualCheck = false;
+      this.clearCheckingMenuTimeout();
+      if (this.menuState !== "ready") this.setMenuState("idle");
     }
   }
 
@@ -265,6 +336,11 @@ class AutoUpdaterService {
         this.updateDownloaded = false;
         this.lastBroadcastVersion = null;
         this.resetRetryState();
+        // The Ready label points at a now-discarded installer — drop it back
+        // to Idle in lockstep, and cancel any pending Doherty flip so a
+        // mid-check switch doesn't surface "Checking…" for the old channel.
+        this.clearCheckingMenuTimeout();
+        this.setMenuState("idle");
 
         if (this.initialized) {
           this.configureFeedForChannel(validated);
@@ -322,6 +398,10 @@ class AutoUpdaterService {
         // broadcast — the network round-tripped, so the transient condition
         // has cleared.
         this.resetRetryState();
+        // Update available, but the install isn't ready until download
+        // completes — let the downloaded handler flip to "ready".
+        this.clearCheckingMenuTimeout();
+        if (this.menuState !== "ready") this.setMenuState("idle");
         if (suppressed) return;
         this.lastBroadcastVersion = info.version;
         broadcastToRenderer(CHANNELS.UPDATE_AVAILABLE, { version: info.version });
@@ -331,6 +411,8 @@ class AutoUpdaterService {
       this.notAvailableHandler = (_info: UpdateInfo) => {
         console.log("[MAIN] Update not available");
         this.resetRetryState();
+        this.clearCheckingMenuTimeout();
+        if (this.menuState !== "ready") this.setMenuState("idle");
         if (this.isManualCheck) {
           this.isManualCheck = false;
           broadcastToRenderer(CHANNELS.NOTIFICATION_SHOW_TOAST, {
@@ -346,6 +428,8 @@ class AutoUpdaterService {
         console.error("[MAIN] Auto-updater error:", err);
         const wasManual = this.isManualCheck;
         this.isManualCheck = false;
+        this.clearCheckingMenuTimeout();
+        if (this.menuState !== "ready") this.setMenuState("idle");
         if (wasManual) {
           // Manual checks surface to the user immediately and offer a Retry
           // action — don't shadow that with background backoff, the user is
@@ -387,6 +471,8 @@ class AutoUpdaterService {
         console.log("[MAIN] Update downloaded:", info.version);
         this.updateDownloaded = true;
         this.resetRetryState();
+        this.clearCheckingMenuTimeout();
+        this.setMenuState("ready");
         broadcastToRenderer(CHANNELS.UPDATE_DOWNLOADED, { version: info.version });
       };
       autoUpdater.on("update-downloaded", this.downloadedHandler);
@@ -569,6 +655,12 @@ class AutoUpdaterService {
     this.lastBroadcastVersion = null;
     this.channelHandlersRegistered = false;
     this.initialized = false;
+    this.clearCheckingMenuTimeout();
+    // Reset menu state to idle BEFORE clearing listeners so any registered
+    // menu callback gets the final transition. After listener clearance any
+    // future setMenuState is a silent no-op.
+    if (this.menuState !== "idle") this.setMenuState("idle");
+    this.menuStateListeners.clear();
   }
 }
 

@@ -94,6 +94,7 @@ import { CHANNELS } from "../../ipc/channels.js";
 
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
 const STARTUP_JITTER_MAX_MS = 60_000;
+const CHECKING_MENU_DELAY_MS = 400;
 
 describe("AutoUpdaterService", () => {
   const originalPlatform = process.platform;
@@ -1353,6 +1354,270 @@ describe("AutoUpdaterService", () => {
       vi.advanceTimersByTime(60_000);
 
       expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("menu state lifecycle", () => {
+    let availableHandler: (info: { version: string }) => void;
+    let notAvailableHandler: (info: object) => void;
+    let errorHandler: (err: unknown) => void;
+    let downloadedHandler: (info: { version: string }) => void;
+    let setChannelHandler: (event: unknown, channel: unknown) => Promise<unknown>;
+
+    beforeEach(() => {
+      autoUpdaterService.initialize();
+      vi.advanceTimersByTime(STARTUP_JITTER_MAX_MS);
+
+      availableHandler = (autoUpdaterMock.on as Mock).mock.calls.find(
+        (args) => args[0] === "update-available"
+      )![1];
+      notAvailableHandler = (autoUpdaterMock.on as Mock).mock.calls.find(
+        (args) => args[0] === "update-not-available"
+      )![1];
+      errorHandler = (autoUpdaterMock.on as Mock).mock.calls.find(
+        (args) => args[0] === "error"
+      )![1];
+      downloadedHandler = (autoUpdaterMock.on as Mock).mock.calls.find(
+        (args) => args[0] === "update-downloaded"
+      )![1];
+      setChannelHandler = (ipcMainMock.handle as Mock).mock.calls.find(
+        (args) => args[0] === CHANNELS.UPDATE_SET_CHANNEL
+      )![1];
+
+      autoUpdaterMock.checkForUpdates.mockClear();
+    });
+
+    it("starts in idle state", () => {
+      expect(autoUpdaterService.getMenuState()).toBe("idle");
+    });
+
+    it("a fast manual check (resolves before 400ms) leaves menu state at idle", () => {
+      autoUpdaterService.checkForUpdatesManually();
+
+      // Round-trip resolves at 200ms with update-not-available — well inside
+      // the 400ms Doherty gate.
+      vi.advanceTimersByTime(200);
+      notAvailableHandler({});
+
+      // The 400ms timer would have fired at +400ms, but the check resolved
+      // first and cleared it.
+      vi.advanceTimersByTime(500);
+
+      expect(autoUpdaterService.getMenuState()).toBe("idle");
+    });
+
+    it("a slow manual check (still in flight at 400ms) flips menu state to checking", () => {
+      autoUpdaterService.checkForUpdatesManually();
+
+      vi.advanceTimersByTime(CHECKING_MENU_DELAY_MS);
+
+      expect(autoUpdaterService.getMenuState()).toBe("checking");
+
+      // After the round-trip eventually completes, state goes back to idle.
+      notAvailableHandler({});
+      expect(autoUpdaterService.getMenuState()).toBe("idle");
+    });
+
+    it("background polls do not show the checking state (only manual checks)", () => {
+      // Simulate the periodic checking-for-update event firing without a
+      // prior checkForUpdatesManually() call.
+      vi.advanceTimersByTime(CHECK_INTERVAL_MS + CHECKING_MENU_DELAY_MS * 2);
+
+      expect(autoUpdaterService.getMenuState()).toBe("idle");
+    });
+
+    it("update-available transitions to idle (not ready — only download completion is ready)", () => {
+      autoUpdaterService.checkForUpdatesManually();
+      vi.advanceTimersByTime(CHECKING_MENU_DELAY_MS);
+      expect(autoUpdaterService.getMenuState()).toBe("checking");
+
+      availableHandler({ version: "2.0.0" });
+
+      expect(autoUpdaterService.getMenuState()).toBe("idle");
+    });
+
+    it("update-downloaded transitions to ready", () => {
+      downloadedHandler({ version: "2.0.0" });
+
+      expect(autoUpdaterService.getMenuState()).toBe("ready");
+    });
+
+    it("ready persists past subsequent manual checks (no flicker back to idle)", () => {
+      downloadedHandler({ version: "2.0.0" });
+      expect(autoUpdaterService.getMenuState()).toBe("ready");
+
+      // A second manual check while staged must not unset Ready — the user
+      // can still restart-to-install while a probe is in flight.
+      autoUpdaterService.checkForUpdatesManually();
+      vi.advanceTimersByTime(CHECKING_MENU_DELAY_MS * 2);
+      expect(autoUpdaterService.getMenuState()).toBe("ready");
+
+      notAvailableHandler({});
+      // Even update-not-available shouldn't drop Ready — the staged
+      // installer is still valid for the current channel.
+      expect(autoUpdaterService.getMenuState()).toBe("ready");
+    });
+
+    it("channel switch resets ready state and cancels any pending Doherty flip", async () => {
+      downloadedHandler({ version: "2.0.0" });
+      expect(autoUpdaterService.getMenuState()).toBe("ready");
+
+      await setChannelHandler(null, "nightly");
+
+      expect(autoUpdaterService.getMenuState()).toBe("idle");
+    });
+
+    it("channel switch mid-check cancels the pending checking flip", async () => {
+      autoUpdaterService.checkForUpdatesManually();
+      // Don't advance past 400ms yet — channel switch should cancel.
+      vi.advanceTimersByTime(100);
+
+      await setChannelHandler(null, "nightly");
+
+      // Without the timer cancellation, this advance would flip state to
+      // "checking" against the now-discarded prior-channel feed.
+      vi.advanceTimersByTime(CHECKING_MENU_DELAY_MS * 2);
+      expect(autoUpdaterService.getMenuState()).toBe("idle");
+    });
+
+    it("error event resets menu state to idle", () => {
+      autoUpdaterService.checkForUpdatesManually();
+      vi.advanceTimersByTime(CHECKING_MENU_DELAY_MS);
+      expect(autoUpdaterService.getMenuState()).toBe("checking");
+
+      errorHandler(Object.assign(new Error("conn reset"), { code: "ECONNRESET" }));
+
+      expect(autoUpdaterService.getMenuState()).toBe("idle");
+    });
+
+    it("error event does NOT clobber Ready", () => {
+      downloadedHandler({ version: "2.0.0" });
+      expect(autoUpdaterService.getMenuState()).toBe("ready");
+
+      // A subsequent retry/error must not erase the user's restart-to-install
+      // affordance — the staged installer is still valid.
+      errorHandler(Object.assign(new Error("conn reset"), { code: "ECONNRESET" }));
+
+      expect(autoUpdaterService.getMenuState()).toBe("ready");
+    });
+
+    it("notifies registered listeners on each transition", () => {
+      const listener = vi.fn();
+      autoUpdaterService.onMenuStateChange(listener);
+
+      autoUpdaterService.checkForUpdatesManually();
+      vi.advanceTimersByTime(CHECKING_MENU_DELAY_MS);
+      expect(listener).toHaveBeenCalledWith("checking");
+
+      downloadedHandler({ version: "2.0.0" });
+      expect(listener).toHaveBeenLastCalledWith("ready");
+    });
+
+    it("does not notify listeners when state is unchanged (no-op dedup)", () => {
+      const listener = vi.fn();
+      autoUpdaterService.onMenuStateChange(listener);
+
+      // Already idle — these should not fire the listener.
+      notAvailableHandler({});
+      errorHandler(Object.assign(new Error("conn reset"), { code: "ECONNRESET" }));
+
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it("onMenuStateChange returns an unsubscribe function", () => {
+      const listener = vi.fn();
+      const unsubscribe = autoUpdaterService.onMenuStateChange(listener);
+
+      unsubscribe();
+
+      downloadedHandler({ version: "2.0.0" });
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it("a thrown listener does not block other listeners or state transitions", () => {
+      const throwing = vi.fn(() => {
+        throw new Error("listener boom");
+      });
+      const surviving = vi.fn();
+      autoUpdaterService.onMenuStateChange(throwing);
+      autoUpdaterService.onMenuStateChange(surviving);
+
+      downloadedHandler({ version: "2.0.0" });
+
+      expect(throwing).toHaveBeenCalled();
+      expect(surviving).toHaveBeenCalledWith("ready");
+      expect(autoUpdaterService.getMenuState()).toBe("ready");
+    });
+
+    it("dispose clears menu state and removes listeners", () => {
+      const listener = vi.fn();
+      autoUpdaterService.onMenuStateChange(listener);
+      downloadedHandler({ version: "2.0.0" });
+      listener.mockClear();
+
+      autoUpdaterService.dispose();
+
+      // The listener should have been called once with "idle" as the final
+      // transition before being cleared.
+      expect(listener).toHaveBeenCalledWith("idle");
+      expect(autoUpdaterService.getMenuState()).toBe("idle");
+    });
+  });
+
+  describe("quitAndInstallIfReady", () => {
+    let downloadedHandler: (info: { version: string }) => void;
+
+    beforeEach(() => {
+      autoUpdaterService.initialize();
+
+      downloadedHandler = (autoUpdaterMock.on as Mock).mock.calls.find(
+        (args) => args[0] === "update-downloaded"
+      )![1];
+    });
+
+    it("returns false and does nothing when state is idle", () => {
+      expect(autoUpdaterService.quitAndInstallIfReady()).toBe(false);
+      vi.advanceTimersByTime(0);
+
+      expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled();
+      expect(cleanupOnExitMock).not.toHaveBeenCalled();
+    });
+
+    it("returns false when state is checking (no install staged)", () => {
+      autoUpdaterService.checkForUpdatesManually();
+      vi.advanceTimersByTime(CHECKING_MENU_DELAY_MS);
+
+      expect(autoUpdaterService.quitAndInstallIfReady()).toBe(false);
+      vi.advanceTimersByTime(0);
+      expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled();
+    });
+
+    it("calls cleanupOnExit then quitAndInstall when ready, deferred via setImmediate", () => {
+      downloadedHandler({ version: "2.0.0" });
+
+      const result = autoUpdaterService.quitAndInstallIfReady();
+
+      expect(result).toBe(true);
+      expect(cleanupOnExitMock).toHaveBeenCalledTimes(1);
+      // setImmediate is faked by vi.useFakeTimers — it hasn't fired yet.
+      expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled();
+
+      // advanceTimersToNextTimer fires only the queued setImmediate; using
+      // runAllTimers would also drain the 4h periodic interval and recurse.
+      vi.advanceTimersToNextTimer();
+      expect(autoUpdaterMock.quitAndInstall).toHaveBeenCalledTimes(1);
+    });
+
+    it("still schedules quitAndInstall when cleanupOnExit throws", () => {
+      downloadedHandler({ version: "2.0.0" });
+      cleanupOnExitMock.mockImplementationOnce(() => {
+        throw new Error("cleanup failed");
+      });
+
+      expect(autoUpdaterService.quitAndInstallIfReady()).toBe(true);
+      vi.advanceTimersToNextTimer();
+
+      expect(autoUpdaterMock.quitAndInstall).toHaveBeenCalledTimes(1);
     });
   });
 });
