@@ -197,11 +197,7 @@ export const usePanelStore = create<PanelGridState>()(
           // needed here for the MCP case.
           if (assistantHasFocus && !isMcpSpawn) {
             set({ focusedId: focusedBeforeCreate });
-          } else if (
-            !isMcpSpawn &&
-            focusedBeforeCreate !== null &&
-            focusedBeforeCreate !== id
-          ) {
+          } else if (!isMcpSpawn && focusedBeforeCreate !== null && focusedBeforeCreate !== id) {
             // Best-effort previousFocusedId for the tmux-style alternate-pane toggle.
             // Updating in a follow-up set() is fine — previousFocusedId is metadata,
             // not load-bearing for dock visibility (which the watchdog effect cares

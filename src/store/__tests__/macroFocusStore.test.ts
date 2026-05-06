@@ -187,7 +187,10 @@ describe("macroFocusStore", () => {
       // Reset assistant visibility default
       store.setVisibility("assistant", false);
       // Drop any focus left over from prior tests
-      if (document.activeElement instanceof HTMLElement && document.activeElement !== document.body) {
+      if (
+        document.activeElement instanceof HTMLElement &&
+        document.activeElement !== document.body
+      ) {
         document.activeElement.blur();
       }
     });

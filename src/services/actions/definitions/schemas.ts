@@ -11,13 +11,7 @@ export const LaunchLocationSchema = z.enum(["grid", "dock"]);
  * stamps `"mcp"` on agent-launch dispatches; user surfaces stamp their own
  * origin (`"quickrun"`, `"recipe"`, `"agent"`, `"palette"`).
  */
-export const TerminalSpawnSourceSchema = z.enum([
-  "quickrun",
-  "recipe",
-  "agent",
-  "palette",
-  "mcp",
-]);
+export const TerminalSpawnSourceSchema = z.enum(["quickrun", "recipe", "agent", "palette", "mcp"]);
 
 export const SettingsTabSchema = z.enum([
   "general",
