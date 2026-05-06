@@ -53,10 +53,14 @@ export function HostCrashBanner() {
   const handleRestart = async () => {
     if (isRestarting) return;
     setIsRestarting(true);
-    try {
-      await actionService.dispatch("terminal.restartService", undefined, { source: "user" });
-    } catch (error) {
-      logError("Failed to restart terminal service from host crash banner", error);
+    // dispatch never throws — it returns { ok, error }. On a successful restart
+    // the backend status transitions out of "disconnected" and the banner
+    // unmounts, so we only need to unlock the button on failure.
+    const result = await actionService.dispatch("terminal.restartService", undefined, {
+      source: "user",
+    });
+    if (!result.ok) {
+      logError("Failed to restart terminal service from host crash banner", result.error);
       setIsRestarting(false);
     }
   };

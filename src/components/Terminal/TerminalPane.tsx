@@ -912,8 +912,9 @@ function TerminalPaneComponent({
               {(isBackendDisconnected || isBackendRecovering) && (
                 <div
                   className="absolute inset-0 z-50 flex items-center justify-center bg-scrim-strong backdrop-blur-sm"
-                  role={isBackendRecovering ? "status" : "alert"}
-                  aria-live={isBackendRecovering ? "polite" : "assertive"}
+                  aria-hidden={isBackendDisconnected ? "true" : undefined}
+                  role={isBackendRecovering ? "status" : undefined}
+                  aria-live={isBackendRecovering ? "polite" : undefined}
                 >
                   {isBackendRecovering && (
                     <div className="flex flex-col items-center gap-3">

@@ -24,7 +24,7 @@ const mockedDispatch = vi.mocked(actionService.dispatch);
 
 beforeEach(() => {
   mockedDispatch.mockReset();
-  mockedDispatch.mockResolvedValue(undefined as never);
+  mockedDispatch.mockResolvedValue({ ok: true, result: undefined } as never);
   usePanelStore.setState({ backendStatus: "connected", lastCrashType: null });
   cleanup();
 });
@@ -110,15 +110,31 @@ describe("HostCrashBanner", () => {
     expect(mockedDispatch).toHaveBeenCalledTimes(1);
   });
 
-  it("re-enables the button when the dispatch rejects", async () => {
-    mockedDispatch.mockRejectedValueOnce(new Error("boom"));
+  it("re-enables the button when the dispatch returns ok=false", async () => {
+    mockedDispatch.mockResolvedValueOnce({
+      ok: false,
+      error: { code: "EXECUTION_ERROR", message: "boom" },
+    } as never);
     usePanelStore.setState({ backendStatus: "disconnected", lastCrashType: null });
     render(<HostCrashBanner />);
     const button = screen.getByRole("button", { name: /Restart service/i }) as HTMLButtonElement;
-    fireEvent.click(button);
-    expect(button.disabled).toBe(true);
     await act(async () => {
-      await Promise.resolve();
+      fireEvent.click(button);
+    });
+    expect(button.disabled).toBe(false);
+    expect(button.textContent).toMatch(/Restart service/);
+  });
+
+  it("re-enables the button when the dispatch returns DISABLED", async () => {
+    mockedDispatch.mockResolvedValueOnce({
+      ok: false,
+      error: { code: "DISABLED" },
+    } as never);
+    usePanelStore.setState({ backendStatus: "disconnected", lastCrashType: null });
+    render(<HostCrashBanner />);
+    const button = screen.getByRole("button", { name: /Restart service/i }) as HTMLButtonElement;
+    await act(async () => {
+      fireEvent.click(button);
     });
     expect(button.disabled).toBe(false);
   });
@@ -133,18 +149,19 @@ describe("HostCrashBanner", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("covers all CrashType variants", () => {
-    const types: CrashType[] = [
-      "OUT_OF_MEMORY",
-      "ASSERTION_FAILURE",
-      "SIGNAL_TERMINATED",
-      "UNKNOWN_CRASH",
-      "CLEAN_EXIT",
+  it("covers all CrashType variants with distinct titles", () => {
+    const expected: Array<[CrashType, string]> = [
+      ["OUT_OF_MEMORY", "Terminal service ran out of memory"],
+      ["ASSERTION_FAILURE", "Terminal service hit an assertion failure"],
+      ["SIGNAL_TERMINATED", "Terminal service was terminated"],
+      ["UNKNOWN_CRASH", "Terminal service crashed"],
+      ["CLEAN_EXIT", "Terminal service stopped unexpectedly"],
     ];
-    for (const t of types) {
-      usePanelStore.setState({ backendStatus: "disconnected", lastCrashType: t });
+    for (const [type, title] of expected) {
+      usePanelStore.setState({ backendStatus: "disconnected", lastCrashType: type });
       const { unmount } = render(<HostCrashBanner />);
       expect(screen.getByRole("alert")).toBeTruthy();
+      expect(screen.getByText(title)).toBeTruthy();
       expect(screen.getByRole("button", { name: /Restart service/i })).toBeTruthy();
       unmount();
     }
