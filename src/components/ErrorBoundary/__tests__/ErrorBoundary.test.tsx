@@ -1,8 +1,12 @@
 // @vitest-environment jsdom
+import type React from "react";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { ErrorBoundary, withErrorBoundary } from "../ErrorBoundary";
 import { useErrorStore } from "@/store/errorStore";
+import { captureRendererException } from "@/utils/rendererSentry";
+import { notify } from "@/lib/notify";
+import { actionService } from "@/services/ActionService";
 
 vi.mock("@/services/ActionService", () => ({
   actionService: {
@@ -14,9 +18,31 @@ vi.mock("@/utils/logger", () => ({
   logError: vi.fn(),
 }));
 
+vi.mock("@/utils/rendererSentry", () => ({
+  captureRendererException: vi.fn(),
+}));
+
+vi.mock("@/lib/notify", () => ({
+  notify: vi.fn(),
+}));
+
 vi.mock("@/lib/utils", () => ({
   cn: (...args: unknown[]) => args.filter(Boolean).join(" "),
 }));
+
+interface ElectronMock {
+  system: { openExternal: ReturnType<typeof vi.fn> };
+  clipboard: { writeText: ReturnType<typeof vi.fn> };
+}
+
+function installElectronMock(): ElectronMock {
+  const mock: ElectronMock = {
+    system: { openExternal: vi.fn().mockResolvedValue(undefined) },
+    clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
+  };
+  (window as unknown as { electron: ElectronMock }).electron = mock;
+  return mock;
+}
 
 function ThrowingChild({ shouldThrow }: { shouldThrow: boolean }) {
   if (shouldThrow) throw new Error("Test render error");
@@ -29,11 +55,15 @@ describe("ErrorBoundary", () => {
     vi.clearAllMocks();
     useErrorStore.getState().reset();
     vi.spyOn(console, "error").mockImplementation(() => {});
+    // Default: Sentry SDK not initialized → null. Individual tests override.
+    vi.mocked(captureRendererException).mockReturnValue(null);
+    installElectronMock();
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
+    delete (window as unknown as { electron?: unknown }).electron;
   });
 
   it("renders children when no error", () => {
@@ -54,7 +84,7 @@ describe("ErrorBoundary", () => {
     expect(screen.getByText("Section stopped working")).toBeTruthy();
   });
 
-  it("captures incidentId from addError and passes to fallback", () => {
+  it("still adds the error to the store for cross-referencing", () => {
     render(
       <ErrorBoundary variant="section">
         <ThrowingChild shouldThrow={true} />
@@ -65,8 +95,6 @@ describe("ErrorBoundary", () => {
     expect(errors.length).toBe(1);
 
     const storeId = errors[0]!.id;
-    // In dev mode, incident ID is not displayed (only in prod)
-    // but we can verify the error was added to the store
     expect(storeId).toMatch(
       /^error-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
     );
@@ -153,8 +181,26 @@ describe("ErrorBoundary", () => {
     expect(screen.queryByTestId("error-fallback-logs")).toBeNull();
   });
 
-  it("renders incident ID in production mode for section variant", () => {
+  it("renders Sentry event ID as Error ID in production mode for section variant", () => {
     vi.stubEnv("DEV", false);
+    vi.mocked(captureRendererException).mockReturnValue("sentry-event-deadbeef");
+
+    render(
+      <ErrorBoundary variant="section">
+        <ThrowingChild shouldThrow={true} />
+      </ErrorBoundary>
+    );
+
+    expect(screen.getByText("Error ID: sentry-event-deadbeef")).toBeTruthy();
+    expect(screen.queryByText("Test render error")).toBeNull();
+    expect(
+      screen.getByText("This pane crashed but the rest of Daintree is still running.")
+    ).toBeTruthy();
+  });
+
+  it("falls back to store incident ID when Sentry returns null", () => {
+    vi.stubEnv("DEV", false);
+    vi.mocked(captureRendererException).mockReturnValue(null);
 
     render(
       <ErrorBoundary variant="section">
@@ -164,12 +210,110 @@ describe("ErrorBoundary", () => {
 
     const errors = useErrorStore.getState().errors;
     const storeId = errors[0]!.id;
-
     expect(screen.getByText(`Error ID: ${storeId}`)).toBeTruthy();
-    expect(screen.queryByText("Test render error")).toBeNull();
-    expect(
-      screen.getByText("This pane crashed but the rest of Daintree is still running.")
-    ).toBeTruthy();
+  });
+
+  it("dispatches a full-body deeplink when the report fits the URL budget", async () => {
+    render(
+      <ErrorBoundary variant="section">
+        <ThrowingChild shouldThrow={true} />
+      </ErrorBoundary>
+    );
+
+    fireEvent.click(screen.getByText("Report Issue"));
+    // Wait a microtask so the async handler resolves.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const electron = (window as unknown as { electron: ElectronMock }).electron;
+    expect(electron.clipboard.writeText).not.toHaveBeenCalled();
+    expect(notify).not.toHaveBeenCalled();
+
+    expect(actionService.dispatch).toHaveBeenCalledWith(
+      "system.openExternal",
+      expect.objectContaining({
+        url: expect.stringContaining("github.com/daintreehq/daintree/issues/new"),
+      }),
+      { source: "user" }
+    );
+  });
+
+  it("copies full report to clipboard and notifies when payload exceeds URL budget", async () => {
+    function ThrowGiantStack(): React.ReactElement {
+      const error = new Error("Component blew up");
+      // Force the encoded body well past 7000 even after stack truncation.
+      error.stack =
+        "Error: Component blew up\n" +
+        Array.from({ length: 30 }, (_, i) => `    at frame${i} ${"x".repeat(800)}`).join("\n");
+      throw error;
+    }
+
+    render(
+      <ErrorBoundary variant="section">
+        <ThrowGiantStack />
+      </ErrorBoundary>
+    );
+
+    fireEvent.click(screen.getByText("Report Issue"));
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const electron = (window as unknown as { electron: ElectronMock }).electron;
+    expect(electron.clipboard.writeText).toHaveBeenCalledTimes(1);
+    const clipboardArg = electron.clipboard.writeText.mock.calls[0]![0] as string;
+    expect(clipboardArg).toContain("**Component:**");
+    expect(clipboardArg).toContain("Component blew up");
+
+    expect(notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "info",
+        title: "Error details copied",
+      })
+    );
+
+    expect(actionService.dispatch).toHaveBeenCalledWith(
+      "system.openExternal",
+      expect.objectContaining({
+        url: expect.stringContaining("copied%20to%20your%20clipboard"),
+      }),
+      { source: "user" }
+    );
+  });
+
+  it("still opens the stub URL when clipboard write fails", async () => {
+    const electron = (window as unknown as { electron: ElectronMock }).electron;
+    electron.clipboard.writeText.mockRejectedValue(new Error("clipboard busy"));
+
+    function ThrowGiantStack(): React.ReactElement {
+      const error = new Error("Component blew up");
+      error.stack =
+        "Error: Component blew up\n" +
+        Array.from({ length: 30 }, (_, i) => `    at frame${i} ${"x".repeat(800)}`).join("\n");
+      throw error;
+    }
+
+    render(
+      <ErrorBoundary variant="section">
+        <ThrowGiantStack />
+      </ErrorBoundary>
+    );
+
+    fireEvent.click(screen.getByText("Report Issue"));
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(electron.clipboard.writeText).toHaveBeenCalled();
+    expect(notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "info",
+        title: "Error details too long",
+      })
+    );
+    expect(actionService.dispatch).toHaveBeenCalledWith("system.openExternal", expect.any(Object), {
+      source: "user",
+    });
   });
 
   it("hides technical details in production mode", () => {

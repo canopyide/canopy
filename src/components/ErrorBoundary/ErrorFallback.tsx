@@ -9,7 +9,7 @@ export interface ErrorFallbackProps {
   variant?: "fullscreen" | "section" | "component";
   componentName?: string;
   incidentId?: string | null;
-  onReport?: () => void;
+  onReport?: () => void | Promise<void>;
 }
 
 const VARIANT_STYLES = {

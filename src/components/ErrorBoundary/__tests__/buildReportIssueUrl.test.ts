@@ -1,0 +1,145 @@
+import { describe, expect, it } from "vitest";
+import {
+  buildReportIssueUrl,
+  URL_BODY_BUDGET,
+  type ReportIssueInput,
+} from "../buildReportIssueUrl";
+
+function getEncodedBodyLength(url: string): number {
+  const bodyParam = new URL(url).searchParams.get("body") ?? "";
+  return encodeURIComponent(bodyParam).length;
+}
+
+function makeInput(overrides: Partial<ReportIssueInput> = {}): ReportIssueInput {
+  return {
+    incidentId: "abc123",
+    componentName: "TerminalPane",
+    message: "boom",
+    stack: "Error: boom\n  at thrower (file.ts:1)\n  at React.render (react.js:1)",
+    componentStack: "  in TerminalPane\n  in PanelGrid",
+    context: { worktreeId: "wt-1" },
+    ...overrides,
+  };
+}
+
+describe("buildReportIssueUrl", () => {
+  it("includes all sections and stays under budget for short input", () => {
+    const result = buildReportIssueUrl(makeInput());
+
+    expect(result.usedClipboardFallback).toBe(false);
+    expect(result.fullBody).toContain("**Component:** TerminalPane");
+    expect(result.fullBody).toContain("**Incident ID:** abc123");
+    expect(result.fullBody).toContain("**Message:** boom");
+    expect(result.fullBody).toContain("Error: boom");
+    expect(result.fullBody).toContain("in TerminalPane");
+    expect(result.url).toContain("github.com/daintreehq/daintree/issues/new");
+    expect(getEncodedBodyLength(result.url)).toBeLessThanOrEqual(URL_BODY_BUDGET);
+  });
+
+  it("encodes title and body so URL is safe to navigate", () => {
+    const result = buildReportIssueUrl(
+      makeInput({ message: "Cannot read property 'foo' of undefined & friends" })
+    );
+    const parsed = new URL(result.url);
+    expect(parsed.searchParams.get("title")).toBe(
+      "Component Error: Cannot read property 'foo' of undefined & friends"
+    );
+    expect(parsed.searchParams.get("body")).toContain("Cannot read property 'foo'");
+  });
+
+  it("falls back to placeholder values when fields are empty", () => {
+    const result = buildReportIssueUrl({
+      incidentId: null,
+      componentName: undefined,
+      message: "",
+      stack: "",
+      componentStack: "",
+      context: undefined,
+    });
+
+    expect(result.fullBody).toContain("**Component:** Unknown");
+    expect(result.fullBody).toContain("**Incident ID:** unknown");
+    expect(result.fullBody).toContain("**Message:** Unknown error");
+    expect(result.fullBody).toContain("No stack trace");
+    expect(result.fullBody).toContain("No component stack");
+    expect(result.usedClipboardFallback).toBe(false);
+  });
+
+  it("drops componentStack when full body exceeds budget", () => {
+    // Component stack > budget on its own; error stack stays small.
+    const longComponentStack = Array.from({ length: 800 }, (_, i) => `  in Comp${i}`).join("\n");
+    const result = buildReportIssueUrl(makeInput({ componentStack: longComponentStack }));
+
+    expect(result.usedClipboardFallback).toBe(false);
+    expect(getEncodedBodyLength(result.url)).toBeLessThanOrEqual(URL_BODY_BUDGET);
+    // The placeholder should sit where the stack used to be.
+    expect(decodeURIComponent(new URL(result.url).searchParams.get("body") ?? "")).toContain(
+      "component stack omitted"
+    );
+    // fullBody (clipboard payload) still has the original.
+    expect(result.fullBody).toContain("in Comp0");
+    expect(result.fullBody).toContain("in Comp799");
+  });
+
+  it("middle-truncates the error stack when componentStack omission isn't enough", () => {
+    const longStack = Array.from({ length: 1500 }, (_, i) => `  at frame${i} (file.ts:${i})`).join(
+      "\n"
+    );
+    const longComponentStack = Array.from({ length: 200 }, (_, i) => `  in Comp${i}`).join("\n");
+    const result = buildReportIssueUrl(
+      makeInput({ stack: longStack, componentStack: longComponentStack })
+    );
+
+    expect(getEncodedBodyLength(result.url)).toBeLessThanOrEqual(URL_BODY_BUDGET);
+    const body = decodeURIComponent(new URL(result.url).searchParams.get("body") ?? "");
+    expect(body).toContain("middle frames truncated");
+    // First frames preserved.
+    expect(body).toContain("at frame0 (file.ts:0)");
+    // Last frames preserved.
+    expect(body).toContain("at frame1499 (file.ts:1499)");
+    // Middle frame dropped.
+    expect(body).not.toContain("at frame750 (file.ts:750)");
+    // fullBody (clipboard payload) still has everything.
+    expect(result.fullBody).toContain("at frame750 (file.ts:750)");
+    expect(result.usedClipboardFallback).toBe(false);
+  });
+
+  it("falls back to clipboard stub when even truncated body exceeds budget", () => {
+    // Build a single error message + first/last frames that, even when
+    // middle-truncated, still blow the budget. Use very long lines.
+    const longLine = "x".repeat(1200);
+    const stack = Array.from({ length: 25 }, () => longLine).join("\n");
+    const componentStack = Array.from({ length: 10 }, () => longLine).join("\n");
+    const result = buildReportIssueUrl(makeInput({ stack, componentStack }));
+
+    expect(result.usedClipboardFallback).toBe(true);
+    expect(getEncodedBodyLength(result.url)).toBeLessThanOrEqual(URL_BODY_BUDGET);
+
+    const body = decodeURIComponent(new URL(result.url).searchParams.get("body") ?? "");
+    expect(body).toContain("copied to your clipboard");
+    expect(body).toContain("**Incident ID:** abc123");
+    expect(body).toContain("**Message:** boom");
+    // Stub URL should NOT contain the giant stack.
+    expect(body).not.toContain(longLine);
+    // Full payload preserved for clipboard write.
+    expect(result.fullBody).toContain(longLine);
+    expect(result.fullBody).toContain("**Component:** TerminalPane");
+  });
+
+  it("respects budget exactly at boundary", () => {
+    // Construct input that lands just under the budget.
+    const padding = "a".repeat(URL_BODY_BUDGET - 500); // ASCII chars are 1:1 in encodeURIComponent
+    const result = buildReportIssueUrl(makeInput({ stack: padding }));
+    expect(result.usedClipboardFallback).toBe(false);
+    expect(getEncodedBodyLength(result.url)).toBeLessThanOrEqual(URL_BODY_BUDGET);
+  });
+
+  it("URL is parseable and points at the right repo", () => {
+    const result = buildReportIssueUrl(makeInput());
+    const url = new URL(result.url);
+    expect(url.host).toBe("github.com");
+    expect(url.pathname).toBe("/daintreehq/daintree/issues/new");
+    expect(url.searchParams.has("title")).toBe(true);
+    expect(url.searchParams.has("body")).toBe(true);
+  });
+});
