@@ -118,12 +118,28 @@ describe("SidebarContent quick-state empty state — issue #6333 (CTA collapsed 
       expect(branch).toMatch(/onClick=\{clearAllFilters\}[\s\S]*?>\s*Clear filters\s*</);
       expect(branch).not.toContain("Show all states");
       expect(branch).not.toContain("clearQuickStateFilter");
+      // Exactly one button — guards against the dual-CTA pattern returning by
+      // any other shape (e.g. an additional secondary action being added).
+      const buttonMatches = branch.match(/<button\b/g) ?? [];
+      expect(buttonMatches).toHaveLength(1);
     });
 
     it("does not render two recovery CTAs side-by-side in the quick-state branch", () => {
       // Regression guard against the dual-button anti-pattern returning.
       expect(source).not.toContain("Show all states");
       expect(source).not.toContain("Clear all filters");
+    });
+
+    it("gates the description on hasPopoverFilters so the no-popover-filters case stays quiet", () => {
+      // When only the quick-state filter is active, the title and single
+      // CTA already convey everything; an additional descriptive line would
+      // be redundant noise. The description prop passes `undefined` in that
+      // path, which the EmptyState primitive treats as "no description".
+      const branchStart = source.indexOf("showQuickStateEmptyState ?");
+      const branchEnd = source.indexOf("filteredWorktrees.length === 0 && hasFilters", branchStart);
+      const branch = source.slice(branchStart, branchEnd);
+      expect(branch).toMatch(/description=\{[\s\S]*?hasPopoverFilters[\s\S]*?\}/);
+      expect(branch).toContain("undefined");
     });
 
     it("preserves the 'No worktrees match your filters' branch via the EmptyState primitive", () => {
@@ -240,5 +256,16 @@ describe("SidebarContent zero-worktrees taxonomy alignment — issue #6934", () 
     const importLine = source.match(/import \{[^}]*\} from "lucide-react"/);
     expect(importLine).not.toBeNull();
     expect(importLine![0]).not.toContain("FilterX");
+  });
+
+  it("does not render a button in the zero-worktrees branch", () => {
+    // The zero-worktrees state's only action is in the application menu,
+    // communicated via the <kbd>File → Open Directory</kbd> hint — there is
+    // no inline button. Guards against a future regression that adds a
+    // create-worktree CTA back into this branch.
+    const branchStart = source.indexOf("if (worktrees.length === 0) {");
+    const branchEnd = source.indexOf("const hasNonMainWorktrees", branchStart);
+    const branch = source.slice(branchStart, branchEnd);
+    expect(branch).not.toContain("<button");
   });
 });
