@@ -18,7 +18,7 @@ function getErrorTitle(code: SpawnError["code"]): string {
     case "ENOENT":
       return "Couldn't find shell or command";
     case "EACCES":
-      return "Permission denied";
+      return "Couldn't execute shell";
     case "ENOTDIR":
       return "Invalid working directory";
     case "EIO":

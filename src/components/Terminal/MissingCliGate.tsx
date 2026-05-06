@@ -64,9 +64,8 @@ function StateBanner({ state, detail }: { state: AgentAvailabilityState; detail:
           </p>
           <p className="text-xs text-daintree-text/60 mt-1">
             {isWsl
-              ? `Found in WSL (${detail.wslDistro ?? "unknown distro"}) but Daintree launches binaries directly from the host. Install a native binary or use "Run anyway" if you have a wrapper.`
-              : (detail.message ??
-                "The binary is installed but Daintree cannot launch it directly.")}
+              ? `Found in WSL (${detail.wslDistro ?? "unknown distro"}) — only host binaries can be launched directly. Install a native binary or use "Run anyway" if you have a wrapper.`
+              : (detail.message ?? "The binary is installed but can't be launched directly.")}
           </p>
         </div>
       </div>

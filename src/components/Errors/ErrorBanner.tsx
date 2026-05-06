@@ -24,11 +24,11 @@ export interface ErrorBannerProps {
 }
 
 const ERROR_TYPE_LABELS: Record<string, string> = {
-  git: "Git Error",
-  process: "Process Error",
-  filesystem: "File System Error",
-  network: "Network Error",
-  config: "Configuration Error",
+  git: "Git error",
+  process: "Process error",
+  filesystem: "File system error",
+  network: "Network error",
+  config: "Configuration error",
   unknown: "Error",
 };
 
