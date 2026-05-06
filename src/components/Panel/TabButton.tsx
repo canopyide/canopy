@@ -319,9 +319,9 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
             </span>
           )}
 
-          {displayAgentState &&
-            StateIcon &&
-            (document.body.dataset.performanceMode === "true" ? (
+          {document.body.dataset.performanceMode === "true" ? (
+            displayAgentState &&
+            StateIcon && (
               <StateIcon
                 className={cn(
                   "w-3 h-3 shrink-0",
@@ -331,8 +331,10 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
                 )}
                 aria-hidden="true"
               />
-            ) : (
-              <AnimatePresence initial={false} mode="wait">
+            )
+          ) : (
+            <AnimatePresence initial={false} mode="wait">
+              {displayAgentState && StateIcon && (
                 <m.span
                   key={displayAgentState}
                   initial={{ opacity: 0, scale: 0.85 }}
@@ -351,8 +353,9 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
                     aria-hidden="true"
                   />
                 </m.span>
-              </AnimatePresence>
-            ))}
+              )}
+            </AnimatePresence>
+          )}
 
           {isUsingFallback && (
             <Tooltip>

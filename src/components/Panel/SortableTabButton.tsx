@@ -52,9 +52,11 @@ function SortableTabButtonComponent({
     [onClose]
   );
 
+  const performanceMode = document.body.dataset.performanceMode === "true";
+
   return (
     <div ref={setNodeRef} style={style} className={cn(isDragging && "opacity-50")}>
-      <m.div layout="position">
+      {performanceMode ? (
         <TabButton
           ref={setActivatorNodeRef}
           id={id}
@@ -64,7 +66,19 @@ function SortableTabButtonComponent({
           sortableAttributes={attributes}
           {...tabButtonProps}
         />
-      </m.div>
+      ) : (
+        <m.div layout="position">
+          <TabButton
+            ref={setActivatorNodeRef}
+            id={id}
+            onClick={handleClick}
+            onClose={handleClose}
+            sortableListeners={listeners}
+            sortableAttributes={attributes}
+            {...tabButtonProps}
+          />
+        </m.div>
+      )}
     </div>
   );
 }
