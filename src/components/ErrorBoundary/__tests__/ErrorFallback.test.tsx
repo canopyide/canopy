@@ -2,6 +2,7 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { ErrorFallback } from "../ErrorFallback";
+import { actionService } from "@/services/ActionService";
 
 vi.mock("@/services/ActionService", () => ({
   actionService: {
@@ -140,6 +141,21 @@ describe("ErrorFallback", () => {
       vi.stubEnv("DEV", false);
       render(<ErrorFallback {...baseProps} variant="section" />);
       expect(screen.getByText("View logs")).toBeTruthy();
+    });
+
+    it("shows View logs for fullscreen variant", () => {
+      vi.stubEnv("DEV", false);
+      render(<ErrorFallback {...baseProps} variant="fullscreen" />);
+      expect(screen.getByText("View logs")).toBeTruthy();
+    });
+
+    it("dispatches logs.openFile when View logs is clicked", () => {
+      vi.stubEnv("DEV", false);
+      render(<ErrorFallback {...baseProps} variant="section" />);
+      fireEvent.click(screen.getByText("View logs"));
+      expect(actionService.dispatch).toHaveBeenCalledWith("logs.openFile", undefined, {
+        source: "user",
+      });
     });
 
     it("shows Reload window text for fullscreen variant", () => {

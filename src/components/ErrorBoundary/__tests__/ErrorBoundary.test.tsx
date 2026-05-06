@@ -143,6 +143,16 @@ describe("ErrorBoundary", () => {
     expect(screen.queryByText("Report issue")).toBeNull();
   });
 
+  it("does not show View logs button for component variant", () => {
+    render(
+      <ErrorBoundary variant="component">
+        <ThrowingChild shouldThrow={true} />
+      </ErrorBoundary>
+    );
+
+    expect(screen.queryByTestId("error-fallback-logs")).toBeNull();
+  });
+
   it("renders incident ID in production mode for section variant", () => {
     vi.stubEnv("DEV", false);
 
