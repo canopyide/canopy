@@ -83,3 +83,9 @@ export function markBackstopConsumedEscape(): void {
 export function backstopAlreadyConsumedEscape(): boolean {
   return backstopConsumedEscape;
 }
+
+export function _resetForTests(): void {
+  stack.length = 0;
+  radixLayerOpenAtCapture = false;
+  backstopConsumedEscape = false;
+}
