@@ -211,4 +211,72 @@ describe("panelStore.addPanel focus guard (#6959)", () => {
 
     expect(usePanelStore.getState().focusedId).toBe(newId);
   });
+
+  describe("dock activation path", () => {
+    it("MCP spawn into dock with activateDockOnCreate exposes the panel but never claims focus", async () => {
+      const newId = await usePanelStore.getState().addPanel({
+        kind: "terminal",
+        cwd: "/test",
+        location: "dock",
+        activateDockOnCreate: true,
+        spawnedBy: "mcp",
+      });
+
+      expect(newId).toBeTruthy();
+      const state = usePanelStore.getState();
+      expect(state.activeDockTerminalId).toBe(newId);
+      expect(state.focusedId).toBe("incumbent-1");
+      expect(state.previousFocusedId).toBeNull();
+    });
+
+    it("MCP spawn of a non-PTY (browser) panel into the dock does not steal focus", async () => {
+      const newId = await usePanelStore.getState().addPanel({
+        kind: "browser",
+        location: "dock",
+        activateDockOnCreate: true,
+        spawnedBy: "mcp",
+      });
+
+      expect(newId).toBeTruthy();
+      const state = usePanelStore.getState();
+      expect(state.activeDockTerminalId).toBe(newId);
+      expect(state.focusedId).toBe("incumbent-1");
+    });
+
+    it("rolls focus back to the incumbent when assistant is focused and a non-MCP dock activation lands", async () => {
+      // The registry's atomic set() commits focusedId: id alongside the panel,
+      // so the wrapper has to issue a corrective set() to honor the assistant
+      // guard. Verify that path.
+      useMacroFocusStore.setState({ focusedRegion: "assistant" });
+
+      const newId = await usePanelStore.getState().addPanel({
+        kind: "terminal",
+        cwd: "/test",
+        location: "dock",
+        activateDockOnCreate: true,
+      });
+
+      expect(newId).toBeTruthy();
+      const state = usePanelStore.getState();
+      expect(state.activeDockTerminalId).toBe(newId);
+      expect(state.focusedId).toBe("incumbent-1");
+    });
+
+    it("user-initiated dock activation still advances focus normally when assistant is not focused", async () => {
+      // Positive control for the dock path — make sure we didn't break the
+      // happy path while patching the guard.
+      const newId = await usePanelStore.getState().addPanel({
+        kind: "terminal",
+        cwd: "/test",
+        location: "dock",
+        activateDockOnCreate: true,
+      });
+
+      expect(newId).toBeTruthy();
+      const state = usePanelStore.getState();
+      expect(state.activeDockTerminalId).toBe(newId);
+      expect(state.focusedId).toBe(newId);
+      expect(state.previousFocusedId).toBe("incumbent-1");
+    });
+  });
 });

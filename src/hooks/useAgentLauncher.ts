@@ -236,6 +236,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
               worktreeId: targetWorktreeId || undefined,
               location: launchOptions?.location,
               activateDockOnCreate: launchOptions?.activateDockOnCreate,
+              spawnedBy: launchOptions?.spawnedBy,
             });
             return terminalId;
           } catch (error) {
@@ -254,6 +255,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
               worktreeId: targetWorktreeId || undefined,
               location: launchOptions?.location,
               activateDockOnCreate: launchOptions?.activateDockOnCreate,
+              spawnedBy: launchOptions?.spawnedBy,
             });
             return terminalId;
           } catch (error) {

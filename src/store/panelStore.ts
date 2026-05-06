@@ -186,17 +186,29 @@ export const usePanelStore = create<PanelGridState>()(
         } else if (
           options.activateDockOnCreate &&
           options.location === "dock" &&
-          !isHydrationBatchActive() &&
-          focusedBeforeCreate !== null &&
-          focusedBeforeCreate !== id &&
-          !isMcpSpawn
+          !isHydrationBatchActive()
         ) {
-          // Best-effort previousFocusedId for the tmux-style alternate-pane toggle.
-          // Updating in a follow-up set() is fine — previousFocusedId is metadata,
-          // not load-bearing for dock visibility (which the watchdog effect cares
-          // about and which is already covered by the registry's atomic commit).
-          // MCP spawns skip this — they never participate in alternate-pane focus.
-          set({ previousFocusedId: focusedBeforeCreate });
+          // The registry slice atomically advanced `focusedId` to the new id
+          // inside its commit (#6590). When the assistant currently owns
+          // input we issue a corrective set() to roll the focus back —
+          // `activeDockTerminalId` stays so the dock panel is still surfaced.
+          // MCP-tagged spawns skip the registry's focus mutation entirely
+          // (handled in `panelRegistry/addPanel.ts`), so no rollback is
+          // needed here for the MCP case.
+          if (assistantHasFocus && !isMcpSpawn) {
+            set({ focusedId: focusedBeforeCreate });
+          } else if (
+            !isMcpSpawn &&
+            focusedBeforeCreate !== null &&
+            focusedBeforeCreate !== id
+          ) {
+            // Best-effort previousFocusedId for the tmux-style alternate-pane toggle.
+            // Updating in a follow-up set() is fine — previousFocusedId is metadata,
+            // not load-bearing for dock visibility (which the watchdog effect cares
+            // about and which is already covered by the registry's atomic commit).
+            // MCP spawns skip this — they never participate in alternate-pane focus.
+            set({ previousFocusedId: focusedBeforeCreate });
+          }
         }
         return id;
       },
