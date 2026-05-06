@@ -12,7 +12,10 @@ import { GripVertical } from "lucide-react";
 import { useErrorStore, usePanelStore, type RetryAction, type TerminalInstance } from "../../store";
 import { useRecipeStore } from "../../store/recipeStore";
 import { useWorktreeSelectionStore } from "../../store/worktreeStore";
-import { useProjectSettingsStore } from "../../store/projectSettingsStore";
+import {
+  useProjectSettingsStore,
+  areProjectNotificationsMuted,
+} from "../../store/projectSettingsStore";
 import { useWorktreeFilterStore } from "../../store/worktreeFilterStore";
 import { errorsClient, worktreeClient } from "@/clients";
 import { actionService } from "@/services/ActionService";
@@ -111,6 +114,11 @@ export function WorktreeCard({
   const resourceEnvironments = useProjectSettingsStore(
     (state) => state.settings?.resourceEnvironments
   );
+
+  const notificationOverrides = useProjectSettingsStore(
+    (state) => state.settings?.notificationOverrides
+  );
+  const isProjectNotificationsMuted = areProjectNotificationsMuted(notificationOverrides);
 
   const environmentIcon =
     worktree.worktreeMode && worktree.worktreeMode !== "local"
@@ -676,6 +684,7 @@ export function WorktreeCard({
                 isActive={isActive}
                 variant={variant}
                 isMuted={isMuted}
+                isProjectNotificationsMuted={isProjectNotificationsMuted}
                 isMainWorktree={isMainWorktree}
                 isMainOnStandardBranch={isMainOnStandardBranch}
                 isPinned={isPinned}

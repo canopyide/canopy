@@ -3,6 +3,7 @@ import type { ActionContext } from "@shared/types/actions";
 import { z } from "zod";
 import { projectClient } from "@/clients";
 import { useProjectStore } from "@/store/projectStore";
+import { useProjectSettingsStore } from "@/store/projectSettingsStore";
 import { getMruProjects } from "@/lib/projectMru";
 import { notify, EVENT_KIND_TO_SETTING_KEY, EVENT_KIND_LABEL } from "@/lib/notify";
 import type { NotificationEventKind } from "@/lib/notify";
@@ -292,14 +293,27 @@ export function registerProjectActions(actions: ActionRegistry, callbacks: Actio
       try {
         const current = await projectClient.getSettings(projectId);
         const priorOverrides = { ...current.notificationOverrides };
-        await projectClient.saveSettings(projectId, {
+        const updated = {
           ...current,
           notificationOverrides: {
             ...current.notificationOverrides,
             completedEnabled: false,
             waitingEnabled: false,
           },
-        });
+        };
+        await projectClient.saveSettings(projectId, updated);
+        const settingsState = useProjectSettingsStore.getState();
+        if (settingsState.projectId === projectId) {
+          settingsState.setSettings(updated);
+        }
+        if (updated.notificationOverrides) {
+          useProjectSettingsStore.setState((s) => ({
+            notificationOverridesByProjectId: {
+              ...s.notificationOverridesByProjectId,
+              [projectId]: updated.notificationOverrides!,
+            },
+          }));
+        }
         notify({
           type: "success",
           message: "Project notifications muted",

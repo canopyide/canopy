@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { STATE_LABELS, STATE_PRIORITY } from "../terminalStateConfig";
 import { BranchLabel } from "../BranchLabel";
 import { TruncatedTooltip } from "@/components/ui/TruncatedTooltip";
-import { Sprout, Pin } from "lucide-react";
+import { Sprout, Pin, BellOff } from "lucide-react";
 import type { AggregateCounts } from "./MainWorktreeSummaryRows";
 import { IssueBadge } from "./IssueBadge";
 import { EnvironmentPopover } from "./EnvironmentPopover";
@@ -18,6 +18,7 @@ export interface WorktreeHeaderProps {
   isActive: boolean;
   variant?: "sidebar" | "grid";
   isMuted?: boolean;
+  isProjectNotificationsMuted?: boolean;
   isMainWorktree: boolean;
   isMainOnStandardBranch?: boolean;
   isPinned: boolean;
@@ -109,6 +110,7 @@ export function WorktreeHeader({
   isActive,
   variant = "sidebar",
   isMuted,
+  isProjectNotificationsMuted,
   isMainWorktree,
   isMainOnStandardBranch,
   isPinned,
@@ -180,6 +182,12 @@ export function WorktreeHeader({
             <Pin
               className="w-3 h-3 text-daintree-text/40 shrink-0 pointer-events-none"
               aria-label="Pinned"
+            />
+          )}
+          {isProjectNotificationsMuted && (
+            <BellOff
+              className="w-3.5 h-3.5 text-daintree-text/40 shrink-0 pointer-events-none"
+              aria-label="Notifications muted for this project"
             />
           )}
           {((worktree.worktreeMode && worktree.worktreeMode !== "local") ||

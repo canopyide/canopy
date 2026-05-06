@@ -18,6 +18,7 @@ import type {
   HelpAssistantSettings,
   KeybindingImportResult,
   MicPermissionStatus,
+  NotificationSettings,
   VoiceInputSettings,
 } from "./api.js";
 
@@ -2157,6 +2158,10 @@ export interface IpcInvokeMap {
   "project:get-bulk-stats": {
     args: [projectIds: string[]];
     result: BulkProjectStats;
+  };
+  "project:get-notification-overrides": {
+    args: [projectIds: string[]];
+    result: Record<string, Partial<NotificationSettings>>;
   };
 
   // Draft inputs

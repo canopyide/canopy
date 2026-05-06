@@ -1203,6 +1203,9 @@ const api: ElectronAPI = {
     getBulkStats: (projectIds: string[]) =>
       _unwrappingInvoke(CHANNELS.PROJECT_GET_BULK_STATS, projectIds),
 
+    getNotificationOverrides: (projectIds: string[]) =>
+      _unwrappingInvoke(CHANNELS.PROJECT_GET_NOTIFICATION_OVERRIDES, projectIds),
+
     onStatsUpdated: (
       callback: (stats: import("../shared/types/ipc/project.js").ProjectStatusMap) => void
     ) => _typedOn(CHANNELS.PROJECT_STATS_UPDATED, callback),

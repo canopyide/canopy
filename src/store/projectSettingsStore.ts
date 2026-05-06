@@ -1,5 +1,6 @@
 import { create, type StateCreator } from "zustand";
 import type { ProjectSettings, RunCommand } from "@shared/types";
+import type { NotificationSettings } from "@shared/types/ipc/api";
 import { projectClient } from "@/clients";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { logError } from "@/utils/logger";
@@ -17,6 +18,8 @@ interface ProjectSettingsState {
   isLoading: boolean;
   /** Error message if loading failed */
   error: string | null;
+  /** Notification overrides by project ID, loaded in bulk for list UIs */
+  notificationOverridesByProjectId: Record<string, Partial<NotificationSettings>>;
 }
 
 interface ProjectSettingsActions {
@@ -28,6 +31,13 @@ interface ProjectSettingsActions {
   setDetectedRunners: (runners: RunCommand[]) => void;
   /** Reset store state (used on project switch) */
   reset: () => void;
+  /** Bulk-load notification overrides for a set of project IDs */
+  loadNotificationOverridesForProjects: (projectIds: string[]) => Promise<void>;
+}
+
+/** Returns true when both completed and waiting notifications are explicitly suppressed. */
+export function areProjectNotificationsMuted(overrides?: Partial<NotificationSettings>): boolean {
+  return overrides?.completedEnabled === false && overrides?.waitingEnabled === false;
 }
 
 const initialState: ProjectSettingsState = {
@@ -37,6 +47,7 @@ const initialState: ProjectSettingsState = {
   projectId: null,
   isLoading: false,
   error: null,
+  notificationOverridesByProjectId: {},
 };
 
 const MAX_SETTINGS_CACHE_SIZE = 3;
@@ -140,6 +151,40 @@ const createProjectSettingsStore: StateCreator<ProjectSettingsState & ProjectSet
 
   reset: () => {
     set(initialState);
+  },
+
+  loadNotificationOverridesForProjects: async (projectIds: string[]) => {
+    const unique = [...new Set(projectIds.filter((id) => typeof id === "string" && id.length > 0))];
+    if (unique.length === 0) return;
+
+    try {
+      const record = await projectClient.getNotificationOverrides(unique);
+      set((state) => {
+        const next = { ...state.notificationOverridesByProjectId };
+        let changed = false;
+        for (const id of unique) {
+          const incoming = record[id];
+          const existing = next[id];
+          if (!incoming) {
+            if (existing) {
+              delete next[id];
+              changed = true;
+            }
+            continue;
+          }
+          if (
+            existing?.completedEnabled !== incoming.completedEnabled ||
+            existing?.waitingEnabled !== incoming.waitingEnabled
+          ) {
+            next[id] = incoming;
+            changed = true;
+          }
+        }
+        return changed ? { notificationOverridesByProjectId: next } : {};
+      });
+    } catch {
+      // Best-effort — mute indicator is visual-only
+    }
   },
 });
 
