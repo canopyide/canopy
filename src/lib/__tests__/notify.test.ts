@@ -1524,6 +1524,68 @@ describe("notify()", () => {
       expect(useNotificationStore.getState().notifications).toHaveLength(1);
     });
 
+    it("promotes to toast on window blur during grace window", () => {
+      // Alt-tab without changing worktree/panel doesn't fire a context
+      // subscriber, so without the blur fallback the timer would silently
+      // drop the notification with seenAsToast=true.
+      const focusSpy = vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      setActiveWorktree("wt-1");
+      notify({
+        type: "info",
+        message: "Alt-tab signal",
+        priority: "high",
+        context: { worktreeId: "wt-1" },
+      });
+      expect(useNotificationStore.getState().notifications).toHaveLength(0);
+
+      focusSpy.mockReturnValue(false);
+      window.dispatchEvent(new Event("blur"));
+      expect(useNotificationStore.getState().notifications).toHaveLength(1);
+      expect(useNotificationStore.getState().notifications[0]!.message).toBe("Alt-tab signal");
+    });
+
+    it("promoted toast carries the same historyEntryId as the suppressed entry", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      setActiveWorktree("wt-1");
+      notify({
+        type: "info",
+        message: "linked",
+        priority: "high",
+        context: { worktreeId: "wt-1" },
+      });
+      const entryId = useNotificationHistoryStore.getState().entries[0]!.id;
+      setActiveWorktree("wt-2");
+      const toast = useNotificationStore.getState().notifications[0];
+      expect(toast?.historyEntryId).toBe(entryId);
+    });
+
+    it("does not promote when subscriber fires after grace expires", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      setActiveWorktree("wt-1");
+      notify({
+        type: "info",
+        message: "Late nav",
+        priority: "high",
+        context: { worktreeId: "wt-1" },
+      });
+      vi.advanceTimersByTime(501);
+      setActiveWorktree("wt-2");
+      expect(useNotificationStore.getState().notifications).toHaveLength(0);
+    });
+
+    it("watch priority with matching surface still toasts (no suppression for watch)", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      setActiveWorktree("wt-1");
+      notify({
+        type: "warning",
+        message: "Watch in scope",
+        priority: "watch",
+        context: { worktreeId: "wt-1" },
+      });
+      expect(useNotificationStore.getState().notifications).toHaveLength(1);
+      expect(mockShowNative).toHaveBeenCalledTimes(1);
+    });
+
     it("_resetPendingSuppressedForTest clears pending grace timers and listeners", () => {
       vi.spyOn(document, "hasFocus").mockReturnValue(true);
       setActiveWorktree("wt-1");

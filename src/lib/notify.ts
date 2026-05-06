@@ -594,7 +594,23 @@ function scheduleSuppressionGrace(
 
   // If no subscriber is registered (very early startup), the timer is the
   // sole gate — falls back to "suppress for 500ms then drop".
-  const unsub = subscriber ? subscriber(promote) : () => {};
+  const unsubContext = subscriber ? subscriber(promote) : () => {};
+
+  // Window blur during grace means the user can no longer see the inline
+  // affordance, but no worktree/panel state changes to fire `subscriber`.
+  // Treat it as navigate-away so the missed signal still surfaces when they
+  // come back instead of being silently swallowed with `seenAsToast: true`.
+  let unsubBlur = (): void => {};
+  if (typeof window !== "undefined") {
+    const blurHandler = (): void => promote();
+    window.addEventListener("blur", blurHandler);
+    unsubBlur = (): void => window.removeEventListener("blur", blurHandler);
+  }
+
+  const unsub = (): void => {
+    unsubContext();
+    unsubBlur();
+  };
 
   _pendingSuppressed.set(historyEntryId, { timerId, unsub });
 }
