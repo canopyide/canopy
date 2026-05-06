@@ -98,12 +98,12 @@ describe("AppPaletteDialog.Header loading bar", () => {
 
   it("still renders header label and child input", () => {
     render(
-      <AppPaletteDialog.Header label="Quick switch" keyHint="⌘P" isLoading>
+      <AppPaletteDialog.Header label="Quick switch" shortcut="Cmd+P" isLoading>
         <input aria-label="Search terminals" />
       </AppPaletteDialog.Header>
     );
     expect(screen.getByText("Quick switch")).toBeTruthy();
-    expect(screen.getByText("⌘P")).toBeTruthy();
+    expect(screen.getByTestId("kbd-chord")).toBeTruthy();
     expect(screen.getByLabelText("Search terminals")).toBeTruthy();
   });
 
@@ -118,27 +118,7 @@ describe("AppPaletteDialog.Header loading bar", () => {
     expect(chord.dataset.shortcut).toBe("Cmd+P");
   });
 
-  it("prefers shortcut over keyHint when both are provided", () => {
-    render(
-      <AppPaletteDialog.Header label="Quick switch" shortcut="Cmd+P" keyHint="⌘P">
-        <input aria-label="Search" />
-      </AppPaletteDialog.Header>
-    );
-    expect(screen.getByTestId("kbd-chord")).toBeTruthy();
-    expect(screen.queryByText("⌘P")).toBeNull();
-  });
-
-  it("falls back to keyHint when shortcut is undefined", () => {
-    render(
-      <AppPaletteDialog.Header label="Quick switch" keyHint="⇧⇧">
-        <input aria-label="Search" />
-      </AppPaletteDialog.Header>
-    );
-    expect(screen.getByText("⇧⇧")).toBeTruthy();
-    expect(screen.queryByTestId("kbd-chord")).toBeNull();
-  });
-
-  it("renders nothing when neither shortcut nor keyHint is provided", () => {
+  it("renders nothing when shortcut is not provided", () => {
     render(
       <AppPaletteDialog.Header label="Quick switch">
         <input aria-label="Search" />
@@ -149,13 +129,12 @@ describe("AppPaletteDialog.Header loading bar", () => {
     expect(screen.getByText("Quick switch")).toBeTruthy();
   });
 
-  it("falls back to keyHint when shortcut is empty string", () => {
+  it("renders nothing when shortcut is empty string", () => {
     render(
-      <AppPaletteDialog.Header label="Quick switch" shortcut="" keyHint="⌘P">
+      <AppPaletteDialog.Header label="Quick switch" shortcut="">
         <input aria-label="Search" />
       </AppPaletteDialog.Header>
     );
-    expect(screen.getByText("⌘P")).toBeTruthy();
     expect(screen.queryByTestId("kbd-chord")).toBeNull();
   });
 });

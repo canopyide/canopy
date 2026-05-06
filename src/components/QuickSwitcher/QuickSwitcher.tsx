@@ -1,6 +1,6 @@
 import { useCallback, useId } from "react";
 import { SearchablePalette } from "@/components/ui/SearchablePalette";
-import { PaletteFooterHints } from "@/components/ui/AppPaletteDialog";
+import { KBD_CLASS, PaletteFooterHints } from "@/components/ui/AppPaletteDialog";
 import { QuickSwitcherItem } from "./QuickSwitcherItem";
 import { useKeybindingDisplay, useEffectiveCombo } from "@/hooks/useKeybinding";
 import type {
@@ -121,11 +121,7 @@ export function QuickSwitcher({
         <p className="mt-2 text-xs text-daintree-text/40">
           {newTerminalShortcut ? (
             <>
-              Press{" "}
-              <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-daintree-border text-daintree-text/60">
-                {newTerminalShortcut}
-              </kbd>{" "}
-              to create a terminal.
+              Press <kbd className={KBD_CLASS}>{newTerminalShortcut}</kbd> to create a terminal.
             </>
           ) : (
             "Create a terminal to get started."

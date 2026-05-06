@@ -1,7 +1,6 @@
 import { useState, useMemo, useEffect, useCallback, useDeferredValue } from "react";
 import { cn } from "@/lib/utils";
 import { SearchablePalette } from "@/components/ui/SearchablePalette";
-import { Spinner } from "@/components/ui/Spinner";
 import type { CommandManifestEntry, CommandCategory } from "@shared/types/commands";
 
 interface CommandPickerProps {
@@ -147,37 +146,6 @@ export function CommandPicker({
     }
   }, [flatCommands, selectedIndex, onSelect, isStale]);
 
-  if (isLoading) {
-    return (
-      <SearchablePalette<CommandManifestEntry>
-        isOpen={isOpen}
-        query={query}
-        results={[]}
-        selectedIndex={0}
-        onQueryChange={setQuery}
-        onSelectPrevious={handleSelectPrevious}
-        onSelectNext={handleSelectNext}
-        onConfirm={handleConfirm}
-        onClose={onDismiss}
-        getItemId={(cmd) => cmd.id}
-        renderItem={() => null}
-        label="Commands"
-        keyHint="⌘K"
-        ariaLabel="Command picker"
-        searchPlaceholder="Search commands"
-        searchAriaLabel="Search commands"
-        listId="command-list"
-        itemIdPrefix="command"
-        renderBody={() => (
-          <div className="flex flex-col items-center justify-center py-8 space-y-2">
-            <Spinner size="xl" className="text-daintree-text/40" />
-            <p className="text-sm text-daintree-text/50">Loading commands...</p>
-          </div>
-        )}
-      />
-    );
-  }
-
   return (
     <SearchablePalette<CommandManifestEntry>
       isOpen={isOpen}
@@ -190,6 +158,7 @@ export function CommandPicker({
       onConfirm={handleConfirm}
       onClose={onDismiss}
       getItemId={(cmd) => cmd.id}
+      isLoading={isLoading}
       isFiltering={isStale}
       renderItem={(cmd, index, isSelected) => {
         const category = categoryStarts.get(cmd.id);
@@ -243,7 +212,6 @@ export function CommandPicker({
         );
       }}
       label="Commands"
-      keyHint="⌘K"
       ariaLabel="Command picker"
       searchPlaceholder="Search commands"
       searchAriaLabel="Search commands"

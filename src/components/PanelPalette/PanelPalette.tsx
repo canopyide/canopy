@@ -209,15 +209,19 @@ export function PanelPalette({
       </AppPaletteDialog.Header>
 
       <AppPaletteDialog.Body>
-        <div id="panel-list" role="listbox" aria-label="Panel types">
-          {results.length === 0 ? (
-            <div className="px-3 py-8 text-center text-daintree-text/50 text-sm">{`No panel types match "${query}"`}</div>
-          ) : isSearching ? (
-            results.map((kind, index) => renderOption(kind, index))
-          ) : (
-            renderSectionedList()
-          )}
-        </div>
+        {results.length === 0 ? (
+          <AppPaletteDialog.Empty
+            query={query}
+            emptyMessage="No panel types available"
+            noMatchMessage={`No panel types match "${query.length > 40 ? query.slice(0, 40) + "…" : query}"`}
+          />
+        ) : (
+          <div id="panel-list" role="listbox" aria-label="Panel types">
+            {isSearching
+              ? results.map((kind, index) => renderOption(kind, index))
+              : renderSectionedList()}
+          </div>
+        )}
         {totalResults != null && (
           <PaletteOverflowNotice shown={results.length} total={totalResults} />
         )}

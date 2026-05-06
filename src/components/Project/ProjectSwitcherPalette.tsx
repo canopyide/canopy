@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getProjectGradient } from "@/lib/colorUtils";
-import { AppPaletteDialog } from "@/components/ui/AppPaletteDialog";
+import { AppPaletteDialog, KBD_CLASS } from "@/components/ui/AppPaletteDialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   ContextMenu,
@@ -644,9 +644,6 @@ function ScratchSection({
     </div>
   );
 }
-
-const KBD_CLASS =
-  "px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-daintree-border text-daintree-text/60";
 
 function ProjectSwitcherFooter({ mode }: { mode?: ProjectSwitcherMode }) {
   const modifiers = useModifierKeys();

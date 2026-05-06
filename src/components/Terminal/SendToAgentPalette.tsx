@@ -1,6 +1,7 @@
 import React, { useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { SearchablePalette } from "@/components/ui/SearchablePalette";
+import { KBD_CLASS } from "@/components/ui/AppPaletteDialog";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import { Lock } from "lucide-react";
 import { useKeybindingDisplay, useEffectiveCombo } from "@/hooks/useKeybinding";
@@ -125,11 +126,7 @@ export function SendToAgentPalette({
         <p className="mt-2 text-xs text-daintree-text/40">
           {newTerminalShortcut ? (
             <>
-              Press{" "}
-              <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-daintree-border text-daintree-text/60">
-                {newTerminalShortcut}
-              </kbd>{" "}
-              to create a new terminal.
+              Press <kbd className={KBD_CLASS}>{newTerminalShortcut}</kbd> to create a new terminal.
             </>
           ) : (
             "Create another terminal to send selections."

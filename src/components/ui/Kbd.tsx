@@ -35,7 +35,7 @@ export interface KbdChordProps {
  * Renders a keyboard chord as per-key pills using the neutral overlay surface.
  * macOS uses glyph keys with no `+` separator; Win/Linux uses spelled-out keys
  * separated by a small `+` character. Two-step chords (`Cmd+K T`) are joined
- * by a comma+space, matching the `keyHint` convention used elsewhere.
+ * by a comma+space.
  */
 export function KbdChord({
   shortcut,

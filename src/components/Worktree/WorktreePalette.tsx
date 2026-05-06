@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import { SearchablePalette } from "@/components/ui/SearchablePalette";
+import { KBD_CLASS } from "@/components/ui/AppPaletteDialog";
 import { useKeybindingDisplay, useEffectiveCombo } from "@/hooks/useKeybinding";
 import { useTruncationDetection } from "@/hooks/useTruncationDetection";
 import { TruncatedTooltip } from "@/components/ui/TruncatedTooltip";
@@ -123,11 +124,7 @@ export function WorktreePalette({
         <p className="mt-2 text-xs text-daintree-text/40">
           {createWorktreeShortcut ? (
             <>
-              Press{" "}
-              <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-daintree-border text-daintree-text/60">
-                {createWorktreeShortcut}
-              </kbd>{" "}
-              to create a worktree.
+              Press <kbd className={KBD_CLASS}>{createWorktreeShortcut}</kbd> to create a worktree.
             </>
           ) : (
             "Create a worktree to get started."
