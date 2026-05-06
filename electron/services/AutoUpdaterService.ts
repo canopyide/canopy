@@ -74,6 +74,10 @@ class AutoUpdaterService {
   private progressHandler: ((progress: ProgressInfo) => void) | null = null;
   private downloadedHandler: ((info: UpdateInfo) => void) | null = null;
 
+  private recordSuccessfulUpdateCheck(): void {
+    store.set("lastUpdateCheck", Date.now());
+  }
+
   private clearRetryTimeout(): void {
     if (this.retryTimeout) {
       clearTimeout(this.retryTimeout);
@@ -272,6 +276,10 @@ class AutoUpdaterService {
         return validated;
       });
 
+      ipcMain.handle(CHANNELS.UPDATE_GET_LAST_CHECK, () => {
+        return store.get("lastUpdateCheck") ?? null;
+      });
+
       this.channelHandlersRegistered = true;
     }
 
@@ -318,6 +326,7 @@ class AutoUpdaterService {
         console.log("[MAIN] Update available:", info.version);
         const suppressed = this.shouldSuppressUpdateAvailable(info.version);
         this.isManualCheck = false;
+        this.recordSuccessfulUpdateCheck();
         // A successful check ends the retry cycle regardless of whether we
         // broadcast — the network round-tripped, so the transient condition
         // has cleared.
@@ -330,6 +339,7 @@ class AutoUpdaterService {
 
       this.notAvailableHandler = (_info: UpdateInfo) => {
         console.log("[MAIN] Update not available");
+        this.recordSuccessfulUpdateCheck();
         this.resetRetryState();
         if (this.isManualCheck) {
           this.isManualCheck = false;
@@ -386,6 +396,7 @@ class AutoUpdaterService {
       this.downloadedHandler = (info: UpdateInfo) => {
         console.log("[MAIN] Update downloaded:", info.version);
         this.updateDownloaded = true;
+        this.recordSuccessfulUpdateCheck();
         this.resetRetryState();
         broadcastToRenderer(CHANNELS.UPDATE_DOWNLOADED, { version: info.version });
       };
@@ -554,6 +565,12 @@ class AutoUpdaterService {
 
     try {
       ipcMain.removeHandler(CHANNELS.UPDATE_SET_CHANNEL);
+    } catch {
+      // Handler may not have been registered
+    }
+
+    try {
+      ipcMain.removeHandler(CHANNELS.UPDATE_GET_LAST_CHECK);
     } catch {
       // Handler may not have been registered
     }

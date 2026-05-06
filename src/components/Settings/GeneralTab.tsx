@@ -38,6 +38,7 @@ import { keybindingService } from "@/services/KeybindingService";
 import { actionService } from "@/services/ActionService";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { logError } from "@/utils/logger";
+import { formatTimeAgo } from "@/utils/timeAgo";
 
 const GENERAL_SUBTABS: SettingsSubtabItem[] = [
   { id: "overview", label: "Overview" },
@@ -124,6 +125,7 @@ export function GeneralTab({
   const [shortcuts, setShortcuts] = useState<ShortcutCategory[]>([]);
   const [updateChannel, setUpdateChannel] = useState<"stable" | "nightly" | null>(null);
   const [channelSaving, setChannelSaving] = useState(false);
+  const [lastUpdateCheck, setLastUpdateCheck] = useState<number | null>(null);
   const isMountedRef = useRef(true);
   useEffect(() => {
     isMountedRef.current = true;
@@ -151,6 +153,29 @@ export function GeneralTab({
       });
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadLastCheck = () => {
+      window.electron.update
+        .getLastCheck()
+        .then((ts) => {
+          if (!cancelled) setLastUpdateCheck(ts);
+        })
+        .catch((error) => {
+          if (!cancelled) logError("Failed to get last update check", error);
+        });
+    };
+
+    loadLastCheck();
+    const interval = setInterval(loadLastCheck, 60_000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
     };
   }, []);
 
@@ -578,6 +603,11 @@ export function GeneralTab({
               <p className="text-xs text-status-warning/80">
                 Nightly builds may contain unstable features. You can switch back to stable at any
                 time.
+              </p>
+            )}
+            {lastUpdateCheck && (
+              <p className="text-xs text-text-secondary">
+                Last checked: {formatTimeAgo(lastUpdateCheck)}
               </p>
             )}
           </SettingsSection>

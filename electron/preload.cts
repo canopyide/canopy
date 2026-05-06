@@ -2061,6 +2061,8 @@ const api: ElectronAPI = {
       _unwrappingInvoke(CHANNELS.UPDATE_SET_CHANNEL, channel),
 
     notifyDismiss: (version: string) => _unwrappingInvoke(CHANNELS.UPDATE_DISMISS_TOAST, version),
+
+    getLastCheck: () => _unwrappingInvoke(CHANNELS.UPDATE_GET_LAST_CHECK),
   },
 
   // Gemini API

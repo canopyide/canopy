@@ -1016,6 +1016,7 @@ export interface ElectronAPI {
     getChannel(): Promise<"stable" | "nightly">;
     setChannel(channel: "stable" | "nightly"): Promise<"stable" | "nightly">;
     notifyDismiss(version: string): Promise<void>;
+    getLastCheck(): Promise<number | null>;
   };
   gemini: {
     /** Get Gemini config status (exists, alternate buffer enabled) */
