@@ -311,14 +311,20 @@ export function SearchablePalette<T>({
           <>
             {beforeList}
             {results.length === 0 ? (
-              <AppPaletteDialog.Empty
-                query={query}
-                emptyMessage={emptyMessage}
-                noMatchMessage={noMatchMessage}
-                noMatchContent={noMatchContent}
-              >
-                {resolvedEmptyContent}
-              </AppPaletteDialog.Empty>
+              // While loading, suppress the empty state so the header progress
+              // bar is the only signal — otherwise the user sees "no results"
+              // and the loading bar at the same time. The body keeps its
+              // min-height so the modal doesn't collapse before data arrives.
+              isLoading ? null : (
+                <AppPaletteDialog.Empty
+                  query={query}
+                  emptyMessage={emptyMessage}
+                  noMatchMessage={noMatchMessage}
+                  noMatchContent={noMatchContent}
+                >
+                  {resolvedEmptyContent}
+                </AppPaletteDialog.Empty>
+              )
             ) : (
               <div
                 ref={listRef}
