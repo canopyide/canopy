@@ -12,6 +12,9 @@ import {
   muteForDuration,
   muteUntilNextMorning,
   isScheduledQuietHours,
+  setActiveContextAccessors,
+  _resetActiveContextAccessorsForTest,
+  _resetPendingSuppressedForTest,
 } from "../notify";
 import { useNotificationStore } from "../../store/notificationStore";
 import { useNotificationHistoryStore } from "../../store/slices/notificationHistorySlice";
@@ -1250,6 +1253,353 @@ describe("notify()", () => {
       const notifications = useNotificationStore.getState().notifications;
       expect(notifications).toHaveLength(1);
       expect(notifications[0]!.context).toEqual({ projectId: "A" });
+    });
+  });
+
+  describe("active-context suppression — surface already on screen", () => {
+    let activeWorktreeId: string | null = null;
+    let focusedPanelId: string | null = null;
+    let listeners: Array<() => void> = [];
+
+    function setActiveWorktree(id: string | null): void {
+      activeWorktreeId = id;
+      for (const cb of listeners) cb();
+    }
+    function setFocusedPanel(id: string | null): void {
+      focusedPanelId = id;
+      for (const cb of listeners) cb();
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      activeWorktreeId = null;
+      focusedPanelId = null;
+      listeners = [];
+      setActiveContextAccessors({
+        getActiveWorktreeId: () => activeWorktreeId,
+        getFocusedPanelId: () => focusedPanelId,
+        subscribeActiveContext: (cb) => {
+          listeners.push(cb);
+          return () => {
+            listeners = listeners.filter((fn) => fn !== cb);
+          };
+        },
+      });
+      _resetPendingSuppressedForTest();
+    });
+
+    afterEach(() => {
+      _resetPendingSuppressedForTest();
+      _resetActiveContextAccessorsForTest();
+      vi.useRealTimers();
+    });
+
+    it("suppresses toast when context.worktreeId matches active worktree", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      setActiveWorktree("wt-1");
+      notify({
+        type: "info",
+        message: "Agent done",
+        priority: "high",
+        context: { worktreeId: "wt-1" },
+      });
+      expect(useNotificationStore.getState().notifications).toHaveLength(0);
+      const entries = useNotificationHistoryStore.getState().entries;
+      expect(entries).toHaveLength(1);
+      expect(entries[0]!.seenAsToast).toBe(true);
+    });
+
+    it("suppresses toast when context.panelId matches focused panel", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      setFocusedPanel("panel-1");
+      notify({
+        type: "info",
+        message: "Panel event",
+        priority: "high",
+        context: { panelId: "panel-1" },
+      });
+      expect(useNotificationStore.getState().notifications).toHaveLength(0);
+      expect(useNotificationHistoryStore.getState().entries).toHaveLength(1);
+    });
+
+    it("does not suppress when only projectId is supplied", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      setActiveWorktree("wt-1");
+      notify({
+        type: "info",
+        message: "Project event",
+        priority: "high",
+        context: { projectId: "proj-1" },
+      });
+      expect(useNotificationStore.getState().notifications).toHaveLength(1);
+    });
+
+    it("does not suppress when context.worktreeId differs from active", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      setActiveWorktree("wt-1");
+      notify({
+        type: "info",
+        message: "Other worktree",
+        priority: "high",
+        context: { worktreeId: "wt-2" },
+      });
+      expect(useNotificationStore.getState().notifications).toHaveLength(1);
+    });
+
+    it("does not suppress when window is blurred (no toast either, existing behavior)", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(false);
+      setActiveWorktree("wt-1");
+      notify({
+        type: "info",
+        message: "Background",
+        priority: "high",
+        context: { worktreeId: "wt-1" },
+      });
+      // Blurred + high → no toast, history only — same as without suppression.
+      expect(useNotificationStore.getState().notifications).toHaveLength(0);
+      const entries = useNotificationHistoryStore.getState().entries;
+      expect(entries).toHaveLength(1);
+      // Not seen — they will pick it up from the inbox when they refocus.
+      expect(entries[0]!.seenAsToast).toBe(false);
+    });
+
+    it("does not suppress watch-priority notifications", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      setActiveWorktree("wt-1");
+      notify({
+        type: "warning",
+        message: "Watch event",
+        priority: "watch",
+        context: { worktreeId: "wt-1" },
+      });
+      expect(useNotificationStore.getState().notifications).toHaveLength(1);
+    });
+
+    it("low priority is unaffected (history only, no grace)", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      setActiveWorktree("wt-1");
+      notify({
+        type: "info",
+        message: "Background only",
+        priority: "low",
+        context: { worktreeId: "wt-1" },
+      });
+      expect(useNotificationStore.getState().notifications).toHaveLength(0);
+      // Navigating away within 500ms should NOT promote a low-priority event.
+      setActiveWorktree("wt-2");
+      vi.advanceTimersByTime(500);
+      expect(useNotificationStore.getState().notifications).toHaveLength(0);
+    });
+
+    it("grid-bar placement bypasses suppression (always inline)", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      setActiveWorktree("wt-1");
+      notify({
+        type: "info",
+        message: "Inline bar",
+        placement: "grid-bar",
+        context: { worktreeId: "wt-1" },
+      });
+      expect(useNotificationStore.getState().notifications).toHaveLength(1);
+    });
+
+    it("promotes to toast when active worktree changes within 500ms", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      setActiveWorktree("wt-1");
+      notify({
+        type: "info",
+        message: "Should promote",
+        priority: "high",
+        context: { worktreeId: "wt-1" },
+      });
+      expect(useNotificationStore.getState().notifications).toHaveLength(0);
+
+      vi.advanceTimersByTime(100);
+      setActiveWorktree("wt-2");
+      expect(useNotificationStore.getState().notifications).toHaveLength(1);
+      expect(useNotificationStore.getState().notifications[0]!.message).toBe("Should promote");
+    });
+
+    it("promotes to toast when focused panel changes within 500ms", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      setFocusedPanel("panel-1");
+      notify({
+        type: "info",
+        message: "Panel signal",
+        priority: "high",
+        context: { panelId: "panel-1" },
+      });
+      expect(useNotificationStore.getState().notifications).toHaveLength(0);
+
+      setFocusedPanel("panel-2");
+      expect(useNotificationStore.getState().notifications).toHaveLength(1);
+    });
+
+    it("does not promote when context remains visible through grace window", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      setActiveWorktree("wt-1");
+      notify({
+        type: "info",
+        message: "Stays suppressed",
+        priority: "high",
+        context: { worktreeId: "wt-1" },
+      });
+      vi.advanceTimersByTime(600);
+      expect(useNotificationStore.getState().notifications).toHaveLength(0);
+    });
+
+    it("re-firing into the same surface after grace resets the suppression cleanly", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      setActiveWorktree("wt-1");
+      notify({
+        type: "info",
+        message: "first",
+        priority: "high",
+        context: { worktreeId: "wt-1" },
+      });
+      vi.advanceTimersByTime(600);
+      notify({
+        type: "info",
+        message: "second",
+        priority: "high",
+        context: { worktreeId: "wt-1" },
+      });
+      vi.advanceTimersByTime(600);
+      expect(useNotificationStore.getState().notifications).toHaveLength(0);
+      expect(useNotificationHistoryStore.getState().entries).toHaveLength(2);
+    });
+
+    it("does not promote if notifications get disabled during the grace window", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      setActiveWorktree("wt-1");
+      notify({
+        type: "info",
+        message: "Will not toast",
+        priority: "high",
+        context: { worktreeId: "wt-1" },
+      });
+      useNotificationSettingsStore.setState({ enabled: false });
+      setActiveWorktree("wt-2");
+      expect(useNotificationStore.getState().notifications).toHaveLength(0);
+    });
+
+    it("does not promote if quiet hours start during the grace window", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      setActiveWorktree("wt-1");
+      notify({
+        type: "info",
+        message: "Will not toast",
+        priority: "high",
+        context: { worktreeId: "wt-1" },
+      });
+      _setQuietUntil(Date.now() + 60_000);
+      setActiveWorktree("wt-2");
+      expect(useNotificationStore.getState().notifications).toHaveLength(0);
+    });
+
+    it("urgent flag promotes through quiet hours", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      setActiveWorktree("wt-1");
+      notify({
+        type: "warning",
+        message: "Urgent suppressed",
+        priority: "high",
+        urgent: true,
+        context: { worktreeId: "wt-1" },
+      });
+      _setQuietUntil(Date.now() + 60_000);
+      setActiveWorktree("wt-2");
+      expect(useNotificationStore.getState().notifications).toHaveLength(1);
+    });
+
+    it("falls back to no suppression when no accessors are registered", () => {
+      _resetActiveContextAccessorsForTest();
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      notify({
+        type: "info",
+        message: "No accessors",
+        priority: "high",
+        context: { worktreeId: "wt-1" },
+      });
+      expect(useNotificationStore.getState().notifications).toHaveLength(1);
+    });
+
+    it("promotes to toast on window blur during grace window", () => {
+      // Alt-tab without changing worktree/panel doesn't fire a context
+      // subscriber, so without the blur fallback the timer would silently
+      // drop the notification with seenAsToast=true.
+      const focusSpy = vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      setActiveWorktree("wt-1");
+      notify({
+        type: "info",
+        message: "Alt-tab signal",
+        priority: "high",
+        context: { worktreeId: "wt-1" },
+      });
+      expect(useNotificationStore.getState().notifications).toHaveLength(0);
+
+      focusSpy.mockReturnValue(false);
+      window.dispatchEvent(new Event("blur"));
+      expect(useNotificationStore.getState().notifications).toHaveLength(1);
+      expect(useNotificationStore.getState().notifications[0]!.message).toBe("Alt-tab signal");
+    });
+
+    it("promoted toast carries the same historyEntryId as the suppressed entry", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      setActiveWorktree("wt-1");
+      notify({
+        type: "info",
+        message: "linked",
+        priority: "high",
+        context: { worktreeId: "wt-1" },
+      });
+      const entryId = useNotificationHistoryStore.getState().entries[0]!.id;
+      setActiveWorktree("wt-2");
+      const toast = useNotificationStore.getState().notifications[0];
+      expect(toast?.historyEntryId).toBe(entryId);
+    });
+
+    it("does not promote when subscriber fires after grace expires", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      setActiveWorktree("wt-1");
+      notify({
+        type: "info",
+        message: "Late nav",
+        priority: "high",
+        context: { worktreeId: "wt-1" },
+      });
+      vi.advanceTimersByTime(501);
+      setActiveWorktree("wt-2");
+      expect(useNotificationStore.getState().notifications).toHaveLength(0);
+    });
+
+    it("watch priority with matching surface still toasts (no suppression for watch)", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      setActiveWorktree("wt-1");
+      notify({
+        type: "warning",
+        message: "Watch in scope",
+        priority: "watch",
+        context: { worktreeId: "wt-1" },
+      });
+      expect(useNotificationStore.getState().notifications).toHaveLength(1);
+      expect(mockShowNative).toHaveBeenCalledTimes(1);
+    });
+
+    it("_resetPendingSuppressedForTest clears pending grace timers and listeners", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      setActiveWorktree("wt-1");
+      notify({
+        type: "info",
+        message: "cancelled",
+        priority: "high",
+        context: { worktreeId: "wt-1" },
+      });
+      _resetPendingSuppressedForTest();
+      // Navigating away should NOT promote — the listener was cleaned up.
+      setActiveWorktree("wt-2");
+      vi.advanceTimersByTime(600);
+      expect(useNotificationStore.getState().notifications).toHaveLength(0);
     });
   });
 
