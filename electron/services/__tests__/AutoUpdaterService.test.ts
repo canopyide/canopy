@@ -1297,6 +1297,25 @@ describe("AutoUpdaterService", () => {
 
       expect(autoUpdaterMock.quitAndInstall).toHaveBeenCalledTimes(1);
     });
+
+    it("treats a missing stored channel as 'stable' so save-stable is a no-op on fresh installs", async () => {
+      // Regression for fresh-install bug: initialize() reads the channel with
+      // a `?? "stable"` fallback, but UPDATE_SET_CHANNEL must mirror that
+      // fallback when computing previousChannel — otherwise saving "stable"
+      // on a fresh install (no stored key) would discard a validly-staged
+      // installer because `"stable" === undefined` is false.
+      downloadedHandler({ version: "2.0.0" });
+      downloadedUpdateHelperMock.clear.mockClear();
+      autoUpdaterMock.setFeedURL.mockClear();
+
+      // Store has no `updateChannel` key — get() returns undefined.
+      storeMock.get.mockImplementation(() => undefined);
+
+      const result = await setChannelHandler(null, "stable");
+      expect(result).toBe("stable");
+      expect(downloadedUpdateHelperMock.clear).not.toHaveBeenCalled();
+      expect(autoUpdaterMock.setFeedURL).not.toHaveBeenCalled();
+    });
   });
 
   describe("error classification edge cases", () => {
@@ -1617,6 +1636,23 @@ describe("AutoUpdaterService", () => {
       expect(autoUpdaterService.quitAndInstallIfReady()).toBe(true);
       vi.advanceTimersToNextTimer();
 
+      expect(autoUpdaterMock.quitAndInstall).toHaveBeenCalledTimes(1);
+    });
+
+    it("a rapid double-call only schedules a single quitAndInstall (idempotency)", () => {
+      downloadedHandler({ version: "2.0.0" });
+
+      // Two calls back-to-back — the second must read idle and bail before
+      // queuing a second setImmediate. Otherwise cleanupOnExit + quitAndInstall
+      // would fire twice on a double-click.
+      const first = autoUpdaterService.quitAndInstallIfReady();
+      const second = autoUpdaterService.quitAndInstallIfReady();
+
+      expect(first).toBe(true);
+      expect(second).toBe(false);
+      expect(cleanupOnExitMock).toHaveBeenCalledTimes(1);
+
+      vi.advanceTimersToNextTimer();
       expect(autoUpdaterMock.quitAndInstall).toHaveBeenCalledTimes(1);
     });
   });

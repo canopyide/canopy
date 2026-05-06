@@ -346,7 +346,7 @@ describe("update menu lifecycle", () => {
 
       const item = menuItemRegistry.get("check-for-updates-mac");
       expect(item).toBeDefined();
-      expect(item!.label).toBe("Restart to Install Update");
+      expect(item!.label).toBe("Restart to install update");
       expect(item!.enabled).toBe(true);
     });
 
@@ -451,14 +451,14 @@ describe("update menu lifecycle", () => {
     it("checking state sets disabled label", () => {
       dispatchUpdate("checking");
       const item = menuItemRegistry.get("check-for-updates-mac");
-      expect(item!.label).toBe("Checking for Updates…");
+      expect(item!.label).toBe("Checking…");
       expect(item!.enabled).toBe(false);
     });
 
     it("ready state sets restart label", () => {
       dispatchUpdate("ready");
       const item = menuItemRegistry.get("check-for-updates-mac");
-      expect(item!.label).toBe("Restart to Install Update");
+      expect(item!.label).toBe("Restart to install update");
       expect(item!.enabled).toBe(true);
     });
 

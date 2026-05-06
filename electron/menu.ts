@@ -38,8 +38,8 @@ const UPDATE_MENU_ITEM_IDS = ["check-for-updates-mac", "check-for-updates-help"]
 
 const UPDATE_MENU_STATE_LABELS: Record<UpdateMenuState, { label: string; enabled: boolean }> = {
   idle: { label: "Check for Updates…", enabled: true },
-  checking: { label: "Checking for Updates…", enabled: false },
-  ready: { label: "Restart to Install Update", enabled: true },
+  checking: { label: "Checking…", enabled: false },
+  ready: { label: "Restart to install update", enabled: true },
 };
 
 function applyUpdateMenuState(state: UpdateMenuState): void {

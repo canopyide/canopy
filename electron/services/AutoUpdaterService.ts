@@ -127,6 +127,12 @@ class AutoUpdaterService {
 
   quitAndInstallIfReady(): boolean {
     if (this.menuState !== "ready" || !this.updateDownloaded) return false;
+    // Flip both guards synchronously so a rapid double-click can't queue two
+    // setImmediate(quitAndInstall) calls — the second invocation reads idle
+    // and bails. Resetting menuState back to idle also gives instant visual
+    // feedback that the click registered.
+    this.updateDownloaded = false;
+    this.setMenuState("idle");
     try {
       getCrashRecoveryService().cleanupOnExit();
     } catch (err) {
@@ -321,7 +327,11 @@ class AutoUpdaterService {
 
       ipcMain.handle(CHANNELS.UPDATE_SET_CHANNEL, async (_event, channel: unknown) => {
         const validated: "stable" | "nightly" = channel === "nightly" ? "nightly" : "stable";
-        const previousChannel = store.get("updateChannel");
+        // Mirror the `?? "stable"` fallback that initialize() applies. Without
+        // it, a fresh install (no stored key) reads previousChannel as
+        // undefined and the same-channel guard never fires — saving "stable"
+        // would discard a validly-staged installer.
+        const previousChannel = store.get("updateChannel") ?? "stable";
         store.set("updateChannel", validated);
 
         // Same-channel re-save (e.g. user opens settings and clicks Save
