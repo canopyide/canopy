@@ -143,7 +143,7 @@ describe("McpServerSettingsTab", () => {
     expect(screen.queryByRole("button", { name: /^remove$/i })).toBeNull();
   });
 
-  it("routes IPC failure to inbox via low-priority notify and inline error", async () => {
+  it("shows inline error and logs IPC failure without notifying", async () => {
     installMcpApi({
       getStatus: vi.fn().mockRejectedValue(new Error("IPC down")),
     });
@@ -152,13 +152,7 @@ describe("McpServerSettingsTab", () => {
 
     await waitForContent(container, "IPC down");
 
-    expect(mockedNotify).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: "error",
-        priority: "low",
-        title: "MCP status failed",
-      })
-    );
+    expect(mockedNotify).not.toHaveBeenCalled();
     expect(mockedLogError).toHaveBeenCalledWith("Failed to load MCP status", expect.any(Error));
   });
 
@@ -261,7 +255,7 @@ describe("McpServerSettingsTab", () => {
     });
   });
 
-  it("routes toggle IPC failure to inbox while keeping inline error", async () => {
+  it("shows inline error and logs toggle failure without notifying", async () => {
     installMcpApi({
       setEnabled: vi.fn().mockRejectedValue(new Error("toggle failed")),
     });
@@ -272,13 +266,152 @@ describe("McpServerSettingsTab", () => {
     fireEvent.click(screen.getByLabelText("Enable MCP server"));
 
     await waitForContent(container, "toggle failed");
-    expect(mockedNotify).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: "error",
-        priority: "low",
-        title: "MCP server update failed",
-      })
-    );
+    expect(mockedNotify).not.toHaveBeenCalled();
     expect(mockedLogError).toHaveBeenCalledWith("Failed to update MCP server", expect.any(Error));
+  });
+
+  it("shows inline error for invalid audit max records instead of notifying", async () => {
+    const { container } = render(<McpServerSettingsTab />);
+    await waitForContent(container, "API key active");
+
+    const maxRecordsInput = container.querySelector("#mcp-audit-max-records") as HTMLInputElement;
+    fireEvent.change(maxRecordsInput, { target: { value: "99999" } });
+    fireEvent.keyDown(maxRecordsInput, { key: "Enter" });
+
+    await waitForContent(container, "Enter a number between");
+    expect(window.electron.mcpServer.setAuditMaxRecords).not.toHaveBeenCalled();
+    expect(mockedNotify).not.toHaveBeenCalled();
+    expect(mockedLogError).not.toHaveBeenCalled();
+  });
+
+  it("shows inline error and logs audit toggle failure without notifying", async () => {
+    installMcpApi({
+      setAuditEnabled: vi.fn().mockRejectedValue(new Error("audit toggle failed")),
+    });
+
+    const { container } = render(<McpServerSettingsTab />);
+    await waitForContent(container, "API key active");
+
+    fireEvent.click(screen.getByRole("button", { name: /capture on/i }));
+
+    await waitForContent(container, "audit toggle failed");
+    expect(mockedNotify).not.toHaveBeenCalled();
+    expect(mockedLogError).toHaveBeenCalledWith(
+      "Failed to toggle MCP audit log",
+      expect.any(Error)
+    );
+  });
+
+  it("clears audit log without notifying", async () => {
+    installMcpApi({
+      getAuditRecords: vi.fn().mockResolvedValue([
+        {
+          id: "1",
+          toolId: "files.read",
+          argsSummary: "{}",
+          result: "success" as const,
+          timestamp: Date.now(),
+          durationMs: 42,
+        },
+      ]),
+    });
+
+    const { container } = render(<McpServerSettingsTab />);
+    await waitForContent(container, "files.read");
+
+    fireEvent.click(screen.getByRole("button", { name: /clear log/i }));
+
+    await waitForContent(container, "No tool dispatches recorded yet.");
+    expect(mockedNotify).not.toHaveBeenCalled();
+  });
+
+  it("shows inline error and logs audit clear failure without notifying", async () => {
+    installMcpApi({
+      getAuditRecords: vi.fn().mockResolvedValue([
+        {
+          id: "1",
+          toolId: "files.read",
+          argsSummary: "{}",
+          result: "success" as const,
+          timestamp: Date.now(),
+          durationMs: 42,
+        },
+      ]),
+      clearAuditLog: vi.fn().mockRejectedValue(new Error("clear failed")),
+    });
+
+    const { container } = render(<McpServerSettingsTab />);
+    await waitForContent(container, "files.read");
+
+    fireEvent.click(screen.getByRole("button", { name: /clear log/i }));
+
+    await waitForContent(container, "clear failed");
+    expect(mockedNotify).not.toHaveBeenCalled();
+    expect(mockedLogError).toHaveBeenCalledWith("Failed to clear MCP audit log", expect.any(Error));
+  });
+
+  it("shows Copied! pill on audit copy instead of notifying", async () => {
+    installMcpApi({
+      getAuditRecords: vi.fn().mockResolvedValue([
+        {
+          id: "1",
+          toolId: "files.read",
+          argsSummary: "{}",
+          result: "success" as const,
+          timestamp: Date.now(),
+          durationMs: 42,
+        },
+      ]),
+    });
+
+    const { container } = render(<McpServerSettingsTab />);
+    await waitForContent(container, "files.read");
+
+    fireEvent.click(screen.getByRole("button", { name: /copy all as json/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Copied!")).toBeTruthy();
+    });
+    expect(writeText).toHaveBeenCalledTimes(1);
+    const jsonArg = String(writeText.mock.calls[0]![0]);
+    const parsed: unknown = JSON.parse(jsonArg);
+    expect(Array.isArray(parsed)).toBe(true);
+    if (!Array.isArray(parsed)) throw new Error("expected array");
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- narrowed by Array.isArray guard above
+    const arr = parsed as Array<{ id: string; toolId: string }>;
+    expect(arr).toHaveLength(1);
+    expect(arr[0]!.id).toBe("1");
+    expect(arr[0]!.toolId).toBe("files.read");
+    expect(mockedNotify).not.toHaveBeenCalled();
+  });
+
+  it("shows inline error and logs audit copy failure without notifying", async () => {
+    const writeTextReject = vi.fn().mockRejectedValue(new Error("clipboard denied"));
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: writeTextReject },
+      writable: true,
+      configurable: true,
+    });
+    installMcpApi({
+      getAuditRecords: vi.fn().mockResolvedValue([
+        {
+          id: "1",
+          toolId: "files.read",
+          argsSummary: "{}",
+          result: "success" as const,
+          timestamp: Date.now(),
+          durationMs: 42,
+        },
+      ]),
+    });
+
+    const { container } = render(<McpServerSettingsTab />);
+    await waitForContent(container, "files.read");
+
+    fireEvent.click(screen.getByRole("button", { name: /copy all as json/i }));
+
+    await waitForContent(container, "clipboard denied");
+    expect(mockedNotify).not.toHaveBeenCalled();
+    expect(mockedLogError).toHaveBeenCalledWith("Failed to copy MCP audit log", expect.any(Error));
   });
 });
