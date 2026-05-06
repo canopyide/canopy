@@ -43,7 +43,7 @@ describe("AppPaletteDialog.Empty", () => {
       </AppPaletteDialog.Empty>
     );
     expect(screen.queryByTestId("cta")).toBeNull();
-    expect(screen.getByText("No results found")).toBeTruthy();
+    expect(screen.getByText('No matches for "foo"')).toBeTruthy();
   });
 
   it("renders noMatchContent when query has text (no-match state)", () => {
@@ -56,7 +56,7 @@ describe("AppPaletteDialog.Empty", () => {
         <span data-testid="cta">Create a terminal</span>
       </AppPaletteDialog.Empty>
     );
-    expect(screen.getByText("No results found")).toBeTruthy();
+    expect(screen.getByText('No matches for "foo"')).toBeTruthy();
     expect(screen.getByTestId("productive-row")).toBeTruthy();
     expect(screen.queryByTestId("cta")).toBeNull();
   });
@@ -117,6 +117,31 @@ describe("AppPaletteDialog.Empty", () => {
 
   it("trims whitespace from query when rendering the no-match state", () => {
     render(<AppPaletteDialog.Empty query="  foo  " emptyMessage="No items available" />);
-    expect(screen.getByText("No results found")).toBeTruthy();
+    expect(screen.getByText('No matches for "foo"')).toBeTruthy();
+  });
+
+  it("truncates the quoted query at 40 characters in the default no-match title", () => {
+    const long = "a".repeat(60);
+    render(<AppPaletteDialog.Empty query={long} emptyMessage="No items available" />);
+    const expected = `No matches for "${"a".repeat(40)}…"`;
+    expect(screen.getByText(expected)).toBeTruthy();
+  });
+
+  it("does not truncate queries at exactly 40 characters", () => {
+    const exact = "b".repeat(40);
+    render(<AppPaletteDialog.Empty query={exact} emptyMessage="No items available" />);
+    expect(screen.getByText(`No matches for "${exact}"`)).toBeTruthy();
+  });
+
+  it("explicit noMatchMessage still overrides the dynamic default", () => {
+    render(
+      <AppPaletteDialog.Empty
+        query="anything"
+        emptyMessage="No items available"
+        noMatchMessage="Custom not-found copy"
+      />
+    );
+    expect(screen.getByText("Custom not-found copy")).toBeTruthy();
+    expect(screen.queryByText(/No matches for/)).toBeNull();
   });
 });

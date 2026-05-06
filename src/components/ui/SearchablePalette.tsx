@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from "react";
-import { AppPaletteDialog } from "@/components/ui/AppPaletteDialog";
+import { AppPaletteDialog, KBD_CLASS, PaletteFooterHints } from "@/components/ui/AppPaletteDialog";
 import { PaletteOverflowNotice } from "@/components/ui/PaletteOverflowNotice";
 import { useEscapeStack } from "@/hooks";
 import type { FuseResultMatch } from "@/hooks/useSearchablePalette";
@@ -62,12 +62,31 @@ export interface SearchablePaletteProps<T> {
 
   /** Message when no items exist */
   emptyMessage?: string;
-  /** Message when search yields no results */
+  /**
+   * Message when search yields no results. When omitted the shell renders
+   * `No matches for "{query}"` (truncated at 40 chars).
+   */
   noMatchMessage?: string;
   /** Content shown below the empty message (no-data state only, hidden during search) */
   emptyContent?: React.ReactNode;
   /** Content shown in the no-match state when a query produces zero results */
   noMatchContent?: React.ReactNode;
+  /**
+   * Pre-formatted display string for the create-the-missing-thing shortcut
+   * (e.g. `"⌘N"` from `useKeybindingDisplay`). When paired with
+   * `emptyEntityName` and the trimmed query is empty, the shell auto-renders
+   * `Press <kbd>{emptyShortcut}</kbd> to create {emptyEntityName}.` as the
+   * empty-state hint. Accepts `null` so consumers can forward
+   * `useKeybindingDisplay` output without a guard. Ignored when `emptyContent`
+   * is provided.
+   */
+  emptyShortcut?: string | null;
+  /**
+   * Lowercase entity phrase used in the auto-rendered empty-state hint
+   * (e.g. `"a terminal"`, `"a worktree"`). Required alongside `emptyShortcut`
+   * for the chip to render.
+   */
+  emptyEntityName?: string;
 
   /** Additional keyboard handler called before default handling */
   onKeyDown?: (e: React.KeyboardEvent) => void;
@@ -81,6 +100,16 @@ export interface SearchablePaletteProps<T> {
    * intact when arrow keys move selection.
    */
   getFooter?: (selectedItem: T | null) => React.ReactNode;
+  /**
+   * Sugar for the very common case of "I just want to change the verb in the
+   * default footer hint." Returns the verb-noun action label for the current
+   * selection (e.g. `"Switch terminal"`, `"Apply theme"`). The shell composes
+   * the default `↵`/`↑↓`/`Esc` hints around it and lowercases the label for
+   * mid-sentence rendering. Ignored when `footer` or `getFooter` is also set
+   * — those win, in that order. Use a stable reference (module-level fn or
+   * `useCallback`) to avoid recomputing the footer node every render.
+   */
+  getActionLabel?: (selectedItem: T | null) => string;
   /** Additional className for AppPaletteDialog.Body */
   bodyClassName?: string;
   /** Custom content before the list */
@@ -134,9 +163,12 @@ export function SearchablePalette<T>({
   noMatchMessage,
   emptyContent,
   noMatchContent,
+  emptyShortcut,
+  emptyEntityName,
   onKeyDown,
   footer,
   getFooter,
+  getActionLabel,
   bodyClassName,
   beforeList,
   afterList,
@@ -219,7 +251,38 @@ export function SearchablePalette<T>({
   const noopHoverIndex = useCallback(() => {}, []);
   const hoverIndexHandler = onHoverIndex ?? noopHoverIndex;
 
-  const footerContent = getFooter ? getFooter(results[selectedIndex] ?? null) : footer;
+  const selectedItem = results[selectedIndex] ?? null;
+
+  let footerContent: React.ReactNode;
+  if (getFooter) {
+    footerContent = getFooter(selectedItem);
+  } else if (footer !== undefined) {
+    footerContent = footer;
+  } else if (getActionLabel) {
+    const rawLabel = getActionLabel(selectedItem);
+    const actionLabel = (rawLabel ?? "").trim() || "Select";
+    const phrase = `to ${actionLabel.toLowerCase()}`;
+    footerContent = (
+      <PaletteFooterHints
+        primaryHint={{ keys: ["↵"], label: phrase }}
+        hints={[
+          { keys: ["↑", "↓"], label: "to navigate" },
+          { keys: ["↵"], label: phrase },
+          { keys: ["Esc"], label: "to close" },
+        ]}
+      />
+    );
+  } else {
+    footerContent = undefined;
+  }
+
+  const autoEmptyChip =
+    !emptyContent && emptyShortcut && emptyEntityName ? (
+      <p className="mt-2 text-xs text-daintree-text/40">
+        Press <kbd className={KBD_CLASS}>{emptyShortcut}</kbd> to create {emptyEntityName}.
+      </p>
+    ) : null;
+  const resolvedEmptyContent = emptyContent ?? autoEmptyChip;
 
   return (
     <AppPaletteDialog isOpen={isOpen} onClose={onClose} ariaLabel={ariaLabel}>
@@ -255,10 +318,10 @@ export function SearchablePalette<T>({
               <AppPaletteDialog.Empty
                 query={query}
                 emptyMessage={emptyMessage}
-                noMatchMessage={noMatchMessage ?? "No results found"}
+                noMatchMessage={noMatchMessage}
                 noMatchContent={noMatchContent}
               >
-                {emptyContent}
+                {resolvedEmptyContent}
               </AppPaletteDialog.Empty>
             ) : (
               <div

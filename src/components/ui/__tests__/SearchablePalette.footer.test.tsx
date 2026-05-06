@@ -45,9 +45,16 @@ interface RenderArgs {
   results?: Item[];
   footer?: React.ReactNode;
   getFooter?: (selectedItem: Item | null) => React.ReactNode;
+  getActionLabel?: (selectedItem: Item | null) => string;
 }
 
-function renderPalette({ selectedIndex = 0, results = items, footer, getFooter }: RenderArgs = {}) {
+function renderPalette({
+  selectedIndex = 0,
+  results = items,
+  footer,
+  getFooter,
+  getActionLabel,
+}: RenderArgs = {}) {
   return render(
     <SearchablePalette<Item>
       isOpen
@@ -69,6 +76,7 @@ function renderPalette({ selectedIndex = 0, results = items, footer, getFooter }
       ariaLabel="Test palette"
       footer={footer}
       getFooter={getFooter}
+      getActionLabel={getActionLabel}
     />
   );
 }
@@ -130,5 +138,48 @@ describe("SearchablePalette footer", () => {
     });
 
     expect(document.body.querySelector("[aria-live]")).toBeNull();
+  });
+
+  it("getActionLabel composes a custom verb into the default footer hint", () => {
+    renderPalette({
+      selectedIndex: 1,
+      getActionLabel: (item) => (item ? `Switch to ${item.label}` : "Switch"),
+    });
+
+    expect(document.body.textContent).toContain("to switch to bravo");
+    expect(document.body.textContent).not.toContain("to select");
+  });
+
+  it("getActionLabel receives null when results are empty", () => {
+    const fn = vi.fn((item: Item | null) => (item ? `Switch ${item.label}` : "Pick"));
+    renderPalette({ results: [], selectedIndex: -1, getActionLabel: fn });
+
+    expect(fn).toHaveBeenCalledWith(null);
+    expect(document.body.textContent).toContain("to pick");
+  });
+
+  it("getFooter takes precedence over getActionLabel", () => {
+    const { getByTestId } = renderPalette({
+      getFooter: () => <span data-testid="dynamic-footer">dynamic</span>,
+      getActionLabel: () => "Switch terminal",
+    });
+
+    expect(getByTestId("dynamic-footer")).toBeTruthy();
+    expect(document.body.textContent).not.toContain("to switch terminal");
+  });
+
+  it("static footer takes precedence over getActionLabel", () => {
+    const { getByTestId } = renderPalette({
+      footer: <span data-testid="static-footer">static</span>,
+      getActionLabel: () => "Switch terminal",
+    });
+
+    expect(getByTestId("static-footer")).toBeTruthy();
+    expect(document.body.textContent).not.toContain("to switch terminal");
+  });
+
+  it("falls back to 'Select' when getActionLabel returns a blank string", () => {
+    renderPalette({ getActionLabel: () => "   " });
+    expect(document.body.textContent).toContain("to select");
   });
 });

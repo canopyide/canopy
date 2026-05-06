@@ -431,6 +431,16 @@ interface AppPaletteEmptyProps {
   children?: React.ReactNode;
 }
 
+const NO_MATCH_QUERY_MAX = 40;
+
+function defaultNoMatchTitle(trimmedQuery: string) {
+  const display =
+    trimmedQuery.length > NO_MATCH_QUERY_MAX
+      ? `${trimmedQuery.slice(0, NO_MATCH_QUERY_MAX)}…`
+      : trimmedQuery;
+  return `No matches for "${display}"`;
+}
+
 AppPaletteDialog.Empty = function AppPaletteEmpty({
   query,
   emptyMessage = "No items available",
@@ -443,7 +453,7 @@ AppPaletteDialog.Empty = function AppPaletteEmpty({
     return (
       <EmptyState
         variant="filtered-empty"
-        title={noMatchMessage ?? "No results found"}
+        title={noMatchMessage ?? defaultNoMatchTitle(trimmedQuery)}
         action={noMatchContent}
         className="px-3 py-8"
       />
