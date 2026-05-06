@@ -143,7 +143,7 @@ describe("helpPanelStore persistence migration", () => {
         introDismissed: boolean;
       };
     };
-    expect(parsed.version).toBe(2);
+    expect(parsed.version).toBe(3);
     expect(parsed.state.width).toBe(450);
     expect(parsed.state.preferredAgentId).toBeNull();
   });
@@ -205,7 +205,7 @@ describe("helpPanelStore persistence migration", () => {
     expect(written).toBeDefined();
     const parsed: unknown = JSON.parse(written!);
     expect(parsed).toMatchObject({
-      version: 2,
+      version: 3,
       state: { introDismissed: true },
     });
   });
@@ -260,7 +260,7 @@ describe("helpPanelStore persistence migration", () => {
       version: number;
       state: { isOpen: boolean };
     };
-    expect(parsed.version).toBe(2);
+    expect(parsed.version).toBe(3);
     expect(parsed.state.isOpen).toBe(true);
   });
 
@@ -356,5 +356,181 @@ describe("helpPanelStore persistence migration", () => {
     const { useHelpPanelStore: store } = await import("../helpPanelStore");
 
     expect(store.getState().conversationTouched).toBe(false);
+  });
+
+  describe("hibernateSessions", () => {
+    it("starts as an empty record on a fresh install", async () => {
+      installLocalStorage({});
+
+      const { useHelpPanelStore: store } = await import("../helpPanelStore");
+
+      expect(store.getState().hibernateSessions).toEqual({});
+    });
+
+    it("setHibernateSession adds an entry keyed by projectId", async () => {
+      installLocalStorage({});
+
+      const { useHelpPanelStore: store } = await import("../helpPanelStore");
+      store.getState().setHibernateSession("proj-1", {
+        sessionId: "abc-123",
+        cwd: "/tmp/help",
+        agentId: "claude",
+      });
+
+      expect(store.getState().hibernateSessions).toEqual({
+        "proj-1": { sessionId: "abc-123", cwd: "/tmp/help", agentId: "claude" },
+      });
+    });
+
+    it("setHibernateSession isolates entries by projectId", async () => {
+      installLocalStorage({});
+
+      const { useHelpPanelStore: store } = await import("../helpPanelStore");
+      store.getState().setHibernateSession("proj-a", {
+        sessionId: "session-a",
+        cwd: "/tmp/a",
+        agentId: "claude",
+      });
+      store.getState().setHibernateSession("proj-b", {
+        sessionId: "session-b",
+        cwd: "/tmp/b",
+        agentId: "claude",
+      });
+
+      expect(store.getState().hibernateSessions).toEqual({
+        "proj-a": { sessionId: "session-a", cwd: "/tmp/a", agentId: "claude" },
+        "proj-b": { sessionId: "session-b", cwd: "/tmp/b", agentId: "claude" },
+      });
+    });
+
+    it("clearHibernateSession removes only the named project entry", async () => {
+      installLocalStorage({});
+
+      const { useHelpPanelStore: store } = await import("../helpPanelStore");
+      store.getState().setHibernateSession("proj-a", {
+        sessionId: "session-a",
+        cwd: "/tmp/a",
+        agentId: "claude",
+      });
+      store.getState().setHibernateSession("proj-b", {
+        sessionId: "session-b",
+        cwd: "/tmp/b",
+        agentId: "claude",
+      });
+      store.getState().clearHibernateSession("proj-a");
+
+      expect(store.getState().hibernateSessions).toEqual({
+        "proj-b": { sessionId: "session-b", cwd: "/tmp/b", agentId: "claude" },
+      });
+    });
+
+    it("clearHibernateSession on an unknown projectId is a no-op", async () => {
+      installLocalStorage({});
+
+      const { useHelpPanelStore: store } = await import("../helpPanelStore");
+      store.getState().setHibernateSession("proj-a", {
+        sessionId: "session-a",
+        cwd: "/tmp/a",
+        agentId: "claude",
+      });
+      store.getState().clearHibernateSession("proj-unknown");
+
+      expect(store.getState().hibernateSessions).toEqual({
+        "proj-a": { sessionId: "session-a", cwd: "/tmp/a", agentId: "claude" },
+      });
+    });
+
+    it("persists hibernateSessions across rehydration", async () => {
+      const backing = installLocalStorage({});
+
+      let mod = await import("../helpPanelStore");
+      mod.useHelpPanelStore.getState().setHibernateSession("proj-a", {
+        sessionId: "session-a",
+        cwd: "/tmp/a",
+        agentId: "claude",
+      });
+
+      const written = backing.get(STORAGE_KEY);
+      expect(written).toBeDefined();
+      const parsed = JSON.parse(written!) as {
+        version: number;
+        state: { hibernateSessions: Record<string, unknown> };
+      };
+      expect(parsed.version).toBe(3);
+      expect(parsed.state.hibernateSessions).toEqual({
+        "proj-a": { sessionId: "session-a", cwd: "/tmp/a", agentId: "claude" },
+      });
+
+      vi.resetModules();
+      mod = await import("../helpPanelStore");
+      expect(mod.useHelpPanelStore.getState().hibernateSessions).toEqual({
+        "proj-a": { sessionId: "session-a", cwd: "/tmp/a", agentId: "claude" },
+      });
+    });
+
+    it("rejects malformed entries during rehydration (missing sessionId/cwd/agentId)", async () => {
+      const blob = JSON.stringify({
+        version: 3,
+        state: {
+          isOpen: false,
+          width: 400,
+          preferredAgentId: null,
+          introDismissed: false,
+          hibernateSessions: {
+            "good-proj": { sessionId: "abc", cwd: "/tmp", agentId: "claude" },
+            "no-session": { cwd: "/tmp", agentId: "claude" },
+            "no-cwd": { sessionId: "abc", agentId: "claude" },
+            "no-agent": { sessionId: "abc", cwd: "/tmp" },
+            "empty-session": { sessionId: "", cwd: "/tmp", agentId: "claude" },
+            "wrong-types": { sessionId: 1, cwd: 2, agentId: 3 },
+          },
+        },
+      });
+      installLocalStorage({ [STORAGE_KEY]: blob });
+
+      const { useHelpPanelStore: store } = await import("../helpPanelStore");
+
+      expect(store.getState().hibernateSessions).toEqual({
+        "good-proj": { sessionId: "abc", cwd: "/tmp", agentId: "claude" },
+      });
+    });
+
+    it("falls back to empty record when persisted hibernateSessions is not an object", async () => {
+      const blob = JSON.stringify({
+        version: 3,
+        state: {
+          isOpen: false,
+          width: 400,
+          preferredAgentId: null,
+          introDismissed: false,
+          hibernateSessions: "not-an-object",
+        },
+      });
+      installLocalStorage({ [STORAGE_KEY]: blob });
+
+      const { useHelpPanelStore: store } = await import("../helpPanelStore");
+
+      expect(store.getState().hibernateSessions).toEqual({});
+    });
+
+    it("starts with empty hibernateSessions when migrating from v2 (no field)", async () => {
+      const v2Blob = JSON.stringify({
+        version: 2,
+        state: {
+          isOpen: false,
+          width: 400,
+          preferredAgentId: "claude",
+          introDismissed: true,
+        },
+      });
+      installLocalStorage({ [STORAGE_KEY]: v2Blob });
+
+      const { useHelpPanelStore: store } = await import("../helpPanelStore");
+
+      expect(store.getState().hibernateSessions).toEqual({});
+      // Other fields still load correctly
+      expect(store.getState().preferredAgentId).toBe("claude");
+      expect(store.getState().introDismissed).toBe(true);
+    });
   });
 });

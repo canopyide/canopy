@@ -59,6 +59,7 @@ const {
     sessionId: null as string | null,
     introDismissed: true,
     conversationTouched: false,
+    hibernateSessions: {} as Record<string, { sessionId: string; cwd: string; agentId: string }>,
     markConversationStarted: vi.fn(),
     setWidth: vi.fn(),
     setOpen: vi.fn(),
@@ -66,6 +67,8 @@ const {
     setPreferredAgent: vi.fn(),
     setTerminal: vi.fn(),
     dismissIntro: vi.fn(),
+    setHibernateSession: vi.fn(),
+    clearHibernateSession: vi.fn(),
   },
   panelStoreState: {
     panelsById: {} as Record<string, unknown>,
@@ -258,6 +261,7 @@ function resetState() {
   helpPanelState.sessionId = null;
   helpPanelState.introDismissed = true;
   helpPanelState.conversationTouched = false;
+  helpPanelState.hibernateSessions = {};
   helpPanelState.markConversationStarted = vi.fn();
   helpPanelState.setTerminal = vi.fn();
   helpPanelState.setOpen = vi.fn();
@@ -265,6 +269,8 @@ function resetState() {
   helpPanelState.clearTerminal = vi.fn();
   helpPanelState.setPreferredAgent = vi.fn();
   helpPanelState.dismissIntro = vi.fn();
+  helpPanelState.setHibernateSession = vi.fn();
+  helpPanelState.clearHibernateSession = vi.fn();
 
   panelStoreState.panelsById = {};
   panelStoreState.removePanel = vi.fn();

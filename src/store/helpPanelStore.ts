@@ -12,6 +12,18 @@ export const HELP_PANEL_MIN_WIDTH = 320;
 export const HELP_PANEL_MAX_WIDTH = 800;
 export const HELP_PANEL_DEFAULT_WIDTH = 380;
 
+export interface HelpHibernateSession {
+  /** Captured agent session ID (e.g. Claude resume token) */
+  sessionId: string;
+  /** Working directory the resumed agent must launch from to find its transcript */
+  cwd: string;
+  /**
+   * Agent that produced this session. Resume only fires when the next launch
+   * targets the same agent — guards against agent switches between sleeps.
+   */
+  agentId: string;
+}
+
 interface HelpPanelState {
   isOpen: boolean;
   width: number;
@@ -21,6 +33,12 @@ interface HelpPanelState {
   sessionId: string | null;
   introDismissed: boolean;
   conversationTouched: boolean;
+  /**
+   * Per-project captured resume sessions, keyed by projectId. helpPanelStore
+   * is shared across all project views (single localStorage partition), so
+   * the assistant session for project A must not leak into project B.
+   */
+  hibernateSessions: Record<string, HelpHibernateSession>;
 }
 
 interface HelpPanelActions {
@@ -32,6 +50,11 @@ interface HelpPanelActions {
   setPreferredAgent: (agentId: string | null) => void;
   dismissIntro: () => void;
   markConversationStarted: () => void;
+  setHibernateSession: (
+    projectId: string,
+    entry: { sessionId: string; cwd: string; agentId: string }
+  ) => void;
+  clearHibernateSession: (projectId: string) => void;
 }
 
 const initialState: HelpPanelState = {
@@ -43,7 +66,23 @@ const initialState: HelpPanelState = {
   sessionId: null,
   introDismissed: false,
   conversationTouched: false,
+  hibernateSessions: {},
 };
+
+function sanitizeHibernateSessions(value: unknown): Record<string, HelpHibernateSession> {
+  if (!value || typeof value !== "object") return {};
+  const out: Record<string, HelpHibernateSession> = {};
+  for (const [projectId, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (!projectId || typeof projectId !== "string") continue;
+    if (!entry || typeof entry !== "object") continue;
+    const e = entry as Record<string, unknown>;
+    if (typeof e.sessionId !== "string" || !e.sessionId) continue;
+    if (typeof e.cwd !== "string" || !e.cwd) continue;
+    if (typeof e.agentId !== "string" || !e.agentId) continue;
+    out[projectId] = { sessionId: e.sessionId, cwd: e.cwd, agentId: e.agentId };
+  }
+  return out;
+}
 
 export const useHelpPanelStore = create<HelpPanelState & HelpPanelActions>()(
   persist(
@@ -76,17 +115,34 @@ export const useHelpPanelStore = create<HelpPanelState & HelpPanelActions>()(
       dismissIntro: () => set({ introDismissed: true }),
 
       markConversationStarted: () => set({ conversationTouched: true }),
+
+      setHibernateSession: (projectId, entry) =>
+        set((s) => ({
+          hibernateSessions: {
+            ...s.hibernateSessions,
+            [projectId]: { sessionId: entry.sessionId, cwd: entry.cwd, agentId: entry.agentId },
+          },
+        })),
+
+      clearHibernateSession: (projectId) =>
+        set((s) => {
+          if (!(projectId in s.hibernateSessions)) return s;
+          const next = { ...s.hibernateSessions };
+          delete next[projectId];
+          return { hibernateSessions: next };
+        }),
     }),
     {
       name: "help-panel-storage",
       storage: createSafeJSONStorage(),
-      version: 2,
+      version: 3,
       migrate: (persistedState) => persistedState as HelpPanelState & HelpPanelActions,
       partialize: (state) => ({
         isOpen: state.isOpen,
         width: state.width,
         preferredAgentId: state.preferredAgentId,
         introDismissed: state.introDismissed,
+        hibernateSessions: state.hibernateSessions,
       }),
       merge: (persistedState: unknown, currentState) => {
         const persisted = persistedState as Partial<HelpPanelState>;
@@ -104,6 +160,7 @@ export const useHelpPanelStore = create<HelpPanelState & HelpPanelActions>()(
             typeof persisted.introDismissed === "boolean"
               ? persisted.introDismissed
               : currentState.introDismissed,
+          hibernateSessions: sanitizeHibernateSessions(persisted.hibernateSessions),
         };
       },
     }
@@ -114,5 +171,5 @@ registerPersistedStore({
   storeId: "helpPanelStore",
   store: useHelpPanelStore,
   persistedStateType:
-    "Pick<HelpPanelState, 'isOpen' | 'width' | 'preferredAgentId' | 'introDismissed'>",
+    "Pick<HelpPanelState, 'isOpen' | 'width' | 'preferredAgentId' | 'introDismissed' | 'hibernateSessions'>",
 });
