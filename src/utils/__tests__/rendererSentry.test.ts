@@ -153,4 +153,24 @@ describe("rendererSentry", () => {
     expect(opts.beforeSend!({ message: "x" })).toEqual({ message: "x" });
     expect(mod.getRendererSentryConsent()).toEqual({ level: "full", hasSeenPrompt: true });
   });
+
+  it("captureRendererException returns the Sentry event id", async () => {
+    const sentry = await import("@sentry/electron/renderer");
+    const captureSpy = vi.mocked(sentry.captureException);
+    captureSpy.mockReturnValueOnce("abc123def456");
+
+    const mod = await import("../rendererSentry");
+    const id = mod.captureRendererException(new Error("boom"));
+    expect(id).toBe("abc123def456");
+  });
+
+  it("captureRendererException returns undefined when Sentry drops the event", async () => {
+    const sentry = await import("@sentry/electron/renderer");
+    const captureSpy = vi.mocked(sentry.captureException);
+    captureSpy.mockReturnValueOnce(undefined as unknown as string);
+
+    const mod = await import("../rendererSentry");
+    const id = mod.captureRendererException(new Error("boom"));
+    expect(id).toBeUndefined();
+  });
 });

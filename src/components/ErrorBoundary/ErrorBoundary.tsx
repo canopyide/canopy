@@ -4,6 +4,8 @@ import { useErrorStore } from "@/store/errorStore";
 import { actionService } from "@/services/ActionService";
 import { logError } from "@/utils/logger";
 import { captureRendererException } from "@/utils/rendererSentry";
+import { safeFireAndForget } from "@/utils/safeFireAndForget";
+import { notify } from "@/lib/notify";
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -23,6 +25,71 @@ interface ErrorBoundaryState {
   error: Error | null;
   errorInfo: React.ErrorInfo | null;
   incidentId: string | null;
+  sentryEventId: string | null;
+}
+
+// GitHub's Nginx layer rejects URLs over ~8 KB; budget the encoded URL string
+// at 7 200 chars to leave headroom for browser/OS handling and percent-encoding
+// quirks. Stack traces are dense with newlines (`%0A`) and spaces (`%20`),
+// so the encoded length is typically 2–3× the raw byte count.
+const ISSUE_URL_BUDGET = 7200;
+const STACK_TOP_LINES = 15;
+const STACK_BOTTOM_LINES = 5;
+const TRUNCATION_PLACEHOLDER = "\n… (middle truncated — full report copied to clipboard) …\n";
+
+interface CrashReportInput {
+  componentName: string;
+  sentryEventId: string | null;
+  incidentId: string | null;
+  message: string;
+  contextJson: string;
+  stack: string;
+  componentStack: string;
+}
+
+function buildCrashReportBody(input: CrashReportInput): string {
+  return (
+    `## Error Report\n\n` +
+    `**Component:** ${input.componentName}\n` +
+    `**Sentry Event ID:** ${input.sentryEventId ?? "unavailable (telemetry off)"}\n` +
+    `**Incident ID:** ${input.incidentId ?? "unknown"}\n` +
+    `**Message:** ${input.message}\n\n` +
+    `**Context:**\n${input.contextJson}\n\n` +
+    `**Stack Trace:**\n\`\`\`\n${input.stack}\n\`\`\`\n\n` +
+    `**Component Stack:**\n\`\`\`\n${input.componentStack}\n\`\`\``
+  );
+}
+
+function truncateStackMiddle(
+  stack: string,
+  topLines = STACK_TOP_LINES,
+  bottomLines = STACK_BOTTOM_LINES
+): string {
+  const lines = stack.split("\n");
+  if (lines.length <= topLines + bottomLines) return stack;
+  const head = lines.slice(0, topLines).join("\n");
+  const tail = lines.slice(-bottomLines).join("\n");
+  return `${head}${TRUNCATION_PLACEHOLDER}${tail}`;
+}
+
+function buildIssueUrl(title: string, body: string): string {
+  return (
+    `https://github.com/daintreehq/daintree/issues/new` +
+    `?title=${encodeURIComponent(title)}` +
+    `&body=${encodeURIComponent(body)}`
+  );
+}
+
+function openIssueUrl(url: string): void {
+  if (!window.electron?.system?.openExternal) return;
+  actionService
+    .dispatch("system.openExternal", { url }, { source: "user" })
+    .then((result) => {
+      if (!result.ok) window.electron.system.openExternal(url);
+    })
+    .catch(() => {
+      window.electron.system.openExternal(url);
+    });
 }
 
 export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
@@ -33,6 +100,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       error: null,
       errorInfo: null,
       incidentId: null,
+      sentryEventId: null,
     };
   }
 
@@ -47,20 +115,17 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     const { onError, context, componentName } = this.props;
     const componentStack = errorInfo.componentStack || "";
 
-    this.setState({
-      errorInfo,
-    });
-
     const correlationId = crypto.randomUUID();
 
-    captureRendererException(error, {
-      tags: {
-        source: "react-error-boundary",
-        component: componentName ?? "ErrorBoundary",
-      },
-      contexts: { react: { componentStack } },
-      extra: { correlationId, ...(context ?? {}) },
-    });
+    const sentryEventId =
+      captureRendererException(error, {
+        tags: {
+          source: "react-error-boundary",
+          component: componentName ?? "ErrorBoundary",
+        },
+        contexts: { react: { componentStack } },
+        extra: { correlationId, ...(context ?? {}) },
+      }) ?? null;
 
     let incidentId: string | null = null;
     try {
@@ -80,6 +145,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     this.setState({
       errorInfo,
       incidentId,
+      sentryEventId,
     });
 
     if (onError) {
@@ -96,6 +162,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       context,
       componentStack,
       incidentId,
+      sentryEventId,
     });
 
     logError("ErrorBoundary caught error", error, { errorInfo });
@@ -123,46 +190,94 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       error: null,
       errorInfo: null,
       incidentId: null,
+      sentryEventId: null,
     });
   };
 
   handleReport = (): void => {
-    const { error, errorInfo, incidentId } = this.state;
+    const { error, errorInfo, incidentId, sentryEventId } = this.state;
     const { componentName, context } = this.props;
 
-    const issueBody = encodeURIComponent(
+    const message = error?.message || "Unknown error";
+    const title = `Component Error: ${message}`;
+    const stack = error?.stack || "No stack trace";
+    const componentStack = errorInfo?.componentStack || "No component stack";
+    const contextJson = context ? JSON.stringify(context, null, 2) : "None";
+
+    const fullBody = buildCrashReportBody({
+      componentName: componentName || "Unknown",
+      sentryEventId,
+      incidentId,
+      message,
+      contextJson,
+      stack,
+      componentStack,
+    });
+
+    // Belt-and-suspenders: copy the full payload before opening any URL so the
+    // user can paste it even if the deeplink opens with truncated content.
+    const writeText = window.electron?.clipboard?.writeText;
+    if (writeText) {
+      safeFireAndForget(writeText(fullBody), {
+        context: "ErrorBoundary.handleReport: clipboard.writeText",
+      });
+    }
+
+    const fullUrl = buildIssueUrl(title, fullBody);
+    if (fullUrl.length <= ISSUE_URL_BUDGET) {
+      openIssueUrl(fullUrl);
+      return;
+    }
+
+    const truncatedBody = buildCrashReportBody({
+      componentName: componentName || "Unknown",
+      sentryEventId,
+      incidentId,
+      message,
+      contextJson,
+      stack: truncateStackMiddle(stack),
+      componentStack: truncateStackMiddle(componentStack),
+    });
+    const truncatedUrl = buildIssueUrl(title, truncatedBody);
+    if (truncatedUrl.length <= ISSUE_URL_BUDGET) {
+      openIssueUrl(truncatedUrl);
+      return;
+    }
+
+    const minimalBody =
       `## Error Report\n\n` +
-        `**Component:** ${componentName || "Unknown"}\n` +
-        `**Incident ID:** ${incidentId ?? "unknown"}\n` +
-        `**Message:** ${error?.message || "Unknown error"}\n\n` +
-        `**Context:**\n` +
-        `${context ? JSON.stringify(context, null, 2) : "None"}\n\n` +
-        `**Stack Trace:**\n\`\`\`\n${error?.stack || "No stack trace"}\n\`\`\`\n\n` +
-        `**Component Stack:**\n\`\`\`\n${errorInfo?.componentStack || "No component stack"}\n\`\`\``
-    );
+      `**Component:** ${componentName || "Unknown"}\n` +
+      `**Sentry Event ID:** ${sentryEventId ?? "unavailable (telemetry off)"}\n` +
+      `**Incident ID:** ${incidentId ?? "unknown"}\n` +
+      `**Message:** ${message}\n\n` +
+      `_The full error report (stack trace + component stack) was too large ` +
+      `for a deeplink and has been copied to your clipboard. Please paste it below._`;
+    openIssueUrl(buildIssueUrl(title, minimalBody));
 
-    const issueUrl = `https://github.com/daintreehq/daintree/issues/new?title=${encodeURIComponent(`Component Error: ${error?.message || "Unknown"}`)}&body=${issueBody}`;
-
-    if (window.electron?.system?.openExternal) {
-      actionService
-        .dispatch("system.openExternal", { url: issueUrl }, { source: "user" })
-        .then((result) => {
-          if (!result.ok) {
-            window.electron.system.openExternal(issueUrl);
-          }
-        })
-        .catch(() => {
-          window.electron.system.openExternal(issueUrl);
-        });
+    if (writeText) {
+      notify({
+        type: "info",
+        title: "Report copied to clipboard",
+        message:
+          "The full report was too large to include in the link. Paste it into the issue body.",
+      });
+    } else {
+      notify({
+        type: "warning",
+        title: "Couldn't copy full report",
+        message:
+          "The clipboard isn't available, so only a summary was sent. Reproduce the error and copy logs manually if possible.",
+      });
     }
   };
 
   render(): ReactNode {
-    const { hasError, error, errorInfo, incidentId } = this.state;
+    const { hasError, error, errorInfo, incidentId, sentryEventId } = this.state;
     const { children, fallback: FallbackComponent, variant, componentName } = this.props;
 
     if (hasError && error) {
       const Fallback = FallbackComponent || ErrorFallback;
+      const displayId = sentryEventId ?? incidentId;
 
       return (
         <Fallback
@@ -171,7 +286,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
           resetError={this.resetError}
           variant={variant}
           componentName={componentName}
-          incidentId={incidentId}
+          incidentId={displayId}
           onReport={variant !== "component" ? this.handleReport : undefined}
         />
       );

@@ -70,15 +70,24 @@ export interface CaptureOptions {
 /** Report an exception to Sentry. Safe to call from UI components — wraps
  * the renderer SDK so components don't import from the restricted
  * `@sentry/electron/renderer` module directly.
+ *
+ * Returns the Sentry event ID synchronously when the event is accepted, or
+ * `undefined` when `beforeSend` drops the event (consent off / not yet
+ * shown). Callers that surface the ID to users must fall back to a local
+ * correlation ID when this returns `undefined`.
  */
-export function captureRendererException(error: unknown, options?: CaptureOptions): void {
+export function captureRendererException(
+  error: unknown,
+  options?: CaptureOptions
+): string | undefined {
   try {
     const err = error instanceof Error ? error : new Error(String(error));
-    Sentry.captureException(err, options);
+    return Sentry.captureException(err, options);
   } catch (sentryError) {
     // Last-resort sink: Sentry capture failed; logger/IPC may share the fault.
     // eslint-disable-next-line no-console
     console.error("[Renderer] Failed to report error to Sentry:", sentryError);
+    return undefined;
   }
 }
 

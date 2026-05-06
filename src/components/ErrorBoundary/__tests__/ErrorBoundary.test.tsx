@@ -18,9 +18,31 @@ vi.mock("@/lib/utils", () => ({
   cn: (...args: unknown[]) => args.filter(Boolean).join(" "),
 }));
 
+vi.mock("@/utils/rendererSentry", () => ({
+  captureRendererException: vi.fn().mockReturnValue(undefined),
+}));
+
+vi.mock("@/lib/notify", () => ({
+  notify: vi.fn(),
+}));
+
+vi.mock("@/utils/safeFireAndForget", () => ({
+  safeFireAndForget: vi.fn(),
+}));
+
 function ThrowingChild({ shouldThrow }: { shouldThrow: boolean }) {
   if (shouldThrow) throw new Error("Test render error");
   return <div>Child rendered</div>;
+}
+
+function makeLargeError(stackBytes: number): Error {
+  const err = new Error("Massive crash");
+  err.stack = `Error: Massive crash\n${"    at frame (file.ts:1:1)\n".repeat(Math.ceil(stackBytes / 30))}`;
+  return err;
+}
+
+function ThrowingChildWithError({ error }: { error: Error }) {
+  throw error;
 }
 
 describe("ErrorBoundary", () => {
@@ -29,11 +51,21 @@ describe("ErrorBoundary", () => {
     vi.clearAllMocks();
     useErrorStore.getState().reset();
     vi.spyOn(console, "error").mockImplementation(() => {});
+
+    (window as unknown as { electron: unknown }).electron = {
+      system: {
+        openExternal: vi.fn().mockResolvedValue(undefined),
+      },
+      clipboard: {
+        writeText: vi.fn().mockResolvedValue(undefined),
+      },
+    };
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
+    delete (window as unknown as { electron?: unknown }).electron;
   });
 
   it("renders children when no error", () => {
@@ -65,8 +97,6 @@ describe("ErrorBoundary", () => {
     expect(errors.length).toBe(1);
 
     const storeId = errors[0]!.id;
-    // In dev mode, incident ID is not displayed (only in prod)
-    // but we can verify the error was added to the store
     expect(storeId).toMatch(
       /^error-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
     );
@@ -143,7 +173,7 @@ describe("ErrorBoundary", () => {
     expect(screen.queryByText("Report Issue")).toBeNull();
   });
 
-  it("renders incident ID in production mode for section variant", () => {
+  it("renders incident ID in production mode for section variant (falls back to store id)", () => {
     vi.stubEnv("DEV", false);
 
     render(
@@ -160,6 +190,20 @@ describe("ErrorBoundary", () => {
     expect(
       screen.getByText("This pane crashed but the rest of Daintree is still running.")
     ).toBeTruthy();
+  });
+
+  it("displays the Sentry event id when telemetry returns one", async () => {
+    vi.stubEnv("DEV", false);
+    const { captureRendererException } = await import("@/utils/rendererSentry");
+    vi.mocked(captureRendererException).mockReturnValueOnce("sentry-event-abc123");
+
+    render(
+      <ErrorBoundary variant="section">
+        <ThrowingChild shouldThrow={true} />
+      </ErrorBoundary>
+    );
+
+    expect(screen.getByText("Error ID: sentry-event-abc123")).toBeTruthy();
   });
 
   it("hides technical details in production mode", () => {
@@ -200,10 +244,8 @@ describe("ErrorBoundary", () => {
       </ErrorBoundary>
     );
 
-    // DEV mode shows the actual error message for component variant
     expect(screen.getByText("Test error at key 0")).toBeTruthy();
 
-    // Same key, still throwing — boundary stays in error state
     rerender(
       <ErrorBoundary variant="component" resetKeys={[key]}>
         <ConditionalNumericThrow resetKey={key} />
@@ -211,7 +253,6 @@ describe("ErrorBoundary", () => {
     );
     expect(screen.getByText("Test error at key 0")).toBeTruthy();
 
-    // Change key (simulating dialog close → reopen) and stop throwing
     key = 1;
     shouldThrow = false;
     rerender(
@@ -221,5 +262,140 @@ describe("ErrorBoundary", () => {
     );
 
     expect(screen.getByText("Recovered at key 1")).toBeTruthy();
+  });
+
+  describe("handleReport", () => {
+    it("copies the full report to the clipboard before opening the URL", async () => {
+      const { safeFireAndForget } = await import("@/utils/safeFireAndForget");
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      (window as unknown as { electron: { clipboard: { writeText: typeof writeText } } }).electron =
+        {
+          clipboard: { writeText },
+          // @ts-expect-error partial test stub
+          system: { openExternal: vi.fn().mockResolvedValue(undefined) },
+        };
+
+      render(
+        <ErrorBoundary variant="section">
+          <ThrowingChild shouldThrow={true} />
+        </ErrorBoundary>
+      );
+
+      fireEvent.click(screen.getByText("Report Issue"));
+
+      expect(writeText).toHaveBeenCalledTimes(1);
+      const payload = writeText.mock.calls[0]![0] as string;
+      expect(payload).toContain("Test render error");
+      expect(payload).toContain("Sentry Event ID:");
+      expect(payload).toContain("Incident ID:");
+      expect(safeFireAndForget).toHaveBeenCalled();
+    });
+
+    it("includes both Sentry event id and incident id in the clipboard payload", async () => {
+      const { captureRendererException } = await import("@/utils/rendererSentry");
+      vi.mocked(captureRendererException).mockReturnValueOnce("sentry-evt-99");
+
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      (window as unknown as { electron: { clipboard: { writeText: typeof writeText } } }).electron =
+        {
+          clipboard: { writeText },
+          // @ts-expect-error partial test stub
+          system: { openExternal: vi.fn().mockResolvedValue(undefined) },
+        };
+
+      render(
+        <ErrorBoundary variant="section">
+          <ThrowingChild shouldThrow={true} />
+        </ErrorBoundary>
+      );
+
+      fireEvent.click(screen.getByText("Report Issue"));
+
+      const errors = useErrorStore.getState().errors;
+      const storeId = errors[0]!.id;
+      const payload = writeText.mock.calls[0]![0] as string;
+      expect(payload).toContain("sentry-evt-99");
+      expect(payload).toContain(storeId);
+    });
+
+    it("opens a URL within the GitHub URL budget for normal-sized errors", async () => {
+      const { actionService } = await import("@/services/ActionService");
+
+      render(
+        <ErrorBoundary variant="section">
+          <ThrowingChild shouldThrow={true} />
+        </ErrorBoundary>
+      );
+
+      fireEvent.click(screen.getByText("Report Issue"));
+
+      expect(actionService.dispatch).toHaveBeenCalledWith(
+        "system.openExternal",
+        expect.objectContaining({ url: expect.any(String) }),
+        { source: "user" }
+      );
+      const url = vi.mocked(actionService.dispatch).mock.calls.at(-1)![1]!.url as string;
+      expect(url.length).toBeLessThanOrEqual(7200);
+      expect(url).toContain("github.com/daintreehq/daintree/issues/new");
+    });
+
+    it("truncates oversized stacks so the URL stays within budget", async () => {
+      const { actionService } = await import("@/services/ActionService");
+      const huge = makeLargeError(20000);
+
+      render(
+        <ErrorBoundary variant="section">
+          <ThrowingChildWithError error={huge} />
+        </ErrorBoundary>
+      );
+
+      fireEvent.click(screen.getByText("Report Issue"));
+
+      const url = vi.mocked(actionService.dispatch).mock.calls.at(-1)![1]!.url as string;
+      expect(url.length).toBeLessThanOrEqual(7200);
+      const decodedBody = decodeURIComponent(url.split("&body=")[1]!);
+      expect(decodedBody).toContain("middle truncated");
+    });
+
+    it("falls back to a minimal URL with a clipboard toast when even truncated content overflows", async () => {
+      const { actionService } = await import("@/services/ActionService");
+      const { notify } = await import("@/lib/notify");
+
+      const oversizedMessage = "x".repeat(8000);
+      const huge = new Error(oversizedMessage);
+      huge.stack = `Error: ${oversizedMessage}\n${"    at frame (file.ts:1:1)\n".repeat(500)}`;
+
+      render(
+        <ErrorBoundary variant="section">
+          <ThrowingChildWithError error={huge} />
+        </ErrorBoundary>
+      );
+
+      fireEvent.click(screen.getByText("Report Issue"));
+
+      const url = vi.mocked(actionService.dispatch).mock.calls.at(-1)![1]!.url as string;
+      const decodedBody = decodeURIComponent(url.split("&body=")[1]!);
+      expect(decodedBody).toContain("copied to your clipboard");
+      expect(notify).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "info",
+          title: "Report copied to clipboard",
+        })
+      );
+    });
+
+    it("does not crash when the clipboard binding is unavailable", () => {
+      (window as unknown as { electron: unknown }).electron = {
+        system: { openExternal: vi.fn().mockResolvedValue(undefined) },
+      };
+
+      render(
+        <ErrorBoundary variant="section">
+          <ThrowingChild shouldThrow={true} />
+        </ErrorBoundary>
+      );
+
+      expect(() => fireEvent.click(screen.getByText("Report Issue"))).not.toThrow();
+    });
   });
 });
