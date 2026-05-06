@@ -125,6 +125,57 @@ describe("useCrashRecoveryGate", () => {
     expect(result.current.state.status).toBe("none");
   });
 
+  it("skips auto-restore at crashCount 2 and surfaces the dialog", async () => {
+    const resolve = vi.fn(async () => {});
+    Object.defineProperty(window, "electron", {
+      configurable: true,
+      writable: true,
+      value: makeElectron({
+        pending: { ...mockCrash, crashCount: 2 },
+        config: { autoRestoreOnCrash: true },
+        resolve,
+      }),
+    });
+
+    const { result } = renderHook(() => useCrashRecoveryGate());
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(resolve).not.toHaveBeenCalled();
+    expect(result.current.state.status).toBe("pending");
+  });
+
+  it("auto-restores at crashCount 1 (below crash-loop threshold)", async () => {
+    const resolve = vi.fn(async () => {});
+    Object.defineProperty(window, "electron", {
+      configurable: true,
+      writable: true,
+      value: makeElectron({
+        pending: { ...mockCrash, crashCount: 1 },
+        config: { autoRestoreOnCrash: true },
+        resolve,
+      }),
+    });
+
+    const { result } = renderHook(() => useCrashRecoveryGate());
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(resolve).toHaveBeenCalledWith({
+      kind: "restore",
+      panelIds: ["t1", "t2"],
+    });
+    expect(result.current.state.status).toBe("none");
+  });
+
   it("auto-restores with empty panelIds when no panels available", async () => {
     const resolve = vi.fn(async () => {});
     const crashNoPanels: PendingCrash = {

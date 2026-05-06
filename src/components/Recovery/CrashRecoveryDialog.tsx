@@ -50,6 +50,7 @@ export function CrashRecoveryDialog({
 }: CrashRecoveryDialogProps) {
   const panels = useMemo(() => crash.panels ?? [], [crash.panels]);
   const hasPanels = panels.length > 0;
+  const isInCrashLoop = (crash.crashCount ?? 0) >= 2;
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(
     () => new Set(panels.map((p) => p.id))
@@ -218,7 +219,7 @@ export function CrashRecoveryDialog({
                 disabled={resolving}
                 data-testid="fresh-button"
               >
-                Start fresh
+                Continue without restoring
               </Button>
             </div>
 
@@ -265,7 +266,9 @@ export function CrashRecoveryDialog({
                 <div className="h-2 w-2 rounded-full bg-daintree-text/40" />
               </div>
               <div>
-                <div className="text-sm font-medium text-daintree-text">Start fresh</div>
+                <div className="text-sm font-medium text-daintree-text">
+                  Continue without restoring
+                </div>
                 <div className="text-xs text-daintree-text/60 mt-0.5">
                   Reset to a clean layout — open panels will be cleared
                 </div>
@@ -371,27 +374,38 @@ export function CrashRecoveryDialog({
                   className="text-xs text-status-warning/90 bg-status-warning/10 rounded px-2 py-1.5"
                   data-testid="privacy-warning"
                 >
-                  Crash info may include panel titles, panel kinds, file paths, and stack traces.
-                  Click again to copy to clipboard and open GitHub Issues. You'll need to paste the
-                  info into the form.
+                  Opens GitHub Issues in your browser. The report includes platform info, app
+                  version, panel kinds, file paths, error message, and stack trace — and will be
+                  publicly visible. Review before pasting.
                 </p>
               )}
             </div>
           )}
         </div>
 
-        <label className="flex items-center gap-2 cursor-pointer" data-testid="auto-restore-label">
-          <input
-            type="checkbox"
-            checked={config.autoRestoreOnCrash}
-            onChange={(e) => handleAutoRestore(e.target.checked)}
-            className="accent-daintree-accent h-4 w-4"
-            data-testid="auto-restore-checkbox"
-          />
-          <span className="text-xs text-daintree-text/60">
-            Always restore sessions automatically
-          </span>
-        </label>
+        {isInCrashLoop ? (
+          config.autoRestoreOnCrash && (
+            <p className="text-xs text-daintree-text/60" data-testid="auto-restore-paused">
+              Auto-restore paused — too many consecutive crashes.
+            </p>
+          )
+        ) : (
+          <label
+            className="flex items-center gap-2 cursor-pointer"
+            data-testid="auto-restore-label"
+          >
+            <input
+              type="checkbox"
+              checked={config.autoRestoreOnCrash}
+              onChange={(e) => handleAutoRestore(e.target.checked)}
+              className="accent-daintree-accent h-4 w-4"
+              data-testid="auto-restore-checkbox"
+            />
+            <span className="text-xs text-daintree-text/60">
+              Always restore sessions automatically
+            </span>
+          </label>
+        )}
       </AppDialog.Body>
     </AppDialog>
   );
