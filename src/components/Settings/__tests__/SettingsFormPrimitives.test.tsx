@@ -28,7 +28,8 @@ describe("SettingsInput", () => {
     render(<SettingsInput label="Port" error="Must be a number" />);
     const input = screen.getByLabelText("Port");
     expect(input.getAttribute("aria-invalid")).toBe("true");
-    expect(screen.getByRole("alert")?.textContent).toBe("Must be a number");
+    expect(screen.getByText("Must be a number")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("hides description when error is shown", () => {
@@ -136,7 +137,8 @@ describe("SettingsSelect", () => {
     );
     const trigger = screen.getByLabelText("Lang");
     expect(trigger.getAttribute("aria-invalid")).toBe("true");
-    expect(screen.getByRole("alert")?.textContent).toBe("Required");
+    expect(screen.getByText("Required")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("shows reset button when modified", () => {
@@ -271,7 +273,8 @@ describe("SettingsChoicebox", () => {
     );
     const group = screen.getByRole("radiogroup");
     expect(group.getAttribute("aria-invalid")).toBe("true");
-    expect(screen.getByRole("alert")?.textContent).toBe("Invalid selection");
+    expect(screen.getByText("Invalid selection")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("hides description when error is shown", () => {
@@ -616,7 +619,8 @@ describe("SettingsCheckbox", () => {
     );
     const checkbox = screen.getByRole("checkbox");
     expect(checkbox.getAttribute("aria-invalid")).toBe("true");
-    expect(screen.getByRole("alert")?.textContent).toBe("Invalid state");
+    expect(screen.getByText("Invalid state")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("hides description when error is shown", () => {

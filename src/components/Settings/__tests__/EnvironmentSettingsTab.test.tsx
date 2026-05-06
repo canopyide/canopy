@@ -132,6 +132,68 @@ describe("EnvironmentSettingsTab", () => {
     );
   });
 
+  it("wires aria-invalid and aria-describedby on the key input when a row error is shown", async () => {
+    window.electron = {
+      globalEnv: {
+        get: vi.fn().mockResolvedValue({ FOO: "bar" }),
+        set: vi.fn().mockResolvedValue(undefined),
+      },
+    } as unknown as typeof window.electron;
+
+    renderTab();
+
+    await waitFor(() => {
+      expect(screen.getAllByLabelText("Environment variable name")).toHaveLength(1);
+    });
+
+    const nameInput = screen.getByLabelText("Environment variable name");
+    fireEvent.change(nameInput, { target: { value: "1invalid" } });
+
+    const saveButton = screen.getByRole("button", { name: /save/i });
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(nameInput.getAttribute("aria-invalid")).toBe("true");
+    });
+
+    const describedBy = nameInput.getAttribute("aria-describedby");
+    expect(describedBy).toBeTruthy();
+    expect(describedBy).toMatch(/^env-error-/);
+    expect(document.getElementById(describedBy!)?.textContent).toContain("Invalid name");
+
+    // Value input must NOT receive the row-level error wiring — the row
+    // errors are about the key, not the value.
+    const valueInput = screen.getByLabelText("Environment variable value");
+    expect(valueInput.getAttribute("aria-invalid")).toBeNull();
+    expect(valueInput.getAttribute("aria-describedby")).toBeNull();
+  });
+
+  it("emits role=alert on saveError when globalEnv.set fails", async () => {
+    window.electron = {
+      globalEnv: {
+        get: vi.fn().mockResolvedValue({ FOO: "bar" }),
+        set: vi.fn().mockRejectedValue(new Error("IPC failed")),
+      },
+    } as unknown as typeof window.electron;
+
+    renderTab();
+
+    await waitFor(() => {
+      expect(screen.getAllByLabelText("Environment variable name")).toHaveLength(1);
+    });
+
+    const valueInput = screen.getByLabelText("Environment variable value");
+    fireEvent.change(valueInput, { target: { value: "changed" } });
+
+    const saveButton = screen.getByRole("button", { name: /save/i });
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
+      const alert = screen.getByRole("alert");
+      expect(alert.textContent).toContain("IPC failed");
+    });
+  });
+
   it("adds new variable row and saves via globalEnv.set", async () => {
     window.electron = {
       globalEnv: {

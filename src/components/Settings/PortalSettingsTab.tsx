@@ -377,7 +377,7 @@ export function PortalSettingsTab() {
           )}
 
           {customUrlError && (
-            <p id={customUrlErrorId} role="alert" className="text-xs text-status-error">
+            <p id={customUrlErrorId} className="text-xs text-status-error">
               {customUrlError}
             </p>
           )}
@@ -443,7 +443,7 @@ export function PortalSettingsTab() {
             </button>
           </div>
           {urlError && (
-            <p id={addLinkErrorId} role="alert" className="text-xs text-status-error">
+            <p id={addLinkErrorId} className="text-xs text-status-error">
               {urlError}
             </p>
           )}

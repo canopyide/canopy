@@ -271,6 +271,8 @@ export function EnvironmentSettingsTab() {
                       className="flex-1 bg-transparent border border-border-strong rounded px-2 py-1 text-sm text-daintree-text font-mono focus:outline-hidden focus:border-daintree-accent focus:ring-1 focus:ring-daintree-accent/30"
                       placeholder="VARIABLE_NAME"
                       aria-label="Environment variable name"
+                      aria-invalid={error ? true : undefined}
+                      aria-describedby={error ? `env-error-${envVar.id}` : undefined}
                     />
                     <span className="text-daintree-text/60">=</span>
                     <div className="flex-1 relative">
@@ -313,7 +315,14 @@ export function EnvironmentSettingsTab() {
                       <Trash2 className="h-4 w-4 text-status-error" />
                     </button>
                   </div>
-                  {error && <p className="text-[11px] text-status-error mt-1 ml-1">{error}</p>}
+                  {error && (
+                    <p
+                      id={`env-error-${envVar.id}`}
+                      className="text-[11px] text-status-error mt-1 ml-1"
+                    >
+                      {error}
+                    </p>
+                  )}
                 </div>
               );
             })
@@ -325,7 +334,11 @@ export function EnvironmentSettingsTab() {
           </Button>
         </div>
 
-        {saveError && <p className="text-xs text-status-error">{saveError}</p>}
+        {saveError && (
+          <p role="alert" className="text-xs text-status-error">
+            {saveError}
+          </p>
+        )}
 
         {isDirty && (
           <div className="flex items-center gap-2 pt-2">
