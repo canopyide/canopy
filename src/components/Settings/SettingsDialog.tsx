@@ -1379,7 +1379,7 @@ function SearchResults({
           className={cn(
             "group w-full text-left p-3 rounded-[var(--radius-md)] border transition-colors",
             index === activeIndex
-              ? "bg-overlay-soft border-overlay"
+              ? "bg-overlay-selected border-border-strong"
               : "border-transparent hover:bg-overlay-soft hover:border-daintree-border",
             "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
           )}
