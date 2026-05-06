@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import type { MouseEvent as ReactMouseEvent } from "react";
 import { isNoDndTarget, NoDndMouseSensor } from "../NoDndMouseSensor";
 
 function mouseEvent(target: EventTarget | null, button = 0): MouseEvent {
@@ -8,6 +9,10 @@ function mouseEvent(target: EventTarget | null, button = 0): MouseEvent {
     Object.defineProperty(event, "target", { value: target });
   }
   return event;
+}
+
+function syntheticEvent(target: EventTarget | null, button = 0): ReactMouseEvent {
+  return { nativeEvent: mouseEvent(target, button) } as ReactMouseEvent;
 }
 
 describe("isNoDndTarget", () => {
@@ -30,9 +35,26 @@ describe("isNoDndTarget", () => {
     expect(isNoDndTarget(mouseEvent(child))).toBe(true);
   });
 
+  it("returns true when an inner SVG path is the target inside [data-no-dnd]", () => {
+    // Real-world case: clicking a Lucide icon inside a button reports
+    // `event.target` as the inner <path>, not the button.
+    const button = document.createElement("button");
+    button.setAttribute("data-no-dnd", "");
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    svg.appendChild(path);
+    button.appendChild(svg);
+    expect(isNoDndTarget(mouseEvent(path))).toBe(true);
+  });
+
   it("returns true for right-click (button === 2) regardless of target", () => {
     const el = document.createElement("div");
     expect(isNoDndTarget(mouseEvent(el, 2))).toBe(true);
+  });
+
+  it("returns false for middle-click (button === 1) on a plain target", () => {
+    const el = document.createElement("div");
+    expect(isNoDndTarget(mouseEvent(el, 1))).toBe(false);
   });
 
   it("returns false for a non-Element target (e.g., document)", () => {
@@ -53,11 +75,7 @@ describe("NoDndMouseSensor.activators", () => {
   it("activator returns true for a plain target (drag activates)", () => {
     const el = document.createElement("div");
     const handler = NoDndMouseSensor.activators[0]!.handler;
-    // dnd-kit passes a React synthetic event with `nativeEvent`. We pass the
-    // minimum shape the handler reads.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const synthetic = { nativeEvent: mouseEvent(el) } as any;
-    expect(handler(synthetic, { active: { id: "x" } })).toBe(true);
+    expect(handler(syntheticEvent(el), {})).toBe(true);
   });
 
   it("activator returns false when target is inside a [data-no-dnd] subtree", () => {
@@ -66,16 +84,31 @@ describe("NoDndMouseSensor.activators", () => {
     const button = document.createElement("button");
     wrapper.appendChild(button);
     const handler = NoDndMouseSensor.activators[0]!.handler;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const synthetic = { nativeEvent: mouseEvent(button) } as any;
-    expect(handler(synthetic, { active: { id: "x" } })).toBe(false);
+    expect(handler(syntheticEvent(button), {})).toBe(false);
   });
 
   it("activator returns false for right-click", () => {
     const el = document.createElement("div");
     const handler = NoDndMouseSensor.activators[0]!.handler;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const synthetic = { nativeEvent: mouseEvent(el, 2) } as any;
-    expect(handler(synthetic, { active: { id: "x" } })).toBe(false);
+    expect(handler(syntheticEvent(el, 2), {})).toBe(false);
+  });
+
+  it("activator invokes onActivation with the native event when drag activates", () => {
+    const el = document.createElement("div");
+    const handler = NoDndMouseSensor.activators[0]!.handler;
+    const onActivation = vi.fn();
+    const synthetic = syntheticEvent(el);
+    expect(handler(synthetic, { onActivation })).toBe(true);
+    expect(onActivation).toHaveBeenCalledTimes(1);
+    expect(onActivation).toHaveBeenCalledWith({ event: synthetic.nativeEvent });
+  });
+
+  it("activator does not call onActivation when blocked by [data-no-dnd]", () => {
+    const button = document.createElement("button");
+    button.setAttribute("data-no-dnd", "");
+    const handler = NoDndMouseSensor.activators[0]!.handler;
+    const onActivation = vi.fn();
+    expect(handler(syntheticEvent(button), { onActivation })).toBe(false);
+    expect(onActivation).not.toHaveBeenCalled();
   });
 });

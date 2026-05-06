@@ -1,4 +1,4 @@
-import { MouseSensor } from "@dnd-kit/core";
+import { MouseSensor, type MouseSensorOptions } from "@dnd-kit/core";
 import type { MouseEvent as ReactMouseEvent } from "react";
 
 const RIGHT_MOUSE_BUTTON = 2;
@@ -11,11 +11,13 @@ export function isNoDndTarget(event: MouseEvent): boolean {
 }
 
 export class NoDndMouseSensor extends MouseSensor {
-  static activators = [
+  static activators: typeof MouseSensor.activators = [
     {
-      eventName: "onMouseDown" as const,
-      handler: ({ nativeEvent: event }: ReactMouseEvent) => {
-        return !isNoDndTarget(event);
+      eventName: "onMouseDown",
+      handler: ({ nativeEvent: event }: ReactMouseEvent, { onActivation }: MouseSensorOptions) => {
+        if (isNoDndTarget(event)) return false;
+        onActivation?.({ event });
+        return true;
       },
     },
   ];
