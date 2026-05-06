@@ -44,20 +44,17 @@ export function PrerequisiteCard({ spec, state }: { spec: PrerequisiteSpec; stat
         {loading ? (
           <span className="text-[11px] text-daintree-text/30 shrink-0">Checking…</span>
         ) : needsInstall ? (
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 shrink-0 min-w-0">
             {versionMismatch && (
-              <span
-                className="text-[11px] text-status-warning whitespace-nowrap"
-                title={`${check.version ? `v${check.version}` : "unknown"} — requires v${check.minVersion}+`}
-              >
-                needs v{check.minVersion}+
+              <span className="text-[11px] text-status-warning whitespace-nowrap truncate min-w-0">
+                v{check.version} → v{check.minVersion}+
               </span>
             )}
             {installBlocks && (
               <button
                 type="button"
                 onClick={() => setExpanded((v) => !v)}
-                className="inline-flex items-center gap-1 text-[11px] text-text-secondary hover:text-daintree-text underline-offset-2 hover:underline"
+                className="inline-flex items-center gap-1 text-[11px] text-text-secondary hover:text-daintree-text underline-offset-2 hover:underline shrink-0"
               >
                 {expanded ? (
                   <ChevronDown className="w-3 h-3" />
@@ -70,7 +67,7 @@ export function PrerequisiteCard({ spec, state }: { spec: PrerequisiteSpec; stat
             {check.installUrl && (
               <a
                 href={check.installUrl}
-                className="inline-flex items-center gap-1 text-[11px] text-daintree-text/40 hover:text-daintree-text"
+                className="inline-flex items-center gap-1 text-[11px] text-daintree-text/40 hover:text-daintree-text shrink-0"
                 onClick={(e) => {
                   e.preventDefault();
                   void systemClient.openExternal(check.installUrl!);
