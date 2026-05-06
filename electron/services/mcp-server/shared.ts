@@ -7,7 +7,7 @@ import type {
   McpRuntimeState,
 } from "../../../shared/types/ipc/mcpServer.js";
 import type { HelpAssistantTier } from "../../../shared/types/ipc/maps.js";
-import type { AgentState } from "../../../shared/types/agent.js";
+import type { AgentState, WaitingReason } from "../../../shared/types/agent.js";
 
 export type McpAuthClass = "external" | HelpAssistantTier;
 export type HelpTokenValidator = (token: string) => HelpAssistantTier | false;
@@ -35,6 +35,12 @@ export type WaitUntilIdleResult = {
   agentId?: string;
   busyState: "working" | "idle";
   idleReason?: "idle" | "waiting_for_user" | "completed" | "exited" | "unknown";
+  /**
+   * Only present when `idleReason === "waiting_for_user"`. Distinguishes a safe
+   * auto-drive moment (`"prompt"` — empty input prompt) from an agent actively
+   * asking the user a question (`"question"`).
+   */
+  waitingReason?: WaitingReason;
   previousBusyState?: "working" | "idle";
   lastTransitionAt?: number;
   timedOut: boolean;
@@ -68,6 +74,12 @@ export const WAIT_UNTIL_IDLE_OUTPUT_SCHEMA: Record<string, unknown> = {
       type: "string",
       enum: ["idle", "waiting_for_user", "completed", "exited", "unknown"],
     },
+    waitingReason: {
+      type: "string",
+      enum: ["prompt", "question"],
+      description:
+        "Present only when idleReason is 'waiting_for_user'. 'prompt' = empty input prompt (safe to auto-drive); 'question' = agent is asking the user a question.",
+    },
     previousBusyState: { type: "string", enum: ["working", "idle"] },
     lastTransitionAt: { type: "number" },
     timedOut: { type: "boolean" },
@@ -76,7 +88,7 @@ export const WAIT_UNTIL_IDLE_OUTPUT_SCHEMA: Record<string, unknown> = {
 };
 
 export const WAIT_UNTIL_IDLE_DESCRIPTION =
-  "[terminal] Wait until idle: blocks until the agent in the given terminal transitions out of the `working` state, or until the timeout elapses. Resolves immediately if the agent is already non-working or no agent is attached. Honours client cancellation. When orchestrating multiple terminals, call with `timeoutMs: 0` in parallel for snapshots — do not issue concurrent default-timeout waits, which race unpredictably and can each block for 30 minutes.";
+  "[terminal] Wait until idle: blocks until the agent in the given terminal transitions out of the `working` state, or until the timeout elapses. Resolves immediately if the agent is already non-working or no agent is attached. When the agent settles in `waiting_for_user`, the result also includes `waitingReason` (`prompt` = empty input prompt, safe to auto-drive; `question` = agent is asking the user a question). Honours client cancellation. When orchestrating multiple terminals, call with `timeoutMs: 0` in parallel for snapshots — do not issue concurrent default-timeout waits, which race unpredictably and can each block for 30 minutes.";
 
 export function mapAgentStateToBusyState(state: AgentState | undefined): "working" | "idle" {
   return state === "working" ? "working" : "idle";

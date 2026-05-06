@@ -197,7 +197,7 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
     id: "agent.getState",
     title: "Get Agent State",
     description:
-      "Query agent state by agentId; returns agentId, state, lastTransitionAt, terminalId, found",
+      "Query agent state by agentId; returns agentId, state, waitingReason, lastTransitionAt, terminalId, found. waitingReason ('prompt' | 'question') is non-null only when state is 'waiting'.",
     category: "agent",
     kind: "query",
     danger: "safe",
@@ -222,6 +222,7 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
           return {
             agentId,
             state: panel.agentState ?? null,
+            waitingReason: panel.waitingReason ?? null,
             lastTransitionAt: panel.lastStateChange ?? null,
             terminalId: panel.id,
             found: true,
@@ -231,6 +232,7 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
       return {
         agentId,
         state: null,
+        waitingReason: null,
         lastTransitionAt: null,
         terminalId: null,
         found: false,
