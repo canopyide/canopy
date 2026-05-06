@@ -1602,6 +1602,68 @@ describe("HelpPanel — + New session destructive reset", () => {
     expect(setCalls.length).toBe(1);
     expect(helpPanelState.clearTerminal).toHaveBeenCalled();
   });
+
+  it("does NOT wipe the reservation when the cleanup effect re-runs mid-launch", async () => {
+    // Regression: without the pendingNewTerminalIdRef guard in the cleanup
+    // effect at HelpPanel.tsx:221, a re-render fired while
+    // `terminalId === newId` but `panelsById[newId]` is not yet committed
+    // would observe `terminalId && !terminal` and call clearTerminal —
+    // re-opening the dock-leak gap that #6951 closes. This test wires up a
+    // stateful setTerminal/clearTerminal so React actually sees the
+    // intermediate state (the standard mocks are vi.fn() and don't mutate).
+    setupBoundTerminal({ agentState: "idle", conversationTouched: false });
+
+    helpPanelState.setTerminal = vi
+      .fn()
+      .mockImplementation((tId: string, aId: string, sId: string | null) => {
+        helpPanelState.terminalId = tId;
+        helpPanelState.agentId = aId;
+        helpPanelState.sessionId = sId;
+      });
+    helpPanelState.clearTerminal = vi.fn().mockImplementation(() => {
+      helpPanelState.terminalId = null;
+      helpPanelState.agentId = null;
+      helpPanelState.sessionId = null;
+    });
+
+    // Hold provisionHelpSession to keep us in the in-flight window.
+    let resolveProvision: ((value: unknown) => void) | undefined;
+    mockProvisionSession.mockImplementation(
+      () =>
+        new Promise((r) => {
+          resolveProvision = r;
+        })
+    );
+
+    panelStoreState.addPanel = vi
+      .fn()
+      .mockImplementation((opts: { requestedId?: string }) =>
+        Promise.resolve(opts.requestedId ?? "fresh")
+      );
+
+    const { container, rerender } = render(<HelpPanel width={380} />);
+
+    await act(async () => {
+      fireEvent.click(container.querySelector('button[aria-label="Start new session"]')!);
+    });
+
+    // We're in the in-flight window. Force a re-render so the cleanup
+    // effect re-evaluates: terminalId is the reserved id, panelsById has
+    // no entry for it yet. The ref guard must suppress the cleanup.
+    await act(async () => {
+      rerender(<HelpPanel width={380} />);
+    });
+
+    // Exactly one clearTerminal call (the explicit synchronous reset
+    // before the pre-set). If the effect had fired, we'd see 2+.
+    expect(helpPanelState.clearTerminal).toHaveBeenCalledTimes(1);
+    expect(helpPanelState.terminalId).toMatch(/^terminal-/);
+
+    // Drain the pending promise so vitest's act() doesn't warn.
+    await act(async () => {
+      resolveProvision?.(null);
+    });
+  });
 });
 
 describe("HelpPanel — visibilitychange teardown vs. system sleep (issue #6758)", () => {
