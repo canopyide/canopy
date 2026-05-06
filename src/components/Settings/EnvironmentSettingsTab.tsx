@@ -7,6 +7,7 @@ import { SettingsSection } from "./SettingsSection";
 import { isSensitiveEnvKey } from "@shared/utils/envVars";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { useSettingsTabValidation } from "./SettingsValidationRegistry";
+import { useSettingsTabFlush } from "./SettingsFlushRegistry";
 import { logError } from "@/utils/logger";
 import { notify } from "@/lib/notify";
 
@@ -185,6 +186,7 @@ export function EnvironmentSettingsTab() {
   }, [envRows]);
 
   const handleSave = useCallback(async () => {
+    if (isSaving) return;
     if (!validate()) return;
 
     setIsSaving(true);
@@ -200,7 +202,7 @@ export function EnvironmentSettingsTab() {
     } finally {
       setIsSaving(false);
     }
-  }, [envRows, validate]);
+  }, [envRows, validate, isSaving]);
 
   const handleDiscard = useCallback(() => {
     setEnvRows(envVarsFromRecord(savedSnapshot));
@@ -209,6 +211,12 @@ export function EnvironmentSettingsTab() {
     setSaveError(null);
     setIsDirty(false);
   }, [savedSnapshot]);
+
+  // Persist pending edits before the dialog dismisses (X click) or the
+  // WebContentsView detaches on project switch. handleSave's validate() gate
+  // is intentional — invalid rows are dropped rather than persisted (matches
+  // user-initiated save).
+  useSettingsTabFlush("environment", handleSave, isDirty);
 
   if (isLoading) {
     return (
