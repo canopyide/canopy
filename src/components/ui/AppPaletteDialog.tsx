@@ -289,7 +289,19 @@ AppPaletteDialog.Body = function AppPaletteBody({
   maxHeight = "max-h-[50vh]",
 }: AppPaletteBodyProps) {
   return (
-    <ScrollShadow tabIndex={0} className={cn(maxHeight, className)} scrollClassName="p-2 space-y-1">
+    <ScrollShadow
+      tabIndex={0}
+      className={cn(
+        maxHeight,
+        "min-h-32 transition-[height] motion-reduce:transition-none palette-body-height",
+        className
+      )}
+      style={{
+        transitionDuration: `${UI_PALETTE_ENTER_DURATION}ms`,
+        transitionTimingFunction: "ease-out",
+      }}
+      scrollClassName="p-2 space-y-1"
+    >
       {children}
     </ScrollShadow>
   );

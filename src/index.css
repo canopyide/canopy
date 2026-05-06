@@ -1696,6 +1696,10 @@ body[data-reduce-animations="true"] .animate-label-swap-out {
   opacity: 0;
 }
 
+body[data-reduce-animations="true"] .palette-body-height {
+  transition: none !important;
+}
+
 body[data-reduce-animations="true"] *:focus-visible {
   transition: none !important;
 }
