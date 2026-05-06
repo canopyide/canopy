@@ -84,6 +84,7 @@ function Toast({ notification }: { notification: Notification }) {
   const spinnerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dwellTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const busyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
 
   // While bursts of count-only updates arrive, set aria-busy on the live
@@ -100,6 +101,7 @@ function Toast({ notification }: { notification: Notification }) {
       if (spinnerTimerRef.current) clearTimeout(spinnerTimerRef.current);
       if (dwellTimerRef.current) clearTimeout(dwellTimerRef.current);
       if (busyTimerRef.current) clearTimeout(busyTimerRef.current);
+      if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
     };
   }, []);
 
@@ -157,6 +159,10 @@ function Toast({ notification }: { notification: Notification }) {
       clearTimeout(spinnerTimerRef.current);
       spinnerTimerRef.current = null;
     }
+    if (dismissTimerRef.current) {
+      clearTimeout(dismissTimerRef.current);
+      dismissTimerRef.current = null;
+    }
     restoreFocus();
     // Fire onDismiss exactly once, before marking dismissed, so callers see
     // a clean user-driven signal distinct from MAX_VISIBLE_TOASTS eviction.
@@ -198,9 +204,21 @@ function Toast({ notification }: { notification: Notification }) {
       : Math.min(duration * VISIBLE_DURATION_MULTIPLIER, MAX_VISIBLE_DURATION_MS);
     const deadline = (notification.firstShownAt ?? Date.now()) + cap;
     const delay = Math.min(duration, Math.max(0, deadline - Date.now()));
-    const timer = setTimeout(() => dismissRef.current(), delay);
-    return () => clearTimeout(timer);
-  }, [notification.duration, notification.contentKey, notification.firstShownAt, isPaused]);
+    dismissTimerRef.current = setTimeout(() => dismissRef.current(), delay);
+    return () => {
+      if (dismissTimerRef.current) {
+        clearTimeout(dismissTimerRef.current);
+        dismissTimerRef.current = null;
+      }
+    };
+  }, [
+    notification.duration,
+    notification.contentKey,
+    notification.firstShownAt,
+    isPaused,
+    notification.action,
+    notification.actions,
+  ]);
 
   const accentClass = ACCENT_CLASS[notification.type] ?? "border-l-status-info";
   const { Icon, className: iconClassName } =
@@ -317,6 +335,10 @@ function Toast({ notification }: { notification: Notification }) {
                     spinnerTimerRef.current = null;
                   }
                   if (!mountedRef.current) return;
+                  if (dismissTimerRef.current) {
+                    clearTimeout(dismissTimerRef.current);
+                    dismissTimerRef.current = null;
+                  }
                   setActionStatus("success");
                   const announcementText = notification.title
                     ? `${notification.title}: ${action.successLabel}`
@@ -337,6 +359,10 @@ function Toast({ notification }: { notification: Notification }) {
                   setActiveActionIndex(null);
                 });
             } else {
+              if (dismissTimerRef.current) {
+                clearTimeout(dismissTimerRef.current);
+                dismissTimerRef.current = null;
+              }
               setActionStatus("success");
               const announcementText = notification.title
                 ? `${notification.title}: ${action.successLabel}`

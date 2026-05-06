@@ -525,6 +525,15 @@ describe("Toast accessibility", () => {
       vi.advanceTimersByTime(16000);
     });
     expect(screen.getByText("actions-toast")).toBeTruthy();
+
+    // Past the 20s explicit duration + exit fade — dismisses on schedule.
+    await act(async () => {
+      vi.advanceTimersByTime(4200);
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(screen.queryByText("actions-toast")).toBeNull();
   });
 
   it("cap does NOT apply to action-bearing toast under coalesce pressure", async () => {
