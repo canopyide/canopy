@@ -340,7 +340,9 @@ function SettingsDialogInner({
 
   // Ref to the EnvironmentSettingsTab's flush callback. The tab assigns this
   // when mounted; SettingsDialog calls it on close and on view detach so dirty
-  // global env edits survive a project switch (#6875).
+  // global env edits survive a project switch (#6875). Stays null until the
+  // user navigates to the Environment tab — but a tab that was never mounted
+  // also can't have dirty state, so the null skip is correct.
   const envFlushRef = useRef<(() => Promise<void>) | null>(null);
 
   // Track isOpen via ref so the visibilitychange listener can read the latest
