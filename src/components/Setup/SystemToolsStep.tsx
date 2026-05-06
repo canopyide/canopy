@@ -32,7 +32,8 @@ export function PrerequisiteCard({ spec, state }: { spec: PrerequisiteSpec; stat
   const installBlocks = needsInstall ? getInstallBlocksForOS(check) : null;
   const [expanded, setExpanded] = useState(false);
   const label = spec.label || spec.tool;
-  const versionMismatch = check?.available && !check.meetsMinVersion && check.minVersion;
+  const versionMismatch =
+    check?.available && !check.meetsMinVersion && check.minVersion && check.version;
 
   return (
     <div className="rounded-[var(--radius-md)] border border-daintree-border bg-daintree-bg/30">

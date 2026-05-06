@@ -39,7 +39,7 @@ export function SystemRequirementsSection({
   const warningTools = visibleSpecs.filter((s) => {
     const state = checkStates[s.tool];
     return (
-      state !== "loading" && state?.available && !state.meetsMinVersion && s.severity === "warn"
+      state !== "loading" && s.severity === "warn" && (!state?.available || !state.meetsMinVersion)
     );
   });
 
@@ -62,11 +62,9 @@ export function SystemRequirementsSection({
 
   const readyCount = readyTools.length;
   const totalCount = visibleSpecs.length;
-  const warningCount = warningTools.length;
-  const fatalCount = fatalTools.length;
 
-  // Warning state: has any warnings (warn severity tools not meeting version)
-  const hasWarning = allDone && warningCount > 0;
+  // Warning state: has any warnings (warn severity tools not meeting version or missing)
+  const hasWarning = allDone && warningTools.length > 0;
 
   return (
     <div className="rounded-[var(--radius-md)] border border-daintree-border bg-daintree-bg/30">
@@ -87,7 +85,7 @@ export function SystemRequirementsSection({
           </span>
         )}
 
-        {allDone && !hasFatalFailure && !hasWarning && (
+        {allDone && !hasFatalFailure && !hasWarning && !error && (
           <span className="flex items-center gap-1.5 ml-auto text-[11px] text-status-success">
             <CircleCheck className="w-3.5 h-3.5" />
             All system tools ready
@@ -97,14 +95,14 @@ export function SystemRequirementsSection({
         {allDone && hasFatalFailure && (
           <span className="flex items-center gap-1.5 ml-auto text-[11px] text-status-error">
             <CircleX className="w-3.5 h-3.5" />
-            Action required: {fatalCount} of {totalCount} tools ready
+            Action required: {readyCount} of {totalCount} tools ready
           </span>
         )}
 
         {allDone && !hasFatalFailure && hasWarning && (
           <span className="flex items-center gap-1.5 ml-auto text-[11px] text-status-warning">
             <AlertTriangle className="w-3.5 h-3.5" />
-            Warning: {warningCount} of {totalCount} tools ready
+            Warning: {readyCount} of {totalCount} tools ready
           </span>
         )}
       </button>
@@ -161,7 +159,8 @@ export function SystemRequirementsSection({
                 </p>
               ))}
               {outdatedFatalTools.map((spec) => {
-                const state = checkStates[spec.tool] as NonNullable<PrerequisiteCheckResult>;
+                const state = checkStates[spec.tool];
+                if (!state || state === "loading") return null;
                 return (
                   <p key={spec.tool} className="text-xs text-status-error">
                     {spec.label} v{state.version} installed, needs v{spec.minVersion}+
