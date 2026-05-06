@@ -12,6 +12,7 @@ import {
 import { actionService } from "@/services/ActionService";
 import { SettingsSection } from "./SettingsSection";
 import { useSettingsTabValidation } from "./SettingsValidationRegistry";
+import { useFlushOnHide } from "@/hooks/useFlushOnHide";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 const PATTERN_PRESETS = [
@@ -142,6 +143,11 @@ export function WorktreeSettingsTab() {
     setPattern(presetPattern);
     setError(null);
   };
+
+  // Persist a pending pattern change before the WebContentsView detaches.
+  // handleSave's internal validation/saving guards short-circuit cleanly when
+  // the pattern is invalid or a save is already in flight.
+  useFlushOnHide(handleSave, hasChanges);
 
   if (isLoading) {
     return (

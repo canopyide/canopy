@@ -7,6 +7,7 @@ import { SettingsSection } from "./SettingsSection";
 import { isSensitiveEnvKey } from "@shared/utils/envVars";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { useSettingsTabValidation } from "./SettingsValidationRegistry";
+import { useFlushOnHide } from "@/hooks/useFlushOnHide";
 import { logError } from "@/utils/logger";
 import { notify } from "@/lib/notify";
 
@@ -209,6 +210,11 @@ export function EnvironmentSettingsTab() {
     setSaveError(null);
     setIsDirty(false);
   }, [savedSnapshot]);
+
+  // Persist pending edits before the WebContentsView detaches on project
+  // switch. handleSave's existing validate() gate is intentional — invalid
+  // rows are dropped rather than persisted (matches user-initiated save).
+  useFlushOnHide(handleSave, isDirty);
 
   if (isLoading) {
     return (

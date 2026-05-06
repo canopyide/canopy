@@ -69,6 +69,7 @@ import {
 } from "./settingsSearchUtils";
 import { SCROLLBACK_DEFAULT } from "@shared/config/scrollback";
 import { useProjectSettingsForm } from "@/hooks/useProjectSettingsForm";
+import { useFlushOnHide } from "@/hooks/useFlushOnHide";
 import { GeneralTab as ProjectGeneralTab } from "@/components/Project/GeneralTab";
 import { ContextTab as ProjectContextTab } from "@/components/Project/ContextTab";
 import { EnvironmentVariablesEditor } from "@/components/Project/EnvironmentVariablesEditor";
@@ -332,6 +333,11 @@ function SettingsDialogInner({
   const projectForm = useProjectSettingsForm({ projectId: projectId ?? null, isOpen });
   const projectLabel =
     projectForm.currentProject?.name ?? projectForm.currentProject?.id ?? "project";
+
+  // Electron 41 WebContentsView detach (project switch, window close) does not
+  // fire beforeunload — visibilitychange is the reliable signal. Flushing on
+  // hide ensures debounced autosaves persist before the view is evicted.
+  useFlushOnHide(projectForm.flush, isOpen);
 
   // Validation error tracking from the registry provider
   const validationRegistry = useContext(SettingsValidationContext);
