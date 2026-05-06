@@ -5,6 +5,7 @@ import {
   useEffect,
   useEffectEvent,
   useDeferredValue,
+  useLayoutEffect,
   useMemo,
   useRef,
   useCallback,
@@ -372,13 +373,19 @@ function SettingsDialogInner({
   ) => {
     markTabVisited(tab);
     setSearchQuery("");
-    setScrollToSection(sectionId ?? null);
     setHiddenSettingBanner(requiresEnabled ?? null);
     if (subtab !== undefined) {
       setActiveSubtabs((prev) => ({ ...prev, [tab]: subtab }));
     }
     searchInputRef.current?.blur();
-    startTransition(() => setActiveTab(tab));
+    // Defer scrollToSection together with the tab change. Setting it
+    // urgently would let the previously-active tab's effect consume the
+    // pending id (it sees isActive=true after the urgent commit but
+    // before the transition makes the new tab active).
+    startTransition(() => {
+      setActiveTab(tab);
+      setScrollToSection(sectionId ?? null);
+    });
   };
 
   const [activeResultIndex, setActiveResultIndex] = useState(-1);
@@ -415,35 +422,16 @@ function SettingsDialogInner({
     }
   };
 
-  // Deep-link: scroll to a specific section after navigating
+  // Deep-link: scroll to a specific section after navigating.
+  // The active tab's panel subtree fires a `useLayoutEffect` (via
+  // `SettingsTabScrollEffect` / `LazyTabContent`) when it commits — that's
+  // the only reliable signal that lazy-loaded content is in the DOM, so we
+  // drive the scroll from the child rather than polling from the parent.
   const [scrollToSection, setScrollToSection] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!scrollToSection || isSearching) return;
-    let highlightTimer: ReturnType<typeof setTimeout>;
-    let attempt = 0;
-    const maxAttempts = 20;
-    const tryScroll = () => {
-      const el = document.getElementById(scrollToSection);
-      if (el && el.offsetParent !== null) {
-        el.scrollIntoView({ behavior: "instant", block: "start" });
-        el.querySelector<HTMLInputElement>("input")?.focus({ preventScroll: true });
-        el.classList.add("settings-highlight");
-        highlightTimer = setTimeout(() => el.classList.remove("settings-highlight"), 1500);
-        return;
-      }
-      attempt++;
-      if (attempt < maxAttempts) {
-        frameIds.push(requestAnimationFrame(tryScroll));
-      }
-    };
-    const frameIds: number[] = [];
-    frameIds.push(requestAnimationFrame(tryScroll));
-    return () => {
-      frameIds.forEach(cancelAnimationFrame);
-      clearTimeout(highlightTimer);
-    };
-  }, [scrollToSection, activeTab, isSearching]);
+  const handleScrollToSectionHandled = useCallback((sectionId: string) => {
+    setScrollToSection((current) => (current === sectionId ? null : current));
+  }, []);
 
   const handleNavSelect = useCallback(
     (tab: SettingsTab) => {
@@ -810,6 +798,7 @@ function SettingsDialogInner({
                 )}
                 {SETTINGS_REGISTRY.map((entry) => {
                   const tabId = entry.id as SettingsTab;
+                  const isActive = activeTab === tabId;
                   return (
                     <div
                       key={entry.id}
@@ -817,24 +806,31 @@ function SettingsDialogInner({
                       id={`settings-panel-${entry.id}`}
                       aria-labelledby={`settings-tab-${entry.id}`}
                       tabIndex={0}
-                      className={activeTab === entry.id ? "" : "hidden"}
+                      className={isActive ? "" : "hidden"}
                     >
                       {entry.importKind === "eager" ? (
                         // Only GeneralTab is eager — render with its specific props
-                        <GeneralTab
-                          appVersion={appVersion}
-                          onNavigateToAgents={(agentId?: string) => {
-                            markTabVisited("agents");
-                            if (agentId) {
-                              setActiveSubtabs((prev) => ({ ...prev, agents: agentId }));
+                        <>
+                          <GeneralTab
+                            appVersion={appVersion}
+                            onNavigateToAgents={(agentId?: string) => {
+                              markTabVisited("agents");
+                              if (agentId) {
+                                setActiveSubtabs((prev) => ({ ...prev, agents: agentId }));
+                              }
+                              startTransition(() => setActiveTab("agents"));
+                            }}
+                            activeSubtab={activeSubtabs["general"] ?? null}
+                            onSubtabChange={(id) =>
+                              setActiveSubtabs((prev) => ({ ...prev, general: id }))
                             }
-                            startTransition(() => setActiveTab("agents"));
-                          }}
-                          activeSubtab={activeSubtabs["general"] ?? null}
-                          onSubtabChange={(id) =>
-                            setActiveSubtabs((prev) => ({ ...prev, general: id }))
-                          }
-                        />
+                          />
+                          <SettingsTabScrollEffect
+                            isActive={isActive && !isSearching}
+                            scrollToSectionId={scrollToSection}
+                            onScrollToSectionHandled={handleScrollToSectionHandled}
+                          />
+                        </>
                       ) : visitedTabs.has(tabId) ? (
                         <Suspense fallback={null}>
                           <LazyTabContent
@@ -843,6 +839,9 @@ function SettingsDialogInner({
                             setActiveSubtabs={setActiveSubtabs}
                             onClose={handleClose}
                             onSettingsChange={onSettingsChange}
+                            isActive={isActive && !isSearching}
+                            scrollToSectionId={scrollToSection}
+                            onScrollToSectionHandled={handleScrollToSectionHandled}
                           />
                         </Suspense>
                       ) : null}
@@ -884,29 +883,36 @@ function SettingsDialogInner({
                           className={activeTab === "project:general" ? "" : "hidden"}
                         >
                           {visitedTabs.has("project:general") && (
-                            <ProjectGeneralTab
-                              currentProject={projectForm.currentProject}
-                              name={projectForm.projectName}
-                              onNameChange={projectForm.setProjectName}
-                              emoji={projectForm.projectEmoji}
-                              onEmojiChange={projectForm.setProjectEmoji}
-                              color={projectForm.projectColor}
-                              onColorChange={projectForm.setProjectColor}
-                              devServerCommand={projectForm.devServerCommand}
-                              onDevServerCommandChange={projectForm.setDevServerCommand}
-                              devServerLoadTimeout={projectForm.devServerLoadTimeout}
-                              onDevServerLoadTimeoutChange={projectForm.setDevServerLoadTimeout}
-                              turbopackEnabled={projectForm.turbopackEnabled}
-                              onTurbopackEnabledChange={projectForm.setTurbopackEnabled}
-                              daintreeMcpTier={projectForm.daintreeMcpTier}
-                              onDaintreeMcpTierChange={projectForm.setDaintreeMcpTier}
-                              projectIconSvg={projectForm.projectIconSvg}
-                              onProjectIconSvgChange={projectForm.setProjectIconSvg}
-                              enableInRepoSettings={projectForm.enableInRepoSettings}
-                              disableInRepoSettings={projectForm.disableInRepoSettings}
-                              projectId={projectId}
-                              isOpen={isOpen}
-                            />
+                            <>
+                              <ProjectGeneralTab
+                                currentProject={projectForm.currentProject}
+                                name={projectForm.projectName}
+                                onNameChange={projectForm.setProjectName}
+                                emoji={projectForm.projectEmoji}
+                                onEmojiChange={projectForm.setProjectEmoji}
+                                color={projectForm.projectColor}
+                                onColorChange={projectForm.setProjectColor}
+                                devServerCommand={projectForm.devServerCommand}
+                                onDevServerCommandChange={projectForm.setDevServerCommand}
+                                devServerLoadTimeout={projectForm.devServerLoadTimeout}
+                                onDevServerLoadTimeoutChange={projectForm.setDevServerLoadTimeout}
+                                turbopackEnabled={projectForm.turbopackEnabled}
+                                onTurbopackEnabledChange={projectForm.setTurbopackEnabled}
+                                daintreeMcpTier={projectForm.daintreeMcpTier}
+                                onDaintreeMcpTierChange={projectForm.setDaintreeMcpTier}
+                                projectIconSvg={projectForm.projectIconSvg}
+                                onProjectIconSvgChange={projectForm.setProjectIconSvg}
+                                enableInRepoSettings={projectForm.enableInRepoSettings}
+                                disableInRepoSettings={projectForm.disableInRepoSettings}
+                                projectId={projectId}
+                                isOpen={isOpen}
+                              />
+                              <SettingsTabScrollEffect
+                                isActive={activeTab === "project:general" && !isSearching}
+                                scrollToSectionId={scrollToSection}
+                                onScrollToSectionHandled={handleScrollToSectionHandled}
+                              />
+                            </>
                           )}
                         </div>
 
@@ -918,14 +924,21 @@ function SettingsDialogInner({
                           className={activeTab === "project:context" ? "" : "hidden"}
                         >
                           {visitedTabs.has("project:context") && (
-                            <ProjectContextTab
-                              excludedPaths={projectForm.excludedPaths}
-                              onExcludedPathsChange={projectForm.setExcludedPaths}
-                              copyTreeSettings={projectForm.copyTreeSettings}
-                              onCopyTreeSettingsChange={projectForm.setCopyTreeSettings}
-                              worktrees={projectForm.worktrees}
-                              isOpen={isOpen}
-                            />
+                            <>
+                              <ProjectContextTab
+                                excludedPaths={projectForm.excludedPaths}
+                                onExcludedPathsChange={projectForm.setExcludedPaths}
+                                copyTreeSettings={projectForm.copyTreeSettings}
+                                onCopyTreeSettingsChange={projectForm.setCopyTreeSettings}
+                                worktrees={projectForm.worktrees}
+                                isOpen={isOpen}
+                              />
+                              <SettingsTabScrollEffect
+                                isActive={activeTab === "project:context" && !isSearching}
+                                scrollToSectionId={scrollToSection}
+                                onScrollToSectionHandled={handleScrollToSectionHandled}
+                              />
+                            </>
                           )}
                         </div>
 
@@ -937,15 +950,22 @@ function SettingsDialogInner({
                           className={activeTab === "project:variables" ? "" : "hidden"}
                         >
                           {visitedTabs.has("project:variables") && (
-                            <EnvironmentVariablesEditor
-                              environmentVariables={projectForm.environmentVariables}
-                              onEnvironmentVariablesChange={projectForm.setEnvironmentVariables}
-                              settings={projectForm.projectSettings}
-                              isOpen={isOpen}
-                              onFlush={projectForm.flush}
-                              projectLabel={projectLabel}
-                              globalEnvironmentVariables={globalEnvVars}
-                            />
+                            <>
+                              <EnvironmentVariablesEditor
+                                environmentVariables={projectForm.environmentVariables}
+                                onEnvironmentVariablesChange={projectForm.setEnvironmentVariables}
+                                settings={projectForm.projectSettings}
+                                isOpen={isOpen}
+                                onFlush={projectForm.flush}
+                                projectLabel={projectLabel}
+                                globalEnvironmentVariables={globalEnvVars}
+                              />
+                              <SettingsTabScrollEffect
+                                isActive={activeTab === "project:variables" && !isSearching}
+                                scrollToSectionId={scrollToSection}
+                                onScrollToSectionHandled={handleScrollToSectionHandled}
+                              />
+                            </>
                           )}
                         </div>
 
@@ -957,44 +977,51 @@ function SettingsDialogInner({
                           className={activeTab === "project:automation" ? "" : "hidden"}
                         >
                           {visitedTabs.has("project:automation") && (
-                            <ProjectAutomationTab
-                              currentProject={projectForm.currentProject}
-                              runCommands={projectForm.runCommands}
-                              onRunCommandsChange={projectForm.setRunCommands}
-                              defaultWorktreeRecipeId={projectForm.defaultWorktreeRecipeId}
-                              onDefaultWorktreeRecipeIdChange={
-                                projectForm.setDefaultWorktreeRecipeId
-                              }
-                              branchPrefixMode={projectForm.branchPrefixMode}
-                              onBranchPrefixModeChange={projectForm.setBranchPrefixMode}
-                              branchPrefixCustom={projectForm.branchPrefixCustom}
-                              onBranchPrefixCustomChange={projectForm.setBranchPrefixCustom}
-                              worktreePathPattern={projectForm.worktreePathPattern}
-                              onWorktreePathPatternChange={projectForm.setWorktreePathPattern}
-                              terminalShell={projectForm.terminalShell}
-                              onTerminalShellChange={projectForm.setTerminalShell}
-                              terminalShellArgs={projectForm.terminalShellArgs}
-                              onTerminalShellArgsChange={projectForm.setTerminalShellArgs}
-                              terminalDefaultCwd={projectForm.terminalDefaultCwd}
-                              onTerminalDefaultCwdChange={projectForm.setTerminalDefaultCwd}
-                              terminalScrollback={projectForm.terminalScrollback}
-                              onTerminalScrollbackChange={projectForm.setTerminalScrollback}
-                              recipes={projectForm.recipes}
-                              recipesLoading={projectForm.recipesLoading}
-                              onNavigateToRecipes={() => {
-                                markTabVisited("project:recipes");
-                                startTransition(() => setActiveTab("project:recipes"));
-                              }}
-                              resourceEnvironments={projectForm.resourceEnvironments}
-                              onResourceEnvironmentsChange={projectForm.setResourceEnvironments}
-                              activeResourceEnvironment={projectForm.activeResourceEnvironment}
-                              onActiveResourceEnvironmentChange={
-                                projectForm.setActiveResourceEnvironment
-                              }
-                              defaultWorktreeMode={projectForm.defaultWorktreeMode}
-                              onDefaultWorktreeModeChange={projectForm.setDefaultWorktreeMode}
-                              isOpen={isOpen}
-                            />
+                            <>
+                              <ProjectAutomationTab
+                                currentProject={projectForm.currentProject}
+                                runCommands={projectForm.runCommands}
+                                onRunCommandsChange={projectForm.setRunCommands}
+                                defaultWorktreeRecipeId={projectForm.defaultWorktreeRecipeId}
+                                onDefaultWorktreeRecipeIdChange={
+                                  projectForm.setDefaultWorktreeRecipeId
+                                }
+                                branchPrefixMode={projectForm.branchPrefixMode}
+                                onBranchPrefixModeChange={projectForm.setBranchPrefixMode}
+                                branchPrefixCustom={projectForm.branchPrefixCustom}
+                                onBranchPrefixCustomChange={projectForm.setBranchPrefixCustom}
+                                worktreePathPattern={projectForm.worktreePathPattern}
+                                onWorktreePathPatternChange={projectForm.setWorktreePathPattern}
+                                terminalShell={projectForm.terminalShell}
+                                onTerminalShellChange={projectForm.setTerminalShell}
+                                terminalShellArgs={projectForm.terminalShellArgs}
+                                onTerminalShellArgsChange={projectForm.setTerminalShellArgs}
+                                terminalDefaultCwd={projectForm.terminalDefaultCwd}
+                                onTerminalDefaultCwdChange={projectForm.setTerminalDefaultCwd}
+                                terminalScrollback={projectForm.terminalScrollback}
+                                onTerminalScrollbackChange={projectForm.setTerminalScrollback}
+                                recipes={projectForm.recipes}
+                                recipesLoading={projectForm.recipesLoading}
+                                onNavigateToRecipes={() => {
+                                  markTabVisited("project:recipes");
+                                  startTransition(() => setActiveTab("project:recipes"));
+                                }}
+                                resourceEnvironments={projectForm.resourceEnvironments}
+                                onResourceEnvironmentsChange={projectForm.setResourceEnvironments}
+                                activeResourceEnvironment={projectForm.activeResourceEnvironment}
+                                onActiveResourceEnvironmentChange={
+                                  projectForm.setActiveResourceEnvironment
+                                }
+                                defaultWorktreeMode={projectForm.defaultWorktreeMode}
+                                onDefaultWorktreeModeChange={projectForm.setDefaultWorktreeMode}
+                                isOpen={isOpen}
+                              />
+                              <SettingsTabScrollEffect
+                                isActive={activeTab === "project:automation" && !isSearching}
+                                scrollToSectionId={scrollToSection}
+                                onScrollToSectionHandled={handleScrollToSectionHandled}
+                              />
+                            </>
                           )}
                         </div>
 
@@ -1006,15 +1033,22 @@ function SettingsDialogInner({
                           className={activeTab === "project:recipes" ? "" : "hidden"}
                         >
                           {visitedTabs.has("project:recipes") && (
-                            <ProjectRecipesTab
-                              projectId={projectId}
-                              defaultWorktreeRecipeId={projectForm.defaultWorktreeRecipeId}
-                              onDefaultWorktreeRecipeIdChange={
-                                projectForm.setDefaultWorktreeRecipeId
-                              }
-                              worktreeMap={projectForm.worktreeMap}
-                              isOpen={isOpen}
-                            />
+                            <>
+                              <ProjectRecipesTab
+                                projectId={projectId}
+                                defaultWorktreeRecipeId={projectForm.defaultWorktreeRecipeId}
+                                onDefaultWorktreeRecipeIdChange={
+                                  projectForm.setDefaultWorktreeRecipeId
+                                }
+                                worktreeMap={projectForm.worktreeMap}
+                                isOpen={isOpen}
+                              />
+                              <SettingsTabScrollEffect
+                                isActive={activeTab === "project:recipes" && !isSearching}
+                                scrollToSectionId={scrollToSection}
+                                onScrollToSectionHandled={handleScrollToSectionHandled}
+                              />
+                            </>
                           )}
                         </div>
 
@@ -1026,11 +1060,18 @@ function SettingsDialogInner({
                           className={activeTab === "project:commands" ? "" : "hidden"}
                         >
                           {visitedTabs.has("project:commands") && (
-                            <CommandOverridesTab
-                              projectId={projectId}
-                              overrides={projectForm.commandOverrides}
-                              onChange={projectForm.setCommandOverrides}
-                            />
+                            <>
+                              <CommandOverridesTab
+                                projectId={projectId}
+                                overrides={projectForm.commandOverrides}
+                                onChange={projectForm.setCommandOverrides}
+                              />
+                              <SettingsTabScrollEffect
+                                isActive={activeTab === "project:commands" && !isSearching}
+                                scrollToSectionId={scrollToSection}
+                                onScrollToSectionHandled={handleScrollToSectionHandled}
+                              />
+                            </>
                           )}
                         </div>
 
@@ -1042,10 +1083,17 @@ function SettingsDialogInner({
                           className={activeTab === "project:notifications" ? "" : "hidden"}
                         >
                           {visitedTabs.has("project:notifications") && (
-                            <ProjectNotificationsTab
-                              overrides={projectForm.notificationOverrides}
-                              onChange={projectForm.setNotificationOverrides}
-                            />
+                            <>
+                              <ProjectNotificationsTab
+                                overrides={projectForm.notificationOverrides}
+                                onChange={projectForm.setNotificationOverrides}
+                              />
+                              <SettingsTabScrollEffect
+                                isActive={activeTab === "project:notifications" && !isSearching}
+                                scrollToSectionId={scrollToSection}
+                                onScrollToSectionHandled={handleScrollToSectionHandled}
+                              />
+                            </>
                           )}
                         </div>
 
@@ -1056,12 +1104,21 @@ function SettingsDialogInner({
                           tabIndex={0}
                           className={activeTab === "project:github" ? "" : "hidden"}
                         >
-                          {visitedTabs.has("project:github") && projectForm.currentProject && (
-                            <ProjectGitHubTab
-                              githubRemote={projectForm.githubRemote}
-                              onGithubRemoteChange={projectForm.setGithubRemote}
-                              projectPath={projectForm.currentProject.path}
-                            />
+                          {visitedTabs.has("project:github") && (
+                            <>
+                              {projectForm.currentProject && (
+                                <ProjectGitHubTab
+                                  githubRemote={projectForm.githubRemote}
+                                  onGithubRemoteChange={projectForm.setGithubRemote}
+                                  projectPath={projectForm.currentProject.path}
+                                />
+                              )}
+                              <SettingsTabScrollEffect
+                                isActive={activeTab === "project:github" && !isSearching}
+                                scrollToSectionId={scrollToSection}
+                                onScrollToSectionHandled={handleScrollToSectionHandled}
+                              />
+                            </>
                           )}
                         </div>
                       </>
@@ -1083,12 +1140,18 @@ function LazyTabContent({
   setActiveSubtabs,
   onClose,
   onSettingsChange,
+  isActive,
+  scrollToSectionId,
+  onScrollToSectionHandled,
 }: {
   entry: LazySettingsTabEntry;
   activeSubtabs: Partial<Record<SettingsTab, string>>;
   setActiveSubtabs: React.Dispatch<React.SetStateAction<Partial<Record<SettingsTab, string>>>>;
   onClose: () => void;
   onSettingsChange?: () => void;
+  isActive: boolean;
+  scrollToSectionId: string | null;
+  onScrollToSectionHandled: (id: string) => void;
 }) {
   const id = entry.id as SettingsTab;
   const activeSubtab = activeSubtabs[id] ?? null;
@@ -1108,8 +1171,58 @@ function LazyTabContent({
     props.onSettingsChange = onSettingsChange;
   }
 
+  // Runs synchronously after the lazy chunk's Suspense boundary commits, so
+  // the target section element is guaranteed to exist in the DOM. Replaces
+  // the rAF polling loop that was racing the Suspense reveal (#6878).
+  useSettingsScrollToSection(isActive, scrollToSectionId, onScrollToSectionHandled);
+
   const LazyComp = entry.LazyComponent;
   return <LazyComp {...props} />;
+}
+
+// Scrolls to the section with the given DOM id, focuses the first input
+// within it, and applies the highlight pulse. Returns whether the element
+// was found. Stays a module-level helper so it can be unit-tested in
+// isolation without React's effect machinery.
+export function scrollAndHighlightSettingsSection(sectionId: string): boolean {
+  const el = document.getElementById(sectionId);
+  if (!el) return false;
+  el.scrollIntoView({ behavior: "instant", block: "start" });
+  el.querySelector<HTMLInputElement>("input")?.focus({ preventScroll: true });
+  el.classList.add("settings-highlight");
+  setTimeout(() => el.classList.remove("settings-highlight"), 1500);
+  return true;
+}
+
+// Fires the scroll/highlight when its host subtree commits (via
+// useLayoutEffect — runs after DOM mutation, before paint). The active-tab
+// guard keeps inactive panels from racing each other when state cycles.
+// `onHandled` is called unconditionally so the parent can clear pending
+// state even when the section id doesn't resolve to a real DOM element
+// (e.g. project tab search entries with non-DOM ids).
+export function useSettingsScrollToSection(
+  isActive: boolean,
+  scrollToSectionId: string | null,
+  onHandled: (id: string) => void
+): void {
+  useLayoutEffect(() => {
+    if (!isActive || !scrollToSectionId) return;
+    scrollAndHighlightSettingsSection(scrollToSectionId);
+    onHandled(scrollToSectionId);
+  }, [isActive, scrollToSectionId, onHandled]);
+}
+
+function SettingsTabScrollEffect({
+  isActive,
+  scrollToSectionId,
+  onScrollToSectionHandled,
+}: {
+  isActive: boolean;
+  scrollToSectionId: string | null;
+  onScrollToSectionHandled: (id: string) => void;
+}) {
+  useSettingsScrollToSection(isActive, scrollToSectionId, onScrollToSectionHandled);
+  return null;
 }
 
 function NavGroup({ label, children }: { label: string; children: React.ReactNode }) {
