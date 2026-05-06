@@ -33,10 +33,11 @@ export function QuickStateFilterBar({ value, onChange, counts }: QuickStateFilte
               "inline-flex items-center px-2 py-0.5 text-[11px] rounded-full transition-colors",
               isActive
                 ? "bg-tint/[0.12] text-daintree-text font-medium"
-                : "text-daintree-text/50 hover:text-daintree-text/70 hover:bg-tint/[0.04]"
+                : "text-daintree-text/60 hover:text-daintree-text hover:bg-tint/[0.04]"
             )}
           >
             {option.label}
+            {/* "All" has no count — quickStateCounts excludes main/integration worktrees, so the sum != the sidebar header's (N) total. */}
             {counts && option.value !== "all" && ` (${counts[option.value]})`}
           </button>
         );
