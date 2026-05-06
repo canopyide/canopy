@@ -384,7 +384,12 @@ export function isScheduledQuietHours(now: Date = new Date()): boolean {
  * `transient: true` skips step 1 — no history entry, no badge tick. Use it
  * only for one-shot confirmations whose result is already visible elsewhere
  * (clipboard, file dialog, in-place UI). It is stronger than `countable:
- * false`, which still writes the entry but suppresses the badge.
+ * false`, which still writes the entry but suppresses the badge. Constraints:
+ * combine with `priority: "high"` (or default) only — `priority: "low"` is a
+ * no-op (no toast and no inbox), and `priority: "watch"` still fires the OS
+ * native banner with no inbox fallback. Don't pair with `context` either:
+ * the active-context suppression-grace path needs an inbox entry to fall
+ * back to and silently drops the event when one isn't written.
  *
  * Only call for events the user could not otherwise observe: completion, failure,
  * or required action. Don't duplicate in-place UI state changes — those are
@@ -418,6 +423,25 @@ export function notify(payload: NotifyPayload): string {
     console.error(
       "[notify] ReactNode message without inboxMessage — persistent inbox history will be dropped. Provide inboxMessage for WCAG 2.2.1 compliance."
     );
+  }
+
+  if (import.meta.env.DEV && payload.transient) {
+    // transient bypasses the inbox, so combinations that depend on the inbox
+    // as a fallback (priority="low" routes only to inbox; context-suppression
+    // promotes the inbox entry on navigate-away) collapse to a silent drop.
+    // Surface here so the contradictory shape is caught at write-time.
+    if (priority === "low") {
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[notify] transient: true with priority: 'low' is a silent no-op — low priority skips the toast and transient skips the inbox."
+      );
+    }
+    if (context) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[notify] transient: true with context drops the event when the origin surface is visible — the suppression-grace path needs an inbox entry to fall back to."
+      );
+    }
   }
 
   const historyMessage = inboxMessage ?? (typeof message === "string" ? message : undefined);

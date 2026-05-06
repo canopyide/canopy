@@ -333,6 +333,68 @@ describe("notify()", () => {
       notify({ type: "success", message: "Default behavior" });
       expect(useNotificationHistoryStore.getState().entries).toHaveLength(1);
     });
+
+    it("transient + priority: 'low' is a silent no-op", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      notify({ type: "info", message: "Nope", priority: "low", transient: true });
+      expect(useNotificationStore.getState().notifications).toHaveLength(0);
+      expect(useNotificationHistoryStore.getState().entries).toHaveLength(0);
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining("transient: true with priority: 'low'")
+      );
+      consoleSpy.mockRestore();
+    });
+
+    it("transient + priority: 'watch' still fires native with no inbox", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      notify({ type: "warning", message: "Watch me", priority: "watch", transient: true });
+      expect(useNotificationStore.getState().notifications).toHaveLength(1);
+      expect(useNotificationHistoryStore.getState().entries).toHaveLength(0);
+      expect(mockShowNative).toHaveBeenCalledOnce();
+    });
+
+    it("transient + urgent during quiet period still fires the toast", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      _setQuietUntil(Date.now() + 10_000);
+      notify({
+        type: "info",
+        message: "Mute confirmation",
+        priority: "high",
+        transient: true,
+        urgent: true,
+      });
+      expect(useNotificationStore.getState().notifications).toHaveLength(1);
+      expect(useNotificationHistoryStore.getState().entries).toHaveLength(0);
+    });
+
+    it("warns and drops silently when transient is paired with a visible origin context", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      setActiveContextAccessors({
+        getActiveWorktreeId: () => "wt-1",
+        getFocusedPanelId: () => null,
+        subscribeActiveContext: () => () => {},
+      });
+      try {
+        notify({
+          type: "info",
+          message: "Origin visible",
+          priority: "high",
+          transient: true,
+          context: { worktreeId: "wt-1" },
+        });
+        expect(useNotificationStore.getState().notifications).toHaveLength(0);
+        expect(useNotificationHistoryStore.getState().entries).toHaveLength(0);
+        expect(consoleSpy).toHaveBeenCalledWith(
+          expect.stringContaining("transient: true with context")
+        );
+      } finally {
+        _resetActiveContextAccessorsForTest();
+        _resetPendingSuppressedForTest();
+        consoleSpy.mockRestore();
+      }
+    });
   });
 
   describe("dev guard — error notifications without actions", () => {
@@ -342,7 +404,7 @@ describe("notify()", () => {
       notify({ type: "error", title: "Build failed", message: "Compile error." });
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining("[notify] error notification has no actions"),
-        expect.any(Object)
+        expect.objectContaining({ type: "error", title: "Build failed" })
       );
       consoleSpy.mockRestore();
     });
