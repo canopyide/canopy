@@ -215,9 +215,10 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
   }, [entries, filter, frozenUnreadIds]);
 
   const { needsAttentionGroups, chronoSections, dividerGroupId } = useMemo(() => {
-    const allGroups = groupByCorrelationId(filteredEntries);
-
-    const pinned = allGroups
+    // Pinned reflects the global unread severe-threads set so it stays the
+    // same in All and Unread filter views. Chrono respects the active filter.
+    const rawGroups = groupByCorrelationId(entries);
+    const pinned = rawGroups
       .filter((g) => {
         if (!isUnreadGroup(g)) return false;
         const sev = getWorstSeverity(g.entries);
@@ -232,13 +233,14 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
       })
       .slice(0, NEEDS_ATTENTION_CAP);
 
+    const chronoGroups = groupByCorrelationId(filteredEntries);
     const sections: ContextSection[] = groupByContext
-      ? partitionByContext(allGroups)
-      : [{ key: "all", groups: allGroups }];
+      ? partitionByContext(chronoGroups)
+      : [{ key: "all", groups: chronoGroups }];
 
     let divider: string | null = null;
     if (lastClosedAt > 0) {
-      for (const g of allGroups) {
+      for (const g of chronoGroups) {
         if (g.latestTimestamp > lastClosedAt) {
           divider = g.correlationId ?? g.entries[0]?.id ?? null;
           break;
@@ -251,7 +253,7 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
       chronoSections: sections,
       dividerGroupId: divider,
     };
-  }, [filteredEntries, groupByContext, lastClosedAt]);
+  }, [entries, filteredEntries, groupByContext, lastClosedAt]);
 
   const totalChronoGroups = chronoSections.reduce((sum, s) => sum + s.groups.length, 0);
 
@@ -585,7 +587,7 @@ function ContextSectionHeader({
   const worktreeName = useWorktreeStore((s) =>
     worktreeId ? s.worktrees.get(worktreeId)?.name : undefined
   );
-  const label = worktreeName ?? projectId ?? "Other";
+  const label = worktreeName ?? worktreeId ?? projectId ?? "Other";
   return (
     <div
       data-testid="context-section-header"

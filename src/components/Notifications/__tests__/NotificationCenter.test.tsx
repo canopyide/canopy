@@ -733,6 +733,41 @@ describe("NotificationCenter — Needs attention pinned section", () => {
     expect(messages).toHaveLength(5);
   });
 
+  it("stays consistent across All and Unread filter views for mixed read/unread threads", async () => {
+    const correlationId = "thread-mixed";
+    const t = Date.now();
+    setEntries([
+      // Newest first per store convention.
+      makeEntry({
+        id: "info-followup",
+        type: "info",
+        message: "Followup info",
+        correlationId,
+        timestamp: t + 1000,
+        seenAsToast: false,
+      }),
+      makeEntry({
+        id: "old-error",
+        type: "error",
+        message: "Old failure",
+        correlationId,
+        timestamp: t,
+        seenAsToast: true,
+      }),
+    ]);
+
+    render(<NotificationCenter open onClose={vi.fn()} />);
+
+    expect(screen.queryByTestId("needs-attention-section")).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Unread"));
+    });
+
+    // Pinned section uses raw entries — same group qualifies in both views.
+    expect(screen.queryByTestId("needs-attention-section")).toBeTruthy();
+  });
+
   it("sorts pinned entries by severity (error before warning) then by recency", () => {
     const t = Date.now();
     setEntries([
@@ -836,9 +871,35 @@ describe("NotificationCenter — Group by context toggle", () => {
 
     render(<NotificationCenter open onClose={vi.fn()} />);
 
-    // No worktree mock entry → falls through to projectId (none) → "Other".
+    // No worktree mock entry → falls through to raw worktreeId for disambiguation.
+    const header = screen.getByTestId("context-section-header");
+    expect(header.textContent).toContain("wt-unknown");
+  });
+
+  it("falls back to 'Other' only when the entry has no worktreeId or projectId", () => {
+    useNotificationSettingsStore.setState({ groupByContext: true });
+    setEntries([makeEntry({ message: "Contextless" })]);
+
+    render(<NotificationCenter open onClose={vi.fn()} />);
+
     const header = screen.getByTestId("context-section-header");
     expect(header.textContent).toContain("Other");
+  });
+
+  it("renders distinct context sections for two unknown worktrees (no merge into one 'Other')", () => {
+    useNotificationSettingsStore.setState({ groupByContext: true });
+    setEntries([
+      makeEntry({ id: "e1", message: "msg-1", context: { worktreeId: "wt-aaa" } }),
+      makeEntry({ id: "e2", message: "msg-2", context: { worktreeId: "wt-bbb" } }),
+    ]);
+
+    render(<NotificationCenter open onClose={vi.fn()} />);
+
+    const headers = screen.getAllByTestId("context-section-header");
+    expect(headers).toHaveLength(2);
+    const labels = headers.map((h) => h.textContent ?? "");
+    expect(labels.some((l) => l.includes("wt-aaa"))).toBe(true);
+    expect(labels.some((l) => l.includes("wt-bbb"))).toBe(true);
   });
 
   it("does not render context headers when groupByContext is off", () => {
