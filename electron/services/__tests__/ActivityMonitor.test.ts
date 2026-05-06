@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { ActivityMonitor } from "../ActivityMonitor.js";
+import { AGENT_OUTPUT_ACTIVITY_LINE_COUNT } from "../pty/SustainedChangeTracker.js";
 
 describe("ActivityMonitor", () => {
   beforeEach(() => {
@@ -738,6 +739,49 @@ describe("ActivityMonitor", () => {
 
       expect(monitor.getState()).toBe("idle");
       expect(onStateChange).not.toHaveBeenCalled();
+
+      monitor.dispose();
+    });
+
+    it("samples only the visible tail for simple output recovery", () => {
+      const onStateChange = vi.fn();
+      let visibleLines = Array.from({ length: 30 }, (_, i) => `historical line ${i + 1}`);
+      const getVisibleLines = vi.fn((count: number) => visibleLines.slice(-count));
+      const monitor = new ActivityMonitor("agent-simple-tail", 1000, onStateChange, {
+        agentId: "claude",
+        getVisibleLines,
+        getCursorLine: () => visibleLines[visibleLines.length - 1],
+        initialState: "idle",
+        skipInitialStateEmit: true,
+      });
+
+      monitor.startPolling();
+      expect(getVisibleLines).toHaveBeenCalledWith(AGENT_OUTPUT_ACTIVITY_LINE_COUNT);
+      getVisibleLines.mockClear();
+
+      vi.advanceTimersByTime(100);
+      onStateChange.mockClear();
+
+      for (let i = 0; i < 4; i += 1) {
+        visibleLines = [...visibleLines];
+        visibleLines[i] = `rewritten historical line ${i + 1}`;
+        vi.advanceTimersByTime(700);
+      }
+
+      expect(monitor.getState()).toBe("idle");
+      expect(onStateChange).not.toHaveBeenCalled();
+      expect(getVisibleLines).toHaveBeenCalledWith(AGENT_OUTPUT_ACTIVITY_LINE_COUNT);
+
+      for (let i = 0; i < 4; i += 1) {
+        visibleLines = [...visibleLines];
+        visibleLines[visibleLines.length - 1] = `visible activity ${i + 1}`;
+        vi.advanceTimersByTime(700);
+      }
+
+      expect(monitor.getState()).toBe("busy");
+      expect(onStateChange).toHaveBeenCalledWith("agent-simple-tail", 1000, "busy", {
+        trigger: "output",
+      });
 
       monitor.dispose();
     });

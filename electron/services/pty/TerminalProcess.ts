@@ -78,6 +78,7 @@ import {
   AGENT_WORKING_RECOVERY_MAX_QUIET_MS,
   AGENT_WORKING_RECOVERY_MIN_CHANGED_FRAMES,
   AGENT_WORKING_RECOVERY_WINDOW_MS,
+  AGENT_OUTPUT_ACTIVITY_LINE_COUNT,
   SustainedChangeTracker,
   createVisibleContentSnapshot,
   measureVisibleContentDelta,
@@ -419,7 +420,7 @@ export class TerminalProcess {
         },
         {
           ...buildActivityMonitorOptions(launchAgentId, {
-            getVisibleLines: (n) => this.getLastNLines(n),
+            getVisibleLines: (n) => this.getVisibleActivityLines(n),
             getCursorLine: () => this.getCursorLine(),
           }),
           processStateValidator,
@@ -989,6 +990,28 @@ export class TerminalProcess {
     return lines;
   }
 
+  getVisibleActivityLines(n: number): string[] {
+    const terminal = this.terminalInfo.headlessTerminal;
+    if (!terminal) return [];
+
+    const buffer = terminal.buffer.active as CursorBuffer;
+    if (!buffer || typeof buffer.getLine !== "function") return [];
+
+    const viewportTop = buffer.baseY;
+    const viewportBottom = buffer.baseY + terminal.rows;
+    const cursorY = buffer.cursorY ?? 0;
+    const cursorIndex = Math.min(Math.max(buffer.baseY + cursorY, viewportTop), viewportBottom - 1);
+    const end = cursorIndex + 1;
+    const start = Math.max(viewportTop, end - n);
+
+    const lines: string[] = [];
+    for (let i = start; i < end; i += 1) {
+      const line = buffer.getLine(i);
+      if (line) lines.push(line.translateToString(true));
+    }
+    return lines;
+  }
+
   getCursorLine(): string | null {
     const terminal = this.terminalInfo.headlessTerminal;
     if (!terminal) return null;
@@ -1160,7 +1183,7 @@ export class TerminalProcess {
         },
         {
           ...buildActivityMonitorOptions(getLiveAgentId(this.terminalInfo), {
-            getVisibleLines: (n) => this.getLastNLines(n),
+            getVisibleLines: (n) => this.getVisibleActivityLines(n),
             getCursorLine: () => this.getCursorLine(),
           }),
           processStateValidator,
@@ -1256,7 +1279,9 @@ export class TerminalProcess {
     if (!this.terminalInfo.headlessTerminal) {
       return undefined;
     }
-    return createVisibleContentSnapshot(this.getLastNLines(50));
+    return createVisibleContentSnapshot(
+      this.getVisibleActivityLines(AGENT_OUTPUT_ACTIVITY_LINE_COUNT)
+    );
   }
 
   private noteAgentOutputActivity(beforeSnapshot: VisibleContentSnapshot | undefined): void {

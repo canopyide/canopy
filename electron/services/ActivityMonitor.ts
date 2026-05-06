@@ -20,6 +20,7 @@ import {
   AGENT_WORKING_RECOVERY_MAX_QUIET_MS,
   AGENT_WORKING_RECOVERY_MIN_CHANGED_FRAMES,
   AGENT_WORKING_RECOVERY_WINDOW_MS,
+  AGENT_OUTPUT_ACTIVITY_LINE_COUNT,
   SustainedChangeTracker,
   createVisibleContentSnapshot,
   measureVisibleContentDelta,
@@ -38,8 +39,6 @@ import { classifyWaitingReason } from "./pty/WaitingReasonClassifier.js";
 import { CpuHighStateTracker } from "./pty/CpuHighStateTracker.js";
 import { WaitingWatchdog } from "./pty/WaitingWatchdog.js";
 import type { WaitingReason } from "../../shared/types/agent.js";
-
-const SIMPLE_VISIBLE_LINE_COUNT = 50;
 
 export interface ProcessStateValidator {
   hasActiveChildren(): boolean;
@@ -622,7 +621,7 @@ export class ActivityMonitor {
     if (!this.getVisibleLines) {
       return undefined;
     }
-    return createVisibleContentSnapshot(this.getVisibleLines(SIMPLE_VISIBLE_LINE_COUNT));
+    return createVisibleContentSnapshot(this.getVisibleLines(AGENT_OUTPUT_ACTIVITY_LINE_COUNT));
   }
 
   private noteSimpleOutputSnapshot(snapshot: VisibleContentSnapshot, now: number): void {

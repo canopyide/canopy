@@ -3,6 +3,7 @@ import type { IPty } from "node-pty";
 import { TerminalProcess } from "../TerminalProcess.js";
 import type { SpawnContext } from "../terminalSpawn.js";
 import { events } from "../../events.js";
+import { AGENT_OUTPUT_ACTIVITY_LINE_COUNT } from "../SustainedChangeTracker.js";
 
 vi.mock("node-pty", () => {
   return { spawn: vi.fn() };
@@ -209,6 +210,26 @@ describe("TerminalProcess — terminal:exited event", () => {
 });
 
 describe("TerminalProcess — observer-driven exit handlers", () => {
+  it("samples only the visible tail for fallback output recovery without a monitor", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const pty = createControllablePty();
+    const terminal = createTerminal(pty, { kind: "terminal", launchAgentId: "claude" });
+
+    try {
+      terminal.stopActivityMonitor();
+      terminal.getInfo().agentState = "waiting";
+      const getVisibleActivityLines = vi.spyOn(terminal, "getVisibleActivityLines");
+
+      await emitDataAndFlush(pty, "waiting");
+
+      expect(getVisibleActivityLines).toHaveBeenCalledWith(AGENT_OUTPUT_ACTIVITY_LINE_COUNT);
+    } finally {
+      terminal.dispose();
+      vi.useRealTimers();
+    }
+  });
+
   it("does not recover a waiting live agent on unchanged redraw output without a monitor", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(1000);
