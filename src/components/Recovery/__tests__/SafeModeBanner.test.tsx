@@ -41,27 +41,63 @@ describe("SafeModeBanner", () => {
     useSafeModeStore.setState({
       safeMode: true,
       crashCount: 3,
-      lastCrashAt: Date.now() - 5 * 60_000,
+      skippedPanelCount: 4,
+      lastCrashAt: Date.now() - 30 * 60_000,
     });
     render(<SafeModeBanner />);
     expect(screen.getByText("Safe mode — panels weren't restored")).toBeTruthy();
-    expect(screen.queryByText(/3 crashes/)).toBeNull();
-    expect(screen.queryByText(/5m ago/)).toBeNull();
+    expect(screen.queryByText(/\d+ crash/)).toBeNull();
+    expect(screen.queryByText(/\d+ panel/)).toBeNull();
+    expect(screen.queryByText(/ago/)).toBeNull();
   });
 
   it("surfaces crash count and relative time inside the details popover", () => {
     useSafeModeStore.setState({
       safeMode: true,
       crashCount: 3,
-      lastCrashAt: Date.now() - 5 * 60_000,
+      lastCrashAt: Date.now() - 30 * 60_000,
     });
     render(<SafeModeBanner />);
     fireEvent.click(screen.getByRole("button", { name: /Show details/i }));
-    expect(screen.getByText(/3 crashes detected, last 5m ago/)).toBeTruthy();
+    expect(screen.getByText(/3 crashes detected, last 30m ago/)).toBeTruthy();
+  });
+
+  it("renders 'Last crash {time}' when only a timestamp is present", () => {
+    useSafeModeStore.setState({
+      safeMode: true,
+      crashCount: undefined,
+      lastCrashAt: Date.now() - 30 * 60_000,
+    });
+    render(<SafeModeBanner />);
+    fireEvent.click(screen.getByRole("button", { name: /Show details/i }));
+    expect(screen.getByText(/Last crash 30m ago/)).toBeTruthy();
+  });
+
+  it("uses singular forms for one crash and one skipped panel", () => {
+    useSafeModeStore.setState({
+      safeMode: true,
+      crashCount: 1,
+      skippedPanelCount: 1,
+    });
+    render(<SafeModeBanner />);
+    fireEvent.click(screen.getByRole("button", { name: /Show details/i }));
+    expect(screen.getByText(/^1 crash detected$/)).toBeTruthy();
+    expect(screen.getByText(/1 panel was skipped/)).toBeTruthy();
   });
 
   it("hides Show details when no crash data and no skipped panels", () => {
     useSafeModeStore.setState({ safeMode: true, skippedPanelCount: 0 });
+    render(<SafeModeBanner />);
+    expect(screen.queryByRole("button", { name: /Show details/i })).toBeNull();
+  });
+
+  it("hides Show details when crash fields contain non-finite values", () => {
+    useSafeModeStore.setState({
+      safeMode: true,
+      crashCount: Number.NaN,
+      lastCrashAt: Number.NaN,
+      skippedPanelCount: 0,
+    });
     render(<SafeModeBanner />);
     expect(screen.queryByRole("button", { name: /Show details/i })).toBeNull();
   });

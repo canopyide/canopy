@@ -39,18 +39,22 @@ export function SafeModeBanner() {
   };
 
   const skipped =
-    typeof skippedPanelCount === "number" && skippedPanelCount > 0 ? skippedPanelCount : 0;
-  const crashes = typeof crashCount === "number" && crashCount > 0 ? crashCount : 0;
-  const hasCrashMeta = crashes > 0 || lastCrashAt != null;
+    Number.isFinite(skippedPanelCount) && (skippedPanelCount as number) > 0
+      ? (skippedPanelCount as number)
+      : 0;
+  const crashes =
+    Number.isFinite(crashCount) && (crashCount as number) > 0 ? (crashCount as number) : 0;
+  const hasTimestamp = Number.isFinite(lastCrashAt);
+  const hasCrashMeta = crashes > 0 || hasTimestamp;
   const hasDetails = skipped > 0 || hasCrashMeta;
 
   let crashMetaText: string | null = null;
-  if (crashes > 0 && lastCrashAt != null) {
-    crashMetaText = `${crashes} ${crashes === 1 ? "crash" : "crashes"} detected, last ${formatRelativeTime(lastCrashAt)}`;
+  if (crashes > 0 && hasTimestamp) {
+    crashMetaText = `${crashes} ${crashes === 1 ? "crash" : "crashes"} detected, last ${formatRelativeTime(lastCrashAt as number)}`;
   } else if (crashes > 0) {
     crashMetaText = `${crashes} ${crashes === 1 ? "crash" : "crashes"} detected`;
-  } else if (lastCrashAt != null) {
-    crashMetaText = `Last crash ${formatRelativeTime(lastCrashAt)}`;
+  } else if (hasTimestamp) {
+    crashMetaText = `Last crash ${formatRelativeTime(lastCrashAt as number)}`;
   }
 
   return (
