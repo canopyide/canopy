@@ -1578,6 +1578,32 @@ describe("GitHubResourceList number-query chip (#6867)", () => {
       expect(screen.getByText("Showing #130 and above")).toBeTruthy();
     });
   });
+
+  it("hides the chip when the lookup yields exact-number-not-found", async () => {
+    mockGetIssueByNumber.mockResolvedValue(null);
+    useGitHubFilterStore.getState().setIssueSearchQuery("#999");
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Issue #999 not found/)).toBeTruthy();
+    });
+    // The chip would contradict the empty state — it must not render alongside.
+    expect(screen.queryByText("Showing issue #999")).toBeNull();
+  });
+
+  it("hides the chip while the numeric fetch is in flight", async () => {
+    mockGetIssueByNumber.mockImplementation(() => new Promise(() => {}));
+    useGitHubFilterStore.getState().setIssueSearchQuery("#42");
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    // Skeleton is up while the numeric lookup hangs.
+    await waitFor(() => {
+      expect(screen.getByTestId("skeleton")).toBeTruthy();
+    });
+    expect(screen.queryByText("Showing issue #42")).toBeNull();
+  });
 });
 
 describe("GitHubResourceList spinner gate (#6867)", () => {
@@ -1649,5 +1675,88 @@ describe("GitHubResourceList spinner gate (#6867)", () => {
       .getByRole("button", { name: /refresh issues/i })
       .querySelector("svg");
     expect(refreshIcon?.classList.contains("animate-spin")).toBe(false);
+  });
+
+  it("uses the shorter 250ms gate when the user clicks refresh", async () => {
+    const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    setCache(cacheKey, {
+      items: [makeIssue(1)],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now(),
+    });
+    // Mount-time revalidate succeeds so loading clears before the click.
+    mockListIssues.mockResolvedValueOnce(makeResponse([makeIssue(1)]));
+    // Manual click hangs so we can observe the spinner gate.
+    mockListIssues.mockImplementation(() => new Promise(() => {}));
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    await waitFor(() => {
+      expect(mockListIssues).toHaveBeenCalledTimes(1);
+    });
+
+    // Let the mount-time revalidate fully settle so any pending spinner timer
+    // is cleared before the click.
+    await vi.advanceTimersByTimeAsync(500);
+
+    const refreshButton = screen.getByRole("button", { name: /refresh issues/i });
+    act(() => {
+      refreshButton.click();
+    });
+    await waitFor(() => {
+      expect(mockListIssues).toHaveBeenCalledTimes(2);
+    });
+
+    await vi.advanceTimersByTimeAsync(200);
+    const refreshIconBefore = refreshButton.querySelector("svg");
+    expect(refreshIconBefore?.classList.contains("animate-spin")).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(150);
+    await waitFor(() => {
+      const icon = refreshButton.querySelector("svg");
+      expect(icon?.classList.contains("animate-spin")).toBe(true);
+    });
+  });
+
+  it("dwells the spinner ≥500ms once visible to avoid a quick flash", async () => {
+    const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    setCache(cacheKey, {
+      items: [makeIssue(1)],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now(),
+    });
+    let resolveFetch: (v: GitHubListResponse<GitHubIssue>) => void = () => {};
+    mockListIssues.mockImplementationOnce(
+      () =>
+        new Promise<GitHubListResponse<GitHubIssue>>((resolve) => {
+          resolveFetch = resolve;
+        })
+    );
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    // Cross the 400ms gate so the spinner becomes visible.
+    await vi.advanceTimersByTimeAsync(450);
+    const refreshIcon = screen
+      .getByRole("button", { name: /refresh issues/i })
+      .querySelector("svg");
+    expect(refreshIcon?.classList.contains("animate-spin")).toBe(true);
+
+    // Resolve immediately — dwell timer kicks in for the remaining 500ms.
+    resolveFetch(makeResponse([makeIssue(1)]));
+    await vi.advanceTimersByTimeAsync(0);
+    const stillSpinning = screen
+      .getByRole("button", { name: /refresh issues/i })
+      .querySelector("svg");
+    expect(stillSpinning?.classList.contains("animate-spin")).toBe(true);
+
+    // After the full 500ms minimum dwell elapses, the spinner clears.
+    await vi.advanceTimersByTimeAsync(550);
+    const finalIcon = screen
+      .getByRole("button", { name: /refresh issues/i })
+      .querySelector("svg");
+    expect(finalIcon?.classList.contains("animate-spin")).toBe(false);
   });
 });

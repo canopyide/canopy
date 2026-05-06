@@ -771,6 +771,7 @@ export function GitHubResourceList({
 
         {numberQuery !== null &&
           !loading &&
+          exactNumberNotFound === null &&
           (() => {
             const resourceLabel = type === "issue" ? "issue" : "PR";
             let label: string;
