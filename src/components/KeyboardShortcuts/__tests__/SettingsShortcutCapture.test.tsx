@@ -422,6 +422,91 @@ describe("SettingsShortcutCapture", () => {
     expect(clearTimeoutSpy).toHaveBeenCalled();
   });
 
+  describe("IME composition guard", () => {
+    it("ignores keydown when isComposing is true", () => {
+      render(
+        <SettingsShortcutCapture
+          onCapture={mockOnCapture}
+          onCancel={mockOnCancel}
+          excludeActionId="test.action"
+        />
+      );
+
+      fireEvent.click(screen.getByText("Click to record shortcut"));
+
+      const keyEvent = new KeyboardEvent("keydown", {
+        key: "Enter",
+        code: "Enter",
+        bubbles: true,
+        cancelable: true,
+      });
+      // jsdom ignores isComposing in the constructor init dict.
+      Object.defineProperty(keyEvent, "isComposing", { value: true, configurable: true });
+
+      act(() => {
+        window.dispatchEvent(keyEvent);
+      });
+
+      expect(screen.getByText("Press key combination...")).toBeTruthy();
+      expect(keyEvent.defaultPrevented).toBe(false);
+    });
+
+    it("ignores keydown when keyCode is 229 (Chromium Process key)", () => {
+      render(
+        <SettingsShortcutCapture
+          onCapture={mockOnCapture}
+          onCancel={mockOnCancel}
+          excludeActionId="test.action"
+        />
+      );
+
+      fireEvent.click(screen.getByText("Click to record shortcut"));
+
+      const keyEvent = new KeyboardEvent("keydown", {
+        key: "Process",
+        bubbles: true,
+        cancelable: true,
+      });
+      Object.defineProperty(keyEvent, "keyCode", { value: 229, configurable: true });
+
+      act(() => {
+        window.dispatchEvent(keyEvent);
+      });
+
+      expect(screen.getByText("Press key combination...")).toBeTruthy();
+      expect(keyEvent.defaultPrevented).toBe(false);
+    });
+
+    it("does not record an IME-composing Enter as the first chord token", () => {
+      render(
+        <SettingsShortcutCapture
+          onCapture={mockOnCapture}
+          onCancel={mockOnCancel}
+          excludeActionId="test.action"
+        />
+      );
+
+      fireEvent.click(screen.getByText("Click to record shortcut"));
+
+      const composingEnter = new KeyboardEvent("keydown", {
+        key: "Enter",
+        code: "Enter",
+        bubbles: true,
+        cancelable: true,
+      });
+      Object.defineProperty(composingEnter, "isComposing", { value: true, configurable: true });
+
+      act(() => {
+        window.dispatchEvent(composingEnter);
+        vi.advanceTimersByTime(1100);
+      });
+
+      // No combo captured — Save button should not appear and the prompt is unchanged.
+      expect(screen.queryByText("Save")).toBeNull();
+      expect(screen.getByText("Press key combination...")).toBeTruthy();
+    });
+  });
+
   describe("conflict remediation", () => {
     it("renders unbind buttons for each conflict", async () => {
       const { keybindingService } = await import("@/services/KeybindingService");

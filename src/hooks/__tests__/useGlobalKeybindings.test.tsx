@@ -310,3 +310,75 @@ describe("useGlobalKeybindings — Backspace pops pending chord", () => {
     expect(event.defaultPrevented).toBe(false);
   });
 });
+
+describe("useGlobalKeybindings — IME composition guard", () => {
+  function dispatchComposing(
+    init: KeyboardEventInit = {},
+    overrides: { isComposing?: boolean; keyCode?: number } = {}
+  ) {
+    const event = new KeyboardEvent("keydown", {
+      key: "Enter",
+      bubbles: true,
+      cancelable: true,
+      ...init,
+    });
+    if (overrides.isComposing !== undefined) {
+      Object.defineProperty(event, "isComposing", {
+        value: overrides.isComposing,
+        configurable: true,
+      });
+    }
+    if (overrides.keyCode !== undefined) {
+      Object.defineProperty(event, "keyCode", {
+        value: overrides.keyCode,
+        configurable: true,
+      });
+    }
+    act(() => {
+      document.body.dispatchEvent(event);
+    });
+    return event;
+  }
+
+  it("does not resolve or dispatch when isComposing is true", () => {
+    mocks.keybindingService.resolveKeybinding.mockReturnValue({
+      match: undefined,
+      chordPrefix: false,
+      shouldConsume: false,
+    });
+
+    render(<Host />);
+    const event = dispatchComposing({ key: "Enter" }, { isComposing: true });
+
+    expect(mocks.keybindingService.resolveKeybinding).not.toHaveBeenCalled();
+    expect(mocks.actionService.dispatch).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it("does not resolve or dispatch when keyCode is 229 (Chromium Process key)", () => {
+    mocks.keybindingService.resolveKeybinding.mockReturnValue({
+      match: undefined,
+      chordPrefix: false,
+      shouldConsume: false,
+    });
+
+    render(<Host />);
+    const event = dispatchComposing({ key: "Process" }, { keyCode: 229 });
+
+    expect(mocks.keybindingService.resolveKeybinding).not.toHaveBeenCalled();
+    expect(mocks.actionService.dispatch).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it("does not mutate a pending chord when an IME commit Enter arrives", () => {
+    mocks.keybindingService.getPendingChord.mockReturnValue("Cmd+K");
+
+    render(<Host />);
+    const event = dispatchComposing({ key: "Enter" }, { isComposing: true });
+
+    expect(mocks.keybindingService.popPendingChord).not.toHaveBeenCalled();
+    expect(mocks.keybindingService.clearPendingChord).not.toHaveBeenCalled();
+    expect(mocks.keybindingService.resolveKeybinding).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
+  });
+});

@@ -60,6 +60,13 @@ export function SettingsShortcutCapture({
     const handler = (e: KeyboardEvent) => {
       if (e.repeat) return;
 
+      // During IME composition, let the browser/IME own the event lifecycle.
+      // keyCode 229 is Chromium's "Process" key signal during active composition
+      // where isComposing may not yet be set on the first keydown. Must come
+      // before preventDefault/stopPropagation so the IME candidate window keeps
+      // working.
+      if (e.isComposing || e.keyCode === 229) return;
+
       e.preventDefault();
       e.stopPropagation();
 

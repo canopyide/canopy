@@ -23,6 +23,11 @@ export function useGlobalKeybindings(enabled: boolean = true): void {
       // Skip repeat events
       if (e.repeat) return;
 
+      // During IME composition, let the browser/IME own the event lifecycle.
+      // keyCode 229 is Chromium's "Process" key signal during active composition
+      // where isComposing may not yet be set on the first keydown.
+      if (e.isComposing || e.keyCode === 229) return;
+
       // Skip if user is typing in an input/textarea or editable content
       // Exception: allow shortcuts with modifiers (Cmd, Ctrl)
       const target = e.target as HTMLElement;

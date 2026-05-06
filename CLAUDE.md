@@ -54,7 +54,7 @@ Central orchestration layer for all UI operations. Provides a unified, typed API
 
 - `ActionService` (`src/services/ActionService.ts`) — Registry and dispatcher singleton
 - 28 definition files in `src/services/actions/definitions/` (one per domain)
-- ~258 built-in action IDs in `shared/types/actions.ts` — `BuiltInActionId`, `ActionDefinition`, `ActionManifestEntry`
+- ~308 built-in action IDs in `shared/types/actions.ts` — `BuiltInActionId`, `ActionDefinition`, `ActionManifestEntry`
 - `dispatch(actionId, args?, options?)` — Execute any action by ID
 - `list()` / `get(id)` — Introspect available actions (MCP-compatible manifest)
 - `ActionSource`: "user" | "keybinding" | "menu" | "agent" | "context-menu"
