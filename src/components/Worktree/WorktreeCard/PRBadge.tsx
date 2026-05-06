@@ -53,6 +53,7 @@ export const PRBadge = memo(function PRBadge({
         <button
           type="button"
           onClick={handleClick}
+          data-no-dnd=""
           className={cn(
             "flex items-center gap-1 text-xs text-left cursor-pointer transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent min-w-0",
             missingToken && "opacity-60"

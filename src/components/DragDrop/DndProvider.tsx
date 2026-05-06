@@ -13,7 +13,6 @@ import {
   useDndMonitor,
   useSensors,
   useSensor,
-  MouseSensor,
   TouchSensor,
   closestCenter,
   rectIntersection,
@@ -27,6 +26,7 @@ import {
   type Announcements,
   type MeasuringConfiguration,
 } from "@dnd-kit/core";
+import { NoDndMouseSensor } from "./NoDndMouseSensor";
 import {
   usePanelStore,
   useLayoutConfigStore,
@@ -343,7 +343,7 @@ export function DndProvider({ children }: DndProviderProps) {
 
   // Configure sensors with activation constraint so clicks work for popovers
   const sensors = useSensors(
-    useSensor(MouseSensor, {
+    useSensor(NoDndMouseSensor, {
       activationConstraint: { distance: DRAG_ACTIVATION_DISTANCE },
     }),
     useSensor(TouchSensor, {

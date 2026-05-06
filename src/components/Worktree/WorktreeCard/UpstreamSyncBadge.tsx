@@ -57,6 +57,7 @@ export function UpstreamSyncBadge({
           <button
             type="button"
             onClick={handleSignInClick}
+            data-no-dnd=""
             className="flex items-center text-[10px] text-status-warning/80 hover:text-status-warning transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent rounded-sm cursor-pointer"
             data-testid="upstream-sync-auth-cta"
           >

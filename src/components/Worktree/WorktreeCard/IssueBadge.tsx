@@ -44,6 +44,7 @@ export const IssueBadge = memo(function IssueBadge({
         <button
           type="button"
           onClick={handleClick}
+          data-no-dnd=""
           className={cn(
             "flex items-center gap-1.5 text-left cursor-pointer transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent min-w-0",
             isHeadline ? "text-[13px]" : "text-xs",

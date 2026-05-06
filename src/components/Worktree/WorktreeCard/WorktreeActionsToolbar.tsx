@@ -116,6 +116,7 @@ export function WorktreeActionsToolbar({
     <div
       data-testid="worktree-actions-wrapper"
       data-worktree-row-toolbar=""
+      data-no-dnd=""
       role="toolbar"
       aria-label="Worktree actions"
       className={cn(
