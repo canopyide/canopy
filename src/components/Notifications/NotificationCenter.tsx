@@ -16,7 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { actionService } from "@/services/ActionService";
-import { muteForDuration, muteUntilNextMorning, notify, setSessionQuietUntil } from "@/lib/notify";
+import { muteForDuration, muteUntilNextMorning, setSessionQuietUntil } from "@/lib/notify";
 import { useNotificationSettingsStore } from "@/store/notificationSettingsStore";
 import { useUIStore } from "@/store/uiStore";
 import { useWorktreeStore } from "@/hooks/useWorktreeStore";
@@ -265,30 +265,12 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
     resetLastClosedAt();
   };
 
-  const handleMuteFor = (durationMs: number, label: string) => {
+  const handleMuteFor = (durationMs: number) => {
     muteForDuration(durationMs);
-    notify({
-      type: "info",
-      title: "Notifications muted",
-      message: `Notifications muted ${label}`,
-      priority: "high",
-      duration: 3000,
-      urgent: true,
-      transient: true,
-    });
   };
 
   const handleMuteUntilMorning = () => {
-    const until = muteUntilNextMorning();
-    notify({
-      type: "info",
-      title: "Notifications muted",
-      message: `Notifications muted until ${timeFormatter.format(new Date(until))}`,
-      priority: "high",
-      duration: 3000,
-      urgent: true,
-      transient: true,
-    });
+    muteUntilNextMorning();
   };
 
   const openNotificationSettings = () => {
@@ -411,7 +393,7 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-[180px]">
-              <DropdownMenuItem onSelect={() => handleMuteFor(60 * 60 * 1000, "for 1 hour")}>
+              <DropdownMenuItem onSelect={() => handleMuteFor(60 * 60 * 1000)}>
                 For 1 hour
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={handleMuteUntilMorning}>{morningLabel}</DropdownMenuItem>
