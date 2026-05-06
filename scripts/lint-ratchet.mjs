@@ -17,6 +17,11 @@ const __dirname = dirname(__filename);
 const ROOT = join(__dirname, "..");
 const BASELINE_FILE = join(ROOT, "eslint-warnings-baseline.json");
 
+// Test files still get linted (editor + raw `npm run lint`), but their warnings
+// don't count toward the ratchet — test patterns like `as Foo` partial mocks
+// aren't product debt. Errors are still counted for all files below.
+const TEST_FILE_PATTERN = /[/\\](__tests__|e2e)[/\\]|\.(?:test|spec)\.[^.]+$/;
+
 function main() {
   const isUpdate = process.argv.includes("--update");
 
@@ -61,8 +66,12 @@ function main() {
     process.exit(1);
   }
 
-  // Count warnings and errors
-  const warningCount = results.reduce((sum, file) => {
+  // Warnings: exclude test files. Errors: count every file — the ratchet is
+  // the only ESLint gate in CI (`npm run check` calls `lint:ratchet`, not
+  // `lint:ci`), so test-file errors must still block the build.
+  const productionResults = results.filter((file) => !TEST_FILE_PATTERN.test(file.filePath));
+
+  const warningCount = productionResults.reduce((sum, file) => {
     return sum + file.messages.filter((msg) => msg.severity === 1).length;
   }, 0);
 
