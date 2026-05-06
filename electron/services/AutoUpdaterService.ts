@@ -75,7 +75,11 @@ class AutoUpdaterService {
   private downloadedHandler: ((info: UpdateInfo) => void) | null = null;
 
   private recordSuccessfulUpdateCheck(): void {
-    store.set("lastUpdateCheck", Date.now());
+    try {
+      store.set("lastUpdateCheck", Date.now());
+    } catch (err) {
+      console.error("[MAIN] Failed to write lastUpdateCheck to store:", err);
+    }
   }
 
   private clearRetryTimeout(): void {

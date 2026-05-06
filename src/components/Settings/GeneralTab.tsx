@@ -160,6 +160,9 @@ export function GeneralTab({
     let cancelled = false;
 
     const loadLastCheck = () => {
+      if (!window.electron.update?.getLastCheck) {
+        return;
+      }
       window.electron.update
         .getLastCheck()
         .then((ts) => {
