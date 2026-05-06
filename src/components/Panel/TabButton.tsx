@@ -14,6 +14,8 @@ import type { TerminalChromeDescriptor } from "@/utils/terminalChrome";
 import { getTerminalAgentDisplayState } from "@/utils/terminalAgentDisplayState";
 import { UI_ANIMATION_DURATION } from "@/lib/animationUtils";
 
+const RENAME_ERROR_TINT_HOLD_MS = 300;
+
 export interface TabInfo {
   id: string;
   title: string;
@@ -68,22 +70,28 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(title);
   const [showRenameError, setShowRenameError] = useState(false);
+  const [showRenameErrorTint, setShowRenameErrorTint] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const didCommitOrCancelRef = useRef(false);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const errorTintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const clearErrorTimer = useCallback(() => {
+  const clearErrorTimers = useCallback(() => {
     if (errorTimerRef.current !== null) {
       clearTimeout(errorTimerRef.current);
       errorTimerRef.current = null;
+    }
+    if (errorTintTimerRef.current !== null) {
+      clearTimeout(errorTintTimerRef.current);
+      errorTintTimerRef.current = null;
     }
   }, []);
 
   useEffect(() => {
     return () => {
-      clearErrorTimer();
+      clearErrorTimers();
     };
-  }, [clearErrorTimer]);
+  }, [clearErrorTimers]);
 
   // Focus input when entering edit mode
   useEffect(() => {
@@ -109,6 +117,9 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
       const detail = e.detail as unknown;
       if (!detail || typeof (detail as { id?: unknown }).id !== "string") return;
       if ((detail as { id: string }).id === id) {
+        clearErrorTimers();
+        setShowRenameError(false);
+        setShowRenameErrorTint(false);
         setEditValue(title);
         setIsEditing(true);
         didCommitOrCancelRef.current = false;
@@ -120,7 +131,7 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
       signal: controller.signal,
     });
     return () => controller.abort();
-  }, [id, title, onRename]);
+  }, [id, title, onRename, clearErrorTimers]);
 
   const handleClose = useCallback(
     (e: React.MouseEvent) => {
@@ -175,30 +186,36 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
         e.preventDefault();
         const trimmed = editValue.trim();
         if (!trimmed || trimmed === title) {
-          // Reject empty/unchanged: keep edit mode open and flash the border red.
-          clearErrorTimer();
+          clearErrorTimers();
           setShowRenameError(true);
+          setShowRenameErrorTint(true);
           errorTimerRef.current = setTimeout(() => {
             setShowRenameError(false);
             errorTimerRef.current = null;
           }, UI_ANIMATION_DURATION);
+          errorTintTimerRef.current = setTimeout(() => {
+            setShowRenameErrorTint(false);
+            errorTintTimerRef.current = null;
+          }, RENAME_ERROR_TINT_HOLD_MS);
           return;
         }
         onRename?.(trimmed);
-        clearErrorTimer();
+        clearErrorTimers();
         setShowRenameError(false);
+        setShowRenameErrorTint(false);
         didCommitOrCancelRef.current = true;
         setIsEditing(false);
       } else if (e.key === "Escape") {
         e.preventDefault();
         setEditValue(title);
-        clearErrorTimer();
+        clearErrorTimers();
         setShowRenameError(false);
+        setShowRenameErrorTint(false);
         didCommitOrCancelRef.current = true;
         setIsEditing(false);
       }
     },
-    [editValue, title, onRename, clearErrorTimer]
+    [editValue, title, onRename, clearErrorTimers]
   );
 
   const handleInputBlur = useCallback(() => {
@@ -209,10 +226,11 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
         onRename?.(trimmed);
       }
     }
-    clearErrorTimer();
+    clearErrorTimers();
     setShowRenameError(false);
+    setShowRenameErrorTint(false);
     setIsEditing(false);
-  }, [editValue, title, onRename, clearErrorTimer]);
+  }, [editValue, title, onRename, clearErrorTimers]);
 
   const handleInputClick = useCallback((e: React.MouseEvent) => {
     // Prevent click from bubbling to tab click handler
@@ -304,15 +322,21 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
               animate={{ opacity: 1 }}
               transition={{ duration: 0.1 }}
               className={cn(
-                "text-xs bg-daintree-bg/80 border px-1 h-4 min-w-[60px] max-w-[100px] text-daintree-text select-text transition-colors duration-150 focus-visible:outline focus-visible:outline-1 focus-visible:outline-daintree-accent",
-                showRenameError ? "border-status-error" : "border-border-strong"
+                "text-xs bg-daintree-bg/80 border px-1 h-4 min-w-[60px] max-w-[100px] text-daintree-text select-text transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-daintree-accent",
+                showRenameError
+                  ? "border-status-error duration-150"
+                  : "border-border-strong duration-250",
+                showRenameErrorTint && "bg-status-error/5"
               )}
               aria-label={`Rename tab ${title}`}
               aria-invalid={showRenameError || undefined}
             />
           ) : (
             <span
-              className={cn("truncate max-w-[100px]", onRename && "cursor-text")}
+              className={cn(
+                "truncate max-w-[100px] inline-block border border-transparent px-1",
+                onRename && "cursor-text"
+              )}
               onDoubleClick={handleDoubleClick}
             >
               {title}
@@ -366,7 +390,7 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
                 onClick={handleClose}
                 onKeyDown={handleCloseKeyDown}
                 className={cn(
-                  "shrink-0 p-0.5 -mr-1 rounded transition-colors",
+                  "shrink-0 p-0.5 -mr-1 rounded transition-[opacity,color,background-color,border-color]",
                   "opacity-0 group-hover/tab:opacity-100 group-focus-visible/tab:opacity-100 focus-visible:opacity-100",
                   "hover:bg-[color-mix(in_oklab,var(--color-status-error)_15%,transparent)]",
                   "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-1",
