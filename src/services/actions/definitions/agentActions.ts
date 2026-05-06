@@ -112,7 +112,10 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
       argsSchema: shortcutLaunchSchema,
       run: async (args: unknown) => {
         const { spawnedBy } = (args ?? {}) as { spawnedBy?: TerminalSpawnSource };
-        const terminalId = await callbacks.onLaunchAgent(id, spawnedBy ? { spawnedBy } : undefined);
+        const terminalId = await callbacks.onLaunchAgent(
+          id,
+          ...(spawnedBy ? [{ spawnedBy }] : [])
+        );
         return { terminalId };
       },
     }));
@@ -131,7 +134,7 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
       const { spawnedBy } = (args ?? {}) as { spawnedBy?: TerminalSpawnSource };
       const terminalId = await callbacks.onLaunchAgent(
         "terminal",
-        spawnedBy ? { spawnedBy } : undefined
+        ...(spawnedBy ? [{ spawnedBy }] : [])
       );
       return { terminalId };
     },
