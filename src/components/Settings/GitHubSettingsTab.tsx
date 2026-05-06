@@ -153,7 +153,7 @@ export function GitHubSettingsTab() {
     );
   }, []);
 
-  useSettingsTabValidation("github", Boolean(loadError));
+  useSettingsTabValidation("github", Boolean(loadError) || loadTimedOut);
 
   if (isLoading) {
     if (loadTimedOut) {
