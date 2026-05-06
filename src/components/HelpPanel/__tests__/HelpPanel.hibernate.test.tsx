@@ -379,7 +379,7 @@ describe("HelpPanel — resume from hibernated session", () => {
       render(<HelpPanel width={380} />);
     });
 
-    expect(mockBuildResumeCommand).toHaveBeenCalledWith("claude", "abc-123");
+    expect(mockBuildResumeCommand).toHaveBeenCalledWith("claude", "abc-123", undefined);
     expect(panelStoreState.addPanel).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: "terminal",
@@ -553,6 +553,274 @@ describe("HelpPanel — resume from hibernated session", () => {
       expect.objectContaining({ agentId: "claude" }),
       { source: "user" }
     );
+  });
+});
+
+describe("HelpPanel — resume preserves user-configured launch flags", () => {
+  it("threads customArgs into both buildResumeCommand and addPanel.agentLaunchFlags", async () => {
+    helpPanelState.preferredAgentId = "claude";
+    helpPanelState.hibernateSessions = {
+      "proj-1": { sessionId: "abc-123", cwd: "/tmp/help/proj-1", agentId: "claude" },
+    };
+    projectStoreState.currentProject = { id: "proj-1", path: "/tmp/proj-1" };
+    mockGetFolderPath.mockResolvedValue("/help");
+    mockProvisionSession.mockResolvedValue({
+      sessionId: "fresh-session",
+      sessionPath: "/tmp/help/proj-1",
+      token: "tok",
+      mcpUrl: null,
+      windowId: 1,
+    });
+    mockGetHelpAssistantSettings.mockResolvedValue({
+      docSearch: true,
+      daintreeControl: true,
+      skipPermissions: false,
+      auditRetention: 7,
+      customArgs: "--model claude-opus-4-5",
+      idleHibernateMinutes: 30,
+    });
+    panelStoreState.addPanel = vi.fn().mockResolvedValue("resumed-term-1");
+
+    await act(async () => {
+      render(<HelpPanel width={380} />);
+    });
+
+    expect(mockBuildResumeCommand).toHaveBeenCalledWith("claude", "abc-123", [
+      "--model",
+      "claude-opus-4-5",
+    ]);
+    expect(panelStoreState.addPanel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentLaunchFlags: ["--model", "claude-opus-4-5"],
+      })
+    );
+  });
+});
+
+describe("HelpPanel — idle hibernation timer", () => {
+  it("does not remove the panel when the user reopens before gracefulKill resolves (critical race)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      helpPanelState.isOpen = false;
+      helpPanelState.terminalId = "t1";
+      helpPanelState.agentId = "claude";
+      helpPanelState.sessionId = "live-session";
+      panelStoreState.panelsById = {
+        t1: {
+          id: "t1",
+          kind: "terminal",
+          spawnStatus: "ready",
+          cwd: "/help",
+          agentState: "idle",
+        },
+      };
+      projectStoreState.currentProject = { id: "proj-1", path: "/tmp/proj-1" };
+
+      let resolveGracefulKill: (v: string | null) => void = () => {};
+      mockGracefulKill.mockReturnValue(
+        new Promise<string | null>((resolve) => {
+          resolveGracefulKill = resolve;
+        })
+      );
+
+      await act(async () => {
+        render(<HelpPanel width={380} />);
+      });
+
+      // Let the settings IPC resolve so the timer arms.
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      // Fast-forward past the 30-minute hibernate threshold.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30 * 60 * 1000);
+      });
+
+      // gracefulKill is now in flight, awaiting our resolution.
+      expect(mockGracefulKill).toHaveBeenCalledWith("t1");
+
+      // User reopens the panel before the kill IPC returns.
+      helpPanelState.isOpen = true;
+
+      // Now resolve gracefulKill — the .then() must abort because isOpen=true.
+      await act(async () => {
+        resolveGracefulKill("captured-session");
+        await Promise.resolve();
+      });
+
+      expect(panelStoreState.removePanel).not.toHaveBeenCalled();
+      expect(helpPanelState.clearTerminal).not.toHaveBeenCalled();
+      expect(helpPanelState.setHibernateSession).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("captures the session and clears the terminal when the timer fires on an idle agent", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      helpPanelState.isOpen = false;
+      helpPanelState.terminalId = "t1";
+      helpPanelState.agentId = "claude";
+      helpPanelState.sessionId = "live-session";
+      panelStoreState.panelsById = {
+        t1: {
+          id: "t1",
+          kind: "terminal",
+          spawnStatus: "ready",
+          cwd: "/help",
+          agentState: "idle",
+        },
+      };
+      projectStoreState.currentProject = { id: "proj-1", path: "/tmp/proj-1" };
+      mockGracefulKill.mockResolvedValue("resume-token-xyz");
+
+      await act(async () => {
+        render(<HelpPanel width={380} />);
+      });
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30 * 60 * 1000);
+      });
+
+      expect(mockGracefulKill).toHaveBeenCalledWith("t1");
+      expect(helpPanelState.setHibernateSession).toHaveBeenCalledWith("proj-1", {
+        sessionId: "resume-token-xyz",
+        cwd: "/help",
+        agentId: "claude",
+      });
+      expect(panelStoreState.removePanel).toHaveBeenCalledWith("t1");
+      expect(helpPanelState.clearTerminal).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not call gracefulKill while the agent is working — defers via the busy re-check", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      helpPanelState.isOpen = false;
+      helpPanelState.terminalId = "t1";
+      helpPanelState.agentId = "claude";
+      panelStoreState.panelsById = {
+        t1: {
+          id: "t1",
+          kind: "terminal",
+          spawnStatus: "ready",
+          cwd: "/help",
+          agentState: "working",
+        },
+      };
+      projectStoreState.currentProject = { id: "proj-1", path: "/tmp/proj-1" };
+      mockGracefulKill.mockResolvedValue("should-not-be-captured");
+
+      await act(async () => {
+        render(<HelpPanel width={380} />);
+      });
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30 * 60 * 1000);
+      });
+
+      expect(mockGracefulKill).not.toHaveBeenCalled();
+      expect(helpPanelState.setHibernateSession).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not arm the timer when idleHibernateMinutes is 0", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      helpPanelState.isOpen = false;
+      helpPanelState.terminalId = "t1";
+      helpPanelState.agentId = "claude";
+      panelStoreState.panelsById = {
+        t1: {
+          id: "t1",
+          kind: "terminal",
+          spawnStatus: "ready",
+          cwd: "/help",
+          agentState: "idle",
+        },
+      };
+      projectStoreState.currentProject = { id: "proj-1", path: "/tmp/proj-1" };
+      mockGetHelpAssistantSettings.mockResolvedValue({
+        docSearch: true,
+        daintreeControl: true,
+        skipPermissions: false,
+        auditRetention: 7,
+        customArgs: "",
+        idleHibernateMinutes: 0,
+      });
+
+      await act(async () => {
+        render(<HelpPanel width={380} />);
+      });
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      // Advance way past any reasonable hibernate time.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2 * 60 * 60 * 1000);
+      });
+
+      expect(mockGracefulKill).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("clears the persisted entry when gracefulKill returns no session ID", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      helpPanelState.isOpen = false;
+      helpPanelState.terminalId = "t1";
+      helpPanelState.agentId = "claude";
+      // Pre-existing entry from a previous successful hibernate cycle.
+      helpPanelState.hibernateSessions = {
+        "proj-1": { sessionId: "old", cwd: "/help", agentId: "claude" },
+      };
+      panelStoreState.panelsById = {
+        t1: {
+          id: "t1",
+          kind: "terminal",
+          spawnStatus: "ready",
+          cwd: "/help",
+          agentState: "idle",
+        },
+      };
+      projectStoreState.currentProject = { id: "proj-1", path: "/tmp/proj-1" };
+      mockGracefulKill.mockResolvedValue(null);
+
+      await act(async () => {
+        render(<HelpPanel width={380} />);
+      });
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30 * 60 * 1000);
+      });
+
+      expect(helpPanelState.setHibernateSession).not.toHaveBeenCalled();
+      expect(helpPanelState.clearHibernateSession).toHaveBeenCalledWith("proj-1");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

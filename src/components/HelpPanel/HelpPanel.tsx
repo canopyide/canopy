@@ -401,6 +401,11 @@ export function HelpPanel({
           // stale captures.
           const after = useHelpPanelStore.getState();
           if (after.terminalId !== initialTerminalId) return;
+          // Critical race: user reopened the panel while gracefulKill was
+          // in flight. The terminal is still live and visible — don't tear
+          // it down out from under them. The captured session ID is also
+          // discarded; the next hibernation cycle will capture a fresh one.
+          if (after.isOpen) return;
           if (capturedSessionId && projectId && liveAgentId && cwd) {
             after.setHibernateSession(projectId, {
               sessionId: capturedSessionId,
@@ -418,6 +423,11 @@ export function HelpPanel({
         })
         .catch((err) => {
           logError("HelpPanel: gracefulKill during hibernate failed", err);
+          if (projectId) {
+            // Drop any prior hibernate entry so we don't auto-resume from a
+            // potentially stale one after a kill failure.
+            useHelpPanelStore.getState().clearHibernateSession(projectId);
+          }
           // Fall back to direct removal so we don't leak a hidden PTY.
           usePanelStore.getState().removePanel(initialTerminalId);
           revokeHelpSession(sessionToRevoke);
@@ -463,25 +473,28 @@ export function HelpPanel({
     };
   }, [isOpen, terminalId, agentId]);
 
-  // Auto-dismiss the resume banner. Also dismisses as soon as the user
-  // engages with the resumed conversation (conversationTouched flips true).
+  // Auto-dismiss the resume banner after a short window. Conversation-touched
+  // can't be the dismiss trigger here: a resumed Claude session immediately
+  // re-reads history and enters a non-idle state, which flips
+  // conversationTouched=true and would otherwise dismiss the banner before
+  // the user has a chance to see it. The user can also dismiss manually via
+  // the X button.
   useEffect(() => {
     if (!showResumeBanner) return;
-    if (conversationTouched) {
-      setShowResumeBanner(false);
-      return;
-    }
     const id = setTimeout(() => setShowResumeBanner(false), RESUME_BANNER_AUTO_DISMISS_MS);
     return () => clearTimeout(id);
-  }, [showResumeBanner, conversationTouched]);
+  }, [showResumeBanner]);
 
   // Spawn a resumed PTY directly via addPanel with a pre-built
   // `--resume <id>` command, bypassing `agent.launch` (which has no
   // command-override arg). Caller is responsible for provisioning the help
   // session (so a single MCP failure doesn't notify twice) and for clearing
-  // the persisted hibernate entry on success/give-up. Returns the spawned
-  // terminalId, or null if either there's no resume config for the agent or
-  // the spawn returned no id (caller falls back to a fresh launch).
+  // the persisted hibernate entry on success/give-up. The user's custom CLI
+  // flags are loaded here and threaded into both `buildResumeCommand` (so
+  // they're prepended before `--resume`) and `agentLaunchFlags` (so the
+  // panel records them for future restarts). Returns the spawned terminalId,
+  // or null if either there's no resume config for the agent or the spawn
+  // returned no id (caller falls back to a fresh launch).
   const spawnResumed = useCallback(
     async (
       launchAgentId: string,
@@ -489,7 +502,12 @@ export function HelpPanel({
       session: HelpSessionRef | null,
       folderPath: string
     ): Promise<string | null> => {
-      const command = buildResumeCommand(launchAgentId, hibernated.sessionId);
+      const customLaunchFlags = await loadCustomLaunchFlags();
+      const command = buildResumeCommand(
+        launchAgentId,
+        hibernated.sessionId,
+        customLaunchFlags.length > 0 ? customLaunchFlags : undefined
+      );
       if (!command) return null;
 
       // Resumed sessions launch from the same sessionPath the previous run
@@ -506,6 +524,7 @@ export function HelpPanel({
         location: "dock",
         ephemeral: true,
         ...(env && { env }),
+        ...(customLaunchFlags.length > 0 && { agentLaunchFlags: customLaunchFlags }),
       });
       return newId ?? null;
     },
