@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 
 /**
  * Calls `fn` when the document becomes hidden and `enabled` is true.
@@ -14,7 +14,9 @@ import { useEffect, useRef } from "react";
  */
 export function useFlushOnHide(fn: () => void | Promise<void>, enabled: boolean): void {
   const callbackRef = useRef(fn);
-  callbackRef.current = fn;
+  useLayoutEffect(() => {
+    callbackRef.current = fn;
+  });
 
   useEffect(() => {
     if (!enabled) return;

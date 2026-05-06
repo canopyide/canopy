@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   type ReactNode,
@@ -74,7 +75,9 @@ export function useSettingsTabFlush(tab: SettingsTab, fn: FlushFn, enabled: bool
   const register = ctx?.register;
 
   const fnRef = useRef(fn);
-  fnRef.current = fn;
+  useLayoutEffect(() => {
+    fnRef.current = fn;
+  });
 
   useEffect(() => {
     if (!enabled || !register) return;
