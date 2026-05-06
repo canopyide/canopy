@@ -247,42 +247,33 @@ describe("ErrorBoundary", () => {
     expect(screen.getByText("Recovered")).toBeTruthy();
   });
 
-  it("calls onReset before setState causes re-render", () => {
-    let onResetCalledBeforeReset = false;
-    let stateHasReset = false;
+  it("calls onReset before rendering recovered children", () => {
+    const events: string[] = [];
+    let shouldThrow = true;
 
     const onReset = vi.fn(() => {
-      onResetCalledBeforeReset = !stateHasReset;
+      shouldThrow = false;
+      events.push("onReset");
     });
 
-    let shouldThrow = true;
     function ConditionalThrow() {
+      events.push("child-render");
       if (shouldThrow) throw new Error("Test render error");
       return <div>Recovered</div>;
     }
 
     render(
-      <ErrorBoundary
-        variant="section"
-        onReset={onReset}
-        fallback={({ error: _error, resetError }) => {
-          stateHasReset = false;
-          return (
-            <div>
-              <div>Error fallback</div>
-              <button onClick={() => resetError()}>Reload</button>
-            </div>
-          );
-        }}
-      >
+      <ErrorBoundary variant="section" onReset={onReset}>
         <ConditionalThrow />
       </ErrorBoundary>
     );
 
-    shouldThrow = false;
-    fireEvent.click(screen.getByText("Reload"));
+    expect(screen.getByText("Section stopped working")).toBeTruthy();
 
-    expect(onResetCalledBeforeReset).toBe(true);
+    events.length = 0;
+    fireEvent.click(screen.getByText("Reload pane"));
+
+    expect(events).toEqual(["onReset", "child-render"]);
     expect(screen.getByText("Recovered")).toBeTruthy();
   });
 
