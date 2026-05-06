@@ -177,6 +177,104 @@ export function isChordPrefix(query: string): boolean {
   return remaining.length > 0 && VALID_KEY_PATTERN.test(remaining);
 }
 
+// ── ARIA keyshortcuts conversion ──────────────────────────────────────────
+// WAI-ARIA `aria-keyshortcuts` requires the canonical `Modifier+Modifier+Key`
+// grammar (e.g. `Control+Shift+P`), distinct from our visible glyph form
+// (`⌃⇧P`). Multiple alternatives and chord steps are both space-separated
+// (the spec overloads the space delimiter — screen readers announce the full
+// string verbatim, so a chord like `Cmd+K T` becomes `Meta+K T`).
+//
+// macOS `Cmd` maps to ARIA `Meta`; on Win/Linux the runtime swaps `Cmd` for
+// the physical Ctrl key (see `KeybindingService.matchesEvent`), so the aria
+// value emits `Control` to match what's actually pressed on that platform.
+
+const ARIA_MAC_MODIFIERS: Record<string, string> = {
+  cmd: "Meta",
+  command: "Meta",
+  meta: "Meta",
+  ctrl: "Control",
+  control: "Control",
+  alt: "Alt",
+  option: "Alt",
+  shift: "Shift",
+};
+
+const ARIA_WIN_MODIFIERS: Record<string, string> = {
+  cmd: "Control",
+  command: "Control",
+  meta: "Control",
+  ctrl: "Control",
+  control: "Control",
+  alt: "Alt",
+  option: "Alt",
+  shift: "Shift",
+};
+
+const ARIA_KEY_NAMES: Record<string, string> = {
+  return: "Enter",
+  enter: "Enter",
+  escape: "Escape",
+  esc: "Escape",
+  tab: "Tab",
+  backspace: "Backspace",
+  delete: "Delete",
+  del: "Delete",
+  up: "ArrowUp",
+  arrowup: "ArrowUp",
+  down: "ArrowDown",
+  arrowdown: "ArrowDown",
+  left: "ArrowLeft",
+  arrowleft: "ArrowLeft",
+  right: "ArrowRight",
+  arrowright: "ArrowRight",
+  space: "Space",
+  pageup: "PageUp",
+  pagedown: "PageDown",
+  home: "Home",
+  end: "End",
+};
+
+function mapAriaToken(rawToken: string, modifiers: Record<string, string>): string {
+  const lower = rawToken.toLowerCase();
+  const modifier = modifiers[lower];
+  if (modifier) return modifier;
+  const named = ARIA_KEY_NAMES[lower];
+  if (named) return named;
+  if (rawToken.length === 1) return rawToken.toUpperCase();
+  return rawToken;
+}
+
+/**
+ * Convert a canonical combo string into the WAI-ARIA `aria-keyshortcuts`
+ * grammar. Returns `undefined` for empty/nullish input so the attribute can
+ * be omitted entirely rather than rendered as an empty string.
+ *
+ * @example
+ * comboToAriaKeyshortcuts("Cmd+K T", true)   // "Meta+K T"
+ * comboToAriaKeyshortcuts("Cmd+K T", false)  // "Control+K T"
+ * comboToAriaKeyshortcuts("Cmd+Shift+P", true)  // "Meta+Shift+P"
+ * comboToAriaKeyshortcuts("Ctrl++", false)   // "Control++"
+ * comboToAriaKeyshortcuts(undefined, true)   // undefined
+ */
+export function comboToAriaKeyshortcuts(
+  combo: string | null | undefined,
+  isMac: boolean
+): string | undefined {
+  if (!combo || !combo.trim()) return undefined;
+
+  const modifiers = isMac ? ARIA_MAC_MODIFIERS : ARIA_WIN_MODIFIERS;
+  const normalized = combo.trim().replace(/\s*\+\s*/g, "+");
+
+  const steps = normalized
+    .split(/\s+/)
+    .map((step) => splitStepKeys(step))
+    .filter((tokens) => tokens.length > 0)
+    .map((tokens) => tokens.map((token) => mapAriaToken(token, modifiers)).join("+"));
+
+  if (steps.length === 0) return undefined;
+  return steps.join(" ");
+}
+
 export function normalizeQuery(query: string): string {
   let normalized = query.toLowerCase().trim();
   normalized = normalized.replace(/\s*\+\s*/g, "+").replace(/\s+/g, "+");

@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ShortcutRevealChip } from "@/components/ui/ShortcutRevealChip";
 import { createTooltipContent } from "@/lib/tooltipShortcut";
-import { useKeybindingDisplay, useShortcutHintHover } from "@/hooks";
+import { useAriaKeyshortcuts, useKeybindingDisplay, useShortcutHintHover } from "@/hooks";
 
 const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text";
 
@@ -21,6 +21,7 @@ export const ToolbarProblemsButton = memo(function ToolbarProblemsButton({
   "data-toolbar-item": dataToolbarItem,
 }: ToolbarProblemsButtonProps) {
   const diagnosticsShortcut = useKeybindingDisplay("panel.toggleDiagnostics");
+  const diagnosticsAriaShortcut = useAriaKeyshortcuts("panel.toggleDiagnostics");
   const diagnosticsHover = useShortcutHintHover("panel.toggleDiagnostics");
 
   return (
@@ -34,6 +35,7 @@ export const ToolbarProblemsButton = memo(function ToolbarProblemsButton({
           onClick={onToggleProblems}
           className={cn(toolbarIconButtonClass, "relative", errorCount > 0 && "text-status-error")}
           aria-label={`Problems: ${errorCount} error${errorCount !== 1 ? "s" : ""}`}
+          aria-keyshortcuts={diagnosticsAriaShortcut}
         >
           <AlertCircle />
           <span

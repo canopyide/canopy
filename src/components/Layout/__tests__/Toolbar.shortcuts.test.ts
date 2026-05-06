@@ -125,6 +125,44 @@ describe("Toolbar shortcut tooltips — issue #3443", () => {
     });
   });
 
+  describe("aria-keyshortcuts exposure (issue #6874)", () => {
+    it("Toolbar.tsx calls useAriaKeyshortcuts for each chip-bearing button", () => {
+      expect(source).toContain('useAriaKeyshortcuts("nav.toggleSidebar")');
+      expect(source).toContain('useAriaKeyshortcuts("worktree.copyTree")');
+    });
+
+    it("Toolbar.tsx renders aria-keyshortcuts on its chip buttons", () => {
+      expect(source).toContain("aria-keyshortcuts={sidebarAriaShortcut}");
+      expect(source).toContain("aria-keyshortcuts={copyTreeAriaShortcut}");
+    });
+
+    it("ToolbarProblemsButton renders aria-keyshortcuts", () => {
+      expect(problemsSource).toContain('useAriaKeyshortcuts("panel.toggleDiagnostics")');
+      expect(problemsSource).toContain("aria-keyshortcuts={diagnosticsAriaShortcut}");
+    });
+
+    it("ToolbarPortalButton renders aria-keyshortcuts", () => {
+      expect(portalSource).toContain('useAriaKeyshortcuts("panel.togglePortal")');
+      expect(portalSource).toContain("aria-keyshortcuts={portalAriaShortcut}");
+    });
+
+    it("ToolbarSettingsButton renders aria-keyshortcuts", () => {
+      expect(settingsSource).toContain('useAriaKeyshortcuts("app.settings")');
+      expect(settingsSource).toContain("aria-keyshortcuts={settingsAriaShortcut}");
+    });
+
+    it("ToolbarLauncherButton renders aria-keyshortcuts", () => {
+      expect(launcherSource).toContain("useAriaKeyshortcuts(config.keybindingAction)");
+      expect(launcherSource).toContain("aria-keyshortcuts={ariaShortcut}");
+    });
+
+    it("AgentButton renders aria-keyshortcuts on both visible-chip Buttons", () => {
+      expect(agentSource).toContain("useAriaKeyshortcuts(`agent.${type}`)");
+      const matches = agentSource.match(/aria-keyshortcuts=\{ariaShortcut\}/g) ?? [];
+      expect(matches.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
   describe("useMemo dependency array", () => {
     it("includes sidebarShortcut in useMemo deps", () => {
       const depsMatch = source.match(/\}\),\s*\[([^\]]+)\]\s*\);/s);

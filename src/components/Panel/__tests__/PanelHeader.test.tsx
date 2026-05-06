@@ -45,6 +45,7 @@ vi.mock("@/hooks", () => ({
   useBackgroundPanelStats: () => ({ activeCount: 0, workingCount: 0 }),
   useTabOverflow: () => mockHiddenTabIds,
   useKeybindingDisplay: () => "",
+  useAriaKeyshortcuts: () => undefined,
 }));
 
 vi.mock("@/components/DragDrop/DragHandleContext", () => ({

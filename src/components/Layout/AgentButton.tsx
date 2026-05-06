@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 import { getBrandColorHex } from "@/lib/colorUtils";
 import { BrandMark } from "@/components/icons";
 import { getAgentConfig, getMergedPresets } from "@/config/agents";
-import { useKeybindingDisplay } from "@/hooks";
+import { useAriaKeyshortcuts, useKeybindingDisplay } from "@/hooks";
 import { createTooltipContent } from "@/lib/tooltipShortcut";
 import { useWorktrees } from "@/hooks/useWorktrees";
 import { actionService } from "@/services/ActionService";
@@ -150,6 +150,7 @@ export function AgentButton({
 }: AgentButtonProps) {
   const { worktrees } = useWorktrees();
   const displayCombo = useKeybindingDisplay(`agent.${type}`);
+  const ariaShortcut = useAriaKeyshortcuts(`agent.${type}`);
   const agentSettings = useAgentSettingsStore((s) => s.settings);
   const ccrPresets = useCcrPresetsStore((s) => s.ccrPresetsByAgent[type]);
   const projectPresets = useProjectPresetsStore((s) => s.presetsByAgent[type]);
@@ -357,6 +358,7 @@ export function AgentButton({
                     needsSetup && "opacity-70"
                   )}
                   aria-label={ariaLabel}
+                  aria-keyshortcuts={ariaShortcut}
                 >
                   {iconElement}
                   <ShortcutRevealChip actionId={`agent.${type}`} />
@@ -453,6 +455,7 @@ export function AgentButton({
                   needsSetup && "opacity-70"
                 )}
                 aria-label={ariaLabel}
+                aria-keyshortcuts={ariaShortcut}
               >
                 {iconElement}
                 <ShortcutRevealChip actionId={`agent.${type}`} />

@@ -38,7 +38,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useToolbarOverflow } from "@/hooks/useToolbarOverflow";
 import { useWorktreeActions } from "@/hooks/useWorktreeActions";
-import { useKeybindingDisplay, useShortcutHintHover } from "@/hooks";
+import { useAriaKeyshortcuts, useKeybindingDisplay, useShortcutHintHover } from "@/hooks";
 import type { UseProjectSwitcherPaletteReturn } from "@/hooks";
 import type { SearchableProject } from "@/hooks/useProjectSwitcherPalette";
 import { useProjectStore } from "@/store/projectStore";
@@ -220,6 +220,8 @@ export function Toolbar({
   const sidebarShortcut = useKeybindingDisplay("nav.toggleSidebar");
   const copyTreeShortcut = useKeybindingDisplay("worktree.copyTree");
   const devServerShortcut = useKeybindingDisplay("devServer.start");
+  const sidebarAriaShortcut = useAriaKeyshortcuts("nav.toggleSidebar");
+  const copyTreeAriaShortcut = useAriaKeyshortcuts("worktree.copyTree");
 
   const sidebarHintHover = useShortcutHintHover("nav.toggleSidebar");
   const devServerHintHover = useShortcutHintHover("devServer.start");
@@ -393,6 +395,7 @@ export function Toolbar({
                 className={toolbarIconButtonClass}
                 aria-label="Toggle Sidebar"
                 aria-pressed={!isFocusMode}
+                aria-keyshortcuts={sidebarAriaShortcut}
               >
                 {isFocusMode ? <PanelLeftOpen /> : <PanelLeftClose />}
                 <ShortcutRevealChip actionId="nav.toggleSidebar" />
@@ -521,6 +524,7 @@ export function Toolbar({
                 aria-label={
                   isCopyingTree ? "Copying…" : treeCopied ? "Context Copied" : "Copy Context"
                 }
+                aria-keyshortcuts={copyTreeAriaShortcut}
               >
                 {isCopyingTree ? <Spinner /> : treeCopied ? <Check /> : <Folders />}
                 {!treeCopied && !isCopyingTree && (

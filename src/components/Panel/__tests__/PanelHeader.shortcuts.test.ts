@@ -80,6 +80,24 @@ describe("PanelHeader shortcut tooltips — issue #3819", () => {
     });
   });
 
+  describe("aria-keyshortcuts exposure (issue #6874)", () => {
+    it("calls useAriaKeyshortcuts for each header action", () => {
+      expect(source).toContain('useAriaKeyshortcuts("terminal.duplicate")');
+      expect(source).toContain('useAriaKeyshortcuts("terminal.moveToDock")');
+      expect(source).toContain('useAriaKeyshortcuts("terminal.toggleDock")');
+      expect(source).toContain('useAriaKeyshortcuts("terminal.maximize")');
+      expect(source).toContain('useAriaKeyshortcuts("terminal.close")');
+    });
+
+    it("renders aria-keyshortcuts on each header button", () => {
+      expect(source).toContain("aria-keyshortcuts={duplicateAriaShortcut}");
+      expect(source).toContain("aria-keyshortcuts={moveToDockAriaShortcut}");
+      expect(source).toContain("aria-keyshortcuts={toggleDockAriaShortcut}");
+      expect(source).toContain("aria-keyshortcuts={maximizeAriaShortcut}");
+      expect(source).toContain("aria-keyshortcuts={closeAriaShortcut}");
+    });
+  });
+
   describe("imports", () => {
     it("imports createTooltipContent from tooltipShortcut lib", () => {
       expect(source).toContain('import { createTooltipContent } from "@/lib/tooltipShortcut"');

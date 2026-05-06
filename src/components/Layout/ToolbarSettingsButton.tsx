@@ -11,7 +11,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { createTooltipContent } from "@/lib/tooltipShortcut";
-import { useKeybindingDisplay, useShortcutHintHover } from "@/hooks";
+import { useAriaKeyshortcuts, useKeybindingDisplay, useShortcutHintHover } from "@/hooks";
 import { actionService } from "@/services/ActionService";
 
 const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text relative";
@@ -37,6 +37,7 @@ export const ToolbarSettingsButton = memo(function ToolbarSettingsButton({
   "data-toolbar-item": dataToolbarItem,
 }: ToolbarSettingsButtonProps) {
   const settingsShortcut = useKeybindingDisplay("app.settings");
+  const settingsAriaShortcut = useAriaKeyshortcuts("app.settings");
   const settingsHover = useShortcutHintHover("app.settings");
 
   return (
@@ -57,6 +58,7 @@ export const ToolbarSettingsButton = memo(function ToolbarSettingsButton({
               onPointerDown={settingsHover.onPointerDown}
               className={toolbarIconButtonClass}
               aria-label="Open settings"
+              aria-keyshortcuts={settingsAriaShortcut}
             >
               <SlidersHorizontal />
               <ShortcutRevealChip actionId="app.settings" />

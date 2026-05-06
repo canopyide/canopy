@@ -45,6 +45,20 @@ describe("SidebarContent shortcut tooltips — issue #5843", () => {
     });
   });
 
+  describe("aria-keyshortcuts exposure (issue #6874)", () => {
+    it("calls useAriaKeyshortcuts for each tooltip-bearing button", () => {
+      expect(source).toContain('useAriaKeyshortcuts("worktree.overview")');
+      expect(source).toContain('useAriaKeyshortcuts("worktree.refresh")');
+      expect(source).toContain('useAriaKeyshortcuts("worktree.createDialog.open")');
+    });
+
+    it("renders aria-keyshortcuts on each interactive button", () => {
+      expect(source).toContain("aria-keyshortcuts={overviewAriaShortcut}");
+      expect(source).toContain("aria-keyshortcuts={refreshAriaShortcut}");
+      expect(source).toContain("aria-keyshortcuts={createWorktreeAriaShortcut}");
+    });
+  });
+
   describe("createTooltipContent usage", () => {
     it("uses createTooltipContent for Open worktrees overview tooltip", () => {
       expect(source).toContain('createTooltipContent("Open worktrees overview", overviewShortcut)');

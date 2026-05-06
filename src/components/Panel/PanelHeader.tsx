@@ -47,7 +47,12 @@ import { AnimatedLabel } from "@/components/ui/AnimatedLabel";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import { BellDot, FolderGit2 } from "@/components/icons";
 import { useDragHandle } from "@/components/DragDrop/DragHandleContext";
-import { useBackgroundPanelStats, useKeybindingDisplay, useTabOverflow } from "@/hooks";
+import {
+  useAriaKeyshortcuts,
+  useBackgroundPanelStats,
+  useKeybindingDisplay,
+  useTabOverflow,
+} from "@/hooks";
 import { usePanelStore } from "@/store/panelStore";
 import {
   DropdownMenu,
@@ -256,6 +261,11 @@ function PanelHeaderComponent({
   const toggleDockShortcut = useKeybindingDisplay("terminal.toggleDock");
   const maximizeShortcut = useKeybindingDisplay("terminal.maximize");
   const closeShortcut = useKeybindingDisplay("terminal.close");
+  const duplicateAriaShortcut = useAriaKeyshortcuts("terminal.duplicate");
+  const moveToDockAriaShortcut = useAriaKeyshortcuts("terminal.moveToDock");
+  const toggleDockAriaShortcut = useAriaKeyshortcuts("terminal.toggleDock");
+  const maximizeAriaShortcut = useAriaKeyshortcuts("terminal.maximize");
+  const closeAriaShortcut = useAriaKeyshortcuts("terminal.close");
   const addTabTooltipContent = createTooltipContent(
     "Duplicate panel as new tab",
     duplicateShortcut
@@ -723,6 +733,7 @@ function PanelHeaderComponent({
                   onPointerDown={(e) => e.stopPropagation()}
                   className="shrink-0 p-1.5 opacity-0 group-hover:opacity-100 hover:bg-daintree-text/10 text-daintree-text/40 hover:text-daintree-text transition focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-1"
                   aria-label="Duplicate panel as new tab"
+                  aria-keyshortcuts={duplicateAriaShortcut}
                   type="button"
                 >
                   <Plus className="w-3.5 h-3.5" aria-hidden="true" />
@@ -934,6 +945,7 @@ function PanelHeaderComponent({
                 onPointerDown={(e) => e.stopPropagation()}
                 className="p-1.5 hover:bg-daintree-text/10 focus-visible:bg-daintree-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2 text-daintree-text/60 hover:text-daintree-text transition-colors"
                 aria-label="Move to Dock"
+                aria-keyshortcuts={moveToDockAriaShortcut}
                 data-testid="panel-move-to-dock"
               >
                 <PanelBottomClose className="w-3 h-3" />
@@ -957,6 +969,7 @@ function PanelHeaderComponent({
                 onPointerDown={(e) => e.stopPropagation()}
                 className="p-1.5 hover:bg-daintree-text/10 focus-visible:bg-daintree-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2 text-daintree-text/60 hover:text-daintree-text transition-colors"
                 aria-label="Collapse to Dock"
+                aria-keyshortcuts={toggleDockAriaShortcut}
                 data-testid="panel-collapse-to-dock"
               >
                 <PanelBottomClose className="w-3 h-3" />
@@ -978,6 +991,7 @@ function PanelHeaderComponent({
                 onPointerDown={(e) => e.stopPropagation()}
                 className="flex items-center gap-1.5 px-2 py-1 hover:bg-daintree-text/10 focus-visible:bg-daintree-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2 text-daintree-text/60 hover:text-daintree-text transition-colors"
                 aria-label="Exit Focus mode and restore grid view"
+                aria-keyshortcuts={maximizeAriaShortcut}
               >
                 <Minimize2 className="w-3.5 h-3.5" aria-hidden="true" />
                 <span className="font-medium">Exit Focus</span>
@@ -1000,6 +1014,7 @@ function PanelHeaderComponent({
                   onPointerDown={(e) => e.stopPropagation()}
                   className="p-1.5 hover:bg-daintree-text/10 focus-visible:bg-daintree-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2 text-daintree-text/60 hover:text-daintree-text transition-colors"
                   aria-label="Maximize"
+                  aria-keyshortcuts={maximizeAriaShortcut}
                 >
                   <Maximize2 className="w-3 h-3" aria-hidden="true" />
                 </button>
@@ -1032,6 +1047,7 @@ function PanelHeaderComponent({
               aria-label={formatShortcutForTooltip(
                 "Close session. Hold Alt and click to force close without recovery."
               )}
+              aria-keyshortcuts={closeAriaShortcut}
             >
               <X className="w-3 h-3" aria-hidden="true" />
             </button>

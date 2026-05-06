@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ShortcutRevealChip } from "@/components/ui/ShortcutRevealChip";
 import { cn } from "@/lib/utils";
-import { useKeybindingDisplay } from "@/hooks";
+import { useAriaKeyshortcuts, useKeybindingDisplay } from "@/hooks";
 import { useVoiceRecordingStore } from "@/store/voiceRecordingStore";
 import { voiceRecordingService } from "@/services/VoiceRecordingService";
 
@@ -24,6 +24,7 @@ export function VoiceRecordingToolbarButton({
   const elapsedSeconds = useVoiceRecordingStore((state) => state.elapsedSeconds);
   const audioLevel = useVoiceRecordingStore((state) => state.audioLevel);
   const shortcut = useKeybindingDisplay("voiceInput.toggle");
+  const ariaShortcut = useAriaKeyshortcuts("voiceInput.toggle");
 
   if (
     !activeTarget ||
@@ -71,6 +72,7 @@ export function VoiceRecordingToolbarButton({
                 : "text-daintree-accent hover:text-daintree-accent"
           )}
           aria-label={tooltipTitle}
+          aria-keyshortcuts={ariaShortcut}
         >
           {status === "finishing" ? (
             <Spinner size="md" />

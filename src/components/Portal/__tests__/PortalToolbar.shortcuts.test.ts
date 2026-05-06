@@ -31,6 +31,18 @@ describe("PortalToolbar shortcut tooltips — issue #3819", () => {
     });
   });
 
+  describe("aria-keyshortcuts exposure (issue #6874)", () => {
+    it("calls useAriaKeyshortcuts for each tooltip-bearing button", () => {
+      expect(source).toContain('useAriaKeyshortcuts("panel.togglePortal")');
+      expect(source).toContain('useAriaKeyshortcuts("portal.newTab")');
+    });
+
+    it("renders aria-keyshortcuts on Close portal and New Tab buttons", () => {
+      expect(source).toContain("aria-keyshortcuts={closePortalAriaShortcut}");
+      expect(source).toContain("aria-keyshortcuts={newTabAriaShortcut}");
+    });
+  });
+
   describe("buttons without keybindings remain plain text", () => {
     it("Go back tooltip is plain text", () => {
       expect(source).toContain(">Go back</TooltipContent>");

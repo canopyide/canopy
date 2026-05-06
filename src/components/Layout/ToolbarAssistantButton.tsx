@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ShortcutRevealChip } from "@/components/ui/ShortcutRevealChip";
 import { createTooltipContent } from "@/lib/tooltipShortcut";
-import { useKeybindingDisplay, useShortcutHintHover } from "@/hooks";
+import { useAriaKeyshortcuts, useKeybindingDisplay, useShortcutHintHover } from "@/hooks";
 import { cn } from "@/lib/utils";
 import { DaintreeIcon } from "@/components/icons/DaintreeIcon";
 import { useFocusStore } from "@/store/focusStore";
@@ -50,6 +50,7 @@ export const ToolbarAssistantButton = memo(function ToolbarAssistantButton({
   const toggle = useHelpPanelStore((s) => s.toggle);
   const mcp = useMcpReadiness();
   const shortcut = useKeybindingDisplay("help.togglePanel");
+  const ariaShortcut = useAriaKeyshortcuts("help.togglePanel");
   const hintHover = useShortcutHintHover("help.togglePanel");
 
   const handleClick = useCallback(() => {
@@ -75,6 +76,7 @@ export const ToolbarAssistantButton = memo(function ToolbarAssistantButton({
           className={toolbarIconButtonClass}
           aria-label={ariaLabel}
           aria-pressed={isOpen}
+          aria-keyshortcuts={ariaShortcut}
         >
           <DaintreeIcon />
           {pip && (
