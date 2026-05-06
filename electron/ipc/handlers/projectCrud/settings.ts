@@ -76,6 +76,22 @@ export function registerProjectSettingsHandlers(): () => void {
   };
   handlers.push(typedHandle(CHANNELS.PROJECT_DETECT_RUNNERS, handleProjectDetectRunners));
 
+  const handleProjectGetNotificationOverrides = async (
+    projectIds: string[]
+  ): Promise<
+    Record<string, Partial<import("../../../../shared/types/ipc/api.js").NotificationSettings>>
+  > => {
+    if (!Array.isArray(projectIds)) {
+      throw new Error("Invalid project IDs");
+    }
+    const valid = projectIds.filter((id): id is string => typeof id === "string" && id.length > 0);
+    const unique = [...new Set(valid)];
+    return projectStore.getProjectNotificationOverrides(unique);
+  };
+  handlers.push(
+    typedHandle(CHANNELS.PROJECT_GET_NOTIFICATION_OVERRIDES, handleProjectGetNotificationOverrides)
+  );
+
   const handleProjectCreateFolder = async (payload: {
     parentPath: string;
     folderName: string;

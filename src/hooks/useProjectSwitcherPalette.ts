@@ -2,6 +2,7 @@ import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { rankProjectMatches } from "@/lib/projectSwitcherSearch";
 import { useProjectStore } from "@/store/projectStore";
 import { useProjectStatsStore } from "@/store/projectStatsStore";
+import { useProjectSettingsStore } from "@/store/projectSettingsStore";
 import { useScratchStore } from "@/store/scratchStore";
 import { usePaletteStore } from "@/store/paletteStore";
 import { notify } from "@/lib/notify";
@@ -167,6 +168,12 @@ export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
       };
     });
   }, [projects, projectStats, currentProject?.id]);
+
+  useEffect(() => {
+    if (!isOpen || searchableProjects.length === 0) return;
+    const ids = searchableProjects.map((p) => p.id);
+    void useProjectSettingsStore.getState().loadNotificationOverridesForProjects(ids);
+  }, [isOpen, searchableProjects]);
 
   const backgroundWaitingCount = useMemo(
     () =>

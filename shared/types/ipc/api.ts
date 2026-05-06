@@ -472,6 +472,9 @@ export interface ElectronAPI {
     reopen(projectId: string, outgoingState?: ProjectSwitchOutgoingState): Promise<Project>;
     getStats(projectId: string): Promise<ProjectStats>;
     getBulkStats(projectIds: string[]): Promise<BulkProjectStats>;
+    getNotificationOverrides(
+      projectIds: string[]
+    ): Promise<Record<string, Partial<NotificationSettings>>>;
     onStatsUpdated(callback: (stats: ProjectStatusMap) => void): () => void;
     createFolder(parentPath: string, folderName: string): Promise<string>;
     initGit(directoryPath: string): Promise<void>;

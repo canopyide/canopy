@@ -9,6 +9,7 @@ import type {
   TerminalSnapshot,
   TabGroup,
 } from "@shared/types";
+import type { NotificationSettings } from "@shared/types/ipc/api";
 import type { AgentPreset } from "@shared/config/agentRegistry";
 import type { ProjectSwitchOutgoingState } from "@shared/types/ipc/project";
 import type {
@@ -146,6 +147,12 @@ export const projectClient = {
 
   getBulkStats: (projectIds: string[]): Promise<BulkProjectStats> => {
     return window.electron.project.getBulkStats(projectIds);
+  },
+
+  getNotificationOverrides: (
+    projectIds: string[]
+  ): Promise<Record<string, Partial<NotificationSettings>>> => {
+    return window.electron.project.getNotificationOverrides(projectIds);
   },
 
   createFolder: (parentPath: string, folderName: string): Promise<string> => {

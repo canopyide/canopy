@@ -1,6 +1,7 @@
 import { useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback, memo } from "react";
 import { createPortal } from "react-dom";
 import {
+  BellOff,
   ChevronDown,
   ChevronRight,
   Clipboard,
@@ -41,6 +42,10 @@ import type {
   SearchableScratch,
 } from "@/hooks/useProjectSwitcherPalette";
 import { useUIStore } from "@/store/uiStore";
+import {
+  useProjectSettingsStore,
+  areProjectNotificationsMuted,
+} from "@/store/projectSettingsStore";
 import {
   SCRATCH_CLEANUP_TTL_MS,
   SCRATCH_CLEANUP_COUNTDOWN_VISIBLE_DAYS,
@@ -159,6 +164,11 @@ const ProjectListItem = memo(function ProjectListItem({
 }: ProjectListItemProps) {
   const showStop = project.processCount > 0 && !project.isMissing;
 
+  const notificationOverrides = useProjectSettingsStore(
+    (state) => state.notificationOverridesByProjectId[project.id]
+  );
+  const isProjectNotificationsMuted = areProjectNotificationsMuted(notificationOverrides);
+
   const { secondaryText, secondaryClass } = (() => {
     if (project.isMissing)
       return { secondaryText: "Directory not found", secondaryClass: "text-status-warning/70" };
@@ -221,6 +231,12 @@ const ProjectListItem = memo(function ProjectListItem({
           >
             {project.name}
           </span>
+          {isProjectNotificationsMuted && (
+            <BellOff
+              className="w-3.5 h-3.5 text-daintree-text/40 shrink-0 ml-1"
+              aria-label="Notifications muted for this project"
+            />
+          )}
         </div>
 
         <div className="flex items-center min-w-0 mt-0.5">

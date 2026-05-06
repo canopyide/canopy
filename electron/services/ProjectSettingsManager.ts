@@ -423,6 +423,25 @@ export class ProjectSettingsManager {
     }
   }
 
+  async getProjectNotificationOverrides(
+    projectIds: string[]
+  ): Promise<Record<string, Partial<NotificationSettings>>> {
+    const unique = [...new Set(projectIds)];
+    const results = await Promise.all(
+      unique.map(async (id) => {
+        const settings = await this.getProjectSettings(id);
+        return { id, overrides: settings.notificationOverrides };
+      })
+    );
+    const record: Record<string, Partial<NotificationSettings>> = {};
+    for (const { id, overrides } of results) {
+      if (overrides) {
+        record[id] = overrides;
+      }
+    }
+    return record;
+  }
+
   deleteAllEnvForProject(projectId: string): void {
     this.settingsCache.invalidate(projectId);
     projectEnvSecureStorage.deleteAllForProject(projectId);

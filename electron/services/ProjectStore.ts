@@ -589,6 +589,12 @@ export class ProjectStore {
     return this.settingsManager.getProjectSettings(projectId);
   }
 
+  async getProjectNotificationOverrides(
+    projectIds: string[]
+  ): Promise<Record<string, Partial<NotificationSettings>>> {
+    return this.settingsManager.getProjectNotificationOverrides(projectIds);
+  }
+
   async saveProjectSettings(projectId: string, settings: ProjectSettings): Promise<void> {
     return this.settingsManager.saveProjectSettings(projectId, settings);
   }

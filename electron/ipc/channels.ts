@@ -213,6 +213,7 @@ export const CHANNELS = {
   PROJECT_REOPEN: "project:reopen",
   PROJECT_GET_STATS: "project:get-stats",
   PROJECT_GET_BULK_STATS: "project:get-bulk-stats",
+  PROJECT_GET_NOTIFICATION_OVERRIDES: "project:get-notification-overrides",
   PROJECT_STATS_UPDATED: "project:stats-updated",
   PROJECT_CREATE_FOLDER: "project:create-folder",
   PROJECT_INIT_GIT: "project:init-git",
