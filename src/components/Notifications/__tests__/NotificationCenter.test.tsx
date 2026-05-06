@@ -422,7 +422,7 @@ describe("NotificationCenter muted pill", () => {
     expect(screen.queryByTestId("notification-muted-pill")).toBeNull();
   });
 
-  it("renders a session-mute pill with formatted end time and a Resume ✕ button", () => {
+  it("renders a session-mute pill with formatted end time and a Resume button", () => {
     const until = Date.now() + 60 * 60 * 1000;
     useNotificationSettingsStore.setState({ quietUntil: until });
 
@@ -432,7 +432,10 @@ describe("NotificationCenter muted pill", () => {
     expect(pill).toBeTruthy();
     expect(pill.textContent).toContain("Notifications");
     expect(pill.textContent).toMatch(/Muted until /);
-    expect(screen.getByLabelText("Resume notifications")).toBeTruthy();
+    const resume = screen.getByLabelText("Resume notifications");
+    expect(resume).toBeTruthy();
+    expect(resume.textContent).toBe("Resume");
+    expect(resume.querySelector("svg")).toBeNull();
   });
 
   it("clears only the session mute (not persistent quiet hours) when ✕ is clicked", () => {
@@ -824,6 +827,44 @@ describe("NotificationCenter — Group by context toggle", () => {
     );
   });
 
+  it("carries an off-state border outline that flips to transparent when pressed", async () => {
+    setEntries([makeEntry()]);
+    render(<NotificationCenter open onClose={vi.fn()} />);
+
+    const toggle = screen.getByLabelText("Group by project or worktree");
+    expect(toggle.className).toContain("border");
+    expect(toggle.className).toContain("border-daintree-text/15");
+    expect(toggle.className).not.toContain("border-transparent");
+
+    await act(async () => {
+      fireEvent.click(toggle);
+    });
+
+    const pressed = screen.getByLabelText("Group by project or worktree");
+    expect(pressed.className).toContain("border-transparent");
+    expect(pressed.className).not.toContain("border-daintree-text/15");
+  });
+
+  it("starts in on-state with border-transparent and flips to /15 outline when toggled off", async () => {
+    useNotificationSettingsStore.setState({ groupByContext: true });
+    setEntries([makeEntry()]);
+    render(<NotificationCenter open onClose={vi.fn()} />);
+
+    const toggle = screen.getByLabelText("Group by project or worktree");
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(toggle.className).toContain("border-transparent");
+    expect(toggle.className).not.toContain("border-daintree-text/15");
+
+    await act(async () => {
+      fireEvent.click(toggle);
+    });
+
+    const released = screen.getByLabelText("Group by project or worktree");
+    expect(released.getAttribute("aria-pressed")).toBe("false");
+    expect(released.className).toContain("border-daintree-text/15");
+    expect(released.className).not.toContain("border-transparent");
+  });
+
   it("renders context section headers with worktree names when groupByContext is on", () => {
     worktreeStoreMock.worktrees.set("wt-1", { worktreeId: "wt-1", name: "feature/login" });
     worktreeStoreMock.worktrees.set("wt-2", { worktreeId: "wt-2", name: "feature/billing" });
@@ -899,6 +940,33 @@ describe("NotificationCenter — Group by context toggle", () => {
     render(<NotificationCenter open onClose={vi.fn()} />);
 
     expect(screen.queryByTestId("context-section-header")).toBeNull();
+  });
+});
+
+describe("NotificationCenter — Filter inactive contrast", () => {
+  it("uses /70 (AAA) on inactive segments and never the disabled /40 stop", () => {
+    setEntries([makeEntry({ message: "msg-1" })]);
+    render(<NotificationCenter open onClose={vi.fn()} />);
+
+    // Filter starts on "All" → "Unread" is the inactive segment.
+    const unread = screen.getByText("Unread");
+    expect(unread.className).toContain("text-daintree-text/70");
+    expect(unread.className).not.toContain("text-daintree-text/40");
+    expect(unread.className).toContain("hover:text-daintree-text");
+
+    fireEvent.click(unread);
+
+    // After flipping, "All" is the inactive segment.
+    const all = screen.getByText("All");
+    expect(all.className).toContain("text-daintree-text/70");
+    expect(all.className).not.toContain("text-daintree-text/40");
+    expect(all.className).toContain("hover:text-daintree-text");
+  });
+
+  it("does not render either segment when entries is empty", () => {
+    render(<NotificationCenter open onClose={vi.fn()} />);
+    expect(screen.queryByText("All")).toBeNull();
+    expect(screen.queryByText("Unread")).toBeNull();
   });
 });
 
