@@ -845,6 +845,26 @@ describe("NotificationCenter — Group by context toggle", () => {
     expect(pressed.className).not.toContain("border-daintree-text/15");
   });
 
+  it("starts in on-state with border-transparent and flips to /15 outline when toggled off", async () => {
+    useNotificationSettingsStore.setState({ groupByContext: true });
+    setEntries([makeEntry()]);
+    render(<NotificationCenter open onClose={vi.fn()} />);
+
+    const toggle = screen.getByLabelText("Group by project or worktree");
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(toggle.className).toContain("border-transparent");
+    expect(toggle.className).not.toContain("border-daintree-text/15");
+
+    await act(async () => {
+      fireEvent.click(toggle);
+    });
+
+    const released = screen.getByLabelText("Group by project or worktree");
+    expect(released.getAttribute("aria-pressed")).toBe("false");
+    expect(released.className).toContain("border-daintree-text/15");
+    expect(released.className).not.toContain("border-transparent");
+  });
+
   it("renders context section headers with worktree names when groupByContext is on", () => {
     worktreeStoreMock.worktrees.set("wt-1", { worktreeId: "wt-1", name: "feature/login" });
     worktreeStoreMock.worktrees.set("wt-2", { worktreeId: "wt-2", name: "feature/billing" });
@@ -932,6 +952,7 @@ describe("NotificationCenter — Filter inactive contrast", () => {
     const unread = screen.getByText("Unread");
     expect(unread.className).toContain("text-daintree-text/70");
     expect(unread.className).not.toContain("text-daintree-text/40");
+    expect(unread.className).toContain("hover:text-daintree-text");
 
     fireEvent.click(unread);
 
@@ -939,6 +960,13 @@ describe("NotificationCenter — Filter inactive contrast", () => {
     const all = screen.getByText("All");
     expect(all.className).toContain("text-daintree-text/70");
     expect(all.className).not.toContain("text-daintree-text/40");
+    expect(all.className).toContain("hover:text-daintree-text");
+  });
+
+  it("does not render either segment when entries is empty", () => {
+    render(<NotificationCenter open onClose={vi.fn()} />);
+    expect(screen.queryByText("All")).toBeNull();
+    expect(screen.queryByText("Unread")).toBeNull();
   });
 });
 

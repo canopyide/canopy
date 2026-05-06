@@ -313,7 +313,7 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
                   onClick={handleResumeNotifications}
                   aria-label="Resume notifications"
                   title="Resume notifications"
-                  className="ml-0.5 inline-flex items-center justify-center rounded-[var(--radius-sm)] px-1.5 py-0.5 text-[11px] font-medium text-daintree-text/70 hover:bg-overlay-emphasis hover:text-daintree-text transition-colors"
+                  className="ml-0.5 inline-flex shrink-0 items-center justify-center rounded-[var(--radius-sm)] px-1.5 py-0.5 text-[11px] font-medium text-daintree-text/70 hover:bg-overlay-emphasis hover:text-daintree-text transition-colors"
                 >
                   Resume
                 </button>
