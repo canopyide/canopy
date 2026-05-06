@@ -373,11 +373,11 @@ describe("McpServerSettingsTab", () => {
       expect(screen.getByText("Copied!")).toBeTruthy();
     });
     expect(writeText).toHaveBeenCalledTimes(1);
-    const jsonArg = writeText.mock.calls[0][0] as string;
+    const jsonArg = writeText.mock.calls[0]![0] as string;
     const parsed = JSON.parse(jsonArg) as Array<{ id: string; toolId: string }>;
     expect(parsed).toHaveLength(1);
-    expect(parsed[0].id).toBe("1");
-    expect(parsed[0].toolId).toBe("files.read");
+    expect(parsed[0]!.id).toBe("1");
+    expect(parsed[0]!.toolId).toBe("files.read");
     expect(mockedNotify).not.toHaveBeenCalled();
   });
 
