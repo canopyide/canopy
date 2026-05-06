@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from "vitest";
 import { render } from "@testing-library/react";
+import { CSS } from "@dnd-kit/utilities";
 import { SortableTerminal } from "../SortableTerminal";
 import type { TerminalInstance } from "@/store";
 
@@ -124,12 +125,6 @@ describe("SortableTerminal", () => {
         <div />
       </SortableTerminal>
     );
-    // The inner sortable div's style.transform is set via CSS.Translate.toString,
-    // not CSS.Transform.toString. We verify this through the spy — the
-    // animateLayoutChanges prop is only set when we want framer-motion to own FLIP,
-    // and the transform output function is tested at the integration level by
-    // verifying the CSS.Translate mock exists (added to the module mock).
-    const cssUtilities = vi.mocked(require("@dnd-kit/utilities"));
-    expect(cssUtilities.CSS.Translate).toBeDefined();
+    expect(CSS.Translate).toBeDefined();
   });
 });
