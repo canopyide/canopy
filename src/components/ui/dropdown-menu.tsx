@@ -38,7 +38,7 @@ DropdownMenuSubTrigger.displayName = DropdownMenuPrimitive.SubTrigger.displayNam
 const DropdownMenuSubContent = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.SubContent>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubContent>
->(({ className, sideOffset = 4, collisionPadding = 8, children, ...props }, ref) => {
+>(({ className, sideOffset = 4, collisionPadding = 8, children, style, ...props }, ref) => {
   const { ref: shadowRef, topShadow, bottomShadow } = useScrollShadowOverlays(ref);
   return (
     <DropdownMenuPrimitive.Portal>
@@ -46,6 +46,7 @@ const DropdownMenuSubContent = React.forwardRef<
         ref={shadowRef}
         sideOffset={sideOffset}
         collisionPadding={collisionPadding}
+        style={{ transformOrigin: "var(--radix-dropdown-menu-content-transform-origin)", ...style }}
         className={cn(
           "relative z-[var(--z-popover)] min-w-[10rem] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto rounded-[var(--radius-lg)] surface-overlay shadow-overlay p-1 text-daintree-text",
           "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:duration-200 data-[state=closed]:duration-[120ms] data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
@@ -65,13 +66,14 @@ DropdownMenuSubContent.displayName = DropdownMenuPrimitive.SubContent.displayNam
 const DropdownMenuContent = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content>
->(({ className, sideOffset = 4, children, ...props }, ref) => {
+>(({ className, sideOffset = 4, children, style, ...props }, ref) => {
   const { ref: shadowRef, topShadow, bottomShadow } = useScrollShadowOverlays(ref);
   return (
     <DropdownMenuPrimitive.Portal>
       <DropdownMenuPrimitive.Content
         ref={shadowRef}
         sideOffset={sideOffset}
+        style={{ transformOrigin: "var(--radix-dropdown-menu-content-transform-origin)", ...style }}
         className={cn(
           "relative z-[var(--z-popover)] min-w-[10rem] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto rounded-[var(--radius-lg)] surface-overlay shadow-overlay p-1 text-daintree-text",
           "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:duration-200 data-[state=closed]:duration-[120ms] data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
