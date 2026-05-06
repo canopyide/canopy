@@ -33,8 +33,9 @@ describe("SortableWorktreeCard", () => {
         {() => <div data-testid="child" />}
       </SortableWorktreeCard>
     );
-    const wrapper = container.firstChild;
-    if (!(wrapper instanceof HTMLElement)) throw new Error("Expected wrapper to be an HTMLElement");
+    // outer m.div wraps inner div
+    const outer = container.firstChild as HTMLElement;
+    const wrapper = outer.firstChild as HTMLElement;
     expect(wrapper.style.isolation).toBe("isolate");
     expect(wrapper.style.contentVisibility).toBe("auto");
   });
@@ -46,9 +47,35 @@ describe("SortableWorktreeCard", () => {
         {() => <div data-testid="child" />}
       </SortableWorktreeCard>
     );
-    const wrapper = container.firstChild;
-    if (!(wrapper instanceof HTMLElement)) throw new Error("Expected wrapper to be an HTMLElement");
+    const outer = container.firstChild as HTMLElement;
+    const wrapper = outer.firstChild as HTMLElement;
     expect(wrapper.style.isolation).toBe("auto");
     expect(wrapper.style.contentVisibility).toBe("");
+  });
+
+  it("keeps data-worktree-row and tabIndex on the inner div for roving focus compatibility", () => {
+    mockIsDragging = false;
+    const { container } = render(
+      <SortableWorktreeCard worktreeId="wt1" dragStartOrder={["wt1"]}>
+        {() => <div data-testid="child" />}
+      </SortableWorktreeCard>
+    );
+    const outer = container.firstChild as HTMLElement;
+    const wrapper = outer.firstChild as HTMLElement;
+    expect(wrapper.getAttribute("data-worktree-row")).toBe("wt1");
+    expect(wrapper.getAttribute("tabindex")).toBe("-1");
+    expect(wrapper.getAttribute("role")).toBe("row");
+  });
+
+  it("does not apply opacity-40 class (opacity now driven by framer-motion animate)", () => {
+    mockIsDragging = true;
+    const { container } = render(
+      <SortableWorktreeCard worktreeId="wt1" dragStartOrder={["wt1"]}>
+        {() => <div data-testid="child" />}
+      </SortableWorktreeCard>
+    );
+    const outer = container.firstChild as HTMLElement;
+    const wrapper = outer.firstChild as HTMLElement;
+    expect(wrapper.className).not.toContain("opacity-40");
   });
 });

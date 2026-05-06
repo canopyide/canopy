@@ -1,7 +1,7 @@
 import React from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { cn } from "@/lib/utils";
+import { m } from "framer-motion";
 import type { SyntheticListenerMap } from "@dnd-kit/core/dist/hooks/utilities";
 
 export interface WorktreeSortDragData {
@@ -84,6 +84,7 @@ export const SortableWorktreeCard = React.memo(function SortableWorktreeCard({
     id: getWorktreeSortDragId(worktreeId),
     data: dragData,
     disabled,
+    animateLayoutChanges: () => false,
   });
 
   const style: React.CSSProperties = {
@@ -104,23 +105,28 @@ export const SortableWorktreeCard = React.memo(function SortableWorktreeCard({
   } = attributes;
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={cn(isDragging && "opacity-40")}
-      role="row"
-      aria-roledescription="sortable worktree"
-      data-worktree-row={worktreeId}
-      tabIndex={-1}
-      {...filteredAttributes}
-    >
-      <div role="gridcell">
-        {children({
-          isDraggingSort: isDragging,
-          dragHandleListeners: listeners,
-          dragHandleActivatorRef: setActivatorNodeRef,
-        })}
+    <m.div layout="position" {...filteredAttributes}>
+      <div
+        ref={setNodeRef}
+        style={style}
+        role="row"
+        aria-roledescription="sortable worktree"
+        data-worktree-row={worktreeId}
+        tabIndex={-1}
+      >
+        <div role="gridcell">
+          <m.div
+            animate={{ opacity: isDragging ? 0.4 : 1 }}
+            transition={{ duration: isDragging ? 0.15 : 0, ease: "easeOut" }}
+          >
+            {children({
+              isDraggingSort: isDragging,
+              dragHandleListeners: listeners,
+              dragHandleActivatorRef: setActivatorNodeRef,
+            })}
+          </m.div>
+        </div>
       </div>
-    </div>
+    </m.div>
   );
 }, sortableWorktreeCardPropsAreEqual);
