@@ -97,7 +97,7 @@ export type TerminalFlowStatus = "running" | "paused-backpressure" | "paused-use
 export type TerminalRuntimeStatus = TerminalFlowStatus | "background" | "exited" | "error";
 
 /** Origin that spawned a terminal */
-export type TerminalSpawnSource = "quickrun" | "recipe" | "agent" | "palette";
+export type TerminalSpawnSource = "quickrun" | "recipe" | "agent" | "palette" | "mcp";
 
 /**
  * Live process identity detected inside a PTY. This is transient runtime state,

@@ -82,3 +82,20 @@ export const useMacroFocusStore = create<MacroFocusState>((set, get) => ({
     }
   },
 }));
+
+/**
+ * Returns true when the Daintree Assistant region currently owns keyboard
+ * focus — either via explicit macro-region cycling (`focusedRegion` set), or
+ * because the document's active element lives inside the registered assistant
+ * panel root. Synchronous and safe to call before an `await` (#6959 — guards
+ * against panel-creation flows reading stale focus state after a microtask
+ * boundary).
+ */
+export function isAssistantFocused(): boolean {
+  const state = useMacroFocusStore.getState();
+  if (state.focusedRegion === "assistant") return true;
+  if (typeof document === "undefined") return false;
+  const ref = state.refs.get("assistant");
+  if (!ref) return false;
+  return ref.contains(document.activeElement);
+}

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { useMacroFocusStore } from "../macroFocusStore";
+import { useMacroFocusStore, isAssistantFocused } from "../macroFocusStore";
 
 describe("macroFocusStore", () => {
   beforeEach(() => {
@@ -176,6 +176,75 @@ describe("macroFocusStore", () => {
       expect(useMacroFocusStore.getState().focusedRegion).toBe("grid");
       store.cycleNext(); // still grid (only one visible)
       expect(useMacroFocusStore.getState().focusedRegion).toBe("grid");
+    });
+  });
+
+  describe("isAssistantFocused (#6959)", () => {
+    beforeEach(() => {
+      const store = useMacroFocusStore.getState();
+      store.clearFocus();
+      store.refs.clear();
+      // Reset assistant visibility default
+      store.setVisibility("assistant", false);
+      // Drop any focus left over from prior tests
+      if (document.activeElement instanceof HTMLElement && document.activeElement !== document.body) {
+        document.activeElement.blur();
+      }
+    });
+
+    it("returns false when nothing is focused and no assistant ref is registered", () => {
+      expect(isAssistantFocused()).toBe(false);
+    });
+
+    it("returns true when focusedRegion is 'assistant' (cycle path)", () => {
+      const store = useMacroFocusStore.getState();
+      store.setVisibility("assistant", true);
+      // Stub the assistant region ref so cycleNext can call .focus()
+      const panelEl = document.createElement("section");
+      panelEl.tabIndex = -1;
+      document.body.appendChild(panelEl);
+      store.setRegionRef("assistant", panelEl);
+
+      // Force focusedRegion via direct setState rather than cycling — keeps
+      // the test independent of cycle order.
+      useMacroFocusStore.setState({ focusedRegion: "assistant" });
+      expect(isAssistantFocused()).toBe(true);
+
+      document.body.removeChild(panelEl);
+    });
+
+    it("returns true when document.activeElement lives inside the assistant ref", () => {
+      const store = useMacroFocusStore.getState();
+      const panelEl = document.createElement("section");
+      const inputEl = document.createElement("textarea");
+      panelEl.appendChild(inputEl);
+      document.body.appendChild(panelEl);
+      store.setRegionRef("assistant", panelEl);
+
+      inputEl.focus();
+      expect(document.activeElement).toBe(inputEl);
+      // focusedRegion is null — the helper must still detect DOM focus.
+      expect(useMacroFocusStore.getState().focusedRegion).toBeNull();
+      expect(isAssistantFocused()).toBe(true);
+
+      document.body.removeChild(panelEl);
+    });
+
+    it("returns false when activeElement is outside the assistant ref", () => {
+      const store = useMacroFocusStore.getState();
+      const assistantPanel = document.createElement("section");
+      const otherPanel = document.createElement("section");
+      const otherInput = document.createElement("input");
+      otherPanel.appendChild(otherInput);
+      document.body.appendChild(assistantPanel);
+      document.body.appendChild(otherPanel);
+      store.setRegionRef("assistant", assistantPanel);
+
+      otherInput.focus();
+      expect(isAssistantFocused()).toBe(false);
+
+      document.body.removeChild(assistantPanel);
+      document.body.removeChild(otherPanel);
     });
   });
 });

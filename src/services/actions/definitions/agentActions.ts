@@ -1,11 +1,12 @@
 import type { ActionCallbacks, ActionRegistry } from "../actionTypes";
-import { AgentIdSchema, LaunchLocationSchema } from "./schemas";
+import { AgentIdSchema, LaunchLocationSchema, TerminalSpawnSourceSchema } from "./schemas";
 import { z } from "zod";
 import { usePanelStore } from "@/store/panelStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { getCurrentViewStore } from "@/store/createWorktreeStore";
 import { AGENT_REGISTRY } from "@/config/agents";
 import type { ActionId } from "@shared/types/actions";
+import type { TerminalSpawnSource } from "@shared/types/panel";
 export function registerAgentActions(actions: ActionRegistry, callbacks: ActionCallbacks): void {
   actions.set("agent.launch", () => ({
     id: "agent.launch",
@@ -28,6 +29,7 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
       env: z.record(z.string(), z.string()).optional(),
       ephemeral: z.boolean().optional(),
       agentLaunchFlags: z.array(z.string()).optional(),
+      spawnedBy: TerminalSpawnSourceSchema.optional(),
     }),
     run: async (args: unknown) => {
       const {
@@ -43,6 +45,7 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
         env,
         ephemeral,
         agentLaunchFlags,
+        spawnedBy,
       } = args as {
         agentId: string;
         location?: "grid" | "dock";
@@ -56,6 +59,7 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
         env?: Record<string, string>;
         ephemeral?: boolean;
         agentLaunchFlags?: string[];
+        spawnedBy?: TerminalSpawnSource;
       };
       const terminalId = await callbacks.onLaunchAgent(agentId, {
         location,
@@ -69,6 +73,7 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
         env,
         ephemeral,
         agentLaunchFlags,
+        spawnedBy,
       });
       return { terminalId };
     },
@@ -87,6 +92,13 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
     },
   }));
 
+  // Per-agent shortcut actions (`agent.claude`, `agent.codex`, …) accept an
+  // optional `spawnedBy` arg so MCP-initiated launches can be marked
+  // non-focus-stealing. See #6959.
+  const shortcutLaunchSchema = z.object({
+    spawnedBy: TerminalSpawnSourceSchema.optional(),
+  });
+
   for (const [id, config] of Object.entries(AGENT_REGISTRY)) {
     const actionId = `agent.${id}` as ActionId;
     actions.set(actionId, () => ({
@@ -97,8 +109,10 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
       kind: "command",
       danger: "safe",
       scope: "renderer",
-      run: async () => {
-        const terminalId = await callbacks.onLaunchAgent(id);
+      argsSchema: shortcutLaunchSchema,
+      run: async (args: unknown) => {
+        const { spawnedBy } = (args ?? {}) as { spawnedBy?: TerminalSpawnSource };
+        const terminalId = await callbacks.onLaunchAgent(id, spawnedBy ? { spawnedBy } : undefined);
         return { terminalId };
       },
     }));
@@ -112,8 +126,10 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
     kind: "command",
     danger: "safe",
     scope: "renderer",
-    run: async () => {
-      const terminalId = await callbacks.onLaunchAgent("terminal");
+    argsSchema: shortcutLaunchSchema,
+    run: async (args: unknown) => {
+      const { spawnedBy } = (args ?? {}) as { spawnedBy?: TerminalSpawnSource };
+      const terminalId = await callbacks.onLaunchAgent("terminal", spawnedBy ? { spawnedBy } : undefined);
       return { terminalId };
     },
   }));

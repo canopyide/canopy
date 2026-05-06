@@ -24,6 +24,27 @@ const TIMEOUT_RESULT: ActionDispatchResult = {
 };
 
 /**
+ * Stamp `spawnedBy: "mcp"` onto `agent.*` action args so the panel store can
+ * gate focus capture for MCP-initiated launches (#6959). Other actions pass
+ * through untouched. We override any caller-supplied `spawnedBy` because the
+ * dispatch source is authoritative — an MCP client cannot claim a different
+ * origin.
+ *
+ * Exported for unit tests; importing modules should not call this directly —
+ * the bridge is the only authoritative caller.
+ */
+export function tagAgentSpawn(actionId: string, args: unknown): unknown {
+  if (!actionId.startsWith("agent.")) return args;
+  if (args && typeof args === "object" && !Array.isArray(args)) {
+    return { ...(args as Record<string, unknown>), spawnedBy: "mcp" };
+  }
+  if (args === undefined || args === null) {
+    return { spawnedBy: "mcp" };
+  }
+  return args;
+}
+
+/**
  * Sets up the renderer-side MCP bridge.
  *
  * Listens for requests from the main process MCP server and responds
@@ -94,7 +115,8 @@ export function useMcpBridge(): void {
             }
           }
 
-          const result = await actionService.dispatch(actionId as ActionId, args, {
+          const dispatchArgs = tagAgentSpawn(actionId, args);
+          const result = await actionService.dispatch(actionId as ActionId, dispatchArgs, {
             source: "agent",
             confirmed: effectiveConfirmed,
           });
