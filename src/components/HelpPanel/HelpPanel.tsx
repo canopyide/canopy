@@ -600,9 +600,7 @@ export function HelpPanel({
               return;
             }
             useHelpPanelStore.getState().clearHibernateSession(launchProject.id);
-            useHelpPanelStore
-              .getState()
-              .setTerminal(resumedId, launchAgentId, session.sessionId);
+            useHelpPanelStore.getState().setTerminal(resumedId, launchAgentId, session.sessionId);
             pendingSessionIdRef.current = null;
             window.electron.help.markTerminal(resumedId).catch((err) => {
               logError("Failed to mark help terminal", err);
@@ -793,9 +791,7 @@ export function HelpPanel({
               return;
             }
             useHelpPanelStore.getState().clearHibernateSession(launchProject.id);
-            useHelpPanelStore
-              .getState()
-              .setTerminal(resumedId, selectedAgentId, session.sessionId);
+            useHelpPanelStore.getState().setTerminal(resumedId, selectedAgentId, session.sessionId);
             pendingSessionIdRef.current = null;
             window.electron.help.markTerminal(resumedId).catch((err) => {
               logError("Failed to mark help terminal", err);
