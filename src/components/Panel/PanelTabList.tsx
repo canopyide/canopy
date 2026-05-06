@@ -1,5 +1,5 @@
 import React from "react";
-import { LayoutGroup } from "framer-motion";
+import { LayoutGroup, AnimatePresence, m } from "framer-motion";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -28,18 +28,34 @@ export function PanelTabList({
   renderTab,
   className,
 }: PanelTabListProps) {
+  const performanceMode = document.body.dataset.performanceMode === "true";
+
   return (
     <div className={cn("relative min-w-0 flex-1 flex", className)}>
       <div
         ref={tabListRef}
-        className="flex items-center min-w-0 flex-1 overflow-x-auto scrollbar-none"
+        className="flex items-center min-w-0 flex-1 overflow-x-auto scrollbar-none relative"
         role="tablist"
         aria-label="Panel tabs"
         onKeyDown={onKeyDown}
       >
         <LayoutGroup id={layoutGroupId}>
           <div className="flex items-center">
-            {tabs.map((tab) => renderTab(tab))}
+            {performanceMode ? (
+              tabs.map((tab) => renderTab(tab))
+            ) : (
+              <AnimatePresence initial={false} mode="popLayout">
+                {tabs.map((tab) => (
+                  <m.div
+                    key={tab.id}
+                    layout="position"
+                    transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
+                  >
+                    {renderTab(tab)}
+                  </m.div>
+                ))}
+              </AnimatePresence>
+            )}
             {onAddTab && (
               <Tooltip>
                 <TooltipTrigger asChild>

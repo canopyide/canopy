@@ -1,6 +1,6 @@
 import React, { useCallback, useState, useRef, useEffect, forwardRef } from "react";
 import type { DraggableAttributes, DraggableSyntheticListeners } from "@dnd-kit/core";
-import { m } from "framer-motion";
+import { m, AnimatePresence } from "framer-motion";
 import { X, AlertTriangle } from "lucide-react";
 import type { PanelKind, AgentState } from "@/types";
 import { cn } from "@/lib/utils";
@@ -12,7 +12,7 @@ import {
 } from "@/components/Worktree/terminalStateConfig";
 import type { TerminalChromeDescriptor } from "@/utils/terminalChrome";
 import { getTerminalAgentDisplayState } from "@/utils/terminalAgentDisplayState";
-import { UI_ANIMATION_DURATION } from "@/lib/animationUtils";
+import { UI_ANIMATION_DURATION, DURATION_100 } from "@/lib/animationUtils";
 
 const RENAME_ERROR_TINT_HOLD_MS = 300;
 
@@ -343,16 +343,42 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
             </span>
           )}
 
-          {displayAgentState && StateIcon && (
-            <StateIcon
-              className={cn(
-                "w-3 h-3 shrink-0",
-                getEffectiveStateColor(displayAgentState),
-                displayAgentState === "working" && "animate-spin-slow",
-                "motion-reduce:animate-none"
+          {document.body.dataset.performanceMode === "true" ? (
+            displayAgentState &&
+            StateIcon && (
+              <StateIcon
+                className={cn(
+                  "w-3 h-3 shrink-0",
+                  getEffectiveStateColor(displayAgentState),
+                  displayAgentState === "working" && "animate-spin-slow",
+                  "motion-reduce:animate-none"
+                )}
+                aria-hidden="true"
+              />
+            )
+          ) : (
+            <AnimatePresence initial={false} mode="wait">
+              {displayAgentState && StateIcon && (
+                <m.span
+                  key={displayAgentState}
+                  initial={{ opacity: 0, scale: 0.85 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.85 }}
+                  transition={{ duration: DURATION_100 / 1000, ease: [0.16, 1, 0.3, 1] }}
+                  className="inline-flex shrink-0"
+                >
+                  <StateIcon
+                    className={cn(
+                      "w-3 h-3",
+                      getEffectiveStateColor(displayAgentState),
+                      displayAgentState === "working" && "animate-spin-slow",
+                      "motion-reduce:animate-none"
+                    )}
+                    aria-hidden="true"
+                  />
+                </m.span>
               )}
-              aria-hidden="true"
-            />
+            </AnimatePresence>
           )}
 
           {isUsingFallback && (

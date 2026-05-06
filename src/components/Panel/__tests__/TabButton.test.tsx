@@ -48,12 +48,38 @@ vi.mock("framer-motion", () => {
       />
     );
   });
+  const MotionSpan = React.forwardRef<HTMLSpanElement, React.HTMLAttributes<HTMLSpanElement>>(
+    (props, ref) => {
+      const {
+        initial: _initial,
+        animate: _animate,
+        exit: _exit,
+        transition: _transition,
+        layoutId: _layoutId,
+        layout: _layout,
+        key: _key,
+        ...rest
+      } = props as Record<string, unknown>;
+      return (
+        <span
+          ref={ref}
+          data-testid="motion-span"
+          {...(rest as React.HTMLAttributes<HTMLSpanElement>)}
+        >
+          {props.children}
+        </span>
+      );
+    }
+  );
+  const AnimatePresenceMock = ({ children }: { children: React.ReactNode }) => <>{children}</>;
   return {
     LazyMotion: ({ children }: { children: React.ReactNode }) => <>{children}</>,
     domAnimation: {},
     domMax: {},
-    m: { div: MotionDiv, input: MotionInput },
-    motion: { div: MotionDiv, input: MotionInput },
+    m: { div: MotionDiv, input: MotionInput, span: MotionSpan },
+    motion: { div: MotionDiv, input: MotionInput, span: MotionSpan },
+    AnimatePresence: AnimatePresenceMock,
+    LayoutGroup: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   };
 });
 
@@ -514,7 +540,7 @@ describe("TabButton", () => {
     const queryStateIcon = (container: Element) =>
       Array.from(container.querySelectorAll("svg")).find((svg) => {
         const cls = svg.getAttribute("class") ?? "";
-        return cls.includes("shrink-0") && cls.includes("motion-reduce:animate-none");
+        return cls.includes("motion-reduce:animate-none");
       });
 
     it("renders working spinner when agentState='working' even with non-agent chrome", () => {
