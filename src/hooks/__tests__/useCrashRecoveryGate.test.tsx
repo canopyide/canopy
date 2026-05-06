@@ -248,6 +248,7 @@ describe("useCrashRecoveryGate", () => {
       await result.current.updateConfig({ autoRestoreOnCrash: true });
     });
 
+    expect(result.current.state.status).toBe("pending");
     if (result.current.state.status === "pending") {
       expect(result.current.state.config.autoRestoreOnCrash).toBe(true);
     }

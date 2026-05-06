@@ -211,7 +211,7 @@ describe("CrashRecoveryDialog", () => {
       expect(call.panelIds).not.toContain("t2");
     });
 
-    it("calls onResolve with fresh when Start Fresh is clicked", async () => {
+    it("calls onResolve with fresh when 'Continue without restoring' is clicked", async () => {
       const { onResolve } = setup();
       fireEvent.click(screen.getByTestId("fresh-button"));
       await waitFor(() => expect(onResolve).toHaveBeenCalledWith({ kind: "fresh" }));
