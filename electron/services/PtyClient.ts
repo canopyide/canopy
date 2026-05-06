@@ -119,7 +119,11 @@ export interface PtyClientConfig {
 
 const DEFAULT_CONFIG: Required<PtyClientConfig> = {
   maxRestartAttempts: 3,
-  healthCheckIntervalMs: 30000,
+  // 5s heartbeat. Watchdog checks the missed-pong count before incrementing,
+  // so SIGKILL fires on the tick after 3 consecutive missed pongs — ~20s
+  // worst-case detection. Was 30s (~90s detection), which left users staring
+  // at frozen terminals long enough to assume the app had hung.
+  healthCheckIntervalMs: 5000,
   showCrashDialog: true,
   memoryLimitMb: 512,
 };
