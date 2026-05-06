@@ -113,7 +113,7 @@ describe("MissingCliGate", () => {
     );
     expect(screen.getByText("Detected in WSL")).toBeTruthy();
     expect(
-      screen.getByText(/Found in WSL \(Ubuntu\) but Daintree launches binaries directly/)
+      screen.getByText(/Found in WSL \(Ubuntu\).*only host binaries can be launched directly/)
     ).toBeTruthy();
   });
 
