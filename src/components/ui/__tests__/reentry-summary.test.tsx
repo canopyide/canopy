@@ -5,6 +5,10 @@ import { ReEntrySummary } from "../ReEntrySummary";
 import type { ReEntrySummaryState, WorktreeRow } from "@/hooks/useReEntrySummary";
 import type { NotificationHistoryEntry } from "@/store/slices/notificationHistorySlice";
 
+vi.mock("@/store/createWorktreeStore", () => ({
+  getCurrentViewStoreOrNull: vi.fn(),
+}));
+
 vi.stubGlobal(
   "requestAnimationFrame",
   (cb: FrameRequestCallback) => setTimeout(() => cb(0), 0) as unknown as number
@@ -34,8 +38,18 @@ function makeState(overrides: Partial<ReEntrySummaryState> = {}): ReEntrySummary
 }
 
 describe("ReEntrySummary", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.useFakeTimers();
+    const { getCurrentViewStoreOrNull } = await import("@/store/createWorktreeStore");
+    vi.mocked(getCurrentViewStoreOrNull).mockReturnValue({
+      getState: () => ({
+        worktrees: new Map([
+          ["wt-1", { name: "feature-test" }],
+          ["wt-2", { name: "feature-other" }],
+          ["wt-42", { name: "fix-bug" }],
+        ]),
+      }),
+    } as ReturnType<typeof getCurrentViewStoreOrNull>);
   });
 
   afterEach(() => {
@@ -255,6 +269,76 @@ describe("ReEntrySummary", () => {
       vi.advanceTimersByTime(8000);
     });
     expect(dismiss).toHaveBeenCalledOnce();
+  });
+
+  it("resets pin state when summary goes invisible then reappears", () => {
+    const dismiss = vi.fn();
+    const { rerender } = render(
+      <ReEntrySummary
+        state={makeState({
+          visible: true,
+          dismiss,
+          rows: [makeRow({ worktreeId: "wt-1", highlightTitle: "First" })],
+        })}
+      />
+    );
+
+    fireEvent.click(screen.getByLabelText("Pin summary"));
+    expect(screen.getByLabelText("Unpin summary").getAttribute("aria-pressed")).toBe("true");
+
+    rerender(
+      <ReEntrySummary
+        state={makeState({
+          visible: false,
+          dismiss,
+          rows: [],
+        })}
+      />
+    );
+
+    rerender(
+      <ReEntrySummary
+        state={makeState({
+          visible: true,
+          dismiss,
+          rows: [makeRow({ worktreeId: "wt-2", highlightTitle: "Second" })],
+        })}
+      />
+    );
+
+    expect(screen.getByLabelText("Pin summary").getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("restarts auto-dismiss timer when rows change but entryCount stays the same", () => {
+    const dismiss = vi.fn();
+    const { rerender } = render(
+      <ReEntrySummary
+        state={makeState({
+          dismiss,
+          entries: [{ id: "a", type: "info", message: "x", timestamp: 1 } as any],
+          rows: [makeRow({ worktreeId: "wt-1", highlightTitle: "First" })],
+        })}
+      />
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(7000);
+    });
+
+    rerender(
+      <ReEntrySummary
+        state={makeState({
+          dismiss,
+          entries: [{ id: "b", type: "info", message: "y", timestamp: 2 } as any],
+          rows: [makeRow({ worktreeId: "wt-2", highlightTitle: "Second" })],
+        })}
+      />
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(dismiss).not.toHaveBeenCalled();
   });
 
   it("does not steal focus", () => {

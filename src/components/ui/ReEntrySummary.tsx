@@ -4,6 +4,7 @@ import { X, Bell, AlertTriangle, AlertCircle, CheckCircle2, Pin } from "lucide-r
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/store/uiStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
+import { getCurrentViewStoreOrNull } from "@/store/createWorktreeStore";
 import type { ReEntrySummaryState } from "@/hooks/useReEntrySummary";
 import type { NotificationHistoryEntry } from "@/store/slices/notificationHistorySlice";
 
@@ -35,15 +36,18 @@ export function ReEntrySummary({ state }: { state: ReEntrySummaryState }) {
       setIsVisible(false);
       return;
     }
+    setIsPinned(false);
     const handle = requestAnimationFrame(() => setIsVisible(true));
     return () => cancelAnimationFrame(handle);
   }, [visible, entryCount]);
+
+  const rowsKey = rows.map((r) => r.worktreeId).join(",");
 
   useEffect(() => {
     if (!visible || isPaused || isPinned) return;
     const timer = setTimeout(dismiss, AUTO_DISMISS_MS);
     return () => clearTimeout(timer);
-  }, [visible, dismiss, isPaused, isPinned, entryCount]);
+  }, [visible, dismiss, isPaused, isPinned, rowsKey]);
 
   if (!state.visible) return null;
 
@@ -56,6 +60,8 @@ export function ReEntrySummary({ state }: { state: ReEntrySummaryState }) {
   };
 
   const handleRowClick = (worktreeId: string) => {
+    const hasWorktree = getCurrentViewStoreOrNull()?.getState().worktrees.has(worktreeId) ?? false;
+    if (!hasWorktree) return;
     useWorktreeSelectionStore.getState().selectWorktree(worktreeId);
     state.dismiss();
   };
@@ -140,8 +146,10 @@ export function ReEntrySummary({ state }: { state: ReEntrySummaryState }) {
                   )}
                 >
                   <Icon className={cn("h-3.5 w-3.5 shrink-0", SEVERITY_CLASS[row.worstType])} />
-                  <span className="font-medium truncate">{row.worktreeName}</span>
-                  <span className="text-daintree-text/50 truncate">{row.highlightTitle}</span>
+                  <span className="font-medium truncate min-w-0">{row.worktreeName}</span>
+                  <span className="text-daintree-text/50 truncate min-w-0">
+                    {row.highlightTitle}
+                  </span>
                 </button>
               </li>
             );

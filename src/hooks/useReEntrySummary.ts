@@ -59,7 +59,7 @@ function buildWorktreeRows(entries: NotificationHistoryEntry[]): WorktreeRow[] {
       }
     }
 
-    const worktreeName = worktrees.get(worktreeId)?.name ?? worktreeId.slice(0, 12);
+    const worktreeName = worktrees.get(worktreeId)?.name?.trim() || worktreeId.slice(0, 12);
 
     rows.push({
       worktreeId,
@@ -116,10 +116,10 @@ export function useReEntrySummary(): ReEntrySummaryState {
       );
       if (unseen.length === 0) return;
 
+      markSummarized(unseen.map((e) => e.id));
+
       const allRows = buildWorktreeRows(unseen);
       if (allRows.length === 0) return;
-
-      markSummarized(unseen.map((e) => e.id));
       setState({
         visible: true,
         entries: unseen,

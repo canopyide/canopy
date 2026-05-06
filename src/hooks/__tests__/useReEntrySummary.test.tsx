@@ -425,6 +425,78 @@ describe("useReEntrySummary", () => {
     expect(result.current.rows[0]!.worktreeName).toBe("abcdef123456");
   });
 
+  it("falls back to truncated ID when worktree name is empty string", async () => {
+    const { getCurrentViewStoreOrNull } = await import("@/store/createWorktreeStore");
+    vi.mocked(getCurrentViewStoreOrNull).mockReturnValue({
+      getState: () => ({
+        worktrees: new Map([["wt-1", { name: "" }]]),
+      }),
+    } as ReturnType<typeof getCurrentViewStoreOrNull>);
+
+    const { result } = renderHook(() => useReEntrySummary());
+
+    act(() => {
+      window.dispatchEvent(new Event("blur"));
+    });
+    addEntry({ type: "success", message: "Done", context: { worktreeId: "wt-1" } });
+
+    const realNow = Date.now;
+    Date.now = () => realNow() + 5000;
+
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    Date.now = realNow;
+
+    expect(result.current.rows[0]!.worktreeName).toBe("wt-1");
+  });
+
+  it("sorts by name as tiebreaker when severity and count are equal", () => {
+    const { result } = renderHook(() => useReEntrySummary());
+
+    act(() => {
+      window.dispatchEvent(new Event("blur"));
+    });
+    addEntry({ type: "info", message: "Z", context: { worktreeId: "wt-zeta" } });
+    addEntry({ type: "info", message: "A", context: { worktreeId: "wt-alpha" } });
+    addEntry({ type: "info", message: "B", context: { worktreeId: "wt-beta" } });
+
+    const realNow = Date.now;
+    Date.now = () => realNow() + 5000;
+
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    Date.now = realNow;
+
+    expect(result.current.rows[0]!.worktreeId).toBe("wt-alpha");
+    expect(result.current.rows[1]!.worktreeId).toBe("wt-beta");
+    expect(result.current.rows[2]!.worktreeId).toBe("wt-zeta");
+  });
+
+  it("marks entries as summarized even when card is suppressed (no worktreeId)", () => {
+    renderHook(() => useReEntrySummary());
+
+    act(() => {
+      window.dispatchEvent(new Event("blur"));
+    });
+    addEntry({ type: "success", message: "No worktree" });
+
+    const realNow = Date.now;
+    Date.now = () => realNow() + 5000;
+
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    Date.now = realNow;
+
+    const storeEntries = useNotificationHistoryStore.getState().entries;
+    expect(storeEntries[0]!.summarized).toBe(true);
+  });
+
   it("suppresses card when all entries lack worktreeId", () => {
     const { result } = renderHook(() => useReEntrySummary());
 
