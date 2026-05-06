@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Copy } from "lucide-react";
 import type { AgentInstallBlock } from "@shared/config/agentRegistry";
+import { CopyableCommand } from "./CopyableCommand";
+
+export { CopyableCommand };
 
 export function InstallBlock({ block }: { block: AgentInstallBlock }) {
   return (
@@ -29,43 +30,6 @@ export function InstallBlock({ block }: { block: AgentInstallBlock }) {
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-export function CopyableCommand({ command }: { command: string }) {
-  const [copied, setCopied] = useState(false);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, []);
-
-  const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(command).then(() => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-      setCopied(true);
-      timeoutRef.current = setTimeout(() => setCopied(false), 2000);
-    });
-  }, [command]);
-
-  return (
-    <div className="flex items-center gap-2 px-3 py-2 rounded-[var(--radius-sm)] bg-daintree-bg border border-daintree-border">
-      <code className="flex-1 text-xs text-daintree-text font-mono select-all">{command}</code>
-      <button
-        type="button"
-        onClick={handleCopy}
-        className="shrink-0 p-1 text-daintree-text/40 hover:text-daintree-text transition-colors rounded"
-        title="Copy to clipboard"
-      >
-        {copied ? (
-          <Check className="w-3.5 h-3.5 text-status-success" />
-        ) : (
-          <Copy className="w-3.5 h-3.5" />
-        )}
-      </button>
     </div>
   );
 }
