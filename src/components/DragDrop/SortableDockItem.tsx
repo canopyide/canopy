@@ -42,6 +42,7 @@ export function SortableDockItem({
     transition,
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   const destructured = attributes as unknown as Record<string, unknown>;
   const { role: _role, tabIndex: _tabIndex, ...remainingAttributes } = destructured;
   void _role;
