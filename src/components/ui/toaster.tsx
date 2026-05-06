@@ -437,7 +437,9 @@ function Toast({ notification }: { notification: Notification }) {
                     }}
                   >
                     Silence {EVENT_KIND_LABEL[eventKind]}
-                    {notification.context?.projectId ? " from this project" : ""}
+                    {notification.context?.projectId && eventKind !== "uiFeedback"
+                      ? " from this project"
+                      : ""}
                   </DropdownMenuItem>
                 )}
                 {notification.context?.projectId && (

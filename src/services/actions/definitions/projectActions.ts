@@ -342,7 +342,7 @@ export function registerProjectActions(actions: ActionRegistry, callbacks: Actio
     scope: "renderer",
     argsSchema: z.object({
       kind: z.enum(["completed", "waiting", "workingPulse", "uiFeedback"]),
-      projectId: z.string().optional(),
+      projectId: z.string().min(1).optional(),
     }),
     run: async (args: unknown) => {
       const { kind, projectId } = args as { kind: NotificationEventKind; projectId?: string };

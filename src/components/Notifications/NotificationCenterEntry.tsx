@@ -187,7 +187,9 @@ export function NotificationCenterEntry({
                       }}
                     >
                       Silence {EVENT_KIND_LABEL[eventKind]}
-                      {entry.context?.projectId ? " from this project" : ""}
+                      {entry.context?.projectId && eventKind !== "uiFeedback"
+                        ? " from this project"
+                        : ""}
                     </DropdownMenuItem>
                   )}
                   {entry.context?.projectId && (

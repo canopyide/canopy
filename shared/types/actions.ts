@@ -130,6 +130,7 @@ export type BuiltInActionId =
   | "project.getSettings"
   | "project.saveSettings"
   | "project.muteNotifications"
+  | "project.silenceNotificationKind"
   | "project.detectRunners"
   | "project.getStats"
   | "project.settings.open"
