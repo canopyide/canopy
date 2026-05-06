@@ -11,7 +11,7 @@ import {
   Filter,
   Github,
 } from "lucide-react";
-import { isTokenRelatedError } from "@/lib/githubErrors";
+import { isTokenRelatedError, isTransientNetworkError } from "@/lib/githubErrors";
 import { Button } from "@/components/ui/button";
 import { AnimatePresence, m } from "framer-motion";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -195,6 +195,70 @@ export function GitHubResourceList({
   const [sortPopoverOpen, setSortPopoverOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
+
+  // Doherty Threshold gate for the refresh spinner. Sub-400ms background
+  // revalidations stay invisible (250ms for explicit clicks); once visible the
+  // spinner dwells ≥500ms so it never flashes on fast networks.
+  const [showSpinner, setShowSpinner] = useState(false);
+  const showSpinnerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const spinnerDwellTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const spinnerVisibleSinceRef = useRef<number | null>(null);
+  const isManualRefreshRef = useRef(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (showSpinnerTimerRef.current) clearTimeout(showSpinnerTimerRef.current);
+      if (spinnerDwellTimerRef.current) clearTimeout(spinnerDwellTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    const isActive = loading || refreshing;
+    if (isActive) {
+      if (spinnerDwellTimerRef.current) {
+        clearTimeout(spinnerDwellTimerRef.current);
+        spinnerDwellTimerRef.current = null;
+      }
+      if (spinnerVisibleSinceRef.current !== null) return;
+      if (showSpinnerTimerRef.current !== null) return;
+      const delay = isManualRefreshRef.current ? 250 : 400;
+      isManualRefreshRef.current = false;
+      showSpinnerTimerRef.current = setTimeout(() => {
+        if (!mountedRef.current) return;
+        spinnerVisibleSinceRef.current = Date.now();
+        setShowSpinner(true);
+        showSpinnerTimerRef.current = null;
+      }, delay);
+      return;
+    }
+    if (showSpinnerTimerRef.current) {
+      clearTimeout(showSpinnerTimerRef.current);
+      showSpinnerTimerRef.current = null;
+    }
+    if (spinnerVisibleSinceRef.current !== null) {
+      const elapsed = Date.now() - spinnerVisibleSinceRef.current;
+      const remaining = Math.max(0, 500 - elapsed);
+      if (remaining === 0) {
+        setShowSpinner(false);
+        spinnerVisibleSinceRef.current = null;
+      } else {
+        spinnerDwellTimerRef.current = setTimeout(() => {
+          if (!mountedRef.current) return;
+          setShowSpinner(false);
+          spinnerVisibleSinceRef.current = null;
+          spinnerDwellTimerRef.current = null;
+        }, remaining);
+      }
+    }
+  }, [loading, refreshing]);
+
+  const handleManualRefreshClick = useCallback(() => {
+    isManualRefreshRef.current = true;
+    handleManualRefresh();
+  }, [handleManualRefresh]);
 
   const selection = useIssueSelection();
   const [issueCache, setIssueCache] = useState<Map<number, GitHubIssue>>(() => new Map());
@@ -542,12 +606,11 @@ export function GitHubResourceList({
           </div>
           <button
             type="button"
-            onClick={handleManualRefresh}
+            onClick={handleManualRefreshClick}
             disabled={loading || refreshing}
             aria-label={`Refresh ${type === "issue" ? "issues" : "pull requests"}`}
-            aria-busy={loading || refreshing}
             title={
-              refreshing || loading
+              showSpinner
                 ? "Refreshing…"
                 : `Refresh ${type === "issue" ? "issues" : "pull requests"}`
             }
@@ -555,10 +618,10 @@ export function GitHubResourceList({
               "flex items-center justify-center w-7 h-7 rounded shrink-0",
               "text-daintree-text/60 hover:text-daintree-text hover:bg-tint/[0.06]",
               "transition-colors disabled:cursor-default",
-              (loading || refreshing) && "text-status-info"
+              showSpinner && "text-status-info"
             )}
           >
-            <RefreshCw className={cn("w-3.5 h-3.5", (loading || refreshing) && "animate-spin")} />
+            <RefreshCw className={cn("w-3.5 h-3.5", showSpinner && "animate-spin")} />
           </button>
           <Popover open={sortPopoverOpen} onOpenChange={setSortPopoverOpen}>
             <PopoverTrigger asChild>
@@ -706,9 +769,40 @@ export function GitHubResourceList({
           })}
         </div>
 
-        {numberQuery?.kind === "range" && numberQuery.truncated && (
-          <p className="text-xs text-muted-foreground">
-            Showing first {MULTI_FETCH_CAP} of range (capped)
+        {numberQuery !== null &&
+          !loading &&
+          (() => {
+            const resourceLabel = type === "issue" ? "issue" : "PR";
+            let label: string;
+            if (numberQuery.kind === "single") {
+              label = `Showing ${resourceLabel} #${numberQuery.number}`;
+            } else if (numberQuery.kind === "multi") {
+              const nums = numberQuery.numbers;
+              const shown = nums
+                .slice(0, 3)
+                .map((n) => `#${n}`)
+                .join(", ");
+              label =
+                nums.length > 3
+                  ? `Showing ${shown} + ${nums.length - 3} more`
+                  : `Showing ${shown}`;
+            } else if (numberQuery.kind === "range") {
+              label = numberQuery.truncated
+                ? `Showing first ${MULTI_FETCH_CAP} of range #${numberQuery.from}..#${numberQuery.to} (capped)`
+                : `Showing range #${numberQuery.from}..#${numberQuery.to}`;
+            } else {
+              label = `Showing #${numberQuery.from} and above`;
+            }
+            return (
+              <p className="bg-overlay-soft border border-[var(--border-divider)] rounded px-2 py-1 text-xs text-muted-foreground">
+                {label}
+              </p>
+            );
+          })()}
+
+        {!error && !loading && lastUpdatedAt != null && !debouncedSearch && (
+          <p className="text-[10px] text-muted-foreground/60 px-1">
+            Updated <LiveTimeAgo timestamp={lastUpdatedAt} />
           </p>
         )}
       </div>
@@ -742,7 +836,11 @@ export function GitHubResourceList({
               {error && (
                 <div className="px-3 py-2 border-b border-[var(--border-divider)] flex items-center gap-2 text-muted-foreground bg-overlay-soft shrink-0">
                   <WifiOff className="h-3.5 w-3.5 shrink-0" />
-                  <span className="text-xs truncate">{sanitizeIpcError(error)}</span>
+                  <span className="text-xs truncate">
+                    {isTransientNetworkError(error)
+                      ? "Couldn't reach GitHub. Showing last known results."
+                      : sanitizeIpcError(error)}
+                  </span>
                   {lastUpdatedAt != null && !debouncedSearch && (
                     <span className="text-xs text-muted-foreground/70 shrink-0 whitespace-nowrap">
                       · Updated <LiveTimeAgo timestamp={lastUpdatedAt} />
@@ -775,6 +873,7 @@ export function GitHubResourceList({
                 id={listId}
                 role="listbox"
                 aria-multiselectable={true}
+                aria-busy={loading || refreshing}
                 className="flex-1 min-h-0"
               >
                 <Virtuoso
