@@ -159,12 +159,22 @@ export function OnboardingFlow({
     }
   }, [advanceStep, manualWizardIsFirstRun, onRefreshSettings, state]);
 
+  const handleLaunchAgentFromWizard = useCallback(() => {
+    // The wizard's "Launch agent" CTA opens the panel palette directly. Clear
+    // the return-to-palette ref before closing so handleManualWizardClose
+    // doesn't dispatch the palette a second time.
+    returnToPaletteRef.current = false;
+    void actionService.dispatch("panel.palette", undefined, { source: "user" });
+    void handleManualWizardClose();
+  }, [handleManualWizardClose]);
+
   // Render nothing until hydration completes or if E2E skip is enabled
   if (SKIP_FIRST_RUN_DIALOGS) {
     return manualWizardOpen ? (
       <AgentSetupWizard
         isOpen
         onClose={handleManualWizardClose}
+        onLaunchAgent={handleLaunchAgentFromWizard}
         initialAvailability={availability}
         isFirstRun={manualWizardIsFirstRun}
         onStepChange={handleWizardStepChange}
@@ -181,6 +191,7 @@ export function OnboardingFlow({
       <AgentSetupWizard
         isOpen
         onClose={handleManualWizardClose}
+        onLaunchAgent={handleLaunchAgentFromWizard}
         initialAvailability={availability}
         isFirstRun={manualWizardIsFirstRun}
         onStepChange={handleWizardStepChange}

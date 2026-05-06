@@ -12,6 +12,7 @@ const onboardingMock = {
         openedProject: false,
         launchedAgent: false,
         createdWorktree: false,
+        ranSecondParallelAgent: false,
       },
       dismissed: false,
       celebrationShown: false,
@@ -109,7 +110,12 @@ describe("useGettingStartedChecklist", () => {
     worktreeSubscribers = [];
     onboardingMock.get.mockResolvedValue({ completed: true });
     onboardingMock.getChecklist.mockResolvedValue({
-      items: { openedProject: false, launchedAgent: false, createdWorktree: false },
+      items: {
+        openedProject: false,
+        launchedAgent: false,
+        createdWorktree: false,
+        ranSecondParallelAgent: false,
+      },
       dismissed: false,
       celebrationShown: false,
     });

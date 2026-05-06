@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { AnimatePresence, m } from "framer-motion";
+import { AnimatePresence, m, useReducedMotion } from "framer-motion";
 
 function getThemeParticleColors(): string[] {
   if (typeof document === "undefined") {
@@ -54,8 +54,9 @@ function generateParticles(): Particle[] {
 }
 
 export function CelebrationConfetti() {
-  const reducedMotion =
-    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // useReducedMotion respects both OS-level prefers-reduced-motion and
+  // Daintree's app-level data-reduce-animations toggle.
+  const reducedMotion = useReducedMotion();
 
   const [particles] = useState(generateParticles);
   const [successColor] = useState(getStatusSuccessColor);

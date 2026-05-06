@@ -315,6 +315,14 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
 interface AgentSetupWizardProps {
   isOpen: boolean;
   onClose: () => void;
+  /**
+   * Invoked when the user clicks the "Launch agent" CTA on the complete step.
+   * If omitted, the wizard dispatches `panel.palette` itself and calls `onClose`.
+   * Provide this when the wizard's open path also dispatches the palette on
+   * close (e.g. opened from the panel palette) so the caller can suppress the
+   * post-close redispatch and avoid a double palette open.
+   */
+  onLaunchAgent?: () => void;
   initialAvailability?: CliAvailability;
   isFirstRun?: boolean;
   onStepChange?: (step: WizardStep) => void;
@@ -323,6 +331,7 @@ interface AgentSetupWizardProps {
 export function AgentSetupWizard({
   isOpen,
   onClose,
+  onLaunchAgent,
   initialAvailability,
   isFirstRun = false,
   onStepChange,
@@ -532,9 +541,13 @@ export function AgentSetupWizard({
   }, [onClose]);
 
   const handleLaunchAgent = useCallback(() => {
+    if (onLaunchAgent) {
+      onLaunchAgent();
+      return;
+    }
     void actionService.dispatch("panel.palette", undefined, { source: "user" });
     onClose();
-  }, [onClose]);
+  }, [onLaunchAgent, onClose]);
 
   const notifyTelemetryDefault = useCallback(() => {
     notify({

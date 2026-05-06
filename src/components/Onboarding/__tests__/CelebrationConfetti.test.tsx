@@ -23,6 +23,10 @@ vi.mock("framer-motion", () => {
     domMax: {},
     m: { div: MotionDiv },
     motion: { div: MotionDiv },
+    useReducedMotion: () => {
+      if (typeof window === "undefined") return false;
+      return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    },
   };
 });
 

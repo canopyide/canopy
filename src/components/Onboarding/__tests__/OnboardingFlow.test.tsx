@@ -103,6 +103,7 @@ vi.mock("@/components/Setup/AgentSetupWizard", () => ({
   AgentSetupWizard: vi.fn(
     (props: {
       onClose: () => void;
+      onLaunchAgent?: () => void;
       isFirstRun?: boolean;
       onStepChange?: (step: MockWizardStep) => void;
     }) => {
@@ -110,6 +111,9 @@ vi.mock("@/components/Setup/AgentSetupWizard", () => ({
         <div data-testid="agent-setup-wizard" data-first-run={props.isFirstRun ? "true" : "false"}>
           <button data-testid="close-wizard" onClick={props.onClose}>
             Close
+          </button>
+          <button data-testid="launch-agent-wizard" onClick={() => props.onLaunchAgent?.()}>
+            Launch agent
           </button>
           <button
             data-testid="emit-step-selection"
@@ -130,6 +134,13 @@ vi.mock("@/components/Setup/AgentSetupWizard", () => ({
       );
     }
   ),
+}));
+
+const { actionDispatchMock } = vi.hoisted(() => ({
+  actionDispatchMock: vi.fn(() => Promise.resolve()),
+}));
+vi.mock("@/services/ActionService", () => ({
+  actionService: { dispatch: actionDispatchMock },
 }));
 
 const { dismissSetupBannerHookMock } = vi.hoisted(() => ({
@@ -514,6 +525,75 @@ describe("OnboardingFlow telemetry tracking", () => {
     unmount();
 
     expect(trackMock).not.toHaveBeenCalledWith("onboarding_abandoned", expect.any(Object));
+  });
+});
+
+describe("OnboardingFlow launch-agent CTA", () => {
+  const defaultProps = {
+    availability: {} as import("@shared/types").CliAvailability,
+    onRefreshSettings: vi.fn(() => Promise.resolve()),
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    openWizardListeners.clear();
+    onboardingMock.get.mockResolvedValue({ ...defaultOnboardingState, completed: true });
+  });
+
+  it("dispatches panel.palette exactly once when 'Launch agent' is clicked from a palette-opened wizard", async () => {
+    const { getByTestId } = await act(async () => {
+      return render(<OnboardingFlow {...defaultProps} />);
+    });
+
+    await act(async () => {
+      await flushHydration();
+    });
+
+    // Open from the panel palette — this would normally arm the
+    // return-to-palette redispatch on close.
+    await act(async () => {
+      fireOpenWizard({ returnToPanelPalette: true });
+    });
+
+    await act(async () => {
+      getByTestId("launch-agent-wizard").click();
+    });
+
+    await act(async () => {
+      await flushHydration();
+    });
+
+    const paletteDispatches = actionDispatchMock.mock.calls.filter(
+      ([actionId]) => actionId === "panel.palette"
+    );
+    expect(paletteDispatches).toHaveLength(1);
+  });
+
+  it("dispatches panel.palette exactly once when 'Launch agent' is clicked from a non-palette open", async () => {
+    const { getByTestId } = await act(async () => {
+      return render(<OnboardingFlow {...defaultProps} />);
+    });
+
+    await act(async () => {
+      await flushHydration();
+    });
+
+    await act(async () => {
+      fireOpenWizard();
+    });
+
+    await act(async () => {
+      getByTestId("launch-agent-wizard").click();
+    });
+
+    await act(async () => {
+      await flushHydration();
+    });
+
+    const paletteDispatches = actionDispatchMock.mock.calls.filter(
+      ([actionId]) => actionId === "panel.palette"
+    );
+    expect(paletteDispatches).toHaveLength(1);
   });
 });
 
