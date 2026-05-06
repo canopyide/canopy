@@ -397,5 +397,93 @@ describe("ErrorBoundary", () => {
 
       expect(() => fireEvent.click(screen.getByText("Report Issue"))).not.toThrow();
     });
+
+    it("keeps the URL within budget even when error.message is huge", async () => {
+      const { actionService } = await import("@/services/ActionService");
+      const longMessage = "x".repeat(8000);
+      const huge = new Error(longMessage);
+      huge.stack = `Error: ${longMessage}\n    at frame (file.ts:1:1)`;
+
+      render(
+        <ErrorBoundary variant="section">
+          <ThrowingChildWithError error={huge} />
+        </ErrorBoundary>
+      );
+
+      fireEvent.click(screen.getByText("Report Issue"));
+
+      const url = vi.mocked(actionService.dispatch).mock.calls.at(-1)![1]!.url as string;
+      expect(url.length).toBeLessThanOrEqual(7200);
+    });
+
+    it("preserves the top and bottom stack frames when truncating", async () => {
+      const { actionService } = await import("@/services/ActionService");
+      const top = Array.from({ length: 15 }, (_, i) => `    at TOP_${i} (file.ts:${i}:1)`);
+      const middle = Array.from({ length: 200 }, (_, i) => `    at MIDDLE_${i} (file.ts:${i}:1)`);
+      const bottom = Array.from({ length: 5 }, (_, i) => `    at BOTTOM_${i} (file.ts:${i}:1)`);
+      const huge = new Error("huge");
+      huge.stack = ["Error: huge", ...top, ...middle, ...bottom].join("\n");
+
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      (window as unknown as { electron: { clipboard: { writeText: typeof writeText } } }).electron =
+        {
+          clipboard: { writeText },
+          // @ts-expect-error partial test stub
+          system: { openExternal: vi.fn().mockResolvedValue(undefined) },
+        };
+
+      render(
+        <ErrorBoundary variant="section">
+          <ThrowingChildWithError error={huge} />
+        </ErrorBoundary>
+      );
+
+      fireEvent.click(screen.getByText("Report Issue"));
+
+      const clipboardPayload = writeText.mock.calls[0]![0] as string;
+      expect(clipboardPayload).toContain("MIDDLE_0");
+
+      const url = vi.mocked(actionService.dispatch).mock.calls.at(-1)![1]!.url as string;
+      const decodedBody = decodeURIComponent(url.split("&body=")[1]!);
+      expect(decodedBody).toContain("TOP_0");
+      expect(decodedBody).toContain("BOTTOM_0");
+      expect(decodedBody).not.toContain("MIDDLE_30");
+    });
+
+    it("survives lone surrogate characters in the error message", async () => {
+      const { actionService } = await import("@/services/ActionService");
+      const huge = new Error("\uD800 invalid surrogate");
+
+      render(
+        <ErrorBoundary variant="section">
+          <ThrowingChildWithError error={huge} />
+        </ErrorBoundary>
+      );
+
+      expect(() => fireEvent.click(screen.getByText("Report Issue"))).not.toThrow();
+      expect(actionService.dispatch).toHaveBeenCalled();
+    });
+
+    it("still opens a URL when clipboard.writeText throws synchronously", async () => {
+      const { actionService } = await import("@/services/ActionService");
+      const writeText = vi.fn(() => {
+        throw new Error("sync clipboard failure");
+      });
+      (window as unknown as { electron: { clipboard: { writeText: typeof writeText } } }).electron =
+        {
+          clipboard: { writeText },
+          // @ts-expect-error partial test stub
+          system: { openExternal: vi.fn().mockResolvedValue(undefined) },
+        };
+
+      render(
+        <ErrorBoundary variant="section">
+          <ThrowingChild shouldThrow={true} />
+        </ErrorBoundary>
+      );
+
+      expect(() => fireEvent.click(screen.getByText("Report Issue"))).not.toThrow();
+      expect(actionService.dispatch).toHaveBeenCalled();
+    });
   });
 });

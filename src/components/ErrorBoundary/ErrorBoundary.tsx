@@ -35,7 +35,25 @@ interface ErrorBoundaryState {
 const ISSUE_URL_BUDGET = 7200;
 const STACK_TOP_LINES = 15;
 const STACK_BOTTOM_LINES = 5;
+const TITLE_MESSAGE_CAP = 200;
 const TRUNCATION_PLACEHOLDER = "\n… (middle truncated — full report copied to clipboard) …\n";
+
+// `encodeURIComponent` throws `URIError: URI malformed` on lone (unpaired)
+// surrogates, which can appear in errors originating from native modules,
+// WASM, or mis-decoded byte streams. Replace any unpaired surrogate with the
+// Unicode replacement char so encoding always succeeds inside an error path
+// where throwing again would lose the report entirely.
+function sanitizeForUriComponent(value: string): string {
+  return value.replace(
+    /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g,
+    "�"
+  );
+}
+
+function capMessage(message: string, cap = TITLE_MESSAGE_CAP): string {
+  if (message.length <= cap) return message;
+  return `${message.slice(0, cap)}…`;
+}
 
 interface CrashReportInput {
   componentName: string;
@@ -75,8 +93,8 @@ function truncateStackMiddle(
 function buildIssueUrl(title: string, body: string): string {
   return (
     `https://github.com/daintreehq/daintree/issues/new` +
-    `?title=${encodeURIComponent(title)}` +
-    `&body=${encodeURIComponent(body)}`
+    `?title=${encodeURIComponent(sanitizeForUriComponent(title))}` +
+    `&body=${encodeURIComponent(sanitizeForUriComponent(body))}`
   );
 }
 
@@ -195,79 +213,106 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   };
 
   handleReport = (): void => {
-    const { error, errorInfo, incidentId, sentryEventId } = this.state;
-    const { componentName, context } = this.props;
+    try {
+      const { error, errorInfo, incidentId, sentryEventId } = this.state;
+      const { componentName, context } = this.props;
 
-    const message = error?.message || "Unknown error";
-    const title = `Component Error: ${message}`;
-    const stack = error?.stack || "No stack trace";
-    const componentStack = errorInfo?.componentStack || "No component stack";
-    const contextJson = context ? JSON.stringify(context, null, 2) : "None";
+      const rawMessage = error?.message || "Unknown error";
+      // The title is bounded — any single error.message embedded in the URL would
+      // blow the budget on its own (see #6884: validation errors with embedded
+      // JSON can be 4–10 KB). The full message still appears in the body.
+      const cappedMessage = capMessage(rawMessage);
+      const title = `Component Error: ${cappedMessage}`;
+      const stack = error?.stack || "No stack trace";
+      const componentStack = errorInfo?.componentStack || "No component stack";
+      const contextJson = context ? JSON.stringify(context, null, 2) : "None";
 
-    const fullBody = buildCrashReportBody({
-      componentName: componentName || "Unknown",
-      sentryEventId,
-      incidentId,
-      message,
-      contextJson,
-      stack,
-      componentStack,
-    });
-
-    // Belt-and-suspenders: copy the full payload before opening any URL so the
-    // user can paste it even if the deeplink opens with truncated content.
-    const writeText = window.electron?.clipboard?.writeText;
-    if (writeText) {
-      safeFireAndForget(writeText(fullBody), {
-        context: "ErrorBoundary.handleReport: clipboard.writeText",
+      const fullBody = buildCrashReportBody({
+        componentName: componentName || "Unknown",
+        sentryEventId,
+        incidentId,
+        message: rawMessage,
+        contextJson,
+        stack,
+        componentStack,
       });
-    }
 
-    const fullUrl = buildIssueUrl(title, fullBody);
-    if (fullUrl.length <= ISSUE_URL_BUDGET) {
-      openIssueUrl(fullUrl);
-      return;
-    }
+      // Belt-and-suspenders: copy the full payload before opening any URL so
+      // the user can paste it even if the deeplink opens with truncated
+      // content. Wrap the IPC call in case the binding throws synchronously
+      // (the Promise reject path is handled by safeFireAndForget).
+      const writeText = window.electron?.clipboard?.writeText;
+      let clipboardWritten = false;
+      if (writeText) {
+        try {
+          safeFireAndForget(writeText(fullBody), {
+            context: "ErrorBoundary.handleReport: clipboard.writeText",
+          });
+          clipboardWritten = true;
+        } catch (clipboardError) {
+          logError("ErrorBoundary clipboard write threw synchronously", clipboardError);
+        }
+      }
 
-    const truncatedBody = buildCrashReportBody({
-      componentName: componentName || "Unknown",
-      sentryEventId,
-      incidentId,
-      message,
-      contextJson,
-      stack: truncateStackMiddle(stack),
-      componentStack: truncateStackMiddle(componentStack),
-    });
-    const truncatedUrl = buildIssueUrl(title, truncatedBody);
-    if (truncatedUrl.length <= ISSUE_URL_BUDGET) {
-      openIssueUrl(truncatedUrl);
-      return;
-    }
+      const fullUrl = buildIssueUrl(title, fullBody);
+      if (fullUrl.length <= ISSUE_URL_BUDGET) {
+        openIssueUrl(fullUrl);
+        return;
+      }
 
-    const minimalBody =
-      `## Error Report\n\n` +
-      `**Component:** ${componentName || "Unknown"}\n` +
-      `**Sentry Event ID:** ${sentryEventId ?? "unavailable (telemetry off)"}\n` +
-      `**Incident ID:** ${incidentId ?? "unknown"}\n` +
-      `**Message:** ${message}\n\n` +
-      `_The full error report (stack trace + component stack) was too large ` +
-      `for a deeplink and has been copied to your clipboard. Please paste it below._`;
-    openIssueUrl(buildIssueUrl(title, minimalBody));
-
-    if (writeText) {
-      notify({
-        type: "info",
-        title: "Report copied to clipboard",
-        message:
-          "The full report was too large to include in the link. Paste it into the issue body.",
+      const truncatedBody = buildCrashReportBody({
+        componentName: componentName || "Unknown",
+        sentryEventId,
+        incidentId,
+        message: rawMessage,
+        contextJson,
+        stack: truncateStackMiddle(stack),
+        componentStack: truncateStackMiddle(componentStack),
       });
-    } else {
-      notify({
-        type: "warning",
-        title: "Couldn't copy full report",
-        message:
-          "The clipboard isn't available, so only a summary was sent. Reproduce the error and copy logs manually if possible.",
-      });
+      const truncatedUrl = buildIssueUrl(title, truncatedBody);
+      if (truncatedUrl.length <= ISSUE_URL_BUDGET) {
+        openIssueUrl(truncatedUrl);
+        return;
+      }
+
+      const minimalBody =
+        `## Error Report\n\n` +
+        `**Component:** ${componentName || "Unknown"}\n` +
+        `**Sentry Event ID:** ${sentryEventId ?? "unavailable (telemetry off)"}\n` +
+        `**Incident ID:** ${incidentId ?? "unknown"}\n` +
+        `**Message:** ${cappedMessage}\n\n` +
+        `_The full error report (stack trace + component stack) was too large ` +
+        `for a deeplink and has been copied to your clipboard. Please paste it below._`;
+      const minimalUrl = buildIssueUrl(title, minimalBody);
+      // Final guard: if even the minimal URL is over budget (extremely long
+      // component name or context), open a bare issue page rather than a 414.
+      const finalUrl =
+        minimalUrl.length <= ISSUE_URL_BUDGET
+          ? minimalUrl
+          : "https://github.com/daintreehq/daintree/issues/new";
+      openIssueUrl(finalUrl);
+
+      if (clipboardWritten) {
+        notify({
+          type: "info",
+          title: "Report copied to clipboard",
+          message:
+            "The full report was too large to include in the link. Paste it into the issue body.",
+        });
+      } else {
+        notify({
+          type: "warning",
+          title: "Couldn't copy full report",
+          message:
+            "The clipboard isn't available, so only a summary was sent. Reproduce the error and copy logs manually if possible.",
+        });
+      }
+    } catch (reportError) {
+      // handleReport is the user's escape hatch from a crashed UI — do not
+      // throw out of it. Log and try to open a bare issue page so the user
+      // can still file something.
+      logError("ErrorBoundary handleReport failed", reportError);
+      openIssueUrl("https://github.com/daintreehq/daintree/issues/new");
     }
   };
 
