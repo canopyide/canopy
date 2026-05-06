@@ -12,6 +12,7 @@ function mouseEvent(target: EventTarget | null, button = 0): MouseEvent {
 }
 
 function syntheticEvent(target: EventTarget | null, button = 0): ReactMouseEvent {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   return { nativeEvent: mouseEvent(target, button) } as ReactMouseEvent;
 }
 

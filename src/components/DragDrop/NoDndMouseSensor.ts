@@ -15,8 +15,8 @@ export class NoDndMouseSensor extends MouseSensor {
     {
       eventName: "onMouseDown",
       handler: ({ nativeEvent: event }: ReactMouseEvent, { onActivation }: MouseSensorOptions) => {
-        if (isNoDndTarget(event)) return false;
-        onActivation?.({ event });
+        if (isNoDndTarget(event as MouseEvent)) return false;
+        onActivation?.({ event: event as MouseEvent });
         return true;
       },
     },
