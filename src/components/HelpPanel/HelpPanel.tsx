@@ -422,6 +422,10 @@ export function HelpPanel({
           useHelpPanelStore.getState().clearTerminal();
         })
         .catch((err) => {
+          // Mirror the .then race-guard: bail if the user has reopened the
+          // panel or the terminal id has been replaced during the IPC.
+          const after = useHelpPanelStore.getState();
+          if (after.terminalId !== initialTerminalId || after.isOpen) return;
           logError("HelpPanel: gracefulKill during hibernate failed", err);
           if (projectId) {
             // Drop any prior hibernate entry so we don't auto-resume from a
