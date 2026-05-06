@@ -325,8 +325,8 @@ export function AgentCliStep({ availability, selections, onInstallComplete }: Ag
                   <div className="text-[11px] text-daintree-text/40 mb-1">
                     Run this command in your terminal. It will be detected automatically.
                   </div>
-                  {currentBlock.commands.map((cmd, i) => (
-                    <CopyableCommand key={i} command={cmd} />
+                  {currentBlock.commands.map((cmd) => (
+                    <CopyableCommand key={cmd} command={cmd} />
                   ))}
                 </div>
               )}
@@ -355,8 +355,8 @@ export function AgentCliStep({ availability, selections, onInstallComplete }: Ag
                   {currentBlock?.commands && (
                     <div className="space-y-1">
                       <div className="text-[11px] text-daintree-text/40">Or install manually:</div>
-                      {currentBlock.commands.map((cmd, i) => (
-                        <CopyableCommand key={i} command={cmd} />
+                      {currentBlock.commands.map((cmd) => (
+                        <CopyableCommand key={cmd} command={cmd} />
                       ))}
                     </div>
                   )}

@@ -108,8 +108,8 @@ function InstallCommands({ blocks }: { blocks: AgentInstallBlock[] }) {
           )}
           {block.commands && (
             <div className="space-y-1.5">
-              {block.commands.map((cmd, j) => (
-                <CopyableCommand key={j} command={cmd} />
+              {block.commands.map((cmd) => (
+                <CopyableCommand key={cmd} command={cmd} />
               ))}
             </div>
           )}

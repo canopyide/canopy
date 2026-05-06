@@ -116,12 +116,13 @@ export function CrashRecoveryDialog({
       .catch((err) => logError("Failed to open crash log path", err));
   }, [crash.logPath]);
 
-  const handleReport = useCallback(() => {
+  const handleReport = useCallback(async () => {
     if (!privacyWarningShown) {
       setPrivacyWarningShown(true);
       return;
     }
-    void copy(buildClipboardText(crash));
+    const ok = await copy(buildClipboardText(crash));
+    if (!ok) return;
     window.electron.system
       .openExternal(ISSUES_URL)
       .catch((err) => logError("Failed to open issues URL", err));
@@ -355,7 +356,7 @@ export function CrashRecoveryDialog({
                   size="sm"
                   variant="ghost"
                   className="text-xs h-7"
-                  onClick={handleReport}
+                  onClick={() => void handleReport()}
                   data-testid="report-button"
                 >
                   <ExternalLink className="h-3 w-3 mr-1" />
