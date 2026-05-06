@@ -3,7 +3,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, waitFor, act } from "@testing-library/react";
-import { Activity, type ReactNode } from "react";
+import React, { Activity, type ReactNode } from "react";
 import type { GitHubIssue, GitHubListResponse, GitHubListOptions } from "@shared/types/github";
 import { setCache, buildCacheKey, _resetForTests } from "@/lib/githubResourceCache";
 import { useGitHubFilterStore } from "@/store/githubFilterStore";
@@ -99,6 +99,28 @@ vi.mock("../GitHubListItem", () => ({
 vi.mock("../BulkActionBar", () => ({
   BulkActionBar: () => null,
 }));
+
+const mockAnimate = vi.fn();
+
+vi.mock("framer-motion", () => {
+  const MotionDiv = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+    ({ children, ...props }, ref) => (
+      <div ref={ref} {...props}>
+        {children}
+      </div>
+    )
+  );
+  return {
+    AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    LazyMotion: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    domAnimation: {},
+    domMax: {},
+    m: { div: MotionDiv },
+    motion: { div: MotionDiv },
+    useAnimate: () => [{ current: null } as unknown as React.RefObject<HTMLElement>, mockAnimate],
+    useReducedMotion: () => false,
+  };
+});
 
 vi.mock("../GitHubDropdownSkeletons", () => ({
   GitHubResourceRowsSkeleton: () => <div data-testid="skeleton">Loading...</div>,
