@@ -6,6 +6,10 @@ const REPO_ISSUE_URL = "https://github.com/daintreehq/daintree/issues/new";
 // and backticks inflate 1→3 bytes.
 export const URL_BODY_BUDGET = 7000;
 
+// Cap the encoded title separately so a multi-kilobyte error message can't
+// blow the URL hard cap from the title side, even when the body fits.
+const TITLE_ENCODED_BUDGET = 200;
+
 // When the stack must be middle-truncated we keep the top frames (where the
 // throw originates) and the tail (where it bubbled up through React). 15+5
 // fits a typical render-error stack while leaving the truncation visible.
@@ -61,23 +65,60 @@ function truncateStackMiddle(stack: string): string {
   return [...head, STACK_MIDDLE_PLACEHOLDER, ...tail].join("\n");
 }
 
+function capMessageForStub(message: string): string {
+  // The stub body fits inside the URL, so we cap the message line just like
+  // the title — a multi-kilobyte message would otherwise blow the budget.
+  const STUB_MESSAGE_BUDGET = 1000;
+  if (encodeURIComponent(message).length <= STUB_MESSAGE_BUDGET) return message;
+  const ellipsis = "…";
+  const ellipsisLen = encodeURIComponent(ellipsis).length;
+  const chars = Array.from(message);
+  while (chars.length > 0) {
+    const trimmed = chars.join("");
+    if (encodeURIComponent(trimmed).length + ellipsisLen <= STUB_MESSAGE_BUDGET) {
+      return trimmed + ellipsis;
+    }
+    chars.pop();
+  }
+  return ellipsis;
+}
+
 function buildStubBody(params: {
   componentName: string | undefined;
   incidentId: string | null;
   message: string;
 }): string {
   const { componentName, incidentId, message } = params;
+  const cappedMessage = capMessageForStub(message || "Unknown error");
   return (
     `## Error Report\n\n` +
     `The full error details were copied to your clipboard — please paste them below.\n\n` +
     `**Component:** ${componentName || "Unknown"}\n` +
     `**Incident ID:** ${incidentId ?? "unknown"}\n` +
-    `**Message:** ${message || "Unknown error"}\n`
+    `**Message:** ${cappedMessage}\n`
   );
 }
 
+function capTitle(title: string): string {
+  if (encodeURIComponent(title).length <= TITLE_ENCODED_BUDGET) return title;
+  // Trim character-by-character until the encoded form fits, leaving room
+  // for the ellipsis. Walking by character avoids slicing into a multi-byte
+  // surrogate pair.
+  const ellipsis = "…";
+  const ellipsisLen = encodeURIComponent(ellipsis).length;
+  const chars = Array.from(title);
+  while (chars.length > 0) {
+    const trimmed = chars.join("");
+    if (encodeURIComponent(trimmed).length + ellipsisLen <= TITLE_ENCODED_BUDGET) {
+      return trimmed + ellipsis;
+    }
+    chars.pop();
+  }
+  return ellipsis;
+}
+
 function makeUrl(title: string, body: string): string {
-  return `${REPO_ISSUE_URL}?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
+  return `${REPO_ISSUE_URL}?title=${encodeURIComponent(capTitle(title))}&body=${encodeURIComponent(body)}`;
 }
 
 /**

@@ -142,4 +142,49 @@ describe("buildReportIssueUrl", () => {
     expect(url.searchParams.has("title")).toBe(true);
     expect(url.searchParams.has("body")).toBe(true);
   });
+
+  it("keeps total URL length under 8192 across every truncation stage", () => {
+    // Each stage corresponds to a different input size class.
+    const inputs = [
+      makeInput(), // small — full body fits
+      makeInput({
+        // medium — componentStack omitted
+        componentStack: Array.from({ length: 800 }, (_, i) => `  in Comp${i}`).join("\n"),
+      }),
+      makeInput({
+        // large — stack middle-truncated
+        stack: Array.from({ length: 1500 }, (_, i) => `  at frame${i} (file.ts:${i})`).join("\n"),
+        componentStack: Array.from({ length: 200 }, (_, i) => `  in Comp${i}`).join("\n"),
+      }),
+      makeInput({
+        // huge — clipboard fallback
+        stack: Array.from({ length: 25 }, () => "x".repeat(1200)).join("\n"),
+        componentStack: Array.from({ length: 10 }, () => "x".repeat(1200)).join("\n"),
+      }),
+    ];
+    for (const input of inputs) {
+      const result = buildReportIssueUrl(input);
+      expect(result.url.length).toBeLessThanOrEqual(8192);
+    }
+  });
+
+  it("caps title length when the error message is enormous", () => {
+    // 700 emojis encode to 700×4 = 2800 bytes — well past the 8192 cap on
+    // its own. The title cap keeps the URL safe.
+    const result = buildReportIssueUrl(makeInput({ message: "😀".repeat(700) }));
+    const title = new URL(result.url).searchParams.get("title") ?? "";
+    expect(title.endsWith("…")).toBe(true);
+    expect(result.url.length).toBeLessThanOrEqual(8192);
+    // The full message should still appear in the body / clipboard payload.
+    expect(result.fullBody).toContain("😀");
+  });
+
+  it("caps title for very long ASCII messages", () => {
+    const longMessage = "A".repeat(5000);
+    const result = buildReportIssueUrl(makeInput({ message: longMessage }));
+    expect(result.url.length).toBeLessThanOrEqual(8192);
+    const title = new URL(result.url).searchParams.get("title") ?? "";
+    expect(title.length).toBeLessThan(longMessage.length);
+    expect(title.endsWith("…")).toBe(true);
+  });
 });

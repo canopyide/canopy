@@ -316,6 +316,82 @@ describe("ErrorBoundary", () => {
     });
   });
 
+  it("flags clipboard fallback as failed when the clipboard API is absent", async () => {
+    const electron = (window as unknown as { electron: ElectronMock }).electron;
+    // Simulate a context where clipboard IPC is unavailable.
+    delete (electron as unknown as { clipboard?: unknown }).clipboard;
+
+    function ThrowGiantStack(): React.ReactElement {
+      const error = new Error("Component blew up");
+      error.stack =
+        "Error: Component blew up\n" +
+        Array.from({ length: 30 }, (_, i) => `    at frame${i} ${"x".repeat(800)}`).join("\n");
+      throw error;
+    }
+
+    render(
+      <ErrorBoundary variant="section">
+        <ThrowGiantStack />
+      </ErrorBoundary>
+    );
+
+    fireEvent.click(screen.getByText("Report Issue"));
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "info",
+        title: "Error details too long",
+      })
+    );
+  });
+
+  it("deduplicates rapid double-clicks on Report Issue", async () => {
+    function ThrowGiantStack(): React.ReactElement {
+      const error = new Error("Component blew up");
+      error.stack =
+        "Error: Component blew up\n" +
+        Array.from({ length: 30 }, (_, i) => `    at frame${i} ${"x".repeat(800)}`).join("\n");
+      throw error;
+    }
+
+    render(
+      <ErrorBoundary variant="section">
+        <ThrowGiantStack />
+      </ErrorBoundary>
+    );
+
+    const button = screen.getByText("Report Issue");
+    fireEvent.click(button);
+    fireEvent.click(button); // second click while first is in-flight
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const electron = (window as unknown as { electron: ElectronMock }).electron;
+    expect(electron.clipboard.writeText).toHaveBeenCalledTimes(1);
+    expect(actionService.dispatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("does nothing when window.electron is unavailable entirely", async () => {
+    delete (window as unknown as { electron?: unknown }).electron;
+
+    render(
+      <ErrorBoundary variant="section">
+        <ThrowingChild shouldThrow={true} />
+      </ErrorBoundary>
+    );
+
+    fireEvent.click(screen.getByText("Report Issue"));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(actionService.dispatch).not.toHaveBeenCalled();
+    expect(notify).not.toHaveBeenCalled();
+  });
+
   it("hides technical details in production mode", () => {
     vi.stubEnv("DEV", false);
 

@@ -29,6 +29,10 @@ interface ErrorBoundaryState {
 }
 
 export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  // Guards against double-fire when the user clicks "Report Issue" twice
+  // before the async clipboard/openExternal chain completes.
+  private reportInFlight = false;
+
   constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = {
@@ -145,53 +149,62 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   };
 
   handleReport = async (): Promise<void> => {
-    const { error, errorInfo, incidentId } = this.state;
-    const { componentName, context } = this.props;
-
-    if (!error) return;
-
-    const { url, fullBody, usedClipboardFallback } = buildReportIssueUrl({
-      incidentId,
-      componentName,
-      message: error.message,
-      stack: error.stack ?? "",
-      componentStack: errorInfo?.componentStack ?? "",
-      context,
-    });
-
-    if (usedClipboardFallback) {
-      let clipboardOk = false;
-      try {
-        await window.electron?.clipboard?.writeText?.(fullBody);
-        clipboardOk = true;
-      } catch (clipboardError) {
-        logError("Failed to copy crash report to clipboard", clipboardError);
-      }
-      notify({
-        type: "info",
-        title: clipboardOk ? "Error details copied" : "Error details too long",
-        message: clipboardOk
-          ? "The full crash report was copied to your clipboard — paste it into the issue body."
-          : "Couldn't copy the full report. Paste what you can; we'll match it to the incident ID.",
-        inboxMessage: clipboardOk
-          ? "Crash report copied to clipboard for the issue body."
-          : "Couldn't copy crash report to clipboard.",
-      });
-    }
-
-    if (!window.electron?.system?.openExternal) return;
-
+    if (this.reportInFlight) return;
+    this.reportInFlight = true;
     try {
-      const result = await actionService.dispatch(
-        "system.openExternal",
-        { url },
-        { source: "user" }
-      );
-      if (!result.ok) {
-        window.electron.system.openExternal(url);
+      const { error, errorInfo, incidentId } = this.state;
+      const { componentName, context } = this.props;
+
+      if (!error) return;
+
+      const { url, fullBody, usedClipboardFallback } = buildReportIssueUrl({
+        incidentId,
+        componentName,
+        message: error.message,
+        stack: error.stack ?? "",
+        componentStack: errorInfo?.componentStack ?? "",
+        context,
+      });
+
+      if (usedClipboardFallback) {
+        const writeText = window.electron?.clipboard?.writeText;
+        let clipboardOk = false;
+        if (writeText) {
+          try {
+            await writeText(fullBody);
+            clipboardOk = true;
+          } catch (clipboardError) {
+            logError("Failed to copy crash report to clipboard", clipboardError);
+          }
+        }
+        notify({
+          type: "info",
+          title: clipboardOk ? "Error details copied" : "Error details too long",
+          message: clipboardOk
+            ? "The full crash report was copied to your clipboard — paste it into the issue body."
+            : "Couldn't copy the full report. Quote the Error ID shown above when filing the issue.",
+          inboxMessage: clipboardOk
+            ? "Crash report copied to clipboard for the issue body."
+            : "Couldn't copy crash report to clipboard.",
+        });
       }
-    } catch {
-      window.electron.system.openExternal(url);
+
+      if (!window.electron?.system?.openExternal) return;
+
+      try {
+        const result = await actionService.dispatch(
+          "system.openExternal",
+          { url },
+          { source: "user" }
+        );
+        if (!result.ok) {
+          void window.electron.system.openExternal(url);
+        }
+      } catch {
+        void window.electron.system.openExternal(url);
+      }
+    } finally {
+      this.reportInFlight = false;
     }
   };
 
