@@ -50,6 +50,12 @@ export const UI_PALETTE_EXIT_DURATION = DURATION_100;
  *  Keep in sync with .palette-results-stale transition-delay in src/index.css. */
 export const UI_DOHERTY_THRESHOLD = 400;
 
+/** How long an action success-label swap dwells visible before the toast
+ *  auto-dismisses. Covers saccade (~200ms), lexical recognition (~300ms), and
+ *  a comprehension buffer so sighted and screen-reader users can process the
+ *  label change before the toast disappears. */
+export const UI_ACTION_SUCCESS_DWELL_MS = 2000;
+
 export const UI_TOOLTIP_DELAY_DURATION = 500;
 export const UI_TOOLTIP_SKIP_DELAY_DURATION = DURATION_150;
 

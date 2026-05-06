@@ -19,6 +19,7 @@ import {
   UI_EXIT_DURATION,
   UI_ENTER_EASING,
   UI_EXIT_EASING,
+  UI_ACTION_SUCCESS_DWELL_MS,
   getUiTransitionDuration,
 } from "@/lib/animationUtils";
 import {
@@ -64,11 +65,6 @@ const TYPE_ICON_CONFIG: Record<string, IconConfig> = {
  */
 const MAX_VISIBLE_DURATION_MS = 15000;
 const VISIBLE_DURATION_MULTIPLIER = 3;
-
-// How long the success state dwells visible before the toast auto-dismisses.
-// Long enough for sighted users to notice the swap; short enough not to feel
-// stuck. Mirrors the announcer's polite cadence.
-const ACTION_SUCCESS_DWELL_MS = 500;
 
 function Toast({ notification }: { notification: Notification }) {
   const { dismissNotification, removeNotification } = useNotificationStore(
@@ -196,7 +192,10 @@ function Toast({ notification }: { notification: Notification }) {
     // sticky rather than silently auto-dismissing at 0ms.
     if (!notification.duration || isPaused) return;
     const duration = notification.duration;
-    const cap = Math.min(duration * VISIBLE_DURATION_MULTIPLIER, MAX_VISIBLE_DURATION_MS);
+    const hasActions = !!(notification.action || (notification.actions?.length ?? 0) > 0);
+    const cap = hasActions
+      ? duration * VISIBLE_DURATION_MULTIPLIER
+      : Math.min(duration * VISIBLE_DURATION_MULTIPLIER, MAX_VISIBLE_DURATION_MS);
     const deadline = (notification.firstShownAt ?? Date.now()) + cap;
     const delay = Math.min(duration, Math.max(0, deadline - Date.now()));
     const timer = setTimeout(() => dismissRef.current(), delay);
@@ -325,7 +324,7 @@ function Toast({ notification }: { notification: Notification }) {
                   useAnnouncerStore.getState().announce(announcementText, "polite");
                   dwellTimerRef.current = setTimeout(() => {
                     if (mountedRef.current) dismissRef.current();
-                  }, 500);
+                  }, UI_ACTION_SUCCESS_DWELL_MS);
                 })
                 .catch(() => {
                   settled = true;
@@ -345,7 +344,7 @@ function Toast({ notification }: { notification: Notification }) {
               useAnnouncerStore.getState().announce(announcementText, "polite");
               dwellTimerRef.current = setTimeout(() => {
                 if (mountedRef.current) dismissRef.current();
-              }, ACTION_SUCCESS_DWELL_MS);
+              }, UI_ACTION_SUCCESS_DWELL_MS);
             }
           };
 
