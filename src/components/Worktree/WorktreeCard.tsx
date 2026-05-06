@@ -565,7 +565,7 @@ export function WorktreeCard({
             isActive && variant !== "sidebar" && "bg-surface-panel-elevated",
             !isActive &&
               variant === "grid" &&
-              "hover:bg-overlay-subtle hover:shadow-[var(--theme-shadow-ambient)] [html[data-dragging='true']_&]:hover:bg-transparent [html[data-dragging='true']_&]:hover:shadow-none",
+              "hover:bg-overlay-subtle hover:shadow-[var(--theme-shadow-ambient)] [html[data-dragging='true']_&]:hover:shadow-none",
             variant === "sidebar" && !isActive && "bg-transparent",
             isFocused && !isActive && variant === "grid" && "bg-overlay-soft",
             isOver && !isActive && "ring-2 ring-inset ring-border-default",

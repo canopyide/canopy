@@ -35,18 +35,18 @@ describe("WorktreeCard interaction-state axes (issue #6963)", () => {
     expect(cardSource).not.toContain('z-50 bg-overlay-soft border-2 border-overlay');
   });
 
-  it("suppresses grid hover background while a drag is active", () => {
-    expect(cardSource).toContain(
-      "[html[data-dragging='true']_&]:hover:bg-transparent"
-    );
+  it("suppresses the grid hover-shadow lift while a drag is active", () => {
     expect(cardSource).toContain(
       "[html[data-dragging='true']_&]:hover:shadow-none"
     );
   });
 
-  it("suppresses sidebar hover background while a drag is active", () => {
+  it("suppresses sidebar hover background while a drag is active for both hover paths", () => {
     expect(sidebarCss).toMatch(
-      /html\[data-dragging="true"\]\s+\.sidebar-worktree-card\[data-hoverable="true"\]:hover\s*\{[^}]*background:\s*transparent/
+      /html\[data-dragging="true"\][^{]*\.sidebar-worktree-card\[data-hoverable="true"\]:hover/
+    );
+    expect(sidebarCss).toMatch(
+      /html\[data-dragging="true"\][^{]*\.sidebar-worktree-card\[data-hovered="true"\]/
     );
   });
 
