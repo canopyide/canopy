@@ -13,9 +13,6 @@ export type { BootMigration, BootMigrationRunResult, BootMigrationsMarker } from
  *
  * Empty by default — this is infrastructure for future one-shots. The
  * current codebase has no eligible candidates:
- *  - `electron/setup/environment.ts` and `electron/services/projectDirMigration.ts`
- *    are `TODO(0.9.0)` Canopy→Daintree rebrand code, explicitly out of scope
- *    for this pipeline (owned by #5150).
  *  - `electron/services/migrations/*` are electron-store schema migrations,
  *    a complementary system keyed by integer version, not one-shot filesystem
  *    migrations.

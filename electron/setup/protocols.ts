@@ -79,7 +79,7 @@ function createAppProtocolHandler(distPath: string) {
 // renderer OOM via a malicious or accidental large-file URL.
 const DAINTREE_FILE_MAX_BYTES = 512 * 1024;
 
-// Hardened response headers for daintree-file:// (and the canopy-file:// alias).
+// Hardened response headers for daintree-file://.
 // CORP must be cross-origin: the app:// renderer and daintree-file:// are
 // different schemes (and therefore different origins/sites), and same-origin
 // would block legitimate sub-resource loads. CSP sandbox neutralizes polyglot

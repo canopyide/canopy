@@ -609,7 +609,7 @@ describe("TerminalProcess shell-command identity fallback", () => {
       expect(terminal.getInfo().detectedAgentId).toBe("claude");
 
       pty.__emitData("^CFAKE_CLAUDE_EXIT\r\n");
-      pty.__emitData("➜  canopy-app git:(main) ");
+      pty.__emitData("➜  daintree-app git:(main) ");
       await vi.advanceTimersByTimeAsync(600);
 
       expect(terminal.getInfo().detectedAgentId).toBeUndefined();
@@ -647,7 +647,7 @@ describe("TerminalProcess shell-command identity fallback", () => {
       // Once the shell reclaims the foreground process group, prompt return is
       // authoritative and demotion is allowed.
       foregroundPgid = 123;
-      pty.__emitData("\r\n➜  canopy-app git:(main) ");
+      pty.__emitData("\r\n➜  daintree-app git:(main) ");
       await vi.advanceTimersByTimeAsync(600);
 
       expect(terminal.getInfo().detectedAgentId).toBeUndefined();
@@ -670,7 +670,7 @@ describe("TerminalProcess shell-command identity fallback", () => {
       await vi.advanceTimersByTimeAsync(2000);
       expect(terminal.getInfo().detectedAgentId).toBe("claude");
 
-      pty.__emitData("\r\ngpriday@macbook canopy-app % ");
+      pty.__emitData("\r\ngpriday@macbook daintree-app % ");
       await vi.advanceTimersByTimeAsync(600);
 
       const info = terminal.getInfo();
@@ -691,12 +691,12 @@ describe("TerminalProcess shell-command identity fallback", () => {
     try {
       terminal.write("npm run dev\r");
       pty.__emitData("npm run dev\r\n");
-      pty.__emitData("> canopy-app@1.0.0 dev\r\n");
+      pty.__emitData("> daintree-app@1.0.0 dev\r\n");
 
       await vi.advanceTimersByTimeAsync(2000);
       expect(terminal.getInfo().detectedProcessIconId).toBe("npm");
 
-      pty.__emitData("\r\ngpriday@macbook canopy-app % ");
+      pty.__emitData("\r\ngpriday@macbook daintree-app % ");
       await vi.advanceTimersByTimeAsync(600);
 
       expect(terminal.getInfo().detectedProcessIconId).toBeUndefined();
@@ -713,7 +713,7 @@ describe("TerminalProcess shell-command identity fallback", () => {
     try {
       terminal.write("claude --version\r");
       pty.__emitData("claude --version\r\n2.1.117\r\n");
-      pty.__emitData("gpriday@macbook canopy-app % ");
+      pty.__emitData("gpriday@macbook daintree-app % ");
 
       await vi.advanceTimersByTimeAsync(2500);
 
@@ -740,7 +740,7 @@ describe("TerminalProcess shell-command identity fallback", () => {
     try {
       terminal.write("npm run dev\r");
       pty.__emitData("npm run dev\r\n");
-      pty.__emitData("> canopy-app@1.0.0 dev\r\n");
+      pty.__emitData("> daintree-app@1.0.0 dev\r\n");
       await vi.advanceTimersByTimeAsync(2000);
       expect(terminal.getInfo().detectedProcessIconId).toBe("npm");
 
@@ -800,7 +800,7 @@ describe("TerminalProcess shell-command identity fallback", () => {
     try {
       terminal.write("npm run dev\r");
       pty.__emitData("npm run dev\r\n");
-      pty.__emitData("> canopy-app@1.0.0 dev\r\n");
+      pty.__emitData("> daintree-app@1.0.0 dev\r\n");
       await vi.advanceTimersByTimeAsync(2000);
       expect(terminal.getInfo().detectedProcessIconId).toBe("npm");
 
@@ -977,7 +977,7 @@ describe("TerminalProcess spawn command identity seeding", () => {
       expect(terminal.getInfo().detectedAgentId).toBe("claude");
 
       setDescendants([]);
-      pty.__emitData("\r\ngpriday@macbook canopy-app % ");
+      pty.__emitData("\r\ngpriday@macbook daintree-app % ");
       await vi.advanceTimersByTimeAsync(600);
 
       expect(terminal.getInfo().detectedAgentId).toBeUndefined();
@@ -1008,7 +1008,7 @@ describe("TerminalProcess spawn command identity seeding", () => {
       // zsh/git prompts can briefly spawn helper descendants while the shell
       // prompt is visible. That must not keep the terminal in agent chrome.
       setDescendants([999]);
-      pty.__emitData("\r\n➜  canopy-app git:(main) ");
+      pty.__emitData("\r\n➜  daintree-app git:(main) ");
       await vi.advanceTimersByTimeAsync(600);
 
       expect(terminal.getInfo().detectedAgentId).toBeUndefined();
@@ -1033,7 +1033,7 @@ describe("TerminalProcess spawn command identity seeding", () => {
       pty.__emitData(" Enter to confirm · Esc to cancel\r\n");
       pty.__emitData("FAKE_CLAUDE_READY\r\n");
       pty.__emitData("^CFAKE_CLAUDE_EXIT\r\n");
-      pty.__emitData("➜  canopy-app git:(main) ");
+      pty.__emitData("➜  daintree-app git:(main) ");
       await vi.advanceTimersByTimeAsync(600);
 
       expect(terminal.getInfo().detectedAgentId).toBeUndefined();

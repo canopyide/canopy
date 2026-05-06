@@ -2,8 +2,6 @@
 
 **A habitat for your AI coding agents.**
 
-> **Previously known as Canopy.** Same project, new name, new home at [daintree.org](https://daintree.org).
-
 Daintree is a desktop environment where multiple AI agents work side by side — isolated, observable, and under your control. Instead of juggling terminal windows and manually wiring context between tools, Daintree gives your agents a stable place to run while you focus on reviewing their work.
 
 It ships with deep, opinionated support for 15 CLI agents — [Claude Code](https://github.com/anthropics/claude-code), [Gemini CLI](https://github.com/google-gemini/gemini-cli), [Codex](https://github.com/openai/codex), [OpenCode](https://opencode.ai/docs/), [Cursor Agent](https://cursor.com/features/cursor-agent), [Kiro](https://kiro.dev/cli/), [GitHub Copilot CLI](https://github.com/github/copilot-cli), [Goose](https://block.github.io/goose/), [Crush](https://github.com/charmbracelet/crush), [Qwen Code](https://github.com/QwenLM/qwen-code), [Open Interpreter](https://docs.openinterpreter.com/), [Mistral Vibe](https://github.com/mistralai/mistral-vibe), [Kimi Code](https://github.com/MoonshotAI/kimi-cli), [Amp](https://ampcode.com/manual), and [Aider](https://aider.chat/) — and stays out of the way.

@@ -326,8 +326,8 @@ describe("IdentityWatcher", () => {
       await vi.advanceTimersByTimeAsync(2_000);
       expect(watcher.isFallbackCommitted).toBe(true);
 
-      state.visibleLines = ["user@host canopy % "];
-      state.cursorLine = "user@host canopy % ";
+      state.visibleLines = ["user@host daintree % "];
+      state.cursorLine = "user@host daintree % ";
       state.ptyDescendantCount = 0;
       await vi.advanceTimersByTimeAsync(600);
 
@@ -388,8 +388,8 @@ describe("IdentityWatcher", () => {
       expect(watcher.isFallbackCommitted).toBe(true);
 
       // Now show a shell prompt — two consecutive polls should trigger demotion.
-      state.visibleLines = ["user@host canopy % "];
-      state.cursorLine = "user@host canopy % ";
+      state.visibleLines = ["user@host daintree % "];
+      state.cursorLine = "user@host daintree % ";
       state.ptyDescendantCount = 0;
       await vi.advanceTimersByTimeAsync(600);
 
@@ -484,8 +484,8 @@ describe("IdentityWatcher", () => {
 
         // Now show a shell prompt with the localized failure phrase, while
         // foreground stays busy. Without the regex bypass, branch 1 holds.
-        state.visibleLines = ["user@host canopy % ", phrase, "user@host canopy % "];
-        state.cursorLine = "user@host canopy % ";
+        state.visibleLines = ["user@host daintree % ", phrase, "user@host daintree % "];
+        state.cursorLine = "user@host daintree % ";
         state.ptyDescendantCount = 0;
         state.foreground = { shellPgid: 123, foregroundPgid: 456 };
         await vi.advanceTimersByTimeAsync(600);
@@ -513,8 +513,8 @@ describe("IdentityWatcher", () => {
       expect(watcher.isFallbackCommitted).toBe(true);
 
       // Prompt visible, no failure phrase, foreground still busy — hold.
-      state.visibleLines = ["user@host canopy % ", "(no failure here)", "user@host canopy % "];
-      state.cursorLine = "user@host canopy % ";
+      state.visibleLines = ["user@host daintree % ", "(no failure here)", "user@host daintree % "];
+      state.cursorLine = "user@host daintree % ";
       state.ptyDescendantCount = 0;
       state.foreground = { shellPgid: 123, foregroundPgid: 456 };
       await vi.advanceTimersByTimeAsync(600);
@@ -538,8 +538,8 @@ describe("IdentityWatcher", () => {
 
     it("returns false for a normal shell prompt line", () => {
       const { delegate } = createFakeDelegate({
-        visibleLines: ["", "user@host canopy % "],
-        cursorLine: "user@host canopy % ",
+        visibleLines: ["", "user@host daintree % "],
+        cursorLine: "user@host daintree % ",
       });
       const watcher = new IdentityWatcher(delegate);
 
