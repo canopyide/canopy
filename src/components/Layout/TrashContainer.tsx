@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { Trash2 } from "lucide-react";
 import { useDroppable } from "@dnd-kit/core";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -12,6 +12,7 @@ import {
   useIsWorktreeSortDragging,
   TRASH_DROPPABLE_ID,
 } from "@/components/DragDrop";
+import { DURATION_200 } from "@/lib/animationUtils";
 import type { TerminalInstance } from "@/store";
 import type { TrashedTerminal, TrashedTerminalGroupMetadata } from "@/store/slices";
 import { TrashBinItem } from "./TrashBinItem";
@@ -48,7 +49,7 @@ type TrashDisplayItem = GroupedTrashItem | GroupedTrashGroup;
 
 export function TrashContainer({ trashedTerminals, compact = false }: TrashContainerProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [pulseKey, setPulseKey] = useState(0);
+  const [isTrashPulsing, setIsTrashPulsing] = useState(false);
   const prevLengthRef = useRef(trashedTerminals.length);
   const { worktreeMap } = useWorktrees();
   // Only show the ghost pill for panel drags — worktree-card sort drags also flip
@@ -62,15 +63,25 @@ export function TrashContainer({ trashedTerminals, compact = false }: TrashConta
     const increased = trashedTerminals.length > prevLengthRef.current;
     prevLengthRef.current = trashedTerminals.length;
     if (!increased) {
-      setPulseKey(0);
-      return undefined;
+      setIsTrashPulsing(false);
+      return;
     }
-    setPulseKey((k) => k + 1);
+    setIsTrashPulsing(true);
     const shortcut = isMac() ? "Cmd+Shift+T" : "Ctrl+Shift+T";
     useAnnouncerStore.getState().announce(`Panel closed — press ${shortcut} to restore`);
-    const timer = setTimeout(() => setPulseKey(0), 450);
-    return () => clearTimeout(timer);
   }, [trashedTerminals.length]);
+
+  const handleTrashAnimationEnd = useCallback(() => {
+    setIsTrashPulsing(false);
+  }, []);
+
+  // Safety timeout — under reduced-motion CSS sets `animation: none`, so
+  // `animationend` never fires and isTrashPulsing would latch true.
+  useEffect(() => {
+    if (!isTrashPulsing) return;
+    const timer = setTimeout(() => setIsTrashPulsing(false), DURATION_200 + 50);
+    return () => clearTimeout(timer);
+  }, [isTrashPulsing]);
 
   // Group trash items by groupRestoreId
   const displayItems = useMemo((): TrashDisplayItem[] => {
@@ -195,7 +206,10 @@ export function TrashContainer({ trashedTerminals, compact = false }: TrashConta
             aria-controls={contentId}
             aria-label={`Trash: ${count} terminal${count === 1 ? "" : "s"}`}
           >
-            <span key={pulseKey} className={cn("relative", pulseKey > 0 && "animate-trash-pulse")}>
+            <span
+              className={cn("relative", isTrashPulsing && "animate-trash-pulse")}
+              onAnimationEnd={handleTrashAnimationEnd}
+            >
               <Trash2 className="w-3.5 h-3.5 text-daintree-text/60" aria-hidden="true" />
               {compact && count > 0 && (
                 <span className="absolute -top-1.5 -right-1.5 z-10 flex items-center justify-center min-w-[14px] h-[14px] px-0.5 rounded-full bg-daintree-text/40 text-[10px] font-bold tabular-nums text-text-inverse">

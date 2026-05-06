@@ -1225,7 +1225,7 @@ body,
 }
 
 .animate-diagnostics-flash {
-  animation: diagnostics-state-flash 0.4s ease-out 1;
+  animation: diagnostics-state-flash 200ms cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
 /* Activity blip animation - for new activity signals */
@@ -1235,7 +1235,7 @@ body,
     opacity: 0.9;
   }
   35% {
-    transform: scale(1.25);
+    transform: scale(1.06);
     opacity: 1;
   }
   100% {
@@ -1245,8 +1245,7 @@ body,
 }
 
 .animate-activity-blip {
-  animation: activity-blip 260ms cubic-bezier(0.4, 0, 0.2, 1) both;
-  will-change: transform, opacity;
+  animation: activity-blip 200ms cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
 /* Trash pulse animation - for trash icon when panels are added */
@@ -1256,7 +1255,7 @@ body,
     opacity: 1;
   }
   30% {
-    transform: scale(1.15);
+    transform: scale(1.06);
     opacity: 0.85;
   }
   100% {
@@ -1266,8 +1265,7 @@ body,
 }
 
 .animate-trash-pulse {
-  animation: trash-pulse 400ms cubic-bezier(0.4, 0, 0.2, 1) both;
-  will-change: transform, opacity;
+  animation: trash-pulse 200ms cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
 /* All-clear flash: subtle full-screen overlay when all agents complete */

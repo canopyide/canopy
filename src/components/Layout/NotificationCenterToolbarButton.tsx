@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, memo } from "react";
+import { useRef, useEffect, useState, memo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { FixedDropdown } from "@/components/ui/fixed-dropdown";
 import { Bell, BellOff } from "lucide-react";
@@ -9,13 +9,9 @@ import { useNotificationSettingsStore } from "@/store/notificationSettingsStore"
 import { useUIStore } from "@/store/uiStore";
 import { useShallow } from "zustand/react/shallow";
 import { isScheduledQuietNow } from "@shared/utils/quietHours";
+import { DURATION_200 } from "@/lib/animationUtils";
 
 const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text transition-colors";
-
-// Strip the bell `animate-activity-blip` class shortly after it plays so the
-// CSS `will-change: transform, opacity` layer-promotion hint does not linger
-// on a long-lived toolbar element. Covers the 260ms animation plus a buffer.
-const BELL_BLIP_CLEANUP_MS = 320;
 
 const timeFormatter = new Intl.DateTimeFormat(undefined, {
   hour: "numeric",
@@ -130,29 +126,38 @@ export const NotificationCenterToolbarButton = memo(function NotificationCenterT
     if (!notificationsEnabled && notificationCenterOpen) closeNotificationCenter();
   }, [notificationsEnabled, notificationCenterOpen, closeNotificationCenter]);
 
-  // Bump the bell key whenever a new notification lands in the inbox while
-  // DND is inactive. Remounting the wrapped <Icon /> (Pattern A from
-  // WorktreeDetailsSection) restarts the CSS `animate-activity-blip`
-  // animation cleanly without an imperative classList reflow. A ref-tracked
-  // baseline avoids firing on the first render or on resets to zero.
+  // Toggle a one-shot blip on the bell whenever a new notification lands in the
+  // inbox while DND is inactive. Uses boolean class toggle with onAnimationEnd
+  // cleanup (matching AgentStatusIndicator) instead of key-based remounting, so
+  // no will-change layer hint lingers on the long-lived toolbar element.
   const prevEvictedRef = useRef(evictedToInboxCount);
-  const [bellBumpKey, setBellBumpKey] = useState(0);
+  const [isBellBlipping, setIsBellBlipping] = useState(false);
   useEffect(() => {
     const prev = prevEvictedRef.current;
     prevEvictedRef.current = evictedToInboxCount;
+
+    // Count decreased — clear any in-flight animation state.
+    if (evictedToInboxCount < prev) {
+      setIsBellBlipping(false);
+      return;
+    }
+
     if (evictedToInboxCount > prev && !isDndActive) {
-      setBellBumpKey((k) => k + 1);
+      setIsBellBlipping(true);
     }
   }, [evictedToInboxCount, isDndActive]);
 
-  // Reset bumpKey shortly after each blip so the animation class drops off
-  // and `will-change` is no longer applied. Further bumps cancel the pending
-  // timer via the dependency array.
+  const handleBellAnimationEnd = useCallback(() => {
+    setIsBellBlipping(false);
+  }, []);
+
+  // Safety timeout — under reduced-motion CSS sets `animation: none`, so
+  // `animationend` never fires and isBellBlipping would latch true.
   useEffect(() => {
-    if (bellBumpKey === 0) return;
-    const t = setTimeout(() => setBellBumpKey(0), BELL_BLIP_CLEANUP_MS);
-    return () => clearTimeout(t);
-  }, [bellBumpKey]);
+    if (!isBellBlipping) return;
+    const timer = setTimeout(() => setIsBellBlipping(false), DURATION_200 + 50);
+    return () => clearTimeout(timer);
+  }, [isBellBlipping]);
 
   if (!notificationsEnabled) return null;
 
@@ -185,9 +190,9 @@ export const NotificationCenterToolbarButton = memo(function NotificationCenterT
             aria-haspopup="dialog"
           >
             <span
-              key={bellBumpKey}
               data-testid="notification-bell-icon"
-              className={bellBumpKey > 0 ? "inline-flex animate-activity-blip" : "inline-flex"}
+              className={isBellBlipping ? "inline-flex animate-activity-blip" : "inline-flex"}
+              onAnimationEnd={handleBellAnimationEnd}
             >
               <Icon />
             </span>
