@@ -63,7 +63,7 @@ export function VoiceRecordingToolbarButton({
             void voiceRecordingService.focusActiveTarget();
           }}
           className={cn(
-            "toolbar-icon-button relative transition-colors mr-0.5",
+            "toolbar-icon-button relative mr-0.5",
             isRecording
               ? "text-daintree-text hover:text-[var(--toolbar-control-hover-fg,var(--theme-accent-primary))]"
               : status === "connecting"

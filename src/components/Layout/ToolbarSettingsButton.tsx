@@ -14,7 +14,7 @@ import { createTooltipContent } from "@/lib/tooltipShortcut";
 import { useKeybindingDisplay, useShortcutHintHover } from "@/hooks";
 import { actionService } from "@/services/ActionService";
 
-const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text transition-colors relative";
+const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text relative";
 
 const SETTINGS_CONTEXT_MENU_TABS = [
   { tab: "general", label: "General" },

@@ -12,7 +12,7 @@ import { suppressSidebarResizes } from "@/lib/sidebarToggle";
 import { useMcpReadiness } from "@/hooks/useMcpReadiness";
 import type { McpRuntimeSnapshot } from "@shared/types";
 
-const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text transition-colors relative";
+const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text relative";
 
 interface PipDescriptor {
   className: string;

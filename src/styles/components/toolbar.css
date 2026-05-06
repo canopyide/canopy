@@ -1,3 +1,15 @@
+@property --overflow-badge-color {
+  syntax: "<color>";
+  inherits: false;
+  initial-value: transparent;
+}
+
+@property --problems-dot-color {
+  syntax: "<color>";
+  inherits: false;
+  initial-value: transparent;
+}
+
 .surface-toolbar {
   background-color: var(--toolbar-bg, var(--theme-surface-toolbar));
   background-image: var(--toolbar-noise, var(--chrome-noise-texture));
@@ -138,8 +150,156 @@ html[data-shortcut-reveal] .shortcut-reveal-chip {
   opacity: 1;
 }
 
+/* ── Badge entrance / exit ──
+ * Tier 2 timing from animationUtils.ts: 200ms enter (UI_ENTER_DURATION),
+ * 120ms exit (UI_EXIT_DURATION). @starting-style + allow-discrete handle
+ * entry and exit in pure CSS — no AnimatePresence or key remount needed.
+ * The element must stay in the DOM; visibility is gated by data-visible.
+ */
+.toolbar-badge {
+  display: none;
+  opacity: 0;
+  transform: scale(0);
+  transition:
+    display 120ms allow-discrete,
+    opacity 120ms ease,
+    transform 120ms ease;
+}
+
+.toolbar-badge[data-visible="true"] {
+  display: block;
+  opacity: 1;
+  transform: scale(1);
+  transition-duration: 200ms;
+
+  @starting-style {
+    opacity: 0;
+    transform: scale(0);
+  }
+}
+
+/* GitHub activity corner chips use clipPath for the triangle shape so scale
+ * would distort. Opacity-only entrance / exit keeps the chip crisp. */
+.toolbar-badge-chip {
+  display: none;
+  opacity: 0;
+  transition:
+    display 120ms allow-discrete,
+    opacity 120ms ease;
+}
+
+.toolbar-badge-chip[data-visible="true"] {
+  display: block;
+  opacity: 1;
+  transition-duration: 200ms;
+
+  @starting-style {
+    opacity: 0;
+  }
+}
+
+/* ── Overflow severity dot ──
+ * @property --overflow-badge-color (registered above) interpolates in OKLab
+ * so severity class-swaps produce a smooth hue transition instead of a snap.
+ */
+.toolbar-overflow-badge {
+  background-color: var(--overflow-badge-color);
+  transition:
+    --overflow-badge-color 150ms ease,
+    display 120ms allow-discrete,
+    opacity 120ms ease,
+    transform 120ms ease;
+}
+
+.toolbar-overflow-badge[data-severity="critical"] {
+  --overflow-badge-color: var(--color-status-error);
+}
+
+.toolbar-overflow-badge[data-severity="warning"] {
+  --overflow-badge-color: var(--color-state-waiting);
+}
+
+.toolbar-overflow-badge[data-severity="info"] {
+  --overflow-badge-color: var(--color-daintree-text, #94a3b8);
+  opacity: 0.5;
+}
+
+/* ── Problems dot ──
+ * @property --problems-dot-color gives the dot a smooth color transition so
+ * future color changes (e.g., severity tiers) animate instead of snapping.
+ * Currently always error-colored; the custom property just programs for
+ * smooth future changes.
+ */
+.toolbar-problems-badge {
+  background-color: var(--problems-dot-color);
+  transition:
+    --problems-dot-color 150ms ease,
+    display 120ms allow-discrete,
+    opacity 120ms ease,
+    transform 120ms ease;
+}
+
+.toolbar-problems-badge[data-visible="true"] {
+  --problems-dot-color: var(--color-status-error);
+}
+
+/* DND dims the notification dot so muted and active unread states are
+ * visually distinct. The data-dnd-active attribute is set on the badge
+ * span itself, mirroring the button's attribute. */
+.toolbar-badge[data-dnd-active="true"] {
+  opacity: 0.3;
+}
+
+/* ── Reduced motion ──
+ * WCAG 2.3.3: remove spatial motion (scale/transform), keep opacity.
+ * Dual-gate: OS-level prefers-reduced-motion + Daintree toggle.
+ */
 @media (prefers-reduced-motion: reduce) {
   .shortcut-reveal-chip {
     transition: none;
   }
+
+  .toolbar-badge {
+    transition:
+      display 0s,
+      opacity 200ms ease,
+      transform 0s;
+  }
+
+  .toolbar-badge[data-visible="true"] {
+    transform: none;
+
+    @starting-style {
+      opacity: 0;
+      transform: none;
+    }
+  }
+
+  .toolbar-badge-chip {
+    transition:
+      display 0s,
+      opacity 200ms ease;
+  }
+}
+
+body[data-reduce-animations="true"] .toolbar-badge {
+  transition:
+    display 0s,
+    opacity 200ms ease,
+    transform 0s;
+}
+
+body[data-reduce-animations="true"] .toolbar-badge[data-visible="true"] {
+  transform: none;
+
+  @starting-style {
+    opacity: 0;
+    transform: none;
+  }
+}
+
+body[data-reduce-animations="true"] .toolbar-badge-chip {
+  transition:
+    display 0s,
+    opacity 200ms ease;
 }

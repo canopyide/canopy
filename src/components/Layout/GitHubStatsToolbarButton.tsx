@@ -700,13 +700,12 @@ export const GitHubStatsToolbarButton = memo(
           onPointerEnter={(e) => handlePrefetchPointerEnter("issue", e)}
           onPointerLeave={(e) => handlePrefetchPointerLeave("issue", e)}
           activityChip={
-            showIssuesChip ? (
-              <span
-                aria-hidden="true"
-                className="bg-github-open pointer-events-none absolute right-0 top-0 h-2 w-2"
-                style={{ clipPath: "polygon(0 0, 100% 0, 100% 100%)" }}
-              />
-            ) : null
+            <span
+              aria-hidden="true"
+              data-visible={showIssuesChip}
+              className="toolbar-badge-chip bg-github-open pointer-events-none absolute right-0 top-0 h-2 w-2"
+              style={{ clipPath: "polygon(0 0, 100% 0, 100% 100%)" }}
+            />
           }
           freshnessGlyph={!isTokenError ? <FreshnessGlyph level={freshnessLevel} /> : null}
         />
@@ -804,13 +803,12 @@ export const GitHubStatsToolbarButton = memo(
           onPointerEnter={(e) => handlePrefetchPointerEnter("pr", e)}
           onPointerLeave={(e) => handlePrefetchPointerLeave("pr", e)}
           activityChip={
-            showPrsChip ? (
-              <span
-                aria-hidden="true"
-                className="bg-github-merged pointer-events-none absolute right-0 top-0 h-2 w-2"
-                style={{ clipPath: "polygon(0 0, 100% 0, 100% 100%)" }}
-              />
-            ) : null
+            <span
+              aria-hidden="true"
+              data-visible={showPrsChip}
+              className="toolbar-badge-chip bg-github-merged pointer-events-none absolute right-0 top-0 h-2 w-2"
+              style={{ clipPath: "polygon(0 0, 100% 0, 100% 100%)" }}
+            />
           }
           freshnessGlyph={!isTokenError ? <FreshnessGlyph level={freshnessLevel} /> : null}
         />

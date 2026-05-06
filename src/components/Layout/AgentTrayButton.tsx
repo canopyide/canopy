@@ -599,7 +599,7 @@ export function AgentTrayButton({
               variant="ghost"
               size={emptyTrayLabel ? "sm" : "icon"}
               data-toolbar-item={dataToolbarItem}
-              className={`toolbar-agent-button transition-colors${emptyTrayLabel ? "" : " text-daintree-text"}`}
+              className={`toolbar-agent-button${emptyTrayLabel ? "" : " text-daintree-text"}`}
               aria-label={
                 emptyTrayLabel
                   ? `Agent tray — ${emptyTrayLabel}`
@@ -611,13 +611,12 @@ export function AgentTrayButton({
             >
               <span className="relative inline-flex items-center justify-center">
                 <Plug />
-                {showDiscoveryBadge && (
-                  <span
-                    data-testid="agent-tray-discovery-badge"
-                    className="absolute top-0 right-0 size-1.5 rounded-full bg-status-info ring-1 ring-daintree-sidebar"
-                    aria-hidden="true"
-                  />
-                )}
+                <span
+                  data-testid="agent-tray-discovery-badge"
+                  data-visible={showDiscoveryBadge}
+                  className="toolbar-badge absolute top-0 right-0 size-1.5 rounded-full bg-status-info ring-1 ring-daintree-sidebar"
+                  aria-hidden="true"
+                />
               </span>
               {emptyTrayLabel}
             </Button>

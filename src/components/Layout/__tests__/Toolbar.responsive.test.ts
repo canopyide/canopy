@@ -87,11 +87,16 @@ describe("Toolbar responsive design — issue #4133", () => {
       expect(source).toContain("rightOverflowSeverity");
     });
 
-    it("maps severity to a Tailwind dot color via OVERFLOW_BADGE_CLASS", () => {
-      expect(source).toContain("OVERFLOW_BADGE_CLASS");
-      expect(source).toContain("bg-status-error");
-      expect(source).toContain("bg-state-waiting");
-      expect(source).toContain("bg-daintree-text/50");
+    it("maps severity to a CSS custom property via data-severity selectors", () => {
+      // data-severity attribute is on the JSX element in Toolbar.tsx
+      expect(source).toContain("data-severity={severity}");
+      // The CSS custom property and severity mappings live in toolbar.css
+      expect(css).toContain("--overflow-badge-color");
+      expect(css).toContain('data-severity="critical"');
+      expect(css).toContain('data-severity="warning"');
+      expect(css).toContain('data-severity="info"');
+      expect(css).toContain("var(--color-status-error)");
+      expect(css).toContain("var(--color-state-waiting)");
     });
 
     it("renders a dot inside the overflow Button when severity is set", () => {
