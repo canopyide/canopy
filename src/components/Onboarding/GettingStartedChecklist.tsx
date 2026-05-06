@@ -40,6 +40,7 @@ export function GettingStartedChecklist({
       style={{ right: "calc(var(--right-obstruction-offset, 0px))" }}
     >
       <div
+        data-getting-started-checklist=""
         className={cn(
           "pointer-events-auto relative w-full",
           "rounded-[var(--radius-sm)] border",

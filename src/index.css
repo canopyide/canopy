@@ -1286,6 +1286,26 @@ body,
   will-change: opacity;
 }
 
+/* Onboarding checklist completion — short opacity flash that replaces the
+ * confetti for users who opt out of motion. Subtler than all-clear because
+ * this is a one-off milestone, not an ambient signal. */
+@keyframes checklist-complete-flash {
+  0% {
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.18;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.animate-checklist-complete-flash {
+  animation: checklist-complete-flash 180ms ease-out forwards;
+  will-change: opacity;
+}
+
 /* Label crossfade — used by AnimatedLabel for text/number swaps. Outgoing
  * label fades out & lifts up + slight blur; incoming rises in from below.
  * Container holds both spans in a CSS grid cell so width is the natural max

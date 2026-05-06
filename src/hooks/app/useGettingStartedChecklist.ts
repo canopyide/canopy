@@ -4,6 +4,7 @@ import { useProjectStore } from "@/store/projectStore";
 import { usePanelStore } from "@/store/panelStore";
 import { getCurrentViewStore } from "@/store/createWorktreeStore";
 import { notify } from "@/lib/notify";
+import { keybindingService } from "@/services/KeybindingService";
 import { logError } from "@/utils/logger";
 import { safeFireAndForget } from "@/utils/safeFireAndForget";
 import type { ChecklistState, ChecklistItemId } from "@shared/types/ipc/maps";
@@ -80,40 +81,43 @@ export function useGettingStartedChecklist(isStateLoaded: boolean): GettingStart
     safeFireAndForget(window.electron.onboarding.markChecklistItem(item), {
       context: "Marking onboarding checklist item",
     });
-    let shouldCelebrate = false;
-    let shouldDismiss = false;
-    setChecklist((prev) => {
-      if (!prev) return prev;
-      if (prev.items[item]) return prev;
-      const updated: ChecklistState = {
-        ...prev,
-        items: { ...prev.items, [item]: true },
-      };
-      const allDone = Object.values(updated.items).every(Boolean);
-      if (allDone) {
-        shouldCelebrate = !prev.celebrationShown;
-        shouldDismiss = true;
-        return { ...updated, dismissed: true, celebrationShown: true };
-      }
-      return updated;
-    });
-    if (shouldDismiss) {
+
+    // Decide side effects against the latest committed state via the ref so
+    // we never depend on React running the updater synchronously inside the
+    // dispatch (it doesn't, in concurrent mode).
+    const prev = checklistRef.current;
+    if (!prev || prev.items[item]) return;
+
+    const updatedItems = { ...prev.items, [item]: true };
+    const allDone = Object.values(updatedItems).every(Boolean);
+    const next: ChecklistState = allDone
+      ? { ...prev, items: updatedItems, dismissed: true, celebrationShown: true }
+      : { ...prev, items: updatedItems };
+
+    setChecklist(next);
+    checklistRef.current = next;
+
+    if (allDone) {
       safeFireAndForget(window.electron.onboarding.dismissChecklist(), {
         context: "Dismissing onboarding checklist",
       });
-    }
-    if (shouldCelebrate) {
-      notify({
-        type: "success",
-        title: "Checklist complete!",
-        message: "You're all set! Open the Action Palette (Cmd+K) to explore shortcuts.",
-        duration: 5000,
-        transient: true,
-      });
-      setShowCelebration(true);
-      safeFireAndForget(window.electron.onboarding.markChecklistCelebrationShown(), {
-        context: "Marking onboarding celebration shown",
-      });
+      if (!prev.celebrationShown) {
+        const paletteCombo = keybindingService.getDisplayCombo("panel.palette");
+        const message = paletteCombo
+          ? `You're all set. Open the panel palette (${paletteCombo}) to launch an agent`
+          : "You're all set. Open the panel palette to launch an agent";
+        notify({
+          type: "success",
+          title: "Checklist complete!",
+          message,
+          duration: 5000,
+          transient: true,
+        });
+        setShowCelebration(true);
+        safeFireAndForget(window.electron.onboarding.markChecklistCelebrationShown(), {
+          context: "Marking onboarding celebration shown",
+        });
+      }
     }
   }, []);
 
@@ -152,17 +156,24 @@ export function useGettingStartedChecklist(isStateLoaded: boolean): GettingStart
     if (!isElectronAvailable() || !window.electron?.onboarding?.onChecklistPush) return;
     return window.electron.onboarding.onChecklistPush((next) => {
       setChecklist((prev) => {
-        if (!prev) return next;
+        if (!prev) {
+          // Sync the ref synchronously so a markItem firing before React
+          // commits doesn't read a stale null value.
+          checklistRef.current = next;
+          return next;
+        }
         const mergedItems = { ...prev.items } as typeof prev.items;
         for (const key of Object.keys(next.items) as Array<keyof typeof next.items>) {
           if (next.items[key] || prev.items[key]) mergedItems[key] = true;
         }
-        return {
+        const merged: ChecklistState = {
           ...next,
           items: mergedItems,
           dismissed: prev.dismissed || next.dismissed,
           celebrationShown: prev.celebrationShown || next.celebrationShown,
         };
+        checklistRef.current = merged;
+        return merged;
       });
     });
   }, []);
