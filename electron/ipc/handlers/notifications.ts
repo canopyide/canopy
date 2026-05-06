@@ -120,6 +120,9 @@ export function registerNotificationHandlers(_deps: HandlerDependencies): () => 
         .sort((a, b) => a - b);
       allowed.quietHoursWeekdays = Array.from(new Set(days));
     }
+    if (typeof s.groupByContext === "boolean") {
+      allowed.groupByContext = s.groupByContext;
+    }
 
     for (const [field, value] of Object.entries(allowed)) {
       store.set(`notificationSettings.${field}`, value);

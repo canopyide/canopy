@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Bell, CheckCheck, Ellipsis, Moon, Trash2, X } from "lucide-react";
+import { Bell, CheckCheck, Ellipsis, Layers, Moon, Trash2, X } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import {
   useNotificationHistoryStore,
@@ -18,6 +18,8 @@ import {
 import { actionService } from "@/services/ActionService";
 import { muteForDuration, muteUntilNextMorning, notify, setSessionQuietUntil } from "@/lib/notify";
 import { useNotificationSettingsStore } from "@/store/notificationSettingsStore";
+import { useUIStore } from "@/store/uiStore";
+import { useWorktreeStore } from "@/hooks/useWorktreeStore";
 import { isScheduledQuietNow, nextOccurrenceTimestamp } from "@shared/utils/quietHours";
 import type { NotificationType } from "@/store/notificationStore";
 
@@ -27,6 +29,9 @@ const SEVERITY_WEIGHTS: Record<NotificationType, number> = {
   info: 1,
   success: 0,
 } as const;
+
+const NEEDS_ATTENTION_CAP = 5;
+const CONTEXT_NONE_KEY = "__none__";
 
 const timeFormatter = new Intl.DateTimeFormat(undefined, {
   hour: "numeric",
@@ -40,6 +45,20 @@ function getWorstSeverity(entries: NotificationHistoryEntry[]): NotificationType
   ).type;
 }
 
+function isUnreadGroup(group: ThreadGroup): boolean {
+  return group.entries.some((e) => !e.seenAsToast);
+}
+
+function getGroupContextKey(group: ThreadGroup): string {
+  for (const e of group.entries) {
+    const wt = e.context?.worktreeId;
+    if (wt) return `wt:${wt}`;
+    const proj = e.context?.projectId;
+    if (proj) return `proj:${proj}`;
+  }
+  return CONTEXT_NONE_KEY;
+}
+
 interface NotificationCenterProps {
   open: boolean;
   onClose: () => void;
@@ -49,6 +68,13 @@ interface ThreadGroup {
   correlationId: string | undefined;
   entries: NotificationHistoryEntry[];
   latestTimestamp: number;
+}
+
+interface ContextSection {
+  key: string;
+  worktreeId?: string;
+  projectId?: string;
+  groups: ThreadGroup[];
 }
 
 function groupByCorrelationId(entries: NotificationHistoryEntry[]): ThreadGroup[] {
@@ -78,6 +104,28 @@ function groupByCorrelationId(entries: NotificationHistoryEntry[]): ThreadGroup[
   });
 }
 
+function partitionByContext(groups: ThreadGroup[]): ContextSection[] {
+  const sections = new Map<string, ContextSection>();
+  const order: string[] = [];
+
+  for (const g of groups) {
+    const key = getGroupContextKey(g);
+    if (!sections.has(key)) {
+      const first = g.entries.find((e) => e.context?.worktreeId || e.context?.projectId);
+      sections.set(key, {
+        key,
+        worktreeId: first?.context?.worktreeId,
+        projectId: first?.context?.projectId,
+        groups: [],
+      });
+      order.push(key);
+    }
+    sections.get(key)!.groups.push(g);
+  }
+
+  return order.map((k) => sections.get(k)!);
+}
+
 export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
   const entries = useNotificationHistoryStore((s) => s.entries);
   const unreadCount = useNotificationHistoryStore((s) => s.unreadCount);
@@ -91,6 +139,8 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
     quietHoursStartMin,
     quietHoursEndMin,
     quietHoursWeekdays,
+    groupByContext,
+    setGroupByContext,
   } = useNotificationSettingsStore(
     useShallow((s) => ({
       quietUntil: s.quietUntil,
@@ -98,8 +148,13 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
       quietHoursStartMin: s.quietHoursStartMin,
       quietHoursEndMin: s.quietHoursEndMin,
       quietHoursWeekdays: s.quietHoursWeekdays,
+      groupByContext: s.groupByContext,
+      setGroupByContext: s.setGroupByContext,
     }))
   );
+
+  const lastClosedAt = useUIStore((s) => s.lastNotificationCenterClosedAt);
+  const resetLastClosedAt = useUIStore((s) => s.resetNotificationCenterLastClosedAt);
 
   const [filter, setFilter] = useState<"all" | "unread">("all");
   const [frozenUnreadIds, setFrozenUnreadIds] = useState<Set<string> | null>(null);
@@ -159,13 +214,53 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
     return entries.filter((e) => !e.seenAsToast);
   }, [entries, filter, frozenUnreadIds]);
 
-  const groups = useMemo(() => groupByCorrelationId(filteredEntries), [filteredEntries]);
+  const { needsAttentionGroups, chronoSections, dividerGroupId } = useMemo(() => {
+    const allGroups = groupByCorrelationId(filteredEntries);
+
+    const pinned = allGroups
+      .filter((g) => {
+        if (!isUnreadGroup(g)) return false;
+        const sev = getWorstSeverity(g.entries);
+        return sev === "error" || sev === "warning";
+      })
+      .sort((a, b) => {
+        const sevDiff =
+          SEVERITY_WEIGHTS[getWorstSeverity(b.entries)] -
+          SEVERITY_WEIGHTS[getWorstSeverity(a.entries)];
+        if (sevDiff !== 0) return sevDiff;
+        return b.latestTimestamp - a.latestTimestamp;
+      })
+      .slice(0, NEEDS_ATTENTION_CAP);
+
+    const sections: ContextSection[] = groupByContext
+      ? partitionByContext(allGroups)
+      : [{ key: "all", groups: allGroups }];
+
+    let divider: string | null = null;
+    if (lastClosedAt > 0) {
+      for (const g of allGroups) {
+        if (g.latestTimestamp > lastClosedAt) {
+          divider = g.correlationId ?? g.entries[0]?.id ?? null;
+          break;
+        }
+      }
+    }
+
+    return {
+      needsAttentionGroups: pinned,
+      chronoSections: sections,
+      dividerGroupId: divider,
+    };
+  }, [filteredEntries, groupByContext, lastClosedAt]);
+
+  const totalChronoGroups = chronoSections.reduce((sum, s) => sum + s.groups.length, 0);
 
   const handleMarkAllRead = () => {
     if (filter === "unread") {
       setFrozenUnreadIds(new Set(entries.filter((e) => !e.seenAsToast).map((e) => e.id)));
     }
     markAllRead();
+    resetLastClosedAt();
   };
 
   const handleMuteFor = (durationMs: number, label: string) => {
@@ -209,6 +304,8 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
     ? `Muted until ${timeFormatter.format(new Date(quietUntil))}`
     : "Quiet hours";
   const morningLabel = `Until ${timeFormatter.format(new Date(nextOccurrenceTimestamp(8 * 60)))}`;
+
+  const showGroupToggle = entries.length > 0;
 
   return (
     <div className="w-[360px] max-h-[420px] flex flex-col">
@@ -270,6 +367,22 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
           )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
+          {showGroupToggle && (
+            <button
+              type="button"
+              aria-label="Group by project or worktree"
+              aria-pressed={groupByContext}
+              title="Group by project or worktree"
+              onClick={() => setGroupByContext(!groupByContext)}
+              className={`p-1 transition-colors rounded-[var(--radius-sm)] ${
+                groupByContext
+                  ? "bg-overlay-medium text-daintree-text/80"
+                  : "text-daintree-text/50 hover:bg-daintree-text/10 hover:text-daintree-text/80"
+              }`}
+            >
+              <Layers className="w-3 h-3" aria-hidden="true" />
+            </button>
+          )}
           {unreadCount > 0 && (
             <Button
               type="button"
@@ -340,7 +453,7 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
         </div>
       </div>
       <div className="flex-1 overflow-y-auto">
-        {groups.length === 0 ? (
+        {totalChronoGroups === 0 && needsAttentionGroups.length === 0 ? (
           filter === "unread" && entries.length > 0 ? (
             <EmptyState
               variant="user-cleared"
@@ -370,26 +483,131 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
             />
           )
         ) : (
-          <div className="divide-y divide-tint/[0.04]">
-            {groups.map((group) =>
-              group.correlationId && group.entries.length > 1 ? (
-                <NotificationThread
-                  key={group.correlationId}
-                  group={group}
-                  onDismiss={dismissEntry}
-                />
-              ) : (
-                <NotificationCenterEntry
-                  key={group.entries[0]!.id}
-                  entry={group.entries[0]!}
-                  isNew={!group.entries[0]!.seenAsToast}
-                  onDismiss={() => dismissEntry(group.entries[0]!.id)}
-                />
-              )
+          <>
+            {needsAttentionGroups.length > 0 && (
+              <NeedsAttentionSection groups={needsAttentionGroups} onDismiss={dismissEntry} />
             )}
-          </div>
+            {chronoSections.map((section) => (
+              <ChronoSection
+                key={section.key}
+                section={section}
+                groupByContext={groupByContext}
+                dividerGroupId={dividerGroupId}
+                onDismiss={dismissEntry}
+              />
+            ))}
+          </>
         )}
       </div>
+    </div>
+  );
+}
+
+function NeedsAttentionSection({
+  groups,
+  onDismiss,
+}: {
+  groups: ThreadGroup[];
+  onDismiss: (id: string) => void;
+}) {
+  return (
+    <div data-testid="needs-attention-section" className="border-b border-divider">
+      <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-daintree-text/50">
+        Needs attention
+      </div>
+      <div className="divide-y divide-tint/[0.04]">
+        {groups.map((group) => renderGroup(group, onDismiss))}
+      </div>
+    </div>
+  );
+}
+
+function ChronoSection({
+  section,
+  groupByContext,
+  dividerGroupId,
+  onDismiss,
+}: {
+  section: ContextSection;
+  groupByContext: boolean;
+  dividerGroupId: string | null;
+  onDismiss: (id: string) => void;
+}) {
+  return (
+    <div data-testid="chrono-section">
+      {groupByContext && (
+        <ContextSectionHeader
+          worktreeId={section.worktreeId}
+          projectId={section.projectId}
+          count={section.groups.length}
+        />
+      )}
+      <div className="divide-y divide-tint/[0.04]">
+        {section.groups.map((group) => {
+          const groupKey = group.correlationId ?? group.entries[0]!.id;
+          const isDivider = dividerGroupId !== null && groupKey === dividerGroupId;
+          return (
+            <div key={groupKey}>
+              {isDivider && <NewSinceLastLookedDivider />}
+              {renderGroup(group, onDismiss)}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function renderGroup(group: ThreadGroup, onDismiss: (id: string) => void) {
+  if (group.correlationId && group.entries.length > 1) {
+    return <NotificationThread key={group.correlationId} group={group} onDismiss={onDismiss} />;
+  }
+  const entry = group.entries[0]!;
+  return (
+    <NotificationCenterEntry
+      key={entry.id}
+      entry={entry}
+      isNew={!entry.seenAsToast}
+      onDismiss={() => onDismiss(entry.id)}
+    />
+  );
+}
+
+function ContextSectionHeader({
+  worktreeId,
+  projectId,
+  count,
+}: {
+  worktreeId?: string;
+  projectId?: string;
+  count: number;
+}) {
+  const worktreeName = useWorktreeStore((s) =>
+    worktreeId ? s.worktrees.get(worktreeId)?.name : undefined
+  );
+  const label = worktreeName ?? projectId ?? "Other";
+  return (
+    <div
+      data-testid="context-section-header"
+      className="flex items-center justify-between px-3 py-1 bg-overlay-subtle text-[10px] font-medium uppercase tracking-wide text-daintree-text/60"
+    >
+      <span className="truncate">{label}</span>
+      <span aria-hidden="true" className="ml-2 shrink-0 text-daintree-text/40 tabular-nums">
+        {count}
+      </span>
+    </div>
+  );
+}
+
+function NewSinceLastLookedDivider() {
+  return (
+    <div
+      data-testid="new-since-last-looked"
+      className="flex items-center gap-2 px-3 py-1 text-[10px] font-medium text-daintree-text/50"
+    >
+      <span className="h-px flex-1 bg-divider" aria-hidden="true" />
+      <span>New since you last looked</span>
+      <span className="h-px flex-1 bg-divider" aria-hidden="true" />
     </div>
   );
 }

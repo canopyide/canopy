@@ -142,6 +142,7 @@ export interface StoreSchema {
     quietHoursStartMin: number;
     quietHoursEndMin: number;
     quietHoursWeekdays: number[];
+    groupByContext?: boolean;
   };
   userAgentRegistry: UserAgentRegistry;
   agentUpdateSettings: AgentUpdateSettings;
@@ -307,6 +308,7 @@ const storeOptions = {
       quietHoursStartMin: 22 * 60,
       quietHoursEndMin: 8 * 60,
       quietHoursWeekdays: [],
+      groupByContext: false,
     },
     userAgentRegistry: {},
     agentUpdateSettings: {

@@ -10,6 +10,12 @@ interface UIState {
   openNotificationCenter: () => void;
   closeNotificationCenter: () => void;
   toggleNotificationCenter: () => void;
+  // Epoch ms recorded when the notification center was last closed. Used by
+  // the "New since you last looked" divider to mark entries arriving after
+  // the user's most recent visit. In-memory only — a fresh session starts
+  // at 0 (no divider until the first close).
+  lastNotificationCenterClosedAt: number;
+  resetNotificationCenterLastClosedAt: () => void;
 }
 
 export const useUIStore = create<UIState>((set, get) => ({
@@ -37,11 +43,16 @@ export const useUIStore = create<UIState>((set, get) => ({
   hasOpenOverlays: () => get().overlayClaims.size > 0,
 
   notificationCenterOpen: false,
+  lastNotificationCenterClosedAt: 0,
   openNotificationCenter: () => {
     useNotificationHistoryStore.getState().resetEvictedCount();
     set({ notificationCenterOpen: true });
   },
-  closeNotificationCenter: () => set({ notificationCenterOpen: false }),
+  closeNotificationCenter: () =>
+    set((state) => {
+      if (!state.notificationCenterOpen) return state;
+      return { notificationCenterOpen: false, lastNotificationCenterClosedAt: Date.now() };
+    }),
   toggleNotificationCenter: () =>
     set((state) => {
       const next = !state.notificationCenterOpen;
@@ -49,7 +60,9 @@ export const useUIStore = create<UIState>((set, get) => ({
       // should not silently zero an unread arrival counter.
       if (next) {
         useNotificationHistoryStore.getState().resetEvictedCount();
+        return { notificationCenterOpen: next };
       }
-      return { notificationCenterOpen: next };
+      return { notificationCenterOpen: next, lastNotificationCenterClosedAt: Date.now() };
     }),
+  resetNotificationCenterLastClosedAt: () => set({ lastNotificationCenterClosedAt: 0 }),
 }));
