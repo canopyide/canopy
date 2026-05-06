@@ -69,17 +69,23 @@ const initialState: HelpPanelState = {
   hibernateSessions: {},
 };
 
+function isRecordOfUnknown(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object";
+}
+
 function sanitizeHibernateSessions(value: unknown): Record<string, HelpHibernateSession> {
-  if (!value || typeof value !== "object") return {};
+  if (!isRecordOfUnknown(value)) return {};
   const out: Record<string, HelpHibernateSession> = {};
-  for (const [projectId, entry] of Object.entries(value as Record<string, unknown>)) {
-    if (!projectId || typeof projectId !== "string") continue;
-    if (!entry || typeof entry !== "object") continue;
-    const e = entry as Record<string, unknown>;
-    if (typeof e.sessionId !== "string" || !e.sessionId) continue;
-    if (typeof e.cwd !== "string" || !e.cwd) continue;
-    if (typeof e.agentId !== "string" || !e.agentId) continue;
-    out[projectId] = { sessionId: e.sessionId, cwd: e.cwd, agentId: e.agentId };
+  for (const [projectId, entry] of Object.entries(value)) {
+    if (!projectId) continue;
+    if (!isRecordOfUnknown(entry)) continue;
+    const sessionId = entry.sessionId;
+    const cwd = entry.cwd;
+    const agentId = entry.agentId;
+    if (typeof sessionId !== "string" || !sessionId) continue;
+    if (typeof cwd !== "string" || !cwd) continue;
+    if (typeof agentId !== "string" || !agentId) continue;
+    out[projectId] = { sessionId, cwd, agentId };
   }
   return out;
 }
