@@ -51,6 +51,24 @@ export function useAgentSetupPoll(isOpen: boolean, setAvailability: SetAvailabil
       }
     };
 
+    // window.blur fires when the user switches to another OS app (Cmd+Tab).
+    // Chromium's visibilitychange does not fire in that case, so the poll
+    // would otherwise keep running at full rate while the wizard is hidden
+    // behind another application.
+    const handleBlur = () => {
+      stopPolling();
+    };
+
+    // window.focus fires when the user returns to Daintree, but it also fires
+    // when switching between project WebContentsViews inside the same
+    // BrowserWindow. Guard with document.hasFocus() so we only resume polling
+    // when the OS-level app actually regained focus.
+    const handleFocus = () => {
+      if (!document.hasFocus() || !isOpenRef.current || document.hidden) return;
+      poll();
+      startPolling();
+    };
+
     if (document.hidden) {
       // Defer to visibilitychange — fires one refresh on regain
     } else {
@@ -59,9 +77,13 @@ export function useAgentSetupPoll(isOpen: boolean, setAvailability: SetAvailabil
     }
 
     document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("blur", handleBlur);
+    window.addEventListener("focus", handleFocus);
 
     return () => {
       document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("blur", handleBlur);
+      window.removeEventListener("focus", handleFocus);
       stopPolling();
     };
   }, [isOpen]);

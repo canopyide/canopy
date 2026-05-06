@@ -96,6 +96,22 @@ export function useSystemHealthCheck(): SystemHealthCheckState {
     };
   }, [runCheck]);
 
+  // Re-check when the user returns to Daintree — tools installed while the
+  // wizard was backgrounded should appear without a manual "Re-check" click.
+  // The document.hasFocus() guard avoids re-running when switching between
+  // project WebContentsViews inside the same window. isCheckingRef prevents
+  // overlap with an in-flight check (mount or otherwise).
+  useEffect(() => {
+    const handleFocus = () => {
+      if (!document.hasFocus()) return;
+      void runCheck();
+    };
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [runCheck]);
+
   const visibleSpecs = specs.filter((s) => s.severity !== "silent");
 
   const allDone =
