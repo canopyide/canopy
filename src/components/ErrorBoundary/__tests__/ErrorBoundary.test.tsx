@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
+import type { ReactNode } from "react";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { ErrorBoundary } from "../ErrorBoundary";
 import { useErrorStore } from "@/store/errorStore";
+import { actionService } from "@/services/ActionService";
 
 vi.mock("@/services/ActionService", () => ({
   actionService: {
@@ -41,8 +43,52 @@ function makeLargeError(stackBytes: number): Error {
   return err;
 }
 
-function ThrowingChildWithError({ error }: { error: Error }) {
+// Returns `null` so TypeScript treats this as a proper React component
+// (ReactNode) rather than inferring `void` from the unconditional throw.
+function ThrowingChildWithError({ error }: { error: Error }): ReactNode {
   throw error;
+}
+
+type WriteTextMock = ReturnType<typeof makeWriteTextMock>;
+function makeWriteTextMock() {
+  return vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined);
+}
+
+type OpenExternalMock = ReturnType<typeof makeOpenExternalMock>;
+function makeOpenExternalMock() {
+  return vi.fn<(url: string) => Promise<void>>().mockResolvedValue(undefined);
+}
+
+interface ElectronMock {
+  system?: { openExternal?: OpenExternalMock };
+  clipboard?: { writeText?: WriteTextMock };
+}
+
+function setElectronMock(mock: ElectronMock): void {
+  Object.assign(window, { electron: mock });
+}
+
+function clearElectronMock(): void {
+  Object.assign(window, { electron: undefined });
+}
+
+function lastDispatchedUrl(): string {
+  const calls = vi.mocked(actionService.dispatch).mock.calls;
+  const last = calls.at(-1);
+  if (!last) throw new Error("actionService.dispatch was not called");
+  const args = last[1];
+  if (!args || typeof (args as { url?: unknown }).url !== "string") {
+    throw new Error("actionService.dispatch was called without a string url arg");
+  }
+  return (args as { url: string }).url;
+}
+
+function firstWriteTextPayload(writeText: WriteTextMock): string {
+  const arg = writeText.mock.calls[0]?.[0];
+  if (typeof arg !== "string") {
+    throw new Error("clipboard.writeText was not called with a string");
+  }
+  return arg;
 }
 
 describe("ErrorBoundary", () => {
@@ -52,20 +98,16 @@ describe("ErrorBoundary", () => {
     useErrorStore.getState().reset();
     vi.spyOn(console, "error").mockImplementation(() => {});
 
-    (window as unknown as { electron: unknown }).electron = {
-      system: {
-        openExternal: vi.fn().mockResolvedValue(undefined),
-      },
-      clipboard: {
-        writeText: vi.fn().mockResolvedValue(undefined),
-      },
-    };
+    setElectronMock({
+      system: { openExternal: makeOpenExternalMock() },
+      clipboard: { writeText: makeWriteTextMock() },
+    });
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
-    delete (window as unknown as { electron?: unknown }).electron;
+    clearElectronMock();
   });
 
   it("renders children when no error", () => {
@@ -267,13 +309,11 @@ describe("ErrorBoundary", () => {
   describe("handleReport", () => {
     it("copies the full report to the clipboard before opening the URL", async () => {
       const { safeFireAndForget } = await import("@/utils/safeFireAndForget");
-      const writeText = vi.fn().mockResolvedValue(undefined);
-      (window as unknown as { electron: { clipboard: { writeText: typeof writeText } } }).electron =
-        {
-          clipboard: { writeText },
-          // @ts-expect-error partial test stub
-          system: { openExternal: vi.fn().mockResolvedValue(undefined) },
-        };
+      const writeText = makeWriteTextMock();
+      setElectronMock({
+        clipboard: { writeText },
+        system: { openExternal: makeOpenExternalMock() },
+      });
 
       render(
         <ErrorBoundary variant="section">
@@ -284,7 +324,7 @@ describe("ErrorBoundary", () => {
       fireEvent.click(screen.getByText("Report Issue"));
 
       expect(writeText).toHaveBeenCalledTimes(1);
-      const payload = writeText.mock.calls[0]![0] as string;
+      const payload = firstWriteTextPayload(writeText);
       expect(payload).toContain("Test render error");
       expect(payload).toContain("Sentry Event ID:");
       expect(payload).toContain("Incident ID:");
@@ -295,13 +335,11 @@ describe("ErrorBoundary", () => {
       const { captureRendererException } = await import("@/utils/rendererSentry");
       vi.mocked(captureRendererException).mockReturnValueOnce("sentry-evt-99");
 
-      const writeText = vi.fn().mockResolvedValue(undefined);
-      (window as unknown as { electron: { clipboard: { writeText: typeof writeText } } }).electron =
-        {
-          clipboard: { writeText },
-          // @ts-expect-error partial test stub
-          system: { openExternal: vi.fn().mockResolvedValue(undefined) },
-        };
+      const writeText = makeWriteTextMock();
+      setElectronMock({
+        clipboard: { writeText },
+        system: { openExternal: makeOpenExternalMock() },
+      });
 
       render(
         <ErrorBoundary variant="section">
@@ -313,14 +351,12 @@ describe("ErrorBoundary", () => {
 
       const errors = useErrorStore.getState().errors;
       const storeId = errors[0]!.id;
-      const payload = writeText.mock.calls[0]![0] as string;
+      const payload = firstWriteTextPayload(writeText);
       expect(payload).toContain("sentry-evt-99");
       expect(payload).toContain(storeId);
     });
 
-    it("opens a URL within the GitHub URL budget for normal-sized errors", async () => {
-      const { actionService } = await import("@/services/ActionService");
-
+    it("opens a URL within the GitHub URL budget for normal-sized errors", () => {
       render(
         <ErrorBoundary variant="section">
           <ThrowingChild shouldThrow={true} />
@@ -334,13 +370,12 @@ describe("ErrorBoundary", () => {
         expect.objectContaining({ url: expect.any(String) }),
         { source: "user" }
       );
-      const url = vi.mocked(actionService.dispatch).mock.calls.at(-1)![1]!.url as string;
+      const url = lastDispatchedUrl();
       expect(url.length).toBeLessThanOrEqual(7200);
       expect(url).toContain("github.com/daintreehq/daintree/issues/new");
     });
 
-    it("truncates oversized stacks so the URL stays within budget", async () => {
-      const { actionService } = await import("@/services/ActionService");
+    it("truncates oversized stacks so the URL stays within budget", () => {
       const huge = makeLargeError(20000);
 
       render(
@@ -351,14 +386,13 @@ describe("ErrorBoundary", () => {
 
       fireEvent.click(screen.getByText("Report Issue"));
 
-      const url = vi.mocked(actionService.dispatch).mock.calls.at(-1)![1]!.url as string;
+      const url = lastDispatchedUrl();
       expect(url.length).toBeLessThanOrEqual(7200);
       const decodedBody = decodeURIComponent(url.split("&body=")[1]!);
       expect(decodedBody).toContain("middle truncated");
     });
 
     it("falls back to a minimal URL with a clipboard toast when even truncated content overflows", async () => {
-      const { actionService } = await import("@/services/ActionService");
       const { notify } = await import("@/lib/notify");
 
       const oversizedMessage = "x".repeat(8000);
@@ -373,7 +407,7 @@ describe("ErrorBoundary", () => {
 
       fireEvent.click(screen.getByText("Report Issue"));
 
-      const url = vi.mocked(actionService.dispatch).mock.calls.at(-1)![1]!.url as string;
+      const url = lastDispatchedUrl();
       const decodedBody = decodeURIComponent(url.split("&body=")[1]!);
       expect(decodedBody).toContain("copied to your clipboard");
       expect(notify).toHaveBeenCalledWith(
@@ -385,9 +419,9 @@ describe("ErrorBoundary", () => {
     });
 
     it("does not crash when the clipboard binding is unavailable", () => {
-      (window as unknown as { electron: unknown }).electron = {
-        system: { openExternal: vi.fn().mockResolvedValue(undefined) },
-      };
+      setElectronMock({
+        system: { openExternal: makeOpenExternalMock() },
+      });
 
       render(
         <ErrorBoundary variant="section">
@@ -398,8 +432,7 @@ describe("ErrorBoundary", () => {
       expect(() => fireEvent.click(screen.getByText("Report Issue"))).not.toThrow();
     });
 
-    it("keeps the URL within budget even when error.message is huge", async () => {
-      const { actionService } = await import("@/services/ActionService");
+    it("keeps the URL within budget even when error.message is huge", () => {
       const longMessage = "x".repeat(8000);
       const huge = new Error(longMessage);
       huge.stack = `Error: ${longMessage}\n    at frame (file.ts:1:1)`;
@@ -412,25 +445,22 @@ describe("ErrorBoundary", () => {
 
       fireEvent.click(screen.getByText("Report Issue"));
 
-      const url = vi.mocked(actionService.dispatch).mock.calls.at(-1)![1]!.url as string;
+      const url = lastDispatchedUrl();
       expect(url.length).toBeLessThanOrEqual(7200);
     });
 
-    it("preserves the top and bottom stack frames when truncating", async () => {
-      const { actionService } = await import("@/services/ActionService");
+    it("preserves the top and bottom stack frames when truncating", () => {
       const top = Array.from({ length: 15 }, (_, i) => `    at TOP_${i} (file.ts:${i}:1)`);
       const middle = Array.from({ length: 200 }, (_, i) => `    at MIDDLE_${i} (file.ts:${i}:1)`);
       const bottom = Array.from({ length: 5 }, (_, i) => `    at BOTTOM_${i} (file.ts:${i}:1)`);
       const huge = new Error("huge");
       huge.stack = ["Error: huge", ...top, ...middle, ...bottom].join("\n");
 
-      const writeText = vi.fn().mockResolvedValue(undefined);
-      (window as unknown as { electron: { clipboard: { writeText: typeof writeText } } }).electron =
-        {
-          clipboard: { writeText },
-          // @ts-expect-error partial test stub
-          system: { openExternal: vi.fn().mockResolvedValue(undefined) },
-        };
+      const writeText = makeWriteTextMock();
+      setElectronMock({
+        clipboard: { writeText },
+        system: { openExternal: makeOpenExternalMock() },
+      });
 
       render(
         <ErrorBoundary variant="section">
@@ -440,18 +470,17 @@ describe("ErrorBoundary", () => {
 
       fireEvent.click(screen.getByText("Report Issue"));
 
-      const clipboardPayload = writeText.mock.calls[0]![0] as string;
+      const clipboardPayload = firstWriteTextPayload(writeText);
       expect(clipboardPayload).toContain("MIDDLE_0");
 
-      const url = vi.mocked(actionService.dispatch).mock.calls.at(-1)![1]!.url as string;
+      const url = lastDispatchedUrl();
       const decodedBody = decodeURIComponent(url.split("&body=")[1]!);
       expect(decodedBody).toContain("TOP_0");
       expect(decodedBody).toContain("BOTTOM_0");
       expect(decodedBody).not.toContain("MIDDLE_30");
     });
 
-    it("survives lone surrogate characters in the error message", async () => {
-      const { actionService } = await import("@/services/ActionService");
+    it("survives lone surrogate characters in the error message", () => {
       const huge = new Error("\uD800 invalid surrogate");
 
       render(
@@ -464,17 +493,14 @@ describe("ErrorBoundary", () => {
       expect(actionService.dispatch).toHaveBeenCalled();
     });
 
-    it("still opens a URL when clipboard.writeText throws synchronously", async () => {
-      const { actionService } = await import("@/services/ActionService");
-      const writeText = vi.fn(() => {
+    it("still opens a URL when clipboard.writeText throws synchronously", () => {
+      const writeText = vi.fn<(text: string) => Promise<void>>().mockImplementation(() => {
         throw new Error("sync clipboard failure");
       });
-      (window as unknown as { electron: { clipboard: { writeText: typeof writeText } } }).electron =
-        {
-          clipboard: { writeText },
-          // @ts-expect-error partial test stub
-          system: { openExternal: vi.fn().mockResolvedValue(undefined) },
-        };
+      setElectronMock({
+        clipboard: { writeText },
+        system: { openExternal: makeOpenExternalMock() },
+      });
 
       render(
         <ErrorBoundary variant="section">

@@ -99,15 +99,23 @@ function buildIssueUrl(title: string, body: string): string {
 }
 
 function openIssueUrl(url: string): void {
-  if (!window.electron?.system?.openExternal) return;
-  actionService
-    .dispatch("system.openExternal", { url }, { source: "user" })
-    .then((result) => {
-      if (!result.ok) window.electron.system.openExternal(url);
-    })
-    .catch(() => {
-      window.electron.system.openExternal(url);
-    });
+  const directOpen = window.electron?.system?.openExternal;
+  if (!directOpen) return;
+  safeFireAndForget(
+    (async (): Promise<void> => {
+      try {
+        const result = await actionService.dispatch(
+          "system.openExternal",
+          { url },
+          { source: "user" }
+        );
+        if (!result.ok) await directOpen(url);
+      } catch {
+        await directOpen(url);
+      }
+    })(),
+    { context: "ErrorBoundary.openIssueUrl" }
+  );
 }
 
 export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {

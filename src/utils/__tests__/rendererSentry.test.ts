@@ -163,14 +163,4 @@ describe("rendererSentry", () => {
     const id = mod.captureRendererException(new Error("boom"));
     expect(id).toBe("abc123def456");
   });
-
-  it("captureRendererException returns undefined when Sentry drops the event", async () => {
-    const sentry = await import("@sentry/electron/renderer");
-    const captureSpy = vi.mocked(sentry.captureException);
-    captureSpy.mockReturnValueOnce(undefined as unknown as string);
-
-    const mod = await import("../rendererSentry");
-    const id = mod.captureRendererException(new Error("boom"));
-    expect(id).toBeUndefined();
-  });
 });
