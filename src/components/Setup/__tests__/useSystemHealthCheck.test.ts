@@ -184,6 +184,27 @@ describe("useSystemHealthCheck", () => {
     expect(mockCheckTool).toHaveBeenCalledTimes(0);
   });
 
+  it("allows immediate focus retry after a failed check", async () => {
+    mockGetSpecs.mockRejectedValueOnce(new Error("ipc unavailable"));
+
+    renderHook(() => useSystemHealthCheck());
+    await flush();
+
+    mockGetSpecs.mockClear();
+    mockCheckTool.mockClear();
+    mockGetSpecs.mockResolvedValueOnce(SPECS);
+
+    // Even though we are well within the 5s throttle window, the failure
+    // cleared lastCheckAtRef so the focus retry should fire immediately.
+    act(() => {
+      dispatchFocus();
+    });
+    await flush();
+
+    expect(mockGetSpecs).toHaveBeenCalledTimes(1);
+    expect(mockCheckTool).toHaveBeenCalledTimes(SPECS.length);
+  });
+
   it("does not start a parallel check when one is already in flight", async () => {
     let resolveSpecs: (value: PrerequisiteSpec[]) => void = () => {};
     const pendingSpecs = new Promise<PrerequisiteSpec[]>((resolve) => {

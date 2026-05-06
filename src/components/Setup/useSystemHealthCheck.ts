@@ -84,6 +84,8 @@ export function useSystemHealthCheck(): SystemHealthCheckState {
         }
       });
     } catch (err) {
+      // Allow an immediate focus-retry after a failed check by clearing the throttle stamp.
+      lastCheckAtRef.current = 0;
       if (activeRef.current) setError(formatErrorMessage(err, "Health check failed"));
     } finally {
       isCheckingRef.current = false;
