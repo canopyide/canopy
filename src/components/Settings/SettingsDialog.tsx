@@ -1307,7 +1307,7 @@ function MatchBadge({ count }: { count: number }) {
   return (
     <span
       aria-hidden="true"
-      className="ml-auto text-[10px] font-medium tabular-nums px-1.5 py-0.5 rounded-full bg-daintree-accent/20 text-daintree-accent leading-none"
+      className="ml-auto text-[10px] font-medium tabular-nums px-1.5 py-0.5 rounded-full bg-tint/10 text-daintree-text/60 leading-none"
     >
       {count}
     </span>
@@ -1379,7 +1379,7 @@ function SearchResults({
           className={cn(
             "group w-full text-left p-3 rounded-[var(--radius-md)] border transition-colors",
             index === activeIndex
-              ? "bg-overlay-soft border-daintree-accent/30"
+              ? "bg-overlay-selected border-border-strong"
               : "border-transparent hover:bg-overlay-soft hover:border-daintree-border",
             "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
           )}
@@ -1387,7 +1387,7 @@ function SearchResults({
           <div className="flex items-center gap-3">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-0.5">
-                <span className="text-[10px] font-medium text-daintree-accent/80 uppercase tracking-wide">
+                <span className="text-[10px] font-medium text-daintree-text/40 uppercase tracking-wide">
                   {result.tabLabel}
                 </span>
                 {result.subtabLabel && (
@@ -1416,7 +1416,7 @@ function SearchResults({
               className={cn(
                 "w-4 h-4 text-daintree-text/20 shrink-0 transition",
                 index === activeIndex
-                  ? "text-daintree-accent/60 translate-x-0.5"
+                  ? "text-daintree-text/40 translate-x-0.5"
                   : "group-hover:text-daintree-text/40"
               )}
             />
