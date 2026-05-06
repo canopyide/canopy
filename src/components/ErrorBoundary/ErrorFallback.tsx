@@ -118,21 +118,23 @@ export function ErrorFallback({
                 sizes.button
               )}
             >
-              Report Issue
+              Report issue
             </button>
           )}
 
-          <button
-            type="button"
-            onClick={handleOpenLogs}
-            data-testid="error-fallback-logs"
-            className={cn(
-              "bg-daintree-border hover:bg-daintree-border/80 text-daintree-text rounded transition-colors",
-              sizes.button
-            )}
-          >
-            View Logs
-          </button>
+          {variant !== "component" && (
+            <button
+              type="button"
+              onClick={handleOpenLogs}
+              data-testid="error-fallback-logs"
+              className={cn(
+                "bg-daintree-border hover:bg-daintree-border/80 text-daintree-text rounded transition-colors",
+                sizes.button
+              )}
+            >
+              View logs
+            </button>
+          )}
         </div>
 
         {import.meta.env.DEV && errorInfo?.componentStack && variant !== "component" && (

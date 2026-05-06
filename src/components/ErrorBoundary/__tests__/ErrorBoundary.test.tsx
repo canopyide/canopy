@@ -120,7 +120,7 @@ describe("ErrorBoundary", () => {
       </ErrorBoundary>
     );
 
-    expect(screen.getByText("Report Issue")).toBeTruthy();
+    expect(screen.getByText("Report issue")).toBeTruthy();
   });
 
   it("provides onReport to fullscreen variant", () => {
@@ -130,7 +130,7 @@ describe("ErrorBoundary", () => {
       </ErrorBoundary>
     );
 
-    expect(screen.getByText("Report Issue")).toBeTruthy();
+    expect(screen.getByText("Report issue")).toBeTruthy();
   });
 
   it("does not provide onReport to component variant", () => {
@@ -140,7 +140,7 @@ describe("ErrorBoundary", () => {
       </ErrorBoundary>
     );
 
-    expect(screen.queryByText("Report Issue")).toBeNull();
+    expect(screen.queryByText("Report issue")).toBeNull();
   });
 
   it("renders incident ID in production mode for section variant", () => {
