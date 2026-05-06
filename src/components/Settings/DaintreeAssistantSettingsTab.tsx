@@ -17,6 +17,7 @@ import { SettingsSection } from "./SettingsSection";
 import { SettingsInput } from "./SettingsInput";
 import { SettingsSelect } from "./SettingsSelect";
 import { SettingsSwitchCard } from "./SettingsSwitchCard";
+import { useSettingsTabValidation } from "./SettingsValidationRegistry";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 import { logError } from "@/utils/logger";
@@ -53,6 +54,8 @@ export function DaintreeAssistantSettingsTab() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useSettingsTabValidation("assistant", Boolean(error));
 
   const preferredAgentId = useHelpPanelStore((s) => s.preferredAgentId);
   const setPreferredAgent = useHelpPanelStore((s) => s.setPreferredAgent);
