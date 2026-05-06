@@ -50,6 +50,8 @@ export function SafeModeBanner() {
   const skipped =
     typeof skippedPanelCount === "number" && skippedPanelCount > 0 ? skippedPanelCount : 0;
 
+  const hasCrashDiagnostics = typeof crashCount === "number" && crashCount > 0 && lastCrashAt;
+
   return (
     <div
       role="status"
@@ -57,10 +59,8 @@ export function SafeModeBanner() {
       className="flex items-center gap-3 px-4 py-2 bg-[var(--color-status-warning)]/15 border-b border-[var(--color-status-warning)]/30 text-[var(--color-status-warning)] text-sm shrink-0"
     >
       <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden="true" />
-      <span className="flex-1">
-        Safe mode{summary}. Panels weren't restored to break the crash loop.
-      </span>
-      {skipped > 0 && (
+      <span className="flex-1">Safe mode — panels weren't restored to break the crash loop.</span>
+      {(skipped > 0 || hasCrashDiagnostics) && (
         <Popover>
           <PopoverTrigger
             type="button"
@@ -73,9 +73,12 @@ export function SafeModeBanner() {
             sideOffset={8}
             className="p-3 text-xs max-w-xs space-y-2 text-daintree-text"
           >
-            <p className="font-medium">
-              {skipped} {skipped === 1 ? "panel was" : "panels were"} skipped
-            </p>
+            {hasCrashDiagnostics && <p className="font-medium">{summaryParts.join(", ")}</p>}
+            {skipped > 0 && (
+              <p className="font-medium">
+                {skipped} {skipped === 1 ? "panel was" : "panels were"} skipped
+              </p>
+            )}
             <p className="text-daintree-text/70">
               Daintree booted in safe mode after repeated crashes. Saved panels weren't restored so
               you can recover the app.
