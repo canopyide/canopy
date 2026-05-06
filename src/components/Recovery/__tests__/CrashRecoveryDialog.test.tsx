@@ -211,7 +211,7 @@ describe("CrashRecoveryDialog", () => {
       expect(call.panelIds).not.toContain("t2");
     });
 
-    it("calls onResolve with fresh when Start Fresh is clicked", async () => {
+    it("calls onResolve with fresh when 'Continue without restoring' is clicked", async () => {
       const { onResolve } = setup();
       fireEvent.click(screen.getByTestId("fresh-button"));
       await waitFor(() => expect(onResolve).toHaveBeenCalledWith({ kind: "fresh" }));
@@ -308,10 +308,10 @@ describe("CrashRecoveryDialog", () => {
     fireEvent.click(screen.getByTestId("details-toggle"));
     fireEvent.click(screen.getByTestId("report-button"));
     expect(screen.getByTestId("privacy-warning")).toBeTruthy();
-    expect(screen.getByTestId("privacy-warning").textContent).toContain("copy to clipboard");
     expect(screen.getByTestId("privacy-warning").textContent).toContain(
-      "You'll need to paste the info into the form"
+      "Opens GitHub Issues in your browser"
     );
+    expect(screen.getByTestId("privacy-warning").textContent).toContain("publicly visible");
     expect(screen.getByTestId("report-button").textContent).toContain("Copy & report on GitHub");
 
     fireEvent.click(screen.getByTestId("report-button"));
@@ -325,6 +325,34 @@ describe("CrashRecoveryDialog", () => {
     const { onUpdateConfig } = setup();
     fireEvent.click(screen.getByTestId("auto-restore-checkbox"));
     await waitFor(() => expect(onUpdateConfig).toHaveBeenCalledWith({ autoRestoreOnCrash: true }));
+  });
+
+  describe("crash-loop guard", () => {
+    it("shows the auto-restore checkbox when crashCount is undefined", () => {
+      setup();
+      expect(screen.getByTestId("auto-restore-checkbox")).toBeTruthy();
+      expect(screen.queryByTestId("auto-restore-paused")).toBeNull();
+    });
+
+    it("shows the auto-restore checkbox when crashCount is 1", () => {
+      setup({ crash: { crashCount: 1 } });
+      expect(screen.getByTestId("auto-restore-checkbox")).toBeTruthy();
+      expect(screen.queryByTestId("auto-restore-paused")).toBeNull();
+    });
+
+    it("hides the checkbox at crashCount 2 with auto-restore disabled", () => {
+      setup({ crash: { crashCount: 2 }, config: { autoRestoreOnCrash: false } });
+      expect(screen.queryByTestId("auto-restore-checkbox")).toBeNull();
+      expect(screen.queryByTestId("auto-restore-paused")).toBeNull();
+    });
+
+    it("hides the checkbox and shows paused note at crashCount 2 with auto-restore enabled", () => {
+      setup({ crash: { crashCount: 2 }, config: { autoRestoreOnCrash: true } });
+      expect(screen.queryByTestId("auto-restore-checkbox")).toBeNull();
+      const note = screen.getByTestId("auto-restore-paused");
+      expect(note.textContent).toContain("Auto-restore paused");
+      expect(note.textContent).toContain("too many consecutive crashes");
+    });
   });
 
   it("shows environment metadata in detail section", () => {

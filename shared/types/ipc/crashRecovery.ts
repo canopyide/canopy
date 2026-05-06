@@ -58,6 +58,7 @@ export interface PendingCrash {
   hasBackup: boolean;
   backupTimestamp?: number;
   panels?: PanelSummary[];
+  crashCount?: number;
 }
 
 export interface CrashRecoveryConfig {
