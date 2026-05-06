@@ -4,32 +4,38 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import type { McpRuntimeSnapshot } from "../../../shared/types/ipc/mcpServer.js";
 
-const { mockUserDataDir, mockHelpFolderPath, mockMcpServerService, mockStoreGet } = vi.hoisted(
-  () => ({
-    mockUserDataDir: vi.fn<() => string>(),
-    mockHelpFolderPath: vi.fn<() => string | null>(),
-    mockMcpServerService: {
-      isRunning: true,
-      currentPort: 45454 as number | null,
-      enabled: true,
-      isEnabled() {
-        return this.enabled;
-      },
-      start: vi.fn().mockResolvedValue(undefined),
-      setEnabled: vi.fn().mockResolvedValue(undefined),
-      setHelpTokenValidator: vi.fn(),
-      getRuntimeState: vi.fn<
-        () => import("../../../shared/types/ipc/mcpServer.js").McpRuntimeSnapshot
-      >(() => ({
-        enabled: true,
-        state: "ready",
-        port: 45454,
-        lastError: null,
-      })),
+const {
+  mockUserDataDir,
+  mockHelpFolderPath,
+  mockMcpServerService,
+  mockStoreGet,
+  mockProbeMcpServer,
+} = vi.hoisted(() => ({
+  mockUserDataDir: vi.fn<() => string>(),
+  mockHelpFolderPath: vi.fn<() => string | null>(),
+  mockMcpServerService: {
+    isRunning: true,
+    currentPort: 45454 as number | null,
+    currentApiKey: "test-api-key" as string | null,
+    enabled: true,
+    isEnabled() {
+      return this.enabled;
     },
-    mockStoreGet: vi.fn<(key: string) => unknown>(),
-  })
-);
+    start: vi.fn().mockResolvedValue(undefined),
+    setEnabled: vi.fn().mockResolvedValue(undefined),
+    setHelpTokenValidator: vi.fn(),
+    getRuntimeState: vi.fn<
+      () => import("../../../shared/types/ipc/mcpServer.js").McpRuntimeSnapshot
+    >(() => ({
+      enabled: true,
+      state: "ready",
+      port: 45454,
+      lastError: null,
+    })),
+  },
+  mockStoreGet: vi.fn<(key: string) => unknown>(),
+  mockProbeMcpServer: vi.fn<(port: number, apiKey: string) => Promise<void>>(),
+}));
 
 vi.mock("electron", () => ({
   app: {
@@ -46,6 +52,10 @@ vi.mock("../HelpService.js", () => ({
 
 vi.mock("../McpServerService.js", () => ({
   mcpServerService: mockMcpServerService,
+}));
+
+vi.mock("../mcp-server/readinessProbe.js", () => ({
+  probeMcpServer: (port: number, apiKey: string) => mockProbeMcpServer(port, apiKey),
 }));
 
 vi.mock("../../store.js", () => ({
@@ -96,10 +106,13 @@ describe("HelpSessionService", () => {
     mockStoreGet.mockReturnValue(undefined);
     mockMcpServerService.isRunning = true;
     mockMcpServerService.currentPort = 45454;
+    mockMcpServerService.currentApiKey = "test-api-key";
     mockMcpServerService.enabled = true;
     mockMcpServerService.start.mockClear();
     mockMcpServerService.setEnabled.mockClear();
     mockMcpServerService.setHelpTokenValidator.mockClear();
+    mockProbeMcpServer.mockReset();
+    mockProbeMcpServer.mockResolvedValue(undefined);
 
     service = new HelpSessionService();
     // The new `ensureMcpServerReady` path throws if no registry is wired —
@@ -436,5 +449,44 @@ describe("HelpSessionService", () => {
       name: "HelpSessionError",
       code: "MCP_NOT_READY",
     });
+  });
+
+  it("runs the active MCP self-probe before writing .mcp.json when daintreeControl is on", async () => {
+    await service.provisionSession(provisionInput());
+    expect(mockProbeMcpServer).toHaveBeenCalledWith(45454, "test-api-key");
+  });
+
+  it("skips the active probe when daintreeControl is false", async () => {
+    mockStoreGet.mockReturnValue({ daintreeControl: false });
+    await service.provisionSession(provisionInput());
+    expect(mockProbeMcpServer).not.toHaveBeenCalled();
+  });
+
+  it("throws MCP_NOT_READY when the active probe fails — passive socket-bound state isn't enough", async () => {
+    // Models the exact bug behind #6898: socket is bound (`isRunning` true)
+    // but the HTTP/MCP handler hasn't actually serviced a real request yet.
+    mockProbeMcpServer.mockRejectedValueOnce(
+      new Error("MCP readiness probe failed after 3 attempt(s) on port 45454: status 500")
+    );
+    await expect(service.provisionSession(provisionInput())).rejects.toMatchObject({
+      name: "HelpSessionError",
+      code: "MCP_NOT_READY",
+    });
+  });
+
+  it("does not write .mcp.json when the active probe fails", async () => {
+    mockProbeMcpServer.mockRejectedValueOnce(new Error("probe fail"));
+    await expect(service.provisionSession(provisionInput())).rejects.toThrow();
+
+    // The session dir is provisioned only after the readiness gate passes,
+    // so neither the dir nor `.mcp.json` should exist on disk.
+    const sessionsRoot = path.join(userData, "help-sessions");
+    let entries: string[] = [];
+    try {
+      entries = await fs.readdir(sessionsRoot);
+    } catch {
+      entries = [];
+    }
+    expect(entries).toEqual([]);
   });
 });

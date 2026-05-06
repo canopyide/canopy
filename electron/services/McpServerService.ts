@@ -78,6 +78,10 @@ export class McpServerService {
     return this.httpLifecycle.currentPort;
   }
 
+  get currentApiKey(): string | null {
+    return this.httpLifecycle.currentApiKey;
+  }
+
   onStatusChange(listener: (running: boolean) => void): () => void {
     this.statusListeners.add(listener);
     return () => {

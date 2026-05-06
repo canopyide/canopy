@@ -7,6 +7,7 @@ import { store } from "../store.js";
 import { getHelpFolderPath } from "./HelpService.js";
 import { resilientAtomicWriteFile } from "../utils/fs.js";
 import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
+import { probeMcpServer } from "./mcp-server/readinessProbe.js";
 import type { HelpAssistantTier } from "../../shared/types/ipc/maps.js";
 
 const SESSIONS_DIR_NAME = "help-sessions";
@@ -403,6 +404,17 @@ export class HelpSessionService {
         snapshot.lastError ?? "MCP server is not running (state: " + snapshot.state + ")"
       );
     }
+
+    // `isRunning` only proves the OS socket is bound. Issue an active
+    // self-probe (real `initialize` round-trip with the bearer) so we
+    // don't write `.mcp.json` and launch the assistant against a server
+    // that hangs or 500s on the first request.
+    const port = mcpServerService.currentPort;
+    const apiKey = mcpServerService.currentApiKey;
+    if (port === null || !apiKey) {
+      throw new Error("MCP server is running but port or API key is unavailable");
+    }
+    await probeMcpServer(port, apiKey);
   }
 
   private async getMcpPort(daintreeControl: boolean): Promise<number | null> {
