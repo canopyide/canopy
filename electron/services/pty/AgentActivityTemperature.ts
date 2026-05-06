@@ -9,9 +9,11 @@ const DEFAULT_HALF_LIFE_MS = 4500;
 const DEFAULT_WORKING_THRESHOLD = 70;
 const DEFAULT_WAITING_THRESHOLD = 40;
 const DEFAULT_WORKING_DWELL_MS = 2000;
+const DEFAULT_WORKING_MIN_CHANGED_SAMPLES = 4;
+const DEFAULT_WORKING_MAX_CHANGE_GAP_MS = 900;
 const DEFAULT_WAITING_DWELL_MS = 6000;
 const DEFAULT_ACTIVE_GAP_RESET_MS = 3000;
-const DEFAULT_RESIZE_QUIET_MS = 1000;
+const DEFAULT_RESIZE_QUIET_MS = 500;
 const DEFAULT_MAX_TEMPERATURE = 100;
 const DEFAULT_VISIBLE_BASE_IMPULSE = 22;
 const DEFAULT_VISIBLE_LOG_SCALE = 8;
@@ -22,6 +24,8 @@ export interface AgentActivityTemperatureOptions {
   workingThreshold?: number;
   waitingThreshold?: number;
   workingDwellMs?: number;
+  workingMinChangedSamples?: number;
+  workingMaxChangeGapMs?: number;
   waitingDwellMs?: number;
   activeGapResetMs?: number;
   resizeQuietMs?: number;
@@ -51,6 +55,8 @@ export class AgentActivityTemperature {
   private readonly workingThreshold: number;
   private readonly waitingThreshold: number;
   private readonly workingDwellMs: number;
+  private readonly workingMinChangedSamples: number;
+  private readonly workingMaxChangeGapMs: number;
   private readonly waitingDwellMs: number;
   private readonly activeGapResetMs: number;
   private readonly resizeQuietMs: number;
@@ -67,12 +73,21 @@ export class AgentActivityTemperature {
   private resizeSuppressUntil = 0;
   private baselineInvalid = false;
   private lastSnapshot: VisibleContentSnapshot | undefined;
+  private changedSampleCount = 0;
 
   constructor(options?: AgentActivityTemperatureOptions) {
     this.halfLifeMs = positive(options?.halfLifeMs, DEFAULT_HALF_LIFE_MS);
     this.workingThreshold = positive(options?.workingThreshold, DEFAULT_WORKING_THRESHOLD);
     this.waitingThreshold = positive(options?.waitingThreshold, DEFAULT_WAITING_THRESHOLD);
     this.workingDwellMs = nonNegative(options?.workingDwellMs, DEFAULT_WORKING_DWELL_MS);
+    this.workingMinChangedSamples = positiveInteger(
+      options?.workingMinChangedSamples,
+      DEFAULT_WORKING_MIN_CHANGED_SAMPLES
+    );
+    this.workingMaxChangeGapMs = positive(
+      options?.workingMaxChangeGapMs,
+      DEFAULT_WORKING_MAX_CHANGE_GAP_MS
+    );
     this.waitingDwellMs = nonNegative(options?.waitingDwellMs, DEFAULT_WAITING_DWELL_MS);
     this.activeGapResetMs = positive(options?.activeGapResetMs, DEFAULT_ACTIVE_GAP_RESET_MS);
     this.resizeQuietMs = nonNegative(options?.resizeQuietMs, DEFAULT_RESIZE_QUIET_MS);
@@ -101,6 +116,7 @@ export class AgentActivityTemperature {
     this.resizeSuppressUntil = 0;
     this.baselineInvalid = false;
     this.lastSnapshot = undefined;
+    this.changedSampleCount = 0;
   }
 
   noteResize(now: number, quietMs = this.resizeQuietMs): void {
@@ -110,6 +126,7 @@ export class AgentActivityTemperature {
     this.activeEvidenceStartedAt = 0;
     this.lastChangedAt = 0;
     this.quietStartedAt = 0;
+    this.changedSampleCount = 0;
   }
 
   seedSnapshot(snapshot: VisibleContentSnapshot, now: number): AgentActivityObservationResult {
@@ -153,6 +170,7 @@ export class AgentActivityTemperature {
       this.lastSampleAt = now;
       this.quietStartedAt = now;
       this.clearResizeSuppression();
+      this.changedSampleCount = 0;
       return this.result(now, false, 0, 0, true, false);
     }
 
@@ -174,6 +192,7 @@ export class AgentActivityTemperature {
     if (changedChars <= 0) {
       if (this.lastChangedAt > 0 && now - this.lastChangedAt > this.activeGapResetMs) {
         this.activeEvidenceStartedAt = 0;
+        this.changedSampleCount = 0;
       }
       if (this.quietStartedAt === 0) {
         this.quietStartedAt = now;
@@ -186,10 +205,12 @@ export class AgentActivityTemperature {
 
     if (
       this.activeEvidenceStartedAt === 0 ||
-      (this.lastChangedAt > 0 && now - this.lastChangedAt > this.activeGapResetMs)
+      (this.lastChangedAt > 0 && now - this.lastChangedAt > this.workingMaxChangeGapMs)
     ) {
       this.activeEvidenceStartedAt = now;
+      this.changedSampleCount = 0;
     }
+    this.changedSampleCount += 1;
     this.lastChangedAt = now;
     this.quietStartedAt = 0;
 
@@ -220,6 +241,7 @@ export class AgentActivityTemperature {
       changed &&
       this.temperature >= this.workingThreshold &&
       this.activeEvidenceStartedAt > 0 &&
+      this.changedSampleCount >= this.workingMinChangedSamples &&
       now - this.activeEvidenceStartedAt >= this.workingDwellMs
     ) {
       return "busy";
@@ -294,6 +316,10 @@ export class AgentActivityTemperature {
 
 function positive(value: number | undefined, fallback: number): number {
   return value !== undefined && Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function positiveInteger(value: number | undefined, fallback: number): number {
+  return value !== undefined && Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
 }
 
 function nonNegative(value: number | undefined, fallback: number): number {

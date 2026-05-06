@@ -189,6 +189,10 @@ export function measureVisibleContentDelta(
 
   const previousChars = previous.units ?? Array.from(previous.text);
   const currentChars = current.units ?? Array.from(current.text);
+  if (isSuffixOf(previousChars, currentChars) || isSuffixOf(currentChars, previousChars)) {
+    return { changed: false, changedChars: 0 };
+  }
+
   let prefix = 0;
   while (
     prefix < previousChars.length &&
@@ -212,6 +216,19 @@ export function measureVisibleContentDelta(
   const currentChanged = currentChars.length - prefix - suffix;
   const changedChars = Math.max(previousChanged, currentChanged);
   return { changed: changedChars > 0, changedChars };
+}
+
+function isSuffixOf(needle: readonly string[], haystack: readonly string[]): boolean {
+  if (needle.length > haystack.length) {
+    return false;
+  }
+  const offset = haystack.length - needle.length;
+  for (let index = 0; index < needle.length; index += 1) {
+    if (needle[index] !== haystack[offset + index]) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function normalizeTextUnits(text: string): string[] {
@@ -243,8 +260,8 @@ function visibleCellUnit(cell: VisibleContentCell): NormalizedVisibleUnit | null
     return null;
   }
 
-  const chars = cell.chars || (cell.code === 0 ? " " : String.fromCodePoint(cell.code));
-  if (/^\s*$/u.test(chars)) {
+  const chars = cell.chars;
+  if (chars.length === 0 || /^\s*$/u.test(chars)) {
     return null;
   }
 

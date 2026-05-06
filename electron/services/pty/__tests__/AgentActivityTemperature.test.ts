@@ -33,6 +33,18 @@ describe("AgentActivityTemperature", () => {
     expect(model.getTemperature()).toBeGreaterThanOrEqual(70);
   });
 
+  it("does not hint busy for sparse once-per-second changes", () => {
+    const model = new AgentActivityTemperature();
+
+    model.seedSnapshot(snapshot("waiting 0"), 1000);
+
+    expect(model.observeSnapshot(2000, snapshot("layout 1")).stateHint).toBeUndefined();
+    expect(model.observeSnapshot(3000, snapshot("layout 2")).stateHint).toBeUndefined();
+    expect(model.observeSnapshot(4000, snapshot("layout 3")).stateHint).toBeUndefined();
+    expect(model.observeSnapshot(5000, snapshot("layout 4")).stateHint).toBeUndefined();
+    expect(model.getTemperature()).toBeGreaterThanOrEqual(70);
+  });
+
   it("cools through the waiting threshold only after six-second quiet dwell", () => {
     const model = new AgentActivityTemperature();
 
@@ -55,20 +67,22 @@ describe("AgentActivityTemperature", () => {
     model.observeSnapshot(1100, snapshot("working 1"));
     model.observeSnapshot(1800, snapshot("working 2"));
 
+    const temperatureBeforeResize = model.getTemperature(1900);
     model.noteResize(1900);
 
-    const suppressed = model.observeSnapshot(2400, snapshot("reflowed content"));
+    const suppressed = model.observeSnapshot(2300, snapshot("reflowed content"));
     expect(suppressed.suppressed).toBe(true);
     expect(suppressed.stateHint).toBeUndefined();
+    expect(suppressed.temperature).toBe(temperatureBeforeResize);
 
-    const seeded = model.observeSnapshot(3000, snapshot("post resize baseline"));
+    const seeded = model.observeSnapshot(2400, snapshot("post resize baseline"));
     expect(seeded.seeded).toBe(true);
     expect(seeded.stateHint).toBeUndefined();
 
-    expect(model.observeSnapshot(3700, snapshot("post resize 1")).stateHint).toBeUndefined();
-    expect(model.observeSnapshot(4400, snapshot("post resize 2")).stateHint).toBeUndefined();
-    expect(model.observeSnapshot(5100, snapshot("post resize 3")).stateHint).toBeUndefined();
-    expect(model.observeSnapshot(5800, snapshot("post resize 4")).stateHint).toBe("busy");
+    expect(model.observeSnapshot(3100, snapshot("post resize 1")).stateHint).toBeUndefined();
+    expect(model.observeSnapshot(3800, snapshot("post resize 2")).stateHint).toBeUndefined();
+    expect(model.observeSnapshot(4500, snapshot("post resize 3")).stateHint).toBeUndefined();
+    expect(model.observeSnapshot(5200, snapshot("post resize 4")).stateHint).toBe("busy");
   });
 
   it("keeps resize suppressed until the last resize event settles", () => {
@@ -83,7 +97,7 @@ describe("AgentActivityTemperature", () => {
     expect(stillResizing.suppressed).toBe(true);
     expect(stillResizing.stateHint).toBeUndefined();
 
-    const settled = model.observeSnapshot(4100, snapshot("baseline after resize"));
+    const settled = model.observeSnapshot(3650, snapshot("baseline after resize"));
     expect(settled.seeded).toBe(true);
     expect(settled.suppressed).toBe(false);
   });

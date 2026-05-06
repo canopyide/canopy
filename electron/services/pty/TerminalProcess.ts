@@ -1003,9 +1003,7 @@ export class TerminalProcess {
 
     const viewportTop = buffer.baseY;
     const viewportBottom = buffer.baseY + terminal.rows;
-    const cursorY = buffer.cursorY ?? 0;
-    const cursorIndex = Math.min(Math.max(buffer.baseY + cursorY, viewportTop), viewportBottom - 1);
-    const end = cursorIndex + 1;
+    const end = viewportBottom;
     const start = Math.max(viewportTop, end - n);
 
     const lines: string[] = [];
@@ -1038,12 +1036,7 @@ export class TerminalProcess {
 
     const viewportTop = buffer.baseY;
     const viewportBottom = buffer.baseY + terminal.rows;
-    const cursorY = buffer.cursorY ?? 0;
-    const cursorIndex = Math.min(Math.max(buffer.baseY + cursorY, viewportTop), viewportBottom - 1);
-    const end = cursorIndex + 1;
-    // Compare the whole visible viewport for cell snapshots. Fixed physical-row
-    // tails are unstable across wrap-only layout changes: the first sampled row
-    // can move even when the visible content has not semantically changed.
+    const end = viewportBottom;
     const start = viewportTop;
     const reusableCell = buffer.getNullCell();
 

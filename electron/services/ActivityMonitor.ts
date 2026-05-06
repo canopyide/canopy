@@ -744,7 +744,7 @@ export class ActivityMonitor {
     this.becomeBusy({ trigger: "input" });
   }
 
-  notifyResize(suppressionMs = 1000): void {
+  notifyResize(suppressionMs = 500): void {
     this.resizeSuppressUntil = Date.now() + suppressionMs;
     this.highOutputDetector.resetWindow();
     this.workingSignalDebouncer.reset();

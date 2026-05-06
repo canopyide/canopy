@@ -129,6 +129,20 @@ describe("visible content normalization", () => {
     });
   });
 
+  it("ignores cells without actual character content", () => {
+    const before = createVisibleCellContentSnapshot([
+      [cell({ chars: "", code: 47, bgColorMode: 1, bgColor: 1, defaultVisual: false })],
+      row("/exit"),
+    ]);
+    const after = createVisibleCellContentSnapshot([row("/exit")]);
+
+    expect(after.hash).toBe(before.hash);
+    expect(measureVisibleContentDelta(before, after)).toEqual({
+      changed: false,
+      changedChars: 0,
+    });
+  });
+
   it("ignores background row-bar changes on visible text cells", () => {
     const before = createVisibleCellContentSnapshot([
       row("/exit", { bgColorMode: 1, bgColor: 1, defaultVisual: false }),
@@ -164,6 +178,34 @@ describe("visible content normalization", () => {
     expect(after.hash).toBe(before.hash);
     expect(after.length).toBe(before.length);
     expect(measureVisibleContentDelta(before, after)).toEqual({
+      changed: false,
+      changedChars: 0,
+    });
+  });
+
+  it("treats viewport prefix growth as unchanged visible activity", () => {
+    const before = createVisibleCellContentSnapshot([
+      row("/exit"),
+      row("See ya!"),
+      row("/exit"),
+      row("Goodbye!"),
+      row('Try "create a util logging.py that..."'),
+    ]);
+    const after = createVisibleCellContentSnapshot([
+      row("* recap: Filed issue #6951 capturing the dock regression"),
+      row("/exit"),
+      row("See ya!"),
+      row("/exit"),
+      row("Goodbye!"),
+      row('Try "create a util logging.py that..."'),
+    ]);
+
+    expect(after.hash).not.toBe(before.hash);
+    expect(measureVisibleContentDelta(before, after)).toEqual({
+      changed: false,
+      changedChars: 0,
+    });
+    expect(measureVisibleContentDelta(after, before)).toEqual({
       changed: false,
       changedChars: 0,
     });

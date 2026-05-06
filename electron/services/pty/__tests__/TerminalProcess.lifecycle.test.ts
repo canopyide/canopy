@@ -4,6 +4,7 @@ import { TerminalProcess } from "../TerminalProcess.js";
 import type { SpawnContext } from "../terminalSpawn.js";
 import { events } from "../../events.js";
 import { AGENT_OUTPUT_ACTIVITY_LINE_COUNT } from "../AgentActivityTemperature.js";
+import { measureVisibleContentDelta } from "../SustainedChangeTracker.js";
 
 vi.mock("node-pty", () => {
   return { spawn: vi.fn() };
@@ -351,9 +352,80 @@ describe("TerminalProcess — observer-driven exit handlers", () => {
       const after = terminal.getVisibleActivitySnapshot(AGENT_OUTPUT_ACTIVITY_LINE_COUNT);
 
       expect(after).toBeDefined();
-      expect(after?.hash).toBe(before?.hash);
-      expect(after?.length).toBe(before?.length);
-      expect(after?.text).toBe(before?.text);
+      expect(measureVisibleContentDelta(before, after!)).toEqual({
+        changed: false,
+        changedChars: 0,
+      });
+    } finally {
+      terminal.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("treats viewport height changes as prefix-only activity", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const pty = createControllablePty();
+    const mutablePtyDimensions = pty as unknown as { cols: number; rows: number };
+    mutablePtyDimensions.cols = 90;
+    mutablePtyDimensions.rows = 18;
+    const terminal = createTerminal(
+      pty,
+      { cols: 90, rows: 18, kind: "terminal", launchAgentId: "claude" },
+      undefined,
+      "t-output-height-stable"
+    );
+
+    try {
+      terminal.stopActivityMonitor();
+      terminal.getInfo().agentState = "waiting";
+
+      await emitDataAndFlush(
+        pty,
+        Array.from({ length: 26 }, (_, index) => `historical line ${index + 1}`)
+          .concat([
+            "/exit",
+            "See ya!",
+            "/exit",
+            "Goodbye!",
+            'Try "create a util logging.py that..."',
+          ])
+          .join("\r\n")
+      );
+
+      const before = terminal.getVisibleActivitySnapshot(AGENT_OUTPUT_ACTIVITY_LINE_COUNT);
+      terminal.resize(90, 24);
+      const after = terminal.getVisibleActivitySnapshot(AGENT_OUTPUT_ACTIVITY_LINE_COUNT);
+
+      expect(before).toBeDefined();
+      expect(after).toBeDefined();
+      expect(measureVisibleContentDelta(before, after!)).toEqual({
+        changed: false,
+        changedChars: 0,
+      });
+    } finally {
+      terminal.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("samples activity lines through the viewport bottom instead of stopping at the cursor", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const pty = createControllablePty();
+    const terminal = createTerminal(
+      pty,
+      { cols: 80, rows: 10, kind: "terminal", launchAgentId: "claude" },
+      undefined,
+      "t-output-after-cursor"
+    );
+
+    try {
+      terminal.stopActivityMonitor();
+
+      await emitDataAndFlush(pty, "above\r\nmiddle\r\nbelow-cursor\x1b[2A");
+
+      expect(terminal.getVisibleActivityLines(10)).toContain("below-cursor");
     } finally {
       terminal.dispose();
       vi.useRealTimers();
