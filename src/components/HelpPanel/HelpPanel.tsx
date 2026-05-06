@@ -73,15 +73,24 @@ type ProvisionOutcome =
   | { ok: false; code: "MCP_NOT_READY"; message: string }
   | { ok: false; code: "UNKNOWN"; message: string };
 
-async function provisionHelpSession(): Promise<ProvisionOutcome | null> {
-  const project = useProjectStore.getState().currentProject;
-  if (!project) return null;
+interface HelpProjectRef {
+  id: string;
+  path: string;
+}
+
+async function provisionHelpSession(project: HelpProjectRef): Promise<ProvisionOutcome> {
   try {
     const result = await window.electron.help.provisionSession({
       projectId: project.id,
       projectPath: project.path,
     });
-    if (!result) return null;
+    if (!result) {
+      return {
+        ok: false,
+        code: "UNKNOWN",
+        message: "Couldn't provision help session.",
+      };
+    }
     return { ok: true, session: result };
   } catch (err) {
     logError("Failed to provision help session", err);
@@ -152,9 +161,20 @@ interface HelpPanelProps {
    * for backward compatibility.
    */
   isVisible?: boolean;
+  /**
+   * Startup gate supplied by AppLayout. The help panel can mount while global
+   * state is still hydrating, but it must not launch the assistant terminal
+   * until project state is available because provisioning is what proves MCP
+   * readiness and writes the session-scoped .mcp.json.
+   */
+  isReadyToLaunch?: boolean;
 }
 
-export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: HelpPanelProps) {
+export function HelpPanel({
+  width: effectiveWidth,
+  isVisible: isVisibleProp,
+  isReadyToLaunch = true,
+}: HelpPanelProps) {
   const panelRef = useRef<HTMLElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [isResizing, setIsResizing] = useState(false);
@@ -182,6 +202,7 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
   const cliDetail = useCliAvailabilityStore((s) => (agentId ? s.details[agentId] : undefined));
   const cliAvailability = useCliAvailabilityStore((s) => s.availability);
   const cliHasRealData = useCliAvailabilityStore((s) => s.hasRealData);
+  const currentProject = useProjectStore((s) => s.currentProject);
 
   const agentConfig = agentId ? getAgentConfig(agentId) : undefined;
 
@@ -309,8 +330,18 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
   // Always starts a new conversation (never resumes).
   const hasAutoLaunched = useRef(false);
   useEffect(() => {
-    if (!isOpen || terminalId || !preferredAgentId || hasAutoLaunched.current) return;
+    if (
+      !isOpen ||
+      !isReadyToLaunch ||
+      !currentProject ||
+      terminalId ||
+      !preferredAgentId ||
+      hasAutoLaunched.current
+    ) {
+      return;
+    }
     const launchAgentId = preferredAgentId;
+    const launchProject = currentProject;
     hasAutoLaunched.current = true;
 
     safeFireAndForget(
@@ -322,8 +353,8 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
           return;
         }
 
-        const outcome = await provisionHelpSession();
-        if (outcome && !outcome.ok) {
+        const outcome = await provisionHelpSession(launchProject);
+        if (!outcome.ok) {
           hasAutoLaunched.current = false;
           if (outcome.code === "MCP_NOT_READY") {
             notifyMcpNotReady(outcome.message);
@@ -332,11 +363,10 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
           }
           return;
         }
-        const session = outcome?.ok ? outcome.session : null;
-        if (session) pendingSessionIdRef.current = session.sessionId;
-        const cwd = session?.sessionPath ?? folderPath;
-        const projectId = useProjectStore.getState().currentProject?.id ?? null;
-        const env = buildHelpEnv(session, projectId);
+        const session = outcome.session;
+        pendingSessionIdRef.current = session.sessionId;
+        const cwd = session.sessionPath;
+        const env = buildHelpEnv(session, launchProject.id);
         const customLaunchFlags = await loadCustomLaunchFlags();
 
         const result = await actionService.dispatch<{ terminalId: string | null }>(
@@ -397,7 +427,7 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
       })(),
       { context: "Auto-launching preferred help agent" }
     );
-  }, [isOpen, terminalId, preferredAgentId]);
+  }, [isOpen, isReadyToLaunch, currentProject, terminalId, preferredAgentId]);
 
   // Reset auto-launch guard when panel closes
   useEffect(() => {
@@ -460,6 +490,11 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
   const handleSelectAgent = useCallback(
     async (selectedAgentId: string) => {
       if (isLaunchingRef.current) return;
+      if (!isReadyToLaunch || !currentProject) {
+        notifyLaunchFailed(selectedAgentId, "Project state is still loading. Try again.");
+        return;
+      }
+      const launchProject = currentProject;
       isLaunchingRef.current = true;
 
       try {
@@ -477,8 +512,8 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
           return;
         }
 
-        const outcome = await provisionHelpSession();
-        if (outcome && !outcome.ok) {
+        const outcome = await provisionHelpSession(launchProject);
+        if (!outcome.ok) {
           // Reset the auto-launch gate so a recovered MCP can re-launch on
           // the next render — the single-supported-agent useEffect uses
           // this same ref to one-shot itself, so without the reset the
@@ -491,11 +526,10 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
           }
           return;
         }
-        const session = outcome?.ok ? outcome.session : null;
-        if (session) pendingSessionIdRef.current = session.sessionId;
-        const cwd = session?.sessionPath ?? folderPath;
-        const projectId = useProjectStore.getState().currentProject?.id ?? null;
-        const env = buildHelpEnv(session, projectId);
+        const session = outcome.session;
+        pendingSessionIdRef.current = session.sessionId;
+        const cwd = session.sessionPath;
+        const env = buildHelpEnv(session, launchProject.id);
         const customLaunchFlags = await loadCustomLaunchFlags();
 
         const result = await actionService.dispatch<{ terminalId: string | null }>(
@@ -540,7 +574,7 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
         isLaunchingRef.current = false;
       }
     },
-    [removePanel, clearTerminal]
+    [isReadyToLaunch, currentProject, removePanel, clearTerminal]
   );
 
   // Single-supported-agent auto-launch: when only one assistant-supported
@@ -550,7 +584,16 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
   // `preferredAgentId` is set), so they share the same `hasAutoLaunched`
   // ref to prevent any double-fire.
   useEffect(() => {
-    if (!isOpen || terminalId || preferredAgentId || hasAutoLaunched.current) return;
+    if (
+      !isOpen ||
+      !isReadyToLaunch ||
+      !currentProject ||
+      terminalId ||
+      preferredAgentId ||
+      hasAutoLaunched.current
+    ) {
+      return;
+    }
     if (supportedInstalledAgentIds.length !== 1) return;
     const onlyAgentId = supportedInstalledAgentIds[0];
     if (!onlyAgentId) return;
@@ -562,6 +605,8 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
     // (e.g. user installs a second supported CLI) re-evaluates the gate.
   }, [
     isOpen,
+    isReadyToLaunch,
+    currentProject,
     terminalId,
     preferredAgentId,
     supportedInstalledAgentIdsKey,
@@ -586,11 +631,16 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
   // (run-anyway is for the missing-CLI placeholder case).
   const doNewSession = useCallback(() => {
     if (!terminalId || !agentId) return;
+    if (!isReadyToLaunch || !currentProject) {
+      notifyLaunchFailed(agentId, "Project state is still loading. Try again.");
+      return;
+    }
     if (isLaunchingRef.current) return;
     const panel = usePanelStore.getState().panelsById[terminalId];
     if (!panel) return;
     const presetEnv = panel.extensionState?.presetEnv as Record<string, string> | undefined;
     const launchAgentId = agentId;
+    const launchProject = currentProject;
     const previousSessionId = useHelpPanelStore.getState().sessionId;
 
     // Reserve the new terminal id synchronously so the dock filter
@@ -614,8 +664,8 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
       (async () => {
         let session: HelpSessionRef | null = null;
         try {
-          const outcome = await provisionHelpSession();
-          if (outcome && !outcome.ok) {
+          const outcome = await provisionHelpSession(launchProject);
+          if (!outcome.ok) {
             pendingNewTerminalIdRef.current = null;
             useHelpPanelStore.getState().clearTerminal();
             if (outcome.code === "MCP_NOT_READY") {
@@ -625,10 +675,9 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
             }
             return;
           }
-          session = outcome?.ok ? outcome.session : null;
-          const cwd = session?.sessionPath ?? panel.cwd ?? "";
-          const projectId = useProjectStore.getState().currentProject?.id ?? null;
-          const helpEnv = buildHelpEnv(session, projectId);
+          session = outcome.session;
+          const cwd = session.sessionPath;
+          const helpEnv = buildHelpEnv(session, launchProject.id);
           const env: Record<string, string> | undefined =
             helpEnv || presetEnv ? { ...(presetEnv ?? {}), ...(helpEnv ?? {}) } : undefined;
 
@@ -676,7 +725,15 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
       })(),
       { context: "Help: + New session relaunch" }
     );
-  }, [terminalId, agentId, removePanel, clearTerminal, revokePendingSession]);
+  }, [
+    terminalId,
+    agentId,
+    isReadyToLaunch,
+    currentProject,
+    removePanel,
+    clearTerminal,
+    revokePendingSession,
+  ]);
 
   // Confirm only when there's something to lose — a working agent or a
   // conversation the user has actually engaged with. An untouched idle agent
@@ -728,11 +785,16 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
 
   const handleRunAnyway = useCallback(() => {
     if (!terminalId || !agentId) return;
+    if (!isReadyToLaunch || !currentProject) {
+      notifyLaunchFailed(agentId, "Project state is still loading. Try again.");
+      return;
+    }
     if (isLaunchingRef.current) return;
     const panel = usePanelStore.getState().panelsById[terminalId];
     if (!panel) return;
     const presetEnv = panel.extensionState?.presetEnv as Record<string, string> | undefined;
     const launchAgentId = agentId;
+    const launchProject = currentProject;
     const previousSessionId = useHelpPanelStore.getState().sessionId;
 
     // Reserve the new terminal id synchronously so the dock filter is
@@ -753,8 +815,8 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
       (async () => {
         let session: HelpSessionRef | null = null;
         try {
-          const outcome = await provisionHelpSession();
-          if (outcome && !outcome.ok) {
+          const outcome = await provisionHelpSession(launchProject);
+          if (!outcome.ok) {
             pendingNewTerminalIdRef.current = null;
             useHelpPanelStore.getState().clearTerminal();
             if (outcome.code === "MCP_NOT_READY") {
@@ -764,10 +826,9 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
             }
             return;
           }
-          session = outcome?.ok ? outcome.session : null;
-          const cwd = session?.sessionPath ?? panel.cwd ?? "";
-          const projectId = useProjectStore.getState().currentProject?.id ?? null;
-          const helpEnv = buildHelpEnv(session, projectId);
+          session = outcome.session;
+          const cwd = session.sessionPath;
+          const helpEnv = buildHelpEnv(session, launchProject.id);
           const env: Record<string, string> | undefined =
             helpEnv || presetEnv ? { ...(presetEnv ?? {}), ...(helpEnv ?? {}) } : undefined;
 
@@ -815,7 +876,15 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
       })(),
       { context: "Help: run-anyway re-launch" }
     );
-  }, [terminalId, agentId, removePanel, clearTerminal, revokePendingSession]);
+  }, [
+    terminalId,
+    agentId,
+    isReadyToLaunch,
+    currentProject,
+    removePanel,
+    clearTerminal,
+    revokePendingSession,
+  ]);
 
   const getRefreshTier = useMemo(() => {
     return () => {

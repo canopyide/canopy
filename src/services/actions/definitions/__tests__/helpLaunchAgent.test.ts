@@ -95,7 +95,14 @@ describe("help.launchAgent", () => {
         electron: {
           help: {
             getFolderPath: vi.fn(),
-            provisionSession: vi.fn().mockResolvedValue(null),
+            provisionSession: vi.fn().mockResolvedValue({
+              sessionId: "sess-default",
+              sessionPath: "/mock/help",
+              token: "tok-default",
+              tier: "action",
+              mcpUrl: null,
+              windowId: 1,
+            }),
             revokeSession: vi.fn().mockResolvedValue(undefined),
             markTerminal: vi.fn().mockResolvedValue(undefined),
           },
@@ -104,7 +111,9 @@ describe("help.launchAgent", () => {
       writable: true,
       configurable: true,
     });
-    mockGetProjectState.mockReturnValue({ currentProject: null });
+    mockGetProjectState.mockReturnValue({
+      currentProject: { id: "proj-default", path: "/repo" },
+    });
     action = extractHelpLaunchAgent();
   });
 
@@ -308,7 +317,7 @@ describe("help.launchAgent", () => {
     );
   });
 
-  it("falls back to folderPath cwd when no current project is active (no provision)", async () => {
+  it("does not launch until a current project is active", async () => {
     (window.electron.help.getFolderPath as ReturnType<typeof vi.fn>).mockResolvedValue(
       "/mock/help"
     );
@@ -318,10 +327,49 @@ describe("help.launchAgent", () => {
     await action.run(undefined, stubCtx);
 
     expect(window.electron.help.provisionSession).not.toHaveBeenCalled();
-    const firstCall = mockDispatch.mock.calls[0];
-    const dispatchArg = firstCall?.[1] as Record<string, unknown> | undefined;
-    expect(dispatchArg?.cwd).toBe("/mock/help");
-    expect(dispatchArg?.env).toBeUndefined();
+    expect(mockDispatch).not.toHaveBeenCalled();
+    expect(mockNotify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "error",
+        title: "Daintree Assistant",
+      })
+    );
+  });
+
+  it("does not launch when provisioning returns null", async () => {
+    (window.electron.help.getFolderPath as ReturnType<typeof vi.fn>).mockResolvedValue(
+      "/mock/help"
+    );
+    (window.electron.help.provisionSession as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
+
+    await action.run(undefined, stubCtx);
+
+    expect(mockDispatch).not.toHaveBeenCalled();
+    expect(mockNotify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "error",
+        title: "Assistant launch failed",
+      })
+    );
+  });
+
+  it("does not launch when provisioning reports MCP_NOT_READY", async () => {
+    (window.electron.help.getFolderPath as ReturnType<typeof vi.fn>).mockResolvedValue(
+      "/mock/help"
+    );
+    const err = new Error("port collision") as Error & { code: string };
+    err.code = "MCP_NOT_READY";
+    (window.electron.help.provisionSession as ReturnType<typeof vi.fn>).mockRejectedValueOnce(err);
+
+    await action.run(undefined, stubCtx);
+
+    expect(mockDispatch).not.toHaveBeenCalled();
+    expect(mockNotify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "error",
+        title: "Start MCP failed",
+      })
+    );
   });
 
   it("revokes the session when agent.launch fails", async () => {

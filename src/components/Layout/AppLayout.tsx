@@ -473,7 +473,11 @@ export function AppLayout({
                 className="absolute top-0 right-0 h-full"
                 style={{ width: layout.helpPanelWidth }}
               >
-                <HelpPanel width={layout.helpPanelWidth} isVisible={showAssistant} />
+                <HelpPanel
+                  width={layout.helpPanelWidth}
+                  isVisible={showAssistant}
+                  isReadyToLaunch={isHydrated}
+                />
               </div>
             </div>
           </ErrorBoundary>

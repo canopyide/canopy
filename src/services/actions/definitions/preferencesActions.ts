@@ -715,26 +715,53 @@ export function registerPreferencesActions(
 
       const project = useProjectStore.getState().currentProject;
       let session: Awaited<ReturnType<typeof window.electron.help.provisionSession>> | null = null;
-      if (project) {
-        try {
-          session = await window.electron.help.provisionSession({
-            projectId: project.id,
-            projectPath: project.path,
-          });
-        } catch (err) {
-          logError("Failed to provision help session", err);
-        }
+      if (!project) {
+        notify({
+          type: "error",
+          title: "Daintree Assistant",
+          message: "Project state is still loading. Try again.",
+        });
+        return;
       }
 
-      const cwd = session?.sessionPath ?? folderPath;
-      const env: Record<string, string> | undefined = session
-        ? {
-            DAINTREE_MCP_TOKEN: session.token,
-            DAINTREE_WINDOW_ID: String(session.windowId),
-            ...(session.mcpUrl ? { DAINTREE_MCP_URL: session.mcpUrl } : {}),
-            ...(project ? { DAINTREE_PROJECT_ID: project.id } : {}),
-          }
-        : undefined;
+      try {
+        session = await window.electron.help.provisionSession({
+          projectId: project.id,
+          projectPath: project.path,
+        });
+      } catch (err) {
+        logError("Failed to provision help session", err);
+        const code =
+          err && typeof err === "object" && "code" in err
+            ? (err as Record<string, unknown>).code
+            : undefined;
+        notify({
+          type: "error",
+          title: code === "MCP_NOT_READY" ? "Start MCP failed" : "Assistant launch failed",
+          message:
+            code === "MCP_NOT_READY"
+              ? "Daintree Assistant needs MCP, but the server didn't start."
+              : "Couldn't provision the Daintree Assistant session.",
+        });
+        return;
+      }
+
+      if (!session) {
+        notify({
+          type: "error",
+          title: "Assistant launch failed",
+          message: "Couldn't provision the Daintree Assistant session.",
+        });
+        return;
+      }
+
+      const cwd = session.sessionPath;
+      const env: Record<string, string> = {
+        DAINTREE_MCP_TOKEN: session.token,
+        DAINTREE_WINDOW_ID: String(session.windowId),
+        ...(session.mcpUrl ? { DAINTREE_MCP_URL: session.mcpUrl } : {}),
+        DAINTREE_PROJECT_ID: project.id,
+      };
 
       const result = await actionService.dispatch<{ terminalId: string | null }>(
         "agent.launch",

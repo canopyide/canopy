@@ -72,7 +72,7 @@ describe("AppLayout assistant push sidebar — issue #6619", () => {
     // toggle) must not be reintroduced.
     expect(source).not.toMatch(/\{layout\.helpPanelOpen && \(\s*\n\s*<ErrorBoundary[^>]*HelpPanel/);
     expect(source).toMatch(
-      /<HelpPanel\s+width=\{layout\.helpPanelWidth\}\s+isVisible=\{showAssistant\}/
+      /<HelpPanel\s+width=\{layout\.helpPanelWidth\}\s+isVisible=\{showAssistant\}\s+isReadyToLaunch=\{isHydrated\}/
     );
     // The Assistant must remain a structural flex sibling that reserves
     // horizontal space instead of reverting to an overlay on top of terminals.
@@ -85,9 +85,7 @@ describe("AppLayout assistant push sidebar — issue #6619", () => {
     // The Assistant content stays full width and pinned to the viewport edge.
     // The flex slot width animates underneath it, so the panel grid slides
     // over the Assistant instead of the Assistant floating over terminals.
-    expect(source).toContain(
-      "<HelpPanel width={layout.helpPanelWidth} isVisible={showAssistant} />"
-    );
+    expect(source).toContain("isReadyToLaunch={isHydrated}");
     expect(source).toContain("transition-[width]");
     expect(source).toContain('className="absolute top-0 right-0 h-full"');
     expect(source).not.toContain("translate-x-full");

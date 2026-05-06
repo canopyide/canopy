@@ -85,7 +85,7 @@ const {
     settings: { agents: {} as Record<string, unknown> },
   },
   projectStoreState: {
-    currentProject: null as { id: string; path: string } | null,
+    currentProject: { id: "proj-default", path: "/repo" } as { id: string; path: string } | null,
   },
   preferencesState: { reduceAnimations: false },
 }));
@@ -282,10 +282,17 @@ function resetState() {
 
   agentSettingsState.settings = { agents: {} };
 
-  projectStoreState.currentProject = null;
+  projectStoreState.currentProject = { id: "proj-default", path: "/repo" };
   preferencesState.reduceAnimations = false;
   mockProvisionSession.mockReset();
-  mockProvisionSession.mockResolvedValue(null);
+  mockProvisionSession.mockResolvedValue({
+    sessionId: "sess-default",
+    sessionPath: "/help",
+    token: "tok-default",
+    tier: "action",
+    mcpUrl: null,
+    windowId: 1,
+  });
   mockRevokeSession.mockReset();
   mockRevokeSession.mockResolvedValue(undefined);
   mockGetAssistantSupportedAgentIds.mockReset();
@@ -367,7 +374,7 @@ describe("HelpPanel — single-supported-agent launch (handleSelectAgent)", () =
       render(<HelpPanel width={380} />);
     });
 
-    expect(helpPanelState.setTerminal).toHaveBeenCalledWith("term-1", "claude", null);
+    expect(helpPanelState.setTerminal).toHaveBeenCalledWith("term-1", "claude", "sess-default");
     expect(mockNotify).not.toHaveBeenCalled();
   });
 
@@ -473,6 +480,75 @@ describe("HelpPanel — single-supported-agent launch (handleSelectAgent)", () =
 });
 
 describe("HelpPanel — auto-launch (preferredAgentId)", () => {
+  it("waits for app hydration before launching a persisted-open assistant", async () => {
+    helpPanelState.preferredAgentId = "claude";
+    mockGetFolderPath.mockResolvedValue("/help");
+    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "auto-term-1" } });
+
+    const { rerender } = render(<HelpPanel width={380} isReadyToLaunch={false} />);
+
+    expect(mockGetFolderPath).not.toHaveBeenCalled();
+    expect(mockProvisionSession).not.toHaveBeenCalled();
+    expect(mockDispatch).not.toHaveBeenCalled();
+
+    await act(async () => {
+      rerender(<HelpPanel width={380} isReadyToLaunch />);
+    });
+
+    expect(mockProvisionSession).toHaveBeenCalledWith({
+      projectId: "proj-default",
+      projectPath: "/repo",
+    });
+    expect(mockDispatch).toHaveBeenCalledWith(
+      "agent.launch",
+      expect.objectContaining({ agentId: "claude", cwd: "/help" }),
+      { source: "user" }
+    );
+  });
+
+  it("waits for a current project before provisioning and launching", async () => {
+    projectStoreState.currentProject = null;
+    helpPanelState.preferredAgentId = "claude";
+    mockGetFolderPath.mockResolvedValue("/help");
+    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "auto-term-1" } });
+
+    const { rerender } = render(<HelpPanel width={380} />);
+
+    expect(mockProvisionSession).not.toHaveBeenCalled();
+    expect(mockDispatch).not.toHaveBeenCalled();
+
+    projectStoreState.currentProject = { id: "proj-late", path: "/late-repo" };
+    await act(async () => {
+      rerender(<HelpPanel width={380} />);
+    });
+
+    expect(mockProvisionSession).toHaveBeenCalledWith({
+      projectId: "proj-late",
+      projectPath: "/late-repo",
+    });
+    expect(mockDispatch).toHaveBeenCalledWith(
+      "agent.launch",
+      expect.objectContaining({ agentId: "claude" }),
+      { source: "user" }
+    );
+  });
+
+  it("does not launch the terminal when session provisioning returns null", async () => {
+    helpPanelState.preferredAgentId = "claude";
+    mockGetFolderPath.mockResolvedValue("/help");
+    mockProvisionSession.mockResolvedValueOnce(null);
+
+    await act(async () => {
+      render(<HelpPanel width={380} />);
+    });
+
+    expect(mockDispatch).not.toHaveBeenCalled();
+    expect(helpPanelState.setTerminal).not.toHaveBeenCalled();
+    expect(mockNotify).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "error", title: "Assistant launch failed" })
+    );
+  });
+
   it("commits the terminal even when document.hidden is true", async () => {
     Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
     helpPanelState.preferredAgentId = "claude";
@@ -483,7 +559,11 @@ describe("HelpPanel — auto-launch (preferredAgentId)", () => {
       render(<HelpPanel width={380} />);
     });
 
-    expect(helpPanelState.setTerminal).toHaveBeenCalledWith("auto-term-1", "claude", null);
+    expect(helpPanelState.setTerminal).toHaveBeenCalledWith(
+      "auto-term-1",
+      "claude",
+      "sess-default"
+    );
   });
 
   it("dispatches auto-launch agent.launch without a prompt field", async () => {
@@ -1004,7 +1084,11 @@ describe("HelpPanel — hasAutoLaunched stale reset (regression)", () => {
       resolveSecond({ ok: true, result: { terminalId: "term-gemini" } });
     });
 
-    expect(helpPanelState.setTerminal).toHaveBeenCalledWith("term-gemini", "gemini", null);
+    expect(helpPanelState.setTerminal).toHaveBeenCalledWith(
+      "term-gemini",
+      "gemini",
+      "sess-default"
+    );
   });
 });
 
@@ -1025,7 +1109,11 @@ describe("HelpPanel — single-supported-agent auto-skip (issue #6612)", () => {
       expect.objectContaining({ agentId: "claude" }),
       { source: "user" }
     );
-    expect(helpPanelState.setTerminal).toHaveBeenCalledWith("auto-skip-term", "claude", null);
+    expect(helpPanelState.setTerminal).toHaveBeenCalledWith(
+      "auto-skip-term",
+      "claude",
+      "sess-default"
+    );
   });
 
   it("does not auto-skip when more than one supported agent is installed", async () => {
@@ -1229,7 +1317,7 @@ describe("HelpPanel — customArgs threading", () => {
       expect.not.objectContaining({ agentLaunchFlags: expect.anything() }),
       { source: "user" }
     );
-    expect(helpPanelState.setTerminal).toHaveBeenCalledWith("term-1", "claude", null);
+    expect(helpPanelState.setTerminal).toHaveBeenCalledWith("term-1", "claude", "sess-default");
   });
 });
 
