@@ -175,6 +175,18 @@ function SettingsDialogInner({
 
   const [appVersion, setAppVersion] = useState<string>("Loading...");
 
+  const [hiddenSettingBanner, setHiddenSettingBanner] = useState<{
+    label: string;
+    settingId: string;
+  } | null>(null);
+
+  // Deep-link: scroll to a specific section after navigating.
+  // The active tab's panel subtree fires a `useLayoutEffect` (via
+  // `SettingsTabScrollEffect` / `LazyTabContent`) when it commits — that's
+  // the only reliable signal that lazy-loaded content is in the DOM, so we
+  // drive the scroll from the child rather than polling from the parent.
+  const [scrollToSection, setScrollToSection] = useState<string | null>(null);
+
   // activeTab is read non-reactively via useEffectEvent to avoid re-running
   // this reset-on-open effect when the user changes tabs mid-session.
   const handleOpenChange = useEffectEvent(() => {
@@ -362,11 +374,6 @@ function SettingsDialogInner({
   // deferredQuery drives the expensive filtering computation only.
   const isSearching = searchQuery.trim().length > 0;
 
-  const [hiddenSettingBanner, setHiddenSettingBanner] = useState<{
-    label: string;
-    settingId: string;
-  } | null>(null);
-
   const handleResultClick = (
     { tab, subtab, sectionId }: SettingsNavTarget,
     requiresEnabled?: { settingId: string; label: string }
@@ -421,13 +428,6 @@ function SettingsDialogInner({
       }
     }
   };
-
-  // Deep-link: scroll to a specific section after navigating.
-  // The active tab's panel subtree fires a `useLayoutEffect` (via
-  // `SettingsTabScrollEffect` / `LazyTabContent`) when it commits — that's
-  // the only reliable signal that lazy-loaded content is in the DOM, so we
-  // drive the scroll from the child rather than polling from the parent.
-  const [scrollToSection, setScrollToSection] = useState<string | null>(null);
 
   const handleScrollToSectionHandled = useCallback((sectionId: string) => {
     setScrollToSection((current) => (current === sectionId ? null : current));
