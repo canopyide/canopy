@@ -43,10 +43,12 @@ describe("useAgentSetupPoll", () => {
       configurable: true,
       get: () => false,
     });
+    vi.spyOn(document, "hasFocus").mockReturnValue(true);
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it("calls refresh immediately when open while visible", () => {
@@ -240,6 +242,48 @@ describe("useAgentSetupPoll", () => {
       vi.advanceTimersByTime(3000);
     });
     expect(mockRefresh).toHaveBeenCalledTimes(0);
+  });
+
+  it("does not double-poll when visibilitychange and window.focus fire in sequence (unminimize)", () => {
+    const setAvailability = vi.fn();
+    renderHook(() => useAgentSetupPoll(true, setAvailability));
+
+    // Simulate minimize
+    act(() => {
+      setHidden(true);
+    });
+
+    mockRefresh.mockClear();
+
+    // Simulate unminimize: Chromium fires visibilitychange (visible) then window.focus
+    act(() => {
+      setHidden(false);
+      fireWindowFocus(true);
+    });
+
+    // Only one immediate refresh — the focus handler skips because the interval is already running
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not start polling at mount when document.hasFocus() is false", () => {
+    vi.spyOn(document, "hasFocus").mockReturnValue(false);
+
+    const setAvailability = vi.fn();
+    renderHook(() => useAgentSetupPoll(true, setAvailability));
+
+    expect(mockRefresh).toHaveBeenCalledTimes(0);
+
+    // Interval is not running
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+    expect(mockRefresh).toHaveBeenCalledTimes(0);
+
+    // Resumes correctly when focus is gained
+    act(() => {
+      fireWindowFocus(true);
+    });
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
   });
 
   it("does not resume polling on focus when the dialog is closed", () => {
