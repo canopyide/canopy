@@ -431,13 +431,11 @@ export function notify(payload: NotifyPayload): string {
     // promotes the inbox entry on navigate-away) collapse to a silent drop.
     // Surface here so the contradictory shape is caught at write-time.
     if (priority === "low") {
-      // eslint-disable-next-line no-console
       console.warn(
         "[notify] transient: true with priority: 'low' is a silent no-op — low priority skips the toast and transient skips the inbox."
       );
     }
     if (context) {
-      // eslint-disable-next-line no-console
       console.warn(
         "[notify] transient: true with context drops the event when the origin surface is visible — the suppression-grace path needs an inbox entry to fall back to."
       );
@@ -454,7 +452,6 @@ export function notify(payload: NotifyPayload): string {
     // here so callers find the gap during development. Not a runtime crash —
     // some errors are genuinely action-free, but the prompt nudges authors to
     // confirm before shipping.
-    // eslint-disable-next-line no-console
     console.warn(
       "[notify] error notification has no actions — provide at least one action for the Title-Message-Action contract, or confirm there is no recovery path.",
       payload
