@@ -13,8 +13,8 @@ vi.mock("@/clients", () => ({
 
 import { systemClient } from "@/clients";
 
-const mockGetSpecs = systemClient.getHealthCheckSpecs as ReturnType<typeof vi.fn>;
-const mockCheckTool = systemClient.checkTool as ReturnType<typeof vi.fn>;
+const mockGetSpecs = vi.mocked(systemClient.getHealthCheckSpecs);
+const mockCheckTool = vi.mocked(systemClient.checkTool);
 
 const SPECS: PrerequisiteSpec[] = [
   { tool: "git", label: "Git", versionArgs: ["--version"], severity: "fatal" },
