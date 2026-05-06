@@ -33,7 +33,6 @@ export function GettingStartedChecklist({
 
   return createPortal(
     <div
-      data-getting-started-checklist=""
       className={cn(
         "fixed bottom-4 z-[var(--z-toast)] pointer-events-none p-4",
         "flex justify-end w-full max-w-[320px]"
@@ -41,6 +40,7 @@ export function GettingStartedChecklist({
       style={{ right: "calc(var(--right-obstruction-offset, 0px))" }}
     >
       <div
+        data-getting-started-checklist=""
         className={cn(
           "pointer-events-auto relative w-full",
           "rounded-[var(--radius-sm)] border",

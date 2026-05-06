@@ -156,17 +156,24 @@ export function useGettingStartedChecklist(isStateLoaded: boolean): GettingStart
     if (!isElectronAvailable() || !window.electron?.onboarding?.onChecklistPush) return;
     return window.electron.onboarding.onChecklistPush((next) => {
       setChecklist((prev) => {
-        if (!prev) return next;
+        if (!prev) {
+          // Sync the ref synchronously so a markItem firing before React
+          // commits doesn't read a stale null value.
+          checklistRef.current = next;
+          return next;
+        }
         const mergedItems = { ...prev.items } as typeof prev.items;
         for (const key of Object.keys(next.items) as Array<keyof typeof next.items>) {
           if (next.items[key] || prev.items[key]) mergedItems[key] = true;
         }
-        return {
+        const merged: ChecklistState = {
           ...next,
           items: mergedItems,
           dismissed: prev.dismissed || next.dismissed,
           celebrationShown: prev.celebrationShown || next.celebrationShown,
         };
+        checklistRef.current = merged;
+        return merged;
       });
     });
   }, []);
