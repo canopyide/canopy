@@ -372,7 +372,7 @@ export function AppLayout({
     onSettings?.();
   }, [onSettings]);
 
-  const effectiveSidebarWidth = layout.gestureSidebarHidden ? 0 : sidebarWidth;
+  const effectiveSidebarWidth = showSidebar ? sidebarWidth : 0;
 
   useEffect(() => {
     const portalOffset = layout.portalOpen ? layout.portalWidth : 0;
@@ -447,7 +447,11 @@ export function AppLayout({
             <div className="absolute top-0 left-0 h-full" style={{ width: sidebarWidth }}>
               {currentProject != null && (
                 <ErrorBoundary variant="section" componentName="Sidebar">
-                  <Sidebar width={sidebarWidth} onResize={handleSidebarResize}>
+                  <Sidebar
+                    width={sidebarWidth}
+                    onResize={handleSidebarResize}
+                    isVisible={showSidebar}
+                  >
                     {sidebarContent}
                   </Sidebar>
                 </ErrorBoundary>
