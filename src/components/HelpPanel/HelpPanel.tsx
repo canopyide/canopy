@@ -1,5 +1,5 @@
 import { Suspense, useCallback, useEffect, useRef, useState, useMemo } from "react";
-import { Settings2, ChevronRight } from "lucide-react";
+import { Settings2, ChevronRight, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DaintreeIcon } from "@/components/icons/DaintreeIcon";
 import { XtermAdapter } from "@/components/Terminal/XtermAdapter";
@@ -27,6 +27,8 @@ import { logError } from "@/utils/logger";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { notify } from "@/lib/notify";
 import { safeFireAndForget } from "@/utils/safeFireAndForget";
+import { CLOSE_CONFIRM_AGENT_STATES } from "@shared/types/agent";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 const RESIZE_STEP = 10;
 
@@ -158,6 +160,7 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
   const [isResizing, setIsResizing] = useState(false);
   const isMacroFocused = useMacroFocusStore((s) => s.focusedRegion === "assistant");
   const isVisible = isVisibleProp ?? effectiveWidth > 0;
+  const [showNewSessionConfirm, setShowNewSessionConfirm] = useState(false);
 
   const {
     isOpen,
@@ -166,6 +169,7 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
     agentId,
     preferredAgentId,
     introDismissed,
+    conversationTouched,
     markConversationStarted,
     setWidth,
     setOpen,
@@ -566,6 +570,110 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
     setOpen(false);
   }, [setOpen]);
 
+  // Destructive reset: stop the current agent, drop the conversation, revoke
+  // the bound + pending help sessions, then provision a fresh session and
+  // relaunch the same agent. Mirrors the run-anyway path; the only difference
+  // is the diagnostic context label and that we always have a live terminal
+  // (run-anyway is for the missing-CLI placeholder case).
+  const doNewSession = useCallback(() => {
+    if (!terminalId || !agentId) return;
+    if (isLaunchingRef.current) return;
+    const panel = usePanelStore.getState().panelsById[terminalId];
+    if (!panel) return;
+    const presetEnv = panel.extensionState?.presetEnv as Record<string, string> | undefined;
+    const launchAgentId = agentId;
+    const previousSessionId = useHelpPanelStore.getState().sessionId;
+
+    isLaunchingRef.current = true;
+    removePanel(terminalId);
+    revokeHelpSession(previousSessionId);
+    revokePendingSession();
+    clearTerminal();
+
+    safeFireAndForget(
+      (async () => {
+        let session: HelpSessionRef | null = null;
+        try {
+          const outcome = await provisionHelpSession();
+          if (outcome && !outcome.ok) {
+            if (outcome.code === "MCP_NOT_READY") {
+              notifyMcpNotReady(outcome.message);
+            } else {
+              notifyLaunchFailed(launchAgentId, outcome.message);
+            }
+            return;
+          }
+          session = outcome?.ok ? outcome.session : null;
+          const cwd = session?.sessionPath ?? panel.cwd ?? "";
+          const projectId = useProjectStore.getState().currentProject?.id ?? null;
+          const helpEnv = buildHelpEnv(session, projectId);
+          const env: Record<string, string> | undefined =
+            helpEnv || presetEnv ? { ...(presetEnv ?? {}), ...(helpEnv ?? {}) } : undefined;
+
+          const newId = await usePanelStore.getState().addPanel({
+            kind: "terminal",
+            launchAgentId,
+            command: panel.command,
+            title: panel.title,
+            cwd,
+            worktreeId: panel.worktreeId,
+            location: panel.location as "grid" | "dock" | undefined,
+            agentLaunchFlags: panel.agentLaunchFlags,
+            agentModelId: panel.agentModelId,
+            agentPresetId: panel.agentPresetId,
+            env,
+          });
+
+          if (!newId) {
+            revokeHelpSession(session?.sessionId ?? null);
+            logError("Help new-session returned no terminal id", { agentId: launchAgentId });
+            notifyLaunchFailed(launchAgentId, "The agent didn't start. Try again.");
+            return;
+          }
+
+          useHelpPanelStore
+            .getState()
+            .setTerminal(newId, launchAgentId, session?.sessionId ?? null);
+          window.electron.help.markTerminal(newId).catch((err) => {
+            logError("Failed to mark help terminal", err);
+          });
+        } catch (error) {
+          revokeHelpSession(session?.sessionId ?? null);
+          logError("Help new-session failed", error);
+          notifyLaunchFailed(launchAgentId, "The agent didn't start. Try again.");
+        } finally {
+          isLaunchingRef.current = false;
+        }
+      })(),
+      { context: "Help: + New session relaunch" }
+    );
+  }, [terminalId, agentId, removePanel, clearTerminal, revokePendingSession]);
+
+  // Confirm only when there's something to lose — a working agent or a
+  // conversation the user has actually engaged with. An untouched idle agent
+  // resets silently; the user wouldn't notice the difference anyway.
+  const shouldConfirmNewSession =
+    (terminal?.agentState !== undefined && CLOSE_CONFIRM_AGENT_STATES.has(terminal.agentState)) ||
+    conversationTouched;
+
+  const handleNewSession = useCallback(() => {
+    if (!terminalId || !agentId) return;
+    if (shouldConfirmNewSession) {
+      setShowNewSessionConfirm(true);
+      return;
+    }
+    doNewSession();
+  }, [terminalId, agentId, shouldConfirmNewSession, doNewSession]);
+
+  const handleConfirmNewSession = useCallback(() => {
+    setShowNewSessionConfirm(false);
+    doNewSession();
+  }, [doNewSession]);
+
+  const handleCancelNewSession = useCallback(() => {
+    setShowNewSessionConfirm(false);
+  }, []);
+
   const handleOpenSettings = useCallback(() => {
     void actionService.dispatch("app.settings.openTab", { tab: "assistant" }, { source: "user" });
   }, []);
@@ -708,13 +816,24 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
       />
 
       {/* Header */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-daintree-border shrink-0">
+      <div className="flex items-center gap-1 px-3 py-2 border-b border-daintree-border shrink-0">
         <div className="flex items-center min-w-0 flex-1">
           <DaintreeIcon className="w-4 h-4 text-daintree-text/50 shrink-0" />
           <span className="ml-1.5 text-xs font-medium text-daintree-text/70 truncate">
             Daintree Assistant
           </span>
         </div>
+        {terminalId && agentId && (
+          <button
+            type="button"
+            onClick={handleNewSession}
+            className="p-1 rounded-[var(--radius-sm)] text-daintree-text/50 hover:text-daintree-text hover:bg-tint/8 transition-colors"
+            aria-label="Start new session"
+            title="New session"
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </button>
+        )}
         <button
           type="button"
           onClick={handleClose}
@@ -794,6 +913,16 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
           </a>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={showNewSessionConfirm}
+        title="Start a new session?"
+        description="The current agent will stop and the conversation will be discarded."
+        confirmLabel="Start new session"
+        onConfirm={handleConfirmNewSession}
+        onClose={handleCancelNewSession}
+        variant="destructive"
+      />
     </aside>
   );
 }

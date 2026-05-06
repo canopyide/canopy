@@ -1254,6 +1254,128 @@ describe("HelpPanel — close hides without tearing down the agent", () => {
   });
 });
 
+describe("HelpPanel — + New session destructive reset", () => {
+  function setupBoundTerminal(opts: {
+    agentState?: string;
+    conversationTouched?: boolean;
+    sessionId?: string | null;
+  }) {
+    projectStoreState.currentProject = { id: "proj-1", path: "/repo" };
+    helpPanelState.terminalId = "term-1";
+    helpPanelState.agentId = "claude";
+    helpPanelState.sessionId = opts.sessionId ?? "sess-bound";
+    helpPanelState.conversationTouched = opts.conversationTouched ?? false;
+    panelStoreState.panelsById = {
+      "term-1": {
+        id: "term-1",
+        kind: "terminal",
+        spawnStatus: "ready",
+        cwd: "/help",
+        title: "Claude",
+        command: "claude",
+        location: "dock",
+        agentState: opts.agentState ?? "idle",
+      },
+    };
+  }
+
+  it("hides the + button when there is no live terminal", () => {
+    helpPanelState.terminalId = null;
+    helpPanelState.agentId = null;
+    const { container } = render(<HelpPanel width={380} />);
+    expect(container.querySelector('button[aria-label="Start new session"]')).toBeNull();
+  });
+
+  it("resets immediately without a confirm when the agent is idle and conversation is untouched", async () => {
+    setupBoundTerminal({ agentState: "idle", conversationTouched: false });
+    panelStoreState.addPanel = vi.fn().mockResolvedValue("fresh-term");
+    mockProvisionSession.mockResolvedValue({
+      sessionId: "sess-fresh",
+      sessionPath: "/sessions/fresh",
+      token: "tok-fresh",
+      tier: "action",
+      mcpUrl: null,
+      windowId: 1,
+    });
+
+    const { container, queryByTestId } = render(<HelpPanel width={380} />);
+    await act(async () => {
+      fireEvent.click(container.querySelector('button[aria-label="Start new session"]')!);
+    });
+
+    expect(queryByTestId("confirm-dialog")).toBeNull();
+    expect(panelStoreState.removePanel).toHaveBeenCalledWith("term-1");
+    expect(mockRevokeSession).toHaveBeenCalledWith("sess-bound");
+    expect(helpPanelState.clearTerminal).toHaveBeenCalled();
+    expect(panelStoreState.addPanel).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "terminal", launchAgentId: "claude" })
+    );
+    expect(helpPanelState.setTerminal).toHaveBeenCalledWith("fresh-term", "claude", "sess-fresh");
+  });
+
+  it("shows the confirm dialog when the agent is working", () => {
+    setupBoundTerminal({ agentState: "working", conversationTouched: false });
+
+    const { container, getByTestId } = render(<HelpPanel width={380} />);
+    fireEvent.click(container.querySelector('button[aria-label="Start new session"]')!);
+
+    expect(panelStoreState.removePanel).not.toHaveBeenCalled();
+    expect(helpPanelState.clearTerminal).not.toHaveBeenCalled();
+    expect(getByTestId("dialog-title").textContent).toBe("Start a new session?");
+    expect(getByTestId("dialog-confirm").textContent).toBe("Start new session");
+    expect(getByTestId("dialog-description").textContent).toContain(
+      "the conversation will be discarded"
+    );
+  });
+
+  it("shows the confirm dialog when the conversation has been touched", () => {
+    setupBoundTerminal({ agentState: "idle", conversationTouched: true });
+
+    const { container, getByTestId } = render(<HelpPanel width={380} />);
+    fireEvent.click(container.querySelector('button[aria-label="Start new session"]')!);
+
+    expect(panelStoreState.removePanel).not.toHaveBeenCalled();
+    expect(getByTestId("dialog-title").textContent).toBe("Start a new session?");
+  });
+
+  it("keeps the session intact when the user cancels the confirm dialog", () => {
+    setupBoundTerminal({ agentState: "working" });
+
+    const { container, getByTestId, queryByTestId } = render(<HelpPanel width={380} />);
+    fireEvent.click(container.querySelector('button[aria-label="Start new session"]')!);
+    fireEvent.click(getByTestId("dialog-cancel"));
+
+    expect(queryByTestId("confirm-dialog")).toBeNull();
+    expect(panelStoreState.removePanel).not.toHaveBeenCalled();
+    expect(mockRevokeSession).not.toHaveBeenCalled();
+    expect(helpPanelState.clearTerminal).not.toHaveBeenCalled();
+  });
+
+  it("runs the destructive teardown and relaunches when the user confirms", async () => {
+    setupBoundTerminal({ agentState: "working", conversationTouched: true });
+    panelStoreState.addPanel = vi.fn().mockResolvedValue("fresh-term");
+    mockProvisionSession.mockResolvedValue({
+      sessionId: "sess-fresh",
+      sessionPath: "/sessions/fresh",
+      token: "tok-fresh",
+      tier: "action",
+      mcpUrl: null,
+      windowId: 1,
+    });
+
+    const { container, getByTestId } = render(<HelpPanel width={380} />);
+    fireEvent.click(container.querySelector('button[aria-label="Start new session"]')!);
+    await act(async () => {
+      fireEvent.click(getByTestId("dialog-confirm"));
+    });
+
+    expect(panelStoreState.removePanel).toHaveBeenCalledWith("term-1");
+    expect(mockRevokeSession).toHaveBeenCalledWith("sess-bound");
+    expect(helpPanelState.clearTerminal).toHaveBeenCalled();
+    expect(helpPanelState.setTerminal).toHaveBeenCalledWith("fresh-term", "claude", "sess-fresh");
+  });
+});
+
 describe("HelpPanel — visibilitychange teardown vs. system sleep (issue #6758)", () => {
   function mountWithBoundTerminal() {
     helpPanelState.terminalId = "term-sleep";
