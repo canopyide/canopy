@@ -352,6 +352,28 @@ describe("comboToAriaKeyshortcuts — chord sequences", () => {
   });
 });
 
+describe("comboToAriaKeyshortcuts — real default-combo round-trips", () => {
+  // Anchors the converter against representative bindings from
+  // defaultKeybindings.ts so a future raw-combo refactor cannot silently
+  // change what ends up in the accessibility tree.
+  it("maps panel toggles (Cmd+B → Meta+B / Control+B)", () => {
+    expect(comboToAriaKeyshortcuts("Cmd+B", true)).toBe("Meta+B");
+    expect(comboToAriaKeyshortcuts("Cmd+B", false)).toBe("Control+B");
+  });
+
+  it("maps multi-modifier combos (Cmd+Shift+P, Cmd+Alt+P)", () => {
+    expect(comboToAriaKeyshortcuts("Cmd+Shift+P", true)).toBe("Meta+Shift+P");
+    expect(comboToAriaKeyshortcuts("Cmd+Alt+P", false)).toBe("Control+Alt+P");
+  });
+
+  it("maps two-step chord families (Cmd+K Cmd+S, Cmd+K T)", () => {
+    expect(comboToAriaKeyshortcuts("Cmd+K Cmd+S", true)).toBe("Meta+K Meta+S");
+    expect(comboToAriaKeyshortcuts("Cmd+K Cmd+S", false)).toBe("Control+K Control+S");
+    expect(comboToAriaKeyshortcuts("Cmd+K T", true)).toBe("Meta+K T");
+    expect(comboToAriaKeyshortcuts("Cmd+K T", false)).toBe("Control+K T");
+  });
+});
+
 describe("comboToAriaKeyshortcuts — edge cases", () => {
   it("returns undefined for null/undefined/empty input", () => {
     expect(comboToAriaKeyshortcuts(undefined, true)).toBeUndefined();
