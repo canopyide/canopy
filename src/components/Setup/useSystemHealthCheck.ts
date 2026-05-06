@@ -4,6 +4,7 @@ import type { PrerequisiteCheckResult, PrerequisiteSpec } from "@shared/types";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 const POOL_CONCURRENCY = 3;
+const FOCUS_RECHECK_THROTTLE_MS = 5_000;
 
 export type CheckState = "loading" | PrerequisiteCheckResult;
 
@@ -39,10 +40,12 @@ export function useSystemHealthCheck(): SystemHealthCheckState {
   const [error, setError] = useState<string | null>(null);
   const activeRef = useRef(true);
   const isCheckingRef = useRef(false);
+  const lastCheckAtRef = useRef(0);
 
   const runCheck = useCallback(async () => {
     if (isCheckingRef.current) return;
     isCheckingRef.current = true;
+    lastCheckAtRef.current = Date.now();
     setIsChecking(true);
     setError(null);
     setSpecs([]);
@@ -93,6 +96,23 @@ export function useSystemHealthCheck(): SystemHealthCheckState {
     void runCheck();
     return () => {
       activeRef.current = false;
+    };
+  }, [runCheck]);
+
+  useEffect(() => {
+    const maybeRunCheck = () => {
+      if (!activeRef.current) return;
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastCheckAtRef.current < FOCUS_RECHECK_THROTTLE_MS) return;
+      void runCheck();
+    };
+
+    document.addEventListener("visibilitychange", maybeRunCheck);
+    window.addEventListener("focus", maybeRunCheck);
+
+    return () => {
+      document.removeEventListener("visibilitychange", maybeRunCheck);
+      window.removeEventListener("focus", maybeRunCheck);
     };
   }, [runCheck]);
 

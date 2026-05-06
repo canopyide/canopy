@@ -51,6 +51,16 @@ export function useAgentSetupPoll(isOpen: boolean, setAvailability: SetAvailabil
       }
     };
 
+    const handleFocus = () => {
+      if (!isOpenRef.current || document.hidden) return;
+      poll();
+      startPolling();
+    };
+
+    const handleBlur = () => {
+      stopPolling();
+    };
+
     if (document.hidden) {
       // Defer to visibilitychange — fires one refresh on regain
     } else {
@@ -59,9 +69,13 @@ export function useAgentSetupPoll(isOpen: boolean, setAvailability: SetAvailabil
     }
 
     document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("focus", handleFocus);
+    window.addEventListener("blur", handleBlur);
 
     return () => {
       document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("blur", handleBlur);
       stopPolling();
     };
   }, [isOpen]);

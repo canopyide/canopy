@@ -25,6 +25,14 @@ function setHidden(hidden: boolean) {
   document.dispatchEvent(new Event("visibilitychange"));
 }
 
+function dispatchFocus() {
+  window.dispatchEvent(new Event("focus"));
+}
+
+function dispatchBlur() {
+  window.dispatchEvent(new Event("blur"));
+}
+
 describe("useAgentSetupPoll", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -146,15 +154,18 @@ describe("useAgentSetupPoll", () => {
     expect(mockRefresh).toHaveBeenCalledTimes(1);
   });
 
-  it("cleans up interval and listener on unmount", () => {
-    const removeEventListenerSpy = vi.spyOn(document, "removeEventListener");
+  it("cleans up interval and listeners on unmount", () => {
+    const removeDocListenerSpy = vi.spyOn(document, "removeEventListener");
+    const removeWinListenerSpy = vi.spyOn(window, "removeEventListener");
 
     const setAvailability = vi.fn();
     const { unmount } = renderHook(() => useAgentSetupPoll(true, setAvailability));
 
     unmount();
 
-    expect(removeEventListenerSpy).toHaveBeenCalledWith("visibilitychange", expect.any(Function));
+    expect(removeDocListenerSpy).toHaveBeenCalledWith("visibilitychange", expect.any(Function));
+    expect(removeWinListenerSpy).toHaveBeenCalledWith("focus", expect.any(Function));
+    expect(removeWinListenerSpy).toHaveBeenCalledWith("blur", expect.any(Function));
 
     // Advancing time should not trigger more calls
     mockRefresh.mockClear();
@@ -163,7 +174,106 @@ describe("useAgentSetupPoll", () => {
     });
     expect(mockRefresh).toHaveBeenCalledTimes(0);
 
-    removeEventListenerSpy.mockRestore();
+    removeDocListenerSpy.mockRestore();
+    removeWinListenerSpy.mockRestore();
+  });
+
+  it("resumes polling with an immediate refresh on window focus", () => {
+    const setAvailability = vi.fn();
+    renderHook(() => useAgentSetupPoll(true, setAvailability));
+
+    // Simulate user leaving the app
+    act(() => {
+      dispatchBlur();
+    });
+
+    mockRefresh.mockClear();
+
+    act(() => {
+      dispatchFocus();
+    });
+
+    // Immediate refresh on regain
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
+
+    // Then interval resumes
+    mockRefresh.mockClear();
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops polling on window blur", () => {
+    const setAvailability = vi.fn();
+    renderHook(() => useAgentSetupPoll(true, setAvailability));
+
+    mockRefresh.mockClear();
+
+    act(() => {
+      dispatchBlur();
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+
+    expect(mockRefresh).toHaveBeenCalledTimes(0);
+  });
+
+  it("does not refresh on focus when dialog is closed", () => {
+    const setAvailability = vi.fn();
+    renderHook(() => useAgentSetupPoll(false, setAvailability));
+
+    mockRefresh.mockClear();
+
+    act(() => {
+      dispatchFocus();
+    });
+
+    expect(mockRefresh).toHaveBeenCalledTimes(0);
+  });
+
+  it("does not refresh on focus when document is hidden", () => {
+    const setAvailability = vi.fn();
+    renderHook(() => useAgentSetupPoll(true, setAvailability));
+
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      get: () => true,
+    });
+
+    mockRefresh.mockClear();
+
+    act(() => {
+      dispatchFocus();
+    });
+
+    expect(mockRefresh).toHaveBeenCalledTimes(0);
+  });
+
+  it("only runs one interval after visibilitychange and focus double-fire", () => {
+    const setAvailability = vi.fn();
+    renderHook(() => useAgentSetupPoll(true, setAvailability));
+
+    act(() => {
+      setHidden(true);
+    });
+
+    mockRefresh.mockClear();
+
+    // Chromium fires visibilitychange and focus in rapid succession
+    act(() => {
+      setHidden(false);
+      dispatchFocus();
+    });
+
+    // Immediate refreshes (one per event), but only one interval should be scheduled
+    mockRefresh.mockClear();
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
   });
 
   it("dispatches result to setAvailability when refresh resolves", async () => {
