@@ -133,6 +133,19 @@ describe("AppPaletteDialog.Empty", () => {
     expect(screen.getByText(`No matches for "${exact}"`)).toBeTruthy();
   });
 
+  it("truncates a 41-character query at position 40 with the ellipsis", () => {
+    const overByOne = "c".repeat(41);
+    render(<AppPaletteDialog.Empty query={overByOne} emptyMessage="No items available" />);
+    expect(screen.getByText(`No matches for "${"c".repeat(40)}…"`)).toBeTruthy();
+  });
+
+  it("does not split surrogate pairs when truncating", () => {
+    const query = "a".repeat(39) + "😀tail";
+    render(<AppPaletteDialog.Empty query={query} emptyMessage="No items available" />);
+    const expected = `No matches for "${"a".repeat(39)}😀…"`;
+    expect(screen.getByText(expected)).toBeTruthy();
+  });
+
   it("explicit noMatchMessage still overrides the dynamic default", () => {
     render(
       <AppPaletteDialog.Empty

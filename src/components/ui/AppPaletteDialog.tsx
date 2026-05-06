@@ -323,7 +323,7 @@ AppPaletteDialog.Footer = function AppPaletteFooter({
         className
       )}
     >
-      {children || <DefaultKeyboardHints />}
+      {children ?? <DefaultKeyboardHints />}
     </div>
   );
 };
@@ -434,9 +434,12 @@ interface AppPaletteEmptyProps {
 const NO_MATCH_QUERY_MAX = 40;
 
 function defaultNoMatchTitle(trimmedQuery: string) {
+  // Iterate by codepoint (Array.from handles surrogate pairs) so we never
+  // truncate inside an astral-plane character like an emoji.
+  const codepoints = Array.from(trimmedQuery);
   const display =
-    trimmedQuery.length > NO_MATCH_QUERY_MAX
-      ? `${trimmedQuery.slice(0, NO_MATCH_QUERY_MAX)}…`
+    codepoints.length > NO_MATCH_QUERY_MAX
+      ? `${codepoints.slice(0, NO_MATCH_QUERY_MAX).join("")}…`
       : trimmedQuery;
   return `No matches for "${display}"`;
 }

@@ -182,4 +182,10 @@ describe("SearchablePalette footer", () => {
     renderPalette({ getActionLabel: () => "   " });
     expect(document.body.textContent).toContain("to select");
   });
+
+  it("explicit footer={false} suppresses both the action-label path and the default hints", () => {
+    renderPalette({ footer: false, getActionLabel: () => "Switch terminal" });
+    expect(document.body.textContent).not.toContain("to switch terminal");
+    expect(document.body.textContent).not.toContain("to select");
+  });
 });
