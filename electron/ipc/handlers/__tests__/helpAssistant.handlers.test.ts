@@ -215,7 +215,9 @@ describe("registerHelpAssistantHandlers", () => {
   });
 
   it("rejects an out-of-range stored idleHibernateMinutes and falls back to default", async () => {
-    storeMock.get.mockReturnValue({ idleHibernateMinutes: 999 });
+    storeMock.get.mockReturnValue({
+      idleHibernateMinutes: 999,
+    } as unknown as Partial<HelpAssistantSettings>);
     registerHelpAssistantHandlers();
     const handler = ipcMainMock._handlers.get(GET_CHANNEL)!;
 
