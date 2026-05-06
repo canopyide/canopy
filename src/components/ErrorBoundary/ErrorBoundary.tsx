@@ -9,6 +9,7 @@ interface ErrorBoundaryProps {
   children: ReactNode;
   fallback?: React.ComponentType<ErrorFallbackProps>;
   onError?: (error: Error, errorInfo: React.ErrorInfo) => void;
+  onReset?: () => void;
   resetKeys?: Array<string | number>;
   variant?: "fullscreen" | "section" | "component";
   componentName?: string;
@@ -118,6 +119,16 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 
   resetError = (): void => {
+    const { onReset } = this.props;
+
+    if (onReset) {
+      try {
+        onReset();
+      } catch (error) {
+        logError("Error in onReset handler", error);
+      }
+    }
+
     this.setState({
       hasError: false,
       error: null,
@@ -188,6 +199,7 @@ export interface WithErrorBoundaryOptions {
     worktreeId?: string;
     terminalId?: string;
   };
+  onReset?: () => void;
   resetKeys?: Array<string | number>;
 }
 
@@ -200,6 +212,7 @@ export function withErrorBoundary<P extends object>(
       variant={options.variant || "component"}
       componentName={options.componentName || Component.displayName || Component.name}
       context={options.context}
+      onReset={options.onReset}
       resetKeys={options.resetKeys}
     >
       <Component {...props} />
