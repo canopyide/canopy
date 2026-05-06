@@ -72,7 +72,10 @@ vi.mock("@/components/ui/AppPaletteDialog", () => {
   Dialog.Body = Body;
   Dialog.Footer = Footer;
 
-  return { AppPaletteDialog: Dialog };
+  return {
+    AppPaletteDialog: Dialog,
+    KBD_CLASS: "px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-daintree-border text-daintree-text/60",
+  };
 });
 
 vi.mock("@/components/ui/popover", () => ({
