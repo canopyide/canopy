@@ -584,11 +584,19 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
     const launchAgentId = agentId;
     const previousSessionId = useHelpPanelStore.getState().sessionId;
 
+    // Reserve the new terminal id synchronously so the dock filter
+    // (`helpTerminalId` exclusion in ContentDock) is active the moment
+    // `addPanel` commits the new panel — not one microtask later. Without
+    // this, the gap between `addPanel` resolving and `setTerminal` running
+    // leaves a stray help terminal visible in the dock for one render.
+    const newId = `terminal-${crypto.randomUUID()}`;
+
     isLaunchingRef.current = true;
     removePanel(terminalId);
     revokeHelpSession(previousSessionId);
     revokePendingSession();
     clearTerminal();
+    useHelpPanelStore.getState().setTerminal(newId, launchAgentId, null);
 
     safeFireAndForget(
       (async () => {
@@ -596,6 +604,7 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
         try {
           const outcome = await provisionHelpSession();
           if (outcome && !outcome.ok) {
+            useHelpPanelStore.getState().clearTerminal();
             if (outcome.code === "MCP_NOT_READY") {
               notifyMcpNotReady(outcome.message);
             } else {
@@ -610,7 +619,7 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
           const env: Record<string, string> | undefined =
             helpEnv || presetEnv ? { ...(presetEnv ?? {}), ...(helpEnv ?? {}) } : undefined;
 
-          const newId = await usePanelStore.getState().addPanel({
+          const returnedId = await usePanelStore.getState().addPanel({
             kind: "terminal",
             launchAgentId,
             command: panel.command,
@@ -622,9 +631,12 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
             agentModelId: panel.agentModelId,
             agentPresetId: panel.agentPresetId,
             env,
+            requestedId: newId,
+            activateDockOnCreate: true,
           });
 
-          if (!newId) {
+          if (!returnedId) {
+            useHelpPanelStore.getState().clearTerminal();
             revokeHelpSession(session?.sessionId ?? null);
             logError("Help new-session returned no terminal id", { agentId: launchAgentId });
             notifyLaunchFailed(launchAgentId, "The agent didn't start. Try again.");
@@ -638,6 +650,7 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
             logError("Failed to mark help terminal", err);
           });
         } catch (error) {
+          useHelpPanelStore.getState().clearTerminal();
           revokeHelpSession(session?.sessionId ?? null);
           logError("Help new-session failed", error);
           notifyLaunchFailed(launchAgentId, "The agent didn't start. Try again.");
@@ -706,10 +719,16 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
     const launchAgentId = agentId;
     const previousSessionId = useHelpPanelStore.getState().sessionId;
 
+    // Reserve the new terminal id synchronously so the dock filter is
+    // active the instant `addPanel` commits — see doNewSession for the full
+    // rationale; this path has the identical race.
+    const newId = `terminal-${crypto.randomUUID()}`;
+
     isLaunchingRef.current = true;
     removePanel(terminalId);
     revokeHelpSession(previousSessionId);
     clearTerminal();
+    useHelpPanelStore.getState().setTerminal(newId, launchAgentId, null);
 
     safeFireAndForget(
       (async () => {
@@ -717,6 +736,7 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
         try {
           const outcome = await provisionHelpSession();
           if (outcome && !outcome.ok) {
+            useHelpPanelStore.getState().clearTerminal();
             if (outcome.code === "MCP_NOT_READY") {
               notifyMcpNotReady(outcome.message);
             } else {
@@ -731,7 +751,7 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
           const env: Record<string, string> | undefined =
             helpEnv || presetEnv ? { ...(presetEnv ?? {}), ...(helpEnv ?? {}) } : undefined;
 
-          const newId = await usePanelStore.getState().addPanel({
+          const returnedId = await usePanelStore.getState().addPanel({
             kind: "terminal",
             launchAgentId,
             command: panel.command,
@@ -743,9 +763,12 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
             agentModelId: panel.agentModelId,
             agentPresetId: panel.agentPresetId,
             env,
+            requestedId: newId,
+            activateDockOnCreate: true,
           });
 
-          if (!newId) {
+          if (!returnedId) {
+            useHelpPanelStore.getState().clearTerminal();
             revokeHelpSession(session?.sessionId ?? null);
             logError("Help run-anyway returned no terminal id", { agentId: launchAgentId });
             notifyLaunchFailed(launchAgentId, "The agent didn't start. Try again.");
@@ -759,6 +782,7 @@ export function HelpPanel({ width: effectiveWidth, isVisible: isVisibleProp }: H
             logError("Failed to mark help terminal", err);
           });
         } catch (error) {
+          useHelpPanelStore.getState().clearTerminal();
           revokeHelpSession(session?.sessionId ?? null);
           logError("Help run-anyway failed", error);
           notifyLaunchFailed(launchAgentId, "The agent didn't start. Try again.");
