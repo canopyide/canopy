@@ -7,7 +7,7 @@ import { ShortcutRevealChip } from "@/components/ui/ShortcutRevealChip";
 import { createTooltipContent } from "@/lib/tooltipShortcut";
 import { useKeybindingDisplay, useShortcutHintHover } from "@/hooks";
 
-const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text transition-colors";
+const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text";
 
 interface ToolbarProblemsButtonProps {
   errorCount: number;
@@ -36,9 +36,10 @@ export const ToolbarProblemsButton = memo(function ToolbarProblemsButton({
           aria-label={`Problems: ${errorCount} error${errorCount !== 1 ? "s" : ""}`}
         >
           <AlertCircle />
-          {errorCount > 0 && (
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-status-error rounded-full" />
-          )}
+          <span
+            data-visible={errorCount > 0}
+            className="toolbar-problems-badge toolbar-badge absolute top-1.5 right-1.5 w-2 h-2 rounded-full"
+          />
           <ShortcutRevealChip actionId="panel.toggleDiagnostics" />
         </Button>
       </TooltipTrigger>

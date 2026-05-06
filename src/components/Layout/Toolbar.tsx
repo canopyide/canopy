@@ -76,7 +76,7 @@ const AGENT_TOOLBAR_IDS = new Set<ToolbarButtonId>([
 
 type OverflowMenuMeta = { label: string; icon: React.ComponentType<{ className?: string }> };
 
-const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text transition-colors relative";
+const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text relative";
 
 export function PluginToolbarButton({
   pluginId,
@@ -114,12 +114,6 @@ export function PluginToolbarButton({
     </Tooltip>
   );
 }
-
-const OVERFLOW_BADGE_CLASS: Record<Exclude<OverflowBadgeSeverity, null>, string> = {
-  critical: "bg-status-error",
-  warning: "bg-state-waiting",
-  info: "bg-daintree-text/50",
-};
 
 export const OVERFLOW_MENU_META: Partial<Record<AnyToolbarButtonId, OverflowMenuMeta>> = {
   ...(Object.fromEntries(
@@ -519,7 +513,7 @@ export function Toolbar({
                 onClick={handleCopyTreeClick}
                 disabled={isCopyingTree || !activeWorktree}
                 className={cn(
-                  "toolbar-icon-button transition-colors relative",
+                  "toolbar-icon-button relative",
                   treeCopied ? "text-status-success bg-status-success/10" : "text-daintree-text",
                   isCopyingTree && "cursor-wait opacity-70",
                   !activeWorktree && "opacity-50"
@@ -834,17 +828,13 @@ export function Toolbar({
                 aria-label={ariaLabel}
               >
                 <Ellipsis />
-                {severity && (
-                  <span
-                    aria-hidden="true"
-                    data-testid="toolbar-overflow-badge"
-                    data-severity={severity}
-                    className={cn(
-                      "absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full ring-1 ring-daintree-bg/60 pointer-events-none",
-                      OVERFLOW_BADGE_CLASS[severity]
-                    )}
-                  />
-                )}
+                <span
+                  aria-hidden="true"
+                  data-testid="toolbar-overflow-badge"
+                  data-severity={severity}
+                  data-visible={severity !== null}
+                  className="toolbar-overflow-badge toolbar-badge absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full ring-1 ring-daintree-bg/60 pointer-events-none"
+                />
               </Button>
             </DropdownMenuTrigger>
           </TooltipTrigger>

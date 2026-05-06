@@ -154,27 +154,18 @@ describe("NotificationCenterToolbarButton — DND state surface", () => {
   });
 
   describe("unread dot", () => {
-    it("does not render when unreadCount is 0", () => {
-      const { queryByTestId } = render(<NotificationCenterToolbarButton />);
-      expect(queryByTestId("notification-unread-dot")).toBeNull();
+    it("renders hidden when unreadCount is 0", () => {
+      const { getByTestId } = render(<NotificationCenterToolbarButton />);
+      const dot = getByTestId("notification-unread-dot");
+      expect(dot.getAttribute("data-visible")).toBe("false");
     });
 
-    it("renders a plain dot (no number) when unreadCount > 0 and DND is off", () => {
+    it("renders visible when unreadCount > 0 and DND is off", () => {
       useNotificationHistoryStore.setState({ unreadCount: 5 });
       const { getByTestId } = render(<NotificationCenterToolbarButton />);
       const dot = getByTestId("notification-unread-dot");
-      expect(dot).toBeTruthy();
+      expect(dot.getAttribute("data-visible")).toBe("true");
       expect(dot.textContent).toBe("");
-      expect(dot.className).not.toContain("bg-daintree-accent");
-    });
-
-    it("uses a dimmer non-accent color when DND is active and there are unreads", () => {
-      useNotificationHistoryStore.setState({ unreadCount: 2 });
-      useNotificationSettingsStore.setState({ quietUntil: Date.now() + 60 * 1000 });
-      const { getByTestId } = render(<NotificationCenterToolbarButton />);
-      const dot = getByTestId("notification-unread-dot");
-      expect(dot.className).toContain("bg-daintree-text/30");
-      expect(dot.className).not.toContain("bg-daintree-accent");
     });
   });
 

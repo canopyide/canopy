@@ -892,8 +892,10 @@ describe("AgentTrayButton", () => {
     mockWelcomeCardDismissed = false;
     mockSeenAgentIds = [];
 
-    const { queryByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
-    expect(queryByTestId("agent-tray-discovery-badge")).toBeNull();
+    const { getByTestId, queryByTestId } = render(
+      <AgentTrayButton agentAvailability={availability} />
+    );
+    expect(getByTestId("agent-tray-discovery-badge").getAttribute("data-visible")).toBe("false");
     expect(queryByTestId("agent-tray-new-pill-claude")).toBeNull();
   });
 
@@ -921,8 +923,8 @@ describe("AgentTrayButton", () => {
     mockWelcomeCardDismissed = true;
     mockSeenAgentIds = ["claude", "gemini"];
 
-    const { queryByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
-    expect(queryByTestId("agent-tray-discovery-badge")).toBeNull();
+    const { getByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
+    expect(getByTestId("agent-tray-discovery-badge").getAttribute("data-visible")).toBe("false");
   });
 
   it("calls markAgentsSeen with all ready agent ids on tray open", () => {

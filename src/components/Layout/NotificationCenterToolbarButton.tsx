@@ -10,7 +10,7 @@ import { useUIStore } from "@/store/uiStore";
 import { useShallow } from "zustand/react/shallow";
 import { isScheduledQuietNow } from "@shared/utils/quietHours";
 
-const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text transition-colors";
+const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text";
 
 // Strip the bell `animate-activity-blip` class shortly after it plays so the
 // CSS `will-change: transform, opacity` layer-promotion hint does not linger
@@ -166,7 +166,6 @@ export const NotificationCenterToolbarButton = memo(function NotificationCenterT
   })();
 
   const Icon = isDndActive ? BellOff : Bell;
-  const dotColor = isDndActive ? "bg-daintree-text/30" : "bg-daintree-text/50";
 
   return (
     <div className="relative">
@@ -191,12 +190,11 @@ export const NotificationCenterToolbarButton = memo(function NotificationCenterT
             >
               <Icon />
             </span>
-            {notificationUnreadCount > 0 && (
-              <span
-                data-testid="notification-unread-dot"
-                className={`absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full ring-1 ring-daintree-bg/60 ${dotColor}`}
-              />
-            )}
+            <span
+              data-testid="notification-unread-dot"
+              data-visible={notificationUnreadCount > 0}
+              className="toolbar-badge absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-daintree-text/50 ring-1 ring-daintree-bg/60"
+            />
           </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">{label}</TooltipContent>

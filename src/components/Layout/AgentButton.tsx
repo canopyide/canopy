@@ -353,7 +353,7 @@ export function AgentButton({
                   data-toolbar-item={dataToolbarItem}
                   onPointerEnter={clearFocusRestoreSuppression}
                   className={cn(
-                    "toolbar-agent-button text-daintree-text transition-colors relative",
+                    "toolbar-agent-button text-daintree-text relative",
                     needsSetup && "opacity-70"
                   )}
                   aria-label={ariaLabel}
@@ -449,7 +449,7 @@ export function AgentButton({
                 data-toolbar-item={dataToolbarItem}
                 onPointerEnter={clearFocusRestoreSuppression}
                 className={cn(
-                  "toolbar-agent-button text-daintree-text transition-colors rounded-r-none border-r border-transparent relative",
+                  "toolbar-agent-button text-daintree-text rounded-r-none border-r border-transparent relative",
                   needsSetup && "opacity-70"
                 )}
                 aria-label={ariaLabel}
@@ -479,7 +479,7 @@ export function AgentButton({
                     data-toolbar-item={dataToolbarItem}
                     onPointerEnter={clearFocusRestoreSuppression}
                     className={cn(
-                      "toolbar-agent-button text-daintree-text transition-colors rounded-l-none",
+                      "toolbar-agent-button text-daintree-text rounded-l-none",
                       "h-8 w-6 p-0 flex items-center justify-center",
                       !isLaunchable && !isLoading && "opacity-60"
                     )}
