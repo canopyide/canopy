@@ -482,6 +482,123 @@ describe("Toast accessibility", () => {
     expect(screen.queryByText(/msg-/)).toBeNull();
   });
 
+  it("cap does NOT apply when toast has `action` with explicit non-zero duration", async () => {
+    render(<Toaster />);
+    await act(async () => {
+      addToast({
+        duration: 20000,
+        message: "action-toast",
+        action: { label: "Retry", onClick: vi.fn() },
+      });
+      vi.advanceTimersByTime(16);
+    });
+
+    // 16s in: a capped toast would have dismissed at 15s.
+    await act(async () => {
+      vi.advanceTimersByTime(16000);
+    });
+    expect(screen.getByText("action-toast")).toBeTruthy();
+
+    // Cross the uncapped deadline (20s * 3 = 60s is far out; but the per-update
+    // timer fires at 20s from firstShownAt).
+    await act(async () => {
+      vi.advanceTimersByTime(4500);
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(screen.queryByText("action-toast")).toBeNull();
+  });
+
+  it("cap does NOT apply when toast has `actions: [...]` with explicit non-zero duration", async () => {
+    render(<Toaster />);
+    await act(async () => {
+      addToast({
+        duration: 20000,
+        message: "actions-toast",
+        actions: [{ label: "Undo", onClick: vi.fn() }],
+      });
+      vi.advanceTimersByTime(16);
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(16000);
+    });
+    expect(screen.getByText("actions-toast")).toBeTruthy();
+
+    // Past the 20s explicit duration + exit fade — dismisses on schedule.
+    await act(async () => {
+      vi.advanceTimersByTime(4200);
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(screen.queryByText("actions-toast")).toBeNull();
+  });
+
+  it("cap does NOT apply to action-bearing toast under coalesce pressure", async () => {
+    render(<Toaster />);
+    await act(async () => {
+      addToast({
+        duration: 3000,
+        message: "action-msg-0",
+        correlationId: "entity-b",
+        action: { label: "Retry", onClick: vi.fn() },
+      });
+      vi.advanceTimersByTime(16);
+    });
+
+    // Drive four coalesces 2000ms apart. Without the cap exemption the toast
+    // would be capped at 15s from firstShownAt (~9000ms of coalesce window).
+    for (let i = 1; i <= 4; i++) {
+      await act(async () => {
+        vi.advanceTimersByTime(2000);
+      });
+      await act(async () => {
+        addToast({
+          duration: 3000,
+          message: `action-msg-${i}`,
+          correlationId: "entity-b",
+          action: { label: "Retry", onClick: vi.fn() },
+        });
+      });
+    }
+
+    // After ~8016ms: a capped toast would collapse delay to ~984ms and dismiss
+    // soon after. With the exemption the per-update timer resets each time.
+    expect(screen.getByText("action-msg-4")).toBeTruthy();
+
+    // Advance past the full uncapped duration from the last coalesce.
+    await act(async () => {
+      vi.advanceTimersByTime(4000);
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(screen.queryByText(/action-msg-/)).toBeNull();
+  });
+
+  it("empty actions array counts as no action, cap still applies", async () => {
+    render(<Toaster />);
+    await act(async () => {
+      addToast({
+        duration: 20000,
+        message: "empty-actions",
+        actions: [],
+      });
+      vi.advanceTimersByTime(16);
+    });
+
+    // The cap should still apply since [] has no visible buttons.
+    await act(async () => {
+      vi.advanceTimersByTime(15100);
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(screen.queryByText("empty-actions")).toBeNull();
+  });
+
   it("fires onDismiss when the user clicks the close button", async () => {
     const onDismiss = vi.fn();
     render(<Toaster />);
@@ -1197,5 +1314,134 @@ describe("Toast overflow pill (issue #6424)", () => {
     expect(screen.queryByRole("status")).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getByTestId("toast-overflow-pill")).toBeTruthy();
+  });
+});
+
+describe("Toast success dwell — 2000ms (issue #6844)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    useNotificationStore.getState().reset();
+    useAnnouncerStore.setState({ polite: null, assertive: null });
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+  });
+
+  it("success label dwells for ~2000ms before auto-dismissing (synchronous onClick)", async () => {
+    render(<Toaster />);
+    await act(async () => {
+      addToast({
+        message: "Settings saved",
+        action: {
+          label: "Undo",
+          onClick: () => {},
+          successLabel: "Undone",
+        },
+      });
+      vi.advanceTimersByTime(16);
+    });
+
+    const actionButton = screen.getByText("Undo");
+    await act(async () => {
+      fireEvent.click(actionButton);
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(1900);
+    });
+    expect(screen.getByText("Undone")).toBeTruthy();
+
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(screen.queryByText("Undone")).toBeNull();
+  });
+
+  it("does NOT dismiss before the 2000ms dwell elapses (synchronous)", async () => {
+    render(<Toaster />);
+    await act(async () => {
+      addToast({
+        message: "File copied",
+        action: {
+          label: "Open",
+          onClick: () => {},
+          successLabel: "Opened",
+        },
+      });
+      vi.advanceTimersByTime(16);
+    });
+
+    const actionButton = screen.getByText("Open");
+    await act(async () => {
+      fireEvent.click(actionButton);
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(screen.getByText("Opened")).toBeTruthy();
+  });
+
+  it("success label dwells for ~2000ms before auto-dismissing (async onClick)", async () => {
+    render(<Toaster />);
+    await act(async () => {
+      addToast({
+        message: "Processing…",
+        action: {
+          label: "Retry",
+          onClick: () => Promise.resolve(),
+          successLabel: "Retried",
+        },
+      });
+      vi.advanceTimersByTime(16);
+    });
+
+    const actionButton = screen.getByText("Retry");
+    await act(async () => {
+      fireEvent.click(actionButton);
+      await Promise.resolve();
+      vi.advanceTimersByTime(16);
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(1900);
+    });
+    expect(screen.getByText("Retried")).toBeTruthy();
+
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(screen.queryByText("Retried")).toBeNull();
+  });
+
+  it("action without successLabel dismisses immediately on click (no dwell)", async () => {
+    render(<Toaster />);
+    await act(async () => {
+      addToast({
+        duration: 0,
+        message: "Quick action",
+        action: { label: "Dismiss", onClick: () => {} },
+      });
+      vi.advanceTimersByTime(16);
+    });
+
+    const actionButton = screen.getByText("Dismiss");
+    await act(async () => {
+      fireEvent.click(actionButton);
+      vi.advanceTimersByTime(16);
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(screen.queryByText("Quick action")).toBeNull();
   });
 });
