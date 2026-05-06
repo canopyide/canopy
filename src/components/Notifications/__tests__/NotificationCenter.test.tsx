@@ -362,9 +362,9 @@ describe("NotificationCenter pause menu", () => {
       fireEvent.click(trigger);
     });
 
-    // Label is locale-formatted (e.g. "Until 8:00 AM" or "Until 8:00") — match the prefix.
+    // Label is locale-formatted (e.g. "Until 8:00 AM" or "Until 08:00") — match the prefix.
     await act(async () => {
-      fireEvent.click(screen.getByText(/^Until 8:00/));
+      fireEvent.click(screen.getByText(/^Until \d{1,2}:00/));
     });
 
     expect(vi.mocked(notifyLib.muteUntilNextMorning)).toHaveBeenCalledTimes(1);
