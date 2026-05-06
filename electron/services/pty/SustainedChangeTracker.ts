@@ -23,6 +23,7 @@ export interface ChangeObservation {
 
 export interface VisibleContentSnapshot {
   text: string;
+  units: readonly string[];
   hash: number;
   length: number;
 }
@@ -35,6 +36,23 @@ export interface VisibleContentDelta {
 interface ChangeSample {
   at: number;
   heat: number;
+}
+
+interface NormalizedVisibleUnit {
+  key: string;
+  collapsible: boolean;
+}
+
+export interface VisibleContentCell {
+  chars: string;
+  code: number;
+  width: number;
+  fgColorMode: number;
+  fgColor: number;
+  bgColorMode: number;
+  bgColor: number;
+  attributes: number;
+  defaultVisual: boolean;
 }
 
 export class SustainedChangeTracker {
@@ -139,30 +157,38 @@ export function hashStrings(values: readonly string[]): number {
 
 export function normalizeVisibleContent(values: string | readonly string[]): string {
   const text = typeof values === "string" ? values : values.join("");
-  return text.replace(/\s+/gu, "");
+  return normalizeTextUnits(text).join("");
 }
 
 export function createVisibleContentSnapshot(
   values: string | readonly string[]
 ): VisibleContentSnapshot {
-  const text = normalizeVisibleContent(values);
-  return {
-    text,
-    hash: hashStrings([text]),
-    length: Array.from(text).length,
-  };
+  return createSnapshotFromUnits(
+    normalizeTextUnits(typeof values === "string" ? values : values.join(""))
+  );
+}
+
+export function createVisibleCellContentSnapshot(
+  rows: readonly (readonly VisibleContentCell[])[]
+): VisibleContentSnapshot {
+  return createSnapshotFromUnits(normalizeCellUnits(rows));
 }
 
 export function measureVisibleContentDelta(
   previous: VisibleContentSnapshot | undefined,
   current: VisibleContentSnapshot
 ): VisibleContentDelta {
-  if (!previous || (previous.hash === current.hash && previous.text === current.text)) {
+  if (
+    !previous ||
+    (previous.hash === current.hash &&
+      previous.length === current.length &&
+      previous.text === current.text)
+  ) {
     return { changed: false, changedChars: 0 };
   }
 
-  const previousChars = Array.from(previous.text);
-  const currentChars = Array.from(current.text);
+  const previousChars = previous.units ?? Array.from(previous.text);
+  const currentChars = current.units ?? Array.from(current.text);
   let prefix = 0;
   while (
     prefix < previousChars.length &&
@@ -186,6 +212,106 @@ export function measureVisibleContentDelta(
   const currentChanged = currentChars.length - prefix - suffix;
   const changedChars = Math.max(previousChanged, currentChanged);
   return { changed: changedChars > 0, changedChars };
+}
+
+function normalizeTextUnits(text: string): string[] {
+  return collapseRepeatedUnits(
+    Array.from(text)
+      .filter((char) => !/\s/u.test(char))
+      .map((char) => ({
+        key: char,
+        collapsible: isCollapsibleFillText(char),
+      }))
+  );
+}
+
+function normalizeCellUnits(rows: readonly (readonly VisibleContentCell[])[]): string[] {
+  const units: NormalizedVisibleUnit[] = [];
+  for (const row of rows) {
+    for (const cell of row) {
+      const unit = visibleCellUnit(cell);
+      if (unit !== null) {
+        units.push(unit);
+      }
+    }
+  }
+  return collapseRepeatedUnits(units);
+}
+
+function visibleCellUnit(cell: VisibleContentCell): NormalizedVisibleUnit | null {
+  if (cell.width === 0) {
+    return null;
+  }
+
+  const chars = cell.chars || (cell.code === 0 ? " " : String.fromCodePoint(cell.code));
+  if (/^\s*$/u.test(chars)) {
+    return null;
+  }
+
+  return {
+    key: [
+      chars,
+      cell.code,
+      cell.width,
+      cell.fgColorMode,
+      cell.fgColor,
+      foregroundContentAttributes(cell.attributes),
+    ].join("|"),
+    collapsible: isCollapsibleFillText(chars),
+  };
+}
+
+const INVERSE_ATTRIBUTE = 1 << 5;
+
+function foregroundContentAttributes(attributes: number): number {
+  return attributes & ~INVERSE_ATTRIBUTE;
+}
+
+function collapseRepeatedUnits(units: readonly NormalizedVisibleUnit[]): string[] {
+  const collapsed: string[] = [];
+  let lastUnit: NormalizedVisibleUnit | undefined;
+  for (const unit of units) {
+    if (lastUnit && unit.collapsible && lastUnit.key === unit.key) {
+      continue;
+    }
+    collapsed.push(unit.key);
+    lastUnit = unit;
+  }
+  return collapsed;
+}
+
+const COLLAPSIBLE_FILL_CHARS = new Set([
+  "-",
+  "_",
+  "=",
+  ".",
+  "·",
+  "•",
+  "∙",
+  "●",
+  "─",
+  "━",
+  "═",
+  "╌",
+  "╍",
+  "⎯",
+  "▁",
+  "▔",
+]);
+
+function isCollapsibleFillText(text: string): boolean {
+  const chars = Array.from(text);
+  return chars.length > 0 && chars.every((char) => COLLAPSIBLE_FILL_CHARS.has(char));
+}
+
+function createSnapshotFromUnits(units: string[]): VisibleContentSnapshot {
+  const text = units.join("");
+  return {
+    text,
+    units,
+    hash: hashStrings(units),
+    length: units.length,
+  };
 }
 
 function heatForChangedChars(changedChars: number): number {

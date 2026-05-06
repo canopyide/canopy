@@ -4,9 +4,11 @@ import {
   AGENT_WORKING_RECOVERY_MIN_CHANGED_FRAMES,
   AGENT_WORKING_RECOVERY_WINDOW_MS,
   SustainedChangeTracker,
+  createVisibleCellContentSnapshot,
   createVisibleContentSnapshot,
   measureVisibleContentDelta,
   normalizeVisibleContent,
+  type VisibleContentCell,
 } from "../SustainedChangeTracker.js";
 
 function makeTracker(): SustainedChangeTracker {
@@ -17,15 +19,71 @@ function makeTracker(): SustainedChangeTracker {
   });
 }
 
+function cell(partial: Partial<VisibleContentCell> = {}): VisibleContentCell {
+  const chars = partial.chars ?? "-";
+  return {
+    chars,
+    code: partial.code ?? chars.codePointAt(0) ?? 0,
+    width: partial.width ?? 1,
+    fgColorMode: partial.fgColorMode ?? 0,
+    fgColor: partial.fgColor ?? 0,
+    bgColorMode: partial.bgColorMode ?? 0,
+    bgColor: partial.bgColor ?? 0,
+    attributes: partial.attributes ?? 0,
+    defaultVisual: partial.defaultVisual ?? true,
+  };
+}
+
+function row(text: string, partial: Partial<VisibleContentCell> = {}): VisibleContentCell[] {
+  return Array.from(text).map((chars) =>
+    cell({
+      ...partial,
+      chars,
+      code: chars.codePointAt(0) ?? 0,
+    })
+  );
+}
+
 describe("visible content normalization", () => {
   it("removes whitespace and line breaks before comparison", () => {
     expect(normalizeVisibleContent(["Claude Code", "  Waiting"])).toBe("ClaudeCodeWaiting");
     expect(normalizeVisibleContent("Claude\nCode\tWaiting")).toBe("ClaudeCodeWaiting");
   });
 
+  it("collapses consecutive repeated characters before comparison", () => {
+    expect(normalizeVisibleContent("-----")).toBe("-");
+    expect(normalizeVisibleContent("══════")).toBe("═");
+    expect(normalizeVisibleContent("···· ready")).toBe("·ready");
+  });
+
+  it("does not collapse repeated content characters before comparison", () => {
+    expect(normalizeVisibleContent("book")).toBe("book");
+    expect(normalizeVisibleContent("step 11")).toBe("step11");
+
+    expect(
+      measureVisibleContentDelta(
+        createVisibleContentSnapshot("step 1"),
+        createVisibleContentSnapshot("step 11")
+      )
+    ).toEqual({
+      changed: true,
+      changedChars: 1,
+    });
+  });
+
   it("treats line reflow as unchanged visible content", () => {
     const before = createVisibleContentSnapshot(["Claude Code is waiting"]);
     const after = createVisibleContentSnapshot(["Claude", "Code is", "waiting"]);
+
+    expect(measureVisibleContentDelta(before, after)).toEqual({
+      changed: false,
+      changedChars: 0,
+    });
+  });
+
+  it("treats repeated separator width changes as unchanged visible content", () => {
+    const before = createVisibleContentSnapshot(["-----"]);
+    const after = createVisibleContentSnapshot(["----------"]);
 
     expect(measureVisibleContentDelta(before, after)).toEqual({
       changed: false,
@@ -40,6 +98,74 @@ describe("visible content normalization", () => {
     expect(measureVisibleContentDelta(before, after)).toEqual({
       changed: true,
       changedChars: 1,
+    });
+  });
+
+  it("includes color changes in cell snapshots", () => {
+    const before = createVisibleCellContentSnapshot([
+      row("●●●", { fgColorMode: 1, fgColor: 1, defaultVisual: false }),
+    ]);
+    const after = createVisibleCellContentSnapshot([
+      row("●●●", { fgColorMode: 1, fgColor: 2, defaultVisual: false }),
+    ]);
+
+    expect(measureVisibleContentDelta(before, after)).toEqual({
+      changed: true,
+      changedChars: 1,
+    });
+  });
+
+  it("ignores styled whitespace in cell snapshots", () => {
+    const before = createVisibleCellContentSnapshot([
+      row("   ", { bgColorMode: 1, bgColor: 1, defaultVisual: false }),
+    ]);
+    const after = createVisibleCellContentSnapshot([
+      row("   ", { bgColorMode: 1, bgColor: 2, defaultVisual: false }),
+    ]);
+
+    expect(measureVisibleContentDelta(before, after)).toEqual({
+      changed: false,
+      changedChars: 0,
+    });
+  });
+
+  it("ignores background row-bar changes on visible text cells", () => {
+    const before = createVisibleCellContentSnapshot([
+      row("/exit", { bgColorMode: 1, bgColor: 1, defaultVisual: false }),
+    ]);
+    const after = createVisibleCellContentSnapshot([
+      row("/exit", { bgColorMode: 1, bgColor: 2, attributes: 1 << 5, defaultVisual: false }),
+    ]);
+
+    expect(after.hash).toBe(before.hash);
+    expect(measureVisibleContentDelta(before, after)).toEqual({
+      changed: false,
+      changedChars: 0,
+    });
+  });
+
+  it("treats wrap-only changes with styled padding as the same snapshot", () => {
+    const before = createVisibleCellContentSnapshot([
+      [
+        ...row("Captures the regression in fcbb3f765 plus the race window"),
+        ...row("     ", { bgColorMode: 1, bgColor: 4, defaultVisual: false }),
+      ],
+      row("between addPanel resolving and setTerminal(newId) firing"),
+    ]);
+    const after = createVisibleCellContentSnapshot([
+      row("Captures the regression in fcbb3f765 plus the race"),
+      [
+        ...row("window between addPanel resolving and setTerminal(newId)"),
+        ...row("     ", { bgColorMode: 1, bgColor: 5, defaultVisual: false }),
+      ],
+      row("firing"),
+    ]);
+
+    expect(after.hash).toBe(before.hash);
+    expect(after.length).toBe(before.length);
+    expect(measureVisibleContentDelta(before, after)).toEqual({
+      changed: false,
+      changedChars: 0,
     });
   });
 });

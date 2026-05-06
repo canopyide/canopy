@@ -43,7 +43,7 @@ import {
   OUTPUT_SETTLE_MAX_WAIT_MS,
   OUTPUT_SETTLE_POLL_INTERVAL_MS,
 } from "./terminalInput.js";
-import type { IMarker } from "@xterm/headless";
+import type { IBufferCell, IMarker } from "@xterm/headless";
 import {
   TERMINAL_SESSION_PERSISTENCE_ENABLED,
   restoreSessionFromFile,
@@ -75,8 +75,10 @@ import { gracefulShutdown as runGracefulShutdown } from "./TerminalGracefulShutd
 import { handleAgentDetection as runHandleAgentDetection } from "./TerminalAgentDetection.js";
 import { TerminalProcessLifecycle } from "./TerminalProcessLifecycle.js";
 import {
+  createVisibleCellContentSnapshot,
   createVisibleContentSnapshot,
   measureVisibleContentDelta,
+  type VisibleContentCell,
   type VisibleContentSnapshot,
 } from "./SustainedChangeTracker.js";
 import {
@@ -84,10 +86,16 @@ import {
   AgentActivityTemperature,
 } from "./AgentActivityTemperature.js";
 
+type CursorBufferLine = {
+  translateToString: (trimRight?: boolean) => string;
+  getCell?: (index: number, cell?: IBufferCell) => IBufferCell | undefined;
+};
+
 type CursorBuffer = {
   cursorY?: number;
   baseY: number;
-  getLine: (index: number) => { translateToString: (trimRight?: boolean) => string } | undefined;
+  getNullCell?: () => IBufferCell;
+  getLine: (index: number) => CursorBufferLine | undefined;
 };
 
 export interface TerminalProcessCallbacks {
@@ -416,6 +424,7 @@ export class TerminalProcess {
         {
           ...buildActivityMonitorOptions(launchAgentId, {
             getVisibleLines: (n) => this.getVisibleActivityLines(n),
+            getVisibleContentSnapshot: (n) => this.getVisibleActivitySnapshot(n),
             getCursorLine: () => this.getCursorLine(),
           }),
           processStateValidator,
@@ -1007,6 +1016,82 @@ export class TerminalProcess {
     return lines;
   }
 
+  getVisibleActivitySnapshot(n: number): VisibleContentSnapshot | undefined {
+    const cells = this.getVisibleActivityCells();
+    return cells
+      ? createVisibleCellContentSnapshot(cells)
+      : createVisibleContentSnapshot(this.getVisibleActivityLines(n));
+  }
+
+  private getVisibleActivityCells(): VisibleContentCell[][] | undefined {
+    const terminal = this.terminalInfo.headlessTerminal;
+    if (!terminal) return undefined;
+
+    const buffer = terminal.buffer.active as CursorBuffer;
+    if (
+      !buffer ||
+      typeof buffer.getLine !== "function" ||
+      typeof buffer.getNullCell !== "function"
+    ) {
+      return undefined;
+    }
+
+    const viewportTop = buffer.baseY;
+    const viewportBottom = buffer.baseY + terminal.rows;
+    const cursorY = buffer.cursorY ?? 0;
+    const cursorIndex = Math.min(Math.max(buffer.baseY + cursorY, viewportTop), viewportBottom - 1);
+    const end = cursorIndex + 1;
+    // Compare the whole visible viewport for cell snapshots. Fixed physical-row
+    // tails are unstable across wrap-only layout changes: the first sampled row
+    // can move even when the visible content has not semantically changed.
+    const start = viewportTop;
+    const reusableCell = buffer.getNullCell();
+
+    const rows: VisibleContentCell[][] = [];
+    for (let y = start; y < end; y += 1) {
+      const line = buffer.getLine(y);
+      if (!line || typeof line.getCell !== "function") {
+        continue;
+      }
+
+      const row: VisibleContentCell[] = [];
+      for (let x = 0; x < terminal.cols; x += 1) {
+        const cell = line.getCell(x, reusableCell);
+        if (cell) {
+          row.push(this.createVisibleContentCell(cell));
+        }
+      }
+      rows.push(row);
+    }
+
+    return rows;
+  }
+
+  private createVisibleContentCell(cell: IBufferCell): VisibleContentCell {
+    const attributes =
+      (cell.isBold() ? 1 : 0) |
+      (cell.isItalic() ? 1 << 1 : 0) |
+      (cell.isDim() ? 1 << 2 : 0) |
+      (cell.isUnderline() ? 1 << 3 : 0) |
+      (cell.isBlink() ? 1 << 4 : 0) |
+      (cell.isInverse() ? 1 << 5 : 0) |
+      (cell.isInvisible() ? 1 << 6 : 0) |
+      (cell.isStrikethrough() ? 1 << 7 : 0) |
+      (cell.isOverline() ? 1 << 8 : 0);
+
+    return {
+      chars: cell.getChars(),
+      code: cell.getCode(),
+      width: cell.getWidth(),
+      fgColorMode: cell.getFgColorMode(),
+      fgColor: cell.getFgColor(),
+      bgColorMode: cell.getBgColorMode(),
+      bgColor: cell.getBgColor(),
+      attributes,
+      defaultVisual: cell.isFgDefault() && cell.isBgDefault() && attributes === 0,
+    };
+  }
+
   getCursorLine(): string | null {
     const terminal = this.terminalInfo.headlessTerminal;
     if (!terminal) return null;
@@ -1179,6 +1264,7 @@ export class TerminalProcess {
         {
           ...buildActivityMonitorOptions(getLiveAgentId(this.terminalInfo), {
             getVisibleLines: (n) => this.getVisibleActivityLines(n),
+            getVisibleContentSnapshot: (n) => this.getVisibleActivitySnapshot(n),
             getCursorLine: () => this.getCursorLine(),
           }),
           processStateValidator,
@@ -1274,9 +1360,7 @@ export class TerminalProcess {
     if (!this.terminalInfo.headlessTerminal) {
       return undefined;
     }
-    return createVisibleContentSnapshot(
-      this.getVisibleActivityLines(AGENT_OUTPUT_ACTIVITY_LINE_COUNT)
-    );
+    return this.getVisibleActivitySnapshot(AGENT_OUTPUT_ACTIVITY_LINE_COUNT);
   }
 
   private noteAgentOutputActivity(beforeSnapshot: VisibleContentSnapshot | undefined): void {

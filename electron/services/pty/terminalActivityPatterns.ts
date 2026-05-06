@@ -5,6 +5,7 @@ import {
 import type { PatternDetectionConfig } from "./AgentPatternDetector.js";
 import type { ActivityMonitorOptions, ProcessStateValidator } from "../ActivityMonitor.js";
 import type { ProcessTreeCache } from "../ProcessTreeCache.js";
+import type { VisibleContentSnapshot } from "./SustainedChangeTracker.js";
 
 // Agent status is intentionally output-driven: any observed output means
 // working, and sustained silence means waiting.
@@ -170,6 +171,7 @@ export function buildActivityMonitorOptions(
   effectiveAgentId: string | undefined,
   deps: {
     getVisibleLines?: (n: number) => string[];
+    getVisibleContentSnapshot?: (n: number) => VisibleContentSnapshot | undefined;
     getCursorLine?: () => string | null;
   }
 ): ActivityMonitorOptions {
@@ -197,6 +199,7 @@ export function buildActivityMonitorOptions(
   };
 
   const getVisibleLines = effectiveAgentId ? deps.getVisibleLines : undefined;
+  const getVisibleContentSnapshot = effectiveAgentId ? deps.getVisibleContentSnapshot : undefined;
   const getCursorLine = effectiveAgentId ? deps.getCursorLine : undefined;
   let idleDebounceMs: number | undefined;
   let promptFastPathMinQuietMs = detection?.promptFastPathMinQuietMs;
@@ -216,6 +219,7 @@ export function buildActivityMonitorOptions(
     agentId: effectiveAgentId,
     outputActivityDetection,
     getVisibleLines,
+    getVisibleContentSnapshot,
     getCursorLine,
     patternConfig,
     bootCompletePatterns,

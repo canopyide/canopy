@@ -219,11 +219,11 @@ describe("TerminalProcess — observer-driven exit handlers", () => {
     try {
       terminal.stopActivityMonitor();
       terminal.getInfo().agentState = "waiting";
-      const getVisibleActivityLines = vi.spyOn(terminal, "getVisibleActivityLines");
+      const getVisibleActivitySnapshot = vi.spyOn(terminal, "getVisibleActivitySnapshot");
 
       await emitDataAndFlush(pty, "waiting");
 
-      expect(getVisibleActivityLines).toHaveBeenCalledWith(AGENT_OUTPUT_ACTIVITY_LINE_COUNT);
+      expect(getVisibleActivitySnapshot).toHaveBeenCalledWith(AGENT_OUTPUT_ACTIVITY_LINE_COUNT);
     } finally {
       terminal.dispose();
       vi.useRealTimers();
@@ -270,6 +270,96 @@ describe("TerminalProcess — observer-driven exit handlers", () => {
     }
   });
 
+  it("does not recover a waiting live agent when repeated separator width changes without a monitor", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const pty = createControllablePty();
+    const handleActivityState = vi.fn();
+    const terminal = createTerminal(
+      pty,
+      { kind: "terminal", launchAgentId: "claude" },
+      {
+        agentStateService: {
+          handleActivityState,
+          updateAgentState: () => {},
+          emitAgentKilled: () => {},
+          emitAgentCompleted: () => {},
+        } as unknown as TerminalProcessDeps["agentStateService"],
+      },
+      "t-output-separator-resize"
+    );
+
+    try {
+      terminal.stopActivityMonitor();
+      terminal.getInfo().agentState = "waiting";
+
+      await emitDataAndFlush(pty, "-----");
+      vi.advanceTimersByTime(1300);
+      handleActivityState.mockClear();
+
+      for (const length of [10, 20, 40, 60]) {
+        await emitDataAndFlush(pty, `\r${"-".repeat(length)}`);
+        vi.advanceTimersByTime(700);
+      }
+
+      expect(handleActivityState).not.toHaveBeenCalled();
+    } finally {
+      terminal.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the visible activity snapshot stable across wrap-only viewport changes", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const pty = createControllablePty();
+    const terminal = createTerminal(
+      pty,
+      { cols: 90, rows: 24, kind: "terminal", launchAgentId: "claude" },
+      undefined,
+      "t-output-wrap-stable"
+    );
+
+    try {
+      terminal.stopActivityMonitor();
+      terminal.getInfo().agentState = "waiting";
+
+      await emitDataAndFlush(
+        pty,
+        [
+          "Bash(gh issue view 6951 --json title,labels,url --jq '.')",
+          "Issue created",
+          "URL: https://github.com/daintreehq/daintree/issues/6951",
+          "Type: Bug",
+          "Title: + New session button leaves stray terminal in dock",
+          "Captures the regression in fcbb3f765 closing #6948, plus the race window between addPanel resolving and setTerminal(newId) firing where the dock has no helpTerminalId to filter against. Labelled bug + ui.",
+          "* Cogitated for 3m 1s",
+          "* recap: Filed issue #6951 capturing the + New session dock regression from #6948 - the + button uses a different panel-creation path than the original launch and races the dock filter. Next: hand it to /work when ready.",
+          "/exit",
+          "Catch you later!",
+          "/exit",
+          "See ya!",
+          "/exit",
+          "Goodbye!",
+          'Try "create a util logging.py that..."',
+          "bypass permissions on (shift+tab to cycle)",
+        ].join("\r\n")
+      );
+
+      const before = terminal.getVisibleActivitySnapshot(AGENT_OUTPUT_ACTIVITY_LINE_COUNT);
+      terminal.resize(140, 24);
+      const after = terminal.getVisibleActivitySnapshot(AGENT_OUTPUT_ACTIVITY_LINE_COUNT);
+
+      expect(after).toBeDefined();
+      expect(after?.hash).toBe(before?.hash);
+      expect(after?.length).toBe(before?.length);
+      expect(after?.text).toBe(before?.text);
+    } finally {
+      terminal.dispose();
+      vi.useRealTimers();
+    }
+  });
+
   it("recovers a waiting live agent to working on sustained PTY content changes without a monitor", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(1000);
@@ -310,6 +400,56 @@ describe("TerminalProcess — observer-driven exit handlers", () => {
 
       vi.advanceTimersByTime(700);
       await emitDataAndFlush(pty, "\rworking 4");
+
+      expect(handleActivityState).toHaveBeenCalledWith(terminal.getInfo(), "busy", {
+        trigger: "output",
+      });
+    } finally {
+      terminal.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("recovers a waiting live agent to working on sustained color-only changes without a monitor", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const pty = createControllablePty();
+    const handleActivityState = vi.fn();
+    const terminal = createTerminal(
+      pty,
+      { kind: "terminal", launchAgentId: "claude" },
+      {
+        agentStateService: {
+          handleActivityState,
+          updateAgentState: () => {},
+          emitAgentKilled: () => {},
+          emitAgentCompleted: () => {},
+        } as unknown as TerminalProcessDeps["agentStateService"],
+      },
+      "t-output-color-recovery"
+    );
+
+    try {
+      terminal.stopActivityMonitor();
+      terminal.getInfo().agentState = "waiting";
+
+      await emitDataAndFlush(pty, "\x1b[31mloading\x1b[0m");
+      vi.advanceTimersByTime(1300);
+      handleActivityState.mockClear();
+
+      await emitDataAndFlush(pty, "\r\x1b[32mloading\x1b[0m");
+      expect(handleActivityState).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(700);
+      await emitDataAndFlush(pty, "\r\x1b[33mloading\x1b[0m");
+      expect(handleActivityState).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(700);
+      await emitDataAndFlush(pty, "\r\x1b[34mloading\x1b[0m");
+      expect(handleActivityState).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(700);
+      await emitDataAndFlush(pty, "\r\x1b[35mloading\x1b[0m");
 
       expect(handleActivityState).toHaveBeenCalledWith(terminal.getInfo(), "busy", {
         trigger: "output",

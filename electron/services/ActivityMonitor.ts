@@ -69,6 +69,7 @@ export interface ActivityMonitorOptions {
   bootCompletePatterns?: RegExp[];
   patternBufferSize?: number;
   getVisibleLines?: (n: number) => string[];
+  getVisibleContentSnapshot?: (n: number) => VisibleContentSnapshot | undefined;
   getCursorLine?: () => string | null;
   initialState?: "busy" | "idle";
   skipInitialStateEmit?: boolean;
@@ -179,6 +180,7 @@ export class ActivityMonitor {
   private patternDetector?: AgentPatternDetector;
   private lastPatternResult?: PatternDetectionResult;
   private readonly getVisibleLines?: (n: number) => string[];
+  private readonly getVisibleContentSnapshot?: (n: number) => VisibleContentSnapshot | undefined;
   private readonly getCursorLine?: () => string | null;
   private pollingInterval?: ReturnType<typeof setInterval>;
   private watchdogInterval?: ReturnType<typeof setInterval>;
@@ -277,6 +279,7 @@ export class ActivityMonitor {
       this.patternDetector = new AgentPatternDetector(options.agentId, options.patternConfig);
     }
     this.getVisibleLines = options?.getVisibleLines;
+    this.getVisibleContentSnapshot = options?.getVisibleContentSnapshot;
     this.getCursorLine = options?.getCursorLine;
 
     // Prompt config
@@ -612,6 +615,11 @@ export class ActivityMonitor {
   }
 
   private captureSimpleOutputSnapshot(): VisibleContentSnapshot | undefined {
+    const cellSnapshot = this.getVisibleContentSnapshot?.(AGENT_OUTPUT_ACTIVITY_LINE_COUNT);
+    if (cellSnapshot !== undefined) {
+      return cellSnapshot;
+    }
+
     if (!this.getVisibleLines) {
       return undefined;
     }

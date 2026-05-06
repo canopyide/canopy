@@ -1,6 +1,36 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { ActivityMonitor } from "../ActivityMonitor.js";
 import { AGENT_OUTPUT_ACTIVITY_LINE_COUNT } from "../pty/AgentActivityTemperature.js";
+import {
+  createVisibleCellContentSnapshot,
+  createVisibleContentSnapshot,
+  type VisibleContentCell,
+} from "../pty/SustainedChangeTracker.js";
+
+function visibleCell(partial: Partial<VisibleContentCell> = {}): VisibleContentCell {
+  const chars = partial.chars ?? "●";
+  return {
+    chars,
+    code: partial.code ?? chars.codePointAt(0) ?? 0,
+    width: partial.width ?? 1,
+    fgColorMode: partial.fgColorMode ?? 0,
+    fgColor: partial.fgColor ?? 0,
+    bgColorMode: partial.bgColorMode ?? 0,
+    bgColor: partial.bgColor ?? 0,
+    attributes: partial.attributes ?? 0,
+    defaultVisual: partial.defaultVisual ?? true,
+  };
+}
+
+function visibleRow(text: string, partial: Partial<VisibleContentCell> = {}): VisibleContentCell[] {
+  return Array.from(text).map((chars) =>
+    visibleCell({
+      ...partial,
+      chars,
+      code: chars.codePointAt(0) ?? 0,
+    })
+  );
+}
 
 describe("ActivityMonitor", () => {
   beforeEach(() => {
@@ -743,6 +773,37 @@ describe("ActivityMonitor", () => {
       monitor.dispose();
     });
 
+    it("ignores repeated separator width changes in visual snapshots", () => {
+      const onStateChange = vi.fn();
+      let separatorLength = 5;
+      const getVisibleContentSnapshot = vi.fn((count: number) => {
+        expect(count).toBe(AGENT_OUTPUT_ACTIVITY_LINE_COUNT);
+        return createVisibleContentSnapshot("-".repeat(separatorLength));
+      });
+      const monitor = new ActivityMonitor("agent-simple-separator-resize", 1000, onStateChange, {
+        agentId: "claude",
+        getVisibleLines: () => ["-----"],
+        getVisibleContentSnapshot,
+        initialState: "idle",
+        skipInitialStateEmit: true,
+      });
+
+      monitor.startPolling();
+      vi.advanceTimersByTime(100);
+      onStateChange.mockClear();
+
+      for (const length of [10, 20, 40, 8]) {
+        separatorLength = length;
+        vi.advanceTimersByTime(700);
+      }
+
+      expect(getVisibleContentSnapshot).toHaveBeenCalled();
+      expect(monitor.getState()).toBe("idle");
+      expect(onStateChange).not.toHaveBeenCalled();
+
+      monitor.dispose();
+    });
+
     it("samples only the visible tail for simple output recovery", () => {
       const onStateChange = vi.fn();
       let visibleLines = Array.from({ length: 30 }, (_, i) => `historical line ${i + 1}`);
@@ -780,6 +841,48 @@ describe("ActivityMonitor", () => {
 
       expect(monitor.getState()).toBe("busy");
       expect(onStateChange).toHaveBeenCalledWith("agent-simple-tail", 1000, "busy", {
+        trigger: "output",
+      });
+
+      monitor.dispose();
+    });
+
+    it("recovers from sustained color-only visual cell changes", () => {
+      const onStateChange = vi.fn();
+      let fgColor = 1;
+      const monitor = new ActivityMonitor("agent-simple-color-spinner", 1000, onStateChange, {
+        agentId: "claude",
+        getVisibleLines: () => ["●●●"],
+        getVisibleContentSnapshot: () =>
+          createVisibleCellContentSnapshot([
+            visibleRow("●●●", { fgColorMode: 1, fgColor, defaultVisual: false }),
+          ]),
+        initialState: "idle",
+        skipInitialStateEmit: true,
+      });
+
+      monitor.startPolling();
+      vi.advanceTimersByTime(100);
+      fgColor = 2;
+      vi.advanceTimersByTime(50);
+      expect(monitor.getState()).toBe("idle");
+
+      vi.advanceTimersByTime(650);
+      fgColor = 3;
+      vi.advanceTimersByTime(50);
+      expect(monitor.getState()).toBe("idle");
+
+      vi.advanceTimersByTime(650);
+      fgColor = 4;
+      vi.advanceTimersByTime(50);
+      expect(monitor.getState()).toBe("idle");
+
+      vi.advanceTimersByTime(650);
+      fgColor = 5;
+      vi.advanceTimersByTime(50);
+
+      expect(monitor.getState()).toBe("busy");
+      expect(onStateChange).toHaveBeenCalledWith("agent-simple-color-spinner", 1000, "busy", {
         trigger: "output",
       });
 
