@@ -323,7 +323,7 @@ AppPaletteDialog.Footer = function AppPaletteFooter({
         className
       )}
     >
-      {children || <DefaultKeyboardHints />}
+      {children ?? <DefaultKeyboardHints />}
     </div>
   );
 };
@@ -431,6 +431,19 @@ interface AppPaletteEmptyProps {
   children?: React.ReactNode;
 }
 
+const NO_MATCH_QUERY_MAX = 40;
+
+function defaultNoMatchTitle(trimmedQuery: string) {
+  // Iterate by codepoint (Array.from handles surrogate pairs) so we never
+  // truncate inside an astral-plane character like an emoji.
+  const codepoints = Array.from(trimmedQuery);
+  const display =
+    codepoints.length > NO_MATCH_QUERY_MAX
+      ? `${codepoints.slice(0, NO_MATCH_QUERY_MAX).join("")}…`
+      : trimmedQuery;
+  return `No matches for "${display}"`;
+}
+
 AppPaletteDialog.Empty = function AppPaletteEmpty({
   query,
   emptyMessage = "No items available",
@@ -443,7 +456,7 @@ AppPaletteDialog.Empty = function AppPaletteEmpty({
     return (
       <EmptyState
         variant="filtered-empty"
-        title={noMatchMessage ?? "No results found"}
+        title={noMatchMessage ?? defaultNoMatchTitle(trimmedQuery)}
         action={noMatchContent}
         className="px-3 py-8"
       />
