@@ -20,9 +20,10 @@ import type { ErrorType } from "@/store/errorStore";
  * Errors and warnings get a generous 12s so the user has time to read them;
  * success dismisses in 4s (two-word confirmations need no more). Info gets
  * 8s to match the Atlassian accessibility minimum for sentence-length
- * content. The
- * persistent inbox is the WCAG 2.2.1 conforming alternative — users who miss
- * a toast can always recover it from the notification center.
+ * content. When a toast fires, the persistent inbox is the WCAG 2.2.1 conforming
+ * alternative — users who miss a toast can always recover it from the
+ * notification center. When no toast is shown (priority "low"), the inbox is the
+ * primary channel and carries no compliance load.
  *
  * Action-bearing toasts override this to `0` (sticky) so the action remains
  * available; explicit `duration` on the payload always wins.
@@ -287,9 +288,14 @@ export function isScheduledQuietHours(now: Date = new Date()): boolean {
  *
  * The `grid-bar` placement bypasses priority routing and always renders inline.
  *
+ * Only call for events the user could not otherwise observe: completion, failure,
+ * or required action. Don't duplicate in-place UI state changes — those are
+ * already visible without a notification.
+ *
  * When `message` is a non-string ReactNode, `inboxMessage` is required —
- * otherwise the persistent inbox history entry is silently dropped (WCAG 2.2.1).
- * String messages auto-derive the history text from the message itself.
+ * otherwise the history entry is dropped and a toast (when shown) has no
+ * WCAG 2.2.1 recoverable alternative. String messages auto-derive the history
+ * text from the message itself.
  */
 export function notify(
   payload: Omit<NotifyPayload, "message" | "inboxMessage"> & {
@@ -325,9 +331,10 @@ export function notify(payload: NotifyPayload): string {
     payload = { ...payload, duration: 0 };
   }
 
-  // Severity-based dismiss defaults. The persistent inbox is the WCAG 2.2.1
-  // conforming alternative for time-limited content, so error/warning use a
-  // generous 12s instead of full sticky to keep the active stack from growing.
+  // Severity-based dismiss defaults. When a toast fires, the persistent inbox is
+  // the WCAG 2.2.1 conforming alternative for time-limited content, so
+  // error/warning use a generous 12s instead of full sticky to keep the active
+  // stack from growing.
   if (payload.duration === undefined) {
     payload = { ...payload, duration: TOAST_DURATION[type] };
   }
