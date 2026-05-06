@@ -237,6 +237,7 @@ export function CommitList({ projectPath, branch, onClose, initialCount }: Commi
       </div>
 
       <div className="overflow-y-auto flex-1 min-h-0 relative">
+        {loading && !data.length && initialCount === 0 && renderEmpty()}
         <AnimatePresence mode="popLayout">
           {loading && !data.length && initialCount !== 0 ? (
             <m.div
@@ -252,7 +253,10 @@ export function CommitList({ projectPath, branch, onClose, initialCount }: Commi
               key="commit-content"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
+              exit={{
+                opacity: 0,
+                transition: { duration: UI_EXIT_DURATION / 1000, ease: UI_EXIT_EASING },
+              }}
               transition={{ duration: UI_ENTER_DURATION / 1000, ease: UI_ENTER_EASING }}
             >
               {error && renderError()}

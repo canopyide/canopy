@@ -732,7 +732,10 @@ export function GitHubResourceList({
               key="github-content"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
+              exit={{
+                opacity: 0,
+                transition: { duration: UI_EXIT_DURATION / 1000, ease: UI_EXIT_EASING },
+              }}
               transition={{ duration: UI_ENTER_DURATION / 1000, ease: UI_ENTER_EASING }}
               className="flex-1 min-h-0 flex flex-col"
             >

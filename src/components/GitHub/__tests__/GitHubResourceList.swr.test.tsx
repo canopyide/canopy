@@ -124,7 +124,7 @@ vi.mock("framer-motion", () => {
 
 vi.mock("../GitHubDropdownSkeletons", () => ({
   GitHubResourceRowsSkeleton: () => <div data-testid="skeleton">Loading...</div>,
-  MAX_SKELETON_ITEMS: 5,
+  MAX_SKELETON_ITEMS: 6,
   RESOURCE_ITEM_HEIGHT_PX: 68,
 }));
 
