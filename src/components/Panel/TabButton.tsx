@@ -12,7 +12,11 @@ import {
 } from "@/components/Worktree/terminalStateConfig";
 import type { TerminalChromeDescriptor } from "@/utils/terminalChrome";
 import { getTerminalAgentDisplayState } from "@/utils/terminalAgentDisplayState";
-import { UI_ANIMATION_DURATION, DURATION_100 } from "@/lib/animationUtils";
+import {
+  UI_ANIMATION_DURATION,
+  DURATION_100,
+  EASE_OUT_EXPO_FM,
+} from "@/lib/animationUtils";
 
 const RENAME_ERROR_TINT_HOLD_MS = 300;
 
@@ -294,7 +298,7 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
               layoutId="panel-tab-indicator"
               layout="position"
               className="absolute inset-x-0 bottom-0 h-0.5 bg-daintree-accent pointer-events-none"
-              transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
+              transition={{ duration: UI_ANIMATION_DURATION / 1000, ease: EASE_OUT_EXPO_FM }}
               aria-hidden="true"
             />
           )}

@@ -66,6 +66,7 @@ export const UI_EXIT_EASING = "cubic-bezier(0.2, 0, 0.7, 0)";
  *  Transition.ease to its own Easing type and rejects CSS string easings. */
 export const UI_ENTER_EASING_FM: [number, number, number, number] = [0.2, 0, 0, 1];
 export const UI_EXIT_EASING_FM: [number, number, number, number] = [0.2, 0, 0.7, 0];
+export const EASE_OUT_EXPO_FM: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
 export function getUiTransitionDuration(direction: "enter" | "exit"): number {
   if (typeof window === "undefined" || typeof document === "undefined") {

@@ -3,6 +3,7 @@ import { LayoutGroup, AnimatePresence, m } from "framer-motion";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { UI_ANIMATION_DURATION, EASE_OUT_EXPO_FM } from "@/lib/animationUtils";
 import type { TabInfo } from "./TabButton";
 
 export interface PanelTabListProps {
@@ -49,7 +50,7 @@ export function PanelTabList({
                   <m.div
                     key={tab.id}
                     layout="position"
-                    transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
+                    transition={{ duration: UI_ANIMATION_DURATION / 1000, ease: EASE_OUT_EXPO_FM }}
                   >
                     {renderTab(tab)}
                   </m.div>
