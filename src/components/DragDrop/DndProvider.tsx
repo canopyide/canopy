@@ -306,6 +306,7 @@ function DragOverlayWithCursorTracking({
           key={activeTerminal?.id ?? activeWorktree?.id ?? "drag-overlay"}
           initial={{ scale: 0.95, opacity: 0.8 }}
           animate={{ scale: 1, opacity: 1 }}
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-type-assertion -- framer-motion v12 Easing type doesn't include CSS cubic-bezier strings
           transition={{ duration: UI_ANIMATION_DURATION / 1000, ease: EASE_SNAPPY } as any}
         >
           {overlayContent}
@@ -902,6 +903,7 @@ export function DndProvider({ children }: DndProviderProps) {
         return false;
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- dnd-kit data.current is loosely typed
       const activeDataRaw = active.data.current as DragData | undefined;
       const draggedId = activeDataRaw?.terminal?.id ?? (active?.id ? String(active.id) : null);
 
