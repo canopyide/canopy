@@ -101,7 +101,7 @@ describe("REPO_STATS_AND_PAGE_QUERY", () => {
       REPO_STATS_AND_PAGE_QUERY.indexOf("pullRequests(first: 20")
     );
     expect(issuesBlock).toContain("author { login avatarUrl }");
-    expect(issuesBlock).toContain("assignees");
+    expect(issuesBlock).toContain("assignees(first: 10) { nodes { login avatarUrl } }");
   });
 
   it("returns the PR fields the disk-cache validator (isPRLike) requires", () => {
@@ -229,7 +229,7 @@ describe("buildBatchPRQuery", () => {
         expect(fragment).toContain("bodyText");
         expect(fragment).toContain("createdAt");
         expect(fragment).toContain("author { login avatarUrl }");
-        expect(fragment).toContain("assignees(first: 5) { nodes { login avatarUrl } }");
+        expect(fragment).toContain("assignees(first: 10) { nodes { login avatarUrl } }");
         expect(fragment).toContain("labels(first: 10) { nodes { name color } }");
       }
     });
@@ -246,7 +246,7 @@ describe("buildBatchPRQuery", () => {
       expect(branchPath).toContain("bodyText");
       expect(branchPath).toContain("createdAt");
       expect(branchPath).toContain("author { login avatarUrl }");
-      expect(branchPath).toContain("assignees(first: 5) { nodes { login avatarUrl } }");
+      expect(branchPath).toContain("assignees(first: 10) { nodes { login avatarUrl } }");
       expect(branchPath).toContain("labels(first: 10) { nodes { name color } }");
     });
 
@@ -258,7 +258,7 @@ describe("buildBatchPRQuery", () => {
         { worktreeId: "wt-1", issueNumber: 42, branchName: "feature-branch" },
       ]);
 
-      expect(query).not.toMatch(/assignees\(first:\s*5,\s*orderBy/);
+      expect(query).not.toMatch(/assignees\(first:\s*\d+,\s*orderBy/);
       expect(query).not.toMatch(/labels\(first:\s*10,\s*orderBy/);
     });
 
