@@ -59,6 +59,10 @@ const DEFAULT_NOTIFICATION_SETTINGS = {
   workingPulseEnabled: false,
   workingPulseSoundFile: "pulse.wav",
   uiFeedbackSoundEnabled: false,
+  quietHoursEnabled: false,
+  quietHoursStartMin: 0,
+  quietHoursEndMin: 0,
+  quietHoursWeekdays: [] as number[],
 };
 
 const DEFAULT_APP_STATE = {
@@ -945,6 +949,49 @@ describe("AgentNotificationService", () => {
       mockStore({ uiFeedbackSoundEnabled: true });
 
       // Emit immediately after initialization (within boot grace)
+      events.emit("agent:spawned", {
+        terminalId: "term-1",
+        agentId: "claude",
+        worktreeId: "wt-1",
+        timestamp: Date.now(),
+      });
+
+      expect(soundServiceMock.play).not.toHaveBeenCalled();
+    });
+
+    it("suppresses agent-spawned sound during quiet hours", () => {
+      // Set quiet hours 22:00–06:00, fix time at midnight so it falls within the window
+      mockStore({
+        uiFeedbackSoundEnabled: true,
+        quietHoursEnabled: true,
+        quietHoursStartMin: 22 * 60,
+        quietHoursEndMin: 6 * 60,
+        quietHoursWeekdays: [],
+      });
+      vi.setSystemTime(new Date(2026, 0, 5, 0, 0, 0)); // Monday midnight
+
+      // Advance past boot grace period
+      vi.advanceTimersByTime(10_000);
+
+      events.emit("agent:spawned", {
+        terminalId: "term-1",
+        agentId: "claude",
+        worktreeId: "wt-1",
+        timestamp: Date.now(),
+      });
+
+      expect(soundServiceMock.play).not.toHaveBeenCalled();
+    });
+
+    it("suppresses agent-spawned sound during session mute", () => {
+      mockStore({ uiFeedbackSoundEnabled: true });
+
+      // Mute for 60 seconds from now
+      agentNotificationService.setSessionMuteUntil(Date.now() + 60_000);
+
+      // Advance past boot grace period
+      vi.advanceTimersByTime(10_000);
+
       events.emit("agent:spawned", {
         terminalId: "term-1",
         agentId: "claude",
