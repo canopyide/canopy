@@ -109,26 +109,38 @@ export class CcrConfigService {
       return [];
     }
 
-    let config: CcrConfig;
+    let parsed: unknown;
     try {
-      config = JSON.parse(raw);
+      parsed = JSON.parse(raw);
     } catch (err) {
-      // JSON.parse SyntaxError messages on Node 22 are positional-only and don't
-      // embed file contents, so passing the error to console.warn is safe. Never
+      // JSON.parse SyntaxError messages typically carry positional info only.
+      // V8 can include a short token near the error site, but for the realistic
+      // CCR shape (object with quoted values) the message is positional. Never
       // log `raw` — it may contain inline API keys from a malformed user config.
       console.warn(`[CcrConfigService] Failed to parse config at ${CCR_CONFIG_PATH}:`, err);
       return [];
     }
 
+    // JSON.parse("null") / "true" / "[]" / '"x"' all succeed but aren't a config object.
+    // Guard before reading `.models` so a malformed top-level value doesn't throw a
+    // TypeError that escapes to callers as a misleading runtime error.
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      console.warn(`[CcrConfigService] Config at ${CCR_CONFIG_PATH} is not an object — ignoring`);
+      return [];
+    }
+
+    const config = parsed as CcrConfig;
     if (!Array.isArray(config.models) || config.models.length === 0) {
       return [];
     }
 
     return config.models
       .filter(
-        (entry) =>
-          (typeof entry.id === "string" && entry.id.length > 0) ||
-          (typeof entry.model === "string" && entry.model.length > 0)
+        (entry): entry is CcrModelEntry =>
+          entry != null &&
+          typeof entry === "object" &&
+          ((typeof entry.id === "string" && entry.id.length > 0) ||
+            (typeof entry.model === "string" && entry.model.length > 0))
       )
       .map((entry) => this.entryToPreset(entry));
   }

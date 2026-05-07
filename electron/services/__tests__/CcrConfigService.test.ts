@@ -14,7 +14,7 @@ vi.mock("../../ipc/channels.js", () => ({
   CHANNELS: { AGENT_PRESETS_UPDATED: "agent-presets:updated" },
 }));
 
-vi.mock("../config/agentRegistry.js", () => ({
+vi.mock("../../../shared/config/agentRegistry.js", () => ({
   setAgentPresets: vi.fn(),
 }));
 
@@ -231,6 +231,57 @@ describe("CcrConfigService", () => {
       const presets = await service.discoverPresets();
       expect(presets).toHaveLength(1);
       expect(presets[0].id).toBe("ccr-valid");
+    });
+
+    it("returns empty array (without throwing) when top-level JSON is null", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      mockReadFile.mockResolvedValue("null");
+      const presets = await service.discoverPresets();
+      expect(presets).toEqual([]);
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy.mock.calls[0][0]).toContain("not an object");
+      warnSpy.mockRestore();
+    });
+
+    it("returns empty array (without throwing) when top-level JSON is an array", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      mockReadFile.mockResolvedValue('[{"id":"x"}]');
+      const presets = await service.discoverPresets();
+      expect(presets).toEqual([]);
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      warnSpy.mockRestore();
+    });
+
+    it("skips null entries in models array and still maps remaining valid ones", async () => {
+      mockReadFile.mockResolvedValue(
+        JSON.stringify({
+          models: [null, { id: "valid", model: "valid-model" }, undefined],
+        })
+      );
+      const presets = await service.discoverPresets();
+      expect(presets).toHaveLength(1);
+      expect(presets[0].id).toBe("ccr-valid");
+    });
+
+    it("skips primitive entries in models array (e.g. strings/numbers)", async () => {
+      mockReadFile.mockResolvedValue(
+        JSON.stringify({
+          models: ["just-a-string", 42, { id: "valid", model: "valid-model" }],
+        })
+      );
+      const presets = await service.discoverPresets();
+      expect(presets).toHaveLength(1);
+      expect(presets[0].id).toBe("ccr-valid");
+    });
+
+    it("warns on non-Error read rejection (e.g. raw string thrown)", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      mockReadFile.mockRejectedValue("boom");
+      const presets = await service.discoverPresets();
+      expect(presets).toEqual([]);
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy.mock.calls[0][0]).toContain("Failed to read config");
+      warnSpy.mockRestore();
     });
 
     it("includes apiKeyEnv as template in env", async () => {
@@ -473,6 +524,25 @@ describe("CcrConfigService", () => {
       );
       await service.loadAndApply();
       expect(broadcastMock.mock.calls.length).toBeGreaterThan(initialCalls);
+    });
+
+    it("clears stale presets after a previously-good config goes malformed", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      mockReadFile.mockResolvedValueOnce(
+        JSON.stringify({ models: [{ id: "alpha", model: "alpha-model" }] })
+      );
+      await service.loadAndApply();
+      expect(service.getPresets()).toHaveLength(1);
+
+      // User edits config and breaks the JSON. The next poll iteration must
+      // reset cached presets to [] so the renderer doesn't keep launching
+      // with stale routing.
+      mockReadFile.mockResolvedValueOnce("not json at all");
+      await service.loadAndApply();
+      expect(service.getPresets()).toEqual([]);
+
+      warnSpy.mockRestore();
     });
 
     it("does NOT broadcast when presets are fully unchanged", async () => {
