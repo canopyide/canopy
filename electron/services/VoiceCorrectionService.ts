@@ -26,9 +26,10 @@ const FILE_LINK_CACHE_PREFIX = "voice-file-link-v1";
 // Permissive pre-filter — biased toward false positives so legitimate file references
 // always reach the LLM. False positives cost a skipped LLM call; false negatives silently
 // drop the user's intent. The "at X file/component" branch allows up to 5 words between
-// "at" and the trigger noun to cover natural phrasings like "at the input bar component".
+// "at" and the trigger noun (with hyphens) to cover natural phrasings like
+// "at the input bar component" and "at sign-in component".
 const FILE_LINK_TRIGGER_RE =
-  /\b(?:link\s+to|at\s+file|reference|add\s+file|insert\s+file|open|at\s+(?:\w+\s+){1,5}(?:file|component))\b/i;
+  /\b(?:link\s+to|at\s+file|reference|add\s+file|insert\s+file|open|at\s+(?:[\w-]+\s+){1,5}(?:file|component))\b/i;
 
 const FILE_LINK_DETECTION_SCHEMA = {
   type: "object",

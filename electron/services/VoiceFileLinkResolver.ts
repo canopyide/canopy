@@ -160,9 +160,10 @@ export class VoiceFileLinkResolver {
       }
 
       const parsed = JSON.parse(text) as { matched_file: string | null };
-      if (parsed.matched_file && candidates.includes(parsed.matched_file)) {
-        logDebug(`${P} AI reranked: ${parsed.matched_file}`);
-        return parsed.matched_file;
+      const matched = parsed.matched_file?.trim();
+      if (matched && candidates.includes(matched)) {
+        logDebug(`${P} AI reranked: ${matched}`);
+        return matched;
       }
 
       return null;

@@ -539,6 +539,36 @@ describe("VoiceCorrectionService", () => {
       expect(body.prompt_cache_key).toBe("voice-file-link-v1");
     });
 
+    it("preserves all references in a multi-reference utterance (regression)", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: true,
+          json: async () => ({
+            output_text: JSON.stringify({
+              file_references: [
+                { description: "hybrid input bar" },
+                { description: "auth service" },
+                { description: "project switcher" },
+              ],
+            }),
+          }),
+        } as unknown as Response)
+      );
+
+      const svc = new VoiceCorrectionService();
+      const result = await svc.detectFileLinkTokens(
+        "link to the hybrid input bar and the auth service and the project switcher",
+        { apiKey: "sk-test" }
+      );
+
+      expect(result).toEqual([
+        { description: "hybrid input bar" },
+        { description: "auth service" },
+        { description: "project switcher" },
+      ]);
+    });
+
     it("returns empty array when response is truncated (status=incomplete)", async () => {
       vi.stubGlobal(
         "fetch",

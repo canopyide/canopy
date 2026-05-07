@@ -152,6 +152,31 @@ describe("VoiceFileLinkResolver", () => {
     expect(result).toBeNull();
   });
 
+  it("returns null when AI rerank picks a path not in candidates", async () => {
+    searchNaturalLanguageMock.mockResolvedValue([
+      "src/components/Bar.tsx",
+      "src/components/Input.tsx",
+    ]);
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          output_text: JSON.stringify({ matched_file: "src/invented/Fake.tsx" }),
+        }),
+      } as unknown as Response)
+    );
+
+    const resolver = new VoiceFileLinkResolver();
+    const result = await resolver.resolve({
+      ...BASE_PAYLOAD,
+      description: "input component",
+    });
+
+    expect(result).toBeNull();
+  });
+
   it("includes prompt_cache_key in AI rerank request body", async () => {
     searchNaturalLanguageMock.mockResolvedValue([
       "src/components/Bar.tsx",
