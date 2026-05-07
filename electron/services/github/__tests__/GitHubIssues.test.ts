@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { issueListCache, issueTooltipCache, clearGitHubCaches } from "../GitHubCaches.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { issueTooltipCache, clearGitHubCaches } from "../GitHubCaches.js";
 
 // The module under test imports side-effectful modules (GitHubAuth, rate limit
 // service, etc.). We mock them before importing so the module loads cleanly.
