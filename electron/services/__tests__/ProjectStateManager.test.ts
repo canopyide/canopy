@@ -158,7 +158,10 @@ describe("ProjectStateManager telemetry", () => {
     expect(readCall).toBeUndefined();
   });
 
-  it("does not emit PROJECT_STATE_READ when no state file exists", async () => {
+  it("still emits PROJECT_STATE_READ when the file is absent — captures the attempted read", async () => {
+    // Removing the existsSync TOCTOU gate means every cache miss attempts the
+    // read and lets ENOENT bubble up. The span correctly records that attempt
+    // even though the result is null.
     const missingId = generateProjectId("/missing/telemetry-project");
 
     const result = await manager.getProjectState(missingId);
@@ -167,7 +170,7 @@ describe("ProjectStateManager telemetry", () => {
     const readCall = vi
       .mocked(withPerformanceSpan)
       .mock.calls.find((call) => call[0] === PERF_MARKS.PROJECT_STATE_READ);
-    expect(readCall).toBeUndefined();
+    expect(readCall).toBeDefined();
   });
 
   it("emits PROJECT_STATE_QUARANTINE when a corrupted state file is quarantined", async () => {
@@ -464,5 +467,65 @@ describe("ProjectStateManager schema version", () => {
 
     expect(result).toBeNull();
     await expect(fs.access(`${filePath}.future-v999999`)).resolves.toBeUndefined();
+  });
+});
+
+describe("ProjectStateManager ENOENT race", () => {
+  let tempDir: string;
+  let manager: ProjectStateManager;
+  let projectId: string;
+  let filePath: string;
+
+  beforeEach(async () => {
+    vi.mocked(markPerformance).mockClear();
+
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "daintree-state-enoent-"));
+    manager = new ProjectStateManager(tempDir);
+    projectId = generateProjectId("/test/enoent-project");
+    await fs.mkdir(path.join(tempDir, projectId), { recursive: true });
+    filePath = stateFilePath(tempDir, projectId)!;
+  });
+
+  afterEach(async () => {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  });
+
+  it("returns null without quarantining when state file disappears between cache miss and read", async () => {
+    // Simulates the TOCTOU window: the file is gone by the time the disk read
+    // happens. Before the fix, this would land in the corruption-recovery
+    // branch and create a misleading .corrupted.* artifact.
+    const result = await manager.getProjectState(projectId);
+
+    expect(result).toBeNull();
+
+    const projectDir = path.dirname(filePath);
+    const entries = await fs.readdir(projectDir);
+    expect(entries.find((name) => name.includes(".corrupted."))).toBeUndefined();
+    expect(entries.find((name) => name.includes(".future-v"))).toBeUndefined();
+    expect(vi.mocked(markPerformance)).not.toHaveBeenCalledWith(
+      PERF_MARKS.PROJECT_STATE_QUARANTINE,
+      expect.anything()
+    );
+  });
+
+  it("does not surface a quarantinedPath when the state file is simply absent", async () => {
+    const result = await manager.getProjectStateWithRecovery(projectId);
+
+    expect(result.state).toBeNull();
+    expect(result.quarantinedPath).toBeUndefined();
+  });
+
+  it("returns null when file is unlinked between cache invalidation and disk read", async () => {
+    await manager.saveProjectState(projectId, makeState());
+    manager.invalidateProjectStateCache(projectId);
+
+    // Race: file vanishes between the cache miss and the readFile call.
+    await fs.unlink(filePath);
+
+    const result = await manager.getProjectState(projectId);
+
+    expect(result).toBeNull();
+    const entries = await fs.readdir(path.dirname(filePath));
+    expect(entries.find((name) => name.includes(".corrupted."))).toBeUndefined();
   });
 });
