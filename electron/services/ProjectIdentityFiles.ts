@@ -266,8 +266,7 @@ export class ProjectIdentityFiles {
           parsed.id = `inrepo-${entry.name.replace(/\.json$/, "")}`;
         }
         if (typeof parsed.createdAt !== "number") {
-          const ts =
-            typeof parsed.createdAt === "string" ? Date.parse(parsed.createdAt) : NaN;
+          const ts = typeof parsed.createdAt === "string" ? Date.parse(parsed.createdAt) : NaN;
           parsed.createdAt = Number.isFinite(ts) ? ts : 0;
         }
         const result = TerminalRecipeSchema.safeParse(parsed);
@@ -280,10 +279,7 @@ export class ProjectIdentityFiles {
         }
         recipes.push(result.data);
       } catch (error) {
-        console.warn(
-          `[ProjectIdentityFiles] Skipping malformed recipe file: ${entry.name}`,
-          error
-        );
+        console.warn(`[ProjectIdentityFiles] Skipping malformed recipe file: ${entry.name}`, error);
       }
     }
     return recipes;
@@ -345,11 +341,7 @@ export class ProjectIdentityFiles {
                 ? { id: parsed.id, name: parsed.name, keys: Object.keys(parsed) }
                 : {
                     type:
-                      parsed === null
-                        ? "null"
-                        : Array.isArray(parsed)
-                          ? "array"
-                          : typeof parsed,
+                      parsed === null ? "null" : Array.isArray(parsed) ? "array" : typeof parsed,
                   };
             console.warn(
               `[ProjectIdentityFiles] Skipping invalid preset: ${agentId}/${entry.name}`,
