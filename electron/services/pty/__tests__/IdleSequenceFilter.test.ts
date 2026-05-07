@@ -35,6 +35,9 @@ describe("stripIdleTerminalSequences", () => {
   it("preserves DECSET combined-mode when any code is unknown", () => {
     expect(stripIdleTerminalSequences("\x1b[?25;9999h")).toBe("\x1b[?25;9999h");
     expect(stripIdleTerminalSequences("\x1b[?9999h")).toBe("\x1b[?9999h");
+    // Unknown code sandwiched between known codes still rejects the whole sequence.
+    expect(stripIdleTerminalSequences("\x1b[?25;9999;2026h")).toBe("\x1b[?25;9999;2026h");
+    expect(stripIdleTerminalSequences("\x1b[?9999;25h")).toBe("\x1b[?9999;25h");
   });
 
   it("strips OSC 0 set-window-title", () => {

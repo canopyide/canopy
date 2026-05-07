@@ -218,6 +218,17 @@ describe("AgentPatternDetector", () => {
         expect(result.matchTier).toBe("fallback");
       }
     });
+
+    it("should detect low/mid/high Braille glyphs across U+2800–U+28FF block", () => {
+      // Guards against the registry string pattern drifting back to a narrow
+      // subset: sample codepoints across the block (excluding U+2800 blank).
+      const samples = ["⠁", "⡀", "⢀", "⣀", "⣿"];
+      for (const ch of samples) {
+        const result = detector.detect(`${ch} Generating response (esc to cancel, 1s)`);
+        expect(result.isWorking).toBe(true);
+        expect(result.matchTier).toBe("primary");
+      }
+    });
   });
 
   describe("Codex pattern detection", () => {
