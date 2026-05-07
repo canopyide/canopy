@@ -1,5 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "fs/promises";
+
+const { logInfo } = vi.hoisted(() => ({
+  logInfo: vi.fn(),
+}));
+
+vi.mock("../../utils/logger.js", () => ({
+  logInfo,
+  logError: vi.fn(),
+}));
 import path from "path";
 import os from "os";
 import {
@@ -18,7 +27,6 @@ const QUARANTINE_FILES = [
   "state.json.corrupted.1234567890",
   "settings.json.corrupted.1234567890",
   "recipes.json.corrupted.1234567890",
-  "workflows.json.corrupted.1234567890",
 ];
 
 let tmpDir: string;
@@ -84,14 +92,14 @@ describe("cleanupQuarantinedProjectFiles", () => {
     await expect(fs.access(filePath)).resolves.toBeUndefined();
   });
 
-  it("deletes all four known quarantine file types when old", async () => {
+  it("deletes all three known quarantine file types when old", async () => {
     const projectDir = await createProjectDir(VALID_PROJECT_ID);
     for (const filename of QUARANTINE_FILES) {
       await createCorruptedFile(projectDir, filename, THIRTY_ONE_DAYS_MS, NOW);
     }
 
     const deleted = await cleanupQuarantinedProjectFiles(tmpDir, NOW);
-    expect(deleted).toBe(4);
+    expect(deleted).toBe(3);
 
     for (const filename of QUARANTINE_FILES) {
       await expect(fs.access(path.join(projectDir, filename))).rejects.toThrow();
@@ -311,6 +319,70 @@ describe("cleanupQuarantinedProjectFiles", () => {
     } finally {
       spy.mockRestore();
     }
+  });
+
+  it("logs quarantine-file-reaped with filename, ageMs, and projectId", async () => {
+    logInfo.mockClear();
+
+    const projectDir = await createProjectDir(VALID_PROJECT_ID);
+    await createCorruptedFile(
+      projectDir,
+      "state.json.corrupted.1234567890",
+      THIRTY_ONE_DAYS_MS,
+      NOW
+    );
+
+    await cleanupQuarantinedProjectFiles(tmpDir, NOW);
+
+    expect(logInfo).toHaveBeenCalledWith(
+      "quarantine-file-reaped",
+      expect.objectContaining({
+        filename: "state.json.corrupted.1234567890",
+        ageMs: expect.any(Number),
+        projectId: VALID_PROJECT_ID,
+      })
+    );
+  });
+
+  it("does not log reap for fresh files preserved by the age gate", async () => {
+    logInfo.mockClear();
+
+    const projectDir = await createProjectDir(VALID_PROJECT_ID);
+    await createCorruptedFile(
+      projectDir,
+      "state.json.corrupted.1234567890",
+      TWENTY_NINE_DAYS_MS,
+      NOW
+    );
+
+    await cleanupQuarantinedProjectFiles(tmpDir, NOW);
+
+    const reapCalls = logInfo.mock.calls.filter(
+      (call: unknown[]) => call[0] === "quarantine-file-reaped"
+    );
+    expect(reapCalls).toHaveLength(0);
+  });
+
+  it("reap log context does not contain absolute file path", async () => {
+    logInfo.mockClear();
+
+    const projectDir = await createProjectDir(VALID_PROJECT_ID);
+    await createCorruptedFile(
+      projectDir,
+      "state.json.corrupted.1234567890",
+      THIRTY_ONE_DAYS_MS,
+      NOW
+    );
+
+    await cleanupQuarantinedProjectFiles(tmpDir, NOW);
+
+    const reapCall = logInfo.mock.calls.find(
+      (call: unknown[]) => call[0] === "quarantine-file-reaped"
+    );
+    expect(reapCall).toBeDefined();
+    const context = reapCall![1] as Record<string, unknown>;
+    expect(JSON.stringify(context)).not.toContain(tmpDir);
+    expect(JSON.stringify(context)).not.toContain(os.homedir());
   });
 });
 
