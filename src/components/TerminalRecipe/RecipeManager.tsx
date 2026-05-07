@@ -369,23 +369,25 @@ export function RecipeManager({
                   title="No project recipes"
                   description="Project recipes stay private to this machine until you save them to the repo."
                   action={
-                    <div className="flex flex-wrap gap-2 justify-center">
+                    <div className="flex flex-col items-center gap-2">
                       <Button variant="outline" size="sm" onClick={() => onCreateRecipe("project")}>
                         <Plus className="h-3 w-3" />
                         New project recipe
                       </Button>
-                      <Button variant="outline" size="sm" onClick={() => setShowImportDialog(true)}>
-                        <FileDown className="h-3 w-3" />
-                        Import from clipboard
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => void importRecipeFromFile(currentProject?.id)}
-                      >
-                        <FileUp className="h-3 w-3" />
-                        Import from file
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button variant="ghost" size="sm" onClick={() => setShowImportDialog(true)}>
+                          <FileDown className="h-3 w-3" />
+                          Import from clipboard
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => void importRecipeFromFile(currentProject?.id)}
+                        >
+                          <FileUp className="h-3 w-3" />
+                          Import from file
+                        </Button>
+                      </div>
                     </div>
                   }
                 />
