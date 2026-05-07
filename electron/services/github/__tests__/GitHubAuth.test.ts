@@ -4,6 +4,7 @@ import {
   captureAuthMetadata,
   getLastAuthMetadata,
   parseSsoHeader,
+  parseSsoKind,
 } from "../GitHubAuth.js";
 
 function createStorage() {
@@ -98,6 +99,29 @@ describe("GitHubAuth", () => {
       expect(
         parseSsoHeader("required; url=https://www.github.com/orgs/acme/sso?authorization_request=x")
       ).toBe("https://www.github.com/orgs/acme/sso?authorization_request=x");
+    });
+  });
+
+  describe("parseSsoKind", () => {
+    it("classifies the required form as 'required'", () => {
+      expect(
+        parseSsoKind("required; url=https://github.com/orgs/acme/sso?authorization_request=abc123")
+      ).toBe("required");
+    });
+
+    it("classifies the partial-results form as 'partial'", () => {
+      expect(parseSsoKind("partial-results; organizations=123456,789012")).toBe("partial");
+    });
+
+    it("is case-insensitive at the prefix", () => {
+      expect(parseSsoKind("REQUIRED; url=https://github.com/orgs/acme/sso")).toBe("required");
+      expect(parseSsoKind("Partial-Results; organizations=12345")).toBe("partial");
+    });
+
+    it("returns null for null/empty/gibberish", () => {
+      expect(parseSsoKind(null)).toBeNull();
+      expect(parseSsoKind("")).toBeNull();
+      expect(parseSsoKind("gibberish")).toBeNull();
     });
   });
 

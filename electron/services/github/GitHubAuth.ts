@@ -55,6 +55,31 @@ export function parseSsoHeader(headerValue: string | null): string | null {
   }
 }
 
+export type SsoHeaderKind = "required" | "partial";
+
+/**
+ * Discriminate the form of an `X-GitHub-SSO` header.
+ *
+ * - `required` — the token must be re-authorized against the targeted org
+ *   before this request can succeed. A companion `url=` is usually present
+ *   and surfaced via {@link parseSsoHeader}.
+ * - `partial-results` — the token is fine globally; one or more named orgs
+ *   refused per-org SSO authorization, so the response carries partial data.
+ *   Treating this as a globally invalid token misclassifies a per-org
+ *   restriction as a token failure.
+ *
+ * Classification only — URL extraction and security validation remain in
+ * {@link parseSsoHeader} so callers that need a clickable URL go through
+ * the same hostname checks.
+ */
+export function parseSsoKind(headerValue: string | null): SsoHeaderKind | null {
+  if (!headerValue) return null;
+  const trimmed = headerValue.trim().toLowerCase();
+  if (trimmed.startsWith("partial-results")) return "partial";
+  if (trimmed.startsWith("required")) return "required";
+  return null;
+}
+
 function parseTokenExpirationHeader(headerValue: string | null): Date | null {
   if (!headerValue) return null;
   const ms = Date.parse(headerValue);
