@@ -63,7 +63,7 @@ export function PortalLaunchpad({ links, onOpenUrl }: PortalLaunchpadProps) {
               className="flex items-center gap-4 p-4 rounded-[var(--radius-xl)] bg-daintree-border hover:bg-daintree-border/80 border border-daintree-border hover:border-daintree-border transition-colors group focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
             >
               <div className="w-8 h-8 flex items-center justify-center text-foreground group-hover:text-daintree-text transition-colors">
-                <PortalIcon icon={link.icon} size="launchpad" url={link.url} type={link.type} />
+                <PortalIcon icon={link.icon} size="launchpad" />
               </div>
               <div className="text-left min-w-0">
                 <div className="font-medium text-foreground group-hover:text-daintree-text transition-colors">

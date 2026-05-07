@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { StrictMode } from "react";
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PortalVisibilityController } from "../PortalVisibilityController";
@@ -255,6 +256,81 @@ describe("PortalVisibilityController", () => {
     });
 
     expect(portal.create).not.toHaveBeenCalled();
+    expect(portal.show).toHaveBeenCalledWith({
+      tabId: "tab-1",
+      bounds: { x: 10, y: 21, width: 301, height: 401 },
+    });
+  });
+
+  it("stops polling and skips show() if the controller unmounts during the bounds wait", async () => {
+    // Bounds null for the first few lookups, then valid: without the unmount guard
+    // the in-flight async would continue polling past unmount, find bounds, and
+    // call show() against a torn-down component. With the guard it breaks on the
+    // first post-await tick.
+    let calls = 0;
+    vi.spyOn(document, "getElementById").mockImplementation((id) => {
+      if (id !== "portal-placeholder") return null;
+      calls += 1;
+      if (calls < 5) return null;
+      return { getBoundingClientRect: () => createPlaceholderRect() } as unknown as HTMLElement;
+    });
+
+    const view = render(<PortalVisibilityController />);
+
+    act(() => {
+      usePortalStore.setState({
+        isOpen: true,
+        activeTabId: "tab-1",
+        tabs: [{ id: "tab-1", title: "Docs", url: "https://example.com/docs" }],
+        createdTabs: new Set<string>(),
+      });
+    });
+
+    // Let create() resolve and the first poll await be scheduled.
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(portal.create).toHaveBeenCalledTimes(1);
+    expect(portal.show).not.toHaveBeenCalled();
+
+    // Unmount mid-poll — every subsequent post-await tick must bail.
+    view.unmount();
+
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    expect(portal.show).not.toHaveBeenCalled();
+  });
+
+  it("still restores tabs after StrictMode's effect cleanup-then-rerun cycle (mount ref must reset to true)", async () => {
+    vi.spyOn(document, "getElementById").mockReturnValue({
+      getBoundingClientRect: () => createPlaceholderRect(),
+    } as unknown as HTMLElement);
+
+    render(
+      <StrictMode>
+        <PortalVisibilityController />
+      </StrictMode>
+    );
+
+    act(() => {
+      usePortalStore.setState({
+        isOpen: true,
+        activeTabId: "tab-1",
+        tabs: [{ id: "tab-1", title: "Docs", url: "https://example.com/docs" }],
+        createdTabs: new Set<string>(),
+      });
+    });
+
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    // If the unmount-tracking ref was permanently flipped to false by StrictMode's
+    // double-invoke, the bounds-checked guard would skip portal.show.
     expect(portal.show).toHaveBeenCalledWith({
       tabId: "tab-1",
       bounds: { x: 10, y: 21, width: 301, height: 401 },
