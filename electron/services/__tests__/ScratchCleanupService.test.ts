@@ -6,7 +6,7 @@ import { runScratchCleanup } from "../ScratchCleanupService.js";
 import { SCRATCH_CLEANUP_TTL_MS as SCRATCH_TTL_MS } from "../../../shared/config/scratchCleanup.js";
 import type { ScratchRow } from "../persistence/schema.js";
 
-var scratchTestRoot = { current: "" };
+const scratchTestRoot = { current: "" };
 
 vi.mock("../../utils/logger.js", () => ({
   logError: vi.fn(),
