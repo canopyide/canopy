@@ -243,10 +243,7 @@ describe("AgentUpdateHandler", () => {
     );
 
     // brew (index 1 in priority) beats cargo (index 7)
-    expect(handler.getAvailableUpdateMethods("cargo-agent" as never)).toEqual([
-      "cargo",
-      "brew",
-    ]);
+    expect(handler.getAvailableUpdateMethods("cargo-agent" as never)).toEqual(["cargo", "brew"]);
   });
 
   it("auto-selects brew over cargo via explicit priority when no method is given", async () => {

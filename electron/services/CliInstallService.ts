@@ -151,7 +151,11 @@ function installAtTarget(targetPath: string, sourcePath: string): void {
   } catch {
     // Rename failed (rare: some Windows filesystems). Fall back to unlink +
     // direct create, then clean up the temp entry.
-    try { fs.unlinkSync(tempPath); } catch {}
+    try {
+      fs.unlinkSync(tempPath);
+    } catch {
+      /* cleanup is best-effort */
+    }
     if (fs.existsSync(targetPath)) {
       fs.unlinkSync(targetPath);
     }

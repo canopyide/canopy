@@ -88,9 +88,7 @@ describe("CliInstallService", () => {
     expect(appMock.app.getAppPath).toHaveBeenCalled();
     expect(fsMock.existsSync).toHaveBeenCalledWith(SOURCE_SCRIPT);
     // Symlink is created at a temp path, not directly at the target.
-    const symlinkCalls = fsMock.symlinkSync.mock.calls.filter(
-      (c) => c[0] === SOURCE_SCRIPT
-    );
+    const symlinkCalls = fsMock.symlinkSync.mock.calls.filter((c) => c[0] === SOURCE_SCRIPT);
     expect(symlinkCalls).toHaveLength(1);
     expect(symlinkCalls[0][1]).toMatch(/\/usr\/local\/bin\/daintree\.\d+-\w+\.tmp$/);
     // No unlink before the rename — the temp-to-target rename is atomic.
