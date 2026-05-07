@@ -494,8 +494,8 @@ describe("AutoUpdaterService", () => {
       expect(fsMock.existsSync).not.toHaveBeenCalled();
     });
 
-    it("does not affect non-Linux platforms", () => {
-      Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+    it("does not affect macOS", () => {
+      Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
 
       autoUpdaterService.initialize();
       vi.advanceTimersByTime(STARTUP_JITTER_MAX_MS);
@@ -552,10 +552,9 @@ describe("AutoUpdaterService", () => {
     });
   });
 
-  describe("Windows portable guard", () => {
-    it("registers only channel-preference IPC handlers on Windows portable", () => {
+  describe("Windows Store updater guard", () => {
+    it("registers only channel-preference IPC handlers on Windows", () => {
       Object.defineProperty(process, "platform", { value: "win32", configurable: true });
-      process.env.PORTABLE_EXECUTABLE_FILE = "C:\\portable\\daintree.exe";
 
       autoUpdaterService.initialize();
 
@@ -564,6 +563,17 @@ describe("AutoUpdaterService", () => {
       expect(registeredChannels).toContain(CHANNELS.UPDATE_SET_CHANNEL);
       expect(registeredChannels).not.toContain(CHANNELS.UPDATE_QUIT_AND_INSTALL);
       expect(registeredChannels).not.toContain(CHANNELS.UPDATE_CHECK_FOR_UPDATES);
+      expect(autoUpdaterMock.on).not.toHaveBeenCalled();
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+    });
+
+    it("manual checks are no-ops on Windows", () => {
+      Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+
+      autoUpdaterService.initialize();
+      autoUpdaterService.checkForUpdatesManually();
+
+      expect(autoUpdaterMock.checkForUpdates).not.toHaveBeenCalled();
     });
   });
 

@@ -364,7 +364,7 @@ describe("update menu lifecycle", () => {
     });
   });
 
-  describe("on linux/win (packaged)", () => {
+  describe("on linux (packaged)", () => {
     beforeEach(() => {
       Object.defineProperty(process, "platform", { value: "linux", configurable: true });
       Object.defineProperty(app, "isPackaged", { value: true, configurable: true });
@@ -378,6 +378,24 @@ describe("update menu lifecycle", () => {
     });
 
     it("does NOT emit a Daintree-menu Check for Updates item on non-darwin", () => {
+      const item = findUpdateItem(capturedTemplate, "check-for-updates-mac");
+      expect(item).toBeUndefined();
+    });
+  });
+
+  describe("on Windows Store builds (packaged)", () => {
+    beforeEach(() => {
+      Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+      Object.defineProperty(app, "isPackaged", { value: true, configurable: true });
+      createApplicationMenu(mockBrowserWindow as unknown as Electron.BrowserWindow);
+    });
+
+    it("does NOT emit a Help-menu Check for Updates item", () => {
+      const item = findUpdateItem(capturedTemplate, "check-for-updates-help");
+      expect(item).toBeUndefined();
+    });
+
+    it("does NOT emit a Daintree-menu Check for Updates item", () => {
       const item = findUpdateItem(capturedTemplate, "check-for-updates-mac");
       expect(item).toBeUndefined();
     });

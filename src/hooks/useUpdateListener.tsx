@@ -3,6 +3,7 @@ import { useNotificationStore } from "@/store/notificationStore";
 import { logError } from "@/utils/logger";
 import { notify } from "@/lib/notify";
 import { safeFireAndForget } from "@/utils/safeFireAndForget";
+import { isWindowsStoreBuild } from "@shared/config/distribution";
 
 const AVAILABLE_HINT = 'Use "Check for Updates..." to check again.';
 const UPDATE_CORRELATION_ID = "app-update";
@@ -30,6 +31,7 @@ function findLiveUpdateToastId(): string | null {
 }
 
 export function useUpdateListener(suppressToasts = false): void {
+  const updatesManagedByStore = isWindowsStoreBuild();
   const suppressRef = useRef(suppressToasts);
   const pendingUpdateRef = useRef<{ version: string; downloaded: boolean } | null>(null);
 
@@ -40,6 +42,7 @@ export function useUpdateListener(suppressToasts = false): void {
 
   // Surface pending update when suppression lifts
   useEffect(() => {
+    if (updatesManagedByStore) return;
     if (suppressToasts) return;
     if (!pendingUpdateRef.current) return;
 
@@ -90,9 +93,10 @@ export function useUpdateListener(suppressToasts = false): void {
         },
       });
     }
-  }, [suppressToasts]);
+  }, [suppressToasts, updatesManagedByStore]);
 
   useEffect(() => {
+    if (updatesManagedByStore) return;
     if (!window.electron?.update) return;
 
     const cleanupAvailable = window.electron.update.onUpdateAvailable((info) => {
@@ -203,5 +207,5 @@ export function useUpdateListener(suppressToasts = false): void {
       cleanupProgress();
       cleanupDownloaded();
     };
-  }, []);
+  }, [updatesManagedByStore]);
 }

@@ -327,6 +327,50 @@ describe("CliAvailabilityService", () => {
       );
     });
 
+    it("prefers Windows .cmd shims from DAINTREE_CLI_PATH_PREPEND over extensionless npm shims", async () => {
+      const originalPlatform = process.platform;
+      const { access, constants } = await import("fs/promises");
+      const mockedAccess = vi.mocked(access);
+
+      Object.defineProperty(process, "platform", { value: "win32", writable: true });
+      process.env.DAINTREE_CLI_PATH_PREPEND = "/tmp/daintree-fake-bin";
+      const expectedClaudePath = join("/tmp/daintree-fake-bin", "claude.cmd");
+
+      mockedExecFileSync.mockImplementation((_file, args) => {
+        if (cmdOf(args) === "claude") {
+          return Buffer.from("C:\\npm\\prefix\\claude\r\n");
+        }
+        throw new Error("Command not found");
+      });
+      mockedAccess.mockImplementation(async (p, mode) => {
+        const pathStr = String(p);
+        if (
+          mode === constants.X_OK &&
+          (pathStr === expectedClaudePath || pathStr === join("/tmp/daintree-fake-bin", "claude"))
+        ) {
+          return;
+        }
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      });
+
+      try {
+        const result = await service.checkAvailability();
+
+        expect(result.claude).toBe("unauthenticated");
+        expect(service.getDetails()?.claude?.resolvedPath).toBe(expectedClaudePath);
+        expect(mockedExecFileSync).not.toHaveBeenCalledWith(
+          "where",
+          ["claude"],
+          expect.any(Object)
+        );
+      } finally {
+        Object.defineProperty(process, "platform", {
+          value: originalPlatform,
+          writable: true,
+        });
+      }
+    });
+
     it("uses which on Unix-like systems", async () => {
       const originalPlatform = process.platform;
 
@@ -1823,6 +1867,40 @@ describe("CliAvailabilityService", () => {
         // intentionally omitted — the field signals duplicates only.
         expect(detail.allResolvedPaths).toBeUndefined();
         expect(detail.resolvedPath).toBe("C:\\Users\\x\\AppData\\Roaming\\npm\\claude.cmd");
+
+        const toastCalls = mockedBroadcast.mock.calls.filter(
+          (call) => call[0] === CHANNELS.NOTIFICATION_SHOW_TOAST
+        );
+        expect(toastCalls).toHaveLength(0);
+      } finally {
+        Object.defineProperty(process, "platform", {
+          value: originalPlatform,
+          writable: true,
+        });
+      }
+    });
+
+    it("prefers Windows .cmd shims when where.exe lists an extensionless npm shim first", async () => {
+      const originalPlatform = process.platform;
+      Object.defineProperty(process, "platform", { value: "win32", writable: true });
+      try {
+        mockedExecFileSync.mockImplementation((_file, args) => {
+          const argv = args as string[] | undefined;
+          if (argv?.[0] === "claude") {
+            return Buffer.from(
+              "C:\\npm\\prefix\\claude\r\n" +
+                "C:\\npm\\prefix\\claude.cmd\r\n" +
+                "C:\\npm\\prefix\\claude.ps1\r\n"
+            );
+          }
+          return Buffer.from("");
+        });
+
+        await service.checkAvailability();
+
+        const detail = service.getDetails()!.claude!;
+        expect(detail.allResolvedPaths).toBeUndefined();
+        expect(detail.resolvedPath).toBe("C:\\npm\\prefix\\claude.cmd");
 
         const toastCalls = mockedBroadcast.mock.calls.filter(
           (call) => call[0] === CHANNELS.NOTIFICATION_SHOW_TOAST

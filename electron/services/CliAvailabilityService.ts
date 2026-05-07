@@ -1,6 +1,6 @@
 import { execFile, execFileSync } from "child_process";
 import { access, constants } from "fs/promises";
-import { delimiter, dirname, join } from "path";
+import { delimiter, dirname, join, win32 as pathWin32 } from "path";
 import { homedir } from "os";
 import type {
   CliAvailability,
@@ -56,6 +56,15 @@ interface AgentCheckOutcome {
 
 const SECURITY_ERROR_CODES = new Set(["EACCES", "EPERM"]);
 
+const WINDOWS_EXECUTABLE_PRIORITY = new Map<string, number>([
+  [".cmd", 0],
+  [".exe", 1],
+  [".bat", 2],
+  [".com", 3],
+  [".ps1", 4],
+  ["", 5],
+]);
+
 /**
  * Synthesise probe paths for PyPI-distributed agents. Modern Python tool
  * installs land in well-known per-user locations: uv tool, pipx (current
@@ -93,23 +102,38 @@ function synthesisePypiProbePaths(command: string, pypiPackage: string): string[
 
 /**
  * Collapse PATH-resolved binary candidates that live in the same install
- * directory. `where.exe` returns both `claude.cmd` and `claude.exe` for a
- * single npm-global install — counting them as two installations would
- * false-positive the duplicate-detection notification. Comparison is
- * case-insensitive on Windows to mirror NTFS path semantics
- * (matches `electron/setup/environment.ts:128`).
+ * directory. `where.exe` can return `claude`, `claude.cmd`, `claude.ps1`, and
+ * `claude.exe` for a single npm-global install. Counting them as separate
+ * installs false-positives duplicate detection, and keeping the extensionless
+ * shim makes PowerShell execute a file that only echoes the shim path. Keep
+ * the first directory order, but prefer launchable Windows wrappers inside a
+ * directory. Comparison is case-insensitive on Windows to mirror NTFS path
+ * semantics (matches `electron/setup/environment.ts:128`).
  */
 function dedupePathsByDirectory(paths: string[], isWindows: boolean): string[] {
-  const seen = new Set<string>();
+  const seen = new Map<string, number>();
   const out: string[] = [];
   for (const p of paths) {
-    const dir = dirname(p);
+    const dir = isWindows ? pathWin32.dirname(p) : dirname(p);
     const key = isWindows ? dir.toLowerCase() : dir;
-    if (seen.has(key)) continue;
-    seen.add(key);
+    const existingIndex = seen.get(key);
+    if (existingIndex !== undefined) {
+      if (
+        isWindows &&
+        windowsExecutablePriority(p) < windowsExecutablePriority(out[existingIndex])
+      ) {
+        out[existingIndex] = p;
+      }
+      continue;
+    }
+    seen.set(key, out.length);
     out.push(p);
   }
   return out;
+}
+
+function windowsExecutablePriority(candidatePath: string): number {
+  return WINDOWS_EXECUTABLE_PRIORITY.get(pathWin32.extname(candidatePath).toLowerCase()) ?? 6;
 }
 
 export class CliAvailabilityService {
@@ -480,7 +504,7 @@ export class CliAvailabilityService {
 
     const commandCandidates =
       process.platform === "win32"
-        ? [command, `${command}.exe`, `${command}.cmd`, `${command}.bat`]
+        ? [`${command}.cmd`, `${command}.exe`, `${command}.bat`, `${command}.com`, command]
         : [command];
 
     for (const dir of pathPrefix.split(delimiter).filter(Boolean)) {

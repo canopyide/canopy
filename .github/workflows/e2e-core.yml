@@ -79,7 +79,7 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     name: Core (${{ matrix.name }})
-    timeout-minutes: 120
+    timeout-minutes: 180
 
     steps:
       - name: Harden Windows for Electron E2E

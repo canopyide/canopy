@@ -138,16 +138,6 @@ jobs:
           npm run build
           npx electron-builder --config electron-builder.config.cjs --publish never
 
-      - name: Validate update metadata (Windows)
-        if: matrix.os == 'windows-latest'
-        shell: bash
-        run: |
-          if [ ! -f "release/${UPDATE_METADATA_PREFIX}.yml" ]; then
-            echo "::error::Missing release/${UPDATE_METADATA_PREFIX}.yml - Windows auto-update metadata was not generated"
-            exit 1
-          fi
-          node scripts/ci/validate-update-metadata.mjs "release/${UPDATE_METADATA_PREFIX}.yml"
-
       - name: Validate update metadata (macOS)
         if: startsWith(matrix.os, 'macos')
         shell: bash

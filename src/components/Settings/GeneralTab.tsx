@@ -39,6 +39,7 @@ import { actionService } from "@/services/ActionService";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { logError } from "@/utils/logger";
 import { formatTimeAgo } from "@/utils/timeAgo";
+import { isWindowsStoreBuild } from "@shared/config/distribution";
 
 const GENERAL_SUBTABS: SettingsSubtabItem[] = [
   { id: "overview", label: "Overview" },
@@ -128,6 +129,7 @@ export function GeneralTab({
   const [updateChannel, setUpdateChannel] = useState<"stable" | "nightly" | null>(null);
   const [channelSaving, setChannelSaving] = useState(false);
   const [lastUpdateCheck, setLastUpdateCheck] = useState<number | null>(null);
+  const updatesManagedByStore = isWindowsStoreBuild();
   const isMountedRef = useRef(true);
   useEffect(() => {
     isMountedRef.current = true;
@@ -143,6 +145,7 @@ export function GeneralTab({
   const reduceAnimations = usePreferencesStore((s) => s.reduceAnimations);
 
   useEffect(() => {
+    if (updatesManagedByStore) return;
     let cancelled = false;
     window.electron.update
       .getChannel()
@@ -156,9 +159,10 @@ export function GeneralTab({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [updatesManagedByStore]);
 
   useEffect(() => {
+    if (updatesManagedByStore) return;
     let cancelled = false;
 
     const loadLastCheck = () => {
@@ -182,9 +186,10 @@ export function GeneralTab({
       cancelled = true;
       clearInterval(interval);
     };
-  }, []);
+  }, [updatesManagedByStore]);
 
   const handleChannelChange = async (channel: "stable" | "nightly") => {
+    if (updatesManagedByStore) return;
     if (channelSaving || channel === updateChannel) return;
     setChannelSaving(true);
     try {
@@ -581,41 +586,52 @@ export function GeneralTab({
             )}
           </SettingsSection>
 
-          <SettingsSection
-            icon={RefreshCw}
-            title="Update Channel"
-            description="Choose between stable releases and nightly builds."
-            id="general-update-channel"
-          >
-            <div className="flex gap-2">
-              {(["stable", "nightly"] as const).map((ch) => (
-                <button
-                  key={ch}
-                  disabled={channelSaving || updateChannel === null}
-                  onClick={() => void handleChannelChange(ch)}
-                  className={cn(
-                    "px-3 py-1.5 rounded-[var(--radius-md)] text-xs font-medium transition-colors capitalize",
-                    updateChannel === ch
-                      ? "bg-overlay-selected border border-border-strong text-daintree-text font-medium"
-                      : "border border-daintree-border hover:bg-tint/5 text-daintree-text/70"
-                  )}
-                >
-                  {ch}
-                </button>
-              ))}
-            </div>
-            {updateChannel === "nightly" && (
-              <p className="text-xs text-status-warning/80">
-                Nightly builds may contain unstable features. You can switch back to stable at any
-                time.
-              </p>
-            )}
-            {lastUpdateCheck && (
-              <p className="text-xs text-text-secondary">
-                Last checked: {formatTimeAgo(lastUpdateCheck)}
-              </p>
-            )}
-          </SettingsSection>
+          {updatesManagedByStore ? (
+            <SettingsSection
+              icon={RefreshCw}
+              title="Updates"
+              description="Updates are managed by the Microsoft Store on Windows."
+              id="general-update-channel"
+            >
+              <div />
+            </SettingsSection>
+          ) : (
+            <SettingsSection
+              icon={RefreshCw}
+              title="Update Channel"
+              description="Choose between stable releases and nightly builds."
+              id="general-update-channel"
+            >
+              <div className="flex gap-2">
+                {(["stable", "nightly"] as const).map((ch) => (
+                  <button
+                    key={ch}
+                    disabled={channelSaving || updateChannel === null}
+                    onClick={() => void handleChannelChange(ch)}
+                    className={cn(
+                      "px-3 py-1.5 rounded-[var(--radius-md)] text-xs font-medium transition-colors capitalize",
+                      updateChannel === ch
+                        ? "bg-overlay-selected border border-border-strong text-daintree-text font-medium"
+                        : "border border-daintree-border hover:bg-tint/5 text-daintree-text/70"
+                    )}
+                  >
+                    {ch}
+                  </button>
+                ))}
+              </div>
+              {updateChannel === "nightly" && (
+                <p className="text-xs text-status-warning/80">
+                  Nightly builds may contain unstable features. You can switch back to stable at any
+                  time.
+                </p>
+              )}
+              {lastUpdateCheck && (
+                <p className="text-xs text-text-secondary">
+                  Last checked: {formatTimeAgo(lastUpdateCheck)}
+                </p>
+              )}
+            </SettingsSection>
+          )}
 
           <SettingsSection
             icon={Keyboard}

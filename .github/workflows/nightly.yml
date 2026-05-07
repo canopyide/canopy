@@ -281,16 +281,15 @@ jobs:
         env:
           DEBUG: electron-builder,electron-notarize*,electron-osx-sign*
         run: |
-          npx electron-builder --publish never
+          npx electron-builder --config electron-builder.config.cjs --publish never
 
       # Nightly and stable both publish `latest*.yml` — URL separation (not
       # channel-name separation) distinguishes them. The nightly URL prefix is
       # set by the config when it sees a -nightly.* version.
       #
-      # Windows: validation removed in prep for the Microsoft Store migration
-      # (issue #7199 — electron-updater is being disabled on Windows since
-      # the Store handles update distribution end-to-end). The whole step
-      # will go away with the rest of the Windows auto-update plumbing.
+      # Windows: package validation still runs above, but Windows artifacts are
+      # intentionally not uploaded from nightly. Microsoft Store distribution
+      # happens through the release workflow only.
       - name: Validate update metadata (macOS)
         if: startsWith(matrix.os, 'macos')
         shell: bash
@@ -320,6 +319,7 @@ jobs:
           node scripts/ci/validate-update-metadata.mjs release/latest-linux.yml
 
       - name: Upload build artifacts
+        if: matrix.os != 'windows-latest'
         uses: actions/upload-artifact@v7
         with:
           name: nightly-${{ matrix.os }}
@@ -401,12 +401,6 @@ jobs:
           name: nightly-ubuntu-22.04
           path: release/
 
-      - name: Download Windows artifacts
-        uses: actions/download-artifact@v8
-        with:
-          name: nightly-windows-latest
-          path: release/
-
       - name: List nightly files
         run: ls -lah release/
 
@@ -425,7 +419,6 @@ jobs:
             --exclude "*" \
             --include "*.dmg" \
             --include "*.zip" \
-            --include "*.exe" \
             --include "*.AppImage" \
             --include "*.deb" \
             --include "*.blockmap" \

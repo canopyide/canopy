@@ -18,6 +18,7 @@ import { getPluginMenuItems } from "./services/pluginMenuRegistry.js";
 import { getAppWebContents } from "./window/webContentsRegistry.js";
 import { PRODUCT_NAME, PRODUCT_WEBSITE, PRODUCT_COPYRIGHT_ORG } from "./utils/productBranding.js";
 import { formatErrorMessage } from "../shared/utils/errorMessage.js";
+import { isWindowsStoreBuild } from "../shared/config/distribution.js";
 
 app.setAboutPanelOptions({
   applicationName: PRODUCT_NAME,
@@ -454,7 +455,7 @@ export function createApplicationMenu(
             await shell.openExternal("https://github.com/daintreehq/daintree");
           },
         },
-        ...(process.platform !== "darwin" && app.isPackaged
+        ...(process.platform !== "darwin" && app.isPackaged && !isWindowsStoreBuild()
           ? [
               { type: "separator" as const },
               {

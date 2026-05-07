@@ -11,6 +11,7 @@ import { getSystemSleepService } from "./SystemSleepService.js";
 import { store } from "../store.js";
 import { PRODUCT_NAME } from "../utils/productBranding.js";
 import { isTrustedRendererUrl } from "../../shared/utils/trustedRenderer.js";
+import { isWindowsStoreBuild } from "../../shared/config/distribution.js";
 
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
 const DISMISS_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -140,6 +141,7 @@ class AutoUpdaterService {
   }
 
   quitAndInstallIfReady(): boolean {
+    if (isWindowsStoreBuild()) return false;
     if (this.menuState !== "ready" || !this.updateDownloaded) return false;
     // Flip both guards synchronously so a rapid double-click can't queue two
     // setImmediate(quitAndInstall) calls — the second invocation reads idle
@@ -301,6 +303,10 @@ class AutoUpdaterService {
   }
 
   checkForUpdatesManually(): void {
+    if (isWindowsStoreBuild()) {
+      console.log("[MAIN] Auto-updater disabled for Windows Store builds");
+      return;
+    }
     if (!this.initialized) {
       console.log("[MAIN] Auto-updater not active, skipping manual check");
       return;
@@ -415,8 +421,8 @@ class AutoUpdaterService {
       return;
     }
 
-    if (process.platform === "win32" && process.env.PORTABLE_EXECUTABLE_FILE) {
-      console.log("[MAIN] Auto-updater disabled for Windows portable builds");
+    if (isWindowsStoreBuild()) {
+      console.log("[MAIN] Auto-updater disabled for Windows Store builds");
       return;
     }
 
