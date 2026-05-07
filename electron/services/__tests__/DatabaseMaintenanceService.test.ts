@@ -169,6 +169,11 @@ describe("DatabaseMaintenanceService", () => {
     expect(mockSqlite.backup).toHaveBeenCalled();
     expect(mockSqlite.pragma).toHaveBeenCalledWith("optimize");
     expect(mockSqlite.pragma).toHaveBeenCalledWith("wal_checkpoint(TRUNCATE)");
+
+    const backupOrder = mockSqlite.backup.mock.invocationCallOrder.at(-1)!;
+    const [optimizeOrder, truncateOrder] = mockSqlite.pragma.mock.invocationCallOrder.slice(-2);
+    expect(backupOrder).toBeLessThan(optimizeOrder);
+    expect(optimizeOrder).toBeLessThan(truncateOrder);
   });
 
   it("dispose is idempotent", async () => {

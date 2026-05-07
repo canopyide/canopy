@@ -75,7 +75,7 @@ class DatabaseMaintenanceService {
     await this.runBackup();
     this.optimize();
     this.checkpoint("TRUNCATE");
-    console.log("[DatabaseMaintenance] Disposed — final backup + checkpoint complete");
+    console.log("[DatabaseMaintenance] Disposed — optimize + checkpoint complete");
   }
 
   private tick(): void {
