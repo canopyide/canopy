@@ -133,16 +133,16 @@ export function registerWorktreeLifecycleHandlers(deps: HandlerDependencies): ()
       payload.force,
       payload.deleteBranch
     );
+    try {
+      deps.worktreeService?.invalidatePulseCache(payload.worktreeId);
+    } catch (error) {
+      console.warn("[worktree.delete] Failed to invalidate pulse cache:", error);
+    }
     if (worktree) {
       try {
         fileSearchService.invalidate(worktree.path);
       } catch (error) {
         console.warn("[worktree.delete] Failed to invalidate file search cache:", error);
-      }
-      try {
-        deps.worktreeService?.invalidatePulseCache(payload.worktreeId);
-      } catch (error) {
-        console.warn("[worktree.delete] Failed to invalidate pulse cache:", error);
       }
     }
     if (store.get("notificationSettings").uiFeedbackSoundEnabled) {

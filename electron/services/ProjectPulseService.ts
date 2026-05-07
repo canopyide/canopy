@@ -122,8 +122,10 @@ export class ProjectPulseService {
     const promise = (async () => {
       try {
         const pulse = await this.computePulse(options, controller!.signal);
-        this.cache.set(cacheKey, { pulse, timestamp: Date.now() });
-        this.pruneCache();
+        if (!controller!.signal.aborted) {
+          this.cache.set(cacheKey, { pulse, timestamp: Date.now() });
+          this.pruneCache();
+        }
         return pulse;
       } catch (error) {
         logError("ProjectPulse computation failed", {

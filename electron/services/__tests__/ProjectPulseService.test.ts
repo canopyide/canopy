@@ -955,4 +955,62 @@ describe("ProjectPulseService", () => {
     // Fresh controller should be cleaned up after successful computation
     expect(abortControllers.has("wt-1")).toBe(false);
   });
+
+  it("does not cache result when aborted during parallel git phase", async () => {
+    let capturedSignal: AbortSignal | undefined;
+
+    const raw = vi.fn(async (args: string[]) => {
+      const cmd = args[0];
+      if (cmd === "rev-parse" && args[1] === "--verify" && args[2] === "HEAD") {
+        return "deadbeef\n";
+      }
+      if (cmd === "rev-parse" && args.includes("--abbrev-ref")) return "feature\n";
+      // Stall on heatmap log (the first allSettled call) to simulate late abort
+      if (cmd === "log" && args.some((a) => a.startsWith("--since="))) {
+        await new Promise<void>((_resolve, reject) => {
+          capturedSignal?.addEventListener("abort", () =>
+            reject(new DOMException("Aborted", "AbortError"))
+          );
+        });
+        return "";
+      }
+      if (cmd === "log") return "";
+      return "";
+    });
+
+    vi.doMock("../../utils/hardenedGit.js", () => ({
+      createHardenedGit: (_cwd: string, signal?: AbortSignal) => {
+        capturedSignal = signal;
+        return createGitStub(raw);
+      },
+    }));
+
+    const { ProjectPulseService } = await import("../ProjectPulseService.js");
+    const svc = new ProjectPulseService();
+
+    const opts = {
+      worktreePath: "/repo",
+      worktreeId: "wt-1",
+      mainBranch: "main",
+      rangeDays: 60 as const,
+      includeDelta: false,
+      includeRecentCommits: false,
+    };
+
+    const pulsePromise = svc.getPulse(opts);
+    await vi.advanceTimersByTimeAsync(0);
+
+    // HEAD + branch resolution completed; now stalled in heatmap
+    svc.invalidate("wt-1");
+
+    expect(capturedSignal!.aborted).toBe(true);
+
+    // allSettled absorbs the abort, so the promise resolves with fallback values.
+    // The cache guard must prevent writing the fallback result.
+    const pulse = await pulsePromise;
+    expect(pulse.commitsInRange).toBe(0);
+
+    const cache = (svc as any).cache as Map<string, unknown>;
+    expect(cache.size).toBe(0);
+  });
 });
