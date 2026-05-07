@@ -101,6 +101,10 @@ export class IdentityWatcher {
   private sawPtyDescendant = false;
   private suppressNext = false;
   private inputBuffer = "";
+  // ESC parser state, persisted across captureInput calls so a VT sequence
+  // split across two writes (e.g. `\x1b` then `[Aclaude\r`) doesn't reset
+  // mid-sequence and leak its bytes into the buffer.
+  private escState: 0 | 1 | 2 | 3 = 0;
   private seededCommand: string | undefined;
   private stopped = false;
 
@@ -138,46 +142,46 @@ export class IdentityWatcher {
     // 0x40..0x7E), so `\x1b[A` leaked its final byte into the buffer; folding
     // OSC into the same state would also break, because OSC parameter bytes
     // include lowercase letters in 0x40..0x7E (e.g. the `w` in
-    // `\x1b]0;window-title\x07`).
-    let escState = 0;
+    // `\x1b]0;window-title\x07`). The `this.escState` instance field persists
+    // across calls so a sequence split between two writes still parses.
 
     for (const char of data) {
-      if (escState === 3) {
+      if (this.escState === 3) {
         if (char === "\u0007") {
-          escState = 0;
+          this.escState = 0;
         } else if (char === "\x1b") {
           // Treat embedded ESC as restart — also recovers the `\` of an ST
           // terminator (`ESC \`) via the state-1 fall-through to state 0.
-          escState = 1;
+          this.escState = 1;
         }
         continue;
       }
 
-      if (escState === 2) {
+      if (this.escState === 2) {
         if (char >= "@" && char <= "~") {
-          escState = 0;
+          this.escState = 0;
         } else if (char === "\x1b") {
-          escState = 1;
+          this.escState = 1;
         }
         continue;
       }
 
-      if (escState === 1) {
+      if (this.escState === 1) {
         if (char === "[") {
-          escState = 2;
+          this.escState = 2;
         } else if (char === "]" || char === "P" || char === "X" || char === "_" || char === "^") {
-          escState = 3;
+          this.escState = 3;
         } else {
           // Fe escape (e.g. `ESC A`, `ESC M`) — the single intro byte
           // completes the sequence; this branch also recovers the trailing
           // `\` of an ST terminator.
-          escState = 0;
+          this.escState = 0;
         }
         continue;
       }
 
       if (char === "\x1b") {
-        escState = 1;
+        this.escState = 1;
         continue;
       }
 

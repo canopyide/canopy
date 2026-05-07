@@ -198,6 +198,36 @@ describe("IdentityWatcher", () => {
       expect(watcher.captureInput("more\r")).toBeUndefined();
     });
 
+    // PTY data isn't guaranteed to deliver a full VT sequence in a single
+    // `onData` event — node-pty splits at arbitrary byte boundaries. The ESC
+    // parser state must persist across captureInput calls so a sequence
+    // straddling two writes (`\x1b` then `[Aclaude\r`) still parses cleanly.
+    it("does not leak bytes when a CSI sequence is split across two captureInput calls", () => {
+      const { delegate } = createFakeDelegate();
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.captureInput("\x1b");
+      expect(watcher.captureInput("[Aclaude\r")).toBe("claude");
+    });
+
+    it("does not leak bytes when an OSC sequence is split across two captureInput calls", () => {
+      const { delegate } = createFakeDelegate();
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.captureInput("\x1b]0;win");
+      expect(watcher.captureInput("dow\x07pnpm dev\r")).toBe("pnpm dev");
+    });
+
+    // The state-3 comment claims ST (`ESC \`) recovers via the embedded-ESC
+    // restart path. This is the test that pins that contract.
+    it("terminates an OSC sequence on ST (\\x1b\\\\) without polluting the buffer", () => {
+      const { delegate } = createFakeDelegate();
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.captureInput("\x1b]0;window-title\x1b\\pnpm dev");
+      expect(watcher.captureInput("\r")).toBe("pnpm dev");
+    });
+
     it("rolls the buffer when input exceeds SHELL_INPUT_BUFFER_MAX (drops oldest, keeps tail)", async () => {
       const { delegate } = createFakeDelegate();
       const watcher = new IdentityWatcher(delegate);
@@ -289,6 +319,8 @@ describe("IdentityWatcher", () => {
       watcher.onShellSubmit("claude");
 
       expect(watcher.pendingFallbackIdentity).toBeNull();
+      // Belt-and-suspenders: confirm no timer was armed by the late submit.
+      expect(vi.getTimerCount()).toBe(0);
       vi.advanceTimersByTime(5_000);
       expect(state.detectionCalls).toHaveLength(0);
     });
@@ -439,6 +471,35 @@ describe("IdentityWatcher", () => {
       expect(clear).toHaveBeenCalledWith("prompt-return");
       // handleAgentDetection is the legacy fallback; not used when detector is present.
       expect(state.detectionCalls).toHaveLength(0);
+    });
+
+    // Inverse of the OR→AND test below: fallback is icon-only (no agentType),
+    // live icon disagrees. A correct AND check must let the commit proceed
+    // rather than pre-empting on the (absent) agentType match.
+    it("does not pre-empt commit when an icon-only fallback identity disagrees with live icon", async () => {
+      const inject = vi.fn();
+      const clear = vi.fn();
+      const fakeDetector = {
+        injectShellCommandEvidence: inject,
+        clearShellCommandEvidence: clear,
+      } as unknown as ProcessDetector;
+      const { delegate, state } = createFakeDelegate({
+        processDetector: fakeDetector,
+        // Fallback identity will be `{ processIconId: "pnpm" }` (no agentType
+        // because pnpm isn't in AGENT_CLI_NAMES). Live icon disagrees.
+        lastDetectedProcessIconId: "npm",
+        visibleLines: ["pnpm dev\r\n", "> dev output"],
+        cursorLine: "> dev output",
+        ptyDescendantCount: 1,
+      });
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.onShellSubmit("pnpm dev");
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      expect(inject).toHaveBeenCalledTimes(1);
+      const [identity] = inject.mock.calls[0];
+      expect(identity).toMatchObject({ processIconId: "pnpm" });
     });
 
     // Bug 2: liveIdentityMatchesFallback used OR. A stale process icon (from a
