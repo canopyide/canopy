@@ -36,10 +36,15 @@ export function emergencyLogFatal(kind: string, error: unknown): void {
   const pid = process.pid;
   const uptimeMs = Math.round(process.uptime() * 1000);
   const memory = process.memoryUsage();
-  const details =
-    error instanceof Error
-      ? { name: error.name, message: error.message, stack: error.stack }
-      : { message: String(error) };
+  let details: unknown;
+  try {
+    details =
+      error instanceof Error
+        ? { name: error.name, message: error.message, stack: error.stack }
+        : { message: String(error) };
+  } catch {
+    details = { message: "[unable to serialize error]" };
+  }
 
   appendEmergencyLog(
     scrubSecrets(

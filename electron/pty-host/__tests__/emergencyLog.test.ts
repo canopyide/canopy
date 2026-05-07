@@ -104,6 +104,7 @@ describe("pty-host emergencyLog", () => {
       expect(content).toContain("[UNCAUGHT_EXCEPTION]");
       expect(content).toContain('"name":"TestError"');
       expect(content).toContain('"message":"test error"');
+      expect(content).toContain('"stack":"TestError: test error');
     });
 
     it("scrubs known secret sigils from error.message and stack", () => {
