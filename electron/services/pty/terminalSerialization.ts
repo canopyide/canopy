@@ -61,7 +61,7 @@ export function serializeForPersistence(
         : "";
 
     if (beforePart && afterPart) return beforePart + "\r\n" + afterPart;
-    return beforePart || afterPart || addon.serialize();
+    return beforePart || afterPart || null;
   } catch {
     return addon.serialize();
   }

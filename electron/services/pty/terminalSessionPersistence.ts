@@ -29,6 +29,10 @@ export const SESSION_EVICTION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 export const SESSION_EVICTION_MAX_BYTES = 100 * 1024 * 1024; // 100 MB
 const EVICTION_TTL_BUFFER_MS = 30_000; // 30s clock-skew safety buffer
 const STAT_CHUNK_SIZE = 10;
+// Grace period before sweeping orphaned atomic-write `.tmp` files. The atomic
+// write retry budget is 10s; 5min gives generous headroom while still reclaiming
+// crash artifacts on the next eviction sweep.
+const TMP_ORPHAN_TTL_MS = 5 * 60 * 1000;
 
 export function getSessionDir(): string | null {
   const userData = process.env.DAINTREE_USER_DATA;
@@ -189,11 +193,11 @@ export function readAndDeleteHibernatedMarker(terminalId: string): boolean {
   const markerPath = getHibernatedMarkerPath(terminalId);
   if (!markerPath) return false;
   try {
-    if (!existsSync(markerPath)) return false;
     unlinkSync(markerPath);
     return true;
-  } catch {
-    return false;
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw e;
   }
 }
 
@@ -251,8 +255,13 @@ export async function evictSessionFiles(opts: {
   knownIds?: Set<string>;
 }): Promise<{ deleted: number; bytesFreed: number }> {
   const files = await scanSessionFiles();
+  const now = Date.now();
+  let deleted = 0;
+  let bytesFreed = 0;
 
-  // Clean up orphaned .hibernated markers that have no matching .restore file
+  // Clean up orphaned .hibernated markers and stale `.tmp` files left by
+  // crashed atomic writes. Both run before the .restore eviction passes so
+  // their sweep is opportunistic even when no .restore files exist.
   const dir = getSessionDir();
   if (dir) {
     try {
@@ -264,6 +273,29 @@ export async function evictSessionFiles(opts: {
           if (!restoreIds.has(id)) {
             await unlink(path.join(dir, entry)).catch(() => {});
           }
+          continue;
+        }
+        if (entry.includes(".restore.") && entry.endsWith(".tmp")) {
+          const tmpPath = path.join(dir, entry);
+          let size: number;
+          let mtimeMs: number;
+          try {
+            const s = await stat(tmpPath);
+            size = s.size;
+            mtimeMs = s.mtimeMs;
+          } catch {
+            continue;
+          }
+          if (now - mtimeMs < TMP_ORPHAN_TTL_MS) continue;
+          try {
+            await unlink(tmpPath);
+            deleted++;
+            bytesFreed += size;
+          } catch (e: unknown) {
+            if ((e as NodeJS.ErrnoException).code !== "ENOENT") {
+              console.warn(`[sessionEviction] Failed to delete ${tmpPath}:`, e);
+            }
+          }
         }
       }
     } catch {
@@ -271,12 +303,9 @@ export async function evictSessionFiles(opts: {
     }
   }
 
-  if (files.length === 0) return { deleted: 0, bytesFreed: 0 };
+  if (files.length === 0) return { deleted, bytesFreed };
 
-  const now = Date.now();
   const ttlCutoff = opts.ttlMs + EVICTION_TTL_BUFFER_MS;
-  let deleted = 0;
-  let bytesFreed = 0;
   const survivors: SessionFileInfo[] = [];
 
   // Pass 1: TTL + orphan eviction

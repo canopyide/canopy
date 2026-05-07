@@ -225,6 +225,38 @@ describe("terminalSessionPersistence", () => {
       expect(fs.existsSync(path.join(sessionDir, "term-4.restore"))).toBe(true);
     });
 
+    it("sweeps stale orphaned .restore.*.tmp files past the grace period", async () => {
+      const tmpName = "term-9.restore.1700000000000-abc123.tmp";
+      const sixMinutesMs = 6 * 60 * 1000;
+      await createFile(tmpName, "x".repeat(50), sixMinutesMs);
+      // Unrelated .tmp must not be touched even when stale
+      await createFile("unrelated.tmp", "leave me alone", sixMinutesMs);
+
+      const result = await evictSessionFiles({
+        ttlMs: 30 * 24 * 60 * 60 * 1000,
+        maxBytes: 1024 * 1024,
+      });
+
+      expect(result.deleted).toBe(1);
+      expect(result.bytesFreed).toBe(50);
+      expect(fs.existsSync(path.join(sessionDir, tmpName))).toBe(false);
+      expect(fs.existsSync(path.join(sessionDir, "unrelated.tmp"))).toBe(true);
+    });
+
+    it("preserves recent .restore.*.tmp files within the grace period", async () => {
+      const tmpName = "term-10.restore.1700000000000-def456.tmp";
+      // Within the 5-minute grace window — write may still be in progress
+      await createFile(tmpName, "in-flight write", 60_000);
+
+      const result = await evictSessionFiles({
+        ttlMs: 30 * 24 * 60 * 60 * 1000,
+        maxBytes: 1024 * 1024,
+      });
+
+      expect(result.deleted).toBe(0);
+      expect(fs.existsSync(path.join(sessionDir, tmpName))).toBe(true);
+    });
+
     it("deletes orphan files whose IDs are not in knownIds", async () => {
       await createFile("known-term.restore", "keep me");
       await createFile("orphan-term.restore", "delete me");
