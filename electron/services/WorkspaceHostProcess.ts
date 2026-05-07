@@ -537,7 +537,9 @@ export class WorkspaceHostProcess extends EventEmitter {
         this.restartTimer = setTimeout(() => {
           this.restartTimer = null;
           this.startHost();
-          this.emit("restarted");
+          if (this.child !== null) {
+            this.emit("restarted");
+          }
         }, delay);
       } else {
         console.error(`[WorkspaceHost:${this.serviceName}] Max restart attempts reached`);

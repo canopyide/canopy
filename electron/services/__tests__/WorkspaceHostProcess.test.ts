@@ -414,4 +414,79 @@ describe("WorkspaceHostProcess BrokerError contract", () => {
     host.dispose();
     vi.useRealTimers();
   });
+
+  it("auto-restart does not emit 'restarted' when fork fails", async () => {
+    vi.useFakeTimers();
+    const { WorkspaceHostProcess } = await loadModule();
+    const host = new WorkspaceHostProcess("/tmp/project", {
+      maxRestartAttempts: 3,
+      healthCheckIntervalMs: 30000,
+    } as any);
+    host.waitForReady().catch(() => {});
+
+    const child = mockChildren[0] as MockUtilityChild;
+    child.emit("message", { type: "ready" });
+
+    // Cause fork to fail on the next attempt
+    forkMock.mockImplementation(() => {
+      throw new Error("fork failed");
+    });
+
+    const restartSpy = vi.fn();
+    const crashSpy = vi.fn();
+    host.on("restarted", restartSpy);
+    host.on("host-crash", crashSpy);
+
+    child.emit("exit", 1);
+
+    // Advance past the restart delay
+    const cap = Math.min(1000 * Math.pow(2, 1), 10000); // 2000
+    vi.advanceTimersByTime(cap + 100);
+
+    expect(restartSpy).not.toHaveBeenCalled();
+    expect(crashSpy).toHaveBeenCalled();
+
+    host.waitForReady().catch(() => {});
+    host.dispose();
+    vi.useRealTimers();
+  });
+
+  it("duplicate-ID guard clears old timeout before overwriting", async () => {
+    vi.useFakeTimers();
+    const { WorkspaceHostProcess } = await loadModule();
+    const host = new WorkspaceHostProcess("/tmp/project", {
+      maxRestartAttempts: 3,
+      healthCheckIntervalMs: 30000,
+    } as any);
+    host.waitForReady().catch(() => {});
+
+    const child = mockChildren[0] as MockUtilityChild;
+    child.emit("message", { type: "ready" });
+
+    // Register first request with a short timeout (100ms)
+    const firstPromise = host.sendWithResponse(
+      { type: "refresh" as any, requestId: "timer-test" },
+      100
+    );
+
+    // Register duplicate — should clear old 100ms timeout
+    const secondPromise = host.sendWithResponse(
+      { type: "refresh" as any, requestId: "timer-test" },
+      10000
+    );
+
+    // Advance past the first timeout — if not cleared, it would have rejected
+    vi.advanceTimersByTime(150);
+
+    // First promise was already rejected by duplicate guard (synchronous)
+    await expect(firstPromise).rejects.toThrow("Duplicate request ID: timer-test");
+
+    // Second promise is still pending (not timed out)
+    // Resolve it to clean up
+    child.emit("message", { type: "refresh-result", requestId: "timer-test" });
+    await secondPromise;
+
+    host.dispose();
+    vi.useRealTimers();
+  });
 });
