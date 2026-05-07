@@ -366,8 +366,9 @@ function PanelHeaderComponent({
     // Suppress the browser's word-selection default on the second mousedown
     // of a double-click. Without this, toggling focus mode mid-gesture lets
     // the second mousedown land on a sibling pane (revealed by the slide
-    // animation) and select its text — issue #6978.
-    if (e.detail >= 2) {
+    // animation) and select its text — issue #6978. Skip when the target is
+    // an editable element so title-rename word-selection still works.
+    if (e.detail >= 2 && !(e.target as HTMLElement).closest("input, textarea")) {
       e.preventDefault();
     }
   };
