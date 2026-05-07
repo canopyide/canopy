@@ -49,13 +49,15 @@ export function escapeXml(value: string): string {
 
 /**
  * Compute the end index of the next PTY chunk so that a UTF-16 surrogate pair
- * is never split across chunks. Returns an index in `[start, content.length]`.
+ * is never split across chunks. Returns an index in `(start, content.length]`
+ * — the boundary is guaranteed to advance, so callers can use `i = end`
+ * without risking an infinite loop even when `chunkSize` is 1.
  */
 export function nextChunkBoundary(content: string, start: number, chunkSize: number): number {
   let end = Math.min(start + chunkSize, content.length);
   if (end < content.length) {
     const lastUnit = content.charCodeAt(end - 1);
-    if (lastUnit >= 0xd800 && lastUnit <= 0xdbff) {
+    if (lastUnit >= 0xd800 && lastUnit <= 0xdbff && end - 1 > start) {
       end -= 1;
     }
   }
@@ -338,6 +340,17 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
 
       const tempDir = path.join(os.tmpdir(), "daintree-context");
       await fs.mkdir(tempDir, { recursive: true, mode: 0o700 });
+      // mkdir({ mode }) is ignored when the directory already exists, so
+      // chmod the directory explicitly each run to evict any stale, more
+      // permissive mode left behind by a previous build or another process.
+      // chmod is a no-op for permission bits on Windows.
+      if (process.platform !== "win32") {
+        try {
+          await fs.chmod(tempDir, 0o700);
+        } catch {
+          // best effort — file mode below still protects the contents
+        }
+      }
 
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       const projectName =
@@ -361,6 +374,13 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
       await fs.writeFile(filePath, result.content, { encoding: "utf8", mode: 0o600 });
 
       if (process.platform === "darwin") {
+        // Electron's `clipboard.writeBuffer` maps to Chromium's
+        // `WritePortableAndPlatformRepresentations`, which calls
+        // `[NSPasteboard clearContents]` on each invocation, so sequential
+        // `writeBuffer` calls cannot install multiple custom UTIs in one
+        // pasteboard session. Keep the legacy `NSFilenamesPboardType` plist
+        // (Finder reads it natively) with the path XML-escaped so a
+        // hostile `TMPDIR` cannot break out of the <string> element.
         const plist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -369,7 +389,6 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
 </array>
 </plist>`;
         clipboard.writeBuffer("NSFilenamesPboardType", Buffer.from(plist, "utf8"));
-        clipboard.writeBuffer("public.file-url", Buffer.from(pathToFileURL(filePath).href, "utf8"));
       } else if (process.platform === "win32") {
         clipboard.writeText(filePath);
       } else {

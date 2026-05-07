@@ -312,6 +312,30 @@ describe("nextChunkBoundary", () => {
     expect(nextChunkBoundary(content, 0, CHUNK)).toBe(content.length);
   });
 
+  it("never backs off below start, so the loop always advances even with chunkSize 1", () => {
+    // Pathological: chunkSize 1 starting on a high surrogate. Backing off
+    // would return start, infinite-looping the caller. The guard must keep
+    // end > start by including the lone code unit instead.
+    const surrogatePair = "𝄞";
+    const content = surrogatePair + "tail";
+    const end = nextChunkBoundary(content, 0, 1);
+    expect(end).toBeGreaterThan(0);
+
+    // Walk the entire string with chunkSize 1 and assert we terminate.
+    let i = 0;
+    let iterations = 0;
+    while (i < content.length) {
+      const next = nextChunkBoundary(content, i, 1);
+      expect(next).toBeGreaterThan(i);
+      i = next;
+      iterations++;
+      if (iterations > content.length * 2) {
+        throw new Error("nextChunkBoundary failed to advance with chunkSize 1");
+      }
+    }
+    expect(i).toBe(content.length);
+  });
+
   it("makes consecutive calls walk a string of all-surrogate-pair characters without splitting any pair", () => {
     // 1000 supplementary-plane characters → 2000 UTF-16 code units.
     const supplementary = "𝄞";
