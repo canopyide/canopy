@@ -78,7 +78,8 @@ export class TerminalRegistry {
       this.trashExpiryTimes.delete(id);
     }, this.trashTtlMs);
     // Unref so the pending TTL never holds the Electron event loop alive after
-    // app.quit — TRASH_TTL_MS is in the minutes-to-hours range.
+    // app.quit. The default TRASH_TTL_MS is 20s, but trashTtlMs is constructor-
+    // injected and can be any duration — keeping shutdown unblocked regardless.
     timeout.unref?.();
 
     this.trashTimeouts.set(id, timeout);
