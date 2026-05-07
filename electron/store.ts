@@ -457,10 +457,28 @@ function restoreFromBackup(configPath: string): boolean {
 function refreshBackup(configPath: string): void {
   try {
     if (fs.existsSync(configPath)) {
-      fs.copyFileSync(configPath, `${configPath}.bak`);
+      const backupPath = `${configPath}.bak`;
+      fs.copyFileSync(configPath, backupPath);
+      tightenFilePermissions(backupPath);
     }
   } catch (err) {
     console.warn("[Store] Failed to create config backup:", err);
+  }
+}
+
+// Restrict the user-data store file (and its sidecar backup) to owner-only
+// read/write. The store persists secrets — github tokens, voice/MCP API keys —
+// and conf's default 0o666 lands at 0o644 after the typical umask, leaving the
+// file world-readable on multi-user macOS/Linux machines. Windows ignores
+// POSIX mode bits, so the platform guard keeps the call a no-op there.
+function tightenFilePermissions(filePath: string): void {
+  if (process.platform === "win32") return;
+  if (!filePath) return;
+  try {
+    if (!fs.existsSync(filePath)) return;
+    fs.chmodSync(filePath, 0o600);
+  } catch (err) {
+    console.warn("[Store] Failed to tighten file permissions:", filePath, err);
   }
 }
 
@@ -560,6 +578,7 @@ export function initializeStore(options: typeof storeOptions = storeOptions): St
     const created = new Store<StoreSchema>({
       ...options,
       clearInvalidConfig: true,
+      configFileMode: 0o600,
     });
     const postSnapshot = configPath ? readRawSnapshot(configPath) : null;
     const wipedDuringConstruction =
@@ -575,6 +594,10 @@ export function initializeStore(options: typeof storeOptions = storeOptions): St
     } else {
       refreshBackup(created.path);
     }
+    // Migrate existing 0o644 files (created before configFileMode landed) to
+    // 0o600 even when the user never triggers a write this session.
+    tightenFilePermissions(created.path);
+    tightenFilePermissions(`${created.path}.bak`);
     storeInstance = created;
     return created;
   } catch (error) {
@@ -623,12 +646,15 @@ export const store = new Proxy({} as Store<StoreSchema>, {
 
 function initializeWindowStatesStore(): Store<WindowStatesStoreSchema> {
   try {
-    return new Store<WindowStatesStoreSchema>({
+    const created = new Store<WindowStatesStoreSchema>({
       name: "window-states",
       cwd: storeOptions.cwd,
       defaults: { windowStates: {} },
       clearInvalidConfig: true,
+      configFileMode: 0o600,
     });
+    tightenFilePermissions(created.path);
+    return created;
   } catch (error) {
     console.warn(
       "[Store] Failed to initialize window-states store, using in-memory fallback:",
