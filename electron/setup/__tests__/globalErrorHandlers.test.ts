@@ -269,11 +269,11 @@ describe("globalErrorHandlers", () => {
       expect(appMock.relaunch).not.toHaveBeenCalled();
     });
 
-    it("calls CrashRecoveryService.recordCrash with the reason", () => {
+    it("does NOT call CrashRecoveryService.recordCrash (transient rejections must not poison the crash marker)", () => {
       const reason = new Error("rejected");
       rejectionHandler(reason);
 
-      expect(crashRecoveryMock.recordCrash).toHaveBeenCalledWith(reason);
+      expect(crashRecoveryMock.recordCrash).not.toHaveBeenCalled();
     });
 
     it("persists error to pendingErrors store with UNHANDLED_REJECTION payload", () => {
@@ -303,14 +303,6 @@ describe("globalErrorHandlers", () => {
         "pendingErrors",
         expect.arrayContaining([expect.objectContaining({ fromPreviousSession: true })])
       );
-    });
-
-    it("does not throw when recordCrash throws", () => {
-      crashRecoveryMock.recordCrash.mockImplementation(() => {
-        throw new Error("record failed");
-      });
-
-      expect(() => rejectionHandler(new Error("rejected"))).not.toThrow();
     });
 
     it("handles non-Error rejection reasons", () => {
