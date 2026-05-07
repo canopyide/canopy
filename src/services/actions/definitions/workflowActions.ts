@@ -10,6 +10,7 @@ import { useGitHubConfigStore } from "@/store/githubConfigStore";
 import { usePanelStore } from "@/store/panelStore";
 import { usePreferencesStore } from "@/store/preferencesStore";
 import { selectOrderedTerminals } from "@/store/slices/panelRegistry";
+import { isTerminalVisible } from "@/lib/terminalVisibility";
 import { TerminalSpawnSourceSchema } from "./schemas";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 
@@ -633,18 +634,10 @@ export function registerWorkflowActions(
           if (wt.worktreeId) validWorktreeIds.add(wt.worktreeId);
         }
 
-        // Mirror isTerminalVisible() in terminalFocusSlice — counts must match
-        // what focusNextWaiting/focusNextWorking will actually consider, otherwise
-        // the macro could report `focused: true` while the focus call is a no-op.
-        const inScope = terminals.filter(
-          (t) =>
-            t.worktreeId !== undefined &&
-            t.worktreeId !== null &&
-            validWorktreeIds.has(t.worktreeId) &&
-            t.location !== "trash" &&
-            t.location !== "background" &&
-            t.ephemeral !== true &&
-            !state.isInTrash(t.id)
+        // Mirror isTerminalVisible() — counts must match what
+        // focusNextWaiting/focusNextWorking will actually consider.
+        const inScope = terminals.filter((t) =>
+          isTerminalVisible(t, state.isInTrash, validWorktreeIds)
         );
         const waitingCount = inScope.filter((t) => t.agentState === "waiting").length;
         const workingCount = inScope.filter((t) => t.agentState === "working").length;

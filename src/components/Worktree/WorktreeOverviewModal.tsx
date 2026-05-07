@@ -23,6 +23,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { isAgentTerminal } from "@/utils/terminalType";
+import { isTerminalVisible } from "@/lib/terminalVisibility";
+import { useWorktreeIds } from "@/hooks/useTerminalSelectors";
 
 interface OverviewWorktreeCardProps {
   worktreeId: string;
@@ -208,6 +210,8 @@ export function WorktreeOverviewModal({
   // Terminal store for derived metadata
   const panelsById = usePanelStore((state) => state.panelsById);
   const panelIds = usePanelStore((state) => state.panelIds);
+  const isInTrash = usePanelStore((state) => state.isInTrash);
+  const worktreeIds = useWorktreeIds();
 
   // Error store for derived metadata
   // Filter store: hide main worktree preference
@@ -225,7 +229,8 @@ export function WorktreeOverviewModal({
       let hasExitedAgent = false;
       for (const id of panelIds) {
         const t = panelsById[id];
-        if (!t || t.worktreeId !== worktree.id || t.location === "trash") continue;
+        if (!t || t.worktreeId !== worktree.id || !isTerminalVisible(t, isInTrash, worktreeIds))
+          continue;
         terminalCount++;
         if (!isAgentTerminal(t)) continue;
         if (t.agentState === "working") hasWorkingAgent = true;
@@ -245,7 +250,7 @@ export function WorktreeOverviewModal({
       });
     }
     return map;
-  }, [worktrees, panelsById, panelIds]);
+  }, [worktrees, panelsById, panelIds, isInTrash, worktreeIds]);
 
   const chipCounts = useMemo(() => {
     const candidates = hideMainWorktree ? worktrees.filter((w) => !w.isMainWorktree) : worktrees;

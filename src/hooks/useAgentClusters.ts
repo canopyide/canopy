@@ -3,7 +3,8 @@ import { useShallow } from "zustand/react/shallow";
 import { usePanelStore, type TerminalInstance } from "@/store/panelStore";
 import { isFleetArmEligible } from "@/store/fleetArmingStore";
 import { isTerminalErrorClusterEligible } from "@/store/fleetEligibility";
-import { isTerminalVisible, useWorktreeIds } from "@/hooks/useTerminalSelectors";
+import { useWorktreeIds } from "@/hooks/useTerminalSelectors";
+import { isTerminalVisible } from "@/lib/terminalVisibility";
 
 export type ClusterType = "waiting" | "error" | "completion";
 
