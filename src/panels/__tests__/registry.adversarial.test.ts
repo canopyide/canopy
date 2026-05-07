@@ -142,4 +142,101 @@ describe("panel registry adversarial", () => {
       expect(registry.getPanelKindDefinition(kind)).toBeDefined();
     }
   });
+
+  it("PLUGIN_DEFINITION_CANNOT_OVERWRITE_BUILTIN", async () => {
+    mockRegistryImports();
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { getPanelKindDefinition, getPanelKindDefinitionsSnapshot, registerPanelKindDefinition } =
+      await import("../registry");
+
+    const original = getPanelKindDefinition("browser");
+    expect(original?.extensionId).toBeUndefined();
+    const snapshotBefore = getPanelKindDefinitionsSnapshot();
+    const malicious = (() => null) as MinimalComponent;
+
+    registerPanelKindDefinition({
+      id: "browser",
+      name: "Hijacked",
+      iconId: "skull",
+      color: "#ff0000",
+      hasPty: false,
+      canRestart: false,
+      canConvert: false,
+      extensionId: "evil-plugin",
+      component: malicious,
+    });
+
+    const after = getPanelKindDefinition("browser");
+    expect(after?.component).toBe(original?.component);
+    expect(after?.extensionId).toBeUndefined();
+    expect(after?.name).toBe(original?.name);
+    // Rejected registration must not invalidate the snapshot — otherwise React
+    // subscribers re-render without any actual change.
+    expect(getPanelKindDefinitionsSnapshot()).toBe(snapshotBefore);
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Refusing to overwrite built-in panel kind definition "browser"'),
+      expect.anything()
+    );
+    errorSpy.mockRestore();
+  });
+
+  it("UNREGISTER_PLUGIN_DEFINITION_SUCCEEDS", async () => {
+    mockRegistryImports();
+    const { registerPanelKindDefinition, unregisterPanelKindDefinition, getPanelKindDefinition } =
+      await import("../registry");
+
+    const component = (() => null) as MinimalComponent;
+    registerPanelKindDefinition({
+      id: "ext-a.viewer",
+      name: "Viewer",
+      iconId: "eye",
+      color: "#123456",
+      hasPty: false,
+      canRestart: false,
+      canConvert: false,
+      extensionId: "ext-a",
+      component,
+    });
+
+    expect(getPanelKindDefinition("ext-a.viewer")).toBeDefined();
+    expect(unregisterPanelKindDefinition("ext-a.viewer")).toBe(true);
+    expect(getPanelKindDefinition("ext-a.viewer")).toBeUndefined();
+  });
+
+  it("DEFINITION_LISTENER_ERROR_LOGGED_AT_ERROR_LEVEL", async () => {
+    mockRegistryImports();
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { registerPanelKindDefinition, subscribeToPanelKindDefinitions } =
+      await import("../registry");
+
+    const throwingListener = vi.fn(() => {
+      throw new Error("listener boom");
+    });
+    const goodListener = vi.fn();
+    const off1 = subscribeToPanelKindDefinitions(throwingListener);
+    const off2 = subscribeToPanelKindDefinitions(goodListener);
+
+    registerPanelKindDefinition({
+      id: "ext-a.viewer",
+      name: "Viewer",
+      iconId: "eye",
+      color: "#123456",
+      hasPty: false,
+      canRestart: false,
+      canConvert: false,
+      extensionId: "ext-a",
+      component: (() => null) as MinimalComponent,
+    });
+
+    expect(throwingListener).toHaveBeenCalledTimes(1);
+    expect(goodListener).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[panelKindRegistry] definition listener threw"),
+      expect.anything()
+    );
+
+    off1();
+    off2();
+    errorSpy.mockRestore();
+  });
 });
