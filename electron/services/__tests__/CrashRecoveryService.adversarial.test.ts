@@ -201,6 +201,45 @@ describe("CrashRecoveryService adversarial", () => {
     readSpy.mockRestore();
   });
 
+  it("FILTERED_RESTORE_DOES_NOT_NARROW_CACHE_ON_FAILURE", () => {
+    // restoreBackup applies a panelIds filter when the user picks a subset
+    // to restore. The filter must operate on a copy of the cached snapshot
+    // — otherwise a failed applySessionSnapshot leaves the cache narrowed
+    // and a retry (different filter, or no filter) silently drops panels
+    // that were never restored.
+    writeBackup(tmpDir, {
+      capturedAt: Date.now(),
+      appState: {
+        terminals: [
+          { id: "a", kind: "terminal", title: "Alpha" },
+          { id: "b", kind: "terminal", title: "Bravo" },
+        ],
+      },
+    });
+    writeMarker(tmpDir);
+
+    const service = makeService();
+    service.initialize();
+
+    // First restore filters to just "a" but the underlying store.set
+    // throws, simulating a partial-write or transient failure.
+    storeMock.set.mockImplementationOnce(() => {
+      throw new Error("transient store failure");
+    });
+    expect(service.restoreBackup(["a"])).toBe(false);
+
+    // Retry without a filter — must still see both panels because the
+    // cache was not destructively narrowed by the failed first attempt.
+    storeMock.set.mockImplementation(() => {});
+    expect(service.restoreBackup()).toBe(true);
+    expect(storeMock.set).toHaveBeenLastCalledWith("appState", {
+      terminals: [
+        { id: "a", kind: "terminal", title: "Alpha" },
+        { id: "b", kind: "terminal", title: "Bravo" },
+      ],
+    });
+  });
+
   it("STARTBACKUPTIMER_IDEMPOTENT", () => {
     const service = makeService();
     const takeBackup = vi.spyOn(service, "takeBackup").mockImplementation(() => {});

@@ -183,13 +183,19 @@ export class CrashRecoveryService {
       }
 
       if (panelIds !== undefined && panelIds.length > 0 && snapshot.appState) {
-        const appState = snapshot.appState as Record<string, unknown>;
+        // Filter onto a shallow copy so we don't mutate cachedBackupSnapshot.
+        // If applySessionSnapshot below throws and the user retries the
+        // restore (with or without a different filter), the cache must
+        // still hold the full pre-crash terminal list — mutating it in
+        // place permanently drops panels from any retry path.
+        const appState = { ...(snapshot.appState as Record<string, unknown>) };
         if (Array.isArray(appState.terminals)) {
           const idSet = new Set(panelIds);
           appState.terminals = (appState.terminals as Array<{ id: string }>).filter((t) =>
             idSet.has(t.id)
           );
         }
+        snapshot = { ...snapshot, appState };
       }
 
       if (!hasRestorableSnapshotContent(snapshot)) {
