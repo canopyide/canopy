@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
-import { keybindingService, normalizeKeyForBinding } from "../services/KeybindingService";
+import { keybindingService, normalizeKeyForBinding, parseCombo } from "../services/KeybindingService";
 import { actionService } from "../services/ActionService";
 import { logError } from "@/utils/logger";
 import { dispatchEscape, hasHandlers } from "@/lib/escapeStack";
@@ -18,6 +18,17 @@ import { usePanelStore } from "../store";
 export function useGlobalKeybindings(enabled: boolean = true): void {
   useEffect(() => {
     if (!enabled) return;
+
+    // Capture the bare key for region focus bindings so the editable/.xterm
+    // bypass tracks user rebinds instead of a hardcoded "F6".
+    const focusRegionKeys = (): string[] => {
+      const keys: string[] = [];
+      const next = keybindingService.getEffectiveCombo("nav.focusRegion.next");
+      const prev = keybindingService.getEffectiveCombo("nav.focusRegion.prev");
+      if (next) keys.push(parseCombo(next).key);
+      if (prev) keys.push(parseCombo(prev).key);
+      return keys;
+    };
 
     const handler = (e: KeyboardEvent) => {
       // Skip repeat events
@@ -42,6 +53,11 @@ export function useGlobalKeybindings(enabled: boolean = true): void {
 
       // Don't process modifier-only keypresses
       if (isModifierOnly) return;
+
+      // Dead-key keydowns (accent layout first-press, e.g. ´ on macOS Romance
+      // layouts) emit `key === "Dead"` and aren't a valid chord step on any
+      // layout. Bail entirely so they neither start nor clear a chord.
+      if (e.key === "Dead") return;
 
       // Handle Shift+F10 and ContextMenu key for panel context menus.
       // Must be checked before the editable/terminal bailouts below.
@@ -84,20 +100,23 @@ export function useGlobalKeybindings(enabled: boolean = true): void {
       }
 
       // For editable contexts without modifiers, let native behavior happen.
-      // Exception: chord completion, F6 for region cycling, and bare keys that are
-      // scope-gated (e.g. X in worktreeGrid scope for fleet arming). Scope-gated
-      // bindings are checked below in resolveKeybinding → canExecute.
+      // Exception: chord completion, region-focus cycling (default F6 / Shift+F6,
+      // user-rebindable), and bare keys that are scope-gated (e.g. X in
+      // worktreeGrid scope for fleet arming). Scope-gated bindings are checked
+      // below in resolveKeybinding → canExecute.
       const hasModifier = e.metaKey || e.ctrlKey;
+      const focusKeys = focusRegionKeys();
+      const isFocusRegionKey = focusKeys.includes(e.key);
 
-      if (isEditable && !hasModifier && !pendingChord && e.key !== "F6") {
+      if (isEditable && !hasModifier && !pendingChord && !isFocusRegionKey) {
         return;
       }
 
       // Let xterm handle its own keys except for global shortcuts with modifiers,
-      // chord completion, or F6. Bare keys (like X for fleet arming) are blocked
-      // inside terminals so they don't steal typing — scoped bindings only match
-      // when focus is outside .xterm.
-      if (isInTerminal && !hasModifier && !pendingChord && e.key !== "F6") {
+      // chord completion, or region focus. Bare keys (like X for fleet arming)
+      // are blocked inside terminals so they don't steal typing — scoped
+      // bindings only match when focus is outside .xterm.
+      if (isInTerminal && !hasModifier && !pendingChord && !isFocusRegionKey) {
         return;
       }
 

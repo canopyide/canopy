@@ -58,6 +58,7 @@ function fakeEvent(): Electron.IpcMainInvokeEvent {
 
 describe("keybinding handlers adversarial", () => {
   let cleanup: () => void;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -65,11 +66,16 @@ describe("keybinding handlers adversarial", () => {
     fsMock.writeFile.mockResolvedValue(undefined);
     fsMock.readFile.mockResolvedValue("{}");
     windowRegistryMock.getWindowForWebContents.mockReturnValue(null);
+    // Silence the malformed-override warnings so adversarial fixtures don't
+    // pollute test output. Tests that assert on the warning re-create their
+    // own spy.
+    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     cleanup = registerKeybindingHandlers({} as never);
   });
 
   afterEach(() => {
     cleanup();
+    warnSpy.mockRestore();
   });
 
   it("getOverrides filters out corrupt values from a polluted store", async () => {
@@ -86,6 +92,25 @@ describe("keybinding handlers adversarial", () => {
     const result = await handler(fakeEvent());
 
     expect(result).toEqual({ "action.a": ["Cmd+A"], "action.b": [] });
+  });
+
+  it("getOverrides warns once per malformed entry — issue #7303", async () => {
+    storeMock.get.mockReturnValue({
+      "action.valid": ["Cmd+V"],
+      "action.bad.string": "oops",
+      "action.bad.empty": ["", "Cmd+B"],
+      "action.bad.number": [42],
+    });
+
+    const handler = getHandler(CHANNELS.KEYBINDING_GET_OVERRIDES);
+    await handler(fakeEvent());
+
+    const warnings = warnSpy.mock.calls.map((c) => String(c[0]));
+    expect(warnings.some((m) => m.includes("action.bad.string"))).toBe(true);
+    expect(warnings.some((m) => m.includes("action.bad.empty"))).toBe(true);
+    expect(warnings.some((m) => m.includes("action.bad.number"))).toBe(true);
+    // Valid entry must not trigger a warning.
+    expect(warnings.some((m) => m.includes("action.valid"))).toBe(false);
   });
 
   it("getOverrides returns {} for non-object or array store values", async () => {
