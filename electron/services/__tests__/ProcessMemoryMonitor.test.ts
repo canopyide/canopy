@@ -967,7 +967,7 @@ describe("ProcessMemoryMonitor", () => {
         const onSuspend = vi.mocked(mockSleep.onSuspend).mock.calls[0]![0]!;
         const onWake = vi.mocked(mockSleep.onWake).mock.calls[0]![0]!;
         onSuspend();
-        onWake();
+        onWake(0);
 
         vi.advanceTimersByTime(30_000); // re-entry after wake — warns again
 
@@ -1124,7 +1124,7 @@ describe("ProcessMemoryMonitor", () => {
         });
 
         onSuspend();
-        onWake(); // immediate poll fires with fresh growth data
+        onWake(0); // immediate poll fires with fresh growth data
 
         vi.advanceTimersByTime(62 * 30_000);
 
@@ -1209,7 +1209,7 @@ describe("ProcessMemoryMonitor", () => {
         onSuspend();
 
         // Wake: should poll immediately
-        onWake();
+        onWake(0);
 
         // Verify poll happened synchronously on wake (debug log count increased
         // without advancing the fake timer)
