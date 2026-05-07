@@ -69,7 +69,7 @@ export function FindBar({ find }: FindBarProps) {
         spellCheck={false}
       />
       <span
-        role="status"
+        role={hasQuery ? "status" : undefined}
         aria-atomic="true"
         className={`text-[11px] tabular-nums whitespace-nowrap mr-0.5 ${
           noResults ? "text-status-error" : "text-daintree-text/50"
