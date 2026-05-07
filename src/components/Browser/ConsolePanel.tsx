@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { memo, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { Trash2, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -6,6 +6,7 @@ import {
   type ConsoleLevel,
   type ConsoleMessage,
   EMPTY_MESSAGES,
+  ZERO_COUNTS,
 } from "@/store/consoleCaptureStore";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ObjectInspector } from "./ObjectInspector";
@@ -49,19 +50,7 @@ const FILTER_BUTTONS: { filter: LevelFilter; label: string }[] = [
   { filter: "log", label: "Log" },
 ];
 
-function formatTime(ts: number): string {
-  const d = new Date(ts);
-  const h = String(d.getHours()).padStart(2, "0");
-  const m = String(d.getMinutes()).padStart(2, "0");
-  const s = String(d.getSeconds()).padStart(2, "0");
-  const ms = String(d.getMilliseconds()).padStart(3, "0");
-  return `${h}:${m}:${s}.${ms}`;
-}
-
-// Group types that act as headers
-const GROUP_HEADER_TYPES = new Set(["startGroup", "startGroupCollapsed"]);
-
-function ConsoleRow({
+const ConsoleRow = memo(function ConsoleRow({
   msg,
   webContentsId,
   isGroupCollapsed,
@@ -70,11 +59,11 @@ function ConsoleRow({
   msg: ConsoleMessage;
   webContentsId?: number;
   isGroupCollapsed?: boolean;
-  onToggleGroup?: () => void;
+  onToggleGroup?: (msgId: number) => void;
 }) {
   const style = LEVEL_STYLES[msg.level];
-  const isGroupHeader = GROUP_HEADER_TYPES.has(msg.cdpType);
   const indentPx = msg.groupDepth * 12;
+  const handleToggle = useCallback(() => onToggleGroup?.(msg.id), [onToggleGroup, msg.id]);
 
   return (
     <div
@@ -85,7 +74,7 @@ function ConsoleRow({
       style={indentPx > 0 ? { paddingLeft: `${8 + indentPx}px` } : undefined}
     >
       <span className="shrink-0 text-daintree-text/30 select-none tabular-nums">
-        {formatTime(msg.timestamp)}
+        {msg.timeLabel}
       </span>
       <span
         className={cn(
@@ -97,10 +86,10 @@ function ConsoleRow({
       </span>
       <div className="min-w-0 flex-1">
         <div className="break-all whitespace-pre-wrap select-text">
-          {isGroupHeader && onToggleGroup && (
+          {msg.isGroupHeader && onToggleGroup && (
             <button
               type="button"
-              onClick={onToggleGroup}
+              onClick={handleToggle}
               className="text-daintree-text/40 mr-1 select-none hover:text-daintree-text/60"
             >
               {isGroupCollapsed ? "▶" : "▼"}
@@ -121,7 +110,7 @@ function ConsoleRow({
       </div>
     </div>
   );
-}
+});
 
 export function ConsolePanel({ paneId, height = 200, webContentsId }: ConsolePanelProps) {
   const [levelFilter, setLevelFilter] = useState<LevelFilter>("all");
@@ -130,33 +119,36 @@ export function ConsolePanel({ paneId, height = 200, webContentsId }: ConsolePan
   const [collapsedGroups, setCollapsedGroups] = useState<Set<number>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevLastIdRef = useRef<number | null>(null);
+  const lastSeenIndexRef = useRef(0);
 
   const allMessages = useConsoleCaptureStore(
     (state) => state.messages.get(paneId) ?? EMPTY_MESSAGES
   );
+  const counts = useConsoleCaptureStore((state) => state.counters.get(paneId) ?? ZERO_COUNTS);
   const clearMessages = useConsoleCaptureStore((state) => state.clearMessages);
 
   // Apply level and search filters, then handle group collapsing
   const filtered = useMemo(() => {
+    const lowerSearch = search ? search.toLowerCase() : "";
+
     // First pass: filter by level and search
     let result = allMessages.filter((msg) => {
       // Always show group headers regardless of level filter
-      if (GROUP_HEADER_TYPES.has(msg.cdpType)) return true;
+      if (msg.isGroupHeader) return true;
 
       if (levelFilter !== "all") {
         if (levelFilter === "warning" && msg.level !== "warning") return false;
         if (levelFilter === "error" && msg.level !== "error") return false;
         if (levelFilter === "log" && msg.level !== "log" && msg.level !== "info") return false;
       }
-      if (search) {
-        return msg.summaryText.toLowerCase().includes(search.toLowerCase());
+      if (lowerSearch) {
+        return msg.summaryText.toLowerCase().includes(lowerSearch);
       }
       return true;
     });
 
     // Second pass: hide children of collapsed groups
     if (collapsedGroups.size > 0) {
-      const hidden = new Set<number>();
       let skipDepth: number | null = null;
 
       result = result.filter((msg) => {
@@ -165,49 +157,57 @@ export function ConsolePanel({ paneId, height = 200, webContentsId }: ConsolePan
           skipDepth = null;
         }
 
-        if (GROUP_HEADER_TYPES.has(msg.cdpType) && collapsedGroups.has(msg.id)) {
+        if (msg.isGroupHeader && collapsedGroups.has(msg.id)) {
           skipDepth = msg.groupDepth;
           return true; // Show the header, hide children
         }
 
-        return !hidden.has(msg.id);
+        return true;
       });
     }
 
     return result;
   }, [allMessages, levelFilter, search, collapsedGroups]);
 
-  // Auto-collapse startGroupCollapsed entries
+  // Reset auto-collapse tracking when the pane changes
   useEffect(() => {
-    const newCollapsed = new Set<number>();
-    for (const msg of allMessages) {
+    lastSeenIndexRef.current = 0;
+    setCollapsedGroups(new Set());
+  }, [paneId]);
+
+  // Auto-collapse startGroupCollapsed entries — scan only the tail since last seen
+  useEffect(() => {
+    if (allMessages.length < lastSeenIndexRef.current) {
+      // List shrank (clearMessages or pane swap mid-render): rescan from start
+      lastSeenIndexRef.current = 0;
+    }
+    if (lastSeenIndexRef.current >= allMessages.length) return;
+
+    let newIds: number[] | null = null;
+    for (let i = lastSeenIndexRef.current; i < allMessages.length; i++) {
+      const msg = allMessages[i]!;
       if (msg.cdpType === "startGroupCollapsed") {
-        newCollapsed.add(msg.id);
+        (newIds ??= []).push(msg.id);
       }
     }
-    if (newCollapsed.size > 0) {
-      setCollapsedGroups((prev) => {
-        const merged = new Set(prev);
-        let changed = false;
-        for (const id of newCollapsed) {
-          if (!merged.has(id)) {
-            merged.add(id);
-            changed = true;
-          }
+    lastSeenIndexRef.current = allMessages.length;
+
+    if (newIds === null) return;
+    const ids = newIds;
+    setCollapsedGroups((prev) => {
+      const merged = new Set(prev);
+      let changed = false;
+      for (const id of ids) {
+        if (!merged.has(id)) {
+          merged.add(id);
+          changed = true;
         }
-        return changed ? merged : prev;
-      });
-    }
+      }
+      return changed ? merged : prev;
+    });
   }, [allMessages]);
 
-  const errorCount = useMemo(
-    () => allMessages.filter((m) => m.level === "error").length,
-    [allMessages]
-  );
-  const warnCount = useMemo(
-    () => allMessages.filter((m) => m.level === "warning").length,
-    [allMessages]
-  );
+  const { errorCount, warnCount } = counts;
 
   const handleScroll = useCallback(() => {
     const el = scrollRef.current;
@@ -344,9 +344,7 @@ export function ConsolePanel({ paneId, height = 200, webContentsId }: ConsolePan
               msg={msg}
               webContentsId={webContentsId}
               isGroupCollapsed={collapsedGroups.has(msg.id)}
-              onToggleGroup={
-                GROUP_HEADER_TYPES.has(msg.cdpType) ? () => toggleGroup(msg.id) : undefined
-              }
+              onToggleGroup={msg.isGroupHeader ? toggleGroup : undefined}
             />
           ))
         )}
