@@ -156,14 +156,17 @@ export class TaskPersistence {
   }
 
   private saveSync(projectId: string, tasks: TaskRecord[]): void {
-    this.db.transaction((tx) => {
-      tx.delete(schema.tasks).where(eq(schema.tasks.projectId, projectId)).run();
-      if (tasks.length > 0) {
-        tx.insert(schema.tasks)
-          .values(tasks.map((t) => toRow(t, projectId)))
-          .run();
-      }
-    });
+    this.db.transaction(
+      (tx) => {
+        tx.delete(schema.tasks).where(eq(schema.tasks.projectId, projectId)).run();
+        if (tasks.length > 0) {
+          tx.insert(schema.tasks)
+            .values(tasks.map((t) => toRow(t, projectId)))
+            .run();
+        }
+      },
+      { behavior: "immediate" }
+    );
 
     console.log(`[TaskPersistence] Saved ${tasks.length} tasks for project ${projectId}`);
   }

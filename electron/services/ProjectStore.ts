@@ -536,31 +536,34 @@ export class ProjectStore {
           now
         );
 
-    db.transaction((tx) => {
-      if (previousProjectId && previousProjectId !== projectId) {
-        console.log(`[ProjectStore] Marking previous project ${previousProjectId} as background`);
-        tx.update(projectsTable)
-          .set({ status: "background" })
-          .where(eq(projectsTable.id, previousProjectId))
+    db.transaction(
+      (tx) => {
+        if (previousProjectId && previousProjectId !== projectId) {
+          console.log(`[ProjectStore] Marking previous project ${previousProjectId} as background`);
+          tx.update(projectsTable)
+            .set({ status: "background" })
+            .where(eq(projectsTable.id, previousProjectId))
+            .run();
+        }
+        tx.insert(appStateTable)
+          .values({ key: "currentProjectId", value: projectId })
+          .onConflictDoUpdate({ target: appStateTable.key, set: { value: projectId } })
           .run();
-      }
-      tx.insert(appStateTable)
-        .values({ key: "currentProjectId", value: projectId })
-        .onConflictDoUpdate({ target: appStateTable.key, set: { value: projectId } })
-        .run();
-      const activeUpdate: {
-        status: "active";
-        lastOpened?: number;
-        frecencyScore?: number;
-        lastAccessedAt?: number;
-      } = { status: "active" };
-      if (!writesSuppressed && newScore !== null) {
-        activeUpdate.lastOpened = now;
-        activeUpdate.frecencyScore = newScore;
-        activeUpdate.lastAccessedAt = now;
-      }
-      tx.update(projectsTable).set(activeUpdate).where(eq(projectsTable.id, projectId)).run();
-    });
+        const activeUpdate: {
+          status: "active";
+          lastOpened?: number;
+          frecencyScore?: number;
+          lastAccessedAt?: number;
+        } = { status: "active" };
+        if (!writesSuppressed && newScore !== null) {
+          activeUpdate.lastOpened = now;
+          activeUpdate.frecencyScore = newScore;
+          activeUpdate.lastAccessedAt = now;
+        }
+        tx.update(projectsTable).set(activeUpdate).where(eq(projectsTable.id, projectId)).run();
+      },
+      { behavior: "immediate" }
+    );
 
     if (process.env.DAINTREE_VERBOSE) {
       const updatedPrevious = previousProjectId ? this.getProjectById(previousProjectId) : null;

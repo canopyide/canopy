@@ -228,19 +228,22 @@ export class ScratchStore {
     }
     const now = Date.now();
     const db = getSharedDb();
-    db.transaction((tx) => {
-      tx.insert(appStateTable)
-        .values({ key: CURRENT_SCRATCH_KEY, value: scratchId })
-        .onConflictDoUpdate({
-          target: appStateTable.key,
-          set: { value: scratchId },
-        })
-        .run();
-      tx.update(scratchesTable)
-        .set({ lastOpened: now })
-        .where(eq(scratchesTable.id, scratchId))
-        .run();
-    });
+    db.transaction(
+      (tx) => {
+        tx.insert(appStateTable)
+          .values({ key: CURRENT_SCRATCH_KEY, value: scratchId })
+          .onConflictDoUpdate({
+            target: appStateTable.key,
+            set: { value: scratchId },
+          })
+          .run();
+        tx.update(scratchesTable)
+          .set({ lastOpened: now })
+          .where(eq(scratchesTable.id, scratchId))
+          .run();
+      },
+      { behavior: "immediate" }
+    );
     return { ...scratch, lastOpened: now };
   }
 
