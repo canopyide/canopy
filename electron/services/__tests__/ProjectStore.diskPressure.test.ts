@@ -230,3 +230,54 @@ describe("ProjectStore disk pressure suppression", () => {
     expect(result.lastAccessedAt ?? 0).toBeGreaterThanOrEqual(seededLastAccessedAt);
   });
 });
+
+describe("ProjectStore transaction mode", () => {
+  let store: ProjectStore;
+  let projectId: string;
+  let seededLastAccessedAt: number;
+  let seededLastOpened: number;
+  const seededFrecencyScore = 7.5;
+
+  beforeEach(async () => {
+    const alphaDir = fs.mkdtempSync(path.join(os.tmpdir(), "daintree-ps-tx-"));
+    const { generateProjectId } = await import("../projectStorePaths.js");
+    const alphaCanonical = await fs.promises.realpath(alphaDir);
+    projectId = generateProjectId(alphaCanonical);
+
+    seededLastAccessedAt = Date.now() - 60_000;
+    seededLastOpened = seededLastAccessedAt;
+
+    sqlite = new Database(":memory:");
+    sqlite.exec(CREATE_TABLES_SQL);
+    db = drizzle(sqlite, { schema });
+
+    db.insert(schema.projects)
+      .values({
+        id: projectId,
+        path: alphaCanonical,
+        name: "Alpha",
+        emoji: "🌲",
+        lastOpened: seededLastOpened,
+        status: "closed",
+        frecencyScore: seededFrecencyScore,
+        lastAccessedAt: seededLastAccessedAt,
+      })
+      .run();
+
+    db.insert(schema.appState).values({ key: "currentProjectId", value: projectId }).run();
+
+    store = new ProjectStore();
+  });
+
+  afterEach(() => {
+    resetWritesSuppressedForTesting();
+    sqlite.close();
+  });
+
+  it("runs setCurrentProject transaction in IMMEDIATE mode", async () => {
+    const spy = vi.spyOn(db, "transaction");
+    await store.setCurrentProject(projectId);
+    expect(spy).toHaveBeenCalledWith(expect.any(Function), { behavior: "immediate" });
+    spy.mockRestore();
+  });
+});
