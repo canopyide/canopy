@@ -51,7 +51,7 @@ export function __clearPerFileDiffStatCacheForTesting(): void {
 }
 
 function normalizeNumstatPath(rawPath: string): string {
-  return rawPath.trim().replace(/[{}]/g, "");
+  return rawPath.trim();
 }
 
 function parseNumstat(diffOutput: string, gitRoot: string): Map<string, DiffStat> {

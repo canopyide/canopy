@@ -226,6 +226,8 @@ export function createWslHardenedGit(
     unsafe: UNSAFE_FLAGS,
   }).env({
     ...process.env,
+    LC_CTYPE: "C.UTF-8",
+    LC_ALL: "",
     LC_MESSAGES: "C",
     LANGUAGE: "",
     GIT_OPTIONAL_LOCKS: "0",

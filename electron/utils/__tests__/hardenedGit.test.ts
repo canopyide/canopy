@@ -777,7 +777,7 @@ describe("createWslHardenedGit", () => {
     expect(options.config).toHaveLength(HARDENED_GIT_CONFIG.length);
   });
 
-  it("sets WSL_DISTRO_NAME and GIT_OPTIONAL_LOCKS=0 in env for diagnostics", () => {
+  it("sets WSL_DISTRO_NAME, GIT_OPTIONAL_LOCKS=0, and locale in env for diagnostics", () => {
     createWslHardenedGit({
       distro: "Ubuntu",
       uncPath: "\\\\wsl$\\Ubuntu\\home\\user\\proj",
@@ -786,6 +786,8 @@ describe("createWslHardenedGit", () => {
 
     const envArg = mockGitInstance.env.mock.calls[0][0];
     expect(envArg.WSL_DISTRO_NAME).toBe("Ubuntu");
+    expect(envArg.LC_CTYPE).toBe("C.UTF-8");
+    expect(envArg.LC_ALL).toBe("");
     expect(envArg.LC_MESSAGES).toBe("C");
     expect(envArg.LANGUAGE).toBe("");
     expect(envArg.GIT_OPTIONAL_LOCKS).toBe("0");
