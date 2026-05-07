@@ -44,6 +44,7 @@ interface DevPreviewSession extends DevPreviewSessionState {
   isRunningInstall: boolean;
   installAttemptedGeneration: number | null;
   startupReplayTimer: ReturnType<typeof setTimeout> | null;
+  updatedAtPerformanceMs: number;
 }
 
 const RUNNING_STATES: ReadonlySet<DevPreviewSessionStatus> = new Set([
@@ -56,6 +57,7 @@ const DEFAULT_TIMEOUT_MS = 8000;
 const STALE_START_RECOVERY_MS = 10000;
 const STARTUP_REPLAY_DELAY_MS = 1500;
 const REPLAY_HISTORY_MAX_LINES = 300;
+const PTY_SUBMIT_AFTER_SPAWN_MS = 100;
 
 export class DevPreviewSessionService {
   private readonly detector = new UrlDetector();
@@ -163,8 +165,8 @@ export class DevPreviewSessionService {
         this.worktreeToSession.delete(prevWorktreeId);
       }
       if (session.worktreeId) {
-        const key = createSessionKey(session.projectId, session.panelId);
-        this.worktreeToSession.set(session.worktreeId, key);
+        const sessionKey = createSessionKey(session.projectId, session.panelId);
+        this.worktreeToSession.set(session.worktreeId, sessionKey);
       }
 
       const commandError = getInvalidCommandMessage(session.devCommand);
@@ -361,6 +363,7 @@ export class DevPreviewSessionService {
       isRestarting: false,
       generation: 0,
       updatedAt: Date.now(),
+      updatedAtPerformanceMs: performance.now(),
       cwd: "",
       devCommand: "",
       turbopackEnabled: true,
@@ -375,9 +378,6 @@ export class DevPreviewSessionService {
       startupReplayTimer: null,
     };
     this.sessions.set(key, session);
-    if (session.worktreeId) {
-      this.worktreeToSession.set(session.worktreeId, key);
-    }
     return session;
   }
 
@@ -444,6 +444,7 @@ export class DevPreviewSessionService {
     if (updates.worktreeId !== undefined) session.worktreeId = updates.worktreeId;
     if (updates.generation !== undefined) session.generation = updates.generation;
     session.updatedAt = Date.now();
+    session.updatedAtPerformanceMs = performance.now();
     this.onStateChanged(this.toPublicState(session));
   }
 
@@ -479,7 +480,7 @@ export class DevPreviewSessionService {
           session.status === "starting" &&
           !session.url &&
           !session.pendingUrl &&
-          Date.now() - session.updatedAt >= STALE_START_RECOVERY_MS
+          performance.now() - session.updatedAtPerformanceMs >= STALE_START_RECOVERY_MS
         ) {
           await this.stopSessionTerminal(session, "stale-start-recovery");
           await this.spawnSessionTerminal(session);
@@ -519,7 +520,7 @@ export class DevPreviewSessionService {
     // so we don't spawn a terminal on a disposed service; roll back the
     // reservation to avoid a stale portRegistry entry after disposal cleared it.
     if (this.disposed) {
-      this.portRegistry.delete(sessionKey);
+      releasePort(this.portRegistry, sessionKey);
       return;
     }
     const assignedUrl = `http://localhost:${port}`;
@@ -580,7 +581,7 @@ export class DevPreviewSessionService {
         } catch (err) {
           console.warn("[DevPreviewSessionService] Failed to submit dev command:", err);
         }
-      }, 100);
+      }, PTY_SUBMIT_AFTER_SPAWN_MS);
     };
 
     void normalizeNextjsDevCommand(trimmedCommand, session.cwd, session.turbopackEnabled)
@@ -694,8 +695,8 @@ export class DevPreviewSessionService {
     projectId: string,
     timeoutMs = DEFAULT_TIMEOUT_MS
   ): Promise<boolean> {
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
+    const deadline = performance.now() + timeoutMs;
+    while (performance.now() < deadline) {
       const alive = await this.isTerminalAlive(terminalId, projectId);
       if (!alive) return true;
       await new Promise((resolve) => setTimeout(resolve, 100));
@@ -889,7 +890,7 @@ export class DevPreviewSessionService {
       } catch (err) {
         console.warn("[DevPreviewSessionService] Failed to submit install command:", err);
       }
-    }, 100);
+    }, PTY_SUBMIT_AFTER_SPAWN_MS);
   }
 
   private detectInstallCommand(cwd: string): string {

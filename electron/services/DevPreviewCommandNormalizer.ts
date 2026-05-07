@@ -17,7 +17,7 @@ export const PKG_SCRIPT_RE =
   /^(?:npm\s+run|pnpm(?:\s+run)?|yarn(?:\s+run)?|bun(?:\s+run)?)\s+(\S+)$/;
 // Compound/piped/commented commands can't be safely rewritten -- appending
 // --turbopack to `next dev && echo done` attaches the flag to echo, not next.
-export const SHELL_CONTROL_RE = /[;&|#]|<|>|\$\(/;
+export const SHELL_CONTROL_RE = /[;&|#`]|<|>|\$\(/;
 
 export function stripTurbopackFlag(command: string): string {
   return command

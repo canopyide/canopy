@@ -161,7 +161,13 @@ describe("validateEnsureRequest", () => {
   it("throws for missing cwd", () => {
     expect(() =>
       validateEnsureRequest({ ...valid, cwd: undefined } as unknown as DevPreviewEnsureRequest)
-    ).toThrow("cwd is required");
+    ).toThrow("cwd must be an absolute path");
+  });
+
+  it("throws for relative cwd", () => {
+    expect(() => validateEnsureRequest({ ...valid, cwd: "relative/path" })).toThrow(
+      "cwd must be an absolute path"
+    );
   });
 
   it("throws for non-string devCommand", () => {

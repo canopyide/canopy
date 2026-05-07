@@ -193,13 +193,14 @@ describe("DevPreviewSessionService", () => {
   });
 
   it("respawns stale starting sessions when URL was never detected", async () => {
-    const nowSpy = vi.spyOn(Date, "now");
-    nowSpy.mockReturnValue(1_000);
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_000);
+    vi.spyOn(performance, "now").mockReturnValue(1_000);
     const first = await service.ensure(baseRequest);
     expect(first.status).toBe("starting");
     expect(first.terminalId).toBeTruthy();
 
     nowSpy.mockReturnValue(12_500);
+    vi.mocked(performance.now).mockReturnValue(12_500);
     const second = await service.ensure(baseRequest);
 
     expect(second.status).toBe("starting");
@@ -549,14 +550,15 @@ describe("DevPreviewSessionService", () => {
   it("does not trigger stale-start recovery while readiness poll is active", async () => {
     mockHttpError();
 
-    const nowSpy = vi.spyOn(Date, "now");
-    nowSpy.mockReturnValue(1_000);
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_000);
+    vi.spyOn(performance, "now").mockReturnValue(1_000);
     const first = await service.ensure(baseRequest);
     expect(first.status).toBe("starting");
 
     ptyClient.emitData(first.terminalId!, "ready at http://localhost:4173\n");
 
     nowSpy.mockReturnValue(12_500);
+    vi.mocked(performance.now).mockReturnValue(12_500);
     const second = await service.ensure(baseRequest);
 
     expect(second.terminalId).toBe(first.terminalId);
