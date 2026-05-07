@@ -337,9 +337,23 @@ export class ProjectIdentityFiles {
             !parsed.id ||
             !parsed.name
           ) {
+            // Don't log `parsed` directly: presets can carry an `env` map
+            // with secret values. Summarize structurally so contributors
+            // can diagnose without leaking secrets to logs.
+            const summary =
+              parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+                ? { id: parsed.id, name: parsed.name, keys: Object.keys(parsed) }
+                : {
+                    type:
+                      parsed === null
+                        ? "null"
+                        : Array.isArray(parsed)
+                          ? "array"
+                          : typeof parsed,
+                  };
             console.warn(
               `[ProjectIdentityFiles] Skipping invalid preset: ${agentId}/${entry.name}`,
-              parsed
+              summary
             );
             continue;
           }
@@ -357,7 +371,7 @@ export class ProjectIdentityFiles {
           presets.push(parsed as AgentPreset);
         } catch (error) {
           console.warn(
-            `[ProjectIdentityFiles] Skipping malformed preset file: ${entry.name}`,
+            `[ProjectIdentityFiles] Skipping malformed preset file: ${agentId}/${entry.name}`,
             error
           );
         }

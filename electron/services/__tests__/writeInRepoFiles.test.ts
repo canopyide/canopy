@@ -607,6 +607,29 @@ describe("readInRepoPresets", () => {
     warnSpy.mockRestore();
   });
 
+  it("does not leak env values when warning about a shape-invalid preset", async () => {
+    const agentDir = path.join(tmpDir, PRESETS_DIR, "claude");
+    await fs.mkdir(agentDir, { recursive: true });
+    await fs.writeFile(
+      path.join(agentDir, "leaky.json"),
+      JSON.stringify({ id: 42, name: "Bad ID Type", env: { API_KEY: "sk-live-secret-xyz" } })
+    );
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await identityFiles.readInRepoPresets(tmpDir);
+
+    const allWarnArgs = warnSpy.mock.calls.flat();
+    const serialized = allWarnArgs
+      .map((a) => (typeof a === "string" ? a : JSON.stringify(a)))
+      .join(" ");
+    expect(serialized).not.toContain("sk-live-secret-xyz");
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Skipping invalid preset"),
+      expect.anything()
+    );
+    warnSpy.mockRestore();
+  });
+
   it("rejects unsafe agent subdirectory names", async () => {
     const presetsDir = path.join(tmpDir, PRESETS_DIR);
     await fs.mkdir(presetsDir, { recursive: true });
