@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { AlertTriangle, X } from "lucide-react";
 import { isMac } from "@/lib/platform";
-import { keybindingService, normalizeKeyForBinding } from "@/services/KeybindingService";
+import {
+  CHORD_TIMEOUT_MS,
+  keybindingService,
+  normalizeKeyForBinding,
+} from "@/services/KeybindingService";
 import { actionService } from "@/services/ActionService";
 import { notify } from "@/lib/notify";
 import { logError, logWarn } from "@/utils/logger";
-
-const CHORD_TIMEOUT_MS = 1000;
 
 export interface SettingsShortcutCaptureProps {
   /** Called when user saves the captured key combination */

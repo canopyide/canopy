@@ -1,5 +1,10 @@
-import type { KeyScope, KeybindingConfig, KeybindingResolutionResult } from "./keybindingUtils";
-import { normalizeKeyForBinding, parseCombo } from "./keybindingUtils";
+import type {
+  KeyScope,
+  KeybindingConfig,
+  KeybindingConflict,
+  KeybindingResolutionResult,
+} from "./keybindingUtils";
+import { CHORD_TIMEOUT_MS, normalizeKeyForBinding, parseCombo } from "./keybindingUtils";
 import { DEFAULT_KEYBINDINGS } from "./defaultKeybindings";
 import { isMac } from "@/lib/platform";
 
@@ -29,7 +34,6 @@ class KeybindingService {
   private currentScope: KeyScope = "global";
   private pendingChord: string | null = null;
   private chordTimeout: NodeJS.Timeout | null = null;
-  private readonly CHORD_TIMEOUT_MS = 1000;
   private listeners = new Set<() => void>();
 
   constructor() {
@@ -111,29 +115,59 @@ class KeybindingService {
     return this.getBinding(actionId)?.combo;
   }
 
-  findConflicts(combo: string, excludeActionId?: string): KeybindingConfig[] {
-    const conflicts: KeybindingConfig[] = [];
+  // Detects clashes for a candidate `combo` against currently registered bindings.
+  // Two clash kinds:
+  //   "conflict" — same combo string in an overlapping scope.
+  //   "shadowed" — chord-prefix collision (either the candidate is a prefix of an
+  //     existing chord, or an existing combo is a prefix of the candidate chord).
+  // The optional `scope` defaults to "global" so callers that don't yet thread a
+  // target scope still get correct conservative results: a global candidate
+  // collides with both global and scoped bindings, mirroring `scopesConflict`.
+  findConflicts(
+    combo: string,
+    excludeActionId?: string,
+    scope: KeyScope = "global"
+  ): KeybindingConflict[] {
+    const conflicts: KeybindingConflict[] = [];
     const normalizedCombo = combo.trim().toLowerCase();
+    if (!normalizedCombo) return conflicts;
+    const candidateParts = normalizedCombo.split(" ");
 
     for (const arr of this.bindings.values()) {
       for (const binding of arr) {
         if (excludeActionId && binding.actionId === excludeActionId) continue;
+        if (!scopesConflict(binding.scope, scope)) continue;
 
         const hasOverride = this.overrides.has(binding.actionId);
         const overrideCombos = this.overrides.get(binding.actionId) || [];
-        const allCombos = [...overrideCombos];
+        const effectiveCombos = hasOverride ? overrideCombos : binding.combo ? [binding.combo] : [];
 
-        if (!hasOverride) {
-          if (binding.combo) {
-            allCombos.push(binding.combo);
+        let matched: "conflict" | "shadowed" | null = null;
+        for (const existingCombo of effectiveCombos) {
+          const normalizedExisting = existingCombo.trim().toLowerCase();
+          if (!normalizedExisting) continue;
+
+          if (normalizedExisting === normalizedCombo) {
+            matched = "conflict";
+            break;
+          }
+
+          const existingParts = normalizedExisting.split(" ");
+          const candidateIsPrefix =
+            candidateParts.length < existingParts.length &&
+            candidateParts.every((p, i) => p === existingParts[i]);
+          const existingIsPrefix =
+            existingParts.length < candidateParts.length &&
+            existingParts.every((p, i) => p === candidateParts[i]);
+          if (candidateIsPrefix || existingIsPrefix) {
+            matched = "shadowed";
+            // Don't break: a later combo on the same binding might be an exact
+            // conflict, which outranks "shadowed".
           }
         }
 
-        for (const existingCombo of allCombos) {
-          if (existingCombo.trim().toLowerCase() === normalizedCombo) {
-            conflicts.push(binding);
-            break;
-          }
+        if (matched) {
+          conflicts.push({ ...binding, kind: matched });
         }
       }
     }
@@ -257,7 +291,7 @@ class KeybindingService {
       this.pendingChord = null;
       this.chordTimeout = null;
       this.notifyListeners();
-    }, this.CHORD_TIMEOUT_MS);
+    }, CHORD_TIMEOUT_MS);
   }
 
   getPendingChord(): string | null {

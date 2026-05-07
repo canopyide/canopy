@@ -6,6 +6,7 @@ import { SettingsShortcutCapture } from "../SettingsShortcutCapture";
 
 // Mock dependencies
 vi.mock("@/services/KeybindingService", () => ({
+  CHORD_TIMEOUT_MS: 1000,
   keybindingService: {
     findConflicts: vi.fn(() => []),
     formatComboForDisplay: vi.fn((combo: string) => combo),
@@ -283,6 +284,7 @@ describe("SettingsShortcutCapture", () => {
         combo: "Cmd+A",
         scope: "global",
         priority: 0,
+        kind: "conflict",
       },
     ]);
 
@@ -566,6 +568,7 @@ describe("SettingsShortcutCapture", () => {
           combo: "Cmd+A",
           scope: "global",
           priority: 0,
+          kind: "conflict",
         },
         {
           actionId: "conflict.action2",
@@ -573,6 +576,7 @@ describe("SettingsShortcutCapture", () => {
           combo: "Cmd+B",
           scope: "global",
           priority: 0,
+          kind: "conflict",
         },
       ]);
 
@@ -616,6 +620,7 @@ describe("SettingsShortcutCapture", () => {
           combo: "Cmd+A",
           scope: "global",
           priority: 0,
+          kind: "conflict",
         },
       ]);
 
@@ -678,6 +683,7 @@ describe("SettingsShortcutCapture", () => {
           combo: "Cmd+A",
           scope: "global",
           priority: 0,
+          kind: "conflict",
         },
       ]);
 
@@ -737,6 +743,7 @@ describe("SettingsShortcutCapture", () => {
           combo: "Cmd+A",
           scope: "global",
           priority: 0,
+          kind: "conflict",
         },
         {
           actionId: "conflict.action2",
@@ -744,6 +751,7 @@ describe("SettingsShortcutCapture", () => {
           combo: "Cmd+B",
           scope: "global",
           priority: 0,
+          kind: "conflict",
         },
       ]);
 
