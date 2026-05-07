@@ -188,9 +188,10 @@ function parseBinaryPathsFromNumstat(raw: string): Set<string> {
 /**
  * Block commits that would include unresolved merge conflict markers. Reads
  * the staged (index) blob for each non-binary, non-deleted file via
- * `git show :<path>`, which works on both normal and unborn branches. Throws
- * a descriptive `Error` naming the first offending file; the IPC layer
- * surfaces `.message` directly to the UI.
+ * `git cat-file blob :<path>`, which works on both normal and unborn branches
+ * and bypasses smudge/textconv filter machinery (`git show` would still apply
+ * smudge filters depending on git version). Throws a descriptive `Error`
+ * naming the first offending file; the IPC layer surfaces `.message` directly.
  */
 export async function scanStagedFilesForConflictMarkers(git: SimpleGit): Promise<void> {
   const status = await git.status();
@@ -205,14 +206,17 @@ export async function scanStagedFilesForConflictMarkers(git: SimpleGit): Promise
   if (candidates.length === 0) return;
 
   // `--no-ext-diff` is mandatory: without it, a user-configured `diff.external`
-  // tool can break the numstat call (lesson #4221). Matches the pattern in
-  // handleGetWorkingDiff and utils/git.ts.
-  const numstatRaw = await git.diff(["--no-ext-diff", "--cached", "--numstat"]);
+  // tool can break the numstat call (lesson #4221). `--no-textconv` blocks
+  // user-defined diff drivers that would execute arbitrary binaries via
+  // `.gitattributes` textconv mappings.
+  const numstatRaw = await git.diff(["--no-ext-diff", "--no-textconv", "--cached", "--numstat"]);
   const binaryPaths = parseBinaryPathsFromNumstat(numstatRaw);
 
   for (const filePath of candidates) {
     if (binaryPaths.has(filePath)) continue;
-    const content = await git.show([`:${filePath}`]);
+    // `--end-of-options` so a leading-dash path inside the index reference
+    // (e.g. `:-foo.txt`) cannot be parsed as a flag.
+    const content = await git.raw(["cat-file", "blob", "--end-of-options", `:${filePath}`]);
     if (typeof content !== "string") continue;
     // Compare against the UTF-8 byte length so a multibyte file isn't
     // misclassified against a character-count cap.
@@ -583,13 +587,13 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
     let raw: string;
     switch (diffType) {
       case "unstaged":
-        raw = await git.diff(["--no-ext-diff"]);
+        raw = await git.diff(["--no-ext-diff", "--no-textconv"]);
         break;
       case "staged":
-        raw = await git.diff(["--no-ext-diff", "--cached"]);
+        raw = await git.diff(["--no-ext-diff", "--no-textconv", "--cached"]);
         break;
       case "head":
-        raw = await git.diff(["--no-ext-diff", "HEAD"]);
+        raw = await git.diff(["--no-ext-diff", "--no-textconv", "HEAD"]);
         break;
     }
 

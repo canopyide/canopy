@@ -16,6 +16,7 @@ vi.mock("simple-git", () => ({
 
 import {
   validateCwd,
+  validateBranchName,
   createHardenedGit,
   createAuthenticatedGit,
   createBackgroundFetchGit,
@@ -65,6 +66,83 @@ describe("validateCwd", () => {
 
   it("does not throw for root path", () => {
     expect(() => validateCwd("/")).not.toThrow();
+  });
+});
+
+describe("validateBranchName", () => {
+  it("accepts simple branch names", () => {
+    expect(() => validateBranchName("main")).not.toThrow();
+    expect(() => validateBranchName("develop")).not.toThrow();
+    expect(() => validateBranchName("feature/login")).not.toThrow();
+    expect(() => validateBranchName("bugfix-7046")).not.toThrow();
+    expect(() => validateBranchName("user.name/topic_1")).not.toThrow();
+  });
+
+  it("accepts non-ASCII unicode names that git allows", () => {
+    expect(() => validateBranchName("café")).not.toThrow();
+    expect(() => validateBranchName("功能/登录")).not.toThrow();
+  });
+
+  it("rejects empty string", () => {
+    expect(() => validateBranchName("")).toThrow("Branch name is required");
+  });
+
+  it("rejects non-string input", () => {
+    expect(() => validateBranchName(123 as unknown as string)).toThrow("Branch name is required");
+    expect(() => validateBranchName(null as unknown as string)).toThrow("Branch name is required");
+    expect(() => validateBranchName(undefined as unknown as string)).toThrow(
+      "Branch name is required"
+    );
+  });
+
+  it("rejects leading-dash names that argv parsers treat as flags", () => {
+    expect(() => validateBranchName("-c")).toThrow("must not start with '-'");
+    expect(() => validateBranchName("--exec=touch /tmp/x")).toThrow("must not start with '-'");
+    expect(() => validateBranchName("-upload-pack=evil")).toThrow("must not start with '-'");
+  });
+
+  it("rejects '..' anywhere in the name", () => {
+    expect(() => validateBranchName("foo..bar")).toThrow("must not contain '..'");
+    expect(() => validateBranchName("..bar")).toThrow("must not contain '..'");
+  });
+
+  it("rejects '@{' (reflog token)", () => {
+    expect(() => validateBranchName("foo@{1}")).toThrow("must not contain '@{'");
+  });
+
+  it("rejects forbidden ref-format characters", () => {
+    expect(() => validateBranchName("a b")).toThrow("invalid characters");
+    expect(() => validateBranchName("a:b")).toThrow("invalid characters");
+    expect(() => validateBranchName("a?b")).toThrow("invalid characters");
+    expect(() => validateBranchName("a*b")).toThrow("invalid characters");
+    expect(() => validateBranchName("a[b")).toThrow("invalid characters");
+    expect(() => validateBranchName("a\\b")).toThrow("invalid characters");
+    expect(() => validateBranchName("a~b")).toThrow("invalid characters");
+    expect(() => validateBranchName("a^b")).toThrow("invalid characters");
+  });
+
+  it("rejects control characters", () => {
+    expect(() => validateBranchName("a\x00b")).toThrow("invalid characters");
+    expect(() => validateBranchName("a\nb")).toThrow("invalid characters");
+    expect(() => validateBranchName("a\tb")).toThrow("invalid characters");
+    expect(() => validateBranchName("a\x7fb")).toThrow("invalid characters");
+  });
+
+  it("rejects names ending with '.'", () => {
+    expect(() => validateBranchName("trailing.")).toThrow("must not end with '.'");
+  });
+
+  it("rejects names ending with '.lock'", () => {
+    expect(() => validateBranchName("foo.lock")).toThrow("must not end with '.lock'");
+  });
+
+  it("rejects names that begin or end with '/'", () => {
+    expect(() => validateBranchName("/leading")).toThrow("must not start or end with '/'");
+    expect(() => validateBranchName("trailing/")).toThrow("must not start or end with '/'");
+  });
+
+  it("rejects consecutive slashes", () => {
+    expect(() => validateBranchName("double//slash")).toThrow("must not contain '//'");
   });
 });
 

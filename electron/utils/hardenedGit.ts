@@ -50,6 +50,45 @@ export function validateCwd(cwd: unknown): asserts cwd is string {
   }
 }
 
+// eslint-disable-next-line no-control-regex
+const BRANCH_NAME_FORBIDDEN_CHARS = /[\x00-\x1f\x7f ~^:?*[\\]/;
+
+/**
+ * Validate a branch name as a strict subset of `git check-ref-format --branch`.
+ * Primarily blocks leading-dash names that git's argv parser would treat as
+ * flags (e.g. `--exec=touch /tmp/x`); also rejects control chars and other
+ * git-special sequences. Throws on invalid input.
+ */
+export function validateBranchName(branchName: unknown): asserts branchName is string {
+  if (typeof branchName !== "string" || branchName.length === 0) {
+    throw new Error("Branch name is required");
+  }
+  if (branchName.startsWith("-")) {
+    throw new Error("Branch name must not start with '-'");
+  }
+  if (BRANCH_NAME_FORBIDDEN_CHARS.test(branchName)) {
+    throw new Error("Branch name contains invalid characters");
+  }
+  if (branchName.includes("..")) {
+    throw new Error("Branch name must not contain '..'");
+  }
+  if (branchName.includes("@{")) {
+    throw new Error("Branch name must not contain '@{'");
+  }
+  if (branchName.endsWith(".")) {
+    throw new Error("Branch name must not end with '.'");
+  }
+  if (branchName.endsWith(".lock")) {
+    throw new Error("Branch name must not end with '.lock'");
+  }
+  if (branchName.startsWith("/") || branchName.endsWith("/")) {
+    throw new Error("Branch name must not start or end with '/'");
+  }
+  if (branchName.includes("//")) {
+    throw new Error("Branch name must not contain '//'");
+  }
+}
+
 export const GIT_BLOCK_TIMEOUT_MS = 30_000;
 
 /**
