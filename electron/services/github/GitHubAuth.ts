@@ -309,7 +309,7 @@ export class GitHubAuth {
 
     return graphql.defaults({
       headers: {
-        authorization: `token ${token}`,
+        authorization: `Bearer ${token}`,
       },
       request: {
         fetch: rateLimitAwareFetch,
@@ -335,8 +335,10 @@ export class GitHubAuth {
     try {
       const response = await rateLimitAwareFetch("https://api.github.com/user", {
         headers: {
-          Authorization: `token ${token}`,
+          Authorization: `Bearer ${token}`,
           Accept: "application/vnd.github.v3+json",
+          "User-Agent": "Daintree-Electron",
+          "X-GitHub-Api-Version": "2022-11-28",
         },
         signal: AbortSignal.timeout(GITHUB_AUTH_TIMEOUT_MS),
       });
@@ -374,12 +376,21 @@ export class GitHubAuth {
             error: "GitHub is temporarily unavailable. Please retry.",
           };
         }
-        return { valid: false, scopes: [], error: `GitHub API error: ${response.statusText}` };
+        return {
+          valid: false,
+          scopes: [],
+          error: `GitHub API error: ${response.status} ${response.statusText}`.trim(),
+        };
       }
 
       const userData = (await response.json()) as { login?: string; avatar_url?: string };
       const scopesHeader = response.headers.get("x-oauth-scopes");
-      const scopes = scopesHeader ? scopesHeader.split(",").map((s) => s.trim()) : [];
+      const scopes = scopesHeader
+        ? scopesHeader
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [];
 
       return {
         valid: true,
@@ -432,6 +443,7 @@ async function rateLimitAwareFetch(
   input: RequestInfo | URL,
   init?: RequestInit
 ): Promise<Response> {
+  const versionAtStart = GitHubAuth.getTokenVersion();
   const response = await globalThis.fetch(input, init);
 
   const requestId = response.headers.get("x-github-request-id") ?? undefined;
@@ -444,12 +456,15 @@ async function rateLimitAwareFetch(
     // Rate-limit bookkeeping must never break the underlying request.
   }
 
-  // Passive auth-metadata capture: SSO re-authorization URL and token expiry
-  // date. Same fire-and-forget contract as rate-limit bookkeeping.
-  try {
-    captureAuthMetadata(response.headers);
-  } catch {
-    // Metadata capture must never break the underlying request.
+  // Late-arriving response from a previous token: discard so it can't
+  // clobber `lastAuthMetadata` set by the currently-configured token.
+  // Mirrors the same guard in `GitHubTokenHealthService.runCheck()`.
+  if (GitHubAuth.getTokenVersion() === versionAtStart) {
+    try {
+      captureAuthMetadata(response.headers);
+    } catch {
+      // Metadata capture must never break the underlying request.
+    }
   }
 
   // Phase 2 — secondary-limit fallback classification when the 403/429

@@ -90,6 +90,7 @@ class GitHubTokenHealthServiceImpl {
     this.pollTimer = setInterval(() => {
       void this.runCheck({ reason: "interval" });
     }, HEALTH_CHECK_INTERVAL_MS);
+    this.pollTimer?.unref?.();
     void this.runCheck({ reason: "start" });
   }
 
@@ -181,8 +182,10 @@ class GitHubTokenHealthServiceImpl {
       try {
         const response = await this.fetchImpl("https://api.github.com/rate_limit", {
           headers: {
-            Authorization: `token ${token}`,
+            Authorization: `Bearer ${token}`,
             Accept: "application/vnd.github.v3+json",
+            "User-Agent": "Daintree-Electron",
+            "X-GitHub-Api-Version": "2022-11-28",
           },
           signal: AbortSignal.timeout(HEALTH_CHECK_FETCH_TIMEOUT_MS),
         });
