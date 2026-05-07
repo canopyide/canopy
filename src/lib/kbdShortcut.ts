@@ -61,9 +61,6 @@ const ARROW_GLYPHS: Record<string, string> = {
   arrowright: "→",
 };
 
-export const MODIFIER_GLYPH_MAP = MAC_GLYPHS;
-export const MODIFIER_TEXT_MAP = WIN_LABELS;
-
 function mapToken(rawToken: string, isMac: boolean): string {
   const lower = rawToken.toLowerCase();
   const arrow = ARROW_GLYPHS[lower];
@@ -123,8 +120,8 @@ export function parseChord(shortcut: string, isMac: boolean): string[][] {
 
 // ── Search utilities ──────────────────────────────────────────────────────
 // Reverse-lookup map: display symbols/text → canonical modifier IDs.
-// The inverse of MODIFIER_GLYPH_MAP / MODIFIER_TEXT_MAP, used by chord-prefix
-// search to normalize user queries into the canonical token space.
+// The inverse of MAC_GLYPHS / WIN_LABELS, used by chord-prefix search to
+// normalize user queries into the canonical token space.
 
 export const MODIFIER_SEARCH_MAP: Record<string, string> = {
   cmd: "cmd",

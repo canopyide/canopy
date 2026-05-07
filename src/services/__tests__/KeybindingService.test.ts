@@ -171,6 +171,80 @@ describe("KeybindingService", () => {
     expect(conflicts.some((binding) => binding.actionId === "terminal.duplicate")).toBe(false);
   });
 
+  describe("findConflicts scope filtering and chord shadowing", () => {
+    // Default `modal.close` is bound to Escape in "modal" scope.
+    // `terminal` and `modal` scopes are disjoint, so a terminal-scoped Escape
+    // candidate must not collide with `modal.close`.
+    it("does not flag scope-disjoint bindings as conflicts", () => {
+      const service = new KeybindingService();
+
+      const conflicts = service.findConflicts("Escape", undefined, "terminal");
+      expect(conflicts.some((c) => c.actionId === "modal.close")).toBe(false);
+    });
+
+    it("flags global-scoped candidates against any scope", () => {
+      const service = new KeybindingService();
+
+      // A "global" candidate would fire everywhere, so it must collide with the
+      // modal-scoped Escape binding.
+      const conflicts = service.findConflicts("Escape", undefined, "global");
+      expect(conflicts.some((c) => c.actionId === "modal.close")).toBe(true);
+    });
+
+    it("marks exact-combo collisions as kind: 'conflict'", () => {
+      const service = new KeybindingService();
+      const conflicts = service.findConflicts("Cmd+T");
+      const dup = conflicts.find((c) => c.actionId === "terminal.duplicate");
+      expect(dup?.kind).toBe("conflict");
+    });
+
+    it("marks new-combo-shadows-existing-chord as kind: 'shadowed'", () => {
+      const service = new KeybindingService();
+      service.registerBinding({
+        actionId: "test.chord",
+        combo: "Cmd+Alt+Shift+J Cmd+Alt+Shift+Q",
+        scope: "global",
+        priority: 0,
+        description: "Test chord",
+      });
+
+      // Registering "Cmd+Alt+Shift+J" alone would make the chord unreachable.
+      const conflicts = service.findConflicts("Cmd+Alt+Shift+J");
+      const shadowed = conflicts.find((c) => c.actionId === "test.chord");
+      expect(shadowed?.kind).toBe("shadowed");
+    });
+
+    it("marks new-chord-shadowed-by-existing as kind: 'shadowed'", () => {
+      const service = new KeybindingService();
+      service.registerBinding({
+        actionId: "test.singleKey",
+        combo: "Cmd+Alt+Shift+J",
+        scope: "global",
+        priority: 0,
+        description: "Test single",
+      });
+
+      // Trying to register a chord starting with the same first step — the
+      // existing single binding makes the chord unreachable.
+      const conflicts = service.findConflicts("Cmd+Alt+Shift+J Cmd+Alt+Shift+Q");
+      const shadowed = conflicts.find((c) => c.actionId === "test.singleKey");
+      expect(shadowed?.kind).toBe("shadowed");
+    });
+
+    it("excludeActionId suppresses both 'conflict' and 'shadowed' returns", () => {
+      const service = new KeybindingService();
+      service.registerBinding({
+        actionId: "test.chord",
+        combo: "Cmd+Alt+Shift+J Cmd+Alt+Shift+Q",
+        scope: "global",
+        priority: 0,
+      });
+
+      const conflicts = service.findConflicts("Cmd+Alt+Shift+J", "test.chord");
+      expect(conflicts.some((c) => c.actionId === "test.chord")).toBe(false);
+    });
+  });
+
   it("surfaces empty effective combo for disabled overrides", () => {
     const service = new KeybindingService();
 
