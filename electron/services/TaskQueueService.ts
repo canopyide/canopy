@@ -669,14 +669,24 @@ export class TaskQueueService {
    * Handle upstream task failure by marking dependent tasks.
    * Policy: dependents are marked as failed or cancelled (same as upstream).
    * Cascades to all non-terminal states (draft, blocked, queued, running).
+   *
+   * Uses iterative BFS keyed by task id with a visited set so deep chains
+   * don't blow the call stack and accidental cycles (e.g. from corrupted
+   * data) terminate. Diamond dependency graphs visit each task once.
    */
   private async handleUpstreamFailure(
     failedTask: TaskRecord,
     failureState: "failed" | "cancelled"
   ): Promise<void> {
-    const dependents = failedTask.dependents ?? [];
+    const visited = new Set<string>([failedTask.id]);
+    const queue: string[] = [...(failedTask.dependents ?? [])];
 
-    for (const depId of dependents) {
+    // Index pointer instead of Array.shift() — O(1) advance, avoids O(n²).
+    for (let i = 0; i < queue.length; i++) {
+      const depId = queue[i];
+      if (visited.has(depId)) continue;
+      visited.add(depId);
+
       const depTask = this.tasks.get(depId);
       if (!depTask) continue;
 
@@ -715,8 +725,9 @@ export class TaskQueueService {
         });
       }
 
-      // Recursively handle this task's dependents
-      await this.handleUpstreamFailure(depTask, failureState);
+      for (const nextId of depTask.dependents ?? []) {
+        if (!visited.has(nextId)) queue.push(nextId);
+      }
     }
   }
 
@@ -830,8 +841,12 @@ export class TaskQueueService {
       }
     }
 
-    // Fourth pass: crash recovery - normalize task states
-    // Tasks in "running" state are reset to "queued" or "blocked" after restart
+    // Fourth pass: crash recovery - normalize task states.
+    // Tasks in "running" state are reset to "queued" or "blocked" after restart.
+    // Use transitionToQueued/Blocked so task:state-changed events fire and the
+    // orchestrator (subscribed before initialize() runs) wakes to dispatch
+    // recovered tasks.
+    let recoveredAny = false;
     for (const task of this.tasks.values()) {
       if (task.status === "running") {
         console.warn(
@@ -843,13 +858,20 @@ export class TaskQueueService {
         task.runId = undefined;
         task.startedAt = undefined;
 
-        // Move to queued or blocked based on dependencies
         if (task.blockedBy && task.blockedBy.length > 0) {
-          task.status = "blocked";
+          await this.transitionToBlocked(task);
         } else {
-          task.status = "queued";
+          await this.transitionToQueued(task);
         }
+        recoveredAny = true;
       }
+    }
+
+    // If we recovered any tasks, persist the normalized state so a subsequent
+    // crash (or quit before assignment) doesn't replay the same recovery loop
+    // — the on-disk row would otherwise stay "running" forever.
+    if (recoveredAny) {
+      await this.schedulePersist();
     }
 
     console.log(`[TaskQueueService] Loaded ${this.tasks.size} tasks for project ${projectId}`);
