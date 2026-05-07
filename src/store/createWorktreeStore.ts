@@ -277,6 +277,7 @@ function lifecycleStatusEqual(
     a.currentCommand === b.currentCommand &&
     a.commandIndex === b.commandIndex &&
     a.totalCommands === b.totalCommands &&
+    a.output === b.output &&
     a.startedAt === b.startedAt &&
     a.completedAt === b.completedAt &&
     a.error === b.error

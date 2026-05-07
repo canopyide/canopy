@@ -194,8 +194,11 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
 
   const setManualOrder = useWorktreeFilterStore((state) => state.setManualOrder);
 
-  // Clean up stale pinned and collapsed worktrees
+  // Clean up stale pinned and collapsed worktrees. Skip when worktrees is
+  // empty — that's the pre-hydration state, not a signal that every persisted
+  // pin/collapse is stale.
   useEffect(() => {
+    if (worktrees.length === 0) return;
     const existingIds = new Set(worktrees.map((w) => w.id));
     cleanupStaleWorktrees(existingIds);
   }, [worktrees, cleanupStaleWorktrees]);
