@@ -12,7 +12,7 @@ import fs from "fs/promises";
 import { existsSync } from "fs";
 import { app } from "electron";
 import { GitService } from "./GitService.js";
-import { isDaintreeError } from "../utils/errorTypes.js";
+import { AppError, isDaintreeError } from "../utils/errorTypes.js";
 import { logError } from "../utils/logger.js";
 import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 import { store } from "../store.js";
@@ -167,13 +167,20 @@ export class ProjectStore {
       }
 
       if (lower.includes("not a git repository")) {
-        throw new Error(`Not a git repository: ${projectPath}`);
+        throw new AppError({
+          code: "NOT_A_GIT_REPO",
+          message: `Not a git repository: ${projectPath}`,
+        });
       }
 
       throw new Error(combined || "Failed to open project");
     }
 
-    const normalizedPath = path.normalize(gitRoot);
+    // NFC-normalize for dedup so a Finder-dragged NFD path and a typed NFC
+    // path map to the same project row on macOS. `path.normalize` only
+    // handles separator/segment normalization; Unicode normalization is
+    // independent.
+    const normalizedPath = path.normalize(gitRoot).normalize("NFC");
 
     const existing = await this.getProjectByPath(normalizedPath);
     if (existing) {
@@ -354,7 +361,7 @@ export class ProjectStore {
   }
 
   async getProjectByPath(projectPath: string): Promise<Project | null> {
-    const normalizedPath = path.normalize(projectPath);
+    const normalizedPath = path.normalize(projectPath).normalize("NFC");
     const db = getSharedDb();
     const row = db.select().from(projectsTable).where(eq(projectsTable.path, normalizedPath)).get();
     return row ? rowToProject(row) : null;

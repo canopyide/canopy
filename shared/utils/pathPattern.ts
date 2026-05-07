@@ -144,7 +144,7 @@ export function generateWorktreePath(
 // Windows reserved device names (case-insensitive). Microsoft added COM0/LPT0
 // in Windows 10 1803, so the set covers 0–9 for both COM and LPT. Match
 // against each path component after stripping any extension (e.g. NUL.txt).
-const WINDOWS_RESERVED_NAMES = new Set([
+export const WINDOWS_RESERVED_NAMES = new Set([
   "CON",
   "PRN",
   "AUX",
