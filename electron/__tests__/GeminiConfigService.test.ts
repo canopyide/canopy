@@ -15,7 +15,7 @@ vi.mock("node:os", async (importOriginal) => {
 // Dynamic import so the mock applies before the module loads.
 const { GeminiConfigService } = await import("../services/gemini/GeminiConfigService.js");
 
-function createService(): GeminiConfigService {
+function createService() {
   return new GeminiConfigService();
 }
 
