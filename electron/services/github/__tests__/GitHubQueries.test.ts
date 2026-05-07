@@ -229,7 +229,7 @@ describe("buildBatchPRQuery", () => {
         expect(fragment).toContain("bodyText");
         expect(fragment).toContain("createdAt");
         expect(fragment).toContain("author { login avatarUrl }");
-        expect(fragment).toContain("assignees(first: 5) { nodes { login avatarUrl } }");
+        expect(fragment).toContain("assignees(first: 10) { nodes { login avatarUrl } }");
         expect(fragment).toContain("labels(first: 10) { nodes { name color } }");
       }
     });
@@ -246,7 +246,7 @@ describe("buildBatchPRQuery", () => {
       expect(branchPath).toContain("bodyText");
       expect(branchPath).toContain("createdAt");
       expect(branchPath).toContain("author { login avatarUrl }");
-      expect(branchPath).toContain("assignees(first: 5) { nodes { login avatarUrl } }");
+      expect(branchPath).toContain("assignees(first: 10) { nodes { login avatarUrl } }");
       expect(branchPath).toContain("labels(first: 10) { nodes { name color } }");
     });
 

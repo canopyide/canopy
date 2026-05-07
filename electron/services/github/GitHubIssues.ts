@@ -134,6 +134,14 @@ export async function assignIssue(
       });
 
       if (!response.ok) {
+        let body: { message?: string; errors?: Array<{ code?: string; message?: string }> } | null =
+          null;
+        try {
+          body = await response.json();
+        } catch {
+          // Body is not JSON or already consumed — continue with null
+        }
+
         if (response.status === 401) {
           throw new Error("Invalid GitHub token. Please update in Settings.");
         }
@@ -144,9 +152,21 @@ export async function assignIssue(
           throw new Error("Issue not found or you don't have access to this repository");
         }
         if (response.status === 422) {
-          throw new Error(`Cannot assign user "${username}" - they may not be a collaborator`);
+          const errorCode = body?.errors?.[0]?.code;
+          if (errorCode === "invalid") {
+            throw new Error(`Cannot assign user "${username}" - they may not be a collaborator`);
+          }
+          if (errorCode === "too_many_assignees") {
+            throw new Error(
+              `Cannot assign user "${username}" - issue already has the maximum 10 assignees`
+            );
+          }
+          const githubMessage = body?.errors?.[0]?.message ?? body?.message;
+          throw new Error(`Cannot assign user "${username}" - ${githubMessage || "HTTP 422"}`);
         }
-        throw new Error(`GitHub API error: ${response.statusText}`);
+        throw new Error(
+          `Cannot assign user "${username}" - server error (HTTP ${response.status})`
+        );
       }
 
       const data = (await response.json()) as {
@@ -229,6 +249,8 @@ function updateIssueAssigneeInCache(
   for (const update of updates) {
     issueListCache.set(update.key, update.value);
   }
+
+  issueTooltipCache.invalidate(`${owner}/${repo}:${issueNumber}`);
 }
 
 export async function getIssueTooltip(
@@ -334,8 +356,10 @@ export async function listIssues(
           options.state === "closed" ? "is:closed" : options.state === "all" ? "" : "is:open";
         const sortQualifier =
           resolvedSortOrder === "updated" ? "sort:updated-desc" : "sort:created-desc";
-        const searchQuery =
-          `repo:${context.owner}/${context.repo} is:issue ${stateFilter} ${sortQualifier} ${options.search}`.trim();
+        const prefix = `repo:${context.owner}/${context.repo} is:issue ${stateFilter} ${sortQualifier} `;
+        const available = 256 - prefix.length;
+        const truncatedSearch = available > 0 ? options.search.slice(0, available) : "";
+        const searchQuery = `${prefix}${truncatedSearch}`.trim();
 
         const response = (await client(SEARCH_QUERY, {
           searchQuery,

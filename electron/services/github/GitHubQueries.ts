@@ -35,7 +35,7 @@ export const REPO_STATS_AND_PAGE_QUERY = `
           state
           updatedAt
           author { login avatarUrl }
-          assignees(first: 5) { nodes { login avatarUrl } }
+          assignees(first: 10) { nodes { login avatarUrl } }
           comments { totalCount }
           labels(first: 10) { nodes { name color } }
           timelineItems(itemTypes: [CROSS_REFERENCED_EVENT, CONNECTED_EVENT], last: 20) {
@@ -144,7 +144,7 @@ export const LIST_ISSUES_QUERY = `
             login
             avatarUrl
           }
-          assignees(first: 5) {
+          assignees(first: 10) {
             nodes {
               login
               avatarUrl
@@ -267,7 +267,7 @@ export const SEARCH_QUERY = `
             login
             avatarUrl
           }
-          assignees(first: 5) {
+          assignees(first: 10) {
             nodes {
               login
               avatarUrl
@@ -343,7 +343,7 @@ export const GET_ISSUE_QUERY = `
           login
           avatarUrl
         }
-        assignees(first: 5) {
+        assignees(first: 10) {
           nodes {
             login
             avatarUrl
@@ -416,7 +416,7 @@ export const GET_PR_QUERY = `
           login
           avatarUrl
         }
-        assignees(first: 5) {
+        assignees(first: 10) {
           nodes {
             login
             avatarUrl
@@ -493,7 +493,7 @@ export function buildBatchPRQuery(
                       bodyText
                       createdAt
                       author { login avatarUrl }
-                      assignees(first: 5) { nodes { login avatarUrl } }
+                      assignees(first: 10) { nodes { login avatarUrl } }
                       labels(first: 10) { nodes { name color } }
                     }
                   }
@@ -510,7 +510,7 @@ export function buildBatchPRQuery(
                       bodyText
                       createdAt
                       author { login avatarUrl }
-                      assignees(first: 5) { nodes { login avatarUrl } }
+                      assignees(first: 10) { nodes { login avatarUrl } }
                       labels(first: 10) { nodes { name color } }
                     }
                   }
@@ -539,7 +539,7 @@ export function buildBatchPRQuery(
               bodyText
               createdAt
               author { login avatarUrl }
-              assignees(first: 5) { nodes { login avatarUrl } }
+              assignees(first: 10) { nodes { login avatarUrl } }
               labels(first: 10) { nodes { name color } }
             }
           }
