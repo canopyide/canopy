@@ -497,7 +497,8 @@ export class ProcessDetector {
     }
 
     const children = this.cache.getChildren(this.ptyPid);
-    const isBusy = children.length > 0;
+    const liveChildren = children.filter((c) => !c.command.includes("<defunct>"));
+    const isBusy = liveChildren.length > 0;
 
     // Distinguish "no evidence" from "negative evidence". When the process
     // tree cache is currently in an error state and reports zero children,
@@ -527,7 +528,7 @@ export class ProcessDetector {
       return this.mergeWithShellEvidence(null, { isBusy: false, currentCommand: undefined });
     }
 
-    const processes: ChildProcess[] = children.map((p) => ({
+    const processes: ChildProcess[] = liveChildren.map((p) => ({
       pid: p.pid,
       name: p.comm,
       command: p.command,
@@ -548,7 +549,7 @@ export class ProcessDetector {
     // worker processes when the claude parent renamed its comm. Covers real
     // nesting: `zsh → npm → node /path/to/claude` for `npm run claude`.
     if (!bestMatch || bestMatch.priority > 0) {
-      for (const child of children.slice(0, 10)) {
+      for (const child of liveChildren.slice(0, 10)) {
         const grandchildren = this.cache.getChildren(child.pid);
         for (const grandchild of grandchildren) {
           const candidate = buildDetectedCandidate(

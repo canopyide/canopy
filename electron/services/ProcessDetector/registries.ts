@@ -47,6 +47,7 @@ export const PROCESS_ICON_MAP: Record<string, string> = {
   // Package managers
   npm: "npm",
   npx: "npm",
+  bunx: "bun",
   yarn: "yarn",
   pnpm: "pnpm",
   bun: "bun",
@@ -55,6 +56,7 @@ export const PROCESS_ICON_MAP: Record<string, string> = {
   python: "python",
   python3: "python",
   node: "node",
+  tsx: "node",
   deno: "deno",
   ruby: "ruby",
   rails: "ruby",
