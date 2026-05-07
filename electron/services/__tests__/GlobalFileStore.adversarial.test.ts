@@ -6,15 +6,12 @@ const fsMock = vi.hoisted(() => ({
   mkdir: vi.fn(),
 }));
 
-const fsSyncMock = vi.hoisted(() => ({ existsSync: vi.fn() }));
-
 const utilsMock = vi.hoisted(() => ({
   resilientRename: vi.fn(),
   resilientAtomicWriteFile: vi.fn(),
 }));
 
 vi.mock("fs/promises", () => ({ default: fsMock, ...fsMock }));
-vi.mock("fs", () => ({ ...fsSyncMock }));
 vi.mock("../../utils/fs.js", () => utilsMock);
 
 import { GlobalFileStore } from "../GlobalFileStore.js";
@@ -38,31 +35,30 @@ describe("GlobalFileStore adversarial", () => {
   });
 
   it("corrupted JSON returns [] and quarantines the file", async () => {
-    fsSyncMock.existsSync.mockReturnValue(true);
     fsMock.readFile.mockResolvedValue("{ not json");
 
     const result = await store.getRecipes();
 
     expect(result).toEqual([]);
-    const escapedFile = RECIPES_FILE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     expect(utilsMock.resilientRename).toHaveBeenCalledWith(
       RECIPES_FILE,
-      expect.stringMatching(new RegExp(`^${escapedFile}\\.corrupted\\.\\d+$`))
+      expect.stringMatching(/^\/tmp\/daintree-global\/recipes\.json\.corrupted\.\d+-[a-z0-9]{6}$/)
     );
   });
 
-  it("non-array JSON returns [] without quarantining", async () => {
-    fsSyncMock.existsSync.mockReturnValue(true);
+  it("non-array JSON returns [] and quarantines the file", async () => {
     fsMock.readFile.mockResolvedValue(JSON.stringify({ wrong: "shape" }));
 
     const result = await store.getRecipes();
 
     expect(result).toEqual([]);
-    expect(utilsMock.resilientRename).not.toHaveBeenCalled();
+    expect(utilsMock.resilientRename).toHaveBeenCalledWith(
+      RECIPES_FILE,
+      expect.stringMatching(/^\/tmp\/daintree-global\/recipes\.json\.corrupted\.\d+-[a-z0-9]{6}$/)
+    );
   });
 
   it("filters invalid entries but keeps valid ones", async () => {
-    fsSyncMock.existsSync.mockReturnValue(true);
     fsMock.readFile.mockResolvedValue(
       JSON.stringify([
         { id: "r1", name: "valid", terminals: [], createdAt: 1000 },
@@ -99,7 +95,6 @@ describe("GlobalFileStore adversarial", () => {
   });
 
   it("updateRecipe on missing id throws and does not write", async () => {
-    fsSyncMock.existsSync.mockReturnValue(true);
     fsMock.readFile.mockResolvedValue("[]");
 
     await expect(store.updateRecipe("missing", { name: "x" })).rejects.toThrow(/not found/);
@@ -107,7 +102,6 @@ describe("GlobalFileStore adversarial", () => {
   });
 
   it("updateRecipe does not let the patch overwrite id/projectId/createdAt", async () => {
-    fsSyncMock.existsSync.mockReturnValue(true);
     fsMock.readFile.mockResolvedValue(
       JSON.stringify([
         {
@@ -138,7 +132,6 @@ describe("GlobalFileStore adversarial", () => {
   });
 
   it("deleteRecipe removes only the matching entry", async () => {
-    fsSyncMock.existsSync.mockReturnValue(true);
     fsMock.readFile.mockResolvedValue(
       JSON.stringify([
         { id: "keep", name: "k", terminals: [], createdAt: 1000 },
@@ -154,15 +147,16 @@ describe("GlobalFileStore adversarial", () => {
     expect(payload.map((r) => r.id)).toEqual(["keep"]);
   });
 
-  it("getRecipes returns [] when file doesn't exist (no readFile attempt)", async () => {
-    fsSyncMock.existsSync.mockReturnValue(false);
+  it("getRecipes returns [] when file doesn't exist", async () => {
+    fsMock.readFile.mockRejectedValue(
+      Object.assign(new Error("ENOENT"), { code: "ENOENT" })
+    );
     const result = await store.getRecipes();
     expect(result).toEqual([]);
-    expect(fsMock.readFile).not.toHaveBeenCalled();
+    expect(utilsMock.resilientRename).not.toHaveBeenCalled();
   });
 
   it("quarantine rename failure is soft — getRecipes still returns []", async () => {
-    fsSyncMock.existsSync.mockReturnValue(true);
     fsMock.readFile.mockResolvedValue("bad json");
     utilsMock.resilientRename.mockRejectedValueOnce(new Error("EBUSY"));
 
@@ -171,7 +165,6 @@ describe("GlobalFileStore adversarial", () => {
   });
 
   it("addRecipe loads + appends + saves without mutating the loaded array for caller", async () => {
-    fsSyncMock.existsSync.mockReturnValue(true);
     fsMock.readFile.mockResolvedValue(JSON.stringify([]));
 
     await store.addRecipe({
