@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { promises as fs } from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -18,10 +18,16 @@ function overrideHome(dir: string): Record<string, string | undefined> {
     HOME: process.env.HOME,
     USERPROFILE: process.env.USERPROFILE,
     XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME,
+    CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR,
+    GEMINI_CONFIG_DIR: process.env.GEMINI_CONFIG_DIR,
+    CODEX_HOME: process.env.CODEX_HOME,
   };
   process.env.HOME = dir;
   process.env.USERPROFILE = dir;
   delete process.env.XDG_CONFIG_HOME;
+  delete process.env.CLAUDE_CONFIG_DIR;
+  delete process.env.GEMINI_CONFIG_DIR;
+  delete process.env.CODEX_HOME;
   return prev;
 }
 
@@ -721,6 +727,180 @@ Just some instructions without frontmatter.
       restoreHome(prev);
       await fs.rm(homeRoot, { recursive: true, force: true });
       await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("warns when frontmatter closing --- falls outside the 8 KiB read buffer", async () => {
+    const projectRoot = await makeTempDir();
+    const service = new SlashCommandService();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    try {
+      await fs.mkdir(path.join(projectRoot, ".git"));
+
+      const filler = "x".repeat(9 * 1024);
+      const cmdPath = path.join(projectRoot, ".claude", "commands", "huge.md");
+      await writeFile(
+        cmdPath,
+        `---
+description: "Huge frontmatter"
+filler: "${filler}"
+user-invocable: false
+---
+
+Body.
+`
+      );
+
+      const commands = await service.list("claude", projectRoot);
+      const huge = commands.find((c) => c.label === "/huge");
+
+      expect(huge).toBeDefined();
+      expect(huge?.description).toBe("Custom command");
+
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      const message = warnSpy.mock.calls[0]?.[0] as string;
+      expect(message).toContain("[SlashCommandService] frontmatter truncated:");
+      expect(message).toContain(cmdPath);
+    } finally {
+      warnSpy.mockRestore();
+      await fs.rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("does not warn on ordinary Markdown without frontmatter", async () => {
+    const projectRoot = await makeTempDir();
+    const service = new SlashCommandService();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    try {
+      await fs.mkdir(path.join(projectRoot, ".git"));
+
+      await writeFile(
+        path.join(projectRoot, ".claude", "commands", "plain.md"),
+        `# Plain command
+
+No frontmatter at all.
+`
+      );
+
+      const commands = await service.list("claude", projectRoot);
+      const plain = commands.find((c) => c.label === "/plain");
+
+      expect(plain).toBeDefined();
+      expect(warnSpy).not.toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+      await fs.rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("honours CLAUDE_CONFIG_DIR for user command and skill discovery", async () => {
+    const homeRoot = await makeTempDir();
+    const claudeDir = await makeTempDir();
+    const projectRoot = await makeTempDir();
+    const service = new SlashCommandService();
+
+    const prevHome = process.env.HOME;
+    const prevUserprofile = process.env.USERPROFILE;
+    const prevClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
+    const prevXdgConfigHome = process.env.XDG_CONFIG_HOME;
+
+    process.env.HOME = homeRoot;
+    process.env.USERPROFILE = homeRoot;
+    process.env.CLAUDE_CONFIG_DIR = claudeDir;
+    delete process.env.XDG_CONFIG_HOME;
+
+    try {
+      await fs.mkdir(path.join(projectRoot, ".git"));
+
+      await writeFile(
+        path.join(claudeDir, "commands", "relocated.md"),
+        `---
+description: "Relocated user command"
+---
+
+Relocated.
+`
+      );
+
+      await writeFile(
+        path.join(claudeDir, "skills", "relocated-skill", "SKILL.md"),
+        `---
+description: "Relocated user skill"
+---
+
+Skill body.
+`
+      );
+
+      const commands = await service.list("claude", projectRoot);
+      const cmd = commands.find((c) => c.label === "/relocated");
+      const skill = commands.find((c) => c.label === "/relocated-skill" && c.kind === "skill");
+
+      expect(cmd).toBeDefined();
+      expect(cmd?.scope).toBe("user");
+      expect(cmd?.description).toBe("Relocated user command");
+      expect(skill).toBeDefined();
+      expect(skill?.scope).toBe("user");
+      expect(skill?.description).toBe("Relocated user skill");
+    } finally {
+      if (prevHome !== undefined) process.env.HOME = prevHome;
+      else delete process.env.HOME;
+      if (prevUserprofile !== undefined) process.env.USERPROFILE = prevUserprofile;
+      else delete process.env.USERPROFILE;
+      if (prevClaudeConfigDir !== undefined) process.env.CLAUDE_CONFIG_DIR = prevClaudeConfigDir;
+      else delete process.env.CLAUDE_CONFIG_DIR;
+      if (prevXdgConfigHome !== undefined) process.env.XDG_CONFIG_HOME = prevXdgConfigHome;
+      await fs.rm(homeRoot, { recursive: true, force: true });
+      await fs.rm(claudeDir, { recursive: true, force: true });
+      await fs.rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("honours GEMINI_CONFIG_DIR for user command discovery", async () => {
+    const homeRoot = await makeTempDir();
+    const geminiDir = await makeTempDir();
+    const projectRoot = await makeTempDir();
+    const service = new SlashCommandService();
+
+    const prevHome = process.env.HOME;
+    const prevUserprofile = process.env.USERPROFILE;
+    const prevGeminiConfigDir = process.env.GEMINI_CONFIG_DIR;
+    const prevXdgConfigHome = process.env.XDG_CONFIG_HOME;
+
+    process.env.HOME = homeRoot;
+    process.env.USERPROFILE = homeRoot;
+    process.env.GEMINI_CONFIG_DIR = geminiDir;
+    delete process.env.XDG_CONFIG_HOME;
+
+    try {
+      await fs.mkdir(path.join(projectRoot, ".git"));
+
+      await writeFile(
+        path.join(geminiDir, "commands", "relocated.toml"),
+        `description = "Relocated Gemini command"
+prompt = "Do the thing"
+`
+      );
+
+      const commands = await service.list("gemini", projectRoot);
+      const cmd = commands.find((c) => c.label === "/relocated");
+
+      expect(cmd).toBeDefined();
+      expect(cmd?.scope).toBe("user");
+      expect(cmd?.description).toBe("Relocated Gemini command");
+    } finally {
+      if (prevHome !== undefined) process.env.HOME = prevHome;
+      else delete process.env.HOME;
+      if (prevUserprofile !== undefined) process.env.USERPROFILE = prevUserprofile;
+      else delete process.env.USERPROFILE;
+      if (prevGeminiConfigDir !== undefined) process.env.GEMINI_CONFIG_DIR = prevGeminiConfigDir;
+      else delete process.env.GEMINI_CONFIG_DIR;
+      if (prevXdgConfigHome !== undefined) process.env.XDG_CONFIG_HOME = prevXdgConfigHome;
+      await fs.rm(homeRoot, { recursive: true, force: true });
+      await fs.rm(geminiDir, { recursive: true, force: true });
+      await fs.rm(projectRoot, { recursive: true, force: true });
     }
   });
 

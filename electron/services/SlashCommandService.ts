@@ -18,7 +18,7 @@ function stripWrappingQuotes(value: string): string {
   return trimmed;
 }
 
-async function readFrontmatterDescription(
+async function readYamlFrontmatter(
   filePath: string
 ): Promise<{ description: string | null; userInvocable: boolean }> {
   let handle: FileHandle | null = null;
@@ -32,7 +32,12 @@ async function readFrontmatterDescription(
     if (!normalized.startsWith("---")) return { description: null, userInvocable: true };
 
     const endIndex = normalized.indexOf("\n---", 3);
-    if (endIndex === -1) return { description: null, userInvocable: true };
+    if (endIndex === -1) {
+      console.warn(
+        `[SlashCommandService] frontmatter truncated: closing --- not found within ${FRONTMATTER_MAX_BYTES} bytes in ${filePath}`
+      );
+      return { description: null, userInvocable: true };
+    }
 
     const frontmatter = normalized.slice(3, endIndex);
 
@@ -101,13 +106,6 @@ async function scanCommandDirectory(
   agentId: SlashCommand["agentId"],
   isPromptDirectory = false
 ): Promise<SlashCommand[]> {
-  try {
-    const stats = await fs.stat(dirPath);
-    if (!stats.isDirectory()) return [];
-  } catch {
-    return [];
-  }
-
   const results: SlashCommand[] = [];
 
   const walk = async (currentDir: string): Promise<void> => {
@@ -136,7 +134,7 @@ async function scanCommandDirectory(
         const name = relNoExt.split(path.sep).join(":");
         const label = isPromptDirectory ? `/prompts:${name}` : `/${name}`;
         const id = isPromptDirectory ? `${scope}:prompts:${name}` : `${scope}:${name}`;
-        const { description: desc, userInvocable } = await readFrontmatterDescription(fullPath);
+        const { description: desc, userInvocable } = await readYamlFrontmatter(fullPath);
         if (!userInvocable) return;
         const description = desc ?? "Custom command";
 
@@ -162,13 +160,6 @@ async function scanTomlCommandDirectory(
   agentId: SlashCommand["agentId"],
   isPromptDirectory = false
 ): Promise<SlashCommand[]> {
-  try {
-    const stats = await fs.stat(dirPath);
-    if (!stats.isDirectory()) return [];
-  } catch {
-    return [];
-  }
-
   const results: SlashCommand[] = [];
 
   const walk = async (currentDir: string): Promise<void> => {
@@ -231,7 +222,10 @@ function getClaudeCommandSearchPaths(projectPath?: string): Array<{
   }
 
   const home = os.homedir();
-  dirs.push({ dirPath: path.join(home, ".claude", "commands"), scope: "user" });
+  const claudeHome = process.env.CLAUDE_CONFIG_DIR
+    ? path.resolve(process.env.CLAUDE_CONFIG_DIR)
+    : path.join(home, ".claude");
+  dirs.push({ dirPath: path.join(claudeHome, "commands"), scope: "user" });
 
   const xdgConfigHome = process.env.XDG_CONFIG_HOME;
   if (xdgConfigHome) {
@@ -273,54 +267,11 @@ function getClaudeCommandSearchPaths(projectPath?: string): Array<{
   });
 }
 
-async function readSkillFrontmatter(
-  filePath: string
-): Promise<{ description: string | null; userInvocable: boolean }> {
-  let handle: FileHandle | null = null;
-  try {
-    handle = await fs.open(filePath, "r");
-    const buffer = Buffer.alloc(FRONTMATTER_MAX_BYTES);
-    const { bytesRead } = await handle.read(buffer, 0, FRONTMATTER_MAX_BYTES, 0);
-    const text = buffer.subarray(0, bytesRead).toString("utf8");
-
-    const normalized = text.startsWith("\uFEFF") ? text.slice(1) : text;
-    if (!normalized.startsWith("---")) return { description: null, userInvocable: true };
-
-    const endIndex = normalized.indexOf("\n---", 3);
-    if (endIndex === -1) return { description: null, userInvocable: true };
-
-    const frontmatter = normalized.slice(3, endIndex);
-
-    const descMatch = frontmatter.match(/^description:\s*(.+)$/m);
-    const description = descMatch ? stripWrappingQuotes(descMatch[1] ?? "") : null;
-
-    const invocableMatch = frontmatter.match(/^user-invocable:\s*(.+)$/m);
-    let userInvocable = true;
-    if (invocableMatch) {
-      const val = stripWrappingQuotes(invocableMatch[1] ?? "").toLowerCase();
-      if (val === "false" || val === "no") userInvocable = false;
-    }
-
-    return { description, userInvocable };
-  } catch {
-    return { description: null, userInvocable: true };
-  } finally {
-    await handle?.close().catch(() => {});
-  }
-}
-
 async function scanSkillDirectory(
   dirPath: string,
   scope: SlashCommand["scope"],
   agentId: SlashCommand["agentId"]
 ): Promise<SlashCommand[]> {
-  try {
-    const stats = await fs.stat(dirPath);
-    if (!stats.isDirectory()) return [];
-  } catch {
-    return [];
-  }
-
   let entries: Array<import("fs").Dirent> = [];
   try {
     entries = await fs.readdir(dirPath, { withFileTypes: true });
@@ -343,7 +294,7 @@ async function scanSkillDirectory(
         return;
       }
 
-      const { description, userInvocable } = await readSkillFrontmatter(skillFile);
+      const { description, userInvocable } = await readYamlFrontmatter(skillFile);
       if (!userInvocable) return;
 
       const name = entry.name;
@@ -373,7 +324,10 @@ function getClaudeSkillSearchPaths(projectPath?: string): Array<{
   }
 
   const home = os.homedir();
-  dirs.push({ dirPath: path.join(home, ".claude", "skills"), scope: "user" });
+  const claudeHome = process.env.CLAUDE_CONFIG_DIR
+    ? path.resolve(process.env.CLAUDE_CONFIG_DIR)
+    : path.join(home, ".claude");
+  dirs.push({ dirPath: path.join(claudeHome, "skills"), scope: "user" });
 
   const xdgConfigHome = process.env.XDG_CONFIG_HOME;
   if (xdgConfigHome) {
@@ -426,7 +380,10 @@ function getGeminiCommandSearchPaths(projectPath?: string): Array<{
   }
 
   const home = os.homedir();
-  dirs.push({ dirPath: path.join(home, ".gemini", "commands"), scope: "user" });
+  const geminiHome = process.env.GEMINI_CONFIG_DIR
+    ? path.resolve(process.env.GEMINI_CONFIG_DIR)
+    : path.join(home, ".gemini");
+  dirs.push({ dirPath: path.join(geminiHome, "commands"), scope: "user" });
 
   const xdgConfigHome = process.env.XDG_CONFIG_HOME;
   if (xdgConfigHome) {
