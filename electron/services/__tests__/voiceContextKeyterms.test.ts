@@ -160,12 +160,45 @@ describe("assembleKeyterms", () => {
     expect(result.filter((t) => t.toLowerCase() === "daintree").length).toBe(1);
   });
 
-  it("caps at 80 keyterms", async () => {
+  it("caps at 96 keyterms", async () => {
     const dictionary = Array.from({ length: 100 }, (_, i) => `customTerm${i}`);
     const result = await assembleKeyterms({
       customDictionary: dictionary,
     });
-    expect(result.length).toBeLessThanOrEqual(80);
+    expect(result.length).toBe(96);
+  });
+
+  it("caps terminal lines at 200 (tail slice preserves newest content)", async () => {
+    // 4 terminals × 60 lines = 240 total. Identifiers in oldest 40 lines
+    // should be dropped by the 200-line cap.
+    const snapshots = Array.from({ length: 4 }, (_, termIdx) => ({
+      id: `t${termIdx}`,
+      lines: Array.from({ length: 60 }, (_, lineIdx) => {
+        const globalLine = termIdx * 60 + lineIdx;
+        return `term${termIdx}_ident_${globalLine}`;
+      }),
+      lastInputTime: 0,
+      lastOutputTime: 0,
+      lastCheckTime: 0,
+      spawnedAt: 0,
+    }));
+    const ptyClient = {
+      getAllTerminalSnapshots: vi.fn().mockResolvedValue(snapshots),
+    } as unknown as PtyClient;
+    const result = await assembleKeyterms({
+      customDictionary: [],
+      ptyClient,
+    });
+    // Identifiers from first 40 lines (globally 0-39) dropped by tail slice
+    expect(result).not.toContain("term0_ident_0");
+    expect(result).not.toContain("term0_ident_39");
+    // Identifiers from the 200-line window (globally 40+) appear, but cap at 96.
+    // First window identifier is at global line 40; last to fit is at ~line 135.
+    expect(result).toContain("term0_ident_40");
+    expect(result).toContain("term2_ident_132");
+    // Identifiers after the 96 cap (global line > ~135) are excluded
+    expect(result).not.toContain("term2_ident_180");
+    expect(result).not.toContain("term3_ident_239");
   });
 
   it("falls back gracefully when git fails", async () => {
