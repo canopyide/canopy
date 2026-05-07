@@ -64,12 +64,25 @@ export function createLifecycleHandlers(ctx: HostContext): HandlerMap {
     },
 
     "kill-by-project": (msg) => {
+      const terminalIds = ptyManager.getTerminalsForProject(msg.projectId);
+      const pids: number[] = [];
+      for (const id of terminalIds) {
+        const pid = ptyManager.getTerminal(id)?.ptyProcess.pid;
+        if (pid !== undefined) pids.push(pid);
+      }
       const killed = ptyManager.killByProject(msg.projectId);
+      for (const pid of pids) {
+        resourceGovernor.trackKilledPid(pid);
+      }
       sendEvent({ type: "kill-by-project-result", requestId: msg.requestId, killed });
     },
 
     "graceful-kill": async (msg) => {
+      const killedPid = ptyManager.getTerminal(msg.id)?.ptyProcess.pid;
       const agentSessionId = await ptyManager.gracefulKill(msg.id);
+      if (killedPid !== undefined) {
+        resourceGovernor.trackKilledPid(killedPid);
+      }
       sendEvent({
         type: "graceful-kill-result",
         requestId: msg.requestId,
@@ -79,7 +92,16 @@ export function createLifecycleHandlers(ctx: HostContext): HandlerMap {
     },
 
     "graceful-kill-by-project": async (msg) => {
+      const terminalIds = ptyManager.getTerminalsForProject(msg.projectId);
+      const pids: number[] = [];
+      for (const id of terminalIds) {
+        const pid = ptyManager.getTerminal(id)?.ptyProcess.pid;
+        if (pid !== undefined) pids.push(pid);
+      }
       const results = await ptyManager.gracefulKillByProject(msg.projectId);
+      for (const pid of pids) {
+        resourceGovernor.trackKilledPid(pid);
+      }
       sendEvent({
         type: "graceful-kill-by-project-result",
         requestId: msg.requestId,

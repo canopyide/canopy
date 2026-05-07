@@ -261,6 +261,7 @@ export type PtyHostEvent =
       isThrottled: boolean;
       reason?: string;
       duration?: number;
+      forced?: boolean;
       timestamp: number;
     }
   | {
