@@ -11,7 +11,7 @@ const registryMock = vi.hoisted(() => ({
 // that need a custom impl mutate `execFileMock` via mockImplementationOnce.
 const { execFileMock } = vi.hoisted(() => {
   const mock = vi.fn();
-  mock[Symbol.for("nodejs.util.promisify.custom")] = function (
+  (mock as any)[Symbol.for("nodejs.util.promisify.custom")] = function (
     cmd: string,
     args: readonly string[],
     opts: unknown
