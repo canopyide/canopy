@@ -14,6 +14,24 @@ export interface UseMenuActionsOptions {
   activeWorktreeId?: string;
 }
 
+const LAUNCH_AGENT_PREFIX = "launch-agent:";
+const OPEN_SETTINGS_PREFIX = "open-settings:";
+
+const MENU_TO_ACTION_MAP: Record<string, ActionId> = {
+  "clone-repo": "project.cloneRepo",
+  "close-project": "project.closeActive",
+  "duplicate-panel": "terminal.duplicate",
+  "new-terminal": "terminal.new",
+  "new-window": "app.newWindow",
+  "new-worktree": "worktree.createDialog.open",
+  "open-settings": "app.settings",
+  "toggle-sidebar": "nav.toggleSidebar",
+  "open-quick-switcher": "nav.quickSwitcher",
+  "open-action-palette": "action.palette.open",
+  "launch-help-agent": "help.launchAgent",
+  "reload-config": "app.reloadConfig",
+};
+
 export function useMenuActions(options: UseMenuActionsOptions): void {
   const { onOpenSettingsTab } = options;
 
@@ -27,9 +45,6 @@ export function useMenuActions(options: UseMenuActionsOptions): void {
           console.warn("[Menu] Invalid action payload:", action);
           return;
         }
-
-        const LAUNCH_AGENT_PREFIX = "launch-agent:";
-        const OPEN_SETTINGS_PREFIX = "open-settings:";
 
         if (action.startsWith(LAUNCH_AGENT_PREFIX)) {
           const agentId = action.slice(LAUNCH_AGENT_PREFIX.length);
@@ -83,22 +98,7 @@ export function useMenuActions(options: UseMenuActionsOptions): void {
           return;
         }
 
-        const menuToActionMap: Record<string, ActionId> = {
-          "clone-repo": "project.cloneRepo",
-          "close-project": "project.closeActive",
-          "duplicate-panel": "terminal.duplicate",
-          "new-terminal": "terminal.new",
-          "new-window": "app.newWindow",
-          "new-worktree": "worktree.createDialog.open",
-          "open-settings": "app.settings",
-          "toggle-sidebar": "nav.toggleSidebar",
-          "open-quick-switcher": "nav.quickSwitcher",
-          "open-action-palette": "action.palette.open",
-          "launch-help-agent": "help.launchAgent",
-          "reload-config": "app.reloadConfig",
-        };
-
-        const actionId = menuToActionMap[action];
+        const actionId = MENU_TO_ACTION_MAP[action];
         if (actionId) {
           const result = await actionService.dispatch(actionId, undefined, { source: "menu" });
           if (!result.ok) {

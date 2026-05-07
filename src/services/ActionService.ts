@@ -16,8 +16,13 @@ import { keybindingService } from "./KeybindingService";
 import { shortcutHintStore } from "../store/shortcutHintStore";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 
-/** Fields that should be redacted from event payloads to prevent secret leakage */
-const SENSITIVE_ARG_FIELDS = new Set(["token", "password", "secret", "key", "auth", "credential"]);
+/**
+ * Fields that should be redacted from event payloads to prevent secret leakage.
+ * Substring match (no word boundaries) so `apiKey`, `authHeader`, `refreshToken`
+ * are caught at any depth. Module-level so we don't allocate a fresh matcher
+ * per recursive frame in `redactSensitiveArgs`.
+ */
+const SENSITIVE_ARG_FIELD_PATTERN = /token|password|secret|key|auth|credential/i;
 
 /** Max size for args in event payloads (prevents explosion) */
 const MAX_ARG_PAYLOAD_SIZE = 1024;
@@ -96,8 +101,10 @@ const REPEATABLE_SOURCES: ReadonlySet<ActionSource> = new Set<ActionSource>([
 
 /**
  * Snapshot args for replay. Structured clone isolates the captured copy from
- * later mutation by the action's run body or the caller — non-cloneable values
- * fall through unchanged.
+ * later mutation. Falls back to JSON round-trip when args contain class
+ * instances or other non-cloneable shapes that JSON can still represent;
+ * returns `undefined` if both fail rather than aliasing the live reference,
+ * which would silently defeat the isolation guarantee.
  */
 function cloneArgsForReplay(args: unknown): unknown {
   if (args === undefined || args === null) return args;
@@ -105,7 +112,11 @@ function cloneArgsForReplay(args: unknown): unknown {
   try {
     return structuredClone(args);
   } catch {
-    return args;
+    try {
+      return JSON.parse(JSON.stringify(args));
+    } catch {
+      return undefined;
+    }
   }
 }
 
@@ -114,8 +125,35 @@ export interface LastDispatchedAction {
   args: unknown;
 }
 
+/**
+ * Cached fields from {@link ActionService.toManifestEntry} that depend solely
+ * on the action definition (not on the runtime context). Computed once at
+ * `register()` time and reused on every `list()` / `get()` call.
+ */
+type CachedManifestPartials = {
+  inputSchema: Record<string, unknown> | undefined;
+  outputSchema: Record<string, unknown> | undefined;
+  requiresArgs: boolean;
+};
+
+function computeManifestPartials(definition: AnyActionDefinition): CachedManifestPartials {
+  return {
+    inputSchema: definition.argsSchema
+      ? zodSchemaToJsonSchema(definition.argsSchema)
+      : definition.rawInputSchema,
+    outputSchema: definition.resultSchema
+      ? zodSchemaToJsonSchema(definition.resultSchema)
+      : undefined,
+    requiresArgs: definition.argsSchema
+      ? !definition.argsSchema.safeParse(undefined).success &&
+        !definition.argsSchema.safeParse({}).success
+      : rawSchemaRequiresArgs(definition.rawInputSchema),
+  };
+}
+
 export class ActionService {
   private registry = new Map<ActionId, AnyActionDefinition>();
+  private manifestPartialCache = new Map<ActionId, CachedManifestPartials>();
   private contextProvider: (() => ActionContext) | null = null;
   /**
    * Last eligible {actionId, args} captured after a successful dispatch from a
@@ -134,7 +172,13 @@ export class ActionService {
     // re-registering action was already validated on first pass — emitting
     // a warning before the throw would be spurious noise.
     validateActionDefinition(definition);
-    this.registry.set(definition.id, definition as AnyActionDefinition);
+    const typed = definition as AnyActionDefinition;
+    // Compute partials before mutating the registry: if a custom validator
+    // inside computeManifestPartials throws, we don't want has() to start
+    // returning true for a half-registered action.
+    const partials = computeManifestPartials(typed);
+    this.registry.set(definition.id, typed);
+    this.manifestPartialCache.set(definition.id, partials);
   }
 
   /** Whether an action id is present in the registry. */
@@ -145,6 +189,7 @@ export class ActionService {
   /** Remove an action from the registry. Silent no-op if unknown — safe for unload cleanup. */
   unregister(id: ActionId): void {
     this.registry.delete(id);
+    this.manifestPartialCache.delete(id);
   }
 
   setContextProvider(provider: (() => ActionContext) | null): void {
@@ -191,9 +236,22 @@ export class ActionService {
       validatedArgs = validation.data;
     }
 
-    const isEnabled = definition.isEnabled?.(context) ?? true;
+    // Fail closed if isEnabled throws: a single broken predicate must not
+    // crash dispatch. Mirrors the guard in toManifestEntry().
+    let isEnabled = true;
+    try {
+      isEnabled = definition.isEnabled?.(context) ?? true;
+    } catch (err) {
+      logWarn("Action isEnabled threw during dispatch", { actionId, error: err });
+      isEnabled = false;
+    }
     if (!isEnabled) {
-      const reasonText = definition.disabledReason?.(context);
+      let reasonText: string | undefined;
+      try {
+        reasonText = definition.disabledReason?.(context);
+      } catch (err) {
+        logWarn("Action disabledReason threw during dispatch", { actionId, error: err });
+      }
       const disabledReason = reasonText ?? "Action is currently disabled";
       // Suppress the toast for agent-sourced dispatches — MCP introspection
       // probes shouldn't surface as user-visible warnings. The DISABLED error
@@ -307,6 +365,20 @@ export class ActionService {
       }
     }
 
+    // Defensive: register() populates the cache, so a miss should only happen
+    // if a test bypasses register() and writes to the registry directly.
+    // Compute on the fly rather than throwing, matching getActionContext()'s
+    // graceful-degradation pattern.
+    let cached = this.manifestPartialCache.get(definition.id);
+    if (!cached) {
+      cached = computeManifestPartials(definition);
+      this.manifestPartialCache.set(definition.id, cached);
+    }
+
+    // Shallow-copy the cached schemas so that if a downstream consumer
+    // (e.g. an MCP adapter normalizing in place) mutates entry.inputSchema
+    // at the top level, it can't poison subsequent list()/get() reads.
+    // Mirrors the mcpAnnotations isolation pattern below.
     return {
       id: definition.id,
       name: definition.id,
@@ -315,18 +387,11 @@ export class ActionService {
       category: definition.category,
       kind: definition.kind,
       danger: definition.danger,
-      inputSchema: definition.argsSchema
-        ? zodSchemaToJsonSchema(definition.argsSchema)
-        : definition.rawInputSchema,
-      outputSchema: definition.resultSchema
-        ? zodSchemaToJsonSchema(definition.resultSchema)
-        : undefined,
+      inputSchema: cached.inputSchema ? { ...cached.inputSchema } : undefined,
+      outputSchema: cached.outputSchema ? { ...cached.outputSchema } : undefined,
       enabled,
       disabledReason,
-      requiresArgs: definition.argsSchema
-        ? !definition.argsSchema.safeParse(undefined).success &&
-          !definition.argsSchema.safeParse({}).success
-        : rawSchemaRequiresArgs(definition.rawInputSchema),
+      requiresArgs: cached.requiresArgs,
       keywords: definition.keywords?.slice(),
       ...(definition.mcpAnnotations ? { mcpAnnotations: { ...definition.mcpAnnotations } } : {}),
       ...(definition.pluginId ? { pluginId: definition.pluginId } : {}),
@@ -371,12 +436,7 @@ export class ActionService {
 
     const result: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(args as Record<string, unknown>)) {
-      const lowerKey = key.toLowerCase();
-      const isSensitive = Array.from(SENSITIVE_ARG_FIELDS).some((field) =>
-        lowerKey.includes(field)
-      );
-
-      if (isSensitive) {
+      if (SENSITIVE_ARG_FIELD_PATTERN.test(key)) {
         result[key] = "[REDACTED]";
       } else if (typeof value === "object" && value !== null) {
         result[key] = this.redactSensitiveArgs(value);
@@ -454,7 +514,10 @@ export class ActionService {
         ...(payload.safeArgs ? { safeArgs: payload.safeArgs } : {}),
       });
     } catch (err) {
-      logWarn("Failed to emit action:dispatched event", { error: err });
+      logWarn("Failed to emit action:dispatched event", {
+        actionId: payload.actionId,
+        error: err,
+      });
     }
   }
 }
