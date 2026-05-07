@@ -462,7 +462,7 @@ describe("AgentStateService", () => {
       expect(stateChanges).toHaveLength(1);
 
       // 100ms later, watchdog timeout fires → would normally flip working → waiting
-      vi.setSystemTime(Date.now() + 100);
+      vi.advanceTimersByTime(100);
       const changed = service.handleActivityState(terminal, "idle", { trigger: "timeout" });
 
       expect(terminal.agentState).toBe("working");
@@ -484,7 +484,7 @@ describe("AgentStateService", () => {
       expect(terminal.agentState).toBe("working");
 
       // 200ms later, prompt heuristic at 0.75 → suppressed
-      vi.setSystemTime(Date.now() + 200);
+      vi.advanceTimersByTime(200);
       const changed = service.transitionState(
         terminal,
         { type: "prompt" },
@@ -506,7 +506,7 @@ describe("AgentStateService", () => {
       expect(terminal.agentState).toBe("working");
 
       // 501ms later — past the 500ms window
-      vi.setSystemTime(Date.now() + 501);
+      vi.advanceTimersByTime(501);
       const changed = service.handleActivityState(terminal, "idle", { trigger: "timeout" });
 
       expect(changed).toBeUndefined();
@@ -521,7 +521,7 @@ describe("AgentStateService", () => {
       expect(terminal.agentState).toBe("working");
 
       // Within the window, an explicit high-confidence prompt (1.0) wins
-      vi.setSystemTime(Date.now() + 100);
+      vi.advanceTimersByTime(100);
       const changed = service.transitionState(
         terminal,
         { type: "prompt" },
@@ -541,7 +541,7 @@ describe("AgentStateService", () => {
       service.updateAgentState(terminal, { type: "input" });
       expect(terminal.agentState).toBe("working");
 
-      vi.setSystemTime(Date.now() + 100);
+      vi.advanceTimersByTime(100);
       const changed = service.updateAgentState(terminal, { type: "exit", code: 0 });
 
       expect(changed).toBe(true);
@@ -560,7 +560,7 @@ describe("AgentStateService", () => {
       // A same-state input at t=200 produces no state change (working → working)
       // and therefore must NOT shift the lock — hysteresis is anchored to actual
       // direction-changing high-confidence transitions, not no-ops.
-      vi.setSystemTime(Date.now() + 200);
+      vi.advanceTimersByTime(200);
       service.updateAgentState(terminal, { type: "input" });
       expect(terminal.hysteresisLockedUntil).toBe(lockAfterFirst);
     });
@@ -593,7 +593,7 @@ describe("AgentStateService", () => {
       expect(terminal.agentState).toBe("idle");
       expect(terminal.hysteresisLockedUntil).toBeUndefined();
 
-      vi.setSystemTime(Date.now() + 100);
+      vi.advanceTimersByTime(100);
       const changed = service.handleActivityState(terminal, "busy", {
         trigger: "pattern",
         patternConfidence: 0.7,
@@ -631,7 +631,7 @@ describe("AgentStateService", () => {
       events.on("agent:state-changed", (payload) => stateChanges.push(payload));
       events.on("terminal:activity", (payload) => activityEvents.push(payload));
 
-      vi.setSystemTime(Date.now() + 100);
+      vi.advanceTimersByTime(100);
       const changed = service.handleActivityState(terminal, "idle", { trigger: "timeout" });
 
       expect(changed).toBeUndefined();
@@ -652,13 +652,13 @@ describe("AgentStateService", () => {
       expect(lockedUntil).toBeDefined();
 
       // Strictly inside the window — `now < lockedUntil` is true.
-      vi.setSystemTime((lockedUntil ?? 0) - 1);
+      vi.advanceTimersByTime((lockedUntil ?? 0) - 1);
       let changed = service.handleActivityState(terminal, "idle", { trigger: "timeout" });
       expect(changed).toBeUndefined();
       expect(terminal.agentState).toBe("working");
 
       // At the boundary — `now < lockedUntil` is false, transition allowed.
-      vi.setSystemTime(lockedUntil ?? 0);
+      vi.advanceTimersByTime(1);
       changed = service.handleActivityState(terminal, "idle", { trigger: "timeout" });
       expect(changed).toBeUndefined();
       expect(terminal.agentState).toBe("waiting");
@@ -690,7 +690,7 @@ describe("AgentStateService", () => {
 
       // Within the lock armed by t1's 0.85 transition, an opposite-direction
       // 0.849 event MUST be suppressed.
-      vi.setSystemTime(Date.now() + 100);
+      vi.advanceTimersByTime(100);
       const changedSuppressed = a.transitionState(
         t1,
         { type: "prompt" },

@@ -98,8 +98,10 @@ export class AgentStateService {
         return "activity";
       case "watchdog-timeout":
         return "timeout";
-      default:
-        return "output";
+      default: {
+        const _exhaustive: never = event.type;
+        return _exhaustive;
+      }
     }
   }
 
@@ -167,14 +169,14 @@ export class AgentStateService {
     const previousState = terminal.agentState || "idle";
     const newState = nextAgentState(previousState, event);
 
+    if (newState === previousState) {
+      return false;
+    }
+
     const inferredTrigger = trigger ?? this.inferTrigger(event);
     const inferredConfidence = this.normalizeConfidence(
       confidence ?? this.inferConfidence(event, inferredTrigger)
     );
-
-    if (newState === previousState) {
-      return false;
-    }
 
     // Hysteresis guard: drop opposite-direction low-confidence transitions
     // that arrive shortly after a high-confidence transition settled the
@@ -182,7 +184,7 @@ export class AgentStateService {
     // always pass through.
     if (
       terminal.hysteresisLockedUntil !== undefined &&
-      Date.now() < terminal.hysteresisLockedUntil &&
+      performance.now() < terminal.hysteresisLockedUntil &&
       !isLifecycleEvent(event) &&
       inferredConfidence < HIGH_CONFIDENCE_THRESHOLD &&
       isOppositeDirectionTransition(previousState, newState)
@@ -197,35 +199,12 @@ export class AgentStateService {
       return false;
     }
 
-    terminal.agentState = newState;
-    terminal.lastStateChange = getStateChangeTimestamp();
-
-    // Refresh the hysteresis lock only when a high-confidence transition
-    // actually crosses the active/passive boundary. Passive→passive shifts
-    // (e.g., respawn exited→idle, or the FSM's working→completed→waiting
-    // chain) shouldn't lock out a subsequent low-confidence active signal —
-    // the window protects fresh active/passive settling, not session resets
-    // or sequential passive-state observations.
-    if (
-      inferredConfidence >= HIGH_CONFIDENCE_THRESHOLD &&
-      isOppositeDirectionTransition(previousState, newState)
-    ) {
-      terminal.hysteresisLockedUntil = Date.now() + HYSTERESIS_WINDOW_MS;
-    }
-
-    // Store/clear waitingReason on terminal
-    if (newState === "waiting") {
-      terminal.waitingReason = waitingReason;
-    } else {
-      terminal.waitingReason = undefined;
-    }
-
-    // Build and validate state change payload
+    // Build and validate state change payload BEFORE mutating terminal state.
     const stateChangePayload = {
       agentId: effectiveAgentId,
       state: newState,
       previousState,
-      timestamp: terminal.lastStateChange,
+      timestamp: getStateChangeTimestamp(),
       traceId: terminal.traceId,
       terminalId: terminal.id,
       cwd: terminal.cwd,
@@ -241,16 +220,37 @@ export class AgentStateService {
     };
 
     const validatedStateChange = AgentStateChangedSchema.safeParse(stateChangePayload);
-    if (validatedStateChange.success) {
-      events.emit("agent:state-changed", validatedStateChange.data);
-    } else {
+    if (!validatedStateChange.success) {
       console.error(
         "[AgentStateService] Invalid agent:state-changed payload:",
         validatedStateChange.error.format()
       );
+      return false;
     }
 
-    // Emit terminal activity event for UI headline updates
+    // Commit all mutations atomically.
+    terminal.agentState = newState;
+    terminal.lastStateChange = getStateChangeTimestamp();
+
+    // Refresh the hysteresis lock only when a high-confidence transition
+    // actually crosses the active/passive boundary. Lifecycle events clear
+    // the lock to prevent cross-session leakage.
+    if (isLifecycleEvent(event)) {
+      terminal.hysteresisLockedUntil = undefined;
+    } else if (
+      inferredConfidence >= HIGH_CONFIDENCE_THRESHOLD &&
+      isOppositeDirectionTransition(previousState, newState)
+    ) {
+      terminal.hysteresisLockedUntil = performance.now() + HYSTERESIS_WINDOW_MS;
+    }
+
+    if (newState === "waiting") {
+      terminal.waitingReason = waitingReason;
+    } else {
+      terminal.waitingReason = undefined;
+    }
+
+    events.emit("agent:state-changed", validatedStateChange.data);
     this.emitTerminalActivity(terminal);
 
     return true;
