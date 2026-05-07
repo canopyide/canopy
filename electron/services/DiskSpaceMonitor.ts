@@ -21,7 +21,9 @@ export interface DiskSpaceMonitorActions {
 }
 
 const WARNING_MB = 2000;
+const WARNING_EXIT_MB = WARNING_MB + 50;
 const CRITICAL_MB = 500;
+const CRITICAL_EXIT_MB = CRITICAL_MB + 50;
 const POLL_INTERVAL_MS = 5 * 60 * 1000;
 const NOTIFICATION_COOLDOWN_MS = 30 * 60 * 1000;
 
@@ -53,23 +55,29 @@ export function startDiskSpaceMonitor(actions: DiskSpaceMonitorActions): () => v
   let lastStatus: DiskSpaceStatus = "normal";
   let lastNotificationAt = 0;
   let disposed = false;
+  let polling = false;
   let removeSuspendListener: (() => void) | null = null;
   let removeWakeListener: (() => void) | null = null;
 
   async function poll(): Promise<void> {
-    if (disposed) return;
+    if (disposed || polling) return;
+    polling = true;
 
     let availableMb: number;
     try {
       const userDataPath = app.getPath("userData");
-      const stats = await fs.statfs(userDataPath);
-      availableMb = (stats.bavail * stats.bsize) / (1024 * 1024);
+      const stats = await fs.statfs(userDataPath, { bigint: true });
+      availableMb = Number((stats.bavail * stats.bsize) / (1024n * 1024n));
     } catch (err) {
       logWarn("disk-space-poll-failed", { error: String(err) });
+      polling = false;
       return;
     }
 
-    if (disposed) return;
+    if (disposed) {
+      polling = false;
+      return;
+    }
 
     let status: DiskSpaceStatus;
     if (availableMb < CRITICAL_MB) {
@@ -78,6 +86,17 @@ export function startDiskSpaceMonitor(actions: DiskSpaceMonitorActions): () => v
       status = "warning";
     } else {
       status = "normal";
+    }
+
+    // Schmitt trigger: latch prevents premature upward recovery.
+    // Escalation always uses enter thresholds; recovery requires exit thresholds.
+    if (lastStatus === "critical" && availableMb <= CRITICAL_EXIT_MB) {
+      status = "critical";
+    } else if (lastStatus === "warning" && status === "normal" && availableMb <= WARNING_EXIT_MB) {
+      status = "warning";
+    } else if (lastStatus === "critical" && status === "normal" && availableMb <= WARNING_EXIT_MB) {
+      // Post-critical exit: don't skip the warning band.
+      status = "warning";
     }
 
     const writesSuppressed = status === "critical";
@@ -126,6 +145,8 @@ export function startDiskSpaceMonitor(actions: DiskSpaceMonitorActions): () => v
 
       lastStatus = status;
     }
+
+    polling = false;
   }
 
   diskSpacePollFn = poll;

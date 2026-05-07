@@ -25,9 +25,9 @@ vi.mock("../../utils/logger.js", () => ({
 import type { DiskSpaceMonitorActions } from "../DiskSpaceMonitor.js";
 
 function makeStatfs(availableMb: number) {
-  const bsize = 4096;
-  const bavail = Math.floor((availableMb * 1024 * 1024) / bsize);
-  return { bavail, bsize, bfree: bavail + 1000, blocks: bavail + 50000 };
+  const bsize = 4096n;
+  const bavail = BigInt(Math.floor((availableMb * 1024 * 1024) / 4096));
+  return { bavail, bsize, bfree: bavail + 1000n, blocks: bavail + 50000n };
 }
 
 function createActions(): DiskSpaceMonitorActions & {
@@ -243,5 +243,67 @@ describe("DiskSpaceMonitor", () => {
 
     const { getWritesSuppressed } = await import("../diskPressureState.js");
     expect(getWritesSuppressed()).toBe(false);
+  });
+
+  describe("hysteresis", () => {
+    it("initial escalation to warning is not blocked by hysteresis", async () => {
+      statfsMock.mockResolvedValue(makeStatfs(1999));
+      const actions = createActions();
+      await importAndStart(actions);
+
+      expect(actions.calls.sendStatus).toHaveLength(1);
+      expect(actions.calls.sendStatus[0].status).toBe("warning");
+    });
+
+    it("warning latched: stays warning at 2001-2049 MB range", async () => {
+      statfsMock.mockResolvedValue(makeStatfs(1999));
+      const actions = createActions();
+      await importAndStart(actions);
+
+      expect(actions.calls.sendStatus[0].status).toBe("warning");
+
+      // Oscillate just above warning enter threshold but below exit
+      statfsMock.mockResolvedValue(makeStatfs(2001));
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+      expect(actions.calls.sendStatus).toHaveLength(1); // no new transition
+
+      statfsMock.mockResolvedValue(makeStatfs(2049));
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+      expect(actions.calls.sendStatus).toHaveLength(1); // still latched
+    });
+
+    it("warning exit: recovers to normal at 2051 MB", async () => {
+      statfsMock.mockResolvedValue(makeStatfs(1999));
+      const actions = createActions();
+      await importAndStart(actions);
+
+      expect(actions.calls.sendStatus[0].status).toBe("warning");
+
+      statfsMock.mockResolvedValue(makeStatfs(2051));
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+
+      expect(actions.calls.sendStatus).toHaveLength(2);
+      expect(actions.calls.sendStatus[1].status).toBe("normal");
+    });
+
+    it("writesSuppressed stays true during critical hysteresis band (530 MB)", async () => {
+      statfsMock.mockResolvedValue(makeStatfs(400));
+      const actions = createActions();
+      const mod = await importAndStart(actions);
+
+      expect(actions.calls.sendStatus[0].status).toBe("critical");
+      expect(actions.calls.sendStatus[0].writesSuppressed).toBe(true);
+
+      // Still within critical exit band
+      statfsMock.mockResolvedValue(makeStatfs(530));
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+
+      // Status unchanged, writesSuppressed still true
+      expect(actions.calls.sendStatus).toHaveLength(1);
+      const { getWritesSuppressed } = await import("../diskPressureState.js");
+      expect(getWritesSuppressed()).toBe(true);
+      expect(mod.getCurrentDiskSpaceStatus().status).toBe("critical");
+      expect(mod.getCurrentDiskSpaceStatus().writesSuppressed).toBe(true);
+    });
   });
 });
