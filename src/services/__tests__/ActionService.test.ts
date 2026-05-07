@@ -1411,7 +1411,7 @@ describe("ActionService", () => {
   });
 
   describe("manifest partial cache (issue #7284)", () => {
-    it("returns a stable inputSchema reference across list() calls", () => {
+    it("returns deeply-equal inputSchema across list() calls", () => {
       const argsSchema = z.object({ count: z.number() });
       service.register({
         id: "actions.list" as ActionId,
@@ -1427,7 +1427,27 @@ describe("ActionService", () => {
 
       const first = service.list()[0]!.inputSchema;
       const second = service.list()[0]!.inputSchema;
-      expect(first).toBe(second);
+      expect(first).toEqual(second);
+    });
+
+    it("isolates inputSchema from caller mutations", () => {
+      const argsSchema = z.object({ count: z.number() });
+      service.register({
+        id: "actions.list" as ActionId,
+        title: "Test",
+        description: "Test",
+        category: "test",
+        kind: "command",
+        danger: "safe",
+        scope: "renderer",
+        argsSchema,
+        run: vi.fn().mockResolvedValue(undefined),
+      });
+
+      const first = service.list()[0]!.inputSchema as Record<string, unknown>;
+      first.poisoned = "x";
+      const second = service.list()[0]!.inputSchema as Record<string, unknown>;
+      expect(second.poisoned).toBeUndefined();
     });
 
     it("evicts cache entry on unregister so re-register picks up new schema", () => {

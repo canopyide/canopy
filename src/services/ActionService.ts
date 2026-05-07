@@ -173,8 +173,12 @@ export class ActionService {
     // a warning before the throw would be spurious noise.
     validateActionDefinition(definition);
     const typed = definition as AnyActionDefinition;
+    // Compute partials before mutating the registry: if a custom validator
+    // inside computeManifestPartials throws, we don't want has() to start
+    // returning true for a half-registered action.
+    const partials = computeManifestPartials(typed);
     this.registry.set(definition.id, typed);
-    this.manifestPartialCache.set(definition.id, computeManifestPartials(typed));
+    this.manifestPartialCache.set(definition.id, partials);
   }
 
   /** Whether an action id is present in the registry. */
@@ -369,6 +373,10 @@ export class ActionService {
       this.manifestPartialCache.set(definition.id, cached);
     }
 
+    // Shallow-copy the cached schemas so that if a downstream consumer
+    // (e.g. an MCP adapter normalizing in place) mutates entry.inputSchema
+    // at the top level, it can't poison subsequent list()/get() reads.
+    // Mirrors the mcpAnnotations isolation pattern below.
     return {
       id: definition.id,
       name: definition.id,
@@ -377,8 +385,8 @@ export class ActionService {
       category: definition.category,
       kind: definition.kind,
       danger: definition.danger,
-      inputSchema: cached.inputSchema,
-      outputSchema: cached.outputSchema,
+      inputSchema: cached.inputSchema ? { ...cached.inputSchema } : undefined,
+      outputSchema: cached.outputSchema ? { ...cached.outputSchema } : undefined,
       enabled,
       disabledReason,
       requiresArgs: cached.requiresArgs,
