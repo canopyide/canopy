@@ -91,8 +91,6 @@ export function registerShutdownHandler(deps: ShutdownDeps): void {
     console.log("[MAIN] Starting graceful shutdown...");
     const { drainRateLimitQueues } = await import("../ipc/utils.js");
     drainRateLimitQueues();
-    getCrashRecoveryService().cleanupOnExit();
-    getCrashLoopGuard().markCleanExit();
 
     const ptyClient = deps.getPtyClient();
     const workspaceClient = deps.getWorkspaceClient();
@@ -232,7 +230,19 @@ export function registerShutdownHandler(deps: ShutdownDeps): void {
         exitCalled = true;
         clearTimeout(hardTimer);
         console.log("[MAIN] Graceful shutdown complete");
-        await closeTelemetry();
+        // Mark the exit clean BEFORE telemetry — telemetry is best-effort and
+        // a closeTelemetry failure must never make the next launch think we crashed.
+        try {
+          getCrashRecoveryService().cleanupOnExit();
+          getCrashLoopGuard().markCleanExit();
+        } catch (err) {
+          console.warn("[MAIN] Marker cleanup on clean exit failed:", err);
+        }
+        try {
+          await closeTelemetry();
+        } catch (err) {
+          console.warn("[MAIN] closeTelemetry failed:", err);
+        }
         app.exit(0);
       })
       .catch(async (error) => {
@@ -240,7 +250,13 @@ export function registerShutdownHandler(deps: ShutdownDeps): void {
         exitCalled = true;
         clearTimeout(hardTimer);
         console.error("[MAIN] Error during cleanup:", error);
-        await closeTelemetry();
+        // Intentionally do NOT clean up the marker on the error/timeout path —
+        // leaving running.lock on disk is the dirty-exit signal for next launch.
+        try {
+          await closeTelemetry();
+        } catch (err) {
+          console.warn("[MAIN] closeTelemetry failed:", err);
+        }
         app.exit(1);
       });
   });

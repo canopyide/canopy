@@ -119,11 +119,10 @@ export function registerGlobalErrorHandlers(): void {
       // silent
     }
 
-    try {
-      getCrashRecoveryService().recordCrash(reason);
-    } catch {
-      // silent
-    }
+    // Do NOT call recordCrash here. The app keeps running after an unhandled
+    // rejection (no app.exit follows), so writing a crash marker would poison
+    // every subsequent clean Cmd-Q on the next launch. Only uncaughtException
+    // — which terminates the process — should mark the crash.
 
     const appError = buildFatalErrorRecord("UNHANDLED_REJECTION", reason);
 
