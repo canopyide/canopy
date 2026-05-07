@@ -149,6 +149,97 @@ describe("CrashRecoveryService adversarial", () => {
     });
   });
 
+  it("PANEL_SUMMARIES_USE_CACHED_SNAPSHOT", () => {
+    // Bug #7113: extractPanelSummaries used to re-read backupPath from disk
+    // even though consumeMarker had already populated cachedBackupSnapshot
+    // for exactly this purpose. If anything overwrote the file between those
+    // reads (concurrent backup, external process, racy test fixtures), the
+    // pending crash's panel summaries diverged from the snapshot restoreBackup
+    // would later use. Both paths must see the same cached snapshot.
+    writeBackup(tmpDir, {
+      capturedAt: Date.now(),
+      appState: {
+        terminals: [{ id: "agent-1", kind: "terminal", title: "Pre-Crash" }],
+      },
+    });
+    writeMarker(tmpDir);
+
+    const realRead = fs.readFileSync.bind(fs);
+    let backupReadCount = 0;
+    const readSpy = vi.spyOn(fs, "readFileSync").mockImplementation(((
+      target: fs.PathOrFileDescriptor,
+      options?: unknown
+    ) => {
+      if (typeof target === "string" && target.endsWith("session-state.json")) {
+        backupReadCount++;
+        if (backupReadCount > 1) {
+          // Any *re-read* of the backup must come back with overwritten
+          // content. If production code re-reads the file here, the
+          // panels assertion below will see empty terminals.
+          return JSON.stringify({
+            capturedAt: Date.now(),
+            appState: { terminals: [] },
+          });
+        }
+      }
+      return (realRead as (...a: unknown[]) => string | Buffer)(target, options);
+    }) as typeof fs.readFileSync);
+
+    const service = makeService();
+    service.initialize();
+
+    expect(backupReadCount).toBe(1);
+    const pending = service.getPendingCrash();
+    expect(pending).not.toBeNull();
+    expect(pending!.panels).toBeDefined();
+    expect(pending!.panels!.length).toBe(1);
+    expect(pending!.panels![0]).toMatchObject({
+      id: "agent-1",
+      title: "Pre-Crash",
+    });
+
+    readSpy.mockRestore();
+  });
+
+  it("FILTERED_RESTORE_DOES_NOT_NARROW_CACHE_ON_FAILURE", () => {
+    // restoreBackup applies a panelIds filter when the user picks a subset
+    // to restore. The filter must operate on a copy of the cached snapshot
+    // — otherwise a failed applySessionSnapshot leaves the cache narrowed
+    // and a retry (different filter, or no filter) silently drops panels
+    // that were never restored.
+    writeBackup(tmpDir, {
+      capturedAt: Date.now(),
+      appState: {
+        terminals: [
+          { id: "a", kind: "terminal", title: "Alpha" },
+          { id: "b", kind: "terminal", title: "Bravo" },
+        ],
+      },
+    });
+    writeMarker(tmpDir);
+
+    const service = makeService();
+    service.initialize();
+
+    // First restore filters to just "a" but the underlying store.set
+    // throws, simulating a partial-write or transient failure.
+    storeMock.set.mockImplementationOnce(() => {
+      throw new Error("transient store failure");
+    });
+    expect(service.restoreBackup(["a"])).toBe(false);
+
+    // Retry without a filter — must still see both panels because the
+    // cache was not destructively narrowed by the failed first attempt.
+    storeMock.set.mockImplementation(() => {});
+    expect(service.restoreBackup()).toBe(true);
+    expect(storeMock.set).toHaveBeenLastCalledWith("appState", {
+      terminals: [
+        { id: "a", kind: "terminal", title: "Alpha" },
+        { id: "b", kind: "terminal", title: "Bravo" },
+      ],
+    });
+  });
+
   it("STARTBACKUPTIMER_IDEMPOTENT", () => {
     const service = makeService();
     const takeBackup = vi.spyOn(service, "takeBackup").mockImplementation(() => {});

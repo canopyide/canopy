@@ -183,13 +183,19 @@ export class CrashRecoveryService {
       }
 
       if (panelIds !== undefined && panelIds.length > 0 && snapshot.appState) {
-        const appState = snapshot.appState as Record<string, unknown>;
+        // Filter onto a shallow copy so we don't mutate cachedBackupSnapshot.
+        // If applySessionSnapshot below throws and the user retries the
+        // restore (with or without a different filter), the cache must
+        // still hold the full pre-crash terminal list — mutating it in
+        // place permanently drops panels from any retry path.
+        const appState = { ...(snapshot.appState as Record<string, unknown>) };
         if (Array.isArray(appState.terminals)) {
           const idSet = new Set(panelIds);
           appState.terminals = (appState.terminals as Array<{ id: string }>).filter((t) =>
             idSet.has(t.id)
           );
         }
+        snapshot = { ...snapshot, appState };
       }
 
       if (!hasRestorableSnapshotContent(snapshot)) {
@@ -300,9 +306,19 @@ export class CrashRecoveryService {
 
   private extractPanelSummaries(crashTimestamp: number): PanelSummary[] {
     try {
-      if (!fs.existsSync(this.backupPath)) return [];
-      const raw = fs.readFileSync(this.backupPath, "utf8");
-      const snapshot = JSON.parse(raw) as SessionSnapshot;
+      // Prefer the snapshot cached by consumeMarker — startBackupTimer can
+      // overwrite this.backupPath on disk between marker consumption and
+      // here, which would silently swap pre-crash panels for an empty
+      // post-crash session. Fall back to disk only when the cache failed
+      // to populate (read or parse error in consumeMarker's try block).
+      let snapshot: SessionSnapshot;
+      if (this.cachedBackupSnapshot) {
+        snapshot = this.cachedBackupSnapshot;
+      } else {
+        if (!fs.existsSync(this.backupPath)) return [];
+        const raw = fs.readFileSync(this.backupPath, "utf8");
+        snapshot = JSON.parse(raw) as SessionSnapshot;
+      }
       if (!snapshot.appState) return [];
 
       const appState = snapshot.appState as Record<string, unknown>;
