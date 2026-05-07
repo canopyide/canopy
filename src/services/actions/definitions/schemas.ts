@@ -78,7 +78,7 @@ export const FileSearchPayloadSchema = z.object({
 });
 
 export const CopyTreeOptionsSchema = z.object({
-  format: z.enum(["xml", "json", "markdown", "tree", "ndjson"]).optional(),
+  format: z.enum(["xml", "json", "markdown", "tree", "ndjson", "sarif"]).optional(),
   filter: z.union([z.string(), z.array(z.string())]).optional(),
   exclude: z.union([z.string(), z.array(z.string())]).optional(),
   always: z.array(z.string()).optional(),

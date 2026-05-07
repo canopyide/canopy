@@ -71,7 +71,6 @@ class CopyTreeService {
       }
 
       const sdkOptions: SdkCopyOptions = {
-        config: config,
         signal: controller.signal,
         display: false,
         clipboard: false,
@@ -93,8 +92,7 @@ class CopyTreeService {
 
         onProgress: onProgress
           ? (event: ProgressEvent) => {
-              const controller = this.activeOperations.get(opId);
-              if (!controller || controller.signal.aborted) return;
+              if (controller.signal.aborted) return;
 
               const progress: CopyTreeProgress = {
                 stage: event.stage || "Processing",
@@ -110,6 +108,9 @@ class CopyTreeService {
           : undefined,
         progressThrottleMs: 100,
       };
+      if (config) {
+        sdkOptions.config = config;
+      }
 
       const result: CopyResult = await copy(rootPath, sdkOptions);
 
@@ -170,7 +171,6 @@ class CopyTreeService {
       }
 
       const sdkOptions: SdkCopyOptions = {
-        config: config,
         signal: controller.signal,
         display: false,
         clipboard: false,
@@ -191,6 +191,9 @@ class CopyTreeService {
         maxFileCount: options.maxFileCount,
         sort: options.sort,
       };
+      if (config) {
+        sdkOptions.config = config;
+      }
 
       const result: CopyResult = await copy(rootPath, sdkOptions);
 

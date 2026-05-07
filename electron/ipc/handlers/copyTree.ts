@@ -1,6 +1,8 @@
 import { clipboard } from "electron";
 import crypto from "crypto";
+import os from "os";
 import path from "path";
+import { chmod, mkdir, writeFile } from "fs/promises";
 import { pathToFileURL } from "url";
 import { CHANNELS } from "../channels.js";
 import { formatErrorMessage } from "../../../shared/utils/errorMessage.js";
@@ -30,6 +32,7 @@ const FORMAT_TO_EXTENSION: Record<CopyTreeFormat, string> = {
   markdown: "md",
   tree: "txt",
   ndjson: "ndjson",
+  sarif: "sarif",
   xml: "xml",
 };
 
@@ -334,19 +337,15 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
     }
 
     try {
-      const fs = await import("fs/promises");
-      const os = await import("os");
-      const path = await import("path");
-
       const tempDir = path.join(os.tmpdir(), "daintree-context");
-      await fs.mkdir(tempDir, { recursive: true, mode: 0o700 });
+      await mkdir(tempDir, { recursive: true, mode: 0o700 });
       // mkdir({ mode }) is ignored when the directory already exists, so
       // chmod the directory explicitly each run to evict any stale, more
       // permissive mode left behind by a previous build or another process.
       // chmod is a no-op for permission bits on Windows.
       if (process.platform !== "win32") {
         try {
-          await fs.chmod(tempDir, 0o700);
+          await chmod(tempDir, 0o700);
         } catch {
           // best effort — file mode below still protects the contents
         }
@@ -371,7 +370,7 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
       const filename = `${projectName}-${safeBranch}-${timestamp}.${extension}`;
       const filePath = path.join(tempDir, filename);
 
-      await fs.writeFile(filePath, result.content, { encoding: "utf8", mode: 0o600 });
+      await writeFile(filePath, result.content, { encoding: "utf8", mode: 0o600 });
 
       if (process.platform === "darwin") {
         // Electron's `clipboard.writeBuffer` maps to Chromium's
@@ -531,7 +530,7 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
         deps.ptyClient!.write(validated.terminalId, chunk, traceId);
         i = end;
         if (i < contentToInject.length) {
-          await new Promise((resolve) => setTimeout(resolve, 1));
+          await new Promise((resolve) => setImmediate(resolve));
         }
       }
 
@@ -555,7 +554,7 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
       return;
     }
 
-    const validated = parseResult.success ? parseResult.data : {};
+    const validated = parseResult.data;
 
     if (validated.injectionId) {
       const wasActive = contextInjectionTracker.markCancelled(validated.injectionId);

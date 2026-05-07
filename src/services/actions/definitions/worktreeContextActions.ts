@@ -24,7 +24,7 @@ export function registerWorktreeContextActions(
       argsSchema: z
         .object({
           worktreeId: z.string().optional(),
-          format: z.enum(["xml", "json", "markdown", "tree", "ndjson"]).optional(),
+          format: z.enum(["xml", "json", "markdown", "tree", "ndjson", "sarif"]).optional(),
           modified: z.boolean().optional(),
         })
         .optional(),
@@ -71,7 +71,7 @@ export function registerWorktreeContextActions(
       argsSchema: z
         .object({
           worktreeId: z.string().optional(),
-          format: z.enum(["xml", "json", "markdown", "tree", "ndjson"]).optional(),
+          format: z.enum(["xml", "json", "markdown", "tree", "ndjson", "sarif"]).optional(),
           modified: z.boolean().optional(),
         })
         .optional(),

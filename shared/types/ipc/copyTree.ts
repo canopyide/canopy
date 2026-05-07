@@ -1,7 +1,7 @@
 /** CopyTree generation options */
 export interface CopyTreeOptions {
   /** Output format */
-  format?: "xml" | "json" | "markdown" | "tree" | "ndjson";
+  format?: "xml" | "json" | "markdown" | "tree" | "ndjson" | "sarif";
 
   /** Pattern filtering */
   filter?: string | string[];
