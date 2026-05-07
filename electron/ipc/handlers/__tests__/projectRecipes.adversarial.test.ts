@@ -109,6 +109,36 @@ describe("projectRecipes IPC adversarial", () => {
     expect(projectStoreMock.addRecipe).not.toHaveBeenCalled();
   });
 
+  it("addRecipe rejects non-finite lastUsedAt", async () => {
+    await expect(
+      getHandler(CHANNELS.PROJECT_ADD_RECIPE)(fakeEvent(), {
+        projectId: "p1",
+        recipe: { ...validRecipe(), lastUsedAt: Number.NaN },
+      })
+    ).rejects.toThrow(/lastUsedAt/);
+    expect(projectStoreMock.addRecipe).not.toHaveBeenCalled();
+  });
+
+  it("addRecipe rejects usageHistory exceeding the 20-entry cap", async () => {
+    await expect(
+      getHandler(CHANNELS.PROJECT_ADD_RECIPE)(fakeEvent(), {
+        projectId: "p1",
+        recipe: { ...validRecipe(), usageHistory: Array.from({ length: 21 }, (_v, i) => i + 1) },
+      })
+    ).rejects.toThrow(/usageHistory/);
+    expect(projectStoreMock.addRecipe).not.toHaveBeenCalled();
+  });
+
+  it("addRecipe rejects non-finite usageHistory entry", async () => {
+    await expect(
+      getHandler(CHANNELS.PROJECT_ADD_RECIPE)(fakeEvent(), {
+        projectId: "p1",
+        recipe: { ...validRecipe(), usageHistory: [1, Number.POSITIVE_INFINITY] },
+      })
+    ).rejects.toThrow(/usageHistory/);
+    expect(projectStoreMock.addRecipe).not.toHaveBeenCalled();
+  });
+
   it("addRecipe accepts a well-formed recipe and forwards it to the project store", async () => {
     const recipe = validRecipe();
     await getHandler(CHANNELS.PROJECT_ADD_RECIPE)(fakeEvent(), { projectId: "p1", recipe });
@@ -170,6 +200,30 @@ describe("projectRecipes IPC adversarial", () => {
     expect(projectStoreMock.updateRecipe).not.toHaveBeenCalled();
   });
 
+  it("updateRecipe rejects non-finite lastUsedAt patch", async () => {
+    await expect(
+      getHandler(CHANNELS.PROJECT_UPDATE_RECIPE)(fakeEvent(), {
+        projectId: "p1",
+        recipeId: "r1",
+        updates: { lastUsedAt: Number.NaN } as unknown as Record<string, unknown>,
+      })
+    ).rejects.toThrow(/lastUsedAt/);
+    expect(projectStoreMock.updateRecipe).not.toHaveBeenCalled();
+  });
+
+  it("updateRecipe rejects usageHistory patch exceeding the 20-entry cap", async () => {
+    await expect(
+      getHandler(CHANNELS.PROJECT_UPDATE_RECIPE)(fakeEvent(), {
+        projectId: "p1",
+        recipeId: "r1",
+        updates: {
+          usageHistory: Array.from({ length: 21 }, (_v, i) => i + 1),
+        } as unknown as Record<string, unknown>,
+      })
+    ).rejects.toThrow(/usageHistory/);
+    expect(projectStoreMock.updateRecipe).not.toHaveBeenCalled();
+  });
+
   it("updateRecipe forwards a clean rename patch", async () => {
     await getHandler(CHANNELS.PROJECT_UPDATE_RECIPE)(fakeEvent(), {
       projectId: "p1",
@@ -177,6 +231,16 @@ describe("projectRecipes IPC adversarial", () => {
       updates: { name: "New Name" },
     });
     expect(projectStoreMock.updateRecipe).toHaveBeenCalledWith("p1", "r1", { name: "New Name" });
+  });
+
+  it("updateRecipe accepts usageHistory at the 20-entry cap", async () => {
+    const usageHistory = Array.from({ length: 20 }, (_v, i) => i + 1);
+    await getHandler(CHANNELS.PROJECT_UPDATE_RECIPE)(fakeEvent(), {
+      projectId: "p1",
+      recipeId: "r1",
+      updates: { usageHistory },
+    });
+    expect(projectStoreMock.updateRecipe).toHaveBeenCalledWith("p1", "r1", { usageHistory });
   });
 
   it("deleteRecipe rejects empty recipeId", async () => {

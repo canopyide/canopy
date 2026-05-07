@@ -7,6 +7,7 @@ import { stableInRepoId } from "../../../shared/utils/recipeFilename.js";
 import type { HandlerDependencies } from "../types.js";
 import type { TerminalRecipe } from "../../types/index.js";
 import { typedHandle, typedHandleWithContext } from "../utils.js";
+import { assertRecipeUsageFields } from "./recipeValidation.js";
 
 export function registerProjectRecipesHandlers(_deps: HandlerDependencies): () => void {
   const handlers: Array<() => void> = [];
@@ -74,6 +75,7 @@ export function registerProjectRecipesHandlers(_deps: HandlerDependencies): () =
     if (!Number.isFinite(recipe.createdAt)) {
       throw new Error("Recipe createdAt must be a finite number");
     }
+    assertRecipeUsageFields(recipe);
     return projectStore.addRecipe(projectId, recipe);
   };
   handlers.push(typedHandle(CHANNELS.PROJECT_ADD_RECIPE, handleProjectAddRecipe));
@@ -106,6 +108,7 @@ export function registerProjectRecipesHandlers(_deps: HandlerDependencies): () =
     if ("terminals" in patch && !Array.isArray(patch.terminals)) {
       throw new Error("Invalid updates: terminals must be an array");
     }
+    assertRecipeUsageFields(patch);
     return projectStore.updateRecipe(projectId, recipeId, updates);
   };
   handlers.push(typedHandle(CHANNELS.PROJECT_UPDATE_RECIPE, handleProjectUpdateRecipe));
