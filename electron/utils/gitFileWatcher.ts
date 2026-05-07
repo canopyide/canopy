@@ -42,7 +42,8 @@ export interface GitFileWatcherOptions {
   worktreeMaxDebounceMs?: number;
   /** Max wait ceiling for worktree debounce — forces a flush during sustained bursts. */
   worktreeMaxWaitMs?: number;
-  /** Called when the recursive worktree watcher fails at runtime (error or startup). */
+  /** Called when the recursive worktree watcher fails because of the Linux
+   *  inotify watch limit (ENOSPC) or macOS FSEvents fd ceiling (EMFILE). */
   onWatcherFailed?: () => void;
   /** Called when the recursive worktree watcher fails specifically because of
    *  the Linux inotify watch limit (ENOSPC). Fires in addition to `onWatcherFailed`. */
@@ -137,6 +138,7 @@ export class GitFileWatcher {
         // ENOSPC) so WorktreeMonitor routes into its retry branch instead
         // of treating the watcher as healthy and disabling the retry loop.
         if (!worktreeWatcherStarted) {
+          this.closeWatchers();
           return false;
         }
       }
@@ -227,7 +229,8 @@ export class GitFileWatcher {
             if (
               changedName === ignored ||
               changedName.startsWith(ignored + "/") ||
-              changedName.includes("/" + ignored + "/")
+              changedName.includes("/" + ignored + "/") ||
+              changedName.endsWith("/" + ignored)
             ) {
               return;
             }

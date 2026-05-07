@@ -1274,5 +1274,72 @@ describe("GitFileWatcher", () => {
       await vi.advanceTimersByTimeAsync(150);
       expect(onChange).not.toHaveBeenCalled();
     });
+
+    it("ignores nested exact directory events (tail-position match)", async () => {
+      const { getCallback, createWatcher } = captureWorktreeCallback();
+      const onChange = vi.fn();
+
+      const watcher = createWatcher(onChange);
+      expect(watcher.start()).toBe(true);
+      const cb = getCallback();
+      expect(cb).toBeDefined();
+
+      // Directory creation/deletion reported as bare name without trailing child
+      cb?.("change", "packages/web/node_modules");
+      cb?.("change", "apps/site/.next");
+      cb?.("change", "pkg/__pycache__");
+
+      await vi.advanceTimersByTimeAsync(150);
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it("null filename bypasses ignore filter (global dirty mitigation)", async () => {
+      const { getCallback, createWatcher } = captureWorktreeCallback();
+      const onChange = vi.fn();
+
+      const watcher = createWatcher(onChange);
+      expect(watcher.start()).toBe(true);
+      const cb = getCallback();
+      expect(cb).toBeDefined();
+
+      // Fire several ignored events, then null — should still fire onChange
+      cb?.("change", "node_modules/react/index.js");
+      cb?.("change", "dist/bundle.js");
+      cb?.("change", null);
+
+      await vi.advanceTimersByTimeAsync(100);
+      expect(onChange).toHaveBeenCalledTimes(1);
+    });
+
+    it("ignores all 11 registered directory names at any depth", async () => {
+      const { getCallback, createWatcher } = captureWorktreeCallback();
+      const onChange = vi.fn();
+
+      const watcher = createWatcher(onChange);
+      expect(watcher.start()).toBe(true);
+      const cb = getCallback();
+      expect(cb).toBeDefined();
+
+      const dirs = [
+        "node_modules",
+        "dist",
+        "build",
+        ".next",
+        "target",
+        "coverage",
+        ".cache",
+        ".turbo",
+        "out",
+        "__pycache__",
+        ".venv",
+      ];
+
+      for (const dir of dirs) {
+        cb?.("change", `subdir/${dir}/file.ts`);
+      }
+
+      await vi.advanceTimersByTimeAsync(150);
+      expect(onChange).not.toHaveBeenCalled();
+    });
   });
 });
