@@ -1,7 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import { keybindingService, type KeyScope } from "../services/KeybindingService";
 import { comboToAriaKeyshortcuts } from "../lib/kbdShortcut";
 import { isMac } from "../lib/platform";
+
+const subscribeToKeybindings = (listener: () => void): (() => void) =>
+  keybindingService.subscribe(listener);
 
 export function useKeybindingScope(scope: KeyScope, active: boolean = true): void {
   useEffect(() => {
@@ -16,37 +19,13 @@ export function useKeybindingScope(scope: KeyScope, active: boolean = true): voi
 }
 
 export function useKeybindingDisplay(actionId: string): string {
-  const [displayCombo, setDisplayCombo] = useState(() =>
-    keybindingService.getDisplayCombo(actionId)
-  );
-
-  useEffect(() => {
-    const updateDisplay = () => {
-      setDisplayCombo(keybindingService.getDisplayCombo(actionId));
-    };
-
-    updateDisplay();
-    return keybindingService.subscribe(updateDisplay);
-  }, [actionId]);
-
-  return displayCombo;
+  const getSnapshot = useCallback(() => keybindingService.getDisplayCombo(actionId), [actionId]);
+  return useSyncExternalStore(subscribeToKeybindings, getSnapshot);
 }
 
 export function useEffectiveCombo(actionId: string): string | undefined {
-  const [combo, setCombo] = useState<string | undefined>(() =>
-    keybindingService.getEffectiveCombo(actionId)
-  );
-
-  useEffect(() => {
-    const update = () => {
-      setCombo(keybindingService.getEffectiveCombo(actionId));
-    };
-
-    update();
-    return keybindingService.subscribe(update);
-  }, [actionId]);
-
-  return combo;
+  const getSnapshot = useCallback(() => keybindingService.getEffectiveCombo(actionId), [actionId]);
+  return useSyncExternalStore(subscribeToKeybindings, getSnapshot);
 }
 
 /**
