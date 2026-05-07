@@ -121,6 +121,11 @@ export function escapeShellArgOptional(arg: string, platform?: "windows" | "posi
 // that could break out of the flag list is rejected as defense-in-depth (the real
 // boundary is node-pty with no shell layer). `$(` and `${` are matched as substrings
 // to avoid over-blocking legitimate bare `$` in flag values.
+//
+// POSIX-oriented: cmd.exe-specific metachars (`%VAR%`, `^`, `!`) are intentionally
+// omitted because the spawn path is node-pty without a `cmd.exe` shell layer, so
+// those characters cannot trigger expansion. If a future code path ever feeds a
+// flag value through `cmd.exe`, that path needs its own escaping/validation step.
 const SHELL_METACHAR_PATTERNS = [";", "|", "&", ">", "<", "$(", "${", "`", "\\"] as const;
 
 /**

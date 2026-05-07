@@ -293,6 +293,29 @@ describe("registerHelpAssistantHandlers", () => {
     );
   });
 
+  it("rejects metacharacters past the 10000-char cap (check before truncation)", async () => {
+    registerHelpAssistantHandlers();
+    const handler = ipcMainMock._handlers.get(SET_CHANNEL)!;
+
+    // Metachar at position > CUSTOM_ARGS_MAX_LEN must still be caught — the
+    // deny-list check runs on the full collapsed string before slice().
+    await handler(null, { customArgs: "x".repeat(10000) + "; touch /tmp/pwned" });
+
+    expect(storeMock.set).not.toHaveBeenCalled();
+  });
+
+  it("catches metacharacters formed after control-char stripping", async () => {
+    registerHelpAssistantHandlers();
+    const handler = ipcMainMock._handlers.get(SET_CHANNEL)!;
+
+    // Control-char stripping happens before the deny-list check, so a value
+    // crafted to hide `$(` behind a NUL byte must still be rejected once the
+    // NUL is removed.
+    await handler(null, { customArgs: "--x $\x00(whoami)" });
+
+    expect(storeMock.set).not.toHaveBeenCalled();
+  });
+
   it("rejects customArgs values that are not strings", async () => {
     registerHelpAssistantHandlers();
     const handler = ipcMainMock._handlers.get(SET_CHANNEL)!;
