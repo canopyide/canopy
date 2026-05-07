@@ -60,15 +60,29 @@ describe("probeDb", () => {
     expect(mockDatabaseConstructor).not.toHaveBeenCalled();
   });
 
-  it("returns true for a healthy database (pragma succeeds)", () => {
+  it("returns true for a healthy database (quick_check returns ok)", () => {
     const dbPath = path.join(tmpDir, "valid.db");
     fs.writeFileSync(dbPath, "dummy");
 
     mockDatabaseConstructor.mockImplementation(() => ({}));
-    mockPragma.mockReturnValue(1);
+    mockPragma.mockReturnValue("ok");
 
     expect(probeDb(dbPath)).toBe(true);
-    expect(mockPragma).toHaveBeenCalledWith("schema_version");
+    expect(mockPragma).toHaveBeenCalledWith("quick_check", { simple: true });
+    expect(mockClose).toHaveBeenCalled();
+  });
+
+  it("returns false when quick_check returns a corruption error string", () => {
+    const dbPath = path.join(tmpDir, "corrupt.db");
+    fs.writeFileSync(dbPath, "dummy");
+
+    mockDatabaseConstructor.mockImplementation(() => ({}));
+    mockPragma.mockReturnValue(
+      "*** in database main ***\nPage 48: btreeInitPage() returns error code 11"
+    );
+
+    expect(probeDb(dbPath)).toBe(false);
+    expect(mockPragma).toHaveBeenCalledWith("quick_check", { simple: true });
     expect(mockClose).toHaveBeenCalled();
   });
 
@@ -125,7 +139,7 @@ describe("attemptRecovery", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     // By default probeDb succeeds for backup verification
     mockDatabaseConstructor.mockImplementation(() => ({}));
-    mockPragma.mockReturnValue(1);
+    mockPragma.mockReturnValue("ok");
   });
 
   afterEach(() => {
