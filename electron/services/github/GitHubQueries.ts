@@ -579,7 +579,7 @@ export function buildBatchRequiredChecksQuery(
               commit {
                 statusCheckRollup {
                   state
-                  contexts(first: 50) {
+                  contexts(first: 100) {
                     pageInfo { hasNextPage }
                     nodes {
                       __typename

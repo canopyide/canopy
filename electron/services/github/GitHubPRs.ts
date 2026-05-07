@@ -19,7 +19,7 @@ import {
   type PRRequiredStatusEntry,
 } from "./GitHubCaches.js";
 import { GitHubStatsCache } from "../GitHubStatsCache.js";
-import { deriveRequiredCIStatus } from "./prRequiredCIStatus.js";
+import { deriveRequiredCIStatus, normalizeRawState } from "./prRequiredCIStatus.js";
 import type { RollupContextNode } from "./prRequiredCIStatus.js";
 import type {
   GitHubPR,
@@ -89,9 +89,7 @@ export function parsePRNode(node: Record<string, unknown>): GitHubPR {
   const commitsData = node.commits as
     | { nodes?: Array<{ commit?: { statusCheckRollup?: { state?: string } | null } | null }> }
     | undefined;
-  const ciStatus = commitsData?.nodes?.[0]?.commit?.statusCheckRollup?.state as
-    | GitHubPRCIStatus
-    | undefined;
+  const ciStatus = normalizeRawState(commitsData?.nodes?.[0]?.commit?.statusCheckRollup?.state);
 
   return {
     number: node.number as number,

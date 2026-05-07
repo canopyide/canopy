@@ -42,7 +42,7 @@ export interface DerivedCIResult {
   ciSummary: GitHubPRCISummary | undefined;
 }
 
-function normalizeRawState(
+export function normalizeRawState(
   rawRollupState: string | null | undefined
 ): GitHubPRCIStatus | undefined {
   if (!rawRollupState) return undefined;

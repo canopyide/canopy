@@ -170,7 +170,7 @@ describe("buildBatchPRQuery", () => {
     expect(query).toContain("pullRequest(number: 34)");
     expect(query).toContain("isRequired(pullRequestNumber: 12)");
     expect(query).toContain("isRequired(pullRequestNumber: 34)");
-    expect(query).toContain("contexts(first: 50)");
+    expect(query).toContain("contexts(first: 100)");
     expect(query).toContain("... on CheckRun");
     expect(query).toContain("... on StatusContext");
     expect(query).toContain("hasNextPage");

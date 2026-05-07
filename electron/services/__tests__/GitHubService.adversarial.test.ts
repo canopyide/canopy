@@ -617,6 +617,47 @@ describe("GitHubService adversarial", () => {
     expect(shared.graphqlClient).toHaveBeenCalledTimes(1);
   });
 
+  it("BATCHCHECK_DISCOVERY_BRANCH_SELECTS_NEWEST_WITHIN_TIER", async () => {
+    // Branch-query orders DESC (newest-first). Within the open tier, the
+    // newest PR must be selected, not the oldest.
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      createBranchListResponse(200, {
+        etag: 'W/"discovered"',
+        body: [{ number: 200 }, { number: 100 }],
+      })
+    );
+    shared.graphqlClient.mockResolvedValueOnce({
+      wt_0_branch: {
+        pullRequests: {
+          nodes: [
+            {
+              number: 200,
+              title: "Newer",
+              url: "https://github.com/owner/repo/pull/200",
+              state: "OPEN",
+              updatedAt: "2026-02-01T00:00:00Z",
+              merged: false,
+            },
+            {
+              number: 100,
+              title: "Older",
+              url: "https://github.com/owner/repo/pull/100",
+              state: "OPEN",
+              updatedAt: "2026-01-01T00:00:00Z",
+              merged: false,
+            },
+          ],
+        },
+      },
+    });
+
+    const result = await github.batchCheckLinkedPRs("/repo", [
+      { worktreeId: "wt-1", branchName: "feature/reused" },
+    ]);
+    expect(result.results.size).toBe(1);
+    expect(result.results.get("wt-1")?.pr?.number).toBe(200);
+  });
+
   it("BATCHCHECK_DISCOVERY_BRANCH_PROBE_SENDS_IF_NONE_MATCH", async () => {
     // Cycle 1 seeds the branch-list ETag.
     vi.mocked(global.fetch).mockResolvedValueOnce(

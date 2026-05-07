@@ -159,11 +159,11 @@ function parseBatchPRResponse(
 
         let chosen: { pr: LinkedPR; raw: BatchPRRawNode } | undefined;
         if (openPRs.length > 0) {
-          chosen = openPRs[openPRs.length - 1];
+          chosen = openPRs[0];
         } else if (mergedPRs.length > 0) {
-          chosen = mergedPRs[mergedPRs.length - 1];
+          chosen = mergedPRs[0];
         } else if (closedPRs.length > 0) {
-          chosen = closedPRs[closedPRs.length - 1];
+          chosen = closedPRs[0];
         }
         if (chosen) {
           foundPR = chosen.pr;
