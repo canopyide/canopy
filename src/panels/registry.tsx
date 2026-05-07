@@ -13,6 +13,7 @@ import { TerminalPane } from "@/components/Terminal/TerminalPane";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { BrowserPaneSkeleton } from "@/components/Browser/BrowserPaneSkeleton";
 import { ContentFadeIn } from "@/components/ui/ContentFadeIn";
+import { logError } from "@/utils/logger";
 
 import { serializePtyPanel } from "./terminal/serializer";
 import { createTerminalDefaults } from "./terminal/defaults";
@@ -165,7 +166,7 @@ function notifyDefinitionListeners(): void {
     try {
       listener();
     } catch (err) {
-      console.error("[panelKindRegistry] definition listener threw:", err);
+      logError("[panelKindRegistry] definition listener threw", err);
     }
   }
 }
@@ -217,7 +218,7 @@ export function registerPanelKindDefinition(
       return;
     }
     if (!component) {
-      console.error(
+      logError(
         `[panelKindRegistry] registerPanelKindDefinition("${definitionOrKindId}") called without a component`
       );
       return;
@@ -229,7 +230,7 @@ export function registerPanelKindDefinition(
 
   const existing = PANEL_KIND_DEFINITION_REGISTRY[definition.id];
   if (existing && existing.extensionId === undefined && definition.extensionId !== undefined) {
-    console.error(
+    logError(
       `[panelKindRegistry] Refusing to overwrite built-in panel kind definition "${definition.id}" with extension "${definition.extensionId}"`
     );
     return;

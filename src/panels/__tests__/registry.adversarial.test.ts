@@ -174,7 +174,8 @@ describe("panel registry adversarial", () => {
     // subscribers re-render without any actual change.
     expect(getPanelKindDefinitionsSnapshot()).toBe(snapshotBefore);
     expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Refusing to overwrite built-in panel kind definition "browser"')
+      expect.stringContaining('Refusing to overwrite built-in panel kind definition "browser"'),
+      expect.anything()
     );
     errorSpy.mockRestore();
   });
@@ -230,8 +231,8 @@ describe("panel registry adversarial", () => {
     expect(throwingListener).toHaveBeenCalledTimes(1);
     expect(goodListener).toHaveBeenCalledTimes(1);
     expect(errorSpy).toHaveBeenCalledWith(
-      "[panelKindRegistry] definition listener threw:",
-      expect.any(Error)
+      expect.stringContaining("[panelKindRegistry] definition listener threw"),
+      expect.anything()
     );
 
     off1();
