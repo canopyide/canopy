@@ -68,10 +68,22 @@ export async function gracefulShutdown(host: TerminalGracefulShutdownHost): Prom
   let resolved = false;
 
   return new Promise<string | null>((resolve) => {
+    // Pre-declared so finish() can dispose them centrally (forward reference).
+    // No-op sentinel keeps disposal safe even on synchronous early-exit paths
+    // before assignment. node-pty's IDisposable scan is idempotent, so the
+    // existing branch-local dispose calls remain harmless double-disposes.
+    let origOnData: { dispose(): void } = { dispose() {} };
+    let origOnExit: { dispose(): void } = { dispose() {} };
+
     const finish = (sessionId: string | null) => {
       if (resolved) return;
       resolved = true;
       clearTimeout(timer);
+
+      // Dispose listeners before kill() so a synchronous onExit during teardown
+      // can't re-enter this path. Lesson from #4974: order matters in shutdown.
+      origOnData.dispose();
+      origOnExit.dispose();
 
       if (sessionId) {
         terminal.agentSessionId = sessionId;
@@ -83,7 +95,7 @@ export async function gracefulShutdown(host: TerminalGracefulShutdownHost): Prom
 
     const timer = setTimeout(() => finish(null), GRACEFUL_SHUTDOWN_TIMEOUT_MS);
 
-    const origOnData = terminal.ptyProcess.onData((data: string) => {
+    origOnData = terminal.ptyProcess.onData((data: string) => {
       if (resolved) return;
       if (!pattern) return;
 
@@ -95,15 +107,11 @@ export async function gracefulShutdown(host: TerminalGracefulShutdownHost): Prom
       const stripped = stripAnsiCodes(shutdownBuffer);
       const match = pattern.exec(stripped);
       if (match?.[1]) {
-        origOnData.dispose();
         finish(match[1]);
       }
     });
 
-    const origOnExit = terminal.ptyProcess.onExit(() => {
-      origOnExit.dispose();
-      origOnData.dispose();
-
+    origOnExit = terminal.ptyProcess.onExit(() => {
       if (!pattern) {
         finish(null);
         return;

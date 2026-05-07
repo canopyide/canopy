@@ -948,12 +948,12 @@ export class TerminalProcess {
       this.deps.agentStateService.emitAgentKilled(terminal, reason);
     }
 
-    // Capture forensic tail before disposeHeadless() clears the buffer so
-    // any subscriber that runs synchronously after the natural-exit
-    // emit-path can still read it. The kill path emits no `terminal:exited`
-    // here — natural onExit will fire (or `dispose()` will emit if it
-    // doesn't), carrying `reason: "kill"` through the exit-reason carried
-    // by the state machine.
+    // Tear down the headless terminal model (xterm instance, synchronized
+    // frame detector, headless responder). The forensic buffer lives on
+    // `this.forensicsBuffer` and is *not* touched by disposeHeadless(); the
+    // natural onExit handler (or dispose() if onExit never fires) reads
+    // `forensicsBuffer.getRecentOutput()` and emits `terminal:exited` with
+    // `reason: "kill"` carried through the lifecycle state machine.
     this.disposeHeadless();
 
     this.processTreeKiller.execute(false);
