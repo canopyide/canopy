@@ -2300,6 +2300,23 @@ describe("McpServerService", () => {
     // MCP control plane on any tier.
     const NEVER_EXPOSED_VIA_MCP = ["terminal.bulkCommand"] as const;
 
+    // External tier (apiKey) curates MCP_TOOL_ALLOWLIST independently from the
+    // help-assistant tiers. Focus and theme actions live in ACTION_TIER_ADDONS
+    // for assistant-driven UI shifts but are intentionally absent from the
+    // external surface — guard against accidental cross-curation.
+    const NOT_IN_EXTERNAL_TIER = [
+      "agent.focusNextWaiting",
+      "agent.focusNextWorking",
+      "agent.focusNextAgent",
+      "agent.focusPreviousAgent",
+      "workflow.focusNextAttention",
+      "app.theme.pick",
+      "app.theme.browser.open",
+      "app.theme.toggle",
+      "agentSettings.get",
+      "keybinding.getOverrides",
+    ] as const;
+
     it("workbench tier exposes only read-only introspection tools", async () => {
       paneTokenTiers.set("token-wb", "workbench");
       const { window } = createMockWindow({ getManifest: tierManifest });
@@ -2318,11 +2335,13 @@ describe("McpServerService", () => {
       }
       expect(ids).not.toContain("worktree.create");
       expect(ids).not.toContain("git.commit");
-      expect(ids).not.toContain("workflow.startWorkOnIssue");
-      expect(ids).not.toContain("project.update");
-      expect(ids).not.toContain("project.saveSettings");
-      expect(ids).not.toContain("project.muteNotifications");
       expect(ids).not.toContain("copyTree.isAvailable");
+      for (const id of ACTION_TIER_TOOLS) {
+        expect(ids).not.toContain(id);
+      }
+      for (const id of SYSTEM_ONLY_TOOLS) {
+        expect(ids).not.toContain(id);
+      }
       for (const id of NEVER_EXPOSED_VIA_MCP) {
         expect(ids).not.toContain(id);
       }
@@ -2443,6 +2462,9 @@ describe("McpServerService", () => {
 
       const ids = (await client.listTools()).tools.map((tool) => tool.name);
       for (const id of NEVER_EXPOSED_VIA_MCP) {
+        expect(ids).not.toContain(id);
+      }
+      for (const id of NOT_IN_EXTERNAL_TIER) {
         expect(ids).not.toContain(id);
       }
     });
