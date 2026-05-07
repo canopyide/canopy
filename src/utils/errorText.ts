@@ -5,7 +5,12 @@ const OSC_7BIT = /\x1b\][\s\S]*?(?:\x07|\x1b\\)/g;
 const OSC_8BIT = /\x9d[\s\S]*?(?:\x07|\x9c)/g;
 const DCS_SOS_PM_APC_7BIT = /\x1b[PX^_][\s\S]*?\x1b\\/g;
 const DCS_SOS_PM_APC_8BIT = /[\x90\x98\x9e\x9f][\s\S]*?\x9c/g;
-const CSI = /\x1b\[[\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e]/g;
+// Catches unterminated OSC/DCS/SOS/PM/APC payloads that escaped the strict
+// patterns above. Runs before CSI/FE_ESCAPE so the introducer + payload are
+// dropped together rather than leaving the payload as visible text.
+const UNTERMINATED_STRING_SEQ = /\x1b[\]PX^_][^\x07\x1b]*/g;
+const CSI_7BIT = /\x1b\[[\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e]/g;
+const CSI_8BIT = /\x9b[\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e]/g;
 const FE_ESCAPE = /\x1b[\x20-\x2f]*[\x30-\x7e]/g;
 const C0_AND_DEL = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g;
 const C1 = /[\x80-\x9f]/g;
@@ -36,7 +41,9 @@ export function sanitizeErrorText(text: string): string {
     .replace(OSC_8BIT, "")
     .replace(DCS_SOS_PM_APC_7BIT, "")
     .replace(DCS_SOS_PM_APC_8BIT, "")
-    .replace(CSI, "")
+    .replace(UNTERMINATED_STRING_SEQ, "")
+    .replace(CSI_7BIT, "")
+    .replace(CSI_8BIT, "")
     .replace(FE_ESCAPE, "")
     .replace(C0_AND_DEL, "")
     .replace(C1, "")

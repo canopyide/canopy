@@ -54,6 +54,27 @@ describe("sanitizeErrorText", () => {
     expect(sanitizeErrorText("a\x1b=b")).toBe("ab");
   });
 
+  it("strips unterminated OSC payloads (no terminator)", () => {
+    expect(sanitizeErrorText("\x1b]0;injected text with no terminator")).toBe("");
+    expect(sanitizeErrorText("before\x1b]0;hidden")).toBe("before");
+  });
+
+  it("strips unterminated DCS/APC/PM/SOS payloads", () => {
+    expect(sanitizeErrorText("\x1bP1;2;3qpayload")).toBe("");
+    expect(sanitizeErrorText("\x1b^apc payload")).toBe("");
+    expect(sanitizeErrorText("\x1b_pm payload")).toBe("");
+    expect(sanitizeErrorText("\x1bXsos payload")).toBe("");
+  });
+
+  it("strips unterminated sequence followed by valid sequence", () => {
+    expect(sanitizeErrorText("\x1b]0;leak\x1b[31mred\x1b[0m")).toBe("red");
+  });
+
+  it("strips 8-bit CSI sequences (parameter text included)", () => {
+    expect(sanitizeErrorText("\x9b31mred\x9b0m")).toBe("red");
+    expect(sanitizeErrorText("\x9b2J\x9bH")).toBe("");
+  });
+
   it("strips C0 control characters (excluding HT/LF/CR)", () => {
     expect(sanitizeErrorText("a\x00b\x07c\x08d")).toBe("abcd");
     expect(sanitizeErrorText("a\x0bb\x0cc")).toBe("abc");
@@ -112,6 +133,15 @@ describe("boundedErrorText", () => {
     expect(result).toContain("...");
     expect(result.startsWith("a")).toBe(true);
     expect(result.endsWith("a")).toBe(true);
+  });
+
+  it("preserves both ends when middle-truncating", () => {
+    const text = "PREFIX_" + "x".repeat(240) + "_SUFFIX";
+    const result = boundedErrorText(text, 200);
+    expect(result.length).toBeLessThanOrEqual(200);
+    expect(result.startsWith("PREFIX_")).toBe(true);
+    expect(result.endsWith("_SUFFIX")).toBe(true);
+    expect(result).toContain("...");
   });
 
   it("uses default limit of 200", () => {
