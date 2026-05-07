@@ -11,6 +11,7 @@
 
 import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
 import { isTrustedRendererUrl } from "../shared/utils/trustedRenderer.js";
+import { isElectronUpdaterSupported } from "../shared/config/platform.js";
 import { isIpcEnvelope } from "../shared/types/ipc/errors.js";
 import { deserializeError } from "../shared/utils/ipcErrorSerialization.js";
 import type { AppErrorCode } from "../shared/types/appError.js";
@@ -2042,6 +2043,8 @@ const api: ElectronAPI = {
 
   // Auto-Update API
   update: {
+    isSupported: isElectronUpdaterSupported(),
+
     onUpdateAvailable: (callback: (info: { version: string }) => void) =>
       _typedOn(CHANNELS.UPDATE_AVAILABLE, callback),
 

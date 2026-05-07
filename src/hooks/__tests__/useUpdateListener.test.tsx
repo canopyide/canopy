@@ -120,6 +120,7 @@ describe("useUpdateListener", () => {
 
     window.electron = {
       update: {
+        isSupported: true,
         onUpdateAvailable: vi.fn((cb: AvailableCallback) => {
           capturedAvailable = cb;
           return cleanupAvailable;

@@ -1008,6 +1008,7 @@ export interface ElectronAPI {
     getSoundDir(): Promise<string>;
   };
   update: {
+    readonly isSupported: boolean;
     onUpdateAvailable(callback: (info: { version: string }) => void): () => void;
     onDownloadProgress(callback: (info: { percent: number }) => void): () => void;
     onUpdateDownloaded(callback: (info: { version: string }) => void): () => void;

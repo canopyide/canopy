@@ -93,7 +93,7 @@ export function useUpdateListener(suppressToasts = false): void {
   }, [suppressToasts]);
 
   useEffect(() => {
-    if (!window.electron?.update) return;
+    if (!window.electron?.update?.isSupported) return;
 
     const cleanupAvailable = window.electron.update.onUpdateAvailable((info) => {
       if (suppressRef.current) {

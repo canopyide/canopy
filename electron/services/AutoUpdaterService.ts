@@ -11,6 +11,7 @@ import { getSystemSleepService } from "./SystemSleepService.js";
 import { store } from "../store.js";
 import { PRODUCT_NAME } from "../utils/productBranding.js";
 import { isTrustedRendererUrl } from "../../shared/utils/trustedRenderer.js";
+import { isElectronUpdaterSupported } from "../../shared/config/platform.js";
 
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
 const DISMISS_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -415,8 +416,8 @@ class AutoUpdaterService {
       return;
     }
 
-    if (process.platform === "win32" && process.env.PORTABLE_EXECUTABLE_FILE) {
-      console.log("[MAIN] Auto-updater disabled for Windows portable builds");
+    if (!isElectronUpdaterSupported()) {
+      console.log("[MAIN] Auto-updater disabled for Windows builds");
       return;
     }
 

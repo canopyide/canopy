@@ -454,7 +454,7 @@ export function createApplicationMenu(
             await shell.openExternal("https://github.com/daintreehq/daintree");
           },
         },
-        ...(process.platform !== "darwin" && app.isPackaged
+        ...(process.platform !== "darwin" && process.platform !== "win32" && app.isPackaged
           ? [
               { type: "separator" as const },
               {
