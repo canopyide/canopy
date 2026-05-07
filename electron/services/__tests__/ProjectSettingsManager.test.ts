@@ -287,4 +287,46 @@ describe("ProjectSettingsManager caching", () => {
       expect(stat.mode & 0o777).toBe(0o600);
     }
   );
+
+  it("does not quarantine on permission errors and surfaces them via console.error", async () => {
+    const settingsPath = path.join(tempDir, projectId, "settings.json");
+    await fs.writeFile(settingsPath, JSON.stringify({ runCommands: [] }), "utf-8");
+
+    const eacces = Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
+    const readSpy = vi.spyOn(fs, "readFile").mockRejectedValueOnce(eacces);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const result = await manager.getProjectSettings(projectId);
+    expect(result).toEqual({ runCommands: [] });
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+
+    readSpy.mockRestore();
+    errorSpy.mockRestore();
+
+    const dirEntries = await fs.readdir(path.join(tempDir, projectId));
+    expect(dirEntries).toContain("settings.json");
+    expect(dirEntries.some((name) => name.includes(".corrupted."))).toBe(false);
+  });
+
+  it("preserves a blank secure env value through resolution rather than treating it as unresolved", async () => {
+    const { projectEnvSecureStorage } = await import("../ProjectEnvSecureStorage.js");
+    const getMock = projectEnvSecureStorage.get as unknown as ReturnType<typeof vi.fn>;
+    getMock.mockImplementation((_pid: string, key: string) =>
+      key === "OPTIONAL_TOKEN" ? "" : undefined
+    );
+
+    const settingsPath = path.join(tempDir, projectId, "settings.json");
+    await fs.writeFile(
+      settingsPath,
+      JSON.stringify({ runCommands: [], secureEnvironmentVariables: ["OPTIONAL_TOKEN"] }),
+      "utf-8"
+    );
+
+    const loaded = await manager.getProjectSettings(projectId);
+    expect(loaded.environmentVariables?.OPTIONAL_TOKEN).toBe("");
+    expect(loaded.unresolvedSecureEnvironmentVariables).toBeUndefined();
+
+    getMock.mockReset();
+    getMock.mockReturnValue(undefined);
+  });
 });

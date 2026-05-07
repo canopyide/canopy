@@ -50,6 +50,16 @@ describe("parseTerminalSettings", () => {
       expect(message).toContain("[ProjectSettingsManager]");
       expect(message).toContain("zsh");
     });
+
+    it("preserves sibling fields when only shell is dropped", () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const result = parseTerminalSettings({
+        shell: "zsh",
+        shellArgs: ["-l"],
+        scrollbackLines: 5000,
+      });
+      expect(result).toEqual({ shellArgs: ["-l"], scrollbackLines: 5000 });
+    });
   });
 
   it("rejects non-absolute defaultWorkingDirectory", () => {
