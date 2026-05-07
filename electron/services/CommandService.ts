@@ -44,10 +44,10 @@ class CommandServiceImpl {
           overrideMap.set(override.commandId, override);
         }
       }
+      this.overridesCache.set(projectId, overrideMap);
     } catch (error) {
       console.error(`[CommandService] Failed to load overrides for project ${projectId}:`, error);
     }
-    this.overridesCache.set(projectId, overrideMap);
     return overrideMap;
   }
 
@@ -556,6 +556,7 @@ class CommandServiceImpl {
    */
   clear(): void {
     this.commands.clear();
+    this.overridesCache.clear();
   }
 }
 
