@@ -442,11 +442,15 @@ export function PortalDock() {
             onReloadTab={handleReloadTab}
             enabledLinks={enabledLinks}
           />
-          <div ref={contentRef} className="flex-1 flex flex-col min-h-0 relative">
+          <div
+            ref={contentRef}
+            id="portal-placeholder"
+            className="flex-1 flex flex-col min-h-0 relative"
+          >
             {showLaunchpad ? (
               <PortalLaunchpad links={enabledLinks} onOpenUrl={handleOpenUrl} />
             ) : (
-              <div className="flex-1 bg-daintree-sidebar" id="portal-placeholder" />
+              <div className="flex-1 bg-daintree-sidebar" />
             )}
           </div>
         </aside>

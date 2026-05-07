@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { StrictMode } from "react";
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PortalVisibilityController } from "../PortalVisibilityController";
@@ -302,6 +303,38 @@ describe("PortalVisibilityController", () => {
     });
 
     expect(portal.show).not.toHaveBeenCalled();
+  });
+
+  it("still restores tabs after StrictMode's effect cleanup-then-rerun cycle (mount ref must reset to true)", async () => {
+    vi.spyOn(document, "getElementById").mockReturnValue({
+      getBoundingClientRect: () => createPlaceholderRect(),
+    } as unknown as HTMLElement);
+
+    render(
+      <StrictMode>
+        <PortalVisibilityController />
+      </StrictMode>
+    );
+
+    act(() => {
+      usePortalStore.setState({
+        isOpen: true,
+        activeTabId: "tab-1",
+        tabs: [{ id: "tab-1", title: "Docs", url: "https://example.com/docs" }],
+        createdTabs: new Set<string>(),
+      });
+    });
+
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    // If the unmount-tracking ref was permanently flipped to false by StrictMode's
+    // double-invoke, the bounds-checked guard would skip portal.show.
+    expect(portal.show).toHaveBeenCalledWith({
+      tabId: "tab-1",
+      bounds: { x: 10, y: 21, width: 301, height: 401 },
+    });
   });
 
   it("removes tab from createdTabs when eviction event fires", () => {

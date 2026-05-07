@@ -177,7 +177,10 @@ export function PortalVisibilityController(): null {
   }, [portalOpen, activeTabId, tabs, hasOverlays, ensureTabAndRestore]);
 
   // Mark unmounted so in-flight bounds polling and pending queue work bails out.
+  // The body re-asserts true so React 19 StrictMode's effect re-run (cleanup then
+  // body) leaves the live component flagged as mounted; production runs once.
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
     };
