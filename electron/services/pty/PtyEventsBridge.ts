@@ -26,6 +26,7 @@ export interface PtyEventsBridgeConfig {
     isThrottled: boolean;
     reason?: string;
     duration?: number;
+    forced?: boolean;
     timestamp: number;
   }) => void;
 }
@@ -142,6 +143,7 @@ export function bridgePtyEvent(event: PtyHostEvent, config?: PtyEventsBridgeConf
         isThrottled: event.isThrottled,
         reason: event.reason,
         duration: event.duration,
+        forced: event.forced,
         timestamp: event.timestamp,
       });
       return true;

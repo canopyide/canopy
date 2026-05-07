@@ -188,7 +188,9 @@ export class ResourceGovernor {
     this.deps.sendEvent({
       type: "host-throttled",
       isThrottled: false,
+      reason: `High memory usage: ${Math.round(currentUsageMb)}MB (${percent.toFixed(1)}%)`,
       duration,
+      forced,
       timestamp: Date.now(),
     });
   }
@@ -197,6 +199,13 @@ export class ResourceGovernor {
     if (this.checkInterval) {
       clearInterval(this.checkInterval);
       this.checkInterval = null;
+    }
+    if (this.isThrottling) {
+      for (const id of this.deps.getTerminalIds()) {
+        this.deps.getPauseCoordinator(id)?.resume("resource-governor");
+      }
+      this.isThrottling = false;
+      this.throttleStartTime = 0;
     }
     this.killedPids.clear();
     console.log("[ResourceGovernor] Disposed");
