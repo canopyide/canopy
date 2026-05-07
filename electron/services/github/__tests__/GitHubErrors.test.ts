@@ -6,7 +6,28 @@ import type { RequestOptions, OctokitResponse } from "@octokit/types";
 import { parseGitHubError } from "../GitHubErrors.js";
 import { GitHubAuth, captureAuthMetadata } from "../GitHubAuth.js";
 import { gitHubRateLimitService } from "../GitHubRateLimitService.js";
-import { isTokenRelatedError, isTransientNetworkError } from "../../../../src/lib/githubErrors.js";
+
+// Mirror the renderer-side classifiers from `src/lib/githubErrors.ts`. The
+// renderer can't be imported here (Electron main/renderer boundary), so the
+// rules are duplicated locally and exercised against real `parseGitHubError`
+// outputs to confirm the cross-cutting contract: a token-related output
+// matches `isTokenRelatedError`, a transient output matches
+// `isTransientNetworkError`. Independent tests in
+// `src/lib/__tests__/githubErrors.test.ts` cover the renderer-side
+// implementation against the same canonical strings.
+function isTokenRelatedError(msg: string): boolean {
+  return (
+    msg.includes("GitHub token not configured") ||
+    msg.includes("Invalid GitHub token") ||
+    msg.includes("Token lacks required permissions") ||
+    msg.includes("SSO authorization required")
+  );
+}
+function isTransientNetworkError(msg: string): boolean {
+  return (
+    msg.startsWith("Cannot reach GitHub.") || msg.startsWith("GitHub is temporarily unavailable.")
+  );
+}
 
 function createStorage() {
   let token: string | undefined;
