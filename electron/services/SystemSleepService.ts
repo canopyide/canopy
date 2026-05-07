@@ -55,6 +55,9 @@ class SystemSleepService {
       return;
     }
 
+    // Clear bookkeeping carried over from a prior lifecycle so reinitialize starts clean.
+    this.reset();
+
     // Remove any existing listeners to prevent stacking on re-initialization
     powerMonitor.off("suspend", this.handleSuspend);
     powerMonitor.off("resume", this.handleResume);
