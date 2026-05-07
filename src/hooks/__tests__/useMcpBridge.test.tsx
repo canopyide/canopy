@@ -306,6 +306,84 @@ describe("useMcpBridge", () => {
     expect(cleanupDispatch).toHaveBeenCalledTimes(1);
   });
 
+  describe("agent.* spawn tagging (#6959)", () => {
+    it("stamps spawnedBy: 'mcp' onto agent.launch dispatches and preserves caller args", async () => {
+      mocks.get.mockReturnValue(safeManifestEntry({ id: "agent.launch", danger: "safe" }));
+      mocks.dispatch.mockResolvedValue({ ok: true, result: { terminalId: "t-1" } });
+
+      renderHook(() => useMcpBridge());
+
+      await dispatchHandler?.({
+        requestId: "req-launch",
+        actionId: "agent.launch",
+        args: { agentId: "claude", location: "grid" },
+      });
+
+      expect(mocks.dispatch).toHaveBeenCalledWith(
+        "agent.launch",
+        { agentId: "claude", location: "grid", spawnedBy: "mcp" },
+        { source: "agent", confirmed: undefined }
+      );
+    });
+
+    it("overrides any caller-supplied spawnedBy on agent.* dispatches", async () => {
+      mocks.get.mockReturnValue(safeManifestEntry({ id: "agent.claude", danger: "safe" }));
+      mocks.dispatch.mockResolvedValue({ ok: true, result: { terminalId: "t-2" } });
+
+      renderHook(() => useMcpBridge());
+
+      // An MCP client might try to claim a different origin — ignore it.
+      await dispatchHandler?.({
+        requestId: "req-claude",
+        actionId: "agent.claude",
+        args: { spawnedBy: "quickrun" },
+      });
+
+      expect(mocks.dispatch).toHaveBeenCalledWith(
+        "agent.claude",
+        { spawnedBy: "mcp" },
+        { source: "agent", confirmed: undefined }
+      );
+    });
+
+    it("synthesizes args object when none provided for agent.* dispatches", async () => {
+      mocks.get.mockReturnValue(safeManifestEntry({ id: "agent.terminal", danger: "safe" }));
+      mocks.dispatch.mockResolvedValue({ ok: true, result: { terminalId: "t-3" } });
+
+      renderHook(() => useMcpBridge());
+
+      await dispatchHandler?.({
+        requestId: "req-terminal",
+        actionId: "agent.terminal",
+      });
+
+      expect(mocks.dispatch).toHaveBeenCalledWith(
+        "agent.terminal",
+        { spawnedBy: "mcp" },
+        { source: "agent", confirmed: undefined }
+      );
+    });
+
+    it("does not tag non-agent actions", async () => {
+      mocks.get.mockReturnValue(safeManifestEntry({ id: "actions.list", danger: "safe" }));
+      mocks.dispatch.mockResolvedValue({ ok: true, result: { ok: true } });
+
+      renderHook(() => useMcpBridge());
+
+      await dispatchHandler?.({
+        requestId: "req-list",
+        actionId: "actions.list",
+        args: { limit: 5 },
+      });
+
+      expect(mocks.dispatch).toHaveBeenCalledWith(
+        "actions.list",
+        { limit: 5 },
+        { source: "agent", confirmed: undefined }
+      );
+    });
+  });
+
   it("drops in-flight confirmations from the store on unmount and never sends a late response", async () => {
     mocks.get.mockReturnValue(confirmManifestEntry());
 

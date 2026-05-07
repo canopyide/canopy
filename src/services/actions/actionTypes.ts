@@ -1,5 +1,6 @@
 import type { ActionDefinition, ActionId } from "@shared/types/actions";
 import type { Worktree } from "@shared/types/worktree";
+import type { TerminalSpawnSource } from "@shared/types/panel";
 import type { SettingsNavTarget } from "@/components/Settings";
 import type { AddPanelOptions } from "@/store";
 
@@ -53,6 +54,7 @@ export interface ActionCallbacks {
       env?: Record<string, string>;
       ephemeral?: boolean;
       agentLaunchFlags?: string[];
+      spawnedBy?: TerminalSpawnSource;
     }
   ) => Promise<string | null>;
   onInject: (worktreeId: string) => void;

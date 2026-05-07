@@ -5,6 +5,14 @@ export const AgentIdSchema = z.enum([...BUILT_IN_AGENT_IDS, "terminal", "browser
 
 export const LaunchLocationSchema = z.enum(["grid", "dock"]);
 
+/**
+ * Mirror of `TerminalSpawnSource` from `shared/types/panel.ts`. Kept in lockstep
+ * with that union so action argsSchemas can validate the field. The MCP bridge
+ * stamps `"mcp"` on agent-launch dispatches; user surfaces stamp their own
+ * origin (`"quickrun"`, `"recipe"`, `"agent"`, `"palette"`).
+ */
+export const TerminalSpawnSourceSchema = z.enum(["quickrun", "recipe", "agent", "palette", "mcp"]);
+
 export const SettingsTabSchema = z.enum([
   "general",
   "keyboard",

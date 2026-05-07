@@ -30,6 +30,7 @@ import { TerminalRefreshTier as TerminalRefreshTierEnum } from "@/types";
 import { terminalRegistryController } from "@/controllers";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { useWorktreeSelectionStore } from "./worktreeStore";
+import { isAssistantFocused } from "./macroFocusStore";
 import type { CrashType } from "@shared/types/pty-host";
 import { isRuntimeAgentTerminal } from "@/utils/terminalType";
 import { logInfo, logWarn, logError } from "@/utils/logger";
@@ -156,6 +157,13 @@ export const usePanelStore = create<PanelGridState>()(
         // focusedId to the new id when activateDockOnCreate is set, so by the
         // time it returns, we've lost the pre-create focus from the store.
         const focusedBeforeCreate = get().focusedId;
+        // Read focus-steal gates synchronously, BEFORE the async registry call.
+        // `document.activeElement` and the macro-focus store are mutable in
+        // response to renderer DOM updates that can land during the await
+        // boundary; capturing here pins them to the user's pre-create state
+        // (#6959 — assistant focus theft when MCP launches an agent).
+        const assistantHasFocus = isAssistantFocused();
+        const isMcpSpawn = options.spawnedBy === "mcp";
         const id = await registrySlice.addPanel(options);
         if (id === null) return null;
         // Skip the per-panel focus mutation while a hydration batch is collecting panels:
@@ -164,6 +172,12 @@ export const usePanelStore = create<PanelGridState>()(
         // focus also isn't meaningful during restore — focus is resolved elsewhere once
         // the active worktree is set.
         if ((!options.location || options.location === "grid") && !isHydrationBatchActive()) {
+          // Suppress focus capture for MCP-initiated spawns or when the
+          // Daintree Assistant currently owns keyboard focus. The new panel
+          // still lands in the grid; the user keeps typing where they were.
+          if (assistantHasFocus || isMcpSpawn) {
+            return id;
+          }
           if (focusedBeforeCreate !== id) {
             set({ focusedId: id, previousFocusedId: focusedBeforeCreate });
           } else {
@@ -172,15 +186,25 @@ export const usePanelStore = create<PanelGridState>()(
         } else if (
           options.activateDockOnCreate &&
           options.location === "dock" &&
-          !isHydrationBatchActive() &&
-          focusedBeforeCreate !== null &&
-          focusedBeforeCreate !== id
+          !isHydrationBatchActive()
         ) {
-          // Best-effort previousFocusedId for the tmux-style alternate-pane toggle.
-          // Updating in a follow-up set() is fine — previousFocusedId is metadata,
-          // not load-bearing for dock visibility (which the watchdog effect cares
-          // about and which is already covered by the registry's atomic commit).
-          set({ previousFocusedId: focusedBeforeCreate });
+          // The registry slice atomically advanced `focusedId` to the new id
+          // inside its commit (#6590). When the assistant currently owns
+          // input we issue a corrective set() to roll the focus back —
+          // `activeDockTerminalId` stays so the dock panel is still surfaced.
+          // MCP-tagged spawns skip the registry's focus mutation entirely
+          // (handled in `panelRegistry/addPanel.ts`), so no rollback is
+          // needed here for the MCP case.
+          if (assistantHasFocus && !isMcpSpawn) {
+            set({ focusedId: focusedBeforeCreate });
+          } else if (!isMcpSpawn && focusedBeforeCreate !== null && focusedBeforeCreate !== id) {
+            // Best-effort previousFocusedId for the tmux-style alternate-pane toggle.
+            // Updating in a follow-up set() is fine — previousFocusedId is metadata,
+            // not load-bearing for dock visibility (which the watchdog effect cares
+            // about and which is already covered by the registry's atomic commit).
+            // MCP spawns skip this — they never participate in alternate-pane focus.
+            set({ previousFocusedId: focusedBeforeCreate });
+          }
         }
         return id;
       },
