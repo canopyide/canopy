@@ -40,6 +40,7 @@ function ShortcutRow({ binding, isEditing, onEdit, onSave, onCancel, onReset }: 
           onCapture={handleCapture}
           onCancel={onCancel}
           excludeActionId={binding.actionId}
+          scope={binding.scope}
         />
       </div>
     );

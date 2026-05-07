@@ -314,6 +314,79 @@ describe("SettingsShortcutCapture", () => {
     expect(screen.getByText("Conflicting Action")).toBeTruthy();
   });
 
+  it("threads scope prop into findConflicts", async () => {
+    const { keybindingService } = await import("@/services/KeybindingService");
+    vi.mocked(keybindingService.findConflicts).mockReturnValue([]);
+
+    render(
+      <SettingsShortcutCapture
+        onCapture={mockOnCapture}
+        onCancel={mockOnCancel}
+        excludeActionId="test.action"
+        scope="terminal"
+      />
+    );
+
+    fireEvent.click(screen.getByText("Click to record shortcut"));
+
+    const keyEvent = new KeyboardEvent("keydown", {
+      key: "Escape",
+      code: "Escape",
+      bubbles: true,
+    });
+
+    act(() => {
+      window.dispatchEvent(keyEvent);
+      vi.advanceTimersByTime(1100);
+    });
+
+    expect(keybindingService.findConflicts).toHaveBeenCalledWith(
+      expect.any(String),
+      "test.action",
+      "terminal"
+    );
+  });
+
+  it("hides Unbind for shadowed (chord-overlap) conflicts", async () => {
+    const { keybindingService } = await import("@/services/KeybindingService");
+    vi.mocked(keybindingService.findConflicts).mockReturnValue([
+      {
+        actionId: "shadowed.chord",
+        description: "Existing chord",
+        combo: "Cmd+K Cmd+S",
+        scope: "global",
+        priority: 0,
+        kind: "shadowed",
+      },
+    ]);
+
+    render(
+      <SettingsShortcutCapture
+        onCapture={mockOnCapture}
+        onCancel={mockOnCancel}
+        excludeActionId="test.action"
+      />
+    );
+
+    fireEvent.click(screen.getByText("Click to record shortcut"));
+
+    const keyEvent = new KeyboardEvent("keydown", {
+      key: "k",
+      code: "KeyK",
+      ctrlKey: true,
+      bubbles: true,
+    });
+
+    act(() => {
+      window.dispatchEvent(keyEvent);
+      vi.advanceTimersByTime(1100);
+    });
+
+    expect(screen.getByText("Existing chord")).toBeTruthy();
+    expect(screen.getByText("(chord overlap)")).toBeTruthy();
+    expect(screen.queryByText("Unbind")).toBeNull();
+  });
+
   it("uses normalizeKeyForBinding for key normalization", async () => {
     const { normalizeKeyForBinding } = await import("@/services/KeybindingService");
     vi.mocked(normalizeKeyForBinding).mockReturnValue("k");

@@ -5,6 +5,7 @@ import {
   CHORD_TIMEOUT_MS,
   keybindingService,
   normalizeKeyForBinding,
+  type KeyScope,
 } from "@/services/KeybindingService";
 import { actionService } from "@/services/ActionService";
 import { notify } from "@/lib/notify";
@@ -17,12 +18,19 @@ export interface SettingsShortcutCaptureProps {
   onCancel: () => void;
   /** Action ID to exclude from conflict detection */
   excludeActionId: string;
+  /**
+   * Scope of the binding being edited. Used to filter conflict detection so
+   * scope-disjoint bindings (e.g. Escape in modal vs terminal) don't false-flag.
+   * Defaults to "global" (the conservative behavior — flags any overlap).
+   */
+  scope?: KeyScope;
 }
 
 export function SettingsShortcutCapture({
   onCapture,
   onCancel,
   excludeActionId,
+  scope = "global",
 }: SettingsShortcutCaptureProps) {
   const [recording, setRecording] = useState(false);
   const [capturedCombos, setCapturedCombos] = useState<string[]>([]);
@@ -36,8 +44,8 @@ export function SettingsShortcutCapture({
 
   const conflicts = useMemo(() => {
     if (!capturedCombo) return [];
-    return keybindingService.findConflicts(capturedCombo, excludeActionId);
-  }, [capturedCombo, excludeActionId]);
+    return keybindingService.findConflicts(capturedCombo, excludeActionId, scope);
+  }, [capturedCombo, excludeActionId, scope]);
 
   const clearChordTimeout = useCallback(() => {
     if (chordTimeoutRef.current) {
@@ -311,14 +319,21 @@ export function SettingsShortcutCapture({
                 <span className="text-daintree-text/80">
                   {conflict.description || conflict.actionId}
                 </span>
-                <button
-                  onClick={() => handleUnbindConflict(conflict)}
-                  disabled={isUnbinding}
-                  className="flex items-center gap-1 px-2 py-0.5 text-xs text-daintree-text/60 hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
-                >
-                  <X className="w-3 h-3" />
-                  <span>Unbind</span>
-                </button>
+                {conflict.kind === "shadowed" ? (
+                  // Shadowed = chord-prefix overlap. Auto-unbind can't resolve it
+                  // (the conflicting binding's combo doesn't equal the captured one),
+                  // so surface the relationship and leave resolution to the user.
+                  <span className="text-xs text-daintree-text/50">(chord overlap)</span>
+                ) : (
+                  <button
+                    onClick={() => handleUnbindConflict(conflict)}
+                    disabled={isUnbinding}
+                    className="flex items-center gap-1 px-2 py-0.5 text-xs text-daintree-text/60 hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                  >
+                    <X className="w-3 h-3" />
+                    <span>Unbind</span>
+                  </button>
+                )}
               </div>
             ))}
           </div>
