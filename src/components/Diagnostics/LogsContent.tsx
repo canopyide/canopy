@@ -1,9 +1,14 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
+import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { useLogsStore, filterLogs, collapseConsecutiveDuplicates } from "@/store";
+import {
+  useLogsStore,
+  filterLogs,
+  collapseConsecutiveDuplicates,
+  type DisplayEntry,
+} from "@/store";
 import { LogEntry, type LogEntryCopyMeta } from "../Logs/LogEntry";
 import { LogFilters } from "../Logs/LogFilters";
 import type { LogEntry as LogEntryType, LogLevel } from "@/types";
@@ -31,6 +36,34 @@ function extractElectronVersion(): string {
     return "unknown";
   }
 }
+
+interface LogEntryRowProps {
+  display: DisplayEntry;
+  copyMeta: LogEntryCopyMeta;
+  isExpanded: boolean;
+  toggleExpanded: (id: string) => void;
+}
+
+const LogEntryRow = memo(function LogEntryRow({
+  display,
+  copyMeta,
+  isExpanded,
+  toggleExpanded,
+}: LogEntryRowProps) {
+  const onToggle = useCallback(
+    () => toggleExpanded(display.entry.id),
+    [toggleExpanded, display.entry.id]
+  );
+  return (
+    <LogEntry
+      entry={display.entry}
+      count={display.count}
+      copyMeta={copyMeta}
+      isExpanded={isExpanded}
+      onToggle={onToggle}
+    />
+  );
+});
 
 export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
   const {
@@ -164,6 +197,7 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
   );
 
   const displayEntries = useMemo(() => collapseConsecutiveDuplicates(mainLogs), [mainLogs]);
+  const deferredDisplayEntries = useDeferredValue(displayEntries);
 
   const handleAtBottomChange = useCallback(
     (bottom: boolean) => {
@@ -237,17 +271,16 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
         ) : (
           <Virtuoso
             ref={virtuosoRef}
-            data={displayEntries}
+            data={deferredDisplayEntries}
             followOutput={autoScroll ? "smooth" : false}
             atBottomStateChange={handleAtBottomChange}
             computeItemKey={(_index, display) => display.entry.id}
             itemContent={(_index, display) => (
-              <LogEntry
-                entry={display.entry}
-                count={display.count}
+              <LogEntryRow
+                display={display}
                 copyMeta={copyMeta}
                 isExpanded={expandedIds.has(display.entry.id)}
-                onToggle={() => toggleExpanded(display.entry.id)}
+                toggleExpanded={toggleExpanded}
               />
             )}
             className="absolute inset-0 overflow-y-auto overflow-x-hidden font-mono"
