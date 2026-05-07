@@ -213,6 +213,25 @@ describe("MigrationRunner", () => {
     expect(backupFiles).toHaveLength(1);
   });
 
+  it.skipIf(process.platform === "win32")(
+    "writes the pre-migration backup with 0o600 even when the live store was 0o644",
+    async () => {
+      fs.writeFileSync(storePath, JSON.stringify({ _schemaVersion: 3 }), "utf8");
+      fs.chmodSync(storePath, 0o644);
+
+      const store = createMockStore(storePath, { _schemaVersion: 3 });
+      const runner = new MigrationRunner(store as never);
+
+      await runner.runMigrations([{ version: 4, description: "noop", up: () => {} }]);
+
+      const files = fs.readdirSync(tempDir);
+      const backupFile = files.find((file) => file.startsWith("config.json.backup-v3-"));
+      expect(backupFile).toBeDefined();
+      const mode = fs.statSync(path.join(tempDir, backupFile!)).mode & 0o777;
+      expect(mode).toBe(0o600);
+    }
+  );
+
   describe("auto-restore on migration failure", () => {
     it("atomically restores the pre-migration store file when a migration throws", async () => {
       const originalBytes = JSON.stringify({ _schemaVersion: 0, sentinel: "pre-migration" });
