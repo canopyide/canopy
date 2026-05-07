@@ -1,11 +1,10 @@
 import { store } from "../store.js";
 import type { UserAgentRegistry, UserAgentConfig } from "../../shared/types/index.js";
-import { UserAgentConfigSchema, UserAgentRegistrySchema } from "../../shared/types/index.js";
+import { UserAgentConfigSchema, SAFE_AGENT_ID_PATTERN } from "../../shared/types/index.js";
 import { setUserRegistry, isBuiltInAgent } from "../../shared/config/agentRegistry.js";
 import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 
 const RESERVED_REGISTRY_KEYS = new Set(["__proto__", "constructor", "prototype"]);
-const SAFE_AGENT_ID_PATTERN = /^[a-zA-Z0-9._-]+$/;
 
 function hasOwnKey(record: Record<string, unknown>, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(record, key);
@@ -26,24 +25,16 @@ export class UserAgentRegistryService {
   private loadRegistry(): void {
     try {
       const stored = store.get("userAgentRegistry", {});
-      const validation = UserAgentRegistrySchema.safeParse(stored);
-
-      if (!validation.success) {
-        console.error("[UserAgentRegistryService] Invalid stored registry:", validation.error);
+      if (typeof stored !== "object" || stored === null || Array.isArray(stored)) {
+        console.warn("[UserAgentRegistryService] Stored registry is not an object, resetting");
         this.registry = {};
         return;
       }
 
       const sanitized: UserAgentRegistry = {};
-      for (const [id, config] of Object.entries(validation.data)) {
+      for (const [id, config] of Object.entries(stored)) {
         if (RESERVED_REGISTRY_KEYS.has(id)) {
           console.warn(`[UserAgentRegistryService] Skipping reserved registry key: ${id}`);
-          continue;
-        }
-        if (config.id !== id) {
-          console.warn(
-            `[UserAgentRegistryService] Skipping registry entry with mismatched id: key=${id}, config.id=${config.id}`
-          );
           continue;
         }
         if (!SAFE_AGENT_ID_PATTERN.test(id)) {
@@ -56,7 +47,25 @@ export class UserAgentRegistryService {
           );
           continue;
         }
-        sanitized[id] = cloneConfig(config);
+
+        const entryValidation = UserAgentConfigSchema.safeParse(config);
+        if (!entryValidation.success) {
+          console.warn(
+            `[UserAgentRegistryService] Skipping invalid registry entry "${id}":`,
+            entryValidation.error.message
+          );
+          continue;
+        }
+
+        const validated = entryValidation.data;
+        if (validated.id !== id) {
+          console.warn(
+            `[UserAgentRegistryService] Skipping registry entry with mismatched id: key=${id}, config.id=${validated.id}`
+          );
+          continue;
+        }
+
+        sanitized[id] = cloneConfig(validated);
       }
 
       this.registry = sanitized;
@@ -66,10 +75,14 @@ export class UserAgentRegistryService {
     }
   }
 
-  private saveRegistry(): { success: boolean; error?: string } {
+  private saveRegistry(nextRegistry: UserAgentRegistry): { success: boolean; error?: string } {
     try {
-      store.set("userAgentRegistry", this.getRegistry());
-      this.syncToSharedRegistry();
+      store.set("userAgentRegistry", nextRegistry);
+      const sharedClone: UserAgentRegistry = {};
+      for (const [id, config] of Object.entries(nextRegistry)) {
+        sharedClone[id] = cloneConfig(config);
+      }
+      setUserRegistry(sharedClone);
       return { success: true };
     } catch (error) {
       const message = formatErrorMessage(error, "Failed to save user agent registry");
@@ -111,7 +124,7 @@ export class UserAgentRegistryService {
       };
     }
 
-    if (!/^[a-zA-Z0-9._-]+$/.test(config.command)) {
+    if (!SAFE_AGENT_ID_PATTERN.test(config.command)) {
       return {
         success: false,
         error: `Command "${config.command}" contains invalid characters. Only alphanumeric, dots, dashes, and underscores are allowed.`,
@@ -131,8 +144,12 @@ export class UserAgentRegistryService {
       };
     }
 
-    this.registry[config.id] = cloneConfig(config);
-    return this.saveRegistry();
+    const nextRegistry = { ...this.registry, [config.id]: cloneConfig(config) };
+    const result = this.saveRegistry(nextRegistry);
+    if (result.success) {
+      this.registry = nextRegistry;
+    }
+    return result;
   }
 
   updateAgent(id: string, config: UserAgentConfig): { success: boolean; error?: string } {
@@ -158,7 +175,7 @@ export class UserAgentRegistryService {
       };
     }
 
-    if (!/^[a-zA-Z0-9._-]+$/.test(config.command)) {
+    if (!SAFE_AGENT_ID_PATTERN.test(config.command)) {
       return {
         success: false,
         error: `Command "${config.command}" contains invalid characters. Only alphanumeric, dots, dashes, and underscores are allowed.`,
@@ -171,18 +188,15 @@ export class UserAgentRegistryService {
       };
     }
 
-    this.registry[id] = cloneConfig(config);
-    return this.saveRegistry();
+    const nextRegistry = { ...this.registry, [id]: cloneConfig(config) };
+    const result = this.saveRegistry(nextRegistry);
+    if (result.success) {
+      this.registry = nextRegistry;
+    }
+    return result;
   }
 
   removeAgent(id: string): { success: boolean; error?: string } {
-    if (isBuiltInAgent(id)) {
-      return {
-        success: false,
-        error: `Cannot remove built-in agent "${id}"`,
-      };
-    }
-
     if (!hasOwnKey(this.registry, id)) {
       return {
         success: false,
@@ -190,7 +204,19 @@ export class UserAgentRegistryService {
       };
     }
 
-    delete this.registry[id];
-    return this.saveRegistry();
+    if (isBuiltInAgent(id)) {
+      return {
+        success: false,
+        error: `Cannot remove built-in agent "${id}"`,
+      };
+    }
+
+    const nextRegistry = { ...this.registry };
+    delete nextRegistry[id];
+    const result = this.saveRegistry(nextRegistry);
+    if (result.success) {
+      this.registry = nextRegistry;
+    }
+    return result;
   }
 }

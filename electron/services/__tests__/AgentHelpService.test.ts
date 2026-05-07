@@ -167,7 +167,22 @@ describe("AgentHelpService", () => {
       expect(mockedExecFile).toHaveBeenCalledTimes(2);
     });
 
-    it("respects cache TTL", async () => {
+    it("returns cached result defensively cloned so mutation cannot corrupt cache", async () => {
+      mockedExecFile.mockImplementation((_cmd, _args, _opts, callback: any) => {
+        callback(null, { stdout: "Original", stderr: "" });
+        return {} as any;
+      });
+
+      const first = await service.getHelp("claude");
+      expect(first.stdout).toBe("Original");
+
+      first.stdout = "Mutated";
+
+      const second = await service.getHelp("claude");
+      expect(second.stdout).toBe("Original");
+    });
+
+    it("expires cache after TTL", async () => {
       mockedExecFile.mockImplementation((_cmd, _args, _opts, callback: any) => {
         callback(null, { stdout: "Output", stderr: "" });
         return {} as any;
@@ -176,7 +191,7 @@ describe("AgentHelpService", () => {
       await service.getHelp("claude");
       expect(mockedExecFile).toHaveBeenCalledTimes(1);
 
-      vi.advanceTimersByTime(11 * 60 * 1000);
+      vi.advanceTimersByTime(10 * 60 * 1000 + 1);
 
       await service.getHelp("claude");
       expect(mockedExecFile).toHaveBeenCalledTimes(2);
@@ -246,7 +261,7 @@ describe("AgentHelpService", () => {
       delete (AGENT_REGISTRY as any)["empty"];
     });
 
-    it("rejects command with invalid characters", async () => {
+    it("rejects command with shell metacharacters", async () => {
       vi.doUnmock("../../../shared/config/agentRegistry.js");
       const { AGENT_REGISTRY } = await import("../../../shared/config/agentRegistry.js");
       (AGENT_REGISTRY as any)["bad"] = {
@@ -258,6 +273,20 @@ describe("AgentHelpService", () => {
       await expect(service.getHelp("bad")).rejects.toThrow("Invalid command");
 
       delete (AGENT_REGISTRY as any)["bad"];
+    });
+
+    it("rejects command with subshell syntax that denylist would have missed", async () => {
+      vi.doUnmock("../../../shared/config/agentRegistry.js");
+      const { AGENT_REGISTRY } = await import("../../../shared/config/agentRegistry.js");
+      (AGENT_REGISTRY as any)["subshell"] = {
+        id: "subshell",
+        name: "Subshell",
+        command: "$(whoami)",
+      };
+
+      await expect(service.getHelp("subshell")).rejects.toThrow("Invalid command");
+
+      delete (AGENT_REGISTRY as any)["subshell"];
     });
   });
 });

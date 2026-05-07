@@ -3,11 +3,18 @@ import { AgentRoutingConfigSchema } from "./agentSettings.js";
 
 const RESERVED_KEYS = ["__proto__", "constructor", "prototype"];
 
+export const SAFE_AGENT_ID_PATTERN = /^[a-zA-Z0-9._-]+$/;
+
 export const UserAgentConfigSchema = z
   .object({
     id: z.string().min(1),
     name: z.string().min(1),
-    command: z.string().min(1),
+    command: z
+      .string()
+      .regex(
+        SAFE_AGENT_ID_PATTERN,
+        "Command may only contain alphanumeric characters, dots, dashes, and underscores"
+      ),
     args: z
       .array(
         z
