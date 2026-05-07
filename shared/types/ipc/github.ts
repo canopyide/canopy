@@ -31,6 +31,8 @@ export interface GitHubRateLimitPayload {
   kind: GitHubRateLimitKind | null;
   /** Unix epoch milliseconds when the block is expected to resume (primary only) */
   resetAt?: number;
+  /** `x-ratelimit-resource` bucket name when the block is per-resource primary */
+  resource?: string;
 }
 
 /** A single rate-limit bucket as reported by `/rate_limit` */

@@ -59,7 +59,7 @@ class GitHubRateLimitServiceImpl {
    */
   applyRemoteState(payload: GitHubRateLimitPayload): void {
     if (payload.blocked && payload.kind && payload.resetAt) {
-      this.markBlocked(payload.kind, payload.resetAt, GLOBAL_RESOURCE_KEY);
+      this.markBlocked(payload.kind, payload.resetAt, payload.resource ?? GLOBAL_RESOURCE_KEY);
       return;
     }
     this.clear();
@@ -106,7 +106,9 @@ class GitHubRateLimitServiceImpl {
     }
 
     if (status >= 200 && status < 300 && remaining !== null && remaining > 0) {
-      this.clearResource(resource);
+      if (headers.get("x-ratelimit-resource") !== null) {
+        this.clearResource(resource);
+      }
     }
   }
 
@@ -136,6 +138,9 @@ class GitHubRateLimitServiceImpl {
       const entry = this.states.get(resource);
       if (entry) {
         return { blocked: true, reason: entry.kind, resumeAt: entry.resumeAt };
+      }
+      if (global && global.kind === "primary") {
+        return { blocked: true, reason: "primary", resumeAt: global.resumeAt };
       }
       return { blocked: false, reason: null };
     }
@@ -196,7 +201,7 @@ class GitHubRateLimitServiceImpl {
       }
     }
     if (best) {
-      return { blocked: true, kind: best.kind, resetAt: best.resumeAt };
+      return { blocked: true, kind: best.kind, resetAt: best.resumeAt, resource: best.resource };
     }
     return { blocked: false, kind: null };
   }
