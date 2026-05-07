@@ -6,6 +6,16 @@ import type { RunCommand } from "../types/index.js";
 import { Cache } from "../utils/cache.js";
 
 const RESERVED_SCRIPT_NAMES = new Set(["__proto__", "constructor", "prototype"]);
+const COMPOSER_LIFECYCLE_SCRIPTS = new Set([
+  "pre-install-cmd",
+  "post-install-cmd",
+  "pre-update-cmd",
+  "post-update-cmd",
+  "post-autoload-dump",
+  "pre-autoload-dump",
+  "post-root-package-install",
+  "post-create-project-cmd",
+]);
 const SAFE_SCRIPT_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9:_./-]*$/;
 
 function isSafeScriptName(name: string): boolean {
@@ -50,7 +60,9 @@ export class RunCommandDetector {
       if (!pkg.scripts || typeof pkg.scripts !== "object") return [];
 
       let runner = "npm run";
-      if (existsSync(path.join(root, "bun.lockb"))) {
+      if (existsSync(path.join(root, "bun.lock"))) {
+        runner = "bun run";
+      } else if (existsSync(path.join(root, "bun.lockb"))) {
         runner = "bun run";
       } else if (existsSync(path.join(root, "pnpm-lock.yaml"))) {
         runner = "pnpm run";
@@ -178,7 +190,16 @@ export class RunCommandDetector {
   }
 
   private async detectTaskfile(root: string): Promise<RunCommand[]> {
-    const variants = ["Taskfile.yml", "taskfile.yml", "Taskfile.yaml", "taskfile.yaml"];
+    const variants = [
+      "Taskfile.yml",
+      "taskfile.yml",
+      "Taskfile.yaml",
+      "taskfile.yaml",
+      "Taskfile.dist.yml",
+      "taskfile.dist.yml",
+      "Taskfile.dist.yaml",
+      "taskfile.dist.yaml",
+    ];
     let taskfilePath: string | null = null;
     for (const name of variants) {
       const candidate = path.join(root, name);
@@ -251,17 +272,7 @@ export class RunCommandDetector {
 
       return Object.keys(json.scripts)
         .filter((name) => {
-          const lifecycleScripts = [
-            "pre-install-cmd",
-            "post-install-cmd",
-            "pre-update-cmd",
-            "post-update-cmd",
-            "post-autoload-dump",
-            "pre-autoload-dump",
-            "post-root-package-install",
-            "post-create-project-cmd",
-          ];
-          if (lifecycleScripts.includes(name)) {
+          if (COMPOSER_LIFECYCLE_SCRIPTS.has(name)) {
             return false;
           }
           if (!isSafeScriptName(name)) {

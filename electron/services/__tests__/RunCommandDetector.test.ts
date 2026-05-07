@@ -38,6 +38,56 @@ describe("RunCommandDetector", () => {
     expect(npmCommands.some((cmd) => cmd.command.includes(";"))).toBe(false);
   });
 
+  it("uses bun runner when bun.lock (text format) is present", async () => {
+    await fs.writeFile(
+      path.join(tempDir, "package.json"),
+      JSON.stringify({ name: "test", scripts: { dev: "vite" } }),
+      "utf-8"
+    );
+    await fs.writeFile(path.join(tempDir, "bun.lock"), "", "utf-8");
+
+    const commands = await detector.detect(tempDir);
+    const npmCommands = commands.filter((cmd) => cmd.id.startsWith("npm-"));
+
+    expect(npmCommands).toEqual([
+      expect.objectContaining({ id: "npm-dev", command: "bun run dev" }),
+    ]);
+  });
+
+  it("prefers bun.lock over bun.lockb when both exist", async () => {
+    await fs.writeFile(
+      path.join(tempDir, "package.json"),
+      JSON.stringify({ name: "test", scripts: { dev: "vite" } }),
+      "utf-8"
+    );
+    await fs.writeFile(path.join(tempDir, "bun.lock"), "", "utf-8");
+    await fs.writeFile(path.join(tempDir, "bun.lockb"), "", "utf-8");
+
+    const commands = await detector.detect(tempDir);
+    const npmCommands = commands.filter((cmd) => cmd.id.startsWith("npm-"));
+
+    expect(npmCommands).toEqual([
+      expect.objectContaining({ id: "npm-dev", command: "bun run dev" }),
+    ]);
+  });
+
+  it("prefers bun.lock over pnpm-lock.yaml when both exist", async () => {
+    await fs.writeFile(
+      path.join(tempDir, "package.json"),
+      JSON.stringify({ name: "test", scripts: { dev: "vite" } }),
+      "utf-8"
+    );
+    await fs.writeFile(path.join(tempDir, "bun.lock"), "", "utf-8");
+    await fs.writeFile(path.join(tempDir, "pnpm-lock.yaml"), "", "utf-8");
+
+    const commands = await detector.detect(tempDir);
+    const npmCommands = commands.filter((cmd) => cmd.id.startsWith("npm-"));
+
+    expect(npmCommands).toEqual([
+      expect.objectContaining({ id: "npm-dev", command: "bun run dev" }),
+    ]);
+  });
+
   it("filters composer scripts with unsafe names", async () => {
     const scripts: Record<string, string> = {
       test: "phpunit",
@@ -391,6 +441,64 @@ describe("RunCommandDetector", () => {
           description: "Run linter",
         }),
       ]);
+    });
+
+    it("detects Taskfile.dist.yml variant", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "Taskfile.dist.yml"),
+        [
+          "version: '3'",
+          "tasks:",
+          "  ci:",
+          "    desc: Run CI checks",
+          "    cmds:",
+          "      - go test ./...",
+        ].join("\n"),
+        "utf-8"
+      );
+
+      const commands = await detector.detect(tempDir);
+      const taskCommands = commands.filter((cmd) => cmd.id.startsWith("task-"));
+
+      expect(taskCommands).toEqual([
+        expect.objectContaining({
+          id: "task-ci",
+          command: "task ci",
+          description: "Run CI checks",
+        }),
+      ]);
+    });
+
+    it("prefers Taskfile.yml over Taskfile.dist.yml when both exist", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "Taskfile.yml"),
+        [
+          "version: '3'",
+          "tasks:",
+          "  build:",
+          "    desc: Local build",
+          "    cmds:",
+          "      - go build .",
+        ].join("\n"),
+        "utf-8"
+      );
+      await fs.writeFile(
+        path.join(tempDir, "Taskfile.dist.yml"),
+        [
+          "version: '3'",
+          "tasks:",
+          "  ci:",
+          "    desc: CI checks",
+          "    cmds:",
+          "      - go test ./...",
+        ].join("\n"),
+        "utf-8"
+      );
+
+      const commands = await detector.detect(tempDir);
+      const taskCommands = commands.filter((cmd) => cmd.id.startsWith("task-"));
+
+      expect(taskCommands.map((cmd) => cmd.id)).toEqual(["task-build"]);
     });
 
     it("returns empty for empty tasks object", async () => {
