@@ -9,6 +9,7 @@ import {
   probeMcpServer,
   probeMcpSseServer,
 } from "../readinessProbe.js";
+import { ACTIONS_LIST_TOOL } from "../shared.js";
 
 interface CapturedRequest {
   method: string;
@@ -313,7 +314,7 @@ describe("probeMcpSseServer", () => {
               result: {
                 tools: [
                   {
-                    name: "actions.list",
+                    name: ACTIONS_LIST_TOOL,
                     description: "List available Daintree actions",
                     inputSchema: { type: "object", properties: {} },
                   },

@@ -28,6 +28,11 @@ export const DEFAULT_PORT = 45454;
 export const MAX_PORT_RETRIES = 10;
 export const MCP_SSE_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 
+export const MCP_MANIFEST_REQUEST_TIMEOUT_MS = 5_000;
+export const MCP_DISPATCH_TIMEOUT_MS = 30_000;
+
+export const ACTIONS_LIST_TOOL = "actions.list";
+
 export const MAX_RESTART_ATTEMPTS = 5;
 export const RESTART_BASE_DELAY_MS = 500;
 export const RESTART_MAX_DELAY_MS = 15_000;
@@ -138,7 +143,7 @@ export const OPEN_WORLD_CATEGORIES: ReadonlySet<string> = new Set([
 export type McpTier = "workbench" | "action" | "system" | "external";
 
 const WORKBENCH_TOOLS: ReadonlySet<string> = new Set([
-  "actions.list",
+  ACTIONS_LIST_TOOL,
   "actions.getContext",
 
   "project.getAll",
@@ -258,7 +263,7 @@ export function unionSet(...sets: ReadonlySet<string>[]): ReadonlySet<string> {
 }
 
 const MCP_TOOL_ALLOWLIST: ReadonlySet<string> = new Set([
-  "actions.list",
+  ACTIONS_LIST_TOOL,
   "actions.getContext",
 
   "agent.launch",

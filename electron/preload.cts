@@ -2408,12 +2408,12 @@ const api: ElectronAPI = {
     onGetManifestRequest: (callback: (requestId: string) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: { requestId: string }) =>
         callback(payload.requestId);
-      ipcRenderer.on("mcp:get-manifest-request", handler);
-      return () => ipcRenderer.removeListener("mcp:get-manifest-request", handler);
+      ipcRenderer.on(CHANNELS.MCP_SERVER_GET_MANIFEST_REQUEST, handler);
+      return () => ipcRenderer.removeListener(CHANNELS.MCP_SERVER_GET_MANIFEST_REQUEST, handler);
     },
 
     sendGetManifestResponse: (requestId: string, manifest: unknown) => {
-      ipcRenderer.send("mcp:get-manifest-response", { requestId, manifest });
+      ipcRenderer.send(CHANNELS.MCP_SERVER_GET_MANIFEST_RESPONSE, { requestId, manifest });
     },
 
     onDispatchActionRequest: (
@@ -2428,8 +2428,8 @@ const api: ElectronAPI = {
         _event: Electron.IpcRendererEvent,
         payload: { requestId: string; actionId: string; args?: unknown; confirmed?: boolean }
       ) => callback(payload);
-      ipcRenderer.on("mcp:dispatch-action-request", handler);
-      return () => ipcRenderer.removeListener("mcp:dispatch-action-request", handler);
+      ipcRenderer.on(CHANNELS.MCP_SERVER_DISPATCH_ACTION_REQUEST, handler);
+      return () => ipcRenderer.removeListener(CHANNELS.MCP_SERVER_DISPATCH_ACTION_REQUEST, handler);
     },
 
     sendDispatchActionResponse: (payload: {
@@ -2437,7 +2437,7 @@ const api: ElectronAPI = {
       result: unknown;
       confirmationDecision?: "approved" | "rejected" | "timeout";
     }) => {
-      ipcRenderer.send("mcp:dispatch-action-response", payload);
+      ipcRenderer.send(CHANNELS.MCP_SERVER_DISPATCH_ACTION_RESPONSE, payload);
     },
   },
 

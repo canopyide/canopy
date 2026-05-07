@@ -48,7 +48,6 @@ import {
 import {
   shouldExposeTool,
   isTierPermitted,
-  buildToolDescription,
   buildToolInputSchema,
   buildAnnotations,
   buildToolOutputSchema,
@@ -114,7 +113,7 @@ export function createSessionServer(sessionId: string, deps: SessionServerDeps):
         const outputSchema = buildToolOutputSchema(entry);
         return {
           name: entry.id,
-          description: buildToolDescription(entry),
+          description: entry.description,
           inputSchema: buildToolInputSchema(entry),
           annotations: buildAnnotations(entry),
           ...(outputSchema ? { outputSchema } : {}),

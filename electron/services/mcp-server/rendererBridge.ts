@@ -3,7 +3,9 @@ import { randomUUID } from "node:crypto";
 import type { WindowRegistry } from "../../window/WindowRegistry.js";
 import { getProjectViewManager } from "../../window/windowRef.js";
 import type { ActionManifestEntry } from "../../../shared/types/actions.js";
+import { CHANNELS } from "../../ipc/channels.js";
 import type { PendingRequest, DispatchEnvelope } from "./shared.js";
+import { MCP_MANIFEST_REQUEST_TIMEOUT_MS, MCP_DISPATCH_TIMEOUT_MS } from "./shared.js";
 
 export function createRendererBridge(
   pendingManifests: Map<string, PendingRequest<ActionManifestEntry[]>>,
@@ -71,7 +73,7 @@ export function createRendererBridge(
         pending?.destroyedCleanup?.();
         pendingManifests.delete(requestId);
         reject(new Error("Manifest request timed out"));
-      }, 5000);
+      }, MCP_MANIFEST_REQUEST_TIMEOUT_MS);
 
       const onDestroyed = () => {
         const pending = pendingManifests.get(requestId);
@@ -101,7 +103,7 @@ export function createRendererBridge(
       });
 
       try {
-        webContents.send("mcp:get-manifest-request", { requestId });
+        webContents.send(CHANNELS.MCP_SERVER_GET_MANIFEST_REQUEST, { requestId });
       } catch (err) {
         clearTimeout(timer);
         destroyedCleanup();
@@ -133,7 +135,7 @@ export function createRendererBridge(
         pending?.destroyedCleanup?.();
         pendingDispatches.delete(requestId);
         reject(new Error(`Action dispatch timed out: ${actionId}`));
-      }, 30000);
+      }, MCP_DISPATCH_TIMEOUT_MS);
 
       const onDestroyed = () => {
         const pending = pendingDispatches.get(requestId);
@@ -160,7 +162,7 @@ export function createRendererBridge(
       });
 
       try {
-        webContents.send("mcp:dispatch-action-request", {
+        webContents.send(CHANNELS.MCP_SERVER_DISPATCH_ACTION_REQUEST, {
           requestId,
           actionId,
           args,
@@ -276,12 +278,12 @@ export function createRendererBridge(
   };
 
   function setupListeners(cleanupListeners: Array<() => void>): void {
-    ipcMain.on("mcp:get-manifest-response", manifestHandler);
-    ipcMain.on("mcp:dispatch-action-response", dispatchHandler);
+    ipcMain.on(CHANNELS.MCP_SERVER_GET_MANIFEST_RESPONSE, manifestHandler);
+    ipcMain.on(CHANNELS.MCP_SERVER_DISPATCH_ACTION_RESPONSE, dispatchHandler);
 
     cleanupListeners.push(
-      () => ipcMain.removeListener("mcp:get-manifest-response", manifestHandler),
-      () => ipcMain.removeListener("mcp:dispatch-action-response", dispatchHandler)
+      () => ipcMain.removeListener(CHANNELS.MCP_SERVER_GET_MANIFEST_RESPONSE, manifestHandler),
+      () => ipcMain.removeListener(CHANNELS.MCP_SERVER_DISPATCH_ACTION_RESPONSE, dispatchHandler)
     );
   }
 
@@ -295,7 +297,5 @@ export function createRendererBridge(
     clearCache: () => {
       cachedManifest = null;
     },
-    getActiveProjectWebContents,
-    normalizeError,
   };
 }

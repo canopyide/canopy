@@ -16,6 +16,7 @@ vi.mock("../../McpPaneConfigService.js", () => ({
 import {
   extractBearerToken,
   isAuthorized,
+  parseToolArguments,
   precomputeApiKeyBearerHash,
   resolveTokenTier,
 } from "../tierAuth.js";
@@ -182,5 +183,45 @@ describe("resolveTokenTier", () => {
 
   it("falls back to workbench when the header has no whitespace after the scheme", () => {
     expect(resolveTokenTier("Bearerfoo", null, null)).toBe("workbench");
+  });
+});
+
+describe("parseToolArguments", () => {
+  it("passes through plain objects", () => {
+    expect(parseToolArguments({ key: "value" })).toEqual({ args: { key: "value" } });
+  });
+
+  it("strips _meta from plain objects", () => {
+    expect(parseToolArguments({ _meta: { hello: true }, action: "x" })).toEqual({
+      args: { action: "x" },
+    });
+  });
+
+  it("returns empty args when only _meta is present", () => {
+    expect(parseToolArguments({ _meta: { hello: true } })).toEqual({ args: {} });
+  });
+
+  it("coerces undefined to empty args", () => {
+    expect(parseToolArguments(undefined)).toEqual({ args: {} });
+  });
+
+  it("coerces null to empty args", () => {
+    expect(parseToolArguments(null)).toEqual({ args: {} });
+  });
+
+  it("coerces arrays to empty args", () => {
+    expect(parseToolArguments([1, 2, 3])).toEqual({ args: {} });
+  });
+
+  it("coerces strings to empty args", () => {
+    expect(parseToolArguments("hello")).toEqual({ args: {} });
+  });
+
+  it("coerces numbers to empty args", () => {
+    expect(parseToolArguments(42)).toEqual({ args: {} });
+  });
+
+  it("coerces booleans to empty args", () => {
+    expect(parseToolArguments(true)).toEqual({ args: {} });
   });
 });

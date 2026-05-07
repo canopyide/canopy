@@ -1,4 +1,5 @@
 import http from "node:http";
+import { ACTIONS_LIST_TOOL } from "./shared.js";
 
 export const PROBE_MAX_ATTEMPTS = 3;
 export const PROBE_BASE_DELAY_MS = 50;
@@ -62,6 +63,8 @@ export async function probeMcpServer(
       // Cleanup gets its own per-request timeout regardless of remaining
       // budget; failures are logged but never bubble up.
       void sendDelete(port, bearerToken, result.sessionId, requestTimeoutMs).catch((err) => {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === "ECONNRESET" || code === "EPIPE") return;
         console.warn("[MCP] Readiness probe cleanup DELETE failed (non-fatal):", err);
       });
       return;
@@ -248,6 +251,10 @@ function sendDelete(
         (res) => {
           const status = res.statusCode ?? 0;
           res.resume();
+          if (status === 405) {
+            settle(() => resolve());
+            return;
+          }
           if (status < 200 || status >= 300) {
             settle(() => reject(new Error(`DELETE returned status ${status}`)));
             return;
@@ -423,7 +430,7 @@ function sendSseInitialize(port: number, bearerToken: string, timeoutMs: number)
         (tool) =>
           tool &&
           typeof tool === "object" &&
-          (tool as Record<string, unknown>).name === "actions.list"
+          (tool as Record<string, unknown>).name === ACTIONS_LIST_TOOL
       );
       if (!hasManifestBackedTool) {
         settle(() => reject(new Error("tools/list response missing actions.list")));

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CHANNELS } from "../../../ipc/channels.js";
 
 const { mockIpcMain, mockWebContentsRegistry } = vi.hoisted(() => {
   class IpcMainMock {
@@ -108,10 +109,10 @@ describe("rendererBridge — per-session pinned dispatch (#7002)", () => {
 
     // Hook send to reply with a manifest tagged by id, so we can assert routing.
     wcA.send.mockImplementation((channel: string, payload: { requestId: string }) => {
-      if (channel !== "mcp:get-manifest-request") return;
+      if (channel !== CHANNELS.MCP_SERVER_GET_MANIFEST_REQUEST) return;
       queueMicrotask(() => {
         mockIpcMain.emit(
-          "mcp:get-manifest-response",
+          CHANNELS.MCP_SERVER_GET_MANIFEST_RESPONSE,
           { sender: { id: 101 } },
           {
             requestId: payload.requestId,
@@ -137,10 +138,10 @@ describe("rendererBridge — per-session pinned dispatch (#7002)", () => {
     mockWebContentsRegistry.set(302, wcB);
 
     wcA.send.mockImplementation((channel: string, payload: { requestId: string }) => {
-      if (channel !== "mcp:dispatch-action-request") return;
+      if (channel !== CHANNELS.MCP_SERVER_DISPATCH_ACTION_REQUEST) return;
       queueMicrotask(() => {
         mockIpcMain.emit(
-          "mcp:dispatch-action-response",
+          CHANNELS.MCP_SERVER_DISPATCH_ACTION_RESPONSE,
           { sender: { id: 301 } },
           {
             requestId: payload.requestId,
