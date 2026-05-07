@@ -2,6 +2,8 @@ import { useCallback, useMemo } from "react";
 import type { WorktreeSnapshot, WorktreeState } from "@shared/types";
 import { useWorktreeStore } from "./useWorktreeStore";
 
+const _nameCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+
 export interface UseWorktreesReturn {
   worktrees: WorktreeState[];
   worktreeMap: Map<string, WorktreeState>;
@@ -56,7 +58,7 @@ export function useWorktrees(): UseWorktreesReturn {
         return timeB - timeA;
       }
 
-      return a.name.localeCompare(b.name);
+      return _nameCollator.compare(a.name, b.name);
     });
   }, [normalizedMap]);
 

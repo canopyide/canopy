@@ -70,6 +70,7 @@ interface WorktreeFilterActions {
   toggleWorktreeCollapsed: (id: string) => void;
   isWorktreeCollapsed: (id: string) => boolean;
   setManualOrder: (order: string[]) => void;
+  cleanupStaleWorktrees: (existingIds: Set<string>) => void;
   setQuickStateFilter: (filter: QuickStateFilter) => void;
   clearQuickStateFilter: () => void;
   clearAll: () => void;
@@ -452,6 +453,23 @@ const _actions: WorktreeFilterActions = {
   isWorktreeCollapsed: (id) => _projectStore.getState().collapsedWorktrees.includes(id),
   setManualOrder: (order) => {
     _projectStore.setState({ manualOrder: order });
+  },
+  cleanupStaleWorktrees: (existingIds) => {
+    _projectStore.setState((state) => {
+      const stalePins = state.pinnedWorktrees.filter((id) => !existingIds.has(id));
+      const staleCollapsed = state.collapsedWorktrees.filter((id) => !existingIds.has(id));
+      if (stalePins.length === 0 && staleCollapsed.length === 0) return state;
+      return {
+        pinnedWorktrees:
+          stalePins.length > 0
+            ? state.pinnedWorktrees.filter((id) => existingIds.has(id))
+            : state.pinnedWorktrees,
+        collapsedWorktrees:
+          staleCollapsed.length > 0
+            ? state.collapsedWorktrees.filter((id) => existingIds.has(id))
+            : state.collapsedWorktrees,
+      };
+    });
   },
   setQuickStateFilter: (quickStateFilter) => {
     _projectStore.setState({ quickStateFilter });

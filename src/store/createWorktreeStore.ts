@@ -64,6 +64,24 @@ export function createWorktreeStore(): WorktreeViewStoreApi {
 
     applySnapshot(states: WorktreeSnapshot[], version: number) {
       if (version <= get().version) return;
+      const prev = get().worktrees;
+      const isInitialized = get().isInitialized;
+      if (
+        isInitialized &&
+        prev.size === states.length &&
+        states.every((s) => {
+          const existing = prev.get(s.id);
+          return existing !== undefined && snapshotsEqual(existing, s);
+        })
+      ) {
+        set({
+          version,
+          isLoading: false,
+          error: null,
+          isReconnecting: false,
+        });
+        return;
+      }
       const map = new Map(states.map((s) => [s.id, s]));
       set({
         worktrees: map,

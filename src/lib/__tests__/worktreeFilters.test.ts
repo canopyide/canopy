@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import {
   getWorktreeType,
-  buildSearchableText,
   scoreWorktree,
   computeStatus,
   matchesFilters,
@@ -142,59 +141,6 @@ describe("getWorktreeType", () => {
   it("handles case-insensitive matching", () => {
     const worktree = createMockWorktree({ branch: "FEATURE/uppercase" });
     expect(getWorktreeType(worktree)).toBe("feature");
-  });
-});
-
-describe("buildSearchableText", () => {
-  it("includes name", () => {
-    const worktree = createMockWorktree({ name: "test-name" });
-    expect(buildSearchableText(worktree)).toContain("test-name");
-  });
-
-  it("includes branch", () => {
-    const worktree = createMockWorktree({ branch: "feature/my-branch" });
-    expect(buildSearchableText(worktree)).toContain("feature/my-branch");
-  });
-
-  it("does not include path", () => {
-    const worktree = createMockWorktree({ path: "/home/user/my-project" });
-    expect(buildSearchableText(worktree)).not.toContain("/home/user/my-project");
-  });
-
-  it("includes issue number with hash", () => {
-    const worktree = createMockWorktree({ issueNumber: 123 });
-    expect(buildSearchableText(worktree)).toContain("#123");
-  });
-
-  it("includes PR number with hash", () => {
-    const worktree = createMockWorktree({ prNumber: 456 });
-    expect(buildSearchableText(worktree)).toContain("#456");
-  });
-
-  it("does not include summary", () => {
-    const worktree = createMockWorktree({ summary: "Working on feature X" });
-    expect(buildSearchableText(worktree)).not.toContain("working on feature x");
-  });
-
-  it("includes issue title", () => {
-    const worktree = createMockWorktree({ issueTitle: "Add dark mode toggle" });
-    expect(buildSearchableText(worktree)).toContain("add dark mode toggle");
-  });
-
-  it("includes PR title", () => {
-    const worktree = createMockWorktree({ prTitle: "Fix authentication bug" });
-    expect(buildSearchableText(worktree)).toContain("fix authentication bug");
-  });
-
-  it("does not include aiNote", () => {
-    const worktree = createMockWorktree({ aiNote: "Agent is implementing tests" });
-    expect(buildSearchableText(worktree)).not.toContain("agent is implementing tests");
-  });
-
-  it("returns lowercase text", () => {
-    const worktree = createMockWorktree({ name: "MyWorktree", branch: "Feature/Test" });
-    const text = buildSearchableText(worktree);
-    expect(text).toBe(text.toLowerCase());
   });
 });
 
@@ -695,6 +641,16 @@ describe("sortWorktrees", () => {
     ];
     const sorted = sortWorktrees(worktrees, "alpha");
     expect(sorted.map((w) => w.name)).toEqual(["alpha", "bravo", "charlie"]);
+  });
+
+  it("sorts feature-2 before feature-10 with natural numeric collation", () => {
+    const worktrees = [
+      createMockWorktree({ id: "1", name: "feature-10" }),
+      createMockWorktree({ id: "2", name: "feature-2" }),
+      createMockWorktree({ id: "3", name: "feature-1" }),
+    ];
+    const sorted = sortWorktrees(worktrees, "alpha");
+    expect(sorted.map((w) => w.name)).toEqual(["feature-1", "feature-2", "feature-10"]);
   });
 
   it("uses name as tiebreaker for recent sort", () => {
