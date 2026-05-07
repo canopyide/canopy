@@ -354,5 +354,4 @@ export class WatcherController {
 
     this.flushPendingIfReady();
   }
-
 }
