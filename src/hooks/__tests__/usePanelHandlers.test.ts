@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, renderHook } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
 vi.mock("@/utils/logger", () => ({
   logError: vi.fn(),
@@ -37,7 +37,9 @@ vi.mock("@/store", () => {
 import { usePanelHandlers } from "../usePanelHandlers";
 import type { PanelLifecycle } from "../usePanelLifecycle";
 
-function makeLifecycle(): PanelLifecycle & { setIsTrashing: ReturnType<typeof vi.fn> } {
+type LifecycleHarness = Omit<PanelLifecycle, "setIsTrashing"> & { setIsTrashing: Mock };
+
+function makeLifecycle(): LifecycleHarness {
   return {
     mountedRef: { current: true },
     timeoutRef: { current: undefined },
