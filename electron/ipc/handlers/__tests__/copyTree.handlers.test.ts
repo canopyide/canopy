@@ -111,12 +111,16 @@ describe("copyTree handlers", () => {
   it("accepts sarif format in generate payload", async () => {
     const handler = getInvokeHandler(CHANNELS.COPYTREE_GENERATE);
 
-    const result = await handler(mockEvent, {
-      worktreeId: "wt-1",
-      options: { format: "sarif" },
-    });
-
-    expect(result.error).not.toContain("Invalid payload");
+    await expect(
+      handler(mockEvent, {
+        worktreeId: "wt-1",
+        options: { format: "sarif" },
+      })
+    ).resolves.toEqual(
+      expect.objectContaining({
+        error: expect.not.stringContaining("Invalid payload"),
+      })
+    );
   });
 });
 
