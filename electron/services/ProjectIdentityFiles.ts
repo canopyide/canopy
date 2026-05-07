@@ -262,11 +262,13 @@ export class ProjectIdentityFiles {
         if (typeof parsed !== "object" || parsed === null) {
           continue;
         }
-        if (!parsed.id) {
+        if (typeof parsed.id !== "string" || !parsed.id) {
           parsed.id = `inrepo-${entry.name.replace(/\.json$/, "")}`;
         }
         if (typeof parsed.createdAt !== "number") {
-          parsed.createdAt = 0;
+          const ts =
+            typeof parsed.createdAt === "string" ? Date.parse(parsed.createdAt) : NaN;
+          parsed.createdAt = Number.isFinite(ts) ? ts : 0;
         }
         const result = TerminalRecipeSchema.safeParse(parsed);
         if (!result.success) {
@@ -277,8 +279,11 @@ export class ProjectIdentityFiles {
           continue;
         }
         recipes.push(result.data);
-      } catch {
-        console.warn(`[ProjectIdentityFiles] Skipping malformed recipe file: ${entry.name}`);
+      } catch (error) {
+        console.warn(
+          `[ProjectIdentityFiles] Skipping malformed recipe file: ${entry.name}`,
+          error
+        );
       }
     }
     return recipes;
@@ -333,7 +338,8 @@ export class ProjectIdentityFiles {
             !parsed.name
           ) {
             console.warn(
-              `[ProjectIdentityFiles] Skipping invalid preset: ${agentId}/${entry.name}`
+              `[ProjectIdentityFiles] Skipping invalid preset: ${agentId}/${entry.name}`,
+              parsed
             );
             continue;
           }
@@ -349,8 +355,11 @@ export class ProjectIdentityFiles {
           }
           seenIds.add(parsed.id);
           presets.push(parsed as AgentPreset);
-        } catch {
-          console.warn(`[ProjectIdentityFiles] Skipping malformed preset file: ${entry.name}`);
+        } catch (error) {
+          console.warn(
+            `[ProjectIdentityFiles] Skipping malformed preset file: ${entry.name}`,
+            error
+          );
         }
       }
 
