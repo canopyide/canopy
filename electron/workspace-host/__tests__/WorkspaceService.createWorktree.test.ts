@@ -19,6 +19,7 @@ vi.mock("../../utils/fs.js", () => ({
 vi.mock("../../utils/hardenedGit.js", () => ({
   createHardenedGit: vi.fn(() => mockSimpleGit),
   validateCwd: vi.fn(),
+  validateBranchName: vi.fn(),
   getGitLocaleEnv: vi.fn().mockReturnValue({}),
 }));
 
@@ -175,6 +176,7 @@ describe("WorkspaceService.createWorktree", () => {
       "-b",
       "feature/test",
       "--no-track",
+      "--end-of-options",
       "/test/worktree",
       "main",
     ]);
@@ -218,6 +220,7 @@ describe("WorkspaceService.createWorktree", () => {
     expect(mockSimpleGit.raw).toHaveBeenCalledWith([
       "worktree",
       "add",
+      "--end-of-options",
       "/test/worktree2",
       "existing-branch",
     ]);
@@ -244,6 +247,7 @@ describe("WorkspaceService.createWorktree", () => {
       "-b",
       "feature/remote",
       "--track",
+      "--end-of-options",
       "/test/worktree3",
       "origin/main",
     ]);
@@ -476,6 +480,7 @@ describe("WorkspaceService.createWorktree", () => {
     expect(worktreeAddCall![0]).toEqual([
       "worktree",
       "add",
+      "--end-of-options",
       "/test/worktree-reuse",
       "bugfix/issue-6463",
     ]);
@@ -532,6 +537,7 @@ describe("WorkspaceService.createWorktree", () => {
       "-b",
       "feature/foo-2",
       "--no-track",
+      "--end-of-options",
       "/test/worktree-foo",
       "main",
     ]);
@@ -588,6 +594,7 @@ describe("WorkspaceService.createWorktree", () => {
       "-b",
       "feature/foo-4",
       "--no-track",
+      "--end-of-options",
       "/test/worktree-foo-new",
       "main",
     ]);
@@ -626,6 +633,7 @@ describe("WorkspaceService.createWorktree", () => {
       "-b",
       "feature/foo-2",
       "--no-track",
+      "--end-of-options",
       "/test/worktree-foo-fail",
       "main",
     ]);
@@ -669,6 +677,7 @@ describe("WorkspaceService.createWorktree", () => {
       "-b",
       "pr-9999-feature-2",
       "--track",
+      "--end-of-options",
       "/test/worktree-pr",
       "origin/pr-9999-feature",
     ]);
@@ -775,6 +784,7 @@ describe("WorkspaceService.createWorktree", () => {
       "-b",
       "feature/brand-new",
       "--no-track",
+      "--end-of-options",
       "/test/worktree-new",
       "main",
     ]);
@@ -800,6 +810,7 @@ describe("WorkspaceService.createWorktree", () => {
     expect(mockSimpleGit.raw).toHaveBeenCalledWith([
       "worktree",
       "add",
+      "--end-of-options",
       "/test/worktree-explicit",
       "existing-branch",
     ]);

@@ -15,9 +15,15 @@ const createHardenedGitMock = vi.hoisted(() => vi.fn());
 const logWarnMock = vi.hoisted(() => vi.fn());
 const logErrorMock = vi.hoisted(() => vi.fn());
 
-vi.mock("../../utils/hardenedGit.js", () => ({
-  createHardenedGit: createHardenedGitMock,
-}));
+vi.mock("../../utils/hardenedGit.js", async () => {
+  const actual = await vi.importActual<typeof import("../../utils/hardenedGit.js")>(
+    "../../utils/hardenedGit.js"
+  );
+  return {
+    ...actual,
+    createHardenedGit: createHardenedGitMock,
+  };
+});
 
 vi.mock("../../utils/logger.js", () => ({
   logDebug: vi.fn(),
@@ -160,26 +166,68 @@ describe("GitService", () => {
   });
 
   describe("compareWorktrees", () => {
-    it("uses two-dot range by default", async () => {
+    it("expands branches to refs/heads/ in two-dot range by default", async () => {
       gitClientMock.raw.mockResolvedValue("");
 
       const service = new GitService(tempDir);
       await service.compareWorktrees("main", "feature/test");
 
       expect(gitClientMock.raw).toHaveBeenCalledWith(
-        expect.arrayContaining(["main..feature/test"])
+        expect.arrayContaining(["refs/heads/main..refs/heads/feature/test"])
       );
     });
 
-    it("uses three-dot range when useMergeBase is true", async () => {
+    it("expands branches to refs/heads/ in three-dot range when useMergeBase is true", async () => {
       gitClientMock.raw.mockResolvedValue("");
 
       const service = new GitService(tempDir);
       await service.compareWorktrees("main", "feature/test", undefined, true);
 
       expect(gitClientMock.raw).toHaveBeenCalledWith(
-        expect.arrayContaining(["main...feature/test"])
+        expect.arrayContaining(["refs/heads/main...refs/heads/feature/test"])
       );
+    });
+
+    it("rejects leading-dash branch names before invoking git", async () => {
+      const service = new GitService(tempDir);
+
+      await expect(service.compareWorktrees("--exec=evil", "main")).rejects.toThrow(
+        "must not start with '-'"
+      );
+      expect(gitClientMock.raw).not.toHaveBeenCalled();
+    });
+
+    it("rejects an invalid name even when both branches are equal", async () => {
+      // The equality fast-path must not mask validation; otherwise a caller
+      // could pass `--exec=evil` for both args and get a silent OK back.
+      const service = new GitService(tempDir);
+
+      await expect(service.compareWorktrees("--exec=evil", "--exec=evil")).rejects.toThrow(
+        "must not start with '-'"
+      );
+      expect(gitClientMock.raw).not.toHaveBeenCalled();
+    });
+
+    it("passes --no-textconv to defeat user-defined textconv drivers", async () => {
+      gitClientMock.raw.mockResolvedValue("");
+
+      const service = new GitService(tempDir);
+      await service.compareWorktrees("main", "feature/test");
+
+      expect(gitClientMock.raw).toHaveBeenCalledWith(expect.arrayContaining(["--no-textconv"]));
+    });
+
+    it("places --end-of-options before the range to defuse stray flag-like tokens", async () => {
+      gitClientMock.raw.mockResolvedValue("");
+
+      const service = new GitService(tempDir);
+      await service.compareWorktrees("main", "feature/test", "src/app.ts");
+
+      const args = gitClientMock.raw.mock.calls[0][0] as string[];
+      const eooIdx = args.indexOf("--end-of-options");
+      const rangeIdx = args.indexOf("refs/heads/main..refs/heads/feature/test");
+      expect(eooIdx).toBeGreaterThanOrEqual(0);
+      expect(rangeIdx).toBeGreaterThan(eooIdx);
     });
 
     it("returns file list for two-dot range", async () => {
@@ -249,8 +297,110 @@ describe("GitService", () => {
       await service.compareWorktrees("main", "feature/test", "src/app.ts", true);
 
       expect(gitClientMock.raw).toHaveBeenCalledWith(
-        expect.arrayContaining(["main...feature/test", "--", "src/app.ts"])
+        expect.arrayContaining(["refs/heads/main...refs/heads/feature/test", "--", "src/app.ts"])
       );
+    });
+  });
+
+  describe("createWorktree hardening", () => {
+    it("rejects a leading-dash newBranch before any git call", async () => {
+      const service = new GitService(tempDir);
+
+      const target = path.join(tempDir, "new-wt-1");
+      await expect(
+        service.createWorktree({
+          baseBranch: "main",
+          newBranch: "--exec=touch /tmp/x",
+          path: target,
+        })
+      ).rejects.toThrow("must not start with '-'");
+      expect(gitClientMock.raw).not.toHaveBeenCalled();
+    });
+
+    it("rejects a leading-dash baseBranch before any git call", async () => {
+      const service = new GitService(tempDir);
+
+      const target = path.join(tempDir, "new-wt-2");
+      await expect(
+        service.createWorktree({
+          baseBranch: "-upload-pack=evil",
+          newBranch: "feature/x",
+          path: target,
+        })
+      ).rejects.toThrow("must not start with '-'");
+      expect(gitClientMock.raw).not.toHaveBeenCalled();
+    });
+
+    it("places --end-of-options between subcommand flags and positionals (local)", async () => {
+      const service = new GitService(tempDir);
+      const target = path.join(tempDir, "new-wt-local");
+
+      await service.createWorktree({
+        baseBranch: "main",
+        newBranch: "feature/x",
+        path: target,
+      });
+
+      const args = gitClientMock.raw.mock.calls[0][0] as string[];
+      const eooIdx = args.indexOf("--end-of-options");
+      const pathIdx = args.indexOf(target);
+      const baseIdx = args.indexOf("main");
+      const branchIdx = args.indexOf("feature/x");
+      expect(eooIdx).toBeGreaterThanOrEqual(0);
+      // EOO must come after the -b <branch> pair and before the positionals
+      expect(branchIdx).toBeLessThan(eooIdx);
+      expect(eooIdx).toBeLessThan(pathIdx);
+      expect(eooIdx).toBeLessThan(baseIdx);
+    });
+
+    it("places --end-of-options after --track for fromRemote worktrees", async () => {
+      const service = new GitService(tempDir);
+      const target = path.join(tempDir, "new-wt-remote");
+
+      await service.createWorktree({
+        baseBranch: "origin/main",
+        newBranch: "feature/x",
+        path: target,
+        fromRemote: true,
+      });
+
+      const args = gitClientMock.raw.mock.calls[0][0] as string[];
+      expect(args).toContain("--track");
+      const trackIdx = args.indexOf("--track");
+      const eooIdx = args.indexOf("--end-of-options");
+      const pathIdx = args.indexOf(target);
+      expect(trackIdx).toBeLessThan(eooIdx);
+      expect(eooIdx).toBeLessThan(pathIdx);
+    });
+  });
+
+  describe("removeWorktree hardening", () => {
+    it("places --end-of-options before the worktree path", async () => {
+      const service = new GitService(tempDir);
+      const target = path.join(tempDir, "old-wt");
+
+      await service.removeWorktree(target);
+
+      const args = gitClientMock.raw.mock.calls[0][0] as string[];
+      const eooIdx = args.indexOf("--end-of-options");
+      const pathIdx = args.indexOf(target);
+      expect(eooIdx).toBeGreaterThanOrEqual(0);
+      expect(pathIdx).toBeGreaterThan(eooIdx);
+    });
+
+    it("keeps --end-of-options after --force when force is true", async () => {
+      const service = new GitService(tempDir);
+      const target = path.join(tempDir, "old-wt-force");
+
+      await service.removeWorktree(target, true);
+
+      const args = gitClientMock.raw.mock.calls[0][0] as string[];
+      expect(args).toContain("--force");
+      const forceIdx = args.indexOf("--force");
+      const eooIdx = args.indexOf("--end-of-options");
+      const pathIdx = args.indexOf(target);
+      expect(forceIdx).toBeLessThan(eooIdx);
+      expect(eooIdx).toBeLessThan(pathIdx);
     });
   });
 
@@ -261,6 +411,15 @@ describe("GitService", () => {
     await service.getFileDiff("foo.ts", "modified");
 
     expect(gitClientMock.diff).toHaveBeenCalledWith(expect.arrayContaining(["--no-ext-diff"]));
+  });
+
+  it("passes --no-textconv to git.diff for modified files", async () => {
+    gitClientMock.diff.mockResolvedValue("diff --git a/foo.ts b/foo.ts\n+change");
+
+    const service = new GitService(tempDir);
+    await service.getFileDiff("foo.ts", "modified");
+
+    expect(gitClientMock.diff).toHaveBeenCalledWith(expect.arrayContaining(["--no-textconv"]));
   });
 
   it("passes --no-ext-diff to git.raw for cross-worktree file diff", async () => {

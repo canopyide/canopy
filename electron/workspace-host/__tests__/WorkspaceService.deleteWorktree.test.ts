@@ -22,6 +22,7 @@ vi.mock("../../utils/fs.js", () => ({
 vi.mock("../../utils/hardenedGit.js", () => ({
   createHardenedGit: vi.fn(() => mockSimpleGit),
   validateCwd: vi.fn(),
+  validateBranchName: vi.fn(),
 }));
 
 vi.mock("../../utils/git.js", () => ({
@@ -204,6 +205,12 @@ describe("WorkspaceService.deleteWorktree", () => {
       (c) => Array.isArray(c[0]) && c[0][0] === "worktree" && c[0][1] === "remove"
     );
     expect(removeCalls.length).toBe(1);
+    // Defuses leading-dash worktree paths so they cannot be parsed as flags.
+    const removeArgs = removeCalls[0][0] as string[];
+    const eooIdx = removeArgs.indexOf("--end-of-options");
+    const pathIdx = removeArgs.indexOf("/test/worktree");
+    expect(eooIdx).toBeGreaterThanOrEqual(0);
+    expect(pathIdx).toBeGreaterThan(eooIdx);
   });
 
   it("sends error result for unknown worktreeId", async () => {

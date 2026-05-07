@@ -4,7 +4,11 @@ import { stat, readFile, access } from "fs/promises";
 import { resolve as pathResolve, isAbsolute } from "path";
 import { generateProjectId, settingsFilePath } from "../services/projectStorePaths.js";
 import { SimpleGit, BranchSummary } from "simple-git";
-import { createHardenedGit, createAuthenticatedGit } from "../utils/hardenedGit.js";
+import {
+  createHardenedGit,
+  createAuthenticatedGit,
+  validateBranchName,
+} from "../utils/hardenedGit.js";
 import { classifyGitError, getGitRecoveryAction } from "../../shared/utils/gitOperationErrors.js";
 import type { Worktree } from "../../shared/types/worktree.js";
 import type {
@@ -928,6 +932,11 @@ export class WorkspaceService {
       let { newBranch } = options;
       let { fromRemote = false, useExistingBranch = false } = options;
 
+      // Reject branch names that argv parsers would treat as flags (leading
+      // dash) or that contain git-special characters before any git call.
+      validateBranchName(newBranch);
+      validateBranchName(baseBranch);
+
       // #6463: when not explicitly reusing a branch, guard against a stale
       // local branch with the same name. Without this, `git worktree add -b`
       // hits "fatal: a branch named '...' already exists" whenever a previous
@@ -978,17 +987,37 @@ export class WorkspaceService {
         }
       }
 
+      // `--end-of-options` after the subcommand flags so any leading-dash ref
+      // or path that slipped past validation is treated as positional.
       if (useExistingBranch) {
-        await git.raw(["worktree", "add", path, newBranch]);
+        await git.raw(["worktree", "add", "--end-of-options", path, newBranch]);
       } else if (fromRemote) {
-        await git.raw(["worktree", "add", "-b", newBranch, "--track", path, baseBranch]);
+        await git.raw([
+          "worktree",
+          "add",
+          "-b",
+          newBranch,
+          "--track",
+          "--end-of-options",
+          path,
+          baseBranch,
+        ]);
       } else {
         // --no-track: local-base branches shouldn't auto-track a local ref even
         // when the user has branch.autoSetupMerge=always. Skipping tracking also
         // avoids a .git/config.lock acquisition, cutting contention under bulk
         // creation. PR-mode (fromRemote) keeps --track — ahead/behind badges
         // at WorktreeMonitor.ts:1092 depend on @{u} resolving.
-        await git.raw(["worktree", "add", "-b", newBranch, "--no-track", path, baseBranch]);
+        await git.raw([
+          "worktree",
+          "add",
+          "-b",
+          newBranch,
+          "--no-track",
+          "--end-of-options",
+          path,
+          baseBranch,
+        ]);
       }
 
       const absolutePath = isAbsolute(path) ? path : pathResolve(rootPath, path);
@@ -1536,7 +1565,9 @@ export class WorkspaceService {
           if (force) {
             args.push("--force");
           }
-          args.push(monitor.path);
+          // `--end-of-options` so a leading-dash worktree path is treated as
+          // positional rather than parsed as a flag.
+          args.push("--end-of-options", monitor.path);
           try {
             await this.git.raw(args);
           } catch (removeError) {
@@ -1758,7 +1789,16 @@ ${lines.map((l) => "+" + l).join("\n")}`;
         return;
       }
 
-      const diff = await git.diff(["HEAD", "--no-ext-diff", "--no-color", "--", normalizedPath]);
+      // `--no-textconv` blocks user-defined diff drivers that would otherwise
+      // execute arbitrary binaries via `.gitattributes` textconv mappings.
+      const diff = await git.diff([
+        "HEAD",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--no-color",
+        "--",
+        normalizedPath,
+      ]);
 
       if (diff.includes("Binary files")) {
         this.sendEvent({ type: "get-file-diff-result", requestId, diff: "BINARY_FILE" });
