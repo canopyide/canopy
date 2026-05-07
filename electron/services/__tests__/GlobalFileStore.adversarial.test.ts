@@ -72,6 +72,7 @@ describe("GlobalFileStore adversarial", () => {
 
     const result = await store.getRecipes();
     expect(result.map((r) => r.id)).toEqual(["r1", "r3"]);
+    expect(utilsMock.resilientRename).not.toHaveBeenCalled();
   });
 
   it("saveRecipes ENOENT triggers mkdir + retry", async () => {
@@ -162,6 +163,10 @@ describe("GlobalFileStore adversarial", () => {
 
     const result = await store.getRecipes();
     expect(result).toEqual([]);
+    expect(utilsMock.resilientRename).toHaveBeenCalledWith(
+      RECIPES_FILE,
+      expect.any(String)
+    );
   });
 
   it("addRecipe loads + appends + saves without mutating the loaded array for caller", async () => {
