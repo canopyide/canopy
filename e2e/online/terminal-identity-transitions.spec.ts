@@ -28,6 +28,10 @@ const SCREENSHOT_DIR = path.resolve(__dirname, "../../test-results/terminal-iden
 const MAX_DIAGNOSTIC_LINES = 1_500;
 const AGENT_IDLE_STICKINESS_MS = 45_000;
 const ANSI_ESCAPE_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
+// Windows GitHub runners are markedly slower at first-run agent CLI startup
+// (Node spawn + auth check + render). 3x covers the worst-case cold start
+// without bloating Linux/macOS timing.
+const SLOW_HOST_MULTIPLIER = process.platform === "win32" ? 3 : 1;
 const AGENT_STATE_VALUES = new Set([
   "idle",
   "working",
@@ -436,7 +440,7 @@ test.describe("Terminal chrome ↔ live process identity (bidirectional)", () =>
       // Authoritative signal — the live-process field.
       await expect
         .poll(() => panel.getAttribute("data-detected-agent-id"), {
-          timeout: 90_000,
+          timeout: 90_000 * SLOW_HOST_MULTIPLIER,
           intervals: [500],
         })
         .toBe("claude");
@@ -463,7 +467,7 @@ test.describe("Terminal chrome ↔ live process identity (bidirectional)", () =>
       const panel = window.locator(`[data-panel-id="${claudePanelId}"]`);
       const cmEditor = panel.locator(SEL.terminal.cmEditor);
 
-      const deadline = Date.now() + 90_000;
+      const deadline = Date.now() + 90_000 * SLOW_HOST_MULTIPLIER;
       while (Date.now() < deadline) {
         await dismissTelemetryConsent(window);
         const text = (await getTerminalText(panel)).toLowerCase();
@@ -582,7 +586,7 @@ test.describe("Terminal chrome ↔ live process identity (bidirectional)", () =>
 
       await expect
         .poll(() => panel.getAttribute("data-detected-agent-id"), {
-          timeout: 90_000,
+          timeout: 90_000 * SLOW_HOST_MULTIPLIER,
           intervals: [500],
         })
         .toBe("claude");
@@ -629,7 +633,7 @@ test.describe("Terminal chrome ↔ live process identity (bidirectional)", () =>
       const { window } = ctx;
       const panel = window.locator(`[data-panel-id="${plainPanelId}"]`);
       const cmEditor = panel.locator(SEL.terminal.cmEditor);
-      const deadline = Date.now() + 60_000;
+      const deadline = Date.now() + 60_000 * SLOW_HOST_MULTIPLIER;
       let reachedPrompt = false;
       while (Date.now() < deadline && !reachedPrompt) {
         await dismissTelemetryConsent(window);

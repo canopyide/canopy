@@ -61,7 +61,9 @@ test.describe("Claude Online Flow", () => {
 
       // Claude Code may prompt for trust, API key, or skip straight to Welcome
       // depending on prior configuration. Poll and handle whatever appears.
-      const deadline = Date.now() + 90_000;
+      // Windows GitHub runners are dramatically slower at first-run Claude Code
+      // startup (Node spawn + auth check + render) — give them 3x the budget.
+      const deadline = Date.now() + (process.platform === "win32" ? 270_000 : 90_000);
       let reachedWelcome = false;
 
       while (Date.now() < deadline && !reachedWelcome) {

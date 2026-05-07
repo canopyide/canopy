@@ -59,7 +59,10 @@ test.describe("OpenCode Online Flow", () => {
       const agentPanel = window.locator(SEL.opencodeAgent.panel);
       const cmEditor = agentPanel.locator(SEL.terminal.cmEditor);
 
-      const deadline = Date.now() + 120_000;
+      // Windows GitHub runners take significantly longer to bring up the
+      // OpenCode CLI (Node spawn + provider probe + render) — extend the
+      // ready-state polling budget so we don't trip the deadline on cold-start.
+      const deadline = Date.now() + (process.platform === "win32" ? 360_000 : 120_000);
       let reachedReady = false;
 
       while (Date.now() < deadline && !reachedReady) {

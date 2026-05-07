@@ -286,16 +286,11 @@ jobs:
       # Nightly and stable both publish `latest*.yml` — URL separation (not
       # channel-name separation) distinguishes them. The nightly URL prefix is
       # set by the config when it sees a -nightly.* version.
-      - name: Validate update metadata (Windows)
-        if: matrix.os == 'windows-latest'
-        shell: bash
-        run: |
-          if [ ! -f "release/latest.yml" ]; then
-            echo "::error::Missing release/latest.yml - Windows auto-update will not work"
-            exit 1
-          fi
-          node scripts/ci/validate-update-metadata.mjs release/latest.yml
-
+      #
+      # Windows: validation removed in prep for the Microsoft Store migration
+      # (issue #7199 — electron-updater is being disabled on Windows since
+      # the Store handles update distribution end-to-end). The whole step
+      # will go away with the rest of the Windows auto-update plumbing.
       - name: Validate update metadata (macOS)
         if: startsWith(matrix.os, 'macos')
         shell: bash
@@ -372,15 +367,20 @@ jobs:
     uses: ./.github/workflows/e2e-core.yml
     with:
       project: full
+      platform: ${{ inputs.platform || 'all' }}
 
   e2e-online:
     needs: [check, test]
     uses: ./.github/workflows/e2e-online.yml
+    with:
+      platform: ${{ inputs.platform || 'all' }}
     secrets: inherit
 
   e2e-nightly:
     needs: [check, test]
     uses: ./.github/workflows/e2e-nightly.yml
+    with:
+      platform: ${{ inputs.platform || 'all' }}
 
   publish:
     if: inputs.platform == '' || inputs.platform == 'all'
