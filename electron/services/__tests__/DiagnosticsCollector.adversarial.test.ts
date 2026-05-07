@@ -438,7 +438,10 @@ describe("DiagnosticsCollector adversarial", () => {
       expect(header.host).toBe("<hostname>");
       expect(header.cwd).not.toContain("/Users/joe");
       expect(header.filename).not.toContain("/Users/joe");
-      expect(header.commandLine?.join(" ")).not.toContain("ghp_secret123");
+      expect(header.commandLine?.join(" ")).not.toContain("ghp_");
+      expect(header.commandLine?.join(" ")).not.toContain(
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef0123456"
+      );
       expect(header.commandLine?.join(" ")).not.toContain("/Users/joe");
       expect(header.networkInterfaces).toBeUndefined();
       // Safe metadata preserved.

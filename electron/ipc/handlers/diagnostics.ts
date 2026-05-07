@@ -68,11 +68,13 @@ async function writeBundleZip(
     }
   }
 
-  return new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     const output = createWriteStream(zipPath, { mode: 0o600 });
     const archive = archiver("zip", { zlib: { level: 6 } });
 
-    output.on("close", resolve);
+    output.on("close", () => {
+      resolve();
+    });
     output.on("error", reject);
     archive.on("error", reject);
 
@@ -85,6 +87,13 @@ async function writeBundleZip(
 
     void archive.finalize();
   });
+
+  // Belt-and-suspenders: createWriteStream's `mode` is only applied when the
+  // file is freshly created. If the user picked an existing path, the prior
+  // mode (e.g. 0o644) survives. POSIX-only — chmod is a no-op on Windows.
+  if (process.platform !== "win32") {
+    await fs.chmod(zipPath, 0o600);
+  }
 }
 
 function ensureEventLoopHistogram(): IntervalHistogram {

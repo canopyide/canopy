@@ -95,9 +95,12 @@ vi.mock("electron", () => ({
   },
 }));
 
+const chmodMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+
 vi.mock("node:fs", () => ({
   promises: {
     readFile: vi.fn(() => Promise.resolve("")),
+    chmod: chmodMock,
   },
   createWriteStream: createWriteStreamMock,
   existsSync: vi.fn(() => false),
@@ -366,6 +369,61 @@ describe("registerDiagnosticsHandlers", () => {
       expect(zipPath).toBe("/tmp/diagnostics.zip");
       expect(options).toEqual({ mode: 0o600 });
       expect(shellMock.showItemInFolder).toHaveBeenCalledWith("/tmp/diagnostics.zip");
+    });
+
+    it("ZIP_BUNDLE_CHMODS_AFTER_CLOSE_FOR_OVERWRITE_CASE", async () => {
+      // createWriteStream's `mode` is only applied to newly-created files;
+      // overwrite of an existing 0o644 file would otherwise preserve that mode.
+      // The handler must explicitly chmod after close on POSIX platforms.
+      const originalPlatform = process.platform;
+      Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
+      try {
+        dialogMock.showSaveDialog.mockResolvedValueOnce({
+          filePath: "/tmp/diagnostics-overwrite.zip",
+          canceled: false,
+        });
+        registerDiagnosticsHandlers(deps);
+        const handler = getHandlerFn("system:save-diagnostics-bundle");
+
+        await handler(
+          {},
+          {
+            payload: { metadata: {} },
+            enabledSections: { metadata: true, logs: false },
+            replacements: [],
+          }
+        );
+
+        expect(chmodMock).toHaveBeenCalledWith("/tmp/diagnostics-overwrite.zip", 0o600);
+      } finally {
+        Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
+      }
+    });
+
+    it("ZIP_BUNDLE_SKIPS_CHMOD_ON_WINDOWS", async () => {
+      const originalPlatform = process.platform;
+      Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+      try {
+        dialogMock.showSaveDialog.mockResolvedValueOnce({
+          filePath: "C:/Users/Public/diagnostics.zip",
+          canceled: false,
+        });
+        registerDiagnosticsHandlers(deps);
+        const handler = getHandlerFn("system:save-diagnostics-bundle");
+
+        await handler(
+          {},
+          {
+            payload: { metadata: {} },
+            enabledSections: { metadata: true, logs: false },
+            replacements: [],
+          }
+        );
+
+        expect(chmodMock).not.toHaveBeenCalled();
+      } finally {
+        Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
+      }
     });
   });
 });
