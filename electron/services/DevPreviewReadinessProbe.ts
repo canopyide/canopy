@@ -10,7 +10,7 @@ export async function waitForServerReady(
   signal: AbortSignal,
   timeoutMs = READINESS_TIMEOUT_MS
 ): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs;
+  const deadline = performance.now() + timeoutMs;
   let useHttps: boolean;
   try {
     useHttps = new URL(url).protocol === "https:";
@@ -19,15 +19,12 @@ export async function waitForServerReady(
   }
   const requestModule = useHttps ? https : http;
 
-  while (Date.now() < deadline) {
+  while (performance.now() < deadline) {
     if (signal.aborted) return false;
 
     const ready = await new Promise<boolean>((resolve) => {
       let settled = false;
-      const onAbort = () => {
-        req?.destroy();
-        settle(false);
-      };
+      let onAbort: () => void = () => {};
       const settle = (value: boolean) => {
         if (settled) return;
         settled = true;
@@ -35,9 +32,8 @@ export async function waitForServerReady(
         resolve(value);
       };
 
-      let req: ReturnType<typeof requestModule.request> | undefined;
       try {
-        req = requestModule.request(
+        const req = requestModule.request(
           url,
           {
             method: "HEAD",
@@ -47,8 +43,6 @@ export async function waitForServerReady(
           (res) => {
             res.resume();
             const status = res.statusCode ?? 0;
-            // Any HTTP response means the server is listening and can process requests.
-            // We only keep polling on transport-level failures (connection refused, timeout, etc.).
             if (status >= 100 && status < 600) {
               settle(true);
             } else {
@@ -56,9 +50,13 @@ export async function waitForServerReady(
             }
           }
         );
+        onAbort = () => {
+          req.destroy();
+          settle(false);
+        };
         req.on("error", () => settle(false));
         req.on("timeout", () => {
-          req!.destroy();
+          req.destroy();
           settle(false);
         });
         if (signal.aborted) {

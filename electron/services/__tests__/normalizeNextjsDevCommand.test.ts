@@ -76,6 +76,10 @@ describe("normalizeNextjsDevCommand", () => {
     it("leaves piped command unchanged", async () => {
       expect(await normalizeNextjsDevCommand("next dev | tee log", CWD)).toBe("next dev | tee log");
     });
+
+    it("leaves backtick-substituted command unchanged", async () => {
+      expect(await normalizeNextjsDevCommand("next dev `whoami`", CWD)).toBe("next dev `whoami`");
+    });
   });
 
   describe("package manager script commands", () => {

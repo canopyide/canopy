@@ -16,16 +16,19 @@ export async function allocatePort(
     portRegistry.set(sessionKey, candidate);
     const available = await new Promise<boolean>((resolve) => {
       const srv = net.createServer();
+      srv.unref();
       srv.once("error", () => resolve(false));
-      srv.listen(candidate, "127.0.0.1", () => srv.close(() => resolve(true)));
+      // Gap between close() and the dev server's eventual bind() is an intrinsic TOCTOU we accept.
+      srv.listen(candidate, "0.0.0.0", () => srv.close(() => resolve(true)));
     });
     if (available) return candidate;
-    portRegistry.delete(sessionKey);
+    releasePort(portRegistry, sessionKey);
   }
   return new Promise<number>((resolve, reject) => {
     const srv = net.createServer();
+    srv.unref();
     srv.once("error", (err) => reject(err));
-    srv.listen(0, "127.0.0.1", () => {
+    srv.listen(0, "0.0.0.0", () => {
       const addr = srv.address();
       const port = typeof addr === "object" && addr ? addr.port : 0;
       srv.close(() => {

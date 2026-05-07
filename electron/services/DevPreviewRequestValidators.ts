@@ -1,3 +1,4 @@
+import path from "node:path";
 import type {
   DevPreviewEnsureRequest,
   DevPreviewSessionRequest,
@@ -45,8 +46,8 @@ export function validateEnsureRequest(request: DevPreviewEnsureRequest): void {
   if (typeof request.projectId !== "string" || !request.projectId.trim()) {
     throw new Error("projectId is required");
   }
-  if (typeof request.cwd !== "string" || !request.cwd.trim()) {
-    throw new Error("cwd is required");
+  if (typeof request.cwd !== "string" || !request.cwd.trim() || !path.isAbsolute(request.cwd)) {
+    throw new Error("cwd must be an absolute path");
   }
   if (typeof request.devCommand !== "string") {
     throw new Error("devCommand must be a string");

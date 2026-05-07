@@ -2,34 +2,39 @@ import { describe, expect, it, vi } from "vitest";
 import { allocatePort, releasePort } from "../DevPreviewPortAllocator.js";
 
 vi.mock("node:net", () => {
-  const mockServer = (port: number) => ({
-    once(_event: string, cb: (err?: Error) => void) {
-      if (_event === "error") {
-        if (port === 4444) {
-          cb(new Error("EADDRINUSE"));
+  const createServer = vi.fn((_options?: Record<string, unknown>) => {
+    let port = 0;
+    return {
+      unref: vi.fn(function (this: ReturnType<typeof createServer>) {
+        return this;
+      }),
+      once(_event: string, cb: (err?: Error) => void) {
+        if (_event === "error") {
+          if (port === 4444) {
+            cb(new Error("EADDRINUSE"));
+          }
         }
-      }
-      return this;
-    },
-    listen(_port: number, _host: string, cb: () => void) {
-      if (_port === 4444) return;
-      cb();
-      return this;
-    },
-    close(cb: () => void) {
-      cb();
-      return this;
-    },
-    address() {
-      return { port: 5678 };
-    },
+        return this;
+      },
+      listen(_port: number, _host: string, cb: () => void) {
+        port = _port;
+        if (_port === 4444) return;
+        cb();
+        return this;
+      },
+      close(cb: () => void) {
+        cb();
+        return this;
+      },
+      address() {
+        return { port: 5678 };
+      },
+    };
   });
 
   return {
-    default: {
-      createServer: vi.fn(() => mockServer(0)),
-    },
-    createServer: vi.fn(() => mockServer(0)),
+    default: { createServer },
+    createServer,
   };
 });
 

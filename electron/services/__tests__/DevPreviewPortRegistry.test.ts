@@ -35,6 +35,7 @@ vi.mock("node:net", () => {
     type Cb = () => void;
     const handlers: Record<string, Cb[]> = {};
     const srv = {
+      unref: vi.fn(() => srv),
       once: vi.fn((event: string, cb: Cb) => {
         handlers[event] = handlers[event] ?? [];
         handlers[event].push(cb);
