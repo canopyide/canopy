@@ -129,6 +129,9 @@ describe("useWorktreeFormValidation", () => {
   });
 
   it("rejects invalid prefix characters", () => {
+    // #7033: error messages now come from the shared validateBranchName and
+    // identify the specific forbidden character (":" here) rather than the
+    // generic "invalid characters" copy.
     const { result } = renderHook(() => useWorktreeFormValidation());
 
     const validation = result.current.validate({
@@ -136,7 +139,8 @@ describe("useWorktreeFormValidation", () => {
       branchInput: "bad:prefix/my-feature",
     });
     expect(validation.valid).toBe(false);
-    expect(validation.error?.message).toContain("invalid characters");
+    expect(validation.error?.field).toBe("new-branch");
+    expect(validation.error?.message).toMatch(/':'|invalid character/i);
   });
 
   it("rejects missing worktree path", () => {
