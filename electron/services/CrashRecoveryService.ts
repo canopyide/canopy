@@ -300,9 +300,19 @@ export class CrashRecoveryService {
 
   private extractPanelSummaries(crashTimestamp: number): PanelSummary[] {
     try {
-      if (!fs.existsSync(this.backupPath)) return [];
-      const raw = fs.readFileSync(this.backupPath, "utf8");
-      const snapshot = JSON.parse(raw) as SessionSnapshot;
+      // Prefer the snapshot cached by consumeMarker — startBackupTimer can
+      // overwrite this.backupPath on disk between marker consumption and
+      // here, which would silently swap pre-crash panels for an empty
+      // post-crash session. Fall back to disk only when the cache failed
+      // to populate (read or parse error in consumeMarker's try block).
+      let snapshot: SessionSnapshot;
+      if (this.cachedBackupSnapshot) {
+        snapshot = this.cachedBackupSnapshot;
+      } else {
+        if (!fs.existsSync(this.backupPath)) return [];
+        const raw = fs.readFileSync(this.backupPath, "utf8");
+        snapshot = JSON.parse(raw) as SessionSnapshot;
+      }
       if (!snapshot.appState) return [];
 
       const appState = snapshot.appState as Record<string, unknown>;

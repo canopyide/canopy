@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { store } from "../store.js";
 import { closeTelemetry } from "./TelemetryService.js";
+import { getCrashLoopGuard } from "./CrashLoopGuardService.js";
 
 const GPU_DISABLED_FLAG = "gpu-disabled.flag";
 const GPU_ANGLE_FALLBACK_FLAG = "gpu-angle-fallback.flag";
@@ -85,6 +86,15 @@ class GpuCrashMonitorService {
           return;
         }
         this.relaunching = true;
+        // Honor the crash-loop hard stop even when GPU crashes are the
+        // trigger — otherwise back-to-back GPU crashes can blow past the
+        // process-wide HARD_STOP_THRESHOLD that globalErrorHandlers respects.
+        if (!getCrashLoopGuard().shouldRelaunch()) {
+          console.error("[GPU] Crash loop hard stop reached — not relaunching (ANGLE fallback)");
+          await closeTelemetry();
+          app.exit(0);
+          return;
+        }
         console.error("[GPU] First GPU crash — wrote ANGLE fallback flag, relaunching");
         app.relaunch();
         await closeTelemetry();
@@ -104,6 +114,12 @@ class GpuCrashMonitorService {
           return;
         }
         this.relaunching = true;
+        if (!getCrashLoopGuard().shouldRelaunch()) {
+          console.error("[GPU] Crash loop hard stop reached — not relaunching (nuclear disable)");
+          await closeTelemetry();
+          app.exit(0);
+          return;
+        }
         console.error(
           `[GPU] ${GPU_CRASH_THRESHOLD} GPU crashes detected — wrote disable flag, relaunching`
         );

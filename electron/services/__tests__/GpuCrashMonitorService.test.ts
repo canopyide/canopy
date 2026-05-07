@@ -35,6 +35,14 @@ const telemetryServiceMock = vi.hoisted(() => ({
 
 vi.mock("../TelemetryService.js", () => telemetryServiceMock);
 
+const crashLoopGuardMock = vi.hoisted(() => ({
+  shouldRelaunch: vi.fn(() => true),
+}));
+
+vi.mock("../CrashLoopGuardService.js", () => ({
+  getCrashLoopGuard: () => crashLoopGuardMock,
+}));
+
 import {
   isGpuDisabledByFlag,
   writeGpuDisabledFlag,
@@ -52,6 +60,7 @@ describe("GpuCrashMonitorService", () => {
     Object.keys(appListeners).forEach((k) => delete appListeners[k]);
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "gpu-crash-test-"));
     appMock.getPath.mockReturnValue(tmpDir);
+    crashLoopGuardMock.shouldRelaunch.mockReturnValue(true);
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
@@ -348,6 +357,71 @@ describe("GpuCrashMonitorService", () => {
       mod.initializeGpuCrashMonitor();
       const listenerCount = (appListeners["child-process-gone"] ?? []).length;
       expect(listenerCount).toBe(1);
+    });
+
+    describe("crash-loop guard integration", () => {
+      it("ANGLE path: does not relaunch when guard hard-stops, but exits cleanly", async () => {
+        crashLoopGuardMock.shouldRelaunch.mockReturnValue(false);
+        await loadAndInit();
+        emitGpuCrash();
+        await vi.waitFor(() => {
+          expect(appMock.exit).toHaveBeenCalledWith(0);
+        });
+        expect(appMock.relaunch).not.toHaveBeenCalled();
+        // The fallback flag is still written — the next session starts cold
+        // with ANGLE active so a restored launch (after the guard resets)
+        // doesn't immediately repeat the original Vulkan crash.
+        expect(isGpuAngleFallbackByFlag(tmpDir)).toBe(true);
+        expect(console.error).toHaveBeenCalledWith(
+          expect.stringContaining("Crash loop hard stop reached")
+        );
+      });
+
+      it("ANGLE path: relaunches when guard allows", async () => {
+        crashLoopGuardMock.shouldRelaunch.mockReturnValue(true);
+        await loadAndInit();
+        emitGpuCrash();
+        await vi.waitFor(() => {
+          expect(appMock.exit).toHaveBeenCalledWith(0);
+        });
+        expect(appMock.relaunch).toHaveBeenCalledTimes(1);
+      });
+
+      it("Nuclear path: does not relaunch when guard hard-stops, but exits cleanly", async () => {
+        writeGpuAngleFallbackFlag(tmpDir);
+        crashLoopGuardMock.shouldRelaunch.mockReturnValue(false);
+        await loadAndInit();
+        emitGpuCrash();
+        emitGpuCrash();
+        emitGpuCrash();
+        await vi.waitFor(() => {
+          expect(appMock.exit).toHaveBeenCalledWith(0);
+        });
+        expect(appMock.relaunch).not.toHaveBeenCalled();
+        // Disable flag and store flip still happen — once the guard window
+        // clears the user gets booted into software-rendering mode rather
+        // than back into the crashing GPU stack.
+        expect(isGpuDisabledByFlag(tmpDir)).toBe(true);
+        expect(storeMock.set).toHaveBeenCalledWith("gpu", {
+          hardwareAccelerationDisabled: true,
+        });
+        expect(console.error).toHaveBeenCalledWith(
+          expect.stringContaining("Crash loop hard stop reached")
+        );
+      });
+
+      it("Nuclear path: relaunches when guard allows", async () => {
+        writeGpuAngleFallbackFlag(tmpDir);
+        crashLoopGuardMock.shouldRelaunch.mockReturnValue(true);
+        await loadAndInit();
+        emitGpuCrash();
+        emitGpuCrash();
+        emitGpuCrash();
+        await vi.waitFor(() => {
+          expect(appMock.exit).toHaveBeenCalledWith(0);
+        });
+        expect(appMock.relaunch).toHaveBeenCalledTimes(1);
+      });
     });
   });
 });
