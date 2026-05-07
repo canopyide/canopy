@@ -469,7 +469,7 @@ describe("WriteQueue.submit timeout", () => {
 
   it("does not cause unhandled rejection when work rejects after timeout", async () => {
     const m = makeOptions();
-    let lateReject!: () => void;
+    let lateReject!: (reason?: unknown) => void;
     m.performSubmit.mockImplementation(
       () =>
         new Promise<void>((_, reject) => {
