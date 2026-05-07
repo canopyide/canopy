@@ -156,6 +156,50 @@ describe("UrlDetector", () => {
         const result = detector.scanOutput("Server: http://[::1]:3000", "");
         expect(result.url).toBe("http://[::1]:3000/");
       });
+
+      it("detects URLs wrapped in OSC 8 with non-empty params (BEL terminator)", () => {
+        const withOsc =
+          "Server at \x1b]8;id=vte-123;http://localhost:3000\x07http://localhost:3000\x1b]8;;\x07";
+        const result = detector.scanOutput(withOsc, "");
+        expect(result.url).toBe("http://localhost:3000/");
+      });
+
+      it("detects URLs wrapped in OSC 8 with non-empty params (ST terminator)", () => {
+        const withOsc =
+          "Server at \x1b]8;id=gcc-456;http://localhost:3000\x1b\\http://localhost:3000\x1b]8;;\x1b\\";
+        const result = detector.scanOutput(withOsc, "");
+        expect(result.url).toBe("http://localhost:3000/");
+      });
+
+      it("does not extract URLs from DCS payloads containing localhost substring", () => {
+        // DCS payload with base64-like content containing "localhost" as substring
+        const withDcs = "Before \x1bP@k=30;bG9jYWxob3N0\x1b\\ after";
+        const result = detector.scanOutput(withDcs, "");
+        expect(result.url).toBeNull();
+      });
+
+      it("extracts only real URL when APC payload precedes a localhost URL", () => {
+        // Kitty-like APC followed by a real URL
+        const withApc =
+          "Data \x1b_Gi=1,aW1hZ2U6Ly9sb2NhbGhvc3Q6OTk5OQ==\x1b\\ then http://localhost:3000";
+        const result = detector.scanOutput(withApc, "");
+        expect(result.url).toBe("http://localhost:3000/");
+      });
+
+      it("detects URL with trailing dot from sentence punctuation", () => {
+        const result = detector.scanOutput("Server running at http://localhost:3000.", "");
+        expect(result.url).toBe("http://localhost:3000/");
+      });
+
+      it("detects URL with trailing semicolon from list punctuation", () => {
+        const result = detector.scanOutput("URL: http://localhost:3000;", "");
+        expect(result.url).toBe("http://localhost:3000/");
+      });
+
+      it("detects URL with trailing comma from prose punctuation", () => {
+        const result = detector.scanOutput("Check http://localhost:3000, and more", "");
+        expect(result.url).toBe("http://localhost:3000/");
+      });
     });
 
     describe("error detection", () => {

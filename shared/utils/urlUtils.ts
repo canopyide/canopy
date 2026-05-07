@@ -1,7 +1,6 @@
 /* eslint-disable no-control-regex */
 const LOOPBACK_HOSTS = ["localhost", "127.0.0.1", "::1"];
 const ALLOWED_PROTOCOLS = ["http:", "https:"];
-const LOCALHOST_HINTS = ["localhost", "127.0.0.1", "0.0.0.0", "[::1]", "::1"] as const;
 // Exclude C0 controls (\x00-\x1f), DEL (\x7f), and C1 controls (\x80-\x9f) from the URL
 // path character class, preventing BEL/ESC/8-bit OSC escape bytes from being captured
 // as part of the URL when terminals use OSC 8 hyperlinks.
@@ -164,11 +163,16 @@ export function stripAnsiAndOscCodes(text: string): string {
   return (
     text
       // OSC 8 hyperlinks — preserve the visible link text (BEL terminator).
-      // Exclude \x1b from the params so this pattern cannot span across an
-      // adjacent ST-terminated sequence and over-strip surrounding content.
-      .replace(/\x1b\]8;;[^\x07\x1b]*\x07([^\x1b]*)\x1b\]8;;\x07/g, "$1")
+      // Tolerate non-empty params (GNU ls, gcc, systemd emit id=...).
+      .replace(/\x1b\]8;[^\x07\x1b]*;([^\x07\x1b]*)\x07([^\x1b]*)\x1b\]8;[^\x07\x1b]*;\x07/g, "$2")
       // OSC 8 hyperlinks — preserve the visible link text (ST terminator: ESC \)
-      .replace(/\x1b\]8;;[^\x1b]*\x1b\\([^\x1b]*)\x1b\]8;;\x1b\\/g, "$1")
+      .replace(/\x1b\]8;[^\x1b]*;([^\x1b]*)\x1b\\([^\x1b]*)\x1b\]8;[^\x1b]*;\x1b\\/g, "$2")
+      // DCS / SOS / PM / APC string sequences (7-bit C1) — strip entirely.
+      // Payloads like Kitty Graphics protocol, Sixel images, and tmux passthrough
+      // can contain "localhost" substrings that would leak as false positives.
+      .replace(/\x1b[PX^_][^\x1b]*\x1b\\/g, "")
+      // DCS / SOS / PM / APC string sequences (8-bit C1 equivalents)
+      .replace(/[\x90\x98\x9e\x9f][^\x9c]*\x9c/g, "")
       // Other OSC sequences with BEL terminator (e.g. window title, colour palette)
       .replace(/\x1b\][^\x07\x1b]*\x07/g, "")
       // Other OSC sequences with ST terminator
@@ -181,18 +185,13 @@ export function stripAnsiAndOscCodes(text: string): string {
   );
 }
 
+const LOCALHOST_HINT_REGEX = /localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|::1/i;
+
 function hasLocalhostHint(text: string): boolean {
-  const lower = text.toLowerCase();
-  for (const hint of LOCALHOST_HINTS) {
-    if (lower.includes(hint)) {
-      return true;
-    }
-  }
-  return false;
+  return LOCALHOST_HINT_REGEX.test(text);
 }
 
 function matchLocalhostUrls(text: string): string[] {
-  LOCALHOST_URL_REGEX.lastIndex = 0;
   return Array.from(text.matchAll(LOCALHOST_URL_REGEX), (match) => match[0]);
 }
 
@@ -202,12 +201,16 @@ export function extractLocalhostUrls(text: string): string[] {
   }
 
   const matches = matchLocalhostUrls(text);
-  const cleanMatches = text.includes("\x1b") ? matchLocalhostUrls(stripAnsiAndOscCodes(text)) : [];
+  const cleanMatches =
+    text.includes("\x1b") || /[\x90\x98\x9e\x9f\x9d]/.test(text)
+      ? matchLocalhostUrls(stripAnsiAndOscCodes(text))
+      : [];
   const allMatches = [...new Set([...matches, ...cleanMatches])];
 
   const normalized: string[] = [];
   for (const match of allMatches) {
-    const result = normalizeBrowserUrl(match);
+    const trimmed = match.replace(/[.,;]+$/, "");
+    const result = normalizeBrowserUrl(trimmed);
     if (result.url) {
       normalized.push(result.url);
     }
