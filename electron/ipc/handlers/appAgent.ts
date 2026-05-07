@@ -14,10 +14,6 @@ export function registerAppAgentHandlers(_deps: HandlerDependencies): () => void
   handlers.push(typedHandle(CHANNELS.APP_AGENT_GET_CONFIG, handleGetConfig));
 
   const handleSetConfig = async (config: Partial<AppAgentConfig>) => {
-    if (!config || typeof config !== "object") {
-      throw new Error("Invalid config");
-    }
-
     const configResult = AppAgentConfigSchema.partial().safeParse(config);
     if (!configResult.success) {
       throw new Error(`Invalid config: ${configResult.error.message}`);
