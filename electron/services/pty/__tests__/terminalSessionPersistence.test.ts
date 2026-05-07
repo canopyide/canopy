@@ -228,15 +228,10 @@ describe("terminalSessionPersistence", () => {
     }
   });
 
-
   it("writes parser-reset preamble before serialized content on restore", async () => {
     const sessionDir = path.join(userDataDir, "terminal-sessions");
     await fsp.mkdir(sessionDir, { recursive: true });
-    await fsp.writeFile(
-      path.join(sessionDir, "term-preamble.restore"),
-      "snapshot-bytes",
-      "utf8"
-    );
+    await fsp.writeFile(path.join(sessionDir, "term-preamble.restore"), "snapshot-bytes", "utf8");
 
     const headless = createMockHeadless();
     const result = restoreSessionFromFile(headless as never, "term-preamble");
