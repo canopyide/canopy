@@ -80,7 +80,11 @@ export function classifyCrash(code: number | null, signal: string | null): Crash
   if (code === 134 || signal === "SIGABRT") {
     return "ASSERTION_FAILURE";
   }
-  if (code > 128) {
+  // POSIX convention: code > 128 encodes signal number (e.g. 143 = 128 + 15 = SIGTERM).
+  // On Windows, large exit codes are uint32 NTSTATUS values (e.g. 0xC0000005 = 3221225477
+  // for ACCESS_VIOLATION) — they are not signal-encoded and should fall through to
+  // UNKNOWN_CRASH instead of misreporting as a POSIX signal termination.
+  if (code > 128 && process.platform !== "win32") {
     return "SIGNAL_TERMINATED";
   }
   if (code !== 0) {
@@ -154,6 +158,8 @@ export class PtyHostLifecycle {
   restartAttempts = 0;
   /** Active restart timer; cleared on dispose / start / manualRestart. */
   restartTimer: NodeJS.Timeout | null = null;
+  /** Force-kill backstop timer scheduled by dispose(); cleared if dispose runs again. */
+  private disposeTimer: NodeJS.Timeout | null = null;
   /**
    * Authoritative crash reason captured from `app.on("child-process-gone")`.
    * Consumed by the next `exit` handler via `setImmediate` deferral, since
@@ -341,15 +347,24 @@ export class PtyHostLifecycle {
       this.restartTimer = null;
     }
 
+    if (this.disposeTimer) {
+      clearTimeout(this.disposeTimer);
+      this.disposeTimer = null;
+    }
+
     if (this.child) {
       this.postMessage({ type: "dispose" });
-      // Give the host a moment to clean up, then force kill
-      setTimeout(() => {
+      // Give the host a moment to clean up, then force kill. Unref'd so the
+      // pending backstop never holds the Electron event loop alive after
+      // app.quit when the host has already cooperated.
+      this.disposeTimer = setTimeout(() => {
+        this.disposeTimer = null;
         if (this.child) {
           this.child.kill();
           this.child = null;
         }
       }, 1000);
+      this.disposeTimer.unref?.();
     }
 
     if (this.childProcessGoneHandler) {
@@ -386,8 +401,13 @@ export class PtyHostLifecycle {
 
   private handleExit(code: number | null): void {
     this.flushHostOutputBuffers();
-    // UtilityProcess exit event doesn't provide signal, but we can infer from code
-    const signal = code !== null && code > 128 ? `SIG${code - 128}` : null;
+    // UtilityProcess exit event doesn't provide signal, but we can infer from
+    // the POSIX exit-code convention (`code = 128 + signum`). On Windows, exit
+    // codes above 128 are uint32 NTSTATUS values (e.g. 0xC0000005 = 3221225477
+    // for ACCESS_VIOLATION), so the heuristic would emit nonsense like
+    // "SIG3221225349" into host-crash-details — gate it to non-Windows only.
+    const signal =
+      code !== null && code > 128 && process.platform !== "win32" ? `SIG${code - 128}` : null;
     const fallbackCrashType = classifyCrash(code, signal);
 
     const wasReady = this.isInitialized;
@@ -479,6 +499,7 @@ export class PtyHostLifecycle {
           this.callbacks.onBeforeRestart();
           this.start();
         }, delay);
+        this.restartTimer.unref?.();
       } else {
         console.error("[PtyClient] Max restart attempts reached, giving up");
         this.callbacks.onMaxRestartsReached(reportedCode);
