@@ -326,7 +326,8 @@ describe("registerDiagnosticsHandlers", () => {
 
       expect(result).toBe(true);
       expect(resilientAtomicWriteFileMock).toHaveBeenCalledTimes(1);
-      const [filePath, , encoding, options] = resilientAtomicWriteFileMock.mock.calls[0];
+      const [filePath, , encoding, options] = resilientAtomicWriteFileMock.mock
+        .calls[0] as unknown[];
       expect(filePath).toBe("/tmp/diagnostics.json");
       expect(encoding).toBe("utf-8");
       expect(options).toEqual({ mode: 0o600 });
@@ -365,7 +366,7 @@ describe("registerDiagnosticsHandlers", () => {
 
       expect(result).toBe(true);
       expect(createWriteStreamMock).toHaveBeenCalledTimes(1);
-      const [zipPath, options] = createWriteStreamMock.mock.calls[0];
+      const [zipPath, options] = createWriteStreamMock.mock.calls[0] as unknown[];
       expect(zipPath).toBe("/tmp/diagnostics.zip");
       expect(options).toEqual({ mode: 0o600 });
       expect(shellMock.showItemInFolder).toHaveBeenCalledWith("/tmp/diagnostics.zip");
