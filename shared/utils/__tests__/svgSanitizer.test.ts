@@ -512,6 +512,204 @@ describe("sanitizeSvg", () => {
       }
     });
   });
+
+  describe("SMIL animation element removal", () => {
+    // Defense-in-depth: Chromium 146 already blocks animation of on* attributes,
+    // but SMIL elements give attackers tag-based vectors (animating href, attributeName
+    // injection, future browser bugs). The sanitizer must strip them outright.
+    it("should strip <animate> elements", () => {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg">
+        <rect width="100" height="100">
+          <animate attributeName="onbegin" values="alert(1)"/>
+        </rect>
+      </svg>`;
+      const result = sanitizeSvg(svg);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.svg).not.toContain("<animate");
+        expect(result.svg).not.toContain("alert");
+        expect(result.svg).toContain("rect");
+        expect(result.modified).toBe(true);
+      }
+    });
+
+    it("should strip <set> elements", () => {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg">
+        <rect width="100" height="100">
+          <set attributeName="onmouseover" to="alert(1)"/>
+        </rect>
+      </svg>`;
+      const result = sanitizeSvg(svg);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.svg).not.toContain("<set");
+        expect(result.svg).not.toContain("alert");
+        expect(result.modified).toBe(true);
+      }
+    });
+
+    it("should strip <animateTransform> elements", () => {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg">
+        <rect width="100" height="100">
+          <animateTransform attributeName="transform" type="rotate" values="0;360"/>
+        </rect>
+      </svg>`;
+      const result = sanitizeSvg(svg);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.svg).not.toContain("<animateTransform");
+        expect(result.modified).toBe(true);
+      }
+    });
+
+    it("should strip <animateMotion> elements", () => {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg">
+        <circle cx="50" cy="50" r="20">
+          <animateMotion path="M0,0 L100,100"/>
+        </circle>
+      </svg>`;
+      const result = sanitizeSvg(svg);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.svg).not.toContain("<animateMotion");
+        expect(result.modified).toBe(true);
+      }
+    });
+
+    it("should strip self-closing and paired SMIL element forms together", () => {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg">
+        <rect width="100" height="100">
+          <animate attributeName="x" from="0" to="100" dur="1s"></animate>
+          <set attributeName="fill" to="red"/>
+        </rect>
+      </svg>`;
+      const result = sanitizeSvg(svg);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.svg).not.toContain("<animate");
+        expect(result.svg).not.toContain("<set");
+        expect(result.svg).toContain("rect");
+        expect(result.modified).toBe(true);
+      }
+    });
+  });
+
+  describe("namespace-prefixed href sanitization", () => {
+    // Chromium's SVG parser is namespace-URI-aware: any prefix bound to the xlink
+    // namespace (e.g. xmlns:alias="http://www.w3.org/1999/xlink") makes
+    // alias:href behave identically to xlink:href. The sanitizer must catch
+    // arbitrary `*:href` prefixes, not just the literal "xlink:" form.
+    it("should neutralize external alias-prefixed href references", () => {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:alias="http://www.w3.org/1999/xlink">
+        <use alias:href="https://evil.com/sprites.svg#icon"/>
+      </svg>`;
+      const result = sanitizeSvg(svg);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.svg).not.toContain("https://evil.com");
+        expect(result.svg).toContain('alias:href=""');
+        expect(result.modified).toBe(true);
+      }
+    });
+
+    it("should neutralize javascript: URLs in alias-prefixed href", () => {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:alias="http://www.w3.org/1999/xlink">
+        <a alias:href="javascript:alert('xss')">
+          <circle cx="50" cy="50" r="40"/>
+        </a>
+      </svg>`;
+      const result = sanitizeSvg(svg);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.svg).not.toContain("javascript:");
+        expect(result.svg).not.toContain("alert");
+        expect(result.svg).toContain('alias:href=""');
+        expect(result.modified).toBe(true);
+      }
+    });
+
+    it("should preserve safe local references for any prefix", () => {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:alias="http://www.w3.org/1999/xlink">
+        <defs>
+          <symbol id="icon"><circle cx="50" cy="50" r="40"/></symbol>
+        </defs>
+        <use href="#icon"/>
+        <use xlink:href="#icon"/>
+        <use alias:href="#icon"/>
+      </svg>`;
+      const result = sanitizeSvg(svg);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.svg).toContain('href="#icon"');
+        expect(result.svg).toContain('xlink:href="#icon"');
+        expect(result.svg).toContain('alias:href="#icon"');
+        expect(result.modified).toBe(false);
+      }
+    });
+  });
+
+  describe("control-character encoded javascript URLs in prefixed href", () => {
+    // When a namespace-prefixed href carries a javascript: URL with a control
+    // character splitting "javascript", the literal-keyword scan misses it.
+    // The widened HREF_ATTRIBUTE_PATTERN routes the value through entity
+    // decoding + isLocalReference, which treats anything not starting with
+    // "#" as unsafe and zeroes the attribute.
+    it("should neutralize tab-encoded javascript: in alias:href (executable in Chromium 146)", () => {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:alias="http://www.w3.org/1999/xlink">
+        <a alias:href="j&#9;avascript:alert(1)"><circle cx="50" cy="50" r="40"/></a>
+      </svg>`;
+      const result = sanitizeSvg(svg);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.svg).not.toContain("alert(1)");
+        expect(result.svg).toContain('alias:href=""');
+        expect(result.modified).toBe(true);
+      }
+    });
+
+    it("should neutralize newline-encoded javascript: in alias:href (executable in Chromium 146)", () => {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:alias="http://www.w3.org/1999/xlink">
+        <a alias:href="j&#10;avascript:alert(1)"><circle cx="50" cy="50" r="40"/></a>
+      </svg>`;
+      const result = sanitizeSvg(svg);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.svg).not.toContain("alert(1)");
+        expect(result.svg).toContain('alias:href=""');
+        expect(result.modified).toBe(true);
+      }
+    });
+
+    it("should neutralize CR-encoded javascript: in alias:href (executable in Chromium 146)", () => {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:alias="http://www.w3.org/1999/xlink">
+        <a alias:href="j&#13;avascript:alert(1)"><circle cx="50" cy="50" r="40"/></a>
+      </svg>`;
+      const result = sanitizeSvg(svg);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.svg).not.toContain("alert(1)");
+        expect(result.svg).toContain('alias:href=""');
+        expect(result.modified).toBe(true);
+      }
+    });
+
+    it("should neutralize null-byte-encoded javascript: in alias:href (defense in depth; not executable in Chromium 146)", () => {
+      // U+0000 invalidates URL scheme parsing in Chromium 146 per WHATWG URL
+      // spec, so this is not an active execution bypass in this engine. The
+      // sanitizer still strips it conservatively as a guard against other
+      // parsers and future engine changes.
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:alias="http://www.w3.org/1999/xlink">
+        <a alias:href="j&#0;avascript:alert(1)"><circle cx="50" cy="50" r="40"/></a>
+      </svg>`;
+      const result = sanitizeSvg(svg);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.svg).not.toContain("alert(1)");
+        expect(result.svg).toContain('alias:href=""');
+        expect(result.modified).toBe(true);
+      }
+    });
+  });
 });
 
 describe("validateSvg", () => {
@@ -581,5 +779,63 @@ describe("isSvgSafe", () => {
 
   it("should return false for non-SVG content", () => {
     expect(isSvgSafe("<html></html>")).toBe(false);
+  });
+
+  it("should return false for SVG with <animate>", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg">
+      <rect width="100" height="100">
+        <animate attributeName="onbegin" values="alert(1)"/>
+      </rect>
+    </svg>`;
+    expect(isSvgSafe(svg)).toBe(false);
+  });
+
+  it("should return false for SVG with <set>", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg">
+      <rect width="100" height="100">
+        <set attributeName="onmouseover" to="alert(1)"/>
+      </rect>
+    </svg>`;
+    expect(isSvgSafe(svg)).toBe(false);
+  });
+
+  it("should return false for SVG with <animateTransform>", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg">
+      <rect width="100" height="100">
+        <animateTransform attributeName="transform" type="rotate" values="0;360"/>
+      </rect>
+    </svg>`;
+    expect(isSvgSafe(svg)).toBe(false);
+  });
+
+  it("should return false for SVG with <animateMotion>", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg">
+      <circle cx="50" cy="50" r="20">
+        <animateMotion path="M0,0 L100,100"/>
+      </circle>
+    </svg>`;
+    expect(isSvgSafe(svg)).toBe(false);
+  });
+
+  it("should return false for external alias-prefixed href", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:alias="http://www.w3.org/1999/xlink">
+      <use alias:href="https://evil.com/sprites.svg#icon"/>
+    </svg>`;
+    expect(isSvgSafe(svg)).toBe(false);
+  });
+
+  it("should return false for control-character javascript: in alias:href", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:alias="http://www.w3.org/1999/xlink">
+      <a alias:href="j&#10;avascript:alert(1)"><circle cx="50" cy="50" r="40"/></a>
+    </svg>`;
+    expect(isSvgSafe(svg)).toBe(false);
+  });
+
+  it("should return true for safe local alias-prefixed href", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:alias="http://www.w3.org/1999/xlink">
+      <defs><symbol id="icon"><circle cx="50" cy="50" r="40"/></symbol></defs>
+      <use alias:href="#icon"/>
+    </svg>`;
+    expect(isSvgSafe(svg)).toBe(true);
   });
 });
