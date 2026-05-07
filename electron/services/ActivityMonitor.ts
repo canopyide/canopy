@@ -39,6 +39,16 @@ import { CpuHighStateTracker } from "./pty/CpuHighStateTracker.js";
 import { WaitingWatchdog } from "./pty/WaitingWatchdog.js";
 import type { WaitingReason } from "../../shared/types/agent.js";
 
+const PROMPT_DEBOUNCE_MS = 500;
+const PROMPT_QUIET_MS = 200;
+const PROMPT_HISTORY_FALLBACK_MS = 3000;
+const WORKING_HOLD_MS = 1500;
+const SPINNER_ACTIVE_MS = 1500;
+const COMPLETION_HOLD_MS = 500;
+const WORKING_INDICATOR_TTL_MS = 5000;
+const CPU_HIGH_THRESHOLD = 10;
+const CPU_LOW_THRESHOLD = 3;
+
 export interface ProcessStateValidator {
   hasActiveChildren(): boolean;
   getDescendantsCpuUsage?(): number;
@@ -122,17 +132,8 @@ export class ActivityMonitor {
   private debounceTimer: NodeJS.Timeout | null = null;
   private readonly IDLE_DEBOUNCE_MS: number;
   private readonly PROMPT_FAST_PATH_MIN_QUIET_MS: number;
-  private readonly PROMPT_DEBOUNCE_MS = 500;
-  private readonly PROMPT_QUIET_MS = 200;
-  private readonly PROMPT_HISTORY_FALLBACK_MS = 3000;
-  private readonly WORKING_HOLD_MS = 1500;
-  private readonly SPINNER_ACTIVE_MS = 1500;
-  private readonly COMPLETION_HOLD_MS = 500;
-  private readonly WORKING_INDICATOR_TTL_MS = 5000;
   private readonly MAX_WORKING_SILENCE_MS: number;
   private readonly MAX_WAITING_SILENCE_MS: number;
-  private readonly CPU_HIGH_THRESHOLD = 10;
-  private readonly CPU_LOW_THRESHOLD = 3;
   private idleSince = 0;
   private lastPatternResultAt = 0;
   private workingHoldUntil = 0;
@@ -307,15 +308,15 @@ export class ActivityMonitor {
     this.POLLING_INTERVAL_MS = options?.pollingIntervalMs ?? 50;
 
     this.cpuTracker = new CpuHighStateTracker(this.processStateValidator, {
-      cpuHighThreshold: this.CPU_HIGH_THRESHOLD,
-      cpuLowThreshold: this.CPU_LOW_THRESHOLD,
+      cpuHighThreshold: CPU_HIGH_THRESHOLD,
+      cpuLowThreshold: CPU_LOW_THRESHOLD,
       maxCpuHighEscapeMs,
     });
 
     this.waitingWatchdog = new WaitingWatchdog({
       failThreshold: watchdogFailThreshold,
       maxWaitingSilenceMs: this.MAX_WAITING_SILENCE_MS,
-      workingIndicatorTtlMs: this.WORKING_INDICATOR_TTL_MS,
+      workingIndicatorTtlMs: WORKING_INDICATOR_TTL_MS,
       cpuTracker: this.cpuTracker,
       processStateValidator: this.processStateValidator,
       onFire: (id, spawnedAt) => {
@@ -332,6 +333,7 @@ export class ActivityMonitor {
     // even when there's no output/activity. 5s keeps overhead negligible while
     // ensuring hung waiting states are caught within a reasonable window.
     this.watchdogInterval = setInterval(() => this.runWaitingWatchdogCheck(Date.now()), 5000);
+    this.watchdogInterval.unref();
   }
 
   private tierForInterval(intervalMs: number): "active" | "background" {
@@ -348,6 +350,13 @@ export class ActivityMonitor {
     this.workingSignalDebouncer.setDelay(delay);
     this.cosmeticRecoveryDebouncer.setDelay(delay);
     this.structuralRecoveryDebouncer.setDelay(delay);
+  }
+
+  private isEscInterruptFallback(input: string): boolean {
+    return (
+      input.toLowerCase().includes("esc to interrupt") ||
+      input.toLowerCase().includes("esc to cancel")
+    );
   }
 
   onInput(data: string): void {
@@ -425,7 +434,7 @@ export class ActivityMonitor {
       }
       const isWorking = patternResult
         ? patternResult.isWorking
-        : lowerBuffer.includes("esc to interrupt") || lowerBuffer.includes("esc to cancel");
+        : this.isEscInterruptFallback(lowerBuffer);
 
       if (
         isWorking &&
@@ -812,6 +821,7 @@ export class ActivityMonitor {
     }
 
     this.pollingInterval = setInterval(() => this.runPollingCycle(), this.POLLING_INTERVAL_MS);
+    this.pollingInterval.unref();
   }
 
   private runPollingCycle(): void {
@@ -861,9 +871,9 @@ export class ActivityMonitor {
       ? patternResult.isWorking
       : this.skipInitialStateEmit
         ? false
-        : text.includes("esc to interrupt") || text.includes("esc to cancel");
+        : this.isEscInterruptFallback(text);
 
-    const allowHistoryScan = quietForMs >= this.PROMPT_HISTORY_FALLBACK_MS;
+    const allowHistoryScan = quietForMs >= PROMPT_HISTORY_FALLBACK_MS;
     const promptResult = detectPrompt(lines, this.promptDetectorConfig, cursorLine, {
       allowHistoryScan,
     });
@@ -916,8 +926,8 @@ export class ActivityMonitor {
     const hasRecentOutputActivity =
       this.lastOutputActivityAt > 0 &&
       now - this.lastOutputActivityAt <= this.outputVolumeDetector.recencyWindowMs;
-    const isSpinnerActive = this.lineRewriteDetector.isSpinnerActive(now, this.SPINNER_ACTIVE_MS);
-    const isOutputQuiet = quietForMs >= this.PROMPT_QUIET_MS;
+    const isSpinnerActive = this.lineRewriteDetector.isSpinnerActive(now, SPINNER_ACTIVE_MS);
+    const isOutputQuiet = quietForMs >= PROMPT_QUIET_MS;
     const promptStableForMs = this.promptStableSince === 0 ? 0 : now - this.promptStableSince;
 
     const hasHighOutputActivity = this.highOutputDetector.isHighOutput(now);
@@ -929,7 +939,7 @@ export class ActivityMonitor {
       !hasRecentOutputActivity &&
       !hasHighOutputActivity;
     const shouldPreferPrompt =
-      shouldAllowPromptStability && promptStableForMs >= this.PROMPT_DEBOUNCE_MS;
+      shouldAllowPromptStability && promptStableForMs >= PROMPT_DEBOUNCE_MS;
 
     if (effectiveWorkingPattern && !shouldAllowPromptStability && !isQuietForIdle) {
       this.recordWorkingSignal(now);
@@ -1135,6 +1145,7 @@ export class ActivityMonitor {
     if (wasPolling && this.pollingInterval) {
       clearInterval(this.pollingInterval);
       this.pollingInterval = setInterval(() => this.runPollingCycle(), this.POLLING_INTERVAL_MS);
+      this.pollingInterval.unref();
     }
 
     // The working-signal debouncer needs to track polling cadence, otherwise
@@ -1145,7 +1156,7 @@ export class ActivityMonitor {
   }
 
   private recordWorkingSignal(now: number): void {
-    this.workingHoldUntil = Math.max(this.workingHoldUntil, now + this.WORKING_HOLD_MS);
+    this.workingHoldUntil = Math.max(this.workingHoldUntil, now + WORKING_HOLD_MS);
   }
 
   private transitionToCompleted(
@@ -1167,7 +1178,7 @@ export class ActivityMonitor {
         trigger: "pattern",
         patternConfidence: 0.85,
       });
-    }, this.COMPLETION_HOLD_MS);
+    }, COMPLETION_HOLD_MS);
 
     this.onStateChange(this.terminalId, this.spawnedAt, "completed", {
       trigger: "pattern",
@@ -1276,7 +1287,7 @@ export class ActivityMonitor {
       // Stale pattern results are expired via the same TTL as working indicators
       if (
         this.lastPatternResult?.isWorking &&
-        now - this.lastPatternResultAt < this.WORKING_INDICATOR_TTL_MS
+        now - this.lastPatternResultAt < WORKING_INDICATOR_TTL_MS
       ) {
         this.resetDebounceTimer();
         return;
@@ -1284,7 +1295,7 @@ export class ActivityMonitor {
 
       if (
         this.lastWorkingIndicatorTimestamp > 0 &&
-        Date.now() - this.lastWorkingIndicatorTimestamp < this.WORKING_INDICATOR_TTL_MS
+        Date.now() - this.lastWorkingIndicatorTimestamp < WORKING_INDICATOR_TTL_MS
       ) {
         this.resetDebounceTimer();
         return;
@@ -1323,7 +1334,7 @@ export class ActivityMonitor {
     this.waitingWatchdog.check(now, {
       state: this.state,
       idleSince: this.idleSince,
-      isSpinnerActive: this.lineRewriteDetector.isSpinnerActive(now, this.SPINNER_ACTIVE_MS),
+      isSpinnerActive: this.lineRewriteDetector.isSpinnerActive(now, SPINNER_ACTIVE_MS),
       lastPatternResult: this.lastPatternResult,
       lastPatternResultAt: this.lastPatternResultAt,
       lastDataTimestamp: this.lastDataTimestamp,
