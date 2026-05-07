@@ -200,11 +200,12 @@ export class AgentStateService {
     }
 
     // Build and validate state change payload BEFORE mutating terminal state.
+    const timestamp = getStateChangeTimestamp();
     const stateChangePayload = {
       agentId: effectiveAgentId,
       state: newState,
       previousState,
-      timestamp: getStateChangeTimestamp(),
+      timestamp,
       traceId: terminal.traceId,
       terminalId: terminal.id,
       cwd: terminal.cwd,
@@ -230,7 +231,7 @@ export class AgentStateService {
 
     // Commit all mutations atomically.
     terminal.agentState = newState;
-    terminal.lastStateChange = getStateChangeTimestamp();
+    terminal.lastStateChange = timestamp;
 
     // Refresh the hysteresis lock only when a high-confidence transition
     // actually crosses the active/passive boundary. Lifecycle events clear

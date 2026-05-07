@@ -122,7 +122,7 @@ export function nextAgentState(current: AgentState, event: AgentEvent): AgentSta
 
     default: {
       const _exhaustive: never = event.type;
-      return _exhaustive;
+      return current;
     }
   }
 
