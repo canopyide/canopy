@@ -86,9 +86,15 @@ vi.mock("../CrashLoopGuardService.js", () => ({
   }),
 }));
 
-vi.mock("../../utils/gpuDetection.js", () => ({
-  isWebGLHardwareAccelerated: isWebGLHardwareAcceleratedMock,
-}));
+vi.mock("../../utils/gpuDetection.js", async () => {
+  const actual = await vi.importActual<typeof import("../../utils/gpuDetection.js")>(
+    "../../utils/gpuDetection.js"
+  );
+  return {
+    ...actual,
+    isWebGLHardwareAccelerated: isWebGLHardwareAcceleratedMock,
+  };
+});
 
 vi.mock("../GpuCrashMonitorService.js", () => ({
   isGpuDisabledByFlag: isGpuDisabledByFlagMock,
