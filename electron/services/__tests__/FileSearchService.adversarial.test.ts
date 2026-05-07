@@ -67,7 +67,7 @@ describe("FileSearchService adversarial", () => {
     const checkDeferred = createDeferred<boolean>();
     gitClient.checkIsRepo.mockReturnValue(checkDeferred.promise);
     gitClient.revparse.mockResolvedValue(`${dir}\n`);
-    gitClient.raw.mockResolvedValue("README.md\nsrc/main.ts\n");
+    gitClient.raw.mockResolvedValue("README.md\0src/main.ts\0");
     createHardenedGitMock.mockReturnValue(gitClient);
 
     const service = await createService();
@@ -88,14 +88,14 @@ describe("FileSearchService adversarial", () => {
     const rawDeferred = createDeferred<string>();
     gitClient.checkIsRepo.mockResolvedValue(true);
     gitClient.revparse.mockResolvedValue(`${dir}\n`);
-    gitClient.raw.mockReturnValueOnce(rawDeferred.promise).mockResolvedValueOnce("beta.ts\n");
+    gitClient.raw.mockReturnValueOnce(rawDeferred.promise).mockResolvedValueOnce("beta.ts\0");
     createHardenedGitMock.mockReturnValue(gitClient);
 
     const service = await createService();
     const first = service.search({ cwd: dir, query: "alpha", limit: 5 });
 
     service.invalidate(dir);
-    rawDeferred.resolve("alpha.ts\n");
+    rawDeferred.resolve("alpha.ts\0");
 
     await expect(first).resolves.toEqual(["alpha.ts"]);
     await expect(service.search({ cwd: dir, query: "beta", limit: 5 })).resolves.toEqual([
@@ -143,7 +143,7 @@ describe("FileSearchService adversarial", () => {
     fs.mkdirSync(cwd, { recursive: true });
 
     const repoClient = createGitClient();
-    repoClient.raw.mockResolvedValue("packages/app/src/main.ts\npackages/app/src/utils.ts\n");
+    repoClient.raw.mockResolvedValue("packages/app/src/main.ts\0packages/app/src/utils.ts\0");
     const cwdClient = createGitClient();
     cwdClient.checkIsRepo.mockResolvedValue(true);
     cwdClient.revparse.mockResolvedValue(`${repoRoot}\n`);
@@ -161,6 +161,7 @@ describe("FileSearchService adversarial", () => {
     expect(result).toEqual(["src/main.ts"]);
     expect(repoClient.raw).toHaveBeenCalledWith([
       "ls-files",
+      "-z",
       "--cached",
       "--others",
       "--exclude-standard",
@@ -199,7 +200,7 @@ describe("FileSearchService adversarial", () => {
     const gitClient = createGitClient();
     gitClient.checkIsRepo.mockResolvedValue(true);
     gitClient.revparse.mockResolvedValue(`${dir}\n`);
-    gitClient.raw.mockResolvedValue("a.ts\nsrc/index.ts\npkg/tool.ts\n");
+    gitClient.raw.mockResolvedValue("a.ts\0src/index.ts\0pkg/tool.ts\0");
     createHardenedGitMock.mockReturnValue(gitClient);
 
     const service = await createService();
@@ -219,5 +220,45 @@ describe("FileSearchService adversarial", () => {
       "pkg/tool.ts",
       "src/index.ts",
     ]);
+  });
+
+  it("skips well-known noise dirs in the fallback walker", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "file-search-adv-"));
+    tempDirs.push(dir);
+    createHardenedGitMock.mockReturnValue(createGitClient());
+
+    writeFile(path.join(dir, "src", "real.ts"));
+    writeFile(path.join(dir, "dist", "bundle.js"));
+    writeFile(path.join(dir, ".next", "page.js"));
+    writeFile(path.join(dir, ".cache", "blob.bin"));
+    writeFile(path.join(dir, "__pycache__", "mod.pyc"));
+    writeFile(path.join(dir, "coverage", "report.html"));
+
+    const service = await createService();
+    const result = await service.search({ cwd: dir, query: "", limit: 99 });
+
+    expect(result).toContain("src/real.ts");
+    expect(result.some((p) => p.startsWith("dist"))).toBe(false);
+    expect(result.some((p) => p.startsWith(".next"))).toBe(false);
+    expect(result.some((p) => p.startsWith(".cache"))).toBe(false);
+    expect(result.some((p) => p.startsWith("__pycache__"))).toBe(false);
+    expect(result.some((p) => p.startsWith("coverage"))).toBe(false);
+  });
+
+  it("normalises NFD filenames to NFC in the fallback walker", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "file-search-adv-"));
+    tempDirs.push(dir);
+    createHardenedGitMock.mockReturnValue(createGitClient());
+
+    // "café.ts" using NFD: e + combining acute (́)
+    const nfdName = "café.ts";
+    writeFile(path.join(dir, nfdName));
+
+    const service = await createService();
+    const result = await service.search({ cwd: dir, query: "", limit: 5 });
+
+    // Result should be NFC form (single composed é = é)
+    expect(result).toContain("café.ts");
+    expect(result).not.toContain(nfdName);
   });
 });
