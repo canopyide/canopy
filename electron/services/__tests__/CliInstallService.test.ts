@@ -26,6 +26,19 @@ vi.mock("fs", () => ({
   ...fsMock,
 }));
 
+const resilientRenameSyncMock = vi.hoisted(() => vi.fn());
+const resilientAtomicWriteFileSyncMock = vi.hoisted(() =>
+  vi.fn((filePath: string, data: string, _encoding?: string, _options?: { mode?: number }) => {
+    const tempPath = `${filePath}.${Date.now()}-${Math.random().toString(36).slice(2, 8)}.tmp`;
+    fsMock.writeFileSync(tempPath, data, { mode: _options?.mode });
+  })
+);
+
+vi.mock("../../utils/fs.js", () => ({
+  resilientRenameSync: resilientRenameSyncMock,
+  resilientAtomicWriteFileSync: resilientAtomicWriteFileSyncMock,
+}));
+
 vi.mock("electron", () => ({
   ...appMock,
 }));
@@ -64,7 +77,7 @@ describe("CliInstallService", () => {
     vi.restoreAllMocks();
   });
 
-  it("installs by creating a symlink from app.getAppPath() in development mode", async () => {
+  it("installs by creating a temp symlink then atomically renaming into place", async () => {
     fsMock.existsSync.mockImplementation(
       (target) => target === SOURCE_SCRIPT || target === "/usr/local/bin"
     );
@@ -74,7 +87,19 @@ describe("CliInstallService", () => {
 
     expect(appMock.app.getAppPath).toHaveBeenCalled();
     expect(fsMock.existsSync).toHaveBeenCalledWith(SOURCE_SCRIPT);
-    expect(fsMock.symlinkSync).toHaveBeenCalledWith(SOURCE_SCRIPT, "/usr/local/bin/daintree");
+    // Symlink is created at a temp path, not directly at the target.
+    const symlinkCalls = fsMock.symlinkSync.mock.calls.filter(
+      (c) => c[0] === SOURCE_SCRIPT
+    );
+    expect(symlinkCalls).toHaveLength(1);
+    expect(symlinkCalls[0][1]).toMatch(/\/usr\/local\/bin\/daintree\.\d+-\w+\.tmp$/);
+    // No unlink before the rename — the temp-to-target rename is atomic.
+    expect(fsMock.unlinkSync).not.toHaveBeenCalled();
+    // rename moves the temp symlink into place.
+    expect(resilientRenameSyncMock).toHaveBeenCalledWith(
+      expect.stringMatching(/\.tmp$/),
+      "/usr/local/bin/daintree"
+    );
     expect(result).toEqual({
       installed: true,
       upToDate: true,
@@ -86,6 +111,11 @@ describe("CliInstallService", () => {
     fsMock.existsSync.mockImplementation(
       (target) => target === SOURCE_SCRIPT || target === "/usr/local/bin"
     );
+    // Simulate rename failure on the first target AND make the fallback
+    // direct symlink also fail so the install loop reaches the second target.
+    resilientRenameSyncMock.mockImplementationOnce(() => {
+      throw new Error("EACCES");
+    });
     fsMock.symlinkSync.mockImplementation((_sourcePath, targetPath) => {
       if (targetPath === "/usr/local/bin/daintree") {
         throw new Error("EACCES");
@@ -96,10 +126,6 @@ describe("CliInstallService", () => {
     const result = await install();
 
     expect(fsMock.mkdirSync).toHaveBeenCalledWith("/home/test/.local/bin", { recursive: true });
-    expect(fsMock.symlinkSync).toHaveBeenCalledWith(
-      SOURCE_SCRIPT,
-      "/home/test/.local/bin/daintree"
-    );
     expect(result.path).toBe("/home/test/.local/bin/daintree");
   });
 
@@ -158,7 +184,7 @@ describe("CliInstallService", () => {
       delete process.env.XDG_DATA_HOME;
     });
 
-    it("generates a stable wrapper and symlinks to it instead of the FUSE mount path", async () => {
+    it("writes the wrapper atomically (no bare writeFileSync on the final path)", async () => {
       fsMock.existsSync.mockImplementation(
         (target) => target === WRAPPER_PATH || target === "/usr/local/bin"
       );
@@ -167,12 +193,18 @@ describe("CliInstallService", () => {
       const result = await install();
 
       expect(fsMock.mkdirSync).toHaveBeenCalledWith(WRAPPER_DIR, { recursive: true });
-      expect(fsMock.writeFileSync).toHaveBeenCalledWith(
+      // The atomic writer writes to a temp path first; the final path is never
+      // touched by a bare writeFileSync.
+      const wrapperWriteCalls = fsMock.writeFileSync.mock.calls.filter(
+        (c) => c[0] === WRAPPER_PATH
+      );
+      expect(wrapperWriteCalls).toHaveLength(0);
+      expect(resilientAtomicWriteFileSyncMock).toHaveBeenCalledWith(
         WRAPPER_PATH,
         expect.stringContaining(APPIMAGE_PATH),
+        "utf-8",
         { mode: 0o755 }
       );
-      expect(fsMock.symlinkSync).toHaveBeenCalledWith(WRAPPER_PATH, "/usr/local/bin/daintree");
       expect(result).toEqual({
         installed: true,
         upToDate: true,
@@ -189,7 +221,9 @@ describe("CliInstallService", () => {
       const { install } = await import("../CliInstallService.js");
       await install();
 
-      const writeCall = fsMock.writeFileSync.mock.calls.find((call) => call[0] === WRAPPER_PATH);
+      const writeCall = resilientAtomicWriteFileSyncMock.mock.calls.find(
+        (call) => call[0] === WRAPPER_PATH
+      );
       expect(writeCall).toBeDefined();
       const content = writeCall![1] as string;
       expect(content).toContain("it'\\''s a Daintree");
@@ -208,9 +242,10 @@ describe("CliInstallService", () => {
       await install();
 
       expect(fsMock.mkdirSync).toHaveBeenCalledWith(customWrapperDir, { recursive: true });
-      expect(fsMock.writeFileSync).toHaveBeenCalledWith(
+      expect(resilientAtomicWriteFileSyncMock).toHaveBeenCalledWith(
         customWrapperPath,
         expect.stringContaining(APPIMAGE_PATH),
+        "utf-8",
         { mode: 0o755 }
       );
     });
@@ -251,7 +286,10 @@ describe("CliInstallService", () => {
       const { install } = await import("../CliInstallService.js");
       const result = await install();
 
-      expect(fsMock.symlinkSync).toHaveBeenCalledWith(PACKAGED_SOURCE, "/usr/local/bin/daintree");
+      expect(fsMock.symlinkSync).toHaveBeenCalledWith(
+        PACKAGED_SOURCE,
+        expect.stringMatching(/\/usr\/local\/bin\/daintree\.\d+-\w+\.tmp$/)
+      );
       expect(result.path).toBe("/usr/local/bin/daintree");
     });
 
@@ -263,7 +301,9 @@ describe("CliInstallService", () => {
       const { install } = await import("../CliInstallService.js");
       await install();
 
-      const writeCall = fsMock.writeFileSync.mock.calls.find((call) => call[0] === WRAPPER_PATH);
+      const writeCall = resilientAtomicWriteFileSyncMock.mock.calls.find(
+        (call) => call[0] === WRAPPER_PATH
+      );
       const content = writeCall![1] as string;
       expect(content).toContain("#!/usr/bin/env bash");
       expect(content).toContain("--cli-path");

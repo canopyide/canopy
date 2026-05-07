@@ -123,6 +123,7 @@ export class CliAvailabilityService {
   private availability: CliAvailability | null = null;
   private details: AgentCliDetails | null = null;
   private inFlightCheck: Promise<CliAvailability> | null = null;
+  private npmPrefixCache: { promise: Promise<string | null>; checkId: number } | null = null;
   private checkId = 0;
 
   async checkAvailability(): Promise<CliAvailability> {
@@ -643,42 +644,27 @@ export class CliAvailabilityService {
    */
   private probeNpmGlobal(command: string): Promise<ProbeResult> {
     return new Promise((resolve) => {
-      execFile(
-        "npm",
-        ["config", "get", "prefix"],
-        {
-          timeout: CliAvailabilityService.NPM_PREFIX_TIMEOUT_MS,
-          windowsHide: true,
-        },
-        async (err, stdout) => {
-          if (err) {
-            resolve({ status: "missing" });
-            return;
-          }
-          const prefix = String(stdout ?? "").trim();
-          if (!prefix || prefix === "undefined") {
-            resolve({ status: "missing" });
-            return;
-          }
+      const checkShim = (prefix: string | null) => {
+        if (prefix === null) {
+          resolve({ status: "missing" });
+          return;
+        }
 
-          // Guard against a prefix that would slip by `path.join` — the
-          // command name is already validated against VALID_COMMAND_RE, but
-          // defensively reject a prefix containing NUL bytes (fs.access would
-          // throw) rather than passing it through.
-          if (prefix.includes("\0")) {
-            resolve({ status: "missing" });
-            return;
-          }
+        if (prefix.includes("\0")) {
+          resolve({ status: "missing" });
+          return;
+        }
 
-          const shimPath =
-            process.platform === "win32"
-              ? join(prefix, `${command}.cmd`)
-              : join(prefix, "bin", command);
+        const shimPath =
+          process.platform === "win32"
+            ? join(prefix, `${command}.cmd`)
+            : join(prefix, "bin", command);
 
-          try {
-            await access(shimPath, constants.X_OK);
+        access(shimPath, constants.X_OK)
+          .then(() => {
             resolve({ status: "found", path: shimPath, via: "npm-global" });
-          } catch (accessErr) {
+          })
+          .catch((accessErr) => {
             const code = (accessErr as NodeJS.ErrnoException | undefined)?.code;
             if (typeof code === "string" && SECURITY_ERROR_CODES.has(code)) {
               resolve({
@@ -691,9 +677,38 @@ export class CliAvailabilityService {
               return;
             }
             resolve({ status: "missing" });
-          }
-        }
-      );
+          });
+      };
+
+      if (!this.npmPrefixCache || this.npmPrefixCache.checkId !== this.checkId) {
+        this.npmPrefixCache = {
+          checkId: this.checkId,
+          promise: new Promise<string | null>((res) => {
+            execFile(
+              "npm",
+              ["config", "get", "prefix"],
+              {
+                timeout: CliAvailabilityService.NPM_PREFIX_TIMEOUT_MS,
+                windowsHide: true,
+              },
+              (err, stdout) => {
+                if (err) {
+                  res(null);
+                  return;
+                }
+                const prefix = String(stdout ?? "").trim();
+                if (!prefix || prefix === "undefined") {
+                  res(null);
+                  return;
+                }
+                res(prefix);
+              }
+            );
+          }),
+        };
+      }
+
+      this.npmPrefixCache.promise.then(checkShim);
     });
   }
 

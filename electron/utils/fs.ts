@@ -1,6 +1,6 @@
 import { dirname } from "path";
 import { access, chmod as fsChmod, open, unlink as fsUnlink } from "fs/promises";
-import { closeSync, fsyncSync, openSync, unlinkSync, writeFileSync } from "fs";
+import { chmodSync, closeSync, fsyncSync, openSync, unlinkSync, writeFileSync } from "fs";
 import stubbornFs from "stubborn-fs";
 
 // Wall-clock retry budgets for transient file-locking errors (EPERM/EBUSY/EACCES).
@@ -123,11 +123,15 @@ export async function resilientAtomicWriteFile(
 export function resilientAtomicWriteFileSync(
   filePath: string,
   data: string,
-  encoding: BufferEncoding = "utf-8"
+  encoding: BufferEncoding = "utf-8",
+  options?: { mode?: number }
 ): void {
   const tempPath = generateTempPath(filePath);
   try {
     writeFileSync(tempPath, data, { encoding, flush: true } as Parameters<typeof writeFileSync>[2]);
+    if (options?.mode !== undefined && process.platform !== "win32") {
+      chmodSync(tempPath, options.mode);
+    }
     resilientRenameSync(tempPath, filePath);
     syncParentDirectorySync(filePath);
   } catch (error) {

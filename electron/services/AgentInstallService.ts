@@ -9,7 +9,7 @@ import { buildInstallEnv } from "../utils/spawnEnv.js";
 import { scrubSecrets } from "../utils/secretScrubber.js";
 
 function isManualOnlyCommand(command: string): boolean {
-  return /\|\s*(bash|sh|zsh)\b/.test(command) || /\|\s*iex\b/.test(command);
+  return /\|\s*(sudo\s+)?(bash|sh|zsh|pwsh)\b|\|\s*(iex|Invoke-Expression)\b/i.test(command);
 }
 
 export function isBlockExecutable(block: AgentInstallBlock): boolean {
@@ -64,6 +64,7 @@ function runSingleCommand(
       stdio: ["ignore", "pipe", "pipe"],
       env,
       shell: useShell,
+      windowsHide: true,
     });
 
     child.stdout?.on("data", (chunk: Buffer) => {
