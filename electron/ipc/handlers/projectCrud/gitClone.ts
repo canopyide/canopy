@@ -14,6 +14,7 @@ import type {
   CloneRepoProgressEvent,
 } from "../../../../shared/types/ipc/gitClone.js";
 import { formatErrorMessage } from "../../../../shared/utils/errorMessage.js";
+import { validateFolderName } from "../../../../shared/utils/folderName.js";
 import { AppError } from "../../../utils/errorTypes.js";
 
 export function registerGitCloneHandlers(): () => void {
@@ -45,19 +46,15 @@ export function registerGitCloneHandlers(): () => void {
     if (!path.isAbsolute(parentPath)) {
       throw new Error("Parent path must be absolute");
     }
-    if (typeof folderName !== "string" || !folderName.trim()) {
+    if (typeof folderName !== "string") {
       throw new Error("Folder name is required");
     }
 
-    const trimmedFolder = folderName.trim();
-    if (
-      trimmedFolder.includes("/") ||
-      trimmedFolder.includes("\\") ||
-      trimmedFolder === ".." ||
-      trimmedFolder === "."
-    ) {
-      throw new Error("Folder name must not contain path separators or dot segments");
+    const folderNameError = validateFolderName(folderName);
+    if (folderNameError) {
+      throw new Error(folderNameError);
     }
+    const trimmedFolder = folderName.trim();
 
     const targetPath = path.join(parentPath, trimmedFolder);
     const normalizedParent = path.resolve(parentPath);

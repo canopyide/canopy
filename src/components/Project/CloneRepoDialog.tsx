@@ -6,6 +6,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { FolderGit2 } from "@/components/icons";
 import { projectClient } from "@/clients";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
+import { validateFolderName } from "@shared/utils/folderName";
 import type { CloneRepoProgressEvent } from "@shared/types/ipc/gitClone";
 
 interface CloneRepoDialogProps {
@@ -156,7 +157,16 @@ export function CloneRepoDialog({ isOpen, onSuccess, onCancel }: CloneRepoDialog
     }
   };
 
-  const canClone = isValidCloneUrl(url) && parentPath.trim() !== "" && folderName.trim() !== "";
+  // Show validation errors only after the user has touched the field or the
+  // URL-derived name is non-empty — keeps the empty-state quiet while ensuring
+  // a bad auto-derived name (e.g. URL ending in "con.git") still surfaces.
+  const folderNameError =
+    folderNameEdited || folderName.trim() !== "" ? validateFolderName(folderName) : null;
+  const canClone =
+    isValidCloneUrl(url) &&
+    parentPath.trim() !== "" &&
+    folderName.trim() !== "" &&
+    folderNameError === null;
   const showProgress = isCloning || progressEvents.length > 0;
 
   return (
@@ -216,8 +226,14 @@ export function CloneRepoDialog({ isOpen, onSuccess, onCancel }: CloneRepoDialog
               setFolderNameEdited(true);
             }}
             disabled={isCloning || isComplete}
-            className="w-full rounded-md border border-daintree-border bg-daintree-bg px-3 py-2 text-sm text-daintree-text placeholder:text-daintree-text/40 focus:outline-hidden focus:ring-2 focus:ring-daintree-accent/50 disabled:opacity-50"
+            aria-invalid={folderNameError != null}
+            className="w-full rounded-md border border-daintree-border bg-daintree-bg px-3 py-2 text-sm text-daintree-text placeholder:text-daintree-text/40 focus:outline-hidden focus:ring-2 focus:ring-daintree-accent/50 disabled:opacity-50 aria-invalid:border-status-error"
           />
+          {folderNameError && (
+            <p role="alert" className="text-xs text-status-error">
+              {folderNameError}
+            </p>
+          )}
         </div>
 
         {/* Shallow Clone */}

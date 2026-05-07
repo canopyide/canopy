@@ -13,6 +13,7 @@ import { panelPersistence, panelToSnapshot } from "./persistence/panelPersistenc
 import { useTerminalInputStore } from "./terminalInputStore";
 import { isSmokeTestTerminalId } from "@shared/utils/smokeTestTerminals";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
+import { isClientAppError } from "@/utils/clientAppError";
 import type { ProjectSwitchOutgoingState } from "@shared/types/ipc/project";
 import type { TerminalInstance, TabGroup } from "@shared/types";
 
@@ -195,6 +196,10 @@ function isDubiousOwnershipError(error: unknown): boolean {
 }
 
 function getProjectOpenErrorMessage(error: unknown): string {
+  if (isClientAppError(error) && error.code === "NOT_A_GIT_REPO") {
+    return "The selected directory is not a Git repository.";
+  }
+
   const message = formatErrorMessage(error, "");
   const lower = message.toLowerCase();
 
@@ -215,6 +220,14 @@ function getProjectOpenErrorMessage(error: unknown): string {
 
   if (message.includes("Project path must be absolute")) {
     return "Project path must be an absolute path.";
+  }
+
+  if (message.includes("ELOOP")) {
+    return "The selected directory contains a symbolic link loop and cannot be opened.";
+  }
+
+  if (message.includes("ENAMETOOLONG")) {
+    return "The path is too long. Shorten the directory name or move it closer to the filesystem root.";
   }
 
   if (message.includes("ENOENT")) {
@@ -277,7 +290,10 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
       const isAbsolutePath = (p: string) =>
         p.startsWith("/") || p.startsWith("\\\\") || /^[a-zA-Z]:[\\/]/.test(p);
 
-      if (errorMessage.includes("Not a git repository")) {
+      const isNotAGitRepo =
+        (isClientAppError(error) && error.code === "NOT_A_GIT_REPO") ||
+        errorMessage.includes("Not a git repository");
+      if (isNotAGitRepo) {
         const gitInitPath =
           resolvedPath || path.trim() || errorMessage.match(/Not a git repository: (.+)/)?.[1];
         if (gitInitPath && isAbsolutePath(gitInitPath)) {
@@ -345,6 +361,10 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
       }
 
       const message = getProjectOpenErrorMessage(error);
+      // Capture a frozen snapshot of the actually-resolved path so the retry
+      // re-attempts the directory the user picked, not the empty argument
+      // value the dialog flow was originally invoked with.
+      const retryPath = resolvedPath ?? path.trim();
       notify({
         type: "error",
         title: "Failed to add project",
@@ -354,7 +374,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
             label: "Try again",
             variant: "primary",
             onClick: () => {
-              void get().addProjectByPath(path);
+              void get().addProjectByPath(retryPath);
             },
           },
         ],

@@ -5,19 +5,11 @@ import { FolderPlus, FolderOpen } from "lucide-react";
 import { projectClient } from "@/clients";
 import { useProjectStore } from "@/store/projectStore";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
+import { validateFolderName } from "@shared/utils/folderName";
 
 interface CreateProjectFolderDialogProps {
   isOpen: boolean;
   onClose: () => void;
-}
-
-function validateFolderName(name: string): string | null {
-  const trimmed = name.trim();
-  if (!trimmed) return "Folder name is required";
-  if (trimmed === ".." || trimmed === ".") return "Invalid folder name";
-  if (trimmed.includes("/") || trimmed.includes("\\"))
-    return "Folder name must not contain path separators";
-  return null;
 }
 
 export function CreateProjectFolderDialog({ isOpen, onClose }: CreateProjectFolderDialogProps) {
