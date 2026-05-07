@@ -39,6 +39,10 @@ const TRANSIENT_ERROR_CODES = new Set([
   "ECONNREFUSED",
   "EPIPE",
   "ENETUNREACH",
+  "ENETDOWN",
+  "EHOSTUNREACH",
+  "EHOSTDOWN",
+  "ECONNABORTED",
 ]);
 const PERMANENT_CERT_ERROR_CODES = new Set([
   "CERT_HAS_EXPIRED",
@@ -76,6 +80,8 @@ class AutoUpdaterService {
   private menuState: UpdateMenuState = "idle";
   private checkingMenuTimeout: NodeJS.Timeout | null = null;
   private menuStateListeners: Set<(state: UpdateMenuState) => void> = new Set();
+  private channelGeneration = 0;
+  private downloadGeneration = 0;
   private checkingHandler: (() => void) | null = null;
   private availableHandler: ((info: UpdateInfo) => void) | null = null;
   private notAvailableHandler: ((info: UpdateInfo) => void) | null = null;
@@ -146,6 +152,9 @@ class AutoUpdaterService {
     } catch (err) {
       console.error("[MAIN] Crash recovery cleanup before quit-and-install failed:", err);
     }
+    // Disarm the before-quit listener so the explicit quitAndInstall() path
+    // and the autoInstallOnAppQuit path don't race the installer subprocess.
+    autoUpdater.autoInstallOnAppQuit = false;
     // setImmediate defers past the menu-close animation frame so the OS doesn't
     // tear the click target while we're walking away (Windows-sensitive).
     setImmediate(() => autoUpdater.quitAndInstall());
@@ -153,23 +162,31 @@ class AutoUpdaterService {
   }
 
   // electron-updater 6.3.x doesn't surface a categorized error type, so classify
-  // by Node `err.code` (network/DNS) and `err.statusCode` (HTTP) on the raw
-  // Error. Anything we can't positively prove is transient is treated as
+  // by Node `err.code` (network/DNS) and `err.statusCode` (HTTP). Walk the
+  // `cause` chain so transient codes nested by builder-util-runtime's HTTP
+  // executor (or future Node error-chaining) aren't hidden from the classifier.
+  // Cert errors at any depth return false immediately (permanent wins); transient
+  // signals are deferred until the full chain is walked so a deeper cert error
+  // can override. Anything we can't positively prove is transient is treated as
   // permanent — fail closed so we don't loop on a misconfigured feed.
   private isTransientUpdateError(err: unknown): boolean {
-    if (!err || typeof err !== "object") return false;
-    const code = (err as { code?: unknown }).code;
-    if (typeof code === "string") {
-      if (PERMANENT_CERT_ERROR_CODES.has(code)) return false;
-      if (TRANSIENT_ERROR_CODES.has(code)) return true;
+    let current: unknown = err;
+    let foundTransient = false;
+    for (let depth = 0; depth < 5 && current && typeof current === "object"; depth++) {
+      const code = (current as { code?: unknown }).code;
+      if (typeof code === "string") {
+        if (PERMANENT_CERT_ERROR_CODES.has(code)) return false;
+        if (TRANSIENT_ERROR_CODES.has(code)) foundTransient = true;
+      }
+      const statusCode = (current as { statusCode?: unknown }).statusCode;
+      if (typeof statusCode === "number") {
+        if (statusCode === 404 || statusCode === 401 || statusCode === 403) return false;
+        if (statusCode >= 500 && statusCode < 600) foundTransient = true;
+        if (statusCode === 408 || statusCode === 429) foundTransient = true;
+      }
+      current = (current as { cause?: unknown }).cause;
     }
-    const statusCode = (err as { statusCode?: unknown }).statusCode;
-    if (typeof statusCode === "number") {
-      if (statusCode === 404 || statusCode === 401 || statusCode === 403) return false;
-      if (statusCode >= 500 && statusCode < 600) return true;
-      if (statusCode === 408 || statusCode === 429) return true;
-    }
-    return false;
+    return foundTransient;
   }
 
   private scheduleRetry(): void {
@@ -347,18 +364,20 @@ class AutoUpdaterService {
         // installer for the active channel.
         if (validated === previousChannel) return validated;
 
-        // Discard prior-channel state BEFORE reconfiguring the feed, so a
-        // throw inside configureFeedForChannel can't leave a stale installer
-        // that quit-and-install would later run.
-        await this.clearStagedInstaller();
+        // Reset all install guards synchronously BEFORE the async clear so
+        // quitAndInstallIfReady() and the IPC handler can't race through
+        // during the await window and install the old channel's payload.
+        autoUpdater.autoInstallOnAppQuit = false;
         this.updateDownloaded = false;
         this.lastBroadcastVersion = null;
         this.resetRetryState();
-        // The Ready label points at a now-discarded installer — drop it back
-        // to Idle in lockstep, and cancel any pending Doherty flip so a
-        // mid-check switch doesn't surface "Checking…" for the old channel.
         this.clearCheckingMenuTimeout();
         this.setMenuState("idle");
+        // Transition to Idle done; now discard the staged installer on disk
+        // and reconfigure the feed. Re-arm happens in the update-downloaded
+        // handler when the new channel's download completes.
+        this.channelGeneration += 1;
+        await this.clearStagedInstaller();
 
         if (this.initialized) {
           this.configureFeedForChannel(validated);
@@ -368,6 +387,24 @@ class AutoUpdaterService {
 
       ipcMain.handle(CHANNELS.UPDATE_GET_LAST_CHECK, () => {
         return store.get("lastUpdateCheck") ?? null;
+      });
+
+      // Persist dismiss of the "Update Available" toast — the renderer sends
+      // this when the user closes the toast so the same version is suppressed
+      // across app restarts for the 24h cooldown window. Validate the sender
+      // origin synchronously (matches recovery.ts and plugin.ts pattern), cap
+      // length, allowlist characters, and require strict semver — defense in
+      // depth on top of contextIsolation + asar integrity.
+      ipcMain.handle(CHANNELS.UPDATE_DISMISS_TOAST, (event, version: unknown) => {
+        const senderUrl = event.senderFrame?.url;
+        if (!senderUrl || !isTrustedRendererUrl(senderUrl)) return;
+        if (typeof version !== "string") return;
+        const trimmed = version.trim();
+        if (trimmed.length === 0 || trimmed.length > DISMISS_VERSION_MAX_LEN) return;
+        if (!DISMISS_VERSION_ALLOWLIST.test(trimmed)) return;
+        if (!semver.valid(trimmed)) return;
+        store.set("dismissedUpdateVersion", trimmed);
+        store.set("dismissedUpdateAt", Date.now());
       });
 
       this.channelHandlersRegistered = true;
@@ -403,6 +440,7 @@ class AutoUpdaterService {
     try {
       autoUpdater.autoDownload = true;
       autoUpdater.autoInstallOnAppQuit = true;
+      autoUpdater.disableWebInstaller = true;
 
       const initialChannel = store.get("updateChannel") ?? "stable";
       this.configureFeedForChannel(initialChannel);
@@ -414,6 +452,7 @@ class AutoUpdaterService {
 
       this.availableHandler = (info: UpdateInfo) => {
         console.log("[MAIN] Update available:", info.version);
+        this.downloadGeneration = this.channelGeneration;
         const suppressed = this.shouldSuppressUpdateAvailable(info.version);
         this.isManualCheck = false;
         this.recordSuccessfulUpdateCheck();
@@ -493,50 +532,45 @@ class AutoUpdaterService {
 
       this.downloadedHandler = (info: UpdateInfo) => {
         console.log("[MAIN] Update downloaded:", info.version);
-        this.updateDownloaded = true;
         this.recordSuccessfulUpdateCheck();
         this.resetRetryState();
         this.clearCheckingMenuTimeout();
+        // Stale-download guard: downloadGeneration was captured in
+        // update-available, channelGeneration is incremented on channel
+        // switch. If they diverged, this download belongs to the prior
+        // channel and must not re-arm install.
+        if (this.channelGeneration !== this.downloadGeneration) return;
+        this.updateDownloaded = true;
+        autoUpdater.autoInstallOnAppQuit = true;
         this.setMenuState("ready");
         broadcastToRenderer(CHANNELS.UPDATE_DOWNLOADED, { version: info.version });
       };
       autoUpdater.on("update-downloaded", this.downloadedHandler);
 
-      // Handle quit-and-install request from renderer
-      ipcMain.handle(CHANNELS.UPDATE_QUIT_AND_INSTALL, () => {
+      // Handle quit-and-install request from renderer. Mirrors the guard +
+      // cleanup pattern from quitAndInstallIfReady() and validates the sender
+      // origin synchronously (matches UPDATE_DISMISS_TOAST pattern).
+      ipcMain.handle(CHANNELS.UPDATE_QUIT_AND_INSTALL, (event) => {
+        const senderUrl = event.senderFrame?.url;
+        if (!senderUrl || !isTrustedRendererUrl(senderUrl)) return;
         if (!this.updateDownloaded) {
           console.warn("[MAIN] Quit-and-install called before download completed");
           return;
         }
+        this.updateDownloaded = false;
+        this.setMenuState("idle");
         try {
           getCrashRecoveryService().cleanupOnExit();
         } catch (err) {
           console.error("[MAIN] Crash recovery cleanup before quit-and-install failed:", err);
         }
-        autoUpdater.quitAndInstall();
+        autoUpdater.autoInstallOnAppQuit = false;
+        setImmediate(() => autoUpdater.quitAndInstall());
       });
 
       // Handle manual check-for-updates request from renderer
       ipcMain.handle(CHANNELS.UPDATE_CHECK_FOR_UPDATES, () => {
         this.checkForUpdatesManually();
-      });
-
-      // Persist dismiss of the "Update Available" toast — the renderer sends
-      // this when the user closes the toast so the same version is suppressed
-      // across app restarts for the 24h cooldown window. Validate the sender
-      // origin synchronously (matches recovery.ts and plugin.ts pattern), cap
-      // length, allowlist characters, and require strict semver — defense in
-      // depth on top of contextIsolation + asar integrity.
-      ipcMain.handle(CHANNELS.UPDATE_DISMISS_TOAST, (event, version: unknown) => {
-        const senderUrl = event.senderFrame?.url;
-        if (!senderUrl || !isTrustedRendererUrl(senderUrl)) return;
-        if (typeof version !== "string") return;
-        const trimmed = version.trim();
-        if (trimmed.length === 0 || trimmed.length > DISMISS_VERSION_MAX_LEN) return;
-        if (!DISMISS_VERSION_ALLOWLIST.test(trimmed)) return;
-        if (!semver.valid(trimmed)) return;
-        store.set("dismissedUpdateVersion", trimmed);
-        store.set("dismissedUpdateAt", Date.now());
       });
 
       // Spread the launch-time check across a 60s window so a fleet of
@@ -685,6 +719,8 @@ class AutoUpdaterService {
     this.isManualCheck = false;
     this.lastBroadcastVersion = null;
     this.channelHandlersRegistered = false;
+    this.channelGeneration = 0;
+    this.downloadGeneration = 0;
     this.initialized = false;
     this.clearCheckingMenuTimeout();
     // Reset menu state to idle BEFORE clearing listeners so any registered
