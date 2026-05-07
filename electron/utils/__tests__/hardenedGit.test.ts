@@ -703,6 +703,20 @@ describe("createWslHardenedGit", () => {
     expect(envArg.LANGUAGE).toBe("");
   });
 
+  it("applies the same env hardening as createHardenedGit (Linux git inside WSL)", () => {
+    createWslHardenedGit({
+      distro: "Ubuntu",
+      uncPath: "\\\\wsl$\\Ubuntu\\home\\user\\proj",
+      posixPath: "/home/user/proj",
+    });
+
+    const envArg = mockGitInstance.env.mock.calls[0][0];
+    expect(envArg.GIT_OPTIONAL_LOCKS).toBe("0");
+    expect(envArg.GIT_TERMINAL_PROMPT).toBe("0");
+    expect(envArg.GIT_ASKPASS).toBe("true");
+    expect(envArg.GCM_INTERACTIVE).toBe("Never");
+  });
+
   it("forwards abort signal when provided", () => {
     const controller = new AbortController();
     createWslHardenedGit(

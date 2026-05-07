@@ -190,6 +190,15 @@ export function createWslHardenedGit(
     // this env var present makes diagnostic output unambiguous if the user
     // captures process state during a hang.
     WSL_DISTRO_NAME: distro,
+    // The git binary inside WSL is Linux git, so the same non-interactive +
+    // lock-suppression hardening that createHardenedGit applies on POSIX
+    // must reach the WSL distro too. GCM_INTERACTIVE is harmless inside
+    // WSL (no GCM there) but kept for defense in depth in case wsl.exe ever
+    // surfaces it back to the host credential helper chain.
+    GIT_OPTIONAL_LOCKS: "0",
+    GIT_TERMINAL_PROMPT: "0",
+    GIT_ASKPASS: "true",
+    GCM_INTERACTIVE: "Never",
   });
 }
 
