@@ -340,6 +340,82 @@ describe("ProjectSwitchService", () => {
     expect(payload.switchId).toBe("switch-id-1");
   });
 
+  it("initiates outgoing project state save before setCurrentProject completes", async () => {
+    let resolveSave!: () => void;
+    const savePromise = new Promise<void>((resolve) => {
+      resolveSave = resolve;
+    });
+    projectStoreMock.saveProjectState.mockReturnValueOnce(savePromise);
+
+    const { service } = createService();
+
+    const switchPromise = service.switchProject("project-new");
+
+    for (let i = 0; i < 20 && projectStoreMock.setCurrentProject.mock.calls.length === 0; i += 1) {
+      await Promise.resolve();
+    }
+
+    expect(projectStoreMock.setCurrentProject).toHaveBeenCalledWith("project-new");
+
+    resolveSave();
+    await expect(switchPromise).resolves.toMatchObject({ id: "project-new" });
+  });
+
+  it("does not resolve switch before outgoing project state save completes", async () => {
+    let resolveSave!: () => void;
+    const savePromise = new Promise<void>((resolve) => {
+      resolveSave = resolve;
+    });
+    projectStoreMock.saveProjectState.mockReturnValueOnce(savePromise);
+
+    const { service } = createService();
+
+    let resolved = false;
+    const switchPromise = service.switchProject("project-new");
+    const trackedPromise = switchPromise.then((result) => {
+      resolved = true;
+      return result;
+    });
+
+    for (let i = 0; i < 50; i += 1) {
+      await Promise.resolve();
+    }
+
+    expect(resolved).toBe(false);
+
+    resolveSave();
+    await expect(trackedPromise).resolves.toMatchObject({ id: "project-new" });
+    expect(resolved).toBe(true);
+  });
+
+  it("applies in-repo project identity during switch", async () => {
+    projectStoreMock.readInRepoProjectIdentity.mockResolvedValue({
+      found: true,
+      name: "Repo Name",
+      emoji: "📦",
+    });
+    // Set the project name to the default (path.basename) so the identity
+    // override fires: inRepo.name is set above and project.name === "new"
+    projectStoreMock.getProjectById.mockImplementation((id: string) => {
+      if (id === "project-new") {
+        return { id, name: "new", path: "/tmp/new", status: "active", emoji: "🌲" };
+      }
+      if (id === "project-old") {
+        return { id, name: "Old Project", path: "/tmp/old", status: "active" };
+      }
+      return null;
+    });
+
+    const { service } = createService();
+    await service.switchProject("project-new");
+
+    expect(projectStoreMock.readInRepoProjectIdentity).toHaveBeenCalledWith("/tmp/new");
+    expect(projectStoreMock.updateProject).toHaveBeenCalledWith(
+      "project-new",
+      expect.objectContaining({ name: "Repo Name", emoji: "📦" })
+    );
+  });
+
   it("preserves original switch error when rollback throws", async () => {
     const originalError = new Error("setCurrent failed");
     projectStoreMock.setCurrentProject.mockRejectedValue(originalError);
