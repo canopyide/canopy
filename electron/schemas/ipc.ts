@@ -208,10 +208,10 @@ export const TerminalRecipeSchema = z
     projectId: z.string().optional(),
     worktreeId: z.string().optional(),
     terminals: z.array(RecipeTerminalSchema),
-    createdAt: z.number(),
+    createdAt: z.number().finite(),
     showInEmptyState: z.boolean().optional(),
-    lastUsedAt: z.number().optional(),
-    usageHistory: z.array(z.number()).optional(),
+    lastUsedAt: z.number().finite().optional(),
+    usageHistory: z.array(z.number().finite()).max(20).optional(),
     autoAssign: z.enum(["always", "never", "prompt"]).optional(),
   })
   .passthrough();
