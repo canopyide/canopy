@@ -89,8 +89,8 @@ describe("terminalSessionPersistence", () => {
     const syncPath = path.join(sessionDir, "term-rt-sync.restore");
     const asyncPath = path.join(sessionDir, "term-rt-async.restore");
 
-    expect(fs.readFileSync(syncPath, "utf8")).toBe("sync payload");
-    expect(fs.readFileSync(asyncPath, "utf8")).toBe("async payload");
+    expect(fs.readFileSync(syncPath, "utf8")).toBe("DAINTREE_SESSION_v1\nsync payload");
+    expect(fs.readFileSync(asyncPath, "utf8")).toBe("DAINTREE_SESSION_v1\nasync payload");
 
     // The atomic helpers must not leave temp files behind
     const stragglers = fs.readdirSync(sessionDir).filter((name) => name.endsWith(".tmp"));
@@ -100,6 +100,62 @@ describe("terminalSessionPersistence", () => {
     const result = restoreSessionFromFile(headless as never, "term-rt-sync");
     expect(result.restored).toBe(true);
     expect(headless.write).toHaveBeenCalledWith("sync payload");
+  });
+
+  it("restores a headerless legacy snapshot as v0", async () => {
+    const sessionDir = path.join(userDataDir, "terminal-sessions");
+    await fsp.mkdir(sessionDir, { recursive: true });
+
+    const legacyPath = path.join(sessionDir, "term-legacy.restore");
+    await fsp.writeFile(legacyPath, "legacy content", "utf8");
+
+    const headless = createMockHeadless();
+    const result = restoreSessionFromFile(headless as never, "term-legacy");
+
+    expect(result.restored).toBe(true);
+    expect(headless.write).toHaveBeenCalledWith("legacy content");
+  });
+
+  it("rejects a future schema version header", async () => {
+    const sessionDir = path.join(userDataDir, "terminal-sessions");
+    await fsp.mkdir(sessionDir, { recursive: true });
+
+    const futurePath = path.join(sessionDir, "term-future.restore");
+    await fsp.writeFile(futurePath, "DAINTREE_SESSION_v2\ncontent", "utf8");
+
+    const headless = createMockHeadless();
+    const result = restoreSessionFromFile(headless as never, "term-future");
+
+    expect(result.restored).toBe(false);
+    expect(headless.write).not.toHaveBeenCalled();
+  });
+
+  it("rejects a truncated header prefix", async () => {
+    const sessionDir = path.join(userDataDir, "terminal-sessions");
+    await fsp.mkdir(sessionDir, { recursive: true });
+
+    const truncatedPath = path.join(sessionDir, "term-truncated.restore");
+    await fsp.writeFile(truncatedPath, "DAINTREE_SES", "utf8");
+
+    const headless = createMockHeadless();
+    const result = restoreSessionFromFile(headless as never, "term-truncated");
+
+    expect(result.restored).toBe(false);
+    expect(headless.write).not.toHaveBeenCalled();
+  });
+
+  it("restores empty file as empty content", async () => {
+    const sessionDir = path.join(userDataDir, "terminal-sessions");
+    await fsp.mkdir(sessionDir, { recursive: true });
+
+    const emptyPath = path.join(sessionDir, "term-empty.restore");
+    await fsp.writeFile(emptyPath, "", "utf8");
+
+    const headless = createMockHeadless();
+    const result = restoreSessionFromFile(headless as never, "term-empty");
+
+    expect(result.restored).toBe(true);
+    expect(headless.write).toHaveBeenCalledWith("");
   });
 
   it("restores valid snapshot and injects separator banner", async () => {
