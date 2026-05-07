@@ -99,7 +99,7 @@ export class AgentStateService {
       case "watchdog-timeout":
         return "timeout";
       default: {
-        const _exhaustive: never = event.type;
+        const _exhaustive: never = event;
         return _exhaustive;
       }
     }

@@ -121,8 +121,8 @@ export function nextAgentState(current: AgentState, event: AgentEvent): AgentSta
       break;
 
     default: {
-      const _exhaustive: never = event.type;
-      return current;
+      const _exhaustive: never = event;
+      return _exhaustive;
     }
   }
 
