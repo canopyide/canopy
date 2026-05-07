@@ -202,6 +202,12 @@ function getRecoveryHint(error: unknown): string | undefined {
       return "Check your network connection and try again.";
     case "ECONNRESET":
       return "The connection was reset — try again in a moment.";
+    case "EMFILE":
+      return "Close some terminals to free up file descriptors and retry.";
+    case "ENOMEM":
+      return "Close other applications to free up memory and retry.";
+    case "ENXIO":
+      return "Close some terminals to free PTY resources and retry.";
     case "EBUSY":
       return "Close other applications using this file and retry.";
     case "EAGAIN":
