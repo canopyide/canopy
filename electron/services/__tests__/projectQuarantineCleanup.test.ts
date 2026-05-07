@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
@@ -282,6 +282,35 @@ describe("cleanupQuarantinedProjectFiles", () => {
     const deleted = await cleanupQuarantinedProjectFiles(tmpDir, NOW);
     expect(deleted).toBe(0);
     await expect(fs.access(filePath)).resolves.toBeUndefined();
+  });
+
+  it("isolates per-project sweep failures (one bad dir does not abort others)", async () => {
+    const dir1 = await createProjectDir(VALID_PROJECT_ID);
+    const dir2 = await createProjectDir(VALID_PROJECT_ID_2);
+    const oldFile2 = await createCorruptedFile(
+      dir2,
+      "state.json.corrupted.1234567890",
+      THIRTY_ONE_DAYS_MS,
+      NOW
+    );
+
+    const realReaddir = fs.readdir;
+    const spy = vi.spyOn(fs, "readdir").mockImplementation(((p: string, opts?: unknown) => {
+      if (p === dir1) {
+        const err = new Error("EACCES: permission denied") as NodeJS.ErrnoException;
+        err.code = "EACCES";
+        return Promise.reject(err);
+      }
+      return (realReaddir as (p: string, opts?: unknown) => Promise<unknown>)(p, opts);
+    }) as typeof fs.readdir);
+
+    try {
+      const deleted = await cleanupQuarantinedProjectFiles(tmpDir, NOW);
+      expect(deleted).toBe(1);
+      await expect(fs.access(oldFile2)).rejects.toThrow();
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 

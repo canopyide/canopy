@@ -76,12 +76,16 @@ export async function cleanupQuarantinedProjectFiles(
     if (!entry.isDirectory() || !isValidProjectId(entry.name)) continue;
 
     const projectDir = path.join(projectsConfigDir, entry.name);
-    deletedCount += await sweepDirectoryForPrefixes(
-      projectDir,
-      QUARANTINE_PREFIXES,
-      now,
-      "ProjectStore"
-    );
+    try {
+      deletedCount += await sweepDirectoryForPrefixes(
+        projectDir,
+        QUARANTINE_PREFIXES,
+        now,
+        "ProjectStore"
+      );
+    } catch (err) {
+      logError(`[ProjectStore] Failed to sweep quarantine in ${projectDir}`, err);
+    }
   }
 
   if (deletedCount > 0) {
