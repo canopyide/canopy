@@ -5,6 +5,10 @@ export class SessionStore {
   readonly sessions = new Map<string, McpSseSession>();
   readonly httpSessions = new Map<string, McpHttpSession>();
   readonly sessionTierMap = new Map<string, McpTier>();
+  // sessionId → renderer WebContents id pinned at handshake. Only populated
+  // for help-session bearers; api-key / pane-token sessions stay absent and
+  // fall through to the focused-window dispatch path. See #7002.
+  readonly sessionWebContentsMap = new Map<string, number>();
   readonly resourceSubscriptions = new Map<string, Map<string, () => void>>();
 
   private readonly cleanupResourceSubscriptionsFn: (sessionId: string) => void;
@@ -19,6 +23,7 @@ export class SessionStore {
       if (!session) return;
       this.sessions.delete(sessionId);
       this.sessionTierMap.delete(sessionId);
+      this.sessionWebContentsMap.delete(sessionId);
       this.cleanupResourceSubscriptionsFn(sessionId);
       session.transport.close().catch(() => {
         // ignore close errors during idle timeout cleanup
@@ -41,6 +46,7 @@ export class SessionStore {
       if (!session) return;
       this.httpSessions.delete(sessionId);
       this.sessionTierMap.delete(sessionId);
+      this.sessionWebContentsMap.delete(sessionId);
       this.cleanupResourceSubscriptionsFn(sessionId);
       session.transport.close().catch(() => {
         // ignore close errors during idle timeout cleanup
@@ -86,6 +92,7 @@ export class SessionStore {
     }
     this.httpSessions.clear();
     this.sessionTierMap.clear();
+    this.sessionWebContentsMap.clear();
 
     for (const bucket of this.resourceSubscriptions.values()) {
       for (const unsub of bucket.values()) {

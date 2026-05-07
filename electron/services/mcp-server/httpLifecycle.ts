@@ -8,7 +8,7 @@ import type { WindowRegistry } from "../../window/WindowRegistry.js";
 import { store } from "../../store.js";
 import { formatErrorMessage } from "../../../shared/utils/errorMessage.js";
 import { summarizeMcpArgs } from "../../../shared/utils/mcpArgsSummary.js";
-import type { HelpTokenValidator } from "./shared.js";
+import type { HelpTokenValidator, HelpSessionWebContentsResolver } from "./shared.js";
 import { isAuthorized, resolveTokenTier } from "./tierAuth.js";
 import { createSessionServer, cleanupResourceSubscriptions } from "./sessionServer.js";
 import type { SessionStore } from "./sessionStore.js";
@@ -29,6 +29,18 @@ export interface HttpLifecycleDeps {
   auditService: AuditService;
   requestManifest: () => Promise<import("../../../shared/types/actions.js").ActionManifestEntry[]>;
   dispatchAction: (
+    actionId: string,
+    args: unknown,
+    confirmed?: boolean
+  ) => Promise<import("./shared.js").DispatchEnvelope>;
+  // Pinned variants used for help-session bearers — route to the renderer
+  // WebContents that minted the bearer at provision time (#7002). Optional
+  // for backward-compat with test fixtures that don't wire help routing.
+  requestManifestForWebContents?: (
+    id: number
+  ) => Promise<import("../../../shared/types/actions.js").ActionManifestEntry[]>;
+  dispatchActionForWebContents?: (
+    id: number,
     actionId: string,
     args: unknown,
     confirmed?: boolean
@@ -64,6 +76,7 @@ export class HttpLifecycle {
   private startPromise: Promise<void> | null = null;
   private stopPromise: Promise<void> | null = null;
   private helpTokenValidator: HelpTokenValidator | null = null;
+  private helpSessionWebContentsResolver: HelpSessionWebContentsResolver | null = null;
   private lastError: string | null = null;
   private intentionalStop = false;
   private restartAttempts = 0;
@@ -110,6 +123,24 @@ export class HttpLifecycle {
 
   setHelpTokenValidator(validator: HelpTokenValidator | null): void {
     this.helpTokenValidator = validator;
+  }
+
+  setHelpSessionWebContentsResolver(resolver: HelpSessionWebContentsResolver | null): void {
+    this.helpSessionWebContentsResolver = resolver;
+  }
+
+  /**
+   * Parses a Bearer header and asks the help-session resolver for the
+   * pinned WebContents id. Returns null for non-help bearers (api-key /
+   * pane tokens) so external sessions keep the existing focused-window
+   * fallback in `buildSessionServerDeps`.
+   */
+  private resolvePinnedWebContentsId(authHeader: string): number | null {
+    if (!this.helpSessionWebContentsResolver) return null;
+    const match = /^Bearer\s+(.+)$/.exec(authHeader);
+    const token = match?.[1]?.trim();
+    if (!token) return null;
+    return this.helpSessionWebContentsResolver(token);
   }
 
   private getConfig() {
@@ -449,7 +480,12 @@ export class HttpLifecycle {
       const tier = resolveTokenTier(authHeader, this.apiKey, this.helpTokenValidator);
       this.deps.sessionStore.sessionTierMap.set(sessionId, tier);
 
-      const deps = this.buildSessionServerDeps();
+      const pinnedWebContentsId = this.resolvePinnedWebContentsId(authHeader);
+      if (pinnedWebContentsId !== null) {
+        this.deps.sessionStore.sessionWebContentsMap.set(sessionId, pinnedWebContentsId);
+      }
+
+      const deps = this.buildSessionServerDeps(sessionId);
       const server = createSessionServer(sessionId, deps);
 
       const idleTimer = this.deps.sessionStore.createIdleTimer(sessionId);
@@ -461,6 +497,7 @@ export class HttpLifecycle {
           this.deps.sessionStore.sessions.delete(sessionId);
         }
         this.deps.sessionStore.sessionTierMap.delete(sessionId);
+        this.deps.sessionStore.sessionWebContentsMap.delete(sessionId);
         cleanupResourceSubscriptions(sessionId, this.deps.sessionStore);
       };
 
@@ -522,7 +559,12 @@ export class HttpLifecycle {
     const tier = resolveTokenTier(authHeader, this.apiKey, this.helpTokenValidator);
     this.deps.sessionStore.sessionTierMap.set(newSessionId, tier);
 
-    const deps = this.buildSessionServerDeps();
+    const pinnedWebContentsId = this.resolvePinnedWebContentsId(authHeader);
+    if (pinnedWebContentsId !== null) {
+      this.deps.sessionStore.sessionWebContentsMap.set(newSessionId, pinnedWebContentsId);
+    }
+
+    const deps = this.buildSessionServerDeps(newSessionId);
     const server = createSessionServer(newSessionId, deps);
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => newSessionId,
@@ -545,6 +587,7 @@ export class HttpLifecycle {
         this.deps.sessionStore.httpSessions.delete(id);
       }
       this.deps.sessionStore.sessionTierMap.delete(id);
+      this.deps.sessionStore.sessionWebContentsMap.delete(id);
       cleanupResourceSubscriptions(id, this.deps.sessionStore);
     };
 
@@ -561,9 +604,11 @@ export class HttpLifecycle {
           this.deps.sessionStore.httpSessions.delete(id);
         }
         this.deps.sessionStore.sessionTierMap.delete(id);
+        this.deps.sessionStore.sessionWebContentsMap.delete(id);
         cleanupResourceSubscriptions(id, this.deps.sessionStore);
       } else {
         this.deps.sessionStore.sessionTierMap.delete(newSessionId);
+        this.deps.sessionStore.sessionWebContentsMap.delete(newSessionId);
         cleanupResourceSubscriptions(newSessionId, this.deps.sessionStore);
       }
       await transport.close().catch(() => {});
@@ -574,11 +619,55 @@ export class HttpLifecycle {
     }
   }
 
-  private buildSessionServerDeps(): import("./sessionServer.js").SessionServerDeps {
+  /**
+   * Builds per-session dispatch deps. When the session was pinned to a
+   * renderer WebContents at handshake (help-session bearers, #7002), routes
+   * through the pinned `*ForWebContents` helpers and forces a cache-free
+   * manifest lookup so window A's manifest can never be served to window B.
+   * Sessions without a pin (api-key / pane tokens) keep the existing shared
+   * dispatch + cached-manifest path.
+   */
+  private buildSessionServerDeps(
+    sessionId: string
+  ): import("./sessionServer.js").SessionServerDeps {
+    const pinnedDispatch = this.deps.dispatchActionForWebContents;
+    const pinnedManifest = this.deps.requestManifestForWebContents;
+
+    const requestManifest: import("./sessionServer.js").SessionServerDeps["requestManifest"] =
+      () => {
+        const id = this.deps.sessionStore.sessionWebContentsMap.get(sessionId);
+        if (id !== undefined && pinnedManifest) {
+          return pinnedManifest(id);
+        }
+        return this.deps.requestManifest();
+      };
+
+    const dispatchAction: import("./sessionServer.js").SessionServerDeps["dispatchAction"] = (
+      actionId,
+      args,
+      confirmed
+    ) => {
+      const id = this.deps.sessionStore.sessionWebContentsMap.get(sessionId);
+      if (id !== undefined && pinnedDispatch) {
+        return pinnedDispatch(id, actionId, args, confirmed);
+      }
+      return this.deps.dispatchAction(actionId, args, confirmed);
+    };
+
+    const getCachedManifest: import("./sessionServer.js").SessionServerDeps["getCachedManifest"] =
+      () => {
+        // Pinned sessions never read the shared manifest cache — see
+        // `requestManifestForWebContents` doc in rendererBridge.ts.
+        if (this.deps.sessionStore.sessionWebContentsMap.has(sessionId)) {
+          return null;
+        }
+        return this.deps.getCachedManifest();
+      };
+
     return {
       sessionStore: this.deps.sessionStore,
-      requestManifest: this.deps.requestManifest,
-      dispatchAction: this.deps.dispatchAction,
+      requestManifest,
+      dispatchAction,
       handleWaitUntilIdle: this.deps.handleWaitUntilIdle,
       appendAuditRecord: (input) => {
         this.deps.auditService.appendRecord({
@@ -586,7 +675,7 @@ export class HttpLifecycle {
           argsSummary: summarizeMcpArgs(input.args),
         });
       },
-      getCachedManifest: this.deps.getCachedManifest,
+      getCachedManifest,
       getFullToolSurface: () => this.getConfig().fullToolSurface === true,
     };
   }

@@ -25,6 +25,7 @@ const {
     start: vi.fn().mockResolvedValue(undefined),
     setEnabled: vi.fn().mockResolvedValue(undefined),
     setHelpTokenValidator: vi.fn(),
+    setHelpSessionWebContentsResolver: vi.fn(),
     getRuntimeState: vi.fn<
       () => import("../../../shared/types/ipc/mcpServer.js").McpRuntimeSnapshot
     >(() => ({
@@ -114,6 +115,7 @@ describe("HelpSessionService", () => {
     mockMcpServerService.start.mockClear();
     mockMcpServerService.setEnabled.mockClear();
     mockMcpServerService.setHelpTokenValidator.mockClear();
+    mockMcpServerService.setHelpSessionWebContentsResolver.mockClear();
     mockProbeMcpServer.mockReset();
     mockProbeMcpServer.mockResolvedValue(undefined);
     mockProbeMcpSseServer.mockReset();
@@ -243,6 +245,38 @@ describe("HelpSessionService", () => {
 
     await service.revokeSession(result.sessionId);
     expect(service.validateToken(result.token)).toBe(false);
+  });
+
+  it("getWebContentsIdForToken returns the pin set at provision time and null for unknown / revoked tokens (#7002)", async () => {
+    const result = await service.provisionSession({
+      ...provisionInput(),
+      projectViewWebContentsId: 4242,
+    });
+    if (!result) throw new Error("expected result");
+
+    expect(service.getWebContentsIdForToken(result.token)).toBe(4242);
+    expect(service.getWebContentsIdForToken("not-a-real-token")).toBeNull();
+    expect(service.getWebContentsIdForToken("")).toBeNull();
+
+    await service.revokeSession(result.sessionId);
+    expect(service.getWebContentsIdForToken(result.token)).toBeNull();
+  });
+
+  it("getWebContentsIdForToken returns the per-session pin when two sessions are minted from different views", async () => {
+    const a = await service.provisionSession({
+      ...provisionInput(),
+      projectPath: "/tmp/proj-a",
+      projectViewWebContentsId: 100,
+    });
+    const b = await service.provisionSession({
+      ...provisionInput(),
+      projectPath: "/tmp/proj-b",
+      projectViewWebContentsId: 200,
+    });
+    if (!a || !b) throw new Error("expected provisions");
+
+    expect(service.getWebContentsIdForToken(a.token)).toBe(100);
+    expect(service.getWebContentsIdForToken(b.token)).toBe(200);
   });
 
   it("preserves the per-project session dir on revoke so Claude's workspace-trust acceptance carries across launches", async () => {

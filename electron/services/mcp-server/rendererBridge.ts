@@ -1,4 +1,4 @@
-import { ipcMain } from "electron";
+import { ipcMain, webContents as electronWebContents } from "electron";
 import { randomUUID } from "node:crypto";
 import type { WindowRegistry } from "../../window/WindowRegistry.js";
 import { getProjectViewManager } from "../../window/windowRef.js";
@@ -33,15 +33,32 @@ export function createRendererBridge(
     throw new Error("MCP renderer bridge unavailable");
   }
 
+  /**
+   * Resolves a renderer WebContents by id, throwing if the view is missing or
+   * destroyed. Used by per-session pinned dispatch (#7002) so an MCP tool
+   * call from window A's assistant fails closed rather than silently routing
+   * to window B when window A's view has been torn down.
+   */
+  function getPinnedWebContents(id: number): Electron.WebContents {
+    const wc = electronWebContents.fromId(id);
+    if (!wc || wc.isDestroyed()) {
+      throw new Error(`MCP pinned view ${id} no longer available`);
+    }
+    return wc;
+  }
+
   function normalizeError(err: unknown, fallback: string): Error {
     return err instanceof Error ? err : new Error(fallback);
   }
 
-  function requestManifest(): Promise<ActionManifestEntry[]> {
+  function sendManifestRequest(
+    resolveWebContents: () => Electron.WebContents,
+    onResolved: (manifest: ActionManifestEntry[]) => void
+  ): Promise<ActionManifestEntry[]> {
     return new Promise((resolve, reject) => {
       let webContents: Electron.WebContents;
       try {
-        webContents = getActiveProjectWebContents();
+        webContents = resolveWebContents();
       } catch (err) {
         reject(normalizeError(err, "MCP renderer bridge unavailable"));
         return;
@@ -73,7 +90,10 @@ export function createRendererBridge(
       };
 
       pendingManifests.set(requestId, {
-        resolve,
+        resolve: (manifest) => {
+          onResolved(manifest);
+          resolve(manifest);
+        },
         reject,
         timer,
         webContentsId,
@@ -91,15 +111,16 @@ export function createRendererBridge(
     });
   }
 
-  function dispatchAction(
+  function sendDispatchRequest(
+    resolveWebContents: () => Electron.WebContents,
     actionId: string,
     args: unknown,
-    confirmed = false
+    confirmed: boolean
   ): Promise<DispatchEnvelope> {
     return new Promise((resolve, reject) => {
       let webContents: Electron.WebContents;
       try {
-        webContents = getActiveProjectWebContents();
+        webContents = resolveWebContents();
       } catch (err) {
         reject(normalizeError(err, "MCP renderer bridge unavailable"));
         return;
@@ -154,6 +175,54 @@ export function createRendererBridge(
     });
   }
 
+  function requestManifest(): Promise<ActionManifestEntry[]> {
+    return sendManifestRequest(
+      () => getActiveProjectWebContents(),
+      (manifest) => {
+        cachedManifest = manifest;
+      }
+    );
+  }
+
+  function dispatchAction(
+    actionId: string,
+    args: unknown,
+    confirmed = false
+  ): Promise<DispatchEnvelope> {
+    return sendDispatchRequest(() => getActiveProjectWebContents(), actionId, args, confirmed);
+  }
+
+  /**
+   * Manifest fetch pinned to a specific renderer WebContents (per-session
+   * routing for #7002). Bypasses `cachedManifest` because that cache is
+   * shared across all callers — caching window A's manifest and serving it
+   * to a session pinned to window B would re-introduce the cross-window
+   * leak this routing is meant to prevent.
+   */
+  function requestManifestForWebContents(id: number): Promise<ActionManifestEntry[]> {
+    return sendManifestRequest(
+      () => getPinnedWebContents(id),
+      () => {
+        // Intentionally do not write the shared cachedManifest.
+      }
+    );
+  }
+
+  /**
+   * Action dispatch pinned to a specific renderer WebContents (#7002).
+   * Throws fail-closed when the pinned view is destroyed so the assistant
+   * sees an explicit error rather than silently re-routing to the focused
+   * window.
+   */
+  function dispatchActionForWebContents(
+    id: number,
+    actionId: string,
+    args: unknown,
+    confirmed = false
+  ): Promise<DispatchEnvelope> {
+    return sendDispatchRequest(() => getPinnedWebContents(id), actionId, args, confirmed);
+  }
+
   const manifestHandler = (
     event: Electron.IpcMainEvent,
     payload: { requestId: string; manifest: unknown }
@@ -173,7 +242,10 @@ export function createRendererBridge(
     const manifest = Array.isArray(payload.manifest)
       ? (payload.manifest as ActionManifestEntry[])
       : [];
-    cachedManifest = manifest;
+    // The cache write happens inside the resolve wrapper attached at request
+    // time — non-pinned helpers populate `cachedManifest`, pinned helpers
+    // (#7002) deliberately do not, so window A's manifest can never be
+    // served to a session pinned to window B.
     pending.resolve(manifest);
   };
 
@@ -217,6 +289,8 @@ export function createRendererBridge(
     setupListeners,
     requestManifest,
     dispatchAction,
+    requestManifestForWebContents,
+    dispatchActionForWebContents,
     getCachedManifest: () => cachedManifest,
     clearCache: () => {
       cachedManifest = null;
