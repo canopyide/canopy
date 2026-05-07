@@ -1965,12 +1965,14 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     // project's monitors get a clean coordinator and stale completions are
     // discarded by the generation guard.
     this.fetchCoordinator.destroy();
+    this.pollQueue.clear();
 
     this.activeWorktreeId = null;
     this.mainBranch = "main";
     this.git = null;
     this.projectRootPath = null;
     this.projectEnvVars = {};
+    this.wslDefaultDistroPromise = null;
 
     clearGitDirCache();
     clearGitCommonDirCache();
@@ -2162,6 +2164,8 @@ ${lines.map((l) => "+" + l).join("\n")}`;
       monitor.stop();
     }
     this.monitors.clear();
+    this.fetchCoordinator.destroy();
+    this.pollQueue.clear();
     this.listService.invalidateCache();
   }
 }

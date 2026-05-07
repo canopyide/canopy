@@ -409,25 +409,25 @@ describe("WatcherController", () => {
     expect(ctrl.hasWatcher).toBe(true);
   });
 
-  it("dispose() prevents future start() calls", () => {
+  it("stop(true) clears watcher and retry state", () => {
     mockWatcherStartResult = true;
     const host = makeHost();
     const ctrl = new WatcherController(host as WatcherControllerHost);
 
-    ctrl.dispose();
     ctrl.start();
-    expect(watcherStartCallCount).toBe(0);
+    ctrl.stop(true);
     expect(ctrl.hasWatcher).toBe(false);
+    expect(ctrl.currentMode).toBe("none");
   });
 
-  it("dispose() cancels pending retry timers", () => {
+  it("stop(true) cancels pending retry timers", () => {
     mockRecursiveStartResult = false;
     mockGitOnlyStartResult = true;
     const host = makeHost({ isCurrent: true });
     const ctrl = new WatcherController(host as WatcherControllerHost);
 
     ctrl.start();
-    ctrl.dispose();
+    ctrl.stop(true);
     mockRecursiveStartResult = true;
     vi.advanceTimersByTime(120_000);
     // No retry should have run.
