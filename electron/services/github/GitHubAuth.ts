@@ -309,7 +309,7 @@ export class GitHubAuth {
 
     return graphql.defaults({
       headers: {
-        authorization: `token ${token}`,
+        authorization: `Bearer ${token}`,
       },
       request: {
         fetch: rateLimitAwareFetch,
@@ -335,7 +335,7 @@ export class GitHubAuth {
     try {
       const response = await rateLimitAwareFetch("https://api.github.com/user", {
         headers: {
-          Authorization: `token ${token}`,
+          Authorization: `Bearer ${token}`,
           Accept: "application/vnd.github.v3+json",
         },
         signal: AbortSignal.timeout(GITHUB_AUTH_TIMEOUT_MS),
