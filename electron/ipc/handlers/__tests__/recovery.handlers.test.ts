@@ -67,6 +67,16 @@ vi.mock("../../../utils/logger.js", () => ({
   getLogFilePath: vi.fn(() => "/tmp/daintree/logs/main.log"),
 }));
 
+vi.mock("../../../../shared/config/devServer.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../../shared/config/devServer.js")>(
+    "../../../../shared/config/devServer.js"
+  );
+  return {
+    ...actual,
+    getDevServerUrl: vi.fn(() => "http://localhost:5173"),
+  };
+});
+
 import { registerRecoveryHandlers } from "../recovery.js";
 import type { HandlerDependencies } from "../../types.js";
 
@@ -178,6 +188,7 @@ describe("registerRecoveryHandlers", () => {
       await handler(buildEvent(TRUSTED_RECOVERY_URL));
 
       expect(win.loadURL).toHaveBeenCalledTimes(1);
+      expect(win.loadURL).toHaveBeenCalledWith("http://localhost:5173");
     });
 
     it("is a no-op when the window is destroyed", async () => {
@@ -228,6 +239,13 @@ describe("registerRecoveryHandlers", () => {
     });
 
     it("rejects the main renderer URL (not the recovery page)", async () => {
+      const { getCrashRecoveryService: getCrash } =
+        await import("../../../services/CrashRecoveryService.js");
+      const resetMock = vi.fn();
+      vi.mocked(getCrash).mockReturnValue({
+        resetToFresh: resetMock,
+      } as unknown as ReturnType<typeof getCrash>);
+
       const win = buildWindow();
       const localDeps = { mainWindow: win } as unknown as HandlerDependencies;
       registerRecoveryHandlers(localDeps);
@@ -236,10 +254,18 @@ describe("registerRecoveryHandlers", () => {
       await expect(handler(buildEvent(MAIN_RENDERER_URL))).rejects.toThrow(
         "recovery:reset-and-reload rejected: untrusted sender"
       );
+      expect(resetMock).not.toHaveBeenCalled();
       expect(win.loadURL).not.toHaveBeenCalled();
     });
 
     it("rejects missing senderFrame", async () => {
+      const { getCrashRecoveryService: getCrash } =
+        await import("../../../services/CrashRecoveryService.js");
+      const resetMock = vi.fn();
+      vi.mocked(getCrash).mockReturnValue({
+        resetToFresh: resetMock,
+      } as unknown as ReturnType<typeof getCrash>);
+
       const win = buildWindow();
       const localDeps = { mainWindow: win } as unknown as HandlerDependencies;
       registerRecoveryHandlers(localDeps);
@@ -248,6 +274,7 @@ describe("registerRecoveryHandlers", () => {
       await expect(handler(buildEvent(null))).rejects.toThrow(
         "recovery:reset-and-reload rejected: untrusted sender"
       );
+      expect(resetMock).not.toHaveBeenCalled();
       expect(win.loadURL).not.toHaveBeenCalled();
     });
 
@@ -268,6 +295,10 @@ describe("registerRecoveryHandlers", () => {
 
       expect(resetMock).toHaveBeenCalledTimes(1);
       expect(win.loadURL).toHaveBeenCalledTimes(1);
+      expect(win.loadURL).toHaveBeenCalledWith("http://localhost:5173");
+      expect(resetMock.mock.invocationCallOrder[0]).toBeLessThan(
+        win.loadURL.mock.invocationCallOrder[0]
+      );
     });
 
     it("is a no-op when the window is destroyed", async () => {
