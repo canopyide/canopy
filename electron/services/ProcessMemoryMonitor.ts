@@ -5,6 +5,7 @@ import { app } from "electron";
 import { logDebug, logInfo, logWarn } from "../utils/logger.js";
 import { setAlignedInterval } from "../utils/setAlignedInterval.js";
 import { getSystemSleepService } from "./SystemSleepService.js";
+import { getWritesSuppressed } from "./diskPressureState.js";
 
 const POLL_INTERVAL_MS = 30_000;
 const SNAPSHOT_COOLDOWN_MS = 5 * 60 * 1000;
@@ -225,6 +226,8 @@ export function startAppMetricsMonitor(actions?: MemoryPressureActions): () => v
   let consecutivePressureCount = 0;
   let lastTier2At = 0;
   let mitigationInFlight = false;
+  const thresholdExceededPids = new Set<number>();
+  const trendWarnedPids = new Set<number>();
 
   const poll = () => {
     try {
@@ -253,12 +256,17 @@ export function startAppMetricsMonitor(actions?: MemoryPressureActions): () => v
         const threshold = WARN_THRESHOLDS_MB[proc.type];
         if (threshold !== undefined && mb > threshold) {
           hasPressure = true;
-          logWarn("process-memory-threshold-exceeded", {
-            pid: proc.pid,
-            type: proc.type,
-            mb: Math.round(mb),
-            thresholdMb: threshold,
-          });
+          if (!thresholdExceededPids.has(proc.pid)) {
+            thresholdExceededPids.add(proc.pid);
+            logWarn("process-memory-threshold-exceeded", {
+              pid: proc.pid,
+              type: proc.type,
+              mb: Math.round(mb),
+              thresholdMb: threshold,
+            });
+          }
+        } else if (threshold !== undefined) {
+          thresholdExceededPids.delete(proc.pid);
         }
 
         let state = trendState.get(proc.pid);
@@ -292,11 +300,16 @@ export function startAppMetricsMonitor(actions?: MemoryPressureActions): () => v
             const windowHours = ((BUCKET_WINDOW - 1) * 60) / 3600;
             const growthMbPerHour = (newest - oldest) / windowHours;
             if (growthMbPerHour > TREND_WARN_MB_PER_HOUR) {
-              logWarn("process-memory-trend-warning", {
-                pid: proc.pid,
-                type: proc.type,
-                growthMbPerHour: Math.round(growthMbPerHour),
-              });
+              if (!trendWarnedPids.has(proc.pid)) {
+                trendWarnedPids.add(proc.pid);
+                logWarn("process-memory-trend-warning", {
+                  pid: proc.pid,
+                  type: proc.type,
+                  growthMbPerHour: Math.round(growthMbPerHour),
+                });
+              }
+            } else if (growthMbPerHour <= 0) {
+              trendWarnedPids.delete(proc.pid);
             }
           }
 
@@ -309,12 +322,19 @@ export function startAppMetricsMonitor(actions?: MemoryPressureActions): () => v
           const last = snapshotCooldowns.get(proc.pid) ?? 0;
           if (now - last > SNAPSHOT_COOLDOWN_MS) {
             try {
-              const dir = app.getPath("logs");
-              mkdirSync(dir, { recursive: true });
-              const file = path.join(dir, `heap-${proc.pid}-${now}.heapsnapshot`);
-              const written = v8.writeHeapSnapshot(file);
-              snapshotCooldowns.set(proc.pid, now);
-              logWarn("heap-snapshot-written", { path: written });
+              if (getWritesSuppressed()) {
+                logDebug("heap-snapshot-suppressed", {
+                  pid: proc.pid,
+                  reason: "disk-pressure-write-gate",
+                });
+              } else {
+                const dir = app.getPath("logs");
+                mkdirSync(dir, { recursive: true });
+                const file = path.join(dir, `heap-${proc.pid}-${now}.heapsnapshot`);
+                const written = v8.writeHeapSnapshot(file);
+                snapshotCooldowns.set(proc.pid, now);
+                logWarn("heap-snapshot-written", { path: written });
+              }
             } catch (err) {
               logWarn("heap-snapshot-failed", { error: String(err) });
             }
@@ -324,6 +344,12 @@ export function startAppMetricsMonitor(actions?: MemoryPressureActions): () => v
 
       for (const pid of trendState.keys()) {
         if (!activePids.has(pid)) trendState.delete(pid);
+      }
+      for (const pid of thresholdExceededPids) {
+        if (!activePids.has(pid)) thresholdExceededPids.delete(pid);
+      }
+      for (const pid of trendWarnedPids) {
+        if (!activePids.has(pid)) trendWarnedPids.delete(pid);
       }
       for (const pid of snapshotCooldowns.keys()) {
         if (!activePids.has(pid)) snapshotCooldowns.delete(pid);
@@ -398,12 +424,15 @@ export function startAppMetricsMonitor(actions?: MemoryPressureActions): () => v
       clearAlignedInterval?.();
       clearAlignedInterval = null;
       trendState.clear();
+      thresholdExceededPids.clear();
+      trendWarnedPids.clear();
       consecutivePressureCount = 0;
       lastTier2At = 0;
       mitigationInFlight = false;
     });
     removeWakeListener = getSystemSleepService().onWake(() => {
       if (clearAlignedInterval !== null) return;
+      poll();
       armTimer();
     });
   } catch {

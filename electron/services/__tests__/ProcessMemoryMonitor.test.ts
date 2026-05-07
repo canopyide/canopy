@@ -24,9 +24,26 @@ vi.mock("../../utils/logger.js", () => ({
   logWarn: vi.fn(),
 }));
 
+vi.mock("../diskPressureState.js", () => ({
+  getWritesSuppressed: vi.fn().mockReturnValue(false),
+  setWritesSuppressed: vi.fn(),
+  resetWritesSuppressedForTesting: vi.fn(),
+}));
+
+vi.mock("../SystemSleepService.js", () => {
+  const mockSleepService = {
+    onSuspend: vi.fn().mockReturnValue(vi.fn()),
+    onWake: vi.fn().mockReturnValue(vi.fn()),
+  };
+  return { getSystemSleepService: vi.fn(() => mockSleepService) };
+});
+
+import { mkdirSync } from "node:fs";
 import { app } from "electron";
 import v8 from "node:v8";
 import { logDebug, logInfo, logWarn } from "../../utils/logger.js";
+import { getWritesSuppressed } from "../diskPressureState.js";
+import { getSystemSleepService } from "../SystemSleepService.js";
 import {
   startAppMetricsMonitor,
   WARMUP_INTERVALS,
@@ -330,7 +347,7 @@ describe("ProcessMemoryMonitor", () => {
     const trendCalls = vi
       .mocked(logWarn)
       .mock.calls.filter((c) => c[0] === "process-memory-trend-warning");
-    expect(trendCalls.length).toBeGreaterThanOrEqual(1);
+    expect(trendCalls).toHaveLength(1);
     expect(trendCalls[0]![1]).toMatchObject({
       pid: 500,
       type: "Tab",
@@ -889,6 +906,319 @@ describe("ProcessMemoryMonitor", () => {
 
       expect(sampleRendererElu).toHaveBeenCalledTimes(2);
       expect(logDebug).toHaveBeenCalledWith("process-memory-sample", expect.any(Object));
+    });
+
+    describe("threshold edge-triggered latching (issue #7114)", () => {
+      it("warns only once across consecutive over-threshold polls for the same pid", () => {
+        mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 350 * 1024, 100)]);
+
+        stop = startAppMetricsMonitor();
+        vi.advanceTimersByTime(30_000); // first poll — warns
+        vi.advanceTimersByTime(30_000); // second poll — still over, no new warning
+
+        const thresholdCalls = vi
+          .mocked(logWarn)
+          .mock.calls.filter((c) => c[0] === "process-memory-threshold-exceeded");
+        expect(thresholdCalls).toHaveLength(1);
+      });
+
+      it("re-warns when pid drops below threshold then exceeds again (re-entry)", () => {
+        mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 350 * 1024, 100)]);
+        stop = startAppMetricsMonitor();
+        vi.advanceTimersByTime(30_000); // first crossing — warns
+
+        mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 200 * 1024, 100)]);
+        vi.advanceTimersByTime(30_000); // below threshold — latch cleared
+
+        mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 350 * 1024, 100)]);
+        vi.advanceTimersByTime(30_000); // re-crossing — warns again
+
+        const thresholdCalls = vi
+          .mocked(logWarn)
+          .mock.calls.filter((c) => c[0] === "process-memory-threshold-exceeded");
+        expect(thresholdCalls).toHaveLength(2);
+      });
+
+      it("each pid latches independently", () => {
+        mockGetAppMetrics.mockReturnValue([
+          makeMetric("Browser", 350 * 1024, 100),
+          makeMetric("Tab", 800 * 1024, 200),
+        ]);
+        stop = startAppMetricsMonitor();
+
+        vi.advanceTimersByTime(30_000); // both cross — each warns once
+        vi.advanceTimersByTime(30_000); // both still over — no new warnings
+
+        const thresholdCalls = vi
+          .mocked(logWarn)
+          .mock.calls.filter((c) => c[0] === "process-memory-threshold-exceeded");
+        expect(thresholdCalls).toHaveLength(2);
+        expect(thresholdCalls[0]![1]).toMatchObject({ pid: 100 });
+        expect(thresholdCalls[1]![1]).toMatchObject({ pid: 200 });
+      });
+
+      it("clears threshold latch on suspend so post-wake re-entry warns", () => {
+        mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 350 * 1024, 100)]);
+        stop = startAppMetricsMonitor();
+        vi.advanceTimersByTime(30_000);
+
+        // Simulate suspend → wake
+        const mockSleep = getSystemSleepService();
+        const onSuspend = vi.mocked(mockSleep.onSuspend).mock.calls[0]![0]!;
+        const onWake = vi.mocked(mockSleep.onWake).mock.calls[0]![0]!;
+        onSuspend();
+        onWake(0);
+
+        vi.advanceTimersByTime(30_000); // re-entry after wake — warns again
+
+        const thresholdCalls = vi
+          .mocked(logWarn)
+          .mock.calls.filter((c) => c[0] === "process-memory-threshold-exceeded");
+        expect(thresholdCalls).toHaveLength(2);
+      });
+
+      it("prunes threshold latch when pid disappears from metrics", () => {
+        mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 350 * 1024, 100)]);
+        stop = startAppMetricsMonitor();
+        vi.advanceTimersByTime(30_000);
+
+        // Pid 100 disappears, replaced by 200
+        mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 350 * 1024, 200)]);
+        vi.advanceTimersByTime(30_000);
+
+        const thresholdCalls = vi
+          .mocked(logWarn)
+          .mock.calls.filter((c) => c[0] === "process-memory-threshold-exceeded");
+        expect(thresholdCalls).toHaveLength(2);
+        expect(thresholdCalls[0]![1]).toMatchObject({ pid: 100 });
+        expect(thresholdCalls[1]![1]).toMatchObject({ pid: 200 });
+      });
+    });
+
+    describe("trend per-pid latch (issue #7114)", () => {
+      it("warns only once per pid during sustained growth", () => {
+        const baseMb = 100;
+        const growthPerTickMb = 0.1; // ~6 MB/hr
+        let tick = 0;
+
+        mockGetAppMetrics.mockImplementation(() => {
+          const mb = baseMb + tick * growthPerTickMb;
+          tick++;
+          return [makeMetric("Tab", mb * 1024, 500, mb * 1024)];
+        });
+
+        stop = startAppMetricsMonitor();
+        vi.advanceTimersByTime(120 * 30_000); // well past initial warning
+
+        const trendCalls = vi
+          .mocked(logWarn)
+          .mock.calls.filter((c) => c[0] === "process-memory-trend-warning");
+        expect(trendCalls).toHaveLength(1);
+      });
+
+      it("clears trend latch when growth reverses to negative (growthMbPerHour <= 0)", () => {
+        // Phase 1: strong growth triggers warning for pid 500
+        let tick = 0;
+        mockGetAppMetrics.mockImplementation(() => {
+          const mb = 100 + tick * 0.15;
+          tick++;
+          return [makeMetric("Tab", mb * 1024, 500, mb * 1024)];
+        });
+
+        stop = startAppMetricsMonitor();
+        vi.advanceTimersByTime(62 * 30_000);
+
+        const afterFirst = vi
+          .mocked(logWarn)
+          .mock.calls.filter((c) => c[0] === "process-memory-trend-warning");
+        expect(afterFirst).toHaveLength(1);
+
+        // Phase 2: steep decline for pid 500 to clear its trend latch
+        // Then introduce a NEW pid 501 with growth. If the pid 500 latch
+        // was properly cleared by the decline, it won't interfere with
+        // pid 501; and pid 501 should get its own independent warning.
+        const dropStartTick = tick;
+        mockGetAppMetrics.mockImplementation(() => {
+          const mb = 100 + dropStartTick * 0.15 - (tick - dropStartTick) * 2;
+          tick++;
+          return [makeMetric("Tab", mb * 1024, 500, mb * 1024)];
+        });
+        vi.advanceTimersByTime(80 * 30_000);
+
+        // Pid 500 disappears, pid 501 starts fresh with growth
+        tick = 0;
+        mockGetAppMetrics.mockImplementation(() => {
+          const mb = 100 + tick * 0.15;
+          tick++;
+          return [makeMetric("Tab", mb * 1024, 501, mb * 1024)];
+        });
+        vi.advanceTimersByTime(62 * 30_000);
+
+        // Pid 501 should get its own warning — pid 500 was pruned when it
+        // disappeared from metrics, proving latch entries are cleaned up
+        // alongside trend state and don't leak across pid lifecycle.
+        const trendCalls = vi
+          .mocked(logWarn)
+          .mock.calls.filter((c) => c[0] === "process-memory-trend-warning");
+        expect(trendCalls).toHaveLength(2);
+        expect(trendCalls[0]![1]).toMatchObject({ pid: 500 });
+        expect(trendCalls[1]![1]).toMatchObject({ pid: 501 });
+      });
+
+      it("does NOT clear trend latch when growth drops only slightly below threshold", () => {
+        // Start with strong growth to trigger latch
+        let tick = 0;
+        let mb = 100;
+
+        mockGetAppMetrics.mockImplementation(() => {
+          // First 62 polls: strong growth (triggers latch)
+          // Then: growth drops to 2 MB/hr (still positive, just below threshold)
+          if (tick < 62) {
+            mb = 100 + tick * 0.1;
+          } else {
+            mb = 100 + 62 * 0.1 + (tick - 62) * 0.05; // still positive ~3 MB/hr
+          }
+          tick++;
+          return [makeMetric("Tab", Math.round(mb * 1024), 500, Math.round(mb * 1024))];
+        });
+
+        stop = startAppMetricsMonitor();
+        vi.advanceTimersByTime(100 * 30_000);
+
+        const trendCalls = vi
+          .mocked(logWarn)
+          .mock.calls.filter((c) => c[0] === "process-memory-trend-warning");
+        // Only one warning — the latch stays set because growth never went <= 0.
+        // Positive-but-below-threshold growth does not clear the latch (hysteresis).
+        expect(trendCalls).toHaveLength(1);
+      });
+
+      it("clears trend latch on suspend", () => {
+        let tick = 0;
+
+        mockGetAppMetrics.mockImplementation(() => {
+          const mb = 100 + tick * 0.1;
+          tick++;
+          return [makeMetric("Tab", mb * 1024, 500, mb * 1024)];
+        });
+
+        stop = startAppMetricsMonitor();
+        vi.advanceTimersByTime(62 * 30_000); // triggers trend warning
+
+        const afterFirst = vi
+          .mocked(logWarn)
+          .mock.calls.filter((c) => c[0] === "process-memory-trend-warning");
+        expect(afterFirst).toHaveLength(1);
+
+        // Suspend clears trend state and latches
+        const mockSleep = getSystemSleepService();
+        const onSuspend = vi.mocked(mockSleep.onSuspend).mock.calls[0]![0]!;
+        const onWake = vi.mocked(mockSleep.onWake).mock.calls[0]![0]!;
+
+        // Set up fresh growth metrics BEFORE wake so the immediate poll() sees them
+        tick = 0;
+        mockGetAppMetrics.mockImplementation(() => {
+          const mb = 100 + tick * 0.1;
+          tick++;
+          return [makeMetric("Tab", mb * 1024, 500, mb * 1024)];
+        });
+
+        onSuspend();
+        onWake(0); // immediate poll fires with fresh growth data
+
+        vi.advanceTimersByTime(62 * 30_000);
+
+        const trendCalls = vi
+          .mocked(logWarn)
+          .mock.calls.filter((c) => c[0] === "process-memory-trend-warning");
+        expect(trendCalls).toHaveLength(2);
+      });
+    });
+
+    describe("heap snapshot write gating (issue #7114)", () => {
+      it("skips heap snapshot when writes are suppressed", () => {
+        mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 700 * 1024, 100)]);
+        Object.defineProperty(app, "isPackaged", { value: false, writable: true });
+        vi.mocked(getWritesSuppressed).mockReturnValue(true);
+
+        stop = startAppMetricsMonitor();
+        vi.advanceTimersByTime(30_000);
+
+        expect(v8.writeHeapSnapshot).not.toHaveBeenCalled();
+        expect(logDebug).toHaveBeenCalledWith("heap-snapshot-suppressed", {
+          pid: 100,
+          reason: "disk-pressure-write-gate",
+        });
+      });
+
+      it("writes heap snapshot when writes are NOT suppressed", () => {
+        mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 700 * 1024, 100)]);
+        Object.defineProperty(app, "isPackaged", { value: false, writable: true });
+        vi.mocked(getWritesSuppressed).mockReturnValue(false);
+
+        stop = startAppMetricsMonitor();
+        vi.advanceTimersByTime(30_000);
+
+        expect(v8.writeHeapSnapshot).toHaveBeenCalledTimes(1);
+      });
+      it("suppressed heap snapshot does not consume cooldown", () => {
+        mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 700 * 1024, 100)]);
+        Object.defineProperty(app, "isPackaged", { value: false, writable: true });
+
+        // First poll: writes suppressed
+        vi.mocked(getWritesSuppressed).mockReturnValue(true);
+        stop = startAppMetricsMonitor();
+        vi.advanceTimersByTime(30_000);
+        expect(v8.writeHeapSnapshot).not.toHaveBeenCalled();
+
+        // Second poll (within cooldown): writes no longer suppressed
+        vi.mocked(getWritesSuppressed).mockReturnValue(false);
+        vi.advanceTimersByTime(30_000);
+
+        // Should write snapshot because cooldown was NOT consumed by suppression
+        expect(v8.writeHeapSnapshot).toHaveBeenCalledTimes(1);
+      });
+
+      it("suppressed heap snapshot skips mkdirSync and getPath", () => {
+        mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 700 * 1024, 100)]);
+        Object.defineProperty(app, "isPackaged", { value: false, writable: true });
+        vi.mocked(getWritesSuppressed).mockReturnValue(true);
+
+        stop = startAppMetricsMonitor();
+        vi.advanceTimersByTime(30_000);
+
+        expect(mkdirSync).not.toHaveBeenCalled();
+        expect(app.getPath).not.toHaveBeenCalledWith("logs");
+      });
+    });
+
+    describe("wake handler immediate poll (issue #7114)", () => {
+      it("polls immediately on wake before re-arming timer", () => {
+        mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 200 * 1024, 100)]);
+
+        stop = startAppMetricsMonitor();
+        const mockSleep = getSystemSleepService();
+        const onSuspend = vi.mocked(mockSleep.onSuspend).mock.calls[0]![0]!;
+        const onWake = vi.mocked(mockSleep.onWake).mock.calls[0]![0]!;
+
+        // Initial poll via timer
+        vi.advanceTimersByTime(30_000);
+        expect(logDebug).toHaveBeenCalledTimes(1);
+
+        // Suspend: timer is cleared
+        onSuspend();
+
+        // Wake: should poll immediately
+        onWake(0);
+
+        // Verify poll happened synchronously on wake (debug log count increased
+        // without advancing the fake timer)
+        expect(logDebug).toHaveBeenCalledTimes(2);
+
+        // Then the next timer tick fires as expected
+        vi.advanceTimersByTime(30_000);
+        expect(logDebug).toHaveBeenCalledTimes(3);
+      });
     });
 
     it("works without sampleRendererElu (optional, backwards compat)", () => {
