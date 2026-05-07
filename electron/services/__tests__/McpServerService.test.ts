@@ -2201,9 +2201,46 @@ describe("McpServerService", () => {
         description: "Focus the next active agent",
       }),
       createManifestEntry({
+        id: "agent.focusNextAgent" as ActionId,
+        title: "Focus Next Agent",
+        description: "Cycle focus to the next agent panel",
+      }),
+      createManifestEntry({
+        id: "agent.focusPreviousAgent" as ActionId,
+        title: "Focus Previous Agent",
+        description: "Cycle focus to the previous agent panel",
+      }),
+      createManifestEntry({
         id: "workflow.focusNextAttention" as ActionId,
         title: "Focus Next Attention",
         description: "Focus next waiting/working agent with priority",
+      }),
+      createManifestEntry({
+        id: "app.theme.pick" as ActionId,
+        title: "Pick Theme",
+        description: "Open the theme picker",
+      }),
+      createManifestEntry({
+        id: "app.theme.browser.open" as ActionId,
+        title: "Open Theme Browser",
+        description: "Open the theme browser panel",
+      }),
+      createManifestEntry({
+        id: "app.theme.toggle" as ActionId,
+        title: "Toggle Theme",
+        description: "Toggle between light and dark themes",
+      }),
+      createManifestEntry({
+        id: "agentSettings.get" as ActionId,
+        title: "Get Agent Settings",
+        description: "Read effective agent settings",
+        kind: "query",
+      }),
+      createManifestEntry({
+        id: "keybinding.getOverrides" as ActionId,
+        title: "Get Keybinding Overrides",
+        description: "Read user keybinding overrides",
+        kind: "query",
       }),
       createManifestEntry({
         id: "project.update" as ActionId,
@@ -2231,13 +2268,25 @@ describe("McpServerService", () => {
       "terminal.close",
       "agent.terminal",
       "agent.launch",
+      "agent.focusNextWaiting",
+      "agent.focusNextWorking",
+      "agent.focusNextAgent",
+      "agent.focusPreviousAgent",
       "workflow.startWorkOnIssue",
+      "workflow.focusNextAttention",
+      "app.theme.pick",
+      "app.theme.browser.open",
+      "app.theme.toggle",
       "project.update",
       "project.saveSettings",
       "project.muteNotifications",
     ] as const;
 
-    const WORKBENCH_TIER_TOOLS = ["workflow.prepBranchForReview"] as const;
+    const WORKBENCH_TIER_TOOLS = [
+      "workflow.prepBranchForReview",
+      "agentSettings.get",
+      "keybinding.getOverrides",
+    ] as const;
 
     const SYSTEM_ONLY_TOOLS = [
       "git.commit",
@@ -2246,15 +2295,10 @@ describe("McpServerService", () => {
       "terminal.kill",
     ] as const;
 
-    // Fleet-broadcast and focus-shift primitives are renderer-only — they
-    // remain available via keybindings, palette, and menus, but are NOT
-    // exposed through the MCP control plane on any tier.
-    const NEVER_EXPOSED_VIA_MCP = [
-      "terminal.bulkCommand",
-      "agent.focusNextWaiting",
-      "agent.focusNextWorking",
-      "workflow.focusNextAttention",
-    ] as const;
+    // Fleet-broadcast primitives are renderer-only — they remain available
+    // via keybindings, palette, and menus, but are NOT exposed through the
+    // MCP control plane on any tier.
+    const NEVER_EXPOSED_VIA_MCP = ["terminal.bulkCommand"] as const;
 
     it("workbench tier exposes only read-only introspection tools", async () => {
       paneTokenTiers.set("token-wb", "workbench");
@@ -2278,6 +2322,7 @@ describe("McpServerService", () => {
       expect(ids).not.toContain("project.update");
       expect(ids).not.toContain("project.saveSettings");
       expect(ids).not.toContain("project.muteNotifications");
+      expect(ids).not.toContain("copyTree.isAvailable");
       for (const id of NEVER_EXPOSED_VIA_MCP) {
         expect(ids).not.toContain(id);
       }
@@ -2388,7 +2433,7 @@ describe("McpServerService", () => {
       expect(dispatchMock).not.toHaveBeenCalled();
     });
 
-    it("external tier (apiKey) excludes fleet-broadcast and focus-shift tools from listTools", async () => {
+    it("external tier (apiKey) excludes fleet-broadcast tools from listTools", async () => {
       const { window } = createMockWindow({ getManifest: tierManifest });
 
       await service.start(window);
@@ -2402,7 +2447,7 @@ describe("McpServerService", () => {
       }
     });
 
-    it("rejects callTool for fleet-broadcast and focus-shift tools across every tier with TIER_NOT_PERMITTED", async () => {
+    it("rejects callTool for fleet-broadcast tools across every tier with TIER_NOT_PERMITTED", async () => {
       paneTokenTiers.set("token-wb", "workbench");
       paneTokenTiers.set("token-action", "action");
       paneTokenTiers.set("token-sys", "system");

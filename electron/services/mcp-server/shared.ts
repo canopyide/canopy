@@ -148,7 +148,6 @@ const WORKBENCH_TOOLS: ReadonlySet<string> = new Set([
   "files.search",
   "file.view",
 
-  "copyTree.isAvailable",
   "copyTree.generate",
 
   "terminal.list",
@@ -156,6 +155,9 @@ const WORKBENCH_TOOLS: ReadonlySet<string> = new Set([
   "terminal.getStatus",
 
   "agent.getState",
+
+  "agentSettings.get",
+  "keybinding.getOverrides",
 
   "slashCommands.list",
 
@@ -200,8 +202,17 @@ const ACTION_TIER_ADDONS: ReadonlySet<string> = new Set([
 
   "agent.launch",
   "agent.terminal",
+  "agent.focusNextWaiting",
+  "agent.focusNextWorking",
+  "agent.focusNextAgent",
+  "agent.focusPreviousAgent",
 
   "workflow.startWorkOnIssue",
+  "workflow.focusNextAttention",
+
+  "app.theme.pick",
+  "app.theme.browser.open",
+  "app.theme.toggle",
 
   "project.update",
   "project.saveSettings",
@@ -290,7 +301,6 @@ const MCP_TOOL_ALLOWLIST: ReadonlySet<string> = new Set([
   "file.view",
   "file.openInEditor",
 
-  "copyTree.isAvailable",
   "copyTree.generate",
   "copyTree.generateAndCopyFile",
   "copyTree.injectToTerminal",
