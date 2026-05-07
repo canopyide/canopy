@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isElectronUpdaterSupported } from "../platform";
+import { isElectronUpdaterSupported } from "../platform.js";
 
 describe("isElectronUpdaterSupported", () => {
   it("returns false for win32", () => {
