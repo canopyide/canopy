@@ -95,6 +95,8 @@ describe("TerminalInstanceService attach reveal", () => {
         blur: vi.fn(),
         refresh: vi.fn(),
         dispose: vi.fn(),
+        resize: vi.fn(),
+        open: vi.fn(),
         element: document.createElement("div"),
         rows: 24,
         buffer: { active: { length: 100 } },
