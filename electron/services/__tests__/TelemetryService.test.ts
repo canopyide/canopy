@@ -899,6 +899,18 @@ describe("setTelemetryLevel with buffer", () => {
     expect(captureEventMock).toHaveBeenCalledTimes(2);
     expect(_getPreConsentBufferLength()).toBe(0);
 
+    // Replayed buffered events must carry the same stable fingerprint as
+    // direct sends — otherwise pre-consent and post-consent events for the
+    // same name would land in different Sentry groups.
+    expect(captureEventMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ fingerprint: ["analytics", "onboarding_step_viewed"] })
+    );
+    expect(captureEventMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ fingerprint: ["analytics", "onboarding_step_viewed"] })
+    );
+
     process.env.SENTRY_DSN = original;
   });
 
@@ -1306,5 +1318,53 @@ describe("beforeSend wrapper (end-to-end via initializeTelemetry)", () => {
     expect(headers.authorization).toBe("Bearer [REDACTED]");
     expect(out?.extra?.note).not.toContain("sk-ant-");
     expect(out?.extra?.note).toContain("[REDACTED]");
+  });
+
+  it("scrubs frame.context_line, pre_context, post_context, and vars through the registered beforeSend hook", async () => {
+    const mod = await loadFreshModule();
+    await mod.initializeTelemetry();
+    const init = sentryInitMock.mock.calls[0]?.[0] as {
+      beforeSend?: (event: unknown) => unknown;
+    };
+    expect(typeof init.beforeSend).toBe("function");
+
+    const pat = "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef0123456";
+    const input = {
+      exception: {
+        values: [
+          {
+            stacktrace: {
+              frames: [
+                {
+                  filename: "/Users/alice/app/src/auth.ts",
+                  abs_path: "/Users/alice/app/src/auth.ts",
+                  context_line: `  const token = "${pat}";`,
+                  pre_context: [`  const home = "/Users/alice/Projects";`],
+                  post_context: [`  fetch(url, { headers: { Authorization: "Bearer ${pat}" } });`],
+                  vars: {
+                    apiToken: pat,
+                    headers: { authorization: `Bearer ${pat}` },
+                    retries: 3,
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    };
+    const out = init.beforeSend?.(input) as typeof input | null;
+
+    expect(out).not.toBeNull();
+    const serialized = JSON.stringify(out);
+    expect(serialized).not.toContain(pat);
+    expect(serialized).not.toContain("/Users/alice/");
+    expect(serialized).toContain("[REDACTED]");
+    // non-string vars survive
+    const vars = out?.exception?.values?.[0]?.stacktrace?.frames?.[0]?.vars as Record<
+      string,
+      unknown
+    >;
+    expect(vars.retries).toBe(3);
   });
 });
