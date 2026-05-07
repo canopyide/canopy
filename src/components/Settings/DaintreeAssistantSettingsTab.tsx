@@ -6,6 +6,7 @@ import {
   Check,
   Copy,
   KeyRound,
+  Moon,
   RefreshCw,
   ShieldAlert,
   Sliders,
@@ -33,6 +34,7 @@ const DEFAULT_SETTINGS: HelpAssistantSettings = {
   skipPermissions: false,
   auditRetention: 7,
   customArgs: "",
+  idleHibernateMinutes: 30,
 };
 
 interface McpStatusSnapshot {
@@ -45,6 +47,14 @@ const RETENTION_OPTIONS = [
   { value: "7", label: "7 days (default)" },
   { value: "30", label: "30 days" },
   { value: "0", label: "Off" },
+];
+
+const HIBERNATE_OPTIONS = [
+  { value: "0", label: "Off" },
+  { value: "15", label: "15 minutes" },
+  { value: "30", label: "30 minutes (default)" },
+  { value: "60", label: "1 hour" },
+  { value: "120", label: "2 hours" },
 ];
 
 export function DaintreeAssistantSettingsTab() {
@@ -165,6 +175,17 @@ export function DaintreeAssistantSettingsTab() {
     [persist]
   );
 
+  const setHibernateMinutes = useCallback(
+    (value: string) => {
+      const parsed = Number(value);
+      if (parsed !== 0 && parsed !== 15 && parsed !== 30 && parsed !== 60 && parsed !== 120) {
+        return;
+      }
+      void persist({ idleHibernateMinutes: parsed as 0 | 15 | 30 | 60 | 120 });
+    },
+    [persist]
+  );
+
   const handleAgentChange = useCallback(
     (value: string) => {
       setPreferredAgent(value || null);
@@ -275,6 +296,22 @@ export function DaintreeAssistantSettingsTab() {
           isEnabled={settings.daintreeControl}
           onChange={toggleDaintreeControl}
           ariaLabel="Allow the assistant to call Daintree control tools"
+          disabled={loading}
+        />
+      </SettingsSection>
+
+      {/* Hibernation */}
+      <SettingsSection
+        icon={Moon}
+        title="Hibernation"
+        description="Idle assistants release memory and capture a resume token, so reopening reconnects to the same Claude conversation."
+      >
+        <SettingsSelect
+          label="Hibernate after"
+          description="How long the panel stays hidden before the assistant gracefully shuts down. Off keeps it resident until you close it."
+          value={String(settings.idleHibernateMinutes)}
+          onValueChange={setHibernateMinutes}
+          options={HIBERNATE_OPTIONS}
           disabled={loading}
         />
       </SettingsSection>

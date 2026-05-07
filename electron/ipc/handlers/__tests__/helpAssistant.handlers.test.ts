@@ -58,6 +58,7 @@ describe("registerHelpAssistantHandlers", () => {
       skipPermissions: false,
       auditRetention: 7,
       customArgs: "",
+      idleHibernateMinutes: 30,
     });
   });
 
@@ -73,6 +74,7 @@ describe("registerHelpAssistantHandlers", () => {
       skipPermissions: true,
       auditRetention: 30,
       customArgs: "",
+      idleHibernateMinutes: 30,
     });
   });
 
@@ -171,7 +173,56 @@ describe("registerHelpAssistantHandlers", () => {
       skipPermissions: false,
       auditRetention: 7,
       customArgs: "",
+      idleHibernateMinutes: 30,
     });
+  });
+
+  it("rejects idleHibernateMinutes values outside the supported set", async () => {
+    registerHelpAssistantHandlers();
+    const handler = ipcMainMock._handlers.get(SET_CHANNEL)!;
+
+    await handler(null, { idleHibernateMinutes: 5 });
+    await handler(null, { idleHibernateMinutes: 45 });
+    await handler(null, { idleHibernateMinutes: -1 });
+    await handler(null, { idleHibernateMinutes: "30" });
+
+    expect(storeMock.set).not.toHaveBeenCalled();
+  });
+
+  it("accepts each valid idleHibernateMinutes value", async () => {
+    registerHelpAssistantHandlers();
+    const handler = ipcMainMock._handlers.get(SET_CHANNEL)!;
+
+    for (const minutes of [0, 15, 30, 60, 120]) {
+      await handler(null, { idleHibernateMinutes: minutes });
+    }
+
+    expect(storeMock.set).toHaveBeenCalledTimes(5);
+    expect(storeMock.set).toHaveBeenCalledWith("helpAssistant.idleHibernateMinutes", 0);
+    expect(storeMock.set).toHaveBeenCalledWith("helpAssistant.idleHibernateMinutes", 15);
+    expect(storeMock.set).toHaveBeenCalledWith("helpAssistant.idleHibernateMinutes", 30);
+    expect(storeMock.set).toHaveBeenCalledWith("helpAssistant.idleHibernateMinutes", 60);
+    expect(storeMock.set).toHaveBeenCalledWith("helpAssistant.idleHibernateMinutes", 120);
+  });
+
+  it("loads a valid stored idleHibernateMinutes from the store", async () => {
+    storeMock.get.mockReturnValue({ idleHibernateMinutes: 60 });
+    registerHelpAssistantHandlers();
+    const handler = ipcMainMock._handlers.get(GET_CHANNEL)!;
+
+    const result = await handler(null);
+    expect(result).toMatchObject({ idleHibernateMinutes: 60 });
+  });
+
+  it("rejects an out-of-range stored idleHibernateMinutes and falls back to default", async () => {
+    storeMock.get.mockReturnValue({
+      idleHibernateMinutes: 999,
+    } as unknown as Partial<HelpAssistantSettings>);
+    registerHelpAssistantHandlers();
+    const handler = ipcMainMock._handlers.get(GET_CHANNEL)!;
+
+    const result = await handler(null);
+    expect(result).toMatchObject({ idleHibernateMinutes: 30 });
   });
 
   it("persists a valid customArgs string", async () => {

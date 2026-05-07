@@ -1491,6 +1491,8 @@ export interface VoiceInputSettings {
 
 export type HelpAssistantAuditRetention = 7 | 30 | 0;
 
+export type HelpAssistantIdleHibernateMinutes = 0 | 15 | 30 | 60 | 120;
+
 export interface HelpAssistantSettings {
   /** Allow the help assistant to search Daintree documentation. Defaults to true. */
   docSearch: boolean;
@@ -1502,4 +1504,10 @@ export interface HelpAssistantSettings {
   auditRetention: HelpAssistantAuditRetention;
   /** Whitespace-separated CLI flags appended at assistant launch (e.g. "--model sonnet"). Defaults to "". */
   customArgs: string;
+  /**
+   * Minutes the assistant panel must be continuously hidden before its PTY is
+   * gracefully shut down to capture the Claude resume session ID. 0 disables
+   * idle hibernation. Defaults to 30.
+   */
+  idleHibernateMinutes: HelpAssistantIdleHibernateMinutes;
 }

@@ -1,5 +1,5 @@
 import { Suspense, useCallback, useEffect, useRef, useState, useMemo } from "react";
-import { Settings2, ChevronRight, Plus } from "lucide-react";
+import { Settings2, ChevronRight, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DaintreeIcon } from "@/components/icons/DaintreeIcon";
 import { XtermAdapter } from "@/components/Terminal/XtermAdapter";
@@ -27,7 +27,8 @@ import { logError } from "@/utils/logger";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { notify } from "@/lib/notify";
 import { safeFireAndForget } from "@/utils/safeFireAndForget";
-import { CLOSE_CONFIRM_AGENT_STATES } from "@shared/types/agent";
+import { ACTIVE_AGENT_STATES, CLOSE_CONFIRM_AGENT_STATES } from "@shared/types/agent";
+import { buildResumeCommand } from "@shared/types/agentSettings";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 const RESIZE_STEP = 10;
@@ -43,6 +44,16 @@ function notifyLaunchFailed(agentId: string, reason: string): void {
     message: `Couldn't start ${name}. ${reason}`,
   });
 }
+
+// Re-checks every 2 minutes while the agent is busy ("working" / "waiting" /
+// "directing"), so hibernation defers cleanly until the conversation is idle
+// without restarting the full hibernate countdown each time.
+const HIBERNATE_BUSY_RECHECK_MS = 2 * 60 * 1000;
+
+// Tier-1 ambient banner auto-dismiss for "Session resumed". The user will
+// usually see it for the moment they return to the panel; long-lived banners
+// distract from the conversation.
+const RESUME_BANNER_AUTO_DISMISS_MS = 10_000;
 
 function notifyMcpNotReady(reason: string): void {
   notify({
@@ -181,6 +192,7 @@ export function HelpPanel({
   const isMacroFocused = useMacroFocusStore((s) => s.focusedRegion === "assistant");
   const isVisible = isVisibleProp ?? effectiveWidth > 0;
   const [showNewSessionConfirm, setShowNewSessionConfirm] = useState(false);
+  const [showResumeBanner, setShowResumeBanner] = useState(false);
 
   const {
     isOpen,
@@ -233,6 +245,12 @@ export function HelpPanel({
   // `terminalId && !terminal` during the provision/spawn await and wipe the
   // reservation — re-opening the dock-filter gap that #6951 is closing.
   const pendingNewTerminalIdRef = useRef<string | null>(null);
+
+  // Last-loaded idle-hibernate setting in minutes (0 = disabled). Re-fetched
+  // each time the timer arms (panel hides) so a settings-tab change takes
+  // effect without remounting the panel.
+  const hibernateMinutesRef = useRef<number>(30);
+  const hibernateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const revokePendingSession = useCallback(() => {
     const pending = pendingSessionIdRef.current;
@@ -326,8 +344,206 @@ export function HelpPanel({
     }
   }, [terminalId, terminal?.agentState, markConversationStarted]);
 
+  // Idle-hibernate timer. When the panel is hidden with a live terminal,
+  // schedule a graceful kill that captures the agent's resume session ID.
+  // Reads store state via getState() in the callback to avoid stale closures
+  // (#5087 lesson). Defers if the agent is mid-turn so the user's work isn't
+  // interrupted. The hibernate-minutes setting is fetched at arm-time so a
+  // change in the settings tab takes effect on the next hide without a remount.
+  useEffect(() => {
+    const clearTimer = () => {
+      if (hibernateTimerRef.current) {
+        clearTimeout(hibernateTimerRef.current);
+        hibernateTimerRef.current = null;
+      }
+    };
+
+    if (isOpen || !terminalId) {
+      clearTimer();
+      return clearTimer;
+    }
+
+    const initialAgentId = agentId;
+    const initialTerminalId = terminalId;
+    let cancelled = false;
+
+    const fire = () => {
+      hibernateTimerRef.current = null;
+      if (cancelled) return;
+
+      // Re-validate: the terminal we armed for must still match the live one,
+      // and the OS must not be suspended (display-off must not fire teardown).
+      const helpState = useHelpPanelStore.getState();
+      if (helpState.terminalId !== initialTerminalId) return;
+      if (helpState.isOpen) return;
+      if (isSystemSuspendedRef.current) return;
+
+      const panelState = usePanelStore.getState();
+      const livePanel = panelState.panelsById[initialTerminalId];
+      if (!livePanel) return;
+      const agentState = livePanel.agentState;
+      if (agentState && ACTIVE_AGENT_STATES.has(agentState)) {
+        // Agent is mid-turn. Re-check shortly without restarting the full
+        // hibernate countdown — the user is presumably about to come back.
+        hibernateTimerRef.current = setTimeout(fire, HIBERNATE_BUSY_RECHECK_MS);
+        return;
+      }
+
+      const projectId = useProjectStore.getState().currentProject?.id ?? null;
+      const cwd = livePanel.cwd ?? "";
+      const sessionToRevoke = helpState.sessionId;
+      const liveAgentId = helpState.agentId ?? initialAgentId;
+
+      safeFireAndForget(
+        window.electron.terminal
+          .gracefulKill(initialTerminalId)
+          .then((capturedSessionId) => {
+            // State may have changed during the IPC round-trip. Don't act on
+            // stale captures.
+            const after = useHelpPanelStore.getState();
+            if (after.terminalId !== initialTerminalId) return;
+            // Critical race: user reopened the panel while gracefulKill was
+            // in flight. The terminal is still live and visible — don't tear
+            // it down out from under them. The captured session ID is also
+            // discarded; the next hibernation cycle will capture a fresh one.
+            if (after.isOpen) return;
+            if (capturedSessionId && projectId && liveAgentId && cwd) {
+              after.setHibernateSession(projectId, {
+                sessionId: capturedSessionId,
+                cwd,
+                agentId: liveAgentId,
+              });
+            } else if (projectId) {
+              // No session captured — make sure we don't try to resume from a
+              // stale entry on next open.
+              after.clearHibernateSession(projectId);
+            }
+            usePanelStore.getState().removePanel(initialTerminalId);
+            revokeHelpSession(sessionToRevoke);
+            useHelpPanelStore.getState().clearTerminal();
+          })
+          .catch((err) => {
+            // Mirror the .then race-guard: bail if the user has reopened the
+            // panel or the terminal id has been replaced during the IPC.
+            const after = useHelpPanelStore.getState();
+            if (after.terminalId !== initialTerminalId || after.isOpen) return;
+            logError("HelpPanel: gracefulKill during hibernate failed", err);
+            if (projectId) {
+              // Drop any prior hibernate entry so we don't auto-resume from a
+              // potentially stale one after a kill failure.
+              useHelpPanelStore.getState().clearHibernateSession(projectId);
+            }
+            // Fall back to direct removal so we don't leak a hidden PTY.
+            usePanelStore.getState().removePanel(initialTerminalId);
+            revokeHelpSession(sessionToRevoke);
+            useHelpPanelStore.getState().clearTerminal();
+          }),
+        { context: "HelpPanel:hibernate gracefulKill" }
+      );
+    };
+
+    safeFireAndForget(
+      window.electron.helpAssistant
+        .getSettings()
+        .then((settings) => {
+          if (cancelled) return;
+          const minutes = settings.idleHibernateMinutes;
+          if (
+            minutes !== 0 &&
+            minutes !== 15 &&
+            minutes !== 30 &&
+            minutes !== 60 &&
+            minutes !== 120
+          ) {
+            // Stored value out of range — fall back to the default rather than
+            // hibernating immediately.
+            hibernateMinutesRef.current = 30;
+          } else {
+            hibernateMinutesRef.current = minutes;
+          }
+          if (hibernateMinutesRef.current <= 0) return;
+          clearTimer();
+          hibernateTimerRef.current = setTimeout(fire, hibernateMinutesRef.current * 60 * 1000);
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          logError("HelpPanel: failed to load idleHibernateMinutes", err);
+          // Fall back to the default so a settings IPC blip doesn't leave the
+          // assistant resident forever.
+          hibernateMinutesRef.current = 30;
+          clearTimer();
+          hibernateTimerRef.current = setTimeout(fire, 30 * 60 * 1000);
+        }),
+      { context: "HelpPanel:hibernate getSettings" }
+    );
+
+    return () => {
+      cancelled = true;
+      clearTimer();
+    };
+  }, [isOpen, terminalId, agentId]);
+
+  // Auto-dismiss the resume banner after a short window. Conversation-touched
+  // can't be the dismiss trigger here: a resumed Claude session immediately
+  // re-reads history and enters a non-idle state, which flips
+  // conversationTouched=true and would otherwise dismiss the banner before
+  // the user has a chance to see it. The user can also dismiss manually via
+  // the X button.
+  useEffect(() => {
+    if (!showResumeBanner) return;
+    const id = setTimeout(() => setShowResumeBanner(false), RESUME_BANNER_AUTO_DISMISS_MS);
+    return () => clearTimeout(id);
+  }, [showResumeBanner]);
+
+  // Spawn a resumed PTY directly via addPanel with a pre-built
+  // `--resume <id>` command, bypassing `agent.launch` (which has no
+  // command-override arg). Caller is responsible for provisioning the help
+  // session (so a single MCP failure doesn't notify twice) and for clearing
+  // the persisted hibernate entry on success/give-up. The user's custom CLI
+  // flags are loaded here and threaded into both `buildResumeCommand` (so
+  // they're prepended before `--resume`) and `agentLaunchFlags` (so the
+  // panel records them for future restarts). Returns the spawned terminalId,
+  // or null if either there's no resume config for the agent or the spawn
+  // returned no id (caller falls back to a fresh launch).
+  const spawnResumed = useCallback(
+    async (
+      launchAgentId: string,
+      hibernated: { sessionId: string; cwd: string },
+      session: HelpSessionRef | null,
+      folderPath: string
+    ): Promise<string | null> => {
+      const customLaunchFlags = await loadCustomLaunchFlags();
+      const command = buildResumeCommand(
+        launchAgentId,
+        hibernated.sessionId,
+        customLaunchFlags.length > 0 ? customLaunchFlags : undefined
+      );
+      if (!command) return null;
+
+      // Resumed sessions launch from the same sessionPath the previous run
+      // used, so Claude finds its `~/.claude/projects/<encoded-cwd>/` JSONL.
+      const cwd = session?.sessionPath ?? hibernated.cwd ?? folderPath;
+      const projectId = useProjectStore.getState().currentProject?.id ?? null;
+      const env = buildHelpEnv(session, projectId);
+
+      const newId = await usePanelStore.getState().addPanel({
+        kind: "terminal",
+        launchAgentId,
+        command,
+        cwd,
+        location: "dock",
+        ephemeral: true,
+        ...(env && { env }),
+        ...(customLaunchFlags.length > 0 && { agentLaunchFlags: customLaunchFlags }),
+      });
+      return newId ?? null;
+    },
+    []
+  );
+
   // Auto-launch preferred agent when panel opens without an active terminal.
-  // Always starts a new conversation (never resumes).
+  // If a hibernated session exists for the current project + agent, resumes
+  // that conversation; otherwise starts fresh.
   const hasAutoLaunched = useRef(false);
   useEffect(() => {
     if (
@@ -367,6 +583,37 @@ export function HelpPanel({
         pendingSessionIdRef.current = session.sessionId;
         const cwd = session.sessionPath;
         const env = buildHelpEnv(session, launchProject.id);
+
+        // Resume path: only if the persisted hibernate session was for this
+        // exact agent and project. A different agent (e.g. user changed
+        // preference) starts fresh.
+        const hibernated = useHelpPanelStore.getState().hibernateSessions[launchProject.id];
+        if (hibernated && hibernated.agentId === launchAgentId) {
+          const resumedId = await spawnResumed(launchAgentId, hibernated, session, folderPath);
+          if (resumedId) {
+            // Stale-launch guard: handleClose may have revoked the pending
+            // session while addPanel was in flight.
+            const expectedSessionId = session.sessionId;
+            if (pendingSessionIdRef.current !== expectedSessionId) {
+              usePanelStore.getState().removePanel(resumedId);
+              hasAutoLaunched.current = false;
+              return;
+            }
+            useHelpPanelStore.getState().clearHibernateSession(launchProject.id);
+            useHelpPanelStore.getState().setTerminal(resumedId, launchAgentId, session.sessionId);
+            pendingSessionIdRef.current = null;
+            window.electron.help.markTerminal(resumedId).catch((err) => {
+              logError("Failed to mark help terminal", err);
+            });
+            setShowResumeBanner(true);
+            return;
+          }
+          // Resume failed (no resume config or addPanel returned null). Drop
+          // the stale entry so we don't loop, then fall through to fresh
+          // launch using the already-provisioned session.
+          useHelpPanelStore.getState().clearHibernateSession(launchProject.id);
+        }
+
         const customLaunchFlags = await loadCustomLaunchFlags();
 
         const result = await actionService.dispatch<{ terminalId: string | null }>(
@@ -427,7 +674,7 @@ export function HelpPanel({
       })(),
       { context: "Auto-launching preferred help agent" }
     );
-  }, [isOpen, isReadyToLaunch, currentProject, terminalId, preferredAgentId]);
+  }, [isOpen, isReadyToLaunch, currentProject, terminalId, preferredAgentId, spawnResumed]);
 
   // Reset auto-launch guard when panel closes
   useEffect(() => {
@@ -530,6 +777,31 @@ export function HelpPanel({
         pendingSessionIdRef.current = session.sessionId;
         const cwd = session.sessionPath;
         const env = buildHelpEnv(session, launchProject.id);
+
+        // Resume path: matches the auto-launch effect — if the persisted
+        // hibernate entry is for this exact project + agent, resume that
+        // conversation instead of starting fresh.
+        const hibernated = useHelpPanelStore.getState().hibernateSessions[launchProject.id];
+        if (hibernated && hibernated.agentId === selectedAgentId) {
+          const resumedId = await spawnResumed(selectedAgentId, hibernated, session, folderPath);
+          if (resumedId) {
+            const expectedSessionId = session.sessionId;
+            if (pendingSessionIdRef.current !== expectedSessionId) {
+              usePanelStore.getState().removePanel(resumedId);
+              return;
+            }
+            useHelpPanelStore.getState().clearHibernateSession(launchProject.id);
+            useHelpPanelStore.getState().setTerminal(resumedId, selectedAgentId, session.sessionId);
+            pendingSessionIdRef.current = null;
+            window.electron.help.markTerminal(resumedId).catch((err) => {
+              logError("Failed to mark help terminal", err);
+            });
+            setShowResumeBanner(true);
+            return;
+          }
+          useHelpPanelStore.getState().clearHibernateSession(launchProject.id);
+        }
+
         const customLaunchFlags = await loadCustomLaunchFlags();
 
         const result = await actionService.dispatch<{ terminalId: string | null }>(
@@ -574,7 +846,7 @@ export function HelpPanel({
         isLaunchingRef.current = false;
       }
     },
-    [isReadyToLaunch, currentProject, removePanel, clearTerminal]
+    [isReadyToLaunch, currentProject, removePanel, clearTerminal, spawnResumed]
   );
 
   // Single-supported-agent auto-launch: when only one assistant-supported
@@ -642,6 +914,14 @@ export function HelpPanel({
     const launchAgentId = agentId;
     const launchProject = currentProject;
     const previousSessionId = useHelpPanelStore.getState().sessionId;
+    // The user explicitly chose to discard the conversation — drop any
+    // hibernated entry for this project so the next reopen starts fresh
+    // instead of resuming the just-discarded chat.
+    const projectIdForReset = useProjectStore.getState().currentProject?.id ?? null;
+    if (projectIdForReset) {
+      useHelpPanelStore.getState().clearHibernateSession(projectIdForReset);
+    }
+    setShowResumeBanner(false);
 
     // Reserve the new terminal id synchronously so the dock filter
     // (`helpTerminalId` exclusion in ContentDock) is active the moment
@@ -974,6 +1254,28 @@ export function HelpPanel({
             <>
               {!introDismissed && (
                 <HelpIntroBanner onDismiss={dismissIntro} onLinkClick={handleIntroLinkClick} />
+              )}
+              {showResumeBanner && (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className={cn(
+                    "flex items-start gap-2 px-3 py-2 mx-3 mt-3 mb-1",
+                    "rounded-[var(--radius-md)] bg-overlay-subtle border border-daintree-border",
+                    "text-xs text-daintree-text/80"
+                  )}
+                  data-testid="help-resume-banner"
+                >
+                  <span className="flex-1 select-text">Resumed your previous session.</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowResumeBanner(false)}
+                    aria-label="Dismiss resume notice"
+                    className="text-daintree-text/50 hover:text-daintree-text transition-colors"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
               )}
               <div className="flex-1 relative min-h-0">
                 <Suspense fallback={null}>

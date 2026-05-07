@@ -237,6 +237,7 @@ export type {
   VoiceParagraphingStrategy,
   HelpAssistantSettings,
   HelpAssistantAuditRetention,
+  HelpAssistantIdleHibernateMinutes,
   MicPermissionStatus,
   BranchInfo,
   CreateWorktreeOptions,
