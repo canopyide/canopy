@@ -1923,6 +1923,7 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     // project's monitors get a clean coordinator and stale completions are
     // discarded by the generation guard.
     this.fetchCoordinator.destroy();
+    this.pollQueue.clear();
 
     this.activeWorktreeId = null;
     this.mainBranch = "main";
