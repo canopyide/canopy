@@ -6,6 +6,15 @@ import { SettingsValidationProvider } from "../SettingsValidationRegistry";
 import { notify } from "@/lib/notify";
 import { logError } from "@/utils/logger";
 
+vi.stubGlobal(
+  "ResizeObserver",
+  class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+);
+
 vi.mock("@/lib/notify", () => ({ notify: vi.fn() }));
 vi.mock("@/utils/logger", () => ({
   logError: vi.fn(),
@@ -13,8 +22,40 @@ vi.mock("@/utils/logger", () => ({
   logInfo: vi.fn(),
   logWarn: vi.fn(),
 }));
-vi.mock("@/components/icons", () => ({
-  McpServerIcon: () => null,
+// The icons barrel is imported transitively by ConfirmDialog → AppDialog →
+// @/hooks → terminalRunIconRegistry, which references many brand icon names.
+// Stub every named export so the test file doesn't need to enumerate them.
+vi.mock("@/components/icons", () => {
+  const stub = () => null;
+  return {
+    McpServerIcon: stub,
+    DaintreeIcon: stub,
+    NpmIcon: stub,
+    YarnIcon: stub,
+    PnpmIcon: stub,
+    BunIcon: stub,
+    PythonIcon: stub,
+    ComposerIcon: stub,
+    DockerIcon: stub,
+    RustIcon: stub,
+    GoIcon: stub,
+    RubyIcon: stub,
+    NodeIcon: stub,
+    DenoIcon: stub,
+    GradleIcon: stub,
+    PhpIcon: stub,
+    ViteIcon: stub,
+    WebpackIcon: stub,
+    KotlinIcon: stub,
+    SwiftIcon: stub,
+    TerraformIcon: stub,
+    ElixirIcon: stub,
+  };
+});
+vi.mock("@/config/agents", () => ({
+  getAgentIds: () => [],
+  getAssistantSupportedAgentIds: () => [],
+  getAgentConfig: () => undefined,
 }));
 
 const mockedNotify = vi.mocked(notify);
@@ -138,7 +179,35 @@ describe("McpServerSettingsTab", () => {
     expect(writeText).toHaveBeenCalledWith("dnt-key-abc123");
   });
 
-  it("Rotate calls rotateApiKey and surfaces the new key", async () => {
+  it("Rotate opens confirm dialog; confirming calls rotateApiKey and keeps key masked", async () => {
+    const { container } = render(
+      <SettingsValidationProvider>
+        <McpServerSettingsTab />
+      </SettingsValidationProvider>
+    );
+    await waitForContent(container, "API key active");
+
+    fireEvent.click(screen.getByTitle("Rotate API key"));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /rotate api key\?/i })).toBeTruthy();
+    });
+    expect(window.electron.mcpServer.rotateApiKey).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: /^rotate key$/i }));
+
+    await waitFor(() => {
+      expect(window.electron.mcpServer.rotateApiKey).toHaveBeenCalledTimes(1);
+    });
+
+    const displayArea = container.querySelector(".bg-surface-disabled")!;
+    await waitFor(() => {
+      expect(displayArea.textContent).not.toContain("dnt-key-rotated789");
+    });
+    expect(displayArea.textContent).toContain("•");
+  });
+
+  it("Rotate dialog can be canceled without rotating the key", async () => {
     const { container } = render(
       <SettingsValidationProvider>
         <McpServerSettingsTab />
@@ -148,13 +217,88 @@ describe("McpServerSettingsTab", () => {
 
     fireEvent.click(screen.getByTitle("Rotate API key"));
     await waitFor(() => {
-      expect(window.electron.mcpServer.rotateApiKey).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole("heading", { name: /rotate api key\?/i })).toBeTruthy();
     });
 
+    fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("heading", { name: /rotate api key\?/i })).toBeNull();
+    });
+    expect(window.electron.mcpServer.rotateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("Canceling the rotate dialog hides any revealed key", async () => {
+    const { container } = render(
+      <SettingsValidationProvider>
+        <McpServerSettingsTab />
+      </SettingsValidationProvider>
+    );
+    await waitForContent(container, "API key active");
+
+    fireEvent.click(screen.getByLabelText("Show API key"));
     const displayArea = container.querySelector(".bg-surface-disabled")!;
     await waitFor(() => {
-      expect(displayArea.textContent).toContain("dnt-key-rotated789");
+      expect(displayArea.textContent).toContain("dnt-key-abc123");
     });
+
+    fireEvent.click(screen.getByTitle("Rotate API key"));
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /rotate api key\?/i })).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
+
+    await waitFor(() => {
+      expect(displayArea.textContent).not.toContain("dnt-key-abc123");
+    });
+    expect(displayArea.textContent).toContain("•");
+  });
+
+  it("Masked display uses a fixed-length bullet mask regardless of key length", async () => {
+    installMcpApi({
+      getStatus: vi.fn().mockResolvedValue({
+        enabled: true,
+        port: 9020,
+        configuredPort: 9020,
+        apiKey: "dnt-key-short",
+      }),
+    });
+
+    const { container } = render(
+      <SettingsValidationProvider>
+        <McpServerSettingsTab />
+      </SettingsValidationProvider>
+    );
+    await waitForContent(container, "API key active");
+
+    const displayArea = container.querySelector(".bg-surface-disabled")!;
+    const maskSpan = displayArea.querySelector("span")!;
+    const bulletCount = (maskSpan.textContent ?? "").length;
+    expect(bulletCount).toBe(24);
+    expect(bulletCount).not.toBe("dnt-key-short".length);
+  });
+
+  it("shows inline error and logs API key copy failure without notifying", async () => {
+    const writeTextReject = vi.fn().mockRejectedValue(new Error("clipboard denied"));
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: writeTextReject },
+      writable: true,
+      configurable: true,
+    });
+
+    const { container } = render(
+      <SettingsValidationProvider>
+        <McpServerSettingsTab />
+      </SettingsValidationProvider>
+    );
+    await waitForContent(container, "API key active");
+
+    fireEvent.click(screen.getByLabelText("Copy API key"));
+
+    await waitForContent(container, "clipboard denied");
+    expect(mockedNotify).not.toHaveBeenCalled();
+    expect(mockedLogError).toHaveBeenCalledWith("Failed to copy MCP API key", expect.any(Error));
   });
 
   it("does not render a Remove button — the key is mandatory", async () => {
@@ -367,7 +511,7 @@ describe("McpServerSettingsTab", () => {
     );
   });
 
-  it("clears audit log without notifying", async () => {
+  it("clears audit log via confirm dialog without notifying", async () => {
     installMcpApi({
       getAuditRecords: vi.fn().mockResolvedValue([
         {
@@ -388,10 +532,54 @@ describe("McpServerSettingsTab", () => {
     );
     await waitForContent(container, "files.read");
 
-    fireEvent.click(screen.getByRole("button", { name: /clear log/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^clear log$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /clear audit log\?/i })).toBeTruthy();
+    });
+    expect(window.electron.mcpServer.clearAuditLog).not.toHaveBeenCalled();
+
+    const buttons = screen.getAllByRole("button", { name: /^clear log$/i });
+    const dialogConfirm = buttons[buttons.length - 1]!;
+    fireEvent.click(dialogConfirm);
 
     await waitForContent(container, "No tool dispatches recorded yet.");
     expect(mockedNotify).not.toHaveBeenCalled();
+  });
+
+  it("Clear log dialog can be canceled without clearing", async () => {
+    installMcpApi({
+      getAuditRecords: vi.fn().mockResolvedValue([
+        {
+          id: "1",
+          toolId: "files.read",
+          argsSummary: "{}",
+          result: "success" as const,
+          timestamp: Date.now(),
+          durationMs: 42,
+        },
+      ]),
+    });
+
+    const { container } = render(
+      <SettingsValidationProvider>
+        <McpServerSettingsTab />
+      </SettingsValidationProvider>
+    );
+    await waitForContent(container, "files.read");
+
+    fireEvent.click(screen.getByRole("button", { name: /^clear log$/i }));
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /clear audit log\?/i })).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("heading", { name: /clear audit log\?/i })).toBeNull();
+    });
+    expect(window.electron.mcpServer.clearAuditLog).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("files.read");
   });
 
   it("shows inline error and logs audit clear failure without notifying", async () => {
@@ -416,7 +604,14 @@ describe("McpServerSettingsTab", () => {
     );
     await waitForContent(container, "files.read");
 
-    fireEvent.click(screen.getByRole("button", { name: /clear log/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^clear log$/i }));
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /clear audit log\?/i })).toBeTruthy();
+    });
+
+    const buttons = screen.getAllByRole("button", { name: /^clear log$/i });
+    const dialogConfirm = buttons[buttons.length - 1]!;
+    fireEvent.click(dialogConfirm);
 
     await waitForContent(container, "clear failed");
     expect(mockedNotify).not.toHaveBeenCalled();

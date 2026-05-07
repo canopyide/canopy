@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { DaintreeIcon, McpServerIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { SettingsSection } from "./SettingsSection";
 import { SettingsInput } from "./SettingsInput";
 import { SettingsSelect } from "./SettingsSelect";
@@ -63,6 +64,8 @@ export function DaintreeAssistantSettingsTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [showRotateConfirm, setShowRotateConfirm] = useState(false);
+  const [isRotating, setIsRotating] = useState(false);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useSettingsTabValidation("assistant", Boolean(error));
@@ -200,15 +203,25 @@ export function DaintreeAssistantSettingsTab() {
     [persist]
   );
 
-  const handleRotateKey = useCallback(async () => {
+  const confirmRotateKey = useCallback(async () => {
+    if (isRotating) return;
+    setIsRotating(true);
     try {
       const key = await window.electron.mcpServer.rotateApiKey();
       setMcpStatus((prev) => (prev ? { ...prev, apiKey: key } : prev));
+      setShowRotateConfirm(false);
     } catch (err) {
       setError(formatErrorMessage(err, "Couldn't rotate key"));
       logError("Failed to rotate MCP API key", err);
+    } finally {
+      setIsRotating(false);
     }
-  }, []);
+  }, [isRotating]);
+
+  const handleCancelRotate = useCallback(() => {
+    if (isRotating) return;
+    setShowRotateConfirm(false);
+  }, [isRotating]);
 
   const handleCopyConfig = useCallback(async () => {
     try {
@@ -411,7 +424,7 @@ export function DaintreeAssistantSettingsTab() {
               </button>
               <button
                 type="button"
-                onClick={() => void handleRotateKey()}
+                onClick={() => setShowRotateConfirm(true)}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-md)] text-xs font-medium border border-daintree-border text-daintree-text/70 hover:text-daintree-text hover:bg-overlay-soft transition-colors"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
@@ -433,6 +446,19 @@ export function DaintreeAssistantSettingsTab() {
           <p className="text-xs text-status-danger">{error}</p>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={showRotateConfirm}
+        onClose={isRotating ? undefined : handleCancelRotate}
+        title="Rotate API key?"
+        description="The current key will be invalidated immediately. External clients using this key will need to update their configuration."
+        confirmLabel="Rotate key"
+        cancelLabel="Cancel"
+        onConfirm={confirmRotateKey}
+        isConfirmLoading={isRotating}
+        variant="destructive"
+        zIndex="nested"
+      />
     </div>
   );
 }

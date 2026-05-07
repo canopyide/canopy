@@ -2,6 +2,15 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
+vi.stubGlobal(
+  "ResizeObserver",
+  class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+);
+
 vi.mock("@/lib/notify", () => ({ notify: vi.fn() }));
 vi.mock("@/utils/logger", () => ({
   logError: vi.fn(),
@@ -10,14 +19,40 @@ vi.mock("@/utils/logger", () => ({
   logWarn: vi.fn(),
 }));
 
-vi.mock("@/components/icons", () => ({
-  DaintreeIcon: ({ className }: { className?: string }) => (
-    <span data-testid="daintree-icon" className={className} />
-  ),
-  McpServerIcon: ({ className }: { className?: string }) => (
-    <span data-testid="mcp-icon" className={className} />
-  ),
-}));
+// The icons barrel is imported transitively by ConfirmDialog → AppDialog →
+// @/hooks → terminalRunIconRegistry, which references many brand icon names.
+// Stub every named export so the test file doesn't need to enumerate them.
+vi.mock("@/components/icons", () => {
+  const stub = () => null;
+  return {
+    DaintreeIcon: ({ className }: { className?: string }) => (
+      <span data-testid="daintree-icon" className={className} />
+    ),
+    McpServerIcon: ({ className }: { className?: string }) => (
+      <span data-testid="mcp-icon" className={className} />
+    ),
+    NpmIcon: stub,
+    YarnIcon: stub,
+    PnpmIcon: stub,
+    BunIcon: stub,
+    PythonIcon: stub,
+    ComposerIcon: stub,
+    DockerIcon: stub,
+    RustIcon: stub,
+    GoIcon: stub,
+    RubyIcon: stub,
+    NodeIcon: stub,
+    DenoIcon: stub,
+    GradleIcon: stub,
+    PhpIcon: stub,
+    ViteIcon: stub,
+    WebpackIcon: stub,
+    KotlinIcon: stub,
+    SwiftIcon: stub,
+    TerraformIcon: stub,
+    ElixirIcon: stub,
+  };
+});
 
 interface SettingsSelectStubOption {
   value: string;
@@ -94,6 +129,7 @@ vi.mock("@/store/helpPanelStore", () => {
 });
 
 vi.mock("@/config/agents", () => ({
+  getAgentIds: () => ["claude"],
   getAssistantSupportedAgentIds: () => ["claude"],
   getAgentConfig: (id: string) => (id === "claude" ? { name: "Claude Code" } : undefined),
 }));
@@ -221,7 +257,7 @@ describe("DaintreeAssistantSettingsTab", () => {
     });
   });
 
-  it("rotate key calls mcpServer.rotateApiKey", async () => {
+  it("rotate key opens confirm dialog; confirming calls mcpServer.rotateApiKey", async () => {
     const { container } = render(
       <SettingsValidationProvider>
         <DaintreeAssistantSettingsTab />
@@ -232,8 +268,36 @@ describe("DaintreeAssistantSettingsTab", () => {
     fireEvent.click(screen.getByRole("button", { name: /rotate mcp key/i }));
 
     await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /rotate api key\?/i })).toBeTruthy();
+    });
+    expect(window.electron.mcpServer.rotateApiKey).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: /^rotate key$/i }));
+
+    await waitFor(() => {
       expect(window.electron.mcpServer.rotateApiKey).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("rotate key dialog can be canceled without rotating", async () => {
+    const { container } = render(
+      <SettingsValidationProvider>
+        <DaintreeAssistantSettingsTab />
+      </SettingsValidationProvider>
+    );
+    await waitForContent(container, "Rotate MCP key");
+
+    fireEvent.click(screen.getByRole("button", { name: /rotate mcp key/i }));
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /rotate api key\?/i })).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("heading", { name: /rotate api key\?/i })).toBeNull();
+    });
+    expect(window.electron.mcpServer.rotateApiKey).not.toHaveBeenCalled();
   });
 
   it("copy MCP config writes the snippet to the clipboard and shows confirmation", async () => {
