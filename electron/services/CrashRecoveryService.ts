@@ -412,7 +412,6 @@ export class CrashRecoveryService {
     this.enrichWithEnvironmentMetadata(entry);
     const backupAppState = this.cachedBackupSnapshot?.appState;
     this.enrichWithPanelData(entry, backupAppState);
-    this.enrichWithRecentActions(entry);
 
     return entry;
   }
