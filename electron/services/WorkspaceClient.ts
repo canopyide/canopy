@@ -34,6 +34,8 @@ import type {
 } from "../../shared/types/ipc.js";
 import type { ProjectPulse, PulseRangeDays } from "../../shared/types/pulse.js";
 
+const STATES_INFLIGHT_COALESCE_WINDOW_MS = 150;
+
 export type CopyTreeProgressCallback = (progress: CopyTreeProgress) => void;
 
 export class WorkspaceClient extends EventEmitter {
@@ -304,7 +306,7 @@ export class WorkspaceClient extends EventEmitter {
 
     const promise = this._doGetAllStates(windowId).then(
       (result) => {
-        setTimeout(() => this._statesInflight.delete(key), 150);
+        setTimeout(() => this._statesInflight.delete(key), STATES_INFLIGHT_COALESCE_WINDOW_MS);
         return result;
       },
       (error) => {

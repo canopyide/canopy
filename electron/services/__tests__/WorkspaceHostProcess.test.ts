@@ -183,3 +183,235 @@ describe("WorkspaceHostProcess", () => {
     host.dispose();
   });
 });
+
+// ── BrokerError contract tests ──
+
+describe("WorkspaceHostProcess BrokerError contract", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    forkMock.mockReset();
+    mockChildren.length = 0;
+    loggerCalls.length = 0;
+    forkMock.mockImplementation(() => new MockUtilityChild());
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("sendWithResponse rejects with APP_SHUTDOWN when disposed", async () => {
+    const { WorkspaceHostProcess } = await loadModule();
+    const host = new WorkspaceHostProcess("/tmp/project", {
+      maxRestartAttempts: 3,
+      healthCheckIntervalMs: 30000,
+    } as any);
+    host.waitForReady().catch(() => {});
+    host.dispose();
+
+    await expect(
+      host.sendWithResponse({ type: "refresh" as any, requestId: "r1" })
+    ).rejects.toMatchObject({
+      code: "APP_SHUTDOWN",
+      message: "WorkspaceHostProcess disposed",
+      projectScopeId: "/tmp/project",
+    });
+  });
+
+  it("sendWithResponse rejects with HOST_EXITED when child is null", async () => {
+    const { WorkspaceHostProcess } = await loadModule();
+    const host = new WorkspaceHostProcess("/tmp/project", {
+      maxRestartAttempts: 3,
+      healthCheckIntervalMs: 30000,
+    } as any);
+    host.waitForReady().catch(() => {});
+
+    // Kill the child so it's null but not disposed
+    const child = mockChildren[0] as MockUtilityChild;
+    child.emit("exit", 1);
+
+    await expect(
+      host.sendWithResponse({ type: "refresh" as any, requestId: "r2" })
+    ).rejects.toMatchObject({
+      code: "HOST_EXITED",
+      projectScopeId: "/tmp/project",
+    });
+
+    host.dispose();
+  });
+
+  it("duplicate-ID guard rejects old promise and clears old timeout before registering new one", async () => {
+    const { WorkspaceHostProcess } = await loadModule();
+    const host = new WorkspaceHostProcess("/tmp/project", {
+      maxRestartAttempts: 3,
+      healthCheckIntervalMs: 30000,
+    } as any);
+    host.waitForReady().catch(() => {});
+
+    // Send the host "ready" so isInitialized is true
+    const child = mockChildren[0] as MockUtilityChild;
+    child.emit("message", { type: "ready" });
+
+    const firstPromise = host.sendWithResponse({
+      type: "refresh" as any,
+      requestId: "dup-id",
+    });
+
+    // Second call with same ID — the guard rejects the FIRST promise, then
+    // registers a new entry for the second one.
+    const secondPromise = host.sendWithResponse({
+      type: "refresh" as any,
+      requestId: "dup-id",
+    });
+
+    // The first promise should be rejected with the duplicate error
+    await expect(firstPromise).rejects.toThrow("Duplicate request ID: dup-id");
+
+    // The second promise gets a fresh entry; resolve it to clean up
+    child.emit("message", { type: "refresh-result", requestId: "dup-id" });
+    await secondPromise;
+
+    host.dispose();
+  });
+
+  it("timeout rejects with BrokerError TIMEOUT", async () => {
+    vi.useFakeTimers();
+    const { WorkspaceHostProcess } = await loadModule();
+    const host = new WorkspaceHostProcess("/tmp/project", {
+      maxRestartAttempts: 3,
+      healthCheckIntervalMs: 30000,
+    } as any);
+    host.waitForReady().catch(() => {});
+
+    const child = mockChildren[0] as MockUtilityChild;
+    child.emit("message", { type: "ready" });
+
+    const promise = host.sendWithResponse(
+      { type: "refresh" as any, requestId: "timeout-test" },
+      5000
+    );
+
+    vi.advanceTimersByTime(5000);
+
+    await expect(promise).rejects.toMatchObject({
+      code: "TIMEOUT",
+      projectScopeId: "/tmp/project",
+    });
+
+    host.dispose();
+    vi.useRealTimers();
+  });
+
+  it("exit handler rejects pending requests with BrokerError HOST_EXITED", async () => {
+    const { WorkspaceHostProcess } = await loadModule();
+    const host = new WorkspaceHostProcess("/tmp/project", {
+      maxRestartAttempts: 1,
+      healthCheckIntervalMs: 30000,
+    } as any);
+    host.waitForReady().catch(() => {});
+
+    const child = mockChildren[0] as MockUtilityChild;
+    child.emit("message", { type: "ready" });
+
+    const promise = host.sendWithResponse({
+      type: "refresh" as any,
+      requestId: "exit-test",
+    });
+
+    child.emit("exit", 1);
+
+    await expect(promise).rejects.toMatchObject({
+      code: "HOST_EXITED",
+      message: "Workspace Host crashed",
+      projectScopeId: "/tmp/project",
+    });
+
+    host.dispose();
+  });
+
+  it("pauseHealthCheck clears the health-check interval", async () => {
+    const { WorkspaceHostProcess } = await loadModule();
+    const host = new WorkspaceHostProcess("/tmp/project", {
+      maxRestartAttempts: 3,
+      healthCheckIntervalMs: 30000,
+    } as any);
+    host.waitForReady().catch(() => {});
+
+    const child = mockChildren[0] as MockUtilityChild;
+    child.emit("message", { type: "ready" });
+
+    host.pauseHealthCheck();
+    expect((host as any).healthCheckInterval).toBeNull();
+
+    host.dispose();
+  });
+
+  it("dispose rejects pending requests with APP_SHUTDOWN BrokerError", async () => {
+    const { WorkspaceHostProcess } = await loadModule();
+    const host = new WorkspaceHostProcess("/tmp/project", {
+      maxRestartAttempts: 3,
+      healthCheckIntervalMs: 30000,
+    } as any);
+    host.waitForReady().catch(() => {});
+
+    const child = mockChildren[0] as MockUtilityChild;
+    child.emit("message", { type: "ready" });
+
+    const promise = host.sendWithResponse({
+      type: "refresh" as any,
+      requestId: "dispose-test",
+    });
+
+    host.dispose();
+
+    await expect(promise).rejects.toMatchObject({
+      code: "APP_SHUTDOWN",
+      projectScopeId: "/tmp/project",
+    });
+  });
+
+  it("ready reject carries APP_SHUTDOWN when disposed before ready", async () => {
+    const { WorkspaceHostProcess } = await loadModule();
+    const host = new WorkspaceHostProcess("/tmp/project", {
+      maxRestartAttempts: 3,
+      healthCheckIntervalMs: 30000,
+    } as any);
+
+    const readyPromise = host.waitForReady();
+    host.dispose();
+
+    await expect(readyPromise).rejects.toMatchObject({
+      code: "APP_SHUTDOWN",
+    });
+  });
+
+  it("restart delay has random jitter (full-jitter parity with PtyHostLifecycle)", async () => {
+    vi.useFakeTimers();
+    // Mock Math.random to control jitter
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.5);
+
+    const { WorkspaceHostProcess } = await loadModule();
+    const host = new WorkspaceHostProcess("/tmp/project", {
+      maxRestartAttempts: 3,
+      healthCheckIntervalMs: 30000,
+    } as any);
+    host.waitForReady().catch(() => {});
+
+    const child = mockChildren[0] as MockUtilityChild;
+    child.emit("message", { type: "ready" });
+    child.emit("exit", 1);
+
+    // restartAttempts = 1, cap = min(1000*2^1, 10000) = 2000
+    // delay = 100 + 0.5 * (2000 - 100) = 100 + 950 = 1050
+    const restartSpy = vi.fn();
+    host.on("restarted", restartSpy);
+
+    vi.advanceTimersByTime(1050);
+    expect(restartSpy).toHaveBeenCalledTimes(1);
+
+    // Auto-restart created a new readyPromise; swallow its rejection on dispose
+    host.waitForReady().catch(() => {});
+    randomSpy.mockRestore();
+    host.dispose();
+    vi.useRealTimers();
+  });
+});

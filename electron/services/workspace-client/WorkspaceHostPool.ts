@@ -12,7 +12,7 @@ const MAX_WARM_ENTRIES = 3;
 
 const DEFAULT_CONFIG: Required<WorkspaceClientConfig> = {
   maxRestartAttempts: 3,
-  healthCheckIntervalMs: 60000,
+  healthCheckIntervalMs: 10000,
   showCrashDialog: true,
 };
 

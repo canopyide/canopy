@@ -9,6 +9,7 @@ import type {
   WorkspaceClientConfig,
 } from "../../shared/types/workspace-host.js";
 import { GitHubAuth } from "./github/GitHubAuth.js";
+import { BrokerError } from "./rpc/RequestResponseBroker.js";
 import { createLogger } from "../utils/logger.js";
 import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 
@@ -144,24 +145,45 @@ export class WorkspaceHostProcess extends EventEmitter {
     timeoutMs: number = 30000
   ): Promise<T> {
     if (this.isDisposed) {
-      return Promise.reject(new Error("WorkspaceHostProcess disposed"));
+      return Promise.reject(
+        new BrokerError("APP_SHUTDOWN", "WorkspaceHostProcess disposed", {
+          projectScopeId: this.projectPath,
+        })
+      );
     }
     if (!this.child) {
-      return Promise.reject(new Error("Workspace Host not running"));
+      return Promise.reject(
+        new BrokerError("HOST_EXITED", "Workspace Host not running", {
+          projectScopeId: this.projectPath,
+        })
+      );
     }
 
     return new Promise((resolve, reject) => {
+      const existing = this.pendingRequests.get(request.requestId);
+      if (existing) {
+        clearTimeout(existing.timeout);
+        existing.reject(new Error(`Duplicate request ID: ${request.requestId}`));
+        this.pendingRequests.delete(request.requestId);
+      }
+
       const timeout = setTimeout(() => {
         if (this.pendingRequests.has(request.requestId)) {
           this.pendingRequests.delete(request.requestId);
-          reject(new Error("Request timeout"));
+          reject(
+            new BrokerError("TIMEOUT", "Request timeout", {
+              projectScopeId: this.projectPath,
+            })
+          );
         }
       }, timeoutMs);
 
       this.pendingRequests.set(request.requestId, { resolve, reject, timeout });
       try {
         if (!this.child) {
-          throw new Error("Workspace Host not running");
+          throw new BrokerError("HOST_EXITED", "Workspace Host not running", {
+            projectScopeId: this.projectPath,
+          });
         }
         this.child.postMessage(request);
       } catch (error) {
@@ -286,14 +308,22 @@ export class WorkspaceHostProcess extends EventEmitter {
     this.isWaitingForHandshake = false;
 
     if (this.readyReject) {
-      this.readyReject(new Error("WorkspaceHostProcess disposed"));
+      this.readyReject(
+        new BrokerError("APP_SHUTDOWN", "WorkspaceHostProcess disposed", {
+          projectScopeId: this.projectPath,
+        })
+      );
       this.readyReject = null;
       this.readyResolve = null;
     }
 
     for (const [, { reject, timeout }] of this.pendingRequests) {
       clearTimeout(timeout);
-      reject(new Error("WorkspaceHostProcess disposed"));
+      reject(
+        new BrokerError("APP_SHUTDOWN", "WorkspaceHostProcess disposed", {
+          projectScopeId: this.projectPath,
+        })
+      );
     }
     this.pendingRequests.clear();
 
@@ -471,12 +501,20 @@ export class WorkspaceHostProcess extends EventEmitter {
 
       for (const [, { reject, timeout }] of this.pendingRequests) {
         clearTimeout(timeout);
-        reject(new Error("Workspace Host crashed"));
+        reject(
+          new BrokerError("HOST_EXITED", "Workspace Host crashed", {
+            projectScopeId: this.projectPath,
+          })
+        );
       }
       this.pendingRequests.clear();
 
       if (this.readyReject) {
-        this.readyReject(new Error(`Workspace Host crashed (exit code ${code})`));
+        this.readyReject(
+          new BrokerError("HOST_EXITED", `Workspace Host crashed (exit code ${code})`, {
+            projectScopeId: this.projectPath,
+          })
+        );
         this.readyReject = null;
       }
 
@@ -489,7 +527,8 @@ export class WorkspaceHostProcess extends EventEmitter {
 
       if (this.restartAttempts < this.config.maxRestartAttempts) {
         this.restartAttempts++;
-        const delay = Math.min(1000 * Math.pow(2, this.restartAttempts), 10000);
+        const cap = Math.min(1000 * Math.pow(2, this.restartAttempts), 10000);
+        const delay = 100 + Math.floor(Math.random() * Math.max(0, cap - 100));
         console.log(
           `[WorkspaceHost:${this.serviceName}] Restarting in ${delay}ms (attempt ${this.restartAttempts}/${this.config.maxRestartAttempts})`
         );
@@ -534,6 +573,10 @@ export class WorkspaceHostProcess extends EventEmitter {
           } catch {
             // Process may have already exited
           }
+        }
+        if (this.healthCheckInterval) {
+          clearInterval(this.healthCheckInterval);
+          this.healthCheckInterval = null;
         }
         this.missedHeartbeats = 0;
         return;
