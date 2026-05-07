@@ -630,7 +630,7 @@ export class WorkspaceService {
       type: "worktree-update",
       worktree: snapshot,
     });
-    events.emit("sys:worktree:update", snapshot as any);
+    events.emit("sys:worktree:update", snapshot);
   }
 
   private emitUpdate(monitor: WorktreeMonitor): void {
@@ -639,7 +639,7 @@ export class WorkspaceService {
       type: "worktree-update",
       worktree: snapshot,
     });
-    events.emit("sys:worktree:update", snapshot as any);
+    events.emit("sys:worktree:update", snapshot);
   }
 
   /**

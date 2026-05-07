@@ -182,4 +182,42 @@ describe("WorkspaceHostProcess", () => {
 
     host.dispose();
   });
+
+  it("routes inotify-limit-reached as host-event (spontaneous event)", async () => {
+    const { WorkspaceHostProcess } = await loadModule();
+    const host = new WorkspaceHostProcess("/tmp/project", {
+      maxRestartAttempts: 3,
+      healthCheckIntervalMs: 30000,
+    } as any);
+    host.waitForReady().catch(() => {});
+
+    const onHostEvent = vi.fn();
+    host.on("host-event", onHostEvent);
+
+    const child = mockChildren[0] as MockUtilityChild;
+    child.emit("message", { type: "inotify-limit-reached" });
+
+    expect(onHostEvent).toHaveBeenCalledWith({ type: "inotify-limit-reached" });
+
+    host.dispose();
+  });
+
+  it("routes emfile-limit-reached as host-event (spontaneous event)", async () => {
+    const { WorkspaceHostProcess } = await loadModule();
+    const host = new WorkspaceHostProcess("/tmp/project", {
+      maxRestartAttempts: 3,
+      healthCheckIntervalMs: 30000,
+    } as any);
+    host.waitForReady().catch(() => {});
+
+    const onHostEvent = vi.fn();
+    host.on("host-event", onHostEvent);
+
+    const child = mockChildren[0] as MockUtilityChild;
+    child.emit("message", { type: "emfile-limit-reached" });
+
+    expect(onHostEvent).toHaveBeenCalledWith({ type: "emfile-limit-reached" });
+
+    host.dispose();
+  });
 });

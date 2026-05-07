@@ -14,7 +14,7 @@ export class WorkspaceCopyTreeClient {
   private iterateEntries: () => IterableIterator<ProcessEntry>;
 
   readonly copyTreeProgressCallbacks = new Map<string, CopyTreeProgressCallback>();
-  readonly activeCopyTreeOperations = new Map<string, string>();
+  readonly activeCopyTreeOperations = new Map<string, string>(); // operationId → rootPath
 
   constructor(deps: WorkspaceCopyTreeClientDeps) {
     this.resolveHostForPath = deps.resolveHostForPath;
@@ -35,7 +35,7 @@ export class WorkspaceCopyTreeClient {
     if (onProgress) {
       this.copyTreeProgressCallbacks.set(operationId, onProgress);
     }
-    this.activeCopyTreeOperations.set(operationId, requestId);
+    this.activeCopyTreeOperations.set(operationId, rootPath);
 
     try {
       const result = await host.sendWithResponse<{ result: CopyTreeResult }>(
@@ -56,8 +56,10 @@ export class WorkspaceCopyTreeClient {
   }
 
   cancelContext(operationId: string): void {
-    for (const entry of this.iterateEntries()) {
-      entry.host.send({ type: "copytree:cancel", operationId });
+    const rootPath = this.activeCopyTreeOperations.get(operationId);
+    if (rootPath) {
+      const host = this.resolveHostForPath(rootPath);
+      host?.send({ type: "copytree:cancel", operationId });
     }
 
     this.copyTreeProgressCallbacks.delete(operationId);

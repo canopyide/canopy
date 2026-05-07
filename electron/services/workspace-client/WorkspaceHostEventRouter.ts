@@ -22,6 +22,8 @@ export class WorkspaceHostEventRouter {
   private copyTreeProgressCallbacks: Map<string, CopyTreeProgressCallback>;
 
   private githubTokenChangeAt = 0;
+  private inotifyLimitToastSent = false;
+  private emfileLimitToastSent = false;
 
   constructor(deps: WorkspaceHostEventRouterDeps) {
     this.emit = deps.emit;
@@ -48,30 +50,7 @@ export class WorkspaceHostEventRouter {
           worktree,
           projectPath: entry.projectPath,
         });
-        events.emit("sys:worktree:update", {
-          id: worktree.id,
-          path: worktree.path,
-          name: worktree.name,
-          branch: worktree.branch,
-          isCurrent: worktree.isCurrent,
-          isMainWorktree: worktree.isMainWorktree,
-          gitDir: worktree.gitDir,
-          summary: worktree.summary,
-          modifiedCount: worktree.modifiedCount,
-          changes: worktree.changes,
-          mood: worktree.mood,
-          lastActivityTimestamp: worktree.lastActivityTimestamp ?? null,
-          createdAt: worktree.createdAt,
-          aiNote: worktree.aiNote,
-          aiNoteTimestamp: worktree.aiNoteTimestamp,
-          issueNumber: worktree.issueNumber,
-          prNumber: worktree.prNumber,
-          prUrl: worktree.prUrl,
-          prState: worktree.prState,
-          worktreeChanges: worktree.worktreeChanges,
-          worktreeId: worktree.worktreeId,
-          timestamp: worktree.timestamp,
-        } as any);
+        events.emit("sys:worktree:update", worktree);
         break;
       }
 
@@ -156,6 +135,8 @@ export class WorkspaceHostEventRouter {
       }
 
       case "inotify-limit-reached": {
+        if (this.inotifyLimitToastSent) break;
+        this.inotifyLimitToastSent = true;
         broadcastToRenderer(CHANNELS.NOTIFICATION_SHOW_TOAST, {
           type: "warning",
           title: "File watching degraded",
@@ -171,6 +152,8 @@ export class WorkspaceHostEventRouter {
       }
 
       case "emfile-limit-reached": {
+        if (this.emfileLimitToastSent) break;
+        this.emfileLimitToastSent = true;
         broadcastToRenderer(CHANNELS.NOTIFICATION_SHOW_TOAST, {
           type: "warning",
           title: "File watching degraded",
