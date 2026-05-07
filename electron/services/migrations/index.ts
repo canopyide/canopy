@@ -23,6 +23,7 @@ export const migrations: Migration[] = [
   migration003,
   migration004,
   migration005,
+  // migration006 removed in #5150
   migration007,
   migration008,
   migration009,

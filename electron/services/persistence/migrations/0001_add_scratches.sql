@@ -1,4 +1,4 @@
-CREATE TABLE `scratches` (
+CREATE TABLE IF NOT EXISTS `scratches` (
 	`id` text PRIMARY KEY NOT NULL,
 	`path` text NOT NULL,
 	`name` text NOT NULL,

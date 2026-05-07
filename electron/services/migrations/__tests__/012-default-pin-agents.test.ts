@@ -103,4 +103,64 @@ describe("migration012 — default-pin agents", () => {
       },
     });
   });
+
+  it("replay leaves pinned: false untouched (regression guard)", () => {
+    const data: Record<string, unknown> = {
+      agentSettings: {
+        agents: {
+          claude: { pinned: true, customFlags: "--verbose" },
+          gemini: { pinned: false },
+        },
+      },
+    };
+    const store = makeStoreMock(data);
+    migration012.up(store);
+
+    expect(store.set).not.toHaveBeenCalled();
+    const after = data.agentSettings as { agents: Record<string, Record<string, unknown>> };
+    expect(after.agents.claude).toEqual({ pinned: true, customFlags: "--verbose" });
+    expect(after.agents.gemini).toEqual({ pinned: false });
+  });
+
+  it("is idempotent — running twice does not modify already-migrated data", () => {
+    const data: Record<string, unknown> = {
+      agentSettings: {
+        agents: {
+          claude: { selected: true },
+          gemini: { selected: false },
+        },
+      },
+    };
+    const store = makeStoreMock(data);
+    migration012.up(store);
+    const firstCallCount = (store.set as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    migration012.up(store);
+    const secondCallCount = (store.set as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    expect(secondCallCount).toBe(firstCallCount);
+    const after = data.agentSettings as { agents: Record<string, Record<string, unknown>> };
+    expect(after.agents.claude).toEqual({ pinned: true });
+    expect(after.agents.gemini).toEqual({ pinned: false });
+  });
+
+  it("migrates legacy entries while leaving already-migrated entries untouched", () => {
+    const data: Record<string, unknown> = {
+      agentSettings: {
+        agents: {
+          claude: { pinned: false }, // already migrated, explicit unpin
+          gemini: { selected: false }, // legacy, needs migration
+          codex: { pinned: true, customFlags: "" }, // already migrated
+        },
+      },
+    };
+    const store = makeStoreMock(data);
+    migration012.up(store);
+
+    expect(store.set).toHaveBeenCalledTimes(1);
+    const after = data.agentSettings as { agents: Record<string, Record<string, unknown>> };
+    expect(after.agents.claude).toEqual({ pinned: false });
+    expect(after.agents.gemini).toEqual({ pinned: false });
+    expect(after.agents.codex).toEqual({ pinned: true, customFlags: "" });
+  });
 });

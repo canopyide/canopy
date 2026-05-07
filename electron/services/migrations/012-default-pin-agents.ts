@@ -3,12 +3,17 @@ import type { Migration } from "../StoreMigrations.js";
 interface LegacyAgentEntry {
   selected?: boolean;
   enabled?: boolean;
+  pinned?: boolean;
   [key: string]: unknown;
 }
 
 interface LegacyAgentSettings {
   agents?: Record<string, LegacyAgentEntry>;
   [key: string]: unknown;
+}
+
+function entryNeedsMigration(entry: LegacyAgentEntry): boolean {
+  return "selected" in entry || "enabled" in entry || !("pinned" in entry);
 }
 
 export const migration012: Migration = {
@@ -19,8 +24,14 @@ export const migration012: Migration = {
     if (!agentSettings?.agents) return;
 
     const updatedAgents: Record<string, Record<string, unknown>> = {};
+    let changed = false;
 
     for (const [id, entry] of Object.entries(agentSettings.agents)) {
+      if (!entryNeedsMigration(entry)) {
+        updatedAgents[id] = entry;
+        continue;
+      }
+
       // Grandfather v0.6.0 visibility: anything that wasn't explicitly
       // unselected becomes pinned. v0.6.0 normalization stayed in-memory and
       // never persisted `selected: true` for default-visible agents, so
@@ -29,7 +40,10 @@ export const migration012: Migration = {
 
       const { selected: _s, enabled: _e, ...rest } = entry;
       updatedAgents[id] = { ...rest, pinned };
+      changed = true;
     }
+
+    if (!changed) return;
 
     store.set("agentSettings", { ...agentSettings, agents: updatedAgents });
   },
