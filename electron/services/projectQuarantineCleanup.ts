@@ -8,14 +8,9 @@ const QUARANTINE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 const QUARANTINE_PREFIXES = [
   "state.json.corrupted.",
-  "state.json.corrupted",
   "state.json.future-v",
   "settings.json.corrupted.",
-  "settings.json.corrupted",
   "recipes.json.corrupted.",
-  "recipes.json.corrupted",
-  "workflows.json.corrupted.",
-  "workflows.json.corrupted",
 ];
 
 const GLOBAL_RECIPES_QUARANTINE_PREFIXES = ["recipes.json.corrupted."];
@@ -25,7 +20,8 @@ async function sweepDirectoryForPrefixes(
   dir: string,
   prefixes: readonly string[],
   now: number,
-  logScope: string
+  logScope: string,
+  projectId?: string
 ): Promise<number> {
   let entries: import("fs").Dirent[];
   try {
@@ -46,6 +42,11 @@ async function sweepDirectoryForPrefixes(
       const stats = await fs.lstat(filePath);
       const ageMs = Math.max(0, now - stats.mtimeMs);
       if (ageMs > QUARANTINE_MAX_AGE_MS) {
+        logInfo("quarantine-file-reaped", {
+          filename: dirent.name,
+          ageMs,
+          ...(projectId ? { projectId } : {}),
+        });
         await resilientUnlink(filePath);
         deletedCount++;
       }
@@ -81,7 +82,8 @@ export async function cleanupQuarantinedProjectFiles(
         projectDir,
         QUARANTINE_PREFIXES,
         now,
-        "ProjectStore"
+        "ProjectStore",
+        entry.name
       );
     } catch (err) {
       logError(`[ProjectStore] Failed to sweep quarantine in ${projectDir}`, err);
