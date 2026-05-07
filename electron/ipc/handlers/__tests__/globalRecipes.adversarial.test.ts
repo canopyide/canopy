@@ -138,6 +138,16 @@ describe("globalRecipes IPC adversarial", () => {
     ).rejects.toThrow(/immutable|createdAt/i);
   });
 
+  it("updateRecipe rejects patches with worktreeId", async () => {
+    await expect(
+      getHandler(CHANNELS.GLOBAL_UPDATE_RECIPE)(fakeEvent(), {
+        recipeId: "r1",
+        updates: { worktreeId: "wt-1" } as unknown as Record<string, unknown>,
+      })
+    ).rejects.toThrow(/immutable|worktreeId/i);
+    expect(projectStoreMock.updateGlobalRecipe).not.toHaveBeenCalled();
+  });
+
   it("updateRecipe rejects non-array terminals", async () => {
     await expect(
       getHandler(CHANNELS.GLOBAL_UPDATE_RECIPE)(fakeEvent(), {

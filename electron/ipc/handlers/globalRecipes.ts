@@ -56,7 +56,7 @@ export function registerGlobalRecipesHandlers(_deps: HandlerDependencies): () =>
     if (!updates || typeof updates !== "object" || Array.isArray(updates)) {
       throw new Error("Invalid updates");
     }
-    const immutableKeys = ["id", "projectId", "createdAt"] as const;
+    const immutableKeys = ["id", "projectId", "createdAt", "worktreeId"] as const;
     for (const key of immutableKeys) {
       if (key in updates) {
         throw new Error(`Cannot update immutable field: ${key}`);

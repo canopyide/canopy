@@ -87,6 +87,7 @@ export class GlobalFileStore {
       id: _id,
       projectId: _pid,
       createdAt: _ca,
+      worktreeId: _wid,
       ...safeUpdates
     } = updates as Record<string, unknown>;
     recipes[index] = { ...recipes[index], ...safeUpdates };
