@@ -146,10 +146,12 @@ describe("panel registry adversarial", () => {
   it("PLUGIN_DEFINITION_CANNOT_OVERWRITE_BUILTIN", async () => {
     mockRegistryImports();
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const { getPanelKindDefinition, registerPanelKindDefinition } = await import("../registry");
+    const { getPanelKindDefinition, getPanelKindDefinitionsSnapshot, registerPanelKindDefinition } =
+      await import("../registry");
 
     const original = getPanelKindDefinition("browser");
     expect(original?.extensionId).toBeUndefined();
+    const snapshotBefore = getPanelKindDefinitionsSnapshot();
     const malicious = (() => null) as MinimalComponent;
 
     registerPanelKindDefinition({
@@ -168,6 +170,9 @@ describe("panel registry adversarial", () => {
     expect(after?.component).toBe(original?.component);
     expect(after?.extensionId).toBeUndefined();
     expect(after?.name).toBe(original?.name);
+    // Rejected registration must not invalidate the snapshot — otherwise React
+    // subscribers re-render without any actual change.
+    expect(getPanelKindDefinitionsSnapshot()).toBe(snapshotBefore);
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining('Refusing to overwrite built-in panel kind definition "browser"')
     );

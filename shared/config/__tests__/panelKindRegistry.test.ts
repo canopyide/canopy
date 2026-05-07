@@ -375,6 +375,11 @@ describe("registerPanelKind collision guard", () => {
     const after = getPanelKindConfig("terminal");
     expect(after).toBe(original);
     expect(after?.name).toBe(original?.name);
+    expect(after?.iconId).toBe(original?.iconId);
+    expect(after?.color).toBe(original?.color);
+    expect(after?.hasPty).toBe(original?.hasPty);
+    expect(after?.canRestart).toBe(original?.canRestart);
+    expect(after?.showInPalette).toBe(original?.showInPalette);
     expect(after?.extensionId).toBeUndefined();
     expect(errorSpy).toHaveBeenCalledTimes(1);
     expect(listener).not.toHaveBeenCalled();
@@ -433,5 +438,13 @@ describe("getPanelKindColor fallback", () => {
 
   it("returns a neutral text token for unrecognized kinds", () => {
     expect(getPanelKindColor("totally-unknown-kind")).toBe("var(--theme-text-secondary)");
+  });
+
+  it("returns the neutral fallback after a plugin kind is unregistered", () => {
+    registerPanelKind(makeExtensionConfig("ext-a.viewer", "ext-a"));
+    expect(getPanelKindColor("ext-a.viewer")).toBe("#123456");
+
+    unregisterPluginPanelKinds("ext-a");
+    expect(getPanelKindColor("ext-a.viewer")).toBe("var(--theme-text-secondary)");
   });
 });

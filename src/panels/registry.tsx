@@ -216,7 +216,13 @@ export function registerPanelKindDefinition(
       );
       return;
     }
-    definition = { ...config, component: component! };
+    if (!component) {
+      console.error(
+        `[panelKindRegistry] registerPanelKindDefinition("${definitionOrKindId}") called without a component`
+      );
+      return;
+    }
+    definition = { ...config, component };
   } else {
     definition = definitionOrKindId;
   }
