@@ -200,6 +200,24 @@ describe("AgentPatternDetector", () => {
 
       expect(result.isWorking).toBe(false);
     });
+
+    it("should detect Braille spinner glyphs outside the legacy 10-codepoint subset (primary)", () => {
+      // ⣿ (U+28FF) is at the end of the Braille block; not in the old subset.
+      const output = "⣿ Analyzing code structure (esc to cancel, 3s)";
+      const result = detector.detect(output);
+
+      expect(result.isWorking).toBe(true);
+      expect(result.matchTier).toBe("primary");
+    });
+
+    it("should detect Braille spinner glyphs outside the legacy 10-codepoint subset (fallback)", () => {
+      // ⡿ (U+287F), ⢿ (U+28BF), ⣟ (U+28DF) all fall in the widened range.
+      for (const ch of ["⡿", "⢿", "⣟", "⣿"]) {
+        const result = detector.detect(`${ch} Processing`);
+        expect(result.isWorking).toBe(true);
+        expect(result.matchTier).toBe("fallback");
+      }
+    });
   });
 
   describe("Codex pattern detection", () => {
@@ -260,6 +278,24 @@ describe("AgentPatternDetector", () => {
 
     it("should detect spinner with activity word (fallback)", () => {
       const output = "✽ working on your request";
+      const result = detector.detect(output);
+
+      expect(result.isWorking).toBe(true);
+      expect(result.matchTier).toBe("fallback");
+    });
+
+    it("should detect widened Braille glyphs in universal patterns", () => {
+      // Glyphs outside the legacy 10-codepoint subset are now part of the
+      // universal char class, so primary-tier matches still trigger.
+      const output = "⣿ Working (esc to interrupt)";
+      const result = detector.detect(output);
+
+      expect(result.isWorking).toBe(true);
+      expect(result.matchTier).toBe("primary");
+    });
+
+    it("should detect widened Braille glyph + activity word in fallback", () => {
+      const output = "⣿ thinking through the problem";
       const result = detector.detect(output);
 
       expect(result.isWorking).toBe(true);
