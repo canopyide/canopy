@@ -4,6 +4,7 @@ import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
+  RESTORE_PARSER_RESET_PREAMBLE,
   SESSION_SNAPSHOT_MAX_BYTES,
   getSessionPath,
   persistSessionSnapshotAsync,
@@ -99,7 +100,10 @@ describe("terminalSessionPersistence", () => {
     const headless = createMockHeadless();
     const result = restoreSessionFromFile(headless as never, "term-rt-sync");
     expect(result.restored).toBe(true);
-    expect(headless.write).toHaveBeenCalledWith("sync payload");
+    // Parser-reset preamble must precede the serialized content so leaked modes
+    // from a prior session (mouse/paste/focus/Kitty/cursor) get cleared first.
+    expect(headless.write).toHaveBeenNthCalledWith(1, RESTORE_PARSER_RESET_PREAMBLE);
+    expect(headless.write).toHaveBeenNthCalledWith(2, "sync payload");
   });
 
   it("restores a headerless legacy snapshot as v0", async () => {
@@ -184,28 +188,64 @@ describe("terminalSessionPersistence", () => {
     expect(result.bannerEndMarker!.line).toBeGreaterThan(result.bannerStartMarker!.line);
   });
 
-  it("ignores oversized snapshots and returns not restored", async () => {
+  it("ignores oversized snapshots and warns without restoring", async () => {
     const sessionDir = path.join(userDataDir, "terminal-sessions");
     await fsp.mkdir(sessionDir, { recursive: true });
 
     const hugePath = path.join(sessionDir, "term-huge.restore");
     await fsp.writeFile(hugePath, "y".repeat(SESSION_SNAPSHOT_MAX_BYTES + 100), "utf8");
 
-    const headless = createMockHeadless();
-    const result = restoreSessionFromFile(headless as never, "term-huge");
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const headless = createMockHeadless();
+      const result = restoreSessionFromFile(headless as never, "term-huge");
 
-    expect(result.restored).toBe(false);
-    expect(headless.write).not.toHaveBeenCalled();
+      expect(result.restored).toBe(false);
+      // No bytes replayed into the parser — the oversize gate fires before the read.
+      expect(headless.write).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy.mock.calls[0][0]).toContain("[terminalSessionPersistence]");
+      expect(warnSpy.mock.calls[0][0]).toContain("term-huge");
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
-  it("returns not restored when no session file exists", () => {
-    const headless = createMockHeadless();
-    const result = restoreSessionFromFile(headless as never, "nonexistent");
+  it("returns not restored when no session file exists, without warning", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const headless = createMockHeadless();
+      const result = restoreSessionFromFile(headless as never, "nonexistent");
 
-    expect(result.restored).toBe(false);
-    expect(result.bannerStartMarker).toBeNull();
-    expect(result.bannerEndMarker).toBeNull();
-    expect(headless.write).not.toHaveBeenCalled();
+      expect(result.restored).toBe(false);
+      expect(result.bannerStartMarker).toBeNull();
+      expect(result.bannerEndMarker).toBeNull();
+      expect(headless.write).not.toHaveBeenCalled();
+      // ENOENT is the normal "no prior session" path — must stay quiet.
+      expect(warnSpy).not.toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("writes parser-reset preamble before serialized content on restore", async () => {
+    const sessionDir = path.join(userDataDir, "terminal-sessions");
+    await fsp.mkdir(sessionDir, { recursive: true });
+    await fsp.writeFile(path.join(sessionDir, "term-preamble.restore"), "snapshot-bytes", "utf8");
+
+    const headless = createMockHeadless();
+    const result = restoreSessionFromFile(headless as never, "term-preamble");
+
+    expect(result.restored).toBe(true);
+    const writes = headless.write.mock.calls.map((c: string[]) => c[0]);
+    const preambleIndex = writes.indexOf(RESTORE_PARSER_RESET_PREAMBLE);
+    const contentIndex = writes.indexOf("snapshot-bytes");
+    expect(preambleIndex).toBe(0);
+    expect(contentIndex).toBeGreaterThan(preambleIndex);
+    // Preamble combines DECSTR + Kitty keyboard reset + DECSCUSR.
+    expect(RESTORE_PARSER_RESET_PREAMBLE).toContain("\x1b[!p");
+    expect(RESTORE_PARSER_RESET_PREAMBLE).toContain("\x1b[=0u");
+    expect(RESTORE_PARSER_RESET_PREAMBLE).toContain("\x1b[0 q");
   });
 
   it("handles alternate screen by exiting and showing TUI explanation", async () => {

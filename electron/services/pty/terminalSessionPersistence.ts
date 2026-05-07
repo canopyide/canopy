@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync, writeFileSync, unlinkSync, mkdirSync } from "fs";
+import { readFileSync, statSync, writeFileSync, unlinkSync, mkdirSync } from "fs";
 import { mkdir, readdir, stat, unlink } from "node:fs/promises";
 import { resilientAtomicWriteFile, resilientAtomicWriteFileSync } from "../../utils/fs.js";
 import path from "node:path";
@@ -14,6 +14,16 @@ export const TERMINAL_SESSION_PERSISTENCE_ENABLED: boolean =
   process.env.DAINTREE_TERMINAL_SESSION_PERSISTENCE !== "0";
 export const SESSION_SNAPSHOT_DEBOUNCE_MS = 5000;
 export const SESSION_SNAPSHOT_MAX_BYTES = 5 * 1024 * 1024;
+
+// Defence-in-depth reset before replaying a serialized snapshot. DECSTR (\x1b[!p)
+// clears DEC private modes the parser holds (e.g. bracketed paste 2004, focus
+// events 1004) without touching scrollback. The Kitty keyboard pop (\x1b[=0u) and
+// DECSCUSR default (\x1b[0 q) cover the cursor and Kitty state, which neither
+// DECSTR nor the serialize addon track. The serialize addon already replays the
+// mouse-tracking and bracketed-paste modes that were active when the snapshot was
+// taken, so the preamble's role is to clear whatever drift accumulated in the
+// parser before the replay reapplies the captured state.
+export const RESTORE_PARSER_RESET_PREAMBLE = "\x1b[!p\x1b[=0u\x1b[0 q";
 
 let sessionPersistSuppressed = false;
 
@@ -104,21 +114,32 @@ export function restoreSessionFromFile(
   if (!sessionPath) return NULL_RESTORE;
 
   try {
-    if (!existsSync(sessionPath)) return NULL_RESTORE;
+    let stat: ReturnType<typeof statSync>;
+    try {
+      stat = statSync(sessionPath);
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") return NULL_RESTORE;
+      throw e;
+    }
+    if (stat.size > SESSION_SNAPSHOT_MAX_BYTES + SESSION_HEADER_BYTES) {
+      console.warn(
+        `[terminalSessionPersistence] Session snapshot too large for ${terminalId} (${stat.size} bytes), skipping restore`
+      );
+      return NULL_RESTORE;
+    }
     const raw = readFileSync(sessionPath, "utf8");
     const content = extractSessionContent(raw);
     if (content === null) return NULL_RESTORE;
     if (Buffer.byteLength(content, "utf8") > SESSION_SNAPSHOT_MAX_BYTES) {
+      // Belt-and-suspenders: file may have grown between statSync and readFileSync.
+      console.warn(
+        `[terminalSessionPersistence] Session snapshot grew past size limit for ${terminalId}, skipping restore`
+      );
       return NULL_RESTORE;
     }
+    const sessionMtime: number = stat.mtimeMs;
 
-    let sessionMtime: number | null = null;
-    try {
-      sessionMtime = statSync(sessionPath).mtimeMs;
-    } catch {
-      /* best-effort */
-    }
-
+    headlessTerminal.write(RESTORE_PARSER_RESET_PREAMBLE);
     headlessTerminal.write(content);
 
     const wasInAlternateScreen = headlessTerminal.buffer.active.type === "alternate";
@@ -146,6 +167,9 @@ export function restoreSessionFromFile(
 
     return { restored: true, bannerStartMarker, bannerEndMarker };
   } catch (error) {
+    // Stat→read race: file vanished between size gate and read. Treat as the
+    // normal "no prior session" path rather than logging restore noise.
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return NULL_RESTORE;
     console.warn(
       `[terminalSessionPersistence] Failed to restore session for ${terminalId}:`,
       error
