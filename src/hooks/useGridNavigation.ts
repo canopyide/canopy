@@ -108,7 +108,11 @@ export function useGridNavigation(options: UseGridNavigationOptions = {}) {
 
       observer.observe(container);
       observedContainer = container;
-      setGridWidth(container.clientWidth);
+      // Skip initial measurement during a sidebar lock — the unlock
+      // subscriber below will resync once the transition completes.
+      if (!isSidebarLayoutTransitionLocked()) {
+        setGridWidth(container.clientWidth);
+      }
 
       return observer;
     };

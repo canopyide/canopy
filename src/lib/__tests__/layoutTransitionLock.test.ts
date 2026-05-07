@@ -129,6 +129,23 @@ describe("layoutTransitionLock", () => {
     expect(b).toHaveBeenCalledTimes(1);
   });
 
+  it("notifies subscribers exactly once when re-locked before expiry (covers rapid double-toggle)", () => {
+    const listener = vi.fn();
+    subscribeSidebarLayoutTransitionUnlock(listener);
+
+    lockSidebarLayoutTransition(250);
+    vi.advanceTimersByTime(200);
+    lockSidebarLayoutTransition(250);
+
+    vi.advanceTimersByTime(200);
+    expect(listener).not.toHaveBeenCalled();
+    expect(isSidebarLayoutTransitionLocked()).toBe(true);
+
+    vi.advanceTimersByTime(50);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(isSidebarLayoutTransitionLocked()).toBe(false);
+  });
+
   it("__resetSidebarLayoutTransitionLockForTests clears the lock and listeners", () => {
     const listener = vi.fn();
     subscribeSidebarLayoutTransitionUnlock(listener);

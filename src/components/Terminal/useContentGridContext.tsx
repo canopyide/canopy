@@ -383,8 +383,15 @@ export function useContentGridContext({
     });
 
     observer.observe(container);
-    setGridWidth(container.clientWidth);
-    setGridDimensions({ width: container.clientWidth, height: container.clientHeight });
+    // If the effect re-mounts mid-transition (e.g., a dep like
+    // `gridTerminals.length` changes during the lock window), skip the
+    // initial measurement — a mid-animation `<main>` width would re-snap
+    // `grid-template-columns` and reintroduce jitter. The unlock subscriber
+    // below will sync the grid once the transition completes.
+    if (!isSidebarLayoutTransitionLocked()) {
+      setGridWidth(container.clientWidth);
+      setGridDimensions({ width: container.clientWidth, height: container.clientHeight });
+    }
 
     // Force a single measurement after the sidebar transition completes so
     // the grid lands at its post-transition size even if no further RO entry
@@ -395,6 +402,10 @@ export function useContentGridContext({
       if (finalRafId !== null) cancelAnimationFrame(finalRafId);
       finalRafId = requestAnimationFrame(() => {
         finalRafId = null;
+        // Re-check the lock — a second toggle may have started in the ~16ms
+        // between unlock and this rAF, in which case our measurement would
+        // capture a mid-animation width from the new transition.
+        if (isSidebarLayoutTransitionLocked()) return;
         const measureNode = gridContainerRef.current;
         if (!measureNode) return;
         const width = measureNode.clientWidth;
