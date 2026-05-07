@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import { execFileSync } from "node:child_process";
 
-const SAFETY_MARGIN = 10;
-const WARNING_MULTIPLIER = 2;
+const SAFETY_MARGIN = 10; // Empirical headroom for non-terminal FDs (event loop handles, IPC pipes, file watchers).
+const WARNING_MULTIPLIER = 2; // Empirical factor accounting for per-terminal FD overhead. Not a claim about precise per-terminal FD count.
 
 export interface FdCheckResult {
   totalFds: number;
@@ -98,7 +98,8 @@ export class FdMonitor {
         const parsed = parseInt(output.trim(), 10);
         return Number.isFinite(parsed) ? parsed : null;
       } catch {
-        return 511; // macOS default
+        console.warn("[FdMonitor] sysctl kern.tty.ptmx_max failed, using default limit of 511");
+        return 511;
       }
     }
 
@@ -110,6 +111,14 @@ export class FdMonitor {
   }
 }
 
+/**
+ * Checks whether a PID exists and is signalable via `kill(pid, 0)`.
+ *
+ * This only verifies PID existence, not process identity. PID reuse within
+ * the grace window (`ResourceGovernor.ORPHAN_GRACE_MS = 4000`) can produce
+ * false-positive orphanedPids warnings. The grace window reduces noise but
+ * does not eliminate this POSIX-level race.
+ */
 export function isProcessAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
