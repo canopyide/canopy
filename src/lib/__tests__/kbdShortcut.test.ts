@@ -369,6 +369,11 @@ describe("comboToAriaKeyshortcuts — real default-combo round-trips", () => {
     expect(comboToAriaKeyshortcuts("Cmd+Alt+P", false)).toBe("Control+Alt+P");
   });
 
+  it("maps the Cmd+Shift+= zoom-in alias (issue #7304)", () => {
+    expect(comboToAriaKeyshortcuts("Cmd+Shift+=", true)).toBe("Meta+Shift+=");
+    expect(comboToAriaKeyshortcuts("Cmd+Shift+=", false)).toBe("Control+Shift+=");
+  });
+
   it("returns undefined for two-step chord families (Cmd+K Cmd+S, Cmd+K T)", () => {
     expect(comboToAriaKeyshortcuts("Cmd+K Cmd+S", true)).toBeUndefined();
     expect(comboToAriaKeyshortcuts("Cmd+K Cmd+S", false)).toBeUndefined();

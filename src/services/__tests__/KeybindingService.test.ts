@@ -621,4 +621,23 @@ describe("KeybindingService", () => {
       expect(missing).toEqual([]);
     });
   });
+
+  describe("window.zoomIn discoverability alias — issue #7304", () => {
+    it("registers both Cmd+= and Cmd+Shift+= as defaults for window.zoomIn", () => {
+      const combos = DEFAULT_KEYBINDINGS.filter((b) => b.actionId === "window.zoomIn").map(
+        (b) => b.combo
+      );
+      expect(combos).toEqual(expect.arrayContaining(["Cmd+=", "Cmd+Shift+="]));
+      expect(combos).toHaveLength(2);
+    });
+
+    it("resolves Cmd+Shift+= to window.zoomIn at runtime", () => {
+      setPlatform("MacIntel");
+      const service = new KeybindingService();
+      const match = service.findMatchingAction(
+        createKeyboardEvent({ key: "+", code: "Equal", metaKey: true, shiftKey: true })
+      );
+      expect(match?.actionId).toBe("window.zoomIn");
+    });
+  });
 });
