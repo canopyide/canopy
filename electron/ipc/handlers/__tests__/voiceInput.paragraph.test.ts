@@ -97,6 +97,7 @@ vi.mock("../../../services/VoiceCorrectionService.js", () => ({
         confirmedText: "",
       });
     };
+    this.setSessionSignal = function () {};
   },
 }));
 
