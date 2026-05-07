@@ -944,13 +944,13 @@ describe("NotificationCenter — Group by context toggle", () => {
 });
 
 describe("NotificationCenter — Filter inactive contrast", () => {
-  it("uses /70 (AAA) on inactive segments and never the disabled /40 stop", () => {
+  it("uses /60 on inactive pills, matching the QuickStateFilterBar pattern", () => {
     setEntries([makeEntry({ message: "msg-1" })]);
     render(<NotificationCenter open onClose={vi.fn()} />);
 
     // Filter starts on "All" → "Unread" is the inactive segment.
     const unread = screen.getByText("Unread");
-    expect(unread.className).toContain("text-daintree-text/70");
+    expect(unread.className).toContain("text-daintree-text/60");
     expect(unread.className).not.toContain("text-daintree-text/40");
     expect(unread.className).toContain("hover:text-daintree-text");
 
@@ -958,7 +958,7 @@ describe("NotificationCenter — Filter inactive contrast", () => {
 
     // After flipping, "All" is the inactive segment.
     const all = screen.getByText("All");
-    expect(all.className).toContain("text-daintree-text/70");
+    expect(all.className).toContain("text-daintree-text/60");
     expect(all.className).not.toContain("text-daintree-text/40");
     expect(all.className).toContain("hover:text-daintree-text");
   });
