@@ -54,6 +54,22 @@ describe("RepoFetchCoordinator", () => {
     expect(result.authFailed).toBe(false);
   });
 
+  it("passes --no-write-fetch-head to background fetches to avoid FETCH_HEAD contention", async () => {
+    mockGetGitCommonDir.mockReturnValue("/repo/.git");
+    const mockGit = makeMockGit(() => Promise.resolve());
+    mockCreateBackgroundFetchGit.mockReturnValue(mockGit);
+
+    const coord = new RepoFetchCoordinator();
+    await coord.fetchForWorktree({
+      worktreeId: "wt1",
+      worktreePath: "/repo",
+    });
+
+    expect(mockGit.raw).toHaveBeenCalledTimes(1);
+    const args = mockGit.raw.mock.calls[0][0];
+    expect(args).toEqual(["fetch", "origin", "--no-auto-gc", "--prune", "--no-write-fetch-head"]);
+  });
+
   it("propagates authFailed=true via FetchResult on auth-class failures and skips", async () => {
     mockGetGitCommonDir.mockReturnValue("/repo/.git");
     mockCreateBackgroundFetchGit.mockReturnValue(

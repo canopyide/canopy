@@ -239,7 +239,11 @@ export class RepoFetchCoordinator {
       const git = createBackgroundFetchGit(opts.worktreePath, {
         signal: controller.signal,
       });
-      await git.raw(["fetch", "origin", "--no-auto-gc", "--prune"]);
+      // --no-write-fetch-head: skip writing FETCH_HEAD on background fetches
+      // so concurrent foreground operations (status polls, user pushes) don't
+      // contend on the same file. Requires Git ≥ 2.29 — all supported platforms
+      // ship ≥ 2.34, so no version guard is needed.
+      await git.raw(["fetch", "origin", "--no-auto-gc", "--prune", "--no-write-fetch-head"]);
 
       const state = this.states.get(commonDir);
       if (!state || state.generation !== generationAtStart) {
