@@ -10,6 +10,7 @@ const {
   mockMcpServerService,
   mockStoreGet,
   mockProbeMcpServer,
+  mockProbeMcpSseServer,
 } = vi.hoisted(() => ({
   mockUserDataDir: vi.fn<() => string>(),
   mockHelpFolderPath: vi.fn<() => string | null>(),
@@ -35,6 +36,7 @@ const {
   },
   mockStoreGet: vi.fn<(key: string) => unknown>(),
   mockProbeMcpServer: vi.fn<(port: number, apiKey: string) => Promise<void>>(),
+  mockProbeMcpSseServer: vi.fn<(port: number, token: string) => Promise<void>>(),
 }));
 
 vi.mock("electron", () => ({
@@ -56,6 +58,7 @@ vi.mock("../McpServerService.js", () => ({
 
 vi.mock("../mcp-server/readinessProbe.js", () => ({
   probeMcpServer: (port: number, apiKey: string) => mockProbeMcpServer(port, apiKey),
+  probeMcpSseServer: (port: number, token: string) => mockProbeMcpSseServer(port, token),
 }));
 
 vi.mock("../../store.js", () => ({
@@ -113,6 +116,8 @@ describe("HelpSessionService", () => {
     mockMcpServerService.setHelpTokenValidator.mockClear();
     mockProbeMcpServer.mockReset();
     mockProbeMcpServer.mockResolvedValue(undefined);
+    mockProbeMcpSseServer.mockReset();
+    mockProbeMcpSseServer.mockResolvedValue(undefined);
 
     service = new HelpSessionService();
     // The new `ensureMcpServerReady` path throws if no registry is wired —
@@ -456,10 +461,22 @@ describe("HelpSessionService", () => {
     expect(mockProbeMcpServer).toHaveBeenCalledWith(45454, "test-api-key");
   });
 
+  it("probes the exact assistant SSE bearer after registering the minted session token", async () => {
+    mockProbeMcpSseServer.mockImplementationOnce(async (_port, token) => {
+      expect(service.validateToken(token)).toBe("action");
+    });
+
+    const result = await service.provisionSession(provisionInput());
+    if (!result) throw new Error("expected result");
+
+    expect(mockProbeMcpSseServer).toHaveBeenCalledWith(45454, result.token);
+  });
+
   it("skips the active probe when daintreeControl is false", async () => {
     mockStoreGet.mockReturnValue({ daintreeControl: false });
     await service.provisionSession(provisionInput());
     expect(mockProbeMcpServer).not.toHaveBeenCalled();
+    expect(mockProbeMcpSseServer).not.toHaveBeenCalled();
   });
 
   it("throws MCP_NOT_READY when the active probe fails — passive socket-bound state isn't enough", async () => {
@@ -488,5 +505,27 @@ describe("HelpSessionService", () => {
       entries = [];
     }
     expect(entries).toEqual([]);
+  });
+
+  it("throws MCP_NOT_READY and strips the daintree entry when the assistant SSE bearer probe fails", async () => {
+    mockProbeMcpSseServer.mockRejectedValueOnce(new Error("SSE returned status 401"));
+
+    await expect(service.provisionSession(provisionInput())).rejects.toMatchObject({
+      name: "HelpSessionError",
+      code: "MCP_NOT_READY",
+    });
+
+    const token = mockProbeMcpSseServer.mock.calls[0]?.[1];
+    expect(token).toBeTypeOf("string");
+    expect(service.validateToken(token!)).toBe(false);
+
+    const sessionsRoot = path.join(userData, "help-sessions");
+    const entries = await fs.readdir(sessionsRoot);
+    expect(entries.length).toBe(1);
+    const mcp = JSON.parse(
+      await fs.readFile(path.join(sessionsRoot, entries[0]!, ".mcp.json"), "utf-8")
+    );
+    expect(mcp.mcpServers.daintree).toBeUndefined();
+    expect(mcp.mcpServers["daintree-docs"]).toBeDefined();
   });
 });

@@ -7,7 +7,7 @@ import { store } from "../store.js";
 import { getHelpFolderPath } from "./HelpService.js";
 import { resilientAtomicWriteFile } from "../utils/fs.js";
 import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
-import { probeMcpServer } from "./mcp-server/readinessProbe.js";
+import { probeMcpServer, probeMcpSseServer } from "./mcp-server/readinessProbe.js";
 import type { HelpAssistantTier } from "../../shared/types/ipc/maps.js";
 
 const SESSIONS_DIR_NAME = "help-sessions";
@@ -226,6 +226,22 @@ export class HelpSessionService {
     this.sessionsByToken.set(token, record);
     this.sessionsById.set(sessionId, record);
 
+    if (settings.daintreeControl && port) {
+      try {
+        await probeMcpSseServer(port, token);
+      } catch (err) {
+        record.revoked = true;
+        this.sessionsByToken.delete(token);
+        this.sessionsById.delete(sessionId);
+        await this.stripStaleDaintreeMcpEntry(sessionPath);
+        const reason = formatErrorMessage(err, "assistant MCP session isn't ready");
+        throw new HelpSessionError(
+          "MCP_NOT_READY",
+          `Daintree Assistant minted an MCP session, but the assistant bearer was not ready: ${reason}`
+        );
+      }
+    }
+
     const mcpUrl = settings.daintreeControl && port ? `http://127.0.0.1:${port}/sse` : null;
     return { sessionId, sessionPath, token, tier, mcpUrl, windowId: input.windowId };
   }
@@ -410,11 +426,9 @@ export class HelpSessionService {
     // don't write `.mcp.json` and launch the assistant against a server
     // that hangs or 500s on the first request.
     //
-    // Probe targets `/mcp` (Streamable HTTP) even though the assistant
-    // .mcp.json points at `/sse`. The auth + host validation + handler
-    // dispatch are shared between the two paths, so a passing probe
-    // proves the server is genuinely live; only an SSE-transport-specific
-    // initialization fault would slip through this gate.
+    // Probe targets `/mcp` (Streamable HTTP) before the help token exists.
+    // After the session record is registered, `doProvision()` also probes
+    // `/sse` with the freshly minted assistant bearer that Claude will use.
     const port = mcpServerService.currentPort;
     const apiKey = mcpServerService.currentApiKey;
     if (port === null || !apiKey) {

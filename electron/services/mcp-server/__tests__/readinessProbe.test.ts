@@ -5,6 +5,7 @@ import {
   PROBE_MAX_ATTEMPTS,
   PROBE_PROTOCOL_VERSION,
   probeMcpServer,
+  probeMcpSseServer,
 } from "../readinessProbe.js";
 
 interface CapturedRequest {
@@ -257,6 +258,104 @@ describe("probeMcpServer", () => {
       expect.objectContaining({ message: expect.stringContaining("status 404") })
     );
     warn.mockRestore();
+  });
+});
+
+describe("probeMcpSseServer", () => {
+  let fake: FakeServer | null = null;
+
+  afterEach(async () => {
+    if (fake) {
+      await fake.close();
+      fake = null;
+    }
+  });
+
+  it("resolves after SSE endpoint discovery, POST initialize, and initialize result message", async () => {
+    let sseRes: http.ServerResponse | null = null;
+    fake = await startFakeServer((req, res, body) => {
+      if (req.method === "GET" && req.url === "/sse") {
+        sseRes = res;
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        });
+        res.write("event: endpoint\ndata: /messages?sessionId=sse-session-1\n\n");
+        return;
+      }
+      if (req.method === "POST" && req.url === "/messages?sessionId=sse-session-1") {
+        const parsed = JSON.parse(body);
+        expect(parsed.method).toBe("initialize");
+        expect(parsed.params.protocolVersion).toBe(PROBE_PROTOCOL_VERSION);
+        res.writeHead(202);
+        res.end("Accepted");
+        sseRes?.write(
+          `event: message\ndata: ${JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            result: {
+              protocolVersion: PROBE_PROTOCOL_VERSION,
+              capabilities: {},
+              serverInfo: { name: "fake", version: "1.0.0" },
+            },
+          })}\n\n`
+        );
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+
+    await probeMcpSseServer(fake.port, "help-token");
+
+    const getReq = fake.requests.find((r) => r.method === "GET");
+    expect(getReq?.path).toBe("/sse");
+    expect(getReq?.headers.authorization).toBe("Bearer help-token");
+
+    const postReq = fake.requests.find((r) => r.method === "POST");
+    expect(postReq?.path).toBe("/messages?sessionId=sse-session-1");
+    expect(postReq?.headers.authorization).toBe("Bearer help-token");
+  });
+
+  it("rejects when the SSE endpoint returns 401", async () => {
+    fake = await startFakeServer((_req, res) => {
+      res.writeHead(401);
+      res.end("Unauthorized");
+    });
+
+    await expect(
+      probeMcpSseServer(fake.port, "bad-token", { hardTimeoutMs: 500, baseDelayMs: 10 })
+    ).rejects.toThrow(/SSE returned status 401/);
+  });
+
+  it("rejects when the SSE stream never returns initialize response", async () => {
+    fake = await startFakeServer((req, res) => {
+      if (req.method === "GET" && req.url === "/sse") {
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        });
+        res.write("event: endpoint\ndata: /messages?sessionId=sse-session-2\n\n");
+        return;
+      }
+      if (req.method === "POST" && req.url === "/messages?sessionId=sse-session-2") {
+        res.writeHead(202);
+        res.end("Accepted");
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+
+    await expect(
+      probeMcpSseServer(fake.port, "help-token", {
+        hardTimeoutMs: 250,
+        requestTimeoutMs: 80,
+        baseDelayMs: 10,
+      })
+    ).rejects.toThrow(/MCP SSE readiness probe failed/);
   });
 });
 
