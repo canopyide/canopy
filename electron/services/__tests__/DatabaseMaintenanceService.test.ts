@@ -130,7 +130,7 @@ describe("DatabaseMaintenanceService", () => {
     // Advance past tick interval (5 minutes)
     vi.advanceTimersByTime(5 * 60 * 1000 + 100);
 
-    expect(mockSqlite.pragma).toHaveBeenCalledWith("wal_checkpoint(PASSIVE)");
+    expect(mockSqlite.pragma).toHaveBeenCalledWith("wal_checkpoint(TRUNCATE)");
     expect(mockSqlite.backup).toHaveBeenCalled();
     void service.dispose();
   });
@@ -167,6 +167,7 @@ describe("DatabaseMaintenanceService", () => {
     await service.dispose();
 
     expect(mockSqlite.backup).toHaveBeenCalled();
+    expect(mockSqlite.pragma).toHaveBeenCalledWith("optimize");
     expect(mockSqlite.pragma).toHaveBeenCalledWith("wal_checkpoint(TRUNCATE)");
   });
 
