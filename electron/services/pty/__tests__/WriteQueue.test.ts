@@ -288,6 +288,25 @@ describe("WriteQueue.waitForInputWriteDrain", () => {
     // With the Promise-based approach, drain() produces no extra timers.
     expect(vi.getTimerCount()).toBeLessThanOrEqual(timerCountBefore);
   });
+
+  it("resolves all concurrent drain waiters", async () => {
+    const m = makeOptions();
+    const wq = new WriteQueue(m.options);
+    wq.enqueueChunked("x".repeat(WRITE_MAX_CHUNK_SIZE * 3));
+
+    let firstResolved = false;
+    let secondResolved = false;
+    void wq.waitForInputWriteDrain().then(() => {
+      firstResolved = true;
+    });
+    void wq.waitForInputWriteDrain().then(() => {
+      secondResolved = true;
+    });
+
+    await vi.runAllTimersAsync();
+    expect(firstResolved).toBe(true);
+    expect(secondResolved).toBe(true);
+  });
 });
 
 describe("WriteQueue.dispose", () => {
@@ -446,5 +465,32 @@ describe("WriteQueue.submit timeout", () => {
     await vi.runAllTimersAsync();
 
     expect(m.performSubmit).toHaveBeenCalledWith("fresh");
+  });
+
+  it("does not cause unhandled rejection when work rejects after timeout", async () => {
+    const m = makeOptions();
+    let lateReject!: () => void;
+    m.performSubmit.mockImplementation(
+      () =>
+        new Promise<void>((_, reject) => {
+          lateReject = reject;
+        })
+    );
+    const wq = new WriteQueue(m.options);
+
+    wq.submit("late-reject");
+
+    // Fire the timeout.
+    await vi.advanceTimersByTimeAsync(3000);
+
+    // Now reject the original performSubmit after the timeout.
+    lateReject(new Error("PTY write failed"));
+    await vi.runAllTimersAsync();
+
+    // onWriteError should be called exactly once (the timeout error,
+    // not the late rejection).
+    expect(m.onWriteError).toHaveBeenCalledTimes(1);
+    const err = m.onWriteError.mock.calls[0]?.[0] as Error;
+    expect(err.message).toContain("timed out");
   });
 });

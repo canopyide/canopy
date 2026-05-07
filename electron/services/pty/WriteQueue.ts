@@ -39,7 +39,7 @@ export interface OutputSettleOptions {
 export class WriteQueue {
   private inputWriteQueue: string[] = [];
   private inputWriteTimeout: NodeJS.Timeout | null = null;
-  private inputWriteDrainResolve: (() => void) | null = null;
+  private inputWriteDrainResolvers: Array<() => void> = [];
   private submitQueue: string[] = [];
   private submitInFlight = false;
   private disposed = false;
@@ -86,7 +86,7 @@ export class WriteQueue {
   async waitForInputWriteDrain(): Promise<void> {
     if (this.disposed || this.options.isExited() || !this.hasPendingWrites()) return;
     await new Promise<void>((resolve) => {
-      this.inputWriteDrainResolve = resolve;
+      this.inputWriteDrainResolvers.push(resolve);
     });
   }
 
@@ -124,16 +124,20 @@ export class WriteQueue {
     }
     this.inputWriteQueue = [];
     this.submitQueue = [];
-    this.inputWriteDrainResolve?.();
-    this.inputWriteDrainResolve = null;
+    for (const resolve of this.inputWriteDrainResolvers) {
+      resolve();
+    }
+    this.inputWriteDrainResolvers = [];
   }
 
   private startWrite(): void {
     if (this.disposed) return;
     if (this.inputWriteTimeout !== null || this.inputWriteQueue.length === 0) {
       if (this.inputWriteQueue.length === 0 && this.inputWriteTimeout === null) {
-        this.inputWriteDrainResolve?.();
-        this.inputWriteDrainResolve = null;
+        for (const resolve of this.inputWriteDrainResolvers) {
+          resolve();
+        }
+        this.inputWriteDrainResolvers = [];
       }
       return;
     }
@@ -147,8 +151,10 @@ export class WriteQueue {
         this.startWrite();
       }, WRITE_INTERVAL_MS);
     } else {
-      this.inputWriteDrainResolve?.();
-      this.inputWriteDrainResolve = null;
+      for (const resolve of this.inputWriteDrainResolvers) {
+        resolve();
+      }
+      this.inputWriteDrainResolvers = [];
     }
   }
 
@@ -184,12 +190,12 @@ export class WriteQueue {
           try {
             await Promise.race([work, timeoutPromise]);
           } finally {
+            if (timedOut) {
+              work.catch(() => {
+                // Absorb post-timeout rejection — already routed to onWriteError.
+              });
+            }
             clearTimeout(timeoutId);
-          }
-          if (timedOut) {
-            work.catch(() => {
-              // Absorb post-timeout rejection — already routed to onWriteError.
-            });
           }
         } catch (error) {
           this.options.onWriteError?.(error, { operation: "performSubmit" });
