@@ -4,8 +4,8 @@ import path from "node:path";
 
 const userData = process.env.DAINTREE_USER_DATA;
 if (userData) {
+  const cacheDir = path.join(userData, "compile-cache");
   try {
-    const cacheDir = path.join(userData, "compile-cache");
     fs.mkdirSync(cacheDir, { recursive: true });
     enableCompileCache(cacheDir);
   } catch (e) {
