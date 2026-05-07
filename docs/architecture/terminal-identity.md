@@ -41,6 +41,18 @@ type TerminalRuntimeIdentity =
 
 Fresh detection fields take precedence over any existing `runtimeIdentity`. This protects promotion paths like `npm run build -> claude`, where stale process identity must not block agent promotion.
 
+## Live Identity Sources
+
+The live identity fields (`detectedAgentId`, `detectedProcessId`) are produced by two components in the PTY host. **ProcessDetector** is the primary producer — it polls the process tree and merges shell-command evidence from the secondary producer at a single merge point. **IdentityWatcher** is the secondary producer — it captures keystrokes, parses submitted commands, and injects shell-command evidence into ProcessDetector.
+
+ProcessDetector requires consecutive agreeing polls before committing an identity change. This hysteresis guards against one-poll blips from short-lived subprocesses. Shell-command evidence injected by IdentityWatcher carries a sticky TTL so that transient `ps` blindness does not demote a committed agent. Evidence-source tags on every detection result distinguish process-tree observations from shell-command observations — the demotion path branches on these tags.
+
+IdentityWatcher waits a short commit window after a command is submitted before injecting evidence: long enough for the process to start, short enough that fast-exit commands have already returned a prompt. On prompt-return (detected via shell prompt patterns, confirmed by consecutive polls), the watcher demotes its own shell-command evidence. A foreground-process-group probe gates this demotion — if the agent child process still owns the terminal foreground, the shell is not truly idle and demotion is held.
+
+**HOLD semantics.** The detection system treats `unknown` (no evidence, cache error) and `ambiguous` (conflicting evidence from both producers) as no-op states that do not mutate committed identity. This is a deliberate design choice: uncertain events must not drive state transitions. The consumer can therefore treat `detectedAgentId` as authoritative — the producers have already filtered noise, and uncertainty is silently held rather than driving spurious demotions.
+
+See [terminal-lifecycle.md](./terminal-lifecycle.md) for the broader PTY lifecycle that these producers operate within.
+
 ## Fields
 
 | Field | Purpose | Writer | Persisted |
