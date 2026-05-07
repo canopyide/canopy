@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { randomUUID } from "crypto";
+import fs from "fs/promises";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../persistence/schema.js";
@@ -76,5 +77,40 @@ describe("ScratchStore transaction mode", () => {
     store.setCurrentScratch(scratchId);
     expect(spy).toHaveBeenCalledWith(expect.any(Function), { behavior: "immediate" });
     spy.mockRestore();
+  });
+});
+
+describe("createScratch rollback", () => {
+  let store: ScratchStore;
+
+  beforeEach(() => {
+    sqlite = new Database(":memory:");
+    sqlite.exec(CREATE_TABLES_SQL);
+    db = drizzle(sqlite, { schema });
+    store = new ScratchStore();
+  });
+
+  afterEach(() => {
+    sqlite.close();
+  });
+
+  it("removes the scratch directory when db.insert fails", async () => {
+    const mkdirSpy = vi.spyOn(fs, "mkdir").mockResolvedValue(undefined);
+    const rmSpy = vi.spyOn(fs, "rm").mockResolvedValue(undefined);
+
+    vi.spyOn(db, "insert").mockImplementationOnce(() => {
+      throw new Error("DB insert failure");
+    });
+
+    await expect(store.createScratch()).rejects.toThrow("DB insert failure");
+    expect(rmSpy).toHaveBeenCalledWith(mkdirSpy.mock.calls[0]![0], {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 100,
+    });
+
+    mkdirSpy.mockRestore();
+    rmSpy.mockRestore();
   });
 });

@@ -19,12 +19,10 @@
  * must not block startup.
  */
 import fs from "fs/promises";
-import { existsSync } from "fs";
 import { scratchStore as defaultScratchStore } from "./ScratchStore.js";
 import { logError, logInfo } from "../utils/logger.js";
 import { SCRATCH_CLEANUP_TTL_MS } from "../../shared/config/scratchCleanup.js";
-
-export { SCRATCH_CLEANUP_TTL_MS as SCRATCH_TTL_MS } from "../../shared/config/scratchCleanup.js";
+import { getScratchDir, getScratchesRoot } from "./scratchStorePaths.js";
 
 export interface ScratchCleanupResult {
   /** Total rows examined as candidates (live-stale plus already-tombstoned). */
@@ -79,12 +77,13 @@ export async function runScratchCleanup(
       }
     }
 
-    if (row.path && existsSync(row.path)) {
+    const dir = getScratchDir(getScratchesRoot(), row.id);
+    if (dir) {
       try {
-        await fs.rm(row.path, { recursive: true, force: true });
+        await fs.rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
       } catch (error) {
         result.directoriesFailed += 1;
-        logError(`[ScratchCleanup] Failed to remove scratch directory ${row.path}`, error);
+        logError(`[ScratchCleanup] Failed to remove scratch directory ${dir}`, error);
         continue;
       }
     }
@@ -92,6 +91,9 @@ export async function runScratchCleanup(
     result.directoriesRemoved += 1;
     try {
       store.hardDeleteScratch(row.id);
+      if (row.id === currentScratchId) {
+        store.clearCurrentScratch();
+      }
     } catch (error) {
       logError(`[ScratchCleanup] Failed to hard-delete scratch ${row.id}`, error);
     }
