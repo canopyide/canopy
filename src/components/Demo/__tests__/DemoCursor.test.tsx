@@ -414,6 +414,13 @@ describe("DemoCursor", () => {
 
     const delays: number[] = [];
     const origSetTimeout = globalThis.setTimeout;
+    const randomValues = [
+      0.5, 0.5, 0, 0.5, 0.5, 0.5, 0.5, 0.2, 0, 0.5, 0.5, 0, 0.5, 0.5, 0.5,
+    ];
+    let randomIndex = 0;
+    const randomSpy = vi.spyOn(Math, "random").mockImplementation(() => {
+      return randomValues[randomIndex++] ?? 0.5;
+    });
     const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout").mockImplementation(((
       fn: (...args: unknown[]) => void,
       ms?: number
@@ -422,24 +429,27 @@ describe("DemoCursor", () => {
       return origSetTimeout(fn, 0);
     }) as typeof setTimeout);
 
-    render(<DemoCursor />);
-    emit("demo:exec-type", {
-      selector: "#type-delay-input",
-      text: "ab cd",
-      cps: 12,
-      requestId: "req-type-delays",
-    });
+    try {
+      render(<DemoCursor />);
+      emit("demo:exec-type", {
+        selector: "#type-delay-input",
+        text: "ab cd",
+        cps: 12,
+        requestId: "req-type-delays",
+      });
 
-    await new Promise((r) => origSetTimeout(r, 500));
+      await new Promise((r) => origSetTimeout(r, 500));
 
-    // With Gaussian variance, not all delays should be identical
-    const uniqueDelays = new Set(delays.filter((d) => d >= 10));
-    expect(uniqueDelays.size).toBeGreaterThan(1);
+      // With Gaussian variance, not all delays should be identical
+      const uniqueDelays = new Set(delays.filter((d) => d >= 10));
+      expect(uniqueDelays.size).toBeGreaterThan(1);
 
-    expect(demoMock.sendCommandDone).toHaveBeenCalledWith("req-type-delays", undefined);
-
-    setTimeoutSpy.mockRestore();
-    document.body.removeChild(input);
+      expect(demoMock.sendCommandDone).toHaveBeenCalledWith("req-type-delays", undefined);
+    } finally {
+      randomSpy.mockRestore();
+      setTimeoutSpy.mockRestore();
+      document.body.removeChild(input);
+    }
   });
 
   it("waitForSelector resolves immediately when element exists", async () => {
