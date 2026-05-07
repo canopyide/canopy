@@ -263,6 +263,87 @@ describe("urlHistoryStore", () => {
     expect(entries).toHaveLength(1);
     expect(entries[0]!.url).toBe("http://localhost:3000/new");
   });
+
+  it("recordVisit with a sensitive URL does not mutate existing safe history", () => {
+    const store = useUrlHistoryStore.getState();
+    store.recordVisit("proj1", "http://localhost:3000/", "Home");
+    const before = useUrlHistoryStore.getState().entries["proj1"]!;
+    store.recordVisit("proj1", "https://app.com/cb?code=abc&state=xyz", "OAuth");
+    const after = useUrlHistoryStore.getState().entries["proj1"]!;
+    expect(after).toHaveLength(1);
+    expect(after[0]!.url).toBe(before[0]!.url);
+    expect(after[0]!.title).toBe("Home");
+  });
+
+  it("updateTitle canonicalizes the lookup URL and updates the existing entry", () => {
+    const store = useUrlHistoryStore.getState();
+    store.recordVisit("proj1", "https://example.com/page", "Old");
+    store.updateTitle("proj1", "https://example.com/page?utm_source=email", "New");
+    const entries = useUrlHistoryStore.getState().entries["proj1"]!;
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.title).toBe("New");
+  });
+
+  it("updateFavicon canonicalizes the lookup URL and updates the existing entry", () => {
+    const store = useUrlHistoryStore.getState();
+    store.recordVisit("proj1", "https://example.com/page", "Page");
+    store.updateFavicon("proj1", "https://example.com/page?fbclid=xyz", "favicon.ico");
+    const entries = useUrlHistoryStore.getState().entries["proj1"]!;
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.favicon).toBe("favicon.ico");
+  });
+
+  it("retention boundary: entries just under 90 days survive, just over are pruned", () => {
+    const now = Date.now();
+    const ninetyDaysMs = 90 * 24 * 3600 * 1000;
+    useUrlHistoryStore.setState({
+      entries: {
+        proj1: [
+          {
+            url: "http://localhost:3000/just-old",
+            title: "Just Old",
+            visitCount: 1,
+            lastVisitAt: now - ninetyDaysMs + 1000,
+          },
+          {
+            url: "http://localhost:3000/too-old",
+            title: "Too Old",
+            visitCount: 1,
+            lastVisitAt: now - ninetyDaysMs - 1000,
+          },
+        ],
+      },
+    });
+    useUrlHistoryStore.getState().recordVisit("proj1", "http://localhost:3000/fresh", "Fresh");
+    const entries = useUrlHistoryStore.getState().entries["proj1"]!;
+    const urls = entries.map((e) => e.url).sort();
+    expect(urls).toEqual(["http://localhost:3000/fresh", "http://localhost:3000/just-old"]);
+  });
+
+  it("500-entry cap evicts low-frecency entries first", () => {
+    const store = useUrlHistoryStore.getState();
+    const now = Date.now();
+    const seeded: UrlHistoryEntry[] = [];
+    for (let i = 0; i < 500; i++) {
+      seeded.push({
+        url: `http://localhost:3000/seed-${i}`,
+        title: `Seed ${i}`,
+        visitCount: 1,
+        lastVisitAt: now - 1000,
+      });
+    }
+    seeded.push({
+      url: "http://localhost:3000/high-value",
+      title: "High",
+      visitCount: 50,
+      lastVisitAt: now - 1000,
+    });
+    useUrlHistoryStore.setState({ entries: { proj1: seeded } });
+    store.recordVisit("proj1", "http://localhost:3000/trigger-cap", "Trigger");
+    const entries = useUrlHistoryStore.getState().entries["proj1"]!;
+    expect(entries.length).toBeLessThanOrEqual(500);
+    expect(entries.find((e) => e.url === "http://localhost:3000/high-value")).toBeDefined();
+  });
 });
 
 describe("sanitizeUrlForHistory", () => {
@@ -276,6 +357,15 @@ describe("sanitizeUrlForHistory", () => {
     expect(sanitizeUrlForHistory("https://app.com/#token_type=Bearer")).toBeNull();
   });
 
+  it("returns null for tokens after `?` inside hash-router fragments (Angular/SPA implicit flow)", () => {
+    expect(sanitizeUrlForHistory("https://app.com/#/callback?access_token=secret")).toBeNull();
+    expect(sanitizeUrlForHistory("https://app.com/#/auth?id_token=eyJ&state=x")).toBeNull();
+  });
+
+  it("returns null for GCS signed URLs with uppercase param keys", () => {
+    expect(sanitizeUrlForHistory("https://s.googleapis.com/b/f?X-GOOG-SIGNATURE=abc")).toBeNull();
+  });
+
   it("returns null for basic-auth URLs", () => {
     expect(sanitizeUrlForHistory("https://user:pass@example.com/")).toBeNull();
     expect(sanitizeUrlForHistory("https://user@example.com/")).toBeNull();
@@ -285,9 +375,7 @@ describe("sanitizeUrlForHistory", () => {
     expect(
       sanitizeUrlForHistory("https://b.s3.amazonaws.com/f?X-Amz-Signature=abc&X-Amz-Date=z")
     ).toBeNull();
-    expect(
-      sanitizeUrlForHistory("https://b.s3.amazonaws.com/f?x-amz-signature=abc")
-    ).toBeNull();
+    expect(sanitizeUrlForHistory("https://b.s3.amazonaws.com/f?x-amz-signature=abc")).toBeNull();
   });
 
   it("returns null for GCS signed URLs", () => {
@@ -298,9 +386,7 @@ describe("sanitizeUrlForHistory", () => {
     expect(
       sanitizeUrlForHistory("https://a.blob.core.windows.net/c/f?sig=abc&se=2026&sv=2024")
     ).toBeNull();
-    expect(
-      sanitizeUrlForHistory("https://a.blob.core.windows.net/c/f?sig=abc&sv=2024")
-    ).toBeNull();
+    expect(sanitizeUrlForHistory("https://a.blob.core.windows.net/c/f?sig=abc&sv=2024")).toBeNull();
   });
 
   it("strips tracking params and sorts remaining params alphabetically", () => {
