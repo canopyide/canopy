@@ -132,7 +132,7 @@ export class ResourceActionExecutor {
     // Idempotent provision: route to resume when paused, no-op when already running.
     let effectiveAction = action;
     if (action === "provision") {
-      const currentStatus = monitor.resourceStatus?.lastStatus?.toLowerCase();
+      const currentStatus = monitor.resourceStatus?.lastStatus?.toLowerCase().trim();
       if (currentStatus && READY_STATUSES.has(currentStatus)) {
         console.log(
           `[WorktreeLifecycle] Provision no-op for worktree ${worktreeId}: already ${currentStatus}`

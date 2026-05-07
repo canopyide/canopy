@@ -432,7 +432,9 @@ export class WorktreeMonitor {
       // collided with explicit user values that happened to match a default
       // (e.g. `statusInterval: 300` matching the new 300s background default).
       if (!this.resourcePollIntervalExplicit) {
-        this.applyDefaultResourcePollInterval();
+        this.resourcePollIntervalMs = value
+          ? RESOURCE_POLL_DEFAULT_ACTIVE_MS
+          : RESOURCE_POLL_DEFAULT_BACKGROUND_MS;
         this.clearResourcePollTimer();
         this.scheduleResourcePoll();
       }
@@ -632,7 +634,7 @@ export class WorktreeMonitor {
    */
   setResourcePollInterval(ms: number): void {
     this.resourcePollIntervalMs = ms;
-    this.resourcePollIntervalExplicit = ms > 0;
+    this.resourcePollIntervalExplicit = true;
     this.clearResourcePollTimer();
     if (ms > 0 && this._hasResourceConfig && this._isRunning) {
       this.scheduleResourcePoll();

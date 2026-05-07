@@ -173,6 +173,7 @@ function makeCallbacks(overrides?: Partial<WorktreeMonitorCallbacks>): WorktreeM
 describe("WorktreeMonitor", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0);
     vi.clearAllMocks();
     mockCategorizeWorktree.mockReturnValue("stable");
     mockWatcherStartResult = false;
@@ -191,6 +192,7 @@ describe("WorktreeMonitor", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it("calls onRemoved and stops polling when WorktreeRemovedError is thrown", async () => {
