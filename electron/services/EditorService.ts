@@ -137,6 +137,78 @@ const KNOWN_EDITORS: EditorDefinition[] = [
   },
 ];
 
+const TERMINAL_EDITORS = new Set<string>([
+  "vim",
+  "vi",
+  "nvim",
+  "nano",
+  "emacs",
+  "emacs-nox",
+  "pico",
+  "helix",
+  "hx",
+  "kak",
+  "micro",
+  "ed",
+  "joe",
+  "jed",
+  "mg",
+  "mcedit",
+  "ne",
+  "tilde",
+]);
+
+function tokenizeArgString(input: string): string[] {
+  const expanded = input.replace(/^~(?=\/|$)/, os.homedir());
+  const tokens: string[] = [];
+  let current = "";
+  let inSingle = false;
+  let inDouble = false;
+  let hasContent = false;
+
+  for (let i = 0; i < expanded.length; i++) {
+    const ch = expanded[i];
+    if (inSingle) {
+      if (ch === "'") {
+        inSingle = false;
+      } else {
+        current += ch;
+      }
+      continue;
+    }
+    if (inDouble) {
+      if (ch === '"') {
+        inDouble = false;
+      } else {
+        current += ch;
+      }
+      continue;
+    }
+    if (ch === "'") {
+      inSingle = true;
+      hasContent = true;
+      continue;
+    }
+    if (ch === '"') {
+      inDouble = true;
+      hasContent = true;
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      if (hasContent) {
+        tokens.push(current);
+        current = "";
+        hasContent = false;
+      }
+      continue;
+    }
+    current += ch;
+    hasContent = true;
+  }
+  if (hasContent) tokens.push(current);
+  return tokens;
+}
+
 function macAppBundleDirs(apps: Array<{ name: string; subPath?: string }>): string[] {
   if (process.platform !== "darwin") return [];
   const dirs: string[] = [];
@@ -184,7 +256,14 @@ function findBinaryInPath(binary: string, extraDirs: string[] = []): string | nu
       const fullPath = p.join(dir, binary + ext);
       try {
         const stat = fs.statSync(fullPath);
-        if (stat.isFile()) return fullPath;
+        if (!stat.isFile()) continue;
+        if (process.platform === "win32") return fullPath;
+        try {
+          fs.accessSync(fullPath, fs.constants.X_OK);
+          return fullPath;
+        } catch {
+          // not executable for this user, continue
+        }
       } catch {
         // not found, continue
       }
@@ -227,14 +306,12 @@ function buildCustomArgs(
 ): { binary: string; args: string[] } {
   const lineStr = line !== undefined ? String(line) : "";
   const colStr = col !== undefined ? String(col) : "";
-  const expanded = template
-    .replace("{file}", filePath)
-    .replace("{line}", lineStr)
-    .replace("{col}", colStr);
 
-  // Parse expanded template into argv (simple split on whitespace, no shell)
-  const parts = expanded.trim().split(/\s+/).filter(Boolean);
-  return { binary: command, args: parts };
+  const tokens = tokenizeArgString(template);
+  const args = tokens.map((token) =>
+    token.replace("{file}", filePath).replace("{line}", lineStr).replace("{col}", colStr)
+  );
+  return { binary: command, args };
 }
 
 export async function openFile(
@@ -291,8 +368,17 @@ export async function openFile(
   // 2. Try VISUAL / EDITOR env vars
   const envEditor = process.env.VISUAL || process.env.EDITOR;
   if (envEditor) {
-    const launched = await launchEditor(envEditor, [filePath]);
-    if (launched) return;
+    const tokens = tokenizeArgString(envEditor);
+    if (tokens.length > 0) {
+      const [binary, ...extraArgs] = tokens;
+      // Skip terminal editors — spawning them detached + stdio:"ignore" produces an
+      // invisible hung process. Fall through to GUI-capable fallbacks instead.
+      const isTerminalEditor = TERMINAL_EDITORS.has(path.basename(binary).toLowerCase());
+      if (!isTerminalEditor) {
+        const launched = await launchEditor(binary, [...extraArgs, filePath]);
+        if (launched) return;
+      }
+    }
   }
 
   // 3. Try discovered editors in priority order
@@ -305,9 +391,11 @@ export async function openFile(
     }
   }
 
-  // 4. macOS .app fallback (no line support)
+  // 4. macOS .app fallback (no line support). `-t` opens with the user's default
+  // text editor (public.plain-text UTI handler) rather than the file-extension
+  // association, so .ts/.tsx files don't route through Xcode/Cursor.
   if (process.platform === "darwin") {
-    const launched = await launchEditor("open", [filePath]);
+    const launched = await launchEditor("open", ["-t", filePath]);
     if (launched) return;
   }
 
