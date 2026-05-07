@@ -94,6 +94,11 @@ export function registerTaskWorktreeHandlers(deps: HandlerDependencies): () => v
       } catch (error) {
         console.warn("[worktree.create-for-task] Failed to invalidate file search cache:", error);
       }
+      try {
+        deps.worktreeService?.invalidatePulseCache(worktreeId);
+      } catch (error) {
+        console.warn("[worktree.create-for-task] Failed to invalidate pulse cache:", error);
+      }
 
       // Store the taskId mapping
       taskWorktreeService.addTaskWorktreeMapping(project.id, taskId, worktreeId);
@@ -330,6 +335,11 @@ export function registerTaskWorktreeHandlers(deps: HandlerDependencies): () => v
             fileSearchService.invalidate(targetWorktree.path);
           } catch (error) {
             console.warn("[worktree.cleanup-task] Failed to invalidate file search cache:", error);
+          }
+          try {
+            deps.worktreeService?.invalidatePulseCache(worktreeId);
+          } catch (error) {
+            console.warn("[worktree.cleanup-task] Failed to invalidate pulse cache:", error);
           }
         }
 

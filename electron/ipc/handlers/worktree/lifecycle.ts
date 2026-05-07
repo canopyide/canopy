@@ -82,6 +82,11 @@ export function registerWorktreeLifecycleHandlers(deps: HandlerDependencies): ()
     } catch (error) {
       console.warn("[worktree.create] Failed to invalidate file search cache:", error);
     }
+    try {
+      deps.worktreeService?.invalidatePulseCache(worktreeId);
+    } catch (error) {
+      console.warn("[worktree.create] Failed to invalidate pulse cache:", error);
+    }
     if (store.get("notificationSettings").uiFeedbackSoundEnabled) {
       playSoundFireAndForget("worktree-create");
     }
@@ -133,6 +138,11 @@ export function registerWorktreeLifecycleHandlers(deps: HandlerDependencies): ()
         fileSearchService.invalidate(worktree.path);
       } catch (error) {
         console.warn("[worktree.delete] Failed to invalidate file search cache:", error);
+      }
+      try {
+        deps.worktreeService?.invalidatePulseCache(payload.worktreeId);
+      } catch (error) {
+        console.warn("[worktree.delete] Failed to invalidate pulse cache:", error);
       }
     }
     if (store.get("notificationSettings").uiFeedbackSoundEnabled) {

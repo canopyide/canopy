@@ -636,6 +636,15 @@ port.on("message", async (rawMsg: any) => {
         break;
       }
 
+      case "invalidate-pulse-cache": {
+        if (typeof request.worktreeId !== "string" || !request.worktreeId.trim()) {
+          console.warn("[WorkspaceHost] invalidate-pulse-cache: invalid worktreeId");
+          break;
+        }
+        projectPulseService.invalidate(request.worktreeId);
+        break;
+      }
+
       default:
         console.warn("[WorkspaceHost] Unknown message type:", (request as any).type);
     }

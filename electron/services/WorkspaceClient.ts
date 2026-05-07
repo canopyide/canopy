@@ -577,6 +577,14 @@ export class WorkspaceClient extends EventEmitter {
     return result.data;
   }
 
+  // ── Pulse cache ──
+
+  invalidatePulseCache(worktreeId: string): void {
+    for (const entry of this.pool.entries.values()) {
+      entry.host.send({ type: "invalidate-pulse-cache", worktreeId });
+    }
+  }
+
   // ── File tree ──
 
   async getFileTree(worktreePath: string, dirPath?: string): Promise<FileTreeNode[]> {

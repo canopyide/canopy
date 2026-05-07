@@ -159,6 +159,7 @@ describe("worktree IPC adversarial", () => {
       getAllStatesAsync: vi.fn().mockResolvedValue([]),
       createWorktree: vi.fn().mockResolvedValue("wt-new"),
       deleteWorktree: vi.fn().mockResolvedValue(undefined),
+      invalidatePulseCache: vi.fn(),
     };
     cleanup = registerWorktreeHandlers({
       worktreeService,
