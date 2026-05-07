@@ -333,7 +333,7 @@ export class GitHubAuth {
     }
 
     try {
-      const response = await fetch("https://api.github.com/user", {
+      const response = await rateLimitAwareFetch("https://api.github.com/user", {
         headers: {
           Authorization: `token ${token}`,
           Accept: "application/vnd.github.v3+json",
@@ -434,10 +434,12 @@ async function rateLimitAwareFetch(
 ): Promise<Response> {
   const response = await globalThis.fetch(input, init);
 
+  const requestId = response.headers.get("x-github-request-id") ?? undefined;
+
   // Phase 1 — header-only classification runs immediately so the Response
   // can flow back to Octokit without waiting on the body.
   try {
-    gitHubRateLimitService.update(response.headers, response.status);
+    gitHubRateLimitService.update(response.headers, response.status, undefined, requestId);
   } catch {
     // Rate-limit bookkeeping must never break the underlying request.
   }
@@ -459,7 +461,7 @@ async function rateLimitAwareFetch(
       .text()
       .then((bodyText) => {
         try {
-          gitHubRateLimitService.update(response.headers, response.status, bodyText);
+          gitHubRateLimitService.update(response.headers, response.status, bodyText, requestId);
         } catch {
           // Swallow — see Phase 1 comment.
         }

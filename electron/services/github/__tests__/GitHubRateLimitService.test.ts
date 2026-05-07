@@ -209,4 +209,60 @@ describe("GitHubRateLimitService", () => {
       expect(state.resetAt).toBeGreaterThan(Date.now());
     });
   });
+
+  describe("updateFromGraphQL()", () => {
+    it("marks primary block when remaining is 0", () => {
+      const resetAt = new Date(Date.now() + 30_000).toISOString();
+      gitHubRateLimitService.updateFromGraphQL({
+        rateLimit: { cost: 1, remaining: 0, resetAt },
+      });
+
+      const block = gitHubRateLimitService.shouldBlockRequest();
+      expect(block.blocked).toBe(true);
+      expect(block.reason).toBe("primary");
+    });
+
+    it("does nothing when remaining > 0", () => {
+      gitHubRateLimitService.updateFromGraphQL({
+        rateLimit: { cost: 5, remaining: 4995, resetAt: new Date().toISOString() },
+      });
+
+      expect(gitHubRateLimitService.shouldBlockRequest().blocked).toBe(false);
+    });
+
+    it("ignores missing rateLimit object", () => {
+      gitHubRateLimitService.updateFromGraphQL({ repository: {} });
+      expect(gitHubRateLimitService.shouldBlockRequest().blocked).toBe(false);
+    });
+
+    it("ignores malformed rateLimit (missing fields)", () => {
+      gitHubRateLimitService.updateFromGraphQL({ rateLimit: { cost: 1 } });
+      expect(gitHubRateLimitService.shouldBlockRequest().blocked).toBe(false);
+    });
+
+    it("ignores non-numeric remaining", () => {
+      gitHubRateLimitService.updateFromGraphQL({
+        rateLimit: { remaining: "0", resetAt: new Date().toISOString() },
+      });
+      expect(gitHubRateLimitService.shouldBlockRequest().blocked).toBe(false);
+    });
+  });
+
+  describe("requestId tracking", () => {
+    it("does not throw when requestId is passed to update()", () => {
+      gitHubRateLimitService.update(
+        makeHeaders({ "retry-after": "30" }),
+        429,
+        undefined,
+        "beef-dead"
+      );
+
+      expect(gitHubRateLimitService.shouldBlockRequest().blocked).toBe(true);
+    });
+
+    it("does not break when requestId is undefined", () => {
+      gitHubRateLimitService.update(makeHeaders({ "retry-after": "30" }), 429);
+      expect(gitHubRateLimitService.shouldBlockRequest().blocked).toBe(true);
+    });
+  });
 });

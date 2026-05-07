@@ -222,4 +222,50 @@ describe("GitHubAuth", () => {
       })
     );
   });
+
+  it("validate passes x-github-request-id to rate-limit service when present", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ login: "user", avatar_url: "" }),
+      headers: new Headers({
+        "x-oauth-scopes": "repo",
+        "x-github-request-id": "beef-dead-42",
+        "x-ratelimit-remaining": "4999",
+        "x-ratelimit-reset": String(Math.floor(Date.now() / 1000) + 3600),
+      }),
+    });
+    (globalThis as unknown as { fetch: Mock }).fetch = mockFetch;
+
+    // Reset rate-limit state so validate doesn't hit a pre-existing block.
+    const { gitHubRateLimitService } = await import("../GitHubRateLimitService.js");
+    gitHubRateLimitService._resetForTests();
+
+    await GitHubAuth.validate("ghp_validtoken012345678901234567890123456789");
+
+    // Should not mark blocked since remaining=4999 > 0.
+    expect(gitHubRateLimitService.shouldBlockRequest().blocked).toBe(false);
+  });
+
+  it("validate captures primary rate limit when remaining=0", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ login: "user", avatar_url: "" }),
+      headers: new Headers({
+        "x-oauth-scopes": "repo",
+        "x-ratelimit-remaining": "0",
+        "x-ratelimit-reset": String(Math.floor(Date.now() / 1000) + 60),
+      }),
+    });
+    (globalThis as unknown as { fetch: Mock }).fetch = mockFetch;
+
+    const { gitHubRateLimitService } = await import("../GitHubRateLimitService.js");
+    gitHubRateLimitService._resetForTests();
+
+    await GitHubAuth.validate("ghp_validtoken012345678901234567890123456789");
+
+    expect(gitHubRateLimitService.shouldBlockRequest().blocked).toBe(true);
+    expect(gitHubRateLimitService.shouldBlockRequest().reason).toBe("primary");
+
+    gitHubRateLimitService._resetForTests();
+  });
 });

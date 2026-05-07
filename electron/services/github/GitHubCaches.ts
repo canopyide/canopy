@@ -29,8 +29,23 @@ export const prTooltipCache = new Cache<string, PRTooltipData>({
   },
 });
 
-export const prETagCache = new Map<string, string>();
-export const branchListETagCache = new Map<string, string>();
+const ETAG_CACHE_MAX_SIZE = 500;
+const ETAG_CACHE_TTL = 3_600_000; // 1 hour
+
+export const prETagCache = new Cache<string, string>({
+  maxSize: ETAG_CACHE_MAX_SIZE,
+  defaultTTL: ETAG_CACHE_TTL,
+});
+export const branchListETagCache = new Cache<string, string>({
+  maxSize: ETAG_CACHE_MAX_SIZE,
+  defaultTTL: ETAG_CACHE_TTL,
+});
+
+let etagCacheVersion = 0;
+
+export function getETagCacheVersion(): number {
+  return etagCacheVersion;
+}
 
 export interface PRRequiredStatusEntry {
   ciStatus: GitHubPRCIStatus | undefined;
@@ -41,6 +56,7 @@ export const prRequiredStatusCache = new Cache<string, PRRequiredStatusEntry>({
 });
 
 export function clearGitHubCaches(): void {
+  etagCacheVersion++;
   repoContextCache.clear();
   repoStatsCache.clear();
   projectHealthCache.clear();
@@ -64,8 +80,11 @@ export function truncateBody(body: string | null | undefined, maxLength = 150): 
 }
 
 export function clearPRCaches(): void {
+  etagCacheVersion++;
   prListCache.clear();
   prTooltipCache.clear();
   prTooltipWrittenAt.clear();
+  prETagCache.clear();
+  branchListETagCache.clear();
   prRequiredStatusCache.clear();
 }

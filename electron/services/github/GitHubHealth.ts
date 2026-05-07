@@ -133,6 +133,8 @@ export async function getProjectHealth(
       request: { signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS) },
     })) as GraphQlQueryResponseData;
 
+    gitHubRateLimitService.updateFromGraphQL(result);
+
     const repository = result?.repository;
     if (!repository) {
       return { health: null, error: "Repository not found" };

@@ -17,6 +17,7 @@ const SECONDARY_FALLBACK_PAUSE_MS = 60_000;
 interface BlockState {
   kind: GitHubRateLimitKind;
   resumeAt: number;
+  requestId?: string;
 }
 
 export interface ShouldBlockResult {
@@ -62,11 +63,13 @@ class GitHubRateLimitServiceImpl {
    * Inspect a GitHub HTTP response's headers/status and update internal
    * state. Called from the custom fetch wrapper installed in
    * {@link GitHubAuth.createClient} on every response.
+   * @param requestId Optional x-github-request-id header value for
+   *   correlating blocks with GitHub Support tickets.
    */
-  update(headers: HeadersLike, status: number, bodyText?: string): void {
+  update(headers: HeadersLike, status: number, bodyText?: string, requestId?: string): void {
     const retryAfter = parseRetryAfter(headers.get("retry-after"));
     if (retryAfter !== null) {
-      this.markBlocked("secondary", Date.now() + retryAfter * 1000);
+      this.markBlocked("secondary", Date.now() + retryAfter * 1000, requestId);
       return;
     }
 
@@ -76,12 +79,12 @@ class GitHubRateLimitServiceImpl {
     const resetSeconds = parseIntOrNull(resetRaw);
 
     if (remaining === 0 && resetSeconds !== null) {
-      this.markBlocked("primary", resetSeconds * 1000 + PRIMARY_RESET_BUFFER_MS);
+      this.markBlocked("primary", resetSeconds * 1000 + PRIMARY_RESET_BUFFER_MS, requestId);
       return;
     }
 
     if ((status === 403 || status === 429) && looksLikeSecondaryLimit(bodyText)) {
-      this.markBlocked("secondary", Date.now() + SECONDARY_FALLBACK_PAUSE_MS);
+      this.markBlocked("secondary", Date.now() + SECONDARY_FALLBACK_PAUSE_MS, requestId);
       return;
     }
 
@@ -106,6 +109,30 @@ class GitHubRateLimitServiceImpl {
     return { blocked: true, reason: this.state.kind, resumeAt: this.state.resumeAt };
   }
 
+  /**
+   * Feed GraphQL `rateLimit { cost remaining resetAt }` data into the
+   * service. When `remaining` is 0 the service marks a `"primary"` block
+   * (GraphQL cost shares the same user rate-limit budget as REST).
+   * Ignores missing or malformed rateLimit objects silently.
+   */
+  updateFromGraphQL(data: Record<string, unknown>): void {
+    const rateLimit = data?.rateLimit as
+      | { cost?: number; remaining?: number; resetAt?: string }
+      | undefined;
+    if (!rateLimit) return;
+
+    const remaining = rateLimit.remaining;
+    const resetAt = rateLimit.resetAt;
+    if (typeof remaining !== "number" || typeof resetAt !== "string") return;
+
+    if (remaining === 0) {
+      const resetMs = Date.parse(resetAt);
+      if (Number.isFinite(resetMs)) {
+        this.markBlocked("primary", resetMs + PRIMARY_RESET_BUFFER_MS);
+      }
+    }
+  }
+
   /** Snapshot for push/pull consumers. */
   getState(): GitHubRateLimitPayload {
     if (!this.state || this.state.resumeAt <= Date.now()) {
@@ -127,22 +154,23 @@ class GitHubRateLimitServiceImpl {
     this.state = null;
   }
 
-  private markBlocked(kind: GitHubRateLimitKind, resumeAt: number): void {
+  private markBlocked(kind: GitHubRateLimitKind, resumeAt: number, requestId?: string): void {
     const previous = this.state;
     const changed =
       !previous || previous.kind !== kind || Math.abs(previous.resumeAt - resumeAt) > 1_000;
-    this.state = { kind, resumeAt };
+    this.state = { kind, resumeAt, requestId };
     if (changed) {
+      const logPayload: Record<string, unknown> = {
+        resumeAt,
+        waitMs: resumeAt - Date.now(),
+      };
+      if (requestId) {
+        logPayload.requestId = requestId;
+      }
       if (kind === "secondary") {
-        logWarn("GitHub secondary rate limit — pausing until resume", {
-          resumeAt,
-          waitMs: resumeAt - Date.now(),
-        });
+        logWarn("GitHub secondary rate limit — pausing until resume", logPayload);
       } else {
-        logInfo("GitHub primary rate limit — pausing until reset", {
-          resumeAt,
-          waitMs: resumeAt - Date.now(),
-        });
+        logInfo("GitHub primary rate limit — pausing until reset", logPayload);
       }
       this.notifyListeners();
     } else {

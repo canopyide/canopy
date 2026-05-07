@@ -75,6 +75,8 @@ export async function getRepoStats(
       request: { signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS) },
     })) as GraphQlQueryResponseData;
 
+    gitHubRateLimitService.updateFromGraphQL(result);
+
     const repository = result?.repository;
     if (!repository) {
       const diskCached = persistentCache.get(cacheKey);
@@ -252,6 +254,8 @@ export async function getRepoStatsAndPage(
       repo: context.repo,
       request: { signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS) },
     })) as GraphQlQueryResponseData;
+
+    gitHubRateLimitService.updateFromGraphQL(result);
 
     const repository = result?.repository;
     if (!repository) {
