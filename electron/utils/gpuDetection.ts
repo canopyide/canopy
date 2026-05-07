@@ -1,8 +1,18 @@
+import { app } from "electron";
 import fs from "node:fs";
 
 export function isWebGLHardwareAccelerated(webgl2: unknown): boolean {
   if (typeof webgl2 !== "string") return true;
   return webgl2.startsWith("enabled") && webgl2 !== "enabled_readback";
+}
+
+let cachedGpuFeatureStatus: ReturnType<typeof app.getGPUFeatureStatus> | null = null;
+
+export function getGpuFeatureStatus(): ReturnType<typeof app.getGPUFeatureStatus> {
+  if (!cachedGpuFeatureStatus) {
+    cachedGpuFeatureStatus = app.getGPUFeatureStatus();
+  }
+  return cachedGpuFeatureStatus;
 }
 
 const VENDOR_NVIDIA = "0x10de";

@@ -9,7 +9,7 @@ import {
 } from "../../../schemas/ipc.js";
 import { getCrashRecoveryService } from "../../../services/CrashRecoveryService.js";
 
-import { isWebGLHardwareAccelerated } from "../../../utils/gpuDetection.js";
+import { getGpuFeatureStatus, isWebGLHardwareAccelerated } from "../../../utils/gpuDetection.js";
 import { isGpuDisabledByFlag } from "../../../services/GpuCrashMonitorService.js";
 import { getCrashLoopGuard } from "../../../services/CrashLoopGuardService.js";
 import { closeTelemetry } from "../../../services/TelemetryService.js";
@@ -236,7 +236,7 @@ export function registerAppStateHandlers(): () => void {
       `[AppHydrate] Project: ${currentProject?.name ?? "none"} - terminals from ${terminalsSource} (${terminalsToUse.length} valid), focusMode: ${focusModeToUse}`
     );
 
-    const gpuStatus = app.getGPUFeatureStatus();
+    const gpuStatus = getGpuFeatureStatus();
     const gpuWebGLHardware = isWebGLHardwareAccelerated(gpuStatus.webgl2);
     if (!gpuWebGLHardware) {
       console.warn(

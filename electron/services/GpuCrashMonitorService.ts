@@ -9,8 +9,16 @@ const GPU_DISABLED_FLAG = "gpu-disabled.flag";
 const GPU_ANGLE_FALLBACK_FLAG = "gpu-angle-fallback.flag";
 const GPU_CRASH_THRESHOLD = 3;
 
+let cachedGpuDisabledByFlag: boolean | null = null;
+let cachedUserDataPath: string | null = null;
+
 export function isGpuDisabledByFlag(userDataPath: string): boolean {
-  return fs.existsSync(path.join(userDataPath, GPU_DISABLED_FLAG));
+  if (cachedGpuDisabledByFlag !== null && cachedUserDataPath === userDataPath) {
+    return cachedGpuDisabledByFlag;
+  }
+  cachedGpuDisabledByFlag = fs.existsSync(path.join(userDataPath, GPU_DISABLED_FLAG));
+  cachedUserDataPath = userDataPath;
+  return cachedGpuDisabledByFlag;
 }
 
 export function writeGpuDisabledFlag(userDataPath: string): void {
