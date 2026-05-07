@@ -16,11 +16,16 @@ export const EASE_SPRING_CRITICAL =
   "linear(0, 0.007, 0.029 2.2%, 0.118 4.7%, 0.625 14.4%, 0.826 19%, 0.902 24%, 0.962 29.8%, 0.984 33.3%, 1.004 37.8%, 1.01 42.4%, 1.011 52.2%, 1.001)";
 export const EASE_OUT_EXPO = "cubic-bezier(0.16, 1, 0.3, 1)";
 
-export const TERMINAL_ANIMATION_DURATION = DURATION_150;
+export const TERMINAL_ANIMATION_DURATION = 50;
 export const UI_ANIMATION_DURATION = DURATION_150;
 
 export function getTerminalAnimationDuration(): number {
-  return TERMINAL_ANIMATION_DURATION;
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return TERMINAL_ANIMATION_DURATION;
+  }
+
+  const performanceMode = document.body.dataset.performanceMode === "true";
+  return performanceMode ? 0 : TERMINAL_ANIMATION_DURATION;
 }
 
 export function getUiAnimationDuration(): number {
