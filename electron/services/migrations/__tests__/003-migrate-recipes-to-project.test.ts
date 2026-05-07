@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const projectStoreMock = vi.hoisted(() => ({
-  getCurrentProjectId: vi.fn<[], string | null>(() => "proj-1"),
-  getProjectById: vi.fn<[string], unknown>(() => ({ id: "proj-1" })),
-  getRecipes: vi.fn<[string], Promise<unknown[]>>(async () => []),
-  saveRecipes: vi.fn<[string, unknown[]], Promise<void>>(async () => {}),
+  getCurrentProjectId: vi.fn<() => string | null>(() => "proj-1"),
+  getProjectById: vi.fn<(id: string) => unknown>(() => ({ id: "proj-1" })),
+  getRecipes: vi.fn<(id: string) => Promise<unknown[]>>(async () => []),
+  saveRecipes: vi.fn<(id: string, recipes: unknown[]) => Promise<void>>(async () => {}),
 }));
 
 vi.mock("../../ProjectStore.js", () => ({ projectStore: projectStoreMock }));
