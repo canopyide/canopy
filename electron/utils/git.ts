@@ -50,20 +50,8 @@ export function __clearPerFileDiffStatCacheForTesting(): void {
   PER_FILE_DIFF_STAT_CACHE.clear();
 }
 
-const NUMSTAT_PATH_SPLITTERS = ["=>", "->"];
-
 function normalizeNumstatPath(rawPath: string): string {
-  const trimmed = rawPath.trim();
-  for (const splitter of NUMSTAT_PATH_SPLITTERS) {
-    const idx = trimmed.lastIndexOf(splitter);
-    if (idx !== -1) {
-      return trimmed
-        .slice(idx + splitter.length)
-        .replace(/[{}]/g, "")
-        .trim();
-    }
-  }
-  return trimmed.replace(/[{}]/g, "");
+  return rawPath.trim();
 }
 
 function parseNumstat(diffOutput: string, gitRoot: string): Map<string, DiffStat> {
@@ -265,14 +253,21 @@ export async function getWorktreeChangesWithStats(
       const git: SimpleGit = gitForChanges(cwd, options);
       const status: StatusResult = await git.status();
 
-      // Parallelise revparse + log lookups; HEAD/log are non-critical and may
-      // legitimately fail (e.g. empty repo, no commits yet) — fall back gracefully.
-      const [toplevelRaw, headOid, logOutput] = await Promise.all([
-        git.revparse(["--show-toplevel"]),
-        git
-          .revparse(["HEAD"])
-          .then((s) => s.trim())
-          .catch(() => ""),
+      // Consolidate rev-parse into a single spawn; HEAD may not exist in empty
+      // repos — fall back to a solo --show-toplevel call when it doesn't.
+      const revParsePromise = git
+        .raw(["rev-parse", "HEAD", "--show-toplevel"])
+        .then((output) => {
+          const lines = output.trim().split("\n");
+          return { headOid: lines[0]?.trim() ?? "", toplevelRaw: lines[1]?.trim() ?? "" };
+        })
+        .catch(async () => {
+          const toplevelRaw = await git.revparse(["--show-toplevel"]);
+          return { headOid: "", toplevelRaw };
+        });
+
+      const [{ toplevelRaw, headOid }, logOutput] = await Promise.all([
+        revParsePromise,
         git.raw(["log", "-1", "--format=%ct%n%s"]).catch(() => ""),
       ]);
 
@@ -315,6 +310,7 @@ export async function getWorktreeChangesWithStats(
         string,
         { absolutePath: string; mtimeMs: number; size: number }
       >();
+      const absPathToMeta = new Map<string, { mtimeMs: number; size: number }>();
 
       if (useScopedDiff) {
         const statResults = await Promise.allSettled(
@@ -331,6 +327,7 @@ export async function getWorktreeChangesWithStats(
           const mtimeMs = result.value.mtimeMs;
           const size = result.value.size;
           fileMetaByRel.set(rel, { absolutePath, mtimeMs, size });
+          absPathToMeta.set(absolutePath, { mtimeMs, size });
           const cached = PER_FILE_DIFF_STAT_CACHE.get(
             makeFileStatCacheKey(headOid, absolutePath, mtimeMs, size)
           );
@@ -357,6 +354,7 @@ export async function getWorktreeChangesWithStats(
           const limitedFiles = trackedChangedFiles.slice(0, MAX_FILES_FOR_NUMSTAT);
           diffOutput = await git.diff([
             "--no-ext-diff",
+            "--no-renames",
             "--numstat",
             "HEAD",
             "--",
@@ -370,6 +368,7 @@ export async function getWorktreeChangesWithStats(
         } else {
           diffOutput = await git.diff([
             "--no-ext-diff",
+            "--no-renames",
             "--numstat",
             "HEAD",
             "--",
@@ -548,6 +547,11 @@ export async function getWorktreeChangesWithStats(
 
       const mtimes = await Promise.all(
         Array.from(changesMap.values()).map(async (change) => {
+          const earlyMeta = absPathToMeta.get(change.path);
+          if (earlyMeta !== undefined) {
+            change.mtimeMs = earlyMeta.mtimeMs;
+            return earlyMeta.mtimeMs;
+          }
           const targetPath = change.status === "deleted" ? dirname(change.path) : change.path;
 
           try {

@@ -106,12 +106,12 @@ export function getGitLocaleEnv(
   platform: NodeJS.Platform = process.platform
 ): Record<string, string> {
   if (platform === "win32") {
-    return { LC_CTYPE: "C.UTF-8", LANG: "C.UTF-8" };
+    return { LC_CTYPE: "C.UTF-8", LANG: "C.UTF-8", GIT_OPTIONAL_LOCKS: "0" };
   }
   if (platform === "darwin") {
-    return { LC_CTYPE: "en_US.UTF-8" };
+    return { LC_CTYPE: "en_US.UTF-8", GIT_OPTIONAL_LOCKS: "0" };
   }
-  return { LC_CTYPE: "C.UTF-8" };
+  return { LC_CTYPE: "C.UTF-8", GIT_OPTIONAL_LOCKS: "0" };
 }
 
 export function createHardenedGit(
@@ -226,8 +226,11 @@ export function createWslHardenedGit(
     unsafe: UNSAFE_FLAGS,
   }).env({
     ...process.env,
+    LC_CTYPE: "C.UTF-8",
+    LC_ALL: "",
     LC_MESSAGES: "C",
     LANGUAGE: "",
+    GIT_OPTIONAL_LOCKS: "0",
     // Surface the targeted distro to wsl.exe via env. wsl.exe doesn't honour
     // WSL_DISTRO_NAME for selection (it uses the default distro), but having
     // this env var present makes diagnostic output unambiguous if the user
