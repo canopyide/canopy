@@ -54,6 +54,7 @@ export async function gracefulShutdown(host: TerminalGracefulShutdownHost): Prom
   const quitSubmitEnterDelayMs = normalizeSubmitEnterDelay(
     agentConfig?.capabilities?.submitEnterDelayMs
   );
+  const quitSubmitMode = agentConfig?.capabilities?.quitSubmitMode ?? "split-write";
 
   // Only `session-id` triggers the post-quit pattern-match capture loop —
   // other kinds (rolling-history, named-target, project-scoped) just send
@@ -147,19 +148,28 @@ export async function gracefulShutdown(host: TerminalGracefulShutdownHost): Prom
           terminal.ptyProcess.write(shutdownKeySequence);
         }
         if (quitCommand) {
-          terminal.ptyProcess.write(quitCommand);
-          await new Promise<void>((r) => setTimeout(r, quitSubmitEnterDelayMs));
+          if (quitSubmitMode === "single-write") {
+            // Ink-based TUIs (e.g. Claude Code) require body + Enter in the
+            // same PTY write so the slash-command parser sees them in one
+            // event-loop tick. A non-zero gap is interpreted as deliberate
+            // slow typing, so the command never submits and the
+            // session-ID line is never echoed (issue #6981).
+            terminal.ptyProcess.write(quitCommand + "\r");
+          } else {
+            terminal.ptyProcess.write(quitCommand);
+            await new Promise<void>((r) => setTimeout(r, quitSubmitEnterDelayMs));
 
-          if (resolved) return;
+            if (resolved) return;
 
-          if (!host.isAgentLive) {
-            origOnData.dispose();
-            origOnExit.dispose();
-            finish(null);
-            return;
+            if (!host.isAgentLive) {
+              origOnData.dispose();
+              origOnExit.dispose();
+              finish(null);
+              return;
+            }
+
+            terminal.ptyProcess.write("\r");
           }
-
-          terminal.ptyProcess.write("\r");
         }
       } catch {
         origOnData.dispose();

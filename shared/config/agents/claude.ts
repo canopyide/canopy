@@ -67,6 +67,7 @@ export const config: AgentConfig = {
     supportsBracketedPaste: true,
     softNewlineSequence: "\x1b\r",
     ignoredInputSequences: ["\x1b\r"],
+    quitSubmitMode: "single-write",
   },
   detection: {
     primaryPatterns: [

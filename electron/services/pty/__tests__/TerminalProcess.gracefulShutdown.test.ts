@@ -106,7 +106,11 @@ describe("TerminalProcess.gracefulShutdown — input-clear prelude", () => {
     vi.useRealTimers();
   });
 
-  it("writes Ctrl-E + Ctrl-U before submitting the quit command with a separate Enter", async () => {
+  it("writes Ctrl-E + Ctrl-U then submits Claude's /quit body and Enter as a single write", async () => {
+    // Issue #6981: Claude Code (Ink TUI) requires body + Enter in one PTY
+    // write — any gap between them is treated as deliberate slow typing
+    // and the slash-command parser never fires, so no session-ID line is
+    // ever echoed. Claude is configured with `quitSubmitMode: "single-write"`.
     const handles = createMockPty();
     const terminal = createAgentTerminal(handles);
 
@@ -120,16 +124,11 @@ describe("TerminalProcess.gracefulShutdown — input-clear prelude", () => {
     expect(handles.writeMock).toHaveBeenCalledTimes(1);
     expect(handles.writeMock.mock.calls[0]?.[0]).toBe("\x05\x15");
 
-    // Advance past the clear delay and the quit command body should fire.
+    // Advance past the clear delay and the combined quit+Enter write should fire.
     await vi.advanceTimersByTimeAsync(GRACEFUL_SHUTDOWN_CLEAR_DELAY_MS);
 
     expect(handles.writeMock).toHaveBeenCalledTimes(2);
-    expect(handles.writeMock.mock.calls[1]?.[0]).toBe("/quit");
-
-    // Enter is sent as a separate key after the same delay used by normal submit.
-    await vi.advanceTimersByTimeAsync(SUBMIT_ENTER_DELAY_MS);
-    expect(handles.writeMock).toHaveBeenCalledTimes(3);
-    expect(handles.writeMock.mock.calls[2]?.[0]).toBe("\r");
+    expect(handles.writeMock.mock.calls[1]?.[0]).toBe("/quit\r");
 
     // Emit the session-ID line and the promise should resolve with the captured ID.
     handles.emitData("claude --resume abc-123\n");
@@ -145,7 +144,6 @@ describe("TerminalProcess.gracefulShutdown — input-clear prelude", () => {
 
     const shutdownPromise = terminal.gracefulShutdown();
     await vi.advanceTimersByTimeAsync(GRACEFUL_SHUTDOWN_CLEAR_DELAY_MS);
-    await vi.advanceTimersByTimeAsync(SUBMIT_ENTER_DELAY_MS);
 
     // The CLI echoes back ANSI erase sequences in response to Ctrl-U before the real
     // session-ID line. stripAnsiCodes in the matcher should strip these cleanly.
@@ -163,11 +161,10 @@ describe("TerminalProcess.gracefulShutdown — input-clear prelude", () => {
     await vi.advanceTimersByTimeAsync(GRACEFUL_SHUTDOWN_TIMEOUT_MS);
 
     await expect(shutdownPromise).resolves.toBeNull();
-    // Prelude, quit body, and Enter must all be attempted before timeout.
-    expect(handles.writeMock).toHaveBeenCalledTimes(3);
+    // Prelude and combined quit+Enter must both be attempted before timeout.
+    expect(handles.writeMock).toHaveBeenCalledTimes(2);
     expect(handles.writeMock.mock.calls[0]?.[0]).toBe("\x05\x15");
-    expect(handles.writeMock.mock.calls[1]?.[0]).toBe("/quit");
-    expect(handles.writeMock.mock.calls[2]?.[0]).toBe("\r");
+    expect(handles.writeMock.mock.calls[1]?.[0]).toBe("/quit\r");
   });
 
   it("skips the quit write when the PTY exits during the clear-delay window", async () => {
@@ -212,7 +209,7 @@ describe("TerminalProcess.gracefulShutdown — input-clear prelude", () => {
 
   it("resolves null when the quit-command write throws after a successful prelude", async () => {
     const handles = createMockPty((data: string) => {
-      if (data === "/quit") {
+      if (data === "/quit\r") {
         throw new Error("pty dead after prelude");
       }
     });
@@ -304,11 +301,7 @@ describe("TerminalProcess.gracefulShutdown — input-clear prelude", () => {
 
     expect(handles.writeMock).toHaveBeenCalledTimes(2);
     expect(handles.writeMock.mock.calls[0]?.[0]).toBe("\x05\x15");
-    expect(handles.writeMock.mock.calls[1]?.[0]).toBe("/quit");
-
-    await vi.advanceTimersByTimeAsync(SUBMIT_ENTER_DELAY_MS);
-    expect(handles.writeMock).toHaveBeenCalledTimes(3);
-    expect(handles.writeMock.mock.calls[2]?.[0]).toBe("\r");
+    expect(handles.writeMock.mock.calls[1]?.[0]).toBe("/quit\r");
 
     handles.emitData("claude --resume live-agent\n");
     await expect(shutdownPromise).resolves.toBe("live-agent");
@@ -334,9 +327,15 @@ describe("TerminalProcess.gracefulShutdown — input-clear prelude", () => {
     expect(terminal.getInfo().agentSessionId).toBe("codex-session-123");
   });
 
-  it("skips Enter when the agent demotes during the quit-submit delay", async () => {
+  it("skips Enter when the split-write agent demotes during the quit-submit delay", async () => {
+    // Mid-flight liveness guard for the split-write path only — Codex (and
+    // other Ratatui/readline CLIs) writes the body and Enter as separate
+    // PTY writes with a delay between them. If the agent demotes during
+    // that gap, the trailing Enter must be skipped so it doesn't land in a
+    // plain shell. Claude uses single-write so this guard isn't reachable
+    // for it; using `codex` keeps the split-write coverage explicit.
     const handles = createMockPty();
-    const terminal = createAgentTerminal(handles);
+    const terminal = createAgentTerminal(handles, "codex");
 
     const shutdownPromise = terminal.gracefulShutdown();
     await vi.advanceTimersByTimeAsync(GRACEFUL_SHUTDOWN_CLEAR_DELAY_MS);
