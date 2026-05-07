@@ -174,6 +174,37 @@ describe("runScratchCleanup", () => {
     expect(store.rows[0]!.deletedAt).toBeNull();
   });
 
+  it("finishes a tombstoned-current scratch when removeScratch crashed mid-flight", async () => {
+    // removeScratch tombstones, then clears the current pointer, then rms.
+    // If the process dies between the tombstone and clearCurrentScratch, the
+    // next sweep sees a tombstoned row whose ID still equals currentScratchId.
+    // It must NOT be excluded by the active-scratch guard — the user already
+    // asked for it gone.
+    const dir = path.join(tmpDir, "stranded");
+    await fs.mkdir(dir, { recursive: true });
+    const store = makeStore(
+      [
+        row({
+          id: "stranded",
+          path: dir,
+          lastOpened: NOW - 1000,
+          deletedAt: NOW - 500,
+        }),
+      ],
+      "stranded"
+    );
+
+    const result = await runScratchCleanup(
+      NOW,
+      store as unknown as Parameters<typeof runScratchCleanup>[1]
+    );
+
+    expect(result.candidates).toBe(1);
+    expect(result.directoriesRemoved).toBe(1);
+    expect(store.rows).toHaveLength(0);
+    await expect(fs.access(dir)).rejects.toBeDefined();
+  });
+
   it("never deletes the active scratch even when stale", async () => {
     const activeDir = path.join(tmpDir, "active");
     await fs.mkdir(activeDir, { recursive: true });

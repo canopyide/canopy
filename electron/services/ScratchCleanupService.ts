@@ -55,17 +55,19 @@ export async function runScratchCleanup(
 
   const cutoff = now - SCRATCH_CLEANUP_TTL_MS;
   const currentScratchId = store.getCurrentScratchId();
+  // Only protect the live current scratch — a tombstoned row whose ID still
+  // matches `currentScratchId` is the exact crash-recovery case (tombstone
+  // succeeded, `clearCurrentScratch` didn't), and the sweep must finish it.
   const candidates = store
     .getStaleScratchCandidates(cutoff)
-    .filter((row) => row.id !== currentScratchId);
+    .filter((row) => !(row.id === currentScratchId && row.deletedAt == null));
   result.candidates = candidates.length;
 
   for (const row of candidates) {
-    // Lesson #3721: never treat a falsy `lastOpened` as maximally stale —
-    // skip rather than tombstone. The schema declares NOT NULL, but a
-    // hand-edited DB or a future migration could relax that, and we'd rather
-    // skip a row than nuke it on bad data.
-    if (!row.lastOpened) continue;
+    // Lesson #3721: never treat a falsy `lastOpened` on a live row as
+    // maximally stale — skip rather than tombstone. Tombstoned rows aren't
+    // subject to this check; they've already been chosen for deletion.
+    if (!row.lastOpened && row.deletedAt == null) continue;
 
     if (row.deletedAt == null) {
       try {
