@@ -144,7 +144,7 @@ export class SynchronizedFrameDetector {
     for (let y = startY; y < viewportBottom; y++) {
       const line = buffer.getLine(y);
       if (!line) {
-        rows.push(new Array<FrameCell>(terminal.cols).fill({ code: 0, width: 1 }));
+        rows.push(Array.from({ length: terminal.cols }, () => ({ code: 0, width: 1 })));
         continue;
       }
       const cols: FrameCell[] = new Array(terminal.cols);
