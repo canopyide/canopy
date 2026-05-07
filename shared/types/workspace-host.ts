@@ -290,6 +290,7 @@ export type WorkspaceHostRequest =
   | {
       type: "copytree:test-config";
       requestId: string;
+      operationId: string;
       rootPath: string;
       options?: CopyTreeOptions;
     }

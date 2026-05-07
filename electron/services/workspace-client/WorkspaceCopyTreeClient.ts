@@ -81,6 +81,10 @@ export class WorkspaceCopyTreeClient {
     }
 
     const requestId = host.generateRequestId();
+    const operationId = crypto.randomUUID();
+
+    this.activeCopyTreeOperations.set(operationId, rootPath);
+
     try {
       const result = await host.sendWithResponse<{
         result: import("../../../shared/types/index.js").CopyTreeTestConfigResult;
@@ -88,6 +92,7 @@ export class WorkspaceCopyTreeClient {
         {
           type: "copytree:test-config",
           requestId,
+          operationId,
           rootPath,
           options,
         },
@@ -101,6 +106,8 @@ export class WorkspaceCopyTreeClient {
         excluded: { byTruncation: 0, bySize: 0, byPattern: 0 },
         error: formatErrorMessage(error, "Failed to generate context"),
       };
+    } finally {
+      this.activeCopyTreeOperations.delete(operationId);
     }
   }
 

@@ -511,11 +511,11 @@ port.on("message", async (rawMsg: any) => {
         break;
 
       case "copytree:test-config": {
-        const { requestId, rootPath, options } = request;
+        const { requestId, operationId, rootPath, options } = request;
         console.log(`[WorkspaceHost] CopyTree test-config started`);
 
         try {
-          const result = await copyTreeService.testConfig(rootPath, options || {});
+          const result = await copyTreeService.testConfig(rootPath, options || {}, operationId);
           sendEvent({
             type: "copytree:test-config-result",
             requestId,

@@ -130,8 +130,11 @@ class CopyTreeService {
 
   async testConfig(
     rootPath: string,
-    options: CopyTreeOptions = {}
+    options: CopyTreeOptions = {},
+    traceId?: string
   ): Promise<import("../../shared/types/index.js").CopyTreeTestConfigResult> {
+    const opId = traceId || crypto.randomUUID();
+
     try {
       if (!path.isAbsolute(rootPath)) {
         return {
@@ -153,6 +156,9 @@ class CopyTreeService {
         };
       }
 
+      const controller = new AbortController();
+      this.activeOperations.set(opId, controller);
+
       let config;
       try {
         config = await ConfigManager.create();
@@ -165,6 +171,7 @@ class CopyTreeService {
 
       const sdkOptions: SdkCopyOptions = {
         config: config,
+        signal: controller.signal,
         display: false,
         clipboard: false,
         format: options.format || "xml",
@@ -198,12 +205,22 @@ class CopyTreeService {
         files: undefined,
       };
     } catch (error: unknown) {
+      if (error instanceof Error && error.name === "AbortError") {
+        return {
+          includedFiles: 0,
+          includedSize: 0,
+          excluded: { byTruncation: 0, bySize: 0, byPattern: 0 },
+          error: "Context generation cancelled",
+        };
+      }
       return {
         includedFiles: 0,
         includedSize: 0,
         excluded: { byTruncation: 0, bySize: 0, byPattern: 0 },
         error: formatErrorMessage(error, "Failed to generate context"),
       };
+    } finally {
+      this.activeOperations.delete(opId);
     }
   }
 

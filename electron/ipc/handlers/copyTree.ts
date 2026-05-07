@@ -38,6 +38,30 @@ const getExtensionForFormat = (format: CopyTreeFormat | undefined): string => {
   return FORMAT_TO_EXTENSION[format] ?? "xml";
 };
 
+export function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+/**
+ * Compute the end index of the next PTY chunk so that a UTF-16 surrogate pair
+ * is never split across chunks. Returns an index in `[start, content.length]`.
+ */
+export function nextChunkBoundary(content: string, start: number, chunkSize: number): number {
+  let end = Math.min(start + chunkSize, content.length);
+  if (end < content.length) {
+    const lastUnit = content.charCodeAt(end - 1);
+    if (lastUnit >= 0xd800 && lastUnit <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return end;
+}
+
 export function buildRemoteComputeBlock(worktree: {
   resourceStatus?: { provider?: string; lastStatus?: string; endpoint?: string };
   resourceConnectCommand?: string;
@@ -313,7 +337,7 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
       const path = await import("path");
 
       const tempDir = path.join(os.tmpdir(), "daintree-context");
-      await fs.mkdir(tempDir, { recursive: true });
+      await fs.mkdir(tempDir, { recursive: true, mode: 0o700 });
 
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       const projectName =
@@ -334,17 +358,18 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
       const filename = `${projectName}-${safeBranch}-${timestamp}.${extension}`;
       const filePath = path.join(tempDir, filename);
 
-      await fs.writeFile(filePath, result.content, "utf-8");
+      await fs.writeFile(filePath, result.content, { encoding: "utf8", mode: 0o600 });
 
       if (process.platform === "darwin") {
         const plist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <array>
-    <string>${filePath}</string>
+    <string>${escapeXml(filePath)}</string>
 </array>
 </plist>`;
         clipboard.writeBuffer("NSFilenamesPboardType", Buffer.from(plist, "utf8"));
+        clipboard.writeBuffer("public.file-url", Buffer.from(pathToFileURL(filePath).href, "utf8"));
       } else if (process.platform === "win32") {
         clipboard.writeText(filePath);
       } else {
@@ -464,7 +489,7 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
       const contentToInject = result.content + remoteComputeBlock;
       const CHUNK_SIZE = 4096;
 
-      for (let i = 0; i < contentToInject.length; i += CHUNK_SIZE) {
+      for (let i = 0; i < contentToInject.length; ) {
         if (contextInjectionTracker.isCancelled(injectionId)) {
           console.log(`[${traceId}] CopyTree inject cancelled by user`);
           return {
@@ -482,9 +507,11 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
           };
         }
 
-        const chunk = contentToInject.slice(i, i + CHUNK_SIZE);
+        const end = nextChunkBoundary(contentToInject, i, CHUNK_SIZE);
+        const chunk = contentToInject.slice(i, end);
         deps.ptyClient!.write(validated.terminalId, chunk, traceId);
-        if (i + CHUNK_SIZE < contentToInject.length) {
+        i = end;
+        if (i < contentToInject.length) {
           await new Promise((resolve) => setTimeout(resolve, 1));
         }
       }
