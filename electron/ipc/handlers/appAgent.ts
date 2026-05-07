@@ -30,7 +30,7 @@ export function registerAppAgentHandlers(_deps: HandlerDependencies): () => void
   handlers.push(typedHandle(CHANNELS.APP_AGENT_HAS_API_KEY, handleHasApiKey));
 
   const handleTestApiKey = async (apiKey: string) => {
-    if (!apiKey || typeof apiKey !== "string") {
+    if (!apiKey || typeof apiKey !== "string" || !apiKey.trim()) {
       throw new Error("Invalid API key");
     }
     return appAgentService.testApiKey(apiKey.trim());
@@ -38,7 +38,7 @@ export function registerAppAgentHandlers(_deps: HandlerDependencies): () => void
   handlers.push(typedHandle(CHANNELS.APP_AGENT_TEST_API_KEY, handleTestApiKey));
 
   const handleTestModel = async (model: string) => {
-    if (!model || typeof model !== "string") {
+    if (!model || typeof model !== "string" || !model.trim()) {
       throw new Error("Invalid model");
     }
     return appAgentService.testModel(model.trim());

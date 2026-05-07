@@ -78,29 +78,32 @@ export class AppAgentService {
         signal: abortController.signal,
       });
 
-      clearTimeout(timeoutId);
-
       if (response.ok) {
+        clearTimeout(timeoutId);
         return { valid: true };
       }
 
       if (response.status === 401) {
+        clearTimeout(timeoutId);
         return { valid: false, error: "Invalid API key" };
       }
 
       if (response.status === 403) {
+        clearTimeout(timeoutId);
         return { valid: false, error: "API key does not have access to this model" };
       }
 
       if (response.status === 429) {
+        clearTimeout(timeoutId);
         // Rate limited but key is valid
         return { valid: true };
       }
 
       const errorText = await response.text().catch(() => "");
+      clearTimeout(timeoutId);
       return {
         valid: false,
-        error: `API error: ${response.status} ${formatApiErrorText(errorText)}`,
+        error: `API error: ${response.status} ${formatApiErrorText(errorText)}`.trim(),
       };
     } catch (error) {
       clearTimeout(timeoutId);
@@ -150,29 +153,32 @@ export class AppAgentService {
         signal: abortController.signal,
       });
 
-      clearTimeout(timeoutId);
-
       if (response.ok) {
+        clearTimeout(timeoutId);
         return { valid: true };
       }
 
       if (response.status === 401) {
+        clearTimeout(timeoutId);
         return { valid: false, error: "API key is invalid" };
       }
 
       if (response.status === 404) {
+        clearTimeout(timeoutId);
         return { valid: false, error: "Model not found" };
       }
 
       if (response.status === 429) {
+        clearTimeout(timeoutId);
         // Rate limited but model is valid
         return { valid: true };
       }
 
       const errorText = await response.text().catch(() => "");
+      clearTimeout(timeoutId);
       return {
         valid: false,
-        error: `API error: ${response.status} ${formatApiErrorText(errorText)}`,
+        error: `API error: ${response.status} ${formatApiErrorText(errorText)}`.trim(),
       };
     } catch (error) {
       clearTimeout(timeoutId);

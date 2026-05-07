@@ -107,7 +107,7 @@ describe("AppAgentService adversarial", () => {
     mockFetch(vi.fn(async () => ({ ok: false, status: 403 })) as unknown as typeof fetch);
     const result = await new AppAgentService().testApiKey("k");
     expect(result.valid).toBe(false);
-    expect(result.error).toContain("access");
+    expect(result.error).toEqual("API key does not have access to this model");
   });
 
   it("testApiKey wraps other non-ok responses with status and error text", async () => {
