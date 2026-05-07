@@ -319,15 +319,15 @@ describe("GitHubAuth", () => {
     expect(result.scopes).toEqual([]);
   });
 
-  it("include response.status on generic error so 5xx is actionable even when statusText is empty", async () => {
+  it("include response.status on generic error so it is actionable even when statusText is empty", async () => {
     (globalThis as unknown as { fetch: Mock }).fetch = vi
       .fn()
-      .mockResolvedValue(new Response(null, { status: 502, statusText: "" }));
+      .mockResolvedValue(new Response(null, { status: 422, statusText: "" }));
 
     const result = await GitHubAuth.validate("ghp_validtoken012345678901234567890123456789");
 
     expect(result.valid).toBe(false);
-    expect(result.error).toContain("502");
+    expect(result.error).toContain("422");
   });
 
   it("prevents stale auth metadata from repopulating after mid-flight token rotation", async () => {
@@ -341,9 +341,7 @@ describe("GitHubAuth", () => {
         })
     );
 
-    const validatePromise = GitHubAuth.validate(
-      "ghp_stale00000000000000000000000000000000000"
-    );
+    const validatePromise = GitHubAuth.validate("ghp_stale00000000000000000000000000000000000");
 
     // Token rotates before the stale response lands.
     GitHubAuth.setToken("ghp_fresh00000000000000000000000000000000000");
