@@ -314,34 +314,44 @@ export class ProjectStore {
     const validStatuses: ProjectStatus[] = ["active", "background", "closed", "missing"];
     const currentProjectId = this.getCurrentProjectId();
 
-    for (const row of rows) {
-      if (row.id === currentProjectId) {
-        if (row.status !== "active") {
-          db.update(projectsTable)
-            .set({ status: "active" })
-            .where(eq(projectsTable.id, row.id))
-            .run();
-          row.status = "active";
+    db.transaction(
+      (tx) => {
+        for (const row of rows) {
+          if (row.id === currentProjectId) {
+            if (row.status !== "active") {
+              tx.update(projectsTable)
+                .set({ status: "active" })
+                .where(eq(projectsTable.id, row.id))
+                .run();
+              row.status = "active";
+            }
+          } else {
+            if (row.status === "active") {
+              if (process.env.DAINTREE_VERBOSE) {
+                console.warn(
+                  `[ProjectStore] Demoting incorrectly active project ${row.id} to background`
+                );
+              }
+              tx.update(projectsTable)
+                .set({ status: "background" })
+                .where(eq(projectsTable.id, row.id))
+                .run();
+              row.status = "background";
+            } else if (
+              row.status !== null &&
+              !validStatuses.includes(row.status as ProjectStatus)
+            ) {
+              tx.update(projectsTable)
+                .set({ status: "closed" })
+                .where(eq(projectsTable.id, row.id))
+                .run();
+              row.status = "closed";
+            }
+          }
         }
-      } else {
-        if (row.status === "active") {
-          console.warn(
-            `[ProjectStore] Demoting incorrectly active project ${row.id} to background`
-          );
-          db.update(projectsTable)
-            .set({ status: "background" })
-            .where(eq(projectsTable.id, row.id))
-            .run();
-          row.status = "background";
-        } else if (row.status !== null && !validStatuses.includes(row.status as ProjectStatus)) {
-          db.update(projectsTable)
-            .set({ status: "closed" })
-            .where(eq(projectsTable.id, row.id))
-            .run();
-          row.status = "closed";
-        }
-      }
-    }
+      },
+      { behavior: "immediate" }
+    );
 
     if (process.env.DAINTREE_VERBOSE) {
       console.log(

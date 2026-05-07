@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import path from "path";
 import { generateProjectId, isValidProjectId, getProjectStateDir } from "../projectStorePaths.js";
 
@@ -555,5 +555,253 @@ describe("relocateProject — ID derivation helpers (smoke tests only)", () => {
     expect(newStateDir).not.toBeNull();
     expect(newStateDir!.startsWith(projectsConfigDir)).toBe(true);
     expect(newStateDir).toBe(path.join(projectsConfigDir, newId));
+  });
+});
+
+// --- getAllProjects status reconciliation tests (DB-backed) ---
+
+import Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import { eq } from "drizzle-orm";
+import fs from "fs";
+import os from "os";
+import * as schema from "../persistence/schema.js";
+
+const CREATE_TABLES_SQL = `
+  CREATE TABLE IF NOT EXISTS projects (
+    id TEXT PRIMARY KEY,
+    path TEXT NOT NULL,
+    name TEXT NOT NULL,
+    emoji TEXT NOT NULL,
+    last_opened INTEGER NOT NULL,
+    color TEXT,
+    status TEXT,
+    daintree_config_present INTEGER,
+    in_repo_settings INTEGER,
+    pinned INTEGER NOT NULL DEFAULT 0,
+    frecency_score REAL NOT NULL DEFAULT 3.0,
+    last_accessed_at INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE TABLE IF NOT EXISTS app_state (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+`;
+
+let sqlite: Database.Database;
+let db: ReturnType<typeof drizzle<typeof schema>>;
+
+vi.mock("../persistence/db.js", () => ({
+  getSharedDb: () => db,
+  openDb: vi.fn(),
+}));
+
+vi.mock("electron", () => ({
+  app: { getPath: () => "/tmp/daintree-reconciliation-test" },
+}));
+
+vi.mock("../GitService.js", () => ({
+  GitService: class {
+    async getRepositoryRoot(p: string): Promise<string> {
+      return p;
+    }
+  },
+}));
+
+vi.mock("../ProjectSettingsManager.js", () => ({
+  ProjectSettingsManager: class {
+    deleteAllEnvForProject() {}
+    migrateEnvForProject() {}
+    getEffectiveNotificationSettings() {
+      return {};
+    }
+  },
+}));
+
+vi.mock("../ProjectStateManager.js", () => ({
+  ProjectStateManager: class {
+    invalidateProjectStateCache() {}
+  },
+}));
+
+vi.mock("../ProjectFileStore.js", () => ({
+  ProjectFileStore: class {},
+}));
+
+vi.mock("../GlobalFileStore.js", () => ({
+  GlobalFileStore: class {},
+}));
+
+vi.mock("../ProjectIdentityFiles.js", () => ({
+  ProjectIdentityFiles: class {
+    async readInRepoProjectIdentity() {
+      return { found: false };
+    }
+  },
+}));
+
+vi.mock("../projectQuarantineCleanup.js", () => ({
+  cleanupQuarantinedProjectFiles: vi.fn(),
+}));
+
+import { ProjectStore } from "../ProjectStore.js";
+
+describe("ProjectStore.getAllProjects reconciliation", () => {
+  let store: ProjectStore;
+  let alphaDir: string;
+  let betaDir: string;
+  let gammaDir: string;
+  let currentProjectId: string;
+  let staleActiveId: string;
+  let invalidStatusId: string;
+
+  beforeEach(async () => {
+    alphaDir = fs.mkdtempSync(path.join(os.tmpdir(), "daintree-rec-a-"));
+    betaDir = fs.mkdtempSync(path.join(os.tmpdir(), "daintree-rec-b-"));
+    gammaDir = fs.mkdtempSync(path.join(os.tmpdir(), "daintree-rec-c-"));
+    const { generateProjectId } = await import("../projectStorePaths.js");
+    const alphaCanonical = await fs.promises.realpath(alphaDir);
+    const betaCanonical = await fs.promises.realpath(betaDir);
+    const gammaCanonical = await fs.promises.realpath(gammaDir);
+    currentProjectId = generateProjectId(alphaCanonical);
+    staleActiveId = generateProjectId(betaCanonical);
+    invalidStatusId = generateProjectId(gammaCanonical);
+
+    sqlite = new Database(":memory:");
+    sqlite.exec(CREATE_TABLES_SQL);
+    db = drizzle(sqlite, { schema });
+
+    const now = Date.now();
+
+    // Current project — incorrectly marked as "closed"
+    db.insert(schema.projects)
+      .values({
+        id: currentProjectId,
+        path: alphaCanonical,
+        name: "Alpha",
+        emoji: "🌲",
+        lastOpened: now,
+        status: "closed",
+        frecencyScore: 10.0,
+        lastAccessedAt: now,
+      })
+      .run();
+
+    // Stale row — incorrectly marked as "active" (should be background)
+    db.insert(schema.projects)
+      .values({
+        id: staleActiveId,
+        path: betaCanonical,
+        name: "Beta",
+        emoji: "🌲",
+        lastOpened: now - 86_400_000,
+        status: "active",
+        frecencyScore: 5.0,
+        lastAccessedAt: now - 86_400_000,
+      })
+      .run();
+
+    // Row with invalid status (not in validStatuses)
+    db.insert(schema.projects)
+      .values({
+        id: invalidStatusId,
+        path: gammaCanonical,
+        name: "Gamma",
+        emoji: "🌲",
+        lastOpened: now - 172_800_000,
+        status: "bogus-status",
+        frecencyScore: 1.0,
+        lastAccessedAt: now - 172_800_000,
+      })
+      .run();
+
+    db.insert(schema.appState).values({ key: "currentProjectId", value: currentProjectId }).run();
+
+    store = new ProjectStore();
+  });
+
+  afterEach(() => {
+    sqlite.close();
+    fs.rmSync(alphaDir, { recursive: true, force: true });
+    fs.rmSync(betaDir, { recursive: true, force: true });
+    fs.rmSync(gammaDir, { recursive: true, force: true });
+  });
+
+  it("reconciles all three status categories and persists to DB", () => {
+    const projects = store.getAllProjects();
+
+    // Returned values are reconciled
+    const current = projects.find((p) => p.id === currentProjectId);
+    const stale = projects.find((p) => p.id === staleActiveId);
+    const invalid = projects.find((p) => p.id === invalidStatusId);
+
+    expect(current?.status).toBe("active");
+    expect(stale?.status).toBe("background");
+    expect(invalid?.status).toBe("closed");
+
+    // DB rows are persisted
+    const currentRow = db
+      .select()
+      .from(schema.projects)
+      .where(eq(schema.projects.id, currentProjectId))
+      .get();
+    expect(currentRow?.status).toBe("active");
+
+    const staleRow = db
+      .select()
+      .from(schema.projects)
+      .where(eq(schema.projects.id, staleActiveId))
+      .get();
+    expect(staleRow?.status).toBe("background");
+
+    const invalidRow = db
+      .select()
+      .from(schema.projects)
+      .where(eq(schema.projects.id, invalidStatusId))
+      .get();
+    expect(invalidRow?.status).toBe("closed");
+  });
+
+  it("runs reconciliation inside an IMMEDIATE transaction", () => {
+    const spy = vi.spyOn(db, "transaction");
+    store.getAllProjects();
+    expect(spy).toHaveBeenCalledWith(expect.any(Function), { behavior: "immediate" });
+    spy.mockRestore();
+  });
+
+  it("gates demotion warning behind DAINTREE_VERBOSE", () => {
+    const warnSpy = vi.spyOn(console, "warn");
+
+    // Without DAINTREE_VERBOSE — no warning
+    delete process.env.DAINTREE_VERBOSE;
+    store.getAllProjects();
+    expect(warnSpy).not.toHaveBeenCalled();
+
+    // Re-insert the stale active row so the warning has something to fire for
+    db.update(schema.projects)
+      .set({ status: "active" })
+      .where(eq(schema.projects.id, staleActiveId))
+      .run();
+
+    // With DAINTREE_VERBOSE — warning fires
+    process.env.DAINTREE_VERBOSE = "1";
+    store.getAllProjects();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Demoting incorrectly active project")
+    );
+
+    delete process.env.DAINTREE_VERBOSE;
+    warnSpy.mockRestore();
+  });
+
+  it("no-ops when all statuses are already correct (empty transaction)", () => {
+    // First call reconciles everything
+    store.getAllProjects();
+
+    // Second call should be a no-op — no writes needed
+    const updateSpy = vi.spyOn(db, "update");
+    store.getAllProjects();
+    expect(updateSpy).not.toHaveBeenCalled();
+    updateSpy.mockRestore();
   });
 });
