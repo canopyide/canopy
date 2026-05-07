@@ -511,3 +511,45 @@ describe("useUpdateListener", () => {
     );
   });
 });
+
+describe("useUpdateListener — Windows gating", () => {
+  beforeEach(() => {
+    notifyMock.mockClear();
+    vi.clearAllMocks();
+    storeState.notifications = [];
+
+    window.electron = {
+      update: {
+        isSupported: false,
+        onUpdateAvailable: vi.fn(),
+        onDownloadProgress: vi.fn(),
+        onUpdateDownloaded: vi.fn(),
+        quitAndInstall: vi.fn(),
+        checkForUpdates: vi.fn(),
+        notifyDismiss: notifyDismissMock,
+      },
+    } as unknown as typeof window.electron;
+  });
+
+  afterEach(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (window as any).electron;
+  });
+
+  it("does not subscribe to any update events when isSupported is false", () => {
+    const { unmount } = renderHook(() => useUpdateListener());
+
+    expect(window.electron!.update.onUpdateAvailable).not.toHaveBeenCalled();
+    expect(window.electron!.update.onDownloadProgress).not.toHaveBeenCalled();
+    expect(window.electron!.update.onUpdateDownloaded).not.toHaveBeenCalled();
+
+    unmount();
+  });
+
+  it("does not emit any notify() calls when isSupported is false", () => {
+    const { unmount } = renderHook(() => useUpdateListener());
+    unmount();
+
+    expect(notifyMock).not.toHaveBeenCalled();
+  });
+});

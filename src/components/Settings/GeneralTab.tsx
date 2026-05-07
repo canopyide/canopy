@@ -160,6 +160,7 @@ export function GeneralTab({
   }, []);
 
   useEffect(() => {
+    if (!window.electron?.update?.isSupported) return;
     let cancelled = false;
 
     const loadLastCheck = () => {

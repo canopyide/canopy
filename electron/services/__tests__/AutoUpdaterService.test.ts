@@ -494,14 +494,14 @@ describe("AutoUpdaterService", () => {
       expect(fsMock.existsSync).not.toHaveBeenCalled();
     });
 
-    it("does not affect non-Linux platforms", () => {
+    it("Windows also returns early (electron-updater unsupported on win32)", () => {
       Object.defineProperty(process, "platform", { value: "win32", configurable: true });
 
       autoUpdaterService.initialize();
       vi.advanceTimersByTime(STARTUP_JITTER_MAX_MS);
 
-      expect(autoUpdaterMock.on).toHaveBeenCalled();
-      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+      expect(autoUpdaterMock.on).not.toHaveBeenCalled();
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
     });
   });
 
@@ -552,10 +552,9 @@ describe("AutoUpdaterService", () => {
     });
   });
 
-  describe("Windows portable guard", () => {
-    it("registers only channel-preference IPC handlers on Windows portable", () => {
+  describe("Windows unsupported gate", () => {
+    it("registers only channel-preference IPC handlers on Windows", () => {
       Object.defineProperty(process, "platform", { value: "win32", configurable: true });
-      process.env.PORTABLE_EXECUTABLE_FILE = "C:\\portable\\daintree.exe";
 
       autoUpdaterService.initialize();
 
@@ -564,6 +563,8 @@ describe("AutoUpdaterService", () => {
       expect(registeredChannels).toContain(CHANNELS.UPDATE_SET_CHANNEL);
       expect(registeredChannels).not.toContain(CHANNELS.UPDATE_QUIT_AND_INSTALL);
       expect(registeredChannels).not.toContain(CHANNELS.UPDATE_CHECK_FOR_UPDATES);
+      expect(autoUpdaterMock.on).not.toHaveBeenCalled();
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
     });
   });
 
