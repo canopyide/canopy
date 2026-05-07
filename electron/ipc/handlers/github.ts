@@ -17,6 +17,7 @@ import type {
 import {
   GitHubAuth,
   GITHUB_API_TIMEOUT_MS,
+  captureAuthMetadata,
   gitHubRateLimitService,
   gitHubTokenHealthService,
 } from "../../services/github/index.js";
@@ -98,12 +99,13 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
     try {
       const response = await fetch("https://api.github.com/rate_limit", {
         headers: {
-          Authorization: `token ${token}`,
+          Authorization: `Bearer ${token}`,
           Accept: "application/vnd.github.v3+json",
         },
         signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS),
       });
       if (!response.ok) return null;
+      captureAuthMetadata(response.headers);
       const body = (await response.json()) as {
         resources?: Record<
           string,
@@ -435,7 +437,11 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
     if (!path.isAbsolute(payload.cwd)) {
       throw new Error("Working directory must be an absolute path");
     }
-    if (typeof payload.issueNumber !== "number" || payload.issueNumber <= 0) {
+    if (
+      typeof payload.issueNumber !== "number" ||
+      !Number.isInteger(payload.issueNumber) ||
+      payload.issueNumber <= 0
+    ) {
       throw new Error("Invalid issue number");
     }
     const { getIssueUrl } = await import("../../services/GitHubService.js");
@@ -454,8 +460,12 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
     }
     try {
       const url = new URL(prUrl);
-      if (!["https:", "http:"].includes(url.protocol)) {
-        throw new Error(`Only https:// or http:// PR URLs are allowed, got ${url.protocol}`);
+      if (url.protocol !== "https:") {
+        throw new Error(`Only https:// GitHub PR URLs are allowed, got ${url.protocol}`);
+      }
+      const hostname = url.hostname.toLowerCase();
+      if (hostname !== "github.com" && !hostname.endsWith(".github.com")) {
+        throw new Error(`Only GitHub PR URLs are allowed, got ${url.hostname}`);
       }
     } catch (error) {
       throw new Error(formatErrorMessage(error, "Invalid PR URL"));
@@ -486,14 +496,15 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
     if (typeof token !== "string" || !token.trim()) {
       return { valid: false, scopes: [], error: "Token is required" };
     }
+    const trimmed = token.trim();
 
     const { validateGitHubToken, setGitHubToken } = await import("../../services/GitHubService.js");
     const { GitHubAuth } = await import("../../services/github/index.js");
 
-    const validation = await validateGitHubToken(token.trim());
+    const validation = await validateGitHubToken(trimmed);
 
     if (validation.valid) {
-      setGitHubToken(token.trim());
+      setGitHubToken(trimmed);
       const versionAfterSet = GitHubAuth.getTokenVersion();
 
       if (validation.username) {
@@ -507,7 +518,7 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
 
       try {
         const workspaceClient = getWorkspaceClient();
-        workspaceClient.updateGitHubToken(token.trim());
+        workspaceClient.updateGitHubToken(trimmed);
       } catch {
         // WorkspaceClient may not be initialized yet
       }

@@ -1,4 +1,9 @@
-export { GitHubAuth, GITHUB_API_TIMEOUT_MS, GITHUB_AUTH_TIMEOUT_MS } from "./GitHubAuth.js";
+export {
+  GitHubAuth,
+  GITHUB_API_TIMEOUT_MS,
+  GITHUB_AUTH_TIMEOUT_MS,
+  captureAuthMetadata,
+} from "./GitHubAuth.js";
 export type { GitHubTokenConfig, GitHubTokenValidation } from "./GitHubAuth.js";
 
 export { gitHubRateLimitService, GitHubRateLimitError } from "./GitHubRateLimitService.js";
