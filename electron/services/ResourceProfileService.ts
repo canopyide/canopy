@@ -123,7 +123,7 @@ export class ResourceProfileService {
         this.thermalState = state;
       }
     } catch {
-      // keep "unknown" default — non-critical
+      this.thermalState = "unknown";
     }
   }
 
@@ -146,6 +146,9 @@ export class ResourceProfileService {
   start(): void {
     if (this.evalCleanup) return;
     this.disposed = false;
+    this.tickCount = 0;
+    this.candidateProfile = null;
+    this.candidateFirstSeenAt = null;
 
     logInfo("resource-profile-service-started", { profile: this.currentProfile });
 
@@ -322,6 +325,9 @@ export class ResourceProfileService {
     this.lagEscalatedActive = false;
     this.lagEnterTicks = 0;
     this.lagExitTicks = 0;
+    this.thermalState = "unknown";
+    this.isOnBattery = false;
+    this.speedLimit = 100;
     this.disposed = true;
     logInfo("resource-profile-service-stopped");
   }

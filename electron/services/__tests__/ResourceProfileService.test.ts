@@ -481,7 +481,6 @@ describe("ResourceProfileService", () => {
     service.start();
 
     mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 1300)]);
-    mockIsOnBatteryPower.mockReturnValue(false);
 
     // Warmup (2 ticks = 60s) + first real eval (30s) + 60s upgrade hold (2 ticks)
     vi.advanceTimersByTime(60_000 + 30_000 + 30_000 + 30_000);
@@ -733,6 +732,7 @@ describe("ResourceProfileService", () => {
   });
 
   it("primes thermal state from getCurrentThermalState at start", () => {
+    vi.spyOn(process, "platform", "get").mockReturnValue("darwin");
     mockGetCurrentThermalState.mockReturnValue("fair" as const);
 
     const deps = createDeps();
@@ -798,19 +798,20 @@ describe("ResourceProfileService", () => {
     service.stop();
   });
 
-  it("cold start with thermal serious contributes to first evaluation", () => {
-    mockGetCurrentThermalState.mockReturnValue("serious" as const);
+  it("cold start with thermal critical contributes to first evaluation", () => {
+    vi.spyOn(process, "platform", "get").mockReturnValue("darwin");
+    mockGetCurrentThermalState.mockReturnValue("critical" as const);
     mockIsOnBatteryPower.mockReturnValue(true);
 
     const deps = createDeps();
     const service = new ResourceProfileService(deps);
     service.start();
 
-    // Low memory (0) + battery (+1) + thermal serious (+1) = 2 => balanced
-    // Past warmup + hysteresis
+    // Low memory (0) + battery (+1) + thermal critical (+2) = 3 => efficiency
+    // Without thermal priming the score would be 1 => balanced
     mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 200)]);
     vi.advanceTimersByTime(60_000 + 30_000 + 30_000);
-    expect(service.getProfile()).toBe("balanced");
+    expect(service.getProfile()).toBe("efficiency");
 
     service.stop();
   });
