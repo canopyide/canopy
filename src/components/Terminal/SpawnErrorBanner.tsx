@@ -23,6 +23,16 @@ function getErrorTitle(code: SpawnError["code"]): string {
       return "Invalid working directory";
     case "EIO":
       return "Couldn't allocate terminal";
+    case "EMFILE":
+      return "File descriptor limit reached";
+    case "EAGAIN":
+      return "Process limit reached";
+    case "ENOMEM":
+      return "Out of memory";
+    case "ENXIO":
+      return "PTY pool exhausted";
+    case "EBUSY":
+      return "Terminal device busy";
     case "DISCONNECTED":
       return "Terminal disconnected";
     default:
@@ -43,6 +53,16 @@ function getErrorDescription(error: SpawnError, cwd?: string): string {
       return `The working directory isn't valid: ${cwd || "(unknown)"}`;
     case "EIO":
       return "Couldn't allocate a terminal session. The system may be running low on resources.";
+    case "EMFILE":
+      return "The per-process file descriptor limit was reached. Try closing some terminals to free up descriptors.";
+    case "EAGAIN":
+      return "The system process limit was hit (fork failed). Wait a moment and retry, or close some terminals.";
+    case "ENOMEM":
+      return "The system is out of memory. Try closing other applications to free up memory.";
+    case "ENXIO":
+      return "The pseudo-terminal pool is exhausted. Try closing some terminals and retrying.";
+    case "EBUSY":
+      return "The terminal device is busy. Retry or close the conflicting terminal.";
     case "DISCONNECTED":
       return "The terminal process is no longer running.";
     default:
