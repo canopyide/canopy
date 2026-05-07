@@ -107,8 +107,6 @@ export function openDb(
   }
 }
 
-const CORRUPTION_CODES = new Set(["SQLITE_CORRUPT", "SQLITE_NOTADB"]);
-
 export function probeDb(dbPath: string): boolean {
   if (!fs.existsSync(dbPath)) return true; // no file = fresh start, not corruption
   let testDb: Database.Database | null = null;
@@ -122,7 +120,10 @@ export function probeDb(dbPath: string): boolean {
     return true;
   } catch (error: unknown) {
     const code = (error as { code?: string }).code;
-    if (code && CORRUPTION_CODES.has(code)) {
+    if (
+      typeof code === "string" &&
+      (code.startsWith("SQLITE_CORRUPT") || code === "SQLITE_NOTADB")
+    ) {
       return false;
     }
     console.warn("[DB] Probe encountered non-corruption error:", error);

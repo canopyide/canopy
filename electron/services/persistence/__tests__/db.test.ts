@@ -115,6 +115,20 @@ describe("probeDb", () => {
     expect(probeDb(dbPath)).toBe(false);
   });
 
+  it("returns false for extended corruption codes (e.g. SQLITE_CORRUPT_INDEX from constructor)", () => {
+    const dbPath = path.join(tmpDir, "corrupt.db");
+    fs.writeFileSync(dbPath, "dummy");
+
+    mockDatabaseConstructor.mockImplementation(() => {
+      const err = new Error("corrupt index") as Error & { code: string };
+      err.code = "SQLITE_CORRUPT_INDEX";
+      throw err;
+    });
+
+    expect(probeDb(dbPath)).toBe(false);
+    expect(mockDatabaseConstructor).toHaveBeenCalled();
+  });
+
   it("returns true for non-corruption errors (safe default)", () => {
     const dbPath = path.join(tmpDir, "perms.db");
     fs.writeFileSync(dbPath, "dummy");
