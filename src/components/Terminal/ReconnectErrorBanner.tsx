@@ -1,6 +1,7 @@
 import React from "react";
 import { Clock, RotateCcw, AlertTriangle } from "lucide-react";
 import { InlineStatusBanner } from "./InlineStatusBanner";
+import { boundedErrorText } from "@/utils/errorText";
 import type { TerminalReconnectError } from "@/types";
 
 export interface ReconnectErrorBannerProps {
@@ -54,7 +55,7 @@ function ReconnectErrorBannerComponent({
     <InlineStatusBanner
       icon={getErrorIcon(error.type)}
       title={getErrorTitle(error.type)}
-      description={error.message}
+      description={boundedErrorText(error.message)}
       severity={getErrorSeverity(error.type)}
       actions={[
         {
