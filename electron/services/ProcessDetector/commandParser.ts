@@ -70,15 +70,16 @@ export function extractCommandNameCandidates(command: string | undefined): strin
   if (!command) return [];
   const parts = splitShellLikeCommand(command);
   const candidates: string[] = [];
-  for (let i = 0; i < parts.length && candidates.length < 3; i++) {
+  for (let i = 0; i < parts.length && candidates.length < 5; i++) {
     const arg = parts[i];
     if (!arg || arg.startsWith("-")) continue;
+    if (/^-?\d+(\.\d+)?$/.test(arg)) continue;
     if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(arg)) continue;
     const basename = arg.split(/[\\/]/).pop();
     if (!basename) continue;
     const withoutExt = basename
       .replace(/\.exe$/i, "")
-      .replace(/\.(m?js|cjs|ts|py|rb|php|pl)$/i, "");
+      .replace(/\.(m?jsx?|cjs|tsx?|py|rb|php|pl)$/i, "");
     if (withoutExt) candidates.push(withoutExt);
   }
   return candidates;
