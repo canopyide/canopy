@@ -48,8 +48,10 @@ vi.mock("@/hooks", () => ({
   useAriaKeyshortcuts: () => undefined,
 }));
 
+let mockDragHandle: { listeners: Record<string, (e: unknown) => void> | undefined } | null = null;
+
 vi.mock("@/components/DragDrop/DragHandleContext", () => ({
-  useDragHandle: () => null,
+  useDragHandle: () => mockDragHandle,
 }));
 
 const mockWatchPanel = vi.fn();
@@ -562,6 +564,88 @@ describe("PanelHeader", () => {
       const closeButton = screen.getByTestId("panel-close");
       fireEvent.dblClick(closeButton);
       expect(mockDispatch).not.toHaveBeenCalledWith("nav.toggleFocusMode");
+    });
+  });
+
+  describe("mousedown selection guard (#6978)", () => {
+    it("calls preventDefault on the second mousedown of a double-click", () => {
+      const { container } = render(<PanelHeader {...makeProps({ location: "grid" })} />);
+      const header = container.firstElementChild as HTMLElement;
+      const event = new MouseEvent("mousedown", { bubbles: true, cancelable: true, detail: 2 });
+      const preventDefault = vi.spyOn(event, "preventDefault");
+      header.dispatchEvent(event);
+      expect(preventDefault).toHaveBeenCalled();
+    });
+
+    it("does not call preventDefault on a single mousedown", () => {
+      const { container } = render(<PanelHeader {...makeProps({ location: "grid" })} />);
+      const header = container.firstElementChild as HTMLElement;
+      const event = new MouseEvent("mousedown", { bubbles: true, cancelable: true, detail: 1 });
+      const preventDefault = vi.spyOn(event, "preventDefault");
+      header.dispatchEvent(event);
+      expect(preventDefault).not.toHaveBeenCalled();
+    });
+
+    it("calls preventDefault on triple-click mousedowns as well", () => {
+      const { container } = render(<PanelHeader {...makeProps({ location: "grid" })} />);
+      const header = container.firstElementChild as HTMLElement;
+      const event = new MouseEvent("mousedown", { bubbles: true, cancelable: true, detail: 3 });
+      const preventDefault = vi.spyOn(event, "preventDefault");
+      header.dispatchEvent(event);
+      expect(preventDefault).toHaveBeenCalled();
+    });
+
+    it("forwards mousedown to the dnd-kit drag listener before preventDefault runs", () => {
+      // Order is load-bearing: dnd-kit's MouseSensor bails on `defaultPrevented`,
+      // so our preventDefault must come after. Capture `defaultPrevented` at the
+      // moment dnd-kit sees the event to lock that contract in place.
+      const seenDefaultPrevented: boolean[] = [];
+      const dragMouseDown = vi.fn((e: unknown) => {
+        seenDefaultPrevented.push((e as { defaultPrevented: boolean }).defaultPrevented);
+      });
+      mockDragHandle = { listeners: { onMouseDown: dragMouseDown } };
+      try {
+        const { container } = render(<PanelHeader {...makeProps({ location: "grid" })} />);
+        const header = container.firstElementChild as HTMLElement;
+        fireEvent.mouseDown(header, { detail: 1 });
+        fireEvent.mouseDown(header, { detail: 2 });
+        expect(dragMouseDown).toHaveBeenCalledTimes(2);
+        expect(seenDefaultPrevented).toEqual([false, false]);
+      } finally {
+        mockDragHandle = null;
+      }
+    });
+
+    it("does not preventDefault on double-click inside an input (title rename)", () => {
+      // Word-selection inside the title-rename input must still work — the
+      // selection-suppression guard only applies to the chrome itself.
+      const onEditingValueChange = vi.fn();
+      const onTitleSave = vi.fn();
+      const onTitleInputKeyDown = vi.fn();
+      const { container } = render(
+        <PanelHeader
+          {...makeProps({
+            location: "grid",
+            isEditingTitle: true,
+            editingValue: "Some title",
+            onEditingValueChange,
+            onTitleSave,
+            onTitleInputKeyDown,
+          })}
+        />
+      );
+      const input = container.querySelector("input[type='text']") as HTMLInputElement;
+      expect(input).not.toBeNull();
+      const event = new MouseEvent("mousedown", { bubbles: true, cancelable: true, detail: 2 });
+      const preventDefault = vi.spyOn(event, "preventDefault");
+      input.dispatchEvent(event);
+      expect(preventDefault).not.toHaveBeenCalled();
+    });
+
+    it("applies select-none to the header container", () => {
+      const { container } = render(<PanelHeader {...makeProps({ location: "grid" })} />);
+      const header = container.firstElementChild as HTMLElement;
+      expect(header.className).toContain("select-none");
     });
   });
 
