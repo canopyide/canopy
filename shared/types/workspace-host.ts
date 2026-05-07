@@ -334,7 +334,8 @@ export type WorkspaceHostRequest =
       includeDelta?: boolean;
       includeRecentCommits?: boolean;
       forceRefresh?: boolean;
-    };
+    }
+  | { type: "invalidate-pulse-cache"; worktreeId: string };
 
 /**
  * Events sent from Workspace Host → Main.

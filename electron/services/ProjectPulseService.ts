@@ -15,7 +15,6 @@ import type {
 
 interface CacheEntry {
   pulse: ProjectPulse;
-  headSha?: string;
   timestamp: number;
 }
 
@@ -59,6 +58,7 @@ function getDateCells(rangeDays: PulseRangeDays): Array<{ date: string; isToday:
 export class ProjectPulseService {
   private cache = new Map<string, CacheEntry>();
   private inFlight = new Map<string, Promise<ProjectPulse>>();
+  private abortControllers = new Map<string, AbortController>();
 
   private getCacheKey(options: GetProjectPulseOptions): string {
     const includeDelta = options.includeDelta ?? true;
@@ -76,10 +76,22 @@ export class ProjectPulseService {
   }
 
   invalidate(worktreeId: string): void {
+    const controller = this.abortControllers.get(worktreeId);
+    if (controller) {
+      controller.abort();
+      this.abortControllers.delete(worktreeId);
+    }
+
     const keysToDelete = Array.from(this.cache.keys()).filter((key) =>
       key.startsWith(`${worktreeId}:`)
     );
     keysToDelete.forEach((key) => this.cache.delete(key));
+
+    const inFlightToDelete = Array.from(this.inFlight.keys()).filter((key) =>
+      key.startsWith(`${worktreeId}:`)
+    );
+    inFlightToDelete.forEach((key) => this.inFlight.delete(key));
+
     logProjectPulseDebug("ProjectPulse cache invalidated", {
       worktreeId,
       keysDeleted: keysToDelete.length,
@@ -100,11 +112,20 @@ export class ProjectPulseService {
       return existing;
     }
 
+    const { worktreeId } = options;
+    let controller = this.abortControllers.get(worktreeId);
+    if (!controller) {
+      controller = new AbortController();
+      this.abortControllers.set(worktreeId, controller);
+    }
+
     const promise = (async () => {
       try {
-        const { pulse, headSha } = await this.computePulse(options);
-        this.cache.set(cacheKey, { pulse, headSha, timestamp: Date.now() });
-        this.pruneCache();
+        const pulse = await this.computePulse(options, controller!.signal);
+        if (!controller!.signal.aborted) {
+          this.cache.set(cacheKey, { pulse, timestamp: Date.now() });
+          this.pruneCache();
+        }
         return pulse;
       } catch (error) {
         logError("ProjectPulse computation failed", {
@@ -117,6 +138,10 @@ export class ProjectPulseService {
           pathExists: existsSync(options.worktreePath),
         });
         throw error;
+      } finally {
+        if (this.abortControllers.get(worktreeId) === controller) {
+          this.abortControllers.delete(worktreeId);
+        }
       }
     })();
 
@@ -130,8 +155,9 @@ export class ProjectPulseService {
   }
 
   private async computePulse(
-    options: GetProjectPulseOptions
-  ): Promise<{ pulse: ProjectPulse; headSha?: string }> {
+    options: GetProjectPulseOptions,
+    signal?: AbortSignal
+  ): Promise<ProjectPulse> {
     const {
       worktreePath,
       worktreeId,
@@ -145,7 +171,7 @@ export class ProjectPulseService {
       throw new Error(`Worktree path does not exist: ${worktreePath}`);
     }
 
-    const git = createHardenedGit(worktreePath);
+    const git = createHardenedGit(worktreePath, signal);
     const startTime = Date.now();
 
     const isRepo = await git.checkIsRepo();
@@ -153,9 +179,8 @@ export class ProjectPulseService {
       throw new Error(`Not a git repository: ${worktreePath}`);
     }
 
-    let headSha: string | undefined;
     try {
-      headSha = (await git.raw(["rev-parse", "--verify", "HEAD"])).trim() || undefined;
+      await git.raw(["rev-parse", "--verify", "HEAD"]);
     } catch (error) {
       const errorMessage = formatErrorMessage(error, "Failed to read git HEAD");
       const noCommitsPatterns = [
@@ -168,10 +193,7 @@ export class ProjectPulseService {
       ];
       if (noCommitsPatterns.some((p) => errorMessage.toLowerCase().includes(p.toLowerCase()))) {
         logProjectPulseDebug("Repository has no commits, returning empty pulse", { worktreeId });
-        return {
-          pulse: this.createEmptyPulse(options),
-          headSha: undefined,
-        };
+        return this.createEmptyPulse(options);
       }
       logError("Failed to get HEAD revision", {
         error: errorMessage,
@@ -265,7 +287,7 @@ export class ProjectPulseService {
       durationMs: Date.now() - startTime,
     });
 
-    return { pulse, headSha };
+    return pulse;
   }
 
   private async computeHeatmap(git: SimpleGit, rangeDays: PulseRangeDays): Promise<HeatCell[]> {

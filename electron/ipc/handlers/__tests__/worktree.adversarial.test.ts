@@ -143,6 +143,7 @@ describe("worktree IPC adversarial", () => {
     getAllStatesAsync: ReturnType<typeof vi.fn>;
     createWorktree: ReturnType<typeof vi.fn>;
     deleteWorktree: ReturnType<typeof vi.fn>;
+    invalidatePulseCache: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(() => {
@@ -159,6 +160,7 @@ describe("worktree IPC adversarial", () => {
       getAllStatesAsync: vi.fn().mockResolvedValue([]),
       createWorktree: vi.fn().mockResolvedValue("wt-new"),
       deleteWorktree: vi.fn().mockResolvedValue(undefined),
+      invalidatePulseCache: vi.fn(),
     };
     cleanup = registerWorktreeHandlers({
       worktreeService,
