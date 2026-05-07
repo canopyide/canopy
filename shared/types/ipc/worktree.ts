@@ -16,24 +16,7 @@ export interface WorktreeDeletePayload {
   deleteBranch?: boolean;
 }
 
-export interface BranchInfo {
-  name: string;
-  current: boolean;
-  commit: string;
-  remote?: string;
-}
-
-export interface CreateWorktreeOptions {
-  baseBranch: string;
-  newBranch: string;
-  path: string;
-  fromRemote?: boolean;
-  useExistingBranch?: boolean;
-  /** Opt-in flag to run resource.provision after setup */
-  provisionResource?: boolean;
-  /** Worktree environment mode ("local" or an environment key from resourceEnvironments) */
-  worktreeMode?: string;
-}
+export type { BranchInfo, CreateWorktreeOptions } from "../git.js";
 
 /** Worktree path pattern configuration */
 export interface WorktreeConfig {

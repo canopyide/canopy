@@ -11,7 +11,12 @@
  * All types are serializable (no functions, no circular refs) for IPC transport.
  */
 
-import type { FileChangeDetail, WorktreeChanges } from "./git.js";
+import type {
+  BranchInfo,
+  CreateWorktreeOptions,
+  FileChangeDetail,
+  WorktreeChanges,
+} from "./git.js";
 import type {
   Worktree,
   WorktreeMood,
@@ -27,26 +32,7 @@ import type {
 } from "./ipc.js";
 import type { ProjectPulse, PulseRangeDays } from "./pulse.js";
 
-/** Options for creating a new worktree */
-export interface CreateWorktreeOptions {
-  baseBranch: string;
-  newBranch: string;
-  path: string;
-  fromRemote?: boolean;
-  useExistingBranch?: boolean;
-  /** Opt-in flag to run resource.provision after setup */
-  provisionResource?: boolean;
-  /** Worktree environment mode ("local" or an environment key from resourceEnvironments) */
-  worktreeMode?: string;
-}
-
-/** Branch information from git */
-export interface BranchInfo {
-  name: string;
-  current: boolean;
-  commit: string;
-  remote?: string;
-}
+export type { BranchInfo, CreateWorktreeOptions } from "./git.js";
 
 /** Pull request service status */
 export interface PRServiceStatus {
