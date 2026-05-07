@@ -12,7 +12,9 @@ import {
 import { Plug } from "@/components/icons";
 import { AppDialog } from "../ui/AppDialog";
 import { Button } from "../ui/button";
+import { AnimatedLabel } from "../ui/AnimatedLabel";
 import { logError } from "@/utils/logger";
+import { useCopyWithFeedback } from "@/hooks/useCopyWithFeedback";
 import type {
   PendingCrash,
   PanelSummary,
@@ -58,7 +60,7 @@ export function CrashRecoveryDialog({
   const [resolving, setResolving] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [privacyWarningShown, setPrivacyWarningShown] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyWithFeedback();
 
   const selectedCount = selectedIds.size;
   const allSelected = selectedCount === panels.length;
@@ -114,20 +116,17 @@ export function CrashRecoveryDialog({
       .catch((err) => logError("Failed to open crash log path", err));
   }, [crash.logPath]);
 
-  const handleReport = useCallback(() => {
+  const handleReport = useCallback(async () => {
     if (!privacyWarningShown) {
       setPrivacyWarningShown(true);
       return;
     }
-    const text = buildClipboardText(crash);
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
+    const ok = await copy(buildClipboardText(crash));
+    if (!ok) return;
     window.electron.system
       .openExternal(ISSUES_URL)
       .catch((err) => logError("Failed to open issues URL", err));
-  }, [privacyWarningShown, crash]);
+  }, [privacyWarningShown, crash, copy]);
 
   const handleAutoRestore = useCallback(
     async (checked: boolean) => {
@@ -357,15 +356,20 @@ export function CrashRecoveryDialog({
                   size="sm"
                   variant="ghost"
                   className="text-xs h-7"
-                  onClick={handleReport}
+                  onClick={() => void handleReport()}
                   data-testid="report-button"
                 >
                   <ExternalLink className="h-3 w-3 mr-1" />
-                  {copied
-                    ? "Copied!"
-                    : privacyWarningShown
-                      ? "Copy & report on GitHub"
-                      : "Report this crash"}
+                  <AnimatedLabel
+                    label={
+                      copied
+                        ? "Copied!"
+                        : privacyWarningShown
+                          ? "Copy & report on GitHub"
+                          : "Report this crash"
+                    }
+                    animateKey={copied ? "copied" : privacyWarningShown ? "warn" : "default"}
+                  />
                 </Button>
               </div>
 

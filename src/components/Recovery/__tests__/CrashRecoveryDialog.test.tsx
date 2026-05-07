@@ -321,6 +321,28 @@ describe("CrashRecoveryDialog", () => {
     );
   });
 
+  it("first report click does not write to clipboard or open browser", () => {
+    setup();
+    fireEvent.click(screen.getByTestId("details-toggle"));
+    fireEvent.click(screen.getByTestId("report-button"));
+    expect(navigator.clipboard.writeText).not.toHaveBeenCalled();
+    expect(window.electron.system.openExternal).not.toHaveBeenCalled();
+  });
+
+  it("does not open the browser when clipboard write fails", async () => {
+    (navigator.clipboard.writeText as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error("denied")
+    );
+    setup();
+    fireEvent.click(screen.getByTestId("details-toggle"));
+    fireEvent.click(screen.getByTestId("report-button"));
+    fireEvent.click(screen.getByTestId("report-button"));
+    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalled());
+    // Allow the awaited copy promise rejection to settle.
+    await Promise.resolve();
+    expect(window.electron.system.openExternal).not.toHaveBeenCalled();
+  });
+
   it("calls onUpdateConfig when auto-restore checkbox is changed", async () => {
     const { onUpdateConfig } = setup();
     fireEvent.click(screen.getByTestId("auto-restore-checkbox"));

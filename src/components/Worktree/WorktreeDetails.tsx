@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef, useEffect } from "react";
+import { useMemo } from "react";
 import type { WorktreeState } from "../../types";
 import type { ErrorRecord, RetryAction } from "../../store/errorStore";
 import { ErrorBanner } from "../Errors/ErrorBanner";
@@ -8,8 +8,8 @@ import { LiveTimeAgo } from "./LiveTimeAgo";
 import { cn } from "../../lib/utils";
 import { GitCommit, Copy, Check, ExternalLink } from "lucide-react";
 import { parseNoteWithLinks, formatPath, type TextSegment } from "../../utils/textParsing";
-import { logError } from "@/utils/logger";
 import { actionService } from "@/services/ActionService";
+import { useCopyWithFeedback } from "@/hooks/useCopyWithFeedback";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export interface WorktreeDetailsProps {
@@ -48,20 +48,7 @@ export function WorktreeDetails({
 }: WorktreeDetailsProps) {
   const displayPath = formatPath(worktree.path, homeDir);
   const rawLastCommitMsg = worktree.worktreeChanges?.lastCommitMessage;
-  const [pathCopied, setPathCopied] = useState(false);
-  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isMountedRef = useRef(true);
-
-  useEffect(() => {
-    isMountedRef.current = true;
-    return () => {
-      isMountedRef.current = false;
-      if (copyTimeoutRef.current) {
-        clearTimeout(copyTimeoutRef.current);
-        copyTimeoutRef.current = null;
-      }
-    };
-  }, []);
+  const { copied: pathCopied, copy: copyPath } = useCopyWithFeedback();
 
   const parsedNoteSegments: TextSegment[] = useMemo(() => {
     return effectiveNote ? parseNoteWithLinks(effectiveNote) : [];
@@ -73,32 +60,9 @@ export function WorktreeDetails({
     void actionService.dispatch("system.openExternal", { url }, { source: "user" });
   };
 
-  const handleCopyPath = async (e: React.MouseEvent) => {
+  const handleCopyPath = (e: React.MouseEvent) => {
     e.stopPropagation();
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(worktree.path);
-      } else {
-        throw new Error("Clipboard API not available");
-      }
-
-      if (!isMountedRef.current) return;
-
-      setPathCopied(true);
-
-      if (copyTimeoutRef.current) {
-        clearTimeout(copyTimeoutRef.current);
-      }
-
-      copyTimeoutRef.current = setTimeout(() => {
-        if (isMountedRef.current) {
-          setPathCopied(false);
-          copyTimeoutRef.current = null;
-        }
-      }, 2000);
-    } catch (err) {
-      logError("Failed to copy path", err);
-    }
+    void copyPath(worktree.path);
   };
 
   const hasDetailsContent =
@@ -232,12 +196,12 @@ export function WorktreeDetails({
                 type="button"
                 onClick={handleCopyPath}
                 className="shrink-0 rounded p-1 text-text-muted transition-colors hover:bg-overlay-soft hover:text-text-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent"
-                aria-label={pathCopied ? "Path copied to clipboard" : "Copy path to clipboard"}
+                aria-label="Copy path to clipboard"
               >
                 {pathCopied ? (
-                  <Check className="w-3 h-3 text-status-success" />
+                  <Check key="check" className="w-3 h-3 text-status-success animate-badge-bump" />
                 ) : (
-                  <Copy className="w-3 h-3" />
+                  <Copy key="copy" className="w-3 h-3" />
                 )}
               </button>
             </TooltipTrigger>
@@ -245,9 +209,6 @@ export function WorktreeDetails({
               {pathCopied ? "Copied!" : "Copy full path"}
             </TooltipContent>
           </Tooltip>
-          <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
-            {pathCopied ? "Path copied to clipboard" : ""}
-          </div>
         </div>
       </div>
     </div>

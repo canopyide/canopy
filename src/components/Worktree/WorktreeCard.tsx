@@ -38,6 +38,7 @@ import {
 import { useInputReceiptKey } from "./WorktreeCard/hooks/useInputReceiptKey";
 import { useWorktreeActions } from "./WorktreeCard/hooks/useWorktreeActions";
 import { copyContextWithFeedback } from "@/hooks/useWorktreeActions";
+import { useCopyWithFeedback } from "@/hooks/useCopyWithFeedback";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { CONTEXT_COMPONENTS, WorktreeMenuItems } from "./WorktreeMenuItems";
 import { isAgentFleetActionEligible, isFleetArmEligible } from "@/store/fleetArmingStore";
@@ -420,6 +421,11 @@ export function WorktreeCard({
     void copyContextWithFeedback(worktree.id, { modified: true });
   };
 
+  const { copy: copyWorktreePath } = useCopyWithFeedback();
+  const handleCopyPath = () => {
+    void copyWorktreePath(worktree.path);
+  };
+
   const [showIssuePicker, setShowIssuePicker] = useState(false);
   const [showReviewHub, setShowReviewHub] = useState(false);
   const [showPlanViewer, setShowPlanViewer] = useState(false);
@@ -716,7 +722,7 @@ export function WorktreeCard({
                   },
                   onCopyContextFull: handleCopyContextFull,
                   onCopyContextModified: handleCopyContextModified,
-                  onCopyPath: () => void navigator.clipboard.writeText(worktree.path),
+                  onCopyPath: handleCopyPath,
                   onOpenEditor,
                   onRevealInFinder: handlePathClick,
                   onOpenIssuePortal: worktree.issueNumber ? handleOpenIssuePortal : undefined,
@@ -870,7 +876,7 @@ export function WorktreeCard({
           canMoveDown={canMoveDown}
           onCopyContextFull={handleCopyContextFull}
           onCopyContextModified={handleCopyContextModified}
-          onCopyPath={() => void navigator.clipboard.writeText(worktree.path)}
+          onCopyPath={handleCopyPath}
           onOpenEditor={onOpenEditor}
           onRevealInFinder={handlePathClick}
           onOpenIssuePortal={worktree.issueNumber ? handleOpenIssuePortal : undefined}

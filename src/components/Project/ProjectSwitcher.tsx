@@ -9,6 +9,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useKeybindingDisplay } from "@/hooks/useKeybinding";
 import { useProjectSwitcherPalette } from "@/hooks";
+import { useCopyWithFeedback } from "@/hooks/useCopyWithFeedback";
 import { actionService } from "@/services/ActionService";
 import { notify } from "@/lib/notify";
 import { ProjectSwitcherPalette } from "./ProjectSwitcherPalette";
@@ -86,16 +87,13 @@ export function ProjectSwitcher() {
     [projectSwitcher]
   );
 
-  const handleCopyPath = useCallback((path: string) => {
-    void navigator.clipboard.writeText(path);
-    notify({
-      type: "info",
-      title: "Path copied",
-      message: path,
-      duration: 2000,
-      transient: true,
-    });
-  }, []);
+  const { copy: copyProjectPath } = useCopyWithFeedback();
+  const handleCopyPath = useCallback(
+    (path: string) => {
+      void copyProjectPath(path);
+    },
+    [copyProjectPath]
+  );
 
   const handleSelectBackground = useCallback(
     (project: SearchableProject) => {
