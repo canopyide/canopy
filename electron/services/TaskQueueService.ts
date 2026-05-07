@@ -841,11 +841,12 @@ export class TaskQueueService {
       }
     }
 
-    // Fourth pass: crash recovery - normalize task states
+    // Fourth pass: crash recovery - normalize task states.
     // Tasks in "running" state are reset to "queued" or "blocked" after restart.
     // Use transitionToQueued/Blocked so task:state-changed events fire and the
     // orchestrator (subscribed before initialize() runs) wakes to dispatch
     // recovered tasks.
+    let recoveredAny = false;
     for (const task of this.tasks.values()) {
       if (task.status === "running") {
         console.warn(
@@ -862,7 +863,15 @@ export class TaskQueueService {
         } else {
           await this.transitionToQueued(task);
         }
+        recoveredAny = true;
       }
+    }
+
+    // If we recovered any tasks, persist the normalized state so a subsequent
+    // crash (or quit before assignment) doesn't replay the same recovery loop
+    // — the on-disk row would otherwise stay "running" forever.
+    if (recoveredAny) {
+      await this.schedulePersist();
     }
 
     console.log(`[TaskQueueService] Loaded ${this.tasks.size} tasks for project ${projectId}`);

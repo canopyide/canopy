@@ -740,7 +740,7 @@ describe("TaskQueueService", () => {
       };
     }
 
-    it("emits task:state-changed for running tasks reset to queued", async () => {
+    it("emits task:state-changed for running tasks reset to queued and persists normalized state", async () => {
       const recovery = new TaskQueueService();
       const loadSpy = vi
         .spyOn(taskPersistence, "load")
@@ -769,6 +769,41 @@ describe("TaskQueueService", () => {
         expect(recovered?.assignedAgentId).toBeUndefined();
         expect(recovered?.runId).toBeUndefined();
         expect(recovered?.startedAt).toBeUndefined();
+
+        // Critical: normalized state must be persisted so a subsequent crash
+        // doesn't replay the same recovery loop forever.
+        expect(saveSpy).toHaveBeenCalled();
+        const lastSave = saveSpy.mock.calls.at(-1);
+        expect(lastSave?.[0]).toBe("project-recovery");
+        const persistedTasks = lastSave?.[1] as TaskRecord[];
+        const persistedT1 = persistedTasks.find((t) => t.id === "t-1");
+        expect(persistedT1?.status).toBe("queued");
+        expect(persistedT1?.assignedAgentId).toBeUndefined();
+        expect(persistedT1?.runId).toBeUndefined();
+      } finally {
+        loadSpy.mockRestore();
+        saveSpy.mockRestore();
+      }
+    });
+
+    it("does not schedule a save when no tasks need recovery", async () => {
+      const recovery = new TaskQueueService();
+      const cleanTask: TaskRecord = {
+        id: "t-clean",
+        title: "Clean",
+        status: "queued",
+        priority: 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        dependencies: [],
+        dependents: [],
+      };
+      const loadSpy = vi.spyOn(taskPersistence, "load").mockResolvedValue([cleanTask]);
+      const saveSpy = vi.spyOn(taskPersistence, "save").mockResolvedValue();
+
+      try {
+        await recovery.initialize("project-clean");
+        expect(saveSpy).not.toHaveBeenCalled();
       } finally {
         loadSpy.mockRestore();
         saveSpy.mockRestore();

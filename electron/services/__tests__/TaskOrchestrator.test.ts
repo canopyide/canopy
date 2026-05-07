@@ -644,8 +644,7 @@ describe("TaskOrchestrator", () => {
 
       const exited = await queueService.getTask(exitTask.id);
       expect(exited?.status).toBe("completed");
-      expect(exited?.result?.summary).toMatch(/exited/i);
-      expect(exited?.result?.summary).not.toMatch(/Completed by agent/i);
+      expect(exited?.result?.summary).toBe("Agent process exited (claude)");
 
       mockPtyClient.getAvailableTerminalsAsync.mockResolvedValueOnce([
         {
@@ -670,8 +669,7 @@ describe("TaskOrchestrator", () => {
 
       const completed = await queueService.getTask(completeTask.id);
       expect(completed?.status).toBe("completed");
-      expect(completed?.result?.summary).toMatch(/Completed by agent/);
-      expect(completed?.result?.summary).not.toMatch(/exited/i);
+      expect(completed?.result?.summary).toBe("Completed by agent claude");
     });
   });
 
