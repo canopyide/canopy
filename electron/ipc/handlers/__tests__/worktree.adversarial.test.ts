@@ -143,6 +143,7 @@ describe("worktree IPC adversarial", () => {
     getAllStatesAsync: ReturnType<typeof vi.fn>;
     createWorktree: ReturnType<typeof vi.fn>;
     deleteWorktree: ReturnType<typeof vi.fn>;
+    invalidatePulseCache: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(() => {

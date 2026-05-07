@@ -706,19 +706,17 @@ describe("ProjectPulseService", () => {
 
     expect(capturedSignal).toBeDefined();
     expect(capturedSignal instanceof AbortSignal).toBe(true);
-    expect(capturedSignal.aborted).toBe(false);
+    expect(capturedSignal!.aborted).toBe(false);
   });
 
   it("invalidate(worktreeId) aborts active AbortController", async () => {
     let capturedSignal: AbortSignal | undefined;
-    let rejectOnAbort: ((reason: Error) => void) | undefined;
 
     const raw = vi.fn(async (args: string[]) => {
       const cmd = args[0];
       if (cmd === "rev-parse" && args[1] === "--verify" && args[2] === "HEAD") {
         // Stall to keep the computation in-flight; listen for abort on signal
-        await new Promise<void>((resolve, reject) => {
-          rejectOnAbort = reject;
+        await new Promise<void>((_resolve, reject) => {
           capturedSignal?.addEventListener("abort", () =>
             reject(new DOMException("Aborted", "AbortError"))
           );
