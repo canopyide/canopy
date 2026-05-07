@@ -21,12 +21,24 @@ const appMock = vi.hoisted(() => ({
   exit: vi.fn(),
 }));
 
+const loggerMethods = vi.hoisted(() => ({
+  debug: vi.fn(),
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+  name: "main:GpuCrashMonitor",
+}));
+
 vi.mock("../../store.js", () => ({
   store: storeMock,
 }));
 
 vi.mock("electron", () => ({
   app: appMock,
+}));
+
+vi.mock("../../utils/logger.js", () => ({
+  createLogger: vi.fn(() => loggerMethods),
 }));
 
 const telemetryServiceMock = vi.hoisted(() => ({
@@ -50,6 +62,7 @@ import {
   isGpuAngleFallbackByFlag,
   writeGpuAngleFallbackFlag,
   clearGpuAngleFallbackFlag,
+  GPU_CRASH_WINDOW_MS,
 } from "../GpuCrashMonitorService.js";
 
 describe("GpuCrashMonitorService", () => {
@@ -129,7 +142,6 @@ describe("GpuCrashMonitorService", () => {
 
   describe("crash monitoring", () => {
     async function loadAndInit() {
-      // Reset module to get a fresh singleton
       vi.resetModules();
       const mod = await import("../GpuCrashMonitorService.js");
       mod.initializeGpuCrashMonitor();
@@ -172,7 +184,6 @@ describe("GpuCrashMonitorService", () => {
       await vi.waitFor(() => {
         expect(appMock.exit).toHaveBeenCalledWith(0);
       });
-      // No disable flag, no store update — only the soft ANGLE fallback.
       expect(isGpuDisabledByFlag(tmpDir)).toBe(false);
       expect(storeMock.set).not.toHaveBeenCalledWith(
         "gpu",
@@ -185,8 +196,6 @@ describe("GpuCrashMonitorService", () => {
       await loadAndInit();
       emitGpuCrash();
       emitGpuCrash();
-      // Two crashes is below the nuclear threshold; with the angle flag
-      // already present, the first-crash path is suppressed too.
       expect(appMock.relaunch).not.toHaveBeenCalled();
       expect(appMock.exit).not.toHaveBeenCalled();
       expect(isGpuDisabledByFlag(tmpDir)).toBe(false);
@@ -203,8 +212,6 @@ describe("GpuCrashMonitorService", () => {
       });
       expect(appMock.relaunch).toHaveBeenCalledTimes(1);
       expect(isGpuDisabledByFlag(tmpDir)).toBe(true);
-      // The angle flag is cleared so the next launch goes straight to the
-      // disabled-acceleration path without redundant ANGLE switches.
       expect(isGpuAngleFallbackByFlag(tmpDir)).toBe(false);
       expect(storeMock.set).toHaveBeenCalledWith("gpu", {
         hardwareAccelerationDisabled: true,
@@ -226,24 +233,33 @@ describe("GpuCrashMonitorService", () => {
       emitChildProcessGone("Utility", "crashed", 1, "daintree-pty-host");
       emitChildProcessGone("Utility", "crashed", 1, "daintree-pty-host");
       expect(appMock.relaunch).not.toHaveBeenCalled();
-      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("[ChildProcess]"));
-      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("name=daintree-pty-host"));
+      expect(loggerMethods.warn).toHaveBeenCalledWith(
+        "gpu-non-crash-exit-detected",
+        expect.objectContaining({ name: "daintree-pty-host" })
+      );
     });
 
     it("does not log non-GPU clean-exit or killed events", async () => {
       await loadAndInit();
       emitChildProcessGone("Utility", "clean-exit", 0, "daintree-pty-host");
       emitChildProcessGone("Utility", "killed", 137, "daintree-workspace-host");
-      expect(console.warn).not.toHaveBeenCalledWith(expect.stringContaining("[ChildProcess]"));
+      expect(loggerMethods.warn).not.toHaveBeenCalledWith(
+        "gpu-non-crash-exit-detected",
+        expect.anything()
+      );
     });
 
     it("logs non-GPU crash with full process details", async () => {
       await loadAndInit();
       emitChildProcessGone("Utility", "oom", 137, "daintree-workspace-host");
-      expect(console.warn).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "type=Utility, reason=oom, exitCode=137, name=daintree-workspace-host"
-        )
+      expect(loggerMethods.warn).toHaveBeenCalledWith(
+        "gpu-non-crash-exit-detected",
+        expect.objectContaining({
+          type: "Utility",
+          reason: "oom",
+          exitCode: 137,
+          name: "daintree-workspace-host",
+        })
       );
     });
 
@@ -268,6 +284,33 @@ describe("GpuCrashMonitorService", () => {
       expect(isGpuAngleFallbackByFlag(tmpDir)).toBe(true);
     });
 
+    it("logs soft fallback with structured logger", async () => {
+      await loadAndInit();
+      emitGpuCrash();
+      await vi.waitFor(() => {
+        expect(appMock.exit).toHaveBeenCalledWith(0);
+      });
+      expect(loggerMethods.warn).toHaveBeenCalledWith(
+        "gpu-crash-soft-fallback",
+        expect.objectContaining({ crashCount: 1 })
+      );
+    });
+
+    it("logs nuclear disable with structured logger", async () => {
+      writeGpuAngleFallbackFlag(tmpDir);
+      await loadAndInit();
+      emitGpuCrash();
+      emitGpuCrash();
+      emitGpuCrash();
+      await vi.waitFor(() => {
+        expect(appMock.exit).toHaveBeenCalledWith(0);
+      });
+      expect(loggerMethods.warn).toHaveBeenCalledWith(
+        "gpu-crash-nuclear-disable",
+        expect.objectContaining({ crashCount: 3 })
+      );
+    });
+
     it("only relaunches once even with additional crashes after the first soft fallback", async () => {
       await loadAndInit();
       emitGpuCrash();
@@ -279,8 +322,6 @@ describe("GpuCrashMonitorService", () => {
         expect(appMock.exit).toHaveBeenCalledTimes(1);
       });
       expect(appMock.relaunch).toHaveBeenCalledTimes(1);
-      // Only the soft fallback path ran — disable flag must not be written
-      // when crash count was reset by an unmodelled relaunch.
       expect(isGpuDisabledByFlag(tmpDir)).toBe(false);
     });
 
@@ -295,9 +336,10 @@ describe("GpuCrashMonitorService", () => {
         expect(appMock.relaunch).not.toHaveBeenCalled();
         expect(appMock.exit).not.toHaveBeenCalled();
         expect(isGpuAngleFallbackByFlag(tmpDir)).toBe(false);
-        expect(console.error).toHaveBeenCalledWith(
-          expect.stringContaining("Failed to write ANGLE fallback flag"),
-          expect.any(Error)
+        expect(loggerMethods.error).toHaveBeenCalledWith(
+          "gpu-crash-relaunching-skip",
+          expect.any(Error),
+          expect.objectContaining({ path: "angle-fallback" })
         );
       } finally {
         writeSpy.mockRestore();
@@ -318,9 +360,10 @@ describe("GpuCrashMonitorService", () => {
         expect(appMock.relaunch).not.toHaveBeenCalled();
         expect(appMock.exit).not.toHaveBeenCalled();
         expect(isGpuDisabledByFlag(tmpDir)).toBe(false);
-        expect(console.error).toHaveBeenCalledWith(
-          expect.stringContaining("Failed to persist disable flag"),
-          expect.any(Error)
+        expect(loggerMethods.error).toHaveBeenCalledWith(
+          "gpu-crash-relaunching-skip",
+          expect.any(Error),
+          expect.objectContaining({ path: "disable" })
         );
       } finally {
         writeSpy.mockRestore();
@@ -372,8 +415,9 @@ describe("GpuCrashMonitorService", () => {
         // with ANGLE active so a restored launch (after the guard resets)
         // doesn't immediately repeat the original Vulkan crash.
         expect(isGpuAngleFallbackByFlag(tmpDir)).toBe(true);
-        expect(console.error).toHaveBeenCalledWith(
-          expect.stringContaining("Crash loop hard stop reached")
+        expect(loggerMethods.warn).toHaveBeenCalledWith(
+          "gpu-crash-loop-hard-stop",
+          expect.objectContaining({ path: "angle-fallback" })
         );
       });
 
@@ -405,8 +449,9 @@ describe("GpuCrashMonitorService", () => {
         expect(storeMock.set).toHaveBeenCalledWith("gpu", {
           hardwareAccelerationDisabled: true,
         });
-        expect(console.error).toHaveBeenCalledWith(
-          expect.stringContaining("Crash loop hard stop reached")
+        expect(loggerMethods.warn).toHaveBeenCalledWith(
+          "gpu-crash-loop-hard-stop",
+          expect.objectContaining({ path: "nuclear-disable" })
         );
       });
 
@@ -422,6 +467,131 @@ describe("GpuCrashMonitorService", () => {
         });
         expect(appMock.relaunch).toHaveBeenCalledTimes(1);
       });
+    });
+  });
+
+  describe("sliding window decay", () => {
+    async function loadAndInit() {
+      vi.resetModules();
+      const mod = await import("../GpuCrashMonitorService.js");
+      mod.initializeGpuCrashMonitor();
+    }
+
+    function emitGpuCrash(reason = "crashed", exitCode = 1) {
+      const handlers = appListeners["child-process-gone"] ?? [];
+      for (const handler of handlers) {
+        handler({}, { type: "GPU", reason, exitCode, serviceName: "", name: "" });
+      }
+    }
+
+    it("three crashes within window trigger nuclear disable", async () => {
+      writeGpuAngleFallbackFlag(tmpDir);
+      await loadAndInit();
+
+      emitGpuCrash();
+      emitGpuCrash();
+      emitGpuCrash();
+
+      await vi.waitFor(() => {
+        expect(appMock.exit).toHaveBeenCalledWith(0);
+      });
+      expect(appMock.relaunch).toHaveBeenCalledTimes(1);
+      expect(isGpuDisabledByFlag(tmpDir)).toBe(true);
+      expect(loggerMethods.warn).toHaveBeenCalledWith(
+        "gpu-crash-nuclear-disable",
+        expect.objectContaining({ crashCount: 3 })
+      );
+    });
+
+    it("does NOT trigger nuclear disable when first crash falls outside window", async () => {
+      writeGpuAngleFallbackFlag(tmpDir);
+
+      let now = Date.now();
+      const dateSpy = vi.spyOn(Date, "now").mockImplementation(() => now);
+
+      await loadAndInit();
+
+      // 2 crashes at T+0
+      emitGpuCrash();
+      emitGpuCrash();
+
+      // Advance past the window
+      now += GPU_CRASH_WINDOW_MS + 1;
+
+      // 3rd crash at T+5min+1ms — first 2 pruned, effectiveCount = 1
+      emitGpuCrash();
+
+      await new Promise((r) => setImmediate(r));
+
+      expect(appMock.relaunch).not.toHaveBeenCalled();
+      expect(appMock.exit).not.toHaveBeenCalled();
+
+      dateSpy.mockRestore();
+    });
+
+    it("does NOT trigger nuclear when only 2 crashes remain in window", async () => {
+      writeGpuAngleFallbackFlag(tmpDir);
+
+      let now = Date.now();
+      const dateSpy = vi.spyOn(Date, "now").mockImplementation(() => now);
+
+      await loadAndInit();
+
+      // 1 crash at T+0
+      emitGpuCrash();
+
+      // Advance past window
+      now += GPU_CRASH_WINDOW_MS + 1000;
+
+      // 2 crashes at T+5min+1s — first pruned, effectiveCount = 2
+      emitGpuCrash();
+      emitGpuCrash();
+
+      await new Promise((r) => setImmediate(r));
+
+      expect(appMock.relaunch).not.toHaveBeenCalled();
+      expect(appMock.exit).not.toHaveBeenCalled();
+
+      dateSpy.mockRestore();
+    });
+
+    it("logs disable-flag-active at init when flag exists", async () => {
+      writeGpuDisabledFlag(tmpDir);
+      await loadAndInit();
+      expect(loggerMethods.info).toHaveBeenCalledWith("gpu-crash-disable-flag-active");
+    });
+
+    it("logs angle-fallback-flag-active at init when flag exists", async () => {
+      writeGpuAngleFallbackFlag(tmpDir);
+      await loadAndInit();
+      expect(loggerMethods.info).toHaveBeenCalledWith("gpu-angle-fallback-flag-active");
+      expect(loggerMethods.info).not.toHaveBeenCalledWith("gpu-crash-disable-flag-active");
+    });
+
+    it("crashes exactly at window boundary are excluded", async () => {
+      writeGpuAngleFallbackFlag(tmpDir);
+
+      let now = Date.now();
+      const dateSpy = vi.spyOn(Date, "now").mockImplementation(() => now);
+
+      await loadAndInit();
+
+      emitGpuCrash();
+      emitGpuCrash();
+
+      // Advance to exactly the window boundary
+      now += GPU_CRASH_WINDOW_MS;
+
+      // At exact boundary, `now - ts < GPU_CRASH_WINDOW_MS` is false for the
+      // old crashes (difference equals the window, not less than)
+      emitGpuCrash();
+
+      await new Promise((r) => setImmediate(r));
+
+      expect(appMock.relaunch).not.toHaveBeenCalled();
+      expect(appMock.exit).not.toHaveBeenCalled();
+
+      dateSpy.mockRestore();
     });
   });
 });
