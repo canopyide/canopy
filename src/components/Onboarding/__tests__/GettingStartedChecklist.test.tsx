@@ -150,4 +150,16 @@ describe("GettingStartedChecklist", () => {
     expect(defaultProps.onDismiss).not.toHaveBeenCalled();
     expect(defaultProps.onToggleCollapse).not.toHaveBeenCalled();
   });
+
+  it("renders the n/n counter while the checklist is incomplete", () => {
+    render(<GettingStartedChecklist {...defaultProps} checklist={mixedState} />);
+    expect(screen.getByText("1/4")).toBeTruthy();
+    expect(screen.queryByText("All done")).toBeNull();
+  });
+
+  it("renders the 'All done' milestone label when every item is complete", () => {
+    render(<GettingStartedChecklist {...defaultProps} checklist={allComplete} />);
+    expect(screen.getByText("All done")).toBeTruthy();
+    expect(screen.queryByText("4/4")).toBeNull();
+  });
 });

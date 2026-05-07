@@ -323,7 +323,7 @@ describe("useGettingStartedChecklist", () => {
       expect(notifyMock).toHaveBeenCalledTimes(1);
       const args = notifyMock.mock.calls[0]![0];
       expect(args.type).toBe("success");
-      expect(args.title).toBe("Checklist complete!");
+      expect(args.title).toBe("Checklist complete");
       expect(args.message).toBe("You're all set. Open the panel palette (⌘+N) to launch an agent");
       expect(args.transient).toBe(true);
     });
@@ -344,4 +344,177 @@ describe("useGettingStartedChecklist", () => {
       expect(args.message).not.toContain("(");
     });
   });
+
+  describe("milestone-beat hold", () => {
+    beforeEach(() => {
+      onboardingMock.getChecklist.mockResolvedValue({
+        items: {
+          openedProject: true,
+          launchedAgent: true,
+          createdWorktree: true,
+          ranSecondParallelAgent: false,
+        },
+        dismissed: false,
+        celebrationShown: false,
+      });
+    });
+
+    it("keeps panel visible during the hold, then dismisses after 800ms", async () => {
+      const { result } = renderHook(() => useGettingStartedChecklist(true));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      await act(async () => {
+        result.current.markItem("ranSecondParallelAgent");
+      });
+
+      // IPC dismiss fires immediately for restart safety.
+      expect(onboardingMock.dismissChecklist).toHaveBeenCalledTimes(1);
+      // Panel stays visible during the hold.
+      expect(result.current.visible).toBe(true);
+      expect(result.current.checklist?.dismissed).toBe(false);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(799);
+      });
+      expect(result.current.visible).toBe(true);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(result.current.visible).toBe(false);
+      expect(result.current.checklist?.dismissed).toBe(true);
+    });
+
+    it("ignores onChecklistPush(dismissed:true) during the hold window", async () => {
+      let pushHandler: ((next: ChecklistStateLike) => void) | null = null;
+      const onChecklistPushMock = vi.fn((fn: (next: ChecklistStateLike) => void) => {
+        pushHandler = fn;
+        return () => {};
+      });
+      const augmentedMock = onboardingMock as typeof onboardingMock & {
+        onChecklistPush: typeof onChecklistPushMock;
+      };
+      augmentedMock.onChecklistPush = onChecklistPushMock;
+
+      try {
+        const { result } = renderHook(() => useGettingStartedChecklist(true));
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(0);
+        });
+
+        await act(async () => {
+          result.current.markItem("ranSecondParallelAgent");
+        });
+
+        expect(result.current.visible).toBe(true);
+        expect(pushHandler).not.toBeNull();
+
+        // Main process broadcasts the persisted dismissed:true mid-hold;
+        // the panel must stay visible until the local timer fires.
+        await act(async () => {
+          pushHandler!({
+            items: {
+              openedProject: true,
+              launchedAgent: true,
+              createdWorktree: true,
+              ranSecondParallelAgent: true,
+            },
+            dismissed: true,
+            celebrationShown: true,
+          });
+        });
+
+        expect(result.current.visible).toBe(true);
+        expect(result.current.checklist?.dismissed).toBe(false);
+
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(800);
+        });
+        expect(result.current.visible).toBe(false);
+        expect(result.current.checklist?.dismissed).toBe(true);
+      } finally {
+        delete (augmentedMock as Partial<typeof augmentedMock>).onChecklistPush;
+      }
+    });
+
+    it("applies onChecklistPush(dismissed:true) immediately when no hold is active", async () => {
+      let pushHandler: ((next: ChecklistStateLike) => void) | null = null;
+      const onChecklistPushMock = vi.fn((fn: (next: ChecklistStateLike) => void) => {
+        pushHandler = fn;
+        return () => {};
+      });
+      const augmentedMock = onboardingMock as typeof onboardingMock & {
+        onChecklistPush: typeof onChecklistPushMock;
+      };
+      augmentedMock.onChecklistPush = onChecklistPushMock;
+
+      try {
+        const { result } = renderHook(() => useGettingStartedChecklist(true));
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(0);
+        });
+
+        expect(result.current.visible).toBe(true);
+        expect(pushHandler).not.toBeNull();
+
+        // No markItem(allDone), so pendingDismissRef is false. The push gate
+        // must be inactive and dismissed:true must take effect immediately.
+        await act(async () => {
+          pushHandler!({
+            items: {
+              openedProject: true,
+              launchedAgent: true,
+              createdWorktree: true,
+              ranSecondParallelAgent: true,
+            },
+            dismissed: true,
+            celebrationShown: false,
+          });
+        });
+
+        expect(result.current.checklist?.dismissed).toBe(true);
+        expect(result.current.visible).toBe(false);
+      } finally {
+        delete (augmentedMock as Partial<typeof augmentedMock>).onChecklistPush;
+      }
+    });
+
+    it("manual dismiss() during the hold dismisses the panel immediately", async () => {
+      const { result } = renderHook(() => useGettingStartedChecklist(true));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      await act(async () => {
+        result.current.markItem("ranSecondParallelAgent");
+      });
+      expect(result.current.visible).toBe(true);
+
+      await act(async () => {
+        result.current.dismiss();
+      });
+
+      expect(result.current.visible).toBe(false);
+      expect(result.current.checklist?.dismissed).toBe(true);
+
+      // Pending timer must be a no-op after manual dismiss.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(800);
+      });
+      expect(result.current.visible).toBe(false);
+    });
+  });
 });
+
+interface ChecklistStateLike {
+  items: {
+    openedProject: boolean;
+    launchedAgent: boolean;
+    createdWorktree: boolean;
+    ranSecondParallelAgent: boolean;
+  };
+  dismissed: boolean;
+  celebrationShown: boolean;
+}
