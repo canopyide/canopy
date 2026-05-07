@@ -61,8 +61,9 @@ describe("terminalSessionPersistence", () => {
     expect(getSessionPath("")).toBeNull();
   });
 
-  it("does not persist snapshots larger than max bytes", async () => {
+  it("does not persist snapshots larger than max bytes and warns", async () => {
     const oversized = "x".repeat(SESSION_SNAPSHOT_MAX_BYTES + 1);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     persistSessionSnapshotSync("term-sync", oversized);
     await persistSessionSnapshotAsync("term-async", oversized);
@@ -71,6 +72,13 @@ describe("terminalSessionPersistence", () => {
     const asyncPath = path.join(userDataDir, "terminal-sessions", "term-async.restore");
     expect(fs.existsSync(syncPath)).toBe(false);
     expect(fs.existsSync(asyncPath)).toBe(false);
+
+    expect(warnSpy).toHaveBeenCalledTimes(2);
+    expect(warnSpy.mock.calls[0][0]).toMatch(/term-sync/);
+    expect(warnSpy.mock.calls[0][0]).toMatch(/exceeds cap/);
+    expect(warnSpy.mock.calls[1][0]).toMatch(/term-async/);
+
+    warnSpy.mockRestore();
   });
 
   it("persists and restores snapshots via the atomic write helpers", async () => {

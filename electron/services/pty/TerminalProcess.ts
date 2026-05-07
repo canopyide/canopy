@@ -211,7 +211,7 @@ export class TerminalProcess {
       }
 
       serializeForPersistence(): string | null {
-        return this.parent._serializeForPersistence();
+        return this.parent.serializeForPersistence();
       }
     }
 
@@ -1162,7 +1162,7 @@ export class TerminalProcess {
     return serializeTerminalAsync(this.id, this.terminalInfo);
   }
 
-  private _serializeForPersistence(): string | null {
+  serializeForPersistence(): string | null {
     return serializeForPersistence(
       this.terminalInfo,
       this._restoreBannerStart,

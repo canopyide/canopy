@@ -130,7 +130,13 @@ export function persistSessionSnapshotSync(terminalId: string, state: string): v
   const sessionPath = getSessionPath(terminalId);
   const dir = getSessionDir();
   if (!sessionPath || !dir) return;
-  if (Buffer.byteLength(state, "utf8") > SESSION_SNAPSHOT_MAX_BYTES) return;
+  const bytes = Buffer.byteLength(state, "utf8");
+  if (bytes > SESSION_SNAPSHOT_MAX_BYTES) {
+    console.warn(
+      `[terminalSessionPersistence] Snapshot for ${terminalId} exceeds cap (${bytes} > ${SESSION_SNAPSHOT_MAX_BYTES} bytes); skipping persist`
+    );
+    return;
+  }
 
   mkdirSync(dir, { recursive: true });
   resilientAtomicWriteFileSync(sessionPath, state, "utf8");
@@ -143,7 +149,13 @@ export async function persistSessionSnapshotAsync(
   const sessionPath = getSessionPath(terminalId);
   const dir = getSessionDir();
   if (!sessionPath || !dir) return;
-  if (Buffer.byteLength(state, "utf8") > SESSION_SNAPSHOT_MAX_BYTES) return;
+  const bytes = Buffer.byteLength(state, "utf8");
+  if (bytes > SESSION_SNAPSHOT_MAX_BYTES) {
+    console.warn(
+      `[terminalSessionPersistence] Snapshot for ${terminalId} exceeds cap (${bytes} > ${SESSION_SNAPSHOT_MAX_BYTES} bytes); skipping persist`
+    );
+    return;
+  }
 
   await mkdir(dir, { recursive: true });
   await resilientAtomicWriteFile(sessionPath, state, "utf8");
