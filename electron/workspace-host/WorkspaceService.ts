@@ -1581,8 +1581,10 @@ export class WorkspaceService {
 
       if (branchToDelete && this.git) {
         try {
-          await this.git.raw(["branch", "-d", branchToDelete]);
-          console.log(`[WorkspaceHost] Deleted branch: ${branchToDelete} (safe)`);
+          await this.git.raw(["branch", force ? "-D" : "-d", branchToDelete]);
+          console.log(
+            `[WorkspaceHost] Deleted branch: ${branchToDelete} (${force ? "force" : "safe"})`
+          );
         } catch (branchError) {
           const errorMsg = (branchError as Error).message || "";
           if (errorMsg.includes("not found")) {

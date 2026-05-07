@@ -12,6 +12,10 @@ export interface RawWorktreeRecord {
   isMainWorktree: boolean;
   head?: string;
   isDetached?: boolean;
+  isLocked?: boolean;
+  lockReason?: string;
+  isPrunable?: boolean;
+  prunableReason?: string;
 }
 
 interface WorktreeListCacheEntry {
@@ -101,6 +105,10 @@ export class WorktreeListService {
         bare: boolean;
         head: string;
         isDetached: boolean;
+        isLocked: boolean;
+        lockReason: string;
+        isPrunable: boolean;
+        prunableReason: string;
       }> = {};
 
       const pushWorktree = () => {
@@ -112,6 +120,10 @@ export class WorktreeListService {
             isMainWorktree: isFirstEntry,
             head: currentWorktree.isDetached ? currentWorktree.head : undefined,
             isDetached: currentWorktree.isDetached,
+            isLocked: currentWorktree.isLocked,
+            lockReason: currentWorktree.lockReason,
+            isPrunable: currentWorktree.isPrunable,
+            prunableReason: currentWorktree.prunableReason,
           });
           isFirstEntry = false;
         }
@@ -129,6 +141,16 @@ export class WorktreeListService {
           currentWorktree.bare = true;
         } else if (line.trim() === "detached") {
           currentWorktree.isDetached = true;
+        } else if (line === "locked") {
+          currentWorktree.isLocked = true;
+        } else if (line.startsWith("locked ")) {
+          currentWorktree.isLocked = true;
+          currentWorktree.lockReason = line.slice(7);
+        } else if (line === "prunable") {
+          currentWorktree.isPrunable = true;
+        } else if (line.startsWith("prunable ")) {
+          currentWorktree.isPrunable = true;
+          currentWorktree.prunableReason = line.slice(9);
         } else if (line.trim() === "") {
           pushWorktree();
         }
@@ -181,6 +203,10 @@ export class WorktreeListService {
         isCurrent: false,
         isMainWorktree: wt.isMainWorktree,
         gitDir: getGitDir(wt.path) || undefined,
+        isLocked: wt.isLocked,
+        lockReason: wt.lockReason,
+        isPrunable: wt.isPrunable,
+        prunableReason: wt.prunableReason,
       };
     });
   }
