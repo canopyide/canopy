@@ -14,7 +14,19 @@
 const MAX_SVG_SIZE_BYTES = 250 * 1024; // 250KB
 
 /** Elements that must be completely removed (case-insensitive) */
-const DANGEROUS_ELEMENTS = ["script", "foreignObject", "iframe", "embed", "object", "meta", "link"];
+const DANGEROUS_ELEMENTS = [
+  "script",
+  "foreignObject",
+  "iframe",
+  "embed",
+  "object",
+  "meta",
+  "link",
+  "animate",
+  "set",
+  "animateTransform",
+  "animateMotion",
+];
 
 /** Event handler attributes to remove (matched with on* pattern) */
 const EVENT_HANDLER_PATTERN = /\s+on\w+\s*=\s*["'][^"']*["']/gi;
@@ -28,8 +40,8 @@ const JAVASCRIPT_URL_PATTERN = /\bjavascript\s*:/gi;
 /** data: URLs (can embed scripts via data:text/html) */
 const DATA_URL_PATTERN = /\bdata\s*:/gi;
 
-/** Pattern to match href/xlink:href attributes with quoted or unquoted values */
-const HREF_ATTRIBUTE_PATTERN = /(^|\s)(xlink:)?href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
+/** Pattern to match href/xlink:href and any namespace-prefixed href attribute with quoted or unquoted values */
+const HREF_ATTRIBUTE_PATTERN = /(^|\s)([\w.-]+:)?href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
 
 /** Pattern to match url() functions in CSS */
 const URL_FUNC_PATTERN = /\burl\s*\(\s*([^)]+)\)/gi;
@@ -109,14 +121,16 @@ const isLocalReference = (value: string): boolean => {
  * Strip unsafe href/xlink:href attributes, allowing only local references
  */
 const stripUnsafeHrefAttributes = (svg: string): string => {
-  return svg.replace(HREF_ATTRIBUTE_PATTERN, (match, prefix, xlink, dquoted, squoted, unquoted) => {
-    const rawValue = dquoted ?? squoted ?? unquoted ?? "";
-    if (isLocalReference(rawValue)) {
-      return match;
+  return svg.replace(
+    HREF_ATTRIBUTE_PATTERN,
+    (match, prefix, nsPrefix, dquoted, squoted, unquoted) => {
+      const rawValue = dquoted ?? squoted ?? unquoted ?? "";
+      if (isLocalReference(rawValue)) {
+        return match;
+      }
+      return `${prefix}${nsPrefix ?? ""}href=""`;
     }
-    const attrName = xlink ? "xlink:href" : "href";
-    return `${prefix}${attrName}=""`;
-  });
+  );
 };
 
 /**
@@ -136,7 +150,7 @@ const stripUnsafeUrlFunctions = (svg: string): string => {
  */
 const hasUnsafeHrefAttributes = (svg: string): boolean => {
   let unsafe = false;
-  svg.replace(HREF_ATTRIBUTE_PATTERN, (_match, _prefix, _xlink, dquoted, squoted, unquoted) => {
+  svg.replace(HREF_ATTRIBUTE_PATTERN, (_match, _prefix, _nsPrefix, dquoted, squoted, unquoted) => {
     const rawValue = dquoted ?? squoted ?? unquoted ?? "";
     if (!isLocalReference(rawValue)) {
       unsafe = true;
@@ -164,6 +178,12 @@ const hasUnsafeUrlFunctions = (svg: string): boolean => {
  * Sanitize SVG content by removing dangerous elements and attributes.
  * Returns the cleaned SVG or an error if the input is invalid.
  *
+ * @warning The returned SVG is safe to embed only via DOM APIs that do not
+ *   re-parse it as HTML. Assigning the output through `innerHTML` (or any
+ *   path that re-tokenizes HTML) can resurrect mutation-XSS vectors that
+ *   the regex sanitizer cannot model. Prefer `svgToDataUrl()` and an
+ *   `<img src=...>` tag, or insert the parsed SVG via `DOMParser`.
+ *
  * @param svgText - Raw SVG content to sanitize
  * @returns Sanitized SVG or error
  */
@@ -178,7 +198,7 @@ export function sanitizeSvg(svgText: string): SvgSanitizeOutcome {
   }
 
   // Check size limit
-  const sizeBytes = new Blob([svg]).size;
+  const sizeBytes = new TextEncoder().encode(svg).byteLength;
   if (sizeBytes > MAX_SVG_SIZE_BYTES) {
     const sizeMB = (sizeBytes / 1024 / 1024).toFixed(2);
     return {
@@ -199,14 +219,20 @@ export function sanitizeSvg(svgText: string): SvgSanitizeOutcome {
 
   const originalSvg = svg;
 
-  // Remove dangerous elements completely (including their content)
+  // Remove dangerous elements completely (including their content). The optional
+  // ([\w.-]+:)? prefix segment also catches namespace-prefixed forms like
+  // <s:animate> (where s binds to the SVG namespace), which a parser treats as
+  // identical to the bare element.
   for (const element of DANGEROUS_ELEMENTS) {
     // Match opening tag through closing tag (handles nested content)
-    const openClosePattern = new RegExp(`<${element}\\b[^>]*>[\\s\\S]*?<\\/${element}>`, "gi");
+    const openClosePattern = new RegExp(
+      `<(?:[\\w.-]+:)?${element}\\b[^>]*>[\\s\\S]*?<\\/(?:[\\w.-]+:)?${element}>`,
+      "gi"
+    );
     svg = svg.replace(openClosePattern, "");
 
     // Also handle self-closing variants
-    const selfClosingPattern = new RegExp(`<${element}\\b[^>]*\\/?>`, "gi");
+    const selfClosingPattern = new RegExp(`<(?:[\\w.-]+:)?${element}\\b[^>]*\\/?>`, "gi");
     svg = svg.replace(selfClosingPattern, "");
   }
 
@@ -279,14 +305,14 @@ export function isSvgSafe(svgText: string): boolean {
   }
 
   // Check size
-  const sizeBytes = new Blob([svg]).size;
+  const sizeBytes = new TextEncoder().encode(svg).byteLength;
   if (sizeBytes > MAX_SVG_SIZE_BYTES) {
     return false;
   }
 
-  // Check for dangerous elements
+  // Check for dangerous elements (including namespace-prefixed forms)
   for (const element of DANGEROUS_ELEMENTS) {
-    const pattern = new RegExp(`<${element}\\b`, "i");
+    const pattern = new RegExp(`<(?:[\\w.-]+:)?${element}\\b`, "i");
     if (testPattern(pattern, svg)) {
       return false;
     }
