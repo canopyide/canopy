@@ -3,19 +3,33 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
+type GainMock = {
+  gain: { setTargetAtTime: ReturnType<typeof vi.fn>; value: number };
+  connect: ReturnType<typeof vi.fn>;
+};
+
+type SourceMock = {
+  buffer: AudioBuffer | null;
+  detune: { value: number };
+  detuneAtStart: number | null;
+  connect: ReturnType<typeof vi.fn>;
+  gainNode: GainMock | null;
+  start: (when?: number) => void;
+  stop: ReturnType<typeof vi.fn>;
+  onended: (() => void) | null;
+};
+
 function createMockAudioContext() {
   const mockStart = vi.fn();
-  const mockConnect = vi.fn();
   const mockResume = vi.fn().mockResolvedValue(undefined);
   const mockClose = vi.fn().mockResolvedValue(undefined);
   const mockDecodeAudioData = vi.fn();
-  const sources: Array<{
-    stop: ReturnType<typeof vi.fn>;
-    detune: { value: number };
-    detuneAtStart: number | null;
-  }> = [];
+  const sources: SourceMock[] = [];
 
   let state = "running";
+  // Holds the gain node returned by the most recent createGain() call so
+  // source.connect(gainNode) can capture it without an unsafe cast.
+  let pendingGainNode: GainMock | null = null;
 
   const ctx = {
     get state() {
@@ -24,29 +38,44 @@ function createMockAudioContext() {
     set state(v: string) {
       state = v;
     },
+    currentTime: 0,
     destination: {},
     createBufferSource: vi.fn(() => {
-      const source = {
-        buffer: null as AudioBuffer | null,
+      const source: SourceMock = {
+        buffer: null,
         detune: { value: 0 },
-        detuneAtStart: null as number | null,
-        connect: mockConnect,
+        detuneAtStart: null,
+        connect: vi.fn(() => {
+          if (pendingGainNode) {
+            source.gainNode = pendingGainNode;
+            pendingGainNode = null;
+          }
+        }),
+        gainNode: null,
         start: (when?: number) => {
           source.detuneAtStart = source.detune.value;
           mockStart(when);
         },
         stop: vi.fn(),
-        onended: null as (() => void) | null,
+        onended: null,
       };
       sources.push(source);
       return source;
+    }),
+    createGain: vi.fn(() => {
+      const gainNode: GainMock = {
+        gain: { setTargetAtTime: vi.fn(), value: 1 },
+        connect: vi.fn(),
+      };
+      pendingGainNode = gainNode;
+      return gainNode;
     }),
     decodeAudioData: mockDecodeAudioData,
     resume: mockResume,
     close: mockClose,
   };
 
-  return { ctx, mockStart, mockConnect, mockResume, mockClose, mockDecodeAudioData, sources };
+  return { ctx, mockStart, mockResume, mockClose, mockDecodeAudioData, sources };
 }
 
 describe("WebAudioService", () => {
@@ -84,7 +113,7 @@ describe("WebAudioService", () => {
   }
 
   it("plays a sound by fetching via daintree-file:// and decoding", async () => {
-    const { service, mockFetch, mockSuccessfulFetch, mockDecodeAudioData, mockConnect, mockStart } =
+    const { service, mockFetch, mockSuccessfulFetch, mockDecodeAudioData, mockStart, sources } =
       await setupTest();
     mockSuccessfulFetch();
 
@@ -93,7 +122,8 @@ describe("WebAudioService", () => {
     expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining("daintree-file://"));
     expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining("chime.wav"));
     expect(mockDecodeAudioData).toHaveBeenCalled();
-    expect(mockConnect).toHaveBeenCalled();
+    expect(sources[0]!.connect).toHaveBeenCalled();
+    expect(sources[0]!.gainNode).toBeTruthy();
     expect(mockStart).toHaveBeenCalledWith(0);
   });
 
@@ -109,14 +139,69 @@ describe("WebAudioService", () => {
     expect(ctx.createBufferSource).toHaveBeenCalledTimes(2);
   });
 
-  it("cancelSound stops the active source", async () => {
-    const { service, mockSuccessfulFetch, sources } = await setupTest();
+  it("cancelSound fades out via gain ramp and schedules stop after the tail", async () => {
+    const { service, mockSuccessfulFetch, sources, ctx } = await setupTest();
     mockSuccessfulFetch();
 
     await service.playSound("chime.wav");
     service.cancelSound();
 
+    const gainNode = sources[0]!.gainNode!;
+    expect(gainNode.gain.setTargetAtTime).toHaveBeenCalledWith(0, ctx.currentTime, 0.015);
+    expect(sources[0]!.stop).toHaveBeenCalledWith(ctx.currentTime + 0.1);
+  });
+
+  it("does not stop in-flight sources when starting a new one (polyphony)", async () => {
+    const { service, mockSuccessfulFetch, sources } = await setupTest();
+    mockSuccessfulFetch();
+    mockSuccessfulFetch();
+
+    await service.playSound("first.wav");
+    await service.playSound("second.wav");
+
+    expect(sources).toHaveLength(2);
+    expect(sources[0]!.stop).not.toHaveBeenCalled();
+    expect(sources[1]!.stop).not.toHaveBeenCalled();
+  });
+
+  it("evicts the oldest voice via fade when MAX_VOICES (4) is exceeded", async () => {
+    const { service, mockSuccessfulFetch, sources, ctx } = await setupTest();
+    for (let i = 0; i < 5; i++) mockSuccessfulFetch();
+
+    for (let i = 0; i < 5; i++) {
+      await service.playSound(`voice${i}.wav`);
+    }
+
+    expect(sources).toHaveLength(5);
+    // First voice is evicted via fadeOut
+    expect(sources[0]!.gainNode!.gain.setTargetAtTime).toHaveBeenCalledWith(
+      0,
+      ctx.currentTime,
+      0.015
+    );
+    expect(sources[0]!.stop).toHaveBeenCalledWith(ctx.currentTime + 0.1);
+    // Voices 1-4 are untouched
+    for (let i = 1; i < 5; i++) {
+      expect(sources[i]!.stop).not.toHaveBeenCalled();
+    }
+  });
+
+  it("onended removes the correct voice by identity", async () => {
+    const { service, mockSuccessfulFetch, sources } = await setupTest();
+    for (let i = 0; i < 3; i++) mockSuccessfulFetch();
+
+    await service.playSound("a.wav");
+    await service.playSound("b.wav");
+    await service.playSound("c.wav");
+
+    expect(sources).toHaveLength(3);
+    sources[1]!.onended?.();
+
+    // Cancel should now only fade voices A and C — voice B was already removed
+    service.cancelSound();
     expect(sources[0]!.stop).toHaveBeenCalled();
+    expect(sources[1]!.stop).not.toHaveBeenCalled();
+    expect(sources[2]!.stop).toHaveBeenCalled();
   });
 
   it("handles fetch failure gracefully", async () => {
@@ -167,6 +252,62 @@ describe("WebAudioService", () => {
     await service.playSound("pulse.wav", 0);
 
     expect(sources[0]!.detuneAtStart).toBe(0);
+  });
+
+  it("cancelSound during async decode aborts the pending playback", async () => {
+    const { service, mockFetch, mockDecodeAudioData, sources, ctx } = await setupTest();
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      arrayBuffer: () => Promise.resolve(new ArrayBuffer(16)),
+    });
+    let resolveDecode!: (buffer: AudioBuffer) => void;
+    mockDecodeAudioData.mockReturnValueOnce(
+      new Promise<AudioBuffer>((r) => {
+        resolveDecode = r;
+      })
+    );
+
+    const playPromise = service.playSound("chime.wav");
+    service.cancelSound();
+    resolveDecode({ duration: 1, length: 44100 } as AudioBuffer);
+    await playPromise;
+
+    expect(sources).toHaveLength(0);
+    expect(ctx.createBufferSource).not.toHaveBeenCalled();
+  });
+
+  it("does not pollute activeVoices when source.start throws", async () => {
+    const { service, ctx, mockSuccessfulFetch, sources } = await setupTest();
+    for (let i = 0; i < 5; i++) mockSuccessfulFetch();
+
+    const originalCreate = ctx.createBufferSource;
+    let throwOnce = true;
+    ctx.createBufferSource = vi.fn(() => {
+      const source = originalCreate();
+      if (throwOnce) {
+        throwOnce = false;
+        source.start = vi.fn(() => {
+          throw new Error("InvalidStateError");
+        });
+      }
+      return source;
+    });
+
+    await service.playSound("first.wav");
+    expect(sources).toHaveLength(1);
+
+    // Four more successful plays must not be evicted by the failed voice
+    await service.playSound("a.wav");
+    await service.playSound("b.wav");
+    await service.playSound("c.wav");
+    await service.playSound("d.wav");
+
+    // Voices a/b/c/d should still be live (no fade) — failed first voice was popped
+    expect(sources[1]!.stop).not.toHaveBeenCalled();
+    expect(sources[2]!.stop).not.toHaveBeenCalled();
+    expect(sources[3]!.stop).not.toHaveBeenCalled();
+    expect(sources[4]!.stop).not.toHaveBeenCalled();
   });
 
   it("dispose closes the AudioContext", async () => {
