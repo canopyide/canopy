@@ -8,8 +8,8 @@
 import type { AgentState } from "../../shared/types/agent.js";
 import type { Artifact } from "../../shared/types/ipc.js";
 import type {
-  WorkerOutboundMessage,
-  WorkerInboundMessage,
+  SemanticWorkerOutboundMessage,
+  SemanticWorkerInboundMessage,
 } from "../../shared/types/worker-messages.js";
 import { logDebug, logWarn, logError } from "@/utils/logger";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
@@ -120,7 +120,7 @@ class SemanticAnalysisService {
   private setupMessageHandler(): void {
     if (!this.worker) return;
 
-    this.worker.onmessage = (event: MessageEvent<WorkerOutboundMessage>) => {
+    this.worker.onmessage = (event: MessageEvent<SemanticWorkerOutboundMessage>) => {
       const message = event.data;
 
       switch (message.type) {
@@ -219,7 +219,7 @@ class SemanticAnalysisService {
   /**
    * Post a message to the worker.
    */
-  private postMessage(message: WorkerInboundMessage): void {
+  private postMessage(message: SemanticWorkerInboundMessage): void {
     if (!this.worker) {
       logWarn("[SemanticAnalysisService] Cannot post message — worker not initialized");
       return;

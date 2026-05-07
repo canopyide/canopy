@@ -1,4 +1,4 @@
-import type { WorkerInboundMessage } from "@shared/types/terminal-output-worker-messages";
+import type { TerminalOutputWorkerInboundMessage } from "@shared/types/terminal-output-worker-messages";
 import { PERF_MARKS } from "@shared/perf/marks";
 import { markRendererPerformance } from "@/utils/performance";
 import { logDebug } from "@/utils/logger";
@@ -80,7 +80,7 @@ export class TerminalOutputIngestService {
   public resetForTerminal(id: string): void {
     this.clearQueue(id);
     if (!this.pollingActive || !this.worker) return;
-    const message: WorkerInboundMessage = {
+    const message: TerminalOutputWorkerInboundMessage = {
       type: "RESET_TERMINAL",
       id,
     };
@@ -90,7 +90,7 @@ export class TerminalOutputIngestService {
   public flushForTerminal(id: string): void {
     this.forceDrain(id);
     if (!this.pollingActive || !this.worker) return;
-    const message: WorkerInboundMessage = {
+    const message: TerminalOutputWorkerInboundMessage = {
       type: "FLUSH_TERMINAL",
       id,
     };
@@ -104,7 +104,7 @@ export class TerminalOutputIngestService {
     this.pollingActive = false;
     this.sabAvailable = false;
     if (!this.worker) return;
-    const message: WorkerInboundMessage = {
+    const message: TerminalOutputWorkerInboundMessage = {
       type: "STOP",
     };
     this.worker.postMessage(message);

@@ -538,11 +538,11 @@ export interface IpcInvokeMap {
     result: AgentUpdateSettings;
   };
   "system:set-agent-update-settings": {
-    args: [AgentUpdateSettings];
+    args: [settings: AgentUpdateSettings];
     result: void;
   };
   "system:start-agent-update": {
-    args: [StartAgentUpdatePayload];
+    args: [payload: StartAgentUpdatePayload];
     result: StartAgentUpdateResult;
   };
   "setup:agent-install": {
@@ -563,7 +563,7 @@ export interface IpcInvokeMap {
     result: DiagnosticsReviewPayload;
   };
   "system:save-diagnostics-bundle": {
-    args: [DiagnosticsBundleSavePayload];
+    args: [payload: DiagnosticsBundleSavePayload];
     result: boolean;
   };
   "system:get-app-metrics": {
@@ -1500,40 +1500,18 @@ export interface IpcInvokeMap {
   // Notification settings channels
   "notification:settings-get": {
     args: [];
-    result: {
-      completedEnabled: boolean;
-      waitingEnabled: boolean;
-      soundEnabled: boolean;
-      completedSoundFile: string;
-      waitingSoundFile: string;
-      escalationSoundFile: string;
-      waitingEscalationEnabled: boolean;
-      waitingEscalationDelayMs: number;
-      uiFeedbackSoundEnabled: boolean;
-    };
+    result: NotificationSettings;
   };
   "notification:settings-set": {
-    args: [
-      Partial<{
-        completedEnabled: boolean;
-        waitingEnabled: boolean;
-        soundEnabled: boolean;
-        completedSoundFile: string;
-        waitingSoundFile: string;
-        escalationSoundFile: string;
-        waitingEscalationEnabled: boolean;
-        waitingEscalationDelayMs: number;
-        uiFeedbackSoundEnabled: boolean;
-      }>,
-    ];
+    args: [settings: Partial<NotificationSettings>];
     result: void;
   };
   "notification:play-sound": {
-    args: [string];
+    args: [soundFile: string];
     result: void;
   };
   "sound:play-ui-event": {
-    args: [string];
+    args: [eventId: string];
     result: void;
   };
 
@@ -1802,30 +1780,15 @@ export interface IpcInvokeMap {
   // MCP Server channels
   "mcp-server:get-status": {
     args: [];
-    result: {
-      enabled: boolean;
-      port: number | null;
-      configuredPort: number | null;
-      apiKey: string;
-    };
+    result: import("./mcpServer.js").McpServerStatusSnapshot;
   };
   "mcp-server:set-enabled": {
     args: [enabled: boolean];
-    result: {
-      enabled: boolean;
-      port: number | null;
-      configuredPort: number | null;
-      apiKey: string;
-    };
+    result: import("./mcpServer.js").McpServerStatusSnapshot;
   };
   "mcp-server:set-port": {
     args: [port: number | null];
-    result: {
-      enabled: boolean;
-      port: number | null;
-      configuredPort: number | null;
-      apiKey: string;
-    };
+    result: import("./mcpServer.js").McpServerStatusSnapshot;
   };
   "mcp-server:rotate-api-key": {
     args: [];
@@ -2648,6 +2611,21 @@ export type IpcEventBusMap = Pick<
   | "terminal:reliability-metric"
   | "terminal:status"
 >;
+
+/**
+ * Compile-time guard: high-frequency / binary-payload channels documented above
+ * as excluded by design must never end up in {@link IpcEventBusMap}. Resolves
+ * to `true` when the exclusion holds; flips to `never` (and breaks the
+ * dependent test in `__tests__/ipcEnvelopeConstraint.test.ts`) the moment one
+ * of the banned keys is added to the `Pick<>` list above.
+ */
+export type _IpcEventBusMapExcludesHighFrequency =
+  Extract<
+    keyof IpcEventBusMap,
+    "terminal:data" | "terminal:resource-metrics" | "logs:batch"
+  > extends never
+    ? true
+    : never;
 
 /**
  * Envelope carried on CHANNELS.EVENTS_PUSH. Discriminated by `name` so the
