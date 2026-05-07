@@ -58,6 +58,8 @@ import { useRecipeDialogState } from "./useRecipeDialogState";
 import { RecipeEditor } from "@/components/TerminalRecipe/RecipeEditor";
 import { RecipeManager } from "@/components/TerminalRecipe/RecipeManager";
 import { isAgentTerminal } from "@/utils/terminalType";
+import { isTerminalVisible } from "@/lib/terminalVisibility";
+import { useWorktreeIds } from "@/hooks/useTerminalSelectors";
 import { logError } from "@/utils/logger";
 import { useWorktreeGridRovingFocus } from "./useWorktreeGridRovingFocus";
 
@@ -159,6 +161,8 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   // Terminal store for derived metadata
   const panelsById = usePanelStore((state) => state.panelsById);
   const panelIds = usePanelStore((state) => state.panelIds);
+  const isInTrash = usePanelStore((state) => state.isInTrash);
+  const worktreeIds = useWorktreeIds();
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const scrollContentRef = useRef<HTMLDivElement>(null);
@@ -228,7 +232,8 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
 
       for (const id of panelIds) {
         const t = panelsById[id];
-        if (!t || t.worktreeId !== worktree.id || t.location === "trash") continue;
+        if (!t || t.worktreeId !== worktree.id || !isTerminalVisible(t, isInTrash, worktreeIds))
+          continue;
         terminalCount++;
         if (!isAgentTerminal(t)) continue;
         if (t.agentState === "working") hasWorkingAgent = true;
@@ -276,7 +281,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
       });
     }
     return map;
-  }, [deferredWorktrees, panelsById, panelIds]);
+  }, [deferredWorktrees, panelsById, panelIds, isInTrash, worktreeIds]);
 
   // Apply filters and sorting
   const mainWorktree = useMemo(

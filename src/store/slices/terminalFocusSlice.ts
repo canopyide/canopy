@@ -3,27 +3,9 @@ import type { TerminalInstance } from "./panelRegistrySlice";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { panelKindHasPty } from "@shared/config/panelKindRegistry";
 import { isRuntimeAgentTerminal } from "@/utils/terminalType";
+import { isTerminalOrphaned, isTerminalVisible } from "@/lib/terminalVisibility";
 
 export type NavigationDirection = "up" | "down" | "left" | "right";
-
-function isTerminalOrphaned(terminal: TerminalInstance, worktreeIds: Set<string>): boolean {
-  const worktreeId = typeof terminal.worktreeId === "string" ? terminal.worktreeId.trim() : "";
-  if (!worktreeId) return false;
-  return !worktreeIds.has(worktreeId);
-}
-
-function isTerminalVisible(
-  terminal: TerminalInstance,
-  isInTrash: (id: string) => boolean,
-  worktreeIds: Set<string>
-): boolean {
-  if (isInTrash(terminal.id)) return false;
-  if (terminal.location === "trash") return false;
-  if (terminal.location === "background") return false;
-  if (terminal.ephemeral === true) return false;
-  if (isTerminalOrphaned(terminal, worktreeIds)) return false;
-  return true;
-}
 
 // Walk the visible terminal list from the currently focused position, advancing
 // in `direction` and returning the first terminal that satisfies `predicate`.

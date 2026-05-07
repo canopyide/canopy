@@ -3,26 +3,8 @@ import { useShallow } from "zustand/react/shallow";
 import { usePanelStore, type TerminalInstance } from "@/store/panelStore";
 import { useWorktreeStore } from "@/hooks/useWorktreeStore";
 import type { WorktreeSnapshot } from "@shared/types";
-
-export function isTerminalOrphaned(terminal: TerminalInstance, worktreeIds: Set<string>): boolean {
-  const worktreeId = typeof terminal.worktreeId === "string" ? terminal.worktreeId.trim() : "";
-  if (!worktreeId) return false;
-  if (worktreeIds.size === 0) return false;
-  return !worktreeIds.has(worktreeId);
-}
-
-export function isTerminalVisible(
-  terminal: TerminalInstance,
-  isInTrash: (id: string) => boolean,
-  worktreeIds: Set<string>
-): boolean {
-  if (isInTrash(terminal.id)) return false;
-  if (terminal.location === "trash") return false;
-  if (terminal.location === "background") return false;
-  if (terminal.ephemeral === true) return false;
-  if (isTerminalOrphaned(terminal, worktreeIds)) return false;
-  return true;
-}
+import { isTerminalOrphaned, isTerminalVisible } from "@/lib/terminalVisibility";
+export { isTerminalOrphaned, isTerminalVisible };
 
 let _cachedWorktrees: Map<string, WorktreeSnapshot> | null = null;
 let _cachedIds: Set<string> | null = null;
