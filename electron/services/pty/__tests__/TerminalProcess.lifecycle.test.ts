@@ -808,13 +808,39 @@ describe("TerminalProcess — plain-terminal snapshot gate (#7004)", () => {
       info.detectedAgentId = "claude";
       info.agentState = "idle";
 
-      // First live tick — beforeSnapshot is undefined (plain terminal skipped
-      // capture) AND agentOutputContentSnapshot is undefined (never set while
-      // plain). hadFallbackBaseline is false → observeDelta({changedChars: 0})
-      // → handleActivityState must NOT fire.
+      // First live tick — isAgentLive is now true so beforeContentSnapshot IS
+      // captured, but agentOutputContentSnapshot is still undefined (never set
+      // while plain). hadFallbackBaseline is false at L1382, so the warm-up
+      // path fires observeDelta({changedChars: 0}) and returns without
+      // promoting the agent to "busy".
       await expect(emitDataAndFlush(pty, "claude > thinking…\n")).resolves.not.toThrow();
 
       expect(handleActivityState).not.toHaveBeenCalled();
+    } finally {
+      terminal.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("still captures a visible-cell snapshot on PTY data for active launch-agent terminals", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const pty = createControllablePty();
+    const terminal = createTerminal(
+      pty,
+      { kind: "terminal", launchAgentId: "claude" },
+      undefined,
+      "t-launch-agent-still-scans"
+    );
+
+    try {
+      terminal.stopActivityMonitor();
+      terminal.getInfo().agentState = "idle";
+      const getVisibleActivitySnapshot = vi.spyOn(terminal, "getVisibleActivitySnapshot");
+
+      await emitDataAndFlush(pty, "claude > working…\n");
+
+      expect(getVisibleActivitySnapshot).toHaveBeenCalled();
     } finally {
       terminal.dispose();
       vi.useRealTimers();
