@@ -70,15 +70,21 @@ export function useBranchValidation({
         setPathWasAutoResolved(false);
         setIsCheckingBranch(false);
         setIsGeneratingPath(false);
+        setWorktreePath("");
         return;
       }
 
       // Use the shared validator that the IPC handler and WorkspaceService
       // both rely on, so the dialog rejects exactly the names the server
-      // would.
+      // would. Clear path/auto-resolve state so a previously valid name's
+      // suggested path doesn't linger and let useWorktreeFormValidation
+      // green-light a submit on a now-invalid input.
       if (!validateBranchName(fullName).valid) {
         setIsCheckingBranch(false);
         setIsGeneratingPath(false);
+        setWorktreePath("");
+        setBranchWasAutoResolved(false);
+        setPathWasAutoResolved(false);
         return;
       }
 

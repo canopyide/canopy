@@ -282,6 +282,12 @@ describe("validateBranchName", () => {
     expect(validateBranchName("feature.lock").valid).toBe(false);
   });
 
+  it("rejects '.lock' on a middle path component", () => {
+    // git check-ref-format rejects component-level .lock anywhere, not just
+    // the final component. The split-by-'/' loop must catch the middle case.
+    expect(validateBranchName("feature/foo.lock/bar").valid).toBe(false);
+  });
+
   it("rejects ASCII control characters", () => {
     expect(validateBranchName("feat\x01ure").valid).toBe(false);
     expect(validateBranchName("feat\x09ure").valid).toBe(false); // tab

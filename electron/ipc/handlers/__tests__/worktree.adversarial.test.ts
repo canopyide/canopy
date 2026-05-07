@@ -240,6 +240,22 @@ describe("worktree IPC adversarial", () => {
     expect(worktreeService.createWorktree).not.toHaveBeenCalled();
   });
 
+  it("WORKTREE_CREATE rejects malformed payloads before validating (#7033)", async () => {
+    const handler = getHandler(CHANNELS.WORKTREE_CREATE);
+
+    await expect(handler(fakeEvent(), null)).rejects.toThrow(/Invalid worktree create payload/);
+    await expect(handler(fakeEvent(), {})).rejects.toThrow(/Invalid worktree create payload/);
+    await expect(handler(fakeEvent(), { rootPath: "/repo" })).rejects.toThrow(
+      /Invalid worktree create payload/
+    );
+    await expect(handler(fakeEvent(), { rootPath: "/repo", options: null })).rejects.toThrow(
+      /Invalid worktree create payload/
+    );
+
+    expect(validateBranchNameMock).not.toHaveBeenCalled();
+    expect(worktreeService.createWorktree).not.toHaveBeenCalled();
+  });
+
   it("WORKTREE_DELETE invalidates the exact worktree path and prunes only matching issue mapping", async () => {
     getWindowForWebContentsMock.mockReturnValue({ id: 5 });
     worktreeService.getAllStatesAsync.mockResolvedValue([

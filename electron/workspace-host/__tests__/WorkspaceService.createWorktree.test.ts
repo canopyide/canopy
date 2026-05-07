@@ -917,6 +917,57 @@ describe("WorkspaceService.createWorktree", () => {
     );
   });
 
+  it("validates branch name even when useExistingBranch is true (#7033)", async () => {
+    // The pre-flight gate must run unconditionally; useExistingBranch is just
+    // the create-strategy switch. A reuse caller passing 'HEAD' must still be
+    // rejected before reaching git.
+    await service.createWorktree("req-existing-head", "/test/root", {
+      baseBranch: "main",
+      newBranch: "HEAD",
+      path: "/test/worktree-existing-head",
+      useExistingBranch: true,
+    });
+
+    expect(mockSimpleGit.raw).not.toHaveBeenCalled();
+    expect(mockSendEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "create-worktree-result",
+        requestId: "req-existing-head",
+        success: false,
+        error: expect.stringContaining("HEAD"),
+      })
+    );
+  });
+
+  it("checks the parent directory of a relative path against rootPath (#7033)", async () => {
+    // Programmatic callers (MCP, recipes) may pass a relative `path`. The
+    // pre-flight must inspect the rootPath-resolved parent, not process.cwd.
+    const fsModule = await import("fs");
+    const existsSyncMock = vi.mocked(fsModule.existsSync);
+    existsSyncMock.mockImplementationOnce((p: unknown) => {
+      // Only return false for the expected resolved parent; other lookups
+      // (none in this test, but defensive) default to true.
+      return p !== "/test/root/worktrees";
+    });
+
+    await service.createWorktree("req-relative-path", "/test/root", {
+      baseBranch: "main",
+      newBranch: "feature/foo",
+      path: "worktrees/feat",
+    });
+
+    expect(existsSyncMock).toHaveBeenCalledWith("/test/root/worktrees");
+    expect(mockSimpleGit.raw).not.toHaveBeenCalled();
+    expect(mockSendEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "create-worktree-result",
+        requestId: "req-relative-path",
+        success: false,
+        error: expect.stringContaining("/test/root/worktrees"),
+      })
+    );
+  });
+
   it("emits a worktree-update before create-worktree-result so the renderer's store picks up the new worktree", async () => {
     // Regression guard for the bug where startWithoutGitStatus never emitted
     // an initial snapshot, leaving freshly-created worktrees invisible in the

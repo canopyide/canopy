@@ -950,7 +950,11 @@ export class WorkspaceService {
           `Invalid base branch '${baseBranch}': ${baseBranchValidation.error ?? "invalid"}`
         );
       }
-      const parentDir = dirname(path);
+      // Resolve before taking dirname so a relative `path` (rare, but allowed
+      // through programmatic callers) is checked against the right parent
+      // rather than against process.cwd.
+      const absoluteCreatePath = isAbsolute(path) ? path : pathResolve(rootPath, path);
+      const parentDir = dirname(absoluteCreatePath);
       if (!existsSync(parentDir)) {
         throw new Error(`Parent directory does not exist: ${parentDir}`);
       }
