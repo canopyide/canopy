@@ -9,15 +9,19 @@
  * Discriminator for broker clear reasons so callers can distinguish a
  * transient host exit (retry may be appropriate) from a terminal app shutdown.
  */
-export type BrokerErrorCode = "HOST_EXITED" | "APP_SHUTDOWN";
+export type BrokerErrorCode = "HOST_EXITED" | "APP_SHUTDOWN" | "TIMEOUT";
 
 export class BrokerError extends Error {
+  public readonly projectScopeId?: string;
+
   constructor(
     public readonly code: BrokerErrorCode,
-    message?: string
+    message?: string,
+    opts?: { projectScopeId?: string }
   ) {
     super(message ?? code);
     this.name = this.constructor.name;
+    this.projectScopeId = opts?.projectScopeId;
     Error.captureStackTrace?.(this, this.constructor);
   }
 }

@@ -242,7 +242,7 @@ export async function setupWindowServices(
 
     const workspaceClient = getWorkspaceClient({
       maxRestartAttempts: 3,
-      healthCheckIntervalMs: 60000,
+      healthCheckIntervalMs: 10000,
       showCrashDialog: false,
     });
     setWorkspaceClientRef(workspaceClient);
