@@ -71,7 +71,11 @@ export function getGitLocaleEnv(
   return { LC_CTYPE: "C.UTF-8" };
 }
 
-export function createHardenedGit(cwd: string, signal?: AbortSignal): SimpleGit {
+export function createHardenedGit(
+  cwd: string,
+  signal?: AbortSignal,
+  platform: NodeJS.Platform = process.platform
+): SimpleGit {
   return simpleGit({
     baseDir: cwd,
     config: [...HARDENED_GIT_CONFIG],
@@ -80,13 +84,33 @@ export function createHardenedGit(cwd: string, signal?: AbortSignal): SimpleGit 
     unsafe: UNSAFE_FLAGS,
   }).env({
     ...process.env,
-    ...getGitLocaleEnv(),
+    ...getGitLocaleEnv(platform),
     // Clear inherited LC_ALL so the more specific LC_CTYPE / LC_MESSAGES
     // values above actually take effect. POSIX locale resolution gives LC_ALL
     // priority over every other LC_* variable.
     LC_ALL: "",
     LC_MESSAGES: "C",
     LANGUAGE: "",
+    // Suppress optional .git/index.lock writes during status-only reads. Only
+    // affects opportunistic locks (stat-cache refresh); mandatory locks for
+    // git add/commit are unaffected, so this is safe even when the hardened
+    // factory is used for write paths.
+    GIT_OPTIONAL_LOCKS: "0",
+    // Block git's built-in TTY prompt for credentials/passphrases. Some
+    // commands (clone, fetch, push) still touch credential helpers even
+    // through the hardened factory's `-c credential.helper=` blank, and an
+    // interactive prompt in the Electron main process hangs forever.
+    GIT_TERMINAL_PROMPT: "0",
+    // Defense in depth: some credential helpers ignore GIT_TERMINAL_PROMPT
+    // and still invoke an ASKPASS binary. `true` exits 0 with empty stdout,
+    // so git treats it as an empty credential and fails fast instead of
+    // hanging. `true` is not on PATH on Windows; GIT_TERMINAL_PROMPT=0 plus
+    // GCM_INTERACTIVE=Never below cover that platform.
+    ...(platform !== "win32" ? { GIT_ASKPASS: "true" } : {}),
+    // Windows-only: prevent Git Credential Manager from spawning GUI auth
+    // dialogs in background processes where no user can interact. No effect
+    // on POSIX or on local read operations.
+    GCM_INTERACTIVE: "Never",
   });
 }
 
@@ -193,6 +217,11 @@ export function createAuthenticatedGit(cwd: string, opts: AuthenticatedGitOption
     GIT_TERMINAL_PROMPT: "0",
     GIT_SSH_COMMAND:
       "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=15",
+    // Same lock-suppression and Windows-GCM hardening as createHardenedGit.
+    // GIT_ASKPASS is intentionally NOT set here — credentialed commands
+    // (clone/push) need legitimate ASKPASS resolution.
+    GIT_OPTIONAL_LOCKS: "0",
+    GCM_INTERACTIVE: "Never",
   });
 }
 
@@ -253,6 +282,11 @@ export function createBackgroundFetchGit(cwd: string, opts: BackgroundFetchGitOp
       GIT_SSH_COMMAND:
         "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=15",
       GIT_ASKPASS: "true",
+      // simple-git's .env() replaces the env wholesale, so the hardening
+      // flags from createAuthenticatedGit's first .env() call must be
+      // re-stated here or they will be lost on POSIX.
+      GIT_OPTIONAL_LOCKS: "0",
+      GCM_INTERACTIVE: "Never",
     });
   }
   return git;

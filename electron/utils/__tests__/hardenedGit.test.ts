@@ -239,6 +239,54 @@ describe("createHardenedGit", () => {
       else process.env.LANGUAGE = origLanguage;
     }
   });
+
+  it("suppresses optional .git/index.lock writes via GIT_OPTIONAL_LOCKS=0", () => {
+    createHardenedGit("/test/repo");
+
+    const envArg = mockGitInstance.env.mock.calls[0][0];
+    expect(envArg.GIT_OPTIONAL_LOCKS).toBe("0");
+  });
+
+  it("blocks interactive credential prompts via GIT_TERMINAL_PROMPT=0", () => {
+    createHardenedGit("/test/repo");
+
+    const envArg = mockGitInstance.env.mock.calls[0][0];
+    expect(envArg.GIT_TERMINAL_PROMPT).toBe("0");
+  });
+
+  it("disables Windows GCM interactive dialogs via GCM_INTERACTIVE=Never", () => {
+    createHardenedGit("/test/repo");
+
+    const envArg = mockGitInstance.env.mock.calls[0][0];
+    expect(envArg.GCM_INTERACTIVE).toBe("Never");
+  });
+
+  it("sets GIT_ASKPASS=true on POSIX so credential helpers fail fast", () => {
+    createHardenedGit("/test/repo", undefined, "darwin");
+
+    const envArg = mockGitInstance.env.mock.calls[0][0];
+    expect(envArg.GIT_ASKPASS).toBe("true");
+  });
+
+  it("sets GIT_ASKPASS=true on linux", () => {
+    createHardenedGit("/test/repo", undefined, "linux");
+
+    const envArg = mockGitInstance.env.mock.calls[0][0];
+    expect(envArg.GIT_ASKPASS).toBe("true");
+  });
+
+  it("does not set GIT_ASKPASS on Windows (no `true` binary on PATH)", () => {
+    const origAskpass = process.env.GIT_ASKPASS;
+    delete process.env.GIT_ASKPASS;
+    try {
+      createHardenedGit("/test/repo", undefined, "win32");
+
+      const envArg = mockGitInstance.env.mock.calls[0][0];
+      expect(envArg.GIT_ASKPASS).toBeUndefined();
+    } finally {
+      if (origAskpass !== undefined) process.env.GIT_ASKPASS = origAskpass;
+    }
+  });
 });
 
 describe("createAuthenticatedGit", () => {
@@ -289,6 +337,33 @@ describe("createAuthenticatedGit", () => {
           "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=15",
       })
     );
+  });
+
+  it("sets GIT_OPTIONAL_LOCKS=0 to suppress incidental lock writes", () => {
+    createAuthenticatedGit("/test/repo");
+
+    const envArg = mockGitInstance.env.mock.calls[0][0];
+    expect(envArg.GIT_OPTIONAL_LOCKS).toBe("0");
+  });
+
+  it("sets GCM_INTERACTIVE=Never to prevent Windows GCM dialogs", () => {
+    createAuthenticatedGit("/test/repo");
+
+    const envArg = mockGitInstance.env.mock.calls[0][0];
+    expect(envArg.GCM_INTERACTIVE).toBe("Never");
+  });
+
+  it("does NOT set GIT_ASKPASS so legitimate credential helpers can resolve", () => {
+    const origAskpass = process.env.GIT_ASKPASS;
+    delete process.env.GIT_ASKPASS;
+    try {
+      createAuthenticatedGit("/test/repo");
+
+      const envArg = mockGitInstance.env.mock.calls[0][0];
+      expect(envArg.GIT_ASKPASS).toBeUndefined();
+    } finally {
+      if (origAskpass !== undefined) process.env.GIT_ASKPASS = origAskpass;
+    }
   });
 
   it("sets LC_MESSAGES=C and LANGUAGE empty via .env()", () => {
@@ -466,6 +541,20 @@ describe("createBackgroundFetchGit", () => {
     const lastEnv = mockGitInstance.env.mock.calls[mockGitInstance.env.mock.calls.length - 1][0];
     expect(lastEnv.GIT_ASKPASS).toBe("true");
     expect(lastEnv.GIT_TERMINAL_PROMPT).toBe("0");
+  });
+
+  it("re-states GIT_OPTIONAL_LOCKS and GCM_INTERACTIVE in the POSIX second .env() call", () => {
+    const controller = new AbortController();
+    createBackgroundFetchGit("/test/repo", {
+      signal: controller.signal,
+      platform: "darwin",
+    });
+
+    // The second .env() replaces (not merges) the first call's env, so the
+    // hardening flags from createAuthenticatedGit must be re-asserted here.
+    const lastEnv = mockGitInstance.env.mock.calls[mockGitInstance.env.mock.calls.length - 1][0];
+    expect(lastEnv.GIT_OPTIONAL_LOCKS).toBe("0");
+    expect(lastEnv.GCM_INTERACTIVE).toBe("Never");
   });
 
   it("does not set GIT_ASKPASS on Windows (no `true` binary on PATH)", () => {
