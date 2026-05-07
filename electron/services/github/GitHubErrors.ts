@@ -156,6 +156,7 @@ export function parseGitHubError(error: unknown): string {
     message === "Invalid GitHub token. Please update in Settings." ||
     message === "Token lacks required permissions. Required scopes: repo, read:org" ||
     message === "Issue not found or you don't have access to this repository" ||
+    message === "Repository not found or token lacks access." ||
     message.startsWith("Cannot assign user ") ||
     message.startsWith("Assignment succeeded but user ") ||
     message.startsWith("Invalid GitHub API response:") ||
@@ -171,6 +172,30 @@ export function parseGitHubError(error: unknown): string {
 
   if (isAbortLike(error) || isNetworkLikeMessage(message)) {
     return "Cannot reach GitHub. Check your internet connection.";
+  }
+
+  // Legacy substring fallback — only fires for non-Octokit error sources
+  // (plain `new Error("...")` thrown by callers that pre-flatten a failure,
+  // or service-layer code that surfaces a synthetic string error). Typed
+  // Octokit errors are caught by the dispatch above, so the original
+  // misclassification bug — flattening a status-bearing RequestError and
+  // matching on a `"401"` / `"403"` substring — no longer fires here. The
+  // bare `"401"` match is intentionally omitted; only a definitive
+  // "Bad credentials" string maps to invalid-token in the fallback.
+  if (message.includes("rate limit") || message.includes("API rate limit")) {
+    return "GitHub rate limit exceeded. Try again in a few minutes.";
+  }
+  if (message.includes("Bad credentials")) {
+    return "Invalid GitHub token. Please update in Settings.";
+  }
+  if (message.includes("SAML") || message.includes("SSO")) {
+    return ssoMessage();
+  }
+  if (message.includes("403")) {
+    return "Token lacks required permissions. Required scopes: repo, read:org";
+  }
+  if (message.includes("404") || message.includes("Could not resolve")) {
+    return "Repository not found or token lacks access.";
   }
 
   return `GitHub API error: ${message}`;
