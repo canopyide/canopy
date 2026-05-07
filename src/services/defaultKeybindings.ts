@@ -884,6 +884,16 @@ export const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     category: "View",
   },
   {
+    // Discoverability alias — many users press Cmd+Shift+= for zoom-in even
+    // though the physical-key matcher already accepts it via Cmd+=.
+    actionId: "window.zoomIn",
+    combo: "Cmd+Shift+=",
+    scope: "global",
+    priority: 0,
+    description: "Zoom in",
+    category: "View",
+  },
+  {
     actionId: "window.zoomOut",
     combo: "Cmd+-",
     scope: "global",

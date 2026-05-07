@@ -337,18 +337,21 @@ describe("comboToAriaKeyshortcuts — special key names", () => {
 });
 
 describe("comboToAriaKeyshortcuts — chord sequences", () => {
-  it("preserves space between chord steps", () => {
-    expect(comboToAriaKeyshortcuts("Cmd+K T", true)).toBe("Meta+K T");
-    expect(comboToAriaKeyshortcuts("Cmd+K T", false)).toBe("Control+K T");
+  // ARIA uses spaces to separate alternative shortcuts, not chord steps.
+  // The function returns undefined so the attribute is omitted entirely
+  // rather than mislabelling the binding as a list of alternatives.
+  it("returns undefined for two-step chords", () => {
+    expect(comboToAriaKeyshortcuts("Cmd+K T", true)).toBeUndefined();
+    expect(comboToAriaKeyshortcuts("Cmd+K T", false)).toBeUndefined();
   });
 
-  it("handles two-step chords with shared prefix", () => {
-    expect(comboToAriaKeyshortcuts("Cmd+K Cmd+W", true)).toBe("Meta+K Meta+W");
-    expect(comboToAriaKeyshortcuts("Cmd+K Cmd+W", false)).toBe("Control+K Control+W");
+  it("returns undefined for two-step chords with shared prefix", () => {
+    expect(comboToAriaKeyshortcuts("Cmd+K Cmd+W", true)).toBeUndefined();
+    expect(comboToAriaKeyshortcuts("Cmd+K Cmd+W", false)).toBeUndefined();
   });
 
-  it("collapses extra whitespace between steps", () => {
-    expect(comboToAriaKeyshortcuts("Cmd+K   T", true)).toBe("Meta+K T");
+  it("returns undefined for chords with extra whitespace between steps", () => {
+    expect(comboToAriaKeyshortcuts("Cmd+K   T", true)).toBeUndefined();
   });
 });
 
@@ -366,11 +369,16 @@ describe("comboToAriaKeyshortcuts — real default-combo round-trips", () => {
     expect(comboToAriaKeyshortcuts("Cmd+Alt+P", false)).toBe("Control+Alt+P");
   });
 
-  it("maps two-step chord families (Cmd+K Cmd+S, Cmd+K T)", () => {
-    expect(comboToAriaKeyshortcuts("Cmd+K Cmd+S", true)).toBe("Meta+K Meta+S");
-    expect(comboToAriaKeyshortcuts("Cmd+K Cmd+S", false)).toBe("Control+K Control+S");
-    expect(comboToAriaKeyshortcuts("Cmd+K T", true)).toBe("Meta+K T");
-    expect(comboToAriaKeyshortcuts("Cmd+K T", false)).toBe("Control+K T");
+  it("maps the Cmd+Shift+= zoom-in alias (issue #7304)", () => {
+    expect(comboToAriaKeyshortcuts("Cmd+Shift+=", true)).toBe("Meta+Shift+=");
+    expect(comboToAriaKeyshortcuts("Cmd+Shift+=", false)).toBe("Control+Shift+=");
+  });
+
+  it("returns undefined for two-step chord families (Cmd+K Cmd+S, Cmd+K T)", () => {
+    expect(comboToAriaKeyshortcuts("Cmd+K Cmd+S", true)).toBeUndefined();
+    expect(comboToAriaKeyshortcuts("Cmd+K Cmd+S", false)).toBeUndefined();
+    expect(comboToAriaKeyshortcuts("Cmd+K T", true)).toBeUndefined();
+    expect(comboToAriaKeyshortcuts("Cmd+K T", false)).toBeUndefined();
   });
 });
 
