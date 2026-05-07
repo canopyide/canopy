@@ -107,6 +107,7 @@ export class IdentityWatcher {
   constructor(private readonly delegate: IdentityWatcherDelegate) {}
 
   seed(commandText?: string): void {
+    if (this.stopped) return;
     if (!this.delegate.processDetector) return;
     const normalized = normalizeShellCommandText(commandText);
     if (!normalized) return;
@@ -124,19 +125,59 @@ export class IdentityWatcher {
   }
 
   captureInput(data: string): string | undefined {
+    if (this.stopped) return undefined;
+
     let submittedCommandText: string | undefined;
-    let inEscapeSequence = false;
+    // ESC parser states:
+    //   0 = normal text
+    //   1 = saw ESC, awaiting intro byte (Fe escape vs. CSI/OSC opener)
+    //   2 = inside CSI — terminates on a final byte in 0x40..0x7E
+    //   3 = inside OSC/DCS/SOS/APC/PM — terminates on BEL (or ST `ESC \`,
+    //       handled implicitly when the embedded ESC restarts the parser)
+    // A 2-state ESC machine treated `[` as a final byte (0x5B is inside
+    // 0x40..0x7E), so `\x1b[A` leaked its final byte into the buffer; folding
+    // OSC into the same state would also break, because OSC parameter bytes
+    // include lowercase letters in 0x40..0x7E (e.g. the `w` in
+    // `\x1b]0;window-title\x07`).
+    let escState = 0;
 
     for (const char of data) {
-      if (inEscapeSequence) {
-        if ((char >= "@" && char <= "~") || char === "\u0007") {
-          inEscapeSequence = false;
+      if (escState === 3) {
+        if (char === "\u0007") {
+          escState = 0;
+        } else if (char === "\x1b") {
+          // Treat embedded ESC as restart — also recovers the `\` of an ST
+          // terminator (`ESC \`) via the state-1 fall-through to state 0.
+          escState = 1;
+        }
+        continue;
+      }
+
+      if (escState === 2) {
+        if (char >= "@" && char <= "~") {
+          escState = 0;
+        } else if (char === "\x1b") {
+          escState = 1;
+        }
+        continue;
+      }
+
+      if (escState === 1) {
+        if (char === "[") {
+          escState = 2;
+        } else if (char === "]" || char === "P" || char === "X" || char === "_" || char === "^") {
+          escState = 3;
+        } else {
+          // Fe escape (e.g. `ESC A`, `ESC M`) — the single intro byte
+          // completes the sequence; this branch also recovers the trailing
+          // `\` of an ST terminator.
+          escState = 0;
         }
         continue;
       }
 
       if (char === "\x1b") {
-        inEscapeSequence = true;
+        escState = 1;
         continue;
       }
 
@@ -155,9 +196,13 @@ export class IdentityWatcher {
         continue;
       }
 
-      if (this.inputBuffer.length < SHELL_INPUT_BUFFER_MAX) {
-        this.inputBuffer += char;
+      if (this.inputBuffer.length >= SHELL_INPUT_BUFFER_MAX) {
+        // Drop oldest chars; preserve the live tail (most recent keystrokes matter for identity).
+        this.inputBuffer = this.inputBuffer.slice(
+          this.inputBuffer.length - SHELL_INPUT_BUFFER_MAX + 1
+        );
       }
+      this.inputBuffer += char;
     }
 
     return submittedCommandText;
@@ -252,6 +297,15 @@ export class IdentityWatcher {
   dispose(): void {
     this.stopped = true;
     this.stop();
+    // Drop any injected shell evidence so a torn-down watcher doesn't leave a
+    // stale identity hanging on the detector for the full TTL. Default reason
+    // ("manual") respects the `promptReturned`/`shellWasSoleSupport` gate, so
+    // an agent the process tree independently corroborates won't be demoted.
+    this.delegate.processDetector?.clearShellCommandEvidence();
+    // Mark the MutableDisposable container itself disposed (safety fence) so
+    // any later assignment to `this.timer.value` short-circuits instead of
+    // silently retaining a new disposable.
+    this.timer.dispose();
   }
 
   private start(): void {
@@ -259,7 +313,13 @@ export class IdentityWatcher {
       return;
     }
     const id = setInterval(() => {
-      this.poll();
+      // An uncaught throw in a setInterval callback would tear down the
+      // interval (and on Electron 37+ utility processes, crash the host).
+      try {
+        this.poll();
+      } catch (err) {
+        console.error(`[IdentityWatcher] poll failed for ${this.delegate.terminalId}:`, err);
+      }
     }, SHELL_IDENTITY_FALLBACK_POLL_MS);
     this.timer.value = toDisposable(() => clearInterval(id));
   }
@@ -330,12 +390,17 @@ export class IdentityWatcher {
     // icon hasn't been cleared yet) must NOT block the fallback from emitting
     // a fresh `pnpm`/`docker`/etc. detection for the next command. #5813
     const fallbackIdentity = this.identity;
+    // "If the field is provided, it must agree" — AND across every populated
+    // field on the fallback identity. OR semantics let a single-field match
+    // pre-empt the commit even when the *other* field disagreed (a stale icon
+    // could short-circuit a freshly typed agent command, or vice versa).
     const liveIdentityMatchesFallback =
       fallbackIdentity !== null &&
-      ((fallbackIdentity.agentType !== undefined &&
-        this.delegate.detectedAgentId === fallbackIdentity.agentType) ||
-        (fallbackIdentity.processIconId !== undefined &&
-          this.delegate.lastDetectedProcessIconId === fallbackIdentity.processIconId));
+      (fallbackIdentity.agentType !== undefined || fallbackIdentity.processIconId !== undefined) &&
+      (fallbackIdentity.agentType === undefined ||
+        this.delegate.detectedAgentId === fallbackIdentity.agentType) &&
+      (fallbackIdentity.processIconId === undefined ||
+        this.delegate.lastDetectedProcessIconId === fallbackIdentity.processIconId);
 
     if (!this.identity) {
       if (promptVisible && Date.now() - submittedAt >= SHELL_IDENTITY_FALLBACK_COMMIT_MS) {

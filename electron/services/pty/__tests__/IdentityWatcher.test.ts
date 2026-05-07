@@ -161,6 +161,57 @@ describe("IdentityWatcher", () => {
       watcher.captureInput("first\r");
       expect(watcher.captureInput("second\r")).toBe("second");
     });
+
+    // CSI sequences end on a final byte in the 0x40–0x7E range. The previous
+    // 2-state machine treated `[` (0x5B) as a final byte, dropping arrow-key
+    // payloads like the `A` in `\x1b[A` straight into the buffer.
+    it("does not pollute the buffer with CSI cursor-key payloads", () => {
+      const { delegate } = createFakeDelegate();
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.captureInput("\x1b[A\x1b[B\x1b[C\x1b[Dclaude");
+      expect(watcher.captureInput("\r")).toBe("claude");
+    });
+
+    it("does not pollute the buffer with CSI function-key sequences (\\x1b[5~)", () => {
+      const { delegate } = createFakeDelegate();
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.captureInput("\x1b[5~\x1b[6~claude");
+      expect(watcher.captureInput("\r")).toBe("claude");
+    });
+
+    it("does not pollute the buffer with OSC title sequences (\\x1b]0;…\\x07)", () => {
+      const { delegate } = createFakeDelegate();
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.captureInput("\x1b]0;window-title\x07pnpm dev");
+      expect(watcher.captureInput("\r")).toBe("pnpm dev");
+    });
+
+    it("returns undefined and ignores input after dispose", () => {
+      const { delegate } = createFakeDelegate();
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.captureInput("partial");
+      watcher.dispose();
+      expect(watcher.captureInput("more\r")).toBeUndefined();
+    });
+
+    it("rolls the buffer when input exceeds SHELL_INPUT_BUFFER_MAX (drops oldest, keeps tail)", async () => {
+      const { delegate } = createFakeDelegate();
+      const watcher = new IdentityWatcher(delegate);
+      const { SHELL_INPUT_BUFFER_MAX } = await import("../IdentityWatcher.js");
+
+      // Fill exactly to capacity, then append one more printable char. The
+      // buggy implementation would drop the new char; the fixed one drops the
+      // oldest so the live tail (`!`) is preserved.
+      watcher.captureInput("a".repeat(SHELL_INPUT_BUFFER_MAX));
+      const submitted = watcher.captureInput("!\r");
+      expect(submitted).toBeDefined();
+      expect(submitted).toHaveLength(SHELL_INPUT_BUFFER_MAX);
+      expect(submitted!.endsWith("a!")).toBe(true);
+    });
   });
 
   describe("onShellSubmit gating", () => {
@@ -241,6 +292,43 @@ describe("IdentityWatcher", () => {
       vi.advanceTimersByTime(5_000);
       expect(state.detectionCalls).toHaveLength(0);
     });
+
+    // Past lesson #4851: containers that hold timer disposables must call
+    // `.dispose()` on teardown, not just `.clear()` — otherwise leaked timer
+    // handles surface as `vi.getTimerCount() > 0` after the test ends.
+    it("leaves no live timers after dispose on an armed watcher", () => {
+      const { delegate } = createFakeDelegate({
+        cursorLine: "user@host:~$ ",
+        visibleLines: ["user@host:~$ "],
+      });
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.onShellSubmit("claude");
+      expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+      watcher.dispose();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("clears injected shell evidence on dispose", () => {
+      const inject = vi.fn();
+      const clear = vi.fn();
+      const fakeDetector = {
+        injectShellCommandEvidence: inject,
+        clearShellCommandEvidence: clear,
+      } as unknown as ProcessDetector;
+      const { delegate } = createFakeDelegate({ processDetector: fakeDetector });
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.onShellSubmit("claude");
+      clear.mockClear();
+      watcher.dispose();
+
+      // Default ("manual") reason — respects the sole-support gate so
+      // process-tree-corroborated agents aren't force-demoted on teardown.
+      expect(clear).toHaveBeenCalledTimes(1);
+      expect(clear).toHaveBeenCalledWith();
+    });
   });
 
   describe("seed", () => {
@@ -274,6 +362,23 @@ describe("IdentityWatcher", () => {
       const watcher = new IdentityWatcher(delegate);
 
       watcher.seed("claude");
+      expect(watcher.seededCommandText).toBeUndefined();
+    });
+
+    it("does not inject evidence when seeded after dispose", () => {
+      const inject = vi.fn();
+      const fakeDetector = {
+        injectShellCommandEvidence: inject,
+        clearShellCommandEvidence: vi.fn(),
+      } as unknown as ProcessDetector;
+      const { delegate } = createFakeDelegate({ processDetector: fakeDetector });
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.dispose();
+      inject.mockClear();
+      watcher.seed("claude --version");
+
+      expect(inject).not.toHaveBeenCalled();
       expect(watcher.seededCommandText).toBeUndefined();
     });
   });
@@ -333,6 +438,42 @@ describe("IdentityWatcher", () => {
 
       expect(clear).toHaveBeenCalledWith("prompt-return");
       // handleAgentDetection is the legacy fallback; not used when detector is present.
+      expect(state.detectionCalls).toHaveLength(0);
+    });
+
+    // Bug 2: liveIdentityMatchesFallback used OR. A stale process icon (from a
+    // prior `claude` run whose icon hadn't been demoted yet) could short-
+    // circuit the commit even when the live agent type disagreed — and vice
+    // versa. The AND form requires every populated identity field to agree.
+    it("does not pre-empt commit when only one identity field agrees with live state", async () => {
+      const inject = vi.fn();
+      const clear = vi.fn();
+      const fakeDetector = {
+        injectShellCommandEvidence: inject,
+        clearShellCommandEvidence: clear,
+      } as unknown as ProcessDetector;
+      const { delegate, state } = createFakeDelegate({
+        processDetector: fakeDetector,
+        // detectedAgentId matches identity.agentType ("claude") — but the
+        // process icon disagrees (live is `pnpm`, fallback identity is
+        // `claude`). A correct AND check rejects the live state and lets the
+        // fallback commit fresh evidence.
+        detectedAgentId: "claude",
+        lastDetectedProcessIconId: "pnpm",
+        // allowWhenAgentDetected is required because detectedAgentId is set.
+        visibleLines: ["claude\r\n", "Starting Claude Code..."],
+        cursorLine: "Starting Claude Code...",
+        ptyDescendantCount: 1,
+      });
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.onShellSubmit("claude", { allowWhenAgentDetected: true });
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      // With OR: commit short-circuited (no inject call). With AND: commit
+      // proceeds because processIconId disagrees, so injectShellCommandEvidence
+      // fires with the watcher's identity.
+      expect(inject).toHaveBeenCalledTimes(1);
       expect(state.detectionCalls).toHaveLength(0);
     });
 
