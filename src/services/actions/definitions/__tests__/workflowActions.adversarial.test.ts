@@ -112,10 +112,12 @@ function setAssignPreference(value: boolean) {
 }
 
 function setRecipe(recipeId: string | null, runImpl?: () => Promise<void>) {
+  const runRecipe = vi.fn().mockImplementation(runImpl ?? (async () => {}));
   recipeStoreMock.getState.mockReturnValue({
     getRecipeById: vi.fn().mockReturnValue(recipeId ? { id: recipeId } : null),
-    runRecipe: vi.fn().mockImplementation(runImpl ?? (async () => {})),
+    runRecipe,
   });
+  return runRecipe;
 }
 
 function setPanelTerminals(
@@ -297,6 +299,27 @@ describe("worktree.createWithRecipe", () => {
     expect(result.recipeLaunched).toBe(true);
   });
 
+  it("passes spawnedBy through to recipes launched from MCP-created worktrees", async () => {
+    const runRecipe = setRecipe("recipe-1");
+    const def = setupActions(makeCallbacks())("worktree.createWithRecipe");
+
+    await def.run(
+      { branchName: "feature/foo", recipeId: "recipe-1", spawnedBy: "mcp" },
+      {} as never
+    );
+
+    expect(runRecipe).toHaveBeenCalledWith(
+      "recipe-1",
+      "/repo/feature/issue-6609-add-tools",
+      "wt-new",
+      expect.objectContaining({
+        worktreePath: "/repo/feature/issue-6609-add-tools",
+        branchName: "feature/issue-6609-add-tools",
+      }),
+      { spawnedBy: "mcp" }
+    );
+  });
+
   it("recipe failure after worktree creation throws PARTIAL_SUCCESS with worktree info", async () => {
     setRecipe("recipe-1", async () => {
       throw new Error("recipe boom");
@@ -358,6 +381,27 @@ describe("workflow.startWorkOnIssue", () => {
     expect(result.assignedToSelf).toBe(false);
     expect(result.assignmentError).toBeNull();
     expect(result.issueTitle).toBe("Add workflow macro tools");
+  });
+
+  it("passes spawnedBy through to agents launched by MCP workflow actions", async () => {
+    githubClientMock.getIssueByNumber.mockResolvedValue({
+      number: 6959,
+      title: "Assistant focus is stolen",
+      url: "https://github.com/x/y/issues/6959",
+    });
+    const callbacks = makeCallbacks();
+    const def = setupActions(callbacks)("workflow.startWorkOnIssue");
+
+    await def.run({ issueNumber: 6959, agentId: "claude", spawnedBy: "mcp" }, {} as never);
+
+    expect(callbacks.onLaunchAgent).toHaveBeenCalledWith(
+      "claude",
+      expect.objectContaining({
+        cwd: "/repo/feature/issue-6609-add-tools",
+        worktreeId: "wt-new",
+        spawnedBy: "mcp",
+      })
+    );
   });
 
   it("throws when project is missing", async () => {

@@ -10,6 +10,7 @@ import { useGitHubConfigStore } from "@/store/githubConfigStore";
 import { usePanelStore } from "@/store/panelStore";
 import { usePreferencesStore } from "@/store/preferencesStore";
 import { selectOrderedTerminals } from "@/store/slices/panelRegistry";
+import { TerminalSpawnSourceSchema } from "./schemas";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 const PARTIAL_SUCCESS_PREFIX = "PARTIAL_SUCCESS:";
@@ -89,6 +90,7 @@ export function registerWorkflowActions(
             .describe(
               "Assign the linked issue to the current user. Omit to use the user's persisted 'Assign issue to me' preference (mirrors the new-worktree dialog checkbox)."
             ),
+          spawnedBy: TerminalSpawnSourceSchema.optional(),
         })
         .refine((d) => !(d.issueNumber !== undefined && d.pullRequestNumber !== undefined), {
           message: "issueNumber and pullRequestNumber are mutually exclusive",
@@ -110,6 +112,7 @@ export function registerWorkflowActions(
         issueNumber,
         pullRequestNumber,
         assignToSelf,
+        spawnedBy,
       }) => {
         if (issueNumber !== undefined && pullRequestNumber !== undefined) {
           throw new Error("issueNumber and pullRequestNumber are mutually exclusive");
@@ -200,12 +203,19 @@ export function registerWorkflowActions(
         let recipeLaunched = false;
         if (recipeId) {
           try {
-            await useRecipeStore.getState().runRecipe(recipeId, path, worktreeId, {
+            const recipeContext = {
               worktreePath: path,
               branchName: effectiveBranch,
               issueNumber,
               prNumber: pullRequestNumber,
-            });
+            };
+            if (spawnedBy === undefined) {
+              await useRecipeStore.getState().runRecipe(recipeId, path, worktreeId, recipeContext);
+            } else {
+              await useRecipeStore.getState().runRecipe(recipeId, path, worktreeId, recipeContext, {
+                spawnedBy,
+              });
+            }
             recipeLaunched = true;
           } catch (err) {
             throw partialSuccessError(
@@ -291,6 +301,7 @@ export function registerWorkflowActions(
           .boolean()
           .optional()
           .describe("Inject worktree context into the launched terminal (default: true)"),
+        spawnedBy: TerminalSpawnSourceSchema.optional(),
       }),
       resultSchema: z.object({
         issueNumber: z.number(),
@@ -313,6 +324,7 @@ export function registerWorkflowActions(
         recipeId,
         assignToSelf,
         injectContext,
+        spawnedBy,
       }) => {
         const currentProject = useProjectStore.getState().currentProject;
         if (!currentProject) {
@@ -374,11 +386,20 @@ export function registerWorkflowActions(
         let recipeLaunched = false;
         if (recipeId) {
           try {
-            await useRecipeStore.getState().runRecipe(recipeId, worktreePath, worktreeId, {
+            const recipeContext = {
               worktreePath,
               branchName: availableBranch,
               issueNumber: issue.number,
-            });
+            };
+            if (spawnedBy === undefined) {
+              await useRecipeStore
+                .getState()
+                .runRecipe(recipeId, worktreePath, worktreeId, recipeContext);
+            } else {
+              await useRecipeStore
+                .getState()
+                .runRecipe(recipeId, worktreePath, worktreeId, recipeContext, { spawnedBy });
+            }
             recipeLaunched = true;
           } catch (err) {
             throw partialSuccessError(
@@ -409,6 +430,7 @@ export function registerWorkflowActions(
             cwd: worktreePath,
             worktreeId,
             activateDockOnCreate: false,
+            spawnedBy,
           });
         } catch (err) {
           throw partialSuccessError(

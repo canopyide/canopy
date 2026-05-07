@@ -541,13 +541,9 @@ export function BulkCreateWorktreeDialog({
 
                 const results: RecipeSpawnResults = await useRecipeStore
                   .getState()
-                  .runRecipeWithResults(
-                    selectedRecipeId,
-                    worktreePath,
-                    worktreeId,
-                    recipeContext,
-                    shouldRetryTerminals
-                  );
+                  .runRecipeWithResults(selectedRecipeId, worktreePath, worktreeId, recipeContext, {
+                    terminalIndices: shouldRetryTerminals,
+                  });
 
                 const updatedTracked = tracking.get(itemNumber);
                 if (updatedTracked) {

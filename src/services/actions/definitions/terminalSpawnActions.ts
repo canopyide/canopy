@@ -4,6 +4,8 @@ import { usePanelStore } from "@/store/panelStore";
 import { useLayoutUndoStore } from "@/store/layoutUndoStore";
 import { buildPanelDuplicateOptions } from "@/services/terminal/panelDuplicationService";
 import { getDefaultTitle } from "@/store/slices/panelRegistry/helpers";
+import { TerminalSpawnSourceSchema } from "./schemas";
+import type { TerminalSpawnSource } from "@shared/types/panel";
 export function registerTerminalSpawnActions(
   actions: ActionRegistry,
   callbacks: ActionCallbacks
@@ -16,13 +18,16 @@ export function registerTerminalSpawnActions(
     kind: "command",
     danger: "safe",
     scope: "renderer",
-    run: async () => {
+    argsSchema: z.object({ spawnedBy: TerminalSpawnSourceSchema.optional() }).optional(),
+    run: async (args) => {
+      const { spawnedBy } = args ?? {};
       const addPanel = usePanelStore.getState().addPanel;
       const terminalId = await addPanel({
         kind: "terminal",
         cwd: callbacks.getDefaultCwd(),
         location: "grid",
         worktreeId: callbacks.getActiveWorktreeId(),
+        spawnedBy,
       });
       if (!terminalId) return;
       return { terminalId };
@@ -37,9 +42,15 @@ export function registerTerminalSpawnActions(
     kind: "command",
     danger: "safe",
     scope: "renderer",
-    argsSchema: z.object({ terminalId: z.string().optional() }).optional(),
+    argsSchema: z
+      .object({
+        terminalId: z.string().optional(),
+        spawnedBy: TerminalSpawnSourceSchema.optional(),
+      })
+      .optional(),
     run: async (args: unknown) => {
-      const { terminalId } = (args as { terminalId?: string } | undefined) ?? {};
+      const { terminalId, spawnedBy } =
+        (args as { terminalId?: string; spawnedBy?: TerminalSpawnSource } | undefined) ?? {};
       const state = usePanelStore.getState();
       const nonTrashed = state.panelIds
         .map((id) => state.panelsById[id])
@@ -59,6 +70,9 @@ export function registerTerminalSpawnActions(
           if (options.title !== defaultTitle) {
             options.title = `${options.title} (copy)`;
           }
+        }
+        if (spawnedBy) {
+          options.spawnedBy = spawnedBy;
         }
         await state.addPanel(options);
       } else if (nonTrashed.length === 0) {
@@ -80,6 +94,7 @@ export function registerTerminalSpawnActions(
             ...baseOptions,
             location: "grid",
             worktreeId: lastClosed.worktreeId ?? callbacks.getActiveWorktreeId(),
+            ...(spawnedBy ? { spawnedBy } : {}),
           });
         } else {
           await state.addPanel({
@@ -87,6 +102,7 @@ export function registerTerminalSpawnActions(
             cwd: callbacks.getDefaultCwd(),
             location: "grid",
             worktreeId: callbacks.getActiveWorktreeId(),
+            spawnedBy,
           });
         }
       }

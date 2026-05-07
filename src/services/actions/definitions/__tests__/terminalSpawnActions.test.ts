@@ -107,6 +107,48 @@ beforeEach(() => {
 });
 
 describe("terminal.duplicate (copy) suffix", () => {
+  it("terminal.new preserves spawnedBy for MCP-origin launches", async () => {
+    const addPanel = vi.fn().mockResolvedValue("p-new");
+    setPanelState({ panels: [], addPanel });
+    const run = setupActions();
+
+    await run("terminal.new", { spawnedBy: "mcp" });
+
+    expect(addPanel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "terminal",
+        spawnedBy: "mcp",
+      })
+    );
+  });
+
+  it("terminal.duplicate preserves spawnedBy for MCP-origin duplicated agent panels", async () => {
+    const addPanel = vi.fn().mockResolvedValue(undefined);
+    setPanelState({
+      focusedId: "p1",
+      panels: [
+        {
+          id: "p1",
+          location: "grid",
+          kind: "terminal",
+          launchAgentId: "claude",
+          title: "Claude",
+        },
+      ],
+      addPanel,
+    });
+    const run = setupActions();
+
+    await run("terminal.duplicate", { spawnedBy: "mcp" });
+
+    expect(addPanel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        launchAgentId: "claude",
+        spawnedBy: "mcp",
+      })
+    );
+  });
+
   it("does not append (copy) when agent panel title matches the default", async () => {
     const addPanel = vi.fn().mockResolvedValue(undefined);
     setPanelState({

@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { ActionContext } from "@shared/types/actions";
 import { useRecipeStore } from "@/store/recipeStore";
 import { getCurrentViewStore } from "@/store/createWorktreeStore";
+import { TerminalSpawnSourceSchema } from "./schemas";
 
 export function registerRecipeActions(actions: ActionRegistry, _callbacks: ActionCallbacks): void {
   actions.set("recipe.list", () =>
@@ -49,8 +50,12 @@ export function registerRecipeActions(actions: ActionRegistry, _callbacks: Actio
       kind: "command",
       danger: "safe",
       scope: "renderer",
-      argsSchema: z.object({ recipeId: z.string(), worktreeId: z.string().optional() }),
-      run: async ({ recipeId, worktreeId }, ctx: ActionContext) => {
+      argsSchema: z.object({
+        recipeId: z.string(),
+        worktreeId: z.string().optional(),
+        spawnedBy: TerminalSpawnSourceSchema.optional(),
+      }),
+      run: async ({ recipeId, worktreeId, spawnedBy }, ctx: ActionContext) => {
         const targetWorktreeId = worktreeId ?? ctx.activeWorktreeId ?? undefined;
         const worktree = targetWorktreeId
           ? getCurrentViewStore().getState().worktrees.get(targetWorktreeId)
@@ -61,12 +66,21 @@ export function registerRecipeActions(actions: ActionRegistry, _callbacks: Actio
           throw new Error("No worktree or project path available to run recipe");
         }
 
-        await useRecipeStore.getState().runRecipe(recipeId, worktreePath, targetWorktreeId, {
+        const recipeContext = {
           issueNumber: worktree?.issueNumber,
           prNumber: worktree?.prNumber,
           worktreePath,
           branchName: worktree?.branch,
-        });
+        };
+        if (spawnedBy === undefined) {
+          await useRecipeStore
+            .getState()
+            .runRecipe(recipeId, worktreePath, targetWorktreeId, recipeContext);
+        } else {
+          await useRecipeStore
+            .getState()
+            .runRecipe(recipeId, worktreePath, targetWorktreeId, recipeContext, { spawnedBy });
+        }
       },
     })
   );

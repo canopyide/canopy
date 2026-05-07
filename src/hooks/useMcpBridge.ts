@@ -23,18 +23,30 @@ const TIMEOUT_RESULT: ActionDispatchResult = {
   },
 };
 
+const MCP_SPAWN_TAGGED_ACTIONS = new Set([
+  "recipe.run",
+  "terminal.duplicate",
+  "terminal.new",
+  "workflow.startWorkOnIssue",
+  "worktree.createWithRecipe",
+  "worktree.resource.connect",
+]);
+
+function shouldTagMcpSpawn(actionId: string): boolean {
+  return actionId.startsWith("agent.") || MCP_SPAWN_TAGGED_ACTIONS.has(actionId);
+}
+
 /**
- * Stamp `spawnedBy: "mcp"` onto `agent.*` action args so the panel store can
- * gate focus capture for MCP-initiated launches (#6959). Other actions pass
- * through untouched. We override any caller-supplied `spawnedBy` because the
- * dispatch source is authoritative — an MCP client cannot claim a different
- * origin.
+ * Stamp `spawnedBy: "mcp"` onto actions that can create panels so the panel
+ * store can gate focus capture for MCP-initiated launches (#6959). We override
+ * any caller-supplied `spawnedBy` because the dispatch source is authoritative
+ * — an MCP client cannot claim a different origin.
  *
  * Exported for unit tests; importing modules should not call this directly —
  * the bridge is the only authoritative caller.
  */
-export function tagAgentSpawn(actionId: string, args: unknown): unknown {
-  if (!actionId.startsWith("agent.")) return args;
+export function tagMcpSpawnSource(actionId: string, args: unknown): unknown {
+  if (!shouldTagMcpSpawn(actionId)) return args;
   if (args && typeof args === "object" && !Array.isArray(args)) {
     return { ...(args as Record<string, unknown>), spawnedBy: "mcp" };
   }
@@ -115,7 +127,7 @@ export function useMcpBridge(): void {
             }
           }
 
-          const dispatchArgs = tagAgentSpawn(actionId, args);
+          const dispatchArgs = tagMcpSpawnSource(actionId, args);
           const result = await actionService.dispatch(actionId as ActionId, dispatchArgs, {
             source: "agent",
             confirmed: effectiveConfirmed,

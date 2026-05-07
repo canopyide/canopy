@@ -7,6 +7,7 @@ vi.mock("@/lib/notify", () => ({
 }));
 
 const mockResourceAction = vi.fn();
+const mockOnAddTerminal = vi.fn();
 
 // Stub all external imports that worktreeActions.ts pulls in
 vi.mock("@/clients", () => ({
@@ -57,6 +58,7 @@ describe("worktree resource action definitions", () => {
       onCreateWorktree: vi.fn(),
       onDeleteWorktree: vi.fn(),
       onSwitchWorktree: vi.fn(),
+      onAddTerminal: mockOnAddTerminal,
     };
     registerWorktreeActions(registry as never, callbacks as never);
   });
@@ -97,6 +99,7 @@ describe("worktree resource action definitions", () => {
 
   beforeEach(() => {
     mockResourceAction.mockReset();
+    mockOnAddTerminal.mockReset();
     mockNotify.mockReset();
   });
 
@@ -153,6 +156,26 @@ describe("worktree resource action definitions", () => {
     expect(mockResourceAction).toHaveBeenCalledWith("/test", "status");
     expect(result).toEqual({ configured: true, status: resourceStatus });
     expect(mockNotify).not.toHaveBeenCalled();
+  });
+
+  it("worktree.resource.connect passes spawnedBy through to terminal creation", async () => {
+    mockWorktrees.set("wt-1", {
+      path: "/repo/worktree",
+      name: "Remote Resource",
+      resourceConnectCommand: "ssh devbox",
+    });
+    const def = registry.get("worktree.resource.connect")!();
+
+    await def.run!({ worktreeId: "wt-1", spawnedBy: "mcp" }, {});
+
+    expect(mockOnAddTerminal).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "terminal",
+        command: "ssh devbox",
+        worktreeId: "wt-1",
+        spawnedBy: "mcp",
+      })
+    );
   });
 
   it.each([

@@ -306,7 +306,7 @@ describe("useMcpBridge", () => {
     expect(cleanupDispatch).toHaveBeenCalledTimes(1);
   });
 
-  describe("agent.* spawn tagging (#6959)", () => {
+  describe("MCP spawn source tagging (#6959)", () => {
     it("stamps spawnedBy: 'mcp' onto agent.launch dispatches and preserves caller args", async () => {
       mocks.get.mockReturnValue(safeManifestEntry({ id: "agent.launch", danger: "safe" }));
       mocks.dispatch.mockResolvedValue({ ok: true, result: { terminalId: "t-1" } });
@@ -322,6 +322,57 @@ describe("useMcpBridge", () => {
       expect(mocks.dispatch).toHaveBeenCalledWith(
         "agent.launch",
         { agentId: "claude", location: "grid", spawnedBy: "mcp" },
+        { source: "agent", confirmed: undefined }
+      );
+    });
+
+    it("stamps panel-spawning workflow actions so indirect agent launches do not steal focus", async () => {
+      mocks.get.mockReturnValue(
+        safeManifestEntry({ id: "workflow.startWorkOnIssue", danger: "safe" })
+      );
+      mocks.dispatch.mockResolvedValue({ ok: true, result: { terminalId: "t-workflow" } });
+
+      renderHook(() => useMcpBridge());
+
+      await dispatchHandler?.({
+        requestId: "req-workflow",
+        actionId: "workflow.startWorkOnIssue",
+        args: { issueNumber: 6959, agentId: "claude" },
+      });
+
+      expect(mocks.dispatch).toHaveBeenCalledWith(
+        "workflow.startWorkOnIssue",
+        { issueNumber: 6959, agentId: "claude", spawnedBy: "mcp" },
+        { source: "agent", confirmed: undefined }
+      );
+    });
+
+    it("stamps recipe and terminal creation actions that can create panels from MCP", async () => {
+      mocks.get.mockReturnValue(safeManifestEntry({ danger: "safe" }));
+      mocks.dispatch.mockResolvedValue({ ok: true, result: { terminalId: "t-spawn" } });
+
+      renderHook(() => useMcpBridge());
+
+      await dispatchHandler?.({
+        requestId: "req-recipe",
+        actionId: "recipe.run",
+        args: { recipeId: "recipe-1" },
+      });
+      await dispatchHandler?.({
+        requestId: "req-terminal-new",
+        actionId: "terminal.new",
+      });
+
+      expect(mocks.dispatch).toHaveBeenNthCalledWith(
+        1,
+        "recipe.run",
+        { recipeId: "recipe-1", spawnedBy: "mcp" },
+        { source: "agent", confirmed: undefined }
+      );
+      expect(mocks.dispatch).toHaveBeenNthCalledWith(
+        2,
+        "terminal.new",
+        { spawnedBy: "mcp" },
         { source: "agent", confirmed: undefined }
       );
     });

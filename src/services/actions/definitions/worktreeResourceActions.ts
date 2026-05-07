@@ -6,6 +6,7 @@ import { worktreeClient } from "@/clients";
 import { getCurrentViewStore } from "@/store/createWorktreeStore";
 import { notify } from "@/lib/notify";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
+import { TerminalSpawnSourceSchema } from "./schemas";
 
 function notifyWorktreeResourceError(err: unknown, title: string, fallbackMessage: string): void {
   const message = formatErrorMessage(err, fallbackMessage) || fallbackMessage;
@@ -215,7 +216,12 @@ export function registerWorktreeResourceActions(
       kind: "command",
       danger: "safe",
       scope: "renderer",
-      argsSchema: z.object({ worktreeId: z.string().optional() }).optional(),
+      argsSchema: z
+        .object({
+          worktreeId: z.string().optional(),
+          spawnedBy: TerminalSpawnSourceSchema.optional(),
+        })
+        .optional(),
       isEnabled: (ctx: ActionContext) => {
         const worktreeId = ctx.focusedWorktreeId ?? ctx.activeWorktreeId;
         if (!worktreeId) return false;
@@ -232,6 +238,7 @@ export function registerWorktreeResourceActions(
       },
       run: async (args, ctx: ActionContext) => {
         const worktreeId = args?.worktreeId;
+        const spawnedBy = args?.spawnedBy;
         const targetWorktreeId = worktreeId ?? ctx.focusedWorktreeId ?? ctx.activeWorktreeId;
         if (!targetWorktreeId) throw new Error("No worktree selected");
         const worktree = getCurrentViewStore().getState().worktrees.get(targetWorktreeId);
@@ -247,6 +254,7 @@ export function registerWorktreeResourceActions(
           title: `Connect: ${worktree.name}`,
           location: "grid",
           worktreeId: targetWorktreeId,
+          spawnedBy,
         });
       },
     })

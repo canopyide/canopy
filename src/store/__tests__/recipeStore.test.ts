@@ -433,6 +433,42 @@ describe("recipeStore", () => {
     expect(spawned.command).toContain("sonnet");
   });
 
+  it("runRecipe passes spawnedBy through to spawned panels", async () => {
+    useRecipeStore.setState({
+      recipes: [
+        {
+          id: "recipe-mcp",
+          name: "MCP Recipe",
+          projectId: "project-1",
+          terminals: [
+            {
+              type: "claude",
+              title: "Claude",
+              env: {},
+            },
+          ],
+          createdAt: Date.now(),
+        },
+      ],
+      isLoading: false,
+      currentProjectId: "project-1",
+    });
+
+    await useRecipeStore
+      .getState()
+      .runRecipe("recipe-mcp", "/tmp/worktree", "worktree-1", undefined, {
+        spawnedBy: "mcp",
+      });
+
+    expect(addTerminalMock).toHaveBeenCalledTimes(1);
+    expect(addTerminalMock.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        launchAgentId: "claude",
+        spawnedBy: "mcp",
+      })
+    );
+  });
+
   describe("runRecipeWithResults", () => {
     it("returns all spawned terminal IDs on full success", async () => {
       let callIndex = 0;
@@ -528,7 +564,9 @@ describe("recipeStore", () => {
 
       const results = await useRecipeStore
         .getState()
-        .runRecipeWithResults("recipe-1", "/tmp/worktree", "worktree-1", undefined, [1]);
+        .runRecipeWithResults("recipe-1", "/tmp/worktree", "worktree-1", undefined, {
+          terminalIndices: [1],
+        });
 
       expect(addTerminalMock).toHaveBeenCalledTimes(1);
       expect(results.spawned).toHaveLength(1);

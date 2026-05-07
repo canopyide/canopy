@@ -6,6 +6,7 @@ import { getAgentConfig } from "@/config/agents";
 import { generateAgentCommand } from "@shared/types";
 import { replaceRecipeVariables, type RecipeContext } from "@/utils/recipeVariables";
 import { BUILT_IN_AGENT_IDS } from "@shared/config/agentIds";
+import type { TerminalSpawnSource } from "@shared/types/panel";
 import { stableInRepoId, isInRepoRecipeId } from "@shared/utils/recipeFilename";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { logError } from "@/utils/logger";
@@ -23,6 +24,11 @@ export interface RecipeSpawnFailure {
 export interface RecipeSpawnResults {
   spawned: RecipeSpawnResult[];
   failed: RecipeSpawnFailure[];
+}
+
+export interface RecipeRunOptions {
+  spawnedBy?: TerminalSpawnSource;
+  terminalIndices?: number[];
 }
 
 function isAgentRecipeType(type: RecipeTerminalType): boolean {
@@ -121,7 +127,8 @@ interface RecipeState {
     recipeId: string,
     worktreePath: string,
     worktreeId?: string,
-    context?: RecipeContext
+    context?: RecipeContext,
+    options?: RecipeRunOptions
   ) => Promise<void>;
 
   runRecipeWithResults: (
@@ -129,7 +136,7 @@ interface RecipeState {
     worktreePath: string,
     worktreeId?: string,
     context?: RecipeContext,
-    terminalIndices?: number[]
+    options?: RecipeRunOptions
   ) => Promise<RecipeSpawnResults>;
 
   saveToRepo: (recipeId: string, deleteOriginal?: boolean) => Promise<void>;
@@ -478,11 +485,11 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
     return get().recipes.find((r) => r.id === id);
   },
 
-  runRecipe: async (recipeId, worktreePath, worktreeId, context) => {
-    await get().runRecipeWithResults(recipeId, worktreePath, worktreeId, context);
+  runRecipe: async (recipeId, worktreePath, worktreeId, context, options) => {
+    await get().runRecipeWithResults(recipeId, worktreePath, worktreeId, context, options);
   },
 
-  runRecipeWithResults: async (recipeId, worktreePath, worktreeId, context, terminalIndices) => {
+  runRecipeWithResults: async (recipeId, worktreePath, worktreeId, context, options) => {
     const recipe = get().getRecipeById(recipeId);
     if (!recipe) {
       throw new Error(`Recipe ${recipeId} not found`);
@@ -499,7 +506,8 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
 
     const terminalStore = usePanelStore.getState();
 
-    const indicesToSpawn = terminalIndices ?? recipe.terminals.map((_, i) => i);
+    const indicesToSpawn = options?.terminalIndices ?? recipe.terminals.map((_, i) => i);
+    const spawnedBy = options?.spawnedBy;
 
     // Pre-fetch agent settings once for all agent terminals
     let agentSettings: Awaited<ReturnType<typeof agentSettingsClient.get>> | null = null;
@@ -540,6 +548,7 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
             devCommand: terminal.devCommand?.trim() || undefined,
             env: terminal.env,
             exitBehavior: terminal.exitBehavior,
+            spawnedBy,
           });
           if (terminalId) {
             results.spawned.push({ index, terminalId });
@@ -579,6 +588,7 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
             worktreeId: worktreeId,
             env: terminal.env,
             exitBehavior: terminal.exitBehavior,
+            spawnedBy,
           });
         } else {
           terminalId = await terminalStore.addPanel({
@@ -589,6 +599,7 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
             worktreeId: worktreeId,
             env: terminal.env,
             exitBehavior: terminal.exitBehavior,
+            spawnedBy,
           });
         }
         if (terminalId) {
