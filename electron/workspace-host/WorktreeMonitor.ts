@@ -1,6 +1,5 @@
-import { readFile } from "fs/promises";
+import { readFile, access } from "fs/promises";
 import { join as pathJoin } from "path";
-import { existsSync } from "fs";
 import { createHardenedGit, createWslHardenedGit } from "../utils/hardenedGit.js";
 import type { WslGitInvocation } from "../utils/hardenedGit.js";
 import type PQueue from "p-queue";
@@ -1030,7 +1029,9 @@ export class WorktreeMonitor {
     if (!this._isRunning) return;
 
     if (!force && this.pollingStrategy.isCircuitBreakerTripped()) {
-      if (!existsSync(this.path)) {
+      try {
+        await access(this.path);
+      } catch {
         this.callbacks.onExternalRemoval?.(this.id);
       }
       return;
@@ -1164,8 +1165,11 @@ export class WorktreeMonitor {
       const nextAheadCount = hasUpstream ? (newChanges.ahead ?? 0) : undefined;
       const nextBehindCount = hasUpstream ? (newChanges.behind ?? 0) : undefined;
 
-      const detectedPlanFile = PLAN_FILE_CANDIDATES.find((candidate) =>
-        existsSync(pathJoin(this.path, candidate))
+      const planResults = await Promise.allSettled(
+        PLAN_FILE_CANDIDATES.map((candidate) => access(pathJoin(this.path, candidate)))
+      );
+      const detectedPlanFile = PLAN_FILE_CANDIDATES.find(
+        (_, i) => planResults[i].status === "fulfilled"
       );
       const nextHasPlanFile = detectedPlanFile !== undefined;
       const nextPlanFilePath = detectedPlanFile;

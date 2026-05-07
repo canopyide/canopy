@@ -165,11 +165,11 @@ describe("getWorktreeChangesWithStats --no-ext-diff", () => {
     (fs.stat as ReturnType<typeof vi.fn>).mockResolvedValue({ mtimeMs: 1000, size: 512 });
   });
 
-  it("passes --no-ext-diff in numstat diff call", async () => {
+  it("passes --no-ext-diff, --no-renames, and --numstat in diff call", async () => {
     await getWorktreeChangesWithStats("/test/path", true);
 
     expect(mockGit.diff).toHaveBeenCalledWith(
-      expect.arrayContaining(["--no-ext-diff", "--numstat"])
+      expect.arrayContaining(["--no-ext-diff", "--no-renames", "--numstat"])
     );
   });
 });
@@ -493,11 +493,11 @@ describe("getWorktreeChangesWithStats per-file diff cache", () => {
   };
 
   function setupRevparse(cwd: string, headOid: string) {
-    mockGit.revparse.mockImplementation((args: string[]) => {
-      if (Array.isArray(args) && args[0] === "HEAD") {
-        return Promise.resolve(`${headOid}\n`) as ReturnType<typeof mockGit.revparse>;
+    mockGit.raw.mockImplementation((args: string[]) => {
+      if (Array.isArray(args) && args[0] === "rev-parse") {
+        return Promise.resolve(`${headOid}\n${cwd}`);
       }
-      return Promise.resolve(`${cwd}\n`) as ReturnType<typeof mockGit.revparse>;
+      return Promise.resolve("");
     });
   }
 
@@ -523,6 +523,7 @@ describe("getWorktreeChangesWithStats per-file diff cache", () => {
     expect(mockGit.diff).toHaveBeenCalledTimes(1);
     expect(mockGit.diff).toHaveBeenCalledWith([
       "--no-ext-diff",
+      "--no-renames",
       "--numstat",
       "HEAD",
       "--",
@@ -580,6 +581,7 @@ describe("getWorktreeChangesWithStats per-file diff cache", () => {
     expect(mockGit.diff).toHaveBeenCalledTimes(1);
     expect(mockGit.diff).toHaveBeenCalledWith([
       "--no-ext-diff",
+      "--no-renames",
       "--numstat",
       "HEAD",
       "--",
@@ -612,6 +614,7 @@ describe("getWorktreeChangesWithStats per-file diff cache", () => {
     expect(mockGit.diff).toHaveBeenCalledTimes(1);
     expect(mockGit.diff).toHaveBeenCalledWith([
       "--no-ext-diff",
+      "--no-renames",
       "--numstat",
       "HEAD",
       "--",
@@ -641,6 +644,7 @@ describe("getWorktreeChangesWithStats per-file diff cache", () => {
     expect(mockGit.diff).toHaveBeenCalledTimes(1);
     expect(mockGit.diff).toHaveBeenCalledWith([
       "--no-ext-diff",
+      "--no-renames",
       "--numstat",
       "HEAD",
       "--",

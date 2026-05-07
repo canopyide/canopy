@@ -1,9 +1,10 @@
 import { execSync } from "child_process";
 import { isAbsolute, join as pathJoin } from "path";
 import { logWarn } from "./logger.js";
+import { Cache } from "./cache.js";
 
-const gitDirCache = new Map<string, string | null>();
-const gitCommonDirCache = new Map<string, string | null>();
+const gitDirCache = new Cache<string, string | null>({ maxSize: 200, defaultTTL: 600_000 });
+const gitCommonDirCache = new Cache<string, string | null>({ maxSize: 200, defaultTTL: 600_000 });
 
 export interface GitDirOptions {
   cache?: boolean;
@@ -99,7 +100,7 @@ export function getGitCommonDir(worktreePath: string, options: GitDirOptions = {
 
 export function clearGitDirCache(worktreePath?: string): void {
   if (worktreePath) {
-    gitDirCache.delete(worktreePath);
+    gitDirCache.invalidate(worktreePath);
   } else {
     gitDirCache.clear();
   }
@@ -107,7 +108,7 @@ export function clearGitDirCache(worktreePath?: string): void {
 
 export function clearGitCommonDirCache(worktreePath?: string): void {
   if (worktreePath) {
-    gitCommonDirCache.delete(worktreePath);
+    gitCommonDirCache.invalidate(worktreePath);
   } else {
     gitCommonDirCache.clear();
   }

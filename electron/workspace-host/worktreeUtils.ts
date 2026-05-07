@@ -73,13 +73,12 @@ export function escapeBranchRegex(name: string): string {
  * than imported from `../services/github/...` to keep the workspace-host's
  * dependency direction one-way (workspace-host → utils, never → main services).
  */
+const GITHUB_REMOTE_URL_PATTERN =
+  /^(?:https?:\/\/(?:[^@/]+@)?github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)/i;
+
 export function isGitHubRemoteUrl(url: string | undefined): boolean {
   if (!url) return false;
-  // Hostname is case-insensitive per RFC 3986 — normalize before matching so
-  // `https://GitHub.com/...` and `git@GITHUB.COM:...` are correctly detected.
-  return /^(?:https?:\/\/(?:[^@/]+@)?github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)/i.test(
-    url.trim()
-  );
+  return GITHUB_REMOTE_URL_PATTERN.test(url.trim());
 }
 
 export function parseCheckedOutBranches(porcelainOutput: string): Set<string> {

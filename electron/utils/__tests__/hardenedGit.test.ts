@@ -245,13 +245,14 @@ describe("createHardenedGit", () => {
     expect(options).not.toHaveProperty("abort");
   });
 
-  it("sets LC_MESSAGES=C and LANGUAGE empty via .env()", () => {
+  it("sets LC_MESSAGES=C, LANGUAGE empty, and GIT_OPTIONAL_LOCKS=0 via .env()", () => {
     createHardenedGit("/test/repo");
 
     expect(mockGitInstance.env).toHaveBeenCalledWith(
       expect.objectContaining({
         LC_MESSAGES: "C",
         LANGUAGE: "",
+        GIT_OPTIONAL_LOCKS: "0",
       })
     );
   });
@@ -410,7 +411,7 @@ describe("createAuthenticatedGit", () => {
     expect(options.config).toContain("core.precomposeunicode=true");
   });
 
-  it("sets GIT_TERMINAL_PROMPT and hardened GIT_SSH_COMMAND via .env()", () => {
+  it("sets GIT_TERMINAL_PROMPT, hardened GIT_SSH_COMMAND, and GIT_OPTIONAL_LOCKS=0 via .env()", () => {
     createAuthenticatedGit("/test/repo");
 
     expect(mockGitInstance.env).toHaveBeenCalledWith(
@@ -418,6 +419,7 @@ describe("createAuthenticatedGit", () => {
         GIT_TERMINAL_PROMPT: "0",
         GIT_SSH_COMMAND:
           "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=15",
+        GIT_OPTIONAL_LOCKS: "0",
       })
     );
   });
@@ -449,13 +451,14 @@ describe("createAuthenticatedGit", () => {
     }
   });
 
-  it("sets LC_MESSAGES=C and LANGUAGE empty via .env()", () => {
+  it("sets LC_MESSAGES=C, LANGUAGE empty, and GIT_OPTIONAL_LOCKS=0 via .env()", () => {
     createAuthenticatedGit("/test/repo");
 
     expect(mockGitInstance.env).toHaveBeenCalledWith(
       expect.objectContaining({
         LC_MESSAGES: "C",
         LANGUAGE: "",
+        GIT_OPTIONAL_LOCKS: "0",
       })
     );
   });
@@ -624,6 +627,7 @@ describe("createBackgroundFetchGit", () => {
     const lastEnv = mockGitInstance.env.mock.calls[mockGitInstance.env.mock.calls.length - 1][0];
     expect(lastEnv.GIT_ASKPASS).toBe("true");
     expect(lastEnv.GIT_TERMINAL_PROMPT).toBe("0");
+    expect(lastEnv.GIT_OPTIONAL_LOCKS).toBe("0");
   });
 
   it("re-states GIT_OPTIONAL_LOCKS and GCM_INTERACTIVE in the POSIX second .env() call", () => {
@@ -773,7 +777,7 @@ describe("createWslHardenedGit", () => {
     expect(options.config).toHaveLength(HARDENED_GIT_CONFIG.length);
   });
 
-  it("sets WSL_DISTRO_NAME in env for diagnostics", () => {
+  it("sets WSL_DISTRO_NAME and GIT_OPTIONAL_LOCKS=0 in env for diagnostics", () => {
     createWslHardenedGit({
       distro: "Ubuntu",
       uncPath: "\\\\wsl$\\Ubuntu\\home\\user\\proj",
@@ -784,6 +788,7 @@ describe("createWslHardenedGit", () => {
     expect(envArg.WSL_DISTRO_NAME).toBe("Ubuntu");
     expect(envArg.LC_MESSAGES).toBe("C");
     expect(envArg.LANGUAGE).toBe("");
+    expect(envArg.GIT_OPTIONAL_LOCKS).toBe("0");
   });
 
   it("applies the same env hardening as createHardenedGit (Linux git inside WSL)", () => {
@@ -833,22 +838,25 @@ describe("createWslHardenedGit", () => {
 });
 
 describe("getGitLocaleEnv", () => {
-  it("returns LC_CTYPE=C.UTF-8 and LANG=C.UTF-8 on win32", () => {
+  it("returns LC_CTYPE=C.UTF-8, LANG=C.UTF-8, and GIT_OPTIONAL_LOCKS=0 on win32", () => {
     expect(getGitLocaleEnv("win32")).toEqual({
       LC_CTYPE: "C.UTF-8",
       LANG: "C.UTF-8",
+      GIT_OPTIONAL_LOCKS: "0",
     });
   });
 
-  it("returns LC_CTYPE=en_US.UTF-8 on darwin (macOS lacks C.UTF-8)", () => {
+  it("returns LC_CTYPE=en_US.UTF-8 and GIT_OPTIONAL_LOCKS=0 on darwin (macOS lacks C.UTF-8)", () => {
     expect(getGitLocaleEnv("darwin")).toEqual({
       LC_CTYPE: "en_US.UTF-8",
+      GIT_OPTIONAL_LOCKS: "0",
     });
   });
 
-  it("returns LC_CTYPE=C.UTF-8 on linux", () => {
+  it("returns LC_CTYPE=C.UTF-8 and GIT_OPTIONAL_LOCKS=0 on linux", () => {
     expect(getGitLocaleEnv("linux")).toEqual({
       LC_CTYPE: "C.UTF-8",
+      GIT_OPTIONAL_LOCKS: "0",
     });
   });
 
