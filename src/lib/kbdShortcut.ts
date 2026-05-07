@@ -249,12 +249,15 @@ function mapAriaToken(rawToken: string, modifiers: Record<string, string>): stri
  * grammar. Returns `undefined` for empty/nullish input so the attribute can
  * be omitted entirely rather than rendered as an empty string.
  *
+ * Multi-step chord sequences (e.g. `Cmd+K T`) also return `undefined`: ARIA
+ * uses spaces to separate alternative shortcuts, not chord steps, so emitting
+ * the joined form mislabels the binding for assistive tech.
+ *
  * @example
- * comboToAriaKeyshortcuts("Cmd+K T", true)   // "Meta+K T"
- * comboToAriaKeyshortcuts("Cmd+K T", false)  // "Control+K T"
  * comboToAriaKeyshortcuts("Cmd+Shift+P", true)  // "Meta+Shift+P"
- * comboToAriaKeyshortcuts("Ctrl++", false)   // "Control++"
- * comboToAriaKeyshortcuts(undefined, true)   // undefined
+ * comboToAriaKeyshortcuts("Ctrl++", false)      // "Control++"
+ * comboToAriaKeyshortcuts("Cmd+K T", true)      // undefined (chord)
+ * comboToAriaKeyshortcuts(undefined, true)      // undefined
  */
 export function comboToAriaKeyshortcuts(
   combo: string | null | undefined,
@@ -272,7 +275,8 @@ export function comboToAriaKeyshortcuts(
     .map((tokens) => tokens.map((token) => mapAriaToken(token, modifiers)).join("+"));
 
   if (steps.length === 0) return undefined;
-  return steps.join(" ");
+  if (steps.length > 1) return undefined;
+  return steps[0];
 }
 
 export function normalizeQuery(query: string): string {

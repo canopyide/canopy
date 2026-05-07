@@ -608,12 +608,17 @@ describe("KeybindingService", () => {
       expect(display.toUpperCase()).toContain("N");
     });
 
-    it("registers worktree.createDialog.open in the BuiltInKeyAction value set", async () => {
-      // Registry completeness: every action with a default binding should
-      // appear in KEY_ACTION_VALUES so introspection (settings UI, conflict
-      // detection, etc.) sees it.
+    it("registers every default-binding actionId in KEY_ACTION_VALUES", async () => {
+      // KEY_ACTION_VALUES is hand-maintained alongside the BuiltInKeyAction
+      // open union (BuiltInKeyAction | (string & {})), so the compiler can't
+      // catch drift. Iterate DEFAULT_KEYBINDINGS so any new action without a
+      // matching value entry fails the build instead of silently falling out
+      // of introspection (settings UI, conflict detection, etc.).
       const { KEY_ACTION_VALUES } = await import("@shared/types/keymap");
-      expect(KEY_ACTION_VALUES.has("worktree.createDialog.open")).toBe(true);
+      const missing = DEFAULT_KEYBINDINGS.map((b) => b.actionId).filter(
+        (id) => !KEY_ACTION_VALUES.has(id)
+      );
+      expect(missing).toEqual([]);
     });
   });
 });
