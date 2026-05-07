@@ -144,7 +144,6 @@ describe("TerminalProcess.gracefulShutdown — input-clear prelude", () => {
 
     const shutdownPromise = terminal.gracefulShutdown();
     await vi.advanceTimersByTimeAsync(GRACEFUL_SHUTDOWN_CLEAR_DELAY_MS);
-    await vi.advanceTimersByTimeAsync(SUBMIT_ENTER_DELAY_MS);
 
     // The CLI echoes back ANSI erase sequences in response to Ctrl-U before the real
     // session-ID line. stripAnsiCodes in the matcher should strip these cleanly.
