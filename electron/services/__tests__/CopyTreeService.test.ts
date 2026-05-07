@@ -101,6 +101,74 @@ describe("CopyTreeService", () => {
     expect(copyTreeService.cancel("op-1")).toBe(false);
   });
 
+  it("cancels an in-flight testConfig operation by trace id", async () => {
+    let startedResolve: (() => void) | null = null;
+    const started = new Promise<void>((resolve) => {
+      startedResolve = resolve;
+    });
+
+    copyMock.mockImplementation(
+      (_rootPath: string, options: { signal: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          startedResolve?.();
+          if (options.signal?.aborted) {
+            const abortError = new Error("aborted");
+            abortError.name = "AbortError";
+            reject(abortError);
+            return;
+          }
+          options.signal?.addEventListener("abort", () => {
+            const abortError = new Error("aborted");
+            abortError.name = "AbortError";
+            reject(abortError);
+          });
+        })
+    );
+
+    const pending = copyTreeService.testConfig(tempDir, {}, "test-op-1");
+    await started;
+    const cancelled = copyTreeService.cancel("test-op-1");
+    const result = await pending;
+
+    expect(cancelled).toBe(true);
+    expect(result.error).toBe("Context generation cancelled");
+    expect(copyTreeService.cancel("test-op-1")).toBe(false);
+  });
+
+  it("cancelAll aborts in-flight testConfig operations", async () => {
+    let resolveStarted: (() => void) | null = null;
+    const startedAll = new Promise<void>((resolve) => {
+      resolveStarted = resolve;
+    });
+
+    let startedCount = 0;
+    copyMock.mockImplementation(
+      (_rootPath: string, options: { signal: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          startedCount += 1;
+          if (startedCount === 2) resolveStarted?.();
+          options.signal?.addEventListener("abort", () => {
+            const abortError = new Error("aborted");
+            abortError.name = "AbortError";
+            reject(abortError);
+          });
+        })
+    );
+
+    const a = copyTreeService.testConfig(tempDir, {}, "test-op-a");
+    const b = copyTreeService.testConfig(tempDir, {}, "test-op-b");
+
+    await startedAll;
+    copyTreeService.cancelAll();
+
+    await expect(a).resolves.toEqual(
+      expect.objectContaining({ error: "Context generation cancelled" })
+    );
+    await expect(b).resolves.toEqual(
+      expect.objectContaining({ error: "Context generation cancelled" })
+    );
+  });
+
   it("cancelAll aborts all active operations", async () => {
     let startedCount = 0;
     let resolveStarted: (() => void) | null = null;
