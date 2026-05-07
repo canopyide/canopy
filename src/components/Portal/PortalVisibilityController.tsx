@@ -59,7 +59,8 @@ export function PortalVisibilityController(): null {
         while (!bounds && attempts < 20) {
           await new Promise((resolve) => setTimeout(resolve, 50));
           if (!isMountedRef.current) break;
-          if (pendingRestoreRef.current && pendingRestoreRef.current.tabId !== tabId) break;
+          const pending = pendingRestoreRef.current as { tabId: string; tabUrl: string } | null;
+          if (pending && pending.tabId !== tabId) break;
           bounds = getBounds();
           attempts++;
         }
