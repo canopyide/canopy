@@ -6,6 +6,8 @@
  * tiers via the host interface.
  */
 
+import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
+
 export interface ResourcePollTimerHost {
   readonly isRunning: boolean;
   readonly hasResourceConfig: boolean;
@@ -18,6 +20,13 @@ export interface ResourcePollTimerHost {
    * — provider-specific failure recovery is the callback's responsibility.
    */
   onResourceStatusPoll(worktreeId: string): Promise<unknown> | void;
+}
+
+const RESOURCE_POLL_JITTER_FACTOR = 0.1;
+
+function randomBetween(minMs: number, maxMs: number): number {
+  if (maxMs <= minMs) return minMs;
+  return minMs + Math.floor(Math.random() * (maxMs - minMs));
 }
 
 export class ResourcePollTimer {
@@ -36,6 +45,9 @@ export class ResourcePollTimer {
     if (this.host.resourcePollIntervalMs <= 0) return;
     if (!this.host.hasResourceConfig || !this.host.hasStatusCommand) return;
 
+    const baseInterval = this.host.resourcePollIntervalMs;
+    const delay =
+      baseInterval + randomBetween(0, Math.floor(baseInterval * RESOURCE_POLL_JITTER_FACTOR));
     this.timer = setTimeout(async () => {
       this.timer = null;
       if (this.disposed) return;
@@ -51,13 +63,16 @@ export class ResourcePollTimer {
       }
       try {
         await this.host.onResourceStatusPoll(this.host.worktreeId);
-      } catch {
-        // Poll callback failure — swallowed intentionally; provider state
-        // recovery is the callback's responsibility.
+      } catch (err) {
+        console.warn(
+          `[ResourcePollTimer] Poll callback failed for ${this.host.worktreeId}:`,
+          formatErrorMessage(err, "Resource status poll failed")
+        );
       }
       if (this.disposed || !this.host.isRunning) return;
       this.schedule();
-    }, this.host.resourcePollIntervalMs);
+    }, delay);
+    this.timer.unref();
   }
 
   /** Cancel any armed timer without disposing — used by focus flips and pause. */

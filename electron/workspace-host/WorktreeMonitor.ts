@@ -571,9 +571,7 @@ export class WorktreeMonitor {
     this._hasResourceConfig = has;
     if (has && this._hasStatusCommand && this._isRunning) {
       if (this.resourcePollIntervalMs === 0) {
-        this.resourcePollIntervalMs = this._isCurrent
-          ? RESOURCE_POLL_DEFAULT_ACTIVE_MS
-          : RESOURCE_POLL_DEFAULT_BACKGROUND_MS;
+        this.applyDefaultResourcePollInterval();
       }
       this.scheduleResourcePoll();
     } else if (!has) {
@@ -622,9 +620,7 @@ export class WorktreeMonitor {
     if (has && this._hasResourceConfig && this._isRunning) {
       // If no explicit interval was set, apply default based on isCurrent
       if (this.resourcePollIntervalMs === 0) {
-        this.resourcePollIntervalMs = this._isCurrent
-          ? RESOURCE_POLL_DEFAULT_ACTIVE_MS
-          : RESOURCE_POLL_DEFAULT_BACKGROUND_MS;
+        this.applyDefaultResourcePollInterval();
       }
       this.scheduleResourcePoll();
     } else if (!has) {
@@ -638,10 +634,18 @@ export class WorktreeMonitor {
    */
   setResourcePollInterval(ms: number): void {
     this.resourcePollIntervalMs = ms;
-    this.resourcePollIntervalExplicit = ms > 0;
+    this.resourcePollIntervalExplicit = true;
     this.clearResourcePollTimer();
     if (ms > 0 && this._hasResourceConfig && this._isRunning) {
       this.scheduleResourcePoll();
+    }
+  }
+
+  private applyDefaultResourcePollInterval(): void {
+    if (this.resourcePollIntervalMs === 0) {
+      this.resourcePollIntervalMs = this._isCurrent
+        ? RESOURCE_POLL_DEFAULT_ACTIVE_MS
+        : RESOURCE_POLL_DEFAULT_BACKGROUND_MS;
     }
   }
 
