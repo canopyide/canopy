@@ -202,19 +202,15 @@ describe("AgentConnectivityService", () => {
       expect(listener).not.toHaveBeenCalled();
     });
 
-    it("does not restart polling after dispose()", () => {
+    it("re-enables polling after dispose() via start()", () => {
       service.dispose();
-
-      // Verify state is reset after dispose.
       expect(service.getProviderState("claude").status).toBe("unknown");
 
-      // start() after dispose() should be a no-op.
+      // start() resets the disposed flag and resumes polling.
       service.start();
 
-      // State should still be unknown — no probes fired.
-      expect(service.getProviderState("claude").status).toBe("unknown");
-      expect(fetchMock).not.toHaveBeenCalled();
-      expect(listener).not.toHaveBeenCalled();
+      // Immediate probes are fired asynchronously (3 fetches, one per provider).
+      expect(fetchMock).toHaveBeenCalledTimes(3);
     });
 
     it("classifies each provider independently when one resolves and another rejects", async () => {

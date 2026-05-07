@@ -102,7 +102,7 @@ class AgentConnectivityServiceImpl {
    * after startup without blocking the caller.
    */
   start(): void {
-    if (this.disposed) return;
+    this.disposed = false;
     if (this.pollTimer) return;
     this.scheduleNextPoll();
     void this.refresh({ reason: "start", force: true });
@@ -145,6 +145,7 @@ class AgentConnectivityServiceImpl {
    * that are skipped due to cooldown resolve immediately.
    */
   refresh(options: { force?: boolean; reason?: string } = {}): Promise<void> {
+    if (this.disposed) return Promise.resolve();
     const reason = options.reason ?? "refresh";
     const force = options.force === true;
     const probes = this.providers.map((provider) => this.runCheck(provider, { force, reason }));
@@ -212,7 +213,10 @@ class AgentConnectivityServiceImpl {
           error: formatErrorMessage(err, "Agent connectivity probe failed"),
           errorName: err instanceof Error ? err.name : undefined,
           errorCode:
-            (err as { cause?: { code?: string } }).cause?.code ?? (err as { code?: string }).code,
+            err != null
+              ? ((err as { cause?: { code?: string } }).cause?.code ??
+                (err as { code?: string }).code)
+              : undefined,
           reason: context.reason,
         });
         this.transitionTo(provider, "unreachable");
