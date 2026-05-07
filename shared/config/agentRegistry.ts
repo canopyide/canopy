@@ -298,6 +298,16 @@ export interface AgentConfig {
     ignoredInputSequences?: string[];
     /** Delay in ms before sending Enter key after body write (default: 200) */
     submitEnterDelayMs?: number;
+    /**
+     * How the graceful-shutdown path submits the quit command to the agent
+     * PTY. Ink-based TUIs (Claude) treat any gap between the command body
+     * and Enter as deliberate slow typing and never submit the slash
+     * command, so they require a single combined write. Ratatui-based TUIs
+     * (Codex) read the PTY buffer atomically and conflate a combined write
+     * as a paste, so they require the body and Enter as separate writes.
+     * Default: split-write — safe for Codex and readline-based CLIs.
+     */
+    quitSubmitMode?: "single-write" | "split-write";
   };
   /**
    * Configuration for pattern-based working state detection.
