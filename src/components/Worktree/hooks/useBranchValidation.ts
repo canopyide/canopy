@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { worktreeClient } from "@/clients";
 import { logError } from "@/utils/logger";
+import { validateBranchName } from "@shared/utils/pathPattern";
 import { parseBranchInput } from "../branchPrefixUtils";
 
 export interface UseBranchValidationResult {
@@ -72,22 +73,13 @@ export function useBranchValidation({
         return;
       }
 
-      if (parsed.hasPrefix) {
-        if (/[\s.]$/.test(parsed.slug) || /^[.-]/.test(parsed.slug) || /[\\:]/.test(parsed.slug)) {
-          setIsCheckingBranch(false);
-          setIsGeneratingPath(false);
-          return;
-        }
-      } else {
-        if (
-          /[\s.]$/.test(trimmedInput) ||
-          /^[.-]/.test(trimmedInput) ||
-          /[/\\:]/.test(trimmedInput)
-        ) {
-          setIsCheckingBranch(false);
-          setIsGeneratingPath(false);
-          return;
-        }
+      // Use the shared validator that the IPC handler and WorkspaceService
+      // both rely on, so the dialog rejects exactly the names the server
+      // would.
+      if (!validateBranchName(fullName).valid) {
+        setIsCheckingBranch(false);
+        setIsGeneratingPath(false);
+        return;
       }
 
       setIsCheckingBranch(true);

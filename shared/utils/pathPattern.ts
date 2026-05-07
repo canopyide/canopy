@@ -141,6 +141,115 @@ export function generateWorktreePath(
   return resolvePathPattern(pattern, variables, rootPath);
 }
 
+// Windows reserved device names (case-insensitive). Microsoft added COM0/LPT0
+// in Windows 10 1803, so the set covers 0–9 for both COM and LPT. Match
+// against each path component after stripping any extension (e.g. NUL.txt).
+const WINDOWS_RESERVED_NAMES = new Set([
+  "CON",
+  "PRN",
+  "AUX",
+  "NUL",
+  "COM0",
+  "COM1",
+  "COM2",
+  "COM3",
+  "COM4",
+  "COM5",
+  "COM6",
+  "COM7",
+  "COM8",
+  "COM9",
+  "LPT0",
+  "LPT1",
+  "LPT2",
+  "LPT3",
+  "LPT4",
+  "LPT5",
+  "LPT6",
+  "LPT7",
+  "LPT8",
+  "LPT9",
+]);
+
+export function validateBranchName(name: string): { valid: boolean; error?: string } {
+  if (typeof name !== "string" || name.length === 0) {
+    return { valid: false, error: "Branch name cannot be empty" };
+  }
+  if (name.trim().length === 0) {
+    return { valid: false, error: "Branch name cannot be blank" };
+  }
+
+  if (name === "HEAD") {
+    return { valid: false, error: "Branch name cannot be 'HEAD'" };
+  }
+  if (name === "@") {
+    return { valid: false, error: "Branch name cannot be '@'" };
+  }
+  if (name.startsWith("-")) {
+    return { valid: false, error: "Branch name cannot start with '-'" };
+  }
+
+  for (let i = 0; i < name.length; i++) {
+    const code = name.charCodeAt(i);
+    if (code < 32 || code === 127) {
+      return { valid: false, error: "Branch name cannot contain control characters" };
+    }
+  }
+
+  // git check-ref-format: space, ~, ^, :, ?, *, [, \ are forbidden anywhere.
+  const forbidden = /[ ~^:?*[\\]/;
+  const match = name.match(forbidden);
+  if (match) {
+    return { valid: false, error: `Branch name cannot contain '${match[0]}'` };
+  }
+
+  if (name.includes("..")) {
+    return { valid: false, error: "Branch name cannot contain '..'" };
+  }
+  if (name.includes("@{")) {
+    return { valid: false, error: "Branch name cannot contain '@{'" };
+  }
+  if (name.includes("//")) {
+    return { valid: false, error: "Branch name cannot contain consecutive slashes" };
+  }
+  if (name.startsWith("/") || name.endsWith("/")) {
+    return { valid: false, error: "Branch name cannot start or end with '/'" };
+  }
+  if (name.endsWith(".")) {
+    return { valid: false, error: "Branch name cannot end with '.'" };
+  }
+  if (name.endsWith(".lock")) {
+    return { valid: false, error: "Branch name cannot end with '.lock'" };
+  }
+
+  const components = name.split("/");
+  for (const component of components) {
+    if (component.length === 0) {
+      return { valid: false, error: "Branch name cannot have empty path components" };
+    }
+    if (component.startsWith(".")) {
+      return { valid: false, error: "Branch name components cannot start with '.'" };
+    }
+    if (component.endsWith(".lock")) {
+      return { valid: false, error: "Branch name components cannot end with '.lock'" };
+    }
+
+    // Windows reserved-name check: strip any extension (NUL.txt is reserved
+    // because the base name resolves to NUL on Windows) and compare the base
+    // name case-insensitively against the device-name set.
+    const dotIndex = component.indexOf(".");
+    const base = dotIndex === -1 ? component : component.slice(0, dotIndex);
+    if (WINDOWS_RESERVED_NAMES.has(base.toUpperCase())) {
+      return {
+        valid: false,
+        error: `Branch name uses Windows-reserved name '${base}'`,
+      };
+    }
+  }
+
+  return { valid: true };
+}
+
 export function validatePathPattern(pattern: string): { valid: boolean; error?: string } {
   if (!pattern || pattern.trim().length === 0) {
     return { valid: false, error: "Pattern cannot be empty" };

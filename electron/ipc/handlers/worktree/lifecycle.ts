@@ -20,6 +20,7 @@ import {
   typedHandle,
   typedHandleWithContext,
 } from "../../utils.js";
+import { validateBranchName } from "../../../../shared/utils/pathPattern.js";
 import { WORKTREE_RATE_LIMIT_KEY, WORKTREE_RATE_LIMIT_INTERVAL_MS } from "./constants.js";
 
 export function registerWorktreeLifecycleHandlers(deps: HandlerDependencies): () => void {
@@ -58,6 +59,14 @@ export function registerWorktreeLifecycleHandlers(deps: HandlerDependencies): ()
     await waitForRateLimitSlot(WORKTREE_RATE_LIMIT_KEY, WORKTREE_RATE_LIMIT_INTERVAL_MS);
     if (!deps.worktreeService) {
       throw new Error("Workspace client not initialized");
+    }
+    // Defense-in-depth: WorkspaceService.createWorktree also validates, but
+    // throwing here surfaces a clean Error to the renderer without spinning
+    // up the workspace-host process round-trip for obviously-invalid input.
+    // #7033.
+    const branchValidation = validateBranchName(payload.options.newBranch);
+    if (!branchValidation.valid) {
+      throw new Error(branchValidation.error ?? "Invalid branch name");
     }
     const worktreeId = await deps.worktreeService.createWorktree(payload.rootPath, payload.options);
     try {

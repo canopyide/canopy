@@ -56,6 +56,7 @@ vi.mock("../../../../shared/utils/pathPattern.js", () => ({
   DEFAULT_WORKTREE_PATH_PATTERN: "{repo}/{branch}",
   generateWorktreePath: generateWorktreePathMock,
   validatePathPattern: validatePathPatternMock,
+  validateBranchName: vi.fn(() => ({ valid: true })),
 }));
 
 vi.mock("../../../utils/worktreePattern.js", () => ({
