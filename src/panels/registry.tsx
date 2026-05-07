@@ -165,7 +165,7 @@ function notifyDefinitionListeners(): void {
     try {
       listener();
     } catch (err) {
-      console.warn("[panelKindRegistry] definition listener threw:", err);
+      console.error("[panelKindRegistry] definition listener threw:", err);
     }
   }
 }
@@ -221,7 +221,14 @@ export function registerPanelKindDefinition(
     definition = definitionOrKindId;
   }
 
-  if (PANEL_KIND_DEFINITION_REGISTRY[definition.id]) {
+  const existing = PANEL_KIND_DEFINITION_REGISTRY[definition.id];
+  if (existing && existing.extensionId === undefined && definition.extensionId !== undefined) {
+    console.error(
+      `[panelKindRegistry] Refusing to overwrite built-in panel kind definition "${definition.id}" with extension "${definition.extensionId}"`
+    );
+    return;
+  }
+  if (existing) {
     console.warn(`Panel kind definition "${definition.id}" already registered, overwriting`);
   }
   PANEL_KIND_DEFINITION_REGISTRY[definition.id] = definition;
@@ -233,9 +240,10 @@ export function registerPanelKindDefinition(
  * `getPanelKindDefinition` falls back to `undefined` and panel components
  * render their `PluginMissingPanel` placeholder again.
  *
- * Built-in kinds (`terminal`, `browser`, `dev-preview`) are never removable —
- * their components are wired at module load and unregistering would leave
- * panels orphaned with no recovery path.
+ * Built-in kinds (entries with no `extensionId`) are never removable — their
+ * components are wired at module load and unregistering would leave panels
+ * orphaned with no recovery path. Mirrors the `extensionId === undefined`
+ * guard used by `unregisterPanelKind` in the shared registry.
  */
 export function unregisterPanelKindDefinition(kindId: string): boolean {
   if (isBuiltInPanelKind(kindId)) {

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import {
   BUILT_IN_PANEL_KINDS,
+  getPanelKindColor,
   getPanelKindConfig,
   getExtensionFallbackDefaults,
   getPanelKindIds,
@@ -344,5 +345,93 @@ describe("registry event listeners", () => {
     expect(goodListener).toHaveBeenCalledTimes(1);
     expect(errorSpy).toHaveBeenCalled();
     errorSpy.mockRestore();
+  });
+});
+
+describe("registerPanelKind collision guard", () => {
+  afterEach(() => {
+    clearPanelKindRegistry();
+  });
+
+  it("refuses to overwrite a built-in with a plugin config", () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const listener = vi.fn();
+    const unsubscribe = onPanelKindRegistered(listener);
+
+    const original = getPanelKindConfig("terminal");
+    expect(original?.extensionId).toBeUndefined();
+
+    registerPanelKind({
+      id: "terminal",
+      name: "Hijacked",
+      iconId: "skull",
+      color: "#ff0000",
+      hasPty: false,
+      canRestart: false,
+      canConvert: false,
+      extensionId: "evil-plugin",
+    });
+
+    const after = getPanelKindConfig("terminal");
+    expect(after).toBe(original);
+    expect(after?.name).toBe(original?.name);
+    expect(after?.extensionId).toBeUndefined();
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(listener).not.toHaveBeenCalled();
+
+    unsubscribe();
+    errorSpy.mockRestore();
+  });
+
+  it("allows built-in re-registration (init hook re-patching)", () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const listener = vi.fn();
+    const unsubscribe = onPanelKindRegistered(listener);
+
+    registerPanelKind({
+      id: "terminal",
+      name: "Terminal",
+      iconId: "terminal",
+      color: "#000",
+      hasPty: true,
+      canRestart: true,
+      canConvert: true,
+    });
+
+    expect(getPanelKindConfig("terminal")?.extensionId).toBeUndefined();
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(listener).not.toHaveBeenCalled();
+
+    unsubscribe();
+    errorSpy.mockRestore();
+  });
+
+  it("allows a plugin to re-register its own kind (reconciliation)", () => {
+    const listener = vi.fn();
+    const unsubscribe = onPanelKindRegistered(listener);
+
+    registerPanelKind(makeExtensionConfig("ext-a.viewer", "ext-a"));
+    registerPanelKind({ ...makeExtensionConfig("ext-a.viewer", "ext-a"), name: "Updated" });
+
+    expect(getPanelKindConfig("ext-a.viewer")?.name).toBe("Updated");
+    expect(listener).toHaveBeenCalledTimes(2);
+
+    unsubscribe();
+  });
+});
+
+describe("getPanelKindColor fallback", () => {
+  afterEach(() => {
+    clearPanelKindRegistry();
+  });
+
+  it("returns built-in brand color for known kinds", () => {
+    const terminal = getPanelKindColor("terminal");
+    expect(terminal).toBeDefined();
+    expect(terminal).toBe(getPanelKindConfig("terminal")?.color);
+  });
+
+  it("returns a neutral text token for unrecognized kinds", () => {
+    expect(getPanelKindColor("totally-unknown-kind")).toBe("var(--theme-text-secondary)");
   });
 });

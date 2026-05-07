@@ -178,7 +178,14 @@ function emitUnregistered(kindId: string): void {
  * @param config - The panel kind configuration to register
  */
 export function registerPanelKind(config: PanelKindConfig): void {
-  if (PANEL_KIND_REGISTRY[config.id]) {
+  const existing = PANEL_KIND_REGISTRY[config.id];
+  if (existing && existing.extensionId === undefined && config.extensionId !== undefined) {
+    console.error(
+      `[panelKindRegistry] Refusing to overwrite built-in panel kind "${config.id}" with extension "${config.extensionId}"`
+    );
+    return;
+  }
+  if (existing) {
     console.warn(`Panel kind "${config.id}" already registered, overwriting`);
   }
   PANEL_KIND_REGISTRY[config.id] = config;
@@ -308,8 +315,9 @@ export function getPanelKindColor(kind: PanelKind, agentId?: string): string {
   const config = getPanelKindConfig(kind);
   if (config) return config.color;
 
-  // Fallback for unknown kinds
-  return PANEL_KIND_BRAND_COLORS.terminal;
+  // Neutral fallback for unrecognized kinds — avoids visually impersonating
+  // a built-in (terminal teal) for an unknown extension panel.
+  return "var(--theme-text-secondary)";
 }
 
 /**
