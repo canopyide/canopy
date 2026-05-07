@@ -149,9 +149,7 @@ describe("GlobalFileStore adversarial", () => {
   });
 
   it("getRecipes returns [] when file doesn't exist", async () => {
-    fsMock.readFile.mockRejectedValue(
-      Object.assign(new Error("ENOENT"), { code: "ENOENT" })
-    );
+    fsMock.readFile.mockRejectedValue(Object.assign(new Error("ENOENT"), { code: "ENOENT" }));
     const result = await store.getRecipes();
     expect(result).toEqual([]);
     expect(utilsMock.resilientRename).not.toHaveBeenCalled();
@@ -163,10 +161,7 @@ describe("GlobalFileStore adversarial", () => {
 
     const result = await store.getRecipes();
     expect(result).toEqual([]);
-    expect(utilsMock.resilientRename).toHaveBeenCalledWith(
-      RECIPES_FILE,
-      expect.any(String)
-    );
+    expect(utilsMock.resilientRename).toHaveBeenCalledWith(RECIPES_FILE, expect.any(String));
   });
 
   it("addRecipe loads + appends + saves without mutating the loaded array for caller", async () => {
