@@ -97,7 +97,7 @@ export class SustainedChangeTracker {
 
   reset(): void {
     this.lastChangedAt = undefined;
-    this.samples = [];
+    this.samples.length = 0;
   }
 
   private resetIfQuiet(now: number): void {
@@ -142,6 +142,8 @@ export class SustainedChangeTracker {
   }
 }
 
+const HASH_UNIT_SEPARATOR = 10; // LF byte — delimiter between string units in the FNV-1a hash stream
+
 export function hashStrings(values: readonly string[]): number {
   let hash = 0x811c9dc5;
   for (const value of values) {
@@ -149,7 +151,7 @@ export function hashStrings(values: readonly string[]): number {
       hash ^= value.charCodeAt(i);
       hash = Math.imul(hash, 0x01000193);
     }
-    hash ^= 10;
+    hash ^= HASH_UNIT_SEPARATOR;
     hash = Math.imul(hash, 0x01000193);
   }
   return hash >>> 0;
@@ -232,14 +234,12 @@ function isSuffixOf(needle: readonly string[], haystack: readonly string[]): boo
 }
 
 function normalizeTextUnits(text: string): string[] {
-  return collapseRepeatedUnits(
-    Array.from(text)
-      .filter((char) => !/\s/u.test(char))
-      .map((char) => ({
-        key: char,
-        collapsible: isCollapsibleFillText(char),
-      }))
-  );
+  const units: NormalizedVisibleUnit[] = [];
+  for (const char of text) {
+    if (/\s/u.test(char)) continue;
+    units.push({ key: char, collapsible: isCollapsibleFillText(char) });
+  }
+  return collapseRepeatedUnits(units);
 }
 
 function normalizeCellUnits(rows: readonly (readonly VisibleContentCell[])[]): string[] {
