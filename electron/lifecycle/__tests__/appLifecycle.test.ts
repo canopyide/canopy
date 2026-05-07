@@ -32,6 +32,7 @@ vi.mock("../signalShutdownState.js", () => ({
 
 import type { AppLifecycleOptions } from "../appLifecycle.js";
 import { handleDirectoryOpen } from "../../menu.js";
+import { CLEANUP_TIMEOUT_MS } from "../shutdownConfig.js";
 
 function makeOpts(overrides?: Partial<AppLifecycleOptions>): AppLifecycleOptions {
   return {
@@ -74,6 +75,19 @@ describe("registerAppLifecycleHandlers – signal handling", () => {
     }
   });
 
+  it("registers SIGHUP only when !isPackaged", async () => {
+    const { registerAppLifecycleHandlers } = await import("../appLifecycle.js");
+
+    appMock.isPackaged = false;
+    registerAppLifecycleHandlers(makeOpts());
+    expect(processOnSpy.mock.calls.some(([sig]: string[]) => sig === "SIGHUP")).toBe(true);
+
+    vi.clearAllMocks();
+    appMock.isPackaged = true;
+    registerAppLifecycleHandlers(makeOpts());
+    expect(processOnSpy.mock.calls.some(([sig]: string[]) => sig === "SIGHUP")).toBe(false);
+  });
+
   it("signal handler calls setSignalShutdown, schedules timeout, and calls app.quit", async () => {
     const { registerAppLifecycleHandlers } = await import("../appLifecycle.js");
     registerAppLifecycleHandlers(makeOpts());
@@ -86,12 +100,16 @@ describe("registerAppLifecycleHandlers – signal handling", () => {
     expect(setSignalShutdownMock).toHaveBeenCalledOnce();
     expect(appMock.quit).toHaveBeenCalledOnce();
 
+    // Belt must outlast CLEANUP_TIMEOUT_MS plus telemetry-drain buffer so it
+    // doesn't fire mid-cleanup. Advancing to (CLEANUP_TIMEOUT_MS + 2000 - 1)
+    // confirms the belt hasn't fired prematurely.
+    vi.advanceTimersByTime(CLEANUP_TIMEOUT_MS + 2000 - 1);
     expect(processExitSpy).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(5000);
+    vi.advanceTimersByTime(1);
     expect(processExitSpy).toHaveBeenCalledWith(0);
   });
 
-  it("signal handler is idempotent — second call is a no-op", async () => {
+  it("rapid second signal within 2s force-exits with status 1", async () => {
     const { registerAppLifecycleHandlers } = await import("../appLifecycle.js");
     registerAppLifecycleHandlers(makeOpts());
 
@@ -99,13 +117,33 @@ describe("registerAppLifecycleHandlers – signal handling", () => {
     const handler = sigTermCall![1] as () => void;
 
     handler();
+    // Same tick — Date.now() delta is ~0ms, well within the 2000ms force-exit window.
     handler();
 
     expect(setSignalShutdownMock).toHaveBeenCalledOnce();
     expect(appMock.quit).toHaveBeenCalledOnce();
+    expect(processExitSpy).toHaveBeenCalledWith(1);
   });
 
-  it("SIGTERM then SIGINT shares the same one-shot guard", async () => {
+  it("second signal after 2s force-exit window is ignored", async () => {
+    vi.setSystemTime(new Date(1_000_000));
+    const { registerAppLifecycleHandlers } = await import("../appLifecycle.js");
+    registerAppLifecycleHandlers(makeOpts());
+
+    const sigTermCall = processOnSpy.mock.calls.find(([sig]: string[]) => sig === "SIGTERM");
+    const handler = sigTermCall![1] as () => void;
+
+    handler();
+    // Boundary is exclusive — exactly 2000ms later is outside the window.
+    vi.setSystemTime(new Date(1_002_000));
+    handler();
+
+    expect(setSignalShutdownMock).toHaveBeenCalledOnce();
+    expect(appMock.quit).toHaveBeenCalledOnce();
+    expect(processExitSpy).not.toHaveBeenCalled();
+  });
+
+  it("SIGTERM then SIGINT within window force-exits", async () => {
     const { registerAppLifecycleHandlers } = await import("../appLifecycle.js");
     registerAppLifecycleHandlers(makeOpts());
 
@@ -119,6 +157,7 @@ describe("registerAppLifecycleHandlers – signal handling", () => {
 
     expect(setSignalShutdownMock).toHaveBeenCalledOnce();
     expect(appMock.quit).toHaveBeenCalledOnce();
+    expect(processExitSpy).toHaveBeenCalledWith(1);
   });
 });
 

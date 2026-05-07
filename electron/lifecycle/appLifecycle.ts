@@ -4,6 +4,7 @@ import type { WindowRegistry } from "../window/WindowRegistry.js";
 import { handleDirectoryOpen } from "../menu.js";
 import { getCrashRecoveryService } from "../services/CrashRecoveryService.js";
 import { setSignalShutdown } from "./signalShutdownState.js";
+import { CLEANUP_TIMEOUT_MS } from "./shutdownConfig.js";
 
 let pendingCliPath: string | null = null;
 
@@ -40,25 +41,45 @@ export function registerAppLifecycleHandlers(opts: AppLifecycleOptions): void {
   getCrashRecoveryService();
 
   // Graceful shutdown on OS signals (macOS/Linux SIGTERM/SIGINT, Windows Ctrl+C,
-  // plus SIGUSR2 — nodemon's restart signal in dev). Triggers `before-quit` via
-  // `app.quit()` so the shutdown handler runs the full cleanup chain, including
-  // `CrashLoopGuard.markCleanExit()`. Without the SIGUSR2 entry, every nodemon
-  // restart bypassed `before-quit` and CrashLoopGuard counted it as a crash —
-  // after three rebuilds in a minute the dev app booted into safe mode for no
-  // reason. A hard timeout ensures the process exits even if cleanup stalls.
-  // On Windows, `taskkill /F` (TerminateProcess) bypasses all Node.js shutdown
-  // hooks — that case is handled by CrashRecoveryService on next startup.
-  let signalHandled = false;
+  // plus SIGUSR2 — nodemon's restart signal in dev, and SIGHUP — terminal-close
+  // in dev). Triggers `before-quit` via `app.quit()` so the shutdown handler
+  // runs the full cleanup chain, including `CrashLoopGuard.markCleanExit()`.
+  // Without the SIGUSR2 entry, every nodemon restart bypassed `before-quit` and
+  // CrashLoopGuard counted it as a crash — after three rebuilds in a minute the
+  // dev app booted into safe mode for no reason. SIGHUP gets the same treatment
+  // for the same reason: closing the dev terminal sends SIGHUP and would
+  // otherwise terminate the process without the markCleanExit call.
+  //
+  // The safety-belt timer must outlast `CLEANUP_TIMEOUT_MS` so it doesn't fire
+  // mid-cleanup; the 2000ms buffer covers `closeTelemetry()` which runs after
+  // the cleanup race resolves. A second signal within 2000ms force-exits with
+  // status 1 — escape hatch when shutdown stalls. After that window, repeat
+  // signals are ignored (cleanup is already in progress).
+  //
+  // SIGHUP is dev-only: packaged builds are TTY-detached, and process managers
+  // (launchd/systemd) conventionally use SIGHUP to mean "reload config" — we
+  // shouldn't intercept that. On Windows, `taskkill /F` (TerminateProcess)
+  // bypasses all Node.js shutdown hooks; that case is handled by
+  // CrashRecoveryService on next startup.
+  let firstSignalTime: number | null = null;
   const signalHandler = () => {
-    if (signalHandled) return;
-    signalHandled = true;
+    if (firstSignalTime !== null) {
+      if (Date.now() - firstSignalTime < 2000) {
+        process.exit(1);
+      }
+      return;
+    }
+    firstSignalTime = Date.now();
     setSignalShutdown();
-    setTimeout(() => process.exit(0), 5000).unref();
+    setTimeout(() => process.exit(0), CLEANUP_TIMEOUT_MS + 2000).unref();
     app.quit();
   };
   process.on("SIGTERM", signalHandler);
   process.on("SIGINT", signalHandler);
   process.on("SIGUSR2", signalHandler);
+  if (!app.isPackaged) {
+    process.on("SIGHUP", signalHandler);
+  }
 
   app.on("second-instance", (_event, commandLine, _workingDirectory) => {
     console.log("[MAIN] Second instance detected");

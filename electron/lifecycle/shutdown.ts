@@ -22,6 +22,9 @@ import { closeSharedDb } from "../services/persistence/db.js";
 import { closeTelemetry } from "../services/TelemetryService.js";
 import { isSmokeTest } from "../setup/environment.js";
 import { isSignalShutdown } from "./signalShutdownState.js";
+import { CLEANUP_TIMEOUT_MS } from "./shutdownConfig.js";
+
+export { CLEANUP_TIMEOUT_MS };
 
 export interface ShutdownDeps {
   getPtyClient: () => PtyClient | null;
@@ -41,8 +44,6 @@ export interface ShutdownDeps {
   setStopDiskSpaceMonitor: (v: (() => void) | null) => void;
   windowRegistry?: import("../window/WindowRegistry.js").WindowRegistry;
 }
-
-const CLEANUP_TIMEOUT_MS = 10_000;
 
 let isQuitting = false;
 let isConfirmingQuit = false;
