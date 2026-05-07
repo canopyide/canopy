@@ -156,6 +156,7 @@ export function PulseHeatmap({ cells, rangeDays, compact = false }: PulseHeatmap
             ) as CSSProperties;
 
             return (
+              // 0ms: dense scrub-hover surface — skip-delay alone doesn't cover the cold first-cell hover (mirrors GitHub contribution-heatmap)
               <Tooltip key={cell.date} delayDuration={0}>
                 <TooltipTrigger asChild>
                   <button

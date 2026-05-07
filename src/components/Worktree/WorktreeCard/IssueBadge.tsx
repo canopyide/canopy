@@ -39,6 +39,7 @@ export const IssueBadge = memo(function IssueBadge({
   });
 
   return (
+    // 300ms matches GitHub's hovercard entry latency — keeps perceived delay consistent with github.com
     <Tooltip open={isOpen} onOpenChange={handleOpenChange} delayDuration={300}>
       <TooltipTrigger asChild>
         <button
