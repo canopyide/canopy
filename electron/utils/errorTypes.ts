@@ -153,6 +153,8 @@ export function isNotFoundError(error: unknown): boolean {
 export function isTransientError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const code = (error as NodeJS.ErrnoException).code;
+  // EMFILE, ENOMEM, ENXIO intentionally excluded — resource exhaustion
+  // requires user remediation before retry (close terminals, free memory).
   return ["EBUSY", "EAGAIN", "ETIMEDOUT", "ECONNRESET", "ENOTFOUND"].includes(code || "");
 }
 

@@ -418,6 +418,11 @@ export type SpawnErrorCode =
   | "EACCES" // Permission denied
   | "ENOTDIR" // Working directory does not exist (or path component is not a directory)
   | "EIO" // I/O error (e.g., PTY allocation failure)
+  | "EMFILE" // Per-process file descriptor limit reached
+  | "EAGAIN" // Process limit reached (fork failed)
+  | "ENOMEM" // Out of memory at spawn time
+  | "ENXIO" // PTY pool exhausted on macOS
+  | "EBUSY" // Terminal device busy
   | "DISCONNECTED" // Terminal process no longer exists in backend (e.g., after project switch)
   | "PENDING_SPAWNS_CAPPED" // PtyClient.pendingSpawns admission cap hit (restart-storm guard)
   | "UNKNOWN"; // Unknown error
