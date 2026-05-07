@@ -28,6 +28,7 @@ const autoUpdaterMock = vi.hoisted(() => ({
   autoDownload: false,
   autoInstallOnAppQuit: false,
   allowDowngrade: false,
+  disableWebInstaller: false,
   on: vi.fn(),
   off: vi.fn(),
   checkForUpdatesAndNotify: vi.fn(),
@@ -302,7 +303,7 @@ describe("AutoUpdaterService", () => {
   });
 
   describe("quit-and-install", () => {
-    let quitAndInstallHandler: () => void;
+    let quitAndInstallHandler: (event: unknown) => void;
     let downloadedHandler: (info: { version: string }) => void;
 
     beforeEach(() => {
@@ -320,30 +321,78 @@ describe("AutoUpdaterService", () => {
     it("calls cleanupOnExit before quitAndInstall when update is downloaded", () => {
       downloadedHandler({ version: "2.0.0" });
 
-      quitAndInstallHandler();
+      quitAndInstallHandler(TRUSTED_SENDER);
 
       expect(cleanupOnExitMock).toHaveBeenCalledTimes(1);
-      expect(autoUpdaterMock.quitAndInstall).toHaveBeenCalledTimes(1);
       expect(cleanupOnExitMock.mock.invocationCallOrder[0]).toBeLessThan(
-        autoUpdaterMock.quitAndInstall.mock.invocationCallOrder[0]
+        autoUpdaterMock.quitAndInstall.mock.invocationCallOrder[0] || Infinity
       );
     });
 
+    it("defers quitAndInstall via setImmediate", () => {
+      downloadedHandler({ version: "2.0.0" });
+
+      quitAndInstallHandler(TRUSTED_SENDER);
+
+      expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled();
+      vi.advanceTimersToNextTimer();
+      expect(autoUpdaterMock.quitAndInstall).toHaveBeenCalledTimes(1);
+    });
+
+    it("disarms autoInstallOnAppQuit before quitAndInstall", () => {
+      downloadedHandler({ version: "2.0.0" });
+      autoUpdaterMock.autoInstallOnAppQuit = true;
+
+      quitAndInstallHandler(TRUSTED_SENDER);
+
+      expect(autoUpdaterMock.autoInstallOnAppQuit).toBe(false);
+    });
+
     it("does not call cleanupOnExit or quitAndInstall when no update is downloaded", () => {
-      quitAndInstallHandler();
+      quitAndInstallHandler(TRUSTED_SENDER);
 
       expect(cleanupOnExitMock).not.toHaveBeenCalled();
       expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled();
     });
 
-    it("still calls quitAndInstall when cleanupOnExit throws", () => {
+    it("still schedules quitAndInstall when cleanupOnExit throws", () => {
       downloadedHandler({ version: "2.0.0" });
       cleanupOnExitMock.mockImplementationOnce(() => {
         throw new Error("cleanup failed");
       });
 
-      quitAndInstallHandler();
+      quitAndInstallHandler(TRUSTED_SENDER);
 
+      vi.advanceTimersToNextTimer();
+      expect(autoUpdaterMock.quitAndInstall).toHaveBeenCalledTimes(1);
+    });
+
+    it("rejects untrusted sender frame", () => {
+      downloadedHandler({ version: "2.0.0" });
+
+      quitAndInstallHandler({ senderFrame: { url: "https://evil.example.com/x.html" } });
+
+      expect(cleanupOnExitMock).not.toHaveBeenCalled();
+      expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled();
+    });
+
+    it("rejects missing senderFrame", () => {
+      downloadedHandler({ version: "2.0.0" });
+
+      quitAndInstallHandler({});
+
+      expect(cleanupOnExitMock).not.toHaveBeenCalled();
+      expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled();
+    });
+
+    it("resets updateDownloaded flag to prevent double-IPC", () => {
+      downloadedHandler({ version: "2.0.0" });
+
+      quitAndInstallHandler(TRUSTED_SENDER);
+      quitAndInstallHandler(TRUSTED_SENDER);
+
+      expect(cleanupOnExitMock).toHaveBeenCalledTimes(1);
+      vi.advanceTimersToNextTimer();
       expect(autoUpdaterMock.quitAndInstall).toHaveBeenCalledTimes(1);
     });
   });
@@ -611,7 +660,7 @@ describe("AutoUpdaterService", () => {
       const quitHandler = (ipcMainMock.handle as Mock).mock.calls.find(
         (args) => args[0] === CHANNELS.UPDATE_QUIT_AND_INSTALL
       )![1];
-      quitHandler();
+      quitHandler(TRUSTED_SENDER);
 
       expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled();
     });
@@ -1210,7 +1259,7 @@ describe("AutoUpdaterService", () => {
       const quitHandler = (ipcMainMock.handle as Mock).mock.calls.find(
         (args) => args[0] === CHANNELS.UPDATE_QUIT_AND_INSTALL
       )![1];
-      quitHandler();
+      quitHandler(TRUSTED_SENDER);
 
       expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled();
     });
@@ -1244,7 +1293,7 @@ describe("AutoUpdaterService", () => {
       const quitHandler = (ipcMainMock.handle as Mock).mock.calls.find(
         (args) => args[0] === CHANNELS.UPDATE_QUIT_AND_INSTALL
       )![1];
-      quitHandler();
+      quitHandler(TRUSTED_SENDER);
 
       expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled();
     });
@@ -1267,7 +1316,7 @@ describe("AutoUpdaterService", () => {
       const quitHandler = (ipcMainMock.handle as Mock).mock.calls.find(
         (args) => args[0] === CHANNELS.UPDATE_QUIT_AND_INSTALL
       )![1];
-      quitHandler();
+      quitHandler(TRUSTED_SENDER);
 
       expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled();
     });
@@ -1293,8 +1342,9 @@ describe("AutoUpdaterService", () => {
       const quitHandler = (ipcMainMock.handle as Mock).mock.calls.find(
         (args) => args[0] === CHANNELS.UPDATE_QUIT_AND_INSTALL
       )![1];
-      quitHandler();
+      quitHandler(TRUSTED_SENDER);
 
+      vi.advanceTimersToNextTimer();
       expect(autoUpdaterMock.quitAndInstall).toHaveBeenCalledTimes(1);
     });
 
@@ -1654,6 +1704,290 @@ describe("AutoUpdaterService", () => {
 
       vi.advanceTimersToNextTimer();
       expect(autoUpdaterMock.quitAndInstall).toHaveBeenCalledTimes(1);
+    });
+
+    it("disarms autoInstallOnAppQuit before calling quitAndInstall", () => {
+      downloadedHandler({ version: "2.0.0" });
+      autoUpdaterMock.autoInstallOnAppQuit = true;
+
+      autoUpdaterService.quitAndInstallIfReady();
+
+      expect(autoUpdaterMock.autoInstallOnAppQuit).toBe(false);
+    });
+  });
+
+  describe("disableWebInstaller", () => {
+    it("sets disableWebInstaller to true during initialization", () => {
+      autoUpdaterService.initialize();
+
+      expect(autoUpdaterMock.disableWebInstaller).toBe(true);
+    });
+  });
+
+  describe("channel-switch autoInstallOnAppQuit disarm", () => {
+    let setChannelHandler: (event: unknown, channel: unknown) => Promise<unknown>;
+    let downloadedHandler: (info: { version: string }) => void;
+    let availableHandler: (info: { version: string }) => void;
+
+    beforeEach(() => {
+      autoUpdaterService.initialize();
+      vi.advanceTimersByTime(STARTUP_JITTER_MAX_MS);
+
+      setChannelHandler = (ipcMainMock.handle as Mock).mock.calls.find(
+        (args) => args[0] === CHANNELS.UPDATE_SET_CHANNEL
+      )![1];
+      downloadedHandler = (autoUpdaterMock.on as Mock).mock.calls.find(
+        (args) => args[0] === "update-downloaded"
+      )![1];
+      availableHandler = (autoUpdaterMock.on as Mock).mock.calls.find(
+        (args) => args[0] === "update-available"
+      )![1];
+    });
+
+    it("disarms autoInstallOnAppQuit on channel change", async () => {
+      autoUpdaterMock.autoInstallOnAppQuit = true;
+
+      await setChannelHandler(null, "nightly");
+
+      expect(autoUpdaterMock.autoInstallOnAppQuit).toBe(false);
+    });
+
+    it("re-arms autoInstallOnAppQuit in update-downloaded handler", async () => {
+      autoUpdaterMock.autoInstallOnAppQuit = true;
+      await setChannelHandler(null, "nightly");
+      expect(autoUpdaterMock.autoInstallOnAppQuit).toBe(false);
+
+      // Fire update-available to sync downloadGeneration with the new channel
+      // before the download completes.
+      availableHandler({ version: "2.0.0-nightly.1" });
+      downloadedHandler({ version: "2.0.0-nightly.1" });
+
+      expect(autoUpdaterMock.autoInstallOnAppQuit).toBe(true);
+    });
+
+    it("does not disarm when channel is unchanged", async () => {
+      autoUpdaterMock.autoInstallOnAppQuit = true;
+      storeMock.get.mockImplementation((key: string) =>
+        key === "updateChannel" ? "stable" : undefined
+      );
+
+      await setChannelHandler(null, "stable");
+
+      expect(autoUpdaterMock.autoInstallOnAppQuit).toBe(true);
+    });
+  });
+
+  describe("channel-switch await race (Critical #1)", () => {
+    let setChannelHandler: (event: unknown, channel: unknown) => Promise<unknown>;
+    let downloadedHandler: (info: { version: string }) => void;
+    let quitAndInstallHandler: (event: unknown) => void;
+    let clearResolve: () => void;
+
+    beforeEach(() => {
+      autoUpdaterService.initialize();
+      vi.advanceTimersByTime(STARTUP_JITTER_MAX_MS);
+
+      setChannelHandler = (ipcMainMock.handle as Mock).mock.calls.find(
+        (args) => args[0] === CHANNELS.UPDATE_SET_CHANNEL
+      )![1];
+      downloadedHandler = (autoUpdaterMock.on as Mock).mock.calls.find(
+        (args) => args[0] === "update-downloaded"
+      )![1];
+      quitAndInstallHandler = (ipcMainMock.handle as Mock).mock.calls.find(
+        (args) => args[0] === CHANNELS.UPDATE_QUIT_AND_INSTALL
+      )![1];
+
+      // Defer clear resolution so the await gap is observable.
+      downloadedUpdateHelperMock.clear.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            clearResolve = resolve as () => void;
+          })
+      );
+
+      downloadedHandler({ version: "2.0.0" });
+    });
+
+    afterEach(() => {
+      downloadedUpdateHelperMock.clear.mockReset().mockResolvedValue(undefined);
+    });
+
+    it("blocks IPC quit-and-install while clear is in-flight", () => {
+      const channelPromise = setChannelHandler(null, "nightly");
+
+      quitAndInstallHandler(TRUSTED_SENDER);
+
+      // IPC handler must reject — updateDownloaded was reset synchronously
+      // before the await.
+      expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled();
+      expect(cleanupOnExitMock).not.toHaveBeenCalled();
+
+      clearResolve();
+      return channelPromise;
+    });
+
+    it("blocks quitAndInstallIfReady while clear is in-flight", () => {
+      const channelPromise = setChannelHandler(null, "nightly");
+
+      // menuState was reset to idle synchronously — the guard reads idle
+      // and returns false.
+      const result = autoUpdaterService.quitAndInstallIfReady();
+
+      expect(result).toBe(false);
+      expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled();
+
+      clearResolve();
+      return channelPromise;
+    });
+  });
+
+  describe("stale download epoch guard (Critical #2)", () => {
+    let setChannelHandler: (event: unknown, channel: unknown) => Promise<unknown>;
+    let downloadedHandler: (info: { version: string }) => void;
+    let availableHandler: (info: { version: string }) => void;
+
+    beforeEach(() => {
+      autoUpdaterService.initialize();
+      vi.advanceTimersByTime(STARTUP_JITTER_MAX_MS);
+
+      setChannelHandler = (ipcMainMock.handle as Mock).mock.calls.find(
+        (args) => args[0] === CHANNELS.UPDATE_SET_CHANNEL
+      )![1];
+      downloadedHandler = (autoUpdaterMock.on as Mock).mock.calls.find(
+        (args) => args[0] === "update-downloaded"
+      )![1];
+      availableHandler = (autoUpdaterMock.on as Mock).mock.calls.find(
+        (args) => args[0] === "update-available"
+      )![1];
+    });
+
+    it("ignores stale update-downloaded event after channel switch", async () => {
+      // Download initiated on stable: update-available captures downloadGeneration=0.
+      availableHandler({ version: "2.0.0" });
+      downloadedHandler({ version: "2.0.0" });
+      expect(autoUpdaterService.getMenuState()).toBe("ready");
+
+      // Channel switch increments channelGeneration to 1.
+      await setChannelHandler(null, "nightly");
+      expect(autoUpdaterService.getMenuState()).toBe("idle");
+      expect(autoUpdaterMock.autoInstallOnAppQuit).toBe(false);
+
+      // Old stable download (downloadGeneration=0) fires late —
+      // channelGeneration(1) !== downloadGeneration(0), must no-op.
+      downloadedHandler({ version: "2.0.0" });
+
+      expect(autoUpdaterMock.autoInstallOnAppQuit).toBe(false);
+      expect(autoUpdaterService.getMenuState()).toBe("idle");
+    });
+  });
+
+  describe("transient error codes (expanded set)", () => {
+    let errorHandler: (err: unknown) => void;
+
+    beforeEach(() => {
+      autoUpdaterService.initialize();
+      vi.advanceTimersByTime(STARTUP_JITTER_MAX_MS);
+
+      errorHandler = (autoUpdaterMock.on as Mock).mock.calls.find(
+        (args) => args[0] === "error"
+      )![1];
+
+      autoUpdaterMock.checkForUpdatesAndNotify.mockClear();
+    });
+
+    it("retries on ENETDOWN", () => {
+      errorHandler(Object.assign(new Error("network down"), { code: "ENETDOWN" }));
+      vi.advanceTimersByTime(36_000);
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+
+    it("retries on EHOSTUNREACH", () => {
+      errorHandler(Object.assign(new Error("host unreachable"), { code: "EHOSTUNREACH" }));
+      vi.advanceTimersByTime(36_000);
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+
+    it("retries on EHOSTDOWN", () => {
+      errorHandler(Object.assign(new Error("host down"), { code: "EHOSTDOWN" }));
+      vi.advanceTimersByTime(36_000);
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+
+    it("retries on ECONNABORTED", () => {
+      errorHandler(Object.assign(new Error("aborted"), { code: "ECONNABORTED" }));
+      vi.advanceTimersByTime(36_000);
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("err.cause unwrap in isTransientUpdateError", () => {
+    let errorHandler: (err: unknown) => void;
+
+    beforeEach(() => {
+      autoUpdaterService.initialize();
+      vi.advanceTimersByTime(STARTUP_JITTER_MAX_MS);
+
+      errorHandler = (autoUpdaterMock.on as Mock).mock.calls.find(
+        (args) => args[0] === "error"
+      )![1];
+
+      autoUpdaterMock.checkForUpdatesAndNotify.mockClear();
+    });
+
+    it("classifies a transient code nested under err.cause", () => {
+      const cause = Object.assign(new Error("timeout"), { code: "ETIMEDOUT" });
+      const wrapper = Object.assign(new Error("request failed"), { cause });
+
+      errorHandler(wrapper);
+      vi.advanceTimersByTime(36_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+
+    it("returns false for a permanent code nested under err.cause", () => {
+      const cause = Object.assign(new Error("not found"), { statusCode: 404 });
+      const wrapper = Object.assign(new Error("request failed"), { cause });
+
+      errorHandler(wrapper);
+      vi.advanceTimersByTime(60_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+    });
+
+    it("cert error at any cause depth immediately returns false", () => {
+      const deepCause = Object.assign(new Error("expired"), { code: "CERT_HAS_EXPIRED" });
+      const middle = Object.assign(new Error("middle"), { code: "ECONNRESET", cause: deepCause });
+      const top = Object.assign(new Error("top"), { cause: middle });
+
+      errorHandler(top);
+      vi.advanceTimersByTime(60_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+    });
+
+    it("deeply nested transient code is still found", () => {
+      const deepCause = Object.assign(new Error("dns"), { code: "ENOTFOUND" });
+      const level3 = Object.assign(new Error("level3"), { cause: deepCause });
+      const level2 = Object.assign(new Error("level2"), { cause: level3 });
+      const top = Object.assign(new Error("top"), { cause: level2 });
+
+      errorHandler(top);
+      vi.advanceTimersByTime(36_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("UPDATE_DISMISS_TOAST in dev mode", () => {
+    beforeEach(() => {
+      appMock.isPackaged = false;
+    });
+
+    it("registers UPDATE_DISMISS_TOAST handler even when not packaged", () => {
+      autoUpdaterService.initialize();
+
+      const registeredChannels = (ipcMainMock.handle as Mock).mock.calls.map((args) => args[0]);
+      expect(registeredChannels).toContain(CHANNELS.UPDATE_DISMISS_TOAST);
     });
   });
 });
