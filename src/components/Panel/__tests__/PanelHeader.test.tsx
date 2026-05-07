@@ -600,8 +600,8 @@ describe("PanelHeader", () => {
       // so our preventDefault must come after. Capture `defaultPrevented` at the
       // moment dnd-kit sees the event to lock that contract in place.
       const seenDefaultPrevented: boolean[] = [];
-      const dragMouseDown = vi.fn((e: { defaultPrevented: boolean }) => {
-        seenDefaultPrevented.push(e.defaultPrevented);
+      const dragMouseDown = vi.fn((e: unknown) => {
+        seenDefaultPrevented.push((e as { defaultPrevented: boolean }).defaultPrevented);
       });
       mockDragHandle = { listeners: { onMouseDown: dragMouseDown } };
       try {
