@@ -1827,9 +1827,6 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     } catch {
       // Sandboxed environments may deny setpriority — non-fatal
     }
-    if (typeof global.gc === "function") {
-      global.gc();
-    }
   }
 
   resume(): void {

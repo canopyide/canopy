@@ -8,7 +8,12 @@ if (userData) {
     const cacheDir = path.join(userData, "compile-cache");
     fs.mkdirSync(cacheDir, { recursive: true });
     enableCompileCache(cacheDir);
-  } catch {
+  } catch (e) {
+    console.warn(
+      "[WorkspaceHost] Compile-cache directory unavailable, falling back to default:",
+      cacheDir,
+      e
+    );
     enableCompileCache();
   }
 } else {
