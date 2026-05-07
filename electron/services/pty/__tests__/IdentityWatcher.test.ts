@@ -483,7 +483,7 @@ describe("IdentityWatcher", () => {
         injectShellCommandEvidence: inject,
         clearShellCommandEvidence: clear,
       } as unknown as ProcessDetector;
-      const { delegate, state } = createFakeDelegate({
+      const { delegate } = createFakeDelegate({
         processDetector: fakeDetector,
         // Fallback identity will be `{ processIconId: "pnpm" }` (no agentType
         // because pnpm isn't in AGENT_CLI_NAMES). Live icon disagrees.
