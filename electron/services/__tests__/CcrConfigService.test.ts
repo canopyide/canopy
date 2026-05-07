@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { AgentPreset } from "../../../shared/config/agentRegistry.js";
 import { CcrConfigService } from "../CcrConfigService.js";
+import { formatErrorMessage } from "../../../shared/utils/errorMessage.js";
 
 vi.mock("fs/promises", () => ({
   readFile: vi.fn(),
@@ -150,7 +151,11 @@ describe("CcrConfigService", () => {
       mockReadFile.mockResolvedValue(`{ "models": [{ "id": "x", "apiKey": "${leakySnippet}" }`);
       await service.discoverPresets();
       const allLoggedText = warnSpy.mock.calls
-        .flatMap((call) => call.map((arg) => (arg instanceof Error ? arg.message : String(arg))))
+        .flatMap((call) =>
+          call.map((arg) =>
+            arg instanceof Error ? formatErrorMessage(arg, "parse error") : String(arg)
+          )
+        )
         .join(" ");
       expect(allLoggedText).not.toContain(leakySnippet);
       warnSpy.mockRestore();
