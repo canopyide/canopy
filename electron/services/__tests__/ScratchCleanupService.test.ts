@@ -15,6 +15,7 @@ interface FakeStore {
   currentScratchId: string | null;
   getStaleScratchCandidates: (cutoffMs: number) => ScratchRow[];
   tombstoneScratch: (scratchId: string, deletedAt: number) => void;
+  hardDeleteScratch: (scratchId: string) => void;
   getCurrentScratchId: () => string | null;
 }
 
@@ -23,12 +24,19 @@ function makeStore(rows: ScratchRow[], currentScratchId: string | null = null): 
     rows,
     currentScratchId,
     getStaleScratchCandidates(cutoffMs: number) {
-      return store.rows.filter((r) => r.lastOpened < cutoffMs && r.deletedAt == null);
+      return store.rows.filter(
+        (r) => (r.lastOpened < cutoffMs && r.deletedAt == null) || r.deletedAt != null
+      );
     },
     tombstoneScratch(scratchId: string, deletedAt: number) {
       const r = store.rows.find((x) => x.id === scratchId);
       if (!r) throw new Error(`not found: ${scratchId}`);
       r.deletedAt = deletedAt;
+    },
+    hardDeleteScratch(scratchId: string) {
+      const idx = store.rows.findIndex((x) => x.id === scratchId);
+      if (idx === -1) throw new Error(`not found: ${scratchId}`);
+      store.rows.splice(idx, 1);
     },
     getCurrentScratchId() {
       return store.currentScratchId;
@@ -93,11 +101,11 @@ describe("runScratchCleanup", () => {
 
     expect(result.tombstoned).toBe(1);
     expect(result.directoriesRemoved).toBe(1);
-    expect(store.rows[0]!.deletedAt).toBe(NOW);
+    expect(store.rows).toHaveLength(0);
     await expect(fs.access(dir)).rejects.toBeDefined();
   });
 
-  it("is idempotent — already-tombstoned rows are skipped", async () => {
+  it("hard-deletes already-tombstoned rows whose directory is missing", async () => {
     const store = makeStore([
       row({
         id: "tombstoned",
@@ -112,8 +120,10 @@ describe("runScratchCleanup", () => {
       store as unknown as Parameters<typeof runScratchCleanup>[1]
     );
 
-    expect(result.candidates).toBe(0);
+    expect(result.candidates).toBe(1);
     expect(result.tombstoned).toBe(0);
+    expect(result.directoriesRemoved).toBe(1);
+    expect(store.rows).toHaveLength(0);
   });
 
   it("treats a missing directory as removed (no failure)", async () => {
@@ -184,17 +194,17 @@ describe("runScratchCleanup", () => {
 
     expect(result.tombstoned).toBe(1);
     expect(store.rows.find((r) => r.id === "active")!.deletedAt).toBeNull();
-    expect(store.rows.find((r) => r.id === "other")!.deletedAt).toBe(NOW);
+    expect(store.rows.find((r) => r.id === "other")).toBeUndefined();
     await expect(fs.access(activeDir)).resolves.toBeUndefined();
     await expect(fs.access(otherDir)).rejects.toBeDefined();
   });
 
-  it("does not retry tombstoned rows even when their directory still exists", async () => {
+  it("retries tombstoned rows whose directory still exists", async () => {
     const ghost = path.join(tmpDir, "ghost-dir");
     await fs.mkdir(ghost, { recursive: true });
-    // Simulate a previous sweep that tombstoned the row but failed to remove
-    // the directory. The current implementation accepts this orphan rather
-    // than re-trying — guard the contract so future changes are deliberate.
+    await fs.writeFile(path.join(ghost, "left.txt"), "leftover");
+    // A prior sweep (or a `removeScratch` call) tombstoned the row but failed
+    // to remove the directory. The next sweep must finish the job.
     const store = makeStore([
       row({
         id: "ghost",
@@ -209,8 +219,48 @@ describe("runScratchCleanup", () => {
       store as unknown as Parameters<typeof runScratchCleanup>[1]
     );
 
-    expect(result.candidates).toBe(0);
+    expect(result.candidates).toBe(1);
     expect(result.tombstoned).toBe(0);
-    await expect(fs.access(ghost)).resolves.toBeUndefined();
+    expect(result.directoriesRemoved).toBe(1);
+    expect(result.directoriesFailed).toBe(0);
+    expect(store.rows).toHaveLength(0);
+    await expect(fs.access(ghost)).rejects.toBeDefined();
+  });
+
+  it("leaves the row tombstoned when fs.rm fails, then completes on a retry sweep", async () => {
+    const dir = path.join(tmpDir, "retry");
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, "x.txt"), "data");
+    const store = makeStore([
+      row({ id: "retry", path: dir, lastOpened: NOW - 2 * SCRATCH_TTL_MS }),
+    ]);
+
+    const rmSpy = vi.spyOn(fs, "rm").mockRejectedValueOnce(new Error("EPERM"));
+
+    const first = await runScratchCleanup(
+      NOW,
+      store as unknown as Parameters<typeof runScratchCleanup>[1]
+    );
+
+    expect(first.tombstoned).toBe(1);
+    expect(first.directoriesRemoved).toBe(0);
+    expect(first.directoriesFailed).toBe(1);
+    expect(store.rows).toHaveLength(1);
+    expect(store.rows[0]!.deletedAt).toBe(NOW);
+    await expect(fs.access(dir)).resolves.toBeUndefined();
+
+    rmSpy.mockRestore();
+
+    const second = await runScratchCleanup(
+      NOW + 1,
+      store as unknown as Parameters<typeof runScratchCleanup>[1]
+    );
+
+    expect(second.candidates).toBe(1);
+    expect(second.tombstoned).toBe(0);
+    expect(second.directoriesRemoved).toBe(1);
+    expect(second.directoriesFailed).toBe(0);
+    expect(store.rows).toHaveLength(0);
+    await expect(fs.access(dir)).rejects.toBeDefined();
   });
 });
