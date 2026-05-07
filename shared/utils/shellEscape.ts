@@ -114,3 +114,28 @@ export function escapeShellArgOptional(arg: string, platform?: "windows" | "posi
   }
   return escapeShellArg(arg, platform);
 }
+
+// Mirrored deny-list used by `sanitizeCustomArgs` (electron/ipc/handlers/helpAssistant.ts)
+// and the `customFlags` / `args` validation in src/config/agents.ts. Values flow into
+// whitespace-split tokens that are appended to the launch command, so any character
+// that could break out of the flag list is rejected as defense-in-depth (the real
+// boundary is node-pty with no shell layer). `$(` and `${` are matched as substrings
+// to avoid over-blocking legitimate bare `$` in flag values.
+//
+// POSIX-oriented: cmd.exe-specific metachars (`%VAR%`, `^`, `!`) are intentionally
+// omitted because the spawn path is node-pty without a `cmd.exe` shell layer, so
+// those characters cannot trigger expansion. If a future code path ever feeds a
+// flag value through `cmd.exe`, that path needs its own escaping/validation step.
+const SHELL_METACHAR_PATTERNS = [";", "|", "&", ">", "<", "$(", "${", "`", "\\"] as const;
+
+/**
+ * Returns `true` if the value contains any shell metacharacter that could
+ * break out of an argv-style flag list (command separators, redirection,
+ * substitution, or backslash escapes).
+ */
+export function hasShellMetachar(value: string): boolean {
+  for (const pattern of SHELL_METACHAR_PATTERNS) {
+    if (value.includes(pattern)) return true;
+  }
+  return false;
+}

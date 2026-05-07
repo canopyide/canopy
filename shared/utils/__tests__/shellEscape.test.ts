@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   escapeShellArg,
   escapeShellArgOptional,
+  hasShellMetachar,
   isSafeUnescaped,
   isWindows,
 } from "../shellEscape.js";
@@ -250,6 +251,45 @@ describe("shellEscape", () => {
       const withNull = "before\0after";
       const escaped = escapeShellArg(withNull, "posix");
       expect(escaped.includes("\0")).toBe(true);
+    });
+  });
+
+  describe("hasShellMetachar", () => {
+    it("returns false for empty string", () => {
+      expect(hasShellMetachar("")).toBe(false);
+    });
+
+    it("returns false for plain alphanumeric flag values", () => {
+      expect(hasShellMetachar("--verbose")).toBe(false);
+      expect(hasShellMetachar("--model claude-opus-4-6")).toBe(false);
+      expect(hasShellMetachar("--output-format json")).toBe(false);
+    });
+
+    it("returns false for bare $ without ( or { (no over-blocking)", () => {
+      expect(hasShellMetachar("$TODAY")).toBe(false);
+      expect(hasShellMetachar("--prompt-suffix $HOME_DIR")).toBe(false);
+    });
+
+    it.each([
+      [";", "--flag; evil"],
+      ["|", "--flag | tee out"],
+      ["&", "--flag & evil"],
+      [">", "--flag > /etc/passwd"],
+      ["<", "--flag < /etc/shadow"],
+      ["$(", "--flag $(whoami)"],
+      ["${", "--flag ${HOME}"],
+      ["`", "--flag `id`"],
+      ["\\", "--flag\\;evil"],
+    ])("returns true for value containing %s", (_metachar, value) => {
+      expect(hasShellMetachar(value)).toBe(true);
+    });
+
+    it("catches >> as substring of >", () => {
+      expect(hasShellMetachar("--log >> /tmp/out")).toBe(true);
+    });
+
+    it("catches 2> as substring of >", () => {
+      expect(hasShellMetachar("--err 2> /tmp/err")).toBe(true);
     });
   });
 });

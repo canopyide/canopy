@@ -6,6 +6,7 @@ import type {
   HelpAssistantIdleHibernateMinutes,
   HelpAssistantSettings,
 } from "../../../shared/types/ipc/api.js";
+import { hasShellMetachar } from "../../../shared/utils/shellEscape.js";
 import type * as McpServerServiceModule from "../../services/McpServerService.js";
 
 type McpServerSingleton = typeof McpServerServiceModule.mcpServerService;
@@ -51,19 +52,13 @@ function isValidIdleHibernateMinutes(value: unknown): value is HelpAssistantIdle
 
 // Mirrors `customFlags` validation in src/config/agents.ts: the value is
 // whitespace-split and appended to the launch command, so any shell
-// metacharacter that could break out of the flag list is rejected.
+// metacharacter that could break out of the flag list is rejected. The
+// shared `hasShellMetachar` helper keeps both sites in lockstep.
 function sanitizeCustomArgs(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   // eslint-disable-next-line no-control-regex
   const collapsed = value.replace(/[\r\n]+/g, " ").replace(/[\x00-\x1f\x7f]/g, "");
-  if (
-    collapsed.includes(";") ||
-    collapsed.includes("|") ||
-    collapsed.includes("$(") ||
-    collapsed.includes("`")
-  ) {
-    return undefined;
-  }
+  if (hasShellMetachar(collapsed)) return undefined;
   return collapsed.slice(0, CUSTOM_ARGS_MAX_LEN);
 }
 
