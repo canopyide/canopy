@@ -187,4 +187,96 @@ describe("AgentUpdateHandler", () => {
 
     expect(ptyClient.spawn).not.toHaveBeenCalled();
   });
+
+  it("does not register a data listener during startUpdate", async () => {
+    const { ptyClient } = createPtyClientMock();
+    const versionService = { clearCache: vi.fn() };
+    const cliAvailabilityService = { refresh: vi.fn() };
+
+    const handler = new AgentUpdateHandler(
+      ptyClient as never,
+      versionService as never,
+      cliAvailabilityService as never
+    );
+
+    await handler.startUpdate({
+      agentId: "test-agent" as never,
+      method: "npm",
+    });
+
+    const dataListenerCalls = ptyClient.on.mock.calls.filter(
+      (c) => typeof c[0] === "string" && c[0].startsWith("data:")
+    );
+    expect(dataListenerCalls).toHaveLength(0);
+
+    // Exit handler is still registered.
+    const exitListenerCalls = ptyClient.on.mock.calls.filter(
+      (c) => typeof c[0] === "string" && c[0].startsWith("exit:")
+    );
+    expect(exitListenerCalls).toHaveLength(1);
+  });
+
+  it("selects brew before cargo when npm is absent (explicit priority list)", () => {
+    const { ptyClient } = createPtyClientMock();
+    const versionService = { clearCache: vi.fn() };
+    const cliAvailabilityService = { refresh: vi.fn() };
+
+    setUserRegistry({
+      "cargo-agent": {
+        id: "cargo-agent",
+        name: "Cargo Agent",
+        command: "cargo-agent",
+        color: "#000000",
+        iconId: "terminal",
+        supportsContextInjection: false,
+        update: {
+          cargo: "cargo install cargo-agent",
+          brew: "brew upgrade cargo-agent",
+        },
+      },
+    });
+
+    const handler = new AgentUpdateHandler(
+      ptyClient as never,
+      versionService as never,
+      cliAvailabilityService as never
+    );
+
+    // brew (index 1 in priority) beats cargo (index 7)
+    expect(handler.getAvailableUpdateMethods("cargo-agent" as never)).toEqual(["cargo", "brew"]);
+  });
+
+  it("auto-selects brew over cargo via explicit priority when no method is given", async () => {
+    const { ptyClient } = createPtyClientMock();
+    const versionService = { clearCache: vi.fn() };
+    const cliAvailabilityService = { refresh: vi.fn() };
+
+    setUserRegistry({
+      "cargo-agent": {
+        id: "cargo-agent",
+        name: "Cargo Agent",
+        command: "cargo-agent",
+        color: "#000000",
+        iconId: "terminal",
+        supportsContextInjection: false,
+        update: {
+          cargo: "cargo install cargo-agent",
+          brew: "brew upgrade cargo-agent",
+        },
+      },
+    });
+
+    const handler = new AgentUpdateHandler(
+      ptyClient as never,
+      versionService as never,
+      cliAvailabilityService as never
+    );
+
+    const result = await handler.startUpdate({
+      agentId: "cargo-agent" as never,
+    });
+
+    // brew has higher priority than cargo, so it wins auto-selection.
+    expect(result.command).toBe("brew upgrade cargo-agent");
+  });
 });

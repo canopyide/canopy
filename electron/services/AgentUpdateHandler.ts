@@ -65,7 +65,6 @@ export class AgentUpdateHandler {
     let submitTimer: NodeJS.Timeout | null = null;
     let terminalExited = false;
 
-    const dataHandler = () => {};
     const exitHandler = () => {
       finalize();
     };
@@ -79,13 +78,11 @@ export class AgentUpdateHandler {
         submitTimer = null;
       }
 
-      this.ptyClient.off(`data:${terminalId}`, dataHandler);
       this.ptyClient.off(`exit:${terminalId}`, exitHandler);
       this.versionService.clearCache(agentId);
       this.cliAvailabilityService.refresh();
     };
 
-    this.ptyClient.on(`data:${terminalId}`, dataHandler);
     this.ptyClient.on(`exit:${terminalId}`, exitHandler);
 
     const submitDelay = 500;
@@ -124,14 +121,9 @@ export class AgentUpdateHandler {
       return updates[method] ?? null;
     }
 
-    if (updates.npm) {
-      return updates.npm;
-    }
-    if (updates.brew) {
-      return updates.brew;
-    }
-    for (const [key, value] of Object.entries(updates)) {
-      if (key === "npm" || key === "brew") continue;
+    const priority = ["npm", "brew", "curl", "powershell", "pip", "pipx", "pypi", "cargo", "go"];
+    for (const key of priority) {
+      const value = updates[key];
       if (typeof value === "string" && value) return value;
     }
 

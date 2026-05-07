@@ -3,6 +3,7 @@ import path from "path";
 import os from "os";
 import { app } from "electron";
 import type { CliInstallStatus } from "../../shared/types/ipc/system.js";
+import { resilientAtomicWriteFileSync, resilientRenameSync } from "../utils/fs.js";
 
 const CLI_COMMAND_NAME = "daintree";
 const CLI_SCRIPT_FILE = "daintree-cli.sh";
@@ -53,7 +54,7 @@ function ensureAppImageWrapper(): string {
   const content = generateAppImageWrapper(process.env.APPIMAGE!);
 
   fs.mkdirSync(wrapperDir, { recursive: true });
-  fs.writeFileSync(wrapperPath, content, { mode: 0o755 });
+  resilientAtomicWriteFileSync(wrapperPath, content, "utf-8", { mode: 0o755 });
 
   return wrapperPath;
 }
@@ -130,19 +131,44 @@ function installAtTarget(targetPath: string, sourcePath: string): void {
     if (isInstallUpToDate(targetPath, sourcePath)) {
       return;
     }
-    fs.unlinkSync(targetPath);
+  }
+
+  const tempPath = `${targetPath}.${Date.now()}-${Math.random().toString(36).slice(2, 8)}.tmp`;
+
+  try {
+    fs.symlinkSync(sourcePath, tempPath);
+  } catch (symErr) {
+    if (!canFallbackToCopy(symErr)) {
+      throw symErr;
+    }
+    const sourceContent = fs.readFileSync(sourcePath, "utf8");
+    fs.writeFileSync(tempPath, sourceContent, { mode: 0o755 });
+    fs.chmodSync(tempPath, 0o755);
   }
 
   try {
-    fs.symlinkSync(sourcePath, targetPath);
-  } catch (err) {
-    if (!canFallbackToCopy(err)) {
-      throw err;
+    resilientRenameSync(tempPath, targetPath);
+  } catch {
+    // Rename failed (rare: some Windows filesystems). Fall back to unlink +
+    // direct create, then clean up the temp entry.
+    try {
+      fs.unlinkSync(tempPath);
+    } catch {
+      /* cleanup is best-effort */
     }
-
-    const sourceContent = fs.readFileSync(sourcePath, "utf8");
-    fs.writeFileSync(targetPath, sourceContent, { mode: 0o755 });
-    fs.chmodSync(targetPath, 0o755);
+    if (fs.existsSync(targetPath)) {
+      fs.unlinkSync(targetPath);
+    }
+    try {
+      fs.symlinkSync(sourcePath, targetPath);
+    } catch (err) {
+      if (!canFallbackToCopy(err)) {
+        throw err;
+      }
+      const sourceContent = fs.readFileSync(sourcePath, "utf8");
+      fs.writeFileSync(targetPath, sourceContent, { mode: 0o755 });
+      fs.chmodSync(targetPath, 0o755);
+    }
   }
 }
 

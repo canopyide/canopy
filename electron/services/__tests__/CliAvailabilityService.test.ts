@@ -1374,11 +1374,70 @@ describe("CliAvailabilityService", () => {
       await service.checkAvailability();
 
       const npmCalls = mockedExecFile.mock.calls.filter((c) => c[0] === "npm");
-      expect(npmCalls).toHaveLength(5);
+      // With the per-checkId cache, all npm-backed agents share a single
+      // `npm config get prefix` call instead of issuing one per agent.
+      expect(npmCalls).toHaveLength(1);
       // Deterministic probe form — guards against arg-drift regressions.
       for (const call of npmCalls) {
         expect(call[1]).toEqual(["config", "get", "prefix"]);
       }
+    });
+
+    it("re-issues `npm config get prefix` after refresh() invalidates the cache", async () => {
+      mockedExecFileSync.mockImplementation(() => {
+        throw Object.assign(new Error("not found"), { code: "ENOENT" });
+      });
+      mockedExecFile.mockImplementation(((...args: unknown[]) => {
+        const callback = args.find(
+          (a): a is (err: unknown, stdout?: string) => void => typeof a === "function"
+        );
+        const err = Object.assign(new Error("not found"), { code: "ENOENT" });
+        queueMicrotask(() => callback?.(err));
+        return {} as never;
+      }) as never);
+
+      await service.checkAvailability();
+      expect(mockedExecFile.mock.calls.filter((c) => c[0] === "npm")).toHaveLength(1);
+
+      await service.refresh();
+      expect(mockedExecFile.mock.calls.filter((c) => c[0] === "npm")).toHaveLength(2);
+    });
+
+    it("caches a successful npm prefix and reuses it across all npm-backed agents", async () => {
+      const { access } = await import("fs/promises");
+      const mockedAccess = vi.mocked(access);
+
+      mockedExecFileSync.mockImplementation(() => {
+        throw Object.assign(new Error("not found"), { code: "ENOENT" });
+      });
+
+      mockedExecFile.mockImplementation(((...args: unknown[]) => {
+        const file = args[0] as string;
+        const callback = args.find(
+          (a): a is (err: unknown, stdout?: string) => void => typeof a === "function"
+        );
+        if (file === "npm") {
+          queueMicrotask(() => callback?.(null, "/Users/test/.npm-global\n"));
+        } else {
+          const err = Object.assign(new Error("not found"), { code: "ENOENT" });
+          queueMicrotask(() => callback?.(err));
+        }
+        return {} as never;
+      }) as never);
+
+      const claudeShim = join("/Users/test/.npm-global", "bin", "claude");
+      const geminiShim = join("/Users/test/.npm-global", "bin", "gemini");
+      mockedAccess.mockImplementation(async (p) => {
+        if (String(p) === claudeShim || String(p) === geminiShim) return;
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      });
+
+      await service.checkAvailability();
+
+      const npmCalls = mockedExecFile.mock.calls.filter((c) => c[0] === "npm");
+      expect(npmCalls).toHaveLength(1);
+      expect(service.getDetails()!.claude?.via).toBe("npm-global");
+      expect(service.getDetails()!.gemini?.via).toBe("npm-global");
     });
   });
 
