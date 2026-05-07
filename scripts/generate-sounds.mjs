@@ -10,6 +10,7 @@
  */
 
 import { writeFileSync, mkdirSync } from "fs";
+import { cleanupStaleWavs } from "./sound-cleanup.mjs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
@@ -1421,7 +1422,7 @@ const staticSounds = {
 for (const [name, samples] of Object.entries(staticSounds)) {
   const filePath = join(outDir, `${name}.wav`);
   writeWav(samples, filePath);
-  const sizeKB = (Buffer.byteLength(Buffer.alloc(44 + samples.length * 2)) / 1024).toFixed(1);
+  const sizeKB = ((44 + samples.length * 2) / 1024).toFixed(1);
   const durationMs = ((samples.length / SAMPLE_RATE) * 1000).toFixed(0);
   console.log(`  ${name}.wav  ${durationMs}ms  ${sizeKB}KB`);
 }
@@ -1440,6 +1441,19 @@ const variantGenerators = {
   "context-injected": genContextInjected,
 };
 
+// Build expected filename set and remove any stale .wav files before regeneration
+const expectedFilenames = new Set();
+for (const name of Object.keys(staticSounds)) {
+  expectedFilenames.add(`${name}.wav`);
+}
+for (const name of Object.keys(variantGenerators)) {
+  expectedFilenames.add(`${name}.wav`);
+  for (let v = 1; v < VARIANT_COUNT; v++) {
+    expectedFilenames.add(`${name}.v${v}.wav`);
+  }
+}
+cleanupStaleWavs(outDir, expectedFilenames);
+
 for (const [name, generator] of Object.entries(variantGenerators)) {
   for (let v = 0; v < VARIANT_COUNT; v++) {
     // Each variant gets a unique seed offset so the PRNG produces different
@@ -1450,7 +1464,7 @@ for (const [name, generator] of Object.entries(variantGenerators)) {
     const suffix = v === 0 ? "" : `.v${v}`;
     const filePath = join(outDir, `${name}${suffix}.wav`);
     writeWav(samples, filePath);
-    const sizeKB = (Buffer.byteLength(Buffer.alloc(44 + samples.length * 2)) / 1024).toFixed(1);
+    const sizeKB = ((44 + samples.length * 2) / 1024).toFixed(1);
     const durationMs = ((samples.length / SAMPLE_RATE) * 1000).toFixed(0);
     console.log(`  ${name}${suffix}.wav  ${durationMs}ms  ${sizeKB}KB`);
   }
