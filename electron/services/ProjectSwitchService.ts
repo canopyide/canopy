@@ -59,14 +59,13 @@ export class ProjectSwitchService {
       return project;
     }
 
-    // Save the current active worktree to the outgoing project's per-project state
-    // This ensures the worktree selection is remembered when switching back
-    if (previousProjectId) {
-      await this.saveOutgoingProjectWorktreeState(previousProjectId);
-    }
+    // Fire the outgoing save early so the electron-store fs write overlaps
+    // with the SQLite ops below. The method catches its own errors.
+    const saveOutgoingPromise = previousProjectId
+      ? this.saveOutgoingProjectWorktreeState(previousProjectId)
+      : Promise.resolve();
 
     try {
-      await this.cleanupWorktreeService();
       const cleanupPromise = withPerformanceSpan(
         PERF_MARKS.PROJECT_SWITCH_CLEANUP,
         () => this.cleanupSupportingServices(projectId, previousProjectId ?? null, project.path),
@@ -86,7 +85,8 @@ export class ProjectSwitchService {
         throw new Error(`Project not found after update: ${projectId}`);
       }
 
-      const [, loadResult] = await Promise.all([
+      const [, , loadResult] = await Promise.all([
+        saveOutgoingPromise,
         cleanupPromise,
         withPerformanceSpan(
           PERF_MARKS.PROJECT_SWITCH_LOAD_PROJECT,
@@ -122,6 +122,9 @@ export class ProjectSwitchService {
       console.log("[ProjectSwitch] Project switch complete, switchId:", switchId);
       return updatedProject;
     } catch (error) {
+      // Drain the in-flight save so it can't race with a subsequent switch's
+      // write to the same outgoing project state file.
+      await saveOutgoingPromise.catch(() => {});
       console.error("[ProjectSwitch] Project switch failed, rolling back:", error);
       try {
         if (previousProjectId) {
@@ -178,11 +181,6 @@ export class ProjectSwitchService {
       // Non-fatal: log but don't block the switch
       console.error("[ProjectSwitch] Failed to save outgoing project worktree state:", error);
     }
-  }
-
-  private async cleanupWorktreeService(): Promise<void> {
-    // No-op: blue-green swap in WorkspaceClient.loadProject() handles
-    // the old host release atomically after the new host is ready.
   }
 
   private async cleanupSupportingServices(
