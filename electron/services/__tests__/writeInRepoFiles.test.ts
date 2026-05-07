@@ -370,6 +370,60 @@ describe("readInRepoRecipes", () => {
     expect(recipes[0]!.createdAt).toBe(0);
   });
 
+  it("assigns stable ID from filename when id is a non-string truthy value", async () => {
+    const recipesDir = path.join(tmpDir, DAINTREE_RECIPES_DIR);
+    await fs.mkdir(recipesDir, { recursive: true });
+    await fs.writeFile(
+      path.join(recipesDir, "numeric-id.json"),
+      JSON.stringify({
+        id: 42,
+        name: "Numeric ID",
+        terminals: [{ type: "terminal" }],
+        createdAt: 100,
+      }),
+      "utf-8"
+    );
+    const recipes = await identityFiles.readInRepoRecipes(tmpDir);
+    expect(recipes).toHaveLength(1);
+    expect(recipes[0]!.id).toBe("inrepo-numeric-id");
+  });
+
+  it("parses ISO 8601 string createdAt to a millisecond timestamp", async () => {
+    const recipesDir = path.join(tmpDir, DAINTREE_RECIPES_DIR);
+    await fs.mkdir(recipesDir, { recursive: true });
+    await fs.writeFile(
+      path.join(recipesDir, "iso-date.json"),
+      JSON.stringify({
+        id: "r1",
+        name: "ISO Date",
+        terminals: [{ type: "terminal" }],
+        createdAt: "2025-01-15T10:30:00Z",
+      }),
+      "utf-8"
+    );
+    const recipes = await identityFiles.readInRepoRecipes(tmpDir);
+    expect(recipes).toHaveLength(1);
+    expect(recipes[0]!.createdAt).toBe(Date.parse("2025-01-15T10:30:00Z"));
+  });
+
+  it("falls back to 0 when createdAt is an unparseable string", async () => {
+    const recipesDir = path.join(tmpDir, DAINTREE_RECIPES_DIR);
+    await fs.mkdir(recipesDir, { recursive: true });
+    await fs.writeFile(
+      path.join(recipesDir, "bad-date.json"),
+      JSON.stringify({
+        id: "r1",
+        name: "Bad Date",
+        terminals: [{ type: "terminal" }],
+        createdAt: "not-a-date",
+      }),
+      "utf-8"
+    );
+    const recipes = await identityFiles.readInRepoRecipes(tmpDir);
+    expect(recipes).toHaveLength(1);
+    expect(recipes[0]!.createdAt).toBe(0);
+  });
+
   it("skips recipes with invalid terminal entries", async () => {
     const recipesDir = path.join(tmpDir, DAINTREE_RECIPES_DIR);
     await fs.mkdir(recipesDir, { recursive: true });
@@ -550,6 +604,29 @@ describe("readInRepoPresets", () => {
     const result = await identityFiles.readInRepoPresets(tmpDir);
     expect(result.claude).toHaveLength(1);
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Duplicate preset id"));
+    warnSpy.mockRestore();
+  });
+
+  it("does not leak env values when warning about a shape-invalid preset", async () => {
+    const agentDir = path.join(tmpDir, PRESETS_DIR, "claude");
+    await fs.mkdir(agentDir, { recursive: true });
+    await fs.writeFile(
+      path.join(agentDir, "leaky.json"),
+      JSON.stringify({ id: 42, name: "Bad ID Type", env: { API_KEY: "sk-live-secret-xyz" } })
+    );
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await identityFiles.readInRepoPresets(tmpDir);
+
+    const allWarnArgs = warnSpy.mock.calls.flat();
+    const serialized = allWarnArgs
+      .map((a) => (typeof a === "string" ? a : JSON.stringify(a)))
+      .join(" ");
+    expect(serialized).not.toContain("sk-live-secret-xyz");
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Skipping invalid preset"),
+      expect.anything()
+    );
     warnSpy.mockRestore();
   });
 
