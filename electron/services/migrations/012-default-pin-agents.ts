@@ -12,7 +12,8 @@ interface LegacyAgentSettings {
   [key: string]: unknown;
 }
 
-function entryNeedsMigration(entry: LegacyAgentEntry): boolean {
+function entryNeedsMigration(entry: LegacyAgentEntry | null | undefined): boolean {
+  if (!entry || typeof entry !== "object") return false;
   return "selected" in entry || "enabled" in entry || !("pinned" in entry);
 }
 

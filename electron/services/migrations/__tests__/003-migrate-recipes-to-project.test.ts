@@ -101,6 +101,17 @@ describe("migration003 — migrate global recipes to project", () => {
     expect(store.set).not.toHaveBeenCalled();
   });
 
+  it("no-op when recipes is null (defensive)", async () => {
+    const data: Record<string, unknown> = { appState: { recipes: null } };
+    const store = makeStoreMock(data);
+
+    await migration003.up(store);
+
+    expect(projectStoreMock.getRecipes).not.toHaveBeenCalled();
+    expect(projectStoreMock.saveRecipes).not.toHaveBeenCalled();
+    expect(store.set).not.toHaveBeenCalled();
+  });
+
   it("no-op when no current project is set (preserves recipes for later)", async () => {
     projectStoreMock.getCurrentProjectId.mockReturnValueOnce(null);
     const data: Record<string, unknown> = { appState: { recipes: [legacyRecipe] } };

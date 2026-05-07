@@ -875,24 +875,24 @@ describe("MigrationRunner", () => {
       expect((store.data.appState as Record<string, unknown>).recipes).toEqual([]);
     });
 
-    it("swallows errors from saveRecipes and preserves legacy recipes", async () => {
+    it("rethrows saveRecipes failures so MigrationRunner can restore the backup", async () => {
       const recipes = [{ id: "r1", name: "Recipe", terminals: [] }];
       const store = createMockStore(storePath, { appState: { recipes } });
       mockProjectStore.getCurrentProjectId.mockReturnValue("proj-1");
       mockProjectStore.getProjectById.mockReturnValue({ id: "proj-1" });
       mockProjectStore.getRecipes.mockResolvedValue([]);
       mockProjectStore.saveRecipes.mockRejectedValue(new Error("disk full"));
-      await expect(migration003.up(store as never)).resolves.toBeUndefined();
+      await expect(migration003.up(store as never)).rejects.toThrow("disk full");
       expect((store.data.appState as Record<string, unknown>).recipes).toEqual(recipes);
     });
 
-    it("swallows errors from getRecipes and preserves legacy recipes without saving", async () => {
+    it("rethrows getRecipes failures and never reaches saveRecipes", async () => {
       const recipes = [{ id: "r1", name: "Recipe", terminals: [] }];
       const store = createMockStore(storePath, { appState: { recipes } });
       mockProjectStore.getCurrentProjectId.mockReturnValue("proj-1");
       mockProjectStore.getProjectById.mockReturnValue({ id: "proj-1" });
       mockProjectStore.getRecipes.mockRejectedValue(new Error("sqlite locked"));
-      await expect(migration003.up(store as never)).resolves.toBeUndefined();
+      await expect(migration003.up(store as never)).rejects.toThrow("sqlite locked");
       expect(mockProjectStore.saveRecipes).not.toHaveBeenCalled();
       expect((store.data.appState as Record<string, unknown>).recipes).toEqual(recipes);
     });

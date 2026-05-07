@@ -144,6 +144,25 @@ describe("migration012 — default-pin agents", () => {
     expect(after.agents.gemini).toEqual({ pinned: false });
   });
 
+  it("does not crash on null/non-object entries (defensive)", () => {
+    const data: Record<string, unknown> = {
+      agentSettings: {
+        agents: {
+          claude: { selected: true },
+          broken: null as unknown as Record<string, unknown>,
+          alsoBroken: "not-an-object" as unknown as Record<string, unknown>,
+        },
+      },
+    };
+    const store = makeStoreMock(data);
+    expect(() => migration012.up(store)).not.toThrow();
+
+    const after = data.agentSettings as { agents: Record<string, unknown> };
+    expect(after.agents.claude).toEqual({ pinned: true });
+    expect(after.agents.broken).toBeNull();
+    expect(after.agents.alsoBroken).toBe("not-an-object");
+  });
+
   it("migrates legacy entries while leaving already-migrated entries untouched", () => {
     const data: Record<string, unknown> = {
       agentSettings: {
