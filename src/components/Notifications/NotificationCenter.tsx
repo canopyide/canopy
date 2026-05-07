@@ -6,8 +6,8 @@ import {
   type NotificationHistoryEntry,
 } from "@/store/slices/notificationHistorySlice";
 import { NotificationCenterEntry } from "./NotificationCenterEntry";
-import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -323,33 +323,37 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
             <span className="text-xs font-medium text-daintree-text/80">Notifications</span>
           )}
           {entries.length > 0 && (
-            <div className="flex items-center rounded-md border border-daintree-text/10 overflow-hidden">
+            <>
               <button
                 type="button"
+                aria-pressed={filter === "all"}
                 onClick={() => {
                   setFilter("all");
                   setFrozenUnreadIds(null);
                 }}
-                className={`px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
+                className={cn(
+                  "inline-flex items-center px-2 py-0.5 text-[11px] rounded-full transition-colors",
                   filter === "all"
-                    ? "bg-overlay-medium text-daintree-text/80"
-                    : "text-daintree-text/70 hover:text-daintree-text"
-                }`}
+                    ? "bg-tint/[0.12] text-daintree-text font-medium"
+                    : "text-daintree-text/60 hover:text-daintree-text hover:bg-tint/[0.04]"
+                )}
               >
                 All
               </button>
               <button
                 type="button"
+                aria-pressed={filter === "unread"}
                 onClick={() => setFilter("unread")}
-                className={`px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
+                className={cn(
+                  "inline-flex items-center px-2 py-0.5 text-[11px] rounded-full transition-colors",
                   filter === "unread"
-                    ? "bg-overlay-medium text-daintree-text/80"
-                    : "text-daintree-text/70 hover:text-daintree-text"
-                }`}
+                    ? "bg-tint/[0.12] text-daintree-text font-medium"
+                    : "text-daintree-text/60 hover:text-daintree-text hover:bg-tint/[0.04]"
+                )}
               >
                 Unread
               </button>
-            </div>
+            </>
           )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
@@ -360,26 +364,23 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
               aria-pressed={groupByContext}
               title="Group by project or worktree"
               onClick={() => setGroupByContext(!groupByContext)}
-              className={`p-1 transition-colors rounded-[var(--radius-sm)] border ${
-                groupByContext
-                  ? "border-transparent bg-overlay-medium text-daintree-text/80"
-                  : "border-daintree-text/15 text-daintree-text/50 hover:bg-daintree-text/10 hover:text-daintree-text/80"
-              }`}
+              className={cn(
+                "toolbar-icon-button p-1 rounded-[var(--radius-sm)] border text-daintree-text/50",
+                groupByContext ? "border-transparent" : "border-daintree-text/15"
+              )}
             >
               <Layers className="w-3 h-3" aria-hidden="true" />
             </button>
           )}
           {unreadCount > 0 && (
-            <Button
+            <button
               type="button"
-              variant="ghost"
-              size="xs"
               onClick={handleMarkAllRead}
-              className="text-daintree-text/50"
+              className="toolbar-icon-button inline-flex items-center gap-1 px-1.5 py-1 rounded-[var(--radius-sm)] text-[11px] text-daintree-text/50"
             >
-              <CheckCheck />
+              <CheckCheck className="w-3 h-3" aria-hidden="true" />
               Mark all read
-            </Button>
+            </button>
           )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -387,7 +388,7 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
                 type="button"
                 aria-label="Pause notifications"
                 title="Pause notifications"
-                className="p-1 hover:bg-daintree-text/10 text-daintree-text/50 hover:text-daintree-text/80 transition-colors rounded-[var(--radius-sm)]"
+                className="toolbar-icon-button p-1 rounded-[var(--radius-sm)] text-daintree-text/50"
               >
                 <Moon className="w-3 h-3" aria-hidden="true" />
               </button>
@@ -403,10 +404,7 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
                 aria-label="Notification settings"
                 onSelect={openNotificationSettings}
               >
-                Notification settings{" "}
-                <span aria-hidden="true" className="ml-auto pl-2 text-daintree-text/40">
-                  →
-                </span>
+                Notification settings…
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -415,7 +413,7 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  className="p-1 hover:bg-daintree-text/10 text-daintree-text/50 hover:text-daintree-text/80 transition-colors rounded-[var(--radius-sm)]"
+                  className="toolbar-icon-button p-1 rounded-[var(--radius-sm)] text-daintree-text/50"
                   aria-label="More notification actions"
                   title="More notification actions"
                 >
