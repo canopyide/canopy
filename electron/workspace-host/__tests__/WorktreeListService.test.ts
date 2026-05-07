@@ -210,6 +210,23 @@ describe("WorktreeListService", () => {
       expect(result[1].isPrunable).toBe(true);
       expect(result[1].prunableReason).toBe("gitdir file points to non-existent location");
     });
+
+    it("does not leak locked/prunable state to the next worktree entry", async () => {
+      const output = makePorcelain(
+        worktreeEntry("/repo/main", { branch: "main", head: "aaa111", locked: "manual" }),
+        worktreeEntry("/repo/feature", { branch: "feature/foo", head: "bbb222" })
+      );
+      vi.mocked(mockGit.raw).mockResolvedValue(output);
+      service.setGit(mockGit, "/repo/main");
+
+      const result = await service.list({ forceRefresh: true });
+
+      expect(result).toHaveLength(2);
+      expect(result[0].isLocked).toBe(true);
+      expect(result[1].isLocked).toBeUndefined();
+      expect(result[1].lockReason).toBeUndefined();
+      expect(result[1].isPrunable).toBeUndefined();
+    });
   });
 
   describe("mapToWorktrees", () => {
@@ -233,6 +250,35 @@ describe("WorktreeListService", () => {
 
       expect(worktrees[0].name).toBe("my-repo");
       expect(worktrees[1].name).toBe("feature/cool");
+    });
+
+    it("propagates locked/prunable fields to the mapped Worktree", () => {
+      const raw = [
+        {
+          path: "/projects/my-repo",
+          branch: "main",
+          bare: false,
+          isMainWorktree: true,
+        },
+        {
+          path: "/projects/my-repo-feature",
+          branch: "feature/cool",
+          bare: false,
+          isMainWorktree: false,
+          isLocked: true,
+          lockReason: "CI",
+          isPrunable: true,
+          prunableReason: "stale",
+        },
+      ];
+
+      const worktrees = service.mapToWorktrees(raw);
+
+      expect(worktrees[0].isLocked).toBeUndefined();
+      expect(worktrees[1].isLocked).toBe(true);
+      expect(worktrees[1].lockReason).toBe("CI");
+      expect(worktrees[1].isPrunable).toBe(true);
+      expect(worktrees[1].prunableReason).toBe("stale");
     });
   });
 });
