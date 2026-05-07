@@ -30,6 +30,7 @@ export type BuiltInActionId =
   // Query actions for App Agent
   | "terminal.list"
   | "terminal.getOutput"
+  | "terminal.getStatus"
   | "terminal.sendCommand"
   | "panel.list"
   | "worktree.list"

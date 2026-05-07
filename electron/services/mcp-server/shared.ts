@@ -153,6 +153,7 @@ const WORKBENCH_TOOLS: ReadonlySet<string> = new Set([
 
   "terminal.list",
   "terminal.getOutput",
+  "terminal.getStatus",
 
   "agent.getState",
 
@@ -265,6 +266,7 @@ const MCP_TOOL_ALLOWLIST: ReadonlySet<string> = new Set([
 
   "terminal.list",
   "terminal.getOutput",
+  "terminal.getStatus",
   "terminal.sendCommand",
   "terminal.inject",
   "terminal.new",
