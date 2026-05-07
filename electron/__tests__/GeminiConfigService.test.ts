@@ -115,7 +115,8 @@ describe("GeminiConfigService", () => {
       const status = await service.getStatus();
       expect(status.exists).toBe(true);
       expect(status.alternateBufferEnabled).toBe(false);
-      expect(status.error).toBeDefined();
+      expect(typeof status.error).toBe("string");
+      expect(status.error!.length).toBeGreaterThan(0);
     });
   });
 

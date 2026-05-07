@@ -110,7 +110,7 @@ export class GeminiConfigService {
       await resilientAtomicWriteFile(this.configPath, content, "utf8");
     } catch (error) {
       const message = formatErrorMessage(error, "Failed to write Gemini config");
-      throw new Error(`Failed to write Gemini config: ${message}`);
+      throw new Error(`Failed to write Gemini config: ${message}`, { cause: error });
     }
   }
 }
