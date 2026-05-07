@@ -123,7 +123,7 @@ describe("helpPanelStore persistence migration", () => {
     expect(store.getState().preferredAgentId).toBeNull();
   });
 
-  it("writes version: 2 with a cleared preferredAgentId after rehydrating an unsupported v0 agent", async () => {
+  it("writes the current version with a cleared preferredAgentId after rehydrating an unsupported v0 agent", async () => {
     const legacyBlob = JSON.stringify({
       state: { width: 420, preferredAgentId: "gemini" },
     });
@@ -137,13 +137,12 @@ describe("helpPanelStore persistence migration", () => {
     const parsed = JSON.parse(written!) as {
       version: number;
       state: {
-        isOpen: boolean;
         width: number;
         preferredAgentId: string | null;
         introDismissed: boolean;
       };
     };
-    expect(parsed.version).toBe(3);
+    expect(parsed.version).toBe(4);
     expect(parsed.state.width).toBe(450);
     expect(parsed.state.preferredAgentId).toBeNull();
   });
@@ -205,7 +204,7 @@ describe("helpPanelStore persistence migration", () => {
     expect(written).toBeDefined();
     const parsed: unknown = JSON.parse(written!);
     expect(parsed).toMatchObject({
-      version: 3,
+      version: 4,
       state: { introDismissed: true },
     });
   });
@@ -224,19 +223,19 @@ describe("helpPanelStore persistence migration", () => {
     expect(store.getState().introDismissed).toBe(true);
   });
 
-  it("preserves isOpen: true from a v2 blob across rehydration", async () => {
-    const v2Blob = JSON.stringify({
-      version: 2,
+  it("starts hidden even when a legacy blob persisted isOpen: true", async () => {
+    const v3Blob = JSON.stringify({
+      version: 3,
       state: { isOpen: true, width: 400, preferredAgentId: null, introDismissed: false },
     });
-    installLocalStorage({ [STORAGE_KEY]: v2Blob });
+    installLocalStorage({ [STORAGE_KEY]: v3Blob });
 
     const { useHelpPanelStore: store } = await import("../helpPanelStore");
 
-    expect(store.getState().isOpen).toBe(true);
+    expect(store.getState().isOpen).toBe(false);
   });
 
-  it("falls back to false when persisted isOpen has a non-boolean type", async () => {
+  it("starts hidden when persisted isOpen has a non-boolean type", async () => {
     const malformed = JSON.stringify({
       version: 2,
       state: { isOpen: "yes", width: 400, preferredAgentId: null, introDismissed: false },
@@ -248,20 +247,21 @@ describe("helpPanelStore persistence migration", () => {
     expect(store.getState().isOpen).toBe(false);
   });
 
-  it("setOpen(true) persists isOpen to localStorage", async () => {
+  it("setOpen(true) changes runtime state but does not persist restart-open state", async () => {
     const backing = installLocalStorage({});
 
     const { useHelpPanelStore: store } = await import("../helpPanelStore");
     store.getState().setOpen(true);
+    expect(store.getState().isOpen).toBe(true);
 
     const written = backing.get(STORAGE_KEY);
     expect(written).toBeDefined();
     const parsed = JSON.parse(written!) as {
       version: number;
-      state: { isOpen: boolean };
+      state: Record<string, unknown>;
     };
-    expect(parsed.version).toBe(3);
-    expect(parsed.state.isOpen).toBe(true);
+    expect(parsed.version).toBe(4);
+    expect(parsed.state).not.toHaveProperty("isOpen");
   });
 
   it("starts with isOpen: false on a fresh install", async () => {
@@ -456,7 +456,7 @@ describe("helpPanelStore persistence migration", () => {
         version: number;
         state: { hibernateSessions: Record<string, unknown> };
       };
-      expect(parsed.version).toBe(3);
+      expect(parsed.version).toBe(4);
       expect(parsed.state.hibernateSessions).toEqual({
         "proj-a": { sessionId: "session-a", cwd: "/tmp/a", agentId: "claude" },
       });

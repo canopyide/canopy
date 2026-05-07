@@ -141,10 +141,9 @@ export const useHelpPanelStore = create<HelpPanelState & HelpPanelActions>()(
     {
       name: "help-panel-storage",
       storage: createSafeJSONStorage(),
-      version: 3,
+      version: 4,
       migrate: (persistedState) => persistedState as HelpPanelState & HelpPanelActions,
       partialize: (state) => ({
-        isOpen: state.isOpen,
         width: state.width,
         preferredAgentId: state.preferredAgentId,
         introDismissed: state.introDismissed,
@@ -154,7 +153,10 @@ export const useHelpPanelStore = create<HelpPanelState & HelpPanelActions>()(
         const persisted = persistedState as Partial<HelpPanelState>;
         return {
           ...currentState,
-          isOpen: typeof persisted.isOpen === "boolean" ? persisted.isOpen : currentState.isOpen,
+          // The assistant can auto-launch as soon as it opens. Starting every
+          // app boot hidden avoids launching from stale restart timing before
+          // MCP readiness has settled.
+          isOpen: false,
           width:
             typeof persisted.width === "number"
               ? Math.min(Math.max(persisted.width, HELP_PANEL_MIN_WIDTH), HELP_PANEL_MAX_WIDTH)
@@ -177,5 +179,5 @@ registerPersistedStore({
   storeId: "helpPanelStore",
   store: useHelpPanelStore,
   persistedStateType:
-    "Pick<HelpPanelState, 'isOpen' | 'width' | 'preferredAgentId' | 'introDismissed' | 'hibernateSessions'>",
+    "Pick<HelpPanelState, 'width' | 'preferredAgentId' | 'introDismissed' | 'hibernateSessions'>",
 });

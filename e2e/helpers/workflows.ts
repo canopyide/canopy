@@ -45,7 +45,15 @@ export async function selectExistingProject(window: Page, projectName: string): 
   await test.step(
     `Switch to existing project "${projectName}"`,
     async () => {
-      await window.locator(SEL.toolbar.projectSwitcherTrigger).click();
+      // After a prior WebContentsView swap (e.g. addAndSwitchToProject), the
+      // toolbar can still be settling on Windows runners — Playwright's
+      // implicit stability check on `click()` then times out at 30s even
+      // though the trigger is in the DOM. Wait for visibility explicitly,
+      // then `force` past the stability check (mirroring how the in-palette
+      // add button is clicked above).
+      const trigger = window.locator(SEL.toolbar.projectSwitcherTrigger);
+      await expect(trigger).toBeVisible({ timeout: T_MEDIUM });
+      await trigger.click({ force: true });
       const palette = window.locator(SEL.projectSwitcher.palette);
       await expect(palette).toBeVisible({ timeout: T_MEDIUM });
 

@@ -160,9 +160,9 @@ export function AppLayout({
     }
 
     // Persist worktree-sidebar suppression as the legacy `focusMode` boolean.
-    // The assistant's own visibility is owned by `helpPanelStore.isOpen` (its
-    // own persisted store), so it doesn't need to round-trip through the
-    // per-project focus state.
+    // The assistant's own visibility is owned by `helpPanelStore.isOpen` at
+    // runtime and intentionally starts hidden on app boot, so it doesn't need
+    // to round-trip through the per-project focus state.
     const persistedFocusMode = layout.gestureSidebarHidden;
 
     const persistFocusMode = async () => {
