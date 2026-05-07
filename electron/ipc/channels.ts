@@ -516,6 +516,14 @@ export const CHANNELS = {
   MCP_SERVER_GET_RUNTIME_STATE: "mcp-server:get-runtime-state",
   /** Push channel for runtime-state transitions. */
   MCP_SERVER_RUNTIME_STATE_CHANGED: "mcp-server:runtime-state-changed",
+  /** Bridge: renderer requests the action manifest from the main process. */
+  MCP_SERVER_GET_MANIFEST_REQUEST: "mcp:get-manifest-request",
+  /** Bridge: main process returns the action manifest to the renderer. */
+  MCP_SERVER_GET_MANIFEST_RESPONSE: "mcp:get-manifest-response",
+  /** Bridge: main process dispatches an action request to the renderer. */
+  MCP_SERVER_DISPATCH_ACTION_REQUEST: "mcp:dispatch-action-request",
+  /** Bridge: renderer returns the action dispatch result to the main process. */
+  MCP_SERVER_DISPATCH_ACTION_RESPONSE: "mcp:dispatch-action-response",
 
   // Voice Input channels
   VOICE_INPUT_GET_SETTINGS: "voice-input:get-settings",

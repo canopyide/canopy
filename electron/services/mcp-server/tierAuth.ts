@@ -18,14 +18,6 @@ export function precomputeApiKeyBearerHash(apiKey: string | null): Buffer | null
   return createHash("sha256").update(`Bearer ${apiKey}`).digest();
 }
 
-export function resolveBearer(token: string): McpTier | null {
-  const paneTier = mcpPaneConfigService.getTierForToken(token);
-  if (paneTier === "workbench" || paneTier === "action" || paneTier === "system") {
-    return paneTier;
-  }
-  return null;
-}
-
 export function isAuthorized(
   authHeader: string,
   apiKeyBearerHash: Buffer | null,
@@ -113,10 +105,6 @@ export function isTierPermitted(
   return TIER_ALLOWLISTS[tier].has(actionId);
 }
 
-export function buildToolDescription(entry: ActionManifestEntry): string {
-  return entry.description;
-}
-
 export function buildToolInputSchema(entry: ActionManifestEntry): Record<string, unknown> {
   if (
     entry.inputSchema &&
@@ -173,7 +161,7 @@ export function buildStructuredContent(
 
 export function parseToolArguments(rawArgs: unknown): { args: unknown } {
   if (!rawArgs || typeof rawArgs !== "object" || Array.isArray(rawArgs)) {
-    return { args: rawArgs ?? {} };
+    return { args: {} };
   }
 
   const argsRecord = rawArgs as Record<string, unknown>;

@@ -17,6 +17,8 @@ import type {
   ActionKind,
   ActionDanger,
 } from "../../../shared/types/actions.js";
+import { CHANNELS } from "../../ipc/channels.js";
+import { ACTIONS_LIST_TOOL } from "../mcp-server/shared.js";
 
 const testHomeDir = vi.hoisted(
   () => `${process.cwd()}/.vitest-mcp-home-${Math.random().toString(36).slice(2)}`
@@ -219,10 +221,10 @@ function createMockWindow(options?: {
     isDestroyed: vi.fn(() => false),
     send: vi.fn(
       (channel: string, payload: { requestId: string; actionId?: string; args?: unknown }) => {
-        if (channel === "mcp:get-manifest-request") {
+        if (channel === CHANNELS.MCP_SERVER_GET_MANIFEST_REQUEST) {
           queueMicrotask(() => {
             electronMocks.ipcMain.emit(
-              "mcp:get-manifest-response",
+              CHANNELS.MCP_SERVER_GET_MANIFEST_RESPONSE,
               { sender: { id: senderId } },
               {
                 requestId: payload.requestId,
@@ -233,7 +235,7 @@ function createMockWindow(options?: {
           return;
         }
 
-        if (channel === "mcp:dispatch-action-request") {
+        if (channel === CHANNELS.MCP_SERVER_DISPATCH_ACTION_REQUEST) {
           queueMicrotask(() => {
             const dispatched = dispatchAction(payload as DispatchRequest);
             const isEnvelope =
@@ -245,7 +247,7 @@ function createMockWindow(options?: {
                 })
               : { result: dispatched as ActionDispatchResult };
             electronMocks.ipcMain.emit(
-              "mcp:dispatch-action-response",
+              CHANNELS.MCP_SERVER_DISPATCH_ACTION_RESPONSE,
               { sender: { id: senderId } },
               {
                 requestId: payload.requestId,
@@ -1714,13 +1716,13 @@ describe("McpServerService", () => {
 
     // Both windows' WebContents.send must have been invoked — and only for
     // the dispatch belonging to that window. (Each window also receives one
-    // `mcp:get-manifest-request` per session — that is fine because pinned
+    // `CHANNELS.MCP_SERVER_GET_MANIFEST_REQUEST` per session — that is fine because pinned
     // sessions explicitly bypass the shared manifest cache.)
     const sendsToA = winA.webContents.send.mock.calls.filter(
-      ([channel]) => channel === "mcp:dispatch-action-request"
+      ([channel]) => channel === CHANNELS.MCP_SERVER_DISPATCH_ACTION_REQUEST
     );
     const sendsToB = winB.webContents.send.mock.calls.filter(
-      ([channel]) => channel === "mcp:dispatch-action-request"
+      ([channel]) => channel === CHANNELS.MCP_SERVER_DISPATCH_ACTION_REQUEST
     );
     expect(sendsToA).toHaveLength(1);
     expect(sendsToB).toHaveLength(1);
@@ -1760,7 +1762,7 @@ describe("McpServerService", () => {
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toMatch(/no longer available/);
     expect(winB.webContents.send).not.toHaveBeenCalledWith(
-      "mcp:dispatch-action-request",
+      CHANNELS.MCP_SERVER_DISPATCH_ACTION_REQUEST,
       expect.anything()
     );
   });
@@ -3244,7 +3246,7 @@ describe("McpServerService", () => {
         advanceTimeDelta: 50,
       });
       try {
-        await client.callTool({ name: "actions.list", arguments: {} });
+        await client.callTool({ name: ACTIONS_LIST_TOOL, arguments: {} });
         // Pending debounce timer is now set with the record in the buffer.
         (service as unknown as { clearAuditLog: () => void }).clearAuditLog();
         storeMocks.set.mockClear();
@@ -3338,7 +3340,7 @@ describe("McpServerService", () => {
     await requestManifest();
 
     expect(webContents.send).toHaveBeenCalledWith(
-      "mcp:get-manifest-request",
+      CHANNELS.MCP_SERVER_GET_MANIFEST_REQUEST,
       expect.objectContaining({ requestId: expect.any(String) })
     );
     expect(hostShellWebContents.send).not.toHaveBeenCalled();
