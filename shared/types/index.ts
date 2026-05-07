@@ -56,7 +56,7 @@ export type {
 } from "./panel.js";
 
 // Panel type guards and enums (value exports)
-export { isBuiltInPanelKind, isPtyPanelKind, TerminalRefreshTier } from "./panel.js";
+export { isBuiltInPanelKind, TerminalRefreshTier } from "./panel.js";
 
 // Panel creation options (discriminated union)
 export type {

@@ -1,8 +1,18 @@
-import type { PanelKind, BuiltInPanelKind, TerminalInstance } from "../types/panel.js";
+import type { PanelKind, TerminalInstance } from "../types/panel.js";
 import type { TerminalSnapshot } from "../types/project.js";
 import type { AddPanelOptions } from "../types/addPanelOptions.js";
 import { getAgentConfig } from "./agentRegistry.js";
 import { PANEL_KIND_BRAND_COLORS } from "../theme/index.js";
+
+/**
+ * Single source of truth for the set of built-in panel kinds. Adding a fourth
+ * built-in kind is a one-line change here — every guard and registry helper
+ * derives from this array.
+ */
+export const BUILT_IN_PANEL_KINDS = ["terminal", "browser", "dev-preview"] as const;
+
+/** Built-in panel kinds — derived from `BUILT_IN_PANEL_KINDS` */
+export type BuiltInPanelKind = (typeof BUILT_IN_PANEL_KINDS)[number];
 
 /**
  * Configuration for a panel kind.
@@ -366,7 +376,7 @@ export function panelKindKeepsAliveOnProjectSwitch(kind: PanelKind): boolean {
  * Get all built-in panel kinds.
  */
 export function getBuiltInPanelKinds(): BuiltInPanelKind[] {
-  return ["terminal", "browser", "dev-preview"];
+  return [...BUILT_IN_PANEL_KINDS];
 }
 
 /**

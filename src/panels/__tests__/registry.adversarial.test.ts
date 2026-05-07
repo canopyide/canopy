@@ -31,8 +31,6 @@ function mockRegistryImports(options?: { throwBrowserDefaults?: boolean }): void
   }));
   vi.doMock("../terminal/serializer", () => ({ serializePtyPanel: vi.fn(() => ({ id: "term" })) }));
   vi.doMock("../terminal/defaults", () => ({ createTerminalDefaults: vi.fn(() => ({})) }));
-  vi.doMock("../agent/serializer", () => ({ serializeAgent: vi.fn(() => ({ id: "agent" })) }));
-  vi.doMock("../agent/defaults", () => ({ createAgentDefaults: vi.fn(() => ({})) }));
   vi.doMock("../browser/serializer", () => ({
     serializeBrowser: vi.fn(() => ({ id: "browser" })),
   }));

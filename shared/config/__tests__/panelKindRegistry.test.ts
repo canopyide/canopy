@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import {
+  BUILT_IN_PANEL_KINDS,
   getPanelKindConfig,
   getExtensionFallbackDefaults,
   getPanelKindIds,
@@ -49,7 +50,19 @@ describe("panelKindRegistry metadata", () => {
   });
 });
 
-const BUILT_IN_KINDS = ["terminal", "browser", "dev-preview"] as const;
+describe("getBuiltInPanelKinds", () => {
+  it("returns every built-in kind", () => {
+    expect(getBuiltInPanelKinds().sort()).toEqual([...BUILT_IN_PANEL_KINDS].sort());
+  });
+
+  it("returns a fresh array — mutations do not leak into the SSOT", () => {
+    const first = getBuiltInPanelKinds();
+    first.length = 0;
+    expect(getBuiltInPanelKinds()).toEqual([...BUILT_IN_PANEL_KINDS]);
+  });
+});
+
+const BUILT_IN_KINDS = BUILT_IN_PANEL_KINDS;
 
 const makeExtensionConfig = (id: string, extensionId: string): PanelKindConfig => ({
   id,
