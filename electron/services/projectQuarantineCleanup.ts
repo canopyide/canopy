@@ -5,23 +5,18 @@ import { resilientUnlink } from "../utils/fs.js";
 import { logInfo, logError } from "../utils/logger.js";
 
 const QUARANTINE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 const QUARANTINE_PREFIXES = [
   "state.json.corrupted.",
-  "state.json.corrupted",
   "settings.json.corrupted.",
-  "settings.json.corrupted",
   "recipes.json.corrupted.",
-  "recipes.json.corrupted",
-  "workflows.json.corrupted.",
-  "workflows.json.corrupted",
 ];
 
 export async function cleanupQuarantinedProjectFiles(
   projectsConfigDir: string,
   now: number = Date.now()
 ): Promise<number> {
-  const threshold = now - QUARANTINE_MAX_AGE_MS;
   let deletedCount = 0;
 
   let entries: import("fs").Dirent[];
@@ -52,9 +47,15 @@ export async function cleanupQuarantinedProjectFiles(
       const filePath = path.join(projectDir, dirent.name);
       try {
         const stats = await fs.stat(filePath);
-        if (stats.mtimeMs < threshold) {
+        const ageMs = now - stats.mtimeMs;
+        if (ageMs > QUARANTINE_MAX_AGE_MS) {
           await resilientUnlink(filePath);
           deletedCount++;
+          logInfo("projectQuarantine.reaped", {
+            projectId: entry.name,
+            filename: dirent.name,
+            ageDays: Math.floor(ageMs / DAY_MS),
+          });
         }
       } catch (err) {
         const code = (err as NodeJS.ErrnoException).code;

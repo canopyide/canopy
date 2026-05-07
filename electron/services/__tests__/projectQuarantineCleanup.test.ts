@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import { cleanupQuarantinedProjectFiles } from "../projectQuarantineCleanup.js";
+import * as logger from "../../utils/logger.js";
 
 const THIRTY_ONE_DAYS_MS = 31 * 24 * 60 * 60 * 1000;
 const TWENTY_NINE_DAYS_MS = 29 * 24 * 60 * 60 * 1000;
@@ -14,7 +15,6 @@ const QUARANTINE_FILES = [
   "state.json.corrupted.1234567890",
   "settings.json.corrupted.1234567890",
   "recipes.json.corrupted.1234567890",
-  "workflows.json.corrupted.1234567890",
 ];
 
 let tmpDir: string;
@@ -80,14 +80,14 @@ describe("cleanupQuarantinedProjectFiles", () => {
     await expect(fs.access(filePath)).resolves.toBeUndefined();
   });
 
-  it("deletes all four known quarantine file types when old", async () => {
+  it("deletes all three known quarantine file types when old", async () => {
     const projectDir = await createProjectDir(VALID_PROJECT_ID);
     for (const filename of QUARANTINE_FILES) {
       await createCorruptedFile(projectDir, filename, THIRTY_ONE_DAYS_MS, NOW);
     }
 
     const deleted = await cleanupQuarantinedProjectFiles(tmpDir, NOW);
-    expect(deleted).toBe(4);
+    expect(deleted).toBe(3);
 
     for (const filename of QUARANTINE_FILES) {
       await expect(fs.access(path.join(projectDir, filename))).rejects.toThrow();
@@ -223,5 +223,30 @@ describe("cleanupQuarantinedProjectFiles", () => {
     const deleted = await cleanupQuarantinedProjectFiles(tmpDir, futureNow);
     expect(deleted).toBe(1);
     await expect(fs.access(filePath)).rejects.toThrow();
+  });
+
+  it("logs per-file reap info after successful unlink", async () => {
+    const logInfoSpy = vi.spyOn(logger, "logInfo");
+
+    const projectDir = await createProjectDir(VALID_PROJECT_ID);
+    await createCorruptedFile(
+      projectDir,
+      "state.json.corrupted.1234567890",
+      THIRTY_ONE_DAYS_MS,
+      NOW
+    );
+
+    await cleanupQuarantinedProjectFiles(tmpDir, NOW);
+
+    expect(logInfoSpy).toHaveBeenCalledWith(
+      "projectQuarantine.reaped",
+      expect.objectContaining({
+        projectId: VALID_PROJECT_ID,
+        filename: "state.json.corrupted.1234567890",
+        ageDays: expect.any(Number),
+      })
+    );
+
+    logInfoSpy.mockRestore();
   });
 });
