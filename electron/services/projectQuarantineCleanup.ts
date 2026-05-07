@@ -11,6 +11,7 @@ const QUARANTINE_PREFIXES = [
   "state.json.future-v",
   "settings.json.corrupted.",
   "recipes.json.corrupted.",
+  "recipes.json.future-v",
 ];
 
 const GLOBAL_RECIPES_QUARANTINE_PREFIXES = ["recipes.json.corrupted."];
