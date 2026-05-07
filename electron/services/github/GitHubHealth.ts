@@ -99,7 +99,7 @@ export async function getProjectHealth(
     return { health: null, error: "GitHub token not configured. Set it in Settings." };
   }
 
-  const rateLimitBlock = gitHubRateLimitService.shouldBlockRequest();
+  const rateLimitBlock = gitHubRateLimitService.shouldBlockRequest("graphql");
   if (rateLimitBlock.blocked && rateLimitBlock.reason && rateLimitBlock.resumeAt) {
     return {
       health: null,

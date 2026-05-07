@@ -14,9 +14,15 @@ const PRIMARY_RESET_BUFFER_MS = 7_000;
 // no primary-quota signal, matching GitHub's documented minimum.
 const SECONDARY_FALLBACK_PAUSE_MS = 60_000;
 
+// Sentinel key used for blocks that aren't tied to a specific
+// `x-ratelimit-resource` bucket — secondary (abuse-detection) blocks and
+// primary blocks where the response header is absent.
+const GLOBAL_RESOURCE_KEY = "__global__";
+
 interface BlockState {
   kind: GitHubRateLimitKind;
   resumeAt: number;
+  resource: string;
   requestId?: string;
 }
 
@@ -29,7 +35,7 @@ export interface ShouldBlockResult {
 type StateChangeListener = (state: GitHubRateLimitPayload) => void;
 
 class GitHubRateLimitServiceImpl {
-  private state: BlockState | null = null;
+  private readonly states = new Map<string, BlockState>();
   private readonly listeners = new Set<StateChangeListener>();
 
   /**
@@ -53,7 +59,7 @@ class GitHubRateLimitServiceImpl {
    */
   applyRemoteState(payload: GitHubRateLimitPayload): void {
     if (payload.blocked && payload.kind && payload.resetAt) {
-      this.markBlocked(payload.kind, payload.resetAt);
+      this.markBlocked(payload.kind, payload.resetAt, payload.resource ?? GLOBAL_RESOURCE_KEY);
       return;
     }
     this.clear();
@@ -69,7 +75,7 @@ class GitHubRateLimitServiceImpl {
   update(headers: HeadersLike, status: number, bodyText?: string, requestId?: string): void {
     const retryAfter = parseRetryAfter(headers.get("retry-after"));
     if (retryAfter !== null) {
-      this.markBlocked("secondary", Date.now() + retryAfter * 1000, requestId);
+      this.markBlocked("secondary", Date.now() + retryAfter * 1000, GLOBAL_RESOURCE_KEY, requestId);
       return;
     }
 
@@ -77,43 +83,85 @@ class GitHubRateLimitServiceImpl {
     const resetRaw = headers.get("x-ratelimit-reset");
     const remaining = parseIntOrNull(remainingRaw);
     const resetSeconds = parseIntOrNull(resetRaw);
+    const resource = headers.get("x-ratelimit-resource") ?? GLOBAL_RESOURCE_KEY;
 
     if (remaining === 0 && resetSeconds !== null) {
-      this.markBlocked("primary", resetSeconds * 1000 + PRIMARY_RESET_BUFFER_MS, requestId);
+      this.markBlocked(
+        "primary",
+        resetSeconds * 1000 + PRIMARY_RESET_BUFFER_MS,
+        resource,
+        requestId
+      );
       return;
     }
 
     if ((status === 403 || status === 429) && looksLikeSecondaryLimit(bodyText)) {
-      this.markBlocked("secondary", Date.now() + SECONDARY_FALLBACK_PAUSE_MS, requestId);
+      this.markBlocked(
+        "secondary",
+        Date.now() + SECONDARY_FALLBACK_PAUSE_MS,
+        GLOBAL_RESOURCE_KEY,
+        requestId
+      );
       return;
     }
 
     if (status >= 200 && status < 300 && remaining !== null && remaining > 0) {
-      this.clear();
+      if (headers.get("x-ratelimit-resource") !== null) {
+        this.clearResource(resource);
+      }
     }
   }
 
   /**
-   * Main-process check consumed by callers before issuing a GitHub request.
+   * Check whether a request should be blocked.
+   *
+   * When `resource` is passed, only the matching bucket (plus any global
+   * secondary block) is considered. GraphQL-only callers can pass `"graphql"`
+   * to proceed past a `core` exhaustion, and vice versa.
+   *
+   * When `resource` is omitted, the check is conservative: any active block
+   * gates the request. This is the safe default for callers whose next
+   * outbound call type isn't known statically.
+   *
    * Auto-clears expired state so the caller sees the service as unblocked as
    * soon as the reset has passed.
    */
-  shouldBlockRequest(): ShouldBlockResult {
-    if (!this.state) {
+  shouldBlockRequest(resource?: string): ShouldBlockResult {
+    this.autoClearExpired();
+
+    const global = this.states.get(GLOBAL_RESOURCE_KEY);
+    if (global && global.kind === "secondary") {
+      return { blocked: true, reason: "secondary", resumeAt: global.resumeAt };
+    }
+
+    if (resource) {
+      const entry = this.states.get(resource);
+      if (entry) {
+        return { blocked: true, reason: entry.kind, resumeAt: entry.resumeAt };
+      }
+      if (global && global.kind === "primary") {
+        return { blocked: true, reason: "primary", resumeAt: global.resumeAt };
+      }
       return { blocked: false, reason: null };
     }
-    if (this.state.resumeAt <= Date.now()) {
-      this.clear();
-      return { blocked: false, reason: null };
+
+    if (global && global.kind === "primary") {
+      return { blocked: true, reason: "primary", resumeAt: global.resumeAt };
     }
-    return { blocked: true, reason: this.state.kind, resumeAt: this.state.resumeAt };
+    for (const [key, state] of this.states) {
+      if (key !== GLOBAL_RESOURCE_KEY) {
+        return { blocked: true, reason: state.kind, resumeAt: state.resumeAt };
+      }
+    }
+
+    return { blocked: false, reason: null };
   }
 
   /**
    * Feed GraphQL `rateLimit { cost remaining resetAt }` data into the
    * service. When `remaining` is 0 the service marks a `"primary"` block
-   * (GraphQL cost shares the same user rate-limit budget as REST).
-   * Ignores missing or malformed rateLimit objects silently.
+   * under the `"graphql"` resource key. Ignores missing or malformed
+   * rateLimit objects silently.
    */
   updateFromGraphQL(data: Record<string, unknown>): void {
     const rateLimit = data?.rateLimit as
@@ -128,39 +176,69 @@ class GitHubRateLimitServiceImpl {
     if (remaining === 0) {
       const resetMs = Date.parse(resetAt);
       if (Number.isFinite(resetMs)) {
-        this.markBlocked("primary", resetMs + PRIMARY_RESET_BUFFER_MS);
+        this.markBlocked("primary", resetMs + PRIMARY_RESET_BUFFER_MS, "graphql");
       }
     }
   }
 
-  /** Snapshot for push/pull consumers. */
+  /** Snapshot for push/pull consumers. Collapses multi-resource state to a single payload. */
   getState(): GitHubRateLimitPayload {
-    if (!this.state || this.state.resumeAt <= Date.now()) {
+    this.autoClearExpired();
+    if (this.states.size === 0) {
       return { blocked: false, kind: null };
     }
-    return { blocked: true, kind: this.state.kind, resetAt: this.state.resumeAt };
+
+    const global = this.states.get(GLOBAL_RESOURCE_KEY);
+    if (global && global.kind === "secondary") {
+      return { blocked: true, kind: "secondary", resetAt: global.resumeAt };
+    }
+
+    let best: BlockState | null = global && global.kind === "primary" ? global : null;
+    for (const [key, state] of this.states) {
+      if (key === GLOBAL_RESOURCE_KEY) continue;
+      if (!best || state.resumeAt < best.resumeAt) {
+        best = state;
+      }
+    }
+    if (best) {
+      return { blocked: true, kind: best.kind, resetAt: best.resumeAt, resource: best.resource };
+    }
+    return { blocked: false, kind: null };
   }
 
   /** Drop any active block (token change, fresh 2xx, manual reset). */
   clear(): void {
-    if (!this.state) return;
-    this.state = null;
+    if (this.states.size === 0) return;
+    this.states.clear();
     logInfo("GitHub rate limit cleared");
     this.notifyListeners();
   }
 
   /** Test-only helper. */
   _resetForTests(): void {
-    this.state = null;
+    this.states.clear();
   }
 
-  private markBlocked(kind: GitHubRateLimitKind, resumeAt: number, requestId?: string): void {
-    const previous = this.state;
+  private clearResource(resource: string): void {
+    if (!this.states.has(resource)) return;
+    this.states.delete(resource);
+    logInfo("GitHub rate limit cleared for resource", { resource });
+    this.notifyListeners();
+  }
+
+  private markBlocked(
+    kind: GitHubRateLimitKind,
+    resumeAt: number,
+    resource: string,
+    requestId?: string
+  ): void {
+    const previous = this.states.get(resource);
     const changed =
       !previous || previous.kind !== kind || Math.abs(previous.resumeAt - resumeAt) > 1_000;
-    this.state = { kind, resumeAt, requestId };
+    this.states.set(resource, { kind, resumeAt, resource, requestId });
     if (changed) {
       const logPayload: Record<string, unknown> = {
+        resource,
         resumeAt,
         waitMs: resumeAt - Date.now(),
       };
@@ -174,7 +252,21 @@ class GitHubRateLimitServiceImpl {
       }
       this.notifyListeners();
     } else {
-      logDebug("GitHub rate limit refreshed", { kind, resumeAt });
+      logDebug("GitHub rate limit refreshed", { kind, resumeAt, resource });
+    }
+  }
+
+  private autoClearExpired(): void {
+    let anyCleared = false;
+    for (const [key, state] of this.states) {
+      if (state.resumeAt <= Date.now()) {
+        this.states.delete(key);
+        anyCleared = true;
+      }
+    }
+    if (anyCleared) {
+      logInfo("GitHub rate limit block(s) expired");
+      this.notifyListeners();
     }
   }
 

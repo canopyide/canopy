@@ -43,7 +43,7 @@ export async function getRepoStats(
     return { stats: null, error: "GitHub token not configured. Set it in Settings." };
   }
 
-  const rateLimitBlock = gitHubRateLimitService.shouldBlockRequest();
+  const rateLimitBlock = gitHubRateLimitService.shouldBlockRequest("graphql");
   if (rateLimitBlock.blocked && rateLimitBlock.reason && rateLimitBlock.resumeAt) {
     const diskCached = persistentCache.get(cacheKey);
     const message = rateLimitMessage(rateLimitBlock.reason, rateLimitBlock.resumeAt);
@@ -186,7 +186,7 @@ export async function getRepoStatsAndPage(
     };
   }
 
-  const rateLimitBlock = gitHubRateLimitService.shouldBlockRequest();
+  const rateLimitBlock = gitHubRateLimitService.shouldBlockRequest("graphql");
   if (rateLimitBlock.blocked && rateLimitBlock.reason && rateLimitBlock.resumeAt) {
     const diskCached = persistentCache.get(cacheKey);
     const message = rateLimitMessage(rateLimitBlock.reason, rateLimitBlock.resumeAt);
