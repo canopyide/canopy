@@ -14,6 +14,7 @@ import {
 import { McpServerIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SettingsSection } from "@/components/Settings/SettingsSection";
 import { SettingsSwitchCard } from "@/components/Settings/SettingsSwitchCard";
@@ -38,6 +39,8 @@ interface McpServerStatus {
 type AuditResultFilter = "all" | McpAuditResult;
 
 const COPY_FEEDBACK_MS = 2000;
+
+const MASKED_KEY = "•".repeat(24);
 
 const RESULT_LABEL: Record<McpAuditResult, string> = {
   success: "Success",
@@ -90,6 +93,11 @@ export function McpServerSettingsTab() {
   const [auditLoading, setAuditLoading] = useState(true);
   const [toolFilter, setToolFilter] = useState("");
   const [resultFilter, setResultFilter] = useState<AuditResultFilter>("all");
+
+  const [showRotateConfirm, setShowRotateConfirm] = useState(false);
+  const [isRotating, setIsRotating] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
 
   useSettingsTabValidation("mcp", Boolean(error));
 
@@ -187,18 +195,29 @@ export function McpServerSettingsTab() {
     }
   }, [portInput]);
 
-  const handleRotateApiKey = useCallback(async () => {
+  const confirmRotateApiKey = useCallback(async () => {
+    if (isRotating) return;
+    setIsRotating(true);
     try {
       setError(null);
       const key = await window.electron.mcpServer.rotateApiKey();
       setStatus((prev) => ({ ...prev, apiKey: key }));
-      setShowApiKey(true);
       setCopiedKey(false);
+      setShowApiKey(false);
+      setShowRotateConfirm(false);
     } catch (err) {
       setError(formatErrorMessage(err, "Failed to rotate API key"));
       logError("Failed to rotate MCP API key", err);
+    } finally {
+      setIsRotating(false);
     }
-  }, []);
+  }, [isRotating]);
+
+  const handleCancelRotate = useCallback(() => {
+    if (isRotating) return;
+    setShowRotateConfirm(false);
+    setShowApiKey(false);
+  }, [isRotating]);
 
   const handleCopyApiKey = useCallback(async () => {
     try {
@@ -206,8 +225,14 @@ export function McpServerSettingsTab() {
       setCopiedKey(true);
       if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
       copyTimeoutRef.current = setTimeout(() => setCopiedKey(false), 2000);
-    } catch {
-      // clipboard write failed — silently ignore
+    } catch (err) {
+      setCopiedKey(false);
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+        copyTimeoutRef.current = null;
+      }
+      setError(formatErrorMessage(err, "Failed to copy API key"));
+      logError("Failed to copy MCP API key", err);
     }
   }, [status.apiKey]);
 
@@ -248,16 +273,26 @@ export function McpServerSettingsTab() {
     }
   }, [maxRecordsInput, refreshAuditRecords]);
 
-  const handleClearAuditLog = useCallback(async () => {
+  const confirmClearAuditLog = useCallback(async () => {
+    if (isClearing) return;
+    setIsClearing(true);
     try {
       setError(null);
       await window.electron.mcpServer.clearAuditLog();
       setAuditRecords([]);
+      setShowClearConfirm(false);
     } catch (err) {
       setError(formatErrorMessage(err, "Failed to clear audit log"));
       logError("Failed to clear MCP audit log", err);
+    } finally {
+      setIsClearing(false);
     }
-  }, []);
+  }, [isClearing]);
+
+  const handleCancelClear = useCallback(() => {
+    if (isClearing) return;
+    setShowClearConfirm(false);
+  }, [isClearing]);
 
   const handleCopyAuditAsJson = useCallback(async (records: McpAuditRecord[]) => {
     try {
@@ -419,7 +454,7 @@ export function McpServerSettingsTab() {
                 <div className="flex items-center gap-2">
                   <div className="flex-1 flex items-center gap-2 rounded-[var(--radius-md)] bg-surface-disabled border border-daintree-border px-3 py-2 font-mono text-xs text-daintree-text/80 select-all">
                     <span className="flex-1 truncate">
-                      {showApiKey ? status.apiKey : "•".repeat(status.apiKey.length)}
+                      {showApiKey ? status.apiKey : MASKED_KEY}
                     </span>
                     <button
                       type="button"
@@ -454,7 +489,7 @@ export function McpServerSettingsTab() {
                     {copiedKey ? "Copied!" : "Copy"}
                   </button>
                   <button
-                    onClick={handleRotateApiKey}
+                    onClick={() => setShowRotateConfirm(true)}
                     className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-[var(--radius-md)] border border-daintree-border text-daintree-text/70 hover:text-daintree-text hover:bg-overlay-soft transition-colors"
                     title="Rotate API key"
                   >
@@ -652,7 +687,7 @@ export function McpServerSettingsTab() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => void handleClearAuditLog()}
+                  onClick={() => setShowClearConfirm(true)}
                   disabled={auditRecords.length === 0}
                   className={cn(
                     "px-3 py-1.5 text-xs font-medium rounded-[var(--radius-md)] border transition-colors",
@@ -678,6 +713,32 @@ export function McpServerSettingsTab() {
           <p className="text-xs text-status-danger">{error}</p>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={showRotateConfirm}
+        onClose={isRotating ? undefined : handleCancelRotate}
+        title="Rotate API key?"
+        description="The current key will be invalidated immediately. External clients using this key will need to update their configuration."
+        confirmLabel="Rotate key"
+        cancelLabel="Cancel"
+        onConfirm={confirmRotateApiKey}
+        isConfirmLoading={isRotating}
+        variant="destructive"
+        zIndex="nested"
+      />
+
+      <ConfirmDialog
+        isOpen={showClearConfirm}
+        onClose={isClearing ? undefined : handleCancelClear}
+        title="Clear audit log?"
+        description="All recorded tool dispatches will be permanently deleted."
+        confirmLabel="Clear log"
+        cancelLabel="Cancel"
+        onConfirm={confirmClearAuditLog}
+        isConfirmLoading={isClearing}
+        variant="destructive"
+        zIndex="nested"
+      />
     </div>
   );
 }
