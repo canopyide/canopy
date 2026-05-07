@@ -21,6 +21,7 @@ export function PortalVisibilityController(): null {
   const hasOverlays = overlayClaimsSize > 0;
   const isRestoringRef = useRef(false);
   const pendingRestoreRef = useRef<{ tabId: string; tabUrl: string } | null>(null);
+  const isMountedRef = useRef(true);
 
   const prevHasOverlaysRef = useRef(hasOverlays);
   const prevPortalOpenRef = useRef(portalOpen);
@@ -57,12 +58,18 @@ export function PortalVisibilityController(): null {
         let attempts = 0;
         while (!bounds && attempts < 20) {
           await new Promise((resolve) => setTimeout(resolve, 50));
+          if (!isMountedRef.current) break;
+          if (pendingRestoreRef.current && pendingRestoreRef.current.tabId !== tabId) break;
           bounds = getBounds();
           attempts++;
         }
 
         if (!bounds) {
           isRestoringRef.current = false;
+          return;
+        }
+
+        if (!isMountedRef.current) {
           return;
         }
 
@@ -83,7 +90,7 @@ export function PortalVisibilityController(): null {
       } finally {
         isRestoringRef.current = false;
         const pending = pendingRestoreRef.current as { tabId: string; tabUrl: string } | null;
-        if (pending) {
+        if (pending && isMountedRef.current) {
           pendingRestoreRef.current = null;
           void ensureTabAndRestore(pending.tabId, pending.tabUrl);
         }
@@ -168,6 +175,13 @@ export function PortalVisibilityController(): null {
       }
     }
   }, [portalOpen, activeTabId, tabs, hasOverlays, ensureTabAndRestore]);
+
+  // Mark unmounted so in-flight bounds polling and pending queue work bails out.
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   return null;
 }

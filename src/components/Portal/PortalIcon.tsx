@@ -1,4 +1,3 @@
-import { useState, useEffect } from "react";
 import { Globe, Search } from "lucide-react";
 import { getAgentConfig, isRegisteredAgent } from "@/config/agents";
 import { BrandMark } from "@/components/icons";
@@ -6,28 +5,19 @@ import { BrandMark } from "@/components/icons";
 interface PortalIconProps {
   icon: string;
   size?: "tab" | "launchpad";
-  url?: string;
-  type?: "system" | "user";
 }
 
-export function PortalIcon({ icon, size = "launchpad", url, type }: PortalIconProps) {
-  const [showFallback, setShowFallback] = useState(false);
+export function PortalIcon({ icon, size = "launchpad" }: PortalIconProps) {
   const iconClass = size === "launchpad" ? "w-8 h-8" : "w-3 h-3";
 
-  useEffect(() => {
-    setShowFallback(false);
-  }, [icon, url]);
-
-  if (showFallback || icon === "globe") {
+  if (icon === "globe") {
     return <Globe className={iconClass} />;
   }
 
-  // Handle special cases
   if (icon === "search") {
     return <Search className={iconClass} />;
   }
 
-  // Try to get agent config from registry
   if (isRegisteredAgent(icon)) {
     const config = getAgentConfig(icon);
     if (config) {
@@ -41,18 +31,7 @@ export function PortalIcon({ icon, size = "launchpad", url, type }: PortalIconPr
     }
   }
 
-  // Fallback for user-defined links with URL
-  if (type === "user" && url) {
-    try {
-      const domain = new URL(url).hostname;
-      const faviconUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
-      return (
-        <img src={faviconUrl} alt="" className={iconClass} onError={() => setShowFallback(true)} />
-      );
-    } catch {
-      return <Globe className={iconClass} />;
-    }
-  }
-
+  // User-defined links render Globe — never fetch favicons from third-party services
+  // (e.g. google.com/s2/favicons) since that would leak hostnames the user opened.
   return <Globe className={iconClass} />;
 }

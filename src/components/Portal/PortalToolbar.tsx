@@ -112,7 +112,7 @@ const SortableTab = memo(function SortableTab({
         >
           {tab.icon && (
             <div className="flex-shrink-0">
-              <PortalIcon icon={tab.icon} size="tab" url={tab.url ?? undefined} />
+              <PortalIcon icon={tab.icon} size="tab" />
             </div>
           )}
           <span className="truncate max-w-[120px]">{tab.title}</span>

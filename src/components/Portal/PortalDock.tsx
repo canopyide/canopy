@@ -23,6 +23,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { getElementBoundsAsDip } from "@/lib/portalBounds";
+import { debounce } from "@/utils/debounce";
 
 export function PortalDock() {
   const { width, activeTabId, tabs, links, setWidth, setOpen, defaultNewTabUrl } = usePortalStore(
@@ -82,6 +83,7 @@ export function PortalDock() {
     return () => {
       observer.disconnect();
       window.removeEventListener("resize", debouncedSync);
+      debouncedSync.cancel();
     };
   }, [activeTabId, syncBounds]);
 
@@ -396,6 +398,7 @@ export function PortalDock() {
             role="separator"
             aria-label="Resize portal panel"
             aria-orientation="vertical"
+            aria-controls="portal-placeholder"
             aria-valuenow={Math.round(width)}
             aria-valuemin={PORTAL_MIN_WIDTH}
             aria-valuemax={PORTAL_MAX_WIDTH}
@@ -532,12 +535,4 @@ export function PortalDock() {
       </ContextMenuContent>
     </ContextMenu>
   );
-}
-
-function debounce<T extends (...args: unknown[]) => void>(fn: T, ms: number): T {
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
-  return ((...args: unknown[]) => {
-    if (timeoutId) clearTimeout(timeoutId);
-    timeoutId = setTimeout(() => fn(...args), ms);
-  }) as T;
 }

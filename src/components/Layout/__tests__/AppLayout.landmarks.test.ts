@@ -88,5 +88,9 @@ describe("ARIA page landmarks — issue #5416", () => {
     it("keeps tabIndex=-1 so the macro-focus cycler can target it", () => {
       expect(source).toMatch(/<aside[\s\S]*?tabIndex=\{-1\}/);
     });
+
+    it("links the resize separator to the panel it controls via aria-controls", () => {
+      expect(source).toMatch(/role="separator"[\s\S]*?aria-controls="portal-placeholder"/);
+    });
   });
 });

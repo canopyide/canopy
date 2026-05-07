@@ -261,6 +261,49 @@ describe("PortalVisibilityController", () => {
     });
   });
 
+  it("stops polling and skips show() if the controller unmounts during the bounds wait", async () => {
+    // Bounds null for the first few lookups, then valid: without the unmount guard
+    // the in-flight async would continue polling past unmount, find bounds, and
+    // call show() against a torn-down component. With the guard it breaks on the
+    // first post-await tick.
+    let calls = 0;
+    vi.spyOn(document, "getElementById").mockImplementation((id) => {
+      if (id !== "portal-placeholder") return null;
+      calls += 1;
+      if (calls < 5) return null;
+      return { getBoundingClientRect: () => createPlaceholderRect() } as unknown as HTMLElement;
+    });
+
+    const view = render(<PortalVisibilityController />);
+
+    act(() => {
+      usePortalStore.setState({
+        isOpen: true,
+        activeTabId: "tab-1",
+        tabs: [{ id: "tab-1", title: "Docs", url: "https://example.com/docs" }],
+        createdTabs: new Set<string>(),
+      });
+    });
+
+    // Let create() resolve and the first poll await be scheduled.
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(portal.create).toHaveBeenCalledTimes(1);
+    expect(portal.show).not.toHaveBeenCalled();
+
+    // Unmount mid-poll — every subsequent post-await tick must bail.
+    view.unmount();
+
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    expect(portal.show).not.toHaveBeenCalled();
+  });
+
   it("removes tab from createdTabs when eviction event fires", () => {
     usePortalStore.setState({
       isOpen: true,
