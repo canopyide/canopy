@@ -95,20 +95,42 @@ export class CcrConfigService {
   }
 
   async discoverPresets(): Promise<AgentPreset[]> {
+    let raw: string;
     try {
-      const raw = await readFile(CCR_CONFIG_PATH, "utf-8");
-      const config: CcrConfig = JSON.parse(raw);
-
-      if (!Array.isArray(config.models) || config.models.length === 0) {
-        return [];
+      raw = await readFile(CCR_CONFIG_PATH, "utf-8");
+    } catch (err) {
+      // ENOENT is expected when CCR isn't installed; stay silent.
+      // Anything else (EACCES, EPERM, EISDIR, …) is a diagnostic the user can act on.
+      const code =
+        err instanceof Error && "code" in err ? (err as NodeJS.ErrnoException).code : undefined;
+      if (code !== "ENOENT") {
+        console.warn(`[CcrConfigService] Failed to read config at ${CCR_CONFIG_PATH}:`, err);
       }
-
-      return config.models
-        .filter((entry) => entry.id || entry.model)
-        .map((entry) => this.entryToPreset(entry));
-    } catch {
       return [];
     }
+
+    let config: CcrConfig;
+    try {
+      config = JSON.parse(raw);
+    } catch (err) {
+      // JSON.parse SyntaxError messages on Node 22 are positional-only and don't
+      // embed file contents, so passing the error to console.warn is safe. Never
+      // log `raw` — it may contain inline API keys from a malformed user config.
+      console.warn(`[CcrConfigService] Failed to parse config at ${CCR_CONFIG_PATH}:`, err);
+      return [];
+    }
+
+    if (!Array.isArray(config.models) || config.models.length === 0) {
+      return [];
+    }
+
+    return config.models
+      .filter(
+        (entry) =>
+          (typeof entry.id === "string" && entry.id.length > 0) ||
+          (typeof entry.model === "string" && entry.model.length > 0)
+      )
+      .map((entry) => this.entryToPreset(entry));
   }
 
   getPresets(): AgentPreset[] {
@@ -155,18 +177,33 @@ export class CcrConfigService {
   }
 
   private entryToPreset(entry: CcrModelEntry): AgentPreset {
-    const id = entry.id ?? entry.model ?? "unknown";
-    const name = entry.name ?? entry.model ?? id;
+    // `??` only falls through on null/undefined, so an entry with `id: ""` or
+    // `id: {}` would otherwise leak into preset IDs as `ccr-` or `ccr-[object Object]`.
+    // Coerce non-string / empty-string fields to undefined first.
+    const safeId = typeof entry.id === "string" && entry.id.length > 0 ? entry.id : undefined;
+    const safeModel =
+      typeof entry.model === "string" && entry.model.length > 0 ? entry.model : undefined;
+    const safeName =
+      typeof entry.name === "string" && entry.name.length > 0 ? entry.name : undefined;
+    const safeBaseUrl =
+      typeof entry.baseUrl === "string" && entry.baseUrl.length > 0 ? entry.baseUrl : undefined;
+    const safeApiKeyEnv =
+      typeof entry.apiKeyEnv === "string" && entry.apiKeyEnv.length > 0
+        ? entry.apiKeyEnv
+        : undefined;
+
+    const id = safeId ?? safeModel ?? "unknown";
+    const name = safeName ?? safeModel ?? id;
     const env: Record<string, string> = {};
 
-    if (entry.model) {
-      env.ANTHROPIC_MODEL = entry.model;
+    if (safeModel) {
+      env.ANTHROPIC_MODEL = safeModel;
     }
-    if (entry.baseUrl) {
-      env.ANTHROPIC_BASE_URL = entry.baseUrl;
+    if (safeBaseUrl) {
+      env.ANTHROPIC_BASE_URL = safeBaseUrl;
     }
-    if (entry.apiKeyEnv) {
-      env.ANTHROPIC_API_KEY = `\${${entry.apiKeyEnv}}`;
+    if (safeApiKeyEnv) {
+      env.ANTHROPIC_API_KEY = `\${${safeApiKeyEnv}}`;
     }
 
     return {
