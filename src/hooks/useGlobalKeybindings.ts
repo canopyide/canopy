@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
-import { keybindingService, normalizeKeyForBinding, parseCombo } from "../services/KeybindingService";
+import { keybindingService, normalizeKeyForBinding } from "../services/KeybindingService";
 import { actionService } from "../services/ActionService";
 import { logError } from "@/utils/logger";
 import { dispatchEscape, hasHandlers } from "@/lib/escapeStack";
@@ -19,15 +19,16 @@ export function useGlobalKeybindings(enabled: boolean = true): void {
   useEffect(() => {
     if (!enabled) return;
 
-    // Capture the bare key for region focus bindings so the editable/.xterm
-    // bypass tracks user rebinds instead of a hardcoded "F6".
-    const focusRegionKeys = (): string[] => {
-      const keys: string[] = [];
+    // Region-focus bypass: let the user's current focusRegion bindings escape
+    // the editable/.xterm bailouts, even when the user has rebound them away
+    // from the default F6 / Shift+F6. Match the full combo via matchesEvent so
+    // a Ctrl+F6 rebind doesn't accidentally let bare F6 through.
+    const isFocusRegionEvent = (e: KeyboardEvent): boolean => {
       const next = keybindingService.getEffectiveCombo("nav.focusRegion.next");
+      if (next && keybindingService.matchesEvent(e, next)) return true;
       const prev = keybindingService.getEffectiveCombo("nav.focusRegion.prev");
-      if (next) keys.push(parseCombo(next).key);
-      if (prev) keys.push(parseCombo(prev).key);
-      return keys;
+      if (prev && keybindingService.matchesEvent(e, prev)) return true;
+      return false;
     };
 
     const handler = (e: KeyboardEvent) => {
@@ -105,10 +106,9 @@ export function useGlobalKeybindings(enabled: boolean = true): void {
       // worktreeGrid scope for fleet arming). Scope-gated bindings are checked
       // below in resolveKeybinding → canExecute.
       const hasModifier = e.metaKey || e.ctrlKey;
-      const focusKeys = focusRegionKeys();
-      const isFocusRegionKey = focusKeys.includes(e.key);
+      const isFocusRegion = isFocusRegionEvent(e);
 
-      if (isEditable && !hasModifier && !pendingChord && !isFocusRegionKey) {
+      if (isEditable && !hasModifier && !pendingChord && !isFocusRegion) {
         return;
       }
 
@@ -116,7 +116,7 @@ export function useGlobalKeybindings(enabled: boolean = true): void {
       // chord completion, or region focus. Bare keys (like X for fleet arming)
       // are blocked inside terminals so they don't steal typing — scoped
       // bindings only match when focus is outside .xterm.
-      if (isInTerminal && !hasModifier && !pendingChord && !isFocusRegionKey) {
+      if (isInTerminal && !hasModifier && !pendingChord && !isFocusRegion) {
         return;
       }
 
