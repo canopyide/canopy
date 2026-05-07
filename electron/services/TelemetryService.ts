@@ -28,7 +28,14 @@ export interface SentryEvent {
     values?: Array<{
       value?: string;
       stacktrace?: {
-        frames?: Array<{ filename?: string; abs_path?: string }>;
+        frames?: Array<{
+          filename?: string;
+          abs_path?: string;
+          context_line?: string;
+          pre_context?: string[];
+          post_context?: string[];
+          vars?: Record<string, unknown>;
+        }>;
       };
     }>;
   };
@@ -101,6 +108,23 @@ export function sanitizeEvent(event: SentryEvent): SentryEvent | null {
             if (!frame || typeof frame !== "object") continue;
             if (frame.filename) frame.filename = sanitizeString(frame.filename);
             if (frame.abs_path) frame.abs_path = sanitizeString(frame.abs_path);
+            // contextLinesIntegration and localVariablesIntegration (default
+            // integrations in @sentry/electron) populate these fields with
+            // raw source lines and local variable values before beforeSend
+            // fires. Source lines may contain string literals with user paths;
+            // local variable values may hold paths, tokens, or transcripts.
+            if (typeof frame.context_line === "string") {
+              frame.context_line = sanitizeString(frame.context_line);
+            }
+            if (Array.isArray(frame.pre_context)) {
+              frame.pre_context = sanitizeStringsDeep(frame.pre_context) as string[];
+            }
+            if (Array.isArray(frame.post_context)) {
+              frame.post_context = sanitizeStringsDeep(frame.post_context) as string[];
+            }
+            if (frame.vars && typeof frame.vars === "object") {
+              frame.vars = sanitizeStringsDeep(frame.vars) as Record<string, unknown>;
+            }
           }
         }
         if (ex.value) ex.value = sanitizeString(ex.value);
@@ -302,6 +326,11 @@ function buildAnalyticsSentryEvent(
     level: "info" as unknown as undefined,
     extra: { ...properties, timestamp },
     tags: { kind: "analytics" },
+    // Pin grouping to the analytics event name so issue-tracking stays stable
+    // across SDK upgrades. Sentry's default fingerprint hash is unstable —
+    // without this, two analytics events with the same name can land in
+    // different groups after a fingerprint-algorithm change.
+    fingerprint: ["analytics", event],
   } as SentryEvent;
 }
 
