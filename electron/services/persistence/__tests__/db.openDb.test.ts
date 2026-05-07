@@ -80,6 +80,9 @@ describe("openDb (integration)", () => {
 
       const journalSizeLimit = sqlite.pragma("journal_size_limit", { simple: true });
       expect(Number(journalSizeLimit)).toBe(5_242_880);
+
+      const foreignKeys = sqlite.pragma("foreign_keys", { simple: true });
+      expect(Number(foreignKeys)).toBe(1);
     } finally {
       sqlite.close();
     }

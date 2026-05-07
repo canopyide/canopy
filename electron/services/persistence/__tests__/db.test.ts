@@ -60,15 +60,29 @@ describe("probeDb", () => {
     expect(mockDatabaseConstructor).not.toHaveBeenCalled();
   });
 
-  it("returns true for a healthy database (pragma succeeds)", () => {
+  it("returns true for a healthy database (quick_check returns ok)", () => {
     const dbPath = path.join(tmpDir, "valid.db");
     fs.writeFileSync(dbPath, "dummy");
 
     mockDatabaseConstructor.mockImplementation(() => ({}));
-    mockPragma.mockReturnValue(1);
+    mockPragma.mockReturnValue("ok");
 
     expect(probeDb(dbPath)).toBe(true);
-    expect(mockPragma).toHaveBeenCalledWith("schema_version");
+    expect(mockPragma).toHaveBeenCalledWith("quick_check", { simple: true });
+    expect(mockClose).toHaveBeenCalled();
+  });
+
+  it("returns false when quick_check returns a corruption error string", () => {
+    const dbPath = path.join(tmpDir, "corrupt.db");
+    fs.writeFileSync(dbPath, "dummy");
+
+    mockDatabaseConstructor.mockImplementation(() => ({}));
+    mockPragma.mockReturnValue(
+      "*** in database main ***\nPage 48: btreeInitPage() returns error code 11"
+    );
+
+    expect(probeDb(dbPath)).toBe(false);
+    expect(mockPragma).toHaveBeenCalledWith("quick_check", { simple: true });
     expect(mockClose).toHaveBeenCalled();
   });
 
@@ -101,6 +115,20 @@ describe("probeDb", () => {
     expect(probeDb(dbPath)).toBe(false);
   });
 
+  it("returns false for extended corruption codes (e.g. SQLITE_CORRUPT_INDEX from constructor)", () => {
+    const dbPath = path.join(tmpDir, "corrupt.db");
+    fs.writeFileSync(dbPath, "dummy");
+
+    mockDatabaseConstructor.mockImplementation(() => {
+      const err = new Error("corrupt index") as Error & { code: string };
+      err.code = "SQLITE_CORRUPT_INDEX";
+      throw err;
+    });
+
+    expect(probeDb(dbPath)).toBe(false);
+    expect(mockDatabaseConstructor).toHaveBeenCalled();
+  });
+
   it("returns true for non-corruption errors (safe default)", () => {
     const dbPath = path.join(tmpDir, "perms.db");
     fs.writeFileSync(dbPath, "dummy");
@@ -125,7 +153,7 @@ describe("attemptRecovery", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     // By default probeDb succeeds for backup verification
     mockDatabaseConstructor.mockImplementation(() => ({}));
-    mockPragma.mockReturnValue(1);
+    mockPragma.mockReturnValue("ok");
   });
 
   afterEach(() => {

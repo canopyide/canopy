@@ -82,6 +82,7 @@ export function openDb(
     sqlite.pragma("mmap_size = 10737418240");
     sqlite.pragma("cache_size = -65536");
     sqlite.pragma("journal_size_limit = 5242880");
+    sqlite.pragma("foreign_keys = ON");
 
     adoptLegacyProjectColumns(sqlite);
 
@@ -106,21 +107,25 @@ export function openDb(
   }
 }
 
-const CORRUPTION_CODES = new Set(["SQLITE_CORRUPT", "SQLITE_NOTADB"]);
-
 export function probeDb(dbPath: string): boolean {
   if (!fs.existsSync(dbPath)) return true; // no file = fresh start, not corruption
   let testDb: Database.Database | null = null;
   try {
     testDb = new Database(dbPath, { readonly: true });
-    testDb.pragma("schema_version");
+    const quickCheckResult = testDb.pragma("quick_check", { simple: true });
+    if (quickCheckResult !== "ok") {
+      console.warn("[DB] quick_check detected corruption:", quickCheckResult);
+      return false;
+    }
     return true;
   } catch (error: unknown) {
     const code = (error as { code?: string }).code;
-    if (code && CORRUPTION_CODES.has(code)) {
+    if (
+      typeof code === "string" &&
+      (code.startsWith("SQLITE_CORRUPT") || code === "SQLITE_NOTADB")
+    ) {
       return false;
     }
-    // Non-corruption errors (e.g. permission denied) — treat as healthy to avoid data loss
     console.warn("[DB] Probe encountered non-corruption error:", error);
     return true;
   } finally {
