@@ -220,7 +220,7 @@ export const githubWorkIssueCommand: DaintreeCommand<GitHubWorkIssueArgs, GitHub
       name: "baseBranch",
       type: "string",
       description:
-        "Base branch to branch from. Auto-detects: prefers 'develop' if exists, otherwise tries 'main', then 'master'. " +
+        "Base branch to branch from. Auto-detects: prefers 'develop' if exists, otherwise tries 'trunk', 'main', then 'master'. " +
         "For hotfixes, use 'main' explicitly.",
       required: false,
     },
@@ -261,7 +261,7 @@ export const githubWorkIssueCommand: DaintreeCommand<GitHubWorkIssueArgs, GitHub
             type: "text",
             placeholder: "develop",
             helpText:
-              "Branch to start from. Auto-detects: uses 'develop' if it exists, otherwise tries 'main', then 'master'. " +
+              "Branch to start from. Auto-detects: uses 'develop' if it exists, otherwise tries 'trunk', 'main', then 'master'. " +
               "Override for hotfixes (use 'main') or feature branches (use specific branch).",
           },
         ],
