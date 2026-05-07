@@ -85,16 +85,18 @@ export class AgentVersionService {
       };
     }
 
-    const inFlight = this.inFlightChecks.get(agentId);
-    if (inFlight) {
-      return inFlight;
-    }
+    if (!refresh) {
+      const inFlight = this.inFlightChecks.get(agentId);
+      if (inFlight) {
+        return inFlight;
+      }
 
-    const cached = this.cache.get(agentId);
-    if (!refresh && cached) {
-      const age = Date.now() - cached.timestamp;
-      if (age < this.CACHE_TTL_MS) {
-        return cached.info;
+      const cached = this.cache.get(agentId);
+      if (cached) {
+        const age = Date.now() - cached.timestamp;
+        if (age < this.CACHE_TTL_MS) {
+          return cached.info;
+        }
       }
     }
 
@@ -311,7 +313,7 @@ export class AgentVersionService {
         clearTimeout(timeoutId);
       }
     } catch (error: any) {
-      throw new Error(`Failed to fetch npm version: ${error.message}`);
+      throw new Error(`Failed to fetch npm version: ${this.toErrorString(error)}`);
     }
   }
 
@@ -360,7 +362,7 @@ export class AgentVersionService {
         clearTimeout(timeoutId);
       }
     } catch (error: any) {
-      throw new Error(`Failed to fetch GitHub version for ${repo}: ${error.message}`);
+      throw new Error(`Failed to fetch GitHub version for ${repo}: ${this.toErrorString(error)}`);
     }
   }
 
@@ -375,9 +377,9 @@ export class AgentVersionService {
     }
 
     const versionPatterns = [
-      /v?(\d+\.\d+\.\d+(?:-[a-z0-9.]+(?:\+[a-z0-9.]+)?)?)/i,
-      /version[:\s]+v?(\d+\.\d+\.\d+(?:-[a-z0-9.]+)?)/i,
-      /(\d+\.\d+\.\d+(?:-[a-z0-9.]+)?)/,
+      /v?(\d+\.\d+\.\d+(?:-[a-z0-9.-]+(?:\+[a-z0-9.-]+)?)?)/i,
+      /version[:\s]+v?(\d+\.\d+\.\d+(?:-[a-z0-9.-]+)?)/i,
+      /(\d+\.\d+\.\d+(?:-[a-z0-9.-]+)?)/,
     ];
 
     for (const pattern of versionPatterns) {

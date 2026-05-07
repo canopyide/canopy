@@ -385,14 +385,14 @@ describe("AgentVersionService resilience", () => {
   });
 
   describe("parseVersion prerelease coercion", () => {
-    it("preserves prerelease tags through the coerce fallback", () => {
+    it("preserves prerelease tags when coerce fallback is reached", () => {
       const { service } = createService(async () => ({}));
 
+      // "2.0-beta" has no X.Y.Z pattern so it bypasses semver.clean() and
+      // all three regex patterns, reaching the coerce fallback.
       expect(
-        (service as unknown as { parseVersion(v: string): string | null }).parseVersion(
-          "1.2.3-beta.1"
-        )
-      ).toBe("1.2.3-beta.1");
+        (service as unknown as { parseVersion(v: string): string | null }).parseVersion("2.0-beta")
+      ).toBe("2.0.0-beta");
     });
 
     it("still returns null for unparseable strings", () => {
