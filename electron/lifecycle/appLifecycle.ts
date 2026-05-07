@@ -51,10 +51,12 @@ export function registerAppLifecycleHandlers(opts: AppLifecycleOptions): void {
   // otherwise terminate the process without the markCleanExit call.
   //
   // The safety-belt timer must outlast `CLEANUP_TIMEOUT_MS` so it doesn't fire
-  // mid-cleanup; the 2000ms buffer covers `closeTelemetry()` which runs after
-  // the cleanup race resolves. A second signal within 2000ms force-exits with
-  // status 1 — escape hatch when shutdown stalls. After that window, repeat
-  // signals are ignored (cleanup is already in progress).
+  // mid-cleanup; the 3000ms buffer covers `closeTelemetry()` which can take up
+  // to ~2500ms in the worst case (Sentry init-wait cap 500ms + close timeout
+  // 2000ms — see TelemetryService.ts) and runs after the cleanup race resolves.
+  // A second signal within 2000ms force-exits with status 1 — escape hatch
+  // when shutdown stalls. After that window, repeat signals are ignored
+  // (cleanup is already in progress).
   //
   // SIGHUP is dev-only: packaged builds are TTY-detached, and process managers
   // (launchd/systemd) conventionally use SIGHUP to mean "reload config" — we
@@ -71,7 +73,7 @@ export function registerAppLifecycleHandlers(opts: AppLifecycleOptions): void {
     }
     firstSignalTime = Date.now();
     setSignalShutdown();
-    setTimeout(() => process.exit(0), CLEANUP_TIMEOUT_MS + 2000).unref();
+    setTimeout(() => process.exit(0), CLEANUP_TIMEOUT_MS + 3000).unref();
     app.quit();
   };
   process.on("SIGTERM", signalHandler);

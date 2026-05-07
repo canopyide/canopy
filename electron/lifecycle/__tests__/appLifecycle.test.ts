@@ -101,9 +101,9 @@ describe("registerAppLifecycleHandlers – signal handling", () => {
     expect(appMock.quit).toHaveBeenCalledOnce();
 
     // Belt must outlast CLEANUP_TIMEOUT_MS plus telemetry-drain buffer so it
-    // doesn't fire mid-cleanup. Advancing to (CLEANUP_TIMEOUT_MS + 2000 - 1)
+    // doesn't fire mid-cleanup. Advancing to (CLEANUP_TIMEOUT_MS + 3000 - 1)
     // confirms the belt hasn't fired prematurely.
-    vi.advanceTimersByTime(CLEANUP_TIMEOUT_MS + 2000 - 1);
+    vi.advanceTimersByTime(CLEANUP_TIMEOUT_MS + 3000 - 1);
     expect(processExitSpy).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
     expect(processExitSpy).toHaveBeenCalledWith(0);
@@ -122,6 +122,23 @@ describe("registerAppLifecycleHandlers – signal handling", () => {
 
     expect(setSignalShutdownMock).toHaveBeenCalledOnce();
     expect(appMock.quit).toHaveBeenCalledOnce();
+    expect(processExitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it("second signal at 1999ms force-exits (boundary inside window)", async () => {
+    vi.setSystemTime(new Date(1_000_000));
+    const { registerAppLifecycleHandlers } = await import("../appLifecycle.js");
+    registerAppLifecycleHandlers(makeOpts());
+
+    const sigTermCall = processOnSpy.mock.calls.find(([sig]: string[]) => sig === "SIGTERM");
+    const handler = sigTermCall![1] as () => void;
+
+    handler();
+    // 1ms inside the 2000ms exclusive boundary — must force-exit. Pins the
+    // `<` boundary so an accidental change to `<=` would surface here.
+    vi.setSystemTime(new Date(1_001_999));
+    handler();
+
     expect(processExitSpy).toHaveBeenCalledWith(1);
   });
 
