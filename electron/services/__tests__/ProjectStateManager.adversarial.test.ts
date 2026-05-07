@@ -2,12 +2,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import path from "path";
 import os from "os";
 
+const fsPromisesMock = vi.hoisted(() => ({
+  readFile: vi.fn(),
+  mkdir: vi.fn(),
+  unlink: vi.fn(),
+  rm: vi.fn(),
+  rename: vi.fn(),
+}));
+
 const utilsMock = vi.hoisted(() => ({
   resilientAtomicWriteFile: vi.fn(),
   resilientRename: vi.fn(),
   resilientUnlink: vi.fn(),
 }));
 
+vi.mock("fs/promises", () => ({ default: fsPromisesMock, ...fsPromisesMock }));
 vi.mock("../../utils/fs.js", () => utilsMock);
 vi.mock("../../utils/performance.js", () => ({
   markPerformance: vi.fn(),
@@ -37,6 +46,10 @@ describe("ProjectStateManager.clearProjectState adversarial", () => {
     utilsMock.resilientAtomicWriteFile.mockResolvedValue(undefined);
     utilsMock.resilientRename.mockResolvedValue(undefined);
     utilsMock.resilientUnlink.mockResolvedValue(undefined);
+    fsPromisesMock.mkdir.mockResolvedValue(undefined);
+    fsPromisesMock.readFile.mockRejectedValue(
+      Object.assign(new Error("ENOENT"), { code: "ENOENT" })
+    );
 
     tempDir = path.join(os.tmpdir(), "daintree-clear-adv");
     manager = new ProjectStateManager(tempDir);
@@ -118,17 +131,47 @@ describe("ProjectStateManager.getProjectState ENOENT branch (mocked fs)", () => 
     utilsMock.resilientAtomicWriteFile.mockResolvedValue(undefined);
     utilsMock.resilientRename.mockResolvedValue(undefined);
     utilsMock.resilientUnlink.mockResolvedValue(undefined);
+    fsPromisesMock.mkdir.mockResolvedValue(undefined);
 
     tempDir = path.join(os.tmpdir(), "daintree-get-adv");
     manager = new ProjectStateManager(tempDir);
     projectId = generateProjectId("/test/adversarial-get-project");
   });
 
-  it("does not invoke resilientRename (quarantine) when readFile yields ENOENT", async () => {
-    // No file exists on disk; readFile rejects with ENOENT — the fixed branch
-    // must NOT route through the corruption-recovery path that calls rename.
+  it("does not invoke resilientRename (quarantine) when readFile yields ENOENT mid-flight", async () => {
+    // Deterministic TOCTOU: readFile rejects with ENOENT. The fixed catch
+    // block must short-circuit BEFORE the corruption-recovery rename path,
+    // proving the ENOENT branch was actually entered.
+    fsPromisesMock.readFile.mockRejectedValue(
+      Object.assign(new Error("ENOENT: no such file or directory"), { code: "ENOENT" })
+    );
+
     const result = await manager.getProjectState(projectId);
+
     expect(result).toBeNull();
+    expect(fsPromisesMock.readFile).toHaveBeenCalledTimes(1);
     expect(utilsMock.resilientRename).not.toHaveBeenCalled();
+  });
+
+  it("getProjectStateWithRecovery surfaces no quarantinedPath on ENOENT readFile", async () => {
+    fsPromisesMock.readFile.mockRejectedValue(
+      Object.assign(new Error("ENOENT"), { code: "ENOENT" })
+    );
+
+    const result = await manager.getProjectStateWithRecovery(projectId);
+
+    expect(result.state).toBeNull();
+    expect(result.quarantinedPath).toBeUndefined();
+    expect(utilsMock.resilientRename).not.toHaveBeenCalled();
+  });
+
+  it("still quarantines on a genuine corruption error (non-ENOENT)", async () => {
+    // Sanity check: the ENOENT short-circuit must not swallow real corruption.
+    fsPromisesMock.readFile.mockResolvedValue("{ not valid json");
+
+    const result = await manager.getProjectState(projectId);
+
+    expect(result).toBeNull();
+    expect(utilsMock.resilientRename).toHaveBeenCalledTimes(1);
   });
 });

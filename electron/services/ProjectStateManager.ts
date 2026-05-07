@@ -262,6 +262,10 @@ export class ProjectStateManager {
 
     try {
       await resilientUnlink(filePath);
+      // Re-invalidate after the unlink completes: a concurrent getProjectState
+      // racing the unlink could have re-read the still-present file and
+      // repopulated the cache after our pre-unlink wipe.
+      this.invalidateProjectStateCache(projectId);
       if (process.env.DAINTREE_VERBOSE) {
         console.log(`[ProjectStateManager] Cleared state for project ${projectId}`);
       }
