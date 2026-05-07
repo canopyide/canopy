@@ -4,6 +4,7 @@ import path from "path";
 import type {
   AgentSettings,
   PanelGridConfig,
+  PanelKind,
   UserAgentRegistry,
   AgentUpdateSettings,
   AppAgentConfig,
@@ -79,7 +80,7 @@ export interface StoreSchema {
     };
     terminals: Array<{
       id: string;
-      kind?: "terminal" | "browser" | "dev-preview" | string;
+      kind?: PanelKind;
       launchAgentId?: AgentId;
       title: string;
       titleMode?: "default" | "custom";

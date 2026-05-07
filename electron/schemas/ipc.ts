@@ -3,7 +3,7 @@
  */
 
 import { z } from "zod";
-import { panelKindHasPty } from "../../shared/config/panelKindRegistry.js";
+import { BUILT_IN_PANEL_KINDS, panelKindHasPty } from "../../shared/config/panelKindRegistry.js";
 import { BUILT_IN_AGENT_IDS } from "../../shared/config/agentIds.js";
 
 /** Schema for a launch hint — built-in agent id or plugin-provided string. */
@@ -29,7 +29,7 @@ export const TerminalLocationSchema = z.enum(["grid", "dock", "trash", "backgrou
  * Schema for panel/terminal kind - distinguishes built-in panel types.
  */
 export const PanelKindSchema = z.union([
-  z.enum(["terminal", "browser", "dev-preview"]),
+  z.enum(BUILT_IN_PANEL_KINDS),
   z.string(), // Allow extension-provided kinds
 ]);
 

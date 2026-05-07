@@ -31,8 +31,6 @@ function mockRegistryImports(options?: { throwBrowserDefaults?: boolean }): void
   }));
   vi.doMock("../terminal/serializer", () => ({ serializePtyPanel: vi.fn(() => ({ id: "term" })) }));
   vi.doMock("../terminal/defaults", () => ({ createTerminalDefaults: vi.fn(() => ({})) }));
-  vi.doMock("../agent/serializer", () => ({ serializeAgent: vi.fn(() => ({ id: "agent" })) }));
-  vi.doMock("../agent/defaults", () => ({ createAgentDefaults: vi.fn(() => ({})) }));
   vi.doMock("../browser/serializer", () => ({
     serializeBrowser: vi.fn(() => ({ id: "browser" })),
   }));
@@ -132,5 +130,16 @@ describe("panel registry adversarial", () => {
     expect(() => {
       sharedRegistry.getPanelKindConfig("browser")?.createDefaults?.({ kind: "browser" });
     }).toThrow("browser defaults failed");
+  });
+
+  it("UNREGISTER_BUILTIN_DEFINITION_REJECTED", async () => {
+    mockRegistryImports();
+    const sharedRegistry = await import("@shared/config/panelKindRegistry");
+    const registry = await import("../registry");
+
+    for (const kind of sharedRegistry.getBuiltInPanelKinds()) {
+      expect(registry.unregisterPanelKindDefinition(kind)).toBe(false);
+      expect(registry.getPanelKindDefinition(kind)).toBeDefined();
+    }
   });
 });

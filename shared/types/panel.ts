@@ -1,16 +1,16 @@
 import type { AgentState, AgentStateChangeTrigger, AgentId, WaitingReason } from "./agent.js";
 import type { BuiltInAgentId } from "../config/agentIds.js";
 import type { BrowserHistory } from "./browser.js";
+import { BUILT_IN_PANEL_KINDS, type BuiltInPanelKind } from "../config/panelKindRegistry.js";
 
-/** Built-in panel kinds */
-export type BuiltInPanelKind = "terminal" | "browser" | "dev-preview";
+export type { BuiltInPanelKind };
 
 /**
  * Panel kind: distinguishes between terminals, browser panels, and
  * extension-provided panel types. Agent-ness is a dynamic state of a terminal,
  * NOT a distinct panel kind — see `docs/architecture/terminal-identity.md`.
  *
- * Built-in kinds: "terminal" | "browser" | "dev-preview"
+ * Built-in kinds are listed in `BUILT_IN_PANEL_KINDS`.
  * Extensions can register additional kinds as strings.
  */
 export type PanelKind = BuiltInPanelKind | (string & {});
@@ -60,19 +60,7 @@ export interface DockRenderState {
 
 /** Type guard to check if a panel kind is a built-in kind */
 export function isBuiltInPanelKind(kind: PanelKind): kind is BuiltInPanelKind {
-  return kind === "terminal" || kind === "browser" || kind === "dev-preview";
-}
-
-/**
- * Check if a built-in panel kind requires PTY.
- * For extension kinds, use `panelKindHasPty()` from panelKindRegistry
- * which consults the runtime registry configuration.
- * Note: dev-preview panels manage their own ephemeral PTYs via useDevServer hook,
- * so they are not considered registry-owned PTY panels.
- */
-export function isPtyPanelKind(kind: PanelKind): boolean {
-  // Built-in kinds - for extension kinds, use panelKindHasPty() from registry
-  return kind === "terminal";
+  return (BUILT_IN_PANEL_KINDS as readonly string[]).includes(kind);
 }
 
 /**

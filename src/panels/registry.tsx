@@ -2,6 +2,7 @@ import { Suspense, lazy, type ComponentProps, type ComponentType } from "react";
 import type { PanelKindConfig } from "@shared/config/panelKindRegistry";
 import { getPanelKindConfig } from "@shared/config/panelKindRegistry";
 import type { PtyPanelData, BrowserPanelData, DevPreviewPanelData } from "@shared/types/panel";
+import { isBuiltInPanelKind } from "@shared/types/panel";
 import type {
   TerminalPanelOptions,
   BrowserPanelOptions,
@@ -237,7 +238,7 @@ export function registerPanelKindDefinition(
  * panels orphaned with no recovery path.
  */
 export function unregisterPanelKindDefinition(kindId: string): boolean {
-  if (kindId === "terminal" || kindId === "browser" || kindId === "dev-preview") {
+  if (isBuiltInPanelKind(kindId)) {
     return false;
   }
   if (!(kindId in PANEL_KIND_DEFINITION_REGISTRY)) {
