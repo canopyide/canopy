@@ -287,3 +287,55 @@ describe("git:commit handler", () => {
     expect(git.commit).not.toHaveBeenCalled();
   });
 });
+
+describe("git:get-working-diff handler", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetRateLimitQueuesForTest();
+  });
+
+  it("passes --no-ext-diff and --no-textconv for unstaged diff", async () => {
+    const git = makeFakeGit({ diff: vi.fn().mockResolvedValue("diff content\n") });
+    createHardenedGitMock.mockReturnValue(git);
+    registerGitWriteHandlers({} as Parameters<typeof registerGitWriteHandlers>[0]);
+    const handler = getHandler("git:get-working-diff");
+
+    await handler(null, { cwd: "/tmp/repo", type: "unstaged" });
+
+    expect(git.diff).toHaveBeenCalledWith(["--no-ext-diff", "--no-textconv"]);
+  });
+
+  it("passes --no-ext-diff and --no-textconv for staged diff", async () => {
+    const git = makeFakeGit({ diff: vi.fn().mockResolvedValue("diff content\n") });
+    createHardenedGitMock.mockReturnValue(git);
+    registerGitWriteHandlers({} as Parameters<typeof registerGitWriteHandlers>[0]);
+    const handler = getHandler("git:get-working-diff");
+
+    await handler(null, { cwd: "/tmp/repo", type: "staged" });
+
+    expect(git.diff).toHaveBeenCalledWith(["--no-ext-diff", "--no-textconv", "--cached"]);
+  });
+
+  it("passes --no-ext-diff and --no-textconv for HEAD diff", async () => {
+    const git = makeFakeGit({ diff: vi.fn().mockResolvedValue("diff content\n") });
+    createHardenedGitMock.mockReturnValue(git);
+    registerGitWriteHandlers({} as Parameters<typeof registerGitWriteHandlers>[0]);
+    const handler = getHandler("git:get-working-diff");
+
+    await handler(null, { cwd: "/tmp/repo", type: "head" });
+
+    expect(git.diff).toHaveBeenCalledWith(["--no-ext-diff", "--no-textconv", "HEAD"]);
+  });
+
+  it("rejects an invalid diff type without invoking git", async () => {
+    const git = makeFakeGit();
+    createHardenedGitMock.mockReturnValue(git);
+    registerGitWriteHandlers({} as Parameters<typeof registerGitWriteHandlers>[0]);
+    const handler = getHandler("git:get-working-diff");
+
+    await expect(handler(null, { cwd: "/tmp/repo", type: "garbage" })).rejects.toThrow(
+      /Invalid diff type/
+    );
+    expect(git.diff).not.toHaveBeenCalled();
+  });
+});

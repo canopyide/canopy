@@ -25,6 +25,7 @@ vi.mock("../../utils/fs.js", () => ({
 vi.mock("../../utils/hardenedGit.js", () => ({
   createHardenedGit: vi.fn(() => mockSimpleGit),
   validateCwd: vi.fn(),
+  validateBranchName: vi.fn(),
 }));
 
 vi.mock("../../utils/git.js", () => ({

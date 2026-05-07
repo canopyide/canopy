@@ -133,7 +133,12 @@ describe("validateBranchName", () => {
   });
 
   it("rejects names ending with '.lock'", () => {
-    expect(() => validateBranchName("foo.lock")).toThrow("must not end with '.lock'");
+    expect(() => validateBranchName("foo.lock")).toThrow("'.lock' component");
+  });
+
+  it("rejects '.lock' on a non-final path component", () => {
+    expect(() => validateBranchName("foo.lock/bar")).toThrow("'.lock' component");
+    expect(() => validateBranchName("a/b.lock/c")).toThrow("'.lock' component");
   });
 
   it("rejects names that begin or end with '/'", () => {

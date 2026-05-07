@@ -197,6 +197,17 @@ describe("GitService", () => {
       expect(gitClientMock.raw).not.toHaveBeenCalled();
     });
 
+    it("rejects an invalid name even when both branches are equal", async () => {
+      // The equality fast-path must not mask validation; otherwise a caller
+      // could pass `--exec=evil` for both args and get a silent OK back.
+      const service = new GitService(tempDir);
+
+      await expect(service.compareWorktrees("--exec=evil", "--exec=evil")).rejects.toThrow(
+        "must not start with '-'"
+      );
+      expect(gitClientMock.raw).not.toHaveBeenCalled();
+    });
+
     it("passes --no-textconv to defeat user-defined textconv drivers", async () => {
       gitClientMock.raw.mockResolvedValue("");
 

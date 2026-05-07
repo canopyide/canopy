@@ -78,14 +78,18 @@ export function validateBranchName(branchName: unknown): asserts branchName is s
   if (branchName.endsWith(".")) {
     throw new Error("Branch name must not end with '.'");
   }
-  if (branchName.endsWith(".lock")) {
-    throw new Error("Branch name must not end with '.lock'");
-  }
   if (branchName.startsWith("/") || branchName.endsWith("/")) {
     throw new Error("Branch name must not start or end with '/'");
   }
   if (branchName.includes("//")) {
     throw new Error("Branch name must not contain '//'");
+  }
+  // `.lock` is forbidden on every path component, not only the final one —
+  // git rejects `foo.lock/bar` for the same reason it rejects `foo.lock`.
+  for (const component of branchName.split("/")) {
+    if (component.endsWith(".lock")) {
+      throw new Error("Branch name must not contain a '.lock' component");
+    }
   }
 }
 

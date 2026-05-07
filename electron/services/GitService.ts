@@ -316,12 +316,15 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     filePath?: string,
     useMergeBase?: boolean
   ): Promise<CrossWorktreeDiffResult | string> {
+    // Validate before the equality fast-path so an invalid argv-shaped name
+    // is rejected unconditionally — not silently accepted when both inputs
+    // happen to match.
+    validateBranchName(branch1);
+    validateBranchName(branch2);
+
     if (branch1 === branch2) {
       return filePath ? "NO_CHANGES" : { branch1, branch2, files: [] };
     }
-
-    validateBranchName(branch1);
-    validateBranchName(branch2);
 
     // Expand to fully qualified `refs/heads/` so a leading-dash branch name
     // can never appear at the start of the range token. `--end-of-options`
