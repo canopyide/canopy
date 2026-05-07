@@ -24,7 +24,7 @@ export async function waitForServerReady(
 
     const ready = await new Promise<boolean>((resolve) => {
       let settled = false;
-      let onAbort: () => void;
+      let onAbort: () => void = () => {};
       const settle = (value: boolean) => {
         if (settled) return;
         settled = true;
