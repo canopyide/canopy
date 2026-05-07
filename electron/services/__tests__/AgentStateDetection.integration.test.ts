@@ -31,7 +31,7 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
 
   describe("Manual State Transitions", () => {
     it("should transition agent state manually from waiting to working", async () => {
-      const id = await spawnShellTerminal(manager, { type: "claude" });
+      const id = await spawnShellTerminal(manager, { launchAgentId: "claude" });
       await sleep(500);
 
       // First, ensure terminal reaches waiting state
@@ -52,7 +52,7 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
     }, 10000);
 
     it("should track agent state in terminal info", async () => {
-      const id = await spawnShellTerminal(manager, { type: "claude" });
+      const id = await spawnShellTerminal(manager, { launchAgentId: "claude" });
       await sleep(500);
 
       manager.transitionState(id, { type: "busy" }, "activity", 1.0);
@@ -64,7 +64,7 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
     }, 10000);
 
     it("should emit state change event", async () => {
-      const id = await spawnShellTerminal(manager, { type: "gemini" });
+      const id = await spawnShellTerminal(manager, { launchAgentId: "gemini" });
       await sleep(500);
 
       // First transition to working state
@@ -89,7 +89,7 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
     }, 10000);
 
     it("should track multiple state transitions", async () => {
-      const id = await spawnShellTerminal(manager, { type: "claude" });
+      const id = await spawnShellTerminal(manager, { launchAgentId: "claude" });
       await sleep(500);
 
       const states: string[] = [];
@@ -115,7 +115,7 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
 
   describe("State Change Timestamps", () => {
     it("should record timestamp on state change", async () => {
-      const id = await spawnShellTerminal(manager, { type: "claude" });
+      const id = await spawnShellTerminal(manager, { launchAgentId: "claude" });
       await sleep(500);
 
       // First get to waiting state
@@ -136,7 +136,7 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
     }, 10000);
 
     it("should update lastStateChange in terminal info", async () => {
-      const id = await spawnShellTerminal(manager, { type: "claude" });
+      const id = await spawnShellTerminal(manager, { launchAgentId: "claude" });
       await sleep(500);
 
       // First get to waiting state
@@ -160,7 +160,7 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
 
   describe("State Transitions for Different Terminal Types", () => {
     it("should handle state transitions for agent terminals", async () => {
-      const id = await spawnShellTerminal(manager, { type: "claude" });
+      const id = await spawnShellTerminal(manager, { launchAgentId: "claude" });
       await sleep(500);
 
       // First transition to working, then to exited (exit from idle doesn't work)
@@ -177,7 +177,7 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
     it("should handle state transitions for different agent types", async () => {
       // Note: type="terminal" (shell terminals) don't have agentId and don't emit
       // agent:state-changed events. Use actual agent types for state transition tests.
-      const id = await spawnShellTerminal(manager, { type: "gemini" });
+      const id = await spawnShellTerminal(manager, { launchAgentId: "gemini" });
       await sleep(500);
 
       // First get to waiting state
@@ -198,7 +198,7 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
 
   describe("Terminal Snapshot with Agent State", () => {
     it("should include agent state in snapshot", async () => {
-      const id = await spawnShellTerminal(manager, { type: "claude" });
+      const id = await spawnShellTerminal(manager, { launchAgentId: "claude" });
       await sleep(500);
 
       manager.transitionState(id, { type: "busy" }, "activity", 1.0);
@@ -210,7 +210,7 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
     }, 10000);
 
     it("should include last state change timestamp in snapshot", async () => {
-      const id = await spawnShellTerminal(manager, { type: "claude" });
+      const id = await spawnShellTerminal(manager, { launchAgentId: "claude" });
       await sleep(500);
 
       manager.transitionState(id, { type: "busy" }, "activity", 1.0);
@@ -231,7 +231,7 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
     }, 10000);
 
     it("should handle rapid state transitions", async () => {
-      const id = await spawnShellTerminal(manager, { type: "claude" });
+      const id = await spawnShellTerminal(manager, { launchAgentId: "claude" });
       await sleep(500);
 
       // states to transition to: "working", "waiting", "working", "exited"
@@ -256,7 +256,7 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
     }, 10000);
 
     it("should maintain state after terminal writes", async () => {
-      const id = await spawnShellTerminal(manager, { type: "claude" });
+      const id = await spawnShellTerminal(manager, { launchAgentId: "claude" });
       await sleep(500);
 
       manager.transitionState(id, { type: "busy" }, "activity", 1.0);
@@ -272,7 +272,7 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
 
   describe("Agent Exit State", () => {
     it("should handle agent state on terminal exit", async () => {
-      const id = await spawnShellTerminal(manager, { type: "claude" });
+      const id = await spawnShellTerminal(manager, { launchAgentId: "claude" });
       await sleep(500);
 
       manager.transitionState(id, { type: "busy" }, "activity", 1.0);
@@ -303,7 +303,7 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
     // They need to wait for ActivityMonitor's natural state transitions (via its debounce timer).
 
     it("should transition waiting → working after Enter from idle", async () => {
-      const id = await spawnShellTerminal(manager, { type: "claude" });
+      const id = await spawnShellTerminal(manager, { launchAgentId: "claude" });
 
       // Wait for shell startup activity to settle and ActivityMonitor to reach idle state
       // ActivityMonitor debounce is 2500ms, so wait longer for natural state transition
@@ -335,7 +335,7 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
     }, 10000);
 
     it("should use input trigger for Enter-key driven state changes", async () => {
-      const id = await spawnShellTerminal(manager, { type: "claude" });
+      const id = await spawnShellTerminal(manager, { launchAgentId: "claude" });
 
       // Wait for shell startup to settle
       await sleep(2500);
@@ -364,7 +364,7 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
     }, 10000);
 
     it("should maintain working → waiting cycle during normal operation", async () => {
-      const id = await spawnShellTerminal(manager, { type: "claude" });
+      const id = await spawnShellTerminal(manager, { launchAgentId: "claude" });
 
       // Wait for initial shell startup to settle
       await sleep(2500);
@@ -399,7 +399,7 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
   describe("Project Switch State Preservation", () => {
     it("should preserve agentState and lastStateChange when retrieving terminal info", async () => {
       const projectId = "test-project-123";
-      const id = await spawnShellTerminal(manager, { type: "claude" });
+      const id = await spawnShellTerminal(manager, { launchAgentId: "claude" });
       await sleep(500);
 
       manager.onProjectSwitch(projectId);
@@ -426,7 +426,7 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
 
     it("should preserve exited state across project switches", async () => {
       const projectId = "test-project-456";
-      const id = await spawnShellTerminal(manager, { type: "claude" });
+      const id = await spawnShellTerminal(manager, { launchAgentId: "claude" });
       await sleep(500);
 
       manager.onProjectSwitch(projectId);
@@ -450,7 +450,7 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
 
     it("should preserve exited state across project switches (crash exit)", async () => {
       const projectId = "test-project-789";
-      const id = await spawnShellTerminal(manager, { type: "gemini" });
+      const id = await spawnShellTerminal(manager, { launchAgentId: "gemini" });
       await sleep(500);
 
       manager.onProjectSwitch(projectId);
@@ -480,11 +480,11 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
       const projectB = "project-B";
 
       const terminalA = await spawnShellTerminal(manager, {
-        type: "claude",
+        launchAgentId: "claude",
         projectId: projectA,
       });
       const terminalB = await spawnShellTerminal(manager, {
-        type: "gemini",
+        launchAgentId: "gemini",
         projectId: projectB,
       });
       await sleep(500);
@@ -536,11 +536,11 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
       const projectB = "project-B";
 
       const terminalA = await spawnShellTerminal(manager, {
-        type: "claude",
+        launchAgentId: "claude",
         projectId: projectA,
       });
       const terminalB = await spawnShellTerminal(manager, {
-        type: "gemini",
+        launchAgentId: "gemini",
         projectId: projectB,
       });
       await sleep(500);
@@ -576,11 +576,11 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
       const projectB = "project-B";
 
       await spawnShellTerminal(manager, {
-        type: "claude",
+        launchAgentId: "claude",
         projectId: projectA,
       });
       const terminalB = await spawnShellTerminal(manager, {
-        type: "gemini",
+        launchAgentId: "gemini",
         projectId: projectB,
       });
       await sleep(500);

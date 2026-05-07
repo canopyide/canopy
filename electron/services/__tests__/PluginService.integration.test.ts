@@ -236,11 +236,6 @@ describe("PluginService integration — panel contributions", () => {
       canRestart: true,
       showInPalette: false,
     });
-    expect(getPanelKindConfig("agent")).toMatchObject({
-      id: "agent",
-      hasPty: true,
-      showInPalette: false,
-    });
     expect(getPanelKindConfig("browser")).toMatchObject({
       id: "browser",
       iconId: "globe",
@@ -249,7 +244,7 @@ describe("PluginService integration — panel contributions", () => {
     });
     expect(getPanelKindConfig("dev-preview")).toMatchObject({
       id: "dev-preview",
-      iconId: "monitor",
+      iconId: "monitor-play",
     });
   });
 

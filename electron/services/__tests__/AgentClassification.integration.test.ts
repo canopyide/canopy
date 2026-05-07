@@ -181,7 +181,10 @@ describe("Agent Classification Matrix", () => {
       expect(demoted?.detectedAgentId).toBeUndefined();
     }, 10000);
 
-    it("should demote a promoted terminal when a non-agent process replaces the agent", async () => {
+    it("should hold detected agent when a non-agent process icon arrives without explicit exit", async () => {
+      // Demote-hold guard (commit 3223f42e4): a `processIconId`-only result
+      // without an explicit `no_agent` state must NOT demote a confirmed agent
+      // — process-tree blindness/argv rewrites otherwise flip chrome every poll.
       const id = randomUUID();
       manager.spawn(id, {
         cwd: process.cwd(),
@@ -208,9 +211,9 @@ describe("Agent Classification Matrix", () => {
         })
       );
 
-      const demoted = manager.getTerminal(id);
-      expect(demoted?.analysisEnabled).toBe(false);
-      expect(demoted?.detectedAgentId).toBeUndefined();
+      const held = manager.getTerminal(id);
+      expect(held?.analysisEnabled).toBe(true);
+      expect(held?.detectedAgentId).toBe("claude");
     }, 10000);
 
     it("should set detectedAgentId on promotion so AgentStateService accepts state events", async () => {
