@@ -33,10 +33,10 @@ describe("SidebarContent header reveal — issue #6964", () => {
     expect(source).toMatch(/transition-\[opacity,visibility\][^"]*duration-150/);
   });
 
-  it("applies a 75ms hover-intent delay that focus bypasses with delay-0", () => {
-    expect(source).toContain("delay-75");
-    expect(source).toContain("group-hover/header:delay-0");
-    expect(source).toContain("group-focus-within/header:delay-0");
+  it("applies a 75ms hover-intent delay on the hover/focus state with instant exit (delay-0)", () => {
+    expect(source).toContain("delay-0");
+    expect(source).toContain("group-hover/header:delay-75");
+    expect(source).toContain("group-focus-within/header:delay-75");
   });
 
   it("respects prefers-reduced-motion via motion-reduce:transition-none", () => {
