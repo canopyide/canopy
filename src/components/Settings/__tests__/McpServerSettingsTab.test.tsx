@@ -228,6 +228,62 @@ describe("McpServerSettingsTab", () => {
     expect(window.electron.mcpServer.rotateApiKey).not.toHaveBeenCalled();
   });
 
+  it("Confirming rotation re-masks the display even if the key was previously revealed", async () => {
+    const { container } = render(
+      <SettingsValidationProvider>
+        <McpServerSettingsTab />
+      </SettingsValidationProvider>
+    );
+    await waitForContent(container, "API key active");
+
+    fireEvent.click(screen.getByLabelText("Show API key"));
+    const displayArea = container.querySelector(".bg-surface-disabled")!;
+    await waitFor(() => {
+      expect(displayArea.textContent).toContain("dnt-key-abc123");
+    });
+
+    fireEvent.click(screen.getByTitle("Rotate API key"));
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /rotate api key\?/i })).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /^rotate key$/i }));
+
+    await waitFor(() => {
+      expect(window.electron.mcpServer.rotateApiKey).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(displayArea.textContent).not.toContain("dnt-key-rotated789");
+    });
+    expect(displayArea.textContent).not.toContain("dnt-key-abc123");
+    expect(displayArea.textContent).toContain("•");
+  });
+
+  it("Rotation failure keeps the dialog open and surfaces the error", async () => {
+    installMcpApi({
+      rotateApiKey: vi.fn().mockRejectedValue(new Error("rotate failed")),
+    });
+
+    const { container } = render(
+      <SettingsValidationProvider>
+        <McpServerSettingsTab />
+      </SettingsValidationProvider>
+    );
+    await waitForContent(container, "API key active");
+
+    fireEvent.click(screen.getByTitle("Rotate API key"));
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /rotate api key\?/i })).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /^rotate key$/i }));
+
+    await waitForContent(container, "rotate failed");
+    expect(screen.getByRole("heading", { name: /rotate api key\?/i })).toBeTruthy();
+    expect(window.electron.mcpServer.rotateApiKey).toHaveBeenCalledTimes(1);
+    expect(mockedLogError).toHaveBeenCalledWith("Failed to rotate MCP API key", expect.any(Error));
+  });
+
   it("Canceling the rotate dialog hides any revealed key", async () => {
     const { container } = render(
       <SettingsValidationProvider>

@@ -207,6 +207,7 @@ export function DaintreeAssistantSettingsTab() {
     if (isRotating) return;
     setIsRotating(true);
     try {
+      setError(null);
       const key = await window.electron.mcpServer.rotateApiKey();
       setMcpStatus((prev) => (prev ? { ...prev, apiKey: key } : prev));
       setShowRotateConfirm(false);

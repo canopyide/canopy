@@ -203,6 +203,7 @@ export function McpServerSettingsTab() {
       const key = await window.electron.mcpServer.rotateApiKey();
       setStatus((prev) => ({ ...prev, apiKey: key }));
       setCopiedKey(false);
+      setShowApiKey(false);
       setShowRotateConfirm(false);
     } catch (err) {
       setError(formatErrorMessage(err, "Failed to rotate API key"));
@@ -225,6 +226,11 @@ export function McpServerSettingsTab() {
       if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
       copyTimeoutRef.current = setTimeout(() => setCopiedKey(false), 2000);
     } catch (err) {
+      setCopiedKey(false);
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+        copyTimeoutRef.current = null;
+      }
       setError(formatErrorMessage(err, "Failed to copy API key"));
       logError("Failed to copy MCP API key", err);
     }
