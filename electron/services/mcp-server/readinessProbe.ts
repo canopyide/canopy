@@ -4,6 +4,8 @@ export const PROBE_MAX_ATTEMPTS = 3;
 export const PROBE_BASE_DELAY_MS = 50;
 export const PROBE_REQUEST_TIMEOUT_MS = 1000;
 export const PROBE_HARD_TIMEOUT_MS = 3000;
+export const PROBE_SSE_REQUEST_TIMEOUT_MS = 6000;
+export const PROBE_SSE_HARD_TIMEOUT_MS = 15000;
 export const PROBE_PROTOCOL_VERSION = "2025-11-25";
 
 export interface ProbeOptions {
@@ -83,8 +85,9 @@ export async function probeMcpServer(
 /**
  * Legacy-SSE readiness probe for the exact path Claude Code reads from the
  * assistant session's `.mcp.json`: GET /sse, receive the endpoint event, POST
- * JSON-RPC initialize to /messages, then wait for the initialize result over
- * the SSE stream. Closing the stream tears the probe session down.
+ * JSON-RPC initialize to /messages, then request tools/list and verify a
+ * renderer-backed action tool is available on the SSE stream. Closing the
+ * stream tears the probe session down.
  */
 export async function probeMcpSseServer(
   port: number,
@@ -93,8 +96,8 @@ export async function probeMcpSseServer(
 ): Promise<void> {
   const maxAttempts = options.maxAttempts ?? PROBE_MAX_ATTEMPTS;
   const baseDelayMs = options.baseDelayMs ?? PROBE_BASE_DELAY_MS;
-  const requestTimeoutMs = options.requestTimeoutMs ?? PROBE_REQUEST_TIMEOUT_MS;
-  const hardTimeoutMs = options.hardTimeoutMs ?? PROBE_HARD_TIMEOUT_MS;
+  const requestTimeoutMs = options.requestTimeoutMs ?? PROBE_SSE_REQUEST_TIMEOUT_MS;
+  const hardTimeoutMs = options.hardTimeoutMs ?? PROBE_SSE_HARD_TIMEOUT_MS;
 
   const deadline = Date.now() + hardTimeoutMs;
   let lastError: Error | null = null;
@@ -274,7 +277,7 @@ interface ParsedSseEvent {
 }
 
 function sendSseInitialize(port: number, bearerToken: string, timeoutMs: number): Promise<void> {
-  const body = JSON.stringify({
+  const initializeBody = JSON.stringify({
     jsonrpc: "2.0",
     id: 1,
     method: "initialize",
@@ -284,33 +287,39 @@ function sendSseInitialize(port: number, bearerToken: string, timeoutMs: number)
       clientInfo: { name: "daintree-readiness-probe", version: "1.0.0" },
     },
   });
+  const toolsListBody = JSON.stringify({
+    jsonrpc: "2.0",
+    id: 2,
+    method: "tools/list",
+    params: {},
+  });
 
   return new Promise<void>((resolve, reject) => {
     let settled = false;
     let endpointPath: string | null = null;
     let sseBuffer = "";
     let getReq: http.ClientRequest | undefined;
-    let postReq: http.ClientRequest | undefined;
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    const postReqs = new Set<http.ClientRequest>();
 
     const settle = (fn: () => void) => {
       if (settled) return;
       settled = true;
-      if (timer) clearTimeout(timer);
+      clearTimeout(timer);
       getReq?.destroy();
-      postReq?.destroy();
+      for (const req of postReqs) req.destroy();
+      postReqs.clear();
       fn();
     };
 
-    timer = setTimeout(() => {
+    const timer = setTimeout(() => {
       settle(() => reject(new Error("request timed out")));
     }, timeoutMs);
     timer.unref?.();
 
-    const postInitialize = (path: string) => {
-      if (postReq) return;
+    const postMessage = (path: string, payload: string, label: string) => {
+      if (settled) return;
       try {
-        postReq = http.request(
+        const req = http.request(
           {
             hostname: "127.0.0.1",
             port,
@@ -319,32 +328,44 @@ function sendSseInitialize(port: number, bearerToken: string, timeoutMs: number)
             timeout: timeoutMs,
             headers: {
               "Content-Type": "application/json",
-              "Content-Length": Buffer.byteLength(body),
+              "Content-Length": Buffer.byteLength(payload),
               Authorization: `Bearer ${bearerToken}`,
             },
           },
           (res) => {
             const status = res.statusCode ?? 0;
             res.resume();
+            postReqs.delete(req);
             if (status !== 202) {
-              settle(() => reject(new Error(`POST initialize returned status ${status}`)));
+              settle(() => reject(new Error(`POST ${label} returned status ${status}`)));
             }
           }
         );
-        postReq.on("error", (err) => {
+        postReqs.add(req);
+        req.on("error", (err) => {
+          postReqs.delete(req);
           settle(() => reject(err));
         });
-        postReq.on("timeout", () => {
+        req.on("timeout", () => {
+          postReqs.delete(req);
           settle(() => {
-            postReq?.destroy();
-            reject(new Error("POST initialize timed out"));
+            req.destroy();
+            reject(new Error(`POST ${label} timed out`));
           });
         });
-        postReq.write(body);
-        postReq.end();
+        req.write(payload);
+        req.end();
       } catch (err) {
         settle(() => reject(err instanceof Error ? err : new Error(String(err))));
       }
+    };
+
+    const postInitialize = (path: string) => {
+      postMessage(path, initializeBody, "initialize");
+    };
+
+    const postToolsList = (path: string) => {
+      postMessage(path, toolsListBody, "tools/list");
     };
 
     const handleEvent = (event: ParsedSseEvent) => {
@@ -367,17 +388,45 @@ function sendSseInitialize(port: number, bearerToken: string, timeoutMs: number)
         return;
       }
       if (!parsed || typeof parsed !== "object") {
-        settle(() => reject(new Error("initialize response was not an object")));
+        settle(() => reject(new Error("SSE response was not an object")));
         return;
       }
       const message = parsed as Record<string, unknown>;
-      if (message.id !== 1) return;
       if (message.error) {
-        settle(() => reject(new Error("initialize returned an error response")));
+        settle(() => reject(new Error(`SSE response ${String(message.id)} returned an error`)));
         return;
       }
-      if (!message.result || typeof message.result !== "object") {
-        settle(() => reject(new Error("initialize response missing result")));
+      if (message.id === 1) {
+        if (!message.result || typeof message.result !== "object") {
+          settle(() => reject(new Error("initialize response missing result")));
+          return;
+        }
+        if (!endpointPath) {
+          settle(() => reject(new Error("initialize completed before endpoint discovery")));
+          return;
+        }
+        postToolsList(endpointPath);
+        return;
+      }
+      if (message.id !== 2) return;
+      const result = message.result;
+      if (!result || typeof result !== "object") {
+        settle(() => reject(new Error("tools/list response missing result")));
+        return;
+      }
+      const tools = (result as Record<string, unknown>).tools;
+      if (!Array.isArray(tools)) {
+        settle(() => reject(new Error("tools/list response missing tools array")));
+        return;
+      }
+      const hasManifestBackedTool = tools.some(
+        (tool) =>
+          tool &&
+          typeof tool === "object" &&
+          (tool as Record<string, unknown>).name === "actions.list"
+      );
+      if (!hasManifestBackedTool) {
+        settle(() => reject(new Error("tools/list response missing actions.list")));
         return;
       }
       settle(() => resolve());
@@ -416,7 +465,7 @@ function sendSseInitialize(port: number, bearerToken: string, timeoutMs: number)
           });
           res.on("end", () => {
             if (!settled) {
-              settle(() => reject(new Error("SSE stream ended before initialize response")));
+              settle(() => reject(new Error("SSE stream ended before tools/list response")));
             }
           });
         }

@@ -4,6 +4,8 @@ import {
   PROBE_BASE_DELAY_MS,
   PROBE_MAX_ATTEMPTS,
   PROBE_PROTOCOL_VERSION,
+  PROBE_SSE_HARD_TIMEOUT_MS,
+  PROBE_SSE_REQUEST_TIMEOUT_MS,
   probeMcpServer,
   probeMcpSseServer,
 } from "../readinessProbe.js";
@@ -271,7 +273,7 @@ describe("probeMcpSseServer", () => {
     }
   });
 
-  it("resolves after SSE endpoint discovery, POST initialize, and initialize result message", async () => {
+  it("resolves after SSE endpoint discovery, initialize, and manifest-backed tools/list", async () => {
     let sseRes: http.ServerResponse | null = null;
     fake = await startFakeServer((req, res, body) => {
       if (req.method === "GET" && req.url === "/sse") {
@@ -286,22 +288,42 @@ describe("probeMcpSseServer", () => {
       }
       if (req.method === "POST" && req.url === "/messages?sessionId=sse-session-1") {
         const parsed = JSON.parse(body);
-        expect(parsed.method).toBe("initialize");
-        expect(parsed.params.protocolVersion).toBe(PROBE_PROTOCOL_VERSION);
         res.writeHead(202);
         res.end("Accepted");
-        sseRes?.write(
-          `event: message\ndata: ${JSON.stringify({
-            jsonrpc: "2.0",
-            id: 1,
-            result: {
-              protocolVersion: PROBE_PROTOCOL_VERSION,
-              capabilities: {},
-              serverInfo: { name: "fake", version: "1.0.0" },
-            },
-          })}\n\n`
-        );
-        return;
+        if (parsed.method === "initialize") {
+          expect(parsed.params.protocolVersion).toBe(PROBE_PROTOCOL_VERSION);
+          sseRes?.write(
+            `event: message\ndata: ${JSON.stringify({
+              jsonrpc: "2.0",
+              id: 1,
+              result: {
+                protocolVersion: PROBE_PROTOCOL_VERSION,
+                capabilities: {},
+                serverInfo: { name: "fake", version: "1.0.0" },
+              },
+            })}\n\n`
+          );
+          return;
+        }
+        if (parsed.method === "tools/list") {
+          sseRes?.write(
+            `event: message\ndata: ${JSON.stringify({
+              jsonrpc: "2.0",
+              id: 2,
+              result: {
+                tools: [
+                  {
+                    name: "actions.list",
+                    description: "List available Daintree actions",
+                    inputSchema: { type: "object", properties: {} },
+                  },
+                ],
+              },
+            })}\n\n`
+          );
+          return;
+        }
+        throw new Error(`unexpected method ${String(parsed.method)}`);
       }
       res.writeHead(404);
       res.end();
@@ -313,9 +335,11 @@ describe("probeMcpSseServer", () => {
     expect(getReq?.path).toBe("/sse");
     expect(getReq?.headers.authorization).toBe("Bearer help-token");
 
-    const postReq = fake.requests.find((r) => r.method === "POST");
-    expect(postReq?.path).toBe("/messages?sessionId=sse-session-1");
-    expect(postReq?.headers.authorization).toBe("Bearer help-token");
+    const postReqs = fake.requests.filter((r) => r.method === "POST");
+    expect(postReqs).toHaveLength(2);
+    expect(postReqs.map((r) => JSON.parse(r.body).method)).toEqual(["initialize", "tools/list"]);
+    expect(postReqs.every((r) => r.path === "/messages?sessionId=sse-session-1")).toBe(true);
+    expect(postReqs.every((r) => r.headers.authorization === "Bearer help-token")).toBe(true);
   });
 
   it("rejects when the SSE endpoint returns 401", async () => {
@@ -329,9 +353,62 @@ describe("probeMcpSseServer", () => {
     ).rejects.toThrow(/SSE returned status 401/);
   });
 
-  it("rejects when the SSE stream never returns initialize response", async () => {
-    fake = await startFakeServer((req, res) => {
+  it("rejects when tools/list does not include the renderer-backed action manifest tool", async () => {
+    let sseRes: http.ServerResponse | null = null;
+    fake = await startFakeServer((req, res, body) => {
       if (req.method === "GET" && req.url === "/sse") {
+        sseRes = res;
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        });
+        res.write("event: endpoint\ndata: /messages?sessionId=sse-session-missing-tool\n\n");
+        return;
+      }
+      if (req.method === "POST" && req.url === "/messages?sessionId=sse-session-missing-tool") {
+        const parsed = JSON.parse(body);
+        res.writeHead(202);
+        res.end("Accepted");
+        if (parsed.method === "initialize") {
+          sseRes?.write(
+            `event: message\ndata: ${JSON.stringify({
+              jsonrpc: "2.0",
+              id: 1,
+              result: {
+                protocolVersion: PROBE_PROTOCOL_VERSION,
+                capabilities: {},
+                serverInfo: { name: "fake", version: "1.0.0" },
+              },
+            })}\n\n`
+          );
+          return;
+        }
+        if (parsed.method === "tools/list") {
+          sseRes?.write(
+            `event: message\ndata: ${JSON.stringify({
+              jsonrpc: "2.0",
+              id: 2,
+              result: { tools: [{ name: "terminal.waitUntilIdle" }] },
+            })}\n\n`
+          );
+          return;
+        }
+      }
+      res.writeHead(404);
+      res.end();
+    });
+
+    await expect(
+      probeMcpSseServer(fake.port, "help-token", { hardTimeoutMs: 500, baseDelayMs: 10 })
+    ).rejects.toThrow(/actions\.list/);
+  });
+
+  it("rejects when the SSE stream never returns tools/list response", async () => {
+    let sseRes: http.ServerResponse | null = null;
+    fake = await startFakeServer((req, res, body) => {
+      if (req.method === "GET" && req.url === "/sse") {
+        sseRes = res;
         res.writeHead(200, {
           "Content-Type": "text/event-stream",
           "Cache-Control": "no-cache",
@@ -341,8 +418,22 @@ describe("probeMcpSseServer", () => {
         return;
       }
       if (req.method === "POST" && req.url === "/messages?sessionId=sse-session-2") {
+        const parsed = JSON.parse(body);
         res.writeHead(202);
         res.end("Accepted");
+        if (parsed.method === "initialize") {
+          sseRes?.write(
+            `event: message\ndata: ${JSON.stringify({
+              jsonrpc: "2.0",
+              id: 1,
+              result: {
+                protocolVersion: PROBE_PROTOCOL_VERSION,
+                capabilities: {},
+                serverInfo: { name: "fake", version: "1.0.0" },
+              },
+            })}\n\n`
+          );
+        }
         return;
       }
       res.writeHead(404);
@@ -363,5 +454,7 @@ describe("probe constants", () => {
   it("exports sane defaults", () => {
     expect(PROBE_MAX_ATTEMPTS).toBeGreaterThanOrEqual(1);
     expect(PROBE_BASE_DELAY_MS).toBeGreaterThan(0);
+    expect(PROBE_SSE_REQUEST_TIMEOUT_MS).toBeGreaterThanOrEqual(5000);
+    expect(PROBE_SSE_HARD_TIMEOUT_MS).toBeGreaterThan(PROBE_SSE_REQUEST_TIMEOUT_MS);
   });
 });
