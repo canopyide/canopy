@@ -109,6 +109,50 @@ describe("EventBuffer adversarial", () => {
     );
   });
 
+  it("removes evicted entries from the search index", () => {
+    for (let i = 0; i < 3; i++) {
+      events.emit("agent:spawned", {
+        agentId: `agent-${i}`,
+        terminalId: `term-${i}`,
+        timestamp: i + 1,
+      });
+    }
+
+    // All three should be searchable
+    expect(buffer.getFiltered({ search: "agent-0" })).toHaveLength(1);
+    expect(buffer.getFiltered({ search: "agent-1" })).toHaveLength(1);
+    expect(buffer.getFiltered({ search: "agent-2" })).toHaveLength(1);
+
+    // Evict agent-0
+    events.emit("agent:spawned", {
+      agentId: "agent-3",
+      terminalId: "term-3",
+      timestamp: 4,
+    });
+
+    expect(buffer.getFiltered({ search: "agent-0" })).toHaveLength(0);
+    expect(buffer.getFiltered({ search: "agent-1" })).toHaveLength(1);
+    expect(buffer.getFiltered({ search: "agent-3" })).toHaveLength(1);
+  });
+
+  it("indexes void-payload events by event type for search", () => {
+    // sys:refresh has no meaningful payload
+    events.emit("agent:spawned", {
+      agentId: "agent-x",
+      terminalId: "term-x",
+      timestamp: 1,
+    });
+
+    // Search by event type name should find it
+    const byType = buffer.getFiltered({ search: "agent:spawned" });
+    expect(byType.length).toBeGreaterThanOrEqual(1);
+    expect(byType.some((e) => e.payload.agentId === "agent-x")).toBe(true);
+
+    // Search by payload content should also work
+    const byPayload = buffer.getFiltered({ search: "agent-x" });
+    expect(byPayload.length).toBe(1);
+  });
+
   it("filters large payloads without truncating searchable fields", () => {
     const payload: NotifyEventPayload = {
       message: `${"x".repeat(250_000)}needle`,

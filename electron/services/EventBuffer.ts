@@ -6,6 +6,7 @@ import {
   getEventCategory,
 } from "./events.js";
 import type { EventRecord, EventCategory } from "../../shared/types/index.js";
+import { safeStringify } from "../utils/safeStringify.js";
 
 export type { EventRecord };
 
@@ -31,6 +32,7 @@ export class EventBuffer {
   private maxSize: number;
   private unsubscribe?: () => void;
   private onRecordCallbacks: Array<(record: EventRecord) => void> = [];
+  private searchIndex = new Map<string, string>();
 
   constructor(maxSize: number = 1000) {
     this.maxSize = maxSize;
@@ -46,29 +48,15 @@ export class EventBuffer {
     };
   }
 
-  private cloneValue<T>(value: T): T {
-    if (value === undefined) {
-      return value;
-    }
-
-    try {
-      return structuredClone(value);
-    } catch {
-      if (Array.isArray(value)) {
-        return value.map((item) => this.cloneValue(item)) as T;
-      }
-      if (value && typeof value === "object") {
-        return { ...(value as Record<string, unknown>) } as T;
-      }
-      return value;
-    }
-  }
-
   private cloneRecord(record: EventRecord): EventRecord {
     return {
       ...record,
-      payload: this.cloneValue(record.payload),
+      payload: structuredClone(record.payload),
     };
+  }
+
+  private createSearchText(record: EventRecord): string {
+    return `${record.type} ${String(safeStringify(record.payload))}`.toLowerCase();
   }
 
   private sanitizePayload(eventType: keyof DaintreeEventMap, payload: any): any {
@@ -142,14 +130,18 @@ export class EventBuffer {
           const eventTimestamp =
             payload && typeof payload.timestamp === "number" ? payload.timestamp : Date.now();
 
-          this.push({
-            id: this.generateId(),
-            timestamp: eventTimestamp,
-            type: eventType,
-            category: getEventCategory(eventType),
-            payload: this.sanitizePayload(eventType, payload),
-            source: "main",
-          });
+          try {
+            this.push({
+              id: this.generateId(),
+              timestamp: eventTimestamp,
+              type: eventType,
+              category: getEventCategory(eventType),
+              payload: this.sanitizePayload(eventType, payload),
+              source: "main",
+            });
+          } catch (error) {
+            console.error(`[EventBuffer] Failed to buffer event ${eventType}:`, error);
+          }
         }) as any
       );
       unsubscribers.push(unsub);
@@ -169,7 +161,10 @@ export class EventBuffer {
 
   private push(event: EventRecord): void {
     const storedEvent = this.cloneRecord(event);
+    const searchText = this.createSearchText(storedEvent);
+
     this.buffer.push(storedEvent);
+    this.searchIndex.set(storedEvent.id, searchText);
 
     for (const callback of [...this.onRecordCallbacks]) {
       try {
@@ -180,7 +175,10 @@ export class EventBuffer {
     }
 
     if (this.buffer.length > this.maxSize) {
-      this.buffer = this.buffer.slice(-this.maxSize);
+      const evicted = this.buffer.shift();
+      if (evicted) {
+        this.searchIndex.delete(evicted.id);
+      }
     }
   }
 
@@ -271,15 +269,7 @@ export class EventBuffer {
     if (options.search) {
       const searchLower = options.search.toLowerCase();
       filtered = filtered.filter((event) => {
-        if (event.type.toLowerCase().includes(searchLower)) {
-          return true;
-        }
-        try {
-          const payloadStr = JSON.stringify(event.payload).toLowerCase();
-          return payloadStr.includes(searchLower);
-        } catch {
-          return false;
-        }
+        return this.searchIndex.get(event.id)?.includes(searchLower) ?? false;
       });
     }
 
@@ -288,6 +278,7 @@ export class EventBuffer {
 
   clear(): void {
     this.buffer = [];
+    this.searchIndex.clear();
   }
 
   onProjectSwitch(): void {
