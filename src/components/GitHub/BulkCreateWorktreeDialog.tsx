@@ -581,7 +581,11 @@ export function BulkCreateWorktreeDialog({
                 }
               }
 
-              // Step 3: Issue assignment (best-effort, issues only)
+              // Step 3: Issue assignment (best-effort, issues only).
+              // Retries transient failures using the same helpers as the outer loop, but
+              // with isolated backoff so step-3 delays don't contaminate sibling items.
+              // Permanent failures (401/403/404/422) and exhausted retries fall through
+              // silently — assignment is never surfaced as an item failure.
               if (planned.mode === "issue" && assignWorktreeToSelf && itemNumber) {
                 const username = useGitHubConfigStore.getState().config?.username;
                 if (username) {
@@ -589,10 +593,25 @@ export function BulkCreateWorktreeDialog({
                     type: "ITEM_ASSIGNING",
                     issueNumber: itemNumber,
                   });
-                  try {
-                    await githubClient.assignIssue(rootPath, itemNumber, username);
-                  } catch {
-                    // Best-effort — silent failure
+                  let assignBackoff = BACKOFF_BASE_MS;
+                  for (
+                    let assignAttempt = 1;
+                    assignAttempt <= MAX_AUTO_RETRIES + 1;
+                    assignAttempt++
+                  ) {
+                    if (runIdRef.current !== currentRunId) return;
+                    try {
+                      await githubClient.assignIssue(rootPath, itemNumber, username);
+                      break;
+                    } catch (err) {
+                      const assignErr = normalizeError(err);
+                      if (assignAttempt <= MAX_AUTO_RETRIES && isTransientError(assignErr)) {
+                        assignBackoff = nextBackoffDelay(assignBackoff);
+                        await delay(assignBackoff);
+                        continue;
+                      }
+                      break;
+                    }
                   }
                 }
               }

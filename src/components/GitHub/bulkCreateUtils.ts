@@ -18,8 +18,10 @@ export const BACKOFF_BASE_MS = 3000;
 export const BACKOFF_CAP_MS = 30000;
 export const VERIFICATION_SETTLE_MS = 800;
 
+// IPC strips structured error fields (lesson #3769), so renderer-side classification
+// matches the strings emitted by `parseGitHubError` in the main process — not status codes.
 const TRANSIENT_ERROR_RE =
-  /\.lock['"]?:.*(?:File exists|exists)|Another git process|Resource temporarily unavailable|cannot lock ref|could not lock config file|Rate limit exceeded|Spawn queue full|ETIMEDOUT|ECONNRESET|ECONNREFUSED/i;
+  /\.lock['"]?:.*(?:File exists|exists)|Another git process|Resource temporarily unavailable|cannot lock ref|could not lock config file|Rate limit exceeded|Spawn queue full|ETIMEDOUT|ECONNRESET|ECONNREFUSED|GitHub is temporarily unavailable|Cannot reach GitHub|GitHub rate limit exceeded|GitHub secondary rate limit triggered/i;
 
 export function isTransientError(message: string, code?: string): boolean {
   if (code === "VALIDATION_ERROR" || code === "NOT_FOUND") return false;
