@@ -1,89 +1,169 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { renderHook } from "@testing-library/react";
-import { useHostReparent } from "../useHostReparent";
+import type { RefObject } from "react";
+import { useHostReparent, type ReparentEditorView } from "../useHostReparent";
 import { Compartment } from "@codemirror/state";
 
 describe("useHostReparent", () => {
+  beforeEach(() => {
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      callback(performance.now());
+      return 1;
+    });
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function ref<T>(current: T): RefObject<T> {
+    return { current };
+  }
+
   function makeMockView() {
     const dispatch = vi.fn();
     const dom = document.createElement("div");
     const scrollDOM = document.createElement("div");
-    const view = {
+    const requestMeasure = vi.fn();
+    const focus = vi.fn();
+    const view: ReparentEditorView = {
       dom,
       scrollDOM,
       dispatch,
-      requestMeasure: vi.fn(),
-      focus: vi.fn(),
+      requestMeasure,
+      focus,
     };
 
-    return { view, dispatch, dom };
+    return { view, dispatch, dom, requestMeasure, focus };
   }
 
   it("repairs to modal host when expanded", () => {
     const { view, dispatch } = makeMockView();
-    const editorViewRef = { current: view as any };
-    const compactHost = { current: document.createElement("div") };
-    const modalHost = { current: document.createElement("div") };
-    const autoSizeRef = { current: new Compartment() };
-    vi.spyOn(autoSizeRef.current, "reconfigure").mockReturnValue({} as any);
+    const compactEl = document.createElement("div");
+    const modalEl = document.createElement("div");
+    const editorViewRef = ref<ReparentEditorView | null>(view);
+    const compactHost = ref<HTMLDivElement | null>(compactEl);
+    const modalHost = ref<HTMLDivElement | null>(modalEl);
+    const autoSizeRef = ref(new Compartment());
 
     renderHook(() =>
       useHostReparent({
-        editorViewRef: editorViewRef as any,
-        compactEditorHostRef: compactHost as any,
-        modalEditorHostRef: modalHost as any,
-        autoSizeCompartmentRef: autoSizeRef as any,
+        editorViewRef,
+        compactEditorHostRef: compactHost,
+        modalEditorHostRef: modalHost,
+        autoSizeCompartmentRef: autoSizeRef,
         isExpanded: true,
       })
     );
 
-    expect(modalHost.current!.contains(view.dom)).toBe(true);
-    expect(compactHost.current!.contains(view.dom)).toBe(false);
+    expect(modalEl.contains(view.dom)).toBe(true);
+    expect(compactEl.contains(view.dom)).toBe(false);
     expect(dispatch).toHaveBeenCalled();
   });
 
-  it("repairs to compact host when collapsed", () => {
-    const { view } = makeMockView();
-    const editorViewRef = { current: view as any };
-    const compactHost = { current: document.createElement("div") };
-    const modalHost = { current: document.createElement("div") };
-    const autoSizeRef = { current: new Compartment() };
-    vi.spyOn(autoSizeRef.current, "reconfigure").mockReturnValue({} as any);
-
-    modalHost.current!.appendChild(view.dom);
+  it("does not focus the compact editor during initial mount", () => {
+    const { view, requestMeasure, focus } = makeMockView();
+    const compactEl = document.createElement("div");
+    const modalEl = document.createElement("div");
+    const editorViewRef = ref<ReparentEditorView | null>(view);
+    const compactHost = ref<HTMLDivElement | null>(compactEl);
+    const modalHost = ref<HTMLDivElement | null>(modalEl);
+    const autoSizeRef = ref(new Compartment());
 
     renderHook(() =>
       useHostReparent({
-        editorViewRef: editorViewRef as any,
-        compactEditorHostRef: compactHost as any,
-        modalEditorHostRef: modalHost as any,
-        autoSizeCompartmentRef: autoSizeRef as any,
+        editorViewRef,
+        compactEditorHostRef: compactHost,
+        modalEditorHostRef: modalHost,
+        autoSizeCompartmentRef: autoSizeRef,
         isExpanded: false,
       })
     );
 
-    expect(compactHost.current!.contains(view.dom)).toBe(true);
-    expect(modalHost.current!.contains(view.dom)).toBe(false);
+    expect(compactEl.contains(view.dom)).toBe(true);
+    expect(requestMeasure).toHaveBeenCalled();
+    expect(focus).not.toHaveBeenCalled();
   });
 
-  it("does nothing when view is null", () => {
-    const editorViewRef = { current: null };
-    const compactHost = { current: document.createElement("div") };
-    const modalHost = { current: document.createElement("div") };
-    const autoSizeRef = { current: new Compartment() };
+  it("repairs to compact host when collapsed", () => {
+    const { view } = makeMockView();
+    const compactEl = document.createElement("div");
+    const modalEl = document.createElement("div");
+    const editorViewRef = ref<ReparentEditorView | null>(view);
+    const compactHost = ref<HTMLDivElement | null>(compactEl);
+    const modalHost = ref<HTMLDivElement | null>(modalEl);
+    const autoSizeRef = ref(new Compartment());
+
+    modalEl.appendChild(view.dom);
 
     renderHook(() =>
       useHostReparent({
-        editorViewRef: editorViewRef as any,
-        compactEditorHostRef: compactHost as any,
-        modalEditorHostRef: modalHost as any,
-        autoSizeCompartmentRef: autoSizeRef as any,
+        editorViewRef,
+        compactEditorHostRef: compactHost,
+        modalEditorHostRef: modalHost,
+        autoSizeCompartmentRef: autoSizeRef,
+        isExpanded: false,
+      })
+    );
+
+    expect(compactEl.contains(view.dom)).toBe(true);
+    expect(modalEl.contains(view.dom)).toBe(false);
+  });
+
+  it("restores focus after an expanded/collapsed transition", () => {
+    const { view, focus } = makeMockView();
+    const compactEl = document.createElement("div");
+    const modalEl = document.createElement("div");
+    const editorViewRef = ref<ReparentEditorView | null>(view);
+    const compactHost = ref<HTMLDivElement | null>(compactEl);
+    const modalHost = ref<HTMLDivElement | null>(modalEl);
+    const autoSizeRef = ref(new Compartment());
+
+    const { rerender } = renderHook(
+      ({ isExpanded }: { isExpanded: boolean }) =>
+        useHostReparent({
+          editorViewRef,
+          compactEditorHostRef: compactHost,
+          modalEditorHostRef: modalHost,
+          autoSizeCompartmentRef: autoSizeRef,
+          isExpanded,
+        }),
+      { initialProps: { isExpanded: false } }
+    );
+
+    expect(focus).not.toHaveBeenCalled();
+
+    rerender({ isExpanded: true });
+    expect(modalEl.contains(view.dom)).toBe(true);
+    expect(focus).toHaveBeenCalledTimes(1);
+
+    focus.mockClear();
+    rerender({ isExpanded: false });
+    expect(compactEl.contains(view.dom)).toBe(true);
+    expect(focus).toHaveBeenCalledTimes(1);
+  });
+
+  it("does nothing when view is null", () => {
+    const compactEl = document.createElement("div");
+    const modalEl = document.createElement("div");
+    const editorViewRef = ref<ReparentEditorView | null>(null);
+    const compactHost = ref<HTMLDivElement | null>(compactEl);
+    const modalHost = ref<HTMLDivElement | null>(modalEl);
+    const autoSizeRef = ref(new Compartment());
+
+    renderHook(() =>
+      useHostReparent({
+        editorViewRef,
+        compactEditorHostRef: compactHost,
+        modalEditorHostRef: modalHost,
+        autoSizeCompartmentRef: autoSizeRef,
         isExpanded: true,
       })
     );
 
-    expect(compactHost.current!.children.length).toBe(0);
-    expect(modalHost.current!.children.length).toBe(0);
+    expect(compactEl.children.length).toBe(0);
+    expect(modalEl.children.length).toBe(0);
   });
 });
