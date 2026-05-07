@@ -301,7 +301,7 @@ export class ProcessTreeCache {
     const newCache = new Map<number, ProcessInfo>();
     const newChildrenMap = new Map<number, number[]>();
     const now = Date.now();
-    const numCpus = Math.max(os.cpus().length, 1);
+    const numCpus = Math.max(os.availableParallelism(), 1);
     const activeSnapshotKeys = new Set<string>();
 
     for (const p of processes) {
