@@ -52,6 +52,24 @@ describe("GitHubTokenHealthService", () => {
       expect(gitHubTokenHealthService.getState().status).toBe("unknown");
     });
 
+    it("sends User-Agent, X-GitHub-Api-Version, and Bearer headers", async () => {
+      GitHubAuth.setToken("ghp_testtoken0000000000000000000000000000000");
+      fetchMock.mockResolvedValue(buildResponse(200));
+
+      await gitHubTokenHealthService.refresh({ force: true });
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        "https://api.github.com/rate_limit",
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Authorization: "Bearer ghp_testtoken0000000000000000000000000000000",
+            "User-Agent": "Daintree-Electron",
+            "X-GitHub-Api-Version": "2022-11-28",
+          }),
+        })
+      );
+    });
+
     it("marks state healthy on a 2xx probe response", async () => {
       GitHubAuth.setToken("ghp_testtoken0000000000000000000000000000000");
       fetchMock.mockResolvedValue(buildResponse(200));
@@ -62,7 +80,7 @@ describe("GitHubTokenHealthService", () => {
         "https://api.github.com/rate_limit",
         expect.objectContaining({
           headers: expect.objectContaining({
-            Authorization: expect.stringContaining("token "),
+            Authorization: expect.stringContaining("Bearer "),
           }),
           signal: expect.any(AbortSignal),
         })

@@ -268,4 +268,97 @@ describe("GitHubAuth", () => {
 
     gitHubRateLimitService._resetForTests();
   });
+
+  it("validate sends User-Agent, X-GitHub-Api-Version, and Bearer headers", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ login: "user", avatar_url: "" }),
+      headers: new Headers({ "x-oauth-scopes": "repo" }),
+    });
+    (globalThis as unknown as { fetch: Mock }).fetch = mockFetch;
+
+    await GitHubAuth.validate("ghp_validtoken012345678901234567890123456789");
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      "https://api.github.com/user",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer ghp_validtoken012345678901234567890123456789",
+          "User-Agent": "Daintree-Electron",
+          "X-GitHub-Api-Version": "2022-11-28",
+        }),
+      })
+    );
+  });
+
+  it("filters empty strings from x-oauth-scopes", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ login: "user", avatar_url: "" }),
+      headers: new Headers({ "x-oauth-scopes": "repo, read:user, " }),
+    });
+    (globalThis as unknown as { fetch: Mock }).fetch = mockFetch;
+
+    const result = await GitHubAuth.validate("ghp_validtoken012345678901234567890123456789");
+
+    expect(result.valid).toBe(true);
+    expect(result.scopes).toEqual(["repo", "read:user"]);
+  });
+
+  it("returns empty scopes for comma-only header", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ login: "user", avatar_url: "" }),
+      headers: new Headers({ "x-oauth-scopes": "," }),
+    });
+    (globalThis as unknown as { fetch: Mock }).fetch = mockFetch;
+
+    const result = await GitHubAuth.validate("ghp_validtoken012345678901234567890123456789");
+
+    expect(result.valid).toBe(true);
+    expect(result.scopes).toEqual([]);
+  });
+
+  it("include response.status on generic error so it is actionable even when statusText is empty", async () => {
+    (globalThis as unknown as { fetch: Mock }).fetch = vi
+      .fn()
+      .mockResolvedValue(new Response(null, { status: 422, statusText: "" }));
+
+    const result = await GitHubAuth.validate("ghp_validtoken012345678901234567890123456789");
+
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("422");
+  });
+
+  it("prevents stale auth metadata from repopulating after mid-flight token rotation", async () => {
+    GitHubAuth.setToken("ghp_stale00000000000000000000000000000000000");
+
+    let resolveFetch: ((value: Response) => void) | null = null;
+    (globalThis as unknown as { fetch: Mock }).fetch = vi.fn().mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        })
+    );
+
+    const validatePromise = GitHubAuth.validate("ghp_stale00000000000000000000000000000000000");
+
+    // Token rotates before the stale response lands.
+    GitHubAuth.setToken("ghp_fresh00000000000000000000000000000000000");
+
+    resolveFetch!(
+      new Response('{"login":"old-user"}', {
+        status: 200,
+        headers: {
+          "x-oauth-scopes": "repo",
+          "x-github-sso":
+            "required; url=https://github.com/orgs/stale/sso?authorization_request=abc",
+        },
+      })
+    );
+    await validatePromise;
+
+    // Stale SSO URL must not leak into current metadata.
+    expect(getLastAuthMetadata()?.ssoUrl).toBeUndefined();
+  });
 });
