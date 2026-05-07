@@ -2156,9 +2156,19 @@ describe("McpServerService", () => {
         description: "Move a terminal to trash",
       }),
       createManifestEntry({
+        id: "terminal.closeAll" as ActionId,
+        title: "Close All Terminals",
+        description: "Move all terminals to trash",
+      }),
+      createManifestEntry({
         id: "terminal.kill" as ActionId,
         title: "Kill Terminal",
         description: "Permanently remove a terminal",
+      }),
+      createManifestEntry({
+        id: "copyTree.generateAndCopyFile" as ActionId,
+        title: "Generate And Copy Context",
+        description: "Write generated context to the OS clipboard",
       }),
       createManifestEntry({
         id: "agent.terminal" as ActionId,
@@ -2259,15 +2269,13 @@ describe("McpServerService", () => {
       }),
     ];
 
-    // Spawning terminals/agents, driving them via sent commands, and trashing
-    // terminals are intentionally action-tier — see ACTION_TIER_ADDONS in
-    // McpServerService. System tier is reserved for destructive or
-    // externally-visible ops, including permanent terminal kills.
+    // Spawning terminals via `terminal.new`, driving running agents via
+    // `agent.terminal`, and the workflow macro stay action-tier — see
+    // ACTION_TIER_ADDONS in shared.ts. System tier owns raw command sending,
+    // closing/killing terminals, launching new agents from scratch, OS
+    // clipboard writes, and other destructive or externally-visible ops.
     const ACTION_TIER_TOOLS = [
-      "terminal.sendCommand",
-      "terminal.close",
       "agent.terminal",
-      "agent.launch",
       "agent.focusNextWaiting",
       "agent.focusNextWorking",
       "agent.focusNextAgent",
@@ -2292,7 +2300,12 @@ describe("McpServerService", () => {
       "git.commit",
       "git.push",
       "worktree.delete",
+      "terminal.sendCommand",
+      "terminal.close",
+      "terminal.closeAll",
       "terminal.kill",
+      "agent.launch",
+      "copyTree.generateAndCopyFile",
     ] as const;
 
     // Fleet-broadcast primitives are renderer-only — they remain available
@@ -2347,7 +2360,7 @@ describe("McpServerService", () => {
       }
     });
 
-    it("action tier adds non-destructive mutations and terminal/agent spawning, but excludes irreversible ones", async () => {
+    it("action tier adds non-destructive in-app mutations, but excludes raw terminal sends, terminal closes, agent launches, and clipboard writes", async () => {
       paneTokenTiers.set("token-action", "action");
       const { window } = createMockWindow({ getManifest: tierManifest });
 
@@ -2419,6 +2432,38 @@ describe("McpServerService", () => {
       })) as TextToolResult;
       expect(denied.isError).toBe(true);
       expect(denied.content[0]?.text).toContain("TIER_NOT_PERMITTED");
+      expect(dispatchMock).not.toHaveBeenCalled();
+    });
+
+    it("rejects raw command, terminal close, agent launch, and clipboard writes at the action tier", async () => {
+      paneTokenTiers.set("token-action", "action");
+      const dispatchMock = vi.fn(
+        (): ActionDispatchResult => ({ ok: true, result: "should-not-run" })
+      );
+      const { window } = createMockWindow({
+        getManifest: tierManifest,
+        dispatchAction: dispatchMock,
+      });
+
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!, {
+        Authorization: "Bearer token-action",
+      });
+      transports.push(transport);
+
+      const calls: Array<{ name: string; arguments: Record<string, unknown> }> = [
+        { name: "terminal.sendCommand", arguments: { id: "t", text: "x" } },
+        { name: "terminal.close", arguments: { id: "t" } },
+        { name: "terminal.closeAll", arguments: {} },
+        { name: "agent.launch", arguments: { agentId: "claude" } },
+        { name: "copyTree.generateAndCopyFile", arguments: {} },
+      ];
+
+      for (const call of calls) {
+        const denied = (await client.callTool(call)) as TextToolResult;
+        expect(denied.isError, `${call.name} should be denied at action tier`).toBe(true);
+        expect(denied.content[0]?.text).toContain("TIER_NOT_PERMITTED");
+      }
       expect(dispatchMock).not.toHaveBeenCalled();
     });
 
