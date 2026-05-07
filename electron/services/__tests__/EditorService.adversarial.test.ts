@@ -153,6 +153,46 @@ describe("EditorService adversarial", () => {
     expect(shellMock.openPath).toHaveBeenCalledWith("/abs/file.ts");
   });
 
+  it("VISUAL=vim falls through to EDITOR=code instead of dropping it", async () => {
+    process.env.VISUAL = "vim";
+    process.env.EDITOR = "code";
+    const { openFile } = await loadModule();
+
+    await openFile("/abs/file.ts");
+
+    expect(execaMock.execa).toHaveBeenCalledTimes(1);
+    expect(execaMock.execa).toHaveBeenCalledWith(
+      "code",
+      ["/abs/file.ts"],
+      expect.objectContaining({ detached: true })
+    );
+  });
+
+  it("VISUAL=nvim.exe on Windows is detected as a terminal editor and skipped", async () => {
+    setPlatform("win32");
+    process.env.VISUAL = "nvim.exe";
+    const { openFile } = await loadModule();
+
+    await openFile("/abs/file.ts");
+
+    expect(execaMock.execa).not.toHaveBeenCalled();
+    expect(shellMock.openPath).toHaveBeenCalledWith("/abs/file.ts");
+  });
+
+  it("custom template substitutes every occurrence of {file}/{line}/{col}, not just the first", async () => {
+    const { openFile } = await loadModule();
+
+    await openFile("/abs/file.ts", 10, 2, {
+      id: "custom",
+      customCommand: "code",
+      customTemplate: "--arg={file}:{line}:{col}:{file}",
+    });
+
+    expect(execaMock.execa).toHaveBeenCalledTimes(1);
+    const [, args] = execaMock.execa.mock.calls[0];
+    expect(args).toEqual(["--arg=/abs/file.ts:10:2:/abs/file.ts"]);
+  });
+
   it("findBinaryInPath skips files that exist but are not executable on Unix", async () => {
     mockExistingFiles(["/usr/local/bin/code"], { executable: false });
     const { openFile } = await loadModule();

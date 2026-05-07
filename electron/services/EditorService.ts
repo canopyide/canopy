@@ -309,9 +309,31 @@ function buildCustomArgs(
 
   const tokens = tokenizeArgString(template);
   const args = tokens.map((token) =>
-    token.replace("{file}", filePath).replace("{line}", lineStr).replace("{col}", colStr)
+    token.replaceAll("{file}", filePath).replaceAll("{line}", lineStr).replaceAll("{col}", colStr)
   );
   return { binary: command, args };
+}
+
+function envEditorBinaryName(binary: string): string {
+  let name = path.basename(binary).toLowerCase();
+  if (process.platform === "win32" && name.endsWith(".exe")) {
+    name = name.slice(0, -".exe".length);
+  }
+  return name;
+}
+
+async function tryEnvEditor(
+  envEditor: string,
+  filePath: string,
+  launchEditor: (binary: string, args: string[]) => Promise<boolean>
+): Promise<boolean> {
+  const tokens = tokenizeArgString(envEditor);
+  if (tokens.length === 0) return false;
+  const [binary, ...extraArgs] = tokens;
+  // Skip terminal editors — spawning them detached + stdio:"ignore" produces an
+  // invisible hung process. Fall through to GUI-capable fallbacks instead.
+  if (TERMINAL_EDITORS.has(envEditorBinaryName(binary))) return false;
+  return launchEditor(binary, [...extraArgs, filePath]);
 }
 
 export async function openFile(
@@ -365,20 +387,12 @@ export async function openFile(
     }
   }
 
-  // 2. Try VISUAL / EDITOR env vars
-  const envEditor = process.env.VISUAL || process.env.EDITOR;
-  if (envEditor) {
-    const tokens = tokenizeArgString(envEditor);
-    if (tokens.length > 0) {
-      const [binary, ...extraArgs] = tokens;
-      // Skip terminal editors — spawning them detached + stdio:"ignore" produces an
-      // invisible hung process. Fall through to GUI-capable fallbacks instead.
-      const isTerminalEditor = TERMINAL_EDITORS.has(path.basename(binary).toLowerCase());
-      if (!isTerminalEditor) {
-        const launched = await launchEditor(binary, [...extraArgs, filePath]);
-        if (launched) return;
-      }
-    }
+  // 2. Try VISUAL, then EDITOR. They're checked in order so a terminal-editor
+  // VISUAL (e.g. VISUAL=vim) doesn't suppress a GUI-editor EDITOR (e.g. EDITOR=code).
+  for (const envEditor of [process.env.VISUAL, process.env.EDITOR]) {
+    if (!envEditor) continue;
+    const launched = await tryEnvEditor(envEditor, filePath, launchEditor);
+    if (launched) return;
   }
 
   // 3. Try discovered editors in priority order
