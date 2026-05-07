@@ -79,7 +79,6 @@ export function stripAnsi(text: string): string {
     .replace(/\x1b[=>]/g, "") // Keypad mode
     .replace(/\x1b[78]/g, "") // Save/restore cursor
     .replace(/\x1b[DME]/g, "") // Line control
-    .replace(/\x1b\[[\d;]*m/g, "") // SGR (colors/styles) - catch-all
     .replace(/\x1b[@-Z\\-_]/g, ""); // 7-bit C1 escapes
   /* eslint-enable no-control-regex */
 }

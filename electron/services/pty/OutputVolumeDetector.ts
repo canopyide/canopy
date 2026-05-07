@@ -48,8 +48,7 @@ export class OutputVolumeDetector {
 
   // Time after a fire-event that the consumer should still consider output
   // "recent" — derived as the time it takes to drain a full bucket from the
-  // activation threshold. Replaces the old windowMs getter on line-672 of
-  // ActivityMonitor's hasRecentOutputActivity check.
+  // activation threshold. Consumed by ActivityMonitor.runPollingCycle.
   get recencyWindowMs(): number {
     return this.activationThreshold / this.leakRatePerMs;
   }
