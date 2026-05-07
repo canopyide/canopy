@@ -1,7 +1,7 @@
 import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 import { getAgentAvailabilityStore } from "../AgentAvailabilityStore.js";
 import { events } from "../events.js";
-import type { AgentState } from "../../../shared/types/agent.js";
+import type { AgentState, WaitingReason } from "../../../shared/types/agent.js";
 import {
   type WaitUntilIdleResult,
   DEFAULT_WAIT_UNTIL_IDLE_TIMEOUT_MS,
@@ -96,8 +96,9 @@ export async function handleWaitUntilIdle(
         state: AgentState;
         previousState: AgentState;
         timestamp: number;
+        waitingReason?: WaitingReason;
       }
-    | { kind: "already-idle"; state: AgentState }
+    | { kind: "already-idle"; state: AgentState; waitingReason?: WaitingReason }
     | { kind: "timeout" }
     | { kind: "abort" };
 
@@ -119,12 +120,17 @@ export async function handleWaitUntilIdle(
           state: payload.state,
           previousState: payload.previousState,
           timestamp: payload.timestamp,
+          waitingReason: payload.waitingReason,
         });
       });
 
       const currentState = store.getState(agentId);
       if (currentState !== "working") {
-        settle({ kind: "already-idle", state: currentState ?? "idle" });
+        settle({
+          kind: "already-idle",
+          state: currentState ?? "idle",
+          waitingReason: store.getWaitingReason(agentId),
+        });
         return;
       }
 
@@ -154,22 +160,30 @@ export async function handleWaitUntilIdle(
     }
 
     if (settlement.kind === "transition") {
+      const idleReason = mapAgentStateToIdleReason(settlement.state);
       return {
         terminalId,
         agentId,
         busyState: mapAgentStateToBusyState(settlement.state),
-        idleReason: mapAgentStateToIdleReason(settlement.state),
+        idleReason,
+        ...(idleReason === "waiting_for_user" && settlement.waitingReason
+          ? { waitingReason: settlement.waitingReason }
+          : {}),
         previousBusyState: mapAgentStateToBusyState(settlement.previousState),
         lastTransitionAt: settlement.timestamp,
         timedOut: false,
       };
     }
 
+    const idleReason = mapAgentStateToIdleReason(settlement.state);
     return {
       terminalId,
       agentId,
       busyState: mapAgentStateToBusyState(settlement.state),
-      idleReason: mapAgentStateToIdleReason(settlement.state),
+      idleReason,
+      ...(idleReason === "waiting_for_user" && settlement.waitingReason
+        ? { waitingReason: settlement.waitingReason }
+        : {}),
       previousBusyState: mapAgentStateToBusyState(previousState),
       lastTransitionAt: store.getLastStateChange(agentId),
       timedOut: false,

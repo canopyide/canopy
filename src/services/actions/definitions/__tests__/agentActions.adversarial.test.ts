@@ -256,6 +256,7 @@ describe("agentActions adversarial", () => {
     expect(result).toEqual({
       agentId: "codex",
       state: "idle",
+      waitingReason: null,
       lastTransitionAt: 1717000005000,
       terminalId: "term-b",
       found: true,
@@ -282,6 +283,7 @@ describe("agentActions adversarial", () => {
     expect(result).toEqual({
       agentId: "claude",
       state: "working",
+      waitingReason: null,
       lastTransitionAt: 1717000009000,
       terminalId: "term-runtime",
       found: true,
@@ -303,6 +305,7 @@ describe("agentActions adversarial", () => {
     expect(result).toEqual({
       agentId: "gemini",
       state: null,
+      waitingReason: null,
       lastTransitionAt: null,
       terminalId: null,
       found: false,
@@ -350,6 +353,7 @@ describe("agentActions adversarial", () => {
     expect(result).toEqual({
       agentId: "claude",
       state: null,
+      waitingReason: null,
       lastTransitionAt: null,
       terminalId: "term-a",
       found: true,

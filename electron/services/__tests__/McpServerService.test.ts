@@ -4079,6 +4079,34 @@ describe("McpServerService", () => {
       expect(JSON.parse(missingContent.text)).toEqual({ agentId: "agent-missing", state: null });
     });
 
+    it("readResource for an agent in waiting state surfaces waitingReason", async () => {
+      const { events } = await import("../events.js");
+      const { getAgentAvailabilityStore } = await import("../AgentAvailabilityStore.js");
+      getAgentAvailabilityStore();
+      events.emit("agent:state-changed", {
+        agentId: "agent-waiting",
+        state: "waiting",
+        previousState: "working",
+        trigger: "output",
+        confidence: 1,
+        waitingReason: "question",
+        timestamp: Date.now(),
+      });
+
+      const { window } = createMockWindow({ getManifest: manifestForResources });
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      const result = await client.readResource({ uri: "daintree://agent/agent-waiting/state" });
+      const content = result.contents[0] as { uri: string; mimeType: string; text: string };
+      expect(JSON.parse(content.text)).toEqual({
+        agentId: "agent-waiting",
+        state: "waiting",
+        waitingReason: "question",
+      });
+    });
+
     it("readResource on an unknown URI rejects as InvalidRequest", async () => {
       const { window } = createMockWindow({ getManifest: manifestForResources });
       await service.start(window);
@@ -4319,7 +4347,8 @@ describe("McpServerService", () => {
     const seedTerminalAgent = async (
       terminalId: string,
       agentId: string,
-      state: "idle" | "working" | "waiting" | "completed" | "exited" = "idle"
+      state: "idle" | "working" | "waiting" | "completed" | "exited" = "idle",
+      waitingReason?: "prompt" | "question"
     ) => {
       const { events } = await import("../events.js");
       const { getAgentAvailabilityStore } = await import("../AgentAvailabilityStore.js");
@@ -4338,6 +4367,7 @@ describe("McpServerService", () => {
         trigger: "output",
         confidence: 1,
         timestamp: Date.now(),
+        ...(state === "waiting" && waitingReason ? { waitingReason } : {}),
       });
     };
 
@@ -4466,6 +4496,153 @@ describe("McpServerService", () => {
         idleReason: "completed",
         previousBusyState: "working",
         lastTransitionAt: transitionTs,
+        timedOut: false,
+      });
+      // waitingReason is only present when idleReason === "waiting_for_user".
+      expect(payload.waitingReason).toBeUndefined();
+    });
+
+    it("surfaces waitingReason='question' on a working→waiting transition", async () => {
+      const { events } = await import("../events.js");
+      const { terminalId, agentId } = nextIds();
+      await seedTerminalAgent(terminalId, agentId, "working");
+
+      const { window } = createMockWindow({ getManifest: () => [] });
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      const callPromise = client.callTool({
+        name: "terminal.waitUntilIdle",
+        arguments: { terminalId },
+      }) as Promise<TextToolResult & { structuredContent?: Record<string, unknown> }>;
+
+      await new Promise((r) => setTimeout(r, 30));
+
+      const transitionTs = Date.now();
+      events.emit("agent:state-changed", {
+        agentId,
+        terminalId,
+        state: "waiting",
+        previousState: "working",
+        trigger: "output",
+        confidence: 1,
+        waitingReason: "question",
+        timestamp: transitionTs,
+      });
+
+      const result = await callPromise;
+      expect(result.isError).toBeFalsy();
+      const payload = JSON.parse(result.content[0]!.text);
+      expect(payload).toMatchObject({
+        terminalId,
+        agentId,
+        busyState: "idle",
+        idleReason: "waiting_for_user",
+        waitingReason: "question",
+        previousBusyState: "working",
+        lastTransitionAt: transitionTs,
+        timedOut: false,
+      });
+      expect(result.structuredContent).toMatchObject({
+        idleReason: "waiting_for_user",
+        waitingReason: "question",
+      });
+    });
+
+    it("surfaces waitingReason='prompt' on a working→waiting transition", async () => {
+      const { events } = await import("../events.js");
+      const { terminalId, agentId } = nextIds();
+      await seedTerminalAgent(terminalId, agentId, "working");
+
+      const { window } = createMockWindow({ getManifest: () => [] });
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      const callPromise = client.callTool({
+        name: "terminal.waitUntilIdle",
+        arguments: { terminalId },
+      }) as Promise<TextToolResult>;
+
+      await new Promise((r) => setTimeout(r, 30));
+
+      events.emit("agent:state-changed", {
+        agentId,
+        terminalId,
+        state: "waiting",
+        previousState: "working",
+        trigger: "output",
+        confidence: 1,
+        waitingReason: "prompt",
+        timestamp: Date.now(),
+      });
+
+      const result = await callPromise;
+      const payload = JSON.parse(result.content[0]!.text);
+      expect(payload.idleReason).toBe("waiting_for_user");
+      expect(payload.waitingReason).toBe("prompt");
+    });
+
+    it("omits waitingReason on working→waiting transitions without a classified reason", async () => {
+      const { events } = await import("../events.js");
+      const { terminalId, agentId } = nextIds();
+      await seedTerminalAgent(terminalId, agentId, "working");
+
+      const { window } = createMockWindow({ getManifest: () => [] });
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      const callPromise = client.callTool({
+        name: "terminal.waitUntilIdle",
+        arguments: { terminalId },
+      }) as Promise<TextToolResult & { structuredContent?: Record<string, unknown> }>;
+
+      await new Promise((r) => setTimeout(r, 30));
+
+      events.emit("agent:state-changed", {
+        agentId,
+        terminalId,
+        state: "waiting",
+        previousState: "working",
+        trigger: "output",
+        confidence: 1,
+        timestamp: Date.now(),
+      });
+
+      const result = await callPromise;
+      const payload = JSON.parse(result.content[0]!.text);
+      expect(payload.idleReason).toBe("waiting_for_user");
+      expect(payload.waitingReason).toBeUndefined();
+      expect(result.structuredContent?.waitingReason).toBeUndefined();
+    });
+
+    it("returns the stored waitingReason for a terminal already in waiting state", async () => {
+      const { terminalId, agentId } = nextIds();
+      // Seed the terminal directly into "waiting" with a classified reason.
+      // The already-idle path must read waitingReason from the store, since no
+      // new agent:state-changed event fires for the snapshot case.
+      await seedTerminalAgent(terminalId, agentId, "waiting", "question");
+
+      const { window } = createMockWindow({ getManifest: () => [] });
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      const result = (await client.callTool({
+        name: "terminal.waitUntilIdle",
+        arguments: { terminalId },
+      })) as TextToolResult;
+
+      expect(result.isError).toBeFalsy();
+      const payload = JSON.parse(result.content[0]!.text);
+      expect(payload).toMatchObject({
+        terminalId,
+        agentId,
+        busyState: "idle",
+        idleReason: "waiting_for_user",
+        waitingReason: "question",
         timedOut: false,
       });
     });

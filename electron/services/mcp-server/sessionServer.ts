@@ -537,8 +537,14 @@ async function readResourceContents(
     return { uri, mimeType: "text/plain", text: truncateText(text) };
   }
   if (parsed.kind === "agentState") {
-    const state = getAgentAvailabilityStore().getState(parsed.id);
-    const text = JSON.stringify({ agentId: parsed.id, state: state ?? null });
+    const store = getAgentAvailabilityStore();
+    const state = store.getState(parsed.id);
+    const waitingReason = state === "waiting" ? store.getWaitingReason(parsed.id) : undefined;
+    const text = JSON.stringify({
+      agentId: parsed.id,
+      state: state ?? null,
+      ...(waitingReason ? { waitingReason } : {}),
+    });
     return { uri, mimeType: "application/json", text };
   }
   if (parsed.kind === "issues") {
