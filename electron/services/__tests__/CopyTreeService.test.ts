@@ -210,4 +210,15 @@ describe("CopyTreeService", () => {
       expect.objectContaining({ error: "Context generation cancelled" })
     );
   });
+
+  it("omits config from sdkOptions when ConfigManager.create() fails", async () => {
+    configCreateMock.mockRejectedValue(new Error("No config"));
+
+    await copyTreeService.generate(tempDir);
+
+    expect(copyMock).toHaveBeenCalledTimes(1);
+    const sdkOptions = copyMock.mock.calls[0][1] as Record<string, unknown>;
+    expect(sdkOptions).not.toHaveProperty("config");
+    expect("config" in sdkOptions).toBe(false);
+  });
 });

@@ -96,6 +96,7 @@ import {
   CopyTreeInjectPayloadSchema,
   CopyTreeGetFileTreePayloadSchema,
   CopyTreeCancelPayloadSchema,
+  CopyTreeTestConfigPayloadSchema,
 } from "../../schemas/ipc.js";
 import type { CopyTreeCancelPayload, ProjectSettings } from "../../types/index.js";
 import { projectStore } from "../../services/ProjectStore.js";
@@ -619,7 +620,6 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
     const requestedWorktreeId = getStringField(payload, "worktreeId") ?? "unknown";
     console.log(`[${traceId}] CopyTree test-config started for worktree ${requestedWorktreeId}`);
 
-    const { CopyTreeTestConfigPayloadSchema } = await import("../../schemas/ipc.js");
     const parseResult = CopyTreeTestConfigPayloadSchema.safeParse(payload);
     if (!parseResult.success) {
       console.error(
