@@ -473,6 +473,96 @@ describe("KeybindingService", () => {
     });
   });
 
+  describe("listener hygiene", () => {
+    function triggerNotify(service: KeybindingService): void {
+      const cmdK = createKeyboardEvent({
+        key: "k",
+        code: "KeyK",
+        metaKey: true,
+      });
+      service.resolveKeybinding(cmdK);
+      service.popPendingChord();
+    }
+
+    it("isolates errors so a throwing listener does not stop subsequent listeners", () => {
+      setPlatform("MacIntel");
+      const service = new KeybindingService();
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const before = vi.fn();
+      const thrower = vi.fn(() => {
+        throw new Error("listener boom");
+      });
+      const after = vi.fn();
+
+      service.subscribe(before);
+      service.subscribe(thrower);
+      service.subscribe(after);
+
+      triggerNotify(service);
+
+      expect(before).toHaveBeenCalled();
+      expect(thrower).toHaveBeenCalled();
+      expect(after).toHaveBeenCalled();
+      expect(after).toHaveBeenCalledTimes(before.mock.calls.length);
+      expect(warnSpy).toHaveBeenCalled();
+
+      warnSpy.mockRestore();
+    });
+
+    it("dedupes a listener subscribed twice via Set semantics", () => {
+      setPlatform("MacIntel");
+      const service = new KeybindingService();
+      const listener = vi.fn();
+
+      service.subscribe(listener);
+      service.subscribe(listener);
+
+      triggerNotify(service);
+
+      // Set dedup: the listener fires once per notification, not twice.
+      // triggerNotify produces 2 notifications (set + pop), so listener: 2 calls.
+      expect(listener).toHaveBeenCalledTimes(2);
+    });
+
+    it("safely handles a listener that unsubscribes itself during notification", () => {
+      setPlatform("MacIntel");
+      const service = new KeybindingService();
+      const after = vi.fn();
+      let unsubscribeSelf: (() => void) | null = null;
+
+      const selfRemover = vi.fn(() => {
+        unsubscribeSelf?.();
+      });
+
+      unsubscribeSelf = service.subscribe(selfRemover);
+      service.subscribe(after);
+
+      triggerNotify(service);
+
+      expect(selfRemover).toHaveBeenCalledTimes(1);
+      // `after` runs on both the set-pending and pop-pending notifications;
+      // mutating the underlying Set during notification must not break the
+      // current iteration's snapshot.
+      expect(after).toHaveBeenCalledTimes(2);
+    });
+
+    it("returns an unsubscribe that detaches the listener", () => {
+      setPlatform("MacIntel");
+      const service = new KeybindingService();
+      const listener = vi.fn();
+      const unsubscribe = service.subscribe(listener);
+
+      triggerNotify(service);
+      const initialCalls = listener.mock.calls.length;
+      expect(initialCalls).toBeGreaterThan(0);
+
+      unsubscribe();
+      triggerNotify(service);
+
+      expect(listener).toHaveBeenCalledTimes(initialCalls);
+    });
+  });
+
   describe("registerBinding collision detection", () => {
     it("warns and keeps incumbent when a different actionId tries to claim an existing combo", () => {
       const service = new KeybindingService();

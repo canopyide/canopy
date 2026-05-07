@@ -18,7 +18,7 @@ class KeybindingService {
   private pendingChord: string | null = null;
   private chordTimeout: NodeJS.Timeout | null = null;
   private readonly CHORD_TIMEOUT_MS = 1000;
-  private listeners: Array<() => void> = [];
+  private listeners = new Set<() => void>();
 
   constructor() {
     DEFAULT_KEYBINDINGS.forEach((binding) => {
@@ -124,14 +124,21 @@ class KeybindingService {
   }
 
   subscribe(listener: () => void): () => void {
-    this.listeners.push(listener);
+    this.listeners.add(listener);
     return () => {
-      this.listeners = this.listeners.filter((l) => l !== listener);
+      this.listeners.delete(listener);
     };
   }
 
   private notifyListeners(): void {
-    this.listeners.forEach((listener) => listener());
+    const snapshot = Array.from(this.listeners);
+    for (const listener of snapshot) {
+      try {
+        listener();
+      } catch (error) {
+        console.warn("[KeybindingService] listener threw", error);
+      }
+    }
   }
 
   setScope(scope: KeyScope): void {
