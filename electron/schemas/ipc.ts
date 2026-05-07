@@ -330,7 +330,7 @@ export const SlashCommandListRequestSchema = z.object({
   projectPath: z.string().optional(),
 });
 
-export const CopyTreeFormatSchema = z.enum(["xml", "json", "markdown", "tree", "ndjson"]);
+export const CopyTreeFormatSchema = z.enum(["xml", "json", "markdown", "tree", "ndjson", "sarif"]);
 
 export const CopyTreeOptionsSchema = z
   .object({
