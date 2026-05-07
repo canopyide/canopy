@@ -191,6 +191,25 @@ describe("SoundService", () => {
     );
   });
 
+  it("cancel cancels OS-fallback voices even when a renderer window has since opened", () => {
+    // Voices started while no window existed must be cleaned up regardless of
+    // whether a window opens before cancel is called.
+    mockGetAllWindows.mockReturnValue([]);
+    soundService.play("error");
+    vi.advanceTimersByTime(200);
+    soundService.play("ping");
+    expect(mockPlaySound).toHaveBeenCalledTimes(2);
+
+    mockGetAllWindows.mockReturnValue([{ id: 1 }]);
+    soundService.cancel();
+
+    expect(mockCancel).toHaveBeenCalled();
+    expect(mockBroadcastToRenderer).toHaveBeenCalledWith("events:push", {
+      name: "sound:cancel",
+      payload: undefined,
+    });
+  });
+
   it("preview sends the base file without variant selection via IPC", () => {
     mockGetAllWindows.mockReturnValue([{ id: 1 }]);
 
@@ -308,6 +327,21 @@ describe("SoundService", () => {
   it("discovers and uses variants from the sounds directory", () => {
     const variants = soundService.getVariants("chime.wav");
     expect(variants).toEqual(["chime.v1.wav", "chime.v2.wav", "chime.v3.wav", "chime.wav"]);
+  });
+
+  it("scans the sounds directory exactly once at module load, not per sound", () => {
+    // initVariantCache pre-populates every SOUND_FILES entry from a single
+    // readdirSync, so getVariants for known sounds must not trigger additional scans.
+    const callsAfterInit = fsMock.readdirSync.mock.calls.length;
+
+    soundService.getVariants("chime.wav");
+    soundService.getVariants("error.wav");
+    soundService.getVariants("complete.wav");
+    soundService.getVariants("ping.wav");
+    soundService.getVariants("waiting.wav");
+
+    expect(fsMock.readdirSync.mock.calls.length).toBe(callsAfterInit);
+    expect(callsAfterInit).toBe(1);
   });
 
   it("reads variants from the correct directory in packaged mode", async () => {

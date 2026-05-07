@@ -3,28 +3,33 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
+type GainMock = {
+  gain: { setTargetAtTime: ReturnType<typeof vi.fn>; value: number };
+  connect: ReturnType<typeof vi.fn>;
+};
+
+type SourceMock = {
+  buffer: AudioBuffer | null;
+  detune: { value: number };
+  detuneAtStart: number | null;
+  connect: ReturnType<typeof vi.fn>;
+  gainNode: GainMock | null;
+  start: (when?: number) => void;
+  stop: ReturnType<typeof vi.fn>;
+  onended: (() => void) | null;
+};
+
 function createMockAudioContext() {
   const mockStart = vi.fn();
   const mockResume = vi.fn().mockResolvedValue(undefined);
   const mockClose = vi.fn().mockResolvedValue(undefined);
   const mockDecodeAudioData = vi.fn();
-  const sources: Array<{
-    stop: ReturnType<typeof vi.fn>;
-    detune: { value: number };
-    detuneAtStart: number | null;
-    connect: ReturnType<typeof vi.fn>;
-    gainNode: {
-      gain: { setTargetAtTime: ReturnType<typeof vi.fn>; value: number };
-      connect: ReturnType<typeof vi.fn>;
-    } | null;
-    onended: (() => void) | null;
-  }> = [];
+  const sources: SourceMock[] = [];
 
   let state = "running";
-  let pendingGainNode: {
-    gain: { setTargetAtTime: ReturnType<typeof vi.fn>; value: number };
-    connect: ReturnType<typeof vi.fn>;
-  } | null = null;
+  // Holds the gain node returned by the most recent createGain() call so
+  // source.connect(gainNode) can capture it without an unsafe cast.
+  let pendingGainNode: GainMock | null = null;
 
   const ctx = {
     get state() {
@@ -36,28 +41,29 @@ function createMockAudioContext() {
     currentTime: 0,
     destination: {},
     createBufferSource: vi.fn(() => {
-      const source = {
-        buffer: null as AudioBuffer | null,
+      const source: SourceMock = {
+        buffer: null,
         detune: { value: 0 },
-        detuneAtStart: null as number | null,
-        connect: vi.fn((dest: { gain?: unknown }) => {
-          if (dest && typeof dest === "object" && "gain" in dest) {
-            source.gainNode = dest as typeof source.gainNode;
+        detuneAtStart: null,
+        connect: vi.fn(() => {
+          if (pendingGainNode) {
+            source.gainNode = pendingGainNode;
+            pendingGainNode = null;
           }
         }),
-        gainNode: null as typeof pendingGainNode,
+        gainNode: null,
         start: (when?: number) => {
           source.detuneAtStart = source.detune.value;
           mockStart(when);
         },
         stop: vi.fn(),
-        onended: null as (() => void) | null,
+        onended: null,
       };
       sources.push(source);
       return source;
     }),
     createGain: vi.fn(() => {
-      const gainNode = {
+      const gainNode: GainMock = {
         gain: { setTargetAtTime: vi.fn(), value: 1 },
         connect: vi.fn(),
       };
@@ -246,6 +252,62 @@ describe("WebAudioService", () => {
     await service.playSound("pulse.wav", 0);
 
     expect(sources[0]!.detuneAtStart).toBe(0);
+  });
+
+  it("cancelSound during async decode aborts the pending playback", async () => {
+    const { service, mockFetch, mockDecodeAudioData, sources, ctx } = await setupTest();
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      arrayBuffer: () => Promise.resolve(new ArrayBuffer(16)),
+    });
+    let resolveDecode!: (buffer: AudioBuffer) => void;
+    mockDecodeAudioData.mockReturnValueOnce(
+      new Promise<AudioBuffer>((r) => {
+        resolveDecode = r;
+      })
+    );
+
+    const playPromise = service.playSound("chime.wav");
+    service.cancelSound();
+    resolveDecode({ duration: 1, length: 44100 } as AudioBuffer);
+    await playPromise;
+
+    expect(sources).toHaveLength(0);
+    expect(ctx.createBufferSource).not.toHaveBeenCalled();
+  });
+
+  it("does not pollute activeVoices when source.start throws", async () => {
+    const { service, ctx, mockSuccessfulFetch, sources } = await setupTest();
+    for (let i = 0; i < 5; i++) mockSuccessfulFetch();
+
+    const originalCreate = ctx.createBufferSource;
+    let throwOnce = true;
+    ctx.createBufferSource = vi.fn(() => {
+      const source = originalCreate();
+      if (throwOnce) {
+        throwOnce = false;
+        source.start = vi.fn(() => {
+          throw new Error("InvalidStateError");
+        });
+      }
+      return source;
+    });
+
+    await service.playSound("first.wav");
+    expect(sources).toHaveLength(1);
+
+    // Four more successful plays must not be evicted by the failed voice
+    await service.playSound("a.wav");
+    await service.playSound("b.wav");
+    await service.playSound("c.wav");
+    await service.playSound("d.wav");
+
+    // Voices a/b/c/d should still be live (no fade) — failed first voice was popped
+    expect(sources[1]!.stop).not.toHaveBeenCalled();
+    expect(sources[2]!.stop).not.toHaveBeenCalled();
+    expect(sources[3]!.stop).not.toHaveBeenCalled();
+    expect(sources[4]!.stop).not.toHaveBeenCalled();
   });
 
   it("dispose closes the AudioContext", async () => {

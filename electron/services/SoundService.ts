@@ -119,15 +119,17 @@ class SoundService {
   }
 
   cancel(): void {
-    const hasRenderer = BrowserWindow.getAllWindows().length > 0;
-    if (hasRenderer) {
-      broadcastToRenderer(CHANNELS.EVENTS_PUSH, { name: "sound:cancel", payload: undefined });
-    } else {
-      for (const voice of this.activeVoices) {
-        voice.handle.cancel();
-      }
+    // Always cancel OS-fallback handles — they may have been started before
+    // a renderer window existed and would otherwise play to completion.
+    for (const voice of this.activeVoices) {
+      voice.handle.cancel();
     }
     this.activeVoices = [];
+
+    // Skip the renderer broadcast when no window is listening.
+    if (BrowserWindow.getAllWindows().length > 0) {
+      broadcastToRenderer(CHANNELS.EVENTS_PUSH, { name: "sound:cancel", payload: undefined });
+    }
   }
 
   playPulse(soundFile: string, detuneCents?: number): void {

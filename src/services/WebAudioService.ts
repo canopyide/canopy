@@ -25,6 +25,7 @@ let audioContext: AudioContext | null = null;
 let soundsDir: string | null = null;
 const bufferCache = new Map<string, AudioBuffer>();
 const activeVoices: ActiveVoice[] = [];
+let cancelGeneration = 0;
 
 async function ensureContext(): Promise<AudioContext> {
   if (!audioContext) {
@@ -72,10 +73,14 @@ function fadeOutVoice(ctx: AudioContext, voice: ActiveVoice): void {
 }
 
 export async function playSound(soundFile: string, detune?: number): Promise<void> {
+  // Captured before any await — if cancelSound() fires during fetch/decode,
+  // the generation advances and we abort before scheduling playback.
+  const startGeneration = cancelGeneration;
   try {
     const ctx = await ensureContext();
     const buffer = await getBuffer(ctx, soundFile);
     if (!buffer) return;
+    if (startGeneration !== cancelGeneration) return;
 
     const source = ctx.createBufferSource();
     source.buffer = buffer;
@@ -97,13 +102,19 @@ export async function playSound(soundFile: string, detune?: number): Promise<voi
       if (oldest) fadeOutVoice(ctx, oldest);
     }
 
-    source.start(0);
+    try {
+      source.start(0);
+    } catch {
+      const idx = activeVoices.indexOf(voice);
+      if (idx !== -1) activeVoices.splice(idx, 1);
+    }
   } catch {
     // Non-critical — fail silently
   }
 }
 
 export function cancelSound(): void {
+  cancelGeneration++;
   if (activeVoices.length === 0) return;
   const ctx = audioContext;
   const voices = activeVoices.splice(0);
