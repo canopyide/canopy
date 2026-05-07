@@ -3,6 +3,14 @@ import { getGitHubToken, getRepoContext, clearGitHubCaches } from "../GitHubServ
 import { GITHUB_API_TIMEOUT_MS } from "../github/index.js";
 import { formatErrorMessage } from "../../../shared/utils/errorMessage.js";
 
+const NETWORK_ERROR_CODES = new Set([
+  "ENOTFOUND",
+  "ECONNREFUSED",
+  "ETIMEDOUT",
+  "ECONNRESET",
+  "EAI_AGAIN",
+]);
+
 interface CreateIssueArgs {
   title?: string;
   body?: string;
@@ -161,7 +169,7 @@ export const githubCreateIssueCommand: DaintreeCommand<CreateIssueArgs, CreateIs
     }
 
     // Use body as title if title is missing (agent-style behavior)
-    const issueTitle = title || body.split("\n")[0].slice(0, 100);
+    const issueTitle = title || body.split("\n")[0].replace(/\r$/, "").slice(0, 100);
     const issueBody = body || title;
 
     const requestBody: Record<string, unknown> = {
@@ -187,6 +195,7 @@ export const githubCreateIssueCommand: DaintreeCommand<CreateIssueArgs, CreateIs
           Accept: "application/vnd.github+json",
           "X-GitHub-Api-Version": "2022-11-28",
           "Content-Type": "application/json",
+          "User-Agent": "Daintree-Electron",
         },
         body: JSON.stringify(requestBody),
         signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS),
@@ -259,6 +268,27 @@ export const githubCreateIssueCommand: DaintreeCommand<CreateIssueArgs, CreateIs
         },
       };
     } catch (error) {
+      if (error instanceof Error && error.name === "TimeoutError") {
+        return {
+          success: false,
+          error: {
+            code: "TIMEOUT_ERROR",
+            message: "Timed out reaching GitHub. Try again.",
+          },
+        };
+      }
+
+      const causeCode = (error as { cause?: { code?: unknown } } | undefined)?.cause?.code;
+      if (typeof causeCode === "string" && NETWORK_ERROR_CODES.has(causeCode)) {
+        return {
+          success: false,
+          error: {
+            code: "NETWORK_ERROR",
+            message: "Cannot reach GitHub. Check your internet connection.",
+          },
+        };
+      }
+
       const message = formatErrorMessage(error, "Failed to create GitHub issue");
 
       if (

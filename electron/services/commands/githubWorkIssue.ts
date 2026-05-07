@@ -49,6 +49,14 @@ export interface GitHubWorkIssueResult {
   issueUrl: string;
 }
 
+const NETWORK_ERROR_CODES = new Set([
+  "ENOTFOUND",
+  "ECONNREFUSED",
+  "ETIMEDOUT",
+  "ECONNRESET",
+  "EAI_AGAIN",
+]);
+
 /**
  * Slugify an issue title for use in a branch name.
  *
@@ -61,6 +69,8 @@ export interface GitHubWorkIssueResult {
  */
 function slugifyTitle(title: string): string {
   let slug = title
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/-+/g, "-")
@@ -109,6 +119,15 @@ async function fetchIssueDetails(cwd: string, issueNumber: number): Promise<Issu
       number: issueNumber,
     })) as GraphQlQueryResponseData;
   } catch (error) {
+    if (error instanceof Error && error.name === "TimeoutError") {
+      throw new Error("Timed out reaching GitHub. Try again.");
+    }
+
+    const causeCode = (error as { cause?: { code?: unknown } } | undefined)?.cause?.code;
+    if (typeof causeCode === "string" && NETWORK_ERROR_CODES.has(causeCode)) {
+      throw new Error("Network error connecting to GitHub.");
+    }
+
     // Handle GraphQL errors (auth, rate limit, network)
     const message = formatErrorMessage(error, "Failed to fetch GitHub issue");
     if (message.includes("401") || message.includes("Unauthorized")) {
@@ -161,8 +180,8 @@ async function detectBaseBranch(
     return { exists: false, fromRemote: false, branch: name };
   };
 
-  // Check develop, then main, then master
-  for (const branchName of ["develop", "main", "master"]) {
+  // Check develop, then trunk, then main, then master
+  for (const branchName of ["develop", "trunk", "main", "master"]) {
     const result = checkBranch(branchName);
     if (result.exists) {
       return { branch: result.branch, fromRemote: result.fromRemote };
