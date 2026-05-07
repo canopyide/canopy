@@ -487,7 +487,7 @@ describe("KeybindingService", () => {
     it("isolates errors so a throwing listener does not stop subsequent listeners", () => {
       setPlatform("MacIntel");
       const service = new KeybindingService();
-      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
       const before = vi.fn();
       const thrower = vi.fn(() => {
         throw new Error("listener boom");
@@ -504,9 +504,9 @@ describe("KeybindingService", () => {
       expect(thrower).toHaveBeenCalled();
       expect(after).toHaveBeenCalled();
       expect(after).toHaveBeenCalledTimes(before.mock.calls.length);
-      expect(errorSpy).toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalled();
 
-      errorSpy.mockRestore();
+      warnSpy.mockRestore();
     });
 
     it("dedupes a listener subscribed twice via Set semantics", () => {

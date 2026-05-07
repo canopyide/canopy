@@ -136,7 +136,7 @@ class KeybindingService {
       try {
         listener();
       } catch (error) {
-        console.error("[KeybindingService] listener threw", error);
+        console.warn("[KeybindingService] listener threw", error);
       }
     }
   }
