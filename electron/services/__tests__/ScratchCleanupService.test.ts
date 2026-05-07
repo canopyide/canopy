@@ -6,9 +6,18 @@ import { runScratchCleanup } from "../ScratchCleanupService.js";
 import { SCRATCH_CLEANUP_TTL_MS as SCRATCH_TTL_MS } from "../../../shared/config/scratchCleanup.js";
 import type { ScratchRow } from "../persistence/schema.js";
 
+var scratchTestRoot = { current: "" };
+
 vi.mock("../../utils/logger.js", () => ({
   logError: vi.fn(),
   logInfo: vi.fn(),
+}));
+
+vi.mock("../scratchStorePaths.js", () => ({
+  isValidScratchId: (id: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id),
+  getScratchesRoot: () => scratchTestRoot.current,
+  getScratchDir: (root: string, id: string) => root + "/" + id,
 }));
 
 interface FakeStore {
@@ -17,6 +26,7 @@ interface FakeStore {
   getStaleScratchCandidates: (cutoffMs: number) => ScratchRow[];
   tombstoneScratch: (scratchId: string, deletedAt: number) => void;
   hardDeleteScratch: (scratchId: string) => void;
+  clearCurrentScratch: () => void;
   getCurrentScratchId: () => string | null;
 }
 
@@ -42,6 +52,9 @@ function makeStore(rows: ScratchRow[], currentScratchId: string | null = null): 
     getCurrentScratchId() {
       return store.currentScratchId;
     },
+    clearCurrentScratch() {
+      store.currentScratchId = null;
+    },
   };
   return store;
 }
@@ -61,6 +74,7 @@ let tmpDir: string;
 
 beforeEach(async () => {
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "scratch-cleanup-test-"));
+  scratchTestRoot.current = tmpDir;
 });
 
 afterEach(async () => {
@@ -232,7 +246,7 @@ describe("runScratchCleanup", () => {
   });
 
   it("retries tombstoned rows whose directory still exists", async () => {
-    const ghost = path.join(tmpDir, "ghost-dir");
+    const ghost = path.join(tmpDir, "ghost");
     await fs.mkdir(ghost, { recursive: true });
     await fs.writeFile(path.join(ghost, "left.txt"), "leftover");
     // A prior sweep (or a `removeScratch` call) tombstoned the row but failed

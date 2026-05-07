@@ -64,8 +64,8 @@ export class ScratchStore {
       lastOpened: now,
     };
 
-    const db = getSharedDb();
     try {
+      const db = getSharedDb();
       db.insert(scratchesTable)
         .values({
           id: scratch.id,

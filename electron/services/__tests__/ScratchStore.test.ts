@@ -103,7 +103,7 @@ describe("createScratch rollback", () => {
     });
 
     await expect(store.createScratch()).rejects.toThrow("DB insert failure");
-    expect(rmSpy).toHaveBeenCalledWith(expect.any(String), {
+    expect(rmSpy).toHaveBeenCalledWith(mkdirSpy.mock.calls[0]![0], {
       recursive: true,
       force: true,
       maxRetries: 5,
