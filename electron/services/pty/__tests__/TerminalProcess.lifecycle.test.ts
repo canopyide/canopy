@@ -759,6 +759,95 @@ describe("TerminalProcess — observer-driven exit handlers", () => {
   });
 });
 
+describe("TerminalProcess — plain-terminal snapshot gate (#7004)", () => {
+  it("does not capture a visible-cell snapshot on PTY data for plain terminals", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const pty = createControllablePty();
+    const terminal = createTerminal(pty, { kind: "terminal" }, undefined, "t-plain-no-snapshot");
+
+    try {
+      const getVisibleActivitySnapshot = vi.spyOn(terminal, "getVisibleActivitySnapshot");
+
+      await emitDataAndFlush(pty, "build watcher: 12 files compiled\n");
+      await emitDataAndFlush(pty, "[hmr] update applied\n");
+
+      expect(getVisibleActivitySnapshot).not.toHaveBeenCalled();
+    } finally {
+      terminal.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not transition agent state on the warm-up tick after plain→agent-live promotion", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const pty = createControllablePty();
+    const handleActivityState = vi.fn();
+    const terminal = createTerminal(
+      pty,
+      { kind: "terminal" },
+      {
+        agentStateService: {
+          handleActivityState,
+          updateAgentState: () => {},
+          emitAgentKilled: () => {},
+          emitAgentCompleted: () => {},
+        } as unknown as TerminalProcessDeps["agentStateService"],
+      },
+      "t-promotion-warmup"
+    );
+
+    try {
+      terminal.stopActivityMonitor();
+
+      // Promote a plain terminal to agent-live (mirrors TerminalAgentDetection
+      // setting detectedAgentId mid-session). agentState seeds to "idle" on
+      // detection, which is one of the states noteAgentOutputActivity acts on.
+      const info = terminal.getInfo();
+      info.detectedAgentId = "claude";
+      info.agentState = "idle";
+
+      // First live tick — isAgentLive is now true so beforeContentSnapshot IS
+      // captured, but agentOutputContentSnapshot is still undefined (never set
+      // while plain). hadFallbackBaseline is false at L1382, so the warm-up
+      // path fires observeDelta({changedChars: 0}) and returns without
+      // promoting the agent to "busy".
+      await expect(emitDataAndFlush(pty, "claude > thinking…\n")).resolves.not.toThrow();
+
+      expect(handleActivityState).not.toHaveBeenCalled();
+    } finally {
+      terminal.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("still captures a visible-cell snapshot on PTY data for active launch-agent terminals", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const pty = createControllablePty();
+    const terminal = createTerminal(
+      pty,
+      { kind: "terminal", launchAgentId: "claude" },
+      undefined,
+      "t-launch-agent-still-scans"
+    );
+
+    try {
+      terminal.stopActivityMonitor();
+      terminal.getInfo().agentState = "idle";
+      const getVisibleActivitySnapshot = vi.spyOn(terminal, "getVisibleActivitySnapshot");
+
+      await emitDataAndFlush(pty, "claude > working…\n");
+
+      expect(getVisibleActivitySnapshot).toHaveBeenCalled();
+    } finally {
+      terminal.dispose();
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("TerminalProcess — getPublicState lifecycle derivation", () => {
   it("reflects hasPty=false after dispose() even without prior kill", () => {
     const pty = createControllablePty();
