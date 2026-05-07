@@ -136,6 +136,176 @@ export function registerTerminalQueryActions(
     },
   }));
 
+  actions.set("terminal.getStatus", () => ({
+    id: "terminal.getStatus",
+    title: "Get Terminal Status",
+    description:
+      "Batched fleet status — agentState, waitingReason, lastTransitionAt, plus optional recent-output tails.",
+    category: "terminal",
+    kind: "query",
+    danger: "safe",
+    scope: "renderer",
+    argsSchema: z
+      .object({
+        terminalIds: z
+          .array(z.string())
+          .optional()
+          .describe(
+            "Explicit terminal IDs to query. When set, `worktreeId`/`location` filters are ignored. Unknown IDs return per-entry `error` rather than aborting the call."
+          ),
+        worktreeId: z
+          .string()
+          .optional()
+          .describe("Filter by worktree (ignored when `terminalIds` is provided)."),
+        location: z
+          .enum(["grid", "dock", "trash", "background"])
+          .optional()
+          .describe(
+            "Filter by panel location (ignored when `terminalIds` is provided). Defaults to all locations except trash and background."
+          ),
+        includeOutput: z
+          .object({
+            lines: z
+              .number()
+              .int()
+              .min(1)
+              .max(50)
+              .default(20)
+              .describe(
+                "Number of trailing scrollback lines to include per terminal (max 50, default 20)."
+              ),
+            stripAnsi: z
+              .boolean()
+              .default(true)
+              .describe("Remove ANSI escape codes from `recentOutput` (default: true)."),
+          })
+          .optional()
+          .describe(
+            "Opt-in. When set, each entry includes `recentOutput` with the last N lines of scrollback. Off by default to keep responses small."
+          ),
+      })
+      .optional(),
+    run: async (args: unknown) => {
+      const { terminalIds, worktreeId, location, includeOutput } = (args ?? {}) as {
+        terminalIds?: string[];
+        worktreeId?: string;
+        location?: "grid" | "dock" | "trash" | "background";
+        includeOutput?: { lines?: number; stripAnsi?: boolean };
+      };
+
+      const state = usePanelStore.getState();
+      const panelsById = state.panelsById;
+
+      type StatusEntry = {
+        terminalId: string;
+        agentId: string | null;
+        agentState: TerminalInstance["agentState"] | null;
+        waitingReason?: TerminalInstance["waitingReason"];
+        lastTransitionAt?: number;
+        recentOutput?: string | null;
+        error?: string;
+      };
+
+      const resolved: Array<{ id: string; terminal: TerminalInstance | undefined }> = [];
+
+      if (terminalIds && terminalIds.length > 0) {
+        for (const id of terminalIds) {
+          const t = panelsById[id];
+          // Treat ephemeral panels as not found — they're tooling-internal and
+          // must never expose state to MCP callers (mirrors terminal.list).
+          if (!t || t.ephemeral === true) {
+            resolved.push({ id, terminal: undefined });
+          } else {
+            resolved.push({ id, terminal: t });
+          }
+        }
+      } else {
+        let terminals = state.panelIds
+          .map((id) => panelsById[id])
+          .filter((t): t is TerminalInstance => t !== undefined && t.ephemeral !== true);
+
+        if (worktreeId) {
+          terminals = terminals.filter((t) => t.worktreeId === worktreeId);
+        }
+        if (location) {
+          terminals = terminals.filter((t) => t.location === location);
+        } else {
+          terminals = terminals.filter(
+            (t) => t.location !== "trash" && t.location !== "background"
+          );
+        }
+
+        for (const t of terminals) {
+          resolved.push({ id: t.id, terminal: t });
+        }
+      }
+
+      // Optional output fetch — single batched IPC for all terminals at once.
+      const linesArg = includeOutput?.lines;
+      const effectiveLines =
+        typeof linesArg === "number" ? Math.min(Math.max(Math.floor(linesArg), 1), 50) : 20;
+      const stripAnsi = includeOutput?.stripAnsi ?? true;
+
+      let outputs: Record<string, string | null> | null = null;
+      let outputError: string | undefined;
+      if (includeOutput) {
+        const idsToFetch = resolved.filter((r) => r.terminal !== undefined).map((r) => r.id);
+        if (idsToFetch.length > 0) {
+          try {
+            outputs = await window.electron.terminal.getSerializedStates(idsToFetch);
+          } catch (err) {
+            outputError = err instanceof Error ? err.message : String(err);
+          }
+        } else {
+          outputs = {};
+        }
+      }
+
+      const entries: StatusEntry[] = resolved.map(({ id, terminal }) => {
+        if (!terminal) {
+          return {
+            terminalId: id,
+            agentId: null,
+            agentState: null,
+            error: "Terminal not found",
+          };
+        }
+
+        const entry: StatusEntry = {
+          terminalId: terminal.id,
+          agentId: terminal.detectedAgentId ?? terminal.launchAgentId ?? null,
+          agentState: terminal.agentState ?? null,
+          lastTransitionAt: terminal.lastStateChange,
+        };
+
+        if (terminal.agentState === "waiting" && terminal.waitingReason !== undefined) {
+          entry.waitingReason = terminal.waitingReason;
+        }
+
+        if (includeOutput) {
+          if (outputError !== undefined) {
+            entry.error = outputError;
+            entry.recentOutput = null;
+          } else if (outputs !== null) {
+            const serialized = outputs[terminal.id] ?? null;
+            if (serialized === null) {
+              entry.recentOutput = null;
+            } else {
+              const lines = serialized.split("\n").slice(-effectiveLines);
+              let content = lines.join("\n");
+              if (stripAnsi) content = stripAnsiCodes(content);
+              entry.recentOutput = content;
+            }
+          }
+        }
+
+        return entry;
+      });
+
+      return { terminals: entries };
+    },
+  }));
+
   actions.set("terminal.sendCommand", () => ({
     id: "terminal.sendCommand",
     title: "Send Command to Terminal",

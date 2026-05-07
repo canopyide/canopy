@@ -31,48 +31,65 @@ When choosing what to do, prefer the least-privileged path. If the user asks you
 
 ## Watching Multiple Agent Terminals
 
-`terminal.waitUntilIdle` blocks for up to 30 minutes by default — fine for a single terminal, harmful when polling several at once. Concurrent default-timeout waits race unpredictably, tie up the orchestrator, and make ordering non-deterministic. Use a non-blocking snapshot loop instead.
+Use `terminal.getStatus` for fleet polling. It returns the full agent state (`idle | working | waiting | completed | exited`), `waitingReason`, and `lastTransitionAt` for many terminals in a single call, with optional recent-output tails for cross-checking the state cache. Don't fan `terminal.waitUntilIdle({ timeoutMs: 0 })` out across N terminals — that pattern is N IPC round-trips per round and gives no cheap way to verify state against actual scrollback.
 
 **Recipe:**
 
-1. **Snapshot in parallel.** Call `terminal.waitUntilIdle` with `timeoutMs: 0` for each terminal you're watching. Each call returns immediately with `busyState`, `idleReason`, `lastTransitionAt`, and `timedOut`. With `timeoutMs: 0`, `timedOut` is `true` when the agent is still `working` (the zero-length wait elapsed) and `false` when the agent is already idle or no agent is attached — treat it as a busy/idle indicator on the snapshot path, not an error.
-2. **Skip working terminals.** When `busyState === "working"` the agent is mid-task — there's nothing to act on this round.
+1. **Snapshot the fleet in one call.** Pass `terminalIds` (when you know what you spawned) or a `worktreeId`/`location` filter. Each entry returns `agentState`, `waitingReason` (when waiting), `lastTransitionAt`, and an optional `recentOutput` tail.
+2. **Skip working terminals.** When `agentState === "working"` (or `"directing"`) the agent is mid-task — nothing to act on this round.
 3. **Skip already-handled transitions.** Track the last `lastTransitionAt` you acted on per terminal and skip when it hasn't advanced. `lastTransitionAt` is `undefined` for terminals that have never transitioned — treat that as "no transition yet," not as "changed."
-4. **Act on `idleReason`** when `busyState === "idle"`:
+4. **Act on `agentState`** for non-working terminals:
    - `completed` — agent finished its task; record the result and dispatch the next step.
    - `exited` — agent process exited; surface to the user, the terminal won't recover on its own.
-   - `waiting_for_user` — agent paused, likely needing input. Currently ambiguous (a generic prompt vs. a specific question — see #6960); verify against terminal output before auto-replying.
+   - `waiting` — agent paused, likely needing input. `waitingReason` distinguishes `"prompt"` (empty input prompt, safe to auto-drive) from `"question"` (agent is asking the user something — verify before auto-replying).
    - `idle` — agent is settling between subtasks; skip and re-poll.
-   - `unknown` — no agent attached or unrecognized state; treat as still busy.
-5. **Pace the next round with `ScheduleWakeup`.** Don't busy-loop. `ScheduleWakeup` resumes the orchestrator after a delay without holding a blocking call open, so it stays responsive to user interrupts.
+   - `null` — no agent attached or unknown state; treat as still busy.
+5. **Cross-check stuck state with `includeOutput`.** The state cache is a heuristic, not ground truth — `ActivityMonitor` can pin a finished agent at `working`. **If `agentState` for a given terminal hasn't transitioned across roughly 3 polling rounds, set `includeOutput` on the next round to verify against actual terminal text.** A short scrollback tail is usually enough to tell a stuck FSM from a genuinely working agent.
+6. **Pace the next round with `ScheduleWakeup`.** Don't busy-loop. `ScheduleWakeup` resumes the orchestrator after a delay without holding a blocking call open, so it stays responsive to user interrupts.
 
 Sketch:
 
 ```ts
-const results = await Promise.allSettled(
-  terminalIds.map((id) => waitUntilIdle({ terminalId: id, timeoutMs: 0 }))
-);
-for (const r of results) {
-  if (r.status === "rejected") continue; // log and move on
-  const s = r.value;
-  if (s.busyState === "working") continue;
-  if (s.lastTransitionAt !== undefined && s.lastTransitionAt === lastSeen[s.terminalId]) continue;
-  switch (s.idleReason) {
+const stuckCount: Record<string, number> = {};
+const lastSeen: Record<string, number | undefined> = {};
+
+// Plain status round.
+const { terminals } = await getStatus({ terminalIds });
+
+// If any terminal hasn't transitioned in the last ~3 rounds, refetch with output.
+const stuckIds = terminals
+  .filter((t) => t.agentState && t.agentState !== "idle" && (stuckCount[t.terminalId] ?? 0) >= 3)
+  .map((t) => t.terminalId);
+const verified = stuckIds.length
+  ? (await getStatus({ terminalIds: stuckIds, includeOutput: { lines: 30 } })).terminals
+  : [];
+const verifiedById = new Map(verified.map((v) => [v.terminalId, v]));
+
+for (const t of terminals) {
+  if (t.error) continue; // log and move on (e.g. unknown terminalId)
+  if (t.agentState === "working" || t.agentState === "directing") {
+    stuckCount[t.terminalId] = (stuckCount[t.terminalId] ?? 0) + 1;
+    continue;
+  }
+  if (t.lastTransitionAt !== undefined && t.lastTransitionAt === lastSeen[t.terminalId]) continue;
+
+  const status = verifiedById.get(t.terminalId) ?? t;
+  switch (status.agentState) {
     case "completed":
       /* dispatch next step */ break;
     case "exited":
       /* surface to user */ break;
-    case "waiting_for_user":
-      /* verify, then act or ask */ break;
+    case "waiting":
+      /* status.waitingReason: "prompt" → safe to auto-drive; "question" → verify against status.recentOutput, then act or ask */
+      break;
   }
-  if (s.lastTransitionAt !== undefined) lastSeen[s.terminalId] = s.lastTransitionAt;
+  stuckCount[t.terminalId] = 0;
+  if (t.lastTransitionAt !== undefined) lastSeen[t.terminalId] = t.lastTransitionAt;
 }
 // then: ScheduleWakeup({ delaySeconds: 30, ... });
 ```
 
-`Promise.allSettled` keeps a single bad terminalId from killing the whole round; bare `Promise.all` would discard every other snapshot.
-
-For a single terminal a normal blocking `waitUntilIdle` call is fine.
+For a single terminal a normal blocking `terminal.waitUntilIdle` call is still the right tool — kick off one task, wait for it to finish.
 
 ## Topics You Can Help With
 
