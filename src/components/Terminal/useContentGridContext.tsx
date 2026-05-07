@@ -26,6 +26,10 @@ import {
   GRID_TRANSITION_DURATION_MS,
   GRID_FIT_DELAY_MS,
 } from "@/lib/terminalLayout";
+import {
+  isSidebarLayoutTransitionLocked,
+  subscribeSidebarLayoutTransitionUnlock,
+} from "@/lib/layoutTransitionLock";
 import { useWorktrees } from "@/hooks/useWorktrees";
 import { useProjectBranding } from "@/hooks";
 import { useCliAvailabilityStore } from "@/store/cliAvailabilityStore";
@@ -355,6 +359,7 @@ export function useContentGridContext({
 
     let rafId: number | null = null;
     let latestEntry: ResizeObserverEntry | null = null;
+    let finalRafId: number | null = null;
 
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
@@ -365,6 +370,10 @@ export function useContentGridContext({
         rafId = null;
         const entry = latestEntry;
         latestEntry = null;
+        // Skip mid-transition widths — the flex parent is reflowing every
+        // frame and committing fractional widths into `grid-template-columns`
+        // produces visible jitter on the panel grid edge (#6979).
+        if (isSidebarLayoutTransitionLocked()) return;
         if (entry) {
           const { width, height } = entry.contentRect;
           setGridWidth((prev) => (prev === width ? prev : width));
@@ -374,12 +383,43 @@ export function useContentGridContext({
     });
 
     observer.observe(container);
-    setGridWidth(container.clientWidth);
-    setGridDimensions({ width: container.clientWidth, height: container.clientHeight });
+    // If the effect re-mounts mid-transition (e.g., a dep like
+    // `gridTerminals.length` changes during the lock window), skip the
+    // initial measurement — a mid-animation `<main>` width would re-snap
+    // `grid-template-columns` and reintroduce jitter. The unlock subscriber
+    // below will sync the grid once the transition completes.
+    if (!isSidebarLayoutTransitionLocked()) {
+      setGridWidth(container.clientWidth);
+      setGridDimensions({ width: container.clientWidth, height: container.clientHeight });
+    }
+
+    // Force a single measurement after the sidebar transition completes so
+    // the grid lands at its post-transition size even if no further RO entry
+    // fires (the geometry may already be settled by the time we unlock).
+    const unsubscribe = subscribeSidebarLayoutTransitionUnlock(() => {
+      const node = gridContainerRef.current;
+      if (!node) return;
+      if (finalRafId !== null) cancelAnimationFrame(finalRafId);
+      finalRafId = requestAnimationFrame(() => {
+        finalRafId = null;
+        // Re-check the lock — a second toggle may have started in the ~16ms
+        // between unlock and this rAF, in which case our measurement would
+        // capture a mid-animation width from the new transition.
+        if (isSidebarLayoutTransitionLocked()) return;
+        const measureNode = gridContainerRef.current;
+        if (!measureNode) return;
+        const width = measureNode.clientWidth;
+        const height = measureNode.clientHeight;
+        setGridWidth((prev) => (prev === width ? prev : width));
+        setGridDimensions({ width, height });
+      });
+    });
 
     return () => {
       observer.disconnect();
       if (rafId !== null) cancelAnimationFrame(rafId);
+      if (finalRafId !== null) cancelAnimationFrame(finalRafId);
+      unsubscribe();
       setGridDimensions(null);
     };
   }, [setGridDimensions, gridTerminals.length, maximizedId, twoPaneSplitEnabled, showPlaceholder]);

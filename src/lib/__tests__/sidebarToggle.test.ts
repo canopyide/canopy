@@ -2,6 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const suppressMock = vi.hoisted(() => vi.fn());
+const lockMock = vi.hoisted(() => vi.fn());
 const getPanelStateMock = vi.hoisted(() => vi.fn());
 const getWorktreeSelectionStateMock = vi.hoisted(() => vi.fn());
 
@@ -17,6 +18,10 @@ vi.mock("@/store/panelStore", () => ({
 
 vi.mock("@/store/worktreeStore", () => ({
   useWorktreeSelectionStore: { getState: getWorktreeSelectionStateMock },
+}));
+
+vi.mock("../layoutTransitionLock", () => ({
+  lockSidebarLayoutTransition: lockMock,
 }));
 
 import { suppressSidebarResizes } from "../sidebarToggle";
@@ -104,5 +109,14 @@ describe("suppressSidebarResizes", () => {
 
     expect(() => suppressSidebarResizes()).not.toThrow();
     expect(suppressMock).toHaveBeenCalledWith([], SIDEBAR_TOGGLE_LOCK_MS);
+  });
+
+  it("locks the sidebar layout transition for the same window", () => {
+    setup([{ id: "p-1", location: "grid", worktreeId: "wt-a" }], "wt-a");
+
+    suppressSidebarResizes();
+
+    expect(lockMock).toHaveBeenCalledTimes(1);
+    expect(lockMock).toHaveBeenCalledWith(SIDEBAR_TOGGLE_LOCK_MS);
   });
 });
