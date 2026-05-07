@@ -90,12 +90,15 @@ describe("HttpLifecycle", () => {
   describe("server timeouts", () => {
     it("sets keepAliveTimeout=30_000 and headersTimeout=60_000", async () => {
       let capturedServer: http.Server | null = null;
-      vi.spyOn(http, "createServer").mockImplementation((handler?: http.RequestListener) => {
+      vi.spyOn(http, "createServer").mockImplementation(((...args: unknown[]) => {
+        const handler = args.find((a) => typeof a === "function") as
+          | http.RequestListener
+          | undefined;
         const s = mockServer();
         capturedServer = s;
         if (handler) s.on("request", handler);
         return s;
-      });
+      }) as unknown as typeof http.createServer);
 
       const deps = fakeDeps();
       const lc = new HttpLifecycle(deps);
