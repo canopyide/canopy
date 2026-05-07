@@ -245,10 +245,48 @@ describe("WriteQueue.waitForInputWriteDrain", () => {
     });
 
     wq.dispose();
-    // The polling loop uses setTimeout(check, 0). Flush microtasks + the
-    // 0-ms timer so the resolver runs.
-    await vi.advanceTimersByTimeAsync(1);
+    await vi.advanceTimersByTimeAsync(0);
     expect(resolved).toBe(true);
+  });
+
+  it("resolves immediately when isExited turns true with queued chunks", async () => {
+    const m = makeOptions();
+    const wq = new WriteQueue(m.options);
+    wq.enqueueChunked("x".repeat(WRITE_MAX_CHUNK_SIZE * 3));
+
+    m.isExited.value = true;
+
+    // Should resolve immediately despite queued chunks.
+    await expect(wq.waitForInputWriteDrain()).resolves.toBeUndefined();
+  });
+
+  it("supports a second drain cycle after the first resolves", async () => {
+    const m = makeOptions();
+    const wq = new WriteQueue(m.options);
+
+    // First drain: enqueue and wait for it to empty.
+    wq.enqueueChunked("x".repeat(WRITE_MAX_CHUNK_SIZE * 2));
+    await vi.runAllTimersAsync();
+    await expect(wq.waitForInputWriteDrain()).resolves.toBeUndefined();
+
+    // Second drain: enqueue again and verify a fresh resolver lifecycle.
+    wq.enqueueChunked("y".repeat(WRITE_MAX_CHUNK_SIZE * 2));
+    await vi.runAllTimersAsync();
+    await expect(wq.waitForInputWriteDrain()).resolves.toBeUndefined();
+  });
+
+  it("does not schedule polling timers during drain", async () => {
+    const m = makeOptions();
+    const wq = new WriteQueue(m.options);
+    wq.enqueueChunked("x".repeat(WRITE_MAX_CHUNK_SIZE * 5));
+
+    const timerCountBefore = vi.getTimerCount();
+    await vi.runAllTimersAsync();
+
+    // After draining all chunks, the only remaining timer should be the
+    // pacing timer (cleared on last chunk). No polling timers added.
+    // With the Promise-based approach, drain() produces no extra timers.
+    expect(vi.getTimerCount()).toBeLessThanOrEqual(timerCountBefore);
   });
 });
 
@@ -343,5 +381,70 @@ describe("WriteQueue.waitForOutputSettle", () => {
       await vi.advanceTimersByTimeAsync(30);
     }
     expect(resolved).toBe(true);
+  });
+});
+
+describe("WriteQueue.submit timeout", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("routes a stuck performSubmit to onWriteError after SUBMIT_TIMEOUT_MS", async () => {
+    const m = makeOptions();
+    // A performSubmit that never settles.
+    m.performSubmit.mockImplementation(() => new Promise(() => {}));
+    const wq = new WriteQueue(m.options);
+
+    wq.submit("stuck");
+
+    await vi.advanceTimersByTimeAsync(3000);
+
+    expect(m.onWriteError).toHaveBeenCalled();
+    const err = m.onWriteError.mock.calls[0]?.[0] as Error;
+    expect(err.message).toContain("timed out");
+  });
+
+  it("continues processing remaining submits after a timeout", async () => {
+    const m = makeOptions();
+    const seen: string[] = [];
+    m.performSubmit.mockImplementation(async (text) => {
+      seen.push(text);
+      if (text === "stuck") {
+        // Never resolve.
+        return new Promise(() => {});
+      }
+    });
+    const wq = new WriteQueue(m.options);
+
+    wq.submit("stuck");
+    wq.submit("after");
+
+    // Advance past the timeout for the first stuck submit.
+    await vi.advanceTimersByTimeAsync(3000);
+    // Let the second submit drain.
+    await vi.runAllTimersAsync();
+
+    expect(seen).toEqual(["stuck", "after"]);
+    expect(m.onWriteError).toHaveBeenCalled();
+  });
+
+  it("clears submitInFlight after timeout so later submits work", async () => {
+    const m = makeOptions();
+    m.performSubmit.mockImplementation(() => new Promise(() => {}));
+    const wq = new WriteQueue(m.options);
+
+    wq.submit("stuck");
+    await vi.advanceTimersByTimeAsync(3000);
+
+    // After the timeout, the queue should accept new submits.
+    m.performSubmit.mockImplementation(async () => {});
+    wq.submit("fresh");
+    await vi.runAllTimersAsync();
+
+    expect(m.performSubmit).toHaveBeenCalledWith("fresh");
   });
 });

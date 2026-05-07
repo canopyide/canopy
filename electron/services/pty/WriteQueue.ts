@@ -1,6 +1,8 @@
 import { WRITE_INTERVAL_MS } from "./types.js";
 import { chunkInput } from "./terminalInput.js";
 
+const SUBMIT_TIMEOUT_MS = 3000;
+
 export interface WriteQueueOptions {
   /** Raw byte sink for paced chunks. May throw on PTY errors. */
   writeToPty: (data: string) => void;
@@ -37,6 +39,7 @@ export interface OutputSettleOptions {
 export class WriteQueue {
   private inputWriteQueue: string[] = [];
   private inputWriteTimeout: NodeJS.Timeout | null = null;
+  private inputWriteDrainResolve: (() => void) | null = null;
   private submitQueue: string[] = [];
   private submitInFlight = false;
   private disposed = false;
@@ -76,26 +79,14 @@ export class WriteQueue {
 
   /**
    * Resolves once the chunked input queue is fully drained, the PTY has
-   * exited, or the queue has been disposed. Polling preserves the existing
-   * semantics; the `disposed` check is the teardown termination condition
-   * that prevents `performSubmit` from deadlocking when `dispose()` fires
-   * mid-drain.
+   * exited, or the queue has been disposed. Uses a stored Promise resolver
+   * triggered from `startWrite` end-of-flight, `dispose()`, and the
+   * `isExited()` sync gate so no polling is needed.
    */
   async waitForInputWriteDrain(): Promise<void> {
-    if (!this.hasPendingWrites()) return;
+    if (this.disposed || this.options.isExited() || !this.hasPendingWrites()) return;
     await new Promise<void>((resolve) => {
-      const check = (): void => {
-        if (this.disposed || this.options.isExited()) {
-          resolve();
-          return;
-        }
-        if (!this.hasPendingWrites()) {
-          resolve();
-          return;
-        }
-        setTimeout(check, 0);
-      };
-      check();
+      this.inputWriteDrainResolve = resolve;
     });
   }
 
@@ -133,11 +124,17 @@ export class WriteQueue {
     }
     this.inputWriteQueue = [];
     this.submitQueue = [];
+    this.inputWriteDrainResolve?.();
+    this.inputWriteDrainResolve = null;
   }
 
   private startWrite(): void {
     if (this.disposed) return;
     if (this.inputWriteTimeout !== null || this.inputWriteQueue.length === 0) {
+      if (this.inputWriteQueue.length === 0 && this.inputWriteTimeout === null) {
+        this.inputWriteDrainResolve?.();
+        this.inputWriteDrainResolve = null;
+      }
       return;
     }
 
@@ -149,6 +146,9 @@ export class WriteQueue {
         this.inputWriteTimeout = null;
         this.startWrite();
       }, WRITE_INTERVAL_MS);
+    } else {
+      this.inputWriteDrainResolve?.();
+      this.inputWriteDrainResolve = null;
     }
   }
 
@@ -172,10 +172,26 @@ export class WriteQueue {
         const next = this.submitQueue.shift();
         if (next === undefined) continue;
         try {
-          await this.options.performSubmit(next);
+          const work = this.options.performSubmit(next);
+          let timedOut = false;
+          let timeoutId: NodeJS.Timeout | undefined;
+          const timeoutPromise = new Promise<void>((_, reject) => {
+            timeoutId = setTimeout(() => {
+              timedOut = true;
+              reject(new Error(`performSubmit timed out after ${SUBMIT_TIMEOUT_MS}ms`));
+            }, SUBMIT_TIMEOUT_MS);
+          });
+          try {
+            await Promise.race([work, timeoutPromise]);
+          } finally {
+            clearTimeout(timeoutId);
+          }
+          if (timedOut) {
+            work.catch(() => {
+              // Absorb post-timeout rejection — already routed to onWriteError.
+            });
+          }
         } catch (error) {
-          // Don't let a single submit failure abandon the rest of the queue
-          // or escape as an unhandled rejection from the void caller above.
           this.options.onWriteError?.(error, { operation: "performSubmit" });
         }
       }
