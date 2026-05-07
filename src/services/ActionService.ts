@@ -230,11 +230,13 @@ export class ActionService {
       return { ok: false, error };
     }
 
-    const startMs = Date.now();
+    const wallClockStartMs = Date.now();
+    const monotonicStartMs = typeof performance !== "undefined" ? performance.now() : Date.now();
 
     try {
       const result = await definition.run(validatedArgs, context);
-      const durationMs = Date.now() - startMs;
+      const durationMs =
+        (typeof performance !== "undefined" ? performance.now() : Date.now()) - monotonicStartMs;
       if (
         REPEATABLE_SOURCES.has(source) &&
         !definition.nonRepeatable &&
@@ -250,7 +252,7 @@ export class ActionService {
         args: this.redactSensitiveArgs(args),
         context,
         source,
-        timestamp: startMs,
+        timestamp: wallClockStartMs,
         category: definition.category,
         durationMs,
         safeArgs: this.extractSafeBreadcrumbArgs(args, definition),
