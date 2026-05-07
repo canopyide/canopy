@@ -30,6 +30,28 @@ export const SESSION_EVICTION_MAX_BYTES = 100 * 1024 * 1024; // 100 MB
 const EVICTION_TTL_BUFFER_MS = 30_000; // 30s clock-skew safety buffer
 const STAT_CHUNK_SIZE = 10;
 
+const SESSION_HEADER = "DAINTREE_SESSION_v1\n";
+const SESSION_HEADER_BYTES = Buffer.byteLength(SESSION_HEADER, "utf8");
+
+function extractSessionContent(raw: string): string | null {
+  if (!raw) return raw;
+
+  if (raw.startsWith(SESSION_HEADER)) {
+    return raw.slice(SESSION_HEADER_BYTES);
+  }
+
+  if (raw.startsWith("DAINTREE_SESSION_")) {
+    console.warn(`[terminalSessionPersistence] Unknown session file version, rejecting restore`);
+    return null;
+  }
+
+  if (raw.length < SESSION_HEADER_BYTES && "DAINTREE_SESSION_".startsWith(raw)) {
+    return null;
+  }
+
+  return raw;
+}
+
 export function getSessionDir(): string | null {
   const userData = process.env.DAINTREE_USER_DATA;
   if (!userData) return null;
@@ -79,7 +101,9 @@ export function restoreSessionFromFile(
 
   try {
     if (!existsSync(sessionPath)) return NULL_RESTORE;
-    const content = readFileSync(sessionPath, "utf8");
+    const raw = readFileSync(sessionPath, "utf8");
+    const content = extractSessionContent(raw);
+    if (content === null) return NULL_RESTORE;
     if (Buffer.byteLength(content, "utf8") > SESSION_SNAPSHOT_MAX_BYTES) {
       return NULL_RESTORE;
     }
@@ -133,7 +157,7 @@ export function persistSessionSnapshotSync(terminalId: string, state: string): v
   if (Buffer.byteLength(state, "utf8") > SESSION_SNAPSHOT_MAX_BYTES) return;
 
   mkdirSync(dir, { recursive: true });
-  resilientAtomicWriteFileSync(sessionPath, state, "utf8");
+  resilientAtomicWriteFileSync(sessionPath, SESSION_HEADER + state, "utf8");
 }
 
 export async function persistSessionSnapshotAsync(
@@ -146,7 +170,7 @@ export async function persistSessionSnapshotAsync(
   if (Buffer.byteLength(state, "utf8") > SESSION_SNAPSHOT_MAX_BYTES) return;
 
   await mkdir(dir, { recursive: true });
-  await resilientAtomicWriteFile(sessionPath, state, "utf8");
+  await resilientAtomicWriteFile(sessionPath, SESSION_HEADER + state, "utf8");
 }
 
 export async function deleteSessionFile(terminalId: string): Promise<void> {
