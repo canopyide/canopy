@@ -643,8 +643,10 @@ describe("pty-host adversarial", () => {
     });
     await flushMicrotasks();
 
-    // Payload large enough to overflow the 64-byte ring after framing,
-    // forcing pending segments and triggering the backpressure path.
+    // Use the smallest legal ring (64 bytes) plus a payload whose framed
+    // packet (5-byte header + 60 bytes) cannot fit, so the write is rejected
+    // and the segment lands in the pending queue — exactly what this test
+    // wants to exercise.
     (hostState.currentPtyManager as MiniEmitter).emit("data", "t1", "a".repeat(60));
 
     const backpressure = hostState.backpressureManagers[0];

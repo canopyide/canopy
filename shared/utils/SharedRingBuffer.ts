@@ -227,9 +227,9 @@ export class SharedRingBuffer {
    *
    * The signal slot is a generation counter incremented with `Atomics.add`.
    * On a 32-bit signed slot it wraps at INT32_MAX → INT32_MIN; this is
-   * intentional and harmless because consumers compare for equality via
-   * `Atomics.wait(view, idx, expected)` — wraparound just causes the next
-   * wait to return `"not-equal"` and the consumer re-enters the loop.
+   * intentional and harmless because consumers re-snapshot the value on
+   * each `Atomics.wait(view, idx, expected)` call, so they always wait
+   * against the current counter rather than a stale comparator.
    * Consumers MUST NOT do ordered comparisons (`> lastSeen`) against this
    * value — they will silently misbehave on wrap.
    */

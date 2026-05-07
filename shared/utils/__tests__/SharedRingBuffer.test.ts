@@ -30,6 +30,14 @@ describe("SharedRingBuffer", () => {
       expect(SharedRingBuffer.getSignalIndex()).toBe(SharedRingBuffer.SIGNAL_IDX);
       expect(SharedRingBuffer.getSignalIndex()).toBe(2);
     });
+
+    it("notifyConsumer increments the slot at getSignalIndex()", () => {
+      const before = buffer.getSignalValue();
+      buffer.notifyConsumer();
+      const view = buffer.getSignalView();
+      expect(view[SharedRingBuffer.getSignalIndex()]).toBe(before + 1);
+      expect(buffer.getSignalValue()).toBe(before + 1);
+    });
   });
 
   describe("basic operations", () => {
