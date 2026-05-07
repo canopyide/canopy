@@ -1,5 +1,6 @@
 import Store from "electron-store";
 import type { StoreSchema } from "../store.js";
+import { tightenFilePermissions } from "../store.js";
 import fs from "fs";
 import { z } from "zod";
 import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
@@ -89,6 +90,9 @@ export class MigrationRunner {
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       const backupPath = `${storePath}.backup-v${fromVersion}-${timestamp}`;
       fs.copyFileSync(storePath, backupPath);
+      // Pre-migration backups carry the full store including secrets and
+      // are never auto-cleaned, so tighten regardless of source mode.
+      tightenFilePermissions(backupPath);
       console.log(`[Migrations] Created backup at ${backupPath}`);
       return backupPath;
     } catch (error) {
@@ -120,6 +124,9 @@ export class MigrationRunner {
     try {
       if (fs.existsSync(storePath)) {
         fs.renameSync(storePath, failedStatePath);
+        // Preserve the failed-migration file owner-only — it carries the
+        // post-migration store and lingers for diagnostics.
+        tightenFilePermissions(failedStatePath);
         preservedFailedState = true;
       }
     } catch (preserveError) {
@@ -131,6 +138,9 @@ export class MigrationRunner {
 
     try {
       fs.renameSync(backupPath, storePath);
+      // Backups created by older builds may carry 0o644; tighten the
+      // restored live config so the rollback never relaxes permissions.
+      tightenFilePermissions(storePath);
       console.log(`[Migrations] Restored store from backup ${backupPath}`);
       return {
         restored: true,

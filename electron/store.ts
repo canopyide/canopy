@@ -431,6 +431,9 @@ function quarantineCorruptConfig(configPath: string): string | null {
   try {
     const quarantinePath = `${configPath}.corrupted.${Date.now()}`;
     fs.renameSync(configPath, quarantinePath);
+    // The quarantined file inherits the original (potentially 0o644) inode mode
+    // and may contain partial secrets; tighten before it lingers on disk.
+    tightenFilePermissions(quarantinePath);
     console.log(`[Store] Quarantined corrupt config to ${quarantinePath}`);
     return quarantinePath;
   } catch (err) {
@@ -446,6 +449,10 @@ function restoreFromBackup(configPath: string): boolean {
     const raw = fs.readFileSync(backupPath, "utf8");
     JSON.parse(raw);
     fs.copyFileSync(backupPath, configPath);
+    // copyFileSync's mode propagation varies across platforms/filesystems and
+    // a subsequent Store constructor failure would leave the restored file at
+    // the backup's original mode — tighten unconditionally.
+    tightenFilePermissions(configPath);
     console.log("[Store] Restored config from backup");
     return true;
   } catch {
@@ -684,4 +691,5 @@ export {
   restoreFromBackup,
   refreshBackup,
   createInMemoryFallback,
+  tightenFilePermissions,
 };

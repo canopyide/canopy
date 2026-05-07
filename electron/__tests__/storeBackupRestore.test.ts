@@ -103,6 +103,18 @@ describe("Store backup/restore helpers", () => {
     it("returns null when file does not exist", () => {
       expect(quarantineCorruptConfig(configPath)).toBeNull();
     });
+
+    it.skipIf(process.platform === "win32")(
+      "tightens the quarantined file to 0o600 on POSIX",
+      () => {
+        fs.writeFileSync(configPath, '{"githubToken":"ghp_secret"', "utf8");
+        fs.chmodSync(configPath, 0o644);
+        const quarantined = quarantineCorruptConfig(configPath);
+        expect(quarantined).not.toBeNull();
+        const mode = fs.statSync(quarantined!).mode & 0o777;
+        expect(mode).toBe(0o600);
+      }
+    );
   });
 
   describe("restoreFromBackup", () => {
@@ -123,6 +135,17 @@ describe("Store backup/restore helpers", () => {
       expect(restoreFromBackup(configPath)).toBe(false);
       expect(fs.existsSync(configPath)).toBe(false);
     });
+
+    it.skipIf(process.platform === "win32")(
+      "tightens the restored config.json to 0o600 even when the backup was 0o644",
+      () => {
+        fs.writeFileSync(`${configPath}.bak`, JSON.stringify({ restored: true }), "utf8");
+        fs.chmodSync(`${configPath}.bak`, 0o644);
+        expect(restoreFromBackup(configPath)).toBe(true);
+        const mode = fs.statSync(configPath).mode & 0o777;
+        expect(mode).toBe(0o600);
+      }
+    );
   });
 
   describe("refreshBackup", () => {
