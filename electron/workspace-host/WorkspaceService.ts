@@ -1929,6 +1929,7 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     this.git = null;
     this.projectRootPath = null;
     this.projectEnvVars = {};
+    this.wslDefaultDistroPromise = null;
 
     clearGitDirCache();
     clearGitCommonDirCache();
@@ -2120,6 +2121,8 @@ ${lines.map((l) => "+" + l).join("\n")}`;
       monitor.stop();
     }
     this.monitors.clear();
+    this.fetchCoordinator.destroy();
+    this.pollQueue.clear();
     this.listService.invalidateCache();
   }
 }

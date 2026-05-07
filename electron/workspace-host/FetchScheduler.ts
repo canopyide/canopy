@@ -98,15 +98,6 @@ export class FetchScheduler {
     }
   }
 
-  /**
-   * Permanently disable. Any in-flight fetch resolves naturally; its
-   * `.finally` hook checks `disposed` before re-arming, so no leaks.
-   */
-  dispose(): void {
-    this.disposed = true;
-    this.clearTimer();
-  }
-
   private async run(force: boolean): Promise<void> {
     if (this.disposed || !this.host.isRunning) return;
     if (!this.host.hasFetchCallback) return;

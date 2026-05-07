@@ -240,26 +240,26 @@ describe("FetchScheduler", () => {
     expect(host.onExecuteFetch).toHaveBeenLastCalledWith(true);
   });
 
-  it("dispose() prevents further fetches even if a timer fires", async () => {
+  it("does not execute fetch when host is not running", async () => {
     const host = makeHost();
     const scheduler = new FetchScheduler(host as FetchSchedulerHost);
 
+    host.isRunning = false;
     scheduler.schedule(true);
-    scheduler.dispose();
     await vi.advanceTimersByTimeAsync(10_000);
 
     expect(host.onExecuteFetch).not.toHaveBeenCalled();
   });
 
-  it("dispose() prevents post-completion rescheduling", async () => {
+  it("does not reschedule after completion when host is not running", async () => {
     const host = makeHost();
     const scheduler = new FetchScheduler(host as FetchSchedulerHost);
 
     const triggered = scheduler.triggerNow();
-    scheduler.dispose();
+    host.isRunning = false;
     await triggered;
 
-    // After completion + dispose, no new timer should be armed.
+    // After completion with isRunning false, no new timer should be armed.
     await vi.advanceTimersByTimeAsync(60_000);
     expect(host.onExecuteFetch).toHaveBeenCalledTimes(1);
   });

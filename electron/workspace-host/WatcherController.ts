@@ -324,7 +324,7 @@ export class WatcherController {
         this.gitWatcherMode = "none";
         this.start("recursive");
       }
-    }, WATCHER_RETRY_INTERVAL_MS);
+    }, WATCHER_RETRY_INTERVAL_MS).unref();
   }
 
   private handleGitFileChange(): void {
@@ -355,9 +355,4 @@ export class WatcherController {
     this.flushPendingIfReady();
   }
 
-  /** Permanently disable. Late timers and callbacks short-circuit on disposed. */
-  dispose(): void {
-    this.disposed = true;
-    this.stop(true);
-  }
 }

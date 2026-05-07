@@ -68,9 +68,4 @@ export class ResourcePollTimer {
     }
   }
 
-  /** Permanently disable. Late callbacks short-circuit on the disposed flag. */
-  dispose(): void {
-    this.disposed = true;
-    this.clear();
-  }
 }

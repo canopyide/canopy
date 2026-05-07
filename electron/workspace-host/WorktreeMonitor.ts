@@ -749,7 +749,6 @@ export class WorktreeMonitor {
   stop(): void {
     this._isRunning = false;
     this._pollAbortController.abort();
-    this._pollAbortController = new AbortController();
     this.clearTimers();
     this.watcherController.stop();
   }
@@ -996,7 +995,7 @@ export class WorktreeMonitor {
       }
 
       void this.poll();
-    }, delayMs);
+    }, delayMs).unref();
   }
 
   private async forceRefreshAfterGap(): Promise<void> {

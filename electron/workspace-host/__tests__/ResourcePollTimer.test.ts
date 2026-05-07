@@ -128,18 +128,18 @@ describe("ResourcePollTimer", () => {
     expect(host.onResourceStatusPoll).toHaveBeenCalledTimes(1);
   });
 
-  it("dispose() prevents further callbacks even if a timer fires", async () => {
+  it("clear() prevents further callbacks even if a timer fires", async () => {
     const host = makeHost({ resourcePollIntervalMs: 5_000 });
     const timer = new ResourcePollTimer(host as ResourcePollTimerHost);
 
     timer.schedule();
-    timer.dispose();
+    timer.clear();
     await vi.advanceTimersByTimeAsync(60_000);
 
     expect(host.onResourceStatusPoll).not.toHaveBeenCalled();
   });
 
-  it("dispose() prevents post-callback rescheduling", async () => {
+  it("clear() prevents post-callback rescheduling", async () => {
     const host = makeHost({ resourcePollIntervalMs: 5_000 });
     const timer = new ResourcePollTimer(host as ResourcePollTimerHost);
 
@@ -147,7 +147,7 @@ describe("ResourcePollTimer", () => {
     await vi.advanceTimersByTimeAsync(5_001);
     expect(host.onResourceStatusPoll).toHaveBeenCalledTimes(1);
 
-    timer.dispose();
+    timer.clear();
     await vi.advanceTimersByTimeAsync(60_000);
     expect(host.onResourceStatusPoll).toHaveBeenCalledTimes(1);
   });
