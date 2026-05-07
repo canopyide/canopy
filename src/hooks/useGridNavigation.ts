@@ -4,6 +4,10 @@ import { useFleetArmingStore } from "@/store/fleetArmingStore";
 import { useFleetScopeFlagStore } from "@/store/fleetScopeFlagStore";
 import { useShallow } from "zustand/react/shallow";
 import { computeGridColumns } from "@/lib/terminalLayout";
+import {
+  isSidebarLayoutTransitionLocked,
+  subscribeSidebarLayoutTransitionUnlock,
+} from "@/lib/layoutTransitionLock";
 import { buildFleetPanels } from "@/components/Terminal/contentGridFleetPanels";
 
 export type NavigationDirection = "up" | "down" | "left" | "right";
@@ -85,31 +89,51 @@ export function useGridNavigation(options: UseGridNavigationOptions = {}) {
   const isFleetScopeRender = isFleetScopeEnabled && fleetPanels.length > 0;
 
   useEffect(() => {
+    let observedContainer: Element | null = null;
+
     const findAndObserve = () => {
       const container = document.querySelector(containerSelector);
       if (!container) return null;
 
       const observer = new ResizeObserver((entries) => {
         const entry = entries[0];
-        if (entry) {
-          const newWidth = entry.contentRect.width;
-          setGridWidth((prev) => (prev === newWidth ? prev : newWidth));
-        }
+        if (!entry) return;
+        // Skip mid-transition widths so keyboard-nav column count doesn't
+        // briefly snap to a different grid layout while sidebars animate
+        // (#6979).
+        if (isSidebarLayoutTransitionLocked()) return;
+        const newWidth = entry.contentRect.width;
+        setGridWidth((prev) => (prev === newWidth ? prev : newWidth));
       });
 
       observer.observe(container);
+      observedContainer = container;
       setGridWidth(container.clientWidth);
 
       return observer;
     };
 
     const observer = findAndObserve();
+
+    const unsubscribe = subscribeSidebarLayoutTransitionUnlock(() => {
+      const node = observedContainer ?? document.querySelector(containerSelector);
+      if (!node) return;
+      const width = node.clientWidth;
+      setGridWidth((prev) => (prev === width ? prev : width));
+    });
+
     if (!observer) {
       const retryTimer = setTimeout(findAndObserve, 100);
-      return () => clearTimeout(retryTimer);
+      return () => {
+        clearTimeout(retryTimer);
+        unsubscribe();
+      };
     }
 
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      unsubscribe();
+    };
     // isFleetScopeRender is a dep because ContentGrid swaps the rendered tree
     // (different React key) when fleet scope toggles, which detaches the old
     // #panel-grid node. Re-running the effect re-binds the observer to the

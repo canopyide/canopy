@@ -2,6 +2,7 @@ import { terminalInstanceService } from "@/services/terminal/TerminalInstanceSer
 import { useHelpPanelStore } from "@/store/helpPanelStore";
 import { usePanelStore } from "@/store/panelStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
+import { lockSidebarLayoutTransition } from "./layoutTransitionLock";
 import { SIDEBAR_TOGGLE_LOCK_MS } from "./terminalLayout";
 
 /**
@@ -32,4 +33,8 @@ export function suppressSidebarResizes(): void {
     ids.push(assistantTerminalId);
   }
   terminalInstanceService.suppressResizesDuringLayoutTransition(ids, SIDEBAR_TOGGLE_LOCK_MS);
+  // Block ResizeObserver-driven grid-width re-renders for the same window.
+  // PTY suppression alone leaves the visual grid jittering as `<main flex:1>`
+  // reflows every frame against the animating sidebar slot (see #6979).
+  lockSidebarLayoutTransition(SIDEBAR_TOGGLE_LOCK_MS);
 }
