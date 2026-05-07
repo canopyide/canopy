@@ -591,7 +591,10 @@ describe("PtyClient adversarial", () => {
 
       expect(payloads).toHaveLength(1);
       expect(payloads[0].code).toBe(137);
-      expect(payloads[0].signal).toBe("SIG9");
+      // The 128+N → "SIG<N>" synthesis only applies on POSIX. On Windows,
+      // exit codes >128 are NTSTATUS values, so PtyHostLifecycle leaves
+      // signal as null (see comment at PtyHostLifecycle.ts:405-410).
+      expect(payloads[0].signal).toBe(process.platform === "win32" ? null : "SIG9");
       expect(payloads[0].crashType).toBe("OUT_OF_MEMORY");
     });
 

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { EventEmitter } from "events";
+import path from "path";
 import type { WorkspaceService } from "../WorkspaceService.js";
 
 const mockSimpleGit = {
@@ -942,12 +943,16 @@ describe("WorkspaceService.createWorktree", () => {
   it("checks the parent directory of a relative path against rootPath (#7033)", async () => {
     // Programmatic callers (MCP, recipes) may pass a relative `path`. The
     // pre-flight must inspect the rootPath-resolved parent, not process.cwd.
+    // The source uses `path.resolve(rootPath, relPath)`, which on Windows
+    // turns "/test/root" into a drive-rooted absolute path; build the
+    // expected parent the same way so the assertion stays cross-platform.
+    const expectedParent = path.resolve("/test/root", "worktrees");
     const fsModule = await import("fs");
     const existsSyncMock = vi.mocked(fsModule.existsSync);
     existsSyncMock.mockImplementationOnce((p: unknown) => {
       // Only return false for the expected resolved parent; other lookups
       // (none in this test, but defensive) default to true.
-      return p !== "/test/root/worktrees";
+      return p !== expectedParent;
     });
 
     await service.createWorktree("req-relative-path", "/test/root", {
@@ -956,14 +961,14 @@ describe("WorkspaceService.createWorktree", () => {
       path: "worktrees/feat",
     });
 
-    expect(existsSyncMock).toHaveBeenCalledWith("/test/root/worktrees");
+    expect(existsSyncMock).toHaveBeenCalledWith(expectedParent);
     expect(mockSimpleGit.raw).not.toHaveBeenCalled();
     expect(mockSendEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "create-worktree-result",
         requestId: "req-relative-path",
         success: false,
-        error: expect.stringContaining("/test/root/worktrees"),
+        error: expect.stringContaining(expectedParent),
       })
     );
   });
