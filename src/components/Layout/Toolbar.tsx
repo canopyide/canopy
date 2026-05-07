@@ -506,7 +506,7 @@ export function Toolbar({
       },
       "copy-tree": {
         render: () => (
-          <Tooltip open={treeCopied || undefined} delayDuration={treeCopied ? 0 : 300}>
+          <Tooltip open={treeCopied || undefined}>
             <TooltipTrigger asChild>
               <Button
                 {...copyTreeHintHover}

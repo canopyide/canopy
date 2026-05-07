@@ -622,7 +622,7 @@ export function WorktreeCard({
             />
           )}
           {chipState !== null && (
-            <Tooltip delayDuration={400}>
+            <Tooltip>
               <TooltipTrigger asChild>
                 <div
                   className={cn(

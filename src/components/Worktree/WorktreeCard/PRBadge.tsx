@@ -48,6 +48,7 @@ export const PRBadge = memo(function PRBadge({
   const prStateLabel = prState === "merged" ? "merged" : prState === "closed" ? "closed" : "open";
 
   return (
+    // 300ms matches GitHub's hovercard entry latency — keeps perceived delay consistent with github.com
     <Tooltip open={isOpen} onOpenChange={handleOpenChange} delayDuration={300}>
       <TooltipTrigger asChild>
         <button
