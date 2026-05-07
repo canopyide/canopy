@@ -9,7 +9,7 @@ import { resilientAtomicWriteFile, resilientRename } from "../utils/fs.js";
 import { sanitizeSvg } from "../../shared/utils/svgSanitizer.js";
 import { isSensitiveEnvKey } from "../../shared/utils/envVars.js";
 import { projectEnvSecureStorage } from "./ProjectEnvSecureStorage.js";
-import { getProjectStateDir, settingsFilePath } from "./projectStorePaths.js";
+import { getProjectStateDir, settingsFilePath, UTF8_BOM } from "./projectStorePaths.js";
 import {
   parseFleetSavedScopes,
   parseNotificationOverrides,
@@ -70,7 +70,8 @@ export class ProjectSettingsManager {
 
     try {
       const content = await fs.readFile(filePath, "utf-8");
-      const parsed = JSON.parse(content);
+      const stripped = content.startsWith(UTF8_BOM) ? content.slice(UTF8_BOM.length) : content;
+      const parsed = JSON.parse(stripped);
 
       let sanitizedIconSvg: string | undefined;
       if (typeof parsed.projectIconSvg === "string" && parsed.projectIconSvg.trim()) {
@@ -240,14 +241,29 @@ export class ProjectSettingsManager {
 
       return settings;
     } catch (error) {
-      console.error(`[ProjectSettingsManager] Failed to load settings for ${projectId}:`, error);
       this.notificationOverridesCache.delete(projectId);
-      try {
-        const quarantinePath = `${filePath}.corrupted.${Date.now()}`;
-        await resilientRename(filePath, quarantinePath);
-        console.warn(`[ProjectSettingsManager] Corrupted settings file moved to ${quarantinePath}`);
-      } catch {
-        // Ignore
+      if (error instanceof SyntaxError) {
+        console.error(`[ProjectSettingsManager] Failed to parse settings for ${projectId}:`, error);
+        try {
+          const quarantinePath = `${filePath}.corrupted.${Date.now()}`;
+          await resilientRename(filePath, quarantinePath);
+          console.warn(
+            `[ProjectSettingsManager] Corrupted settings file moved to ${quarantinePath}`
+          );
+        } catch {
+          // Ignore rename failures — quarantine is best-effort
+        }
+      } else {
+        const code =
+          error && typeof error === "object" && "code" in error
+            ? (error as NodeJS.ErrnoException).code
+            : undefined;
+        if (code !== "ENOENT") {
+          console.error(
+            `[ProjectSettingsManager] Failed to load settings for ${projectId}:`,
+            error
+          );
+        }
       }
       return { runCommands: [] };
     }
@@ -399,7 +415,12 @@ export class ProjectSettingsManager {
       if (ensureDir) {
         await fs.mkdir(stateDir, { recursive: true });
       }
-      await resilientAtomicWriteFile(filePath, JSON.stringify(sanitizedSettings, null, 2), "utf-8");
+      await resilientAtomicWriteFile(
+        filePath,
+        JSON.stringify(sanitizedSettings, null, 2),
+        "utf-8",
+        { mode: 0o600 }
+      );
     };
 
     try {

@@ -222,4 +222,69 @@ describe("ProjectSettingsManager caching", () => {
     expect(loaded.exposeDaintreeMcpToAgents).toBe(true);
     expect(loaded.daintreeMcpTier).toBeUndefined();
   });
+
+  it("loads settings whose JSON is prefixed with a UTF-8 BOM", async () => {
+    const settingsPath = path.join(tempDir, projectId, "settings.json");
+    const json = JSON.stringify({
+      runCommands: [{ id: "npm-dev", name: "dev", command: "npm run dev" }],
+    });
+    await fs.writeFile(settingsPath, "﻿" + json, "utf-8");
+
+    const loaded = await manager.getProjectSettings(projectId);
+    expect(loaded.runCommands).toHaveLength(1);
+    expect(loaded.runCommands?.[0]?.command).toBe("npm run dev");
+
+    // Verify the BOM-prefixed file was not quarantined as corrupted.
+    const dirEntries = await fs.readdir(path.join(tempDir, projectId));
+    expect(dirEntries.some((name) => name.includes(".corrupted."))).toBe(false);
+  });
+
+  it("does not quarantine the settings file on transient (non-SyntaxError) read failures", async () => {
+    const settingsPath = path.join(tempDir, projectId, "settings.json");
+    await fs.writeFile(
+      settingsPath,
+      JSON.stringify({ runCommands: [{ id: "npm-dev", name: "dev", command: "npm run dev" }] }),
+      "utf-8"
+    );
+
+    const enoent = Object.assign(new Error("ENOENT: file disappeared"), { code: "ENOENT" });
+    const readSpy = vi.spyOn(fs, "readFile").mockRejectedValueOnce(enoent);
+
+    const result = await manager.getProjectSettings(projectId);
+    expect(result).toEqual({ runCommands: [] });
+
+    readSpy.mockRestore();
+
+    // Original file untouched, no quarantine entry created.
+    const dirEntries = await fs.readdir(path.join(tempDir, projectId));
+    expect(dirEntries).toContain("settings.json");
+    expect(dirEntries.some((name) => name.includes(".corrupted."))).toBe(false);
+
+    // After the transient failure, a normal subsequent read should still work.
+    const recovered = await manager.getProjectSettings(projectId);
+    expect(recovered.runCommands).toHaveLength(1);
+  });
+
+  it("still quarantines settings files that contain truly invalid JSON", async () => {
+    const settingsPath = path.join(tempDir, projectId, "settings.json");
+    await fs.writeFile(settingsPath, "{{invalid json", "utf-8");
+
+    const result = await manager.getProjectSettings(projectId);
+    expect(result).toEqual({ runCommands: [] });
+
+    const dirEntries = await fs.readdir(path.join(tempDir, projectId));
+    expect(dirEntries.some((name) => name.includes(".corrupted."))).toBe(true);
+    expect(dirEntries).not.toContain("settings.json");
+  });
+
+  it.runIf(process.platform !== "win32")(
+    "writes the settings file with mode 0o600 on POSIX",
+    async () => {
+      await manager.saveProjectSettings(projectId, { runCommands: [] });
+
+      const settingsPath = path.join(tempDir, projectId, "settings.json");
+      const stat = await fs.stat(settingsPath);
+      expect(stat.mode & 0o777).toBe(0o600);
+    }
+  );
 });

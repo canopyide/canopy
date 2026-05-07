@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import {
   parseFleetSavedScopes,
   parseNotificationOverrides,
@@ -31,9 +31,25 @@ describe("parseTerminalSettings", () => {
     });
   });
 
-  it("rejects non-absolute shell path", () => {
-    const result = parseTerminalSettings({ shell: "zsh" });
-    expect(result).toBeUndefined();
+  describe("non-absolute shell handling", () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it("rejects non-absolute shell path", () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const result = parseTerminalSettings({ shell: "zsh" });
+      expect(result).toBeUndefined();
+    });
+
+    it("warns when a non-absolute shell value is dropped", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      parseTerminalSettings({ shell: "zsh" });
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      const message = warnSpy.mock.calls[0]?.[0];
+      expect(message).toContain("[ProjectSettingsManager]");
+      expect(message).toContain("zsh");
+    });
   });
 
   it("rejects non-absolute defaultWorkingDirectory", () => {

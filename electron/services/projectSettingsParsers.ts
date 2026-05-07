@@ -9,8 +9,15 @@ export function parseTerminalSettings(raw: unknown): ProjectTerminalSettings | u
   const obj = raw as Record<string, unknown>;
   const result: ProjectTerminalSettings = {};
 
-  if (typeof obj.shell === "string" && obj.shell.trim() && path.isAbsolute(obj.shell.trim())) {
-    result.shell = obj.shell.trim();
+  if (typeof obj.shell === "string" && obj.shell.trim()) {
+    const trimmedShell = obj.shell.trim();
+    if (path.isAbsolute(trimmedShell)) {
+      result.shell = trimmedShell;
+    } else {
+      console.warn(
+        `[ProjectSettingsManager] parseTerminalSettings: dropping non-absolute shell path: "${trimmedShell}"`
+      );
+    }
   }
   if (Array.isArray(obj.shellArgs)) {
     const args = obj.shellArgs.filter((a): a is string => typeof a === "string");

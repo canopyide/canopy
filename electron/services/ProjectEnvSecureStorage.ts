@@ -41,7 +41,7 @@ class ProjectEnvSecureStorage {
   public get(projectId: string, envKey: string): string | undefined {
     const key = this.makeKey(projectId, envKey);
     const projectEnv = this.getProjectEnvMap();
-    return projectEnv[key] || undefined;
+    return projectEnv[key] ?? undefined;
   }
 
   public delete(projectId: string, envKey: string): void {
