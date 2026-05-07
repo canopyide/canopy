@@ -65,6 +65,39 @@ describe("GitHubAuth", () => {
     expect(result.error).toBe("Cannot reach GitHub. Check your internet connection.");
   });
 
+  it("returns 'Invalid or expired token' for a 401 with 'Bad credentials' in the body", async () => {
+    (globalThis as unknown as { fetch: Mock }).fetch = vi
+      .fn()
+      .mockResolvedValue(new Response('{"message":"Bad credentials"}', { status: 401 }));
+
+    const result = await GitHubAuth.validate("ghp_validtoken012345678901234567890123456789");
+
+    expect(result.valid).toBe(false);
+    expect(result.error).toBe("Invalid or expired token");
+  });
+
+  it("returns the transient message for a 401 without 'Bad credentials' so a brief auth-service incident isn't reported as an invalid token", async () => {
+    (globalThis as unknown as { fetch: Mock }).fetch = vi
+      .fn()
+      .mockResolvedValue(new Response("<html>Service Disrupted</html>", { status: 401 }));
+
+    const result = await GitHubAuth.validate("ghp_validtoken012345678901234567890123456789");
+
+    expect(result.valid).toBe(false);
+    expect(result.error).toBe("GitHub is temporarily unavailable. Please retry.");
+  });
+
+  it("returns the transient message for a 5xx response", async () => {
+    (globalThis as unknown as { fetch: Mock }).fetch = vi
+      .fn()
+      .mockResolvedValue(new Response("Bad Gateway", { status: 502 }));
+
+    const result = await GitHubAuth.validate("ghp_validtoken012345678901234567890123456789");
+
+    expect(result.valid).toBe(false);
+    expect(result.error).toBe("GitHub is temporarily unavailable. Please retry.");
+  });
+
   describe("parseSsoHeader", () => {
     it("extracts the url= URL from a required-form header", () => {
       const url = parseSsoHeader(

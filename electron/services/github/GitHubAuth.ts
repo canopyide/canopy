@@ -343,10 +343,36 @@ export class GitHubAuth {
 
       if (!response.ok) {
         if (response.status === 401) {
-          return { valid: false, scopes: [], error: "Invalid or expired token" };
+          // Confirm a definitive revoked-token signal in the body before
+          // declaring the token bad — a brief auth-service incident can
+          // surface as a 401 with an HTML error page or unrelated JSON,
+          // and we don't want the Settings flow to flip a healthy token
+          // into "invalid" on a transient blip. Mirrors the classifier
+          // rule used by `parseGitHubError`.
+          let bodyText = "";
+          try {
+            bodyText = await response.text();
+          } catch {
+            // ignore — fall through to transient
+          }
+          if (bodyText.includes("Bad credentials")) {
+            return { valid: false, scopes: [], error: "Invalid or expired token" };
+          }
+          return {
+            valid: false,
+            scopes: [],
+            error: "GitHub is temporarily unavailable. Please retry.",
+          };
         }
         if (response.status === 403) {
           return { valid: false, scopes: [], error: "Token lacks required permissions" };
+        }
+        if (response.status >= 500 && response.status <= 599) {
+          return {
+            valid: false,
+            scopes: [],
+            error: "GitHub is temporarily unavailable. Please retry.",
+          };
         }
         return { valid: false, scopes: [], error: `GitHub API error: ${response.statusText}` };
       }

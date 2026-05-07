@@ -178,12 +178,30 @@ describe("parseGitHubError", () => {
       expect(isTransientNetworkError(message)).toBe(true);
     });
 
-    it("classifies an aborted fetch (RequestError wrapping AbortError) as a network error", () => {
+    it("classifies a RequestError with no response (status=500 fallback) as a network error", () => {
+      // RequestError with `response: undefined` is the shape Octokit produces
+      // for any pre-HTTP-response failure (DNS, abort, unreachable host).
+      // Hitting the !error.response short-circuit, not the cause-chain.
       const abort = new Error("The operation was aborted");
       abort.name = "AbortError";
       const error = makeRequestError("AbortError", 500, undefined, abort);
-      const message = parseGitHubError(error);
-      expect(message).toBe("Cannot reach GitHub. Check your internet connection.");
+      expect(parseGitHubError(error)).toBe("Cannot reach GitHub. Check your internet connection.");
+    });
+  });
+
+  describe("non-Octokit error with AbortError cause chain", () => {
+    it("classifies a plain Error wrapping an AbortError as a network error", () => {
+      // This is the path `isAbortLike` actually exists for: a raw `fetch`
+      // failure thrown outside Octokit (e.g. from a code path that bypasses
+      // the GraphQL client). RequestError variants short-circuit before
+      // reaching the cause-chain inspector.
+      const abort = new Error("The operation was aborted");
+      abort.name = "AbortError";
+      const wrapper = new Error("fetch failed");
+      (wrapper as { cause?: unknown }).cause = abort;
+      expect(parseGitHubError(wrapper)).toBe(
+        "Cannot reach GitHub. Check your internet connection."
+      );
     });
   });
 
@@ -249,7 +267,7 @@ describe("parseGitHubError", () => {
   });
 
   describe("rate-limit pre-emption", () => {
-    it("returns a rate-limit message when the rate-limit service is currently blocking", () => {
+    it("returns the primary-rate-limit message when the rate-limit service is blocking on a quota reset", () => {
       // Simulate a rate-limit response that the fetch wrapper has already
       // recorded (Phase 1 / Phase 2 in `rateLimitAwareFetch`).
       const resetAt = Math.floor((Date.now() + 60_000) / 1000).toString();
@@ -262,7 +280,18 @@ describe("parseGitHubError", () => {
       );
       const error = makeRequestError("rate limit exceeded", 403, makeResponse(403));
       const message = parseGitHubError(error);
-      expect(message).toMatch(/rate limit (exceeded|Reset)/i);
+      // The canonical primary-bucket message — confirms we hit the
+      // rate-limit branch, not the 403 SSO/scope branch.
+      expect(message).toMatch(/^GitHub rate limit exceeded\. Resets in /);
+    });
+
+    it("returns the secondary-rate-limit message when retry-after fires the secondary-bucket path", () => {
+      // `retry-after` is the header GitHub sends for secondary limits.
+      gitHubRateLimitService.update(new Headers({ "retry-after": "60" }), 403);
+      const error = makeRequestError("Forbidden", 403, makeResponse(403));
+      expect(parseGitHubError(error)).toMatch(
+        /^GitHub secondary rate limit triggered\. Resuming in /
+      );
     });
   });
 });
