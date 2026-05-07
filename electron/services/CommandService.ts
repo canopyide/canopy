@@ -14,18 +14,28 @@ import type {
 import { projectStore } from "./ProjectStore.js";
 import { substituteTemplateVariables } from "../../shared/utils/promptTemplate.js";
 import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
+import { Cache } from "../utils/cache.js";
 
 const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+const IS_DEV = process.env.NODE_ENV === "development";
 
 class CommandServiceImpl {
   private commands = new Map<string, DaintreeCommand>();
+  private overridesCache = new Cache<string, Map<string, CommandOverride>>({
+    maxSize: 20,
+    defaultTTL: 5_000,
+  });
 
   /**
    * Load command overrides for a project.
-   * @param projectId Project ID to load overrides for
-   * @returns Map of command ID to override
+   * Results are cached per project with a short TTL to avoid redundant
+   * disk reads when list(), getManifest(), and execute() are called in
+   * the same palette-open window.
    */
   private async loadProjectOverrides(projectId: string): Promise<Map<string, CommandOverride>> {
+    const cached = this.overridesCache.get(projectId);
+    if (cached) return cached;
+
     const overrideMap = new Map<string, CommandOverride>();
     try {
       const settings = await projectStore.getProjectSettings(projectId);
@@ -37,7 +47,13 @@ class CommandServiceImpl {
     } catch (error) {
       console.error(`[CommandService] Failed to load overrides for project ${projectId}:`, error);
     }
+    this.overridesCache.set(projectId, overrideMap);
     return overrideMap;
+  }
+
+  /** Invalidate cached overrides for a project (called after settings save). */
+  invalidateOverridesCache(projectId: string): void {
+    this.overridesCache.invalidate(projectId);
   }
 
   /**
@@ -125,7 +141,11 @@ class CommandServiceImpl {
           enabled,
           disabledReason,
         });
-      } catch {
+      } catch (error) {
+        console.warn(
+          `[CommandService] Error evaluating isEnabled for command "${command.id}":`,
+          error
+        );
         entries.push({
           id: command.id,
           label: command.label,
@@ -224,7 +244,11 @@ class CommandServiceImpl {
           },
         };
       }
-    } catch {
+    } catch (error) {
+      console.warn(
+        `[CommandService] Error evaluating isEnabled for command "${id}" in execute:`,
+        error
+      );
       return {
         success: false,
         error: {
@@ -376,14 +400,12 @@ class CommandServiceImpl {
       return result as CommandResult<TResult>;
     } catch (err) {
       const message = formatErrorMessage(err, "Command execution failed");
-      // Only include stack traces in development mode
-      const isDev = process.env.NODE_ENV === "development";
       return {
         success: false,
         error: {
           code: "EXECUTION_ERROR",
           message,
-          details: isDev && err instanceof Error ? { stack: err.stack } : undefined,
+          details: IS_DEV && err instanceof Error ? { stack: err.stack } : undefined,
         },
       };
     }
@@ -487,7 +509,11 @@ class CommandServiceImpl {
         enabled,
         disabledReason,
       };
-    } catch {
+    } catch (error) {
+      console.warn(
+        `[CommandService] Error evaluating isEnabled for command "${id}" in getManifest:`,
+        error
+      );
       return {
         id: command.id,
         label: command.label,

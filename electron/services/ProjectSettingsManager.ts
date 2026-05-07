@@ -16,6 +16,7 @@ import {
   parseTerminalSettings,
 } from "./projectSettingsParsers.js";
 import { Cache } from "../utils/cache.js";
+import { commandService } from "./CommandService.js";
 
 export class ProjectSettingsManager {
   private notificationOverridesCache = new Map<string, Partial<NotificationSettings> | undefined>();
@@ -271,6 +272,7 @@ export class ProjectSettingsManager {
 
   async saveProjectSettings(projectId: string, settings: ProjectSettings): Promise<void> {
     this.settingsCache.invalidate(projectId);
+    commandService.invalidateOverridesCache(projectId);
 
     const stateDir = getProjectStateDir(this.projectsConfigDir, projectId);
     if (!stateDir) {
