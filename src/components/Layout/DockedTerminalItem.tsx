@@ -386,6 +386,9 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
         onEscapeKeyDown={(e) => handleDockEscapeKeyDown(e, portalContainer)}
         onOpenAutoFocus={(event) => {
           event.preventDefault();
+          if (terminal.spawnedBy === "mcp") {
+            return;
+          }
           const focusTarget = getTerminalFocusTarget({
             hasHybridInputSurface: chrome.isAgent,
             isInputDisabled: backendStatus === "disconnected" || backendStatus === "recovering",

@@ -193,13 +193,13 @@ export const usePanelStore = create<PanelGridState>()(
           options.location === "dock" &&
           !isHydrationBatchActive()
         ) {
-          // The registry slice atomically advanced `focusedId` to the new id
-          // inside its commit (#6590). When the assistant currently owns
-          // input we issue a corrective set() to roll the focus back —
-          // `activeDockTerminalId` stays so the dock panel is still surfaced.
-          // MCP spawns skip the registry's focus mutation entirely
-          // (handled in `panelRegistry/addPanel.ts`), so no rollback is
-          // needed here for the MCP case.
+          // The registry slice atomically advances `focusedId` to the new id
+          // inside its commit for normal dock activations (#6590). When the
+          // assistant currently owns input we issue a corrective set() to roll
+          // keyboard focus back while leaving the dock popover open. MCP spawns
+          // skip both registry focus and dock-popover activation entirely
+          // (handled in `panelRegistry/addPanel.ts`), so no rollback is needed
+          // for the MCP case.
           if (assistantHasFocus && !suppressMcpSpawnFocus) {
             set({ focusedId: focusedBeforeCreate });
           } else if (

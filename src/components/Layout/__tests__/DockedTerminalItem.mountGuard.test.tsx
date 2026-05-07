@@ -19,6 +19,7 @@ const moveTerminalToGridMock = vi.fn();
 
 let mockActiveDockTerminalId: string | null = null;
 let capturedOnOpenChange: ((open: boolean) => void) | null = null;
+let capturedOnOpenAutoFocus: ((event: { preventDefault: () => void }) => void) | null = null;
 
 vi.mock("@/store", () => ({
   usePanelStore: (selector: (s: Record<string, unknown>) => unknown) =>
@@ -137,7 +138,16 @@ vi.mock("@/components/ui/popover", () => ({
     return <>{children}</>;
   },
   PopoverTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  PopoverContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  PopoverContent: ({
+    children,
+    onOpenAutoFocus,
+  }: {
+    children: React.ReactNode;
+    onOpenAutoFocus?: (event: { preventDefault: () => void }) => void;
+  }) => {
+    capturedOnOpenAutoFocus = onOpenAutoFocus ?? null;
+    return <div>{children}</div>;
+  },
 }));
 
 vi.mock("@/components/ui/tooltip", () => ({
@@ -151,6 +161,7 @@ vi.mock("@dnd-kit/core", () => ({
 }));
 
 import { DockedTerminalItem } from "../DockedTerminalItem";
+import { terminalInstanceService } from "@/services/TerminalInstanceService";
 
 function makeTerminal(overrides: Partial<TerminalInstance> = {}): TerminalInstance {
   return {
@@ -170,6 +181,8 @@ describe("DockedTerminalItem mount-time close guard (#6602)", () => {
     moveTerminalToGridMock.mockClear();
     mockActiveDockTerminalId = null;
     capturedOnOpenChange = null;
+    capturedOnOpenAutoFocus = null;
+    vi.mocked(terminalInstanceService.focus).mockClear();
   });
 
   afterEach(() => {
@@ -223,5 +236,35 @@ describe("DockedTerminalItem mount-time close guard (#6602)", () => {
     });
 
     expect(closeDockTerminalMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("focuses a normally opened dock terminal after Radix open autofocus", () => {
+    mockActiveDockTerminalId = "t-1";
+    render(<DockedTerminalItem terminal={makeTerminal({ id: "t-1" })} />);
+    expect(capturedOnOpenAutoFocus).not.toBeNull();
+
+    const preventDefault = vi.fn();
+    act(() => {
+      capturedOnOpenAutoFocus?.({ preventDefault });
+      vi.advanceTimersByTime(50);
+    });
+
+    expect(preventDefault).toHaveBeenCalledOnce();
+    expect(terminalInstanceService.focus).toHaveBeenCalledWith("t-1");
+  });
+
+  it("does not focus an MCP-created dock terminal from Radix open autofocus", () => {
+    mockActiveDockTerminalId = "t-1";
+    render(<DockedTerminalItem terminal={makeTerminal({ id: "t-1", spawnedBy: "mcp" })} />);
+    expect(capturedOnOpenAutoFocus).not.toBeNull();
+
+    const preventDefault = vi.fn();
+    act(() => {
+      capturedOnOpenAutoFocus?.({ preventDefault });
+      vi.advanceTimersByTime(50);
+    });
+
+    expect(preventDefault).toHaveBeenCalledOnce();
+    expect(terminalInstanceService.focus).not.toHaveBeenCalled();
   });
 });

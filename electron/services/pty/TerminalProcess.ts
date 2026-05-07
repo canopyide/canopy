@@ -316,6 +316,7 @@ export class TerminalProcess {
       kind: options.kind,
       title: options.title,
       titleMode: options.title ? "default" : "default",
+      command: options.command,
       launchAgentId,
       spawnedAt,
       // If we launched an agent, seed its state as "idle" — the activity
@@ -583,6 +584,7 @@ export class TerminalProcess {
       launchAgentId: t.launchAgentId,
       title: t.title,
       titleMode: t.titleMode,
+      command: t.command,
       spawnedAt: t.spawnedAt,
       wasKilled,
       isExited,

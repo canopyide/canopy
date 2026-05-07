@@ -184,6 +184,53 @@ describe("atomic dock activation on create (#6590)", () => {
     expect(state.activeDockTerminalId).toBeNull();
   });
 
+  it("adds MCP-created dock panels without opening the dock popover", async () => {
+    const wake = vi.mocked(terminalInstanceService.wake);
+    wake.mockReset();
+    const snapshotsWithPanel: Array<{
+      hasPanelInById: boolean;
+      activeDockTerminalId: string | null;
+      focusedId: string | null;
+    }> = [];
+    const targetId = "mcp-dock-no-open";
+
+    const unsubscribe = usePanelStore.subscribe((state) => {
+      if (state.panelsById[targetId]) {
+        snapshotsWithPanel.push({
+          hasPanelInById: true,
+          activeDockTerminalId: state.activeDockTerminalId,
+          focusedId: state.focusedId,
+        });
+      }
+    });
+
+    try {
+      const { addPanel } = usePanelStore.getState();
+      const id = await addPanel({
+        kind: "terminal",
+        launchAgentId: "claude",
+        command: "claude",
+        requestedId: targetId,
+        cwd: "/",
+        location: "dock",
+        bypassLimits: true,
+        activateDockOnCreate: true,
+        spawnedBy: "mcp",
+      });
+
+      expect(id).toBe(targetId);
+      expect(snapshotsWithPanel.length).toBeGreaterThan(0);
+      expect(snapshotsWithPanel[0]!.hasPanelInById).toBe(true);
+      expect(snapshotsWithPanel[0]!.activeDockTerminalId).toBeNull();
+      expect(snapshotsWithPanel[0]!.focusedId).toBeNull();
+      expect(wake).not.toHaveBeenCalled();
+      expect(acknowledgeWorkingPulseMock).not.toHaveBeenCalled();
+      expect(acknowledgeWaitingMock).not.toHaveBeenCalled();
+    } finally {
+      unsubscribe();
+    }
+  });
+
   it("does not activate when location is grid even with the flag set", async () => {
     const { addPanel } = usePanelStore.getState();
     const id = await addPanel({

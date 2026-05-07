@@ -194,13 +194,14 @@ export const createAddPanelActions = (
             // after registry.addPanel returns; here we only fold the dock
             // activation into the same set() that commits the panel so the
             // watchdog can't observe an intermediate state.
-            // MCP-initiated spawns expose the new panel via the dock but
-            // never claim keyboard focus — see #6959, mirrors the PTY path.
+            // MCP-initiated spawns should land in the dock without opening the
+            // popover. Opening the popover mounts Radix focus management and
+            // terminal focus handlers, which is itself a keyboard-focus side
+            // effect even if focusedId is preserved. See #6959.
             if (options.spawnedBy === "mcp") {
               return {
                 panelsById: newById,
                 panelIds: newIds,
-                activeDockTerminalId: id,
               };
             }
             return {
@@ -427,15 +428,14 @@ export const createAddPanelActions = (
           // after registry.addPanel returns; here we only fold the dock
           // activation into the same set() that commits the panel so the
           // watchdog can't observe an intermediate state.
-          // MCP-initiated spawns still open the dock to the new panel
-          // (`activeDockTerminalId`), but never claim keyboard focus —
-          // the assistant or whatever surface launched the action keeps
-          // input. See #6959.
+          // MCP-initiated spawns should land in the dock without opening the
+          // popover. Opening the popover mounts Radix focus management and
+          // terminal focus handlers, which is itself a keyboard-focus side
+          // effect even if focusedId is preserved. See #6959.
           if (options.spawnedBy === "mcp") {
             return {
               panelsById: newById,
               panelIds: newIds,
-              activeDockTerminalId: id,
             };
           }
           return {
@@ -537,7 +537,7 @@ export const createAddPanelActions = (
     // perform. Wrapped to mirror the prewarm block: a renderer service
     // failure should not strand the panel in `spawning` with the spawn
     // promise never started.
-    if (options.activateDockOnCreate && location === "dock") {
+    if (options.activateDockOnCreate && location === "dock" && options.spawnedBy !== "mcp") {
       try {
         terminalInstanceService.wake(id);
         if (agentState === "waiting") {

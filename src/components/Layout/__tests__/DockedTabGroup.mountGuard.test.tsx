@@ -27,6 +27,7 @@ const addPanelToGroupMock = vi.fn();
 let mockActiveDockTerminalId: string | null = null;
 let mockTabGroups = new Map<string, TabGroup>();
 let capturedOnOpenChange: ((open: boolean) => void) | null = null;
+let capturedOnOpenAutoFocus: ((event: { preventDefault: () => void }) => void) | null = null;
 
 vi.mock("@/store", () => ({
   usePanelStore: (selector: (s: Record<string, unknown>) => unknown) =>
@@ -155,7 +156,16 @@ vi.mock("@/components/ui/popover", () => ({
     return <>{children}</>;
   },
   PopoverTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  PopoverContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  PopoverContent: ({
+    children,
+    onOpenAutoFocus,
+  }: {
+    children: React.ReactNode;
+    onOpenAutoFocus?: (event: { preventDefault: () => void }) => void;
+  }) => {
+    capturedOnOpenAutoFocus = onOpenAutoFocus ?? null;
+    return <div>{children}</div>;
+  },
 }));
 
 vi.mock("@/components/ui/tooltip", () => ({
@@ -207,6 +217,7 @@ vi.mock("@/components/ui/ConfirmDialog", () => ({
 }));
 
 import { DockedTabGroup } from "../DockedTabGroup";
+import { terminalInstanceService } from "@/services/TerminalInstanceService";
 
 function makePanel(overrides: Partial<TerminalInstance> = {}): TerminalInstance {
   return {
@@ -241,6 +252,8 @@ describe("DockedTabGroup mount-time close guard (#6602)", () => {
     mockTabGroups = new Map();
     mockTabGroups.set("g-1", makeGroup(["t-1", "t-2"]));
     capturedOnOpenChange = null;
+    capturedOnOpenAutoFocus = null;
+    vi.mocked(terminalInstanceService.focus).mockClear();
   });
 
   afterEach(() => {
@@ -311,5 +324,37 @@ describe("DockedTabGroup mount-time close guard (#6602)", () => {
     render(<DockedTabGroup group={makeGroup(["t-1", "t-2"], "t-1")} panels={panels} />);
 
     expect(closeDockTerminalMock).not.toHaveBeenCalled();
+  });
+
+  it("focuses the active dock tab after Radix open autofocus", () => {
+    mockActiveDockTerminalId = "t-1";
+    const panels = [makePanel({ id: "t-1" }), makePanel({ id: "t-2" })];
+    render(<DockedTabGroup group={makeGroup(["t-1", "t-2"], "t-1")} panels={panels} />);
+    expect(capturedOnOpenAutoFocus).not.toBeNull();
+
+    const preventDefault = vi.fn();
+    act(() => {
+      capturedOnOpenAutoFocus?.({ preventDefault });
+      vi.advanceTimersByTime(50);
+    });
+
+    expect(preventDefault).toHaveBeenCalledOnce();
+    expect(terminalInstanceService.focus).toHaveBeenCalledWith("t-1");
+  });
+
+  it("does not focus an MCP-created active dock tab from Radix open autofocus", () => {
+    mockActiveDockTerminalId = "t-1";
+    const panels = [makePanel({ id: "t-1", spawnedBy: "mcp" }), makePanel({ id: "t-2" })];
+    render(<DockedTabGroup group={makeGroup(["t-1", "t-2"], "t-1")} panels={panels} />);
+    expect(capturedOnOpenAutoFocus).not.toBeNull();
+
+    const preventDefault = vi.fn();
+    act(() => {
+      capturedOnOpenAutoFocus?.({ preventDefault });
+      vi.advanceTimersByTime(50);
+    });
+
+    expect(preventDefault).toHaveBeenCalledOnce();
+    expect(terminalInstanceService.focus).not.toHaveBeenCalled();
   });
 });

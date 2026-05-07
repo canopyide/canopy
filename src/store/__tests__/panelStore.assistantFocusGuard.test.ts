@@ -6,8 +6,9 @@
  *   1. the assistant region currently owns keyboard focus, OR
  *   2. the spawn was tagged `spawnedBy: "mcp"` (issued through the MCP bridge).
  *
- * For both cases, the panel still lands in the panel registry — only the focus
- * mutation is suppressed.
+ * For both cases, the panel still lands in the panel registry. MCP-created
+ * dock panels also must not auto-open the dock popover, because mounting that
+ * popover runs its own terminal focus path.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -230,7 +231,7 @@ describe("panelStore.addPanel focus guard (#6959)", () => {
   });
 
   describe("dock activation path", () => {
-    it("MCP spawn into dock with activateDockOnCreate exposes the panel but never claims focus", async () => {
+    it("MCP spawn into dock with activateDockOnCreate adds the panel but does not open or focus it", async () => {
       const newId = await usePanelStore.getState().addPanel({
         kind: "terminal",
         cwd: "/test",
@@ -241,12 +242,13 @@ describe("panelStore.addPanel focus guard (#6959)", () => {
 
       expect(newId).toBeTruthy();
       const state = usePanelStore.getState();
-      expect(state.activeDockTerminalId).toBe(newId);
+      expect(state.activeDockTerminalId).toBeNull();
       expect(state.focusedId).toBe("incumbent-1");
       expect(state.previousFocusedId).toBeNull();
+      expect(state.panelsById[newId!]?.location).toBe("dock");
     });
 
-    it("active MCP dispatch into dock with activateDockOnCreate exposes the panel but never claims focus", async () => {
+    it("active MCP dispatch into dock with activateDockOnCreate adds the panel but does not open or focus it", async () => {
       const newId = await runWithMcpSpawnFocusSuppressed(() =>
         usePanelStore.getState().addPanel({
           kind: "terminal",
@@ -258,10 +260,11 @@ describe("panelStore.addPanel focus guard (#6959)", () => {
 
       expect(newId).toBeTruthy();
       const state = usePanelStore.getState();
-      expect(state.activeDockTerminalId).toBe(newId);
+      expect(state.activeDockTerminalId).toBeNull();
       expect(state.focusedId).toBe("incumbent-1");
       expect(state.previousFocusedId).toBeNull();
       expect(state.panelsById[newId!]?.spawnedBy).toBe("mcp");
+      expect(state.panelsById[newId!]?.location).toBe("dock");
     });
 
     it("MCP spawn of a non-PTY (browser) panel into the dock does not steal focus", async () => {
@@ -274,8 +277,9 @@ describe("panelStore.addPanel focus guard (#6959)", () => {
 
       expect(newId).toBeTruthy();
       const state = usePanelStore.getState();
-      expect(state.activeDockTerminalId).toBe(newId);
+      expect(state.activeDockTerminalId).toBeNull();
       expect(state.focusedId).toBe("incumbent-1");
+      expect(state.panelsById[newId!]?.location).toBe("dock");
     });
 
     it("rolls focus back to the incumbent when assistant is focused and a non-MCP dock activation lands", async () => {

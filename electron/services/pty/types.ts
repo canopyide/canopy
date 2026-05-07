@@ -37,6 +37,8 @@ export interface TerminalPublicState {
   launchAgentId?: AgentId;
   title?: string;
   titleMode?: PanelTitleMode;
+  /** Command submitted immediately after shell spawn, if any. */
+  command?: string;
   spawnedAt: number;
   wasKilled?: boolean;
   isExited?: boolean;

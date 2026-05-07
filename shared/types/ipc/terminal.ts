@@ -238,6 +238,7 @@ export interface TerminalReconnectResult {
 export interface TerminalInfoPayload {
   id: string;
   projectId?: string;
+  worktreeId?: string;
   kind?: PanelKind;
   /** Launch hint — agent this terminal was launched to run. Not identity. */
   launchAgentId?: AgentId;
@@ -245,6 +246,8 @@ export interface TerminalInfoPayload {
   titleMode?: PanelTitleMode;
   cwd: string;
   shell?: string;
+  /** Command submitted immediately after shell spawn, if any. */
+  command?: string;
   agentState?: AgentState;
   spawnedAt: number;
   lastInputTime: number;
@@ -256,6 +259,8 @@ export interface TerminalInfoPayload {
   restartCount: number;
   /** Whether this terminal has an active PTY process (false for orphaned terminals that exited) */
   hasPty?: boolean;
+  /** Captured agent session ID from graceful shutdown */
+  agentSessionId?: string;
   /** Live detected identity — the agent currently running. Source of truth for chrome. */
   detectedAgentId?: BuiltInAgentId;
   /** Whether semantic analysis is enabled for this terminal */
@@ -278,6 +283,12 @@ export interface TerminalInfoPayload {
   agentLaunchFlags?: string[];
   /** Model ID selected at launch time (agent terminals only) */
   agentModelId?: string;
+  /** Preset ID selected at launch time */
+  agentPresetId?: string;
+  /** Preset brand color captured at launch time */
+  agentPresetColor?: string;
+  /** Original user-selected preset ID; unchanged across fallback hops */
+  originalAgentPresetId?: string;
   /** Exit code when terminal has exited */
   exitCode?: number;
   /**

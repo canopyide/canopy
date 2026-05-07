@@ -508,6 +508,9 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
         onEscapeKeyDown={(e) => handleDockEscapeKeyDown(e, portalContainer)}
         onOpenAutoFocus={(event) => {
           event.preventDefault();
+          if (activePanel.spawnedBy === "mcp") {
+            return;
+          }
           const focusTarget = getTerminalFocusTarget({
             hasHybridInputSurface: activeChrome.isAgent,
             isInputDisabled: backendStatus === "disconnected" || backendStatus === "recovering",

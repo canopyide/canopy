@@ -19,6 +19,7 @@ import {
   CopyPlus,
   ExternalLink,
   Globe,
+  Info,
   Link,
   Lock,
   Maximize2,
@@ -233,6 +234,13 @@ export function TerminalContextMenu({
         case "rename":
           void actionService.dispatch(
             "terminal.rename",
+            { terminalId },
+            { source: "context-menu" }
+          );
+          break;
+        case "view-info":
+          void actionService.dispatch(
+            "terminal.viewInfo",
             { terminalId },
             { source: "context-menu" }
           );
@@ -569,6 +577,10 @@ export function TerminalContextMenu({
         <ContextMenuItem onSelect={() => handleAction("rename")}>
           <Pencil className={ICON_CLASS} aria-hidden="true" />
           Rename Terminal
+        </ContextMenuItem>
+        <ContextMenuItem onSelect={() => handleAction("view-info")}>
+          <Info className={ICON_CLASS} aria-hidden="true" />
+          View Terminal Info
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem onSelect={() => handleAction("background")}>
