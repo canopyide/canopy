@@ -500,7 +500,17 @@ export class HttpLifecycle {
         cleanupResourceSubscriptions(sessionId, this.deps.sessionStore);
       };
 
-      await server.connect(transport);
+      try {
+        await server.connect(transport);
+      } catch (err) {
+        clearTimeout(idleTimer);
+        this.deps.sessionStore.sessions.delete(sessionId);
+        this.deps.sessionStore.sessionTierMap.delete(sessionId);
+        this.deps.sessionStore.sessionWebContentsMap.delete(sessionId);
+        transport.onclose = undefined;
+        await transport.close().catch(() => {});
+        throw err;
+      }
     } else if (req.method === "POST" && url.pathname === "/messages") {
       const sid = url.searchParams.get("sessionId") ?? "";
       const session = this.deps.sessionStore.sessions.get(sid);

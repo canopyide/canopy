@@ -389,6 +389,10 @@ export function createSessionServer(sessionId: string, deps: SessionServerDeps):
 
     const rawArgs = request.params.arguments ?? {};
 
+    if (typeof rawArgs !== "object" || rawArgs === null || Array.isArray(rawArgs)) {
+      throw new McpError(ErrorCode.InvalidParams, "Prompt arguments must be an object");
+    }
+
     for (const [key, value] of Object.entries(rawArgs)) {
       if (typeof value !== "string") {
         throw new McpError(
