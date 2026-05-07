@@ -423,22 +423,21 @@ ${lines.map((l) => "+" + l).join("\n")}`;
 
   private isBinaryBuffer(buffer: Buffer): boolean {
     const checkLength = Math.min(buffer.length, 8192);
+    if (checkLength === 0) return false;
 
-    for (let i = 0; i < checkLength; i++) {
-      if (buffer[i] === 0) {
-        return true;
-      }
-    }
+    const sample = buffer.subarray(0, checkLength);
+
+    if (sample.indexOf(0) !== -1) return true;
 
     let nonPrintable = 0;
     for (let i = 0; i < checkLength; i++) {
-      const byte = buffer[i];
+      const byte = sample[i];
       if (!(byte >= 0x20 && byte <= 0x7e) && byte !== 0x09 && byte !== 0x0a && byte !== 0x0d) {
         nonPrintable++;
       }
     }
 
-    return checkLength > 0 && nonPrintable / checkLength > 0.3;
+    return nonPrintable / checkLength > 0.3;
   }
 
   async getRemoteUrl(repoPath: string): Promise<string | null> {

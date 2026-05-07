@@ -95,6 +95,38 @@ describe("GitService", () => {
     expect(diff).toBe("BINARY_FILE");
   });
 
+  it("returns BINARY_FILE when null byte is at position 0", async () => {
+    const filePath = path.join(tempDir, "null-at-0.bin");
+    await fs.writeFile(filePath, Buffer.from([0x00, 0x41, 0x42, 0x43]));
+
+    const service = new GitService(tempDir);
+    const diff = await service.getFileDiff("null-at-0.bin", "untracked");
+
+    expect(diff).toBe("BINARY_FILE");
+  });
+
+  it("returns a diff (not BINARY_FILE) for an empty file", async () => {
+    const filePath = path.join(tempDir, "empty.txt");
+    await fs.writeFile(filePath, Buffer.from([]));
+
+    const service = new GitService(tempDir);
+    const diff = await service.getFileDiff("empty.txt", "untracked");
+
+    expect(diff).not.toBe("BINARY_FILE");
+    expect(diff).toContain("diff --git");
+  });
+
+  it("returns a diff (not BINARY_FILE) for a text file", async () => {
+    const filePath = path.join(tempDir, "readme.txt");
+    await fs.writeFile(filePath, Buffer.from("hello world\n"));
+
+    const service = new GitService(tempDir);
+    const diff = await service.getFileDiff("readme.txt", "untracked");
+
+    expect(diff).not.toBe("BINARY_FILE");
+    expect(diff).toContain("diff --git");
+  });
+
   it("finds next local branch suffix while ignoring remote-only conflicts", async () => {
     gitClientMock.branch.mockResolvedValue({
       branches: {

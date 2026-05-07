@@ -8,6 +8,8 @@ const mockGit = {
   revparse: vi.fn(),
 };
 
+const readFileMock = vi.hoisted(() => vi.fn().mockResolvedValue(Buffer.from("line1\nline2\n")));
+
 vi.mock("../hardenedGit.js", () => ({
   createHardenedGit: vi.fn(() => mockGit),
 }));
@@ -21,6 +23,7 @@ vi.mock("fs", async (importOriginal) => {
       ...(actual as { promises: Record<string, unknown> }).promises,
       access: vi.fn().mockResolvedValue(undefined),
       stat: vi.fn().mockResolvedValue({ mtimeMs: 1000, size: 512 }),
+      readFile: readFileMock,
     },
   };
 });
@@ -666,6 +669,70 @@ describe("getWorktreeChangesWithStats per-file diff cache", () => {
     expect(mockGit.diff).toHaveBeenCalledTimes(1);
     expect(result.totalInsertions).toBe(6);
     expect(result.totalDeletions).toBe(4);
+  });
+});
+
+describe("getWorktreeChangesWithStats binary file handling", () => {
+  const emptyStatus = {
+    modified: [],
+    created: [],
+    deleted: [],
+    renamed: [],
+    staged: [],
+    conflicted: [],
+    not_added: [],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    __clearPerFileDiffStatCacheForTesting();
+    (fs.access as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+    (fs.stat as ReturnType<typeof vi.fn>).mockResolvedValue({ mtimeMs: 1000, size: 512 });
+    readFileMock.mockResolvedValue(Buffer.from("line1\nline2\n"));
+    mockGit.raw.mockResolvedValue("");
+    mockGit.diff.mockResolvedValue("");
+  });
+
+  it("returns insertions: null for untracked binary files (null byte detected)", async () => {
+    const cwd = "/binary-untracked/" + Math.random();
+    mockGit.revparse.mockImplementation((args: string[]) => {
+      if (Array.isArray(args) && args[0] === "HEAD") {
+        return Promise.resolve("head-oid\n");
+      }
+      return Promise.resolve(`${cwd}\n`);
+    });
+    mockGit.status.mockResolvedValue({
+      ...emptyStatus,
+      not_added: ["blob.bin"],
+    });
+    readFileMock.mockResolvedValue(Buffer.from([0x00, 0xff, 0xfe, 0xfd]));
+
+    const result = await getWorktreeChangesWithStats(cwd, true);
+
+    expect(result.totalInsertions).toBe(0);
+    expect(result.changes).toHaveLength(1);
+    expect(result.changes[0].insertions).toBeNull();
+  });
+
+  it("returns line count for untracked text files", async () => {
+    const cwd = "/text-untracked/" + Math.random();
+    mockGit.revparse.mockImplementation((args: string[]) => {
+      if (Array.isArray(args) && args[0] === "HEAD") {
+        return Promise.resolve("head-oid\n");
+      }
+      return Promise.resolve(`${cwd}\n`);
+    });
+    mockGit.status.mockResolvedValue({
+      ...emptyStatus,
+      not_added: ["readme.txt"],
+    });
+    readFileMock.mockResolvedValue(Buffer.from("line1\nline2\nline3\n"));
+
+    const result = await getWorktreeChangesWithStats(cwd, true);
+
+    expect(result.totalInsertions).toBe(3);
+    expect(result.changes).toHaveLength(1);
+    expect(result.changes[0].insertions).toBe(3);
   });
 });
 

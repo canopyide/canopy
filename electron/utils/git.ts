@@ -431,10 +431,8 @@ export async function getWorktreeChangesWithStats(
           const buffer = await fs.readFile(filePath);
 
           const sampleSize = Math.min(buffer.length, 8192);
-          for (let i = 0; i < sampleSize; i++) {
-            if (buffer[i] === 0) {
-              return null;
-            }
+          if (buffer.subarray(0, sampleSize).indexOf(0) !== -1) {
+            return null;
           }
 
           const content = buffer.toString("utf-8");

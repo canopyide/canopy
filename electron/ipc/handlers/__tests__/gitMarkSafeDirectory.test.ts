@@ -20,9 +20,9 @@ const execFileMock = vi.hoisted(() =>
       _cmd: string,
       _args: readonly string[],
       _opts: unknown,
-      cb: (err: Error | null, stdout: string, stderr: string) => void
+      cb: (err: Error | null, result: { stdout: string; stderr: string }) => void
     ) => {
-      cb(null, "", "");
+      cb(null, { stdout: "", stderr: "" });
     }
   )
 );
@@ -168,5 +168,153 @@ describe("git:mark-safe-directory handler", () => {
     registerGitWriteHandlers({} as Parameters<typeof registerGitWriteHandlers>[0]);
     const handler = getHandler("git:mark-safe-directory");
     await expect(handler(null, "/Users/foo/repo")).rejects.toThrow(/git not found/);
+  });
+
+  it("skips --add when the canonicalized path is already in safe.directory", async () => {
+    const repoPath = "/Users/foo/my repo";
+    const normalized = resolvedSlashed(repoPath);
+    // First call: --get-all returns the same path (already configured).
+    execFileMock.mockImplementationOnce(
+      (
+        _cmd: string,
+        args: readonly string[],
+        _opts: unknown,
+        cb: (err: Error | null, stdout: string, stderr: string) => void
+      ) => {
+        if (args.includes("--get-all")) {
+          cb(null, { stdout: normalized + "\n", stderr: "" });
+        } else {
+          cb(null, { stdout: "", stderr: "" });
+        }
+      }
+    );
+    registerGitWriteHandlers({} as Parameters<typeof registerGitWriteHandlers>[0]);
+    const handler = getHandler("git:mark-safe-directory");
+    await handler(null, repoPath);
+
+    const calls = execFileMock.mock.calls as [string, string[], unknown, unknown][];
+    const addCall = calls.find(
+      ([, args]) => Array.isArray(args) && args.includes("--add"),
+    );
+    expect(addCall).toBeUndefined();
+  });
+
+  it("writes --add when --get-all fails with exit code 1 (no entries)", async () => {
+    const repoPath = "/Users/foo/my repo";
+    const normalized = resolvedSlashed(repoPath);
+    // First call: --get-all fails with exit code 1 (no safe.directory set).
+    execFileMock.mockImplementationOnce(
+      (
+        _cmd: string,
+        args: readonly string[],
+        _opts: unknown,
+        cb: (err: Error | null, stdout: string, stderr: string) => void
+      ) => {
+        if (args.includes("--get-all")) {
+          const err = new Error("Command failed") as Error & { code: number };
+          err.code = 1;
+          cb(err, "", "error: invalid key: safe.directory\n");
+        } else {
+          cb(null, { stdout: "", stderr: "" });
+        }
+      }
+    );
+    registerGitWriteHandlers({} as Parameters<typeof registerGitWriteHandlers>[0]);
+    const handler = getHandler("git:mark-safe-directory");
+    await handler(null, repoPath);
+
+    const calls = execFileMock.mock.calls as [string, string[], unknown, unknown][];
+    const addCall = calls.find(
+      ([, args]) => Array.isArray(args) && args.includes("--add"),
+    );
+    expect(addCall).toBeDefined();
+    expect(addCall![1]).toEqual(["config", "--global", "--add", "safe.directory", normalized]);
+  });
+
+  it("writes --add when the path is not in existing safe.directory entries", async () => {
+    const repoPath = "/Users/foo/my repo";
+    const normalized = resolvedSlashed(repoPath);
+    // --get-all returns a different path.
+    execFileMock.mockImplementationOnce(
+      (
+        _cmd: string,
+        args: readonly string[],
+        _opts: unknown,
+        cb: (err: Error | null, stdout: string, stderr: string) => void
+      ) => {
+        if (args.includes("--get-all")) {
+          cb(null, { stdout: "/other/repo\n/another/repo\n", stderr: "" });
+        } else {
+          cb(null, { stdout: "", stderr: "" });
+        }
+      }
+    );
+    registerGitWriteHandlers({} as Parameters<typeof registerGitWriteHandlers>[0]);
+    const handler = getHandler("git:mark-safe-directory");
+    await handler(null, repoPath);
+
+    const calls = execFileMock.mock.calls as [string, string[], unknown, unknown][];
+    const addCall = calls.find(
+      ([, args]) => Array.isArray(args) && args.includes("--add"),
+    );
+    expect(addCall).toBeDefined();
+    expect(addCall![1]).toEqual(["config", "--global", "--add", "safe.directory", normalized]);
+  });
+
+  it("propagates non-exit-code-1 --get-all failures", async () => {
+    execFileMock.mockImplementationOnce(
+      (
+        _cmd: string,
+        args: readonly string[],
+        _opts: unknown,
+        cb: (err: Error | null, stdout: string, stderr: string) => void
+      ) => {
+        if (args.includes("--get-all")) {
+          const err = new Error("git not found") as Error & { code: number };
+          err.code = 128;
+          cb(err, "", "fatal: unable to read config file\n");
+        } else {
+          cb(null, { stdout: "", stderr: "" });
+        }
+      }
+    );
+    registerGitWriteHandlers({} as Parameters<typeof registerGitWriteHandlers>[0]);
+    const handler = getHandler("git:mark-safe-directory");
+    await expect(handler(null, "/Users/foo/repo")).rejects.toThrow(/git not found/);
+  });
+
+  it("matches a symlinked safe.directory entry against a symlinked path", async () => {
+    // Both the candidate and the stored entry go through realpath to the
+    // same canonical target, so the dedup fires even though the raw strings differ.
+    const repoPath = "/Users/foo/link-to-repo";
+    const realTarget = "/Users/foo/real-repo";
+    realpathMock.mockImplementation(async (p: string) => {
+      if (p.includes("link-to-repo") || p.includes("stored-link")) return realTarget;
+      return p;
+    });
+    // --get-all returns a path that resolves to the same real target.
+    execFileMock.mockImplementationOnce(
+      (
+        _cmd: string,
+        args: readonly string[],
+        _opts: unknown,
+        cb: (err: Error | null, stdout: string, stderr: string) => void
+      ) => {
+        if (args.includes("--get-all")) {
+          cb(null, { stdout: "/Users/foo/stored-link\n", stderr: "" });
+        } else {
+          cb(null, { stdout: "", stderr: "" });
+        }
+      }
+    );
+    registerGitWriteHandlers({} as Parameters<typeof registerGitWriteHandlers>[0]);
+    const handler = getHandler("git:mark-safe-directory");
+    await handler(null, repoPath);
+
+    const calls = execFileMock.mock.calls as [string, string[], unknown, unknown][];
+    const addCall = calls.find(
+      ([, args]) => Array.isArray(args) && args.includes("--add"),
+    );
+    expect(addCall).toBeUndefined();
   });
 });
