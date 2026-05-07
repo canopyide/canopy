@@ -269,8 +269,28 @@ describe("registerHelpAssistantHandlers", () => {
     await handler(null, { customArgs: "--model $(whoami)" });
     await handler(null, { customArgs: "--model `id`" });
     await handler(null, { customArgs: "--model | tee out" });
+    // Extended deny-list (#7078): chaining, redirection, variable expansion, escape.
+    await handler(null, { customArgs: "--model sonnet & whoami" });
+    await handler(null, { customArgs: "--verbose > /etc/passwd" });
+    await handler(null, { customArgs: "--config < /etc/shadow" });
+    await handler(null, { customArgs: "--log >> /tmp/out" });
+    await handler(null, { customArgs: "--err 2> /tmp/err" });
+    await handler(null, { customArgs: "--model ${HOME}" });
+    await handler(null, { customArgs: "--flag\\;evil" });
 
     expect(storeMock.set).not.toHaveBeenCalled();
+  });
+
+  it("allows customArgs containing a bare $ without ( or { (no over-blocking)", async () => {
+    registerHelpAssistantHandlers();
+    const handler = ipcMainMock._handlers.get(SET_CHANNEL)!;
+
+    await handler(null, { customArgs: "--prompt-suffix $TODAY" });
+
+    expect(storeMock.set).toHaveBeenCalledExactlyOnceWith(
+      "helpAssistant.customArgs",
+      "--prompt-suffix $TODAY"
+    );
   });
 
   it("rejects customArgs values that are not strings", async () => {

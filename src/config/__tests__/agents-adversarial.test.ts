@@ -226,6 +226,64 @@ describe("Adversarial: customFlags shell injection (Bug — missing sanitization
     ]);
     expect(result[0]!.customFlags).toBeUndefined();
   });
+
+  // Extended deny-list (#7078): chaining, redirection, variable expansion, escape.
+
+  it("rejects customFlags containing & — chaining/background", () => {
+    const result = getMergedPresets("claude", [
+      { id: "f1", name: "Amp", customFlags: "--flag & evil" },
+    ]);
+    expect(result[0]!.customFlags).toBeUndefined();
+  });
+
+  it("rejects customFlags containing > — redirection", () => {
+    const result = getMergedPresets("claude", [
+      { id: "f1", name: "Redir", customFlags: "--verbose > /etc/passwd" },
+    ]);
+    expect(result[0]!.customFlags).toBeUndefined();
+  });
+
+  it("rejects customFlags containing >> — append redirection", () => {
+    const result = getMergedPresets("claude", [
+      { id: "f1", name: "Append", customFlags: "--log >> /tmp/out" },
+    ]);
+    expect(result[0]!.customFlags).toBeUndefined();
+  });
+
+  it("rejects customFlags containing 2> — stderr redirection", () => {
+    const result = getMergedPresets("claude", [
+      { id: "f1", name: "Stderr", customFlags: "--err 2> /tmp/err" },
+    ]);
+    expect(result[0]!.customFlags).toBeUndefined();
+  });
+
+  it("rejects customFlags containing < — input redirection", () => {
+    const result = getMergedPresets("claude", [
+      { id: "f1", name: "InRedir", customFlags: "--config < /etc/shadow" },
+    ]);
+    expect(result[0]!.customFlags).toBeUndefined();
+  });
+
+  it("rejects customFlags containing ${VAR} — variable expansion", () => {
+    const result = getMergedPresets("claude", [
+      { id: "f1", name: "VarExp", customFlags: "--model ${HOME}" },
+    ]);
+    expect(result[0]!.customFlags).toBeUndefined();
+  });
+
+  it("rejects customFlags containing backslash — escape sequence", () => {
+    const result = getMergedPresets("claude", [
+      { id: "f1", name: "Escape", customFlags: "--flag\\;evil" },
+    ]);
+    expect(result[0]!.customFlags).toBeUndefined();
+  });
+
+  it("allows customFlags with bare $ without ( or { (no over-blocking)", () => {
+    const result = getMergedPresets("claude", [
+      { id: "f1", name: "BareDollar", customFlags: "--prompt-suffix $TODAY" },
+    ]);
+    expect(result[0]!.customFlags).toBe("--prompt-suffix $TODAY");
+  });
 });
 
 // ── adversarial: preset.args injection (Bug — args array passes through unvalidated) ──
@@ -348,7 +406,7 @@ describe("Adversarial: sanitizeArgs length cap (Bug — no per-arg limit)", () =
   });
 });
 
-describe("Adversarial: sanitizeArgs ampersand injection (Bug — & not blocked)", () => {
+describe("Adversarial: sanitizeArgs extended metacharacter deny-list (#7078)", () => {
   it("rejects args containing & — shell background operator", () => {
     const result = getMergedPresets("claude", [
       { id: "f1", name: "Amp", args: ["--model=foo&evil"] },
@@ -361,6 +419,34 @@ describe("Adversarial: sanitizeArgs ampersand injection (Bug — & not blocked)"
       { id: "f1", name: "Redir", args: ["--output>/etc/passwd"] },
     ]);
     expect(result[0]!.args).toBeUndefined();
+  });
+
+  it("rejects args containing < — input redirection", () => {
+    const result = getMergedPresets("claude", [
+      { id: "f1", name: "InRedir", args: ["--config</etc/shadow"] },
+    ]);
+    expect(result[0]!.args).toBeUndefined();
+  });
+
+  it("rejects args containing ${VAR} — variable expansion", () => {
+    const result = getMergedPresets("claude", [
+      { id: "f1", name: "VarExp", args: ["--model=${HOME}"] },
+    ]);
+    expect(result[0]!.args).toBeUndefined();
+  });
+
+  it("rejects args containing backslash — escape sequence", () => {
+    const result = getMergedPresets("claude", [
+      { id: "f1", name: "Escape", args: ["--flag\\;evil"] },
+    ]);
+    expect(result[0]!.args).toBeUndefined();
+  });
+
+  it("allows args with bare $ without ( or { (no over-blocking)", () => {
+    const result = getMergedPresets("claude", [
+      { id: "f1", name: "BareDollar", args: ["--prompt-suffix=$TODAY"] },
+    ]);
+    expect(result[0]!.args).toEqual(["--prompt-suffix=$TODAY"]);
   });
 });
 
