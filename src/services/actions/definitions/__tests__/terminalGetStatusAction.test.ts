@@ -395,4 +395,105 @@ describe("terminal.getStatus", () => {
     expect(terminals.every((t) => t.error === "Terminal not found")).toBe(true);
     expect(getSerializedStatesMock).not.toHaveBeenCalled();
   });
+
+  it("explicit terminalIds: [] returns empty rather than the full fleet", async () => {
+    // Schema rejects empty arrays, but the runtime guard must still treat an
+    // explicit `terminalIds` array as the targeted path — never silently fall
+    // back to the fleet. Bypass schema by calling run() directly with [].
+    panelStoreMock.getState.mockReturnValue({
+      panelIds: ["t1", "t2"],
+      panelsById: {
+        t1: { id: "t1", kind: "terminal", location: "grid", agentState: "idle" },
+        t2: { id: "t2", kind: "terminal", location: "grid", agentState: "working" },
+      },
+    });
+
+    const { terminals } = await callGetStatus(setupActions(), { terminalIds: [] });
+    expect(terminals).toEqual([]);
+  });
+
+  it("explicit terminalIds bypasses worktreeId/location filters", async () => {
+    panelStoreMock.getState.mockReturnValue({
+      panelIds: ["t1"],
+      panelsById: {
+        t1: {
+          id: "t1",
+          kind: "terminal",
+          location: "grid",
+          worktreeId: "wt-a",
+          agentState: "idle",
+        },
+      },
+    });
+
+    const { terminals } = await callGetStatus(setupActions(), {
+      terminalIds: ["t1"],
+      worktreeId: "wt-other",
+      location: "trash",
+    });
+
+    expect(terminals).toHaveLength(1);
+    expect(terminals[0]?.terminalId).toBe("t1");
+    expect(terminals[0]?.error).toBeUndefined();
+  });
+
+  it("ANDs worktreeId and location filters in the fleet path", async () => {
+    panelStoreMock.getState.mockReturnValue({
+      panelIds: ["t1", "t2", "t3"],
+      panelsById: {
+        t1: { id: "t1", kind: "terminal", location: "grid", worktreeId: "wt-a" },
+        t2: { id: "t2", kind: "terminal", location: "trash", worktreeId: "wt-a" },
+        t3: { id: "t3", kind: "terminal", location: "grid", worktreeId: "wt-b" },
+      },
+    });
+
+    const { terminals } = await callGetStatus(setupActions(), {
+      worktreeId: "wt-a",
+      location: "grid",
+    });
+
+    expect(terminals.map((t) => t.terminalId)).toEqual(["t1"]);
+  });
+
+  it("clamps runtime lines to 50 when callers bypass the schema with an out-of-range value", async () => {
+    const lines = Array.from({ length: 200 }, (_, i) => `line-${i}`).join("\n");
+    panelStoreMock.getState.mockReturnValue({
+      panelIds: ["t1"],
+      panelsById: {
+        t1: { id: "t1", kind: "terminal", location: "grid", agentState: "idle" },
+      },
+    });
+    getSerializedStatesMock.mockResolvedValue({ t1: lines });
+
+    const { terminals } = await callGetStatus(setupActions(), {
+      includeOutput: { lines: 999 },
+    });
+    const out = terminals[0]?.recentOutput as string;
+    expect(out.split("\n")).toHaveLength(50);
+    expect(out.split("\n")[0]).toBe("line-150");
+  });
+
+  it("returns recentOutput: null without error when getSerializedStates omits a key", async () => {
+    panelStoreMock.getState.mockReturnValue({
+      panelIds: ["t1", "t2"],
+      panelsById: {
+        t1: { id: "t1", kind: "terminal", location: "grid", agentState: "idle" },
+        t2: { id: "t2", kind: "terminal", location: "grid", agentState: "working" },
+      },
+    });
+    // t2 is omitted from the response (not even null) — distinct from the
+    // "explicit null" failure mode of the IPC handler.
+    getSerializedStatesMock.mockResolvedValue({ t1: "alpha" });
+
+    const { terminals } = await callGetStatus(setupActions(), {
+      includeOutput: { lines: 10 },
+    });
+
+    const t1 = terminals.find((t) => t.terminalId === "t1");
+    const t2 = terminals.find((t) => t.terminalId === "t2");
+    expect(t1?.recentOutput).toBe("alpha");
+    expect(t1?.error).toBeUndefined();
+    expect(t2?.recentOutput).toBeNull();
+    expect(t2?.error).toBeUndefined();
+  });
 });

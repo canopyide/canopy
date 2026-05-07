@@ -149,9 +149,11 @@ export function registerTerminalQueryActions(
       .object({
         terminalIds: z
           .array(z.string())
+          .min(1)
+          .max(256)
           .optional()
           .describe(
-            "Explicit terminal IDs to query. When set, `worktreeId`/`location` filters are ignored. Unknown IDs return per-entry `error` rather than aborting the call."
+            "Explicit terminal IDs to query (1-256). When set, `worktreeId`/`location` filters are ignored. Unknown IDs return per-entry `error` rather than aborting the call."
           ),
         worktreeId: z
           .string()
@@ -208,7 +210,10 @@ export function registerTerminalQueryActions(
 
       const resolved: Array<{ id: string; terminal: TerminalInstance | undefined }> = [];
 
-      if (terminalIds && terminalIds.length > 0) {
+      // An explicitly passed `terminalIds` (even empty) selects the targeted
+      // path — never silently fall back to the fleet path, which would surprise
+      // a caller asking for a specific subset.
+      if (terminalIds !== undefined) {
         for (const id of terminalIds) {
           const t = panelsById[id];
           // Treat ephemeral panels as not found — they're tooling-internal and
@@ -284,6 +289,10 @@ export function registerTerminalQueryActions(
 
         if (includeOutput) {
           if (outputError !== undefined) {
+            // The IPC failed for the whole batch (transport-level failure),
+            // so every successfully-resolved entry gets the same error.
+            // Status fields are kept intact so the caller still has something
+            // useful to act on — recentOutput is the only thing we lost.
             entry.error = outputError;
             entry.recentOutput = null;
           } else if (outputs !== null) {

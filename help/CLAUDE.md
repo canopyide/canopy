@@ -56,31 +56,46 @@ const lastSeen: Record<string, number | undefined> = {};
 // Plain status round.
 const { terminals } = await getStatus({ terminalIds });
 
-// If any terminal hasn't transitioned in the last ~3 rounds, refetch with output.
+// Identify terminals pinned at "working" for ~3 rounds and pull their output.
+// The state cache is a heuristic — recentOutput is ground truth.
 const stuckIds = terminals
-  .filter((t) => t.agentState && t.agentState !== "idle" && (stuckCount[t.terminalId] ?? 0) >= 3)
+  .filter(
+    (t) =>
+      (t.agentState === "working" || t.agentState === "directing") &&
+      (stuckCount[t.terminalId] ?? 0) >= 3
+  )
   .map((t) => t.terminalId);
-const verified = stuckIds.length
+const stuck = stuckIds.length
   ? (await getStatus({ terminalIds: stuckIds, includeOutput: { lines: 30 } })).terminals
   : [];
-const verifiedById = new Map(verified.map((v) => [v.terminalId, v]));
+const stuckById = new Map(stuck.map((s) => [s.terminalId, s]));
 
 for (const t of terminals) {
   if (t.error) continue; // log and move on (e.g. unknown terminalId)
-  if (t.agentState === "working" || t.agentState === "directing") {
+
+  // Cross-check: if scrollback shows a settled prompt or a clear completion
+  // signature, treat the terminal as idle even though the FSM says "working".
+  // What "settled" looks like is project-specific (shell prompt at EOL,
+  // "press any key", agent's own done banner, etc.).
+  const stuckEntry = stuckById.get(t.terminalId);
+  const looksSettled = stuckEntry?.recentOutput
+    ? scrollbackLooksSettled(stuckEntry.recentOutput)
+    : false;
+
+  if ((t.agentState === "working" || t.agentState === "directing") && !looksSettled) {
     stuckCount[t.terminalId] = (stuckCount[t.terminalId] ?? 0) + 1;
     continue;
   }
   if (t.lastTransitionAt !== undefined && t.lastTransitionAt === lastSeen[t.terminalId]) continue;
 
-  const status = verifiedById.get(t.terminalId) ?? t;
-  switch (status.agentState) {
+  const effectiveState = looksSettled ? "completed" : t.agentState;
+  switch (effectiveState) {
     case "completed":
       /* dispatch next step */ break;
     case "exited":
       /* surface to user */ break;
     case "waiting":
-      /* status.waitingReason: "prompt" → safe to auto-drive; "question" → verify against status.recentOutput, then act or ask */
+      /* t.waitingReason: "prompt" → safe to auto-drive; "question" → verify against scrollback, then act or ask */
       break;
   }
   stuckCount[t.terminalId] = 0;
