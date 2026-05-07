@@ -18,10 +18,16 @@ function overrideHome(dir: string): Record<string, string | undefined> {
     HOME: process.env.HOME,
     USERPROFILE: process.env.USERPROFILE,
     XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME,
+    CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR,
+    GEMINI_CONFIG_DIR: process.env.GEMINI_CONFIG_DIR,
+    CODEX_HOME: process.env.CODEX_HOME,
   };
   process.env.HOME = dir;
   process.env.USERPROFILE = dir;
   delete process.env.XDG_CONFIG_HOME;
+  delete process.env.CLAUDE_CONFIG_DIR;
+  delete process.env.GEMINI_CONFIG_DIR;
+  delete process.env.CODEX_HOME;
   return prev;
 }
 
@@ -752,10 +758,10 @@ Body.
       expect(huge).toBeDefined();
       expect(huge?.description).toBe("Custom command");
 
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining("[SlashCommandService] frontmatter truncated:")
-      );
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining(cmdPath));
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      const message = warnSpy.mock.calls[0]?.[0] as string;
+      expect(message).toContain("[SlashCommandService] frontmatter truncated:");
+      expect(message).toContain(cmdPath);
     } finally {
       warnSpy.mockRestore();
       await fs.rm(projectRoot, { recursive: true, force: true });
