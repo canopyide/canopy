@@ -1211,6 +1211,25 @@ body,
   will-change: transform;
 }
 
+/* Action-row success bump — tuned 3% peak for row-sized elements
+ * (the 6% in badge-bump reads as aggressive on a wider container). */
+@keyframes action-row-bump {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.03);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.animate-action-row-bump {
+  animation: action-row-bump 200ms cubic-bezier(0.4, 0, 0.2, 1) both;
+  will-change: transform;
+}
+
 /* Diagnostics badge state transition flash - one-shot, no looping */
 @keyframes diagnostics-state-flash {
   0% {
@@ -1514,6 +1533,7 @@ body,
   .animate-hint-fade-in,
   .status-working,
   .animate-badge-bump,
+  .animate-action-row-bump,
   .animate-activity-blip,
   .animate-trash-pulse,
   .animate-all-clear-flash,
@@ -1651,6 +1671,7 @@ body[data-reduce-animations="true"]
     .animate-hint-fade-in,
     .status-working,
     .animate-badge-bump,
+    .animate-action-row-bump,
     .animate-activity-blip,
     .animate-trash-pulse,
     .animate-all-clear-flash,

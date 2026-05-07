@@ -93,6 +93,11 @@ function Toast({ notification }: { notification: Notification }) {
   // intermediate announcements (#6427). Trailing 300ms inactivity window so
   // the final value is announced once the burst settles.
   const [isCountBusy, setIsCountBusy] = useState(false);
+  // Transient flag: set on every count change, cleared by onAnimationEnd.
+  // Self-throttles bursts (next change during active animation is a no-op
+  // until the cycle completes) and avoids a stale class re-applying when
+  // the chip remounts across the title-present / title-absent branches.
+  const [isCountBumping, setIsCountBumping] = useState(false);
   const prevCountRef = useRef(notification.count ?? 0);
 
   useEffect(() => {
@@ -111,6 +116,7 @@ function Toast({ notification }: { notification: Notification }) {
     if (next === prevCountRef.current) return;
     prevCountRef.current = next;
     setIsCountBusy(true);
+    setIsCountBumping(true);
     if (busyTimerRef.current) clearTimeout(busyTimerRef.current);
     busyTimerRef.current = setTimeout(() => {
       if (!mountedRef.current) return;
@@ -268,7 +274,14 @@ function Toast({ notification }: { notification: Notification }) {
               notification.count > 1 && (
                 <span
                   aria-label={formatNotificationCountAriaLabel(notification.count)}
-                  className="shrink-0 rounded-full bg-tint/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-daintree-text/60 tabular-nums min-w-[3.5ch] text-center"
+                  className={cn(
+                    "shrink-0 rounded-full bg-tint/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-daintree-text/60 tabular-nums min-w-[3.5ch] text-center",
+                    isCountBumping && "animate-badge-bump"
+                  )}
+                  style={{ animationDuration: "150ms" }}
+                  onAnimationEnd={(e) => {
+                    if (e.animationName === "badge-bump") setIsCountBumping(false);
+                  }}
                 >
                   {formatNotificationCountGlyph(notification.count, "×")}
                 </span>
@@ -280,7 +293,14 @@ function Toast({ notification }: { notification: Notification }) {
           <div>
             <span
               aria-label={formatNotificationCountAriaLabel(notification.count)}
-              className="inline-block rounded-full bg-tint/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-daintree-text/60 tabular-nums min-w-[3.5ch] text-center"
+              className={cn(
+                "inline-block rounded-full bg-tint/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-daintree-text/60 tabular-nums min-w-[3.5ch] text-center",
+                isCountBumping && "animate-badge-bump"
+              )}
+              style={{ animationDuration: "150ms" }}
+              onAnimationEnd={(e) => {
+                if (e.animationName === "badge-bump") setIsCountBumping(false);
+              }}
             >
               {formatNotificationCountGlyph(notification.count, "×")}
             </span>
@@ -382,9 +402,7 @@ function Toast({ notification }: { notification: Notification }) {
             <div
               className={cn(
                 "mt-1.5 flex flex-wrap gap-1.5",
-                isSuccess && "scale-[1.02]",
-                "transition-transform duration-[75ms]",
-                "motion-reduce:scale-100 motion-reduce:transition-none"
+                isSuccess && "animate-action-row-bump"
               )}
             >
               {actions.map((action, index) => {
