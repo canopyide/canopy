@@ -374,7 +374,7 @@ export function RecipeManager({
                         <Plus className="h-3 w-3" />
                         New project recipe
                       </Button>
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap justify-center gap-2">
                         <Button variant="ghost" size="sm" onClick={() => setShowImportDialog(true)}>
                           <FileDown className="h-3 w-3" />
                           Import from clipboard
