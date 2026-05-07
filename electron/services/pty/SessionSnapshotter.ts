@@ -1,6 +1,5 @@
 import {
   TERMINAL_SESSION_PERSISTENCE_ENABLED,
-  SESSION_SNAPSHOT_MAX_BYTES,
   SESSION_SNAPSHOT_DEBOUNCE_MS,
   persistSessionSnapshotSync,
   persistSessionSnapshotAsync,
@@ -121,7 +120,7 @@ export class SessionSnapshotter {
 
     try {
       const state = this.host.serializeForPersistence() ?? this.host.getSerializedState();
-      if (state && Buffer.byteLength(state, "utf8") <= SESSION_SNAPSHOT_MAX_BYTES) {
+      if (state) {
         persistSessionSnapshotSync(this.host.id, state);
         this.dirty = false;
       }
