@@ -187,20 +187,15 @@ const ACTION_TIER_ADDONS: ReadonlySet<string> = new Set([
 
   "terminal.inject",
   "terminal.new",
-  "terminal.sendCommand",
-  "terminal.close",
-  "terminal.closeAll",
   TERMINAL_WAIT_UNTIL_IDLE_TOOL,
 
   "recipe.list",
   "recipe.run",
 
   "copyTree.injectToTerminal",
-  "copyTree.generateAndCopyFile",
 
   "file.openInEditor",
 
-  "agent.launch",
   "agent.terminal",
   "agent.focusNextWaiting",
   "agent.focusNextWorking",
@@ -222,8 +217,15 @@ const ACTION_TIER_ADDONS: ReadonlySet<string> = new Set([
 const SYSTEM_TIER_ADDONS: ReadonlySet<string> = new Set([
   "worktree.delete",
 
+  "terminal.sendCommand",
+  "terminal.close",
+  "terminal.closeAll",
   "terminal.kill",
   "terminal.killAll",
+
+  "copyTree.generateAndCopyFile",
+
+  "agent.launch",
 
   "git.stageFile",
   "git.unstageFile",
