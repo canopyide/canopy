@@ -5,11 +5,11 @@ import { mcpPaneConfigService } from "../McpPaneConfigService.js";
 import type { HelpTokenValidator } from "./shared.js";
 import { type McpTier, OPEN_WORLD_CATEGORIES, TIER_ALLOWLISTS } from "./shared.js";
 
-const BEARER_HEADER_PATTERN = /^Bearer\s+(.+)$/i;
+const BEARER_HEADER_PATTERN = /^Bearer[ \t]+(.+)$/i;
 
 export function extractBearerToken(authHeader: string): string | null {
   const match = BEARER_HEADER_PATTERN.exec(authHeader);
-  const token = match?.[1]?.trim();
+  const token = match?.[1]?.replace(/^[ \t]+|[ \t]+$/g, "");
   return token ? token : null;
 }
 
@@ -33,7 +33,12 @@ export function isAuthorized(
 ): boolean {
   if (apiKeyBearerHash) {
     const actualHash = createHash("sha256").update(authHeader).digest();
-    if (timingSafeEqual(actualHash, apiKeyBearerHash)) return true;
+    if (
+      apiKeyBearerHash.length === actualHash.length &&
+      timingSafeEqual(actualHash, apiKeyBearerHash)
+    ) {
+      return true;
+    }
   } else if (authHeader.length === 0) {
     return true;
   }
@@ -58,7 +63,12 @@ export function resolveTokenTier(
 ): McpTier {
   if (apiKeyBearerHash) {
     const actualHash = createHash("sha256").update(authHeader).digest();
-    if (timingSafeEqual(actualHash, apiKeyBearerHash)) return "external";
+    if (
+      apiKeyBearerHash.length === actualHash.length &&
+      timingSafeEqual(actualHash, apiKeyBearerHash)
+    ) {
+      return "external";
+    }
   } else if (authHeader.length === 0) {
     return "external";
   }

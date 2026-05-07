@@ -63,6 +63,11 @@ describe("extractBearerToken", () => {
   it("collapses repeated whitespace and trims trailing whitespace", () => {
     expect(extractBearerToken("Bearer  \tfoo  ")).toBe("foo");
   });
+
+  it("rejects a header with a CR/LF separator", () => {
+    expect(extractBearerToken("Bearer\rfoo")).toBeNull();
+    expect(extractBearerToken("Bearer\nfoo")).toBeNull();
+  });
 });
 
 describe("precomputeApiKeyBearerHash", () => {
@@ -133,6 +138,17 @@ describe("isAuthorized", () => {
 
   it("rejects an unknown Bearer token", () => {
     expect(isAuthorized("Bearer nope", null, null)).toBe(false);
+  });
+
+  it("rejects a TAB-separated api-key header (api-key match is exact, not parser-normalized)", () => {
+    const hash = precomputeApiKeyBearerHash("secret");
+    expect(isAuthorized("Bearer\tsecret", hash, null)).toBe(false);
+  });
+
+  it("does not throw when the cached api-key hash has an unexpected length", () => {
+    const malformed = Buffer.from([1, 2, 3]);
+    expect(() => isAuthorized("Bearer secret", malformed, null)).not.toThrow();
+    expect(isAuthorized("Bearer secret", malformed, null)).toBe(false);
   });
 });
 
