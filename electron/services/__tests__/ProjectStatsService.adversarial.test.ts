@@ -334,6 +334,38 @@ describe("ProjectStatsService adversarial", () => {
     svc.stop();
   });
 
+  it("empty broadcast resets lastBroadcast so a same-shape non-empty result still fires", async () => {
+    const ptyClient = makePtyClient();
+    ptyClient.getProjectStats.mockResolvedValue({ projectId: "p1", terminalCount: 3 });
+
+    const svc = new ProjectStatsService(ptyClient as never);
+
+    // 1) Non-empty broadcast — lastBroadcast = { p1: {processCount: 3, ...} }
+    projectStoreMock.getAllProjects.mockReturnValue([{ id: "p1" }]);
+    svc.refresh();
+    await vi.runAllTimersAsync();
+    const afterFirst = broadcastMock.mock.calls.length;
+    expect(afterFirst).toBeGreaterThanOrEqual(1);
+
+    // 2) Projects removed — empty broadcast fires; must reset lastBroadcast
+    projectStoreMock.getAllProjects.mockReturnValue([]);
+    svc.refresh();
+    await vi.runAllTimersAsync();
+
+    // 3) Same project re-added with identical stats — must broadcast
+    // (would be suppressed by shallowEqual if lastBroadcast still held it)
+    projectStoreMock.getAllProjects.mockReturnValue([{ id: "p1" }]);
+    svc.refresh();
+    await vi.runAllTimersAsync();
+
+    const lastPayload = broadcastMock.mock.calls.at(-1)![1] as Record<
+      string,
+      { processCount: number }
+    >;
+    expect(lastPayload.p1?.processCount).toBe(3);
+    svc.stop();
+  });
+
   it("stop() invalidates an in-flight compute — no broadcast after teardown", async () => {
     const ptyClient = makePtyClient();
     projectStoreMock.getAllProjects.mockReturnValue([{ id: "p1" }]);

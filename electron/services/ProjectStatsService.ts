@@ -49,10 +49,11 @@ export class ProjectStatsService {
   }
 
   stop(): void {
-    if (!this.started) return;
-    // Bump generation first so any in-flight computeAndBroadcast that's
-    // already past its await is invalidated before we tear down state.
+    // Always bump generation so an in-flight computeAndBroadcast — including
+    // one started by a pre-start refresh() — is invalidated before any
+    // post-stop write or broadcast can fire.
     this.generation++;
+    if (!this.started) return;
     this.started = false;
 
     this.intervalSlot.clear();
@@ -114,6 +115,10 @@ export class ProjectStatsService {
       const projectIds = allProjects.map((p) => p.id);
       if (projectIds.length === 0) {
         if (this.generation !== gen) return;
+        // Track the empty broadcast so a later non-empty result with the
+        // same shape as the prior non-empty broadcast still fires
+        // (shallowEqual would otherwise suppress it).
+        this.lastBroadcast = {};
         typedBroadcast<"project:stats-updated">(CHANNELS.PROJECT_STATS_UPDATED, {});
         return;
       }
