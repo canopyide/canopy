@@ -104,6 +104,8 @@ const config: KnipConfig = {
     "glob",
     "@babel/core",
     "@types/trusted-types",
+    "@octokit/request-error",
+    "@octokit/types",
   ],
 
   // why: the repo pre-dates knip and carries a ~150-entry backlog of unused
