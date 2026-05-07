@@ -76,8 +76,8 @@ describe("ProcessTreeKiller — kill() error discrimination", () => {
     killer.execute(true);
 
     const sigtermWarnings = warnSpy.mock.calls
-      .map((c) => String(c[0]))
-      .filter((m) => m.includes("SIGTERM"));
+      .map((c: unknown[]) => String(c[0]))
+      .filter((m: string) => m.includes("SIGTERM"));
     expect(sigtermWarnings).toHaveLength(2);
     expect(sigtermWarnings[0]).toContain("[ProcessTreeKiller]");
     expect(sigtermWarnings[0]).toContain("pid=1001");
@@ -100,12 +100,12 @@ describe("ProcessTreeKiller — kill() error discrimination", () => {
     killer.execute(true);
 
     const sigkillWarnings = warnSpy.mock.calls
-      .map((c) => String(c[0]))
-      .filter((m) => m.includes("SIGKILL"));
+      .map((c: unknown[]) => String(c[0]))
+      .filter((m: string) => m.includes("SIGKILL"));
     // sweep iterates [...descendants, shellPid] = [2001, 2000]
     expect(sigkillWarnings).toHaveLength(2);
-    expect(sigkillWarnings.some((m) => m.includes("pid=2001"))).toBe(true);
-    expect(sigkillWarnings.some((m) => m.includes("pid=2000"))).toBe(true);
+    expect(sigkillWarnings.some((m: string) => m.includes("pid=2001"))).toBe(true);
+    expect(sigkillWarnings.some((m: string) => m.includes("pid=2000"))).toBe(true);
   });
 
   it("does not warn on ESRCH during SIGKILL sweep", () => {
@@ -123,8 +123,8 @@ describe("ProcessTreeKiller — kill() error discrimination", () => {
     killer.execute(true);
 
     const sigkillWarnings = warnSpy.mock.calls
-      .map((c) => String(c[0]))
-      .filter((m) => m.includes("SIGKILL"));
+      .map((c: unknown[]) => String(c[0]))
+      .filter((m: string) => m.includes("SIGKILL"));
     expect(sigkillWarnings).toHaveLength(0);
   });
 });
