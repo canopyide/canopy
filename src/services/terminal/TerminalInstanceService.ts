@@ -893,12 +893,8 @@ class TerminalInstanceService {
     }
 
     if (!managed.isOpened) {
-      // Seed xterm's internal cell grid before first paint when restored
-      // dimensions are available. terminal.open() otherwise initialises at the
-      // 80x24 default and the rAF-deferred applyResize() snaps it later, which
-      // is the visible flash on cold-start panel restore (#6983). The PTY-side
-      // resize still fires from the inner rAF below since targetCols/Rows
-      // remain set.
+      // Seed xterm's grid before open() so cold-start restore paints at the
+      // saved size instead of flashing 80x24 then snapping (#6983).
       if (managed.targetCols && managed.targetRows) {
         managed.terminal.resize(managed.targetCols, managed.targetRows);
       }

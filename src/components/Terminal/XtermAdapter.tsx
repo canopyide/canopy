@@ -394,7 +394,7 @@ function XtermAdapterComponent({
       onExit?.(code);
     });
 
-    if (!hasSavedTargetDims) {
+    if (!wasDetachedForSwitch || !hasSavedTargetDims) {
       performFit();
     }
 
@@ -407,7 +407,7 @@ function XtermAdapterComponent({
         .fetchAndRestore(terminalId)
         .then((restored) => {
           if (disposed) return;
-          if (restored && !hasSavedTargetDims) {
+          if (restored) {
             requestAnimationFrame(() => performFit());
           }
         })
