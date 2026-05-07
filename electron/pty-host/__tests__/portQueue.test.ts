@@ -189,18 +189,55 @@ describe("PortQueueManager", () => {
     );
   });
 
-  it("clearQueue clears all state for a terminal", () => {
+  it("clearQueue when paused releases the coordinator hold (#7008)", () => {
+    // Without coordinator.resume, the "port-queue" pause token leaks across
+    // disconnectWindow / force-resume paths, wedging the PTY indefinitely.
     const deps = createMockDeps();
     const mgr = new PortQueueManager(deps);
 
     const highWatermark = (IPC_MAX_QUEUE_BYTES * IPC_HIGH_WATERMARK_PERCENT) / 100;
     mgr.addBytes("t1", highWatermark + 1);
     mgr.applyBackpressure("t1", mgr.getUtilization("t1"));
+    const coordinator = deps.getPauseCoordinator("t1");
+    vi.mocked(coordinator!.resume).mockClear();
 
     mgr.clearQueue("t1");
 
     expect(mgr.getQueuedBytes("t1")).toBe(0);
     expect(mgr.isPaused("t1")).toBe(false);
+    expect(coordinator!.resume).toHaveBeenCalledTimes(1);
+    expect(coordinator!.resume).toHaveBeenCalledWith("port-queue");
+  });
+
+  it("clearQueue when not paused does not call coordinator.resume", () => {
+    const deps = createMockDeps();
+    const mgr = new PortQueueManager(deps);
+
+    mgr.addBytes("t1", 1000);
+    const coordinator = deps.getPauseCoordinator("t1");
+    vi.mocked(coordinator!.resume).mockClear();
+
+    mgr.clearQueue("t1");
+
+    expect(coordinator!.resume).not.toHaveBeenCalled();
+    expect(mgr.getQueuedBytes("t1")).toBe(0);
+  });
+
+  it("clearQueue with a custom pauseToken releases that exact token", () => {
+    // Per-window port queue managers use unique tokens (e.g. "port-queue-7").
+    // The release must match the token the manager held, not a hardcoded value.
+    const deps = createMockDeps();
+    const mgr = new PortQueueManager({ ...deps, pauseToken: "port-queue-7" });
+
+    const highWatermark = (IPC_MAX_QUEUE_BYTES * IPC_HIGH_WATERMARK_PERCENT) / 100;
+    mgr.addBytes("t1", highWatermark + 1);
+    mgr.applyBackpressure("t1", mgr.getUtilization("t1"));
+    const coordinator = deps.getPauseCoordinator("t1");
+    vi.mocked(coordinator!.resume).mockClear();
+
+    mgr.clearQueue("t1");
+
+    expect(coordinator!.resume).toHaveBeenCalledWith("port-queue-7");
   });
 
   it("dispose clears all terminals", () => {

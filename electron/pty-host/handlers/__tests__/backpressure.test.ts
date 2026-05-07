@@ -1,0 +1,144 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { createBackpressureHandlers } from "../backpressure.js";
+import type { HostContext, RendererConnection } from "../types.js";
+
+function makeCoordinator() {
+  const coord = {
+    pause: vi.fn(),
+    resume: vi.fn(),
+    forceReleaseAll: vi.fn(),
+    isPaused: false,
+  };
+  return coord;
+}
+
+function makeRendererConnection(): RendererConnection {
+  return {
+    port: {} as RendererConnection["port"],
+    handler: vi.fn(),
+    portQueueManager: {
+      clearQueue: vi.fn(),
+    } as unknown as RendererConnection["portQueueManager"],
+    batcher: {} as RendererConnection["batcher"],
+  };
+}
+
+function makeCtx(overrides: Partial<HostContext> = {}): HostContext {
+  return {
+    ptyManager: {
+      getTerminal: vi.fn(() => undefined),
+      getAll: vi.fn(() => []),
+      setActivityMonitorTier: vi.fn(),
+      acknowledgeData: vi.fn(),
+      getSerializedStateAsync: vi.fn(async () => null),
+      getSerializedState: vi.fn(() => null),
+    } as unknown as HostContext["ptyManager"],
+    processTreeCache: {} as HostContext["processTreeCache"],
+    terminalResourceMonitor: {} as HostContext["terminalResourceMonitor"],
+    backpressureManager: {
+      isPaused: vi.fn(() => false),
+      hasPendingSegments: vi.fn(() => false),
+      setActivityTier: vi.fn(),
+      clearSuspended: vi.fn(),
+      clearPendingVisual: vi.fn(),
+      getPausedInterval: vi.fn(() => undefined),
+      deletePausedInterval: vi.fn(),
+      getPauseStartTime: vi.fn(() => undefined),
+      deletePauseStartTime: vi.fn(),
+      emitTerminalStatus: vi.fn(),
+      emitReliabilityMetric: vi.fn(),
+    } as unknown as HostContext["backpressureManager"],
+    ipcQueueManager: {
+      removeBytes: vi.fn(),
+      tryResume: vi.fn(),
+      clearQueue: vi.fn(),
+    } as unknown as HostContext["ipcQueueManager"],
+    resourceGovernor: {} as HostContext["resourceGovernor"],
+    packetFramer: {} as HostContext["packetFramer"],
+    pauseCoordinators: new Map(),
+    rendererConnections: new Map(),
+    windowProjectMap: new Map(),
+    ipcDataMirrorTerminals: new Set(),
+    visualBuffers: [],
+    visualSignalView: null,
+    analysisBuffer: null,
+    ptyPool: null,
+    sendEvent: vi.fn(),
+    getPauseCoordinator: vi.fn(),
+    getOrCreatePauseCoordinator: vi.fn(),
+    disconnectWindow: vi.fn(),
+    recomputeActivityTiers: vi.fn(),
+    tryReplayAndResume: vi.fn(),
+    resumePausedTerminal: vi.fn(),
+    createPortQueueManager: vi.fn(),
+    ...overrides,
+  };
+}
+
+describe("force-resume handler", () => {
+  beforeEach(() => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("drains every per-window portQueueManager so port-path pause holds don't leak (#7008)", () => {
+    // disconnectWindow handles the normal lifecycle by calling resumeAll +
+    // dispose on each connection's manager. force-resume bypasses that path
+    // and previously cleared only ipcQueueManager state, leaving stale
+    // pausedTerminals + queuedBytes in every per-window port queue manager.
+    const coord = makeCoordinator();
+    const conn1 = makeRendererConnection();
+    const conn2 = makeRendererConnection();
+    const rendererConnections = new Map<number, RendererConnection>([
+      [1, conn1],
+      [2, conn2],
+    ]);
+    const ctx = makeCtx({
+      rendererConnections,
+      getPauseCoordinator: vi.fn(() => coord as never),
+    });
+
+    const handlers = createBackpressureHandlers(ctx);
+    handlers["force-resume"]({ type: "force-resume", id: "term-1" });
+
+    expect(coord.forceReleaseAll).toHaveBeenCalledTimes(1);
+    expect(ctx.ipcQueueManager.clearQueue).toHaveBeenCalledWith("term-1");
+    expect(conn1.portQueueManager.clearQueue).toHaveBeenCalledWith("term-1");
+    expect(conn2.portQueueManager.clearQueue).toHaveBeenCalledWith("term-1");
+  });
+
+  it("calls portQueueManager.clearQueue on every connection even when none currently track the terminal", () => {
+    // clearQueue is a no-op for terminals not in the manager's maps, so the
+    // handler iterates unconditionally rather than tracking which manager
+    // owns which terminal.
+    const coord = makeCoordinator();
+    const conn = makeRendererConnection();
+    const ctx = makeCtx({
+      rendererConnections: new Map([[1, conn]]),
+      getPauseCoordinator: vi.fn(() => coord as never),
+    });
+
+    const handlers = createBackpressureHandlers(ctx);
+    handlers["force-resume"]({ type: "force-resume", id: "untracked-terminal" });
+
+    expect(conn.portQueueManager.clearQueue).toHaveBeenCalledWith("untracked-terminal");
+  });
+
+  it("returns early when the pause coordinator is missing", () => {
+    const conn = makeRendererConnection();
+    const ctx = makeCtx({
+      rendererConnections: new Map([[1, conn]]),
+      getPauseCoordinator: vi.fn(() => undefined),
+    });
+
+    const handlers = createBackpressureHandlers(ctx);
+    handlers["force-resume"]({ type: "force-resume", id: "term-1" });
+
+    expect(ctx.ipcQueueManager.clearQueue).not.toHaveBeenCalled();
+    expect(conn.portQueueManager.clearQueue).not.toHaveBeenCalled();
+  });
+});

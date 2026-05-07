@@ -105,11 +105,18 @@ export class IpcQueueManager {
       // Safety timeout: if ack-driven resume doesn't clear backpressure in time,
       // force resume to prevent permanent stall
       const safetyTimeout = setTimeout(() => {
-        this.pausedTerminals.delete(id);
-        this.pauseStartTimes.delete(id);
-
+        // Capture utilization BEFORE clearing queuedBytes so the reliability
+        // metric reports the at-resume queue depth, not the post-clear 0%.
         const currentUtilization = this.getUtilization(id);
         const pauseDuration = Date.now() - pauseStartTime;
+
+        this.pausedTerminals.delete(id);
+        this.pauseStartTimes.delete(id);
+        // Drop stale byte accounting alongside the pause maps. Without this,
+        // the next addBytes call immediately re-triggers applyBackpressure
+        // and the pause loop wedges across the entire renderer reload
+        // (mirrors the port-path fix in #6244).
+        this.queuedBytes.delete(id);
 
         const coordinator = this.deps.getPauseCoordinator(id);
         if (coordinator) {
@@ -174,12 +181,20 @@ export class IpcQueueManager {
   }
 
   clearQueue(id: string): void {
-    this.queuedBytes.delete(id);
+    const wasPaused = this.pausedTerminals.has(id);
     const safetyTimeout = this.pausedTerminals.get(id);
     if (safetyTimeout) {
       clearTimeout(safetyTimeout);
-      this.pausedTerminals.delete(id);
     }
+    // Release the coordinator hold before clearing internal maps so any
+    // re-entrant applyBackpressure sees a clean state. resume() is a no-op
+    // when the token isn't held, so guarding on wasPaused is purely an
+    // optimization to avoid a useless coordinator lookup. See #7008.
+    if (wasPaused) {
+      this.deps.getPauseCoordinator(id)?.resume("ipc-queue");
+    }
+    this.queuedBytes.delete(id);
+    this.pausedTerminals.delete(id);
     this.pauseStartTimes.delete(id);
   }
 

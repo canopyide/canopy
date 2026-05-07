@@ -183,6 +183,14 @@ export function createBackpressureHandlers(ctx: HostContext): HandlerMap {
       // Also clear IPC queue backpressure state
       ipcQueueManager.clearQueue(msg.id);
 
+      // Drain every per-window port queue manager so stale pause maps and
+      // queuedBytes don't leak across the disconnectWindow lifecycle that
+      // force-resume bypasses (#7008). clearQueue is a no-op when the
+      // terminal isn't tracked by that manager.
+      for (const conn of ctx.rendererConnections.values()) {
+        conn.portQueueManager.clearQueue(msg.id);
+      }
+
       // Emit resume status (uses current visualBuffers via ctx getter)
       const buffers = ctx.visualBuffers;
       const utilization =

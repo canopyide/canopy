@@ -182,12 +182,20 @@ export class PortQueueManager {
   }
 
   clearQueue(id: string): void {
-    this.queuedBytes.delete(id);
+    const wasPaused = this.pausedTerminals.has(id);
     const safetyTimeout = this.pausedTerminals.get(id);
     if (safetyTimeout) {
       clearTimeout(safetyTimeout);
-      this.pausedTerminals.delete(id);
     }
+    // Release the coordinator hold before clearing internal maps so any
+    // re-entrant applyBackpressure sees a clean state. resume() is a no-op
+    // when the token isn't held, so guarding on wasPaused is purely an
+    // optimization to avoid a useless coordinator lookup. See #7008.
+    if (wasPaused) {
+      this.deps.getPauseCoordinator(id)?.resume(this.pauseToken);
+    }
+    this.queuedBytes.delete(id);
+    this.pausedTerminals.delete(id);
     this.pauseStartTimes.delete(id);
   }
 

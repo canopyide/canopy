@@ -128,7 +128,10 @@ describe("IpcQueueManager adversarial", () => {
     expect(endMetric?.[0].durationMs).toBeGreaterThanOrEqual(IPC_MAX_PAUSE_MS);
   });
 
-  it("clearQueue cancels a pending safety-timeout force-resume", () => {
+  it("clearQueue when paused releases the coordinator hold and cancels the safety-timeout (#7008)", () => {
+    // clearQueue must release the coordinator hold it owns. Without this,
+    // force-resume paths (renderer reload, view eviction) clear queue maps
+    // but leak the "ipc-queue" pause token, wedging the PTY indefinitely.
     mgr.addBytes("t1", HIGH_BYTES);
     mgr.applyBackpressure("t1", mgr.getUtilization("t1"));
     expect(mgr.isPaused("t1")).toBe(true);
@@ -136,11 +139,45 @@ describe("IpcQueueManager adversarial", () => {
 
     mgr.clearQueue("t1");
     expect(mgr.isPaused("t1")).toBe(false);
+    expect(coord.resume).toHaveBeenCalledTimes(1);
+    expect(coord.resume).toHaveBeenCalledWith("ipc-queue");
 
+    // The cancelled safety timeout must not fire later and double-resume.
+    coord.resume.mockClear();
     vi.advanceTimersByTime(IPC_MAX_PAUSE_MS * 2);
+    expect(coord.resume).not.toHaveBeenCalled();
+    expect(mgr.getQueuedBytes("t1")).toBe(0);
+  });
+
+  it("clearQueue when not paused does not call coordinator.resume", () => {
+    mgr.addBytes("t1", 100);
+    coord.resume.mockClear();
+
+    mgr.clearQueue("t1");
 
     expect(coord.resume).not.toHaveBeenCalled();
     expect(mgr.getQueuedBytes("t1")).toBe(0);
+  });
+
+  it("safety timeout clears stale queuedBytes so next byte does not re-pause (#7008)", () => {
+    // Mirrors the port-path #6244 regression: when ack-driven resume fails
+    // and the safety timeout fires, queuedBytes must be cleared along with
+    // pause maps. Otherwise the next addBytes immediately re-paints the
+    // queue above the high watermark and applyBackpressure re-triggers.
+    mgr.addBytes("t1", HIGH_BYTES);
+    mgr.applyBackpressure("t1", mgr.getUtilization("t1"));
+
+    vi.advanceTimersByTime(IPC_MAX_PAUSE_MS);
+
+    expect(mgr.getQueuedBytes("t1")).toBe(0);
+    const pauseCallsAfterTimeout = coord.pause.mock.calls.length;
+
+    mgr.addBytes("t1", 1);
+    const result = mgr.applyBackpressure("t1", mgr.getUtilization("t1"));
+
+    expect(result).toBe(false);
+    expect(mgr.isPaused("t1")).toBe(false);
+    expect(coord.pause.mock.calls.length).toBe(pauseCallsAfterTimeout);
   });
 
   it("applyBackpressure without a pause coordinator returns false and does not enter paused state", () => {
