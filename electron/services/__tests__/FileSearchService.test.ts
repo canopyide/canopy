@@ -290,6 +290,46 @@ describe("FileSearchService", () => {
 
       expect(result[0]).toBe("src/S3Client.ts");
     });
+
+    it("ranks S3Client.ts above Client.ts when query is 's3 client'", async () => {
+      const dir = makeTempDir();
+      tempDirs.push(dir);
+      gitClientMock.checkIsRepo.mockResolvedValue(true);
+      gitClientMock.revparse.mockResolvedValue(`${dir}\n`);
+      gitClientMock.raw.mockResolvedValue("src/Client.ts\0src/S3Client.ts\0");
+
+      const service = await createService();
+      const result = await service.searchNaturalLanguage({
+        cwd: dir,
+        description: "s3 client",
+        limit: 5,
+      });
+
+      // Without query-side digit splitting, "s3" never matches and Client.ts
+      // ties or beats S3Client.ts on path length. After the fix, query tokens
+      // become ["s", "3", "client"] which fully match S3Client's words.
+      expect(result[0]).toBe("src/S3Client.ts");
+    });
+
+    it("ranks AppLayout.tsx above ALayout.tsx when query is 'app layout'", async () => {
+      const dir = makeTempDir();
+      tempDirs.push(dir);
+      gitClientMock.checkIsRepo.mockResolvedValue(true);
+      gitClientMock.revparse.mockResolvedValue(`${dir}\n`);
+      gitClientMock.raw.mockResolvedValue("src/ALayout.tsx\0src/AppLayout.tsx\0");
+
+      const service = await createService();
+      const result = await service.searchNaturalLanguage({
+        cwd: dir,
+        description: "app layout",
+        limit: 5,
+      });
+
+      // Without the word-length guard, "app".startsWith("a") would falsely
+      // match ALayout's "a" word, tying it with AppLayout and winning on
+      // pathLen. The w.length >= 3 guard suppresses these false positives.
+      expect(result[0]).toBe("src/AppLayout.tsx");
+    });
   });
 
   describe("git ls-files NUL handling", () => {

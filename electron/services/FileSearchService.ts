@@ -274,7 +274,9 @@ function scorePathNaturalLanguage(tokens: string[], file: string): number | null
   for (const token of tokens) {
     if (
       words.some(
-        (w) => w === token || (token.length >= 3 && (w.startsWith(token) || token.startsWith(w)))
+        (w) =>
+          w === token ||
+          (token.length >= 3 && w.length >= 3 && (w.startsWith(token) || token.startsWith(w)))
       )
     ) {
       matched++;
@@ -293,7 +295,8 @@ function pickTopNaturalLanguageMatches(
   const rawTokens = description
     .toLowerCase()
     .split(/\s+/)
-    .filter((t) => t.length > 0 && !NL_STOP_WORDS.has(t));
+    .filter((t) => t.length > 0 && !NL_STOP_WORDS.has(t))
+    .flatMap((t) => splitCamelCase(t));
 
   if (rawTokens.length === 0) return [];
 

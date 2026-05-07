@@ -77,7 +77,14 @@ export class VoiceFileLinkResolver {
     return description
       .toLowerCase()
       .split(/\s+/)
-      .filter((t) => t.length > 0 && !stopWords.has(t));
+      .filter((t) => t.length > 0 && !stopWords.has(t))
+      .flatMap((t) =>
+        t
+          .replace(/([a-z])([0-9])/g, "$1 $2")
+          .replace(/([0-9])([a-z])/g, "$1 $2")
+          .split(/[\s_\-./]+/)
+          .filter(Boolean)
+      );
   }
 
   private computeScore(description: string, file: string): number | null {
@@ -100,7 +107,9 @@ export class VoiceFileLinkResolver {
     for (const token of tokens) {
       if (
         words.some(
-          (w) => w === token || (token.length >= 3 && (w.startsWith(token) || token.startsWith(w)))
+          (w) =>
+            w === token ||
+            (token.length >= 3 && w.length >= 3 && (w.startsWith(token) || token.startsWith(w)))
         )
       ) {
         matched++;
