@@ -3,7 +3,7 @@ import type { TerminalInstance } from "./panelRegistrySlice";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { panelKindHasPty } from "@shared/config/panelKindRegistry";
 import { isRuntimeAgentTerminal } from "@/utils/terminalType";
-import { isTerminalOrphaned, isTerminalVisible } from "@/lib/terminalVisibility";
+import { isTerminalVisible } from "@/lib/terminalVisibility";
 
 export type NavigationDirection = "up" | "down" | "left" | "right";
 

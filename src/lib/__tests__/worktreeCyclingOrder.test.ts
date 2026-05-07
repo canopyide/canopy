@@ -295,7 +295,7 @@ describe("getVisibleWorktreesForCycling", () => {
           agentState: "waiting",
           detectedAgentId: "claude",
         },
-      } as ReturnType<typeof usePanelStore.getState>,
+      } as unknown as ReturnType<typeof usePanelStore.getState>,
       panelIds: ["term-waiting"],
     } as never);
     const ids = getVisibleWorktreesForCycling().map((w) => w.id);
@@ -320,7 +320,7 @@ describe("getVisibleWorktreesForCycling", () => {
           agentState: "waiting",
           detectedAgentId: "claude",
         },
-      } as ReturnType<typeof usePanelStore.getState>,
+      } as unknown as ReturnType<typeof usePanelStore.getState>,
       panelIds: ["term-waiting"],
     } as never);
     const ids = getVisibleWorktreesForCycling().map((w) => w.id);
@@ -344,7 +344,7 @@ describe("getVisibleWorktreesForCycling", () => {
           location: "grid",
           agentState: "waiting",
         },
-      } as ReturnType<typeof usePanelStore.getState>,
+      } as unknown as ReturnType<typeof usePanelStore.getState>,
       panelIds: ["term-plain"],
     } as never);
     const ids = getVisibleWorktreesForCycling().map((w) => w.id);
