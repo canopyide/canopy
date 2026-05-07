@@ -322,18 +322,18 @@ export function startAppMetricsMonitor(actions?: MemoryPressureActions): () => v
           const last = snapshotCooldowns.get(proc.pid) ?? 0;
           if (now - last > SNAPSHOT_COOLDOWN_MS) {
             try {
-              const dir = app.getPath("logs");
-              mkdirSync(dir, { recursive: true });
-              const file = path.join(dir, `heap-${proc.pid}-${now}.heapsnapshot`);
-              if (!getWritesSuppressed()) {
-                const written = v8.writeHeapSnapshot(file);
-                snapshotCooldowns.set(proc.pid, now);
-                logWarn("heap-snapshot-written", { path: written });
-              } else {
+              if (getWritesSuppressed()) {
                 logDebug("heap-snapshot-suppressed", {
                   pid: proc.pid,
                   reason: "disk-pressure-write-gate",
                 });
+              } else {
+                const dir = app.getPath("logs");
+                mkdirSync(dir, { recursive: true });
+                const file = path.join(dir, `heap-${proc.pid}-${now}.heapsnapshot`);
+                const written = v8.writeHeapSnapshot(file);
+                snapshotCooldowns.set(proc.pid, now);
+                logWarn("heap-snapshot-written", { path: written });
               }
             } catch (err) {
               logWarn("heap-snapshot-failed", { error: String(err) });

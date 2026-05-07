@@ -38,6 +38,7 @@ vi.mock("../SystemSleepService.js", () => {
   return { getSystemSleepService: vi.fn(() => mockSleepService) };
 });
 
+import { mkdirSync } from "node:fs";
 import { app } from "electron";
 import v8 from "node:v8";
 import { logDebug, logInfo, logWarn } from "../../utils/logger.js";
@@ -1130,7 +1131,7 @@ describe("ProcessMemoryMonitor", () => {
         const trendCalls = vi
           .mocked(logWarn)
           .mock.calls.filter((c) => c[0] === "process-memory-trend-warning");
-        expect(trendCalls.length).toBeGreaterThanOrEqual(2);
+        expect(trendCalls).toHaveLength(2);
       });
     });
 
@@ -1159,6 +1160,35 @@ describe("ProcessMemoryMonitor", () => {
         vi.advanceTimersByTime(30_000);
 
         expect(v8.writeHeapSnapshot).toHaveBeenCalledTimes(1);
+      });
+      it("suppressed heap snapshot does not consume cooldown", () => {
+        mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 700 * 1024, 100)]);
+        Object.defineProperty(app, "isPackaged", { value: false, writable: true });
+
+        // First poll: writes suppressed
+        vi.mocked(getWritesSuppressed).mockReturnValue(true);
+        stop = startAppMetricsMonitor();
+        vi.advanceTimersByTime(30_000);
+        expect(v8.writeHeapSnapshot).not.toHaveBeenCalled();
+
+        // Second poll (within cooldown): writes no longer suppressed
+        vi.mocked(getWritesSuppressed).mockReturnValue(false);
+        vi.advanceTimersByTime(30_000);
+
+        // Should write snapshot because cooldown was NOT consumed by suppression
+        expect(v8.writeHeapSnapshot).toHaveBeenCalledTimes(1);
+      });
+
+      it("suppressed heap snapshot skips mkdirSync and getPath", () => {
+        mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 700 * 1024, 100)]);
+        Object.defineProperty(app, "isPackaged", { value: false, writable: true });
+        vi.mocked(getWritesSuppressed).mockReturnValue(true);
+
+        stop = startAppMetricsMonitor();
+        vi.advanceTimersByTime(30_000);
+
+        expect(mkdirSync).not.toHaveBeenCalled();
+        expect(app.getPath).not.toHaveBeenCalledWith("logs");
       });
     });
 
