@@ -504,6 +504,29 @@ describe("registerShutdownHandler", () => {
       expect(appMock.exit).toHaveBeenCalledWith(0);
     });
 
+    it("still calls markCleanExit and exits with 0 when cleanupOnExit throws (independent failure modes)", async () => {
+      mcpServerMock.stop.mockReturnValue(Promise.resolve());
+      crashRecoveryMock.cleanupOnExit.mockImplementationOnce(() => {
+        throw new Error("delete marker boom");
+      });
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const { beforeQuitCb } = await setup({});
+      await beforeQuitCb(makeEvent());
+
+      await vi.advanceTimersByTimeAsync(100);
+
+      expect(crashRecoveryMock.cleanupOnExit).toHaveBeenCalledTimes(1);
+      expect(crashLoopGuardMock.markCleanExit).toHaveBeenCalledTimes(1);
+      expect(appMock.exit).toHaveBeenCalledWith(0);
+      expect(warnSpy).toHaveBeenCalledWith(
+        "[MAIN] CrashRecoveryService.cleanupOnExit failed:",
+        expect.any(Error)
+      );
+
+      warnSpy.mockRestore();
+    });
+
     it("still marks clean exit and exits with 0 when closeTelemetry rejects (telemetry must not gate marker cleanup)", async () => {
       mcpServerMock.stop.mockReturnValue(Promise.resolve());
       closeTelemetryMock.mockReturnValueOnce(Promise.reject(new Error("telemetry boom")));

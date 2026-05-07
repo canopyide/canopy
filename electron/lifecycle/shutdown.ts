@@ -232,11 +232,16 @@ export function registerShutdownHandler(deps: ShutdownDeps): void {
         console.log("[MAIN] Graceful shutdown complete");
         // Mark the exit clean BEFORE telemetry — telemetry is best-effort and
         // a closeTelemetry failure must never make the next launch think we crashed.
+        // Independent try blocks so a failure in one marker write doesn't skip the other.
         try {
           getCrashRecoveryService().cleanupOnExit();
+        } catch (err) {
+          console.warn("[MAIN] CrashRecoveryService.cleanupOnExit failed:", err);
+        }
+        try {
           getCrashLoopGuard().markCleanExit();
         } catch (err) {
-          console.warn("[MAIN] Marker cleanup on clean exit failed:", err);
+          console.warn("[MAIN] CrashLoopGuard.markCleanExit failed:", err);
         }
         try {
           await closeTelemetry();
