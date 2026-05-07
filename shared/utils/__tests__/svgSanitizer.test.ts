@@ -576,6 +576,25 @@ describe("sanitizeSvg", () => {
       }
     });
 
+    it("should strip namespace-prefixed SMIL elements bound to the SVG namespace", () => {
+      // A prefix like `s` bound via xmlns:s="http://www.w3.org/2000/svg" makes
+      // <s:animate> resolve to the same element as <animate> in a namespace-aware
+      // SVG parser. The sanitizer must catch the prefixed form too.
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:s="http://www.w3.org/2000/svg">
+        <rect width="100" height="100">
+          <s:animate attributeName="onbegin" values="alert(1)"/>
+        </rect>
+      </svg>`;
+      const result = sanitizeSvg(svg);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.svg).not.toContain("s:animate");
+        expect(result.svg).not.toContain("alert");
+        expect(result.svg).toContain("rect");
+        expect(result.modified).toBe(true);
+      }
+    });
+
     it("should strip self-closing and paired SMIL element forms together", () => {
       const svg = `<svg xmlns="http://www.w3.org/2000/svg">
         <rect width="100" height="100">
@@ -624,6 +643,22 @@ describe("sanitizeSvg", () => {
         expect(result.svg).not.toContain("javascript:");
         expect(result.svg).not.toContain("alert");
         expect(result.svg).toContain('alias:href=""');
+        expect(result.modified).toBe(true);
+      }
+    });
+
+    it("should neutralize hyphenated prefix bound to xlink (foo-bar:href)", () => {
+      // XML NCName prefixes can include hyphens and dots. A prefix like `foo-bar`
+      // bound to the xlink namespace makes `foo-bar:href` exploitable; the pattern
+      // must accept full NCName characters in the prefix.
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:foo-bar="http://www.w3.org/1999/xlink">
+        <use foo-bar:href="https://evil.com/sprites.svg#icon"/>
+      </svg>`;
+      const result = sanitizeSvg(svg);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.svg).not.toContain("https://evil.com");
+        expect(result.svg).toContain('foo-bar:href=""');
         expect(result.modified).toBe(true);
       }
     });
@@ -837,5 +872,21 @@ describe("isSvgSafe", () => {
       <use alias:href="#icon"/>
     </svg>`;
     expect(isSvgSafe(svg)).toBe(true);
+  });
+
+  it("should return false for namespace-prefixed SMIL element", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:s="http://www.w3.org/2000/svg">
+      <rect width="100" height="100">
+        <s:animate attributeName="onbegin" values="alert(1)"/>
+      </rect>
+    </svg>`;
+    expect(isSvgSafe(svg)).toBe(false);
+  });
+
+  it("should return false for hyphenated prefix bound to xlink", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:foo-bar="http://www.w3.org/1999/xlink">
+      <use foo-bar:href="https://evil.com/sprites.svg#icon"/>
+    </svg>`;
+    expect(isSvgSafe(svg)).toBe(false);
   });
 });

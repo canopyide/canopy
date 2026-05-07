@@ -41,7 +41,7 @@ const JAVASCRIPT_URL_PATTERN = /\bjavascript\s*:/gi;
 const DATA_URL_PATTERN = /\bdata\s*:/gi;
 
 /** Pattern to match href/xlink:href and any namespace-prefixed href attribute with quoted or unquoted values */
-const HREF_ATTRIBUTE_PATTERN = /(^|\s)(\w+:)?href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
+const HREF_ATTRIBUTE_PATTERN = /(^|\s)([\w.-]+:)?href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
 
 /** Pattern to match url() functions in CSS */
 const URL_FUNC_PATTERN = /\burl\s*\(\s*([^)]+)\)/gi;
@@ -147,7 +147,7 @@ const stripUnsafeUrlFunctions = (svg: string): string => {
  */
 const hasUnsafeHrefAttributes = (svg: string): boolean => {
   let unsafe = false;
-  svg.replace(HREF_ATTRIBUTE_PATTERN, (_match, _prefix, _xlink, dquoted, squoted, unquoted) => {
+  svg.replace(HREF_ATTRIBUTE_PATTERN, (_match, _prefix, _nsPrefix, dquoted, squoted, unquoted) => {
     const rawValue = dquoted ?? squoted ?? unquoted ?? "";
     if (!isLocalReference(rawValue)) {
       unsafe = true;
@@ -216,14 +216,20 @@ export function sanitizeSvg(svgText: string): SvgSanitizeOutcome {
 
   const originalSvg = svg;
 
-  // Remove dangerous elements completely (including their content)
+  // Remove dangerous elements completely (including their content). The optional
+  // ([\w.-]+:)? prefix segment also catches namespace-prefixed forms like
+  // <s:animate> (where s binds to the SVG namespace), which a parser treats as
+  // identical to the bare element.
   for (const element of DANGEROUS_ELEMENTS) {
     // Match opening tag through closing tag (handles nested content)
-    const openClosePattern = new RegExp(`<${element}\\b[^>]*>[\\s\\S]*?<\\/${element}>`, "gi");
+    const openClosePattern = new RegExp(
+      `<(?:[\\w.-]+:)?${element}\\b[^>]*>[\\s\\S]*?<\\/(?:[\\w.-]+:)?${element}>`,
+      "gi",
+    );
     svg = svg.replace(openClosePattern, "");
 
     // Also handle self-closing variants
-    const selfClosingPattern = new RegExp(`<${element}\\b[^>]*\\/?>`, "gi");
+    const selfClosingPattern = new RegExp(`<(?:[\\w.-]+:)?${element}\\b[^>]*\\/?>`, "gi");
     svg = svg.replace(selfClosingPattern, "");
   }
 
@@ -301,9 +307,9 @@ export function isSvgSafe(svgText: string): boolean {
     return false;
   }
 
-  // Check for dangerous elements
+  // Check for dangerous elements (including namespace-prefixed forms)
   for (const element of DANGEROUS_ELEMENTS) {
-    const pattern = new RegExp(`<${element}\\b`, "i");
+    const pattern = new RegExp(`<(?:[\\w.-]+:)?${element}\\b`, "i");
     if (testPattern(pattern, svg)) {
       return false;
     }
