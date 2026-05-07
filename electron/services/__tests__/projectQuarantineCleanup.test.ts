@@ -321,7 +321,7 @@ describe("cleanupQuarantinedProjectFiles", () => {
     }
   });
 
-  it("calls logInfo with quarantine-file-reaped when reaping old files", async () => {
+  it("logs quarantine-file-reaped with filename, ageMs, and projectId", async () => {
     logInfo.mockClear();
 
     const projectDir = await createProjectDir(VALID_PROJECT_ID);
@@ -339,26 +339,8 @@ describe("cleanupQuarantinedProjectFiles", () => {
       expect.objectContaining({
         filename: "state.json.corrupted.1234567890",
         ageMs: expect.any(Number),
+        projectId: VALID_PROJECT_ID,
       })
-    );
-  });
-
-  it("includes projectId in reap log context from project-scoped sweep", async () => {
-    logInfo.mockClear();
-
-    const projectDir = await createProjectDir(VALID_PROJECT_ID);
-    await createCorruptedFile(
-      projectDir,
-      "state.json.corrupted.1234567890",
-      THIRTY_ONE_DAYS_MS,
-      NOW
-    );
-
-    await cleanupQuarantinedProjectFiles(tmpDir, NOW);
-
-    expect(logInfo).toHaveBeenCalledWith(
-      "quarantine-file-reaped",
-      expect.objectContaining({ projectId: VALID_PROJECT_ID })
     );
   });
 
