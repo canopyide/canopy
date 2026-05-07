@@ -1,15 +1,33 @@
 import { watch as fsWatch, FSWatcher, readFileSync } from "fs";
-import {
-  join as pathJoin,
-  dirname,
-  isAbsolute,
-  basename,
-  sep,
-  normalize as pathNormalize,
-} from "path";
+import { join as pathJoin, dirname, isAbsolute, basename, normalize as pathNormalize } from "path";
 import { getGitDir } from "./gitUtils.js";
 import { OPERATION_SENTINEL_NAMES } from "./gitRepoOperationState.js";
 import { logWarn } from "./logger.js";
+
+const LINUX_INOTIFY_LIMIT_HELP =
+  "inotify watch limit reached — file watching may be incomplete. " +
+  "Temporary fix: sudo sysctl -w fs.inotify.max_user_watches=524288 fs.inotify.max_user_instances=512. " +
+  "Permanent fix: echo 'fs.inotify.max_user_watches=524288' | sudo tee /etc/sysctl.d/99-inotify.conf && sudo sysctl --system";
+
+const MACOS_EMFILE_LIMIT_HELP =
+  "FSEvents file descriptor ceiling reached — recursive file watching may be incomplete. " +
+  "Temporary fix: sudo launchctl limit maxfiles 65536 524288. " +
+  "Permanent fix: create /Library/LaunchDaemons/limit.maxfiles.plist (see launchd.plist(5)). " +
+  "/etc/sysctl.conf may not be respected on macOS 14+.";
+
+const IGNORED_WORKTREE_DIRECTORY_NAMES = new Set([
+  "node_modules",
+  "dist",
+  "build",
+  ".next",
+  "target",
+  "coverage",
+  ".cache",
+  ".turbo",
+  "out",
+  "__pycache__",
+  ".venv",
+]);
 
 export interface GitFileWatcherOptions {
   worktreePath: string;
@@ -158,7 +176,8 @@ export class GitFileWatcher {
       try {
         watcher.close();
       } catch {
-        // Ignore close errors
+        // Ignore close errors — watcher handle may be stale on Windows
+        // (directory-deletion or double-close race causes EPERM)
       }
     }
 
@@ -186,28 +205,32 @@ export class GitFileWatcher {
         this.worktreePath,
         { persistent: false, recursive: true },
         (_eventType, changedFileName) => {
+          // Null filename is the canonical "global dirty" signal across platforms:
+          // Linux inotify overflow (IN_Q_OVERFLOW), macOS FSEvents coalescing,
+          // and Windows ReadDirectoryChangesW buffer overflow all produce null
+          // filenames when the system can't attribute changes to specific files.
+          // When this happens, treat the entire worktree as potentially changed.
           if (!changedFileName) {
             this.handleWorktreeChange();
             return;
           }
 
-          const changedName = changedFileName.toString();
+          const changedName = changedFileName.toString().replaceAll("\\", "/");
 
           // Ignore all events inside .git directory
-          if (
-            changedName === gitDirBase ||
-            changedName.startsWith(gitDirBase + sep) ||
-            changedName.startsWith(gitDirBase + "/")
-          ) {
+          if (changedName === gitDirBase || changedName.startsWith(gitDirBase + "/")) {
             return;
           }
 
-          // Ignore node_modules to avoid noise from package installs
-          if (
-            changedName.startsWith("node_modules" + sep) ||
-            changedName.startsWith("node_modules/")
-          ) {
-            return;
+          // Ignore common build-output and dependency directories at any depth
+          for (const ignored of IGNORED_WORKTREE_DIRECTORY_NAMES) {
+            if (
+              changedName === ignored ||
+              changedName.startsWith(ignored + "/") ||
+              changedName.includes("/" + ignored + "/")
+            ) {
+              return;
+            }
           }
 
           this.handleWorktreeChange();
@@ -217,12 +240,7 @@ export class GitFileWatcher {
       watcher.on("error", (error) => {
         const errno = error as NodeJS.ErrnoException;
         if (process.platform === "linux" && errno.code === "ENOSPC") {
-          logWarn(
-            "inotify watch limit reached — file watching may be incomplete. " +
-              "Temporary fix: sudo sysctl -w fs.inotify.max_user_watches=524288 fs.inotify.max_user_instances=512. " +
-              "Permanent fix: echo 'fs.inotify.max_user_watches=524288' | sudo tee /etc/sysctl.d/99-inotify.conf && sudo sysctl --system",
-            { path: this.worktreePath }
-          );
+          logWarn(LINUX_INOTIFY_LIMIT_HELP, { path: this.worktreePath });
           const idx = this.watchers.indexOf(watcher);
           if (idx !== -1) {
             this.watchers.splice(idx, 1);
@@ -230,17 +248,13 @@ export class GitFileWatcher {
           try {
             watcher.close();
           } catch {
-            // Ignore close errors on already-broken watcher
+            // Watcher already broken — close may throw EPERM on Windows
+            // (directory-deletion or double-close race)
           }
           this.onInotifyLimitReached?.();
           this.onWatcherFailed?.();
         } else if (process.platform === "darwin" && errno.code === "EMFILE") {
-          logWarn(
-            "FSEvents file descriptor ceiling reached — recursive file watching may be incomplete. " +
-              "Temporary fix: sudo sysctl -w kern.maxfilesperproc=64000. " +
-              "Permanent fix: add kern.maxfilesperproc=64000 to /etc/sysctl.conf",
-            { path: this.worktreePath }
-          );
+          logWarn(MACOS_EMFILE_LIMIT_HELP, { path: this.worktreePath });
           const idx = this.watchers.indexOf(watcher);
           if (idx !== -1) {
             this.watchers.splice(idx, 1);
@@ -248,7 +262,8 @@ export class GitFileWatcher {
           try {
             watcher.close();
           } catch {
-            // Ignore close errors on already-broken watcher
+            // Watcher already broken — close may throw EPERM on Windows
+            // (directory-deletion or double-close race)
           }
           this.onEmfileLimitReached?.();
           this.onWatcherFailed?.();
@@ -265,21 +280,11 @@ export class GitFileWatcher {
     } catch (error) {
       const errno = error as NodeJS.ErrnoException;
       if (process.platform === "linux" && errno.code === "ENOSPC") {
-        logWarn(
-          "inotify watch limit reached — file watching may be incomplete. " +
-            "Temporary fix: sudo sysctl -w fs.inotify.max_user_watches=524288 fs.inotify.max_user_instances=512. " +
-            "Permanent fix: echo 'fs.inotify.max_user_watches=524288' | sudo tee /etc/sysctl.d/99-inotify.conf && sudo sysctl --system",
-          { path: this.worktreePath }
-        );
+        logWarn(LINUX_INOTIFY_LIMIT_HELP, { path: this.worktreePath });
         this.onInotifyLimitReached?.();
         this.onWatcherFailed?.();
       } else if (process.platform === "darwin" && errno.code === "EMFILE") {
-        logWarn(
-          "FSEvents file descriptor ceiling reached — recursive file watching may be incomplete. " +
-            "Temporary fix: sudo sysctl -w kern.maxfilesperproc=64000. " +
-            "Permanent fix: add kern.maxfilesperproc=64000 to /etc/sysctl.conf",
-          { path: this.worktreePath }
-        );
+        logWarn(MACOS_EMFILE_LIMIT_HELP, { path: this.worktreePath });
         this.onEmfileLimitReached?.();
         this.onWatcherFailed?.();
       } else {
