@@ -130,6 +130,18 @@ export interface Worktree {
   /** Worktree changes snapshot */
   worktreeChanges?: WorktreeChanges | null;
 
+  /** Whether this worktree is locked (git worktree lock) */
+  isLocked?: boolean;
+
+  /** Reason the worktree is locked, if provided */
+  lockReason?: string;
+
+  /** Whether git considers this worktree prunable */
+  isPrunable?: boolean;
+
+  /** Reason git considers this worktree prunable, if provided */
+  prunableReason?: string;
+
   /** Task ID for task-scoped worktree orchestration */
   taskId?: string;
 
