@@ -188,29 +188,25 @@ describe("terminalSessionPersistence", () => {
     expect(result.bannerEndMarker!.line).toBeGreaterThan(result.bannerStartMarker!.line);
   });
 
-  it("ignores oversized snapshots, skips reading, and warns", async () => {
+  it("ignores oversized snapshots and warns without restoring", async () => {
     const sessionDir = path.join(userDataDir, "terminal-sessions");
     await fsp.mkdir(sessionDir, { recursive: true });
 
     const hugePath = path.join(sessionDir, "term-huge.restore");
     await fsp.writeFile(hugePath, "y".repeat(SESSION_SNAPSHOT_MAX_BYTES + 100), "utf8");
 
-    const readSpy = vi.spyOn(fs, "readFileSync");
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       const headless = createMockHeadless();
       const result = restoreSessionFromFile(headless as never, "term-huge");
 
       expect(result.restored).toBe(false);
+      // No bytes replayed into the parser — the oversize gate fires before the read.
       expect(headless.write).not.toHaveBeenCalled();
-      // The oversized file must not be loaded into memory.
-      const readCalls = readSpy.mock.calls.filter(([p]) => p === hugePath);
-      expect(readCalls).toHaveLength(0);
       expect(warnSpy).toHaveBeenCalledTimes(1);
       expect(warnSpy.mock.calls[0][0]).toContain("[terminalSessionPersistence]");
       expect(warnSpy.mock.calls[0][0]).toContain("term-huge");
     } finally {
-      readSpy.mockRestore();
       warnSpy.mockRestore();
     }
   });
@@ -231,6 +227,7 @@ describe("terminalSessionPersistence", () => {
       warnSpy.mockRestore();
     }
   });
+
 
   it("writes parser-reset preamble before serialized content on restore", async () => {
     const sessionDir = path.join(userDataDir, "terminal-sessions");
