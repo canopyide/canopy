@@ -152,16 +152,16 @@ export async function assignIssue(
           throw new Error("Issue not found or you don't have access to this repository");
         }
         if (response.status === 422) {
-          const errorCode = body?.errors?.[0]?.code;
-          if (errorCode === "invalid") {
-            throw new Error(`Cannot assign user "${username}" - they may not be a collaborator`);
-          }
-          if (errorCode === "too_many_assignees") {
+          const errors = body?.errors ?? [];
+          if (errors.some((e) => e?.code === "too_many_assignees")) {
             throw new Error(
               `Cannot assign user "${username}" - issue already has the maximum 10 assignees`
             );
           }
-          const githubMessage = body?.errors?.[0]?.message ?? body?.message;
+          if (errors.some((e) => e?.code === "invalid")) {
+            throw new Error(`Cannot assign user "${username}" - they may not be a collaborator`);
+          }
+          const githubMessage = errors[0]?.message ?? body?.message;
           throw new Error(`Cannot assign user "${username}" - ${githubMessage || "HTTP 422"}`);
         }
         throw new Error(

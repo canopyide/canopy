@@ -232,11 +232,100 @@ describe("assignIssue cache invalidation", () => {
   });
 });
 
-describe("parseIssueNode edge cases", () => {
-  // parseIssueNode and the assignees(first: 10) change: verify the parser
-  // handles up to 10 assignees correctly (the old first: 5 couldn't test this).
-  it("is importable", async () => {
+describe("parseIssueNode with 10 assignees", () => {
+  it("preserves all 10 assignees from a node", async () => {
     const mod = await import("../GitHubIssues.js");
-    expect(typeof mod.parseIssueNode).toBe("function");
+    const assignees = Array.from({ length: 10 }, (_, i) => ({
+      login: `user${i + 1}`,
+      avatarUrl: `https://avatar/${i + 1}`,
+    }));
+    const node = {
+      number: 1,
+      title: "Test",
+      url: "https://github.com/test/1",
+      state: "OPEN",
+      updatedAt: "2024-01-01T00:00:00Z",
+      author: { login: "author", avatarUrl: "" },
+      assignees: { nodes: assignees },
+      comments: { totalCount: 0 },
+      labels: { nodes: [] },
+    };
+    const result = mod.parseIssueNode(node);
+    expect(result.assignees).toHaveLength(10);
+    for (let i = 0; i < 10; i++) {
+      expect(result.assignees[i].login).toBe(`user${i + 1}`);
+    }
+  });
+});
+
+describe("assignIssue — multi-error 422 resilience", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    clearGitHubCaches();
+  });
+
+  it("finds too_many_assignees code even when it is not the first error", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 422,
+      json: async () => ({
+        errors: [
+          { code: "custom", message: "Some other validation issue" },
+          { code: "too_many_assignees", message: "Too many assignees" },
+        ],
+      }),
+    });
+
+    await expect(assignIssue("/test", 1, "someuser")).rejects.toThrow("maximum 10 assignees");
+  });
+
+  it("finds invalid code even when it is not the first error", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 422,
+      json: async () => ({
+        errors: [
+          { code: "custom", message: "Some validation issue" },
+          { code: "invalid", message: "Not a collaborator" },
+        ],
+      }),
+    });
+
+    await expect(assignIssue("/test", 1, "someuser")).rejects.toThrow(
+      "they may not be a collaborator"
+    );
+  });
+});
+
+describe("assignIssue — tooltip cache preserved on failure", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    clearGitHubCaches();
+  });
+
+  it("keeps tooltip cache entry when assignment fails", async () => {
+    const tooltipKey = "testowner/testrepo:42";
+    const tooltipEntry = {
+      number: 42,
+      title: "Test",
+      bodyExcerpt: "excerpt",
+      state: "OPEN" as const,
+      createdAt: "2024-01-01T00:00:00Z",
+      author: { login: "author", avatarUrl: "" },
+      assignees: [],
+      labels: [],
+    };
+    issueTooltipCache.set(tooltipKey, tooltipEntry);
+
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 422,
+      json: async () => ({
+        errors: [{ code: "invalid", message: "Not a collaborator" }],
+      }),
+    });
+
+    await expect(assignIssue("/test", 42, "someuser")).rejects.toThrow();
+    expect(issueTooltipCache.get(tooltipKey)).toEqual(tooltipEntry);
   });
 });
