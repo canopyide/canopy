@@ -73,8 +73,9 @@ class DatabaseMaintenanceService {
     // Final backup + TRUNCATE checkpoint (DB is NOT closed here —
     // shutdown.ts may still need it for project state saves afterward)
     await this.runBackup();
+    this.optimize();
     this.checkpoint("TRUNCATE");
-    console.log("[DatabaseMaintenance] Disposed — final backup + checkpoint complete");
+    console.log("[DatabaseMaintenance] Disposed — optimize + checkpoint complete");
   }
 
   private tick(): void {
@@ -89,7 +90,7 @@ class DatabaseMaintenanceService {
     const sqlite = getSharedSqlite();
     if (!sqlite) return;
 
-    this.checkpoint("PASSIVE");
+    this.checkpoint("TRUNCATE");
     this.backupPromise = this.runBackup();
   }
 
@@ -101,6 +102,17 @@ class DatabaseMaintenanceService {
       sqlite.pragma(`wal_checkpoint(${mode})`);
     } catch (error) {
       console.warn(`[DatabaseMaintenance] WAL checkpoint (${mode}) failed:`, error);
+    }
+  }
+
+  private optimize(): void {
+    const sqlite = getSharedSqlite();
+    if (!sqlite) return;
+
+    try {
+      sqlite.pragma("optimize");
+    } catch (error) {
+      console.warn("[DatabaseMaintenance] PRAGMA optimize failed:", error);
     }
   }
 

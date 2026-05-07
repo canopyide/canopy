@@ -123,8 +123,9 @@ describe("DatabaseMaintenanceService adversarial", () => {
 
     expect(mockSqlite.backup).toHaveBeenCalledTimes(2);
     expect(mockSqlite.pragma.mock.calls).toEqual([
-      ["wal_checkpoint(PASSIVE)"],
-      ["wal_checkpoint(PASSIVE)"],
+      ["wal_checkpoint(TRUNCATE)"],
+      ["wal_checkpoint(TRUNCATE)"],
+      ["optimize"],
       ["wal_checkpoint(TRUNCATE)"],
     ]);
     expect(mockSqlite.pragma.mock.invocationCallOrder.at(-1)).toBeGreaterThan(
@@ -190,7 +191,7 @@ describe("DatabaseMaintenanceService adversarial", () => {
 
     expect(mockSqlite.backup).toHaveBeenCalledTimes(1);
     expect(mockSqlite.pragma.mock.calls).toEqual([
-      ["wal_checkpoint(PASSIVE)"],
+      ["wal_checkpoint(TRUNCATE)"],
       ["wal_checkpoint(PASSIVE)"],
     ]);
 
