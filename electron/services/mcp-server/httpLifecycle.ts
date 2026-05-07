@@ -9,7 +9,12 @@ import { store } from "../../store.js";
 import { formatErrorMessage } from "../../../shared/utils/errorMessage.js";
 import { summarizeMcpArgs } from "../../../shared/utils/mcpArgsSummary.js";
 import type { HelpTokenValidator, HelpSessionWebContentsResolver } from "./shared.js";
-import { isAuthorized, resolveTokenTier } from "./tierAuth.js";
+import {
+  extractBearerToken,
+  isAuthorized,
+  precomputeApiKeyBearerHash,
+  resolveTokenTier,
+} from "./tierAuth.js";
 import { createSessionServer, cleanupResourceSubscriptions } from "./sessionServer.js";
 import type { SessionStore } from "./sessionStore.js";
 import type { AuditService } from "./auditLog.js";
@@ -72,6 +77,7 @@ export class HttpLifecycle {
   private httpServer: http.Server | null = null;
   private port: number | null = null;
   private apiKey: string | null = null;
+  private apiKeyBearerHash: Buffer | null = null;
   private registry: WindowRegistry | null = null;
   private startPromise: Promise<void> | null = null;
   private stopPromise: Promise<void> | null = null;
@@ -99,6 +105,7 @@ export class HttpLifecycle {
 
   setApiKey(key: string | null): void {
     this.apiKey = key;
+    this.apiKeyBearerHash = precomputeApiKeyBearerHash(key);
   }
 
   get lastErrorState(): string | null {
@@ -137,8 +144,7 @@ export class HttpLifecycle {
    */
   private resolvePinnedWebContentsId(authHeader: string): number | null {
     if (!this.helpSessionWebContentsResolver) return null;
-    const match = /^Bearer\s+(.+)$/.exec(authHeader);
-    const token = match?.[1]?.trim();
+    const token = extractBearerToken(authHeader);
     if (!token) return null;
     return this.helpSessionWebContentsResolver(token);
   }
@@ -184,9 +190,9 @@ export class HttpLifecycle {
         if (!this.apiKey) {
           const persisted = this.getConfig().apiKey;
           if (persisted && persisted.length > 0) {
-            this.apiKey = persisted;
+            this.setApiKey(persisted);
           } else {
-            this.apiKey = `daintree_${randomUUID().replace(/-/g, "")}`;
+            this.setApiKey(`daintree_${randomUUID().replace(/-/g, "")}`);
             this.persistConfig({ apiKey: this.apiKey });
           }
         }
@@ -460,7 +466,7 @@ export class HttpLifecycle {
     }
 
     const authHeader = req.headers.authorization ?? "";
-    if (!isAuthorized(authHeader, this.apiKey, this.helpTokenValidator)) {
+    if (!isAuthorized(authHeader, this.apiKeyBearerHash, this.helpTokenValidator)) {
       res.writeHead(401, { "Content-Type": "text/plain" });
       res.end("Unauthorized");
       return;
@@ -477,7 +483,7 @@ export class HttpLifecycle {
         allowedOrigins,
       });
       const sessionId = transport.sessionId;
-      const tier = resolveTokenTier(authHeader, this.apiKey, this.helpTokenValidator);
+      const tier = resolveTokenTier(authHeader, this.apiKeyBearerHash, this.helpTokenValidator);
       this.deps.sessionStore.sessionTierMap.set(sessionId, tier);
 
       const pinnedWebContentsId = this.resolvePinnedWebContentsId(authHeader);
@@ -556,7 +562,7 @@ export class HttpLifecycle {
 
     const newSessionId = randomUUID();
     const authHeader = req.headers.authorization ?? "";
-    const tier = resolveTokenTier(authHeader, this.apiKey, this.helpTokenValidator);
+    const tier = resolveTokenTier(authHeader, this.apiKeyBearerHash, this.helpTokenValidator);
     this.deps.sessionStore.sessionTierMap.set(newSessionId, tier);
 
     const pinnedWebContentsId = this.resolvePinnedWebContentsId(authHeader);

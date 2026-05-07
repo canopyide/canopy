@@ -5,6 +5,19 @@ import { mcpPaneConfigService } from "../McpPaneConfigService.js";
 import type { HelpTokenValidator } from "./shared.js";
 import { type McpTier, OPEN_WORLD_CATEGORIES, TIER_ALLOWLISTS } from "./shared.js";
 
+const BEARER_HEADER_PATTERN = /^Bearer\s+(.+)$/i;
+
+export function extractBearerToken(authHeader: string): string | null {
+  const match = BEARER_HEADER_PATTERN.exec(authHeader);
+  const token = match?.[1]?.trim();
+  return token ? token : null;
+}
+
+export function precomputeApiKeyBearerHash(apiKey: string | null): Buffer | null {
+  if (!apiKey) return null;
+  return createHash("sha256").update(`Bearer ${apiKey}`).digest();
+}
+
 export function resolveBearer(token: string): McpTier | null {
   const paneTier = mcpPaneConfigService.getTierForToken(token);
   if (paneTier === "workbench" || paneTier === "action" || paneTier === "system") {
@@ -15,30 +28,24 @@ export function resolveBearer(token: string): McpTier | null {
 
 export function isAuthorized(
   authHeader: string,
-  apiKey: string | null,
+  apiKeyBearerHash: Buffer | null,
   helpTokenValidator: HelpTokenValidator | null
 ): boolean {
-  if (apiKey) {
-    const expected = `Bearer ${apiKey}`;
+  if (apiKeyBearerHash) {
     const actualHash = createHash("sha256").update(authHeader).digest();
-    const expectedHash = createHash("sha256").update(expected).digest();
-    if (timingSafeEqual(actualHash, expectedHash)) return true;
+    if (timingSafeEqual(actualHash, apiKeyBearerHash)) return true;
   } else if (authHeader.length === 0) {
     return true;
   }
 
-  if (authHeader.startsWith("Bearer ")) {
-    const token = authHeader.slice("Bearer ".length);
-    if (mcpPaneConfigService.isValidPaneToken(token)) return true;
-  }
+  const token = extractBearerToken(authHeader);
+  if (token === null) return false;
+
+  if (mcpPaneConfigService.isValidPaneToken(token)) return true;
 
   if (helpTokenValidator) {
-    const match = /^Bearer\s+(.+)$/.exec(authHeader);
-    const token = match?.[1]?.trim();
-    if (token) {
-      const tier = helpTokenValidator(token);
-      if (tier) return true;
-    }
+    const tier = helpTokenValidator(token);
+    if (tier) return true;
   }
 
   return false;
@@ -46,28 +53,26 @@ export function isAuthorized(
 
 export function resolveTokenTier(
   authHeader: string,
-  apiKey: string | null,
+  apiKeyBearerHash: Buffer | null,
   helpTokenValidator: HelpTokenValidator | null
 ): McpTier {
-  if (apiKey) {
-    const expected = `Bearer ${apiKey}`;
+  if (apiKeyBearerHash) {
     const actualHash = createHash("sha256").update(authHeader).digest();
-    const expectedHash = createHash("sha256").update(expected).digest();
-    if (timingSafeEqual(actualHash, expectedHash)) return "external";
+    if (timingSafeEqual(actualHash, apiKeyBearerHash)) return "external";
   } else if (authHeader.length === 0) {
     return "external";
   }
 
-  if (authHeader.startsWith("Bearer ")) {
-    const token = authHeader.slice("Bearer ".length);
-    const paneTier = mcpPaneConfigService.getTierForToken(token);
-    if (paneTier === "workbench" || paneTier === "action" || paneTier === "system") {
-      return paneTier;
-    }
-    if (helpTokenValidator) {
-      const helpTier = helpTokenValidator(token);
-      if (helpTier) return helpTier;
-    }
+  const token = extractBearerToken(authHeader);
+  if (token === null) return "workbench";
+
+  const paneTier = mcpPaneConfigService.getTierForToken(token);
+  if (paneTier === "workbench" || paneTier === "action" || paneTier === "system") {
+    return paneTier;
+  }
+  if (helpTokenValidator) {
+    const helpTier = helpTokenValidator(token);
+    if (helpTier) return helpTier;
   }
 
   return "workbench";
