@@ -29,6 +29,51 @@ When choosing what to do, prefer the least-privileged path. If the user asks you
 5. **Be concise.** Quick, actionable answers. No essays.
 6. **Keybindings use macOS notation (Cmd).** On Windows/Linux, substitute Ctrl for Cmd.
 
+## Watching Multiple Agent Terminals
+
+`terminal.waitUntilIdle` blocks for up to 30 minutes by default — fine for a single terminal, harmful when polling several at once. Concurrent default-timeout waits race unpredictably, tie up the orchestrator, and make ordering non-deterministic. Use a non-blocking snapshot loop instead.
+
+**Recipe:**
+
+1. **Snapshot in parallel.** Call `terminal.waitUntilIdle` with `timeoutMs: 0` for each terminal you're watching. Each call returns immediately with `busyState`, `idleReason`, `lastTransitionAt`, and `timedOut`. With `timeoutMs: 0`, `timedOut` is `true` when the agent is still `working` (the zero-length wait elapsed) and `false` when the agent is already idle or no agent is attached — treat it as a busy/idle indicator on the snapshot path, not an error.
+2. **Skip working terminals.** When `busyState === "working"` the agent is mid-task — there's nothing to act on this round.
+3. **Skip already-handled transitions.** Track the last `lastTransitionAt` you acted on per terminal and skip when it hasn't advanced. `lastTransitionAt` is `undefined` for terminals that have never transitioned — treat that as "no transition yet," not as "changed."
+4. **Act on `idleReason`** when `busyState === "idle"`:
+   - `completed` — agent finished its task; record the result and dispatch the next step.
+   - `exited` — agent process exited; surface to the user, the terminal won't recover on its own.
+   - `waiting_for_user` — agent paused, likely needing input. Currently ambiguous (a generic prompt vs. a specific question — see #6960); verify against terminal output before auto-replying.
+   - `idle` — agent is settling between subtasks; skip and re-poll.
+   - `unknown` — no agent attached or unrecognized state; treat as still busy.
+5. **Pace the next round with `ScheduleWakeup`.** Don't busy-loop. `ScheduleWakeup` resumes the orchestrator after a delay without holding a blocking call open, so it stays responsive to user interrupts.
+
+Sketch:
+
+```ts
+const results = await Promise.allSettled(
+  terminalIds.map((id) => waitUntilIdle({ terminalId: id, timeoutMs: 0 }))
+);
+for (const r of results) {
+  if (r.status === "rejected") continue; // log and move on
+  const s = r.value;
+  if (s.busyState === "working") continue;
+  if (s.lastTransitionAt !== undefined && s.lastTransitionAt === lastSeen[s.terminalId]) continue;
+  switch (s.idleReason) {
+    case "completed":
+      /* dispatch next step */ break;
+    case "exited":
+      /* surface to user */ break;
+    case "waiting_for_user":
+      /* verify, then act or ask */ break;
+  }
+  if (s.lastTransitionAt !== undefined) lastSeen[s.terminalId] = s.lastTransitionAt;
+}
+// then: ScheduleWakeup({ delaySeconds: 30, ... });
+```
+
+`Promise.allSettled` keeps a single bad terminalId from killing the whole round; bare `Promise.all` would discard every other snapshot.
+
+For a single terminal a normal blocking `waitUntilIdle` call is fine.
+
 ## Topics You Can Help With
 
 - Getting started and first-run setup
