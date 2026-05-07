@@ -121,13 +121,16 @@ const isLocalReference = (value: string): boolean => {
  * Strip unsafe href/xlink:href attributes, allowing only local references
  */
 const stripUnsafeHrefAttributes = (svg: string): string => {
-  return svg.replace(HREF_ATTRIBUTE_PATTERN, (match, prefix, nsPrefix, dquoted, squoted, unquoted) => {
-    const rawValue = dquoted ?? squoted ?? unquoted ?? "";
-    if (isLocalReference(rawValue)) {
-      return match;
+  return svg.replace(
+    HREF_ATTRIBUTE_PATTERN,
+    (match, prefix, nsPrefix, dquoted, squoted, unquoted) => {
+      const rawValue = dquoted ?? squoted ?? unquoted ?? "";
+      if (isLocalReference(rawValue)) {
+        return match;
+      }
+      return `${prefix}${nsPrefix ?? ""}href=""`;
     }
-    return `${prefix}${nsPrefix ?? ""}href=""`;
-  });
+  );
 };
 
 /**
@@ -224,7 +227,7 @@ export function sanitizeSvg(svgText: string): SvgSanitizeOutcome {
     // Match opening tag through closing tag (handles nested content)
     const openClosePattern = new RegExp(
       `<(?:[\\w.-]+:)?${element}\\b[^>]*>[\\s\\S]*?<\\/(?:[\\w.-]+:)?${element}>`,
-      "gi",
+      "gi"
     );
     svg = svg.replace(openClosePattern, "");
 
