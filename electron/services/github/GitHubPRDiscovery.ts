@@ -237,7 +237,7 @@ async function probePRChange(
       // Rate-limit bookkeeping must never break the probe.
     }
 
-    if (response.status === 304) {
+    if (response.status === 304 && getETagCacheVersion() === versionAtStart) {
       return "unchanged";
     }
     if (response.status === 200 && getETagCacheVersion() === versionAtStart) {
@@ -287,7 +287,7 @@ async function probeBranchPRListChange(
       // Rate-limit bookkeeping must never break the probe.
     }
 
-    if (response.status === 304) {
+    if (response.status === 304 && getETagCacheVersion() === versionAtStart) {
       return "unchanged";
     }
     if (response.status === 200 && getETagCacheVersion() === versionAtStart) {
