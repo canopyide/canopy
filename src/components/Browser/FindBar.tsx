@@ -1,4 +1,5 @@
 import { ChevronUp, ChevronDown, X } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { FindInPageState } from "@/hooks/useFindInPage";
 
 interface FindBarProps {
@@ -40,6 +41,14 @@ export function FindBar({ find }: FindBarProps) {
     }
   };
 
+  const hasQuery = query.length > 0;
+  const noResults = hasQuery && matchCount === 0;
+  const countText = !hasQuery
+    ? ""
+    : matchCount > 0
+      ? `${activeMatch} of ${matchCount}`
+      : "No results";
+
   return (
     <div className="absolute top-2 right-2 z-20 flex items-center gap-1 rounded-md bg-surface-panel-elevated border border-daintree-border shadow-[var(--theme-shadow-floating)] px-2 py-1">
       <input
@@ -56,40 +65,63 @@ export function FindBar({ find }: FindBarProps) {
           setQuery(e.currentTarget.value);
         }}
         placeholder="Find in page"
-        className="w-44 bg-transparent text-xs text-daintree-text placeholder:text-daintree-text/40 outline-hidden"
+        className="w-44 bg-transparent text-xs text-daintree-text placeholder:text-daintree-text/40 outline-hidden border border-transparent focus:border-border-strong transition-colors"
         spellCheck={false}
       />
-      {query && (
-        <span className="text-[10px] text-daintree-text/50 tabular-nums whitespace-nowrap mr-0.5">
-          {matchCount > 0 ? `${activeMatch} / ${matchCount}` : "No results"}
-        </span>
-      )}
-      <button
-        type="button"
-        onClick={goPrev}
-        disabled={matchCount === 0}
-        className="p-0.5 rounded hover:bg-tint/10 disabled:opacity-30 disabled:pointer-events-none text-daintree-text/70"
-        aria-label="Previous match"
+      <span
+        role={hasQuery ? "status" : undefined}
+        aria-atomic="true"
+        className={`text-[11px] tabular-nums whitespace-nowrap mr-0.5 ${
+          noResults ? "text-status-error" : "text-daintree-text/50"
+        }`}
       >
-        <ChevronUp className="w-3.5 h-3.5" />
-      </button>
-      <button
-        type="button"
-        onClick={goNext}
-        disabled={matchCount === 0}
-        className="p-0.5 rounded hover:bg-tint/10 disabled:opacity-30 disabled:pointer-events-none text-daintree-text/70"
-        aria-label="Next match"
-      >
-        <ChevronDown className="w-3.5 h-3.5" />
-      </button>
-      <button
-        type="button"
-        onClick={close}
-        className="p-0.5 rounded hover:bg-tint/10 text-daintree-text/70"
-        aria-label="Close find bar"
-      >
-        <X className="w-3.5 h-3.5" />
-      </button>
+        {countText}
+      </span>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex">
+            <button
+              type="button"
+              onClick={goPrev}
+              disabled={matchCount === 0}
+              className="p-0.5 rounded hover:bg-overlay-medium disabled:opacity-30 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors text-daintree-text/70"
+              aria-label="Previous match"
+            >
+              <ChevronUp className="w-3.5 h-3.5" />
+            </button>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Previous match (Shift+Enter)</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex">
+            <button
+              type="button"
+              onClick={goNext}
+              disabled={matchCount === 0}
+              className="p-0.5 rounded hover:bg-overlay-medium disabled:opacity-30 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors text-daintree-text/70"
+              aria-label="Next match"
+            >
+              <ChevronDown className="w-3.5 h-3.5" />
+            </button>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Next match (Enter)</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={close}
+            className="p-0.5 rounded hover:bg-overlay-medium transition-colors text-daintree-text/70"
+            aria-label="Close find bar"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Close (Esc)</TooltipContent>
+      </Tooltip>
     </div>
   );
 }
