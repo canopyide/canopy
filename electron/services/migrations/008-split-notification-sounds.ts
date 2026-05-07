@@ -5,11 +5,16 @@ export const migration008: Migration = {
   description: "Split soundFile into per-event notification sound fields",
   up: (store) => {
     const settings = store.get("notificationSettings") as
-      | { soundFile?: string; [key: string]: unknown }
+      | { soundFile?: string; completedSoundFile?: string; [key: string]: unknown }
       | undefined;
 
     if (!settings) {
       console.log("[Migration 008] No notificationSettings found, skipping");
+      return;
+    }
+
+    if (settings.completedSoundFile !== undefined) {
+      console.log("[Migration 008] completedSoundFile already present, skipping");
       return;
     }
 
