@@ -413,13 +413,11 @@ describe("EventBuffer", () => {
       expect(filtered.length).toBe(1);
     });
 
-    it("handles payload that cannot be stringified", () => {
-      // Manually push an event with circular reference to test the catch block
-      // We need to bypass sanitization to get a circular payload into the buffer
+    it("handles payload with circular references", () => {
+      // structuredClone and safeStringify both handle circular references natively
       const circularPayload: any = { agentId: "agent-circular" };
       circularPayload.self = circularPayload;
 
-      // Access the private push method via type assertion for testing
       (buffer as any).push({
         id: "circular-test",
         timestamp: Date.now(),
@@ -429,12 +427,50 @@ describe("EventBuffer", () => {
         source: "main",
       });
 
-      // The getFiltered should not throw when it encounters the circular reference
       expect(() => buffer.getFiltered({ search: "agent-circular" })).not.toThrow();
 
-      // The circular event should be excluded from search results (catch block returns false)
       const searchResults = buffer.getFiltered({ search: "agent-circular" });
-      expect(searchResults.length).toBe(0);
+      expect(searchResults.length).toBe(1);
+    });
+
+    it("throws on non-cloneable payload via direct push", () => {
+      expect(() =>
+        (buffer as any).push({
+          id: "fn-test",
+          timestamp: Date.now(),
+          type: "agent:spawned",
+          category: "agent",
+          payload: { fn: () => {}, agentId: "agent-fn" },
+          source: "main",
+        })
+      ).toThrow();
+    });
+
+    it("start() skips non-cloneable events and logs error", () => {
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      // Emit via event bus — the start() listener catches the push() throw
+      events.emit("agent:spawned" as any, {
+        agentId: "agent-skip",
+        fn: () => {},
+        timestamp: Date.now(),
+      });
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[EventBuffer] Failed to buffer event agent:spawned:",
+        expect.any(Error)
+      );
+      // Valid events still buffer after the failure
+      events.emit("agent:spawned", {
+        agentId: "agent-valid",
+        terminalId: "term-1",
+        timestamp: Date.now(),
+      });
+      expect(buffer.size()).toBeGreaterThanOrEqual(1);
+      const all = buffer.getAll();
+      expect(all.some((e) => e.payload.agentId === "agent-skip")).toBe(false);
+
+      errorSpy.mockRestore();
     });
 
     it("warns when start is called multiple times", () => {
