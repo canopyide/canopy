@@ -55,6 +55,52 @@ function redactDeep(value: unknown): unknown {
   return value;
 }
 
+// Reconstructs `process.report.getReport().header` with PII removed. Whitelist
+// over spread: `networkInterfaces` carries real MAC/IP addresses not caught by
+// any redaction pass, `host` is the system hostname, `cwd`/`filename` embed
+// the username, and `commandLine` may contain secret flags.
+function redactReportHeader(header: unknown): Record<string, unknown> | unknown {
+  if (!header || typeof header !== "object") return header;
+  const h = header as Record<string, unknown>;
+  const safe: Record<string, unknown> = {};
+  const passthroughKeys = [
+    "reportVersion",
+    "event",
+    "trigger",
+    "dumpEventTime",
+    "dumpEventTimeStamp",
+    "processId",
+    "threadId",
+    "nodejsVersion",
+    "wordSize",
+    "arch",
+    "platform",
+    "componentVersions",
+    "release",
+    "osName",
+    "osRelease",
+    "osVersion",
+    "osMachine",
+    "cpus",
+    "glibcVersionRuntime",
+    "glibcVersionCompiler",
+  ];
+  for (const key of passthroughKeys) {
+    if (key in h) safe[key] = h[key];
+  }
+  safe.host = "<hostname>";
+  if (typeof h.cwd === "string") safe.cwd = sanitizePath(h.cwd);
+  if (typeof h.filename === "string") safe.filename = sanitizePath(h.filename);
+  if (Array.isArray(h.commandLine)) {
+    safe.commandLine = h.commandLine.map((entry) =>
+      typeof entry === "string" ? sanitizeString(entry) : entry
+    );
+  } else if (typeof h.commandLine === "string") {
+    safe.commandLine = sanitizeString(h.commandLine);
+  }
+  return safe;
+}
+
 function truncateDiagnosticString(value: string): string {
   if (value.length <= MAX_DIAGNOSTIC_STRING_LENGTH) {
     return value;
@@ -128,7 +174,7 @@ async function collectRuntime() {
     temp: sanitizePath(app.getPath("temp")),
     pid: process.pid,
     uptime: process.uptime(),
-    argv: process.argv.map(sanitizePath),
+    argv: process.argv.map(sanitizeString),
     env: {
       NODE_ENV: process.env.NODE_ENV ?? null,
       DAINTREE_DEBUG: process.env.DAINTREE_DEBUG ?? null,
@@ -230,7 +276,7 @@ async function collectProcess() {
     if (report && typeof report === "object") {
       const r = report as Record<string, unknown>;
       result.nodeReport = {
-        header: r.header,
+        header: redactReportHeader(r.header),
         resourceUsage: r.resourceUsage,
         libuv: r.libuv,
         environmentVariables: "<redacted>",

@@ -7,6 +7,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import archiver from "archiver";
 import { CHANNELS } from "../channels.js";
+import { resilientAtomicWriteFile } from "../../utils/fs.js";
 import type { HandlerDependencies } from "../types.js";
 import type {
   AppMetricsSummary,
@@ -67,11 +68,13 @@ async function writeBundleZip(
     }
   }
 
-  return new Promise((resolve, reject) => {
-    const output = createWriteStream(zipPath);
+  await new Promise<void>((resolve, reject) => {
+    const output = createWriteStream(zipPath, { mode: 0o600 });
     const archive = archiver("zip", { zlib: { level: 6 } });
 
-    output.on("close", resolve);
+    output.on("close", () => {
+      resolve();
+    });
     output.on("error", reject);
     archive.on("error", reject);
 
@@ -84,6 +87,13 @@ async function writeBundleZip(
 
     void archive.finalize();
   });
+
+  // Belt-and-suspenders: createWriteStream's `mode` is only applied when the
+  // file is freshly created. If the user picked an existing path, the prior
+  // mode (e.g. 0o644) survives. POSIX-only — chmod is a no-op on Windows.
+  if (process.platform !== "win32") {
+    await fs.chmod(zipPath, 0o600);
+  }
 }
 
 function ensureEventLoopHistogram(): IntervalHistogram {
@@ -232,7 +242,7 @@ export function registerDiagnosticsHandlers(deps: HandlerDependencies): () => vo
 
     if (canceled || !filePath) return false;
 
-    await fs.writeFile(filePath, json, "utf-8");
+    await resilientAtomicWriteFile(filePath, json, "utf-8", { mode: 0o600 });
     return true;
   };
   handlers.push(typedHandle(CHANNELS.SYSTEM_DOWNLOAD_DIAGNOSTICS, handleDownloadDiagnostics));
