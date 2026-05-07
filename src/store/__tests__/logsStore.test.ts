@@ -139,15 +139,29 @@ describe("filterLogs — search tokens", () => {
     expect(result.map((l) => l.id)).toEqual(["log-10"]);
   });
 
-  it("leaves hyphenated context keys in the remainder text", () => {
+  it("matches hyphenated context keys via context.<path>: tokens", () => {
     const hyphenLogs: LogEntry[] = [
       makeLogExplicit(0, {
         level: "info",
-        message: "context.request-id:abc123 payload received",
+        message: "request handled",
+        context: { "request-id": "abc123" },
       }),
-      makeLogExplicit(1, { level: "info", message: "other event" }),
+      makeLogExplicit(1, {
+        level: "info",
+        message: "request handled",
+        context: { "request-id": "xyz789" },
+      }),
     ];
     const result = filterLogs(hyphenLogs, { search: "context.request-id:abc123" });
+    expect(result.map((l) => l.id)).toEqual(["log-0"]);
+  });
+
+  it("strips all occurrences of duplicated tokens from the remainder text", () => {
+    const dupLogs: LogEntry[] = [
+      makeLogExplicit(0, { level: "error", message: "boom" }),
+      makeLogExplicit(1, { level: "error", message: "level:error inside the message" }),
+    ];
+    const result = filterLogs(dupLogs, { search: "level:error level:error boom" });
     expect(result.map((l) => l.id)).toEqual(["log-0"]);
   });
 });

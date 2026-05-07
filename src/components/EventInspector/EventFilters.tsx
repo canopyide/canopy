@@ -38,6 +38,24 @@ export function EventFilters({ events, filters, onFiltersChange, className }: Ev
     setTraceIdInput(filters.traceId || "");
   }, [filters.traceId]);
 
+  useEffect(() => {
+    const next = searchInput || undefined;
+    if (next === filters.search) return;
+    const timer = setTimeout(() => {
+      onFiltersChange({ ...filters, search: next });
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [searchInput, filters, onFiltersChange]);
+
+  useEffect(() => {
+    const next = traceIdInput.trim().toLowerCase() || undefined;
+    if (next === filters.traceId) return;
+    const timer = setTimeout(() => {
+      onFiltersChange({ ...filters, traceId: next });
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [traceIdInput, filters, onFiltersChange]);
+
   const categoryCounts = useMemo(() => {
     const counts = new Map<EventCategory, number>();
     events.forEach((event) => {
@@ -95,24 +113,18 @@ export function EventFilters({ events, filters, onFiltersChange, className }: Ev
 
   const handleSearchChange = (value: string) => {
     setSearchInput(value);
-    onFiltersChange({ ...filters, search: value || undefined });
   };
 
   const clearSearch = () => {
     setSearchInput("");
-    onFiltersChange({ ...filters, search: undefined });
   };
 
   const handleTraceIdChange = (value: string) => {
     setTraceIdInput(value);
-    // Normalize: trim whitespace and lowercase for more forgiving matching
-    const normalized = value.trim().toLowerCase();
-    onFiltersChange({ ...filters, traceId: normalized || undefined });
   };
 
   const clearTraceId = () => {
     setTraceIdInput("");
-    onFiltersChange({ ...filters, traceId: undefined });
   };
 
   const toggleCategoryFilter = (category: EventCategory) => {

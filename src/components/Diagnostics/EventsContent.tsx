@@ -79,11 +79,7 @@ export function EventsContent({ className }: EventsContentProps) {
 
   return (
     <div className={cn("flex flex-col h-full", className)}>
-      <EventFilters
-        events={events}
-        filters={filters}
-        onFiltersChange={(newFilters) => setFilters(newFilters)}
-      />
+      <EventFilters events={events} filters={filters} onFiltersChange={setFilters} />
 
       <div className="flex-1 flex min-h-0">
         <div className="w-1/2 border-r overflow-hidden">

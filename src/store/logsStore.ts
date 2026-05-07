@@ -16,16 +16,13 @@ interface ParsedSearch {
   text: string;
 }
 
-// Keys are `\w+` only (alphanumerics + underscore). Hyphenated keys like `request-id`
-// won't be captured — `context.request-id:val` would parse as `id:val` and fall through
-// the unknown-key branch, leaving the full token in the remainder text.
-const TOKEN_REGEX = /(\w+(?:\.\w+)*):("[^"]*"|\S+)/g;
+const TOKEN_REGEX = /([\w-]+(?:\.[\w-]+)*):("[^"]*"|\S+)/g;
 
 function parseSearchTokens(search: string): ParsedSearch {
   const levels: LogLevel[] = [];
   const sources: string[] = [];
   const contextMatchers: { path: string[]; value: string }[] = [];
-  let text = search;
+  const consumed: { start: number; end: number }[] = [];
 
   const matches = [...search.matchAll(TOKEN_REGEX)];
   for (const match of matches) {
@@ -46,7 +43,15 @@ function parseSearchTokens(search: string): ParsedSearch {
     } else {
       continue;
     }
-    text = text.replace(match[0], "");
+    if (match.index !== undefined) {
+      consumed.push({ start: match.index, end: match.index + match[0].length });
+    }
+  }
+
+  let text = search;
+  consumed.sort((a, b) => b.start - a.start);
+  for (const span of consumed) {
+    text = text.slice(0, span.start) + text.slice(span.end);
   }
 
   return {

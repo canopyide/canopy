@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { useEventStore, type EventRecord, type EventFilterOptions } from "@/store/eventStore";
 import { Copy, Check, ChevronDown, ChevronRight, Filter, X } from "lucide-react";
@@ -68,6 +68,11 @@ export function EventDetail({ event, className }: EventDetailProps) {
     setFilters({ [key]: newValue });
   };
 
+  const formattedPayload = useMemo(
+    () => (event ? JSON.stringify(event.payload, null, 2) : ""),
+    [event]
+  );
+
   useEffect(() => {
     setCopied(false);
     if (copyTimeoutRef.current) {
@@ -103,8 +108,7 @@ export function EventDetail({ event, className }: EventDetailProps) {
 
   const copyPayload = async () => {
     try {
-      const payloadStr = JSON.stringify(event.payload, null, 2);
-      await navigator.clipboard.writeText(payloadStr);
+      await navigator.clipboard.writeText(formattedPayload);
       setCopied(true);
 
       if (copyTimeoutRef.current) {
@@ -231,7 +235,7 @@ export function EventDetail({ event, className }: EventDetailProps) {
         {expandedSections.has("payload") && (
           <div className="flex-1 overflow-auto px-4 pb-3">
             <pre className="text-xs font-mono bg-muted/50 p-3 rounded overflow-x-auto select-text">
-              {JSON.stringify(event.payload, null, 2)}
+              {formattedPayload}
             </pre>
           </div>
         )}
