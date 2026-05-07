@@ -2166,6 +2166,11 @@ describe("McpServerService", () => {
         description: "Permanently remove a terminal",
       }),
       createManifestEntry({
+        id: "terminal.killAll" as ActionId,
+        title: "Kill All Terminals",
+        description: "Permanently remove all terminals",
+      }),
+      createManifestEntry({
         id: "copyTree.generateAndCopyFile" as ActionId,
         title: "Generate And Copy Context",
         description: "Write generated context to the OS clipboard",
@@ -2304,6 +2309,7 @@ describe("McpServerService", () => {
       "terminal.close",
       "terminal.closeAll",
       "terminal.kill",
+      "terminal.killAll",
       "agent.launch",
       "copyTree.generateAndCopyFile",
     ] as const;
