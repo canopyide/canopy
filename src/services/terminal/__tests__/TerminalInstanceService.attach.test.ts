@@ -362,6 +362,7 @@ describe("TerminalInstanceService attach reveal", () => {
       (managed as Record<string, unknown>).targetRows = 40;
       // Cold terminals need terminal.open() mock
       (managed.terminal as Record<string, unknown>).open = vi.fn();
+      (managed.terminal as Record<string, unknown>).resize = vi.fn();
       const offscreen = document.createElement("div");
       offscreen.appendChild(managed.hostElement);
       service.instances.set("t1", managed);
@@ -375,6 +376,82 @@ describe("TerminalInstanceService attach reveal", () => {
 
       // applyResize should NOT have been called synchronously
       expect(applyResizeSpy).not.toHaveBeenCalled();
+    });
+
+    it("seeds xterm with saved dimensions before terminal.open() on cold-start restore", () => {
+      const managed = makeMockManaged("t1");
+      managed.isDetached = false;
+      managed.isOpened = false;
+      (managed as Record<string, unknown>).targetCols = 152;
+      (managed as Record<string, unknown>).targetRows = 38;
+      const callOrder: string[] = [];
+      (managed.terminal as Record<string, unknown>).resize = vi.fn(() => {
+        callOrder.push("resize");
+      });
+      (managed.terminal as Record<string, unknown>).open = vi.fn(() => {
+        callOrder.push("open");
+      });
+      service.instances.set("t1", managed);
+
+      vi.spyOn(service.resizeController, "applyResize").mockImplementation(() => {});
+      vi.spyOn(service.resizeController, "fit").mockImplementation(() => {});
+
+      const container = document.createElement("div");
+      service.attach("t1", container);
+
+      // resize() is called with the saved dimensions before open() runs,
+      // so xterm seeds its cell grid before first paint.
+      expect(managed.terminal.resize).toHaveBeenCalledWith(152, 38);
+      expect(managed.terminal.open).toHaveBeenCalledWith(managed.hostElement);
+      expect(callOrder).toEqual(["resize", "open"]);
+
+      // targetCols/Rows must remain set so the inner rAF still notifies the PTY.
+      expect((managed as Record<string, unknown>).targetCols).toBe(152);
+      expect((managed as Record<string, unknown>).targetRows).toBe(38);
+    });
+
+    it("does not pre-resize xterm when cold-start terminal has no saved dimensions", () => {
+      const managed = makeMockManaged("t1");
+      managed.isDetached = false;
+      managed.isOpened = false;
+      (managed.terminal as Record<string, unknown>).resize = vi.fn();
+      (managed.terminal as Record<string, unknown>).open = vi.fn();
+      service.instances.set("t1", managed);
+
+      vi.spyOn(service.resizeController, "fit").mockImplementation(() => {});
+
+      const container = document.createElement("div");
+      service.attach("t1", container);
+
+      expect(managed.terminal.resize).not.toHaveBeenCalled();
+      expect(managed.terminal.open).toHaveBeenCalledWith(managed.hostElement);
+    });
+
+    it("inner rAF still calls applyResize for cold-start restore so PTY learns the size", () => {
+      const managed = makeMockManaged("t1");
+      managed.isDetached = false;
+      managed.isOpened = false;
+      (managed as Record<string, unknown>).targetCols = 100;
+      (managed as Record<string, unknown>).targetRows = 30;
+      (managed.terminal as Record<string, unknown>).resize = vi.fn();
+      (managed.terminal as Record<string, unknown>).open = vi.fn(() => {
+        // Simulate xterm setting isOpened-side state
+        (managed.terminal as Record<string, unknown>).element = document.createElement("div");
+      });
+      service.instances.set("t1", managed);
+
+      const applyResizeSpy = vi
+        .spyOn(service.resizeController, "applyResize")
+        .mockImplementation(() => {});
+      vi.spyOn(service.resizeController, "fit").mockImplementation(() => {});
+
+      const container = document.createElement("div");
+      service.attach("t1", container);
+
+      // Run both rAFs: outer reveal + inner resize/fit.
+      vi.advanceTimersByTime(32);
+
+      expect(applyResizeSpy).toHaveBeenCalledWith("t1", 100, 30);
     });
 
     it("skips early resize for warm terminals without target dimensions", () => {
