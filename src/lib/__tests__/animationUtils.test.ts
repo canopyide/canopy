@@ -119,6 +119,15 @@ describe("getTerminalAnimationDuration", () => {
     document.body.dataset.performanceMode = "true";
     expect(getTerminalAnimationDuration()).toBe(0);
   });
+
+  it("returns 0 when data-reduce-animations is set (CSS+JS parity)", () => {
+    document.body.dataset.reduceAnimations = "true";
+    try {
+      expect(getTerminalAnimationDuration()).toBe(0);
+    } finally {
+      delete document.body.dataset.reduceAnimations;
+    }
+  });
 });
 
 describe("getUiAnimationDuration", () => {

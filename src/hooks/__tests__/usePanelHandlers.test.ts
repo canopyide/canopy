@@ -145,6 +145,59 @@ describe("usePanelHandlers", () => {
     expect(lifecycle.timeoutRef.current).toBeUndefined();
   });
 
+  it("trashes synchronously when reduce-animations is enabled (CSS+JS parity)", () => {
+    document.body.dataset.reduceAnimations = "true";
+    const lifecycle = makeLifecycle();
+    const { result } = renderHook(() => usePanelHandlers({ terminalId: "p1", lifecycle }));
+
+    act(() => {
+      result.current.handleClose();
+    });
+
+    expect(trashPanelGroupMock).toHaveBeenCalledWith("p1");
+    expect(lifecycle.setIsTrashing).not.toHaveBeenCalled();
+    delete document.body.dataset.reduceAnimations;
+  });
+
+  it("triple-close on the same panel only trashes once", () => {
+    const lifecycle = makeLifecycle();
+    const onAfterClose = vi.fn();
+    const { result } = renderHook(() =>
+      usePanelHandlers({ terminalId: "p1", lifecycle, onAfterClose })
+    );
+
+    // 1st: schedules timer.
+    act(() => result.current.handleClose());
+    // 2nd: cancels timer, flushes.
+    act(() => result.current.handleClose());
+    // 3rd: panel already trashed — no-op.
+    act(() => result.current.handleClose());
+
+    expect(trashPanelGroupMock).toHaveBeenCalledTimes(1);
+    expect(onAfterClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("force-close cancels a pending normal-close timer", () => {
+    const lifecycle = makeLifecycle();
+    const onAfterClose = vi.fn();
+    const { result } = renderHook(() =>
+      usePanelHandlers({ terminalId: "p1", lifecycle, onAfterClose })
+    );
+
+    act(() => result.current.handleClose()); // normal close → 50ms timer
+    expect(lifecycle.timeoutRef.current).toBeDefined();
+
+    act(() => result.current.handleClose(true)); // force close before timer fires
+
+    expect(removePanelMock).toHaveBeenCalledWith("p1");
+    expect(lifecycle.timeoutRef.current).toBeUndefined();
+
+    // The original 50ms timer must not fire trashPanelGroup.
+    act(() => vi.advanceTimersByTime(100));
+    expect(trashPanelGroupMock).not.toHaveBeenCalled();
+    expect(onAfterClose).toHaveBeenCalledTimes(1);
+  });
+
   it("skips setIsTrashing(false) when the panel unmounted before the timer fires", () => {
     const lifecycle = makeLifecycle();
     const { result } = renderHook(() => usePanelHandlers({ terminalId: "p1", lifecycle }));

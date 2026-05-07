@@ -24,8 +24,13 @@ export function getTerminalAnimationDuration(): number {
     return TERMINAL_ANIMATION_DURATION;
   }
 
-  const performanceMode = document.body.dataset.performanceMode === "true";
-  return performanceMode ? 0 : TERMINAL_ANIMATION_DURATION;
+  // Match what the CSS does: both `body[data-reduce-animations="true"]` and
+  // `body[data-performance-mode="true"]` suppress the trash keyframe in
+  // src/index.css, so JS must skip the 50ms wait too — otherwise the panel
+  // sits on screen for 50ms with no animation playing.
+  const ds = document.body.dataset;
+  if (ds.performanceMode === "true" || ds.reduceAnimations === "true") return 0;
+  return TERMINAL_ANIMATION_DURATION;
 }
 
 export function getUiAnimationDuration(): number {
