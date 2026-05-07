@@ -74,7 +74,11 @@ async function stopActiveProjectViaSwitcher(
         await window.keyboard.press("Escape");
         return false;
       },
-      { timeout: T_LONG, intervals: [250, 500, 1000] }
+      // Allow up to 2× T_LONG (≈20s locally). The processCount aligned-interval
+      // poll runs every 5s and terminal spawns don't trigger an event-driven
+      // broadcast (only agent-state changes do), so under load the race window
+      // can swallow the first 10s.
+      { timeout: T_LONG * 2, intervals: [250, 500, 1000] }
     )
     .toBe(true);
 

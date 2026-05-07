@@ -25,6 +25,7 @@ export const SEL = {
   },
   sidebar: {
     resizeHandle: '[aria-label="Resize sidebar"]',
+    aside: 'aside[aria-label="Sidebar"]',
   },
   settings: {
     heading: 'h2:has-text("Settings")',

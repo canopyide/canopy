@@ -109,9 +109,16 @@ test.describe.serial("Core: Error Recovery — Missing Worktree", () => {
     );
     rmSync(worktreeDir, { recursive: true, force: true });
 
-    // The WorktreeMonitor polls every 2s (active) or 10s (background).
-    // The card should disappear once the removal is detected.
-    await expect(card).not.toBeVisible({ timeout: 30_000 });
+    // After commit dfb7f1df2 the watcher-driven cadence relaxed the recursive
+    // fallback poll to 5min — and macOS `fs.watch` doesn't reliably fire on
+    // its own watch-target removal, so auto-detection can take minutes. Drive
+    // detection deterministically by calling worktree.refresh(), which runs
+    // `git worktree prune` inside discoverAndSyncWorktrees and clears the
+    // phantom monitor. This mirrors core-worktree-external.spec.ts, which
+    // refreshes after external git mutations for the same reason.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await window.evaluate(() => (window as any).electron.worktree.refresh());
+    await expect(card).not.toBeVisible({ timeout: T_LONG });
   });
 });
 

@@ -19,7 +19,10 @@ let fixtureDir: string;
 let terminalPanel: Locator;
 
 function streamingCommand(token: string, lineCount = 100): string {
-  return `node -e "let i=0;const t=setInterval(()=>{console.log('${token}_'+(++i));if(i>=${lineCount}){clearInterval(t);console.log('DONE_${token}')}},50)"`;
+  // Assemble the DONE marker at runtime so the literal "DONE_<token>" string
+  // never appears in the command echo. Otherwise waitForTerminalText matches
+  // against the typed command text and returns before streaming completes.
+  return `node -e "let i=0,d='DONE'+'_${token}';const t=setInterval(()=>{console.log('${token}_'+(++i));if(i>=${lineCount}){clearInterval(t);console.log(d)}},50)"`;
 }
 
 async function countStreamLines(panel: Locator, token: string): Promise<number> {
@@ -91,7 +94,20 @@ test.describe.serial("Core: Concurrent terminal output during UI interactions", 
     await terminalPanel.locator(SEL.terminal.xtermRows).click();
     await expectTerminalFocused(terminalPanel);
 
-    await runTerminalCommand(window, terminalPanel, streamingCommand("CONC_B"));
+    // The previous test sent two Escape presses to dismiss the action palette
+    // — they're absorbed by the dialog, but the trailing keystroke can leak
+    // into the terminal's PTY input as a stray ESC sitting at the prompt.
+    // When we then type "node ...", zsh's emacs/vi keymaps treat ESC as Meta,
+    // which makes ESC+n a keymap binding (history navigation in zsh) — that
+    // swallows "n" and "o". Send Ctrl-C first to flush the line buffer to a
+    // clean prompt before typing the next streaming command.
+    await window.waitForTimeout(T_SETTLE);
+    await window.keyboard.press("Control+c");
+    await window.waitForTimeout(150);
+
+    const cmd = streamingCommand("CONC_B");
+    await window.keyboard.type(cmd, { delay: 30 });
+    await window.keyboard.press("Enter");
     await waitForTerminalText(terminalPanel, "CONC_B_1", T_MEDIUM);
 
     await window.keyboard.press(`${mod}+Shift+P`);
@@ -107,9 +123,13 @@ test.describe.serial("Core: Concurrent terminal output during UI interactions", 
 
     await expectTerminalFocused(terminalPanel);
 
-    // Verify streaming continued during the interaction
-    const linesAfter = await countStreamLines(terminalPanel, "CONC_B");
-    expect(linesAfter).toBeGreaterThan(linesBefore);
+    // Verify streaming continued during the interaction. Poll instead of
+    // single-sample comparison: under load the renderer may take a beat to
+    // catch up after the palette closes, and a tight `linesAfter > linesBefore`
+    // check races the next setInterval tick.
+    await expect
+      .poll(() => countStreamLines(terminalPanel, "CONC_B"), { timeout: T_MEDIUM })
+      .toBeGreaterThan(linesBefore);
 
     await waitForTerminalText(terminalPanel, "DONE_CONC_B", T_LONG);
   });
@@ -199,7 +219,13 @@ test.describe.serial("Core: Concurrent terminal output during UI interactions", 
       await window.keyboard.press(`${mod}+A`);
       await window.keyboard.press("Backspace");
 
-      await waitForTerminalText(terminalPanel, "DONE_CONC_C", T_LONG);
+      // The original test waited for DONE_CONC_C here as final verification.
+      // After #6949 (hibernate idle daintree), background terminal panels can
+      // have their PTY flow throttled while the agent tab is active, so the
+      // 200-line stream may not reach DONE within T_LONG. The primary
+      // assertion ("lines > 5" while typing in the agent) already proved
+      // streaming was concurrent with input — the DONE wait was teardown
+      // verification, not load-bearing.
     });
   });
 });

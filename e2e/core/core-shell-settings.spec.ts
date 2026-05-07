@@ -127,27 +127,27 @@ test.describe.serial("Core: Shell & Settings", () => {
     test("Cmd+B toggles sidebar off and on", async () => {
       const { window } = ctx;
 
-      const handle = window.locator(SEL.sidebar.resizeHandle);
-      await expect(handle).toHaveAttribute("aria-valuenow", /^[1-9]/, { timeout: T_SHORT });
+      const aside = window.locator(SEL.sidebar.aside);
+      await expect(aside).toHaveAttribute("aria-hidden", "false", { timeout: T_SHORT });
 
       await window.keyboard.press(`${mod}+b`);
-      await expect(handle).toHaveAttribute("aria-valuenow", "0", { timeout: T_SHORT });
+      await expect(aside).toHaveAttribute("aria-hidden", "true", { timeout: T_SHORT });
 
       await window.keyboard.press(`${mod}+b`);
-      await expect(handle).toHaveAttribute("aria-valuenow", /^[1-9]/, { timeout: T_SHORT });
+      await expect(aside).toHaveAttribute("aria-hidden", "false", { timeout: T_SHORT });
     });
 
     test("toolbar button toggles sidebar off and on", async () => {
       const { window } = ctx;
 
-      const handle = window.locator(SEL.sidebar.resizeHandle);
-      await expect(handle).toHaveAttribute("aria-valuenow", /^[1-9]/, { timeout: T_MEDIUM });
+      const aside = window.locator(SEL.sidebar.aside);
+      await expect(aside).toHaveAttribute("aria-hidden", "false", { timeout: T_MEDIUM });
 
       await window.locator(SEL.toolbar.toggleSidebar).click();
-      await expect(handle).toHaveAttribute("aria-valuenow", "0", { timeout: T_SHORT });
+      await expect(aside).toHaveAttribute("aria-hidden", "true", { timeout: T_SHORT });
 
       await window.locator(SEL.toolbar.toggleSidebar).click();
-      await expect(handle).toHaveAttribute("aria-valuenow", /^[1-9]/, { timeout: T_SHORT });
+      await expect(aside).toHaveAttribute("aria-hidden", "false", { timeout: T_SHORT });
     });
 
     test("Cmd+, opens settings", async () => {
