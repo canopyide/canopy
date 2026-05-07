@@ -4,6 +4,7 @@ import {
   captureAuthMetadata,
   getLastAuthMetadata,
   parseSsoHeader,
+  parseSsoKind,
 } from "../GitHubAuth.js";
 
 function createStorage() {
@@ -64,6 +65,39 @@ describe("GitHubAuth", () => {
     expect(result.error).toBe("Cannot reach GitHub. Check your internet connection.");
   });
 
+  it("returns 'Invalid or expired token' for a 401 with 'Bad credentials' in the body", async () => {
+    (globalThis as unknown as { fetch: Mock }).fetch = vi
+      .fn()
+      .mockResolvedValue(new Response('{"message":"Bad credentials"}', { status: 401 }));
+
+    const result = await GitHubAuth.validate("ghp_validtoken012345678901234567890123456789");
+
+    expect(result.valid).toBe(false);
+    expect(result.error).toBe("Invalid or expired token");
+  });
+
+  it("returns the transient message for a 401 without 'Bad credentials' so a brief auth-service incident isn't reported as an invalid token", async () => {
+    (globalThis as unknown as { fetch: Mock }).fetch = vi
+      .fn()
+      .mockResolvedValue(new Response("<html>Service Disrupted</html>", { status: 401 }));
+
+    const result = await GitHubAuth.validate("ghp_validtoken012345678901234567890123456789");
+
+    expect(result.valid).toBe(false);
+    expect(result.error).toBe("GitHub is temporarily unavailable. Please retry.");
+  });
+
+  it("returns the transient message for a 5xx response", async () => {
+    (globalThis as unknown as { fetch: Mock }).fetch = vi
+      .fn()
+      .mockResolvedValue(new Response("Bad Gateway", { status: 502 }));
+
+    const result = await GitHubAuth.validate("ghp_validtoken012345678901234567890123456789");
+
+    expect(result.valid).toBe(false);
+    expect(result.error).toBe("GitHub is temporarily unavailable. Please retry.");
+  });
+
   describe("parseSsoHeader", () => {
     it("extracts the url= URL from a required-form header", () => {
       const url = parseSsoHeader(
@@ -98,6 +132,29 @@ describe("GitHubAuth", () => {
       expect(
         parseSsoHeader("required; url=https://www.github.com/orgs/acme/sso?authorization_request=x")
       ).toBe("https://www.github.com/orgs/acme/sso?authorization_request=x");
+    });
+  });
+
+  describe("parseSsoKind", () => {
+    it("classifies the required form as 'required'", () => {
+      expect(
+        parseSsoKind("required; url=https://github.com/orgs/acme/sso?authorization_request=abc123")
+      ).toBe("required");
+    });
+
+    it("classifies the partial-results form as 'partial'", () => {
+      expect(parseSsoKind("partial-results; organizations=123456,789012")).toBe("partial");
+    });
+
+    it("is case-insensitive at the prefix", () => {
+      expect(parseSsoKind("REQUIRED; url=https://github.com/orgs/acme/sso")).toBe("required");
+      expect(parseSsoKind("Partial-Results; organizations=12345")).toBe("partial");
+    });
+
+    it("returns null for null/empty/gibberish", () => {
+      expect(parseSsoKind(null)).toBeNull();
+      expect(parseSsoKind("")).toBeNull();
+      expect(parseSsoKind("gibberish")).toBeNull();
     });
   });
 

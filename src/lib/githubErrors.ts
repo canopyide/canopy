@@ -10,5 +10,7 @@ export function isTokenRelatedError(msg: string | null | undefined): boolean {
 
 export function isTransientNetworkError(msg: string | null | undefined): boolean {
   if (!msg) return false;
-  return msg.startsWith("Cannot reach GitHub.");
+  return (
+    msg.startsWith("Cannot reach GitHub.") || msg.startsWith("GitHub is temporarily unavailable.")
+  );
 }

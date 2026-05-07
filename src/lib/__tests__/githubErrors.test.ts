@@ -21,6 +21,18 @@ describe("isTokenRelatedError", () => {
     expect(isTokenRelatedError("Repository not found or token lacks access.")).toBe(false);
   });
 
+  it("returns false for transient API errors so the dropdown stays out of reconnect-mode", () => {
+    expect(isTokenRelatedError("GitHub is temporarily unavailable. Please retry.")).toBe(false);
+  });
+
+  it("returns false for partial-results SSO so a per-org failure isn't treated as a globally bad token", () => {
+    expect(
+      isTokenRelatedError(
+        "GitHub returned partial results — some organizations require SSO authorization."
+      )
+    ).toBe(false);
+  });
+
   it("returns false for null/undefined/empty", () => {
     expect(isTokenRelatedError(null)).toBe(false);
     expect(isTokenRelatedError(undefined)).toBe(false);
@@ -38,6 +50,11 @@ describe("isTransientNetworkError", () => {
   it("matches any string starting with the canonical prefix", () => {
     expect(isTransientNetworkError("Cannot reach GitHub.")).toBe(true);
     expect(isTransientNetworkError("Cannot reach GitHub. Try again later.")).toBe(true);
+  });
+
+  it("matches the transient-API prefix for 5xx and ambiguous-401 outages", () => {
+    expect(isTransientNetworkError("GitHub is temporarily unavailable. Please retry.")).toBe(true);
+    expect(isTransientNetworkError("GitHub is temporarily unavailable.")).toBe(true);
   });
 
   it("returns false for token, rate-limit, and 404 errors", () => {
