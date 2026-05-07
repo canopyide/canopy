@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
-import { runScratchCleanup, SCRATCH_TTL_MS } from "../ScratchCleanupService.js";
+import { runScratchCleanup } from "../ScratchCleanupService.js";
+import { SCRATCH_CLEANUP_TTL_MS } from "../../../shared/config/scratchCleanup.js";
 import type { ScratchRow } from "../persistence/schema.js";
 
 vi.mock("../../utils/logger.js", () => ({
@@ -65,7 +66,7 @@ describe("runScratchCleanup", () => {
     const dir = path.join(tmpDir, "fresh");
     await fs.mkdir(dir, { recursive: true });
     const store = makeStore([
-      row({ id: "fresh", path: dir, lastOpened: NOW - SCRATCH_TTL_MS / 2 }),
+      row({ id: "fresh", path: dir, lastOpened: NOW - SCRATCH_CLEANUP_TTL_MS / 2 }),
     ]);
 
     const result = await runScratchCleanup(
@@ -83,7 +84,7 @@ describe("runScratchCleanup", () => {
     await fs.mkdir(dir, { recursive: true });
     await fs.writeFile(path.join(dir, "a.txt"), "hello");
     const store = makeStore([
-      row({ id: "stale", path: dir, lastOpened: NOW - (SCRATCH_TTL_MS + 86_400_000) }),
+      row({ id: "stale", path: dir, lastOpened: NOW - (SCRATCH_CLEANUP_TTL_MS + 86_400_000) }),
     ]);
 
     const result = await runScratchCleanup(
@@ -102,7 +103,7 @@ describe("runScratchCleanup", () => {
       row({
         id: "tombstoned",
         path: path.join(tmpDir, "missing"),
-        lastOpened: NOW - 2 * SCRATCH_TTL_MS,
+        lastOpened: NOW - 2 * SCRATCH_CLEANUP_TTL_MS,
         deletedAt: NOW - 1000,
       }),
     ]);
@@ -121,7 +122,7 @@ describe("runScratchCleanup", () => {
       row({
         id: "ghost",
         path: path.join(tmpDir, "does-not-exist"),
-        lastOpened: NOW - 2 * SCRATCH_TTL_MS,
+        lastOpened: NOW - 2 * SCRATCH_CLEANUP_TTL_MS,
       }),
     ]);
 
@@ -153,7 +154,9 @@ describe("runScratchCleanup", () => {
     // lastOpened == cutoff is NOT stale (sweep uses `<`).
     const at = path.join(tmpDir, "boundary");
     await fs.mkdir(at, { recursive: true });
-    const store = makeStore([row({ id: "boundary", path: at, lastOpened: NOW - SCRATCH_TTL_MS })]);
+    const store = makeStore([
+      row({ id: "boundary", path: at, lastOpened: NOW - SCRATCH_CLEANUP_TTL_MS }),
+    ]);
 
     const result = await runScratchCleanup(
       NOW,
@@ -171,8 +174,8 @@ describe("runScratchCleanup", () => {
     await fs.mkdir(otherDir, { recursive: true });
     const store = makeStore(
       [
-        row({ id: "active", path: activeDir, lastOpened: NOW - 2 * SCRATCH_TTL_MS }),
-        row({ id: "other", path: otherDir, lastOpened: NOW - 2 * SCRATCH_TTL_MS }),
+        row({ id: "active", path: activeDir, lastOpened: NOW - 2 * SCRATCH_CLEANUP_TTL_MS }),
+        row({ id: "other", path: otherDir, lastOpened: NOW - 2 * SCRATCH_CLEANUP_TTL_MS }),
       ],
       "active"
     );
@@ -199,7 +202,7 @@ describe("runScratchCleanup", () => {
       row({
         id: "ghost",
         path: ghost,
-        lastOpened: NOW - 2 * SCRATCH_TTL_MS,
+        lastOpened: NOW - 2 * SCRATCH_CLEANUP_TTL_MS,
         deletedAt: NOW - 86_400_000,
       }),
     ]);

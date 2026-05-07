@@ -8,23 +8,21 @@
  * (per `app_state.currentScratchId`) is always excluded so an actively-open
  * workspace can never disappear under the user.
  *
- * Tombstoning is one-way — orphaned directories left by a failed `fs.rm`
- * stay on disk (logged, not retried). Accepting that orphan rate is
- * deliberate: the alternative (re-sweeping tombstoned rows) would require a
- * second query and could surprise users who manually re-create folders at
- * the same path.
+ * Tombstoning is one-way — orphaned directories left by a persistently
+ * failing `fs.rm` stay on disk (logged). `fs.rm` retries transient locks
+ * (`maxRetries` / `retryDelay`), but permanent failures are not re-queued.
+ * Accepting that orphan rate is deliberate: the alternative (re-sweeping
+ * tombstoned rows) would require a second query and could surprise users
+ * who manually re-create folders at the same path.
  *
  * Mirrors the fire-and-forget pattern of `initializeTrashedPidCleanup`:
  * called once at app boot, never awaited, never throws — a cleanup failure
  * must not block startup.
  */
 import fs from "fs/promises";
-import { existsSync } from "fs";
 import { scratchStore as defaultScratchStore } from "./ScratchStore.js";
 import { logError, logInfo } from "../utils/logger.js";
 import { SCRATCH_CLEANUP_TTL_MS } from "../../shared/config/scratchCleanup.js";
-
-export { SCRATCH_CLEANUP_TTL_MS as SCRATCH_TTL_MS } from "../../shared/config/scratchCleanup.js";
 
 export interface ScratchCleanupResult {
   /** Total rows examined as candidates (predate cutoff, not yet tombstoned). */
@@ -80,13 +78,8 @@ export async function runScratchCleanup(
       continue;
     }
 
-    if (!existsSync(row.path)) {
-      result.directoriesRemoved += 1;
-      continue;
-    }
-
     try {
-      await fs.rm(row.path, { recursive: true, force: true });
+      await fs.rm(row.path, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
       result.directoriesRemoved += 1;
     } catch (error) {
       result.directoriesFailed += 1;

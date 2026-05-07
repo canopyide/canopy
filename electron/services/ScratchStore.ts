@@ -1,5 +1,4 @@
 import fs from "fs/promises";
-import { existsSync } from "fs";
 import { randomUUID } from "crypto";
 import { eq, desc, and, isNull, lt } from "drizzle-orm";
 import type { Scratch } from "../../shared/types/scratch.js";
@@ -41,17 +40,11 @@ export class ScratchStore {
 
   async initialize(): Promise<void> {
     const root = this.rootDir();
-    if (!existsSync(root)) {
-      await fs.mkdir(root, { recursive: true });
-    }
+    await fs.mkdir(root, { recursive: true });
   }
 
   async createScratch(name?: string): Promise<Scratch> {
     const root = this.rootDir();
-    if (!existsSync(root)) {
-      await fs.mkdir(root, { recursive: true });
-    }
-
     const id = randomUUID();
     const dir = getScratchDir(root, id);
     if (!dir) {
@@ -72,15 +65,20 @@ export class ScratchStore {
     };
 
     const db = getSharedDb();
-    db.insert(scratchesTable)
-      .values({
-        id: scratch.id,
-        path: scratch.path,
-        name: scratch.name,
-        createdAt: scratch.createdAt,
-        lastOpened: scratch.lastOpened,
-      })
-      .run();
+    try {
+      db.insert(scratchesTable)
+        .values({
+          id: scratch.id,
+          path: scratch.path,
+          name: scratch.name,
+          createdAt: scratch.createdAt,
+          lastOpened: scratch.lastOpened,
+        })
+        .run();
+    } catch (error) {
+      await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+      throw error;
+    }
 
     return scratch;
   }
@@ -171,9 +169,9 @@ export class ScratchStore {
     db.delete(scratchesTable).where(eq(scratchesTable.id, scratchId)).run();
 
     const dir = getScratchDir(this.rootDir(), scratchId);
-    if (dir && existsSync(dir)) {
+    if (dir) {
       try {
-        await fs.rm(dir, { recursive: true, force: true });
+        await fs.rm(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
       } catch (error) {
         logError(`[ScratchStore] Failed to remove scratch directory for ${scratchId}`, error);
       }

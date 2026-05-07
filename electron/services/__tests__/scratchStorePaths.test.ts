@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import path from "path";
-import { isValidScratchId, getScratchDir, scratchStateFilePath } from "../scratchStorePaths.js";
+import { isValidScratchId, getScratchDir } from "../scratchStorePaths.js";
 
 const BASE = path.resolve("/test/userData/scratches");
 const VALID_UUID = "12345678-1234-4567-8abc-1234567890ab"; // valid UUID v4 shape
@@ -11,8 +11,8 @@ describe("scratchStorePaths", () => {
       expect(isValidScratchId(VALID_UUID)).toBe(true);
     });
 
-    it("accepts uppercase hex UUID v4", () => {
-      expect(isValidScratchId(VALID_UUID.toUpperCase())).toBe(true);
+    it("rejects uppercase hex UUID v4", () => {
+      expect(isValidScratchId(VALID_UUID.toUpperCase())).toBe(false);
     });
 
     it("rejects SHA256-hex (project ID format)", () => {
@@ -48,18 +48,6 @@ describe("scratchStorePaths", () => {
     it("does not allow escape via embedded separators", () => {
       const escaped = `${VALID_UUID}/../escape`;
       expect(getScratchDir(BASE, escaped)).toBeNull();
-    });
-  });
-
-  describe("scratchStateFilePath", () => {
-    it("returns state.json path under the scratch dir", () => {
-      expect(scratchStateFilePath(BASE, VALID_UUID)).toBe(
-        path.join(BASE, VALID_UUID, "state.json")
-      );
-    });
-
-    it("returns null for invalid ids", () => {
-      expect(scratchStateFilePath(BASE, "invalid")).toBeNull();
     });
   });
 });

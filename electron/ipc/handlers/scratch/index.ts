@@ -203,6 +203,8 @@ export function registerScratchHandlers(deps: HandlerDependencies): () => void {
     }
 
     try {
+      // No fsync: destination may be partial after a power loss before OS flush.
+      // The original scratch is preserved (copy-not-move), so the user can re-save.
       await fs.cp(scratch.path, destinationPath, {
         recursive: true,
         preserveTimestamps: true,
