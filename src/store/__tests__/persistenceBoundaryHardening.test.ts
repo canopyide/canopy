@@ -95,7 +95,7 @@ describe("persistence boundary hardening", () => {
 
     expect(useUrlHistoryStore.getState().entries["proj-1"]).toEqual([
       expect.objectContaining({
-        url: "https://example.com",
+        url: "https://example.com/",
         title: "Example",
         visitCount: 1,
       }),
