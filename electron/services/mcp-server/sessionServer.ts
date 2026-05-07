@@ -387,7 +387,22 @@ export function createSessionServer(sessionId: string, deps: SessionServerDeps):
       throw new McpError(ErrorCode.InvalidParams, `Unknown prompt: ${name}`);
     }
 
-    const args: Record<string, string> = (request.params.arguments ?? {}) as Record<string, string>;
+    const rawArgs = request.params.arguments ?? {};
+
+    if (typeof rawArgs !== "object" || rawArgs === null || Array.isArray(rawArgs)) {
+      throw new McpError(ErrorCode.InvalidParams, "Prompt arguments must be an object");
+    }
+
+    for (const [key, value] of Object.entries(rawArgs)) {
+      if (typeof value !== "string") {
+        throw new McpError(
+          ErrorCode.InvalidParams,
+          `Prompt argument '${key}' must be a string, got ${typeof value}`
+        );
+      }
+    }
+
+    const args = rawArgs as Record<string, string>;
 
     for (const arg of definition.arguments) {
       if (arg.required && !args[arg.name]?.trim()) {
