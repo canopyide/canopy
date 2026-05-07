@@ -1,5 +1,5 @@
 import { createClient, LiveTranscriptionEvents } from "@deepgram/sdk";
-import type { ListenLiveClient, LiveTranscriptionEvent } from "@deepgram/sdk";
+import type { ListenLiveClient, LiveMetadataEvent, LiveTranscriptionEvent } from "@deepgram/sdk";
 import type { VoiceInputSettings, VoiceInputStatus } from "../../shared/types/ipc/api.js";
 import { CONFIDENCE_TAG_THRESHOLD } from "../../shared/config/voiceCorrection.js";
 import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
@@ -71,20 +71,13 @@ export class VoiceTranscriptionService {
    * utterance. Call this before flushing the paragraph buffer on a manual Enter keypress so
    * that text spoken before the paragraph break is captured into the correct paragraph and
    * late speech_final / UtteranceEnd events cannot overwrite the committed newline.
-   *
-   * Returns the captured text (may be empty if no utterance was in flight).
    */
-  commitParagraphBoundary(): { text: string; confidence: SegmentConfidence } {
+  commitParagraphBoundary(): void {
     const text = (this.liveText || this.utteranceSegments.join(" ")).trim();
-    // Conservative: mid-utterance cut cannot reliably split words, so force LLM correction.
-    const confidence: SegmentConfidence = text
-      ? { minConfidence: 0, wordCount: 0, uncertainWords: [], words: [] }
-      : { minConfidence: 1.0, wordCount: 0, uncertainWords: [], words: [] };
     this.resetUtteranceState();
     if (text) {
       this._suppressingUtterance = true;
     }
-    return { text, confidence };
   }
 
   private emit(event: VoiceTranscriptionEvent): void {
@@ -168,7 +161,7 @@ export class VoiceTranscriptionService {
         utterance_end_ms: 1000,
         encoding: "linear16",
         sample_rate: 24000,
-        ...(isSpokenCommand ? { dictation: true, punctuate: true } : {}),
+        ...(isSpokenCommand ? { dictation: true } : {}),
         ...(keyterms.length > 0 ? { keyterm: keyterms } : {}),
       });
 
@@ -212,6 +205,15 @@ export class VoiceTranscriptionService {
         this.isReady = true;
         this.emit({ type: "status", status: "recording" });
         this.settlePendingStart(mySessionId, { ok: true });
+      });
+
+      connection.on(LiveTranscriptionEvents.Metadata, (data: LiveMetadataEvent) => {
+        if (this.sessionId !== mySessionId) return;
+        try {
+          logInfo(`${P} Metadata received`, { request_id: data.request_id });
+        } catch {
+          logDebug(`${P} Failed to process Metadata event`);
+        }
       });
 
       connection.on(LiveTranscriptionEvents.Transcript, (data: LiveTranscriptionEvent) => {
@@ -468,6 +470,7 @@ export class VoiceTranscriptionService {
 
   private audioChunkCount = 0;
   private staleChunkWarned = false;
+  private preConnectBufferOverflowWarned = false;
 
   sendAudioChunk(chunk: ArrayBuffer): void {
     if (this.isDraining) return;
@@ -476,6 +479,9 @@ export class VoiceTranscriptionService {
       if (this.connection || this.pendingStart) {
         if (this.preConnectBuffer.length < 100) {
           this.preConnectBuffer.push(chunk);
+        } else if (!this.preConnectBufferOverflowWarned) {
+          this.preConnectBufferOverflowWarned = true;
+          logWarn(`${P} Pre-connect buffer full (100 chunks), dropping audio`);
         }
       } else if (!this.staleChunkWarned) {
         this.staleChunkWarned = true;
@@ -505,6 +511,7 @@ export class VoiceTranscriptionService {
     this.sessionId++;
     this.audioChunkCount = 0;
     this.staleChunkWarned = false;
+    this.preConnectBufferOverflowWarned = false;
     this.isReady = false;
     this.preConnectBuffer = [];
     this.clearConnectTimeout();

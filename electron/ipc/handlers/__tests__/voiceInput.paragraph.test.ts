@@ -64,13 +64,13 @@ vi.mock("../../../services/VoiceTranscriptionService.js", () => ({
     this.sendAudioChunk = function () {};
     this.destroy = function () {};
     this.commitParagraphBoundary = function () {
+      // void — side effects only. The real service captures in-flight text,
+      // resets utterance state, and arms suppression. The mock mirrors the
+      // reset side effect for tests that use shared.inFlightText.
       const text = shared.inFlightText ?? "";
-      return {
-        text,
-        confidence: text
-          ? { minConfidence: 0, wordCount: 0, uncertainWords: [], words: [] }
-          : { minConfidence: 1.0, wordCount: 0, uncertainWords: [], words: [] },
-      };
+      if (text) {
+        shared.inFlightText = "";
+      }
     };
   },
 }));

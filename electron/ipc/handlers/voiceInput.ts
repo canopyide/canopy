@@ -257,8 +257,10 @@ function openMicSettings(): void {
     // Linux: try gnome-control-center, fall back silently
     try {
       spawn("gnome-control-center", ["sound"], { detached: true, stdio: "ignore" }).unref();
-    } catch {
-      // No standard way to open mic settings on Linux
+    } catch (err) {
+      logDebug("[VoiceInput] Failed to open mic settings", {
+        error: (err as Error)?.message ?? String(err),
+      });
     }
   }
 }
