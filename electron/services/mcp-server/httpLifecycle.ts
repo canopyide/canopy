@@ -1,5 +1,4 @@
 import http from "node:http";
-import net from "node:net";
 import { randomUUID } from "node:crypto";
 import type { AddressInfo } from "node:net";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
@@ -198,7 +197,6 @@ export class HttpLifecycle {
         }
 
         this.deps.auditService.hydrate();
-        this.deps.setupIpcListeners();
 
         const server = http.createServer((req, res) => {
           this.handleRequest(req, res).catch((err) => {
@@ -210,14 +208,13 @@ export class HttpLifecycle {
           });
         });
 
+        server.keepAliveTimeout = 30_000;
+        server.headersTimeout = 60_000;
+
         const configuredPort = this.getConfig().port ?? DEFAULT_PORT;
         const boundPort = await this.listenWithRetry(server, configuredPort);
 
         if (boundPort === null) {
-          for (const cleanup of this.deps.cleanupListeners) {
-            cleanup();
-          }
-          this.deps.cleanupListeners.length = 0;
           throw new Error(
             `Failed to bind MCP server: ports ${configuredPort}–${configuredPort + MAX_PORT_RETRIES} all in use`
           );
@@ -225,6 +222,7 @@ export class HttpLifecycle {
 
         this.port = boundPort;
         this.httpServer = server;
+        this.deps.setupIpcListeners();
         this.attachServerSupervision(server);
         if (this.stableTimer) clearTimeout(this.stableTimer);
         this.stableTimer = setTimeout(() => {
@@ -379,9 +377,18 @@ export class HttpLifecycle {
         let wasRunning = false;
         if (this.httpServer) {
           wasRunning = this.httpServer.listening;
-          await new Promise<void>((resolve) => {
-            this.httpServer!.close(() => resolve());
-          });
+          this.httpServer.closeAllConnections();
+          await Promise.race([
+            new Promise<void>((resolve) => {
+              this.httpServer!.close(() => resolve());
+            }),
+            new Promise<void>((resolve) => {
+              setTimeout(() => {
+                console.warn("[MCP] server.close() timed out after 10s — force-clearing");
+                resolve();
+              }, 10_000).unref?.();
+            }),
+          ]);
           this.httpServer = null;
           this.port = null;
         }
@@ -408,12 +415,6 @@ export class HttpLifecycle {
       const port = startPort + attempt;
       if (port > 65535) break;
 
-      const available = await this.isPortAvailable(port);
-      if (!available) {
-        console.log(`[MCP] Port ${port} in use, trying next…`);
-        continue;
-      }
-
       try {
         await new Promise<void>((resolve, reject) => {
           const onError = (err: Error) => {
@@ -426,24 +427,13 @@ export class HttpLifecycle {
             resolve();
           });
         });
-        const addr = server.address() as AddressInfo | null;
-        return addr?.port ?? null;
+        return (server.address() as AddressInfo)?.port ?? null;
       } catch {
         console.log(`[MCP] Port ${port} bind failed, trying next…`);
         continue;
       }
     }
     return null;
-  }
-
-  private isPortAvailable(port: number): Promise<boolean> {
-    return new Promise((resolve) => {
-      const tester = net.createServer();
-      tester.once("error", () => resolve(false));
-      tester.listen(port, "127.0.0.1", () => {
-        tester.close(() => resolve(true));
-      });
-    });
   }
 
   private async handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -467,7 +457,10 @@ export class HttpLifecycle {
 
     const authHeader = req.headers.authorization ?? "";
     if (!isAuthorized(authHeader, this.apiKeyBearerHash, this.helpTokenValidator)) {
-      res.writeHead(401, { "Content-Type": "text/plain" });
+      res.writeHead(401, {
+        "Content-Type": "text/plain",
+        "WWW-Authenticate": 'Bearer realm="Daintree MCP"',
+      });
       res.end("Unauthorized");
       return;
     }
@@ -572,8 +565,15 @@ export class HttpLifecycle {
 
     const deps = this.buildSessionServerDeps(newSessionId);
     const server = createSessionServer(newSessionId, deps);
+    const allowedHosts = [`127.0.0.1:${this.port}`, `localhost:${this.port}`];
+    const allowedOrigins = [`http://127.0.0.1:${this.port}`, `http://localhost:${this.port}`];
+    // enableDnsRebindingProtection / allowedHosts / allowedOrigins are
+    // deprecated in SDK ^1.27.1; the manual gate in handleRequest is authoritative.
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => newSessionId,
+      enableDnsRebindingProtection: true,
+      allowedHosts,
+      allowedOrigins,
       onsessioninitialized: (initializedSessionId) => {
         const idleTimer = this.deps.sessionStore.createHttpIdleTimer(initializedSessionId);
         this.deps.sessionStore.httpSessions.set(initializedSessionId, {
