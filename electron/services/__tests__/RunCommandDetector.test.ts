@@ -38,6 +38,39 @@ describe("RunCommandDetector", () => {
     expect(npmCommands.some((cmd) => cmd.command.includes(";"))).toBe(false);
   });
 
+  it("uses bun runner when bun.lock (text format) is present", async () => {
+    await fs.writeFile(
+      path.join(tempDir, "package.json"),
+      JSON.stringify({ name: "test", scripts: { dev: "vite" } }),
+      "utf-8"
+    );
+    await fs.writeFile(path.join(tempDir, "bun.lock"), "", "utf-8");
+
+    const commands = await detector.detect(tempDir);
+    const npmCommands = commands.filter((cmd) => cmd.id.startsWith("npm-"));
+
+    expect(npmCommands).toEqual([
+      expect.objectContaining({ id: "npm-dev", command: "bun run dev" }),
+    ]);
+  });
+
+  it("prefers bun.lock over bun.lockb when both exist", async () => {
+    await fs.writeFile(
+      path.join(tempDir, "package.json"),
+      JSON.stringify({ name: "test", scripts: { dev: "vite" } }),
+      "utf-8"
+    );
+    await fs.writeFile(path.join(tempDir, "bun.lock"), "", "utf-8");
+    await fs.writeFile(path.join(tempDir, "bun.lockb"), "", "utf-8");
+
+    const commands = await detector.detect(tempDir);
+    const npmCommands = commands.filter((cmd) => cmd.id.startsWith("npm-"));
+
+    expect(npmCommands).toEqual([
+      expect.objectContaining({ id: "npm-dev", command: "bun run dev" }),
+    ]);
+  });
+
   it("filters composer scripts with unsafe names", async () => {
     const scripts: Record<string, string> = {
       test: "phpunit",
@@ -389,6 +422,32 @@ describe("RunCommandDetector", () => {
           id: "task-lint",
           command: "task lint",
           description: "Run linter",
+        }),
+      ]);
+    });
+
+    it("detects Taskfile.dist.yml variant", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "Taskfile.dist.yml"),
+        [
+          "version: '3'",
+          "tasks:",
+          "  ci:",
+          "    desc: Run CI checks",
+          "    cmds:",
+          "      - go test ./...",
+        ].join("\n"),
+        "utf-8"
+      );
+
+      const commands = await detector.detect(tempDir);
+      const taskCommands = commands.filter((cmd) => cmd.id.startsWith("task-"));
+
+      expect(taskCommands).toEqual([
+        expect.objectContaining({
+          id: "task-ci",
+          command: "task ci",
+          description: "Run CI checks",
         }),
       ]);
     });
