@@ -33,7 +33,7 @@ export class AgentHelpService {
     if (!refresh && cached) {
       const age = Date.now() - cached.timestamp;
       if (age < this.CACHE_TTL_MS) {
-        return cached.result;
+        return { ...cached.result };
       }
     }
 
@@ -45,7 +45,7 @@ export class AgentHelpService {
       timestamp: Date.now(),
     });
 
-    return result;
+    return { ...result };
   }
 
   private isValidCommand(command: string): boolean {

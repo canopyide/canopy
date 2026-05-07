@@ -237,4 +237,26 @@ describe("removeAgent error ordering", () => {
     expect(result.error).toContain("not found");
     expect(result.error).not.toContain("built-in");
   });
+
+  it("preserves valid entries when a single entry fails per-entry validation", () => {
+    (storeMock.get as Mock).mockReturnValue({
+      good: createConfig("good"),
+      bad: {
+        id: "bad",
+        command: "/usr/local/bin/broken",
+        name: "Bad",
+        color: "#112233",
+        iconId: "terminal",
+        supportsContextInjection: true,
+      },
+    });
+
+    const service = new UserAgentRegistryService();
+    const registry = service.getRegistry();
+
+    expect(registry).toEqual({
+      good: expect.objectContaining({ id: "good" }),
+    });
+    expect(registry.bad).toBeUndefined();
+  });
 });
