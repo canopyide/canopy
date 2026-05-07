@@ -893,6 +893,11 @@ class TerminalInstanceService {
     }
 
     if (!managed.isOpened) {
+      // Seed xterm's grid before open() so cold-start restore paints at the
+      // saved size instead of flashing 80x24 then snapping (#6983).
+      if (managed.targetCols && managed.targetRows) {
+        managed.terminal.resize(managed.targetCols, managed.targetRows);
+      }
       managed.terminal.open(managed.hostElement);
       managed.isOpened = true;
       logDebug(`[TIS.attach] Opened terminal ${id}`);
