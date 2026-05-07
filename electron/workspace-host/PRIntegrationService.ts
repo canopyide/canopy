@@ -1,4 +1,5 @@
 import type { TypedEventBus } from "../services/events.js";
+import type { WorktreeSnapshot } from "../../shared/types/workspace-host.js";
 
 interface PullRequestServiceLike {
   initialize(rootPath: string): void;
@@ -107,14 +108,12 @@ export class PRIntegrationService {
     // by sys:worktree:update, but PullRequestService only reads these fields.
     for (const candidate of getMonitorCandidates()) {
       if (candidate.branch && candidate.branch !== "main" && candidate.branch !== "master") {
-        /* eslint-disable @typescript-eslint/no-explicit-any */
         this.eventBus.emit("sys:worktree:update", {
           worktreeId: candidate.worktreeId,
           branch: candidate.branch,
           issueNumber: candidate.issueNumber,
           isMainWorktree: candidate.isMainWorktree,
-        } as any);
-        /* eslint-enable @typescript-eslint/no-explicit-any */
+        } as unknown as WorktreeSnapshot);
       }
     }
 

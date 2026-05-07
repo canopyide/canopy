@@ -19,7 +19,17 @@ const BLURRED_POLL_INTERVAL_MS = 2 * 60 * 1000;
 // `focusThrottleInterval` convention so rapid alt-tabbing doesn't burst the API.
 const FOCUS_CATCHUP_THROTTLE_MS = 5 * 1000;
 
-const ERROR_BACKOFF_INTERVALS = [1 * 60 * 1000, 2 * 60 * 1000, 5 * 60 * 1000];
+// AWS full-jitter backoff: sleep = random_between(floor, min(cap, base * 2^attempt))
+// See https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/
+const BACKOFF_BASE_MS = 30_000;
+const BACKOFF_CAP_MS = 5 * 60_000;
+const BACKOFF_FLOOR_MS = 1_000;
+
+function computeBackoff(consecutiveErrors: number): number {
+  const attempt = Math.max(0, consecutiveErrors - 1);
+  const cap = Math.min(BACKOFF_CAP_MS, BACKOFF_BASE_MS * 2 ** attempt);
+  return BACKOFF_FLOOR_MS + Math.random() * (cap - BACKOFF_FLOOR_MS);
+}
 
 const MAX_CONSECUTIVE_ERRORS = 3;
 const UPDATE_DEBOUNCE_MS = 100;
@@ -358,8 +368,7 @@ class PullRequestService {
 
     let interval = this.pollIntervalMs;
     if (this.consecutiveErrors > 0) {
-      const backoffIndex = Math.min(this.consecutiveErrors - 1, ERROR_BACKOFF_INTERVALS.length - 1);
-      interval = ERROR_BACKOFF_INTERVALS[backoffIndex];
+      interval = computeBackoff(this.consecutiveErrors);
       logDebug("Using backoff interval", { errors: this.consecutiveErrors, intervalMs: interval });
     }
 
@@ -634,8 +643,7 @@ class PullRequestService {
     logWarn("PR check failed", { error: errorMsg, consecutiveErrors: this.consecutiveErrors });
 
     if (this.consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-      const backoffIndex = Math.min(this.consecutiveErrors - 1, ERROR_BACKOFF_INTERVALS.length - 1);
-      const backoffMs = ERROR_BACKOFF_INTERVALS[backoffIndex];
+      const backoffMs = computeBackoff(this.consecutiveErrors);
       this.nextRetryAt = Date.now() + backoffMs;
       logWarn("Too many consecutive errors - pausing PR polling", { retryInMs: backoffMs });
       events.emit("ui:notify", {
