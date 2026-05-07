@@ -17,14 +17,18 @@ export class ProjectStatsService {
   private started = false;
   private lastBroadcast: ProjectStatusMap = {};
   private pollIntervalMs = DEFAULT_POLL_INTERVAL_MS;
+  private generation = 0;
 
   constructor(private ptyClient: PtyClient | undefined | null) {}
+
+  get isStarted(): boolean {
+    return this.started;
+  }
 
   start(): void {
     if (this.started) return;
     this.started = true;
 
-    void this.computeAndBroadcast();
     this.armPollInterval();
 
     this.unsubscribeAgentState = events.on("agent:state-changed", () => {
@@ -46,6 +50,9 @@ export class ProjectStatsService {
 
   stop(): void {
     if (!this.started) return;
+    // Bump generation first so any in-flight computeAndBroadcast that's
+    // already past its await is invalidated before we tear down state.
+    this.generation++;
     this.started = false;
 
     this.intervalSlot.clear();
@@ -100,10 +107,13 @@ export class ProjectStatsService {
   private async computeAndBroadcast(): Promise<void> {
     if (!this.ptyClient) return;
 
+    const gen = ++this.generation;
+
     try {
       const allProjects = projectStore.getAllProjects();
       const projectIds = allProjects.map((p) => p.id);
       if (projectIds.length === 0) {
+        if (this.generation !== gen) return;
         typedBroadcast<"project:stats-updated">(CHANNELS.PROJECT_STATS_UPDATED, {});
         return;
       }
@@ -114,6 +124,8 @@ export class ProjectStatsService {
           projectIds.map((id) => this.ptyClient!.getProjectStats(id).then((s) => [id, s] as const))
         ),
       ]);
+
+      if (this.generation !== gen) return;
 
       const agentCounts = new Map<string, { active: number; waiting: number }>();
       for (const id of projectIds) {
