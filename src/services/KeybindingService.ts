@@ -10,6 +10,18 @@ function scopesConflict(a: KeyScope, b: KeyScope): boolean {
   return a === b || a === "global" || b === "global";
 }
 
+function combosFieldsEqual(a: string, b: string): boolean {
+  const pa = parseCombo(a);
+  const pb = parseCombo(b);
+  return (
+    pa.cmd === pb.cmd &&
+    pa.ctrl === pb.ctrl &&
+    pa.shift === pb.shift &&
+    pa.alt === pb.alt &&
+    pa.key.toLowerCase() === pb.key.toLowerCase()
+  );
+}
+
 class KeybindingService {
   private bindings: Map<string, KeybindingConfig[]> = new Map();
   private overrides: Map<string, string[]> = new Map();
@@ -47,6 +59,9 @@ class KeybindingService {
   }
 
   async setOverride(actionId: string, combo: string[]): Promise<void> {
+    // A pending chord captured under the old binding may now reference a stale
+    // combo. Drop it before the rebind so the next keypress starts fresh.
+    this.clearPendingChord();
     if (typeof window !== "undefined" && window.electron?.keybinding) {
       await window.electron.keybinding.setOverride(actionId, combo);
       this.overrides.set(actionId, combo);
@@ -55,6 +70,7 @@ class KeybindingService {
   }
 
   async removeOverride(actionId: string): Promise<void> {
+    this.clearPendingChord();
     if (typeof window !== "undefined" && window.electron?.keybinding) {
       await window.electron.keybinding.removeOverride(actionId);
       this.overrides.delete(actionId);
@@ -63,6 +79,7 @@ class KeybindingService {
   }
 
   async resetAllOverrides(): Promise<void> {
+    this.clearPendingChord();
     if (typeof window !== "undefined" && window.electron?.keybinding) {
       await window.electron.keybinding.resetAll();
       this.overrides.clear();
@@ -142,9 +159,15 @@ class KeybindingService {
   }
 
   setScope(scope: KeyScope): void {
+    // The stack stores duplicates intentionally — concurrent component instances
+    // pushing the same scope are valid, and restoreScope pops by lastIndexOf so
+    // counts stay correct. Only the active-scope transition is observable, so
+    // skip the chord clear when the new scope is already on top.
     this.scopeStack.push(scope);
-    this.currentScope = scope;
-    this.clearPendingChord();
+    if (this.currentScope !== scope) {
+      this.currentScope = scope;
+      this.clearPendingChord();
+    }
   }
 
   restoreScope(scope: KeyScope): void {
@@ -278,7 +301,6 @@ class KeybindingService {
     let foundChordPrefix = false;
 
     const currentCombo = this.eventToCombo(event);
-    const normalizedCurrentCombo = currentCombo.trim().toLowerCase();
 
     // When a chord is pending, prioritize chord completion over standalone shortcuts
     let chordCompletionMatch: KeybindingConfig | undefined;
@@ -293,18 +315,20 @@ class KeybindingService {
           ? this.overrides.get(binding.actionId)?.[0]
           : binding.combo;
         if (!effectiveCombo) continue;
-        const normalizedEffectiveCombo = effectiveCombo.trim().toLowerCase();
 
         // Check if this is a chord binding
         const chordParts = effectiveCombo.split(" ");
         const isChord = chordParts.length > 1;
 
         if (isChord) {
-          // If we have a pending chord, check if this completes it
+          // Match chord parts via parseCombo field equality so user-stored overrides
+          // with non-canonical modifier order (e.g. "Alt+Cmd+T") match the canonical
+          // order produced by eventToCombo. matchesEvent uses parseCombo internally.
           if (this.pendingChord) {
-            const normalizedPending = this.pendingChord.trim().toLowerCase();
-            const fullChord = `${normalizedPending} ${normalizedCurrentCombo}`;
-            if (fullChord === normalizedEffectiveCombo) {
+            if (
+              combosFieldsEqual(this.pendingChord, chordParts[0]!) &&
+              this.matchesEvent(event, chordParts[1]!)
+            ) {
               if (binding.priority > chordCompletionPriority) {
                 chordCompletionMatch = binding;
                 chordCompletionPriority = binding.priority;
@@ -312,7 +336,7 @@ class KeybindingService {
             }
           } else {
             // Check if this is the start of a chord
-            if (normalizedCurrentCombo === chordParts[0]!.trim().toLowerCase()) {
+            if (this.matchesEvent(event, chordParts[0]!)) {
               foundChordPrefix = true;
             }
           }

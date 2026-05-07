@@ -3,14 +3,36 @@ import { render, act } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { _resetForTests, registerEscape } from "@/lib/escapeStack";
 
+function parseComboLite(combo: string) {
+  const parts = combo.split("+").map((p) => p.trim());
+  const key = parts.pop() || "";
+  return {
+    cmd: parts.some((p) => p.toLowerCase() === "cmd" || p.toLowerCase() === "meta"),
+    ctrl: parts.some((p) => p.toLowerCase() === "ctrl"),
+    shift: parts.some((p) => p.toLowerCase() === "shift"),
+    alt: parts.some((p) => p.toLowerCase() === "alt" || p.toLowerCase() === "option"),
+    key,
+  };
+}
+
 const mocks = vi.hoisted(() => ({
   keybindingService: {
     resolveKeybinding: vi.fn(),
     getPendingChord: vi.fn<() => string | null>(() => null),
     clearPendingChord: vi.fn(),
     popPendingChord: vi.fn(),
-    getEffectiveCombo: vi.fn(() => undefined),
+    getEffectiveCombo: vi.fn<(actionId: string) => string | undefined>(() => undefined),
     subscribe: vi.fn(() => () => {}),
+    // matchesEvent is invoked by the focus-region bypass. Lite mock that maps
+    // Cmd→metaKey (mac-style) — sufficient for the tests in this file.
+    matchesEvent: vi.fn((event: KeyboardEvent, combo: string) => {
+      const p = parseComboLite(combo);
+      if (p.cmd !== !!event.metaKey) return false;
+      if (p.ctrl !== !!event.ctrlKey) return false;
+      if (p.shift !== !!event.shiftKey) return false;
+      if (p.alt !== !!event.altKey) return false;
+      return p.key.toLowerCase() === (event.key || "").toLowerCase();
+    }),
   },
   actionService: {
     dispatch: vi.fn(async () => ({ ok: true, result: undefined })),
@@ -20,6 +42,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/services/KeybindingService", () => ({
   keybindingService: mocks.keybindingService,
   normalizeKeyForBinding: (event: KeyboardEvent) => event.key,
+  parseCombo: parseComboLite,
 }));
 
 vi.mock("@/services/ActionService", () => ({
@@ -308,6 +331,219 @@ describe("useGlobalKeybindings — Backspace pops pending chord", () => {
     expect(mocks.keybindingService.clearPendingChord).not.toHaveBeenCalled();
     expect(mocks.keybindingService.resolveKeybinding).not.toHaveBeenCalled();
     expect(event.defaultPrevented).toBe(false);
+  });
+});
+
+describe("useGlobalKeybindings — Dead key guard (issue #7303)", () => {
+  function dispatchDead(target: EventTarget = document.body, init: KeyboardEventInit = {}) {
+    const event = new KeyboardEvent("keydown", {
+      key: "Dead",
+      bubbles: true,
+      cancelable: true,
+      ...init,
+    });
+    act(() => {
+      target.dispatchEvent(event);
+    });
+    return event;
+  }
+
+  it("ignores Dead keydowns entirely — does not resolve and does not clear a pending chord", () => {
+    mocks.keybindingService.getPendingChord.mockReturnValue("Cmd+K");
+
+    render(<Host />);
+    const event = dispatchDead(document.body, { altKey: true });
+
+    expect(mocks.keybindingService.resolveKeybinding).not.toHaveBeenCalled();
+    expect(mocks.keybindingService.clearPendingChord).not.toHaveBeenCalled();
+    expect(mocks.keybindingService.popPendingChord).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it("ignores Dead even with no pending chord", () => {
+    mocks.keybindingService.getPendingChord.mockReturnValue(null);
+
+    render(<Host />);
+    const event = dispatchDead();
+
+    expect(mocks.keybindingService.resolveKeybinding).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it("survives a Dead keydown sandwiched between chord steps", () => {
+    // Pending chord is "Cmd+K". A Dead keydown arrives mid-chord; it must not
+    // clear the chord. The next real key still resolves through the service.
+    mocks.keybindingService.getPendingChord.mockReturnValue("Cmd+K");
+
+    render(<Host />);
+    dispatchDead(document.body, { altKey: true });
+
+    expect(mocks.keybindingService.clearPendingChord).not.toHaveBeenCalled();
+    expect(mocks.keybindingService.resolveKeybinding).not.toHaveBeenCalled();
+
+    // Now dispatch the second chord step — it should reach resolveKeybinding.
+    mocks.keybindingService.resolveKeybinding.mockReturnValueOnce({
+      match: { actionId: "test.chord" },
+      chordPrefix: false,
+      shouldConsume: true,
+    });
+    act(() => {
+      document.body.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "x", metaKey: true, bubbles: true, cancelable: true })
+      );
+    });
+    expect(mocks.keybindingService.resolveKeybinding).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useGlobalKeybindings — region focus key bypass (issue #7303)", () => {
+  function dispatchKey(key: string, target: EventTarget) {
+    const event = new KeyboardEvent("keydown", {
+      key,
+      bubbles: true,
+      cancelable: true,
+    });
+    act(() => {
+      target.dispatchEvent(event);
+    });
+    return event;
+  }
+
+  it("lets the rebound focusRegion.next key bypass the editable guard", () => {
+    mocks.keybindingService.getEffectiveCombo.mockImplementation((id: string) => {
+      if (id === "nav.focusRegion.next") return "F7";
+      if (id === "nav.focusRegion.prev") return "Shift+F7";
+      return undefined;
+    });
+    mocks.keybindingService.resolveKeybinding.mockReturnValue({
+      match: { actionId: "nav.focusRegion.next" },
+      chordPrefix: false,
+      shouldConsume: true,
+    });
+
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+
+    try {
+      render(<Host />);
+      input.focus();
+      dispatchKey("F7", input);
+
+      expect(mocks.keybindingService.resolveKeybinding).toHaveBeenCalledTimes(1);
+    } finally {
+      input.remove();
+    }
+  });
+
+  it("blocks F6 when the user has rebound focusRegion.next to F7", () => {
+    mocks.keybindingService.getEffectiveCombo.mockImplementation((id: string) => {
+      if (id === "nav.focusRegion.next") return "F7";
+      if (id === "nav.focusRegion.prev") return "Shift+F7";
+      return undefined;
+    });
+    mocks.keybindingService.resolveKeybinding.mockReturnValue({
+      match: undefined,
+      chordPrefix: false,
+      shouldConsume: false,
+    });
+
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+
+    try {
+      render(<Host />);
+      input.focus();
+      dispatchKey("F6", input);
+
+      expect(mocks.keybindingService.resolveKeybinding).not.toHaveBeenCalled();
+    } finally {
+      input.remove();
+    }
+  });
+
+  it("blocks F6 in an editable when both focus-region bindings are disabled", () => {
+    // When the user disables the region-focus bindings entirely, F6 must not
+    // get a hidden bypass — respect the disable.
+    mocks.keybindingService.getEffectiveCombo.mockReturnValue(undefined);
+    mocks.keybindingService.resolveKeybinding.mockReturnValue({
+      match: undefined,
+      chordPrefix: false,
+      shouldConsume: false,
+    });
+
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+
+    try {
+      render(<Host />);
+      input.focus();
+      dispatchKey("F6", input);
+
+      expect(mocks.keybindingService.resolveKeybinding).not.toHaveBeenCalled();
+    } finally {
+      input.remove();
+    }
+  });
+
+  it("does not bypass the editable guard for bare F6 when focusRegion.next is rebound to Cmd+F6", () => {
+    // Bypass should require a full combo match — bare F6 must not slip
+    // through just because the rebind happens to use F6 with a modifier.
+    mocks.keybindingService.getEffectiveCombo.mockImplementation((id: string) => {
+      if (id === "nav.focusRegion.next") return "Cmd+F6";
+      if (id === "nav.focusRegion.prev") return "Cmd+Shift+F6";
+      return undefined;
+    });
+    mocks.keybindingService.resolveKeybinding.mockReturnValue({
+      match: undefined,
+      chordPrefix: false,
+      shouldConsume: false,
+    });
+
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+
+    try {
+      render(<Host />);
+      input.focus();
+      const event = new KeyboardEvent("keydown", {
+        key: "F6",
+        bubbles: true,
+        cancelable: true,
+      });
+      act(() => {
+        input.dispatchEvent(event);
+      });
+
+      expect(mocks.keybindingService.resolveKeybinding).not.toHaveBeenCalled();
+    } finally {
+      input.remove();
+    }
+  });
+
+  it("lets the rebound key bypass the xterm guard", () => {
+    mocks.keybindingService.getEffectiveCombo.mockImplementation((id: string) => {
+      if (id === "nav.focusRegion.next") return "F7";
+      if (id === "nav.focusRegion.prev") return "Shift+F7";
+      return undefined;
+    });
+    mocks.keybindingService.resolveKeybinding.mockReturnValue({
+      match: { actionId: "nav.focusRegion.next" },
+      chordPrefix: false,
+      shouldConsume: true,
+    });
+
+    const xterm = document.createElement("div");
+    xterm.className = "xterm";
+    document.body.appendChild(xterm);
+
+    try {
+      render(<Host />);
+      dispatchKey("F7", xterm);
+
+      expect(mocks.keybindingService.resolveKeybinding).toHaveBeenCalledTimes(1);
+    } finally {
+      xterm.remove();
+    }
   });
 });
 

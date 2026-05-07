@@ -660,6 +660,169 @@ describe("KeybindingService", () => {
     });
   });
 
+  describe("chord matching is modifier-order-independent — issue #7303", () => {
+    // Use Cmd+Shift+Alt+J as the prefix — not bound to any default non-chord
+    // action, so the chord prefix isn't shadowed by a competing non-chord match.
+    it("matches a chord override stored with non-canonical modifier order on the prefix step", () => {
+      setPlatform("MacIntel");
+      const service = new KeybindingService();
+      service.registerBinding({
+        actionId: "test.reorderedPrefix",
+        // User-stored: Shift+Alt+Cmd+J. Canonical eventToCombo: Cmd+Shift+Alt+J.
+        combo: "Shift+Alt+Cmd+J Cmd+X",
+        scope: "global",
+        priority: 99,
+      });
+
+      const first = createKeyboardEvent({
+        key: "j",
+        code: "KeyJ",
+        metaKey: true,
+        shiftKey: true,
+        altKey: true,
+      });
+
+      const result = service.resolveKeybinding(first);
+      expect(result.chordPrefix).toBe(true);
+      expect(service.getPendingChord()).not.toBeNull();
+    });
+
+    it("completes a chord whose first part uses non-canonical modifier order", () => {
+      setPlatform("MacIntel");
+      const service = new KeybindingService();
+      service.registerBinding({
+        actionId: "test.reorderedChord",
+        combo: "Shift+Alt+Cmd+J Cmd+X",
+        scope: "global",
+        priority: 99,
+      });
+
+      const first = createKeyboardEvent({
+        key: "j",
+        code: "KeyJ",
+        metaKey: true,
+        shiftKey: true,
+        altKey: true,
+      });
+      service.resolveKeybinding(first);
+
+      const second = createKeyboardEvent({
+        key: "x",
+        code: "KeyX",
+        metaKey: true,
+      });
+      const match = service.findMatchingAction(second);
+      expect(match?.actionId).toBe("test.reorderedChord");
+    });
+
+    it("completes a chord whose second part uses non-canonical modifier order", () => {
+      setPlatform("MacIntel");
+      const service = new KeybindingService();
+      service.registerBinding({
+        actionId: "test.reorderedSecond",
+        combo: "Cmd+K Alt+Shift+P",
+        scope: "global",
+        priority: 99,
+      });
+
+      const first = createKeyboardEvent({
+        key: "k",
+        code: "KeyK",
+        metaKey: true,
+      });
+      service.resolveKeybinding(first);
+
+      const second = createKeyboardEvent({
+        key: "p",
+        code: "KeyP",
+        shiftKey: true,
+        altKey: true,
+      });
+      const match = service.findMatchingAction(second);
+      expect(match?.actionId).toBe("test.reorderedSecond");
+    });
+  });
+
+  describe("setScope skips redundant clearPendingChord — issue #7303", () => {
+    it("does not clear a pending chord when pushing the same scope twice", () => {
+      setPlatform("MacIntel");
+      const service = new KeybindingService();
+      // Establish a pending chord first.
+      const cmdK = createKeyboardEvent({
+        key: "k",
+        code: "KeyK",
+        metaKey: true,
+      });
+      service.resolveKeybinding(cmdK);
+      expect(service.getPendingChord()).not.toBeNull();
+
+      // First setScope changes scope and clears the chord (expected).
+      service.setScope("modal");
+      expect(service.getPendingChord()).toBeNull();
+
+      // Re-establish a chord under the new scope, then push the same scope again.
+      service.resolveKeybinding(cmdK);
+      expect(service.getPendingChord()).not.toBeNull();
+
+      service.setScope("modal");
+
+      // Second push is the StrictMode/concurrent-instance case: scope didn't
+      // change, so the chord must survive.
+      expect(service.getPendingChord()).not.toBeNull();
+    });
+
+    it("preserves stack count so restoreScope still pops correctly with concurrent same-scope pushes", () => {
+      const service = new KeybindingService();
+      const stack = (service as unknown as { scopeStack: string[] }).scopeStack;
+
+      service.setScope("modal");
+      service.setScope("modal");
+      expect(stack.filter((s) => s === "modal").length).toBe(2);
+
+      service.restoreScope("modal");
+      expect(stack.filter((s) => s === "modal").length).toBe(1);
+      expect(service.getScope()).toBe("modal");
+
+      service.restoreScope("modal");
+      expect(stack.filter((s) => s === "modal").length).toBe(0);
+      expect(service.getScope()).toBe("global");
+    });
+  });
+
+  describe("override mutation clears pending chord — issue #7303", () => {
+    function startChord(service: KeybindingService) {
+      setPlatform("MacIntel");
+      const cmdK = createKeyboardEvent({
+        key: "k",
+        code: "KeyK",
+        metaKey: true,
+      });
+      service.resolveKeybinding(cmdK);
+      expect(service.getPendingChord()).not.toBeNull();
+    }
+
+    it("setOverride clears the pending chord", async () => {
+      const service = new KeybindingService();
+      startChord(service);
+      await service.setOverride("test.action", ["Cmd+Q"]);
+      expect(service.getPendingChord()).toBeNull();
+    });
+
+    it("removeOverride clears the pending chord", async () => {
+      const service = new KeybindingService();
+      startChord(service);
+      await service.removeOverride("test.action");
+      expect(service.getPendingChord()).toBeNull();
+    });
+
+    it("resetAllOverrides clears the pending chord", async () => {
+      const service = new KeybindingService();
+      startChord(service);
+      await service.resetAllOverrides();
+      expect(service.getPendingChord()).toBeNull();
+    });
+  });
+
   describe("worktree empty-state shortcut defaults — issue #6437", () => {
     it("registers Cmd+K N as the default for worktree.createDialog.open", () => {
       const binding = DEFAULT_KEYBINDINGS.find((b) => b.actionId === "worktree.createDialog.open");

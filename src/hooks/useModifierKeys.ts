@@ -25,15 +25,20 @@ export function useModifierKeys(): ModifierState {
         setModifiers((m) => (!m.alt ? m : { ...m, alt: false }));
       }
     };
-    const blur = () => setModifiers({ meta: false, alt: false });
+    const reset = () => setModifiers({ meta: false, alt: false });
+    const visibility = () => {
+      if (document.hidden) reset();
+    };
 
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
-    window.addEventListener("blur", blur);
+    window.addEventListener("blur", reset);
+    document.addEventListener("visibilitychange", visibility);
     return () => {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
-      window.removeEventListener("blur", blur);
+      window.removeEventListener("blur", reset);
+      document.removeEventListener("visibilitychange", visibility);
     };
   }, []);
 
