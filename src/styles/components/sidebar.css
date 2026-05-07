@@ -19,6 +19,11 @@
   background: var(--sidebar-hover-bg, rgba(255, 255, 255, 0.015));
 }
 
+html[data-dragging="true"] .sidebar-worktree-card[data-hoverable="true"]:hover,
+html[data-dragging="true"] .sidebar-worktree-card[data-hovered="true"] {
+  background: transparent;
+}
+
 .sidebar-worktree-card:has(> button:focus-visible) {
   box-shadow: inset 0 0 0 2px var(--sidebar-ring);
 }
