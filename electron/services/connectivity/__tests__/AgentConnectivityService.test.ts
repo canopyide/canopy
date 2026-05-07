@@ -3,8 +3,16 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vite
 import {
   AgentConnectivityServiceImpl,
   AGENT_CONNECTIVITY_FOCUS_COOLDOWN_MS,
+  AGENT_CONNECTIVITY_INTERVAL_MS,
   type AgentConnectivityChange,
 } from "../AgentConnectivityService.js";
+import { logDebug } from "../../../utils/logger.js";
+
+vi.mock("../../../utils/logger.js", () => ({
+  logDebug: vi.fn(),
+  logInfo: vi.fn(),
+  logWarn: vi.fn(),
+}));
 
 function buildResponse(status: number): Response {
   return new Response("{}", { status });
@@ -194,6 +202,21 @@ describe("AgentConnectivityService", () => {
       expect(listener).not.toHaveBeenCalled();
     });
 
+    it("does not restart polling after dispose()", () => {
+      service.dispose();
+
+      // Verify state is reset after dispose.
+      expect(service.getProviderState("claude").status).toBe("unknown");
+
+      // start() after dispose() should be a no-op.
+      service.start();
+
+      // State should still be unknown — no probes fired.
+      expect(service.getProviderState("claude").status).toBe("unknown");
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(listener).not.toHaveBeenCalled();
+    });
+
     it("classifies each provider independently when one resolves and another rejects", async () => {
       fetchMock.mockImplementation((url: string) => {
         if (url.includes("anthropic")) return Promise.resolve(buildResponse(200));
@@ -206,6 +229,138 @@ describe("AgentConnectivityService", () => {
       expect(service.getProviderState("claude").status).toBe("reachable");
       expect(service.getProviderState("gemini").status).toBe("unreachable");
       expect(service.getProviderState("codex").status).toBe("reachable");
+    });
+  });
+
+  describe("polling lifecycle", () => {
+    it("stops re-scheduling after stop() during an in-flight probe", async () => {
+      vi.useFakeTimers();
+      const randomStub = vi.spyOn(Math, "random").mockReturnValue(0.5);
+
+      // Hold fetch promises so the probe stays in-flight.
+      const resolvers: Array<(value: Response) => void> = [];
+      fetchMock.mockImplementation(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolvers.push(resolve);
+          })
+      );
+
+      // start() schedules the first interval timer and fires immediate probes.
+      service.start();
+      expect(fetchMock).toHaveBeenCalledTimes(3); // Immediate "start" probes.
+
+      // Advance past the initial jittered interval.
+      // jitterFactor = 0.8 + 0.4 * 0.5 = 1.0 → delay = AGENT_CONNECTIVITY_INTERVAL_MS
+      vi.advanceTimersByTime(AGENT_CONNECTIVITY_INTERVAL_MS);
+      // Timer callback fires, calls refresh({ reason: "interval" }), which
+      // coalesces with the still-in-flight probes — no additional fetches.
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+
+      // Stop the service. The .finally() chain should detect pollTimer is null
+      // and NOT re-schedule.
+      service.stop();
+
+      // Resolve the in-flight fetches.
+      for (const resolve of resolvers) {
+        resolve(buildResponse(200));
+      }
+      // Flush the microtask queue so .finally() runs.
+      await vi.runAllTimersAsync();
+
+      // Advance well past another interval — no new fetches should fire.
+      vi.advanceTimersByTime(AGENT_CONNECTIVITY_INTERVAL_MS * 2);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+
+      randomStub.mockRestore();
+      vi.useRealTimers();
+    });
+  });
+
+  describe("probe hygiene", () => {
+    it("cancels the response body on successful probes", async () => {
+      const cancelFn = vi.fn().mockResolvedValue(undefined);
+      const mockBody = { cancel: cancelFn };
+      fetchMock.mockResolvedValue({ body: mockBody } as unknown as Response);
+
+      await service.refresh({ force: true });
+
+      expect(cancelFn).toHaveBeenCalledTimes(3);
+    });
+
+    it("does not throw when the response body is null", async () => {
+      fetchMock.mockResolvedValue({ body: null } as unknown as Response);
+
+      await service.refresh({ force: true });
+
+      expect(service.getProviderState("claude").status).toBe("reachable");
+    });
+
+    it("does not throw when body.cancel() rejects", async () => {
+      const cancelFn = vi.fn().mockRejectedValue(new Error("stream error"));
+      const mockBody = { cancel: cancelFn };
+      fetchMock.mockResolvedValue({ body: mockBody } as unknown as Response);
+
+      await service.refresh({ force: true });
+
+      // The rejection is silently swallowed; reachability status is unaffected.
+      expect(service.getProviderState("claude").status).toBe("reachable");
+    });
+
+    it("logs errorName and errorCode on transport failures", async () => {
+      const err = Object.assign(new Error("fetch failed"), {
+        name: "TypeError",
+        cause: { code: "ENOTFOUND" },
+      });
+      fetchMock.mockRejectedValue(err);
+
+      await service.refresh({ force: true });
+
+      expect(logDebug).toHaveBeenCalledWith(
+        "Agent connectivity: probe failed (network/transport)",
+        expect.objectContaining({
+          provider: expect.any(String),
+          error: "fetch failed",
+          errorName: "TypeError",
+          errorCode: "ENOTFOUND",
+          reason: expect.any(String),
+        })
+      );
+    });
+
+    it("logs errorName without errorCode for timeout errors", async () => {
+      const err = Object.assign(new Error("The operation was aborted"), {
+        name: "TimeoutError",
+      });
+      fetchMock.mockRejectedValue(err);
+
+      await service.refresh({ force: true });
+
+      expect(logDebug).toHaveBeenCalledWith(
+        "Agent connectivity: probe failed (network/transport)",
+        expect.objectContaining({
+          errorName: "TimeoutError",
+          errorCode: undefined,
+        })
+      );
+    });
+
+    it("extracts errorCode from direct .code when cause is absent", async () => {
+      const err = Object.assign(new Error("connection refused"), {
+        name: "TypeError",
+        code: "ECONNREFUSED",
+      });
+      fetchMock.mockRejectedValue(err);
+
+      await service.refresh({ force: true });
+
+      expect(logDebug).toHaveBeenCalledWith(
+        "Agent connectivity: probe failed (network/transport)",
+        expect.objectContaining({
+          errorName: "TypeError",
+          errorCode: "ECONNREFUSED",
+        })
+      );
     });
   });
 });
