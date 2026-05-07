@@ -598,6 +598,10 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
   };
 
   const handleStop = async (): Promise<{ rawText: string | null; correctionId: string | null }> => {
+    // Snapshot the session controller so concurrent start/stop cannot
+    // cross-abort. All references below use this captured reference.
+    const controller = sessionController;
+
     if (service) {
       // Drain Deepgram first (waits for pending transcriptions, fires remaining complete events).
       await service.stopGracefully();
@@ -613,18 +617,26 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
     }
 
     // Abort in-flight OpenAI calls so the pool drains promptly
-    sessionController?.abort();
+    controller?.abort();
 
     // Wait for all in-flight micro-corrections to complete (with timeout)
+    let drained = false;
     if (correctionPool) {
       await Promise.race([
-        correctionPool.drain(),
+        correctionPool.drain().then(() => {
+          drained = true;
+        }),
         new Promise<void>((resolve) => setTimeout(resolve, POOL_DRAIN_TIMEOUT_MS)),
       ]);
     }
 
-    correctionService?.setSessionSignal(null);
-    sessionController = null;
+    // Only clear the signal if drain completed. If the timeout fired,
+    // tasks may still be queued; keeping the aborted signal ensures
+    // late-dequeued tasks fail fast instead of making uncancelable calls.
+    if (drained && sessionController === controller) {
+      correctionService?.setSessionSignal(null);
+      sessionController = null;
+    }
 
     cleanupActiveSubscription();
 

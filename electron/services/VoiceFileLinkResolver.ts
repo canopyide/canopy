@@ -188,7 +188,7 @@ export class VoiceFileLinkResolver {
 
       return null;
     } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") return candidates[0];
+      if (error instanceof DOMException && error.name === "AbortError") return null;
       const msg = formatErrorMessage(error, "Voice AI rerank failed");
       logWarn(`${P} AI rerank failed`, { error: msg });
       return null;

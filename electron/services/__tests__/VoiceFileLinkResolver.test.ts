@@ -229,7 +229,7 @@ describe("VoiceFileLinkResolver", () => {
     expect(fetchMock).toHaveBeenCalled();
   });
 
-  it("returns top candidate silently on abort during AI rerank", async () => {
+  it("returns null silently on abort during AI rerank", async () => {
     searchNaturalLanguageMock.mockResolvedValue([
       "src/components/Bar.tsx",
       "src/components/Input.tsx",
@@ -244,7 +244,6 @@ describe("VoiceFileLinkResolver", () => {
       signal: new AbortController().signal,
     });
 
-    // aiRerank returns top candidate on abort (its existing fallback)
-    expect(result).toBe("src/components/Bar.tsx");
+    expect(result).toBeNull();
   });
 });
