@@ -136,6 +136,30 @@ describe("isTransientError", () => {
     expect(isTransientError("Spawn queue full")).toBe(true);
   });
 
+  it("matches GitHub temporary unavailability (5xx)", () => {
+    expect(isTransientError("GitHub is temporarily unavailable. Please retry.")).toBe(true);
+  });
+
+  it("matches GitHub network unreachable", () => {
+    expect(isTransientError("Cannot reach GitHub. Check your internet connection.")).toBe(true);
+  });
+
+  it("matches GitHub primary rate limit", () => {
+    expect(isTransientError("GitHub rate limit exceeded. Resets at 12:34 UTC.")).toBe(true);
+  });
+
+  it("matches GitHub secondary rate limit", () => {
+    expect(isTransientError("GitHub secondary rate limit triggered. Slow down requests.")).toBe(
+      true
+    );
+  });
+
+  it("rejects GitHub permission errors as non-transient", () => {
+    expect(isTransientError("Issue not found")).toBe(false);
+    expect(isTransientError("Forbidden — check token scopes")).toBe(false);
+    expect(isTransientError("Unauthorized — invalid token")).toBe(false);
+  });
+
   it("rejects VALIDATION_ERROR code", () => {
     expect(isTransientError("something", "VALIDATION_ERROR")).toBe(false);
   });

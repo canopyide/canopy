@@ -82,10 +82,13 @@ vi.mock("@/lib/notify", () => ({
   notify: vi.fn(),
 }));
 
+const prefsHolder: { assignWorktreeToSelf: boolean } = { assignWorktreeToSelf: false };
+const githubConfigHolder: { config: { username?: string } | null } = { config: null };
+
 vi.mock("@/store/preferencesStore", () => ({
   usePreferencesStore: (selector: (s: Record<string, unknown>) => unknown) =>
     selector({
-      assignWorktreeToSelf: false,
+      assignWorktreeToSelf: prefsHolder.assignWorktreeToSelf,
       setAssignWorktreeToSelf: vi.fn(),
       lastSelectedWorktreeRecipeIdByProject: {},
       setLastSelectedWorktreeRecipeIdByProject: vi.fn(),
@@ -96,12 +99,12 @@ vi.mock("@/store/githubConfigStore", () => ({
   useGitHubConfigStore: Object.assign(
     (selector: (s: Record<string, unknown>) => unknown) =>
       selector({
-        config: null,
+        config: githubConfigHolder.config,
         initialize: vi.fn(),
       }),
     {
       getState: () => ({
-        config: null,
+        config: githubConfigHolder.config,
       }),
     }
   ),
@@ -282,6 +285,8 @@ beforeEach(() => {
   mockGetAgentConfig.mockReturnValue({ command: "claude" });
   mockGenerateAgentCommand.mockReturnValue("claude --fresh");
   mockGenerateRecipeFromActiveTerminals.mockReturnValue([]);
+  prefsHolder.assignWorktreeToSelf = false;
+  githubConfigHolder.config = null;
 });
 
 afterEach(() => {
@@ -1586,6 +1591,118 @@ describe("BulkCreateWorktreeDialog", () => {
 
     expect(mockAddPanel).toHaveBeenCalledTimes(2);
     expect(screen.getByText(/1 of 1 created/)).toBeTruthy();
+  });
+});
+
+describe("BulkCreateWorktreeDialog — issue assignment retry", () => {
+  const assignProps = {
+    isOpen: true,
+    onClose: vi.fn(),
+    mode: "issue" as const,
+    selectedIssues: [makeIssue(1)],
+    selectedPRs: [] as GitHubPR[],
+    onComplete: vi.fn(),
+  };
+
+  it("retries transient assignment failure with backoff then succeeds", async () => {
+    prefsHolder.assignWorktreeToSelf = true;
+    githubConfigHolder.config = { username: "me" };
+
+    let assignCallCount = 0;
+    mockAssignIssue.mockImplementation(() => {
+      assignCallCount++;
+      if (assignCallCount === 1) {
+        return Promise.reject(new Error("GitHub is temporarily unavailable. Please retry."));
+      }
+      return Promise.resolve();
+    });
+
+    render(<BulkCreateWorktreeDialog {...assignProps} />);
+
+    await act(async () => {
+      screen.getByTestId("bulk-create-confirm-button").click();
+    });
+
+    await advanceTimersGradually(35000);
+
+    expect(assignCallCount).toBe(2);
+    expect(screen.getByText(/1 of 1 created/)).toBeTruthy();
+    expect(screen.queryByText(/failed/)).toBeNull();
+  });
+
+  it("does not retry non-transient assignment failures", async () => {
+    prefsHolder.assignWorktreeToSelf = true;
+    githubConfigHolder.config = { username: "me" };
+
+    mockAssignIssue.mockRejectedValue(new Error("Forbidden"));
+
+    render(<BulkCreateWorktreeDialog {...assignProps} />);
+
+    await act(async () => {
+      screen.getByTestId("bulk-create-confirm-button").click();
+    });
+
+    await advanceTimersGradually(5000);
+
+    expect(mockAssignIssue).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(/1 of 1 created/)).toBeTruthy();
+    expect(screen.queryByText(/failed/)).toBeNull();
+  });
+
+  it("swallows exhausted transient assignment retries (best-effort)", async () => {
+    prefsHolder.assignWorktreeToSelf = true;
+    githubConfigHolder.config = { username: "me" };
+
+    mockAssignIssue.mockRejectedValue(
+      new Error("GitHub is temporarily unavailable. Please retry.")
+    );
+
+    render(<BulkCreateWorktreeDialog {...assignProps} />);
+
+    await act(async () => {
+      screen.getByTestId("bulk-create-confirm-button").click();
+    });
+
+    await advanceTimersGradually(70000);
+
+    // MAX_AUTO_RETRIES = 2 → 3 total attempts before giving up silently.
+    expect(mockAssignIssue).toHaveBeenCalledTimes(3);
+    expect(screen.getByText(/1 of 1 created/)).toBeTruthy();
+    expect(screen.queryByText(/failed/)).toBeNull();
+  });
+
+  it("stops assignment retries when the run is cancelled mid-backoff", async () => {
+    prefsHolder.assignWorktreeToSelf = true;
+    githubConfigHolder.config = { username: "me" };
+
+    mockAssignIssue.mockRejectedValue(
+      new Error("GitHub is temporarily unavailable. Please retry.")
+    );
+
+    render(<BulkCreateWorktreeDialog {...assignProps} />);
+
+    await act(async () => {
+      screen.getByTestId("bulk-create-confirm-button").click();
+    });
+
+    // Let the worktree finish and the first assignIssue call fail; the loop
+    // is now suspended on `await delay(assignBackoff)`.
+    await advanceTimersGradually(100);
+    expect(mockAssignIssue).toHaveBeenCalledTimes(1);
+
+    // Cancel before backoff expires.
+    await act(async () => {
+      const buttons = screen.getAllByRole("button");
+      const cancelBtn = buttons.find((b) => b.textContent === "Cancel");
+      cancelBtn?.click();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    // Drain remaining backoff window — the stale-run guard must short-circuit
+    // the loop before another IPC call goes out.
+    await advanceTimersGradually(35000);
+
+    expect(mockAssignIssue).toHaveBeenCalledTimes(1);
   });
 });
 
