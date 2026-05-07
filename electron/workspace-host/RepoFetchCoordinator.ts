@@ -1,6 +1,6 @@
 import { createBackgroundFetchGit } from "../utils/hardenedGit.js";
 import { getGitCommonDir } from "../utils/gitUtils.js";
-import { classifyGitError, extractGitErrorMessage } from "../../shared/utils/gitOperationErrors.js";
+import { classifyGitError } from "../../shared/utils/gitOperationErrors.js";
 import type { GitOperationReason } from "../../shared/types/ipc/errors.js";
 
 const FETCH_ABORT_TIMEOUT_MS = 60_000;
@@ -308,33 +308,45 @@ export class RepoFetchCoordinator {
       };
     }
     if (reason === "network-unavailable") {
-      const jitter = Math.random() * NETWORK_FAILURE_JITTER_MS;
+      const window = NETWORK_FAILURE_TTL_MS + NETWORK_FAILURE_JITTER_MS;
       return {
         kind: "network",
         reason,
-        retryAt: now + NETWORK_FAILURE_TTL_MS + jitter,
+        retryAt: now + Math.random() * window,
       };
     }
     // Aborts (the 60s timeout firing) look like generic errors; bucket them
     // with transient so they retry on a short window.
     if (this.isAbortError(error)) {
-      const jitter = Math.random() * TRANSIENT_FAILURE_JITTER_MS;
+      const window = TRANSIENT_FAILURE_TTL_MS + TRANSIENT_FAILURE_JITTER_MS;
       return {
         kind: "transient",
         reason,
-        retryAt: now + TRANSIENT_FAILURE_TTL_MS + jitter,
+        retryAt: now + Math.random() * window,
       };
     }
-    const jitter = Math.random() * TRANSIENT_FAILURE_JITTER_MS;
+    const window = TRANSIENT_FAILURE_TTL_MS + TRANSIENT_FAILURE_JITTER_MS;
     return {
       kind: "transient",
       reason,
-      retryAt: now + TRANSIENT_FAILURE_TTL_MS + jitter,
+      retryAt: now + Math.random() * window,
     };
   }
 
   private isAbortError(error: unknown): boolean {
-    const msg = extractGitErrorMessage(error);
-    return /aborted|operation was aborted|AbortError/i.test(msg);
+    if (error != null && typeof error === "object") {
+      const name = (error as { name?: string }).name;
+      if (name === "AbortError") return true;
+      // simple-git wraps AbortError in GitError — only check the known wrapper.
+      const message = (error as { message?: string }).message;
+      if (
+        name === "GitError" &&
+        typeof message === "string" &&
+        /aborted|operation was aborted|abort/i.test(message)
+      ) {
+        return true;
+      }
+    }
+    return false;
   }
 }

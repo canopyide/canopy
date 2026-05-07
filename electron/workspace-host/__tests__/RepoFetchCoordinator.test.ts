@@ -403,4 +403,82 @@ describe("RepoFetchCoordinator", () => {
     expect(result.skipReason).toBe("stale-generation");
     expect(onFetchSuccess).not.toHaveBeenCalled();
   });
+
+  it("classifies native AbortError (name === 'AbortError') as transient", async () => {
+    mockGetGitCommonDir.mockReturnValue("/repo/.git");
+    const abortError = new Error("The operation was aborted");
+    (abortError as { name?: string }).name = "AbortError";
+    mockCreateBackgroundFetchGit.mockReturnValue(makeMockGit(() => Promise.reject(abortError)));
+
+    const coord = new RepoFetchCoordinator();
+    const result = await coord.fetchForWorktree({
+      worktreeId: "wt1",
+      worktreePath: "/repo",
+    });
+
+    expect(result.status).toBe("failed");
+    // classifyGitError returns "unknown" for this message, but isAbortError
+    // catches it by name and routes it to transient.
+    expect(result.networkFailed).toBe(true);
+    expect(result.authFailed).toBe(false);
+    expect(coord.hasFailureFor("/repo/.git")).toBe(true);
+
+    // clearNetworkFailures clears transient; clearAuthFailures does not.
+    coord.clearAuthFailures();
+    expect(coord.hasFailureFor("/repo/.git")).toBe(true);
+
+    coord.clearNetworkFailures();
+    expect(coord.hasFailureFor("/repo/.git")).toBe(false);
+  });
+
+  it("classifies simple-git wrapped abort (name='GitError' with abort message) as transient", async () => {
+    mockGetGitCommonDir.mockReturnValue("/repo/.git");
+    // simple-git wraps the underlying AbortError in a GitError — the name
+    // changes but the abort indicators stay in the message.
+    const gitError = new Error("the operation was aborted");
+    (gitError as { name?: string }).name = "GitError";
+    mockCreateBackgroundFetchGit.mockReturnValue(makeMockGit(() => Promise.reject(gitError)));
+
+    const coord = new RepoFetchCoordinator();
+    const result = await coord.fetchForWorktree({
+      worktreeId: "wt1",
+      worktreePath: "/repo",
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.networkFailed).toBe(true);
+    expect(result.authFailed).toBe(false);
+    expect(coord.hasFailureFor("/repo/.git")).toBe(true);
+
+    // clearAuthFailures should not clear abort-classified transient failures
+    coord.clearAuthFailures();
+    expect(coord.hasFailureFor("/repo/.git")).toBe(true);
+
+    coord.clearNetworkFailures();
+    expect(coord.hasFailureFor("/repo/.git")).toBe(false);
+  });
+
+  it("does not classify a generic Error with 'abort' in message as abort", async () => {
+    mockGetGitCommonDir.mockReturnValue("/repo/.git");
+    // A plain Error with name="Error" and "abort" in the message should NOT
+    // match isAbortError — the message fallback only applies to GitError
+    // wrappers, not arbitrary Error objects.
+    const genericError = new Error("some irrelevant abort message");
+    mockCreateBackgroundFetchGit.mockReturnValue(makeMockGit(() => Promise.reject(genericError)));
+
+    const coord = new RepoFetchCoordinator();
+    // Verify directly through the private method.
+    expect((coord as any).isAbortError(genericError)).toBe(false);
+
+    const result = await coord.fetchForWorktree({
+      worktreeId: "wt1",
+      worktreePath: "/repo",
+    });
+
+    expect(result.status).toBe("failed");
+    // Falls through to the generic transient path (no auth or network match).
+    expect(result.networkFailed).toBe(true);
+    expect(result.authFailed).toBe(false);
+    expect(coord.hasFailureFor("/repo/.git")).toBe(true);
+  });
 });
