@@ -29,7 +29,11 @@ import { ProjectStateManager, type ProjectStateReadResult } from "./ProjectState
 import { ProjectFileStore } from "./ProjectFileStore.js";
 import { GlobalFileStore } from "./GlobalFileStore.js";
 import { ProjectIdentityFiles } from "./ProjectIdentityFiles.js";
-import { cleanupQuarantinedProjectFiles } from "./projectQuarantineCleanup.js";
+import {
+  cleanupQuarantinedProjectFiles,
+  cleanupGlobalQuarantineFiles,
+  cleanupUserDataRootQuarantineFiles,
+} from "./projectQuarantineCleanup.js";
 import { safeRecipeFilename } from "../utils/recipeFilename.js";
 
 import { computeFrecencyScore, FRECENCY_COLD_START } from "./frecency.js";
@@ -60,6 +64,8 @@ function rowToProject(row: ProjectRow): Project {
 
 export class ProjectStore {
   private projectsConfigDir: string;
+  private globalConfigDir: string;
+  private userDataDir: string;
   private settingsManager: ProjectSettingsManager;
   private stateManager: ProjectStateManager;
   private fileStore: ProjectFileStore;
@@ -67,12 +73,13 @@ export class ProjectStore {
   private identityFiles: ProjectIdentityFiles;
 
   constructor() {
-    this.projectsConfigDir = path.join(app.getPath("userData"), "projects");
-    const globalConfigDir = path.join(app.getPath("userData"), "global");
+    this.userDataDir = app.getPath("userData");
+    this.projectsConfigDir = path.join(this.userDataDir, "projects");
+    this.globalConfigDir = path.join(this.userDataDir, "global");
     this.settingsManager = new ProjectSettingsManager(this.projectsConfigDir, store);
     this.stateManager = new ProjectStateManager(this.projectsConfigDir);
     this.fileStore = new ProjectFileStore(this.projectsConfigDir);
-    this.globalFileStore = new GlobalFileStore(globalConfigDir);
+    this.globalFileStore = new GlobalFileStore(this.globalConfigDir);
     this.identityFiles = new ProjectIdentityFiles();
   }
 
@@ -82,6 +89,12 @@ export class ProjectStore {
     }
     void cleanupQuarantinedProjectFiles(this.projectsConfigDir).catch((err) =>
       logError("[ProjectStore] Quarantine cleanup failed", err)
+    );
+    void cleanupGlobalQuarantineFiles(this.globalConfigDir).catch((err) =>
+      logError("[GlobalFileStore] Quarantine cleanup failed", err)
+    );
+    void cleanupUserDataRootQuarantineFiles(this.userDataDir).catch((err) =>
+      logError("[Store] Quarantine cleanup failed", err)
     );
   }
 
