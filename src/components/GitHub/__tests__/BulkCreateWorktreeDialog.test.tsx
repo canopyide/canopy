@@ -1626,6 +1626,35 @@ describe("BulkCreateWorktreeDialog — issue assignment retry", () => {
     await advanceTimersGradually(35000);
 
     expect(assignCallCount).toBe(2);
+    expect(mockAssignIssue).toHaveBeenCalledWith("/test/root", 1, "me");
+    expect(screen.getByText(/1 of 1 created/)).toBeTruthy();
+    expect(screen.queryByText(/failed/)).toBeNull();
+  });
+
+  it("succeeds when assignment recovers on the final permitted attempt", async () => {
+    prefsHolder.assignWorktreeToSelf = true;
+    githubConfigHolder.config = { username: "me" };
+
+    let assignCallCount = 0;
+    mockAssignIssue.mockImplementation(() => {
+      assignCallCount++;
+      if (assignCallCount <= 2) {
+        return Promise.reject(new Error("GitHub is temporarily unavailable. Please retry."));
+      }
+      return Promise.resolve();
+    });
+
+    render(<BulkCreateWorktreeDialog {...assignProps} />);
+
+    await act(async () => {
+      screen.getByTestId("bulk-create-confirm-button").click();
+    });
+
+    await advanceTimersGradually(70000);
+
+    // Loop bound is `<= MAX_AUTO_RETRIES + 1`, so the third attempt must run
+    // and a success there must short-circuit out of the loop.
+    expect(assignCallCount).toBe(3);
     expect(screen.getByText(/1 of 1 created/)).toBeTruthy();
     expect(screen.queryByText(/failed/)).toBeNull();
   });
