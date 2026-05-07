@@ -376,7 +376,7 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
             <button
               type="button"
               onClick={handleMarkAllRead}
-              className="toolbar-icon-button inline-flex items-center gap-1 px-1.5 py-1 rounded-[var(--radius-sm)] text-[11px] text-daintree-text/50"
+              className="toolbar-icon-button inline-flex items-center gap-1 px-1.5 py-1 rounded-[var(--radius-sm)] text-[11px] text-daintree-text/50 whitespace-nowrap"
             >
               <CheckCheck className="w-3 h-3" aria-hidden="true" />
               Mark all read
