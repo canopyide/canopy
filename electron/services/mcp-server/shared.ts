@@ -11,6 +11,15 @@ import type { AgentState, WaitingReason } from "../../../shared/types/agent.js";
 
 export type McpAuthClass = "external" | HelpAssistantTier;
 export type HelpTokenValidator = (token: string) => HelpAssistantTier | false;
+/**
+ * Resolver used at MCP transport handshake to pin a help-session bearer to
+ * the renderer WebContents that minted it. Returning a non-null id causes
+ * `httpLifecycle` to record the session in `sessionWebContentsMap` and route
+ * all of that session's tool calls through the pinned view rather than the
+ * "first live view" fallback. Returns null for non-help bearers (api-key /
+ * pane tokens), which keep the existing focused-window semantics.
+ */
+export type HelpSessionWebContentsResolver = (token: string) => number | null;
 export type { HelpAssistantTier };
 
 export const MCP_SERVER_KEY = "daintree";

@@ -13,7 +13,12 @@ import { createRendererBridge } from "./mcp-server/rendererBridge.js";
 import { handleWaitUntilIdle } from "./mcp-server/waitUntilIdle.js";
 import { cleanupResourceSubscriptions } from "./mcp-server/sessionServer.js";
 import { HttpLifecycle } from "./mcp-server/httpLifecycle.js";
-import type { PendingRequest, DispatchEnvelope, HelpTokenValidator } from "./mcp-server/shared.js";
+import type {
+  PendingRequest,
+  DispatchEnvelope,
+  HelpTokenValidator,
+  HelpSessionWebContentsResolver,
+} from "./mcp-server/shared.js";
 import type { ActionManifestEntry } from "../../shared/types/actions.js";
 
 // Re-export types for backward compatibility with existing importers.
@@ -57,6 +62,9 @@ export class McpServerService {
       requestManifest: () => this.bridge.requestManifest(),
       dispatchAction: (actionId, args, confirmed) =>
         this.bridge.dispatchAction(actionId, args, confirmed),
+      requestManifestForWebContents: (id) => this.bridge.requestManifestForWebContents(id),
+      dispatchActionForWebContents: (id, actionId, args, confirmed) =>
+        this.bridge.dispatchActionForWebContents(id, actionId, args, confirmed),
       handleWaitUntilIdle: (rawArgs, signal) => handleWaitUntilIdle(rawArgs, signal),
       getCachedManifest: () => this.bridge.getCachedManifest(),
       clearCachedManifest: () => this.bridge.clearCache(),
@@ -98,6 +106,10 @@ export class McpServerService {
 
   setHelpTokenValidator(validator: HelpTokenValidator | null): void {
     this.httpLifecycle.setHelpTokenValidator(validator);
+  }
+
+  setHelpSessionWebContentsResolver(resolver: HelpSessionWebContentsResolver | null): void {
+    this.httpLifecycle.setHelpSessionWebContentsResolver(resolver);
   }
 
   private emitStatusChange(): void {

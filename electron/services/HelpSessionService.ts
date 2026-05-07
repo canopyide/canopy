@@ -116,6 +116,20 @@ export class HelpSessionService {
   }
 
   /**
+   * Looks up the renderer WebContents id pinned to a help-session bearer at
+   * provision time. The MCP server uses this at handshake to pin each
+   * transport session to the window that minted it, so a tool call from the
+   * assistant in window A can never be routed to window B's renderer (#7002).
+   * Returns null for unknown or revoked tokens.
+   */
+  getWebContentsIdForToken(token: string): number | null {
+    if (!token) return null;
+    const record = this.sessionsByToken.get(token);
+    if (!record || record.revoked) return null;
+    return record.projectViewWebContentsId;
+  }
+
+  /**
    * Provisions the per-project session directory for the Daintree Assistant
    * under userData/help-sessions/<projectPathHash>/. The dir is reused across
    * launches so Claude Code's per-folder workspace-trust prompt only fires
@@ -403,6 +417,9 @@ export class HelpSessionService {
     }
     const { mcpServerService } = await import("./McpServerService.js");
     mcpServerService.setHelpTokenValidator((token) => this.validateToken(token));
+    mcpServerService.setHelpSessionWebContentsResolver((token) =>
+      this.getWebContentsIdForToken(token)
+    );
     if (!mcpServerService.isEnabled()) {
       // setEnabled() will only call start() internally if it has its own
       // `registry` already set — which it doesn't on cold boot if the

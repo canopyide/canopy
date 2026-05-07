@@ -60,9 +60,14 @@ const electronMocks = vi.hoisted(() => {
   }
 
   const ipcMain = new IpcMainMock();
+  // Lookup table that backs the mocked `webContents.fromId(id)` — populated by
+  // `createMockWindow` so per-session pinned dispatch (#7002) can resolve a
+  // specific WebContents at MCP tool-call time, the same way Electron does.
+  const webContentsById = new Map<number, unknown>();
 
   return {
     ipcMain,
+    webContentsById,
   };
 });
 
@@ -107,6 +112,9 @@ vi.mock("node:os", async (importOriginal) => {
 
 vi.mock("electron", () => ({
   ipcMain: electronMocks.ipcMain,
+  webContents: {
+    fromId: (id: number) => electronMocks.webContentsById.get(id),
+  },
   BrowserWindow: class BrowserWindow {},
   app: { getVersion: () => "0.0.0-test" },
 }));
@@ -301,11 +309,16 @@ function createMockWindow(options?: {
     size: 1,
   };
 
+  // Register the project-view WebContents in the shared lookup so per-session
+  // pinned dispatch (#7002) can resolve it via `webContents.fromId()`.
+  electronMocks.webContentsById.set(projectViewWcId, webContents);
+
   return {
     window: registry as never,
     webContents,
     hostShellWebContents,
     projectViewManager,
+    windowContext,
   };
 }
 
@@ -496,6 +509,7 @@ describe("McpServerService", () => {
     storeMocks.set.mockClear();
     paneTokenTiers.clear();
     electronMocks.ipcMain.removeAllListeners();
+    electronMocks.webContentsById.clear();
     electronMocks.ipcMain.handle.mockClear();
     electronMocks.ipcMain.removeHandler.mockClear();
     transports.length = 0;
@@ -1639,6 +1653,212 @@ describe("McpServerService", () => {
       Authorization: "Bearer rotating-token",
     });
     expect(after.status).toBe(401);
+  });
+
+  it("pins each help-session bearer to its own renderer WebContents — tool calls never cross windows (#7002)", async () => {
+    // Two windows, each with a distinct project-view WebContents. Two
+    // help-session bearers — one minted from each. Without per-session
+    // pinning, both sessions would dispatch into whatever the shared
+    // `getActiveProjectWebContents()` returns first; with the fix, each
+    // session routes to the WebContents that minted it.
+    const winA = createMockWindow({
+      getManifest: () => [
+        createManifestEntry({
+          id: "actions.list",
+          title: "List Actions",
+          description: "Read the action registry",
+          kind: "query",
+        }),
+      ],
+      dispatchAction: () => ({ ok: true, result: "from-window-A" }),
+    });
+    const winB = createMockWindow({
+      getManifest: () => [
+        createManifestEntry({
+          id: "actions.list",
+          title: "List Actions",
+          description: "Read the action registry",
+          kind: "query",
+        }),
+      ],
+      dispatchAction: () => ({ ok: true, result: "from-window-B" }),
+    });
+
+    const combinedRegistry = {
+      all: () => [winA.windowContext, winB.windowContext],
+      getPrimary: () => winA.windowContext,
+      getByWindowId: () => winA.windowContext,
+      getByWebContentsId: () => winA.windowContext,
+      size: 2,
+    } as never;
+
+    await service.start(combinedRegistry);
+
+    const tokenToWcId = new Map<string, number>([
+      ["help-A", winA.webContents.id],
+      ["help-B", winB.webContents.id],
+    ]);
+    service.setHelpTokenValidator((token) => (tokenToWcId.has(token) ? "action" : false));
+    service.setHelpSessionWebContentsResolver((token) => tokenToWcId.get(token) ?? null);
+
+    const a = await connectClient(service.currentPort!, { Authorization: "Bearer help-A" });
+    transports.push(a.transport);
+    const b = await connectClient(service.currentPort!, { Authorization: "Bearer help-B" });
+    transports.push(b.transport);
+
+    const resA = getTextResult(await a.client.callTool({ name: "actions.list", arguments: {} }));
+    const resB = getTextResult(await b.client.callTool({ name: "actions.list", arguments: {} }));
+
+    expect(resA.content[0].text).toBe('"from-window-A"');
+    expect(resB.content[0].text).toBe('"from-window-B"');
+
+    // Both windows' WebContents.send must have been invoked — and only for
+    // the dispatch belonging to that window. (Each window also receives one
+    // `mcp:get-manifest-request` per session — that is fine because pinned
+    // sessions explicitly bypass the shared manifest cache.)
+    const sendsToA = winA.webContents.send.mock.calls.filter(
+      ([channel]) => channel === "mcp:dispatch-action-request"
+    );
+    const sendsToB = winB.webContents.send.mock.calls.filter(
+      ([channel]) => channel === "mcp:dispatch-action-request"
+    );
+    expect(sendsToA).toHaveLength(1);
+    expect(sendsToB).toHaveLength(1);
+  });
+
+  it("fails closed when the pinned WebContents has been destroyed (#7002 — never silently re-routes)", async () => {
+    const winA = createMockWindow({
+      dispatchAction: () => ({ ok: true, result: "from-A" }),
+    });
+    const winB = createMockWindow({
+      dispatchAction: () => ({ ok: true, result: "from-B" }),
+    });
+
+    const combinedRegistry = {
+      all: () => [winA.windowContext, winB.windowContext],
+      getPrimary: () => winA.windowContext,
+      getByWindowId: () => winA.windowContext,
+      getByWebContentsId: () => winA.windowContext,
+      size: 2,
+    } as never;
+
+    await service.start(combinedRegistry);
+
+    service.setHelpTokenValidator((token) => (token === "help-A" ? "action" : false));
+    service.setHelpSessionWebContentsResolver((token) =>
+      token === "help-A" ? winA.webContents.id : null
+    );
+
+    const a = await connectClient(service.currentPort!, { Authorization: "Bearer help-A" });
+    transports.push(a.transport);
+
+    // Window A's view goes away — pinned session must NOT silently fall
+    // through to window B (the bug behind #7002).
+    electronMocks.webContentsById.delete(winA.webContents.id);
+
+    const result = getTextResult(await a.client.callTool({ name: "actions.list", arguments: {} }));
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/no longer available/);
+    expect(winB.webContents.send).not.toHaveBeenCalledWith(
+      "mcp:dispatch-action-request",
+      expect.anything()
+    );
+  });
+
+  it("pinned sessions with confirm-danger tools still trigger elicitation — manifest must not be cache-bypassed away (#7002)", async () => {
+    // Pinned sessions deliberately skip `cachedManifest`. `lookupManifestEntry`
+    // used to call `getCachedManifest()` *after* `await requestManifest()`,
+    // which would always be null for pinned sessions and silently drop the
+    // confirm-elicitation. This test guards that regression.
+    const dispatchMock = vi.fn((payload: DispatchRequest): ActionDispatchResult => {
+      if (!payload.confirmed) {
+        return { ok: false, error: { code: "CONFIRMATION_REQUIRED", message: "Need confirm" } };
+      }
+      return { ok: true, result: { deleted: true } };
+    });
+    const onElicit = vi.fn(async (): Promise<ElicitResult> => ({ action: "accept", content: {} }));
+
+    const winA = createMockWindow({
+      getManifest: () => [
+        createManifestEntry({
+          id: "worktree.delete" as ActionId,
+          title: "Delete Worktree",
+          description: "Delete a worktree",
+          danger: "confirm",
+        }),
+      ],
+      dispatchAction: dispatchMock,
+    });
+
+    await service.start(winA.window);
+    service.setHelpTokenValidator((token) => (token === "help-A" ? "system" : false));
+    service.setHelpSessionWebContentsResolver((token) =>
+      token === "help-A" ? winA.webContents.id : null
+    );
+
+    const { client, transport } = await connectClient(
+      service.currentPort!,
+      { Authorization: "Bearer help-A" },
+      {
+        capabilities: { elicitation: { form: {} } },
+        onElicit,
+      }
+    );
+    transports.push(transport);
+
+    const result = getTextResult(
+      await client.callTool({
+        name: "worktree.delete",
+        arguments: { worktreeId: "wt-123" },
+      })
+    );
+
+    expect(onElicit).toHaveBeenCalledTimes(1);
+    expect(result.isError).not.toBe(true);
+    expect(dispatchMock).toHaveBeenCalledWith(
+      expect.objectContaining({ actionId: "worktree.delete", confirmed: true })
+    );
+  });
+
+  it("external (api-key) sessions keep most-recently-focused-view fallback even when help routing is wired (#7002)", async () => {
+    storeState.mcpServer.apiKey = "external-secret";
+    const winA = createMockWindow({
+      dispatchAction: () => ({ ok: true, result: "from-A" }),
+    });
+    const winB = createMockWindow({
+      dispatchAction: () => ({ ok: true, result: "from-B" }),
+    });
+
+    const combinedRegistry = {
+      all: () => [winA.windowContext, winB.windowContext],
+      getPrimary: () => winA.windowContext,
+      getByWindowId: () => winA.windowContext,
+      getByWebContentsId: () => winA.windowContext,
+      size: 2,
+    } as never;
+
+    await service.start(combinedRegistry);
+
+    // Help routing is configured but the external bearer doesn't match it.
+    service.setHelpTokenValidator((token) => (token === "help-A" ? "action" : false));
+    service.setHelpSessionWebContentsResolver((token) =>
+      token === "help-A" ? winA.webContents.id : null
+    );
+
+    const ext = await connectClient(service.currentPort!, {
+      Authorization: "Bearer external-secret",
+    });
+    transports.push(ext.transport);
+
+    const result = getTextResult(
+      await ext.client.callTool({ name: "actions.list", arguments: {} })
+    );
+
+    // Falls through to getActiveProjectWebContents which returns winA (first
+    // in registry). The point of the assertion is that the external session
+    // is NOT failing closed and IS using the fallback path, regardless of
+    // which window happens to be first.
+    expect(result.content[0].text).toBe('"from-A"');
   });
 
   it("fails fast when the renderer bridge is unavailable", async () => {
