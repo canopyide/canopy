@@ -18,12 +18,8 @@ import { EventEmitter } from "node:events";
 import { HttpLifecycle } from "../httpLifecycle.js";
 import type { HttpLifecycleDeps } from "../httpLifecycle.js";
 
-type MockServer = http.Server & {
-  closeAllConnections: ReturnType<typeof vi.fn>;
-  close: ReturnType<typeof vi.fn>;
-  listen: ReturnType<typeof vi.fn>;
-  address: ReturnType<typeof vi.fn>;
-};
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type MockServer = any;
 
 function mockServer(port = 45454): MockServer {
   const s = new EventEmitter() as unknown as MockServer;
@@ -31,7 +27,7 @@ function mockServer(port = 45454): MockServer {
   s.close = vi.fn((cb?: () => void) => {
     cb?.();
     return s;
-  }) as unknown as typeof s.close;
+  });
   s.listen = vi.fn((_p: number, _h: string, cb?: () => void) => {
     Object.defineProperty(s, "listening", { value: true, writable: true, configurable: true });
     cb?.();
