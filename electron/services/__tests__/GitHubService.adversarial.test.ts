@@ -79,6 +79,7 @@ vi.mock("../github/GitHubRateLimitService.js", async () => {
       clear: vi.fn(),
       applyRemoteState: vi.fn(),
       update: vi.fn(),
+      updateFromGraphQL: vi.fn(),
     },
     GitHubRateLimitError: class GitHubRateLimitError extends Error {
       kind: "primary" | "secondary";
