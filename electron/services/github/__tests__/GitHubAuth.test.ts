@@ -361,4 +361,27 @@ describe("GitHubAuth", () => {
     // Stale SSO URL must not leak into current metadata.
     expect(getLastAuthMetadata()?.ssoUrl).toBeUndefined();
   });
+
+  it("validate returns empty scopes for fine-grained PAT with empty x-oauth-scopes header", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ login: "user", avatar_url: "" }),
+      headers: new Headers({
+        "x-oauth-scopes": "",
+        "x-ratelimit-remaining": "4999",
+        "x-ratelimit-reset": String(Math.floor(Date.now() / 1000) + 3600),
+      }),
+    });
+    (globalThis as unknown as { fetch: Mock }).fetch = mockFetch;
+
+    const { gitHubRateLimitService } = await import("../GitHubRateLimitService.js");
+    gitHubRateLimitService._resetForTests();
+
+    const result = await GitHubAuth.validate("github_pat_finegrainedtoken");
+
+    expect(result.valid).toBe(true);
+    expect(result.scopes).toEqual([]);
+
+    gitHubRateLimitService._resetForTests();
+  });
 });

@@ -248,6 +248,85 @@ describe("GitHubRateLimitService", () => {
     });
   });
 
+  describe("per-resource blocking", () => {
+    it('blocks shouldBlockRequest("graphql") when graphql bucket is exhausted but not shouldBlockRequest("core")', () => {
+      const resetSeconds = Math.floor(Date.now() / 1000) + 600;
+      gitHubRateLimitService.update(
+        makeHeaders({
+          "x-ratelimit-remaining": "0",
+          "x-ratelimit-reset": String(resetSeconds),
+          "x-ratelimit-resource": "graphql",
+        }),
+        200
+      );
+
+      expect(gitHubRateLimitService.shouldBlockRequest("graphql").blocked).toBe(true);
+      expect(gitHubRateLimitService.shouldBlockRequest("graphql").reason).toBe("primary");
+
+      expect(gitHubRateLimitService.shouldBlockRequest("core").blocked).toBe(false);
+
+      // No-arg check is conservative: blocked if any resource is blocked.
+      expect(gitHubRateLimitService.shouldBlockRequest().blocked).toBe(true);
+    });
+
+    it("clears only the matching resource on 2xx with remaining > 0", () => {
+      const resetSeconds = Math.floor(Date.now() / 1000) + 600;
+
+      // Exhaust both graphql and core.
+      gitHubRateLimitService.update(
+        makeHeaders({
+          "x-ratelimit-remaining": "0",
+          "x-ratelimit-reset": String(resetSeconds),
+          "x-ratelimit-resource": "graphql",
+        }),
+        200
+      );
+      gitHubRateLimitService.update(
+        makeHeaders({
+          "x-ratelimit-remaining": "0",
+          "x-ratelimit-reset": String(resetSeconds),
+          "x-ratelimit-resource": "core",
+        }),
+        200
+      );
+
+      // 2xx on graphql clears only graphql.
+      gitHubRateLimitService.update(
+        makeHeaders({
+          "x-ratelimit-remaining": "4999",
+          "x-ratelimit-reset": String(resetSeconds),
+          "x-ratelimit-resource": "graphql",
+        }),
+        200
+      );
+
+      expect(gitHubRateLimitService.shouldBlockRequest("graphql").blocked).toBe(false);
+      expect(gitHubRateLimitService.shouldBlockRequest("core").blocked).toBe(true);
+    });
+
+    it("marks primary block under __global__ when x-ratelimit-resource header is absent", () => {
+      const resetSeconds = Math.floor(Date.now() / 1000) + 600;
+      gitHubRateLimitService.update(
+        makeHeaders({
+          "x-ratelimit-remaining": "0",
+          "x-ratelimit-reset": String(resetSeconds),
+        }),
+        200
+      );
+
+      // Without resource param, the global entry gates.
+      expect(gitHubRateLimitService.shouldBlockRequest().blocked).toBe(true);
+    });
+
+    it("secondary block gates resource-specific check", () => {
+      gitHubRateLimitService.update(makeHeaders({ "retry-after": "30" }), 429);
+
+      // Secondary trumps everything, even when passing a resource.
+      expect(gitHubRateLimitService.shouldBlockRequest("core").blocked).toBe(true);
+      expect(gitHubRateLimitService.shouldBlockRequest("core").reason).toBe("secondary");
+    });
+  });
+
   describe("requestId tracking", () => {
     it("does not throw when requestId is passed to update()", () => {
       gitHubRateLimitService.update(

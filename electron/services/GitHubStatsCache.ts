@@ -193,7 +193,7 @@ export class GitHubStatsCache {
         mkdirSync(dir, { recursive: true });
       }
 
-      resilientAtomicWriteFileSync(this.cacheFilePath, JSON.stringify(cache, null, 2), "utf8");
+      resilientAtomicWriteFileSync(this.cacheFilePath, JSON.stringify(cache), "utf8");
     } catch (error) {
       console.error("[GitHubStatsCache] Failed to save cache:", error);
     }

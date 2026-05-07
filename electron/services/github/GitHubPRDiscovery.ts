@@ -427,7 +427,7 @@ export async function batchCheckLinkedPRs(
       if (skip.size > 0) {
         candidatesForGraphQL = candidates.filter((_, idx) => !skip.has(idx));
       }
-      const postProbeBlock = gitHubRateLimitService.shouldBlockRequest();
+      const postProbeBlock = gitHubRateLimitService.shouldBlockRequest("graphql");
       if (postProbeBlock.blocked && postProbeBlock.reason && postProbeBlock.resumeAt) {
         return {
           results: new Map(),
