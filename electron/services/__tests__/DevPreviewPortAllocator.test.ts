@@ -4,7 +4,6 @@ import { allocatePort, releasePort } from "../DevPreviewPortAllocator.js";
 vi.mock("node:net", () => {
   const createServer = vi.fn((_options?: Record<string, unknown>) => {
     let port = 0;
-    let host = "";
     return {
       unref: vi.fn(function (this: ReturnType<typeof createServer>) {
         return this;
@@ -19,7 +18,6 @@ vi.mock("node:net", () => {
       },
       listen(_port: number, _host: string, cb: () => void) {
         port = _port;
-        host = _host;
         if (_port === 4444) return;
         cb();
         return this;

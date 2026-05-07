@@ -670,7 +670,7 @@ export class DevPreviewSessionService {
     } catch (err) {
       const message = formatErrorMessage(err, "Failed to kill dev preview terminal");
       if (!this.isBenignMissingTerminalError(message)) {
-        throw new Error(`Failed to kill terminal (${context}): ${message}`);
+        throw new Error(`Failed to kill terminal (${context}): ${message}`, { cause: err });
       }
     }
 
