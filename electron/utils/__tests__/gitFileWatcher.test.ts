@@ -1119,4 +1119,227 @@ describe("GitFileWatcher", () => {
     await vi.advanceTimersByTimeAsync(150);
     expect(onChange).toHaveBeenCalledTimes(2);
   });
+
+  describe("worktree ignore filter", () => {
+    function captureWorktreeCallback() {
+      let worktreeCallback: ((eventType: string, filename: string | null) => void) | undefined;
+
+      vi.mocked(watch).mockImplementation(((
+        _path: string,
+        opts: Record<string, unknown>,
+        cb?: (eventType: string, filename: string | null) => void
+      ) => {
+        const w = createMockWatcher();
+        if (opts?.recursive) {
+          worktreeCallback = cb;
+        }
+        return w;
+      }) as unknown as typeof watch);
+
+      return {
+        getCallback: () => worktreeCallback,
+        createWatcher: (onChange = vi.fn()) => {
+          const gitWatcher = new GitFileWatcher({
+            worktreePath: "/repo",
+            branch: "main",
+            debounceMs: 300,
+            onChange,
+            watchWorktree: true,
+            worktreeMinDebounceMs: 100,
+            worktreeMaxDebounceMs: 100,
+          });
+          return gitWatcher;
+        },
+      };
+    }
+
+    it("ignores root-level ignored directories", async () => {
+      const { getCallback, createWatcher } = captureWorktreeCallback();
+      const onChange = vi.fn();
+
+      const watcher = createWatcher(onChange);
+      expect(watcher.start()).toBe(true);
+      const cb = getCallback();
+      expect(cb).toBeDefined();
+
+      cb?.("change", "node_modules/react/index.js");
+      cb?.("change", "dist/app.js");
+      cb?.("change", ".venv/bin/python");
+
+      await vi.advanceTimersByTimeAsync(150);
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it("ignores nested ignored directories at any depth", async () => {
+      const { getCallback, createWatcher } = captureWorktreeCallback();
+      const onChange = vi.fn();
+
+      const watcher = createWatcher(onChange);
+      expect(watcher.start()).toBe(true);
+      const cb = getCallback();
+      expect(cb).toBeDefined();
+
+      cb?.("change", "packages/web/node_modules/react/index.js");
+      cb?.("change", "apps/site/.next/cache/file");
+      cb?.("change", "services/api/target/debug/file");
+      cb?.("change", "pkg/__pycache__/module.pyc");
+
+      await vi.advanceTimersByTimeAsync(150);
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it("handles Windows backslash separators in ignore filter", async () => {
+      const { getCallback, createWatcher } = captureWorktreeCallback();
+      const onChange = vi.fn();
+
+      const watcher = createWatcher(onChange);
+      expect(watcher.start()).toBe(true);
+      const cb = getCallback();
+      expect(cb).toBeDefined();
+
+      cb?.("change", "packages\\web\\node_modules\\react\\index.js");
+      cb?.("change", "apps\\site\\.next\\cache\\file");
+
+      await vi.advanceTimersByTimeAsync(150);
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it("does not ignore substring matches (false positive guard)", async () => {
+      const { getCallback, createWatcher } = captureWorktreeCallback();
+      const onChange = vi.fn();
+
+      const watcher = createWatcher(onChange);
+      expect(watcher.start()).toBe(true);
+      const cb = getCallback();
+      expect(cb).toBeDefined();
+
+      cb?.("change", "src/build-tools/config.ts");
+      await vi.advanceTimersByTimeAsync(100);
+      expect(onChange).toHaveBeenCalledTimes(1);
+      onChange.mockClear();
+
+      cb?.("change", "packages/mydist/file.ts");
+      await vi.advanceTimersByTimeAsync(100);
+      expect(onChange).toHaveBeenCalledTimes(1);
+    });
+
+    it("ignores exact directory name match (a file named after the dir itself)", async () => {
+      const { getCallback, createWatcher } = captureWorktreeCallback();
+      const onChange = vi.fn();
+
+      const watcher = createWatcher(onChange);
+      expect(watcher.start()).toBe(true);
+      const cb = getCallback();
+      expect(cb).toBeDefined();
+
+      cb?.("change", "node_modules");
+      cb?.("change", "dist");
+
+      await vi.advanceTimersByTimeAsync(150);
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it("still fires for non-ignored paths after ignored events", async () => {
+      const { getCallback, createWatcher } = captureWorktreeCallback();
+      const onChange = vi.fn();
+
+      const watcher = createWatcher(onChange);
+      expect(watcher.start()).toBe(true);
+      const cb = getCallback();
+      expect(cb).toBeDefined();
+
+      // Ignored — should be filtered
+      cb?.("change", "node_modules/react/index.js");
+      cb?.("change", "dist/bundle.js");
+
+      // Non-ignored — should fire
+      cb?.("change", "src/index.ts");
+
+      await vi.advanceTimersByTimeAsync(100);
+      expect(onChange).toHaveBeenCalledTimes(1);
+    });
+
+    it("ignores .git directory events (existing behavior preserved)", async () => {
+      const { getCallback, createWatcher } = captureWorktreeCallback();
+      const onChange = vi.fn();
+
+      const watcher = createWatcher(onChange);
+      expect(watcher.start()).toBe(true);
+      const cb = getCallback();
+      expect(cb).toBeDefined();
+
+      cb?.("change", ".git/config");
+      cb?.("change", ".git/HEAD");
+
+      await vi.advanceTimersByTimeAsync(150);
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it("ignores nested exact directory events (tail-position match)", async () => {
+      const { getCallback, createWatcher } = captureWorktreeCallback();
+      const onChange = vi.fn();
+
+      const watcher = createWatcher(onChange);
+      expect(watcher.start()).toBe(true);
+      const cb = getCallback();
+      expect(cb).toBeDefined();
+
+      // Directory creation/deletion reported as bare name without trailing child
+      cb?.("change", "packages/web/node_modules");
+      cb?.("change", "apps/site/.next");
+      cb?.("change", "pkg/__pycache__");
+
+      await vi.advanceTimersByTimeAsync(150);
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it("null filename bypasses ignore filter (global dirty mitigation)", async () => {
+      const { getCallback, createWatcher } = captureWorktreeCallback();
+      const onChange = vi.fn();
+
+      const watcher = createWatcher(onChange);
+      expect(watcher.start()).toBe(true);
+      const cb = getCallback();
+      expect(cb).toBeDefined();
+
+      // Fire several ignored events, then null — should still fire onChange
+      cb?.("change", "node_modules/react/index.js");
+      cb?.("change", "dist/bundle.js");
+      cb?.("change", null);
+
+      await vi.advanceTimersByTimeAsync(100);
+      expect(onChange).toHaveBeenCalledTimes(1);
+    });
+
+    it("ignores all 11 registered directory names at any depth", async () => {
+      const { getCallback, createWatcher } = captureWorktreeCallback();
+      const onChange = vi.fn();
+
+      const watcher = createWatcher(onChange);
+      expect(watcher.start()).toBe(true);
+      const cb = getCallback();
+      expect(cb).toBeDefined();
+
+      const dirs = [
+        "node_modules",
+        "dist",
+        "build",
+        ".next",
+        "target",
+        "coverage",
+        ".cache",
+        ".turbo",
+        "out",
+        "__pycache__",
+        ".venv",
+      ];
+
+      for (const dir of dirs) {
+        cb?.("change", `subdir/${dir}/file.ts`);
+      }
+
+      await vi.advanceTimersByTimeAsync(150);
+      expect(onChange).not.toHaveBeenCalled();
+    });
+  });
 });
