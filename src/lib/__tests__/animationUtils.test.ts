@@ -11,10 +11,12 @@ import {
   EASE_SNAPPY,
   EASE_SPRING_CRITICAL,
   getPanelTransitionDuration,
+  getTerminalAnimationDuration,
   getUiAnimationDuration,
   getUiTransitionDuration,
   PANEL_MINIMIZE_DURATION,
   PANEL_RESTORE_DURATION,
+  TERMINAL_ANIMATION_DURATION,
   UI_ANIMATION_DURATION,
   UI_ENTER_DURATION,
   UI_EXIT_DURATION,
@@ -96,6 +98,35 @@ describe("getUiTransitionDuration", () => {
     document.body.dataset.performanceMode = "true";
     expect(getUiTransitionDuration("enter")).toBe(0);
     expect(getUiTransitionDuration("exit")).toBe(0);
+  });
+});
+
+describe("getTerminalAnimationDuration", () => {
+  beforeEach(() => {
+    document.body.dataset.performanceMode = "false";
+  });
+
+  afterEach(() => {
+    delete document.body.dataset.performanceMode;
+  });
+
+  it("returns the terminal animation token (50ms — near-instant for high-volume close churn)", () => {
+    expect(getTerminalAnimationDuration()).toBe(TERMINAL_ANIMATION_DURATION);
+    expect(getTerminalAnimationDuration()).toBe(50);
+  });
+
+  it("returns 0 when performance mode is active (skip-timer signal)", () => {
+    document.body.dataset.performanceMode = "true";
+    expect(getTerminalAnimationDuration()).toBe(0);
+  });
+
+  it("returns 0 when data-reduce-animations is set (CSS+JS parity)", () => {
+    document.body.dataset.reduceAnimations = "true";
+    try {
+      expect(getTerminalAnimationDuration()).toBe(0);
+    } finally {
+      delete document.body.dataset.reduceAnimations;
+    }
   });
 });
 

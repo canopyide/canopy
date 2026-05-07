@@ -632,7 +632,7 @@ code.hljs {
 
   --animation-duration: 150ms;
   --transition-duration: 150ms;
-  --terminal-animation-duration: 150ms;
+  --terminal-animation-duration: 50ms;
   --focus-transition-duration: 150ms;
   --focus-transition-easing: cubic-bezier(0.4, 0, 0.2, 1);
   --background: var(--theme-surface-canvas);
