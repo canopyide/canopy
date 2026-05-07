@@ -89,7 +89,7 @@ describe("VoiceFileLinkResolver", () => {
     expect(result).toBe("src/components/Input.tsx");
   });
 
-  it("returns top candidate on AI rerank API error", async () => {
+  it("returns null on AI rerank API error (does not bypass confidence gate)", async () => {
     searchNaturalLanguageMock.mockResolvedValue([
       "src/components/Bar.tsx",
       "src/components/Input.tsx",
@@ -109,7 +109,72 @@ describe("VoiceFileLinkResolver", () => {
       description: "input component",
     });
 
-    expect(result).toBe("src/components/Bar.tsx");
+    expect(result).toBeNull();
+  });
+
+  it("returns null when AI rerank fetch rejects (network error)", async () => {
+    searchNaturalLanguageMock.mockResolvedValue([
+      "src/components/Bar.tsx",
+      "src/components/Input.tsx",
+    ]);
+
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
+
+    const resolver = new VoiceFileLinkResolver();
+    const result = await resolver.resolve({
+      ...BASE_PAYLOAD,
+      description: "input component",
+    });
+
+    expect(result).toBeNull();
+  });
+
+  it("returns null when AI rerank returns OK but no text content", async () => {
+    searchNaturalLanguageMock.mockResolvedValue([
+      "src/components/Bar.tsx",
+      "src/components/Input.tsx",
+    ]);
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({}),
+      } as unknown as Response)
+    );
+
+    const resolver = new VoiceFileLinkResolver();
+    const result = await resolver.resolve({
+      ...BASE_PAYLOAD,
+      description: "input component",
+    });
+
+    expect(result).toBeNull();
+  });
+
+  it("includes prompt_cache_key in AI rerank request body", async () => {
+    searchNaturalLanguageMock.mockResolvedValue([
+      "src/components/Bar.tsx",
+      "src/components/Input.tsx",
+    ]);
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        output_text: JSON.stringify({ matched_file: "src/components/Input.tsx" }),
+      }),
+    } as unknown as Response);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const resolver = new VoiceFileLinkResolver();
+    await resolver.resolve({
+      ...BASE_PAYLOAD,
+      description: "input component",
+    });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string);
+    expect(body.prompt_cache_key).toBe("voice-file-rerank-v1");
   });
 
   it("handles searchNaturalLanguage throwing", async () => {

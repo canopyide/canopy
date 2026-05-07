@@ -7,6 +7,7 @@ const NL_CONFIDENCE_THRESHOLD = 0.67;
 const MIN_MATCHING_TOKENS = 2;
 const AI_RERANK_TIMEOUT_MS = 4000;
 const AI_RERANK_MODEL = "gpt-5-nano";
+const AI_RERANK_CACHE_PREFIX = "voice-file-rerank-v1";
 
 const AI_RERANK_SCHEMA = {
   type: "object",
@@ -123,6 +124,7 @@ export class VoiceFileLinkResolver {
           instructions:
             "Given a natural language description and a list of file paths from a project, return the path that best matches the description. If no path is a good match, return null.",
           input: `Description: ${description}\n\nCandidates:\n${candidates.map((c, i) => `${i + 1}. ${c}`).join("\n")}`,
+          prompt_cache_key: AI_RERANK_CACHE_PREFIX,
           service_tier: "auto",
           reasoning: { effort: "minimal" },
           text: {
@@ -139,7 +141,7 @@ export class VoiceFileLinkResolver {
 
       if (!response.ok) {
         logWarn(`${P} AI rerank API error: ${response.status}`);
-        return candidates[0];
+        return null;
       }
 
       const data = (await response.json()) as {
@@ -152,7 +154,10 @@ export class VoiceFileLinkResolver {
           ? data.output_text
           : data.output?.flatMap((item) => item.content ?? []).find((item) => item.text)?.text;
 
-      if (!text) return candidates[0];
+      if (!text) {
+        logWarn(`${P} AI rerank returned empty text`);
+        return null;
+      }
 
       const parsed = JSON.parse(text) as { matched_file: string | null };
       if (parsed.matched_file && candidates.includes(parsed.matched_file)) {
@@ -163,8 +168,8 @@ export class VoiceFileLinkResolver {
       return null;
     } catch (error) {
       const msg = formatErrorMessage(error, "Voice AI rerank failed");
-      logWarn(`${P} AI rerank failed, using top candidate`, { error: msg });
-      return candidates[0];
+      logWarn(`${P} AI rerank failed`, { error: msg });
+      return null;
     }
   }
 }
