@@ -21,7 +21,7 @@ const mocks = vi.hoisted(() => ({
     getPendingChord: vi.fn<() => string | null>(() => null),
     clearPendingChord: vi.fn(),
     popPendingChord: vi.fn(),
-    getEffectiveCombo: vi.fn(() => undefined),
+    getEffectiveCombo: vi.fn<(actionId: string) => string | undefined>(() => undefined),
     subscribe: vi.fn(() => () => {}),
     // matchesEvent is invoked by the focus-region bypass. Lite mock that maps
     // Cmd→metaKey (mac-style) — sufficient for the tests in this file.

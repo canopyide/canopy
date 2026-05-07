@@ -105,12 +105,12 @@ describe("keybinding handlers adversarial", () => {
     const handler = getHandler(CHANNELS.KEYBINDING_GET_OVERRIDES);
     await handler(fakeEvent());
 
-    const warnings = warnSpy.mock.calls.map((c) => String(c[0]));
-    expect(warnings.some((m) => m.includes("action.bad.string"))).toBe(true);
-    expect(warnings.some((m) => m.includes("action.bad.empty"))).toBe(true);
-    expect(warnings.some((m) => m.includes("action.bad.number"))).toBe(true);
+    const warnings = warnSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+    expect(warnings.some((m: string) => m.includes("action.bad.string"))).toBe(true);
+    expect(warnings.some((m: string) => m.includes("action.bad.empty"))).toBe(true);
+    expect(warnings.some((m: string) => m.includes("action.bad.number"))).toBe(true);
     // Valid entry must not trigger a warning.
-    expect(warnings.some((m) => m.includes("action.valid"))).toBe(false);
+    expect(warnings.some((m: string) => m.includes("action.valid"))).toBe(false);
   });
 
   it("getOverrides returns {} for non-object or array store values", async () => {
