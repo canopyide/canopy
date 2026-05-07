@@ -20,6 +20,7 @@ import {
   typedHandle,
   typedHandleWithContext,
 } from "../../utils.js";
+import { validateBranchName } from "../../../../shared/utils/pathPattern.js";
 import { WORKTREE_RATE_LIMIT_KEY, WORKTREE_RATE_LIMIT_INTERVAL_MS } from "./constants.js";
 
 export function registerWorktreeLifecycleHandlers(deps: HandlerDependencies): () => void {
@@ -55,6 +56,22 @@ export function registerWorktreeLifecycleHandlers(deps: HandlerDependencies): ()
     rootPath: string;
     options: { baseBranch: string; newBranch: string; path: string; fromRemote?: boolean };
   }): Promise<string> => {
+    if (
+      !payload ||
+      typeof payload !== "object" ||
+      !payload.options ||
+      typeof payload.options !== "object"
+    ) {
+      throw new Error("Invalid worktree create payload");
+    }
+    // Defense-in-depth: WorkspaceService.createWorktree also validates, but
+    // throwing here surfaces a clean Error to the renderer without consuming
+    // a rate-limit slot or spinning up the workspace-host round-trip for
+    // obviously-invalid input. #7033.
+    const branchValidation = validateBranchName(payload.options.newBranch);
+    if (!branchValidation.valid) {
+      throw new Error(branchValidation.error ?? "Invalid branch name");
+    }
     await waitForRateLimitSlot(WORKTREE_RATE_LIMIT_KEY, WORKTREE_RATE_LIMIT_INTERVAL_MS);
     if (!deps.worktreeService) {
       throw new Error("Workspace client not initialized");

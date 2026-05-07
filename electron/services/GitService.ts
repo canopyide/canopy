@@ -6,7 +6,8 @@ import { logDebug, logError, logWarn } from "../utils/logger.js";
 import type { GitStatus, WorktreeChanges } from "../../shared/types/index.js";
 import { WorktreeRemovedError, GitError, toGitOperationError } from "../utils/errorTypes.js";
 import type { CrossWorktreeDiffResult, CrossWorktreeFile } from "../../shared/types/ipc/git.js";
-import { createHardenedGit, validateBranchName } from "../utils/hardenedGit.js";
+import { createHardenedGit } from "../utils/hardenedGit.js";
+import { validateBranchName } from "../../shared/utils/pathPattern.js";
 import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 
 function escapeRegex(str: string): string {
@@ -100,8 +101,18 @@ export class GitService {
       fromRemote: options.fromRemote,
     });
 
-    validateBranchName(newBranch);
-    validateBranchName(baseBranch);
+    const newBranchValidation = validateBranchName(newBranch);
+    if (!newBranchValidation.valid) {
+      throw new Error(
+        `Invalid branch name '${newBranch}': ${newBranchValidation.error ?? "invalid"}`
+      );
+    }
+    const baseBranchValidation = validateBranchName(baseBranch);
+    if (!baseBranchValidation.valid) {
+      throw new Error(
+        `Invalid base branch '${baseBranch}': ${baseBranchValidation.error ?? "invalid"}`
+      );
+    }
 
     const pathValidation = this.validatePath(path);
     if (!pathValidation.valid) {
@@ -319,8 +330,14 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     // Validate before the equality fast-path so an invalid argv-shaped name
     // is rejected unconditionally — not silently accepted when both inputs
     // happen to match.
-    validateBranchName(branch1);
-    validateBranchName(branch2);
+    const branch1Validation = validateBranchName(branch1);
+    if (!branch1Validation.valid) {
+      throw new Error(`Invalid branch name '${branch1}': ${branch1Validation.error ?? "invalid"}`);
+    }
+    const branch2Validation = validateBranchName(branch2);
+    if (!branch2Validation.valid) {
+      throw new Error(`Invalid branch name '${branch2}': ${branch2Validation.error ?? "invalid"}`);
+    }
 
     if (branch1 === branch2) {
       return filePath ? "NO_CHANGES" : { branch1, branch2, files: [] };

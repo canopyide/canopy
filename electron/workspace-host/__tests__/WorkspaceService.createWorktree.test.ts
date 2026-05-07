@@ -120,6 +120,13 @@ vi.mock("fs/promises", () => ({
   cp: vi.fn().mockResolvedValue(undefined),
 }));
 
+// #7033: createWorktree now pre-flights the parent directory via existsSync.
+// Default to "exists" so all pre-existing tests keep passing; the parent-dir
+// negative test below toggles it to false.
+vi.mock("fs", () => ({
+  existsSync: vi.fn().mockReturnValue(true),
+}));
+
 function flushAsyncTail(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve));
 }
@@ -723,10 +730,12 @@ describe("WorkspaceService.createWorktree", () => {
   });
 
   it("escapes regex metacharacters in branch names when computing suffixes", async () => {
-    // Branch names like `bugfix/[6463]` contain regex metacharacters; without
-    // escaping, the suffix scan would miss `bugfix/[6463]-2` and reissue it.
+    // Branch names like `bugfix/foo(6463)` contain regex metacharacters; without
+    // escaping, the suffix scan would miss `bugfix/foo(6463)-2` and reissue it.
+    // Parens are valid per git check-ref-format; pre-#7033 the test used `[…]`
+    // but `[` is forbidden by check-ref-format and now rejected at the gate.
     mockSimpleGit.branchLocal.mockResolvedValueOnce({
-      all: ["main", "bugfix/[6463]", "bugfix/[6463]-2"],
+      all: ["main", "bugfix/foo(6463)", "bugfix/foo(6463)-2"],
       current: "main",
       branches: {},
       detached: false,
@@ -741,7 +750,7 @@ describe("WorkspaceService.createWorktree", () => {
             "",
             "worktree /test/live",
             "HEAD def",
-            "branch refs/heads/bugfix/[6463]",
+            "branch refs/heads/bugfix/foo(6463)",
             "",
           ].join("\n")
         );
@@ -751,14 +760,14 @@ describe("WorkspaceService.createWorktree", () => {
 
     await service.createWorktree("req-regex-escape", "/test/root", {
       baseBranch: "main",
-      newBranch: "bugfix/[6463]",
+      newBranch: "bugfix/foo(6463)",
       path: "/test/worktree-regex",
     });
 
     const worktreeAddCall = mockSimpleGit.raw.mock.calls.find(
       (call) => call[0][0] === "worktree" && call[0][1] === "add"
     );
-    expect(worktreeAddCall![0][3]).toBe("bugfix/[6463]-3");
+    expect(worktreeAddCall![0][3]).toBe("bugfix/foo(6463)-3");
   });
 
   it("proceeds with the original -b path when the branch does not exist locally", async () => {
@@ -814,6 +823,149 @@ describe("WorkspaceService.createWorktree", () => {
       "/test/worktree-explicit",
       "existing-branch",
     ]);
+  });
+
+  it("rejects empty newBranch before invoking git (#7033)", async () => {
+    await service.createWorktree("req-empty", "/test/root", {
+      baseBranch: "main",
+      newBranch: "",
+      path: "/test/worktree-empty",
+    });
+
+    expect(mockSimpleGit.raw).not.toHaveBeenCalled();
+    expect(mockSendEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "create-worktree-result",
+        requestId: "req-empty",
+        success: false,
+        error: expect.stringMatching(/empty/i),
+      })
+    );
+  });
+
+  it("rejects whitespace-only newBranch before invoking git (#7033)", async () => {
+    await service.createWorktree("req-blank", "/test/root", {
+      baseBranch: "main",
+      newBranch: "   ",
+      path: "/test/worktree-blank",
+    });
+
+    expect(mockSimpleGit.raw).not.toHaveBeenCalled();
+    expect(mockSendEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "create-worktree-result",
+        requestId: "req-blank",
+        success: false,
+      })
+    );
+  });
+
+  it("rejects git-invalid branch names before invoking git (#7033)", async () => {
+    await service.createWorktree("req-head", "/test/root", {
+      baseBranch: "main",
+      newBranch: "HEAD",
+      path: "/test/worktree-head",
+    });
+
+    expect(mockSimpleGit.raw).not.toHaveBeenCalled();
+    expect(mockSendEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "create-worktree-result",
+        requestId: "req-head",
+        success: false,
+        error: expect.stringContaining("HEAD"),
+      })
+    );
+  });
+
+  it("rejects Windows-reserved branch names before invoking git (#7033)", async () => {
+    await service.createWorktree("req-nul", "/test/root", {
+      baseBranch: "main",
+      newBranch: "feature/NUL",
+      path: "/test/worktree-nul",
+    });
+
+    expect(mockSimpleGit.raw).not.toHaveBeenCalled();
+    expect(mockSendEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "create-worktree-result",
+        requestId: "req-nul",
+        success: false,
+        error: expect.stringMatching(/Windows-reserved/),
+      })
+    );
+  });
+
+  it("rejects when parent directory does not exist (#7033)", async () => {
+    const fsModule = await import("fs");
+    vi.mocked(fsModule.existsSync).mockReturnValueOnce(false);
+
+    await service.createWorktree("req-no-parent", "/test/root", {
+      baseBranch: "main",
+      newBranch: "feature/foo",
+      path: "/missing/parent/worktree",
+    });
+
+    expect(mockSimpleGit.raw).not.toHaveBeenCalled();
+    expect(mockSendEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "create-worktree-result",
+        requestId: "req-no-parent",
+        success: false,
+        error: expect.stringContaining("Parent directory does not exist"),
+      })
+    );
+  });
+
+  it("validates branch name even when useExistingBranch is true (#7033)", async () => {
+    // The pre-flight gate must run unconditionally; useExistingBranch is just
+    // the create-strategy switch. A reuse caller passing 'HEAD' must still be
+    // rejected before reaching git.
+    await service.createWorktree("req-existing-head", "/test/root", {
+      baseBranch: "main",
+      newBranch: "HEAD",
+      path: "/test/worktree-existing-head",
+      useExistingBranch: true,
+    });
+
+    expect(mockSimpleGit.raw).not.toHaveBeenCalled();
+    expect(mockSendEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "create-worktree-result",
+        requestId: "req-existing-head",
+        success: false,
+        error: expect.stringContaining("HEAD"),
+      })
+    );
+  });
+
+  it("checks the parent directory of a relative path against rootPath (#7033)", async () => {
+    // Programmatic callers (MCP, recipes) may pass a relative `path`. The
+    // pre-flight must inspect the rootPath-resolved parent, not process.cwd.
+    const fsModule = await import("fs");
+    const existsSyncMock = vi.mocked(fsModule.existsSync);
+    existsSyncMock.mockImplementationOnce((p: unknown) => {
+      // Only return false for the expected resolved parent; other lookups
+      // (none in this test, but defensive) default to true.
+      return p !== "/test/root/worktrees";
+    });
+
+    await service.createWorktree("req-relative-path", "/test/root", {
+      baseBranch: "main",
+      newBranch: "feature/foo",
+      path: "worktrees/feat",
+    });
+
+    expect(existsSyncMock).toHaveBeenCalledWith("/test/root/worktrees");
+    expect(mockSimpleGit.raw).not.toHaveBeenCalled();
+    expect(mockSendEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "create-worktree-result",
+        requestId: "req-relative-path",
+        success: false,
+        error: expect.stringContaining("/test/root/worktrees"),
+      })
+    );
   });
 
   it("emits a worktree-update before create-worktree-result so the renderer's store picks up the new worktree", async () => {

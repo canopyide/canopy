@@ -74,6 +74,13 @@ vi.mock("fs/promises", () => ({
   cp: vi.fn().mockResolvedValue(undefined),
 }));
 
+// #7033: createWorktree pre-flights the parent directory via existsSync.
+// Default to "exists" so existing tests focus on the git/monitor logic
+// rather than the pre-flight check.
+vi.mock("fs", () => ({
+  existsSync: vi.fn().mockReturnValue(true),
+}));
+
 describe("WorkspaceService adversarial", () => {
   let service: WorkspaceService;
   let sentEvents: WorkspaceHostEvent[];

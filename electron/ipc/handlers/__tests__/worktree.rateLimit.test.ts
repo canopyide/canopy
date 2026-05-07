@@ -69,6 +69,7 @@ vi.mock("../../../utils/worktreePattern.js", () => ({
 vi.mock("../../../../shared/utils/pathPattern.js", () => ({
   generateWorktreePath: vi.fn(() => "/test/worktrees/task-123"),
   validatePathPattern: vi.fn(() => ({ valid: true })),
+  validateBranchName: vi.fn(() => ({ valid: true })),
 }));
 
 vi.mock("../../../utils/logger.js", () => ({

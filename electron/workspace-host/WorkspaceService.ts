@@ -1,14 +1,12 @@
 import os from "os";
 import PQueue from "p-queue";
+import { existsSync } from "fs";
 import { stat, readFile, access } from "fs/promises";
-import { resolve as pathResolve, isAbsolute } from "path";
+import { resolve as pathResolve, isAbsolute, dirname } from "path";
+import { validateBranchName } from "../../shared/utils/pathPattern.js";
 import { generateProjectId, settingsFilePath } from "../services/projectStorePaths.js";
 import { SimpleGit, BranchSummary } from "simple-git";
-import {
-  createHardenedGit,
-  createAuthenticatedGit,
-  validateBranchName,
-} from "../utils/hardenedGit.js";
+import { createHardenedGit, createAuthenticatedGit } from "../utils/hardenedGit.js";
 import { classifyGitError, getGitRecoveryAction } from "../../shared/utils/gitOperationErrors.js";
 import type { Worktree } from "../../shared/types/worktree.js";
 import type {
@@ -932,10 +930,34 @@ export class WorkspaceService {
       let { newBranch } = options;
       let { fromRemote = false, useExistingBranch = false } = options;
 
-      // Reject branch names that argv parsers would treat as flags (leading
-      // dash) or that contain git-special characters before any git call.
-      validateBranchName(newBranch);
-      validateBranchName(baseBranch);
+      // Authoritative validation gate. Every caller (IPC, MCP, recipes,
+      // worktree:create-for-task) reaches this method, so any branch-name or
+      // parent-dir issue caught here surfaces a clear error instead of
+      // bubbling up as a low-level git fatal. #7033. Also rejects argv-shaped
+      // names (leading dash) and git-special characters before any git call.
+      if (typeof newBranch !== "string" || newBranch.trim().length === 0) {
+        throw new Error("Branch name cannot be empty");
+      }
+      const newBranchValidation = validateBranchName(newBranch);
+      if (!newBranchValidation.valid) {
+        throw new Error(
+          `Invalid branch name '${newBranch}': ${newBranchValidation.error ?? "invalid"}`
+        );
+      }
+      const baseBranchValidation = validateBranchName(baseBranch);
+      if (!baseBranchValidation.valid) {
+        throw new Error(
+          `Invalid base branch '${baseBranch}': ${baseBranchValidation.error ?? "invalid"}`
+        );
+      }
+      // Resolve before taking dirname so a relative `path` (rare, but allowed
+      // through programmatic callers) is checked against the right parent
+      // rather than against process.cwd.
+      const absoluteCreatePath = isAbsolute(path) ? path : pathResolve(rootPath, path);
+      const parentDir = dirname(absoluteCreatePath);
+      if (!existsSync(parentDir)) {
+        throw new Error(`Parent directory does not exist: ${parentDir}`);
+      }
 
       // #6463: when not explicitly reusing a branch, guard against a stale
       // local branch with the same name. Without this, `git worktree add -b`

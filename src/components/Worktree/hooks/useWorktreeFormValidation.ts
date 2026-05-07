@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { validateBranchName } from "@shared/utils/pathPattern";
 import { parseBranchInput } from "../branchPrefixUtils";
 import type { ErrorField } from "./useWorktreeFormErrors";
 
@@ -63,54 +64,24 @@ export function useWorktreeFormValidation() {
 
       const parsed = parseBranchInput(trimmedInput);
 
-      if (parsed.hasPrefix) {
-        if (!parsed.slug || !parsed.slug.trim()) {
-          return {
-            valid: false,
-            error: { message: "Please enter a branch name after the prefix", field: "new-branch" },
-          };
-        }
-        if (
-          /[\s.:]/.test(parsed.prefix) ||
-          /^[.-]/.test(parsed.prefix) ||
-          parsed.prefix.includes("..")
-        ) {
-          return {
-            valid: false,
-            error: { message: "Branch prefix contains invalid characters", field: "new-branch" },
-          };
-        }
-        if (/[\s.]$/.test(parsed.slug) || /^[.-]/.test(parsed.slug)) {
-          return {
-            valid: false,
-            error: {
-              message: "Branch name cannot start with '.', '-' or end with space or '.'",
-              field: "new-branch",
-            },
-          };
-        }
-        if (/[\\:]/.test(parsed.slug) || parsed.slug.includes("..")) {
-          return {
-            valid: false,
-            error: { message: "Branch name contains invalid characters", field: "new-branch" },
-          };
-        }
-      } else {
-        if (/[\s.]$/.test(trimmedInput) || /^[.-]/.test(trimmedInput)) {
-          return {
-            valid: false,
-            error: {
-              message: "Branch name cannot start with '.', '-' or end with space or '.'",
-              field: "new-branch",
-            },
-          };
-        }
-        if (/[/\\:]/.test(trimmedInput) || trimmedInput.includes("..")) {
-          return {
-            valid: false,
-            error: { message: "Branch name contains invalid characters", field: "new-branch" },
-          };
-        }
+      if (parsed.hasPrefix && (!parsed.slug || !parsed.slug.trim())) {
+        return {
+          valid: false,
+          error: { message: "Please enter a branch name after the prefix", field: "new-branch" },
+        };
+      }
+
+      // Use the same validator as the IPC handler and WorkspaceService so the
+      // dialog rejects exactly what the server would. #7033.
+      const branchValidation = validateBranchName(parsed.fullBranchName);
+      if (!branchValidation.valid) {
+        return {
+          valid: false,
+          error: {
+            message: branchValidation.error ?? "Branch name contains invalid characters",
+            field: "new-branch",
+          },
+        };
       }
 
       if (!worktreePath.trim()) {

@@ -224,7 +224,7 @@ describe("GitService", () => {
       const service = new GitService(tempDir);
 
       await expect(service.compareWorktrees("--exec=evil", "main")).rejects.toThrow(
-        "must not start with '-'"
+        "cannot start with '-'"
       );
       expect(gitClientMock.raw).not.toHaveBeenCalled();
     });
@@ -235,7 +235,7 @@ describe("GitService", () => {
       const service = new GitService(tempDir);
 
       await expect(service.compareWorktrees("--exec=evil", "--exec=evil")).rejects.toThrow(
-        "must not start with '-'"
+        "cannot start with '-'"
       );
       expect(gitClientMock.raw).not.toHaveBeenCalled();
     });
@@ -345,7 +345,7 @@ describe("GitService", () => {
           newBranch: "--exec=touch /tmp/x",
           path: target,
         })
-      ).rejects.toThrow("must not start with '-'");
+      ).rejects.toThrow("cannot start with '-'");
       expect(gitClientMock.raw).not.toHaveBeenCalled();
     });
 
@@ -359,7 +359,7 @@ describe("GitService", () => {
           newBranch: "feature/x",
           path: target,
         })
-      ).rejects.toThrow("must not start with '-'");
+      ).rejects.toThrow("cannot start with '-'");
       expect(gitClientMock.raw).not.toHaveBeenCalled();
     });
 
