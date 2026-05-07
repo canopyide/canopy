@@ -1,5 +1,6 @@
 import { WINDOWS_RESERVED_NAMES } from "./pathPattern.js";
 
+// eslint-disable-next-line no-control-regex
 const CONTROL_CHARS = /[\x00-\x1F]/;
 const WIN32_ILLEGAL_CHARS = /[<>:"|?*]/;
 const PATH_SEPARATORS = /[/\\]/;
