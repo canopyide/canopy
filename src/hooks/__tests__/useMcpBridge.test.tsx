@@ -3,6 +3,7 @@ import { renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ActionManifestEntry } from "@shared/types/actions";
 import { __resetMcpConfirmStoreForTesting, useMcpConfirmStore } from "@/store/mcpConfirmStore";
+import { isMcpSpawnFocusSuppressed } from "@/store/mcpSpawnFocusGuard";
 
 const mocks = vi.hoisted(() => ({
   list: vi.fn(() => [] as ActionManifestEntry[]),
@@ -147,6 +148,29 @@ describe("useMcpBridge", () => {
     );
     expect(sendDispatchActionResponse).toHaveBeenCalledWith({
       requestId: "req-safe",
+      result: { ok: true, result: { ok: true } },
+      confirmationDecision: undefined,
+    });
+  });
+
+  it("suppresses create-time panel focus while an MCP action dispatch is in flight", async () => {
+    mocks.get.mockReturnValue(safeManifestEntry());
+    mocks.dispatch.mockImplementation(async () => {
+      expect(isMcpSpawnFocusSuppressed()).toBe(true);
+      return { ok: true, result: { ok: true } };
+    });
+
+    renderHook(() => useMcpBridge());
+
+    await dispatchHandler?.({
+      requestId: "req-focus-scope",
+      actionId: "actions.list",
+      args: { limit: 5 },
+    });
+
+    expect(isMcpSpawnFocusSuppressed()).toBe(false);
+    expect(sendDispatchActionResponse).toHaveBeenCalledWith({
+      requestId: "req-focus-scope",
       result: { ok: true, result: { ok: true } },
       confirmationDecision: undefined,
     });

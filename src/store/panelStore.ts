@@ -31,6 +31,7 @@ import { terminalRegistryController } from "@/controllers";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { useWorktreeSelectionStore } from "./worktreeStore";
 import { isAssistantFocused } from "./macroFocusStore";
+import { isMcpSpawnFocusSuppressed } from "./mcpSpawnFocusGuard";
 import type { CrashType } from "@shared/types/pty-host";
 import { isRuntimeAgentTerminal } from "@/utils/terminalType";
 import { logInfo, logWarn, logError } from "@/utils/logger";
@@ -163,8 +164,12 @@ export const usePanelStore = create<PanelGridState>()(
         // boundary; capturing here pins them to the user's pre-create state
         // (#6959 — assistant focus theft when MCP launches an agent).
         const assistantHasFocus = isAssistantFocused();
-        const isMcpSpawn = options.spawnedBy === "mcp";
-        const id = await registrySlice.addPanel(options);
+        const suppressMcpSpawnFocus = options.spawnedBy === "mcp" || isMcpSpawnFocusSuppressed();
+        const panelOptions =
+          suppressMcpSpawnFocus && options.spawnedBy !== "mcp"
+            ? ({ ...options, spawnedBy: "mcp" } as AddPanelOptions)
+            : options;
+        const id = await registrySlice.addPanel(panelOptions);
         if (id === null) return null;
         // Skip the per-panel focus mutation while a hydration batch is collecting panels:
         // firing `set({ focusedId })` here would schedule one extra render per panel and
@@ -175,7 +180,7 @@ export const usePanelStore = create<PanelGridState>()(
           // Suppress focus capture for MCP-initiated spawns or when the
           // Daintree Assistant currently owns keyboard focus. The new panel
           // still lands in the grid; the user keeps typing where they were.
-          if (assistantHasFocus || isMcpSpawn) {
+          if (assistantHasFocus || suppressMcpSpawnFocus) {
             return id;
           }
           if (focusedBeforeCreate !== id) {
@@ -192,12 +197,16 @@ export const usePanelStore = create<PanelGridState>()(
           // inside its commit (#6590). When the assistant currently owns
           // input we issue a corrective set() to roll the focus back —
           // `activeDockTerminalId` stays so the dock panel is still surfaced.
-          // MCP-tagged spawns skip the registry's focus mutation entirely
+          // MCP spawns skip the registry's focus mutation entirely
           // (handled in `panelRegistry/addPanel.ts`), so no rollback is
           // needed here for the MCP case.
-          if (assistantHasFocus && !isMcpSpawn) {
+          if (assistantHasFocus && !suppressMcpSpawnFocus) {
             set({ focusedId: focusedBeforeCreate });
-          } else if (!isMcpSpawn && focusedBeforeCreate !== null && focusedBeforeCreate !== id) {
+          } else if (
+            !suppressMcpSpawnFocus &&
+            focusedBeforeCreate !== null &&
+            focusedBeforeCreate !== id
+          ) {
             // Best-effort previousFocusedId for the tmux-style alternate-pane toggle.
             // Updating in a follow-up set() is fine — previousFocusedId is metadata,
             // not load-bearing for dock visibility (which the watchdog effect cares

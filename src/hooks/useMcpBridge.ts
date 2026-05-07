@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { actionService } from "@/services/ActionService";
 import { logError } from "@/utils/logger";
 import { requestMcpConfirmation, useMcpConfirmStore } from "@/store/mcpConfirmStore";
+import { runWithMcpSpawnFocusSuppressed } from "@/store/mcpSpawnFocusGuard";
 import type { ActionDispatchResult, ActionId } from "@shared/types/actions";
 import type { McpConfirmationDecision } from "@shared/types/ipc/mcpServer";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
@@ -128,10 +129,12 @@ export function useMcpBridge(): void {
           }
 
           const dispatchArgs = tagMcpSpawnSource(actionId, args);
-          const result = await actionService.dispatch(actionId as ActionId, dispatchArgs, {
-            source: "agent",
-            confirmed: effectiveConfirmed,
-          });
+          const result = await runWithMcpSpawnFocusSuppressed(() =>
+            actionService.dispatch(actionId as ActionId, dispatchArgs, {
+              source: "agent",
+              confirmed: effectiveConfirmed,
+            })
+          );
           if (disposed) return;
           window.electron.mcpBridge.sendDispatchActionResponse({
             requestId,

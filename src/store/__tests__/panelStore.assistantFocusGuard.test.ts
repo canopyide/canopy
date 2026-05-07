@@ -80,6 +80,7 @@ vi.mock("@/store/terminalInputStore", () => ({
 
 import { usePanelStore } from "../panelStore";
 import { useMacroFocusStore } from "../macroFocusStore";
+import { runWithMcpSpawnFocusSuppressed } from "../mcpSpawnFocusGuard";
 
 function resetState() {
   usePanelStore.setState((s) => ({
@@ -184,6 +185,22 @@ describe("panelStore.addPanel focus guard (#6959)", () => {
     expect(state.panelsById[newId!]?.spawnedBy).toBe("mcp");
   });
 
+  it("does not advance focusedId while an MCP dispatch is active even without an action tag", async () => {
+    const newId = await runWithMcpSpawnFocusSuppressed(() =>
+      usePanelStore.getState().addPanel({
+        kind: "terminal",
+        cwd: "/test",
+        location: "grid",
+      })
+    );
+
+    expect(newId).toBeTruthy();
+    const state = usePanelStore.getState();
+    expect(state.focusedId).toBe("incumbent-1");
+    expect(state.previousFocusedId).toBeNull();
+    expect(state.panelsById[newId!]?.spawnedBy).toBe("mcp");
+  });
+
   it("still advances focusedId for a normal user-initiated grid spawn", async () => {
     const newId = await usePanelStore.getState().addPanel({
       kind: "terminal",
@@ -227,6 +244,24 @@ describe("panelStore.addPanel focus guard (#6959)", () => {
       expect(state.activeDockTerminalId).toBe(newId);
       expect(state.focusedId).toBe("incumbent-1");
       expect(state.previousFocusedId).toBeNull();
+    });
+
+    it("active MCP dispatch into dock with activateDockOnCreate exposes the panel but never claims focus", async () => {
+      const newId = await runWithMcpSpawnFocusSuppressed(() =>
+        usePanelStore.getState().addPanel({
+          kind: "terminal",
+          cwd: "/test",
+          location: "dock",
+          activateDockOnCreate: true,
+        })
+      );
+
+      expect(newId).toBeTruthy();
+      const state = usePanelStore.getState();
+      expect(state.activeDockTerminalId).toBe(newId);
+      expect(state.focusedId).toBe("incumbent-1");
+      expect(state.previousFocusedId).toBeNull();
+      expect(state.panelsById[newId!]?.spawnedBy).toBe("mcp");
     });
 
     it("MCP spawn of a non-PTY (browser) panel into the dock does not steal focus", async () => {

@@ -3,6 +3,7 @@ import { usePanelStore, type AddPanelOptions, type TerminalInstance } from "@/st
 import { useProjectStore } from "@/store/projectStore";
 import { useScratchStore } from "@/store/scratchStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
+import { isMcpSpawnFocusSuppressed } from "@/store/mcpSpawnFocusGuard";
 import { useCliAvailabilityStore } from "@/store/cliAvailabilityStore";
 import { useWorktrees } from "./useWorktrees";
 import { isElectronAvailable } from "./useElectron";
@@ -424,6 +425,8 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
         }
 
         const presetTitle = isAgent && preset ? preset.name : title;
+        const spawnedBy =
+          launchOptions?.spawnedBy ?? (isMcpSpawnFocusSuppressed() ? "mcp" : undefined);
 
         const options: AddPanelOptions = isAgent
           ? {
@@ -441,7 +444,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
               env: presetEnv,
               activateDockOnCreate: launchOptions?.activateDockOnCreate,
               ephemeral: launchOptions?.ephemeral,
-              spawnedBy: launchOptions?.spawnedBy,
+              spawnedBy,
             }
           : {
               kind: "terminal",
@@ -452,7 +455,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
               location: launchOptions?.location,
               activateDockOnCreate: launchOptions?.activateDockOnCreate,
               ephemeral: launchOptions?.ephemeral,
-              spawnedBy: launchOptions?.spawnedBy,
+              spawnedBy,
             };
 
         // Soft launch gate: intercept when the CLI is not launchable (missing,
@@ -481,7 +484,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
               isVisible: true,
               extensionState: presetEnv ? { presetEnv } : undefined,
               ephemeral: launchOptions?.ephemeral,
-              spawnedBy: launchOptions?.spawnedBy,
+              spawnedBy,
             };
             usePanelStore.setState((state) => {
               const next: Partial<typeof state> = {
@@ -497,7 +500,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
                 next.activeDockTerminalId = gateId;
                 // MCP-initiated launches still expose the gate panel in the
                 // dock but never claim keyboard focus. See #6959.
-                if (launchOptions?.spawnedBy !== "mcp") {
+                if (spawnedBy !== "mcp") {
                   next.focusedId = gateId;
                   if (focusActuallyChanged) {
                     next.previousFocusedId = prevFocusedId;
