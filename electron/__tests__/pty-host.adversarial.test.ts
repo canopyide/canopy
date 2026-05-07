@@ -638,12 +638,14 @@ describe("pty-host adversarial", () => {
 
     parentPort.emit("message", {
       type: "init-buffers",
-      visualBuffers: [SharedRingBuffer.create(8)],
+      visualBuffers: [SharedRingBuffer.create(64)],
       visualSignalBuffer: new SharedArrayBuffer(4),
     });
     await flushMicrotasks();
 
-    (hostState.currentPtyManager as MiniEmitter).emit("data", "t1", "abc");
+    // Payload large enough to overflow the 64-byte ring after framing,
+    // forcing pending segments and triggering the backpressure path.
+    (hostState.currentPtyManager as MiniEmitter).emit("data", "t1", "a".repeat(60));
 
     const backpressure = hostState.backpressureManagers[0];
     expect(backpressure.hasPendingSegments("t1")).toBe(true);
@@ -667,19 +669,19 @@ describe("pty-host adversarial", () => {
 
     parentPort.emit("message", {
       type: "init-buffers",
-      visualBuffers: [SharedRingBuffer.create(8)],
+      visualBuffers: [SharedRingBuffer.create(64)],
       visualSignalBuffer: new SharedArrayBuffer(4),
     });
     await flushMicrotasks();
 
-    (hostState.currentPtyManager as MiniEmitter).emit("data", "t1", "abc");
+    (hostState.currentPtyManager as MiniEmitter).emit("data", "t1", "a".repeat(60));
     vi.advanceTimersByTime(BACKPRESSURE_SAFETY_TIMEOUT_MS);
     await flushMicrotasks();
 
     const resumeCallsBefore = terminal.ptyProcess.resume.mock.calls.length;
     const statusCountBefore = terminalStatusPayloads(parentPort).length;
 
-    parentPort.emit("message", { type: "acknowledge-data", id: "t1", charCount: 3 });
+    parentPort.emit("message", { type: "acknowledge-data", id: "t1", charCount: 60 });
     await flushMicrotasks();
 
     expect(terminal.ptyProcess.resume).toHaveBeenCalledTimes(resumeCallsBefore);

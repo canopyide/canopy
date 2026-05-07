@@ -7,11 +7,13 @@ export class SharedRingBuffer {
   private buffer: Uint8Array;
   private meta: Int32Array;
   private capacity: number;
+  private readonly mask: number;
 
   private static readonly READ_IDX = 0;
   private static readonly WRITE_IDX = 1;
   static readonly SIGNAL_IDX = 2;
   private static readonly META_SIZE = 12; // 3 * 4 bytes for Int32Array
+  private static readonly MIN_CAPACITY = 64;
 
   constructor(sharedBuffer: SharedArrayBuffer) {
     // Validate buffer size
@@ -23,9 +25,16 @@ export class SharedRingBuffer {
     this.meta = new Int32Array(sharedBuffer, 0, 3);
     this.buffer = new Uint8Array(sharedBuffer, SharedRingBuffer.META_SIZE);
     this.capacity = this.buffer.length;
-    if (this.capacity < 2) {
-      throw new Error("Ring buffer capacity must be >= 2 bytes");
+    if (this.capacity < SharedRingBuffer.MIN_CAPACITY) {
+      throw new Error(
+        `Ring buffer capacity must be >= ${SharedRingBuffer.MIN_CAPACITY} bytes, got ${this.capacity}`
+      );
     }
+    if ((this.capacity & (this.capacity - 1)) !== 0) {
+      throw new Error(`Ring buffer capacity must be a power of two, got ${this.capacity}`);
+    }
+    // Mask for fast modulo wraparound on power-of-two capacities.
+    this.mask = this.capacity - 1;
   }
 
   /**
@@ -74,7 +83,7 @@ export class SharedRingBuffer {
     }
 
     // Update write index atomically
-    const newWriteIndex = (writeIndex + toWrite) % this.capacity;
+    const newWriteIndex = (writeIndex + toWrite) & this.mask;
     Atomics.store(this.meta, SharedRingBuffer.WRITE_IDX, newWriteIndex);
 
     return toWrite;
@@ -83,8 +92,9 @@ export class SharedRingBuffer {
   /**
    * Read all available data from the buffer (Single Consumer - Renderer).
    * Returns new data as Uint8Array or null if empty.
-   * CAUTION: Can allocate arbitrarily large buffers when renderer is behind.
-   * Prefer readUpTo() for main-thread consumers to cap allocations.
+   *
+   * @deprecated Prefer {@link readUpTo} — `read()` allocates a buffer sized to
+   * everything pending, which can spike GC when the consumer falls behind.
    */
   read(): Uint8Array | null {
     const writeIndex = Atomics.load(this.meta, SharedRingBuffer.WRITE_IDX);
@@ -111,7 +121,7 @@ export class SharedRingBuffer {
     }
 
     // Update read index atomically
-    const newReadIndex = (readIndex + availableToRead) % this.capacity;
+    const newReadIndex = (readIndex + availableToRead) & this.mask;
     Atomics.store(this.meta, SharedRingBuffer.READ_IDX, newReadIndex);
 
     return result;
@@ -155,7 +165,7 @@ export class SharedRingBuffer {
     }
 
     // Update read index atomically
-    const newReadIndex = (readIndex + toRead) % this.capacity;
+    const newReadIndex = (readIndex + toRead) & this.mask;
     Atomics.store(this.meta, SharedRingBuffer.READ_IDX, newReadIndex);
 
     return result;
@@ -203,8 +213,25 @@ export class SharedRingBuffer {
   }
 
   /**
+   * Index into the signal view (`getSignalView()`) used for `Atomics.wait` /
+   * `Atomics.notify`. Prefer this accessor over the `SIGNAL_IDX` constant so
+   * call sites don't hard-code the magic offset.
+   */
+  static getSignalIndex(): number {
+    return SharedRingBuffer.SIGNAL_IDX;
+  }
+
+  /**
    * Notify waiting consumers that new data is available.
    * Call this after successful write() operations.
+   *
+   * The signal slot is a generation counter incremented with `Atomics.add`.
+   * On a 32-bit signed slot it wraps at INT32_MAX → INT32_MIN; this is
+   * intentional and harmless because consumers compare for equality via
+   * `Atomics.wait(view, idx, expected)` — wraparound just causes the next
+   * wait to return `"not-equal"` and the consumer re-enters the loop.
+   * Consumers MUST NOT do ordered comparisons (`> lastSeen`) against this
+   * value — they will silently misbehave on wrap.
    */
   notifyConsumer(): void {
     Atomics.add(this.meta, SharedRingBuffer.SIGNAL_IDX, 1);
