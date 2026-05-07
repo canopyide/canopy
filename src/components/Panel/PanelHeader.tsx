@@ -359,6 +359,19 @@ function PanelHeaderComponent({
     }
   };
 
+  const handleContainerMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Forward to dnd-kit's mousedown listener first — it bails out if
+    // `defaultPrevented` is already set, so our preventDefault must come after.
+    dragListeners?.onMouseDown?.(e);
+    // Suppress the browser's word-selection default on the second mousedown
+    // of a double-click. Without this, toggling focus mode mid-gesture lets
+    // the second mousedown land on a sibling pane (revealed by the slide
+    // animation) and select its text — issue #6978.
+    if (e.detail >= 2) {
+      e.preventDefault();
+    }
+  };
+
   const getAriaLabel = () => {
     if (kind === "browser") return "Edit browser title";
     if (!chrome.isAgent && kind === "terminal") return "Edit terminal title";
@@ -527,7 +540,7 @@ function PanelHeaderComponent({
       data-fleet-previewed={isFleetPreviewed || undefined}
       data-pane-chrome=""
       className={cn(
-        "flex items-center justify-between px-3 shrink-0 text-xs transition-colors relative overflow-hidden group",
+        "flex items-center justify-between px-3 shrink-0 text-xs transition-colors relative overflow-hidden group select-none",
         "h-8 border-b border-divider",
         isMaximized
           ? "h-10 bg-daintree-sidebar border-daintree-border"
@@ -553,6 +566,7 @@ function PanelHeaderComponent({
         isPinged && !isMaximized && "animate-terminal-header-ping",
         isDragging && "pointer-events-none"
       )}
+      onMouseDown={handleContainerMouseDown}
       onDoubleClick={handleHeaderDoubleClick}
     >
       {/* Tab bar - shown when there are multiple tabs */}
