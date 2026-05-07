@@ -8,20 +8,13 @@ import type { AgentHelpResult } from "@shared/types/ipc/agent";
 import type { AgentAvailabilityState } from "@shared/types";
 import { isAgentInstalled, isAgentMissing } from "../../../shared/utils/agentAvailability";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
+import { sanitizeErrorText } from "@/utils/errorText";
 import { logError } from "@/utils/logger";
 
 interface AgentHelpOutputProps {
   agentId: string;
   agentName: string;
   usageUrl?: string;
-}
-
-function stripAnsi(text: string): string {
-  return text.replace(
-    // eslint-disable-next-line no-control-regex
-    /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g,
-    ""
-  );
 }
 
 export function AgentHelpOutput({ agentId, agentName, usageUrl }: AgentHelpOutputProps) {
@@ -94,7 +87,7 @@ export function AgentHelpOutput({ agentId, agentName, usageUrl }: AgentHelpOutpu
   const handleCopy = useCallback(async () => {
     if (!helpResult) return;
 
-    const textToCopy = stripAnsi(
+    const textToCopy = sanitizeErrorText(
       [helpResult.stdout, helpResult.stderr].filter(Boolean).join("\n\n")
     );
 
@@ -123,8 +116,8 @@ export function AgentHelpOutput({ agentId, agentName, usageUrl }: AgentHelpOutpu
   const renderOutput = () => {
     if (!helpResult) return null;
 
-    const cleanStdout = stripAnsi(helpResult.stdout);
-    const cleanStderr = stripAnsi(helpResult.stderr);
+    const cleanStdout = sanitizeErrorText(helpResult.stdout);
+    const cleanStderr = sanitizeErrorText(helpResult.stderr);
     const hasError = helpResult.exitCode !== 0 || helpResult.timedOut;
 
     return (

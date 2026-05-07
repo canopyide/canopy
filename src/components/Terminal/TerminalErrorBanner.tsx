@@ -1,6 +1,7 @@
 import React from "react";
 import { AlertTriangle, RotateCcw, FolderEdit, Trash2 } from "lucide-react";
 import { InlineStatusBanner, type BannerAction } from "./InlineStatusBanner";
+import { sanitizeErrorText, boundedErrorText } from "@/utils/errorText";
 import type { TerminalRestartError } from "@/types";
 
 export interface TerminalErrorBannerProps {
@@ -59,8 +60,12 @@ function TerminalErrorBannerComponent({
     <InlineStatusBanner
       icon={AlertTriangle}
       title="Terminal restart failed"
-      description={error.message}
-      contextLine={error.context?.failedCwd && `Directory: ${error.context.failedCwd}`}
+      description={boundedErrorText(error.message)}
+      contextLine={
+        error.context?.failedCwd
+          ? `Directory: ${sanitizeErrorText(error.context.failedCwd)}`
+          : undefined
+      }
       severity="error"
       actions={actions}
       className={className}

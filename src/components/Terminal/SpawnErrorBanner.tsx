@@ -1,6 +1,7 @@
 import React from "react";
 import { AlertTriangle, RotateCcw, FolderEdit, Trash2 } from "lucide-react";
 import { InlineStatusBanner, type BannerAction } from "./InlineStatusBanner";
+import { sanitizeErrorText, boundedErrorText } from "@/utils/errorText";
 import type { SpawnError } from "@/types";
 
 export interface SpawnErrorBannerProps {
@@ -41,16 +42,18 @@ function getErrorTitle(code: SpawnError["code"]): string {
 }
 
 function getErrorDescription(error: SpawnError, cwd?: string): string {
+  const safePath = error.path ? boundedErrorText(error.path) : "";
+  const safeCwd = cwd ? boundedErrorText(cwd) : "";
   switch (error.code) {
     case "ENOENT":
-      if (error.path) {
-        return `Couldn't find: ${error.path}`;
+      if (safePath) {
+        return `Couldn't find: ${safePath}`;
       }
-      return error.message;
+      return boundedErrorText(error.message);
     case "EACCES":
-      return `Couldn't execute ${error.path || "the shell"} — check permissions`;
+      return `Couldn't execute ${safePath || "the shell"} — check permissions`;
     case "ENOTDIR":
-      return `The working directory isn't valid: ${cwd || "(unknown)"}`;
+      return `The working directory isn't valid: ${safeCwd || "(unknown)"}`;
     case "EIO":
       return "Couldn't allocate a terminal session. The system may be running low on resources.";
     case "EMFILE":
@@ -66,7 +69,7 @@ function getErrorDescription(error: SpawnError, cwd?: string): string {
     case "DISCONNECTED":
       return "The terminal process is no longer running.";
     default:
-      return error.message;
+      return boundedErrorText(error.message);
   }
 }
 
@@ -119,7 +122,7 @@ function SpawnErrorBannerComponent({
       icon={AlertTriangle}
       title={getErrorTitle(error.code)}
       description={getErrorDescription(error, cwd)}
-      contextLine={cwd && `Directory: ${cwd}`}
+      contextLine={cwd ? `Directory: ${sanitizeErrorText(cwd)}` : undefined}
       severity="error"
       actions={actions}
       className={className}

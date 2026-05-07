@@ -20,7 +20,7 @@ export interface InlineStatusBannerProps {
   icon: React.ComponentType<{ className?: string; style?: CSSProperties }>;
   title: React.ReactNode;
   description?: React.ReactNode;
-  contextLine?: React.ReactNode;
+  contextLine?: string;
   severity?: "error" | "warning";
   animated?: boolean;
   className?: string;
@@ -136,7 +136,7 @@ function InlineStatusBannerComponent({
             </span>
             {description && (
               <p
-                className="text-xs mt-0.5"
+                className="text-xs mt-0.5 break-words"
                 style={{ color: `color-mix(in oklab, var(${colorVar}) 80%, transparent)` }}
               >
                 {description}
@@ -146,6 +146,7 @@ function InlineStatusBannerComponent({
               <p
                 className="text-xs font-mono mt-1 truncate"
                 style={{ color: `color-mix(in oklab, var(${colorVar}) 60%, transparent)` }}
+                title={contextLine}
               >
                 {contextLine}
               </p>
