@@ -676,6 +676,8 @@ export class WorkspaceHostProcess extends EventEmitter {
       case "issue-detected":
       case "issue-not-found":
       case "copytree:progress":
+      case "inotify-limit-reached":
+      case "emfile-limit-reached":
         this.emit("host-event", event);
         break;
 
