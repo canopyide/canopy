@@ -119,6 +119,11 @@ export function nextAgentState(current: AgentState, event: AgentEvent): AgentSta
         return "idle";
       }
       break;
+
+    default: {
+      const _exhaustive: never = event;
+      return _exhaustive;
+    }
   }
 
   return current;
