@@ -105,8 +105,15 @@ class AgentNotificationService {
       if (agentKey) {
         this.agentSpawnTimestamps.set(agentKey, Date.now());
       }
-      if (store.get("notificationSettings").uiFeedbackSoundEnabled && !this.isWithinBootGrace()) {
-        soundService.play("agent-spawned");
+      if (
+        store.get("notificationSettings").uiFeedbackSoundEnabled &&
+        !this.isWithinBootGrace() &&
+        !this.isSessionMuted()
+      ) {
+        const quietSettings = projectStore.getEffectiveNotificationSettings();
+        if (!isScheduledQuietNow(quietSettings)) {
+          soundService.play("agent-spawned");
+        }
       }
     });
 
@@ -725,6 +732,7 @@ class AgentNotificationService {
     this.notificationQueue = [];
     this.hasEverGoneWorking = false;
     this.peakConcurrentWorking = 0;
+    this.sessionMuteUntil = 0;
 
     soundService.cancel();
     soundService.cancelPulse();
