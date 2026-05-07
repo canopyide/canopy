@@ -10,7 +10,7 @@ import { isRecoveryPageUrl } from "../../../shared/utils/trustedRenderer.js";
 // by user action — keeps DiagnosticsCollector and its archiver/v8 deps out
 // of the eager-import graph).
 import { getLogFilePath } from "../../utils/logger.js";
-import { typedHandle, typedHandleWithContext } from "../utils.js";
+import { typedHandleWithContext } from "../utils.js";
 
 function getAppUrl(): string {
   if (process.env.NODE_ENV === "development") {
@@ -19,11 +19,22 @@ function getAppUrl(): string {
   return "app://daintree/index.html";
 }
 
+// All four recovery handlers validate event.senderFrame.url synchronously
+// (before any await) to accept calls only from recovery.html — not the main
+// renderer or arbitrary frames. typedHandleWithContext exposes the event via
+// ctx so the origin check runs before any side effects.
 export function registerRecoveryHandlers(deps: HandlerDependencies): () => void {
   const handlers: Array<() => void> = [];
 
   handlers.push(
-    typedHandle(CHANNELS.RECOVERY_RELOAD_APP, () => {
+    typedHandleWithContext(CHANNELS.RECOVERY_RELOAD_APP, async (ctx): Promise<void> => {
+      const senderUrl = ctx.event.senderFrame?.url;
+      if (!senderUrl || !isRecoveryPageUrl(senderUrl)) {
+        throw new Error(
+          `recovery:reload-app rejected: untrusted sender (url=${senderUrl ?? "unknown"})`
+        );
+      }
+
       const win = deps.windowRegistry?.getPrimary()?.browserWindow ?? deps.mainWindow;
       if (win && !win.isDestroyed()) {
         console.log("[MAIN] Recovery: reloading app");
@@ -33,7 +44,14 @@ export function registerRecoveryHandlers(deps: HandlerDependencies): () => void 
   );
 
   handlers.push(
-    typedHandle(CHANNELS.RECOVERY_RESET_AND_RELOAD, () => {
+    typedHandleWithContext(CHANNELS.RECOVERY_RESET_AND_RELOAD, async (ctx): Promise<void> => {
+      const senderUrl = ctx.event.senderFrame?.url;
+      if (!senderUrl || !isRecoveryPageUrl(senderUrl)) {
+        throw new Error(
+          `recovery:reset-and-reload rejected: untrusted sender (url=${senderUrl ?? "unknown"})`
+        );
+      }
+
       const win = deps.windowRegistry?.getPrimary()?.browserWindow ?? deps.mainWindow;
       if (win && !win.isDestroyed()) {
         console.log("[MAIN] Recovery: resetting state and reloading app");
@@ -43,10 +61,6 @@ export function registerRecoveryHandlers(deps: HandlerDependencies): () => void 
     })
   );
 
-  // These two handlers validate event.senderFrame.url synchronously (before any
-  // await) to accept calls only from recovery.html — not the main renderer or
-  // arbitrary frames. Using typedHandleWithContext keeps type safety while
-  // exposing the event via ctx for the origin check.
   handlers.push(
     typedHandleWithContext(CHANNELS.RECOVERY_EXPORT_DIAGNOSTICS, async (ctx): Promise<boolean> => {
       const senderUrl = ctx.event.senderFrame?.url;
