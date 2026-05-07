@@ -442,6 +442,11 @@ export class ProjectSettingsManager {
         throw retryError;
       }
     }
+
+    // Invalidate after durable write succeeds. Dynamic import avoids
+    // expanding the static module graph for tests that mock ProjectStore.
+    const { commandService } = await import("./CommandService.js");
+    commandService.invalidateOverridesCache(projectId);
   }
 
   async getProjectNotificationOverrides(

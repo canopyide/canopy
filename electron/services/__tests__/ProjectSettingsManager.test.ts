@@ -5,6 +5,12 @@ import path from "path";
 import { ProjectSettingsManager } from "../ProjectSettingsManager.js";
 import { generateProjectId } from "../projectStorePaths.js";
 
+vi.mock("../CommandService.js", () => ({
+  commandService: {
+    invalidateOverridesCache: vi.fn(),
+  },
+}));
+
 vi.mock("../ProjectEnvSecureStorage.js", () => ({
   projectEnvSecureStorage: {
     get: vi.fn(() => undefined),
