@@ -234,15 +234,21 @@ describe("ProjectStore disk pressure suppression", () => {
 describe("ProjectStore transaction mode", () => {
   let store: ProjectStore;
   let projectId: string;
+  let otherProjectId: string;
+  let alphaDir: string;
+  let betaDir: string;
   let seededLastAccessedAt: number;
   let seededLastOpened: number;
   const seededFrecencyScore = 7.5;
 
   beforeEach(async () => {
-    const alphaDir = fs.mkdtempSync(path.join(os.tmpdir(), "daintree-ps-tx-"));
+    alphaDir = fs.mkdtempSync(path.join(os.tmpdir(), "daintree-ps-tx-a-"));
+    betaDir = fs.mkdtempSync(path.join(os.tmpdir(), "daintree-ps-tx-b-"));
     const { generateProjectId } = await import("../projectStorePaths.js");
     const alphaCanonical = await fs.promises.realpath(alphaDir);
+    const betaCanonical = await fs.promises.realpath(betaDir);
     projectId = generateProjectId(alphaCanonical);
+    otherProjectId = generateProjectId(betaCanonical);
 
     seededLastAccessedAt = Date.now() - 60_000;
     seededLastOpened = seededLastAccessedAt;
@@ -264,7 +270,21 @@ describe("ProjectStore transaction mode", () => {
       })
       .run();
 
-    db.insert(schema.appState).values({ key: "currentProjectId", value: projectId }).run();
+    db.insert(schema.projects)
+      .values({
+        id: otherProjectId,
+        path: betaCanonical,
+        name: "Beta",
+        emoji: "🌲",
+        lastOpened: seededLastOpened,
+        status: "active",
+        frecencyScore: 1.0,
+        lastAccessedAt: seededLastAccessedAt,
+      })
+      .run();
+
+    // Seed a different current project so the "mark previous as background" branch fires
+    db.insert(schema.appState).values({ key: "currentProjectId", value: otherProjectId }).run();
 
     store = new ProjectStore();
   });
@@ -272,6 +292,8 @@ describe("ProjectStore transaction mode", () => {
   afterEach(() => {
     resetWritesSuppressedForTesting();
     sqlite.close();
+    fs.rmSync(alphaDir, { recursive: true, force: true });
+    fs.rmSync(betaDir, { recursive: true, force: true });
   });
 
   it("runs setCurrentProject transaction in IMMEDIATE mode", async () => {
