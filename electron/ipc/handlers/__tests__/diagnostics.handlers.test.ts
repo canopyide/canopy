@@ -9,6 +9,56 @@ const dialogMock = vi.hoisted(() => ({
   showSaveDialog: vi.fn(),
 }));
 
+const shellMock = vi.hoisted(() => ({
+  showItemInFolder: vi.fn(),
+}));
+
+const createWriteStreamMock = vi.hoisted(() =>
+  vi.fn(() => {
+    const listeners: Record<string, Array<(...args: unknown[]) => void>> = {};
+    const stream = {
+      on: vi.fn((event: string, fn: (...args: unknown[]) => void) => {
+        listeners[event] ??= [];
+        listeners[event].push(fn);
+        return stream;
+      }),
+      emit: (event: string, ...args: unknown[]) => {
+        listeners[event]?.forEach((fn) => {
+          fn(...args);
+        });
+      },
+      end: vi.fn(),
+    };
+    return stream;
+  })
+);
+
+const archiverMock = vi.hoisted(() => {
+  const archiveListeners: Record<string, Array<(...args: unknown[]) => void>> = {};
+  const archive = {
+    on: vi.fn((event: string, fn: (...args: unknown[]) => void) => {
+      archiveListeners[event] ??= [];
+      archiveListeners[event].push(fn);
+      return archive;
+    }),
+    pipe: vi.fn((output: { emit: (event: string, ...args: unknown[]) => void }) => {
+      // Mirror archiver's behavior of closing the output stream after finalize.
+      queueMicrotask(() => {
+        output.emit("close");
+      });
+    }),
+    append: vi.fn(),
+    finalize: vi.fn(() => Promise.resolve()),
+  };
+  return vi.fn(() => archive);
+});
+
+const resilientAtomicWriteFileMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+
+const collectDiagnosticsWithKeysMock = vi.hoisted(() =>
+  vi.fn(() => Promise.resolve({ payload: { metadata: {} }, sectionKeys: ["metadata"] }))
+);
+
 const appMock = vi.hoisted(() => ({
   getAppMetrics: vi.fn(() => [
     {
@@ -39,9 +89,26 @@ vi.mock("electron", () => ({
   ipcMain: ipcMainMock,
   app: appMock,
   dialog: dialogMock,
+  shell: shellMock,
   BrowserWindow: {
     fromWebContents: vi.fn(() => null),
   },
+}));
+
+vi.mock("node:fs", () => ({
+  promises: {
+    readFile: vi.fn(() => Promise.resolve("")),
+  },
+  createWriteStream: createWriteStreamMock,
+  existsSync: vi.fn(() => false),
+}));
+
+vi.mock("archiver", () => ({
+  default: archiverMock,
+}));
+
+vi.mock("../../../utils/fs.js", () => ({
+  resilientAtomicWriteFile: resilientAtomicWriteFileMock,
 }));
 
 vi.mock("node:v8", () => ({
@@ -69,6 +136,7 @@ vi.mock("node:perf_hooks", () => ({
 
 vi.mock("../../../services/DiagnosticsCollector.js", () => ({
   collectDiagnostics: vi.fn(() => Promise.resolve({})),
+  collectDiagnosticsWithKeys: collectDiagnosticsWithKeysMock,
 }));
 
 const recordBlinkSampleMock = vi.hoisted(() => vi.fn());
@@ -239,6 +307,65 @@ describe("registerDiagnosticsHandlers", () => {
         sampleWindowMs: 1000,
       });
       expect(recordEluSampleMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("diagnostics file write modes", () => {
+    it("JSON_EXPORT_USES_0o600_ATOMIC_WRITE", async () => {
+      dialogMock.showSaveDialog.mockResolvedValueOnce({
+        filePath: "/tmp/diagnostics.json",
+        canceled: false,
+      });
+      registerDiagnosticsHandlers(deps);
+      const handler = getHandlerFn("system:download-diagnostics");
+
+      const result = (await handler()) as boolean;
+
+      expect(result).toBe(true);
+      expect(resilientAtomicWriteFileMock).toHaveBeenCalledTimes(1);
+      const [filePath, , encoding, options] = resilientAtomicWriteFileMock.mock.calls[0];
+      expect(filePath).toBe("/tmp/diagnostics.json");
+      expect(encoding).toBe("utf-8");
+      expect(options).toEqual({ mode: 0o600 });
+    });
+
+    it("JSON_EXPORT_RESPECTS_DIALOG_CANCEL", async () => {
+      dialogMock.showSaveDialog.mockResolvedValueOnce({
+        filePath: undefined,
+        canceled: true,
+      });
+      registerDiagnosticsHandlers(deps);
+      const handler = getHandlerFn("system:download-diagnostics");
+
+      const result = (await handler()) as boolean;
+
+      expect(result).toBe(false);
+      expect(resilientAtomicWriteFileMock).not.toHaveBeenCalled();
+    });
+
+    it("ZIP_BUNDLE_USES_0o600_MODE", async () => {
+      dialogMock.showSaveDialog.mockResolvedValueOnce({
+        filePath: "/tmp/diagnostics.zip",
+        canceled: false,
+      });
+      registerDiagnosticsHandlers(deps);
+      const handler = getHandlerFn("system:save-diagnostics-bundle");
+
+      const result = (await handler(
+        {},
+        {
+          payload: { metadata: {} },
+          enabledSections: { metadata: true, logs: false },
+          replacements: [],
+        }
+      )) as boolean;
+
+      expect(result).toBe(true);
+      expect(createWriteStreamMock).toHaveBeenCalledTimes(1);
+      const [zipPath, options] = createWriteStreamMock.mock.calls[0];
+      expect(zipPath).toBe("/tmp/diagnostics.zip");
+      expect(options).toEqual({ mode: 0o600 });
+      expect(shellMock.showItemInFolder).toHaveBeenCalledWith("/tmp/diagnostics.zip");
     });
   });
 });

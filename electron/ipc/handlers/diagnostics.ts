@@ -7,6 +7,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import archiver from "archiver";
 import { CHANNELS } from "../channels.js";
+import { resilientAtomicWriteFile } from "../../utils/fs.js";
 import type { HandlerDependencies } from "../types.js";
 import type {
   AppMetricsSummary,
@@ -68,7 +69,7 @@ async function writeBundleZip(
   }
 
   return new Promise((resolve, reject) => {
-    const output = createWriteStream(zipPath);
+    const output = createWriteStream(zipPath, { mode: 0o600 });
     const archive = archiver("zip", { zlib: { level: 6 } });
 
     output.on("close", resolve);
@@ -232,7 +233,7 @@ export function registerDiagnosticsHandlers(deps: HandlerDependencies): () => vo
 
     if (canceled || !filePath) return false;
 
-    await fs.writeFile(filePath, json, "utf-8");
+    await resilientAtomicWriteFile(filePath, json, "utf-8", { mode: 0o600 });
     return true;
   };
   handlers.push(typedHandle(CHANNELS.SYSTEM_DOWNLOAD_DIAGNOSTICS, handleDownloadDiagnostics));
