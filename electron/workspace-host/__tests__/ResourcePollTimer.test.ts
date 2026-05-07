@@ -25,10 +25,12 @@ function makeHost(overrides: Partial<MutableHost> = {}): MutableHost {
 describe("ResourcePollTimer", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0);
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it("schedules at the configured interval", async () => {
@@ -153,6 +155,7 @@ describe("ResourcePollTimer", () => {
   });
 
   it("swallows callback exceptions and continues rescheduling", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     let callCount = 0;
     const host = makeHost({
       resourcePollIntervalMs: 5_000,
@@ -167,6 +170,7 @@ describe("ResourcePollTimer", () => {
     timer.schedule();
     await vi.advanceTimersByTimeAsync(5_001);
     expect(host.onResourceStatusPoll).toHaveBeenCalledTimes(1);
+    expect(warnSpy).toHaveBeenCalledTimes(1);
 
     // After error, next round should still run.
     await vi.advanceTimersByTimeAsync(5_001);

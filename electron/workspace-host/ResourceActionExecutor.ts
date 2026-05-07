@@ -7,6 +7,19 @@ import { WorktreeLifecycleService } from "./WorktreeLifecycleService.js";
 import { applyResourceConfigToMonitor } from "./resourceConfigHelpers.js";
 import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 
+const READY_STATUSES = new Set(["ready", "running", "healthy", "up"]);
+const RESUMABLE_STATUSES = new Set(["paused", "stopped"]);
+// "stopped" kept only to gracefully handle a transient read from a CLI
+// that hasn't switched to "paused" yet; the schema/UI no longer emit it.
+
+const DEFAULT_TIMEOUT_MS = {
+  provision: 300_000,
+  teardown: 300_000,
+  resume: 120_000,
+  pause: 120_000,
+  status: 120_000,
+} as const;
+
 /**
  * Narrow context interface that the executor needs from the owning
  * `WorkspaceService`. Mutable workspace state (e.g. `projectRootPath`) is
@@ -120,12 +133,7 @@ export class ResourceActionExecutor {
     let effectiveAction = action;
     if (action === "provision") {
       const currentStatus = monitor.resourceStatus?.lastStatus?.toLowerCase();
-      if (
-        currentStatus === "ready" ||
-        currentStatus === "running" ||
-        currentStatus === "healthy" ||
-        currentStatus === "up"
-      ) {
+      if (currentStatus && READY_STATUSES.has(currentStatus)) {
         console.log(
           `[WorktreeLifecycle] Provision no-op for worktree ${worktreeId}: already ${currentStatus}`
         );
@@ -137,9 +145,7 @@ export class ResourceActionExecutor {
         });
         return { success: true, output: `Resource is already ${currentStatus}` };
       }
-      if (currentStatus === "paused" || currentStatus === "stopped") {
-        // "stopped" kept here only to gracefully handle a transient read from a CLI
-        // that hasn't switched to "paused" yet; the schema/UI no longer emit it.
+      if (currentStatus && RESUMABLE_STATUSES.has(currentStatus)) {
         console.log(
           `[WorktreeLifecycle] Provision routing to resume for worktree ${worktreeId}: currently ${currentStatus}`
         );
@@ -274,19 +280,12 @@ export class ResourceActionExecutor {
     }
 
     const phase = `resource-${effectiveAction}` as const;
-    const DEFAULT_TIMEOUT: Record<string, number> = {
-      provision: 300_000,
-      teardown: 300_000,
-      resume: 120_000,
-      pause: 120_000,
-      status: 120_000,
-    };
     const configTimeoutSec =
       resourceConfig.timeouts?.[effectiveAction as keyof typeof resourceConfig.timeouts];
     const timeoutMs =
       configTimeoutSec != null
         ? configTimeoutSec * 1000
-        : (DEFAULT_TIMEOUT[effectiveAction] ?? 120_000);
+        : (DEFAULT_TIMEOUT_MS[effectiveAction] ?? 120_000);
 
     monitor.setLifecycleStatus({
       phase,
