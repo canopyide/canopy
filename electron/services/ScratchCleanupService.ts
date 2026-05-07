@@ -3,16 +3,16 @@
  *
  * A scratch whose `lastOpened` predates `now - SCRATCH_CLEANUP_TTL_MS` has
  * its filesystem directory removed and its DB row tombstoned (`deleted_at`
- * set). Tombstoned rows are filtered out of every renderer-facing query in
- * `ScratchStore`, so the renderer never sees them again. The current scratch
- * (per `app_state.currentScratchId`) is always excluded so an actively-open
+ * set), then hard-deleted once `fs.rm` succeeds. Tombstoned rows are
+ * filtered out of every renderer-facing query in `ScratchStore`, so the
+ * renderer never sees them again. The current scratch (per
+ * `app_state.currentScratchId`) is always excluded so an actively-open
  * workspace can never disappear under the user.
  *
- * Tombstoning is one-way — orphaned directories left by a failed `fs.rm`
- * stay on disk (logged, not retried). Accepting that orphan rate is
- * deliberate: the alternative (re-sweeping tombstoned rows) would require a
- * second query and could surprise users who manually re-create folders at
- * the same path.
+ * The sweep also retries already-tombstoned rows whose directory is still
+ * present — this is the recovery path for a `removeScratch` that crashed
+ * between tombstone and `fs.rm`. The row is hard-deleted once the directory
+ * is gone.
  *
  * Mirrors the fire-and-forget pattern of `initializeTrashedPidCleanup`:
  * called once at app boot, never awaited, never throws — a cleanup failure
@@ -27,9 +27,9 @@ import { SCRATCH_CLEANUP_TTL_MS } from "../../shared/config/scratchCleanup.js";
 export { SCRATCH_CLEANUP_TTL_MS as SCRATCH_TTL_MS } from "../../shared/config/scratchCleanup.js";
 
 export interface ScratchCleanupResult {
-  /** Total rows examined as candidates (predate cutoff, not yet tombstoned). */
+  /** Total rows examined as candidates (live-stale plus already-tombstoned). */
   candidates: number;
-  /** Rows actually tombstoned during this sweep. */
+  /** Rows actually tombstoned during this sweep (excludes pre-tombstoned rows). */
   tombstoned: number;
   /** Directories successfully removed (or already absent). */
   directoriesRemoved: number;
@@ -55,46 +55,49 @@ export async function runScratchCleanup(
 
   const cutoff = now - SCRATCH_CLEANUP_TTL_MS;
   const currentScratchId = store.getCurrentScratchId();
+  // Only protect the live current scratch — a tombstoned row whose ID still
+  // matches `currentScratchId` is the exact crash-recovery case (tombstone
+  // succeeded, `clearCurrentScratch` didn't), and the sweep must finish it.
   const candidates = store
     .getStaleScratchCandidates(cutoff)
-    .filter((row) => row.id !== currentScratchId);
+    .filter((row) => !(row.id === currentScratchId && row.deletedAt == null));
   result.candidates = candidates.length;
 
   for (const row of candidates) {
-    // Lesson #3721: never treat a falsy `lastOpened` as maximally stale —
-    // skip rather than tombstone. The schema declares NOT NULL, but a
-    // hand-edited DB or a future migration could relax that, and we'd rather
-    // skip a row than nuke it on bad data.
-    if (!row.lastOpened) continue;
+    // Lesson #3721: never treat a falsy `lastOpened` on a live row as
+    // maximally stale — skip rather than tombstone. Tombstoned rows aren't
+    // subject to this check; they've already been chosen for deletion.
+    if (!row.lastOpened && row.deletedAt == null) continue;
 
+    if (row.deletedAt == null) {
+      try {
+        store.tombstoneScratch(row.id, now);
+        result.tombstoned += 1;
+      } catch (error) {
+        logError(`[ScratchCleanup] Failed to tombstone scratch ${row.id}`, error);
+        continue;
+      }
+    }
+
+    if (row.path && existsSync(row.path)) {
+      try {
+        await fs.rm(row.path, { recursive: true, force: true });
+      } catch (error) {
+        result.directoriesFailed += 1;
+        logError(`[ScratchCleanup] Failed to remove scratch directory ${row.path}`, error);
+        continue;
+      }
+    }
+
+    result.directoriesRemoved += 1;
     try {
-      store.tombstoneScratch(row.id, now);
-      result.tombstoned += 1;
+      store.hardDeleteScratch(row.id);
     } catch (error) {
-      logError(`[ScratchCleanup] Failed to tombstone scratch ${row.id}`, error);
-      continue;
-    }
-
-    if (!row.path) {
-      result.directoriesRemoved += 1;
-      continue;
-    }
-
-    if (!existsSync(row.path)) {
-      result.directoriesRemoved += 1;
-      continue;
-    }
-
-    try {
-      await fs.rm(row.path, { recursive: true, force: true });
-      result.directoriesRemoved += 1;
-    } catch (error) {
-      result.directoriesFailed += 1;
-      logError(`[ScratchCleanup] Failed to remove scratch directory ${row.path}`, error);
+      logError(`[ScratchCleanup] Failed to hard-delete scratch ${row.id}`, error);
     }
   }
 
-  if (result.tombstoned > 0 || result.directoriesFailed > 0) {
+  if (result.tombstoned > 0 || result.directoriesRemoved > 0 || result.directoriesFailed > 0) {
     logInfo(
       `[ScratchCleanup] sweep complete: ${result.tombstoned} tombstoned, ` +
         `${result.directoriesRemoved} directories removed, ${result.directoriesFailed} failed`

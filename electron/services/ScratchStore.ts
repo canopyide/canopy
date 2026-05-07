@@ -1,7 +1,7 @@
 import fs from "fs/promises";
 import { existsSync } from "fs";
 import { randomUUID } from "crypto";
-import { eq, desc, and, isNull, lt } from "drizzle-orm";
+import { eq, desc, and, isNull, isNotNull, lt, or } from "drizzle-orm";
 import type { Scratch } from "../../shared/types/scratch.js";
 import { getSharedDb } from "./persistence/db.js";
 import {
@@ -108,16 +108,22 @@ export class ScratchStore {
   }
 
   /**
-   * Returns raw rows of scratches whose `last_opened` predates the cutoff and
-   * which have not yet been tombstoned. Used by the startup cleanup sweep —
-   * exposes `path` directly so the sweep does not have to re-derive it.
+   * Returns raw rows the cleanup sweep should consider: live rows whose
+   * `last_opened` predates the cutoff, plus any already-tombstoned rows. The
+   * tombstoned set is included so a `removeScratch` that crashed between
+   * tombstone and `fs.rm` is retried on next startup.
    */
   getStaleScratchCandidates(cutoffMs: number): ScratchRow[] {
     const db = getSharedDb();
     return db
       .select()
       .from(scratchesTable)
-      .where(and(lt(scratchesTable.lastOpened, cutoffMs), isNull(scratchesTable.deletedAt)))
+      .where(
+        or(
+          and(lt(scratchesTable.lastOpened, cutoffMs), isNull(scratchesTable.deletedAt)),
+          isNotNull(scratchesTable.deletedAt)
+        )
+      )
       .all();
   }
 
@@ -131,6 +137,19 @@ export class ScratchStore {
     }
     const db = getSharedDb();
     db.update(scratchesTable).set({ deletedAt }).where(eq(scratchesTable.id, scratchId)).run();
+  }
+
+  /**
+   * Removes a scratch row outright. Called only after the on-disk directory
+   * has been confirmed gone — the tombstone is the recovery anchor between
+   * those two steps.
+   */
+  hardDeleteScratch(scratchId: string): void {
+    if (!isValidScratchId(scratchId)) {
+      throw new Error(`Invalid scratch ID: ${scratchId}`);
+    }
+    const db = getSharedDb();
+    db.delete(scratchesTable).where(eq(scratchesTable.id, scratchId)).run();
   }
 
   updateScratch(
@@ -167,8 +186,11 @@ export class ScratchStore {
     if (!isValidScratchId(scratchId)) {
       throw new Error(`Invalid scratch ID: ${scratchId}`);
     }
-    const db = getSharedDb();
-    db.delete(scratchesTable).where(eq(scratchesTable.id, scratchId)).run();
+
+    this.tombstoneScratch(scratchId, Date.now());
+    if (this.getCurrentScratchId() === scratchId) {
+      this.clearCurrentScratch();
+    }
 
     const dir = getScratchDir(this.rootDir(), scratchId);
     if (dir && existsSync(dir)) {
@@ -176,12 +198,11 @@ export class ScratchStore {
         await fs.rm(dir, { recursive: true, force: true });
       } catch (error) {
         logError(`[ScratchStore] Failed to remove scratch directory for ${scratchId}`, error);
+        return;
       }
     }
 
-    if (this.getCurrentScratchId() === scratchId) {
-      this.clearCurrentScratch();
-    }
+    this.hardDeleteScratch(scratchId);
   }
 
   getCurrentScratchId(): string | null {
