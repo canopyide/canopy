@@ -14,6 +14,8 @@ interface MockPtyHandles {
   writeMock: ReturnType<typeof vi.fn<(data: string) => void>>;
   emitData: (data: string) => void;
   emitExit: (exitCode: number, signal?: number) => void;
+  onDataDispose: ReturnType<typeof vi.fn>;
+  onExitDispose: ReturnType<typeof vi.fn>;
 }
 
 function createMockPty(writeOverride?: (data: string) => void): MockPtyHandles {
@@ -21,6 +23,12 @@ function createMockPty(writeOverride?: (data: string) => void): MockPtyHandles {
   let exitCallback: ((event: { exitCode: number; signal?: number }) => void) | null = null;
 
   const writeMock = vi.fn<(data: string) => void>();
+  const onDataDispose = vi.fn(() => {
+    dataCallback = null;
+  });
+  const onExitDispose = vi.fn(() => {
+    exitCallback = null;
+  });
 
   const pty: Partial<IPty> = {
     pid: 123,
@@ -36,19 +44,11 @@ function createMockPty(writeOverride?: (data: string) => void): MockPtyHandles {
     resume: () => {},
     onData: (cb: (data: string) => void) => {
       dataCallback = cb;
-      return {
-        dispose: () => {
-          dataCallback = null;
-        },
-      };
+      return { dispose: onDataDispose };
     },
     onExit: (cb: (e: { exitCode: number; signal?: number }) => void) => {
       exitCallback = cb;
-      return {
-        dispose: () => {
-          exitCallback = null;
-        },
-      };
+      return { dispose: onExitDispose };
     },
   };
 
@@ -57,6 +57,8 @@ function createMockPty(writeOverride?: (data: string) => void): MockPtyHandles {
     writeMock,
     emitData: (data: string) => dataCallback?.(data),
     emitExit: (exitCode: number, signal?: number) => exitCallback?.({ exitCode, signal }),
+    onDataDispose,
+    onExitDispose,
   };
 }
 
@@ -400,5 +402,63 @@ describe("TerminalProcess.gracefulShutdown — input-clear prelude", () => {
 
     await expect(shutdownPromise).resolves.toBeNull();
     expect(terminal.getInfo().agentSessionId).toBeUndefined();
+  });
+});
+
+describe("TerminalProcess.gracefulShutdown — listener disposal", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("disposes both onData and onExit observers when the timeout fires", async () => {
+    // Pre-fix the timeout path leaked both listeners — `finish()` only
+    // cleared the timer and called host.kill(). Now disposal is centralized
+    // in `finish()` so every resolution path frees the observers.
+    const handles = createMockPty();
+    const terminal = createAgentTerminal(handles);
+
+    const shutdownPromise = terminal.gracefulShutdown();
+    await vi.advanceTimersByTimeAsync(GRACEFUL_SHUTDOWN_TIMEOUT_MS);
+
+    await expect(shutdownPromise).resolves.toBeNull();
+
+    expect(handles.onDataDispose).toHaveBeenCalled();
+    expect(handles.onExitDispose).toHaveBeenCalled();
+  });
+
+  it("disposes both observers when the session-ID pattern matches", async () => {
+    // Pre-fix the pattern-match path disposed only `origOnData`; `origOnExit`
+    // remained registered until the PTY was GC'd. The centralized
+    // `finish()` now disposes both.
+    const handles = createMockPty();
+    const terminal = createAgentTerminal(handles);
+
+    const shutdownPromise = terminal.gracefulShutdown();
+    await vi.advanceTimersByTimeAsync(GRACEFUL_SHUTDOWN_CLEAR_DELAY_MS);
+
+    handles.emitData("claude --resume captured-session\n");
+    await expect(shutdownPromise).resolves.toBe("captured-session");
+
+    expect(handles.onDataDispose).toHaveBeenCalled();
+    expect(handles.onExitDispose).toHaveBeenCalled();
+  });
+
+  it("disposes both observers when the PTY exits naturally", async () => {
+    const handles = createMockPty();
+    const terminal = createAgentTerminal(handles);
+
+    const shutdownPromise = terminal.gracefulShutdown();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    handles.emitExit(0);
+    await expect(shutdownPromise).resolves.toBeNull();
+
+    expect(handles.onDataDispose).toHaveBeenCalled();
+    expect(handles.onExitDispose).toHaveBeenCalled();
   });
 });
