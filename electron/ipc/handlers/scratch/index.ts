@@ -203,6 +203,7 @@ export function registerScratchHandlers(deps: HandlerDependencies): () => void {
     }
 
     try {
+      // No fsync — destination may be incomplete on crash. Scratch source is preserved as recovery path.
       await fs.cp(scratch.path, destinationPath, {
         recursive: true,
         preserveTimestamps: true,

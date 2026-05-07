@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
-import { runScratchCleanup, SCRATCH_TTL_MS } from "../ScratchCleanupService.js";
+import { runScratchCleanup } from "../ScratchCleanupService.js";
+import { SCRATCH_CLEANUP_TTL_MS as SCRATCH_TTL_MS } from "../../../shared/config/scratchCleanup.js";
 import type { ScratchRow } from "../persistence/schema.js";
 
 vi.mock("../../utils/logger.js", () => ({

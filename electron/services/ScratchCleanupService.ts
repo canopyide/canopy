@@ -19,12 +19,9 @@
  * must not block startup.
  */
 import fs from "fs/promises";
-import { existsSync } from "fs";
 import { scratchStore as defaultScratchStore } from "./ScratchStore.js";
 import { logError, logInfo } from "../utils/logger.js";
 import { SCRATCH_CLEANUP_TTL_MS } from "../../shared/config/scratchCleanup.js";
-
-export { SCRATCH_CLEANUP_TTL_MS as SCRATCH_TTL_MS } from "../../shared/config/scratchCleanup.js";
 
 export interface ScratchCleanupResult {
   /** Total rows examined as candidates (live-stale plus already-tombstoned). */
@@ -79,9 +76,9 @@ export async function runScratchCleanup(
       }
     }
 
-    if (row.path && existsSync(row.path)) {
+    if (row.path) {
       try {
-        await fs.rm(row.path, { recursive: true, force: true });
+        await fs.rm(row.path, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
       } catch (error) {
         result.directoriesFailed += 1;
         logError(`[ScratchCleanup] Failed to remove scratch directory ${row.path}`, error);
