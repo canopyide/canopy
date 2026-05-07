@@ -171,6 +171,7 @@ export class PromisePool {
 
 let sessionBuffer: TranscriptionBuffer | null = null;
 let correctionPool: PromisePool | null = null;
+let sessionController: AbortController | null = null;
 let sessionProjectInfo: { name?: string; path?: string } = {};
 
 const VOICE_INPUT_DEFAULTS: VoiceInputSettings = {
@@ -469,6 +470,8 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
     // Reset streaming correction state
     sessionBuffer = new TranscriptionBuffer();
     correctionPool = new PromisePool(POOL_CONCURRENCY_LIMIT);
+    sessionController = new AbortController();
+    correctionService.setSessionSignal(sessionController.signal);
 
     // Capture project info at session start.
     sessionProjectInfo = getProjectInfo();
@@ -532,6 +535,7 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
           const projectPath = sessionProjectInfo.path;
           const apiKey = liveSettings.correctionApiKey;
           if (projectPath && apiKey) {
+            const signal = sessionController?.signal;
             correctionPool.add(async () => {
               if (!correctionService) return;
               const tokens = await correctionService.detectFileLinkTokens(rawText, { apiKey });
@@ -540,6 +544,7 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
                   cwd: projectPath,
                   description,
                   apiKey,
+                  signal,
                 });
                 const replacement = resolved ? `@${resolved}` : `@?${description}`;
                 if (!win.isDestroyed()) {
@@ -607,6 +612,9 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
       }
     }
 
+    // Abort in-flight OpenAI calls so the pool drains promptly
+    sessionController?.abort();
+
     // Wait for all in-flight micro-corrections to complete (with timeout)
     if (correctionPool) {
       await Promise.race([
@@ -614,6 +622,9 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
         new Promise<void>((resolve) => setTimeout(resolve, POOL_DRAIN_TIMEOUT_MS)),
       ]);
     }
+
+    correctionService?.setSessionSignal(null);
+    sessionController = null;
 
     cleanupActiveSubscription();
 
@@ -680,5 +691,6 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
     correctionService = null;
     sessionBuffer = null;
     correctionPool = null;
+    sessionController = null;
   };
 }

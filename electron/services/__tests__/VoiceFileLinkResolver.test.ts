@@ -228,4 +228,23 @@ describe("VoiceFileLinkResolver", () => {
 
     expect(fetchMock).toHaveBeenCalled();
   });
+
+  it("returns top candidate silently on abort during AI rerank", async () => {
+    searchNaturalLanguageMock.mockResolvedValue([
+      "src/components/Bar.tsx",
+      "src/components/Input.tsx",
+    ]);
+
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new DOMException("Aborted", "AbortError")));
+
+    const resolver = new VoiceFileLinkResolver();
+    const result = await resolver.resolve({
+      ...BASE_PAYLOAD,
+      description: "input component",
+      signal: new AbortController().signal,
+    });
+
+    // aiRerank returns top candidate on abort (its existing fallback)
+    expect(result).toBe("src/components/Bar.tsx");
+  });
 });
