@@ -1,4 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("../../utils/logger.js", () => ({
+  logDebug: vi.fn(),
+  logWarn: vi.fn(),
+  logInfo: vi.fn(),
+  logError: vi.fn(),
+}));
+
 import { VoiceCorrectionService } from "../VoiceCorrectionService.js";
 
 const BASE_SETTINGS = {
@@ -475,6 +483,112 @@ describe("VoiceCorrectionService", () => {
 
       expect(result).toEqual([]);
       expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("skips API call when utterance has no trigger phrase", async () => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+
+      const svc = new VoiceCorrectionService();
+      const result = await svc.detectFileLinkTokens("update the sidebar width", {
+        apiKey: "sk-test",
+      });
+
+      expect(result).toEqual([]);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["link to the hybrid input bar"],
+      ["at file index ts"],
+      ["please reference the auth flow"],
+      ["add file router"],
+      ["insert file config"],
+      ["open the hybrid input"],
+      ["at the bar component"],
+    ])("calls API when trigger phrase present: %s", async (utterance) => {
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          output_text: JSON.stringify({ file_references: [] }),
+        }),
+      } as unknown as Response);
+      vi.stubGlobal("fetch", fetchMock);
+
+      const svc = new VoiceCorrectionService();
+      await svc.detectFileLinkTokens(utterance, { apiKey: "sk-test" });
+
+      expect(fetchMock).toHaveBeenCalledOnce();
+    });
+
+    it("uses max_output_tokens=256 for file-link detection (not 128)", async () => {
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          output_text: JSON.stringify({ file_references: [] }),
+        }),
+      } as unknown as Response);
+      vi.stubGlobal("fetch", fetchMock);
+
+      const svc = new VoiceCorrectionService();
+      await svc.detectFileLinkTokens("link to something", { apiKey: "sk-test" });
+
+      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      const body = JSON.parse(init.body as string);
+      expect(body.max_output_tokens).toBe(256);
+      expect(body.prompt_cache_key).toBe("voice-file-link-v1");
+    });
+
+    it("preserves all references in a multi-reference utterance (regression)", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: true,
+          json: async () => ({
+            output_text: JSON.stringify({
+              file_references: [
+                { description: "hybrid input bar" },
+                { description: "auth service" },
+                { description: "project switcher" },
+              ],
+            }),
+          }),
+        } as unknown as Response)
+      );
+
+      const svc = new VoiceCorrectionService();
+      const result = await svc.detectFileLinkTokens(
+        "link to the hybrid input bar and the auth service and the project switcher",
+        { apiKey: "sk-test" }
+      );
+
+      expect(result).toEqual([
+        { description: "hybrid input bar" },
+        { description: "auth service" },
+        { description: "project switcher" },
+      ]);
+    });
+
+    it("returns empty array when response is truncated (status=incomplete)", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: true,
+          json: async () => ({
+            status: "incomplete",
+            incomplete_details: { reason: "max_output_tokens" },
+            output_text: "",
+          }),
+        } as unknown as Response)
+      );
+
+      const svc = new VoiceCorrectionService();
+      const result = await svc.detectFileLinkTokens(
+        "link to the hybrid input bar and the auth flow",
+        { apiKey: "sk-test" }
+      );
+
+      expect(result).toEqual([]);
     });
 
     it("returns empty array on malformed JSON", async () => {
