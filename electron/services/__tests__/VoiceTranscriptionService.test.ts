@@ -439,6 +439,7 @@ describe("VoiceTranscriptionService", () => {
       void service.start({ ...BASE_SETTINGS, paragraphingStrategy: "manual" });
 
       expect(capturedOpts[0]).not.toHaveProperty("dictation");
+      expect(capturedOpts[0]).not.toHaveProperty("punctuate");
       expect(capturedOpts[0]).not.toHaveProperty("paragraphs");
       expect(capturedOpts[0].endpointing).toBe(800);
     });
