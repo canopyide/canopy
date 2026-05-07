@@ -299,8 +299,10 @@ export async function assembleKeyterms(opts: KeytermAssemblyOpts): Promise<strin
 
   // Priority 2: Project name tokens
   if (projectName) {
-    // Add the full project name if it's a single meaningful word
-    add(projectName);
+    const trimmed = projectName.trim();
+    if (trimmed.length >= 2 && !/^\d+$/.test(trimmed)) {
+      add(trimmed);
+    }
     for (const token of tokenizeProjectName(projectName)) {
       add(token);
     }

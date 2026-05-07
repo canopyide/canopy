@@ -240,6 +240,11 @@ describe("assembleKeyterms", () => {
     });
     const customIdx = result.indexOf("CustomFirst");
     const projectIdx = result.indexOf("ProjectSecond");
+    // Branch mock is "feature/auth-login-service" → tokens: feature, auth, login, service
+    const branchIdx = result.indexOf("auth");
+    const terminalIdx = result.indexOf("terminalIdent");
     expect(customIdx).toBeLessThan(projectIdx);
+    expect(projectIdx).toBeLessThan(branchIdx);
+    expect(branchIdx).toBeLessThan(terminalIdx);
   });
 });
