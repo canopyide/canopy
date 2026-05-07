@@ -42,7 +42,11 @@ describe("GlobalFileStore adversarial", () => {
     expect(result).toEqual([]);
     expect(utilsMock.resilientRename).toHaveBeenCalledWith(
       RECIPES_FILE,
-      expect.stringMatching(/^\/tmp\/daintree-global\/recipes\.json\.corrupted\.\d+-[a-z0-9]{6}$/)
+      expect.stringMatching(
+        new RegExp(
+          `^${RECIPES_FILE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.corrupted\\.\\d+-[a-z0-9]{6}$`
+        )
+      )
     );
   });
 
@@ -54,7 +58,11 @@ describe("GlobalFileStore adversarial", () => {
     expect(result).toEqual([]);
     expect(utilsMock.resilientRename).toHaveBeenCalledWith(
       RECIPES_FILE,
-      expect.stringMatching(/^\/tmp\/daintree-global\/recipes\.json\.corrupted\.\d+-[a-z0-9]{6}$/)
+      expect.stringMatching(
+        new RegExp(
+          `^${RECIPES_FILE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.corrupted\\.\\d+-[a-z0-9]{6}$`
+        )
+      )
     );
   });
 
