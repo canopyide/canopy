@@ -1,6 +1,7 @@
 import type { GraphQlQueryResponseData } from "@octokit/graphql";
 import { GitHubAuth, GITHUB_API_TIMEOUT_MS } from "./GitHubAuth.js";
 import { LIST_ISSUES_QUERY, SEARCH_QUERY, GET_ISSUE_QUERY } from "./GitHubQueries.js";
+import { gitHubRateLimitService } from "./GitHubRateLimitService.js";
 import { parseGitHubError } from "./GitHubErrors.js";
 import { withRepoContextRetry } from "./GitHubRepoContext.js";
 import { repoStatsCache, issueListCache, issueTooltipCache } from "./GitHubCaches.js";
@@ -254,6 +255,8 @@ export async function getIssueTooltip(
         request: { signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS) },
       })) as GraphQlQueryResponseData;
 
+      gitHubRateLimitService.updateFromGraphQL(response);
+
       const issue = response?.repository?.issue;
       if (!issue) {
         return null;
@@ -342,6 +345,8 @@ export async function listIssues(
           request: { signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS) },
         })) as GraphQlQueryResponseData;
 
+        gitHubRateLimitService.updateFromGraphQL(response);
+
         const search = response?.search;
         const nodes = (search?.nodes ?? []) as Array<Record<string, unknown>>;
 
@@ -364,6 +369,8 @@ export async function listIssues(
           orderBy,
           request: { signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS) },
         })) as GraphQlQueryResponseData;
+
+        gitHubRateLimitService.updateFromGraphQL(response);
 
         const issues = response?.repository?.issues;
         const nodes = (issues?.nodes ?? []) as Array<Record<string, unknown>>;
@@ -426,6 +433,8 @@ export async function getIssueByNumber(
         number: issueNumber,
         request: { signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS) },
       })) as GraphQlQueryResponseData;
+
+      gitHubRateLimitService.updateFromGraphQL(response);
 
       const issue = response?.repository?.issue;
       if (!issue) {

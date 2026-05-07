@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildBatchPRQuery,
   buildBatchRequiredChecksQuery,
+  REPO_STATS_QUERY,
   LIST_PRS_QUERY,
   REPO_STATS_AND_PAGE_QUERY,
   SEARCH_QUERY,
@@ -273,6 +274,44 @@ describe("buildBatchPRQuery", () => {
       // `body` is not present as a standalone field on either path. Match
       // a word boundary to avoid matching `bodyText`.
       expect(query).not.toMatch(/\bbody\b(?!Text)/);
+    });
+  });
+
+  describe("rateLimit field", () => {
+    it("includes rateLimit at operation root in REPO_STATS_QUERY", () => {
+      expect(REPO_STATS_QUERY).toContain("rateLimit {");
+      expect(REPO_STATS_QUERY).toContain("cost");
+      expect(REPO_STATS_QUERY).toContain("remaining");
+      expect(REPO_STATS_QUERY).toContain("resetAt");
+    });
+
+    it("includes rateLimit in REPO_STATS_AND_PAGE_QUERY", () => {
+      expect(REPO_STATS_AND_PAGE_QUERY).toContain("rateLimit {");
+    });
+
+    it("includes rateLimit in PROJECT_HEALTH_QUERY", () => {
+      expect(PROJECT_HEALTH_QUERY).toContain("rateLimit {");
+    });
+
+    it("includes rateLimit in SEARCH_QUERY", () => {
+      expect(SEARCH_QUERY).toContain("rateLimit {");
+    });
+
+    it("includes rateLimit in GET_PR_QUERY", () => {
+      expect(GET_PR_QUERY).toContain("rateLimit {");
+    });
+
+    it("includes rateLimit in generated batch PR query", () => {
+      const query = buildBatchPRQuery("owner", "repo", [{ worktreeId: "wt-1", issueNumber: 42 }]);
+      expect(query).toContain("rateLimit {");
+      expect(query).toContain("cost");
+      expect(query).toContain("remaining");
+      expect(query).toContain("resetAt");
+    });
+
+    it("includes rateLimit in generated batch required checks query", () => {
+      const query = buildBatchRequiredChecksQuery("owner", "repo", [12]);
+      expect(query).toContain("rateLimit {");
     });
   });
 });

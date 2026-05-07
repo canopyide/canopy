@@ -6,6 +6,7 @@ import {
   GET_PR_QUERY,
   buildBatchRequiredChecksQuery,
 } from "./GitHubQueries.js";
+import { gitHubRateLimitService } from "./GitHubRateLimitService.js";
 import { parseGitHubError } from "./GitHubErrors.js";
 import { withRepoContextRetry } from "./GitHubRepoContext.js";
 import {
@@ -141,6 +142,8 @@ export async function getPRTooltip(cwd: string, prNumber: number): Promise<PRToo
         request: { signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS) },
       })) as GraphQlQueryResponseData;
 
+      gitHubRateLimitService.updateFromGraphQL(response);
+
       const pr = response?.repository?.pullRequest;
       if (!pr) {
         return null;
@@ -224,6 +227,7 @@ async function enrichPRsWithRequiredStatus(
         const response = (await client(query, {
           request: { signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS) },
         })) as Record<string, unknown>;
+        gitHubRateLimitService.updateFromGraphQL(response);
         fetched = parseBatchRequiredChecksResponse(response, numbersToFetch);
         for (const [num, entry] of fetched) {
           prRequiredStatusCache.set(cacheKeyFor(num), entry);
@@ -335,6 +339,8 @@ export async function listPullRequests(
           request: { signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS) },
         })) as GraphQlQueryResponseData;
 
+        gitHubRateLimitService.updateFromGraphQL(response);
+
         const search = response?.search;
         const nodes = (search?.nodes ?? []) as Array<Record<string, unknown>>;
 
@@ -364,6 +370,8 @@ export async function listPullRequests(
           orderBy,
           request: { signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS) },
         })) as GraphQlQueryResponseData;
+
+        gitHubRateLimitService.updateFromGraphQL(response);
 
         if (!response?.repository) {
           throw new Error("Repository not found or token lacks access.");
@@ -434,6 +442,8 @@ export async function getPRByNumber(cwd: string, prNumber: number): Promise<GitH
         number: prNumber,
         request: { signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS) },
       })) as GraphQlQueryResponseData;
+
+      gitHubRateLimitService.updateFromGraphQL(response);
 
       const pr = response?.repository?.pullRequest;
       if (!pr) {

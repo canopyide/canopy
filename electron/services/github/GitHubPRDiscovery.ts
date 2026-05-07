@@ -10,6 +10,7 @@ import {
   prTooltipCache,
   prTooltipWrittenAt,
   truncateBody,
+  getETagCacheVersion,
 } from "./GitHubCaches.js";
 import type { PRTooltipData } from "../../../shared/types/github.js";
 import type { PRCheckCandidate, PRCheckResult, BatchPRCheckResult, LinkedPR } from "./types.js";
@@ -183,6 +184,28 @@ function parseBatchPRResponse(
   return results;
 }
 
+const CONCURRENCY_LIMIT = 5;
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  fn: (item: T) => Promise<R>,
+  limit: number = CONCURRENCY_LIMIT
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let index = 0;
+
+  async function worker(): Promise<void> {
+    while (index < items.length) {
+      const currentIndex = index++;
+      results[currentIndex] = await fn(items[currentIndex]);
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(limit, items.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
+}
+
 async function probePRChange(
   owner: string,
   repo: string,
@@ -191,6 +214,7 @@ async function probePRChange(
 ): Promise<"changed" | "unchanged" | "unknown"> {
   const cacheKey = `${owner}/${repo}#${prNumber}`;
   const cachedETag = prETagCache.get(cacheKey);
+  const versionAtStart = getETagCacheVersion();
   const url = `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`;
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
@@ -213,15 +237,15 @@ async function probePRChange(
       // Rate-limit bookkeeping must never break the probe.
     }
 
-    if (response.status === 304) {
+    if (response.status === 304 && getETagCacheVersion() === versionAtStart) {
       return "unchanged";
     }
-    if (response.status === 200) {
+    if (response.status === 200 && getETagCacheVersion() === versionAtStart) {
       const etag = response.headers.get("etag");
       if (etag) {
         prETagCache.set(cacheKey, etag);
       } else {
-        prETagCache.delete(cacheKey);
+        prETagCache.invalidate(cacheKey);
       }
       return "changed";
     }
@@ -239,6 +263,7 @@ async function probeBranchPRListChange(
 ): Promise<"changed" | "unchanged" | "unknown"> {
   const cacheKey = `${owner}/${repo}@${branchName}`;
   const cachedETag = branchListETagCache.get(cacheKey);
+  const versionAtStart = getETagCacheVersion();
   const headFilter = `${owner}:${encodeURIComponent(branchName)}`;
   const url = `https://api.github.com/repos/${owner}/${repo}/pulls?head=${headFilter}&state=all`;
   const headers: Record<string, string> = {
@@ -262,25 +287,25 @@ async function probeBranchPRListChange(
       // Rate-limit bookkeeping must never break the probe.
     }
 
-    if (response.status === 304) {
+    if (response.status === 304 && getETagCacheVersion() === versionAtStart) {
       return "unchanged";
     }
-    if (response.status === 200) {
+    if (response.status === 200 && getETagCacheVersion() === versionAtStart) {
       const etag = response.headers.get("etag");
       if (etag) {
         branchListETagCache.set(cacheKey, etag);
       } else {
-        branchListETagCache.delete(cacheKey);
+        branchListETagCache.invalidate(cacheKey);
       }
       let body: unknown;
       try {
         body = await response.json();
       } catch {
-        branchListETagCache.delete(cacheKey);
+        branchListETagCache.invalidate(cacheKey);
         return "unknown";
       }
       if (!Array.isArray(body)) {
-        branchListETagCache.delete(cacheKey);
+        branchListETagCache.invalidate(cacheKey);
         return "unknown";
       }
       return body.length === 0 ? "unchanged" : "changed";
@@ -298,8 +323,8 @@ async function allKnownPRsUnchanged(
   token: string
 ): Promise<boolean> {
   const uniquePRNumbers = Array.from(new Set(candidates.map((c) => c.knownPRNumber!)));
-  const probes = await Promise.all(
-    uniquePRNumbers.map((prNumber) => probePRChange(owner, repo, prNumber, token))
+  const probes = await mapWithConcurrency(uniquePRNumbers, (prNumber) =>
+    probePRChange(owner, repo, prNumber, token)
   );
   return probes.every((result) => result === "unchanged");
 }
@@ -385,10 +410,8 @@ export async function batchCheckLinkedPRs(
     }
     if (probeableIndicesByBranch.size > 0) {
       const uniqueBranches = Array.from(probeableIndicesByBranch.keys());
-      const probeResults = await Promise.all(
-        uniqueBranches.map((branch) =>
-          probeBranchPRListChange(context.owner, context.repo, branch, token)
-        )
+      const probeResults = await mapWithConcurrency(uniqueBranches, (branch) =>
+        probeBranchPRListChange(context.owner, context.repo, branch, token)
       );
       const skip = new Set<number>();
       for (let i = 0; i < uniqueBranches.length; i++) {
@@ -422,6 +445,8 @@ export async function batchCheckLinkedPRs(
       request: { signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS) },
     })) as Record<string, unknown>;
 
+    gitHubRateLimitService.updateFromGraphQL(response);
+
     const results = parseBatchPRResponse(response, candidatesForGraphQL);
     prewarmPRTooltipCache(context.owner, context.repo, results, requestedAt);
     return { results };
@@ -443,6 +468,7 @@ export async function batchCheckLinkedPRs(
           const retryResponse = (await client(retryQuery, {
             request: { signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS) },
           })) as Record<string, unknown>;
+          gitHubRateLimitService.updateFromGraphQL(retryResponse);
           const retryResults = parseBatchPRResponse(retryResponse, candidatesForGraphQL);
           prewarmPRTooltipCache(
             freshContext.owner,

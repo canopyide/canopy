@@ -45,6 +45,7 @@ vi.mock("../github/GitHubRateLimitService.js", async (importOriginal) => {
     gitHubRateLimitService: {
       shouldBlockRequest: () => ({ blocked: false }),
       update: () => {},
+      updateFromGraphQL: () => {},
       getState: () => ({ blocked: false }),
       onStateChange: () => () => {},
     },
