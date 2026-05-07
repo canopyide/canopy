@@ -151,13 +151,44 @@ describe("SoundService", () => {
     expect(mockBroadcastToRenderer).not.toHaveBeenCalled();
   });
 
-  it("cancel sends sound:cancel IPC via broadcast", () => {
+  it("cancel sends sound:cancel IPC via broadcast when renderer windows exist", () => {
+    mockGetAllWindows.mockReturnValue([{ id: 1 }]);
+
     soundService.cancel();
 
     expect(mockBroadcastToRenderer).toHaveBeenCalledWith("events:push", {
       name: "sound:cancel",
       payload: undefined,
     });
+    expect(mockCancel).not.toHaveBeenCalled();
+  });
+
+  it("cancel does not broadcast when no renderer windows are present", () => {
+    mockGetAllWindows.mockReturnValue([]);
+
+    soundService.cancel();
+
+    expect(mockBroadcastToRenderer).not.toHaveBeenCalledWith(
+      "events:push",
+      expect.objectContaining({ name: "sound:cancel" })
+    );
+  });
+
+  it("cancel cancels OS-fallback voices only when no renderer is present", () => {
+    mockGetAllWindows.mockReturnValue([]);
+    soundService.play("error");
+    vi.advanceTimersByTime(200);
+    soundService.play("ping");
+
+    expect(mockPlaySound).toHaveBeenCalledTimes(2);
+
+    soundService.cancel();
+
+    expect(mockCancel).toHaveBeenCalled();
+    expect(mockBroadcastToRenderer).not.toHaveBeenCalledWith(
+      "events:push",
+      expect.objectContaining({ name: "sound:cancel" })
+    );
   });
 
   it("preview sends the base file without variant selection via IPC", () => {
@@ -180,6 +211,16 @@ describe("SoundService", () => {
       volume: 1,
     });
     expect(mockPlaySound).not.toHaveBeenCalled();
+  });
+
+  it("does not stat the sound file when routing to the renderer", () => {
+    mockGetAllWindows.mockReturnValue([{ id: 1 }]);
+    fsMock.existsSync.mockClear();
+
+    soundService.play("error");
+    soundService.preview("chime");
+
+    expect(fsMock.existsSync).not.toHaveBeenCalled();
   });
 
   // -- Pulse detune forwarding --
