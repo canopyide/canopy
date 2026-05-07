@@ -26,7 +26,7 @@ export class ProjectFileStore {
         return [];
       }
       console.error(`[ProjectFileStore] Failed to read recipes for ${projectId}:`, error);
-      return [];
+      throw error;
     }
 
     let parsed: unknown;

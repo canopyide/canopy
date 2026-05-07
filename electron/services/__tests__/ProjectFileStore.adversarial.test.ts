@@ -367,14 +367,29 @@ describe("ProjectFileStore adversarial", () => {
     expect(utilsMock.resilientRename).not.toHaveBeenCalled();
   });
 
-  it("non-ENOENT read errors return [] without quarantine", async () => {
+  it("non-ENOENT read errors throw (so mutators don't destroy data)", async () => {
     const eacces = Object.assign(new Error("EACCES"), { code: "EACCES" });
     fsMock.readFile.mockRejectedValue(eacces);
 
-    const result = await store.getRecipes(VALID_ID);
-
-    expect(result).toEqual([]);
-    // Can't quarantine on read failure — we can't even read the file
+    await expect(store.getRecipes(VALID_ID)).rejects.toThrow("EACCES");
     expect(utilsMock.resilientRename).not.toHaveBeenCalled();
+  });
+
+  it("deleteRecipe does not write when getRecipes fails with non-ENOENT", async () => {
+    const eacces = Object.assign(new Error("EACCES"), { code: "EACCES" });
+    fsMock.readFile.mockRejectedValue(eacces);
+
+    await expect(store.deleteRecipe(VALID_ID, "any")).rejects.toThrow("EACCES");
+    expect(utilsMock.resilientAtomicWriteFile).not.toHaveBeenCalled();
+  });
+
+  it("addRecipe does not write when getRecipes fails with non-ENOENT", async () => {
+    const eio = Object.assign(new Error("EIO"), { code: "EIO" });
+    fsMock.readFile.mockRejectedValue(eio);
+
+    await expect(
+      store.addRecipe(VALID_ID, { id: "r1", name: "test", terminals: [], createdAt: 1000 })
+    ).rejects.toThrow("EIO");
+    expect(utilsMock.resilientAtomicWriteFile).not.toHaveBeenCalled();
   });
 });
