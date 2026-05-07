@@ -551,7 +551,8 @@ export class ProcessDetector {
     if (!bestMatch || bestMatch.priority > 0) {
       for (const child of liveChildren.slice(0, 10)) {
         const grandchildren = this.cache.getChildren(child.pid);
-        for (const grandchild of grandchildren) {
+        const liveGrandchildren = grandchildren.filter((gc) => !gc.command.includes("<defunct>"));
+        for (const grandchild of liveGrandchildren) {
           const candidate = buildDetectedCandidate(
             grandchild.comm,
             grandchild.command || grandchild.comm,

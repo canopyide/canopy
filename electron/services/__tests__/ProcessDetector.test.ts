@@ -1325,6 +1325,14 @@ describe("extractScriptBasenameFromCommand", () => {
     ]);
   });
 
+  it("fills all 5 candidate slots from a deep wrapper stack", () => {
+    // 6 non-flag, non-numeric tokens before the agent — cap of 5 verified
+    // (slot 6 'codex' should be excluded by the cap)
+    const candidates = extractCommandNameCandidates("env FOO=bar direnv exec mise x npx codex");
+    expect(candidates).toHaveLength(5);
+    expect(candidates).toEqual(["env", "direnv", "exec", "mise", "x"]);
+  });
+
   it("preserves names containing digits (not pure-numeric)", () => {
     const candidates = extractCommandNameCandidates("node20 /path/to/claude2 --flag");
     expect(candidates).toContain("node20");
