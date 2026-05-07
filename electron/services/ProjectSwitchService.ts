@@ -122,6 +122,9 @@ export class ProjectSwitchService {
       console.log("[ProjectSwitch] Project switch complete, switchId:", switchId);
       return updatedProject;
     } catch (error) {
+      // Drain the in-flight save so it can't race with a subsequent switch's
+      // write to the same outgoing project state file.
+      await saveOutgoingPromise.catch(() => {});
       console.error("[ProjectSwitch] Project switch failed, rolling back:", error);
       try {
         if (previousProjectId) {

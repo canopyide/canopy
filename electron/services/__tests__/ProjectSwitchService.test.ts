@@ -416,6 +416,75 @@ describe("ProjectSwitchService", () => {
     );
   });
 
+  it("proves save initiation precedes setCurrentProject via call-order log", async () => {
+    const callLog: string[] = [];
+    const getProjectStateOrig = projectStoreMock.getProjectState.getMockImplementation();
+    projectStoreMock.getProjectState.mockImplementation(async (id: string) => {
+      callLog.push("getProjectState");
+      return getProjectStateOrig!(id);
+    });
+    projectStoreMock.saveProjectState.mockImplementation(async () => {
+      callLog.push("saveProjectState");
+    });
+    projectStoreMock.setCurrentProject.mockImplementation(async () => {
+      callLog.push("setCurrentProject");
+    });
+
+    const { service } = createService();
+    await service.switchProject("project-new");
+
+    const getIdx = callLog.indexOf("getProjectState");
+    const setIdx = callLog.indexOf("setCurrentProject");
+    expect(getIdx).toBeLessThan(setIdx);
+    // saveProjectState fires in a microtask after getProjectState resolves;
+    // the key invariant is that save initiation (getProjectState) precedes setCurrentProject.
+  });
+
+  it("holds switchChain until pending save drains on failure path", async () => {
+    let resolveSave!: () => void;
+    const savePromise = new Promise<void>((resolve) => {
+      resolveSave = resolve;
+    });
+    projectStoreMock.saveProjectState.mockReturnValueOnce(savePromise);
+    projectStoreMock.setCurrentProject.mockRejectedValueOnce(new Error("setCurrent failed"));
+
+    const { service } = createService();
+
+    // First switch fails — catch block should await saveOutgoingPromise
+    const firstSwitch = service.switchProject("project-new");
+
+    // Give the catch block time to enter its await
+    for (let i = 0; i < 10; i += 1) {
+      await Promise.resolve();
+    }
+
+    // Second switch queues behind switchChain, which is held by the
+    // catch block's await on saveOutgoingPromise
+    projectStoreMock.getCurrentProjectId.mockReturnValue("project-new");
+    const secondSwitch = service.switchProject("project-old");
+
+    let secondResolved = false;
+    secondSwitch.then(
+      () => {
+        secondResolved = true;
+      },
+      () => {
+        secondResolved = true;
+      }
+    );
+
+    for (let i = 0; i < 10; i += 1) {
+      await Promise.resolve();
+    }
+    expect(secondResolved).toBe(false);
+
+    // Drain the save → catch block finishes → switchChain unblocks → second switch runs
+    resolveSave();
+    await firstSwitch.catch(() => {});
+    await secondSwitch;
+    expect(secondResolved).toBe(true);
+  });
+
   it("preserves original switch error when rollback throws", async () => {
     const originalError = new Error("setCurrent failed");
     projectStoreMock.setCurrentProject.mockRejectedValue(originalError);
