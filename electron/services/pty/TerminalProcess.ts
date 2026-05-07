@@ -1405,7 +1405,9 @@ export class TerminalProcess {
       }
 
       terminal.lastOutputTime = Date.now();
-      const beforeContentSnapshot = this.getAgentOutputContentSnapshot();
+      const beforeContentSnapshot = this.isAgentLive
+        ? this.getAgentOutputContentSnapshot()
+        : undefined;
 
       if (this.activityMonitor) {
         this.activityMonitor.onData(data);
