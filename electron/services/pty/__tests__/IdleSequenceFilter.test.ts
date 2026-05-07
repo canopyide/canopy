@@ -26,6 +26,20 @@ describe("stripIdleTerminalSequences", () => {
     expect(stripIdleTerminalSequences("\x1b[?1049h\x1b[?1049l")).toBe("");
   });
 
+  it("strips DECSET combined-mode sequences with all known-noise codes", () => {
+    expect(stripIdleTerminalSequences("\x1b[?25;2026h")).toBe("");
+    expect(stripIdleTerminalSequences("\x1b[?1049;2004l")).toBe("");
+    expect(stripIdleTerminalSequences("\x1b[?25;1004;2004h")).toBe("");
+  });
+
+  it("preserves DECSET combined-mode when any code is unknown", () => {
+    expect(stripIdleTerminalSequences("\x1b[?25;9999h")).toBe("\x1b[?25;9999h");
+    expect(stripIdleTerminalSequences("\x1b[?9999h")).toBe("\x1b[?9999h");
+    // Unknown code sandwiched between known codes still rejects the whole sequence.
+    expect(stripIdleTerminalSequences("\x1b[?25;9999;2026h")).toBe("\x1b[?25;9999;2026h");
+    expect(stripIdleTerminalSequences("\x1b[?9999;25h")).toBe("\x1b[?9999;25h");
+  });
+
   it("strips OSC 0 set-window-title", () => {
     expect(stripIdleTerminalSequences("\x1b]0;Window Title\x07")).toBe("");
   });
@@ -48,6 +62,44 @@ describe("stripIdleTerminalSequences", () => {
 
   it("strips OSC 9 taskbar progress", () => {
     expect(stripIdleTerminalSequences("\x1b]9;4;1;50\x07")).toBe("");
+  });
+
+  it("strips OSC 10 foreground-color query/response", () => {
+    expect(stripIdleTerminalSequences("\x1b]10;?\x07")).toBe("");
+    expect(stripIdleTerminalSequences("\x1b]10;rgb:ffff/ffff/ffff\x07")).toBe("");
+  });
+
+  it("strips OSC 11 background-color query/response", () => {
+    expect(stripIdleTerminalSequences("\x1b]11;?\x07")).toBe("");
+    expect(stripIdleTerminalSequences("\x1b]11;rgb:0000/0000/0000\x07")).toBe("");
+  });
+
+  it("strips OSC 12 cursor-color query/response", () => {
+    expect(stripIdleTerminalSequences("\x1b]12;?\x07")).toBe("");
+  });
+
+  it("strips OSC 52 clipboard metadata", () => {
+    expect(stripIdleTerminalSequences("\x1b]52;c;aGVsbG8=\x07")).toBe("");
+  });
+
+  it("strips OSC 1337 iTerm2 sequences", () => {
+    expect(stripIdleTerminalSequences("\x1b]1337;CurrentDir=/tmp\x07")).toBe("");
+    expect(stripIdleTerminalSequences("\x1b]1337;RemoteHost=user@host\x07")).toBe("");
+  });
+
+  it("preserves OSC 1337 with payload exceeding 512 chars", () => {
+    const start = performance.now();
+    const payload = "x".repeat(2000);
+    const input = `\x1b]1337;File=name=foo.png:${payload}\x07`;
+    const out = stripIdleTerminalSequences(input);
+    const elapsed = performance.now() - start;
+    expect(elapsed).toBeLessThan(50);
+    expect(out).toBe(input);
+  });
+
+  it("preserves unknown OSC codes (e.g. OSC 14, OSC 777)", () => {
+    expect(stripIdleTerminalSequences("\x1b]14;?\x07")).toBe("\x1b]14;?\x07");
+    expect(stripIdleTerminalSequences("\x1b]777;notify\x07")).toBe("\x1b]777;notify\x07");
   });
 
   it("strips OSC 133 shell integration", () => {

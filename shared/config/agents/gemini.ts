@@ -64,14 +64,14 @@ export const config: AgentConfig = {
   detection: {
     primaryPatterns: [
       // @generated:gemini:primaryPatterns:start
-      "[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\\s+[^()\\n]{2,80}\\s*\\(esc to cancel",
+      "[⠀-⣿]\\s+[^()\\n]{2,80}\\s*\\(esc to cancel",
       "esc to cancel[^)\\n]*\\)?$",
       "\\(\\d+s,?\\s*esc to cancel",
       // @generated:gemini:primaryPatterns:end
     ],
     fallbackPatterns: [
       // @generated:gemini:fallbackPatterns:start
-      "[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\\s+\\w",
+      "[⠀-⣿]\\s+\\w",
       // @generated:gemini:fallbackPatterns:end
     ],
     bootCompletePatterns: [

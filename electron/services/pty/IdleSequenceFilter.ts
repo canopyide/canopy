@@ -24,10 +24,17 @@
 // idle→busy escalations on cosmetic redraws that the structural tier exists
 // to prevent.
 
+// Combined-mode private sequences (e.g. `\x1b[?25;2026h`) are stripped only when
+// every code is in the known-noise allowlist; sequences carrying any unknown
+// code (e.g. `\x1b[?25;9999h`) pass through untouched so meaningful TUI modes
+// stay observable.
 // eslint-disable-next-line no-control-regex
-const DECSET_NOISE = /\x1b\[\?(?:25|1004|2004|2026|1049)[hl]/gu;
+const DECSET_NOISE = /\x1b\[\?(?:25|1004|2004|2026|1049)(?:;(?:25|1004|2004|2026|1049))*[hl]/gu;
+// `1337` must precede `133` in the alternation: JS regex picks the leftmost
+// matching branch, not the longest, so reordering would leave a stray `7` in
+// OSC 1337 sequences.
 // eslint-disable-next-line no-control-regex
-const OSC_NOISE = /\x1b\](?:[0-9]|133|633)[;:][^\x07\x1b]{0,512}(?:\x07|\x1b\\)/gu;
+const OSC_NOISE = /\x1b\](?:1337|133|633|52|12|11|10|[0-9])[;:][^\x07\x1b]{0,512}(?:\x07|\x1b\\)/gu;
 // eslint-disable-next-line no-control-regex
 const CPR_NOISE = /\x1b\[\d{1,4};\d{1,4}R/gu;
 // eslint-disable-next-line no-control-regex
