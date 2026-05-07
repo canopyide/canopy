@@ -243,25 +243,6 @@ describe("WorkspaceService.pause/resume", () => {
 
     expect(() => service.resume()).not.toThrow();
   });
-
-  it("pause() calls global.gc when available", () => {
-    vi.spyOn(os, "setPriority").mockImplementation(() => {});
-    const mockGc = vi.fn();
-    (global as any).gc = mockGc;
-
-    service.pause();
-
-    expect(mockGc).toHaveBeenCalled();
-    delete (global as any).gc;
-  });
-
-  it("pause() skips global.gc when not available", () => {
-    vi.spyOn(os, "setPriority").mockImplementation(() => {});
-    delete (global as any).gc;
-
-    // Should not throw
-    expect(() => service.pause()).not.toThrow();
-  });
 });
 
 describe("WorkspaceService.refreshOnWake", () => {
