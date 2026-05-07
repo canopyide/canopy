@@ -489,7 +489,8 @@ describe("accent guard", () => {
 
     for (const filePath of collectSourceFiles(SRC_ROOT)) {
       const source = fs.readFileSync(filePath, "utf8");
-      const relativePath = path.relative(REPO_ROOT, filePath);
+      // Normalize to posix-style separators so allowlist hits match on Windows.
+      const relativePath = path.relative(REPO_ROOT, filePath).replace(/\\/g, "/");
 
       if (fullAllowlist.has(relativePath)) continue;
 

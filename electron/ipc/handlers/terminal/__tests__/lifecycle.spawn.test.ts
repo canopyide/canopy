@@ -406,56 +406,62 @@ describe("terminal spawn shell-injection hardening (#6065)", () => {
     expect(ptyClient.write).not.toHaveBeenCalled();
   });
 
-  it("accepts intentional shell metacharacters (pipes, redirects, env, $())", async () => {
-    const deps = { ptyClient } as unknown as HandlerDependencies;
-    registerTerminalLifecycleHandlers(deps);
+  it.skipIf(process.platform === "win32")(
+    "accepts intentional shell metacharacters (pipes, redirects, env, $())",
+    async () => {
+      const deps = { ptyClient } as unknown as HandlerDependencies;
+      registerTerminalLifecycleHandlers(deps);
 
-    const handler = getSpawnHandler();
+      const handler = getSpawnHandler();
 
-    const command = "FOO=bar npm run dev | tee out.log; echo $(pwd)";
-    await handler(
-      {} as Electron.IpcMainInvokeEvent,
-      {
-        cols: 80,
-        rows: 24,
-        cwd: "/tmp",
-        command,
-      } as unknown as Parameters<typeof handler>[1]
-    );
+      const command = "FOO=bar npm run dev | tee out.log; echo $(pwd)";
+      await handler(
+        {} as Electron.IpcMainInvokeEvent,
+        {
+          cols: 80,
+          rows: 24,
+          cwd: "/tmp",
+          command,
+        } as unknown as Parameters<typeof handler>[1]
+      );
 
-    expect(ptyClient.spawn).toHaveBeenCalledTimes(1);
-    const spawnArgs = ptyClient.spawn.mock.calls[0][1];
-    expect(spawnArgs.command).toBe(command);
+      expect(ptyClient.spawn).toHaveBeenCalledTimes(1);
+      const spawnArgs = ptyClient.spawn.mock.calls[0][1];
+      expect(spawnArgs.command).toBe(command);
 
-    // Lock the security-critical script template against structural regressions.
-    // The shell path must be single-quoted and the user command must appear
-    // verbatim between the trap markers — no further wrapping or rewriting.
-    expect(spawnArgs.args).toEqual([
-      "-lic",
-      `trap : INT\n${command}\ntrap - INT\nexec '/bin/zsh' -l`,
-    ]);
-  });
+      // Lock the security-critical script template against structural regressions.
+      // The shell path must be single-quoted and the user command must appear
+      // verbatim between the trap markers — no further wrapping or rewriting.
+      expect(spawnArgs.args).toEqual([
+        "-lic",
+        `trap : INT\n${command}\ntrap - INT\nexec '/bin/zsh' -l`,
+      ]);
+    }
+  );
 
-  it("single-quotes shell paths containing single quotes when building the launch script", async () => {
-    const deps = { ptyClient } as unknown as HandlerDependencies;
-    registerTerminalLifecycleHandlers(deps);
+  it.skipIf(process.platform === "win32")(
+    "single-quotes shell paths containing single quotes when building the launch script",
+    async () => {
+      const deps = { ptyClient } as unknown as HandlerDependencies;
+      registerTerminalLifecycleHandlers(deps);
 
-    const handler = getSpawnHandler();
+      const handler = getSpawnHandler();
 
-    await handler(
-      {} as Electron.IpcMainInvokeEvent,
-      {
-        cols: 80,
-        rows: 24,
-        cwd: "/tmp",
-        shell: "/tmp/o'hare/zsh",
-        command: "echo hi",
-      } as unknown as Parameters<typeof handler>[1]
-    );
+      await handler(
+        {} as Electron.IpcMainInvokeEvent,
+        {
+          cols: 80,
+          rows: 24,
+          cwd: "/tmp",
+          shell: "/tmp/o'hare/zsh",
+          command: "echo hi",
+        } as unknown as Parameters<typeof handler>[1]
+      );
 
-    const spawnArgs = ptyClient.spawn.mock.calls[0][1];
-    expect(spawnArgs.args[1]).toContain("exec '/tmp/o'\\''hare/zsh' -l");
-  });
+      const spawnArgs = ptyClient.spawn.mock.calls[0][1];
+      expect(spawnArgs.args[1]).toContain("exec '/tmp/o'\\''hare/zsh' -l");
+    }
+  );
 });
 
 describe("terminal spawn rate limiting (#5352)", () => {

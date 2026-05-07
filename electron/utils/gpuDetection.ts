@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import path from "node:path";
 
 export function isWebGLHardwareAccelerated(webgl2: unknown): boolean {
   if (typeof webgl2 !== "string") return true;
@@ -20,7 +19,7 @@ export interface LinuxGpuInfo {
 
 function readVendorId(nodeName: string): string | null {
   try {
-    const raw = fs.readFileSync(path.join(DRM_PATH, nodeName, "device", "vendor"), "utf8");
+    const raw = fs.readFileSync(`${DRM_PATH}/${nodeName}/device/vendor`, "utf8");
     return raw.trim().toLowerCase();
   } catch {
     return null;

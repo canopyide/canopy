@@ -35,6 +35,17 @@ vi.mock("child_process", () => ({
   execFile: vi.fn(defaultExecFileImpl),
 }));
 
+// Mock os.homedir() to return a stable Unix-style path. On Windows runners
+// the real homedir is `C:\Users\<user>`, which (after join with `~/...`
+// candidates from synthesisePypiProbePaths) yields backslashed strings that
+// `expandPath()` rejects via its Windows-paths-on-Unix guard. Forcing a
+// Unix-shaped homedir keeps the synthesised candidates probeable when
+// `process.platform` is mocked to "darwin" for the bulk of the suite.
+vi.mock("os", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  return { ...actual, homedir: vi.fn(() => "/Users/test") };
+});
+
 vi.mock("../../setup/environment.js", () => ({
   refreshPath: vi.fn().mockResolvedValue(undefined),
   expandWindowsEnvVars: vi.fn((s: string) =>
@@ -90,6 +101,11 @@ describe("CliAvailabilityService", () => {
   const mockedExecFile = vi.mocked(execFile);
   let consoleLogSpy: ReturnType<typeof vi.spyOn>;
   const savedEnv: Record<string, string | undefined> = {};
+  // Default platform to darwin so Unix-style path/probe expectations don't
+  // diverge on Windows CI. Individual tests that exercise Windows-specific
+  // branches (`where.exe`, `<prefix>\<cmd>.cmd` shims, WSL fallback, etc.)
+  // override `process.platform` explicitly via `Object.defineProperty`.
+  const originalPlatformDescriptor = Object.getOwnPropertyDescriptor(process, "platform");
   // Auth env vars consulted by AgentAuthCheck.envVar across the built-in
   // registry. Clear them so local dev shells (which commonly have these set)
   // don't cause the "no auth file" assertions to flip to "ready".
@@ -112,6 +128,10 @@ describe("CliAvailabilityService", () => {
       savedEnv[key] = process.env[key];
       delete process.env[key];
     }
+
+    // Default to darwin — most assertions in this file expect Unix path/probe
+    // semantics. Tests covering Windows behavior re-define platform explicitly.
+    Object.defineProperty(process, "platform", { value: "darwin", writable: true });
 
     service = new CliAvailabilityService();
     // Reset the in-memory store between tests so duplicate-cli milestone
@@ -140,6 +160,9 @@ describe("CliAvailabilityService", () => {
       } else {
         process.env[key] = savedEnv[key];
       }
+    }
+    if (originalPlatformDescriptor) {
+      Object.defineProperty(process, "platform", originalPlatformDescriptor);
     }
   });
 
@@ -246,7 +269,14 @@ describe("CliAvailabilityService", () => {
       // them to "ready" and defeat the "only claude is available" premise.
       mockedAccess.mockImplementation(async (p) => {
         const pathStr = String(p);
-        if (pathStr.includes("/bin/") || pathStr.includes("cursor-agent.app")) {
+        // Match `/bin/` (posix) and `\bin\` (Windows, when path.join runs on a
+        // Windows runner with `process.platform` mocked to darwin and produces
+        // backslashed candidates from `~/...` inputs).
+        if (
+          pathStr.includes("/bin/") ||
+          pathStr.includes("\\bin\\") ||
+          pathStr.includes("cursor-agent.app")
+        ) {
           throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
         }
         return undefined;
@@ -271,6 +301,7 @@ describe("CliAvailabilityService", () => {
       const mockedAccess = vi.mocked(access);
 
       process.env.DAINTREE_CLI_PATH_PREPEND = "/tmp/daintree-fake-bin";
+      const expectedClaudePath = join("/tmp/daintree-fake-bin", "claude");
 
       mockedExecFileSync.mockImplementation((_file, args) => {
         if (cmdOf(args) === "claude") {
@@ -279,7 +310,7 @@ describe("CliAvailabilityService", () => {
         throw new Error("Command not found");
       });
       mockedAccess.mockImplementation(async (p, mode) => {
-        if (String(p) === "/tmp/daintree-fake-bin/claude" && mode === constants.X_OK) {
+        if (String(p) === expectedClaudePath && mode === constants.X_OK) {
           return;
         }
         throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
@@ -288,7 +319,7 @@ describe("CliAvailabilityService", () => {
       const result = await service.checkAvailability();
 
       expect(result.claude).toBe("unauthenticated");
-      expect(service.getDetails()?.claude?.resolvedPath).toBe("/tmp/daintree-fake-bin/claude");
+      expect(service.getDetails()?.claude?.resolvedPath).toBe(expectedClaudePath);
       expect(mockedExecFileSync).not.toHaveBeenCalledWith(
         "which",
         ["-a", "claude"],
@@ -1562,7 +1593,10 @@ describe("CliAvailabilityService", () => {
       // Filter out paths synthesised for agents whose `packages.pypi`
       // legitimately triggers uv/pipx probing (interpreter, mistral, kimi, aider).
       // Remaining probed paths must not include any uv/pipx layouts.
-      const allProbedPaths = mockedAccess.mock.calls.map((c) => String(c[0]));
+      // Normalize separators so substring checks work regardless of host OS
+      // (Windows runners produce backslashed paths post-`path.join`).
+      const norm = (s: string) => s.replace(/\\/g, "/");
+      const allProbedPaths = mockedAccess.mock.calls.map((c) => norm(String(c[0])));
       const probedPaths = allProbedPaths.filter(
         (p) =>
           !p.includes("open-interpreter") &&

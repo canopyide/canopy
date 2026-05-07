@@ -294,9 +294,21 @@ describe("TrashedPidTracker", () => {
 
       const callOrder: number[] = [];
       const slowResolvers: Array<(value: { stdout: string; stderr: string }) => void> = [];
+      // PID lives in args[1] for `ps -p <pid>` (Unix) and inside the inline
+      // powershell `-Command` string for Win32 (`ProcessId=<pid>`). Extract
+      // either form so the test works on every host platform.
+      const extractPid = (args: string[]): string | null => {
+        if (process.platform === "win32") {
+          const cmdIdx = args.indexOf("-Command");
+          const cmd = cmdIdx >= 0 ? (args[cmdIdx + 1] ?? "") : "";
+          const match = cmd.match(/ProcessId=(\d+)/);
+          return match?.[1] ?? null;
+        }
+        return args[1] ?? null;
+      };
       mockExecFileAsync.mockImplementation(((_cmd: string, args: string[]) => {
-        const pidArg = args[1];
-        callOrder.push(Number(pidArg));
+        const pidArg = extractPid(args);
+        if (pidArg) callOrder.push(Number(pidArg));
         if (pidArg === "1001") {
           return new Promise<{ stdout: string; stderr: string }>((resolve) => {
             slowResolvers.push(resolve);
@@ -337,7 +349,11 @@ describe("TrashedPidTracker", () => {
       ]);
 
       mockExecFileAsync.mockImplementation((async (_cmd: string, args: string[]) => {
-        if (args[1] === "1001") {
+        const pidArg =
+          process.platform === "win32"
+            ? args[args.indexOf("-Command") + 1]?.match(/ProcessId=(\d+)/)?.[1]
+            : args[1];
+        if (pidArg === "1001") {
           throw new Error("ps -p race");
         }
         return { stdout: MOCK_START_TIME, stderr: "" };

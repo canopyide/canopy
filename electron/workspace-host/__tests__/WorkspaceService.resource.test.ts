@@ -1717,7 +1717,13 @@ describe("WorkspaceService.initResourceConfigAsync", () => {
 
     await service["initResourceConfigAsync"](monitor, "/test/worktree");
 
-    expect(monitor.resourceConnectCommand).toBe("ssh 'my-worktree'@'feature/x'.example.com");
+    // shellEscapeValue uses single quotes on Unix and double quotes on
+    // Windows (cmd.exe). The double-brace `{{var}}` form always escapes,
+    // regardless of charset.
+    const q = process.platform === "win32" ? '"' : "'";
+    expect(monitor.resourceConnectCommand).toBe(
+      `ssh ${q}my-worktree${q}@${q}feature/x${q}.example.com`
+    );
   });
 
   it("returns early when projectRootPath is not set", async () => {

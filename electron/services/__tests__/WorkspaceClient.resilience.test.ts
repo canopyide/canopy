@@ -594,7 +594,7 @@ describe("WorkspaceClient multi-process manager", () => {
       expect(listener).toHaveBeenCalledTimes(1);
       expect(listener).toHaveBeenCalledWith({
         worktree: expect.objectContaining({ id: "wt-1" }),
-        projectPath: "/project-a",
+        projectPath: path.resolve("/project-a"),
       });
     });
 
@@ -614,7 +614,7 @@ describe("WorkspaceClient multi-process manager", () => {
       expect(listener).toHaveBeenCalledTimes(1);
       expect(listener).toHaveBeenCalledWith({
         worktreeId: "wt-1",
-        projectPath: "/project-a",
+        projectPath: path.resolve("/project-a"),
       });
     });
 
@@ -639,7 +639,7 @@ describe("WorkspaceClient multi-process manager", () => {
 
       expect(listener).toHaveBeenCalledWith({
         worktreeId: "wt-1",
-        projectPath: "/project-a",
+        projectPath: path.resolve("/project-a"),
       });
     });
 

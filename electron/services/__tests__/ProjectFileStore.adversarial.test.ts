@@ -63,9 +63,10 @@ describe("ProjectFileStore adversarial", () => {
     const result = await store.getRecipes(VALID_ID);
 
     expect(result).toEqual([]);
+    const escapedFile = EXPECTED_RECIPES_FILE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     expect(utilsMock.resilientRename).toHaveBeenCalledWith(
       EXPECTED_RECIPES_FILE,
-      expect.stringMatching(/^\/tmp\/daintree-projects\/a{64}\/recipes\.json\.corrupted\.\d+$/)
+      expect.stringMatching(new RegExp(`^${escapedFile}\\.corrupted\\.\\d+$`))
     );
   });
 

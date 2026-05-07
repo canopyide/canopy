@@ -737,8 +737,11 @@ export class CliAvailabilityService {
       // (env var not set) to avoid probing a literal path like
       // "%LOCALAPPDATA%\claude-code\bin\claude.exe".
       if (expanded.includes("%")) return null;
-    } else if (expanded.includes("\\")) {
-      // Windows-only candidates should not be probed on Unix.
+    } else if (input.includes("\\")) {
+      // Windows-only candidates should not be probed on Unix. Inspect the
+      // original input rather than `expanded`, since `join(home, …)` on a
+      // Windows host can introduce backslashes even for posix-shaped inputs
+      // (matters when tests mock `process.platform` to "darwin").
       return null;
     }
     return expanded;

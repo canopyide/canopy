@@ -18,6 +18,7 @@ import { resilientAtomicWriteFile } from "../fs.js";
 
 describe("syncParentDirectory", () => {
   let tmpDir: string;
+  let platformRestore: (() => void) | undefined;
 
   beforeEach(async () => {
     tmpDir = await mkdtemp(path.join(os.tmpdir(), "daintree-dirsync-test-"));
@@ -25,10 +26,15 @@ describe("syncParentDirectory", () => {
     mockedOpen.mockResolvedValue({ sync: mockedSync, close: mockedClose });
     mockedSync.mockResolvedValue(undefined);
     mockedClose.mockResolvedValue(undefined);
+    if (process.platform === "win32") {
+      platformRestore = vi.spyOn(process, "platform", "get").mockReturnValue("linux");
+    }
   });
 
   afterEach(async () => {
     await rm(tmpDir, { recursive: true, force: true });
+    platformRestore?.();
+    platformRestore = undefined;
     vi.restoreAllMocks();
   });
 

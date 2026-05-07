@@ -834,12 +834,12 @@ describe("createDaintreeFileProtocolHandler — symlink containment", () => {
 
     expect(response.status).toBe(200);
     // Stat is performed on the realpath-resolved file for accurate size.
-    expect(fs.stat).toHaveBeenCalledWith("/project/src/index.ts");
+    expect(fs.stat).toHaveBeenCalledWith(path.normalize("/project/src/index.ts"));
     // open() must be called on the user-supplied (normalized) path with O_NOFOLLOW
     // — this is the TOCTOU defense that net.fetch did not provide.
     expect(fs.open).toHaveBeenCalledTimes(1);
     const openArgs = vi.mocked(fs.open).mock.calls[0];
-    expect(openArgs[0]).toBe("/project/src/index.ts");
+    expect(openArgs[0]).toBe(path.normalize("/project/src/index.ts"));
     expect(openArgs[1]).toBe(fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
   });
 
@@ -971,9 +971,12 @@ describe("createDaintreeFileProtocolHandler — symlink containment", () => {
   it("blocks a symlink whose path is inside root but whose target is outside root", async () => {
     const fs = await import("fs/promises");
     const realpath = vi.mocked(fs.realpath);
+    const projectRoot = path.normalize("/project");
+    const escapeIn = path.normalize("/project/escape");
+    const escapeOut = path.normalize("/etc/passwd");
     realpath.mockImplementation((p) => {
-      if (p === "/project") return Promise.resolve("/project");
-      if (p === "/project/escape") return Promise.resolve("/etc/passwd");
+      if (p === projectRoot) return Promise.resolve(projectRoot);
+      if (p === escapeIn) return Promise.resolve(escapeOut);
       return Promise.resolve(p as string);
     });
 
@@ -1034,12 +1037,20 @@ describe("createDaintreeFileProtocolHandler — symlink containment", () => {
   it("blocks a Windows cross-drive escape where path.relative returns an absolute path", async () => {
     const fs = await import("fs/promises");
     const realpath = vi.mocked(fs.realpath);
+    const projectRoot = path.normalize("/project");
+    const winlink = path.normalize("/project/winlink");
     realpath.mockImplementation((p) => {
-      if (p === "/project") return Promise.resolve("/project");
+      if (p === projectRoot) return Promise.resolve(projectRoot);
       // Simulate a symlink resolving to a path with a leading slash that path.relative
       // treats as absolute relative to the root — same shape as Windows cross-drive escape
       // (path.relative('D:\\project', 'C:\\windows') === 'C:\\windows').
-      if (p === "/project/winlink") return Promise.resolve("/totally/elsewhere");
+      if (p === winlink) {
+        // On Windows we explicitly resolve to a different drive so path.relative
+        // returns an absolute path. On POSIX we just pick an unrelated absolute path.
+        const elsewhere =
+          process.platform === "win32" ? "C:\\totally\\elsewhere" : "/totally/elsewhere";
+        return Promise.resolve(elsewhere);
+      }
       return Promise.resolve(p as string);
     });
 
@@ -1053,9 +1064,12 @@ describe("createDaintreeFileProtocolHandler — symlink containment", () => {
   it("permits a symlink whose resolved target stays inside root", async () => {
     const fs = await import("fs/promises");
     const realpath = vi.mocked(fs.realpath);
+    const projectRoot = path.normalize("/project");
+    const link = path.normalize("/project/link");
+    const realFile = path.normalize("/project/real/file.txt");
     realpath.mockImplementation((p) => {
-      if (p === "/project") return Promise.resolve("/project");
-      if (p === "/project/link") return Promise.resolve("/project/real/file.txt");
+      if (p === projectRoot) return Promise.resolve(projectRoot);
+      if (p === link) return Promise.resolve(realFile);
       return Promise.resolve(p as string);
     });
 
@@ -1065,8 +1079,8 @@ describe("createDaintreeFileProtocolHandler — symlink containment", () => {
     expect(response.status).toBe(200);
     // stat reads the resolved real path (for accurate size); open uses the
     // user-supplied normalized path so O_NOFOLLOW catches a final-component swap.
-    expect(fs.stat).toHaveBeenCalledWith("/project/real/file.txt");
-    expect(vi.mocked(fs.open).mock.calls[0][0]).toBe("/project/link");
+    expect(fs.stat).toHaveBeenCalledWith(realFile);
+    expect(vi.mocked(fs.open).mock.calls[0][0]).toBe(link);
   });
 
   it("returns 400 (not 404) for missing parameters — input validation precedes realpath", async () => {

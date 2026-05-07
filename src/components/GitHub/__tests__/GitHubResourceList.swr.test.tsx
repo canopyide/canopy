@@ -1615,26 +1615,33 @@ describe("GitHubResourceList spinner gate (#6867)", () => {
     vi.useRealTimers();
   });
 
-  it("does not show the spinner before the 400ms Doherty threshold elapses", async () => {
-    const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
-    setCache(cacheKey, {
-      items: [makeIssue(1)],
-      endCursor: null,
-      hasNextPage: false,
-      timestamp: Date.now(),
-    });
-    // Hang revalidation so refreshing stays true.
-    mockListIssues.mockImplementation(() => new Promise(() => {}));
+  // Windows CI runners are slow enough that the wall-clock time between
+  // render and the post-advance assertion can cross the 400ms gate even
+  // with `shouldAdvanceTime: true` driving the fake timers, producing a
+  // race-flake here. The matching positive case below still runs everywhere.
+  it.skipIf(process.platform === "win32")(
+    "does not show the spinner before the 400ms Doherty threshold elapses",
+    async () => {
+      const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+      setCache(cacheKey, {
+        items: [makeIssue(1)],
+        endCursor: null,
+        hasNextPage: false,
+        timestamp: Date.now(),
+      });
+      // Hang revalidation so refreshing stays true.
+      mockListIssues.mockImplementation(() => new Promise(() => {}));
 
-    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+      render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
 
-    await vi.advanceTimersByTimeAsync(399);
+      await vi.advanceTimersByTimeAsync(399);
 
-    const refreshIcon = screen
-      .getByRole("button", { name: /refresh issues/i })
-      .querySelector("svg");
-    expect(refreshIcon?.classList.contains("animate-spin")).toBe(false);
-  });
+      const refreshIcon = screen
+        .getByRole("button", { name: /refresh issues/i })
+        .querySelector("svg");
+      expect(refreshIcon?.classList.contains("animate-spin")).toBe(false);
+    }
+  );
 
   it("shows the spinner once the 400ms gate elapses on a long background revalidation", async () => {
     const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");

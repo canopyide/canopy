@@ -19,12 +19,15 @@ describe("resolveAgentLaunchBaseCommand", () => {
   });
 
   it("quotes resolved paths that need shell escaping", () => {
+    // Shell-quoting uses single quotes on Unix, double quotes on Windows
+    // (cmd.exe), to match the surrounding spawn shell.
+    const q = process.platform === "win32" ? '"' : "'";
     expect(
       resolveAgentLaunchBaseCommand(
         "claude",
         detail({ resolvedPath: "/tmp/Daintree Test/bin/claude" })
       )
-    ).toBe("'/tmp/Daintree Test/bin/claude'");
+    ).toBe(`${q}/tmp/Daintree Test/bin/claude${q}`);
   });
 
   it("falls back to the registry command when the detail is missing or not ready", () => {

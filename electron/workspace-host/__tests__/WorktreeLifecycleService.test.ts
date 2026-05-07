@@ -600,10 +600,14 @@ describe("WorktreeLifecycleService", () => {
         });
 
         const spawnEnv = mockSpawn.mock.calls[0][1].env;
-        expect(spawnEnv).toHaveProperty("USERPROFILE");
-        expect(spawnEnv).toHaveProperty("PATHEXT");
-        expect(spawnEnv).toHaveProperty("SystemRoot");
-        expect(spawnEnv).not.toHaveProperty("HOME");
+        // Windows env-var names are case-insensitive; on a Windows host the
+        // copied keys can be any case (e.g. `SYSTEMROOT` or `Systemroot`),
+        // so check the upper-cased key set rather than literal property names.
+        const upperKeys = new Set(Object.keys(spawnEnv).map((k) => k.toUpperCase()));
+        expect(upperKeys.has("USERPROFILE")).toBe(true);
+        expect(upperKeys.has("PATHEXT")).toBe(true);
+        expect(upperKeys.has("SYSTEMROOT")).toBe(true);
+        expect(upperKeys.has("HOME")).toBe(false);
       });
 
       it("falls back to child.kill() on Windows when pid is undefined", async () => {
