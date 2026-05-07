@@ -615,6 +615,64 @@ describe("TaskOrchestrator", () => {
       // No assertion needed beyond "did not throw". The test passes the
       // guard implicitly by reaching this point without error.
     });
+
+    it("records a distinct summary for agent:exited vs agent:completed", async () => {
+      const exitTask = await queueService.createTask({ title: "Exit task" });
+      const completeTask = await queueService.createTask({ title: "Complete task" });
+
+      mockPtyClient.getAvailableTerminalsAsync.mockResolvedValueOnce([
+        {
+          id: "term-exit",
+          kind: "terminal",
+          detectedAgentId: "claude",
+          agentState: "idle",
+        },
+      ]);
+
+      await queueService.enqueueTask(exitTask.id);
+      await settle();
+
+      const runningExit = await queueService.getTask(exitTask.id);
+      expect(runningExit?.status).toBe("running");
+
+      events.emit("agent:exited", {
+        terminalId: "term-exit",
+        agentType: "claude",
+        timestamp: Date.now(),
+      });
+      await settle();
+
+      const exited = await queueService.getTask(exitTask.id);
+      expect(exited?.status).toBe("completed");
+      expect(exited?.result?.summary).toMatch(/exited/i);
+      expect(exited?.result?.summary).not.toMatch(/Completed by agent/i);
+
+      mockPtyClient.getAvailableTerminalsAsync.mockResolvedValueOnce([
+        {
+          id: "term-complete",
+          kind: "terminal",
+          launchAgentId: "claude",
+          agentState: "idle",
+        },
+      ]);
+
+      await queueService.enqueueTask(completeTask.id);
+      await settle();
+
+      events.emit("agent:completed", {
+        agentId: "claude",
+        terminalId: "term-complete",
+        exitCode: 0,
+        duration: 1000,
+        timestamp: Date.now(),
+      });
+      await settle();
+
+      const completed = await queueService.getTask(completeTask.id);
+      expect(completed?.status).toBe("completed");
+      expect(completed?.result?.summary).toMatch(/Completed by agent/);
+      expect(completed?.result?.summary).not.toMatch(/exited/i);
+    });
   });
 
   describe("worktree removal handling", () => {

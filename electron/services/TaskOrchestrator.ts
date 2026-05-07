@@ -487,7 +487,7 @@ export class TaskOrchestrator {
     if (task && task.status === "running" && task.runId === runId) {
       try {
         await this.queueService.markCompleted(taskId, {
-          summary: `Completed by agent ${task.assignedAgentId ?? "unknown"}`,
+          summary: `Agent process exited (${task.assignedAgentId ?? "unknown"})`,
         });
       } catch (err) {
         console.error(

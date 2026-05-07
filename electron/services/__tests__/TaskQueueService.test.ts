@@ -14,6 +14,8 @@ vi.mock("electron", () => ({
 
 import { TaskQueueService } from "../TaskQueueService.js";
 import { events } from "../events.js";
+import { taskPersistence } from "../persistence/TaskPersistence.js";
+import type { TaskRecord } from "../../../shared/types/task.js";
 
 describe("TaskQueueService", () => {
   let service: TaskQueueService;
@@ -709,10 +711,197 @@ describe("TaskQueueService", () => {
       await service.createTask({ title: "Task 1" });
       await service.createTask({ title: "Task 2" });
 
+      const tasks = await service.listTasks();
+      expect(tasks).toHaveLength(2);
+
       service.clear();
 
-      const tasks = await service.listTasks();
-      expect(tasks).toHaveLength(0);
+      const cleared = await service.listTasks();
+      expect(cleared).toHaveLength(0);
+    });
+  });
+
+  describe("crash recovery", () => {
+    function makeRunningTask(overrides: Partial<TaskRecord> = {}): TaskRecord {
+      const now = Date.now();
+      return {
+        id: overrides.id ?? "task-running-1",
+        title: overrides.title ?? "Running task",
+        status: "running",
+        priority: 0,
+        createdAt: now,
+        updatedAt: now,
+        dependencies: overrides.dependencies ?? [],
+        dependents: [],
+        assignedAgentId: "agent-1",
+        runId: "run-1",
+        startedAt: now,
+        ...overrides,
+      };
+    }
+
+    it("emits task:state-changed for running tasks reset to queued", async () => {
+      const recovery = new TaskQueueService();
+      const loadSpy = vi
+        .spyOn(taskPersistence, "load")
+        .mockResolvedValue([makeRunningTask({ id: "t-1" })]);
+      const saveSpy = vi.spyOn(taskPersistence, "save").mockResolvedValue();
+      const emitSpy = vi.spyOn(events, "emit");
+
+      try {
+        await recovery.initialize("project-recovery");
+
+        const queuedEvents = emitSpy.mock.calls.filter(
+          ([name, payload]) =>
+            name === "task:state-changed" &&
+            (payload as { taskId: string; state: string }).taskId === "t-1" &&
+            (payload as { taskId: string; state: string }).state === "queued"
+        );
+        expect(queuedEvents).toHaveLength(1);
+        expect(queuedEvents[0][1]).toMatchObject({
+          taskId: "t-1",
+          state: "queued",
+          previousState: "running",
+        });
+
+        const recovered = await recovery.getTask("t-1");
+        expect(recovered?.status).toBe("queued");
+        expect(recovered?.assignedAgentId).toBeUndefined();
+        expect(recovered?.runId).toBeUndefined();
+        expect(recovered?.startedAt).toBeUndefined();
+      } finally {
+        loadSpy.mockRestore();
+        saveSpy.mockRestore();
+      }
+    });
+
+    it("emits task:state-changed for running tasks with unmet dependencies reset to blocked", async () => {
+      const recovery = new TaskQueueService();
+      const dep: TaskRecord = {
+        id: "dep-1",
+        title: "Dependency",
+        status: "queued",
+        priority: 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        dependencies: [],
+        dependents: [],
+      };
+      const loadSpy = vi
+        .spyOn(taskPersistence, "load")
+        .mockResolvedValue([dep, makeRunningTask({ id: "t-blocked", dependencies: ["dep-1"] })]);
+      const saveSpy = vi.spyOn(taskPersistence, "save").mockResolvedValue();
+      const emitSpy = vi.spyOn(events, "emit");
+
+      try {
+        await recovery.initialize("project-blocked");
+
+        const blockedEvents = emitSpy.mock.calls.filter(
+          ([name, payload]) =>
+            name === "task:state-changed" &&
+            (payload as { taskId: string; state: string }).taskId === "t-blocked" &&
+            (payload as { taskId: string; state: string }).state === "blocked"
+        );
+        expect(blockedEvents).toHaveLength(1);
+
+        const recovered = await recovery.getTask("t-blocked");
+        expect(recovered?.status).toBe("blocked");
+      } finally {
+        loadSpy.mockRestore();
+        saveSpy.mockRestore();
+      }
+    });
+  });
+
+  describe("upstream failure cascade", () => {
+    it("cascades through a deep linear chain without stack overflow", async () => {
+      // 1000 tasks: t0 -> t1 -> t2 -> ... -> t999. Recursion would blow the
+      // call stack on long chains; iterative BFS handles this in linear time.
+      const ids: string[] = [];
+      let prev: { id: string } | null = null;
+      for (let i = 0; i < 1000; i++) {
+        const task = await service.createTask({
+          title: `Task ${i}`,
+          dependencies: prev ? [prev.id] : [],
+        });
+        ids.push(task.id);
+        prev = task;
+      }
+
+      for (const id of ids) {
+        await service.enqueueTask(id);
+      }
+
+      await service.markRunning(ids[0], "agent-1", "run-1");
+      await service.markFailed(ids[0], "Root failure");
+
+      // All downstream tasks must be marked failed.
+      for (const id of ids.slice(1)) {
+        const task = await service.getTask(id);
+        expect(task?.status).toBe("failed");
+      }
+    });
+
+    it("processes diamond dependencies exactly once", async () => {
+      // Diamond: A -> B, A -> C, B -> D, C -> D. D appears in both B's and
+      // C's dependents. The visited set must prevent double-processing.
+      const taskA = await service.createTask({ title: "A" });
+      const taskB = await service.createTask({ title: "B", dependencies: [taskA.id] });
+      const taskC = await service.createTask({ title: "C", dependencies: [taskA.id] });
+      const taskD = await service.createTask({
+        title: "D",
+        dependencies: [taskB.id, taskC.id],
+      });
+
+      await service.enqueueTask(taskA.id);
+      await service.enqueueTask(taskB.id);
+      await service.enqueueTask(taskC.id);
+      await service.enqueueTask(taskD.id);
+
+      const emitSpy = vi.spyOn(events, "emit");
+
+      await service.markRunning(taskA.id, "agent-1", "run-1");
+      await service.markFailed(taskA.id, "A failed");
+
+      const dStateChanges = emitSpy.mock.calls.filter(
+        ([name, payload]) =>
+          name === "task:state-changed" &&
+          (payload as { taskId: string; state: string }).taskId === taskD.id &&
+          (payload as { taskId: string; state: string }).state === "failed"
+      );
+      expect(dStateChanges).toHaveLength(1);
+
+      expect((await service.getTask(taskD.id))?.status).toBe("failed");
+    });
+
+    it("terminates safely on a cyclic dependents graph (corrupted state)", async () => {
+      // Build a normal DAG, then corrupt the in-memory dependents to form a
+      // cycle: A.dependents = [B], B.dependents = [A]. Validation prevents
+      // creating this through the public API, but a corrupted persisted state
+      // could in theory reproduce it.
+      const corruptService = new TaskQueueService();
+      corruptService.setPersistenceEnabled(false);
+
+      const taskA = await corruptService.createTask({ title: "A" });
+      const taskB = await corruptService.createTask({
+        title: "B",
+        dependencies: [taskA.id],
+      });
+
+      // Force a cycle in the runtime dependents graph.
+      const internal = (corruptService as unknown as { tasks: Map<string, TaskRecord> }).tasks;
+      const a = internal.get(taskA.id)!;
+      const b = internal.get(taskB.id)!;
+      b.dependents = [a.id];
+
+      await corruptService.enqueueTask(taskA.id);
+      await corruptService.enqueueTask(taskB.id);
+      await corruptService.markRunning(taskA.id, "agent-1", "run-1");
+
+      // Must terminate (no stack overflow, no infinite loop).
+      await corruptService.markFailed(taskA.id, "A failed");
+
+      expect((await corruptService.getTask(taskB.id))?.status).toBe("failed");
     });
   });
 });
