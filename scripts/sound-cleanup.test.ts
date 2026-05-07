@@ -4,7 +4,7 @@ import { join } from "path";
 import { tmpdir } from "os";
 import { cleanupStaleWavs } from "./sound-cleanup.mjs";
 
-let tempDirs: string[] = [];
+const tempDirs: string[] = [];
 
 function makeTempDir() {
   const dir = mkdtempSync(join(realpathSync(tmpdir()), "sound-cleanup-test-"));
