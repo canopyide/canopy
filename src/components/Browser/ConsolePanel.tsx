@@ -119,7 +119,7 @@ export function ConsolePanel({ paneId, height = 200, webContentsId }: ConsolePan
   const [collapsedGroups, setCollapsedGroups] = useState<Set<number>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevLastIdRef = useRef<number | null>(null);
-  const lastSeenIndexRef = useRef(0);
+  const lastSeenTailIdRef = useRef<number | null>(null);
 
   const allMessages = useConsoleCaptureStore(
     (state) => state.messages.get(paneId) ?? EMPTY_MESSAGES
@@ -171,26 +171,44 @@ export function ConsolePanel({ paneId, height = 200, webContentsId }: ConsolePan
 
   // Reset auto-collapse tracking when the pane changes
   useEffect(() => {
-    lastSeenIndexRef.current = 0;
+    lastSeenTailIdRef.current = null;
     setCollapsedGroups(new Set());
   }, [paneId]);
 
-  // Auto-collapse startGroupCollapsed entries — scan only the tail since last seen
+  // Auto-collapse startGroupCollapsed entries — scan only newly-arrived messages.
+  // Track the last-seen tail message id (not array index) so the cursor survives
+  // 500-cap eviction, where the array length stays the same but new ids land at the end.
   useEffect(() => {
-    if (allMessages.length < lastSeenIndexRef.current) {
-      // List shrank (clearMessages or pane swap mid-render): rescan from start
-      lastSeenIndexRef.current = 0;
+    if (allMessages.length === 0) {
+      lastSeenTailIdRef.current = null;
+      // Drop any stale collapsed-group ids from the prior session
+      setCollapsedGroups((prev) => (prev.size === 0 ? prev : new Set()));
+      return;
     }
-    if (lastSeenIndexRef.current >= allMessages.length) return;
+
+    const newTail = allMessages[allMessages.length - 1]!;
+    if (newTail.id === lastSeenTailIdRef.current) return;
+
+    const lastSeenTailId = lastSeenTailIdRef.current;
+    let firstNewIdx = allMessages.length;
+    if (lastSeenTailId === null) {
+      firstNewIdx = 0;
+    } else {
+      while (firstNewIdx > 0 && allMessages[firstNewIdx - 1]!.id > lastSeenTailId) {
+        firstNewIdx--;
+      }
+    }
+    lastSeenTailIdRef.current = newTail.id;
+
+    if (firstNewIdx >= allMessages.length) return;
 
     let newIds: number[] | null = null;
-    for (let i = lastSeenIndexRef.current; i < allMessages.length; i++) {
+    for (let i = firstNewIdx; i < allMessages.length; i++) {
       const msg = allMessages[i]!;
       if (msg.cdpType === "startGroupCollapsed") {
         (newIds ??= []).push(msg.id);
       }
     }
-    lastSeenIndexRef.current = allMessages.length;
 
     if (newIds === null) return;
     const ids = newIds;

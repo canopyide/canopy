@@ -319,5 +319,57 @@ describe("consoleCaptureStore", () => {
       expect(afterCounters).toBe(beforeCounters);
       expect(afterCounters.get("pane1")).toBe(beforeCounts);
     });
+
+    it("keeps the counters Map reference stable on log-evicts-log inserts at the cap", () => {
+      const store = useConsoleCaptureStore.getState();
+      // Fill exactly to the 500-cap with log messages — no counter activity
+      for (let i = 0; i < 500; i++) {
+        store.addStructuredMessage(makeRow({ id: i, level: "log" }));
+      }
+      const beforeCounters = useConsoleCaptureStore.getState().counters;
+
+      // Eviction: this insert pushes one log out and adds one log; net delta is zero
+      store.addStructuredMessage(makeRow({ id: 500, level: "log" }));
+
+      const afterCounters = useConsoleCaptureStore.getState().counters;
+      expect(afterCounters).toBe(beforeCounters);
+    });
+
+    it("handles mixed eviction deltas correctly under realistic sequences", () => {
+      const store = useConsoleCaptureStore.getState();
+      // 498 logs + 1 warning + 1 error = 500 total, in that order
+      for (let i = 0; i < 498; i++) {
+        store.addStructuredMessage(makeRow({ id: i, level: "log" }));
+      }
+      store.addStructuredMessage(makeRow({ id: 498, level: "warning" }));
+      store.addStructuredMessage(makeRow({ id: 499, level: "error" }));
+      expect(useConsoleCaptureStore.getState().getCounts("pane1")).toEqual({
+        errorCount: 1,
+        warnCount: 1,
+      });
+
+      // Add an error (evicts log 0): error+1, no decrement
+      store.addStructuredMessage(makeRow({ id: 500, level: "error" }));
+      expect(useConsoleCaptureStore.getState().getCounts("pane1")).toEqual({
+        errorCount: 2,
+        warnCount: 1,
+      });
+
+      // Add a warning (evicts log 1): warning+1, no decrement
+      store.addStructuredMessage(makeRow({ id: 501, level: "warning" }));
+      expect(useConsoleCaptureStore.getState().getCounts("pane1")).toEqual({
+        errorCount: 2,
+        warnCount: 2,
+      });
+
+      // Add 497 more logs to push every log out — eventually evicts the original warning at id 498
+      for (let i = 502; i < 502 + 497; i++) {
+        store.addStructuredMessage(makeRow({ id: i, level: "log" }));
+      }
+      expect(useConsoleCaptureStore.getState().getCounts("pane1")).toEqual({
+        errorCount: 2,
+        warnCount: 1,
+      });
+    });
   });
 });
