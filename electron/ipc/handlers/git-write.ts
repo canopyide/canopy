@@ -676,7 +676,7 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
       const { stdout } = await execFileAsync(
         "git",
         ["config", "--global", "--get-all", "safe.directory"],
-        { env: { ...process.env, LC_ALL: "C" } },
+        { env: { ...process.env, LC_ALL: "C" } }
       );
       const entries = stdout
         .split("\n")

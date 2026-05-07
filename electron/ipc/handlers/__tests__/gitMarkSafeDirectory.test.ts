@@ -160,9 +160,9 @@ describe("git:mark-safe-directory handler", () => {
         _cmd: string,
         _args: readonly string[],
         _opts: unknown,
-        cb: (err: Error | null, stdout: string, stderr: string) => void
+        cb: (err: Error | null, result: { stdout: string; stderr: string }) => void
       ) => {
-        cb(new Error("git not found"), "", "git not found");
+        cb(new Error("git not found"), { stdout: "", stderr: "git not found" });
       }
     );
     registerGitWriteHandlers({} as Parameters<typeof registerGitWriteHandlers>[0]);
@@ -179,7 +179,7 @@ describe("git:mark-safe-directory handler", () => {
         _cmd: string,
         args: readonly string[],
         _opts: unknown,
-        cb: (err: Error | null, stdout: string, stderr: string) => void
+        cb: (err: Error | null, result: { stdout: string; stderr: string }) => void
       ) => {
         if (args.includes("--get-all")) {
           cb(null, { stdout: normalized + "\n", stderr: "" });
@@ -193,9 +193,7 @@ describe("git:mark-safe-directory handler", () => {
     await handler(null, repoPath);
 
     const calls = execFileMock.mock.calls as [string, string[], unknown, unknown][];
-    const addCall = calls.find(
-      ([, args]) => Array.isArray(args) && args.includes("--add"),
-    );
+    const addCall = calls.find(([, args]) => Array.isArray(args) && args.includes("--add"));
     expect(addCall).toBeUndefined();
   });
 
@@ -208,12 +206,12 @@ describe("git:mark-safe-directory handler", () => {
         _cmd: string,
         args: readonly string[],
         _opts: unknown,
-        cb: (err: Error | null, stdout: string, stderr: string) => void
+        cb: (err: Error | null, result: { stdout: string; stderr: string }) => void
       ) => {
         if (args.includes("--get-all")) {
           const err = new Error("Command failed") as Error & { code: number };
           err.code = 1;
-          cb(err, "", "error: invalid key: safe.directory\n");
+          cb(err, { stdout: "", stderr: "error: invalid key: safe.directory\n" });
         } else {
           cb(null, { stdout: "", stderr: "" });
         }
@@ -224,9 +222,7 @@ describe("git:mark-safe-directory handler", () => {
     await handler(null, repoPath);
 
     const calls = execFileMock.mock.calls as [string, string[], unknown, unknown][];
-    const addCall = calls.find(
-      ([, args]) => Array.isArray(args) && args.includes("--add"),
-    );
+    const addCall = calls.find(([, args]) => Array.isArray(args) && args.includes("--add"));
     expect(addCall).toBeDefined();
     expect(addCall![1]).toEqual(["config", "--global", "--add", "safe.directory", normalized]);
   });
@@ -240,7 +236,7 @@ describe("git:mark-safe-directory handler", () => {
         _cmd: string,
         args: readonly string[],
         _opts: unknown,
-        cb: (err: Error | null, stdout: string, stderr: string) => void
+        cb: (err: Error | null, result: { stdout: string; stderr: string }) => void
       ) => {
         if (args.includes("--get-all")) {
           cb(null, { stdout: "/other/repo\n/another/repo\n", stderr: "" });
@@ -254,9 +250,7 @@ describe("git:mark-safe-directory handler", () => {
     await handler(null, repoPath);
 
     const calls = execFileMock.mock.calls as [string, string[], unknown, unknown][];
-    const addCall = calls.find(
-      ([, args]) => Array.isArray(args) && args.includes("--add"),
-    );
+    const addCall = calls.find(([, args]) => Array.isArray(args) && args.includes("--add"));
     expect(addCall).toBeDefined();
     expect(addCall![1]).toEqual(["config", "--global", "--add", "safe.directory", normalized]);
   });
@@ -267,12 +261,12 @@ describe("git:mark-safe-directory handler", () => {
         _cmd: string,
         args: readonly string[],
         _opts: unknown,
-        cb: (err: Error | null, stdout: string, stderr: string) => void
+        cb: (err: Error | null, result: { stdout: string; stderr: string }) => void
       ) => {
         if (args.includes("--get-all")) {
           const err = new Error("git not found") as Error & { code: number };
           err.code = 128;
-          cb(err, "", "fatal: unable to read config file\n");
+          cb(err, { stdout: "", stderr: "fatal: unable to read config file\n" });
         } else {
           cb(null, { stdout: "", stderr: "" });
         }
@@ -298,7 +292,7 @@ describe("git:mark-safe-directory handler", () => {
         _cmd: string,
         args: readonly string[],
         _opts: unknown,
-        cb: (err: Error | null, stdout: string, stderr: string) => void
+        cb: (err: Error | null, result: { stdout: string; stderr: string }) => void
       ) => {
         if (args.includes("--get-all")) {
           cb(null, { stdout: "/Users/foo/stored-link\n", stderr: "" });
@@ -312,9 +306,7 @@ describe("git:mark-safe-directory handler", () => {
     await handler(null, repoPath);
 
     const calls = execFileMock.mock.calls as [string, string[], unknown, unknown][];
-    const addCall = calls.find(
-      ([, args]) => Array.isArray(args) && args.includes("--add"),
-    );
+    const addCall = calls.find(([, args]) => Array.isArray(args) && args.includes("--add"));
     expect(addCall).toBeUndefined();
   });
 });
