@@ -17,6 +17,7 @@ vi.mock("electron", () => ({
   },
   powerMonitor: {
     isOnBatteryPower: vi.fn(() => false),
+    getCurrentThermalState: vi.fn(() => "unknown" as const),
     on: vi.fn(),
     removeListener: vi.fn(),
   },
@@ -60,6 +61,7 @@ const EIGHT_GB = 8 * 1024 * 1024 * 1024;
 
 const mockGetAppMetrics = app.getAppMetrics as Mock;
 const mockIsOnBatteryPower = powerMonitor.isOnBatteryPower as unknown as Mock;
+const mockGetCurrentThermalState = powerMonitor.getCurrentThermalState as unknown as Mock;
 const mockPowerMonitorOn = powerMonitor.on as unknown as Mock;
 const mockPowerMonitorRemoveListener = powerMonitor.removeListener as unknown as Mock;
 
@@ -165,6 +167,7 @@ describe("ResourceProfileService adversarial", () => {
     vi.spyOn(os, "totalmem").mockReturnValue(EIGHT_GB);
     mockGetAppMetrics.mockReturnValue([]);
     mockIsOnBatteryPower.mockReturnValue(false);
+    mockGetCurrentThermalState.mockReturnValue("unknown" as const);
     setLag(0, 0);
     lagState.resetCount = 0;
   });
@@ -177,23 +180,34 @@ describe("ResourceProfileService adversarial", () => {
   it("does not thrash profiles when pressure oscillates around the hysteresis boundary", () => {
     const { deps } = createDeps();
     const service = new ResourceProfileService(deps);
-
+    mockIsOnBatteryPower.mockReturnValue(true);
     service.start();
+
+    const onBatteryHandler = mockPowerMonitorOn.mock.calls.find(
+      (call: string[]) => call[0] === "on-battery"
+    )?.[1] as (() => void) | undefined;
+    const onAcHandler = mockPowerMonitorOn.mock.calls.find(
+      (call: string[]) => call[0] === "on-ac"
+    )?.[1] as (() => void) | undefined;
 
     vi.advanceTimersByTime(60_000);
 
     const oscillatingSignals = [
-      { metrics: [makeMetric(1300)], battery: true },
-      { metrics: [makeMetric(200)], battery: false },
-      { metrics: [makeMetric(1300)], battery: true },
-      { metrics: [makeMetric(200)], battery: false },
-      { metrics: [makeMetric(900)], battery: false },
-      { metrics: [makeMetric(200)], battery: false },
+      { metrics: [makeMetric(1300)], battery: "on" as const },
+      { metrics: [makeMetric(200)], battery: "off" as const },
+      { metrics: [makeMetric(1300)], battery: "on" as const },
+      { metrics: [makeMetric(200)], battery: "off" as const },
+      { metrics: [makeMetric(900)], battery: "off" as const },
+      { metrics: [makeMetric(200)], battery: "off" as const },
     ];
 
     for (const signal of oscillatingSignals) {
       mockGetAppMetrics.mockReturnValue(signal.metrics);
-      mockIsOnBatteryPower.mockReturnValue(signal.battery);
+      if (signal.battery === "on") {
+        onBatteryHandler!();
+      } else {
+        onAcHandler!();
+      }
       vi.advanceTimersByTime(30_000);
       expect(service.getProfile()).toBe("balanced");
     }
@@ -285,6 +299,8 @@ describe("ResourceProfileService adversarial", () => {
 
     expect(mockPowerMonitorOn).toHaveBeenCalledWith("thermal-state-change", expect.any(Function));
     expect(mockPowerMonitorOn).toHaveBeenCalledWith("speed-limit-change", expect.any(Function));
+    expect(mockPowerMonitorOn).toHaveBeenCalledWith("on-battery", expect.any(Function));
+    expect(mockPowerMonitorOn).toHaveBeenCalledWith("on-ac", expect.any(Function));
 
     service.stop();
   });
@@ -307,11 +323,11 @@ describe("ResourceProfileService adversarial", () => {
     const service = new ResourceProfileService(deps);
 
     service.setWorktreeCount(9);
+    mockIsOnBatteryPower.mockReturnValue(true);
     service.start();
 
     // Low memory (0) + battery (+1) + thermal serious (+1) + worktrees (+1) = 3 => efficiency
     mockGetAppMetrics.mockReturnValue([makeMetric(200)]);
-    mockIsOnBatteryPower.mockReturnValue(true);
     (service as unknown as { thermalState: string }).thermalState = "serious";
 
     vi.advanceTimersByTime(60_000 + 30_000 + 30_000);
@@ -396,11 +412,11 @@ describe("ResourceProfileService adversarial", () => {
     it("does not retrigger applyProfile when already at efficiency", () => {
       const { deps } = createDeps();
       const service = new ResourceProfileService(deps);
+      mockIsOnBatteryPower.mockReturnValue(true);
       service.start();
 
       // Drive into efficiency via memory + battery first.
       mockGetAppMetrics.mockReturnValue([makeMetric(1300)]);
-      mockIsOnBatteryPower.mockReturnValue(true);
       vi.advanceTimersByTime(60_000 + 30_000 + 30_000);
       expect(service.getProfile()).toBe("efficiency");
 
@@ -658,6 +674,111 @@ describe("ResourceProfileService adversarial", () => {
       vi.advanceTimersByTime(30_000);
       vi.advanceTimersByTime(30_000);
       expect(service.getProfile()).toBe("performance");
+
+      service.stop();
+    });
+
+    it("getCurrentThermalState throwing does not crash start", () => {
+      vi.spyOn(process, "platform", "get").mockReturnValue("darwin");
+      mockGetCurrentThermalState.mockImplementation(() => {
+        throw new Error("thermal unavailable");
+      });
+
+      const { deps } = createDeps();
+      const service = new ResourceProfileService(deps);
+      expect(() => service.start()).not.toThrow();
+
+      const internals = service as unknown as { thermalState: string };
+      expect(internals.thermalState).toBe("unknown");
+
+      service.stop();
+    });
+
+    it("isOnBatteryPower throwing during priming does not crash start", () => {
+      mockIsOnBatteryPower.mockImplementation(() => {
+        throw new Error("battery unavailable");
+      });
+
+      const { deps } = createDeps();
+      const service = new ResourceProfileService(deps);
+      expect(() => service.start()).not.toThrow();
+
+      const internals = service as unknown as { isOnBattery: boolean };
+      expect(internals.isOnBattery).toBe(false);
+
+      service.stop();
+    });
+
+    it("cold start with thermal critical contributes to first evaluation", () => {
+      vi.spyOn(process, "platform", "get").mockReturnValue("darwin");
+      mockGetCurrentThermalState.mockReturnValue("critical" as const);
+      mockIsOnBatteryPower.mockReturnValue(true);
+
+      const { deps } = createDeps();
+      const service = new ResourceProfileService(deps);
+      service.start();
+
+      // Low memory (0) + battery (+1) + thermal critical (+2) = 3 => efficiency
+      // Without thermal priming the score would be 1 => balanced
+      mockGetAppMetrics.mockReturnValue([makeMetric(200)]);
+      vi.advanceTimersByTime(60_000 + 30_000 + 30_000);
+      expect(service.getProfile()).toBe("efficiency");
+
+      service.stop();
+    });
+
+    it("stop/start resets tickCount and enforces warmup on restart", () => {
+      const { deps } = createDeps();
+      const service = new ResourceProfileService(deps);
+
+      service.start();
+      // Advance past warmup
+      vi.advanceTimersByTime(60_000);
+      expect((service as unknown as { tickCount: number }).tickCount).toBeGreaterThan(0);
+
+      service.stop();
+      service.start();
+
+      expect((service as unknown as { tickCount: number }).tickCount).toBe(0);
+      // High pressure signals should NOT transition during warmup after restart
+      mockGetAppMetrics.mockReturnValue([makeMetric(1300)]);
+      mockIsOnBatteryPower.mockReturnValue(true);
+      vi.advanceTimersByTime(60_000);
+      expect(service.getProfile()).toBe("balanced");
+
+      service.stop();
+    });
+
+    it("isOnBatteryPower not called on evaluation ticks", () => {
+      const { deps } = createDeps();
+      const service = new ResourceProfileService(deps);
+      service.start();
+      const callsAfterStart = mockIsOnBatteryPower.mock.calls.length;
+
+      // Several eval ticks
+      vi.advanceTimersByTime(60_000 + 30_000 + 30_000);
+      expect(mockIsOnBatteryPower).toHaveBeenCalledTimes(callsAfterStart);
+
+      service.stop();
+    });
+
+    it("malformed thermal event payload preserves last valid state", () => {
+      const { deps } = createDeps();
+      const service = new ResourceProfileService(deps);
+      service.start();
+
+      const thermalHandler = mockPowerMonitorOn.mock.calls.find(
+        (call: string[]) => call[0] === "thermal-state-change"
+      )?.[1] as ((details: { state: string }) => void) | undefined;
+      expect(thermalHandler).toBeDefined();
+
+      // Set a known-good state first
+      thermalHandler!({ state: "critical" });
+      expect((service as unknown as { thermalState: string }).thermalState).toBe("critical");
+
+      // Bogus state value must not throw and must preserve last valid state
+      expect(() => thermalHandler!({ state: "bogus" })).not.toThrow();
+      expect((service as unknown as { thermalState: string }).thermalState).toBe("critical");
 
       service.stop();
     });

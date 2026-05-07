@@ -72,6 +72,7 @@ export class ResourceProfileService {
   private cachedWorktreeCount = 0;
   private thermalState: "unknown" | "nominal" | "fair" | "serious" | "critical" = "unknown";
   private speedLimit = 100;
+  private isOnBattery = false;
   private readonly memoryThresholdHighMb: number;
   private readonly memoryThresholdLowMb: number;
   private lagInterval: NodeJS.Timeout | null = null;
@@ -108,6 +109,32 @@ export class ResourceProfileService {
     }
   };
 
+  private primeThermalState(): void {
+    if (process.platform !== "darwin") return;
+    try {
+      const state = powerMonitor.getCurrentThermalState();
+      if (
+        state === "unknown" ||
+        state === "nominal" ||
+        state === "fair" ||
+        state === "serious" ||
+        state === "critical"
+      ) {
+        this.thermalState = state;
+      }
+    } catch {
+      this.thermalState = "unknown";
+    }
+  }
+
+  private onBatteryPower = (): void => {
+    this.isOnBattery = true;
+  };
+
+  private onAcPower = (): void => {
+    this.isOnBattery = false;
+  };
+
   setWorktreeCount(count: number): void {
     this.cachedWorktreeCount = count;
   }
@@ -119,6 +146,9 @@ export class ResourceProfileService {
   start(): void {
     if (this.evalCleanup) return;
     this.disposed = false;
+    this.tickCount = 0;
+    this.candidateProfile = null;
+    this.candidateFirstSeenAt = null;
 
     logInfo("resource-profile-service-started", { profile: this.currentProfile });
 
@@ -126,6 +156,15 @@ export class ResourceProfileService {
 
     powerMonitor.on("thermal-state-change", this.onThermalStateChange);
     powerMonitor.on("speed-limit-change", this.onSpeedLimitChange);
+
+    this.primeThermalState();
+    try {
+      this.isOnBattery = powerMonitor.isOnBatteryPower();
+    } catch {
+      this.isOnBattery = false;
+    }
+    powerMonitor.on("on-battery", this.onBatteryPower);
+    powerMonitor.on("on-ac", this.onAcPower);
 
     this.evalCleanup = setAlignedInterval(() => {
       this.refreshWorktreeCount();
@@ -262,6 +301,8 @@ export class ResourceProfileService {
   stop(): void {
     powerMonitor.removeListener("thermal-state-change", this.onThermalStateChange);
     powerMonitor.removeListener("speed-limit-change", this.onSpeedLimitChange);
+    powerMonitor.removeListener("on-battery", this.onBatteryPower);
+    powerMonitor.removeListener("on-ac", this.onAcPower);
 
     if (this.evalCleanup) {
       this.evalCleanup();
@@ -284,6 +325,9 @@ export class ResourceProfileService {
     this.lagEscalatedActive = false;
     this.lagEnterTicks = 0;
     this.lagExitTicks = 0;
+    this.thermalState = "unknown";
+    this.isOnBattery = false;
+    this.speedLimit = 100;
     this.disposed = true;
     logInfo("resource-profile-service-stopped");
   }
@@ -340,13 +384,9 @@ export class ResourceProfileService {
       // Skip memory signal on error
     }
 
-    // Battery signal
-    try {
-      if (powerMonitor.isOnBatteryPower()) {
-        pressureScore += 1;
-      }
-    } catch {
-      // Skip battery signal (may throw in utility process context)
+    // Battery signal (cached from startup + transition events)
+    if (this.isOnBattery) {
+      pressureScore += 1;
     }
 
     // Thermal signal (macOS only)
