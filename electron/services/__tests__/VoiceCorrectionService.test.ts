@@ -271,6 +271,31 @@ describe("VoiceCorrectionService", () => {
     );
   });
 
+  it("returns fallback silently on session abort", async () => {
+    const controller = new AbortController();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(
+        (_url: string, init: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            init.signal!.addEventListener("abort", () => reject(init.signal!.reason), {
+              once: true,
+            });
+          })
+      )
+    );
+
+    const svc = new VoiceCorrectionService();
+    svc.setSessionSignal(controller.signal);
+
+    const resultPromise = svc.correct({ rawText: "react is great" }, BASE_SETTINGS);
+    controller.abort();
+
+    const result = await resultPromise;
+    expect(result.confirmedText).toBe("react is great");
+    expect(result.action).toBe("no_change");
+  });
+
   describe("correctWord", () => {
     it("calls gpt-5-nano with minimal reasoning and reduced max_output_tokens", async () => {
       const fetchMock = vi
@@ -433,6 +458,34 @@ describe("VoiceCorrectionService", () => {
       );
 
       expect(fetchMock).not.toHaveBeenCalled();
+      expect(result.action).toBe("no_change");
+    });
+
+    it("returns fallback silently on session abort", async () => {
+      const controller = new AbortController();
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockImplementation(
+          (_url: string, init: RequestInit) =>
+            new Promise((_resolve, reject) => {
+              init.signal!.addEventListener("abort", () => reject(init.signal!.reason), {
+                once: true,
+              });
+            })
+        )
+      );
+
+      const svc = new VoiceCorrectionService();
+      svc.setSessionSignal(controller.signal);
+
+      const resultPromise = svc.correctWord(
+        { uncertainWords: ["bad"], leftContext: "", rightContext: "word", rawSpan: "bad" },
+        BASE_SETTINGS
+      );
+      controller.abort();
+
+      const result = await resultPromise;
+      expect(result.confirmedText).toBe("bad");
       expect(result.action).toBe("no_change");
     });
   });
@@ -653,6 +706,30 @@ describe("VoiceCorrectionService", () => {
       await vi.advanceTimersByTimeAsync(5000);
       const result = await resultPromise;
 
+      expect(result).toEqual([]);
+    });
+
+    it("returns empty array silently on session abort", async () => {
+      const controller = new AbortController();
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockImplementation(
+          (_url: string, init: RequestInit) =>
+            new Promise((_resolve, reject) => {
+              init.signal!.addEventListener("abort", () => reject(init.signal!.reason), {
+                once: true,
+              });
+            })
+        )
+      );
+
+      const svc = new VoiceCorrectionService();
+      svc.setSessionSignal(controller.signal);
+
+      const resultPromise = svc.detectFileLinkTokens("link to something", { apiKey: "sk-test" });
+      controller.abort();
+
+      const result = await resultPromise;
       expect(result).toEqual([]);
     });
   });

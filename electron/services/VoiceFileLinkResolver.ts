@@ -23,6 +23,7 @@ export class VoiceFileLinkResolver {
     cwd: string;
     description: string;
     apiKey: string;
+    signal?: AbortSignal;
   }): Promise<string | null> {
     const { cwd, description, apiKey } = payload;
     if (!cwd || !description.trim()) return null;
@@ -50,8 +51,9 @@ export class VoiceFileLinkResolver {
         return candidates[0];
       }
 
-      return await this.aiRerank(description, candidates, apiKey);
+      return await this.aiRerank(description, candidates, apiKey, payload.signal);
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return null;
       const msg = formatErrorMessage(error, "Voice file link resolution failed");
       logWarn(`${P} Resolution failed`, { error: msg });
       return null;
@@ -122,7 +124,8 @@ export class VoiceFileLinkResolver {
   private async aiRerank(
     description: string,
     candidates: string[],
-    apiKey: string
+    apiKey: string,
+    signal?: AbortSignal
   ): Promise<string | null> {
     logDebug(`${P} AI reranking ${candidates.length} candidates for "${description}"`);
 
@@ -133,7 +136,9 @@ export class VoiceFileLinkResolver {
           "Content-Type": "application/json",
           Authorization: `Bearer ${apiKey}`,
         },
-        signal: AbortSignal.timeout(AI_RERANK_TIMEOUT_MS),
+        signal: signal
+          ? AbortSignal.any([signal, AbortSignal.timeout(AI_RERANK_TIMEOUT_MS)])
+          : AbortSignal.timeout(AI_RERANK_TIMEOUT_MS),
         body: JSON.stringify({
           model: AI_RERANK_MODEL,
           instructions:
@@ -183,6 +188,7 @@ export class VoiceFileLinkResolver {
 
       return null;
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return null;
       const msg = formatErrorMessage(error, "Voice AI rerank failed");
       logWarn(`${P} AI rerank failed`, { error: msg });
       return null;

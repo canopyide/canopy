@@ -110,6 +110,12 @@ export interface WordCorrectionRequest {
 }
 
 export class VoiceCorrectionService {
+  private sessionSignal: AbortSignal | null = null;
+
+  setSessionSignal(signal: AbortSignal | null): void {
+    this.sessionSignal = signal;
+  }
+
   async correct(
     request: VoiceCorrectionRequest,
     settings: VoiceCorrectionSettings
@@ -170,6 +176,14 @@ export class VoiceCorrectionService {
         confirmedText,
       };
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return {
+          action: "no_change",
+          correctedText: request.rawText,
+          confidence: "low",
+          confirmedText: request.rawText,
+        };
+      }
       const msg = formatErrorMessage(error, "Voice correction failed");
       logWarn(`${P} Correction failed, using raw text`, { error: msg });
       return {
@@ -282,6 +296,14 @@ export class VoiceCorrectionService {
 
       return { ...result, confirmedText };
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return {
+          action: "no_change",
+          correctedText: request.rawSpan,
+          confidence: "low",
+          confirmedText: request.rawSpan,
+        };
+      }
       const msg = formatErrorMessage(error, "Voice micro-correction failed");
       logWarn(`${P} Micro-correction failed, using raw text`, { error: msg });
       return {
@@ -308,7 +330,7 @@ export class VoiceCorrectionService {
           "Content-Type": "application/json",
           Authorization: `Bearer ${settings.apiKey}`,
         },
-        signal: AbortSignal.timeout(FILE_LINK_DETECTION_TIMEOUT_MS),
+        signal: this.buildFetchSignal(FILE_LINK_DETECTION_TIMEOUT_MS),
         body: JSON.stringify({
           model: MICRO_CORRECTION_MODEL,
           instructions: FILE_LINK_DETECTION_PROMPT,
@@ -367,6 +389,7 @@ export class VoiceCorrectionService {
 
       return parsed.file_references.filter((r) => r.description.trim().length > 0);
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return [];
       const msg = formatErrorMessage(error, "Voice file link detection failed");
       logWarn(`${P} File link detection failed`, { error: msg });
       return [];
@@ -400,6 +423,13 @@ export class VoiceCorrectionService {
     return `${MICRO_PROMPT_CACHE_PREFIX}:${MICRO_CORRECTION_MODEL}:${projectKey}:${dictionaryKey}`;
   }
 
+  private buildFetchSignal(timeoutMs: number): AbortSignal {
+    if (this.sessionSignal) {
+      return AbortSignal.any([this.sessionSignal, AbortSignal.timeout(timeoutMs)]);
+    }
+    return AbortSignal.timeout(timeoutMs);
+  }
+
   private async callMicroApi(
     request: WordCorrectionRequest,
     settings: VoiceCorrectionSettings
@@ -423,7 +453,7 @@ export class VoiceCorrectionService {
         "Content-Type": "application/json",
         Authorization: `Bearer ${settings.apiKey}`,
       },
-      signal: AbortSignal.timeout(MICRO_CORRECTION_TIMEOUT_MS),
+      signal: this.buildFetchSignal(MICRO_CORRECTION_TIMEOUT_MS),
       body: JSON.stringify({
         model: MICRO_CORRECTION_MODEL,
         instructions: systemPrompt,
@@ -499,7 +529,7 @@ export class VoiceCorrectionService {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
       },
-      signal: AbortSignal.timeout(CORRECTION_TIMEOUT_MS),
+      signal: this.buildFetchSignal(CORRECTION_TIMEOUT_MS),
       body: JSON.stringify({
         model,
         instructions: systemPrompt,
