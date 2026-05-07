@@ -98,6 +98,27 @@ function createCallbacks(): {
 }
 
 describe("classifyCrash", () => {
+  let originalPlatformDescriptor: PropertyDescriptor | undefined;
+
+  function stubPlatform(value: NodeJS.Platform): void {
+    Object.defineProperty(process, "platform", {
+      value,
+      configurable: true,
+      writable: false,
+    });
+  }
+
+  beforeEach(() => {
+    originalPlatformDescriptor = Object.getOwnPropertyDescriptor(process, "platform");
+    stubPlatform("linux");
+  });
+
+  afterEach(() => {
+    if (originalPlatformDescriptor) {
+      Object.defineProperty(process, "platform", originalPlatformDescriptor);
+    }
+  });
+
   it("returns CLEAN_EXIT for code 0", () => {
     expect(classifyCrash(0, null)).toBe("CLEAN_EXIT");
   });
@@ -116,13 +137,35 @@ describe("classifyCrash", () => {
     expect(classifyCrash(50, "SIGABRT")).toBe("ASSERTION_FAILURE");
   });
 
-  it("returns SIGNAL_TERMINATED for codes > 128 (other signals)", () => {
+  it("returns SIGNAL_TERMINATED for codes > 128 on POSIX (other signals)", () => {
     expect(classifyCrash(140, null)).toBe("SIGNAL_TERMINATED");
   });
 
   it("returns UNKNOWN_CRASH for non-zero codes ≤128 with no signal", () => {
     expect(classifyCrash(1, null)).toBe("UNKNOWN_CRASH");
     expect(classifyCrash(127, null)).toBe("UNKNOWN_CRASH");
+  });
+
+  it("falls through to UNKNOWN_CRASH for Windows NTSTATUS exit codes", () => {
+    stubPlatform("win32");
+    // STATUS_ACCESS_VIOLATION (0xC0000005)
+    expect(classifyCrash(3221225477, null)).toBe("UNKNOWN_CRASH");
+    // STATUS_STACK_OVERFLOW (0xC00000FD)
+    expect(classifyCrash(3221225725, null)).toBe("UNKNOWN_CRASH");
+    // STATUS_BREAKPOINT (0x80000003)
+    expect(classifyCrash(2147483651, null)).toBe("UNKNOWN_CRASH");
+    // POSIX-shaped boundary value still falls through on Windows
+    expect(classifyCrash(140, null)).toBe("UNKNOWN_CRASH");
+  });
+
+  it("still honors authoritative signals and special codes on Windows", () => {
+    stubPlatform("win32");
+    // SIGKILL signal arrives via child-process-gone path, so should still classify OOM
+    expect(classifyCrash(50, "SIGKILL")).toBe("OUT_OF_MEMORY");
+    expect(classifyCrash(50, "SIGABRT")).toBe("ASSERTION_FAILURE");
+    // Special exit codes 137/134 still classify regardless of platform
+    expect(classifyCrash(137, null)).toBe("OUT_OF_MEMORY");
+    expect(classifyCrash(134, null)).toBe("ASSERTION_FAILURE");
   });
 });
 
@@ -306,6 +349,46 @@ describe("PtyHostLifecycle", () => {
     });
   });
 
+  it("suppresses POSIX signal-string derivation on Windows for NTSTATUS exit codes", async () => {
+    const originalDescriptor = Object.getOwnPropertyDescriptor(process, "platform");
+    Object.defineProperty(process, "platform", {
+      value: "win32",
+      configurable: true,
+      writable: false,
+    });
+    try {
+      const { lifecycle, callbacks } = makeLifecycle();
+      lifecycle.start();
+      lifecycle.markReady();
+
+      // 0xC0000005 = STATUS_ACCESS_VIOLATION — would derive "SIG3221225349" on POSIX path
+      mockChild.emit("exit", 3221225477);
+
+      expect(callbacks.log.onExitSyncCalls[0]).toMatchObject({
+        code: 3221225477,
+        // Without the platform guard, classifyCrash would return SIGNAL_TERMINATED
+        // for any code > 128 — Windows NTSTATUS values must fall through.
+        fallbackCrashType: "UNKNOWN_CRASH",
+      });
+
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(callbacks.log.onCrashClassifiedCalls[0]).toMatchObject({
+        crashType: "UNKNOWN_CRASH",
+        reportedCode: 3221225477,
+        signal: null, // suppressed — no nonsense "SIG3221225349"
+      });
+      expect(callbacks.log.onCrashClassifiedCalls[0].payload).toMatchObject({
+        crashType: "UNKNOWN_CRASH",
+        signal: null,
+      });
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(process, "platform", originalDescriptor);
+      }
+    }
+  });
+
   it("ignores child-process-gone for unrelated utility processes", async () => {
     const { lifecycle, callbacks } = makeLifecycle();
     lifecycle.start();
@@ -434,5 +517,103 @@ describe("PtyHostLifecycle", () => {
     const { lifecycle } = makeLifecycle();
     lifecycle.postMessage({ type: "health-check" });
     expect(mockChild.postMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe("PtyHostLifecycle timer hygiene", () => {
+  let mockChild: MockUtilityProcess;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    shared.appMock.removeAllListeners();
+    mockChild = createMockChild();
+    shared.forkMock.mockReturnValue(mockChild);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function makeLifecycle(maxRestarts = 3): {
+    lifecycle: PtyHostLifecycle;
+    callbacks: ReturnType<typeof createCallbacks>;
+  } {
+    const callbacks = createCallbacks();
+    const lifecycle = new PtyHostLifecycle(
+      { maxRestartAttempts: maxRestarts, memoryLimitMb: 256, electronDir: "/tmp/electron" },
+      callbacks.callbacks
+    );
+    return { lifecycle, callbacks };
+  }
+
+  // Replace global.setTimeout with a wrapper that records each returned timer
+  // and instruments its `unref` method. Returns a teardown that restores the
+  // original setTimeout and clears any timers that fired.
+  function instrumentSetTimeoutUnref(): {
+    unrefSpies: Mock[];
+    restore: () => void;
+  } {
+    const original = global.setTimeout;
+    const unrefSpies: Mock[] = [];
+    const trackedTimers: NodeJS.Timeout[] = [];
+    const wrapped = ((handler: (...args: unknown[]) => void, ms?: number, ...args: unknown[]) => {
+      const timer = original(handler, ms, ...args);
+      trackedTimers.push(timer);
+      const originalUnref = timer.unref.bind(timer);
+      const unrefSpy = vi.fn(() => originalUnref());
+      (timer as unknown as { unref: () => NodeJS.Timeout }).unref = unrefSpy;
+      unrefSpies.push(unrefSpy);
+      return timer;
+    }) as typeof setTimeout;
+    Object.assign(wrapped, original);
+    global.setTimeout = wrapped;
+    return {
+      unrefSpies,
+      restore: () => {
+        global.setTimeout = original;
+        for (const t of trackedTimers) clearTimeout(t);
+      },
+    };
+  }
+
+  it("dispose schedules an unref'd force-kill timer", () => {
+    const { lifecycle } = makeLifecycle();
+    lifecycle.start();
+
+    const { unrefSpies, restore } = instrumentSetTimeoutUnref();
+    try {
+      lifecycle.dispose();
+      // Exactly one setTimeout should have been called (the dispose backstop).
+      expect(unrefSpies).toHaveLength(1);
+      expect(unrefSpies[0]).toHaveBeenCalledTimes(1);
+    } finally {
+      restore();
+    }
+  });
+
+  it("auto-restart timer is unref'd to avoid pinning the event loop", async () => {
+    const { lifecycle } = makeLifecycle(3);
+    lifecycle.start();
+    lifecycle.markReady();
+
+    const { unrefSpies, restore } = instrumentSetTimeoutUnref();
+    try {
+      // Trigger crash → handleExit schedules a setImmediate which then schedules
+      // the restart setTimeout. Wait for the macrotask to run.
+      mockChild.emit("exit", 1);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      // The only setTimeout we expect during this window is the restart timer.
+      expect(unrefSpies.length).toBeGreaterThanOrEqual(1);
+      expect(unrefSpies[0]).toHaveBeenCalledTimes(1);
+      expect(lifecycle.restartTimer).not.toBeNull();
+    } finally {
+      // Clear the restart timer so the test process exits cleanly.
+      if (lifecycle.restartTimer) {
+        clearTimeout(lifecycle.restartTimer);
+        lifecycle.restartTimer = null;
+      }
+      restore();
+    }
   });
 });
