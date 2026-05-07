@@ -723,16 +723,18 @@ async function lookupManifestEntry(
   getCachedManifest: () => import("../../../shared/types/actions.js").ActionManifestEntry[] | null,
   requestManifest: () => Promise<import("../../../shared/types/actions.js").ActionManifestEntry[]>
 ): Promise<import("../../../shared/types/actions.js").ActionManifestEntry | undefined> {
-  let cached = getCachedManifest();
-  if (!cached) {
+  let manifest = getCachedManifest();
+  if (!manifest) {
     try {
-      await requestManifest();
-      cached = getCachedManifest();
+      // Use the value returned directly — pinned sessions (#7002) deliberately
+      // skip the shared `cachedManifest` so a re-read here would always return
+      // null and silently drop confirmation elicitation + structuredContent.
+      manifest = await requestManifest();
     } catch {
       return undefined;
     }
   }
-  return cached?.find((e) => e.id === actionId);
+  return manifest.find((e) => e.id === actionId);
 }
 
 async function runElicitationConfirmation(

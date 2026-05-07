@@ -1765,6 +1765,61 @@ describe("McpServerService", () => {
     );
   });
 
+  it("pinned sessions with confirm-danger tools still trigger elicitation — manifest must not be cache-bypassed away (#7002)", async () => {
+    // Pinned sessions deliberately skip `cachedManifest`. `lookupManifestEntry`
+    // used to call `getCachedManifest()` *after* `await requestManifest()`,
+    // which would always be null for pinned sessions and silently drop the
+    // confirm-elicitation. This test guards that regression.
+    const dispatchMock = vi.fn((payload: DispatchRequest): ActionDispatchResult => {
+      if (!payload.confirmed) {
+        return { ok: false, error: { code: "CONFIRMATION_REQUIRED", message: "Need confirm" } };
+      }
+      return { ok: true, result: { deleted: true } };
+    });
+    const onElicit = vi.fn(async (): Promise<ElicitResult> => ({ action: "accept", content: {} }));
+
+    const winA = createMockWindow({
+      getManifest: () => [
+        createManifestEntry({
+          id: "worktree.delete" as ActionId,
+          title: "Delete Worktree",
+          description: "Delete a worktree",
+          danger: "confirm",
+        }),
+      ],
+      dispatchAction: dispatchMock,
+    });
+
+    await service.start(winA.window);
+    service.setHelpTokenValidator((token) => (token === "help-A" ? "system" : false));
+    service.setHelpSessionWebContentsResolver((token) =>
+      token === "help-A" ? winA.webContents.id : null
+    );
+
+    const { client, transport } = await connectClient(
+      service.currentPort!,
+      { Authorization: "Bearer help-A" },
+      {
+        capabilities: { elicitation: { form: {} } },
+        onElicit,
+      }
+    );
+    transports.push(transport);
+
+    const result = getTextResult(
+      await client.callTool({
+        name: "worktree.delete",
+        arguments: { worktreeId: "wt-123" },
+      })
+    );
+
+    expect(onElicit).toHaveBeenCalledTimes(1);
+    expect(result.isError).not.toBe(true);
+    expect(dispatchMock).toHaveBeenCalledWith(
+      expect.objectContaining({ actionId: "worktree.delete", confirmed: true })
+    );
+  });
+
   it("external (api-key) sessions keep most-recently-focused-view fallback even when help routing is wired (#7002)", async () => {
     storeState.mcpServer.apiKey = "external-secret";
     const winA = createMockWindow({

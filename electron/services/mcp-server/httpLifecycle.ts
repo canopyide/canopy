@@ -579,8 +579,10 @@ export class HttpLifecycle {
     });
 
     transport.onclose = () => {
-      const id = transport.sessionId;
-      if (id === undefined) return;
+      // Fall back to `newSessionId` when the transport closes before
+      // `onsessioninitialized` fires — otherwise the entries inserted under
+      // `newSessionId` (tier + pin) leak. Mirrors the catch-block path.
+      const id = transport.sessionId ?? newSessionId;
       const session = this.deps.sessionStore.httpSessions.get(id);
       if (session) {
         clearTimeout(session.idleTimer);
