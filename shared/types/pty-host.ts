@@ -11,7 +11,7 @@ import type { AgentState, AgentId, WaitingReason } from "./agent.js";
 import type { PanelKind, TerminalFlowStatus, PanelTitleMode } from "./panel.js";
 import type { ResourceProfile } from "./resourceProfile.js";
 import type { BuiltInAgentId } from "../config/agentIds.js";
-import type { SemanticSearchMatch } from "./ipc/terminal.js";
+import type { SemanticSearchMatch, TerminalInfoPayload } from "./ipc/terminal.js";
 
 export type { TerminalFlowStatus };
 
@@ -237,7 +237,7 @@ export type PtyHostEvent =
   | { type: "terminal-info"; requestId: string; terminal: PtyHostTerminalInfo | null }
   | { type: "replay-history-result"; requestId: string; replayed: number }
   | { type: "serialized-state"; requestId: string; id: string; state: string | null }
-  | { type: "terminal-diagnostic-info"; requestId: string; info: any }
+  | { type: "terminal-diagnostic-info"; requestId: string; info: TerminalInfoPayload | null }
   | { type: "available-terminals"; requestId: string; terminals: PtyHostTerminalInfo[] }
   | { type: "terminals-by-state"; requestId: string; terminals: PtyHostTerminalInfo[] }
   | { type: "all-terminals"; requestId: string; terminals: PtyHostTerminalInfo[] }

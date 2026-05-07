@@ -4,6 +4,7 @@ import { existsSync } from "fs";
 import { readFile, stat } from "fs/promises";
 import { logDebug, logError, logWarn } from "../utils/logger.js";
 import type { GitStatus, WorktreeChanges } from "../../shared/types/index.js";
+import type { BranchInfo, CreateWorktreeOptions } from "../../shared/types/git.js";
 import { WorktreeRemovedError, GitError, toGitOperationError } from "../utils/errorTypes.js";
 import type { CrossWorktreeDiffResult, CrossWorktreeFile } from "../../shared/types/ipc/git.js";
 import { createHardenedGit } from "../utils/hardenedGit.js";
@@ -12,20 +13,6 @@ import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 
 function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-export interface BranchInfo {
-  name: string;
-  current: boolean;
-  commit: string;
-  remote?: string;
-}
-
-export interface CreateWorktreeOptions {
-  baseBranch: string;
-  newBranch: string;
-  path: string;
-  fromRemote?: boolean;
 }
 
 export class GitService {

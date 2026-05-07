@@ -1,3 +1,5 @@
+import type { ActionId } from "../actions.js";
+
 /** Serialized error that survives Electron's structured clone algorithm */
 export interface SerializedError {
   name: string;
@@ -129,7 +131,7 @@ export type GitOperationReason =
  */
 export interface RecoveryAction {
   label: string;
-  actionId: string;
+  actionId: ActionId;
   args?: Record<string, unknown>;
 }
 

@@ -1,5 +1,6 @@
 import type { StagingStatus } from "../git.js";
-import type { AgentId } from "../agent.js";
+import type { AgentId, AgentState } from "../agent.js";
+import type { VoiceInputStatus } from "../voice.js";
 import type { TabGroup } from "../panel.js";
 import type { WorktreeState } from "../worktree.js";
 import type {
@@ -2270,7 +2271,7 @@ export interface IpcInvokeMap {
     result: BackendTerminalInfo[];
   };
   "terminal:get-by-state": {
-    args: [state: string];
+    args: [state: AgentState];
     result: BackendTerminalInfo[];
   };
   "terminal:graceful-kill": {
@@ -2514,7 +2515,7 @@ export interface IpcEventMap {
     resolved: boolean;
   };
   "voice-input:error": string;
-  "voice-input:status": "idle" | "connecting" | "recording" | "error";
+  "voice-input:status": VoiceInputStatus;
 
   // Demo mode events (main → renderer command forwarding)
   "demo:exec-move-to": DemoMoveToPayload;
