@@ -5,6 +5,89 @@ import { createSafeJSONStorage } from "./persistence/safeStorage";
 import { registerPersistedStore } from "./persistence/persistedStoreRegistry";
 
 const MAX_ENTRIES_PER_PROJECT = 500;
+const MAX_VISIT_COUNT = 200;
+const HISTORY_RETENTION_MS = 90 * 24 * 3600 * 1000;
+
+const TRACKING_PARAMS = new Set<string>([
+  "gclid",
+  "dclid",
+  "gbraid",
+  "wbraid",
+  "_ga",
+  "_gl",
+  "fbclid",
+  "twclid",
+  "msclkid",
+  "_hsenc",
+  "_hsmi",
+  "mkt_tok",
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_term",
+  "utm_content",
+  "mc_eid",
+  "oly_anon_id",
+  "oly_enc_id",
+  "__s",
+  "vero_id",
+]);
+
+const TOKEN_FRAGMENT_RE = /[#&](?:access_token|id_token|token_type)=/i;
+
+function hasAnyAwsSignedParam(params: URLSearchParams): boolean {
+  for (const key of params.keys()) {
+    if (key.toLowerCase().startsWith("x-amz-")) return true;
+  }
+  return false;
+}
+
+function isAzureSasParams(params: URLSearchParams): boolean {
+  return params.has("sig") && (params.has("se") || params.has("sv"));
+}
+
+/**
+ * Sanitizes a URL for history storage. Returns `null` for sensitive URLs
+ * (OAuth callbacks, signed cloud-storage URLs, basic-auth) that must not
+ * be persisted. Returns a canonical form (lowercased scheme/host, tracking
+ * params stripped, remaining params sorted) for safe URLs. Hash fragments
+ * are preserved verbatim so hash-router routes (#/, #!) survive.
+ */
+export function sanitizeUrlForHistory(url: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return url;
+  }
+
+  if (parsed.username || parsed.password) return null;
+
+  if (TOKEN_FRAGMENT_RE.test(parsed.hash)) return null;
+
+  const params = parsed.searchParams;
+  if (params.has("code") && params.has("state")) return null;
+  if (hasAnyAwsSignedParam(params)) return null;
+  if (params.has("X-Goog-Signature") || params.has("x-goog-signature")) return null;
+  if (isAzureSasParams(params)) return null;
+
+  parsed.protocol = parsed.protocol.toLowerCase();
+  parsed.hostname = parsed.hostname.toLowerCase();
+
+  const keys = [...params.keys()];
+  for (const key of keys) {
+    if (TRACKING_PARAMS.has(key.toLowerCase())) {
+      params.delete(key);
+    }
+  }
+  params.sort();
+
+  if (parsed.pathname.length > 1 && parsed.pathname.endsWith("/")) {
+    parsed.pathname = parsed.pathname.replace(/\/+$/, "");
+  }
+
+  return parsed.toString();
+}
 
 const RECENCY_BUCKETS = [
   { maxAgeMs: 4 * 24 * 3600 * 1000, weight: 100 },
@@ -24,9 +107,13 @@ export function getFrecencySuggestions(
   query: string,
   limit = 5
 ): UrlHistoryEntry[] {
-  if (!query.trim()) return entries.slice(0, limit);
-  const lowerQuery = query.toLowerCase();
   const now = Date.now();
+  if (!query.trim()) {
+    return [...entries]
+      .sort((a, b) => frecencyScore(b, now) - frecencyScore(a, now))
+      .slice(0, limit);
+  }
+  const lowerQuery = query.toLowerCase();
   return entries
     .filter(
       (e) => e.url.toLowerCase().includes(lowerQuery) || e.title.toLowerCase().includes(lowerQuery)
@@ -44,6 +131,45 @@ interface UrlHistoryState {
   removeProjectHistory: (projectId: string) => void;
 }
 
+function pruneStaleEntries(entries: UrlHistoryEntry[], now: number): UrlHistoryEntry[] {
+  return entries.filter((e) => now - e.lastVisitAt <= HISTORY_RETENTION_MS);
+}
+
+function migrateEntries(
+  rawEntries: Record<string, UrlHistoryEntry[]>
+): Record<string, UrlHistoryEntry[]> {
+  const now = Date.now();
+  const result: Record<string, UrlHistoryEntry[]> = {};
+  for (const [projectId, projectEntries] of Object.entries(rawEntries)) {
+    if (!Array.isArray(projectEntries)) continue;
+    const merged = new Map<string, UrlHistoryEntry>();
+    for (const entry of projectEntries) {
+      if (!entry || typeof entry.url !== "string") continue;
+      const canonical = sanitizeUrlForHistory(entry.url);
+      if (canonical === null) continue;
+      const cappedVisits = Math.min(entry.visitCount ?? 0, MAX_VISIT_COUNT);
+      const existing = merged.get(canonical);
+      if (existing) {
+        existing.visitCount = Math.min(existing.visitCount + cappedVisits, MAX_VISIT_COUNT);
+        existing.lastVisitAt = Math.max(existing.lastVisitAt, entry.lastVisitAt ?? 0);
+        if (!existing.title && entry.title) existing.title = entry.title;
+        if (!existing.favicon && entry.favicon) existing.favicon = entry.favicon;
+      } else {
+        merged.set(canonical, {
+          url: canonical,
+          title: entry.title ?? "",
+          visitCount: cappedVisits,
+          lastVisitAt: entry.lastVisitAt ?? 0,
+          ...(entry.favicon ? { favicon: entry.favicon } : {}),
+        });
+      }
+    }
+    const pruned = pruneStaleEntries([...merged.values()], now);
+    if (pruned.length > 0) result[projectId] = pruned;
+  }
+  return result;
+}
+
 export const useUrlHistoryStore = create<UrlHistoryState>()(
   persist(
     (set) => ({
@@ -51,21 +177,23 @@ export const useUrlHistoryStore = create<UrlHistoryState>()(
 
       recordVisit: (projectId, url, title) =>
         set((state) => {
-          const projectEntries = [...(state.entries[projectId] ?? [])];
-          const existingIndex = projectEntries.findIndex((e) => e.url === url);
+          const canonical = sanitizeUrlForHistory(url);
+          if (canonical === null) return state;
           const now = Date.now();
+          const projectEntries = pruneStaleEntries(state.entries[projectId] ?? [], now).slice();
+          const existingIndex = projectEntries.findIndex((e) => e.url === canonical);
 
           if (existingIndex >= 0) {
             const existing = projectEntries[existingIndex]!;
             projectEntries[existingIndex] = {
               ...existing,
-              visitCount: existing.visitCount + 1,
+              visitCount: Math.min(existing.visitCount + 1, MAX_VISIT_COUNT),
               lastVisitAt: now,
               title: title || existing.title,
             };
           } else {
             projectEntries.push({
-              url,
+              url: canonical,
               title: title || "",
               visitCount: 1,
               lastVisitAt: now,
@@ -82,9 +210,11 @@ export const useUrlHistoryStore = create<UrlHistoryState>()(
 
       updateTitle: (projectId, url, title) =>
         set((state) => {
+          const canonical = sanitizeUrlForHistory(url);
+          if (canonical === null) return state;
           const projectEntries = state.entries[projectId];
           if (!projectEntries) return state;
-          const index = projectEntries.findIndex((e) => e.url === url);
+          const index = projectEntries.findIndex((e) => e.url === canonical);
           if (index < 0) return state;
           const updated = [...projectEntries];
           updated[index] = { ...updated[index]!, title };
@@ -93,14 +223,15 @@ export const useUrlHistoryStore = create<UrlHistoryState>()(
 
       updateFavicon: (projectId, url, favicon) =>
         set((state) => {
-          const projectEntries = [...(state.entries[projectId] ?? [])];
-          const index = projectEntries.findIndex((e) => e.url === url);
-          if (index >= 0) {
-            projectEntries[index] = { ...projectEntries[index]!, favicon };
-          } else {
-            projectEntries.push({ url, title: "", visitCount: 0, lastVisitAt: 0, favicon });
-          }
-          return { entries: { ...state.entries, [projectId]: projectEntries } };
+          const canonical = sanitizeUrlForHistory(url);
+          if (canonical === null) return state;
+          const projectEntries = state.entries[projectId];
+          if (!projectEntries) return state;
+          const index = projectEntries.findIndex((e) => e.url === canonical);
+          if (index < 0) return state;
+          const updated = [...projectEntries];
+          updated[index] = { ...updated[index]!, favicon };
+          return { entries: { ...state.entries, [projectId]: updated } };
         }),
 
       removeUrl: (projectId, url) =>
@@ -121,8 +252,19 @@ export const useUrlHistoryStore = create<UrlHistoryState>()(
     {
       name: "daintree-url-history",
       storage: createSafeJSONStorage(),
-      version: 0,
+      version: 1,
       migrate: (persistedState) => persistedState as UrlHistoryState,
+      merge: (persistedState, currentState) => {
+        if (typeof persistedState !== "object" || persistedState === null) {
+          return currentState;
+        }
+        const candidate = persistedState as { entries?: unknown };
+        const rawEntries =
+          candidate.entries && typeof candidate.entries === "object"
+            ? (candidate.entries as Record<string, UrlHistoryEntry[]>)
+            : {};
+        return { ...currentState, entries: migrateEntries(rawEntries) };
+      },
       partialize: (state) => ({ entries: state.entries }),
     }
   )
