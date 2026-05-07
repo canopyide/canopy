@@ -38,7 +38,9 @@ function makeEntry(overrides: Partial<ProcessEntry> = {}): ProcessEntry {
   };
 }
 
-function makeWorktreeUpdateEvent(overrides: Record<string, unknown> = {}): WorkspaceHostEvent {
+function makeWorktreeUpdateEvent(
+  overrides: Record<string, unknown> = {}
+): Extract<WorkspaceHostEvent, { type: "worktree-update" }> {
   return {
     type: "worktree-update",
     worktree: {
