@@ -90,13 +90,19 @@ export class VoiceFileLinkResolver {
     const words = nameWithoutExt
       .replace(/([a-z])([A-Z])/g, "$1 $2")
       .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+      .replace(/([a-zA-Z])([0-9])/g, "$1 $2")
+      .replace(/([0-9])([a-zA-Z])/g, "$1 $2")
       .split(/[\s_\-./]+/)
       .filter(Boolean)
       .map((w) => w.toLowerCase());
 
     let matched = 0;
     for (const token of tokens) {
-      if (words.some((w) => w === token || w.startsWith(token) || token.startsWith(w))) {
+      if (
+        words.some(
+          (w) => w === token || (token.length >= 3 && (w.startsWith(token) || token.startsWith(w)))
+        )
+      ) {
         matched++;
       }
     }

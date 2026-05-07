@@ -210,4 +210,22 @@ describe("VoiceFileLinkResolver", () => {
 
     expect(result).toBeNull();
   });
+
+  it("does not high-confidence-match short tokens against longer words", async () => {
+    // Before the >=3 length gate, "us ef" prefix-matched both "use" and "effect"
+    // in useEffect.tsx → score 1.0, returned directly. After the gate, neither
+    // 2-char token matches → falls through to AI rerank.
+    searchNaturalLanguageMock.mockResolvedValue(["src/useEffect.tsx"]);
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ output_text: JSON.stringify({ matched_file: null }) }),
+    } as unknown as Response);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const resolver = new VoiceFileLinkResolver();
+    await resolver.resolve({ ...BASE_PAYLOAD, description: "us ef" });
+
+    expect(fetchMock).toHaveBeenCalled();
+  });
 });

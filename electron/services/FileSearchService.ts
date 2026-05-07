@@ -2,22 +2,60 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import { createHardenedGit } from "../utils/hardenedGit.js";
 import { Cache } from "../utils/cache.js";
+import { logWarn } from "../utils/logger.js";
 import type { Dirent } from "fs";
 
 interface FileListCacheEntry {
   files: string[];
+  sortedFiles: string[];
 }
 
 const FILE_LIST_CACHE = new Cache<string, FileListCacheEntry>({
   maxSize: 30,
   defaultTTL: 10_000, // 10 seconds (reduced from 30s for faster worktree updates)
 });
-const FILE_LIST_IN_FLIGHT = new Map<string, Promise<string[]>>();
+const FILE_LIST_IN_FLIGHT = new Map<string, Promise<FileListCacheEntry>>();
 const FILE_LIST_EPOCHS = new Map<string, number>();
 
 const MAX_RESULTS_DEFAULT = 50;
 const MAX_QUERY_LENGTH = 256;
 const MAX_FALLBACK_FILES = 20_000;
+
+// Names hard-skipped by the fallback walker only. Git mode honours .gitignore via
+// --exclude-standard, so these are unnecessary there. Includes a few well-known
+// noise files (.DS_Store) alongside dirs.
+const FALLBACK_SKIP_NAMES = new Set<string>([
+  ".git",
+  ".svn",
+  ".hg",
+  "node_modules",
+  "bower_components",
+  ".venv",
+  ".virtualenv",
+  "venv",
+  "__pycache__",
+  ".pytest_cache",
+  ".mypy_cache",
+  "dist",
+  "build",
+  "out",
+  "target",
+  "bin",
+  "obj",
+  ".next",
+  ".nuxt",
+  ".svelte-kit",
+  ".turbo",
+  ".parcel-cache",
+  ".cache",
+  "coverage",
+  ".nyc_output",
+  ".DS_Store",
+]);
+
+// One-shot per-cwd cap warnings; persists for process lifetime so a 20k-file
+// repo logs once at startup, not once per file-watcher invalidation.
+const FALLBACK_CAP_WARNED = new Set<string>();
 
 function toPosixPath(p: string): string {
   return p.split(path.sep).join("/");
@@ -36,12 +74,11 @@ function normalizeQuery(rawQuery: string): string {
   return normalized.replace(/\/+/g, "/");
 }
 
-function scorePath(queryLower: string, file: string): number | null {
-  if (queryLower.length === 0) return 0;
+function scorePath(normalizedQuery: string, file: string): number | null {
+  if (normalizedQuery.length === 0) return 0;
 
   const fileLower = file.toLowerCase();
-  const normalizedQuery = queryLower.replace(/\/$/, "");
-  const normalizedFile = fileLower.replace(/\/$/, "");
+  const normalizedFile = fileLower.endsWith("/") ? fileLower.slice(0, -1) : fileLower;
   const basename = normalizedFile.slice(normalizedFile.lastIndexOf("/") + 1);
 
   if (basename === normalizedQuery) return 0;
@@ -57,23 +94,21 @@ function scorePath(queryLower: string, file: string): number | null {
   return null;
 }
 
-function pickTopMatches(files: string[], query: string, limit: number): string[] {
+function pickTopMatches(entry: FileListCacheEntry, query: string, limit: number): string[] {
   const queryLower = normalizeQuery(query).toLowerCase();
+  const normalizedQuery = queryLower.endsWith("/") ? queryLower.slice(0, -1) : queryLower;
   const effectiveLimit = clampInt(limit, 1, 100, MAX_RESULTS_DEFAULT);
 
-  if (queryLower.length === 0) {
-    return files
-      .slice()
-      .sort((a, b) => a.length - b.length || a.localeCompare(b))
-      .slice(0, effectiveLimit);
+  if (normalizedQuery.length === 0) {
+    return entry.sortedFiles.slice(0, effectiveLimit);
   }
 
   const best: Array<{ file: string; score: number }> = [];
   let worstIdx = -1;
   let worstScore = -Infinity;
 
-  for (const file of files) {
-    const score = scorePath(queryLower, file);
+  for (const file of entry.files) {
+    const score = scorePath(normalizedQuery, file);
     if (score === null) continue;
 
     if (best.length < effectiveLimit) {
@@ -118,10 +153,12 @@ async function loadFilesFromDisk(cwd: string): Promise<string[]> {
     }
 
     for (const entry of entries) {
-      if (entry.name === ".git" || entry.name === "node_modules") continue;
+      if (FALLBACK_SKIP_NAMES.has(entry.name)) continue;
       const absolute = path.join(dir, entry.name);
       const relative = path.relative(cwd, absolute);
-      const relativePosix = toPosixPath(relative);
+      // APFS stores filenames as NFD on macOS; normalise to match the NFC paths
+      // git produces via core.precomposeunicode.
+      const relativePosix = toPosixPath(relative).normalize("NFC");
 
       if (entry.isDirectory()) {
         results.push(`${relativePosix}/`);
@@ -134,6 +171,14 @@ async function loadFilesFromDisk(cwd: string): Promise<string[]> {
       results.push(relativePosix);
       if (results.length >= MAX_FALLBACK_FILES) break;
     }
+  }
+
+  if (results.length >= MAX_FALLBACK_FILES && !FALLBACK_CAP_WARNED.has(cwd)) {
+    FALLBACK_CAP_WARNED.add(cwd);
+    logWarn("[FileSearchService] loadFilesFromDisk: hit fallback cap", {
+      cwd,
+      cap: MAX_FALLBACK_FILES,
+    });
   }
 
   return results.sort((a, b) => a.localeCompare(b));
@@ -151,7 +196,16 @@ async function loadGitFiles(cwd: string): Promise<string[]> {
   const relativeToRoot = toPosixPath(path.relative(gitRoot, cwd));
   const pathspec = relativeToRoot && relativeToRoot !== "." ? relativeToRoot : null;
 
-  const args = ["ls-files", "--cached", "--others", "--exclude-standard"] as string[];
+  // -z: NUL-delimited output. Required to round-trip filenames containing tabs,
+  // newlines, or backslashes; core.quotepath=false alone only suppresses high-bit
+  // quoting.
+  // No --recurse-submodules: submodules surface as a single gitlink and recursing
+  // would require a separate ls-files invocation per submodule and break the
+  // root-relative path mapping below.
+  // No -t / skip-worktree filtering: skip-worktree entries appear as phantoms in
+  // the index but are intentionally surfaced so users can still search files they
+  // chose not to check out.
+  const args = ["ls-files", "-z", "--cached", "--others", "--exclude-standard"] as string[];
   if (pathspec) {
     args.push("--", pathspec);
   }
@@ -160,9 +214,8 @@ async function loadGitFiles(cwd: string): Promise<string[]> {
   const prefix = pathspec ? `${pathspec.replace(/\/$/, "")}/` : "";
 
   const files = output
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
+    .split("\0")
+    .filter((p) => p.length > 0)
     .map((p) => (prefix && p.startsWith(prefix) ? p.slice(prefix.length) : p))
     .filter((p) => p.length > 0);
 
@@ -202,6 +255,8 @@ function splitCamelCase(name: string): string[] {
   return name
     .replace(/([a-z])([A-Z])/g, "$1 $2")
     .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .replace(/([a-zA-Z])([0-9])/g, "$1 $2")
+    .replace(/([0-9])([a-zA-Z])/g, "$1 $2")
     .split(/[\s_\-./]+/)
     .filter(Boolean)
     .map((w) => w.toLowerCase());
@@ -217,7 +272,11 @@ function scorePathNaturalLanguage(tokens: string[], file: string): number | null
 
   let matched = 0;
   for (const token of tokens) {
-    if (words.some((w) => w === token || w.startsWith(token) || token.startsWith(w))) {
+    if (
+      words.some(
+        (w) => w === token || (token.length >= 3 && (w.startsWith(token) || token.startsWith(w)))
+      )
+    ) {
       matched++;
     }
   }
@@ -256,9 +315,9 @@ export class FileSearchService {
       const resolvedCwd = path.resolve(payload.cwd);
       const limit = clampInt(payload.limit, 1, 100, MAX_RESULTS_DEFAULT);
 
-      const files = await this.getFiles(resolvedCwd);
+      const entry = await this.getFiles(resolvedCwd);
 
-      return pickTopMatches(files, payload.query, limit);
+      return pickTopMatches(entry, payload.query, limit);
     } catch {
       return [];
     }
@@ -273,9 +332,9 @@ export class FileSearchService {
       const resolvedCwd = path.resolve(payload.cwd);
       const limit = clampInt(payload.limit, 1, 100, 20);
 
-      const files = await this.getFiles(resolvedCwd);
+      const entry = await this.getFiles(resolvedCwd);
 
-      return pickTopNaturalLanguageMatches(files, payload.description, limit);
+      return pickTopNaturalLanguageMatches(entry.files, payload.description, limit);
     } catch {
       return [];
     }
@@ -310,10 +369,10 @@ export class FileSearchService {
     return loadFilesFromDisk(cwd);
   }
 
-  private async getFiles(resolvedCwd: string): Promise<string[]> {
+  private async getFiles(resolvedCwd: string): Promise<FileListCacheEntry> {
     const cached = FILE_LIST_CACHE.get(resolvedCwd);
     if (cached) {
-      return cached.files;
+      return cached;
     }
 
     const existing = FILE_LIST_IN_FLIGHT.get(resolvedCwd);
@@ -322,12 +381,14 @@ export class FileSearchService {
     }
 
     const epoch = FILE_LIST_EPOCHS.get(resolvedCwd) ?? 0;
-    const loadPromise = this.loadFileList(resolvedCwd)
+    const loadPromise: Promise<FileListCacheEntry> = this.loadFileList(resolvedCwd)
       .then((loaded) => {
+        const sortedFiles = [...loaded].sort((a, b) => a.length - b.length || a.localeCompare(b));
+        const entry: FileListCacheEntry = { files: loaded, sortedFiles };
         if ((FILE_LIST_EPOCHS.get(resolvedCwd) ?? 0) === epoch) {
-          FILE_LIST_CACHE.set(resolvedCwd, { files: loaded });
+          FILE_LIST_CACHE.set(resolvedCwd, entry);
         }
-        return loaded;
+        return entry;
       })
       .finally(() => {
         if (FILE_LIST_IN_FLIGHT.get(resolvedCwd) === loadPromise) {
