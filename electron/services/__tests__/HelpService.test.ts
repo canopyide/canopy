@@ -93,4 +93,48 @@ describe("HelpService", () => {
     );
     warnSpy.mockRestore();
   });
+
+  it("caches the result and does not call existsSync on subsequent calls", async () => {
+    fsMock.existsSync.mockReturnValue(true);
+
+    const { getHelpFolderPath } = await import("../HelpService.js");
+
+    const first = getHelpFolderPath();
+    const second = getHelpFolderPath();
+
+    expect(first).toBe(second);
+    expect(fsMock.existsSync).toHaveBeenCalledTimes(1);
+  });
+
+  it("caches null when folder is missing and warns only once", async () => {
+    fsMock.existsSync.mockReturnValue(false);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const { getHelpFolderPath } = await import("../HelpService.js");
+
+    const first = getHelpFolderPath();
+    expect(first).toBeNull();
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+
+    warnSpy.mockClear();
+
+    const second = getHelpFolderPath();
+    expect(second).toBeNull();
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(fsMock.existsSync).toHaveBeenCalledTimes(1);
+
+    warnSpy.mockRestore();
+  });
+
+  it("includes isPackaged in the warning message", async () => {
+    appMock.app.isPackaged = true;
+    fsMock.existsSync.mockReturnValue(false);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const { getHelpFolderPath } = await import("../HelpService.js");
+    getHelpFolderPath();
+
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("(packaged=true)"));
+    warnSpy.mockRestore();
+  });
 });

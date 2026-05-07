@@ -161,3 +161,80 @@ describe("UserAgentRegistryService", () => {
     );
   });
 });
+
+describe("persist-before-mutate ordering", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (storeMock.get as Mock).mockReturnValue({});
+    (storeMock.set as Mock).mockImplementation(() => {});
+  });
+
+  it("addAgent does not mutate in-memory registry when store.set throws", () => {
+    (storeMock.set as Mock).mockImplementation(() => {
+      throw new Error("ENOSPC: disk full");
+    });
+
+    const service = new UserAgentRegistryService();
+
+    const result = service.addAgent(createConfig("custom"));
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Failed to save");
+    expect(service.getRegistry()).toEqual({});
+  });
+
+  it("updateAgent does not mutate in-memory registry when store.set throws", () => {
+    (storeMock.get as Mock).mockReturnValue({
+      alpha: createConfig("alpha"),
+    });
+
+    const service = new UserAgentRegistryService();
+
+    (storeMock.set as Mock).mockImplementation(() => {
+      throw new Error("ENOSPC: disk full");
+    });
+
+    const updatedConfig = createConfig("alpha", { name: "Alpha Updated" });
+    const result = service.updateAgent("alpha", updatedConfig);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Failed to save");
+    expect(service.getAgent("alpha")?.name).toBe("Agent alpha");
+  });
+
+  it("removeAgent does not mutate in-memory registry when store.set throws", () => {
+    (storeMock.get as Mock).mockReturnValue({
+      alpha: createConfig("alpha"),
+    });
+
+    const service = new UserAgentRegistryService();
+
+    (storeMock.set as Mock).mockImplementation(() => {
+      throw new Error("ENOSPC: disk full");
+    });
+
+    const result = service.removeAgent("alpha");
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Failed to save");
+    expect(service.getAgent("alpha")).toBeDefined();
+  });
+});
+
+describe("removeAgent error ordering", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (storeMock.get as Mock).mockReturnValue({});
+    (storeMock.set as Mock).mockImplementation(() => {});
+  });
+
+  it("returns 'not found' for built-in agent ID when it is not in the user registry", () => {
+    const service = new UserAgentRegistryService();
+
+    const result = service.removeAgent("claude");
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("not found");
+    expect(result.error).not.toContain("built-in");
+  });
+});

@@ -2,6 +2,7 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import { getEffectiveAgentConfig } from "../../shared/config/agentRegistry.js";
 import type { AgentHelpResult } from "../../shared/types/ipc/agent.js";
+import { SAFE_AGENT_ID_PATTERN } from "../../shared/types/index.js";
 import { buildProbeEnv } from "../utils/spawnEnv.js";
 import { scrubSecrets } from "../utils/secretScrubber.js";
 
@@ -48,13 +49,7 @@ export class AgentHelpService {
   }
 
   private isValidCommand(command: string): boolean {
-    if (typeof command !== "string" || !command.trim()) {
-      return false;
-    }
-    if (command.includes("&&") || command.includes(";") || command.includes("|")) {
-      return false;
-    }
-    return true;
+    return typeof command === "string" && SAFE_AGENT_ID_PATTERN.test(command);
   }
 
   private async executeHelp(command: string, args: string[]): Promise<AgentHelpResult> {

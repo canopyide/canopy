@@ -246,7 +246,7 @@ describe("AgentHelpService", () => {
       delete (AGENT_REGISTRY as any)["empty"];
     });
 
-    it("rejects command with invalid characters", async () => {
+    it("rejects command with shell metacharacters", async () => {
       vi.doUnmock("../../../shared/config/agentRegistry.js");
       const { AGENT_REGISTRY } = await import("../../../shared/config/agentRegistry.js");
       (AGENT_REGISTRY as any)["bad"] = {
@@ -258,6 +258,20 @@ describe("AgentHelpService", () => {
       await expect(service.getHelp("bad")).rejects.toThrow("Invalid command");
 
       delete (AGENT_REGISTRY as any)["bad"];
+    });
+
+    it("rejects command with subshell syntax that denylist would have missed", async () => {
+      vi.doUnmock("../../../shared/config/agentRegistry.js");
+      const { AGENT_REGISTRY } = await import("../../../shared/config/agentRegistry.js");
+      (AGENT_REGISTRY as any)["subshell"] = {
+        id: "subshell",
+        name: "Subshell",
+        command: "$(whoami)",
+      };
+
+      await expect(service.getHelp("subshell")).rejects.toThrow("Invalid command");
+
+      delete (AGENT_REGISTRY as any)["subshell"];
     });
   });
 });
