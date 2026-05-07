@@ -10,6 +10,12 @@ import {
 import { BUILT_IN_PANEL_KINDS } from "../../config/panelKindRegistry.js";
 
 describe("isBuiltInPanelKind", () => {
+  // Hard-coded positives — kept independent of BUILT_IN_PANEL_KINDS so a
+  // wrong/incomplete SSOT still gets caught here.
+  it.each(["terminal", "browser", "dev-preview"])("returns true for %s", (kind) => {
+    expect(isBuiltInPanelKind(kind)).toBe(true);
+  });
+
   it("returns true for every entry in BUILT_IN_PANEL_KINDS", () => {
     for (const kind of BUILT_IN_PANEL_KINDS) {
       expect(isBuiltInPanelKind(kind)).toBe(true);

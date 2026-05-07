@@ -131,4 +131,15 @@ describe("panel registry adversarial", () => {
       sharedRegistry.getPanelKindConfig("browser")?.createDefaults?.({ kind: "browser" });
     }).toThrow("browser defaults failed");
   });
+
+  it("UNREGISTER_BUILTIN_DEFINITION_REJECTED", async () => {
+    mockRegistryImports();
+    const sharedRegistry = await import("@shared/config/panelKindRegistry");
+    const registry = await import("../registry");
+
+    for (const kind of sharedRegistry.getBuiltInPanelKinds()) {
+      expect(registry.unregisterPanelKindDefinition(kind)).toBe(false);
+      expect(registry.getPanelKindDefinition(kind)).toBeDefined();
+    }
+  });
 });

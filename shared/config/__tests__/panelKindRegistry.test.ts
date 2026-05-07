@@ -60,6 +60,16 @@ describe("getBuiltInPanelKinds", () => {
     first.length = 0;
     expect(getBuiltInPanelKinds()).toEqual([...BUILT_IN_PANEL_KINDS]);
   });
+
+  // Structural invariant: the BUILT_IN_PANEL_KINDS SSOT must match every
+  // entry in PANEL_KIND_REGISTRY that has no extensionId. If they ever drift,
+  // isBuiltInPanelKind disagrees with the actual registry contents.
+  it("matches the no-extensionId entries of PANEL_KIND_REGISTRY", () => {
+    const registryBuiltIns = getPanelKindIds()
+      .filter((id) => getPanelKindConfig(id)?.extensionId === undefined)
+      .sort();
+    expect(registryBuiltIns).toEqual([...BUILT_IN_PANEL_KINDS].sort());
+  });
 });
 
 const BUILT_IN_KINDS = BUILT_IN_PANEL_KINDS;
