@@ -50,7 +50,7 @@ export interface WorkerPongMessage {
 }
 
 /** All messages from worker to main thread */
-export type WorkerOutboundMessage =
+export type SemanticWorkerOutboundMessage =
   | WorkerArtifactDetectedMessage
   | WorkerStateChangedMessage
   | WorkerReadyMessage
@@ -101,7 +101,7 @@ export interface MainResetMessage {
 }
 
 /** All messages from main thread to worker */
-export type WorkerInboundMessage =
+export type SemanticWorkerInboundMessage =
   | MainInitBufferMessage
   | MainRegisterTerminalMessage
   | MainUnregisterTerminalMessage

@@ -85,3 +85,17 @@ export interface McpRuntimeSnapshot {
   /** Most recent failure reason, if any. Cleared on successful start. */
   lastError: string | null;
 }
+
+/**
+ * Compact status snapshot returned by the synchronous `mcp-server:get-status`,
+ * `mcp-server:set-enabled`, and `mcp-server:set-port` IPC channels. Distinct
+ * from {@link McpRuntimeSnapshot} (which carries the coarse readiness state
+ * surfaced via the async event stream): this shape conveys just the persisted
+ * configuration plus the currently bound port.
+ */
+export interface McpServerStatusSnapshot {
+  enabled: boolean;
+  port: number | null;
+  configuredPort: number | null;
+  apiKey: string;
+}

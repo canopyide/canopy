@@ -27,8 +27,17 @@ export interface SerializedError {
   errno?: number;
   syscall?: string;
   path?: string;
+  /**
+   * Free-form diagnostic context. Values must be structured-clone-safe —
+   * primitives, plain objects, arrays, or `null`. Map, Set, Date, and class
+   * instances are not preserved across the IPC boundary.
+   */
   context?: Record<string, unknown>;
   cause?: SerializedError;
+  /**
+   * Additional error fields copied from the original Error subclass. Same
+   * structured-clone-safe constraint as {@link SerializedError.context}.
+   */
   properties?: Record<string, unknown>;
 }
 
@@ -47,11 +56,14 @@ export interface IpcErrorEnvelope {
 export type IpcEnvelope<T = unknown> = IpcSuccessEnvelope<T> | IpcErrorEnvelope;
 
 export function isIpcEnvelope(value: unknown): value is IpcEnvelope {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    (value as Record<string, unknown>).__daintreeIpcEnvelope === true
-  );
+  if (value === null || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  if (candidate.__daintreeIpcEnvelope !== true || typeof candidate.ok !== "boolean") {
+    return false;
+  }
+  return candidate.ok ? "data" in candidate : "error" in candidate;
 }
 
 /**
