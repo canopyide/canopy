@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Stats } from "node:fs";
-import { FileTreeService } from "../FileTreeService.js";
+import { FileTreeService, _resetBaseRealpathCacheForTests } from "../FileTreeService.js";
 
 const shared = vi.hoisted(() => ({
   realpath: vi.fn(),
@@ -25,6 +25,8 @@ vi.mock("../../utils/hardenedGit.js", () => ({
 
 interface DirEntry {
   name: string;
+  isSymbolicLink: () => boolean;
+  isDirectory: () => boolean;
 }
 
 interface MockStats extends Pick<Stats, "isDirectory" | "isSymbolicLink" | "size"> {
@@ -40,6 +42,14 @@ function createStats(options: {
     isDirectory: () => options.isDirectory ?? false,
     isSymbolicLink: () => options.isSymbolicLink ?? false,
     size: options.size ?? 0,
+  };
+}
+
+function d(name: string, opts?: { symlink?: boolean; dir?: boolean }): DirEntry {
+  return {
+    name,
+    isSymbolicLink: () => opts?.symlink ?? false,
+    isDirectory: () => opts?.dir ?? false,
   };
 }
 
@@ -64,6 +74,7 @@ describe("FileTreeService adversarial", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    _resetBaseRealpathCacheForTests();
     service = new FileTreeService();
 
     shared.realpath.mockImplementation(async (target: string) => target);
@@ -82,10 +93,7 @@ describe("FileTreeService adversarial", () => {
   });
 
   it("UNREADABLE_CHILD_DOES_NOT_POISON_DIR", async () => {
-    shared.readdir.mockResolvedValueOnce([
-      { name: "good.txt" },
-      { name: "secret.txt" },
-    ] as DirEntry[]);
+    shared.readdir.mockResolvedValueOnce([d("good.txt"), d("secret.txt")]);
     shared.lstat.mockImplementation(async (target: string) => {
       if (target.endsWith("secret.txt")) {
         throw eacces("EACCES: permission denied");
@@ -95,7 +103,6 @@ describe("FileTreeService adversarial", () => {
 
     await expect(service.getFileTree("/repo")).resolves.toEqual([
       {
-        children: undefined,
         isDirectory: false,
         name: "good.txt",
         path: "good.txt",
@@ -105,21 +112,20 @@ describe("FileTreeService adversarial", () => {
   });
 
   it("SYMLINK_OMITTED_WITHOUT_FOLLOW", async () => {
-    shared.readdir.mockResolvedValueOnce([{ name: "link" }] as DirEntry[]);
-    shared.lstat.mockResolvedValueOnce(createStats({ isSymbolicLink: true }));
+    shared.readdir.mockResolvedValueOnce([d("link", { symlink: true })]);
 
     await expect(service.getFileTree("/repo")).resolves.toEqual([]);
     expect(shared.stat).toHaveBeenCalledTimes(1);
+    expect(shared.lstat).not.toHaveBeenCalled();
   });
 
   it("GIT_IGNORE_FAILURE_FAILS_OPEN", async () => {
-    shared.readdir.mockResolvedValueOnce([{ name: "visible.txt" }] as DirEntry[]);
+    shared.readdir.mockResolvedValueOnce([d("visible.txt")]);
     shared.lstat.mockResolvedValueOnce(createStats({ size: 4 }));
     shared.checkIgnore.mockRejectedValueOnce(new Error("git unavailable"));
 
     await expect(service.getFileTree("/repo")).resolves.toEqual([
       {
-        children: undefined,
         isDirectory: false,
         name: "visible.txt",
         path: "visible.txt",
@@ -135,9 +141,9 @@ describe("FileTreeService adversarial", () => {
     shared.readdir.mockImplementation(async () => {
       readdirCall += 1;
       if (readdirCall === 1) {
-        return [{ name: "old.txt" }] as DirEntry[];
+        return [d("old.txt")];
       }
-      return [{ name: "new.txt" }] as DirEntry[];
+      return [d("new.txt")];
     });
 
     shared.lstat.mockImplementation((target: string) => {
@@ -156,7 +162,6 @@ describe("FileTreeService adversarial", () => {
 
     expect(first).toEqual([
       {
-        children: undefined,
         isDirectory: false,
         name: "old.txt",
         path: "old.txt",
@@ -165,7 +170,6 @@ describe("FileTreeService adversarial", () => {
     ]);
     expect(second).toEqual([
       {
-        children: undefined,
         isDirectory: false,
         name: "new.txt",
         path: "new.txt",
@@ -176,7 +180,7 @@ describe("FileTreeService adversarial", () => {
   });
 
   it("FILE_TYPE_CHANGE_NOT_CACHED", async () => {
-    shared.readdir.mockResolvedValue([{ name: "src" }] as DirEntry[]);
+    shared.readdir.mockResolvedValue([d("src")]);
     shared.lstat
       .mockResolvedValueOnce(createStats({ isDirectory: false, size: 10 }))
       .mockResolvedValueOnce(createStats({ isDirectory: true }));
@@ -185,11 +189,12 @@ describe("FileTreeService adversarial", () => {
     const second = await service.getFileTree("/repo");
 
     expect(first[0]).toMatchObject({ name: "src", isDirectory: false, size: 10 });
-    expect(second[0]).toMatchObject({ name: "src", isDirectory: true, size: 0 });
+    expect(second[0]).toMatchObject({ name: "src", isDirectory: true });
+    expect("size" in second[0]).toBe(false);
   });
 
   it("SIZE_CHANGE_NOT_CACHED", async () => {
-    shared.readdir.mockResolvedValue([{ name: "index.ts" }] as DirEntry[]);
+    shared.readdir.mockResolvedValue([d("index.ts")]);
     shared.lstat
       .mockResolvedValueOnce(createStats({ size: 10 }))
       .mockResolvedValueOnce(createStats({ size: 999 }));
@@ -202,10 +207,7 @@ describe("FileTreeService adversarial", () => {
   });
 
   it("WINDOWS_PATH_NORMALIZES_FOR_IGNORE", async () => {
-    shared.readdir.mockResolvedValueOnce([
-      { name: "ignored.txt" },
-      { name: "visible.txt" },
-    ] as DirEntry[]);
+    shared.readdir.mockResolvedValueOnce([d("ignored.txt"), d("visible.txt")]);
     shared.checkIgnore.mockImplementationOnce(async (paths: string[]) => {
       expect(paths).toEqual(["nested/dir/ignored.txt", "nested/dir/visible.txt"]);
       return ["nested/dir/ignored.txt"];
@@ -214,12 +216,50 @@ describe("FileTreeService adversarial", () => {
 
     await expect(service.getFileTree("/repo", "nested\\dir")).resolves.toEqual([
       {
-        children: undefined,
         isDirectory: false,
         name: "visible.txt",
         path: "nested/dir/visible.txt",
         size: 7,
       },
     ]);
+  });
+
+  it("DOT_GIT_EXCLUDED_FROM_CHECK_IGNORE", async () => {
+    shared.readdir.mockResolvedValueOnce([d(".git", { dir: true }), d("src", { dir: true })]);
+    shared.checkIgnore.mockImplementationOnce(async (paths: string[]) => {
+      expect(paths).toEqual(["src"]);
+      return [];
+    });
+    shared.lstat.mockResolvedValue(createStats({ isDirectory: true }));
+
+    await expect(service.getFileTree("/repo")).resolves.toEqual([
+      { name: "src", path: "src", isDirectory: true },
+    ]);
+  });
+
+  it("REALPATH_CACHE_SHARED_ACROSS_CALLS", async () => {
+    let realpathCalls = 0;
+    shared.realpath.mockImplementation(async (target: string) => {
+      realpathCalls += 1;
+      return target;
+    });
+
+    await service.getFileTree("/repo");
+    await service.getFileTree("/repo");
+
+    // 3 = 1 base-realpath (cached across calls) + 2 target-realpath (per-call)
+    expect(realpathCalls).toBe(3);
+  });
+
+  it("REALPATH_CACHE_ERROR_EVICTED", async () => {
+    // First call: base realpath fails, cache evicted, fallback returned
+    shared.realpath.mockRejectedValueOnce(new Error("EACCES"));
+    await expect(service.getFileTree("/repo")).resolves.toBeDefined();
+
+    // Second call: base realpath retried (cache was evicted)
+    await expect(service.getFileTree("/repo")).resolves.toBeDefined();
+
+    // 4 = (1 base fail + 1 target ok) × 2 calls
+    expect(shared.realpath).toHaveBeenCalledTimes(4);
   });
 });
