@@ -23,6 +23,7 @@ import { actionService } from "@/services/ActionService";
 import { keybindingService } from "@/services/KeybindingService";
 import { getProjectGradient, getBrandColorHex } from "@/lib/colorUtils";
 import { formatTimeAgo } from "@/utils/timeAgo";
+import { middleTruncate } from "@/utils/textParsing";
 import { CHECKLIST_ITEMS } from "@/components/Onboarding/checklistItems";
 import { useAgentDiscoveryOnboarding } from "@/hooks/app/useAgentDiscoveryOnboarding";
 import { safeFireAndForget } from "@/utils/safeFireAndForget";
@@ -264,9 +265,14 @@ function RecentProjects({
               <span className="text-sm font-semibold text-daintree-text/85 truncate block">
                 {project.name}
               </span>
-              <span className="text-xs text-daintree-text/40 truncate block">{project.path}</span>
+              <span className="text-xs text-daintree-text/40 block" title={project.path}>
+                {middleTruncate(project.path, 48)}
+              </span>
             </div>
-            <span className="text-xs text-daintree-text/40 shrink-0">
+            <span
+              className="text-xs text-daintree-text/40 shrink-0"
+              title={new Date(project.lastOpened).toLocaleString()}
+            >
               {formatTimeAgo(project.lastOpened)}
             </span>
           </button>
