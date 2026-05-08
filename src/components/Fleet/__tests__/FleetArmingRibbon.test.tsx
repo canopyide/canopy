@@ -781,6 +781,7 @@ describe("FleetArmingRibbon", () => {
         total: 0,
         failed: 0,
         isActive: false,
+        cancelled: false,
       });
     });
 
@@ -864,6 +865,41 @@ describe("FleetArmingRibbon", () => {
       });
       rerender(<FleetArmingRibbon />);
       expect(screen.queryByTestId("fleet-broadcast-progress")).toBeNull();
+    });
+
+    it("renders a Cancel button alongside the progress counter when active", () => {
+      useFleetBroadcastProgressStore.setState({
+        completed: 3,
+        total: 12,
+        isActive: true,
+      });
+      useFleetArmingStore.getState().armIds(["a", "b", "c"]);
+      render(<FleetArmingRibbon />);
+      const cancel = screen.getByTestId("fleet-broadcast-cancel");
+      expect(cancel.getAttribute("aria-label")).toBe("Cancel broadcast");
+    });
+
+    it("clicking Cancel flips the progress store cancelled flag", () => {
+      useFleetBroadcastProgressStore.setState({
+        completed: 3,
+        total: 12,
+        isActive: true,
+      });
+      useFleetArmingStore.getState().armIds(["a", "b", "c"]);
+      render(<FleetArmingRibbon />);
+      fireEvent.click(screen.getByTestId("fleet-broadcast-cancel"));
+      expect(useFleetBroadcastProgressStore.getState().cancelled).toBe(true);
+    });
+
+    it("Cancel button does not render when total is below the visibility threshold", () => {
+      useFleetBroadcastProgressStore.setState({
+        completed: 1,
+        total: 5,
+        isActive: true,
+      });
+      useFleetArmingStore.getState().armIds(["a", "b"]);
+      render(<FleetArmingRibbon />);
+      expect(screen.queryByTestId("fleet-broadcast-cancel")).toBeNull();
     });
   });
 

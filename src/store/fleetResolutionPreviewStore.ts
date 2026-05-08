@@ -33,19 +33,25 @@ export const useFleetResolutionPreviewStore = create<FleetResolutionPreviewState
 
     setDraft: (draft: string) => {
       const hasVars = hasRecipeVariables(draft);
-      const { userDismissed } = getState();
+      const state = getState();
 
-      let open = getState().open;
-      let nextDismissed = userDismissed;
+      let open = state.open;
+      let nextDismissed = state.userDismissed;
 
       if (!hasVars) {
         open = false;
         nextDismissed = false;
-      } else if (!userDismissed) {
+      } else if (!state.userDismissed) {
         open = true;
       }
 
-      const previews = buildFleetTargetPreviews(draft);
+      // Skip the per-target preview build when nothing renders it: closed
+      // popover AND no recipe variables. Reuse the existing reference so
+      // we don't allocate a fresh array on every keystroke. The transition
+      // closed+no-vars → open+vars is safe because the keystroke that
+      // introduces `{{` flips both `hasVars` and `open` to true above, so
+      // the guard falls through and previews rebuild on that very stroke.
+      const previews = !open && !hasVars ? state.previews : buildFleetTargetPreviews(draft);
 
       set({
         draft,

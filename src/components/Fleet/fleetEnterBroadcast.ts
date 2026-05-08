@@ -1,9 +1,40 @@
 import { useFleetArmingStore } from "@/store/fleetArmingStore";
 import { useFleetFailureStore } from "@/store/fleetFailureStore";
 import { useFleetBroadcastConfirmStore } from "@/store/fleetBroadcastConfirmStore";
+import { useFleetBroadcastProgressStore } from "@/store/fleetBroadcastProgressStore";
+import { useAnnouncerStore } from "@/store/accessibilityAnnouncerStore";
 import { logWarn } from "@/utils/logger";
 import { getFleetBroadcastWarnings, resolveFleetBroadcastTargetIds } from "./fleetBroadcast";
-import { executeFleetBroadcast } from "./fleetExecution";
+import { executeFleetBroadcast, type FleetExecutionResult } from "./fleetExecution";
+
+let activeBroadcastController: AbortController | null = null;
+
+/**
+ * Abort any in-flight fleet broadcast. Already-dispatched IPC writes can't
+ * be revoked; this prevents future batches from firing and signals the
+ * progress store + announcer to surface the cancelled outcome.
+ */
+export function cancelActiveBroadcast(): void {
+  activeBroadcastController?.abort();
+  useFleetBroadcastProgressStore.getState().cancel();
+}
+
+function plural(count: number, singular: string, pluralForm: string): string {
+  return `${count} ${count === 1 ? singular : pluralForm}`;
+}
+
+function buildBroadcastAnnouncement(result: FleetExecutionResult): string {
+  if (result.cancelled) {
+    if (result.successCount > 0) {
+      return `Broadcast cancelled — ${result.successCount} sent`;
+    }
+    return "Broadcast cancelled";
+  }
+  if (result.failureCount > 0) {
+    return `Broadcast sent to ${result.successCount} — ${result.failureCount} failed`;
+  }
+  return `Broadcast sent to ${plural(result.successCount, "terminal", "terminals")}`;
+}
 
 function describeWarnings(text: string): string[] {
   const w = getFleetBroadcastWarnings(text);
@@ -44,26 +75,36 @@ export function tryFleetBroadcastFromEditor(
   const reasons = describeWarnings(text);
 
   const doSend = async () => {
+    const controller = new AbortController();
+    activeBroadcastController = controller;
     try {
-      const result = await executeFleetBroadcast(text, targets);
+      const result = await executeFleetBroadcast(text, targets, undefined, controller.signal);
       if (result.failureCount > 0) {
         logWarn("[fleetEnterBroadcast] broadcast had rejections", {
           failureCount: result.failureCount,
           failedIds: result.failedIds,
         });
         useFleetFailureStore.getState().recordFailure(text, result.failedIds);
-      } else {
+      } else if (!result.cancelled) {
         // A successful broadcast clears any stale failure dot on these
         // targets — the partial-failure state from a prior attempt is
-        // now resolved.
+        // now resolved. Skipped on cancel: untouched targets keep their
+        // existing dot state.
         for (const id of targets) useFleetFailureStore.getState().dismissId(id);
       }
+      useAnnouncerStore.getState().announce(buildBroadcastAnnouncement(result), "polite");
       // Subtle audio confirmation that the prompt fanned out. Reuses the
       // existing context-injected sound — semantically a fleet broadcast
       // IS injecting the same context into N agents. SoundService handles
       // dampening/throttling and respects the user's UI-feedback toggle.
-      window.electron?.notification?.playUiEvent("context-injected").catch(() => {});
+      // Skip the chirp on cancel: the announcement is the feedback channel.
+      if (!result.cancelled) {
+        window.electron?.notification?.playUiEvent("context-injected").catch(() => {});
+      }
     } finally {
+      if (activeBroadcastController === controller) {
+        activeBroadcastController = null;
+      }
       onSent();
     }
   };
