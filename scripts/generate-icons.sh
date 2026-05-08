@@ -41,7 +41,7 @@ SKIP_ICNS=""
 SKIP_ICO=""
 
 # Check for required tools
-if ! python3 -c "from PIL import Image; import numpy" 2>/dev/null; then
+if ! python3 -c "from PIL.Image import Resampling; import numpy" 2>/dev/null; then
     echo "Error: Python 3 with Pillow and NumPy required."
     echo "Install with: pip3 install 'Pillow>=9.1' numpy"
     exit 1
