@@ -140,6 +140,7 @@ describe("HelpSessionService", () => {
     return {
       projectId: "proj-1",
       projectPath: "/tmp/project",
+      agentId: "claude",
       windowId: 7,
       projectViewWebContentsId: 42,
     };
@@ -561,5 +562,148 @@ describe("HelpSessionService", () => {
     );
     expect(mcp.mcpServers.daintree).toBeUndefined();
     expect(mcp.mcpServers["daintree-docs"]).toBeDefined();
+  });
+
+  describe("Codex", () => {
+    function codexInput() {
+      return { ...provisionInput(), agentId: "codex" };
+    }
+
+    it("rejects an unknown agentId before any disk writes", async () => {
+      await expect(
+        service.provisionSession({ ...provisionInput(), agentId: "not-an-agent" })
+      ).rejects.toThrow(/not assistant-supported/);
+    });
+
+    it("returns a /mcp URL (Streamable HTTP) for Codex assistant launches", async () => {
+      const result = await service.provisionSession(codexInput());
+      if (!result) throw new Error("expected result");
+      expect(result.mcpUrl).toBe("http://127.0.0.1:45454/mcp");
+    });
+
+    it("does NOT write .mcp.json or .codex/config.toml for a Codex provision (Codex uses -c flags, not files)", async () => {
+      const result = await service.provisionSession(codexInput());
+      if (!result) throw new Error("expected result");
+
+      // The bundled help template carries .mcp.json from the help/ folder
+      // (copied via fs.cp), so the bundled file exists on disk — but the
+      // Codex branch must NOT rewrite it with the Claude-shaped daintree
+      // entry that bakes a literal bearer token.
+      const mcp = JSON.parse(
+        await fs.readFile(path.join(result.sessionPath, ".mcp.json"), "utf-8")
+      );
+      expect(mcp.mcpServers.daintree).toBeUndefined();
+
+      // Codex doesn't read project-scoped TOML, so a config file is dead
+      // weight if written. The Codex branch must not create one.
+      let tomlExists = true;
+      try {
+        await fs.access(path.join(result.sessionPath, ".codex", "config.toml"));
+      } catch {
+        tomlExists = false;
+      }
+      expect(tomlExists).toBe(false);
+    });
+
+    it("probes /mcp (probeMcpServer) for Codex, not /sse (probeMcpSseServer)", async () => {
+      const result = await service.provisionSession(codexInput());
+      if (!result) throw new Error("expected result");
+
+      // ensureMcpServerReady runs probeMcpServer once with the API key
+      // before provision; Codex post-provision also probes /mcp with the
+      // session token. Total: probeMcpServer twice, probeMcpSseServer never.
+      expect(mockProbeMcpServer).toHaveBeenCalledTimes(2);
+      expect(mockProbeMcpServer).toHaveBeenLastCalledWith(45454, result.token);
+      expect(mockProbeMcpSseServer).not.toHaveBeenCalled();
+    });
+
+    it("getCodexLaunchArgs returns -c flags for both daintree and daintree-docs servers", async () => {
+      const result = await service.provisionSession(codexInput());
+      if (!result) throw new Error("expected result");
+
+      const args = service.getCodexLaunchArgs(result.token);
+      expect(args).toEqual([
+        "-c",
+        'mcp_servers.daintree.transport="http"',
+        "-c",
+        'mcp_servers.daintree.url="http://127.0.0.1:45454/mcp"',
+        "-c",
+        'mcp_servers.daintree.bearer_token_env_var="DAINTREE_MCP_TOKEN"',
+        "-c",
+        'mcp_servers.daintree-docs.transport="http"',
+        "-c",
+        'mcp_servers.daintree-docs.url="https://daintree.org/api/mcp"',
+      ]);
+      // Token must NEVER appear in argv — Codex reads it from PTY env via
+      // `bearer_token_env_var`.
+      expect(args!.join(" ")).not.toContain(result.token);
+    });
+
+    it("getCodexLaunchArgs omits the daintree block when daintreeControl is false but keeps daintree-docs", async () => {
+      mockStoreGet.mockReturnValue({ daintreeControl: false });
+
+      const result = await service.provisionSession(codexInput());
+      if (!result) throw new Error("expected result");
+
+      const args = service.getCodexLaunchArgs(result.token);
+      const flat = args!.join(" ");
+      expect(flat).not.toContain("mcp_servers.daintree.");
+      expect(flat).toContain("mcp_servers.daintree-docs.");
+    });
+
+    it("getCodexLaunchArgs returns [] when both server toggles are off", async () => {
+      mockStoreGet.mockReturnValue({ daintreeControl: false, docSearch: false });
+
+      const result = await service.provisionSession(codexInput());
+      if (!result) throw new Error("expected result");
+
+      expect(service.getCodexLaunchArgs(result.token)).toEqual([]);
+    });
+
+    it("getCodexLaunchArgs returns null for a Claude session (defense against cross-agent leakage)", async () => {
+      const result = await service.provisionSession(provisionInput());
+      if (!result) throw new Error("expected result");
+
+      expect(service.getCodexLaunchArgs(result.token)).toBeNull();
+    });
+
+    it("getCodexLaunchArgs returns null for unknown / revoked tokens", async () => {
+      const result = await service.provisionSession(codexInput());
+      if (!result) throw new Error("expected result");
+
+      expect(service.getCodexLaunchArgs("not-a-real-token")).toBeNull();
+      expect(service.getCodexLaunchArgs("")).toBeNull();
+
+      await service.revokeSession(result.sessionId);
+      expect(service.getCodexLaunchArgs(result.token)).toBeNull();
+    });
+
+    it("revoking a Codex session leaves a sibling Codex session's launch args intact (no shared-file race)", async () => {
+      // Two windows opening the same project share one sessionPath. The
+      // Claude path needs token-checking on .mcp.json strip to avoid
+      // clobbering a live sibling's bearer; the Codex path stores nothing on
+      // disk, so a revoke just invalidates the in-memory record.
+      const a = await service.provisionSession(codexInput());
+      const b = await service.provisionSession(codexInput());
+      if (!a || !b) throw new Error("expected provisions");
+      expect(a.sessionPath).toBe(b.sessionPath);
+
+      await service.revokeSession(a.sessionId);
+
+      expect(service.getCodexLaunchArgs(a.token)).toBeNull();
+      const bArgs = service.getCodexLaunchArgs(b.token);
+      expect(bArgs).not.toBeNull();
+      expect(bArgs!.length).toBeGreaterThan(0);
+    });
+
+    it("throws MCP_NOT_READY when the post-provision /mcp probe fails", async () => {
+      mockProbeMcpServer.mockResolvedValueOnce(undefined); // ensureMcpServerReady
+      mockProbeMcpServer.mockRejectedValueOnce(new Error("/mcp returned status 500"));
+
+      await expect(service.provisionSession(codexInput())).rejects.toMatchObject({
+        name: "HelpSessionError",
+        code: "MCP_NOT_READY",
+      });
+    });
   });
 });

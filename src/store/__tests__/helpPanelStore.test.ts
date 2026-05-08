@@ -114,7 +114,7 @@ describe("helpPanelStore persistence migration", () => {
   it("clears a v0 preferredAgentId when migrating to v1 if the agent is unsupported", async () => {
     const v0Blob = JSON.stringify({
       version: 0,
-      state: { width: 420, preferredAgentId: "codex" },
+      state: { width: 420, preferredAgentId: "gemini" },
     });
     installLocalStorage({ [STORAGE_KEY]: v0Blob });
 

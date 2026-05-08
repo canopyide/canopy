@@ -728,6 +728,7 @@ export function registerPreferencesActions(
         session = await window.electron.help.provisionSession({
           projectId: project.id,
           projectPath: project.path,
+          agentId,
         });
       } catch (err) {
         logError("Failed to provision help session", err);

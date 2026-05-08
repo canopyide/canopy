@@ -20,6 +20,7 @@ import type { HandlerDependencies } from "../../types.js";
 import { TerminalSpawnOptionsSchema } from "../../../schemas/ipc.js";
 import { resolveDaintreeMcpTier } from "../../../../shared/types/project.js";
 import { DEFAULT_DANGEROUS_ARGS } from "../../../../shared/types/agentSettings.js";
+import { getAssistantSupportedAgentIds } from "../../../../shared/config/agentRegistry.js";
 
 type ValidatedTerminalSpawnOptions = z.output<typeof TerminalSpawnOptionsSchema>;
 import {
@@ -220,9 +221,13 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
     // (skipPermissions), append the dangerous flag.
     const helpToken = spawnEnv?.DAINTREE_MCP_TOKEN ?? "";
     const helpTier = helpToken ? helpSessionService.validateToken(helpToken) : false;
-    const isHelpLaunch = helpTier !== false && launchAgentId === "claude" && safeCommand.length > 0;
+    const isHelpLaunch =
+      helpTier !== false &&
+      typeof launchAgentId === "string" &&
+      getAssistantSupportedAgentIds().includes(launchAgentId) &&
+      safeCommand.length > 0;
 
-    if (isHelpLaunch) {
+    if (isHelpLaunch && launchAgentId) {
       const dangerous = DEFAULT_DANGEROUS_ARGS[launchAgentId];
       if (helpTier === "system") {
         if (dangerous && !safeCommand.includes(dangerous)) {
@@ -243,6 +248,18 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
           .replace(stripPattern, "$1")
           .replace(/\s{2,}/g, " ")
           .trim();
+      }
+      // Codex doesn't read project-scoped `.codex/config.toml` from cwd —
+      // its only override mechanism is the `-c key=value` CLI flag. The
+      // help-session service computed the exact `-c` args for the toggled
+      // MCP servers at provision time; append them here, shell-quoted. No
+      // literal token is ever in the args (Codex reads
+      // `DAINTREE_MCP_TOKEN` from PTY env via `bearer_token_env_var`).
+      if (launchAgentId === "codex") {
+        const codexArgs = helpSessionService.getCodexLaunchArgs(helpToken);
+        if (codexArgs && codexArgs.length > 0) {
+          safeCommand = `${safeCommand} ${codexArgs.map(shellQuote).join(" ")}`;
+        }
       }
     } else if (launchAgentId === "claude" && safeCommand.length > 0 && projectId) {
       // Daintree MCP injection for normal Claude Code agent launches.

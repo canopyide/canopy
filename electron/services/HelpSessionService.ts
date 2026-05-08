@@ -8,6 +8,7 @@ import { getHelpFolderPath } from "./HelpService.js";
 import { resilientAtomicWriteFile } from "../utils/fs.js";
 import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 import { probeMcpServer, probeMcpSseServer } from "./mcp-server/readinessProbe.js";
+import { getAssistantSupportedAgentIds } from "../../shared/config/agentRegistry.js";
 import type { HelpAssistantTier } from "../../shared/types/ipc/maps.js";
 
 const SESSIONS_DIR_NAME = "help-sessions";
@@ -26,6 +27,7 @@ const DEFAULT_SKIP_PERMISSIONS = false;
 interface ProvisionInput {
   projectId: string;
   projectPath: string;
+  agentId: string;
   windowId: number;
   projectViewWebContentsId: number;
 }
@@ -47,9 +49,12 @@ interface HelpSessionRecord {
   projectId: string;
   projectPath: string;
   sessionPath: string;
+  agentId: string;
   tier: HelpAssistantTier;
   createdAt: number;
   revoked: boolean;
+  /** Computed at provision for codex sessions; consumed by lifecycle.ts. */
+  codexLaunchArgs?: string[];
 }
 
 interface SessionMeta {
@@ -214,8 +219,20 @@ export class HelpSessionService {
     await fs.chmod(sessionPath, 0o700).catch(() => {});
 
     const port = await this.getMcpPort(settings.daintreeControl);
-    await this.writeMcpConfig(sessionPath, settings, port, token);
-    await this.writeClaudeSettings(sessionPath, helpFolder, settings);
+    if (input.agentId !== "codex") {
+      await this.writeMcpConfig(sessionPath, settings, port, token);
+      await this.writeClaudeSettings(sessionPath, helpFolder, settings);
+    }
+    // Codex doesn't read project-scoped `.codex/config.toml` from cwd —
+    // its only mechanism for overriding the global config is the `-c key=value`
+    // CLI flag (verified against codex-cli 0.129.0). MCP servers are appended
+    // to the spawn command in `lifecycle.ts` via the `getCodexLaunchArgs`
+    // accessor below; nothing is written to disk for Codex.
+
+    const codexLaunchArgs =
+      input.agentId === "codex"
+        ? this.buildCodexLaunchArgs(settings.daintreeControl, settings.docSearch, port)
+        : undefined;
 
     const now = Date.now();
     const record: HelpSessionRecord = {
@@ -226,9 +243,11 @@ export class HelpSessionService {
       projectId: input.projectId,
       projectPath: input.projectPath,
       sessionPath,
+      agentId: input.agentId,
       tier,
       createdAt: now,
       revoked: false,
+      codexLaunchArgs,
     };
 
     await this.writeSessionMeta(sessionPath, {
@@ -242,12 +261,21 @@ export class HelpSessionService {
 
     if (settings.daintreeControl && port) {
       try {
-        await probeMcpSseServer(port, token);
+        if (input.agentId === "codex") {
+          // Codex's MCP transport is Streamable HTTP at /mcp; Claude Code
+          // reads SSE at /sse. Both probes warm the same in-memory MCP token
+          // map, so neither leaks across agents.
+          await probeMcpServer(port, token);
+        } else {
+          await probeMcpSseServer(port, token);
+        }
       } catch (err) {
         record.revoked = true;
         this.sessionsByToken.delete(token);
         this.sessionsById.delete(sessionId);
-        await this.stripStaleDaintreeMcpEntry(sessionPath);
+        if (input.agentId !== "codex") {
+          await this.stripStaleDaintreeMcpEntry(sessionPath);
+        }
         const reason = formatErrorMessage(err, "assistant MCP session isn't ready");
         throw new HelpSessionError(
           "MCP_NOT_READY",
@@ -256,8 +284,68 @@ export class HelpSessionService {
       }
     }
 
-    const mcpUrl = settings.daintreeControl && port ? `http://127.0.0.1:${port}/sse` : null;
+    const mcpUrl = this.buildMcpUrl(input.agentId, settings.daintreeControl, port);
     return { sessionId, sessionPath, token, tier, mcpUrl, windowId: input.windowId };
+  }
+
+  private buildMcpUrl(
+    agentId: string,
+    daintreeControl: boolean,
+    port: number | null
+  ): string | null {
+    if (!daintreeControl || !port) return null;
+    if (agentId === "codex") return `http://127.0.0.1:${port}/mcp`;
+    return `http://127.0.0.1:${port}/sse`;
+  }
+
+  /**
+   * Builds the `-c key=value` CLI args that wire MCP servers into a Codex
+   * help-session spawn. The values are TOML-encoded literals (quoted strings),
+   * matching Codex's `-c` parser. Returns an empty array when both server
+   * toggles are off.
+   *
+   * Token comes from `DAINTREE_MCP_TOKEN` in PTY env via `bearer_token_env_var`,
+   * so no literal token is ever embedded in argv or written to disk.
+   */
+  private buildCodexLaunchArgs(
+    daintreeControl: boolean,
+    docSearch: boolean,
+    port: number | null
+  ): string[] {
+    const args: string[] = [];
+    if (daintreeControl && port) {
+      args.push(
+        "-c",
+        `mcp_servers.daintree.transport="http"`,
+        "-c",
+        `mcp_servers.daintree.url="http://127.0.0.1:${port}/mcp"`,
+        "-c",
+        `mcp_servers.daintree.bearer_token_env_var="DAINTREE_MCP_TOKEN"`
+      );
+    }
+    if (docSearch) {
+      args.push(
+        "-c",
+        `mcp_servers.daintree-docs.transport="http"`,
+        "-c",
+        `mcp_servers.daintree-docs.url="https://daintree.org/api/mcp"`
+      );
+    }
+    return args;
+  }
+
+  /**
+   * Returns the cached `-c` flags that wire MCP servers for a Codex help
+   * session. lifecycle.ts appends them to the spawn command after the help
+   * token validates. Returns null for unknown / revoked tokens or non-Codex
+   * sessions, so the spawn handler never injects flags for the wrong agent.
+   */
+  getCodexLaunchArgs(token: string): string[] | null {
+    if (!token) return null;
+    const record = this.sessionsByToken.get(token);
+    if (!record || record.revoked) return null;
+    if (record.agentId !== "codex") return null;
+    return record.codexLaunchArgs ?? [];
   }
 
   /**
@@ -276,7 +364,11 @@ export class HelpSessionService {
     record.revoked = true;
     this.sessionsById.delete(sessionId);
     this.sessionsByToken.delete(record.token);
-    await this.stripStaleDaintreeMcpEntry(record.sessionPath);
+    // Codex sessions write nothing to disk (config is `-c` flags), so the
+    // file-strip dance is Claude-only.
+    if (record.agentId !== "codex") {
+      await this.stripStaleDaintreeMcpEntry(record.sessionPath);
+    }
   }
 
   async revokeByWebContentsId(webContentsId: number): Promise<void> {
@@ -361,6 +453,12 @@ export class HelpSessionService {
     }
     if (!Number.isInteger(input.projectViewWebContentsId) || input.projectViewWebContentsId < 0) {
       throw new Error("projectViewWebContentsId must be a non-negative integer");
+    }
+    if (typeof input.agentId !== "string" || !input.agentId.trim()) {
+      throw new Error("agentId is required");
+    }
+    if (!getAssistantSupportedAgentIds().includes(input.agentId)) {
+      throw new Error(`agentId "${input.agentId}" is not assistant-supported`);
     }
   }
 
