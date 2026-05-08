@@ -212,7 +212,7 @@ npm run rebuild      # Rebuild native modules
 npm run build        # Production build
 npm run package      # Package for current platform
 npm run package:mac  # macOS (DMG, ZIP — arm64, x64, universal)
-npm run package:win  # Windows (NSIS, portable)
+npm run package:win  # Windows (AppX — Microsoft Store)
 npm run package:linux # Linux (AppImage, deb)
 ```
 
