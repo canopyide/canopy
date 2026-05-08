@@ -38,16 +38,23 @@ describe("GitHubStatsToolbarButton freshness wiring", () => {
   });
 
   it("uses freshnessOpacityClass in className for all three pills", () => {
-    const matches = source.match(/freshnessOpacityClass\(freshnessLevel\)/g);
-    expect(matches).not.toBeNull();
-    expect(matches?.length).toBe(3);
+    // Commits uses commitFreshnessLevel (errored→fresh); issues + PRs use freshnessLevel.
+    const commitsMatch = source.match(/freshnessOpacityClass\(commitFreshnessLevel\)/g);
+    const sharedMatch = source.match(/freshnessOpacityClass\(freshnessLevel\)/g);
+    expect(commitsMatch).not.toBeNull();
+    expect(commitsMatch?.length).toBe(1);
+    expect(sharedMatch).not.toBeNull();
+    expect(sharedMatch?.length).toBe(2);
   });
 
   it("uses freshnessSuffix in ariaLabel and tooltipContent for freshness-aware copy", () => {
-    const matches = source.match(/freshnessSuffix\(freshnessLevel/g);
-    expect(matches).not.toBeNull();
-    // At least 3 (ariaLabel) + 3 (tooltipContent) = 6 occurrences
-    expect(matches!.length).toBeGreaterThanOrEqual(6);
+    // Commits uses commitFreshnessLevel; issues + PRs use freshnessLevel.
+    const commitsMatch = source.match(/freshnessSuffix\(commitFreshnessLevel/g);
+    const sharedMatch = source.match(/freshnessSuffix\(freshnessLevel/g);
+    expect(commitsMatch).not.toBeNull();
+    expect(commitsMatch?.length).toBe(2); // ariaLabel + tooltipContent
+    expect(sharedMatch).not.toBeNull();
+    expect(sharedMatch!.length).toBeGreaterThanOrEqual(4); // 2 issues + 2 PRs
   });
 
   it("applies animate-badge-bump via animKey prop on all three GitHubStatPill instances", () => {
@@ -70,6 +77,15 @@ describe("GitHubStatsToolbarButton freshness wiring", () => {
     expect(source).toContain('from "@/hooks/useGlobalMinuteTicker"');
     expect(source).toMatch(/const\s+tick\s*=\s*useGlobalMinuteTicker\(\)/);
     expect(source).toMatch(/useMemo\(\s*\(\)\s*=>\s*\{[\s\S]*?Date\.now\(\)/);
+  });
+
+  it("derives commitFreshnessLevel that maps errored to fresh for the commits pill", () => {
+    // Commits are from git, not GitHub — GitHub connectivity errors shouldn't
+    // degrade the commits pill.
+    expect(source).toContain("commitFreshnessLevel");
+    expect(source).toMatch(
+      /commitFreshnessLevel\s*=\s*freshnessLevel\s*===\s*"errored"\s*\?\s*"fresh"\s*:\s*freshnessLevel/
+    );
   });
 
   it("only bumps animation keys when the displayed count actually changes", () => {
