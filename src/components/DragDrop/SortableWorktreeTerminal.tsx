@@ -13,7 +13,14 @@ interface SortableWorktreeTerminalProps {
   sourceIndex: number;
   children:
     | React.ReactNode
-    | ((props: { listeners: ReturnType<typeof useSortable>["listeners"] }) => React.ReactNode);
+    | ((props: {
+        listeners: ReturnType<typeof useSortable>["listeners"];
+        // dnd-kit activator-node ref — attach to the focusable drag handle so
+        // KeyboardSensor can target it for Space/Enter activation. Falling back
+        // to the sortable container's ref doesn't work here because the
+        // container has tabIndex stripped to satisfy axe nested-interactive.
+        setActivatorNodeRef: (node: HTMLElement | null) => void;
+      }) => React.ReactNode);
 }
 
 export function getAccordionDragId(terminalId: string): string {
@@ -42,7 +49,15 @@ export function SortableWorktreeTerminal({
     origin: "accordion",
   };
 
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
     id: getAccordionDragId(terminal.id),
     data: dragData,
     animateLayoutChanges: () => false,
@@ -80,9 +95,11 @@ export function SortableWorktreeTerminal({
           }}
         >
           {typeof children === "function" ? (
-            children({ listeners })
+            children({ listeners, setActivatorNodeRef })
           ) : (
-            <div {...listeners}>{children}</div>
+            <div ref={setActivatorNodeRef} {...listeners}>
+              {children}
+            </div>
           )}
         </m.div>
       </div>

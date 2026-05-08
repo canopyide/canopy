@@ -2,15 +2,18 @@
 import { describe, it, expect, vi } from "vitest";
 import { render } from "@testing-library/react";
 import { SortableDockItem } from "../SortableDockItem";
+import { useDragHandle } from "../DragHandleContext";
 import type { TerminalInstance } from "@/store";
 
 let mockIsDragging = false;
+const mockSetActivatorNodeRef = vi.fn();
 
 vi.mock("@dnd-kit/sortable", () => ({
   useSortable: () => ({
     attributes: { role: "button", tabIndex: 0 },
-    listeners: undefined,
+    listeners: { onPointerDown: vi.fn() },
     setNodeRef: vi.fn(),
+    setActivatorNodeRef: mockSetActivatorNodeRef,
     transform: null,
     transition: undefined,
     isDragging: mockIsDragging,
@@ -68,5 +71,22 @@ describe("SortableDockItem", () => {
     const outer = container.firstChild as HTMLElement;
     const inner = outer.firstChild as HTMLElement;
     expect(inner.className).not.toContain("opacity-40");
+  });
+
+  it("forwards setActivatorNodeRef through DragHandleProvider for keyboard a11y", () => {
+    mockIsDragging = false;
+    let captured: ReturnType<typeof useDragHandle> = null;
+    function Probe() {
+      captured = useDragHandle();
+      return null;
+    }
+    render(
+      <SortableDockItem terminal={terminal} sourceIndex={0}>
+        <Probe />
+      </SortableDockItem>
+    );
+    expect(captured).not.toBeNull();
+    expect(captured!.setActivatorNodeRef).toBe(mockSetActivatorNodeRef);
+    expect(captured!.listeners).toBeDefined();
   });
 });

@@ -48,7 +48,15 @@ export function SortableTerminal({
     groupPanelIds,
   };
 
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
     id: terminal.id,
     data: dragData,
     disabled,
@@ -100,7 +108,9 @@ export function SortableTerminal({
             ease: DRAG_GHOST_EASING,
           }}
         >
-          <DragHandleProvider value={{ listeners }}>{children}</DragHandleProvider>
+          <DragHandleProvider value={{ listeners, setActivatorNodeRef }}>
+            {children}
+          </DragHandleProvider>
         </m.div>
       </div>
     </m.div>

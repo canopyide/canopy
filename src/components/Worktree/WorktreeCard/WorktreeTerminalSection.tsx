@@ -77,10 +77,15 @@ interface MarqueeBox {
 interface TerminalRowProps {
   term: TerminalInstance;
   listeners: React.HTMLAttributes<HTMLElement> | undefined;
+  // dnd-kit activator-node ref forwarded from SortableWorktreeTerminal so
+  // KeyboardSensor watches the visible grip button (a real <button>, natively
+  // focusable). Without it, keyboard activation falls back to the sortable
+  // container which strips tabIndex and silently can't receive Space/Enter.
+  dragHandleActivatorRef?: (node: HTMLElement | null) => void;
   onClick: (term: TerminalInstance) => void;
 }
 
-function TerminalRow({ term, listeners, onClick }: TerminalRowProps) {
+function TerminalRow({ term, listeners, dragHandleActivatorRef, onClick }: TerminalRowProps) {
   const { ref, isTruncated } = useTruncationDetection();
   const isArmed = useFleetArmingStore((s) => s.armedIds.has(term.id));
   const armBadge = useFleetArmingStore((s) => s.armOrderById[term.id]);
@@ -187,6 +192,7 @@ function TerminalRow({ term, listeners, onClick }: TerminalRowProps) {
           </Tooltip>
 
           <button
+            ref={dragHandleActivatorRef}
             type="button"
             data-drag-handle
             className="cursor-grab rounded text-text-muted transition-colors hover:text-text-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-1 active:cursor-grabbing"
@@ -469,10 +475,11 @@ export function WorktreeTerminalSection({
                   worktreeId={worktreeId}
                   sourceIndex={index}
                 >
-                  {({ listeners }) => (
+                  {({ listeners, setActivatorNodeRef }) => (
                     <TerminalRow
                       term={term}
                       listeners={listeners as React.HTMLAttributes<HTMLElement> | undefined}
+                      dragHandleActivatorRef={setActivatorNodeRef}
                       onClick={handleTerminalClick}
                     />
                   )}

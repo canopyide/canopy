@@ -32,7 +32,15 @@ export function SortableDockItem({
     groupPanelIds,
   };
 
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
     id: terminal.id,
     data: dragData,
     animateLayoutChanges: () => false,
@@ -65,7 +73,9 @@ export function SortableDockItem({
             ease: DRAG_GHOST_EASING,
           }}
         >
-          <DragHandleProvider value={{ listeners }}>{children}</DragHandleProvider>
+          <DragHandleProvider value={{ listeners, setActivatorNodeRef }}>
+            {children}
+          </DragHandleProvider>
         </m.div>
       </div>
     </m.div>

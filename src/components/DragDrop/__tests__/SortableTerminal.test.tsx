@@ -3,18 +3,21 @@ import { describe, it, expect, vi } from "vitest";
 import { render } from "@testing-library/react";
 import { CSS } from "@dnd-kit/utilities";
 import { SortableTerminal } from "../SortableTerminal";
+import { useDragHandle } from "../DragHandleContext";
 import type { TerminalInstance } from "@/store";
 
 let mockIsDragging = false;
 const useSortableSpy = vi.fn();
+const mockSetActivatorNodeRef = vi.fn();
 
 vi.mock("@dnd-kit/sortable", () => ({
   useSortable: (args: unknown) => {
     useSortableSpy(args);
     return {
       attributes: { role: "button" },
-      listeners: undefined,
+      listeners: { onPointerDown: vi.fn() },
       setNodeRef: vi.fn(),
+      setActivatorNodeRef: mockSetActivatorNodeRef,
       transform: null,
       transition: undefined,
       isDragging: mockIsDragging,
@@ -126,5 +129,26 @@ describe("SortableTerminal", () => {
       </SortableTerminal>
     );
     expect(CSS.Translate).toBeDefined();
+  });
+
+  it("forwards setActivatorNodeRef and listeners through DragHandleProvider for keyboard a11y", () => {
+    // dnd-kit's KeyboardSensor watches whichever element receives
+    // setActivatorNodeRef. Falling back to setNodeRef would point at the
+    // sortable container — which strips tabIndex — so keyboard activation
+    // would silently fail. Verify both fields land in the context value.
+    mockIsDragging = false;
+    let captured: ReturnType<typeof useDragHandle> = null;
+    function Probe() {
+      captured = useDragHandle();
+      return null;
+    }
+    render(
+      <SortableTerminal terminal={terminal} sourceLocation="grid" sourceIndex={0}>
+        <Probe />
+      </SortableTerminal>
+    );
+    expect(captured).not.toBeNull();
+    expect(captured!.setActivatorNodeRef).toBe(mockSetActivatorNodeRef);
+    expect(captured!.listeners).toBeDefined();
   });
 });
