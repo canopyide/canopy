@@ -26,7 +26,7 @@ import {
 } from "./helpers";
 import { logDebug, logWarn, logError } from "@/utils/logger";
 import { collectPanelIdForBatch, isHydrationBatchActive } from "./hydrationBatch";
-import { addToWorktreeIndex } from "./worktreeIndex";
+import { addToWorktreeIndex, transferBetweenWorktreeIndex } from "./worktreeIndex";
 
 // Lazy accessor to break circular dependency: addPanel -> projectStore -> panelPersistence -> addPanel.
 // Resolved on first call (after app init), then cached.
@@ -168,14 +168,21 @@ export const createAddPanelActions = (
         // Batched path: commit `panelsById` immediately (event listeners can find
         // the panel by id) and defer the `panelIds` append + persist to flush.
         set((state) => {
-          const isUpdate = !!state.panelsById[id];
-          if (isUpdate) {
+          const existing = state.panelsById[id];
+          if (existing) {
             logDebug("[TerminalStore] Panel already exists, updating instead of adding", { id });
           }
           return {
             panelsById: { ...state.panelsById, [id]: terminal },
-            panelIdsByWorktreeId: isUpdate
-              ? state.panelIdsByWorktreeId
+            panelIdsByWorktreeId: existing
+              ? // Defensive: if a hydration replays with a different worktreeId,
+                // keep the index in sync rather than silently corrupting it.
+                transferBetweenWorktreeIndex(
+                  state.panelIdsByWorktreeId,
+                  existing.worktreeId,
+                  terminal.worktreeId,
+                  id
+                )
               : addToWorktreeIndex(state.panelIdsByWorktreeId, terminal.worktreeId, id),
           };
         });
@@ -186,8 +193,14 @@ export const createAddPanelActions = (
           if (existing) {
             logDebug("[TerminalStore] Panel already exists, updating instead of adding", { id });
             const newById = { ...state.panelsById, [id]: terminal };
+            const newIndex = transferBetweenWorktreeIndex(
+              state.panelIdsByWorktreeId,
+              existing.worktreeId,
+              terminal.worktreeId,
+              id
+            );
             saveNormalized(newById, state.panelIds);
-            return { panelsById: newById };
+            return { panelsById: newById, panelIdsByWorktreeId: newIndex };
           }
           const newById = { ...state.panelsById, [id]: terminal };
           const newIds = [...state.panelIds, id];
@@ -397,7 +410,14 @@ export const createAddPanelActions = (
         return {
           panelsById: { ...state.panelsById, [id]: preservedTerminal },
           panelIdsByWorktreeId: existing
-            ? state.panelIdsByWorktreeId
+            ? // Defensive: PTY reconnect payloads should preserve worktreeId, but
+              // sync the index if a fresh hydration arrives with a different one.
+              transferBetweenWorktreeIndex(
+                state.panelIdsByWorktreeId,
+                existing.worktreeId,
+                preservedTerminal.worktreeId,
+                id
+              )
             : addToWorktreeIndex(state.panelIdsByWorktreeId, preservedTerminal.worktreeId, id),
         };
       });
@@ -428,8 +448,14 @@ export const createAddPanelActions = (
               }
             : terminal;
           const newById = { ...state.panelsById, [id]: preservedTerminal };
+          const newIndex = transferBetweenWorktreeIndex(
+            state.panelIdsByWorktreeId,
+            existing.worktreeId,
+            preservedTerminal.worktreeId,
+            id
+          );
           saveNormalized(newById, state.panelIds);
-          return { panelsById: newById };
+          return { panelsById: newById, panelIdsByWorktreeId: newIndex };
         }
         const newById = { ...state.panelsById, [id]: terminal };
         const newIds = [...state.panelIds, id];
