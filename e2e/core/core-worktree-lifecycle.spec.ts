@@ -12,12 +12,14 @@ import { ensureWindowFocused } from "../helpers/focus";
 let ctx: AppContext;
 let mainBranch: string;
 let worktreeDirName: string;
+let fixtureCleanup: (() => void) | undefined;
 
 const BRANCH = "e2e/lifecycle-test";
 
 test.describe.serial("Core: Worktree Lifecycle", () => {
   test.beforeAll(async () => {
-    const fixture = createFixtureRepo({ name: "worktree-lifecycle" });
+    const { dir: fixture, cleanup } = createFixtureRepo({ name: "worktree-lifecycle" });
+    fixtureCleanup = cleanup;
 
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixture, "Worktree Lifecycle");
@@ -25,6 +27,7 @@ test.describe.serial("Core: Worktree Lifecycle", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("main worktree card is visible and selected", async () => {

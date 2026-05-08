@@ -6,6 +6,7 @@ import { openAndOnboardProject } from "../helpers/project";
 
 let ctx: AppContext;
 let repoPath: string;
+let fixtureCleanup: (() => void) | undefined;
 
 async function resetRateLimits(app: AppContext["app"]): Promise<void> {
   await app.evaluate(() => {
@@ -31,7 +32,7 @@ async function killTerminals(page: AppContext["window"], ids: string[]): Promise
 
 test.describe.serial("Core: Rate Limiting", () => {
   test.beforeAll(async () => {
-    repoPath = createFixtureRepo({ name: "rate-limit-test" });
+    ({ dir: repoPath, cleanup: fixtureCleanup } = createFixtureRepo({ name: "rate-limit-test" }));
     ctx = await launchApp({ env: { DAINTREE_E2E_FAULT_MODE: "1" } });
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, repoPath, "RateLimitTest");
   });
@@ -52,6 +53,7 @@ test.describe.serial("Core: Rate Limiting", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("spawn queue overflow returns 'Spawn queue full' error", async () => {

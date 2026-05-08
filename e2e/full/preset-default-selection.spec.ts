@@ -29,12 +29,14 @@ async function selectPresetByIndex(
 }
 
 let ctx: AppContext;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Presets: Default Preset Selection (53–62)", () => {
   test.beforeAll(async () => {
     removeCcrConfig();
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "preset-default" });
+    const { dir: fixtureDir, cleanup } = createFixtureRepo({ name: "preset-default" });
+    fixtureCleanup = cleanup;
     ctx.window = await openAndOnboardProject(
       ctx.app,
       ctx.window,
@@ -50,6 +52,7 @@ test.describe.serial("Presets: Default Preset Selection (53–62)", () => {
   test.afterAll(async () => {
     removeCcrConfig();
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   const goToClaudeSettings = async () => {

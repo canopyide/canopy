@@ -12,18 +12,21 @@ import {
 } from "../helpers/presets";
 
 let ctx: AppContext;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Presets: Custom Delete (45–52)", () => {
   test.beforeAll(async () => {
     removeCcrConfig();
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "preset-del" });
+    const { dir: fixtureDir, cleanup } = createFixtureRepo({ name: "preset-del" });
+    fixtureCleanup = cleanup;
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Preset Del Test");
   });
 
   test.afterAll(async () => {
     removeCcrConfig();
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   const goToClaudeSettings = async () => {

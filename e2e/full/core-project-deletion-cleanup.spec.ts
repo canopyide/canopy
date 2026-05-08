@@ -90,11 +90,12 @@ async function stopActiveProjectViaSwitcher(
 test.describe.serial("Deletion Cleanup: Active project close clears UI", () => {
   let ctx: AppContext;
   let fixtureDir: string;
+  let fixtureCleanup: (() => void) | undefined;
   const PROJECT_NAME = "active-close";
   let ptyPids: number[] = [];
 
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "active-close" });
+    ({ dir: fixtureDir, cleanup: fixtureCleanup } = createFixtureRepo({ name: "active-close" }));
     ctx = await launchApp();
 
     // Disable two-pane split mode: spawning exactly 2 terminals triggers a
@@ -131,7 +132,7 @@ test.describe.serial("Deletion Cleanup: Active project close clears UI", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
-    rmSync(fixtureDir, { recursive: true, force: true });
+    fixtureCleanup?.();
   });
 
   test("active project removal shows Close Project dialog", async () => {
@@ -219,13 +220,15 @@ test.describe.serial("Deletion Cleanup: Background project removal isolation", (
   let ctx: AppContext;
   let fixtureA: string;
   let fixtureB: string;
+  let cleanupA: (() => void) | undefined;
+  let cleanupB: (() => void) | undefined;
   const PROJECT_A = "bg-active";
   const PROJECT_B = "bg-remove";
   let ptyPidB: number | null = null;
 
   test.beforeAll(async () => {
-    fixtureA = createFixtureRepo({ name: "bg-active" });
-    fixtureB = createFixtureRepo({ name: "bg-remove" });
+    ({ dir: fixtureA, cleanup: cleanupA } = createFixtureRepo({ name: "bg-active" }));
+    ({ dir: fixtureB, cleanup: cleanupB } = createFixtureRepo({ name: "bg-remove" }));
 
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureA, PROJECT_A);
@@ -256,8 +259,8 @@ test.describe.serial("Deletion Cleanup: Background project removal isolation", (
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
-    rmSync(fixtureA, { recursive: true, force: true });
-    rmSync(fixtureB, { recursive: true, force: true });
+    cleanupA?.();
+    cleanupB?.();
   });
 
   test("background removal shows Remove Project dialog", async () => {
@@ -334,14 +337,16 @@ test.describe.serial("Deletion Cleanup: Background removal persists across resta
   let userDataDir: string;
   let fixtureA: string;
   let fixtureB: string;
+  let cleanupA: (() => void) | undefined;
+  let cleanupB: (() => void) | undefined;
   let ctx: AppContext | null = null;
   const PROJECT_A = "persist-active";
   const PROJECT_B = "persist-remove";
 
   test.beforeAll(async () => {
     userDataDir = mkdtempSync(path.join(tmpdir(), "daintree-e2e-deletion-persist-"));
-    fixtureA = createFixtureRepo({ name: "persist-active" });
-    fixtureB = createFixtureRepo({ name: "persist-remove" });
+    ({ dir: fixtureA, cleanup: cleanupA } = createFixtureRepo({ name: "persist-active" }));
+    ({ dir: fixtureB, cleanup: cleanupB } = createFixtureRepo({ name: "persist-remove" }));
   });
 
   test.afterAll(async () => {
@@ -352,8 +357,8 @@ test.describe.serial("Deletion Cleanup: Background removal persists across resta
       ctx = null;
     }
     rmSync(userDataDir, { recursive: true, force: true });
-    rmSync(fixtureA, { recursive: true, force: true });
-    rmSync(fixtureB, { recursive: true, force: true });
+    cleanupA?.();
+    cleanupB?.();
   });
 
   test("removed project stays gone after app restart", async () => {

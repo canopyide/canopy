@@ -7,16 +7,19 @@ import { T_SHORT, T_MEDIUM, T_SETTLE } from "../helpers/timeouts";
 
 import { openSettings } from "../helpers/panels";
 let ctx: AppContext;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Core: Settings Pages Load", () => {
   test.beforeAll(async () => {
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "settings-load" });
+    const { dir: fixtureDir, cleanup } = createFixtureRepo({ name: "settings-load" });
+    fixtureCleanup = cleanup;
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Settings Load Test");
   });
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("General tab: Overview loads without hanging", async () => {

@@ -9,12 +9,15 @@ import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
 import { openTerminal } from "../helpers/panels";
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 let agentPanel: Locator;
 let cmEditor: Locator;
 
 test.describe.serial("Core: HybridInputBar", () => {
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "hybrid-input-bar" });
+    const { dir, cleanup } = createFixtureRepo({ name: "hybrid-input-bar" });
+    fixtureDir = dir;
+    fixtureCleanup = cleanup;
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(
       ctx.app,
@@ -41,6 +44,7 @@ test.describe.serial("Core: HybridInputBar", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("can type text into CodeMirror editor", async () => {

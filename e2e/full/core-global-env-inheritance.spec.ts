@@ -16,6 +16,7 @@ test.describe.serial("Full: Global Environment Variable Inheritance", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    ((ctx as any).__envFixtureCleanup as (() => void) | undefined)?.();
   });
 
   test("Global Environment tab works without a project", async () => {
@@ -77,7 +78,7 @@ test.describe.serial("Full: Global Environment Variable Inheritance", () => {
 
   test("Global vars appear in project Variables tab", async () => {
     // Open a fixture project
-    const fixtureDir = createFixtureRepo({ name: "env-inheritance" });
+    const { dir: fixtureDir, cleanup } = createFixtureRepo({ name: "env-inheritance" });
     ctx.window = await openAndOnboardProject(
       ctx.app,
       ctx.window,
@@ -85,6 +86,9 @@ test.describe.serial("Full: Global Environment Variable Inheritance", () => {
       "Env Inheritance Test"
     );
     const { window } = ctx;
+
+    // Store cleanup for use in afterAll if needed
+    (ctx as any).__envFixtureCleanup = cleanup;
 
     await openSettings(window);
     await expect(window.locator(SEL.settings.heading)).toBeVisible({ timeout: T_MEDIUM });

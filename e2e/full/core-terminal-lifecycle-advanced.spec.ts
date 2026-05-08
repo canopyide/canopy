@@ -16,6 +16,7 @@ const mod = process.platform === "darwin" ? "Meta" : "Control";
 
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 
 function uniqueMarker(): string {
   return `TRASH_MARKER_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -36,7 +37,7 @@ async function closeFirstPanel(window: AppContext["window"]): Promise<void> {
 
 test.describe.serial("Core: Terminal Trash & Restore", () => {
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "trash-restore" });
+    ({ dir: fixtureDir, cleanup: fixtureCleanup } = createFixtureRepo({ name: "trash-restore" }));
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Trash Restore Test");
 
@@ -46,6 +47,7 @@ test.describe.serial("Core: Terminal Trash & Restore", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   // ── Trash and Restore via Keyboard Shortcut ─────────────

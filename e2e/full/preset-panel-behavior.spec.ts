@@ -22,10 +22,13 @@ let ctx: AppContext;
  * the agent is not available.
  */
 test.describe.serial("Presets: Panel Behavior (107–112)", () => {
+  let fixtureCleanup: (() => void) | undefined;
+
   test.beforeAll(async () => {
     removeCcrConfig();
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "preset-panel-behavior" });
+    const { dir: fixtureDir, cleanup } = createFixtureRepo({ name: "preset-panel-behavior" });
+    fixtureCleanup = cleanup;
     ctx.window = await openAndOnboardProject(
       ctx.app,
       ctx.window,
@@ -44,6 +47,7 @@ test.describe.serial("Presets: Panel Behavior (107–112)", () => {
   test.afterAll(async () => {
     removeCcrConfig();
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   /**

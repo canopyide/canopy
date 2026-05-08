@@ -15,6 +15,7 @@ import { spawnTerminalAndVerify } from "../helpers/workflows";
 
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 
 async function dispatchAction(
   page: Page,
@@ -39,13 +40,16 @@ async function focusPanel(page: Page, panelId: string): Promise<void> {
 
 test.describe.serial("Core: Terminal Layout Operations", () => {
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "layout-operations" });
+    const { dir, cleanup } = createFixtureRepo({ name: "layout-operations" });
+    fixtureDir = dir;
+    fixtureCleanup = cleanup;
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Layout Ops Test");
   });
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   // ── Grid Panel Reordering ──────────────────────────────────

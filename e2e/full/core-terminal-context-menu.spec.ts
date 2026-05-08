@@ -15,15 +15,19 @@ import { T_SHORT, T_MEDIUM, T_LONG } from "../helpers/timeouts";
 
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Core: Terminal Context Menu", () => {
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "terminal-context-menu" });
+    ({ dir: fixtureDir, cleanup: fixtureCleanup } = createFixtureRepo({
+      name: "terminal-context-menu",
+    }));
     ctx = await launchApp();
   });
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   // ── Project Open ───────────────────────────────────────────

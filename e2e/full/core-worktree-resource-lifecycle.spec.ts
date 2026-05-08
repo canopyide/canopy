@@ -28,6 +28,7 @@ import { waitForTerminalText } from "../helpers/terminal";
 let ctx: AppContext;
 let mainBranch: string;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 
 const BRANCH = "e2e/resource-lifecycle";
 const mod = process.platform === "darwin" ? "Meta" : "Control";
@@ -116,7 +117,9 @@ async function deleteWorktree(
 
 test.describe.serial("Full: Worktree Resource Lifecycle", () => {
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "worktree-resource" });
+    ({ dir: fixtureDir, cleanup: fixtureCleanup } = createFixtureRepo({
+      name: "worktree-resource",
+    }));
     writeResourceConfig(fixtureDir);
 
     ctx = await launchApp();
@@ -125,6 +128,7 @@ test.describe.serial("Full: Worktree Resource Lifecycle", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("main worktree card is visible", async () => {

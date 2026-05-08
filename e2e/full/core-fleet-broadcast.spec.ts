@@ -1,5 +1,5 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
-import { chmodSync, mkdirSync, rmSync, writeFileSync } from "fs";
+import { chmodSync, mkdirSync, writeFileSync } from "fs";
 import path from "path";
 import { launchApp, closeApp, type AppContext } from "../helpers/launch";
 import { createFixtureRepo } from "../helpers/fixtures";
@@ -18,6 +18,7 @@ interface ActionResult<T = unknown> {
 let ctx: AppContext;
 let fixtureDir: string;
 let fakeBinDir: string;
+let fixtureCleanup: (() => void) | undefined;
 
 async function dispatchAction<T = unknown>(
   page: Page,
@@ -105,7 +106,9 @@ async function typeDirectlyIntoTerminal(
 }
 
 function prepareFixture(): void {
-  fixtureDir = createFixtureRepo({ name: "fleet-broadcast" });
+  const { dir, cleanup } = createFixtureRepo({ name: "fleet-broadcast" });
+  fixtureDir = dir;
+  fixtureCleanup = cleanup;
   fakeBinDir = path.join(fixtureDir, ".e2e bin");
   mkdirSync(fakeBinDir, { recursive: true });
 
@@ -173,7 +176,7 @@ test.describe.serial("Core: Fleet terminal broadcast", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
-    if (fixtureDir) rmSync(fixtureDir, { recursive: true, force: true });
+    fixtureCleanup?.();
   });
 
   test("direct xterm typing into one armed agent terminal reaches the whole fleet", async () => {

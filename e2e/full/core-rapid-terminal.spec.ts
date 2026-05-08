@@ -14,6 +14,7 @@ const MEMORY_THRESHOLD_MB = 20;
 
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 
 async function openTerminalAndGetPid(window: AppContext["window"]): Promise<{
   panel: ReturnType<typeof getFirstGridPanel>;
@@ -56,7 +57,7 @@ test.describe.serial("Core: Rapid Terminal Create/Destroy Cycles", () => {
   const trackedPids: number[] = [];
 
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "rapid-terminal" });
+    ({ dir: fixtureDir, cleanup: fixtureCleanup } = createFixtureRepo({ name: "rapid-terminal" }));
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(
       ctx.app,
@@ -77,6 +78,7 @@ test.describe.serial("Core: Rapid Terminal Create/Destroy Cycles", () => {
       }
     }
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("rapid create/destroy cycles with leak and memory checks", async () => {

@@ -12,6 +12,7 @@ import {
 } from "../helpers/presets";
 
 let ctx: AppContext;
+let fixtureCleanup: (() => void) | undefined;
 
 /**
  * Tests 101–106: Agent tray default-launch behavior.
@@ -29,7 +30,8 @@ test.describe.serial("Presets: Tray Default Launch (101–106)", () => {
   test.beforeAll(async () => {
     removeCcrConfig();
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "preset-tray-default" });
+    const { dir: fixtureDir, cleanup } = createFixtureRepo({ name: "preset-tray-default" });
+    fixtureCleanup = cleanup;
     ctx.window = await openAndOnboardProject(
       ctx.app,
       ctx.window,
@@ -41,6 +43,7 @@ test.describe.serial("Presets: Tray Default Launch (101–106)", () => {
   test.afterAll(async () => {
     removeCcrConfig();
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   const openTray = async () => {

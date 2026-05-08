@@ -12,12 +12,14 @@ import {
 } from "../helpers/presets";
 
 let ctx: AppContext;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Presets: Context Menu Integration (93–96)", () => {
   test.beforeAll(async () => {
     removeCcrConfig();
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "preset-ctx-menu" });
+    const { dir: fixtureDir, cleanup } = createFixtureRepo({ name: "preset-ctx-menu" });
+    fixtureCleanup = cleanup;
     ctx.window = await openAndOnboardProject(
       ctx.app,
       ctx.window,
@@ -29,6 +31,7 @@ test.describe.serial("Presets: Context Menu Integration (93–96)", () => {
   test.afterAll(async () => {
     removeCcrConfig();
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   const rightClickClaudeToolbar = async () => {

@@ -17,18 +17,25 @@ const RECIPE_NAME = "Lifecycle Recipe";
 
 let ctx: AppContext;
 let repoBPath: string;
+let cleanupA: (() => void) | undefined;
+let cleanupB: (() => void) | undefined;
 
 test.describe.serial("Core: Project Lifecycle", () => {
   test.beforeAll(async () => {
     const repoA = createFixtureRepo({ name: "lifecycle-a" });
-    repoBPath = createFixtureRepo({ name: "lifecycle-b" });
+    const repoB = createFixtureRepo({ name: "lifecycle-b" });
+    cleanupA = repoA.cleanup;
+    cleanupB = repoB.cleanup;
+    repoBPath = repoB.dir;
 
     ctx = await launchApp();
-    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, repoA, PROJECT_A);
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, repoA.dir, PROJECT_A);
   });
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    cleanupA?.();
+    cleanupB?.();
   });
 
   test("add second project via project switcher", async () => {

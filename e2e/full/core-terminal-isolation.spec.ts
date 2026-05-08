@@ -11,6 +11,7 @@ test.skip(process.platform === "win32", "Terminal isolation tests use Unix shell
 
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 let floodPanelId: string;
 let probePanelId: string;
 
@@ -75,7 +76,9 @@ async function ptySubmit(page: import("@playwright/test").Page, panelId: string,
 
 test.describe.serial("Core: Terminal Isolation", () => {
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "terminal-isolation" });
+    ({ dir: fixtureDir, cleanup: fixtureCleanup } = createFixtureRepo({
+      name: "terminal-isolation",
+    }));
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(
       ctx.app,
@@ -87,6 +90,7 @@ test.describe.serial("Core: Terminal Isolation", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("flood one terminal while another remains responsive", async () => {

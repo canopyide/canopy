@@ -1,5 +1,5 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
-import { chmodSync, mkdirSync, rmSync, writeFileSync } from "fs";
+import { chmodSync, mkdirSync, writeFileSync } from "fs";
 import path from "path";
 import {
   launchApp,
@@ -29,6 +29,7 @@ const CODEX_COLOR = "#22aa66";
 let ctx: AppContext;
 let fixtureDir: string;
 let fakeBinDir: string;
+let fixtureCleanup: (() => void) | undefined;
 
 async function dispatchAction<T = unknown>(
   page: Page,
@@ -115,7 +116,9 @@ function writeFakeAgent(agentId: "claude" | "codex"): void {
 }
 
 function prepareFixture(): void {
-  fixtureDir = createFixtureRepo({ name: "agent-preset-icon-color" });
+  const { dir, cleanup } = createFixtureRepo({ name: "agent-preset-icon-color" });
+  fixtureDir = dir;
+  fixtureCleanup = cleanup;
   fakeBinDir = path.join(fixtureDir, ".e2e-bin");
   mkdirSync(fakeBinDir, { recursive: true });
   writeFakeAgent("claude");
@@ -302,7 +305,7 @@ test.describe.serial("Core: Agent preset icon color", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
-    if (fixtureDir) rmSync(fixtureDir, { recursive: true, force: true });
+    fixtureCleanup?.();
   });
 
   test("preset color tints launch, survives app restart, and reapplies after quit/restart", async () => {

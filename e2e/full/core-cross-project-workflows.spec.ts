@@ -21,6 +21,7 @@ const PROJECT_B = "project-B";
 const PROJECT_C = "project-C";
 
 let ctx: AppContext;
+let fixtureCleanups: Array<() => void> = [];
 let panelIdsA: string[] = [];
 
 async function focusAndRunCommand(page: Page, panel: Locator, command: string): Promise<void> {
@@ -43,7 +44,9 @@ test.describe.serial("Core: Cross-Project Terminal Workflows", () => {
     // default 120s hook budget on slower / CI machines, so widen explicitly.
     test.setTimeout(300_000);
 
-    const [repoA, repoB, repoC] = createFixtureRepos(3);
+    const fixtures = createFixtureRepos(3);
+    fixtureCleanups = fixtures.map((f) => f.cleanup);
+    const [repoA, repoB, repoC] = fixtures.map((f) => f.dir);
 
     ctx = await launchApp();
 
@@ -75,6 +78,7 @@ test.describe.serial("Core: Cross-Project Terminal Workflows", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    for (const cleanup of fixtureCleanups) cleanup();
   });
 
   test("terminal content preservation across project switch", async () => {

@@ -9,6 +9,7 @@ import { T_SHORT, T_LONG } from "../helpers/timeouts";
 
 let ctx: AppContext;
 let fixtureRepoPath: string;
+let fixtureCleanup: (() => void) | undefined;
 const PROJECT_NAME = "Next.js Turbopack Test";
 
 /**
@@ -25,7 +26,9 @@ const PROJECT_NAME = "Next.js Turbopack Test";
  */
 test.describe("Next.js Turbopack Normalization (#4557)", () => {
   test.beforeAll(async () => {
-    fixtureRepoPath = createFixtureRepo({ name: "nextjs-turbopack" });
+    ({ dir: fixtureRepoPath, cleanup: fixtureCleanup } = createFixtureRepo({
+      name: "nextjs-turbopack",
+    }));
 
     // Create package.json with a Next.js dev script
     writeFileSync(
@@ -98,6 +101,7 @@ server.listen(0, '127.0.0.1', () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("auto-injects --turbopack and webview renders styled content", async () => {

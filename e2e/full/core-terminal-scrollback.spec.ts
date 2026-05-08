@@ -8,16 +8,20 @@ import { T_LONG, T_SETTLE } from "../helpers/timeouts";
 
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Core: Terminal Scrollback Integrity Under Load", () => {
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "terminal-scrollback" });
+    ({ dir: fixtureDir, cleanup: fixtureCleanup } = createFixtureRepo({
+      name: "terminal-scrollback",
+    }));
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Scrollback Test");
   });
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("set scrollback and open terminal", async () => {

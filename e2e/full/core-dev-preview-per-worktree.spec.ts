@@ -45,6 +45,7 @@ server.listen(port, '127.0.0.1', () => {
 
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 let featureWorktreeDir: string;
 
 // URLs read from address bars during tests — shared across assertions.
@@ -58,7 +59,9 @@ let featureWorktreeId = "";
 test.describe.serial("Core: Dev Preview — Per-Worktree Port Registry", () => {
   test.beforeAll(async () => {
     // Create a repo with a pre-built feature worktree.
-    fixtureDir = createFixtureRepo({ name: "dev-preview-wt", withFeatureBranch: true });
+    const { dir, cleanup } = createFixtureRepo({ name: "dev-preview-wt", withFeatureBranch: true });
+    fixtureDir = dir;
+    fixtureCleanup = cleanup;
 
     // Derive the worktree path created by createFixtureRepo.
     featureWorktreeDir = path.join(
@@ -103,6 +106,7 @@ test.describe.serial("Core: Dev Preview — Per-Worktree Port Registry", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   // ── Test 1 ─────────────────────────────────────────────────────────────────

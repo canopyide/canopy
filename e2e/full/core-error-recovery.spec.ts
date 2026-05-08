@@ -21,9 +21,12 @@ import path from "path";
 test.describe.serial("Core: Error Recovery — Terminal Exit", () => {
   let ctx: AppContext;
   let fixtureDir: string;
+  let fixtureCleanup: (() => void) | undefined;
 
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "error-recovery-exit" });
+    const { dir, cleanup } = createFixtureRepo({ name: "error-recovery-exit" });
+    fixtureDir = dir;
+    fixtureCleanup = cleanup;
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(
       ctx.app,
@@ -35,6 +38,7 @@ test.describe.serial("Core: Error Recovery — Terminal Exit", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("terminal shows exit indicator and banner after exit 1", async () => {
@@ -83,15 +87,22 @@ test.describe.serial("Core: Error Recovery — Terminal Exit", () => {
 test.describe.serial("Core: Error Recovery — Missing Worktree", () => {
   let ctx: AppContext;
   let fixtureDir: string;
+  let fixtureCleanup: (() => void) | undefined;
 
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "error-recovery-wt", withFeatureBranch: true });
+    const { dir, cleanup } = createFixtureRepo({
+      name: "error-recovery-wt",
+      withFeatureBranch: true,
+    });
+    fixtureDir = dir;
+    fixtureCleanup = cleanup;
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Error Recovery WT");
   });
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("detects externally deleted worktree", async () => {

@@ -14,7 +14,6 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { rmSync } from "fs";
 import { launchApp, closeApp, type AppContext } from "../helpers/launch";
 import { createFixtureRepo } from "../helpers/fixtures";
 import { openAndOnboardProject } from "../helpers/project";
@@ -33,24 +32,23 @@ const MAX_LONG_TASKS = 10;
 
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Core: List Mount Perf Budget", () => {
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({
+    const { dir, cleanup } = createFixtureRepo({
       name: "perf-budget",
       unstagedFileCount: FILE_COUNT,
     });
+    fixtureDir = dir;
+    fixtureCleanup = cleanup;
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Perf Budget Test");
   });
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
-    try {
-      rmSync(fixtureDir, { recursive: true, force: true });
-    } catch {
-      // best-effort cleanup
-    }
+    fixtureCleanup?.();
   });
 
   test("ReviewHub working-tree mode stays within node count and longtask budgets", async () => {

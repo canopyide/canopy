@@ -14,12 +14,16 @@ const EXTERNAL_BRANCH = "feature/external-added";
 
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 let featureWorktreePath: string;
 let externalWorktreePath: string;
 
 test.describe.serial("Core: External Worktree Detection", () => {
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "worktree-external", withFeatureBranch: true });
+    ({ dir: fixtureDir, cleanup: fixtureCleanup } = createFixtureRepo({
+      name: "worktree-external",
+      withFeatureBranch: true,
+    }));
 
     const worktreesDir = path.join(
       path.dirname(fixtureDir),
@@ -47,6 +51,8 @@ test.describe.serial("Core: External Worktree Detection", () => {
     } catch {
       // ignore cleanup errors
     }
+
+    fixtureCleanup?.();
   });
 
   test("initial state shows main and feature worktree cards", async () => {

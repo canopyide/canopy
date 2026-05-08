@@ -15,15 +15,20 @@ import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
 
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Core: Terminal & Panels", () => {
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "terminal-panels", withMultipleFiles: true });
+    ({ dir: fixtureDir, cleanup: fixtureCleanup } = createFixtureRepo({
+      name: "terminal-panels",
+      withMultipleFiles: true,
+    }));
     ctx = await launchApp();
   });
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   // ── Project Open ─────────────────────────────────────────

@@ -6,6 +6,7 @@ import { SEL } from "../helpers/selectors";
 import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
 
 let ctx: AppContext;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Core: Terminal Recipes", () => {
   test.beforeAll(async () => {
@@ -14,11 +15,13 @@ test.describe.serial("Core: Terminal Recipes", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test.describe.serial("Recipe Editor", () => {
     test.beforeAll(async () => {
-      const fixtureDir = createFixtureRepo({ name: "terminal-recipes" });
+      const { dir: fixtureDir, cleanup } = createFixtureRepo({ name: "terminal-recipes" });
+      fixtureCleanup = cleanup;
       ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Recipes Test");
       await ctx.window.waitForTimeout(T_SETTLE);
     });

@@ -35,22 +35,25 @@ import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
 
 import { openSettings } from "../helpers/panels";
 let ctx: AppContext;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Core: v0.3.0 Features", () => {
   test.beforeAll(async () => {
-    const fixtureDir = createFixtureRepo({
+    const { dir: fixtureDir, cleanup } = createFixtureRepo({
       name: "v030-features",
       withFeatureBranch: true,
       withMultipleFiles: true,
       withImageFile: true,
       withUncommittedChanges: true,
     });
+    fixtureCleanup = cleanup;
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "v0.3.0 Test");
   });
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   // ── Worktree Sidebar Search (4 tests) ──────────────────
