@@ -210,7 +210,7 @@ describe("IpcQueueManager adversarial", () => {
     expect(startMetric).toBeUndefined();
   });
 
-  it("dispose clears all paused terminals and cancels their safety timeouts", () => {
+  it("dispose releases held pause tokens and cancels their safety timeouts", () => {
     mgr.addBytes("t1", HIGH_BYTES);
     mgr.applyBackpressure("t1", mgr.getUtilization("t1"));
     mgr.addBytes("t2", HIGH_BYTES);
@@ -221,8 +221,14 @@ describe("IpcQueueManager adversarial", () => {
 
     expect(mgr.isPaused("t1")).toBe(false);
     expect(mgr.isPaused("t2")).toBe(false);
+    // Held tokens MUST be released during dispose so the coordinator does not
+    // outlive this manager with a stale hold.
+    expect(coord.resume).toHaveBeenCalledTimes(2);
+    expect(coord.resume).toHaveBeenCalledWith("ipc-queue");
 
+    coord.resume.mockClear();
     vi.advanceTimersByTime(IPC_MAX_PAUSE_MS * 2);
+    // Safety timers must have been cancelled — no further resume calls.
     expect(coord.resume).not.toHaveBeenCalled();
   });
 
@@ -238,5 +244,83 @@ describe("IpcQueueManager adversarial", () => {
   it("isAtCapacity respects strict > comparison — exactly at the limit is still under capacity", () => {
     expect(mgr.isAtCapacity("t1", IPC_MAX_QUEUE_BYTES)).toBe(false);
     expect(mgr.isAtCapacity("t1", IPC_MAX_QUEUE_BYTES + 1)).toBe(true);
+  });
+
+  describe("aggregate byte tracking", () => {
+    it("tracks total queued bytes across multiple terminals", () => {
+      expect(mgr.getTotalQueuedBytes()).toBe(0);
+
+      mgr.addBytes("t1", 1000);
+      mgr.addBytes("t2", 2500);
+      mgr.addBytes("t1", 500);
+
+      expect(mgr.getTotalQueuedBytes()).toBe(4000);
+    });
+
+    it("removeBytes clamps the aggregate delta to per-terminal balance (no underflow)", () => {
+      mgr.addBytes("t1", 1000);
+      mgr.addBytes("t2", 1500);
+
+      mgr.removeBytes("t1", 10_000);
+
+      expect(mgr.getQueuedBytes("t1")).toBe(0);
+      expect(mgr.getTotalQueuedBytes()).toBe(1500);
+    });
+
+    it("clearQueue removes only the cleared terminal's contribution", () => {
+      mgr.addBytes("t1", 1000);
+      mgr.addBytes("t2", 2000);
+      mgr.addBytes("t3", 3000);
+
+      mgr.clearQueue("t2");
+
+      expect(mgr.getTotalQueuedBytes()).toBe(4000);
+    });
+
+    it("safety timeout clears t1's bytes from aggregate without affecting t2", () => {
+      mgr.addBytes("t1", HIGH_BYTES);
+      mgr.addBytes("t2", 1000);
+      mgr.applyBackpressure("t1", mgr.getUtilization("t1"));
+
+      vi.advanceTimersByTime(IPC_MAX_PAUSE_MS);
+
+      expect(mgr.getQueuedBytes("t1")).toBe(0);
+      expect(mgr.getQueuedBytes("t2")).toBe(1000);
+      expect(mgr.getTotalQueuedBytes()).toBe(1000);
+    });
+
+    it("dispose resets the aggregate scalar", () => {
+      mgr.addBytes("t1", 1000);
+      mgr.addBytes("t2", 2000);
+      mgr.dispose();
+      expect(mgr.getTotalQueuedBytes()).toBe(0);
+    });
+
+    it("getQueueSnapshot returns ResourceGovernor-compatible shape", () => {
+      mgr.addBytes("t1", 1000);
+      mgr.addBytes("t2", 2500);
+
+      const snap = mgr.getQueueSnapshot();
+      expect(snap.totalPendingBytes).toBe(3500);
+      const byId = new Map(snap.perTerminal.map((e) => [e.terminalId, e.pendingBytes]));
+      expect(byId.get("t1")).toBe(1000);
+      expect(byId.get("t2")).toBe(2500);
+    });
+
+    it("aggregate boundary tracking at 0, low, high, max, max+1", () => {
+      expect(mgr.getTotalQueuedBytes()).toBe(0);
+
+      mgr.addBytes("t1", LOW_BYTES);
+      expect(mgr.getTotalQueuedBytes()).toBe(LOW_BYTES);
+
+      mgr.addBytes("t1", HIGH_BYTES - LOW_BYTES);
+      expect(mgr.getTotalQueuedBytes()).toBe(HIGH_BYTES);
+
+      mgr.addBytes("t1", IPC_MAX_QUEUE_BYTES - HIGH_BYTES);
+      expect(mgr.getTotalQueuedBytes()).toBe(IPC_MAX_QUEUE_BYTES);
+
+      mgr.addBytes("t1", 1);
+      expect(mgr.getTotalQueuedBytes()).toBe(IPC_MAX_QUEUE_BYTES + 1);
+    });
   });
 });
