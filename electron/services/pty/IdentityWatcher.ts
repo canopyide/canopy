@@ -261,11 +261,14 @@ export class IdentityWatcher {
     return false;
   }
 
-  hasAgentUiPromptFalsePositive(): boolean {
+  hasAgentUiPromptFalsePositive(hasPtyDescendants = false): boolean {
     const lines = this.delegate.getLastNLines(SHELL_IDENTITY_FALLBACK_SCAN_LINES);
     const lastVisibleLine = [...lines]
       .reverse()
       .find((line) => typeof line === "string" && line.trim().length > 0);
+    const cursorLine = this.delegate.getCursorLine();
+    const currentVisibleLine =
+      cursorLine && cursorLine.trim().length > 0 ? cursorLine : lastVisibleLine;
     const recent = [this.delegate.getCursorLine(), lastVisibleLine]
       .filter((line): line is string => typeof line === "string" && line.trim().length > 0)
       .join("\n");
@@ -278,7 +281,8 @@ export class IdentityWatcher {
       knownAgentPrompt.test(recent) ||
       knownAgentPrompt.test(visibleTail) ||
       /^\s*[>❯›]\s+\d+\./m.test(visibleTail) ||
-      (/^\s*>\s*$/m.test(visibleTail) && /\?\s+for\s+shortcuts/i.test(visibleTail))
+      (/^\s*>\s*$/m.test(visibleTail) && /\?\s+for\s+shortcuts/i.test(visibleTail)) ||
+      (hasPtyDescendants && /^\s*[>❯›]\s*$/.test(currentVisibleLine ?? ""))
     );
   }
 
@@ -482,9 +486,11 @@ export class IdentityWatcher {
       return;
     }
 
+    const hasRecentCommandFailureOutput = this.hasRecentCommandFailureOutput();
+
     if (
       this.identity.agentType &&
-      !this.hasRecentCommandFailureOutput() &&
+      !hasRecentCommandFailureOutput &&
       !this.isForegroundShellIdleForAgentDemotion()
     ) {
       if (this.promptStreak > 0) {
@@ -499,8 +505,8 @@ export class IdentityWatcher {
 
     if (
       this.identity.agentType &&
-      !this.hasRecentCommandFailureOutput() &&
-      this.hasAgentUiPromptFalsePositive()
+      !hasRecentCommandFailureOutput &&
+      this.hasAgentUiPromptFalsePositive(hasPtyDescendants)
     ) {
       if (this.promptStreak > 0) {
         console.log(

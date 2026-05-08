@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { launchApp, closeApp, waitForProcessExit, type AppContext } from "../helpers/launch";
 import { createFixtureRepo, removePathSync } from "../helpers/fixtures";
 import { openAndOnboardProject } from "../helpers/project";
@@ -265,7 +265,33 @@ function deleteProjectStateFiles(userDataDir: string): void {
   }
 }
 
-function seedCrashDataForRestore(userDataDir: string, projectPath: string): void {
+async function readPersistedActiveWorktreeId(page: Page): Promise<string> {
+  let activeWorktreeId = "";
+
+  await expect
+    .poll(
+      async () => {
+        activeWorktreeId = await page.evaluate(async () => {
+          const state = await window.electron.app.getState();
+          return state.activeWorktreeId ?? "";
+        });
+        return activeWorktreeId.length;
+      },
+      {
+        timeout: T_LONG,
+        message: "active worktree id should be persisted before seeding restore data",
+      }
+    )
+    .toBeGreaterThan(0);
+
+  return activeWorktreeId;
+}
+
+function seedCrashDataForRestore(
+  userDataDir: string,
+  projectPath: string,
+  restoreWorktreeId: string
+): void {
   const now = Date.now();
   const crashId = "e2e-restore-crash";
 
@@ -295,7 +321,7 @@ function seedCrashDataForRestore(userDataDir: string, projectPath: string): void
   };
   writeFileSync(path.join(userDataDir, "running.lock"), JSON.stringify(marker));
 
-  const resolvedPath = realpathSync(projectPath);
+  const resolvedPath = restoreWorktreeId || realpathSync(projectPath);
   const terminals = Object.values(RESTORE_PANELS).map((p) => ({
     id: p.id,
     kind: p.kind,
@@ -334,6 +360,7 @@ test.describe.serial("Core: Crash Recovery — Panel Restoration", () => {
       fixtureDir,
       "Restore Test"
     );
+    const restoreWorktreeId = await readPersistedActiveWorktreeId(setupCtx.window);
     const setupPid = setupCtx.app.process().pid!;
     await closeApp(setupCtx.app);
     await waitForProcessExit(setupPid);
@@ -341,7 +368,7 @@ test.describe.serial("Core: Crash Recovery — Panel Restoration", () => {
     // Delete per-project state files so hydration uses global appState from restoreBackup
     deleteProjectStateFiles(userDataDir);
     // Seed crash data with marker + backup containing terminals
-    seedCrashDataForRestore(userDataDir, fixtureDir);
+    seedCrashDataForRestore(userDataDir, fixtureDir, restoreWorktreeId);
 
     // Session 2: Relaunch — should show crash recovery dialog
     ctx = await launchApp({

@@ -41,6 +41,22 @@ function nodeScriptCommand(scriptPath: string, args: string[] = []): string {
   return ["node", commandArg(scriptPath), ...args].join(" ");
 }
 
+function sameFilesystemEntry(left: string, right: string): boolean {
+  const leftReal = fs.realpathSync(left);
+  const rightReal = fs.realpathSync(right);
+  if (leftReal === rightReal) return true;
+
+  if (process.platform === "win32") {
+    const leftNative = fs.realpathSync.native(left).toLowerCase();
+    const rightNative = fs.realpathSync.native(right).toLowerCase();
+    if (leftNative === rightNative) return true;
+  }
+
+  const leftStat = fs.statSync(left);
+  const rightStat = fs.statSync(right);
+  return leftStat.dev === rightStat.dev && leftStat.ino === rightStat.ino;
+}
+
 function writeResourceHelper(daintreeDir: string, stateFile: string): string {
   const scriptPath = path.join(daintreeDir, "resource-action.cjs");
   fs.writeFileSync(
@@ -601,8 +617,8 @@ test.describe.serial("Full: Worktree Resource Lifecycle", () => {
     expect(marker[0]?.length).toBeGreaterThan(0);
     // DAINTREE_WORKTREE_PATH should be a real path
     expect(marker[1]?.length).toBeGreaterThan(0);
-    // DAINTREE_PROJECT_ROOT should match the fixture dir (resolve symlinks for macOS /private/var)
-    expect(fs.realpathSync(marker[2]!)).toBe(fs.realpathSync(fixtureDir));
+    // DAINTREE_PROJECT_ROOT should match the fixture dir, including Windows short/long aliases.
+    expect(sameFilesystemEntry(marker[2]!, fixtureDir)).toBe(true);
 
     // Clean up: remove modified config and marker from worktree
     if (fs.existsSync(markerFile)) fs.unlinkSync(markerFile);
