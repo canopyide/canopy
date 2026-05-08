@@ -20,7 +20,7 @@ describe("Avatar", () => {
     const img = container.querySelector("img");
     expect(img).toBeTruthy();
     expect(img!.style.opacity).toBe("0");
-    const skeleton = container.querySelector(".animate-pulse");
+    const skeleton = container.querySelector(".animate-pulse-delayed");
     expect(skeleton).toBeTruthy();
   });
 
@@ -46,7 +46,7 @@ describe("Avatar", () => {
       expect(img).toBeTruthy();
       // naturalWidth=0 means a broken cached image — skeleton should remain
       expect(img!.style.opacity).toBe("0");
-      expect(container.querySelector(".animate-pulse")).toBeTruthy();
+      expect(container.querySelector(".animate-pulse-delayed")).toBeTruthy();
     } finally {
       if (origComplete) {
         Object.defineProperty(HTMLImageElement.prototype, "complete", origComplete);
@@ -81,7 +81,7 @@ describe("Avatar", () => {
       const img = container.querySelector("img");
       expect(img).toBeTruthy();
       expect(img!.style.opacity).toBe("1");
-      expect(container.querySelector(".animate-pulse")).toBeFalsy();
+      expect(container.querySelector(".animate-pulse-delayed")).toBeFalsy();
     } finally {
       if (origComplete) {
         Object.defineProperty(HTMLImageElement.prototype, "complete", origComplete);
@@ -119,7 +119,7 @@ describe("Avatar", () => {
     rerender(<Avatar src="second.jpg" alt="Second" />);
     const newImg = container.querySelector("img")!;
     expect(newImg.style.opacity).toBe("0");
-    expect(container.querySelector(".animate-pulse")).toBeTruthy();
+    expect(container.querySelector(".animate-pulse-delayed")).toBeTruthy();
   });
 
   it("renders tooltip wrapper when title is provided", () => {
@@ -152,7 +152,7 @@ describe("Avatar", () => {
       rerender(<Avatar src="b.jpg" alt="B" />);
       // Src change resets state and effect re-probes the reused img node
       expect(container.querySelector("img")!.style.opacity).toBe("1");
-      expect(container.querySelector(".animate-pulse")).toBeFalsy();
+      expect(container.querySelector(".animate-pulse-delayed")).toBeFalsy();
     } finally {
       if (origComplete) {
         Object.defineProperty(HTMLImageElement.prototype, "complete", origComplete);
