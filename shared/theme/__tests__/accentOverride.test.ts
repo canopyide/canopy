@@ -158,4 +158,17 @@ describe("getAppThemeWarnings — non-hex accent-rgb degradation", () => {
     const warnings = getAppThemeWarnings(darkScheme);
     expect(warnings.some((w) => w.message.includes("accent-rgb"))).toBe(false);
   });
+
+  it("warns for color-mix() accent values, not just oklch", () => {
+    const scheme: AppColorScheme = {
+      ...darkScheme,
+      tokens: {
+        ...darkScheme.tokens,
+        "accent-primary": "color-mix(in oklab, #ff0000, #0000ff)",
+        "accent-rgb": "0, 0, 0",
+      },
+    };
+    const warnings = getAppThemeWarnings(scheme);
+    expect(warnings.some((w) => w.message.includes("accent-rgb"))).toBe(true);
+  });
 });

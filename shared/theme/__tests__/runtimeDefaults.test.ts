@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { PANEL_KIND_BRAND_COLORS } from "../entityColors.js";
 import type { ThemePalette } from "../palette.js";
 import { createSemanticTokens } from "../semantic.js";
-import { ANSI_CYAN_FALLBACK, ANSI_MAGENTA_FALLBACK } from "../themes.js";
+import { ANSI_CYAN_FALLBACK, ANSI_MAGENTA_FALLBACK, normalizeAppColorScheme } from "../themes.js";
 
 function makePaletteWithoutTerminal(): ThemePalette {
   return {
@@ -70,6 +70,31 @@ describe("ANSI terminal fallbacks for plugin themes without a terminal sub-palet
     const tokens = createSemanticTokens(palette);
     expect(tokens["terminal-cyan"]).not.toBe(palette.activity.active);
     expect(tokens["terminal-bright-cyan"]).not.toBe(palette.activity.active);
+  });
+
+  it("applies the ANSI fallback through compilePaletteToTokens (normalizeAppColorScheme path)", () => {
+    // Mirror coverage: themes.ts and semantic.ts implement the same fix in
+    // parallel. This guards against future divergence by exercising the
+    // built-in compile path used by BUILT_IN_APP_SCHEMES.
+    const scheme = normalizeAppColorScheme({ palette: makePaletteWithoutTerminal() });
+    expect(scheme.tokens["terminal-magenta"]).toBe(ANSI_MAGENTA_FALLBACK);
+    expect(scheme.tokens["terminal-cyan"]).toBe(ANSI_CYAN_FALLBACK);
+    expect(scheme.tokens["terminal-bright-magenta"]).toBe(ANSI_MAGENTA_FALLBACK);
+    expect(scheme.tokens["terminal-bright-cyan"]).toBe(ANSI_CYAN_FALLBACK);
+  });
+
+  it("falls back per-slot when palette.terminal exists but specific keys are absent", () => {
+    const palette = makePaletteWithoutTerminal();
+    // Cast through unknown to model a plugin theme JSON with partial terminal config.
+    const partial = {
+      ...palette,
+      terminal: { selection: "#444444", magenta: "#ff00ff" } as unknown,
+    } as ThemePalette;
+    const tokens = createSemanticTokens(partial);
+    expect(tokens["terminal-magenta"]).toBe("#ff00ff");
+    expect(tokens["terminal-cyan"]).toBe(ANSI_CYAN_FALLBACK);
+    expect(tokens["terminal-bright-magenta"]).toBe(ANSI_MAGENTA_FALLBACK);
+    expect(tokens["terminal-bright-cyan"]).toBe(ANSI_CYAN_FALLBACK);
   });
 
   it("explicit palette overrides still win over the ANSI fallback", () => {
