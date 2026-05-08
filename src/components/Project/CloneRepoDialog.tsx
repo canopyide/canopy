@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { AppDialog } from "@/components/ui/AppDialog";
-import { Check, AlertCircle, FolderOpen } from "lucide-react";
+import { Check, AlertCircle, FolderOpen, X } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
 import { FolderGit2 } from "@/components/icons";
 import { projectClient } from "@/clients";
@@ -177,7 +177,9 @@ export function CloneRepoDialog({ isOpen, onSuccess, onCancel }: CloneRepoDialog
   const showProgress = isCloning || progressEvents.length > 0;
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && canClone && !isCloning && !isComplete && !error) {
+    // Enter acts as Retry too — startClone resets `error` internally, so this
+    // matches the on-screen Retry button instead of going dead after a failure.
+    if (e.key === "Enter" && canClone && !isCloning && !isComplete) {
       e.preventDefault();
       void startClone();
     }
@@ -289,6 +291,8 @@ export function CloneRepoDialog({ isOpen, onSuccess, onCancel }: CloneRepoDialog
                   <Check className="h-4 w-4 text-status-success shrink-0 mt-0.5" />
                 ) : event.stage === "error" ? (
                   <AlertCircle className="h-4 w-4 text-status-error shrink-0 mt-0.5" />
+                ) : event.stage === "cancelled" ? (
+                  <X className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
                 ) : (
                   <Spinner size="md" className="text-status-info shrink-0" />
                 )}
@@ -298,7 +302,9 @@ export function CloneRepoDialog({ isOpen, onSuccess, onCancel }: CloneRepoDialog
                       ? "text-status-error"
                       : event.stage === "complete"
                         ? "text-status-success"
-                        : "text-foreground"
+                        : event.stage === "cancelled"
+                          ? "text-muted-foreground"
+                          : "text-foreground"
                   }
                 >
                   {event.message}

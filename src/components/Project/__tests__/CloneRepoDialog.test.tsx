@@ -459,6 +459,139 @@ describe("CloneRepoDialog", () => {
     expect(cloneRepoMock).not.toHaveBeenCalled();
   });
 
+  it("dedup keeps distinct stages while collapsing repeats within a stage", async () => {
+    cloneRepoMock.mockImplementation(() => new Promise(() => {}));
+
+    render(<CloneRepoDialog isOpen={true} onSuccess={vi.fn()} onCancel={vi.fn()} />);
+
+    const urlInput = screen.getByPlaceholderText("owner/repo or https://github.com/user/repo.git");
+    fireEvent.change(urlInput, { target: { value: "https://github.com/user/repo.git" } });
+
+    const browseBtn = screen.getByText("Browse");
+    await act(async () => {
+      fireEvent.click(browseBtn);
+    });
+
+    const cloneBtn = screen.getByText("Clone");
+    await act(async () => {
+      fireEvent.click(cloneBtn);
+    });
+
+    await waitFor(() => expect(progressHandler).not.toBeNull());
+
+    act(() => {
+      progressHandler?.({
+        stage: "counting",
+        progress: 100,
+        message: "counting: 100%",
+        timestamp: Date.now(),
+      });
+      progressHandler?.({
+        stage: "receiving",
+        progress: 10,
+        message: "receiving: 10%",
+        timestamp: Date.now(),
+      });
+      progressHandler?.({
+        stage: "checkout",
+        progress: 0,
+        message: "checkout: 0%",
+        timestamp: Date.now(),
+      });
+      progressHandler?.({
+        stage: "receiving",
+        progress: 80,
+        message: "receiving: 80%",
+        timestamp: Date.now(),
+      });
+    });
+
+    // counting and checkout (one each) survive; receiving collapses to its
+    // latest value. A broken implementation that simply replaced the entire
+    // list with each new event would lose counting/checkout.
+    expect(screen.getByText("counting: 100%")).toBeTruthy();
+    expect(screen.getByText("checkout: 0%")).toBeTruthy();
+    expect(screen.queryByText("receiving: 10%")).toBeNull();
+    expect(screen.getByText("receiving: 80%")).toBeTruthy();
+  });
+
+  it("Enter retries after a failed clone (matches Retry button behavior)", async () => {
+    // First call rejects, second resolves — simulates the user pressing Enter
+    // again after seeing an error.
+    cloneRepoMock
+      .mockRejectedValueOnce(
+        Object.assign(new Error("Auth failed"), { name: "AppError", code: "INTERNAL" })
+      )
+      .mockImplementationOnce(() => new Promise(() => {}));
+
+    render(<CloneRepoDialog isOpen={true} onSuccess={vi.fn()} onCancel={vi.fn()} />);
+
+    const urlInput = screen.getByPlaceholderText("owner/repo or https://github.com/user/repo.git");
+    fireEvent.change(urlInput, { target: { value: "https://github.com/user/repo.git" } });
+
+    const browseBtn = screen.getByText("Browse");
+    await act(async () => {
+      fireEvent.click(browseBtn);
+    });
+
+    const cloneBtn = screen.getByText("Clone");
+    await act(async () => {
+      fireEvent.click(cloneBtn);
+    });
+
+    await waitFor(() => expect(screen.getByText("Clone Failed")).toBeTruthy());
+
+    // Press Enter — should fire a second clone attempt without requiring the
+    // user to click Retry, since the form fields are still valid.
+    await act(async () => {
+      fireEvent.keyDown(urlInput, { key: "Enter" });
+    });
+
+    expect(cloneRepoMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("renders cancelled stage with non-spinning icon", async () => {
+    cloneRepoMock.mockImplementation(() => new Promise(() => {}));
+
+    render(<CloneRepoDialog isOpen={true} onSuccess={vi.fn()} onCancel={vi.fn()} />);
+
+    const urlInput = screen.getByPlaceholderText("owner/repo or https://github.com/user/repo.git");
+    fireEvent.change(urlInput, { target: { value: "https://github.com/user/repo.git" } });
+
+    const browseBtn = screen.getByText("Browse");
+    await act(async () => {
+      fireEvent.click(browseBtn);
+    });
+
+    const cloneBtn = screen.getByText("Clone");
+    await act(async () => {
+      fireEvent.click(cloneBtn);
+    });
+
+    await waitFor(() => expect(progressHandler).not.toBeNull());
+
+    act(() => {
+      progressHandler?.({
+        stage: "receiving",
+        progress: 50,
+        message: "receiving: 50%",
+        timestamp: Date.now(),
+      });
+      progressHandler?.({
+        stage: "cancelled",
+        progress: 0,
+        message: "Clone cancelled",
+        timestamp: Date.now(),
+      });
+    });
+
+    // The cancelled message is visible alongside its specific (non-spinner)
+    // icon — confirms it doesn't fall through to the in-progress Spinner.
+    const cancelledRow = screen.getByText("Clone cancelled").closest("div");
+    expect(cancelledRow).toBeTruthy();
+    expect(cancelledRow!.querySelector('[data-testid="spinner"]')).toBeNull();
+  });
+
   it("dedups progress events by stage so a single stage shows one row", async () => {
     cloneRepoMock.mockImplementation(() => new Promise(() => {}));
 
