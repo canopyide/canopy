@@ -146,6 +146,11 @@ export function useWebviewEvents({
     };
 
     const handleDidFailLoad = (event: Electron.DidFailLoadEvent) => {
+      // Both early returns must precede the timer-clear block: a sub-frame
+      // failure (ad pixel, tracker) or a stale ERR_ABORTED from a superseded
+      // navigation must not disarm the active main-frame load timers.
+      if (event.errorCode === ERR_ABORTED) return;
+      if (!event.isMainFrame) return;
       setIsSlowLoad(false);
       if (slowLoadTimeoutRef.current) {
         clearTimeout(slowLoadTimeoutRef.current);
@@ -155,15 +160,10 @@ export function useWebviewEvents({
         clearTimeout(loadTimeoutRef.current);
         loadTimeoutRef.current = null;
       }
-      // ERR_ABORTED fires when a pending load is superseded by a new navigation —
-      // benign, mirrored by the loadURL-Promise filter in BrowserPane.
-      if (event.errorCode === ERR_ABORTED) return;
-      if (!event.isMainFrame) return;
       setIsLoading(false);
       const errorCode = event.errorCode;
       const isCertError =
-        errorCode === ERR_SSL_PROTOCOL_ERROR ||
-        (errorCode <= ERR_CERT_RANGE_END && errorCode >= ERR_CERT_RANGE_START);
+        errorCode <= ERR_CERT_RANGE_END && errorCode >= ERR_CERT_RANGE_START;
       if (errorCode === ERR_CONNECTION_REFUSED && isInitialRestoredLoadRef.current) {
         setLoadError({
           kind: "network",
@@ -186,10 +186,19 @@ export function useWebviewEvents({
           kind: "network",
           message: "No internet connection. Check your network.",
         });
-      } else if (errorCode === ERR_CONNECTION_TIMED_OUT && event.validatedURL) {
+      } else if (errorCode === ERR_CONNECTION_TIMED_OUT) {
+        const target = event.validatedURL ? ` to ${event.validatedURL}` : "";
         setLoadError({
           kind: "network",
-          message: `Connection to ${event.validatedURL} timed out. The server may be unreachable.`,
+          message: `Connection${target} timed out. The server may be unreachable.`,
+        });
+      } else if (errorCode === ERR_SSL_PROTOCOL_ERROR) {
+        // -107 also fires on protocol mismatch (HTTP server reached over HTTPS),
+        // so the cert/CA trust hint isn't always the right advice.
+        const hostContext = event.validatedURL ? ` to ${event.validatedURL}` : "";
+        setLoadError({
+          kind: "cert",
+          message: `SSL/TLS handshake failed${hostContext}. The server may not support HTTPS, or its certificate may be invalid.`,
         });
       } else if (isCertError) {
         const hostContext = event.validatedURL ? ` for ${event.validatedURL}` : "";
