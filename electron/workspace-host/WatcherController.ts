@@ -191,6 +191,9 @@ export class WatcherController {
   /**
    * Reconcile watcher state. Stop if disabled while running; start if
    * enabled and not yet armed; rotate if granularity disagrees with focus.
+   * Skips the granularity rotation when a focus-driven downgrade timer is
+   * pending — otherwise periodic reconciliation (e.g. updateWorktrees) would
+   * defeat the hysteresis the moment a focused worktree turns background.
    */
   ensureState(): void {
     if (!this.host.gitWatchEnabled && this.gitWatcher.value) {
@@ -201,7 +204,8 @@ export class WatcherController {
       this.host.gitWatchEnabled &&
       this.host.isRunning &&
       this.gitWatcher.value &&
-      this.gitWatcherMode !== this.desiredMode()
+      this.gitWatcherMode !== this.desiredMode() &&
+      this.downgradeTimer === null
     ) {
       // Existing watcher granularity disagrees with focus state — re-arm
       // so the active worktree gets the recursive watcher and background
@@ -238,7 +242,13 @@ export class WatcherController {
         clearTimeout(this.downgradeTimer);
         this.downgradeTimer = null;
       }
-      if (this.gitWatcher.value && this.gitWatcherMode !== "recursive") {
+      if (!this.gitWatcher.value) {
+        // Recovery path: a previous start failed and left us with no
+        // watcher. Focusing should attempt to arm the recursive variant.
+        this.start();
+        return true;
+      }
+      if (this.gitWatcherMode !== "recursive") {
         this.update();
         return true;
       }
