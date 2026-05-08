@@ -1,8 +1,16 @@
 import React from "react";
-import { AlertTriangle, RotateCcw, FolderEdit, Trash2 } from "lucide-react";
+import { AlertTriangle, RotateCcw, FolderEdit, Trash2, Settings2 } from "lucide-react";
 import { InlineStatusBanner, type BannerAction } from "./InlineStatusBanner";
 import { sanitizeErrorText, boundedErrorText } from "@/utils/errorText";
+import { actionService } from "@/services/ActionService";
 import type { SpawnError } from "@/types";
+
+const RESOURCE_LIMIT_CODES: ReadonlySet<SpawnError["code"]> = new Set([
+  "EMFILE",
+  "EAGAIN",
+  "ENOMEM",
+  "ENXIO",
+]);
 
 export interface SpawnErrorBannerProps {
   terminalId: string;
@@ -11,6 +19,7 @@ export interface SpawnErrorBannerProps {
   onUpdateCwd: (id: string) => void;
   onRetry: (id: string) => void;
   onTrash: (id: string) => void;
+  isRestarting?: boolean;
   className?: string;
 }
 
@@ -80,9 +89,11 @@ function SpawnErrorBannerComponent({
   onUpdateCwd,
   onRetry,
   onTrash,
+  isRestarting = false,
   className,
 }: SpawnErrorBannerProps) {
   const isCwdError = error.code === "ENOTDIR";
+  const isResourceLimit = RESOURCE_LIMIT_CODES.has(error.code);
 
   const actions: BannerAction[] = [];
   if (isCwdError) {
@@ -94,6 +105,24 @@ function SpawnErrorBannerComponent({
       onClick: () => onUpdateCwd(terminalId),
       title: "Change working directory",
       ariaLabel: "Update working directory",
+      disabled: isRestarting,
+    });
+  }
+  if (isResourceLimit) {
+    actions.push({
+      id: "open-limits",
+      label: "Terminal limits",
+      icon: Settings2,
+      variant: "accent",
+      onClick: () => {
+        void actionService.dispatch(
+          "app.settings.openTab",
+          { tab: "terminal", subtab: "performance", sectionId: "terminal-panel-limits" },
+          { source: "user" }
+        );
+      },
+      title: "Open terminal limits settings",
+      ariaLabel: "Open terminal limits settings",
     });
   }
   actions.push(
@@ -105,15 +134,17 @@ function SpawnErrorBannerComponent({
       onClick: () => onRetry(terminalId),
       title: "Retry",
       ariaLabel: "Retry starting terminal",
+      loading: isRestarting,
     },
     {
       id: "trash",
-      label: "Trash",
+      label: "Remove terminal",
       icon: Trash2,
       variant: "danger",
       onClick: () => onTrash(terminalId),
       title: "Move to trash",
       ariaLabel: "Move to trash",
+      disabled: isRestarting,
     }
   );
 

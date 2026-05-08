@@ -10,6 +10,7 @@ export interface TerminalErrorBannerProps {
   onUpdateCwd: (id: string) => void;
   onRetry: (id: string) => void;
   onTrash: (id: string) => void;
+  isRestarting?: boolean;
   className?: string;
 }
 
@@ -19,6 +20,7 @@ function TerminalErrorBannerComponent({
   onUpdateCwd,
   onRetry,
   onTrash,
+  isRestarting = false,
   className,
 }: TerminalErrorBannerProps) {
   const isCwdError = error.code === "ENOENT" && error.context?.failedCwd;
@@ -33,6 +35,7 @@ function TerminalErrorBannerComponent({
       onClick: () => onUpdateCwd(terminalId),
       title: "Change working directory",
       ariaLabel: "Update working directory",
+      disabled: isRestarting,
     });
   }
   actions.push(
@@ -44,15 +47,17 @@ function TerminalErrorBannerComponent({
       onClick: () => onRetry(terminalId),
       title: "Retry restart",
       ariaLabel: "Retry restart",
+      loading: isRestarting,
     },
     {
       id: "trash",
-      label: "Trash",
+      label: "Remove terminal",
       icon: Trash2,
       variant: "danger",
       onClick: () => onTrash(terminalId),
       title: "Move to trash",
       ariaLabel: "Move to trash",
+      disabled: isRestarting,
     }
   );
 

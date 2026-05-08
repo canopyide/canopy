@@ -11,6 +11,7 @@ import { panelKindHasPty } from "@shared/config/panelKindRegistry";
 import { useLayoutConfigStore } from "@/store/layoutConfigStore";
 import { saveNormalized, saveTabGroups } from "./persistence";
 import { optimizeForDock } from "./layout";
+import { cancelReconnectErrorDebounce } from "./browser";
 import {
   deriveRuntimeStatus,
   getDefaultTitle,
@@ -69,6 +70,7 @@ export const createCorePanelActions = (
 
   removePanel: (id) => {
     clearTrashExpiryTimer(id);
+    cancelReconnectErrorDebounce(id);
     const state = get();
     const removedIndex = state.panelIds.indexOf(id);
     const terminal = state.panelsById[id];

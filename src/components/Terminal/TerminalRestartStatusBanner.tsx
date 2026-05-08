@@ -42,11 +42,11 @@ function TerminalRestartStatusBannerComponent({
           actions={[
             {
               id: "restart",
-              label: "Restart Session",
+              label: "Restart session",
               icon: RotateCcw,
               variant: "dangerFilled",
               onClick: onRestart,
-              title: "Restart Session",
+              title: "Restart session",
               ariaLabel: "Restart session",
             },
           ]}
