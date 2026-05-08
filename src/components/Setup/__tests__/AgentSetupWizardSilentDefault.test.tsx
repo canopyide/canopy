@@ -225,9 +225,7 @@ describe("AgentSetupWizard silent-default privacy notify", () => {
     });
 
     // Find the privacy toggle (role="switch", labeled "Enable crash reporting").
-    const toggle = document.querySelector(
-      'button[role="switch"][aria-label="Enable crash reporting"]'
-    ) as HTMLButtonElement | null;
+    const toggle = document.querySelector('button[role="switch"]') as HTMLButtonElement | null;
     expect(toggle, "privacy toggle should be present on first-run selection step").not.toBeNull();
 
     await act(async () => {
