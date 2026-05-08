@@ -84,8 +84,8 @@ export function VoiceRecordingToolbarButton({
                 style={{
                   backgroundColor:
                     status === "connecting"
-                      ? "rgba(var(--theme-accent-rgb), 0.4)"
-                      : `rgba(var(--theme-accent-rgb), ${0.3 + audioLevel * 0.7})`,
+                      ? "rgb(from var(--theme-accent-primary) r g b / 0.4)"
+                      : `rgb(from var(--theme-accent-primary) r g b / ${0.3 + audioLevel * 0.7})`,
                   transitionDuration: "80ms",
                 }}
               />

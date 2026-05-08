@@ -2,7 +2,7 @@ export const PANEL_KIND_BRAND_COLORS = {
   terminal: "var(--theme-activity-idle)",
   agent: "var(--theme-accent-primary)",
   browser: "var(--theme-category-blue)",
-  "dev-preview": "var(--theme-category-violet)",
+  "dev-preview": "var(--theme-category-teal)",
 } as const;
 
 export const BRANCH_TYPE_COLOR_CLASSES = {

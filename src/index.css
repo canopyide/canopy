@@ -612,7 +612,7 @@ code.hljs {
   --dock-item-bg-hover: var(--theme-overlay-medium);
   --dock-item-bg-active: color-mix(in oklab, var(--theme-accent-primary) 12%, transparent);
   --dock-item-border: var(--theme-border-subtle);
-  --dock-item-border-active: rgba(var(--theme-accent-rgb), 0.32);
+  --dock-item-border-active: rgb(from var(--theme-accent-primary) r g b / 0.32);
   --state-chip-bg-opacity: var(--theme-state-chip-bg-opacity, 0.15);
   --state-chip-border-opacity: var(--theme-state-chip-border-opacity, 0.4);
   --label-pill-bg-opacity: var(--theme-label-pill-bg-opacity, 0.1);

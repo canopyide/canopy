@@ -1,5 +1,5 @@
 import type { ThemePalette } from "./palette.js";
-import { createDaintreeTokens } from "./themes.js";
+import { ANSI_CYAN_FALLBACK, ANSI_MAGENTA_FALLBACK, createDaintreeTokens } from "./themes.js";
 import type { AppColorSchemeTokens } from "./types.js";
 
 export function createSemanticTokens(palette: ThemePalette): AppColorSchemeTokens {
@@ -62,14 +62,14 @@ export function createSemanticTokens(palette: ThemePalette): AppColorSchemeToken
     "terminal-green": palette.terminal?.green ?? palette.status.success,
     "terminal-yellow": palette.terminal?.yellow ?? palette.status.warning,
     "terminal-blue": palette.terminal?.blue ?? palette.status.info,
-    "terminal-magenta": palette.terminal?.magenta ?? palette.accent,
-    "terminal-cyan": palette.terminal?.cyan ?? palette.activity.active,
+    "terminal-magenta": palette.terminal?.magenta ?? ANSI_MAGENTA_FALLBACK,
+    "terminal-cyan": palette.terminal?.cyan ?? ANSI_CYAN_FALLBACK,
     "terminal-bright-red": palette.terminal?.brightRed ?? palette.status.danger,
     "terminal-bright-green": palette.terminal?.brightGreen ?? palette.status.success,
     "terminal-bright-yellow": palette.terminal?.brightYellow ?? palette.status.warning,
     "terminal-bright-blue": palette.terminal?.brightBlue ?? palette.status.info,
-    "terminal-bright-magenta": palette.terminal?.brightMagenta ?? palette.accent,
-    "terminal-bright-cyan": palette.terminal?.brightCyan ?? palette.activity.active,
+    "terminal-bright-magenta": palette.terminal?.brightMagenta ?? ANSI_MAGENTA_FALLBACK,
+    "terminal-bright-cyan": palette.terminal?.brightCyan ?? ANSI_CYAN_FALLBACK,
     "terminal-bright-white": palette.terminal?.brightWhite ?? palette.text.primary,
     "syntax-comment": palette.syntax.comment,
     "syntax-punctuation": palette.syntax.punctuation,
