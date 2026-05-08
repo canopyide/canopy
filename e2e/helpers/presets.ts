@@ -1,7 +1,7 @@
 import { writeFileSync, mkdirSync, rmSync, existsSync, mkdtempSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { SEL } from "./selectors";
 
 // Each test process gets its own CCR config file so parallel workers don't
@@ -137,14 +137,34 @@ export async function getSelectedPresetLabel(
   return (await trigger.textContent())?.trim() ?? "";
 }
 
-export async function addCustomPreset(window: import("@playwright/test").Page): Promise<void> {
+interface CustomPresetState {
+  customCount: number;
+  presetId: string | null;
+}
+
+async function getCustomPresetState(window: Page, agentId: string): Promise<CustomPresetState> {
+  return window.evaluate(async (id): Promise<CustomPresetState> => {
+    const settings = await window.electron.agentSettings.get();
+    const agents = settings.agents as
+      | Record<string, { customPresets?: unknown[]; presetId?: string } | undefined>
+      | undefined;
+    const entry = agents?.[id];
+    return {
+      customCount: Array.isArray(entry?.customPresets) ? entry.customPresets.length : 0,
+      presetId: entry?.presetId ?? null,
+    };
+  }, agentId);
+}
+
+export async function addCustomPreset(
+  window: import("@playwright/test").Page,
+  agentId = "claude"
+): Promise<void> {
   await test.step(
     "Add custom preset",
     async () => {
       const section = window.locator(SEL.preset.section);
-      // Capture preset count before the dialog flow so we can poll until the new
-      // preset has actually landed in the listbox (replaces a fixed 350ms wait).
-      const countBefore = await countPresetOptions(window);
+      const stateBefore = await getCustomPresetState(window, agentId);
       await section.locator(SEL.preset.addButton).click();
       // The Add button now opens an "Add Preset" dialog with a Start-from chooser.
       // Click Create to accept the default "Blank" choice and create the preset.
@@ -152,12 +172,26 @@ export async function addCustomPreset(window: import("@playwright/test").Page): 
       await expect(dialog).toBeVisible({ timeout: 5000 });
       await dialog.locator('button:has-text("Create")').click();
       await expect(dialog).not.toBeVisible({ timeout: 5000 });
-      // Poll until the new preset surfaces in the listbox — this is the
-      // observable signal that the IPC round-trip has settled and the store
-      // has the new entry. Each probe opens/counts/closes the popover.
+      // Poll the persisted settings directly. On Windows the Radix popover can
+      // briefly report stale option counts even after the newly selected preset
+      // is visible in the settings detail panel.
       await expect
-        .poll(() => countPresetOptions(window), { timeout: 5_000, intervals: [100, 200, 400] })
-        .toBe(countBefore + 1);
+        .poll(
+          async () => {
+            const state = await getCustomPresetState(window, agentId);
+            return (
+              state.customCount >= stateBefore.customCount + 1 &&
+              state.presetId !== null &&
+              state.presetId !== stateBefore.presetId
+            );
+          },
+          {
+            timeout: process.platform === "win32" ? 10_000 : 5_000,
+            intervals: [100, 200, 400, 800],
+          }
+        )
+        .toBe(true);
+      await expect(section.locator(SEL.preset.customBadge).first()).toBeVisible({ timeout: 5000 });
     },
     { box: true }
   );
