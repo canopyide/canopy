@@ -52,7 +52,9 @@ describe("TerminalWebGLManager", () => {
     const mod = await import("../TerminalWebGLManager");
     // Preload the addon class so ensureContext() executes synchronously in tests.
     // The lazy loader is exercised separately in the "lazy WebglAddon loading" suite.
-    mod.__testing.setWebglAddonClass(WebglAddonMock as unknown as new () => InstanceType<typeof webglMod.WebglAddon>);
+    mod.__testing.setWebglAddonClass(
+      WebglAddonMock as unknown as new () => InstanceType<typeof webglMod.WebglAddon>
+    );
     manager = new mod.TerminalWebGLManager();
   });
 
@@ -701,9 +703,8 @@ describe("TerminalWebGLManager", () => {
     });
 
     it("retries the load after a rejection, then attaches the queued terminal", async () => {
-      const { TerminalWebGLManager: ManagerClass, __testing } = await import(
-        "../TerminalWebGLManager"
-      );
+      const { TerminalWebGLManager: ManagerClass, __testing } =
+        await import("../TerminalWebGLManager");
       const localManager = new ManagerClass();
       const managed = makeManagedTerminal();
 

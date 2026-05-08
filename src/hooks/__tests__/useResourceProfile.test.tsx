@@ -2,10 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useResourceProfile } from "../useResourceProfile";
-import {
-  getMaxContexts,
-  setMaxContexts,
-} from "../../services/terminal/TerminalWebGLConfig";
+import { getMaxContexts, setMaxContexts } from "../../services/terminal/TerminalWebGLConfig";
 import type { ResourceProfilePayload } from "@shared/types/resourceProfile";
 
 vi.mock("@xterm/addon-webgl", () => ({
@@ -73,9 +70,7 @@ describe("useResourceProfile", () => {
       capturedCallback!(makePayload(5));
     });
 
-    const { TerminalWebGLManager } = await import(
-      "../../services/terminal/TerminalWebGLManager"
-    );
+    const { TerminalWebGLManager } = await import("../../services/terminal/TerminalWebGLManager");
     expect(TerminalWebGLManager.MAX_CONTEXTS).toBe(5);
   });
 });

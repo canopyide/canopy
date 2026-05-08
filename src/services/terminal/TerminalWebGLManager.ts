@@ -1,9 +1,6 @@
 import type { WebglAddon as WebglAddonType } from "@xterm/addon-webgl";
 import type { IDisposable } from "@xterm/xterm";
-import {
-  getMaxContexts,
-  setMaxContexts as setConfiguredMaxContexts,
-} from "./TerminalWebGLConfig";
+import { getMaxContexts, setMaxContexts as setConfiguredMaxContexts } from "./TerminalWebGLConfig";
 import type { ManagedTerminal } from "./types";
 
 const WEBGL_DISABLED = import.meta.env.DAINTREE_DISABLE_WEBGL === "1";
