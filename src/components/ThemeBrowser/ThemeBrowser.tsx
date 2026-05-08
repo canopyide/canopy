@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Check, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BUILT_IN_APP_SCHEMES } from "@/config/appColorSchemes";
@@ -19,8 +19,9 @@ import { useEscapeStack } from "@/hooks/useEscapeStack";
 import { useOverlayClaim } from "@/hooks";
 
 const PANEL_WIDTH = 380;
+const EMPTY_WARNINGS: AppThemeValidationWarning[] = [];
 
-function ThemeRow({
+const ThemeRow = memo(function ThemeRow({
   scheme,
   isCommitted,
   isActive,
@@ -88,7 +89,7 @@ function ThemeRow({
       </div>
     </button>
   );
-}
+});
 
 export function ThemeBrowser() {
   useOverlayClaim("theme-browser", true);
@@ -122,8 +123,10 @@ export function ThemeBrowser() {
     return committed?.type === "light" ? "light" : "dark";
   });
 
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  const rowRefCallbacks = useRef<Map<string, (el: HTMLButtonElement | null) => void>>(new Map());
   const commitButtonRef = useRef<HTMLButtonElement>(null);
   const announceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -191,7 +194,10 @@ export function ThemeBrowser() {
 
   const handlePreview = useCallback(
     (id: string, debounceAnnounce?: boolean) => {
-      const scheme = resolveAppTheme(id, useAppThemeStore.getState().customSchemes);
+      const state = useAppThemeStore.getState();
+      if (state.previewSchemeId === id) return;
+      if (state.previewSchemeId === null && state.selectedSchemeId === id) return;
+      const scheme = resolveAppTheme(id, state.customSchemes);
       setPreviewSchemeId(id);
       injectSchemeToDOM(scheme);
       if (debounceAnnounce) {
@@ -262,6 +268,11 @@ export function ThemeBrowser() {
   }, [close, revertPreview]);
 
   useEscapeStack(true, handleCancel);
+
+  useEffect(() => {
+    const rafId = requestAnimationFrame(() => searchInputRef.current?.focus());
+    return () => cancelAnimationFrame(rafId);
+  }, []);
 
   // Scroll the committed theme into view on open so the user lands at their
   // current choice, not the top of the list. Keyboard index is already
@@ -346,13 +357,16 @@ export function ThemeBrowser() {
   );
 
   const isEmpty = filteredThemes.length === 0;
-  const setRowRef = useCallback(
-    (id: string) => (el: HTMLButtonElement | null) => {
+  const getRowRef = useCallback((id: string): ((el: HTMLButtonElement | null) => void) => {
+    const existing = rowRefCallbacks.current.get(id);
+    if (existing) return existing;
+    const cb = (el: HTMLButtonElement | null) => {
       if (el) rowRefs.current.set(id, el);
       else rowRefs.current.delete(id);
-    },
-    []
-  );
+    };
+    rowRefCallbacks.current.set(id, cb);
+    return cb;
+  }, []);
 
   return (
     <div
@@ -401,6 +415,7 @@ export function ThemeBrowser() {
         <div className="flex items-center gap-1.5 flex-1 min-w-0 focus-within:border-daintree-accent">
           <Search className="w-3.5 h-3.5 shrink-0 text-daintree-text/40 pointer-events-none" />
           <input
+            ref={searchInputRef}
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -474,8 +489,8 @@ export function ThemeBrowser() {
               isActive={scheme.id === activeSchemeId}
               isKeyboardFocused={index === keyboardIndex}
               onSelect={handlePreview}
-              warnings={warningsByScheme.get(scheme.id) ?? []}
-              rowRef={setRowRef(scheme.id)}
+              warnings={warningsByScheme.get(scheme.id) ?? EMPTY_WARNINGS}
+              rowRef={getRowRef(scheme.id)}
             />
           ))
         )}
