@@ -15,6 +15,12 @@ vi.mock("@xterm/addon-webgl", () => ({
   }),
 }));
 
+// Flush microtasks plus a macrotask so the chain
+// `import("@xterm/addon-webgl") → .then(flushPendingEnsures)` fully runs.
+function flushDynamicImport(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 function makeManagedTerminal(overrides: Partial<ManagedTerminal> = {}): ManagedTerminal {
   return {
     terminal: {
@@ -44,6 +50,9 @@ describe("TerminalWebGLManager", () => {
     });
 
     const mod = await import("../TerminalWebGLManager");
+    // Preload the addon class so ensureContext() executes synchronously in tests.
+    // The lazy loader is exercised separately in the "lazy WebglAddon loading" suite.
+    mod.__testing.setWebglAddonClass(WebglAddonMock as unknown as new () => InstanceType<typeof webglMod.WebglAddon>);
     manager = new mod.TerminalWebGLManager();
   });
 
@@ -214,6 +223,38 @@ describe("TerminalWebGLManager", () => {
 
   it("isActive returns false for unknown terminals", () => {
     expect(manager.isActive("unknown")).toBe(false);
+  });
+
+  describe("setMaxContexts", () => {
+    let originalMax: number;
+
+    beforeEach(async () => {
+      const mod = await import("../TerminalWebGLManager");
+      originalMax = mod.TerminalWebGLManager.MAX_CONTEXTS;
+    });
+
+    afterEach(async () => {
+      const mod = await import("../TerminalWebGLManager");
+      mod.TerminalWebGLManager.setMaxContexts(originalMax);
+    });
+
+    it("clamps zero to 1", async () => {
+      const { TerminalWebGLManager } = await import("../TerminalWebGLManager");
+      TerminalWebGLManager.setMaxContexts(0);
+      expect(TerminalWebGLManager.MAX_CONTEXTS).toBe(1);
+    });
+
+    it("clamps negative values to 1", async () => {
+      const { TerminalWebGLManager } = await import("../TerminalWebGLManager");
+      TerminalWebGLManager.setMaxContexts(-5);
+      expect(TerminalWebGLManager.MAX_CONTEXTS).toBe(1);
+    });
+
+    it("accepts positive values verbatim", async () => {
+      const { TerminalWebGLManager } = await import("../TerminalWebGLManager");
+      TerminalWebGLManager.setMaxContexts(8);
+      expect(TerminalWebGLManager.MAX_CONTEXTS).toBe(8);
+    });
   });
 
   it("recovers cleanly after failed attach", () => {
@@ -516,6 +557,131 @@ describe("TerminalWebGLManager", () => {
       expect(localManager.isActive("t0")).toBe(true);
       expect(localManager.isActive("t1")).toBe(false);
       expect(disposes[1]).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("lazy WebglAddon loading", () => {
+    // These tests exercise the dynamic-import path. They reset loader state in
+    // beforeEach so the queue behavior runs against a real (mocked) import().
+    beforeEach(async () => {
+      const mod = await import("../TerminalWebGLManager");
+      mod.__testing.resetLoaderState();
+    });
+
+    afterEach(async () => {
+      // Restore the preload that the outer suite relies on.
+      const webglMod = await import("@xterm/addon-webgl");
+      const mod = await import("../TerminalWebGLManager");
+      mod.__testing.setWebglAddonClass(
+        webglMod.WebglAddon as unknown as new () => InstanceType<typeof webglMod.WebglAddon>
+      );
+    });
+
+    it("does not construct the addon synchronously when not yet loaded", async () => {
+      const { TerminalWebGLManager: ManagerClass } = await import("../TerminalWebGLManager");
+      const localManager = new ManagerClass();
+      const managed = makeManagedTerminal();
+
+      localManager.ensureContext("t1", managed);
+
+      expect(WebglAddonMock).not.toHaveBeenCalled();
+      expect(localManager.isActive("t1")).toBe(false);
+    });
+
+    it("flushes the queued request after the addon resolves", async () => {
+      const { TerminalWebGLManager: ManagerClass } = await import("../TerminalWebGLManager");
+      const localManager = new ManagerClass();
+      const managed = makeManagedTerminal();
+
+      localManager.ensureContext("t1", managed);
+      // Allow the dynamic import + microtask chain to drain.
+      await flushDynamicImport();
+
+      expect(WebglAddonMock).toHaveBeenCalledTimes(1);
+      expect(localManager.isActive("t1")).toBe(true);
+    });
+
+    it("dedupes repeated ensure calls for the same id while loading", async () => {
+      const { TerminalWebGLManager: ManagerClass } = await import("../TerminalWebGLManager");
+      const localManager = new ManagerClass();
+      const managed1 = makeManagedTerminal();
+      const managed2 = makeManagedTerminal();
+
+      localManager.ensureContext("t1", managed1);
+      localManager.ensureContext("t1", managed2);
+
+      await flushDynamicImport();
+
+      expect(WebglAddonMock).toHaveBeenCalledTimes(1);
+      expect(managed1.terminal.loadAddon).not.toHaveBeenCalled();
+      expect(managed2.terminal.loadAddon).toHaveBeenCalledTimes(1);
+    });
+
+    it("releaseContext discards a queued request before the addon resolves", async () => {
+      const { TerminalWebGLManager: ManagerClass } = await import("../TerminalWebGLManager");
+      const localManager = new ManagerClass();
+      const managed = makeManagedTerminal();
+
+      localManager.ensureContext("t1", managed);
+      localManager.releaseContext("t1");
+
+      await flushDynamicImport();
+
+      expect(WebglAddonMock).not.toHaveBeenCalled();
+      expect(localManager.isActive("t1")).toBe(false);
+    });
+
+    it("onTerminalDestroyed discards a queued request before the addon resolves", async () => {
+      const { TerminalWebGLManager: ManagerClass } = await import("../TerminalWebGLManager");
+      const localManager = new ManagerClass();
+      const managed = makeManagedTerminal();
+
+      localManager.ensureContext("t1", managed);
+      localManager.onTerminalDestroyed("t1");
+
+      await flushDynamicImport();
+
+      expect(WebglAddonMock).not.toHaveBeenCalled();
+    });
+
+    it("dispose clears any queued requests", async () => {
+      const { TerminalWebGLManager: ManagerClass } = await import("../TerminalWebGLManager");
+      const localManager = new ManagerClass();
+      const managed = makeManagedTerminal();
+
+      localManager.ensureContext("t1", managed);
+      localManager.dispose();
+
+      await flushDynamicImport();
+
+      expect(WebglAddonMock).not.toHaveBeenCalled();
+    });
+
+    it("skips queued requests if hardware was marked unavailable while loading", async () => {
+      const { TerminalWebGLManager: ManagerClass } = await import("../TerminalWebGLManager");
+      const localManager = new ManagerClass();
+      const managed = makeManagedTerminal();
+
+      localManager.ensureContext("t1", managed);
+      localManager.setHardwareAvailable(false);
+
+      await flushDynamicImport();
+
+      expect(WebglAddonMock).not.toHaveBeenCalled();
+      expect(localManager.isActive("t1")).toBe(false);
+    });
+
+    it("skips queued requests for terminals that closed while loading", async () => {
+      const { TerminalWebGLManager: ManagerClass } = await import("../TerminalWebGLManager");
+      const localManager = new ManagerClass();
+      const managed = makeManagedTerminal();
+
+      localManager.ensureContext("t1", managed);
+      managed.isOpened = false;
+
+      await flushDynamicImport();
+
+      expect(WebglAddonMock).not.toHaveBeenCalled();
     });
   });
 });

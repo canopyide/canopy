@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TerminalRefreshTier } from "../../../../shared/types/panel";
+import { preloadMockWebglAddon } from "./_preloadWebglAddon";
 
 const mockTerminalClient = {
   onData: vi.fn(() => vi.fn()),
@@ -148,6 +149,7 @@ describe("TerminalInstanceService - visibility-driven WebGL lease", () => {
         terminalInstanceService: WebGLVisibilityService;
       });
     service.instances.clear();
+    await preloadMockWebglAddon();
   });
 
   afterEach(() => {

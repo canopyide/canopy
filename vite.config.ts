@@ -341,6 +341,11 @@ export default defineConfig(({ command, mode }) => {
         output: {
           codeSplitting: {
             groups: [
+              {
+                name: "vendor-xterm-webgl",
+                test: /node_modules[\\/]@xterm[\\/]addon-webgl[\\/]/,
+                priority: 75,
+              },
               { name: "vendor-xterm", test: /node_modules[\\/]@xterm[\\/]/, priority: 70 },
               {
                 name: "vendor-editor",
