@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { ChevronUp, ChevronDown, X } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { FindInPageState } from "@/hooks/useFindInPage";
@@ -18,6 +19,7 @@ export function FindBar({ find }: FindBarProps) {
     goPrev,
     close,
   } = find;
+  const counterId = useId();
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (isComposingRef.current) return;
@@ -65,10 +67,14 @@ export function FindBar({ find }: FindBarProps) {
           setQuery(e.currentTarget.value);
         }}
         placeholder="Find in page"
+        aria-label="Find in page"
+        aria-controls={counterId}
+        data-testid="find-bar-input"
         className="w-44 bg-transparent text-xs text-daintree-text placeholder:text-daintree-text/40 outline-hidden border border-transparent focus:border-border-strong transition-colors"
         spellCheck={false}
       />
       <span
+        id={counterId}
         role={hasQuery ? "status" : undefined}
         aria-atomic="true"
         className={`text-[11px] tabular-nums whitespace-nowrap mr-0.5 ${

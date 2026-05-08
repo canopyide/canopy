@@ -447,7 +447,7 @@ describe("BrowserPane webview lifecycle regression", () => {
         vi.advanceTimersByTime(150);
       });
 
-      const dismissButton = container.querySelector('[aria-label="Dismiss"]');
+      const dismissButton = container.querySelector('[aria-label="Dismiss navigation notice"]');
       expect(dismissButton).not.toBeNull();
 
       act(() => {
@@ -857,6 +857,60 @@ describe("BrowserPane webview lifecycle regression", () => {
 
       // No error — timer was cleaned up
       expect(container.textContent).not.toContain("Taking longer than usual");
+    });
+  });
+
+  describe("accessibility markers", () => {
+    function getNavigationBlockedCallback(): (payload: {
+      panelId: string;
+      url: string;
+      canOpenExternal: boolean;
+    }) => void {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mock = (window as any).electron.webview.onNavigationBlocked;
+      const lastCall = mock.mock.calls[mock.mock.calls.length - 1];
+      return lastCall[0];
+    }
+
+    it("blocked-navigation banner has polite live region and distinct dismiss label", () => {
+      const { container } = render(<BrowserPane {...baseProps} />);
+      const callback = getNavigationBlockedCallback();
+
+      act(() => {
+        callback({
+          panelId: "browser-panel-1",
+          url: "https://oauth.example.com/auth",
+          canOpenExternal: true,
+        });
+        vi.advanceTimersByTime(150);
+      });
+
+      const banner = container.querySelector('[aria-live="polite"]');
+      expect(banner).not.toBeNull();
+      expect(banner?.getAttribute("aria-atomic")).toBe("true");
+      expect(banner?.textContent).toContain("oauth.example.com");
+
+      const dismiss = container.querySelector('[aria-label="Dismiss navigation notice"]');
+      expect(dismiss).not.toBeNull();
+      expect(container.querySelector('[aria-label="Dismiss"]')).toBeNull();
+    });
+
+    it("load-error overlay has role=alert", () => {
+      const { container } = render(<BrowserPane {...baseProps} />);
+      const webview = getWebviewElement(container);
+
+      act(() => {
+        emitWebviewEvent(webview, "did-fail-load", {
+          errorCode: -105,
+          errorDescription: "Name not resolved",
+          isMainFrame: true,
+          validatedURL: "http://nonexistent.example.com/",
+        });
+      });
+
+      const alert = container.querySelector('[role="alert"]');
+      expect(alert).not.toBeNull();
+      expect(alert?.textContent).toContain("Couldn't resolve");
     });
   });
 });

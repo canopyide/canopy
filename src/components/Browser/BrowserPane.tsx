@@ -660,7 +660,11 @@ export function BrowserPane({
         )}
       >
         {pendingApproval && (
-          <div className="absolute top-0 left-0 right-0 z-20 flex items-center gap-2 px-3 py-1.5 text-xs bg-status-info/10 border-b border-status-info/30 text-daintree-text/90">
+          <div
+            aria-live="assertive"
+            aria-atomic="true"
+            className="absolute top-0 left-0 right-0 z-20 flex items-center gap-2 px-3 py-1.5 text-xs bg-status-info/10 border-b border-status-info/30 text-daintree-text/90"
+          >
             <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-status-info" />
             <span className="truncate flex-1">
               Allow browser panel to load{" "}
@@ -677,7 +681,7 @@ export function BrowserPane({
               type="button"
               onClick={handleDismissApproval}
               className="shrink-0 text-daintree-text/40 hover:text-daintree-text/70 transition-colors"
-              aria-label="Dismiss"
+              aria-label="Dismiss host approval"
             >
               ×
             </button>
@@ -719,7 +723,10 @@ export function BrowserPane({
         ) : (
           <>
             {loadError && (
-              <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-daintree-bg text-daintree-text p-6">
+              <div
+                role="alert"
+                className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-daintree-bg text-daintree-text p-6"
+              >
                 <AlertTriangle className="w-6 h-6 text-status-warning mb-3" />
                 <h3 className="text-sm font-medium text-daintree-text/70 mb-1">
                   {loadError.startsWith("Load timed out")
@@ -755,7 +762,11 @@ export function BrowserPane({
               </div>
             )}
             {blockedNav && (
-              <div className="flex items-center gap-2 px-3 py-1.5 text-xs bg-status-warning/10 border-b border-status-warning/20 text-daintree-text/80">
+              <div
+                aria-live="polite"
+                aria-atomic="true"
+                className="flex items-center gap-2 px-3 py-1.5 text-xs bg-status-warning/10 border-b border-status-warning/20 text-daintree-text/80"
+              >
                 <ExternalLink className="h-3.5 w-3.5 shrink-0 text-status-warning" />
                 <span className="truncate flex-1">
                   Navigation to external site blocked:{" "}
@@ -787,7 +798,7 @@ export function BrowserPane({
                   type="button"
                   onClick={() => setBlockedNav(null)}
                   className="shrink-0 text-daintree-text/40 hover:text-daintree-text/70 transition-colors"
-                  aria-label="Dismiss"
+                  aria-label="Dismiss navigation notice"
                 >
                   ×
                 </button>

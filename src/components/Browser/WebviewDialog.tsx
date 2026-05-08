@@ -1,4 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useId } from "react";
+
+const TABBABLE_SELECTOR =
+  'a[href], area[href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), audio[controls], video[controls], [contenteditable]:not([contenteditable="false"]), [tabindex]:not([tabindex^="-"])';
 
 export interface WebviewDialogRequest {
   dialogId: string;
@@ -17,6 +20,8 @@ export function WebviewDialog({ dialog, onRespond }: WebviewDialogProps) {
   const [inputValue, setInputValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const okRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const messageId = useId();
 
   useEffect(() => {
     if (!dialog) return;
@@ -35,6 +40,37 @@ export function WebviewDialog({ dialog, onRespond }: WebviewDialogProps) {
         okRef.current?.focus();
       }
     });
+  }, [dialog]);
+
+  useEffect(() => {
+    if (!dialog) return;
+    const handleTabTrap = (e: KeyboardEvent) => {
+      if (e.key !== "Tab" || !panelRef.current) return;
+      const activeEl = document.activeElement;
+      if (activeEl) {
+        const closestModal = activeEl.closest('[aria-modal="true"]');
+        if (closestModal && !closestModal.contains(panelRef.current)) return;
+      }
+      const focusable = Array.from(
+        panelRef.current.querySelectorAll<HTMLElement>(TABBABLE_SELECTOR)
+      );
+      if (focusable.length === 0) {
+        e.preventDefault();
+        panelRef.current.focus();
+        return;
+      }
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener("keydown", handleTabTrap);
+    return () => window.removeEventListener("keydown", handleTabTrap);
   }, [dialog]);
 
   const handleOk = useCallback(() => {
@@ -74,8 +110,18 @@ export function WebviewDialog({ dialog, onRespond }: WebviewDialogProps) {
       className="absolute inset-0 z-50 flex items-center justify-center bg-scrim-medium"
       onKeyDown={handleKeyDown}
     >
-      <div className="bg-daintree-bg border border-daintree-border rounded-lg shadow-[var(--theme-shadow-dialog)] max-w-sm w-full mx-4 p-4">
-        <p className="text-sm text-daintree-text whitespace-pre-wrap break-words mb-4">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={messageId}
+        tabIndex={-1}
+        className="bg-daintree-bg border border-daintree-border rounded-lg shadow-[var(--theme-shadow-dialog)] max-w-sm w-full mx-4 p-4"
+      >
+        <p
+          id={messageId}
+          className="text-sm text-daintree-text whitespace-pre-wrap break-words mb-4"
+        >
           {dialog.message}
         </p>
 
