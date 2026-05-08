@@ -5,6 +5,10 @@ import {
   isValidBrowserUrl,
   getDisplayUrl,
   extractHostPort,
+  clampZoom,
+  BROWSER_ZOOM_MIN,
+  BROWSER_ZOOM_MAX,
+  BROWSER_ZOOM_DEFAULT,
 } from "../browserUtils";
 
 describe("normalizeBrowserUrl", () => {
@@ -151,5 +155,30 @@ describe("extractHostPort", () => {
 
   it("should fallback to localhost for invalid URLs", () => {
     expect(extractHostPort("not a url")).toBe("localhost");
+  });
+});
+
+describe("clampZoom", () => {
+  it("returns in-range values unchanged", () => {
+    expect(clampZoom(1.0)).toBe(1.0);
+    expect(clampZoom(1.25)).toBe(1.25);
+    expect(clampZoom(BROWSER_ZOOM_MIN)).toBe(BROWSER_ZOOM_MIN);
+    expect(clampZoom(BROWSER_ZOOM_MAX)).toBe(BROWSER_ZOOM_MAX);
+  });
+
+  it("clamps values below the minimum", () => {
+    expect(clampZoom(0.1)).toBe(BROWSER_ZOOM_MIN);
+    expect(clampZoom(-1)).toBe(BROWSER_ZOOM_MIN);
+  });
+
+  it("clamps values above the maximum", () => {
+    expect(clampZoom(5)).toBe(BROWSER_ZOOM_MAX);
+    expect(clampZoom(2.5)).toBe(BROWSER_ZOOM_MAX);
+  });
+
+  it("returns the default for non-finite inputs", () => {
+    expect(clampZoom(Number.NaN)).toBe(BROWSER_ZOOM_DEFAULT);
+    expect(clampZoom(Number.POSITIVE_INFINITY)).toBe(BROWSER_ZOOM_DEFAULT);
+    expect(clampZoom(Number.NEGATIVE_INFINITY)).toBe(BROWSER_ZOOM_DEFAULT);
   });
 });

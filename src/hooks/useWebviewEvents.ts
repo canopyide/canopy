@@ -1,6 +1,7 @@
 import { useEffect, useEffectEvent } from "react";
 import type { BrowserHistory } from "@shared/types/browser";
 import { pushBrowserHistory } from "@/components/Browser/historyUtils";
+import type { LoadError } from "@/components/Browser/browserUtils";
 import { useUrlHistoryStore } from "@/store/urlHistoryStore";
 
 // Threshold after which a load is reported as "Taking longer than usual…"
@@ -8,6 +9,16 @@ import { useUrlHistoryStore } from "@/store/urlHistoryStore";
 const SLOW_LOAD_THRESHOLD_MS = 5000;
 // Coalesce favicon-updated bursts to avoid thrashing the URL-history store.
 const FAVICON_DEBOUNCE_MS = 200;
+
+// Chromium net error codes — see net/base/net_error_list.h
+const ERR_ABORTED = -3;
+const ERR_SSL_PROTOCOL_ERROR = -107;
+const ERR_CERT_RANGE_END = -200;
+const ERR_CERT_RANGE_START = -299;
+const ERR_CONNECTION_REFUSED = -102;
+const ERR_NAME_NOT_RESOLVED = -105;
+const ERR_INTERNET_DISCONNECTED = -106;
+const ERR_CONNECTION_TIMED_OUT = -118;
 
 export type UseWebviewEventsOptions = {
   webviewElement: Electron.WebviewTag | null;
@@ -21,7 +32,7 @@ export type UseWebviewEventsOptions = {
   zoomFactor: number;
   setIsWebviewReady: (v: boolean) => void;
   setIsLoading: (v: boolean) => void;
-  setLoadError: (v: string | null) => void;
+  setLoadError: (v: LoadError | null) => void;
   setIsSlowLoad: (v: boolean) => void;
   setBlockedNav: (v: { url: string; canOpenExternal: boolean } | null) => void;
   setHistory: React.Dispatch<React.SetStateAction<BrowserHistory>>;
@@ -110,9 +121,10 @@ export function useWebviewEvents({
             webview.stop();
             setIsSlowLoad(false);
             setIsLoading(false);
-            setLoadError(
-              `Load timed out after ${Math.round(timeoutMs / 1000)}s. The server at ${webview.getURL()} may be unreachable or slow to respond.`
-            );
+            setLoadError({
+              kind: "timeout",
+              message: `Load timed out after ${Math.round(timeoutMs / 1000)}s. The server at ${webview.getURL()} may be unreachable or slow to respond.`,
+            });
           }
         } catch {
           // Webview detached before timeout fired
@@ -134,6 +146,11 @@ export function useWebviewEvents({
     };
 
     const handleDidFailLoad = (event: Electron.DidFailLoadEvent) => {
+      // Both early returns must precede the timer-clear block: a sub-frame
+      // failure (ad pixel, tracker) or a stale ERR_ABORTED from a superseded
+      // navigation must not disarm the active main-frame load timers.
+      if (event.errorCode === ERR_ABORTED) return;
+      if (!event.isMainFrame) return;
       setIsSlowLoad(false);
       if (slowLoadTimeoutRef.current) {
         clearTimeout(slowLoadTimeoutRef.current);
@@ -143,52 +160,59 @@ export function useWebviewEvents({
         clearTimeout(loadTimeoutRef.current);
         loadTimeoutRef.current = null;
       }
-      // Ignore aborted loads (e.g., navigation interrupted by another navigation)
-      if (event.errorCode === -3) return;
-      // Ignore cancellations
-      if (event.errorCode === -6) return;
       setIsLoading(false);
-      const ERR_CONNECTION_REFUSED = -102;
-      const ERR_NAME_NOT_RESOLVED = -105;
-      const ERR_INTERNET_DISCONNECTED = -106;
-      const ERR_CONNECTION_TIMED_OUT = -118;
-      if (
-        event.isMainFrame &&
-        event.errorCode === ERR_CONNECTION_REFUSED &&
-        isInitialRestoredLoadRef.current
-      ) {
-        setLoadError(
-          "The saved URL is no longer reachable. The server may have moved to a different port."
-        );
-      } else if (
-        event.isMainFrame &&
-        event.errorCode === ERR_NAME_NOT_RESOLVED &&
-        event.validatedURL
-      ) {
+      const errorCode = event.errorCode;
+      const isCertError = errorCode <= ERR_CERT_RANGE_END && errorCode >= ERR_CERT_RANGE_START;
+      if (errorCode === ERR_CONNECTION_REFUSED && isInitialRestoredLoadRef.current) {
+        setLoadError({
+          kind: "network",
+          message:
+            "The saved URL is no longer reachable. The server may have moved to a different port.",
+        });
+      } else if (errorCode === ERR_NAME_NOT_RESOLVED && event.validatedURL) {
         let hostname = event.validatedURL;
         try {
           hostname = new URL(event.validatedURL).hostname;
         } catch {
           // Use raw validatedURL if parsing fails
         }
-        setLoadError(`Couldn't resolve ${hostname}. Check the URL or your connection.`);
-      } else if (event.isMainFrame && event.errorCode === ERR_INTERNET_DISCONNECTED) {
-        setLoadError("No internet connection. Check your network.");
-      } else if (
-        event.isMainFrame &&
-        event.errorCode === ERR_CONNECTION_TIMED_OUT &&
-        event.validatedURL
-      ) {
-        setLoadError(
-          `Connection to ${event.validatedURL} timed out. The server may be unreachable.`
-        );
-      } else if (event.isMainFrame) {
+        setLoadError({
+          kind: "network",
+          message: `Couldn't resolve ${hostname}. Check the URL or your connection.`,
+        });
+      } else if (errorCode === ERR_INTERNET_DISCONNECTED) {
+        setLoadError({
+          kind: "network",
+          message: "No internet connection. Check your network.",
+        });
+      } else if (errorCode === ERR_CONNECTION_TIMED_OUT) {
+        const target = event.validatedURL ? ` to ${event.validatedURL}` : "";
+        setLoadError({
+          kind: "network",
+          message: `Connection${target} timed out. The server may be unreachable.`,
+        });
+      } else if (errorCode === ERR_SSL_PROTOCOL_ERROR) {
+        // -107 also fires on protocol mismatch (HTTP server reached over HTTPS),
+        // so the cert/CA trust hint isn't always the right advice.
+        const hostContext = event.validatedURL ? ` to ${event.validatedURL}` : "";
+        setLoadError({
+          kind: "cert",
+          message: `SSL/TLS handshake failed${hostContext}. The server may not support HTTPS, or its certificate may be invalid.`,
+        });
+      } else if (isCertError) {
+        const hostContext = event.validatedURL ? ` for ${event.validatedURL}` : "";
+        setLoadError({
+          kind: "cert",
+          message: `The site's certificate couldn't be verified${hostContext}. If this is a local development server, make sure the local CA is trusted (e.g. run \`mkcert -install\`).`,
+        });
+      } else {
         const urlContext = event.validatedURL ? ` at ${event.validatedURL}` : "";
-        setLoadError(
-          event.errorDescription
+        setLoadError({
+          kind: "generic",
+          message: event.errorDescription
             ? `${event.errorDescription}${urlContext}`
-            : `Failed to load page${urlContext}. The site may be unavailable.`
-        );
+            : `Failed to load page${urlContext}. The site may be unavailable.`,
+        });
       }
     };
 

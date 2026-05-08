@@ -840,6 +840,155 @@ describe("BrowserPane webview lifecycle regression", () => {
       expect(container.textContent).toContain("No internet connection");
     });
 
+    it("shows certificate error overlay for ERR_CERT_AUTHORITY_INVALID (-202)", () => {
+      const { container } = render(<BrowserPane {...baseProps} />);
+      const webview = getWebviewElement(container);
+
+      act(() => {
+        emitWebviewEvent(webview, "did-fail-load", {
+          errorCode: -202,
+          errorDescription: "ERR_CERT_AUTHORITY_INVALID",
+          isMainFrame: true,
+          validatedURL: "https://localhost:8443/",
+        });
+      });
+
+      expect(container.textContent).toContain("Certificate Error");
+      expect(container.textContent).toContain("certificate couldn't be verified");
+      expect(container.textContent).toContain("mkcert -install");
+    });
+
+    it("shows SSL/TLS handshake message for ERR_SSL_PROTOCOL_ERROR (-107)", () => {
+      const { container } = render(<BrowserPane {...baseProps} />);
+      const webview = getWebviewElement(container);
+
+      act(() => {
+        emitWebviewEvent(webview, "did-fail-load", {
+          errorCode: -107,
+          errorDescription: "ERR_SSL_PROTOCOL_ERROR",
+          isMainFrame: true,
+          validatedURL: "https://localhost:8443/",
+        });
+      });
+
+      expect(container.textContent).toContain("Certificate Error");
+      expect(container.textContent).toContain("SSL/TLS handshake failed");
+      // -107 is also raised on protocol mismatch — the mkcert hint is wrong here.
+      expect(container.textContent).not.toContain("mkcert");
+    });
+
+    it("surfaces ERR_FILE_NOT_FOUND (-6) instead of silently swallowing it", () => {
+      const { container } = render(<BrowserPane {...baseProps} />);
+      const webview = getWebviewElement(container);
+
+      act(() => {
+        emitWebviewEvent(webview, "did-fail-load", {
+          errorCode: -6,
+          errorDescription: "ERR_FILE_NOT_FOUND",
+          isMainFrame: true,
+          validatedURL: "http://localhost:5173/missing",
+        });
+      });
+
+      expect(container.textContent).toContain("Unable to Display Page");
+      expect(container.textContent).toContain("ERR_FILE_NOT_FOUND");
+    });
+
+    it("ignores sub-frame failures", () => {
+      const { container } = render(<BrowserPane {...baseProps} />);
+      const webview = getWebviewElement(container);
+
+      act(() => {
+        emitWebviewEvent(webview, "did-fail-load", {
+          errorCode: -105,
+          errorDescription: "ERR_NAME_NOT_RESOLVED",
+          isMainFrame: false,
+          validatedURL: "http://tracker.example.test/pixel.gif",
+        });
+      });
+
+      expect(container.textContent).not.toContain("Unable to Display Page");
+      expect(container.textContent).not.toContain("Couldn't resolve");
+    });
+
+    it("does not disarm main-frame timeout when a sub-frame fails", () => {
+      const { container } = render(<BrowserPane {...baseProps} />);
+      const webview = getWebviewElement(container);
+
+      act(() => {
+        webview.setMockLoading(true);
+        emitWebviewEvent(webview, "did-start-loading");
+      });
+
+      // Sub-frame (e.g. tracker pixel) fails mid-load — must not clear the main-frame timer.
+      act(() => {
+        emitWebviewEvent(webview, "did-fail-load", {
+          errorCode: -105,
+          errorDescription: "ERR_NAME_NOT_RESOLVED",
+          isMainFrame: false,
+          validatedURL: "http://tracker.example.test/pixel.gif",
+        });
+      });
+
+      act(() => {
+        vi.advanceTimersByTime(30000);
+      });
+
+      expect(webview.stop).toHaveBeenCalledTimes(1);
+      expect(container.textContent).toContain("Page Load Timed Out");
+    });
+
+    it("stale ERR_ABORTED from a superseded navigation does not disarm new timers", () => {
+      const { container } = render(<BrowserPane {...baseProps} />);
+      const webview = getWebviewElement(container);
+
+      // First navigation starts and arms timers.
+      act(() => {
+        webview.setMockLoading(true);
+        emitWebviewEvent(webview, "did-start-loading");
+      });
+
+      // Second navigation supersedes the first — fresh timers armed.
+      act(() => {
+        emitWebviewEvent(webview, "did-start-loading");
+      });
+
+      // The first navigation's superseded did-fail-load (ERR_ABORTED, -3) arrives late.
+      act(() => {
+        emitWebviewEvent(webview, "did-fail-load", {
+          errorCode: -3,
+          errorDescription: "ERR_ABORTED",
+          isMainFrame: true,
+          validatedURL: "http://localhost:5173/old",
+        });
+      });
+
+      act(() => {
+        vi.advanceTimersByTime(30000);
+      });
+
+      expect(webview.stop).toHaveBeenCalledTimes(1);
+      expect(container.textContent).toContain("Page Load Timed Out");
+    });
+
+    it("shows connection-timeout message when validatedURL is empty", () => {
+      const { container } = render(<BrowserPane {...baseProps} />);
+      const webview = getWebviewElement(container);
+
+      act(() => {
+        emitWebviewEvent(webview, "did-fail-load", {
+          errorCode: -118,
+          errorDescription: "ERR_CONNECTION_TIMED_OUT",
+          isMainFrame: true,
+          validatedURL: "",
+        });
+      });
+
+      expect(container.textContent).toContain("Connection Failed");
+      expect(container.textContent).toContain("timed out");
+      expect(container.textContent).not.toContain("Unable to Display Page");
+    });
+
     it("cleans slow timer on unmount", () => {
       const { container, unmount } = render(<BrowserPane {...baseProps} />);
       const webview = getWebviewElement(container);

@@ -43,7 +43,6 @@ interface BrowserToolbarProps {
   canGoBack: boolean;
   canGoForward: boolean;
   isLoading: boolean;
-  urlMightBeStale?: boolean;
   zoomFactor?: number;
   isConsoleOpen?: boolean;
   isWebviewReady?: boolean;
@@ -68,7 +67,6 @@ export function BrowserToolbar({
   canGoBack,
   canGoForward,
   isLoading,
-  urlMightBeStale = false,
   zoomFactor = 1.0,
   isConsoleOpen = false,
   isWebviewReady = false,
@@ -468,16 +466,6 @@ export function BrowserToolbar({
         <form onSubmit={handleSubmit}>
           <div className="relative flex items-center">
             <Globe className="absolute left-2 w-3.5 h-3.5 text-daintree-text/40 pointer-events-none" />
-            {urlMightBeStale && !isEditing && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="absolute left-6 w-1.5 h-1.5 rounded-full bg-status-warning/60" />
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  URL may differ from page shown (in-page navigation)
-                </TooltipContent>
-              </Tooltip>
-            )}
             <input
               ref={inputRef}
               type="text"
