@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { EventFilters } from "../EventFilters";
 import type { EventRecord } from "@/store/eventStore";
@@ -53,5 +53,14 @@ describe("EventFilters accessibility", () => {
     render(<EventFilters {...baseProps} />);
     const systemChip = screen.getByText("System").closest("button")!;
     expect(systemChip.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("calls onFiltersChange with toggled category on click", () => {
+    const onFiltersChange = vi.fn();
+    render(<EventFilters {...baseProps} onFiltersChange={onFiltersChange} />);
+    fireEvent.click(screen.getByText("System").closest("button")!);
+    expect(onFiltersChange).toHaveBeenCalledWith(
+      expect.objectContaining({ categories: ["system"] })
+    );
   });
 });

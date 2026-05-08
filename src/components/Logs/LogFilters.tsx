@@ -122,7 +122,7 @@ export function LogFilters({
       <div className="flex items-center gap-1">
         <span className="text-daintree-text/60 text-xs mr-1">Level:</span>
         {LOG_LEVELS.map(({ level, label, color }) => {
-          const isActive = filters.levels?.includes(level);
+          const isActive = filters.levels?.includes(level) ?? false;
           const count = levelCounts?.[level] ?? 0;
           return (
             <Button
@@ -161,7 +161,7 @@ export function LogFilters({
               )}
             >
               {availableSources.map((source) => {
-                const isActive = filters.sources?.includes(source);
+                const isActive = filters.sources?.includes(source) ?? false;
                 return (
                   <Button
                     key={source}

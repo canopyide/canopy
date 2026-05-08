@@ -42,6 +42,18 @@ describe("LogFilters accessibility", () => {
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
   });
 
+  it("toggles aria-expanded when sources popover opens and closes", async () => {
+    render(<LogFilters {...baseProps} />);
+    const trigger = screen.getByText(/Sources/).closest("button")!;
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(trigger);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    dispatchEscape();
+    await waitFor(() => {
+      expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    });
+  });
+
   it("renders source items with aria-pressed when popover is open", () => {
     render(<LogFilters {...baseProps} filters={{ sources: ["renderer"] }} />);
     fireEvent.click(screen.getByText(/Sources/).closest("button")!);
