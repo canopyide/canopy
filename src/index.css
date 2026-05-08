@@ -1826,6 +1826,27 @@ body[data-reduce-animations="true"] :is(.terminal-restoring, .terminal-trashing)
   animation: none;
 }
 
+/* Diagnostics dock — 200ms height transition (semantic exception per CLAUDE.md):
+ * height encodes open/close state. Suppressed during active drag and under
+ * reduced-motion to mirror the .terminal-restoring peer pattern. */
+.diagnostics-dock {
+  transition: height 200ms ease-out;
+}
+
+.diagnostics-dock[data-resizing="true"] {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .diagnostics-dock {
+    transition: none;
+  }
+}
+
+body[data-reduce-animations="true"] .diagnostics-dock {
+  transition: none;
+}
+
 /* Terminal Selection State */
 .terminal-selected {
   border-color: color-mix(in oklab, var(--theme-border-strong) 92%, var(--theme-text-primary));

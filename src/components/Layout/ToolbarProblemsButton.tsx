@@ -6,6 +6,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { ShortcutRevealChip } from "@/components/ui/ShortcutRevealChip";
 import { createTooltipContent } from "@/lib/tooltipShortcut";
 import { useAriaKeyshortcuts, useKeybindingDisplay, useShortcutHintHover } from "@/hooks";
+import { useDiagnosticsStore } from "@/store/diagnosticsStore";
+import { DIAGNOSTICS_DOCK_REGION_ID } from "@/components/Diagnostics/DiagnosticsDock";
 
 const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text";
 
@@ -23,6 +25,7 @@ export const ToolbarProblemsButton = memo(function ToolbarProblemsButton({
   const diagnosticsShortcut = useKeybindingDisplay("panel.toggleDiagnostics");
   const diagnosticsAriaShortcut = useAriaKeyshortcuts("panel.toggleDiagnostics");
   const diagnosticsHover = useShortcutHintHover("panel.toggleDiagnostics");
+  const isDockOpen = useDiagnosticsStore((state) => state.isOpen);
 
   return (
     <Tooltip>
@@ -36,6 +39,8 @@ export const ToolbarProblemsButton = memo(function ToolbarProblemsButton({
           className={cn(toolbarIconButtonClass, "relative", errorCount > 0 && "text-status-error")}
           aria-label={`Problems: ${errorCount} error${errorCount !== 1 ? "s" : ""}`}
           aria-keyshortcuts={diagnosticsAriaShortcut}
+          aria-expanded={isDockOpen}
+          aria-controls={DIAGNOSTICS_DOCK_REGION_ID}
         >
           <AlertCircle />
           <span
