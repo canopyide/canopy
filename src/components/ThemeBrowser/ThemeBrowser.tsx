@@ -196,6 +196,7 @@ export function ThemeBrowser() {
     (id: string, debounceAnnounce?: boolean) => {
       const state = useAppThemeStore.getState();
       if (state.previewSchemeId === id) return;
+      if (state.previewSchemeId === null && state.selectedSchemeId === id) return;
       const scheme = resolveAppTheme(id, state.customSchemes);
       setPreviewSchemeId(id);
       injectSchemeToDOM(scheme);

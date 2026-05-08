@@ -456,6 +456,27 @@ describe("ThemeBrowser", () => {
     expect(live?.textContent).toBe(firstAnnouncement);
   });
 
+  it("clicking the committed row when no preview is active does not re-inject or announce", () => {
+    const { container } = render(<Harness />);
+
+    // No preview is active; the committed scheme is already shown.
+    expect(useAppThemeStore.getState().previewSchemeId).toBeNull();
+
+    const committedName = BUILT_IN_APP_SCHEMES.find((s) => s.id === DEFAULT_APP_SCHEME_ID)?.name;
+    const committedRow = findRowByName(committedName!);
+
+    const live = container.querySelector('[aria-live="polite"]');
+    const beforeText = live?.textContent;
+
+    fireEvent.click(committedRow);
+
+    // previewSchemeId should remain null — no preview was set because the
+    // scheme is already active.
+    expect(useAppThemeStore.getState().previewSchemeId).toBeNull();
+    // Live region should not have changed.
+    expect(live?.textContent).toBe(beforeText);
+  });
+
   it("ArrowDown on the search input previews the next theme without a prior click into the panel", () => {
     render(<Harness />);
 
