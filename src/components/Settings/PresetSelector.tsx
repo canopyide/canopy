@@ -107,7 +107,7 @@ export function PresetSelector({
           data-testid="preset-selector-trigger"
         >
           <span
-            className="w-2.5 h-2.5 rounded-full shrink-0 border border-daintree-border/60"
+            className="w-2.5 h-2.5 rounded-full shrink-0 border border-daintree-border"
             style={{ backgroundColor: selectedItem.color }}
             aria-hidden="true"
           />
@@ -257,7 +257,7 @@ function PresetOption({
       )}
     >
       <span
-        className="w-2.5 h-2.5 rounded-full shrink-0 border border-daintree-border/60"
+        className="w-2.5 h-2.5 rounded-full shrink-0 border border-daintree-border"
         style={{ backgroundColor: color }}
         aria-hidden="true"
       />
