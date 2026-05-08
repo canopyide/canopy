@@ -60,7 +60,7 @@ export function ShortcutReferenceDialog({ isOpen, onClose }: ShortcutReferenceDi
         effectiveCombo: binding.effectiveCombo,
         displayCombo,
         normalizedCombo,
-        keywords: [],
+        keywords: binding.effectiveCombo ? [] : ["unbound"],
       };
     });
   }, [allBindings]);
@@ -179,7 +179,10 @@ export function ShortcutReferenceDialog({ isOpen, onClose }: ShortcutReferenceDi
                       </dt>
                       <dd className="ml-4">
                         {binding.effectiveCombo ? (
-                          <KbdChord shortcut={binding.effectiveCombo} />
+                          <KbdChord
+                            shortcut={binding.effectiveCombo}
+                            aria-label={binding.displayCombo}
+                          />
                         ) : (
                           <span className="text-xs text-daintree-text/60 italic">unbound</span>
                         )}
