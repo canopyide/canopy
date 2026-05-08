@@ -60,6 +60,7 @@ export function AgentSettings({
 
   useEffect(() => {
     initialize();
+    setLoadTimedOut(false);
     const timer = setTimeout(() => setLoadTimedOut(true), 10_000);
     return () => clearTimeout(timer);
   }, [initialize]);

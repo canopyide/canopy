@@ -32,12 +32,13 @@ export function AgentHelpOutput({
   const [isCopied, setIsCopied] = useState(false);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMountedRef = useRef(true);
+  const loadGenRef = useRef(0);
 
   useEffect(() => {
     setHelpResult(null);
     setError(null);
     setIsCopied(false);
-  }, [agentId]);
+  }, [agentId, availability]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -51,6 +52,7 @@ export function AgentHelpOutput({
 
   const loadHelp = useCallback(
     async (refresh = false) => {
+      const gen = ++loadGenRef.current;
       setIsLoading(true);
       setError(null);
 
@@ -61,11 +63,13 @@ export function AgentHelpOutput({
 
       try {
         const result = await agentHelpClient.get({ agentId, refresh });
+        if (loadGenRef.current !== gen) return;
         setHelpResult(result);
       } catch (err) {
+        if (loadGenRef.current !== gen) return;
         setError(formatErrorMessage(err, "Failed to load help output"));
       } finally {
-        setIsLoading(false);
+        if (loadGenRef.current === gen) setIsLoading(false);
       }
     },
     [agentId, availability]
