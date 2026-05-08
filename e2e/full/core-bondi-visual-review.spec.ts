@@ -1,6 +1,6 @@
 import { test } from "@playwright/test";
 import path from "path";
-import { rmSync, existsSync } from "fs";
+import { rmSync } from "fs";
 import { launchApp, closeApp, type AppContext } from "../helpers/launch";
 import { createFixtureRepo } from "../helpers/fixtures";
 import { openAndOnboardProject } from "../helpers/project";
@@ -39,11 +39,19 @@ test.describe.serial("Core: Bondi Visual Review", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
-    const worktreeDir = path.join(path.dirname(repoDir), path.basename(repoDir) + "-worktrees");
-    if (existsSync(worktreeDir)) {
-      rmSync(worktreeDir, { recursive: true, force: true });
+    if (repoDir) {
+      const worktreeDir = path.join(path.dirname(repoDir), path.basename(repoDir) + "-worktrees");
+      try {
+        rmSync(worktreeDir, { recursive: true, force: true });
+      } catch {
+        /* best-effort */
+      }
+      try {
+        rmSync(repoDir, { recursive: true, force: true });
+      } catch {
+        /* best-effort */
+      }
     }
-    rmSync(repoDir, { recursive: true, force: true });
   });
 
   // eslint-disable-next-line no-empty-pattern
