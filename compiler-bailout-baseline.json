@@ -54,16 +54,11 @@
     "pipelineErrors": []
   },
   "src/components/Browser/BrowserPane.tsx": {
-    "success": 0,
+    "success": 1,
     "skip": 0,
-    "error": 1,
+    "error": 0,
     "pipeline": 0,
-    "errorBailouts": [
-      {
-        "category": "Todo",
-        "reason": "Support value blocks (conditional, logical, optional chaining, etc) within a try/catch statement"
-      }
-    ],
+    "errorBailouts": [],
     "skipReasons": [],
     "pipelineErrors": []
   },
@@ -401,16 +396,11 @@
     "pipelineErrors": []
   },
   "src/components/DragDrop/SortableWorktreeTerminal.tsx": {
-    "success": 0,
+    "success": 1,
     "skip": 0,
-    "error": 1,
+    "error": 0,
     "pipeline": 0,
-    "errorBailouts": [
-      {
-        "category": "Refs",
-        "reason": "Cannot access refs during render"
-      }
-    ],
+    "errorBailouts": [],
     "skipReasons": [],
     "pipelineErrors": []
   },
@@ -1599,16 +1589,11 @@
     "pipelineErrors": []
   },
   "src/components/Pulse/PulseHeatmap.tsx": {
-    "success": 0,
+    "success": 2,
     "skip": 0,
-    "error": 1,
+    "error": 0,
     "pipeline": 0,
-    "errorBailouts": [
-      {
-        "category": "Refs",
-        "reason": "Cannot access refs during render"
-      }
-    ],
+    "errorBailouts": [],
     "skipReasons": [],
     "pipelineErrors": []
   },
@@ -3321,20 +3306,11 @@
     "pipelineErrors": []
   },
   "src/components/ThemeBrowser/ThemeBrowser.tsx": {
-    "success": 1,
+    "success": 2,
     "skip": 0,
-    "error": 2,
+    "error": 0,
     "pipeline": 0,
-    "errorBailouts": [
-      {
-        "category": "Immutability",
-        "reason": "This value cannot be modified"
-      },
-      {
-        "category": "Immutability",
-        "reason": "This value cannot be modified"
-      }
-    ],
+    "errorBailouts": [],
     "skipReasons": [],
     "pipelineErrors": []
   },
