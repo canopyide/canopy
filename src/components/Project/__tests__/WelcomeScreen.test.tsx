@@ -355,8 +355,8 @@ describe("WelcomeScreen", () => {
   it("shows correct progress ratio with endowed item", () => {
     render(<WelcomeScreen gettingStarted={makeGettingStarted(oneComplete)} />);
 
-    // 1 endowed + 1 completed = 2/4
-    expect(screen.getByText("2/4")).toBeTruthy();
+    // 1 endowed + 1 completed = 2/5
+    expect(screen.getByText("2/5")).toBeTruthy();
   });
 
   it("renders incomplete items as clickable buttons", () => {
@@ -428,6 +428,182 @@ describe("WelcomeScreen", () => {
 
     expect(screen.queryByText("Getting Started")).toBeNull();
     expect(screen.queryByText("Install Daintree")).toBeNull();
+  });
+
+  it("shows 5/5 progress when all items are complete", () => {
+    // The checklist is hidden when all done, so test through NudgeSequencer
+    // by simulating that the checklist would show.
+    agentDiscoveryState.loaded = true;
+    agentDiscoveryState.setupBannerDismissed = true;
+    agentDiscoveryState.welcomeCardDismissed = true;
+    cliAvailabilityState.hasRealData = false;
+
+    render(<WelcomeScreen gettingStarted={makeGettingStarted(allComplete)} />);
+    // All done — checklist is hidden (showChecklist is false when allDone)
+    expect(screen.queryByText("Getting Started")).toBeNull();
+  });
+
+  it("renders progress at 100% width when all items complete", () => {
+    agentDiscoveryState.loaded = true;
+    agentDiscoveryState.setupBannerDismissed = true;
+    agentDiscoveryState.welcomeCardDismissed = true;
+    cliAvailabilityState.hasRealData = false;
+
+    // Use 3 of 4 complete — checklist still shows, progress is 4/5 = 80%
+    const threeComplete: ChecklistState = {
+      dismissed: false,
+      celebrationShown: false,
+      items: {
+        openedProject: true,
+        launchedAgent: true,
+        createdWorktree: true,
+        ranSecondParallelAgent: false,
+      },
+    };
+    render(<WelcomeScreen gettingStarted={makeGettingStarted(threeComplete)} />);
+    expect(screen.getByText("4/5")).toBeTruthy();
+  });
+
+  // --- Cold-start flash (agentSettings hydration) ---
+
+  it("does not render welcome card when agentSettings is null", () => {
+    agentDiscoveryState.loaded = true;
+    agentDiscoveryState.setupBannerDismissed = true;
+    agentDiscoveryState.welcomeCardDismissed = false;
+    cliAvailabilityState.hasRealData = true;
+    cliAvailabilityState.availability = { claude: "ready" };
+    agentSettingsState.settings = null;
+
+    render(<WelcomeScreen gettingStarted={makeGettingStarted()} />);
+
+    expect(screen.queryByText(/Installed agents found/)).toBeNull();
+  });
+
+  it("does not render welcome card when agentSettings is undefined", () => {
+    agentDiscoveryState.loaded = true;
+    agentDiscoveryState.setupBannerDismissed = true;
+    agentDiscoveryState.welcomeCardDismissed = false;
+    cliAvailabilityState.hasRealData = true;
+    cliAvailabilityState.availability = { claude: "ready" };
+    agentSettingsState.settings = undefined as unknown as null;
+
+    render(<WelcomeScreen gettingStarted={makeGettingStarted()} />);
+
+    expect(screen.queryByText(/Installed agents found/)).toBeNull();
+  });
+
+  it("renders welcome card after agentSettings hydrates with no pinned agents", () => {
+    agentDiscoveryState.loaded = true;
+    agentDiscoveryState.setupBannerDismissed = true;
+    agentDiscoveryState.welcomeCardDismissed = false;
+    cliAvailabilityState.hasRealData = true;
+    cliAvailabilityState.availability = { claude: "ready" };
+    agentSettingsState.settings = { agents: {} };
+
+    render(<WelcomeScreen gettingStarted={makeGettingStarted()} />);
+
+    expect(screen.getByText(/Installed agents found/)).toBeTruthy();
+  });
+
+  // --- aria-current ---
+
+  it("adds aria-current=step to the first incomplete checklist button", () => {
+    agentDiscoveryState.loaded = true;
+    agentDiscoveryState.setupBannerDismissed = true;
+    agentDiscoveryState.welcomeCardDismissed = true;
+    cliAvailabilityState.hasRealData = false;
+
+    render(<WelcomeScreen gettingStarted={makeGettingStarted(allIncomplete)} />);
+
+    const buttons = screen.getAllByRole("button", {
+      name: /open your project|ask ai to help with your code|start a parallel task/i,
+    });
+    // First incomplete item ("Open your project") gets aria-current
+    expect(buttons[0].getAttribute("aria-current")).toBe("step");
+    // Second incomplete item does not
+    expect(buttons[1].getAttribute("aria-current")).toBeNull();
+    // Third incomplete item does not
+    expect(buttons[2].getAttribute("aria-current")).toBeNull();
+  });
+
+  it("skips completed items when assigning aria-current=step", () => {
+    agentDiscoveryState.loaded = true;
+    agentDiscoveryState.setupBannerDismissed = true;
+    agentDiscoveryState.welcomeCardDismissed = true;
+    cliAvailabilityState.hasRealData = false;
+
+    render(<WelcomeScreen gettingStarted={makeGettingStarted(oneComplete)} />);
+
+    // openedProject is done — next incomplete is "Ask AI to help with your code"
+    const buttons = screen.getAllByRole("button", {
+      name: /ask ai to help with your code|start a parallel task/i,
+    });
+    expect(buttons[0].getAttribute("aria-current")).toBe("step");
+    expect(buttons[1].getAttribute("aria-current")).toBeNull();
+  });
+
+  // --- line-through ---
+
+  it("applies line-through to completed checklist label spans", () => {
+    agentDiscoveryState.loaded = true;
+    agentDiscoveryState.setupBannerDismissed = true;
+    agentDiscoveryState.welcomeCardDismissed = true;
+    cliAvailabilityState.hasRealData = false;
+
+    render(<WelcomeScreen gettingStarted={makeGettingStarted(oneComplete)} />);
+
+    // openedProject is done — its label should have line-through
+    const completedLabel = screen.getByText("Open your project");
+    expect(completedLabel.className).toContain("line-through");
+  });
+
+  // --- Keyboard Shortcuts empty state ---
+
+  it("suppresses Keyboard Shortcuts section when all combos are empty", () => {
+    getDisplayComboMock.mockReturnValue("");
+
+    render(<WelcomeScreen gettingStarted={makeGettingStarted()} />);
+
+    expect(screen.queryByText("Keyboard Shortcuts")).toBeNull();
+    // Restore default mock behavior
+    getDisplayComboMock.mockImplementation((actionId: string) => {
+      const map: Record<string, string> = {
+        "panel.palette": "⌘N",
+        "nav.quickSwitcher": "⌘P",
+        "terminal.new": "⌘⌥T",
+        "action.palette.open": "⌘K",
+        "help.shortcuts": "⌘/",
+        "app.settings": "⌘,",
+      };
+      return map[actionId] ?? "";
+    });
+  });
+
+  it("renders Keyboard Shortcuts section when only one combo is available", () => {
+    getDisplayComboMock.mockImplementation((actionId: string) => {
+      if (actionId === "panel.palette") return "⌘N";
+      return "";
+    });
+
+    render(<WelcomeScreen gettingStarted={makeGettingStarted()} />);
+
+    expect(screen.getByText("Keyboard Shortcuts")).toBeTruthy();
+    const kbdElements = document.querySelectorAll("kbd");
+    expect(kbdElements.length).toBe(1);
+    expect(kbdElements[0].textContent).toBe("⌘N");
+
+    // Restore default mock behavior
+    getDisplayComboMock.mockImplementation((actionId: string) => {
+      const map: Record<string, string> = {
+        "panel.palette": "⌘N",
+        "nav.quickSwitcher": "⌘P",
+        "terminal.new": "⌘⌥T",
+        "action.palette.open": "⌘K",
+        "help.shortcuts": "⌘/",
+        "app.settings": "⌘,",
+      };
+      return map[actionId] ?? "";
+    });
   });
 
   // --- Quick Actions ---

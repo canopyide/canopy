@@ -61,10 +61,15 @@ export function WelcomeScreen({ gettingStarted }: WelcomeScreenProps) {
   const hasProjects = recentProjects.length > 0;
   const { checklist } = gettingStarted;
 
+  const visibleShortcutTips = useMemo(
+    () => SHORTCUT_TIPS.filter(({ actionId }) => keybindingService.getDisplayCombo(actionId)),
+    [],
+  );
+
   const completedCount = checklist ? Object.values(checklist.items).filter(Boolean).length : 0;
   const allDone = checklist ? Object.values(checklist.items).every(Boolean) : false;
   const showChecklist = gettingStarted.visible && checklist && !checklist.dismissed && !allDone;
-  const progressTotal = 4; // 3 real items + endowed "Install Daintree"
+  const progressTotal = CHECKLIST_ITEMS.length + 1; // real items + endowed "Install Daintree"
   const progressDone = 1 + completedCount; // endowed item always complete
 
   return (
@@ -123,25 +128,26 @@ export function WelcomeScreen({ gettingStarted }: WelcomeScreenProps) {
         </div>
 
         {/* Keyboard Shortcuts */}
-        <div className="w-full">
-          <h3 className="text-xs font-medium text-daintree-text/50 uppercase tracking-wider mb-3">
-            Keyboard Shortcuts
-          </h3>
-          <div className="grid grid-cols-2 gap-x-8 gap-y-2">
-            {SHORTCUT_TIPS.map(({ label, actionId }) => {
-              const combo = keybindingService.getDisplayCombo(actionId);
-              if (!combo) return null;
-              return (
-                <div key={actionId} className="flex items-center justify-between gap-3">
-                  <span className="text-sm text-daintree-text/70">{label}</span>
-                  <kbd className="shrink-0 bg-daintree-bg border border-daintree-border rounded px-1.5 py-0.5 text-xs font-mono text-daintree-text/80 shadow-sm">
-                    {combo}
-                  </kbd>
-                </div>
-              );
-            })}
+        {visibleShortcutTips.length > 0 && (
+          <div className="w-full">
+            <h3 className="text-xs font-medium text-daintree-text/50 uppercase tracking-wider mb-3">
+              Keyboard Shortcuts
+            </h3>
+            <div className="grid grid-cols-2 gap-x-8 gap-y-2">
+              {visibleShortcutTips.map(({ label, actionId }) => {
+                const combo = keybindingService.getDisplayCombo(actionId);
+                return (
+                  <div key={actionId} className="flex items-center justify-between gap-3">
+                    <span className="text-sm text-daintree-text/70">{label}</span>
+                    <kbd className="shrink-0 bg-daintree-bg border border-daintree-border rounded px-1.5 py-0.5 text-xs font-mono text-daintree-text/80 shadow-sm">
+                      {combo}
+                    </kbd>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Footer */}
         <div className="flex items-center gap-4 text-xs text-daintree-text/40 pt-2">
@@ -189,6 +195,7 @@ function NudgeSequencer({
   // return null (no launchable agents, or any built-in already pinned) we
   // fall through to the checklist instead of silently suppressing it.
   const welcomeCardEligible = useMemo(() => {
+    if (!agentSettings) return false;
     if (!hasRealData || welcomeCardDismissed) return false;
     const hasReady = BUILT_IN_AGENT_IDS.some((id) => isAgentLaunchable(availability?.[id]));
     if (!hasReady) return false;
@@ -486,6 +493,13 @@ function InlineChecklist({
 
       <div className="space-y-1">
         {/* Endowed progress: Install Daintree (always complete) */}
+        {(() => {
+          const firstIncompleteIndex = CHECKLIST_ITEMS.findIndex(
+            ({ id }) => !checklist.items[id],
+          );
+
+          return (
+            <>
         <div className="flex items-start gap-2.5 px-2 py-1.5 opacity-60">
           <div className="h-4 w-4 rounded-full bg-daintree-accent border border-daintree-accent flex items-center justify-center shrink-0">
             <Check className="h-2.5 w-2.5 text-daintree-bg" />
@@ -495,7 +509,7 @@ function InlineChecklist({
         </div>
 
         {/* Real checklist items */}
-        {CHECKLIST_ITEMS.map(({ id, label, description, icon: Icon, actionId }) => {
+        {CHECKLIST_ITEMS.map(({ id, label, description, icon: Icon, actionId }, index) => {
           const done = checklist.items[id];
 
           const content = (
@@ -518,7 +532,7 @@ function InlineChecklist({
                 <span
                   className={cn(
                     "text-xs leading-snug",
-                    done ? "text-daintree-text/40" : "text-daintree-text/90"
+                    done ? "line-through text-daintree-text/40" : "text-daintree-text/90"
                   )}
                 >
                   {label}
@@ -555,6 +569,7 @@ function InlineChecklist({
             <button
               key={id}
               type="button"
+              aria-current={index === firstIncompleteIndex ? "step" : undefined}
               onClick={() =>
                 void actionService.dispatch(actionId, undefined, {
                   source: "user",
@@ -571,6 +586,8 @@ function InlineChecklist({
             </button>
           );
         })}
+          </>);
+        })()}
       </div>
     </div>
   );
