@@ -128,7 +128,6 @@ export function SettingsSwitchCard({
   return (
     <div id={id} className="grid grid-cols-subgrid col-span-full gap-2">
       <div className="group relative">
-        {card}
         <button
           type="button"
           aria-label={resetAriaLabel ?? `Reset ${title} to default`}
@@ -143,6 +142,7 @@ export function SettingsSwitchCard({
         >
           <RotateCcw className="w-3 h-3" />
         </button>
+        {card}
       </div>
     </div>
   );
