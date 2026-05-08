@@ -308,40 +308,52 @@ test.describe.serial("Core: Agent preset icon color", () => {
   test("preset color tints launch, survives app restart, and reapplies after quit/restart", async () => {
     test.setTimeout(180_000);
 
-    const disableHybrid = await dispatchAction(
-      ctx.window,
-      "terminalConfig.setHybridInputEnabled",
-      { enabled: false },
-      { source: "user" }
-    );
-    expect(disableHybrid.ok, disableHybrid.error?.message).toBe(true);
+    await test.step("Disable hybrid input so /quit reaches the fake agent stdin", async () => {
+      const disableHybrid = await dispatchAction(
+        ctx.window,
+        "terminalConfig.setHybridInputEnabled",
+        { enabled: false },
+        { source: "user" }
+      );
+      expect(disableHybrid.ok, disableHybrid.error?.message).toBe(true);
+    });
 
-    await expectPersistedPresetColor(ctx.window, "claude", CLAUDE_PRESET_ID, CLAUDE_COLOR);
-    const claude = await launchPreset(ctx.window, "claude", CLAUDE_PRESET_ID);
-    await expectAgentIconColor(claude.panel, "claude", CLAUDE_COLOR);
-    // Wait for the fake script to finish its startup logs before sending /quit —
-    // without this, keystrokes typed during the shell→script handover can be
-    // dropped, leaving the agent runtime alive and stalling the demote.
-    // FAKE_CLAUDE_MANUAL is the script's last startup line; once it prints the
-    // stdin handler is bound and the buffer reader still sees it after reflow.
-    await waitForTerminalText(claude.panel, "FAKE_CLAUDE_MANUAL=", T_LONG);
+    let claude!: Awaited<ReturnType<typeof launchPreset>>;
+    await test.step("Launch Claude preset and verify icon color tints with preset color", async () => {
+      await expectPersistedPresetColor(ctx.window, "claude", CLAUDE_PRESET_ID, CLAUDE_COLOR);
+      claude = await launchPreset(ctx.window, "claude", CLAUDE_PRESET_ID);
+      await expectAgentIconColor(claude.panel, "claude", CLAUDE_COLOR);
+      // Wait for the fake script to finish its startup logs before sending /quit —
+      // without this, keystrokes typed during the shell→script handover can be
+      // dropped, leaving the agent runtime alive and stalling the demote.
+      // FAKE_CLAUDE_MANUAL is the script's last startup line; once it prints the
+      // stdin handler is bound and the buffer reader still sees it after reflow.
+      await waitForTerminalText(claude.panel, "FAKE_CLAUDE_MANUAL=", T_LONG);
+    });
 
-    await quitAgentOrWaitForDemotion(ctx.window, claude.panel);
-    await restartTerminal(ctx.window, claude.id, claude.panel);
-    await runTerminalCommand(
-      ctx.window,
-      claude.panel,
-      `DAINTREE_E2E_MANUAL_RUN=1 ${fakeAgentCommand("claude")}`
-    );
-    await waitForTerminalText(claude.panel, "FAKE_CLAUDE_MANUAL=1", T_LONG);
-    await waitForTerminalText(claude.panel, `FAKE_CLAUDE_COLOR=${CLAUDE_COLOR}`, T_LONG);
-    await expectAgentIconColor(claude.panel, "claude", CLAUDE_COLOR);
+    await test.step("Quit Claude and verify runtime demotes to none", async () => {
+      await quitAgentOrWaitForDemotion(ctx.window, claude.panel);
+    });
 
-    const codex = await launchPreset(ctx.window, "codex", CODEX_PRESET_ID);
-    await expectAgentIconColor(codex.panel, "codex", CODEX_COLOR);
-    await waitForTerminalText(codex.panel, "FAKE_CODEX_READY", T_LONG);
-    await waitForTerminalText(codex.panel, `FAKE_CODEX_COLOR=${CODEX_COLOR}`, T_LONG);
-    await waitForTerminalText(codex.panel, "FAKE_CODEX_PROVIDER=green-provider", T_LONG);
-    expect(CODEX_COLOR).not.toBe(CLAUDE_COLOR);
+    await test.step("Restart terminal and manual-run Claude — verify color reapplies", async () => {
+      await restartTerminal(ctx.window, claude.id, claude.panel);
+      await runTerminalCommand(
+        ctx.window,
+        claude.panel,
+        `DAINTREE_E2E_MANUAL_RUN=1 ${fakeAgentCommand("claude")}`
+      );
+      await waitForTerminalText(claude.panel, "FAKE_CLAUDE_MANUAL=1", T_LONG);
+      await waitForTerminalText(claude.panel, `FAKE_CLAUDE_COLOR=${CLAUDE_COLOR}`, T_LONG);
+      await expectAgentIconColor(claude.panel, "claude", CLAUDE_COLOR);
+    });
+
+    await test.step("Launch Codex preset and verify color and provider isolation", async () => {
+      const codex = await launchPreset(ctx.window, "codex", CODEX_PRESET_ID);
+      await expectAgentIconColor(codex.panel, "codex", CODEX_COLOR);
+      await waitForTerminalText(codex.panel, "FAKE_CODEX_READY", T_LONG);
+      await waitForTerminalText(codex.panel, `FAKE_CODEX_COLOR=${CODEX_COLOR}`, T_LONG);
+      await waitForTerminalText(codex.panel, "FAKE_CODEX_PROVIDER=green-provider", T_LONG);
+      expect(CODEX_COLOR).not.toBe(CLAUDE_COLOR);
+    });
   });
 });

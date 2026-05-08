@@ -109,20 +109,26 @@ test.describe.serial("Core: Panel Tab Groups", () => {
       const { window } = ctx;
       const panel = getFirstGridPanel(window);
 
-      const maximizeBtn = panel.locator(SEL.panel.maximize).first();
-      await maximizeBtn.click();
+      await test.step("Maximize the panel and verify exit-focus button appears", async () => {
+        const maximizeBtn = panel.locator(SEL.panel.maximize).first();
+        await maximizeBtn.click();
 
-      const exitFocus = window.locator(SEL.panel.exitFocus).first();
-      await expect(exitFocus).toBeVisible({ timeout: T_SHORT });
+        const exitFocus = window.locator(SEL.panel.exitFocus).first();
+        await expect(exitFocus).toBeVisible({ timeout: T_SHORT });
+      });
 
-      await exitFocus.click();
-      await expect(exitFocus).not.toBeVisible({ timeout: T_SHORT });
+      await test.step("Restore from maximize via exit-focus button", async () => {
+        const exitFocus = window.locator(SEL.panel.exitFocus).first();
+        await exitFocus.click();
+        await expect(exitFocus).not.toBeVisible({ timeout: T_SHORT });
+      });
 
-      // Tab list should still be visible with 2 tabs
-      const tabList = panel.locator(SEL.panel.tabList);
-      await expect(tabList).toBeVisible({ timeout: T_SHORT });
-      const tabs = tabList.locator(SEL.panel.tab);
-      await expect(tabs).toHaveCount(2, { timeout: T_SHORT });
+      await test.step("Verify tab list still shows both tabs after restore", async () => {
+        const tabList = panel.locator(SEL.panel.tabList);
+        await expect(tabList).toBeVisible({ timeout: T_SHORT });
+        const tabs = tabList.locator(SEL.panel.tab);
+        await expect(tabs).toHaveCount(2, { timeout: T_SHORT });
+      });
     });
 
     test("closing one tab keeps panel open and removes tab bar", async () => {
@@ -158,73 +164,84 @@ test.describe.serial("Core: Panel Tab Groups", () => {
   test.describe.serial("Overflow Menu & Restart", () => {
     test("overflow menu shows expected actions", async () => {
       const { window } = ctx;
+      let panel: ReturnType<typeof getFirstGridPanel>;
 
-      // Open a fresh terminal
-      await openTerminal(window);
-      const panel = getFirstGridPanel(window);
-      await expect(panel).toBeVisible({ timeout: T_LONG });
+      await test.step("Open a fresh terminal and wait for it to settle", async () => {
+        await openTerminal(window);
+        panel = getFirstGridPanel(window);
+        await expect(panel).toBeVisible({ timeout: T_LONG });
 
-      // Wait for terminal to be ready
-      await window.waitForTimeout(T_SETTLE);
+        await window.waitForTimeout(T_SETTLE);
+      });
 
-      // Open overflow menu
-      await panel.hover();
-      const overflowBtn = panel.locator(SEL.panel.overflowMenu).first();
-      await overflowBtn.click();
+      await test.step("Open the panel overflow menu", async () => {
+        await panel!.hover();
+        const overflowBtn = panel!.locator(SEL.panel.overflowMenu).first();
+        await overflowBtn.click();
+      });
 
-      // Verify expected menu items are visible (scoped to window since Radix portals to body)
-      const expectedItems = ["Restart Session", "Rename", "Duplicate", "Lock Input", "Trash"];
+      await test.step("Verify expected menu items are present and removed item is absent", async () => {
+        // Verify expected menu items are visible (scoped to window since Radix portals to body)
+        const expectedItems = ["Restart Session", "Rename", "Duplicate", "Lock Input", "Trash"];
 
-      for (const itemName of expectedItems) {
-        await expect(window.getByRole("menuitem", { name: itemName })).toBeVisible({
-          timeout: T_SHORT,
-        });
-      }
+        for (const itemName of expectedItems) {
+          await expect(window.getByRole("menuitem", { name: itemName })).toBeVisible({
+            timeout: T_SHORT,
+          });
+        }
 
-      // Removed in #5957 — guard against accidental re-introduction
-      await expect(window.getByRole("menuitem", { name: "View Terminal Info" })).toHaveCount(0);
+        // Removed in #5957 — guard against accidental re-introduction
+        await expect(window.getByRole("menuitem", { name: "View Terminal Info" })).toHaveCount(0);
+      });
 
-      // Close the menu and wait for it to fully unmount. Without this assertion
-      // the next test races against Radix's close animation: the menu's
-      // FocusScope keeps focus and its typeahead handler swallows the keys
-      // typed by `runTerminalCommand`, so the command never reaches the PTY.
-      await window.keyboard.press("Escape");
-      await expect(window.locator('[role="menu"]')).toHaveCount(0, { timeout: T_SHORT });
+      await test.step("Close the menu and confirm it fully unmounts", async () => {
+        // Close the menu and wait for it to fully unmount. Without this assertion
+        // the next test races against Radix's close animation: the menu's
+        // FocusScope keeps focus and its typeahead handler swallows the keys
+        // typed by `runTerminalCommand`, so the command never reaches the PTY.
+        await window.keyboard.press("Escape");
+        await expect(window.locator('[role="menu"]')).toHaveCount(0, { timeout: T_SHORT });
+      });
     });
 
     test("restart confirmation flow works", async () => {
       const { window } = ctx;
       const panel = getFirstGridPanel(window);
 
-      // Settle after the previous test's menu close so xterm input handlers
-      // are wired before we start typing.
-      await window.waitForTimeout(T_SETTLE);
+      await test.step("Run a pre-restart marker command", async () => {
+        // Settle after the previous test's menu close so xterm input handlers
+        // are wired before we start typing.
+        await window.waitForTimeout(T_SETTLE);
 
-      // Run a marker before restart
-      await runTerminalCommand(window, panel, "node -e \"console.log('PRE_RESTART')\"");
-      await waitForTerminalText(panel, "PRE_RESTART", T_LONG);
+        await runTerminalCommand(window, panel, "node -e \"console.log('PRE_RESTART')\"");
+        await waitForTerminalText(panel, "PRE_RESTART", T_LONG);
+      });
 
-      // Open overflow menu and click Restart
-      await panel.hover();
-      const overflowBtn = panel.locator(SEL.panel.overflowMenu).first();
-      await overflowBtn.click();
+      await test.step("Open overflow menu and arm Restart Session", async () => {
+        await panel.hover();
+        const overflowBtn = panel.locator(SEL.panel.overflowMenu).first();
+        await overflowBtn.click();
 
-      const restartBtn = window.locator(SEL.panel.restart).first();
-      await expect(restartBtn).toBeVisible({ timeout: T_SHORT });
-      await restartBtn.click();
+        const restartBtn = window.locator(SEL.panel.restart).first();
+        await expect(restartBtn).toBeVisible({ timeout: T_SHORT });
+        await restartBtn.click();
+      });
 
-      // Confirm the restart (2-click armed pattern)
-      const confirmBtn = window.locator(SEL.panel.restartConfirm).first();
-      await expect(confirmBtn).toBeVisible({ timeout: T_SHORT });
-      await confirmBtn.click();
+      await test.step("Confirm the restart and verify the panel survives", async () => {
+        // Confirm the restart (2-click armed pattern)
+        const confirmBtn = window.locator(SEL.panel.restartConfirm).first();
+        await expect(confirmBtn).toBeVisible({ timeout: T_SHORT });
+        await confirmBtn.click();
 
-      // Panel should remain visible after restart
-      await expect(panel).toBeVisible({ timeout: T_LONG });
+        // Panel should remain visible after restart
+        await expect(panel).toBeVisible({ timeout: T_LONG });
+      });
 
-      // Wait for the new shell to be ready, then verify PTY is functional
-      await window.waitForTimeout(T_SETTLE);
-      await runTerminalCommand(window, panel, "node -e \"console.log('POST_RESTART_OK')\"");
-      await waitForTerminalText(panel, "POST_RESTART_OK", T_LONG);
+      await test.step("Verify the new shell accepts a post-restart marker command", async () => {
+        await window.waitForTimeout(T_SETTLE);
+        await runTerminalCommand(window, panel, "node -e \"console.log('POST_RESTART_OK')\"");
+        await waitForTerminalText(panel, "POST_RESTART_OK", T_LONG);
+      });
     });
 
     test.afterAll(async () => {

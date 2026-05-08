@@ -140,169 +140,166 @@ test.describe.serial("Core: Terminal Search & Scrollback", () => {
     test("case sensitivity toggle changes search behavior", async () => {
       const { window } = ctx;
       const panel = getFirstGridPanel(window);
-
-      // Open search
-      await panel.locator(SEL.terminal.xtermRows).click();
-      await window.waitForTimeout(T_SETTLE);
-      await window.evaluate(() => window.dispatchEvent(new CustomEvent("daintree:find-in-panel")));
       const input = panel.locator(SEL.terminal.searchInput);
-      await expect(input).toBeVisible({ timeout: T_MEDIUM });
-
       const caseToggle = panel.locator(SEL.terminal.searchCaseToggle);
 
-      // Default: case insensitive (aria-pressed=false)
-      await expect(caseToggle).toHaveAttribute("aria-pressed", "false");
+      await test.step("Open search bar in focused terminal", async () => {
+        await panel.locator(SEL.terminal.xtermRows).click();
+        await window.waitForTimeout(T_SETTLE);
+        await window.evaluate(() =>
+          window.dispatchEvent(new CustomEvent("daintree:find-in-panel"))
+        );
+        await expect(input).toBeVisible({ timeout: T_MEDIUM });
 
-      // Search lowercase variant — case-insensitive finds CaseMark_Upper
-      await input.fill("casemark_upper");
-      await window.waitForTimeout(T_SETTLE);
-      await expect(panel.locator(SEL.terminal.searchStatus)).toHaveText(
-        /^(?:\d+ of \d+\+?|\d+\+? matches|Found)$/,
-        {
-          timeout: T_SHORT,
-        }
-      );
-
-      // Toggle case ON
-      await caseToggle.click();
-      await expect(caseToggle).toHaveAttribute("aria-pressed", "true");
-
-      // Case-sensitive: lowercase "casemark_upper" should not match "CaseMark_Upper"
-      await window.waitForTimeout(T_SETTLE);
-      await expect(panel.locator(SEL.terminal.searchStatus)).toHaveText("No matches", {
-        timeout: T_SHORT,
+        // Default: case insensitive (aria-pressed=false)
+        await expect(caseToggle).toHaveAttribute("aria-pressed", "false");
       });
 
-      // Exact case match should still work
-      await input.fill("CaseMark_Upper");
-      await window.waitForTimeout(T_SETTLE);
-      await expect(panel.locator(SEL.terminal.searchStatus)).toHaveText(
-        /^(?:\d+ of \d+\+?|\d+\+? matches|Found)$/,
-        {
-          timeout: T_SHORT,
-        }
-      );
+      await test.step("Case-insensitive search matches mixed-case text", async () => {
+        // Search lowercase variant — case-insensitive finds CaseMark_Upper
+        await input.fill("casemark_upper");
+        await window.waitForTimeout(T_SETTLE);
+        await expect(panel.locator(SEL.terminal.searchStatus)).toHaveText(
+          /^(?:\d+ of \d+\+?|\d+\+? matches|Found)$/,
+          { timeout: T_SHORT }
+        );
+      });
 
-      // Toggle case OFF and close
-      await caseToggle.click();
-      await expect(caseToggle).toHaveAttribute("aria-pressed", "false");
-      await window.keyboard.press("Escape");
-      await expect(input).not.toBeVisible({ timeout: T_SHORT });
+      await test.step("Enable case-sensitive mode and verify lowercase no longer matches", async () => {
+        await caseToggle.click();
+        await expect(caseToggle).toHaveAttribute("aria-pressed", "true");
+
+        // Case-sensitive: lowercase "casemark_upper" should not match "CaseMark_Upper"
+        await window.waitForTimeout(T_SETTLE);
+        await expect(panel.locator(SEL.terminal.searchStatus)).toHaveText("No matches", {
+          timeout: T_SHORT,
+        });
+      });
+
+      await test.step("Exact-case query still matches with case-sensitive mode on", async () => {
+        await input.fill("CaseMark_Upper");
+        await window.waitForTimeout(T_SETTLE);
+        await expect(panel.locator(SEL.terminal.searchStatus)).toHaveText(
+          /^(?:\d+ of \d+\+?|\d+\+? matches|Found)$/,
+          { timeout: T_SHORT }
+        );
+      });
+
+      await test.step("Disable case-sensitive mode and close search", async () => {
+        await caseToggle.click();
+        await expect(caseToggle).toHaveAttribute("aria-pressed", "false");
+        await window.keyboard.press("Escape");
+        await expect(input).not.toBeVisible({ timeout: T_SHORT });
+      });
     });
 
     test("regex toggle matches patterns and detects invalid regex", async () => {
       const { window } = ctx;
       const panel = getFirstGridPanel(window);
-
-      // Open search
-      await panel.locator(SEL.terminal.xtermRows).click();
-      await window.waitForTimeout(T_SETTLE);
-      await window.evaluate(() => window.dispatchEvent(new CustomEvent("daintree:find-in-panel")));
       const input = panel.locator(SEL.terminal.searchInput);
-      await expect(input).toBeVisible({ timeout: T_MEDIUM });
-
       const regexToggle = panel.locator(SEL.terminal.searchRegexToggle);
 
-      // Default: regex off
-      await expect(regexToggle).toHaveAttribute("aria-pressed", "false");
+      await test.step("Open search bar in focused terminal", async () => {
+        await panel.locator(SEL.terminal.xtermRows).click();
+        await window.waitForTimeout(T_SETTLE);
+        await window.evaluate(() =>
+          window.dispatchEvent(new CustomEvent("daintree:find-in-panel"))
+        );
+        await expect(input).toBeVisible({ timeout: T_MEDIUM });
 
-      // Enable regex
-      await regexToggle.click();
-      await expect(regexToggle).toHaveAttribute("aria-pressed", "true");
+        // Default: regex off
+        await expect(regexToggle).toHaveAttribute("aria-pressed", "false");
+      });
 
-      // Regex pattern matches item1_found, item2_found, item3_found
-      await input.fill("item\\d+_found");
-      await window.waitForTimeout(T_SETTLE);
-      await expect(panel.locator(SEL.terminal.searchStatus)).toHaveText(
-        /^(?:\d+ of \d+\+?|\d+\+? matches|Found)$/,
-        {
+      await test.step("Enable regex and verify pattern matches", async () => {
+        await regexToggle.click();
+        await expect(regexToggle).toHaveAttribute("aria-pressed", "true");
+
+        // Regex pattern matches item1_found, item2_found, item3_found
+        await input.fill("item\\d+_found");
+        await window.waitForTimeout(T_SETTLE);
+        await expect(panel.locator(SEL.terminal.searchStatus)).toHaveText(
+          /^(?:\d+ of \d+\+?|\d+\+? matches|Found)$/,
+          { timeout: T_SHORT }
+        );
+      });
+
+      await test.step("Disable regex and verify literal pattern no longer matches", async () => {
+        await regexToggle.click();
+        await expect(regexToggle).toHaveAttribute("aria-pressed", "false");
+        await window.waitForTimeout(T_SETTLE);
+        await expect(panel.locator(SEL.terminal.searchStatus)).toHaveText("No matches", {
           timeout: T_SHORT,
-        }
-      );
-
-      // Disable regex — literal "item\d+_found" doesn't exist
-      await regexToggle.click();
-      await expect(regexToggle).toHaveAttribute("aria-pressed", "false");
-      await window.waitForTimeout(T_SETTLE);
-      await expect(panel.locator(SEL.terminal.searchStatus)).toHaveText("No matches", {
-        timeout: T_SHORT,
+        });
       });
 
-      // Re-enable regex for invalid regex test
-      await regexToggle.click();
-      await input.fill("[broken");
-      await window.waitForTimeout(T_SETTLE);
-      await expect(panel.locator(SEL.terminal.searchStatus)).toHaveText("Invalid regex", {
-        timeout: T_SHORT,
+      await test.step("Re-enable regex with invalid pattern and verify error status", async () => {
+        await regexToggle.click();
+        await input.fill("[broken");
+        await window.waitForTimeout(T_SETTLE);
+        await expect(panel.locator(SEL.terminal.searchStatus)).toHaveText("Invalid regex", {
+          timeout: T_SHORT,
+        });
       });
 
-      // Clean up: disable regex and close
-      await regexToggle.click();
-      await window.keyboard.press("Escape");
-      await expect(input).not.toBeVisible({ timeout: T_SHORT });
+      await test.step("Disable regex and close search", async () => {
+        await regexToggle.click();
+        await window.keyboard.press("Escape");
+        await expect(input).not.toBeVisible({ timeout: T_SHORT });
+      });
     });
 
     test("next and previous buttons cycle through matches", async () => {
       const { window } = ctx;
       const panel = getFirstGridPanel(window);
-
-      // Open search
-      await panel.locator(SEL.terminal.xtermRows).click();
-      await window.waitForTimeout(T_SETTLE);
-      await window.evaluate(() => window.dispatchEvent(new CustomEvent("daintree:find-in-panel")));
       const input = panel.locator(SEL.terminal.searchInput);
-      await expect(input).toBeVisible({ timeout: T_MEDIUM });
-
-      // Search for a term with multiple matches
-      await input.fill("item");
-      await window.waitForTimeout(T_SETTLE);
-      await expect(panel.locator(SEL.terminal.searchStatus)).toHaveText(
-        /^(?:\d+ of \d+\+?|\d+\+? matches|Found)$/,
-        {
-          timeout: T_SHORT,
-        }
-      );
-
-      // Click Next multiple times — status stays "Found"
       const nextBtn = panel.locator(SEL.terminal.searchNext);
       const prevBtn = panel.locator(SEL.terminal.searchPrevious);
+      const foundRegex = /^(?:\d+ of \d+\+?|\d+\+? matches|Found)$/;
 
-      await nextBtn.click();
-      await expect(panel.locator(SEL.terminal.searchStatus)).toHaveText(
-        /^(?:\d+ of \d+\+?|\d+\+? matches|Found)$/,
-        {
+      await test.step("Open search bar and seed query with multiple matches", async () => {
+        await panel.locator(SEL.terminal.xtermRows).click();
+        await window.waitForTimeout(T_SETTLE);
+        await window.evaluate(() =>
+          window.dispatchEvent(new CustomEvent("daintree:find-in-panel"))
+        );
+        await expect(input).toBeVisible({ timeout: T_MEDIUM });
+
+        await input.fill("item");
+        await window.waitForTimeout(T_SETTLE);
+        await expect(panel.locator(SEL.terminal.searchStatus)).toHaveText(foundRegex, {
           timeout: T_SHORT,
-        }
-      );
+        });
+      });
 
-      await nextBtn.click();
-      await expect(panel.locator(SEL.terminal.searchStatus)).toHaveText(
-        /^(?:\d+ of \d+\+?|\d+\+? matches|Found)$/,
-        {
+      await test.step("Click Next twice and verify status remains Found", async () => {
+        await nextBtn.click();
+        await expect(panel.locator(SEL.terminal.searchStatus)).toHaveText(foundRegex, {
           timeout: T_SHORT,
-        }
-      );
+        });
 
-      // Click Previous — status stays "Found"
-      await prevBtn.click();
-      await expect(panel.locator(SEL.terminal.searchStatus)).toHaveText(
-        /^(?:\d+ of \d+\+?|\d+\+? matches|Found)$/,
-        {
+        await nextBtn.click();
+        await expect(panel.locator(SEL.terminal.searchStatus)).toHaveText(foundRegex, {
           timeout: T_SHORT,
-        }
-      );
+        });
+      });
 
-      await prevBtn.click();
-      await expect(panel.locator(SEL.terminal.searchStatus)).toHaveText(
-        /^(?:\d+ of \d+\+?|\d+\+? matches|Found)$/,
-        {
+      await test.step("Click Previous twice and verify status remains Found", async () => {
+        await prevBtn.click();
+        await expect(panel.locator(SEL.terminal.searchStatus)).toHaveText(foundRegex, {
           timeout: T_SHORT,
-        }
-      );
+        });
 
-      // Close search
-      await window.keyboard.press("Escape");
-      await expect(input).not.toBeVisible({ timeout: T_SHORT });
+        await prevBtn.click();
+        await expect(panel.locator(SEL.terminal.searchStatus)).toHaveText(foundRegex, {
+          timeout: T_SHORT,
+        });
+      });
+
+      await test.step("Close search via Escape", async () => {
+        await window.keyboard.press("Escape");
+        await expect(input).not.toBeVisible({ timeout: T_SHORT });
+      });
     });
   });
 

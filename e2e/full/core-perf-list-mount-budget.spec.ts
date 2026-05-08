@@ -59,65 +59,71 @@ test.describe.serial("Core: List Mount Perf Budget", () => {
     const lastFileName = `bulk-unstaged/file-${FILE_COUNT}.txt`;
     const midFileName = `bulk-unstaged/file-0500.txt`;
 
-    // Snapshot baseline DOM node count before opening the hub
-    const beforeNodeCount = await window.evaluate(() => document.getElementsByTagName("*").length);
-
-    // Install a PerformanceObserver for long-animation-frames before triggering
-    // the mount. Do NOT use buffered: true — it captures startup noise.
-    const observerInstalled = await window.evaluate(() => {
-      if (!("PerformanceObserver" in window)) return false;
-      const supported = PerformanceObserver.supportedEntryTypes ?? [];
-      if (!supported.includes("long-animation-frame")) return false;
-
-      const win = window as unknown as E2EPerfWindow;
-      win.__daintreeE2ePerfEntries = [];
-      try {
-        const obs = new PerformanceObserver((list) => {
-          for (const entry of list.getEntries()) {
-            win.__daintreeE2ePerfEntries!.push(entry.toJSON());
-          }
-        });
-        obs.observe({ type: "long-animation-frame", durationThreshold: 100 });
-        win.__daintreeE2ePerfObserver = obs;
-      } catch {
-        return false;
-      }
-      return true;
+    let beforeNodeCount = 0;
+    await test.step("Snapshot baseline DOM node count before mount", async () => {
+      beforeNodeCount = await window.evaluate(() => document.getElementsByTagName("*").length);
     });
 
-    // Record mount start time for entry filtering
-    await window.evaluate(() => {
-      (window as unknown as E2EPerfWindow).__daintreeE2eMountStart = performance.now();
+    let observerInstalled = false;
+    await test.step("Install long-animation-frame PerformanceObserver and record mount start", async () => {
+      // Install a PerformanceObserver for long-animation-frames before triggering
+      // the mount. Do NOT use buffered: true — it captures startup noise.
+      observerInstalled = await window.evaluate(() => {
+        if (!("PerformanceObserver" in window)) return false;
+        const supported = PerformanceObserver.supportedEntryTypes ?? [];
+        if (!supported.includes("long-animation-frame")) return false;
+
+        const win = window as unknown as E2EPerfWindow;
+        win.__daintreeE2ePerfEntries = [];
+        try {
+          const obs = new PerformanceObserver((list) => {
+            for (const entry of list.getEntries()) {
+              win.__daintreeE2ePerfEntries!.push(entry.toJSON());
+            }
+          });
+          obs.observe({ type: "long-animation-frame", durationThreshold: 100 });
+          win.__daintreeE2ePerfObserver = obs;
+        } catch {
+          return false;
+        }
+        return true;
+      });
+
+      // Record mount start time for entry filtering
+      await window.evaluate(() => {
+        (window as unknown as E2EPerfWindow).__daintreeE2eMountStart = performance.now();
+      });
     });
 
-    // Open the ReviewHub
-    const reviewBtn = window.locator(SEL.worktree.reviewHubButton);
-    await reviewBtn.first().click();
+    await test.step("Open ReviewHub and verify list span renders end-to-end", async () => {
+      const reviewBtn = window.locator(SEL.worktree.reviewHubButton);
+      await reviewBtn.first().click();
 
-    const hub = window.locator(SEL.reviewHub.container);
-    await expect(hub).toBeVisible({ timeout: T_LONG });
+      const hub = window.locator(SEL.reviewHub.container);
+      await expect(hub).toBeVisible({ timeout: T_LONG });
 
-    // Confirm the hub is showing file data, not an empty state
-    await expect(hub.locator(SEL.reviewHub.cleanState)).not.toBeVisible({ timeout: T_SHORT });
-    await expect(hub.locator(SEL.reviewHub.noUnstagedChanges)).not.toBeVisible({
-      timeout: T_SHORT,
+      // Confirm the hub is showing file data, not an empty state
+      await expect(hub.locator(SEL.reviewHub.cleanState)).not.toBeVisible({ timeout: T_SHORT });
+      await expect(hub.locator(SEL.reviewHub.noUnstagedChanges)).not.toBeVisible({
+        timeout: T_SHORT,
+      });
+
+      // Wait for both last and mid-range rows — confirms full list span
+      const lastStageBtn = hub.locator(SEL.reviewHub.stageButton(lastFileName));
+      const midStageBtn = hub.locator(SEL.reviewHub.stageButton(midFileName));
+      await expect(lastStageBtn).toBeVisible({ timeout: T_LONG });
+      await expect(midStageBtn).toBeVisible({ timeout: T_SHORT });
+
+      // Allow a brief settle for final paints and observer callbacks
+      await window.waitForTimeout(T_SETTLE);
     });
 
-    // Wait for both last and mid-range rows — confirms full list span
-    const lastStageBtn = hub.locator(SEL.reviewHub.stageButton(lastFileName));
-    const midStageBtn = hub.locator(SEL.reviewHub.stageButton(midFileName));
-    await expect(lastStageBtn).toBeVisible({ timeout: T_LONG });
-    await expect(midStageBtn).toBeVisible({ timeout: T_SHORT });
+    let afterNodeCount = 0;
+    let longTaskEntries: Array<{ duration: number; startTime: number }> = [];
+    await test.step("Collect post-mount DOM count and long-animation-frame entries", async () => {
+      afterNodeCount = await window.evaluate(() => document.getElementsByTagName("*").length);
 
-    // Allow a brief settle for final paints and observer callbacks
-    await window.waitForTimeout(T_SETTLE);
-
-    // Snapshot post-mount DOM node count
-    const afterNodeCount = await window.evaluate(() => document.getElementsByTagName("*").length);
-
-    // Collect longtask entries, filtering to post-click timestamps
-    const longTaskEntries: Array<{ duration: number; startTime: number }> = await window.evaluate(
-      () => {
+      longTaskEntries = await window.evaluate(() => {
         const win = window as unknown as E2EPerfWindow;
         win.__daintreeE2ePerfObserver?.disconnect();
         const mountStart = win.__daintreeE2eMountStart ?? 0;
@@ -128,24 +134,24 @@ test.describe.serial("Core: List Mount Perf Budget", () => {
         delete win.__daintreeE2ePerfEntries;
         delete win.__daintreeE2eMountStart;
         return entries;
+      });
+    });
+
+    await test.step("Assert DOM delta and long-animation-frame budgets", async () => {
+      const domDelta = afterNodeCount - beforeNodeCount;
+      console.log(
+        `[perf-budget] DOM delta: ${domDelta} (before=${beforeNodeCount}, after=${afterNodeCount})`
+      );
+      expect(domDelta).toBeLessThanOrEqual(MAX_DOM_DELTA);
+
+      if (observerInstalled) {
+        const longTaskCount = longTaskEntries.length;
+        console.log(`[perf-budget] Long-animation-frames: ${longTaskCount}`);
+        expect(longTaskCount).toBeLessThanOrEqual(MAX_LONG_TASKS);
+      } else {
+        // Fail rather than skip — a release gate must not silently drop coverage
+        throw new Error("long-animation-frame API must be supported for the perf budget gate");
       }
-    );
-
-    // Assert DOM delta
-    const domDelta = afterNodeCount - beforeNodeCount;
-    console.log(
-      `[perf-budget] DOM delta: ${domDelta} (before=${beforeNodeCount}, after=${afterNodeCount})`
-    );
-    expect(domDelta).toBeLessThanOrEqual(MAX_DOM_DELTA);
-
-    // Assert longtask count
-    if (observerInstalled) {
-      const longTaskCount = longTaskEntries.length;
-      console.log(`[perf-budget] Long-animation-frames: ${longTaskCount}`);
-      expect(longTaskCount).toBeLessThanOrEqual(MAX_LONG_TASKS);
-    } else {
-      // Fail rather than skip — a release gate must not silently drop coverage
-      throw new Error("long-animation-frame API must be supported for the perf budget gate");
-    }
+    });
   });
 });

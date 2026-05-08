@@ -180,80 +180,104 @@ test.describe.serial("Core: Fleet terminal broadcast", () => {
     test.setTimeout(180_000);
 
     const { window } = ctx;
-    const disableHybrid = await dispatchAction(
-      window,
-      "terminalConfig.setHybridInputEnabled",
-      { enabled: false },
-      { source: "user" }
-    );
-    expect(disableHybrid.ok, disableHybrid.error?.message).toBe(true);
 
-    const agents = [
-      await startClaudeAgentFromTerminal(window),
-      await startClaudeAgentFromTerminal(window),
-      await startClaudeAgentFromTerminal(window),
-    ];
-    const terminalIds = agents.map((agent) => agent.id);
-    expect(new Set(terminalIds).size).toBe(3);
+    await test.step("Disable hybrid input so xterm typing reaches the PTY directly", async () => {
+      const disableHybrid = await dispatchAction(
+        window,
+        "terminalConfig.setHybridInputEnabled",
+        { enabled: false },
+        { source: "user" }
+      );
+      expect(disableHybrid.ok, disableHybrid.error?.message).toBe(true);
+    });
 
-    await armFleet(window, terminalIds);
+    let agents: Array<{ id: string; panel: Locator }> = [];
+    let terminalIds: string[] = [];
+    await test.step("Start three fake Claude agents in fresh terminals", async () => {
+      agents = [
+        await startClaudeAgentFromTerminal(window),
+        await startClaudeAgentFromTerminal(window),
+        await startClaudeAgentFromTerminal(window),
+      ];
+      terminalIds = agents.map((agent) => agent.id);
+      expect(new Set(terminalIds).size).toBe(3);
+    });
+
+    await test.step("Arm the fleet across all three terminals", async () => {
+      await armFleet(window, terminalIds);
+    });
 
     const command = `fleet-direct-${Date.now()}`;
-    await typeDirectlyIntoTerminal(window, agents[0]!.panel, agents[0]!.id, command);
+    await test.step("Type directly into the first armed terminal and verify all three respond", async () => {
+      await typeDirectlyIntoTerminal(window, agents[0]!.panel, agents[0]!.id, command);
 
-    for (const { panel } of agents) {
-      await waitForTerminalText(panel, `FLEET_RESPONSE`, T_LONG);
-      await waitForTerminalText(panel, `text=${command}`, T_LONG);
-      await waitForTerminalText(panel, `FLEET_DONE ${command}`, T_LONG);
-    }
-
-    await expect(window.locator('[data-testid="fleet-arming-ribbon"]')).toBeVisible({
-      timeout: T_MEDIUM,
+      for (const { panel } of agents) {
+        await waitForTerminalText(panel, `FLEET_RESPONSE`, T_LONG);
+        await waitForTerminalText(panel, `text=${command}`, T_LONG);
+        await waitForTerminalText(panel, `FLEET_DONE ${command}`, T_LONG);
+      }
     });
-    await expect(agents[0]!.panel.locator(SEL.terminal.cmEditor)).toHaveCount(0);
+
+    await test.step("Verify arming ribbon stays and HybridInputBar is absent", async () => {
+      await expect(window.locator('[data-testid="fleet-arming-ribbon"]')).toBeVisible({
+        timeout: T_MEDIUM,
+      });
+      await expect(agents[0]!.panel.locator(SEL.terminal.cmEditor)).toHaveCount(0);
+    });
   });
 
   test("Cmd+Alt+Arrow cycles focus across the fleet grid (#5989)", async () => {
     test.setTimeout(60_000);
 
     const { window } = ctx;
+    let fleetIds: string[] = [];
+    let firstId = "";
 
-    // Self-contained: arm whatever grid panels exist (idempotent if a prior
-    // test already armed them) so this test passes when run in isolation
-    // (e.g., `playwright test --grep "#5989"`).
-    const gridIds = await getGridPanelIds(window);
-    expect(gridIds.length).toBeGreaterThanOrEqual(2);
-    for (const id of gridIds) {
-      await dispatchAction(window, "terminal.arm", { terminalId: id }, { source: "user" });
-    }
+    await test.step("Arm existing grid panels and enter fleet scope", async () => {
+      // Self-contained: arm whatever grid panels exist (idempotent if a prior
+      // test already armed them) so this test passes when run in isolation
+      // (e.g., `playwright test --grep "#5989"`).
+      const gridIds = await getGridPanelIds(window);
+      expect(gridIds.length).toBeGreaterThanOrEqual(2);
+      for (const id of gridIds) {
+        await dispatchAction(window, "terminal.arm", { terminalId: id }, { source: "user" });
+      }
 
-    // Activate fleet scope so ContentGrid renders the flat fleet grid —
-    // the path where useGridNavigation regressed in #5989.
-    const enter = await dispatchAction(window, "fleet.scope.enter", undefined, { source: "user" });
-    expect(enter.ok, enter.error?.message).toBe(true);
+      // Activate fleet scope so ContentGrid renders the flat fleet grid —
+      // the path where useGridNavigation regressed in #5989.
+      const enter = await dispatchAction(window, "fleet.scope.enter", undefined, {
+        source: "user",
+      });
+      expect(enter.ok, enter.error?.message).toBe(true);
 
-    const fleetIds = await getGridPanelIds(window);
-    expect(fleetIds.length).toBeGreaterThanOrEqual(2);
-
-    // Click the first fleet panel to anchor focus.
-    const firstId = fleetIds[0]!;
-    await getPanelById(window, firstId).click();
-    await expect
-      .poll(() => getFocusedPanelId(window), { timeout: T_MEDIUM, intervals: [100, 250] })
-      .toBe(firstId);
-
-    // Pre-fix, this dispatch was a silent no-op because the nav model was
-    // built from the active worktree's tab groups, not the fleet armOrder.
-    const right = await dispatchAction(window, "terminal.focusRight", undefined, {
-      source: "keybinding",
+      fleetIds = await getGridPanelIds(window);
+      expect(fleetIds.length).toBeGreaterThanOrEqual(2);
     });
-    expect(right.ok, right.error?.message).toBe(true);
 
-    await expect
-      .poll(() => getFocusedPanelId(window), { timeout: T_MEDIUM, intervals: [100, 250] })
-      .toBe(fleetIds[1]!);
+    await test.step("Click first fleet panel to anchor focus", async () => {
+      firstId = fleetIds[0]!;
+      await getPanelById(window, firstId).click();
+      await expect
+        .poll(() => getFocusedPanelId(window), { timeout: T_MEDIUM, intervals: [100, 250] })
+        .toBe(firstId);
+    });
 
-    const exit = await dispatchAction(window, "fleet.scope.exit", undefined, { source: "user" });
-    expect(exit.ok, exit.error?.message).toBe(true);
+    await test.step("Dispatch terminal.focusRight and verify focus moves to next fleet panel", async () => {
+      // Pre-fix, this dispatch was a silent no-op because the nav model was
+      // built from the active worktree's tab groups, not the fleet armOrder.
+      const right = await dispatchAction(window, "terminal.focusRight", undefined, {
+        source: "keybinding",
+      });
+      expect(right.ok, right.error?.message).toBe(true);
+
+      await expect
+        .poll(() => getFocusedPanelId(window), { timeout: T_MEDIUM, intervals: [100, 250] })
+        .toBe(fleetIds[1]!);
+    });
+
+    await test.step("Exit fleet scope", async () => {
+      const exit = await dispatchAction(window, "fleet.scope.exit", undefined, { source: "user" });
+      expect(exit.ok, exit.error?.message).toBe(true);
+    });
   });
 });

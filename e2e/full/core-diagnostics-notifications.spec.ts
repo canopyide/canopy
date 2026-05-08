@@ -35,29 +35,33 @@ test.describe.serial("Core: Diagnostics & Notifications", () => {
 
     test("switches between tabs", async () => {
       const { window } = ctx;
-
       const logsTab = window.locator(SEL.diagnostics.tab("logs"));
-      await logsTab.click();
-      await expect(logsTab).toHaveAttribute("aria-selected", "true", {
-        timeout: T_SHORT,
-      });
-      await expect(window.locator(SEL.diagnostics.tab("problems"))).toHaveAttribute(
-        "aria-selected",
-        "false"
-      );
-
-      const logsPanel = window.locator(SEL.diagnostics.panel("logs"));
-      await expect(logsPanel).toBeVisible({ timeout: T_SHORT });
-
       const eventsTab = window.locator(SEL.diagnostics.tab("events"));
-      await eventsTab.click();
-      await expect(eventsTab).toHaveAttribute("aria-selected", "true", {
-        timeout: T_SHORT,
-      });
-      await expect(logsTab).toHaveAttribute("aria-selected", "false");
 
-      const eventsPanel = window.locator(SEL.diagnostics.panel("events"));
-      await expect(eventsPanel).toBeVisible({ timeout: T_SHORT });
+      await test.step("Switch from Problems to Logs tab and verify selection", async () => {
+        await logsTab.click();
+        await expect(logsTab).toHaveAttribute("aria-selected", "true", {
+          timeout: T_SHORT,
+        });
+        await expect(window.locator(SEL.diagnostics.tab("problems"))).toHaveAttribute(
+          "aria-selected",
+          "false"
+        );
+
+        const logsPanel = window.locator(SEL.diagnostics.panel("logs"));
+        await expect(logsPanel).toBeVisible({ timeout: T_SHORT });
+      });
+
+      await test.step("Switch from Logs to Events tab and verify selection", async () => {
+        await eventsTab.click();
+        await expect(eventsTab).toHaveAttribute("aria-selected", "true", {
+          timeout: T_SHORT,
+        });
+        await expect(logsTab).toHaveAttribute("aria-selected", "false");
+
+        const eventsPanel = window.locator(SEL.diagnostics.panel("events"));
+        await expect(eventsPanel).toBeVisible({ timeout: T_SHORT });
+      });
     });
 
     test("events tab shows captured events", async () => {
@@ -101,33 +105,34 @@ test.describe.serial("Core: Diagnostics & Notifications", () => {
 
     test("logs tab renders log entries", async () => {
       const { window } = ctx;
-
-      // Switch to logs tab
       const logsTab = window.locator(SEL.diagnostics.tab("logs"));
-      await logsTab.click();
-      await expect(logsTab).toHaveAttribute("aria-selected", "true", {
-        timeout: T_SHORT,
-      });
-
       const logsPanel = window.locator(SEL.diagnostics.panel("logs"));
-      await expect(logsPanel).toBeVisible({ timeout: T_SHORT });
 
-      // Seed a log entry via IPC to ensure at least one exists
-      await window.evaluate(() => {
-        type W = {
-          electron: { logs: { write: (level: string, message: string) => Promise<void> } };
-        };
-        return (window as unknown as W).electron.logs.write("info", "E2E diagnostics test log");
+      await test.step("Switch to Logs tab and verify panel is visible", async () => {
+        await logsTab.click();
+        await expect(logsTab).toHaveAttribute("aria-selected", "true", {
+          timeout: T_SHORT,
+        });
+        await expect(logsPanel).toBeVisible({ timeout: T_SHORT });
       });
 
-      // Verify logs loaded into the panel (Virtuoso renders items)
-      await expect
-        .poll(() => logsPanel.locator('[data-testid="virtuoso-item-list"] > *').count(), {
-          timeout: T_MEDIUM,
-        })
-        .toBeGreaterThanOrEqual(1);
+      await test.step("Seed a log entry via IPC and verify it renders", async () => {
+        await window.evaluate(() => {
+          type W = {
+            electron: { logs: { write: (level: string, message: string) => Promise<void> } };
+          };
+          return (window as unknown as W).electron.logs.write("info", "E2E diagnostics test log");
+        });
 
-      await expect(logsPanel.getByText("No logs yet")).not.toBeVisible();
+        // Verify logs loaded into the panel (Virtuoso renders items)
+        await expect
+          .poll(() => logsPanel.locator('[data-testid="virtuoso-item-list"] > *').count(), {
+            timeout: T_MEDIUM,
+          })
+          .toBeGreaterThanOrEqual(1);
+
+        await expect(logsPanel.getByText("No logs yet")).not.toBeVisible();
+      });
     });
 
     test("resizes via keyboard", async () => {
@@ -158,16 +163,19 @@ test.describe.serial("Core: Diagnostics & Notifications", () => {
     test("reopens via toggle shortcut", async () => {
       const { window } = ctx;
 
-      await window.keyboard.press(`${mod}+Shift+D`);
+      await test.step("Reopen diagnostics dock via toggle shortcut", async () => {
+        await window.keyboard.press(`${mod}+Shift+D`);
 
-      await expect(window.locator(SEL.diagnostics.dock)).toBeVisible({
-        timeout: T_MEDIUM,
+        await expect(window.locator(SEL.diagnostics.dock)).toBeVisible({
+          timeout: T_MEDIUM,
+        });
       });
 
-      // Clean up: close dock for subsequent tests
-      await window.locator(SEL.diagnostics.closeButton).click();
-      await expect(window.locator(SEL.diagnostics.dock)).not.toBeVisible({
-        timeout: T_SHORT,
+      await test.step("Close dock to leave clean state for subsequent tests", async () => {
+        await window.locator(SEL.diagnostics.closeButton).click();
+        await expect(window.locator(SEL.diagnostics.dock)).not.toBeVisible({
+          timeout: T_SHORT,
+        });
       });
     });
   });
