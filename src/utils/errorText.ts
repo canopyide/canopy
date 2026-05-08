@@ -22,7 +22,7 @@ const BIDI_AND_SEPARATORS = new RegExp(
     "‎" + // LRM (Left-to-Right Mark)
     "‏" + // RLM (Right-to-Left Mark)
     "‪‫‬‭‮" + // LRE, RLE, PDF, LRO, RLO
-    "  " + // Line/Paragraph separators
+    "  " + // Line/Paragraph separators
     "⁦⁧⁨⁩" + // LRI, RLI, FSI, PDI
     "﻿" + // BOM
     "]",
@@ -30,6 +30,7 @@ const BIDI_AND_SEPARATORS = new RegExp(
 );
 // Zero-width invisibles (Unicode Cf, not Cc — missed by C0/C1 ranges):
 // U+200B ZWSP, U+200C ZWNJ, U+200D ZWJ, U+2060 Word Joiner.
+// eslint-disable-next-line no-irregular-whitespace, no-misleading-character-class
 const ZERO_WIDTH = /[​‌‍⁠]/g;
 
 /**
