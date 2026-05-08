@@ -1,9 +1,10 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useLogsStore, useErrorStore } from "@/store";
 import { useTelemetryPreviewStore } from "@/store/telemetryPreviewStore";
 import { actionService } from "@/services/ActionService";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 export function ProblemsActions() {
   const hasActiveErrors = useErrorStore((state) => state.errors.some((e) => !e.dismissed));
@@ -137,22 +138,34 @@ export function TelemetryActions() {
 }
 
 export function EventsActions() {
-  const handleClearEvents = async () => {
-    if (window.confirm("Clear all events? This cannot be undone.")) {
-      await actionService.dispatch("eventInspector.clear", undefined, { source: "user" });
-    }
-  };
+  const [showClearDialog, setShowClearDialog] = useState(false);
+
+  const handleConfirmClear = useCallback(async () => {
+    await actionService.dispatch("eventInspector.clear", undefined, { source: "user" });
+    setShowClearDialog(false);
+  }, []);
 
   return (
-    <div className="flex items-center gap-2">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button variant="subtle" size="xs" onClick={handleClearEvents}>
-            Clear
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">Clear all events</TooltipContent>
-      </Tooltip>
-    </div>
+    <>
+      <div className="flex items-center gap-2">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="subtle" size="xs" onClick={() => setShowClearDialog(true)}>
+              Clear
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Clear all events</TooltipContent>
+        </Tooltip>
+      </div>
+      <ConfirmDialog
+        isOpen={showClearDialog}
+        onClose={() => setShowClearDialog(false)}
+        title="Clear events?"
+        description="All captured event records will be permanently deleted."
+        confirmLabel="Clear events"
+        variant="destructive"
+        onConfirm={handleConfirmClear}
+      />
+    </>
   );
 }
