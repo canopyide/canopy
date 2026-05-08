@@ -6,6 +6,8 @@ describe("getGitignoreTemplate", () => {
     const content = getGitignoreTemplate("node");
     expect(content).not.toBeNull();
     expect(content).toMatch(/^\.env$/m);
+    expect(content).toMatch(/^\.env\.\*$/m);
+    expect(content).toMatch(/^!\.env\.example$/m);
     expect(content).toMatch(/^\.env\.local$/m);
     expect(content).toMatch(/^\.env\.\*\.local$/m);
     expect(content).toMatch(/^node_modules\/$/m);

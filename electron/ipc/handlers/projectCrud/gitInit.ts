@@ -112,11 +112,14 @@ export function registerGitInitHandlers(): () => void {
           throw new Error(`Invalid gitignore template: ${gitignoreTemplate}`);
         }
         const gitignorePath = path.join(directoryPath, ".gitignore");
-        const gitignoreExists = await fs.promises
-          .access(gitignorePath)
-          .then(() => true)
-          .catch(() => false);
-        if (gitignoreExists) {
+        const existingStat = await fs.promises.stat(gitignorePath).catch(() => null);
+        const gitignoreIsFile = existingStat?.isFile() ?? false;
+        if (existingStat && !gitignoreIsFile) {
+          throw new Error(
+            `.gitignore at ${gitignorePath} exists but is not a regular file — refusing to proceed`
+          );
+        }
+        if (gitignoreIsFile) {
           completedSteps.push("gitignore");
           let skipMessage = "Existing .gitignore kept — verify it excludes secrets";
           try {
@@ -228,6 +231,8 @@ yarn-error.log*
 
 # Environment
 .env
+.env.*
+!.env.example
 .env.local
 .env.*.local
 

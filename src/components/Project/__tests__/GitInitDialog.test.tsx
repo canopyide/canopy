@@ -174,6 +174,18 @@ describe("GitInitDialog", () => {
     });
   });
 
+  it("guards against double-clicks dispatching two IPC calls", async () => {
+    initGitGuidedMock.mockImplementationOnce(() => new Promise(() => {}));
+
+    renderDialog();
+
+    const button = screen.getByRole("button", { name: /initialize repository/i });
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    await waitFor(() => expect(initGitGuidedMock).toHaveBeenCalledTimes(1));
+  });
+
   it("auto-continues after a completion event", async () => {
     const onSuccess = vi.fn();
     renderDialog({ onSuccess });

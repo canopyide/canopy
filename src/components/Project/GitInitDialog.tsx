@@ -36,6 +36,8 @@ export function GitInitDialog({ isOpen, directoryPath, onSuccess, onCancel }: Gi
   const [isComplete, setIsComplete] = useState(false);
   const logEndRef = useRef<HTMLDivElement>(null);
   const hasFinalizedSuccessRef = useRef(false);
+  const inFlightRef = useRef(false);
+  const sawTerminalEventRef = useRef(false);
 
   const finalizeSuccess = useCallback(() => {
     if (hasFinalizedSuccessRef.current) {
@@ -55,6 +57,8 @@ export function GitInitDialog({ isOpen, directoryPath, onSuccess, onCancel }: Gi
       setError(null);
       setIsComplete(false);
       hasFinalizedSuccessRef.current = false;
+      inFlightRef.current = false;
+      sawTerminalEventRef.current = false;
       return;
     }
 
@@ -62,10 +66,12 @@ export function GitInitDialog({ isOpen, directoryPath, onSuccess, onCancel }: Gi
       setProgressEvents((prev) => [...prev, event]);
 
       if (event.status === "error") {
+        sawTerminalEventRef.current = true;
         setError(event.error || event.message || "Unknown error");
         setIsComplete(false);
         setIsInitializing(false);
       } else if (event.step === "complete" && event.status === "success") {
+        sawTerminalEventRef.current = true;
         setIsComplete(true);
         setIsInitializing(false);
       }
@@ -83,6 +89,11 @@ export function GitInitDialog({ isOpen, directoryPath, onSuccess, onCancel }: Gi
     if (createInitialCommit && trimmedMessage === "") {
       return;
     }
+    if (inFlightRef.current) {
+      return;
+    }
+    inFlightRef.current = true;
+    sawTerminalEventRef.current = false;
 
     setIsInitializing(true);
     setError(null);
@@ -98,9 +109,15 @@ export function GitInitDialog({ isOpen, directoryPath, onSuccess, onCancel }: Gi
         createGitignore: gitignoreTemplate !== "none",
         gitignoreTemplate,
       });
+      if (!sawTerminalEventRef.current) {
+        setError(
+          "Initialization finished without a status update — check the repository to confirm the result."
+        );
+      }
     } catch (err) {
       setError(formatErrorMessage(err, "Failed to initialize git repository"));
     } finally {
+      inFlightRef.current = false;
       setIsInitializing(false);
     }
   }, [directoryPath, gitignoreTemplate, initialCommitMessage, createInitialCommit]);
