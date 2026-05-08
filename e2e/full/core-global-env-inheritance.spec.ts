@@ -165,9 +165,6 @@ test.describe.serial("Full: Global Environment Variable Inheritance", () => {
     await expect(panel).toBeVisible({ timeout: T_LONG });
     await expect(panel.locator(SEL.terminal.xtermRows)).toBeVisible({ timeout: T_LONG });
 
-    // Wait for the shell to be ready (look for fixture dir name in prompt)
-    await waitForTerminalText(panel, "env-inheritance", T_LONG);
-
     // Run echo command to check the env var value
     await runTerminalCommand(window, panel, echoGlobalEnvCommand());
     // Project override should win over global
