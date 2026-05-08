@@ -1,12 +1,9 @@
 import { test } from "@playwright/test";
 import path from "path";
-import { mkdirSync } from "fs";
-import { launchApp, closeApp } from "../helpers/launch";
+import { rmSync, existsSync } from "fs";
+import { launchApp, closeApp, type AppContext } from "../helpers/launch";
 import { createFixtureRepo } from "../helpers/fixtures";
 import { openAndOnboardProject } from "../helpers/project";
-
-const OUT = "/tmp/bondi-screenshots";
-mkdirSync(OUT, { recursive: true });
 
 async function switchTheme(page: import("@playwright/test").Page, themeId: string) {
   await page.evaluate(async (id) => {
@@ -21,72 +18,90 @@ async function switchTheme(page: import("@playwright/test").Page, themeId: strin
     themeId,
     { timeout: 10_000 }
   );
-  await page.waitForTimeout(800);
 }
 
-async function shot(
-  page: import("@playwright/test").Page,
-  selector: string,
-  filename: string,
-  padding = 0
-) {
-  const locator = page.locator(selector).first();
-  await locator.waitFor({ state: "visible", timeout: 8_000 });
-  const box = await locator.boundingBox();
-  if (!box) return;
-  await page.screenshot({
-    path: path.join(OUT, filename),
-    clip: {
-      x: Math.max(0, box.x - padding),
-      y: Math.max(0, box.y - padding),
-      width: box.width + padding * 2,
-      height: box.height + padding * 2,
-    },
-  });
-}
+let ctx: AppContext;
+let repoDir: string;
 
-test("capture Bondi — sidebar, terminal, full app", async () => {
-  const repoDir = await createFixtureRepo({
-    name: "bondi-review",
-    withFeatureBranch: true,
-    withUncommittedChanges: true,
+test.describe.serial("Core: Bondi Visual Review", () => {
+  test.beforeAll(async () => {
+    repoDir = createFixtureRepo({
+      name: "bondi-review",
+      withFeatureBranch: true,
+      withUncommittedChanges: true,
+    });
+
+    ctx = await launchApp();
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, repoDir, "Bondi Review");
+    await ctx.window.locator('aside[aria-label="Sidebar"]').waitFor({ state: "visible" });
+    await ctx.window.waitForTimeout(1500);
   });
 
-  const ctx = await launchApp();
-  const { app } = ctx;
-  let page = ctx.window;
+  test.afterAll(async () => {
+    if (ctx?.app) await closeApp(ctx.app);
+    const worktreeDir = path.join(path.dirname(repoDir), path.basename(repoDir) + "-worktrees");
+    if (existsSync(worktreeDir)) {
+      rmSync(worktreeDir, { recursive: true, force: true });
+    }
+    rmSync(repoDir, { recursive: true, force: true });
+  });
 
-  try {
-    page = await openAndOnboardProject(app, page, repoDir, "Bondi Review");
-    await page.locator('aside[aria-label="Sidebar"]').waitFor({ state: "visible" });
-    await page.waitForTimeout(1500);
+  test("capture Bondi — sidebar, terminal, full app", async ({}, testInfo) => {
+    const { window: page } = ctx;
+
+    async function capturePage(filename: string) {
+      const p = testInfo.outputPath(filename);
+      await page.screenshot({ path: p });
+      await testInfo.attach(filename.replace(/\.png$/, ""), {
+        path: p,
+        contentType: "image/png",
+      });
+    }
+
+    async function shot(selector: string, filename: string, padding = 0) {
+      const locator = page.locator(selector).first();
+      await locator.waitFor({ state: "visible", timeout: 8_000 });
+      const box = await locator.boundingBox();
+      if (!box) return;
+      const p = testInfo.outputPath(filename);
+      await page.screenshot({
+        path: p,
+        clip: {
+          x: Math.max(0, box.x - padding),
+          y: Math.max(0, box.y - padding),
+          width: box.width + padding * 2,
+          height: box.height + padding * 2,
+        },
+      });
+      await testInfo.attach(filename.replace(/\.png$/, ""), {
+        path: p,
+        contentType: "image/png",
+      });
+    }
 
     // --- DAINTREE reference ---
     await switchTheme(page, "daintree");
-    await page.screenshot({ path: path.join(OUT, "daintree-full-app.png") });
-    await shot(page, 'aside[aria-label="Sidebar"]', "daintree-sidebar.png");
+    await capturePage("daintree-full-app.png");
+    await shot('aside[aria-label="Sidebar"]', "daintree-sidebar.png");
     await page.locator('[aria-label="Open Terminal"]').click();
     await page.locator(".xterm-screen").waitFor({ state: "visible", timeout: 10_000 });
     await page.waitForTimeout(1000);
-    await page.screenshot({ path: path.join(OUT, "daintree-with-terminal.png") });
+    await capturePage("daintree-with-terminal.png");
 
     // --- BONDI ---
     await switchTheme(page, "bondi");
-    await page.screenshot({ path: path.join(OUT, "bondi-full-app.png") });
-    await shot(page, 'aside[aria-label="Sidebar"]', "bondi-sidebar.png");
-    await shot(page, '[role="toolbar"]', "bondi-toolbar.png");
-    await shot(page, "main", "bondi-canvas.png");
+    await capturePage("bondi-full-app.png");
+    await shot('aside[aria-label="Sidebar"]', "bondi-sidebar.png");
+    await shot('[role="toolbar"]', "bondi-toolbar.png");
+    await shot("main", "bondi-canvas.png");
 
-    // Terminal may have been restored from previous Daintree session, or open fresh
     const xtermVisible = await page.locator(".xterm-screen").first().isVisible();
     if (!xtermVisible) {
       await page.locator('[aria-label="Open Terminal"]').click();
       await page.locator(".xterm-screen").waitFor({ state: "visible", timeout: 10_000 });
     }
     await page.waitForTimeout(1500);
-    await page.screenshot({ path: path.join(OUT, "bondi-with-terminal.png") });
-    await shot(page, ".xterm-screen", "bondi-terminal-bg.png", 4);
-  } finally {
-    await closeApp(app);
-  }
+    await capturePage("bondi-with-terminal.png");
+    await shot(".xterm-screen", "bondi-terminal-bg.png", 4);
+  });
 });
