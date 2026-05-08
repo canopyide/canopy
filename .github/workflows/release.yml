@@ -203,6 +203,83 @@ jobs:
           npm run build
           npx electron-builder --config electron-builder.config.cjs --publish never
 
+      - name: Run WACK (Windows, best-effort)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          $appx = Get-ChildItem -Path release -Filter *.appx -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+          if (-not $appx) {
+            $appx = Get-ChildItem -Path release -Filter *.msix -ErrorAction SilentlyContinue |
+              Select-Object -First 1
+          }
+          if (-not $appx) {
+            Write-Host "::warning::No .appx or .msix found in release/ — skipping WACK"
+            exit 0
+          }
+          $appcert = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\App Certification Kit\appcert.exe'
+          if (-not (Test-Path $appcert)) {
+            Write-Host "::warning::WACK (appcert.exe) not found at $appcert — skipping"
+            exit 0
+          }
+          $report = Join-Path $env:RUNNER_TEMP 'wack-report.xml'
+          & $appcert test -appxpackagepath $appx.FullName -reportoutputpath $report
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::warning::WACK reported issues (exit $LASTEXITCODE). Microsoft re-runs WACK during certification — see $report for details."
+          }
+
+      - name: Check Microsoft Store secrets (Windows)
+        id: store-secrets
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        env:
+          PARTNER_CENTER_TENANT_ID: ${{ secrets.PARTNER_CENTER_TENANT_ID }}
+          PARTNER_CENTER_SELLER_ID: ${{ secrets.PARTNER_CENTER_SELLER_ID }}
+          PARTNER_CENTER_CLIENT_ID: ${{ secrets.PARTNER_CENTER_CLIENT_ID }}
+          PARTNER_CENTER_CLIENT_SECRET: ${{ secrets.PARTNER_CENTER_CLIENT_SECRET }}
+          STORE_PRODUCT_ID: ${{ secrets.STORE_PRODUCT_ID }}
+        run: |
+          $configured = -not [string]::IsNullOrEmpty($env:PARTNER_CENTER_TENANT_ID) `
+            -and -not [string]::IsNullOrEmpty($env:PARTNER_CENTER_SELLER_ID) `
+            -and -not [string]::IsNullOrEmpty($env:PARTNER_CENTER_CLIENT_ID) `
+            -and -not [string]::IsNullOrEmpty($env:PARTNER_CENTER_CLIENT_SECRET) `
+            -and -not [string]::IsNullOrEmpty($env:STORE_PRODUCT_ID)
+          $value = if ($configured) { 'true' } else { 'false' }
+          "configured=$value" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          if (-not $configured) {
+            Write-Host "::notice::Microsoft Store submission skipped — PARTNER_CENTER_* and STORE_PRODUCT_ID secrets not configured. The .appx is still built and archived to R2."
+          }
+
+      - name: Install Microsoft Store CLI (Windows)
+        if: matrix.os == 'windows-latest' && steps.store-secrets.outputs.configured == 'true'
+        uses: microsoft/microsoft-store-apppublisher@v1.3
+
+      - name: Submit to Microsoft Store (Windows)
+        if: matrix.os == 'windows-latest' && steps.store-secrets.outputs.configured == 'true'
+        shell: pwsh
+        env:
+          PARTNER_CENTER_TENANT_ID: ${{ secrets.PARTNER_CENTER_TENANT_ID }}
+          PARTNER_CENTER_SELLER_ID: ${{ secrets.PARTNER_CENTER_SELLER_ID }}
+          PARTNER_CENTER_CLIENT_ID: ${{ secrets.PARTNER_CENTER_CLIENT_ID }}
+          PARTNER_CENTER_CLIENT_SECRET: ${{ secrets.PARTNER_CENTER_CLIENT_SECRET }}
+          STORE_PRODUCT_ID: ${{ secrets.STORE_PRODUCT_ID }}
+        run: |
+          msstore reconfigure `
+            --tenantId $env:PARTNER_CENTER_TENANT_ID `
+            --sellerId $env:PARTNER_CENTER_SELLER_ID `
+            --clientId $env:PARTNER_CENTER_CLIENT_ID `
+            --clientSecret $env:PARTNER_CENTER_CLIENT_SECRET
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::msstore reconfigure failed (exit $LASTEXITCODE)"
+            exit $LASTEXITCODE
+          }
+          msstore publish . --appId $env:STORE_PRODUCT_ID --inputDirectory .\release
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::msstore publish failed (exit $LASTEXITCODE). If the failure is 'unknown command,' the CLI grammar may have shifted — run 'msstore --help' on the runner and update this step."
+            exit $LASTEXITCODE
+          }
+
       - name: Validate update metadata (macOS)
         if: startsWith(matrix.os, 'macos')
         shell: bash
@@ -238,10 +315,10 @@ jobs:
           path: |
             release/*.dmg
             release/*.zip
-            release/*.exe
+            release/*.appx
+            release/*.msix
             release/*.AppImage
             release/*.deb
-            release/*.blockmap
             release/*.yml
           retention-days: 7
           if-no-files-found: error
@@ -301,10 +378,10 @@ jobs:
             --exclude "*" \
             --include "*.dmg" \
             --include "*.zip" \
-            --include "*.exe" \
+            --include "*.appx" \
+            --include "*.msix" \
             --include "*.AppImage" \
             --include "*.deb" \
-            --include "*.blockmap" \
             --cache-control "public, max-age=31536000, immutable"
 
       - name: Upload metadata to R2
