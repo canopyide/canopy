@@ -15,19 +15,18 @@ export function AllClearOverlay() {
     return cleanup;
   }, []);
 
-  const handleAnimationEnd = useCallback(
-    (event: React.AnimationEvent) => {
-      if (event.animationName === "all-clear-flash") {
-        setVisible(false);
-      }
-    },
-    [],
-  );
+  const handleAnimationEnd = useCallback((event: React.AnimationEvent) => {
+    if (event.animationName === "all-clear-flash") {
+      setVisible(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!visible) return;
     safetyTimerRef.current = setTimeout(() => setVisible(false), 500);
-    return () => clearTimeout(safetyTimerRef.current);
+    return () => {
+      if (safetyTimerRef.current !== null) clearTimeout(safetyTimerRef.current);
+    };
   }, [visible]);
 
   if (!visible) return null;
@@ -38,6 +37,6 @@ export function AllClearOverlay() {
       aria-hidden="true"
       onAnimationEnd={handleAnimationEnd}
     />,
-    document.body,
+    document.body
   );
 }

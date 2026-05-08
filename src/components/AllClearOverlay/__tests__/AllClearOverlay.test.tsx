@@ -16,14 +16,12 @@ beforeEach(() => {
     writable: true,
     value: {
       terminal: {
-        onAllAgentsClear: vi.fn(
-          (callback: (data: { timestamp: number }) => void) => {
-            onAllAgentsClearCb = callback;
-            return () => {
-              onAllAgentsClearCb = null;
-            };
-          },
-        ),
+        onAllAgentsClear: vi.fn((callback: (data: { timestamp: number }) => void) => {
+          onAllAgentsClearCb = callback;
+          return () => {
+            onAllAgentsClearCb = null;
+          };
+        }),
       },
     },
   });
