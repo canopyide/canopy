@@ -83,6 +83,26 @@ describe("SettingsShortcutCapture", () => {
     expect(screen.getByText("Press key combination...")).toBeTruthy();
   });
 
+  it("status region announces recording state changes via aria-live", () => {
+    render(
+      <SettingsShortcutCapture
+        onCapture={mockOnCapture}
+        onCancel={mockOnCancel}
+        excludeActionId="test.action"
+      />
+    );
+
+    const status = screen.getByRole("status");
+    expect(status.getAttribute("aria-live")).toBe("polite");
+    expect(status.getAttribute("aria-atomic")).toBe("true");
+    expect(status.textContent).toContain("Click to record shortcut");
+
+    fireEvent.click(screen.getByText("Click to record shortcut"));
+
+    const updatedStatus = screen.getByRole("status");
+    expect(updatedStatus.textContent).toContain("Press key combination...");
+  });
+
   it("captures single key combination and displays it", async () => {
     render(
       <SettingsShortcutCapture
