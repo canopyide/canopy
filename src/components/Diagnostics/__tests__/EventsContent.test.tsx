@@ -64,7 +64,7 @@ describe("EventsContent — disposed guard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     let unsubCallback: (() => void) | null = null;
-    mockOnEventBatch.mockImplementation((cb: (events: EventRecord[]) => void) => {
+    mockOnEventBatch.mockImplementation((_cb: (events: EventRecord[]) => void) => {
       // hold the callback but don't fire it
       unsubCallback = () => {};
       return unsubCallback;
@@ -111,7 +111,7 @@ describe("EventsContent — disposed guard", () => {
 
     unmount();
 
-    batchCallback?.([
+    batchCallback!([
       { id: "2", timestamp: 2, type: "test", category: "agent", payload: {}, source: "main" },
     ]);
 
@@ -128,7 +128,7 @@ describe("EventsContent — disposed guard", () => {
 
     render(<EventsContent />);
 
-    batchCallback?.([
+    batchCallback!([
       { id: "2", timestamp: 2, type: "test", category: "agent", payload: {}, source: "main" },
     ]);
 
