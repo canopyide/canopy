@@ -11,6 +11,12 @@ export async function configureClaudeAuthEnv(page: Page): Promise<void> {
   }
 
   await page.evaluate(async (anthropicApiKey) => {
+    const currentGlobalEnv = await window.electron.globalEnv.get();
+    await window.electron.globalEnv.set({
+      ...currentGlobalEnv,
+      ANTHROPIC_API_KEY: anthropicApiKey,
+    });
+
     const current = await window.electron.agentSettings.get();
     const currentEnv = (current.agents?.claude?.globalEnv ?? {}) as Record<string, string>;
 
