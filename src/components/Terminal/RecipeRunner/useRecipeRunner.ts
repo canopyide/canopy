@@ -6,6 +6,7 @@ import { actionService } from "@/services/ActionService";
 import {
   buildRecipeSections,
   rankSearchResults,
+  nextDuplicateName,
   type RecipeSections,
   type RankedRecipe,
 } from "./recipeRunnerUtils";
@@ -114,12 +115,18 @@ export function useRecipeRunner({
       const worktreeData = activeWorktreeId
         ? getCurrentViewStore().getState().worktrees.get(activeWorktreeId)
         : null;
-      void runRecipe(recipeId, defaultCwd, activeWorktreeId ?? undefined, {
-        issueNumber: worktreeData?.issueNumber,
-        prNumber: worktreeData?.prNumber,
-        worktreePath: defaultCwd,
-        branchName: worktreeData?.branch,
-      });
+      void runRecipe(
+        recipeId,
+        defaultCwd,
+        activeWorktreeId ?? undefined,
+        {
+          issueNumber: worktreeData?.issueNumber,
+          prNumber: worktreeData?.prNumber,
+          worktreePath: defaultCwd,
+          branchName: worktreeData?.branch,
+        },
+        { spawnedBy: "recipe" }
+      );
     },
     [defaultCwd, activeWorktreeId, runRecipe]
   );
@@ -139,16 +146,20 @@ export function useRecipeRunner({
     (recipeId: string) => {
       const recipe = getRecipeById(recipeId);
       if (!recipe) return;
+      // Pick a name whose stableInRepoId doesn't collide with any existing recipe —
+      // otherwise duplicating an in-repo recipe twice silently overwrites the first.
+      const existingIds = new Set(allRecipes.map((r) => r.id));
+      const copyName = nextDuplicateName(recipe.name, existingIds);
       void createRecipe(
         recipe.projectId,
-        `${recipe.name} (Copy)`,
+        copyName,
         recipe.worktreeId,
         recipe.terminals,
         false,
         recipe.autoAssign
       );
     },
-    [getRecipeById, createRecipe]
+    [getRecipeById, createRecipe, allRecipes]
   );
 
   const handlePin = useCallback(
@@ -201,15 +212,18 @@ export function useRecipeRunner({
           e.preventDefault();
           setSearchQuery("");
         }
-      } else if (e.key === "e" && e.metaKey) {
+      } else if (
+        e.key === "e" &&
+        // Ctrl+E in a text input means "move cursor to end of line" on
+        // Linux/Windows (readline binding) — don't steal it. Cmd+E on macOS
+        // doesn't conflict with input editing, so allow it from any target.
+        (e.metaKey || (e.ctrlKey && !(e.target instanceof HTMLInputElement)))
+      ) {
         e.preventDefault();
         const flat = getFlatRecipes();
         if (focusedIndex < flat.length) {
           handleEdit(flat[focusedIndex]!.id);
         }
-      } else if (e.key === "n" && e.metaKey) {
-        e.preventDefault();
-        handleCreate();
       }
     },
     [totalItems, focusedIndex, getFlatRecipes, handleRun, handleCreate, handleEdit, searchQuery]

@@ -496,13 +496,39 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
     }
 
     const now = Date.now();
-    const prevHistory = recipe.usageHistory ?? [];
-    const usageHistory = [...prevHistory, now].slice(-20);
-    get()
-      .updateRecipe(recipeId, { lastUsedAt: now, usageHistory })
-      .catch((error) => {
-        logError("Failed to update lastUsedAt for recipe", error);
-      });
+    // Atomic in-memory append — folding the read+write into a `set` callback
+    // closes over the freshest state, so two near-simultaneous runs don't both
+    // read the same pre-update snapshot and drop one timestamp.
+    set((state) => {
+      const apply = (list: TerminalRecipe[]) =>
+        list.map((r) => {
+          if (r.id !== recipeId) return r;
+          return {
+            ...r,
+            lastUsedAt: now,
+            usageHistory: [...(r.usageHistory ?? []), now].slice(-20),
+          };
+        });
+      return {
+        globalRecipes: apply(state.globalRecipes),
+        projectRecipes: apply(state.projectRecipes),
+        inRepoRecipes: apply(state.inRepoRecipes),
+        recipes: apply(state.recipes),
+      };
+    });
+    // Persist using the freshest snapshot so any racing run's contribution is
+    // preserved in the persisted history rather than clobbered.
+    const persistSnapshot = get().recipes.find((r) => r.id === recipeId);
+    if (persistSnapshot) {
+      get()
+        .updateRecipe(recipeId, {
+          lastUsedAt: persistSnapshot.lastUsedAt,
+          usageHistory: persistSnapshot.usageHistory,
+        })
+        .catch((error) => {
+          logError("Failed to update lastUsedAt for recipe", error);
+        });
+    }
 
     const terminalStore = usePanelStore.getState();
 

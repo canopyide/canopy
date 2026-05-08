@@ -541,6 +541,62 @@ describe("recipeStore", () => {
       expect(results.spawned[1]?.index).toBe(2);
     });
 
+    it("appends usageHistory atomically across concurrent runs", async () => {
+      // Hold the first spawn open so the second run interleaves with the
+      // first's in-flight state. Without an atomic set-callback append, both
+      // runs would read the same pre-update snapshot and one timestamp would
+      // get dropped — final usageHistory would be length 1 instead of 2.
+      let resolveFirst: ((value: string) => void) | null = null;
+      let callCount = 0;
+      addTerminalMock.mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) {
+          return new Promise<string>((resolve) => {
+            resolveFirst = resolve;
+          });
+        }
+        return Promise.resolve(`terminal-${callCount}`);
+      });
+
+      useRecipeStore.setState({
+        recipes: [
+          {
+            id: "recipe-race",
+            name: "Race",
+            projectId: "project-1",
+            terminals: [{ type: "terminal", title: "T1", command: "echo", env: {} }],
+            createdAt: 1000,
+          },
+        ],
+        projectRecipes: [
+          {
+            id: "recipe-race",
+            name: "Race",
+            projectId: "project-1",
+            terminals: [{ type: "terminal", title: "T1", command: "echo", env: {} }],
+            createdAt: 1000,
+          },
+        ],
+        globalRecipes: [],
+        inRepoRecipes: [],
+        isLoading: false,
+        currentProjectId: "project-1",
+      });
+
+      const p1 = useRecipeStore.getState().runRecipeWithResults("recipe-race", "/tmp", "wt-1");
+      // Yield so p1 reaches its first await (the held addPanel).
+      await Promise.resolve();
+      const p2 = useRecipeStore.getState().runRecipeWithResults("recipe-race", "/tmp", "wt-1");
+
+      // Release the first spawn so both runs can settle.
+      resolveFirst!("terminal-1");
+
+      await Promise.all([p1, p2]);
+
+      const recipe = useRecipeStore.getState().recipes.find((r) => r.id === "recipe-race");
+      expect(recipe?.usageHistory).toHaveLength(2);
+    });
+
     it("retries only specified terminal indices", async () => {
       addTerminalMock.mockResolvedValue("terminal-retry-1");
 

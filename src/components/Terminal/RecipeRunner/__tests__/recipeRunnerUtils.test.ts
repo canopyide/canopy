@@ -1,5 +1,13 @@
-import { describe, it, expect } from "vitest";
-import { computeFrecency, buildRecipeSections, rankSearchResults } from "../recipeRunnerUtils";
+import { describe, it, expect, beforeEach } from "vitest";
+import {
+  computeFrecency,
+  buildRecipeSections,
+  rankSearchResults,
+  getRecipeFuse,
+  nextDuplicateName,
+  _resetRecipeFuseCacheForTests,
+} from "../recipeRunnerUtils";
+import { stableInRepoId } from "@shared/utils/recipeFilename";
 import type { TerminalRecipe } from "@/types";
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
@@ -114,6 +122,99 @@ describe("rankSearchResults", () => {
   it("returns empty for empty recipe array", () => {
     const results = rankSearchResults([], "query", Date.now());
     expect(results).toHaveLength(0);
+  });
+});
+
+describe("getRecipeFuse caching", () => {
+  beforeEach(() => {
+    _resetRecipeFuseCacheForTests();
+  });
+
+  it("returns the same Fuse instance for arrays with identical id+name content", () => {
+    const a = [makeRecipe({ id: "1", name: "Build" }), makeRecipe({ id: "2", name: "Test" })];
+    const b = [makeRecipe({ id: "1", name: "Build" }), makeRecipe({ id: "2", name: "Test" })];
+    expect(getRecipeFuse(a)).toBe(getRecipeFuse(b));
+  });
+
+  it("does not rebuild when only metadata (lastUsedAt, usageHistory) changes", () => {
+    // Reproduces the original bug shape: every runRecipe call rewrites
+    // lastUsedAt, which produced a new array reference and busted the cache.
+    const before = [makeRecipe({ id: "1", name: "Deploy", lastUsedAt: 1 })];
+    const after = [
+      makeRecipe({ id: "1", name: "Deploy", lastUsedAt: 2, usageHistory: [Date.now()] }),
+    ];
+    expect(getRecipeFuse(before)).toBe(getRecipeFuse(after));
+  });
+
+  it("rebuilds when a recipe is renamed", () => {
+    const before = [makeRecipe({ id: "1", name: "Old" })];
+    const after = [makeRecipe({ id: "1", name: "New" })];
+    expect(getRecipeFuse(before)).not.toBe(getRecipeFuse(after));
+  });
+
+  it("rebuilds when a recipe is added or removed", () => {
+    const before = [makeRecipe({ id: "1", name: "A" })];
+    const after = [makeRecipe({ id: "1", name: "A" }), makeRecipe({ id: "2", name: "B" })];
+    expect(getRecipeFuse(before)).not.toBe(getRecipeFuse(after));
+  });
+
+  it("doesn't collide between recipe sets that share field-separator chars", () => {
+    // Length-prefixed key prevents a name containing the separator from
+    // colliding with a different recipe set's serialization.
+    const a = [makeRecipe({ id: "1,2", name: "X" })];
+    const b = [makeRecipe({ id: "1", name: ",2:1:X" })];
+    expect(getRecipeFuse(a)).not.toBe(getRecipeFuse(b));
+  });
+});
+
+describe("rankSearchResults frecency freshness", () => {
+  beforeEach(() => {
+    _resetRecipeFuseCacheForTests();
+  });
+
+  it("uses the current usageHistory even when the Fuse cache is reused", () => {
+    const now = Date.now();
+    // First call seeds the Fuse cache with usageHistory:[].
+    const before = [makeRecipe({ id: "r1", name: "test", usageHistory: [] })];
+    rankSearchResults(before, "test", now);
+
+    // Second call hits the cached Fuse instance but should still see the
+    // freshest usageHistory from the input list, so frecency reflects it.
+    const after = [makeRecipe({ id: "r1", name: "test", usageHistory: [now, now, now] })];
+    const results = rankSearchResults(after, "test", now);
+    expect(results[0]?.recipe.usageHistory).toEqual([now, now, now]);
+  });
+});
+
+describe("nextDuplicateName", () => {
+  it("returns 'Foo (Copy)' when no copies exist yet", () => {
+    expect(nextDuplicateName("Foo", new Set())).toBe("Foo (Copy)");
+  });
+
+  it("strips existing '(Copy)' suffix so duplicating a copy doesn't nest", () => {
+    expect(nextDuplicateName("Foo (Copy)", new Set([stableInRepoId("Foo (Copy)")]))).toBe(
+      "Foo (Copy 2)"
+    );
+  });
+
+  it("strips existing '(Copy N)' suffix and increments past the highest taken slot", () => {
+    const taken = new Set([stableInRepoId("Foo (Copy)"), stableInRepoId("Foo (Copy 2)")]);
+    expect(nextDuplicateName("Foo (Copy 2)", taken)).toBe("Foo (Copy 3)");
+  });
+
+  it("never returns a name that maps to an already-taken stableInRepoId", () => {
+    const taken = new Set([stableInRepoId("Recipe")]);
+    const result = nextDuplicateName("Recipe", taken);
+    expect(taken.has(stableInRepoId(result))).toBe(false);
+  });
+
+  it("avoids the 200-char truncation collision for very long names", () => {
+    // Without root pre-truncation, " (Copy)" gets sliced off by safeRecipeFilename's
+    // 200-char cap and every candidate hashes to the same ID as the original.
+    const longName = "a".repeat(220);
+    const original = stableInRepoId(longName);
+    const result = nextDuplicateName(longName, new Set([original]));
+    expect(stableInRepoId(result)).not.toBe(original);
   });
 });
 
