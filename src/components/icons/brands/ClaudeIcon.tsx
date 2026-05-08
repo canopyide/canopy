@@ -16,8 +16,6 @@ export function ClaudeIcon({ className, size = 16, brandColor, ...props }: Claud
       width={size}
       height={size}
       viewBox="0 0 1200 1200"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
       className={cn(className)}
       aria-hidden="true"
       {...props}

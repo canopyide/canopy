@@ -16,6 +16,8 @@ import { InterpreterIcon } from "../brands/InterpreterIcon";
 import { GooseIcon } from "../brands/GooseIcon";
 import { PythonIcon } from "../brands/PythonIcon";
 import { DockerIcon } from "../brands/DockerIcon";
+import { AiderIcon } from "../brands/AiderIcon";
+import { MistralIcon } from "../brands/MistralIcon";
 
 describe("DaintreeIcon a11y", () => {
   it("is decorative and exposes no aria-label", () => {
@@ -95,5 +97,17 @@ describe("Brand icon a11y", () => {
     const { container } = render(<ClaudeIcon brandColor="#FF0000" />);
     const path = container.querySelector("svg path");
     expect(path?.getAttribute("fill")).toBe("#FF0000");
+  });
+
+  it("AiderIcon preserves fill='none' (stroke-only icon)", () => {
+    const { container } = render(<AiderIcon />);
+    const svg = container.querySelector("svg");
+    expect(svg?.getAttribute("fill")).toBe("none");
+  });
+
+  it("MistralIcon uses square viewBox to center the mark", () => {
+    const { container } = render(<MistralIcon />);
+    const svg = container.querySelector("svg");
+    expect(svg?.getAttribute("viewBox")).toBe("0 -30.5 213 213");
   });
 });

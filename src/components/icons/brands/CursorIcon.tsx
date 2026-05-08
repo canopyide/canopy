@@ -14,8 +14,6 @@ export function CursorIcon({ className, size = 16, brandColor, ...props }: Curso
       width={size}
       height={size}
       viewBox="399 393 169 194"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
       className={cn(className)}
       aria-hidden="true"
       {...props}
