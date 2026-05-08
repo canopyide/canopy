@@ -197,7 +197,7 @@ export function registerAppActions(actions: ActionRegistry, callbacks: ActionCal
         notify({
           type: "error",
           priority: "high",
-          message: `Failed to save theme: ${target.name}`,
+          message: `Couldn't save theme preference — '${target.name}' is applied but the choice will be lost on restart.`,
           duration: 3000,
         });
         return;

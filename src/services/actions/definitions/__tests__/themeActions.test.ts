@@ -201,7 +201,11 @@ describe("app.theme.toggle", () => {
     expect(mockSetSelectedSchemeId).toHaveBeenCalledWith("light-a");
     expect(mockNotify).toHaveBeenCalledTimes(1);
     expect(mockNotify).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "error", message: "Failed to save theme: Light A" })
+      expect.objectContaining({
+        type: "error",
+        message:
+          "Couldn't save theme preference — 'Light A' is applied but the choice will be lost on restart.",
+      })
     );
     expect(mockNotify).not.toHaveBeenCalledWith(expect.objectContaining({ priority: "low" }));
     expect(mockAddNotification).not.toHaveBeenCalled();
