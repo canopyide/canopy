@@ -283,6 +283,9 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
                 toggleExpanded={toggleExpanded}
               />
             )}
+            role="log"
+            aria-label="Application logs"
+            aria-live="off"
             className="absolute inset-0 overflow-y-auto overflow-x-hidden font-mono"
           />
         )}
