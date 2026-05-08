@@ -253,8 +253,14 @@ function isWorktreeDragData(
   );
 }
 
-// Helper to get coordinates from pointer or touch event
-function getEventCoordinates(event: Event): { x: number; y: number } {
+// Helper to get coordinates from pointer or touch event. Returns null for
+// keyboard-initiated drags — KeyboardEvent has no client coordinates and
+// reading them yields undefined, which propagates as NaN through the cursor
+// modifiers and renders the DragOverlay at an invalid position. The cursor
+// modifiers below short-circuit when the ref is null and let the overlay
+// fall back to dnd-kit's default rect-centered positioning.
+function getEventCoordinates(event: Event): { x: number; y: number } | null {
+  if (typeof KeyboardEvent !== "undefined" && event instanceof KeyboardEvent) return null;
   if ("touches" in event && (event as TouchEvent).touches.length) {
     const touch = (event as TouchEvent).touches[0]!;
     return { x: touch.clientX, y: touch.clientY };
