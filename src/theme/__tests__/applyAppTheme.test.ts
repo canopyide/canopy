@@ -72,7 +72,7 @@ describe("applyAppThemeToRoot", () => {
 
 import { WORKTREE_COLOR_PALETTE } from "@shared/theme/worktreeColors";
 
-const CATEGORY_TOKENS = WORKTREE_COLOR_PALETTE.map((token) => `--theme-category-${token}`);
+const CATEGORY_TOKENS = WORKTREE_COLOR_PALETTE.map((token) => `--theme-${token}`);
 
 describe("applyColorVisionMode", () => {
   it("overrides all 8 category tokens in red-green mode", () => {
