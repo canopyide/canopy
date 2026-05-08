@@ -14,6 +14,16 @@ describe("isSensitiveEnvKey", () => {
     expect(isSensitiveEnvKey("DB_SECRET_VALUE")).toBe(true);
   });
 
+  it("matches credential and passphrase patterns", () => {
+    expect(isSensitiveEnvKey("GOOGLE_APPLICATION_CREDENTIALS")).toBe(true);
+    expect(isSensitiveEnvKey("AWS_CREDENTIAL_EXPIRATION")).toBe(true);
+    expect(isSensitiveEnvKey("CREDENTIAL")).toBe(true);
+    expect(isSensitiveEnvKey("CREDENTIALS")).toBe(true);
+    expect(isSensitiveEnvKey("SSH_PASSPHRASE")).toBe(true);
+    expect(isSensitiveEnvKey("GPG_PASSPHRASE")).toBe(true);
+    expect(isSensitiveEnvKey("PASSPHRASE")).toBe(true);
+  });
+
   it("matches lowercase variants (case-insensitive)", () => {
     expect(isSensitiveEnvKey("api_key")).toBe(true);
     expect(isSensitiveEnvKey("my_token")).toBe(true);

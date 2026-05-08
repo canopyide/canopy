@@ -181,7 +181,8 @@ export function stripAnsiAndOscCodes(text: string): string {
       .replace(/\x9d[^\x9c\x07]*[\x9c\x07]/g, "")
       // CSI sequences: parameter bytes (0x30-0x3F), optional intermediate bytes
       // (0x20-0x2F), and a final byte (0x40-0x7E covers A-Z, a-z, @, ~, etc.).
-      .replace(/\x1b\[[\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e]/g, "")
+      // Accept both the 7-bit introducer (ESC [) and the 8-bit C1 form (0x9B).
+      .replace(/(?:\x1b\[|\x9b)[\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e]/g, "")
   );
 }
 

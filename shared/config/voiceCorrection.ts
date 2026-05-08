@@ -4,6 +4,28 @@ export const CONFIDENCE_SKIP_THRESHOLD = 0.85;
 /** Tag words below this confidence with <uncertain> in the LLM prompt. */
 export const CONFIDENCE_TAG_THRESHOLD = 0.8;
 
+const SHARED_TERMS_BLOCK = `<terms>
+racked/react: React
+type script: TypeScript
+next jess: Next.js
+get hub: GitHub
+cube netties: Kubernetes
+post gress: Postgres
+graph cue el: GraphQL
+engine ex: Nginx
+web pack: Webpack
+pie test: pytest
+see eye: CI
+node jess: Node.js
+vie test: Vitest
+tail wind: Tailwind
+zoo stand: Zustand
+prism a: Prisma
+rediss: Redis
+E S lint: ESLint
+docker compose: Docker Compose
+</terms>`;
+
 export const CORE_CORRECTION_PROMPT = `You are a speech-to-text correction engine for a developer dictating to AI coding agents.
 
 TASK: Clean up the CURRENT TARGET only. Treat it as the full dictated passage for this recording stop. Do not repeat or modify anything outside the target.
@@ -29,27 +51,7 @@ CORRECTION PRIORITY:
 
 PRESERVE: Keep the speaker's meaning, ordering, and phrasing intact. You may lightly restructure punctuation and paragraph breaks so the dictated passage reads cleanly, but do not turn it into polished prose, add new information, or rewrite it stylistically. If the target is already clean enough, return it character-for-character without any modification.
 
-<terms>
-racked/react: React
-type script: TypeScript
-next jess: Next.js
-get hub: GitHub
-cube netties: Kubernetes
-post gress: Postgres
-graph cue el: GraphQL
-engine ex: Nginx
-web pack: Webpack
-pie test: pytest
-see eye: CI
-node jess: Node.js
-vie test: Vitest
-tail wind: Tailwind
-zoo stand: Zustand
-prism a: Prisma
-rediss: Redis
-E S lint: ESLint
-docker compose: Docker Compose
-</terms>`;
+${SHARED_TERMS_BLOCK}`;
 
 const GUARDRAIL_SUFFIX = `Return a JSON object that matches the response schema.
 - Use "no_change" when the input should remain exactly as-is.
@@ -72,27 +74,7 @@ PHONETIC MATCHING PRIORITY:
 2. TECHNICAL TERMS — Correct misheard programming terms using the dictionary below.
 3. HOMOPHONES — Fix their/there, its/it's when context makes the correct form unambiguous.
 
-<terms>
-racked/react: React
-type script: TypeScript
-next jess: Next.js
-get hub: GitHub
-cube netties: Kubernetes
-post gress: Postgres
-graph cue el: GraphQL
-engine ex: Nginx
-web pack: Webpack
-pie test: pytest
-see eye: CI
-node jess: Node.js
-vie test: Vitest
-tail wind: Tailwind
-zoo stand: Zustand
-prism a: Prisma
-rediss: Redis
-E S lint: ESLint
-docker compose: Docker Compose
-</terms>`;
+${SHARED_TERMS_BLOCK}`;
 
 const MICRO_GUARDRAIL_SUFFIX = `Return a JSON object that matches the response schema.
 - Use "no_change" when the uncertain word(s) are correct as-is in context.

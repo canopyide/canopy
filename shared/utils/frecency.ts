@@ -1,4 +1,8 @@
 export const FRECENCY_HALF_LIFE_MS = 5 * 24 * 60 * 60 * 1000;
+// Exploration bias for never-accessed items: ~3 half-lives of stickiness so a
+// new item can accrue real frequency before decay buries it under a single
+// recent access of an older item. Without this seed, one click on a stale
+// favourite would drop a cold item below it for days.
 export const FRECENCY_COLD_START = 3.0;
 export const FRECENCY_INCREMENT = 1.0;
 
