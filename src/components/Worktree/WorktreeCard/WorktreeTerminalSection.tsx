@@ -29,6 +29,7 @@ import {
   SortableWorktreeTerminal,
   getAccordionDragId,
 } from "@/components/DragDrop/SortableWorktreeTerminal";
+import { useDragHandle } from "@/components/DragDrop/DragHandleContext";
 import { useFleetArmingStore, isFleetArmEligible } from "@/store/fleetArmingStore";
 import { useKeybindingScope } from "@/hooks/useKeybinding";
 
@@ -76,17 +77,12 @@ interface MarqueeBox {
 
 interface TerminalRowProps {
   term: TerminalInstance;
-  listeners: React.HTMLAttributes<HTMLElement> | undefined;
-  // dnd-kit activator-node ref forwarded from SortableWorktreeTerminal so
-  // KeyboardSensor watches the visible grip button (a real <button>, natively
-  // focusable). Without it, keyboard activation falls back to the sortable
-  // container which strips tabIndex and silently can't receive Space/Enter.
-  dragHandleActivatorRef?: (node: HTMLElement | null) => void;
   onClick: (term: TerminalInstance) => void;
 }
 
-function TerminalRow({ term, listeners, dragHandleActivatorRef, onClick }: TerminalRowProps) {
+function TerminalRow({ term, onClick }: TerminalRowProps) {
   const { ref, isTruncated } = useTruncationDetection();
+  const dragHandle = useDragHandle();
   const isArmed = useFleetArmingStore((s) => s.armedIds.has(term.id));
   const armBadge = useFleetArmingStore((s) => s.armOrderById[term.id]);
   const chrome = deriveTerminalChrome(term);
@@ -192,12 +188,12 @@ function TerminalRow({ term, listeners, dragHandleActivatorRef, onClick }: Termi
           </Tooltip>
 
           <button
-            ref={dragHandleActivatorRef}
+            ref={dragHandle?.setActivatorNodeRef}
             type="button"
             data-drag-handle
             className="cursor-grab rounded text-text-muted transition-colors hover:text-text-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-1 active:cursor-grabbing"
             aria-label="Drag to move terminal"
-            {...(listeners as React.HTMLAttributes<HTMLElement>)}
+            {...(dragHandle?.listeners as React.HTMLAttributes<HTMLElement> | undefined)}
           >
             <GripVertical className="w-3.5 h-3.5" />
           </button>
@@ -475,14 +471,7 @@ export function WorktreeTerminalSection({
                   worktreeId={worktreeId}
                   sourceIndex={index}
                 >
-                  {({ listeners, setActivatorNodeRef }) => (
-                    <TerminalRow
-                      term={term}
-                      listeners={listeners as React.HTMLAttributes<HTMLElement> | undefined}
-                      dragHandleActivatorRef={setActivatorNodeRef}
-                      onClick={handleTerminalClick}
-                    />
-                  )}
+                  <TerminalRow term={term} onClick={handleTerminalClick} />
                 </SortableWorktreeTerminal>
               ))}
               {marqueeBox && (

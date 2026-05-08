@@ -2,6 +2,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render } from "@testing-library/react";
 import { SortableWorktreeTerminal } from "../SortableWorktreeTerminal";
+import { useDragHandle } from "../DragHandleContext";
 import type { TerminalInstance } from "@/store";
 
 let mockIsDragging = false;
@@ -49,28 +50,31 @@ describe("SortableWorktreeTerminal", () => {
     expect(getByTestId("child")).toBeTruthy();
   });
 
-  it("renders via render prop", () => {
+  it("renders children through DragHandleProvider", () => {
     mockIsDragging = false;
     const { getByTestId } = render(
       <SortableWorktreeTerminal terminal={terminal} worktreeId="wt1" sourceIndex={0}>
-        {({ listeners }) => <div data-testid="render-child" {...listeners} />}
+        <div data-testid="inner-child" />
       </SortableWorktreeTerminal>
     );
-    expect(getByTestId("render-child")).toBeTruthy();
+    expect(getByTestId("inner-child")).toBeTruthy();
   });
 
-  it("passes setActivatorNodeRef through the render prop for keyboard a11y", () => {
+  it("forwards setActivatorNodeRef and listeners through DragHandleProvider for keyboard a11y", () => {
     mockIsDragging = false;
-    let captured: ((node: HTMLElement | null) => void) | null = null;
+    let captured: ReturnType<typeof useDragHandle> = null;
+    function Probe() {
+      captured = useDragHandle();
+      return null;
+    }
     render(
       <SortableWorktreeTerminal terminal={terminal} worktreeId="wt1" sourceIndex={0}>
-        {({ setActivatorNodeRef }) => {
-          captured = setActivatorNodeRef;
-          return <div data-testid="render-child" />;
-        }}
+        <Probe />
       </SortableWorktreeTerminal>
     );
-    expect(captured).toBe(mockSetActivatorNodeRef);
+    expect(captured).not.toBeNull();
+    expect(captured!.setActivatorNodeRef).toBe(mockSetActivatorNodeRef);
+    expect(captured!.listeners).toBeDefined();
   });
 
   it("does not apply opacity-40 class (opacity now driven by framer-motion animate)", () => {

@@ -5,22 +5,14 @@ import { cn } from "@/lib/utils";
 import { UI_ANIMATION_DURATION, DRAG_GHOST_OPACITY, DRAG_GHOST_EASING } from "@/lib/animationUtils";
 import type { TerminalInstance } from "@/store";
 import type { WorktreeDragData } from "./DndProvider";
+import { DragHandleProvider } from "./DragHandleContext";
 import { pixelSnapTransform } from "./SortableTerminal";
 
 interface SortableWorktreeTerminalProps {
   terminal: TerminalInstance;
   worktreeId: string;
   sourceIndex: number;
-  children:
-    | React.ReactNode
-    | ((props: {
-        listeners: ReturnType<typeof useSortable>["listeners"];
-        // dnd-kit activator-node ref — attach to the focusable drag handle so
-        // KeyboardSensor can target it for Space/Enter activation. Falling back
-        // to the sortable container's ref doesn't work here because the
-        // container has tabIndex stripped to satisfy axe nested-interactive.
-        setActivatorNodeRef: (node: HTMLElement | null) => void;
-      }) => React.ReactNode);
+  children: React.ReactNode;
 }
 
 export function getAccordionDragId(terminalId: string): string {
@@ -94,13 +86,9 @@ export function SortableWorktreeTerminal({
             ease: DRAG_GHOST_EASING,
           }}
         >
-          {typeof children === "function" ? (
-            children({ listeners, setActivatorNodeRef })
-          ) : (
-            <div ref={setActivatorNodeRef} {...listeners}>
-              {children}
-            </div>
-          )}
+          <DragHandleProvider value={{ listeners, setActivatorNodeRef }}>
+            {children}
+          </DragHandleProvider>
         </m.div>
       </div>
     </m.div>

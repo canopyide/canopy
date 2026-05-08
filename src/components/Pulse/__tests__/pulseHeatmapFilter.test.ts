@@ -40,9 +40,10 @@ describe("PulseHeatmap — ARIA grid + roving tabindex (issue #7229)", () => {
     expect(content).not.toContain('role="group"');
   });
 
-  it("implements roving tabindex backed by a ref so re-renders don't reset focus", async () => {
+  it("implements roving tabindex from render state", async () => {
     const content = await readFile(HEATMAP_PATH, "utf-8");
-    expect(content).toContain("activeCellKeyRef");
+    expect(content).toContain("activeCellKey");
+    expect(content).toContain("setActiveCellKey");
     expect(content).toContain("isActive ? 0 : -1");
     expect(content).not.toMatch(/tabIndex=\{0\}\s*\/>/);
   });

@@ -28,7 +28,7 @@ const ThemeRow = memo(function ThemeRow({
   isKeyboardFocused,
   onSelect,
   warnings,
-  rowRef,
+  onRowRef,
 }: {
   scheme: AppColorScheme;
   isCommitted: boolean;
@@ -36,10 +36,16 @@ const ThemeRow = memo(function ThemeRow({
   isKeyboardFocused: boolean;
   onSelect: (id: string) => void;
   warnings: AppThemeValidationWarning[];
-  rowRef: (el: HTMLButtonElement | null) => void;
+  onRowRef: (id: string, el: HTMLButtonElement | null) => void;
 }) {
   const { imgRef, error, onError } = useImageError(
     scheme.heroImage?.replace("/themes/", "/themes/thumb/")
+  );
+  const rowRef = useCallback(
+    (el: HTMLButtonElement | null) => {
+      onRowRef(scheme.id, el);
+    },
+    [onRowRef, scheme.id]
   );
 
   return (
@@ -111,16 +117,6 @@ export function ThemeBrowser() {
   const setFollowSystem = useAppThemeStore((s) => s.setFollowSystem);
 
   const [query, setQuery] = useState("");
-
-  // Clear any pending keyboard-triggered announcement when the search query
-  // changes so a stale announcement from a pre-filter theme doesn't fire after
-  // the user has context-switched to filtering.
-  useEffect(() => {
-    if (announceTimerRef.current) {
-      clearTimeout(announceTimerRef.current);
-      announceTimerRef.current = null;
-    }
-  }, [query]);
   const [previewAnnouncement, setPreviewAnnouncement] = useState("");
   const [typeFilter, setTypeFilter] = useState<"dark" | "light">(() => {
     const committed = [...BUILT_IN_APP_SCHEMES, ...customSchemes].find(
@@ -132,17 +128,20 @@ export function ThemeBrowser() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
-  const rowRefCallbacks = useRef<Map<string, (el: HTMLButtonElement | null) => void>>(new Map());
   const commitButtonRef = useRef<HTMLButtonElement>(null);
   const announceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const clearPendingAnnouncement = useCallback(() => {
+  const clearAnnouncementTimer = useCallback(() => {
     if (announceTimerRef.current) {
       clearTimeout(announceTimerRef.current);
       announceTimerRef.current = null;
     }
-    setPreviewAnnouncement("");
   }, []);
+
+  const clearPendingAnnouncement = useCallback(() => {
+    clearAnnouncementTimer();
+    setPreviewAnnouncement("");
+  }, [clearAnnouncementTimer]);
 
   const allSchemes = useMemo(() => [...BUILT_IN_APP_SCHEMES, ...customSchemes], [customSchemes]);
   const darkSchemes = useMemo(() => allSchemes.filter((s) => s.type !== "light"), [allSchemes]);
@@ -228,6 +227,13 @@ export function ThemeBrowser() {
     [setPreviewSchemeId]
   );
 
+  // Clear any pending keyboard-triggered announcement when the search query
+  // changes so a stale announcement from a pre-filter theme doesn't fire after
+  // the user has context-switched to filtering.
+  useEffect(() => {
+    clearPendingAnnouncement();
+  }, [query, clearPendingAnnouncement]);
+
   const handleCommit = useCallback(async () => {
     const targetId = previewSchemeId ?? selectedSchemeId;
     const originRect = commitButtonRef.current?.getBoundingClientRect();
@@ -281,6 +287,21 @@ export function ThemeBrowser() {
 
   useEscapeStack(true, handleCancel);
 
+  // On unmount (browser closed via either path), guarantee any lingering
+  // preview is reverted and the DOM reflects the committed scheme. This is
+  // a safety net for close paths that bypass handleCancel/handleCommit.
+  useEffect(() => {
+    return () => {
+      clearAnnouncementTimer();
+      const state = useAppThemeStore.getState();
+      if (state.previewSchemeId !== null) {
+        const committed = resolveAppTheme(state.selectedSchemeId, state.customSchemes);
+        useAppThemeStore.getState().setPreviewSchemeId(null);
+        injectSchemeToDOM(committed, { immediate: true });
+      }
+    };
+  }, [clearAnnouncementTimer]);
+
   useEffect(() => {
     const rafId = requestAnimationFrame(() => searchInputRef.current?.focus());
     return () => cancelAnimationFrame(rafId);
@@ -299,24 +320,6 @@ export function ThemeBrowser() {
     if (node && typeof node.scrollIntoView === "function") {
       node.scrollIntoView({ block: "nearest" });
     }
-  }, []);
-
-  // On unmount (browser closed via either path), guarantee any lingering
-  // preview is reverted and the DOM reflects the committed scheme. This is
-  // a safety net for close paths that bypass handleCancel/handleCommit.
-  useEffect(() => {
-    return () => {
-      if (announceTimerRef.current) {
-        clearTimeout(announceTimerRef.current);
-        announceTimerRef.current = null;
-      }
-      const state = useAppThemeStore.getState();
-      if (state.previewSchemeId !== null) {
-        const committed = resolveAppTheme(state.selectedSchemeId, state.customSchemes);
-        useAppThemeStore.getState().setPreviewSchemeId(null);
-        injectSchemeToDOM(committed, { immediate: true });
-      }
-    };
   }, []);
 
   const focusRow = useCallback((schemeId: string) => {
@@ -369,15 +372,9 @@ export function ThemeBrowser() {
   );
 
   const isEmpty = filteredThemes.length === 0;
-  const getRowRef = useCallback((id: string): ((el: HTMLButtonElement | null) => void) => {
-    const existing = rowRefCallbacks.current.get(id);
-    if (existing) return existing;
-    const cb = (el: HTMLButtonElement | null) => {
-      if (el) rowRefs.current.set(id, el);
-      else rowRefs.current.delete(id);
-    };
-    rowRefCallbacks.current.set(id, cb);
-    return cb;
+  const registerRowRef = useCallback((id: string, el: HTMLButtonElement | null) => {
+    if (el) rowRefs.current.set(id, el);
+    else rowRefs.current.delete(id);
   }, []);
 
   return (
@@ -508,7 +505,7 @@ export function ThemeBrowser() {
               isKeyboardFocused={index === keyboardIndex}
               onSelect={handlePreview}
               warnings={warningsByScheme.get(scheme.id) ?? EMPTY_WARNINGS}
-              rowRef={getRowRef(scheme.id)}
+              onRowRef={registerRowRef}
             />
           ))
         )}

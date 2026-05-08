@@ -23,8 +23,6 @@ import {
   useDeferredLoading,
 } from "@/hooks";
 import { UI_DOHERTY_THRESHOLD } from "@/lib/animationUtils";
-import { createTooltipContent } from "@/lib/tooltipShortcut";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { WorktreeSidebarSearchBar, QuickStateFilterBar } from "@/components/Worktree";
 import { BulkCreateWorktreeDialog } from "@/components/GitHub/BulkCreateWorktreeDialog";
 import { FleetPickerPalette } from "@/components/Fleet/FleetPickerPalette";
@@ -70,6 +68,10 @@ export function preloadNewWorktreeDialog() {
 const LazyNewWorktreeDialog = lazy(() =>
   preloadNewWorktreeDialog().then((m) => ({ default: m.NewWorktreeDialog }))
 );
+
+function formatButtonTitle(label: string, shortcut?: string | null): string {
+  return shortcut ? `${label} (${shortcut})` : label;
+}
 
 interface SidebarContentProps {
   onOpenOverview: () => void;
@@ -160,68 +162,70 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   const pruneStaleWorktreeIds = useWorktreeFilterStore((state) => state.pruneStaleWorktreeIds);
   const setQuickStateFilter = useWorktreeFilterStore((state) => state.setQuickStateFilter);
 
-  // Terminal store: single selector that emits per-worktree counts so we don't
-  // re-scan all panels on every per-terminal tick. See issue #7451.
+  // Terminal store: subscribe to stable primitives, then derive per-worktree
+  // counts locally. Returning nested objects directly from the store selector
+  // trips React's external-store snapshot guard.
   const worktreeIds = useWorktreeIds();
   const worktreeIdList = useMemo(() => deferredWorktrees.map((w) => w.id), [deferredWorktrees]);
-  const panelStateByWorktree = usePanelStore(
-    useShallow((state) => {
-      const result: Record<
-        string,
-        {
-          terminalCount: number;
-          waitingTerminalCount: number;
-          hasWorkingAgent: boolean;
-          hasWaitingAgent: boolean;
-          hasCompletedAgent: boolean;
-          hasExitedAgent: boolean;
-        }
-      > = {};
-      for (const worktreeId of worktreeIdList) {
-        const ids = state.panelIdsByWorktreeId[worktreeId];
-        if (!ids || ids.length === 0) {
-          result[worktreeId] = {
-            terminalCount: 0,
-            waitingTerminalCount: 0,
-            hasWorkingAgent: false,
-            hasWaitingAgent: false,
-            hasCompletedAgent: false,
-            hasExitedAgent: false,
-          };
-          continue;
-        }
-        let terminalCount = 0;
-        let waitingTerminalCount = 0;
-        let hasWorkingAgent = false;
-        let hasWaitingAgent = false;
-        let hasCompletedAgent = false;
-        let hasExitedAgent = false;
-        for (const id of ids) {
-          const t = state.panelsById[id];
-          if (!t) continue;
-          if (!isTerminalVisible(t, state.isInTrash, worktreeIds)) continue;
-          terminalCount++;
-          if (!isAgentTerminal(t)) continue;
-          if (t.agentState === "working") hasWorkingAgent = true;
-          if (t.agentState === "waiting") {
-            hasWaitingAgent = true;
-            waitingTerminalCount++;
-          }
-          if (t.agentState === "completed") hasCompletedAgent = true;
-          if (t.agentState === "exited") hasExitedAgent = true;
-        }
-        result[worktreeId] = {
-          terminalCount,
-          waitingTerminalCount,
-          hasWorkingAgent,
-          hasWaitingAgent,
-          hasCompletedAgent,
-          hasExitedAgent,
-        };
+  const panelIdsByWorktreeId = usePanelStore((state) => state.panelIdsByWorktreeId);
+  const panelsById = usePanelStore((state) => state.panelsById);
+  const isInTrash = usePanelStore((state) => state.isInTrash);
+  const panelStateByWorktree = useMemo(() => {
+    const result: Record<
+      string,
+      {
+        terminalCount: number;
+        waitingTerminalCount: number;
+        hasWorkingAgent: boolean;
+        hasWaitingAgent: boolean;
+        hasCompletedAgent: boolean;
+        hasExitedAgent: boolean;
       }
-      return result;
-    })
-  );
+    > = {};
+    for (const worktreeId of worktreeIdList) {
+      const ids = panelIdsByWorktreeId[worktreeId];
+      if (!ids || ids.length === 0) {
+        result[worktreeId] = {
+          terminalCount: 0,
+          waitingTerminalCount: 0,
+          hasWorkingAgent: false,
+          hasWaitingAgent: false,
+          hasCompletedAgent: false,
+          hasExitedAgent: false,
+        };
+        continue;
+      }
+      let terminalCount = 0;
+      let waitingTerminalCount = 0;
+      let hasWorkingAgent = false;
+      let hasWaitingAgent = false;
+      let hasCompletedAgent = false;
+      let hasExitedAgent = false;
+      for (const id of ids) {
+        const t = panelsById[id];
+        if (!t) continue;
+        if (!isTerminalVisible(t, isInTrash, worktreeIds)) continue;
+        terminalCount++;
+        if (!isAgentTerminal(t)) continue;
+        if (t.agentState === "working") hasWorkingAgent = true;
+        if (t.agentState === "waiting") {
+          hasWaitingAgent = true;
+          waitingTerminalCount++;
+        }
+        if (t.agentState === "completed") hasCompletedAgent = true;
+        if (t.agentState === "exited") hasExitedAgent = true;
+      }
+      result[worktreeId] = {
+        terminalCount,
+        waitingTerminalCount,
+        hasWorkingAgent,
+        hasWaitingAgent,
+        hasCompletedAgent,
+        hasExitedAgent,
+      };
+    }
+    return result;
+  }, [worktreeIdList, panelIdsByWorktreeId, panelsById, isInTrash, worktreeIds]);
 
   const scrollContentRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -687,74 +691,52 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
         </div>
         <div className="flex items-center gap-1">
           <div className="invisible opacity-0 pointer-events-none transition-[opacity,visibility] duration-150 delay-0 group-hover/header:visible group-hover/header:opacity-100 group-hover/header:pointer-events-auto group-hover/header:delay-75 group-focus-within/header:visible group-focus-within/header:opacity-100 group-focus-within/header:pointer-events-auto group-focus-within/header:delay-75 motion-reduce:transition-none flex items-center gap-1">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={onOpenOverview}
-                  className="p-1 text-daintree-text/40 hover:text-daintree-text hover:bg-tint/[0.06] rounded transition-colors"
-                  aria-label="Open worktrees overview"
-                  aria-keyshortcuts={overviewAriaShortcut}
-                >
-                  <LayoutGrid className="w-3.5 h-3.5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                {createTooltipContent("Open worktrees overview", overviewShortcut)}
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={openFleetPicker}
-                  className="p-1 text-daintree-text/40 hover:text-daintree-text hover:bg-tint/[0.06] rounded transition-colors"
-                  aria-label="Select terminals to arm"
-                >
-                  <Zap className="w-3.5 h-3.5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                {createTooltipContent("Select terminals to arm")}
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={handleRefreshAll}
-                  disabled={isRefreshing}
-                  className="p-1 text-daintree-text/40 hover:text-daintree-text hover:bg-tint/[0.06] rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-daintree-text/40"
-                  aria-label="Refresh sidebar"
-                  aria-keyshortcuts={refreshAriaShortcut}
-                >
-                  <RefreshCw
-                    className={`w-3.5 h-3.5 ${showRefreshSpinner ? "animate-spin" : ""}`}
-                  />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                {createTooltipContent("Refresh sidebar", refreshShortcut)}
-              </TooltipContent>
-            </Tooltip>
+            <button
+              type="button"
+              onClick={onOpenOverview}
+              className="p-1 text-daintree-text/40 hover:text-daintree-text hover:bg-tint/[0.06] rounded transition-colors"
+              aria-label="Open worktrees overview"
+              aria-keyshortcuts={overviewAriaShortcut}
+              title={formatButtonTitle("Open worktrees overview", overviewShortcut)}
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={openFleetPicker}
+              className="p-1 text-daintree-text/40 hover:text-daintree-text hover:bg-tint/[0.06] rounded transition-colors"
+              aria-label="Select terminals to arm"
+              title="Select terminals to arm"
+            >
+              <Zap className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={handleRefreshAll}
+              disabled={isRefreshing}
+              className="p-1 text-daintree-text/40 hover:text-daintree-text hover:bg-tint/[0.06] rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-daintree-text/40"
+              aria-label="Refresh sidebar"
+              aria-keyshortcuts={refreshAriaShortcut}
+              title={formatButtonTitle("Refresh sidebar", refreshShortcut)}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${showRefreshSpinner ? "animate-spin" : ""}`} />
+            </button>
           </div>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() =>
-                  actionService.dispatch("worktree.createDialog.open", undefined, {
-                    source: "user",
-                  })
-                }
-                onPointerEnter={() => void preloadNewWorktreeDialog()}
-                className="p-1 text-daintree-text/40 hover:text-daintree-text hover:bg-tint/[0.06] rounded transition-colors"
-                aria-label="Create new worktree"
-                aria-keyshortcuts={createWorktreeAriaShortcut}
-              >
-                <Plus className="w-3.5 h-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {createTooltipContent("Create new worktree", createWorktreeShortcut)}
-            </TooltipContent>
-          </Tooltip>
+          <button
+            type="button"
+            onClick={() =>
+              actionService.dispatch("worktree.createDialog.open", undefined, {
+                source: "user",
+              })
+            }
+            onPointerEnter={() => void preloadNewWorktreeDialog()}
+            className="p-1 text-daintree-text/40 hover:text-daintree-text hover:bg-tint/[0.06] rounded transition-colors"
+            aria-label="Create new worktree"
+            aria-keyshortcuts={createWorktreeAriaShortcut}
+            title={formatButtonTitle("Create new worktree", createWorktreeShortcut)}
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
 
@@ -766,36 +748,32 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
       {/* Arm all terminals matching the active filter — only when a filter narrows the list */}
       {hasNonMainWorktrees && hasFilters && filteredWorktrees.length > 0 && (
         <div className="shrink-0 px-4 py-1.5 border-b border-divider">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={() =>
-                  actionService.dispatch(
-                    "fleet.armMatchingFilter",
-                    { worktreeIds: filteredWorktrees.map((w) => w.id) },
-                    { source: "user" }
-                  )
-                }
-                className="w-full flex items-center justify-center gap-1.5 text-xs px-2 py-1 text-text-secondary hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors"
-                aria-label={
-                  armedSize > 0
-                    ? `Arm ${filteredWorktrees.length} more matching worktrees`
-                    : `Arm ${filteredWorktrees.length} matching worktrees`
-                }
-              >
-                <Zap className="w-3 h-3" />
-                {armedSize > 0
-                  ? `Arm ${filteredWorktrees.length} more matching`
-                  : `Arm ${filteredWorktrees.length} matching`}
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {armedSize > 0
+          <button
+            type="button"
+            onClick={() =>
+              actionService.dispatch(
+                "fleet.armMatchingFilter",
+                { worktreeIds: filteredWorktrees.map((w) => w.id) },
+                { source: "user" }
+              )
+            }
+            className="w-full flex items-center justify-center gap-1.5 text-xs px-2 py-1 text-text-secondary hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors"
+            aria-label={
+              armedSize > 0
+                ? `Arm ${filteredWorktrees.length} more matching worktrees`
+                : `Arm ${filteredWorktrees.length} matching worktrees`
+            }
+            title={
+              armedSize > 0
                 ? `Add eligible terminals in the ${filteredWorktrees.length} worktrees visible below to the existing armed selection`
-                : `Arm all eligible terminals in the ${filteredWorktrees.length} worktrees visible below`}
-            </TooltipContent>
-          </Tooltip>
+                : `Arm all eligible terminals in the ${filteredWorktrees.length} worktrees visible below`
+            }
+          >
+            <Zap className="w-3 h-3" />
+            {armedSize > 0
+              ? `Arm ${filteredWorktrees.length} more matching`
+              : `Arm ${filteredWorktrees.length} matching`}
+          </button>
         </div>
       )}
 

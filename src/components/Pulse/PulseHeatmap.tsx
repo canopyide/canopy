@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
 import type { HeatCell, PulseRangeDays } from "@shared/types";
 import { cn } from "@/lib/utils";
@@ -91,6 +91,66 @@ function getTooltipText(cell: RenderCell): string {
   return `${cell.count} commit${cell.count !== 1 ? "s" : ""}`;
 }
 
+const PulseHeatmapCell = memo(function PulseHeatmapCell({
+  cell,
+  cellSize,
+  isActive,
+  onCellRef,
+}: {
+  cell: RenderCell;
+  cellSize: number;
+  isActive: boolean;
+  onCellRef: (date: string, el: HTMLButtonElement | null) => void;
+}) {
+  const cellRef = useCallback(
+    (el: HTMLButtonElement | null) => {
+      onCellRef(cell.date, el);
+    },
+    [cell.date, onCellRef]
+  );
+  const date = new Date(cell.date);
+  const formatted = date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+
+  const ringStyle = (
+    cell.isMostRecentActive
+      ? { "--tw-ring-offset-color": "var(--pulse-ring-offset, var(--pulse-card-bg))" }
+      : {}
+  ) as CSSProperties;
+
+  return (
+    // 0ms: dense scrub-hover surface — skip-delay alone doesn't cover the cold first-cell hover (mirrors GitHub contribution-heatmap)
+    <Tooltip delayDuration={0}>
+      <TooltipTrigger asChild>
+        <button
+          ref={cellRef}
+          type="button"
+          role="gridcell"
+          data-cell-date={cell.date}
+          style={{
+            width: `${cellSize}px`,
+            height: `${cellSize}px`,
+            ...getCellStyle(cell),
+            ...ringStyle,
+          }}
+          className={cn(
+            "rounded-[2px] shrink-0 border-0 p-0 cursor-default transition-[transform,background-color,box-shadow] duration-150",
+            cell.isMostRecentActive && "ring-1 ring-daintree-text/25 ring-offset-1"
+          )}
+          aria-label={`${formatted}: ${getTooltipText(cell)}`}
+          tabIndex={isActive ? 0 : -1}
+        />
+      </TooltipTrigger>
+      <TooltipContent side="top" className="text-xs">
+        <span className="font-medium">{formatted}</span>
+        <span className="ml-1 text-daintree-text/60">{getTooltipText(cell)}</span>
+      </TooltipContent>
+    </Tooltip>
+  );
+});
+
 export function PulseHeatmap({ cells, rangeDays, compact = false }: PulseHeatmapProps) {
   const rows = useMemo(() => {
     const normalizedCells = [...cells]
@@ -135,22 +195,19 @@ export function PulseHeatmap({ cells, rangeDays, compact = false }: PulseHeatmap
     return rows[0]?.[0]?.date ?? null;
   }, [rows]);
 
-  // Roving tabindex: only the active cell holds tabIndex=0. Arrow keys mutate
-  // the DOM directly to avoid re-rendering 180 cells per keypress, but the
-  // active key also lives in a ref so JSX reconciliation on parent re-renders
-  // (silent refresh, range change, health load) re-derives the same tabIndex
-  // and doesn't snap focus back to initialFocusKey.
-  const activeCellKeyRef = useRef<string | null>(null);
+  // Roving tabindex: only the active cell holds tabIndex=0. Keep the active
+  // key in state because JSX needs it during render.
+  const [activeCellKey, setActiveCellKey] = useState<string | null>(null);
   useEffect(() => {
     const validKeys = new Set<string>();
     rows.forEach((row) => row.forEach((c) => validKeys.add(c.date)));
     cellRefs.current.forEach((_, key) => {
       if (!validKeys.has(key)) cellRefs.current.delete(key);
     });
-    if (activeCellKeyRef.current && !validKeys.has(activeCellKeyRef.current)) {
-      activeCellKeyRef.current = null;
+    if (activeCellKey && !validKeys.has(activeCellKey)) {
+      setActiveCellKey(null);
     }
-  }, [rows]);
+  }, [rows, activeCellKey]);
 
   const focusCell = useCallback(
     (rowIndex: number, colIndex: number) => {
@@ -165,10 +222,15 @@ export function PulseHeatmap({ cells, rangeDays, compact = false }: PulseHeatmap
       });
       node.tabIndex = 0;
       node.focus();
-      activeCellKeyRef.current = target.date;
+      setActiveCellKey(target.date);
     },
     [rows]
   );
+
+  const registerCellRef = useCallback((date: string, el: HTMLButtonElement | null) => {
+    if (el) cellRefs.current.set(date, el);
+    else cellRefs.current.delete(date);
+  }, []);
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
@@ -279,54 +341,15 @@ export function PulseHeatmap({ cells, rangeDays, compact = false }: PulseHeatmap
           )}
           style={{ gap: `${gap}px` }}
         >
-          {row.map((cell) => {
-            const date = new Date(cell.date);
-            const formatted = date.toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-            });
-
-            const ringStyle = (
-              cell.isMostRecentActive
-                ? { "--tw-ring-offset-color": "var(--pulse-ring-offset, var(--pulse-card-bg))" }
-                : {}
-            ) as CSSProperties;
-
-            const isActive = cell.date === (activeCellKeyRef.current ?? initialFocusKey);
-
-            return (
-              // 0ms: dense scrub-hover surface — skip-delay alone doesn't cover the cold first-cell hover (mirrors GitHub contribution-heatmap)
-              <Tooltip key={cell.date} delayDuration={0}>
-                <TooltipTrigger asChild>
-                  <button
-                    ref={(el) => {
-                      if (el) cellRefs.current.set(cell.date, el);
-                      else cellRefs.current.delete(cell.date);
-                    }}
-                    type="button"
-                    role="gridcell"
-                    data-cell-date={cell.date}
-                    style={{
-                      width: `${cellSize}px`,
-                      height: `${cellSize}px`,
-                      ...getCellStyle(cell),
-                      ...ringStyle,
-                    }}
-                    className={cn(
-                      "rounded-[2px] shrink-0 border-0 p-0 cursor-default transition-[transform,background-color,box-shadow] duration-150",
-                      cell.isMostRecentActive && "ring-1 ring-daintree-text/25 ring-offset-1"
-                    )}
-                    aria-label={`${formatted}: ${getTooltipText(cell)}`}
-                    tabIndex={isActive ? 0 : -1}
-                  />
-                </TooltipTrigger>
-                <TooltipContent side="top" className="text-xs">
-                  <span className="font-medium">{formatted}</span>
-                  <span className="ml-1 text-daintree-text/60">{getTooltipText(cell)}</span>
-                </TooltipContent>
-              </Tooltip>
-            );
-          })}
+          {row.map((cell) => (
+            <PulseHeatmapCell
+              key={cell.date}
+              cell={cell}
+              cellSize={cellSize}
+              isActive={cell.date === (activeCellKey ?? initialFocusKey)}
+              onCellRef={registerCellRef}
+            />
+          ))}
         </div>
       ))}
     </div>

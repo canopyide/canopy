@@ -4,7 +4,7 @@ import path from "path";
 
 const SIDEBAR_CONTENT_PATH = path.resolve(__dirname, "../SidebarContent.tsx");
 
-describe("SidebarContent shortcut tooltips — issue #5843", () => {
+describe("SidebarContent shortcut labels — issue #5843", () => {
   let source: string;
 
   beforeEach(async () => {
@@ -34,10 +34,10 @@ describe("SidebarContent shortcut tooltips — issue #5843", () => {
     });
   });
 
-  describe("no hardcoded shortcut strings in tooltips", () => {
-    it("does not hardcode shortcut strings in createTooltipContent calls", () => {
-      expect(source).not.toMatch(/createTooltipContent\([^)]*"Cmd\+/);
-      expect(source).not.toMatch(/createTooltipContent\([^)]*"Ctrl\+/);
+  describe("no hardcoded shortcut strings in button titles", () => {
+    it("does not hardcode shortcut strings in formatButtonTitle calls", () => {
+      expect(source).not.toMatch(/formatButtonTitle\([^)]*"Cmd\+/);
+      expect(source).not.toMatch(/formatButtonTitle\([^)]*"Ctrl\+/);
     });
 
     it("does not assign hardcoded shortcut literals to *Shortcut variables", () => {
@@ -46,7 +46,7 @@ describe("SidebarContent shortcut tooltips — issue #5843", () => {
   });
 
   describe("aria-keyshortcuts exposure (issue #6874)", () => {
-    it("calls useAriaKeyshortcuts for each tooltip-bearing button", () => {
+    it("calls useAriaKeyshortcuts for each shortcut-bearing button", () => {
       expect(source).toContain('useAriaKeyshortcuts("worktree.overview")');
       expect(source).toContain('useAriaKeyshortcuts("worktree.refresh")');
       expect(source).toContain('useAriaKeyshortcuts("worktree.createDialog.open")');
@@ -59,28 +59,26 @@ describe("SidebarContent shortcut tooltips — issue #5843", () => {
     });
   });
 
-  describe("createTooltipContent usage", () => {
-    it("uses createTooltipContent for Open worktrees overview tooltip", () => {
-      expect(source).toContain('createTooltipContent("Open worktrees overview", overviewShortcut)');
+  describe("button title usage", () => {
+    it("uses formatButtonTitle for Open worktrees overview title", () => {
+      expect(source).toContain('formatButtonTitle("Open worktrees overview", overviewShortcut)');
     });
 
-    it("uses createTooltipContent for Select terminals to arm tooltip (no shortcut binding)", () => {
+    it("uses a plain title for Select terminals to arm (no shortcut binding)", () => {
       // The Zap button opens the FleetPickerPalette, which has no keybinding —
-      // so the tooltip must NOT advertise a shortcut. Earlier this rendered
+      // so the title must NOT advertise a shortcut. Earlier this rendered
       // `armFocusedShortcut` (Cmd+J), which is the *toggle armed pane* binding,
       // not "open the picker", and so misled users.
-      expect(source).toContain('createTooltipContent("Select terminals to arm")');
-      expect(source).not.toMatch(/createTooltipContent\("Select terminals to arm",/);
+      expect(source).toContain('title="Select terminals to arm"');
+      expect(source).not.toMatch(/formatButtonTitle\("Select terminals to arm",/);
     });
 
-    it("uses createTooltipContent for Refresh sidebar tooltip", () => {
-      expect(source).toContain('createTooltipContent("Refresh sidebar", refreshShortcut)');
+    it("uses formatButtonTitle for Refresh sidebar title", () => {
+      expect(source).toContain('formatButtonTitle("Refresh sidebar", refreshShortcut)');
     });
 
-    it("uses createTooltipContent for Create new worktree tooltip", () => {
-      expect(source).toContain(
-        'createTooltipContent("Create new worktree", createWorktreeShortcut)'
-      );
+    it("uses formatButtonTitle for Create new worktree title", () => {
+      expect(source).toContain('formatButtonTitle("Create new worktree", createWorktreeShortcut)');
     });
   });
 });
