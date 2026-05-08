@@ -223,12 +223,17 @@ describe("onTierApplied handler — WebGL manager integration", () => {
   }
 
   beforeEach(async () => {
+    vi.useFakeTimers();
     vi.clearAllMocks();
     vi.resetModules();
 
     const { TerminalWebGLManager } = await import("../TerminalWebGLManager");
     webGLManager = new TerminalWebGLManager();
     managed = makeManagedTerminal();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   function simulateOnTierApplied(id: string, tier: TerminalRefreshTier, m: ManagedTerminal) {
@@ -240,6 +245,8 @@ describe("onTierApplied handler — WebGL manager integration", () => {
       tier === TerminalRefreshTier.VISIBLE
     ) {
       webGLManager.ensureContext(id, m);
+      // Flush the manager's async drain so isActive() reflects the request.
+      vi.runOnlyPendingTimers();
     } else if (!m.isVisible) {
       const hadWebGL = webGLManager.isActive(id);
       webGLManager.releaseContext(id);

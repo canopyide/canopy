@@ -277,7 +277,13 @@ describe("TerminalInstanceService adversarial", () => {
     vi.spyOn(service.resizeController, "fit").mockImplementation(() => undefined);
 
     service.attach("a", document.createElement("div"));
+    // The manager drain runs in a setTimeout(0) macrotask, so process it
+    // before attaching B — otherwise both pending allocations land in the
+    // same drain cycle, where B's MAX_CONTEXTS check sees a stale pool
+    // size and skips the eviction this test asserts.
+    vi.runOnlyPendingTimers();
     service.attach("b", document.createElement("div"));
+    vi.runOnlyPendingTimers();
 
     expect(testState.webglAddons).toHaveLength(2);
     expect(testState.webglAddons[0]!.dispose).toHaveBeenCalledTimes(1);

@@ -158,6 +158,7 @@ describe("TerminalInstanceService - visibility-driven WebGL lease", () => {
     const managed = makeMockManaged();
     service.instances.set("t1", managed as unknown as Record<string, unknown>);
     service.webGLManager.ensureContext("t1", managed);
+    vi.runOnlyPendingTimers();
     expect(service.webGLManager.isActive("t1")).toBe(true);
 
     service.setVisible("t1", false);
@@ -173,6 +174,7 @@ describe("TerminalInstanceService - visibility-driven WebGL lease", () => {
     const managed = makeMockManaged();
     service.instances.set("t1", managed as unknown as Record<string, unknown>);
     service.webGLManager.ensureContext("t1", managed);
+    vi.runOnlyPendingTimers();
     (managed.terminal.refresh as ReturnType<typeof vi.fn>).mockClear();
 
     service.setVisible("t1", false);
@@ -202,6 +204,8 @@ describe("TerminalInstanceService - visibility-driven WebGL lease", () => {
     expect(service.webGLManager.isActive("t1")).toBe(false);
 
     vi.advanceTimersByTime(100);
+    // Fire the manager's drain timer scheduled by the restore callback.
+    vi.runOnlyPendingTimers();
     expect(service.webGLManager.isActive("t1")).toBe(true);
   });
 
@@ -224,6 +228,7 @@ describe("TerminalInstanceService - visibility-driven WebGL lease", () => {
     const managed = makeMockManaged();
     service.instances.set("t1", managed as unknown as Record<string, unknown>);
     service.webGLManager.ensureContext("t1", managed);
+    vi.runOnlyPendingTimers();
 
     service.setVisible("t1", false);
     expect(service.webGLManager.isActive("t1")).toBe(false);
@@ -308,6 +313,7 @@ describe("TerminalInstanceService - visibility-driven WebGL lease", () => {
     const managed = makeMockManaged({ attachGeneration: 5 });
     service.instances.set("t1", managed as unknown as Record<string, unknown>);
     service.webGLManager.ensureContext("t1", managed);
+    vi.runOnlyPendingTimers();
 
     // Stale generation from a previous mount — should be ignored entirely
     service.setVisible("t1", false, 4);
@@ -329,6 +335,7 @@ describe("TerminalInstanceService - visibility-driven WebGL lease", () => {
     });
     service.instances.set("t1", managed as unknown as Record<string, unknown>);
     service.webGLManager.ensureContext("t1", managed);
+    vi.runOnlyPendingTimers();
     (managed.terminal.refresh as ReturnType<typeof vi.fn>).mockClear();
 
     service.applyRendererPolicy("t1", TerminalRefreshTier.BACKGROUND);
@@ -350,6 +357,7 @@ describe("TerminalInstanceService - visibility-driven WebGL lease", () => {
     });
     service.instances.set("t1", managed as unknown as Record<string, unknown>);
     service.webGLManager.ensureContext("t1", managed);
+    vi.runOnlyPendingTimers();
     (managed.terminal.refresh as ReturnType<typeof vi.fn>).mockClear();
 
     service.applyRendererPolicy("t1", TerminalRefreshTier.BACKGROUND);

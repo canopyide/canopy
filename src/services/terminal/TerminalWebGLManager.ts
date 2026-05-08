@@ -23,6 +23,20 @@ export class TerminalWebGLManager {
   private static readonly LOSS_THRESHOLD = 3;
   private static readonly LOSS_WINDOW_MS = 60_000;
 
+  // When the bulk-creation path overflows Chromium's 16-context cap, the
+  // upstream addon's 3000ms timer fires for every evicted addon at once —
+  // so loss events arrive in a tight cluster (~ms apart). Collapse a cluster
+  // of clustered losses into a single timestamp so the wave doesn't itself
+  // trip the breaker. Persistent GPU faults produce losses far apart in
+  // time and are not affected.
+  private static readonly LOSS_CLUSTER_MS = 500;
+
+  // Drain pending ensureContext requests in batches of this size per macrotask.
+  // Spreads WebglAddon construction across separate event-loop ticks so a burst
+  // of bulk-creation requests never overflows Chromium's 16-context cap in a
+  // single synchronous pass. Matches QUEUE_CONCURRENCY in BulkCreateWorktreeDialog.
+  private static readonly CONTEXTS_PER_DRAIN = 3;
+
   static get MAX_CONTEXTS(): number {
     return TerminalWebGLManager._maxContexts;
   }
@@ -37,6 +51,15 @@ export class TerminalWebGLManager {
   private hasLoggedSoftwareSkip = false;
   private lossTimestamps: number[] = [];
   private hasLoggedBreakerTrip = false;
+
+  // Pending requests are drained asynchronously to spread allocations across
+  // event-loop ticks (see CONTEXTS_PER_DRAIN). Insertion order is the drain order.
+  private pending = new Map<string, ManagedTerminal>();
+  private drainScheduled = false;
+  // Timestamp of the most recent recorded loss. Used together with
+  // LOSS_CLUSTER_MS to collapse clustered upstream loss events that all
+  // belong to the same burst-overflow wave.
+  private lastLossAt: number | null = null;
 
   setHardwareAvailable(available: boolean): void {
     this.hardwareAvailable = available;
@@ -58,6 +81,80 @@ export class TerminalWebGLManager {
       return;
     }
 
+    // Coalesce: a repeated enqueue for the same id keeps the latest managed ref.
+    this.pending.set(id, managed);
+    this.scheduleDrain();
+  }
+
+  releaseContext(id: string): void {
+    this.pending.delete(id);
+    if (this.pool.has(id)) {
+      this.doRelease(id);
+    }
+  }
+
+  isActive(id: string): boolean {
+    return this.pool.has(id);
+  }
+
+  onTerminalDestroyed(id: string): void {
+    this.pending.delete(id);
+    const entry = this.pool.get(id);
+    if (entry) {
+      try {
+        entry.contextLossDisposable.dispose();
+      } catch {
+        // ignore
+      }
+      this.pool.delete(id);
+      this.removeFromLru(id);
+    }
+  }
+
+  dispose(): void {
+    this.pending.clear();
+    for (const id of [...this.pool.keys()]) {
+      this.doRelease(id);
+    }
+  }
+
+  private scheduleDrain(): void {
+    if (this.drainScheduled) return;
+    this.drainScheduled = true;
+    // setTimeout(0) (not queueMicrotask) — we need a fresh macrotask so React
+    // batched state updates and rAF callbacks that all called ensureContext
+    // in the same task don't end up constructing every WebglAddon back-to-back.
+    setTimeout(() => this.drainNext(), 0);
+  }
+
+  private drainNext(): void {
+    this.drainScheduled = false;
+    if (this.pending.size === 0) return;
+
+    let processed = 0;
+    for (const [id, managed] of this.pending) {
+      if (processed >= TerminalWebGLManager.CONTEXTS_PER_DRAIN) break;
+      this.pending.delete(id);
+      processed++;
+
+      // Re-check liveness at drain time — the terminal may have been destroyed,
+      // closed, or already reacquired through another path between enqueue and now.
+      if (!this.hardwareAvailable) continue;
+      if (!managed.isOpened) continue;
+      if (this.pool.has(id)) {
+        this.moveLruToEnd(id);
+        continue;
+      }
+
+      this.allocateContext(id, managed);
+    }
+
+    if (this.pending.size > 0) {
+      this.scheduleDrain();
+    }
+  }
+
+  private allocateContext(id: string, managed: ManagedTerminal): void {
     if (this.pool.size >= TerminalWebGLManager.MAX_CONTEXTS) {
       const evictId = this.lruOrder[0];
       if (evictId) {
@@ -94,35 +191,6 @@ export class TerminalWebGLManager {
     }
   }
 
-  releaseContext(id: string): void {
-    if (this.pool.has(id)) {
-      this.doRelease(id);
-    }
-  }
-
-  isActive(id: string): boolean {
-    return this.pool.has(id);
-  }
-
-  onTerminalDestroyed(id: string): void {
-    const entry = this.pool.get(id);
-    if (entry) {
-      try {
-        entry.contextLossDisposable.dispose();
-      } catch {
-        // ignore
-      }
-      this.pool.delete(id);
-      this.removeFromLru(id);
-    }
-  }
-
-  dispose(): void {
-    for (const id of [...this.pool.keys()]) {
-      this.doRelease(id);
-    }
-  }
-
   private doRelease(id: string): void {
     const entry = this.pool.get(id);
     if (!entry) return;
@@ -144,6 +212,20 @@ export class TerminalWebGLManager {
 
   private recordContextLoss(): void {
     const now = Date.now();
+
+    // Cluster collapse: when bulk-creation overflows Chromium's 16-context
+    // cap, the upstream addon's 3000ms timer fires for every evicted addon
+    // at once. Treat losses arriving within LOSS_CLUSTER_MS of the previous
+    // one as the same wave, recording at most one timestamp per cluster.
+    if (
+      this.lastLossAt !== null &&
+      now - this.lastLossAt < TerminalWebGLManager.LOSS_CLUSTER_MS
+    ) {
+      this.lastLossAt = now;
+      return;
+    }
+    this.lastLossAt = now;
+
     this.lossTimestamps = this.lossTimestamps.filter(
       (t) => now - t < TerminalWebGLManager.LOSS_WINDOW_MS
     );

@@ -19,6 +19,8 @@ function makeManagedTerminal(overrides: Partial<ManagedTerminal> = {}): ManagedT
   return {
     terminal: {
       loadAddon: vi.fn(),
+      refresh: vi.fn(),
+      rows: 24,
     },
     isOpened: true,
     lastActiveTime: Date.now(),
@@ -26,11 +28,20 @@ function makeManagedTerminal(overrides: Partial<ManagedTerminal> = {}): ManagedT
   } as unknown as ManagedTerminal;
 }
 
+// Drain is async (setTimeout(0)) — flush one tick of pending allocations.
+// Uses runOnlyPendingTimers to fire the snapshot of currently-pending timers
+// without recursing on follow-up timers scheduled during the drain. Each call
+// processes one batch (CONTEXTS_PER_DRAIN); call multiple times to drain N batches.
+function flushDrain(): void {
+  vi.runOnlyPendingTimers();
+}
+
 describe("TerminalWebGLManager", () => {
   let manager: import("../TerminalWebGLManager").TerminalWebGLManager;
   let WebglAddonMock: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
+    vi.useFakeTimers();
     mockAddonDispose = vi.fn();
     mockContextLossDispose = vi.fn();
     mockOnContextLoss = vi.fn((_handler: () => void) => ({ dispose: mockContextLossDispose }));
@@ -47,18 +58,36 @@ describe("TerminalWebGLManager", () => {
     manager = new mod.TerminalWebGLManager();
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("attaches WebGL addon via ensureContext", () => {
     const managed = makeManagedTerminal();
     manager.ensureContext("t1", managed);
+    flushDrain();
 
     expect(WebglAddonMock).toHaveBeenCalledTimes(1);
     expect(managed.terminal.loadAddon).toHaveBeenCalledTimes(1);
     expect(manager.isActive("t1")).toBe(true);
   });
 
+  it("ensureContext queues — WebGL addon is not constructed synchronously", () => {
+    const managed = makeManagedTerminal();
+    manager.ensureContext("t1", managed);
+
+    expect(WebglAddonMock).not.toHaveBeenCalled();
+    expect(manager.isActive("t1")).toBe(false);
+
+    flushDrain();
+    expect(WebglAddonMock).toHaveBeenCalledTimes(1);
+    expect(manager.isActive("t1")).toBe(true);
+  });
+
   it("is a no-op when terminal is not opened", () => {
     const managed = makeManagedTerminal({ isOpened: false });
     manager.ensureContext("t1", managed);
+    flushDrain();
 
     expect(WebglAddonMock).not.toHaveBeenCalled();
     expect(manager.isActive("t1")).toBe(false);
@@ -67,7 +96,9 @@ describe("TerminalWebGLManager", () => {
   it("is a no-op when already active for the same terminal", () => {
     const managed = makeManagedTerminal();
     manager.ensureContext("t1", managed);
+    flushDrain();
     manager.ensureContext("t1", managed);
+    flushDrain();
 
     expect(WebglAddonMock).toHaveBeenCalledTimes(1);
   });
@@ -78,6 +109,7 @@ describe("TerminalWebGLManager", () => {
 
     manager.ensureContext("t1", managed1);
     manager.ensureContext("t2", managed2);
+    flushDrain();
 
     expect(WebglAddonMock).toHaveBeenCalledTimes(2);
     expect(manager.isActive("t1")).toBe(true);
@@ -91,6 +123,7 @@ describe("TerminalWebGLManager", () => {
 
     manager.ensureContext("t1", managed1);
     manager.ensureContext("t2", managed2);
+    flushDrain();
 
     manager.releaseContext("t1");
 
@@ -103,13 +136,49 @@ describe("TerminalWebGLManager", () => {
     expect(() => manager.releaseContext("unknown")).not.toThrow();
   });
 
+  it("releaseContext cancels a pending (not-yet-drained) request", () => {
+    const managed = makeManagedTerminal();
+    manager.ensureContext("t1", managed);
+    manager.releaseContext("t1");
+    flushDrain();
+
+    expect(WebglAddonMock).not.toHaveBeenCalled();
+    expect(manager.isActive("t1")).toBe(false);
+  });
+
+  it("onTerminalDestroyed cancels a pending request", () => {
+    const managed = makeManagedTerminal();
+    manager.ensureContext("t1", managed);
+    manager.onTerminalDestroyed("t1");
+    flushDrain();
+
+    expect(WebglAddonMock).not.toHaveBeenCalled();
+    expect(manager.isActive("t1")).toBe(false);
+  });
+
+  it("dispose cancels pending requests", () => {
+    const managed1 = makeManagedTerminal();
+    const managed2 = makeManagedTerminal();
+    manager.ensureContext("t1", managed1);
+    manager.ensureContext("t2", managed2);
+    manager.dispose();
+    flushDrain();
+
+    expect(WebglAddonMock).not.toHaveBeenCalled();
+    expect(manager.isActive("t1")).toBe(false);
+    expect(manager.isActive("t2")).toBe(false);
+  });
+
   it("silently falls back when loadAddon throws", () => {
     const managed = makeManagedTerminal();
     (managed.terminal.loadAddon as ReturnType<typeof vi.fn>).mockImplementation(() => {
       throw new Error("WebGL not supported");
     });
 
-    expect(() => manager.ensureContext("t1", managed)).not.toThrow();
+    expect(() => {
+      manager.ensureContext("t1", managed);
+      flushDrain();
+    }).not.toThrow();
     expect(manager.isActive("t1")).toBe(false);
   });
 
@@ -122,6 +191,7 @@ describe("TerminalWebGLManager", () => {
 
     const managed = makeManagedTerminal();
     manager.ensureContext("t1", managed);
+    flushDrain();
 
     expect(contextLossHandler).toBeDefined();
     contextLossHandler!();
@@ -138,6 +208,7 @@ describe("TerminalWebGLManager", () => {
 
     const managed = makeManagedTerminal();
     manager.ensureContext("t1", managed);
+    flushDrain();
     manager.releaseContext("t1");
 
     // Firing stale handler after release should not throw
@@ -164,10 +235,12 @@ describe("TerminalWebGLManager", () => {
 
     const managed = makeManagedTerminal();
     manager.ensureContext("t1", managed);
+    flushDrain();
     manager.releaseContext("t1");
 
     // Reacquire the same id with a new addon
     manager.ensureContext("t1", managed);
+    flushDrain();
     expect(manager.isActive("t1")).toBe(true);
 
     // Fire stale context loss from the first addon — must NOT release the new addon
@@ -184,6 +257,7 @@ describe("TerminalWebGLManager", () => {
 
     const managed = makeManagedTerminal();
     manager.ensureContext("t1", managed);
+    flushDrain();
     manager.onTerminalDestroyed("t1");
 
     expect(manager.isActive("t1")).toBe(false);
@@ -194,6 +268,7 @@ describe("TerminalWebGLManager", () => {
   it("onTerminalDestroyed is a no-op for non-matching terminal", () => {
     const managed = makeManagedTerminal();
     manager.ensureContext("t1", managed);
+    flushDrain();
     manager.onTerminalDestroyed("t2");
 
     expect(manager.isActive("t1")).toBe(true);
@@ -205,6 +280,7 @@ describe("TerminalWebGLManager", () => {
 
     manager.ensureContext("t1", managed1);
     manager.ensureContext("t2", managed2);
+    flushDrain();
     manager.dispose();
 
     expect(manager.isActive("t1")).toBe(false);
@@ -223,13 +299,26 @@ describe("TerminalWebGLManager", () => {
     });
 
     manager.ensureContext("t1", managed);
+    flushDrain();
     expect(manager.isActive("t1")).toBe(false);
 
     const managed2 = makeManagedTerminal();
     manager.ensureContext("t2", managed2);
+    flushDrain();
     expect(WebglAddonMock).toHaveBeenCalledTimes(2);
     expect(managed2.terminal.loadAddon).toHaveBeenCalledTimes(1);
     expect(manager.isActive("t2")).toBe(true);
+  });
+
+  it("does not call terminal.refresh on the WebGL acquisition path", () => {
+    // WebglAddon self-schedules its first paint on next animation frame.
+    // Calling refresh on DOM→WebGL swap would force the DOM renderer to
+    // paint a stale frame just before the addon takes over (#6802).
+    const managed = makeManagedTerminal();
+    manager.ensureContext("t1", managed);
+    flushDrain();
+
+    expect(managed.terminal.refresh).not.toHaveBeenCalled();
   });
 
   describe("GPU hardware availability", () => {
@@ -237,6 +326,7 @@ describe("TerminalWebGLManager", () => {
       manager.setHardwareAvailable(false);
       const managed = makeManagedTerminal();
       manager.ensureContext("t1", managed);
+      flushDrain();
 
       expect(WebglAddonMock).not.toHaveBeenCalled();
       expect(managed.terminal.loadAddon).not.toHaveBeenCalled();
@@ -248,6 +338,7 @@ describe("TerminalWebGLManager", () => {
       manager.setHardwareAvailable(true);
       const managed = makeManagedTerminal();
       manager.ensureContext("t1", managed);
+      flushDrain();
 
       expect(WebglAddonMock).toHaveBeenCalledTimes(1);
       expect(manager.isActive("t1")).toBe(true);
@@ -256,10 +347,22 @@ describe("TerminalWebGLManager", () => {
     it("setting hardware unavailable does not affect already-active contexts", () => {
       const managed = makeManagedTerminal();
       manager.ensureContext("t1", managed);
+      flushDrain();
       expect(manager.isActive("t1")).toBe(true);
 
       manager.setHardwareAvailable(false);
       expect(manager.isActive("t1")).toBe(true);
+    });
+
+    it("setting hardware unavailable mid-pending suppresses the pending allocation", () => {
+      const managed = makeManagedTerminal();
+      manager.ensureContext("t1", managed);
+      // hardware flips off before drain runs
+      manager.setHardwareAvailable(false);
+      flushDrain();
+
+      expect(WebglAddonMock).not.toHaveBeenCalled();
+      expect(manager.isActive("t1")).toBe(false);
     });
 
     it("logs a warning only once when skipping due to software GPU", () => {
@@ -270,6 +373,7 @@ describe("TerminalWebGLManager", () => {
       const managed2 = makeManagedTerminal();
       manager.ensureContext("t1", managed1);
       manager.ensureContext("t2", managed2);
+      flushDrain();
 
       const softwareWarnings = warnSpy.mock.calls.filter(
         (args) => typeof args[0] === "string" && args[0].includes("software-only GPU")
@@ -279,14 +383,115 @@ describe("TerminalWebGLManager", () => {
     });
   });
 
-  describe("circuit breaker", () => {
-    beforeEach(() => {
-      vi.useFakeTimers();
-      vi.setSystemTime(0);
+  describe("burst drain", () => {
+    it("spreads N requests across multiple drain ticks", () => {
+      const managers = Array.from({ length: 9 }, () => makeManagedTerminal());
+      managers.forEach((m, i) => manager.ensureContext(`t${i}`, m));
+
+      // Nothing has been allocated yet (all pending).
+      expect(WebglAddonMock).toHaveBeenCalledTimes(0);
+
+      // First drain tick: 3 allocations.
+      flushDrain();
+      expect(WebglAddonMock).toHaveBeenCalledTimes(3);
+
+      // Second tick: 3 more.
+      flushDrain();
+      expect(WebglAddonMock).toHaveBeenCalledTimes(6);
+
+      // Third tick: final 3.
+      flushDrain();
+      expect(WebglAddonMock).toHaveBeenCalledTimes(9);
     });
 
-    afterEach(() => {
-      vi.useRealTimers();
+    it("processes pending requests in enqueue order", () => {
+      const order: string[] = [];
+      WebglAddonMock.mockImplementation(function () {
+        return {
+          dispose: vi.fn(),
+          onContextLoss: vi.fn(() => ({ dispose: vi.fn() })),
+        };
+      });
+
+      const ids = ["a", "b", "c", "d", "e"];
+      for (const id of ids) {
+        const m = makeManagedTerminal();
+        (m.terminal.loadAddon as ReturnType<typeof vi.fn>).mockImplementation(() => order.push(id));
+        manager.ensureContext(id, m);
+      }
+
+      flushDrain();
+      flushDrain();
+
+      expect(order).toEqual(ids);
+    });
+
+    it("duplicate enqueue for same id coalesces to one allocation", () => {
+      const managed = makeManagedTerminal();
+      manager.ensureContext("t1", managed);
+      manager.ensureContext("t1", managed);
+      manager.ensureContext("t1", managed);
+      flushDrain();
+
+      expect(WebglAddonMock).toHaveBeenCalledTimes(1);
+      expect(manager.isActive("t1")).toBe(true);
+    });
+
+    it("re-enqueue after release is honored on next drain", () => {
+      const managed = makeManagedTerminal();
+      manager.ensureContext("t1", managed);
+      flushDrain();
+      expect(manager.isActive("t1")).toBe(true);
+
+      manager.releaseContext("t1");
+      manager.ensureContext("t1", managed);
+      flushDrain();
+
+      expect(manager.isActive("t1")).toBe(true);
+      expect(WebglAddonMock).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe("stale pending guards", () => {
+    it("destroyed terminal in pending queue is skipped at drain", () => {
+      const m1 = makeManagedTerminal();
+      const m2 = makeManagedTerminal();
+      manager.ensureContext("t1", m1);
+      manager.ensureContext("t2", m2);
+
+      manager.onTerminalDestroyed("t1");
+      flushDrain();
+
+      expect(WebglAddonMock).toHaveBeenCalledTimes(1);
+      expect(manager.isActive("t1")).toBe(false);
+      expect(manager.isActive("t2")).toBe(true);
+    });
+
+    it("isOpened flipping to false before drain skips allocation", () => {
+      const managed = makeManagedTerminal();
+      manager.ensureContext("t1", managed);
+      managed.isOpened = false;
+      flushDrain();
+
+      expect(WebglAddonMock).not.toHaveBeenCalled();
+      expect(manager.isActive("t1")).toBe(false);
+    });
+
+    it("released-then-re-ensured before drain still allocates once", () => {
+      const managed = makeManagedTerminal();
+      manager.ensureContext("t1", managed);
+      manager.releaseContext("t1");
+      manager.ensureContext("t1", managed);
+      flushDrain();
+
+      expect(WebglAddonMock).toHaveBeenCalledTimes(1);
+      expect(manager.isActive("t1")).toBe(true);
+    });
+  });
+
+  describe("circuit breaker", () => {
+    beforeEach(() => {
+      vi.setSystemTime(0);
     });
 
     function captureContextLossHandlers(): Array<() => void> {
@@ -303,23 +508,31 @@ describe("TerminalWebGLManager", () => {
       return handlers;
     }
 
-    it("trips after LOSS_THRESHOLD rapid losses and disables WebGL for the session", () => {
+    it("trips after LOSS_THRESHOLD spaced losses and disables WebGL for the session", () => {
       const handlers = captureContextLossHandlers();
 
+      // Three independent allocations spaced beyond LOSS_CLUSTER_MS — each
+      // counts as its own loss event, not a single burst wave.
       const m1 = makeManagedTerminal();
-      const m2 = makeManagedTerminal();
-      const m3 = makeManagedTerminal();
       manager.ensureContext("t1", m1);
+      flushDrain();
+      const m2 = makeManagedTerminal();
       manager.ensureContext("t2", m2);
+      flushDrain();
+      const m3 = makeManagedTerminal();
       manager.ensureContext("t3", m3);
+      flushDrain();
 
       handlers[0]!();
+      vi.setSystemTime(1_000);
       handlers[1]!();
+      vi.setSystemTime(2_000);
       handlers[2]!();
 
       const before = WebglAddonMock.mock.calls.length;
       const m4 = makeManagedTerminal();
       manager.ensureContext("t4", m4);
+      flushDrain();
       expect(WebglAddonMock.mock.calls.length).toBe(before);
       expect(manager.isActive("t4")).toBe(false);
     });
@@ -328,22 +541,27 @@ describe("TerminalWebGLManager", () => {
       const handlers = captureContextLossHandlers();
 
       const m1 = makeManagedTerminal();
-      const m2 = makeManagedTerminal();
       manager.ensureContext("t1", m1);
+      flushDrain();
+      const m2 = makeManagedTerminal();
       manager.ensureContext("t2", m2);
+      flushDrain();
 
       handlers[0]!();
+      vi.setSystemTime(1_000);
       handlers[1]!();
 
-      vi.setSystemTime(60_000);
+      vi.setSystemTime(61_000);
 
       const m3 = makeManagedTerminal();
       manager.ensureContext("t3", m3);
+      flushDrain();
       handlers[2]!();
 
       const before = WebglAddonMock.mock.calls.length;
       const m4 = makeManagedTerminal();
       manager.ensureContext("t4", m4);
+      flushDrain();
       expect(WebglAddonMock.mock.calls.length).toBe(before + 1);
       expect(manager.isActive("t4")).toBe(true);
     });
@@ -352,16 +570,22 @@ describe("TerminalWebGLManager", () => {
       const handlers = captureContextLossHandlers();
 
       const m1 = makeManagedTerminal();
-      const m2 = makeManagedTerminal();
-      const m3 = makeManagedTerminal();
-      const m4 = makeManagedTerminal();
       manager.ensureContext("t1", m1);
+      flushDrain();
+      const m2 = makeManagedTerminal();
       manager.ensureContext("t2", m2);
+      flushDrain();
+      const m3 = makeManagedTerminal();
       manager.ensureContext("t3", m3);
+      flushDrain();
+      const m4 = makeManagedTerminal();
       manager.ensureContext("t4", m4);
+      flushDrain();
 
       handlers[0]!();
+      vi.setSystemTime(1_000);
       handlers[1]!();
+      vi.setSystemTime(2_000);
       handlers[2]!();
 
       expect(manager.isActive("t4")).toBe(true);
@@ -372,21 +596,28 @@ describe("TerminalWebGLManager", () => {
 
       const managed = makeManagedTerminal();
       manager.ensureContext("t1", managed);
+      flushDrain();
       manager.releaseContext("t1");
       manager.ensureContext("t1", managed);
+      flushDrain();
       manager.releaseContext("t1");
       manager.ensureContext("t1", managed);
+      flushDrain();
       manager.releaseContext("t1");
       manager.ensureContext("t1", managed);
+      flushDrain();
 
-      // Fire all three stale handlers — must NOT trip the breaker
+      // Fire all three stale handlers (spaced) — must NOT trip the breaker
       handlers[0]!();
+      vi.setSystemTime(1_000);
       handlers[1]!();
+      vi.setSystemTime(2_000);
       handlers[2]!();
 
       const before = WebglAddonMock.mock.calls.length;
       const m2 = makeManagedTerminal();
       manager.ensureContext("t2", m2);
+      flushDrain();
       expect(WebglAddonMock.mock.calls.length).toBe(before + 1);
       expect(manager.isActive("t2")).toBe(true);
     });
@@ -396,18 +627,24 @@ describe("TerminalWebGLManager", () => {
       const handlers = captureContextLossHandlers();
 
       const m1 = makeManagedTerminal();
-      const m2 = makeManagedTerminal();
-      const m3 = makeManagedTerminal();
       manager.ensureContext("t1", m1);
+      flushDrain();
+      const m2 = makeManagedTerminal();
       manager.ensureContext("t2", m2);
+      flushDrain();
+      const m3 = makeManagedTerminal();
       manager.ensureContext("t3", m3);
+      flushDrain();
 
       handlers[0]!();
+      vi.setSystemTime(1_000);
       handlers[1]!();
+      vi.setSystemTime(2_000);
       handlers[2]!();
 
       const m4 = makeManagedTerminal();
       manager.ensureContext("t4", m4);
+      flushDrain();
 
       const softwareWarnings = warnSpy.mock.calls.filter(
         (args) => typeof args[0] === "string" && args[0].includes("software-only GPU")
@@ -421,14 +658,19 @@ describe("TerminalWebGLManager", () => {
       const handlers = captureContextLossHandlers();
 
       const m1 = makeManagedTerminal();
-      const m2 = makeManagedTerminal();
-      const m3 = makeManagedTerminal();
       manager.ensureContext("t1", m1);
+      flushDrain();
+      const m2 = makeManagedTerminal();
       manager.ensureContext("t2", m2);
+      flushDrain();
+      const m3 = makeManagedTerminal();
       manager.ensureContext("t3", m3);
+      flushDrain();
 
       handlers[0]!();
+      vi.setSystemTime(1_000);
       handlers[1]!();
+      vi.setSystemTime(2_000);
       handlers[2]!();
 
       // Re-acquire and trip again — should not log a second time
@@ -437,10 +679,16 @@ describe("TerminalWebGLManager", () => {
       const m6 = makeManagedTerminal();
       manager.setHardwareAvailable(true);
       manager.ensureContext("t4", m4);
+      flushDrain();
       manager.ensureContext("t5", m5);
+      flushDrain();
       manager.ensureContext("t6", m6);
+      flushDrain();
+      vi.setSystemTime(3_000);
       handlers[3]?.();
+      vi.setSystemTime(4_000);
       handlers[4]?.();
+      vi.setSystemTime(5_000);
       handlers[5]?.();
 
       const breakerWarnings = warnSpy.mock.calls.filter(
@@ -448,6 +696,59 @@ describe("TerminalWebGLManager", () => {
       );
       expect(breakerWarnings).toHaveLength(1);
       warnSpy.mockRestore();
+    });
+
+    it("clustered loss events collapse to one timestamp (do not trip breaker)", () => {
+      const handlers = captureContextLossHandlers();
+
+      // Bulk-create burst: 9 enqueues in the same task → 9 allocations across
+      // 3 drain ticks → 9 onContextLoss events arriving in a tight cluster.
+      // The 3000ms upstream timer fires near-simultaneously for every evicted
+      // addon; cluster collapse must prevent the wave from tripping the breaker.
+      const managers = Array.from({ length: 9 }, () => makeManagedTerminal());
+      managers.forEach((m, i) => manager.ensureContext(`t${i}`, m));
+      flushDrain();
+      flushDrain();
+      flushDrain();
+
+      // Fire all 9 delayed loss events within the cluster window.
+      for (const h of handlers) h();
+
+      // Hardware should still be available — cluster collapsed to 1 timestamp.
+      const newManaged = makeManagedTerminal();
+      manager.ensureContext("post-burst", newManaged);
+      flushDrain();
+      expect(manager.isActive("post-burst")).toBe(true);
+    });
+
+    it("clustered + later spaced losses still reach threshold", () => {
+      const handlers = captureContextLossHandlers();
+
+      // Cluster of 5 firing simultaneously → 1 timestamp recorded.
+      const burst = Array.from({ length: 5 }, () => makeManagedTerminal());
+      burst.forEach((m, i) => manager.ensureContext(`b${i}`, m));
+      flushDrain();
+      flushDrain();
+      for (const h of handlers) h();
+
+      // Two more independent losses separated by >500ms each — push total to 3.
+      vi.setSystemTime(1_000);
+      const m6 = makeManagedTerminal();
+      manager.ensureContext("solo1", m6);
+      flushDrain();
+      handlers[handlers.length - 1]!();
+
+      vi.setSystemTime(2_000);
+      const m7 = makeManagedTerminal();
+      manager.ensureContext("solo2", m7);
+      flushDrain();
+      handlers[handlers.length - 1]!();
+
+      // Now hardware should be disabled.
+      const blocked = makeManagedTerminal();
+      manager.ensureContext("blocked", blocked);
+      flushDrain();
+      expect(manager.isActive("blocked")).toBe(false);
     });
   });
 
@@ -469,6 +770,8 @@ describe("TerminalWebGLManager", () => {
         const m = makeManagedTerminal({ lastActiveTime: i });
         localManager.ensureContext(`t${i}`, m);
       }
+      // Drain all queued allocations (max/3 ticks).
+      for (let i = 0; i <= Math.ceil(maxContexts / 3); i++) flushDrain();
 
       expect(disposes).toHaveLength(maxContexts);
       disposes.forEach((d) => expect(d).not.toHaveBeenCalled());
@@ -476,6 +779,7 @@ describe("TerminalWebGLManager", () => {
       // Add one more — should evict t0 (oldest in LRU order)
       const extra = makeManagedTerminal({ lastActiveTime: maxContexts });
       localManager.ensureContext(`t${maxContexts}`, extra);
+      flushDrain();
 
       expect(disposes[0]).toHaveBeenCalledTimes(1);
       expect(localManager.isActive("t0")).toBe(false);
@@ -504,14 +808,17 @@ describe("TerminalWebGLManager", () => {
         const m = makeManagedTerminal({ lastActiveTime: i });
         localManager.ensureContext(`t${i}`, m);
       }
+      for (let i = 0; i <= Math.ceil(maxContexts / 3); i++) flushDrain();
 
       // Touch t0 — should move it to end of LRU
       const m0 = makeManagedTerminal({ lastActiveTime: maxContexts + 1 });
       localManager.ensureContext("t0", m0);
+      flushDrain();
 
       // Add one more — should evict t1 (now the oldest), not t0
       const extra = makeManagedTerminal({ lastActiveTime: maxContexts + 2 });
       localManager.ensureContext(`t${maxContexts}`, extra);
+      flushDrain();
 
       expect(localManager.isActive("t0")).toBe(true);
       expect(localManager.isActive("t1")).toBe(false);
