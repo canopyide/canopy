@@ -306,6 +306,46 @@ describe("BrowserToolbar ARIA semantics", () => {
     });
   });
 
+  it("re-announces when the same display URL is removed twice in a row", async () => {
+    const { container, getByTestId } = renderToolbar();
+    const input = openDropdown(getByTestId);
+
+    act(() => {
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+    });
+    await waitFor(() => {
+      expect(input.getAttribute("aria-activedescendant")).toBeTruthy();
+    });
+
+    act(() => {
+      fireEvent.keyDown(input, { key: "Delete", shiftKey: true });
+    });
+    await waitFor(() => {
+      const text = container.querySelector('[role="status"]')?.textContent ?? "";
+      expect(text.length).toBeGreaterThan(0);
+    });
+    const firstAnnouncement = container.querySelector('[role="status"]')!.textContent!;
+
+    act(() => {
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+    });
+    act(() => {
+      fireEvent.keyDown(input, { key: "Delete", shiftKey: true });
+    });
+    await waitFor(() => {
+      const text = container.querySelector('[role="status"]')!.textContent!;
+      expect(text).not.toBe(firstAnnouncement);
+    });
+  });
+
+  it("clicking the row body (not the inner remove button) navigates", () => {
+    const { container } = renderToolbar();
+    openDropdown(container.querySelector("[data-testid='browser-address-bar']")! as HTMLElement);
+    const option = container.querySelector('[role="option"]')!;
+    fireEvent.mouseDown(option);
+    expect(defaultProps.onNavigate).toHaveBeenCalledWith("http://localhost:3000/");
+  });
+
   it("X removal label uses display URL not the raw URL", () => {
     const { container } = renderToolbar();
     openDropdown(container.querySelector("[data-testid='browser-address-bar']")! as HTMLElement);

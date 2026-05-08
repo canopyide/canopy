@@ -92,6 +92,11 @@ export function BrowserToolbar({
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [historyAnnouncement, setHistoryAnnouncement] = useState("");
+
+  const announceHistoryChange = useCallback((text: string) => {
+    // ZWSP toggle forces re-announce when consecutive removals share a display URL
+    setHistoryAnnouncement((prev) => (prev === text ? `${text}​` : text));
+  }, []);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -192,7 +197,7 @@ export function BrowserToolbar({
           if (projectId) {
             useUrlHistoryStore.getState().removeUrl(projectId, entry.url);
           }
-          setHistoryAnnouncement(`Removed ${getDisplayUrl(entry.url)} from history`);
+          announceHistoryChange(`Removed ${getDisplayUrl(entry.url)} from history`);
           const remaining = suggestions.length - 1;
           if (remaining === 0) {
             setIsDropdownOpen(false);
@@ -209,7 +214,7 @@ export function BrowserToolbar({
         inputRef.current?.blur();
       }
     },
-    [isDropdownOpen, suggestions, highlightedIndex, onNavigate, projectId]
+    [isDropdownOpen, suggestions, highlightedIndex, onNavigate, projectId, announceHistoryChange]
   );
 
   const handleCopy = useCallback(async () => {
@@ -526,6 +531,13 @@ export function BrowserToolbar({
                 role="option"
                 aria-selected={index === highlightedIndex}
                 onMouseEnter={() => setHighlightedIndex(index)}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setIsEditing(false);
+                  setIsDropdownOpen(false);
+                  setHighlightedIndex(-1);
+                  onNavigate(entry.url);
+                }}
                 className={cn(
                   "group/row w-full text-left px-2.5 py-1.5 flex items-center gap-2 cursor-pointer",
                   index === highlightedIndex ? "bg-overlay-medium" : "hover:bg-overlay-soft"
@@ -552,23 +564,12 @@ export function BrowserToolbar({
                 ) : (
                   <Globe className="w-4 h-4 shrink-0 text-daintree-text/30" />
                 )}
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    setIsEditing(false);
-                    setIsDropdownOpen(false);
-                    setHighlightedIndex(-1);
-                    onNavigate(entry.url);
-                  }}
-                  className="flex-1 min-w-0 flex flex-col gap-0.5 text-left"
-                >
+                <div className="flex-1 min-w-0 flex flex-col gap-0.5 text-left">
                   {entry.title && (
                     <span className="text-xs text-daintree-text truncate">{entry.title}</span>
                   )}
                   <span className="text-xs text-daintree-text/50 truncate">{entry.url}</span>
-                </button>
+                </div>
                 {projectId && (
                   <button
                     type="button"
@@ -578,7 +579,7 @@ export function BrowserToolbar({
                       e.preventDefault();
                       e.stopPropagation();
                       useUrlHistoryStore.getState().removeUrl(projectId, entry.url);
-                      setHistoryAnnouncement(`Removed ${getDisplayUrl(entry.url)} from history`);
+                      announceHistoryChange(`Removed ${getDisplayUrl(entry.url)} from history`);
                       const remaining = suggestions.length - 1;
                       if (remaining === 0) {
                         setIsDropdownOpen(false);
