@@ -22,7 +22,7 @@ const BIDI_AND_SEPARATORS = new RegExp(
     "‎" + // LRM (Left-to-Right Mark)
     "‏" + // RLM (Right-to-Left Mark)
     "‪‫‬‭‮" + // LRE, RLE, PDF, LRO, RLO
-    "  " + // Line/Paragraph separators
+    "  " + // Line/Paragraph separators
     "⁦⁧⁨⁩" + // LRI, RLI, FSI, PDI
     "﻿" + // BOM
     "]",
