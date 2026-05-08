@@ -593,6 +593,7 @@ function XtermAdapterComponent({
         ref={containerRef}
         className="w-full h-full min-h-0 min-w-0"
         aria-label="Terminal output"
+        role="application"
       />
     </div>
   );
