@@ -7,6 +7,9 @@ import type { ProjectStatsService } from "../ProjectStatsService.js";
 const lagState = vi.hoisted(() => ({
   // Returned by histogram.percentile(99) — nanoseconds.
   p99Nanoseconds: 0,
+  // Returned by histogram.max — nanoseconds. Independent so payload
+  // assertions can verify maxMs is sourced from .max, not percentile(99).
+  maxNanoseconds: 0,
   utilization: 0,
   resetCount: 0,
 }));
@@ -42,6 +45,11 @@ vi.mock("node:perf_hooks", () => ({
     reset: () => {
       lagState.resetCount += 1;
     },
+    // max is diagnostic-only and tracked independently so tests can verify
+    // the implementation reads .max instead of percentile(99).
+    get max() {
+      return lagState.maxNanoseconds;
+    },
   }),
   performance: {
     eventLoopUtilization: (_current?: unknown, _previous?: unknown) => ({
@@ -55,6 +63,7 @@ vi.mock("node:perf_hooks", () => ({
 import os from "os";
 import { app, powerMonitor } from "electron";
 import { broadcastToRenderer } from "../../ipc/utils.js";
+import { logInfo } from "../../utils/logger.js";
 import { ResourceProfileService, type ResourceProfileDeps } from "../ResourceProfileService.js";
 
 const EIGHT_GB = 8 * 1024 * 1024 * 1024;
@@ -152,8 +161,11 @@ function createDeps(overrides?: Partial<ResourceProfileDeps>): {
   };
 }
 
-function setLag(p99Ms: number, utilization: number): void {
+function setLag(p99Ms: number, utilization: number, maxMs?: number): void {
   lagState.p99Nanoseconds = p99Ms * 1_000_000;
+  // Default max to p99 so existing tests stay realistic (max ≥ p99 always);
+  // tests that need to discriminate pass an explicit value.
+  lagState.maxNanoseconds = (maxMs ?? p99Ms) * 1_000_000;
   lagState.utilization = utilization;
 }
 
@@ -170,6 +182,7 @@ describe("ResourceProfileService adversarial", () => {
     mockGetCurrentThermalState.mockReturnValue("unknown" as const);
     setLag(0, 0);
     lagState.resetCount = 0;
+    lagState.maxNanoseconds = 0;
   });
 
   afterEach(() => {
@@ -433,7 +446,7 @@ describe("ResourceProfileService adversarial", () => {
       service.stop();
     });
 
-    it("recovers after 30s of clean p99 readings", () => {
+    it("recovers after 45s of clean p99 readings", () => {
       const { deps } = createDeps();
       const service = new ResourceProfileService(deps);
       service.start();
@@ -445,9 +458,9 @@ describe("ResourceProfileService adversarial", () => {
       expect(service.getProfile()).toBe("efficiency");
       expect((service as unknown as { lagPressureActive: boolean }).lagPressureActive).toBe(true);
 
-      // Six clean 5s windows = 30s sustained recovery.
+      // Nine clean 5s windows = 45s sustained recovery.
       setLag(50, 0.1);
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 9; i++) {
         vi.advanceTimersByTime(5_000);
       }
 
@@ -467,9 +480,9 @@ describe("ResourceProfileService adversarial", () => {
       vi.advanceTimersByTime(5_000);
       expect((service as unknown as { lagPressureActive: boolean }).lagPressureActive).toBe(true);
 
-      // Five clean ticks (one short of the 6-tick threshold).
+      // Eight clean ticks (one short of the 9-tick threshold).
       setLag(50, 0.1);
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 8; i++) {
         vi.advanceTimersByTime(5_000);
       }
       expect((service as unknown as { lagPressureActive: boolean }).lagPressureActive).toBe(true);
@@ -478,14 +491,14 @@ describe("ResourceProfileService adversarial", () => {
       setLag(200, 0.5);
       vi.advanceTimersByTime(5_000);
 
-      // Now five more clean ticks should still NOT recover (counter restarted).
+      // Now eight more clean ticks should still NOT recover (counter restarted).
       setLag(50, 0.1);
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 8; i++) {
         vi.advanceTimersByTime(5_000);
       }
       expect((service as unknown as { lagPressureActive: boolean }).lagPressureActive).toBe(true);
 
-      // Sixth clean tick clears it.
+      // Ninth clean tick clears it.
       vi.advanceTimersByTime(5_000);
       expect((service as unknown as { lagPressureActive: boolean }).lagPressureActive).toBe(false);
 
@@ -584,7 +597,7 @@ describe("ResourceProfileService adversarial", () => {
       expect((service as unknown as { lagEscalatedActive: boolean }).lagEscalatedActive).toBe(true);
 
       setLag(50, 0.1);
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 9; i++) {
         vi.advanceTimersByTime(5_000);
       }
 
@@ -608,6 +621,57 @@ describe("ResourceProfileService adversarial", () => {
       vi.advanceTimersByTime(5_000);
       vi.advanceTimersByTime(5_000);
       expect(lagState.resetCount - before).toBe(3);
+
+      service.stop();
+    });
+
+    it("entry log payload carries maxMs sourced from histogram.max, not p99", () => {
+      const { deps } = createDeps();
+      const service = new ResourceProfileService(deps);
+      service.start();
+
+      // p99 = 300ms (entry threshold), max = 900ms (a single long block in
+      // the window). Distinct values verify the implementation reads .max
+      // rather than re-using percentile(99).
+      setLag(300, 0.85, 900);
+      vi.advanceTimersByTime(5_000);
+      vi.advanceTimersByTime(5_000);
+
+      expect(logInfo).toHaveBeenCalledWith(
+        "event-loop-lag-detected",
+        expect.objectContaining({ p99Ms: 300, maxMs: 900 })
+      );
+
+      service.stop();
+    });
+
+    it("escalation and clear log payloads carry maxMs", () => {
+      const { deps } = createDeps();
+      const service = new ResourceProfileService(deps);
+      service.start();
+
+      // Enter degraded — used to seed escalation, payload not asserted here.
+      setLag(300, 0.85, 350);
+      vi.advanceTimersByTime(5_000);
+      vi.advanceTimersByTime(5_000);
+
+      // Escalate with distinct max.
+      setLag(600, 0.9, 1200);
+      vi.advanceTimersByTime(5_000);
+      expect(logInfo).toHaveBeenCalledWith(
+        "event-loop-lag-escalated",
+        expect.objectContaining({ p99Ms: 600, maxMs: 1200 })
+      );
+
+      // Recover with low p99 and a small residual max.
+      setLag(50, 0.1, 80);
+      for (let i = 0; i < 9; i++) {
+        vi.advanceTimersByTime(5_000);
+      }
+      expect(logInfo).toHaveBeenCalledWith(
+        "event-loop-lag-cleared",
+        expect.objectContaining({ p99Ms: 50, maxMs: 80 })
+      );
 
       service.stop();
     });
@@ -660,7 +724,7 @@ describe("ResourceProfileService adversarial", () => {
 
       // Recover.
       setLag(50, 0.1);
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 9; i++) {
         vi.advanceTimersByTime(5_000);
       }
       expect((service as unknown as { lagPressureActive: boolean }).lagPressureActive).toBe(false);
@@ -668,7 +732,8 @@ describe("ResourceProfileService adversarial", () => {
       // From here, normal scoring should drive back up. While lag was active,
       // evaluate() returned early at the lag floor without exiting warmup,
       // so tickCount has only crossed the floor branch. Drive past the
-      // 2-warmup ticks + 60s upgrade hold combination.
+      // 2-warmup ticks + 90s upgrade hold combination.
+      vi.advanceTimersByTime(30_000);
       vi.advanceTimersByTime(30_000);
       vi.advanceTimersByTime(30_000);
       vi.advanceTimersByTime(30_000);
