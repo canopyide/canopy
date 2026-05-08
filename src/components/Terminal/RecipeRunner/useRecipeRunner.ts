@@ -6,27 +6,11 @@ import { actionService } from "@/services/ActionService";
 import {
   buildRecipeSections,
   rankSearchResults,
+  nextDuplicateName,
   type RecipeSections,
   type RankedRecipe,
 } from "./recipeRunnerUtils";
-import { stableInRepoId } from "@shared/utils/recipeFilename";
 import type { TerminalRecipe, RunCommand } from "@/types";
-
-// Strip an existing trailing "(Copy)" or "(Copy N)" suffix so duplicating
-// "Foo (Copy)" produces "Foo (Copy 2)", not "Foo (Copy) (Copy)".
-const COPY_SUFFIX = /\s*\(Copy(?:\s+\d+)?\)$/;
-
-function nextDuplicateName(baseName: string, existingIds: Set<string>): string {
-  const root = baseName.replace(COPY_SUFFIX, "");
-  for (let i = 1; i <= 100; i++) {
-    const candidate = i === 1 ? `${root} (Copy)` : `${root} (Copy ${i})`;
-    if (!existingIds.has(stableInRepoId(candidate))) {
-      return candidate;
-    }
-  }
-  // Fallback: bound the loop so a pathological state can't hang the renderer.
-  return `${root} (Copy ${Date.now()})`;
-}
 
 export interface UseRecipeRunnerOptions {
   activeWorktreeId: string | null | undefined;
@@ -228,7 +212,13 @@ export function useRecipeRunner({
           e.preventDefault();
           setSearchQuery("");
         }
-      } else if (e.key === "e" && (e.metaKey || e.ctrlKey)) {
+      } else if (
+        e.key === "e" &&
+        // Ctrl+E in a text input means "move cursor to end of line" on
+        // Linux/Windows (readline binding) — don't steal it. Cmd+E on macOS
+        // doesn't conflict with input editing, so allow it from any target.
+        (e.metaKey || (e.ctrlKey && !(e.target instanceof HTMLInputElement)))
+      ) {
         e.preventDefault();
         const flat = getFlatRecipes();
         if (focusedIndex < flat.length) {
