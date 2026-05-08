@@ -205,6 +205,8 @@ export function SearchablePalette<T>({
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
+
       if (onKeyDown) {
         onKeyDown(e);
         if (e.defaultPrevented) return;
@@ -298,6 +300,7 @@ export function SearchablePalette<T>({
           role="combobox"
           aria-expanded={isOpen}
           aria-haspopup="listbox"
+          aria-autocomplete="list"
           aria-label={searchAriaLabel ?? searchPlaceholder.replace("...", "")}
           aria-controls={listId}
           aria-activedescendant={activeDescendant}
@@ -333,6 +336,7 @@ export function SearchablePalette<T>({
                 aria-label={label}
                 className={isFiltering ? "palette-results-stale" : undefined}
                 data-stale={isFiltering ? "true" : undefined}
+                aria-busy={isFiltering || undefined}
               >
                 {results.map((item, index) =>
                   renderItem(

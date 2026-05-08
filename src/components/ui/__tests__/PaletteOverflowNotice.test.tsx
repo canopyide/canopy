@@ -19,15 +19,10 @@ describe("PaletteOverflowNotice", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("has aria-hidden attribute", () => {
+  it("has role='status' so AT announces the count", () => {
     render(<PaletteOverflowNotice shown={20} total={47} />);
-    const notice = screen.getByText(/Showing 20 of 47/);
-    expect(notice.getAttribute("aria-hidden")).toBe("true");
-  });
-
-  it("does not have role=option", () => {
-    render(<PaletteOverflowNotice shown={20} total={47} />);
-    const notice = screen.getByText(/Showing 20 of 47/);
-    expect(notice.getAttribute("role")).toBeNull();
+    const notice = screen.getByRole("status");
+    expect(notice).toBeTruthy();
+    expect(notice.textContent).toContain("Showing 20 of 47");
   });
 });

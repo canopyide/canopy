@@ -8,7 +8,7 @@ export function PaletteOverflowNotice({ shown, total }: PaletteOverflowNoticePro
 
   return (
     <div
-      aria-hidden="true"
+      role="status"
       className="px-3 py-2 text-xs tabular-nums text-daintree-text/40 text-center border-t border-daintree-border/30"
     >
       Showing {shown} of {total} — refine your search to see more

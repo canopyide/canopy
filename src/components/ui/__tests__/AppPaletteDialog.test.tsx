@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, act } from "@testing-library/react";
+import { render, act, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppPaletteDialog } from "../AppPaletteDialog";
 import { usePaletteStore } from "@/store/paletteStore";
@@ -53,6 +53,23 @@ function renderPalette(props: { isOpen: boolean }) {
     </>
   );
 }
+
+describe("AppPaletteDialog ARIA placement", () => {
+  it("places role='dialog' and aria-modal on the inner panel, not the scrim", () => {
+    const { container } = renderPalette({ isOpen: true });
+    const dialog = screen.getByRole("dialog", { name: "Test palette" });
+    expect(dialog).toBeTruthy();
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    // The inner panel is scoped to the palette body — it should NOT be the
+    // fixed-inset scrim that also matches `.bg-scrim-medium`.
+    expect(dialog.classList.contains("bg-scrim-medium")).toBe(false);
+    // Confirm the scrim no longer carries a dialog role.
+    const scrims = container.querySelectorAll('[class*="bg-scrim-medium"]');
+    for (const el of scrims) {
+      expect(el.getAttribute("role")).not.toBe("dialog");
+    }
+  });
+});
 
 describe("AppPaletteDialog focus restore", () => {
   beforeEach(() => {
