@@ -253,7 +253,7 @@ class KeybindingService {
 
     // Check that we don't have extra modifiers
     // (unless the combo expects them)
-    if (!parsed.cmd && hasCmd) return false;
+    if (!parsed.cmd && !parsed.ctrl && hasCmd) return false;
     if (!parsed.shift && event.shiftKey) return false;
     if (!parsed.alt && event.altKey) return false;
     // Ctrl check is more nuanced due to Cmd/Ctrl swap

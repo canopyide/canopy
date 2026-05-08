@@ -76,6 +76,39 @@ describe("KeybindingService", () => {
     expect(service.matchesEvent(event, "Cmd+T")).toBe(true);
   });
 
+  it("matches literal Ctrl bindings on non-mac when Ctrl is pressed", () => {
+    setPlatform("Win32");
+
+    const service = new KeybindingService();
+    const event = createKeyboardEvent({
+      key: "Tab",
+      code: "Tab",
+      ctrlKey: true,
+    });
+
+    expect(service.matchesEvent(event, "Ctrl+Tab")).toBe(true);
+  });
+
+  it("resolves Ctrl+Tab terminal focus bindings on non-mac", () => {
+    setPlatform("Win32");
+
+    const service = new KeybindingService();
+    const forward = createKeyboardEvent({
+      key: "Tab",
+      code: "Tab",
+      ctrlKey: true,
+    });
+    const backward = createKeyboardEvent({
+      key: "Tab",
+      code: "Tab",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    expect(service.findMatchingAction(forward)?.actionId).toBe("terminal.focusNext");
+    expect(service.findMatchingAction(backward)?.actionId).toBe("terminal.focusPrevious");
+  });
+
   it("supports two-key chord matching", () => {
     setPlatform("MacIntel");
 
