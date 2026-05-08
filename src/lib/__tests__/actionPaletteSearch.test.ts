@@ -208,6 +208,12 @@ describe("rankActionMatches", () => {
     expect(ids.indexOf("substring")).toBeLessThan(ids.indexOf("fuzzy"));
   });
 
+  it("excludes heavily-scattered subsequence when aggregate is non-positive", () => {
+    const items = [makeAction({ id: "1", title: "a" + "x".repeat(30) + "b" })];
+    const results = rankActionMatches("ab", items, []);
+    expect(results).toEqual([]);
+  });
+
   it("falls back to title alphabetical for equal score with no MRU", () => {
     const items = [
       makeAction({ id: "b", title: "Beta Terminal" }),
