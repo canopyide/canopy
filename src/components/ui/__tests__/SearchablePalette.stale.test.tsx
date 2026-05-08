@@ -78,3 +78,31 @@ describe("SearchablePalette stale visual", () => {
     expect(listbox.classList.contains("palette-results-stale")).toBe(false);
   });
 });
+
+describe("SearchablePalette aria-busy on listbox", () => {
+  it("sets aria-busy='true' when isFiltering is true", () => {
+    renderPalette(true);
+    const listbox = screen.getByRole("listbox");
+    expect(listbox.getAttribute("aria-busy")).toBe("true");
+  });
+
+  it("omits aria-busy when isFiltering is false", () => {
+    renderPalette(false);
+    const listbox = screen.getByRole("listbox");
+    expect(listbox.hasAttribute("aria-busy")).toBe(false);
+  });
+
+  it("omits aria-busy when isFiltering is undefined", () => {
+    renderPalette(undefined);
+    const listbox = screen.getByRole("listbox");
+    expect(listbox.hasAttribute("aria-busy")).toBe(false);
+  });
+});
+
+describe("SearchablePalette combobox input ARIA", () => {
+  it("has aria-autocomplete='list'", () => {
+    renderPalette();
+    const input = screen.getByRole("combobox");
+    expect(input.getAttribute("aria-autocomplete")).toBe("list");
+  });
+});

@@ -192,12 +192,12 @@ export function AppPaletteDialog({
         transitionTimingFunction: "linear",
       }}
       onClick={handleBackdropClick}
-      role="dialog"
-      aria-modal="true"
-      aria-label={ariaLabel}
     >
       <div
         ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={ariaLabel}
         className={cn(
           "w-full max-w-xl mx-4 bg-daintree-bg border border-[var(--border-overlay)] rounded-[var(--radius-xl)] shadow-modal overflow-hidden origin-top",
           "transition-[opacity,transform]",
