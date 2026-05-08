@@ -26,6 +26,7 @@ const AGENT_STATE_VALUES = new Set([
 
 const T_IDENTITY = 60_000;
 const T_AGENT_STICKY_REGRESSION = 45_000;
+const T_WINDOWS_BATCH_PROMPT = 7_500;
 
 function panelHeaderIcon(panel: Locator): Locator {
   return panel.locator("[data-pane-chrome] [data-terminal-icon-id]").first();
@@ -127,6 +128,41 @@ async function ptyWrite(page: Page, terminalId: string, data: string): Promise<v
   );
 
   if (!result.ok) throw new Error(`ptyWrite failed: ${result.reason}`);
+}
+
+async function interruptTerminalProcess(
+  page: Page,
+  panel: Locator,
+  terminalId: string
+): Promise<number> {
+  const textBeforeInterrupt = await getTerminalText(panel);
+  await ptyWrite(page, terminalId, "\x03");
+  return textBeforeInterrupt.length;
+}
+
+async function confirmWindowsBatchTerminationIfPrompted(
+  page: Page,
+  panel: Locator,
+  terminalId: string,
+  textOffset: number
+): Promise<void> {
+  if (process.platform !== "win32") return;
+
+  const deadline = Date.now() + T_WINDOWS_BATCH_PROMPT;
+  while (Date.now() < deadline) {
+    const freshText = (await getTerminalText(panel)).slice(textOffset).toLowerCase();
+    if (freshText.includes("terminate batch job")) {
+      await ptyWrite(page, terminalId, "Y\r");
+      return;
+    }
+    await page.waitForTimeout(250);
+  }
+}
+
+async function interruptFakeClaude(page: Page, panel: Locator, terminalId: string): Promise<void> {
+  const textOffset = await interruptTerminalProcess(page, panel, terminalId);
+  await waitForTerminalText(panel, "FAKE_CLAUDE_EXIT", T_LONG);
+  await confirmWindowsBatchTerminationIfPrompted(page, panel, terminalId, textOffset);
 }
 
 async function expectWorktreeTracksAgent(
@@ -335,8 +371,7 @@ test.describe.serial("Core: terminal runtime agent promotion", () => {
       await expectPanelHeaderIcon(panel, "claude");
       await expectPanelHasAgentState(panel);
 
-      await ptyWrite(window, toolbarPanelId, "\x03");
-      await waitForTerminalText(panel, "FAKE_CLAUDE_EXIT", T_LONG);
+      await interruptFakeClaude(window, panel, toolbarPanelId);
 
       await expect
         .poll(() => panel.getAttribute("data-detected-agent-id"), {
@@ -381,7 +416,13 @@ test.describe.serial("Core: terminal runtime agent promotion", () => {
       await expectPanelHasNoAgentState(panel);
       await expectWorktreeTracksPlainTerminal(window, plainPanelId);
 
-      await ptyWrite(window, plainPanelId, "\x03");
+      const npmInterruptOffset = await interruptTerminalProcess(window, panel, plainPanelId);
+      await confirmWindowsBatchTerminationIfPrompted(
+        window,
+        panel,
+        plainPanelId,
+        npmInterruptOffset
+      );
 
       // Do not wait for the npm badge to clear before starting Claude. This
       // exercises the stale process → fresh agent promotion path that regressed.
@@ -414,8 +455,7 @@ test.describe.serial("Core: terminal runtime agent promotion", () => {
       await expectPanelHeaderIcon(panel, "claude");
       await expectPanelHasAgentState(panel);
 
-      await ptyWrite(window, plainPanelId, "\x03");
-      await waitForTerminalText(panel, "FAKE_CLAUDE_EXIT", T_LONG);
+      await interruptFakeClaude(window, panel, plainPanelId);
       await expect
         .poll(() => panel.getAttribute("data-detected-agent-id"), {
           timeout: T_IDENTITY,
