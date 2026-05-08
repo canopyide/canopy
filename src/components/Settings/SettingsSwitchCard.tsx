@@ -77,6 +77,7 @@ export function SettingsSwitchCard({
         isCard ? "p-4 rounded-[var(--radius-lg)] border hover:bg-tint/5" : "py-2",
         "border-daintree-border text-daintree-text/70",
         isEnabled && "border-daintree-border text-daintree-text",
+        !disabled && "cursor-pointer",
         disabled && "opacity-50"
       )}
       onClick={disabled ? undefined : handleCardClick}

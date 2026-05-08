@@ -58,9 +58,8 @@ export function SettingsChoicebox<T extends string = string>({
   const showReset = isModified && onReset && !disabled;
 
   const describedBy =
-    [description && !error ? descriptionId : null, error ? errorId : null]
-      .filter(Boolean)
-      .join(" ") || undefined;
+    [error ? errorId : null, description ? descriptionId : null].filter(Boolean).join(" ") ||
+    undefined;
 
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -218,7 +217,7 @@ export function SettingsChoicebox<T extends string = string>({
           );
         })}
       </div>
-      {description && !error && (
+      {description && (
         <p id={descriptionId} className="text-xs text-daintree-text/40 select-text">
           {description}
         </p>

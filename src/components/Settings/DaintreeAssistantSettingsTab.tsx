@@ -20,7 +20,9 @@ import { SettingsInput } from "./SettingsInput";
 import { SettingsSelect } from "./SettingsSelect";
 import { SettingsSwitchCard } from "./SettingsSwitchCard";
 import { useSettingsTabValidation } from "./SettingsValidationRegistry";
+import { useSettingsTabFlush } from "./SettingsFlushRegistry";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
+import { useDebounce } from "@/hooks/useDebounce";
 
 import { logError } from "@/utils/logger";
 import { getAgentConfig, getAssistantSupportedAgentIds } from "@/config/agents";
@@ -28,6 +30,7 @@ import { useHelpPanelStore } from "@/store/helpPanelStore";
 import type { HelpAssistantSettings } from "@shared/types";
 
 const COPY_RESET_DELAY_MS = 2000;
+const CUSTOM_ARGS_DEBOUNCE_MS = 500;
 
 const DEFAULT_SETTINGS: HelpAssistantSettings = {
   docSearch: true,
@@ -67,6 +70,21 @@ export function DaintreeAssistantSettingsTab() {
   const [showRotateConfirm, setShowRotateConfirm] = useState(false);
   const [isRotating, setIsRotating] = useState(false);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // customArgs is a free-form text input; persisting on every keystroke would
+  // spam IPC. We track a pending edit alongside the persisted value: when the
+  // pending value is null the input mirrors `settings.customArgs` directly
+  // (no extra render round-trip on initial load), and when non-null it holds
+  // the user's in-flight edit until the debounced persist catches up. A flush
+  // hook captures the pending value before dialog dismissal (#7260).
+  const [pendingCustomArgs, setPendingCustomArgs] = useState<string | null>(null);
+  const debouncedPendingCustomArgs = useDebounce(pendingCustomArgs, CUSTOM_ARGS_DEBOUNCE_MS);
+  const displayedCustomArgs = pendingCustomArgs ?? settings.customArgs;
+  const isCustomArgsDirty = pendingCustomArgs !== null && pendingCustomArgs !== settings.customArgs;
+  const pendingCustomArgsRef = useRef(pendingCustomArgs);
+  useEffect(() => {
+    pendingCustomArgsRef.current = pendingCustomArgs;
+  }, [pendingCustomArgs]);
 
   useSettingsTabValidation("assistant", Boolean(error));
 
@@ -196,11 +214,38 @@ export function DaintreeAssistantSettingsTab() {
     [setPreferredAgent]
   );
 
-  const handleCustomArgsChange = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      void persist({ customArgs: event.target.value });
+  const handleCustomArgsChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setPendingCustomArgs(event.target.value);
+  }, []);
+
+  // Persist the pending value once the debounce settles. Skipped when pending
+  // matches what's already persisted (e.g., user typed and undid, or the
+  // value just landed via the optimistic update inside `persist`).
+  useEffect(() => {
+    if (debouncedPendingCustomArgs === null) return;
+    if (debouncedPendingCustomArgs !== settings.customArgs) {
+      void persist({ customArgs: debouncedPendingCustomArgs });
+    }
+  }, [debouncedPendingCustomArgs, settings.customArgs, persist]);
+
+  // Once the persisted value catches up, clear the pending flag so the input
+  // resumes mirroring `settings.customArgs` directly.
+  useEffect(() => {
+    if (pendingCustomArgs !== null && pendingCustomArgs === settings.customArgs) {
+      setPendingCustomArgs(null);
+    }
+  }, [pendingCustomArgs, settings.customArgs]);
+
+  // Pre-close flush bypasses the debounce so closing the dialog mid-edit
+  // still captures the in-flight value.
+  useSettingsTabFlush(
+    "assistant",
+    () => {
+      const pending = pendingCustomArgsRef.current;
+      if (pending === null) return;
+      return persist({ customArgs: pending });
     },
-    [persist]
+    isCustomArgsDirty
   );
 
   const confirmRotateKey = useCallback(async () => {
@@ -280,7 +325,7 @@ export function DaintreeAssistantSettingsTab() {
           autoCorrect="off"
           autoCapitalize="off"
           placeholder="--model sonnet"
-          value={settings.customArgs}
+          value={displayedCustomArgs}
           onChange={handleCustomArgsChange}
           disabled={loading}
         />

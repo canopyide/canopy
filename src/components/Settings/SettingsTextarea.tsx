@@ -34,9 +34,8 @@ export function SettingsTextarea({
   const showReset = isModified && onReset && !disabled;
 
   const describedBy =
-    [description && !error ? descriptionId : null, error ? errorId : null]
-      .filter(Boolean)
-      .join(" ") || undefined;
+    [error ? errorId : null, description ? descriptionId : null].filter(Boolean).join(" ") ||
+    undefined;
 
   return (
     <div className="group grid grid-cols-subgrid gap-2 col-span-full">
@@ -72,7 +71,7 @@ export function SettingsTextarea({
         className={cn(TEXTAREA_CLASSES, error && "border-status-error", className)}
         {...props}
       />
-      {description && !error && (
+      {description && (
         <p id={descriptionId} className="text-xs text-text-muted select-text">
           {description}
         </p>
