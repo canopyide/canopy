@@ -82,6 +82,9 @@ export function DockPanelOffscreenContainer({ children }: DockPanelOffscreenCont
   useEffect(() => {
     if (!activeDockTerminalId) return;
     if (dockTerminals.some((terminal) => terminal.id === activeDockTerminalId)) return;
+    // Harden against transient states where the panel exists in the canonical
+    // store but hasn't yet landed in the filtered dockTerminals view (#7278).
+    if (usePanelStore.getState().panelsById[activeDockTerminalId]) return;
     closeDockTerminal();
   }, [activeDockTerminalId, dockTerminals, closeDockTerminal]);
 

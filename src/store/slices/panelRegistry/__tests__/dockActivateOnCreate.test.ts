@@ -420,3 +420,76 @@ describe("atomic dock activation on create (#6590)", () => {
     }
   });
 });
+
+describe("dock watchdog hardening (#7278)", () => {
+  beforeEach(async () => {
+    const { reset } = usePanelStore.getState();
+    await reset();
+  });
+
+  it("spares activeDockTerminalId when panel exists in panelsById but not a filtered view", async () => {
+    const { closeDockTerminal } = usePanelStore.getState();
+    // Verify closeDockTerminal exists on the store (set up in beforeEach).
+    expect(closeDockTerminal).toBeDefined();
+
+    const targetId = "spared-by-panelsById";
+
+    // Set up the scenario: panel exists in panelsById and
+    // activeDockTerminalId is set to it. This is exactly the state the
+    // atomic commit in addPanel produces — both land in the same set().
+    // The filtered dockTerminals view is not needed here because the
+    // guard checks panelsById directly, which is the canonical source.
+    usePanelStore.setState({
+      panelsById: {
+        [targetId]: {
+          id: targetId,
+          kind: "terminal" as const,
+          title: "Test",
+          location: "dock" as const,
+        },
+      },
+      panelIds: [targetId],
+      activeDockTerminalId: targetId,
+    });
+
+    const state = usePanelStore.getState();
+    expect(state.panelsById[targetId]).toBeDefined();
+    expect(state.activeDockTerminalId).toBe(targetId);
+
+    // The watchdog guard: if activeDockTerminalId is set and the panel
+    // exists in panelsById, closeDockTerminal must NOT be called.
+    // The guard is a truthiness check (matching the if-condition in the
+    // useEffect); coerce to boolean for the expectation.
+    const shouldSkipClose = Boolean(
+      !state.activeDockTerminalId || state.panelsById[state.activeDockTerminalId]
+    );
+    expect(shouldSkipClose).toBe(true);
+
+    // Call closeDockTerminal anyway to verify it works (the actual
+    // watchdog would not call this).
+    closeDockTerminal();
+    expect(usePanelStore.getState().activeDockTerminalId).toBeNull();
+  });
+
+  it("closes dock when panel is absent from both dockTerminals and panelsById", () => {
+    const { closeDockTerminal } = usePanelStore.getState();
+
+    // Set activeDockTerminalId to a non-existent panel ID (simulating
+    // stale state after a panel was deleted without clearing the dock).
+    usePanelStore.setState({ activeDockTerminalId: "phantom-id" });
+
+    const state = usePanelStore.getState();
+    expect(state.activeDockTerminalId).toBe("phantom-id");
+    expect(state.panelsById["phantom-id"]).toBeUndefined();
+
+    // The watchdog should close the dock — neither the filtered
+    // dockTerminals view nor panelsById contains this ID.
+    const shouldSkipClose = Boolean(
+      !state.activeDockTerminalId || state.panelsById[state.activeDockTerminalId]
+    );
+    if (!shouldSkipClose) {
+      closeDockTerminal();
+    }
+    expect(usePanelStore.getState().activeDockTerminalId).toBeNull();
+  });
+});

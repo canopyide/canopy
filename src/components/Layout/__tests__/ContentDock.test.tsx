@@ -74,4 +74,23 @@ describe("ContentDock regression test", () => {
     expect(content).toContain("activateDockOnCreate: true");
     expect(content).not.toContain("openDockTerminal(newPanelId)");
   });
+
+  // Issue #7278 — the watchdog effect in DockPanelOffscreenContainer must
+  // check panelsById before firing closeDockTerminal, so that a panel that
+  // exists in canonical storage but hasn't landed in the filtered
+  // dockTerminals view yet isn't spuriously collapsed.
+  it("DockPanelOffscreenContainer watchdog guards with panelsById before closing", () => {
+    const content = readFileSync(resolve(__dirname, "../DockPanelOffscreenContainer.tsx"), "utf-8");
+
+    expect(content).toContain("usePanelStore.getState().panelsById[activeDockTerminalId]");
+    // The panelsById guard must appear before closeDockTerminal() inside the
+    // same useEffect block.
+    const effectStart = content.indexOf("if (!activeDockTerminalId) return;");
+    const panelsByIdGuard = content.indexOf("panelsById[activeDockTerminalId]");
+    const closeCall = content.indexOf("closeDockTerminal()", effectStart);
+
+    expect(effectStart).toBeGreaterThan(0);
+    expect(panelsByIdGuard).toBeGreaterThan(effectStart);
+    expect(panelsByIdGuard).toBeLessThan(closeCall);
+  });
 });
