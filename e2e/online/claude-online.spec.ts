@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 import {
   launchApp,
   closeApp,
@@ -15,6 +15,37 @@ import { configureClaudeAuthEnv, hasClaudeApiKey } from "../helpers/claudeAuth";
 let ctx: AppContext;
 let fixtureDir: string;
 let fixtureCleanup: (() => void) | undefined;
+
+async function focusHybridEditor(page: Page, agentPanel: Locator): Promise<void> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const cmEditor = agentPanel.locator(SEL.terminal.cmEditor);
+    try {
+      await expect(cmEditor).toBeVisible({ timeout: 5_000 });
+      await cmEditor.evaluate((node) => {
+        const element = node as HTMLElement;
+        element.scrollIntoView({ block: "center", inline: "center" });
+        element.focus();
+      });
+      await expect
+        .poll(
+          () => cmEditor.evaluate((node) => document.activeElement === node).catch(() => false),
+          {
+            timeout: 2_000,
+            intervals: [100, 250],
+          }
+        )
+        .toBe(true);
+      return;
+    } catch (error) {
+      lastError = error;
+      await page.waitForTimeout(500);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("Failed to focus hybrid editor");
+}
 
 test.describe("Claude Online Flow", () => {
   test.beforeAll(async () => {
@@ -65,7 +96,6 @@ test.describe("Claude Online Flow", () => {
     await test.step("handle prompts and wait for Welcome", async () => {
       const { window } = ctx;
       const agentPanel = window.locator(SEL.agent.panel);
-      const cmEditor = agentPanel.locator(SEL.terminal.cmEditor);
 
       // Claude Code may prompt for trust, API key, or skip straight to Welcome
       // depending on prior configuration. Poll and handle whatever appears.
@@ -84,11 +114,11 @@ test.describe("Claude Online Flow", () => {
         if (lower.includes("welcome")) {
           reachedWelcome = true;
         } else if (lower.includes("trust")) {
-          await cmEditor.click();
+          await focusHybridEditor(window, agentPanel);
           await window.keyboard.press("Enter");
           await window.waitForTimeout(2_000);
         } else if (lower.includes("api key")) {
-          await cmEditor.click();
+          await focusHybridEditor(window, agentPanel);
           await window.keyboard.press("ArrowUp");
           await window.keyboard.press("Enter");
           await window.waitForTimeout(2_000);
@@ -104,9 +134,8 @@ test.describe("Claude Online Flow", () => {
       const { window } = ctx;
 
       const agentPanel = window.locator(SEL.agent.panel);
-      const cmEditor = agentPanel.locator(SEL.terminal.cmEditor);
-      await cmEditor.click();
-      await cmEditor.pressSequentially("Please say hello world", { delay: 30 });
+      await focusHybridEditor(window, agentPanel);
+      await window.keyboard.type("Please say hello world", { delay: 30 });
       await window.keyboard.press("Enter");
     });
 
