@@ -22,11 +22,11 @@ on:
           - online
           - nightly
       test_file:
-        description: "Exact spec file, e.g. e2e/core/core-worktree-lifecycle.spec.ts"
+        description: "Spec file(s), separated by comma, space, or newline"
         type: string
         required: true
       grep:
-        description: "Optional Playwright --grep value for one test in the file"
+        description: "Optional Playwright --grep value for matching tests"
         type: string
         default: ""
       workers:

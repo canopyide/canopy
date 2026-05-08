@@ -22,7 +22,6 @@ function normalizeSpecPath(raw) {
     .replace(/\\/g, "/")
     .replace(/^\.\//, "");
 
-  if (!value) fail("E2E_TEST_FILE is required");
   if (path.isAbsolute(value)) fail("E2E_TEST_FILE must be relative to the repository root");
   if (value.split("/").includes("..")) fail("E2E_TEST_FILE must not contain '..'");
   if (!value.startsWith("e2e/")) fail("E2E_TEST_FILE must be under e2e/");
@@ -33,6 +32,25 @@ function normalizeSpecPath(raw) {
   if (!statSync(absolute).isFile()) fail(`E2E_TEST_FILE is not a file: ${value}`);
 
   return value;
+}
+
+function normalizeSpecPaths(raw) {
+  const values = String(raw ?? "")
+    .split(/[\s,]+/)
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  if (values.length === 0) fail("E2E_TEST_FILE is required");
+
+  const seen = new Set();
+  const normalized = [];
+  for (const value of values) {
+    const specPath = normalizeSpecPath(value);
+    if (seen.has(specPath)) continue;
+    seen.add(specPath);
+    normalized.push(specPath);
+  }
+  return normalized;
 }
 
 function readIntegerEnv(name, { min, max, allowEmpty }) {
@@ -52,28 +70,35 @@ if (!VALID_PROJECTS.has(project)) {
   fail(`E2E_SUITE must be one of: ${Array.from(VALID_PROJECTS).join(", ")}`);
 }
 
-const testFile = normalizeSpecPath(process.env.E2E_TEST_FILE);
+const testFiles = normalizeSpecPaths(process.env.E2E_TEST_FILE);
 const expectedPrefix = `e2e/${project}/`;
-if (!testFile.startsWith(expectedPrefix)) {
-  fail(`Project '${project}' can only run specs under ${expectedPrefix}`);
+for (const testFile of testFiles) {
+  if (!testFile.startsWith(expectedPrefix)) {
+    fail(`Project '${project}' can only run specs under ${expectedPrefix}`);
+  }
 }
 
 const grep = String(process.env.E2E_GREP ?? "").trim();
 const workers = readIntegerEnv("E2E_WORKERS", { min: 1, max: MAX_WORKERS, allowEmpty: false });
 const retries = readIntegerEnv("E2E_RETRIES", { min: 0, max: MAX_RETRIES, allowEmpty: true });
 
-const args = ["playwright", "test", `--project=${project}`, testFile, `--workers=${workers}`];
+const playwrightCli = path.join(repoRoot, "node_modules/playwright/cli.js");
+if (!existsSync(playwrightCli)) {
+  fail("Playwright CLI is not installed. Run npm ci before invoking this script.");
+}
+
+const args = [playwrightCli, "test", `--project=${project}`, ...testFiles, `--workers=${workers}`];
 if (retries !== null) args.push(`--retries=${retries}`);
 if (grep) args.push("--grep", grep);
 
-console.log(`Running: npx ${args.map((arg) => JSON.stringify(arg)).join(" ")}`);
+const displayArgs = [path.relative(repoRoot, playwrightCli), ...args.slice(1)];
+console.log(`Running: node ${displayArgs.map((arg) => JSON.stringify(arg)).join(" ")}`);
 
 if (process.argv.includes("--dry-run") || process.env.E2E_DRY_RUN === "1") {
   process.exit(0);
 }
 
-const npxBin = process.platform === "win32" ? "npx.cmd" : "npx";
-const result = spawnSync(npxBin, args, {
+const result = spawnSync(process.execPath, args, {
   cwd: repoRoot,
   env: process.env,
   stdio: "inherit",
