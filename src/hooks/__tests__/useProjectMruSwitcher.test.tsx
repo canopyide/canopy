@@ -190,45 +190,45 @@ describe("useProjectMruSwitcher", () => {
     ]);
   });
 
-  it("hold + Minus advances older through MRU", () => {
+  it("hold + Equal advances down through MRU", () => {
     const { result } = renderHook(() => useProjectMruSwitcher());
 
     act(() => {
-      keyDown("Minus");
-      vi.advanceTimersByTime(130);
-    });
-    act(() => {
-      keyDown("Minus", { repeat: true });
-    });
-
-    expect(result.current.selectedIndex).toBe(2);
-  });
-
-  it("hold + Equal from index 1 wraps to last index", () => {
-    const { result } = renderHook(() => useProjectMruSwitcher());
-
-    act(() => {
-      keyDown("Minus");
+      keyDown("Equal");
       vi.advanceTimersByTime(130);
     });
     act(() => {
       keyDown("Equal", { repeat: true });
     });
 
-    expect(result.current.selectedIndex).toBe(3);
+    expect(result.current.selectedIndex).toBe(2);
   });
 
-  it("hold + Minus at last wraps back to 1", () => {
+  it("hold + Minus from index 1 wraps up to last index", () => {
     const { result } = renderHook(() => useProjectMruSwitcher());
 
     act(() => {
-      keyDown("Minus");
+      keyDown("Equal");
       vi.advanceTimersByTime(130);
     });
     act(() => {
       keyDown("Minus", { repeat: true });
-      keyDown("Minus", { repeat: true });
-      keyDown("Minus", { repeat: true });
+    });
+
+    expect(result.current.selectedIndex).toBe(3);
+  });
+
+  it("hold + Equal at last wraps back to 1", () => {
+    const { result } = renderHook(() => useProjectMruSwitcher());
+
+    act(() => {
+      keyDown("Equal");
+      vi.advanceTimersByTime(130);
+    });
+    act(() => {
+      keyDown("Equal", { repeat: true });
+      keyDown("Equal", { repeat: true });
+      keyDown("Equal", { repeat: true });
     });
 
     expect(result.current.selectedIndex).toBe(1);
@@ -238,11 +238,11 @@ describe("useProjectMruSwitcher", () => {
     renderHook(() => useProjectMruSwitcher());
 
     act(() => {
-      keyDown("Minus");
+      keyDown("Equal");
       vi.advanceTimersByTime(130);
     });
     act(() => {
-      keyDown("Minus", { repeat: true });
+      keyDown("Equal", { repeat: true });
     });
     act(() => {
       keyUp("Meta");
@@ -316,7 +316,7 @@ describe("useProjectMruSwitcher", () => {
     // Before threshold, repeat events advance the index but do NOT restart timer
     act(() => {
       vi.advanceTimersByTime(80);
-      keyDown("Minus", { repeat: true });
+      keyDown("Equal", { repeat: true });
       vi.advanceTimersByTime(60);
     });
 

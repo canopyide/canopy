@@ -789,18 +789,18 @@ export const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "project.mruCycleOlder",
-    combo: "Cmd+Alt+-",
+    combo: "Cmd+Alt+=",
     scope: "global",
     priority: 10,
-    description: "Switch to previous project (hold to scrub older)",
+    description: "Switch project (hold to scrub down)",
     category: "Project",
   },
   {
     actionId: "project.mruCycleNewer",
-    combo: "Cmd+Alt+=",
+    combo: "Cmd+Alt+-",
     scope: "global",
     priority: 10,
-    description: "Switch to previous project (hold to scrub newer)",
+    description: "Switch project (hold to scrub up)",
     category: "Project",
   },
   {

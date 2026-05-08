@@ -9,14 +9,14 @@ import { notify, EVENT_KIND_TO_SETTING_KEY, EVENT_KIND_LABEL } from "@/lib/notif
 import type { NotificationEventKind } from "@/lib/notify";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 
-async function runMruFallbackSwitch(direction: "older" | "newer"): Promise<void> {
+async function runMruFallbackSwitch(): Promise<void> {
   const state = useProjectStore.getState();
   const currentId = state.currentProject?.id ?? null;
   const sorted = getMruProjects(state.projects);
   const otherProjects = sorted.filter((p) => p.id !== currentId);
   if (otherProjects.length === 0) return;
 
-  const target = direction === "older" ? otherProjects[0] : otherProjects[otherProjects.length - 1];
+  const target = otherProjects[0];
   if (!target) return;
 
   try {
@@ -35,7 +35,7 @@ async function runMruFallbackSwitch(direction: "older" | "newer"): Promise<void>
           label: "Try again",
           variant: "primary",
           onClick: () => {
-            void runMruFallbackSwitch(direction);
+            void runMruFallbackSwitch();
           },
         },
       ],
@@ -60,24 +60,24 @@ export function registerProjectActions(actions: ActionRegistry, callbacks: Actio
 
   actions.set("project.mruCycleOlder", () => ({
     id: "project.mruCycleOlder",
-    title: "Switch to Previous Project (Older)",
-    description: "Switch to the most recent other project; hold to scrub older",
+    title: "Switch Down Project List",
+    description: "Switch to the next project; hold to scrub down the MRU list",
     category: "project",
     kind: "command",
     danger: "safe",
     scope: "renderer",
-    run: () => runMruFallbackSwitch("older"),
+    run: () => runMruFallbackSwitch(),
   }));
 
   actions.set("project.mruCycleNewer", () => ({
     id: "project.mruCycleNewer",
-    title: "Switch to Oldest Project (Newer)",
-    description: "Switch to the oldest other project; hold to scrub newer",
+    title: "Switch Up Project List",
+    description: "Switch to the next project; hold to scrub up the MRU list",
     category: "project",
     kind: "command",
     danger: "safe",
     scope: "renderer",
-    run: () => runMruFallbackSwitch("newer"),
+    run: () => runMruFallbackSwitch(),
   }));
 
   actions.set("project.add", () => ({

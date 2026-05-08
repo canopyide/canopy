@@ -45,9 +45,9 @@ function isEditableTarget(target: EventTarget | null): boolean {
 /**
  * Hold-scrub MRU project switcher.
  *
- * Tap Cmd+Alt+- (or Cmd+Alt+=): switch to the most recent other project.
+ * Tap Cmd+Alt+= (or Cmd+Alt+-): switch to the most recent other project.
  * Hold Cmd+Alt+-/= for >120ms: show an overlay that scrubs through the MRU
- * list with each additional '-' (older) or '=' (newer) keypress. Release
+ * list with each additional '=' (older/down) or '-' (newer/up) keypress. Release
  * Cmd/Alt to commit; Escape or window blur to cancel.
  *
  * Uses capture-phase window listeners so the event fires before xterm's
@@ -129,8 +129,8 @@ export function useProjectMruSwitcher(): UseProjectMruSwitcherReturn {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.isComposing) return;
       if (!event.metaKey || !event.altKey) return;
-      const isOlder = event.code === "Minus";
-      const isNewer = event.code === "Equal";
+      const isOlder = event.code === "Equal";
+      const isNewer = event.code === "Minus";
       if (!isOlder && !isNewer) return;
 
       if (isEditableTarget(event.target)) return;
