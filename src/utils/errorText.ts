@@ -28,6 +28,9 @@ const BIDI_AND_SEPARATORS = new RegExp(
     "]",
   "g"
 );
+// Zero-width invisibles (Unicode Cf, not Cc — missed by C0/C1 ranges):
+// U+200B ZWSP, U+200C ZWNJ, U+200D ZWJ, U+2060 Word Joiner.
+const ZERO_WIDTH = /[​‌‍⁠]/g;
 
 /**
  * Strips terminal escape sequences and dangerous control/Unicode characters
@@ -47,7 +50,8 @@ export function sanitizeErrorText(text: string): string {
     .replace(FE_ESCAPE, "")
     .replace(C0_AND_DEL, "")
     .replace(C1, "")
-    .replace(BIDI_AND_SEPARATORS, "");
+    .replace(BIDI_AND_SEPARATORS, "")
+    .replace(ZERO_WIDTH, "");
 }
 
 /**

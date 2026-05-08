@@ -109,8 +109,20 @@ describe("sanitizeErrorText", () => {
     expect(sanitizeErrorText("﻿hello")).toBe("hello");
   });
 
+  it("strips zero-width invisibles (U+200B, U+200C, U+200D, U+2060)", () => {
+    expect(sanitizeErrorText("a​b‌c‍d⁠e")).toBe("abcde");
+  });
+
+  it("strips zero-width chars mixed with ANSI", () => {
+    expect(sanitizeErrorText("\x1b[31m​red‍\x1b[0m")).toBe("red");
+  });
+
+  it("preserves HT/LF/CR while stripping zero-width chars", () => {
+    expect(sanitizeErrorText("a​\tb‌\nc‍\rd")).toBe("a\tb\nc\rd");
+  });
+
   it("is idempotent (sanitizing twice == once)", () => {
-    const dirty = "\x1b[31m\x07a‮b\x1b]0;t\x07c";
+    const dirty = "\x1b[31m\x07a‮b\x1b]0;t\x07c​d⁠e";
     const once = sanitizeErrorText(dirty);
     expect(sanitizeErrorText(once)).toBe(once);
   });

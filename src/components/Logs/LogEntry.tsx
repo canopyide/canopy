@@ -1,9 +1,10 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { Copy, Check } from "lucide-react";
+import { Copy, Check, ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { safeStringify } from "@/lib/safeStringify";
+import { sanitizeErrorText } from "@/utils/errorText";
 import type { LogEntry as LogEntryType, LogLevel } from "@/types";
 
 export interface LogEntryCopyMeta {
@@ -62,12 +63,13 @@ function buildCopyPayload(entry: LogEntryType, meta?: LogEntryCopyMeta): string 
   const header = meta
     ? `App: ${meta.appVersion} | Electron: ${meta.electronVersion} | OS: ${meta.platform}\n\n`
     : "";
-  const headLine = entry.source
-    ? `[${iso}] [${entry.level.toUpperCase()}] [${entry.source}]`
+  const safeSource = entry.source ? sanitizeErrorText(entry.source) : "";
+  const headLine = safeSource
+    ? `[${iso}] [${entry.level.toUpperCase()}] [${safeSource}]`
     : `[${iso}] [${entry.level.toUpperCase()}]`;
-  const body = [headLine, entry.message];
+  const body = [headLine, sanitizeErrorText(entry.message)];
   if (entry.context && Object.keys(entry.context).length > 0) {
-    body.push(safeStringify(entry.context, 2));
+    body.push(sanitizeErrorText(safeStringify(entry.context, 2)));
   }
   // Use tilde fence so any backtick blocks inside the log body don't break the outer fence.
   return `${header}~~~log\n${body.join("\n")}\n~~~`;
@@ -164,7 +166,7 @@ function LogEntryComponent({ entry, isExpanded, onToggle, count = 1, copyMeta }:
         </span>
 
         {entry.source && (
-          <span className="text-github-merged text-xs font-mono shrink-0">[{entry.source}]</span>
+          <span className="text-daintree-text/60 text-xs font-mono shrink-0">[{entry.source}]</span>
         )}
 
         <span className="text-daintree-text text-xs font-mono break-words min-w-0 flex-1">
@@ -181,7 +183,9 @@ function LogEntryComponent({ entry, isExpanded, onToggle, count = 1, copyMeta }:
         )}
 
         {hasContext && (
-          <span className="text-daintree-text/60 text-xs shrink-0">{isExpanded ? "[-]" : "[+]"}</span>
+          <span className="text-daintree-text/60 shrink-0" aria-hidden>
+            {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+          </span>
         )}
 
         <Tooltip>
