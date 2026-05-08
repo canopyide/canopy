@@ -80,10 +80,12 @@ export function McpServerSettingsTab() {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [portInput, setPortInput] = useState("");
+  const portDirtyRef = useRef(false);
   const [showApiKey, setShowApiKey] = useState(false);
   const [copiedKey, setCopiedKey] = useState(false);
   const [copiedAudit, setCopiedAudit] = useState(false);
-  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const configCopyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const apiKeyCopyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const auditCopyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [auditRecords, setAuditRecords] = useState<McpAuditRecord[]>([]);
@@ -114,7 +116,7 @@ export function McpServerSettingsTab() {
     let settled = false;
     const timer = setTimeout(() => {
       settled = true;
-      setError("Settings load timed out");
+      setError("Couldn't load MCP server settings. Restart Daintree and try again.");
       setLoading(false);
       logError("MCP status load timed out");
     }, 10_000);
@@ -128,6 +130,7 @@ export function McpServerSettingsTab() {
         if (settled) return;
         setStatus(s);
         setPortInput(s.configuredPort?.toString() ?? "");
+        portDirtyRef.current = false;
         setAuditEnabled(auditCfg.enabled);
         setAuditMaxRecords(auditCfg.maxRecords);
         setMaxRecordsInput(auditCfg.maxRecords.toString());
@@ -146,9 +149,27 @@ export function McpServerSettingsTab() {
         setAuditLoading(false);
       });
 
+    const unsub = window.electron.mcpServer.onRuntimeStateChanged(() => {
+      if (!settled) return;
+      window.electron.mcpServer
+        .getStatus()
+        .then((s) => {
+          setStatus(s);
+          if (!portDirtyRef.current) {
+            setPortInput(s.configuredPort?.toString() ?? "");
+          }
+          setError(null);
+        })
+        .catch((err) => {
+          logError("Failed to refresh MCP status on runtime change", err);
+        });
+    });
+
     return () => {
       clearTimeout(timer);
-      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+      unsub();
+      if (configCopyTimeoutRef.current) clearTimeout(configCopyTimeoutRef.current);
+      if (apiKeyCopyTimeoutRef.current) clearTimeout(apiKeyCopyTimeoutRef.current);
       if (auditCopyTimeoutRef.current) clearTimeout(auditCopyTimeoutRef.current);
     };
   }, []);
@@ -169,9 +190,14 @@ export function McpServerSettingsTab() {
       const snippet = await window.electron.mcpServer.getConfigSnippet();
       await navigator.clipboard.writeText(snippet);
       setCopied(true);
-      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
-      copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
+      if (configCopyTimeoutRef.current) clearTimeout(configCopyTimeoutRef.current);
+      configCopyTimeoutRef.current = setTimeout(() => setCopied(false), COPY_FEEDBACK_MS);
     } catch (err) {
+      setCopied(false);
+      if (configCopyTimeoutRef.current) {
+        clearTimeout(configCopyTimeoutRef.current);
+        configCopyTimeoutRef.current = null;
+      }
       setError(formatErrorMessage(err, "Failed to copy config"));
       logError("Failed to copy MCP config", err);
     }
@@ -189,6 +215,7 @@ export function McpServerSettingsTab() {
       const newStatus = await window.electron.mcpServer.setPort(port);
       setStatus(newStatus);
       setPortInput(newStatus.configuredPort?.toString() ?? "");
+      portDirtyRef.current = false;
     } catch (err) {
       setError(formatErrorMessage(err, "Failed to update port"));
       logError("Failed to update MCP port", err);
@@ -223,13 +250,13 @@ export function McpServerSettingsTab() {
     try {
       await navigator.clipboard.writeText(status.apiKey);
       setCopiedKey(true);
-      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
-      copyTimeoutRef.current = setTimeout(() => setCopiedKey(false), 2000);
+      if (apiKeyCopyTimeoutRef.current) clearTimeout(apiKeyCopyTimeoutRef.current);
+      apiKeyCopyTimeoutRef.current = setTimeout(() => setCopiedKey(false), COPY_FEEDBACK_MS);
     } catch (err) {
       setCopiedKey(false);
-      if (copyTimeoutRef.current) {
-        clearTimeout(copyTimeoutRef.current);
-        copyTimeoutRef.current = null;
+      if (apiKeyCopyTimeoutRef.current) {
+        clearTimeout(apiKeyCopyTimeoutRef.current);
+        apiKeyCopyTimeoutRef.current = null;
       }
       setError(formatErrorMessage(err, "Failed to copy API key"));
       logError("Failed to copy MCP API key", err);
@@ -243,6 +270,7 @@ export function McpServerSettingsTab() {
       const cfg = await window.electron.mcpServer.setAuditEnabled(next);
       setAuditEnabled(cfg.enabled);
       setAuditMaxRecords(cfg.maxRecords);
+      setMaxRecordsInput(cfg.maxRecords.toString());
     } catch (err) {
       setError(formatErrorMessage(err, "Failed to update audit logging"));
       logError("Failed to toggle MCP audit log", err);
@@ -410,20 +438,25 @@ export function McpServerSettingsTab() {
                 inputMode="numeric"
                 pattern="[0-9]*"
                 value={portInput}
-                onChange={(e) => setPortInput(e.target.value.replace(/\D/g, ""))}
+                onChange={(e) => {
+                  setPortInput(e.target.value.replace(/\D/g, ""));
+                  portDirtyRef.current = true;
+                }}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") handlePortSave();
+                  if (e.key === "Enter") void handlePortSave();
                 }}
                 placeholder="45454"
-                className="w-40 bg-daintree-bg border border-border-strong rounded-[var(--radius-md)] px-3 py-2 text-sm text-daintree-text placeholder:text-daintree-text/40 font-mono focus:outline-hidden focus:ring-1 focus:ring-daintree-accent"
+                aria-label="MCP server port"
+                className="w-40 bg-daintree-bg border border-border-strong rounded-[var(--radius-md)] px-3 py-2 text-sm text-daintree-text placeholder:text-daintree-text/40 font-mono focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
               />
               <button
                 onClick={handlePortSave}
-                disabled={portInput === (status.configuredPort?.toString() ?? "")}
+                disabled={portInput.trim() === (status.configuredPort?.toString() ?? "")}
+                aria-label="Apply port"
                 className={cn(
                   "px-3 py-2 text-xs font-medium rounded-[var(--radius-md)] transition-colors",
                   "border border-daintree-border",
-                  portInput === (status.configuredPort?.toString() ?? "")
+                  portInput.trim() === (status.configuredPort?.toString() ?? "")
                     ? "text-daintree-text/30 cursor-not-allowed"
                     : "text-daintree-text/70 hover:text-daintree-text hover:bg-overlay-soft"
                 )}
@@ -517,26 +550,18 @@ export function McpServerSettingsTab() {
             description="Every tool dispatched over MCP is recorded with a redacted argument summary. Use this to investigate what an agent did during a session — argument values are never stored verbatim."
           >
             <div className="contents">
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleAuditEnabledToggle}
-                  className={cn(
-                    "px-3 py-1.5 text-xs font-medium rounded-[var(--radius-md)] border transition-colors",
-                    auditEnabled
-                      ? "border-status-success/30 text-status-success hover:bg-status-success/10"
-                      : "border-daintree-border text-daintree-text/60 hover:text-daintree-text"
-                  )}
-                  aria-pressed={auditEnabled}
-                >
-                  {auditEnabled ? "Capture on" : "Capture off"}
-                </button>
-                <span className="text-xs text-daintree-text/50">
-                  {auditEnabled
+              <SettingsSwitchCard
+                variant="compact"
+                title="Capture audit log"
+                subtitle={
+                  auditEnabled
                     ? "Recording every dispatch."
-                    : "New dispatches will not be recorded."}
-                </span>
-              </div>
+                    : "New dispatches will not be recorded."
+                }
+                isEnabled={auditEnabled}
+                onChange={handleAuditEnabledToggle}
+                ariaLabel="Capture audit log"
+              />
 
               <div className="flex flex-wrap items-center gap-2">
                 <label htmlFor="mcp-audit-max-records" className="text-xs text-daintree-text/60">
@@ -553,12 +578,13 @@ export function McpServerSettingsTab() {
                     if (e.key === "Enter") void handleMaxRecordsSave();
                   }}
                   placeholder={MCP_AUDIT_DEFAULT_MAX_RECORDS.toString()}
-                  className="w-24 bg-daintree-bg border border-border-strong rounded-[var(--radius-md)] px-2 py-1 text-xs text-daintree-text placeholder:text-daintree-text/40 font-mono focus:outline-hidden focus:ring-1 focus:ring-daintree-accent"
+                  className="w-24 bg-daintree-bg border border-border-strong rounded-[var(--radius-md)] px-2 py-1 text-xs text-daintree-text placeholder:text-daintree-text/40 font-mono focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
                 />
                 <button
                   type="button"
                   onClick={() => void handleMaxRecordsSave()}
                   disabled={maxRecordsInput === auditMaxRecords.toString()}
+                  aria-label="Apply max records"
                   className={cn(
                     "px-3 py-1 text-xs font-medium rounded-[var(--radius-md)] transition-colors",
                     "border border-daintree-border",
@@ -580,7 +606,8 @@ export function McpServerSettingsTab() {
                   value={toolFilter}
                   onChange={(e) => setToolFilter(e.target.value)}
                   placeholder="Filter by tool ID"
-                  className="flex-1 min-w-[160px] bg-daintree-bg border border-border-strong rounded-[var(--radius-md)] px-2 py-1 text-xs text-daintree-text placeholder:text-daintree-text/40 font-mono focus:outline-hidden focus:ring-1 focus:ring-daintree-accent"
+                  aria-label="Filter audit by tool name"
+                  className="flex-1 min-w-[160px] bg-daintree-bg border border-border-strong rounded-[var(--radius-md)] px-2 py-1 text-xs text-daintree-text placeholder:text-daintree-text/40 font-mono focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
                 />
                 <select
                   value={resultFilter}
@@ -590,17 +617,20 @@ export function McpServerSettingsTab() {
                       value === "all" ||
                       value === "success" ||
                       value === "error" ||
-                      value === "confirmation-pending"
+                      value === "confirmation-pending" ||
+                      value === "unauthorized"
                     ) {
                       setResultFilter(value);
                     }
                   }}
-                  className="bg-daintree-bg border border-border-strong rounded-[var(--radius-md)] px-2 py-1 text-xs text-daintree-text focus:outline-hidden focus:ring-1 focus:ring-daintree-accent"
+                  aria-label="Filter audit by result"
+                  className="bg-daintree-bg border border-border-strong rounded-[var(--radius-md)] px-2 py-1 text-xs text-daintree-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
                 >
                   <option value="all">All results</option>
                   <option value="success">Success</option>
                   <option value="error">Error</option>
                   <option value="confirmation-pending">Awaiting confirmation</option>
+                  <option value="unauthorized">Unauthorized</option>
                 </select>
               </div>
 
@@ -699,7 +729,9 @@ export function McpServerSettingsTab() {
                   Clear log
                 </button>
                 <span className="ml-auto text-xs text-daintree-text/40">
-                  {auditRecords.length} of {auditMaxRecords}
+                  {resultFilter !== "all" || toolFilter.trim().length > 0
+                    ? `${filteredAuditRecords.length} of ${auditRecords.length}`
+                    : `${auditRecords.length} of ${auditMaxRecords}`}
                 </span>
               </div>
             </div>
