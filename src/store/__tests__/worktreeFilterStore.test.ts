@@ -196,6 +196,60 @@ describe("worktreeFilterStore", () => {
     expect(next.quickStateFilter).toBe("all");
     expect(next.statusFilters.has("active")).toBe(true);
   });
+
+  describe("pruneStaleWorktreeIds", () => {
+    it("removes pins and collapsed entries not in validIds", () => {
+      const store = useWorktreeFilterStore.getState();
+      store.pinWorktree("wt-1");
+      store.pinWorktree("wt-2");
+      store.pinWorktree("wt-stale");
+      store.collapseWorktree("wt-2");
+      store.collapseWorktree("wt-gone");
+
+      store.pruneStaleWorktreeIds(new Set(["wt-1", "wt-2"]));
+
+      const next = useWorktreeFilterStore.getState();
+      expect(next.pinnedWorktrees).toEqual(["wt-1", "wt-2"]);
+      expect(next.collapsedWorktrees).toEqual(["wt-2"]);
+    });
+
+    it("preserves array identity when nothing is stale", () => {
+      const store = useWorktreeFilterStore.getState();
+      store.pinWorktree("wt-1");
+      store.collapseWorktree("wt-2");
+
+      const before = useWorktreeFilterStore.getState();
+      const beforePinned = before.pinnedWorktrees;
+      const beforeCollapsed = before.collapsedWorktrees;
+
+      store.pruneStaleWorktreeIds(new Set(["wt-1", "wt-2"]));
+
+      const after = useWorktreeFilterStore.getState();
+      expect(after.pinnedWorktrees).toBe(beforePinned);
+      expect(after.collapsedWorktrees).toBe(beforeCollapsed);
+    });
+
+    it("is a no-op when both lists are empty", () => {
+      const before = useWorktreeFilterStore.getState();
+      useWorktreeFilterStore.getState().pruneStaleWorktreeIds(new Set(["wt-anything"]));
+      const after = useWorktreeFilterStore.getState();
+      expect(after.pinnedWorktrees).toBe(before.pinnedWorktrees);
+      expect(after.collapsedWorktrees).toBe(before.collapsedWorktrees);
+    });
+
+    it("clears every pin when validIds is empty", () => {
+      const store = useWorktreeFilterStore.getState();
+      store.pinWorktree("wt-1");
+      store.pinWorktree("wt-2");
+      store.collapseWorktree("wt-3");
+
+      store.pruneStaleWorktreeIds(new Set());
+
+      const next = useWorktreeFilterStore.getState();
+      expect(next.pinnedWorktrees).toEqual([]);
+      expect(next.collapsedWorktrees).toEqual([]);
+    });
+  });
 });
 
 describe("worktreeFilterStore persistence scoping", () => {

@@ -5,6 +5,7 @@ import { useWorktreeFilterStore } from "@/store/worktreeFilterStore";
 import { computeChipState } from "@/components/Worktree/utils/computeChipState";
 import type { WorktreeLifecycleStage } from "@/components/Worktree/WorktreeCard/hooks/useWorktreeStatus";
 import {
+  compareWorktreeNames,
   findIntegrationWorktree,
   groupByType,
   matchesFilters,
@@ -141,7 +142,7 @@ export function getVisibleWorktreesForCycling(
       const timeA = a.lastActivityTimestamp ?? 0;
       const timeB = b.lastActivityTimestamp ?? 0;
       if (timeA !== timeB) return timeB - timeA;
-      return a.name.localeCompare(b.name);
+      return compareWorktreeNames(a.name, b.name);
     });
   if (rawWorktrees.length === 0) return [];
 
