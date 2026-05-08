@@ -318,11 +318,7 @@ export function AppThemePicker({ onClose }: AppThemePickerProps = {}) {
       <div className="flex flex-col rounded-[var(--radius-md)] border border-daintree-border overflow-hidden">
         <div className="relative h-[200px] shrink-0 overflow-hidden">
           {selectedScheme.heroImage ? (
-            <img
-              src={selectedScheme.heroImage}
-              alt={selectedScheme.name}
-              className="w-full h-full object-cover"
-            />
+            <img src={selectedScheme.heroImage} alt="" className="w-full h-full object-cover" />
           ) : (
             <div
               className="w-full h-full flex items-center justify-center"

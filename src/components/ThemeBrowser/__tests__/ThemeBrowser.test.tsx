@@ -223,4 +223,107 @@ describe("ThemeBrowser", () => {
 
     expect(usePortalStore.getState().isOpen).toBe(false);
   });
+
+  describe("live region debounce", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("ArrowDown debounces live-region announcement by 300ms", () => {
+      const { container } = render(<Harness />);
+      const live = container.querySelector('[aria-live="polite"]')!;
+
+      const list = screen.getByRole("listbox", { name: "Theme list" });
+      fireEvent.keyDown(list, { key: "ArrowDown" });
+
+      // Not announced immediately
+      expect(live.textContent).toBe("");
+
+      // Not announced before the debounce window
+      act(() => {
+        vi.advanceTimersByTime(299);
+      });
+      expect(live.textContent).toBe("");
+
+      // Announced after 300ms
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+      const darkSchemes = BUILT_IN_APP_SCHEMES.filter((s) => s.type !== "light");
+      const initialIndex = darkSchemes.findIndex((s) => s.id === DEFAULT_APP_SCHEME_ID);
+      const expectedNext = darkSchemes[initialIndex + 1];
+      expect(live.textContent).toBe(`Previewing: ${expectedNext?.name}`);
+    });
+
+    it("rapid ArrowDown only announces the final settled theme", () => {
+      const { container } = render(<Harness />);
+      const live = container.querySelector('[aria-live="polite"]')!;
+
+      const darkSchemes = BUILT_IN_APP_SCHEMES.filter((s) => s.type !== "light");
+      const initialIndex = darkSchemes.findIndex((s) => s.id === DEFAULT_APP_SCHEME_ID);
+      const expectedFinal = darkSchemes[initialIndex + 2];
+
+      const list = screen.getByRole("listbox", { name: "Theme list" });
+      fireEvent.keyDown(list, { key: "ArrowDown" });
+      fireEvent.keyDown(list, { key: "ArrowDown" });
+
+      // Not yet announced
+      expect(live.textContent).toBe("");
+
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+
+      // Only the final theme is announced
+      expect(live.textContent).toBe(`Previewing: ${expectedFinal?.name}`);
+    });
+
+    it("commit before debounce fires clears the pending announcement", () => {
+      const { container } = render(<Harness />);
+      const live = container.querySelector('[aria-live="polite"]')!;
+
+      const list = screen.getByRole("listbox", { name: "Theme list" });
+      fireEvent.keyDown(list, { key: "ArrowDown" });
+
+      // Click Set theme before the debounce fires
+      fireEvent.click(screen.getByRole("button", { name: "Set theme" }));
+
+      // Live region should be empty
+      expect(live.textContent).toBe("");
+
+      // Advancing timers should not produce a stale announcement
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      expect(live.textContent).toBe("");
+    });
+
+    it("click during pending keyboard debounce announces immediately", () => {
+      const { container } = render(<Harness />);
+      const live = container.querySelector('[aria-live="polite"]')!;
+
+      const target = otherDarkScheme();
+      const list = screen.getByRole("listbox", { name: "Theme list" });
+
+      // Start a keyboard navigation (starts 300ms debounce)
+      fireEvent.keyDown(list, { key: "ArrowDown" });
+      expect(live.textContent).toBe("");
+
+      // Click a specific row before the debounce fires
+      fireEvent.click(findRowByName(target.name));
+
+      // Click announces immediately, no debounce
+      expect(live.textContent).toBe(`Previewing: ${target.name}`);
+
+      // Pending keyboard debounce should not overwrite the click announcement
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      expect(live.textContent).toBe(`Previewing: ${target.name}`);
+    });
+  });
 });
