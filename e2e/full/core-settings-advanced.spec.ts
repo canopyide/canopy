@@ -9,6 +9,20 @@ import { openSettings } from "../helpers/panels";
 let ctx: AppContext;
 let fixtureCleanup: (() => void) | undefined;
 
+async function openKeyboardSettings(): Promise<void> {
+  const { window } = ctx;
+  const heading = window.locator(SEL.settings.heading);
+  if (!(await heading.isVisible().catch(() => false))) {
+    await openSettings(window);
+  }
+  await expect(heading).toBeVisible({ timeout: T_MEDIUM });
+
+  await window.locator(`${SEL.settings.navSidebar} button`, { hasText: "Keyboard" }).click();
+  await expect(window.locator("h3", { hasText: "Keyboard Shortcuts" })).toBeVisible({
+    timeout: T_SHORT,
+  });
+}
+
 test.describe.serial("Core: Settings Advanced", () => {
   test.beforeAll(async () => {
     ctx = await launchApp();
@@ -31,18 +45,12 @@ test.describe.serial("Core: Settings Advanced", () => {
 
   test.describe.serial("Keyboard Shortcuts", () => {
     test("open settings and navigate to Keyboard tab", async () => {
-      const { window } = ctx;
-      await openSettings(window);
-      await expect(window.locator(SEL.settings.heading)).toBeVisible({ timeout: T_MEDIUM });
-
-      await window.locator(`${SEL.settings.navSidebar} button`, { hasText: "Keyboard" }).click();
-      await expect(window.locator("h3", { hasText: "Keyboard Shortcuts" })).toBeVisible({
-        timeout: T_SHORT,
-      });
+      await openKeyboardSettings();
     });
 
     test("shortcut list renders with search input and rows", async () => {
       const { window } = ctx;
+      await openKeyboardSettings();
       await expect(window.locator(SEL.settings.shortcutsSearchInput)).toBeVisible({
         timeout: T_SHORT,
       });
@@ -59,6 +67,7 @@ test.describe.serial("Core: Settings Advanced", () => {
 
     test("search filters shortcut rows", async () => {
       const { window } = ctx;
+      await openKeyboardSettings();
       const searchInput = window.locator(SEL.settings.shortcutsSearchInput);
 
       await searchInput.fill("Open settings");
@@ -82,6 +91,7 @@ test.describe.serial("Core: Settings Advanced", () => {
 
     test("click Edit enters edit mode, Cancel exits it", async () => {
       const { window } = ctx;
+      await openKeyboardSettings();
 
       const searchInput = window.locator(SEL.settings.shortcutsSearchInput);
       await searchInput.fill("Open settings");
@@ -118,13 +128,7 @@ test.describe.serial("Core: Settings Advanced", () => {
       const { window } = ctx;
 
       // Open settings and navigate to Keyboard tab
-      await openSettings(window);
-      await expect(window.locator(SEL.settings.heading)).toBeVisible({ timeout: T_MEDIUM });
-
-      await window.locator(`${SEL.settings.navSidebar} button`, { hasText: "Keyboard" }).click();
-      await expect(window.locator("h3", { hasText: "Keyboard Shortcuts" })).toBeVisible({
-        timeout: T_SHORT,
-      });
+      await openKeyboardSettings();
 
       const searchInput = window.locator(SEL.settings.shortcutsSearchInput);
       await searchInput.fill("Open settings");
