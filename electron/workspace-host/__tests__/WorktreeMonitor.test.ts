@@ -31,6 +31,11 @@ vi.mock("../../utils/git.js", () => ({
   invalidateGitStatusCache: (...args: unknown[]) => mockInvalidateGitStatusCache(...args),
 }));
 
+vi.mock("fs/promises", () => ({
+  access: vi.fn().mockRejectedValue(new Error("ENOENT")),
+  readFile: vi.fn().mockRejectedValue(new Error("ENOENT")),
+}));
+
 vi.mock("simple-git", () => ({
   simpleGit: vi.fn(() => ({ raw: vi.fn(), log: vi.fn().mockResolvedValue({ latest: null }) })),
 }));
