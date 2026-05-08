@@ -142,7 +142,7 @@ describe("SidebarContent quick-state empty state — issue #6333 (CTA collapsed 
       expect(branch).toContain("undefined");
     });
 
-    it("preserves the 'No worktrees match your filters' branch via the EmptyState primitive", () => {
+    it("renders the popover-filtered empty state via the EmptyState primitive with a noun-phrase title", () => {
       const branchStart = source.indexOf(
         "filteredWorktrees.length === 0 && hasFilters && hasNonMainWorktrees ?"
       );
@@ -150,7 +150,7 @@ describe("SidebarContent quick-state empty state — issue #6333 (CTA collapsed 
       const branch = source.slice(branchStart, branchEnd);
       expect(branch).toContain("<EmptyState");
       expect(branch).toContain('variant="filtered-empty"');
-      expect(branch).toContain('title="No worktrees match your filters"');
+      expect(branch).toContain('title="No matching worktrees"');
       expect(branch).toMatch(/onClick=\{clearAllFilters\}[\s\S]*?>\s*Clear filters\s*</);
     });
   });
@@ -267,5 +267,51 @@ describe("SidebarContent zero-worktrees taxonomy alignment — issue #6934", () 
     const branchEnd = source.indexOf("const hasNonMainWorktrees", branchStart);
     const branch = source.slice(branchStart, branchEnd);
     expect(branch).not.toContain("<button");
+  });
+});
+
+describe("SidebarContent initial loading skeleton — issue #7215", () => {
+  let source: string;
+
+  beforeAll(async () => {
+    source = await fs.readFile(SIDEBAR_CONTENT_PATH, "utf-8");
+  });
+
+  it("imports the Skeleton primitive from the ui directory", () => {
+    expect(source).toMatch(/import \{ Skeleton \} from "@\/components\/ui\/Skeleton"/);
+  });
+
+  it("does not render the legacy 'Loading worktrees...' text in the loading branch", () => {
+    // Doherty Threshold: showing immediate text on mount draws attention to a
+    // sub-400ms wait. The skeleton's animate-pulse-delayed gates the reveal.
+    expect(source).not.toContain("Loading worktrees...");
+  });
+
+  it("renders the Skeleton primitive in the initial-loading branch with a context-specific label", () => {
+    const branchStart = source.indexOf("if (isLoading && worktrees.length === 0)");
+    const branchEnd = source.indexOf("if (error)", branchStart);
+    expect(branchStart).toBeGreaterThan(0);
+    expect(branchEnd).toBeGreaterThan(branchStart);
+    const branch = source.slice(branchStart, branchEnd);
+    expect(branch).toContain("<Skeleton");
+    expect(branch).toContain('label="Loading worktrees"');
+  });
+
+  it("preserves the Worktrees header in the loading branch to avoid layout shift on reveal", () => {
+    const branchStart = source.indexOf("if (isLoading && worktrees.length === 0)");
+    const branchEnd = source.indexOf("if (error)", branchStart);
+    const branch = source.slice(branchStart, branchEnd);
+    expect(branch).toMatch(/<h2[^>]*>Worktrees<\/h2>/);
+  });
+
+  it("uses animate-pulse-delayed on the bone elements (CSS-gated 400ms reveal)", () => {
+    // The CSS-only delay is sufficient — see CLAUDE.md "Loading Indicators":
+    // animate-pulse-delayed enforces the gate automatically. Do not stack a
+    // useDeferredLoading hook on top of it (double-gating).
+    const branchStart = source.indexOf("if (isLoading && worktrees.length === 0)");
+    const branchEnd = source.indexOf("if (error)", branchStart);
+    const branch = source.slice(branchStart, branchEnd);
+    expect(branch).toContain("animate-pulse-delayed");
+    expect(branch).not.toContain("animate-pulse-immediate");
   });
 });
