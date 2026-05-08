@@ -1391,7 +1391,7 @@ describe("HelpPanel — close hides without tearing down the agent", () => {
       };
 
       const { container, queryByTestId } = render(<HelpPanel width={380} />);
-      fireEvent.click(container.querySelector('button[aria-label="Hide help panel"]')!);
+      fireEvent.click(container.querySelector('button[aria-label="Hide Daintree Assistant"]')!);
 
       expect(queryByTestId("confirm-dialog")).toBeNull();
       expect(panelStoreState.removePanel).not.toHaveBeenCalled();
