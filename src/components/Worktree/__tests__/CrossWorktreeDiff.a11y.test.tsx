@@ -26,11 +26,20 @@ vi.mock("@/hooks", async (importOriginal) => {
   };
 });
 
+let crossWorktreeDiffMockPrevOpen = false;
+
 vi.mock("@/hooks/useAnimatedPresence", () => ({
-  useAnimatedPresence: ({ isOpen }: { isOpen: boolean }) => ({
-    isVisible: isOpen,
-    shouldRender: isOpen,
-  }),
+  useAnimatedPresence: ({
+    isOpen,
+    onAnimateOut,
+  }: {
+    isOpen: boolean;
+    onAnimateOut?: () => void;
+  }) => {
+    if (crossWorktreeDiffMockPrevOpen && !isOpen) onAnimateOut?.();
+    crossWorktreeDiffMockPrevOpen = isOpen;
+    return { isVisible: isOpen, shouldRender: isOpen };
+  },
 }));
 
 vi.mock("../DiffViewer", () => ({
@@ -69,6 +78,7 @@ function pressEscape() {
 
 describe("CrossWorktreeDiff dialog accessibility", () => {
   beforeEach(() => {
+    crossWorktreeDiffMockPrevOpen = false;
     _resetForTests();
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: false }));

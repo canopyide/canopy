@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback, useId, createContext, useContext } from
 import { createPortal } from "react-dom";
 import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
+import { TABBABLE_SELECTOR } from "@/lib/accessibility";
 import { logError } from "@/utils/logger";
 import { ScrollShadow } from "@/components/ui/ScrollShadow";
 import { useOverlayState, useEscapeStack } from "@/hooks";
@@ -52,9 +53,6 @@ export interface AppDialogProps {
 }
 
 export type { DialogSize, DialogVariant, DialogZIndex };
-
-const TABBABLE_SELECTOR =
-  'a[href], area[href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), audio[controls], video[controls], [contenteditable]:not([contenteditable="false"]), [tabindex]:not([tabindex^="-"])';
 
 const sizeClasses: Record<DialogSize, string> = {
   sm: "max-w-md",
@@ -126,8 +124,6 @@ export function AppDialog({
           dialogRef.current?.focus();
         }
       });
-    } else {
-      restoreFocus();
     }
   }, [isOpen, restoreFocus]);
 
@@ -422,7 +418,7 @@ export interface DialogAction {
   onClick: () => void;
   disabled?: boolean;
   loading?: boolean;
-  intent?: "default" | "destructive" | "primary";
+  intent?: "default" | "destructive";
 }
 
 interface AppDialogFooterProps {
@@ -468,10 +464,9 @@ AppDialog.Footer = function AppDialogFooter({
             <Button
               variant="ghost"
               onClick={secondaryAction.onClick}
-              disabled={secondaryAction.disabled || secondaryAction.loading}
+              disabled={secondaryAction.disabled}
               className="text-daintree-text/70 hover:text-daintree-text"
             >
-              {secondaryAction.loading && <Spinner />}
               {secondaryAction.label}
             </Button>
           )}
@@ -480,6 +475,7 @@ AppDialog.Footer = function AppDialogFooter({
               variant={getPrimaryVariant()}
               onClick={primaryAction.onClick}
               disabled={primaryAction.disabled || primaryAction.loading}
+              aria-busy={primaryAction.loading || undefined}
             >
               {primaryAction.loading && <Spinner />}
               {primaryAction.label}
