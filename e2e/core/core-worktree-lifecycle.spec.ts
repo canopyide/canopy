@@ -89,19 +89,19 @@ test.describe.serial("Core: Worktree Lifecycle", () => {
       await newCard.click({ position: { x: 10, y: 10 } });
 
       await expect
-        .poll(() => newCard.getAttribute("aria-label"), {
+        .poll(() => newCard.getAttribute("data-active"), {
           timeout: T_LONG,
           message: "New worktree card should become selected",
         })
-        .toContain("selected");
+        .toBe("true");
 
       const mainCard = window.locator(SEL.worktree.card(mainBranch));
       await expect
-        .poll(() => mainCard.getAttribute("aria-label"), {
+        .poll(() => mainCard.getAttribute("data-active"), {
           timeout: T_MEDIUM,
           message: "Main card should lose selection",
         })
-        .not.toContain("selected");
+        .not.toBe("true");
     });
 
     await test.step("Spawn terminal and verify pwd reports the new worktree directory", async () => {

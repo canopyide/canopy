@@ -466,6 +466,65 @@ describe("ProcessDetector", () => {
     );
   });
 
+  it("promotes shell-command process evidence even when the PTY pid is invalid", () => {
+    const cache = createCacheMock();
+    const callback = vi.fn();
+
+    const detector = new ProcessDetector(
+      "terminal-invalid-pid-node",
+      Date.now(),
+      0,
+      callback,
+      cache as never
+    );
+    detector.start();
+    detector.injectShellCommandEvidence(
+      { processIconId: "node", processName: "node" },
+      `node -e "setTimeout(()=>{}, 8000)"`
+    );
+
+    expect(callback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        detected: true,
+        detectionState: "agent",
+        processIconId: "node",
+        processName: "node",
+        evidenceSource: "shell_command",
+      }),
+      expect.any(Number)
+    );
+  });
+
+  it("promotes shell-command agent evidence even when the PTY pid is invalid", () => {
+    const cache = createCacheMock();
+    const callback = vi.fn();
+
+    const detector = new ProcessDetector(
+      "terminal-invalid-pid-claude",
+      Date.now(),
+      0,
+      callback,
+      cache as never
+    );
+    detector.start();
+    detector.injectShellCommandEvidence(
+      { agentType: "claude", processIconId: "claude", processName: "claude" },
+      "& 'C:\\npm\\prefix\\claude.cmd'"
+    );
+
+    expect(callback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        detected: true,
+        detectionState: "agent",
+        agentType: "claude",
+        processIconId: "claude",
+        processName: "claude",
+        evidenceSource: "shell_command",
+      }),
+      expect.any(Number)
+    );
+  });
+
   describe("hysteresis", () => {
     it("does not emit detection after a single agent poll", () => {
       const cache = createCacheMock();

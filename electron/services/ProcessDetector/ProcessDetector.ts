@@ -490,6 +490,10 @@ export class ProcessDetector {
 
   private detectAgent(): DetectionResult {
     if (!Number.isInteger(this.ptyPid) || this.ptyPid <= 0) {
+      const shellEvidenceValid = this.isShellCommandEvidenceValid(false);
+      if (shellEvidenceValid) {
+        return this.mergeWithShellEvidence(null, { isBusy: false, currentCommand: undefined });
+      }
       // Invalid PID — no evidence, not negative evidence. Hold committed
       // state rather than emitting a demotion.
       console.warn(`Invalid PTY PID for terminal ${this.terminalId}: ${this.ptyPid}`);
