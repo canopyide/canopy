@@ -113,9 +113,9 @@ export function ContentGridEmptyState({
                 {(branchLabel || pathLabel) && (
                   <div className="flex flex-col items-center gap-0.5 text-daintree-text/60 max-w-full">
                     {branchLabel && (
-                      <div className="flex items-center gap-1.5 text-sm max-w-full">
+                      <div className="flex items-center gap-1.5 text-sm max-w-full min-w-0">
                         <GitBranch className="h-3 w-3 shrink-0" aria-hidden="true" />
-                        <span className="font-mono truncate">{branchLabel}</span>
+                        <span className="font-mono truncate min-w-0">{branchLabel}</span>
                       </div>
                     )}
                     {pathLabel && (
