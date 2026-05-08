@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { actionService } from "@/services/ActionService";
 import { EVENT_KIND_LABEL, isNotificationEventKind } from "@/lib/notify";
+import { useEscapeStack } from "@/hooks/useEscapeStack";
 
 const ACCENT_CLASS: Record<string, string> = {
   success: "border-l-status-success",
@@ -67,7 +68,7 @@ const TYPE_ICON_CONFIG: Record<string, IconConfig> = {
 const MAX_VISIBLE_DURATION_MS = 15000;
 const VISIBLE_DURATION_MULTIPLIER = 3;
 
-function Toast({ notification }: { notification: Notification }) {
+function Toast({ notification, isTopmost }: { notification: Notification; isTopmost: boolean }) {
   const { dismissNotification, removeNotification } = useNotificationStore(
     useShallow((state) => ({
       dismissNotification: state.dismissNotification,
@@ -75,7 +76,14 @@ function Toast({ notification }: { notification: Notification }) {
     }))
   );
   const [isVisible, setIsVisible] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
+  // Track each pause source independently so the dismiss timer only resumes
+  // when *every* reason has cleared. Collapsing them into a single boolean
+  // races on mouseLeave: hover-grace would unpause while focus is still
+  // inside the toast or while the options dropdown is open.
+  const [isHovered, setIsHovered] = useState(false);
+  const [isFocusInside, setIsFocusInside] = useState(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const isPaused = isHovered || isFocusInside || isDropdownOpen;
   const toastRef = useRef<HTMLDivElement>(null);
   const prevFocusRef = useRef<Element | null>(null);
 
@@ -86,6 +94,13 @@ function Toast({ notification }: { notification: Notification }) {
   const dwellTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const busyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Safety fallback for the count-badge bump animation: when reduced-motion or
+  // performance mode forces `animation: none`, `animationend` never fires, so
+  // `isCountBumping` would latch true. Mirrors NotificationCenterToolbarButton.
+  const bumpFallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Short grace before resuming the dismiss timer after the cursor leaves —
+  // prevents accidental dismissal on small jitter or briefly crossing chrome.
+  const mouseLeaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
 
   // While bursts of count-only updates arrive, set aria-busy on the live
@@ -108,6 +123,8 @@ function Toast({ notification }: { notification: Notification }) {
       if (dwellTimerRef.current) clearTimeout(dwellTimerRef.current);
       if (busyTimerRef.current) clearTimeout(busyTimerRef.current);
       if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
+      if (bumpFallbackRef.current) clearTimeout(bumpFallbackRef.current);
+      if (mouseLeaveTimerRef.current) clearTimeout(mouseLeaveTimerRef.current);
     };
   }, []);
 
@@ -123,6 +140,16 @@ function Toast({ notification }: { notification: Notification }) {
       setIsCountBusy(false);
       busyTimerRef.current = null;
     }, DURATION_300);
+    // 150ms badge-bump animation + 50ms buffer. Under prefers-reduced-motion
+    // or data-reduce-animations, the CSS animation is suppressed and
+    // `animationend` never fires — without this fallback, isCountBumping
+    // would latch true and stale-class on the next chip remount.
+    if (bumpFallbackRef.current) clearTimeout(bumpFallbackRef.current);
+    bumpFallbackRef.current = setTimeout(() => {
+      if (!mountedRef.current) return;
+      setIsCountBumping(false);
+      bumpFallbackRef.current = null;
+    }, 200);
   }, [notification.count]);
 
   useLayoutEffect(() => {
@@ -149,15 +176,28 @@ function Toast({ notification }: { notification: Notification }) {
   const restoreFocus = useCallback(() => {
     if (toastRef.current?.contains(document.activeElement)) {
       const prev = prevFocusRef.current;
-      if (prev instanceof HTMLElement) prev.focus();
+      // Guard against the previously-focused element having been unmounted
+      // (e.g. its panel was torn down while the toast was active). Calling
+      // .focus() on a detached node is a silent no-op, so focus would land
+      // on body — explicit guard keeps intent obvious.
+      if (prev instanceof HTMLElement && prev.isConnected) prev.focus();
     }
   }, []);
+
+  // Ref-mirror of dismissed state so re-entrant calls within the same tick
+  // (e.g. two synchronous Escape dispatches before React flushes the store
+  // update) short-circuit before firing notification.onDismiss twice.
+  const dismissedRef = useRef(false);
+  useEffect(() => {
+    if (notification.dismissed) dismissedRef.current = true;
+  }, [notification.dismissed]);
 
   const handleDismiss = useCallback(() => {
     // If the notification is already dismissed, this click came in during the
     // exit fade after an eviction (or a double-click race). Skip the
     // user-dismiss callback so eviction/reentrancy don't fire onDismiss.
-    if (notification.dismissed) return;
+    if (dismissedRef.current || notification.dismissed) return;
+    dismissedRef.current = true;
     if (dwellTimerRef.current) {
       clearTimeout(dwellTimerRef.current);
       dwellTimerRef.current = null;
@@ -190,6 +230,13 @@ function Toast({ notification }: { notification: Notification }) {
       setTimeout(() => removeNotification(notification.id), getUiTransitionDuration("exit"));
     }
   }, [notification.dismissed, notification.id, isVisible, removeNotification, restoreFocus]);
+
+  // Escape dismisses the topmost active toast. Only the topmost toast (as
+  // determined by the parent Toaster) registers a handler so a single
+  // keypress dismisses one toast at a time, newest first. Open dialogs and
+  // the command palette take precedence via their own dialog-backstop path
+  // before the global escape stack is consulted.
+  useEscapeStack(isTopmost && !notification.dismissed, handleDismiss);
 
   // Latest-ref for handleDismiss so the auto-dismiss effect doesn't restart
   // every time the callback identity changes — the effect should restart only
@@ -251,12 +298,28 @@ function Toast({ notification }: { notification: Notification }) {
         transitionDuration: `${isVisible ? UI_ENTER_DURATION : UI_EXIT_DURATION}ms`,
         transitionTimingFunction: isVisible ? UI_ENTER_EASING : UI_EXIT_EASING,
       }}
-      onMouseEnter={() => setIsPaused(true)}
-      onMouseLeave={() => setIsPaused(false)}
-      onFocus={() => setIsPaused(true)}
+      onMouseEnter={() => {
+        if (mouseLeaveTimerRef.current) {
+          clearTimeout(mouseLeaveTimerRef.current);
+          mouseLeaveTimerRef.current = null;
+        }
+        setIsHovered(true);
+      }}
+      onMouseLeave={() => {
+        if (mouseLeaveTimerRef.current) clearTimeout(mouseLeaveTimerRef.current);
+        // 500ms grace before clearing the hover-pause absorbs small jitter
+        // and brief crossings of inner chrome (Sonner default). Focus and
+        // dropdown-open pauses are tracked separately and remain held.
+        mouseLeaveTimerRef.current = setTimeout(() => {
+          if (!mountedRef.current) return;
+          setIsHovered(false);
+          mouseLeaveTimerRef.current = null;
+        }, 500);
+      }}
+      onFocus={() => setIsFocusInside(true)}
       onBlur={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
-          setIsPaused(false);
+          setIsFocusInside(false);
         }
       }}
       role={notification.type === "error" ? "alert" : "status"}
@@ -449,7 +512,7 @@ function Toast({ notification }: { notification: Notification }) {
         (() => {
           const eventKind = notification.context?.eventKind;
           return (
-            <DropdownMenu onOpenChange={(open) => setIsPaused(open)}>
+            <DropdownMenu onOpenChange={(open) => setIsDropdownOpen(open)}>
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
@@ -527,7 +590,6 @@ function OverflowPill({ count }: { count: number }) {
     <button
       type="button"
       onClick={openNotificationCenter}
-      aria-live="polite"
       aria-label={label}
       data-testid="toast-overflow-pill"
       className={cn(
@@ -562,13 +624,26 @@ export function Toaster() {
 
   if (!mounted || (toastNotifications.length === 0 && evictedToInboxCount === 0)) return null;
 
+  // Newest renders first (top of the visual stack). Only the topmost active
+  // notification owns the Escape handler — the parent decides which one
+  // because mount order doesn't track active/dismissed state. As soon as the
+  // topmost dismisses, the next active notification picks up registration.
+  const renderOrder = [...toastNotifications].reverse();
+  const topmostActiveId = renderOrder.find((n) => !n.dismissed)?.id;
+
   return createPortal(
     <div
+      role="region"
+      aria-label="Notifications"
       className="fixed top-14 z-[var(--z-toast)] flex flex-col gap-3 w-full max-w-[380px] pointer-events-none p-4"
       style={{ right: "calc(var(--right-obstruction-offset, 0px))" }}
     >
-      {[...toastNotifications].reverse().map((notification) => (
-        <Toast key={notification.id} notification={notification} />
+      {renderOrder.map((notification) => (
+        <Toast
+          key={notification.id}
+          notification={notification}
+          isTopmost={notification.id === topmostActiveId}
+        />
       ))}
       {evictedToInboxCount > 0 && <OverflowPill count={evictedToInboxCount} />}
     </div>,

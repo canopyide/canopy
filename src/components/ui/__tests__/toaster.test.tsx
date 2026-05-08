@@ -8,6 +8,7 @@ import { useNotificationSettingsStore } from "@/store/notificationSettingsStore"
 import { useAnnouncerStore } from "@/store/accessibilityAnnouncerStore";
 import { useUIStore } from "@/store/uiStore";
 import { notify } from "@/lib/notify";
+import { dispatchEscape, _resetForTests as resetEscapeStack } from "@/lib/escapeStack";
 import { Toaster } from "../toaster";
 
 const dispatchMock = vi.hoisted(() => vi.fn().mockResolvedValue({ ok: true }));
@@ -1076,20 +1077,20 @@ describe("Toast severity-based dismissal (issue #5859)", () => {
     expect(screen.queryByText("Failed once")).toBeNull();
   });
 
-  it("success toast dismisses around the 4s severity default", async () => {
+  it("success toast dismisses around the 5s severity default", async () => {
     render(<Toaster />);
     await act(async () => {
       notify({ type: "success", message: "Saved!" });
       vi.advanceTimersByTime(16);
     });
 
-    // Just before 4s — still visible.
+    // Just before 5s — still visible.
     await act(async () => {
-      vi.advanceTimersByTime(3500);
+      vi.advanceTimersByTime(4500);
     });
     expect(screen.getByText("Saved!")).toBeTruthy();
 
-    // Past 4s + the exit fade — gone.
+    // Past 5s + the exit fade — gone.
     await act(async () => {
       vi.advanceTimersByTime(1000);
     });
@@ -1204,7 +1205,7 @@ describe("Toast overflow pill (issue #6424)", () => {
     });
     const pill = screen.getByTestId("toast-overflow-pill");
     expect(pill.textContent).toBe("+1 more");
-    expect(pill.getAttribute("aria-live")).toBe("polite");
+    expect(pill.getAttribute("aria-live")).toBeNull();
     expect(pill.getAttribute("aria-label")).toBe("1 more in notification center");
   });
 
@@ -1443,5 +1444,181 @@ describe("Toast success dwell — 2000ms (issue #6844)", () => {
       vi.advanceTimersByTime(200);
     });
     expect(screen.queryByText("Quick action")).toBeNull();
+  });
+});
+
+describe("Toast a11y, focus, and ergonomics polish (issue #7238)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    useNotificationStore.getState().reset();
+    useNotificationHistoryStore.setState({ entries: [], unreadCount: 0, evictedToInboxCount: 0 });
+    useAnnouncerStore.setState({ polite: null, assertive: null });
+    resetEscapeStack();
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+    resetEscapeStack();
+    for (const el of fixtureElements) {
+      el.remove();
+    }
+    fixtureElements = [];
+  });
+
+  it("renders the portal container as a labeled landmark region", async () => {
+    render(<Toaster />);
+    await act(async () => {
+      addToast({ message: "Hello" });
+      vi.advanceTimersByTime(16);
+    });
+    const region = screen.getByRole("region", { name: /notifications/i });
+    expect(region).toBeTruthy();
+  });
+
+  it("Escape dismisses the topmost toast first (LIFO)", async () => {
+    render(<Toaster />);
+    await act(async () => {
+      addToast({ message: "first" });
+      vi.advanceTimersByTime(16);
+    });
+    await act(async () => {
+      addToast({ message: "second" });
+      vi.advanceTimersByTime(16);
+    });
+    await act(async () => {
+      addToast({ message: "third" });
+      vi.advanceTimersByTime(16);
+    });
+
+    expect(screen.getByText("third")).toBeTruthy();
+    expect(screen.getByText("second")).toBeTruthy();
+    expect(screen.getByText("first")).toBeTruthy();
+
+    // First Escape dismisses the newest (third).
+    await act(async () => {
+      dispatchEscape();
+      vi.advanceTimersByTime(300);
+    });
+    expect(screen.queryByText("third")).toBeNull();
+    expect(screen.getByText("second")).toBeTruthy();
+    expect(screen.getByText("first")).toBeTruthy();
+
+    // Second Escape dismisses second.
+    await act(async () => {
+      dispatchEscape();
+      vi.advanceTimersByTime(300);
+    });
+    expect(screen.queryByText("second")).toBeNull();
+    expect(screen.getByText("first")).toBeTruthy();
+
+    // Third Escape dismisses first.
+    await act(async () => {
+      dispatchEscape();
+      vi.advanceTimersByTime(300);
+    });
+    expect(screen.queryByText("first")).toBeNull();
+  });
+
+  it("mouseLeave grace does not unpause while focus stays inside the toast", async () => {
+    render(<Toaster />);
+    await act(async () => {
+      addToast({ duration: 1000, message: "stay" });
+      vi.advanceTimersByTime(16);
+    });
+
+    const toast = screen.getByRole("status");
+    // Hover, then keyboard-focus the dismiss button while still hovered.
+    fireEvent.mouseEnter(toast);
+    const closeBtn = screen.getByLabelText("Dismiss notification");
+    fireEvent.focus(closeBtn);
+    // Pointer leaves; grace timer starts.
+    fireEvent.mouseLeave(toast);
+    // Past the 500ms grace window, hover-pause clears but focus-pause holds.
+    await act(async () => {
+      vi.advanceTimersByTime(600);
+    });
+    // Past the toast's 1000ms duration; without focus-pause it would dismiss.
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(screen.getByText("stay")).toBeTruthy();
+  });
+
+  it("mouseLeave grace cancels when the cursor re-enters", async () => {
+    render(<Toaster />);
+    await act(async () => {
+      addToast({ duration: 600, message: "linger" });
+      vi.advanceTimersByTime(16);
+    });
+
+    const toast = screen.getByRole("status");
+    fireEvent.mouseEnter(toast);
+    fireEvent.mouseLeave(toast);
+    // Re-enter before the 500ms grace fires.
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+    });
+    fireEvent.mouseEnter(toast);
+    // Now wait well past the original grace + dismiss; toast must persist.
+    await act(async () => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(screen.getByText("linger")).toBeTruthy();
+  });
+
+  it("restoreFocus skips focus when the previous element has been disconnected", async () => {
+    const external = createFixtureButton("external");
+    external.focus();
+    expect(document.activeElement).toBe(external);
+
+    render(<Toaster />);
+    await act(async () => {
+      addToast({ message: "with-focus" });
+      vi.advanceTimersByTime(16);
+    });
+
+    // Focus the toast's dismiss button so restoreFocus has somewhere to send focus from.
+    const closeBtn = screen.getByLabelText("Dismiss notification");
+    closeBtn.focus();
+    expect(document.activeElement).toBe(closeBtn);
+
+    // Detach the external button before dismissing.
+    external.remove();
+
+    // Trigger dismiss; restoreFocus must short-circuit on the disconnected node.
+    expect(() => {
+      fireEvent.click(closeBtn);
+    }).not.toThrow();
+
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+    });
+    // Focus should not have landed back on the detached element.
+    expect(document.activeElement).not.toBe(external);
+  });
+
+  it("count-bump class clears via the 200ms timeout fallback when animationend never fires", async () => {
+    render(<Toaster />);
+    await act(async () => {
+      addToast({ title: "Updates", message: "ready", count: 1 });
+      vi.advanceTimersByTime(16);
+    });
+
+    // Advance the count — sets isCountBumping=true.
+    await act(async () => {
+      const id = useNotificationStore.getState().notifications[0]!.id;
+      useNotificationStore.getState().updateNotification(id, { count: 2 });
+      vi.advanceTimersByTime(16);
+    });
+    const chip = screen.getByLabelText(/2 events/i) as HTMLElement;
+    expect(chip.className).toContain("animate-badge-bump");
+
+    // Without firing onAnimationEnd, the 200ms safety fallback must clear it.
+    await act(async () => {
+      vi.advanceTimersByTime(250);
+    });
+    const chipAfter = screen.getByLabelText(/2 events/i) as HTMLElement;
+    expect(chipAfter.className).not.toContain("animate-badge-bump");
   });
 });
