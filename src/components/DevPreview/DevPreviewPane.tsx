@@ -218,6 +218,7 @@ export function DevPreviewPane({
   const devCommand =
     terminal?.devCommand?.trim() || projectSettings?.devServerCommand?.trim() || "";
   const viewportPreset = terminal?.viewportPreset;
+  const resolvedPreset = viewportPreset ? getViewportPreset(viewportPreset) : undefined;
 
   const { status, url, terminalId, error, start, restart, isRestarting } = useDevServer({
     panelId: id,
@@ -623,9 +624,9 @@ export function DevPreviewPane({
       if (originalUaRef.current === null) {
         originalUaRef.current = wc.getUserAgent();
       }
-      if (viewportPreset) {
-        const preset = getViewportPreset(viewportPreset);
-        if (preset) wc.setUserAgent(preset.userAgent);
+      const preset = viewportPreset ? getViewportPreset(viewportPreset) : undefined;
+      if (preset) {
+        wc.setUserAgent(preset.userAgent);
       } else if (previousPreset !== undefined) {
         // Only restore if we previously overrode (not first mount with no preset)
         wc.setUserAgent(originalUaRef.current!);
@@ -867,25 +868,21 @@ export function DevPreviewPane({
               <p className="text-xs text-daintree-text/50">Reclaimed for memory</p>
             </div>
           ) : (
-            <div className={cn("h-full", viewportPreset && "flex items-start justify-center pt-5")}>
+            <div className={cn("h-full", resolvedPreset && "flex items-start justify-center pt-5")}>
               <div
                 className={cn(
                   "relative",
-                  viewportPreset
+                  resolvedPreset
                     ? "rounded-lg border border-overlay/50 shadow-[var(--theme-shadow-floating)] overflow-hidden"
                     : "h-full"
                 )}
                 style={
-                  viewportPreset
-                    ? (() => {
-                        const preset = getViewportPreset(viewportPreset);
-                        if (!preset) return undefined;
-                        return {
-                          maxWidth: preset.width,
-                          width: "100%",
-                          aspectRatio: `${preset.width} / ${preset.height}`,
-                        };
-                      })()
+                  resolvedPreset
+                    ? {
+                        maxWidth: resolvedPreset.width,
+                        width: "100%",
+                        aspectRatio: `${resolvedPreset.width} / ${resolvedPreset.height}`,
+                      }
                     : undefined
                 }
               >

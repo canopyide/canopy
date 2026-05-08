@@ -84,6 +84,7 @@ export function BrowserToolbar({
   onToggleDevTools,
   onViewportPresetChange,
 }: BrowserToolbarProps) {
+  const resolvedPreset = viewportPreset ? getViewportPreset(viewportPreset) : undefined;
   const [inputValue, setInputValue] = useState(getDisplayUrl(url));
   const [isEditing, setIsEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -476,7 +477,7 @@ export function BrowserToolbar({
               <button
                 type="button"
                 onClick={() => {
-                  if (viewportPreset) {
+                  if (resolvedPreset) {
                     onViewportPresetChange(undefined);
                   } else {
                     onViewportPresetChange(lastViewportPresetRef.current);
@@ -484,22 +485,19 @@ export function BrowserToolbar({
                 }}
                 className={cn(
                   buttonClass,
-                  viewportPreset && "bg-overlay-emphasis text-daintree-text"
+                  resolvedPreset && "bg-overlay-emphasis text-daintree-text"
                 )}
                 aria-label="Viewport preset"
-                aria-pressed={!!viewportPreset}
+                aria-pressed={!!resolvedPreset}
               >
                 <Smartphone className="w-4 h-4" />
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              {(() => {
-                const preset = viewportPreset ? getViewportPreset(viewportPreset) : undefined;
-                return preset ? `Viewport: ${preset.label}` : "Responsive viewport";
-              })()}
+              {resolvedPreset ? `Viewport: ${resolvedPreset.label}` : "Responsive viewport"}
             </TooltipContent>
           </Tooltip>
-          {viewportPreset && (
+          {resolvedPreset && (
             <div
               ref={chipRowRef}
               role="radiogroup"
