@@ -110,3 +110,68 @@ describe("PulseHeatmap — contrast on elevated card (issue #2645)", () => {
     expect(content).not.toContain('cell.isToday && "ring-2');
   });
 });
+
+describe("PulseHeatmap — accent restraint (issue #7229)", () => {
+  it("most-recent-active cell uses a neutral ring, not the accent token", async () => {
+    const content = await readFile(HEATMAP_PATH, "utf-8");
+    expect(content).not.toContain("ring-daintree-accent");
+    expect(content).toContain("ring-daintree-text/25");
+  });
+});
+
+describe("ProjectPulseCard — accessibility (issue #7229)", () => {
+  it("range selector uses radiogroup semantics with descriptive label", async () => {
+    const content = await readFile(CARD_PATH, "utf-8");
+    expect(content).toContain('role="radiogroup"');
+    expect(content).toContain('aria-label="Activity range"');
+    expect(content).not.toContain('aria-label="Select pulse range"');
+  });
+
+  it("range buttons use role=radio + aria-checked, not aria-pressed", async () => {
+    const content = await readFile(CARD_PATH, "utf-8");
+    expect(content).toContain('role="radio"');
+    expect(content).toContain("aria-checked={isActive}");
+    expect(content).not.toContain("aria-pressed={isActive}");
+  });
+
+  it("radiogroup uses roving tabindex (active=0, others=-1) and arrow-key handler", async () => {
+    const content = await readFile(CARD_PATH, "utf-8");
+    expect(content).toContain("tabIndex={isActive ? 0 : -1}");
+    expect(content).toContain("handleRangeKeyDown");
+    expect(content).toContain("rangeButtonRefs");
+    expect(content).toContain("ArrowRight");
+    expect(content).toContain("ArrowLeft");
+  });
+
+  it("range buttons expose screen-reader-friendly labels", async () => {
+    const content = await readFile(CARD_PATH, "utf-8");
+    expect(content).toContain("srLabel");
+    expect(content).toContain('"60 days"');
+    expect(content).toContain('"120 days"');
+    expect(content).toContain('"180 days"');
+  });
+
+  it("card region surfaces aria-busy during background refresh", async () => {
+    const content = await readFile(CARD_PATH, "utf-8");
+    expect(content).toContain("aria-busy={isLoading}");
+  });
+
+  it("includes a polite live region for refresh announcements", async () => {
+    const content = await readFile(CARD_PATH, "utf-8");
+    expect(content).toContain('aria-live="polite"');
+    expect(content).toContain('role="status"');
+    expect(content).toContain("Refreshing pulse data");
+    expect(content).toContain("Pulse data updated");
+  });
+
+  it("live-region completion is gated on a prior successful load and no error", async () => {
+    const content = await readFile(CARD_PATH, "utf-8");
+    expect(content).toContain("hasEverLoadedRef");
+    expect(content).toContain("!error");
+  });
+
+  it("refresh spinner respects motion-reduce", async () => {
+    const content = await readFile(CARD_PATH, "utf-8");
+    expect(content).toContain("motion-reduce:animate-none");
+  });
+});

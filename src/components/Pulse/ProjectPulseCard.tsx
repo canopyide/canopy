@@ -1,4 +1,5 @@
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useRef, useState } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { PulseRangeDays, ProjectPulse, ProjectHealthData } from "@shared/types";
 import { usePulseStore, useProjectStore, PULSE_MAX_RETRIES } from "@/store";
@@ -31,10 +32,10 @@ interface ProjectPulseCardProps {
   className?: string;
 }
 
-const RANGE_OPTIONS: { value: PulseRangeDays; label: string }[] = [
-  { value: 60, label: "60d" },
-  { value: 120, label: "120d" },
-  { value: 180, label: "180d" },
+const RANGE_OPTIONS: { value: PulseRangeDays; label: string; srLabel: string }[] = [
+  { value: 60, label: "60d", srLabel: "60 days" },
+  { value: 120, label: "120d", srLabel: "120 days" },
+  { value: 180, label: "180d", srLabel: "180 days" },
 ];
 
 function getCoachLine(pulse: ProjectPulse): string {
@@ -336,6 +337,34 @@ export function ProjectPulseCard({ worktreeId, className }: ProjectPulseCardProp
 
   const title = projectName ? `${projectName} Project Pulse` : "Project Pulse";
 
+  // Announce silent-refresh completion exactly once via a polite live region.
+  // aria-busy alone does not satisfy WCAG 4.1.3 — assistive tech only re-reads
+  // when a live region changes. The hasEverLoadedRef guard suppresses the
+  // first successful load (no need to announce "updated" when the user hasn't
+  // seen anything yet) and also any successful load that happens while error
+  // is set (failed silent refresh while stale data is retained).
+  const [refreshAnnouncement, setRefreshAnnouncement] = useState("");
+  const wasLoadingRef = useRef(false);
+  const hasEverLoadedRef = useRef(false);
+  useEffect(() => {
+    const hadPulse = !!pulse;
+    if (isLoading && hadPulse) {
+      setRefreshAnnouncement("Refreshing pulse data");
+    } else if (
+      wasLoadingRef.current &&
+      !isLoading &&
+      hadPulse &&
+      !error &&
+      hasEverLoadedRef.current
+    ) {
+      setRefreshAnnouncement("Pulse data updated");
+    }
+    if (!isLoading && hadPulse && !error) {
+      hasEverLoadedRef.current = true;
+    }
+    wasLoadingRef.current = isLoading;
+  }, [isLoading, pulse, error]);
+
   useEffect(() => {
     if (!pulse && !isLoading && !error) {
       fetchPulse(worktreeId);
@@ -353,6 +382,29 @@ export function ProjectPulseCard({ worktreeId, className }: ProjectPulseCardProp
       fetchPulse(worktreeId);
     },
     [setRangeDays, fetchPulse, worktreeId]
+  );
+
+  // ARIA radio-group keyboard contract: arrow keys cycle the selection and
+  // move focus to the newly-selected option. Tab enters/exits the group at
+  // the active button only.
+  const rangeButtonRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const handleRangeKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      if (event.altKey || event.shiftKey) return;
+      const isForward = event.key === "ArrowRight" || event.key === "ArrowDown";
+      const isBackward = event.key === "ArrowLeft" || event.key === "ArrowUp";
+      if (!isForward && !isBackward) return;
+      event.preventDefault();
+      const currentIndex = RANGE_OPTIONS.findIndex((opt) => opt.value === rangeDays);
+      const safeIndex = currentIndex === -1 ? 0 : currentIndex;
+      const nextIndex = isForward
+        ? (safeIndex + 1) % RANGE_OPTIONS.length
+        : (safeIndex - 1 + RANGE_OPTIONS.length) % RANGE_OPTIONS.length;
+      const next = RANGE_OPTIONS[nextIndex]!;
+      handleRangeChange(next.value);
+      rangeButtonRefs.current[nextIndex]?.focus();
+    },
+    [rangeDays, handleRangeChange]
   );
 
   if (isLoading && !pulse) {
@@ -426,7 +478,11 @@ export function ProjectPulseCard({ worktreeId, className }: ProjectPulseCardProp
         "pulse-card w-fit rounded-[var(--radius-lg)] border border-daintree-border",
         className
       )}
+      aria-busy={isLoading}
     >
+      <span role="status" aria-live="polite" className="sr-only">
+        {refreshAnnouncement}
+      </span>
       <div className="pulse-card-header px-4 py-3 border-b border-daintree-border flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Activity className="w-4 h-4 text-status-success" />
@@ -437,14 +493,20 @@ export function ProjectPulseCard({ worktreeId, className }: ProjectPulseCardProp
         <div className="flex items-center gap-2">
           <div
             className="pulse-range flex items-center rounded-md border border-transparent text-[11px] font-medium"
-            aria-label="Select pulse range"
+            role="radiogroup"
+            aria-label="Activity range"
+            onKeyDown={handleRangeKeyDown}
           >
-            {RANGE_OPTIONS.map((option) => {
+            {RANGE_OPTIONS.map((option, index) => {
               const isActive = option.value === rangeDays;
               return (
                 <button
                   key={option.value}
+                  ref={(el) => {
+                    rangeButtonRefs.current[index] = el;
+                  }}
                   type="button"
+                  role="radio"
                   onClick={() => handleRangeChange(option.value)}
                   className={cn(
                     "rounded-md border px-2 py-1 transition-colors",
@@ -452,9 +514,11 @@ export function ProjectPulseCard({ worktreeId, className }: ProjectPulseCardProp
                       ? "bg-overlay-selected border-border-strong text-daintree-text"
                       : "pulse-control border-transparent text-daintree-text/55 hover:text-daintree-text/80"
                   )}
-                  aria-pressed={isActive}
+                  aria-checked={isActive}
+                  tabIndex={isActive ? 0 : -1}
                 >
-                  {option.label}
+                  <span aria-hidden="true">{option.label}</span>
+                  <span className="sr-only">{option.srLabel}</span>
                 </button>
               );
             })}
@@ -466,7 +530,9 @@ export function ProjectPulseCard({ worktreeId, className }: ProjectPulseCardProp
             className="pulse-control rounded-md p-1.5 text-daintree-text/55 transition-colors hover:text-daintree-text/80 disabled:opacity-50 disabled:pointer-events-none"
             aria-label="Refresh"
           >
-            <RefreshCw className={cn("w-3 h-3", isLoading && "animate-spin")} />
+            <RefreshCw
+              className={cn("w-3 h-3", isLoading && "animate-spin motion-reduce:animate-none")}
+            />
           </button>
         </div>
       </div>
