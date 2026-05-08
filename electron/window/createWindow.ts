@@ -401,12 +401,30 @@ export function setupBrowserWindow(
     webPreferences.partition = params.partition;
   });
 
-  // Prevent Cmd+W / Ctrl+W from closing the window — listen on app view's webContents
-  appWebContents.on("before-input-event", (_event, input) => {
+  // Prevent Cmd+W / Ctrl+W from closing the window, and route Ctrl+Tab terminal
+  // focus shortcuts for the initial app view. ProjectViewManager installs the
+  // same Ctrl+Tab bridge for cold-started project views.
+  appWebContents.on("before-input-event", (event, input) => {
+    const key = input.key.toLowerCase();
+    const isTerminalFocusShortcut =
+      input.type === "keyDown" &&
+      (key === "tab" || input.code === "Tab") &&
+      input.control &&
+      !input.meta &&
+      !input.alt;
+    if (isTerminalFocusShortcut) {
+      event.preventDefault();
+      appWebContents.send(
+        CHANNELS.MENU_ACTION,
+        input.shift ? "focus-previous-terminal" : "focus-next-terminal"
+      );
+      return;
+    }
+
     const isMac = process.platform === "darwin";
     const isCloseShortcut =
       input.type === "keyDown" &&
-      input.key.toLowerCase() === "w" &&
+      key === "w" &&
       ((isMac && input.meta && !input.control) || (!isMac && input.control && !input.meta)) &&
       !input.alt;
 

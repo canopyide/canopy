@@ -822,6 +822,21 @@ describe("IdentityWatcher", () => {
       expect(watcher.hasAgentUiPromptFalsePositive()).toBe(true);
     });
 
+    it("returns true for Windows Claude trust-prompt text with ASCII selector", () => {
+      const { delegate } = createFakeDelegate({
+        visibleLines: [
+          "Accessing workspace:",
+          "Quick safety check: Is this a project you created or one you trust?",
+          "> 1. Yes, I trust this folder",
+          "Enter to confirm · Esc to cancel",
+        ],
+        cursorLine: "",
+      });
+      const watcher = new IdentityWatcher(delegate);
+
+      expect(watcher.hasAgentUiPromptFalsePositive()).toBe(true);
+    });
+
     it("returns false for a normal shell prompt line", () => {
       const { delegate } = createFakeDelegate({
         visibleLines: ["", "user@host daintree % "],

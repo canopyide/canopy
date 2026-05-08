@@ -272,11 +272,12 @@ export class IdentityWatcher {
     const visibleTail = [this.delegate.getCursorLine(), ...lines]
       .filter((line): line is string => typeof line === "string" && line.trim().length > 0)
       .join("\n");
+    const knownAgentPrompt =
+      /(?:accessing workspace|yes,\s*i trust this folder|enter to confirm|quick safety check)/i;
     return (
-      /(?:accessing workspace|yes,\s*i trust this folder|enter to confirm|quick safety check)/i.test(
-        recent
-      ) ||
-      /^\s*[❯›]\s+\d+\./m.test(recent) ||
+      knownAgentPrompt.test(recent) ||
+      knownAgentPrompt.test(visibleTail) ||
+      /^\s*[>❯›]\s+\d+\./m.test(visibleTail) ||
       (/^\s*>\s*$/m.test(visibleTail) && /\?\s+for\s+shortcuts/i.test(visibleTail))
     );
   }

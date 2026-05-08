@@ -8,6 +8,8 @@ import { openSettings, openTerminal, getFirstGridPanel } from "../helpers/panels
 import { runTerminalCommand, waitForTerminalText } from "../helpers/terminal";
 
 let ctx: AppContext;
+let fixtureDir: string | undefined;
+let fixtureCleanup: (() => void) | undefined;
 
 function echoGlobalEnvCommand(): string {
   if (process.platform === "win32") {
@@ -23,7 +25,7 @@ test.describe.serial("Full: Global Environment Variable Inheritance", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
-    ((ctx as any).__envFixtureCleanup as (() => void) | undefined)?.();
+    fixtureCleanup?.();
   });
 
   test("Global Environment tab works without a project", async () => {
@@ -85,17 +87,11 @@ test.describe.serial("Full: Global Environment Variable Inheritance", () => {
 
   test("Global vars appear in project Variables tab", async () => {
     // Open a fixture project
-    const { dir: fixtureDir, cleanup } = createFixtureRepo({ name: "env-inheritance" });
-    ctx.window = await openAndOnboardProject(
-      ctx.app,
-      ctx.window,
-      fixtureDir,
-      "Env Inheritance Test"
-    );
+    const { dir, cleanup } = createFixtureRepo({ name: "env-inheritance" });
+    fixtureDir = dir;
+    fixtureCleanup = cleanup;
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, dir, "Env Inheritance Test");
     const { window } = ctx;
-
-    // Store cleanup for use in afterAll if needed
-    (ctx as any).__envFixtureCleanup = cleanup;
 
     await openSettings(window);
     await expect(window.locator(SEL.settings.heading)).toBeVisible({ timeout: T_MEDIUM });
@@ -146,7 +142,22 @@ test.describe.serial("Full: Global Environment Variable Inheritance", () => {
   });
 
   test("Terminal inherits environment variables with project override", async () => {
-    const { window } = ctx;
+    let { window } = ctx;
+
+    if ((await window.locator("[data-worktree-branch]").count()) === 0) {
+      expect(fixtureDir).toBeTruthy();
+      ctx.window = await openAndOnboardProject(
+        ctx.app,
+        window,
+        fixtureDir!,
+        "Env Inheritance Test"
+      );
+      window = ctx.window;
+    }
+
+    await expect(window.locator("[data-worktree-branch]").first()).toBeVisible({
+      timeout: T_LONG,
+    });
 
     // Open a terminal
     await openTerminal(window);

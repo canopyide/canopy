@@ -575,9 +575,10 @@ export class ProjectViewManager {
 
     const handleBeforeInputEvent = (event: Electron.Event, input: Electron.Input) => {
       const isMac = process.platform === "darwin";
+      const key = input.key.toLowerCase();
       const isTerminalFocusShortcut =
         input.type === "keyDown" &&
-        input.key.toLowerCase() === "tab" &&
+        (key === "tab" || input.code === "Tab") &&
         input.control &&
         !input.meta &&
         !input.alt;
@@ -592,7 +593,7 @@ export class ProjectViewManager {
 
       const isCloseShortcut =
         input.type === "keyDown" &&
-        input.key.toLowerCase() === "w" &&
+        key === "w" &&
         ((isMac && input.meta && !input.control) || (!isMac && input.control && !input.meta)) &&
         !input.alt;
       wc.setIgnoreMenuShortcuts(isCloseShortcut);
