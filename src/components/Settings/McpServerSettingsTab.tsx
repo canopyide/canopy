@@ -443,7 +443,7 @@ export function McpServerSettingsTab() {
                   portDirtyRef.current = true;
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") handlePortSave();
+                  if (e.key === "Enter") void handlePortSave();
                 }}
                 placeholder="45454"
                 aria-label="MCP server port"
