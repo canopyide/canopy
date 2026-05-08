@@ -357,3 +357,45 @@ describe("BrowserToolbar ARIA semantics", () => {
     expect(label).toMatch(/^Remove .+ from history$/);
   });
 });
+
+describe("BrowserToolbar address-bar scheme icon and input", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("renders Lock icon when URL scheme is https", () => {
+    const { queryByTestId } = renderToolbar({ url: "https://example.com/" });
+    expect(queryByTestId("browser-url-scheme-lock")).toBeTruthy();
+    expect(queryByTestId("browser-url-scheme-globe")).toBeFalsy();
+  });
+
+  it("renders Globe icon when URL scheme is http", () => {
+    const { queryByTestId } = renderToolbar({ url: "http://localhost:3000/" });
+    expect(queryByTestId("browser-url-scheme-globe")).toBeTruthy();
+    expect(queryByTestId("browser-url-scheme-lock")).toBeFalsy();
+  });
+
+  it("renders Globe icon for malformed URL without throwing", () => {
+    const { queryByTestId } = renderToolbar({ url: "" });
+    expect(queryByTestId("browser-url-scheme-globe")).toBeTruthy();
+    expect(queryByTestId("browser-url-scheme-lock")).toBeFalsy();
+  });
+
+  it("URL input has spellCheck disabled", () => {
+    const { getByTestId } = renderToolbar();
+    const input = getByTestId("browser-address-bar");
+    expect(input.getAttribute("spellcheck")).toBe("false");
+  });
+
+  it("reload button has animate-spin when isLoading is true", () => {
+    const { getByTestId } = renderToolbar({ isLoading: true });
+    const reload = getByTestId("browser-reload");
+    expect(reload.className).toContain("animate-spin");
+  });
+
+  it("reload button does not have animate-spin when isLoading is false", () => {
+    const { getByTestId } = renderToolbar({ isLoading: false });
+    const reload = getByTestId("browser-reload");
+    expect(reload.className).not.toContain("animate-spin");
+  });
+});
