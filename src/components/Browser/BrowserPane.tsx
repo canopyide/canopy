@@ -38,6 +38,8 @@ import { useProjectStore } from "@/store";
 import { useProjectSettingsStore } from "@/store/projectSettingsStore";
 import { useProjectSettings } from "@/hooks/useProjectSettings";
 import { useFindInPage } from "@/hooks/useFindInPage";
+import { useDeferredLoading } from "@/hooks/useDeferredLoading";
+import { UI_DOHERTY_THRESHOLD } from "@/lib/animationUtils";
 import { logError } from "@/utils/logger";
 
 export interface BrowserPaneProps extends BasePanelProps {
@@ -167,6 +169,8 @@ export function BrowserPane({
   });
 
   const [isLoading, setIsLoading] = useState(true);
+  // Doherty 400ms gate: skip loading affordances on fast loads to prevent flicker.
+  const showLoadingOverlay = useDeferredLoading(isLoading, UI_DOHERTY_THRESHOLD);
   const [loadError, setLoadError] = useState<LoadError | null>(null);
   const [blockedNav, setBlockedNav] = useState<{
     url: string;
@@ -601,7 +605,7 @@ export function BrowserPane({
       url={currentUrl}
       canGoBack={canGoBack}
       canGoForward={canGoForward}
-      isLoading={isLoading}
+      isLoading={showLoadingOverlay}
       zoomFactor={zoomFactor}
       isConsoleOpen={isConsoleOpen}
       isWebviewReady={isWebviewReady}
@@ -828,7 +832,7 @@ export function BrowserPane({
             )}
             <div className="relative flex-1 min-h-0">
               {isDragging && <div className="absolute inset-0 z-10 bg-transparent" />}
-              {isLoading && (
+              {showLoadingOverlay && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-daintree-bg z-10 gap-3">
                   <Spinner size="2xl" className="text-status-info" />
                   {isSlowLoad && (

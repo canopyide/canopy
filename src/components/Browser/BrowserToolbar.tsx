@@ -7,6 +7,7 @@ import {
   Copy,
   Check,
   Globe,
+  Lock,
   ZoomIn,
   ZoomOut,
   Camera,
@@ -277,6 +278,14 @@ export function BrowserToolbar({
   const canZoomOut = zoomFactor > minZoom + 0.001;
   const canZoomIn = zoomFactor < maxZoom - 0.001;
 
+  const isHttps = useMemo(() => {
+    try {
+      return new URL(url).protocol === "https:";
+    } catch {
+      return false;
+    }
+  }, [url]);
+
   const buttonClass =
     "p-1.5 rounded hover:bg-overlay-medium disabled:opacity-30 disabled:cursor-not-allowed transition-colors";
 
@@ -465,7 +474,17 @@ export function BrowserToolbar({
       <div ref={containerRef} className="relative flex-1 min-w-0">
         <form onSubmit={handleSubmit}>
           <div className="relative flex items-center">
-            <Globe className="absolute left-2 w-3.5 h-3.5 text-daintree-text/40 pointer-events-none" />
+            {isHttps ? (
+              <Lock
+                data-testid="browser-url-scheme-lock"
+                className="absolute left-2 w-3.5 h-3.5 text-daintree-text/40 pointer-events-none"
+              />
+            ) : (
+              <Globe
+                data-testid="browser-url-scheme-globe"
+                className="absolute left-2 w-3.5 h-3.5 text-daintree-text/40 pointer-events-none"
+              />
+            )}
             <input
               ref={inputRef}
               type="text"
@@ -489,6 +508,7 @@ export function BrowserToolbar({
               onBlur={handleBlur}
               onKeyDown={handleKeyDown}
               autoComplete="off"
+              spellCheck={false}
               className={cn(
                 "w-full pl-7 pr-2 py-1 text-xs rounded",
                 "bg-daintree-bg border border-overlay",
