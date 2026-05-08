@@ -76,21 +76,22 @@ function useDebouncedValue<T>(value: T, delay: number): T {
 }
 
 export function useWorktreeTerminals(worktreeId: string): UseWorktreeTerminalsResult {
-  // Use useShallow to prevent infinite loops.
-  // Without this, .filter() returns a new reference every render,
-  // breaking React's useSyncExternalStore contract.
+  // Reads only from this worktree's pre-computed bucket (`panelIdsByWorktreeId`)
+  // so the selector body cost is bounded by the worktree's own panel count, not
+  // by total `panelIds`. The bucket reference is reference-stable when other
+  // worktrees mutate (issue #7451) — useShallow then skips re-renders unless a
+  // panel object inside this worktree actually changed.
   const terminals = usePanelStore(
-    useShallow((state) =>
-      state.panelIds
+    useShallow((state) => {
+      const ids = state.panelIdsByWorktreeId[worktreeId];
+      if (!ids || ids.length === 0) return [];
+      return ids
         .map((id) => state.panelsById[id])
         .filter(
           (t): t is TerminalInstance =>
-            t !== undefined &&
-            t.worktreeId === worktreeId &&
-            t.location !== "trash" &&
-            t.ephemeral !== true
-        )
-    )
+            t !== undefined && t.location !== "trash" && t.ephemeral !== true
+        );
+    })
   );
 
   const result = useMemo(() => {

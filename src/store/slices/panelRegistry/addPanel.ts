@@ -26,6 +26,7 @@ import {
 } from "./helpers";
 import { logDebug, logWarn, logError } from "@/utils/logger";
 import { collectPanelIdForBatch, isHydrationBatchActive } from "./hydrationBatch";
+import { addToWorktreeIndex } from "./worktreeIndex";
 
 // Lazy accessor to break circular dependency: addPanel -> projectStore -> panelPersistence -> addPanel.
 // Resolved on first call (after app init), then cached.
@@ -167,10 +168,16 @@ export const createAddPanelActions = (
         // Batched path: commit `panelsById` immediately (event listeners can find
         // the panel by id) and defer the `panelIds` append + persist to flush.
         set((state) => {
-          if (state.panelsById[id]) {
+          const isUpdate = !!state.panelsById[id];
+          if (isUpdate) {
             logDebug("[TerminalStore] Panel already exists, updating instead of adding", { id });
           }
-          return { panelsById: { ...state.panelsById, [id]: terminal } };
+          return {
+            panelsById: { ...state.panelsById, [id]: terminal },
+            panelIdsByWorktreeId: isUpdate
+              ? state.panelIdsByWorktreeId
+              : addToWorktreeIndex(state.panelIdsByWorktreeId, terminal.worktreeId, id),
+          };
         });
         collectPanelIdForBatch(id);
       } else {
@@ -184,6 +191,7 @@ export const createAddPanelActions = (
           }
           const newById = { ...state.panelsById, [id]: terminal };
           const newIds = [...state.panelIds, id];
+          const newIndex = addToWorktreeIndex(state.panelIdsByWorktreeId, terminal.worktreeId, id);
           saveNormalized(newById, newIds);
           // Fold dock activation into this commit so the watchdog effect in
           // `DockPanelOffscreenContainer` cannot observe `activeDockTerminalId`
@@ -202,16 +210,18 @@ export const createAddPanelActions = (
               return {
                 panelsById: newById,
                 panelIds: newIds,
+                panelIdsByWorktreeId: newIndex,
               };
             }
             return {
               panelsById: newById,
               panelIds: newIds,
+              panelIdsByWorktreeId: newIndex,
               activeDockTerminalId: id,
               focusedId: id,
             };
           }
-          return { panelsById: newById, panelIds: newIds };
+          return { panelsById: newById, panelIds: newIds, panelIdsByWorktreeId: newIndex };
         });
       }
 
@@ -384,7 +394,12 @@ export const createAddPanelActions = (
                 // preserve the existing entry if a partial reconnect omits it.
               }
             : terminal;
-        return { panelsById: { ...state.panelsById, [id]: preservedTerminal } };
+        return {
+          panelsById: { ...state.panelsById, [id]: preservedTerminal },
+          panelIdsByWorktreeId: existing
+            ? state.panelIdsByWorktreeId
+            : addToWorktreeIndex(state.panelIdsByWorktreeId, preservedTerminal.worktreeId, id),
+        };
       });
       collectPanelIdForBatch(id);
     } else {
@@ -418,6 +433,7 @@ export const createAddPanelActions = (
         }
         const newById = { ...state.panelsById, [id]: terminal };
         const newIds = [...state.panelIds, id];
+        const newIndex = addToWorktreeIndex(state.panelIdsByWorktreeId, terminal.worktreeId, id);
         saveNormalized(newById, newIds);
         // Fold dock activation into this commit so the watchdog effect in
         // `DockPanelOffscreenContainer` cannot observe `activeDockTerminalId`
@@ -436,16 +452,18 @@ export const createAddPanelActions = (
             return {
               panelsById: newById,
               panelIds: newIds,
+              panelIdsByWorktreeId: newIndex,
             };
           }
           return {
             panelsById: newById,
             panelIds: newIds,
+            panelIdsByWorktreeId: newIndex,
             activeDockTerminalId: id,
             focusedId: id,
           };
         }
-        return { panelsById: newById, panelIds: newIds };
+        return { panelsById: newById, panelIds: newIds, panelIdsByWorktreeId: newIndex };
       });
     }
 

@@ -4,6 +4,7 @@ import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { TerminalRefreshTier } from "@/types";
 import { saveNormalized, saveTabGroups } from "./persistence";
 import { optimizeForDock } from "./layout";
+import { transferBetweenWorktreeIndex } from "./worktreeIndex";
 
 type Set = PanelRegistryStoreApi["setState"];
 type Get = PanelRegistryStoreApi["getState"];
@@ -184,18 +185,29 @@ export const createBackgroundActions = (
     set((state) => {
       const t = state.panelsById[id];
       if (!t) return state;
+      const nextWorktreeId = targetWorktreeId !== undefined ? targetWorktreeId : t.worktreeId;
       const newById = {
         ...state.panelsById,
         [id]: {
           ...t,
           location: restoreLocation,
-          worktreeId: targetWorktreeId !== undefined ? targetWorktreeId : t.worktreeId,
+          worktreeId: nextWorktreeId,
         },
       };
+      const newIndex = transferBetweenWorktreeIndex(
+        state.panelIdsByWorktreeId,
+        t.worktreeId,
+        nextWorktreeId,
+        id
+      );
       const newBackgrounded = new Map(state.backgroundedTerminals);
       newBackgrounded.delete(id);
       saveNormalized(newById, state.panelIds);
-      return { panelsById: newById, backgroundedTerminals: newBackgrounded };
+      return {
+        panelsById: newById,
+        panelIdsByWorktreeId: newIndex,
+        backgroundedTerminals: newBackgrounded,
+      };
     });
 
     if (terminal && panelKindHasPty(terminal.kind ?? "terminal")) {
@@ -239,14 +251,17 @@ export const createBackgroundActions = (
     set((state) => {
       const panelIdsInGroup = new Set(groupPanels.map(({ id }) => id));
       const newById = { ...state.panelsById };
+      let newIndex = state.panelIdsByWorktreeId;
       for (const pid of panelIdsInGroup) {
         const t = newById[pid];
         if (t) {
+          const nextWorktreeId = worktreeId ?? t.worktreeId;
           newById[pid] = {
             ...t,
             location: restoreLocation as "dock" | "grid",
-            worktreeId: worktreeId ?? t.worktreeId,
+            worktreeId: nextWorktreeId,
           };
+          newIndex = transferBetweenWorktreeIndex(newIndex, t.worktreeId, nextWorktreeId, pid);
         }
       }
 
@@ -256,7 +271,11 @@ export const createBackgroundActions = (
       }
 
       saveNormalized(newById, state.panelIds);
-      return { panelsById: newById, backgroundedTerminals: newBackgrounded };
+      return {
+        panelsById: newById,
+        panelIdsByWorktreeId: newIndex,
+        backgroundedTerminals: newBackgrounded,
+      };
     });
 
     // Recreate the tab group if we have multiple valid panels

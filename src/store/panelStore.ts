@@ -571,6 +571,7 @@ export const usePanelStore = create<PanelGridState>()(
         set({
           panelsById: {},
           panelIds: [],
+          panelIdsByWorktreeId: {},
           trashedTerminals: new Map(),
           backgroundedTerminals: new Map(),
           tabGroups: new Map(),
@@ -615,6 +616,7 @@ export const usePanelStore = create<PanelGridState>()(
         set({
           panelsById: {},
           panelIds: [],
+          panelIdsByWorktreeId: {},
           trashedTerminals: new Map(),
           backgroundedTerminals: new Map(),
           tabGroups: new Map(),
@@ -661,6 +663,7 @@ export const usePanelStore = create<PanelGridState>()(
         set({
           panelsById: {},
           panelIds: [],
+          panelIdsByWorktreeId: {},
           trashedTerminals: new Map(),
           backgroundedTerminals: new Map(),
           tabGroups: new Map(),

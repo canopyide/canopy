@@ -160,11 +160,68 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   const pruneStaleWorktreeIds = useWorktreeFilterStore((state) => state.pruneStaleWorktreeIds);
   const setQuickStateFilter = useWorktreeFilterStore((state) => state.setQuickStateFilter);
 
-  // Terminal store for derived metadata
-  const panelsById = usePanelStore((state) => state.panelsById);
-  const panelIds = usePanelStore((state) => state.panelIds);
-  const isInTrash = usePanelStore((state) => state.isInTrash);
+  // Terminal store: single selector that emits per-worktree counts so we don't
+  // re-scan all panels on every per-terminal tick. See issue #7451.
   const worktreeIds = useWorktreeIds();
+  const worktreeIdList = useMemo(() => deferredWorktrees.map((w) => w.id), [deferredWorktrees]);
+  const panelStateByWorktree = usePanelStore(
+    useShallow((state) => {
+      const result: Record<
+        string,
+        {
+          terminalCount: number;
+          waitingTerminalCount: number;
+          hasWorkingAgent: boolean;
+          hasWaitingAgent: boolean;
+          hasCompletedAgent: boolean;
+          hasExitedAgent: boolean;
+        }
+      > = {};
+      for (const worktreeId of worktreeIdList) {
+        const ids = state.panelIdsByWorktreeId[worktreeId];
+        if (!ids || ids.length === 0) {
+          result[worktreeId] = {
+            terminalCount: 0,
+            waitingTerminalCount: 0,
+            hasWorkingAgent: false,
+            hasWaitingAgent: false,
+            hasCompletedAgent: false,
+            hasExitedAgent: false,
+          };
+          continue;
+        }
+        let terminalCount = 0;
+        let waitingTerminalCount = 0;
+        let hasWorkingAgent = false;
+        let hasWaitingAgent = false;
+        let hasCompletedAgent = false;
+        let hasExitedAgent = false;
+        for (const id of ids) {
+          const t = state.panelsById[id];
+          if (!t) continue;
+          if (!isTerminalVisible(t, state.isInTrash, worktreeIds)) continue;
+          terminalCount++;
+          if (!isAgentTerminal(t)) continue;
+          if (t.agentState === "working") hasWorkingAgent = true;
+          if (t.agentState === "waiting") {
+            hasWaitingAgent = true;
+            waitingTerminalCount++;
+          }
+          if (t.agentState === "completed") hasCompletedAgent = true;
+          if (t.agentState === "exited") hasExitedAgent = true;
+        }
+        result[worktreeId] = {
+          terminalCount,
+          waitingTerminalCount,
+          hasWorkingAgent,
+          hasWaitingAgent,
+          hasCompletedAgent,
+          hasExitedAgent,
+        };
+      }
+      return result;
+    })
+  );
 
   const scrollContentRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -222,31 +279,20 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
     }
   }, [worktrees, manualOrder, setManualOrder]);
 
-  // Compute derived metadata for each worktree
+  // Compute derived metadata for each worktree. Panel scan is delegated to the
+  // single-pass `panelStateByWorktree` selector above, so this useMemo only
+  // joins per-worktree state with worktree-level fields and chip computation.
   const derivedMetaMap = useMemo(() => {
     const map = new Map<string, DerivedWorktreeMeta>();
     for (const worktree of deferredWorktrees) {
-      let terminalCount = 0;
-      let waitingTerminalCount = 0;
-      let hasWorkingAgent = false;
-      let hasWaitingAgent = false;
-      let hasCompletedAgent = false;
-      let hasExitedAgent = false;
-
-      for (const id of panelIds) {
-        const t = panelsById[id];
-        if (!t || t.worktreeId !== worktree.id || !isTerminalVisible(t, isInTrash, worktreeIds))
-          continue;
-        terminalCount++;
-        if (!isAgentTerminal(t)) continue;
-        if (t.agentState === "working") hasWorkingAgent = true;
-        if (t.agentState === "waiting") {
-          hasWaitingAgent = true;
-          waitingTerminalCount++;
-        }
-        if (t.agentState === "completed") hasCompletedAgent = true;
-        if (t.agentState === "exited") hasExitedAgent = true;
-      }
+      const panelState = panelStateByWorktree[worktree.id] ?? {
+        terminalCount: 0,
+        waitingTerminalCount: 0,
+        hasWorkingAgent: false,
+        hasWaitingAgent: false,
+        hasCompletedAgent: false,
+        hasExitedAgent: false,
+      };
 
       // chipState logic mirrors useWorktreeStatus.ts — keep in sync
       const hasChanges = (worktree.worktreeChanges?.changedFileCount ?? 0) > 0;
@@ -266,25 +312,25 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
       }
 
       const chipState = computeChipState({
-        waitingTerminalCount,
+        waitingTerminalCount: panelState.waitingTerminalCount,
         lifecycleStage,
         isComplete,
-        hasActiveAgent: hasWorkingAgent,
+        hasActiveAgent: panelState.hasWorkingAgent,
       });
 
       map.set(worktree.id, {
-        terminalCount,
-        hasWorkingAgent,
-        hasWaitingAgent,
-        hasCompletedAgent,
-        hasExitedAgent,
+        terminalCount: panelState.terminalCount,
+        hasWorkingAgent: panelState.hasWorkingAgent,
+        hasWaitingAgent: panelState.hasWaitingAgent,
+        hasCompletedAgent: panelState.hasCompletedAgent,
+        hasExitedAgent: panelState.hasExitedAgent,
         hasMergeConflict:
           worktree.worktreeChanges?.changes.some((c) => c.status === "conflicted") ?? false,
         chipState,
       });
     }
     return map;
-  }, [deferredWorktrees, panelsById, panelIds, isInTrash, worktreeIds]);
+  }, [deferredWorktrees, panelStateByWorktree]);
 
   // Apply filters and sorting
   const mainWorktree = useMemo(

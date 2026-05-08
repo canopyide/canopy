@@ -30,6 +30,7 @@ import {
   type AgentRuntimeSettingsResolution,
 } from "@/utils/agentRuntimeSettings";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
+import { transferBetweenWorktreeIndex } from "./worktreeIndex";
 
 // Lazy accessor to break circular dependency: restart -> projectStore -> panelPersistence -> core.
 let _cachedProjectStore: typeof import("@/store/projectStore").useProjectStore | null = null;
@@ -636,8 +637,14 @@ export const createRestartActions = (
           runtimeStatus: deriveRuntimeStatus(newLocation === "grid", t.flowStatus, t.runtimeStatus),
         },
       };
+      const newIndex = transferBetweenWorktreeIndex(
+        state.panelIdsByWorktreeId,
+        t.worktreeId,
+        worktreeId,
+        id
+      );
       saveNormalized(newById, state.panelIds);
-      return { panelsById: newById };
+      return { panelsById: newById, panelIdsByWorktreeId: newIndex };
     });
 
     if (!movedToLocation) return;
@@ -675,15 +682,27 @@ export const createRestartActions = (
 
               // Update cwd, worktreeId, and clear agentSessionId so restartTerminal
               // spawns fresh instead of attempting a broken session resume
-              set((state) =>
-                updateTerminal(state, id, (t) => ({
-                  ...t,
-                  cwd: newCwd,
+              set((state) => {
+                const t = state.panelsById[id];
+                if (!t) return state;
+                const newById = {
+                  ...state.panelsById,
+                  [id]: {
+                    ...t,
+                    cwd: newCwd,
+                    worktreeId,
+                    agentSessionId: undefined,
+                    restartError: undefined,
+                  },
+                };
+                const newIndex = transferBetweenWorktreeIndex(
+                  state.panelIdsByWorktreeId,
+                  t.worktreeId,
                   worktreeId,
-                  agentSessionId: undefined,
-                  restartError: undefined,
-                }))
-              );
+                  id
+                );
+                return { panelsById: newById, panelIdsByWorktreeId: newIndex };
+              });
 
               await get().restartTerminal(id);
 
