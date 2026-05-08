@@ -3,6 +3,40 @@ import { useAnnouncerStore } from "@/store/accessibilityAnnouncerStore";
 
 const ANNOUNCEMENT_DELAY_MS = 100;
 
+function announceToRegion(
+  entry: { msg: string; id: number } | null,
+  elRef: React.RefObject<HTMLDivElement | null>,
+  pendingRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>,
+  channel: "polite" | "assertive"
+) {
+  const el = elRef.current;
+  if (!el) return;
+
+  if (pendingRef.current) {
+    clearTimeout(pendingRef.current);
+    pendingRef.current = null;
+  }
+
+  const msg = entry?.msg ?? null;
+
+  if (!msg) {
+    el.textContent = "";
+    return;
+  }
+
+  const entryId = entry!.id;
+
+  el.textContent = "";
+  pendingRef.current = setTimeout(() => {
+    pendingRef.current = null;
+    const current = useAnnouncerStore.getState()[channel];
+    if (!current || current.id !== entryId) return;
+    if (elRef.current) {
+      elRef.current.textContent = msg;
+    }
+  }, ANNOUNCEMENT_DELAY_MS);
+}
+
 export function AccessibilityAnnouncer() {
   const polite = useAnnouncerStore((s) => s.polite);
   const assertive = useAnnouncerStore((s) => s.assertive);
@@ -14,54 +48,24 @@ export function AccessibilityAnnouncer() {
   const pendingAssertiveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    const announce = (
-      entry: { msg: string; id: number } | null,
-      elRef: React.RefObject<HTMLDivElement | null>,
-      pendingRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>,
-      channel: "polite" | "assertive"
-    ) => {
-      const el = elRef.current;
-      if (!el) return;
-
-      if (pendingRef.current) {
-        clearTimeout(pendingRef.current);
-        pendingRef.current = null;
-      }
-
-      const msg = entry?.msg ?? null;
-
-      if (!msg) {
-        el.textContent = "";
-        return;
-      }
-
-      const entryId = entry!.id;
-
-      el.textContent = "";
-      pendingRef.current = setTimeout(() => {
-        pendingRef.current = null;
-        const current = useAnnouncerStore.getState()[channel];
-        if (!current || current.id !== entryId) return;
-        if (elRef.current) {
-          elRef.current.textContent = msg;
-        }
-      }, ANNOUNCEMENT_DELAY_MS);
-    };
-
-    announce(polite, politeRef, pendingPoliteRef, "polite");
-    announce(assertive, assertiveRef, pendingAssertiveRef, "assertive");
-
+    announceToRegion(polite, politeRef, pendingPoliteRef, "polite");
     return () => {
       if (pendingPoliteRef.current) {
         clearTimeout(pendingPoliteRef.current);
         pendingPoliteRef.current = null;
       }
+    };
+  }, [polite]);
+
+  useEffect(() => {
+    announceToRegion(assertive, assertiveRef, pendingAssertiveRef, "assertive");
+    return () => {
       if (pendingAssertiveRef.current) {
         clearTimeout(pendingAssertiveRef.current);
         pendingAssertiveRef.current = null;
       }
     };
-  }, [polite, assertive]);
+  }, [assertive]);
 
   return (
     <>
