@@ -113,6 +113,16 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
+      - name: Cache Playwright browsers
+        id: cache-playwright
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cache/ms-playwright
+            ~/Library/Caches/ms-playwright
+            ~/AppData/Local/ms-playwright
+          key: ${{ runner.os }}-${{ runner.arch }}-playwright-${{ hashFiles('package-lock.json') }}
+
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
