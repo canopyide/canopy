@@ -371,7 +371,7 @@ beforeEach(() => {
 });
 
 describe("HelpPanel — single-supported-agent launch (handleSelectAgent)", () => {
-  it("commits the terminal to helpPanelStore even when document.hidden is true", async () => {
+  it("does not auto-launch when document.hidden is true (issue #7201 guard)", async () => {
     Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
     mockGetFolderPath.mockResolvedValue("/help");
     mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "term-1" } });
@@ -380,8 +380,8 @@ describe("HelpPanel — single-supported-agent launch (handleSelectAgent)", () =
       render(<HelpPanel width={380} />);
     });
 
-    expect(helpPanelState.setTerminal).toHaveBeenCalledWith("term-1", "claude", "sess-default");
-    expect(mockNotify).not.toHaveBeenCalled();
+    expect(helpPanelState.setTerminal).not.toHaveBeenCalled();
+    expect(mockDispatch).not.toHaveBeenCalled();
   });
 
   it("dispatches agent.launch without a prompt field (regression: auto-greeting removed)", async () => {
@@ -555,7 +555,7 @@ describe("HelpPanel — auto-launch (preferredAgentId)", () => {
     );
   });
 
-  it("commits the terminal even when document.hidden is true", async () => {
+  it("does not auto-launch when document.hidden is true (issue #7201 guard)", async () => {
     Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
     helpPanelState.preferredAgentId = "claude";
     mockGetFolderPath.mockResolvedValue("/help");
@@ -565,11 +565,8 @@ describe("HelpPanel — auto-launch (preferredAgentId)", () => {
       render(<HelpPanel width={380} />);
     });
 
-    expect(helpPanelState.setTerminal).toHaveBeenCalledWith(
-      "auto-term-1",
-      "claude",
-      "sess-default"
-    );
+    expect(helpPanelState.setTerminal).not.toHaveBeenCalled();
+    expect(mockDispatch).not.toHaveBeenCalled();
   });
 
   it("dispatches auto-launch agent.launch without a prompt field", async () => {
@@ -1960,5 +1957,139 @@ describe("HelpPanel — visibilitychange teardown vs. system sleep (issue #6758)
     expect(mockSystemSleepGetMetrics).toHaveBeenCalledTimes(1);
     expect(panelStoreState.removePanel).toHaveBeenCalledWith("term-sleep");
     expect(mockRevokeSession).toHaveBeenCalledWith("session-sleep");
+  });
+});
+
+describe("HelpPanel — visibilitychange re-launch after teardown (issue #7201)", () => {
+  function mountWithBoundTerminal() {
+    helpPanelState.terminalId = "term-7201";
+    helpPanelState.agentId = "claude";
+    helpPanelState.preferredAgentId = "claude";
+    helpPanelState.sessionId = "session-7201";
+    panelStoreState.panelsById = { "term-7201": { id: "term-7201" } };
+    return render(<HelpPanel width={380} />);
+  }
+
+  async function flushAsync() {
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  }
+
+  it("resets hasAutoLaunched in teardown and re-launches on visibility restore", async () => {
+    mockGetFolderPath.mockResolvedValue("/help");
+    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "term-relaunched" } });
+
+    await act(async () => {
+      mountWithBoundTerminal();
+    });
+
+    // Trigger visibility hide (project switch / window hide).
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await flushAsync();
+
+    // Teardown should have fired.
+    expect(panelStoreState.removePanel).toHaveBeenCalledWith("term-7201");
+    expect(helpPanelState.clearTerminal).toHaveBeenCalled();
+
+    // Simulate the real store mutation that clearTerminal() would perform.
+    helpPanelState.terminalId = null;
+    helpPanelState.agentId = null;
+    helpPanelState.sessionId = null;
+
+    // Reset spies to measure post-restore calls.
+    panelStoreState.removePanel.mockClear();
+    helpPanelState.clearTerminal.mockClear();
+    mockDispatch.mockClear();
+
+    // Restore visibility.
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await flushAsync();
+
+    // Auto-launch must fire for the preferred agent.
+    expect(mockDispatch).toHaveBeenCalledTimes(1);
+    expect(mockDispatch).toHaveBeenCalledWith(
+      "agent.launch",
+      expect.objectContaining({ agentId: "claude" }),
+      { source: "user" }
+    );
+  });
+
+  it("does not launch while document.hidden after teardown resets hasAutoLaunched", async () => {
+    mockGetFolderPath.mockResolvedValue("/help");
+
+    await act(async () => {
+      mountWithBoundTerminal();
+    });
+
+    // Trigger visibility hide.
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await flushAsync();
+
+    // Simulate the real store mutation.
+    helpPanelState.terminalId = null;
+
+    // Clear any launch from the initial mount.
+    mockDispatch.mockClear();
+
+    // Re-render — auto-launch effect must NOT fire because document.hidden is true.
+    await act(async () => {
+      // Re-render triggered by state change.
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockDispatch).not.toHaveBeenCalled();
+  });
+
+  it("re-launches the single supported agent after visibility restore when no preference is set", async () => {
+    helpPanelState.preferredAgentId = null;
+    cliAvailabilityState.availability = { claude: "ready" };
+    mockGetFolderPath.mockResolvedValue("/help");
+    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "term-auto" } });
+
+    await act(async () => {
+      mountWithBoundTerminal();
+    });
+
+    // Trigger visibility hide.
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await flushAsync();
+
+    // Simulate teardown effect.
+    helpPanelState.terminalId = null;
+    helpPanelState.agentId = null;
+    helpPanelState.sessionId = null;
+
+    panelStoreState.removePanel.mockClear();
+    mockDispatch.mockClear();
+
+    // Restore visibility.
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await flushAsync();
+
+    // Single-supported-agent path should fire (via handleSelectAgent).
+    expect(mockDispatch).toHaveBeenCalledTimes(1);
+    expect(mockDispatch).toHaveBeenCalledWith(
+      "agent.launch",
+      expect.objectContaining({ agentId: "claude" }),
+      { source: "user" }
+    );
   });
 });
