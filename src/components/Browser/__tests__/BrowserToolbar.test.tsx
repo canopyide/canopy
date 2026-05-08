@@ -421,7 +421,7 @@ describe("BrowserToolbar viewport presets", () => {
       renderWithViewport();
       const group = document.querySelector('[role="radiogroup"]');
       expect(group).toBeTruthy();
-      expect(group!.getAttribute("aria-label")).toBe("Viewport preset");
+      expect(group!.getAttribute("aria-label")).toBe("Select viewport preset");
     });
 
     it("each chip is a radio with aria-checked reflecting selection", () => {
@@ -472,39 +472,63 @@ describe("BrowserToolbar viewport presets", () => {
   });
 
   describe("toggle persistence", () => {
-    it("restores last-used preset when toggle re-enables", () => {
-      const { container } = renderWithViewport();
-
-      // Switch to Pixel first
-      const pixelRadio = container.querySelector('[data-viewport-preset-id="pixel"]')!;
-      fireEvent.click(pixelRadio);
-      expect(onViewportPresetChange).toHaveBeenCalledWith("pixel");
-      onViewportPresetChange.mockClear();
-
-      // Simulate parent updating viewportPreset to "pixel"
-      const { rerender } = render(
+    it("restores last-used preset when toggle re-enables (round-trip)", () => {
+      const onPresetChange = vi.fn();
+      const { rerender, container } = render(
         <BrowserToolbar
           {...defaultProps}
-          onViewportPresetChange={onViewportPresetChange}
+          onViewportPresetChange={onPresetChange}
+          viewportPreset="iphone"
+        />
+      );
+
+      // Switch to Pixel
+      fireEvent.click(container.querySelector('[data-viewport-preset-id="pixel"]')!);
+      expect(onPresetChange).toHaveBeenCalledWith("pixel");
+      onPresetChange.mockClear();
+
+      // Parent updates viewportPreset to pixel
+      rerender(
+        <BrowserToolbar
+          {...defaultProps}
+          onViewportPresetChange={onPresetChange}
           viewportPreset="pixel"
         />
       );
-      onViewportPresetChange.mockClear();
+      onPresetChange.mockClear();
 
       // Toggle off
-      const toggle = container.querySelector('[aria-label="Viewport preset"]');
-      fireEvent.click(toggle!);
-      expect(onViewportPresetChange).toHaveBeenCalledWith(undefined);
+      fireEvent.click(container.querySelector('[aria-label="Viewport preset"]')!);
+      expect(onPresetChange).toHaveBeenCalledWith(undefined);
+      onPresetChange.mockClear();
+
+      // Rerender with undefined (parent processes the callback)
+      rerender(
+        <BrowserToolbar
+          {...defaultProps}
+          onViewportPresetChange={onPresetChange}
+          viewportPreset={undefined}
+        />
+      );
+      onPresetChange.mockClear();
+
+      // Toggle re-enables — should restore "pixel", not "iphone"
+      fireEvent.click(container.querySelector('[aria-label="Viewport preset"]')!);
+      expect(onPresetChange).toHaveBeenCalledWith("pixel");
     });
 
     it("falls back to 'iphone' on first enable", () => {
       renderToolbar({ onViewportPresetChange });
-      // Toolbar mounts without viewportPreset (not passed), so the chip row is hidden.
-      // The toggle is visible because onViewportPresetChange is set.
-      // Clicking toggle should enable with "iphone" (the default fallback).
       const toggle = document.querySelector('[aria-label="Viewport preset"]');
       fireEvent.click(toggle!);
       expect(onViewportPresetChange).toHaveBeenCalledWith("iphone");
+    });
+
+    it("chip row is absent when viewportPreset is undefined", () => {
+      renderToolbar({ onViewportPresetChange, viewportPreset: undefined });
+      expect(document.querySelector('[role="radiogroup"]')).toBeNull();
+      const toggle = document.querySelector('[aria-label="Viewport preset"]');
+      expect(toggle!.getAttribute("aria-pressed")).toBe("false");
     });
   });
 
@@ -644,6 +668,69 @@ describe("BrowserToolbar viewport presets", () => {
       fireEvent.keyDown(iphoneRadio, { key: "ArrowUp" });
 
       expect(document.activeElement).toBe(ipadRadio);
+    });
+
+    it("maintains roving tabIndex after ArrowRight focus move", () => {
+      renderWithViewport();
+      const iphoneRadio = document.querySelector(
+        '[data-viewport-preset-id="iphone"]'
+      )! as HTMLElement;
+      const pixelRadio = document.querySelector(
+        '[data-viewport-preset-id="pixel"]'
+      )! as HTMLElement;
+
+      iphoneRadio.focus();
+      fireEvent.keyDown(iphoneRadio, { key: "ArrowRight" });
+
+      expect(pixelRadio.getAttribute("tabindex")).toBe("0");
+    });
+
+    it("arrow keys move focus without changing selection", () => {
+      renderWithViewport();
+      const iphoneRadio = document.querySelector(
+        '[data-viewport-preset-id="iphone"]'
+      )! as HTMLElement;
+
+      iphoneRadio.focus();
+      fireEvent.keyDown(iphoneRadio, { key: "ArrowRight" });
+      fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+      fireEvent.keyDown(document.activeElement!, { key: "ArrowLeft" });
+
+      expect(onViewportPresetChange).not.toHaveBeenCalled();
+      expect(iphoneRadio.getAttribute("aria-checked")).toBe("true");
+    });
+
+    it("keyboard listener attaches after deferred chip row mount", () => {
+      const onPresetChange = vi.fn();
+      const { rerender, container } = render(
+        <BrowserToolbar
+          {...defaultProps}
+          onViewportPresetChange={onPresetChange}
+          viewportPreset={undefined}
+        />
+      );
+
+      expect(container.querySelector('[role="radiogroup"]')).toBeNull();
+
+      rerender(
+        <BrowserToolbar
+          {...defaultProps}
+          onViewportPresetChange={onPresetChange}
+          viewportPreset="iphone"
+        />
+      );
+
+      const iphoneRadio = container.querySelector(
+        '[data-viewport-preset-id="iphone"]'
+      )! as HTMLElement;
+      const pixelRadio = container.querySelector(
+        '[data-viewport-preset-id="pixel"]'
+      )! as HTMLElement;
+
+      iphoneRadio.focus();
+      fireEvent.keyDown(iphoneRadio, { key: "ArrowRight" });
+
+      expect(document.activeElement).toBe(pixelRadio);
     });
   });
 });

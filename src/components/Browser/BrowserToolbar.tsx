@@ -169,7 +169,7 @@ export function BrowserToolbar({
     container.addEventListener("keydown", handleKeyDown as unknown as EventListener);
     return () =>
       container.removeEventListener("keydown", handleKeyDown as unknown as EventListener);
-  }, [onViewportPresetChange]);
+  }, [onViewportPresetChange, viewportPreset]);
 
   useEffect(() => {
     if (!isEditing) {
@@ -498,7 +498,7 @@ export function BrowserToolbar({
             <div
               ref={chipRowRef}
               role="radiogroup"
-              aria-label="Viewport preset"
+              aria-label="Select viewport preset"
               className="flex items-center ml-0.5"
             >
               {VIEWPORT_PRESET_LIST.map((preset, index) => {
@@ -511,7 +511,7 @@ export function BrowserToolbar({
                     aria-checked={isSelected}
                     aria-label={preset.label}
                     data-viewport-preset-id={preset.id}
-                    tabIndex={isSelected ? 0 : -1}
+                    tabIndex={isSelected || chipFocusedIndex === index ? 0 : -1}
                     onClick={() => {
                       if (!isSelected) onViewportPresetChange(preset.id);
                     }}
