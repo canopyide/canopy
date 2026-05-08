@@ -606,7 +606,7 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     subtab: "general",
     subtabLabel: "General",
     section: "Global agent settings",
-    title: "Default Agent",
+    title: "Default agent",
     description:
       'Agent used for the help dock button (\u2318\u21e7H) and automated workflows ("What\'s Next?", onboarding, project explanations). Distinct from the Portal "Default New Tab Agent".',
     keywords: [
@@ -633,7 +633,7 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     subtab: "claude",
     subtabLabel: "Claude",
     section: "Agent runtime settings",
-    title: "Enable / Disable Agent",
+    title: "Enable / disable agent",
     description: "Enable or disable individual CLI agents",
     keywords: ["agent", "enable", "disable", ...BUILT_IN_AGENT_IDS, "select"],
   },
@@ -693,7 +693,7 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     subtab: "claude",
     subtabLabel: "Claude",
     section: "Installation",
-    title: "Agent Installation",
+    title: "Agent installation",
     description: "Install and set up CLI agents. Run setup wizard to install.",
     keywords: ["install", "setup", "wizard", "cli", "download", "npm", "brew"],
   },

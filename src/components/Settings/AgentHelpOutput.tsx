@@ -203,7 +203,7 @@ export function AgentHelpOutput({
               onClick={() => window.electron.system.openExternal(usageUrl)}
               className="mt-2"
             >
-              Install Instructions
+              Install instructions
             </Button>
           )}
         </div>

@@ -383,7 +383,7 @@ export function AgentCliStep({ availability, selections, onInstallComplete }: Ag
           ) : (
             <>
               <Download className="w-4 h-4" />
-              Install All
+              Install all
             </>
           )}
         </button>
