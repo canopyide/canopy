@@ -46,7 +46,7 @@ import { getCurrentViewStore } from "@/store/createWorktreeStore";
 import { useLayoutUndoStore } from "@/store/layoutUndoStore";
 import { applyManualWorktreeReorder } from "@/lib/worktreeReorder";
 import type { WorktreeSnapshot } from "@shared/types";
-import { m } from "framer-motion";
+import { m, useReducedMotion } from "framer-motion";
 import {
   resolveContainerId,
   filterTerminalsByContainer,
@@ -59,9 +59,13 @@ import {
 } from "./dropResolution";
 import {
   UI_ANIMATION_DURATION,
+  DURATION_100,
+  DURATION_300,
   EASE_SNAPPY,
   PANEL_RESTORE_DURATION,
   EASE_OUT_EXPO,
+  DRAG_OVERLAY_ENTRY_SCALE,
+  DRAG_OVERLAY_ENTRY_OPACITY,
   getUiAnimationDuration,
 } from "@/lib/animationUtils";
 
@@ -147,6 +151,9 @@ const TITLE_BAR_CURSOR_OFFSET = 12;
 
 // Horizontal offset from cursor to left edge of worktree drag preview
 const WORKTREE_CURSOR_LEFT_OFFSET = 8;
+
+const DND_RETRY_INTERVAL_MS = 16;
+const DND_RETRY_MAX_ATTEMPTS = 10;
 
 interface DndProviderProps {
   children: React.ReactNode;
@@ -264,6 +271,7 @@ function DragOverlayWithCursorTracking({
 }) {
   const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
   const pointerPositionRef = useRef<{ x: number; y: number } | null>(null);
+  const prefersReducedMotion = useReducedMotion();
 
   useDndMonitor({
     onDragStart({ activatorEvent }) {
@@ -338,7 +346,7 @@ function DragOverlayWithCursorTracking({
       {overlayContent ? (
         <m.div
           key={activeTerminal?.id ?? activeWorktree?.id ?? "drag-overlay"}
-          initial={{ scale: 0.95, opacity: 0.8 }}
+          initial={prefersReducedMotion ? false : { scale: DRAG_OVERLAY_ENTRY_SCALE, opacity: DRAG_OVERLAY_ENTRY_OPACITY }}
           animate={{ scale: 1, opacity: 1 }}
           // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-type-assertion -- framer-motion v12 Easing type doesn't include CSS cubic-bezier strings
           transition={{ duration: UI_ANIMATION_DURATION / 1000, ease: EASE_SNAPPY } as any}
@@ -588,7 +596,7 @@ export function DndProvider({ children }: DndProviderProps) {
       // ALWAYS unlock resize regardless of drop target - fixes stuck resize locks
       // when dropping outside droppable areas (over === null)
       if (draggedId) {
-        setTimeout(() => terminalInstanceService.lockResize(draggedId, false), 100);
+        setTimeout(() => terminalInstanceService.lockResize(draggedId, false), DURATION_100);
       }
 
       // Defensive: cancelDrop should convert rejected drops to onDragCancel.
@@ -887,8 +895,6 @@ export function DndProvider({ children }: DndProviderProps) {
           } else {
             // Terminal may not be mounted yet (popover timing), retry with bounded attempts
             let attempts = 0;
-            const maxAttempts = 10;
-            const retryInterval = 16;
 
             const retryFit = () => {
               attempts++;
@@ -897,18 +903,18 @@ export function DndProvider({ children }: DndProviderProps) {
                 refreshDockTerminal();
                 return;
               }
-              if (attempts < maxAttempts) {
-                const timerId = setTimeout(retryFit, retryInterval);
+              if (attempts < DND_RETRY_MAX_ATTEMPTS) {
+                const timerId = setTimeout(retryFit, DND_RETRY_INTERVAL_MS);
                 dockRetryTimersRef.current.add(timerId);
               }
             };
 
             // Start retry loop
-            const initialTimerId = setTimeout(retryFit, retryInterval);
+            const initialTimerId = setTimeout(retryFit, DND_RETRY_INTERVAL_MS);
             dockRetryTimersRef.current.add(initialTimerId);
           }
         }
-      }, 300);
+      }, DURATION_300);
     },
     [
       activeData,

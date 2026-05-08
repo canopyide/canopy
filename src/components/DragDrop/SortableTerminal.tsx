@@ -2,6 +2,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { m, type TransformProperties, type Transition } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { UI_ANIMATION_DURATION, DRAG_GHOST_OPACITY, DRAG_GHOST_EASING } from "@/lib/animationUtils";
 import type { TerminalInstance } from "@/store";
 import type { DragData } from "./DndProvider";
 import { DragHandleProvider } from "./DragHandleContext";
@@ -93,8 +94,8 @@ export function SortableTerminal({
       >
         <m.div
           className="h-full"
-          animate={{ opacity: isDragging ? 0.4 : 1 }}
-          transition={{ duration: isDragging ? 0.15 : 0, ease: "easeOut" }}
+          animate={{ opacity: isDragging ? DRAG_GHOST_OPACITY : 1 }}
+          transition={{ duration: isDragging ? UI_ANIMATION_DURATION / 1000 : 0, ease: DRAG_GHOST_EASING }}
         >
           <DragHandleProvider value={{ listeners }}>{children}</DragHandleProvider>
         </m.div>
