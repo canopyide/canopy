@@ -266,7 +266,7 @@ export function AgentSettings({
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h4 className="text-sm font-medium mb-1">CLI Agents</h4>
+            <h4 className="text-sm font-medium mb-1">CLI agents</h4>
             <p className="text-xs text-daintree-text/50 select-text">
               Configure global agent preferences and per-agent settings
             </p>
@@ -280,7 +280,7 @@ export function AgentSettings({
             className="text-daintree-text/60 hover:text-daintree-text shrink-0"
           >
             <Plug className="w-3.5 h-3.5" />
-            Run Setup Wizard
+            Run setup wizard
           </Button>
         </div>
 
@@ -296,7 +296,7 @@ export function AgentSettings({
             className="rounded-[var(--radius-lg)] border border-daintree-border bg-surface p-4 space-y-4"
           >
             <div className="pb-3 border-b border-daintree-border">
-              <h4 className="text-sm font-medium text-daintree-text">Global Agent Settings</h4>
+              <h4 className="text-sm font-medium text-daintree-text">Global agent settings</h4>
               <p className="text-xs text-daintree-text/50 mt-0.5 select-text">
                 Settings that apply across all agents
               </p>
@@ -354,7 +354,7 @@ export function AgentSettings({
                     }}
                   >
                     <ExternalLink size={14} />
-                    View Usage
+                    View usage
                   </Button>
                 )}
                 <Button
@@ -416,7 +416,7 @@ export function AgentSettings({
               <div id="agents-clipboard">
                 <SettingsSwitchCard
                   variant="compact"
-                  title="Share Clipboard Directory"
+                  title="Share clipboard directory"
                   subtitle="Allow Gemini to read pasted clipboard images via --include-directories"
                   isEnabled={activeEntry.shareClipboardDirectory !== false}
                   onChange={() => {

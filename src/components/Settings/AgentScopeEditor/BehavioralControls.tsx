@@ -52,7 +52,7 @@ export function BehavioralControls({
       <div id="agents-skip-permissions" className="space-y-1.5">
         <SettingsSwitchCard
           variant="compact"
-          title="Skip Permissions"
+          title="Skip permissions"
           subtitle={
             scopeKind === "custom" && dangerousOverride === undefined
               ? `Using default (${agentDefaultDangerous ? "On" : "Off"})`
@@ -80,7 +80,7 @@ export function BehavioralControls({
         <div id="agents-inline-mode">
           <SettingsSwitchCard
             variant="compact"
-            title="Inline Mode"
+            title="Inline mode"
             subtitle={
               scopeKind === "custom" && inlineOverride === undefined
                 ? `Using default (${agentDefaultInline ? "On" : "Off"})`
@@ -100,7 +100,7 @@ export function BehavioralControls({
 
       <div id="agents-custom-args" className="group/args space-y-1.5">
         <div className="flex items-center gap-2">
-          <label className="text-sm font-medium text-daintree-text">Custom Arguments</label>
+          <label className="text-sm font-medium text-daintree-text">Custom arguments</label>
           {scopeKind === "custom" && customFlagsOverride !== undefined && (
             <>
               <span className="w-1.5 h-1.5 rounded-full bg-state-modified" aria-hidden="true" />
