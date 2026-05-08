@@ -188,9 +188,9 @@ describe("rankActionMatches", () => {
     const results = rankActionMatches("cp", items, []);
     expect(results).toHaveLength(2);
     // Both are valid matches — order must be deterministic (alphabetical on title)
-    expect(results[0]!.title < results[1]!.title || results[0]!.title === results[1]!.title).toBe(
-      true
-    );
+    expect(
+      results[0]!.title.localeCompare(results[1]!.title, "en", { sensitivity: "base" }) <= 0
+    ).toBe(true);
   });
 
   it("full ranked list: prefix > acronym > substring > fuzzy > non-match", () => {
@@ -206,6 +206,12 @@ describe("rankActionMatches", () => {
     expect(ids).not.toContain("none");
     expect(ids[0]).toBe("prefix");
     expect(ids.indexOf("substring")).toBeLessThan(ids.indexOf("fuzzy"));
+  });
+
+  it("excludes heavily-scattered subsequence when aggregate is non-positive", () => {
+    const items = [makeAction({ id: "1", title: "a" + "x".repeat(30) + "b" })];
+    const results = rankActionMatches("ab", items, []);
+    expect(results).toEqual([]);
   });
 
   it("falls back to title alphabetical for equal score with no MRU", () => {

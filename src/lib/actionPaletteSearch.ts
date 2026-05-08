@@ -78,10 +78,6 @@ function scoreSubsequence(lowerQuery: string, field: string, lowerField: string)
         score += 10;
       }
 
-      if (fi === 0) {
-        score += 20;
-      }
-
       lastMatchIndex = fi;
       qi++;
     }
@@ -91,7 +87,7 @@ function scoreSubsequence(lowerQuery: string, field: string, lowerField: string)
     return 0;
   }
 
-  return Math.max(0, score);
+  return score;
 }
 
 function scoreTitle(
@@ -140,13 +136,13 @@ export function scoreAction(query: string, item: SearchableAction): number {
   const keywordRaw =
     item.keywordsLower.length > 0 ? scoreKeywords(lowerQuery, item.keywordsLower) : 0;
 
-  if (titleScore === 0 && categoryRaw === 0 && descriptionRaw === 0 && keywordRaw === 0) return 0;
+  if (titleScore <= 0 && categoryRaw <= 0 && descriptionRaw <= 0 && keywordRaw <= 0) return 0;
 
   return (
     titleScore * TITLE_WEIGHT +
-    categoryRaw * CATEGORY_WEIGHT +
-    descriptionRaw * DESCRIPTION_WEIGHT +
-    keywordRaw * KEYWORD_WEIGHT
+    Math.max(0, categoryRaw) * CATEGORY_WEIGHT +
+    Math.max(0, descriptionRaw) * DESCRIPTION_WEIGHT +
+    Math.max(0, keywordRaw) * KEYWORD_WEIGHT
   );
 }
 
