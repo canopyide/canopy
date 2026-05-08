@@ -2,12 +2,14 @@
 import { describe, expect, it } from "vitest";
 import { render } from "@testing-library/react";
 import { APP_THEME_PREVIEW_KEYS } from "@shared/theme";
+import type { AppColorScheme } from "@shared/types/appTheme";
 import { PaletteStrip } from "../PaletteStrip";
 
 const scheme = {
   id: "test",
   name: "Test",
   type: "dark" as const,
+  builtin: false,
   heroImage: "/themes/test.webp",
   tokens: {
     [APP_THEME_PREVIEW_KEYS.accent]: "#ff0000",
@@ -19,7 +21,7 @@ const scheme = {
     [APP_THEME_PREVIEW_KEYS.panel]: "#111111",
     [APP_THEME_PREVIEW_KEYS.sidebar]: "#222222",
   },
-};
+} as AppColorScheme;
 
 describe("PaletteStrip", () => {
   it("renders 8 swatch chips", () => {
