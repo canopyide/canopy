@@ -212,9 +212,7 @@ export async function waitForCcrPresets(
       await expect
         .poll(
           async () => {
-            if (!(await trigger.isVisible({ timeout: 500 }).catch(() => false))) {
-              return [];
-            }
+            await trigger.waitFor({ state: "visible", timeout: 2_000 });
             return getPresetOptionLabels(window);
           },
           {
@@ -232,6 +230,9 @@ export async function waitForCcrPresets(
 /**
  * Polls the preset listbox until none of the removed label substrings appear.
  * Replaces fixed 35s waits after removeCcrConfig() for the CCR poll cycle.
+ *
+ * Throws (causing poll retry) when the preset selector trigger is not visible,
+ * so a missing trigger never produces a false pass.
  */
 export async function waitForCcrPresetsRemoved(
   window: import("@playwright/test").Page,
@@ -249,9 +250,7 @@ export async function waitForCcrPresetsRemoved(
       await expect
         .poll(
           async () => {
-            if (!(await trigger.isVisible({ timeout: 500 }).catch(() => false))) {
-              return [];
-            }
+            await trigger.waitFor({ state: "visible", timeout: 2_000 });
             return getPresetOptionLabels(window);
           },
           {
