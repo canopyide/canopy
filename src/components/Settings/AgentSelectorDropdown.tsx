@@ -118,16 +118,22 @@ export function AgentSelectorDropdown({
               {(!selectedAgent.selected || selectedAgent.dangerousEnabled) && (
                 <span className="flex items-center gap-1">
                   {!selectedAgent.selected && (
-                    <span
-                      className="w-1.5 h-1.5 rounded-full bg-daintree-text/30"
-                      title="Not in workflow"
-                    />
+                    <>
+                      <span
+                        className="w-1.5 h-1.5 rounded-full bg-daintree-text/30"
+                        aria-hidden="true"
+                      />
+                      <span className="sr-only">Not in workflow</span>
+                    </>
                   )}
                   {selectedAgent.dangerousEnabled && (
-                    <span
-                      className="w-1.5 h-1.5 rounded-full bg-status-error"
-                      title="Skip permissions enabled"
-                    />
+                    <>
+                      <span
+                        className="w-1.5 h-1.5 rounded-full bg-status-error"
+                        aria-hidden="true"
+                      />
+                      <span className="sr-only">Skip permissions enabled</span>
+                    </>
                   )}
                 </span>
               )}
@@ -175,7 +181,12 @@ export function AgentSelectorDropdown({
             className="flex-1 min-w-0 text-xs bg-transparent text-daintree-text placeholder:text-daintree-text/40 focus:outline-hidden"
           />
         </div>
-        <div role="listbox" id="agent-selector-list" className="overflow-y-auto max-h-60 p-1">
+        <div
+          role="listbox"
+          id="agent-selector-list"
+          aria-label="Agents"
+          className="overflow-y-auto max-h-60 p-1"
+        >
           {items.map((item, index) => {
             const isActive = index === activeIndex;
             const isSelected =
@@ -215,16 +226,22 @@ export function AgentSelectorDropdown({
                     {(!item.agent.selected || item.agent.dangerousEnabled) && (
                       <span className="flex items-center gap-1 shrink-0">
                         {!item.agent.selected && (
-                          <span
-                            className="w-1.5 h-1.5 rounded-full bg-daintree-text/30"
-                            title="Not in workflow"
-                          />
+                          <>
+                            <span
+                              className="w-1.5 h-1.5 rounded-full bg-daintree-text/30"
+                              aria-hidden="true"
+                            />
+                            <span className="sr-only">Not in workflow</span>
+                          </>
                         )}
                         {item.agent.dangerousEnabled && (
-                          <span
-                            className="w-1.5 h-1.5 rounded-full bg-status-error"
-                            title="Skip permissions enabled"
-                          />
+                          <>
+                            <span
+                              className="w-1.5 h-1.5 rounded-full bg-status-error"
+                              aria-hidden="true"
+                            />
+                            <span className="sr-only">Skip permissions enabled</span>
+                          </>
                         )}
                       </span>
                     )}
