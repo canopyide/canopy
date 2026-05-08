@@ -265,7 +265,7 @@ function RecentProjects({
               <span className="text-sm font-semibold text-daintree-text/85 truncate block">
                 {project.name}
               </span>
-              <span className="text-xs text-daintree-text/40 block" title={project.path}>
+              <span className="text-xs text-daintree-text/40 truncate block" title={project.path}>
                 {middleTruncate(project.path, 48)}
               </span>
             </div>
