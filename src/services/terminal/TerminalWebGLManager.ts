@@ -1,11 +1,37 @@
-import { WebglAddon } from "@xterm/addon-webgl";
+import type { WebglAddon as WebglAddonType } from "@xterm/addon-webgl";
 import type { IDisposable } from "@xterm/xterm";
+import { getMaxContexts, setMaxContexts as setConfiguredMaxContexts } from "./TerminalWebGLConfig";
 import type { ManagedTerminal } from "./types";
 
 const WEBGL_DISABLED = import.meta.env.DAINTREE_DISABLE_WEBGL === "1";
 
+type WebglAddonConstructor = new () => WebglAddonType;
+
+// @xterm/addon-webgl loads via dynamic import so it stays out of the renderer's
+// eager critical path. ensureContext() remains synchronous: requests that arrive
+// before the chunk finishes loading are queued and replayed on resolution.
+let WebglAddonClass: WebglAddonConstructor | null = null;
+let webglAddonLoadPromise: Promise<WebglAddonConstructor> | null = null;
+
+function loadWebglAddon(): Promise<WebglAddonConstructor> {
+  if (WebglAddonClass) return Promise.resolve(WebglAddonClass);
+  if (webglAddonLoadPromise) return webglAddonLoadPromise;
+  webglAddonLoadPromise = import("@xterm/addon-webgl").then(
+    (mod) => {
+      WebglAddonClass = mod.WebglAddon as unknown as WebglAddonConstructor;
+      return WebglAddonClass;
+    },
+    (err) => {
+      // Allow a later ensureContext call to retry after a transient failure.
+      webglAddonLoadPromise = null;
+      throw err;
+    }
+  );
+  return webglAddonLoadPromise;
+}
+
 interface WebGLEntry {
-  addon: WebglAddon;
+  addon: WebglAddonType;
   contextLossDisposable: IDisposable;
 }
 
@@ -13,8 +39,9 @@ export class TerminalWebGLManager {
   // Chromium caps active WebGL contexts at 16 per renderer process.
   // Reserve 4 slots for potential non-terminal WebGL consumers in the
   // main renderer (browser/dev-preview panels are process-isolated via
-  // <webview> partitions and have their own budgets).
-  private static _maxContexts = 12;
+  // <webview> partitions and have their own budgets). The pool size lives
+  // in TerminalWebGLConfig so the eager renderer chunk can adjust it
+  // without dragging @xterm/addon-webgl into the entry bundle.
 
   // Circuit breaker: if N genuine context-loss events occur within W ms,
   // disable WebGL for the rest of the session to avoid strobing reacquisition
@@ -24,11 +51,11 @@ export class TerminalWebGLManager {
   private static readonly LOSS_WINDOW_MS = 60_000;
 
   static get MAX_CONTEXTS(): number {
-    return TerminalWebGLManager._maxContexts;
+    return getMaxContexts();
   }
 
   static setMaxContexts(n: number): void {
-    TerminalWebGLManager._maxContexts = Math.max(1, n);
+    setConfiguredMaxContexts(n);
   }
 
   private pool = new Map<string, WebGLEntry>();
@@ -37,6 +64,8 @@ export class TerminalWebGLManager {
   private hasLoggedSoftwareSkip = false;
   private lossTimestamps: number[] = [];
   private hasLoggedBreakerTrip = false;
+  // Latest pending ensure request per terminal id, awaiting addon-webgl load.
+  private pendingEnsures = new Map<string, ManagedTerminal>();
 
   setHardwareAvailable(available: boolean): void {
     this.hardwareAvailable = available;
@@ -53,22 +82,88 @@ export class TerminalWebGLManager {
     }
     if (!managed.isOpened) return;
 
+    if (WebglAddonClass) {
+      this.attachWithLoadedAddon(id, managed, WebglAddonClass);
+      return;
+    }
+
+    // Dedupe: latest request per id wins until the addon resolves.
+    this.pendingEnsures.set(id, managed);
+    void loadWebglAddon().then(
+      () => this.flushPendingEnsures(),
+      () => {
+        // Retain pending; a subsequent ensureContext call will retry the load.
+      }
+    );
+  }
+
+  releaseContext(id: string): void {
+    this.pendingEnsures.delete(id);
+    if (this.pool.has(id)) {
+      this.doRelease(id);
+    }
+  }
+
+  isActive(id: string): boolean {
+    return this.pool.has(id);
+  }
+
+  onTerminalDestroyed(id: string): void {
+    this.pendingEnsures.delete(id);
+    const entry = this.pool.get(id);
+    if (entry) {
+      try {
+        entry.contextLossDisposable.dispose();
+      } catch {
+        // ignore
+      }
+      this.pool.delete(id);
+      this.removeFromLru(id);
+    }
+  }
+
+  dispose(): void {
+    this.pendingEnsures.clear();
+    for (const id of [...this.pool.keys()]) {
+      this.doRelease(id);
+    }
+  }
+
+  private flushPendingEnsures(): void {
+    if (!WebglAddonClass) return;
+    if (!this.hardwareAvailable) {
+      this.pendingEnsures.clear();
+      return;
+    }
+    const pending = this.pendingEnsures;
+    this.pendingEnsures = new Map();
+    for (const [id, managed] of pending) {
+      if (!managed.isOpened) continue;
+      this.attachWithLoadedAddon(id, managed, WebglAddonClass);
+    }
+  }
+
+  private attachWithLoadedAddon(
+    id: string,
+    managed: ManagedTerminal,
+    AddonClass: WebglAddonConstructor
+  ): void {
     if (this.pool.has(id)) {
       this.moveLruToEnd(id);
       return;
     }
 
-    if (this.pool.size >= TerminalWebGLManager.MAX_CONTEXTS) {
+    if (this.pool.size >= getMaxContexts()) {
       const evictId = this.lruOrder[0];
       if (evictId) {
         this.doRelease(evictId);
       }
     }
 
-    let addon: WebglAddon | null = null;
+    let addon: WebglAddonType | null = null;
     let clDisposable: IDisposable | null = null;
     try {
-      addon = new WebglAddon();
+      addon = new AddonClass();
       const ownAddon = addon;
       clDisposable = addon.onContextLoss(() => {
         if (this.pool.get(id)?.addon === ownAddon) {
@@ -91,35 +186,6 @@ export class TerminalWebGLManager {
       } catch {
         // ignore
       }
-    }
-  }
-
-  releaseContext(id: string): void {
-    if (this.pool.has(id)) {
-      this.doRelease(id);
-    }
-  }
-
-  isActive(id: string): boolean {
-    return this.pool.has(id);
-  }
-
-  onTerminalDestroyed(id: string): void {
-    const entry = this.pool.get(id);
-    if (entry) {
-      try {
-        entry.contextLossDisposable.dispose();
-      } catch {
-        // ignore
-      }
-      this.pool.delete(id);
-      this.removeFromLru(id);
-    }
-  }
-
-  dispose(): void {
-    for (const id of [...this.pool.keys()]) {
-      this.doRelease(id);
     }
   }
 
@@ -174,3 +240,17 @@ export class TerminalWebGLManager {
     }
   }
 }
+
+// Internal hooks — exposed only for tests in this repo. Not part of the public API.
+export const __testing = {
+  setWebglAddonClass(cls: WebglAddonConstructor | null): void {
+    WebglAddonClass = cls;
+  },
+  resetLoaderState(): void {
+    WebglAddonClass = null;
+    webglAddonLoadPromise = null;
+  },
+  isLoaded(): boolean {
+    return WebglAddonClass !== null;
+  },
+};

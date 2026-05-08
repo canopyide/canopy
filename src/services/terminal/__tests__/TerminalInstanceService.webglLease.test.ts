@@ -3,6 +3,7 @@ import { TerminalRefreshTier } from "../../../../shared/types/panel";
 import type { ManagedTerminal } from "../types";
 import { TIER_DOWNGRADE_HYSTERESIS_MS } from "../types";
 import type { RendererPolicyDeps } from "../TerminalRendererPolicy";
+import { preloadMockWebglAddon } from "./_preloadWebglAddon";
 
 vi.mock("@/clients", () => ({
   terminalClient: {
@@ -27,6 +28,7 @@ describe("WebGL lease through tier transitions", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    await preloadMockWebglAddon();
 
     (globalThis as unknown as { window: Window & typeof globalThis }).window = {
       ...(globalThis as unknown as { window?: Window & typeof globalThis }).window,
@@ -229,6 +231,7 @@ describe("onTierApplied handler — WebGL manager integration", () => {
     const { TerminalWebGLManager } = await import("../TerminalWebGLManager");
     webGLManager = new TerminalWebGLManager();
     managed = makeManagedTerminal();
+    await preloadMockWebglAddon();
   });
 
   function simulateOnTierApplied(id: string, tier: TerminalRefreshTier, m: ManagedTerminal) {

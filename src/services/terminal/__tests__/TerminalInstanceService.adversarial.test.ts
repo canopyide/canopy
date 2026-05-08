@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TerminalRefreshTier } from "../../../../shared/types/panel";
 import type { ManagedTerminal } from "../types";
+import { preloadMockWebglAddon } from "./_preloadWebglAddon";
 
 const testState = vi.hoisted(() => ({
   webglAddons: [] as Array<{
@@ -215,6 +216,7 @@ describe("TerminalInstanceService adversarial", () => {
 
     const { TerminalWebGLManager } = await import("../TerminalWebGLManager");
     originalMaxContexts = TerminalWebGLManager.MAX_CONTEXTS;
+    await preloadMockWebglAddon();
   });
 
   afterEach(async () => {
