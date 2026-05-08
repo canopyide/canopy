@@ -82,6 +82,15 @@ export function EventDetail({ event, className }: EventDetailProps) {
     }
   }, [event]);
 
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+        copyTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
   if (!event) {
     return (
       <div
