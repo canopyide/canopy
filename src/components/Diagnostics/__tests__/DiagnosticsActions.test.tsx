@@ -72,6 +72,10 @@ vi.mock("@/components/icons", () => {
     SwiftIcon: stub,
     TerraformIcon: stub,
     ElixirIcon: stub,
+    SpinnerCircle: stub,
+    HollowCircle: stub,
+    InteractingCircle: stub,
+    ExitedCircle: stub,
   };
 });
 
