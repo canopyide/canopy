@@ -14,7 +14,7 @@ function detail(overrides: Partial<AgentCliDetail>): AgentCliDetail {
 describe("resolveAgentLaunchBaseCommand", () => {
   it("uses the availability-resolved executable path when the CLI is ready", () => {
     expect(
-      resolveAgentLaunchBaseCommand("claude", detail({ resolvedPath: "/tmp/bin/claude" }))
+      resolveAgentLaunchBaseCommand("claude", detail({ resolvedPath: "/tmp/bin/claude" }), "posix")
     ).toBe("/tmp/bin/claude");
   });
 
