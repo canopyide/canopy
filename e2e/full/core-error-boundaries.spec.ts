@@ -36,12 +36,12 @@ test.describe.serial("Core: Error Boundaries", () => {
     await expect(window.locator(SEL.errorBoundary.title)).toContainText(
       "Daintree hit an unrecoverable error"
     );
-    await expect(window.locator(SEL.errorBoundary.restartButton)).toContainText("Reload window");
+    await expect(window.locator(SEL.errorBoundary.restartButton)).toContainText("Try again");
     await expect(window.locator(SEL.errorBoundary.reportButton)).toBeVisible();
     await expect(window.locator(SEL.errorBoundary.logsButton)).toBeVisible();
   });
 
-  test("Reload window button recovers the app", async () => {
+  test("Try again button recovers the app", async () => {
     const { window } = ctx;
 
     // Fallback should still be visible from previous test

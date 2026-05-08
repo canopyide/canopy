@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import type React from "react";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { ErrorBoundary, withErrorBoundary } from "../ErrorBoundary";
 import { useErrorStore } from "@/store/errorStore";
@@ -197,7 +197,8 @@ describe("ErrorBoundary", () => {
       </ErrorBoundary>
     );
 
-    expect(screen.getByText("Error ID: sentry-event-deadbeef")).toBeTruthy();
+    const copyButton = screen.getByTestId("error-fallback-copy-id");
+    expect(copyButton.textContent).toBe("sentry-event-deadbeef");
     expect(screen.queryByText("Test render error")).toBeNull();
     expect(
       screen.getByText("This pane crashed but the rest of Daintree is still running.")
@@ -216,7 +217,8 @@ describe("ErrorBoundary", () => {
 
     const errors = useErrorStore.getState().errors;
     const storeId = errors[0]!.id;
-    expect(screen.getByText(`Error ID: ${storeId}`)).toBeTruthy();
+    const copyButton = screen.getByTestId("error-fallback-copy-id");
+    expect(copyButton.textContent).toBe(storeId);
   });
 
   it("dispatches a full-body deeplink when the report fits the URL budget", async () => {
@@ -381,6 +383,116 @@ describe("ErrorBoundary", () => {
     const electron = getElectronMock();
     expect(electron.clipboard?.writeText).toHaveBeenCalledTimes(1);
     expect(actionService.dispatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables the Report issue button while the report is in flight", async () => {
+    let resolveDispatch: ((value: { ok: true; result: undefined }) => void) | undefined;
+    vi.mocked(actionService.dispatch).mockImplementationOnce(
+      () =>
+        new Promise<{ ok: true; result: undefined }>((resolve) => {
+          resolveDispatch = resolve;
+        })
+    );
+
+    function ThrowGiantStack(): React.ReactElement {
+      const error = new Error("Component blew up");
+      error.stack =
+        "Error: Component blew up\n" +
+        Array.from({ length: 30 }, (_, i) => `    at frame${i} ${"x".repeat(800)}`).join("\n");
+      throw error;
+    }
+
+    render(
+      <ErrorBoundary variant="section">
+        <ThrowGiantStack />
+      </ErrorBoundary>
+    );
+
+    const button = screen.getByTestId("error-fallback-report") as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+
+    fireEvent.click(button);
+    await waitFor(() => expect(button.disabled).toBe(true));
+
+    resolveDispatch?.({ ok: true, result: undefined });
+    await waitFor(() => expect(button.disabled).toBe(false));
+  });
+
+  it("clears the in-flight guard on reset so a new report can fire after recovery", async () => {
+    // Pin actionService.dispatch to a never-resolving promise — simulates a
+    // hung report. Without the field reset, the second click after recovery
+    // would be silently swallowed by the still-true class-field guard.
+    let resolveFirst: ((value: { ok: true; result: undefined }) => void) | undefined;
+    vi.mocked(actionService.dispatch)
+      .mockImplementationOnce(
+        () =>
+          new Promise<{ ok: true; result: undefined }>((resolve) => {
+            resolveFirst = resolve;
+          })
+      )
+      .mockResolvedValueOnce({ ok: true, result: undefined });
+
+    let shouldThrow = true;
+    function ConditionalThrow() {
+      if (shouldThrow) {
+        const error = new Error("Component blew up");
+        error.stack =
+          "Error: Component blew up\n" +
+          Array.from({ length: 30 }, (_, i) => `    at frame${i} ${"x".repeat(800)}`).join("\n");
+        throw error;
+      }
+      return <div>Recovered</div>;
+    }
+
+    const { rerender } = render(
+      <ErrorBoundary variant="section">
+        <ConditionalThrow />
+      </ErrorBoundary>
+    );
+
+    fireEvent.click(screen.getByText("Report issue")); // first click — hangs
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(actionService.dispatch).toHaveBeenCalledTimes(1);
+
+    // User gives up and recovers the pane while the first report is still in flight.
+    shouldThrow = false;
+    fireEvent.click(screen.getByText("Reload pane"));
+    expect(screen.getByText("Recovered")).toBeTruthy();
+
+    // Re-arm the throw and re-render to bring the fallback back.
+    shouldThrow = true;
+    rerender(
+      <ErrorBoundary variant="section">
+        <ConditionalThrow />
+      </ErrorBoundary>
+    );
+    expect(screen.getByText("Section stopped working")).toBeTruthy();
+
+    // Second click should now fire — the class-field guard was cleared on reset.
+    fireEvent.click(screen.getByText("Report issue"));
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(actionService.dispatch).toHaveBeenCalledTimes(2);
+
+    resolveFirst?.({ ok: true, result: undefined });
+  });
+
+  it("does not log the duplicate 'ErrorBoundary caught error' message", async () => {
+    const { logError } = await import("@/utils/logger");
+
+    render(
+      <ErrorBoundary variant="section">
+        <ThrowingChild shouldThrow={true} />
+      </ErrorBoundary>
+    );
+
+    expect(logError).not.toHaveBeenCalledWith(
+      "ErrorBoundary caught error",
+      expect.anything(),
+      expect.anything()
+    );
   });
 
   it("does nothing when window.electron is unavailable entirely", async () => {

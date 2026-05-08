@@ -27,11 +27,15 @@ interface ErrorBoundaryState {
   error: Error | null;
   errorInfo: React.ErrorInfo | null;
   incidentId: string | null;
+  reportInFlight: boolean;
 }
 
 export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Guards against double-fire when the user clicks "Report Issue" twice
-  // before the async clipboard/openExternal chain completes.
+  // Synchronous guard against same-tick double-clicks on "Report issue".
+  // setState is batched, so two clicks in one event tick can both observe
+  // `state.reportInFlight === false`. The class field flips synchronously
+  // and prevents the underlying async chain from firing twice; the React
+  // state drives the visible `disabled` prop on the button.
   private reportInFlight = false;
 
   constructor(props: ErrorBoundaryProps) {
@@ -41,6 +45,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       error: null,
       errorInfo: null,
       incidentId: null,
+      reportInFlight: false,
     };
   }
 
@@ -54,10 +59,6 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
     const { onError, context, componentName } = this.props;
     const componentStack = errorInfo.componentStack || "";
-
-    this.setState({
-      errorInfo,
-    });
 
     const correlationId = crypto.randomUUID();
 
@@ -110,8 +111,6 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       componentStack,
       incidentId,
     });
-
-    logError("ErrorBoundary caught error", error, { errorInfo });
   }
 
   componentDidUpdate(prevProps: ErrorBoundaryProps): void {
@@ -141,17 +140,23 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       }
     }
 
+    // Reset the synchronous class-field guard alongside state so a hung
+    // report from the previous error session doesn't permanently disable
+    // the Report issue button after recovery.
+    this.reportInFlight = false;
     this.setState({
       hasError: false,
       error: null,
       errorInfo: null,
       incidentId: null,
+      reportInFlight: false,
     });
   };
 
   handleReport = async (): Promise<void> => {
     if (this.reportInFlight) return;
     this.reportInFlight = true;
+    this.setState({ reportInFlight: true });
     try {
       const { error, errorInfo, incidentId } = this.state;
       const { componentName, context } = this.props;
@@ -210,11 +215,12 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       }
     } finally {
       this.reportInFlight = false;
+      this.setState({ reportInFlight: false });
     }
   };
 
   render(): ReactNode {
-    const { hasError, error, errorInfo, incidentId } = this.state;
+    const { hasError, error, errorInfo, incidentId, reportInFlight } = this.state;
     const { children, fallback: FallbackComponent, variant, componentName } = this.props;
 
     if (hasError && error) {
@@ -229,6 +235,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
           componentName={componentName}
           incidentId={incidentId}
           onReport={variant !== "component" ? this.handleReport : undefined}
+          reportInFlight={reportInFlight}
         />
       );
     }
