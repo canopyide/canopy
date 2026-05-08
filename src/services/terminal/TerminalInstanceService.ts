@@ -1530,13 +1530,22 @@ class TerminalInstanceService {
       managed.lastWidth = 0;
       managed.lastHeight = 0;
     }
+
+    if (!managed.isHibernated) {
+      if (textMetricsChanged) {
+        this.resizeController.fit(id);
+      }
+      if ("theme" in options) {
+        managed.terminal.refresh(0, managed.terminal.rows - 1);
+      }
+    }
   }
 
   applyGlobalOptions(options: Partial<Terminal["options"]>): void {
     const textMetricKeys = ["fontSize", "fontFamily", "lineHeight", "letterSpacing", "fontWeight"];
     const textMetricsChanged = textMetricKeys.some((key) => key in options);
 
-    this.instances.forEach((managed) => {
+    this.instances.forEach((managed, id) => {
       if (!managed.isHibernated) {
         Object.entries(options).forEach(([key, value]) => {
           // @ts-expect-error xterm options are indexable
@@ -1547,6 +1556,15 @@ class TerminalInstanceService {
       if (textMetricsChanged) {
         managed.lastWidth = 0;
         managed.lastHeight = 0;
+      }
+
+      if (!managed.isHibernated) {
+        if (textMetricsChanged) {
+          this.resizeController.fit(id);
+        }
+        if ("theme" in options) {
+          managed.terminal.refresh(0, managed.terminal.rows - 1);
+        }
       }
     });
   }
