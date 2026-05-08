@@ -22,7 +22,7 @@ import { actionService } from "@/services/ActionService";
 import { useUrlHistoryStore, getFrecencySuggestions } from "@/store/urlHistoryStore";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ViewportPresetId } from "@shared/types/panel";
-import { VIEWPORT_PRESET_LIST, getViewportPreset } from "@/panels/dev-preview/viewportPresets";
+import { VIEWPORT_PRESET_LIST } from "@/panels/dev-preview/viewportPresets";
 import { logError } from "@/utils/logger";
 
 const ZOOM_PRESETS = [
@@ -100,6 +100,9 @@ export function BrowserToolbar({
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const chipRowRef = useRef<HTMLDivElement>(null);
+  const lastViewportPresetRef = useRef<ViewportPresetId>("iphone");
+  const [chipFocusedIndex, setChipFocusedIndex] = useState<number>(-1);
   const listboxId = useId();
 
   const projectEntries = useUrlHistoryStore(
@@ -115,6 +118,58 @@ export function BrowserToolbar({
     setHighlightedIndex(-1);
     setIsDropdownOpen(isEditing && suggestions.length > 0);
   }, [suggestions, isEditing]);
+
+  useEffect(() => {
+    if (viewportPreset) lastViewportPresetRef.current = viewportPreset;
+  }, [viewportPreset]);
+
+  useEffect(() => {
+    const container = chipRowRef.current;
+    if (!container) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const buttons = Array.from(
+        container.querySelectorAll<HTMLButtonElement>("button[role='radio']:not(:disabled)")
+      );
+      if (buttons.length === 0) return;
+
+      const currentIndex = buttons.findIndex((b) => b === document.activeElement);
+
+      let nextIndex = currentIndex;
+
+      if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+        e.preventDefault();
+        nextIndex = currentIndex < buttons.length - 1 ? currentIndex + 1 : 0;
+      } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+        e.preventDefault();
+        nextIndex = currentIndex > 0 ? currentIndex - 1 : buttons.length - 1;
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        nextIndex = 0;
+      } else if (e.key === "End") {
+        e.preventDefault();
+        nextIndex = buttons.length - 1;
+      } else if ((e.key === " " || e.key === "Enter") && currentIndex >= 0) {
+        e.preventDefault();
+        const button = buttons[currentIndex];
+        if (!button) return;
+        const presetId = button.getAttribute("data-viewport-preset-id") as ViewportPresetId | null;
+        if (presetId && button.getAttribute("aria-checked") !== "true") {
+          onViewportPresetChange?.(presetId);
+        }
+        return;
+      }
+
+      if (nextIndex !== currentIndex && nextIndex >= 0 && nextIndex < buttons.length) {
+        buttons[nextIndex]?.focus();
+        setChipFocusedIndex(nextIndex);
+      }
+    };
+
+    container.addEventListener("keydown", handleKeyDown as unknown as EventListener);
+    return () =>
+      container.removeEventListener("keydown", handleKeyDown as unknown as EventListener);
+  }, [onViewportPresetChange, viewportPreset]);
 
   useEffect(() => {
     if (!isEditing) {
@@ -424,7 +479,7 @@ export function BrowserToolbar({
                   if (viewportPreset) {
                     onViewportPresetChange(undefined);
                   } else {
-                    onViewportPresetChange("iphone");
+                    onViewportPresetChange(lastViewportPresetRef.current);
                   }
                 }}
                 className={cn(
@@ -437,34 +492,44 @@ export function BrowserToolbar({
                 <Smartphone className="w-4 h-4" />
               </button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {viewportPreset
-                ? `Viewport: ${getViewportPreset(viewportPreset).label}`
-                : "Responsive viewport"}
-            </TooltipContent>
+            <TooltipContent side="bottom">Viewport preset</TooltipContent>
           </Tooltip>
           {viewportPreset && (
-            <div className="flex items-center ml-0.5">
-              {VIEWPORT_PRESET_LIST.map((preset) => (
-                <button
-                  key={preset.id}
-                  type="button"
-                  onClick={() =>
-                    onViewportPresetChange(viewportPreset === preset.id ? undefined : preset.id)
-                  }
-                  className={cn(
-                    "px-1.5 py-1 rounded text-[10px] font-medium transition-colors",
-                    "hover:bg-overlay-medium",
-                    viewportPreset === preset.id
-                      ? "bg-overlay-emphasis text-daintree-text"
-                      : "text-daintree-text/50"
-                  )}
-                  aria-label={preset.label}
-                  aria-pressed={viewportPreset === preset.id}
-                >
-                  {preset.label}
-                </button>
-              ))}
+            <div
+              ref={chipRowRef}
+              role="radiogroup"
+              aria-label="Select viewport preset"
+              className="flex items-center ml-0.5"
+            >
+              {VIEWPORT_PRESET_LIST.map((preset, index) => {
+                const isSelected = viewportPreset === preset.id;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={isSelected}
+                    aria-label={preset.label}
+                    data-viewport-preset-id={preset.id}
+                    tabIndex={isSelected || chipFocusedIndex === index ? 0 : -1}
+                    onClick={() => {
+                      if (!isSelected) onViewportPresetChange(preset.id);
+                    }}
+                    onFocus={() => setChipFocusedIndex(index)}
+                    onBlur={() => setChipFocusedIndex(-1)}
+                    className={cn(
+                      "px-1.5 py-1 rounded text-[10px] font-medium transition-colors",
+                      "hover:bg-overlay-medium",
+                      "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2",
+                      isSelected
+                        ? "bg-overlay-emphasis text-daintree-text"
+                        : "text-daintree-text/50"
+                    )}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
