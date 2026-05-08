@@ -35,7 +35,6 @@ const METADATA_KEYS = new Set([
   "previewColors",
   "location",
   "heroImage",
-  "heroVideo",
 ]);
 
 function generateThemeId(name: string): string {
@@ -143,7 +142,6 @@ export function parseAppThemeContent(content: string, filename: string): AppThem
       ...(rawTheme.extensions ? { extensions: rawTheme.extensions } : {}),
       ...(typeof rawRecord.location === "string" ? { location: rawRecord.location } : {}),
       ...(typeof rawRecord.heroImage === "string" ? { heroImage: rawRecord.heroImage } : {}),
-      ...(typeof rawRecord.heroVideo === "string" ? { heroVideo: rawRecord.heroVideo } : {}),
     },
     getBuiltInAppSchemeForType(resolvedType)
   );

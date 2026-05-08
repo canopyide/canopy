@@ -351,7 +351,6 @@ function createThemeFromSource(source: BuiltInThemeSource): AppColorScheme {
     ...(source.extensions ? { extensions: source.extensions } : {}),
     ...(source.location ? { location: source.location } : {}),
     ...(source.heroImage ? { heroImage: source.heroImage } : {}),
-    ...(source.heroVideo ? { heroVideo: source.heroVideo } : {}),
   };
 }
 
@@ -769,6 +768,5 @@ export function normalizeAppColorScheme(
   };
   if (typeof maybeScheme.location === "string") result.location = maybeScheme.location;
   if (typeof maybeScheme.heroImage === "string") result.heroImage = maybeScheme.heroImage;
-  if (typeof maybeScheme.heroVideo === "string") result.heroVideo = maybeScheme.heroVideo;
   return result;
 }

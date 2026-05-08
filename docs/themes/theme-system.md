@@ -50,7 +50,6 @@ interface BuiltInThemeSource {
   extensions?: Record<string, string>; // component-level CSS variable overrides
   location?: string;
   heroImage?: string;
-  heroVideo?: string;
 }
 ```
 
