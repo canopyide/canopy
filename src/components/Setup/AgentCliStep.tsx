@@ -250,19 +250,14 @@ export function AgentCliStep({ availability, selections, onInstallComplete }: Ag
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   {config.install?.docsUrl && (
-                    <span
-                      role="link"
-                      tabIndex={0}
+                    <button
+                      type="button"
                       className="text-daintree-text/30 hover:text-daintree-text transition-colors p-0.5 cursor-pointer"
                       onClick={() => systemClient.openExternal(config.install!.docsUrl!)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ")
-                          systemClient.openExternal(config.install!.docsUrl!);
-                      }}
                       title="View documentation"
                     >
                       <ExternalLink className="w-3 h-3" />
-                    </span>
+                    </button>
                   )}
                   {isInstalled ? (
                     <span className="inline-flex items-center gap-1 text-[11px] text-status-success font-medium">
@@ -334,23 +329,29 @@ export function AgentCliStep({ availability, selections, onInstallComplete }: Ag
               {isError && (
                 <div className="pl-14 pt-1.5 pb-1 space-y-1">
                   {errorLog && (
-                    <button
-                      type="button"
-                      onClick={() => toggleErrorExpanded(agentId)}
-                      className="inline-flex items-center gap-1 text-[11px] text-daintree-text/50 hover:text-daintree-text/80 transition-colors"
-                    >
-                      {isErrorExpanded ? (
-                        <ChevronDown className="w-3 h-3" />
-                      ) : (
-                        <ChevronRight className="w-3 h-3" />
-                      )}
-                      Show error log
-                    </button>
-                  )}
-                  {isErrorExpanded && errorLog && (
-                    <pre className="text-[10px] text-status-error/80 bg-daintree-bg border border-daintree-border rounded-[var(--radius-sm)] p-2 max-h-[120px] overflow-y-auto whitespace-pre-wrap font-mono">
-                      {errorLog}
-                    </pre>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => toggleErrorExpanded(agentId)}
+                        aria-expanded={isErrorExpanded ?? false}
+                        aria-controls={`error-log-${agentId}`}
+                        className="inline-flex items-center gap-1 text-[11px] text-daintree-text/50 hover:text-daintree-text/80 transition-colors"
+                      >
+                        {isErrorExpanded ? (
+                          <ChevronDown className="w-3 h-3" />
+                        ) : (
+                          <ChevronRight className="w-3 h-3" />
+                        )}
+                        Show error log
+                      </button>
+                      <pre
+                        id={`error-log-${agentId}`}
+                        hidden={!isErrorExpanded}
+                        className="text-[10px] text-status-error/80 bg-daintree-bg border border-daintree-border rounded-[var(--radius-sm)] p-2 max-h-[120px] overflow-y-auto whitespace-pre-wrap font-mono"
+                      >
+                        {errorLog}
+                      </pre>
+                    </>
                   )}
                   {currentBlock?.commands && (
                     <div className="space-y-1">

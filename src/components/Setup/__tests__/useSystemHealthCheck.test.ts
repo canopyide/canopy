@@ -108,6 +108,124 @@ describe("useSystemHealthCheck — focus re-check", () => {
     expect(removeWinListenerSpy).toHaveBeenCalledWith("focus", expect.any(Function));
   });
 
+  it("preserves prior specs and checkStates across a re-check until new specs resolve", async () => {
+    // First check resolves normally with git available.
+    mockGetSpecs.mockResolvedValueOnce([makeSpec("git")]);
+    mockCheckTool.mockResolvedValueOnce(makeResult("git"));
+
+    const { result } = renderHook(() => useSystemHealthCheck());
+
+    await waitFor(() => {
+      expect(result.current.checkStates.git).toMatchObject({ available: true });
+    });
+
+    // Second check: pause getHealthCheckSpecs so we can observe state mid-flight.
+    let resolveSpecs: (value: unknown) => void;
+    const pendingSpecs = new Promise((resolve) => {
+      resolveSpecs = resolve;
+    });
+    mockGetSpecs.mockReturnValueOnce(pendingSpecs);
+    mockCheckTool.mockResolvedValueOnce(makeResult("git"));
+
+    vi.spyOn(document, "hasFocus").mockReturnValue(true);
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    // Mid-flight (specs not yet resolved): prior data must still be visible.
+    expect(result.current.specs).toHaveLength(1);
+    expect(result.current.specs[0]?.tool).toBe("git");
+    expect(result.current.checkStates.git).toMatchObject({ available: true });
+
+    // Resolve the second specs call and let the check settle.
+    await act(async () => {
+      resolveSpecs!([makeSpec("git")]);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(result.current.checkStates.git).toMatchObject({ available: true });
+      expect(result.current.isChecking).toBe(false);
+    });
+  });
+
+  it("preserves prior checkStates while checkTool reruns for tools still in the spec list", async () => {
+    // First check completes with git available.
+    mockGetSpecs.mockResolvedValueOnce([makeSpec("git")]);
+    mockCheckTool.mockResolvedValueOnce(makeResult("git"));
+
+    const { result } = renderHook(() => useSystemHealthCheck());
+
+    await waitFor(() => {
+      expect(result.current.checkStates.git).toMatchObject({ available: true });
+      expect(result.current.isChecking).toBe(false);
+    });
+
+    // Second check: getHealthCheckSpecs resolves immediately with the same
+    // spec list, but checkTool stays pending so we can observe the per-card
+    // window between specs resolving and tools reporting.
+    mockGetSpecs.mockResolvedValueOnce([makeSpec("git")]);
+    let resolveTool: (value: unknown) => void;
+    const pendingTool = new Promise((resolve) => {
+      resolveTool = resolve;
+    });
+    mockCheckTool.mockReturnValueOnce(pendingTool);
+
+    vi.spyOn(document, "hasFocus").mockReturnValue(true);
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    // Specs have re-resolved. While checkTool is still pending, the prior
+    // resolved result must remain in checkStates — not flash back to loading.
+    await waitFor(() => {
+      expect(mockGetSpecs).toHaveBeenCalledTimes(2);
+    });
+    expect(result.current.checkStates.git).toMatchObject({ available: true });
+
+    // Let the tool result resolve and the check settle.
+    await act(async () => {
+      resolveTool!(makeResult("git"));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(result.current.isChecking).toBe(false);
+    });
+  });
+
+  it("drops checkStates entries for tools removed from the spec list on re-check", async () => {
+    // First check has git + node. Both available.
+    mockGetSpecs.mockResolvedValueOnce([makeSpec("git"), makeSpec("node")]);
+    mockCheckTool.mockResolvedValueOnce(makeResult("git"));
+    mockCheckTool.mockResolvedValueOnce(makeResult("node"));
+
+    const { result } = renderHook(() => useSystemHealthCheck());
+
+    await waitFor(() => {
+      expect(result.current.checkStates.git).toMatchObject({ available: true });
+      expect(result.current.checkStates.node).toMatchObject({ available: true });
+    });
+
+    // Second check returns only git — node is gone from the spec list.
+    mockGetSpecs.mockResolvedValueOnce([makeSpec("git")]);
+    mockCheckTool.mockResolvedValueOnce(makeResult("git"));
+
+    vi.spyOn(document, "hasFocus").mockReturnValue(true);
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    await waitFor(() => {
+      expect(mockGetSpecs).toHaveBeenCalledTimes(2);
+      expect(result.current.checkStates.node).toBeUndefined();
+      expect(result.current.checkStates.git).toMatchObject({ available: true });
+    });
+  });
+
   it("does not start a parallel check if one is already in flight (isCheckingRef guard)", async () => {
     let resolveSpecs: (value: unknown) => void;
     const pending = new Promise((resolve) => {

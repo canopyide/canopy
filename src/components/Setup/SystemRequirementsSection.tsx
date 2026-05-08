@@ -71,6 +71,8 @@ export function SystemRequirementsSection({
       <button
         type="button"
         onClick={() => setUserExpanded((v) => !v)}
+        aria-expanded={isExpanded}
+        aria-controls="system-requirements-panel"
         className="flex items-center gap-2.5 w-full px-3 py-2.5 text-left"
       >
         <ChevronDown
@@ -108,6 +110,7 @@ export function SystemRequirementsSection({
       </button>
 
       <m.div
+        id="system-requirements-panel"
         animate={{ height: isExpanded ? "auto" : 0 }}
         initial={false}
         transition={

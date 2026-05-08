@@ -55,6 +55,8 @@ export function PrerequisiteCard({ spec, state }: { spec: PrerequisiteSpec; stat
               <button
                 type="button"
                 onClick={() => setExpanded((v) => !v)}
+                aria-expanded={expanded}
+                aria-controls={`install-panel-${spec.tool}`}
                 className="inline-flex items-center gap-1 text-[11px] text-text-secondary hover:text-daintree-text underline-offset-2 hover:underline shrink-0"
               >
                 {expanded ? (
@@ -84,8 +86,8 @@ export function PrerequisiteCard({ spec, state }: { spec: PrerequisiteSpec; stat
           <span className="text-[11px] text-daintree-text/40 shrink-0">Installed</span>
         ) : null}
       </div>
-      {expanded && installBlocks && (
-        <div className="px-3 pb-3 space-y-2">
+      {installBlocks && (
+        <div id={`install-panel-${spec.tool}`} hidden={!expanded} className="px-3 pb-3 space-y-2">
           {installBlocks.map((block, i) => (
             <InstallBlock key={i} block={block} />
           ))}
