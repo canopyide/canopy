@@ -7,20 +7,12 @@ interface HelpIntroBannerProps {
 }
 
 export function HelpIntroBanner({ onDismiss, onLinkClick }: HelpIntroBannerProps) {
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === "Escape") {
-      e.stopPropagation();
-      onDismiss();
-    }
-  };
-
   return (
     <div
       className={cn(
         "flex items-center gap-2 px-3 py-1.5 shrink-0",
-        "bg-wash-subtle border-b border-subtle text-[11px] text-text-secondary"
+        "bg-overlay-subtle border-b border-daintree-border text-[11px] text-daintree-text/50"
       )}
-      onKeyDown={handleKeyDown}
     >
       <span className="flex-1 min-w-0 truncate">
         New here?{" "}
@@ -28,8 +20,8 @@ export function HelpIntroBanner({ onDismiss, onLinkClick }: HelpIntroBannerProps
           type="button"
           onClick={onLinkClick}
           className={cn(
-            "text-text-primary underline underline-offset-4",
-            "decoration-border-subtle hover:decoration-text-primary",
+            "text-daintree-text underline underline-offset-4",
+            "decoration-daintree-border hover:decoration-daintree-text",
             "transition-colors"
           )}
         >
@@ -41,7 +33,7 @@ export function HelpIntroBanner({ onDismiss, onLinkClick }: HelpIntroBannerProps
         type="button"
         onClick={onDismiss}
         aria-label="Dismiss"
-        className="text-text-muted hover:text-text-secondary transition-colors"
+        className="text-daintree-text/40 hover:text-daintree-text/70 transition-colors"
       >
         <X className="w-3.5 h-3.5" />
       </button>
