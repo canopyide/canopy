@@ -177,7 +177,7 @@ describe("errorStore", () => {
       expect(error?.retryProgress).toBeUndefined();
     });
 
-    it("clearAll removes all retryProgress", () => {
+    it("reset removes all retryProgress", () => {
       const id = useErrorStore.getState().addError({
         type: "process",
         message: "spawn failed",
@@ -186,13 +186,13 @@ describe("errorStore", () => {
       });
 
       useErrorStore.getState().updateRetryProgress(id, 1, 3);
-      useErrorStore.getState().clearAll();
+      useErrorStore.getState().reset();
 
       expect(useErrorStore.getState().errors).toEqual([]);
     });
   });
 
-  it("clearAll fully clears error panel state", () => {
+  it("reset fully clears error panel state", () => {
     useErrorStore.getState().setPanelOpen(true);
     useErrorStore.getState().addError({
       type: "git",
@@ -205,7 +205,7 @@ describe("errorStore", () => {
     expect(before.errors.length).toBe(1);
     expect(before.lastErrorTime).toBeGreaterThan(0);
 
-    useErrorStore.getState().clearAll();
+    useErrorStore.getState().reset();
 
     const after = useErrorStore.getState();
     expect(after.errors).toEqual([]);

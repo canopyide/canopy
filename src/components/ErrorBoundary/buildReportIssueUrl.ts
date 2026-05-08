@@ -13,8 +13,8 @@ const TITLE_ENCODED_BUDGET = 200;
 // When the stack must be middle-truncated we keep the top frames (where the
 // throw originates) and the tail (where it bubbled up through React). 15+5
 // fits a typical render-error stack while leaving the truncation visible.
-export const STACK_HEAD_LINES = 15;
-export const STACK_TAIL_LINES = 5;
+const STACK_HEAD_LINES = 15;
+const STACK_TAIL_LINES = 5;
 
 const COMPONENT_STACK_PLACEHOLDER =
   "<!-- component stack omitted — exceeded URL budget; full report copied to clipboard -->";

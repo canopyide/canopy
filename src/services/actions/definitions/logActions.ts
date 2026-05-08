@@ -183,7 +183,7 @@ export function registerLogActions(actions: ActionRegistry, _callbacks: ActionCa
     danger: "safe",
     scope: "renderer",
     run: async () => {
-      useErrorStore.getState().clearAll();
+      useErrorStore.getState().reset();
     },
   }));
 
