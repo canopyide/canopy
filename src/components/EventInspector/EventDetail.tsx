@@ -4,6 +4,7 @@ import { useEventStore, type EventRecord, type EventFilterOptions } from "@/stor
 import { Copy, Check, ChevronDown, ChevronRight, Filter, X } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { logError } from "@/utils/logger";
+import { sanitizeErrorText } from "@/utils/errorText";
 
 interface EventDetailProps {
   event: EventRecord | null;
@@ -61,7 +62,7 @@ export function EventDetail({ event, className }: EventDetailProps) {
   const setFilters = useEventStore((state) => state.setFilters);
   const [copied, setCopied] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["payload"]));
-  const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleContextToggle = (key: keyof EventFilterOptions, value: string | number) => {
     const newValue = filters[key] === value ? undefined : value;
@@ -80,6 +81,15 @@ export function EventDetail({ event, className }: EventDetailProps) {
       copyTimeoutRef.current = null;
     }
   }, [event]);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+        copyTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   if (!event) {
     return (
@@ -108,7 +118,7 @@ export function EventDetail({ event, className }: EventDetailProps) {
 
   const copyPayload = async () => {
     try {
-      await navigator.clipboard.writeText(formattedPayload);
+      await navigator.clipboard.writeText(sanitizeErrorText(formattedPayload));
       setCopied(true);
 
       if (copyTimeoutRef.current) {

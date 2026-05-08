@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, useRef } from "react";
+import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import type { LogLevel, LogFilterOptions } from "@/types";
@@ -110,7 +111,7 @@ export function LogFilters({
             className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6"
             aria-label="Clear search"
           >
-            ×
+            <X className="w-3 h-3" />
           </Button>
         )}
       </div>
