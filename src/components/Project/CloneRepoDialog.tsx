@@ -23,7 +23,7 @@ function extractFolderName(url: string): string {
     .replace(/[/\\]+$/, "")
     .replace(/\.git$/, "");
   const lastSegment = trimmed.split(/[/\\]/).filter(Boolean).pop() ?? "";
-  return lastSegment.replace(/[^\p{L}\p{N}\p{M}_.\-]/gu, "");
+  return lastSegment.replace(/[^\p{L}\p{N}\p{M}_.-]/gu, "");
 }
 
 function isOwnerRepoShorthand(input: string): boolean {
