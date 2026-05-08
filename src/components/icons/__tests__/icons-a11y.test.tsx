@@ -2,9 +2,20 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { DaintreeIcon } from "../DaintreeIcon";
-import { SpinnerCircle } from "../AgentStateCircles";
+import {
+  SpinnerCircle as DirectSpinnerCircle,
+  HollowCircle,
+  InteractingCircle,
+  ExitedCircle,
+} from "../AgentStateCircles";
+// Re-imported via the barrel to regression-test `export * from "./AgentStateCircles"`.
+import { SpinnerCircle } from "../index";
 import { ClaudeIcon } from "../brands/ClaudeIcon";
 import { NpmIcon } from "../brands/NpmIcon";
+import { InterpreterIcon } from "../brands/InterpreterIcon";
+import { GooseIcon } from "../brands/GooseIcon";
+import { PythonIcon } from "../brands/PythonIcon";
+import { DockerIcon } from "../brands/DockerIcon";
 
 describe("DaintreeIcon a11y", () => {
   it("is decorative and exposes no aria-label", () => {
@@ -17,48 +28,72 @@ describe("DaintreeIcon a11y", () => {
 });
 
 describe("AgentStateCircles a11y", () => {
-  it("defaults to aria-hidden='true'", () => {
-    const { container } = render(<SpinnerCircle />);
+  it.each([
+    ["SpinnerCircle", DirectSpinnerCircle],
+    ["HollowCircle", HollowCircle],
+    ["InteractingCircle", InteractingCircle],
+    ["ExitedCircle", ExitedCircle],
+  ])("%s defaults to aria-hidden='true'", (_name, Component) => {
+    const { container } = render(<Component />);
     const svg = container.querySelector("svg");
     expect(svg?.getAttribute("aria-hidden")).toBe("true");
   });
 
-  it("allows callers to override aria-hidden and supply a label", () => {
+  it.each([
+    ["SpinnerCircle", DirectSpinnerCircle],
+    ["HollowCircle", HollowCircle],
+    ["InteractingCircle", InteractingCircle],
+    ["ExitedCircle", ExitedCircle],
+  ])("%s allows callers to override aria-hidden and supply a label", (_name, Component) => {
     const { container } = render(
-      <SpinnerCircle aria-hidden={undefined} role="img" aria-label="Working" />
+      <Component aria-hidden={undefined} role="img" aria-label="Working" />
     );
     const svg = container.querySelector("svg");
     expect(svg?.hasAttribute("aria-hidden")).toBe(false);
     expect(svg?.getAttribute("role")).toBe("img");
     expect(svg?.getAttribute("aria-label")).toBe("Working");
   });
+
+  it("re-exports SpinnerCircle through the barrel", () => {
+    expect(SpinnerCircle).toBe(DirectSpinnerCircle);
+    const { container } = render(<SpinnerCircle />);
+    const svg = container.querySelector("svg");
+    expect(svg?.getAttribute("aria-hidden")).toBe("true");
+  });
 });
 
 describe("Brand icon a11y", () => {
-  it("ClaudeIcon defaults to aria-hidden and forwards arbitrary SVG props", () => {
-    const { container } = render(
-      <ClaudeIcon className="text-state-working" data-testid="claude" />
-    );
-    const svg = container.querySelector("svg");
-    expect(svg?.getAttribute("aria-hidden")).toBe("true");
-    expect(svg?.getAttribute("class")).toContain("text-state-working");
-    expect(svg?.getAttribute("data-testid")).toBe("claude");
-  });
-
-  it("ClaudeIcon allows overriding aria-hidden when used as the sole label", () => {
-    const { container } = render(
-      <ClaudeIcon aria-hidden={undefined} role="img" aria-label="Claude agent" />
-    );
-    const svg = container.querySelector("svg");
-    expect(svg?.hasAttribute("aria-hidden")).toBe(false);
-    expect(svg?.getAttribute("aria-label")).toBe("Claude agent");
-  });
-
-  it("NpmIcon (no brandColor variant) defaults to aria-hidden and forwards props", () => {
-    const { container } = render(<NpmIcon className="size-4" data-testid="npm" />);
+  it.each([
+    ["ClaudeIcon", ClaudeIcon],
+    ["NpmIcon", NpmIcon],
+    ["InterpreterIcon", InterpreterIcon],
+    ["GooseIcon", GooseIcon],
+    ["PythonIcon", PythonIcon],
+    ["DockerIcon", DockerIcon],
+  ])("%s defaults to aria-hidden and forwards arbitrary SVG props", (_name, Icon) => {
+    const { container } = render(<Icon className="size-4" data-testid="icon-under-test" />);
     const svg = container.querySelector("svg");
     expect(svg?.getAttribute("aria-hidden")).toBe("true");
     expect(svg?.getAttribute("class")).toContain("size-4");
-    expect(svg?.getAttribute("data-testid")).toBe("npm");
+    expect(svg?.getAttribute("data-testid")).toBe("icon-under-test");
+  });
+
+  it.each([
+    ["ClaudeIcon", ClaudeIcon],
+    ["InterpreterIcon", InterpreterIcon],
+    ["GooseIcon", GooseIcon],
+  ])("%s allows overriding aria-hidden when used as the sole label", (_name, Icon) => {
+    const { container } = render(
+      <Icon aria-hidden={undefined} role="img" aria-label="Brand mark" />
+    );
+    const svg = container.querySelector("svg");
+    expect(svg?.hasAttribute("aria-hidden")).toBe(false);
+    expect(svg?.getAttribute("aria-label")).toBe("Brand mark");
+  });
+
+  it("ClaudeIcon still honours brandColor after the type widening", () => {
+    const { container } = render(<ClaudeIcon brandColor="#FF0000" />);
+    const path = container.querySelector("svg path");
+    expect(path?.getAttribute("fill")).toBe("#FF0000");
   });
 });
