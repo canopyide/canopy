@@ -28,6 +28,8 @@ export interface FleetExecutionResult {
   failureCount: number;
   perTarget: Array<{ terminalId: string; status: "fulfilled" | "rejected"; reason?: string }>;
   failedIds: string[];
+  cancelled: boolean;
+  skippedCount: number;
 }
 
 /**
@@ -162,21 +164,61 @@ function yieldToEventLoop(): Promise<void> {
  * Per-target rejections (EPIPE/EBADF from a PTY that died mid-write) are
  * absorbed by `Promise.allSettled` and reported as rejected entries in
  * `perTarget` / `failedIds`. The caller decides whether to surface them.
+ *
+ * Cancellation is cooperative: `signal` is checked at inter-batch
+ * boundaries (and once before the non-batched path's allSettled completes).
+ * Already-dispatched IPC writes cannot be revoked — the result reports
+ * what actually fired and marks `cancelled: true` plus a `skippedCount` of
+ * targets in unstarted batches.
  */
 export async function executeFleetBroadcast(
   draft: string,
   targetIds: string[],
-  perTargetOverrides?: Record<string, string>
+  perTargetOverrides?: Record<string, string>,
+  signal?: AbortSignal
 ): Promise<FleetExecutionResult> {
   const resolved = resolveSubmissions(draft, targetIds, perTargetOverrides);
   const results: PromiseSettledResult<void>[] = [];
+  let dispatchedCount = 0;
+  let finalized = false;
 
   useFleetBroadcastProgressStore.getState().init(resolved.length);
 
+  const buildResult = (cancelled: boolean): FleetExecutionResult => {
+    const perTarget: FleetExecutionResult["perTarget"] = results.map((r, i) => ({
+      terminalId: resolved[i]!.terminalId,
+      status: r.status,
+      reason: r.status === "rejected" ? String(r.reason) : undefined,
+    }));
+    const successCount = results.filter((r) => r.status === "fulfilled").length;
+    const failedIds = perTarget.filter((t) => t.status === "rejected").map((t) => t.terminalId);
+    return {
+      total: results.length,
+      successCount,
+      failureCount: results.length - successCount,
+      perTarget,
+      failedIds,
+      cancelled,
+      skippedCount: Math.max(0, resolved.length - dispatchedCount),
+    };
+  };
+
   try {
+    if (signal?.aborted) {
+      useFleetBroadcastProgressStore.getState().finishCancelled();
+      finalized = true;
+      return buildResult(true);
+    }
+
     if (shouldBatchAcrossTargets(resolved)) {
       for (let i = 0; i < resolved.length; i += FLEET_LARGE_PASTE_BATCH_SIZE) {
+        if (signal?.aborted) {
+          useFleetBroadcastProgressStore.getState().finishCancelled();
+          finalized = true;
+          return buildResult(true);
+        }
         const batch = resolved.slice(i, i + FLEET_LARGE_PASTE_BATCH_SIZE);
+        dispatchedCount += batch.length;
         const batchResults = await Promise.allSettled(
           batch.map((r) => terminalClient.submit(r.terminalId, r.payload))
         );
@@ -190,6 +232,7 @@ export async function executeFleetBroadcast(
         }
       }
     } else {
+      dispatchedCount = resolved.length;
       const all = await Promise.allSettled(
         resolved.map((r) => terminalClient.submit(r.terminalId, r.payload))
       );
@@ -198,24 +241,11 @@ export async function executeFleetBroadcast(
       useFleetBroadcastProgressStore.getState().advance(resolved.length, nonBatchedFailures);
     }
 
-    const perTarget: FleetExecutionResult["perTarget"] = results.map((r, i) => ({
-      terminalId: resolved[i]!.terminalId,
-      status: r.status,
-      reason: r.status === "rejected" ? String(r.reason) : undefined,
-    }));
-
-    const successCount = results.filter((r) => r.status === "fulfilled").length;
-    const failedIds = perTarget.filter((t) => t.status === "rejected").map((t) => t.terminalId);
-
-    return {
-      total: results.length,
-      successCount,
-      failureCount: results.length - successCount,
-      perTarget,
-      failedIds,
-    };
+    return buildResult(signal?.aborted ?? false);
   } finally {
-    useFleetBroadcastProgressStore.getState().finish();
+    if (!finalized) {
+      useFleetBroadcastProgressStore.getState().finish();
+    }
   }
 }
 
@@ -255,5 +285,7 @@ export async function broadcastFleetLiteralPaste(
     failureCount: results.length - successCount,
     perTarget,
     failedIds,
+    cancelled: false,
+    skippedCount: 0,
   };
 }

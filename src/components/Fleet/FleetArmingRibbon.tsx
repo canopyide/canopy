@@ -10,7 +10,11 @@ import { useFleetRibbonFlashes } from "./useFleetRibbonFlashes";
 import { buildConfirmMessage, type FleetConfirmActionId } from "./buildConfirmMessage";
 import { FleetCountChip } from "./FleetCountChip";
 import { SavedFleetsSection } from "./SavedFleetsSection";
-import { FLEET_PROGRESS_VISIBILITY_THRESHOLD } from "./fleetBroadcast";
+import {
+  FLEET_LARGE_PASTE_BATCH_SIZE,
+  FLEET_PROGRESS_VISIBILITY_THRESHOLD,
+} from "./fleetBroadcast";
+import { cancelActiveBroadcast } from "./fleetEnterBroadcast";
 import {
   useFleetArmingStore,
   computeArmByStateIds,
@@ -450,6 +454,22 @@ export function FleetArmingRibbon(): ReactElement | null {
                 <span className="text-daintree-text/50"> · {progressFailed} failed</span>
               )}
             </span>
+          )}
+          {/* Cancel surface is gated on batching, not on the counter threshold:
+           * cooperative cancellation can only interrupt batched fan-out
+           * (resolved.length > FLEET_LARGE_PASTE_BATCH_SIZE), so showing
+           * Cancel for sub-threshold but batching-eligible fleets keeps the
+           * affordance reachable for 6–9 target large-paste broadcasts. */}
+          {progressActive && progressTotal > FLEET_LARGE_PASTE_BATCH_SIZE && (
+            <button
+              type="button"
+              onClick={cancelActiveBroadcast}
+              aria-label="Cancel broadcast"
+              data-testid="fleet-broadcast-cancel"
+              className="rounded px-1.5 py-0.5 text-[11px] text-daintree-text/70 transition-colors hover:bg-tint/[0.08] hover:text-daintree-text"
+            >
+              Cancel
+            </button>
           )}
           <DropdownMenu
             onOpenChange={(open) => {

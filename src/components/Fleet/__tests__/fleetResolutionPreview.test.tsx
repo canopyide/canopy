@@ -169,6 +169,51 @@ describe("useFleetResolutionPreviewStore", () => {
       const state = useFleetResolutionPreviewStore.getState();
       expect(state.open).toBe(true);
     });
+
+    describe("preview build guard", () => {
+      it("preserves previews reference when popover closed and no recipe variables", () => {
+        // The guard short-circuits buildFleetTargetPreviews and reuses
+        // state.previews — observable as identity preservation across calls.
+        const a1 = makeAgent("t-1");
+        const a2 = makeAgent("t-2");
+        seedPanel(a1);
+        seedPanel(a2);
+        armAgent("t-1", 0);
+        armAgent("t-2", 1);
+        // Initial state: previews is the empty array literal at store creation.
+        const initial = useFleetResolutionPreviewStore.getState().previews;
+        useFleetResolutionPreviewStore.getState().setDraft("hello");
+        const after1 = useFleetResolutionPreviewStore.getState().previews;
+        useFleetResolutionPreviewStore.getState().setDraft("hello world");
+        const after2 = useFleetResolutionPreviewStore.getState().previews;
+        expect(after1).toBe(initial);
+        expect(after2).toBe(initial);
+      });
+
+      it("rebuilds previews on the keystroke that introduces a variable", () => {
+        const a1 = makeAgent("t-1");
+        const a2 = makeAgent("t-2");
+        seedPanel(a1);
+        seedPanel(a2);
+        armAgent("t-1", 0);
+        armAgent("t-2", 1);
+        useFleetResolutionPreviewStore.getState().setDraft("hello");
+        const before = useFleetResolutionPreviewStore.getState().previews;
+        useFleetResolutionPreviewStore.getState().setDraft("hello {{branch_name}}");
+        const after = useFleetResolutionPreviewStore.getState().previews;
+        expect(after).not.toBe(before);
+        expect(useFleetResolutionPreviewStore.getState().open).toBe(true);
+        expect(after.length).toBe(2);
+      });
+
+      it("clears previews to a fresh empty array when invoked with no armed targets", () => {
+        // Sanity: when previews would be empty regardless, reuse vs. rebuild
+        // is equivalent for the user. The guard is purely a perf optimisation.
+        useFleetResolutionPreviewStore.getState().setDraft("no vars");
+        expect(useFleetResolutionPreviewStore.getState().previews).toEqual([]);
+        expect(useFleetResolutionPreviewStore.getState().hasVariables).toBe(false);
+      });
+    });
   });
 
   describe("clear", () => {

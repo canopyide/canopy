@@ -9,6 +9,7 @@ describe("fleetBroadcastProgressStore", () => {
       total: 0,
       failed: 0,
       isActive: false,
+      cancelled: false,
     });
   });
 
@@ -19,6 +20,7 @@ describe("fleetBroadcastProgressStore", () => {
     expect(s.completed).toBe(0);
     expect(s.failed).toBe(0);
     expect(s.isActive).toBe(true);
+    expect(s.cancelled).toBe(false);
   });
 
   it("advance accumulates completed and failed counts", () => {
@@ -59,5 +61,29 @@ describe("fleetBroadcastProgressStore", () => {
     expect(useFleetBroadcastProgressStore.getState().completed).toBe(0);
     expect(useFleetBroadcastProgressStore.getState().failed).toBe(0);
     expect(useFleetBroadcastProgressStore.getState().isActive).toBe(true);
+  });
+
+  it("cancel sets cancelled without changing isActive", () => {
+    useFleetBroadcastProgressStore.getState().init(10);
+    useFleetBroadcastProgressStore.getState().cancel();
+    const s = useFleetBroadcastProgressStore.getState();
+    expect(s.cancelled).toBe(true);
+    expect(s.isActive).toBe(true);
+  });
+
+  it("finishCancelled sets isActive false and cancelled true", () => {
+    useFleetBroadcastProgressStore.getState().init(10);
+    useFleetBroadcastProgressStore.getState().finishCancelled();
+    const s = useFleetBroadcastProgressStore.getState();
+    expect(s.isActive).toBe(false);
+    expect(s.cancelled).toBe(true);
+  });
+
+  it("init clears cancelled from a prior cancelled run", () => {
+    useFleetBroadcastProgressStore.getState().init(10);
+    useFleetBroadcastProgressStore.getState().finishCancelled();
+    expect(useFleetBroadcastProgressStore.getState().cancelled).toBe(true);
+    useFleetBroadcastProgressStore.getState().init(5);
+    expect(useFleetBroadcastProgressStore.getState().cancelled).toBe(false);
   });
 });

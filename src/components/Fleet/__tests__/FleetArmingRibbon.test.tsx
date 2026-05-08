@@ -783,6 +783,7 @@ describe("FleetArmingRibbon", () => {
         total: 0,
         failed: 0,
         isActive: false,
+        cancelled: false,
       });
     });
 
@@ -866,6 +867,59 @@ describe("FleetArmingRibbon", () => {
       });
       rerender(<FleetArmingRibbon />);
       expect(screen.queryByTestId("fleet-broadcast-progress")).toBeNull();
+    });
+
+    it("renders a Cancel button alongside the progress counter when active", () => {
+      useFleetBroadcastProgressStore.setState({
+        completed: 3,
+        total: 12,
+        isActive: true,
+      });
+      useFleetArmingStore.getState().armIds(["a", "b", "c"]);
+      render(<FleetArmingRibbon />);
+      const cancel = screen.getByTestId("fleet-broadcast-cancel");
+      expect(cancel.getAttribute("aria-label")).toBe("Cancel broadcast");
+    });
+
+    it("clicking Cancel flips the progress store cancelled flag", () => {
+      useFleetBroadcastProgressStore.setState({
+        completed: 3,
+        total: 12,
+        isActive: true,
+      });
+      useFleetArmingStore.getState().armIds(["a", "b", "c"]);
+      render(<FleetArmingRibbon />);
+      fireEvent.click(screen.getByTestId("fleet-broadcast-cancel"));
+      expect(useFleetBroadcastProgressStore.getState().cancelled).toBe(true);
+    });
+
+    it("Cancel button is reachable for batched broadcasts below the counter threshold (6–9 targets)", () => {
+      // Batching kicks in at total > FLEET_LARGE_PASTE_BATCH_SIZE (5), but
+      // the numeric counter only shows at total >= 10. Without a separate
+      // gate, large-paste broadcasts to 6–9 targets had no Cancel surface.
+      useFleetBroadcastProgressStore.setState({
+        completed: 1,
+        total: 7,
+        isActive: true,
+      });
+      useFleetArmingStore.getState().armIds(["a", "b"]);
+      render(<FleetArmingRibbon />);
+      expect(screen.getByTestId("fleet-broadcast-cancel")).toBeTruthy();
+      // Counter still hidden because total < FLEET_PROGRESS_VISIBILITY_THRESHOLD.
+      expect(screen.queryByTestId("fleet-broadcast-progress")).toBeNull();
+    });
+
+    it("Cancel button does not render for non-batchable fleets (total ≤ 5)", () => {
+      // At/below batch size the executor takes the atomic non-batched path
+      // — there's nothing to interrupt cooperatively. Hide Cancel.
+      useFleetBroadcastProgressStore.setState({
+        completed: 1,
+        total: 5,
+        isActive: true,
+      });
+      useFleetArmingStore.getState().armIds(["a", "b"]);
+      render(<FleetArmingRibbon />);
+      expect(screen.queryByTestId("fleet-broadcast-cancel")).toBeNull();
     });
   });
 
