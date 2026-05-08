@@ -1,5 +1,5 @@
 import type { PanelExitBehavior } from "@shared/types/panel";
-import type { TerminalRestartError } from "@/types";
+import type { TerminalRestartError, SpawnError, TerminalReconnectError } from "@/types";
 
 export type RestartBannerVariant =
   | { type: "auto-restarting" }
@@ -14,10 +14,12 @@ export interface RestartBannerInput {
   isRestarting: boolean;
   isAutoRestarting: boolean;
   exitBehavior: PanelExitBehavior | undefined;
+  reconnectError?: TerminalReconnectError;
+  spawnError?: SpawnError;
 }
 
 export function getRestartBannerVariant(input: RestartBannerInput): RestartBannerVariant {
-  if (input.isAutoRestarting) {
+  if (input.isAutoRestarting && !input.reconnectError && !input.spawnError) {
     return { type: "auto-restarting" };
   }
 

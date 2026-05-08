@@ -857,6 +857,8 @@ function TerminalPaneComponent({
           isRestarting,
           isAutoRestarting,
           exitBehavior,
+          reconnectError,
+          spawnError,
         })}
         onRestart={handleRestart}
         onDismiss={() => setDismissedRestartPrompt(true)}

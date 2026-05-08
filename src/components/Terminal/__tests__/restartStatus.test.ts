@@ -88,4 +88,40 @@ describe("getRestartBannerVariant", () => {
     const result = getRestartBannerVariant({ ...base, exitCode: 137 });
     expect(result).toEqual({ type: "exit-error", exitCode: 137 });
   });
+
+  it("returns auto-restarting when isAutoRestarting is true and no other errors are present", () => {
+    const result = getRestartBannerVariant({
+      ...base,
+      isAutoRestarting: true,
+      reconnectError: undefined,
+      spawnError: undefined,
+    });
+    expect(result).toEqual({ type: "auto-restarting" });
+  });
+
+  it("suppresses auto-restarting when reconnectError is present", () => {
+    const result = getRestartBannerVariant({
+      ...base,
+      isAutoRestarting: true,
+      reconnectError: {
+        message: "lost connection",
+        code: "RECONNECT_FAILED",
+        timestamp: Date.now(),
+      } as never,
+    });
+    expect(result.type).not.toBe("auto-restarting");
+  });
+
+  it("suppresses auto-restarting when spawnError is present", () => {
+    const result = getRestartBannerVariant({
+      ...base,
+      isAutoRestarting: true,
+      spawnError: {
+        message: "spawn failed",
+        code: "SPAWN_FAILED",
+        timestamp: Date.now(),
+      } as never,
+    });
+    expect(result.type).not.toBe("auto-restarting");
+  });
 });
