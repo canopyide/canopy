@@ -26,7 +26,7 @@ const CONTRAST_PAIRS: Array<{
 ];
 
 function isHexColor(value: string): boolean {
-  return /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value);
+  return /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value.trim());
 }
 
 function hexToLinear(channel: number): number {
@@ -35,7 +35,7 @@ function hexToLinear(channel: number): number {
 }
 
 function relativeLuminance(hex: string): number {
-  const clean = hex.replace("#", "");
+  const clean = hex.trim().replace("#", "");
   let rgb: string;
   if (clean.length === 3 || clean.length === 4) {
     // 3-digit (#rgb) or 4-digit (#rgba): expand RGB nibbles, drop alpha for static analysis.

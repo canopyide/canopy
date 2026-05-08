@@ -124,6 +124,51 @@ describe("getThemeContrastWarnings", () => {
     expect(unevaluable).toHaveLength(0);
   });
 
+  it("emits a ratio warning when 8-digit alpha hex values fail the threshold", () => {
+    // #999999ff on #ffffffff is ~2.85:1, below 4.5 — alpha-stripping must still produce a real check.
+    const scheme = makeScheme({
+      "text-primary": "#999999ff" as AppColorSchemeTokens["text-primary"],
+      "surface-canvas": "#ffffffff" as AppColorSchemeTokens["surface-canvas"],
+    });
+    const warnings = getThemeContrastWarnings(scheme);
+    const failure = warnings.find(
+      (w) =>
+        w.message.includes("text-primary on surface-canvas") &&
+        w.message.includes("target is 4.5:1") &&
+        !w.message.includes("Cannot evaluate")
+    );
+    expect(failure).toBeDefined();
+  });
+
+  it("emits an unevaluable warning when a non-hex value lands on a status-* pair", () => {
+    const scheme = makeScheme({
+      "status-success": "oklch(0.5 0.1 200)" as AppColorSchemeTokens["status-success"],
+    });
+    const warnings = getThemeContrastWarnings(scheme);
+    const matching = warnings.find(
+      (w) =>
+        w.message.includes("Cannot evaluate") &&
+        w.message.includes("status-success on surface-panel")
+    );
+    expect(matching).toBeDefined();
+    expect(matching!.message).toContain("oklch(0.5 0.1 200)");
+  });
+
+  it("treats whitespace-padded hex tokens as evaluable", () => {
+    // Theme imports may store " #000000 " untrimmed; the checker should recover.
+    const scheme = makeScheme({
+      "text-primary": " #000000 " as AppColorSchemeTokens["text-primary"],
+      "surface-canvas": "  #ffffff" as AppColorSchemeTokens["surface-canvas"],
+    });
+    const warnings = getThemeContrastWarnings(scheme);
+    const unevaluable = warnings.filter(
+      (w) =>
+        w.message.includes("Cannot evaluate") &&
+        (w.message.includes("text-primary") || w.message.includes("surface-canvas"))
+    );
+    expect(unevaluable).toHaveLength(0);
+  });
+
   it("checks the new text-secondary on surface-grid pair", () => {
     // #cccccc on #ffffff is ~1.61:1, well below 3.0.
     const scheme = makeScheme({
@@ -177,7 +222,9 @@ describe("getThemeContrastWarnings", () => {
       "surface-panel": "#ffffff" as AppColorSchemeTokens["surface-panel"],
     });
     const warnings = getThemeContrastWarnings(scheme);
-    const statusFailures = warnings.filter((w) => w.message.startsWith("status-"));
+    // Catch both ratio failures (start with "status-") and unevaluable warnings
+    // (start with "Cannot evaluate" but mention the status token mid-string).
+    const statusFailures = warnings.filter((w) => w.message.includes("status-"));
     expect(statusFailures).toHaveLength(0);
   });
 });
