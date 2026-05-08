@@ -59,6 +59,15 @@ const mockBindings: Array<KeybindingConfig & { effectiveCombo: string }> = [
     category: "System",
     effectiveCombo: "Cmd+Shift+P",
   },
+  {
+    actionId: "app.unboundAction",
+    combo: "",
+    scope: "global",
+    priority: 0,
+    description: "Unbound Action",
+    category: "System",
+    effectiveCombo: "",
+  },
 ];
 
 const mockDisplayCombos: Record<string, string> = {
@@ -67,6 +76,7 @@ const mockDisplayCombos: Record<string, string> = {
   "terminal.newPanel": "⌘T",
   "app.openSettings": "⌘,",
   "app.commandPalette": "⌘⇧P",
+  "app.unboundAction": "",
 };
 
 vi.mock("@/services/KeybindingService", () => {
@@ -280,5 +290,36 @@ describe("ShortcutReferenceDialog", () => {
       expect(screen.getByText("Command Palette")).toBeTruthy();
       expect(screen.queryByText("Toggle Sidebar")).toBeNull();
     });
+  });
+
+  it("search input has aria-label for assistive tech", () => {
+    render(<ShortcutReferenceDialog isOpen={true} onClose={vi.fn()} />);
+
+    expect(screen.getByLabelText("Search shortcuts")).toBeTruthy();
+  });
+
+  it("renders italic 'unbound' placeholder when binding has no effective combo", () => {
+    render(<ShortcutReferenceDialog isOpen={true} onClose={vi.fn()} />);
+
+    const unboundCell = screen.getByText("unbound");
+    expect(unboundCell).toBeTruthy();
+    expect(unboundCell.tagName.toLowerCase()).toBe("span");
+  });
+
+  it("uses dl/dt/dd semantics for shortcut rows", () => {
+    render(<ShortcutReferenceDialog isOpen={true} onClose={vi.fn()} />);
+
+    const dl = document.querySelector("dl");
+    expect(dl).toBeTruthy();
+    expect(document.querySelectorAll("dt").length).toBeGreaterThan(0);
+    expect(document.querySelectorAll("dd").length).toBeGreaterThan(0);
+  });
+
+  it("footer renders Esc inside a kbd element", () => {
+    render(<ShortcutReferenceDialog isOpen={true} onClose={vi.fn()} />);
+
+    const kbds = document.querySelectorAll("kbd");
+    const escKbd = Array.from(kbds).find((el) => el.textContent === "Esc");
+    expect(escKbd).toBeTruthy();
   });
 });

@@ -48,7 +48,7 @@ export function KbdChord({
   if (steps.length === 0) return null;
 
   return (
-    <span
+    <kbd
       className={cn("inline-flex items-center gap-1", className)}
       aria-label={ariaLabel ?? shortcut}
     >
@@ -68,6 +68,7 @@ export function KbdChord({
                   </span>
                 )}
                 <kbd
+                  aria-hidden="true"
                   className={cn(
                     "px-1.5 py-0.5 rounded text-xs font-mono leading-none",
                     "bg-overlay-subtle text-daintree-text/70",
@@ -81,6 +82,6 @@ export function KbdChord({
           </span>
         </Fragment>
       ))}
-    </span>
+    </kbd>
   );
 }

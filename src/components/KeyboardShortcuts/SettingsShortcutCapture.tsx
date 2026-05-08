@@ -275,7 +275,7 @@ export function SettingsShortcutCapture({
 
   return (
     <div className="bg-daintree-bg/50 border border-daintree-border rounded-[var(--radius-lg)] p-4 space-y-3">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2" role="status" aria-live="polite" aria-atomic="true">
         {recording ? (
           <div className="flex-1 px-4 py-2 border border-daintree-accent rounded bg-daintree-accent/10 text-daintree-accent animate-pulse text-center">
             {chordStep === "first" ? (
