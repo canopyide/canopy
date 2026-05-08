@@ -21,36 +21,36 @@ describe("Kbd", () => {
 });
 
 describe("KbdChord", () => {
-  it("outer wrapper is a kbd element (not span) for canonical multi-key markup", () => {
+  it("outer wrapper is a span so ARIA labels do not land on kbd", () => {
     const { container } = render(<KbdChord shortcut="Cmd+S" />);
     const root = container.firstElementChild;
-    expect(root?.tagName.toLowerCase()).toBe("kbd");
+    expect(root?.tagName.toLowerCase()).toBe("span");
   });
 
   it("inner per-key kbd elements have aria-hidden to prevent AT double-announcement", () => {
     const { container } = render(<KbdChord shortcut="Cmd+S" />);
-    const innerKbds = container.querySelectorAll("kbd kbd");
+    const innerKbds = container.querySelectorAll("span kbd");
     expect(innerKbds.length).toBeGreaterThan(0);
     innerKbds.forEach((kbd) => {
       expect(kbd.getAttribute("aria-hidden")).toBe("true");
     });
   });
 
-  it("propagates aria-label to the outer kbd", () => {
+  it("renders an accessible text label when provided", () => {
     const { container } = render(<KbdChord shortcut="Cmd+S" aria-label="Save file" />);
-    const root = container.firstElementChild;
-    expect(root?.getAttribute("aria-label")).toBe("Save file");
+    const label = container.querySelector(".sr-only");
+    expect(label?.textContent).toBe("Save file");
   });
 
-  it("falls back to shortcut string when aria-label is not provided", () => {
+  it("falls back to shortcut string for accessible text when aria-label is not provided", () => {
     const { container } = render(<KbdChord shortcut="Cmd+S" />);
-    const root = container.firstElementChild;
-    expect(root?.getAttribute("aria-label")).toBe("Cmd+S");
+    const label = container.querySelector(".sr-only");
+    expect(label?.textContent).toBe("Cmd+S");
   });
 
   it("renders chord with multiple steps", () => {
     const { container } = render(<KbdChord shortcut="Cmd+K Cmd+S" />);
-    const innerKbds = container.querySelectorAll("kbd kbd");
+    const innerKbds = container.querySelectorAll("span kbd");
     expect(innerKbds.length).toBeGreaterThanOrEqual(4);
   });
 });

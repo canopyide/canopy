@@ -48,10 +48,8 @@ export function KbdChord({
   if (steps.length === 0) return null;
 
   return (
-    <kbd
-      className={cn("inline-flex items-center gap-1", className)}
-      aria-label={ariaLabel ?? shortcut}
-    >
+    <span className={cn("inline-flex items-center gap-1", className)}>
+      <span className="sr-only">{ariaLabel ?? shortcut}</span>
       {steps.map((tokens, stepIndex) => (
         <Fragment key={stepIndex}>
           {stepIndex > 0 && (
@@ -82,6 +80,6 @@ export function KbdChord({
           </span>
         </Fragment>
       ))}
-    </kbd>
+    </span>
   );
 }

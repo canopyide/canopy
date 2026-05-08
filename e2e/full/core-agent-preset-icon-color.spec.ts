@@ -69,7 +69,8 @@ function writeFakeAgent(agentId: "claude" | "codex"): void {
       `console.log('FAKE_${label}_READY pid=' + process.pid);`,
       `console.log('FAKE_${label}_COLOR=' + (process.env.DAINTREE_E2E_AGENT_COLOR || ''));`,
       `console.log('FAKE_${label}_PROVIDER=' + (process.env.DAINTREE_E2E_PROVIDER || ''));`,
-      `console.log('FAKE_${label}_MANUAL=' + (process.env.DAINTREE_E2E_MANUAL_RUN || ''));`,
+      "const manualRun = process.argv.includes('--manual') ? '1' : (process.env.DAINTREE_E2E_MANUAL_RUN || '');",
+      `console.log('FAKE_${label}_MANUAL=' + manualRun);`,
       "process.stdout.write('> ');",
       "process.stdin.resume();",
       "process.stdin.setEncoding('utf8');",
@@ -134,7 +135,12 @@ function fakeAgentCommand(agentId: "claude" | "codex"): string {
     process.platform === "win32"
       ? path.join(fakeBinDir, `${agentId}.cmd`)
       : path.join(fakeBinDir, agentId);
-  return shellQuote(scriptPath);
+  const quotedPath = shellQuote(scriptPath);
+  return process.platform === "win32" ? `& ${quotedPath}` : quotedPath;
+}
+
+function manualFakeAgentCommand(agentId: "claude" | "codex"): string {
+  return `${fakeAgentCommand(agentId)} --manual`;
 }
 
 function launchEnv(): Record<string, string> {
@@ -340,11 +346,7 @@ test.describe.serial("Core: Agent preset icon color", () => {
 
     await test.step("Restart terminal and manual-run Claude — verify color reapplies", async () => {
       await restartTerminal(ctx.window, claude.id, claude.panel);
-      await runTerminalCommand(
-        ctx.window,
-        claude.panel,
-        `DAINTREE_E2E_MANUAL_RUN=1 ${fakeAgentCommand("claude")}`
-      );
+      await runTerminalCommand(ctx.window, claude.panel, manualFakeAgentCommand("claude"));
       await waitForTerminalText(claude.panel, "FAKE_CLAUDE_MANUAL=1", T_LONG);
       await waitForTerminalText(claude.panel, `FAKE_CLAUDE_COLOR=${CLAUDE_COLOR}`, T_LONG);
       await expectAgentIconColor(claude.panel, "claude", CLAUDE_COLOR);
