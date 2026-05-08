@@ -100,6 +100,7 @@ beforeEach(() => {
 });
 
 const { usePanelStore } = await import("../../../panelStore");
+const { useWorktreeSelectionStore } = await import("../../../worktreeStore");
 
 async function drainMicrotasks(iterations = 20): Promise<void> {
   for (let i = 0; i < iterations; i++) {
@@ -427,18 +428,21 @@ describe("dock watchdog hardening (#7278)", () => {
     await reset();
   });
 
-  it("spares activeDockTerminalId when panel exists in panelsById but not a filtered view", async () => {
+  it("spares activeDockTerminalId when panel exists in panelsById but would be filtered from dock view", async () => {
     const { closeDockTerminal } = usePanelStore.getState();
-    // Verify closeDockTerminal exists on the store (set up in beforeEach).
     expect(closeDockTerminal).toBeDefined();
 
     const targetId = "spared-by-panelsById";
 
-    // Set up the scenario: panel exists in panelsById and
-    // activeDockTerminalId is set to it. This is exactly the state the
-    // atomic commit in addPanel produces — both land in the same set().
-    // The filtered dockTerminals view is not needed here because the
-    // guard checks panelsById directly, which is the canonical source.
+    // Set the active worktree to a known value so we can create a
+    // genuine worktree mismatch. The dockTerminals selector filters on
+    // `worktreeId == null || worktreeId === activeWorktreeId`.
+    useWorktreeSelectionStore.setState({ activeWorktreeId: "wt-a" });
+
+    // Create a panel that WOULD be filtered out of dockTerminals due
+    // to worktree mismatch (wt-b != wt-a), but still exists in the
+    // canonical panelsById store. The panelsById guard in the watchdog
+    // should spare it.
     usePanelStore.setState({
       panelsById: {
         [targetId]: {
@@ -446,6 +450,7 @@ describe("dock watchdog hardening (#7278)", () => {
           kind: "terminal" as const,
           title: "Test",
           location: "dock" as const,
+          worktreeId: "wt-b",
         },
       },
       panelIds: [targetId],
@@ -456,10 +461,8 @@ describe("dock watchdog hardening (#7278)", () => {
     expect(state.panelsById[targetId]).toBeDefined();
     expect(state.activeDockTerminalId).toBe(targetId);
 
-    // The watchdog guard: if activeDockTerminalId is set and the panel
-    // exists in panelsById, closeDockTerminal must NOT be called.
-    // The guard is a truthiness check (matching the if-condition in the
-    // useEffect); coerce to boolean for the expectation.
+    // The dockTerminals selector would NOT include this panel (wt-b != active wt-a),
+    // but the panelsById guard should still spare it.
     const shouldSkipClose = Boolean(
       !state.activeDockTerminalId || state.panelsById[state.activeDockTerminalId]
     );
