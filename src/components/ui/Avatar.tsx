@@ -36,7 +36,7 @@ export function Avatar({ src, alt, title, className }: AvatarProps) {
             "absolute inset-0 rounded-full flex items-center justify-center",
             error
               ? "bg-muted-foreground/30 ring-2 ring-inset ring-muted-foreground/50"
-              : "bg-muted animate-pulse"
+              : "bg-muted animate-pulse-delayed"
           )}
         >
           {error && (
