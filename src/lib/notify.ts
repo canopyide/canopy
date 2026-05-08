@@ -42,12 +42,13 @@ export function isNotificationEventKind(v: string | undefined): v is Notificatio
  * Default auto-dismiss durations (ms) by notification type.
  *
  * Errors and warnings get a generous 12s so the user has time to read them;
- * success dismisses in 4s (two-word confirmations need no more). Info gets
- * 8s to match the Atlassian accessibility minimum for sentence-length
- * content. When a toast fires, the persistent inbox is the WCAG 2.2.1 conforming
- * alternative — users who miss a toast can always recover it from the
- * notification center. When no toast is shown (priority "low"), the inbox is the
- * primary channel and carries no compliance load.
+ * success dismisses in 5s — Adobe Spectrum's accessibility minimum, leaving
+ * room for short-sentence copy without rushing slow readers. Info gets 8s to
+ * match the Atlassian accessibility minimum for sentence-length content. When
+ * a toast fires, the persistent inbox is the WCAG 2.2.1 conforming alternative
+ * — users who miss a toast can always recover it from the notification center.
+ * When no toast is shown (priority "low"), the inbox is the primary channel and
+ * carries no compliance load.
  *
  * Action-bearing toasts override this to `0` (sticky) so the action remains
  * available; explicit `duration` on the payload always wins.
@@ -55,7 +56,7 @@ export function isNotificationEventKind(v: string | undefined): v is Notificatio
 export const TOAST_DURATION: Record<NotificationType, number> = {
   error: 12000,
   warning: 12000,
-  success: 4000,
+  success: 5000,
   info: 8000,
 };
 

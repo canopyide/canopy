@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { actionService } from "@/services/ActionService";
 import { EVENT_KIND_LABEL, isNotificationEventKind } from "@/lib/notify";
+import { useEscapeStack } from "@/hooks/useEscapeStack";
 
 const ACCENT_CLASS: Record<string, string> = {
   success: "border-l-status-success",
@@ -86,6 +87,13 @@ function Toast({ notification }: { notification: Notification }) {
   const dwellTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const busyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Safety fallback for the count-badge bump animation: when reduced-motion or
+  // performance mode forces `animation: none`, `animationend` never fires, so
+  // `isCountBumping` would latch true. Mirrors NotificationCenterToolbarButton.
+  const bumpFallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Short grace before resuming the dismiss timer after the cursor leaves —
+  // prevents accidental dismissal on small jitter or briefly crossing chrome.
+  const mouseLeaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
 
   // While bursts of count-only updates arrive, set aria-busy on the live
@@ -108,6 +116,8 @@ function Toast({ notification }: { notification: Notification }) {
       if (dwellTimerRef.current) clearTimeout(dwellTimerRef.current);
       if (busyTimerRef.current) clearTimeout(busyTimerRef.current);
       if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
+      if (bumpFallbackRef.current) clearTimeout(bumpFallbackRef.current);
+      if (mouseLeaveTimerRef.current) clearTimeout(mouseLeaveTimerRef.current);
     };
   }, []);
 
@@ -123,6 +133,16 @@ function Toast({ notification }: { notification: Notification }) {
       setIsCountBusy(false);
       busyTimerRef.current = null;
     }, DURATION_300);
+    // 150ms badge-bump animation + 50ms buffer. Under prefers-reduced-motion
+    // or data-reduce-animations, the CSS animation is suppressed and
+    // `animationend` never fires — without this fallback, isCountBumping
+    // would latch true and stale-class on the next chip remount.
+    if (bumpFallbackRef.current) clearTimeout(bumpFallbackRef.current);
+    bumpFallbackRef.current = setTimeout(() => {
+      if (!mountedRef.current) return;
+      setIsCountBumping(false);
+      bumpFallbackRef.current = null;
+    }, 200);
   }, [notification.count]);
 
   useLayoutEffect(() => {
@@ -149,7 +169,11 @@ function Toast({ notification }: { notification: Notification }) {
   const restoreFocus = useCallback(() => {
     if (toastRef.current?.contains(document.activeElement)) {
       const prev = prevFocusRef.current;
-      if (prev instanceof HTMLElement) prev.focus();
+      // Guard against the previously-focused element having been unmounted
+      // (e.g. its panel was torn down while the toast was active). Calling
+      // .focus() on a detached node is a silent no-op, so focus would land
+      // on body — explicit guard keeps intent obvious.
+      if (prev instanceof HTMLElement && prev.isConnected) prev.focus();
     }
   }, []);
 
@@ -190,6 +214,12 @@ function Toast({ notification }: { notification: Notification }) {
       setTimeout(() => removeNotification(notification.id), getUiTransitionDuration("exit"));
     }
   }, [notification.dismissed, notification.id, isVisible, removeNotification, restoreFocus]);
+
+  // Escape dismisses the topmost active toast. Each Toast registers
+  // independently so multi-toast stacks pop LIFO — the most recent toast
+  // first. The stack defers to higher-priority overlays (open dialogs,
+  // command palette) automatically.
+  useEscapeStack(!notification.dismissed, handleDismiss);
 
   // Latest-ref for handleDismiss so the auto-dismiss effect doesn't restart
   // every time the callback identity changes — the effect should restart only
@@ -251,8 +281,23 @@ function Toast({ notification }: { notification: Notification }) {
         transitionDuration: `${isVisible ? UI_ENTER_DURATION : UI_EXIT_DURATION}ms`,
         transitionTimingFunction: isVisible ? UI_ENTER_EASING : UI_EXIT_EASING,
       }}
-      onMouseEnter={() => setIsPaused(true)}
-      onMouseLeave={() => setIsPaused(false)}
+      onMouseEnter={() => {
+        if (mouseLeaveTimerRef.current) {
+          clearTimeout(mouseLeaveTimerRef.current);
+          mouseLeaveTimerRef.current = null;
+        }
+        setIsPaused(true);
+      }}
+      onMouseLeave={() => {
+        if (mouseLeaveTimerRef.current) clearTimeout(mouseLeaveTimerRef.current);
+        // 500ms grace before resuming the dismiss timer absorbs small jitter
+        // and brief crossings of inner chrome (Sonner default).
+        mouseLeaveTimerRef.current = setTimeout(() => {
+          if (!mountedRef.current) return;
+          setIsPaused(false);
+          mouseLeaveTimerRef.current = null;
+        }, 500);
+      }}
       onFocus={() => setIsPaused(true)}
       onBlur={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
@@ -527,7 +572,6 @@ function OverflowPill({ count }: { count: number }) {
     <button
       type="button"
       onClick={openNotificationCenter}
-      aria-live="polite"
       aria-label={label}
       data-testid="toast-overflow-pill"
       className={cn(
@@ -564,6 +608,8 @@ export function Toaster() {
 
   return createPortal(
     <div
+      role="region"
+      aria-label="Notifications"
       className="fixed top-14 z-[var(--z-toast)] flex flex-col gap-3 w-full max-w-[380px] pointer-events-none p-4"
       style={{ right: "calc(var(--right-obstruction-offset, 0px))" }}
     >

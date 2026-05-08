@@ -1076,20 +1076,20 @@ describe("Toast severity-based dismissal (issue #5859)", () => {
     expect(screen.queryByText("Failed once")).toBeNull();
   });
 
-  it("success toast dismisses around the 4s severity default", async () => {
+  it("success toast dismisses around the 5s severity default", async () => {
     render(<Toaster />);
     await act(async () => {
       notify({ type: "success", message: "Saved!" });
       vi.advanceTimersByTime(16);
     });
 
-    // Just before 4s — still visible.
+    // Just before 5s — still visible.
     await act(async () => {
-      vi.advanceTimersByTime(3500);
+      vi.advanceTimersByTime(4500);
     });
     expect(screen.getByText("Saved!")).toBeTruthy();
 
-    // Past 4s + the exit fade — gone.
+    // Past 5s + the exit fade — gone.
     await act(async () => {
       vi.advanceTimersByTime(1000);
     });
@@ -1204,7 +1204,7 @@ describe("Toast overflow pill (issue #6424)", () => {
     });
     const pill = screen.getByTestId("toast-overflow-pill");
     expect(pill.textContent).toBe("+1 more");
-    expect(pill.getAttribute("aria-live")).toBe("polite");
+    expect(pill.getAttribute("aria-live")).toBeNull();
     expect(pill.getAttribute("aria-label")).toBe("1 more in notification center");
   });
 

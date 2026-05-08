@@ -69,8 +69,8 @@ export function AccessibilityAnnouncer() {
 
   return (
     <>
-      <div ref={politeRef} className="sr-only" aria-live="polite" aria-atomic="false" />
-      <div ref={assertiveRef} className="sr-only" aria-live="assertive" aria-atomic="false" />
+      <div ref={politeRef} className="sr-only" aria-live="polite" aria-atomic="true" />
+      <div ref={assertiveRef} className="sr-only" aria-live="assertive" aria-atomic="true" />
     </>
   );
 }

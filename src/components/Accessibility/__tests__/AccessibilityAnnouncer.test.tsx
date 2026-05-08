@@ -25,12 +25,12 @@ describe("AccessibilityAnnouncer", () => {
     expect(assertiveRegion).toBeTruthy();
   });
 
-  it("both regions have aria-atomic=false", () => {
+  it("both regions have aria-atomic=true", () => {
     const { container } = render(<AccessibilityAnnouncer />);
     const regions = container.querySelectorAll("[aria-atomic]");
     expect(regions.length).toBe(2);
     for (const region of regions) {
-      expect(region.getAttribute("aria-atomic")).toBe("false");
+      expect(region.getAttribute("aria-atomic")).toBe("true");
     }
   });
 
