@@ -73,6 +73,39 @@ describe("ProcessDetector", () => {
     );
   });
 
+  it("detects agent npm command shims from Windows process paths", () => {
+    const cache = createCacheMock();
+    cache.setChildren(100, [
+      {
+        pid: 200,
+        comm: "C:\\npm\\prefix\\claude.cmd",
+        command: '"C:\\npm\\prefix\\claude.cmd" --resume',
+      },
+    ]);
+    const callback = vi.fn();
+
+    const detector = new ProcessDetector(
+      "terminal-windows-shim",
+      Date.now(),
+      100,
+      callback,
+      cache as never
+    );
+    detector.start();
+    cache.emitRefresh();
+
+    expect(callback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        detected: true,
+        agentType: "claude",
+        processName: "claude",
+        isBusy: true,
+        currentCommand: '"C:\\npm\\prefix\\claude.cmd" --resume',
+      }),
+      expect.any(Number)
+    );
+  });
+
   it("avoids duplicate callbacks when state has not changed on refresh", () => {
     const cache = createCacheMock();
     cache.setChildren(100, [
@@ -1303,6 +1336,19 @@ describe("extractScriptBasenameFromCommand", () => {
   it("detects agents from quoted absolute launch paths", () => {
     expect(
       detectCommandIdentity("'/Users/gpriday/.local/bin/claude' --dangerously-skip-permissions")
+    ).toMatchObject({
+      agentType: "claude",
+      processIconId: "claude",
+      processName: "claude",
+    });
+  });
+
+  it("detects agents from PowerShell launch commands that call Windows shims", () => {
+    expect(
+      extractCommandNameCandidates("& 'C:\\npm\\prefix\\claude.cmd' --dangerously-skip-permissions")
+    ).toEqual(["claude"]);
+    expect(
+      detectCommandIdentity("& 'C:\\npm\\prefix\\claude.cmd' --dangerously-skip-permissions")
     ).toMatchObject({
       agentType: "claude",
       processIconId: "claude",

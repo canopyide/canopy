@@ -245,6 +245,13 @@ function prepareFixture(): void {
   );
   chmodSync(fakeClaude, 0o755);
 
+  if (process.platform === "win32") {
+    writeFileSync(
+      path.join(fakeBinDir, "claude.cmd"),
+      ["@echo off", 'node "%~dp0claude" %*', ""].join("\r\n")
+    );
+  }
+
   writeFileSync(
     path.join(fixtureDir, "package.json"),
     JSON.stringify(

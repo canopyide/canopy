@@ -422,7 +422,7 @@ export class IdentityWatcher {
         return;
       }
 
-      if (promptVisible && !this.identity.agentType) {
+      if (promptVisible && !this.identity.agentType && !hasPtyDescendants) {
         console.log(
           `[IdentityDebug] shell-fallback-stop term=${this.delegate.terminalId.slice(-8)} ` +
             `reason=prompt-before-commit icon=${this.identity.processIconId ?? "<none>"}`

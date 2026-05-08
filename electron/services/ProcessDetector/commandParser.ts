@@ -1,6 +1,14 @@
 import type { CommandIdentity } from "./types.js";
 import { AGENT_CLI_NAMES, PROCESS_ICON_MAP } from "./registries.js";
 
+const WINDOWS_LAUNCHER_EXTENSION_PATTERN = /\.(?:exe|cmd|bat|com|ps1)$/i;
+const SCRIPT_EXTENSION_PATTERN = /\.(?:m?jsx?|cjs|tsx?|py|rb|php|pl)$/i;
+const SHELL_CONTROL_TOKENS = new Set(["&", "&&", "|", "||", ";"]);
+
+export function stripCommandExecutableExtension(name: string): string {
+  return name.replace(WINDOWS_LAUNCHER_EXTENSION_PATTERN, "").replace(SCRIPT_EXTENSION_PATTERN, "");
+}
+
 function splitShellLikeCommand(command: string): string[] {
   const parts: string[] = [];
   let current = "";
@@ -73,13 +81,12 @@ export function extractCommandNameCandidates(command: string | undefined): strin
   for (let i = 0; i < parts.length && candidates.length < 5; i++) {
     const arg = parts[i];
     if (!arg || arg.startsWith("-")) continue;
+    if (SHELL_CONTROL_TOKENS.has(arg)) continue;
     if (/^-?\d+(\.\d+)?$/.test(arg)) continue;
     if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(arg)) continue;
     const basename = arg.split(/[\\/]/).pop();
     if (!basename) continue;
-    const withoutExt = basename
-      .replace(/\.exe$/i, "")
-      .replace(/\.(m?jsx?|cjs|tsx?|py|rb|php|pl)$/i, "");
+    const withoutExt = stripCommandExecutableExtension(basename);
     if (withoutExt) candidates.push(withoutExt);
   }
   return candidates;

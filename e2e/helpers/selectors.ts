@@ -161,7 +161,8 @@ export const SEL = {
   firstRun: {
     welcomeTitle: 'h1:has-text("Welcome to Daintree")',
     agentTitle: 'text="Choose your AI agents"',
-    agentSetupTitle: 'text="Agent Setup"',
+    agentSetupDialog:
+      '[role="dialog"]:has-text("Agent Setup"), [role="dialog"]:has-text("Welcome to Daintree")',
     agentSetupBanner: '[data-testid="agent-setup-banner"]',
     agentSetupBannerCta: '[data-testid="agent-setup-banner-cta"]',
     agentSetupBannerDismiss: '[data-testid="agent-setup-banner-dismiss"]',

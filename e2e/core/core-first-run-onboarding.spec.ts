@@ -46,7 +46,7 @@ test.describe.serial("First-run onboarding flow", () => {
       const { window } = ctx!;
 
       // The wizard must NOT auto-open — it is opt-in via the banner CTA.
-      await expect(window.locator(SEL.firstRun.agentSetupTitle)).not.toBeVisible();
+      await expect(window.locator(SEL.firstRun.agentSetupDialog)).not.toBeVisible();
 
       // The setup banner is visible and invites the user in.
       await expect(window.locator(SEL.firstRun.agentSetupBanner)).toBeVisible({
@@ -59,11 +59,13 @@ test.describe.serial("First-run onboarding flow", () => {
 
       // Clicking the banner CTA opens the wizard on demand.
       await window.locator(SEL.firstRun.agentSetupBannerCta).click();
-      await expect(window.locator(SEL.firstRun.agentSetupTitle)).toBeVisible({ timeout: T_MEDIUM });
+      await expect(window.locator(SEL.firstRun.agentSetupDialog)).toBeVisible({
+        timeout: T_MEDIUM,
+      });
 
       // Skip closes the wizard and the toolbar remains interactive.
       await window.locator('button:has-text("Skip")').click();
-      await expect(window.locator(SEL.firstRun.agentSetupTitle)).not.toBeVisible({
+      await expect(window.locator(SEL.firstRun.agentSetupDialog)).not.toBeVisible({
         timeout: T_SETTLE,
       });
       await expect(window.locator(SEL.toolbar.openSettings)).toBeVisible();
@@ -101,7 +103,7 @@ test.describe.serial("First-run onboarding flow", () => {
 
       // The wizard must not auto-open either — the old returning-user
       // auto-open effect is gone.
-      await expect(window.locator(SEL.firstRun.agentSetupTitle)).not.toBeVisible();
+      await expect(window.locator(SEL.firstRun.agentSetupDialog)).not.toBeVisible();
     });
   });
 });

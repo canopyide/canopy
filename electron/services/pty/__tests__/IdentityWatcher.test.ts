@@ -443,6 +443,30 @@ describe("IdentityWatcher", () => {
       expect(watcher.isFallbackCommitted).toBe(true);
     });
 
+    it("does not stop icon fallback when a prompt-looking line is visible but a child is still running", async () => {
+      const inject = vi.fn();
+      const clear = vi.fn();
+      const fakeDetector = {
+        injectShellCommandEvidence: inject,
+        clearShellCommandEvidence: clear,
+      } as unknown as ProcessDetector;
+      const { delegate } = createFakeDelegate({
+        processDetector: fakeDetector,
+        visibleLines: ['PS C:\\repo> node -e "setTimeout(()=>{}, 8000)"', "PS C:\\repo> "],
+        cursorLine: "PS C:\\repo> ",
+        ptyDescendantCount: 1,
+      });
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.onShellSubmit('node -e "setTimeout(()=>{}, 8000)"');
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      expect(inject).toHaveBeenCalledTimes(1);
+      const [identity, commandText] = inject.mock.calls[0];
+      expect(identity).toMatchObject({ processIconId: "node" });
+      expect(commandText).toBe('node -e "setTimeout(()=>{}, 8000)"');
+    });
+
     it("calls processDetector.clearShellCommandEvidence('prompt-return') on demotion", async () => {
       const inject = vi.fn();
       const clear = vi.fn();

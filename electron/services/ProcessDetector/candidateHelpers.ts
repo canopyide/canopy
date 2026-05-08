@@ -1,11 +1,11 @@
 import type { BuiltInAgentId } from "../../../shared/config/agentIds.js";
 import type { DetectedProcessCandidate } from "./types.js";
 import { AGENT_CLI_NAMES, PROCESS_ICON_MAP, PACKAGE_MANAGER_ICON_IDS } from "./registries.js";
-import { extractCommandNameCandidates } from "./commandParser.js";
+import { extractCommandNameCandidates, stripCommandExecutableExtension } from "./commandParser.js";
 
 export function normalizeProcessName(name: string): string {
   const basename = name.split(/[\\/]/).pop() || name;
-  return basename.replace(/\.exe$/i, "");
+  return stripCommandExecutableExtension(basename);
 }
 
 export function getDetectionPriority(agentType?: BuiltInAgentId, processIconId?: string): number {

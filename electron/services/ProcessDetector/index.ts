@@ -12,6 +12,7 @@ export {
 export {
   extractCommandNameCandidates,
   extractScriptBasenameFromCommand,
+  stripCommandExecutableExtension,
   redactArgv,
   detectCommandIdentity,
 } from "./commandParser.js";
