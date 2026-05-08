@@ -125,54 +125,65 @@ test.describe.serial("Core: Worktree Cards", () => {
   test.describe.serial("Actions Menu", () => {
     test("actions menu opens and shows expected items", async () => {
       const { window } = ctx;
-
-      // Switch to feature card first — it has the richest menu (Pin, Delete)
       const featureCard = window.locator(SEL.worktree.card(FEATURE));
-      await featureCard.click({ position: { x: 10, y: 10 } });
-      await expect
-        .poll(() => featureCard.getAttribute("aria-label"), { timeout: T_LONG })
-        .toContain("selected");
 
-      const actionsBtn = featureCard.locator(SEL.worktree.actionsMenu);
-      await actionsBtn.click();
+      await test.step("Select feature card and open its actions menu", async () => {
+        // Switch to feature card first — it has the richest menu (Pin, Delete)
+        await featureCard.click({ position: { x: 10, y: 10 } });
+        await expect
+          .poll(() => featureCard.getAttribute("aria-label"), { timeout: T_LONG })
+          .toContain("selected");
 
-      // Verify top-level items/submenus are visible
-      await expect(window.getByRole("menuitem", { name: "Launch" })).toBeVisible({
-        timeout: T_SHORT,
+        const actionsBtn = featureCard.locator(SEL.worktree.actionsMenu);
+        await actionsBtn.click();
       });
-      await expect(window.getByRole("menuitem", { name: "Sessions" })).toBeVisible();
-      await expect(window.getByRole("menuitem", { name: "Open in Editor" })).toBeVisible();
-      await expect(window.getByRole("menuitem", { name: "Reveal in Finder" })).toBeVisible();
 
-      // Feature-only items (not shown on main worktree card)
-      await expect(window.getByRole("menuitem", { name: "Pin to Top" })).toBeVisible();
-      await expect(window.getByRole("menuitem", { name: /Delete Worktree/i })).toBeVisible();
+      await test.step("Verify expected menu items are visible", async () => {
+        await expect(window.getByRole("menuitem", { name: "Launch" })).toBeVisible({
+          timeout: T_SHORT,
+        });
+        await expect(window.getByRole("menuitem", { name: "Sessions" })).toBeVisible();
+        await expect(window.getByRole("menuitem", { name: "Open in Editor" })).toBeVisible();
+        await expect(window.getByRole("menuitem", { name: "Reveal in Finder" })).toBeVisible();
 
-      // Close the menu
-      await window.keyboard.press("Escape");
-      await expect(window.locator('[role="menu"]')).toHaveCount(0, { timeout: T_SHORT });
+        // Feature-only items (not shown on main worktree card)
+        await expect(window.getByRole("menuitem", { name: "Pin to Top" })).toBeVisible();
+        await expect(window.getByRole("menuitem", { name: /Delete Worktree/i })).toBeVisible();
+      });
+
+      await test.step("Close the menu via Escape", async () => {
+        await window.keyboard.press("Escape");
+        await expect(window.locator('[role="menu"]')).toHaveCount(0, { timeout: T_SHORT });
+      });
     });
 
     test("Launch submenu opens on hover and Open Terminal creates a panel", async () => {
       const { window } = ctx;
-
-      const panelsBefore = await getGridPanelCount(window);
-
+      let panelsBefore = 0;
       const featureCard = window.locator(SEL.worktree.card(FEATURE));
-      const actionsBtn = featureCard.locator(SEL.worktree.actionsMenu);
-      await actionsBtn.click();
 
-      const launchTrigger = window.getByRole("menuitem", { name: "Launch" });
-      await expect(launchTrigger).toBeVisible({ timeout: T_SHORT });
-      await launchTrigger.hover();
+      await test.step("Capture panel count and open actions menu", async () => {
+        panelsBefore = await getGridPanelCount(window);
 
-      const openTerminal = window.getByRole("menuitem", { name: "Open Terminal" });
-      await expect(openTerminal).toBeVisible({ timeout: T_SHORT });
-      await openTerminal.click();
+        const actionsBtn = featureCard.locator(SEL.worktree.actionsMenu);
+        await actionsBtn.click();
+      });
 
-      await expect
-        .poll(() => getGridPanelCount(window), { timeout: T_LONG })
-        .toBe(panelsBefore + 1);
+      await test.step("Hover Launch submenu and click Open Terminal", async () => {
+        const launchTrigger = window.getByRole("menuitem", { name: "Launch" });
+        await expect(launchTrigger).toBeVisible({ timeout: T_SHORT });
+        await launchTrigger.hover();
+
+        const openTerminal = window.getByRole("menuitem", { name: "Open Terminal" });
+        await expect(openTerminal).toBeVisible({ timeout: T_SHORT });
+        await openTerminal.click();
+      });
+
+      await test.step("Verify panel count increased by one", async () => {
+        await expect
+          .poll(() => getGridPanelCount(window), { timeout: T_LONG })
+          .toBe(panelsBefore + 1);
+      });
     });
 
     test("Escape dismisses the menu without side effects", async () => {
@@ -204,36 +215,40 @@ test.describe.serial("Core: Worktree Cards", () => {
   test.describe.serial("Panel Isolation", () => {
     test("switching worktrees isolates grid panels", async () => {
       const { window } = ctx;
-
-      // Feature card should have at least 1 panel from the Open Terminal test
       const featureCard = window.locator(SEL.worktree.card(FEATURE));
-      await featureCard.click({ position: { x: 10, y: 10 } });
-      await expect
-        .poll(() => featureCard.getAttribute("aria-label"), { timeout: T_LONG })
-        .toContain("selected");
-
-      await expect
-        .poll(() => getGridPanelCount(window), { timeout: T_LONG })
-        .toBeGreaterThanOrEqual(1);
-
-      // Switch to main — should have 0 panels
       const mainCard = window.locator(SEL.worktree.mainCard);
-      await mainCard.click({ position: { x: 10, y: 10 } });
-      await expect
-        .poll(() => mainCard.getAttribute("aria-label"), { timeout: T_LONG })
-        .toContain("selected");
 
-      await expect.poll(() => getGridPanelCount(window), { timeout: T_LONG }).toBe(0);
+      await test.step("Select feature worktree and confirm panels are present", async () => {
+        // Feature card should have at least 1 panel from the Open Terminal test
+        await featureCard.click({ position: { x: 10, y: 10 } });
+        await expect
+          .poll(() => featureCard.getAttribute("aria-label"), { timeout: T_LONG })
+          .toContain("selected");
 
-      // Switch back to feature — panels should reappear
-      await featureCard.click({ position: { x: 10, y: 10 } });
-      await expect
-        .poll(() => featureCard.getAttribute("aria-label"), { timeout: T_LONG })
-        .toContain("selected");
+        await expect
+          .poll(() => getGridPanelCount(window), { timeout: T_LONG })
+          .toBeGreaterThanOrEqual(1);
+      });
 
-      await expect
-        .poll(() => getGridPanelCount(window), { timeout: T_LONG })
-        .toBeGreaterThanOrEqual(1);
+      await test.step("Switch to main worktree and verify panels are hidden", async () => {
+        await mainCard.click({ position: { x: 10, y: 10 } });
+        await expect
+          .poll(() => mainCard.getAttribute("aria-label"), { timeout: T_LONG })
+          .toContain("selected");
+
+        await expect.poll(() => getGridPanelCount(window), { timeout: T_LONG }).toBe(0);
+      });
+
+      await test.step("Switch back to feature and verify panels reappear", async () => {
+        await featureCard.click({ position: { x: 10, y: 10 } });
+        await expect
+          .poll(() => featureCard.getAttribute("aria-label"), { timeout: T_LONG })
+          .toContain("selected");
+
+        await expect
+          .poll(() => getGridPanelCount(window), { timeout: T_LONG })
+          .toBeGreaterThanOrEqual(1);
+      });
     });
   });
 });

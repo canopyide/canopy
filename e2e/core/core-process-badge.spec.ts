@@ -27,55 +27,64 @@ test.describe.serial("Core: Process Icon Badge", () => {
 
   test("node process running a timed script surfaces the node badge, then clears on exit", async () => {
     const { window } = ctx;
-    await openTerminal(window);
-    const panel = getFirstGridPanel(window);
-    await expect(panel).toBeVisible({ timeout: T_LONG });
+    let panelId: string | null = null;
 
-    const panelId = await panel.getAttribute("data-panel-id");
-    expect(panelId).toBeTruthy();
+    const panel = await test.step("Open a terminal and capture its panel id", async () => {
+      await openTerminal(window);
+      const p = getFirstGridPanel(window);
+      await expect(p).toBeVisible({ timeout: T_LONG });
+      panelId = await p.getAttribute("data-panel-id");
+      expect(panelId).toBeTruthy();
+      return p;
+    });
 
-    // Run a bounded `node` process — `node` is in PROCESS_ICON_MAP, so
-    // either the process-tree detector or the shell-command fallback should
-    // commit the "node" icon within the hysteresis window (~3s baseline).
-    // SENTINEL_READY lets us confirm the script is actually executing.
-    await runTerminalCommand(
-      window,
-      panel,
-      `node -e "console.log('SENTINEL_READY'); setTimeout(()=>{}, 8000)"`
-    );
-    await waitForTerminalText(panel, "SENTINEL_READY", T_LONG);
+    await test.step("Run a bounded node script and wait for SENTINEL_READY", async () => {
+      // Run a bounded `node` process — `node` is in PROCESS_ICON_MAP, so
+      // either the process-tree detector or the shell-command fallback should
+      // commit the "node" icon within the hysteresis window (~3s baseline).
+      // SENTINEL_READY lets us confirm the script is actually executing.
+      await runTerminalCommand(
+        window,
+        panel,
+        `node -e "console.log('SENTINEL_READY'); setTimeout(()=>{}, 8000)"`
+      );
+      await waitForTerminalText(panel, "SENTINEL_READY", T_LONG);
+    });
 
-    // Badge appears. T_LONG accommodates CI slowness plus the 1500ms-poll
-    // × 2-poll hysteresis baseline.
-    await expect
-      .poll(
-        async () => {
-          return await window.evaluate(
-            (id) =>
-              document
-                .querySelector(`[data-panel-id="${id}"]`)
-                ?.getAttribute("data-detected-process-id"),
-            panelId
-          );
-        },
-        { timeout: T_LONG, intervals: [500] }
-      )
-      .toBe("node");
+    await test.step("Verify node badge appears on the panel", async () => {
+      // Badge appears. T_LONG accommodates CI slowness plus the 1500ms-poll
+      // × 2-poll hysteresis baseline.
+      await expect
+        .poll(
+          async () => {
+            return await window.evaluate(
+              (id) =>
+                document
+                  .querySelector(`[data-panel-id="${id}"]`)
+                  ?.getAttribute("data-detected-process-id"),
+              panelId
+            );
+          },
+          { timeout: T_LONG, intervals: [500] }
+        )
+        .toBe("node");
+    });
 
-    // Badge clears after the process exits.
-    await expect
-      .poll(
-        async () => {
-          return await window.evaluate(
-            (id) =>
-              document
-                .querySelector(`[data-panel-id="${id}"]`)
-                ?.getAttribute("data-detected-process-id"),
-            panelId
-          );
-        },
-        { timeout: T_LONG, intervals: [500] }
-      )
-      .toBeNull();
+    await test.step("Verify badge clears after the process exits", async () => {
+      await expect
+        .poll(
+          async () => {
+            return await window.evaluate(
+              (id) =>
+                document
+                  .querySelector(`[data-panel-id="${id}"]`)
+                  ?.getAttribute("data-detected-process-id"),
+              panelId
+            );
+          },
+          { timeout: T_LONG, intervals: [500] }
+        )
+        .toBeNull();
+    });
   });
 });

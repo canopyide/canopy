@@ -46,56 +46,67 @@ test.describe.serial("Core: Action Palette, Command Picker & Quick Switcher", ()
     test("search input is focused and filters results", async () => {
       const { window } = ctx;
 
-      await expectPaletteFocused(window, "action", T_SHORT);
+      await test.step("Verify search input is focused on open", async () => {
+        await expectPaletteFocused(window, "action", T_SHORT);
+      });
 
       const searchInput = window.locator(SEL.actionPalette.searchInput);
       const options = window.locator(SEL.actionPalette.options);
+      let unfilteredCount = 0;
 
-      // Empty query shows only recently-used actions; on a fresh project
-      // that list is empty. Type a broad query to populate the list, then
-      // narrow it.
-      await searchInput.fill("panel");
-      await window.waitForTimeout(T_SETTLE);
-      await expect(options.first()).toBeVisible({ timeout: T_MEDIUM });
-      const unfilteredCount = await options.count();
+      await test.step("Type broad query and capture unfiltered count", async () => {
+        // Empty query shows only recently-used actions; on a fresh project
+        // that list is empty. Type a broad query to populate the list, then
+        // narrow it.
+        await searchInput.fill("panel");
+        await window.waitForTimeout(T_SETTLE);
+        await expect(options.first()).toBeVisible({ timeout: T_MEDIUM });
+        unfilteredCount = await options.count();
+      });
 
-      await searchInput.fill("toggle sidebar");
-      await window.waitForTimeout(T_SETTLE);
+      await test.step("Narrow query and verify result count drops", async () => {
+        await searchInput.fill("toggle sidebar");
+        await window.waitForTimeout(T_SETTLE);
 
-      const filteredCount = await options.count();
-      expect(filteredCount).toBeGreaterThanOrEqual(1);
-      expect(filteredCount).toBeLessThan(unfilteredCount);
+        const filteredCount = await options.count();
+        expect(filteredCount).toBeGreaterThanOrEqual(1);
+        expect(filteredCount).toBeLessThan(unfilteredCount);
+      });
     });
 
     test("arrow key navigation changes selection", async () => {
       const { window } = ctx;
-
       const searchInput = window.locator(SEL.actionPalette.searchInput);
-
-      // A broad query produces multiple results to navigate through
-      // (an empty query would only show recently-used, which is empty
-      // on a fresh project).
-      await searchInput.fill("panel");
-      await window.waitForTimeout(T_SETTLE);
-
       const options = window.locator(SEL.actionPalette.options);
-      await expect(options.first()).toBeVisible({ timeout: T_MEDIUM });
-      const count = await options.count();
-      expect(count).toBeGreaterThanOrEqual(2);
+      let initialDescendant: string | null = null;
 
-      const initialDescendant = await searchInput.getAttribute("aria-activedescendant");
+      await test.step("Type broad query to populate at least two results", async () => {
+        // A broad query produces multiple results to navigate through
+        // (an empty query would only show recently-used, which is empty
+        // on a fresh project).
+        await searchInput.fill("panel");
+        await window.waitForTimeout(T_SETTLE);
 
-      await searchInput.press("ArrowDown");
+        await expect(options.first()).toBeVisible({ timeout: T_MEDIUM });
+        const count = await options.count();
+        expect(count).toBeGreaterThanOrEqual(2);
 
-      // Poll until the selection changes — the React state update from
-      // selectNext may take a render cycle to flush to the DOM.
-      await expect
-        .poll(() => searchInput.getAttribute("aria-activedescendant"), { timeout: T_MEDIUM })
-        .not.toBe(initialDescendant);
+        initialDescendant = await searchInput.getAttribute("aria-activedescendant");
+      });
 
-      const newDescendant = await searchInput.getAttribute("aria-activedescendant");
-      expect(newDescendant).toBeTruthy();
-      expect(newDescendant).toMatch(/^action-option-/);
+      await test.step("Press ArrowDown and verify active descendant updates", async () => {
+        await searchInput.press("ArrowDown");
+
+        // Poll until the selection changes — the React state update from
+        // selectNext may take a render cycle to flush to the DOM.
+        await expect
+          .poll(() => searchInput.getAttribute("aria-activedescendant"), { timeout: T_MEDIUM })
+          .not.toBe(initialDescendant);
+
+        const newDescendant = await searchInput.getAttribute("aria-activedescendant");
+        expect(newDescendant).toBeTruthy();
+        expect(newDescendant).toMatch(/^action-option-/);
+      });
     });
 
     test("closes via Escape", async () => {
@@ -160,20 +171,23 @@ test.describe.serial("Core: Action Palette, Command Picker & Quick Switcher", ()
       const searchInput = window.locator(SEL.quickSwitcher.searchInput);
       const options = window.locator(SEL.quickSwitcher.options);
 
-      // Type a nonsense query — results should disappear
-      await searchInput.fill("nonexistent-query-xyz");
-      await window.waitForTimeout(T_SETTLE);
+      await test.step("Type nonsense query and verify zero results", async () => {
+        await searchInput.fill("nonexistent-query-xyz");
+        await window.waitForTimeout(T_SETTLE);
 
-      const filteredCount = await options.count();
-      expect(filteredCount).toBe(0);
+        const filteredCount = await options.count();
+        expect(filteredCount).toBe(0);
+      });
 
-      // First Escape clears the search query (two-step escape behavior)
-      await window.keyboard.press("Escape");
-      // Second Escape closes the dialog
-      await window.keyboard.press("Escape");
+      await test.step("Press Escape twice to clear query and close dialog", async () => {
+        // First Escape clears the search query (two-step escape behavior)
+        await window.keyboard.press("Escape");
+        // Second Escape closes the dialog
+        await window.keyboard.press("Escape");
 
-      const dialog = window.locator(SEL.quickSwitcher.dialog);
-      await expect(dialog).not.toBeVisible({ timeout: T_SHORT });
+        const dialog = window.locator(SEL.quickSwitcher.dialog);
+        await expect(dialog).not.toBeVisible({ timeout: T_SHORT });
+      });
     });
   });
 
@@ -203,28 +217,41 @@ test.describe.serial("Core: Action Palette, Command Picker & Quick Switcher", ()
     test("opens via button click on agent panel", async () => {
       const { window } = ctx;
 
-      // Agent panel requires CLI availability — skip if not present
       const startBtn = window.locator(SEL.agent.startButton);
-      if (!(await startBtn.isVisible().catch(() => false))) {
+      const skipped =
+        await test.step("Start an agent panel (skip if CLI is unavailable)", async () => {
+          // Agent panel requires CLI availability — skip if not present
+          if (!(await startBtn.isVisible().catch(() => false))) {
+            return true;
+          }
+
+          await startBtn.click();
+          await window.waitForTimeout(T_SETTLE);
+          return false;
+        });
+      if (skipped) {
         test.skip();
         return;
       }
 
-      await startBtn.click();
-      await window.waitForTimeout(T_SETTLE);
-
-      // HybridInputBar's command picker button only renders on agent panels
       const openPickerBtn = window.locator(SEL.commandPicker.openButton);
-      if (!(await openPickerBtn.isVisible({ timeout: T_LONG }).catch(() => false))) {
+      const pickerMissing =
+        await test.step("Wait for command picker open button to appear", async () => {
+          // HybridInputBar's command picker button only renders on agent panels
+          return !(await openPickerBtn.isVisible({ timeout: T_LONG }).catch(() => false));
+        });
+      if (pickerMissing) {
         test.skip();
         return;
       }
 
-      await openPickerBtn.click();
+      await test.step("Open command picker dialog and verify visibility", async () => {
+        await openPickerBtn.click();
 
-      const dialog = window.locator(SEL.commandPicker.dialog);
-      await expect(dialog).toBeVisible({ timeout: T_MEDIUM });
-      commandPickerAvailable = true;
+        const dialog = window.locator(SEL.commandPicker.dialog);
+        await expect(dialog).toBeVisible({ timeout: T_MEDIUM });
+        commandPickerAvailable = true;
+      });
     });
 
     test("search filters commands and Escape closes", async () => {
@@ -234,30 +261,37 @@ test.describe.serial("Core: Action Palette, Command Picker & Quick Switcher", ()
       }
 
       const { window } = ctx;
-
-      const list = window.locator(SEL.commandPicker.list);
-      await expect(list).toBeVisible({ timeout: T_MEDIUM });
-
       const options = window.locator(SEL.commandPicker.options);
-      const unfilteredCount = await options.count();
+      let unfilteredCount = 0;
 
-      const searchInput = window.locator(SEL.commandPicker.searchInput);
-      await searchInput.fill("git");
-      await window.waitForTimeout(T_SETTLE);
+      await test.step("Verify command list renders and capture unfiltered count", async () => {
+        const list = window.locator(SEL.commandPicker.list);
+        await expect(list).toBeVisible({ timeout: T_MEDIUM });
 
-      const filteredCount = await options.count();
-      expect(filteredCount).toBeGreaterThanOrEqual(1);
-      if (unfilteredCount > 1) {
-        expect(filteredCount).toBeLessThanOrEqual(unfilteredCount);
-      }
+        unfilteredCount = await options.count();
+      });
 
-      // First Escape clears the search query (two-step escape behavior)
-      await window.keyboard.press("Escape");
-      // Second Escape closes the dialog
-      await window.keyboard.press("Escape");
+      await test.step("Filter by 'git' and verify result count narrows", async () => {
+        const searchInput = window.locator(SEL.commandPicker.searchInput);
+        await searchInput.fill("git");
+        await window.waitForTimeout(T_SETTLE);
 
-      const dialog = window.locator(SEL.commandPicker.dialog);
-      await expect(dialog).not.toBeVisible({ timeout: T_SHORT });
+        const filteredCount = await options.count();
+        expect(filteredCount).toBeGreaterThanOrEqual(1);
+        if (unfilteredCount > 1) {
+          expect(filteredCount).toBeLessThanOrEqual(unfilteredCount);
+        }
+      });
+
+      await test.step("Press Escape twice to clear query and close dialog", async () => {
+        // First Escape clears the search query (two-step escape behavior)
+        await window.keyboard.press("Escape");
+        // Second Escape closes the dialog
+        await window.keyboard.press("Escape");
+
+        const dialog = window.locator(SEL.commandPicker.dialog);
+        await expect(dialog).not.toBeVisible({ timeout: T_SHORT });
+      });
     });
   });
 });

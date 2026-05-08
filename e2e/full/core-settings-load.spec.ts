@@ -21,15 +21,20 @@ test.describe.serial("Core: Settings Pages Load", () => {
 
   test("General tab: Overview loads without hanging", async () => {
     const { window } = ctx;
-    await openSettings(window);
-    await expect(window.locator(SEL.settings.heading)).toBeVisible({ timeout: T_MEDIUM });
 
-    // General is the default tab
-    await expect(window.locator("h3", { hasText: "General" })).toBeVisible({ timeout: T_SHORT });
+    await test.step("Open settings dialog", async () => {
+      await openSettings(window);
+      await expect(window.locator(SEL.settings.heading)).toBeVisible({ timeout: T_MEDIUM });
+    });
 
-    // Overview subtab should show the System Status section
-    const dialog = window.locator('[role="dialog"]');
-    await expect(dialog.locator("text=System Status")).toBeVisible({ timeout: T_SHORT });
+    await test.step("Verify General Overview content renders", async () => {
+      // General is the default tab
+      await expect(window.locator("h3", { hasText: "General" })).toBeVisible({ timeout: T_SHORT });
+
+      // Overview subtab should show the System Status section
+      const dialog = window.locator('[role="dialog"]');
+      await expect(dialog.locator("text=System Status")).toBeVisible({ timeout: T_SHORT });
+    });
   });
 
   test("General tab: Hibernation subtab loads", async () => {
@@ -64,22 +69,25 @@ test.describe.serial("Core: Settings Pages Load", () => {
   test("Appearance tab loads with subtabs", async () => {
     const { window } = ctx;
 
-    await window.locator(`${SEL.settings.navSidebar} button`, { hasText: "Appearance" }).click();
-    await expect(window.locator("h3", { hasText: "Appearance" })).toBeVisible({
-      timeout: T_SHORT,
+    await test.step("Open Appearance tab and verify App subtab content", async () => {
+      await window.locator(`${SEL.settings.navSidebar} button`, { hasText: "Appearance" }).click();
+      await expect(window.locator("h3", { hasText: "Appearance" })).toBeVisible({
+        timeout: T_SHORT,
+      });
+
+      // App subtab (default) should show the accent color section
+      const settingsPanel = window.locator('[role="dialog"]');
+      await expect(settingsPanel.locator('section[aria-label="Accent color"]')).toBeVisible({
+        timeout: T_SHORT,
+      });
     });
 
-    // App subtab (default) should show the accent color section
-    const settingsPanel = window.locator('[role="dialog"]');
-    await expect(settingsPanel.locator('section[aria-label="Accent color"]')).toBeVisible({
-      timeout: T_SHORT,
+    await test.step("Switch to Terminal subtab and verify content", async () => {
+      await window
+        .locator(`${SEL.settings.subtabNav} button[role="tab"]`, { hasText: "Terminal" })
+        .click();
+      await expect(window.locator(SEL.settings.fontSizeInput)).toBeVisible({ timeout: T_SHORT });
     });
-
-    // Switch to Terminal subtab
-    await window
-      .locator(`${SEL.settings.subtabNav} button[role="tab"]`, { hasText: "Terminal" })
-      .click();
-    await expect(window.locator(SEL.settings.fontSizeInput)).toBeVisible({ timeout: T_SHORT });
   });
 
   test("Keyboard tab loads", async () => {
@@ -116,53 +124,59 @@ test.describe.serial("Core: Settings Pages Load", () => {
   test("Privacy & Data tab loads with subtabs", async () => {
     const { window } = ctx;
 
-    await window
-      .locator(`${SEL.settings.navSidebar} button`, { hasText: "Privacy & Data" })
-      .click();
-    await expect(window.locator("h3", { hasText: "Privacy & Data" })).toBeVisible({
-      timeout: T_SHORT,
+    await test.step("Open Privacy & Data tab and verify Telemetry subtab", async () => {
+      await window
+        .locator(`${SEL.settings.navSidebar} button`, { hasText: "Privacy & Data" })
+        .click();
+      await expect(window.locator("h3", { hasText: "Privacy & Data" })).toBeVisible({
+        timeout: T_SHORT,
+      });
+
+      // Telemetry subtab (default) - verify telemetry options
+      await expect(window.locator("text=No data is collected").first()).toBeVisible({
+        timeout: T_SHORT,
+      });
     });
 
-    // Telemetry subtab (default) - verify telemetry options
-    await expect(window.locator("text=No data is collected").first()).toBeVisible({
-      timeout: T_SHORT,
-    });
-
-    // Switch to Data & Storage subtab
-    await window
-      .locator(`${SEL.settings.subtabNav} button[role="tab"]`, { hasText: "Data & Storage" })
-      .click();
-    await expect(window.locator("button", { hasText: "Clear Cache" })).toBeVisible({
-      timeout: T_SHORT,
+    await test.step("Switch to Data & Storage subtab and verify content", async () => {
+      await window
+        .locator(`${SEL.settings.subtabNav} button[role="tab"]`, { hasText: "Data & Storage" })
+        .click();
+      await expect(window.locator("button", { hasText: "Clear Cache" })).toBeVisible({
+        timeout: T_SHORT,
+      });
     });
   });
 
   test("Panel Grid tab loads with subtabs", async () => {
     const { window } = ctx;
 
-    await window.locator(`${SEL.settings.navSidebar} button`, { hasText: "Panel Grid" }).click();
-    await expect(window.locator("h3", { hasText: "Panel Grid" })).toBeVisible({
-      timeout: T_SHORT,
+    await test.step("Open Panel Grid tab and verify Performance subtab", async () => {
+      await window.locator(`${SEL.settings.navSidebar} button`, { hasText: "Panel Grid" }).click();
+      await expect(window.locator("h3", { hasText: "Panel Grid" })).toBeVisible({
+        timeout: T_SHORT,
+      });
+
+      // Performance subtab (default) should show Performance Mode toggle
+      await expect(window.locator(SEL.settings.performanceModeToggle)).toBeVisible({
+        timeout: T_SHORT,
+      });
     });
 
-    // Performance subtab (default) should show Performance Mode toggle
-    await expect(window.locator(SEL.settings.performanceModeToggle)).toBeVisible({
-      timeout: T_SHORT,
+    await test.step("Cycle remaining subtabs and verify each becomes selected", async () => {
+      const subtabs = ["Input", "Layout", "Scrollback", "Accessibility"];
+      for (const subtab of subtabs) {
+        await window
+          .locator(`${SEL.settings.subtabNav} button[role="tab"]`, { hasText: subtab })
+          .click();
+        // Verify the subtab button becomes selected
+        await expect(
+          window.locator(`${SEL.settings.subtabNav} button[role="tab"][aria-selected="true"]`, {
+            hasText: subtab,
+          })
+        ).toBeVisible({ timeout: T_SHORT });
+      }
     });
-
-    // Switch through remaining subtabs to verify they render content
-    const subtabs = ["Input", "Layout", "Scrollback", "Accessibility"];
-    for (const subtab of subtabs) {
-      await window
-        .locator(`${SEL.settings.subtabNav} button[role="tab"]`, { hasText: subtab })
-        .click();
-      // Verify the subtab button becomes selected
-      await expect(
-        window.locator(`${SEL.settings.subtabNav} button[role="tab"][aria-selected="true"]`, {
-          hasText: subtab,
-        })
-      ).toBeVisible({ timeout: T_SHORT });
-    }
   });
 
   test("Worktree tab loads", async () => {
@@ -297,62 +311,76 @@ test.describe.serial("Core: Settings Pages Load", () => {
 
   test("Project Variables tab loads", async () => {
     const { window } = ctx;
-    await openSettings(window);
-    await expect(window.locator(SEL.settings.heading)).toBeVisible({ timeout: T_MEDIUM });
 
-    // Switch to Project scope (Radix Select)
-    await window.locator('[aria-label="Settings scope"]').click();
-    await window.locator('[role="option"]', { hasText: "Project" }).click();
-    await window.waitForTimeout(T_SETTLE);
+    await test.step("Open settings and switch to Project scope", async () => {
+      await openSettings(window);
+      await expect(window.locator(SEL.settings.heading)).toBeVisible({ timeout: T_MEDIUM });
 
-    // Click Variables tab
-    await window.locator(`${SEL.settings.navSidebar} button`, { hasText: "Variables" }).click();
-
-    // The EnvironmentVariablesEditor heading should appear
-    await expect(window.locator("h3", { hasText: "Environment Variables" })).toBeVisible({
-      timeout: T_SHORT,
+      // Switch to Project scope (Radix Select)
+      await window.locator('[aria-label="Settings scope"]').click();
+      await window.locator('[role="option"]', { hasText: "Project" }).click();
+      await window.waitForTimeout(T_SETTLE);
     });
 
-    // Add Variable button should be visible. Two Environment Variables editors
-    // can render (one under Environment tab, one under Variables tab); check
-    // that at least one Add Variable button is present.
-    await expect(window.getByRole("button", { name: "Add Variable" }).first()).toBeVisible({
-      timeout: T_SHORT,
+    await test.step("Open Variables tab and verify editor renders", async () => {
+      await window.locator(`${SEL.settings.navSidebar} button`, { hasText: "Variables" }).click();
+
+      // The EnvironmentVariablesEditor heading should appear
+      await expect(window.locator("h3", { hasText: "Environment Variables" })).toBeVisible({
+        timeout: T_SHORT,
+      });
+
+      // Add Variable button should be visible. Two Environment Variables editors
+      // can render (one under Environment tab, one under Variables tab); check
+      // that at least one Add Variable button is present.
+      await expect(window.getByRole("button", { name: "Add Variable" }).first()).toBeVisible({
+        timeout: T_SHORT,
+      });
     });
 
-    await window.keyboard.press("Escape");
-    await expect(window.locator(SEL.settings.heading)).not.toBeVisible({ timeout: T_SHORT });
+    await test.step("Close settings dialog", async () => {
+      await window.keyboard.press("Escape");
+      await expect(window.locator(SEL.settings.heading)).not.toBeVisible({ timeout: T_SHORT });
+    });
   });
 
   // ── Project Settings: Resources tab loads ─────────────────
 
   test("Project Resources tab loads", async () => {
     const { window } = ctx;
-    await openSettings(window);
-    await expect(window.locator(SEL.settings.heading)).toBeVisible({ timeout: T_MEDIUM });
 
-    // Switch to Project scope (Radix Select)
-    await window.locator('[aria-label="Settings scope"]').click();
-    await window.locator('[role="option"]', { hasText: "Project" }).click();
-    await window.waitForTimeout(T_SETTLE);
+    await test.step("Open settings and switch to Project scope", async () => {
+      await openSettings(window);
+      await expect(window.locator(SEL.settings.heading)).toBeVisible({ timeout: T_MEDIUM });
 
-    // Click Worktree Setup tab (resources are now embedded here)
-    await window
-      .locator(`${SEL.settings.navSidebar} button`, { hasText: "Worktree Setup" })
-      .click();
-
-    // The Resource Environments heading should appear (scoped to the automation panel)
-    const automationPanel = window.locator("#settings-panel-project\\:automation");
-    await expect(automationPanel.locator("h2", { hasText: "Resource Environments" })).toBeVisible({
-      timeout: T_SHORT,
+      // Switch to Project scope (Radix Select)
+      await window.locator('[aria-label="Settings scope"]').click();
+      await window.locator('[role="option"]', { hasText: "Project" }).click();
+      await window.waitForTimeout(T_SETTLE);
     });
 
-    // Default Worktree Mode section should be visible (scoped to automation panel)
-    await expect(automationPanel.locator("text=Default Worktree Mode")).toBeVisible({
-      timeout: T_SHORT,
+    await test.step("Open Worktree Setup tab and verify Resource Environments", async () => {
+      await window
+        .locator(`${SEL.settings.navSidebar} button`, { hasText: "Worktree Setup" })
+        .click();
+
+      // The Resource Environments heading should appear (scoped to the automation panel)
+      const automationPanel = window.locator("#settings-panel-project\\:automation");
+      await expect(automationPanel.locator("h2", { hasText: "Resource Environments" })).toBeVisible(
+        {
+          timeout: T_SHORT,
+        }
+      );
+
+      // Default Worktree Mode section should be visible (scoped to automation panel)
+      await expect(automationPanel.locator("text=Default Worktree Mode")).toBeVisible({
+        timeout: T_SHORT,
+      });
     });
 
-    await window.keyboard.press("Escape");
-    await expect(window.locator(SEL.settings.heading)).not.toBeVisible({ timeout: T_SHORT });
+    await test.step("Close settings dialog", async () => {
+      await window.keyboard.press("Escape");
+      await expect(window.locator(SEL.settings.heading)).not.toBeVisible({ timeout: T_SHORT });
+    });
   });
 });
