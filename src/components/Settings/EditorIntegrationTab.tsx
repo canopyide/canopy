@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useId } from "react";
 import { Code2, CheckCircle, AlertCircle, RefreshCw, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SettingsSection } from "@/components/Settings/SettingsSection";
@@ -44,6 +44,9 @@ export function EditorIntegrationTab() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<"ok" | "error" | null>(null);
   const isMountedRef = useRef(true);
+  const editorId = useId();
+  const commandId = useId();
+  const argsId = useId();
 
   const activeProjectId = useProjectStore((s) => s.currentProject?.id);
 
@@ -155,9 +158,12 @@ export function EditorIntegrationTab() {
       >
         <div className="contents">
           <div className="space-y-1">
-            <label className="text-xs text-daintree-text/60">Editor</label>
+            <label htmlFor={editorId} className="text-xs text-daintree-text/60">
+              Editor
+            </label>
             <div className="flex items-center gap-2">
               <select
+                id={editorId}
                 value={selectedId}
                 onChange={(e) => setSelectedId(e.target.value as KnownEditorId)}
                 className="flex-1 bg-daintree-bg border border-border-strong rounded-[var(--radius-md)] px-3 py-1.5 text-sm text-daintree-text focus:outline-hidden focus:border-daintree-accent transition-colors"
@@ -214,8 +220,11 @@ export function EditorIntegrationTab() {
           {selectedId === "custom" && (
             <div className="space-y-3">
               <div className="space-y-1">
-                <label className="text-xs text-daintree-text/60">Command</label>
+                <label htmlFor={commandId} className="text-xs text-daintree-text/60">
+                  Command
+                </label>
                 <input
+                  id={commandId}
                   type="text"
                   value={customCommand}
                   onChange={(e) => setCustomCommand(e.target.value)}
@@ -224,8 +233,11 @@ export function EditorIntegrationTab() {
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-xs text-daintree-text/60">Arguments template</label>
+                <label htmlFor={argsId} className="text-xs text-daintree-text/60">
+                  Arguments template
+                </label>
                 <input
+                  id={argsId}
                   type="text"
                   value={customTemplate}
                   onChange={(e) => setCustomTemplate(e.target.value)}
