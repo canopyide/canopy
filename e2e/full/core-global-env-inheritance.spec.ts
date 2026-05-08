@@ -9,6 +9,13 @@ import { runTerminalCommand, waitForTerminalText } from "../helpers/terminal";
 
 let ctx: AppContext;
 
+function echoGlobalEnvCommand(): string {
+  if (process.platform === "win32") {
+    return 'Write-Output ("ENVCHECK_" + $env:TEST_GLOBAL_KEY + "_ENVCHECK")';
+  }
+  return "echo ENVCHECK_${TEST_GLOBAL_KEY}_ENVCHECK";
+}
+
 test.describe.serial("Full: Global Environment Variable Inheritance", () => {
   test.beforeAll(async () => {
     ctx = await launchApp();
@@ -150,7 +157,7 @@ test.describe.serial("Full: Global Environment Variable Inheritance", () => {
     await waitForTerminalText(panel, "env-inheritance", T_LONG);
 
     // Run echo command to check the env var value
-    await runTerminalCommand(window, panel, "echo ENVCHECK_${TEST_GLOBAL_KEY}_ENVCHECK");
+    await runTerminalCommand(window, panel, echoGlobalEnvCommand());
     // Project override should win over global
     await waitForTerminalText(panel, "ENVCHECK_project_override_ENVCHECK", T_LONG);
   });
