@@ -23,14 +23,7 @@ vi.mock("@dnd-kit/sortable", () => ({
 }));
 
 vi.mock("@/components/DragDrop/SortableWorktreeTerminal", () => ({
-  SortableWorktreeTerminal: ({
-    children,
-  }: {
-    children: (arg: {
-      listeners: Record<string, unknown>;
-      setActivatorNodeRef: (node: HTMLElement | null) => void;
-    }) => ReactNode;
-  }) => <>{children({ listeners: {}, setActivatorNodeRef: () => {} })}</>,
+  SortableWorktreeTerminal: ({ children }: { children: ReactNode }) => <>{children}</>,
   getAccordionDragId: (id: string) => `accordion-${id}`,
 }));
 
