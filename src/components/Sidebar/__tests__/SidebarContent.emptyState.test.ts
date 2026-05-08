@@ -142,7 +142,7 @@ describe("SidebarContent quick-state empty state — issue #6333 (CTA collapsed 
       expect(branch).toContain("undefined");
     });
 
-    it("preserves the 'No worktrees match your filters' branch via the EmptyState primitive", () => {
+    it("preserves the 'No matching worktrees' branch via the EmptyState primitive", () => {
       const branchStart = source.indexOf(
         "filteredWorktrees.length === 0 && hasFilters && hasNonMainWorktrees ?"
       );
@@ -150,7 +150,7 @@ describe("SidebarContent quick-state empty state — issue #6333 (CTA collapsed 
       const branch = source.slice(branchStart, branchEnd);
       expect(branch).toContain("<EmptyState");
       expect(branch).toContain('variant="filtered-empty"');
-      expect(branch).toContain('title="No worktrees match your filters"');
+      expect(branch).toContain('title="No matching worktrees"');
       expect(branch).toMatch(/onClick=\{clearAllFilters\}[\s\S]*?>\s*Clear filters\s*</);
     });
   });
@@ -267,5 +267,43 @@ describe("SidebarContent zero-worktrees taxonomy alignment — issue #6934", () 
     const branchEnd = source.indexOf("const hasNonMainWorktrees", branchStart);
     const branch = source.slice(branchStart, branchEnd);
     expect(branch).not.toContain("<button");
+  });
+});
+
+describe("SidebarContent loading skeleton — issue #7215", () => {
+  let source: string;
+
+  beforeAll(async () => {
+    source = await fs.readFile(SIDEBAR_CONTENT_PATH, "utf-8");
+  });
+
+  it("does not render immediate 'Loading worktrees...' text", () => {
+    expect(source).not.toContain(">Loading worktrees...</div>");
+  });
+
+  it("imports Skeleton and SkeletonBone from the shared skeleton component", () => {
+    expect(source).toMatch(
+      /import \{ Skeleton, SkeletonBone \} from "@\/components\/ui\/Skeleton"/
+    );
+  });
+
+  it("renders a Skeleton wrapper with role='status' and aria-label='Loading worktrees'", () => {
+    expect(source).toContain("<Skeleton");
+    expect(source).toContain('label="Loading worktrees"');
+  });
+
+  it("renders 6 SkeletonBone rows inside the loading branch", () => {
+    const branchStart = source.indexOf("if (isLoading && worktrees.length === 0)");
+    const branchEnd = source.indexOf("if (error)", branchStart);
+    const branch = source.slice(branchStart, branchEnd);
+    const boneCount = (branch.match(/<SkeletonBone/g) || []).length;
+    expect(boneCount).toBe(6);
+  });
+
+  it("does not use animate-pulse-immediate on skeleton bones", () => {
+    const branchStart = source.indexOf("if (isLoading && worktrees.length === 0)");
+    const branchEnd = source.indexOf("if (error)", branchStart);
+    const branch = source.slice(branchStart, branchEnd);
+    expect(branch).not.toContain("immediate");
   });
 });

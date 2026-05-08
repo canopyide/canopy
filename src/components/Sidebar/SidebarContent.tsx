@@ -11,6 +11,7 @@ import {
 } from "react";
 import { FolderOpen, LayoutGrid, Plus, RefreshCw, Zap } from "lucide-react";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Skeleton, SkeletonBone } from "@/components/ui/Skeleton";
 import { ScrollIndicator } from "@/components/Worktree/ScrollIndicator";
 import {
   useAgentLauncher,
@@ -488,7 +489,14 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
         <div className="flex items-center px-4 py-4 border-b border-divider shrink-0">
           <h2 className="text-daintree-text font-semibold text-sm tracking-wide">Worktrees</h2>
         </div>
-        <div className="px-4 py-4 text-daintree-text/60 text-sm">Loading worktrees...</div>
+        <Skeleton label="Loading worktrees" className="flex flex-col gap-2 px-4 py-4">
+          <SkeletonBone className="h-14 w-full" />
+          <SkeletonBone className="h-12 w-full" />
+          <SkeletonBone className="h-14 w-full" />
+          <SkeletonBone className="h-12 w-full" />
+          <SkeletonBone className="h-14 w-full" />
+          <SkeletonBone className="h-12 w-full" />
+        </Skeleton>
       </div>
     );
   }
@@ -798,7 +806,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
               ) : filteredWorktrees.length === 0 && hasFilters && hasNonMainWorktrees ? (
                 <EmptyState
                   variant="filtered-empty"
-                  title="No worktrees match your filters"
+                  title="No matching worktrees"
                   action={
                     <button
                       onClick={clearAllFilters}
