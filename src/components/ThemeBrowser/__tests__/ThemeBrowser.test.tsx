@@ -28,6 +28,10 @@ function otherDarkScheme() {
   return BUILT_IN_APP_SCHEMES.find((s) => s.type !== "light" && s.id !== DEFAULT_APP_SCHEME_ID)!;
 }
 
+function darkSchemeAt(index: number) {
+  return BUILT_IN_APP_SCHEMES.filter((s) => s.type !== "light")[index];
+}
+
 function findRowByName(name: string) {
   return screen
     .getAllByRole("option")
@@ -224,6 +228,20 @@ describe("ThemeBrowser", () => {
     expect(usePortalStore.getState().isOpen).toBe(false);
   });
 
+  it("PaletteStrip color swatches are hidden from screen readers", () => {
+    render(<Harness />);
+
+    // PaletteStrip is used in ThemeRow buttons (the list) and in the hero
+    // fallback. Every PaletteStrip container should carry aria-hidden="true"
+    // so screen readers skip the eight decorative color swatches.
+    const paletteStrips = document.querySelectorAll('[aria-hidden="true"]');
+    // At least one PaletteStrip in each ThemeRow plus the hero fallback.
+    // With default dark schemes (including Daintree which has a heroImage),
+    // we only see them in the list rows. The minimum bound is len(darkSchemes).
+    const darkCount = BUILT_IN_APP_SCHEMES.filter((s) => s.type !== "light").length;
+    expect(paletteStrips.length).toBeGreaterThanOrEqual(darkCount);
+  });
+
   describe("live region debounce", () => {
     beforeEach(() => {
       vi.useFakeTimers();
@@ -306,24 +324,75 @@ describe("ThemeBrowser", () => {
       const { container } = render(<Harness />);
       const live = container.querySelector('[aria-live="polite"]')!;
 
-      const target = otherDarkScheme();
-      const list = screen.getByRole("listbox", { name: "Theme list" });
+      // ArrowDown from default selects darkSchemes[1]; click darkSchemes[2]
+      // so the assertion actually catches a stale keyboard overwrite.
+      const keyboardTarget = darkSchemeAt(1);
+      const clickTarget = darkSchemeAt(2);
 
-      // Start a keyboard navigation (starts 300ms debounce)
+      const list = screen.getByRole("listbox", { name: "Theme list" });
       fireEvent.keyDown(list, { key: "ArrowDown" });
       expect(live.textContent).toBe("");
+      expect(useAppThemeStore.getState().previewSchemeId).toBe(keyboardTarget?.id);
 
-      // Click a specific row before the debounce fires
-      fireEvent.click(findRowByName(target.name));
+      // Click a different row before the debounce fires
+      fireEvent.click(findRowByName(clickTarget!.name));
 
-      // Click announces immediately, no debounce
-      expect(live.textContent).toBe(`Previewing: ${target.name}`);
+      expect(live.textContent).toBe(`Previewing: ${clickTarget!.name}`);
 
       // Pending keyboard debounce should not overwrite the click announcement
       act(() => {
         vi.advanceTimersByTime(300);
       });
-      expect(live.textContent).toBe(`Previewing: ${target.name}`);
+      expect(live.textContent).toBe(`Previewing: ${clickTarget!.name}`);
+    });
+
+    it("boundary-clamped ArrowDown produces no redundant announcement", () => {
+      const { container } = render(<Harness />);
+      const live = container.querySelector('[aria-live="polite"]')!;
+
+      const darkSchemes = BUILT_IN_APP_SCHEMES.filter((s) => s.type !== "light");
+      const lastIndex = darkSchemes.length - 1;
+
+      const list = screen.getByRole("listbox", { name: "Theme list" });
+
+      // Navigate to the last row
+      for (let i = 0; i < lastIndex; i++) {
+        fireEvent.keyDown(list, { key: "ArrowDown" });
+      }
+
+      // Let the final navigation announcement settle
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      const settledText = live.textContent;
+
+      // Boundary press — ArrowDown when already at last row
+      fireEvent.keyDown(list, { key: "ArrowDown" });
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+
+      // No redundant re-announcement of the same theme
+      expect(live.textContent).toBe(settledText);
+    });
+
+    it("Cancel before debounce fires clears the pending announcement", () => {
+      const { container } = render(<Harness />);
+      const live = container.querySelector('[aria-live="polite"]')!;
+
+      const list = screen.getByRole("listbox", { name: "Theme list" });
+      fireEvent.keyDown(list, { key: "ArrowDown" });
+
+      // Press Cancel before the debounce fires
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+      expect(live.textContent).toBe("");
+
+      // Advancing timers should not produce a stale announcement
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      expect(live.textContent).toBe("");
     });
   });
 });

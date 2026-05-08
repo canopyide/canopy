@@ -104,6 +104,16 @@ export function ThemeBrowser() {
   const setFollowSystem = useAppThemeStore((s) => s.setFollowSystem);
 
   const [query, setQuery] = useState("");
+
+  // Clear any pending keyboard-triggered announcement when the search query
+  // changes so a stale announcement from a pre-filter theme doesn't fire after
+  // the user has context-switched to filtering.
+  useEffect(() => {
+    if (announceTimerRef.current) {
+      clearTimeout(announceTimerRef.current);
+      announceTimerRef.current = null;
+    }
+  }, [query]);
   const [previewAnnouncement, setPreviewAnnouncement] = useState("");
   const [typeFilter, setTypeFilter] = useState<"dark" | "light">(() => {
     const committed = [...BUILT_IN_APP_SCHEMES, ...customSchemes].find(
@@ -299,7 +309,7 @@ export function ThemeBrowser() {
         const next = Math.min(keyboardIndex + 1, filteredThemes.length - 1);
         setKeyboardIndex(next);
         const scheme = filteredThemes[next];
-        if (scheme) {
+        if (scheme && scheme.id !== activeSchemeId) {
           handlePreview(scheme.id, true);
           focusRow(scheme.id);
         }
@@ -308,7 +318,7 @@ export function ThemeBrowser() {
         const next = Math.max(keyboardIndex - 1, 0);
         setKeyboardIndex(next);
         const scheme = filteredThemes[next];
-        if (scheme) {
+        if (scheme && scheme.id !== activeSchemeId) {
           handlePreview(scheme.id, true);
           focusRow(scheme.id);
         }
@@ -317,7 +327,7 @@ export function ThemeBrowser() {
         void handleCommit();
       }
     },
-    [filteredThemes, focusRow, handleCommit, handlePreview, keyboardIndex]
+    [filteredThemes, focusRow, handleCommit, handlePreview, keyboardIndex, activeSchemeId]
   );
 
   const handleSearchKeyDown = useCallback(
