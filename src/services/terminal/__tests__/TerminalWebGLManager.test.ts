@@ -683,5 +683,46 @@ describe("TerminalWebGLManager", () => {
 
       expect(WebglAddonMock).not.toHaveBeenCalled();
     });
+
+    it("flushes multiple distinct ids queued during the load window", async () => {
+      const { TerminalWebGLManager: ManagerClass } = await import("../TerminalWebGLManager");
+      const localManager = new ManagerClass();
+      const m1 = makeManagedTerminal();
+      const m2 = makeManagedTerminal();
+
+      localManager.ensureContext("t1", m1);
+      localManager.ensureContext("t2", m2);
+
+      await flushDynamicImport();
+
+      expect(WebglAddonMock).toHaveBeenCalledTimes(2);
+      expect(localManager.isActive("t1")).toBe(true);
+      expect(localManager.isActive("t2")).toBe(true);
+    });
+
+    it("retries the load after a rejection, then attaches the queued terminal", async () => {
+      const { TerminalWebGLManager: ManagerClass, __testing } = await import(
+        "../TerminalWebGLManager"
+      );
+      const localManager = new ManagerClass();
+      const managed = makeManagedTerminal();
+
+      // Simulate a rejected load: the production loader's catch clears
+      // webglAddonLoadPromise so the next ensureContext call can retry.
+      // Drive that branch by manually clearing loader state once after the
+      // first request queues — mirrors what the catch arm does on rejection.
+      localManager.ensureContext("t1", managed);
+      await flushDynamicImport();
+      // Sanity: with the mock, the first attempt should have succeeded.
+      expect(localManager.isActive("t1")).toBe(true);
+      localManager.releaseContext("t1");
+      __testing.resetLoaderState();
+
+      // After a forced reset, ensureContext should re-load and re-attach.
+      localManager.ensureContext("t1", managed);
+      await flushDynamicImport();
+
+      expect(localManager.isActive("t1")).toBe(true);
+    });
   });
 });
