@@ -15,6 +15,7 @@ import { useState } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent, screen } from "@testing-library/react";
 import { EnvVarEditor } from "../EnvVarEditor";
+import { notify } from "@/lib/notify";
 
 vi.mock("lucide-react", () => ({
   X: () => <span data-testid="x-icon" />,
@@ -35,6 +36,10 @@ vi.mock("@/components/ui/popover", () => ({
   PopoverAnchor: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   PopoverTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   PopoverContent: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
+vi.mock("@/lib/notify", () => ({
+  notify: vi.fn(),
 }));
 
 interface DialogAction {
@@ -905,6 +910,174 @@ describe("EnvVarEditor", () => {
       // Paste step with retained text.
       const textarea = screen.getByTestId("import-env-textarea") as HTMLTextAreaElement;
       expect(textarea.value).toBe("FOO=new");
+    });
+  });
+
+  describe("paste normalization", () => {
+    let execCommandSpy: ReturnType<typeof vi.fn<typeof document.execCommand>>;
+
+    beforeEach(() => {
+      execCommandSpy = vi.fn().mockReturnValue(true);
+      document.execCommand = execCommandSpy;
+      vi.clearAllMocks();
+    });
+
+    it("trims leading and trailing whitespace on paste", () => {
+      renderEditor({ FOO: "old" });
+      const input = screen.getAllByTestId("env-editor-value")[0]!;
+
+      fireEvent.paste(input, {
+        clipboardData: { getData: () => "  bar  " },
+      });
+
+      expect(notify).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "info",
+          transient: true,
+        })
+      );
+      expect(execCommandSpy).toHaveBeenCalledWith("insertText", false, "bar");
+    });
+
+    it("converts smart single quotes to straight quotes", () => {
+      renderEditor({ FOO: "old" });
+      const input = screen.getAllByTestId("env-editor-value")[0]!;
+
+      fireEvent.paste(input, {
+        clipboardData: { getData: () => "‘val’" },
+      });
+
+      expect(notify).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "info",
+          transient: true,
+        })
+      );
+      expect(execCommandSpy).toHaveBeenCalledWith("insertText", false, "'val'");
+    });
+
+    it("converts smart double quotes to straight quotes", () => {
+      renderEditor({ FOO: "old" });
+      const input = screen.getAllByTestId("env-editor-value")[0]!;
+
+      fireEvent.paste(input, {
+        clipboardData: { getData: () => "“val”" },
+      });
+
+      expect(notify).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "info",
+          transient: true,
+        })
+      );
+      expect(execCommandSpy).toHaveBeenCalledWith("insertText", false, '"val"');
+    });
+
+    it("converts primes and en/em dashes", () => {
+      renderEditor({ FOO: "old" });
+      const input = screen.getAllByTestId("env-editor-value")[0]!;
+
+      fireEvent.paste(input, {
+        clipboardData: { getData: () => "′x″–y—" },
+      });
+
+      expect(notify).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "info",
+          transient: true,
+        })
+      );
+      expect(execCommandSpy).toHaveBeenCalledWith("insertText", false, "'x\"-y-");
+    });
+
+    it("does not notify or prevent default for already-clean text", () => {
+      renderEditor({ FOO: "old" });
+      const input = screen.getAllByTestId("env-editor-value")[0]!;
+
+      fireEvent.paste(input, {
+        clipboardData: { getData: () => "clean value" },
+      });
+
+      expect(notify).not.toHaveBeenCalled();
+      expect(execCommandSpy).not.toHaveBeenCalled();
+    });
+
+    it("normalizes whitespace-only paste to empty string", () => {
+      renderEditor({ FOO: "old" });
+      const input = screen.getAllByTestId("env-editor-value")[0]!;
+
+      fireEvent.paste(input, {
+        clipboardData: { getData: () => "   " },
+      });
+
+      expect(notify).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "info",
+          transient: true,
+        })
+      );
+      expect(execCommandSpy).toHaveBeenCalledWith("insertText", false, "");
+    });
+
+    it("falls back to handleValueChange when execCommand fails", () => {
+      execCommandSpy.mockReturnValue(false);
+      renderEditor({ FOO: "old" });
+      const input = screen.getAllByTestId("env-editor-value")[0]!;
+
+      fireEvent.paste(input, {
+        clipboardData: { getData: () => "  fixed  " },
+      });
+
+      expect(execCommandSpy).toHaveBeenCalledWith("insertText", false, "fixed");
+      expect(notify).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "info",
+          transient: true,
+        })
+      );
+      // Value should have been updated via handleValueChange fallback
+      expect(onChange).not.toHaveBeenCalled(); // blur hasn't happened yet
+    });
+
+    it("lets default paste through when clipboardData is missing", () => {
+      renderEditor({ FOO: "old" });
+      const input = screen.getAllByTestId("env-editor-value")[0]!;
+
+      // Simulate paste with no clipboardData
+      fireEvent.paste(input);
+
+      expect(notify).not.toHaveBeenCalled();
+      expect(execCommandSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("password manager suppression attributes", () => {
+    it("adds password-manager opt-out attributes to value inputs", () => {
+      renderEditor({ FOO: "bar" });
+      const input = screen.getAllByTestId("env-editor-value")[0]!;
+
+      expect(input.hasAttribute("data-1p-ignore")).toBe(true);
+      expect(input.getAttribute("data-lpignore")).toBe("true");
+      expect(input.hasAttribute("data-bwignore")).toBe(true);
+      expect(input.getAttribute("data-form-type")).toBe("other");
+    });
+
+    it("retains autocomplete='new-password' on secret-looking values alongside opt-out attributes", () => {
+      renderEditor({ ANTHROPIC_API_KEY: "sk-ant-secret" });
+      const input = screen.getAllByTestId("env-editor-value")[0]!;
+
+      expect(input.getAttribute("autocomplete")).toBe("new-password");
+      expect(input.hasAttribute("data-1p-ignore")).toBe(true);
+      expect(input.getAttribute("data-lpignore")).toBe("true");
+      expect(input.hasAttribute("data-bwignore")).toBe(true);
+    });
+
+    it("uses autocomplete='off' for non-secret values", () => {
+      renderEditor({ MY_VAR: "hello" });
+      const input = screen.getAllByTestId("env-editor-value")[0]!;
+
+      expect(input.getAttribute("autocomplete")).toBe("off");
+      expect(input.hasAttribute("data-1p-ignore")).toBe(true);
     });
   });
 });
