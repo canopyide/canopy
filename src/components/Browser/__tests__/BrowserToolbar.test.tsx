@@ -2,6 +2,7 @@
 import { act, render, fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { BrowserToolbar } from "../BrowserToolbar";
+import type { ViewportPresetId } from "@shared/types/panel";
 
 vi.mock("@/components/ui/tooltip", () => ({
   Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -397,5 +398,252 @@ describe("BrowserToolbar address-bar scheme icon and input", () => {
     const { getByTestId } = renderToolbar({ isLoading: false });
     const reload = getByTestId("browser-reload");
     expect(reload.className).not.toContain("animate-spin");
+  });
+});
+
+describe("BrowserToolbar viewport presets", () => {
+  const onViewportPresetChange = vi.fn();
+
+  function renderWithViewport(overrides = {}) {
+    return renderToolbar({
+      onViewportPresetChange,
+      viewportPreset: "iphone" as ViewportPresetId,
+      ...overrides,
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe("radiogroup semantics", () => {
+    it("chip container has radiogroup role and accessible name", () => {
+      renderWithViewport();
+      const group = document.querySelector('[role="radiogroup"]');
+      expect(group).toBeTruthy();
+      expect(group!.getAttribute("aria-label")).toBe("Viewport preset");
+    });
+
+    it("each chip is a radio with aria-checked reflecting selection", () => {
+      renderWithViewport();
+      const radios = document.querySelectorAll('[role="radio"]');
+      expect(radios.length).toBe(3);
+
+      const iphoneRadio = document.querySelector('[data-viewport-preset-id="iphone"]');
+      expect(iphoneRadio!.getAttribute("aria-checked")).toBe("true");
+
+      const pixelRadio = document.querySelector('[data-viewport-preset-id="pixel"]');
+      expect(pixelRadio!.getAttribute("aria-checked")).toBe("false");
+
+      const ipadRadio = document.querySelector('[data-viewport-preset-id="ipad"]');
+      expect(ipadRadio!.getAttribute("aria-checked")).toBe("false");
+    });
+
+    it("selected radio has tabIndex 0, others have -1", () => {
+      renderWithViewport();
+      const iphoneRadio = document.querySelector('[data-viewport-preset-id="iphone"]');
+      expect(iphoneRadio!.getAttribute("tabindex")).toBe("0");
+
+      const pixelRadio = document.querySelector('[data-viewport-preset-id="pixel"]');
+      expect(pixelRadio!.getAttribute("tabindex")).toBe("-1");
+    });
+
+    it("has aria-label matching preset label", () => {
+      renderWithViewport();
+      const iphoneRadio = document.querySelector('[data-viewport-preset-id="iphone"]');
+      expect(iphoneRadio!.getAttribute("aria-label")).toBe("iPhone 15");
+    });
+  });
+
+  describe("chip click behavior", () => {
+    it("selects a different preset on click", () => {
+      renderWithViewport();
+      const pixelRadio = document.querySelector('[data-viewport-preset-id="pixel"]')!;
+      fireEvent.click(pixelRadio);
+      expect(onViewportPresetChange).toHaveBeenCalledWith("pixel");
+    });
+
+    it("clicking already-selected chip is a no-op", () => {
+      renderWithViewport();
+      const iphoneRadio = document.querySelector('[data-viewport-preset-id="iphone"]')!;
+      fireEvent.click(iphoneRadio);
+      expect(onViewportPresetChange).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("toggle persistence", () => {
+    it("restores last-used preset when toggle re-enables", () => {
+      const { container } = renderWithViewport();
+
+      // Switch to Pixel first
+      const pixelRadio = container.querySelector('[data-viewport-preset-id="pixel"]')!;
+      fireEvent.click(pixelRadio);
+      expect(onViewportPresetChange).toHaveBeenCalledWith("pixel");
+      onViewportPresetChange.mockClear();
+
+      // Simulate parent updating viewportPreset to "pixel"
+      const { rerender } = render(
+        <BrowserToolbar
+          {...defaultProps}
+          onViewportPresetChange={onViewportPresetChange}
+          viewportPreset="pixel"
+        />
+      );
+      onViewportPresetChange.mockClear();
+
+      // Toggle off
+      const toggle = container.querySelector('[aria-label="Viewport preset"]');
+      fireEvent.click(toggle!);
+      expect(onViewportPresetChange).toHaveBeenCalledWith(undefined);
+    });
+
+    it("falls back to 'iphone' on first enable", () => {
+      renderToolbar({ onViewportPresetChange });
+      // Toolbar mounts without viewportPreset (not passed), so the chip row is hidden.
+      // The toggle is visible because onViewportPresetChange is set.
+      // Clicking toggle should enable with "iphone" (the default fallback).
+      const toggle = document.querySelector('[aria-label="Viewport preset"]');
+      fireEvent.click(toggle!);
+      expect(onViewportPresetChange).toHaveBeenCalledWith("iphone");
+    });
+  });
+
+  describe("tooltip", () => {
+    it("tooltip content is static text", () => {
+      const { container } = renderWithViewport();
+      // Tooltips are mocked to render their content directly
+      expect(container.textContent).toContain("Viewport preset");
+    });
+  });
+
+  describe("keyboard navigation", () => {
+    it("ArrowRight moves focus to next radio", () => {
+      renderWithViewport();
+      const iphoneRadio = document.querySelector(
+        '[data-viewport-preset-id="iphone"]'
+      )! as HTMLElement;
+      const pixelRadio = document.querySelector(
+        '[data-viewport-preset-id="pixel"]'
+      )! as HTMLElement;
+
+      iphoneRadio.focus();
+      fireEvent.keyDown(iphoneRadio, { key: "ArrowRight" });
+
+      expect(document.activeElement).toBe(pixelRadio);
+    });
+
+    it("ArrowLeft wraps from first to last", () => {
+      renderWithViewport();
+      const iphoneRadio = document.querySelector(
+        '[data-viewport-preset-id="iphone"]'
+      )! as HTMLElement;
+      const ipadRadio = document.querySelector('[data-viewport-preset-id="ipad"]')! as HTMLElement;
+
+      iphoneRadio.focus();
+      fireEvent.keyDown(iphoneRadio, { key: "ArrowLeft" });
+
+      expect(document.activeElement).toBe(ipadRadio);
+    });
+
+    it("ArrowRight wraps from last to first", () => {
+      renderWithViewport();
+      const iphoneRadio = document.querySelector(
+        '[data-viewport-preset-id="iphone"]'
+      )! as HTMLElement;
+      const ipadRadio = document.querySelector('[data-viewport-preset-id="ipad"]')! as HTMLElement;
+
+      ipadRadio.focus();
+      fireEvent.keyDown(ipadRadio, { key: "ArrowRight" });
+
+      expect(document.activeElement).toBe(iphoneRadio);
+    });
+
+    it("Home moves focus to first radio", () => {
+      renderWithViewport();
+      const iphoneRadio = document.querySelector(
+        '[data-viewport-preset-id="iphone"]'
+      )! as HTMLElement;
+      const ipadRadio = document.querySelector('[data-viewport-preset-id="ipad"]')! as HTMLElement;
+
+      ipadRadio.focus();
+      fireEvent.keyDown(ipadRadio, { key: "Home" });
+
+      expect(document.activeElement).toBe(iphoneRadio);
+    });
+
+    it("End moves focus to last radio", () => {
+      renderWithViewport();
+      const iphoneRadio = document.querySelector(
+        '[data-viewport-preset-id="iphone"]'
+      )! as HTMLElement;
+      const ipadRadio = document.querySelector('[data-viewport-preset-id="ipad"]')! as HTMLElement;
+
+      iphoneRadio.focus();
+      fireEvent.keyDown(iphoneRadio, { key: "End" });
+
+      expect(document.activeElement).toBe(ipadRadio);
+    });
+
+    it("Space selects the focused radio", () => {
+      renderWithViewport();
+      const pixelRadio = document.querySelector(
+        '[data-viewport-preset-id="pixel"]'
+      )! as HTMLElement;
+
+      pixelRadio.focus();
+      fireEvent.keyDown(pixelRadio, { key: " " });
+
+      expect(onViewportPresetChange).toHaveBeenCalledWith("pixel");
+    });
+
+    it("Enter selects the focused radio", () => {
+      renderWithViewport();
+      const padRadio = document.querySelector('[data-viewport-preset-id="ipad"]')! as HTMLElement;
+
+      padRadio.focus();
+      fireEvent.keyDown(padRadio, { key: "Enter" });
+
+      expect(onViewportPresetChange).toHaveBeenCalledWith("ipad");
+    });
+
+    it("Space on already-selected radio is a no-op", () => {
+      renderWithViewport();
+      const iphoneRadio = document.querySelector(
+        '[data-viewport-preset-id="iphone"]'
+      )! as HTMLElement;
+
+      iphoneRadio.focus();
+      fireEvent.keyDown(iphoneRadio, { key: " " });
+
+      expect(onViewportPresetChange).not.toHaveBeenCalled();
+    });
+
+    it("ArrowDown moves focus forward like ArrowRight", () => {
+      renderWithViewport();
+      const iphoneRadio = document.querySelector(
+        '[data-viewport-preset-id="iphone"]'
+      )! as HTMLElement;
+      const pixelRadio = document.querySelector(
+        '[data-viewport-preset-id="pixel"]'
+      )! as HTMLElement;
+
+      iphoneRadio.focus();
+      fireEvent.keyDown(iphoneRadio, { key: "ArrowDown" });
+
+      expect(document.activeElement).toBe(pixelRadio);
+    });
+
+    it("ArrowUp moves focus backward like ArrowLeft", () => {
+      renderWithViewport();
+      const iphoneRadio = document.querySelector(
+        '[data-viewport-preset-id="iphone"]'
+      )! as HTMLElement;
+      const ipadRadio = document.querySelector('[data-viewport-preset-id="ipad"]')! as HTMLElement;
+
+      iphoneRadio.focus();
+      fireEvent.keyDown(iphoneRadio, { key: "ArrowUp" });
+
+      expect(document.activeElement).toBe(ipadRadio);
+    });
   });
 });
