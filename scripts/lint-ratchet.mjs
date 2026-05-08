@@ -100,7 +100,7 @@ function main() {
       let priorCount = 0;
       try {
         const prior = JSON.parse(readFileSync(BASELINE_FILE, "utf8"));
-        if (prior && typeof prior.count === "number") {
+        if (prior && typeof prior.count === "number" && Number.isFinite(prior.count)) {
           priorCount = prior.count;
         }
       } catch {

@@ -57,7 +57,7 @@ module.exports = async function () {
     // real filesystem access for `require()` — they cannot live inside the
     // ASAR. This means `enableEmbeddedAsarIntegrityValidation` (below) does
     // not cover these unpacked files. `afterPack.cjs` validates binary
-    // presence and ABI as a partial mitigation.
+    // presence (and ABI for better-sqlite3) as a partial mitigation.
     asarUnpack: [
       "node_modules/node-pty/**/*",
       "node_modules/better-sqlite3/**/*",

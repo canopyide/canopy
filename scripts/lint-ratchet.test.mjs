@@ -92,6 +92,18 @@ describe("lint-ratchet shrinkage guard", () => {
     });
   });
 
+  describe("priorCount edge cases", () => {
+    it("allows update when prior count is Infinity (malformed baseline)", () => {
+      const result = checkShrinkageGuard(Infinity, 50, false);
+      expect(result.blocked).toBe(false);
+    });
+
+    it("allows update when prior count is NaN (malformed baseline)", () => {
+      const result = checkShrinkageGuard(NaN, 50, false);
+      expect(result.blocked).toBe(false);
+    });
+  });
+
   describe("threshold boundary values", () => {
     it("10% boundary: prior=1000 new=900 → exactly 10%, passes", () => {
       const result = checkShrinkageGuard(1000, 900, false);
