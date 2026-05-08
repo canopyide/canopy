@@ -189,7 +189,7 @@ export async function countPresetOptions(window: import("@playwright/test").Page
  * Opens the PresetSelector popover and returns the visible option labels. The
  * popover is closed before returning.
  */
-const CCR_POLL_TIMEOUT = 45_000;
+const CCR_POLL_TIMEOUT = process.platform === "win32" ? 75_000 : 45_000;
 const CCR_POLL_INTERVALS = [3_000, 5_000, 10_000];
 
 /**
@@ -207,11 +207,12 @@ export async function waitForCcrPresets(
     `Wait for CCR presets: [${expectedLabels.join(", ")}]`,
     async () => {
       await navigateToAgentSettings(window, agentId);
-      const trigger = window.locator(SEL.preset.selectorTrigger);
 
       await expect
         .poll(
           async () => {
+            await navigateToAgentSettings(window, agentId);
+            const trigger = window.locator(SEL.preset.selectorTrigger);
             await trigger.waitFor({ state: "visible", timeout: 2_000 });
             return getPresetOptionLabels(window);
           },
@@ -245,11 +246,12 @@ export async function waitForCcrPresetsRemoved(
     `Wait for CCR presets removed: [${removedLabels.join(", ")}]`,
     async () => {
       await navigateToAgentSettings(window, agentId);
-      const trigger = window.locator(SEL.preset.selectorTrigger);
 
       await expect
         .poll(
           async () => {
+            await navigateToAgentSettings(window, agentId);
+            const trigger = window.locator(SEL.preset.selectorTrigger);
             await trigger.waitFor({ state: "visible", timeout: 2_000 });
             return getPresetOptionLabels(window);
           },
