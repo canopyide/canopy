@@ -334,7 +334,7 @@ export interface BrowserPanelData extends BasePanelData {
 }
 
 /** Viewport preset IDs for dev-preview responsive emulation */
-export type ViewportPresetId = "iphone" | "pixel" | "ipad";
+export type ViewportPresetId = "iphone" | "pixel" | "ipad" | "galaxy-s25";
 
 export interface DevPreviewPanelData extends BasePanelData {
   kind: "dev-preview";

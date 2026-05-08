@@ -22,7 +22,7 @@ import { actionService } from "@/services/ActionService";
 import { useUrlHistoryStore, getFrecencySuggestions } from "@/store/urlHistoryStore";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ViewportPresetId } from "@shared/types/panel";
-import { VIEWPORT_PRESET_LIST } from "@/panels/dev-preview/viewportPresets";
+import { VIEWPORT_PRESET_LIST, getViewportPreset } from "@/panels/dev-preview/viewportPresets";
 import { logError } from "@/utils/logger";
 
 const ZOOM_PRESETS = [
@@ -492,7 +492,12 @@ export function BrowserToolbar({
                 <Smartphone className="w-4 h-4" />
               </button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">Viewport preset</TooltipContent>
+            <TooltipContent side="bottom">
+              {(() => {
+                const preset = viewportPreset ? getViewportPreset(viewportPreset) : undefined;
+                return preset ? `Viewport: ${preset.label}` : "Responsive viewport";
+              })()}
+            </TooltipContent>
           </Tooltip>
           {viewportPreset && (
             <div

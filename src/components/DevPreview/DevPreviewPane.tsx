@@ -625,7 +625,7 @@ export function DevPreviewPane({
       }
       if (viewportPreset) {
         const preset = getViewportPreset(viewportPreset);
-        wc.setUserAgent(preset.userAgent);
+        if (preset) wc.setUserAgent(preset.userAgent);
       } else if (previousPreset !== undefined) {
         // Only restore if we previously overrode (not first mount with no preset)
         wc.setUserAgent(originalUaRef.current!);
@@ -749,12 +749,15 @@ export function DevPreviewPane({
         />
 
         <div className="relative flex-1 min-h-0 bg-surface-canvas overflow-auto">
-          {viewportPreset && (
-            <div className="absolute top-1 left-1/2 -translate-x-1/2 z-10 px-1.5 py-0.5 rounded text-[10px] font-medium bg-surface/90 text-daintree-text/60 border border-overlay/50">
-              {getViewportPreset(viewportPreset).label} · {getViewportPreset(viewportPreset).width}×
-              {getViewportPreset(viewportPreset).height}
-            </div>
-          )}
+          {(() => {
+            const preset = viewportPreset ? getViewportPreset(viewportPreset) : undefined;
+            if (!preset) return null;
+            return (
+              <div className="absolute top-1 left-1/2 -translate-x-1/2 z-10 px-1.5 py-0.5 rounded text-[10px] font-medium bg-surface/90 text-daintree-text/60 border border-overlay/50">
+                {preset.label} · {preset.width}×{preset.height}
+              </div>
+            );
+          })()}
           {isRestarting || status === "starting" || status === "installing" ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-daintree-bg">
               <Spinner size="2xl" className="text-status-info mb-4" />
@@ -874,11 +877,15 @@ export function DevPreviewPane({
                 )}
                 style={
                   viewportPreset
-                    ? {
-                        maxWidth: getViewportPreset(viewportPreset).width,
-                        width: "100%",
-                        aspectRatio: `${getViewportPreset(viewportPreset).width} / ${getViewportPreset(viewportPreset).height}`,
-                      }
+                    ? (() => {
+                        const preset = getViewportPreset(viewportPreset);
+                        if (!preset) return undefined;
+                        return {
+                          maxWidth: preset.width,
+                          width: "100%",
+                          aspectRatio: `${preset.width} / ${preset.height}`,
+                        };
+                      })()
                     : undefined
                 }
               >

@@ -11,32 +11,40 @@ export interface ViewportPreset {
 export const VIEWPORT_PRESETS: Record<ViewportPresetId, ViewportPreset> = {
   iphone: {
     id: "iphone",
-    label: "iPhone 15",
-    width: 393,
-    height: 852,
+    label: "iPhone 17",
+    width: 402,
+    height: 874,
     userAgent:
-      "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.4 Mobile/15E148 Safari/604.1",
   },
   pixel: {
     id: "pixel",
-    label: "Pixel 8",
+    label: "Pixel 9",
     width: 412,
-    height: 915,
+    height: 923,
     userAgent:
-      "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.113 Mobile Safari/537.36",
+      "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Mobile Safari/537.36",
   },
   ipad: {
     id: "ipad",
-    label: "iPad Air",
+    label: "iPad Air M3",
     width: 820,
     height: 1180,
     userAgent:
-      "Mozilla/5.0 (iPad; CPU OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
+      "Mozilla/5.0 (iPad; CPU OS 18_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.4 Mobile/15E148 Safari/604.1",
+  },
+  "galaxy-s25": {
+    id: "galaxy-s25",
+    label: "Galaxy S25",
+    width: 360,
+    height: 780,
+    userAgent:
+      "Mozilla/5.0 (Linux; Android 15; SM-S931B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Mobile Safari/537.36",
   },
 };
 
 export const VIEWPORT_PRESET_LIST: ViewportPreset[] = Object.values(VIEWPORT_PRESETS);
 
-export function getViewportPreset(id: ViewportPresetId): ViewportPreset {
-  return VIEWPORT_PRESETS[id];
+export function getViewportPreset(id: ViewportPresetId): ViewportPreset | undefined {
+  return (VIEWPORT_PRESETS as Record<string, ViewportPreset | undefined>)[id];
 }

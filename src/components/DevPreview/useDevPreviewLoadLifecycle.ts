@@ -323,7 +323,8 @@ export function useDevPreviewLoadLifecycle({
         }
         // Apply preset UA if active
         if (viewportPreset) {
-          wc.setUserAgent(getViewportPreset(viewportPreset).userAgent);
+          const preset = getViewportPreset(viewportPreset);
+          if (preset) wc.setUserAgent(preset.userAgent);
         }
       } catch {
         // WebContents not available yet
@@ -369,7 +370,8 @@ export function useDevPreviewLoadLifecycle({
             originalUaRef.current = wc.getUserAgent();
           }
           if (viewportPreset) {
-            wc.setUserAgent(getViewportPreset(viewportPreset).userAgent);
+            const preset = getViewportPreset(viewportPreset);
+            if (preset) wc.setUserAgent(preset.userAgent);
           }
         } catch {
           // WebContents not available
