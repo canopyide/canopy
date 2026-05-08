@@ -6,6 +6,7 @@ import { logDebug } from "@/utils/logger";
 const RENDERER_HIGH_WATERMARK_BYTES = 128 * 1024;
 const RENDERER_LOW_WATERMARK_BYTES = 32 * 1024;
 const COALESCE_BATCH_CAP_BYTES = 256 * 1024;
+const WRITE_CHUNK_BYTES = 32 * 1024;
 const IPC_LOOKBACK_CHARS = 32;
 const INK_ERASE_LINE_PATTERN = "\x1b[2K\x1b[1A";
 
@@ -175,9 +176,45 @@ export class TerminalOutputIngestService {
   private tryDrain(id: string, queue: TerminalIngestQueue): void {
     while (queue.chunks.length > 0 && queue.inFlightBytes < RENDERER_HIGH_WATERMARK_BYTES) {
       const batch = this.coalesceBatch(queue);
-      const batchBytes = this.chunkByteSize(batch);
-      queue.inFlightBytes += batchBytes;
-      this.writeToTerminal(id, batch);
+      this.writeSliced(id, queue, batch);
+    }
+  }
+
+  private writeSliced(id: string, queue: TerminalIngestQueue, data: string | Uint8Array): void {
+    if (typeof data === "string") {
+      if (data.length <= WRITE_CHUNK_BYTES) {
+        queue.inFlightBytes += data.length;
+        this.writeToTerminal(id, data);
+        return;
+      }
+      let offset = 0;
+      while (offset < data.length) {
+        let end = Math.min(offset + WRITE_CHUNK_BYTES, data.length);
+        if (end < data.length) {
+          const lastCode = data.charCodeAt(end - 1);
+          if (lastCode >= 0xd800 && lastCode <= 0xdbff) {
+            end += 1;
+          }
+        }
+        const slice = data.slice(offset, end);
+        queue.inFlightBytes += slice.length;
+        this.writeToTerminal(id, slice);
+        offset = end;
+      }
+      return;
+    }
+    if (data.byteLength <= WRITE_CHUNK_BYTES) {
+      queue.inFlightBytes += data.byteLength;
+      this.writeToTerminal(id, data);
+      return;
+    }
+    let offset = 0;
+    while (offset < data.byteLength) {
+      const end = Math.min(offset + WRITE_CHUNK_BYTES, data.byteLength);
+      const slice = data.subarray(offset, end);
+      queue.inFlightBytes += slice.byteLength;
+      this.writeToTerminal(id, slice);
+      offset = end;
     }
   }
 
@@ -225,14 +262,14 @@ export class TerminalOutputIngestService {
     if (!queue || queue.chunks.length === 0) return;
 
     if (queue.chunks.length === 1) {
-      this.writeToTerminal(id, queue.chunks[0]!);
+      this.writeSliced(id, queue, queue.chunks[0]!);
     } else {
       const allStrings = queue.chunks.every((c) => typeof c === "string");
       if (allStrings) {
-        this.writeToTerminal(id, (queue.chunks as string[]).join(""));
+        this.writeSliced(id, queue, (queue.chunks as string[]).join(""));
       } else {
         for (const chunk of queue.chunks) {
-          this.writeToTerminal(id, chunk);
+          this.writeSliced(id, queue, chunk);
         }
       }
     }
