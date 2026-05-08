@@ -70,16 +70,9 @@ describe("applyAppThemeToRoot", () => {
   });
 });
 
-const CATEGORY_TOKENS = [
-  "--theme-category-blue",
-  "--theme-category-orange",
-  "--theme-category-teal",
-  "--theme-category-pink",
-  "--theme-category-amber",
-  "--theme-category-violet",
-  "--theme-category-indigo",
-  "--theme-category-cyan",
-] as const;
+import { WORKTREE_COLOR_PALETTE } from "@shared/theme/worktreeColors";
+
+const CATEGORY_TOKENS = WORKTREE_COLOR_PALETTE.map((token) => `--theme-category-${token}`);
 
 describe("applyColorVisionMode", () => {
   it("overrides all 8 category tokens in red-green mode", () => {
