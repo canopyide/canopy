@@ -395,4 +395,94 @@ describe("ThemeBrowser", () => {
       expect(live.textContent).toBe("");
     });
   });
+
+  describe("autofocus", () => {
+    let rafHandle: number;
+    let rafCallback: FrameRequestCallback | null;
+
+    beforeEach(() => {
+      rafHandle = 1;
+      rafCallback = null;
+      vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+        rafCallback = cb;
+        return rafHandle;
+      });
+      vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    const flushRaf = () => {
+      const cb = rafCallback;
+      rafCallback = null;
+      if (cb) cb(0);
+    };
+
+    it("auto-focuses the search input on mount after RAF", () => {
+      render(<Harness />);
+
+      const searchInput = screen.getByLabelText("Filter themes") as HTMLInputElement;
+      expect(document.activeElement).not.toBe(searchInput);
+
+      flushRaf();
+
+      expect(document.activeElement).toBe(searchInput);
+    });
+
+    it("cancels the RAF on unmount so a detached input is never focused", () => {
+      const { unmount } = render(<Harness />);
+
+      unmount();
+
+      expect(cancelAnimationFrame).toHaveBeenCalledWith(rafHandle);
+    });
+  });
+
+  it("clicking the already-previewed row does not re-trigger preview injection or announcement", () => {
+    const target = otherDarkScheme();
+    const { container } = render(<Harness />);
+
+    fireEvent.click(findRowByName(target.name));
+    expect(useAppThemeStore.getState().previewSchemeId).toBe(target.id);
+
+    const live = container.querySelector('[aria-live="polite"]');
+    const firstAnnouncement = live?.textContent;
+
+    // Click the same row again — should be a no-op
+    fireEvent.click(findRowByName(target.name));
+    expect(useAppThemeStore.getState().previewSchemeId).toBe(target.id);
+    expect(live?.textContent).toBe(firstAnnouncement);
+  });
+
+  it("ArrowDown on the search input previews the next theme without a prior click into the panel", () => {
+    render(<Harness />);
+
+    const searchInput = screen.getByLabelText("Filter themes") as HTMLInputElement;
+
+    const darkSchemes = BUILT_IN_APP_SCHEMES.filter((s) => s.type !== "light");
+    const initialIndex = darkSchemes.findIndex((s) => s.id === DEFAULT_APP_SCHEME_ID);
+    const expectedNext = darkSchemes[initialIndex + 1];
+
+    fireEvent.keyDown(searchInput, { key: "ArrowDown" });
+
+    expect(useAppThemeStore.getState().previewSchemeId).toBe(expectedNext?.id);
+  });
+
+  it("ArrowDown then ArrowUp on the search input restores preview to the original scheme", () => {
+    render(<Harness />);
+
+    const searchInput = screen.getByLabelText("Filter themes") as HTMLInputElement;
+
+    fireEvent.keyDown(searchInput, { key: "ArrowDown" });
+
+    const afterDown = useAppThemeStore.getState().previewSchemeId;
+    expect(afterDown).not.toBeNull();
+
+    fireEvent.keyDown(searchInput, { key: "ArrowUp" });
+
+    const afterUp = useAppThemeStore.getState().previewSchemeId;
+    expect(afterUp).toBe(DEFAULT_APP_SCHEME_ID);
+  });
 });
