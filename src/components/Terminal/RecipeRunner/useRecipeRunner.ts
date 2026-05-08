@@ -9,7 +9,24 @@ import {
   type RecipeSections,
   type RankedRecipe,
 } from "./recipeRunnerUtils";
+import { stableInRepoId } from "@shared/utils/recipeFilename";
 import type { TerminalRecipe, RunCommand } from "@/types";
+
+// Strip an existing trailing "(Copy)" or "(Copy N)" suffix so duplicating
+// "Foo (Copy)" produces "Foo (Copy 2)", not "Foo (Copy) (Copy)".
+const COPY_SUFFIX = /\s*\(Copy(?:\s+\d+)?\)$/;
+
+function nextDuplicateName(baseName: string, existingIds: Set<string>): string {
+  const root = baseName.replace(COPY_SUFFIX, "");
+  for (let i = 1; i <= 100; i++) {
+    const candidate = i === 1 ? `${root} (Copy)` : `${root} (Copy ${i})`;
+    if (!existingIds.has(stableInRepoId(candidate))) {
+      return candidate;
+    }
+  }
+  // Fallback: bound the loop so a pathological state can't hang the renderer.
+  return `${root} (Copy ${Date.now()})`;
+}
 
 export interface UseRecipeRunnerOptions {
   activeWorktreeId: string | null | undefined;
@@ -114,12 +131,18 @@ export function useRecipeRunner({
       const worktreeData = activeWorktreeId
         ? getCurrentViewStore().getState().worktrees.get(activeWorktreeId)
         : null;
-      void runRecipe(recipeId, defaultCwd, activeWorktreeId ?? undefined, {
-        issueNumber: worktreeData?.issueNumber,
-        prNumber: worktreeData?.prNumber,
-        worktreePath: defaultCwd,
-        branchName: worktreeData?.branch,
-      });
+      void runRecipe(
+        recipeId,
+        defaultCwd,
+        activeWorktreeId ?? undefined,
+        {
+          issueNumber: worktreeData?.issueNumber,
+          prNumber: worktreeData?.prNumber,
+          worktreePath: defaultCwd,
+          branchName: worktreeData?.branch,
+        },
+        { spawnedBy: "recipe" }
+      );
     },
     [defaultCwd, activeWorktreeId, runRecipe]
   );
@@ -139,16 +162,20 @@ export function useRecipeRunner({
     (recipeId: string) => {
       const recipe = getRecipeById(recipeId);
       if (!recipe) return;
+      // Pick a name whose stableInRepoId doesn't collide with any existing recipe —
+      // otherwise duplicating an in-repo recipe twice silently overwrites the first.
+      const existingIds = new Set(allRecipes.map((r) => r.id));
+      const copyName = nextDuplicateName(recipe.name, existingIds);
       void createRecipe(
         recipe.projectId,
-        `${recipe.name} (Copy)`,
+        copyName,
         recipe.worktreeId,
         recipe.terminals,
         false,
         recipe.autoAssign
       );
     },
-    [getRecipeById, createRecipe]
+    [getRecipeById, createRecipe, allRecipes]
   );
 
   const handlePin = useCallback(
@@ -201,15 +228,12 @@ export function useRecipeRunner({
           e.preventDefault();
           setSearchQuery("");
         }
-      } else if (e.key === "e" && e.metaKey) {
+      } else if (e.key === "e" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         const flat = getFlatRecipes();
         if (focusedIndex < flat.length) {
           handleEdit(flat[focusedIndex]!.id);
         }
-      } else if (e.key === "n" && e.metaKey) {
-        e.preventDefault();
-        handleCreate();
       }
     },
     [totalItems, focusedIndex, getFlatRecipes, handleRun, handleCreate, handleEdit, searchQuery]

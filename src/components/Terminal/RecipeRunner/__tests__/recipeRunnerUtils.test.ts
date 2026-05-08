@@ -1,5 +1,11 @@
-import { describe, it, expect } from "vitest";
-import { computeFrecency, buildRecipeSections, rankSearchResults } from "../recipeRunnerUtils";
+import { describe, it, expect, beforeEach } from "vitest";
+import {
+  computeFrecency,
+  buildRecipeSections,
+  rankSearchResults,
+  getRecipeFuse,
+  _resetRecipeFuseCacheForTests,
+} from "../recipeRunnerUtils";
 import type { TerminalRecipe } from "@/types";
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
@@ -114,6 +120,40 @@ describe("rankSearchResults", () => {
   it("returns empty for empty recipe array", () => {
     const results = rankSearchResults([], "query", Date.now());
     expect(results).toHaveLength(0);
+  });
+});
+
+describe("getRecipeFuse caching", () => {
+  beforeEach(() => {
+    _resetRecipeFuseCacheForTests();
+  });
+
+  it("returns the same Fuse instance for arrays with identical id+name content", () => {
+    const a = [makeRecipe({ id: "1", name: "Build" }), makeRecipe({ id: "2", name: "Test" })];
+    const b = [makeRecipe({ id: "1", name: "Build" }), makeRecipe({ id: "2", name: "Test" })];
+    expect(getRecipeFuse(a)).toBe(getRecipeFuse(b));
+  });
+
+  it("does not rebuild when only metadata (lastUsedAt, usageHistory) changes", () => {
+    // Reproduces the original bug shape: every runRecipe call rewrites
+    // lastUsedAt, which produced a new array reference and busted the cache.
+    const before = [makeRecipe({ id: "1", name: "Deploy", lastUsedAt: 1 })];
+    const after = [
+      makeRecipe({ id: "1", name: "Deploy", lastUsedAt: 2, usageHistory: [Date.now()] }),
+    ];
+    expect(getRecipeFuse(before)).toBe(getRecipeFuse(after));
+  });
+
+  it("rebuilds when a recipe is renamed", () => {
+    const before = [makeRecipe({ id: "1", name: "Old" })];
+    const after = [makeRecipe({ id: "1", name: "New" })];
+    expect(getRecipeFuse(before)).not.toBe(getRecipeFuse(after));
+  });
+
+  it("rebuilds when a recipe is added or removed", () => {
+    const before = [makeRecipe({ id: "1", name: "A" })];
+    const after = [makeRecipe({ id: "1", name: "A" }), makeRecipe({ id: "2", name: "B" })];
+    expect(getRecipeFuse(before)).not.toBe(getRecipeFuse(after));
   });
 });
 
