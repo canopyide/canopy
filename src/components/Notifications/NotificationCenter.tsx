@@ -132,6 +132,7 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
   const clearAll = useNotificationHistoryStore((s) => s.clearAll);
   const markAllRead = useNotificationHistoryStore((s) => s.markAllRead);
   const dismissEntry = useNotificationHistoryStore((s) => s.dismissEntry);
+  const dismissByCorrelationId = useNotificationHistoryStore((s) => s.dismissByCorrelationId);
 
   const {
     quietUntil,
@@ -469,7 +470,11 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
         ) : (
           <>
             {needsAttentionGroups.length > 0 && (
-              <NeedsAttentionSection groups={needsAttentionGroups} onDismiss={dismissEntry} />
+              <NeedsAttentionSection
+                groups={needsAttentionGroups}
+                onDismiss={dismissEntry}
+                onDismissThread={dismissByCorrelationId}
+              />
             )}
             {chronoSections.map((section) => (
               <ChronoSection
@@ -478,6 +483,7 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
                 groupByContext={groupByContext}
                 dividerGroupId={dividerGroupId}
                 onDismiss={dismissEntry}
+                onDismissThread={dismissByCorrelationId}
               />
             ))}
           </>
@@ -490,9 +496,11 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
 function NeedsAttentionSection({
   groups,
   onDismiss,
+  onDismissThread,
 }: {
   groups: ThreadGroup[];
   onDismiss: (id: string) => void;
+  onDismissThread: (correlationId: string) => void;
 }) {
   return (
     <div data-testid="needs-attention-section" className="border-b border-divider">
@@ -500,7 +508,7 @@ function NeedsAttentionSection({
         Needs attention
       </div>
       <div className="divide-y divide-tint/[0.04]">
-        {groups.map((group) => renderGroup(group, onDismiss))}
+        {groups.map((group) => renderGroup(group, onDismiss, onDismissThread))}
       </div>
     </div>
   );
@@ -511,11 +519,13 @@ function ChronoSection({
   groupByContext,
   dividerGroupId,
   onDismiss,
+  onDismissThread,
 }: {
   section: ContextSection;
   groupByContext: boolean;
   dividerGroupId: string | null;
   onDismiss: (id: string) => void;
+  onDismissThread: (correlationId: string) => void;
 }) {
   return (
     <div data-testid="chrono-section">
@@ -533,7 +543,7 @@ function ChronoSection({
           return (
             <div key={groupKey}>
               {isDivider && <NewSinceLastLookedDivider />}
-              {renderGroup(group, onDismiss)}
+              {renderGroup(group, onDismiss, onDismissThread)}
             </div>
           );
         })}
@@ -542,9 +552,19 @@ function ChronoSection({
   );
 }
 
-function renderGroup(group: ThreadGroup, onDismiss: (id: string) => void) {
+function renderGroup(
+  group: ThreadGroup,
+  onDismiss: (id: string) => void,
+  onDismissThread: (correlationId: string) => void
+) {
   if (group.correlationId && group.entries.length > 1) {
-    return <NotificationThread key={group.correlationId} group={group} onDismiss={onDismiss} />;
+    return (
+      <NotificationThread
+        key={group.correlationId}
+        group={group}
+        onDismiss={() => onDismissThread(group.correlationId!)}
+      />
+    );
   }
   const entry = group.entries[0]!;
   return (
@@ -596,13 +616,7 @@ function NewSinceLastLookedDivider() {
   );
 }
 
-function NotificationThread({
-  group,
-  onDismiss,
-}: {
-  group: ThreadGroup;
-  onDismiss: (id: string) => void;
-}) {
+function NotificationThread({ group, onDismiss }: { group: ThreadGroup; onDismiss: () => void }) {
   const latest = group.entries[0];
   const isNew = group.entries.some((e) => !e.seenAsToast);
 
@@ -617,7 +631,7 @@ function NotificationThread({
         displayType={displayType}
         threadCount={group.entries.length}
         isNew={isNew}
-        onDismiss={() => onDismiss(latest.id)}
+        onDismiss={onDismiss}
       />
     </div>
   );

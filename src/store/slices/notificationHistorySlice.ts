@@ -59,6 +59,7 @@ interface NotificationHistoryState {
    */
   markUnseenAsToast: (id: string, options?: { silent?: boolean }) => void;
   dismissEntry: (id: string) => void;
+  dismissByCorrelationId: (correlationId: string) => void;
   clearAll: () => void;
   markAllRead: () => void;
   markSummarized: (ids: string[]) => void;
@@ -106,6 +107,14 @@ export const useNotificationHistoryStore = create<NotificationHistoryState>((set
   dismissEntry: (id) =>
     set((state) => {
       const entries = state.entries.filter((e) => e.id !== id);
+      return {
+        entries,
+        unreadCount: entries.filter((e) => !e.seenAsToast && e.countable !== false).length,
+      };
+    }),
+  dismissByCorrelationId: (correlationId) =>
+    set((state) => {
+      const entries = state.entries.filter((e) => e.correlationId !== correlationId);
       return {
         entries,
         unreadCount: entries.filter((e) => !e.seenAsToast && e.countable !== false).length,
