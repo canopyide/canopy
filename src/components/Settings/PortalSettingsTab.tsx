@@ -228,12 +228,14 @@ export function PortalSettingsTab() {
           />
           <button
             onClick={handleSaveEdit}
+            aria-label="Save edit"
             className="p-1.5 rounded hover:bg-daintree-border/50 text-status-success"
           >
             <Check className="w-4 h-4" />
           </button>
           <button
             onClick={handleCancelEdit}
+            aria-label="Cancel edit"
             className="p-1.5 rounded hover:bg-daintree-border/50 text-daintree-text/50"
           >
             <X className="w-4 h-4" />
@@ -345,6 +347,7 @@ export function PortalSettingsTab() {
                   if (e.key === "Enter") handleCustomUrlSave();
                   if (e.key === "Escape") handleCustomUrlCancel();
                 }}
+                aria-label="Custom URL"
                 aria-invalid={!!customUrlError || undefined}
                 aria-describedby={customUrlError ? customUrlErrorId : undefined}
                 autoFocus
