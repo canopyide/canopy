@@ -180,6 +180,10 @@ class TerminalInstanceService {
           }
           managed.hoveredLink = null;
         } else {
+          // Tier upgrade path: clear the reduce cooldown so restoreScrollback
+          // is unconditional and the next BACKGROUND drop isn't artificially
+          // delayed by stale state from a long-completed reduce.
+          managed.lastScrollbackReduceAt = undefined;
           restoreScrollback(managed);
 
           if (!managed.imageAddon) {
@@ -240,6 +244,17 @@ class TerminalInstanceService {
             if (hadWebGL && managed.isVisible && managed.terminal.rows > 0) {
               managed.terminal.refresh(0, managed.terminal.rows - 1);
             }
+          }
+        } else {
+          // Plain (non-agent) terminals: silence the xterm CursorBlinkStateManager
+          // setInterval whenever the pane isn't getting eyeballs. The blink timer
+          // fires regardless of off-screen state and forces compositor wakeups
+          // even when Chromium throttles background tabs. Agent terminals are
+          // already cursorBlink:false from create-time and stay that way.
+          const desiredBlink =
+            tier === TerminalRefreshTier.FOCUSED || tier === TerminalRefreshTier.BURST;
+          if (managed.terminal.options.cursorBlink !== desiredBlink) {
+            managed.terminal.options.cursorBlink = desiredBlink;
           }
         }
       },
@@ -778,6 +793,13 @@ class TerminalInstanceService {
         /* ignore */
       }
       managed.webLinksAddon = null;
+      // Plain terminals starting in BACKGROUND tier (e.g. prewarmed in a
+      // non-focused tab) must not run the cursor blink timer. Agent terminals
+      // are already covered above where launchAgentId !== undefined sets
+      // cursorBlink:false at create time.
+      if (launchAgentId === undefined) {
+        managed.terminal.options.cursorBlink = false;
+      }
     }
 
     this.notifyReadinessWaiters(id);
@@ -1639,7 +1661,10 @@ class TerminalInstanceService {
         managed.canonicalAgentState !== "exited"
       )
         continue;
-      reduceScrollback(managed, targetLines);
+      // Force-bypass the per-terminal cooldown. This is a deliberate bulk
+      // memory-pressure shrink (resource-profile downshift / explicit purge),
+      // not the tab-flip path the cooldown protects against.
+      reduceScrollback(managed, targetLines, { force: true });
     }
   }
 
