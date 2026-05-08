@@ -1,11 +1,11 @@
+import type { SVGProps } from "react";
 import { cn } from "@/lib/utils";
 
-interface TerraformIconProps {
-  className?: string;
+type TerraformIconProps = SVGProps<SVGSVGElement> & {
   size?: number;
-}
+};
 
-export function TerraformIcon({ className, size = 16 }: TerraformIconProps) {
+export function TerraformIcon({ className, size = 16, ...props }: TerraformIconProps) {
   return (
     <svg
       width={size}
@@ -15,6 +15,7 @@ export function TerraformIcon({ className, size = 16 }: TerraformIconProps) {
       xmlns="http://www.w3.org/2000/svg"
       className={cn(className)}
       aria-hidden="true"
+      {...props}
     >
       <path fill="currentColor" d="M1.44 0v7.575l6.561 3.79V3.787z" />
       <path fill="currentColor" d="M21.12 4.227l-6.561 3.791v7.574l6.56-3.787z" />

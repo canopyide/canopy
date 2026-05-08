@@ -3,14 +3,14 @@
  * Brand color: #CB3837
  */
 
+import type { SVGProps } from "react";
 import { cn } from "@/lib/utils";
 
-interface NpmIconProps {
-  className?: string;
+type NpmIconProps = SVGProps<SVGSVGElement> & {
   size?: number;
-}
+};
 
-export function NpmIcon({ className, size = 16 }: NpmIconProps) {
+export function NpmIcon({ className, size = 16, ...props }: NpmIconProps) {
   return (
     <svg
       width={size}
@@ -20,6 +20,7 @@ export function NpmIcon({ className, size = 16 }: NpmIconProps) {
       xmlns="http://www.w3.org/2000/svg"
       className={cn(className)}
       aria-hidden="true"
+      {...props}
     >
       <path
         fill="currentColor"

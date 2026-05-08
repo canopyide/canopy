@@ -2,15 +2,15 @@
  * Source: https://docs.mistral.ai/img/logo.svg (M-cube portion only)
  */
 
+import type { SVGProps } from "react";
 import { cn } from "@/lib/utils";
 
-interface MistralIconProps {
-  className?: string;
+type MistralIconProps = SVGProps<SVGSVGElement> & {
   size?: number;
   brandColor?: string;
-}
+};
 
-export function MistralIcon({ className, size = 16, brandColor }: MistralIconProps) {
+export function MistralIcon({ className, size = 16, brandColor, ...props }: MistralIconProps) {
   const fill = brandColor || "currentColor";
   return (
     <svg
@@ -21,6 +21,7 @@ export function MistralIcon({ className, size = 16, brandColor }: MistralIconPro
       xmlns="http://www.w3.org/2000/svg"
       className={cn(className)}
       aria-hidden="true"
+      {...props}
     >
       <path fill={fill} d="M30.303 0h30.303v30.303H30.303zm121.212 0h30.303v30.303h-30.303z" />
       <path fill={fill} d="M30.303 30.303h60.606v30.303H30.303zm90.909 0h60.606v30.303h-60.606z" />

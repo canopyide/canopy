@@ -1,11 +1,11 @@
+import type { SVGProps } from "react";
 import { cn } from "@/lib/utils";
 
-interface PythonIconProps {
-  className?: string;
+type PythonIconProps = SVGProps<SVGSVGElement> & {
   size?: number;
-}
+};
 
-export function PythonIcon({ className, size = 16 }: PythonIconProps) {
+export function PythonIcon({ className, size = 16, ...props }: PythonIconProps) {
   return (
     <svg
       width={size}
@@ -15,6 +15,7 @@ export function PythonIcon({ className, size = 16 }: PythonIconProps) {
       xmlns="http://www.w3.org/2000/svg"
       className={cn(className)}
       aria-hidden="true"
+      {...props}
     >
       <path
         fill="currentColor"

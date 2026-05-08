@@ -1,11 +1,11 @@
+import type { SVGProps } from "react";
 import { cn } from "@/lib/utils";
 
-interface GoIconProps {
-  className?: string;
+type GoIconProps = SVGProps<SVGSVGElement> & {
   size?: number;
-}
+};
 
-export function GoIcon({ className, size = 16 }: GoIconProps) {
+export function GoIcon({ className, size = 16, ...props }: GoIconProps) {
   return (
     <svg
       width={size}
@@ -15,6 +15,7 @@ export function GoIcon({ className, size = 16 }: GoIconProps) {
       xmlns="http://www.w3.org/2000/svg"
       className={cn(className)}
       aria-hidden="true"
+      {...props}
     >
       <path
         fill="currentColor"

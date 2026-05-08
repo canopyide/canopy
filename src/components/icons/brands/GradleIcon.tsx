@@ -1,11 +1,11 @@
+import type { SVGProps } from "react";
 import { cn } from "@/lib/utils";
 
-interface GradleIconProps {
-  className?: string;
+type GradleIconProps = SVGProps<SVGSVGElement> & {
   size?: number;
-}
+};
 
-export function GradleIcon({ className, size = 16 }: GradleIconProps) {
+export function GradleIcon({ className, size = 16, ...props }: GradleIconProps) {
   return (
     <svg
       width={size}
@@ -15,6 +15,7 @@ export function GradleIcon({ className, size = 16 }: GradleIconProps) {
       xmlns="http://www.w3.org/2000/svg"
       className={cn(className)}
       aria-hidden="true"
+      {...props}
     >
       <path
         fill="currentColor"

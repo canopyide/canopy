@@ -1,11 +1,11 @@
+import type { SVGProps } from "react";
 import { cn } from "@/lib/utils";
 
-interface DenoIconProps {
-  className?: string;
+type DenoIconProps = SVGProps<SVGSVGElement> & {
   size?: number;
-}
+};
 
-export function DenoIcon({ className, size = 16 }: DenoIconProps) {
+export function DenoIcon({ className, size = 16, ...props }: DenoIconProps) {
   return (
     <svg
       width={size}
@@ -15,6 +15,7 @@ export function DenoIcon({ className, size = 16 }: DenoIconProps) {
       xmlns="http://www.w3.org/2000/svg"
       className={cn(className)}
       aria-hidden="true"
+      {...props}
     >
       <path
         fill="currentColor"

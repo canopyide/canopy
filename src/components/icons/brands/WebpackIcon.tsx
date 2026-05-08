@@ -1,11 +1,11 @@
+import type { SVGProps } from "react";
 import { cn } from "@/lib/utils";
 
-interface WebpackIconProps {
-  className?: string;
+type WebpackIconProps = SVGProps<SVGSVGElement> & {
   size?: number;
-}
+};
 
-export function WebpackIcon({ className, size = 16 }: WebpackIconProps) {
+export function WebpackIcon({ className, size = 16, ...props }: WebpackIconProps) {
   return (
     <svg
       width={size}
@@ -15,6 +15,7 @@ export function WebpackIcon({ className, size = 16 }: WebpackIconProps) {
       xmlns="http://www.w3.org/2000/svg"
       className={cn(className)}
       aria-hidden="true"
+      {...props}
     >
       <path
         fill="currentColor"

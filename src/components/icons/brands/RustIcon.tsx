@@ -1,11 +1,11 @@
+import type { SVGProps } from "react";
 import { cn } from "@/lib/utils";
 
-interface RustIconProps {
-  className?: string;
+type RustIconProps = SVGProps<SVGSVGElement> & {
   size?: number;
-}
+};
 
-export function RustIcon({ className, size = 16 }: RustIconProps) {
+export function RustIcon({ className, size = 16, ...props }: RustIconProps) {
   return (
     <svg
       width={size}
@@ -15,6 +15,7 @@ export function RustIcon({ className, size = 16 }: RustIconProps) {
       xmlns="http://www.w3.org/2000/svg"
       className={cn(className)}
       aria-hidden="true"
+      {...props}
     >
       <path
         fill="currentColor"

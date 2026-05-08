@@ -1,11 +1,11 @@
+import type { SVGProps } from "react";
 import { cn } from "@/lib/utils";
 
-interface YarnIconProps {
-  className?: string;
+type YarnIconProps = SVGProps<SVGSVGElement> & {
   size?: number;
-}
+};
 
-export function YarnIcon({ className, size = 16 }: YarnIconProps) {
+export function YarnIcon({ className, size = 16, ...props }: YarnIconProps) {
   return (
     <svg
       width={size}
@@ -15,6 +15,7 @@ export function YarnIcon({ className, size = 16 }: YarnIconProps) {
       xmlns="http://www.w3.org/2000/svg"
       className={cn(className)}
       aria-hidden="true"
+      {...props}
     >
       <path
         fill="currentColor"
