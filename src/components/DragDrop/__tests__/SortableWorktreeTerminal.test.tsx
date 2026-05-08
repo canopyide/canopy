@@ -5,12 +5,14 @@ import { SortableWorktreeTerminal } from "../SortableWorktreeTerminal";
 import type { TerminalInstance } from "@/store";
 
 let mockIsDragging = false;
+const mockSetActivatorNodeRef = vi.fn();
 
 vi.mock("@dnd-kit/sortable", () => ({
   useSortable: () => ({
     attributes: { role: "button" },
-    listeners: undefined,
+    listeners: { onPointerDown: vi.fn() },
     setNodeRef: vi.fn(),
+    setActivatorNodeRef: mockSetActivatorNodeRef,
     transform: null,
     transition: undefined,
     isDragging: mockIsDragging,
@@ -55,6 +57,20 @@ describe("SortableWorktreeTerminal", () => {
       </SortableWorktreeTerminal>
     );
     expect(getByTestId("render-child")).toBeTruthy();
+  });
+
+  it("passes setActivatorNodeRef through the render prop for keyboard a11y", () => {
+    mockIsDragging = false;
+    let captured: ((node: HTMLElement | null) => void) | null = null;
+    render(
+      <SortableWorktreeTerminal terminal={terminal} worktreeId="wt1" sourceIndex={0}>
+        {({ setActivatorNodeRef }) => {
+          captured = setActivatorNodeRef;
+          return <div data-testid="render-child" />;
+        }}
+      </SortableWorktreeTerminal>
+    );
+    expect(captured).toBe(mockSetActivatorNodeRef);
   });
 
   it("does not apply opacity-40 class (opacity now driven by framer-motion animate)", () => {

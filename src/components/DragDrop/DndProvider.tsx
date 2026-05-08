@@ -16,6 +16,7 @@ import {
   useSensor,
   MouseSensor,
   TouchSensor,
+  KeyboardSensor,
   closestCenter,
   rectIntersection,
   pointerWithin,
@@ -28,7 +29,9 @@ import {
   type Announcements,
   type MeasuringConfiguration,
   type MouseSensorOptions,
+  type ScreenReaderInstructions,
 } from "@dnd-kit/core";
+import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import {
   usePanelStore,
   useLayoutConfigStore,
@@ -207,6 +210,16 @@ const MEASURING_CONFIG: MeasuringConfiguration = {
   },
 };
 
+// Static instructions read by screen readers when a draggable element receives
+// focus. dnd-kit attaches this string via aria-describedby on the focused
+// activator node, distinct from the lifecycle live-region announcements below
+// — there's no double-speak risk because the two surfaces target different
+// ARIA mechanisms (describedby vs aria-live).
+const dragScreenReaderInstructions: ScreenReaderInstructions = {
+  draggable:
+    "To pick up a draggable item, press Space or Enter. While dragging, use the arrow keys to move. Press Space or Enter again to drop, or Escape to cancel.",
+};
+
 const dragAnnouncements: Announcements = {
   onDragStart({ active }) {
     return `Picked up ${getDragLabel(active.data.current)}`;
@@ -376,13 +389,20 @@ export function DndProvider({ children }: DndProviderProps) {
 
   const [isCancelDrop, setIsCancelDrop] = useState(false);
 
-  // Configure sensors with activation constraint so clicks work for popovers
+  // Configure sensors with activation constraint so clicks work for popovers.
+  // KeyboardSensor uses sortableKeyboardCoordinates so arrow-key moves resolve
+  // against the sortable layout instead of pixel-stepping; the [data-no-dnd]
+  // opt-out doesn't apply here because keyboard activation is explicit
+  // (Space/Enter on a focused activator node, not bubbling pointer input).
   const sensors = useSensors(
     useSensor(NoDndMouseSensor, {
       activationConstraint: { distance: DRAG_ACTIVATION_DISTANCE },
     }),
     useSensor(TouchSensor, {
       activationConstraint: { delay: 150, tolerance: 5 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
     })
   );
 
@@ -1099,7 +1119,10 @@ export function DndProvider({ children }: DndProviderProps) {
       cancelDrop={cancelDrop}
       collisionDetection={collisionDetection}
       measuring={MEASURING_CONFIG}
-      accessibility={{ announcements: dragAnnouncements }}
+      accessibility={{
+        announcements: dragAnnouncements,
+        screenReaderInstructions: dragScreenReaderInstructions,
+      }}
     >
       <DndPlaceholderContext.Provider value={placeholderContextValue}>
         {children}

@@ -519,9 +519,28 @@ function PanelHeaderComponent({
     </DropdownMenu>
   );
 
+  // The whole header is the drag surface for pointer drag. For keyboard drag,
+  // dnd-kit's KeyboardSensor needs a focusable activator node; falling back to
+  // the sortable container's setNodeRef silently fails because SortableTerminal
+  // / SortableDockItem strip role/tabIndex to satisfy axe nested-interactive.
+  // Attach setActivatorNodeRef here and add tabIndex={0} only when drag
+  // listeners are live (i.e. the panel is reorderable). aria-roledescription
+  // gives screen reader users an action hint paired with the live
+  // screenReaderInstructions wired in DndProvider.
+  const headerHasDrag = !!dragListeners;
+  const headerActivatorRef = headerHasDrag ? dragHandle?.setActivatorNodeRef : undefined;
+
   return (
     <div
+      ref={headerActivatorRef}
       {...dragListeners}
+      tabIndex={headerHasDrag ? 0 : undefined}
+      role={headerHasDrag ? "group" : undefined}
+      aria-roledescription={
+        headerHasDrag
+          ? "Draggable panel header — press Space or Enter to pick up, arrows to move, Escape to cancel"
+          : undefined
+      }
       data-selected={isSelected || undefined}
       data-fleet-follower={isFleetFollower || undefined}
       data-fleet-previewed={isFleetPreviewed || undefined}

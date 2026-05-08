@@ -48,7 +48,10 @@ vi.mock("@/hooks", () => ({
   useAriaKeyshortcuts: () => undefined,
 }));
 
-let mockDragHandle: { listeners: Record<string, (e: unknown) => void> | undefined } | null = null;
+let mockDragHandle: {
+  listeners: Record<string, (e: unknown) => void> | undefined;
+  setActivatorNodeRef?: (node: HTMLElement | null) => void;
+} | null = null;
 
 vi.mock("@/components/DragDrop/DragHandleContext", () => ({
   useDragHandle: () => mockDragHandle,
@@ -640,6 +643,53 @@ describe("PanelHeader", () => {
       );
       const header = container.firstElementChild as HTMLElement;
       expect(header.className).not.toContain("bg-overlay-subtle");
+    });
+  });
+
+  describe("keyboard drag activation (#7262)", () => {
+    it("registers setActivatorNodeRef on the header div when drag listeners are present", () => {
+      // KeyboardSensor watches whichever element receives setActivatorNodeRef.
+      // The whole header is the drag surface, so the ref must land there.
+      const setActivatorNodeRef = vi.fn();
+      mockDragHandle = {
+        listeners: { onMouseDown: vi.fn() },
+        setActivatorNodeRef,
+      };
+      try {
+        const { container } = render(<PanelHeader {...makeProps({ location: "grid" })} />);
+        const header = container.firstElementChild as HTMLElement;
+        expect(setActivatorNodeRef).toHaveBeenCalledWith(header);
+      } finally {
+        mockDragHandle = null;
+      }
+    });
+
+    it("makes the header focusable (tabIndex=0) and groups it for screen readers when draggable", () => {
+      mockDragHandle = {
+        listeners: { onMouseDown: vi.fn() },
+        setActivatorNodeRef: vi.fn(),
+      };
+      try {
+        const { container } = render(<PanelHeader {...makeProps({ location: "grid" })} />);
+        const header = container.firstElementChild as HTMLElement;
+        expect(header.getAttribute("tabindex")).toBe("0");
+        expect(header.getAttribute("role")).toBe("group");
+        expect(header.getAttribute("aria-roledescription")).toContain("Draggable");
+      } finally {
+        mockDragHandle = null;
+      }
+    });
+
+    it("does not make the header focusable when no drag listeners are attached", () => {
+      // Without dragListeners (e.g. maximized panel), the header is not a drag
+      // surface — leaving tabIndex unset preserves the existing tab order so
+      // every panel chrome doesn't become a Tab stop.
+      mockDragHandle = null;
+      const { container } = render(<PanelHeader {...makeProps({ location: "grid" })} />);
+      const header = container.firstElementChild as HTMLElement;
+      expect(header.getAttribute("tabindex")).toBeNull();
+      expect(header.getAttribute("role")).toBeNull();
+      expect(header.getAttribute("aria-roledescription")).toBeNull();
     });
   });
 
