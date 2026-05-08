@@ -53,6 +53,11 @@ module.exports = async function () {
       { from: "electron/resources/sounds", to: "sounds" },
       { from: "electron/services/persistence/migrations", to: "migrations" },
     ],
+    // node-pty and better-sqlite3 contain native .node binaries that need
+    // real filesystem access for `require()` — they cannot live inside the
+    // ASAR. This means `enableEmbeddedAsarIntegrityValidation` (below) does
+    // not cover these unpacked files. `afterPack.cjs` validates binary
+    // presence and ABI as a partial mitigation.
     asarUnpack: [
       "node_modules/node-pty/**/*",
       "node_modules/better-sqlite3/**/*",
