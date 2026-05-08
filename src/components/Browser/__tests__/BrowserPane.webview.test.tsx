@@ -840,6 +840,75 @@ describe("BrowserPane webview lifecycle regression", () => {
       expect(container.textContent).toContain("No internet connection");
     });
 
+    it("shows certificate error overlay for ERR_CERT_AUTHORITY_INVALID (-202)", () => {
+      const { container } = render(<BrowserPane {...baseProps} />);
+      const webview = getWebviewElement(container);
+
+      act(() => {
+        emitWebviewEvent(webview, "did-fail-load", {
+          errorCode: -202,
+          errorDescription: "ERR_CERT_AUTHORITY_INVALID",
+          isMainFrame: true,
+          validatedURL: "https://localhost:8443/",
+        });
+      });
+
+      expect(container.textContent).toContain("Certificate Error");
+      expect(container.textContent).toContain("certificate couldn't be verified");
+      expect(container.textContent).toContain("mkcert -install");
+    });
+
+    it("shows certificate error overlay for ERR_SSL_PROTOCOL_ERROR (-107)", () => {
+      const { container } = render(<BrowserPane {...baseProps} />);
+      const webview = getWebviewElement(container);
+
+      act(() => {
+        emitWebviewEvent(webview, "did-fail-load", {
+          errorCode: -107,
+          errorDescription: "ERR_SSL_PROTOCOL_ERROR",
+          isMainFrame: true,
+          validatedURL: "https://localhost:8443/",
+        });
+      });
+
+      expect(container.textContent).toContain("Certificate Error");
+      expect(container.textContent).toContain("mkcert -install");
+    });
+
+    it("surfaces ERR_FILE_NOT_FOUND (-6) instead of silently swallowing it", () => {
+      const { container } = render(<BrowserPane {...baseProps} />);
+      const webview = getWebviewElement(container);
+
+      act(() => {
+        emitWebviewEvent(webview, "did-fail-load", {
+          errorCode: -6,
+          errorDescription: "ERR_FILE_NOT_FOUND",
+          isMainFrame: true,
+          validatedURL: "http://localhost:5173/missing",
+        });
+      });
+
+      expect(container.textContent).toContain("Unable to Display Page");
+      expect(container.textContent).toContain("ERR_FILE_NOT_FOUND");
+    });
+
+    it("ignores sub-frame failures", () => {
+      const { container } = render(<BrowserPane {...baseProps} />);
+      const webview = getWebviewElement(container);
+
+      act(() => {
+        emitWebviewEvent(webview, "did-fail-load", {
+          errorCode: -105,
+          errorDescription: "ERR_NAME_NOT_RESOLVED",
+          isMainFrame: false,
+          validatedURL: "http://tracker.example.test/pixel.gif",
+        });
+      });
+
+      expect(container.textContent).not.toContain("Unable to Display Page");
+      expect(container.textContent).not.toContain("Couldn't resolve");
+    });
+
     it("cleans slow timer on unmount", () => {
       const { container, unmount } = render(<BrowserPane {...baseProps} />);
       const webview = getWebviewElement(container);

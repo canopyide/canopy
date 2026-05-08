@@ -36,3 +36,20 @@ export function isValidBrowserUrl(url: string | undefined | null): boolean {
   const normalized = normalizeUrl(url, { allowedHosts: [] });
   return !normalized.error && !!normalized.url;
 }
+
+export const BROWSER_ZOOM_MIN = 0.25;
+export const BROWSER_ZOOM_MAX = 2.0;
+export const BROWSER_ZOOM_DEFAULT = 1.0;
+
+export function clampZoom(value: number): number {
+  return Number.isFinite(value)
+    ? Math.max(BROWSER_ZOOM_MIN, Math.min(BROWSER_ZOOM_MAX, value))
+    : BROWSER_ZOOM_DEFAULT;
+}
+
+export type LoadErrorKind = "timeout" | "cancelled" | "cert" | "network" | "generic";
+
+export type LoadError = {
+  kind: LoadErrorKind;
+  message: string;
+};

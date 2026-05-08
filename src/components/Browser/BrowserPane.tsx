@@ -13,7 +13,13 @@ import type { BrowserHistory } from "@shared/types/browser";
 import { ContentPanel, type BasePanelProps } from "@/components/Panel";
 import { BrowserToolbar } from "./BrowserToolbar";
 import { ConsolePanel } from "./ConsolePanel";
-import { normalizeBrowserUrl, extractHostPort, isValidBrowserUrl } from "./browserUtils";
+import {
+  normalizeBrowserUrl,
+  extractHostPort,
+  isValidBrowserUrl,
+  clampZoom,
+  type LoadError,
+} from "./browserUtils";
 import {
   goBackBrowserHistory,
   goForwardBrowserHistory,
@@ -44,6 +50,9 @@ export interface BrowserPaneProps extends BasePanelProps {
   onAddTab?: () => void;
 }
 
+// ERR_ABORTED (-3) fires when a pending load is superseded by a new navigation —
+// benign. Any other rejection is unexpected and worth a log; did-fail-load
+// surfaces user-visible failures, so this only catches non-event paths.
 function loadWebviewUrl(webview: Electron.WebviewTag, url: string): void {
   const result = (webview.loadURL as (url: string) => unknown)(url);
   if (
@@ -52,7 +61,20 @@ function loadWebviewUrl(webview: Electron.WebviewTag, url: string): void {
     "catch" in result &&
     typeof result.catch === "function"
   ) {
-    result.catch(() => {});
+    (result as { catch: (fn: (err: unknown) => void) => void }).catch((err: unknown) => {
+      if (
+        err &&
+        typeof err === "object" &&
+        "errorCode" in err &&
+        (err as { errorCode: unknown }).errorCode === -3
+      ) {
+        return;
+      }
+      logError(
+        "[BrowserPane] Unexpected loadURL rejection",
+        err instanceof Error ? err : new Error(String(err))
+      );
+    });
   }
 }
 
@@ -141,12 +163,11 @@ export function BrowserPane({
   // Clamp to valid range [0.25, 2.0] to handle corrupt storage
   const [zoomFactor, setZoomFactor] = useState<number>(() => {
     const terminal = usePanelStore.getState().getTerminal(id);
-    const savedZoom = terminal?.browserZoom ?? 1.0;
-    return Number.isFinite(savedZoom) ? Math.max(0.25, Math.min(2.0, savedZoom)) : 1.0;
+    return clampZoom(terminal?.browserZoom ?? 1.0);
   });
 
   const [isLoading, setIsLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<LoadError | null>(null);
   const [blockedNav, setBlockedNav] = useState<{
     url: string;
     canOpenExternal: boolean;
@@ -435,7 +456,7 @@ export function BrowserPane({
     } catch {
       // Webview detached
     }
-    setLoadError("Load cancelled.");
+    setLoadError({ kind: "cancelled", message: "Load cancelled." });
   }, []);
 
   const handleRetryFromError = useCallback(() => {
@@ -523,9 +544,7 @@ export function BrowserPane({
   }, []);
 
   const handleSetZoom = useCallback((rawZoom: number) => {
-    // Validate and clamp zoom factor to [0.25, 2.0]
-    const validZoom = Number.isFinite(rawZoom) ? Math.max(0.25, Math.min(2.0, rawZoom)) : 1.0;
-    setZoomFactor(validZoom);
+    setZoomFactor(clampZoom(rawZoom));
   }, []);
 
   useBrowserActionListeners(id, {
@@ -583,7 +602,6 @@ export function BrowserPane({
       canGoBack={canGoBack}
       canGoForward={canGoForward}
       isLoading={isLoading}
-      urlMightBeStale={false}
       zoomFactor={zoomFactor}
       isConsoleOpen={isConsoleOpen}
       isWebviewReady={isWebviewReady}
@@ -722,14 +740,18 @@ export function BrowserPane({
               <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-daintree-bg text-daintree-text p-6">
                 <AlertTriangle className="w-6 h-6 text-status-warning mb-3" />
                 <h3 className="text-sm font-medium text-daintree-text/70 mb-1">
-                  {loadError.startsWith("Load timed out")
+                  {loadError.kind === "timeout"
                     ? "Page Load Timed Out"
-                    : loadError.startsWith("Load cancelled")
+                    : loadError.kind === "cancelled"
                       ? "Load Cancelled"
-                      : "Unable to Display Page"}
+                      : loadError.kind === "cert"
+                        ? "Certificate Error"
+                        : loadError.kind === "network"
+                          ? "Connection Failed"
+                          : "Unable to Display Page"}
                 </h3>
                 <p className="text-xs text-daintree-text/50 text-center mb-3 max-w-md">
-                  {loadError}
+                  {loadError.message}
                 </p>
                 <div className="flex items-center gap-1">
                   <Button
