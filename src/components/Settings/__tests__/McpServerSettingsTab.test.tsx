@@ -82,6 +82,7 @@ function createMcpApi(overrides: Partial<typeof window.electron.mcpServer> = {})
     clearAuditLog: vi.fn().mockResolvedValue(undefined),
     setAuditEnabled: vi.fn().mockResolvedValue({ enabled: true, maxRecords: 500 }),
     setAuditMaxRecords: vi.fn().mockResolvedValue({ enabled: true, maxRecords: 500 }),
+    onRuntimeStateChanged: vi.fn().mockReturnValue(vi.fn()),
     ...overrides,
   };
 }
@@ -561,7 +562,7 @@ describe("McpServerSettingsTab", () => {
     );
     await waitForContent(container, "API key active");
 
-    fireEvent.click(screen.getByRole("button", { name: /capture on/i }));
+    fireEvent.click(screen.getByRole("switch", { name: /capture audit log/i }));
 
     await waitForContent(container, "audit toggle failed");
     expect(mockedNotify).not.toHaveBeenCalled();
@@ -749,5 +750,156 @@ describe("McpServerSettingsTab", () => {
     await waitForContent(container, "clipboard denied");
     expect(mockedNotify).not.toHaveBeenCalled();
     expect(mockedLogError).toHaveBeenCalledWith("Failed to copy MCP audit log", expect.any(Error));
+  });
+
+  it("shows filtered count when a result filter is active", async () => {
+    installMcpApi({
+      getAuditRecords: vi.fn().mockResolvedValue([
+        {
+          id: "1",
+          toolId: "files.read",
+          argsSummary: "{}",
+          result: "success" as const,
+          timestamp: Date.now(),
+          durationMs: 42,
+        },
+        {
+          id: "2",
+          toolId: "terminal.run",
+          argsSummary: "{}",
+          result: "error" as const,
+          timestamp: Date.now(),
+          durationMs: 100,
+        },
+      ]),
+    });
+
+    const { container } = render(
+      <SettingsValidationProvider>
+        <McpServerSettingsTab />
+      </SettingsValidationProvider>
+    );
+    await waitForContent(container, "files.read");
+    // Initially unfiltered: "2 of 500"
+    expect(container.textContent).toContain("2 of 500");
+
+    fireEvent.change(screen.getByLabelText("Filter audit by result"), {
+      target: { value: "success" },
+    });
+    await waitFor(() => {
+      expect(container.textContent).toContain("1 of 2");
+    });
+  });
+
+  it("shows filtered count when tool filter is active", async () => {
+    installMcpApi({
+      getAuditRecords: vi.fn().mockResolvedValue([
+        {
+          id: "1",
+          toolId: "files.read",
+          argsSummary: "{}",
+          result: "success" as const,
+          timestamp: Date.now(),
+          durationMs: 42,
+        },
+        {
+          id: "2",
+          toolId: "terminal.run",
+          argsSummary: "{}",
+          result: "success" as const,
+          timestamp: Date.now(),
+          durationMs: 100,
+        },
+      ]),
+    });
+
+    const { container } = render(
+      <SettingsValidationProvider>
+        <McpServerSettingsTab />
+      </SettingsValidationProvider>
+    );
+    await waitForContent(container, "files.read");
+
+    fireEvent.change(screen.getByLabelText("Filter audit by tool name"), {
+      target: { value: "terminal" },
+    });
+    await waitFor(() => {
+      expect(container.textContent).toContain("1 of 2");
+    });
+  });
+
+  it("port input Apply button stays disabled when value has trailing whitespace matching configuredPort", async () => {
+    installMcpApi({
+      getStatus: vi.fn().mockResolvedValue({
+        enabled: true,
+        port: 9020,
+        configuredPort: 9020,
+        apiKey: "dnt-key-abc123",
+      }),
+    });
+
+    const { container } = render(
+      <SettingsValidationProvider>
+        <McpServerSettingsTab />
+      </SettingsValidationProvider>
+    );
+    await waitForContent(container, "API key active");
+
+    const portInput = screen.getByLabelText("MCP server port") as HTMLInputElement;
+    fireEvent.change(portInput, { target: { value: "9020 " } });
+
+    const applyButton = screen.getByRole("button", { name: "Apply port" }) as HTMLButtonElement;
+    expect(applyButton.disabled).toBe(true);
+  });
+
+  it("subscribes to runtime state changes on mount", async () => {
+    const unsub = vi.fn();
+    const onRuntimeStateChanged = vi.fn().mockReturnValue(unsub);
+
+    installMcpApi({ onRuntimeStateChanged });
+
+    render(
+      <SettingsValidationProvider>
+        <McpServerSettingsTab />
+      </SettingsValidationProvider>
+    );
+
+    await waitFor(() => {
+      expect(onRuntimeStateChanged).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("result filter includes Unauthorized option", async () => {
+    const { container } = render(
+      <SettingsValidationProvider>
+        <McpServerSettingsTab />
+      </SettingsValidationProvider>
+    );
+    await waitForContent(container, "API key active");
+
+    const select = screen.getByLabelText("Filter audit by result") as HTMLSelectElement;
+    expect(select).toBeTruthy();
+    expect(Array.from(select.options).map((o) => o.value)).toContain("unauthorized");
+  });
+
+  it("copy config and copy API key have independent Copied! timeouts", async () => {
+    const { container } = render(
+      <SettingsValidationProvider>
+        <McpServerSettingsTab />
+      </SettingsValidationProvider>
+    );
+    await waitForContent(container, "API key active");
+
+    fireEvent.click(screen.getByRole("button", { name: /copy mcp config/i }));
+    await waitFor(() => {
+      expect(screen.getByText("Copied!")).toBeTruthy();
+    });
+
+    // Copy API key — both buttons show Copied! independently
+    fireEvent.click(screen.getByLabelText("Copy API key"));
+    await waitFor(() => {
+      const copiedEls = screen.getAllByText("Copied!");
+      expect(copiedEls.length).toBeGreaterThanOrEqual(2);
+    });
   });
 });
