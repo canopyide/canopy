@@ -726,11 +726,23 @@ export function HelpPanel({
         previousFocusRef.current = active;
       }
       const raf = requestAnimationFrame(() => {
-        // Don't yank focus away from xterm — the terminal manages its own
-        // focus and a forced-focus would steal the user's caret.
+        // Don't yank focus away from our own xterm — the assistant terminal
+        // owns its caret. We only check the panel-local xterm; an external
+        // grid-terminal still loses focus to the panel by design.
         const current = document.activeElement;
-        if (current?.closest?.(".xterm-helper-textarea")) return;
-        const first = panelRef.current?.querySelector<HTMLElement>(TABBABLE_SELECTOR);
+        if (current?.closest?.(".xterm-helper-textarea") && panelRef.current?.contains(current)) {
+          return;
+        }
+        // Skip the resize separator — it's the first tabbable in DOM order
+        // but lands keyboard users on a chrome control rather than usable
+        // content.
+        const candidates = panelRef.current?.querySelectorAll<HTMLElement>(TABBABLE_SELECTOR);
+        let first: HTMLElement | undefined;
+        for (const el of candidates ?? []) {
+          if (el.getAttribute("role") === "separator") continue;
+          first = el;
+          break;
+        }
         if (first) {
           first.focus();
         } else {
@@ -739,12 +751,12 @@ export function HelpPanel({
       });
       return () => cancelAnimationFrame(raf);
     }
-    if (!isOpen) {
-      const el = previousFocusRef.current;
-      previousFocusRef.current = null;
-      if (el && document.contains(el) && !panelRef.current?.contains(el)) {
-        el.focus();
-      }
+    // Panel went non-interactive (closed OR gesture-hidden). Restore focus
+    // to the opener so the user isn't stranded in an inert subtree.
+    const el = previousFocusRef.current;
+    previousFocusRef.current = null;
+    if (el && document.contains(el) && !panelRef.current?.contains(el)) {
+      el.focus();
     }
     return undefined;
   }, [isOpen, isVisible]);
