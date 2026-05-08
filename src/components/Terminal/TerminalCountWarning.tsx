@@ -70,24 +70,28 @@ export function TerminalCountWarning({ className, onOpenBulkActions }: TerminalC
     }
   }, [activeCount, softLimit, warningsDisabled, lastDismissedAt, isDismissed]);
 
-  const [dismissTimeoutId, setDismissTimeoutId] = useState<NodeJS.Timeout | null>(null);
+  const dismissTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleDismiss = useCallback(() => {
     setIsVisible(false);
-    const timeoutId = setTimeout(() => {
+    if (dismissTimeoutRef.current !== null) {
+      clearTimeout(dismissTimeoutRef.current);
+    }
+    dismissTimeoutRef.current = setTimeout(() => {
+      dismissTimeoutRef.current = null;
       dismissSoftWarning(activeCount);
       setIsDismissed(true);
     }, 200);
-    setDismissTimeoutId(timeoutId);
   }, [activeCount, dismissSoftWarning]);
 
   useEffect(() => {
     return () => {
-      if (dismissTimeoutId) {
-        clearTimeout(dismissTimeoutId);
+      if (dismissTimeoutRef.current !== null) {
+        clearTimeout(dismissTimeoutRef.current);
+        dismissTimeoutRef.current = null;
       }
     };
-  }, [dismissTimeoutId]);
+  }, []);
 
   const handleCleanup = useCallback(() => {
     if (onOpenBulkActions) {
@@ -138,7 +142,7 @@ export function TerminalCountWarning({ className, onOpenBulkActions }: TerminalC
                 <button
                   type="button"
                   onClick={handleCleanup}
-                  className="underline hover:text-daintree-text transition-colors inline-flex items-center gap-1"
+                  className="underline hover:text-daintree-text transition-colors inline-flex items-center gap-1 outline-hidden focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-daintree-accent rounded-sm"
                 >
                   <Trash2 className="h-3 w-3" />
                   Close <span className="tabular-nums">{completedCount}</span> completed agent

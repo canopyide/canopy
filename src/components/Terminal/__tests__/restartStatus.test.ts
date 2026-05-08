@@ -99,7 +99,7 @@ describe("getRestartBannerVariant", () => {
     expect(result).toEqual({ type: "auto-restarting" });
   });
 
-  it("suppresses auto-restarting when reconnectError is present", () => {
+  it("returns none when isAutoRestarting is true but reconnectError is present", () => {
     const result = getRestartBannerVariant({
       ...base,
       isAutoRestarting: true,
@@ -109,10 +109,10 @@ describe("getRestartBannerVariant", () => {
         timestamp: Date.now(),
       } as never,
     });
-    expect(result.type).not.toBe("auto-restarting");
+    expect(result).toEqual({ type: "none" });
   });
 
-  it("suppresses auto-restarting when spawnError is present", () => {
+  it("returns none when isAutoRestarting is true but spawnError is present", () => {
     const result = getRestartBannerVariant({
       ...base,
       isAutoRestarting: true,
@@ -122,6 +122,44 @@ describe("getRestartBannerVariant", () => {
         timestamp: Date.now(),
       } as never,
     });
-    expect(result.type).not.toBe("auto-restarting");
+    expect(result).toEqual({ type: "none" });
+  });
+
+  it("returns none when isAutoRestarting is true but restartError is present", () => {
+    const result = getRestartBannerVariant({
+      ...base,
+      isAutoRestarting: true,
+      restartError: {
+        message: "failed",
+        code: "RESTART_FAILED",
+        timestamp: Date.now(),
+        recoverable: false,
+      },
+    });
+    expect(result).toEqual({ type: "none" });
+  });
+
+  it("returns none for exit-error when spawnError is present", () => {
+    const result = getRestartBannerVariant({
+      ...base,
+      spawnError: {
+        message: "spawn failed",
+        code: "SPAWN_FAILED",
+        timestamp: Date.now(),
+      } as never,
+    });
+    expect(result).toEqual({ type: "none" });
+  });
+
+  it("returns none for exit-error when reconnectError is present", () => {
+    const result = getRestartBannerVariant({
+      ...base,
+      reconnectError: {
+        message: "lost connection",
+        code: "RECONNECT_FAILED",
+        timestamp: Date.now(),
+      } as never,
+    });
+    expect(result).toEqual({ type: "none" });
   });
 });

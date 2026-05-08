@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { TerminalCountWarning } from "../TerminalCountWarning";
 
 vi.mock("@/lib/utils", () => ({
@@ -115,5 +115,39 @@ describe("TerminalCountWarning", () => {
     limitState.softWarningLimit = 100;
     const { container } = render(<TerminalCountWarning />);
     expect(container.innerHTML).toBe("");
+  });
+
+  it("inline cleanup button has a focus-visible outline (no focus:ring)", () => {
+    panelState.panelsById.f = {
+      id: "f",
+      location: "main",
+      agentState: "completed",
+      ephemeral: false,
+    };
+    panelState.panelIds = [...panelState.panelIds, "f"];
+    render(<TerminalCountWarning />);
+    const button = screen.getByRole("button", { name: /close.*completed agent/i });
+    const className = button.className;
+    expect(className).toContain("focus-visible:outline");
+    expect(className).toContain("focus-visible:outline-daintree-accent");
+    expect(className).not.toMatch(/(^|\s)focus:ring-/);
+  });
+
+  it("does not call dismissSoftWarning if unmounted before the dismiss delay fires", () => {
+    vi.useFakeTimers();
+    try {
+      const { unmount } = render(<TerminalCountWarning />);
+      const dismissBtn = screen.getByRole("button", { name: /dismiss warning/i });
+      act(() => {
+        fireEvent.click(dismissBtn);
+      });
+      unmount();
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
+      expect(limitState.dismissSoftWarning).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

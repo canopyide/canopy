@@ -19,7 +19,7 @@ export interface RestartBannerInput {
 }
 
 export function getRestartBannerVariant(input: RestartBannerInput): RestartBannerVariant {
-  if (input.isAutoRestarting && !input.reconnectError && !input.spawnError) {
+  if (input.isAutoRestarting && !input.restartError && !input.reconnectError && !input.spawnError) {
     return { type: "auto-restarting" };
   }
 
@@ -30,6 +30,8 @@ export function getRestartBannerVariant(input: RestartBannerInput): RestartBanne
     input.exitCode !== 130 &&
     !input.dismissedRestartPrompt &&
     !input.restartError &&
+    !input.reconnectError &&
+    !input.spawnError &&
     !input.isRestarting &&
     input.exitBehavior !== "restart"
   ) {
