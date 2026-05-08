@@ -11,6 +11,10 @@ on:
         type: string
         default: "claude,gemini,codex,opencode"
 
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
   pull-requests: write
@@ -119,7 +123,7 @@ jobs:
 
       - name: Upload corpus artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pattern-discovery-corpus
           path: .tmp/corpus/
@@ -128,7 +132,7 @@ jobs:
 
       - name: Upload analysis artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pattern-discovery-analysis
           path: .tmp/analysis/

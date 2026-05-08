@@ -16,6 +16,10 @@ on:
           - windows
         default: all
 
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
   issues: write
