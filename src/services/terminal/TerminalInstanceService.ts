@@ -180,6 +180,10 @@ class TerminalInstanceService {
           }
           managed.hoveredLink = null;
         } else {
+          // Tier upgrade path: clear the reduce cooldown so restoreScrollback
+          // is unconditional and the next BACKGROUND drop isn't artificially
+          // delayed by stale state from a long-completed reduce.
+          managed.lastScrollbackReduceAt = undefined;
           restoreScrollback(managed);
 
           if (!managed.imageAddon) {
@@ -242,6 +246,12 @@ class TerminalInstanceService {
             }
           }
         }
+
+        // Cursor blink is policy-driven: plain terminals run the blink timer
+        // only at FOCUSED/BURST, agent terminals never. Centralised in the
+        // service helper so updateOptions/applyAgentPromotion/getOrCreate all
+        // reach the same answer.
+        this.applyCursorBlinkPolicy(managed);
       },
     });
   }
@@ -336,6 +346,32 @@ class TerminalInstanceService {
    */
   private maybeReflowTerminal(managed: ManagedTerminal): void {
     this.reflowController.maybeReflow(managed);
+  }
+
+  /**
+   * Resolves the correct cursorBlink value for a terminal based on its agent
+   * identity and current tier. Single source of truth for the blink policy:
+   * — agent terminals (`runtimeAgentId` set, including runtime-promoted ones):
+   *   always off (the blink timer's eyeball-attractor behaviour fights the
+   *   agent state machine's own indicators).
+   * — plain terminals: on only at FOCUSED/BURST. Off at VISIBLE/BACKGROUND so
+   *   the xterm CursorBlinkStateManager `setInterval` doesn't run in
+   *   non-focused splits or background tabs.
+   *
+   * Falls back to the live `getRefreshTier()` provider when `lastAppliedTier`
+   * hasn't been recorded yet (initial-create path before the first
+   * `applyRendererPolicy` cycle completes).
+   */
+  private applyCursorBlinkPolicy(managed: ManagedTerminal): void {
+    const desired = (() => {
+      if (managed.runtimeAgentId) return false;
+      const tier =
+        managed.lastAppliedTier ?? managed.getRefreshTier?.() ?? TerminalRefreshTier.FOCUSED;
+      return tier === TerminalRefreshTier.FOCUSED || tier === TerminalRefreshTier.BURST;
+    })();
+    if (managed.terminal.options.cursorBlink !== desired) {
+      managed.terminal.options.cursorBlink = desired;
+    }
   }
 
   /**
@@ -779,6 +815,13 @@ class TerminalInstanceService {
       }
       managed.webLinksAddon = null;
     }
+
+    // The first applyRendererPolicy call is a no-op when the requested tier
+    // matches lastAppliedTier (or the live getRefreshTier()), so onTierApplied
+    // does not fire and the cursorBlink policy is not enforced. Apply it once
+    // here for any non-FOCUSED/BURST initial tier (VISIBLE prewarms in a
+    // non-focused split, or BACKGROUND prewarms in a non-focused tab).
+    this.applyCursorBlinkPolicy(managed);
 
     this.notifyReadinessWaiters(id);
 
@@ -1524,6 +1567,11 @@ class TerminalInstanceService {
         // @ts-expect-error xterm options are indexable
         managed.terminal.options[key] = value;
       });
+      // Theme/font/etc. updates flow through `BASE_TERMINAL_OPTIONS` which
+      // unconditionally sets cursorBlink:true — re-clamp through the policy
+      // helper so a BACKGROUND/VISIBLE plain terminal doesn't silently start
+      // its blink timer again on a font or theme change.
+      this.applyCursorBlinkPolicy(managed);
     }
 
     if (textMetricsChanged) {
@@ -1551,6 +1599,10 @@ class TerminalInstanceService {
           // @ts-expect-error xterm options are indexable
           managed.terminal.options[key] = value;
         });
+        // Same rationale as updateOptions: re-clamp cursorBlink so a global
+        // theme/font change doesn't silently re-enable the blink timer on
+        // backgrounded plain terminals.
+        this.applyCursorBlinkPolicy(managed);
       }
 
       if (textMetricsChanged) {
@@ -1614,6 +1666,10 @@ class TerminalInstanceService {
       return;
     }
     managed.runtimeAgentId = agentId;
+    // Runtime-promoted agents (detected via parser, not launchAgentId) start
+    // life as plain terminals and may have cursorBlink:true. Force the agent
+    // policy now so background promotions don't keep the blink timer alive.
+    this.applyCursorBlinkPolicy(managed);
     restoreScrollback(managed);
     if (managed.isOpened && isWebGLEligibleTier(managed.lastAppliedTier)) {
       this.webGLManager.ensureContext(id, managed);
@@ -1624,6 +1680,9 @@ class TerminalInstanceService {
     const managed = this.instances.get(id);
     if (!managed?.runtimeAgentId) return;
     managed.runtimeAgentId = undefined;
+    // Demoted to plain terminal — re-evaluate the blink policy so a focused
+    // pane gets its blinking cursor back.
+    this.applyCursorBlinkPolicy(managed);
     restoreScrollback(managed);
     this.webGLManager.releaseContext(id);
     this.maybeReflowTerminal(managed);
@@ -1639,7 +1698,10 @@ class TerminalInstanceService {
         managed.canonicalAgentState !== "exited"
       )
         continue;
-      reduceScrollback(managed, targetLines);
+      // Force-bypass the per-terminal cooldown. This is a deliberate bulk
+      // memory-pressure shrink (resource-profile downshift / explicit purge),
+      // not the tab-flip path the cooldown protects against.
+      reduceScrollback(managed, targetLines, { force: true });
     }
   }
 

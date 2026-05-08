@@ -149,9 +149,25 @@ export interface ManagedTerminal {
   // context immediately; show path waits ~100ms before re-acquiring so rapid
   // tab/panel toggles don't thrash addon load/unload.
   webGLRestoreTimer?: number;
+
+  // Timestamp of the most recent successful reduceScrollback() — gates the
+  // BACKGROUND-tier scrollback shrink path so rapid tab oscillation doesn't
+  // re-allocate the xterm CircularList on every flip. Cleared on tier upgrade
+  // in onTierApplied so restoreScrollback always runs and the next BACKGROUND
+  // transition is not artificially delayed.
+  lastScrollbackReduceAt?: number;
 }
 
 export const TIER_DOWNGRADE_HYSTERESIS_MS = 500;
+
+// Cooldown between consecutive reduceScrollback() calls for the same terminal.
+// Each call mutates `terminal.options.scrollback`, which xterm 6.0 turns into
+// a BufferSet.setup() that recreates the internal CircularList — cheap once,
+// but rapid repetition under tab oscillation produces GC pressure. 2000ms
+// covers the typical ~1s flip cadence with margin while staying short enough
+// that a real BACKGROUND dwell still trims memory before the 30s hibernation
+// window. The 500ms tier-downgrade hysteresis is additive, not a replacement.
+export const SCROLLBACK_REDUCE_COOLDOWN_MS = 2000;
 
 export const HIBERNATION_DELAY_MS = 30_000;
 

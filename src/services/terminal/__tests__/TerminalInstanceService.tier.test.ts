@@ -56,12 +56,16 @@ type TierTestService = {
     params?: Record<string, unknown>
   ) => Record<string, unknown>;
   destroy: (id: string) => void;
+  updateOptions: (id: string, options: Record<string, unknown>) => void;
+  applyAgentPromotion: (id: string, agentId: string) => void;
+  clearAgentPromotion: (id: string) => void;
+  reduceScrollbackAllBackground: (targetLines: number) => void;
 };
 
 function makeMockManaged(overrides: Record<string, unknown> = {}) {
   return {
     terminal: {
-      options: { scrollback: 5000 },
+      options: { scrollback: 5000, cursorBlink: true },
       rows: 24,
       cols: 80,
       buffer: {
@@ -281,6 +285,155 @@ describe("TerminalInstanceService - Activity Tier", () => {
     it("should be documented as part of the hydration flow", () => {
       // Unit tests for the actual logic are in TerminalRendererPolicy.test.ts
       expect(true).toBe(true);
+    });
+  });
+
+  describe("cursorBlink Tier Toggle (plain terminals)", () => {
+    it("disables cursorBlink for plain terminals on transition to BACKGROUND", () => {
+      const managed = makeMockManaged({ lastAppliedTier: TerminalRefreshTier.FOCUSED });
+      // Plain terminal: no runtimeAgentId
+      managed.terminal.options.cursorBlink = true;
+      service.instances.set("t1", managed as unknown as Record<string, unknown>);
+
+      service.applyRendererPolicy("t1", TerminalRefreshTier.BACKGROUND);
+      vi.advanceTimersByTime(600);
+
+      expect(managed.terminal.options.cursorBlink).toBe(false);
+    });
+
+    it("disables cursorBlink for plain terminals on transition to VISIBLE", () => {
+      const managed = makeMockManaged({ lastAppliedTier: TerminalRefreshTier.FOCUSED });
+      managed.terminal.options.cursorBlink = true;
+      service.instances.set("t1", managed as unknown as Record<string, unknown>);
+
+      // VISIBLE is not focused/burst — pane is in a non-focused split, blink off
+      service.applyRendererPolicy("t1", TerminalRefreshTier.VISIBLE);
+      vi.advanceTimersByTime(600);
+
+      expect(managed.terminal.options.cursorBlink).toBe(false);
+    });
+
+    it("enables cursorBlink for plain terminals on transition to FOCUSED", () => {
+      const managed = makeMockManaged({ lastAppliedTier: TerminalRefreshTier.BACKGROUND });
+      managed.terminal.options.cursorBlink = false;
+      service.instances.set("t1", managed as unknown as Record<string, unknown>);
+
+      service.applyRendererPolicy("t1", TerminalRefreshTier.FOCUSED);
+
+      expect(managed.terminal.options.cursorBlink).toBe(true);
+    });
+
+    it("enables cursorBlink for plain terminals on transition to BURST", () => {
+      const managed = makeMockManaged({ lastAppliedTier: TerminalRefreshTier.VISIBLE });
+      managed.terminal.options.cursorBlink = false;
+      service.instances.set("t1", managed as unknown as Record<string, unknown>);
+
+      service.applyRendererPolicy("t1", TerminalRefreshTier.BURST);
+
+      expect(managed.terminal.options.cursorBlink).toBe(true);
+    });
+
+    it("does not touch cursorBlink for agent terminals (left at create-time false)", () => {
+      const managed = makeMockManaged({
+        lastAppliedTier: TerminalRefreshTier.BACKGROUND,
+        runtimeAgentId: "claude",
+        launchAgentId: "claude",
+      });
+      managed.terminal.options.cursorBlink = false;
+      service.instances.set("t1", managed as unknown as Record<string, unknown>);
+
+      service.applyRendererPolicy("t1", TerminalRefreshTier.FOCUSED);
+
+      // Agent terminal: blink stays off regardless of tier
+      expect(managed.terminal.options.cursorBlink).toBe(false);
+    });
+
+    it("updateOptions does not re-enable cursorBlink on a backgrounded plain terminal", () => {
+      const managed = makeMockManaged({ lastAppliedTier: TerminalRefreshTier.BACKGROUND });
+      managed.terminal.options.cursorBlink = false;
+      service.instances.set("t1", managed as unknown as Record<string, unknown>);
+
+      // Simulate a theme update flowing through BASE_TERMINAL_OPTIONS, which
+      // always carries cursorBlink:true. Avoid font-metric keys so the
+      // resize-controller refit path is not taken (jsdom lacks
+      // hostElement.checkVisibility).
+      service.updateOptions("t1", { cursorBlink: true });
+
+      expect(managed.terminal.options.cursorBlink).toBe(false);
+    });
+
+    it("applyAgentPromotion forces cursorBlink off on a runtime-detected agent", () => {
+      const managed = makeMockManaged({ lastAppliedTier: TerminalRefreshTier.FOCUSED });
+      managed.terminal.options.cursorBlink = true;
+      service.instances.set("t1", managed as unknown as Record<string, unknown>);
+
+      service.applyAgentPromotion("t1", "codex");
+
+      expect(managed.terminal.options.cursorBlink).toBe(false);
+    });
+
+    it("clearAgentPromotion re-evaluates blink policy for the now-plain terminal", () => {
+      const managed = makeMockManaged({
+        lastAppliedTier: TerminalRefreshTier.FOCUSED,
+        runtimeAgentId: "codex",
+      });
+      managed.terminal.options.cursorBlink = false;
+      service.instances.set("t1", managed as unknown as Record<string, unknown>);
+
+      service.clearAgentPromotion("t1");
+
+      // Plain at FOCUSED → blink on.
+      expect(managed.terminal.options.cursorBlink).toBe(true);
+    });
+  });
+
+  describe("Scrollback Reduce Cooldown", () => {
+    it("clears lastScrollbackReduceAt on tier upgrade", () => {
+      const managed = makeMockManaged({
+        lastAppliedTier: TerminalRefreshTier.BACKGROUND,
+        lastScrollbackReduceAt: 12345,
+      });
+      service.instances.set("t1", managed as unknown as Record<string, unknown>);
+
+      service.applyRendererPolicy("t1", TerminalRefreshTier.FOCUSED);
+
+      expect(
+        (managed as unknown as { lastScrollbackReduceAt: number | undefined })
+          .lastScrollbackReduceAt
+      ).toBeUndefined();
+    });
+
+    it("reduceScrollbackAllBackground bypasses cooldown for eligible terminals only", () => {
+      const recentlyReduced = makeMockManaged({
+        lastAppliedTier: TerminalRefreshTier.BACKGROUND,
+        lastScrollbackReduceAt: Date.now(), // deep inside cooldown
+      });
+      recentlyReduced.terminal.buffer.active.length = 3000;
+
+      const focused = makeMockManaged({ isFocused: true });
+      focused.terminal.buffer.active.length = 3000;
+
+      const hibernated = makeMockManaged({ isHibernated: true });
+      hibernated.terminal.buffer.active.length = 3000;
+
+      const workingAgent = makeMockManaged({
+        runtimeAgentId: "claude",
+        canonicalAgentState: "working",
+      });
+      workingAgent.terminal.buffer.active.length = 3000;
+
+      service.instances.set("t-bg", recentlyReduced as unknown as Record<string, unknown>);
+      service.instances.set("t-focused", focused as unknown as Record<string, unknown>);
+      service.instances.set("t-hib", hibernated as unknown as Record<string, unknown>);
+      service.instances.set("t-agent", workingAgent as unknown as Record<string, unknown>);
+
+      service.reduceScrollbackAllBackground(500);
+
+      // Force-bypassed cooldown — but only for the eligible plain background terminal.
+      expect(recentlyReduced.terminal.options.scrollback).toBe(500);
+      expect(focused.terminal.options.scrollback).toBe(5000);
+      expect(hibernated.terminal.options.scrollback).toBe(5000);
+      expect(workingAgent.terminal.options.scrollback).toBe(5000);
     });
   });
 });
