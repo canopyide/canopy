@@ -204,7 +204,6 @@ export interface AppColorScheme {
   extensions?: Record<string, string>;
   location?: string;
   heroImage?: string;
-  heroVideo?: string;
 }
 
 export type ColorVisionMode = "default" | "red-green" | "blue-yellow";

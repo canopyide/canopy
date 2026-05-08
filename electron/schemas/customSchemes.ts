@@ -93,7 +93,6 @@ export const appColorSchemeSchema = z.object({
   extensions: z.record(z.string(), z.string()).optional(),
   location: z.string().optional(),
   heroImage: z.string().optional(),
-  heroVideo: z.string().optional(),
 });
 
 /**
