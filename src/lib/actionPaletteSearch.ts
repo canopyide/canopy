@@ -140,9 +140,9 @@ export function scoreAction(query: string, item: SearchableAction): number {
 
   return (
     titleScore * TITLE_WEIGHT +
-    categoryRaw * CATEGORY_WEIGHT +
-    descriptionRaw * DESCRIPTION_WEIGHT +
-    keywordRaw * KEYWORD_WEIGHT
+    Math.max(0, categoryRaw) * CATEGORY_WEIGHT +
+    Math.max(0, descriptionRaw) * DESCRIPTION_WEIGHT +
+    Math.max(0, keywordRaw) * KEYWORD_WEIGHT
   );
 }
 
