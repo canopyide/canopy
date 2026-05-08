@@ -63,7 +63,7 @@ function ProjectMruSwitcherOverlayInner({
                 <span className="flex-1 truncate">{project.name}</span>
                 {isCurrent && (
                   <span className="text-[10px] uppercase tracking-wide text-daintree-text/40">
-                    current
+                    {isSelected ? "stay" : "current"}
                   </span>
                 )}
               </li>
