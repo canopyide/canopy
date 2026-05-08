@@ -185,6 +185,29 @@ describe("TerminalScrollbackController", () => {
         reduceScrollback(managed, 500);
         expect(managed.lastScrollbackReduceAt).toBeUndefined();
       });
+
+      it("cooldown fencepost: blocks at 1999ms, allows at 2000ms", () => {
+        const nowSpy = vi.spyOn(Date, "now");
+        try {
+          nowSpy.mockReturnValue(0);
+          const managed = makeMockManaged();
+          reduceScrollback(managed, 500);
+          expect(managed.lastScrollbackReduceAt).toBe(0);
+
+          // T = 1999ms → still inside cooldown (Date.now() - last = 1999 < 2000)
+          managed.terminal.options.scrollback = 5000;
+          nowSpy.mockReturnValue(1999);
+          reduceScrollback(managed, 500);
+          expect(managed.terminal.options.scrollback).toBe(5000);
+
+          // T = 2000ms → cooldown expires (2000 < 2000 is false)
+          nowSpy.mockReturnValue(2000);
+          reduceScrollback(managed, 500);
+          expect(managed.terminal.options.scrollback).toBe(500);
+        } finally {
+          nowSpy.mockRestore();
+        }
+      });
     });
   });
 

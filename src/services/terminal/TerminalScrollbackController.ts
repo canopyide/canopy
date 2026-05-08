@@ -31,8 +31,8 @@ export function reduceScrollback(
   if (managed.terminal.hasSelection()) return;
 
   if (!options.force) {
-    const lastReduceAt = managed.lastScrollbackReduceAt ?? 0;
-    if (Date.now() - lastReduceAt < SCROLLBACK_REDUCE_COOLDOWN_MS) {
+    const lastReduceAt = managed.lastScrollbackReduceAt;
+    if (lastReduceAt !== undefined && Date.now() - lastReduceAt < SCROLLBACK_REDUCE_COOLDOWN_MS) {
       return;
     }
   }
