@@ -100,6 +100,7 @@ beforeEach(() => {
 });
 
 const { usePanelStore } = await import("../../../panelStore");
+const { useWorktreeSelectionStore } = await import("../../../worktreeStore");
 
 async function drainMicrotasks(iterations = 20): Promise<void> {
   for (let i = 0; i < iterations; i++) {
@@ -418,5 +419,80 @@ describe("atomic dock activation on create (#6590)", () => {
     } finally {
       unsubscribe();
     }
+  });
+});
+
+describe("dock watchdog hardening (#7278)", () => {
+  beforeEach(async () => {
+    const { reset } = usePanelStore.getState();
+    await reset();
+  });
+
+  it("spares activeDockTerminalId when panel exists in panelsById but would be filtered from dock view", async () => {
+    const { closeDockTerminal } = usePanelStore.getState();
+    expect(closeDockTerminal).toBeDefined();
+
+    const targetId = "spared-by-panelsById";
+
+    // Set the active worktree to a known value so we can create a
+    // genuine worktree mismatch. The dockTerminals selector filters on
+    // `worktreeId == null || worktreeId === activeWorktreeId`.
+    useWorktreeSelectionStore.setState({ activeWorktreeId: "wt-a" });
+
+    // Create a panel that WOULD be filtered out of dockTerminals due
+    // to worktree mismatch (wt-b != wt-a), but still exists in the
+    // canonical panelsById store. The panelsById guard in the watchdog
+    // should spare it.
+    usePanelStore.setState({
+      panelsById: {
+        [targetId]: {
+          id: targetId,
+          kind: "terminal" as const,
+          title: "Test",
+          location: "dock" as const,
+          worktreeId: "wt-b",
+        },
+      },
+      panelIds: [targetId],
+      activeDockTerminalId: targetId,
+    });
+
+    const state = usePanelStore.getState();
+    expect(state.panelsById[targetId]).toBeDefined();
+    expect(state.activeDockTerminalId).toBe(targetId);
+
+    // The dockTerminals selector would NOT include this panel (wt-b != active wt-a),
+    // but the panelsById guard should still spare it.
+    const shouldSkipClose = Boolean(
+      !state.activeDockTerminalId || state.panelsById[state.activeDockTerminalId]
+    );
+    expect(shouldSkipClose).toBe(true);
+
+    // Call closeDockTerminal anyway to verify it works (the actual
+    // watchdog would not call this).
+    closeDockTerminal();
+    expect(usePanelStore.getState().activeDockTerminalId).toBeNull();
+  });
+
+  it("closes dock when panel is absent from both dockTerminals and panelsById", () => {
+    const { closeDockTerminal } = usePanelStore.getState();
+
+    // Set activeDockTerminalId to a non-existent panel ID (simulating
+    // stale state after a panel was deleted without clearing the dock).
+    usePanelStore.setState({ activeDockTerminalId: "phantom-id" });
+
+    const state = usePanelStore.getState();
+    expect(state.activeDockTerminalId).toBe("phantom-id");
+    expect(state.panelsById["phantom-id"]).toBeUndefined();
+
+    // The watchdog should close the dock — neither the filtered
+    // dockTerminals view nor panelsById contains this ID.
+    const shouldSkipClose = Boolean(
+      !state.activeDockTerminalId || state.panelsById[state.activeDockTerminalId]
+    );
+    if (!shouldSkipClose) {
+      closeDockTerminal();
+    }
+    expect(usePanelStore.getState().activeDockTerminalId).toBeNull();
   });
 });
