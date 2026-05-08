@@ -522,7 +522,7 @@ function TerminalPaneComponent({
 
   const getRefreshTierCallback = () => {
     const terminal = getTerminal(id);
-    return getTerminalRefreshTier(terminal, isFocused);
+    return getTerminalRefreshTier(terminal, isFocused, { isFleetArmed: isArmed });
   };
 
   const handleClick = (e?: React.MouseEvent) => {

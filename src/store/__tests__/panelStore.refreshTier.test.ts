@@ -91,6 +91,32 @@ describe("getTerminalRefreshTier - runtime agent identity", () => {
     expect(getTerminalRefreshTier(terminal, true)).toBe(TerminalRefreshTier.FOCUSED);
   });
 
+  it("keeps an armed live fleet terminal VISIBLE before agent detection catches up", () => {
+    const terminal = makeTerminal({
+      kind: "terminal",
+      detectedAgentId: undefined,
+      agentState: "idle",
+      hasPty: true,
+      runtimeStatus: "running",
+    });
+    expect(getTerminalRefreshTier(terminal, false, { isFleetArmed: true })).toBe(
+      TerminalRefreshTier.VISIBLE
+    );
+  });
+
+  it("does not keep an armed exited terminal VISIBLE", () => {
+    const terminal = makeTerminal({
+      kind: "terminal",
+      detectedAgentId: undefined,
+      agentState: "idle",
+      hasPty: true,
+      runtimeStatus: "exited",
+    });
+    expect(getTerminalRefreshTier(terminal, false, { isFleetArmed: true })).toBe(
+      TerminalRefreshTier.BACKGROUND
+    );
+  });
+
   it("returns VISIBLE when the terminal reference is missing (defensive default)", () => {
     expect(getTerminalRefreshTier(undefined, false)).toBe(TerminalRefreshTier.VISIBLE);
   });

@@ -47,7 +47,8 @@ const PROJECT_SWITCH_RESIZE_SUPPRESSION_MS = 10_000;
 
 export function getTerminalRefreshTier(
   terminal: TerminalInstance | undefined,
-  isFocused: boolean
+  isFocused: boolean,
+  options: { isFleetArmed?: boolean } = {}
 ): TerminalRefreshTier {
   if (!terminal) {
     return TerminalRefreshTierEnum.VISIBLE;
@@ -60,6 +61,21 @@ export function getTerminalRefreshTier(
 
   if (isFocused) {
     return TerminalRefreshTierEnum.FOCUSED;
+  }
+
+  // Fleet input can target a terminal before runtime agent detection has
+  // caught up. Keep armed live PTYs visible so broadcast responses stream
+  // promptly instead of being parked in the background tier.
+  if (
+    options.isFleetArmed &&
+    terminal.hasPty !== false &&
+    terminal.location !== "trash" &&
+    terminal.location !== "background" &&
+    terminal.location !== "dock" &&
+    terminal.runtimeStatus !== "exited" &&
+    terminal.runtimeStatus !== "error"
+  ) {
+    return TerminalRefreshTierEnum.VISIBLE;
   }
 
   // Active agent terminals stay at VISIBLE minimum to preserve live output.
