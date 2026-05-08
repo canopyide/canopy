@@ -103,12 +103,12 @@ test.describe.serial("Presets: Custom Duplicate (35–44)", () => {
   });
 
   test("40. Duplicate button appears on CCR presets", async () => {
-    writeCcrConfig([{ id: "ccr-dupvis", model: "dupvis-model" }]);
-    await waitForCcrPresets(ctx.window, ["ccr-dupvis"]);
+    writeCcrConfig([{ id: "ccr-dupvis", name: "Dup Visible", model: "dupvis-model" }]);
+    await waitForCcrPresets(ctx.window, ["Dup Visible"]);
     await goToClaudeSettings();
 
     const labels = await getPresetOptionLabels(ctx.window);
-    const ccrLabel = labels.find((l) => l.includes("ccr-dupvis"));
+    const ccrLabel = labels.find((l) => l.includes("Dup Visible"));
     if (ccrLabel) {
       const detail = await getPresetRowByName(ctx.window, ccrLabel.replace("CCR", "").trim());
       const dupBtn = detail.locator(SEL.preset.duplicateButton);
