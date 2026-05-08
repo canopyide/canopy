@@ -139,7 +139,7 @@ export const SEL = {
   },
   pulse: {
     heatmap: '[data-testid="pulse-heatmap"]',
-    rangeTrigger: '[aria-label="Select pulse range"]',
+    rangeTrigger: '[aria-label="Activity range"]',
     refreshButton: '[aria-label="Refresh"]',
   },
   reviewHub: {
