@@ -18,7 +18,7 @@ export function PaletteStrip({ scheme }: { scheme: AppColorScheme }) {
       {keys.map((key) => (
         <div
           key={key}
-          className="w-3 h-3 rounded-sm shrink-0"
+          className="w-3 h-3 rounded-sm shrink-0 ring-1 ring-inset ring-daintree-border/30"
           style={{ backgroundColor: t[key] }}
         />
       ))}

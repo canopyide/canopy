@@ -19,6 +19,7 @@ import { APP_THEME_PREVIEW_KEYS } from "@shared/theme";
 import type { AppColorScheme, AppThemeValidationWarning } from "@shared/types/appTheme";
 import { SettingsSwitchCard } from "./SettingsSwitchCard";
 import { logError } from "@/utils/logger";
+import { useImageError } from "@/hooks/useImageError";
 
 function shuffleArray<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -104,6 +105,12 @@ export function AppThemePicker({ onClose }: AppThemePickerProps = {}) {
     () => allSchemes.find((s) => s.id === selectedSchemeId) ?? allSchemes[0]!,
     [allSchemes, selectedSchemeId]
   );
+
+  const {
+    imgRef: heroImgRef,
+    error: heroError,
+    onError: onHeroError,
+  } = useImageError(selectedScheme.heroImage);
 
   const effectiveAccent = useMemo(
     () => accentColorOverride ?? selectedScheme.tokens["accent-primary"],
@@ -317,8 +324,14 @@ export function AppThemePicker({ onClose }: AppThemePickerProps = {}) {
 
       <div className="flex flex-col rounded-[var(--radius-md)] border border-daintree-border overflow-hidden">
         <div className="relative h-[200px] shrink-0 overflow-hidden">
-          {selectedScheme.heroImage ? (
-            <img src={selectedScheme.heroImage} alt="" className="w-full h-full object-cover" />
+          {selectedScheme.heroImage && !heroError ? (
+            <img
+              ref={heroImgRef}
+              src={selectedScheme.heroImage}
+              alt=""
+              onError={onHeroError}
+              className="w-full h-full object-cover"
+            />
           ) : (
             <div
               className="w-full h-full flex items-center justify-center"

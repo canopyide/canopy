@@ -16,7 +16,7 @@ import {
 import { PaletteStrip } from "@/components/ui/PaletteStrip";
 import type { AppColorScheme, AppThemeValidationWarning } from "@shared/types/appTheme";
 import { useEscapeStack } from "@/hooks/useEscapeStack";
-import { useOverlayClaim } from "@/hooks";
+import { useOverlayClaim, useImageError } from "@/hooks";
 
 const PANEL_WIDTH = 380;
 const EMPTY_WARNINGS: AppThemeValidationWarning[] = [];
@@ -38,6 +38,10 @@ const ThemeRow = memo(function ThemeRow({
   warnings: AppThemeValidationWarning[];
   rowRef: (el: HTMLButtonElement | null) => void;
 }) {
+  const { imgRef, error, onError } = useImageError(
+    scheme.heroImage?.replace("/themes/", "/themes/thumb/")
+  );
+
   return (
     <button
       ref={rowRef}
@@ -52,13 +56,15 @@ const ThemeRow = memo(function ThemeRow({
         isActive ? "bg-daintree-accent/10" : "hover:bg-surface-hover"
       )}
     >
-      {scheme.heroImage ? (
+      {scheme.heroImage && !error ? (
         <img
+          ref={imgRef}
           src={scheme.heroImage.replace("/themes/", "/themes/thumb/")}
           alt=""
           width={80}
           height={80}
           loading="lazy"
+          onError={onError}
           className="w-10 h-10 rounded-sm shrink-0 object-cover"
         />
       ) : (
@@ -150,6 +156,12 @@ export function ThemeBrowser() {
     () => allSchemes.find((s) => s.id === activeSchemeId) ?? committedScheme,
     [allSchemes, activeSchemeId, committedScheme]
   );
+
+  const {
+    imgRef: heroImgRef,
+    error: heroError,
+    onError: onHeroError,
+  } = useImageError(activeScheme.heroImage);
 
   const lowerQuery = query.toLowerCase();
   const filteredThemes = useMemo(() => {
@@ -378,8 +390,14 @@ export function ThemeBrowser() {
     >
       {/* Sticky hero */}
       <div className="relative h-[200px] shrink-0 overflow-hidden">
-        {activeScheme.heroImage ? (
-          <img src={activeScheme.heroImage} alt="" className="w-full h-full object-cover" />
+        {activeScheme.heroImage && !heroError ? (
+          <img
+            ref={heroImgRef}
+            src={activeScheme.heroImage}
+            alt=""
+            onError={onHeroError}
+            className="w-full h-full object-cover"
+          />
         ) : (
           <div
             className="w-full h-full flex items-center justify-center"
