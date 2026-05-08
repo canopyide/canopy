@@ -78,11 +78,11 @@ describe("HostCrashBanner", () => {
     expect(screen.getByText("Terminal service crashed")).toBeTruthy();
   });
 
-  it("uses role=alert and aria-live=assertive", () => {
+  it("uses role=alert without redundant aria-live", () => {
     usePanelStore.setState({ backendStatus: "disconnected", lastCrashType: null });
     render(<HostCrashBanner />);
     const alert = screen.getByRole("alert");
-    expect(alert.getAttribute("aria-live")).toBe("assertive");
+    expect(alert.hasAttribute("aria-live")).toBe(false);
   });
 
   it("does not render a dismiss button", () => {

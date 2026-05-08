@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronRight,
+  Copy,
   ExternalLink,
   FileText,
   SquareTerminal,
@@ -14,6 +15,8 @@ import { AppDialog } from "../ui/AppDialog";
 import { Button } from "../ui/button";
 import { AnimatedLabel } from "../ui/AnimatedLabel";
 import { logError } from "@/utils/logger";
+import { notify } from "@/lib/notify";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { useCopyWithFeedback } from "@/hooks/useCopyWithFeedback";
 import type {
   PendingCrash,
@@ -61,6 +64,7 @@ export function CrashRecoveryDialog({
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [privacyWarningShown, setPrivacyWarningShown] = useState(false);
   const { copied, copy } = useCopyWithFeedback();
+  const { copied: stackCopied, copy: copyStack } = useCopyWithFeedback();
 
   const selectedCount = selectedIds.size;
   const allSelected = selectedCount === panels.length;
@@ -111,9 +115,15 @@ export function CrashRecoveryDialog({
   }, [allSelected, panels]);
 
   const handleOpenLogFile = useCallback(() => {
-    window.electron.system
-      .openPath(crash.logPath)
-      .catch((err) => logError("Failed to open crash log path", err));
+    window.electron.system.openPath(crash.logPath).catch((err) => {
+      logError("Failed to open crash log path", err);
+      notify({
+        type: "error",
+        title: "Couldn't open log file",
+        message: formatErrorMessage(err, "Failed to open log file"),
+        duration: 6000,
+      });
+    });
   }, [crash.logPath]);
 
   const handleReport = useCallback(async () => {
@@ -351,6 +361,19 @@ export function CrashRecoveryDialog({
                   <FileText className="h-3 w-3 mr-1" />
                   Open log file
                 </Button>
+
+                {crash.entry.errorStack && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-xs h-7"
+                    onClick={() => copyStack(crash.entry.errorStack)}
+                    data-testid="copy-stack-button"
+                  >
+                    <Copy className="h-3 w-3 mr-1" />
+                    {stackCopied ? "Copied" : "Copy stack"}
+                  </Button>
+                )}
 
                 <Button
                   size="sm"

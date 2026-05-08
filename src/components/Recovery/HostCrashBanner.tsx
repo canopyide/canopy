@@ -68,7 +68,6 @@ export function HostCrashBanner() {
   return (
     <div
       role="alert"
-      aria-live="assertive"
       className="flex items-start gap-3 px-4 py-2 bg-[var(--color-status-error)]/15 border-b border-[var(--color-status-error)]/30 text-[var(--color-status-error)] text-sm shrink-0"
     >
       <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />

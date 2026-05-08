@@ -19,7 +19,7 @@ describe("GitHubTokenBanner", () => {
     useGitHubTokenHealthStore.setState({ isUnhealthy: true });
     render(<GitHubTokenBanner />);
     const region = screen.getByRole("status");
-    expect(region.getAttribute("aria-live")).toBe("polite");
+    expect(region.hasAttribute("aria-live")).toBe(false);
     expect(screen.getByText("GitHub token expired")).toBeTruthy();
     expect(screen.getByText("Reconnect to restore issue, PR, and repository data.")).toBeTruthy();
     expect(screen.getByRole("button", { name: /Reconnect to GitHub/i })).toBeTruthy();
