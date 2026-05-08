@@ -4,10 +4,13 @@ import { mkdtempSync, rmSync, unlinkSync, readdirSync } from "fs";
 import { tmpdir } from "os";
 import { execSync } from "child_process";
 import path from "path";
+import { getDescendantPids } from "./stress";
 
 const require = createRequire(import.meta.url);
 const electronPath = require("electron") as unknown as string;
 const ROOT = path.resolve(import.meta.dirname, "../..");
+
+const fallbackGraceMs = 1_500;
 
 export interface AppContext {
   app: ElectronApplication;
@@ -41,7 +44,6 @@ async function pollForAppWindow(app: ElectronApplication, timeoutMs: number): Pr
   // separate WebContentsView. Falls back to any app page after a short grace
   // period so first-run launches (no projects) still succeed.
   const deadline = Date.now() + timeoutMs;
-  const fallbackGraceMs = 1_500;
   let fallbackSeenAt = 0;
   while (Date.now() < deadline) {
     let fallback: Page | null = null;
@@ -268,7 +270,6 @@ export async function getActiveAppWindow(
   // operation, the project WebContentsView may take a moment to load its
   // URL. Returning the welcome page too early causes tests to grab the
   // wrong renderer.
-  const fallbackGraceMs = 1_500;
   let fallback: Page | null = null;
   let fallbackSeenAt = 0;
   while (Date.now() < deadline) {
@@ -485,28 +486,6 @@ export async function closeApp(app: ElectronApplication): Promise<void> {
     } catch {
       // Already dead
     }
-  }
-}
-
-function getDescendantPids(pid: number): number[] {
-  if (process.platform === "win32") return [];
-  try {
-    const result = execSync(`pgrep -P ${pid}`, {
-      encoding: "utf8",
-      stdio: ["pipe", "pipe", "ignore"],
-    });
-    const children = result
-      .trim()
-      .split("\n")
-      .map(Number)
-      .filter((n) => n > 0);
-    const all = [...children];
-    for (const child of children) {
-      all.push(...getDescendantPids(child));
-    }
-    return all;
-  } catch {
-    return [];
   }
 }
 

@@ -69,7 +69,7 @@ test.describe.serial("Presets: Launch Env Overrides (63–70)", () => {
     await goToClaudeSettings();
     await expect(ctx.window.locator(SEL.preset.section)).toBeVisible({ timeout: T_MEDIUM });
 
-    const select = ctx.window.locator(SEL.preset.defaultSelect);
+    const select = ctx.window.locator(SEL.preset.selectorTrigger);
     await expect(select).toBeVisible({ timeout: T_SHORT });
 
     const options = select.locator("option");
@@ -108,7 +108,7 @@ test.describe.serial("Presets: Launch Env Overrides (63–70)", () => {
     await goToClaudeSettings();
     await expect(ctx.window.locator(SEL.preset.section)).toBeVisible({ timeout: T_MEDIUM });
 
-    const select = ctx.window.locator(SEL.preset.defaultSelect);
+    const select = ctx.window.locator(SEL.preset.selectorTrigger);
     await expect(select).toBeVisible({ timeout: T_SHORT });
 
     const options = select.locator("option");

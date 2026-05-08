@@ -129,7 +129,7 @@ test.describe.serial("Presets: Context Menu Integration (93–96)", () => {
 
   test("96. Checkmark or highlight next to currently saved default preset", async () => {
     await navigateToAgentSettings(ctx.window, "claude");
-    const select = ctx.window.locator(SEL.preset.defaultSelect);
+    const select = ctx.window.locator(SEL.preset.selectorTrigger);
     await expect(select).toBeVisible({ timeout: T_MEDIUM });
     const options = select.locator("option");
     const count = await options.count();

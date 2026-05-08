@@ -60,7 +60,7 @@ test.describe.serial("Presets: Default Preset Selection (53–62)", () => {
     await goToClaudeSettings();
     await addCustomPreset(ctx.window);
     await addCustomPreset(ctx.window); // Need 2 presets for selector to appear
-    await expect(ctx.window.locator(SEL.preset.defaultSelect)).toBeVisible({ timeout: T_MEDIUM });
+    await expect(ctx.window.locator(SEL.preset.selectorTrigger)).toBeVisible({ timeout: T_MEDIUM });
   });
 
   test("54. Default preset selector shows Default as default", async () => {
@@ -228,7 +228,7 @@ test.describe.serial("Presets: Default Preset Selection (53–62)", () => {
 
     await goToClaudeSettings();
     await expect(ctx.window.locator(SEL.preset.section)).toBeVisible({ timeout: T_MEDIUM });
-    await expect(ctx.window.locator(SEL.preset.defaultSelect)).toBeVisible({ timeout: T_SHORT });
+    await expect(ctx.window.locator(SEL.preset.selectorTrigger)).toBeVisible({ timeout: T_SHORT });
   });
 
   test("62. Setting default on Claude does not affect Gemini agent", async () => {

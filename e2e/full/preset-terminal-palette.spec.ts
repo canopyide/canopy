@@ -101,7 +101,7 @@ test.describe.serial("Presets: Terminal Palette Integration (89–92)", () => {
     await ctx.window.waitForTimeout(35_000);
 
     await navigateToAgentSettings(ctx.window, "claude");
-    const select = ctx.window.locator(SEL.preset.defaultSelect);
+    const select = ctx.window.locator(SEL.preset.selectorTrigger);
     await expect(select).toBeVisible({ timeout: T_MEDIUM });
     const options = select.locator("option");
     const count = await options.count();
