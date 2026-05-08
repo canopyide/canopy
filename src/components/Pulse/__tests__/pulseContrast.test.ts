@@ -134,6 +134,15 @@ describe("ProjectPulseCard — accessibility (issue #7229)", () => {
     expect(content).not.toContain("aria-pressed={isActive}");
   });
 
+  it("radiogroup uses roving tabindex (active=0, others=-1) and arrow-key handler", async () => {
+    const content = await readFile(CARD_PATH, "utf-8");
+    expect(content).toContain("tabIndex={isActive ? 0 : -1}");
+    expect(content).toContain("handleRangeKeyDown");
+    expect(content).toContain("rangeButtonRefs");
+    expect(content).toContain("ArrowRight");
+    expect(content).toContain("ArrowLeft");
+  });
+
   it("range buttons expose screen-reader-friendly labels", async () => {
     const content = await readFile(CARD_PATH, "utf-8");
     expect(content).toContain("srLabel");
@@ -153,6 +162,12 @@ describe("ProjectPulseCard — accessibility (issue #7229)", () => {
     expect(content).toContain('role="status"');
     expect(content).toContain("Refreshing pulse data");
     expect(content).toContain("Pulse data updated");
+  });
+
+  it("live-region completion is gated on a prior successful load and no error", async () => {
+    const content = await readFile(CARD_PATH, "utf-8");
+    expect(content).toContain("hasEverLoadedRef");
+    expect(content).toContain("!error");
   });
 
   it("refresh spinner respects motion-reduce", async () => {

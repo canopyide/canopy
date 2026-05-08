@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useRef, useState } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { PulseRangeDays, ProjectPulse, ProjectHealthData } from "@shared/types";
 import { usePulseStore, useProjectStore } from "@/store";
@@ -340,18 +341,31 @@ export function ProjectPulseCard({ worktreeId, className }: ProjectPulseCardProp
 
   // Announce silent-refresh completion exactly once via a polite live region.
   // aria-busy alone does not satisfy WCAG 4.1.3 — assistive tech only re-reads
-  // when a live region changes.
+  // when a live region changes. The hasEverLoadedRef guard suppresses the
+  // first successful load (no need to announce "updated" when the user hasn't
+  // seen anything yet) and also any successful load that happens while error
+  // is set (failed silent refresh while stale data is retained).
   const [refreshAnnouncement, setRefreshAnnouncement] = useState("");
   const wasLoadingRef = useRef(false);
+  const hasEverLoadedRef = useRef(false);
   useEffect(() => {
     const hadPulse = !!pulse;
     if (isLoading && hadPulse) {
       setRefreshAnnouncement("Refreshing pulse data");
-    } else if (wasLoadingRef.current && !isLoading && hadPulse) {
+    } else if (
+      wasLoadingRef.current &&
+      !isLoading &&
+      hadPulse &&
+      !error &&
+      hasEverLoadedRef.current
+    ) {
       setRefreshAnnouncement("Pulse data updated");
     }
+    if (!isLoading && hadPulse && !error) {
+      hasEverLoadedRef.current = true;
+    }
     wasLoadingRef.current = isLoading;
-  }, [isLoading, pulse]);
+  }, [isLoading, pulse, error]);
 
   useEffect(() => {
     if (!pulse && !isLoading && !error) {
@@ -370,6 +384,29 @@ export function ProjectPulseCard({ worktreeId, className }: ProjectPulseCardProp
       fetchPulse(worktreeId);
     },
     [setRangeDays, fetchPulse, worktreeId]
+  );
+
+  // ARIA radio-group keyboard contract: arrow keys cycle the selection and
+  // move focus to the newly-selected option. Tab enters/exits the group at
+  // the active button only.
+  const rangeButtonRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const handleRangeKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      if (event.altKey || event.shiftKey) return;
+      const isForward = event.key === "ArrowRight" || event.key === "ArrowDown";
+      const isBackward = event.key === "ArrowLeft" || event.key === "ArrowUp";
+      if (!isForward && !isBackward) return;
+      event.preventDefault();
+      const currentIndex = RANGE_OPTIONS.findIndex((opt) => opt.value === rangeDays);
+      const safeIndex = currentIndex === -1 ? 0 : currentIndex;
+      const nextIndex = isForward
+        ? (safeIndex + 1) % RANGE_OPTIONS.length
+        : (safeIndex - 1 + RANGE_OPTIONS.length) % RANGE_OPTIONS.length;
+      const next = RANGE_OPTIONS[nextIndex]!;
+      handleRangeChange(next.value);
+      rangeButtonRefs.current[nextIndex]?.focus();
+    },
+    [rangeDays, handleRangeChange]
   );
 
   if (isLoading && !pulse) {
@@ -460,12 +497,16 @@ export function ProjectPulseCard({ worktreeId, className }: ProjectPulseCardProp
             className="pulse-range flex items-center rounded-md border border-transparent text-[11px] font-medium"
             role="radiogroup"
             aria-label="Activity range"
+            onKeyDown={handleRangeKeyDown}
           >
-            {RANGE_OPTIONS.map((option) => {
+            {RANGE_OPTIONS.map((option, index) => {
               const isActive = option.value === rangeDays;
               return (
                 <button
                   key={option.value}
+                  ref={(el) => {
+                    rangeButtonRefs.current[index] = el;
+                  }}
                   type="button"
                   role="radio"
                   onClick={() => handleRangeChange(option.value)}
@@ -476,6 +517,7 @@ export function ProjectPulseCard({ worktreeId, className }: ProjectPulseCardProp
                       : "pulse-control border-transparent text-daintree-text/55 hover:text-daintree-text/80"
                   )}
                   aria-checked={isActive}
+                  tabIndex={isActive ? 0 : -1}
                 >
                   <span aria-hidden="true">{option.label}</span>
                   <span className="sr-only">{option.srLabel}</span>

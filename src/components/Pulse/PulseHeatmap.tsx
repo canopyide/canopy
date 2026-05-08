@@ -135,14 +135,21 @@ export function PulseHeatmap({ cells, rangeDays, compact = false }: PulseHeatmap
     return rows[0]?.[0]?.date ?? null;
   }, [rows]);
 
-  // Roving tabindex: only the active cell holds tabIndex=0; arrow keys move focus
-  // by mutating refs directly to avoid re-rendering 180 cells per keypress.
+  // Roving tabindex: only the active cell holds tabIndex=0. Arrow keys mutate
+  // the DOM directly to avoid re-rendering 180 cells per keypress, but the
+  // active key also lives in a ref so JSX reconciliation on parent re-renders
+  // (silent refresh, range change, health load) re-derives the same tabIndex
+  // and doesn't snap focus back to initialFocusKey.
+  const activeCellKeyRef = useRef<string | null>(null);
   useEffect(() => {
     const validKeys = new Set<string>();
     rows.forEach((row) => row.forEach((c) => validKeys.add(c.date)));
     cellRefs.current.forEach((_, key) => {
       if (!validKeys.has(key)) cellRefs.current.delete(key);
     });
+    if (activeCellKeyRef.current && !validKeys.has(activeCellKeyRef.current)) {
+      activeCellKeyRef.current = null;
+    }
   }, [rows]);
 
   const focusCell = useCallback(
@@ -158,12 +165,17 @@ export function PulseHeatmap({ cells, rangeDays, compact = false }: PulseHeatmap
       });
       node.tabIndex = 0;
       node.focus();
+      activeCellKeyRef.current = target.date;
     },
     [rows]
   );
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
+      // Don't swallow Alt/Shift+Arrow combos — Alt+Arrow is browser/OS history
+      // navigation on some platforms; Shift+Arrow is reserved for selection.
+      if (event.altKey || event.shiftKey) return;
+
       const target = event.target as HTMLElement;
       const date = target.getAttribute("data-cell-date");
       if (!date) return;
@@ -280,7 +292,7 @@ export function PulseHeatmap({ cells, rangeDays, compact = false }: PulseHeatmap
                 : {}
             ) as CSSProperties;
 
-            const isInitialFocus = cell.date === initialFocusKey;
+            const isActive = cell.date === (activeCellKeyRef.current ?? initialFocusKey);
 
             return (
               // 0ms: dense scrub-hover surface — skip-delay alone doesn't cover the cold first-cell hover (mirrors GitHub contribution-heatmap)
@@ -305,7 +317,7 @@ export function PulseHeatmap({ cells, rangeDays, compact = false }: PulseHeatmap
                       cell.isMostRecentActive && "ring-1 ring-daintree-text/25 ring-offset-1"
                     )}
                     aria-label={`${formatted}: ${getTooltipText(cell)}`}
-                    tabIndex={isInitialFocus ? 0 : -1}
+                    tabIndex={isActive ? 0 : -1}
                   />
                 </TooltipTrigger>
                 <TooltipContent side="top" className="text-xs">
