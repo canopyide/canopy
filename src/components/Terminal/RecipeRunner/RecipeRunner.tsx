@@ -12,8 +12,12 @@ interface RecipeRunnerProps {
 
 function buildBannerTitle(spawned: number, total: number, failedNames: string[]): string {
   const failedCount = failedNames.length;
-  if (spawned === 0) {
+  if (spawned === 0 && failedCount > 0) {
     return `Couldn't start any terminals. ${failedCount} failed.`;
+  }
+  if (failedCount === 0) {
+    const terminalWord = total === 1 ? "terminal" : "terminals";
+    return `Started ${total} ${terminalWord}.`;
   }
   const terminalWord = spawned === 1 ? "terminal" : "terminals";
   return `Started ${spawned} of ${total} ${terminalWord}. ${failedCount} failed: ${failedNames.join(", ")}.`;

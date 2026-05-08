@@ -209,42 +209,50 @@ export function useRecipeRunner({
     setSpawnBanner(null);
   }, []);
 
+  const spawnBannerRef = useRef<SpawnBannerState | null>(null);
+  // Keep ref in sync so retryFailed reads the latest banner without a stale closure.
+  useEffect(() => {
+    spawnBannerRef.current = spawnBanner;
+  }, [spawnBanner]);
+
   const retryFailed = useCallback(() => {
-    setSpawnBanner((current) => {
-      if (!current || current.failed.length === 0) return null;
-      const recipe = getRecipeById(current.recipeId);
-      if (!recipe) return null;
+    const banner = spawnBannerRef.current;
+    if (!banner || banner.failed.length === 0) return;
+    if (!defaultCwd) return;
 
-      const context = resolveContext();
-      const indices = current.failed.map((f) => f.index);
+    const recipe = getRecipeById(banner.recipeId);
+    if (!recipe) return;
 
-      runRecipeWithResults(current.recipeId, defaultCwd!, activeWorktreeId ?? undefined, context, {
-        spawnedBy: "recipe",
-        terminalIndices: indices,
+    const context = resolveContext();
+    const indices = banner.failed.map((f) => f.index);
+    const alreadySpawned = banner.total - banner.failed.length;
+    const runId = ++runCounterRef.current;
+
+    runRecipeWithResults(banner.recipeId, defaultCwd, activeWorktreeId ?? undefined, context, {
+      spawnedBy: "recipe",
+      terminalIndices: indices,
+    })
+      .then((results) => {
+        if (runId !== runCounterRef.current) return;
+
+        const stillFailed = results.failed.map((f) => {
+          const terminal = recipe.terminals[f.index];
+          const name = terminal ? buildDisplayName(terminal) : `Terminal ${f.index + 1}`;
+          return { index: f.index, name };
+        });
+
+        setSpawnBanner((prev) => {
+          if (!prev || prev.recipeId !== banner.recipeId) return prev;
+          const cumSpawned = alreadySpawned + results.spawned.length;
+          if (stillFailed.length === 0 && prev.unresolvedVars.length === 0) return null;
+          return {
+            ...prev,
+            spawned: cumSpawned,
+            failed: stillFailed,
+          };
+        });
       })
-        .then((results) => {
-          const stillFailed = results.failed.map((f) => {
-            const terminal = recipe.terminals[f.index];
-            const name = terminal ? buildDisplayName(terminal) : `Terminal ${f.index + 1}`;
-            return { index: f.index, name };
-          });
-
-          setSpawnBanner((prev) => {
-            if (!prev) return null;
-            const prevUnresolved = prev.unresolvedVars;
-            if (stillFailed.length === 0 && prevUnresolved.length === 0) return null;
-            return {
-              ...prev,
-              spawned: results.spawned.length,
-              failed: stillFailed,
-              unresolvedVars: prevUnresolved,
-            };
-          });
-        })
-        .catch(() => {});
-
-      return current;
-    });
+      .catch(() => {});
   }, [
     getRecipeById,
     resolveContext,

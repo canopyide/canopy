@@ -538,7 +538,9 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
     // Pre-fetch agent settings once for all agent terminals
     let agentSettings: Awaited<ReturnType<typeof agentSettingsClient.get>> | null = null;
     let clipboardDirectory: string | undefined;
-    const terminalsToSpawn = indicesToSpawn.map((i) => recipe.terminals[i]!);
+    // Filter out-of-bounds terminal indices before mapping
+    const validIndices = indicesToSpawn.filter((i) => i >= 0 && i < recipe.terminals.length);
+    const terminalsToSpawn = validIndices.map((i) => recipe.terminals[i]!);
     const hasAgent = terminalsToSpawn.some(
       (t) => t.type !== "terminal" && t.type !== "dev-preview"
     );
