@@ -1,10 +1,9 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-
-const FLASH_DURATION_MS = 450;
 
 export function AllClearOverlay() {
   const [visible, setVisible] = useState(false);
+  const safetyTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
     const cleanup = window.electron.terminal.onAllAgentsClear(() => {
@@ -16,10 +15,19 @@ export function AllClearOverlay() {
     return cleanup;
   }, []);
 
+  const handleAnimationEnd = useCallback(
+    (event: React.AnimationEvent) => {
+      if (event.animationName === "all-clear-flash") {
+        setVisible(false);
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
     if (!visible) return;
-    const timer = setTimeout(() => setVisible(false), FLASH_DURATION_MS);
-    return () => clearTimeout(timer);
+    safetyTimerRef.current = setTimeout(() => setVisible(false), 500);
+    return () => clearTimeout(safetyTimerRef.current);
   }, [visible]);
 
   if (!visible) return null;
@@ -28,7 +36,8 @@ export function AllClearOverlay() {
     <div
       className="fixed inset-0 pointer-events-none z-[200] animate-all-clear-flash bg-status-success"
       aria-hidden="true"
+      onAnimationEnd={handleAnimationEnd}
     />,
-    document.body
+    document.body,
   );
 }

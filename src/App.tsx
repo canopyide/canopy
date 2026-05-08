@@ -308,7 +308,7 @@ function App() {
       });
     };
     window.__DAINTREE_E2E_CLEAR_ERRORS__ = () => {
-      useErrorStore.getState().clearAll();
+      useErrorStore.getState().reset();
     };
     // Refreshes the GitHub config store from the main process. Used by
     // fault-mode tests to pick up a token seeded via __daintreeSeedGitHubToken
