@@ -128,6 +128,30 @@ describe("AppDialog focus trapping", () => {
     expect(document.activeElement).toBe(firstButton);
   });
 
+  it("wraps focus from the last visible element when hidden tabbables follow it", async () => {
+    renderDialog({
+      children: (
+        <AppDialog.Body>
+          <button type="button">First</button>
+          <button type="button">Last visible</button>
+          <button type="button" hidden>
+            Hidden
+          </button>
+        </AppDialog.Body>
+      ),
+    });
+    await act(() => vi.runAllTimersAsync());
+
+    const firstButton = screen.getByRole("button", { name: "First" });
+    const lastVisibleButton = screen.getByRole("button", { name: "Last visible" });
+    lastVisibleButton.focus();
+    expect(document.activeElement).toBe(lastVisibleButton);
+
+    pressTab();
+
+    expect(document.activeElement).toBe(firstButton);
+  });
+
   it("wraps focus backward from first to last element on Shift+Tab", async () => {
     renderDialog();
     await act(() => vi.runAllTimersAsync());

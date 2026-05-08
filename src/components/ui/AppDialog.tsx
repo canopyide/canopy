@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback, useId, createContext, useContext } from
 import { createPortal } from "react-dom";
 import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
-import { TABBABLE_SELECTOR } from "@/lib/accessibility";
+import { getVisibleTabbableElements } from "@/lib/accessibility";
 import { logError } from "@/utils/logger";
 import { ScrollShadow } from "@/components/ui/ScrollShadow";
 import { useOverlayState, useEscapeStack } from "@/hooks";
@@ -102,7 +102,8 @@ export function AppDialog({
     // Hand focus to the first tabbable child of the app shell rather
     // than letting it silently fall to <body>.
     const root = document.getElementById("root");
-    root?.querySelector<HTMLElement>(TABBABLE_SELECTOR)?.focus();
+    const fallback = root ? getVisibleTabbableElements(root)[0] : undefined;
+    fallback?.focus();
   }, []);
 
   const { isVisible, shouldRender } = useAnimatedPresence({
@@ -117,7 +118,7 @@ export function AppDialog({
     if (isOpen) {
       previousActiveElement.current = document.activeElement as HTMLElement;
       requestAnimationFrame(() => {
-        const first = dialogRef.current?.querySelector<HTMLElement>(TABBABLE_SELECTOR);
+        const first = dialogRef.current ? getVisibleTabbableElements(dialogRef.current)[0] : null;
         if (first) {
           first.focus();
         } else {
@@ -223,9 +224,7 @@ export function AppDialog({
         if (closestModal && !closestModal.contains(dialogRef.current)) return;
       }
 
-      const focusable = Array.from(
-        dialogRef.current.querySelectorAll<HTMLElement>(TABBABLE_SELECTOR)
-      );
+      const focusable = getVisibleTabbableElements(dialogRef.current);
 
       if (focusable.length === 0) {
         e.preventDefault();
