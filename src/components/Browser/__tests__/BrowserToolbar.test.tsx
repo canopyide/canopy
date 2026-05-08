@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, fireEvent } from "@testing-library/react";
+import { act, render, fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { BrowserToolbar } from "../BrowserToolbar";
 
@@ -12,40 +12,27 @@ vi.mock("@/components/ui/tooltip", () => ({
 
 const mockRemoveUrl = vi.fn();
 
+const STABLE_ENTRIES = [
+  {
+    url: "http://localhost:3000/",
+    title: "Home",
+    visitCount: 5,
+    lastVisitAt: 1700000000000,
+    favicon: "https://example.com/favicon.ico",
+  },
+  {
+    url: "http://localhost:5173/",
+    title: "Vite",
+    visitCount: 2,
+    lastVisitAt: 1700000000000,
+  },
+];
+
 vi.mock("@/store/urlHistoryStore", () => ({
-  useUrlHistoryStore: Object.assign(
-    () => [
-      {
-        url: "http://localhost:3000/",
-        title: "Home",
-        visitCount: 5,
-        lastVisitAt: Date.now(),
-        favicon: "https://example.com/favicon.ico",
-      },
-      {
-        url: "http://localhost:5173/",
-        title: "Vite",
-        visitCount: 2,
-        lastVisitAt: Date.now(),
-      },
-    ],
-    { getState: () => ({ removeUrl: mockRemoveUrl }) }
-  ),
-  getFrecencySuggestions: () => [
-    {
-      url: "http://localhost:3000/",
-      title: "Home",
-      visitCount: 5,
-      lastVisitAt: Date.now(),
-      favicon: "https://example.com/favicon.ico",
-    },
-    {
-      url: "http://localhost:5173/",
-      title: "Vite",
-      visitCount: 2,
-      lastVisitAt: Date.now(),
-    },
-  ],
+  useUrlHistoryStore: Object.assign(() => STABLE_ENTRIES, {
+    getState: () => ({ removeUrl: mockRemoveUrl }),
+  }),
+  getFrecencySuggestions: () => STABLE_ENTRIES,
 }));
 
 vi.mock("@/services/ActionService", () => ({
@@ -183,5 +170,150 @@ describe("BrowserToolbar favicon and delete", () => {
     const deleteButtons = container.querySelectorAll("[aria-label^='Remove']");
     fireEvent.mouseDown(deleteButtons[0]!);
     expect(defaultProps.onNavigate).not.toHaveBeenCalled();
+  });
+});
+
+describe("BrowserToolbar ARIA semantics", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("input has combobox role with accessible name and listbox controls", () => {
+    const { getByTestId } = renderToolbar();
+    const input = getByTestId("browser-address-bar");
+
+    expect(input.getAttribute("role")).toBe("combobox");
+    expect(input.getAttribute("aria-label")).toBe("Address bar");
+    expect(input.getAttribute("aria-autocomplete")).toBe("list");
+    expect(input.getAttribute("aria-expanded")).toBe("false");
+    expect(input.getAttribute("aria-controls")).toBeTruthy();
+    expect(input.getAttribute("aria-activedescendant")).toBeNull();
+  });
+
+  it("aria-expanded becomes true and aria-controls points at the listbox when open", () => {
+    const { container, getByTestId } = renderToolbar();
+    const input = openDropdown(getByTestId);
+
+    expect(input.getAttribute("aria-expanded")).toBe("true");
+    const listboxId = input.getAttribute("aria-controls")!;
+    const listbox = container.querySelector(`[id="${listboxId}"]`);
+    expect(listbox).toBeTruthy();
+    expect(listbox!.getAttribute("role")).toBe("listbox");
+  });
+
+  it("each suggestion is rendered as an option with stable id and aria-selected", () => {
+    const { container, getByTestId } = renderToolbar();
+    const input = openDropdown(getByTestId);
+    const listboxId = input.getAttribute("aria-controls")!;
+
+    const options = container.querySelectorAll('[role="option"]');
+    expect(options.length).toBe(2);
+    options.forEach((option, index) => {
+      expect(option.getAttribute("id")).toBe(`${listboxId}-option-${index}`);
+      expect(option.getAttribute("aria-selected")).toBe("false");
+    });
+  });
+
+  it("ArrowDown moves aria-activedescendant and flips aria-selected on options", async () => {
+    const { container, getByTestId } = renderToolbar();
+    const input = openDropdown(getByTestId);
+    const listboxId = input.getAttribute("aria-controls")!;
+
+    act(() => {
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+    });
+
+    await waitFor(() => {
+      expect(input.getAttribute("aria-activedescendant")).toBe(`${listboxId}-option-0`);
+    });
+    const options = container.querySelectorAll('[role="option"]');
+    expect(options[0]!.getAttribute("aria-selected")).toBe("true");
+    expect(options[1]!.getAttribute("aria-selected")).toBe("false");
+  });
+
+  it("aria-activedescendant clears when the dropdown closes", async () => {
+    const { getByTestId } = renderToolbar();
+    const input = openDropdown(getByTestId);
+
+    act(() => {
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+    });
+    await waitFor(() => {
+      expect(input.getAttribute("aria-activedescendant")).toBeTruthy();
+    });
+
+    act(() => {
+      fireEvent.keyDown(input, { key: "Escape" });
+    });
+
+    await waitFor(() => {
+      expect(input.getAttribute("aria-expanded")).toBe("false");
+    });
+    expect(input.getAttribute("aria-activedescendant")).toBeNull();
+  });
+
+  it("Copy URL button is exposed by accessible name", () => {
+    const { getByRole } = renderToolbar();
+    const button = getByRole("button", { name: "Copy URL" });
+    expect(button).toBeTruthy();
+  });
+
+  it("copy success announces in a polite live region", async () => {
+    const { container, getByRole } = renderToolbar();
+
+    await act(async () => {
+      fireEvent.click(getByRole("button", { name: "Copy URL" }));
+    });
+
+    await waitFor(() => {
+      const liveRegions = container.querySelectorAll('[role="status"]');
+      const texts = Array.from(liveRegions).map((node) => node.textContent);
+      expect(texts).toContain("Copied to clipboard");
+    });
+  });
+
+  it("Shift+Delete on a highlighted suggestion announces removal", async () => {
+    const { container, getByTestId } = renderToolbar();
+    const input = openDropdown(getByTestId);
+
+    act(() => {
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+    });
+    await waitFor(() => {
+      expect(input.getAttribute("aria-activedescendant")).toBeTruthy();
+    });
+
+    act(() => {
+      fireEvent.keyDown(input, { key: "Delete", shiftKey: true });
+    });
+
+    await waitFor(() => {
+      const liveRegions = container.querySelectorAll('[role="status"]');
+      const texts = Array.from(liveRegions).map((node) => node.textContent);
+      expect(texts.some((t) => t?.startsWith("Removed ") && t.endsWith("from history"))).toBe(true);
+    });
+  });
+
+  it("X removal button is hidden from the accessibility tree", () => {
+    const { container } = renderToolbar();
+    openDropdown(container.querySelector("[data-testid='browser-address-bar']")! as HTMLElement);
+
+    const removeButtons = container.querySelectorAll("[aria-label^='Remove']");
+    expect(removeButtons.length).toBeGreaterThan(0);
+    removeButtons.forEach((button) => {
+      expect(button.getAttribute("aria-hidden")).toBe("true");
+      expect(button.getAttribute("tabindex")).toBe("-1");
+    });
+  });
+
+  it("X removal label uses display URL not the raw URL", () => {
+    const { container } = renderToolbar();
+    openDropdown(container.querySelector("[data-testid='browser-address-bar']")! as HTMLElement);
+
+    const removeButton = container.querySelector("[aria-label^='Remove']");
+    expect(removeButton).toBeTruthy();
+    const label = removeButton!.getAttribute("aria-label")!;
+    expect(label).not.toContain("http://");
+    expect(label).toMatch(/^Remove .+ from history$/);
   });
 });

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo, useId } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -91,9 +91,11 @@ export function BrowserToolbar({
   const [copied, setCopied] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [historyAnnouncement, setHistoryAnnouncement] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const listboxId = useId();
 
   const projectEntries = useUrlHistoryStore(
     (state) => (projectId ? state.entries[projectId] : undefined) ?? EMPTY_ENTRIES
@@ -190,6 +192,7 @@ export function BrowserToolbar({
           if (projectId) {
             useUrlHistoryStore.getState().removeUrl(projectId, entry.url);
           }
+          setHistoryAnnouncement(`Removed ${getDisplayUrl(entry.url)} from history`);
           const remaining = suggestions.length - 1;
           if (remaining === 0) {
             setIsDropdownOpen(false);
@@ -275,6 +278,12 @@ export function BrowserToolbar({
 
   return (
     <div className="flex items-center gap-1.5 px-2 py-1.5 bg-surface border-b border-overlay">
+      <span role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+        {historyAnnouncement}
+      </span>
+      <span role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+        {copied ? "Copied to clipboard" : ""}
+      </span>
       {/* Navigation buttons */}
       <Tooltip>
         <TooltipTrigger asChild>
@@ -467,6 +476,16 @@ export function BrowserToolbar({
               ref={inputRef}
               type="text"
               data-testid="browser-address-bar"
+              role="combobox"
+              aria-label="Address bar"
+              aria-autocomplete="list"
+              aria-expanded={isDropdownOpen}
+              aria-controls={listboxId}
+              aria-activedescendant={
+                isDropdownOpen && highlightedIndex >= 0
+                  ? `${listboxId}-option-${highlightedIndex}`
+                  : undefined
+              }
               value={inputValue}
               onChange={(e) => {
                 setInputValue(e.target.value);
@@ -496,11 +515,16 @@ export function BrowserToolbar({
         {isDropdownOpen && suggestions.length > 0 && (
           <div
             ref={dropdownRef}
+            id={listboxId}
+            role="listbox"
             className="absolute left-0 right-0 top-full mt-1 z-50 bg-daintree-bg border border-overlay rounded shadow-[var(--theme-shadow-floating)] overflow-hidden"
           >
             {suggestions.map((entry, index) => (
               <div
                 key={entry.url}
+                id={`${listboxId}-option-${index}`}
+                role="option"
+                aria-selected={index === highlightedIndex}
                 onMouseEnter={() => setHighlightedIndex(index)}
                 className={cn(
                   "group/row w-full text-left px-2.5 py-1.5 flex items-center gap-2 cursor-pointer",
@@ -549,10 +573,12 @@ export function BrowserToolbar({
                   <button
                     type="button"
                     tabIndex={-1}
+                    aria-hidden="true"
                     onMouseDown={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
                       useUrlHistoryStore.getState().removeUrl(projectId, entry.url);
+                      setHistoryAnnouncement(`Removed ${getDisplayUrl(entry.url)} from history`);
                       const remaining = suggestions.length - 1;
                       if (remaining === 0) {
                         setIsDropdownOpen(false);
@@ -562,7 +588,7 @@ export function BrowserToolbar({
                       }
                     }}
                     className="shrink-0 p-0.5 rounded opacity-0 group-hover/row:opacity-100 hover:bg-overlay-strong transition-opacity text-daintree-text/40 hover:text-daintree-text/70"
-                    aria-label={`Remove ${entry.url} from history`}
+                    aria-label={`Remove ${getDisplayUrl(entry.url)} from history`}
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -576,7 +602,7 @@ export function BrowserToolbar({
       {/* Action buttons */}
       <Tooltip>
         <TooltipTrigger asChild>
-          <button type="button" onClick={handleCopy} className={buttonClass}>
+          <button type="button" onClick={handleCopy} className={buttonClass} aria-label="Copy URL">
             {copied ? (
               <Check className="w-4 h-4 text-status-success" />
             ) : (
