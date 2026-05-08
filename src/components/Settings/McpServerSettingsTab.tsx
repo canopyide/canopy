@@ -80,6 +80,7 @@ export function McpServerSettingsTab() {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [portInput, setPortInput] = useState("");
+  const [portDirty, setPortDirty] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
   const [copiedKey, setCopiedKey] = useState(false);
   const [copiedAudit, setCopiedAudit] = useState(false);
@@ -129,6 +130,7 @@ export function McpServerSettingsTab() {
         if (settled) return;
         setStatus(s);
         setPortInput(s.configuredPort?.toString() ?? "");
+        setPortDirty(false);
         setAuditEnabled(auditCfg.enabled);
         setAuditMaxRecords(auditCfg.maxRecords);
         setMaxRecordsInput(auditCfg.maxRecords.toString());
@@ -153,7 +155,9 @@ export function McpServerSettingsTab() {
         .getStatus()
         .then((s) => {
           setStatus(s);
-          setPortInput(s.configuredPort?.toString() ?? "");
+          if (!portDirty) {
+            setPortInput(s.configuredPort?.toString() ?? "");
+          }
           setError(null);
         })
         .catch((err) => {
@@ -211,6 +215,7 @@ export function McpServerSettingsTab() {
       const newStatus = await window.electron.mcpServer.setPort(port);
       setStatus(newStatus);
       setPortInput(newStatus.configuredPort?.toString() ?? "");
+      setPortDirty(false);
     } catch (err) {
       setError(formatErrorMessage(err, "Failed to update port"));
       logError("Failed to update MCP port", err);
@@ -265,6 +270,7 @@ export function McpServerSettingsTab() {
       const cfg = await window.electron.mcpServer.setAuditEnabled(next);
       setAuditEnabled(cfg.enabled);
       setAuditMaxRecords(cfg.maxRecords);
+      setMaxRecordsInput(cfg.maxRecords.toString());
     } catch (err) {
       setError(formatErrorMessage(err, "Failed to update audit logging"));
       logError("Failed to toggle MCP audit log", err);
@@ -432,7 +438,10 @@ export function McpServerSettingsTab() {
                 inputMode="numeric"
                 pattern="[0-9]*"
                 value={portInput}
-                onChange={(e) => setPortInput(e.target.value.replace(/\D/g, ""))}
+                onChange={(e) => {
+                  setPortInput(e.target.value.replace(/\D/g, ""));
+                  setPortDirty(true);
+                }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handlePortSave();
                 }}
