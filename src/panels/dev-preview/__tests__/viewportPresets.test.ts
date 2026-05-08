@@ -5,13 +5,8 @@ import type { ViewportPresetId } from "@shared/types/panel";
 import { VIEWPORT_PRESET_LIST, VIEWPORT_PRESETS, getViewportPreset } from "../viewportPresets";
 
 describe("VIEWPORT_PRESETS", () => {
-  it("exposes all four preset ids", () => {
-    expect(VIEWPORT_PRESET_LIST.map((p) => p.id).sort()).toEqual([
-      "galaxy",
-      "ipad",
-      "iphone",
-      "pixel",
-    ]);
+  it("renders smallest-to-largest in the chip row order", () => {
+    expect(VIEWPORT_PRESET_LIST.map((p) => p.id)).toEqual(["galaxy", "iphone", "pixel", "ipad"]);
   });
 
   it("Galaxy S25 covers the sub-393 px breakpoint", () => {
