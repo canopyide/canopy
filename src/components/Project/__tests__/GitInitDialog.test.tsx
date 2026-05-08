@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";
 import type { ReactNode, ButtonHTMLAttributes } from "react";
 import type { GitInitProgressEvent } from "@shared/types/ipc/gitInit";
 
@@ -85,17 +85,25 @@ describe("GitInitDialog", () => {
     });
   });
 
-  it("starts guided initialization when opened", async () => {
-    initGitGuidedMock.mockImplementationOnce(() => new Promise(() => {}));
-
-    render(
+  function renderDialog(overrides: { onSuccess?: () => void; onCancel?: () => void } = {}) {
+    return render(
       <GitInitDialog
         isOpen={true}
         directoryPath="/tmp/new-repo"
-        onSuccess={vi.fn()}
-        onCancel={vi.fn()}
+        onSuccess={overrides.onSuccess ?? vi.fn()}
+        onCancel={overrides.onCancel ?? vi.fn()}
       />
     );
+  }
+
+  it("does not auto-fire on mount and waits for the user to confirm", async () => {
+    renderDialog();
+
+    // Listener registered, but no IPC call happens until the user clicks.
+    await waitFor(() => expect(onInitGitProgressMock).toHaveBeenCalled());
+    expect(initGitGuidedMock).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: /initialize repository/i }));
 
     await waitFor(() => {
       expect(initGitGuidedMock).toHaveBeenCalledWith(
@@ -104,25 +112,85 @@ describe("GitInitDialog", () => {
           createInitialCommit: true,
           createGitignore: true,
           gitignoreTemplate: "node",
+          initialCommitMessage: "Initial commit",
         })
       );
     });
-
-    const dialog = screen.getByTestId("app-dialog");
-    expect(dialog.getAttribute("data-dismissible")).toBe("false");
   });
 
-  it("auto-continues after completion event", async () => {
-    const onSuccess = vi.fn();
-    render(
-      <GitInitDialog
-        isOpen={true}
-        directoryPath="/tmp/new-repo"
-        onSuccess={onSuccess}
-        onCancel={vi.fn()}
-      />
-    );
+  it("passes the selected template and edited commit message", async () => {
+    initGitGuidedMock.mockImplementationOnce(() => new Promise(() => {}));
 
+    renderDialog();
+
+    fireEvent.change(screen.getByLabelText(/gitignore template/i), {
+      target: { value: "python" },
+    });
+    fireEvent.change(screen.getByLabelText(/initial commit message/i), {
+      target: { value: "feat: bootstrap" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /initialize repository/i }));
+
+    await waitFor(() => {
+      expect(initGitGuidedMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          gitignoreTemplate: "python",
+          initialCommitMessage: "feat: bootstrap",
+        })
+      );
+    });
+  });
+
+  it("hides the commit message field and skips the initial commit when unchecked", async () => {
+    initGitGuidedMock.mockImplementationOnce(() => new Promise(() => {}));
+
+    renderDialog();
+
+    fireEvent.click(screen.getByLabelText(/create initial commit/i));
+    expect(screen.queryByLabelText(/initial commit message/i)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /initialize repository/i }));
+
+    await waitFor(() => {
+      expect(initGitGuidedMock).toHaveBeenCalledWith(
+        expect.objectContaining({ createInitialCommit: false })
+      );
+    });
+  });
+
+  it("skips .gitignore creation when template is 'none'", async () => {
+    initGitGuidedMock.mockImplementationOnce(() => new Promise(() => {}));
+
+    renderDialog();
+
+    fireEvent.change(screen.getByLabelText(/gitignore template/i), { target: { value: "none" } });
+    fireEvent.click(screen.getByRole("button", { name: /initialize repository/i }));
+
+    await waitFor(() => {
+      expect(initGitGuidedMock).toHaveBeenCalledWith(
+        expect.objectContaining({ createGitignore: false, gitignoreTemplate: "none" })
+      );
+    });
+  });
+
+  it("guards against double-clicks dispatching two IPC calls", async () => {
+    initGitGuidedMock.mockImplementationOnce(() => new Promise(() => {}));
+
+    renderDialog();
+
+    const button = screen.getByRole("button", { name: /initialize repository/i });
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    await waitFor(() => expect(initGitGuidedMock).toHaveBeenCalledTimes(1));
+  });
+
+  it("auto-continues after a completion event", async () => {
+    const onSuccess = vi.fn();
+    renderDialog({ onSuccess });
+
+    fireEvent.click(screen.getByRole("button", { name: /initialize repository/i }));
     await waitFor(() => expect(progressHandler).not.toBeNull());
 
     act(() => {
@@ -134,8 +202,44 @@ describe("GitInitDialog", () => {
       });
     });
 
-    // Auto-close runs after AUTO_CLOSE_DELAY_MS (2s) — extend the waitFor
-    // timeout so the assertion outlives the dialog's read-the-log delay.
     await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1), { timeout: 3000 });
+  });
+
+  it("surfaces the git config commands and offers Try again on identity error", async () => {
+    renderDialog();
+
+    fireEvent.click(screen.getByRole("button", { name: /initialize repository/i }));
+    await waitFor(() => expect(progressHandler).not.toBeNull());
+
+    const identityHelp =
+      "Set your git identity, then create the initial commit manually:\n" +
+      '  git config --global user.name "Your Name"\n' +
+      '  git config --global user.email "you@example.com"';
+
+    act(() => {
+      progressHandler?.({
+        step: "commit",
+        status: "error",
+        message: "Git user identity not configured",
+        error: identityHelp,
+        timestamp: Date.now(),
+      });
+      progressHandler?.({
+        step: "complete",
+        status: "error",
+        message: "Repository initialized — initial commit skipped",
+        error: identityHelp,
+        timestamp: Date.now(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/git config --global user\.name/i).length).toBeGreaterThan(0);
+    });
+
+    initGitGuidedMock.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: /try again/i }));
+
+    await waitFor(() => expect(initGitGuidedMock).toHaveBeenCalledTimes(1));
   });
 });
