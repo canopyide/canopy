@@ -73,9 +73,14 @@ vi.mock("@/store/projectPresetsStore", () => ({
 
 let mockPanelsById: Record<string, unknown> = {};
 let mockPanelIds: string[] = [];
+let mockPanelIdsByWorktreeId: Record<string, string[]> = {};
 vi.mock("@/store/panelStore", () => ({
   usePanelStore: (selector: (s: Record<string, unknown>) => unknown) =>
-    selector({ panelsById: mockPanelsById, panelIds: mockPanelIds }),
+    selector({
+      panelsById: mockPanelsById,
+      panelIds: mockPanelIds,
+      panelIdsByWorktreeId: mockPanelIdsByWorktreeId,
+    }),
 }));
 
 vi.mock("@/store/worktreeStore", () => ({
@@ -314,6 +319,7 @@ describe("AgentButton preset UX", () => {
     mockDotColor = "";
     mockPanelsById = {};
     mockPanelIds = [];
+    mockPanelIdsByWorktreeId = {};
     mockWorktrees = [];
     dropdownCloseAutoFocusSpy = null;
     dropdownPointerDownOutsideSpy = null;
@@ -832,6 +838,7 @@ describe("AgentButton preset UX", () => {
       mockSettings = settingsWith({ claude: {} });
       mockPanelsById = { "panel-1": activePanel("waiting") };
       mockPanelIds = ["panel-1"];
+      mockPanelIdsByWorktreeId = { "wt-1": ["panel-1"] };
       mockActiveWorktreeId = "wt-1";
       mockDominantState = "waiting";
       mockDotColor = "bg-state-waiting";
@@ -848,6 +855,7 @@ describe("AgentButton preset UX", () => {
       mockSettings = settingsWith({ claude: {} });
       mockPanelsById = { "panel-1": activePanel("working") };
       mockPanelIds = ["panel-1"];
+      mockPanelIdsByWorktreeId = { "wt-1": ["panel-1"] };
       mockActiveWorktreeId = "wt-1";
       mockDominantState = "working";
       mockDotColor = null;

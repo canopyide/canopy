@@ -7,6 +7,7 @@ import { useLayoutConfigStore } from "@/store/layoutConfigStore";
 import { saveNormalized, saveTabGroups } from "./persistence";
 import { optimizeForDock } from "./layout";
 import { deriveRuntimeStatus } from "./helpers";
+import { transferBetweenWorktreeIndex } from "./worktreeIndex";
 
 type Set = PanelRegistryStoreApi["setState"];
 type Get = PanelRegistryStoreApi["getState"];
@@ -475,6 +476,7 @@ export const createTabGroupActions = (
 
       const panelIdSet = new Set(group.panelIds);
       const newById = { ...state.panelsById };
+      let newIndex = state.panelIdsByWorktreeId;
       for (const pid of panelIdSet) {
         const t = newById[pid];
         if (!t) continue;
@@ -490,11 +492,12 @@ export const createTabGroupActions = (
             t.runtimeStatus
           ),
         };
+        newIndex = transferBetweenWorktreeIndex(newIndex, t.worktreeId, worktreeId, pid);
       }
 
       saveNormalized(newById, state.panelIds);
       saveTabGroups(newTabGroups);
-      return { panelsById: newById, tabGroups: newTabGroups };
+      return { panelsById: newById, panelIdsByWorktreeId: newIndex, tabGroups: newTabGroups };
     });
 
     for (const panelId of group.panelIds) {
@@ -712,6 +715,7 @@ export const createTabGroupActions = (
     set((s) => {
       let terminalsUpdated = false;
       const newById = { ...s.panelsById };
+      let newIndex = s.panelIdsByWorktreeId;
 
       for (const tid of s.panelIds) {
         const t = newById[tid];
@@ -727,6 +731,14 @@ export const createTabGroupActions = (
             if (needsLocationUpdate || needsWorktreeUpdate) {
               const effectiveLocation = needsLocationUpdate ? group.location : t.location;
               terminalsUpdated = true;
+              if (needsWorktreeUpdate) {
+                newIndex = transferBetweenWorktreeIndex(
+                  newIndex,
+                  t.worktreeId,
+                  group.worktreeId,
+                  tid
+                );
+              }
               newById[tid] = {
                 ...t,
                 location: effectiveLocation,
@@ -750,7 +762,11 @@ export const createTabGroupActions = (
       if (!options?.skipPersist) {
         saveTabGroups(sanitizedGroups);
       }
-      return { panelsById: newById, tabGroups: sanitizedGroups };
+      return {
+        panelsById: newById,
+        panelIdsByWorktreeId: newIndex,
+        tabGroups: sanitizedGroups,
+      };
     });
   },
 

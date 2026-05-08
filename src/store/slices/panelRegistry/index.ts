@@ -37,6 +37,7 @@ export const createPanelRegistrySlice =
     return {
       panelsById: {},
       panelIds: [],
+      panelIdsByWorktreeId: {},
       trashedTerminals: new Map(),
       backgroundedTerminals: new Map(),
       tabGroups: new Map(),

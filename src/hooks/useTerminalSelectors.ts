@@ -80,19 +80,19 @@ export function useTerminalNotificationCounts(blurTime?: number | null): {
 
 export function useWaitingTerminals(): TerminalInstance[] {
   const worktreeIds = useWorktreeIds();
-  const panelIds = usePanelStore((state) => state.panelIds);
-  const panelsById = usePanelStore((state) => state.panelsById);
-  const isInTrash = usePanelStore((state) => state.isInTrash);
 
-  return useMemo(
-    () =>
-      panelIds
-        .map((id) => panelsById[id])
-        .filter(
-          (t): t is TerminalInstance =>
-            !!t && t.agentState === "waiting" && isTerminalVisible(t, isInTrash, worktreeIds)
-        ),
-    [panelIds, panelsById, isInTrash, worktreeIds]
+  return usePanelStore(
+    useShallow((state) => {
+      const out: TerminalInstance[] = [];
+      for (const id of state.panelIds) {
+        const t = state.panelsById[id];
+        if (!t) continue;
+        if (t.agentState !== "waiting") continue;
+        if (!isTerminalVisible(t, state.isInTrash, worktreeIds)) continue;
+        out.push(t);
+      }
+      return out;
+    })
   );
 }
 
@@ -103,18 +103,19 @@ export function useWaitingTerminalIds(): string[] {
 
 export function useBackgroundedTerminals(): TerminalInstance[] {
   const worktreeIds = useWorktreeIds();
-  const panelIds = usePanelStore((state) => state.panelIds);
-  const panelsById = usePanelStore((state) => state.panelsById);
 
-  return useMemo(
-    () =>
-      panelIds
-        .map((id) => panelsById[id])
-        .filter(
-          (t): t is TerminalInstance =>
-            !!t && t.location === "background" && !isTerminalOrphaned(t, worktreeIds)
-        ),
-    [panelIds, panelsById, worktreeIds]
+  return usePanelStore(
+    useShallow((state) => {
+      const out: TerminalInstance[] = [];
+      for (const id of state.panelIds) {
+        const t = state.panelsById[id];
+        if (!t) continue;
+        if (t.location !== "background") continue;
+        if (isTerminalOrphaned(t, worktreeIds)) continue;
+        out.push(t);
+      }
+      return out;
+    })
   );
 }
 

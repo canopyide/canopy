@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ShortcutRevealChip } from "@/components/ui/ShortcutRevealChip";
@@ -155,8 +156,6 @@ export function AgentButton({
   const ccrPresets = useCcrPresetsStore((s) => s.ccrPresetsByAgent[type]);
   const projectPresets = useProjectPresetsStore((s) => s.presetsByAgent[type]);
 
-  const panelsById = usePanelStore((s) => s.panelsById);
-  const panelIds = usePanelStore((s) => s.panelIds);
   const activeWorktreeId = useWorktreeSelectionStore((s) => s.activeWorktreeId);
 
   // Radix Tooltip reopens on focus restoration. When the chevron's
@@ -193,26 +192,29 @@ export function AgentButton({
     isRestoringFocusRef.current = false;
   };
 
-  const activeSession = useMemo(() => {
-    const states: (AgentState | undefined)[] = [];
-    let firstId: string | null = null;
-    for (const pid of panelIds) {
-      const p = panelsById[pid];
-      if (
-        !p ||
-        getRuntimeOrBootAgentId(p) !== type ||
-        p.location === "trash" ||
-        p.location === "background"
-      )
-        continue;
-      if (activeWorktreeId && p.worktreeId !== activeWorktreeId) continue;
-      if (!ACTIVE_AGENT_STATES.has(p.agentState)) continue;
-      if (!firstId) firstId = pid;
-      states.push(p.agentState);
-    }
-    if (!firstId) return null;
-    return { id: firstId, dominantState: getDominantAgentState(states) };
-  }, [panelsById, panelIds, activeWorktreeId, type]);
+  // Single useShallow selector — scoped to the active worktree's pre-computed
+  // bucket so per-terminal ticks in unrelated worktrees do not re-evaluate this
+  // selector body. When `activeWorktreeId` is null, fall back to scanning all
+  // panel ids (rare, only during project switch hydration). See issue #7451.
+  const activeSession = usePanelStore(
+    useShallow((state) => {
+      const ids = activeWorktreeId ? state.panelIdsByWorktreeId[activeWorktreeId] : state.panelIds;
+      if (!ids || ids.length === 0) return null;
+      const states: (AgentState | undefined)[] = [];
+      let firstId: string | null = null;
+      for (const pid of ids) {
+        const p = state.panelsById[pid];
+        if (!p) continue;
+        if (getRuntimeOrBootAgentId(p) !== type) continue;
+        if (p.location === "trash" || p.location === "background") continue;
+        if (!ACTIVE_AGENT_STATES.has(p.agentState)) continue;
+        if (!firstId) firstId = pid;
+        states.push(p.agentState);
+      }
+      if (!firstId) return null;
+      return { id: firstId, dominantState: getDominantAgentState(states) };
+    })
+  );
 
   const config = getAgentConfig(type);
   if (!config) return null;

@@ -5,6 +5,7 @@ import { TerminalRefreshTier } from "@/types";
 import { saveNormalized, saveTabGroups } from "./persistence";
 import { optimizeForDock } from "./layout";
 import { deriveRuntimeStatus, removePanelIdsFromTabGroups } from "./helpers";
+import { buildWorktreeIndex } from "./worktreeIndex";
 
 type Set = PanelRegistryStoreApi["setState"];
 type Get = PanelRegistryStoreApi["getState"];
@@ -63,7 +64,12 @@ export const createOrderingActions = (
       }
 
       saveNormalized(state.panelsById, newIds);
-      return { panelIds: newIds };
+      // Rebuild bucket order so per-worktree selectors observe the new order
+      // (issue #7451). Reorder is user-gesture rate, so a full rebuild is fine.
+      return {
+        panelIds: newIds,
+        panelIdsByWorktreeId: buildWorktreeIndex(newIds, state.panelsById),
+      };
     });
   },
 
@@ -124,9 +130,13 @@ export const createOrderingActions = (
       if (groupPrune.changed) {
         saveTabGroups(groupPrune.tabGroups);
       }
+      // Rebuild bucket order so per-worktree selectors observe the new order
+      // (issue #7451). The panel's worktreeId field is unchanged here, but its
+      // position within the bucket may have shifted.
       return {
         panelsById: newById,
         panelIds: newIds,
+        panelIdsByWorktreeId: buildWorktreeIndex(newIds, newById),
         ...(groupPrune.changed && { tabGroups: groupPrune.tabGroups }),
       };
     });
@@ -164,7 +174,12 @@ export const createOrderingActions = (
       if (!orderChanged) return state;
 
       saveNormalized(state.panelsById, newIds);
-      return { panelIds: newIds };
+      // Rebuild bucket order so per-worktree selectors observe the restored
+      // order on hydration (issue #7451).
+      return {
+        panelIds: newIds,
+        panelIdsByWorktreeId: buildWorktreeIndex(newIds, state.panelsById),
+      };
     });
   },
 });

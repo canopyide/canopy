@@ -21,6 +21,7 @@ import {
 import type { TrashExpiryHelpers } from "./trash";
 import { logError, logWarn } from "@/utils/logger";
 import { beginBatch, consumeBatch } from "./hydrationBatch";
+import { removeFromWorktreeIndex } from "./worktreeIndex";
 
 type Set = PanelRegistryStoreApi["setState"];
 type Get = PanelRegistryStoreApi["getState"];
@@ -91,6 +92,11 @@ export const createCorePanelActions = (
     set((state) => {
       const { [id]: _, ...restById } = state.panelsById;
       const newIds = state.panelIds.filter((tid) => tid !== id);
+      const newIndex = removeFromWorktreeIndex(
+        state.panelIdsByWorktreeId,
+        terminal?.worktreeId,
+        id
+      );
 
       const newTrashed = new Map(state.trashedTerminals);
       newTrashed.delete(id);
@@ -125,6 +131,7 @@ export const createCorePanelActions = (
       return {
         panelsById: restById,
         panelIds: newIds,
+        panelIdsByWorktreeId: newIndex,
         trashedTerminals: newTrashed,
         backgroundedTerminals: newBackgrounded,
         tabGroups: newTabGroups,
