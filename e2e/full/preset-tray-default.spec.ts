@@ -8,6 +8,7 @@ import {
   writeCcrConfig,
   removeCcrConfig,
   navigateToAgentSettings,
+  waitForCcrPresets,
   addCustomPreset,
 } from "../helpers/presets";
 
@@ -82,7 +83,9 @@ test.describe.serial("Presets: Tray Default Launch (101–106)", () => {
       { id: "tray-a", name: "Tray Model A", model: "tray-model-a" },
       { id: "tray-b", name: "Tray Model B", model: "tray-model-b" },
     ]);
-    await ctx.window.waitForTimeout(35_000);
+    await waitForCcrPresets(ctx.window, ["Tray Model A", "Tray Model B"]);
+    await ctx.window.keyboard.press("Escape");
+    await ctx.window.waitForTimeout(T_SETTLE);
 
     await openTray();
 

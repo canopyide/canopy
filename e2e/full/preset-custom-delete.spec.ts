@@ -9,6 +9,8 @@ import {
   addCustomPreset,
   removeCcrConfig,
   writeCcrConfig,
+  waitForCcrPresets,
+  waitForCcrPresetsRemoved,
 } from "../helpers/presets";
 
 let ctx: AppContext;
@@ -82,7 +84,7 @@ test.describe.serial("Presets: Custom Delete (45–52)", () => {
 
   test("48. Delete button not shown for CCR presets", async () => {
     writeCcrConfig([{ id: "ccr-nodel", model: "nodel-model" }]);
-    await ctx.window.waitForTimeout(35_000);
+    await waitForCcrPresets(ctx.window, ["ccr-nodel"]);
     await goToClaudeSettings();
     const ccrRow = ctx.window.locator(SEL.preset.section).locator("div.flex.items-center.border", {
       hasText: "ccr-nodel",
@@ -114,9 +116,7 @@ test.describe.serial("Presets: Custom Delete (45–52)", () => {
 
   test("50. Deleting all custom presets hides section if no CCR", async () => {
     removeCcrConfig();
-    // Let the CCR 30s poll clear previously-seeded CCR presets before we
-    // try to verify a single-Default state.
-    await ctx.window.waitForTimeout(35_000);
+    await waitForCcrPresetsRemoved(ctx.window, ["ccr-nodel"]);
     await goToClaudeSettings();
     // New Popover UI only shows one Delete button at a time (the selected
     // preset's), so iterate until no more delete buttons render.

@@ -9,6 +9,7 @@ import {
   addCustomPreset,
   removeCcrConfig,
   writeCcrConfig,
+  waitForCcrPresets,
   countPresetOptions,
   getPresetOptionLabels,
   getPresetRowByName,
@@ -71,7 +72,7 @@ test.describe.serial("Presets: Custom Duplicate (35–44)", () => {
     writeCcrConfig([
       { id: "ccr-dup", name: "CCR Dup Test", model: "dup-model", baseUrl: "https://dup.local" },
     ]);
-    await ctx.window.waitForTimeout(35_000);
+    await waitForCcrPresets(ctx.window, ["CCR Dup Test"]);
     await goToClaudeSettings();
 
     const labels = await getPresetOptionLabels(ctx.window);
@@ -103,7 +104,7 @@ test.describe.serial("Presets: Custom Duplicate (35–44)", () => {
 
   test("40. Duplicate button appears on CCR presets", async () => {
     writeCcrConfig([{ id: "ccr-dupvis", model: "dupvis-model" }]);
-    await ctx.window.waitForTimeout(35_000);
+    await waitForCcrPresets(ctx.window, ["ccr-dupvis"]);
     await goToClaudeSettings();
 
     const labels = await getPresetOptionLabels(ctx.window);

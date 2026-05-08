@@ -8,6 +8,7 @@ import {
   writeCcrConfig,
   removeCcrConfig,
   navigateToAgentSettings,
+  waitForCcrPresets,
   addCustomPreset,
 } from "../helpers/presets";
 
@@ -55,7 +56,9 @@ test.describe.serial("Presets: Context Menu Integration (93–96)", () => {
       { id: "ctx-a", name: "Ctx Model A", model: "ctx-model-a" },
       { id: "ctx-b", name: "Ctx Model B", model: "ctx-model-b" },
     ]);
-    await ctx.window.waitForTimeout(35_000);
+    await waitForCcrPresets(ctx.window, ["Ctx Model A", "Ctx Model B"]);
+    await ctx.window.keyboard.press("Escape");
+    await ctx.window.waitForTimeout(T_SETTLE);
 
     await rightClickClaudeToolbar();
 

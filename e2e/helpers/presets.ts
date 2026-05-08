@@ -189,6 +189,83 @@ export async function countPresetOptions(window: import("@playwright/test").Page
  * Opens the PresetSelector popover and returns the visible option labels. The
  * popover is closed before returning.
  */
+const CCR_POLL_TIMEOUT = 45_000;
+const CCR_POLL_INTERVALS = [3_000, 5_000, 10_000];
+
+/**
+ * Polls the preset listbox until all expected label substrings appear.
+ * Replaces fixed 35s waits for the CCR config-file poll cycle.
+ */
+export async function waitForCcrPresets(
+  window: import("@playwright/test").Page,
+  expectedLabels: string[],
+  agentId = "claude"
+): Promise<void> {
+  if (expectedLabels.length === 0) return;
+
+  await test.step(
+    `Wait for CCR presets: [${expectedLabels.join(", ")}]`,
+    async () => {
+      await navigateToAgentSettings(window, agentId);
+      const trigger = window.locator(SEL.preset.selectorTrigger);
+
+      await expect
+        .poll(
+          async () => {
+            if (!(await trigger.isVisible({ timeout: 500 }).catch(() => false))) {
+              return [];
+            }
+            return getPresetOptionLabels(window);
+          },
+          {
+            message: `Timed out waiting for CCR presets: [${expectedLabels.join(", ")}]`,
+            timeout: CCR_POLL_TIMEOUT,
+            intervals: CCR_POLL_INTERVALS,
+          }
+        )
+        .toEqual(expect.arrayContaining(expectedLabels.map((e) => expect.stringContaining(e))));
+    },
+    { box: true }
+  );
+}
+
+/**
+ * Polls the preset listbox until none of the removed label substrings appear.
+ * Replaces fixed 35s waits after removeCcrConfig() for the CCR poll cycle.
+ */
+export async function waitForCcrPresetsRemoved(
+  window: import("@playwright/test").Page,
+  removedLabels: string[],
+  agentId = "claude"
+): Promise<void> {
+  if (removedLabels.length === 0) return;
+
+  await test.step(
+    `Wait for CCR presets removed: [${removedLabels.join(", ")}]`,
+    async () => {
+      await navigateToAgentSettings(window, agentId);
+      const trigger = window.locator(SEL.preset.selectorTrigger);
+
+      await expect
+        .poll(
+          async () => {
+            if (!(await trigger.isVisible({ timeout: 500 }).catch(() => false))) {
+              return [];
+            }
+            return getPresetOptionLabels(window);
+          },
+          {
+            message: `Timed out waiting for CCR presets to be removed: [${removedLabels.join(", ")}]`,
+            timeout: CCR_POLL_TIMEOUT,
+            intervals: CCR_POLL_INTERVALS,
+          }
+        )
+        .not.toEqual(expect.arrayContaining(removedLabels.map((e) => expect.stringContaining(e))));
+    },
+    { box: true }
+  );
+}
+
 export async function getPresetOptionLabels(
   window: import("@playwright/test").Page
 ): Promise<string[]> {

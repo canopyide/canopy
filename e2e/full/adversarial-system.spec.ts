@@ -9,6 +9,7 @@ import {
   addCustomPreset,
   removeCcrConfig,
   writeCcrConfig,
+  waitForCcrPresets,
 } from "../helpers/presets";
 
 let ctx: AppContext;
@@ -83,7 +84,7 @@ test.describe.serial("Adversarial E2E Tests: System Breakage", () => {
 
     // Try to commit the edit
     await input.press("Enter");
-    await ctx.window.waitForTimeout(35000); // Wait for CCR poll
+    await waitForCcrPresets(ctx.window, ["Race Preset"]);
 
     // UI should still be functional
     const section = ctx.window.locator(SEL.preset.section);
