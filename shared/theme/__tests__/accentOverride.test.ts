@@ -3,6 +3,7 @@ import {
   applyAccentOverrideToScheme,
   BUILT_IN_APP_SCHEMES,
   computeAccentOverrideTokens,
+  getAppThemeWarnings,
   normalizeAccentHex,
 } from "../themes.js";
 import type { AppColorScheme } from "../types.js";
@@ -123,5 +124,51 @@ describe("applyAccentOverrideToScheme", () => {
     const patched = applyAccentOverrideToScheme(synthetic, "#123456");
     expect(patched.tokens["accent-primary"]).toBe("#123456");
     expect(patched.id).toBe("synthetic");
+  });
+});
+
+describe("getAppThemeWarnings — non-hex accent-rgb degradation", () => {
+  it("warns when accent-primary is non-hex and accent-rgb falls back to 0, 0, 0", () => {
+    const scheme: AppColorScheme = {
+      ...darkScheme,
+      tokens: {
+        ...darkScheme.tokens,
+        "accent-primary": "oklch(0.7 0.13 295)",
+        "accent-rgb": "0, 0, 0",
+      },
+    };
+    const warnings = getAppThemeWarnings(scheme);
+    expect(warnings.some((w) => w.message.includes("accent-rgb"))).toBe(true);
+  });
+
+  it("does not warn when accent-primary is non-hex but accent-rgb is explicitly set", () => {
+    const scheme: AppColorScheme = {
+      ...darkScheme,
+      tokens: {
+        ...darkScheme.tokens,
+        "accent-primary": "oklch(0.7 0.13 295)",
+        "accent-rgb": "180, 90, 255",
+      },
+    };
+    const warnings = getAppThemeWarnings(scheme);
+    expect(warnings.some((w) => w.message.includes("accent-rgb"))).toBe(false);
+  });
+
+  it("does not warn when accent-primary is hex (normal path)", () => {
+    const warnings = getAppThemeWarnings(darkScheme);
+    expect(warnings.some((w) => w.message.includes("accent-rgb"))).toBe(false);
+  });
+
+  it("warns for color-mix() accent values, not just oklch", () => {
+    const scheme: AppColorScheme = {
+      ...darkScheme,
+      tokens: {
+        ...darkScheme.tokens,
+        "accent-primary": "color-mix(in oklab, #ff0000, #0000ff)",
+        "accent-rgb": "0, 0, 0",
+      },
+    };
+    const warnings = getAppThemeWarnings(scheme);
+    expect(warnings.some((w) => w.message.includes("accent-rgb"))).toBe(true);
   });
 });

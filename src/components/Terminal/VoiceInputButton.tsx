@@ -110,11 +110,11 @@ export function VoiceInputButton({
         ring.style.background = [
           `conic-gradient(from 0deg,`,
           `transparent 200deg,`,
-          `rgba(var(--theme-accent-rgb), ${(opacityNum * 0.05).toFixed(3)}) 248deg,`,
-          `rgba(var(--theme-accent-rgb), ${(opacityNum * 0.18).toFixed(3)}) 292deg,`,
-          `rgba(var(--theme-accent-rgb), ${(opacityNum * 0.42).toFixed(3)}) 326deg,`,
-          `rgba(var(--theme-accent-rgb), ${(opacityNum * 0.82).toFixed(3)}) 348deg,`,
-          `rgba(var(--theme-accent-rgb), ${opacity}) 355deg,`,
+          `rgb(from var(--theme-accent-primary) r g b / ${(opacityNum * 0.05).toFixed(3)}) 248deg,`,
+          `rgb(from var(--theme-accent-primary) r g b / ${(opacityNum * 0.18).toFixed(3)}) 292deg,`,
+          `rgb(from var(--theme-accent-primary) r g b / ${(opacityNum * 0.42).toFixed(3)}) 326deg,`,
+          `rgb(from var(--theme-accent-primary) r g b / ${(opacityNum * 0.82).toFixed(3)}) 348deg,`,
+          `rgb(from var(--theme-accent-primary) r g b / ${opacity}) 355deg,`,
           `transparent 360deg)`,
         ].join(" ");
       }
@@ -130,7 +130,7 @@ export function VoiceInputButton({
       if (halo) {
         const haloAlpha = (0.18 + level * 0.22).toFixed(3);
         const haloBlur = 6 + level * 6;
-        halo.style.boxShadow = `0 0 ${haloBlur}px rgba(var(--theme-accent-rgb), ${haloAlpha})`;
+        halo.style.boxShadow = `0 0 ${haloBlur}px rgb(from var(--theme-accent-primary) r g b / ${haloAlpha})`;
         halo.style.opacity = String(0.5 + level * 0.5);
       }
 
@@ -182,7 +182,7 @@ export function VoiceInputButton({
             className="absolute inset-0 rounded-full pointer-events-none"
             style={{
               opacity: 0.08,
-              background: `rgba(var(--theme-accent-rgb), 1)`,
+              background: `var(--theme-accent-primary)`,
               mask: `linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)`,
               WebkitMask: `linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)`,
               maskComposite: "exclude",

@@ -10,6 +10,14 @@ import { BUILT_IN_THEME_SOURCES, type BuiltInThemeSource } from "./builtInThemeS
 
 export const DEFAULT_APP_SCHEME_ID = "daintree";
 
+// ANSI-approximate hues used as fallbacks when a plugin theme's palette omits
+// the terminal sub-palette. Without these, magenta/cyan would inherit from
+// `palette.accent` and `palette.activity.active`, which can be any hue and
+// breaks xterm.js syntax highlighting that relies on these slots being purple
+// and cyan respectively.
+export const ANSI_MAGENTA_FALLBACK = "#a855f7";
+export const ANSI_CYAN_FALLBACK = "#22d3ee";
+
 const GITHUB_DARK_TOKENS: Pick<
   AppColorSchemeTokens,
   "github-open" | "github-merged" | "github-closed" | "github-draft"
@@ -602,7 +610,20 @@ function pickReadableForeground(background: string, candidates: string[]): strin
 }
 
 export function getAppThemeWarnings(scheme: AppColorScheme): AppThemeValidationWarning[] {
-  return getThemeContrastWarnings(scheme);
+  const warnings = getThemeContrastWarnings(scheme);
+  const accentPrimary = scheme.tokens["accent-primary"];
+  const accentRgb = scheme.tokens["accent-rgb"];
+  if (
+    typeof accentPrimary === "string" &&
+    !accentPrimary.startsWith("#") &&
+    accentRgb === "0, 0, 0"
+  ) {
+    warnings.push({
+      message:
+        'accent-rgb falls back to "0, 0, 0" because accent-primary is non-hex and no explicit accent-rgb override was provided. Components using rgba(var(--theme-accent-rgb), …) will render black tints.',
+    });
+  }
+  return warnings;
 }
 
 function compilePaletteToTokens(palette: ThemePalette): AppColorSchemeTokens {
@@ -664,14 +685,14 @@ function compilePaletteToTokens(palette: ThemePalette): AppColorSchemeTokens {
     "terminal-green": palette.terminal?.green ?? palette.status.success,
     "terminal-yellow": palette.terminal?.yellow ?? palette.status.warning,
     "terminal-blue": palette.terminal?.blue ?? palette.status.info,
-    "terminal-magenta": palette.terminal?.magenta ?? palette.accent,
-    "terminal-cyan": palette.terminal?.cyan ?? palette.activity.active,
+    "terminal-magenta": palette.terminal?.magenta ?? ANSI_MAGENTA_FALLBACK,
+    "terminal-cyan": palette.terminal?.cyan ?? ANSI_CYAN_FALLBACK,
     "terminal-bright-red": palette.terminal?.brightRed ?? palette.status.danger,
     "terminal-bright-green": palette.terminal?.brightGreen ?? palette.status.success,
     "terminal-bright-yellow": palette.terminal?.brightYellow ?? palette.status.warning,
     "terminal-bright-blue": palette.terminal?.brightBlue ?? palette.status.info,
-    "terminal-bright-magenta": palette.terminal?.brightMagenta ?? palette.accent,
-    "terminal-bright-cyan": palette.terminal?.brightCyan ?? palette.activity.active,
+    "terminal-bright-magenta": palette.terminal?.brightMagenta ?? ANSI_MAGENTA_FALLBACK,
+    "terminal-bright-cyan": palette.terminal?.brightCyan ?? ANSI_CYAN_FALLBACK,
     "terminal-bright-white": palette.terminal?.brightWhite ?? palette.text.primary,
     "syntax-comment": palette.syntax.comment,
     "syntax-punctuation": palette.syntax.punctuation,
