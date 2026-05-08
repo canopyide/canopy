@@ -367,7 +367,7 @@ export function CrashRecoveryDialog({
                     size="sm"
                     variant="ghost"
                     className="text-xs h-7"
-                    onClick={() => copyStack(crash.entry.errorStack)}
+                    onClick={() => copyStack(crash.entry.errorStack!)}
                     data-testid="copy-stack-button"
                   >
                     <Copy className="h-3 w-3 mr-1" />
