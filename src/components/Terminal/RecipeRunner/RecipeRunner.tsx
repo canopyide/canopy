@@ -1,11 +1,33 @@
-import { useRecipeRunner } from "./useRecipeRunner";
+import { AlertTriangle, Info, RotateCcw } from "lucide-react";
+import { useRecipeRunner, type SpawnFailureSummary } from "./useRecipeRunner";
 import { RecipeRunnerGrid } from "./RecipeRunnerGrid";
 import { RecipeRunnerList } from "./RecipeRunnerList";
 import { RecipeRunnerEmpty } from "./RecipeRunnerEmpty";
+import { InlineStatusBanner } from "../InlineStatusBanner";
 
 interface RecipeRunnerProps {
   activeWorktreeId: string | null | undefined;
   defaultCwd: string | undefined;
+}
+
+const MAX_FAILURE_NAMES = 2;
+
+function formatFailureTitle(summary: SpawnFailureSummary): string {
+  const failedCount = summary.failures.length;
+  const startedCount = summary.totalCount - failedCount;
+  const names = summary.failures.slice(0, MAX_FAILURE_NAMES).map((f) => f.displayName);
+  const extra = failedCount - names.length;
+  const namesPart = extra > 0 ? `${names.join(", ")}, +${extra} more` : names.join(", ");
+  return `Started ${startedCount} of ${summary.totalCount} terminals. ${failedCount} failed: ${namesPart}.`;
+}
+
+function formatUnresolvedVarsTitle(vars: string[]): string {
+  const list = vars.join(", ");
+  if (vars.length === 1) {
+    return `Missing context for {{${list}}}`;
+  }
+  const items = vars.map((v) => `{{${v}}}`).join(", ");
+  return `Missing context for ${items}`;
 }
 
 export function RecipeRunner({ activeWorktreeId, defaultCwd }: RecipeRunnerProps) {
@@ -19,6 +41,42 @@ export function RecipeRunner({ activeWorktreeId, defaultCwd }: RecipeRunnerProps
 
   return (
     <div className="w-full max-w-lg">
+      {runner.spawnFailureSummary && (
+        <div className="mb-3" data-testid="recipe-spawn-failure-banner">
+          <InlineStatusBanner
+            icon={AlertTriangle}
+            title={formatFailureTitle(runner.spawnFailureSummary)}
+            description={runner.spawnFailureSummary.failures[0]?.error}
+            severity="error"
+            actions={[
+              {
+                id: "retry-failed",
+                label: "Retry failed",
+                icon: RotateCcw,
+                variant: "primary",
+                onClick: runner.handleRetryFailed,
+                title: "Retry the terminals that failed to start",
+                ariaLabel: "Retry failed terminals",
+                loading: runner.isRetryingFailed,
+              },
+            ]}
+            onClose={runner.dismissSpawnFailures}
+          />
+        </div>
+      )}
+      {runner.unresolvedVars.length > 0 && (
+        <div className="mb-3" data-testid="recipe-unresolved-vars-banner">
+          <InlineStatusBanner
+            icon={Info}
+            title={formatUnresolvedVarsTitle(runner.unresolvedVars)}
+            description="These variables stayed empty in the launched commands."
+            severity="warning"
+            role="status"
+            actions={[]}
+            onClose={runner.dismissUnresolvedVars}
+          />
+        </div>
+      )}
       {runner.showSearch ? (
         <RecipeRunnerList
           sections={runner.sections}
