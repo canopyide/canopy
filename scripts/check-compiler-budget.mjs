@@ -79,12 +79,23 @@ function validateShape(data, label, file) {
 }
 
 function writeBaseline(report, { force }) {
-  // Sort keys deterministically so diffs stay clean across runs.
+  // Sort keys deterministically so diffs stay clean across runs. Preserve the
+  // diagnostic arrays alongside the gating counts — the explicit field list
+  // (no spread) prevents unintended propagation if the report shape gains
+  // future fields that aren't yet vetted for the baseline.
   const sorted = Object.keys(report)
     .sort()
     .reduce((acc, k) => {
       const e = report[k];
-      acc[k] = { success: e.success, skip: e.skip, error: e.error, pipeline: e.pipeline };
+      acc[k] = {
+        success: e.success,
+        skip: e.skip,
+        error: e.error,
+        pipeline: e.pipeline,
+        errorBailouts: Array.isArray(e.errorBailouts) ? e.errorBailouts : [],
+        skipReasons: Array.isArray(e.skipReasons) ? e.skipReasons : [],
+        pipelineErrors: Array.isArray(e.pipelineErrors) ? e.pipelineErrors : [],
+      };
       return acc;
     }, {});
 
@@ -221,6 +232,35 @@ function main() {
     const summary = deltas.map(({ key, from, to }) => `${key}: was ${from}, now ${to}`).join("; ");
     const prefix = isNew ? "new file with compiler bailouts" : "compiler bailout regression";
     console.error(`::error file=${file}::${prefix} (${summary})`);
+    // Surface the diagnostic detail captured by the plugin so failing runs
+    // point at the actual cause without re-running the build locally.
+    // Backward-compat: the report may pre-date the diagnostic arrays.
+    const entry = report[file];
+    const errorBailouts = Array.isArray(entry?.errorBailouts) ? entry.errorBailouts : [];
+    const skipReasons = Array.isArray(entry?.skipReasons) ? entry.skipReasons : [];
+    const pipelineErrors = Array.isArray(entry?.pipelineErrors) ? entry.pipelineErrors : [];
+    if (errorBailouts.length > 0) {
+      const grouped = new Map();
+      for (const { category, reason } of errorBailouts) {
+        const key = category || "(unknown)";
+        if (!grouped.has(key)) grouped.set(key, []);
+        grouped.get(key).push(reason);
+      }
+      for (const [category, reasons] of grouped) {
+        const sample = reasons[0];
+        const more = reasons.length > 1 ? ` (+${reasons.length - 1} more)` : "";
+        console.error(`   error[${category}]: ${sample}${more}`);
+      }
+    }
+    if (skipReasons.length > 0) {
+      const unique = [...new Set(skipReasons)];
+      const sample = unique[0];
+      const more = skipReasons.length > 1 ? ` (×${skipReasons.length})` : "";
+      console.error(`   skip: ${sample}${more}`);
+    }
+    if (pipelineErrors.length > 0) {
+      console.error(`   pipeline: ${pipelineErrors[0]}`);
+    }
   }
   for (const file of disappeared) {
     console.error(

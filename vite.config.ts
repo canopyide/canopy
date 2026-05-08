@@ -22,37 +22,68 @@ const PROD_CSP = getDaintreeAppProdCSP();
 // build completes. Counts come from babel-plugin-react-compiler's logger:
 // CompileSuccess, CompileSkip, CompileError, PipelineError. Other event kinds
 // (Timing, CompileDiagnostic, AutoDeps*) are ignored — they aren't regression
-// signals. The accumulator Map and the logger object MUST be created in the
-// same factory call so they share state via closure; threading either through
-// module scope would silently produce an empty report.
-type CompilerBailoutCounts = {
+// signals. Diagnostic arrays (errorBailouts, skipReasons, pipelineErrors)
+// preserve the human-readable reason and ErrorCategory for each bailout so
+// CI failures point at the actual cause without rebuilding locally. The
+// accumulator Map and the logger object MUST be created in the same factory
+// call so they share state via closure; threading either through module scope
+// would silently produce an empty report.
+type CompilerBailoutEntry = {
   success: number;
   skip: number;
   error: number;
   pipeline: number;
+  // Source type is `ErrorCategory` from babel-plugin-react-compiler — kept as
+  // string at this boundary to avoid cross-package type coupling that would
+  // break silently on a plugin upgrade.
+  errorBailouts: Array<{ category: string; reason: string }>;
+  skipReasons: string[];
+  pipelineErrors: string[];
 };
 
-type CompilerLoggerEvent = { kind: string };
+type CompilerLoggerEvent =
+  | { kind: "CompileSuccess" }
+  | { kind: "CompileSkip"; reason?: unknown }
+  | { kind: "CompileError"; detail?: unknown }
+  | { kind: "PipelineError"; data?: unknown }
+  | { kind: string };
 
 type CompilerLogger = {
   logEvent: (filename: string | null, event: CompilerLoggerEvent) => void;
 };
 
+// PipelineError.data is a serialized stack trace. Keep only the first line
+// (the error message) and cap length so a pathological single-line error
+// can't bloat the report.
+function summarizePipelineError(data: unknown): string {
+  return String(data ?? "")
+    .split(/\r?\n/)[0]
+    .slice(0, 200);
+}
+
 function reactCompilerReportPlugin(command: "build" | "serve"): {
   plugin: Plugin;
   logger: CompilerLogger;
 } {
-  const counts = new Map<string, CompilerBailoutCounts>();
+  const counts = new Map<string, CompilerBailoutEntry>();
   const cwd = process.cwd();
   const reportPath = path.join(cwd, "dist", "compiler-bailout-report.json");
 
-  function bump(filename: string, key: keyof CompilerBailoutCounts) {
+  function getOrInit(filename: string): CompilerBailoutEntry {
     let entry = counts.get(filename);
     if (!entry) {
-      entry = { success: 0, skip: 0, error: 0, pipeline: 0 };
+      entry = {
+        success: 0,
+        skip: 0,
+        error: 0,
+        pipeline: 0,
+        errorBailouts: [],
+        skipReasons: [],
+        pipelineErrors: [],
+      };
       counts.set(filename, entry);
     }
-    entry[key]++;
+    return entry;
   }
 
   const logger: CompilerLogger = {
@@ -65,19 +96,40 @@ function reactCompilerReportPlugin(command: "build" | "serve"): {
       // operating systems and don't leak absolute filesystem paths.
       const rel = path.relative(cwd, filename).split(path.sep).join("/");
       if (!rel || rel.startsWith("..")) return;
+      const entry = getOrInit(rel);
       switch (event.kind) {
         case "CompileSuccess":
-          bump(rel, "success");
+          entry.success++;
           break;
-        case "CompileSkip":
-          bump(rel, "skip");
+        case "CompileSkip": {
+          entry.skip++;
+          const reason = (event as { reason?: unknown }).reason;
+          if (typeof reason === "string" && reason.length > 0) {
+            entry.skipReasons.push(reason);
+          }
           break;
-        case "CompileError":
-          bump(rel, "error");
+        }
+        case "CompileError": {
+          entry.error++;
+          // detail is CompilerErrorDetail | CompilerDiagnostic — both expose
+          // .category (ErrorCategory enum) and .reason (string) via getters
+          // backed by required Zod-validated options. Cast is safe.
+          const detail = (event as { detail?: { category?: unknown; reason?: unknown } }).detail;
+          if (detail && typeof detail === "object") {
+            entry.errorBailouts.push({
+              category: String(detail.category ?? ""),
+              reason:
+                typeof detail.reason === "string" ? detail.reason : String(detail.reason ?? ""),
+            });
+          }
           break;
-        case "PipelineError":
-          bump(rel, "pipeline");
+        }
+        case "PipelineError": {
+          entry.pipeline++;
+          const summary = summarizePipelineError((event as { data?: unknown }).data);
+          if (summary.length > 0) entry.pipelineErrors.push(summary);
           break;
+        }
         default:
           // Timing, CompileDiagnostic, AutoDepsDecorations, AutoDepsEligible —
           // not regression signals.
@@ -111,7 +163,7 @@ function reactCompilerReportPlugin(command: "build" | "serve"): {
         // Plain lexicographic sort matches the check script's default Array#sort
         // so the freshly built report and the checked-in baseline diff cleanly.
         const sorted = [...counts.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-        const out: Record<string, CompilerBailoutCounts> = {};
+        const out: Record<string, CompilerBailoutEntry> = {};
         for (const [file, entry] of sorted) out[file] = entry;
         mkdirSync(path.dirname(reportPath), { recursive: true });
         writeFileSync(reportPath, JSON.stringify(out, null, 2) + "\n");
