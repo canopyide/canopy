@@ -1,8 +1,10 @@
-import { useMemo, useState, useCallback, useEffect } from "react";
+import { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import { useRecipeStore } from "@/store/recipeStore";
 import { getCurrentViewStore } from "@/store/createWorktreeStore";
 import { useProjectSettingsStore } from "@/store/projectSettingsStore";
 import { actionService } from "@/services/ActionService";
+import { detectUnresolvedVariables, type RecipeContext } from "@/utils/recipeVariables";
+import { getAgentDisplayTitle } from "@/config/agents";
 import {
   buildRecipeSections,
   rankSearchResults,
@@ -10,11 +12,20 @@ import {
   type RecipeSections,
   type RankedRecipe,
 } from "./recipeRunnerUtils";
-import type { TerminalRecipe, RunCommand } from "@/types";
+import type { TerminalRecipe, RunCommand, RecipeTerminal } from "@/types";
 
 export interface UseRecipeRunnerOptions {
   activeWorktreeId: string | null | undefined;
   defaultCwd: string | undefined;
+}
+
+export interface SpawnBannerState {
+  recipeId: string;
+  recipeName: string;
+  total: number;
+  spawned: number;
+  failed: Array<{ index: number; name: string }>;
+  unresolvedVars: string[];
 }
 
 export interface UseRecipeRunnerResult {
@@ -38,6 +49,9 @@ export interface UseRecipeRunnerResult {
   handleCreate: () => void;
   handleKeyDown: (e: React.KeyboardEvent) => void;
   getFlatRecipes: () => TerminalRecipe[];
+  spawnBanner: SpawnBannerState | null;
+  dismissSpawnBanner: () => void;
+  retryFailed: () => void;
 }
 
 export function useRecipeRunner({
@@ -45,7 +59,7 @@ export function useRecipeRunner({
   defaultCwd,
 }: UseRecipeRunnerOptions): UseRecipeRunnerResult {
   const allRecipes = useRecipeStore((s) => s.recipes);
-  const runRecipe = useRecipeStore((s) => s.runRecipe);
+  const runRecipeWithResults = useRecipeStore((s) => s.runRecipeWithResults);
   const updateRecipe = useRecipeStore((s) => s.updateRecipe);
   const deleteRecipe = useRecipeStore((s) => s.deleteRecipe);
   const createRecipe = useRecipeStore((s) => s.createRecipe);
@@ -55,6 +69,8 @@ export function useRecipeRunner({
 
   const [searchQuery, setSearchQuery] = useState("");
   const [focusedIndex, setFocusedIndex] = useState(0);
+  const [spawnBanner, setSpawnBanner] = useState<SpawnBannerState | null>(null);
+  const runCounterRef = useRef(0);
 
   // Stable filtered recipe array for Fuse cache
   const recipes = useMemo(() => {
@@ -109,27 +125,134 @@ export function useRecipeRunner({
     );
   }, [allDetectedRunners]);
 
+  const buildDisplayName = useCallback((terminal: RecipeTerminal): string => {
+    if (terminal.title) return terminal.title;
+    if (terminal.type !== "terminal" && terminal.type !== "dev-preview") {
+      return getAgentDisplayTitle(terminal.type);
+    }
+    return terminal.type === "dev-preview" ? "Dev Server" : "Terminal";
+  }, []);
+
+  const resolveContext = useCallback((): RecipeContext => {
+    const worktreeData = activeWorktreeId
+      ? getCurrentViewStore().getState().worktrees.get(activeWorktreeId)
+      : null;
+    return {
+      issueNumber: worktreeData?.issueNumber,
+      prNumber: worktreeData?.prNumber,
+      worktreePath: defaultCwd,
+      branchName: worktreeData?.branch,
+    };
+  }, [defaultCwd, activeWorktreeId]);
+
   const handleRun = useCallback(
     (recipeId: string) => {
       if (!defaultCwd) return;
-      const worktreeData = activeWorktreeId
-        ? getCurrentViewStore().getState().worktrees.get(activeWorktreeId)
-        : null;
-      void runRecipe(
-        recipeId,
-        defaultCwd,
-        activeWorktreeId ?? undefined,
-        {
-          issueNumber: worktreeData?.issueNumber,
-          prNumber: worktreeData?.prNumber,
-          worktreePath: defaultCwd,
-          branchName: worktreeData?.branch,
-        },
-        { spawnedBy: "recipe" }
-      );
+      const recipe = getRecipeById(recipeId);
+      if (!recipe) return;
+
+      const context = resolveContext();
+
+      const unresolvedVars = new Set<string>();
+      for (const terminal of recipe.terminals) {
+        const texts = [terminal.command, terminal.initialPrompt, terminal.devCommand].filter(
+          (t): t is string => typeof t === "string" && t.length > 0
+        );
+        for (const text of texts) {
+          for (const v of detectUnresolvedVariables(text, context)) {
+            unresolvedVars.add(v);
+          }
+        }
+      }
+
+      setSpawnBanner(null);
+      const runId = ++runCounterRef.current;
+
+      runRecipeWithResults(recipeId, defaultCwd, activeWorktreeId ?? undefined, context, {
+        spawnedBy: "recipe",
+      })
+        .then((results) => {
+          if (runId !== runCounterRef.current) return;
+          if (results.failed.length === 0 && unresolvedVars.size === 0) return;
+
+          const failed = results.failed.map((f) => {
+            const terminal = recipe.terminals[f.index];
+            const name = terminal ? buildDisplayName(terminal) : `Terminal ${f.index + 1}`;
+            return { index: f.index, name };
+          });
+
+          setSpawnBanner({
+            recipeId,
+            recipeName: recipe.name,
+            total: recipe.terminals.length,
+            spawned: results.spawned.length,
+            failed,
+            unresolvedVars: [...unresolvedVars].sort(),
+          });
+        })
+        .catch(() => {
+          // runRecipeWithResults already logs errors internally;
+          // a thrown error here means the recipe itself wasn't found
+        });
     },
-    [defaultCwd, activeWorktreeId, runRecipe]
+    [
+      defaultCwd,
+      activeWorktreeId,
+      getRecipeById,
+      resolveContext,
+      runRecipeWithResults,
+      buildDisplayName,
+    ]
   );
+
+  const dismissSpawnBanner = useCallback(() => {
+    setSpawnBanner(null);
+  }, []);
+
+  const retryFailed = useCallback(() => {
+    setSpawnBanner((current) => {
+      if (!current || current.failed.length === 0) return null;
+      const recipe = getRecipeById(current.recipeId);
+      if (!recipe) return null;
+
+      const context = resolveContext();
+      const indices = current.failed.map((f) => f.index);
+
+      runRecipeWithResults(current.recipeId, defaultCwd!, activeWorktreeId ?? undefined, context, {
+        spawnedBy: "recipe",
+        terminalIndices: indices,
+      })
+        .then((results) => {
+          const stillFailed = results.failed.map((f) => {
+            const terminal = recipe.terminals[f.index];
+            const name = terminal ? buildDisplayName(terminal) : `Terminal ${f.index + 1}`;
+            return { index: f.index, name };
+          });
+
+          setSpawnBanner((prev) => {
+            if (!prev) return null;
+            const prevUnresolved = prev.unresolvedVars;
+            if (stillFailed.length === 0 && prevUnresolved.length === 0) return null;
+            return {
+              ...prev,
+              spawned: results.spawned.length,
+              failed: stillFailed,
+              unresolvedVars: prevUnresolved,
+            };
+          });
+        })
+        .catch(() => {});
+
+      return current;
+    });
+  }, [
+    getRecipeById,
+    resolveContext,
+    runRecipeWithResults,
+    defaultCwd,
+    activeWorktreeId,
+    buildDisplayName,
+  ]);
 
   const handleEdit = useCallback(
     (recipeId: string) => {
@@ -250,5 +373,8 @@ export function useRecipeRunner({
     handleCreate,
     handleKeyDown,
     getFlatRecipes,
+    spawnBanner,
+    dismissSpawnBanner,
+    retryFailed,
   };
 }

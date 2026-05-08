@@ -2,10 +2,21 @@ import { useRecipeRunner } from "./useRecipeRunner";
 import { RecipeRunnerGrid } from "./RecipeRunnerGrid";
 import { RecipeRunnerList } from "./RecipeRunnerList";
 import { RecipeRunnerEmpty } from "./RecipeRunnerEmpty";
+import { InlineStatusBanner } from "@/components/Terminal/InlineStatusBanner";
+import { AlertTriangle, RotateCcw } from "lucide-react";
 
 interface RecipeRunnerProps {
   activeWorktreeId: string | null | undefined;
   defaultCwd: string | undefined;
+}
+
+function buildBannerTitle(spawned: number, total: number, failedNames: string[]): string {
+  const failedCount = failedNames.length;
+  if (spawned === 0) {
+    return `Couldn't start any terminals. ${failedCount} failed.`;
+  }
+  const terminalWord = spawned === 1 ? "terminal" : "terminals";
+  return `Started ${spawned} of ${total} ${terminalWord}. ${failedCount} failed: ${failedNames.join(", ")}.`;
 }
 
 export function RecipeRunner({ activeWorktreeId, defaultCwd }: RecipeRunnerProps) {
@@ -16,9 +27,40 @@ export function RecipeRunner({ activeWorktreeId, defaultCwd }: RecipeRunnerProps
   }
 
   const flatRecipes = runner.getFlatRecipes();
+  const banner = runner.spawnBanner;
 
   return (
     <div className="w-full max-w-lg">
+      {banner && (
+        <InlineStatusBanner
+          icon={AlertTriangle}
+          severity="warning"
+          title={buildBannerTitle(
+            banner.spawned,
+            banner.total,
+            banner.failed.map((f) => f.name)
+          )}
+          description={
+            banner.unresolvedVars.length > 0
+              ? `Missing context for ${banner.unresolvedVars.map((v) => `{{${v}}}`).join(", ")}.`
+              : undefined
+          }
+          actions={
+            banner.failed.length > 0
+              ? [
+                  {
+                    id: "retry-failed",
+                    label: "Retry failed",
+                    icon: RotateCcw,
+                    variant: "primary",
+                    onClick: runner.retryFailed,
+                  },
+                ]
+              : []
+          }
+          onClose={runner.dismissSpawnBanner}
+        />
+      )}
       {runner.showSearch ? (
         <RecipeRunnerList
           sections={runner.sections}

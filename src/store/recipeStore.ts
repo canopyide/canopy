@@ -557,6 +557,11 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
 
     const results: RecipeSpawnResults = { spawned: [], failed: [] };
 
+    const resolvedContext: RecipeContext = {
+      ...context,
+      worktreePath,
+    };
+
     for (const index of indicesToSpawn) {
       const terminal = recipe.terminals[index];
       if (!terminal) {
@@ -566,12 +571,15 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
       try {
         // Handle dev-preview terminals
         if (terminal.type === "dev-preview") {
+          const devCommand = terminal.devCommand?.trim()
+            ? replaceRecipeVariables(terminal.devCommand.trim(), resolvedContext)
+            : undefined;
           const terminalId = await terminalStore.addPanel({
             kind: "dev-preview",
             title: terminal.title || "Dev Server",
             cwd: worktreePath,
             worktreeId: worktreeId,
-            devCommand: terminal.devCommand?.trim() || undefined,
+            devCommand,
             env: terminal.env,
             exitBehavior: terminal.exitBehavior,
             spawnedBy,
@@ -592,10 +600,6 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
           const agentConfig = getAgentConfig(agentId);
           const baseCommand = agentConfig?.command ?? "";
           const rawPrompt = terminal.initialPrompt?.trim();
-          const resolvedContext: RecipeContext = {
-            ...context,
-            worktreePath,
-          };
           const initialPrompt = rawPrompt
             ? replaceRecipeVariables(rawPrompt, resolvedContext)
             : undefined;
@@ -617,11 +621,12 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
             spawnedBy,
           });
         } else {
+          const command = replaceRecipeVariables(terminal.command?.trim() || "", resolvedContext);
           terminalId = await terminalStore.addPanel({
             kind: "terminal",
             title: terminal.title,
             cwd: worktreePath,
-            command: terminal.command?.trim() || "",
+            command,
             worktreeId: worktreeId,
             env: terminal.env,
             exitBehavior: terminal.exitBehavior,

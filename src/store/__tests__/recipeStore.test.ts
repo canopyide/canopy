@@ -628,6 +628,74 @@ describe("recipeStore", () => {
       expect(results.spawned).toHaveLength(1);
       expect(results.spawned[0]?.index).toBe(1);
     });
+
+    it("substitutes variables in plain terminal commands", async () => {
+      addTerminalMock.mockResolvedValue("terminal-1");
+
+      useRecipeStore.setState({
+        recipes: [
+          {
+            id: "recipe-1",
+            name: "Test Recipe",
+            projectId: "project-1",
+            terminals: [
+              {
+                type: "terminal",
+                title: "Shell",
+                command: "gh issue view {{issue_number}}",
+                env: {},
+              },
+            ],
+            createdAt: Date.now(),
+          },
+        ],
+        isLoading: false,
+        currentProjectId: "project-1",
+      });
+
+      await useRecipeStore
+        .getState()
+        .runRecipeWithResults("recipe-1", "/tmp/worktree", "worktree-1", {
+          issueNumber: 42,
+        });
+
+      expect(addTerminalMock).toHaveBeenCalledTimes(1);
+      const callArg = addTerminalMock.mock.calls[0]?.[0];
+      expect(callArg.command).toBe("gh issue view #42");
+    });
+
+    it("substitutes variables in dev-preview devCommand", async () => {
+      addTerminalMock.mockResolvedValue("dp-1");
+
+      useRecipeStore.setState({
+        recipes: [
+          {
+            id: "recipe-1",
+            name: "Test Recipe",
+            projectId: "project-1",
+            terminals: [
+              {
+                type: "dev-preview",
+                title: "Dev",
+                devCommand: "echo {{branch_name}}",
+              },
+            ],
+            createdAt: Date.now(),
+          },
+        ],
+        isLoading: false,
+        currentProjectId: "project-1",
+      });
+
+      await useRecipeStore
+        .getState()
+        .runRecipeWithResults("recipe-1", "/tmp/worktree", "worktree-1", {
+          branchName: "feature/foo",
+        });
+
+      const callArg = addTerminalMock.mock.calls[0]?.[0];
+      expect(callArg.devCommand).toBe("echo feature/foo");
+    });
   });
 
   it("keeps importing valid terminals even when others are invalid", async () => {
