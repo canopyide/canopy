@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { Terminal } from "@xterm/headless";
+import unicode11 from "@xterm/addon-unicode11";
+const { Unicode11Addon } = unicode11;
 
 const COLS = 80;
 const ROWS = 24;
@@ -75,6 +77,29 @@ describe("@xterm/headless options.scrollback active truncation (issue #6215)", (
         postHeap,
         `expected V8 heap to drop after scrollback trim — preHeap=${preHeap} postHeap=${postHeap}`
       ).toBeLessThan(preHeap);
+    }
+  });
+
+  it("Unicode 11 addon makes modern emoji render at width 2 in headless buffer (issue #7205)", async () => {
+    terminal = new Terminal({
+      cols: COLS,
+      rows: ROWS,
+      scrollback: REDUCED_SCROLLBACK,
+      allowProposedApi: true,
+    });
+    terminal.loadAddon(new Unicode11Addon());
+    terminal.unicode.activeVersion = "11";
+
+    // Each emoji listed in #7205 must occupy 2 cells once Unicode 11 is active.
+    // Write each one to its own row so column 0 is always the emoji's first cell.
+    await writeAll(terminal, "⏳\r\n✅\r\n✨\r\n❌");
+
+    const cell = terminal.buffer.active.getNullCell();
+    for (let row = 0; row < 4; row++) {
+      const line = terminal.buffer.active.getLine(row);
+      expect(line, `row ${row} should exist`).toBeDefined();
+      line!.getCell(0, cell);
+      expect(cell.getWidth(), `emoji at row ${row} should report cell width 2`).toBe(2);
     }
   });
 

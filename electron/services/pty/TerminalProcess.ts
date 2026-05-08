@@ -4,6 +4,8 @@ import headless from "@xterm/headless";
 const { Terminal: HeadlessTerminal } = headless;
 import serialize, { type SerializeAddon as SerializeAddonType } from "@xterm/addon-serialize";
 const { SerializeAddon } = serialize;
+import unicode11 from "@xterm/addon-unicode11";
+const { Unicode11Addon } = unicode11;
 import { getEffectiveAgentConfig } from "../../../shared/config/agentRegistry.js";
 import { ProcessDetector, type DetectionResult } from "../ProcessDetector.js";
 import type { ProcessTreeCache } from "../ProcessTreeCache.js";
@@ -295,6 +297,10 @@ export class TerminalProcess {
       scrollback: this._scrollback,
       allowProposedApi: true,
     });
+    // SynchronizedFrameAnalyzer reads cell.width from this buffer; without
+    // Unicode 11 widths, emoji and CJK rows would mis-report column counts.
+    headlessTerminal.loadAddon(new Unicode11Addon());
+    headlessTerminal.unicode.activeVersion = "11";
     const serializeAddon: SerializeAddonType = new SerializeAddon();
     headlessTerminal.loadAddon(serializeAddon);
 
