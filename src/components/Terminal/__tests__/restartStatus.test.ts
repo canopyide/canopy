@@ -88,4 +88,78 @@ describe("getRestartBannerVariant", () => {
     const result = getRestartBannerVariant({ ...base, exitCode: 137 });
     expect(result).toEqual({ type: "exit-error", exitCode: 137 });
   });
+
+  it("returns auto-restarting when isAutoRestarting is true and no other errors are present", () => {
+    const result = getRestartBannerVariant({
+      ...base,
+      isAutoRestarting: true,
+      reconnectError: undefined,
+      spawnError: undefined,
+    });
+    expect(result).toEqual({ type: "auto-restarting" });
+  });
+
+  it("returns none when isAutoRestarting is true but reconnectError is present", () => {
+    const result = getRestartBannerVariant({
+      ...base,
+      isAutoRestarting: true,
+      reconnectError: {
+        message: "lost connection",
+        code: "RECONNECT_FAILED",
+        timestamp: Date.now(),
+      } as never,
+    });
+    expect(result).toEqual({ type: "none" });
+  });
+
+  it("returns none when isAutoRestarting is true but spawnError is present", () => {
+    const result = getRestartBannerVariant({
+      ...base,
+      isAutoRestarting: true,
+      spawnError: {
+        message: "spawn failed",
+        code: "SPAWN_FAILED",
+        timestamp: Date.now(),
+      } as never,
+    });
+    expect(result).toEqual({ type: "none" });
+  });
+
+  it("returns none when isAutoRestarting is true but restartError is present", () => {
+    const result = getRestartBannerVariant({
+      ...base,
+      isAutoRestarting: true,
+      restartError: {
+        message: "failed",
+        code: "RESTART_FAILED",
+        timestamp: Date.now(),
+        recoverable: false,
+      },
+    });
+    expect(result).toEqual({ type: "none" });
+  });
+
+  it("returns none for exit-error when spawnError is present", () => {
+    const result = getRestartBannerVariant({
+      ...base,
+      spawnError: {
+        message: "spawn failed",
+        code: "SPAWN_FAILED",
+        timestamp: Date.now(),
+      } as never,
+    });
+    expect(result).toEqual({ type: "none" });
+  });
+
+  it("returns none for exit-error when reconnectError is present", () => {
+    const result = getRestartBannerVariant({
+      ...base,
+      reconnectError: {
+        message: "lost connection",
+        code: "RECONNECT_FAILED",
+        timestamp: Date.now(),
+      } as never,
+    });
+    expect(result).toEqual({ type: "none" });
+  });
 });

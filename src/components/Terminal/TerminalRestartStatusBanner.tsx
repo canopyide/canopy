@@ -21,7 +21,12 @@ function TerminalRestartStatusBannerComponent({
 
     case "auto-restarting":
       return (
-        <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-daintree-text/60 bg-status-info/10 border-b border-daintree-border shrink-0">
+        <div
+          className="flex items-center gap-2 px-3 py-1.5 text-xs text-daintree-text/60 bg-status-info/10 border-b border-daintree-border shrink-0"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
           <Spinner size="xs" className="text-activity-working" />
           <span>Auto-restarting…</span>
         </div>

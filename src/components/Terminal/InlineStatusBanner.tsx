@@ -26,7 +26,6 @@ export interface InlineStatusBannerProps {
   className?: string;
   actions: BannerAction[];
   role?: "alert" | "status";
-  ariaLive?: "polite" | "assertive";
   onClose?: () => void;
 }
 
@@ -77,7 +76,6 @@ function InlineStatusBannerComponent({
   className,
   actions,
   role = "alert",
-  ariaLive = "polite",
   onClose,
 }: InlineStatusBannerProps) {
   const prefersReducedMotion =
@@ -121,7 +119,6 @@ function InlineStatusBannerComponent({
         borderBottom: `1px solid color-mix(in oklab, var(${colorVar}) 20%, transparent)`,
       }}
       role={role}
-      aria-live={ariaLive}
     >
       <div className={cn("flex", hasDescription ? "items-start" : "items-center", "gap-2 min-w-0")}>
         <IconComponent
@@ -168,7 +165,7 @@ function InlineStatusBannerComponent({
               onClose();
             }}
             aria-label="Dismiss"
-            className="p-1 rounded text-daintree-text/60 hover:text-daintree-text hover:bg-daintree-border/50 focus-visible:outline-2 focus-visible:outline-daintree-accent"
+            className="p-1 rounded text-daintree-text/60 hover:text-daintree-text hover:bg-daintree-border/50 outline-hidden focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-daintree-accent"
           >
             <X className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
@@ -187,6 +184,7 @@ function InlineStatusBannerComponent({
               }}
               className={cn(
                 action.iconOnly ? "p-1" : "flex items-center gap-1.5 px-2 py-1 text-xs font-medium",
+                "outline-hidden focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-daintree-accent",
                 variantClasses,
                 (variant === "danger" || variant === "dangerFilled") &&
                   "hover:[color:var(--hover-color)] hover:[background:var(--hover-bg)]"

@@ -51,6 +51,31 @@ describe("TerminalRestartStatusBanner", () => {
     expect(screen.queryByRole("button", { name: /restart session/i })).toBeNull();
   });
 
+  it("auto-restarting variant exposes a polite status live region", () => {
+    render(
+      <TerminalRestartStatusBanner
+        variant={{ type: "auto-restarting" }}
+        onRestart={vi.fn()}
+        onDismiss={vi.fn()}
+      />
+    );
+    const region = screen.getByRole("status");
+    expect(region.getAttribute("aria-live")).toBe("polite");
+    expect(region.getAttribute("aria-atomic")).toBe("true");
+  });
+
+  it("exit-error variant uses role=alert without aria-live", () => {
+    render(
+      <TerminalRestartStatusBanner
+        variant={{ type: "exit-error", exitCode: 1 }}
+        onRestart={vi.fn()}
+        onDismiss={vi.fn()}
+      />
+    );
+    const region = screen.getByRole("alert");
+    expect(region.hasAttribute("aria-live")).toBe(false);
+  });
+
   it("renders exit code message for exit-error variant and excludes auto-restart content", () => {
     render(
       <TerminalRestartStatusBanner
