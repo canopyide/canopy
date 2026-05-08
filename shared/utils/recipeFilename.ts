@@ -11,9 +11,11 @@ export function safeRecipeFilename(name: string): string {
       .replace(/[\\/:*?"<>|]/g, "") // strip OS-forbidden chars
       .replace(/\s+/g, "-") // spaces → hyphens
       .replace(/-+/g, "-") // collapse consecutive hyphens
-      .replace(/^[-.]+|[-.]+$/g, "") // no leading/trailing hyphens or dots
       .toLowerCase()
-      .slice(0, 200) || "recipe";
+      .slice(0, 200)
+      // Trailing-strip runs after slice so a hyphen or dot left dangling at
+      // position 200 (e.g. interior whitespace at char 199) is removed.
+      .replace(/^[-.]+|[-.]+$/g, "") || "recipe";
 
   return `${base}.json`;
 }

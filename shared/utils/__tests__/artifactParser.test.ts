@@ -112,4 +112,14 @@ describe("artifactParser", () => {
     const cleaned = stripAnsiCodes(input);
     expect(cleaned).toBe("https://youtube.com/watch?v=abc12345678");
   });
+
+  it("strips DCS sequences (Kitty graphics / Sixel / tmux passthrough)", () => {
+    const cleaned = stripAnsiCodes("before\x1bPpayload\x1b\\after");
+    expect(cleaned).toBe("beforeafter");
+  });
+
+  it("strips 8-bit C1 string sequences (DCS/SOS/PM/APC)", () => {
+    const cleaned = stripAnsiCodes("before\x90payload\x9cafter");
+    expect(cleaned).toBe("beforeafter");
+  });
 });
