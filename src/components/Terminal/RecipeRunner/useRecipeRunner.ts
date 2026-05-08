@@ -9,6 +9,7 @@ import { useProjectSettingsStore } from "@/store/projectSettingsStore";
 import { actionService } from "@/services/ActionService";
 import { detectUnresolvedVariables, type RecipeContext } from "@/utils/recipeVariables";
 import { getAgentConfig } from "@/config/agents";
+import { logError } from "@/utils/logger";
 import {
   buildRecipeSections,
   rankSearchResults,
@@ -72,15 +73,17 @@ function getTerminalDisplayName(terminal: RecipeTerminal, index: number): string
   return `Terminal ${index + 1}`;
 }
 
+// Only scans terminal.initialPrompt — that is the single field the store
+// passes through replaceRecipeVariables (recipeStore.ts:600). terminal.command,
+// terminal.devCommand, and terminal.args are forwarded raw, so flagging
+// {{var}} in them would mislead the user into thinking the substitution was
+// expected to happen.
 function collectUnresolvedVars(recipe: TerminalRecipe, context: RecipeContext): string[] {
   const seen = new Set<string>();
   for (const terminal of recipe.terminals) {
-    const sources = [terminal.command, terminal.initialPrompt];
-    for (const source of sources) {
-      if (!source) continue;
-      for (const name of detectUnresolvedVariables(source, context)) {
-        seen.add(name);
-      }
+    if (!terminal.initialPrompt) continue;
+    for (const name of detectUnresolvedVariables(terminal.initialPrompt, context)) {
+      seen.add(name);
     }
   }
   return Array.from(seen);
@@ -107,6 +110,11 @@ export function useRecipeRunner({
 
   const isRunningRef = useRef(false);
   const lastRunRecipeIdRef = useRef<string | null>(null);
+  // Generation counter: every run/retry captures the current value, then any
+  // resolved async work checks the latest value before calling setState. If a
+  // worktree switch (or a new run) bumps the counter while the old promise is
+  // still in flight, the old setState is dropped on the floor.
+  const runGenerationRef = useRef(0);
 
   // Stable filtered recipe array for Fuse cache
   const recipes = useMemo(() => {
@@ -141,11 +149,14 @@ export function useRecipeRunner({
   }, [activeWorktreeId, searchQuery]);
 
   // Clear stale banner state when the active worktree changes — failures and
-  // unresolved vars are computed against a specific worktree's context.
+  // unresolved vars are computed against a specific worktree's context. Bump
+  // the generation counter so any in-flight run that resolves after the switch
+  // can detect the change and skip its setState.
   useEffect(() => {
     setSpawnFailureSummary(null);
     setUnresolvedVars([]);
     lastRunRecipeIdRef.current = null;
+    runGenerationRef.current += 1;
   }, [activeWorktreeId]);
 
   const focusedItemId = useMemo(() => {
@@ -212,12 +223,17 @@ export function useRecipeRunner({
       const cwd = defaultCwd;
       const context = buildContext(cwd);
 
+      // Clear any leftover failure banner from a prior run — the new run is
+      // the user's current intent and the old retry button must not target a
+      // recipe that's no longer relevant.
+      setSpawnFailureSummary(null);
       // Pre-flight: detect unresolved variables across all terminals so the user
       // sees a single aggregated warning rather than discovering them per-spawn.
       setUnresolvedVars(collectUnresolvedVars(recipe, context));
 
       isRunningRef.current = true;
       lastRunRecipeIdRef.current = recipeId;
+      const runId = ++runGenerationRef.current;
 
       void (async () => {
         try {
@@ -228,7 +244,15 @@ export function useRecipeRunner({
             context,
             { spawnedBy: "recipe" }
           );
-          setSpawnFailureSummary(summarizeFailures(recipe, results));
+          if (runGenerationRef.current === runId) {
+            setSpawnFailureSummary(summarizeFailures(recipe, results));
+          }
+        } catch (error) {
+          // The store throws synchronously when the recipe was deleted between
+          // the local lookup and the store call. Don't let this become an
+          // unhandled rejection (Electron 41 crashes utility processes on
+          // unhandled rejections).
+          logError("Recipe run failed", error);
         } finally {
           isRunningRef.current = false;
         }
@@ -260,6 +284,7 @@ export function useRecipeRunner({
 
     isRunningRef.current = true;
     setIsRetryingFailed(true);
+    const runId = ++runGenerationRef.current;
 
     void (async () => {
       try {
@@ -270,6 +295,7 @@ export function useRecipeRunner({
           context,
           { spawnedBy: "recipe", terminalIndices: indices }
         );
+        if (runGenerationRef.current !== runId) return;
         if (results.failed.length === 0) {
           setSpawnFailureSummary(null);
         } else {
@@ -286,6 +312,8 @@ export function useRecipeRunner({
             })),
           });
         }
+      } catch (error) {
+        logError("Recipe retry failed", error);
       } finally {
         isRunningRef.current = false;
         setIsRetryingFailed(false);

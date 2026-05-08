@@ -76,6 +76,12 @@ vi.mock("@/config/agents", () => ({
   },
 }));
 
+const logErrorMock = vi.fn();
+vi.mock("@/utils/logger", () => ({
+  logError: (...args: unknown[]) => logErrorMock(...args),
+  logDebug: vi.fn(),
+}));
+
 import { useRecipeRunner } from "../useRecipeRunner";
 
 function makeRecipe(
@@ -91,6 +97,7 @@ function makeRecipe(
 beforeEach(() => {
   recipes.length = 0;
   runRecipeWithResultsMock.mockReset();
+  logErrorMock.mockReset();
 });
 
 async function flush() {
@@ -321,7 +328,7 @@ describe("useRecipeRunner — retry failed terminals", () => {
 });
 
 describe("useRecipeRunner — pre-flight unresolved variables", () => {
-  it("flags missing context for known variables before spawning", async () => {
+  it("flags missing context for known variables in initialPrompt before spawning", async () => {
     recipes.push(
       makeRecipe({
         id: "r1",
@@ -330,9 +337,9 @@ describe("useRecipeRunner — pre-flight unresolved variables", () => {
           {
             type: "claude-code",
             env: {},
-            initialPrompt: "review issue {{issue_number}} on branch {{branch_name}}",
+            initialPrompt:
+              "review issue {{issue_number}} on branch {{branch_name}} for pr {{pr_number}}",
           },
-          { type: "terminal", env: {}, command: "echo {{pr_number}}" },
         ],
       })
     );
@@ -351,13 +358,38 @@ describe("useRecipeRunner — pre-flight unresolved variables", () => {
     expect(result.current.unresolvedVars).toEqual(["pr_number"]);
   });
 
+  it("does not flag {{vars}} in plain-terminal command (the store does not substitute it)", async () => {
+    recipes.push(
+      makeRecipe({
+        id: "r1",
+        name: "Plain",
+        terminals: [{ type: "terminal", env: {}, command: "echo {{pr_number}}" }],
+      })
+    );
+    runRecipeWithResultsMock.mockResolvedValue({
+      spawned: [{ index: 0, terminalId: "t-0" }],
+      failed: [],
+    });
+
+    const { result } = renderHook(() =>
+      useRecipeRunner({ activeWorktreeId: "wt-1", defaultCwd: "/tmp" })
+    );
+
+    act(() => {
+      result.current.handleRun("r1");
+    });
+    await flush();
+
+    expect(result.current.unresolvedVars).toEqual([]);
+  });
+
   it("dismisses each banner independently", async () => {
     recipes.push(
       makeRecipe({
         id: "r1",
         name: "Bad",
         terminals: [
-          { type: "terminal", env: {}, command: "echo {{pr_number}}" },
+          { type: "claude-code", env: {}, initialPrompt: "echo {{pr_number}}" },
           { type: "terminal", env: {} },
         ],
       })
@@ -419,5 +451,115 @@ describe("useRecipeRunner — reentrancy guard", () => {
       resolve({ spawned: [{ index: 0, terminalId: "t-0" }], failed: [] });
       await Promise.resolve();
     });
+  });
+});
+
+describe("useRecipeRunner — async lifecycle", () => {
+  it("drops the failure summary when the active worktree changes mid-run", async () => {
+    recipes.push(
+      makeRecipe({ id: "r1", name: "Slow", terminals: [{ type: "terminal", env: {} }] })
+    );
+    let resolve: (results: RecipeSpawnResults) => void = () => {};
+    runRecipeWithResultsMock.mockReturnValue(
+      new Promise<RecipeSpawnResults>((r) => {
+        resolve = r;
+      })
+    );
+
+    const { result, rerender } = renderHook(
+      ({ activeWorktreeId }: { activeWorktreeId: string | null }) =>
+        useRecipeRunner({ activeWorktreeId, defaultCwd: "/tmp" }),
+      { initialProps: { activeWorktreeId: "wt-1" } }
+    );
+
+    act(() => {
+      result.current.handleRun("r1");
+    });
+
+    // Switch worktrees while the run is still in flight.
+    rerender({ activeWorktreeId: "wt-2" });
+
+    await act(async () => {
+      resolve({
+        spawned: [],
+        failed: [{ index: 0, error: "Panel limit reached" }],
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.spawnFailureSummary).toBeNull();
+  });
+
+  it("clears a stale failure banner when a new run begins", async () => {
+    recipes.push(
+      makeRecipe({
+        id: "r1",
+        name: "First",
+        terminals: [{ type: "terminal", env: {} }],
+      })
+    );
+    runRecipeWithResultsMock.mockResolvedValueOnce({
+      spawned: [],
+      failed: [{ index: 0, error: "Panel limit reached" }],
+    });
+
+    const { result } = renderHook(() =>
+      useRecipeRunner({ activeWorktreeId: "wt-1", defaultCwd: "/tmp" })
+    );
+
+    act(() => {
+      result.current.handleRun("r1");
+    });
+    await flush();
+    expect(result.current.spawnFailureSummary).not.toBeNull();
+
+    let resolve: (results: RecipeSpawnResults) => void = () => {};
+    runRecipeWithResultsMock.mockReturnValueOnce(
+      new Promise<RecipeSpawnResults>((r) => {
+        resolve = r;
+      })
+    );
+
+    act(() => {
+      result.current.handleRun("r1");
+    });
+
+    // The new run is in flight: stale banner must be gone immediately.
+    expect(result.current.spawnFailureSummary).toBeNull();
+
+    await act(async () => {
+      resolve({ spawned: [{ index: 0, terminalId: "t-0" }], failed: [] });
+      await Promise.resolve();
+    });
+  });
+
+  it("swallows a thrown rejection from the store and releases the run guard", async () => {
+    recipes.push(
+      makeRecipe({ id: "r1", name: "Throws", terminals: [{ type: "terminal", env: {} }] })
+    );
+    runRecipeWithResultsMock.mockRejectedValueOnce(new Error("Recipe r1 not found"));
+
+    const { result } = renderHook(() =>
+      useRecipeRunner({ activeWorktreeId: "wt-1", defaultCwd: "/tmp" })
+    );
+
+    act(() => {
+      result.current.handleRun("r1");
+    });
+    await flush();
+
+    expect(result.current.spawnFailureSummary).toBeNull();
+
+    // Subsequent run should proceed (guard is released in finally).
+    runRecipeWithResultsMock.mockResolvedValueOnce({
+      spawned: [{ index: 0, terminalId: "t-0" }],
+      failed: [],
+    });
+    act(() => {
+      result.current.handleRun("r1");
+    });
+    await flush();
+    expect(runRecipeWithResultsMock).toHaveBeenCalledTimes(2);
   });
 });
