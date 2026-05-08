@@ -163,10 +163,10 @@ export async function setupWindowServices(
     markPerformance(PERF_MARKS.SERVICE_INIT_IPC_READY);
   }
 
-  // Renderer load is gated by DAINTREE_EARLY_RENDERER. With the flag, the
-  // did-finish-load handler is registered and loadRenderer() is fired before
-  // the workspace/PTY init block — first paint stops waiting on the PTY
-  // handshake. Without the flag (default), the original serial order is kept:
+  // Early-renderer mode is the default: the did-finish-load handler is
+  // registered and loadRenderer() is fired before the workspace/PTY init
+  // block, so first paint stops waiting on the PTY handshake. Set
+  // DAINTREE_EARLY_RENDERER=0 to restore the serial path:
   // workspace init → handler → loadRenderer.
   const earlyRendererEnabled = shouldEnableEarlyRenderer({ isSmokeTest, env: process.env });
 
@@ -189,9 +189,10 @@ export async function setupWindowServices(
       markPerformance(PERF_MARKS.RENDERER_READY);
       createAndDistributePorts(win, ctx);
       // Refresh workspace direct port on reload (preload context is reset).
-      // Under DAINTREE_EARLY_RENDERER, workspaceClient may still be null on the
-      // first did-finish-load — the initial direct-port attach is performed by
-      // the loadProject() path below once the workspace host is ready.
+      // With early-renderer mode (default), workspaceClient may still be null
+      // on the first did-finish-load — the initial direct-port attach is
+      // performed by the loadProject() path below once the workspace host is
+      // ready.
       const workspaceClient = getWorkspaceClientRef();
       if (workspaceClient) {
         workspaceClient.attachDirectPort(win.id, appWc);
@@ -219,7 +220,7 @@ export async function setupWindowServices(
   };
 
   if (earlyRendererEnabled) {
-    console.log("[MAIN] DAINTREE_EARLY_RENDERER=1 — loading renderer in parallel with PTY init");
+    console.log("[MAIN] Early renderer enabled — loading renderer in parallel with PTY init");
     startRendererLoad("early-renderer");
   }
 
@@ -296,11 +297,13 @@ export async function setupWindowServices(
   const { armRestoreQuota } = await import("../ipc/utils.js");
   armRestoreQuota(50, 120_000);
 
-  // Under DAINTREE_EARLY_RENDERER=1 the RENDERER_READY mark can fire before
-  // this point, since the renderer is loading concurrently with workspace init.
+  // With early-renderer mode (default), the RENDERER_READY mark can fire
+  // before this point, since the renderer is loading concurrently with
+  // workspace init.
   markPerformance(PERF_MARKS.SERVICE_INIT_COMPLETE);
-  // Default path: renderer load happens here, after workspace + PTY are ready.
-  // With DAINTREE_EARLY_RENDERER=1 this is a no-op (already started above).
+  // Opt-out path (DAINTREE_EARLY_RENDERER=0): renderer load happens here,
+  // after workspace + PTY are ready. With early-renderer mode active this is
+  // a no-op (already started above).
   startRendererLoad("after-services-ready");
 
   // Error handlers also use ipcMain.handle — register once
