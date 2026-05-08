@@ -30,7 +30,7 @@ function ShortcutRow({ binding, isEditing, onEdit, onSave, onCancel, onReset }: 
 
   if (isEditing) {
     return (
-      <div className="py-2 border-b border-daintree-border/50">
+      <div data-testid="shortcut-row" className="py-2 border-b border-daintree-border/50">
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm text-daintree-text">
             {binding.description || binding.actionId}
@@ -47,7 +47,10 @@ function ShortcutRow({ binding, isEditing, onEdit, onSave, onCancel, onReset }: 
   }
 
   return (
-    <div className="flex items-center justify-between py-2 border-b border-daintree-border/50 group/row">
+    <div
+      data-testid="shortcut-row"
+      className="flex items-center justify-between py-2 border-b border-daintree-border/50 group/row"
+    >
       <span className="text-sm text-daintree-text">{binding.description || binding.actionId}</span>
       <div className="flex items-center gap-2">
         {binding.effectiveCombo ? (

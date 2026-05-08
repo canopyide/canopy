@@ -58,9 +58,7 @@ test.describe.serial("Core: Settings Advanced", () => {
         timeout: T_SHORT,
       });
 
-      const rows = window.locator(".group").filter({
-        has: window.locator("button", { hasText: "Edit" }),
-      });
+      const rows = window.locator(SEL.settings.shortcutRow);
       await expect(rows.first()).toBeVisible({ timeout: T_SHORT });
       expect(await rows.count()).toBeGreaterThan(0);
     });
@@ -73,9 +71,7 @@ test.describe.serial("Core: Settings Advanced", () => {
       await searchInput.fill("Open settings");
       await window.waitForTimeout(T_SETTLE);
 
-      const rows = window.locator(".group").filter({
-        has: window.locator("button", { hasText: "Edit" }),
-      });
+      const rows = window.locator(SEL.settings.shortcutRow);
       const count = await rows.count();
       expect(count).toBeGreaterThan(0);
 
@@ -97,12 +93,7 @@ test.describe.serial("Core: Settings Advanced", () => {
       await searchInput.fill("Open settings");
       await window.waitForTimeout(T_SETTLE);
 
-      const row = window
-        .locator(".group")
-        .filter({
-          has: window.locator("button", { hasText: "Edit" }),
-        })
-        .first();
+      const row = window.locator(SEL.settings.shortcutRow).first();
       await row.scrollIntoViewIfNeeded();
       await row.hover();
 
@@ -134,12 +125,7 @@ test.describe.serial("Core: Settings Advanced", () => {
       await searchInput.fill("Open settings");
       await window.waitForTimeout(T_SETTLE);
 
-      const row = window
-        .locator(".group")
-        .filter({
-          has: window.locator("button", { hasText: "Edit" }),
-        })
-        .first();
+      const row = window.locator(SEL.settings.shortcutRow).first();
       await row.scrollIntoViewIfNeeded();
       await row.hover();
 

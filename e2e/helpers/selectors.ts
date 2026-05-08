@@ -38,6 +38,7 @@ export const SEL = {
     searchInput: '[aria-label="Search settings"]',
     searchClear: '[aria-label="Clear search"]',
     shortcutsSearchInput: 'input[placeholder="Search shortcuts..."]',
+    shortcutRow: '[data-testid="shortcut-row"]',
     shortcutRecordPrompt: 'button:has-text("Click to record shortcut")',
     shortcutCancelButton: 'button:has-text("Cancel")',
     shortcutResetButton: '[aria-label="Reset to default"]',
