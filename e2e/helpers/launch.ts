@@ -68,11 +68,12 @@ async function pollForAppWindow(app: ElectronApplication, timeoutMs: number): Pr
 }
 
 export async function launchApp(options: LaunchOptions = {}): Promise<AppContext> {
-  // Windows CI can hang during Playwright's electron.launch handshake even when
-  // the app process is already running. Keep attempts high, but fail fast.
+  // Windows CI can be slow during Playwright's electron.launch handshake even
+  // when the app process is already running. Use fewer, longer attempts so a
+  // slow-but-healthy first launch is not killed just before it becomes ready.
   const isWindowsCI = process.env.CI && process.platform === "win32";
-  const launchTimeout = isWindowsCI ? 45_000 : 60_000;
-  const maxAttempts = isWindowsCI ? 5 : 1;
+  const launchTimeout = isWindowsCI ? 75_000 : 60_000;
+  const maxAttempts = isWindowsCI ? 3 : 1;
   let lastError: unknown = null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {

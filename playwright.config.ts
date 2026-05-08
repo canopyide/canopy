@@ -5,7 +5,7 @@ const isWindowsCI = process.platform === "win32" && isCI;
 const e2eWorkers = isWindowsCI ? 1 : 2;
 
 // Per-test timeout: allow enough time for launch retries + test execution.
-// launchApp retries up to 5x with 45s timeout per attempt on Windows CI.
+// launchApp retries up to 3x with 75s timeout per attempt on Windows CI.
 const coreTimeout = isWindowsCI ? 300_000 : 120_000;
 const onlineTimeout = isWindowsCI ? 480_000 : 300_000;
 
