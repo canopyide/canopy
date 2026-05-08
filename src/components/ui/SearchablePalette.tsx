@@ -4,6 +4,8 @@ import { PaletteOverflowNotice } from "@/components/ui/PaletteOverflowNotice";
 import { useEscapeStack } from "@/hooks";
 import type { FuseResultMatch } from "@/hooks/useSearchablePalette";
 
+const noopHoverIndex = () => {};
+
 export interface SearchablePaletteProps<T> {
   isOpen: boolean;
   query: string;
@@ -179,18 +181,10 @@ export function SearchablePalette<T>({
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (isOpen) {
-      const rafId = requestAnimationFrame(() => inputRef.current?.focus());
-      return () => cancelAnimationFrame(rafId);
-    }
-    return undefined;
-  }, [isOpen]);
-
-  useEffect(() => {
     if (listRef.current && selectedIndex >= 0 && results.length > 0) {
       const selectedItem = listRef.current.children[selectedIndex];
       if (selectedItem instanceof HTMLElement) {
-        selectedItem.scrollIntoView({ block: "nearest" });
+        selectedItem.scrollIntoView({ block: "nearest", behavior: "instant" });
       }
     }
   }, [selectedIndex, results]);
@@ -247,7 +241,6 @@ export function SearchablePalette<T>({
       ? `${itemIdPrefix}-${getItemId(results[selectedIndex]!)}`
       : undefined;
 
-  const noopHoverIndex = useCallback(() => {}, []);
   const hoverIndexHandler = onHoverIndex ?? noopHoverIndex;
 
   const selectedItem = results[selectedIndex] ?? null;
