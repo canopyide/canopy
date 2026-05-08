@@ -82,4 +82,39 @@ describe("WebviewDialog accessibility", () => {
     });
     expect(document.activeElement).toBe(last);
   });
+
+  it("Tab pulls focus back into the dialog when active element is outside", () => {
+    const outside = document.createElement("button");
+    outside.textContent = "outside";
+    document.body.appendChild(outside);
+    try {
+      const { container } = render(<WebviewDialog dialog={basePrompt} onRespond={vi.fn()} />);
+      const panel = container.querySelector('[role="dialog"]') as HTMLElement;
+      const focusables = panel.querySelectorAll<HTMLElement>(
+        'input:not([disabled]):not([type="hidden"]), button:not([disabled])'
+      );
+      const first = focusables[0]!;
+
+      outside.focus();
+      expect(document.activeElement).toBe(outside);
+
+      const event = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
+      act(() => {
+        window.dispatchEvent(event);
+      });
+      expect(document.activeElement).toBe(first);
+    } finally {
+      document.body.removeChild(outside);
+    }
+  });
+
+  it("prompt input has aria-describedby pointing at the message", () => {
+    const { container } = render(<WebviewDialog dialog={basePrompt} onRespond={vi.fn()} />);
+    const input = container.querySelector('input[type="text"]') as HTMLInputElement;
+    expect(input).not.toBeNull();
+    const describedBy = input.getAttribute("aria-describedby");
+    expect(describedBy).toBeTruthy();
+    const labelEl = container.querySelector(`[id="${describedBy}"]`);
+    expect(labelEl?.textContent).toBe("Enter a value");
+  });
 });

@@ -68,14 +68,14 @@ export function FindBar({ find }: FindBarProps) {
         }}
         placeholder="Find in page"
         aria-label="Find in page"
-        aria-controls={counterId}
+        aria-describedby={counterId}
         data-testid="find-bar-input"
         className="w-44 bg-transparent text-xs text-daintree-text placeholder:text-daintree-text/40 outline-hidden border border-transparent focus:border-border-strong transition-colors"
         spellCheck={false}
       />
       <span
         id={counterId}
-        role={hasQuery ? "status" : undefined}
+        role="status"
         aria-atomic="true"
         className={`text-[11px] tabular-nums whitespace-nowrap mr-0.5 ${
           noResults ? "text-status-error" : "text-daintree-text/50"

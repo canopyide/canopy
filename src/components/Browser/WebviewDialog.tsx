@@ -61,10 +61,15 @@ export function WebviewDialog({ dialog, onRespond }: WebviewDialogProps) {
       }
       const first = focusable[0]!;
       const last = focusable[focusable.length - 1]!;
-      if (e.shiftKey && document.activeElement === first) {
+      if (!panelRef.current.contains(activeEl)) {
+        e.preventDefault();
+        first.focus();
+        return;
+      }
+      if (e.shiftKey && activeEl === first) {
         e.preventDefault();
         last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
+      } else if (!e.shiftKey && activeEl === last) {
         e.preventDefault();
         first.focus();
       }
@@ -131,6 +136,7 @@ export function WebviewDialog({ dialog, onRespond }: WebviewDialogProps) {
             type="text"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
+            aria-describedby={messageId}
             className="w-full px-3 py-1.5 text-sm bg-daintree-sidebar border border-daintree-border rounded-md text-daintree-text focus:outline-hidden focus:ring-1 focus:ring-daintree-accent/50 mb-4"
           />
         )}

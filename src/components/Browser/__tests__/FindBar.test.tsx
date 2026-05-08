@@ -35,22 +35,22 @@ describe("FindBar accessibility", () => {
     expect(input.getAttribute("data-testid")).toBe("find-bar-input");
   });
 
-  it("input aria-controls matches counter span id", () => {
+  it("input aria-describedby matches counter span id and counter has live-region attrs", () => {
     const { container } = render(<FindBar find={makeFindState({ query: "foo", matchCount: 3 })} />);
     const input = container.querySelector('input[aria-label="Find in page"]') as HTMLInputElement;
-    const controlsId = input.getAttribute("aria-controls");
-    expect(controlsId).toBeTruthy();
-    const counter = container.querySelector(`[id="${controlsId}"]`);
+    const describedBy = input.getAttribute("aria-describedby");
+    expect(describedBy).toBeTruthy();
+    const counter = container.querySelector(`[id="${describedBy}"]`);
     expect(counter).not.toBeNull();
     expect(counter?.getAttribute("role")).toBe("status");
     expect(counter?.getAttribute("aria-atomic")).toBe("true");
   });
 
-  it("counter span omits role=status when there is no query", () => {
+  it("counter span retains role=status before any query is entered (live region exists on mount)", () => {
     const { container } = render(<FindBar find={makeFindState({ query: "" })} />);
     const input = container.querySelector('input[aria-label="Find in page"]') as HTMLInputElement;
-    const controlsId = input.getAttribute("aria-controls")!;
-    const counter = container.querySelector(`[id="${controlsId}"]`);
-    expect(counter?.getAttribute("role")).toBeNull();
+    const describedBy = input.getAttribute("aria-describedby")!;
+    const counter = container.querySelector(`[id="${describedBy}"]`);
+    expect(counter?.getAttribute("role")).toBe("status");
   });
 });
