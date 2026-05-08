@@ -203,6 +203,18 @@ jobs:
           npm run build
           npx electron-builder --config electron-builder.config.cjs --publish never
 
+      - name: Verify Windows Store package was built
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $packages = @(Get-ChildItem -Path 'release\*.appx', 'release\*.msix' -ErrorAction SilentlyContinue)
+          if ($packages.Count -eq 0) {
+            Write-Host "::error::No .appx or .msix found in release/. Confirm electron-builder is configured with the appx target (see #7198)."
+            Get-ChildItem -Path release -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_.Name }
+            exit 1
+          }
+          Write-Host "Found $($packages.Count) Store package(s) in release/"
+
       - name: Run WACK (Windows, best-effort)
         if: matrix.os == 'windows-latest'
         shell: pwsh
