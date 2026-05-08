@@ -77,6 +77,14 @@ describe("setupPowerMonitor", () => {
       CHANNELS: { EVENTS_PUSH: "events:push" },
     }));
 
+    vi.doMock("../../services/github/GitHubTokenHealthService.js", () => ({
+      gitHubTokenHealthService: { refresh: vi.fn().mockResolvedValue(undefined) },
+    }));
+
+    vi.doMock("../../services/connectivity/AgentConnectivityService.js", () => ({
+      agentConnectivityService: { refresh: vi.fn().mockResolvedValue(undefined) },
+    }));
+
     mockGetAppWebContents = vi.fn((win: { webContents: unknown }) => win.webContents);
     vi.doMock("../webContentsRegistry.js", () => ({
       getAppWebContents: mockGetAppWebContents,
