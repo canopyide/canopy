@@ -25,10 +25,13 @@ function plural(count: number, singular: string, pluralForm: string): string {
 
 function buildBroadcastAnnouncement(result: FleetExecutionResult): string {
   if (result.cancelled) {
-    if (result.successCount > 0) {
-      return `Broadcast cancelled — ${result.successCount} sent`;
+    if (result.successCount === 0 && result.failureCount === 0) {
+      return "Broadcast cancelled";
     }
-    return "Broadcast cancelled";
+    if (result.failureCount > 0) {
+      return `Broadcast cancelled — ${result.successCount} sent, ${result.failureCount} failed`;
+    }
+    return `Broadcast cancelled — ${result.successCount} sent`;
   }
   if (result.failureCount > 0) {
     return `Broadcast sent to ${result.successCount} — ${result.failureCount} failed`;
@@ -75,6 +78,10 @@ export function tryFleetBroadcastFromEditor(
   const reasons = describeWarnings(text);
 
   const doSend = async () => {
+    // A second Enter while a broadcast is in-flight should pre-empt the
+    // first — leaving a stale controller would race two runs against the
+    // shared progress store. Abort then take over.
+    activeBroadcastController?.abort();
     const controller = new AbortController();
     activeBroadcastController = controller;
     try {
@@ -88,9 +95,16 @@ export function tryFleetBroadcastFromEditor(
       } else if (!result.cancelled) {
         // A successful broadcast clears any stale failure dot on these
         // targets — the partial-failure state from a prior attempt is
-        // now resolved. Skipped on cancel: untouched targets keep their
-        // existing dot state.
+        // now resolved.
         for (const id of targets) useFleetFailureStore.getState().dismissId(id);
+      } else if (result.successCount > 0) {
+        // Partial cancel — dispatched batches that succeeded should clear
+        // their old failure dots; targets in skipped batches stay as-is.
+        for (const t of result.perTarget) {
+          if (t.status === "fulfilled") {
+            useFleetFailureStore.getState().dismissId(t.terminalId);
+          }
+        }
       }
       useAnnouncerStore.getState().announce(buildBroadcastAnnouncement(result), "polite");
       // Subtle audio confirmation that the prompt fanned out. Reuses the

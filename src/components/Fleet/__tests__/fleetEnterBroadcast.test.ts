@@ -110,6 +110,33 @@ describe("tryFleetBroadcastFromEditor — a11y announcements", () => {
     await flush();
     expect(useAnnouncerStore.getState().polite?.msg).toBe("Broadcast sent to 2 — 1 failed");
   });
+
+  it("announces partial cancel with both sent and failed counts", async () => {
+    // Cancel after a non-batched fan-out where one target rejected: result
+    // arrives with cancelled: true, successCount: 1, failureCount: 1. The
+    // user needs to see both numbers — silently dropping the failure count
+    // would hide a real outcome.
+    arm(["a", "b"]);
+    const pending: Array<() => void> = [];
+    submitMock.mockImplementation(
+      (_id: string) =>
+        new Promise<void>((resolve, reject) => {
+          if (pending.length === 0) {
+            // First call resolves cleanly.
+            pending.push(() => resolve());
+          } else {
+            pending.push(() => reject(new Error("EPIPE")));
+          }
+        })
+    );
+    tryFleetBroadcastFromEditor("a", "hello", vi.fn());
+    while (pending.length < 2) await flush();
+    cancelActiveBroadcast();
+    for (const fn of pending) fn();
+    pending.length = 0;
+    for (let i = 0; i < 10; i += 1) await flush();
+    expect(useAnnouncerStore.getState().polite?.msg).toBe("Broadcast cancelled — 1 sent, 1 failed");
+  });
 });
 
 describe("cancelActiveBroadcast", () => {

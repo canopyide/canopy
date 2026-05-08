@@ -891,7 +891,25 @@ describe("FleetArmingRibbon", () => {
       expect(useFleetBroadcastProgressStore.getState().cancelled).toBe(true);
     });
 
-    it("Cancel button does not render when total is below the visibility threshold", () => {
+    it("Cancel button is reachable for batched broadcasts below the counter threshold (6–9 targets)", () => {
+      // Batching kicks in at total > FLEET_LARGE_PASTE_BATCH_SIZE (5), but
+      // the numeric counter only shows at total >= 10. Without a separate
+      // gate, large-paste broadcasts to 6–9 targets had no Cancel surface.
+      useFleetBroadcastProgressStore.setState({
+        completed: 1,
+        total: 7,
+        isActive: true,
+      });
+      useFleetArmingStore.getState().armIds(["a", "b"]);
+      render(<FleetArmingRibbon />);
+      expect(screen.getByTestId("fleet-broadcast-cancel")).toBeTruthy();
+      // Counter still hidden because total < FLEET_PROGRESS_VISIBILITY_THRESHOLD.
+      expect(screen.queryByTestId("fleet-broadcast-progress")).toBeNull();
+    });
+
+    it("Cancel button does not render for non-batchable fleets (total ≤ 5)", () => {
+      // At/below batch size the executor takes the atomic non-batched path
+      // — there's nothing to interrupt cooperatively. Hide Cancel.
       useFleetBroadcastProgressStore.setState({
         completed: 1,
         total: 5,
