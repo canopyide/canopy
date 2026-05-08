@@ -46,6 +46,7 @@ test.describe.serial("Core: Bondi Visual Review", () => {
     rmSync(repoDir, { recursive: true, force: true });
   });
 
+  // eslint-disable-next-line no-empty-pattern
   test("capture Bondi — sidebar, terminal, full app", async ({}, testInfo) => {
     const { window: page } = ctx;
 
