@@ -41,7 +41,7 @@ import { markPerformance } from "../utils/performance.js";
 import { getCurrentDiskSpaceStatus } from "../services/DiskSpaceMonitor.js";
 import { PERF_MARKS } from "../../shared/perf/marks.js";
 import { isSmokeTest, smokeTestStart } from "../setup/environment.js";
-import { shouldEnableEarlyRenderer } from "./earlyRenderer.js";
+import { shouldDeferRendererLoadForE2E, shouldEnableEarlyRenderer } from "./earlyRenderer.js";
 import { extractCliPath, getPendingCliPath, setPendingCliPath } from "../lifecycle/appLifecycle.js";
 import type { WindowContext, WindowRegistry } from "./WindowRegistry.js";
 import { resetDeferredQueue } from "./deferredInitQueue.js";
@@ -169,6 +169,7 @@ export async function setupWindowServices(
   // DAINTREE_EARLY_RENDERER=0 to restore the serial path:
   // workspace init → handler → loadRenderer.
   const earlyRendererEnabled = shouldEnableEarlyRenderer({ isSmokeTest, env: process.env });
+  const deferRendererLoadForE2E = shouldDeferRendererLoadForE2E({ env: process.env });
 
   let rendererLoadStarted = false;
   const startRendererLoad = (reason: string): void => {
@@ -219,9 +220,11 @@ export async function setupWindowServices(
     opts.loadRenderer(reason, opts.initialProjectId);
   };
 
-  if (earlyRendererEnabled) {
+  if (earlyRendererEnabled && !deferRendererLoadForE2E) {
     console.log("[MAIN] Early renderer enabled — loading renderer in parallel with PTY init");
     startRendererLoad("early-renderer");
+  } else if (earlyRendererEnabled) {
+    console.log("[MAIN] E2E renderer-load deferral enabled — waiting for services");
   }
 
   // Initialize workspace client (first window only) — per-project hosts

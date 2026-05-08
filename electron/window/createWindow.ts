@@ -217,7 +217,12 @@ export function setupBrowserWindow(
   // Without this, the BW stays at about:blank (no Target.targetCreated event)
   // and electron.launch() times out after the WebContentsView migration.
   if (process.env.DAINTREE_E2E_MODE) {
-    win.loadURL("data:text/html,<!doctype html><html><body></body></html>");
+    win.loadURL("data:text/html,<!doctype html><html><body></body></html>").catch((err) => {
+      console.warn("[MAIN] Failed to load E2E BrowserWindow sentinel:", err);
+    });
+    if (process.env.DAINTREE_E2E_DEFER_RENDERER_LOAD === "1" && !win.isDestroyed()) {
+      win.show();
+    }
   }
 
   // ── Create WebContentsView for the React app ──

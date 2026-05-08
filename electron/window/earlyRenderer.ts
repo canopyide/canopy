@@ -14,3 +14,7 @@ export function shouldEnableEarlyRenderer(opts: {
 }): boolean {
   return !opts.isSmokeTest && opts.env.DAINTREE_EARLY_RENDERER !== "0";
 }
+
+export function shouldDeferRendererLoadForE2E(opts: { env: NodeJS.ProcessEnv }): boolean {
+  return opts.env.DAINTREE_E2E_DEFER_RENDERER_LOAD === "1";
+}
