@@ -445,4 +445,188 @@ describe("WatcherController", () => {
     expect(host.onInotifyLimitReached).toHaveBeenCalledWith("/test/worktree");
     expect(host.onEmfileLimitReached).toHaveBeenCalledWith("/test/worktree");
   });
+
+  it("uses the 250ms worktree min-debounce floor", () => {
+    mockWatcherStartResult = true;
+    const host = makeHost({ isCurrent: true });
+    const ctrl = new WatcherController(host as WatcherControllerHost);
+    ctrl.start();
+
+    expect(capturedWatcherOptions).toMatchObject({ worktreeMinDebounceMs: 250 });
+  });
+
+  it("handleFocusChange(false) defers the downgrade by the settle delay", () => {
+    mockWatcherStartResult = true;
+    const host = makeHost({ isCurrent: true });
+    const ctrl = new WatcherController(host as WatcherControllerHost);
+    ctrl.start();
+    expect(ctrl.currentMode).toBe("recursive");
+    const startsBeforeFlip = watcherStartCallCount;
+
+    host.isCurrent = false;
+    const rotated = ctrl.handleFocusChange(false);
+
+    expect(rotated).toBe(false);
+    // No synchronous rebuild — the recursive watcher stays armed.
+    expect(watcherStartCallCount).toBe(startsBeforeFlip);
+    expect(ctrl.currentMode).toBe("recursive");
+
+    // After the 3s settle delay, the controller rebuilds in git-only mode.
+    vi.advanceTimersByTime(3_000);
+    expect(watcherStartCallCount).toBe(startsBeforeFlip + 1);
+    expect(ctrl.currentMode).toBe("git-only");
+  });
+
+  it("handleFocusChange(true) cancels a pending downgrade and keeps recursive", () => {
+    mockWatcherStartResult = true;
+    const host = makeHost({ isCurrent: true });
+    const ctrl = new WatcherController(host as WatcherControllerHost);
+    ctrl.start();
+    const startsBeforeFlip = watcherStartCallCount;
+
+    host.isCurrent = false;
+    ctrl.handleFocusChange(false);
+
+    // Re-focus before the settle window elapses.
+    vi.advanceTimersByTime(1_500);
+    host.isCurrent = true;
+    const rotated = ctrl.handleFocusChange(true);
+
+    // Already recursive — no rotation needed.
+    expect(rotated).toBe(false);
+
+    // Let the original settle window pass — the timer should not fire.
+    vi.advanceTimersByTime(5_000);
+    expect(watcherStartCallCount).toBe(startsBeforeFlip);
+    expect(ctrl.currentMode).toBe("recursive");
+  });
+
+  it("handleFocusChange(true) immediately upgrades a git-only watcher and reports rotation", () => {
+    mockWatcherStartResult = true;
+    const host = makeHost({ isCurrent: false });
+    const ctrl = new WatcherController(host as WatcherControllerHost);
+    ctrl.start();
+    expect(ctrl.currentMode).toBe("git-only");
+    const startsBeforeFlip = watcherStartCallCount;
+
+    host.isCurrent = true;
+    const rotated = ctrl.handleFocusChange(true);
+
+    expect(rotated).toBe(true);
+    expect(watcherStartCallCount).toBe(startsBeforeFlip + 1);
+    expect(ctrl.currentMode).toBe("recursive");
+  });
+
+  it("stop() cancels a pending downgrade timer", () => {
+    mockWatcherStartResult = true;
+    const host = makeHost({ isCurrent: true });
+    const ctrl = new WatcherController(host as WatcherControllerHost);
+    ctrl.start();
+    const startsBeforeFlip = watcherStartCallCount;
+
+    host.isCurrent = false;
+    ctrl.handleFocusChange(false);
+    ctrl.stop(true);
+
+    vi.advanceTimersByTime(5_000);
+    // Timer was cleared — no rebuild fired after stop.
+    expect(watcherStartCallCount).toBe(startsBeforeFlip);
+    expect(ctrl.currentMode).toBe("none");
+  });
+
+  it("arms a drain timer when a change arrives inside the cooldown window", () => {
+    mockWatcherStartResult = true;
+    // Pin "now" at t=2s and place `lastGitStatusCompletedAt` 500ms back —
+    // we're 500ms into the 1s self-trigger cooldown, so the drain should
+    // fire at t≈2.51s.
+    vi.setSystemTime(2_000);
+    const host = makeHost({ lastGitStatusCompletedAt: 1_500 });
+    const ctrl = new WatcherController(host as WatcherControllerHost);
+    ctrl.start();
+
+    (capturedWatcherOptions?.onChange as () => void)();
+    expect(host.onTriggerUpdate).not.toHaveBeenCalled();
+
+    // Advance past the remaining cooldown + the 10ms epsilon.
+    vi.advanceTimersByTime(600);
+    expect(host.onTriggerUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not double-arm the drain timer when multiple changes land in the cooldown", () => {
+    mockWatcherStartResult = true;
+    vi.setSystemTime(2_000);
+    const host = makeHost({ lastGitStatusCompletedAt: 1_500 });
+    const ctrl = new WatcherController(host as WatcherControllerHost);
+    ctrl.start();
+
+    const onChange = capturedWatcherOptions?.onChange as () => void;
+    onChange();
+    onChange();
+    onChange();
+
+    vi.advanceTimersByTime(600);
+    // Drain still fires exactly once — pending flag collapses bursts.
+    expect(host.onTriggerUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("ensureState() does not bypass a pending downgrade timer", () => {
+    mockWatcherStartResult = true;
+    const host = makeHost({ isCurrent: true });
+    const ctrl = new WatcherController(host as WatcherControllerHost);
+    ctrl.start();
+    expect(ctrl.currentMode).toBe("recursive");
+    const startsBeforeFlip = watcherStartCallCount;
+
+    // Simulate WorkspaceService.updateWorktrees: set isCurrent then call
+    // ensureState. The downgrade timer must keep the recursive watcher
+    // alive through the periodic reconciliation pass.
+    host.isCurrent = false;
+    ctrl.handleFocusChange(false);
+    ctrl.ensureState();
+
+    expect(watcherStartCallCount).toBe(startsBeforeFlip);
+    expect(ctrl.currentMode).toBe("recursive");
+
+    // After the settle delay, the controller rebuilds in git-only mode.
+    vi.advanceTimersByTime(3_000);
+    expect(ctrl.currentMode).toBe("git-only");
+    expect(watcherStartCallCount).toBe(startsBeforeFlip + 1);
+  });
+
+  it("handleFocusChange(true) starts a watcher when none exists", () => {
+    // Simulate: a previous start failed (mode 'none', no watcher), then
+    // the user focuses this worktree via setActiveWorktree. The watcher
+    // must be re-attempted, not silently skipped.
+    mockWatcherStartResult = false;
+    const host = makeHost({ isCurrent: false });
+    const ctrl = new WatcherController(host as WatcherControllerHost);
+    ctrl.start();
+    expect(ctrl.hasWatcher).toBe(false);
+    expect(ctrl.currentMode).toBe("none");
+    const startsBeforeFlip = watcherStartCallCount;
+
+    mockWatcherStartResult = true;
+    host.isCurrent = true;
+    const rotated = ctrl.handleFocusChange(true);
+
+    expect(rotated).toBe(true);
+    expect(watcherStartCallCount).toBe(startsBeforeFlip + 1);
+    expect(ctrl.hasWatcher).toBe(true);
+    expect(ctrl.currentMode).toBe("recursive");
+  });
+
+  it("stop() cancels a pending cooldown drain timer", () => {
+    mockWatcherStartResult = true;
+    vi.setSystemTime(2_000);
+    const host = makeHost({ lastGitStatusCompletedAt: 1_500 });
+    const ctrl = new WatcherController(host as WatcherControllerHost);
+    ctrl.start();
+
+    (capturedWatcherOptions?.onChange as () => void)();
+    ctrl.stop(true);
+
+    vi.advanceTimersByTime(1_000);
+    // Drain timer cleared on stop — no flush fires after teardown.
+    expect(host.onTriggerUpdate).not.toHaveBeenCalled();
+  });
 });

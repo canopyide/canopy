@@ -438,18 +438,17 @@ export class WorktreeMonitor {
         this.scheduleResourcePoll();
       }
     }
-    // Re-tier the watcher granularity on focus change so background worktrees
-    // drop their recursive watch and the newly-focused one arms it.
+    // Re-tier the watcher granularity on focus change. Upgrades fire
+    // immediately so the focused worktree gets the recursive watcher right
+    // away; downgrades settle behind a short delay inside the controller to
+    // absorb rapid focus toggles. Only re-derive poll cadence when the
+    // controller actually rotated synchronously.
     if (changed && this._isRunning && this.gitWatchEnabled) {
-      const desired = this.watcherController.desiredMode();
-      if (this.watcherController.currentMode !== desired) {
-        this.watcherController.update();
-        // Poll cadence depends on watcher mode + focus, so re-derive it.
-        if (this.pollingTimer) {
-          clearTimeout(this.pollingTimer);
-          this.pollingTimer = null;
-          this.scheduleNextPoll();
-        }
+      const rotatedImmediately = this.watcherController.handleFocusChange(value);
+      if (rotatedImmediately && this.pollingTimer) {
+        clearTimeout(this.pollingTimer);
+        this.pollingTimer = null;
+        this.scheduleNextPoll();
       }
     }
     // Fetch cadence flips between focused (~30-45s) and background (5-10min)

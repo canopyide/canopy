@@ -7,9 +7,10 @@ const WATCHER_FALLBACK_POLL_INTERVAL_MS = 300_000;
 const WATCHER_GIT_ONLY_ACTIVE_POLL_INTERVAL_MS = 60_000;
 const WATCHER_RETRY_INTERVAL_MS = 30_000;
 const WATCHER_MAX_RETRIES = 5;
-const WATCHER_WORKTREE_MIN_DEBOUNCE_MS = 150;
+const WATCHER_WORKTREE_MIN_DEBOUNCE_MS = 250;
 const WATCHER_WORKTREE_MAX_DEBOUNCE_MS = 800;
 const WATCHER_WORKTREE_MAX_WAIT_MS = 1500;
+const WATCHER_FOCUS_DOWNGRADE_DELAY_MS = 3_000;
 
 export type WatcherMode = "none" | "git-only" | "recursive";
 
@@ -48,6 +49,7 @@ export class WatcherController {
   private gitWatchRefreshPending = false;
   private watcherRetryTimer: NodeJS.Timeout | null = null;
   private watcherRetryCount = 0;
+  private downgradeTimer: NodeJS.Timeout | null = null;
   private disposed = false;
 
   constructor(private readonly host: WatcherControllerHost) {}
@@ -159,6 +161,10 @@ export class WatcherController {
       clearTimeout(this.gitWatchDebounceTimer);
       this.gitWatchDebounceTimer = null;
     }
+    if (this.downgradeTimer) {
+      clearTimeout(this.downgradeTimer);
+      this.downgradeTimer = null;
+    }
     if (resetRetryBudget) {
       if (this.watcherRetryTimer) {
         clearTimeout(this.watcherRetryTimer);
@@ -185,6 +191,9 @@ export class WatcherController {
   /**
    * Reconcile watcher state. Stop if disabled while running; start if
    * enabled and not yet armed; rotate if granularity disagrees with focus.
+   * Skips the granularity rotation when a focus-driven downgrade timer is
+   * pending — otherwise periodic reconciliation (e.g. updateWorktrees) would
+   * defeat the hysteresis the moment a focused worktree turns background.
    */
   ensureState(): void {
     if (!this.host.gitWatchEnabled && this.gitWatcher.value) {
@@ -195,7 +204,8 @@ export class WatcherController {
       this.host.gitWatchEnabled &&
       this.host.isRunning &&
       this.gitWatcher.value &&
-      this.gitWatcherMode !== this.desiredMode()
+      this.gitWatcherMode !== this.desiredMode() &&
+      this.downgradeTimer === null
     ) {
       // Existing watcher granularity disagrees with focus state — re-arm
       // so the active worktree gets the recursive watcher and background
@@ -208,6 +218,63 @@ export class WatcherController {
     if (this.gitWatcher.value) {
       this.update();
     }
+  }
+
+  /**
+   * React to a focus-tier change. Upgrades (background → focused) re-arm the
+   * recursive watcher immediately so the user sees fresh state right after
+   * switching to a worktree. Downgrades (focused → background) settle for
+   * `WATCHER_FOCUS_DOWNGRADE_DELAY_MS` to absorb rapid focus toggles before
+   * tearing down the recursive arm — this avoids inotify churn on quick
+   * back-and-forth and keeps the watcher alive through transient passes.
+   *
+   * Returns `true` when an immediate rotation occurred (caller should
+   * re-derive poll cadence); `false` when the change was deferred or had no
+   * effect on the current granularity.
+   */
+  handleFocusChange(isCurrent: boolean): boolean {
+    if (this.disposed || !this.host.isRunning || !this.host.gitWatchEnabled) {
+      return false;
+    }
+
+    if (isCurrent) {
+      if (this.downgradeTimer) {
+        clearTimeout(this.downgradeTimer);
+        this.downgradeTimer = null;
+      }
+      if (!this.gitWatcher.value) {
+        // Recovery path: a previous start failed and left us with no
+        // watcher. Focusing should attempt to arm the recursive variant.
+        this.start();
+        return true;
+      }
+      if (this.gitWatcherMode !== "recursive") {
+        this.update();
+        return true;
+      }
+      return false;
+    }
+
+    if (!this.gitWatcher.value || this.gitWatcherMode !== "recursive") {
+      return false;
+    }
+    if (this.downgradeTimer) {
+      return false;
+    }
+    this.downgradeTimer = setTimeout(() => {
+      this.downgradeTimer = null;
+      if (
+        this.disposed ||
+        !this.host.isRunning ||
+        !this.host.gitWatchEnabled ||
+        this.host.isCurrent ||
+        this.gitWatcherMode !== "recursive"
+      ) {
+        return;
+      }
+      this.update();
+    }, WATCHER_FOCUS_DOWNGRADE_DELAY_MS).unref();
+    return false;
   }
 
   /**
@@ -334,6 +401,19 @@ export class WatcherController {
       const msSinceLastStatus = Date.now() - this.host.lastGitStatusCompletedAt;
       if (msSinceLastStatus < GIT_WATCH_SELF_TRIGGER_COOLDOWN_MS) {
         this.gitWatchRefreshPending = true;
+        // Arm a bounded drain so an isolated `.git/` event that arrives
+        // inside the self-trigger window still surfaces shortly after the
+        // cooldown lifts, instead of waiting for the next poll cycle (60–
+        // 300s). Reuses the shared debounce slot so we keep the
+        // "at most one pending flush timer" invariant.
+        if (this.gitWatchDebounceTimer === null) {
+          const remainingMs = GIT_WATCH_SELF_TRIGGER_COOLDOWN_MS - msSinceLastStatus;
+          this.gitWatchDebounceTimer = setTimeout(() => {
+            this.gitWatchDebounceTimer = null;
+            if (this.disposed) return;
+            this.flushPendingIfReady();
+          }, remainingMs + 10).unref();
+        }
         return;
       }
     }
