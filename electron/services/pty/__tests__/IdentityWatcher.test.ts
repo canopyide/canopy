@@ -831,5 +831,20 @@ describe("IdentityWatcher", () => {
 
       expect(watcher.hasAgentUiPromptFalsePositive()).toBe(false);
     });
+
+    it("returns true for Claude Code's idle input prompt", () => {
+      const { delegate } = createFakeDelegate({
+        visibleLines: [
+          "────────────────────────────────────────────────────────────────────────",
+          "> ",
+          "────────────────────────────────────────────────────────────────────────",
+          "? for shortcuts",
+        ],
+        cursorLine: "> ",
+      });
+      const watcher = new IdentityWatcher(delegate);
+
+      expect(watcher.hasAgentUiPromptFalsePositive()).toBe(true);
+    });
   });
 });

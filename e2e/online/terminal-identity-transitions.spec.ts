@@ -94,20 +94,19 @@ async function expectPanelHasNoAgentState(panel: Locator): Promise<void> {
     .toBeNull();
 }
 
-async function submitHybridInput(page: Page, editor: Locator, text: string): Promise<void> {
-  await editor.click();
-  await page.keyboard.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
-  await page.keyboard.press("Backspace");
-  await page.keyboard.insertText(text);
-  await expect(editor).toContainText(text, { timeout: 5_000 });
+async function sendTerminalKey(page: Page, terminalId: string, key: string): Promise<void> {
+  await page.evaluate(
+    ({ id, keyName }) => {
+      window.electron.terminal.sendKey(id, keyName);
+    },
+    { id: terminalId, keyName: key }
+  );
+}
 
-  const commandAutocomplete = page.getByRole("listbox", { name: /command autocomplete/i });
-  if (await commandAutocomplete.isVisible().catch(() => false)) {
-    await page.keyboard.press("Escape");
-    await expect(commandAutocomplete).toBeHidden({ timeout: 2_000 });
-  }
-
-  await page.keyboard.press("Enter");
+async function interruptAgentSession(page: Page, terminalId: string): Promise<void> {
+  await sendTerminalKey(page, terminalId, "ctrl+c");
+  await page.waitForTimeout(750);
+  await sendTerminalKey(page, terminalId, "ctrl+c");
 }
 
 async function expectAgentChromeSurvivesIdle(
@@ -421,7 +420,7 @@ test.describe("Terminal chrome ↔ live process identity (bidirectional)", () =>
     diagnostics = null;
   });
 
-  test("chrome tracks live process: promote on `claude`, demote on `/quit`", async () => {
+  test("chrome tracks live process: promote on `claude`, demote on Ctrl+C", async () => {
     test.skip(!hasClaudeApiKey(), "ANTHROPIC_API_KEY is required for Claude online flow");
     test.setTimeout(300_000);
 
@@ -440,7 +439,7 @@ test.describe("Terminal chrome ↔ live process identity (bidirectional)", () =>
     await diagnostics?.captureSnapshot("active project window refreshed", ctx.window);
 
     // ---------------------------------------------------------------------
-    // FLOW 1: Claude cold-launch → /quit → demotes to plain shell
+    // FLOW 1: Claude cold-launch → Ctrl+C → demotes to plain shell
     // ---------------------------------------------------------------------
 
     let claudePanelId = "";
@@ -515,12 +514,10 @@ test.describe("Terminal chrome ↔ live process identity (bidirectional)", () =>
       await diagnostics?.captureSnapshot("cold-launched Claude survived idle wait", window);
     });
 
-    await test.step("type /quit in Claude", async () => {
+    await test.step("interrupt Claude from the cold-launched terminal", async () => {
       const { window } = ctx;
-      const panel = window.locator(`[data-panel-id="${claudePanelId}"]`);
-      const cmEditor = panel.locator(SEL.terminal.cmEditor);
-      await submitHybridInput(window, cmEditor, "/quit");
-      await diagnostics?.captureSnapshot("typed /quit in cold-launched Claude", window);
+      await interruptAgentSession(window, claudePanelId);
+      await diagnostics?.captureSnapshot("interrupted cold-launched Claude", window);
     });
 
     await test.step("chrome DEMOTES to plain shell", async () => {
@@ -645,7 +642,7 @@ test.describe("Terminal chrome ↔ live process identity (bidirectional)", () =>
     });
 
     // ---------------------------------------------------------------------
-    // FLOW 3: Promoted plain shell → /quit → demotes back
+    // FLOW 3: Promoted plain shell → Ctrl+C → demotes back
     // Covers the full enter-exit cycle on a single terminal — the scenario
     // that most directly proves a terminal can enter and exit agent affinity.
     // ---------------------------------------------------------------------
@@ -671,11 +668,11 @@ test.describe("Terminal chrome ↔ live process identity (bidirectional)", () =>
         }
         await window.waitForTimeout(1_000);
       }
-      await submitHybridInput(window, cmEditor, "/quit");
-      await diagnostics?.captureSnapshot("typed /quit in promoted plain terminal", window);
+      await interruptAgentSession(window, plainPanelId);
+      await diagnostics?.captureSnapshot("interrupted promoted plain terminal", window);
     });
 
-    await test.step("chrome demotes after /quit on the same terminal (full cycle)", async () => {
+    await test.step("chrome demotes after Ctrl+C on the same terminal (full cycle)", async () => {
       const { window } = ctx;
       const panel = window.locator(`[data-panel-id="${plainPanelId}"]`);
 
