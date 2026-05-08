@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CircleHelp } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { TABBABLE_SELECTOR } from "@/lib/accessibility";
 import { ScrollShadow } from "@/components/ui/ScrollShadow";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
@@ -28,9 +29,6 @@ import {
 
 export const KBD_CLASS =
   "px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-daintree-border text-daintree-text/60";
-
-const TABBABLE_SELECTOR =
-  'a[href], area[href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), audio[controls], video[controls], [contenteditable]:not([contenteditable="false"]), [tabindex]:not([tabindex^="-"])';
 
 export interface AppPaletteDialogProps {
   isOpen: boolean;
@@ -79,9 +77,7 @@ export function AppPaletteDialog({
       const el = document.activeElement;
       if (el instanceof HTMLElement) previousFocusRef.current = el;
       requestAnimationFrame(() => {
-        const firstFocusable = dialogRef.current?.querySelector<HTMLElement>(
-          'input, button, [tabindex]:not([tabindex="-1"])'
-        );
+        const firstFocusable = dialogRef.current?.querySelector<HTMLElement>(TABBABLE_SELECTOR);
         firstFocusable?.focus();
       });
     }
@@ -149,9 +145,8 @@ export function AppPaletteDialog({
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Tab" && dialogRef.current) {
-        const focusableElements = dialogRef.current.querySelectorAll<HTMLElement>(
-          'input, button, [tabindex]:not([tabindex="-1"])'
-        );
+        const focusableElements =
+          dialogRef.current.querySelectorAll<HTMLElement>(TABBABLE_SELECTOR);
         const firstEl = focusableElements[0];
         const lastEl = focusableElements[focusableElements.length - 1];
 

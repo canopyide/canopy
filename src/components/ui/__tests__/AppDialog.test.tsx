@@ -21,12 +21,22 @@ vi.mock("@/hooks", async (importOriginal) => {
   };
 });
 
-vi.mock("@/hooks/useAnimatedPresence", () => ({
-  useAnimatedPresence: ({ isOpen }: { isOpen: boolean }) => ({
-    isVisible: isOpen,
-    shouldRender: isOpen,
-  }),
-}));
+vi.mock("@/hooks/useAnimatedPresence", () => {
+  let prevOpen = false;
+  return {
+    useAnimatedPresence: ({
+      isOpen,
+      onAnimateOut,
+    }: {
+      isOpen: boolean;
+      onAnimateOut?: () => void;
+    }) => {
+      if (prevOpen && !isOpen) onAnimateOut?.();
+      prevOpen = isOpen;
+      return { isVisible: isOpen, shouldRender: isOpen };
+    },
+  };
+});
 
 vi.stubGlobal(
   "ResizeObserver",
@@ -271,6 +281,85 @@ describe("AppDialog focus trapping", () => {
     expect(document.activeElement).toBe(fallbackButton);
     expect(document.activeElement).not.toBe(document.body);
     document.body.removeChild(root);
+  });
+
+  describe("AppDialog Footer a11y", () => {
+    it("sets aria-busy on primary button when loading", async () => {
+      render(
+        <>
+          <Dispatcher />
+          <AppDialog isOpen={true} onClose={() => {}} data-testid="test-dialog">
+            <AppDialog.Body>
+              <p>Content</p>
+            </AppDialog.Body>
+            <AppDialog.Footer
+              primaryAction={{
+                label: "Save",
+                onClick: () => {},
+                loading: true,
+              }}
+            />
+          </AppDialog>
+        </>
+      );
+      await act(() => vi.runAllTimersAsync());
+
+      const primary = screen.getByRole("button", { name: "Save" });
+      expect(primary.getAttribute("aria-busy")).toBe("true");
+    });
+
+    it("omits aria-busy on primary button when not loading", async () => {
+      render(
+        <>
+          <Dispatcher />
+          <AppDialog isOpen={true} onClose={() => {}} data-testid="test-dialog">
+            <AppDialog.Body>
+              <p>Content</p>
+            </AppDialog.Body>
+            <AppDialog.Footer
+              primaryAction={{
+                label: "Save",
+                onClick: () => {},
+              }}
+            />
+          </AppDialog>
+        </>
+      );
+      await act(() => vi.runAllTimersAsync());
+
+      const primary = screen.getByRole("button", { name: "Save" });
+      expect(primary.hasAttribute("aria-busy")).toBe(false);
+    });
+
+    it("secondary button ignores loading prop", async () => {
+      render(
+        <>
+          <Dispatcher />
+          <AppDialog isOpen={true} onClose={() => {}} data-testid="test-dialog">
+            <AppDialog.Body>
+              <p>Content</p>
+            </AppDialog.Body>
+            <AppDialog.Footer
+              primaryAction={{
+                label: "OK",
+                onClick: () => {},
+              }}
+              secondaryAction={{
+                label: "Cancel",
+                onClick: () => {},
+                loading: true,
+              }}
+            />
+          </AppDialog>
+        </>
+      );
+      await act(() => vi.runAllTimersAsync());
+
+      const secondary = screen.getByRole("button", { name: "Cancel" });
+      expect(secondary.hasAttribute("aria-busy")).toBe(false);
+      // Not disabled by the unused loading flag
+      expect((secondary as HTMLButtonElement).disabled).toBe(false);
+    });
   });
 
   it("does not interfere with focus in portaled popovers outside dialogRef", async () => {
