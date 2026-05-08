@@ -96,6 +96,14 @@ vi.mock("../../services/SystemSleepService.js", () => ({
   getSystemSleepService: () => ({ dispose: vi.fn() }),
 }));
 
+vi.mock("../../services/DatabaseMaintenanceService.js", () => ({
+  getDatabaseMaintenanceService: () => ({
+    initialize: vi.fn(),
+    startMaintenance: vi.fn(),
+    dispose: vi.fn(),
+  }),
+}));
+
 vi.mock("../../services/CrashRecoveryService.js", () => ({
   getCrashRecoveryService: () => ({ startBackupTimer: vi.fn(), stopBackupTimer: vi.fn() }),
 }));
@@ -235,6 +243,26 @@ describe("initGlobalServices task ordering", () => {
     expect(registeredTaskNames).not.toContain("mcp-server");
     expect(registeredTaskNames).not.toContain("help-session-gc");
     expect(setMcpRegistry).not.toHaveBeenCalled();
+  });
+
+  it("registers database-maintenance after system-sleep-service so onSuspend can attach to a live service", async () => {
+    const fakeRegistry = { all: () => [], size: 0 } as unknown as WindowRegistry;
+    await initGlobalServices(fakeRegistry);
+
+    const sleepIndex = registeredTaskNames.indexOf("system-sleep-service");
+    const dbMaintIndex = registeredTaskNames.indexOf("database-maintenance");
+
+    expect(sleepIndex).toBeGreaterThanOrEqual(0);
+    expect(dbMaintIndex).toBeGreaterThanOrEqual(0);
+    expect(dbMaintIndex).toBeGreaterThan(sleepIndex);
+  });
+
+  it("registers ccr-config and plugin-service as deferred tasks", async () => {
+    const fakeRegistry = { all: () => [], size: 0 } as unknown as WindowRegistry;
+    await initGlobalServices(fakeRegistry);
+
+    expect(registeredTaskNames).toContain("ccr-config");
+    expect(registeredTaskNames).toContain("plugin-service");
   });
 
   it("returns 'ok' on the happy path", async () => {
