@@ -66,7 +66,8 @@ export class TerminalOutputIngestService {
   public notifyWriteComplete(id: string, bytes: number): void {
     const queue = this.queues.get(id);
     if (!queue) return;
-    queue.inFlightBytes = Math.max(0, queue.inFlightBytes - bytes);
+    const safeBytes = bytes > 0 ? bytes : 0;
+    queue.inFlightBytes = Math.max(0, queue.inFlightBytes - safeBytes);
     if (queue.inFlightBytes <= RENDERER_LOW_WATERMARK_BYTES && queue.chunks.length > 0) {
       this.tryDrain(id, queue);
     }
@@ -191,9 +192,11 @@ export class TerminalOutputIngestService {
       while (offset < data.length) {
         let end = Math.min(offset + WRITE_CHUNK_BYTES, data.length);
         if (end < data.length) {
+          // High surrogate at the cut point: back the boundary up so the pair
+          // moves to the next slice. Keeps every slice strictly ≤ WRITE_CHUNK_BYTES.
           const lastCode = data.charCodeAt(end - 1);
-          if (lastCode >= 0xd800 && lastCode <= 0xdbff) {
-            end += 1;
+          if (lastCode >= 0xd800 && lastCode <= 0xdbff && end - 1 > offset) {
+            end -= 1;
           }
         }
         const slice = data.slice(offset, end);
@@ -261,16 +264,28 @@ export class TerminalOutputIngestService {
     const queue = this.queues.get(id);
     if (!queue || queue.chunks.length === 0) return;
 
-    if (queue.chunks.length === 1) {
-      this.writeSliced(id, queue, queue.chunks[0]!);
-    } else {
-      const allStrings = queue.chunks.every((c) => typeof c === "string");
-      if (allStrings) {
-        this.writeSliced(id, queue, (queue.chunks as string[]).join(""));
-      } else {
-        for (const chunk of queue.chunks) {
-          this.writeSliced(id, queue, chunk);
+    const allStrings = queue.chunks.every((c) => typeof c === "string");
+    if (allStrings) {
+      // Bound the synchronous join cost at COALESCE_BATCH_CAP_BYTES per batch.
+      // Without this, a large flush backlog would block the main thread on join("").
+      let i = 0;
+      while (i < queue.chunks.length) {
+        const batchStart = i;
+        let taken = (queue.chunks[i] as string).length;
+        i++;
+        while (
+          i < queue.chunks.length &&
+          taken + (queue.chunks[i] as string).length <= COALESCE_BATCH_CAP_BYTES
+        ) {
+          taken += (queue.chunks[i] as string).length;
+          i++;
         }
+        const merged = (queue.chunks.slice(batchStart, i) as string[]).join("");
+        this.writeSliced(id, queue, merged);
+      }
+    } else {
+      for (const chunk of queue.chunks) {
+        this.writeSliced(id, queue, chunk);
       }
     }
 
