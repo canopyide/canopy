@@ -1,4 +1,4 @@
-import { Clock, WifiOff } from "lucide-react";
+import { Clock } from "lucide-react";
 import type { FreshnessLevel } from "@/hooks/useRepositoryStats";
 
 export function freshnessOpacityClass(level: FreshnessLevel): string {
@@ -18,9 +18,6 @@ export function freshnessOpacityClass(level: FreshnessLevel): string {
 export function FreshnessGlyph({ level }: { level: FreshnessLevel }) {
   if (level === "stale-disk") {
     return <Clock className="h-3 w-3 text-muted-foreground" aria-hidden="true" />;
-  }
-  if (level === "errored") {
-    return <WifiOff className="h-3 w-3 text-muted-foreground" aria-hidden="true" />;
   }
   return null;
 }

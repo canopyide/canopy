@@ -126,6 +126,8 @@ export const GitHubStatsToolbarButton = memo(
       return Date.now();
     }, [tick]);
 
+    const commitFreshnessLevel = freshnessLevel === "errored" ? "fresh" : freshnessLevel;
+
     const activeWorktreeId = useWorktreeSelectionStore((state) => state.activeWorktreeId);
     const activeWorktree = useWorktreeStore((state) =>
       activeWorktreeId ? state.worktrees.get(activeWorktreeId) : null
@@ -817,17 +819,17 @@ export const GitHubStatsToolbarButton = memo(
           open={commitsOpen}
           count={commitCount}
           animKey={commitAnimKey}
-          ariaLabel={`${commitCount ?? "—"} commits${freshnessSuffix(freshnessLevel, lastUpdated, now)}`}
+          ariaLabel={`${commitCount ?? "—"} commits${freshnessSuffix(commitFreshnessLevel, lastUpdated, now)}`}
           tooltipContent={
-            freshnessLevel === "fresh"
+            commitFreshnessLevel === "fresh"
               ? "Browse Git Commits"
-              : `${commitCount ?? "—"} commits${freshnessSuffix(freshnessLevel, lastUpdated, now)}`
+              : `${commitCount ?? "—"} commits${freshnessSuffix(commitFreshnessLevel, lastUpdated, now)}`
           }
           icon={GitCommit}
           openRingClassName="ring-1 ring-border-strong"
           className={cn(
             stats?.commitCount === 0 && "opacity-50",
-            freshnessOpacityClass(freshnessLevel)
+            freshnessOpacityClass(commitFreshnessLevel)
           )}
           dropdownContent={
             CommitListComponent ? (
@@ -865,7 +867,7 @@ export const GitHubStatsToolbarButton = memo(
             setCommitsOpen(open);
             if (!open) commitsButtonRef.current?.focus();
           }}
-          freshnessGlyph={<FreshnessGlyph level={freshnessLevel} />}
+          freshnessGlyph={<FreshnessGlyph level={commitFreshnessLevel} />}
         />
         <GitHubStatusIndicator
           status={getGitHubIndicatorStatus()}
