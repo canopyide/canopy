@@ -1961,10 +1961,10 @@ describe("HelpPanel — visibilitychange teardown vs. system sleep (issue #6758)
 });
 
 describe("HelpPanel — visibilitychange re-launch after teardown (issue #7201)", () => {
-  function mountWithBoundTerminal() {
+  function mountWithBoundTerminal(preferredAgentId: string | null = "claude") {
     helpPanelState.terminalId = "term-7201";
     helpPanelState.agentId = "claude";
-    helpPanelState.preferredAgentId = "claude";
+    helpPanelState.preferredAgentId = preferredAgentId;
     helpPanelState.sessionId = "session-7201";
     panelStoreState.panelsById = { "term-7201": { id: "term-7201" } };
     return render(<HelpPanel width={380} />);
@@ -2013,13 +2013,14 @@ describe("HelpPanel — visibilitychange re-launch after teardown (issue #7201)"
     });
     await flushAsync();
 
-    // Auto-launch must fire for the preferred agent.
+    // Auto-launch must fire for the preferred agent and re-provision the session.
     expect(mockDispatch).toHaveBeenCalledTimes(1);
     expect(mockDispatch).toHaveBeenCalledWith(
       "agent.launch",
       expect.objectContaining({ agentId: "claude" }),
       { source: "user" }
     );
+    expect(mockProvisionSession).toHaveBeenCalledTimes(1);
   });
 
   it("does not launch while document.hidden after teardown resets hasAutoLaunched", async () => {
@@ -2053,13 +2054,12 @@ describe("HelpPanel — visibilitychange re-launch after teardown (issue #7201)"
   });
 
   it("re-launches the single supported agent after visibility restore when no preference is set", async () => {
-    helpPanelState.preferredAgentId = null;
     cliAvailabilityState.availability = { claude: "ready" };
     mockGetFolderPath.mockResolvedValue("/help");
     mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "term-auto" } });
 
     await act(async () => {
-      mountWithBoundTerminal();
+      mountWithBoundTerminal(null);
     });
 
     // Trigger visibility hide.
@@ -2091,5 +2091,6 @@ describe("HelpPanel — visibilitychange re-launch after teardown (issue #7201)"
       expect.objectContaining({ agentId: "claude" }),
       { source: "user" }
     );
+    expect(mockProvisionSession).toHaveBeenCalledTimes(1);
   });
 });
