@@ -101,7 +101,7 @@ If you see "Tag version does not match package.json version":
 If builds fail with "Missing release/latest\*.yml":
 
 - Check electron-builder configuration in `package.json`
-- Ensure targets include both installers and update-friendly formats (zip for macOS, nsis for Windows)
+- Ensure targets include update-friendly formats (zip for macOS; APPX for Windows is distributed via Microsoft Store and does not use electron-updater)
 
 ### AWS CLI errors
 
@@ -136,7 +136,7 @@ This ensures users never see incomplete releases or transient 404s.
 
 ### Cache Headers
 
-- **Binaries** (`*.dmg`, `*.exe`, etc.): `public, max-age=31536000, immutable`
+- **Binaries** (`*.dmg`, `*.appx`, etc.): `public, max-age=31536000, immutable`
   - Cached for 1 year (versioned filenames)
 - **Metadata** (`latest*.yml`): `no-cache, no-store, must-revalidate`
   - Never cached (checked on every update check)

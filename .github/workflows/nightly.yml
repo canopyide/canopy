@@ -330,7 +330,7 @@ jobs:
           path: |
             release/*.dmg
             release/*.zip
-            release/*.exe
+            release/*.appx
             release/*.AppImage
             release/*.deb
             release/*.blockmap

@@ -116,8 +116,13 @@ module.exports = async function () {
     // when the PARTNER_CENTER_* / STORE_PRODUCT_ID secrets are absent.
     // See docs/distribution/microsoft-store.md for setup instructions.
     appx: {
-      identityName: "<from-partner-center>",
-      publisher: "CN=<from-partner-center>",
+      // Placeholders pass electron-builder's AppxTarget regex
+      // (/^[a-zA-Z0-9.-]+$/ for identityName, "CN=…" for publisher) so the
+      // Windows build succeeds before Partner Center is wired up. Replace
+      // with the real Product Identity values from Partner Center before
+      // the first real Store submission. See docs/distribution/microsoft-store.md.
+      identityName: "Daintree.Placeholder",
+      publisher: "CN=Placeholder",
       publisherDisplayName: "Greg Priday",
       applicationId: "Daintree",
       displayName: "Daintree",
