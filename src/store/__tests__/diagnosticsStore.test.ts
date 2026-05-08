@@ -59,4 +59,17 @@ describe("diagnosticsStore height & maxHeight", () => {
     expect(after.maxHeight).toBe(before.maxHeight);
     expect(after.height).toBe(before.height);
   });
+
+  it("setMaxHeight skips subscriber notifications on a no-op", () => {
+    useDiagnosticsStore.setState({ maxHeight: 400, height: 200 });
+    let notifyCount = 0;
+    const unsub = useDiagnosticsStore.subscribe(() => {
+      notifyCount += 1;
+    });
+    useDiagnosticsStore.getState().setMaxHeight(400);
+    expect(notifyCount).toBe(0);
+    useDiagnosticsStore.getState().setMaxHeight(500);
+    expect(notifyCount).toBe(1);
+    unsub();
+  });
 });

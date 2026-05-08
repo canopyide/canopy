@@ -69,9 +69,13 @@ const createDiagnosticsStore: StateCreator<DiagnosticsState> = (set) => ({
     set((state) => {
       const nextMax = Math.max(max, MIN_HEIGHT);
       const clampedHeight = Math.min(state.height, nextMax);
-      return clampedHeight === state.height && nextMax === state.maxHeight
-        ? {}
-        : { maxHeight: nextMax, height: clampedHeight };
+      // Returning the existing state reference makes Zustand 5 skip the
+      // subscriber notification — important because ResizeObserver can
+      // fire the same parent height repeatedly during layout churn.
+      if (clampedHeight === state.height && nextMax === state.maxHeight) {
+        return state;
+      }
+      return { maxHeight: nextMax, height: clampedHeight };
     }),
 
   reset: () =>
