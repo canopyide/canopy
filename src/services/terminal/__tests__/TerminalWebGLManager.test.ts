@@ -58,33 +58,61 @@ function flushRafFrame(): boolean {
 }
 
 // Minimal element mock — vitest runs in `node` env without jsdom, so we can't
-// use document.createElement. EventTarget alone doesn't honor capture/bubble
-// phases, so emulate just the bits the manager needs: a listener registry that
-// dispatchEvent walks in registration order. The capture-phase listener is the
-// only consumer in the codepath under test, so a single ordered list suffices.
+// use document.createElement. The mock tracks the `capture` flag separately so
+// tests can verify the manager registers and removes its listener in the
+// capture phase (a regression to a bubble listener would fire after xterm's
+// own canvas-target handler — too late to pre-empt the 3s restore timer).
+type Listener = (event: Event) => void;
+type ListenerOptions = boolean | { capture?: boolean } | undefined;
+interface FakeElement {
+  addEventListener(type: string, listener: Listener, options?: ListenerOptions): void;
+  removeEventListener(type: string, listener: Listener, options?: ListenerOptions): void;
+  dispatchEvent(event: Event): boolean;
+  // Test helper — only fires bubble-phase listeners; lets a test prove the
+  // manager registered in capture phase by showing the listener doesn't run.
+  __dispatchBubbleOnly(event: Event): void;
+  __listenerCount(type: string): number;
+}
+
+function isCapture(options: ListenerOptions): boolean {
+  if (typeof options === "boolean") return options;
+  return options?.capture === true;
+}
+
 function makeFakeElement(): HTMLElement {
-  type Listener = (event: Event) => void;
-  const listeners = new Map<string, Set<Listener>>();
-  const el = {
-    addEventListener(type: string, listener: Listener): void {
-      let bucket = listeners.get(type);
-      if (!bucket) {
-        bucket = new Set();
-        listeners.set(type, bucket);
+  const captureBucket = new Map<string, Set<Listener>>();
+  const bubbleBucket = new Map<string, Set<Listener>>();
+
+  const el: FakeElement = {
+    addEventListener(type, listener, options) {
+      const target = isCapture(options) ? captureBucket : bubbleBucket;
+      let set = target.get(type);
+      if (!set) {
+        set = new Set();
+        target.set(type, set);
       }
-      bucket.add(listener);
+      set.add(listener);
     },
-    removeEventListener(type: string, listener: Listener): void {
-      listeners.get(type)?.delete(listener);
+    removeEventListener(type, listener, options) {
+      const target = isCapture(options) ? captureBucket : bubbleBucket;
+      target.get(type)?.delete(listener);
     },
-    dispatchEvent(event: Event): boolean {
-      const bucket = listeners.get(event.type);
-      if (bucket) {
-        for (const listener of [...bucket]) {
-          listener(event);
-        }
+    dispatchEvent(event) {
+      for (const listener of [...(captureBucket.get(event.type) ?? [])]) {
+        listener(event);
+      }
+      for (const listener of [...(bubbleBucket.get(event.type) ?? [])]) {
+        listener(event);
       }
       return true;
+    },
+    __dispatchBubbleOnly(event) {
+      for (const listener of [...(bubbleBucket.get(event.type) ?? [])]) {
+        listener(event);
+      }
+    },
+    __listenerCount(type) {
+      return (captureBucket.get(type)?.size ?? 0) + (bubbleBucket.get(type)?.size ?? 0);
     },
   };
   return el as unknown as HTMLElement;
@@ -994,6 +1022,36 @@ describe("TerminalWebGLManager", () => {
       expect(() => manager.ensureContext("t1", managed)).not.toThrow();
       expect(manager.isActive("t1")).toBe(true);
     });
+
+    it("registers in the capture phase, not bubble", () => {
+      // Bubble-only dispatch must NOT fire the manager's handler — proves the
+      // listener was registered with { capture: true } so it can pre-empt
+      // xterm's canvas-target listener and its 3s restore timer.
+      const managed = makeManagedTerminal();
+      manager.ensureContext("t1", managed);
+
+      const el = managed.terminal.element as unknown as ReturnType<typeof makeFakeElement> & {
+        __dispatchBubbleOnly(e: Event): void;
+        __listenerCount(t: string): number;
+      };
+      el.__dispatchBubbleOnly(new Event("webglcontextlost"));
+
+      expect(manager.isActive("t1")).toBe(true);
+      expect(managed.terminal.refresh).not.toHaveBeenCalled();
+    });
+
+    it("releaseContext removes the capture listener with matching options", () => {
+      // Verifies addEventListener and removeEventListener used the same
+      // capture flag — a mismatch would leak the listener in production.
+      const managed = makeManagedTerminal();
+      manager.ensureContext("t1", managed);
+
+      const el = managed.terminal.element as unknown as { __listenerCount(t: string): number };
+      expect(el.__listenerCount("webglcontextlost")).toBe(1);
+
+      manager.releaseContext("t1");
+      expect(el.__listenerCount("webglcontextlost")).toBe(0);
+    });
   });
 
   describe("doRelease forces synchronous GPU release (#7467)", () => {
@@ -1019,6 +1077,32 @@ describe("TerminalWebGLManager", () => {
 
       expect(getExtension).toHaveBeenCalledWith("WEBGL_lose_context");
       expect(loseContext).toHaveBeenCalledTimes(1);
+    });
+
+    it("onTerminalDestroyed also forces synchronous GPU slot release", () => {
+      // Hibernation calls onTerminalDestroyed without addon.dispose() (xterm
+      // tears the addon down via terminal.dispose()). Without the explicit
+      // loseContext, a hibernate-then-bulk-recreate cycle would stall on the
+      // 16-slot Chromium budget the same way #7467 stalled the attach path.
+      const loseContext = vi.fn();
+      const getExtension = vi.fn().mockReturnValue({ loseContext });
+      const fakeGl = { getExtension } as unknown as WebGL2RenderingContext;
+
+      WebglAddonMock.mockImplementation(function () {
+        const addon: Record<string, unknown> = {
+          dispose: vi.fn(),
+          onContextLoss: vi.fn(() => ({ dispose: vi.fn() })),
+        };
+        addon._renderer = { _gl: fakeGl };
+        return addon;
+      });
+
+      const managed = makeManagedTerminal();
+      manager.ensureContext("t1", managed);
+      manager.onTerminalDestroyed("t1");
+
+      expect(loseContext).toHaveBeenCalledTimes(1);
+      expect(manager.isActive("t1")).toBe(false);
     });
 
     it("release proceeds cleanly when WEBGL_lose_context is unavailable", () => {

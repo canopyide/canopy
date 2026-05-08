@@ -34,6 +34,24 @@ function loadWebglAddon(): Promise<WebglAddonConstructor> {
   return webglAddonLoadPromise;
 }
 
+// Force synchronous GPU-side context release. Reaches into @xterm/addon-webgl
+// 0.19's renderer internals to get the WebGL context and call loseContext()
+// before addon.dispose() — without this, Chromium's 16-context budget is not
+// freed until garbage collection runs the WebGL teardown. Wrapped in try/catch
+// so a future addon shape change degrades gracefully rather than throwing.
+function forceGpuSlotRelease(addon: WebglAddonType): void {
+  try {
+    const gl = (
+      addon as unknown as {
+        _renderer?: { _gl?: WebGL2RenderingContext | WebGLRenderingContext };
+      }
+    )._renderer?._gl;
+    gl?.getExtension("WEBGL_lose_context")?.loseContext();
+  } catch {
+    // ignore — internal addon shape may have changed in a future version
+  }
+}
+
 interface WebGLEntry {
   addon: WebglAddonType;
   contextLossDisposable: IDisposable;
@@ -134,6 +152,11 @@ export class TerminalWebGLManager {
       } catch {
         // ignore
       }
+      // terminal.dispose() handles addon cleanup, so we skip addon.dispose()
+      // here — but we still need to force the synchronous GPU-slot release so
+      // a hibernation-then-bulk-recreate cycle does not stall on the 16-slot
+      // Chromium budget the same way #7467 stalled the attach path.
+      forceGpuSlotRelease(entry.addon);
       this.pool.delete(id);
       this.removeFromLru(id);
     }
@@ -287,17 +310,8 @@ export class TerminalWebGLManager {
     }
     // Force synchronous GPU-side context release before addon.dispose() so the
     // 16-context Chromium budget actually frees this slot before the next
-    // getContext() call. Reaches into addon internals; guarded by try/catch.
-    try {
-      const gl = (
-        entry.addon as unknown as {
-          _renderer?: { _gl?: WebGL2RenderingContext | WebGLRenderingContext };
-        }
-      )._renderer?._gl;
-      gl?.getExtension("WEBGL_lose_context")?.loseContext();
-    } catch {
-      // ignore — internal addon shape may have changed in a future version
-    }
+    // getContext() call.
+    forceGpuSlotRelease(entry.addon);
     try {
       entry.addon.dispose();
     } catch {
