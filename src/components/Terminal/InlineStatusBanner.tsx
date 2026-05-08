@@ -188,6 +188,7 @@ function InlineStatusBannerComponent({
               aria-busy={action.loading || undefined}
               onClick={(e) => {
                 e.stopPropagation();
+                if (isDisabled) return;
                 action.onClick();
               }}
               className={cn(

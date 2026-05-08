@@ -54,7 +54,8 @@ vi.mock("../persistence", async () => {
 });
 
 const { usePanelStore } = await import("../../../panelStore");
-const { __resetReconnectErrorDebouncersForTesting } = await import("../browser");
+const { __resetReconnectErrorDebouncersForTesting, __getReconnectErrorDebouncerCountForTesting } =
+  await import("../browser");
 
 const ERROR_A = {
   type: "timeout" as const,
@@ -151,6 +152,28 @@ describe("reconnect error debounce", () => {
     await vi.advanceTimersByTimeAsync(1000);
     await Promise.resolve();
     expect(usePanelStore.getState().panelsById["t-1"]).toBeUndefined();
+  });
+
+  it("trashPanel cancels a pending debounce so undo-trash never reveals a phantom error", async () => {
+    seedPanel("t-1");
+    usePanelStore.getState().setReconnectError("t-1", ERROR_A);
+    usePanelStore.getState().trashPanel("t-1");
+
+    await vi.advanceTimersByTimeAsync(1000);
+    await Promise.resolve();
+    expect(usePanelStore.getState().panelsById["t-1"]?.reconnectError).toBeUndefined();
+    expect(usePanelStore.getState().panelsById["t-1"]?.runtimeStatus).not.toBe("error");
+  });
+
+  it("evicts the debouncer entry from the map after firing", async () => {
+    seedPanel("t-1");
+    usePanelStore.getState().setReconnectError("t-1", ERROR_A);
+    expect(__getReconnectErrorDebouncerCountForTesting()).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(400);
+    await Promise.resolve();
+    expect(usePanelStore.getState().panelsById["t-1"]?.reconnectError).toEqual(ERROR_A);
+    expect(__getReconnectErrorDebouncerCountForTesting()).toBe(0);
   });
 
   it("debounces independently per panel id", async () => {

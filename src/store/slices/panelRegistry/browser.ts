@@ -191,6 +191,9 @@ export const createBrowserActions = (
     let debouncedSetter = reconnectErrorDebouncers.get(id);
     if (!debouncedSetter) {
       debouncedSetter = debounce<[TerminalReconnectError]>((nextError) => {
+        // Self-evict so long-lived sessions with many reconnect events don't
+        // accumulate stale debouncer closures keyed by panel id.
+        reconnectErrorDebouncers.delete(id);
         set((state) => {
           const terminal = state.panelsById[id];
           if (!terminal) return state;
@@ -242,4 +245,10 @@ export function __resetReconnectErrorDebouncersForTesting(): void {
     debounced.cancel();
   }
   reconnectErrorDebouncers.clear();
+}
+
+// Test-only — exposes the map size so the closure-leak guard in
+// setReconnectError stays regression-protected.
+export function __getReconnectErrorDebouncerCountForTesting(): number {
+  return reconnectErrorDebouncers.size;
 }

@@ -7,6 +7,7 @@ import { panelKindHasPty } from "@shared/config/panelKindRegistry";
 import { TRASH_TTL_MS } from "@shared/config/trash";
 import { saveNormalized, saveTabGroups } from "./persistence";
 import { optimizeForDock } from "./layout";
+import { cancelReconnectErrorDebounce } from "./browser";
 import { stopDevPreviewByPanelId } from "./helpers";
 import { logError } from "@/utils/logger";
 
@@ -30,6 +31,10 @@ export const createTrashActions = (
   const trashPanel: PanelRegistrySlice["trashPanel"] = (id) => {
     const terminal = get().panelsById[id];
     if (!terminal) return;
+
+    // Drop any pending reconnect-error debounce so a stale write can't land on
+    // a panel that's been moved to trash (and reappear when the user undoes).
+    cancelReconnectErrorDebounce(id);
 
     // Ephemeral panels (e.g. the help-panel assistant terminal) are bound to
     // a transient UI surface and must never linger in trash for the TTL window
@@ -149,6 +154,10 @@ export const createTrashActions = (
     }
 
     const trashPanelIds = existingPanelIds;
+
+    for (const id of trashPanelIds) {
+      cancelReconnectErrorDebounce(id);
+    }
 
     const resolvedActiveTabId = trashPanelIds.includes(activeTabId)
       ? activeTabId
