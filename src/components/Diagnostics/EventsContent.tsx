@@ -46,11 +46,14 @@ export function EventsContent({ className }: EventsContentProps) {
   );
 
   useEffect(() => {
+    let disposed = false;
+
     eventInspectorClient.subscribe();
 
     eventInspectorClient
       .getEvents()
       .then((existingEvents) => {
+        if (disposed) return;
         setEvents(existingEvents);
       })
       .catch((error) => {
@@ -58,10 +61,12 @@ export function EventsContent({ className }: EventsContentProps) {
       });
 
     const unsubscribe = eventInspectorClient.onEventBatch((events) => {
+      if (disposed) return;
       addEvents(events);
     });
 
     return () => {
+      disposed = true;
       unsubscribe();
       eventInspectorClient.unsubscribe();
     };
