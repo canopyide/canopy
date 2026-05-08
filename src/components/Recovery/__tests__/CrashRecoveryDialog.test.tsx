@@ -5,6 +5,11 @@ import type { ReactNode, ButtonHTMLAttributes } from "react";
 import { CrashRecoveryDialog } from "../CrashRecoveryDialog";
 import type { PendingCrash, CrashRecoveryConfig } from "@shared/types/ipc";
 
+const notifyMock = vi.fn();
+vi.mock("@/lib/notify", () => ({
+  notify: (payload: unknown) => notifyMock(payload),
+}));
+
 vi.mock("@/components/ui/AppDialog", () => {
   interface MockProps {
     isOpen: boolean;
@@ -127,6 +132,7 @@ function setup(overrides?: {
 }
 
 beforeEach(() => {
+  notifyMock.mockReset();
   Object.defineProperty(window, "electron", {
     configurable: true,
     writable: true,
@@ -301,6 +307,65 @@ describe("CrashRecoveryDialog", () => {
     fireEvent.click(screen.getByTestId("details-toggle"));
     fireEvent.click(screen.getByTestId("open-log-button"));
     expect(window.electron.system.openPath).toHaveBeenCalledWith(mockCrash.logPath);
+  });
+
+  it("shows error notification when openPath fails", async () => {
+    (window.electron.system.openPath as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error("ENOENT")
+    );
+    setup();
+    fireEvent.click(screen.getByTestId("details-toggle"));
+    fireEvent.click(screen.getByTestId("open-log-button"));
+
+    await waitFor(() => {
+      expect(notifyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "error",
+          title: "Couldn't open log file",
+        })
+      );
+    });
+  });
+
+  it("copy stack button appears when errorStack is present", () => {
+    setup();
+    fireEvent.click(screen.getByTestId("details-toggle"));
+    expect(screen.getByTestId("copy-stack-button")).toBeTruthy();
+    expect(screen.getByTestId("copy-stack-button").textContent).toContain("Copy stack");
+  });
+
+  it("copy stack button not rendered when errorStack is absent", () => {
+    setup({ crash: { entry: { ...mockCrash.entry, errorStack: undefined } } });
+    fireEvent.click(screen.getByTestId("details-toggle"));
+    expect(screen.queryByTestId("copy-stack-button")).toBeNull();
+  });
+
+  it("copy stack button not rendered when errorStack is empty string", () => {
+    setup({ crash: { entry: { ...mockCrash.entry, errorStack: "" } } });
+    fireEvent.click(screen.getByTestId("details-toggle"));
+    expect(screen.queryByTestId("copy-stack-button")).toBeNull();
+  });
+
+  it("copy stack calls clipboard.writeText with errorStack", async () => {
+    setup();
+    fireEvent.click(screen.getByTestId("details-toggle"));
+    fireEvent.click(screen.getByTestId("copy-stack-button"));
+
+    await waitFor(() => {
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(mockCrash.entry.errorStack);
+    });
+  });
+
+  it("copy stack shows Copied feedback independently from report button", async () => {
+    setup();
+    fireEvent.click(screen.getByTestId("details-toggle"));
+    fireEvent.click(screen.getByTestId("copy-stack-button"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("copy-stack-button").textContent).toContain("Copied");
+    });
+    // Report button still shows its default label
+    expect(screen.getByTestId("report-button").textContent).toContain("Report this crash");
   });
 
   it("shows privacy warning on first report click, copies on second click", async () => {

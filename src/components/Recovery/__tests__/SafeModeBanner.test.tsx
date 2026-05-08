@@ -142,6 +142,14 @@ describe("SafeModeBanner", () => {
     expect(button.textContent).toMatch(/Restart normally/);
   });
 
+  it("uses role=status without redundant aria-live", () => {
+    useSafeModeStore.setState({ safeMode: true });
+    render(<SafeModeBanner />);
+    const region = screen.getByRole("status");
+    expect(region).toBeTruthy();
+    expect(region.hasAttribute("aria-live")).toBe(false);
+  });
+
   it("hides the banner when dismiss is clicked", () => {
     useSafeModeStore.setState({ safeMode: true });
     const { container } = render(<SafeModeBanner />);
