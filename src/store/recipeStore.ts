@@ -149,7 +149,7 @@ interface RecipeState {
   reset: () => void;
 }
 
-const MAX_TERMINALS_PER_RECIPE = 10;
+export const MAX_TERMINALS_PER_RECIPE = 10;
 
 let loadRecipesRequestId = 0;
 
