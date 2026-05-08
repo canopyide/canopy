@@ -4,7 +4,7 @@ import { createFixtureRepo } from "../helpers/fixtures";
 import { openAndOnboardProject } from "../helpers/project";
 import { SEL } from "../helpers/selectors";
 import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
-import { openSettings, openTerminal, getFirstGridPanel } from "../helpers/panels";
+import { openSettings, openTerminal } from "../helpers/panels";
 import { runTerminalCommand, waitForTerminalText } from "../helpers/terminal";
 
 let ctx: AppContext;
@@ -161,8 +161,9 @@ test.describe.serial("Full: Global Environment Variable Inheritance", () => {
 
     // Open a terminal
     await openTerminal(window);
-    const panel = getFirstGridPanel(window);
+    const panel = window.locator(SEL.panel.gridPanel).last();
     await expect(panel).toBeVisible({ timeout: T_LONG });
+    await expect(panel.locator(SEL.terminal.xtermRows)).toBeVisible({ timeout: T_LONG });
 
     // Wait for the shell to be ready (look for fixture dir name in prompt)
     await waitForTerminalText(panel, "env-inheritance", T_LONG);
