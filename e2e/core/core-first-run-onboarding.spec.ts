@@ -1,8 +1,9 @@
 import { test, expect } from "@playwright/test";
 import { launchApp, closeApp, waitForProcessExit, type AppContext } from "../helpers/launch";
+import { removePathSync } from "../helpers/fixtures";
 import { SEL } from "../helpers/selectors";
 import { T_MEDIUM, T_SETTLE } from "../helpers/timeouts";
-import { mkdtempSync, rmSync } from "fs";
+import { mkdtempSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 
@@ -23,7 +24,7 @@ test.describe.serial("First-run onboarding flow", () => {
       if (pid) await waitForProcessExit(pid).catch(() => {});
       ctx = null;
     }
-    rmSync(userDataDir, { recursive: true, force: true });
+    removePathSync(userDataDir);
   });
 
   test("welcome screen is non-blocking on first launch and agent setup is opt-in", async () => {

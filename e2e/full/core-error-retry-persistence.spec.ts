@@ -7,10 +7,11 @@ import {
   removeSingletonFiles,
   type AppContext,
 } from "../helpers/launch";
+import { removePathSync } from "../helpers/fixtures";
 import { SEL } from "../helpers/selectors";
 import { T_SHORT, T_MEDIUM } from "../helpers/timeouts";
 import type { ElectronApplication } from "@playwright/test";
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync } from "fs";
+import { mkdtempSync, readFileSync, writeFileSync, existsSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 
@@ -228,7 +229,7 @@ test.describe.serial("Core: Error Persistence Across Restart", () => {
       if (pid) await waitForProcessExit(pid).catch(() => {});
       ctx = null;
     }
-    rmSync(userDataDir, { recursive: true, force: true });
+    removePathSync(userDataDir);
   });
 
   test("critical errors persist across restart", async () => {

@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { launchApp, closeApp, waitForProcessExit, type AppContext } from "../helpers/launch";
-import { createFixtureRepo } from "../helpers/fixtures";
+import { createFixtureRepo, removePathSync } from "../helpers/fixtures";
 import { openAndOnboardProject } from "../helpers/project";
 import { SEL } from "../helpers/selectors";
 import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
@@ -10,7 +10,7 @@ import {
   openTerminal,
   openSettings,
 } from "../helpers/panels";
-import { mkdtempSync, rmSync } from "fs";
+import { mkdtempSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 
@@ -32,7 +32,7 @@ test.describe.serial("Persistence: Layout & Window across restart", () => {
       if (pid) await waitForProcessExit(pid).catch(() => {});
       ctx = null;
     }
-    rmSync(userDataDir, { recursive: true, force: true });
+    removePathSync(userDataDir);
     fixtureCleanup?.();
   });
 
@@ -120,7 +120,7 @@ test.describe.serial("Persistence: Theme, Notifications & Keybindings across res
       if (pid) await waitForProcessExit(pid).catch(() => {});
       ctx = null;
     }
-    rmSync(userDataDir, { recursive: true, force: true });
+    removePathSync(userDataDir);
   });
 
   test("theme, notification toggle, and keybinding override survive restart", async () => {

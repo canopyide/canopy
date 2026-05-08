@@ -1,11 +1,11 @@
 import { test, expect } from "@playwright/test";
 import { launchApp, closeApp, waitForProcessExit, type AppContext } from "../helpers/launch";
-import { createFixtureRepo } from "../helpers/fixtures";
+import { createFixtureRepo, removePathSync } from "../helpers/fixtures";
 import { openAndOnboardProject } from "../helpers/project";
 import { SEL } from "../helpers/selectors";
 import { T_SHORT, T_MEDIUM, T_SETTLE } from "../helpers/timeouts";
 import { openSettings } from "../helpers/panels";
-import { mkdtempSync, rmSync } from "fs";
+import { mkdtempSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 
@@ -24,7 +24,7 @@ test.describe.serial("Persistence: Settings across restart", () => {
       if (pid) await waitForProcessExit(pid).catch(() => {});
       ctx = null;
     }
-    rmSync(userDataDir, { recursive: true, force: true });
+    removePathSync(userDataDir);
   });
 
   test("performance mode toggle survives app restart", async () => {
@@ -95,7 +95,7 @@ test.describe.serial("Persistence: Project memory across restart", () => {
       if (pid) await waitForProcessExit(pid).catch(() => {});
       ctx = null;
     }
-    rmSync(userDataDir, { recursive: true, force: true });
+    removePathSync(userDataDir);
     fixtureCleanup?.();
   });
 

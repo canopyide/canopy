@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { launchApp, closeApp, waitForProcessExit, type AppContext } from "../helpers/launch";
-import { createFixtureRepo } from "../helpers/fixtures";
+import { createFixtureRepo, removePathSync } from "../helpers/fixtures";
 import { openAndOnboardProject } from "../helpers/project";
 import {
   addAndSwitchToProject,
@@ -11,7 +11,7 @@ import { getGridPanelCount, getDockPanelCount, openTerminal } from "../helpers/p
 import { getPtyPid, waitForProcessDeath } from "../helpers/stress";
 import { SEL } from "../helpers/selectors";
 import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
-import { mkdtempSync, rmSync } from "fs";
+import { mkdtempSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 
@@ -356,7 +356,7 @@ test.describe.serial("Deletion Cleanup: Background removal persists across resta
       if (pid) await waitForProcessExit(pid).catch(() => {});
       ctx = null;
     }
-    rmSync(userDataDir, { recursive: true, force: true });
+    removePathSync(userDataDir);
     cleanupA?.();
     cleanupB?.();
   });

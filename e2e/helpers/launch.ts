@@ -1,10 +1,11 @@
 import { _electron as electron, type ElectronApplication, type Page } from "@playwright/test";
 import { createRequire } from "module";
-import { mkdtempSync, rmSync, unlinkSync, readdirSync } from "fs";
+import { mkdtempSync, unlinkSync, readdirSync } from "fs";
 import { tmpdir } from "os";
 import { execSync } from "child_process";
 import path from "path";
 import { getDescendantPids } from "./stress";
+import { removePathSync } from "./fixtures";
 
 const require = createRequire(import.meta.url);
 const electronPath = require("electron") as unknown as string;
@@ -195,7 +196,7 @@ export async function launchApp(options: LaunchOptions = {}): Promise<AppContext
       }
       if (!options.userDataDir) {
         try {
-          rmSync(userDataDir, { recursive: true, force: true });
+          removePathSync(userDataDir);
         } catch {
           // Best-effort cleanup for failed launch attempts.
         }
