@@ -427,7 +427,10 @@ describe("BrowserToolbar viewport presets", () => {
     it("each chip is a radio with aria-checked reflecting selection", () => {
       renderWithViewport();
       const radios = document.querySelectorAll('[role="radio"]');
-      expect(radios.length).toBe(3);
+      expect(radios.length).toBe(4);
+
+      const galaxyRadio = document.querySelector('[data-viewport-preset-id="galaxy"]');
+      expect(galaxyRadio!.getAttribute("aria-checked")).toBe("false");
 
       const iphoneRadio = document.querySelector('[data-viewport-preset-id="iphone"]');
       expect(iphoneRadio!.getAttribute("aria-checked")).toBe("true");
@@ -451,7 +454,10 @@ describe("BrowserToolbar viewport presets", () => {
     it("has aria-label matching preset label", () => {
       renderWithViewport();
       const iphoneRadio = document.querySelector('[data-viewport-preset-id="iphone"]');
-      expect(iphoneRadio!.getAttribute("aria-label")).toBe("iPhone 15");
+      expect(iphoneRadio!.getAttribute("aria-label")).toBe("iPhone 16");
+
+      const galaxyRadio = document.querySelector('[data-viewport-preset-id="galaxy"]');
+      expect(galaxyRadio!.getAttribute("aria-label")).toBe("Galaxy S25");
     });
   });
 
@@ -558,52 +564,52 @@ describe("BrowserToolbar viewport presets", () => {
 
     it("ArrowLeft wraps from first to last", () => {
       renderWithViewport();
-      const iphoneRadio = document.querySelector(
-        '[data-viewport-preset-id="iphone"]'
+      const galaxyRadio = document.querySelector(
+        '[data-viewport-preset-id="galaxy"]'
       )! as HTMLElement;
       const ipadRadio = document.querySelector('[data-viewport-preset-id="ipad"]')! as HTMLElement;
 
-      iphoneRadio.focus();
-      fireEvent.keyDown(iphoneRadio, { key: "ArrowLeft" });
+      galaxyRadio.focus();
+      fireEvent.keyDown(galaxyRadio, { key: "ArrowLeft" });
 
       expect(document.activeElement).toBe(ipadRadio);
     });
 
     it("ArrowRight wraps from last to first", () => {
       renderWithViewport();
-      const iphoneRadio = document.querySelector(
-        '[data-viewport-preset-id="iphone"]'
+      const galaxyRadio = document.querySelector(
+        '[data-viewport-preset-id="galaxy"]'
       )! as HTMLElement;
       const ipadRadio = document.querySelector('[data-viewport-preset-id="ipad"]')! as HTMLElement;
 
       ipadRadio.focus();
       fireEvent.keyDown(ipadRadio, { key: "ArrowRight" });
 
-      expect(document.activeElement).toBe(iphoneRadio);
+      expect(document.activeElement).toBe(galaxyRadio);
     });
 
     it("Home moves focus to first radio", () => {
       renderWithViewport();
-      const iphoneRadio = document.querySelector(
-        '[data-viewport-preset-id="iphone"]'
+      const galaxyRadio = document.querySelector(
+        '[data-viewport-preset-id="galaxy"]'
       )! as HTMLElement;
       const ipadRadio = document.querySelector('[data-viewport-preset-id="ipad"]')! as HTMLElement;
 
       ipadRadio.focus();
       fireEvent.keyDown(ipadRadio, { key: "Home" });
 
-      expect(document.activeElement).toBe(iphoneRadio);
+      expect(document.activeElement).toBe(galaxyRadio);
     });
 
     it("End moves focus to last radio", () => {
       renderWithViewport();
-      const iphoneRadio = document.querySelector(
-        '[data-viewport-preset-id="iphone"]'
+      const galaxyRadio = document.querySelector(
+        '[data-viewport-preset-id="galaxy"]'
       )! as HTMLElement;
       const ipadRadio = document.querySelector('[data-viewport-preset-id="ipad"]')! as HTMLElement;
 
-      iphoneRadio.focus();
-      fireEvent.keyDown(iphoneRadio, { key: "End" });
+      galaxyRadio.focus();
+      fireEvent.keyDown(galaxyRadio, { key: "End" });
 
       expect(document.activeElement).toBe(ipadRadio);
     });
@@ -659,15 +665,17 @@ describe("BrowserToolbar viewport presets", () => {
 
     it("ArrowUp moves focus backward like ArrowLeft", () => {
       renderWithViewport();
+      const galaxyRadio = document.querySelector(
+        '[data-viewport-preset-id="galaxy"]'
+      )! as HTMLElement;
       const iphoneRadio = document.querySelector(
         '[data-viewport-preset-id="iphone"]'
       )! as HTMLElement;
-      const ipadRadio = document.querySelector('[data-viewport-preset-id="ipad"]')! as HTMLElement;
 
       iphoneRadio.focus();
       fireEvent.keyDown(iphoneRadio, { key: "ArrowUp" });
 
-      expect(document.activeElement).toBe(ipadRadio);
+      expect(document.activeElement).toBe(galaxyRadio);
     });
 
     it("maintains roving tabIndex after ArrowRight focus move", () => {
