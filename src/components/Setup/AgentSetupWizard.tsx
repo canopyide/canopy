@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
 import { AppDialog } from "@/components/ui/AppDialog";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/Spinner";
@@ -582,7 +582,7 @@ export function AgentSetupWizard({
     >
       <AppDialog.Header>
         <AppDialog.Title icon={<Plug className="w-5 h-5 text-daintree-accent" />}>
-          Agent Setup
+          {isFirstRun && state.step.type === "selection" ? "Welcome to Daintree" : "Agent Setup"}
         </AppDialog.Title>
         <div className="flex items-center gap-3">
           <span className="text-xs text-daintree-text/40">
@@ -648,6 +648,7 @@ export function AgentSetupWizard({
             {Array.from({ length: totalSteps }).map((_, i) => (
               <div
                 key={i}
+                aria-current={i === stepNumber ? "step" : undefined}
                 className={`w-1.5 h-1.5 rounded-full transition-colors ${
                   i === stepNumber
                     ? "bg-daintree-accent"
@@ -747,6 +748,7 @@ function SelectionStep({
   );
 
   const schemes = [daintreeScheme, bondiScheme] as const;
+  const crashReportingLabelId = useId();
 
   return (
     <div className="space-y-6">
@@ -770,7 +772,7 @@ function SelectionStep({
           <p className="text-sm text-daintree-text/60 mb-4">
             Choose your preferred theme. More options available in Settings.
           </p>
-          <div className="grid grid-cols-2 gap-4" role="listbox" aria-label="Theme">
+          <div className="grid grid-cols-2 gap-4" role="listbox" aria-label="Select theme">
             {schemes.map((scheme) => {
               const isSelected = selectedSchemeId === scheme.id;
               const isDark = scheme.type === "dark";
@@ -876,12 +878,14 @@ function SelectionStep({
           </p>
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
-              <p className="text-sm font-medium text-daintree-text">Enable crash reporting</p>
+              <p id={crashReportingLabelId} className="text-sm font-medium text-daintree-text">
+                Enable crash reporting
+              </p>
               <button
                 type="button"
                 role="switch"
                 aria-checked={telemetryEnabled}
-                aria-label="Enable crash reporting"
+                aria-labelledby={crashReportingLabelId}
                 onClick={() => onTelemetryChange(!telemetryEnabled)}
                 className={cn(
                   "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors",
