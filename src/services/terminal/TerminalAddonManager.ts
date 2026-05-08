@@ -3,6 +3,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import { ImageAddon } from "@xterm/addon-image";
 import { SearchAddon } from "@xterm/addon-search";
+import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { FileLinksAddon, HoverCallback } from "./FileLinksAddon";
 
@@ -38,6 +39,13 @@ export function setupTerminalAddons(
   const serializeAddon = new SerializeAddon();
   terminal.loadAddon(fitAddon);
   terminal.loadAddon(serializeAddon);
+
+  // xterm 6.0 ships with Unicode 6 width tables, so modern emoji and many CJK
+  // glyphs render at 1 cell instead of 2. Activate Unicode 11 widths before any
+  // data is written so the buffer records correct cell widths from the start.
+  const unicode11Addon = new Unicode11Addon();
+  terminal.loadAddon(unicode11Addon);
+  terminal.unicode.activeVersion = "11";
 
   const imageAddon = new ImageAddon(IMAGE_ADDON_OPTIONS);
   terminal.loadAddon(imageAddon);
