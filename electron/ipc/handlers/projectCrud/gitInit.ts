@@ -118,7 +118,21 @@ export function registerGitInitHandlers(): () => void {
           .catch(() => false);
         if (gitignoreExists) {
           completedSteps.push("gitignore");
-          emitProgress("gitignore", "success", "Skipping .gitignore (already exists)");
+          let skipMessage = "Existing .gitignore kept — verify it excludes secrets";
+          try {
+            const existing = await fs.promises.readFile(gitignorePath, "utf-8");
+            const missing = computeMissingTemplateEntries(existing, gitignoreContent);
+            if (missing.length === 0) {
+              skipMessage = "Existing .gitignore kept — covers all template entries";
+            } else {
+              const preview = missing.slice(0, 5).join(", ");
+              const overflow = missing.length > 5 ? `, and ${missing.length - 5} more` : "";
+              skipMessage = `Existing .gitignore kept — missing template entries: ${preview}${overflow}`;
+            }
+          } catch {
+            // Fall through to default message
+          }
+          emitProgress("gitignore", "success", skipMessage);
         } else {
           await fs.promises.writeFile(gitignorePath, gitignoreContent, "utf-8");
           completedSteps.push("gitignore");
@@ -140,13 +154,17 @@ export function registerGitInitHandlers(): () => void {
         } catch (commitError) {
           const errorMsg = formatErrorMessage(commitError, "Failed to create initial commit");
           if (errorMsg.includes("user.email") || errorMsg.includes("user.name")) {
+            const identityHelp =
+              "Set your git identity, then create the initial commit manually:\n" +
+              '  git config --global user.name "Your Name"\n' +
+              '  git config --global user.email "you@example.com"';
+            emitProgress("commit", "error", "Git user identity not configured", identityHelp);
             emitProgress(
-              "commit",
+              "complete",
               "error",
-              "Git user identity not configured",
-              "Please configure git user.name and user.email before creating commits"
+              "Repository initialized — initial commit skipped",
+              identityHelp
             );
-            emitProgress("complete", "success", "Git initialization complete (no initial commit)");
             return { completedSteps };
           }
           throw commitError;
@@ -173,7 +191,30 @@ export function registerGitInitHandlers(): () => void {
   return () => handlers.forEach((cleanup) => cleanup());
 }
 
-function getGitignoreTemplate(template: string): string | null {
+function parseGitignoreLines(content: string): Set<string> {
+  const lines = new Set<string>();
+  for (const raw of content.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    lines.add(line);
+  }
+  return lines;
+}
+
+export function computeMissingTemplateEntries(
+  existingContent: string,
+  templateContent: string
+): string[] {
+  const existing = parseGitignoreLines(existingContent);
+  const template = parseGitignoreLines(templateContent);
+  const missing: string[] = [];
+  for (const entry of template) {
+    if (!existing.has(entry)) missing.push(entry);
+  }
+  return missing;
+}
+
+export function getGitignoreTemplate(template: string): string | null {
   switch (template) {
     case "node":
       return `# Node.js
@@ -230,6 +271,13 @@ dist/
 .coverage
 htmlcov/
 
+# Environment / secrets
+.env
+.env.*
+!.env.example
+.env.local
+.env.*.local
+
 # OS
 .DS_Store
 Thumbs.db
@@ -240,7 +288,14 @@ Thumbs.db
 *.swp
 `;
     case "minimal":
-      return `# OS
+      return `# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# OS
 .DS_Store
 Thumbs.db
 
