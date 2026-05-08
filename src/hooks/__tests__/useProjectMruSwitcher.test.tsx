@@ -204,7 +204,7 @@ describe("useProjectMruSwitcher", () => {
     expect(result.current.selectedIndex).toBe(2);
   });
 
-  it("hold + Minus from index 1 wraps up to last index", () => {
+  it("hold + Minus from index 1 wraps to current project (index 0)", () => {
     const { result } = renderHook(() => useProjectMruSwitcher());
 
     act(() => {
@@ -215,23 +215,55 @@ describe("useProjectMruSwitcher", () => {
       keyDown("Minus", { repeat: true });
     });
 
-    expect(result.current.selectedIndex).toBe(3);
+    expect(result.current.selectedIndex).toBe(0);
   });
 
-  it("hold + Equal at last wraps back to 1", () => {
+  it("hold + Equal at last wraps to current project (index 0), then to 1", () => {
     const { result } = renderHook(() => useProjectMruSwitcher());
 
     act(() => {
       keyDown("Equal");
       vi.advanceTimersByTime(130);
     });
+    // Sequence on a 4-project list (indices 0..3), starting at selectedIndex 1:
+    //   1 → 2 → 3 → 0 (wraps through current) → 1
     act(() => {
       keyDown("Equal", { repeat: true });
       keyDown("Equal", { repeat: true });
       keyDown("Equal", { repeat: true });
     });
+    expect(result.current.selectedIndex).toBe(0);
 
+    act(() => {
+      keyDown("Equal", { repeat: true });
+    });
     expect(result.current.selectedIndex).toBe(1);
+  });
+
+  it("hold + scrub back to current project (index 0) then release does not commit", () => {
+    const { result } = renderHook(() => useProjectMruSwitcher());
+
+    act(() => {
+      keyDown("Equal");
+      vi.advanceTimersByTime(130);
+    });
+    // Advance 1 → 2, then scrub back 2 → 1 → 0 (current project)
+    act(() => {
+      keyDown("Equal", { repeat: true });
+    });
+    act(() => {
+      keyDown("Minus", { repeat: true });
+      keyDown("Minus", { repeat: true });
+    });
+    expect(result.current.selectedIndex).toBe(0);
+
+    act(() => {
+      keyUp("Meta");
+    });
+
+    expect(switchProjectMock).not.toHaveBeenCalled();
+    expect(reopenProjectMock).not.toHaveBeenCalled();
+    expect(result.current.isVisible).toBe(false);
   });
 
   it("releasing modifier during hold commits highlighted project", () => {
@@ -497,7 +529,30 @@ describe("useProjectMruSwitcher", () => {
       keyUp("Meta");
     });
 
-    expect(switchProjectMock).not.toHaveBeenCalledWith("p-recent");
+    expect(switchProjectMock).not.toHaveBeenCalled();
+    expect(reopenProjectMock).not.toHaveBeenCalled();
+  });
+
+  it("forces current project to index 0 even when not the newest by lastOpened", () => {
+    projectState.currentProject = { id: "p-stale" };
+    projectState.projects = [
+      { id: "p-stale", path: "/p-stale", name: "Stale", emoji: "🌲", lastOpened: 100 },
+      { id: "p-fresh", path: "/p-fresh", name: "Fresh", emoji: "🍎", lastOpened: 500 },
+    ];
+    const { result } = renderHook(() => useProjectMruSwitcher());
+
+    act(() => {
+      keyDown("Minus");
+      vi.advanceTimersByTime(130);
+    });
+
+    expect(result.current.projects.map((p) => p.id)).toEqual(["p-stale", "p-fresh"]);
+
+    act(() => {
+      keyUp("Meta");
+    });
+
+    expect(switchProjectMock).toHaveBeenCalledWith("p-fresh");
   });
 
   it("ignores keydowns when modifiers are absent", () => {
