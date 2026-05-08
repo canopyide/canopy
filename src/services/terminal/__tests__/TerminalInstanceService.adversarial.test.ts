@@ -195,6 +195,14 @@ describe("TerminalInstanceService adversarial", () => {
   beforeEach(async () => {
     vi.resetModules();
     vi.useFakeTimers();
+    // useFakeTimers replaces requestAnimationFrame with its own queue; the
+    // WebGL manager's drain queue needs sync rAF for these tests to retain
+    // their ensureContext()→isActive() inline expectations.
+    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback): number => {
+      cb(0);
+      return 0;
+    }) as typeof globalThis.requestAnimationFrame;
+    globalThis.cancelAnimationFrame = (() => {}) as typeof globalThis.cancelAnimationFrame;
     testState.webglAddons.length = 0;
     Object.values(testState.clientMocks).forEach((mock) => {
       if ("mockReset" in mock && typeof mock.mockReset === "function") {
