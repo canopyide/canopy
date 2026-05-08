@@ -172,6 +172,7 @@ describe("FleetArmingRibbon", () => {
     });
     render(<FleetArmingRibbon />);
     expect(screen.queryByTestId("fleet-leading-exit")).toBeNull();
+    expect(screen.getByRole("button", { name: "Send broadcast" })).toBeTruthy();
   });
 
   it("surfaces the cross-worktree count in the chip's visible label", () => {
@@ -279,7 +280,7 @@ describe("FleetArmingRibbon", () => {
     expect(list.textContent).toContain("backend·main");
   });
 
-  it("per-row unarm button in the popover calls disarmId", () => {
+  it("per-row disarm button in the popover calls disarmId", () => {
     seed([
       { ...makeAgent("t1"), title: "frontend·main" } as TerminalInstance,
       { ...makeAgent("t2"), title: "backend·main" } as TerminalInstance,
@@ -287,7 +288,7 @@ describe("FleetArmingRibbon", () => {
     useFleetArmingStore.getState().armIds(["t1", "t2"]);
     render(<FleetArmingRibbon />);
     fireEvent.click(screen.getByTestId("fleet-armed-count-chip"));
-    fireEvent.click(screen.getByLabelText("Unarm frontend·main"));
+    fireEvent.click(screen.getByLabelText("Disarm frontend·main"));
     const armed = useFleetArmingStore.getState().armedIds;
     expect(armed.has("t1")).toBe(false);
     expect(armed.has("t2")).toBe(true);
@@ -345,6 +346,7 @@ describe("FleetArmingRibbon", () => {
     expect(ribbon.getAttribute("data-pending-action")).toBe("restart");
     expect(screen.getByText(/Restart 3 agents\?/)).toBeTruthy();
     expect(screen.getByText(/2 agents will lose their session/)).toBeTruthy();
+    expect(ribbon.getAttribute("aria-atomic")).toBe("true");
   });
 
   it("collapses pending confirmation when the armed set drains", () => {

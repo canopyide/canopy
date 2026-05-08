@@ -205,7 +205,7 @@ export function FleetCountChip({
                       <button
                         type="button"
                         onClick={() => disarmId(id)}
-                        aria-label={`Unarm ${title}`}
+                        aria-label={`Disarm ${title}`}
                         className="inline-flex shrink-0 items-center rounded p-0.5 mr-1 text-daintree-text/50 transition-colors hover:bg-tint/[0.08] hover:text-daintree-text"
                       >
                         <X className="h-3.5 w-3.5" />
