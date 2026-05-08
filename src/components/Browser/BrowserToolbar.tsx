@@ -95,6 +95,7 @@ export function BrowserToolbar({
 
   const announceHistoryChange = useCallback((text: string) => {
     // ZWSP toggle forces re-announce when consecutive removals share a display URL
+    // eslint-disable-next-line no-irregular-whitespace
     setHistoryAnnouncement((prev) => (prev === text ? `${text}​` : text));
   }, []);
   const inputRef = useRef<HTMLInputElement>(null);
