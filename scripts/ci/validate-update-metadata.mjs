@@ -44,6 +44,16 @@ for (const f of data.files) {
   }
 }
 if (!data.path) fail("top-level path missing");
+
+// electron-updater's Squirrel.Mac provider strictly requires a ZIP artifact.
+// If the target ordering in electron-builder.config.cjs ever changes and
+// `path` references the DMG instead of the ZIP, auto-updates break silently
+// on macOS with no client-side error. Guard against that here by checking
+// the extension for macOS metadata files.
+const basename = path.basename(metadataPath).toLowerCase();
+if (basename.includes("mac") && !String(data.path).endsWith(".zip")) {
+  fail(`top-level path must be a ZIP for macOS (Squirrel.Mac requires .zip) but got: ${data.path}`);
+}
 if (!data.sha512) fail("top-level sha512 missing");
 if (!data.releaseDate) fail("releaseDate missing");
 

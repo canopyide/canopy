@@ -16,6 +16,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const ROOT = join(__dirname, "..");
 const BASELINE_FILE = join(ROOT, "eslint-warnings-baseline.json");
+const UPDATE_SHRINKAGE_THRESHOLD = 0.1;
 
 // Test files still get linted (editor + raw `npm run lint`), but their warnings
 // don't count toward the ratchet — test patterns like `as Foo` partial mocks
@@ -24,6 +25,7 @@ const TEST_FILE_PATTERN = /[/\\](__tests__|e2e)[/\\]|\.(?:test|spec)\.[^.]+$/;
 
 function main() {
   const isUpdate = process.argv.includes("--update");
+  const force = process.argv.includes("--force");
 
   // Run ESLint and capture output
   let lintOutput;
@@ -90,6 +92,36 @@ function main() {
 
   // Update mode: save current count as new baseline
   if (isUpdate) {
+    // Shrinkage guard: if the warning count drops by more than the threshold
+    // compared to the prior baseline, refuse to update. This prevents a config
+    // bug (e.g. .eslintignore expansion, file-pattern narrowing) from silently
+    // locking in undercounting as the new baseline.
+    if (existsSync(BASELINE_FILE) && !force) {
+      let priorCount = 0;
+      try {
+        const prior = JSON.parse(readFileSync(BASELINE_FILE, "utf8"));
+        if (prior && typeof prior.count === "number" && Number.isFinite(prior.count)) {
+          priorCount = prior.count;
+        }
+      } catch {
+        // Unparseable prior baseline — let the update proceed; the previous
+        // baseline is unusable anyway.
+      }
+      if (priorCount > 0) {
+        const drop = (priorCount - warningCount) / priorCount;
+        if (drop > UPDATE_SHRINKAGE_THRESHOLD) {
+          console.error(
+            `::error::refusing to update baseline — warning count would drop from ${priorCount} to ${warningCount} (${(drop * 100).toFixed(1)}% shrinkage > ${(UPDATE_SHRINKAGE_THRESHOLD * 100).toFixed(0)}% threshold).`
+          );
+          console.error(
+            "   This usually means ESLint coverage shrank (config change, .eslintignore expansion, or file-pattern narrowing)."
+          );
+          console.error("   If the shrinkage is intentional, re-run with --force.");
+          process.exit(1);
+        }
+      }
+    }
+
     const baseline = { count: warningCount, updatedAt: new Date().toISOString() };
     writeFileSync(BASELINE_FILE, JSON.stringify(baseline, null, 2) + "\n");
     console.log(`✅ Baseline updated: ${warningCount} warnings`);
