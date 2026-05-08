@@ -27,7 +27,13 @@ vi.mock("@/components/ui/SearchablePalette", () => ({
     return (
       <div data-testid="searchable-palette">
         {props.beforeList ?? null}
-        {showEmptyContent ? (props.emptyContent ?? null) : null}
+        {showEmptyContent ? (
+          props.emptyMessage ? (
+            <p>{props.emptyMessage as string}</p>
+          ) : (
+            (props.emptyContent ?? null)
+          )
+        ) : null}
       </div>
     );
   },
@@ -122,14 +128,10 @@ describe("ActionPalette", () => {
     );
 
     expect(screen.queryByText("Recently used")).toBeNull();
-    // The static hint must stay parked behind the recently-used flag — it's not
-    // a generic palette decoration and shouldn't leak into the no-match state.
-    expect(
-      screen.queryByText("Actions depend on the focused panel and current context.")
-    ).toBeNull();
+    expect(screen.queryByText("Type to search actions")).toBeNull();
   });
 
-  it("provides the static hint as emptyContent for SearchablePalette to render when no MRU exists", () => {
+  it("shows the empty message when no MRU exists and no query is typed", () => {
     render(
       <ActionPalette
         isOpen
@@ -150,9 +152,7 @@ describe("ActionPalette", () => {
     );
 
     expect(screen.queryByText("Recently used")).toBeNull();
-    expect(
-      screen.getByText("Actions depend on the focused panel and current context.")
-    ).toBeTruthy();
+    expect(screen.getByText("Type to search actions")).toBeTruthy();
   });
 
   it("forwards isStale to SearchablePalette as isFiltering", () => {

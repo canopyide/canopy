@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback } from "react";
 import { cn } from "@/lib/utils";
 import type { ActionPaletteItem as ActionPaletteItemType } from "@/hooks/useActionPalette";
 import { ACTION_CATEGORY_COLORS, ACTION_CATEGORY_DEFAULT_COLOR } from "@/config/categoryColors";
@@ -7,23 +7,29 @@ interface ActionPaletteItemProps {
   item: ActionPaletteItemType;
   isSelected: boolean;
   onSelect: (item: ActionPaletteItemType) => void;
-  onHover?: () => void;
+  index: number;
+  onHoverIndex?: (index: number) => void;
 }
 
 export const ActionPaletteItem = React.memo(function ActionPaletteItem({
   item,
   isSelected,
   onSelect,
-  onHover,
+  index,
+  onHoverIndex,
 }: ActionPaletteItemProps) {
   const categoryColor = ACTION_CATEGORY_COLORS[item.category] ?? ACTION_CATEGORY_DEFAULT_COLOR;
+
+  const handleHover = useCallback(() => {
+    onHoverIndex?.(index);
+  }, [onHoverIndex, index]);
 
   return (
     <button
       id={`action-option-${item.id}`}
       tabIndex={-1}
       onPointerDown={(e) => e.preventDefault()}
-      onPointerMove={onHover}
+      onPointerMove={handleHover}
       role="option"
       aria-selected={isSelected}
       aria-disabled={!item.enabled}
@@ -37,7 +43,7 @@ export const ActionPaletteItem = React.memo(function ActionPaletteItem({
         "aria-selected:before:w-[2px] aria-selected:before:rounded-r aria-selected:before:bg-daintree-accent aria-selected:before:content-['']",
         !item.enabled && "opacity-40 cursor-not-allowed"
       )}
-      onClick={() => item.enabled && onSelect(item)}
+      onClick={() => onSelect(item)}
     >
       <span
         className={cn(
