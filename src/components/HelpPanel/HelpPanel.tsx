@@ -255,6 +255,7 @@ export function HelpPanel({
   // effect without remounting the panel.
   const hibernateMinutesRef = useRef<number>(30);
   const hibernateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [visibilityEpoch, setVisibilityEpoch] = useState(0);
 
   const revokePendingSession = useCallback(() => {
     const pending = pendingSessionIdRef.current;
@@ -274,6 +275,7 @@ export function HelpPanel({
     if (terminalId && !terminal && terminalId !== pendingNewTerminalIdRef.current) {
       const { sessionId } = useHelpPanelStore.getState();
       revokeHelpSession(sessionId);
+      hasAutoLaunched.current = false;
       clearTerminal();
     }
   }, [terminalId, terminal, clearTerminal]);
@@ -291,35 +293,39 @@ export function HelpPanel({
       if (state.terminalId) {
         usePanelStore.getState().removePanel(state.terminalId);
         revokeHelpSession(state.sessionId);
+        hasAutoLaunched.current = false;
         useHelpPanelStore.getState().clearTerminal();
       }
       revokePendingSession();
     };
 
     const handler = () => {
-      if (!document.hidden) return;
-      if (isSystemSuspendedRef.current) return;
-      // Race: visibilitychange may fire before the suspend IPC reaches the
-      // renderer. Confirm with the main process before tearing down.
-      void window.electron.systemSleep
-        .getMetrics()
-        .then((metrics) => {
-          if (cancelled) return;
-          if (metrics.isCurrentlySleeping) return;
-          // Re-check after the IPC round-trip: the user may have reopened the
-          // lid (hidden → visible) or onSuspend may have arrived while we
-          // were waiting. Either way, skip teardown.
-          if (!document.hidden) return;
-          if (isSystemSuspendedRef.current) return;
-          tearDown();
-        })
-        .catch((err: unknown) => {
-          if (cancelled) return;
-          logError("HelpPanel: failed to read systemSleep metrics", err);
-          if (!document.hidden) return;
-          if (isSystemSuspendedRef.current) return;
-          tearDown();
-        });
+      if (document.hidden) {
+        if (isSystemSuspendedRef.current) return;
+        // Race: visibilitychange may fire before the suspend IPC reaches the
+        // renderer. Confirm with the main process before tearing down.
+        void window.electron.systemSleep
+          .getMetrics()
+          .then((metrics) => {
+            if (cancelled) return;
+            if (metrics.isCurrentlySleeping) return;
+            // Re-check after the IPC round-trip: the user may have reopened the
+            // lid (hidden → visible) or onSuspend may have arrived while we
+            // were waiting. Either way, skip teardown.
+            if (!document.hidden) return;
+            if (isSystemSuspendedRef.current) return;
+            tearDown();
+          })
+          .catch((err: unknown) => {
+            if (cancelled) return;
+            logError("HelpPanel: failed to read systemSleep metrics", err);
+            if (!document.hidden) return;
+            if (isSystemSuspendedRef.current) return;
+            tearDown();
+          });
+      } else {
+        setVisibilityEpoch((e) => e + 1);
+      }
     };
 
     const offSuspend = window.electron.systemSleep.onSuspend(() => {
@@ -551,6 +557,7 @@ export function HelpPanel({
   const hasAutoLaunched = useRef(false);
   useEffect(() => {
     if (
+      document.hidden ||
       !isOpen ||
       !isReadyToLaunch ||
       !currentProject ||
@@ -678,7 +685,15 @@ export function HelpPanel({
       })(),
       { context: "Auto-launching preferred help agent" }
     );
-  }, [isOpen, isReadyToLaunch, currentProject, terminalId, preferredAgentId, spawnResumed]);
+  }, [
+    isOpen,
+    isReadyToLaunch,
+    currentProject,
+    terminalId,
+    preferredAgentId,
+    spawnResumed,
+    visibilityEpoch,
+  ]);
 
   // Reset auto-launch guard when panel closes
   useEffect(() => {
@@ -861,6 +876,7 @@ export function HelpPanel({
   // ref to prevent any double-fire.
   useEffect(() => {
     if (
+      document.hidden ||
       !isOpen ||
       !isReadyToLaunch ||
       !currentProject ||
@@ -888,6 +904,7 @@ export function HelpPanel({
     supportedInstalledAgentIdsKey,
     supportedInstalledAgentIds,
     handleSelectAgent,
+    visibilityEpoch,
   ]);
 
   // Hide the panel without tearing down the agent or conversation. The PTY,
