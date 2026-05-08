@@ -7,6 +7,8 @@ import { AnimatedLabel } from "@/components/ui/AnimatedLabel";
 import type { ChecklistState, ChecklistItemId } from "@shared/types/ipc/maps";
 import { CHECKLIST_ITEMS } from "./checklistItems";
 
+const CHECKLIST_BODY_ID = "getting-started-checklist-body";
+
 interface GettingStartedChecklistProps {
   checklist: ChecklistState;
   collapsed: boolean;
@@ -44,6 +46,8 @@ export function GettingStartedChecklist({
       style={{ right: "calc(var(--right-obstruction-offset, 0px))" }}
     >
       <div
+        role="region"
+        aria-label="Getting started checklist"
         data-getting-started-checklist=""
         className={cn(
           "pointer-events-auto relative w-full",
@@ -51,6 +55,7 @@ export function GettingStartedChecklist({
           "text-sm text-daintree-text",
           "shadow-[var(--theme-shadow-floating)]",
           "transition-[transform,opacity] duration-300 ease-out",
+          "motion-reduce:transition-none motion-reduce:duration-0 motion-reduce:transform-none",
           isVisible ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0",
           "bg-[color-mix(in_oklab,var(--color-daintree-accent)_8%,var(--color-daintree-bg))]",
           "border-[color:color-mix(in_oklab,var(--color-daintree-accent)_20%,transparent)]",
@@ -62,6 +67,8 @@ export function GettingStartedChecklist({
           <button
             type="button"
             onClick={onToggleCollapse}
+            aria-expanded={!collapsed}
+            aria-controls={CHECKLIST_BODY_ID}
             className="flex items-center gap-2 text-left flex-1 min-w-0"
           >
             <h4 className="font-medium leading-tight tracking-tight text-xs font-mono text-daintree-accent">
@@ -96,8 +103,10 @@ export function GettingStartedChecklist({
 
         {/* Collapsible body */}
         <div
+          id={CHECKLIST_BODY_ID}
           className={cn(
             "overflow-hidden transition-[height] duration-300 ease-in-out",
+            "motion-reduce:transition-none motion-reduce:duration-0",
             collapsed ? "h-0" : "h-auto"
           )}
           {...(collapsed ? { inert: true } : {})}

@@ -54,6 +54,11 @@ vi.mock("../../useElectron", () => ({
   isElectronAvailable: () => true,
 }));
 
+let mockReducedMotion = false;
+vi.mock("framer-motion", () => ({
+  useReducedMotion: () => mockReducedMotion,
+}));
+
 type TerminalLike = {
   id?: string;
   kind?: string;
@@ -120,6 +125,7 @@ describe("useGettingStartedChecklist", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    mockReducedMotion = false;
     projectState = { currentProject: null };
     terminalState = { panelsById: {}, panelIds: [] };
     worktreeState = { worktrees: new Map() };
@@ -504,6 +510,63 @@ describe("useGettingStartedChecklist", () => {
         await vi.advanceTimersByTimeAsync(800);
       });
       expect(result.current.visible).toBe(false);
+    });
+  });
+
+  describe("reduced motion", () => {
+    beforeEach(() => {
+      mockReducedMotion = true;
+      onboardingMock.getChecklist.mockResolvedValue({
+        items: {
+          openedProject: true,
+          launchedAgent: true,
+          createdWorktree: true,
+          ranSecondParallelAgent: false,
+        },
+        dismissed: false,
+        celebrationShown: false,
+      });
+    });
+
+    it("completes pending dismiss in 0ms when reduced motion is preferred", async () => {
+      const { result } = renderHook(() => useGettingStartedChecklist(true));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      await act(async () => {
+        result.current.markItem("ranSecondParallelAgent");
+      });
+
+      expect(result.current.visible).toBe(true);
+
+      // Timer fires immediately (0ms).
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(result.current.visible).toBe(false);
+      expect(result.current.checklist?.dismissed).toBe(true);
+    });
+
+    it("completes celebration auto-clear in 0ms when reduced motion is preferred", async () => {
+      const { result } = renderHook(() => useGettingStartedChecklist(true));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      expect(result.current.showCelebration).toBe(false);
+
+      await act(async () => {
+        result.current.markItem("ranSecondParallelAgent");
+      });
+
+      expect(result.current.showCelebration).toBe(true);
+
+      // Timer fires immediately (0ms).
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(result.current.showCelebration).toBe(false);
     });
   });
 });
