@@ -175,14 +175,17 @@ test.describe.serial("Core: Shell & Settings", () => {
 
     test("Cmd+W closes remaining terminal", async () => {
       const { window } = ctx;
-      let before = 0;
+
+      // Skip-decision belongs outside test.step — calling test.skip() inside a
+      // step throws TestSkipError, which records the step as errored in trace
+      // rather than cleanly skipped.
+      let before = await getGridPanelCount(window);
+      if (before === 0) {
+        test.skip();
+        return;
+      }
 
       await test.step("Ensure at least 2 panels so Cmd+W doesn't quit the app", async () => {
-        before = await getGridPanelCount(window);
-        if (before === 0) {
-          test.skip();
-          return;
-        }
         if (before === 1) {
           await window.keyboard.press(`${mod}+Alt+t`);
           await expect.poll(() => getGridPanelCount(window), { timeout: T_LONG }).toBe(2);
