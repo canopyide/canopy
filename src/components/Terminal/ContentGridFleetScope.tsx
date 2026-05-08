@@ -59,6 +59,12 @@ export function ContentGridFleetScope({
                 hasWorktrees={ctx.worktreeMap.size > 0}
                 activeWorktreeName={ctx.activeWorktreeName}
                 activeWorktreeId={ctx.activeWorktreeId}
+                activeWorktreeBranch={ctx.activeWorktreeBranch}
+                activeWorktreeIsDetached={ctx.activeWorktreeIsDetached}
+                activeWorktreeHead={ctx.activeWorktreeHead}
+                activeWorktreePath={ctx.activeWorktreePath}
+                projectName={ctx.projectName}
+                projectEmoji={ctx.projectEmoji}
                 showProjectPulse={ctx.showProjectPulse}
                 projectIconSvg={ctx.projectIconSvg}
                 defaultCwd={ctx.defaultCwd}

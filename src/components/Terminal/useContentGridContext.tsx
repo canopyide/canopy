@@ -106,6 +106,12 @@ export interface ContentGridContext {
   hasActiveWorktree: boolean;
   activeWorktreeName: string | null;
   activeWorktreeId: string | null;
+  activeWorktreeBranch: string | null;
+  activeWorktreeIsDetached: boolean;
+  activeWorktreeHead: string | null;
+  activeWorktreePath: string | null;
+  projectName: string | null;
+  projectEmoji: string | null;
   showProjectPulse: boolean;
   projectIconSvg: string | undefined;
   worktreeMap: ReturnType<typeof useWorktrees>["worktreeMap"];
@@ -837,6 +843,12 @@ export function useContentGridContext({
     hasActiveWorktree,
     activeWorktreeName,
     activeWorktreeId,
+    activeWorktreeBranch: activeWorktree?.branch?.trim() || null,
+    activeWorktreeIsDetached: activeWorktree?.isDetached ?? false,
+    activeWorktreeHead: activeWorktree?.head ?? null,
+    activeWorktreePath: activeWorktree?.path ?? null,
+    projectName: currentProject?.name ?? null,
+    projectEmoji: currentProject?.emoji ?? null,
     showProjectPulse,
     projectIconSvg,
     worktreeMap,
