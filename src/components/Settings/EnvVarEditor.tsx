@@ -82,7 +82,11 @@ function nextRowId(): string {
 }
 
 function normalizePastedEnvValue(raw: string): string {
-  return raw.replace(/[‘’′]/g, "'").replace(/[“”″]/g, '"').replace(/[–—]/g, "-").trim();
+  return raw
+    .replace(/[‘’‛‚′ʼ]/g, "'")
+    .replace(/[“”‟„″]/g, '"')
+    .replace(/[–—]/g, "-")
+    .trim();
 }
 
 function envToDraft(
@@ -545,19 +549,23 @@ export function EnvVarEditor({
 
   const handleValuePaste = useCallback(
     (rowId: string, e: React.ClipboardEvent<HTMLInputElement>) => {
+      if (e.currentTarget.disabled) return;
       const raw = e.clipboardData?.getData("text");
-      if (!raw) return;
+      if (raw == null) return;
       const cleaned = normalizePastedEnvValue(raw);
       if (cleaned === raw) return;
       e.preventDefault();
       const inserted = document.execCommand("insertText", false, cleaned);
       if (!inserted) {
-        handleValueChange(rowId, cleaned);
+        const input = e.currentTarget;
+        const start = input.selectionStart ?? 0;
+        const end = input.selectionEnd ?? 0;
+        handleValueChange(rowId, input.value.slice(0, start) + cleaned + input.value.slice(end));
       }
       notify({
         type: "info",
         title: "Pasted text normalized",
-        message: "Quotation marks and surrounding whitespace were cleaned up.",
+        message: "Quotation marks, dashes, and surrounding whitespace were cleaned up.",
         transient: true,
       });
     },
