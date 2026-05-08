@@ -89,6 +89,7 @@ describe("EventsContent — disposed guard", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(mockSetEvents).not.toHaveBeenCalled();
+    expect(mockUnsubscribe).toHaveBeenCalledTimes(1);
   });
 
   it("calls setEvents when getEvents() resolves while mounted", async () => {
@@ -115,6 +116,7 @@ describe("EventsContent — disposed guard", () => {
     ]);
 
     expect(mockAddEvents).not.toHaveBeenCalled();
+    expect(mockUnsubscribe).toHaveBeenCalledTimes(1);
   });
 
   it("calls addEvents when onEventBatch fires while mounted", async () => {
