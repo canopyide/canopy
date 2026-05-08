@@ -39,6 +39,7 @@ describe("ActionPaletteItem", () => {
     render(
       <ActionPaletteItem
         item={makeItem({ enabled: true })}
+        index={0}
         isSelected={false}
         onSelect={onSelect}
       />
@@ -53,6 +54,7 @@ describe("ActionPaletteItem", () => {
     render(
       <ActionPaletteItem
         item={makeItem({ enabled: false, disabledReason: "No focused terminal" })}
+        index={0}
         isSelected={false}
         onSelect={onSelect}
       />
@@ -70,6 +72,7 @@ describe("ActionPaletteItem", () => {
     const { container } = render(
       <ActionPaletteItem
         item={makeItem({ enabled: false })}
+        index={0}
         isSelected={false}
         onSelect={onSelect}
       />
@@ -84,6 +87,7 @@ describe("ActionPaletteItem", () => {
     const { container } = render(
       <ActionPaletteItem
         item={makeItem({ enabled: true, disabledReason: "Should not show" })}
+        index={0}
         isSelected={false}
         onSelect={onSelect}
       />
@@ -98,6 +102,7 @@ describe("ActionPaletteItem", () => {
     render(
       <ActionPaletteItem
         item={makeItem({ keybinding: "⌘K" })}
+        index={0}
         isSelected={false}
         onSelect={onSelect}
       />
@@ -108,7 +113,7 @@ describe("ActionPaletteItem", () => {
 
   it("applies selected styling with aria-selected and accent indicator", () => {
     const { container } = render(
-      <ActionPaletteItem item={makeItem()} isSelected={true} onSelect={onSelect} />
+      <ActionPaletteItem item={makeItem()} index={0} isSelected={true} onSelect={onSelect} />
     );
 
     const button = container.querySelector("button");
@@ -122,10 +127,10 @@ describe("ActionPaletteItem", () => {
 
   it("does not branch styling on isSelected — selection is purely aria-driven", () => {
     const { container: selectedContainer } = render(
-      <ActionPaletteItem item={makeItem()} isSelected={true} onSelect={onSelect} />
+      <ActionPaletteItem item={makeItem()} index={0} isSelected={true} onSelect={onSelect} />
     );
     const { container: unselectedContainer } = render(
-      <ActionPaletteItem item={makeItem()} isSelected={false} onSelect={onSelect} />
+      <ActionPaletteItem item={makeItem()} index={0} isSelected={false} onSelect={onSelect} />
     );
 
     const selectedClass = selectedContainer.querySelector("button")?.className;
@@ -138,6 +143,7 @@ describe("ActionPaletteItem", () => {
     const { container } = render(
       <ActionPaletteItem
         item={makeItem({ keybinding: "⌘K" })}
+        index={0}
         isSelected={true}
         onSelect={onSelect}
       />
@@ -149,29 +155,44 @@ describe("ActionPaletteItem", () => {
     expect(container.querySelector("button")?.className).toContain("group");
   });
 
-  it("calls onHover when the pointer moves over the item", () => {
-    const onHover = vi.fn();
+  it("calls onHoverIndex with index when pointer moves over the item", () => {
+    const onHoverIndex = vi.fn();
     const { container } = render(
       <ActionPaletteItem
         item={makeItem()}
+        index={3}
         isSelected={false}
         onSelect={onSelect}
-        onHover={onHover}
+        onHoverIndex={onHoverIndex}
       />
     );
 
     const button = container.querySelector("button");
     expect(button).toBeTruthy();
     fireEvent.pointerMove(button!);
-    expect(onHover).toHaveBeenCalledTimes(1);
+    expect(onHoverIndex).toHaveBeenCalledTimes(1);
+    expect(onHoverIndex).toHaveBeenCalledWith(3);
   });
 
-  it("does not throw when onHover is omitted", () => {
+  it("does not throw when onHoverIndex is omitted", () => {
     const { container } = render(
-      <ActionPaletteItem item={makeItem()} isSelected={false} onSelect={onSelect} />
+      <ActionPaletteItem item={makeItem()} index={0} isSelected={false} onSelect={onSelect} />
     );
 
     const button = container.querySelector("button");
     expect(() => fireEvent.pointerMove(button!)).not.toThrow();
+  });
+
+  it("calls onSelect when an enabled item is clicked", () => {
+    const item = makeItem({ enabled: true });
+    const { container } = render(
+      <ActionPaletteItem item={item} index={0} isSelected={false} onSelect={onSelect} />
+    );
+
+    const button = container.querySelector("button");
+    expect(button).toBeTruthy();
+    fireEvent.click(button!);
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith(item);
   });
 });

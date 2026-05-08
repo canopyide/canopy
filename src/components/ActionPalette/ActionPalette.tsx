@@ -72,9 +72,10 @@ export function ActionPalette({
         <ActionPaletteItem
           key={item.id}
           item={item}
+          index={index}
           isSelected={isSelected}
           onSelect={handleSelect}
-          onHover={() => onHoverIndex(index)}
+          onHoverIndex={onHoverIndex}
         />
       )}
       label="Actions"
@@ -84,17 +85,12 @@ export function ActionPalette({
       searchAriaLabel="Search actions"
       listId="action-palette-list"
       itemIdPrefix="action-option"
-      emptyMessage="No recently used actions"
+      emptyMessage="Type to search actions"
       totalResults={totalResults}
       beforeList={
         isShowingRecentlyUsed ? (
           <div className="px-3 pt-2 pb-1 text-xs text-daintree-text/40">Recently used</div>
         ) : null
-      }
-      emptyContent={
-        <p className="mt-2 text-xs text-daintree-text/40">
-          Actions depend on the focused panel and current context.
-        </p>
       }
     />
   );
