@@ -631,7 +631,11 @@ export function GitHubResourceList({
             <PopoverTrigger asChild>
               <button
                 type="button"
-                aria-label={`Sort ${type === "issue" ? "issues" : "pull requests"}`}
+                aria-label={
+                  sortOrder === "created"
+                    ? `Sort ${type === "issue" ? "issues" : "pull requests"}`
+                    : `Sort ${type === "issue" ? "issues" : "pull requests"}, sorted by recently updated`
+                }
                 aria-haspopup="dialog"
                 aria-expanded={sortPopoverOpen}
                 className={cn(
@@ -786,6 +790,7 @@ export function GitHubResourceList({
                   const isPrev = e.key === "ArrowLeft" || e.key === "ArrowUp";
                   if (!isNext && !isPrev) return;
                   e.preventDefault();
+                  e.stopPropagation();
                   const delta = isNext ? 1 : -1;
                   const nextIdx = (idx + delta + stateTabs.length) % stateTabs.length;
                   const nextTab = stateTabs[nextIdx]!;

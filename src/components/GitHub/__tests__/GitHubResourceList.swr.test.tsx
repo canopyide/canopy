@@ -1778,7 +1778,7 @@ describe("GitHubResourceList polish (#7202)", () => {
     expect(closedRadio.getAttribute("aria-checked")).toBe("false");
     expect(closedRadio.tabIndex).toBe(-1);
 
-    // ArrowRight on the active radio moves checked state and focus to the next.
+    // ArrowRight on the active radio moves checked state, tabindex, and focus to the next.
     act(() => {
       openRadio.focus();
       openRadio.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
@@ -1788,7 +1788,44 @@ describe("GitHubResourceList polish (#7202)", () => {
       const updated = group.querySelectorAll<HTMLButtonElement>('[role="radio"]');
       expect(updated[1]!.getAttribute("aria-checked")).toBe("true");
       expect(updated[0]!.getAttribute("aria-checked")).toBe("false");
+      expect(updated[1]!.tabIndex).toBe(0);
+      expect(updated[0]!.tabIndex).toBe(-1);
+      expect(document.activeElement).toBe(updated[1]);
     });
+  });
+
+  it("sort popover ArrowDown moves checked + focus to the next radio", async () => {
+    mockListIssues.mockResolvedValue(makeResponse([makeIssue(1)]));
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    const sortButton = await screen.findByRole("button", { name: /^sort/i });
+    act(() => {
+      sortButton.click();
+    });
+
+    const newest = await screen.findByRole("radio", { name: /newest/i });
+    expect(newest.getAttribute("aria-checked")).toBe("true");
+
+    act(() => {
+      newest.focus();
+      newest.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    });
+
+    await waitFor(() => {
+      const recent = screen.getByRole("radio", { name: /recently updated/i });
+      expect(recent.getAttribute("aria-checked")).toBe("true");
+      expect(document.activeElement).toBe(recent);
+    });
+  });
+
+  it("sort trigger has no accent dot on the default sort", async () => {
+    mockListIssues.mockResolvedValue(makeResponse([makeIssue(1)]));
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    const sortButton = await screen.findByRole("button", { name: /^sort/i });
+    expect(sortButton.querySelector("span.bg-status-info")).toBeNull();
   });
 
   it("sort popover trigger reflects open state via aria-expanded", async () => {
