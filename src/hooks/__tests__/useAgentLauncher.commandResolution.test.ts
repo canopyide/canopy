@@ -19,15 +19,33 @@ describe("resolveAgentLaunchBaseCommand", () => {
   });
 
   it("quotes resolved paths that need shell escaping", () => {
-    // Shell-quoting uses single quotes on Unix, double quotes on Windows
-    // (cmd.exe), to match the surrounding spawn shell.
-    const q = process.platform === "win32" ? '"' : "'";
     expect(
       resolveAgentLaunchBaseCommand(
         "claude",
-        detail({ resolvedPath: "/tmp/Daintree Test/bin/claude" })
+        detail({ resolvedPath: "/tmp/Daintree Test/bin/claude" }),
+        "posix"
       )
-    ).toBe(`${q}/tmp/Daintree Test/bin/claude${q}`);
+    ).toBe("'/tmp/Daintree Test/bin/claude'");
+  });
+
+  it("uses PowerShell call syntax for resolved Windows executable paths", () => {
+    expect(
+      resolveAgentLaunchBaseCommand(
+        "claude",
+        detail({ resolvedPath: String.raw`C:\npm\prefix\claude.cmd` }),
+        "windows"
+      )
+    ).toBe(String.raw`& 'C:\npm\prefix\claude.cmd'`);
+  });
+
+  it("escapes single quotes in resolved Windows executable paths", () => {
+    expect(
+      resolveAgentLaunchBaseCommand(
+        "claude",
+        detail({ resolvedPath: String.raw`C:\Tools\Daintree's Bin\claude.cmd` }),
+        "windows"
+      )
+    ).toBe(String.raw`& 'C:\Tools\Daintree''s Bin\claude.cmd'`);
   });
 
   it("falls back to the registry command when the detail is missing or not ready", () => {

@@ -21,7 +21,7 @@ import {
   resolveEffectivePresetId,
 } from "@shared/types";
 import { isAgentLaunchable } from "@shared/utils/agentAvailability";
-import { escapeShellArgOptional } from "@shared/utils/shellEscape";
+import { escapeShellArgOptional, isWindows } from "@shared/utils/shellEscape";
 import {
   getAgentConfig,
   isRegisteredAgent,
@@ -32,6 +32,10 @@ import {
 import type { AgentCliDetail } from "@shared/types/ipc";
 
 const CLIPBOARD_DIR_NAME = "daintree-clipboard";
+
+function escapePowerShellSingleQuoted(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
 
 export interface LaunchAgentOptions {
   location?: AddPanelOptions["location"];
@@ -86,7 +90,8 @@ export interface UseAgentLauncherReturn {
 
 export function resolveAgentLaunchBaseCommand(
   registryCommand: string,
-  detail: AgentCliDetail | undefined
+  detail: AgentCliDetail | undefined,
+  platform?: "posix" | "windows"
 ): string {
   const resolvedPath =
     detail &&
@@ -95,7 +100,14 @@ export function resolveAgentLaunchBaseCommand(
     detail.state !== "installed"
       ? detail.resolvedPath?.trim()
       : undefined;
-  return resolvedPath ? escapeShellArgOptional(resolvedPath) : registryCommand;
+  if (!resolvedPath) return registryCommand;
+
+  const useWindows = platform ? platform === "windows" : isWindows();
+  if (useWindows) {
+    return `& ${escapePowerShellSingleQuoted(resolvedPath)}`;
+  }
+
+  return escapeShellArgOptional(resolvedPath, "posix");
 }
 
 async function getCurrentLaunchCliDetail(agentId: string): Promise<AgentCliDetail | undefined> {
