@@ -48,8 +48,8 @@ test.describe.serial("Core: PTY Resilience", () => {
     const panel = getFirstGridPanel(window);
     await expect(panel).toBeVisible({ timeout: T_LONG });
 
-    // Wait for shell prompt to be ready
-    await window.waitForTimeout(2000);
+    // Wait for shell prompt to be ready (fixture name appears in cwd prompt)
+    await waitForTerminalText(panel, "pty-resilience", T_LONG);
 
     // Extract PTY PID
     const ptyPid = await getPtyPid(window, panel);
@@ -130,8 +130,8 @@ test.describe.serial("Core: PTY Resilience", () => {
       const panel = getFirstGridPanel(window);
       await expect(panel).toBeVisible({ timeout: T_LONG });
 
-      // Wait for shell to be ready (prompt char varies by shell)
-      await window.waitForTimeout(2000);
+      // Wait for shell to be ready (fixture name appears in cwd prompt)
+      await waitForTerminalText(panel, "pty-resilience", T_LONG);
 
       // Close panel
       const closeBtn = panel.locator(SEL.panel.close);

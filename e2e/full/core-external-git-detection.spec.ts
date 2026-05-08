@@ -54,8 +54,10 @@ test.describe.serial("Core: External Git Detection", () => {
     const { window } = ctx;
     const mainCard = window.locator(SEL.worktree.mainCard);
 
-    // Pause so the monitor's self-trigger cooldown (1s) expires
-    await window.waitForTimeout(2000);
+    // Pause so the monitor's self-trigger cooldown (GIT_WATCH_SELF_TRIGGER_COOLDOWN_MS = 1000ms)
+    // expires. There is no observable signal for cooldown expiry — this fixed
+    // wait is required, with a 100ms buffer over the cooldown constant.
+    await window.waitForTimeout(1100);
 
     writeFileSync(path.join(fixtureDir, "external-change.txt"), "hello\n");
 
@@ -71,8 +73,10 @@ test.describe.serial("Core: External Git Detection", () => {
     const { window } = ctx;
     const mainCard = window.locator(SEL.worktree.mainCard);
 
-    // Pause so the monitor's self-trigger cooldown (1s) expires
-    await window.waitForTimeout(2000);
+    // Pause so the monitor's self-trigger cooldown (GIT_WATCH_SELF_TRIGGER_COOLDOWN_MS = 1000ms)
+    // expires. There is no observable signal for cooldown expiry — this fixed
+    // wait is required, with a 100ms buffer over the cooldown constant.
+    await window.waitForTimeout(1100);
 
     execSync('git add -A && git commit -m "external-commit"', {
       cwd: fixtureDir,
