@@ -584,11 +584,11 @@ describe("WelcomeScreen", () => {
       name: /open your project|ask ai to help with your code|start a parallel task/i,
     });
     // First incomplete item ("Open your project") gets aria-current
-    expect(buttons[0].getAttribute("aria-current")).toBe("step");
+    expect(buttons[0]!.getAttribute("aria-current")).toBe("step");
     // Second incomplete item does not
-    expect(buttons[1].getAttribute("aria-current")).toBeNull();
+    expect(buttons[1]!.getAttribute("aria-current")).toBeNull();
     // Third incomplete item does not
-    expect(buttons[2].getAttribute("aria-current")).toBeNull();
+    expect(buttons[2]!.getAttribute("aria-current")).toBeNull();
   });
 
   it("skips completed items when assigning aria-current=step", () => {
@@ -603,8 +603,8 @@ describe("WelcomeScreen", () => {
     const buttons = screen.getAllByRole("button", {
       name: /ask ai to help with your code|start a parallel task/i,
     });
-    expect(buttons[0].getAttribute("aria-current")).toBe("step");
-    expect(buttons[1].getAttribute("aria-current")).toBeNull();
+    expect(buttons[0]!.getAttribute("aria-current")).toBe("step");
+    expect(buttons[1]!.getAttribute("aria-current")).toBeNull();
   });
 
   // --- line-through ---
@@ -643,7 +643,7 @@ describe("WelcomeScreen", () => {
     expect(screen.getByText("Keyboard Shortcuts")).toBeTruthy();
     const kbdElements = document.querySelectorAll("kbd");
     expect(kbdElements.length).toBe(1);
-    expect(kbdElements[0].textContent).toBe("⌘N");
+    expect(kbdElements[0]!.textContent).toBe("⌘N");
   });
 
   // --- Quick Actions ---
