@@ -87,6 +87,11 @@ import { SettingsFlushProvider, SettingsFlushContext } from "./SettingsFlushRegi
 let rememberedTab: SettingsTab = "general";
 let rememberedProjectTab: SettingsTab = "project:general";
 
+// How long the `settings-highlight` pulse stays on the scrolled-to section
+// before the class is removed. Long enough to read, short enough not to draw
+// attention after the user has oriented.
+const SETTINGS_HIGHLIGHT_DECAY_MS = 1500;
+
 export interface SettingsNavTarget {
   tab: SettingsTab;
   subtab?: string;
@@ -478,41 +483,39 @@ function SettingsDialogInner({
 
   const tablistRef = useRef<HTMLDivElement>(null);
 
-  const handleTablistKeyDown = useCallback(
-    (e: ReactKeyboardEvent<HTMLDivElement>) => {
-      const container = tablistRef.current;
-      if (!container) return;
+  const handleTablistKeyDown = useCallback((e: ReactKeyboardEvent<HTMLDivElement>) => {
+    const container = tablistRef.current;
+    if (!container) return;
 
-      const tabs = Array.from(container.querySelectorAll<HTMLElement>('[role="tab"]'));
-      const focusedIndex = tabs.indexOf(document.activeElement as HTMLElement);
-      if (focusedIndex === -1) return;
+    const tabs = Array.from(container.querySelectorAll<HTMLElement>('[role="tab"]'));
+    const focusedIndex = tabs.indexOf(document.activeElement as HTMLElement);
+    if (focusedIndex === -1) return;
 
-      let nextIndex: number | null = null;
+    let nextIndex: number | null = null;
 
-      switch (e.key) {
-        case "ArrowDown":
-          nextIndex = (focusedIndex + 1) % tabs.length;
-          break;
-        case "ArrowUp":
-          nextIndex = (focusedIndex - 1 + tabs.length) % tabs.length;
-          break;
-        case "Home":
-          nextIndex = 0;
-          break;
-        case "End":
-          nextIndex = tabs.length - 1;
-          break;
-        default:
-          return;
-      }
+    switch (e.key) {
+      case "ArrowDown":
+        nextIndex = (focusedIndex + 1) % tabs.length;
+        break;
+      case "ArrowUp":
+        nextIndex = (focusedIndex - 1 + tabs.length) % tabs.length;
+        break;
+      case "Home":
+        nextIndex = 0;
+        break;
+      case "End":
+        nextIndex = tabs.length - 1;
+        break;
+      default:
+        return;
+    }
 
-      e.preventDefault();
-      tabs[nextIndex]!.focus();
-      const tabId = tabs[nextIndex]!.dataset.tab as SettingsTab | undefined;
-      if (tabId) handleNavSelect(tabId);
-    },
-    [handleNavSelect]
-  );
+    e.preventDefault();
+    // Manual activation: arrow keys move focus only. Native <button role="tab">
+    // already fires onClick on Enter/Space, so the existing onSelect handler
+    // covers activation without an explicit keydown branch here.
+    tabs[nextIndex]!.focus();
+  }, []);
 
   const tabTitles: Record<SettingsTab, string> = {
     ...globalTabTitles,
@@ -1210,7 +1213,7 @@ export function scrollAndHighlightSettingsSection(sectionId: string): boolean {
   el.scrollIntoView({ behavior: "instant", block: "start" });
   el.querySelector<HTMLInputElement>("input")?.focus({ preventScroll: true });
   el.classList.add("settings-highlight");
-  setTimeout(() => el.classList.remove("settings-highlight"), 1500);
+  setTimeout(() => el.classList.remove("settings-highlight"), SETTINGS_HIGHLIGHT_DECAY_MS);
   return true;
 }
 
@@ -1313,7 +1316,8 @@ function NavItem({
               "absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full",
               hasError ? "bg-status-warning" : "bg-state-modified"
             )}
-            title={hasError ? "Contains validation errors" : "Modified from default"}
+            role="img"
+            aria-label={hasError ? "Contains validation errors" : "Modified from default"}
           />
         )}
       </span>

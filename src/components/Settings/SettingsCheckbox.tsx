@@ -31,8 +31,8 @@ export function SettingsCheckbox({
   const descriptionId = useId();
   const errorId = useId();
 
-  const describedBy = error ? errorId : descriptionId;
   const isError = error !== undefined && error !== "";
+  const describedBy = [isError ? errorId : null, descriptionId].filter(Boolean).join(" ");
 
   const scopeBadge = scope ? (
     <span
@@ -90,11 +90,9 @@ export function SettingsCheckbox({
             {label}
           </span>
           {scopeBadge}
-          {!isError && (
-            <p id={descriptionId} className="text-xs text-text-muted mt-0.5 select-text">
-              {description}
-            </p>
-          )}
+          <p id={descriptionId} className="text-xs text-text-muted mt-0.5 select-text">
+            {description}
+          </p>
           {isError && (
             <p id={errorId} className="text-xs text-status-error mt-0.5">
               {error}
