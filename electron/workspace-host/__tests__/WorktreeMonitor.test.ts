@@ -488,7 +488,7 @@ describe("WorktreeMonitor", () => {
       expect(capturedWatcherOptions).toBeDefined();
       expect(capturedWatcherOptions).toMatchObject({
         watchWorktree: true,
-        worktreeMinDebounceMs: 150,
+        worktreeMinDebounceMs: 250,
         worktreeMaxDebounceMs: 800,
         worktreeMaxWaitMs: 1500,
       });
@@ -543,7 +543,7 @@ describe("WorktreeMonitor", () => {
       monitor.stop();
     });
 
-    it("isCurrent flip true→false downgrades watcher to git-only immediately", async () => {
+    it("isCurrent flip true→false defers downgrade by the settle delay", async () => {
       mockWatcherStartResult = true;
       mockGetWorktreeChangesWithStats.mockResolvedValue({
         worktreeId: "/test/worktree",
@@ -562,8 +562,43 @@ describe("WorktreeMonitor", () => {
 
       monitor.isCurrent = false;
 
+      // No synchronous downgrade — the recursive watcher is preserved while
+      // the settle timer runs.
+      expect(capturedWatcherOptionsHistory.length).toBe(startsBeforeFlip);
+
+      // After the 3s settle delay the controller rebuilds in git-only mode.
+      await vi.advanceTimersByTimeAsync(3_000);
       expect(capturedWatcherOptionsHistory.length).toBe(startsBeforeFlip + 1);
       expect(capturedWatcherOptionsHistory.at(-1)).toMatchObject({ watchWorktree: false });
+
+      monitor.stop();
+    });
+
+    it("rapid isCurrent toggle cancels the deferred downgrade", async () => {
+      mockWatcherStartResult = true;
+      mockGetWorktreeChangesWithStats.mockResolvedValue({
+        worktreeId: "/test/worktree",
+        rootPath: "/test",
+        changes: [],
+        changedFileCount: 0,
+        lastUpdated: Date.now(),
+      });
+
+      const callbacks = makeCallbacks();
+      const monitor = new WorktreeMonitor(ACTIVE_WORKTREE, WATCH_CONFIG, callbacks, "main");
+      await monitor.start();
+
+      const startsBeforeFlip = capturedWatcherOptionsHistory.length;
+
+      monitor.isCurrent = false;
+      // Re-focus before the settle timer fires.
+      await vi.advanceTimersByTimeAsync(1_000);
+      monitor.isCurrent = true;
+
+      // Let the original settle window elapse — no rebuild happened.
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(capturedWatcherOptionsHistory.length).toBe(startsBeforeFlip);
+      expect(capturedWatcherOptionsHistory.at(-1)).toMatchObject({ watchWorktree: true });
 
       monitor.stop();
     });
