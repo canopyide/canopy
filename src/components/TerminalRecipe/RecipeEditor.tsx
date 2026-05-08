@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import type { TerminalRecipe, RecipeTerminal, RecipeTerminalType } from "@/types";
 import { Button } from "@/components/ui/button";
 import { AppDialog } from "@/components/ui/AppDialog";
-import { useRecipeStore } from "@/store/recipeStore";
+import { useRecipeStore, MAX_TERMINALS_PER_RECIPE } from "@/store/recipeStore";
 import { useProjectStore } from "@/store/projectStore";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { isInRepoRecipeId } from "@shared/utils/recipeFilename";
@@ -70,6 +70,8 @@ const TYPE_LABELS: Record<RecipeTerminalType, string> = {
   opencode: "OpenCode",
   "dev-preview": "Dev Server",
 };
+
+const FAILURE_PRESERVE_CAPTION = "Failures always preserve terminal for debugging";
 
 export function RecipeEditor({
   recipe,
@@ -158,8 +160,8 @@ export function RecipeEditor({
   }, [isOpen]);
 
   const handleAddTerminal = () => {
-    if (terminals.length >= 10) {
-      setError("Maximum of 10 terminals per recipe");
+    if (terminals.length >= MAX_TERMINALS_PER_RECIPE) {
+      setError(`Maximum of ${MAX_TERMINALS_PER_RECIPE} terminals per recipe`);
       return;
     }
     setTerminals([...terminals, { type: "terminal", title: "", command: "", env: {} }]);
@@ -350,9 +352,13 @@ export function RecipeEditor({
         <div className="mb-4">
           <div className="flex items-center justify-between mb-2">
             <label className="block text-sm font-medium text-daintree-text">
-              Terminals ({terminals.length}/10)
+              Terminals ({terminals.length}/{MAX_TERMINALS_PER_RECIPE})
             </label>
-            <Button size="sm" onClick={handleAddTerminal} disabled={terminals.length >= 10}>
+            <Button
+              size="sm"
+              onClick={handleAddTerminal}
+              disabled={terminals.length >= MAX_TERMINALS_PER_RECIPE}
+            >
               + Add Terminal
             </Button>
           </div>
@@ -373,7 +379,7 @@ export function RecipeEditor({
                     </label>
                     <select
                       id={`terminal-type-${index}`}
-                      value={undefined}
+                      value={terminal.type}
                       onChange={(e) => {
                         const newType = e.target.value as RecipeTerminalType;
                         setTerminals((prev) => {
@@ -486,7 +492,7 @@ export function RecipeEditor({
                         id={`terminal-exit-behavior-help-${index}`}
                         className="text-xs text-text-muted mt-1 select-text"
                       >
-                        Failures always preserve terminal for debugging
+                        {FAILURE_PRESERVE_CAPTION}
                       </p>
                     </div>
                   </>
@@ -575,7 +581,7 @@ export function RecipeEditor({
                         id={`terminal-agent-exit-behavior-help-${index}`}
                         className="text-xs text-text-muted mt-1 select-text"
                       >
-                        Failures always preserve terminal for debugging
+                        {FAILURE_PRESERVE_CAPTION}
                       </p>
                     </div>
                   </>
@@ -634,7 +640,7 @@ export function RecipeEditor({
                         id={`terminal-dev-exit-behavior-help-${index}`}
                         className="text-xs text-text-muted mt-1 select-text"
                       >
-                        Failures always preserve terminal for debugging
+                        {FAILURE_PRESERVE_CAPTION}
                       </p>
                     </div>
                   </>

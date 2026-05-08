@@ -70,7 +70,7 @@ export function RecipeManager({
   const [importScope, setImportScope] = useState<"global" | "project">("project");
   const [importJson, setImportJson] = useState("");
   const [importError, setImportError] = useState<string | null>(null);
-  const exportTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const exportTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
@@ -460,7 +460,7 @@ export function RecipeManager({
 
       <ConfirmDialog
         isOpen={recipeToDeleteAfterSave !== null}
-        title="Delete original?"
+        title={`Delete original '${globalRecipes.find((r) => r.id === recipeToDeleteAfterSave)?.name ?? projectRecipes.find((r) => r.id === recipeToDeleteAfterSave)?.name ?? inRepoRecipes.find((r) => r.id === recipeToDeleteAfterSave)?.name ?? "recipe"}'?`}
         description="The recipe has been saved to the repository. The original copy on this machine will be permanently removed."
         confirmLabel="Delete original"
         cancelLabel="Keep both"
