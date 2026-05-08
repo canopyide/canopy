@@ -162,8 +162,7 @@ export function useWebviewEvents({
       }
       setIsLoading(false);
       const errorCode = event.errorCode;
-      const isCertError =
-        errorCode <= ERR_CERT_RANGE_END && errorCode >= ERR_CERT_RANGE_START;
+      const isCertError = errorCode <= ERR_CERT_RANGE_END && errorCode >= ERR_CERT_RANGE_START;
       if (errorCode === ERR_CONNECTION_REFUSED && isInitialRestoredLoadRef.current) {
         setLoadError({
           kind: "network",
