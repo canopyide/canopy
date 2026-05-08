@@ -15,7 +15,7 @@ interface GitInitDialogProps {
   onCancel: () => void;
 }
 
-const AUTO_CLOSE_DELAY_MS = 800;
+const AUTO_CLOSE_DELAY_MS = 2000;
 
 export function GitInitDialog({ isOpen, directoryPath, onSuccess, onCancel }: GitInitDialogProps) {
   const [progressEvents, setProgressEvents] = useState<GitInitProgressEvent[]>([]);

@@ -134,6 +134,8 @@ describe("GitInitDialog", () => {
       });
     });
 
-    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+    // Auto-close runs after AUTO_CLOSE_DELAY_MS (2s) — extend the waitFor
+    // timeout so the assertion outlives the dialog's read-the-log delay.
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1), { timeout: 3000 });
   });
 });

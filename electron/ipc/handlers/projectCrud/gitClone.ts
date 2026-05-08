@@ -128,7 +128,12 @@ export function registerGitCloneHandlers(): () => void {
         .then(() => true)
         .catch(() => false);
       if (partialExists) {
-        await fs.promises.rm(targetPath, { recursive: true, force: true }).catch(() => {});
+        await fs.promises.rm(targetPath, { recursive: true, force: true }).catch((rmErr) => {
+          // Don't escalate — the original clone error is what the user sees.
+          // But surface this in logs so partial-cleanup failures (e.g. Windows
+          // antivirus locks) are diagnosable instead of silently swallowed.
+          console.warn("[gitClone] Failed to clean up partial clone at", targetPath, rmErr);
+        });
       }
 
       if (wasCancelled) {

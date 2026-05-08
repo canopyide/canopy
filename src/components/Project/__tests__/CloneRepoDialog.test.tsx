@@ -206,7 +206,11 @@ describe("CloneRepoDialog", () => {
       expect(screen.getByText("Open Project")).toBeTruthy();
     });
 
-    await waitFor(() => expect(onSuccess).toHaveBeenCalledWith("/tmp/my-repo"));
+    // Auto-close runs after AUTO_CLOSE_DELAY_MS (2s) — extend the waitFor
+    // timeout so the assertion outlives the dialog's read-the-log delay.
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledWith("/tmp/my-repo"), {
+      timeout: 3000,
+    });
   });
 
   it("shows error and retry button on clone failure", async () => {
@@ -329,7 +333,7 @@ describe("CloneRepoDialog", () => {
     );
   });
 
-  it("Cancel button calls cancelClone during active clone", async () => {
+  it("Stop clone button calls cancelClone during active clone", async () => {
     cancelCloneMock.mockResolvedValue(undefined);
     cloneRepoMock.mockImplementation(() => new Promise(() => {}));
 
@@ -348,11 +352,14 @@ describe("CloneRepoDialog", () => {
       fireEvent.click(cloneBtn);
     });
 
-    const cancelBtn = screen.getByText("Cancel");
-    expect((cancelBtn as HTMLButtonElement).disabled).toBe(false);
+    // While cloning, the secondary button label switches from "Cancel" (close
+    // dialog) to "Stop clone" (abort in-flight work) to disambiguate intent.
+    expect(screen.queryByText("Cancel")).toBeNull();
+    const stopBtn = screen.getByText("Stop clone");
+    expect((stopBtn as HTMLButtonElement).disabled).toBe(false);
 
     await act(async () => {
-      fireEvent.click(cancelBtn);
+      fireEvent.click(stopBtn);
     });
 
     expect(cancelCloneMock).toHaveBeenCalled();
@@ -381,6 +388,246 @@ describe("CloneRepoDialog", () => {
     await waitFor(() => {
       expect(screen.queryByText("Clone Failed")).toBeNull();
     });
+  });
+
+  it("preserves Unicode characters in derived folder name", () => {
+    render(<CloneRepoDialog isOpen={true} onSuccess={vi.fn()} onCancel={vi.fn()} />);
+
+    const urlInput = screen.getByPlaceholderText("owner/repo or https://github.com/user/repo.git");
+    fireEvent.change(urlInput, { target: { value: "https://github.com/foo/café.git" } });
+
+    const inputs = screen.getAllByRole("textbox") as HTMLInputElement[];
+    const folderInput = inputs.find((i) => i.value === "café");
+    expect(folderInput).toBeDefined();
+  });
+
+  it("re-enables auto-derive when manually-edited folder name is cleared", () => {
+    render(<CloneRepoDialog isOpen={true} onSuccess={vi.fn()} onCancel={vi.fn()} />);
+
+    const urlInput = screen.getByPlaceholderText("owner/repo or https://github.com/user/repo.git");
+    fireEvent.change(urlInput, { target: { value: "https://github.com/user/first.git" } });
+
+    let inputs = screen.getAllByRole("textbox") as HTMLInputElement[];
+    let folderInput = inputs.find((i) => i.value === "first");
+    expect(folderInput).toBeDefined();
+
+    // Manually edit, then clear — clear should re-enable auto-derive.
+    fireEvent.change(folderInput!, { target: { value: "manual-name" } });
+    fireEvent.change(folderInput!, { target: { value: "" } });
+
+    // Now changing the URL should refill the folder name.
+    fireEvent.change(urlInput, { target: { value: "https://github.com/user/second.git" } });
+
+    inputs = screen.getAllByRole("textbox") as HTMLInputElement[];
+    folderInput = inputs.find((i) => i.value === "second");
+    expect(folderInput).toBeDefined();
+  });
+
+  it("submits clone when Enter is pressed in URL input", async () => {
+    cloneRepoMock.mockImplementation(() => new Promise(() => {}));
+
+    render(<CloneRepoDialog isOpen={true} onSuccess={vi.fn()} onCancel={vi.fn()} />);
+
+    const urlInput = screen.getByPlaceholderText("owner/repo or https://github.com/user/repo.git");
+    fireEvent.change(urlInput, { target: { value: "https://github.com/user/repo.git" } });
+
+    const browseBtn = screen.getByText("Browse");
+    await act(async () => {
+      fireEvent.click(browseBtn);
+    });
+
+    await act(async () => {
+      fireEvent.keyDown(urlInput, { key: "Enter" });
+    });
+
+    expect(cloneRepoMock).toHaveBeenCalledWith(
+      expect.objectContaining({ url: "https://github.com/user/repo.git" })
+    );
+  });
+
+  it("does not submit on Enter when form is invalid", async () => {
+    render(<CloneRepoDialog isOpen={true} onSuccess={vi.fn()} onCancel={vi.fn()} />);
+
+    const urlInput = screen.getByPlaceholderText("owner/repo or https://github.com/user/repo.git");
+    // No parent path picked yet — canClone is false.
+    fireEvent.change(urlInput, { target: { value: "https://github.com/user/repo.git" } });
+
+    await act(async () => {
+      fireEvent.keyDown(urlInput, { key: "Enter" });
+    });
+
+    expect(cloneRepoMock).not.toHaveBeenCalled();
+  });
+
+  it("dedup keeps distinct stages while collapsing repeats within a stage", async () => {
+    cloneRepoMock.mockImplementation(() => new Promise(() => {}));
+
+    render(<CloneRepoDialog isOpen={true} onSuccess={vi.fn()} onCancel={vi.fn()} />);
+
+    const urlInput = screen.getByPlaceholderText("owner/repo or https://github.com/user/repo.git");
+    fireEvent.change(urlInput, { target: { value: "https://github.com/user/repo.git" } });
+
+    const browseBtn = screen.getByText("Browse");
+    await act(async () => {
+      fireEvent.click(browseBtn);
+    });
+
+    const cloneBtn = screen.getByText("Clone");
+    await act(async () => {
+      fireEvent.click(cloneBtn);
+    });
+
+    await waitFor(() => expect(progressHandler).not.toBeNull());
+
+    act(() => {
+      progressHandler?.({
+        stage: "counting",
+        progress: 100,
+        message: "counting: 100%",
+        timestamp: Date.now(),
+      });
+      progressHandler?.({
+        stage: "receiving",
+        progress: 10,
+        message: "receiving: 10%",
+        timestamp: Date.now(),
+      });
+      progressHandler?.({
+        stage: "checkout",
+        progress: 0,
+        message: "checkout: 0%",
+        timestamp: Date.now(),
+      });
+      progressHandler?.({
+        stage: "receiving",
+        progress: 80,
+        message: "receiving: 80%",
+        timestamp: Date.now(),
+      });
+    });
+
+    // counting and checkout (one each) survive; receiving collapses to its
+    // latest value. A broken implementation that simply replaced the entire
+    // list with each new event would lose counting/checkout.
+    expect(screen.getByText("counting: 100%")).toBeTruthy();
+    expect(screen.getByText("checkout: 0%")).toBeTruthy();
+    expect(screen.queryByText("receiving: 10%")).toBeNull();
+    expect(screen.getByText("receiving: 80%")).toBeTruthy();
+  });
+
+  it("Enter retries after a failed clone (matches Retry button behavior)", async () => {
+    // First call rejects, second resolves — simulates the user pressing Enter
+    // again after seeing an error.
+    cloneRepoMock
+      .mockRejectedValueOnce(
+        Object.assign(new Error("Auth failed"), { name: "AppError", code: "INTERNAL" })
+      )
+      .mockImplementationOnce(() => new Promise(() => {}));
+
+    render(<CloneRepoDialog isOpen={true} onSuccess={vi.fn()} onCancel={vi.fn()} />);
+
+    const urlInput = screen.getByPlaceholderText("owner/repo or https://github.com/user/repo.git");
+    fireEvent.change(urlInput, { target: { value: "https://github.com/user/repo.git" } });
+
+    const browseBtn = screen.getByText("Browse");
+    await act(async () => {
+      fireEvent.click(browseBtn);
+    });
+
+    const cloneBtn = screen.getByText("Clone");
+    await act(async () => {
+      fireEvent.click(cloneBtn);
+    });
+
+    await waitFor(() => expect(screen.getByText("Clone Failed")).toBeTruthy());
+
+    // Press Enter — should fire a second clone attempt without requiring the
+    // user to click Retry, since the form fields are still valid.
+    await act(async () => {
+      fireEvent.keyDown(urlInput, { key: "Enter" });
+    });
+
+    expect(cloneRepoMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("renders cancelled stage with non-spinning icon", async () => {
+    cloneRepoMock.mockImplementation(() => new Promise(() => {}));
+
+    render(<CloneRepoDialog isOpen={true} onSuccess={vi.fn()} onCancel={vi.fn()} />);
+
+    const urlInput = screen.getByPlaceholderText("owner/repo or https://github.com/user/repo.git");
+    fireEvent.change(urlInput, { target: { value: "https://github.com/user/repo.git" } });
+
+    const browseBtn = screen.getByText("Browse");
+    await act(async () => {
+      fireEvent.click(browseBtn);
+    });
+
+    const cloneBtn = screen.getByText("Clone");
+    await act(async () => {
+      fireEvent.click(cloneBtn);
+    });
+
+    await waitFor(() => expect(progressHandler).not.toBeNull());
+
+    act(() => {
+      progressHandler?.({
+        stage: "receiving",
+        progress: 50,
+        message: "receiving: 50%",
+        timestamp: Date.now(),
+      });
+      progressHandler?.({
+        stage: "cancelled",
+        progress: 0,
+        message: "Clone cancelled",
+        timestamp: Date.now(),
+      });
+    });
+
+    // The cancelled message is visible alongside its specific (non-spinner)
+    // icon — confirms it doesn't fall through to the in-progress Spinner.
+    const cancelledRow = screen.getByText("Clone cancelled").closest("div");
+    expect(cancelledRow).toBeTruthy();
+    expect(cancelledRow!.querySelector('[data-testid="spinner"]')).toBeNull();
+  });
+
+  it("dedups progress events by stage so a single stage shows one row", async () => {
+    cloneRepoMock.mockImplementation(() => new Promise(() => {}));
+
+    render(<CloneRepoDialog isOpen={true} onSuccess={vi.fn()} onCancel={vi.fn()} />);
+
+    const urlInput = screen.getByPlaceholderText("owner/repo or https://github.com/user/repo.git");
+    fireEvent.change(urlInput, { target: { value: "https://github.com/user/repo.git" } });
+
+    const browseBtn = screen.getByText("Browse");
+    await act(async () => {
+      fireEvent.click(browseBtn);
+    });
+
+    const cloneBtn = screen.getByText("Clone");
+    await act(async () => {
+      fireEvent.click(cloneBtn);
+    });
+
+    await waitFor(() => expect(progressHandler).not.toBeNull());
+
+    act(() => {
+      for (let pct = 0; pct <= 100; pct += 10) {
+        progressHandler?.({
+          stage: "receiving",
+          progress: pct,
+          message: `receiving: ${pct}%`,
+          timestamp: Date.now(),
+        });
+      }
+    });
+
+    // Only the latest message for the `receiving` stage should remain — the
+    // earlier 10–90% rows are deduped out, leaving a single live row.
+    expect(screen.queryByText("receiving: 0%")).toBeNull();
+    expect(screen.queryByText("receiving: 50%")).toBeNull();
+    expect(screen.getByText("receiving: 100%")).toBeTruthy();
   });
 
   it("does not treat full URLs as owner/repo shorthand", async () => {
