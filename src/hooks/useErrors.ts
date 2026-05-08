@@ -127,7 +127,7 @@ export function useErrors() {
   const isPanelOpen = useErrorStore((state) => state.isPanelOpen);
   const addError = useErrorStore((state) => state.addError);
   const dismissError = useErrorStore((state) => state.dismissError);
-  const clearAll = useErrorStore((state) => state.clearAll);
+  const clearAll = useErrorStore((state) => state.reset);
   const removeError = useErrorStore((state) => state.removeError);
   const togglePanel = useErrorStore((state) => state.togglePanel);
   const setPanelOpen = useErrorStore((state) => state.setPanelOpen);

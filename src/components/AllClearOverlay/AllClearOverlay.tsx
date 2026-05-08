@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 
 export function AllClearOverlay() {
   const [visible, setVisible] = useState(false);
-  const safetyTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const cleanup = window.electron.terminal.onAllAgentsClear(() => {
