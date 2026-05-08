@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { useEscapeStack } from "@/hooks/useEscapeStack";
 import type { LogLevel, LogFilterOptions } from "@/types";
 
 interface LogFiltersProps {
@@ -32,6 +33,8 @@ export function LogFilters({
   const [searchValue, setSearchValue] = useState(filters.search || "");
   const [isSourcesOpen, setIsSourcesOpen] = useState(false);
   const sourcesRef = useRef<HTMLDivElement>(null);
+
+  useEscapeStack(isSourcesOpen, () => setIsSourcesOpen(false));
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -91,7 +94,7 @@ export function LogFilters({
     <div className="flex flex-wrap items-center gap-2 p-2 border-b border-daintree-border bg-daintree-sidebar/50">
       <div className="relative flex-1 min-w-[150px] max-w-[250px]">
         <input
-          type="text"
+          type="search"
           value={searchValue}
           onChange={(e) => setSearchValue(e.target.value)}
           placeholder="Search logs..."
@@ -99,7 +102,8 @@ export function LogFilters({
             "w-full px-2 py-1 text-xs rounded",
             "bg-daintree-bg border border-daintree-border",
             "text-daintree-text placeholder-daintree-text/40",
-            "focus:outline-hidden focus:border-status-info"
+            "focus:outline-hidden focus:border-status-info",
+            "[&::-webkit-search-cancel-button]:hidden"
           )}
         />
         {searchValue && (
@@ -127,6 +131,7 @@ export function LogFilters({
               size="xs"
               onClick={() => handleLevelToggle(level)}
               className={cn(isActive ? "bg-daintree-border font-medium" : "bg-daintree-bg/50", color)}
+              aria-pressed={isActive}
               aria-label={`${label}${count > 0 ? ` (${count})` : ""}`}
             >
               {label}
@@ -143,6 +148,7 @@ export function LogFilters({
             size="xs"
             onClick={() => setIsSourcesOpen(!isSourcesOpen)}
             aria-expanded={isSourcesOpen}
+            aria-haspopup="true"
           >
             Sources {filters.sources?.length ? <span className="tabular-nums">({filters.sources.length})</span> : ""}
           </Button>
@@ -166,6 +172,7 @@ export function LogFilters({
                       "w-full justify-start rounded-none",
                       isActive ? "text-status-info bg-status-info/10" : "text-daintree-text"
                     )}
+                    aria-pressed={isActive}
                   >
                     {isActive && "* "}
                     {source}

@@ -182,6 +182,9 @@ export function EventTimeline({
         itemContent={(_index, event) => (
           <EventRow event={event} isSelected={event.id === selectedId} onSelect={onSelectEvent} />
         )}
+        role="log"
+        aria-label="Event timeline"
+        aria-live="off"
         className="h-full"
       />
 

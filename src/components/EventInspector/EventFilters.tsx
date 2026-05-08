@@ -166,7 +166,7 @@ export function EventFilters({ events, filters, onFiltersChange, className }: Ev
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input
-            type="text"
+            type="search"
             value={searchInput}
             onChange={(e) => handleSearchChange(e.target.value)}
             placeholder="Search events..."
@@ -174,7 +174,8 @@ export function EventFilters({ events, filters, onFiltersChange, className }: Ev
               "w-full pl-9 pr-9 py-2 text-sm rounded-[var(--radius-md)]",
               "bg-muted/50 border border-transparent",
               "focus:bg-background focus:border-primary focus:outline-hidden",
-              "placeholder:text-muted-foreground"
+              "placeholder:text-muted-foreground",
+              "[&::-webkit-search-cancel-button]:hidden"
             )}
           />
           {searchInput && (
@@ -255,6 +256,7 @@ export function EventFilters({ events, filters, onFiltersChange, className }: Ev
                       ? config.color
                       : "bg-muted/30 text-muted-foreground border-transparent hover:bg-muted/50"
                   )}
+                  aria-pressed={isActive}
                 >
                   <span>{config.label}</span>
                   {count > 0 && (
