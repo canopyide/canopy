@@ -28,6 +28,10 @@ export function registerTerminalLifecycleActions(
         state.panelIds.find((id) => state.panelsById[id]?.location !== "trash");
       if (!targetId) return;
       state.trashPanel(targetId);
+      const nextId = usePanelStore.getState().focusedId;
+      if (nextId) {
+        terminalInstanceService.focus(nextId);
+      }
     },
   }));
 
