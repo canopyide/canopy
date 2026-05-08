@@ -257,6 +257,17 @@ function makeGettingStarted(
 describe("WelcomeScreen", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    getDisplayComboMock.mockImplementation((actionId: string) => {
+      const map: Record<string, string> = {
+        "panel.palette": "⌘N",
+        "nav.quickSwitcher": "⌘P",
+        "terminal.new": "⌘⌥T",
+        "action.palette.open": "⌘K",
+        "help.shortcuts": "⌘/",
+        "app.settings": "⌘,",
+      };
+      return map[actionId] ?? "";
+    });
     storeState = {
       projects: mockProjects,
       isLoading: false,
@@ -464,6 +475,60 @@ describe("WelcomeScreen", () => {
     expect(screen.getByText("4/5")).toBeTruthy();
   });
 
+  it("renders progress bar at correct width for 1/5, 2/5, and 4/5", () => {
+    agentDiscoveryState.loaded = true;
+    agentDiscoveryState.setupBannerDismissed = true;
+    agentDiscoveryState.welcomeCardDismissed = true;
+    cliAvailabilityState.hasRealData = false;
+
+    const scenarios = [
+      { state: allIncomplete, expected: "20%" },
+      { state: oneComplete, expected: "40%" },
+    ];
+    for (const { state, expected } of scenarios) {
+      const { unmount } = render(<WelcomeScreen gettingStarted={makeGettingStarted(state)} />);
+      const bar = document.querySelector(".bg-daintree-accent.rounded-full") as HTMLElement;
+      expect(bar?.style.width).toBe(expected);
+      unmount();
+    }
+  });
+
+  it("renders fourth checklist item 'Run two agents in parallel' as a button", () => {
+    agentDiscoveryState.loaded = true;
+    agentDiscoveryState.setupBannerDismissed = true;
+    agentDiscoveryState.welcomeCardDismissed = true;
+    cliAvailabilityState.hasRealData = false;
+
+    render(<WelcomeScreen gettingStarted={makeGettingStarted(allIncomplete)} />);
+
+    const btn = screen.getByRole("button", { name: /run two agents in parallel/i });
+    expect(btn).toBeTruthy();
+    fireEvent.click(btn);
+    expect(dispatchMock).toHaveBeenCalledWith("panel.palette", undefined, { source: "user" });
+  });
+
+  it("assigns aria-current=step to the only remaining incomplete item", () => {
+    agentDiscoveryState.loaded = true;
+    agentDiscoveryState.setupBannerDismissed = true;
+    agentDiscoveryState.welcomeCardDismissed = true;
+    cliAvailabilityState.hasRealData = false;
+
+    const onlyLastIncomplete: ChecklistState = {
+      dismissed: false,
+      celebrationShown: false,
+      items: {
+        openedProject: true,
+        launchedAgent: true,
+        createdWorktree: true,
+        ranSecondParallelAgent: false,
+      },
+    };
+    render(<WelcomeScreen gettingStarted={makeGettingStarted(onlyLastIncomplete)} />);
+
+    const btn = screen.getByRole("button", { name: /run two agents in parallel/i });
+    expect(btn.getAttribute("aria-current")).toBe("step");
+  });
+
   // --- Cold-start flash (agentSettings hydration) ---
 
   it("does not render welcome card when agentSettings is null", () => {
@@ -565,18 +630,6 @@ describe("WelcomeScreen", () => {
     render(<WelcomeScreen gettingStarted={makeGettingStarted()} />);
 
     expect(screen.queryByText("Keyboard Shortcuts")).toBeNull();
-    // Restore default mock behavior
-    getDisplayComboMock.mockImplementation((actionId: string) => {
-      const map: Record<string, string> = {
-        "panel.palette": "⌘N",
-        "nav.quickSwitcher": "⌘P",
-        "terminal.new": "⌘⌥T",
-        "action.palette.open": "⌘K",
-        "help.shortcuts": "⌘/",
-        "app.settings": "⌘,",
-      };
-      return map[actionId] ?? "";
-    });
   });
 
   it("renders Keyboard Shortcuts section when only one combo is available", () => {
@@ -591,19 +644,6 @@ describe("WelcomeScreen", () => {
     const kbdElements = document.querySelectorAll("kbd");
     expect(kbdElements.length).toBe(1);
     expect(kbdElements[0].textContent).toBe("⌘N");
-
-    // Restore default mock behavior
-    getDisplayComboMock.mockImplementation((actionId: string) => {
-      const map: Record<string, string> = {
-        "panel.palette": "⌘N",
-        "nav.quickSwitcher": "⌘P",
-        "terminal.new": "⌘⌥T",
-        "action.palette.open": "⌘K",
-        "help.shortcuts": "⌘/",
-        "app.settings": "⌘,",
-      };
-      return map[actionId] ?? "";
-    });
   });
 
   // --- Quick Actions ---
