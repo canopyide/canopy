@@ -14,7 +14,7 @@ export function PaletteStrip({ scheme }: { scheme: AppColorScheme }) {
     APP_THEME_PREVIEW_KEYS.sidebar,
   ] as const;
   return (
-    <div className="flex gap-0.5">
+    <div className="flex gap-0.5" aria-hidden="true">
       {keys.map((key) => (
         <div
           key={key}

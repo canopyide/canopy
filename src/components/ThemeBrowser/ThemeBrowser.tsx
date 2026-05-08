@@ -104,6 +104,16 @@ export function ThemeBrowser() {
   const setFollowSystem = useAppThemeStore((s) => s.setFollowSystem);
 
   const [query, setQuery] = useState("");
+
+  // Clear any pending keyboard-triggered announcement when the search query
+  // changes so a stale announcement from a pre-filter theme doesn't fire after
+  // the user has context-switched to filtering.
+  useEffect(() => {
+    if (announceTimerRef.current) {
+      clearTimeout(announceTimerRef.current);
+      announceTimerRef.current = null;
+    }
+  }, [query]);
   const [previewAnnouncement, setPreviewAnnouncement] = useState("");
   const [typeFilter, setTypeFilter] = useState<"dark" | "light">(() => {
     const committed = [...BUILT_IN_APP_SCHEMES, ...customSchemes].find(
@@ -115,6 +125,15 @@ export function ThemeBrowser() {
   const listRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
   const commitButtonRef = useRef<HTMLButtonElement>(null);
+  const announceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearPendingAnnouncement = useCallback(() => {
+    if (announceTimerRef.current) {
+      clearTimeout(announceTimerRef.current);
+      announceTimerRef.current = null;
+    }
+    setPreviewAnnouncement("");
+  }, []);
 
   const allSchemes = useMemo(() => [...BUILT_IN_APP_SCHEMES, ...customSchemes], [customSchemes]);
   const darkSchemes = useMemo(() => allSchemes.filter((s) => s.type !== "light"), [allSchemes]);
@@ -167,17 +186,26 @@ export function ThemeBrowser() {
       setPreviewSchemeId(null);
       injectSchemeToDOM(committed, { immediate: true });
     }
-    setPreviewAnnouncement("");
-  }, [setPreviewSchemeId]);
+    clearPendingAnnouncement();
+  }, [setPreviewSchemeId, clearPendingAnnouncement]);
 
   const handlePreview = useCallback(
-    (id: string) => {
-      // Click = intentional preview; no debounce (distinct from the hover
-      // preview in AppThemePicker which debounces at 300ms).
+    (id: string, debounceAnnounce?: boolean) => {
       const scheme = resolveAppTheme(id, useAppThemeStore.getState().customSchemes);
       setPreviewSchemeId(id);
       injectSchemeToDOM(scheme);
-      setPreviewAnnouncement(`Previewing: ${scheme.name}`);
+      if (debounceAnnounce) {
+        if (announceTimerRef.current) clearTimeout(announceTimerRef.current);
+        announceTimerRef.current = setTimeout(() => {
+          setPreviewAnnouncement(`Previewing: ${scheme.name}`);
+        }, 300);
+      } else {
+        if (announceTimerRef.current) {
+          clearTimeout(announceTimerRef.current);
+          announceTimerRef.current = null;
+        }
+        setPreviewAnnouncement(`Previewing: ${scheme.name}`);
+      }
     },
     [setPreviewSchemeId]
   );
@@ -200,7 +228,7 @@ export function ThemeBrowser() {
     // mutation callback would still see `previewSchemeId` in the store and
     // `injectSchemeToDOM` could be undone (see PR #5087).
     setPreviewSchemeId(null);
-    setPreviewAnnouncement("");
+    clearPendingAnnouncement();
 
     commitSchemeSelection(targetId);
     const scheme = resolveAppTheme(targetId, useAppThemeStore.getState().customSchemes);
@@ -225,6 +253,7 @@ export function ThemeBrowser() {
     selectedSchemeId,
     setFollowSystem,
     setPreviewSchemeId,
+    clearPendingAnnouncement,
   ]);
 
   const handleCancel = useCallback(() => {
@@ -254,6 +283,10 @@ export function ThemeBrowser() {
   // a safety net for close paths that bypass handleCancel/handleCommit.
   useEffect(() => {
     return () => {
+      if (announceTimerRef.current) {
+        clearTimeout(announceTimerRef.current);
+        announceTimerRef.current = null;
+      }
       const state = useAppThemeStore.getState();
       if (state.previewSchemeId !== null) {
         const committed = resolveAppTheme(state.selectedSchemeId, state.customSchemes);
@@ -276,8 +309,8 @@ export function ThemeBrowser() {
         const next = Math.min(keyboardIndex + 1, filteredThemes.length - 1);
         setKeyboardIndex(next);
         const scheme = filteredThemes[next];
-        if (scheme) {
-          handlePreview(scheme.id);
+        if (scheme && scheme.id !== activeSchemeId) {
+          handlePreview(scheme.id, true);
           focusRow(scheme.id);
         }
       } else if (e.key === "ArrowUp") {
@@ -285,8 +318,8 @@ export function ThemeBrowser() {
         const next = Math.max(keyboardIndex - 1, 0);
         setKeyboardIndex(next);
         const scheme = filteredThemes[next];
-        if (scheme) {
-          handlePreview(scheme.id);
+        if (scheme && scheme.id !== activeSchemeId) {
+          handlePreview(scheme.id, true);
           focusRow(scheme.id);
         }
       } else if (e.key === "Enter") {
@@ -294,7 +327,7 @@ export function ThemeBrowser() {
         void handleCommit();
       }
     },
-    [filteredThemes, focusRow, handleCommit, handlePreview, keyboardIndex]
+    [filteredThemes, focusRow, handleCommit, handlePreview, keyboardIndex, activeSchemeId]
   );
 
   const handleSearchKeyDown = useCallback(
@@ -332,11 +365,7 @@ export function ThemeBrowser() {
       {/* Sticky hero */}
       <div className="relative h-[200px] shrink-0 overflow-hidden">
         {activeScheme.heroImage ? (
-          <img
-            src={activeScheme.heroImage}
-            alt={activeScheme.name}
-            className="w-full h-full object-cover"
-          />
+          <img src={activeScheme.heroImage} alt="" className="w-full h-full object-cover" />
         ) : (
           <div
             className="w-full h-full flex items-center justify-center"
