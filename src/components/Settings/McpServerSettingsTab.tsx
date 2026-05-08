@@ -80,7 +80,7 @@ export function McpServerSettingsTab() {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [portInput, setPortInput] = useState("");
-  const [portDirty, setPortDirty] = useState(false);
+  const portDirtyRef = useRef(false);
   const [showApiKey, setShowApiKey] = useState(false);
   const [copiedKey, setCopiedKey] = useState(false);
   const [copiedAudit, setCopiedAudit] = useState(false);
@@ -130,7 +130,7 @@ export function McpServerSettingsTab() {
         if (settled) return;
         setStatus(s);
         setPortInput(s.configuredPort?.toString() ?? "");
-        setPortDirty(false);
+        portDirtyRef.current = false;
         setAuditEnabled(auditCfg.enabled);
         setAuditMaxRecords(auditCfg.maxRecords);
         setMaxRecordsInput(auditCfg.maxRecords.toString());
@@ -155,7 +155,7 @@ export function McpServerSettingsTab() {
         .getStatus()
         .then((s) => {
           setStatus(s);
-          if (!portDirty) {
+          if (!portDirtyRef.current) {
             setPortInput(s.configuredPort?.toString() ?? "");
           }
           setError(null);
@@ -215,7 +215,7 @@ export function McpServerSettingsTab() {
       const newStatus = await window.electron.mcpServer.setPort(port);
       setStatus(newStatus);
       setPortInput(newStatus.configuredPort?.toString() ?? "");
-      setPortDirty(false);
+      portDirtyRef.current = false;
     } catch (err) {
       setError(formatErrorMessage(err, "Failed to update port"));
       logError("Failed to update MCP port", err);
@@ -440,7 +440,7 @@ export function McpServerSettingsTab() {
                 value={portInput}
                 onChange={(e) => {
                   setPortInput(e.target.value.replace(/\D/g, ""));
-                  setPortDirty(true);
+                  portDirtyRef.current = true;
                 }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handlePortSave();
