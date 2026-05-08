@@ -9,6 +9,8 @@ import {
   addCustomPreset,
   writeCcrConfig,
   removeCcrConfig,
+  waitForCcrPresets,
+  waitForCcrPresetsRemoved,
   getSelectedPresetLabel,
   countPresetOptions,
 } from "../helpers/presets";
@@ -180,7 +182,7 @@ test.describe.serial("Presets: Default Preset Selection (53–62)", () => {
 
   test("59. Dropdown includes both CCR and custom presets", async () => {
     writeCcrConfig([{ id: "ccr-default", name: "CCR Default", model: "ccr-default-model" }]);
-    await ctx.window.waitForTimeout(35_000);
+    await waitForCcrPresets(ctx.window, ["CCR Default"]);
 
     await goToClaudeSettings();
     await addCustomPreset(ctx.window);
@@ -227,7 +229,7 @@ test.describe.serial("Presets: Default Preset Selection (53–62)", () => {
 
   test("61. Section still shows when only one preset total exists", async () => {
     removeCcrConfig();
-    await ctx.window.waitForTimeout(35_000);
+    await waitForCcrPresetsRemoved(ctx.window, ["CCR Default"]);
 
     await goToClaudeSettings();
     await expect(ctx.window.locator(SEL.preset.section)).toBeVisible({ timeout: T_MEDIUM });

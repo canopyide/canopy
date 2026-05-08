@@ -8,6 +8,8 @@ import {
   writeCcrConfig,
   removeCcrConfig,
   navigateToAgentSettings,
+  waitForCcrPresets,
+  waitForCcrPresetsRemoved,
   getPresetOptionLabels,
   getPresetRowByName,
 } from "../helpers/presets";
@@ -42,9 +44,7 @@ test.describe.serial("Presets: IPC Sync — Main ↔ Renderer (77–82)", () => 
       { id: "ipc-sync-model", name: "IPC Sync Model", model: "ipc-model-v1" },
       { id: "ipc-sync-aux", name: "IPC Sync Aux", model: "ipc-model-v2" },
     ]);
-    await ctx.window.waitForTimeout(35_000);
-
-    await navigateToAgentSettings(ctx.window, "claude");
+    await waitForCcrPresets(ctx.window, ["IPC Sync Model"]);
     await expect(ctx.window.locator(SEL.preset.section)).toBeVisible({ timeout: T_MEDIUM });
 
     // With the Popover-based PresetSelector, preset names only render inside
@@ -116,9 +116,7 @@ test.describe.serial("Presets: IPC Sync — Main ↔ Renderer (77–82)", () => 
 
   test("82. Removing CCR config does not crash the app — settings still loads", async () => {
     removeCcrConfig();
-    await ctx.window.waitForTimeout(35_000);
-
-    await navigateToAgentSettings(ctx.window, "claude");
+    await waitForCcrPresetsRemoved(ctx.window, ["IPC Sync Model", "IPC Sync Aux"]);
     await expect(ctx.window.locator(SEL.settings.heading)).toBeVisible({ timeout: T_MEDIUM });
   });
 });

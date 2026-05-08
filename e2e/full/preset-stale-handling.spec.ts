@@ -9,6 +9,8 @@ import {
   addCustomPreset,
   writeCcrConfig,
   removeCcrConfig,
+  waitForCcrPresets,
+  waitForCcrPresetsRemoved,
   getSelectedPresetLabel,
   getPresetOptionLabels,
   getPresetRowByName,
@@ -123,7 +125,7 @@ test.describe.serial("Presets: Stale Preset Handling (71–76)", () => {
 
   test("75. Removing CCR config with CCR default preset defaults to default", async () => {
     writeCcrConfig([{ id: "ccr-stale", name: "CCR Stale", model: "stale-model" }]);
-    await ctx.window.waitForTimeout(35_000);
+    await waitForCcrPresets(ctx.window, ["CCR Stale"]);
 
     await goToClaudeSettings();
     const trigger = ctx.window.locator(SEL.preset.selectorTrigger);
@@ -137,7 +139,7 @@ test.describe.serial("Presets: Stale Preset Handling (71–76)", () => {
     }
 
     removeCcrConfig();
-    await ctx.window.waitForTimeout(30_000);
+    await waitForCcrPresetsRemoved(ctx.window, ["CCR Stale"]);
 
     await goToClaudeSettings();
     if (await trigger.isVisible().catch(() => false)) {

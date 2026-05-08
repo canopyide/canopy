@@ -8,6 +8,8 @@ import {
   writeCcrConfig,
   removeCcrConfig,
   navigateToAgentSettings,
+  waitForCcrPresets,
+  waitForCcrPresetsRemoved,
   addCustomPreset,
 } from "../helpers/presets";
 
@@ -45,7 +47,9 @@ test.describe.serial("Presets: Terminal Palette Integration (89–92)", () => {
       { id: "pal-a", name: "Palette Model A", model: "pal-model-a" },
       { id: "pal-b", name: "Palette Model B", model: "pal-model-b" },
     ]);
-    await ctx.window.waitForTimeout(35_000);
+    await waitForCcrPresets(ctx.window, ["Palette Model A", "Palette Model B"]);
+    await ctx.window.keyboard.press("Escape");
+    await ctx.window.waitForTimeout(T_SETTLE);
 
     await openTerminalPalette();
 
@@ -74,7 +78,9 @@ test.describe.serial("Presets: Terminal Palette Integration (89–92)", () => {
 
   test("90. Removing CCR config hides preset count in palette", async () => {
     removeCcrConfig();
-    await ctx.window.waitForTimeout(35_000);
+    await waitForCcrPresetsRemoved(ctx.window, ["Palette Model A", "Palette Model B"]);
+    await ctx.window.keyboard.press("Escape");
+    await ctx.window.waitForTimeout(T_SETTLE);
 
     await openTerminalPalette();
 
@@ -101,9 +107,7 @@ test.describe.serial("Presets: Terminal Palette Integration (89–92)", () => {
       { id: "launch-a", name: "Launch Preset A", model: "launch-model-a" },
       { id: "launch-b", name: "Launch Preset B", model: "launch-model-b" },
     ]);
-    await ctx.window.waitForTimeout(35_000);
-
-    await navigateToAgentSettings(ctx.window, "claude");
+    await waitForCcrPresets(ctx.window, ["Launch Preset A", "Launch Preset B"]);
     const select = ctx.window.locator(SEL.preset.selectorTrigger);
     await expect(select).toBeVisible({ timeout: T_MEDIUM });
     const options = select.locator("option");

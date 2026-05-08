@@ -8,6 +8,7 @@ import {
   writeCcrConfig,
   removeCcrConfig,
   navigateToAgentSettings,
+  waitForCcrPresets,
   addCustomPreset,
 } from "../helpers/presets";
 
@@ -35,7 +36,9 @@ test.describe.serial("Presets: Onboarding/Wizard Integration (83–88)", () => {
       { id: "gpt5", name: "GPT-5", model: "gpt-5.4" },
     ]);
 
-    await ctx.window.waitForTimeout(35_000);
+    await waitForCcrPresets(ctx.window, ["DeepSeek V3", "GPT-5"]);
+    await ctx.window.keyboard.press("Escape");
+    await ctx.window.waitForTimeout(T_SETTLE);
 
     await ctx.window.evaluate(() =>
       window.dispatchEvent(new CustomEvent("daintree:open-agent-setup-wizard"))
