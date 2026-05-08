@@ -475,4 +475,88 @@ describe("notificationHistorySlice", () => {
       expect(getState().entries[0]!.message).toBe("missed 1");
     });
   });
+
+  describe("dismissByCorrelationId", () => {
+    it("removes all entries with matching correlationId", () => {
+      addEntry({ message: "first", correlationId: "panel-1" });
+      addEntry({ message: "second", correlationId: "panel-1" });
+      addEntry({ message: "third", correlationId: "panel-1" });
+      expect(getState().entries).toHaveLength(3);
+      getState().dismissByCorrelationId("panel-1");
+      expect(getState().entries).toHaveLength(0);
+    });
+
+    it("preserves entries with different correlationId", () => {
+      addEntry({ message: "a", correlationId: "panel-1" });
+      addEntry({ message: "b", correlationId: "panel-2" });
+      addEntry({ message: "c", correlationId: "panel-1" });
+      getState().dismissByCorrelationId("panel-1");
+      expect(getState().entries).toHaveLength(1);
+      expect(getState().entries[0]!.message).toBe("b");
+    });
+
+    it("preserves entries with no correlationId", () => {
+      addEntry({ message: "correlated", correlationId: "panel-1" });
+      addEntry({ message: "uncorrelated" });
+      getState().dismissByCorrelationId("panel-1");
+      expect(getState().entries).toHaveLength(1);
+      expect(getState().entries[0]!.message).toBe("uncorrelated");
+    });
+
+    it("recomputes unreadCount after removal", () => {
+      addEntry({ message: "missed 1", correlationId: "panel-1" });
+      addEntry({ message: "missed 2", correlationId: "panel-1" });
+      getState().addEntry({
+        type: "info",
+        message: "seen",
+        correlationId: "panel-1",
+        seenAsToast: true,
+      });
+      expect(getState().unreadCount).toBe(2);
+      getState().dismissByCorrelationId("panel-1");
+      expect(getState().unreadCount).toBe(0);
+    });
+
+    it("recomputes unreadCount correctly with mixed seenAsToast and correlationIds", () => {
+      addEntry({ message: "missed a", correlationId: "panel-1" });
+      addEntry({ message: "missed b", correlationId: "panel-2" });
+      getState().addEntry({
+        type: "info",
+        message: "seen",
+        correlationId: "panel-1",
+        seenAsToast: true,
+      });
+      expect(getState().unreadCount).toBe(2);
+      getState().dismissByCorrelationId("panel-1");
+      expect(getState().entries).toHaveLength(1);
+      expect(getState().unreadCount).toBe(1);
+      expect(getState().entries[0]!.message).toBe("missed b");
+    });
+
+    it("is a no-op when correlationId does not exist", () => {
+      addEntry({ message: "test", correlationId: "panel-1" });
+      getState().dismissByCorrelationId("nonexistent");
+      expect(getState().entries).toHaveLength(1);
+      expect(getState().unreadCount).toBe(1);
+    });
+
+    it("correctly dismisses non-countable entries without affecting unreadCount of remaining", () => {
+      addEntry({ message: "countable", correlationId: "panel-1" });
+      addEntry({ message: "uncountable", correlationId: "panel-1", countable: false });
+      addEntry({ message: "other countable", correlationId: "panel-2" });
+      expect(getState().unreadCount).toBe(2);
+      getState().dismissByCorrelationId("panel-1");
+      expect(getState().entries).toHaveLength(1);
+      expect(getState().unreadCount).toBe(1);
+    });
+
+    it("idempotent — second call with same correlationId is a no-op", () => {
+      addEntry({ message: "first", correlationId: "panel-1" });
+      getState().dismissByCorrelationId("panel-1");
+      expect(getState().entries).toHaveLength(0);
+      getState().dismissByCorrelationId("panel-1");
+      expect(getState().entries).toHaveLength(0);
+      expect(getState().unreadCount).toBe(0);
+    });
+  });
 });

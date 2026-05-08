@@ -581,6 +581,133 @@ describe("NotificationThread visual treatment", () => {
   });
 });
 
+describe("NotificationThread — dismiss removes entire thread", () => {
+  it("removes all entries in a multi-entry thread with one X click", async () => {
+    const correlationId = "thread-dismiss";
+    useNotificationHistoryStore.getState().addEntry({
+      ...makeEntry({
+        id: "first",
+        type: "info",
+        message: "Build failed",
+        correlationId,
+        timestamp: Date.now() - 2000,
+      }),
+      seenAsToast: true,
+    });
+    useNotificationHistoryStore.getState().addEntry({
+      ...makeEntry({
+        id: "second",
+        type: "info",
+        message: "Build retried",
+        correlationId,
+        timestamp: Date.now() - 1000,
+      }),
+      seenAsToast: true,
+    });
+
+    render(<NotificationCenter open onClose={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("notification-thread")).toBeTruthy();
+    });
+
+    const thread = screen.getByTestId("notification-thread");
+    const dismissButton = within(thread).getByLabelText("Dismiss notification");
+    await act(async () => {
+      fireEvent.click(dismissButton);
+    });
+
+    expect(screen.queryByTestId("notification-thread")).toBeNull();
+    expect(useNotificationHistoryStore.getState().entries).toHaveLength(0);
+  });
+
+  it("does not remove entries with a different correlationId", async () => {
+    const correlationId = "thread-dismiss-2";
+    useNotificationHistoryStore.getState().addEntry({
+      ...makeEntry({
+        id: "first",
+        type: "info",
+        message: "Build failed",
+        correlationId,
+        timestamp: Date.now() - 2000,
+      }),
+      seenAsToast: true,
+    });
+    useNotificationHistoryStore.getState().addEntry({
+      ...makeEntry({
+        id: "second",
+        type: "info",
+        message: "Build retried",
+        correlationId,
+        timestamp: Date.now() - 1000,
+      }),
+      seenAsToast: true,
+    });
+    useNotificationHistoryStore.getState().addEntry(
+      makeEntry({
+        id: "solo",
+        type: "info",
+        message: "Unrelated notification",
+      })
+    );
+
+    render(<NotificationCenter open onClose={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("notification-thread")).toBeTruthy();
+    });
+
+    const thread = screen.getByTestId("notification-thread");
+    const dismissButton = within(thread).getByLabelText("Dismiss notification");
+    await act(async () => {
+      fireEvent.click(dismissButton);
+    });
+
+    expect(screen.queryByTestId("notification-thread")).toBeNull();
+    expect(useNotificationHistoryStore.getState().entries).toHaveLength(1);
+    expect(useNotificationHistoryStore.getState().entries[0]!.message).toBe(
+      "Unrelated notification"
+    );
+  });
+
+  it("updates unreadCount correctly when thread entries are dismissed", async () => {
+    const correlationId = "thread-dismiss-3";
+    useNotificationHistoryStore.getState().addEntry({
+      ...makeEntry({
+        type: "info",
+        message: "Error 1",
+        correlationId,
+      }),
+      seenAsToast: false,
+    });
+    useNotificationHistoryStore.getState().addEntry({
+      ...makeEntry({
+        id: "test-2",
+        type: "info",
+        message: "Error 2",
+        correlationId,
+      }),
+      seenAsToast: true,
+    });
+
+    expect(useNotificationHistoryStore.getState().unreadCount).toBe(1);
+
+    render(<NotificationCenter open onClose={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("notification-thread")).toBeTruthy();
+    });
+
+    const thread = screen.getByTestId("notification-thread");
+    const dismissButton = within(thread).getByLabelText("Dismiss notification");
+    await act(async () => {
+      fireEvent.click(dismissButton);
+    });
+
+    expect(useNotificationHistoryStore.getState().unreadCount).toBe(0);
+  });
+});
+
 describe("NotificationCenter empty state — zero data", () => {
   it("renders a description that explains where notifications appear", () => {
     render(<NotificationCenter open onClose={vi.fn()} />);
