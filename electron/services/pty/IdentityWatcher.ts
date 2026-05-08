@@ -112,7 +112,6 @@ export class IdentityWatcher {
 
   seed(commandText?: string): void {
     if (this.stopped) return;
-    if (!this.delegate.processDetector) return;
     const normalized = normalizeShellCommandText(commandText);
     if (!normalized) return;
     const identity = detectCommandIdentity(normalized);
@@ -123,9 +122,12 @@ export class IdentityWatcher {
         `agent=${identity.agentType ?? "<none>"} icon=${identity.processIconId ?? "<none>"} ` +
         `argv0=${redactArgv(normalized)}`
     );
-    this.delegate.processDetector.injectShellCommandEvidence(identity, normalized);
-    this.onShellSubmit(normalized, { allowWhenAgentDetected: true });
-    this.seededCommand = undefined;
+    this.delegate.processDetector?.injectShellCommandEvidence(identity, normalized);
+    try {
+      this.onShellSubmit(normalized, { allowWhenAgentDetected: true });
+    } finally {
+      this.seededCommand = undefined;
+    }
   }
 
   captureInput(data: string): string | undefined {
@@ -422,7 +424,7 @@ export class IdentityWatcher {
         return;
       }
 
-      if (promptVisible && !this.identity.agentType && !hasPtyDescendants) {
+      if (promptVisible && !this.identity.agentType && ptyDescendantCount === 0) {
         console.log(
           `[IdentityDebug] shell-fallback-stop term=${this.delegate.terminalId.slice(-8)} ` +
             `reason=prompt-before-commit icon=${this.identity.processIconId ?? "<none>"}`

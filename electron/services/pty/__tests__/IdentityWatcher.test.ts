@@ -364,13 +364,22 @@ describe("IdentityWatcher", () => {
   });
 
   describe("seed", () => {
-    it("no-ops when no processDetector is attached", () => {
+    it("falls back to direct detection when no processDetector is attached", async () => {
       const { delegate, state } = createFakeDelegate({ processDetector: null });
       const watcher = new IdentityWatcher(delegate);
 
       watcher.seed("claude --version");
-      expect(state.detectionCalls).toHaveLength(0);
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      expect(state.detectionCalls).toEqual([
+        {
+          agentType: "claude",
+          processIconId: "claude",
+          isBusy: true,
+        },
+      ]);
       expect(watcher.seededCommandText).toBeUndefined();
+      watcher.dispose();
     });
 
     it("injects shell-command evidence when a processDetector is attached", () => {
@@ -465,6 +474,28 @@ describe("IdentityWatcher", () => {
       const [identity, commandText] = inject.mock.calls[0];
       expect(identity).toMatchObject({ processIconId: "node" });
       expect(commandText).toBe('node -e "setTimeout(()=>{}, 8000)"');
+    });
+
+    it("does not stop icon fallback when descendant count is unavailable", async () => {
+      const { delegate, state } = createFakeDelegate({
+        processDetector: null,
+        visibleLines: ['PS C:\\repo> node -e "setTimeout(()=>{}, 8000)"', "PS C:\\repo> "],
+        cursorLine: "PS C:\\repo> ",
+        ptyDescendantCount: undefined,
+      });
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.onShellSubmit('node -e "setTimeout(()=>{}, 8000)"');
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      expect(state.detectionCalls).toEqual([
+        {
+          agentType: undefined,
+          processIconId: "node",
+          isBusy: true,
+        },
+      ]);
+      watcher.dispose();
     });
 
     it("calls processDetector.clearShellCommandEvidence('prompt-return') on demotion", async () => {

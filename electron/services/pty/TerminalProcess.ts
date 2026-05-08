@@ -406,8 +406,8 @@ export class TerminalProcess {
       );
       this.terminalInfo.processDetector = this.processDetector;
       this.processDetector.start();
-      this.identityWatcher.seed(options.command);
     }
+    this.identityWatcher.seed(options.command);
 
     // If we have a launch hint, start the activity monitor immediately so the
     // cold-launched agent has full observability from the first output. Plain

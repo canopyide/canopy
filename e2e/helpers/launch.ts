@@ -381,7 +381,9 @@ export async function refreshActiveWindow(app: ElectronApplication, oldPage?: Pa
   // The worktree sidebar heading stops showing "Loading worktrees..." once
   // the first worktree entry is in the DOM.
   await newWindow
-    .locator('[aria-label="Worktrees"] a, [aria-label="Worktrees"] [role="button"], .worktree-item')
+    .locator(
+      '[data-worktree-branch], [data-worktree-is-main="true"], [aria-label="Worktrees"] a, [aria-label="Worktrees"] [role="button"], .worktree-item'
+    )
     .first()
     .waitFor({ state: "attached", timeout: refreshTimeout })
     .catch(async () => {

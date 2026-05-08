@@ -1,7 +1,7 @@
 import os from "os";
 import PQueue from "p-queue";
 import { existsSync } from "fs";
-import { stat, readFile, access } from "fs/promises";
+import { stat, readFile, access, mkdir } from "fs/promises";
 import { resolve as pathResolve, isAbsolute, dirname } from "path";
 import { validateBranchName } from "../../shared/utils/pathPattern.js";
 import { generateProjectId, settingsFilePath } from "../services/projectStorePaths.js";
@@ -956,7 +956,7 @@ export class WorkspaceService {
       const absoluteCreatePath = isAbsolute(path) ? path : pathResolve(rootPath, path);
       const parentDir = dirname(absoluteCreatePath);
       if (!existsSync(parentDir)) {
-        throw new Error(`Parent directory does not exist: ${parentDir}`);
+        await mkdir(parentDir, { recursive: true });
       }
 
       // #6463: when not explicitly reusing a branch, guard against a stale
