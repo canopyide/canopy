@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { usePanelStore, type AddPanelOptions, type TerminalInstance } from "@/store/panelStore";
 import { useProjectStore } from "@/store/projectStore";
 import { useScratchStore } from "@/store/scratchStore";
@@ -8,7 +8,7 @@ import { useCliAvailabilityStore } from "@/store/cliAvailabilityStore";
 import { useWorktrees } from "./useWorktrees";
 import { isElectronAvailable } from "./useElectron";
 
-import { agentSettingsClient, systemClient } from "@/clients";
+import { systemClient } from "@/clients";
 import { useHomeDir } from "@/hooks/app/useHomeDir";
 import { logError, logWarn } from "@/utils/logger";
 import { useCcrPresetsStore } from "@/store/ccrPresetsStore";
@@ -142,7 +142,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
   const initializeCliAvailability = useCliAvailabilityStore((state) => state.initialize);
   const refreshCliAvailability = useCliAvailabilityStore((state) => state.refresh);
 
-  const [agentSettings, setAgentSettings] = useState<AgentSettings | null>(null);
+  const agentSettings = useAgentSettingsStore((state) => state.settings);
 
   const isMounted = useRef(true);
   const launchingAgentsRef = useRef<Set<string>>(new Set());
@@ -152,14 +152,10 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
       return;
     }
 
-    const [, settingsResult] = await Promise.allSettled([
+    await Promise.allSettled([
       refreshCliAvailability(),
-      agentSettingsClient.get(),
+      useAgentSettingsStore.getState().refresh(),
     ]);
-
-    if (isMounted.current && settingsResult.status === "fulfilled" && settingsResult.value) {
-      setAgentSettings(settingsResult.value);
-    }
   }, [refreshCliAvailability]);
 
   useEffect(() => {
@@ -167,18 +163,10 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
 
     Promise.allSettled([
       initializeCliAvailability(),
-      agentSettingsClient.get(),
       useAgentSettingsStore.getState().initialize(),
-    ])
-      .then(([, settingsResult]) => {
-        if (!isMounted.current) return;
-        if (settingsResult.status === "fulfilled" && settingsResult.value) {
-          setAgentSettings(settingsResult.value);
-        }
-      })
-      .catch((error) => {
-        logError("Failed to load agent settings", error);
-      });
+    ]).catch((error) => {
+      logError("Failed to load agent settings", error);
+    });
 
     // Re-check availability when the window regains focus so that agents
     // installed or authenticated in the background (e.g. via a terminal
@@ -286,7 +274,11 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
         let presetEnv: Record<string, string> | undefined;
         let preset: import("../../shared/config/agentRegistry").AgentPreset | undefined;
         if (agentConfig) {
-          const entry = agentSettings?.agents?.[agentId] ?? {};
+          if (!useAgentSettingsStore.getState().isInitialized) {
+            await useAgentSettingsStore.getState().initialize();
+          }
+          const launchSettings = useAgentSettingsStore.getState().settings ?? agentSettings;
+          const entry = launchSettings?.agents?.[agentId] ?? {};
           // null = explicitly default — skip preset lookup entirely
           // undefined = use saved preset for this worktree (or agent-level
           //   default, or nothing). Worktree-scoped override wins over the

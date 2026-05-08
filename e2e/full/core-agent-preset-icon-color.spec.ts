@@ -1,5 +1,6 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
-import { chmodSync, mkdirSync, writeFileSync } from "fs";
+import { chmodSync, mkdtempSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
 import path from "path";
 import {
   launchApp,
@@ -8,7 +9,7 @@ import {
   removeSingletonFiles,
   type AppContext,
 } from "../helpers/launch";
-import { createFixtureRepo } from "../helpers/fixtures";
+import { createFixtureRepo, removePathSync } from "../helpers/fixtures";
 import { openAndOnboardProject } from "../helpers/project";
 import { getPanelById } from "../helpers/panels";
 import { runTerminalCommand, waitForTerminalText } from "../helpers/terminal";
@@ -119,9 +120,11 @@ function writeFakeAgent(agentId: "claude" | "codex"): void {
 function prepareFixture(): void {
   const { dir, cleanup } = createFixtureRepo({ name: "agent-preset-icon-color" });
   fixtureDir = dir;
-  fixtureCleanup = cleanup;
-  fakeBinDir = path.join(fixtureDir, ".e2e-bin");
-  mkdirSync(fakeBinDir, { recursive: true });
+  fakeBinDir = mkdtempSync(path.join(tmpdir(), "daintree-e2e-agent-bin-"));
+  fixtureCleanup = () => {
+    cleanup();
+    removePathSync(fakeBinDir);
+  };
   writeFakeAgent("claude");
   writeFakeAgent("codex");
 }
