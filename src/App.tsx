@@ -745,7 +745,6 @@ function App() {
                   isOpen={newTerminalPalette.isOpen}
                   query={newTerminalPalette.query}
                   results={newTerminalPalette.results}
-                  totalResults={newTerminalPalette.totalResults}
                   selectedIndex={newTerminalPalette.selectedIndex}
                   onQueryChange={newTerminalPalette.setQuery}
                   onSelectPrevious={newTerminalPalette.selectPrevious}
@@ -753,6 +752,7 @@ function App() {
                   onSelect={newTerminalPalette.handleSelect}
                   onConfirm={newTerminalPalette.confirmSelection}
                   onClose={newTerminalPalette.close}
+                  onHoverIndex={newTerminalPalette.setSelectedIndex}
                 />
               </Suspense>
             )}
