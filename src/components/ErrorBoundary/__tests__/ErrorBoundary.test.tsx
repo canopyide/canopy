@@ -386,10 +386,10 @@ describe("ErrorBoundary", () => {
   });
 
   it("disables the Report issue button while the report is in flight", async () => {
-    let resolveDispatch: ((value: { ok: boolean }) => void) | undefined;
+    let resolveDispatch: ((value: { ok: true; result: undefined }) => void) | undefined;
     vi.mocked(actionService.dispatch).mockImplementationOnce(
       () =>
-        new Promise<{ ok: boolean }>((resolve) => {
+        new Promise<{ ok: true; result: undefined }>((resolve) => {
           resolveDispatch = resolve;
         })
     );
@@ -414,7 +414,7 @@ describe("ErrorBoundary", () => {
     fireEvent.click(button);
     await waitFor(() => expect(button.disabled).toBe(true));
 
-    resolveDispatch?.({ ok: true });
+    resolveDispatch?.({ ok: true, result: undefined });
     await waitFor(() => expect(button.disabled).toBe(false));
   });
 
@@ -422,15 +422,15 @@ describe("ErrorBoundary", () => {
     // Pin actionService.dispatch to a never-resolving promise — simulates a
     // hung report. Without the field reset, the second click after recovery
     // would be silently swallowed by the still-true class-field guard.
-    let resolveFirst: ((value: { ok: boolean }) => void) | undefined;
+    let resolveFirst: ((value: { ok: true; result: undefined }) => void) | undefined;
     vi.mocked(actionService.dispatch)
       .mockImplementationOnce(
         () =>
-          new Promise<{ ok: boolean }>((resolve) => {
+          new Promise<{ ok: true; result: undefined }>((resolve) => {
             resolveFirst = resolve;
           })
       )
-      .mockResolvedValueOnce({ ok: true });
+      .mockResolvedValueOnce({ ok: true, result: undefined });
 
     let shouldThrow = true;
     function ConditionalThrow() {
@@ -476,7 +476,7 @@ describe("ErrorBoundary", () => {
     await Promise.resolve();
     expect(actionService.dispatch).toHaveBeenCalledTimes(2);
 
-    resolveFirst?.({ ok: true });
+    resolveFirst?.({ ok: true, result: undefined });
   });
 
   it("does not log the duplicate 'ErrorBoundary caught error' message", async () => {
