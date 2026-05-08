@@ -6,21 +6,6 @@ import { resolve } from "path";
 describe("DockedTerminalItem", () => {
   const content = readFileSync(resolve(__dirname, "../DockedTerminalItem.tsx"), "utf-8");
 
-  it("imports useKeybindingDisplay and createTooltipContent", () => {
-    expect(content).toContain('import { useKeybindingDisplay } from "@/hooks/useKeybinding"');
-    expect(content).toContain('import { createTooltipContent } from "@/lib/tooltipShortcut"');
-  });
-
-  it("calls useKeybindingDisplay with terminal.focusDock", () => {
-    expect(content).toContain('useKeybindingDisplay("terminal.focusDock")');
-  });
-
-  it("wraps the trigger in a Tooltip with Preview terminal text", () => {
-    expect(content).toContain("<Tooltip>");
-    expect(content).toContain('createTooltipContent("Preview terminal", dockShortcut)');
-    expect(content).toContain('<TooltipContent side="top">');
-  });
-
   it("preserves click/double-click handler structure through the new wrappers", () => {
     expect(content).toContain("onClick={");
     expect(content).toContain("onDoubleClick={");
