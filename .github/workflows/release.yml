@@ -238,7 +238,7 @@ jobs:
           path: |
             release/*.dmg
             release/*.zip
-            release/*.exe
+            release/*.appx
             release/*.AppImage
             release/*.deb
             release/*.blockmap
@@ -301,7 +301,7 @@ jobs:
             --exclude "*" \
             --include "*.dmg" \
             --include "*.zip" \
-            --include "*.exe" \
+            --include "*.appx" \
             --include "*.AppImage" \
             --include "*.deb" \
             --include "*.blockmap" \
@@ -322,6 +322,41 @@ jobs:
             --exclude "*" \
             --include "${UPDATE_METADATA_PREFIX}*.yml" \
             --cache-control "no-cache, no-store, must-revalidate"
+
+      - name: Submit Windows package to Microsoft Store
+        shell: bash
+        env:
+          PARTNER_CENTER_TENANT_ID: ${{ secrets.PARTNER_CENTER_TENANT_ID }}
+          PARTNER_CENTER_SELLER_ID: ${{ secrets.PARTNER_CENTER_SELLER_ID }}
+          PARTNER_CENTER_CLIENT_ID: ${{ secrets.PARTNER_CENTER_CLIENT_ID }}
+          PARTNER_CENTER_CLIENT_SECRET: ${{ secrets.PARTNER_CENTER_CLIENT_SECRET }}
+          STORE_PRODUCT_ID: ${{ secrets.STORE_PRODUCT_ID }}
+        run: |
+          if [ -z "$PARTNER_CENTER_TENANT_ID" ] || \
+             [ -z "$PARTNER_CENTER_SELLER_ID" ] || \
+             [ -z "$PARTNER_CENTER_CLIENT_ID" ] || \
+             [ -z "$PARTNER_CENTER_CLIENT_SECRET" ] || \
+             [ -z "$STORE_PRODUCT_ID" ]; then
+            echo "::notice::Microsoft Store secrets not configured; skipping Store submission. The .appx is still archived to R2."
+            exit 0
+          fi
+          APPX_FILE=$(find release -maxdepth 1 -name '*.appx' | head -n 1)
+          if [ -z "$APPX_FILE" ]; then
+            echo "::error::No .appx file found in release/ — Windows build did not produce an APPX package."
+            exit 1
+          fi
+          # msstore CLI grammar may shift between preview releases. See
+          # docs/distribution/microsoft-store.md "msstore CLI subcommand
+          # grammar drift" for troubleshooting.
+          dotnet tool install --global Microsoft.WindowsStore.MSStoreCLI
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          msstore reconfigure \
+            --tenantId "$PARTNER_CENTER_TENANT_ID" \
+            --sellerId "$PARTNER_CENTER_SELLER_ID" \
+            --clientId "$PARTNER_CENTER_CLIENT_ID" \
+            --clientSecret "$PARTNER_CENTER_CLIENT_SECRET"
+          msstore submission update "$STORE_PRODUCT_ID" "$APPX_FILE"
+          msstore submission publish "$STORE_PRODUCT_ID"
 
       - name: Notify website of new release
         shell: bash
