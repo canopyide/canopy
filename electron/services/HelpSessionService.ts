@@ -53,6 +53,8 @@ interface HelpSessionRecord {
   tier: HelpAssistantTier;
   createdAt: number;
   revoked: boolean;
+  /** Computed at provision for codex sessions; consumed by lifecycle.ts. */
+  codexLaunchArgs?: string[];
 }
 
 interface SessionMeta {
@@ -217,15 +219,20 @@ export class HelpSessionService {
     await fs.chmod(sessionPath, 0o700).catch(() => {});
 
     const port = await this.getMcpPort(settings.daintreeControl);
-    if (input.agentId === "codex") {
-      // Codex reads `bearer_token_env_var` at MCP-connect time from the PTY
-      // env, so the literal token never lands on disk. The token comes from
-      // DAINTREE_MCP_TOKEN injected by `buildHelpEnv()` in the renderer.
-      await this.writeCodexConfig(sessionPath, settings, port);
-    } else {
+    if (input.agentId !== "codex") {
       await this.writeMcpConfig(sessionPath, settings, port, token);
       await this.writeClaudeSettings(sessionPath, helpFolder, settings);
     }
+    // Codex doesn't read project-scoped `.codex/config.toml` from cwd —
+    // its only mechanism for overriding the global config is the `-c key=value`
+    // CLI flag (verified against codex-cli 0.129.0). MCP servers are appended
+    // to the spawn command in `lifecycle.ts` via the `getCodexLaunchArgs`
+    // accessor below; nothing is written to disk for Codex.
+
+    const codexLaunchArgs =
+      input.agentId === "codex"
+        ? this.buildCodexLaunchArgs(settings.daintreeControl, settings.docSearch, port)
+        : undefined;
 
     const now = Date.now();
     const record: HelpSessionRecord = {
@@ -240,6 +247,7 @@ export class HelpSessionService {
       tier,
       createdAt: now,
       revoked: false,
+      codexLaunchArgs,
     };
 
     await this.writeSessionMeta(sessionPath, {
@@ -254,8 +262,9 @@ export class HelpSessionService {
     if (settings.daintreeControl && port) {
       try {
         if (input.agentId === "codex") {
-          // Codex MCP wiring uses Streamable HTTP at /mcp (probeMcpServer),
-          // not the SSE transport Claude Code reads from .mcp.json.
+          // Codex's MCP transport is Streamable HTTP at /mcp; Claude Code
+          // reads SSE at /sse. Both probes warm the same in-memory MCP token
+          // map, so neither leaks across agents.
           await probeMcpServer(port, token);
         } else {
           await probeMcpSseServer(port, token);
@@ -264,9 +273,7 @@ export class HelpSessionService {
         record.revoked = true;
         this.sessionsByToken.delete(token);
         this.sessionsById.delete(sessionId);
-        if (input.agentId === "codex") {
-          await this.clearCodexConfig(sessionPath);
-        } else {
+        if (input.agentId !== "codex") {
           await this.stripStaleDaintreeMcpEntry(sessionPath);
         }
         const reason = formatErrorMessage(err, "assistant MCP session isn't ready");
@@ -292,6 +299,56 @@ export class HelpSessionService {
   }
 
   /**
+   * Builds the `-c key=value` CLI args that wire MCP servers into a Codex
+   * help-session spawn. The values are TOML-encoded literals (quoted strings),
+   * matching Codex's `-c` parser. Returns an empty array when both server
+   * toggles are off.
+   *
+   * Token comes from `DAINTREE_MCP_TOKEN` in PTY env via `bearer_token_env_var`,
+   * so no literal token is ever embedded in argv or written to disk.
+   */
+  private buildCodexLaunchArgs(
+    daintreeControl: boolean,
+    docSearch: boolean,
+    port: number | null
+  ): string[] {
+    const args: string[] = [];
+    if (daintreeControl && port) {
+      args.push(
+        "-c",
+        `mcp_servers.daintree.transport="http"`,
+        "-c",
+        `mcp_servers.daintree.url="http://127.0.0.1:${port}/mcp"`,
+        "-c",
+        `mcp_servers.daintree.bearer_token_env_var="DAINTREE_MCP_TOKEN"`
+      );
+    }
+    if (docSearch) {
+      args.push(
+        "-c",
+        `mcp_servers.daintree-docs.transport="http"`,
+        "-c",
+        `mcp_servers.daintree-docs.url="https://daintree.org/api/mcp"`
+      );
+    }
+    return args;
+  }
+
+  /**
+   * Returns the cached `-c` flags that wire MCP servers for a Codex help
+   * session. lifecycle.ts appends them to the spawn command after the help
+   * token validates. Returns null for unknown / revoked tokens or non-Codex
+   * sessions, so the spawn handler never injects flags for the wrong agent.
+   */
+  getCodexLaunchArgs(token: string): string[] | null {
+    if (!token) return null;
+    const record = this.sessionsByToken.get(token);
+    if (!record || record.revoked) return null;
+    if (record.agentId !== "codex") return null;
+    return record.codexLaunchArgs ?? [];
+  }
+
+  /**
    * Invalidates the in-memory bearer for this session. The on-disk dir is
    * intentionally preserved across launches so the user's one-time Claude
    * Code workspace-trust acceptance for this project carries over to the
@@ -307,9 +364,9 @@ export class HelpSessionService {
     record.revoked = true;
     this.sessionsById.delete(sessionId);
     this.sessionsByToken.delete(record.token);
-    if (record.agentId === "codex") {
-      await this.clearCodexConfig(record.sessionPath);
-    } else {
+    // Codex sessions write nothing to disk (config is `-c` flags), so the
+    // file-strip dance is Claude-only.
+    if (record.agentId !== "codex") {
       await this.stripStaleDaintreeMcpEntry(record.sessionPath);
     }
   }
@@ -361,11 +418,7 @@ export class HelpSessionService {
       entries.map(async (entry) => {
         const entryPath = path.join(sessionsRoot, entry);
         if (this.isProjectHashDirName(entry)) {
-          // Both cleanups run unconditionally — the dir's previous-launch
-          // agent isn't tracked across boots, and a no-op delete on a file
-          // that doesn't exist is harmless.
           await this.stripStaleDaintreeMcpEntry(entryPath);
-          await this.clearCodexConfig(entryPath);
           return;
         }
         await this.removeSessionDir(entryPath);
@@ -605,61 +658,6 @@ export class HelpSessionService {
       await fs.rm(sessionPath, { recursive: true, force: true });
     } catch (err) {
       console.warn("[HelpSessionService] Failed to remove session dir:", sessionPath, err);
-    }
-  }
-
-  /**
-   * Writes `<sessionPath>/.codex/config.toml` for a Codex assistant launch.
-   * Uses `bearer_token_env_var` so the literal token never lands on disk —
-   * Codex reads `DAINTREE_MCP_TOKEN` from the PTY env at MCP-connect time.
-   *
-   * The transport key is `transport = "http"` (not `type = "streamable-http"`):
-   * Codex's TOML schema names the field `transport`, and using the wrong key
-   * silently leaves the entry parsed-but-disconnected. The `--trust-project`
-   * flag injected by the spawn handler is what actually authorizes Codex to
-   * read this project-scoped config.
-   */
-  private async writeCodexConfig(
-    sessionPath: string,
-    settings: { daintreeControl: boolean; docSearch: boolean },
-    port: number | null
-  ): Promise<void> {
-    const blocks: string[] = [];
-    if (settings.daintreeControl && port) {
-      blocks.push(
-        `[mcp_servers.daintree]\n` +
-          `transport = "http"\n` +
-          `url = "http://127.0.0.1:${port}/mcp"\n` +
-          `bearer_token_env_var = "DAINTREE_MCP_TOKEN"\n`
-      );
-    }
-    if (settings.docSearch) {
-      blocks.push(
-        `[mcp_servers.daintree-docs]\n` +
-          `transport = "http"\n` +
-          `url = "https://daintree.org/api/mcp"\n`
-      );
-    }
-    const target = path.join(sessionPath, ".codex", "config.toml");
-    await fs.mkdir(path.dirname(target), { recursive: true });
-    const body = blocks.length > 0 ? blocks.join("\n") : "";
-    await resilientAtomicWriteFile(target, body, "utf-8", { mode: 0o600 });
-  }
-
-  /**
-   * Deletes `<sessionPath>/.codex/config.toml` on revoke or stale GC. Unlike
-   * the Claude `.mcp.json` strip dance, the Codex TOML carries no literal
-   * token — `bearer_token_env_var` reads from PTY env — so a flat delete is
-   * both correct and race-safe (a concurrent fresh provision rewrites the
-   * file from scratch).
-   */
-  private async clearCodexConfig(sessionPath: string): Promise<void> {
-    const target = path.join(sessionPath, ".codex", "config.toml");
-    try {
-      await fs.rm(target, { force: true });
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
-      console.warn("[HelpSessionService] Failed to clear codex config:", target, err);
     }
   }
 

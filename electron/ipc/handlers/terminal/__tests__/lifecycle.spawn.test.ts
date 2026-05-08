@@ -92,9 +92,14 @@ const {
   mockEnsureReady: vi.fn<() => Promise<boolean>>(),
 }));
 
+const mockGetCodexLaunchArgs = vi.hoisted(() =>
+  vi.fn<(token: string) => string[] | null>(() => null)
+);
+
 vi.mock("../../../../services/HelpSessionService.js", () => ({
   helpSessionService: {
     validateToken: (token: string) => mockValidateToken(token),
+    getCodexLaunchArgs: (token: string) => mockGetCodexLaunchArgs(token),
   },
 }));
 
@@ -559,6 +564,8 @@ describe("terminal spawn handler - help session detection (#6524)", () => {
     mockValidateToken.mockReturnValue(false);
     mockIsRunning.mockReturnValue(false);
     mockCurrentPort.mockReturnValue(null);
+    mockGetCodexLaunchArgs.mockReset();
+    mockGetCodexLaunchArgs.mockReturnValue(null);
   });
 
   it("skips per-pane MCP injection when DAINTREE_MCP_TOKEN is a valid help token (session-dir owns the .mcp.json)", async () => {
@@ -746,8 +753,20 @@ describe("terminal spawn handler - help session detection (#6524)", () => {
     expect(spawnArgs.env?.DAINTREE_MCP_TOKEN).toBeUndefined();
   });
 
-  it("treats a Codex help-session token as a help launch and injects --trust-project", async () => {
+  it("appends Codex MCP -c flags to a Codex help-session spawn", async () => {
     mockValidateToken.mockImplementation((token) => (token === "help-token" ? "action" : false));
+    mockGetCodexLaunchArgs.mockImplementation((token) =>
+      token === "help-token"
+        ? [
+            "-c",
+            'mcp_servers.daintree.transport="http"',
+            "-c",
+            'mcp_servers.daintree.url="http://127.0.0.1:45454/mcp"',
+            "-c",
+            'mcp_servers.daintree.bearer_token_env_var="DAINTREE_MCP_TOKEN"',
+          ]
+        : null
+    );
 
     const deps = { ptyClient } as unknown as HandlerDependencies;
     registerTerminalLifecycleHandlers(deps);
@@ -766,37 +785,23 @@ describe("terminal spawn handler - help session detection (#6524)", () => {
     );
 
     const spawnArgs = ptyClient.spawn.mock.calls[0][1];
-    expect(spawnArgs.command).toContain("--trust-project");
-    // No per-pane MCP injection: the session-dir .codex/config.toml owns it.
-    expect(mockPreparePaneConfig).not.toHaveBeenCalled();
-  });
-
-  it("does not duplicate --trust-project when the renderer already added it", async () => {
-    mockValidateToken.mockImplementation((token) => (token === "help-token" ? "action" : false));
-
-    const deps = { ptyClient } as unknown as HandlerDependencies;
-    registerTerminalLifecycleHandlers(deps);
-
-    const handler = getSpawnHandler();
-    await handler(
-      {} as Electron.IpcMainInvokeEvent,
-      {
-        cols: 80,
-        rows: 24,
-        cwd: tmpDir,
-        command: "codex --trust-project",
-        launchAgentId: "codex",
-        env: { DAINTREE_MCP_TOKEN: "help-token" },
-      } as unknown as Parameters<typeof handler>[1]
+    // Args are shell-quoted with single quotes; the inner double quotes
+    // (from TOML literals) are preserved as-is inside the single-quote
+    // wrapping.
+    expect(spawnArgs.command).toContain(`'mcp_servers.daintree.transport="http"'`);
+    expect(spawnArgs.command).toContain(`'mcp_servers.daintree.url="http://127.0.0.1:45454/mcp"'`);
+    expect(spawnArgs.command).toContain(
+      `'mcp_servers.daintree.bearer_token_env_var="DAINTREE_MCP_TOKEN"'`
     );
-
-    const spawnArgs = ptyClient.spawn.mock.calls[0][1];
-    const occurrences = (spawnArgs.command.match(/--trust-project/g) ?? []).length;
-    expect(occurrences).toBe(1);
+    // Token must NEVER appear in argv — it's read from PTY env via bearer_token_env_var.
+    expect(spawnArgs.command).not.toContain("help-token");
+    // No per-pane MCP injection: the help session owns the MCP wiring.
+    expect(mockPreparePaneConfig).not.toHaveBeenCalled();
   });
 
   it("appends --dangerously-bypass-approvals-and-sandbox to a system-tier Codex help launch", async () => {
     mockValidateToken.mockImplementation((token) => (token === "system-token" ? "system" : false));
+    mockGetCodexLaunchArgs.mockReturnValue([]);
 
     const deps = { ptyClient } as unknown as HandlerDependencies;
     registerTerminalLifecycleHandlers(deps);
@@ -816,10 +821,9 @@ describe("terminal spawn handler - help session detection (#6524)", () => {
 
     const spawnArgs = ptyClient.spawn.mock.calls[0][1];
     expect(spawnArgs.command).toContain("--dangerously-bypass-approvals-and-sandbox");
-    expect(spawnArgs.command).toContain("--trust-project");
   });
 
-  it("does not inject --trust-project for a non-help Codex launch", async () => {
+  it("does not query Codex launch args for a non-help Codex launch", async () => {
     mockValidateToken.mockReturnValue(false);
 
     const deps = { ptyClient } as unknown as HandlerDependencies;
@@ -837,7 +841,30 @@ describe("terminal spawn handler - help session detection (#6524)", () => {
       } as unknown as Parameters<typeof handler>[1]
     );
 
+    expect(mockGetCodexLaunchArgs).not.toHaveBeenCalled();
+  });
+
+  it("does not append Codex flags when getCodexLaunchArgs returns null (defense-in-depth)", async () => {
+    mockValidateToken.mockImplementation((token) => (token === "help-token" ? "action" : false));
+    mockGetCodexLaunchArgs.mockReturnValue(null);
+
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+    await handler(
+      {} as Electron.IpcMainInvokeEvent,
+      {
+        cols: 80,
+        rows: 24,
+        cwd: tmpDir,
+        command: "codex",
+        launchAgentId: "codex",
+        env: { DAINTREE_MCP_TOKEN: "help-token" },
+      } as unknown as Parameters<typeof handler>[1]
+    );
+
     const spawnArgs = ptyClient.spawn.mock.calls[0][1];
-    expect(spawnArgs.command).not.toContain("--trust-project");
+    expect(spawnArgs.command).toBe("codex");
   });
 });

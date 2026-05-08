@@ -249,11 +249,17 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
           .replace(/\s{2,}/g, " ")
           .trim();
       }
-      // Codex needs --trust-project to read the session-dir's `.codex/config.toml`
-      // without writing to ~/.codex/. Without this flag, the project-scoped
-      // config is silently ignored and MCP wiring drops on the floor.
-      if (launchAgentId === "codex" && !/(^|\s)--trust-project(\s|$)/.test(safeCommand)) {
-        safeCommand = `${safeCommand} --trust-project`;
+      // Codex doesn't read project-scoped `.codex/config.toml` from cwd —
+      // its only override mechanism is the `-c key=value` CLI flag. The
+      // help-session service computed the exact `-c` args for the toggled
+      // MCP servers at provision time; append them here, shell-quoted. No
+      // literal token is ever in the args (Codex reads
+      // `DAINTREE_MCP_TOKEN` from PTY env via `bearer_token_env_var`).
+      if (launchAgentId === "codex") {
+        const codexArgs = helpSessionService.getCodexLaunchArgs(helpToken);
+        if (codexArgs && codexArgs.length > 0) {
+          safeCommand = `${safeCommand} ${codexArgs.map(shellQuote).join(" ")}`;
+        }
       }
     } else if (launchAgentId === "claude" && safeCommand.length > 0 && projectId) {
       // Daintree MCP injection for normal Claude Code agent launches.
