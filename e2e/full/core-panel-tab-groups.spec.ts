@@ -10,10 +10,13 @@ import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
 
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Core: Panel Tab Groups", () => {
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "tab-groups", withMultipleFiles: true });
+    const { dir, cleanup } = createFixtureRepo({ name: "tab-groups", withMultipleFiles: true });
+    fixtureDir = dir;
+    fixtureCleanup = cleanup;
     ctx = await launchApp();
 
     // Disable two-pane split mode before the project loads. The 1→2 panel
@@ -39,6 +42,7 @@ test.describe.serial("Core: Panel Tab Groups", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   // ── Tab Group Lifecycle ─────────────────────────────────

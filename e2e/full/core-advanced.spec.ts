@@ -18,6 +18,8 @@ let port: number;
 let mainBranch: string;
 let switchRepo: string;
 const PROJECT_NAME = "advanced-test";
+let cleanupMain: (() => void) | undefined;
+let cleanupSwitch: (() => void) | undefined;
 
 test.describe.serial("Core: Advanced", () => {
   test.beforeAll(async () => {
@@ -36,15 +38,20 @@ test.describe.serial("Core: Advanced", () => {
       withFeatureBranch: true,
       withMultipleFiles: true,
     });
-    switchRepo = createFixtureRepo({ name: "switch-project" });
+    cleanupMain = mainFixture.cleanup;
+    const switchFixture = createFixtureRepo({ name: "switch-project" });
+    cleanupSwitch = switchFixture.cleanup;
+    switchRepo = switchFixture.dir;
 
     ctx = await launchApp();
-    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, mainFixture, PROJECT_NAME);
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, mainFixture.dir, PROJECT_NAME);
   });
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
     server?.close();
+    cleanupMain?.();
+    cleanupSwitch?.();
   });
 
   // ── Browser & Portal (3 tests) ───────────────────

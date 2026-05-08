@@ -13,14 +13,18 @@ import { SEL } from "../helpers/selectors";
 
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe("OpenCode Online Flow", () => {
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "opencode-online" });
+    const { dir, cleanup } = createFixtureRepo({ name: "opencode-online" });
+    fixtureDir = dir;
+    fixtureCleanup = cleanup;
   });
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("full OpenCode agent interaction", async () => {

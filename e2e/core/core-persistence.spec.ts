@@ -79,10 +79,13 @@ test.describe.serial("Persistence: Project memory across restart", () => {
   let userDataDir: string;
   let fixtureDir: string;
   let ctx: AppContext | null = null;
+  let fixtureCleanup: (() => void) | undefined;
 
   test.beforeAll(async () => {
     userDataDir = mkdtempSync(path.join(tmpdir(), "daintree-e2e-persist-project-"));
-    fixtureDir = createFixtureRepo({ name: "persistence-test" });
+    const { dir, cleanup } = createFixtureRepo({ name: "persistence-test" });
+    fixtureDir = dir;
+    fixtureCleanup = cleanup;
   });
 
   test.afterAll(async () => {
@@ -93,7 +96,7 @@ test.describe.serial("Persistence: Project memory across restart", () => {
       ctx = null;
     }
     rmSync(userDataDir, { recursive: true, force: true });
-    rmSync(fixtureDir, { recursive: true, force: true });
+    fixtureCleanup?.();
   });
 
   test("previously onboarded project appears after restart", async () => {

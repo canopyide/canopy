@@ -14,11 +14,13 @@ import { expectTerminalFocused, ensureWindowFocused } from "../helpers/focus";
 
 let ctx: AppContext;
 const mod = process.platform === "darwin" ? "Meta" : "Control";
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Core: Focus Management", () => {
   test.beforeAll(async () => {
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "focus-management" });
+    const { dir: fixtureDir, cleanup } = createFixtureRepo({ name: "focus-management" });
+    fixtureCleanup = cleanup;
     ctx.window = await openAndOnboardProject(
       ctx.app,
       ctx.window,
@@ -29,6 +31,7 @@ test.describe.serial("Core: Focus Management", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("action palette dismiss restores terminal focus", async () => {

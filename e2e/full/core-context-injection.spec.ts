@@ -9,6 +9,7 @@ import { T_MEDIUM, T_LONG } from "../helpers/timeouts";
 
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 
 async function getActiveWorktreeId(window: import("@playwright/test").Page): Promise<string> {
   const res: any = await window.evaluate(() =>
@@ -19,7 +20,9 @@ async function getActiveWorktreeId(window: import("@playwright/test").Page): Pro
 
 test.describe.serial("Core: Context Injection", () => {
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ withMultipleFiles: true });
+    const { dir, cleanup } = createFixtureRepo({ withMultipleFiles: true });
+    fixtureDir = dir;
+    fixtureCleanup = cleanup;
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "context-test");
 
@@ -39,6 +42,7 @@ test.describe.serial("Core: Context Injection", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("Copy Context button populates clipboard formats", async () => {

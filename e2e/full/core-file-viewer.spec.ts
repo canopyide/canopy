@@ -8,6 +8,7 @@ import { T_SHORT, T_MEDIUM, T_LONG } from "../helpers/timeouts";
 
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 
 async function dispatchViewFile(ctx: AppContext, filePath: string, rootPath?: string) {
   // Normalize to forward slashes so the renderer's containment check works on Windows
@@ -38,18 +39,21 @@ async function closeDialog(ctx: AppContext) {
 
 test.describe.serial("Core: File Viewer Modal", () => {
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({
+    const { dir, cleanup } = createFixtureRepo({
       name: "file-viewer",
       withMultipleFiles: true,
       withImageFile: true,
       withUncommittedChanges: true,
     });
+    fixtureDir = dir;
+    fixtureCleanup = cleanup;
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "File Viewer Test");
   });
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("modal opens for a text file and shows filename in header", async () => {

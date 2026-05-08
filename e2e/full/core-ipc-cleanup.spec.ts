@@ -13,7 +13,6 @@ import {
   getRendererListenerSnapshot,
 } from "../helpers/ipcFaults";
 import { addAndSwitchToProject, selectExistingProjectAndRefresh } from "../helpers/workflows";
-import { rmSync } from "fs";
 
 // Migrated events (worktree:update, agent:state-changed, terminal:exit, ...)
 // now travel over the multiplexed `events:push` channel so their listener
@@ -25,16 +24,19 @@ const RENDERER_CHANNELS = ["events:push", "terminal:activity"];
 test.describe.serial("Core: IPC Cleanup Verification", () => {
   let ctx: AppContext;
   let fixtureDir: string;
+  let fixtureCleanup: (() => void) | undefined;
 
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "ipc-cleanup" });
+    const { dir, cleanup } = createFixtureRepo({ name: "ipc-cleanup" });
+    fixtureDir = dir;
+    fixtureCleanup = cleanup;
     ctx = await launchApp({ env: { DAINTREE_E2E_FAULT_MODE: "1" } });
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "IPC Cleanup");
   });
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
-    rmSync(fixtureDir, { recursive: true, force: true });
+    fixtureCleanup?.();
   });
 
   test("AC1: handler count stable after 5 terminal open/close cycles", async () => {

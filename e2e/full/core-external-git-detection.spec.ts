@@ -10,10 +10,13 @@ import path from "path";
 
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Core: External Git Detection", () => {
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "external-git-detection" });
+    const { dir, cleanup } = createFixtureRepo({ name: "external-git-detection" });
+    fixtureDir = dir;
+    fixtureCleanup = cleanup;
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(
       ctx.app,
@@ -25,6 +28,7 @@ test.describe.serial("Core: External Git Detection", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("initial state shows clean worktree with initial commit", async () => {

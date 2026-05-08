@@ -8,6 +8,7 @@ import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
 
 let ctx: AppContext;
 const mod = process.platform === "darwin" ? "Meta" : "Control";
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Core: Shell & Settings", () => {
   test.beforeAll(async () => {
@@ -16,6 +17,7 @@ test.describe.serial("Core: Shell & Settings", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   // ── App Shell (5 tests) ──────────────────────────────────
@@ -98,7 +100,8 @@ test.describe.serial("Core: Shell & Settings", () => {
 
   test.describe.serial("Keyboard Shortcuts", () => {
     test.beforeAll(async () => {
-      const fixtureDir = createFixtureRepo({ name: "shell-settings" });
+      const { dir: fixtureDir, cleanup } = createFixtureRepo({ name: "shell-settings" });
+      fixtureCleanup = cleanup;
       ctx.window = await openAndOnboardProject(
         ctx.app,
         ctx.window,

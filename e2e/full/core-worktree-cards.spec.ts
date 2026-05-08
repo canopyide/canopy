@@ -8,14 +8,16 @@ import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
 
 let ctx: AppContext;
 const FEATURE = "feature/test-branch";
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Core: Worktree Cards", () => {
   test.beforeAll(async () => {
-    const fixture = createFixtureRepo({
+    const { dir: fixture, cleanup } = createFixtureRepo({
       name: "worktree-cards",
       withFeatureBranch: true,
       withUncommittedChanges: true,
     });
+    fixtureCleanup = cleanup;
 
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixture, "Worktree Cards");
@@ -23,6 +25,7 @@ test.describe.serial("Core: Worktree Cards", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   // -- Multi-Worktree Coverage --

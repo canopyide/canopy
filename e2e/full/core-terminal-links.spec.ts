@@ -11,6 +11,7 @@ import { runTerminalCommand, waitForTerminalText, triggerTerminalLink } from "..
 let ctx: AppContext;
 let server: Server;
 let port: number;
+let fixtureCleanup: (() => void) | undefined;
 
 function handleRequest(_req: IncomingMessage, res: ServerResponse) {
   res.writeHead(200, { "Content-Type": "text/html" });
@@ -26,14 +27,21 @@ test.describe.serial("Core: Terminal Links", () => {
     const addr = server.address();
     port = typeof addr === "object" && addr ? addr.port : 0;
 
-    const fixture = createFixtureRepo({ name: "terminal-links-test" });
+    const { dir: fixtureDir, cleanup } = createFixtureRepo({ name: "terminal-links-test" });
+    fixtureCleanup = cleanup;
     ctx = await launchApp();
-    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixture, "Terminal Links Test");
+    ctx.window = await openAndOnboardProject(
+      ctx.app,
+      ctx.window,
+      fixtureDir,
+      "Terminal Links Test"
+    );
   });
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
     server?.close();
+    fixtureCleanup?.();
   });
 
   test("echo localhost URL appears in terminal buffer", async () => {

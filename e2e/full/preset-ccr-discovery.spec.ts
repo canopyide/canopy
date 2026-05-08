@@ -14,6 +14,7 @@ import {
 } from "../helpers/presets";
 
 let ctx: AppContext;
+let fixtureCleanup: (() => void) | undefined;
 
 const T_CCR = 60_000;
 
@@ -29,13 +30,15 @@ test.describe.serial("Presets: CCR Discovery & Auto-Config (1–12)", () => {
       { id: "gpt5", name: "GPT-5", model: "gpt-5.4" },
     ]);
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "preset-ccr" });
+    const { dir: fixtureDir, cleanup } = createFixtureRepo({ name: "preset-ccr" });
+    fixtureCleanup = cleanup;
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Preset CCR Test");
   });
 
   test.afterAll(async () => {
     removeCcrConfig();
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("1. CCR config with models shows presets in toolbar split-button", async () => {

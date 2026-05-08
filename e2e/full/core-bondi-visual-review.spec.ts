@@ -1,6 +1,4 @@
 import { test } from "@playwright/test";
-import path from "path";
-import { rmSync } from "fs";
 import { launchApp, closeApp, type AppContext } from "../helpers/launch";
 import { createFixtureRepo } from "../helpers/fixtures";
 import { openAndOnboardProject } from "../helpers/project";
@@ -22,14 +20,17 @@ async function switchTheme(page: import("@playwright/test").Page, themeId: strin
 
 let ctx: AppContext;
 let repoDir: string;
+let cleanupFixture: (() => void) | undefined;
 
 test.describe.serial("Core: Bondi Visual Review", () => {
   test.beforeAll(async () => {
-    repoDir = createFixtureRepo({
+    const fixture = createFixtureRepo({
       name: "bondi-review",
       withFeatureBranch: true,
       withUncommittedChanges: true,
     });
+    repoDir = fixture.dir;
+    cleanupFixture = fixture.cleanup;
 
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, repoDir, "Bondi Review");
@@ -39,19 +40,7 @@ test.describe.serial("Core: Bondi Visual Review", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
-    if (repoDir) {
-      const worktreeDir = path.join(path.dirname(repoDir), path.basename(repoDir) + "-worktrees");
-      try {
-        rmSync(worktreeDir, { recursive: true, force: true });
-      } catch {
-        /* best-effort */
-      }
-      try {
-        rmSync(repoDir, { recursive: true, force: true });
-      } catch {
-        /* best-effort */
-      }
-    }
+    cleanupFixture?.();
   });
 
   // eslint-disable-next-line no-empty-pattern

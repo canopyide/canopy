@@ -7,12 +7,14 @@ import { T_SHORT, T_MEDIUM, T_SETTLE } from "../helpers/timeouts";
 import { navigateToAgentSettings, addCustomPreset, removeCcrConfig } from "../helpers/presets";
 
 let ctx: AppContext;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Presets: Custom Edit (25–34)", () => {
   test.beforeAll(async () => {
     removeCcrConfig();
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "preset-edit" });
+    const { dir: fixtureDir, cleanup } = createFixtureRepo({ name: "preset-edit" });
+    fixtureCleanup = cleanup;
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Preset Edit Test");
     await navigateToAgentSettings(ctx.window, "claude");
     await addCustomPreset(ctx.window);
@@ -21,6 +23,7 @@ test.describe.serial("Presets: Custom Edit (25–34)", () => {
   test.afterAll(async () => {
     removeCcrConfig();
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   const goToClaudeSettings = async () => {

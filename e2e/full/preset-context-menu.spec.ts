@@ -12,12 +12,14 @@ import {
 } from "../helpers/presets";
 
 let ctx: AppContext;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Presets: Context Menu Integration (93–96)", () => {
   test.beforeAll(async () => {
     removeCcrConfig();
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "preset-ctx-menu" });
+    const { dir: fixtureDir, cleanup } = createFixtureRepo({ name: "preset-ctx-menu" });
+    fixtureCleanup = cleanup;
     ctx.window = await openAndOnboardProject(
       ctx.app,
       ctx.window,
@@ -29,6 +31,7 @@ test.describe.serial("Presets: Context Menu Integration (93–96)", () => {
   test.afterAll(async () => {
     removeCcrConfig();
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   const rightClickClaudeToolbar = async () => {
@@ -129,7 +132,7 @@ test.describe.serial("Presets: Context Menu Integration (93–96)", () => {
 
   test("96. Checkmark or highlight next to currently saved default preset", async () => {
     await navigateToAgentSettings(ctx.window, "claude");
-    const select = ctx.window.locator(SEL.preset.defaultSelect);
+    const select = ctx.window.locator(SEL.preset.selectorTrigger);
     await expect(select).toBeVisible({ timeout: T_MEDIUM });
     const options = select.locator("option");
     const count = await options.count();

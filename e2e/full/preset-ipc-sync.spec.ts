@@ -13,12 +13,14 @@ import {
 } from "../helpers/presets";
 
 let ctx: AppContext;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Presets: IPC Sync — Main ↔ Renderer (77–82)", () => {
   test.beforeAll(async () => {
     removeCcrConfig();
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "preset-ipc-sync" });
+    const { dir: fixtureDir, cleanup } = createFixtureRepo({ name: "preset-ipc-sync" });
+    fixtureCleanup = cleanup;
     ctx.window = await openAndOnboardProject(
       ctx.app,
       ctx.window,
@@ -30,6 +32,7 @@ test.describe.serial("Presets: IPC Sync — Main ↔ Renderer (77–82)", () => 
   test.afterAll(async () => {
     removeCcrConfig();
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("77. CCR config write triggers IPC event and presets appear in settings", async () => {

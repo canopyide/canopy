@@ -15,6 +15,7 @@ import { SEL } from "../helpers/selectors";
 import { T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
 
 let ctx: AppContext;
+let fixtureCleanups: Array<() => void> = [];
 const PROJECT_A_NAME = "project-A";
 const PROJECT_B_NAME = "project-B";
 
@@ -86,7 +87,9 @@ async function switchToProject(
 
 test.describe.serial("Core: Project Switch Race Conditions", () => {
   test.beforeAll(async () => {
-    const [repoA, repoB] = createFixtureRepos(2);
+    const fixtures = createFixtureRepos(2);
+    fixtureCleanups = fixtures.map((f) => f.cleanup);
+    const [repoA, repoB] = fixtures.map((f) => f.dir);
 
     ctx = await launchApp({ env: { DAINTREE_E2E_FAULT_MODE: "1" } });
 
@@ -116,6 +119,7 @@ test.describe.serial("Core: Project Switch Race Conditions", () => {
   test.afterAll(async () => {
     await clearAllFaults(ctx.app);
     if (ctx?.app) await closeApp(ctx.app);
+    for (const cleanup of fixtureCleanups) cleanup();
   });
 
   test("delayed spawn assigns terminal to originating project", async () => {

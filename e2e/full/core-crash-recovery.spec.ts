@@ -318,10 +318,13 @@ test.describe.serial("Core: Crash Recovery — Panel Restoration", () => {
   let ctx: AppContext | null = null;
   let userDataDir: string;
   let fixtureDir: string;
+  let fixtureCleanup: (() => void) | undefined;
 
   test.beforeAll(async () => {
     userDataDir = mkdtempSync(path.join(tmpdir(), "daintree-e2e-restore-"));
-    fixtureDir = createFixtureRepo({ name: "restore-test" });
+    const { dir, cleanup } = createFixtureRepo({ name: "restore-test" });
+    fixtureDir = dir;
+    fixtureCleanup = cleanup;
 
     // Session 1: Launch, onboard project, close — establishes project in DB
     const setupCtx = await launchApp({ userDataDir });
@@ -354,11 +357,7 @@ test.describe.serial("Core: Crash Recovery — Panel Restoration", () => {
     } catch {
       // best-effort cleanup
     }
-    try {
-      rmSync(fixtureDir, { recursive: true, force: true });
-    } catch {
-      // best-effort cleanup
-    }
+    fixtureCleanup?.();
   });
 
   test("restore places panels in correct locations", async () => {

@@ -16,6 +16,7 @@ const mod = process.platform === "darwin" ? "Meta" : "Control";
 
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 let terminalPanel: Locator;
 
 function streamingCommand(token: string, lineCount = 100): string {
@@ -32,7 +33,9 @@ async function countStreamLines(panel: Locator, token: string): Promise<number> 
 
 test.describe.serial("Core: Concurrent terminal output during UI interactions", () => {
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "concurrent-ops" });
+    const { dir, cleanup } = createFixtureRepo({ name: "concurrent-ops" });
+    fixtureDir = dir;
+    fixtureCleanup = cleanup;
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Concurrent Ops");
 
@@ -44,6 +47,7 @@ test.describe.serial("Core: Concurrent terminal output during UI interactions", 
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("action palette focus remains stable during terminal streaming", async () => {

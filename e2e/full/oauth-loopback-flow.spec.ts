@@ -413,6 +413,7 @@ let nextAppServer: Server;
 let keycloakPort: number;
 let appPort: number;
 let fixture: string;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("E2E: OAuth Loopback Flow in Dev Preview", () => {
   test.beforeAll(async () => {
@@ -435,7 +436,7 @@ test.describe.serial("E2E: OAuth Loopback Flow in Dev Preview", () => {
     // Create fixture with a package.json that has a "dev" script.
     // The dev script starts a tiny HTTP server that serves the fake app.
     // This makes the dev-preview panel detect a dev server and create the webview.
-    fixture = createFixtureRepo({ name: "oauth-e2e" });
+    ({ dir: fixture, cleanup: fixtureCleanup } = createFixtureRepo({ name: "oauth-e2e" }));
 
     // Write a package.json with a dev script that simply echoes the app URL.
     // The dev-preview URL detector looks for localhost URLs in terminal output.
@@ -459,6 +460,7 @@ test.describe.serial("E2E: OAuth Loopback Flow in Dev Preview", () => {
     if (ctx?.app) await closeApp(ctx.app);
     keycloakServer?.close();
     nextAppServer?.close();
+    fixtureCleanup?.();
   });
 
   // TODO(e2e): pre-existing failure — the loopback flow's CDP-driven

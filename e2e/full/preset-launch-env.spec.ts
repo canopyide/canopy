@@ -12,12 +12,14 @@ import {
 } from "../helpers/presets";
 
 let ctx: AppContext;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Presets: Launch Env Overrides (63–70)", () => {
   test.beforeAll(async () => {
     removeCcrConfig();
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "preset-launch-env" });
+    const { dir: fixtureDir, cleanup } = createFixtureRepo({ name: "preset-launch-env" });
+    fixtureCleanup = cleanup;
     ctx.window = await openAndOnboardProject(
       ctx.app,
       ctx.window,
@@ -29,6 +31,7 @@ test.describe.serial("Presets: Launch Env Overrides (63–70)", () => {
   test.afterAll(async () => {
     removeCcrConfig();
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   const goToClaudeSettings = async () => {
@@ -69,7 +72,7 @@ test.describe.serial("Presets: Launch Env Overrides (63–70)", () => {
     await goToClaudeSettings();
     await expect(ctx.window.locator(SEL.preset.section)).toBeVisible({ timeout: T_MEDIUM });
 
-    const select = ctx.window.locator(SEL.preset.defaultSelect);
+    const select = ctx.window.locator(SEL.preset.selectorTrigger);
     await expect(select).toBeVisible({ timeout: T_SHORT });
 
     const options = select.locator("option");
@@ -108,7 +111,7 @@ test.describe.serial("Presets: Launch Env Overrides (63–70)", () => {
     await goToClaudeSettings();
     await expect(ctx.window.locator(SEL.preset.section)).toBeVisible({ timeout: T_MEDIUM });
 
-    const select = ctx.window.locator(SEL.preset.defaultSelect);
+    const select = ctx.window.locator(SEL.preset.selectorTrigger);
     await expect(select).toBeVisible({ timeout: T_SHORT });
 
     const options = select.locator("option");

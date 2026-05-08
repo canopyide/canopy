@@ -17,16 +17,20 @@ import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
 
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Core: Panel Drag & Drop", () => {
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "drag-drop" });
+    const { dir, cleanup } = createFixtureRepo({ name: "drag-drop" });
+    fixtureDir = dir;
+    fixtureCleanup = cleanup;
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Drag Drop Test");
   });
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   // ── Setup: Open 3 terminals ──────────────────────────────

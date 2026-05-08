@@ -15,18 +15,21 @@ import {
 } from "../helpers/presets";
 
 let ctx: AppContext;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Presets: Custom Duplicate (35–44)", () => {
   test.beforeAll(async () => {
     removeCcrConfig();
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "preset-dup" });
+    const { dir: fixtureDir, cleanup } = createFixtureRepo({ name: "preset-dup" });
+    fixtureCleanup = cleanup;
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Preset Dup Test");
   });
 
   test.afterAll(async () => {
     removeCcrConfig();
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   const goToClaudeSettings = async () => {

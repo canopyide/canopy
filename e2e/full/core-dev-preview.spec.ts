@@ -13,6 +13,7 @@ let ctx: AppContext;
 let server: Server;
 let port: number;
 let fixtureRepoPath: string;
+let fixtureCleanup: (() => void) | undefined;
 const PROJECT_NAME = "Dev Preview Test";
 
 test.describe.serial("Core: Dev Preview", () => {
@@ -27,7 +28,9 @@ test.describe.serial("Core: Dev Preview", () => {
     const addr = server.address();
     port = typeof addr === "object" && addr ? addr.port : 0;
 
-    fixtureRepoPath = createFixtureRepo({ name: "dev-preview-test" });
+    const { dir, cleanup } = createFixtureRepo({ name: "dev-preview-test" });
+    fixtureRepoPath = dir;
+    fixtureCleanup = cleanup;
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureRepoPath, PROJECT_NAME);
   });
@@ -35,6 +38,7 @@ test.describe.serial("Core: Dev Preview", () => {
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
     server?.close();
+    fixtureCleanup?.();
   });
 
   test.describe.serial("Panel Chrome", () => {

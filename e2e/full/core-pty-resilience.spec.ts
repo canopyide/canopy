@@ -22,10 +22,11 @@ import {
 
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Core: PTY Resilience", () => {
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "pty-resilience" });
+    ({ dir: fixtureDir, cleanup: fixtureCleanup } = createFixtureRepo({ name: "pty-resilience" }));
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(
       ctx.app,
@@ -37,6 +38,7 @@ test.describe.serial("Core: PTY Resilience", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("terminal flood with PTY lifecycle verification", async () => {

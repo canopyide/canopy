@@ -11,16 +11,20 @@ const mod = process.platform === "darwin" ? "Meta" : "Control";
 
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Core: Action Palette, Command Picker & Quick Switcher", () => {
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "palettes-test", withMultipleFiles: true });
+    const { dir, cleanup } = createFixtureRepo({ name: "palettes-test", withMultipleFiles: true });
+    fixtureDir = dir;
+    fixtureCleanup = cleanup;
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Palette Test");
   });
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   // ── Action Palette (4 tests) ──────────────────────────────

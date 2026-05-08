@@ -11,6 +11,8 @@ const mod = process.platform === "darwin" ? "Meta" : "Control";
 let ctx: AppContext;
 const PRIMARY_NAME = "primary-advanced";
 const SECONDARY_NAME = "secondary-remove";
+let cleanupPrimary: (() => void) | undefined;
+let cleanupSecondary: (() => void) | undefined;
 
 test.describe.serial("Core: Project Management Advanced", () => {
   test.beforeAll(async () => {
@@ -19,12 +21,19 @@ test.describe.serial("Core: Project Management Advanced", () => {
       withFeatureBranch: true,
     });
     const secondaryRepo = createFixtureRepo({ name: "secondary-remove" });
+    cleanupPrimary = primaryRepo.cleanup;
+    cleanupSecondary = secondaryRepo.cleanup;
 
     ctx = await launchApp();
-    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, primaryRepo, PRIMARY_NAME);
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, primaryRepo.dir, PRIMARY_NAME);
 
     // Add secondary project
-    ctx.window = await addAndSwitchToProject(ctx.app, ctx.window, secondaryRepo, SECONDARY_NAME);
+    ctx.window = await addAndSwitchToProject(
+      ctx.app,
+      ctx.window,
+      secondaryRepo.dir,
+      SECONDARY_NAME
+    );
 
     // Switch back to primary project
     ctx.window = await selectExistingProjectAndRefresh(ctx.app, ctx.window, PRIMARY_NAME);
@@ -37,6 +46,8 @@ test.describe.serial("Core: Project Management Advanced", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    cleanupPrimary?.();
+    cleanupSecondary?.();
   });
 
   // ── Project Removal Confirmation (3 tests) ──────────────

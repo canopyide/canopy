@@ -22,6 +22,7 @@ import { ensureWindowFocused } from "../helpers/focus";
 
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 
 const mod = process.platform === "darwin" ? "Meta" : "Control";
 
@@ -95,7 +96,9 @@ async function addEnvironmentViaGUI(
 
 test.describe.serial("Full: Resource Settings Persistence", () => {
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "resource-settings" });
+    ({ dir: fixtureDir, cleanup: fixtureCleanup } = createFixtureRepo({
+      name: "resource-settings",
+    }));
     writeResourceConfig(fixtureDir);
 
     ctx = await launchApp();
@@ -107,6 +110,7 @@ test.describe.serial("Full: Resource Settings Persistence", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   // ---- Test 1: Settings persistence round-trip ----

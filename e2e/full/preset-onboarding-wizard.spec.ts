@@ -12,18 +12,21 @@ import {
 } from "../helpers/presets";
 
 let ctx: AppContext;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Presets: Onboarding/Wizard Integration (83–88)", () => {
   test.beforeAll(async () => {
     removeCcrConfig();
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "preset-wizard" });
+    const { dir: fixtureDir, cleanup } = createFixtureRepo({ name: "preset-wizard" });
+    fixtureCleanup = cleanup;
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Preset Wizard Test");
   });
 
   test.afterAll(async () => {
     removeCcrConfig();
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("83. Write CCR config with 2 models, open wizard, verify Claude shows preset count badge", async () => {

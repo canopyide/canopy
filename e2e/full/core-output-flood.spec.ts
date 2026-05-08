@@ -13,16 +13,20 @@ import { measureMainMemory, floodTerminal } from "../helpers/stress";
 
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Core: Output Flood Memory Bounds", () => {
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "output-flood" });
+    const { dir, cleanup } = createFixtureRepo({ name: "output-flood" });
+    fixtureDir = dir;
+    fixtureCleanup = cleanup;
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Output Flood Test");
   });
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   let panel: ReturnType<typeof getFirstGridPanel>;

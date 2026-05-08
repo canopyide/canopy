@@ -7,11 +7,13 @@ import { T_SHORT, T_MEDIUM, T_SETTLE } from "../helpers/timeouts";
 
 import { openSettings } from "../helpers/panels";
 let ctx: AppContext;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Core: Settings Advanced", () => {
   test.beforeAll(async () => {
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "settings-advanced" });
+    const { dir: fixtureDir, cleanup } = createFixtureRepo({ name: "settings-advanced" });
+    fixtureCleanup = cleanup;
     ctx.window = await openAndOnboardProject(
       ctx.app,
       ctx.window,
@@ -22,6 +24,7 @@ test.describe.serial("Core: Settings Advanced", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   // ── Keyboard Shortcuts (5 tests) ──────────────────────────

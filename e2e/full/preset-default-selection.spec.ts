@@ -29,12 +29,14 @@ async function selectPresetByIndex(
 }
 
 let ctx: AppContext;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Presets: Default Preset Selection (53–62)", () => {
   test.beforeAll(async () => {
     removeCcrConfig();
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "preset-default" });
+    const { dir: fixtureDir, cleanup } = createFixtureRepo({ name: "preset-default" });
+    fixtureCleanup = cleanup;
     ctx.window = await openAndOnboardProject(
       ctx.app,
       ctx.window,
@@ -50,6 +52,7 @@ test.describe.serial("Presets: Default Preset Selection (53–62)", () => {
   test.afterAll(async () => {
     removeCcrConfig();
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   const goToClaudeSettings = async () => {
@@ -60,7 +63,7 @@ test.describe.serial("Presets: Default Preset Selection (53–62)", () => {
     await goToClaudeSettings();
     await addCustomPreset(ctx.window);
     await addCustomPreset(ctx.window); // Need 2 presets for selector to appear
-    await expect(ctx.window.locator(SEL.preset.defaultSelect)).toBeVisible({ timeout: T_MEDIUM });
+    await expect(ctx.window.locator(SEL.preset.selectorTrigger)).toBeVisible({ timeout: T_MEDIUM });
   });
 
   test("54. Default preset selector shows Default as default", async () => {
@@ -228,7 +231,7 @@ test.describe.serial("Presets: Default Preset Selection (53–62)", () => {
 
     await goToClaudeSettings();
     await expect(ctx.window.locator(SEL.preset.section)).toBeVisible({ timeout: T_MEDIUM });
-    await expect(ctx.window.locator(SEL.preset.defaultSelect)).toBeVisible({ timeout: T_SHORT });
+    await expect(ctx.window.locator(SEL.preset.selectorTrigger)).toBeVisible({ timeout: T_SHORT });
   });
 
   test("62. Setting default on Claude does not affect Gemini agent", async () => {

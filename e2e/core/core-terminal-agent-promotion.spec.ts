@@ -13,6 +13,7 @@ import { T_LONG, T_MEDIUM } from "../helpers/timeouts";
 let ctx: AppContext;
 let fixtureDir: string;
 let fakeBinDir: string;
+let fixtureCleanup: (() => void) | undefined;
 
 const AGENT_STATE_VALUES = new Set([
   "idle",
@@ -199,7 +200,9 @@ async function newestPanelId(page: Page, previousIds: Set<string>): Promise<stri
 }
 
 function prepareFixture(): void {
-  fixtureDir = createFixtureRepo({ name: "terminal-agent-promotion" });
+  const { dir, cleanup } = createFixtureRepo({ name: "terminal-agent-promotion" });
+  fixtureDir = dir;
+  fixtureCleanup = cleanup;
   // Keep a space in the fake CLI path so toolbar launches exercise the same
   // quoted absolute executable form that real resolved paths can use.
   fakeBinDir = path.join(fixtureDir, ".e2e bin");
@@ -280,6 +283,7 @@ test.describe.serial("Core: terminal runtime agent promotion", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("toolbar Claude launch and plain-terminal Claude command both activate agent chrome/state", async () => {

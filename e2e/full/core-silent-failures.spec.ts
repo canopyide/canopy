@@ -9,10 +9,11 @@ import { T_SHORT, T_MEDIUM, T_SETTLE } from "../helpers/timeouts";
 import { openSettings, openTerminal } from "../helpers/panels";
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Core: Silent IPC Failure Detection", () => {
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "silent-failures" });
+    ({ dir: fixtureDir, cleanup: fixtureCleanup } = createFixtureRepo({ name: "silent-failures" }));
     ctx = await launchApp({ env: { DAINTREE_E2E_FAULT_MODE: "1" } });
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Silent Failures");
   });
@@ -23,6 +24,7 @@ test.describe.serial("Core: Silent IPC Failure Detection", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("GitHub issues dropdown shows error state on IPC fault", async () => {

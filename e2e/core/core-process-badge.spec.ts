@@ -8,6 +8,7 @@ import { T_LONG } from "../helpers/timeouts";
 
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 
 // #5813: the process icon badge (npm, pnpm, docker, node, etc.) must surface
 // on plain terminals running a recognised non-agent process. The badge is
@@ -16,13 +17,16 @@ let fixtureDir: string;
 // `data-detected-process-id` attribute.
 test.describe.serial("Core: Process Icon Badge", () => {
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "process-badge" });
+    const { dir, cleanup } = createFixtureRepo({ name: "process-badge" });
+    fixtureDir = dir;
+    fixtureCleanup = cleanup;
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Process Badge Test");
   });
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("node process running a timed script surfaces the node badge, then clears on exit", async () => {

@@ -17,11 +17,12 @@ import path from "path";
 test.describe.serial("Persistence: Layout & Window across restart", () => {
   let userDataDir: string;
   let fixtureDir: string;
+  let fixtureCleanup: () => void;
   let ctx: AppContext | null = null;
 
   test.beforeAll(async () => {
     userDataDir = mkdtempSync(path.join(tmpdir(), "daintree-e2e-persist-layout-"));
-    fixtureDir = createFixtureRepo({ name: "persist-layout" });
+    ({ dir: fixtureDir, cleanup: fixtureCleanup } = createFixtureRepo({ name: "persist-layout" }));
   });
 
   test.afterAll(async () => {
@@ -32,7 +33,7 @@ test.describe.serial("Persistence: Layout & Window across restart", () => {
       ctx = null;
     }
     rmSync(userDataDir, { recursive: true, force: true });
-    rmSync(fixtureDir, { recursive: true, force: true });
+    fixtureCleanup?.();
   });
 
   test("terminal layout, window size, and sidebar state survive restart", async () => {

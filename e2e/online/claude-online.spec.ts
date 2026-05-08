@@ -13,14 +13,18 @@ import { SEL } from "../helpers/selectors";
 
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe("Claude Online Flow", () => {
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "claude-online" });
+    const { dir, cleanup } = createFixtureRepo({ name: "claude-online" });
+    fixtureDir = dir;
+    fixtureCleanup = cleanup;
   });
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("full Claude agent interaction", async () => {

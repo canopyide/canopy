@@ -16,16 +16,18 @@ interface SettledResult<T = unknown> {
 
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Core: Race Conditions from Concurrent IPC", () => {
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "race-conditions" });
+    ({ dir: fixtureDir, cleanup: fixtureCleanup } = createFixtureRepo({ name: "race-conditions" }));
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Race Conditions");
   });
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("concurrent duplicate worktree create produces exactly one worktree", async () => {

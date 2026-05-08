@@ -266,8 +266,6 @@ export const SEL = {
   preset: {
     section: "#agents-presets",
     addButton: '[data-testid="preset-add-button"]',
-    // Back-compat alias for the preset picker trigger (Popover now, was <select>).
-    defaultSelect: '[data-testid="preset-selector-trigger"]',
     selectorTrigger: '[data-testid="preset-selector-trigger"]',
     selectorListbox: '[data-testid="preset-selector-listbox"]',
     presetRow: "#agents-presets [data-testid]",

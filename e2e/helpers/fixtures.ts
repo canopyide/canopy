@@ -13,11 +13,26 @@ interface FixtureRepoOptions {
   unstagedFileCount?: number;
 }
 
+export interface FixtureRepo {
+  dir: string;
+  cleanup: () => void;
+}
+
 function git(cmd: string, cwd: string) {
   execSync(`git ${cmd}`, { cwd, stdio: "ignore" });
 }
 
-export function createFixtureRepo(options: FixtureRepoOptions = {}): string {
+function makeFixtureCleanup(dir: string): () => void {
+  return () => {
+    const worktreeSibling = path.join(path.dirname(dir), path.basename(dir) + "-worktrees");
+    if (existsSync(worktreeSibling)) {
+      rmSync(worktreeSibling, { recursive: true, force: true });
+    }
+    rmSync(dir, { recursive: true, force: true });
+  };
+}
+
+export function createFixtureRepo(options: FixtureRepoOptions = {}): FixtureRepo {
   const {
     name = "test-project",
     withFeatureBranch = false,
@@ -27,6 +42,10 @@ export function createFixtureRepo(options: FixtureRepoOptions = {}): string {
     withSpreadCommits = false,
     unstagedFileCount = 0,
   } = options;
+
+  if (!Number.isInteger(unstagedFileCount) || unstagedFileCount < 0) {
+    throw new Error(`unstagedFileCount must be a non-negative integer, got ${unstagedFileCount}`);
+  }
 
   const dir = mkdtempSync(path.join(tmpdir(), `daintree-e2e-${name}-`));
 
@@ -100,9 +119,6 @@ export function createFixtureRepo(options: FixtureRepoOptions = {}): string {
     writeFileSync(path.join(dir, "uncommitted.txt"), "This file is not committed.\n");
   }
 
-  if (!Number.isInteger(unstagedFileCount) || unstagedFileCount < 0) {
-    throw new Error(`unstagedFileCount must be a non-negative integer, got ${unstagedFileCount}`);
-  }
   if (unstagedFileCount > 0) {
     const bulkDir = path.join(dir, "bulk-unstaged");
     mkdirSync(bulkDir, { recursive: true });
@@ -113,11 +129,11 @@ export function createFixtureRepo(options: FixtureRepoOptions = {}): string {
     }
   }
 
-  return dir;
+  return { dir, cleanup: makeFixtureCleanup(dir) };
 }
 
-export function createFixtureRepos(count: number): string[] {
-  const repos: string[] = [];
+export function createFixtureRepos(count: number): FixtureRepo[] {
+  const repos: FixtureRepo[] = [];
   for (let i = 0; i < count; i++) {
     const name = `project-${String.fromCharCode(65 + i)}`;
     repos.push(createFixtureRepo({ name }));
@@ -137,20 +153,12 @@ export function createMultiProjectFixture(
   optsB?: FixtureRepoOptions
 ): MultiProjectFixture {
   const rootDir = mkdtempSync(path.join(tmpdir(), "daintree-e2e-multi-"));
-  const repoA = createFixtureRepo({ name: "project-A", ...optsA });
-  const repoB = createFixtureRepo({ name: "project-B", ...optsB });
+  const { dir: repoA, cleanup: cleanupA } = createFixtureRepo({ name: "project-A", ...optsA });
+  const { dir: repoB, cleanup: cleanupB } = createFixtureRepo({ name: "project-B", ...optsB });
 
   const cleanup = () => {
-    for (const repoDir of [repoA, repoB]) {
-      const worktreeSibling = path.join(
-        path.dirname(repoDir),
-        path.basename(repoDir) + "-worktrees"
-      );
-      if (existsSync(worktreeSibling)) {
-        rmSync(worktreeSibling, { recursive: true, force: true });
-      }
-      rmSync(repoDir, { recursive: true, force: true });
-    }
+    cleanupA();
+    cleanupB();
     rmSync(rootDir, { recursive: true, force: true });
   };
 

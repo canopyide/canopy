@@ -278,34 +278,38 @@ test.describe.serial("Core: IPC Error Propagation", () => {
   test("ENOENT spawn error shows SpawnErrorBanner with retry and trash", async () => {
     // AC 3: Terminal spawn ENOENT renders SpawnErrorBanner
     // We need a project open to spawn terminals
-    const repo = createFixtureRepo({ name: "spawn-error-test" });
-    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, repo, "SpawnErrorTest");
+    const { dir: repo, cleanup } = createFixtureRepo({ name: "spawn-error-test" });
+    try {
+      ctx.window = await openAndOnboardProject(ctx.app, ctx.window, repo, "SpawnErrorTest");
 
-    // Click open terminal to create a terminal panel
-    await openTerminal(ctx.window);
+      // Click open terminal to create a terminal panel
+      await openTerminal(ctx.window);
 
-    // Wait for a grid panel to appear
-    const gridPanel = ctx.window.locator(SEL.panel.gridPanel);
-    await expect(gridPanel.first()).toBeVisible({ timeout: 10000 });
+      // Wait for a grid panel to appear
+      const gridPanel = ctx.window.locator(SEL.panel.gridPanel);
+      await expect(gridPanel.first()).toBeVisible({ timeout: 10000 });
 
-    // Get the terminal ID from the panel
-    const terminalId = await gridPanel.last().getAttribute("data-panel-id");
-    expect(terminalId).toBeTruthy();
+      // Get the terminal ID from the panel
+      const terminalId = await gridPanel.last().getAttribute("data-panel-id");
+      expect(terminalId).toBeTruthy();
 
-    // Send a synthetic spawn error result for this terminal
-    await emitSpawnResult(ctx.app, terminalId!, "ENOENT", "spawn /nonexistent ENOENT");
+      // Send a synthetic spawn error result for this terminal
+      await emitSpawnResult(ctx.app, terminalId!, "ENOENT", "spawn /nonexistent ENOENT");
 
-    // SpawnErrorBanner should appear with role="alert"
-    const targetPanel = gridPanel.last();
-    const banner = targetPanel.locator('[role="alert"]');
-    await expect(banner).toBeVisible({ timeout: 5000 });
+      // SpawnErrorBanner should appear with role="alert"
+      const targetPanel = gridPanel.last();
+      const banner = targetPanel.locator('[role="alert"]');
+      await expect(banner).toBeVisible({ timeout: 5000 });
 
-    // Title should say "Couldn't find shell or command"
-    await expect(banner.getByText("Couldn't find shell or command")).toBeVisible();
+      // Title should say "Couldn't find shell or command"
+      await expect(banner.getByText("Couldn't find shell or command")).toBeVisible();
 
-    // Retry and Trash buttons should be visible
-    await expect(banner.locator('[aria-label="Retry starting terminal"]')).toBeVisible();
-    await expect(banner.locator('[aria-label="Move to trash"]')).toBeVisible();
+      // Retry and Trash buttons should be visible
+      await expect(banner.locator('[aria-label="Retry starting terminal"]')).toBeVisible();
+      await expect(banner.locator('[aria-label="Move to trash"]')).toBeVisible();
+    } finally {
+      cleanup?.();
+    }
   });
 
   test("ENOTDIR spawn error shows Change directory action", async () => {

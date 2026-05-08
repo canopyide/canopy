@@ -7,15 +7,18 @@ import { T_SHORT, T_MEDIUM } from "../helpers/timeouts";
 
 test.describe.serial("Core: Toolbar Overflow", () => {
   let ctx: AppContext;
+  let fixtureCleanup: (() => void) | undefined;
 
   test.beforeAll(async () => {
     ctx = await launchApp();
-    const dir = createFixtureRepo({ name: "toolbar-overflow" });
+    const { dir, cleanup } = createFixtureRepo({ name: "toolbar-overflow" });
+    fixtureCleanup = cleanup;
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, dir, "Overflow Test");
   });
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("at 1920x1080 all toolbar buttons are visible without overflow menu", async () => {

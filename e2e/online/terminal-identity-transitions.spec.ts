@@ -43,6 +43,7 @@ const AGENT_STATE_VALUES = new Set([
 
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 let diagnostics: IdentityDiagnostics | null = null;
 
 interface IdentitySnapshot {
@@ -382,11 +383,14 @@ function createIdentityDiagnostics(appCtx: AppContext): IdentityDiagnostics {
 test.describe("Terminal chrome ↔ live process identity (bidirectional)", () => {
   test.beforeAll(async () => {
     mkdirSync(SCREENSHOT_DIR, { recursive: true });
-    fixtureDir = createFixtureRepo({ name: "identity-transitions" });
+    const { dir, cleanup } = createFixtureRepo({ name: "identity-transitions" });
+    fixtureDir = dir;
+    fixtureCleanup = cleanup;
   });
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   // Electron-only test: do not request the Playwright `page` fixture here, or
