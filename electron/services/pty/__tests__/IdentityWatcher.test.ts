@@ -528,6 +528,35 @@ describe("IdentityWatcher", () => {
       expect(state.detectionCalls).toHaveLength(0);
     });
 
+    it("calls processDetector.clearShellCommandEvidence('prompt-return') after a PowerShell prompt returns", async () => {
+      const inject = vi.fn();
+      const clear = vi.fn();
+      const fakeDetector = {
+        injectShellCommandEvidence: inject,
+        clearShellCommandEvidence: clear,
+      } as unknown as ProcessDetector;
+      const { delegate, state } = createFakeDelegate({
+        processDetector: fakeDetector,
+        visibleLines: ["& 'C:\\npm\\prefix\\claude.cmd'", "FAKE_CLAUDE_READY"],
+        cursorLine: "FAKE_CLAUDE_READY",
+        ptyDescendantCount: 1,
+      });
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.onShellSubmit("& 'C:\\npm\\prefix\\claude.cmd'");
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(watcher.isFallbackCommitted).toBe(true);
+
+      const powerShellPrompt = "PS C:\\Users\\runneradmin\\AppData\\Local\\Temp\\project>";
+      state.visibleLines = ["FAKE_CLAUDE_EXIT", powerShellPrompt];
+      state.cursorLine = powerShellPrompt;
+      state.ptyDescendantCount = 0;
+      await vi.advanceTimersByTimeAsync(600);
+
+      expect(clear).toHaveBeenCalledWith("prompt-return");
+      expect(state.detectionCalls).toHaveLength(0);
+    });
+
     // Inverse of the OR→AND test below: fallback is icon-only (no agentType),
     // live icon disagrees. A correct AND check must let the commit proceed
     // rather than pre-empting on the (absent) agentType match.

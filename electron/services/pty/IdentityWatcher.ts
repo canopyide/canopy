@@ -24,6 +24,8 @@ const SHELL_PROMPT_PATTERNS = [
   // whitespace-separated tokens followed by a single trailing prompt char so
   // command output like `cat <foo>` or `foo > bar.txt` doesn't false-positive.
   /^\s*\S+:\S+\s+\S+\s*[#$%>]\s*$/,
+  // PowerShell default — `PS C:\repo>` or `PS /home/user>`.
+  /^\s*PS\s+\S.*>\s*$/i,
 ] as const;
 
 // Locale-independent fallback signals for "command not found" detection. POSIX
@@ -465,6 +467,11 @@ export class IdentityWatcher {
     }
 
     if (!promptVisible) {
+      this.promptStreak = 0;
+      return;
+    }
+
+    if (!this.identity.agentType && ptyDescendantCount === undefined) {
       this.promptStreak = 0;
       return;
     }
