@@ -144,6 +144,24 @@ describe("SettingsSelect", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
+  it("aria-describedby references both error and description when both exist", () => {
+    render(
+      <SettingsSelect
+        label="Theme"
+        description="Choose a color theme"
+        error="Required"
+        value="d"
+        onValueChange={() => {}}
+        options={DEFAULT_OPTIONS}
+      />
+    );
+    const trigger = screen.getByLabelText("Theme");
+    const ids = trigger.getAttribute("aria-describedby")!.split(" ");
+    expect(ids).toHaveLength(2);
+    expect(document.getElementById(ids[0]!)?.textContent).toBe("Required");
+    expect(document.getElementById(ids[1]!)?.textContent).toBe("Choose a color theme");
+  });
+
   it("shows reset button when modified", () => {
     const onReset = vi.fn();
     render(
@@ -192,6 +210,17 @@ describe("SettingsTextarea", () => {
     const errorId = textarea.getAttribute("aria-describedby")!;
     expect(document.getElementById(errorId)?.textContent).toBe("Cannot be empty");
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("aria-describedby references both error and description when both exist", () => {
+    render(
+      <SettingsTextarea label="Notes" description="Additional notes" error="Cannot be empty" />
+    );
+    const textarea = screen.getByLabelText("Notes");
+    const ids = textarea.getAttribute("aria-describedby")!.split(" ");
+    expect(ids).toHaveLength(2);
+    expect(document.getElementById(ids[0]!)?.textContent).toBe("Cannot be empty");
+    expect(document.getElementById(ids[1]!)?.textContent).toBe("Additional notes");
   });
 
   it("forwards ref to the textarea element", () => {
