@@ -205,7 +205,7 @@ export function SearchablePalette<T>({
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.isComposing || e.nativeEvent.keyCode === 229) return;
+      if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
 
       if (onKeyDown) {
         onKeyDown(e);

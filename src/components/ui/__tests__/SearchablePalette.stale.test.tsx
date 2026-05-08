@@ -101,7 +101,7 @@ describe("SearchablePalette aria-busy on listbox", () => {
 
 describe("SearchablePalette combobox input ARIA", () => {
   it("has aria-autocomplete='list'", () => {
-    renderPalette();
+    renderPalette(undefined);
     const input = screen.getByRole("combobox");
     expect(input.getAttribute("aria-autocomplete")).toBe("list");
   });
