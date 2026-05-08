@@ -491,7 +491,12 @@ export function BrowserPane({
   const handleCaptureScreenshot = useCallback(async () => {
     const webview = webviewRef.current;
     if (!webview || !isWebviewReady) return;
-    const url = webview.getURL();
+    let url: string;
+    try {
+      url = webview.getURL();
+    } catch {
+      return;
+    }
     if (!url || url === "about:blank") return;
     try {
       const image = await webview.capturePage();
