@@ -82,6 +82,7 @@ describe("Avatar", () => {
       expect(img).toBeTruthy();
       expect(img!.style.opacity).toBe("1");
       expect(container.querySelector(".animate-pulse-delayed")).toBeFalsy();
+      expect(container.querySelector(".animate-pulse")).toBeFalsy();
     } finally {
       if (origComplete) {
         Object.defineProperty(HTMLImageElement.prototype, "complete", origComplete);
@@ -153,6 +154,7 @@ describe("Avatar", () => {
       // Src change resets state and effect re-probes the reused img node
       expect(container.querySelector("img")!.style.opacity).toBe("1");
       expect(container.querySelector(".animate-pulse-delayed")).toBeFalsy();
+      expect(container.querySelector(".animate-pulse")).toBeFalsy();
     } finally {
       if (origComplete) {
         Object.defineProperty(HTMLImageElement.prototype, "complete", origComplete);

@@ -179,5 +179,6 @@ describe("Radix overlay animation classes — wrapper source", () => {
   it("tooltip.tsx contains palette enter/exit set with palette durations", () => {
     const src = readWrapperSource("tooltip.tsx");
     expectAllInString(src, TOOLTIP_CLASSES, "tooltip.tsx");
+    expect(src).toContain("var(--radix-tooltip-content-transform-origin)");
   });
 });
