@@ -61,6 +61,8 @@ export function NewTerminalPalette({
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
+
       switch (e.key) {
         case "ArrowUp":
           e.preventDefault();
@@ -113,11 +115,9 @@ export function NewTerminalPalette({
       </AppPaletteDialog.Header>
 
       <AppPaletteDialog.Body>
-        {results.length > 0 && (
-          <div role="status" aria-live="polite" className="sr-only">
-            {results.length} terminal types
-          </div>
-        )}
+        <div role="status" aria-live="polite" className="sr-only">
+          {results.length} terminal types
+        </div>
         {results.length === 0 ? (
           <AppPaletteDialog.Empty query={query} />
         ) : (

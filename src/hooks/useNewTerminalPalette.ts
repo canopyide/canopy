@@ -118,7 +118,7 @@ export function useNewTerminalPalette({
   );
 
   const confirmSelection = useCallback(() => {
-    if (results.length > 0 && selectedIndex >= 0) {
+    if (results.length > 0 && selectedIndex >= 0 && selectedIndex < results.length) {
       handleSelect(results[selectedIndex]!);
     }
   }, [results, selectedIndex, handleSelect]);

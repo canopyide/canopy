@@ -92,9 +92,9 @@ describe("NewTerminalPalette", () => {
     expect(getByText("3 terminal types")).toBeTruthy();
   });
 
-  it("does not show live region text when results are empty", () => {
-    const { queryByText } = renderPalette({ results: [], query: "zzz" });
-    expect(queryByText(/terminal types/)).toBeNull();
+  it("announces zero terminal types when results are empty", () => {
+    const { getByText } = renderPalette({ results: [], query: "zzz" });
+    expect(getByText("0 terminal types")).toBeTruthy();
   });
 
   it("calls useEscapeStack with clear-then-close handler", () => {
