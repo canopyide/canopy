@@ -30,10 +30,16 @@ import { safeFireAndForget } from "@/utils/safeFireAndForget";
 import { ACTIVE_AGENT_STATES, CLOSE_CONFIRM_AGENT_STATES } from "@shared/types/agent";
 import { buildResumeCommand } from "@shared/types/agentSettings";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { TABBABLE_SELECTOR } from "@/lib/accessibility";
 
 const RESIZE_STEP = 10;
+const RESIZE_PAGE_STEP = 50;
 
 const ASSISTANT_DOCS_URL = "https://daintree.org/assistant";
+const DAINTREE_HOME_URL = "https://daintree.org";
+
+const HIBERNATE_VALID_MINUTES: readonly number[] = [0, 15, 30, 60, 120];
+const DEFAULT_HIBERNATE_MINUTES = 30;
 
 function notifyLaunchFailed(agentId: string, reason: string): void {
   const cfg = getAgentConfig(agentId);
@@ -192,6 +198,10 @@ export function HelpPanel({
 }: HelpPanelProps) {
   const panelRef = useRef<HTMLElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  // Element that owned focus when the panel last opened. We restore focus to
+  // it on close so keyboard users return to where they were rather than
+  // body. Mirrors the pattern in AppDialog/AppPaletteDialog.
+  const previousFocusRef = useRef<HTMLElement | null>(null);
   const [isResizing, setIsResizing] = useState(false);
   const isMacroFocused = useMacroFocusStore((s) => s.focusedRegion === "assistant");
   const isVisible = isVisibleProp ?? effectiveWidth > 0;
@@ -253,7 +263,7 @@ export function HelpPanel({
   // Last-loaded idle-hibernate setting in minutes (0 = disabled). Re-fetched
   // each time the timer arms (panel hides) so a settings-tab change takes
   // effect without remounting the panel.
-  const hibernateMinutesRef = useRef<number>(30);
+  const hibernateMinutesRef = useRef<number>(DEFAULT_HIBERNATE_MINUTES);
   const hibernateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [visibilityEpoch, setVisibilityEpoch] = useState(0);
 
@@ -458,16 +468,10 @@ export function HelpPanel({
         .then((settings) => {
           if (cancelled) return;
           const minutes = settings.idleHibernateMinutes;
-          if (
-            minutes !== 0 &&
-            minutes !== 15 &&
-            minutes !== 30 &&
-            minutes !== 60 &&
-            minutes !== 120
-          ) {
+          if (!HIBERNATE_VALID_MINUTES.includes(minutes)) {
             // Stored value out of range — fall back to the default rather than
             // hibernating immediately.
-            hibernateMinutesRef.current = 30;
+            hibernateMinutesRef.current = DEFAULT_HIBERNATE_MINUTES;
           } else {
             hibernateMinutesRef.current = minutes;
           }
@@ -480,9 +484,9 @@ export function HelpPanel({
           logError("HelpPanel: failed to load idleHibernateMinutes", err);
           // Fall back to the default so a settings IPC blip doesn't leave the
           // assistant resident forever.
-          hibernateMinutesRef.current = 30;
+          hibernateMinutesRef.current = DEFAULT_HIBERNATE_MINUTES;
           clearTimer();
-          hibernateTimerRef.current = setTimeout(fire, 30 * 60 * 1000);
+          hibernateTimerRef.current = setTimeout(fire, DEFAULT_HIBERNATE_MINUTES * 60 * 1000);
         }),
       { context: "HelpPanel:hibernate getSettings" }
     );
@@ -709,6 +713,54 @@ export function HelpPanel({
     return () => useMacroFocusStore.getState().setRegionRef("assistant", null);
   }, []);
 
+  // Move keyboard focus into the panel on open and restore it on close.
+  // Gated on (isOpen && isVisible) — the panel is always mounted, and
+  // `inert` is driven by isVisible, so focusing children before isVisible
+  // flips would land focus inside an inert subtree. Restore on close skips
+  // anything that lives inside the panel itself, since the panel becomes
+  // inert and would just re-trap focus.
+  useEffect(() => {
+    if (isOpen && isVisible) {
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && !panelRef.current?.contains(active)) {
+        previousFocusRef.current = active;
+      }
+      const raf = requestAnimationFrame(() => {
+        // Don't yank focus away from our own xterm — the assistant terminal
+        // owns its caret. We only check the panel-local xterm; an external
+        // grid-terminal still loses focus to the panel by design.
+        const current = document.activeElement;
+        if (current?.closest?.(".xterm-helper-textarea") && panelRef.current?.contains(current)) {
+          return;
+        }
+        // Skip the resize separator — it's the first tabbable in DOM order
+        // but lands keyboard users on a chrome control rather than usable
+        // content.
+        const candidates = panelRef.current?.querySelectorAll<HTMLElement>(TABBABLE_SELECTOR);
+        let first: HTMLElement | undefined;
+        for (const el of candidates ?? []) {
+          if (el.getAttribute("role") === "separator") continue;
+          first = el;
+          break;
+        }
+        if (first) {
+          first.focus();
+        } else {
+          panelRef.current?.focus();
+        }
+      });
+      return () => cancelAnimationFrame(raf);
+    }
+    // Panel went non-interactive (closed OR gesture-hidden). Restore focus
+    // to the opener so the user isn't stranded in an inert subtree.
+    const el = previousFocusRef.current;
+    previousFocusRef.current = null;
+    if (el && document.contains(el) && !panelRef.current?.contains(el)) {
+      el.focus();
+    }
+    return undefined;
+  }, [isOpen, isVisible]);
+
   // Resize via mouse drag
   const handleResizeStart = useCallback(
     (e: React.MouseEvent) => {
@@ -738,15 +790,29 @@ export function HelpPanel({
     [width, setWidth]
   );
 
-  // Resize via keyboard
+  // Resize via keyboard. ArrowLeft/PageUp grow the panel (it expands leftward
+  // from the right edge); ArrowRight/PageDown shrink it. Home/End jump to the
+  // min/max clamp values.
   const handleResizeKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === "ArrowLeft") {
         e.preventDefault();
-        setWidth(width + RESIZE_STEP);
+        setWidth(Math.min(width + RESIZE_STEP, HELP_PANEL_MAX_WIDTH));
       } else if (e.key === "ArrowRight") {
         e.preventDefault();
-        setWidth(width - RESIZE_STEP);
+        setWidth(Math.max(width - RESIZE_STEP, HELP_PANEL_MIN_WIDTH));
+      } else if (e.key === "PageUp") {
+        e.preventDefault();
+        setWidth(Math.min(width + RESIZE_PAGE_STEP, HELP_PANEL_MAX_WIDTH));
+      } else if (e.key === "PageDown") {
+        e.preventDefault();
+        setWidth(Math.max(width - RESIZE_PAGE_STEP, HELP_PANEL_MIN_WIDTH));
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        setWidth(HELP_PANEL_MIN_WIDTH);
+      } else if (e.key === "End") {
+        e.preventDefault();
+        setWidth(HELP_PANEL_MAX_WIDTH);
       }
     },
     [width, setWidth]
@@ -1200,12 +1266,14 @@ export function HelpPanel({
   return (
     <aside
       ref={panelRef}
+      id="daintree-assistant-panel"
       tabIndex={-1}
       aria-label="Daintree Assistant"
-      aria-hidden={!isVisible}
-      // `inert` removes descendant buttons from focus / a11y tree while the
-      // aside is collapsed — `aria-hidden` alone leaves them focusable, which
-      // axe flags as `aria-hidden-focus` (WCAG 2.2 AA).
+      // `inert` removes descendants from focus / a11y tree while the aside is
+      // collapsed. Chromium 146 supports it natively, so we don't need a
+      // matching `aria-hidden` (which would also be redundant on an `inert`
+      // element per ARIA 1.2 and trips axe's `aria-hidden-focus` rule on the
+      // legacy combination).
       inert={!isVisible || undefined}
       data-macro-focus={isMacroFocused ? "true" : undefined}
       className={cn(
@@ -1220,12 +1288,16 @@ export function HelpPanel({
       <div
         role="separator"
         aria-orientation="vertical"
-        aria-label="Resize help panel"
+        aria-label="Resize Daintree Assistant panel"
+        aria-controls="daintree-assistant-panel"
+        aria-valuenow={width}
+        aria-valuemin={HELP_PANEL_MIN_WIDTH}
+        aria-valuemax={HELP_PANEL_MAX_WIDTH}
         tabIndex={isVisible ? 0 : -1}
-        aria-hidden={!isVisible}
         className={cn(
           "absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize z-10",
           "hover:bg-overlay-soft active:bg-overlay-medium transition-colors",
+          "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:-outline-offset-2",
           isResizing && "bg-overlay-medium"
         )}
         onMouseDown={handleResizeStart}
@@ -1244,9 +1316,8 @@ export function HelpPanel({
           <button
             type="button"
             onClick={handleNewSession}
-            className="p-1 rounded-[var(--radius-sm)] text-daintree-text/50 hover:text-daintree-text hover:bg-tint/8 transition-colors"
+            className="p-1 rounded-[var(--radius-sm)] text-daintree-text/50 hover:text-daintree-text hover:bg-tint/8 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
             aria-label="Start new session"
-            title="New session"
           >
             <Plus className="w-3.5 h-3.5" />
           </button>
@@ -1254,9 +1325,8 @@ export function HelpPanel({
         <button
           type="button"
           onClick={handleClose}
-          className="p-1 rounded-[var(--radius-sm)] text-daintree-text/50 hover:text-daintree-text hover:bg-tint/8 transition-colors"
-          aria-label="Hide help panel"
-          title="Hide"
+          className="p-1 rounded-[var(--radius-sm)] text-daintree-text/50 hover:text-daintree-text hover:bg-tint/8 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
+          aria-label="Hide Daintree Assistant"
         >
           <ChevronRight className="w-3.5 h-3.5" />
         </button>
@@ -1292,7 +1362,7 @@ export function HelpPanel({
                     type="button"
                     onClick={() => setShowResumeBanner(false)}
                     aria-label="Dismiss resume notice"
-                    className="text-daintree-text/50 hover:text-daintree-text transition-colors"
+                    className="text-daintree-text/50 hover:text-daintree-text transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -1312,9 +1382,9 @@ export function HelpPanel({
           )
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center gap-3 p-8 text-center">
-            <p className="text-sm text-daintree-text/70">No assistant agent configured.</p>
+            <p className="text-sm text-daintree-text/70">No assistant configured</p>
             <p className="text-xs text-daintree-text/50 max-w-[28ch]">
-              Pick an agent and customize launch flags in the Daintree Assistant settings tab.
+              Turn on an agent in the Daintree Assistant settings to get started.
             </p>
             <button
               type="button"
@@ -1341,15 +1411,20 @@ export function HelpPanel({
             <agentConfig.icon className="w-3.5 h-3.5" />
             {agentConfig.name}
           </span>
-          <a
-            href="https://daintree.org"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 hover:text-daintree-text/60 transition-colors"
+          <button
+            type="button"
+            onClick={() =>
+              void actionService.dispatch(
+                "system.openExternal",
+                { url: DAINTREE_HOME_URL },
+                { source: "user" }
+              )
+            }
+            className="flex items-center gap-1 hover:text-daintree-text/60 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
           >
             <DaintreeIcon className="w-3.5 h-3.5" />
             Daintree.org
-          </a>
+          </button>
         </div>
       )}
 

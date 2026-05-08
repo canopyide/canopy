@@ -34,7 +34,7 @@ describe("HelpIntroBanner", () => {
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 
-  it("calls onDismiss when Escape is pressed inside the bar (with stopPropagation)", () => {
+  it("Escape bubbles to outer handler and does not dismiss", () => {
     const onDismiss = vi.fn();
     const outerKeyDown = vi.fn();
     const { getByLabelText } = render(
@@ -45,12 +45,11 @@ describe("HelpIntroBanner", () => {
 
     fireEvent.keyDown(getByLabelText("Dismiss"), { key: "Escape" });
 
-    expect(onDismiss).toHaveBeenCalledTimes(1);
-    // Escape should not propagate beyond the banner — outer handler must not see it.
-    expect(outerKeyDown).not.toHaveBeenCalled();
+    expect(onDismiss).not.toHaveBeenCalled();
+    expect(outerKeyDown).toHaveBeenCalledTimes(1);
   });
 
-  it("dismisses on Escape when focus is on the link button", () => {
+  it("Escape on the link button bubbles and does not dismiss", () => {
     const onDismiss = vi.fn();
     const outerKeyDown = vi.fn();
     const { getByText } = render(
@@ -61,8 +60,8 @@ describe("HelpIntroBanner", () => {
 
     fireEvent.keyDown(getByText("See what the Daintree Assistant can do"), { key: "Escape" });
 
-    expect(onDismiss).toHaveBeenCalledTimes(1);
-    expect(outerKeyDown).not.toHaveBeenCalled();
+    expect(onDismiss).not.toHaveBeenCalled();
+    expect(outerKeyDown).toHaveBeenCalledTimes(1);
   });
 
   it("does not call onDismiss for non-Escape keys", () => {
