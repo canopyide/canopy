@@ -125,6 +125,9 @@ export async function getSelectedPresetLabel(
 
 export async function addCustomPreset(window: import("@playwright/test").Page): Promise<void> {
   const section = window.locator(SEL.preset.section);
+  // Capture preset count before the dialog flow so we can poll until the new
+  // preset has actually landed in the listbox (replaces a fixed 350ms wait).
+  const countBefore = await countPresetOptions(window);
   await section.locator(SEL.preset.addButton).click();
   // The Add button now opens an "Add Preset" dialog with a Start-from chooser.
   // Click Create to accept the default "Blank" choice and create the preset.
@@ -132,9 +135,12 @@ export async function addCustomPreset(window: import("@playwright/test").Page): 
   await expect(dialog).toBeVisible({ timeout: 5000 });
   await dialog.locator('button:has-text("Create")').click();
   await expect(dialog).not.toBeVisible({ timeout: 5000 });
-  // Wait for the IPC round-trip to settle so the new preset is in the store
-  // before the caller proceeds.
-  await window.waitForTimeout(350);
+  // Poll until the new preset surfaces in the listbox — this is the
+  // observable signal that the IPC round-trip has settled and the store
+  // has the new entry. Each probe opens/counts/closes the popover.
+  await expect
+    .poll(() => countPresetOptions(window), { timeout: 5_000, intervals: [100, 200, 400] })
+    .toBe(countBefore + 1);
 }
 
 /**

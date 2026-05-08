@@ -35,7 +35,8 @@ test.describe.serial("Core: Output Flood Memory Bounds", () => {
     panel = getFirstGridPanel(window);
     await expect(panel).toBeVisible({ timeout: T_LONG });
 
-    await window.waitForTimeout(2000);
+    // Wait for shell prompt to be ready (fixture name appears in cwd prompt)
+    await waitForTerminalText(panel, "output-flood", T_LONG);
 
     const memBefore = await measureMainMemory(app, { forceGc: true });
 
