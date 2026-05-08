@@ -300,6 +300,7 @@ describe("help.launchAgent", () => {
     expect(window.electron.help.provisionSession).toHaveBeenCalledWith({
       projectId: "proj-1",
       projectPath: "/repo",
+      agentId: "claude",
     });
     expect(mockDispatch).toHaveBeenCalledWith(
       "agent.launch",
