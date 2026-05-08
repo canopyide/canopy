@@ -86,8 +86,8 @@ export function PrerequisiteCard({ spec, state }: { spec: PrerequisiteSpec; stat
           <span className="text-[11px] text-daintree-text/40 shrink-0">Installed</span>
         ) : null}
       </div>
-      {expanded && installBlocks && (
-        <div id={`install-panel-${spec.tool}`} className="px-3 pb-3 space-y-2">
+      {installBlocks && (
+        <div id={`install-panel-${spec.tool}`} hidden={!expanded} className="px-3 pb-3 space-y-2">
           {installBlocks.map((block, i) => (
             <InstallBlock key={i} block={block} />
           ))}

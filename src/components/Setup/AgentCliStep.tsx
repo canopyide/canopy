@@ -329,28 +329,29 @@ export function AgentCliStep({ availability, selections, onInstallComplete }: Ag
               {isError && (
                 <div className="pl-14 pt-1.5 pb-1 space-y-1">
                   {errorLog && (
-                    <button
-                      type="button"
-                      onClick={() => toggleErrorExpanded(agentId)}
-                      aria-expanded={isErrorExpanded ?? false}
-                      aria-controls={`error-log-${agentId}`}
-                      className="inline-flex items-center gap-1 text-[11px] text-daintree-text/50 hover:text-daintree-text/80 transition-colors"
-                    >
-                      {isErrorExpanded ? (
-                        <ChevronDown className="w-3 h-3" />
-                      ) : (
-                        <ChevronRight className="w-3 h-3" />
-                      )}
-                      Show error log
-                    </button>
-                  )}
-                  {isErrorExpanded && errorLog && (
-                    <pre
-                      id={`error-log-${agentId}`}
-                      className="text-[10px] text-status-error/80 bg-daintree-bg border border-daintree-border rounded-[var(--radius-sm)] p-2 max-h-[120px] overflow-y-auto whitespace-pre-wrap font-mono"
-                    >
-                      {errorLog}
-                    </pre>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => toggleErrorExpanded(agentId)}
+                        aria-expanded={isErrorExpanded ?? false}
+                        aria-controls={`error-log-${agentId}`}
+                        className="inline-flex items-center gap-1 text-[11px] text-daintree-text/50 hover:text-daintree-text/80 transition-colors"
+                      >
+                        {isErrorExpanded ? (
+                          <ChevronDown className="w-3 h-3" />
+                        ) : (
+                          <ChevronRight className="w-3 h-3" />
+                        )}
+                        Show error log
+                      </button>
+                      <pre
+                        id={`error-log-${agentId}`}
+                        hidden={!isErrorExpanded}
+                        className="text-[10px] text-status-error/80 bg-daintree-bg border border-daintree-border rounded-[var(--radius-sm)] p-2 max-h-[120px] overflow-y-auto whitespace-pre-wrap font-mono"
+                      >
+                        {errorLog}
+                      </pre>
+                    </>
                   )}
                   {currentBlock?.commands && (
                     <div className="space-y-1">
