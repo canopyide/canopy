@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, type CSSProperties } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Spinner } from "@/components/ui/Spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 type ButtonVariant = "primary" | "accent" | "dismiss" | "danger" | "dangerFilled";
@@ -14,6 +15,8 @@ export interface BannerAction {
   ariaLabel?: string;
   title?: string;
   iconOnly?: boolean;
+  loading?: boolean;
+  disabled?: boolean;
 }
 
 export interface InlineStatusBannerProps {
@@ -174,12 +177,18 @@ function InlineStatusBannerComponent({
           const variant = action.variant ?? "primary";
           const variantClasses = getButtonClasses(variant);
           const variantStyle = getButtonStyle(variant, colorVar);
+          const isDisabled = action.disabled || action.loading;
+          const iconClasses = action.iconOnly ? "w-3.5 h-3.5" : "w-3 h-3";
+          const spinnerSize = action.iconOnly ? "sm" : "xs";
           const buttonEl = (
             <button
               key={action.id}
               type="button"
+              disabled={isDisabled}
+              aria-busy={action.loading || undefined}
               onClick={(e) => {
                 e.stopPropagation();
+                if (isDisabled) return;
                 action.onClick();
               }}
               className={cn(
@@ -187,16 +196,16 @@ function InlineStatusBannerComponent({
                 "outline-hidden focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-daintree-accent",
                 variantClasses,
                 (variant === "danger" || variant === "dangerFilled") &&
-                  "hover:[color:var(--hover-color)] hover:[background:var(--hover-bg)]"
+                  "hover:[color:var(--hover-color)] hover:[background:var(--hover-bg)]",
+                isDisabled && "cursor-not-allowed opacity-60 hover:bg-transparent"
               )}
               style={variantStyle}
               aria-label={action.ariaLabel}
             >
-              {action.icon && (
-                <action.icon
-                  className={action.iconOnly ? "w-3.5 h-3.5" : "w-3 h-3"}
-                  aria-hidden="true"
-                />
+              {action.loading ? (
+                <Spinner size={spinnerSize} />
+              ) : (
+                action.icon && <action.icon className={iconClasses} aria-hidden="true" />
               )}
               {!action.iconOnly && action.label}
             </button>

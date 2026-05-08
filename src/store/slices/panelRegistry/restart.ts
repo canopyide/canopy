@@ -21,6 +21,7 @@ import { useLayoutConfigStore } from "@/store/layoutConfigStore";
 import { saveNormalized } from "./persistence";
 import { optimizeForDock } from "./layout";
 import { deriveRuntimeStatus } from "./helpers";
+import { cancelReconnectErrorDebounce } from "./browser";
 import { logDebug, logWarn, logError } from "@/utils/logger";
 import {
   buildAgentLaunchFlagsForRuntimeSettings,
@@ -176,6 +177,10 @@ export const createRestartActions = (
     // Mark as restarting SYNCHRONOUSLY first to prevent exit event race condition.
     // This is checked in the onExit handler before the store state.
     markTerminalRestarting(id);
+
+    // Drop any pending reconnect-error debounce so a stale write can't fire
+    // after we've cleared the error inline below.
+    cancelReconnectErrorDebounce(id);
 
     // Also set the store flag for UI and other consumers
     set((state) =>

@@ -825,6 +825,7 @@ function TerminalPaneComponent({
           onUpdateCwd={handleUpdateCwd}
           onRetry={handleRestart}
           onTrash={handleTrash}
+          isRestarting={isRestarting}
         />
       )}
 
@@ -836,6 +837,7 @@ function TerminalPaneComponent({
           onUpdateCwd={handleUpdateCwd}
           onRetry={handleRestart}
           onTrash={handleTrash}
+          isRestarting={isRestarting}
         />
       )}
 
@@ -845,6 +847,7 @@ function TerminalPaneComponent({
           error={reconnectError}
           onDismiss={handleDismissReconnectError}
           onRestart={handleRestart}
+          isRestarting={isRestarting}
         />
       )}
 

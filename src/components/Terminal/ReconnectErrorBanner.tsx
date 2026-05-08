@@ -9,6 +9,7 @@ export interface ReconnectErrorBannerProps {
   error: TerminalReconnectError;
   onDismiss: (id: string) => void;
   onRestart: (id: string) => void;
+  isRestarting?: boolean;
   className?: string;
 }
 
@@ -49,6 +50,7 @@ function ReconnectErrorBannerComponent({
   error,
   onDismiss,
   onRestart,
+  isRestarting = false,
   className,
 }: ReconnectErrorBannerProps) {
   return (
@@ -66,6 +68,7 @@ function ReconnectErrorBannerComponent({
           onClick: () => onRestart(terminalId),
           title: "Restart terminal",
           ariaLabel: "Restart terminal",
+          loading: isRestarting,
         },
       ]}
       onClose={() => onDismiss(terminalId)}
