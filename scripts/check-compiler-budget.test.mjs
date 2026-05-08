@@ -45,6 +45,43 @@ function entryShapeError(entry) {
   return null;
 }
 
+/**
+ * Mirrors the regression-display formatting in check-compiler-budget.mjs.
+ * Returns the lines that would be written to stderr after the ::error
+ * header, in order. Used to verify (a) errorBailouts grouping/null
+ * tolerance, and (b) skipReasons deduplication semantics.
+ */
+function formatDiagnostics(entry) {
+  const lines = [];
+  const errorBailouts = Array.isArray(entry?.errorBailouts) ? entry.errorBailouts : [];
+  const skipReasons = Array.isArray(entry?.skipReasons) ? entry.skipReasons : [];
+  const pipelineErrors = Array.isArray(entry?.pipelineErrors) ? entry.pipelineErrors : [];
+  if (errorBailouts.length > 0) {
+    const grouped = new Map();
+    for (const item of errorBailouts) {
+      if (!item || typeof item !== "object") continue;
+      const key = item.category || "(unknown)";
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key).push(item.reason);
+    }
+    for (const [category, reasons] of grouped) {
+      const sample = reasons[0];
+      const more = reasons.length > 1 ? ` (+${reasons.length - 1} more)` : "";
+      lines.push(`   error[${category}]: ${sample}${more}`);
+    }
+  }
+  if (skipReasons.length > 0) {
+    const unique = [...new Set(skipReasons)];
+    const sample = unique[0];
+    const more = unique.length > 1 ? ` (+${unique.length - 1} more)` : "";
+    lines.push(`   skip: ${sample}${more}`);
+  }
+  if (pipelineErrors.length > 0) {
+    lines.push(`   pipeline: ${pipelineErrors[0]}`);
+  }
+  return lines;
+}
+
 describe("summarizePipelineError", () => {
   it("returns empty string for null", () => {
     expect(summarizePipelineError(null)).toBe("");
@@ -190,5 +227,75 @@ describe("validateShape tolerance", () => {
     expect(entryShapeError({ success: Infinity, skip: 0, error: 0, pipeline: 0 })).toBe(
       "invalid-success"
     );
+  });
+});
+
+describe("regression diagnostic display", () => {
+  it("returns no lines when all diagnostic arrays are empty", () => {
+    expect(formatDiagnostics({ errorBailouts: [], skipReasons: [], pipelineErrors: [] })).toEqual(
+      []
+    );
+  });
+
+  it("returns no lines when entry is missing or arrays are absent", () => {
+    expect(formatDiagnostics(undefined)).toEqual([]);
+    expect(formatDiagnostics({})).toEqual([]);
+  });
+
+  it("groups multiple errorBailouts by category", () => {
+    const lines = formatDiagnostics({
+      errorBailouts: [
+        { category: "Todo", reason: "first todo" },
+        { category: "Todo", reason: "second todo" },
+        { category: "Refs", reason: "ref problem" },
+      ],
+    });
+    expect(lines).toEqual(["   error[Todo]: first todo (+1 more)", "   error[Refs]: ref problem"]);
+  });
+
+  it("falls back to (unknown) category for empty-string category", () => {
+    const lines = formatDiagnostics({
+      errorBailouts: [{ category: "", reason: "missing category" }],
+    });
+    expect(lines).toEqual(["   error[(unknown)]: missing category"]);
+  });
+
+  it("skips null/non-object errorBailouts elements without crashing", () => {
+    const lines = formatDiagnostics({
+      errorBailouts: [null, { category: "Hooks", reason: "real" }, "string-junk", 42],
+    });
+    expect(lines).toEqual(["   error[Hooks]: real"]);
+  });
+
+  it("dedupes skipReasons and reports unique-count, not raw-count", () => {
+    // Two distinct reasons → "(+1 more)", not "(×2)" which would be
+    // misleading (it would imply the same reason occurred twice).
+    const lines = formatDiagnostics({
+      skipReasons: ["reason A", "reason B"],
+    });
+    expect(lines).toEqual(["   skip: reason A (+1 more)"]);
+  });
+
+  it("collapses repeated identical skipReasons to the single entry with no suffix", () => {
+    const lines = formatDiagnostics({
+      skipReasons: ["only reason", "only reason", "only reason"],
+    });
+    expect(lines).toEqual(["   skip: only reason"]);
+  });
+
+  it("shows only the first pipelineError summary", () => {
+    const lines = formatDiagnostics({
+      pipelineErrors: ["first error: boom", "second error: kaboom"],
+    });
+    expect(lines).toEqual(["   pipeline: first error: boom"]);
+  });
+
+  it("emits all three sections in order when all are populated", () => {
+    const lines = formatDiagnostics({
+      errorBailouts: [{ category: "Refs", reason: "r" }],
+      skipReasons: ["s"],
+      pipelineErrors: ["p"],
+    });
+    expect(lines).toEqual(["   error[Refs]: r", "   skip: s", "   pipeline: p"]);
   });
 });

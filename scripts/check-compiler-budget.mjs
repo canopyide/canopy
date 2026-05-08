@@ -241,10 +241,11 @@ function main() {
     const pipelineErrors = Array.isArray(entry?.pipelineErrors) ? entry.pipelineErrors : [];
     if (errorBailouts.length > 0) {
       const grouped = new Map();
-      for (const { category, reason } of errorBailouts) {
-        const key = category || "(unknown)";
+      for (const item of errorBailouts) {
+        if (!item || typeof item !== "object") continue;
+        const key = item.category || "(unknown)";
         if (!grouped.has(key)) grouped.set(key, []);
-        grouped.get(key).push(reason);
+        grouped.get(key).push(item.reason);
       }
       for (const [category, reasons] of grouped) {
         const sample = reasons[0];
@@ -253,9 +254,12 @@ function main() {
       }
     }
     if (skipReasons.length > 0) {
+      // Dedupe so the count reflects distinct reasons; show the first unique
+      // reason and indicate additional unique reasons via "(+N more)" for
+      // parity with the errorBailouts category display above.
       const unique = [...new Set(skipReasons)];
       const sample = unique[0];
-      const more = skipReasons.length > 1 ? ` (×${skipReasons.length})` : "";
+      const more = unique.length > 1 ? ` (+${unique.length - 1} more)` : "";
       console.error(`   skip: ${sample}${more}`);
     }
     if (pipelineErrors.length > 0) {
