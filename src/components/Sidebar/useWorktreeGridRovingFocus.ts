@@ -17,13 +17,35 @@ function isElementVisible(el: HTMLElement): boolean {
   return el.offsetParent !== null || el.getClientRects().length > 0;
 }
 
+// Row count to advance per Page key. Read viewport height from the scroll
+// container and divide by the height of a row inside that container — pinned
+// rows live outside the scroll viewport and have a different height (e.g. the
+// taller main worktree card), so sampling them would over- or under-count.
+// Fall back to 10 when sizes aren't measurable yet (initial layout, container
+// detached).
+const PAGE_SIZE_FALLBACK = 10;
+function computeGridPageSize(
+  container: HTMLElement | null | undefined,
+  rows: HTMLElement[]
+): number {
+  if (!container || rows.length === 0) return PAGE_SIZE_FALLBACK;
+  const viewportHeight = container.clientHeight;
+  if (viewportHeight <= 0) return PAGE_SIZE_FALLBACK;
+  const scrollableRow = rows.find((row) => container.contains(row)) ?? rows[0];
+  const sampleHeight = scrollableRow?.getBoundingClientRect().height ?? 0;
+  if (sampleHeight <= 0) return PAGE_SIZE_FALLBACK;
+  return Math.max(1, Math.floor(viewportHeight / sampleHeight));
+}
+
 export interface UseWorktreeGridRovingFocusReturn {
   gridRef: React.RefObject<HTMLDivElement | null>;
   handleGridKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => void;
   handleGridFocusCapture: (e: React.FocusEvent<HTMLDivElement>) => void;
 }
 
-export function useWorktreeGridRovingFocus(): UseWorktreeGridRovingFocusReturn {
+export function useWorktreeGridRovingFocus(
+  scrollContainerRef?: React.RefObject<HTMLDivElement | null>
+): UseWorktreeGridRovingFocusReturn {
   const gridRef = useRef<HTMLDivElement | null>(null);
   const modeRef = useRef<GridMode>("list");
   const activeRowIndexRef = useRef<number>(0);
@@ -219,7 +241,11 @@ export function useWorktreeGridRovingFocus(): UseWorktreeGridRovingFocusReturn {
 
   const handleGridKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
-      if (e.metaKey || e.altKey || e.ctrlKey) return;
+      if (e.metaKey || e.altKey) return;
+      // Allow Ctrl+Home / Ctrl+End through (mandatory APG grid shortcuts);
+      // bail on every other Ctrl combo so global shortcuts (Ctrl+C, Ctrl+T,
+      // Ctrl+W, …) still reach their handlers.
+      if (e.ctrlKey && e.key !== "Home" && e.key !== "End") return;
 
       const rows = getRows();
       if (rows.length === 0) return;
@@ -257,11 +283,21 @@ export function useWorktreeGridRovingFocus(): UseWorktreeGridRovingFocusReturn {
 
         switch (e.key) {
           case "ArrowDown":
-            newIdx = (currentIdx + 1) % rows.length;
+            newIdx = Math.min(currentIdx + 1, rows.length - 1);
             break;
           case "ArrowUp":
-            newIdx = (currentIdx - 1 + rows.length) % rows.length;
+            newIdx = Math.max(currentIdx - 1, 0);
             break;
+          case "PageDown": {
+            const pageSize = computeGridPageSize(scrollContainerRef?.current, rows);
+            newIdx = Math.min(currentIdx + pageSize, rows.length - 1);
+            break;
+          }
+          case "PageUp": {
+            const pageSize = computeGridPageSize(scrollContainerRef?.current, rows);
+            newIdx = Math.max(currentIdx - pageSize, 0);
+            break;
+          }
           case "Home":
             newIdx = 0;
             break;
@@ -296,13 +332,25 @@ export function useWorktreeGridRovingFocus(): UseWorktreeGridRovingFocusReturn {
         e.stopPropagation();
         return;
       }
+      // Ctrl+Home / Ctrl+End are grid-level shortcuts even when focus has
+      // descended into a row's action toolbar. Bounce back to list mode and
+      // jump to the first/last row, mirroring the APG grid pattern.
+      if (e.ctrlKey && (e.key === "Home" || e.key === "End")) {
+        const targetRowIdx = e.key === "Home" ? 0 : rows.length - 1;
+        enterListMode(rows, targetRowIdx);
+        e.preventDefault();
+        activeRowIndexRef.current = targetRowIdx;
+        syncRowTabStops(rows, targetRowIdx);
+        rows[targetRowIdx]!.focus();
+        return;
+      }
       if (e.key === "ArrowUp" || e.key === "ArrowDown") {
         // Up/Down in toolbar mode bounces back to list mode and moves rows.
+        // Boundary-stop (no wrap) so users don't silently jump from the last
+        // row to the first — matches APG grid row navigation.
         enterListMode(rows, rowIdx);
         const nextIdx =
-          e.key === "ArrowDown"
-            ? (rowIdx + 1) % rows.length
-            : (rowIdx - 1 + rows.length) % rows.length;
+          e.key === "ArrowDown" ? Math.min(rowIdx + 1, rows.length - 1) : Math.max(rowIdx - 1, 0);
         e.preventDefault();
         activeRowIndexRef.current = nextIdx;
         syncRowTabStops(rows, nextIdx);
@@ -337,6 +385,7 @@ export function useWorktreeGridRovingFocus(): UseWorktreeGridRovingFocusReturn {
       enterToolbarMode,
       getRowToolbarItems,
       getRows,
+      scrollContainerRef,
       selectRow,
       syncRowTabStops,
       syncToolbarTabStops,

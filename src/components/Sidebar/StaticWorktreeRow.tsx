@@ -18,6 +18,7 @@ interface StaticWorktreeRowProps {
   agentSettings: UseAgentLauncherReturn["agentSettings"];
   homeDir: string | undefined;
   aggregateCounts?: WorktreeCardProps["aggregateCounts"];
+  ariaRowIndex: number;
 }
 
 const StaticWorktreeRow = React.memo(function StaticWorktreeRow({
@@ -31,6 +32,7 @@ const StaticWorktreeRow = React.memo(function StaticWorktreeRow({
   agentSettings,
   homeDir,
   aggregateCounts,
+  ariaRowIndex,
 }: StaticWorktreeRowProps) {
   const worktreeSnap = useWorktreeStore((state) => state.worktrees.get(worktreeId));
   const worktree = useMemo(
@@ -65,8 +67,16 @@ const StaticWorktreeRow = React.memo(function StaticWorktreeRow({
 
   if (!worktree) return null;
 
+  const isActive = worktreeId === activeWorktreeId;
+
   return (
-    <div role="row" data-worktree-row={worktreeId} tabIndex={-1}>
+    <div
+      role="row"
+      data-worktree-row={worktreeId}
+      tabIndex={-1}
+      aria-rowindex={ariaRowIndex}
+      aria-current={isActive ? "true" : undefined}
+    >
       <div role="gridcell">
         <ErrorBoundary
           variant="component"
@@ -77,7 +87,7 @@ const StaticWorktreeRow = React.memo(function StaticWorktreeRow({
         >
           <WorktreeCard
             worktree={worktree}
-            isActive={worktreeId === activeWorktreeId}
+            isActive={isActive}
             isFocused={worktreeId === focusedWorktreeId}
             isSingleWorktree={totalWorktreeCount === 1}
             aggregateCounts={aggregateCounts}
