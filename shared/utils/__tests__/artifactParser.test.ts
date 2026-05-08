@@ -122,4 +122,9 @@ describe("artifactParser", () => {
     const cleaned = stripAnsiCodes("before\x90payload\x9cafter");
     expect(cleaned).toBe("beforeafter");
   });
+
+  it("strips 8-bit CSI sequences (C1 introducer 0x9B)", () => {
+    const cleaned = stripAnsiCodes("\x9b31mError:\x9b0m failed");
+    expect(cleaned).toBe("Error: failed");
+  });
 });
