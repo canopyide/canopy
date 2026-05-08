@@ -31,6 +31,7 @@ export class IpcQueueManager {
   private readonly queuedBytes = new Map<string, number>();
   private readonly pausedTerminals = new Map<string, ReturnType<typeof setInterval>>();
   private readonly pauseStartTimes = new Map<string, number>();
+  private totalQueuedBytes = 0;
 
   constructor(private readonly deps: IpcQueueDeps) {}
 
@@ -43,21 +44,42 @@ export class IpcQueueManager {
     const current = this.queuedBytes.get(id) ?? 0;
     const next = current + bytes;
     this.queuedBytes.set(id, next);
+    this.totalQueuedBytes += bytes;
     return next;
   }
 
   removeBytes(id: string, bytes: number): void {
     const current = this.queuedBytes.get(id) ?? 0;
-    const next = Math.max(0, current - bytes);
+    // Clamp the aggregate delta to the per-terminal balance to prevent
+    // underflow when callers over-remove (the per-terminal value is
+    // already clamped via Math.max below).
+    const removed = Math.min(bytes, current);
+    const next = current - removed;
     if (next === 0) {
       this.queuedBytes.delete(id);
     } else {
       this.queuedBytes.set(id, next);
     }
+    this.totalQueuedBytes = Math.max(0, this.totalQueuedBytes - removed);
   }
 
   getQueuedBytes(id: string): number {
     return this.queuedBytes.get(id) ?? 0;
+  }
+
+  getTotalQueuedBytes(): number {
+    return this.totalQueuedBytes;
+  }
+
+  getQueueSnapshot(): {
+    totalPendingBytes: number;
+    perTerminal: Array<{ terminalId: string; pendingBytes: number }>;
+  } {
+    const perTerminal: Array<{ terminalId: string; pendingBytes: number }> = [];
+    for (const [terminalId, pendingBytes] of this.queuedBytes) {
+      perTerminal.push({ terminalId, pendingBytes });
+    }
+    return { totalPendingBytes: this.totalQueuedBytes, perTerminal };
   }
 
   isAtCapacity(id: string, additionalBytes: number): boolean {
@@ -116,7 +138,9 @@ export class IpcQueueManager {
         // the next addBytes call immediately re-triggers applyBackpressure
         // and the pause loop wedges across the entire renderer reload
         // (mirrors the port-path fix in #6244).
+        const droppedBytes = this.queuedBytes.get(id) ?? 0;
         this.queuedBytes.delete(id);
+        this.totalQueuedBytes = Math.max(0, this.totalQueuedBytes - droppedBytes);
 
         const coordinator = this.deps.getPauseCoordinator(id);
         if (coordinator) {
@@ -193,7 +217,9 @@ export class IpcQueueManager {
     if (wasPaused) {
       this.deps.getPauseCoordinator(id)?.resume("ipc-queue");
     }
+    const removed = this.queuedBytes.get(id) ?? 0;
     this.queuedBytes.delete(id);
+    this.totalQueuedBytes = Math.max(0, this.totalQueuedBytes - removed);
     this.pausedTerminals.delete(id);
     this.pauseStartTimes.delete(id);
   }
@@ -206,5 +232,6 @@ export class IpcQueueManager {
     this.pausedTerminals.clear();
     this.pauseStartTimes.clear();
     this.queuedBytes.clear();
+    this.totalQueuedBytes = 0;
   }
 }

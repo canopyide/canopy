@@ -239,7 +239,22 @@ const resourceGovernor = new ResourceGovernor({
     backpressureManager.stats.pauseCount += count;
   },
   sendEvent,
-  getPendingBytesSnapshot: () => backpressureManager.getPendingBytesSnapshot(),
+  getPendingBytesSnapshot: () => {
+    // Merge SAB-path, IPC-path, and per-window MessagePort-path queue depths so
+    // the reliability gauge captures every in-flight byte the pty-host is holding.
+    // A given terminal id should only appear in one path at a time, so concatenating
+    // the perTerminal arrays is safe.
+    const sab = backpressureManager.getPendingBytesSnapshot();
+    const ipc = ipcQueueManager.getQueueSnapshot();
+    let totalPendingBytes = sab.totalPendingBytes + ipc.totalPendingBytes;
+    const perTerminal = [...sab.perTerminal, ...ipc.perTerminal];
+    for (const conn of rendererConnections.values()) {
+      const port = conn.portQueueManager.getQueueSnapshot();
+      totalPendingBytes += port.totalPendingBytes;
+      perTerminal.push(...port.perTerminal);
+    }
+    return { totalPendingBytes, perTerminal };
+  },
 });
 
 // Helper to convert data to string for IPC fallback (IPC events expect string)

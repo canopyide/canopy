@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { PortQueueManager, type PortQueueDeps } from "../portQueue.js";
 import type { PtyPauseCoordinator } from "../PtyPauseCoordinator.js";
-
-// Mirror the real constants from pty/types.ts
-const IPC_MAX_QUEUE_BYTES = 8 * 1024 * 1024;
-const IPC_HIGH_WATERMARK_PERCENT = 95;
-const IPC_LOW_WATERMARK_PERCENT = 60;
+import {
+  IPC_MAX_QUEUE_BYTES,
+  IPC_HIGH_WATERMARK_PERCENT,
+  IPC_LOW_WATERMARK_PERCENT,
+} from "../../services/pty/types.js";
 
 function createMockDeps(): PortQueueDeps {
   const mockCoordinator: Pick<PtyPauseCoordinator, "pause" | "resume" | "isPaused"> = {
@@ -277,5 +277,121 @@ describe("PortQueueManager", () => {
     const result = mgr.applyBackpressure("t1", mgr.getUtilization("t1"));
     expect(result).toBe(false);
     expect(mgr.isPaused("t1")).toBe(false);
+  });
+
+  describe("aggregate byte tracking", () => {
+    it("tracks total queued bytes across multiple terminals", () => {
+      const deps = createMockDeps();
+      const mgr = new PortQueueManager(deps);
+
+      expect(mgr.getTotalQueuedBytes()).toBe(0);
+
+      mgr.addBytes("t1", 1000);
+      expect(mgr.getTotalQueuedBytes()).toBe(1000);
+
+      mgr.addBytes("t2", 2500);
+      expect(mgr.getTotalQueuedBytes()).toBe(3500);
+
+      mgr.addBytes("t1", 500);
+      expect(mgr.getTotalQueuedBytes()).toBe(4000);
+    });
+
+    it("subtracts from total on removeBytes without underflow on over-remove", () => {
+      const deps = createMockDeps();
+      const mgr = new PortQueueManager(deps);
+
+      mgr.addBytes("t1", 1000);
+      mgr.addBytes("t2", 1500);
+
+      mgr.removeBytes("t1", 400);
+      expect(mgr.getTotalQueuedBytes()).toBe(2100);
+      expect(mgr.getQueuedBytes("t1")).toBe(600);
+
+      // Over-remove from t1 — must not subtract more than t1 actually held
+      mgr.removeBytes("t1", 10_000);
+      expect(mgr.getQueuedBytes("t1")).toBe(0);
+      expect(mgr.getTotalQueuedBytes()).toBe(1500);
+
+      // t2 untouched
+      expect(mgr.getQueuedBytes("t2")).toBe(1500);
+    });
+
+    it("clearQueue subtracts only the cleared terminal's bytes", () => {
+      const deps = createMockDeps();
+      const mgr = new PortQueueManager(deps);
+
+      mgr.addBytes("t1", 1000);
+      mgr.addBytes("t2", 2000);
+      mgr.addBytes("t3", 3000);
+
+      mgr.clearQueue("t2");
+
+      expect(mgr.getTotalQueuedBytes()).toBe(4000);
+      expect(mgr.getQueuedBytes("t1")).toBe(1000);
+      expect(mgr.getQueuedBytes("t2")).toBe(0);
+      expect(mgr.getQueuedBytes("t3")).toBe(3000);
+    });
+
+    it("safety timeout subtracts dropped bytes from aggregate (#6244 + aggregate)", () => {
+      const deps = createMockDeps();
+      const mgr = new PortQueueManager(deps);
+
+      const highWatermark = (IPC_MAX_QUEUE_BYTES * IPC_HIGH_WATERMARK_PERCENT) / 100;
+      mgr.addBytes("t1", highWatermark + 1);
+      mgr.addBytes("t2", 1000);
+      mgr.applyBackpressure("t1", mgr.getUtilization("t1"));
+
+      const totalBefore = mgr.getTotalQueuedBytes();
+      expect(totalBefore).toBe(highWatermark + 1 + 1000);
+
+      vi.advanceTimersByTime(5000);
+
+      // Only t1's bytes were dropped on force-resume; t2 untouched.
+      expect(mgr.getQueuedBytes("t1")).toBe(0);
+      expect(mgr.getQueuedBytes("t2")).toBe(1000);
+      expect(mgr.getTotalQueuedBytes()).toBe(1000);
+    });
+
+    it("dispose resets the aggregate scalar", () => {
+      const deps = createMockDeps();
+      const mgr = new PortQueueManager(deps);
+
+      mgr.addBytes("t1", 1000);
+      mgr.addBytes("t2", 2000);
+      expect(mgr.getTotalQueuedBytes()).toBe(3000);
+
+      mgr.dispose();
+
+      expect(mgr.getTotalQueuedBytes()).toBe(0);
+    });
+
+    it("getQueueSnapshot mirrors BackpressureManager shape", () => {
+      const deps = createMockDeps();
+      const mgr = new PortQueueManager(deps);
+
+      mgr.addBytes("t1", 1000);
+      mgr.addBytes("t2", 2500);
+
+      const snap = mgr.getQueueSnapshot();
+      expect(snap.totalPendingBytes).toBe(3500);
+      expect(snap.perTerminal).toHaveLength(2);
+      const byId = new Map(snap.perTerminal.map((e) => [e.terminalId, e.pendingBytes]));
+      expect(byId.get("t1")).toBe(1000);
+      expect(byId.get("t2")).toBe(2500);
+    });
+  });
+
+  describe("constants alignment with renderer precedent", () => {
+    it("max queue is 512KB to match 4× renderer high watermark (128KB)", () => {
+      expect(IPC_MAX_QUEUE_BYTES).toBe(512 * 1024);
+    });
+
+    it("high watermark sits at 384KB (75% of cap)", () => {
+      expect((IPC_MAX_QUEUE_BYTES * IPC_HIGH_WATERMARK_PERCENT) / 100).toBe(384 * 1024);
+    });
+
+    it("low watermark sits at 128KB (25% of cap, equals one renderer drain cycle)", () => {
+      expect((IPC_MAX_QUEUE_BYTES * IPC_LOW_WATERMARK_PERCENT) / 100).toBe(128 * 1024);
+    });
   });
 });

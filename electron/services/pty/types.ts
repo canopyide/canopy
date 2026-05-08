@@ -239,9 +239,12 @@ export const GRACEFUL_SHUTDOWN_BUFFER_SIZE = 8 * 1024;
 export const GRACEFUL_SHUTDOWN_CLEAR_DELAY_MS = 100;
 
 // IPC Flow Control Configuration
-export const IPC_MAX_QUEUE_BYTES = 8 * 1024 * 1024; // 8MB max per terminal
-export const IPC_HIGH_WATERMARK_PERCENT = 95; // Pause PTY at 95% full
-export const IPC_LOW_WATERMARK_PERCENT = 60; // Resume PTY when drops to 60%
+// Sized to match the renderer-side TerminalOutputIngestService watermarks (128KB high / 32KB low).
+// 512KB ceiling = 4× renderer high watermark, holds ~8 saturated 64KB pipe-buffer events.
+// 75%/25% gives a 3:1 hysteresis where resume threshold (128KB) equals one renderer drain cycle.
+export const IPC_MAX_QUEUE_BYTES = 512 * 1024; // 512KB max per terminal
+export const IPC_HIGH_WATERMARK_PERCENT = 75; // Pause PTY at 75% full (384KB)
+export const IPC_LOW_WATERMARK_PERCENT = 25; // Resume PTY when drops to 25% (128KB)
 export const IPC_MAX_PAUSE_MS = 5000; // Force resume after 5 seconds to prevent indefinite pause
 
 // MessagePort adaptive batching configuration
