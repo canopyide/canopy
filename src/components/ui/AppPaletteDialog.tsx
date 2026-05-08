@@ -78,7 +78,11 @@ export function AppPaletteDialog({
       if (el instanceof HTMLElement) previousFocusRef.current = el;
       requestAnimationFrame(() => {
         const firstFocusable = dialogRef.current?.querySelector<HTMLElement>(TABBABLE_SELECTOR);
-        firstFocusable?.focus();
+        if (firstFocusable) {
+          firstFocusable.focus();
+        } else {
+          dialogRef.current?.focus();
+        }
       });
     }
   }, [isOpen]);
@@ -193,6 +197,7 @@ export function AppPaletteDialog({
         role="dialog"
         aria-modal="true"
         aria-label={ariaLabel}
+        tabIndex={-1}
         className={cn(
           "w-full max-w-xl mx-4 bg-daintree-bg border border-[var(--border-overlay)] rounded-[var(--radius-xl)] shadow-modal overflow-hidden origin-top",
           "transition-[opacity,transform]",

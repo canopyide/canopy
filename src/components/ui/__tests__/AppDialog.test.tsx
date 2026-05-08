@@ -21,22 +21,21 @@ vi.mock("@/hooks", async (importOriginal) => {
   };
 });
 
-vi.mock("@/hooks/useAnimatedPresence", () => {
-  let prevOpen = false;
-  return {
-    useAnimatedPresence: ({
-      isOpen,
-      onAnimateOut,
-    }: {
-      isOpen: boolean;
-      onAnimateOut?: () => void;
-    }) => {
-      if (prevOpen && !isOpen) onAnimateOut?.();
-      prevOpen = isOpen;
-      return { isVisible: isOpen, shouldRender: isOpen };
-    },
-  };
-});
+let mockPrevOpen = false;
+
+vi.mock("@/hooks/useAnimatedPresence", () => ({
+  useAnimatedPresence: ({
+    isOpen,
+    onAnimateOut,
+  }: {
+    isOpen: boolean;
+    onAnimateOut?: () => void;
+  }) => {
+    if (mockPrevOpen && !isOpen) onAnimateOut?.();
+    mockPrevOpen = isOpen;
+    return { isVisible: isOpen, shouldRender: isOpen };
+  },
+}));
 
 vi.stubGlobal(
   "ResizeObserver",
@@ -96,6 +95,7 @@ function pressEscape() {
 
 describe("AppDialog focus trapping", () => {
   beforeEach(() => {
+    mockPrevOpen = false;
     _resetForTests();
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: false }));
