@@ -102,7 +102,7 @@ export function useGettingStartedChecklist(isStateLoaded: boolean): GettingStart
     // we never depend on React running the updater synchronously inside the
     // dispatch (it doesn't, in concurrent mode).
     const prev = checklistRef.current;
-    if (!prev || prev.items[item]) return;
+    if (!prev || prev.dismissed || prev.items[item]) return;
 
     const updatedItems = { ...prev.items, [item]: true };
     const allDone = Object.values(updatedItems).every(Boolean);
@@ -149,7 +149,12 @@ export function useGettingStartedChecklist(isStateLoaded: boolean): GettingStart
     });
     pendingDismissRef.current = false;
     setPendingDismiss(false);
-    setChecklist((prev) => (prev ? { ...prev, dismissed: true } : prev));
+    const prev = checklistRef.current;
+    if (prev) {
+      const next = { ...prev, dismissed: true };
+      checklistRef.current = next;
+      setChecklist(next);
+    }
     setForceShow(false);
   }, []);
 
