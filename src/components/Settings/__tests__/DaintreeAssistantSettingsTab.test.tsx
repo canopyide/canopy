@@ -128,10 +128,18 @@ vi.mock("@/store/helpPanelStore", () => {
   };
 });
 
+const { mockGetAssistantSupportedAgentIds } = vi.hoisted(() => ({
+  mockGetAssistantSupportedAgentIds: vi.fn<() => string[]>(() => ["claude"]),
+}));
+
 vi.mock("@/config/agents", () => ({
-  getAgentIds: () => ["claude"],
-  getAssistantSupportedAgentIds: () => ["claude"],
-  getAgentConfig: (id: string) => (id === "claude" ? { name: "Claude Code" } : undefined),
+  getAgentIds: () => ["claude", "codex"],
+  getAssistantSupportedAgentIds: () => mockGetAssistantSupportedAgentIds(),
+  getAgentConfig: (id: string) => {
+    if (id === "claude") return { name: "Claude Code" };
+    if (id === "codex") return { name: "Codex" };
+    return undefined;
+  },
 }));
 
 import { DaintreeAssistantSettingsTab } from "../DaintreeAssistantSettingsTab";
@@ -194,6 +202,7 @@ describe("DaintreeAssistantSettingsTab", () => {
     vi.clearAllMocks();
     helpPanelState.preferredAgentId = null;
     helpPanelState.setPreferredAgent = vi.fn();
+    mockGetAssistantSupportedAgentIds.mockReturnValue(["claude"]);
     Object.defineProperty(navigator, "clipboard", {
       value: { writeText },
       writable: true,
@@ -339,6 +348,40 @@ describe("DaintreeAssistantSettingsTab", () => {
 
     expect(screen.queryByRole("button", { name: /rotate mcp key/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /copy mcp config/i })).toBeNull();
+  });
+
+  it("lists Codex in the agent dropdown when it passes the assistant gate", async () => {
+    mockGetAssistantSupportedAgentIds.mockReturnValue(["claude", "codex"]);
+
+    const { container } = render(
+      <SettingsValidationProvider>
+        <DaintreeAssistantSettingsTab />
+      </SettingsValidationProvider>
+    );
+    await waitForContent(container, "Search documentation");
+
+    const select = container.querySelector("select[aria-label='Agent']");
+    expect(select).toBeInstanceOf(HTMLSelectElement);
+    if (!(select instanceof HTMLSelectElement)) throw new Error("select not found");
+    const labels = Array.from(select.options).map((o) => o.textContent ?? "");
+    expect(labels).toContain("Claude Code");
+    expect(labels).toContain("Codex");
+  });
+
+  it("hides Codex from the dropdown when only Claude passes the assistant gate", async () => {
+    const { container } = render(
+      <SettingsValidationProvider>
+        <DaintreeAssistantSettingsTab />
+      </SettingsValidationProvider>
+    );
+    await waitForContent(container, "Search documentation");
+
+    const select = container.querySelector("select[aria-label='Agent']");
+    expect(select).toBeInstanceOf(HTMLSelectElement);
+    if (!(select instanceof HTMLSelectElement)) throw new Error("select not found");
+    const labels = Array.from(select.options).map((o) => o.textContent ?? "");
+    expect(labels).toContain("Claude Code");
+    expect(labels).not.toContain("Codex");
   });
 
   it("does not render a Preferred model section", async () => {

@@ -89,11 +89,15 @@ interface HelpProjectRef {
   path: string;
 }
 
-async function provisionHelpSession(project: HelpProjectRef): Promise<ProvisionOutcome> {
+async function provisionHelpSession(
+  project: HelpProjectRef,
+  agentId: string
+): Promise<ProvisionOutcome> {
   try {
     const result = await window.electron.help.provisionSession({
       projectId: project.id,
       projectPath: project.path,
+      agentId,
     });
     if (!result) {
       return {
@@ -569,7 +573,7 @@ export function HelpPanel({
           return;
         }
 
-        const outcome = await provisionHelpSession(launchProject);
+        const outcome = await provisionHelpSession(launchProject, launchAgentId);
         if (!outcome.ok) {
           hasAutoLaunched.current = false;
           if (outcome.code === "MCP_NOT_READY") {
@@ -759,7 +763,7 @@ export function HelpPanel({
           return;
         }
 
-        const outcome = await provisionHelpSession(launchProject);
+        const outcome = await provisionHelpSession(launchProject, selectedAgentId);
         if (!outcome.ok) {
           // Reset the auto-launch gate so a recovered MCP can re-launch on
           // the next render — the single-supported-agent useEffect uses
@@ -944,7 +948,7 @@ export function HelpPanel({
       (async () => {
         let session: HelpSessionRef | null = null;
         try {
-          const outcome = await provisionHelpSession(launchProject);
+          const outcome = await provisionHelpSession(launchProject, launchAgentId);
           if (!outcome.ok) {
             pendingNewTerminalIdRef.current = null;
             useHelpPanelStore.getState().clearTerminal();
@@ -1095,7 +1099,7 @@ export function HelpPanel({
       (async () => {
         let session: HelpSessionRef | null = null;
         try {
-          const outcome = await provisionHelpSession(launchProject);
+          const outcome = await provisionHelpSession(launchProject, launchAgentId);
           if (!outcome.ok) {
             pendingNewTerminalIdRef.current = null;
             useHelpPanelStore.getState().clearTerminal();

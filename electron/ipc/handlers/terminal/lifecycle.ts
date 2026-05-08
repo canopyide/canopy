@@ -20,6 +20,7 @@ import type { HandlerDependencies } from "../../types.js";
 import { TerminalSpawnOptionsSchema } from "../../../schemas/ipc.js";
 import { resolveDaintreeMcpTier } from "../../../../shared/types/project.js";
 import { DEFAULT_DANGEROUS_ARGS } from "../../../../shared/types/agentSettings.js";
+import { getAssistantSupportedAgentIds } from "../../../../shared/config/agentRegistry.js";
 
 type ValidatedTerminalSpawnOptions = z.output<typeof TerminalSpawnOptionsSchema>;
 import {
@@ -220,9 +221,13 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
     // (skipPermissions), append the dangerous flag.
     const helpToken = spawnEnv?.DAINTREE_MCP_TOKEN ?? "";
     const helpTier = helpToken ? helpSessionService.validateToken(helpToken) : false;
-    const isHelpLaunch = helpTier !== false && launchAgentId === "claude" && safeCommand.length > 0;
+    const isHelpLaunch =
+      helpTier !== false &&
+      typeof launchAgentId === "string" &&
+      getAssistantSupportedAgentIds().includes(launchAgentId) &&
+      safeCommand.length > 0;
 
-    if (isHelpLaunch) {
+    if (isHelpLaunch && launchAgentId) {
       const dangerous = DEFAULT_DANGEROUS_ARGS[launchAgentId];
       if (helpTier === "system") {
         if (dangerous && !safeCommand.includes(dangerous)) {
@@ -243,6 +248,12 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
           .replace(stripPattern, "$1")
           .replace(/\s{2,}/g, " ")
           .trim();
+      }
+      // Codex needs --trust-project to read the session-dir's `.codex/config.toml`
+      // without writing to ~/.codex/. Without this flag, the project-scoped
+      // config is silently ignored and MCP wiring drops on the floor.
+      if (launchAgentId === "codex" && !/(^|\s)--trust-project(\s|$)/.test(safeCommand)) {
+        safeCommand = `${safeCommand} --trust-project`;
       }
     } else if (launchAgentId === "claude" && safeCommand.length > 0 && projectId) {
       // Daintree MCP injection for normal Claude Code agent launches.

@@ -8,6 +8,7 @@ import { getHelpFolderPath } from "./HelpService.js";
 import { resilientAtomicWriteFile } from "../utils/fs.js";
 import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 import { probeMcpServer, probeMcpSseServer } from "./mcp-server/readinessProbe.js";
+import { getAssistantSupportedAgentIds } from "../../shared/config/agentRegistry.js";
 import type { HelpAssistantTier } from "../../shared/types/ipc/maps.js";
 
 const SESSIONS_DIR_NAME = "help-sessions";
@@ -26,6 +27,7 @@ const DEFAULT_SKIP_PERMISSIONS = false;
 interface ProvisionInput {
   projectId: string;
   projectPath: string;
+  agentId: string;
   windowId: number;
   projectViewWebContentsId: number;
 }
@@ -47,6 +49,7 @@ interface HelpSessionRecord {
   projectId: string;
   projectPath: string;
   sessionPath: string;
+  agentId: string;
   tier: HelpAssistantTier;
   createdAt: number;
   revoked: boolean;
@@ -214,8 +217,15 @@ export class HelpSessionService {
     await fs.chmod(sessionPath, 0o700).catch(() => {});
 
     const port = await this.getMcpPort(settings.daintreeControl);
-    await this.writeMcpConfig(sessionPath, settings, port, token);
-    await this.writeClaudeSettings(sessionPath, helpFolder, settings);
+    if (input.agentId === "codex") {
+      // Codex reads `bearer_token_env_var` at MCP-connect time from the PTY
+      // env, so the literal token never lands on disk. The token comes from
+      // DAINTREE_MCP_TOKEN injected by `buildHelpEnv()` in the renderer.
+      await this.writeCodexConfig(sessionPath, settings, port);
+    } else {
+      await this.writeMcpConfig(sessionPath, settings, port, token);
+      await this.writeClaudeSettings(sessionPath, helpFolder, settings);
+    }
 
     const now = Date.now();
     const record: HelpSessionRecord = {
@@ -226,6 +236,7 @@ export class HelpSessionService {
       projectId: input.projectId,
       projectPath: input.projectPath,
       sessionPath,
+      agentId: input.agentId,
       tier,
       createdAt: now,
       revoked: false,
@@ -242,12 +253,22 @@ export class HelpSessionService {
 
     if (settings.daintreeControl && port) {
       try {
-        await probeMcpSseServer(port, token);
+        if (input.agentId === "codex") {
+          // Codex MCP wiring uses Streamable HTTP at /mcp (probeMcpServer),
+          // not the SSE transport Claude Code reads from .mcp.json.
+          await probeMcpServer(port, token);
+        } else {
+          await probeMcpSseServer(port, token);
+        }
       } catch (err) {
         record.revoked = true;
         this.sessionsByToken.delete(token);
         this.sessionsById.delete(sessionId);
-        await this.stripStaleDaintreeMcpEntry(sessionPath);
+        if (input.agentId === "codex") {
+          await this.clearCodexConfig(sessionPath);
+        } else {
+          await this.stripStaleDaintreeMcpEntry(sessionPath);
+        }
         const reason = formatErrorMessage(err, "assistant MCP session isn't ready");
         throw new HelpSessionError(
           "MCP_NOT_READY",
@@ -256,8 +277,18 @@ export class HelpSessionService {
       }
     }
 
-    const mcpUrl = settings.daintreeControl && port ? `http://127.0.0.1:${port}/sse` : null;
+    const mcpUrl = this.buildMcpUrl(input.agentId, settings.daintreeControl, port);
     return { sessionId, sessionPath, token, tier, mcpUrl, windowId: input.windowId };
+  }
+
+  private buildMcpUrl(
+    agentId: string,
+    daintreeControl: boolean,
+    port: number | null
+  ): string | null {
+    if (!daintreeControl || !port) return null;
+    if (agentId === "codex") return `http://127.0.0.1:${port}/mcp`;
+    return `http://127.0.0.1:${port}/sse`;
   }
 
   /**
@@ -276,7 +307,11 @@ export class HelpSessionService {
     record.revoked = true;
     this.sessionsById.delete(sessionId);
     this.sessionsByToken.delete(record.token);
-    await this.stripStaleDaintreeMcpEntry(record.sessionPath);
+    if (record.agentId === "codex") {
+      await this.clearCodexConfig(record.sessionPath);
+    } else {
+      await this.stripStaleDaintreeMcpEntry(record.sessionPath);
+    }
   }
 
   async revokeByWebContentsId(webContentsId: number): Promise<void> {
@@ -326,7 +361,11 @@ export class HelpSessionService {
       entries.map(async (entry) => {
         const entryPath = path.join(sessionsRoot, entry);
         if (this.isProjectHashDirName(entry)) {
+          // Both cleanups run unconditionally — the dir's previous-launch
+          // agent isn't tracked across boots, and a no-op delete on a file
+          // that doesn't exist is harmless.
           await this.stripStaleDaintreeMcpEntry(entryPath);
+          await this.clearCodexConfig(entryPath);
           return;
         }
         await this.removeSessionDir(entryPath);
@@ -361,6 +400,12 @@ export class HelpSessionService {
     }
     if (!Number.isInteger(input.projectViewWebContentsId) || input.projectViewWebContentsId < 0) {
       throw new Error("projectViewWebContentsId must be a non-negative integer");
+    }
+    if (typeof input.agentId !== "string" || !input.agentId.trim()) {
+      throw new Error("agentId is required");
+    }
+    if (!getAssistantSupportedAgentIds().includes(input.agentId)) {
+      throw new Error(`agentId "${input.agentId}" is not assistant-supported`);
     }
   }
 
@@ -560,6 +605,61 @@ export class HelpSessionService {
       await fs.rm(sessionPath, { recursive: true, force: true });
     } catch (err) {
       console.warn("[HelpSessionService] Failed to remove session dir:", sessionPath, err);
+    }
+  }
+
+  /**
+   * Writes `<sessionPath>/.codex/config.toml` for a Codex assistant launch.
+   * Uses `bearer_token_env_var` so the literal token never lands on disk —
+   * Codex reads `DAINTREE_MCP_TOKEN` from the PTY env at MCP-connect time.
+   *
+   * The transport key is `transport = "http"` (not `type = "streamable-http"`):
+   * Codex's TOML schema names the field `transport`, and using the wrong key
+   * silently leaves the entry parsed-but-disconnected. The `--trust-project`
+   * flag injected by the spawn handler is what actually authorizes Codex to
+   * read this project-scoped config.
+   */
+  private async writeCodexConfig(
+    sessionPath: string,
+    settings: { daintreeControl: boolean; docSearch: boolean },
+    port: number | null
+  ): Promise<void> {
+    const blocks: string[] = [];
+    if (settings.daintreeControl && port) {
+      blocks.push(
+        `[mcp_servers.daintree]\n` +
+          `transport = "http"\n` +
+          `url = "http://127.0.0.1:${port}/mcp"\n` +
+          `bearer_token_env_var = "DAINTREE_MCP_TOKEN"\n`
+      );
+    }
+    if (settings.docSearch) {
+      blocks.push(
+        `[mcp_servers.daintree-docs]\n` +
+          `transport = "http"\n` +
+          `url = "https://daintree.org/api/mcp"\n`
+      );
+    }
+    const target = path.join(sessionPath, ".codex", "config.toml");
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    const body = blocks.length > 0 ? blocks.join("\n") : "";
+    await resilientAtomicWriteFile(target, body, "utf-8", { mode: 0o600 });
+  }
+
+  /**
+   * Deletes `<sessionPath>/.codex/config.toml` on revoke or stale GC. Unlike
+   * the Claude `.mcp.json` strip dance, the Codex TOML carries no literal
+   * token — `bearer_token_env_var` reads from PTY env — so a flat delete is
+   * both correct and race-safe (a concurrent fresh provision rewrites the
+   * file from scratch).
+   */
+  private async clearCodexConfig(sessionPath: string): Promise<void> {
+    const target = path.join(sessionPath, ".codex", "config.toml");
+    try {
+      await fs.rm(target, { force: true });
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
+      console.warn("[HelpSessionService] Failed to clear codex config:", target, err);
     }
   }
 

@@ -140,6 +140,7 @@ describe("HelpSessionService", () => {
     return {
       projectId: "proj-1",
       projectPath: "/tmp/project",
+      agentId: "claude",
       windowId: 7,
       projectViewWebContentsId: 42,
     };
@@ -561,5 +562,125 @@ describe("HelpSessionService", () => {
     );
     expect(mcp.mcpServers.daintree).toBeUndefined();
     expect(mcp.mcpServers["daintree-docs"]).toBeDefined();
+  });
+
+  describe("Codex", () => {
+    function codexInput() {
+      return { ...provisionInput(), agentId: "codex" };
+    }
+
+    it("rejects an unknown agentId before any disk writes", async () => {
+      await expect(
+        service.provisionSession({ ...provisionInput(), agentId: "not-an-agent" })
+      ).rejects.toThrow(/not assistant-supported/);
+    });
+
+    it("returns a /mcp URL (Streamable HTTP) for Codex assistant launches", async () => {
+      const result = await service.provisionSession(codexInput());
+      if (!result) throw new Error("expected result");
+      expect(result.mcpUrl).toBe("http://127.0.0.1:45454/mcp");
+    });
+
+    it("writes .codex/config.toml with bearer_token_env_var (no literal token on disk)", async () => {
+      const result = await service.provisionSession(codexInput());
+      if (!result) throw new Error("expected result");
+
+      const tomlPath = path.join(result.sessionPath, ".codex", "config.toml");
+      const toml = await fs.readFile(tomlPath, "utf-8");
+
+      expect(toml).toContain("[mcp_servers.daintree]");
+      expect(toml).toContain('transport = "http"');
+      expect(toml).toContain('url = "http://127.0.0.1:45454/mcp"');
+      expect(toml).toContain('bearer_token_env_var = "DAINTREE_MCP_TOKEN"');
+      expect(toml).toContain("[mcp_servers.daintree-docs]");
+      expect(toml).toContain('url = "https://daintree.org/api/mcp"');
+      // Token must never land on disk — the bearer is read from PTY env at
+      // MCP-connect time.
+      expect(toml).not.toContain(result.token);
+      expect(toml).not.toContain("Bearer");
+      expect(toml).not.toContain("type =");
+    });
+
+    it("does NOT write Claude's .mcp.json or .claude/settings.json for a Codex provision", async () => {
+      const result = await service.provisionSession(codexInput());
+      if (!result) throw new Error("expected result");
+
+      // The bundled help template carries .mcp.json + .claude/settings.json
+      // (copied via fs.cp), so they exist on disk — but the Codex branch
+      // must not REWRITE them with Claude-shaped overlay content.
+      const mcp = JSON.parse(
+        await fs.readFile(path.join(result.sessionPath, ".mcp.json"), "utf-8")
+      );
+      // Claude branch sets `daintree` server with literal Bearer token; Codex
+      // branch leaves the bundled template untouched (no daintree entry, no
+      // enableAllProjectMcpServers overlay).
+      expect(mcp.mcpServers.daintree).toBeUndefined();
+    });
+
+    it("probes /mcp (probeMcpServer) for Codex, not /sse (probeMcpSseServer)", async () => {
+      const result = await service.provisionSession(codexInput());
+      if (!result) throw new Error("expected result");
+
+      // ensureMcpServerReady runs probeMcpServer once with the API key
+      // before provision; Codex post-provision also probes /mcp with the
+      // session token. Total: probeMcpServer twice, probeMcpSseServer never.
+      expect(mockProbeMcpServer).toHaveBeenCalledTimes(2);
+      expect(mockProbeMcpServer).toHaveBeenLastCalledWith(45454, result.token);
+      expect(mockProbeMcpSseServer).not.toHaveBeenCalled();
+    });
+
+    it("clears .codex/config.toml on revoke", async () => {
+      const result = await service.provisionSession(codexInput());
+      if (!result) throw new Error("expected result");
+
+      const tomlPath = path.join(result.sessionPath, ".codex", "config.toml");
+      await fs.access(tomlPath);
+
+      await service.revokeSession(result.sessionId);
+
+      let exists = true;
+      try {
+        await fs.access(tomlPath);
+      } catch {
+        exists = false;
+      }
+      expect(exists).toBe(false);
+    });
+
+    it("omits the daintree block from the TOML when daintreeControl is false but keeps daintree-docs", async () => {
+      mockStoreGet.mockReturnValue({ daintreeControl: false });
+
+      const result = await service.provisionSession(codexInput());
+      if (!result) throw new Error("expected result");
+
+      const toml = await fs.readFile(
+        path.join(result.sessionPath, ".codex", "config.toml"),
+        "utf-8"
+      );
+      expect(toml).not.toContain("[mcp_servers.daintree]");
+      expect(toml).toContain("[mcp_servers.daintree-docs]");
+    });
+
+    it("clears the codex TOML on probe failure and throws MCP_NOT_READY", async () => {
+      mockProbeMcpServer.mockResolvedValueOnce(undefined);
+      mockProbeMcpServer.mockRejectedValueOnce(new Error("/mcp returned status 500"));
+
+      await expect(service.provisionSession(codexInput())).rejects.toMatchObject({
+        name: "HelpSessionError",
+        code: "MCP_NOT_READY",
+      });
+
+      const sessionsRoot = path.join(userData, "help-sessions");
+      const entries = await fs.readdir(sessionsRoot);
+      expect(entries.length).toBe(1);
+      const tomlPath = path.join(sessionsRoot, entries[0]!, ".codex", "config.toml");
+      let exists = true;
+      try {
+        await fs.access(tomlPath);
+      } catch {
+        exists = false;
+      }
+      expect(exists).toBe(false);
+    });
   });
 });

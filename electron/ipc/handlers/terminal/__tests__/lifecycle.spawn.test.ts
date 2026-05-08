@@ -75,6 +75,7 @@ vi.mock("../../../utils.js", () => ({
 
 vi.mock("../../../../shared/config/agentRegistry.js", () => ({
   isRegisteredAgent: vi.fn(() => false),
+  getAssistantSupportedAgentIds: vi.fn(() => ["claude", "codex"]),
 }));
 
 const {
@@ -743,5 +744,100 @@ describe("terminal spawn handler - help session detection (#6524)", () => {
     expect(mockPreparePaneConfig).not.toHaveBeenCalled();
     expect(spawnArgs.command).toBe("claude");
     expect(spawnArgs.env?.DAINTREE_MCP_TOKEN).toBeUndefined();
+  });
+
+  it("treats a Codex help-session token as a help launch and injects --trust-project", async () => {
+    mockValidateToken.mockImplementation((token) => (token === "help-token" ? "action" : false));
+
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+    await handler(
+      {} as Electron.IpcMainInvokeEvent,
+      {
+        cols: 80,
+        rows: 24,
+        cwd: tmpDir,
+        command: "codex",
+        launchAgentId: "codex",
+        env: { DAINTREE_MCP_TOKEN: "help-token" },
+      } as unknown as Parameters<typeof handler>[1]
+    );
+
+    const spawnArgs = ptyClient.spawn.mock.calls[0][1];
+    expect(spawnArgs.command).toContain("--trust-project");
+    // No per-pane MCP injection: the session-dir .codex/config.toml owns it.
+    expect(mockPreparePaneConfig).not.toHaveBeenCalled();
+  });
+
+  it("does not duplicate --trust-project when the renderer already added it", async () => {
+    mockValidateToken.mockImplementation((token) => (token === "help-token" ? "action" : false));
+
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+    await handler(
+      {} as Electron.IpcMainInvokeEvent,
+      {
+        cols: 80,
+        rows: 24,
+        cwd: tmpDir,
+        command: "codex --trust-project",
+        launchAgentId: "codex",
+        env: { DAINTREE_MCP_TOKEN: "help-token" },
+      } as unknown as Parameters<typeof handler>[1]
+    );
+
+    const spawnArgs = ptyClient.spawn.mock.calls[0][1];
+    const occurrences = (spawnArgs.command.match(/--trust-project/g) ?? []).length;
+    expect(occurrences).toBe(1);
+  });
+
+  it("appends --dangerously-bypass-approvals-and-sandbox to a system-tier Codex help launch", async () => {
+    mockValidateToken.mockImplementation((token) => (token === "system-token" ? "system" : false));
+
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+    await handler(
+      {} as Electron.IpcMainInvokeEvent,
+      {
+        cols: 80,
+        rows: 24,
+        cwd: tmpDir,
+        command: "codex",
+        launchAgentId: "codex",
+        env: { DAINTREE_MCP_TOKEN: "system-token" },
+      } as unknown as Parameters<typeof handler>[1]
+    );
+
+    const spawnArgs = ptyClient.spawn.mock.calls[0][1];
+    expect(spawnArgs.command).toContain("--dangerously-bypass-approvals-and-sandbox");
+    expect(spawnArgs.command).toContain("--trust-project");
+  });
+
+  it("does not inject --trust-project for a non-help Codex launch", async () => {
+    mockValidateToken.mockReturnValue(false);
+
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+    await handler(
+      {} as Electron.IpcMainInvokeEvent,
+      {
+        cols: 80,
+        rows: 24,
+        cwd: tmpDir,
+        command: "codex",
+        launchAgentId: "codex",
+      } as unknown as Parameters<typeof handler>[1]
+    );
+
+    const spawnArgs = ptyClient.spawn.mock.calls[0][1];
+    expect(spawnArgs.command).not.toContain("--trust-project");
   });
 });

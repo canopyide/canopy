@@ -36,7 +36,7 @@ function handleUnmarkTerminal(terminalId: string): void {
 
 async function handleProvisionSession(
   ctx: import("../types.js").IpcContext,
-  input: { projectId: string; projectPath: string }
+  input: { projectId: string; projectPath: string; agentId: string }
 ): Promise<{
   sessionId: string;
   sessionPath: string;
@@ -53,6 +53,7 @@ async function handleProvisionSession(
   return helpSessionService.provisionSession({
     projectId: input.projectId,
     projectPath: input.projectPath,
+    agentId: input.agentId,
     windowId: ctx.senderWindow.id,
     projectViewWebContentsId: ctx.webContentsId,
   });

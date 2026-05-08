@@ -2097,7 +2097,7 @@ export interface IpcInvokeMap {
     result: void;
   };
   "help:provision-session": {
-    args: [input: { projectId: string; projectPath: string }];
+    args: [input: { projectId: string; projectPath: string; agentId: string }];
     result: {
       sessionId: string;
       sessionPath: string;

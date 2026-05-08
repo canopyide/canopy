@@ -1384,7 +1384,7 @@ export interface ElectronAPI {
     getFolderPath(): Promise<string | null>;
     markTerminal(terminalId: string): Promise<void>;
     unmarkTerminal(terminalId: string): Promise<void>;
-    provisionSession(input: { projectId: string; projectPath: string }): Promise<{
+    provisionSession(input: { projectId: string; projectPath: string; agentId: string }): Promise<{
       sessionId: string;
       sessionPath: string;
       token: string;

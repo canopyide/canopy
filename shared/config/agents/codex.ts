@@ -12,6 +12,7 @@ export const config: AgentConfig = {
   color: "#10a37f",
   iconId: "codex",
   supportsContextInjection: true,
+  supportsAssistant: true,
   shortcut: "Cmd/Ctrl+Alt+X",
   tooltip: "careful, methodical runs",
   usageUrl: "https://chatgpt.com/codex/settings/usage",

@@ -504,6 +504,7 @@ describe("HelpPanel — auto-launch (preferredAgentId)", () => {
     expect(mockProvisionSession).toHaveBeenCalledWith({
       projectId: "proj-default",
       projectPath: "/repo",
+      agentId: "claude",
     });
     expect(mockDispatch).toHaveBeenCalledWith(
       "agent.launch",
@@ -531,6 +532,7 @@ describe("HelpPanel — auto-launch (preferredAgentId)", () => {
     expect(mockProvisionSession).toHaveBeenCalledWith({
       projectId: "proj-late",
       projectPath: "/late-repo",
+      agentId: "claude",
     });
     expect(mockDispatch).toHaveBeenCalledWith(
       "agent.launch",
@@ -627,6 +629,44 @@ describe("HelpPanel — auto-launch (preferredAgentId)", () => {
     expect(mockNotify).toHaveBeenCalledWith(
       expect.objectContaining({ type: "error", title: "Assistant launch failed" })
     );
+  });
+
+  it("provisions and dispatches a Codex assistant launch when codex is the preferred agent", async () => {
+    mockGetAssistantSupportedAgentIds.mockReturnValue(["claude", "codex"]);
+    helpPanelState.preferredAgentId = "codex";
+    mockProvisionSession.mockResolvedValue({
+      sessionId: "sess-codex",
+      sessionPath: "/help-codex",
+      token: "tok-codex",
+      tier: "action",
+      mcpUrl: "http://127.0.0.1:45454/mcp",
+      windowId: 1,
+    });
+    mockGetFolderPath.mockResolvedValue("/help");
+    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "codex-term-1" } });
+
+    await act(async () => {
+      render(<HelpPanel width={380} />);
+    });
+
+    expect(mockProvisionSession).toHaveBeenCalledWith({
+      projectId: "proj-default",
+      projectPath: "/repo",
+      agentId: "codex",
+    });
+    expect(mockDispatch).toHaveBeenCalledWith(
+      "agent.launch",
+      expect.objectContaining({
+        agentId: "codex",
+        cwd: "/help-codex",
+        env: expect.objectContaining({
+          DAINTREE_MCP_TOKEN: "tok-codex",
+          DAINTREE_MCP_URL: "http://127.0.0.1:45454/mcp",
+        }),
+      }),
+      { source: "user" }
+    );
+    expect(helpPanelState.setTerminal).toHaveBeenCalledWith("codex-term-1", "codex", "sess-codex");
   });
 });
 
@@ -979,6 +1019,7 @@ describe("HelpPanel — session provisioning", () => {
     expect(mockProvisionSession).toHaveBeenCalledWith({
       projectId: "proj-1",
       projectPath: "/repo",
+      agentId: "claude",
     });
     expect(mockDispatch).toHaveBeenCalledWith(
       "agent.launch",
