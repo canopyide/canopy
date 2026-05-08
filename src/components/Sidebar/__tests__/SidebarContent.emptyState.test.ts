@@ -314,4 +314,14 @@ describe("SidebarContent initial loading skeleton — issue #7215", () => {
     expect(branch).toContain("animate-pulse-delayed");
     expect(branch).not.toContain("animate-pulse-immediate");
   });
+
+  it("marks bone row containers aria-hidden so AT only announces the wrapper status", () => {
+    // Per Skeleton.tsx's documented contract: each bone should be aria-hidden.
+    // The wrapper carries role=status + aria-busy=true for the live-region
+    // announcement; the placeholder bones must not pollute the AT tree.
+    const branchStart = source.indexOf("if (isLoading && worktrees.length === 0)");
+    const branchEnd = source.indexOf("if (error)", branchStart);
+    const branch = source.slice(branchStart, branchEnd);
+    expect(branch).toContain('aria-hidden="true"');
+  });
 });
