@@ -506,4 +506,35 @@ describe("ThemeBrowser", () => {
     const afterUp = useAppThemeStore.getState().previewSchemeId;
     expect(afterUp).toBe(DEFAULT_APP_SCHEME_ID);
   });
+
+  describe("image error fallback", () => {
+    it("shows fallback background div instead of broken thumbnail image", () => {
+      render(<Harness />);
+      const thumbImgs = document.querySelectorAll<HTMLImageElement>("img[src*='/themes/thumb/']");
+      expect(thumbImgs.length).toBeGreaterThan(0);
+
+      const img = thumbImgs[0]!;
+      fireEvent.error(img);
+
+      // The errored img should be removed from the document
+      expect(document.body.contains(img)).toBe(false);
+      // The fallback div with border should be present
+      const fallbackDivs = document.querySelectorAll(".border-daintree-border\\/50");
+      expect(fallbackDivs.length).toBeGreaterThan(0);
+    });
+
+    it("shows fallback (token background + PaletteStrip) instead of broken hero image", () => {
+      const { container } = render(<Harness />);
+      const heroImg = container.querySelector<HTMLImageElement>(".h-\\[200px\\] img.object-cover");
+      expect(heroImg).not.toBeNull();
+
+      fireEvent.error(heroImg!);
+
+      // The broken hero img should be gone
+      expect(container.querySelector(".h-\\[200px\\] img.object-cover")).toBeNull();
+      // PaletteStrip chips in the hero fallback (scoped to hero container only)
+      const heroChips = container.querySelectorAll(".h-\\[200px\\] .w-3.h-3");
+      expect(heroChips.length).toBe(8);
+    });
+  });
 });
