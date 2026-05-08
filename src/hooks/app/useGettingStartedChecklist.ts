@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useReducedMotion } from "framer-motion";
 import { isElectronAvailable } from "../useElectron";
 import { useProjectStore } from "@/store/projectStore";
 import { usePanelStore } from "@/store/panelStore";
@@ -68,6 +69,7 @@ function reconcileCurrentState(
 // Hold the panel visible briefly after the final tick so AnimatedLabel can
 // crossfade the counter to a milestone label before the panel exits.
 const PENDING_DISMISS_HOLD_MS = 800;
+const CELEBRATION_CLEAR_MS = 1500;
 
 export function useGettingStartedChecklist(isStateLoaded: boolean): GettingStartedChecklistState {
   const [checklist, setChecklist] = useState<ChecklistState | null>(null);
@@ -81,6 +83,11 @@ export function useGettingStartedChecklist(isStateLoaded: boolean): GettingStart
   // inside a setChecklist functional updater and can't read React state) can
   // gate the incoming dismissed:true during the hold window.
   const pendingDismissRef = useRef(false);
+
+  const prefersReducedMotion = useReducedMotion();
+  const celebrationClearMs = prefersReducedMotion ? 0 : CELEBRATION_CLEAR_MS;
+  const pendingDismissHoldMs = prefersReducedMotion ? 0 : PENDING_DISMISS_HOLD_MS;
+
   useEffect(() => {
     checklistRef.current = checklist;
   }, [checklist]);
@@ -283,9 +290,9 @@ export function useGettingStartedChecklist(isStateLoaded: boolean): GettingStart
   // Auto-clear celebration after animation completes
   useEffect(() => {
     if (!showCelebration) return;
-    const timer = setTimeout(() => setShowCelebration(false), 1500);
+    const timer = setTimeout(() => setShowCelebration(false), celebrationClearMs);
     return () => clearTimeout(timer);
-  }, [showCelebration]);
+  }, [showCelebration, celebrationClearMs]);
 
   // Hold the panel for a brief milestone beat after the final tick, then
   // commit the local dismissal so the panel exits.
@@ -299,9 +306,9 @@ export function useGettingStartedChecklist(isStateLoaded: boolean): GettingStart
       // user reached completion via Help > Getting Started, clear it here
       // so the panel exits with the rest of the beat.
       setForceShow(false);
-    }, PENDING_DISMISS_HOLD_MS);
+    }, pendingDismissHoldMs);
     return () => clearTimeout(timer);
-  }, [pendingDismiss]);
+  }, [pendingDismiss, pendingDismissHoldMs]);
 
   const allDone = checklist ? Object.values(checklist.items).every(Boolean) : false;
   const visible =

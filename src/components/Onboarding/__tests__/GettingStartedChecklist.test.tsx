@@ -162,4 +162,60 @@ describe("GettingStartedChecklist", () => {
     expect(screen.getByText("All done")).toBeTruthy();
     expect(screen.queryByText("4/4")).toBeNull();
   });
+
+  describe("accessibility", () => {
+    it("renders the card as a region landmark with accessible name", () => {
+      render(<GettingStartedChecklist {...defaultProps} checklist={allIncomplete} />);
+      const region = screen.getByRole("region", { name: "Getting started checklist" });
+      expect(region).toBeTruthy();
+    });
+
+    it("collapse button announces expanded state and controls the body", () => {
+      const { rerender } = render(
+        <GettingStartedChecklist {...defaultProps} checklist={allIncomplete} collapsed={false} />
+      );
+
+      const toggle = screen.getByRole("button", { name: /getting started/i });
+      expect(toggle.getAttribute("aria-expanded")).toBe("true");
+      expect(toggle.getAttribute("aria-controls")).toBe("getting-started-checklist-body");
+
+      rerender(
+        <GettingStartedChecklist {...defaultProps} checklist={allIncomplete} collapsed={true} />
+      );
+      expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    });
+
+    it("collapsible body has a stable id matching aria-controls", () => {
+      render(<GettingStartedChecklist {...defaultProps} checklist={allIncomplete} />);
+      const body = document.getElementById("getting-started-checklist-body");
+      expect(body).toBeTruthy();
+      expect(body!.tagName).toBe("DIV");
+    });
+  });
+
+  describe("reduced motion", () => {
+    it("panel entry div includes motion-reduce overrides", () => {
+      render(<GettingStartedChecklist {...defaultProps} checklist={allIncomplete} />);
+      const region = screen.getByRole("region", { name: "Getting started checklist" });
+      expect(region.className).toContain("motion-reduce:transition-none");
+      expect(region.className).toContain("motion-reduce:duration-0");
+      expect(region.className).toContain("motion-reduce:transform-none");
+    });
+
+    it("collapsible body includes motion-reduce overrides", () => {
+      render(<GettingStartedChecklist {...defaultProps} checklist={allIncomplete} />);
+      const body = document.getElementById("getting-started-checklist-body")!;
+      expect(body.className).toContain("motion-reduce:transition-none");
+      expect(body.className).toContain("motion-reduce:duration-0");
+    });
+  });
+
+  describe("collapse toggle", () => {
+    it("calls onToggleCollapse when header button is clicked", () => {
+      render(<GettingStartedChecklist {...defaultProps} checklist={allIncomplete} />);
+      const toggle = screen.getByRole("button", { name: /getting started/i });
+      fireEvent.click(toggle);
+      expect(defaultProps.onToggleCollapse).toHaveBeenCalledTimes(1);
+    });
+  });
 });
