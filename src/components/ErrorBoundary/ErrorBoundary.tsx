@@ -140,6 +140,10 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       }
     }
 
+    // Reset the synchronous class-field guard alongside state so a hung
+    // report from the previous error session doesn't permanently disable
+    // the Report issue button after recovery.
+    this.reportInFlight = false;
     this.setState({
       hasError: false,
       error: null,

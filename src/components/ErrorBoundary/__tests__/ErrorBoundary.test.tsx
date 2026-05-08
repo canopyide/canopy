@@ -418,6 +418,67 @@ describe("ErrorBoundary", () => {
     await waitFor(() => expect(button.disabled).toBe(false));
   });
 
+  it("clears the in-flight guard on reset so a new report can fire after recovery", async () => {
+    // Pin actionService.dispatch to a never-resolving promise — simulates a
+    // hung report. Without the field reset, the second click after recovery
+    // would be silently swallowed by the still-true class-field guard.
+    let resolveFirst: ((value: { ok: boolean }) => void) | undefined;
+    vi.mocked(actionService.dispatch)
+      .mockImplementationOnce(
+        () =>
+          new Promise<{ ok: boolean }>((resolve) => {
+            resolveFirst = resolve;
+          })
+      )
+      .mockResolvedValueOnce({ ok: true });
+
+    let shouldThrow = true;
+    function ConditionalThrow() {
+      if (shouldThrow) {
+        const error = new Error("Component blew up");
+        error.stack =
+          "Error: Component blew up\n" +
+          Array.from({ length: 30 }, (_, i) => `    at frame${i} ${"x".repeat(800)}`).join("\n");
+        throw error;
+      }
+      return <div>Recovered</div>;
+    }
+
+    const { rerender } = render(
+      <ErrorBoundary variant="section">
+        <ConditionalThrow />
+      </ErrorBoundary>
+    );
+
+    fireEvent.click(screen.getByText("Report issue")); // first click — hangs
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(actionService.dispatch).toHaveBeenCalledTimes(1);
+
+    // User gives up and recovers the pane while the first report is still in flight.
+    shouldThrow = false;
+    fireEvent.click(screen.getByText("Reload pane"));
+    expect(screen.getByText("Recovered")).toBeTruthy();
+
+    // Re-arm the throw and re-render to bring the fallback back.
+    shouldThrow = true;
+    rerender(
+      <ErrorBoundary variant="section">
+        <ConditionalThrow />
+      </ErrorBoundary>
+    );
+    expect(screen.getByText("Section stopped working")).toBeTruthy();
+
+    // Second click should now fire — the class-field guard was cleared on reset.
+    fireEvent.click(screen.getByText("Report issue"));
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(actionService.dispatch).toHaveBeenCalledTimes(2);
+
+    resolveFirst?.({ ok: true });
+  });
+
   it("does not log the duplicate 'ErrorBoundary caught error' message", async () => {
     const { logError } = await import("@/utils/logger");
 
