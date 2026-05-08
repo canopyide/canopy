@@ -26,7 +26,8 @@ const AGENT_STATE_VALUES = new Set([
 
 const T_IDENTITY = 60_000;
 const T_AGENT_STICKY_REGRESSION = 45_000;
-const T_WINDOWS_BATCH_PROMPT = 7_500;
+const FAKE_CLAUDE_STOP = "__DAINTREE_FAKE_CLAUDE_STOP__";
+const FAKE_NPM_STOP = "__DAINTREE_FAKE_NPM_STOP__";
 
 function panelHeaderIcon(panel: Locator): Locator {
   return panel.locator("[data-pane-chrome] [data-terminal-icon-id]").first();
@@ -130,39 +131,14 @@ async function ptyWrite(page: Page, terminalId: string, data: string): Promise<v
   if (!result.ok) throw new Error(`ptyWrite failed: ${result.reason}`);
 }
 
-async function interruptTerminalProcess(
-  page: Page,
-  panel: Locator,
-  terminalId: string
-): Promise<number> {
-  const textBeforeInterrupt = await getTerminalText(panel);
-  await ptyWrite(page, terminalId, "\x03");
-  return textBeforeInterrupt.length;
-}
-
-async function confirmWindowsBatchTerminationIfPrompted(
-  page: Page,
-  panel: Locator,
-  terminalId: string,
-  textOffset: number
-): Promise<void> {
-  if (process.platform !== "win32") return;
-
-  const deadline = Date.now() + T_WINDOWS_BATCH_PROMPT;
-  while (Date.now() < deadline) {
-    const freshText = (await getTerminalText(panel)).slice(textOffset).toLowerCase();
-    if (freshText.includes("terminate batch job")) {
-      await ptyWrite(page, terminalId, "Y\r");
-      return;
-    }
-    await page.waitForTimeout(250);
-  }
-}
-
-async function interruptFakeClaude(page: Page, panel: Locator, terminalId: string): Promise<void> {
-  const textOffset = await interruptTerminalProcess(page, panel, terminalId);
+async function stopFakeClaude(page: Page, panel: Locator, terminalId: string): Promise<void> {
+  await ptyWrite(page, terminalId, `${FAKE_CLAUDE_STOP}\r`);
   await waitForTerminalText(panel, "FAKE_CLAUDE_EXIT", T_LONG);
-  await confirmWindowsBatchTerminationIfPrompted(page, panel, terminalId, textOffset);
+}
+
+async function stopFakeNpm(page: Page, panel: Locator, terminalId: string): Promise<void> {
+  await ptyWrite(page, terminalId, `${FAKE_NPM_STOP}\r`);
+  await waitForTerminalText(panel, "NPM_EXIT", T_LONG);
 }
 
 async function expectWorktreeTracksAgent(
@@ -245,10 +221,19 @@ function prepareFixture(): void {
   mkdirSync(fakeBinDir, { recursive: true });
 
   const fakeClaude = path.join(fakeBinDir, "claude");
+  const fakeNpmBuild = [
+    "console.log('NPM_READY');",
+    "process.stdin.resume();",
+    "process.stdin.setEncoding('utf8');",
+    `process.stdin.on('data', (chunk) => { if (String(chunk).includes('${FAKE_NPM_STOP}')) { console.log('NPM_EXIT'); process.exit(0); } });`,
+    "setTimeout(() => {}, 10000);",
+  ].join(" ");
+
   writeFileSync(
     fakeClaude,
     [
       "#!/usr/bin/env node",
+      `const stopToken = ${JSON.stringify(FAKE_CLAUDE_STOP)};`,
       "console.log('Accessing workspace:');",
       "console.log('');",
       "console.log(' ' + process.cwd());",
@@ -269,9 +254,14 @@ function prepareFixture(): void {
       "  process.exit(0);",
       "};",
       "process.stdin.on('data', (chunk) => {",
-      "  if (!trusted && /[\\r\\n]/.test(String(chunk))) {",
+      "  const input = String(chunk);",
+      "  if (!trusted && /[\\r\\n]/.test(input)) {",
       "    trusted = true;",
       "    console.log('FAKE_CLAUDE_READY');",
+      "    return;",
+      "  }",
+      "  if (trusted && input.includes(stopToken)) {",
+      "    shutdown();",
       "  }",
       "});",
       "process.on('SIGINT', shutdown);",
@@ -296,7 +286,7 @@ function prepareFixture(): void {
         version: "1.0.0",
         private: true,
         scripts: {
-          build: "node -e \"console.log('NPM_READY'); setTimeout(() => {}, 10000)\"",
+          build: `node -e ${JSON.stringify(fakeNpmBuild)}`,
         },
       },
       null,
@@ -371,7 +361,7 @@ test.describe.serial("Core: terminal runtime agent promotion", () => {
       await expectPanelHeaderIcon(panel, "claude");
       await expectPanelHasAgentState(panel);
 
-      await interruptFakeClaude(window, panel, toolbarPanelId);
+      await stopFakeClaude(window, panel, toolbarPanelId);
 
       await expect
         .poll(() => panel.getAttribute("data-detected-agent-id"), {
@@ -416,13 +406,7 @@ test.describe.serial("Core: terminal runtime agent promotion", () => {
       await expectPanelHasNoAgentState(panel);
       await expectWorktreeTracksPlainTerminal(window, plainPanelId);
 
-      const npmInterruptOffset = await interruptTerminalProcess(window, panel, plainPanelId);
-      await confirmWindowsBatchTerminationIfPrompted(
-        window,
-        panel,
-        plainPanelId,
-        npmInterruptOffset
-      );
+      await stopFakeNpm(window, panel, plainPanelId);
 
       // Do not wait for the npm badge to clear before starting Claude. This
       // exercises the stale process → fresh agent promotion path that regressed.
@@ -455,7 +439,7 @@ test.describe.serial("Core: terminal runtime agent promotion", () => {
       await expectPanelHeaderIcon(panel, "claude");
       await expectPanelHasAgentState(panel);
 
-      await interruptFakeClaude(window, panel, plainPanelId);
+      await stopFakeClaude(window, panel, plainPanelId);
       await expect
         .poll(() => panel.getAttribute("data-detected-agent-id"), {
           timeout: T_IDENTITY,
