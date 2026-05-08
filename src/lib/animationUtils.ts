@@ -95,6 +95,11 @@ export const PANEL_RESTORE_DURATION = DURATION_200;
 export const BANNER_ENTER_DURATION = DURATION_250;
 export const BANNER_EXIT_DURATION = DURATION_200;
 
+export const DRAG_GHOST_OPACITY = 0.4;
+export const DRAG_GHOST_EASING = "easeOut";
+export const DRAG_OVERLAY_ENTRY_SCALE = 0.95;
+export const DRAG_OVERLAY_ENTRY_OPACITY = 0.8;
+
 export const PANEL_MINIMIZE_EASING = "cubic-bezier(0.3, 0, 0.8, 0.15)";
 export const PANEL_RESTORE_EASING = EASE_OUT_EXPO;
 
