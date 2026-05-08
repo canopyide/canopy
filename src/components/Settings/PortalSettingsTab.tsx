@@ -1,6 +1,5 @@
 import { useId, useState } from "react";
 import { Plus, Trash2, Globe, Check, X, Search, PanelRight, Link } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { usePortalStore } from "@/store/portalStore";
 import { getAgentConfig, isRegisteredAgent } from "@/config/agents";
@@ -8,6 +7,7 @@ import { BrandMark } from "@/components/icons";
 import { actionService } from "@/services/ActionService";
 import { SettingsSection } from "./SettingsSection";
 import { SettingsSelect } from "./SettingsSelect";
+import { SettingsSwitch } from "./SettingsSwitch";
 import { useSettingsTabValidation } from "./SettingsValidationRegistry";
 
 function ServiceIcon({ name, size = 16 }: { name: string; size?: number }) {
@@ -216,6 +216,7 @@ export function PortalSettingsTab() {
             onChange={(e) => setEditName(e.target.value)}
             className="bg-daintree-bg border border-border-strong rounded-[var(--radius-md)] px-2 py-1 text-sm text-daintree-text w-32 focus:border-daintree-accent focus:outline-hidden"
             placeholder="e.g. My portal"
+            aria-label="Edit link name"
           />
           <input
             type="text"
@@ -223,15 +224,18 @@ export function PortalSettingsTab() {
             onChange={(e) => setEditUrl(e.target.value)}
             className="bg-daintree-bg border border-border-strong rounded-[var(--radius-md)] px-2 py-1 text-sm text-daintree-text flex-1 focus:border-daintree-accent focus:outline-hidden"
             placeholder="e.g. https://github.com/owner/repo"
+            aria-label="Edit link URL"
           />
           <button
             onClick={handleSaveEdit}
+            aria-label="Save edit"
             className="p-1.5 rounded hover:bg-daintree-border/50 text-status-success"
           >
             <Check className="w-4 h-4" />
           </button>
           <button
             onClick={handleCancelEdit}
+            aria-label="Cancel edit"
             className="p-1.5 rounded hover:bg-daintree-border/50 text-daintree-text/50"
           >
             <X className="w-4 h-4" />
@@ -269,8 +273,9 @@ export function PortalSettingsTab() {
           >
             Edit
           </button>
-          <button
-            onClick={() =>
+          <SettingsSwitch
+            checked={link.enabled}
+            onCheckedChange={() =>
               void actionService.dispatch(
                 "portal.links.toggle",
                 { id: link.id },
@@ -278,19 +283,8 @@ export function PortalSettingsTab() {
               )
             }
             disabled={link.alwaysEnabled}
-            className={cn(
-              "w-10 h-5 rounded-full relative transition-colors shrink-0",
-              link.alwaysEnabled && "opacity-50 cursor-not-allowed",
-              link.enabled ? "bg-daintree-accent" : "bg-daintree-border"
-            )}
-          >
-            <div
-              className={cn(
-                "absolute top-0.5 w-4 h-4 rounded-full transition-transform",
-                link.enabled ? "translate-x-5 bg-text-inverse" : "translate-x-0.5 bg-daintree-text"
-              )}
-            />
-          </button>
+            aria-label={`Toggle ${link.title || "portal link"}`}
+          />
           {allowDelete && (
             <button
               onClick={() =>
@@ -353,6 +347,7 @@ export function PortalSettingsTab() {
                   if (e.key === "Enter") handleCustomUrlSave();
                   if (e.key === "Escape") handleCustomUrlCancel();
                 }}
+                aria-label="Custom URL"
                 aria-invalid={!!customUrlError || undefined}
                 aria-describedby={customUrlError ? customUrlErrorId : undefined}
                 autoFocus
@@ -417,6 +412,7 @@ export function PortalSettingsTab() {
                 setUrlError("");
               }}
               className="bg-daintree-bg border border-border-strong rounded-[var(--radius-md)] px-3 py-1.5 text-sm text-daintree-text w-32 focus:border-daintree-accent focus:outline-hidden transition-colors"
+              aria-label="New link name"
             />
             <input
               type="text"
@@ -430,6 +426,7 @@ export function PortalSettingsTab() {
               onKeyDown={(e) => {
                 if (e.key === "Enter") handleAddLink();
               }}
+              aria-label="New link URL"
               aria-invalid={!!urlError || undefined}
               aria-describedby={urlError ? addLinkErrorId : undefined}
             />

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useId } from "react";
 import { Play, Bell, BellOff, Volume2, AudioLines, Moon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SettingsSection } from "./SettingsSection";
@@ -71,11 +71,56 @@ function joinMinutes(hour: number, minute: number): number {
   return Math.max(0, Math.min(1439, hour * 60 + minute));
 }
 
+function SoundFileSelect({
+  label,
+  value,
+  onChange,
+  onPreview,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  onPreview: () => void;
+}) {
+  const id = useId();
+  return (
+    <div className="space-y-1">
+      <label htmlFor={id} className="text-sm font-medium text-daintree-text block">
+        {label}
+      </label>
+      <div className="flex items-center gap-2">
+        <select
+          id={id}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="flex-1 px-3 pr-8 py-1.5 text-sm rounded-[var(--radius-md)] border border-border-strong bg-daintree-bg text-daintree-text focus:border-daintree-accent focus:outline-hidden transition-colors"
+        >
+          {AVAILABLE_SOUNDS.map(({ file, label: soundLabel }) => (
+            <option key={file} value={file}>
+              {soundLabel}
+            </option>
+          ))}
+        </select>
+        <button
+          onClick={onPreview}
+          title={`Preview ${label.toLowerCase()}`}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-[var(--radius-md)] border border-daintree-border bg-daintree-bg text-daintree-text hover:bg-tint/[0.06] transition-colors"
+        >
+          <Play className="h-3.5 w-3.5" />
+          Preview
+        </button>
+      </div>
+    </div>
+  );
+}
+
 type LoadState = "loading" | "ready" | "error";
 
 export function NotificationSettingsTab() {
   const [settings, setSettings] = useState<NotificationSettings>(DEFAULT_SETTINGS);
   const [loadState, setLoadState] = useState<LoadState>("loading");
+  const escalationDelayId = useId();
+  const activeDaysId = useId();
 
   useEffect(() => {
     let settled = false;
@@ -208,10 +253,14 @@ export function NotificationSettingsTab() {
                 />
                 {settings.waitingEscalationEnabled && (
                   <div className="space-y-1">
-                    <label className="text-sm font-medium text-daintree-text block">
+                    <label
+                      htmlFor={escalationDelayId}
+                      className="text-sm font-medium text-daintree-text block"
+                    >
                       Escalation delay
                     </label>
                     <select
+                      id={escalationDelayId}
                       value={settings.waitingEscalationDelayMs}
                       onChange={(e) => update({ waitingEscalationDelayMs: Number(e.target.value) })}
                       className="px-3 pr-8 py-1.5 text-sm rounded-[var(--radius-md)] border border-border-strong bg-daintree-bg text-daintree-text focus:border-daintree-accent focus:outline-hidden transition-colors"
@@ -253,51 +302,30 @@ export function NotificationSettingsTab() {
 
             {settings.soundEnabled && (
               <div className="contents">
-                {(
-                  [
-                    {
-                      label: "Completed sound",
-                      field: "completedSoundFile" as const,
-                    },
-                    {
-                      label: "Waiting sound",
-                      field: "waitingSoundFile" as const,
-                    },
-                    {
-                      label: "Escalation sound",
-                      field: "escalationSoundFile" as const,
-                    },
-                    {
-                      label: "Working pulse sound",
-                      field: "workingPulseSoundFile" as const,
-                    },
-                  ] as const
-                ).map(({ label, field }) => (
-                  <div key={field} className="space-y-1">
-                    <label className="text-sm font-medium text-daintree-text block">{label}</label>
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={settings[field]}
-                        onChange={(e) => update({ [field]: e.target.value })}
-                        className="flex-1 px-3 pr-8 py-1.5 text-sm rounded-[var(--radius-md)] border border-border-strong bg-daintree-bg text-daintree-text focus:border-daintree-accent focus:outline-hidden transition-colors"
-                      >
-                        {AVAILABLE_SOUNDS.map(({ file, label: soundLabel }) => (
-                          <option key={file} value={file}>
-                            {soundLabel}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        onClick={() => handlePreview(settings[field])}
-                        title={`Preview ${label.toLowerCase()}`}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-[var(--radius-md)] border border-daintree-border bg-daintree-bg text-daintree-text hover:bg-tint/[0.06] transition-colors"
-                      >
-                        <Play className="h-3.5 w-3.5" />
-                        Preview
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                <SoundFileSelect
+                  label="Completed sound"
+                  value={settings.completedSoundFile}
+                  onChange={(v) => update({ completedSoundFile: v })}
+                  onPreview={() => handlePreview(settings.completedSoundFile)}
+                />
+                <SoundFileSelect
+                  label="Waiting sound"
+                  value={settings.waitingSoundFile}
+                  onChange={(v) => update({ waitingSoundFile: v })}
+                  onPreview={() => handlePreview(settings.waitingSoundFile)}
+                />
+                <SoundFileSelect
+                  label="Escalation sound"
+                  value={settings.escalationSoundFile}
+                  onChange={(v) => update({ escalationSoundFile: v })}
+                  onPreview={() => handlePreview(settings.escalationSoundFile)}
+                />
+                <SoundFileSelect
+                  label="Working pulse sound"
+                  value={settings.workingPulseSoundFile}
+                  onChange={(v) => update({ workingPulseSoundFile: v })}
+                  onPreview={() => handlePreview(settings.workingPulseSoundFile)}
+                />
               </div>
             )}
           </div>
@@ -337,13 +365,13 @@ export function NotificationSettingsTab() {
                   </div>
                 )}
                 <div className="space-y-1">
-                  <label className="text-sm font-medium text-daintree-text block">
+                  <span id={activeDaysId} className="text-sm font-medium text-daintree-text block">
                     Active days
-                  </label>
+                  </span>
                   <div className="text-xs text-daintree-text/60 mb-2">
                     Leave all boxes checked to apply every day.
                   </div>
-                  <div className="flex flex-wrap gap-2">
+                  <div role="group" aria-labelledby={activeDaysId} className="flex flex-wrap gap-2">
                     {WEEKDAYS.map(({ value, label }) => {
                       const active =
                         settings.quietHoursWeekdays.length === 0 ||
@@ -415,7 +443,7 @@ function QuietHoursTimeRow({
     "px-3 pr-8 py-1.5 text-sm rounded-[var(--radius-md)] border border-border-strong bg-daintree-bg text-daintree-text focus:border-daintree-accent focus:outline-hidden transition-colors";
   return (
     <div className="space-y-1">
-      <label className="text-sm font-medium text-daintree-text block">{label}</label>
+      <span className="text-sm font-medium text-daintree-text block">{label}</span>
       <div className="flex items-center gap-2">
         <select
           aria-label={`${label} hour`}
