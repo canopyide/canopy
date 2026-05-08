@@ -18,8 +18,11 @@ function isElementVisible(el: HTMLElement): boolean {
 }
 
 // Row count to advance per Page key. Read viewport height from the scroll
-// container and divide by the first visible row's height; fall back to 10
-// when sizes aren't measurable yet (initial layout, container detached).
+// container and divide by the height of a row inside that container — pinned
+// rows live outside the scroll viewport and have a different height (e.g. the
+// taller main worktree card), so sampling them would over- or under-count.
+// Fall back to 10 when sizes aren't measurable yet (initial layout, container
+// detached).
 const PAGE_SIZE_FALLBACK = 10;
 function computeGridPageSize(
   container: HTMLElement | null | undefined,
@@ -28,7 +31,8 @@ function computeGridPageSize(
   if (!container || rows.length === 0) return PAGE_SIZE_FALLBACK;
   const viewportHeight = container.clientHeight;
   if (viewportHeight <= 0) return PAGE_SIZE_FALLBACK;
-  const sampleHeight = rows[0]?.getBoundingClientRect().height ?? 0;
+  const scrollableRow = rows.find((row) => container.contains(row)) ?? rows[0];
+  const sampleHeight = scrollableRow?.getBoundingClientRect().height ?? 0;
   if (sampleHeight <= 0) return PAGE_SIZE_FALLBACK;
   return Math.max(1, Math.floor(viewportHeight / sampleHeight));
 }
@@ -326,6 +330,18 @@ export function useWorktreeGridRovingFocus(
         row.focus();
         e.preventDefault();
         e.stopPropagation();
+        return;
+      }
+      // Ctrl+Home / Ctrl+End are grid-level shortcuts even when focus has
+      // descended into a row's action toolbar. Bounce back to list mode and
+      // jump to the first/last row, mirroring the APG grid pattern.
+      if (e.ctrlKey && (e.key === "Home" || e.key === "End")) {
+        const targetRowIdx = e.key === "Home" ? 0 : rows.length - 1;
+        enterListMode(rows, targetRowIdx);
+        e.preventDefault();
+        activeRowIndexRef.current = targetRowIdx;
+        syncRowTabStops(rows, targetRowIdx);
+        rows[targetRowIdx]!.focus();
         return;
       }
       if (e.key === "ArrowUp" || e.key === "ArrowDown") {

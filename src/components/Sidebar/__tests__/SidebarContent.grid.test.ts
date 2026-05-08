@@ -242,6 +242,16 @@ describe("Worktree list keyboard grid — issue #6422", () => {
         // aria-current on the row wrapper replaces the string-spliced cue.
         expect(source).not.toContain('" (selected)"');
       });
+
+      it("WorktreeCard sets aria-current on the grid variant (overview modal has no row wrapper)", async () => {
+        const source = await fs.readFile(WORKTREE_CARD_PATH, "utf-8");
+        // Sidebar rows carry aria-current on the role="row" wrapper; the
+        // overview grid has no wrapper, so the card itself must announce
+        // the active state.
+        expect(source).toContain(
+          'aria-current={variant === "grid" && isActive ? "true" : undefined}'
+        );
+      });
     });
 
     describe("grouped-by-type section structure", () => {
