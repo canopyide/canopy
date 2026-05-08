@@ -73,9 +73,11 @@ test.describe.serial("Core: External Worktree Detection", () => {
     await switchWorktree(window, FEATURE_BRANCH);
 
     // Wait for monitor's self-trigger cooldown (GIT_WATCH_SELF_TRIGGER_COOLDOWN_MS = 1000ms)
-    // to expire. There is no observable signal for cooldown expiry — this fixed
-    // wait is required, with a 100ms buffer over the cooldown constant.
-    await window.waitForTimeout(1100);
+    // to expire. The cooldown is measured from `lastGitStatusCompletedAt`, not from the
+    // start of this wait — keep a generous buffer so loaded CI scheduling can't compress
+    // timing into the cooldown window. There is no observable signal for cooldown expiry,
+    // so a fixed wait is required.
+    await window.waitForTimeout(1500);
 
     // Remove the worktree externally via git CLI
     execSync("git worktree remove --force " + JSON.stringify(featureWorktreePath), {
@@ -106,9 +108,11 @@ test.describe.serial("Core: External Worktree Detection", () => {
     const { window } = ctx;
 
     // Wait for monitor's self-trigger cooldown (GIT_WATCH_SELF_TRIGGER_COOLDOWN_MS = 1000ms)
-    // to expire. There is no observable signal for cooldown expiry — this fixed
-    // wait is required, with a 100ms buffer over the cooldown constant.
-    await window.waitForTimeout(1100);
+    // to expire. The cooldown is measured from `lastGitStatusCompletedAt`, not from the
+    // start of this wait — keep a generous buffer so loaded CI scheduling can't compress
+    // timing into the cooldown window. There is no observable signal for cooldown expiry,
+    // so a fixed wait is required.
+    await window.waitForTimeout(1500);
 
     // Add a new worktree externally via git CLI
     execSync(
