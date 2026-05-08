@@ -12,8 +12,6 @@ export function KimiIcon({ className, size = 16, brandColor, ...props }: KimiIco
       width={size}
       height={size}
       viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
       className={cn(className)}
       aria-hidden="true"
       {...props}

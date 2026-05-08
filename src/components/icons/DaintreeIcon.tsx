@@ -13,7 +13,6 @@ export function DaintreeIcon({ className, size = 16, style }: DaintreeIconProps)
       width={size}
       height={size}
       fill="currentColor"
-      xmlns="http://www.w3.org/2000/svg"
       className={cn(className)}
       style={style}
       aria-hidden="true"

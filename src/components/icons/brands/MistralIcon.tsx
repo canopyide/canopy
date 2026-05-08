@@ -16,9 +16,7 @@ export function MistralIcon({ className, size = 16, brandColor, ...props }: Mist
     <svg
       width={size}
       height={size}
-      viewBox="0 0 213 152"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 -30.5 213 213"
       className={cn(className)}
       aria-hidden="true"
       {...props}

@@ -20,7 +20,6 @@ export function AiderIcon({ className, size = 16, brandColor, ...props }: AiderI
       strokeWidth={2}
       strokeLinecap="round"
       strokeLinejoin="round"
-      xmlns="http://www.w3.org/2000/svg"
       className={cn(className)}
       aria-hidden="true"
       {...props}

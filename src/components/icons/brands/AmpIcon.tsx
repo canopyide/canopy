@@ -13,8 +13,6 @@ export function AmpIcon({ className, size = 16, brandColor, ...props }: AmpIconP
       width={size}
       height={size}
       viewBox="0 0 21 21"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
       className={cn(className)}
       aria-hidden="true"
       {...props}
