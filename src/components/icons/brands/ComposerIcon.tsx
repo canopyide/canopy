@@ -1,11 +1,11 @@
+import type { SVGProps } from "react";
 import { cn } from "@/lib/utils";
 
-interface ComposerIconProps {
-  className?: string;
+type ComposerIconProps = SVGProps<SVGSVGElement> & {
   size?: number;
-}
+};
 
-export function ComposerIcon({ className, size = 16 }: ComposerIconProps) {
+export function ComposerIcon({ className, size = 16, ...props }: ComposerIconProps) {
   return (
     <svg
       width={size}
@@ -15,6 +15,7 @@ export function ComposerIcon({ className, size = 16 }: ComposerIconProps) {
       xmlns="http://www.w3.org/2000/svg"
       className={cn(className)}
       aria-hidden="true"
+      {...props}
     >
       <path
         fill="currentColor"

@@ -2,15 +2,15 @@
  * Source: https://upload.wikimedia.org/wikipedia/commons/4/4d/OpenAI_Logo.svg
  */
 
+import type { SVGProps } from "react";
 import { cn } from "@/lib/utils";
 
-interface CodexIconProps {
-  className?: string;
+type CodexIconProps = SVGProps<SVGSVGElement> & {
   size?: number;
   brandColor?: string;
-}
+};
 
-export function CodexIcon({ className, size = 16, brandColor }: CodexIconProps) {
+export function CodexIcon({ className, size = 16, brandColor, ...props }: CodexIconProps) {
   return (
     <svg
       width={size}
@@ -20,6 +20,7 @@ export function CodexIcon({ className, size = 16, brandColor }: CodexIconProps) 
       xmlns="http://www.w3.org/2000/svg"
       className={cn(className)}
       aria-hidden="true"
+      {...props}
     >
       <path
         fill={brandColor || "currentColor"}

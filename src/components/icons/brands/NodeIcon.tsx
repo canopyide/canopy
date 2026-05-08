@@ -1,11 +1,11 @@
+import type { SVGProps } from "react";
 import { cn } from "@/lib/utils";
 
-interface NodeIconProps {
-  className?: string;
+type NodeIconProps = SVGProps<SVGSVGElement> & {
   size?: number;
-}
+};
 
-export function NodeIcon({ className, size = 16 }: NodeIconProps) {
+export function NodeIcon({ className, size = 16, ...props }: NodeIconProps) {
   return (
     <svg
       width={size}
@@ -15,6 +15,7 @@ export function NodeIcon({ className, size = 16 }: NodeIconProps) {
       xmlns="http://www.w3.org/2000/svg"
       className={cn(className)}
       aria-hidden="true"
+      {...props}
     >
       <path
         fill="currentColor"

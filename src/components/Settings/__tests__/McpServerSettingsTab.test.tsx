@@ -30,6 +30,10 @@ vi.mock("@/components/icons", () => {
   return {
     McpServerIcon: stub,
     DaintreeIcon: stub,
+    SpinnerCircle: stub,
+    HollowCircle: stub,
+    InteractingCircle: stub,
+    ExitedCircle: stub,
     NpmIcon: stub,
     YarnIcon: stub,
     PnpmIcon: stub,

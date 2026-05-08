@@ -10,7 +10,6 @@ export function DaintreeIcon({ className, size = 16, style }: DaintreeIconProps)
   return (
     <svg
       viewBox="0 0 177.31 132.85"
-      aria-label="Daintree Logo"
       width={size}
       height={size}
       fill="currentColor"

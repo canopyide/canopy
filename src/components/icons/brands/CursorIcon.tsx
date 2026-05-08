@@ -1,12 +1,12 @@
+import type { SVGProps } from "react";
 import { cn } from "@/lib/utils";
 
-interface CursorIconProps {
-  className?: string;
+type CursorIconProps = SVGProps<SVGSVGElement> & {
   size?: number;
   brandColor?: string;
-}
+};
 
-export function CursorIcon({ className, size = 16, brandColor }: CursorIconProps) {
+export function CursorIcon({ className, size = 16, brandColor, ...props }: CursorIconProps) {
   // Official Cursor logo: isometric cube with arrow cutout
   // Path data from cursor.com/brand SVG
   return (
@@ -18,6 +18,7 @@ export function CursorIcon({ className, size = 16, brandColor }: CursorIconProps
       xmlns="http://www.w3.org/2000/svg"
       className={cn(className)}
       aria-hidden="true"
+      {...props}
     >
       <path
         fill={brandColor || "currentColor"}

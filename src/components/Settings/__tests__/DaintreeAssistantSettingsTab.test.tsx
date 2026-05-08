@@ -31,6 +31,10 @@ vi.mock("@/components/icons", () => {
     McpServerIcon: ({ className }: { className?: string }) => (
       <span data-testid="mcp-icon" className={className} />
     ),
+    SpinnerCircle: stub,
+    HollowCircle: stub,
+    InteractingCircle: stub,
+    ExitedCircle: stub,
     NpmIcon: stub,
     YarnIcon: stub,
     PnpmIcon: stub,

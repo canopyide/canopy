@@ -10,7 +10,7 @@ const OFFSET = "28.274"; // positions gap at bottom-right (3:00 to 6:00)
 
 export function SpinnerCircle({ className, ...props }: CircleProps) {
   return (
-    <svg viewBox="0 0 16 16" fill="none" className={className} {...props}>
+    <svg viewBox="0 0 16 16" fill="none" className={className} aria-hidden="true" {...props}>
       <circle
         cx="8"
         cy="8"
@@ -27,7 +27,7 @@ export function SpinnerCircle({ className, ...props }: CircleProps) {
 
 export function HollowCircle({ className, ...props }: CircleProps) {
   return (
-    <svg viewBox="0 0 16 16" fill="none" className={className} {...props}>
+    <svg viewBox="0 0 16 16" fill="none" className={className} aria-hidden="true" {...props}>
       <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" />
     </svg>
   );
@@ -35,7 +35,7 @@ export function HollowCircle({ className, ...props }: CircleProps) {
 
 export function InteractingCircle({ className, ...props }: CircleProps) {
   return (
-    <svg viewBox="0 0 16 16" fill="none" className={className} {...props}>
+    <svg viewBox="0 0 16 16" fill="none" className={className} aria-hidden="true" {...props}>
       <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" />
       <line
         x1="8"
@@ -61,7 +61,7 @@ export function InteractingCircle({ className, ...props }: CircleProps) {
 
 export function ExitedCircle({ className, ...props }: CircleProps) {
   return (
-    <svg viewBox="0 0 16 16" fill="none" className={className} {...props}>
+    <svg viewBox="0 0 16 16" fill="none" className={className} aria-hidden="true" {...props}>
       <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" />
       <line
         x1="5"

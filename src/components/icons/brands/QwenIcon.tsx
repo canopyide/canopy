@@ -1,12 +1,12 @@
+import type { SVGProps } from "react";
 import { cn } from "@/lib/utils";
 
-interface QwenIconProps {
-  className?: string;
+type QwenIconProps = SVGProps<SVGSVGElement> & {
   size?: number;
   brandColor?: string;
-}
+};
 
-export function QwenIcon({ className, size = 16, brandColor }: QwenIconProps) {
+export function QwenIcon({ className, size = 16, brandColor, ...props }: QwenIconProps) {
   return (
     <svg
       width={size}
@@ -16,6 +16,7 @@ export function QwenIcon({ className, size = 16, brandColor }: QwenIconProps) {
       xmlns="http://www.w3.org/2000/svg"
       className={cn(className)}
       aria-hidden="true"
+      {...props}
     >
       <path
         fill={brandColor || "currentColor"}

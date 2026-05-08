@@ -750,7 +750,7 @@ describe("WorktreeHeader collapsed session indicators", () => {
       sessionStates: { ...allZeroStates, idle: 2, working: 1 },
     });
     const container = screen.getByTestId("collapsed-session-indicators");
-    const badges = container.querySelectorAll("[aria-hidden='true']");
+    const badges = container.querySelectorAll(":scope > span[aria-hidden='true']");
     expect(badges.length).toBe(1);
     expect(container.getAttribute("aria-label")).toBe("3 sessions: 1 working");
   });
@@ -772,7 +772,7 @@ describe("WorktreeHeader collapsed session indicators", () => {
       sessionStates: { ...allZeroStates, waiting: 1, working: 2 },
     });
     const indicators = screen.getByTestId("collapsed-session-indicators");
-    const badges = indicators.querySelectorAll("[aria-hidden='true']");
+    const badges = indicators.querySelectorAll(":scope > span[aria-hidden='true']");
     expect(badges.length).toBe(2);
     // First badge should be working (text-state-working), second waiting (text-state-waiting)
     expect(badges[0]!.className).toContain("text-state-working");

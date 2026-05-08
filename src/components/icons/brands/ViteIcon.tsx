@@ -1,11 +1,11 @@
+import type { SVGProps } from "react";
 import { cn } from "@/lib/utils";
 
-interface ViteIconProps {
-  className?: string;
+type ViteIconProps = SVGProps<SVGSVGElement> & {
   size?: number;
-}
+};
 
-export function ViteIcon({ className, size = 16 }: ViteIconProps) {
+export function ViteIcon({ className, size = 16, ...props }: ViteIconProps) {
   return (
     <svg
       width={size}
@@ -15,6 +15,7 @@ export function ViteIcon({ className, size = 16 }: ViteIconProps) {
       xmlns="http://www.w3.org/2000/svg"
       className={cn(className)}
       aria-hidden="true"
+      {...props}
     >
       <path
         fill="currentColor"

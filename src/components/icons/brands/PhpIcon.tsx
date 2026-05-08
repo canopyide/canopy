@@ -1,11 +1,11 @@
+import type { SVGProps } from "react";
 import { cn } from "@/lib/utils";
 
-interface PhpIconProps {
-  className?: string;
+type PhpIconProps = SVGProps<SVGSVGElement> & {
   size?: number;
-}
+};
 
-export function PhpIcon({ className, size = 16 }: PhpIconProps) {
+export function PhpIcon({ className, size = 16, ...props }: PhpIconProps) {
   return (
     <svg
       width={size}
@@ -15,6 +15,7 @@ export function PhpIcon({ className, size = 16 }: PhpIconProps) {
       xmlns="http://www.w3.org/2000/svg"
       className={cn(className)}
       aria-hidden="true"
+      {...props}
     >
       <path
         fill="currentColor"
