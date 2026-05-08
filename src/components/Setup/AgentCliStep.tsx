@@ -383,7 +383,7 @@ export function AgentCliStep({ availability, selections, onInstallComplete }: Ag
           ) : (
             <>
               <Download className="w-4 h-4" />
-              Install All
+              Install all
             </>
           )}
         </button>
@@ -391,7 +391,7 @@ export function AgentCliStep({ availability, selections, onInstallComplete }: Ag
 
       {agentsWithDangerousToggle.length > 0 && (
         <div className="border-t border-daintree-border pt-3 space-y-2">
-          <div className="text-xs font-medium text-daintree-text/60">Skip Permissions</div>
+          <div className="text-xs font-medium text-daintree-text/60">Skip permissions</div>
           <div className="space-y-1.5">
             {agentsWithDangerousToggle.map((agentId) => {
               const config = AGENT_REGISTRY[agentId];

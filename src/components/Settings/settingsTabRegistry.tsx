@@ -246,7 +246,7 @@ export const SETTINGS_REGISTRY = [
     id: "agents",
     scope: "global",
     group: "Integrations",
-    label: "CLI Agents",
+    label: "CLI agents",
     icon: <Plug className="w-4 h-4" />,
     importKind: "lazy",
     importer: importAgentSettings,

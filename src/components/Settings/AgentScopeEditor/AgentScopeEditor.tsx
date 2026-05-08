@@ -32,7 +32,7 @@ export function AgentScopeEditor(props: AgentScopeEditorProps) {
   const { defaultDangerousArg } = props;
   const scope = useAgentScope(props);
 
-  const title = "Runtime Settings";
+  const title = "Runtime settings";
 
   return (
     <div
@@ -57,7 +57,7 @@ export function AgentScopeEditor(props: AgentScopeEditorProps) {
             onClick={scope.openAddDialog}
           >
             <Plus size={14} />
-            Add Preset
+            Add preset
           </Button>
         </div>
       </div>

@@ -148,7 +148,7 @@ export function AgentHelpOutput({
       <div className="pb-3 border-b border-daintree-border">
         <div className="flex items-center justify-between">
           <div>
-            <h5 className="text-sm font-medium text-daintree-text">Help Output</h5>
+            <h5 className="text-sm font-medium text-daintree-text">Help output</h5>
             <p className="text-xs text-daintree-text/50 select-text">
               Available CLI flags for {agentName}
             </p>
@@ -203,7 +203,7 @@ export function AgentHelpOutput({
               onClick={() => window.electron.system.openExternal(usageUrl)}
               className="mt-2"
             >
-              Install Instructions
+              Install instructions
             </Button>
           )}
         </div>

@@ -34,7 +34,7 @@ export function AddPresetDialog({
 
   const handleCreate = () => {
     const name =
-      choice === "clone" && currentPreset ? `${currentPreset.name} (copy)` : "New Preset";
+      choice === "clone" && currentPreset ? `${currentPreset.name} (copy)` : "New preset";
 
     switch (choice) {
       case "blank":
@@ -77,7 +77,7 @@ export function AddPresetDialog({
   return (
     <AppDialog isOpen={isOpen} onClose={onClose} size="sm" data-testid="add-preset-dialog">
       <AppDialog.Header>
-        <AppDialog.Title>Add Preset</AppDialog.Title>
+        <AppDialog.Title>Add preset</AppDialog.Title>
         <AppDialog.CloseButton />
       </AppDialog.Header>
 
