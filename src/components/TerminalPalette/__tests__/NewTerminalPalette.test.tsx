@@ -103,7 +103,7 @@ describe("NewTerminalPalette", () => {
     const onClose = vi.fn();
     renderPalette({ onQueryChange, onClose, query: "gemini" });
 
-    const calls = escapeStackMock.mock.calls.filter(([enabled]: [boolean]) => enabled);
+    const calls = escapeStackMock.mock.calls.filter((call: unknown[]) => call[0]);
     expect(calls.length).toBeGreaterThan(0);
 
     const handler = calls[0]![1] as () => void;
@@ -118,7 +118,7 @@ describe("NewTerminalPalette", () => {
     const onClose = vi.fn();
     renderPalette({ onQueryChange, onClose, query: "" });
 
-    const calls = escapeStackMock.mock.calls.filter(([enabled]: [boolean]) => enabled);
+    const calls = escapeStackMock.mock.calls.filter((call: unknown[]) => call[0]);
     expect(calls.length).toBeGreaterThan(0);
 
     const handler = calls[0]![1] as () => void;
