@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, useRef } from "react";
 import { Filter, X, ChevronDown } from "lucide-react";
+import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -164,7 +165,29 @@ export function WorktreeFilterPopover({
     clearAll,
     getActiveFilterCount,
     hasActiveFilters,
-  } = useWorktreeFilterStore();
+  } = useWorktreeFilterStore(
+    useShallow((state) => ({
+      query: state.query,
+      orderBy: state.orderBy,
+      groupByType: state.groupByType,
+      statusFilters: state.statusFilters,
+      typeFilters: state.typeFilters,
+      githubFilters: state.githubFilters,
+      sessionFilters: state.sessionFilters,
+      activityFilters: state.activityFilters,
+      setQuery: state.setQuery,
+      setOrderBy: state.setOrderBy,
+      setGroupByType: state.setGroupByType,
+      toggleStatusFilter: state.toggleStatusFilter,
+      toggleTypeFilter: state.toggleTypeFilter,
+      toggleGitHubFilter: state.toggleGitHubFilter,
+      toggleSessionFilter: state.toggleSessionFilter,
+      toggleActivityFilter: state.toggleActivityFilter,
+      clearAll: state.clearAll,
+      getActiveFilterCount: state.getActiveFilterCount,
+      hasActiveFilters: state.hasActiveFilters,
+    }))
+  );
 
   const fullFilterCount = getActiveFilterCount();
   const filterCount = hideSearchInput

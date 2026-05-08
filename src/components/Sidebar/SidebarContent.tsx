@@ -156,9 +156,8 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   );
   const clearAllFilters = useWorktreeFilterStore((state) => state.clearAll);
   const hasActiveFilters = useWorktreeFilterStore((state) => state.hasActiveFilters);
-  const unpinWorktree = useWorktreeFilterStore((state) => state.unpinWorktree);
   const collapsedWorktrees = useWorktreeFilterStore((state) => state.collapsedWorktrees);
-  const expandWorktree = useWorktreeFilterStore((state) => state.expandWorktree);
+  const pruneStaleWorktreeIds = useWorktreeFilterStore((state) => state.pruneStaleWorktreeIds);
   const setQuickStateFilter = useWorktreeFilterStore((state) => state.setQuickStateFilter);
 
   // Terminal store for derived metadata
@@ -202,14 +201,16 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
 
   const setManualOrder = useWorktreeFilterStore((state) => state.setManualOrder);
 
-  // Clean up stale pinned and collapsed worktrees
+  // Clean up stale pinned and collapsed worktrees in a single store write so
+  // pin/collapse pruning costs one persist flush, not N.
   useEffect(() => {
+    if (pinnedWorktrees.length === 0 && collapsedWorktrees.length === 0) return;
     const existingIds = new Set(worktrees.map((w) => w.id));
-    const stalePins = pinnedWorktrees.filter((id) => !existingIds.has(id));
-    stalePins.forEach((id) => unpinWorktree(id));
-    const staleCollapsed = collapsedWorktrees.filter((id) => !existingIds.has(id));
-    staleCollapsed.forEach((id) => expandWorktree(id));
-  }, [worktrees, pinnedWorktrees, unpinWorktree, collapsedWorktrees, expandWorktree]);
+    const hasStalePin = pinnedWorktrees.some((id) => !existingIds.has(id));
+    const hasStaleCollapsed = collapsedWorktrees.some((id) => !existingIds.has(id));
+    if (!hasStalePin && !hasStaleCollapsed) return;
+    pruneStaleWorktreeIds(existingIds);
+  }, [worktrees, pinnedWorktrees, collapsedWorktrees, pruneStaleWorktreeIds]);
 
   // Clean up stale manual order entries
   useEffect(() => {

@@ -64,6 +64,28 @@ export function createWorktreeStore(): WorktreeViewStoreApi {
 
     applySnapshot(states: WorktreeSnapshot[], version: number) {
       if (version <= get().version) return;
+      const prev = get();
+      // Once hydrated, suppress redundant Map identity churn when every
+      // incoming snapshot is value-equal to its existing counterpart. Cold
+      // starts always rebuild so `isInitialized` flips correctly even when
+      // the first snapshot is empty.
+      if (
+        prev.isInitialized &&
+        states.length === prev.worktrees.size &&
+        states.every((s) => {
+          const existing = prev.worktrees.get(s.id);
+          return existing !== undefined && snapshotsEqual(existing, s);
+        })
+      ) {
+        set({
+          version,
+          isLoading: false,
+          isInitialized: true,
+          error: null,
+          isReconnecting: false,
+        });
+        return;
+      }
       const map = new Map(states.map((s) => [s.id, s]));
       set({
         worktrees: map,
