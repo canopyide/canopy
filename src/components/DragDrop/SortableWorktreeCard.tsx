@@ -119,7 +119,10 @@ export const SortableWorktreeCard = React.memo(function SortableWorktreeCard({
           <m.div
             className="h-full"
             animate={{ opacity: isDragging ? DRAG_GHOST_OPACITY : 1 }}
-            transition={{ duration: isDragging ? UI_ANIMATION_DURATION / 1000 : 0, ease: DRAG_GHOST_EASING }}
+            transition={{
+              duration: isDragging ? UI_ANIMATION_DURATION / 1000 : 0,
+              ease: DRAG_GHOST_EASING,
+            }}
           >
             {children({
               isDraggingSort: isDragging,

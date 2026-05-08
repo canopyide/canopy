@@ -346,7 +346,11 @@ function DragOverlayWithCursorTracking({
       {overlayContent ? (
         <m.div
           key={activeTerminal?.id ?? activeWorktree?.id ?? "drag-overlay"}
-          initial={prefersReducedMotion ? false : { scale: DRAG_OVERLAY_ENTRY_SCALE, opacity: DRAG_OVERLAY_ENTRY_OPACITY }}
+          initial={
+            prefersReducedMotion
+              ? false
+              : { scale: DRAG_OVERLAY_ENTRY_SCALE, opacity: DRAG_OVERLAY_ENTRY_OPACITY }
+          }
           animate={{ scale: 1, opacity: 1 }}
           // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-type-assertion -- framer-motion v12 Easing type doesn't include CSS cubic-bezier strings
           transition={{ duration: UI_ANIMATION_DURATION / 1000, ease: EASE_SNAPPY } as any}
