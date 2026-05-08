@@ -529,7 +529,30 @@ describe("useProjectMruSwitcher", () => {
       keyUp("Meta");
     });
 
-    expect(switchProjectMock).not.toHaveBeenCalledWith("p-recent");
+    expect(switchProjectMock).not.toHaveBeenCalled();
+    expect(reopenProjectMock).not.toHaveBeenCalled();
+  });
+
+  it("forces current project to index 0 even when not the newest by lastOpened", () => {
+    projectState.currentProject = { id: "p-stale" };
+    projectState.projects = [
+      { id: "p-stale", path: "/p-stale", name: "Stale", emoji: "🌲", lastOpened: 100 },
+      { id: "p-fresh", path: "/p-fresh", name: "Fresh", emoji: "🍎", lastOpened: 500 },
+    ];
+    const { result } = renderHook(() => useProjectMruSwitcher());
+
+    act(() => {
+      keyDown("Minus");
+      vi.advanceTimersByTime(130);
+    });
+
+    expect(result.current.projects.map((p) => p.id)).toEqual(["p-stale", "p-fresh"]);
+
+    act(() => {
+      keyUp("Meta");
+    });
+
+    expect(switchProjectMock).toHaveBeenCalledWith("p-fresh");
   });
 
   it("ignores keydowns when modifiers are absent", () => {
