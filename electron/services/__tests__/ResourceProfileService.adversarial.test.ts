@@ -42,6 +42,11 @@ vi.mock("node:perf_hooks", () => ({
     reset: () => {
       lagState.resetCount += 1;
     },
+    // max is diagnostic-only — mirror p99 so the histogram stub stays in sync
+    // with whichever pressure level the current test has dialed in.
+    get max() {
+      return lagState.p99Nanoseconds;
+    },
   }),
   performance: {
     eventLoopUtilization: (_current?: unknown, _previous?: unknown) => ({
@@ -433,7 +438,7 @@ describe("ResourceProfileService adversarial", () => {
       service.stop();
     });
 
-    it("recovers after 30s of clean p99 readings", () => {
+    it("recovers after 45s of clean p99 readings", () => {
       const { deps } = createDeps();
       const service = new ResourceProfileService(deps);
       service.start();
@@ -445,9 +450,9 @@ describe("ResourceProfileService adversarial", () => {
       expect(service.getProfile()).toBe("efficiency");
       expect((service as unknown as { lagPressureActive: boolean }).lagPressureActive).toBe(true);
 
-      // Six clean 5s windows = 30s sustained recovery.
+      // Nine clean 5s windows = 45s sustained recovery.
       setLag(50, 0.1);
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 9; i++) {
         vi.advanceTimersByTime(5_000);
       }
 
@@ -467,9 +472,9 @@ describe("ResourceProfileService adversarial", () => {
       vi.advanceTimersByTime(5_000);
       expect((service as unknown as { lagPressureActive: boolean }).lagPressureActive).toBe(true);
 
-      // Five clean ticks (one short of the 6-tick threshold).
+      // Eight clean ticks (one short of the 9-tick threshold).
       setLag(50, 0.1);
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 8; i++) {
         vi.advanceTimersByTime(5_000);
       }
       expect((service as unknown as { lagPressureActive: boolean }).lagPressureActive).toBe(true);
@@ -478,14 +483,14 @@ describe("ResourceProfileService adversarial", () => {
       setLag(200, 0.5);
       vi.advanceTimersByTime(5_000);
 
-      // Now five more clean ticks should still NOT recover (counter restarted).
+      // Now eight more clean ticks should still NOT recover (counter restarted).
       setLag(50, 0.1);
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 8; i++) {
         vi.advanceTimersByTime(5_000);
       }
       expect((service as unknown as { lagPressureActive: boolean }).lagPressureActive).toBe(true);
 
-      // Sixth clean tick clears it.
+      // Ninth clean tick clears it.
       vi.advanceTimersByTime(5_000);
       expect((service as unknown as { lagPressureActive: boolean }).lagPressureActive).toBe(false);
 
@@ -584,7 +589,7 @@ describe("ResourceProfileService adversarial", () => {
       expect((service as unknown as { lagEscalatedActive: boolean }).lagEscalatedActive).toBe(true);
 
       setLag(50, 0.1);
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 9; i++) {
         vi.advanceTimersByTime(5_000);
       }
 
@@ -660,7 +665,7 @@ describe("ResourceProfileService adversarial", () => {
 
       // Recover.
       setLag(50, 0.1);
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 9; i++) {
         vi.advanceTimersByTime(5_000);
       }
       expect((service as unknown as { lagPressureActive: boolean }).lagPressureActive).toBe(false);
@@ -668,7 +673,8 @@ describe("ResourceProfileService adversarial", () => {
       // From here, normal scoring should drive back up. While lag was active,
       // evaluate() returned early at the lag floor without exiting warmup,
       // so tickCount has only crossed the floor branch. Drive past the
-      // 2-warmup ticks + 60s upgrade hold combination.
+      // 2-warmup ticks + 90s upgrade hold combination.
+      vi.advanceTimersByTime(30_000);
       vi.advanceTimersByTime(30_000);
       vi.advanceTimersByTime(30_000);
       vi.advanceTimersByTime(30_000);

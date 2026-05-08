@@ -23,7 +23,7 @@ import {
 
 const EVAL_INTERVAL_MS = 30_000;
 const DOWNGRADE_HOLD_MS = 30_000;
-const UPGRADE_HOLD_MS = 60_000;
+const UPGRADE_HOLD_MS = 90_000;
 const WARMUP_TICKS = 2;
 
 // Active event-loop-lag mitigation. The diagnostics handler reads a separate
@@ -31,10 +31,15 @@ const WARMUP_TICKS = 2;
 // it after each tumbling window so percentile() reflects only the recent slice.
 // p99 is biased low by monitorEventLoopDelay (a long block records as a single
 // large sample, not many) — thresholds are conservative to compensate.
-// AND-gating with eventLoopUtilization rejects GC-pause false positives: a
-// genuine sustained-saturation event has both high tail latency AND high loop
-// occupancy. ELU alone doesn't catch periodic long sync work; p99 alone trips
-// on isolated GC stalls.
+// AND-gating with eventLoopUtilization rejects three classes of false positive:
+// (1) isolated GC stalls — high p99 from a single long pause, but ELU averages
+// down across the window; (2) bursty IPC reply storms — p99 climbs from
+// queueing but the loop reaches idle between bursts; (3) synchronous native UI
+// work (file dialogs, window-drag, plugin loads that block libuv) — ELU pegs
+// near 1.0 while V8 sits idle waiting on the OS run loop, so p99 stays low.
+// A genuine sustained-saturation event has both high tail latency AND high
+// loop occupancy. ELU alone doesn't catch periodic long sync work; p99 alone
+// trips on the cases above.
 const LAG_SAMPLE_INTERVAL_MS = 5_000;
 const LAG_HISTOGRAM_RESOLUTION_MS = 10;
 const LAG_ENTRY_P99_MS = 250;
@@ -42,7 +47,7 @@ const LAG_ENTRY_ELU = 0.7;
 const LAG_ESCALATE_P99_MS = 500;
 const LAG_EXIT_P99_MS = 150;
 const LAG_ENTER_TICKS_REQUIRED = 2; // 10s sustained
-const LAG_EXIT_TICKS_REQUIRED = 6; // 30s clean
+const LAG_EXIT_TICKS_REQUIRED = 9; // 45s clean
 
 // Memory-pressure thresholds scale with device RAM so machines with very
 // different physical memory behave sensibly. On an 8 GB machine these
@@ -211,9 +216,14 @@ export class ResourceProfileService {
     if (this.disposed || !this.lagHistogram) return;
 
     let p99Ms = 0;
+    let maxMs = 0;
     try {
-      const raw = this.lagHistogram.percentile(99) / 1_000_000;
-      if (Number.isFinite(raw)) p99Ms = raw;
+      const rawP99 = this.lagHistogram.percentile(99) / 1_000_000;
+      if (Number.isFinite(rawP99)) p99Ms = rawP99;
+      // max is diagnostic-only — never gates entry/exit. Pairs with p99 in logs
+      // so a single long block (which barely moves p99) is still visible.
+      const rawMax = this.lagHistogram.max / 1_000_000;
+      if (Number.isFinite(rawMax)) maxMs = rawMax;
     } catch {
       // Read failure: histogram still needs reset below so the window stays bounded.
     }
@@ -246,7 +256,10 @@ export class ResourceProfileService {
           this.lagEscalatedActive = false;
           this.lagEnterTicks = 0;
           this.lagExitTicks = 0;
-          logInfo("event-loop-lag-cleared", { p99Ms: Math.round(p99Ms) });
+          logInfo("event-loop-lag-cleared", {
+            p99Ms: Math.round(p99Ms),
+            maxMs: Math.round(maxMs),
+          });
         }
         return;
       }
@@ -256,6 +269,7 @@ export class ResourceProfileService {
         this.lagEscalatedActive = true;
         logInfo("event-loop-lag-escalated", {
           p99Ms: Math.round(p99Ms),
+          maxMs: Math.round(maxMs),
           utilization: Math.round(utilization * 100) / 100,
         });
       }
@@ -269,6 +283,7 @@ export class ResourceProfileService {
         this.lagEnterTicks = 0;
         logInfo("event-loop-lag-detected", {
           p99Ms: Math.round(p99Ms),
+          maxMs: Math.round(maxMs),
           utilization: Math.round(utilization * 100) / 100,
         });
         if (this.currentProfile !== "efficiency") {

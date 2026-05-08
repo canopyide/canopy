@@ -37,6 +37,7 @@ vi.mock("node:perf_hooks", () => ({
     disable: vi.fn(),
     percentile: () => 0,
     reset: vi.fn(),
+    max: 0,
   }),
   performance: {
     eventLoopUtilization: () => ({ idle: 0, active: 0, utilization: 0 }),
@@ -212,7 +213,7 @@ describe("ResourceProfileService", () => {
     service.stop();
   });
 
-  it("transitions to performance after 60s sustained low load", () => {
+  it("transitions to performance after 90s sustained low load", () => {
     const deps = createDeps();
     const service = new ResourceProfileService(deps);
     service.start();
@@ -227,7 +228,9 @@ describe("ResourceProfileService", () => {
     vi.advanceTimersByTime(30_000);
     expect(service.getProfile()).toBe("balanced");
 
-    // 60s upgrade hold = 2 more ticks
+    // 90s upgrade hold = 3 more ticks
+    vi.advanceTimersByTime(30_000);
+    expect(service.getProfile()).toBe("balanced");
     vi.advanceTimersByTime(30_000);
     expect(service.getProfile()).toBe("balanced");
     vi.advanceTimersByTime(30_000);
@@ -351,7 +354,8 @@ describe("ResourceProfileService", () => {
     mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 700)]);
     onAcHandler!();
 
-    // First real eval sets candidate; 60s upgrade hold = 2 more ticks to apply
+    // First real eval sets candidate; 90s upgrade hold = 3 more ticks to apply
+    vi.advanceTimersByTime(30_000);
     vi.advanceTimersByTime(30_000);
     vi.advanceTimersByTime(30_000);
     vi.advanceTimersByTime(30_000);
@@ -382,7 +386,8 @@ describe("ResourceProfileService", () => {
     mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 200)]);
     onAcHandler!();
 
-    // First real eval sets candidate; 60s upgrade hold = 2 more ticks to apply
+    // First real eval sets candidate; 90s upgrade hold = 3 more ticks to apply
+    vi.advanceTimersByTime(30_000);
     vi.advanceTimersByTime(30_000);
     vi.advanceTimersByTime(30_000);
     vi.advanceTimersByTime(30_000);
@@ -404,7 +409,8 @@ describe("ResourceProfileService", () => {
     mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 200)]);
     mockIsOnBatteryPower.mockReturnValue(false);
 
-    vi.advanceTimersByTime(60_000 + 30_000 + 30_000 + 30_000);
+    // Warmup (2 ticks = 60s) + first real eval (30s) + 90s upgrade hold (3 ticks)
+    vi.advanceTimersByTime(60_000 + 30_000 + 30_000 + 30_000 + 30_000);
     expect(service.getProfile()).toBe("performance");
 
     const pvm = deps.getProjectViewManager() as unknown as MockProjectViewManager;
@@ -482,8 +488,8 @@ describe("ResourceProfileService", () => {
 
     mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 1300)]);
 
-    // Warmup (2 ticks = 60s) + first real eval (30s) + 60s upgrade hold (2 ticks)
-    vi.advanceTimersByTime(60_000 + 30_000 + 30_000 + 30_000);
+    // Warmup (2 ticks = 60s) + first real eval (30s) + 90s upgrade hold (3 ticks)
+    vi.advanceTimersByTime(60_000 + 30_000 + 30_000 + 30_000 + 30_000);
     expect(service.getProfile()).toBe("performance");
 
     service.stop();
@@ -579,7 +585,8 @@ describe("ResourceProfileService", () => {
     mockIsOnBatteryPower.mockReturnValue(false);
     (service as unknown as { speedLimit: number }).speedLimit = 100;
 
-    vi.advanceTimersByTime(60_000 + 30_000 + 30_000 + 30_000);
+    // Warmup (2 ticks = 60s) + first real eval (30s) + 90s upgrade hold (3 ticks)
+    vi.advanceTimersByTime(60_000 + 30_000 + 30_000 + 30_000 + 30_000);
     expect(service.getProfile()).toBe("performance");
 
     service.stop();
