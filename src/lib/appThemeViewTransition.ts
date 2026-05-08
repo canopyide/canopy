@@ -1,6 +1,8 @@
+// The 400ms wipe IS the theme-reveal signal — it encodes the origin/direction of the switch via clip-path animation (semantic exception).
 export const THEME_WIPE_DURATION = 400;
 
 type ViewTransitionDocument = Document & {
+  activeViewTransition?: { skipTransition: () => void };
   startViewTransition?: (callback: () => void) => {
     ready: Promise<void>;
     finished: Promise<void>;
@@ -30,6 +32,7 @@ export function runThemeReveal(origin: { x: number; y: number } | null, mutate: 
 
   const wipeFromLeft = (origin?.x ?? 0) < window.innerWidth / 2;
 
+  doc.activeViewTransition?.skipTransition();
   const transition = doc.startViewTransition(mutate);
 
   transition.ready

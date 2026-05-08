@@ -64,6 +64,7 @@ describe("appThemeViewTransition", () => {
 
   afterEach(() => {
     delete (document as unknown as { startViewTransition?: unknown }).startViewTransition;
+    delete (document as unknown as { activeViewTransition?: unknown }).activeViewTransition;
     delete document.body.dataset.performanceMode;
     vi.restoreAllMocks();
   });
@@ -178,6 +179,59 @@ describe("appThemeViewTransition", () => {
 
       expect(() => runThemeReveal({ x: 0, y: 0 }, () => {})).not.toThrow();
       await rejected.catch(() => {});
+    });
+
+    it("skips in-flight ViewTransition before starting a new one", () => {
+      const skipTransition = vi.fn();
+      (
+        document as unknown as { activeViewTransition?: { skipTransition: () => void } }
+      ).activeViewTransition = { skipTransition };
+      const { startSpy } = installViewTransitionMock();
+
+      runThemeReveal({ x: 100, y: 100 }, () => {});
+
+      expect(skipTransition).toHaveBeenCalledTimes(1);
+      expect(startSpy).toHaveBeenCalledTimes(1);
+      const skipOrder = skipTransition.mock.invocationCallOrder[0]!;
+      const startOrder = startSpy.mock.invocationCallOrder[0]!;
+      expect(skipOrder).toBeLessThan(startOrder);
+    });
+
+    it("starts transition normally when no in-flight transition exists", () => {
+      delete (document as unknown as { activeViewTransition?: unknown }).activeViewTransition;
+      const { startSpy } = installViewTransitionMock();
+
+      runThemeReveal({ x: 100, y: 100 }, () => {});
+
+      expect(startSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not call skipTransition when reduced-motion fallback skips the transition", () => {
+      const skipTransition = vi.fn();
+      (
+        document as unknown as { activeViewTransition?: { skipTransition: () => void } }
+      ).activeViewTransition = { skipTransition };
+      const { startSpy } = installViewTransitionMock();
+      setReducedMotion(true);
+
+      runThemeReveal({ x: 100, y: 100 }, () => {});
+
+      expect(startSpy).not.toHaveBeenCalled();
+      expect(skipTransition).not.toHaveBeenCalled();
+    });
+
+    it("does not call skipTransition when hidden-document fallback skips the transition", () => {
+      const skipTransition = vi.fn();
+      (
+        document as unknown as { activeViewTransition?: { skipTransition: () => void } }
+      ).activeViewTransition = { skipTransition };
+      const { startSpy } = installViewTransitionMock();
+      setVisibility("hidden");
+
+      runThemeReveal({ x: 100, y: 100 }, () => {});
+
+      expect(startSpy).not.toHaveBeenCalled();
+      expect(skipTransition).not.toHaveBeenCalled();
     });
   });
 });

@@ -158,7 +158,7 @@ export function ThemePalette({ isOpen, onClose }: ThemePaletteProps) {
         notify({
           type: "error",
           priority: "high",
-          message: `Failed to save theme: ${scheme.name}`,
+          message: `Couldn't save theme preference — '${scheme.name}' is applied but the choice will be lost on restart.`,
           duration: 3000,
         });
       });
