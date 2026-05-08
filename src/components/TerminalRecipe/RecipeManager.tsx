@@ -460,7 +460,7 @@ export function RecipeManager({
 
       <ConfirmDialog
         isOpen={recipeToDeleteAfterSave !== null}
-        title={`Delete original '${globalRecipes.find((r) => r.id === recipeToDeleteAfterSave)?.name ?? projectRecipes.find((r) => r.id === recipeToDeleteAfterSave)?.name ?? inRepoRecipes.find((r) => r.id === recipeToDeleteAfterSave)?.name ?? "recipe"}'?`}
+        title={`Delete original '${globalRecipes.find((r) => r.id === recipeToDeleteAfterSave)?.name ?? rawProjectRecipes.find((r) => r.id === recipeToDeleteAfterSave)?.name ?? inRepoRecipes.find((r) => r.id === recipeToDeleteAfterSave)?.name ?? "recipe"}'?`}
         description="The recipe has been saved to the repository. The original copy on this machine will be permanently removed."
         confirmLabel="Delete original"
         cancelLabel="Keep both"
