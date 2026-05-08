@@ -108,17 +108,20 @@ module.exports = async function () {
     },
     win: {
       icon: "build/icon.ico",
-      target: [
-        { target: "nsis", arch: ["x64"] },
-        { target: "portable", arch: ["x64"] },
-      ],
+      target: [{ target: "appx", arch: ["x64"] }],
     },
-    nsis: {
-      oneClick: false,
-      allowToChangeInstallationDirectory: true,
-      installerIcon: "build/icon.ico",
-      uninstallerIcon: "build/icon.ico",
-      installerHeaderIcon: "build/icon.ico",
+    // Microsoft Store identity. Placeholder values until Partner Center setup
+    // completes — see docs/distribution/microsoft-store.md for the swap-in
+    // procedure. `identityName` and `publisher` MUST match Partner Center →
+    // Daintree → Product Identity verbatim before first Store submission, or
+    // `msstore submission update` will fail with `Invalid Identity`.
+    appx: {
+      identityName: "Daintree",
+      publisher: "CN=00000000-0000-0000-0000-000000000000",
+      publisherDisplayName: "Greg Priday",
+      applicationId: "Daintree",
+      displayName: "Daintree",
+      languages: ["en-US"],
     },
     linux: {
       icon: "build/icon.png",
