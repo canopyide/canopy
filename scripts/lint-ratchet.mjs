@@ -67,8 +67,8 @@ function main() {
   }
 
   // Warnings: exclude test files. Errors: count every file — the ratchet is
-  // the only ESLint gate in CI (`npm run check` calls `lint:ratchet`, not
-  // `lint:ci`), so test-file errors must still block the build.
+  // the only ESLint gate in CI (`npm run check` calls `lint:ratchet`), so
+  // test-file errors must still block the build.
   const productionResults = results.filter((file) => !TEST_FILE_PATTERN.test(file.filePath));
 
   const warningCount = productionResults.reduce((sum, file) => {

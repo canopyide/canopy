@@ -81,8 +81,6 @@ const config: KnipConfig = {
   // The entries below are imported directly but satisfied transitively today.
   // Flagged here as known debt — silencing knip keeps CI green, but the
   // explicit-declare fix should happen in a follow-up:
-  //   - axe-core: imported in e2e/full/core-accessibility.spec.ts; transitive
-  //     via @axe-core/playwright.
   //   - conf: imported in electron/__tests__/storeBackupRestore.test.ts;
   //     transitive via electron-store.
   //   - shell-env: imported in electron/setup/environment.ts; transitive
@@ -98,7 +96,6 @@ const config: KnipConfig = {
     "tw-animate-css",
     "wait-on",
     "fast-check",
-    "axe-core",
     "conf",
     "shell-env",
     "glob",
