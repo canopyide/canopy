@@ -9,30 +9,33 @@ Playwright is installed as a dev dependency (`@playwright/test`). No browser dow
 ## Running Tests
 
 ```bash
-npm run test:e2e              # Run all e2e tests (core + online)
-npm run test:e2e:core         # Run deterministic core tests only
-npm run test:e2e:online       # Run Claude-dependent online tests only
-npx playwright test --project=core -g "App Shell"  # Run a specific suite
+npm run test:e2e              # Run all Playwright projects
+npm run test:e2e:core         # Run lightweight release-gating core tests
+npm run test:e2e:full         # Run broad deterministic full tests
+npm run test:e2e:online       # Run Claude/OpenCode-dependent online tests
+npm run test:e2e:nightly      # Run soak/leak nightly tests
+npx playwright test --project=core -g "Worktree Lifecycle"  # Run a specific suite
 PWDEBUG=1 npx playwright test --project=core       # Debug mode
 ```
 
 ## Test Suites
 
-Tests are split into two projects:
+Tests are split into four projects:
 
-- **core** — Deterministic tests that don't need network access or API keys. Fast, reliable, run on every push/PR.
-- **online** — Tests that interact with Claude Code (requires `ANTHROPIC_API_KEY`). Run nightly and on push to main.
+- **core** — Lightweight deterministic release gate for essential app/project/terminal/persistence/agent coverage.
+- **full** — Broad deterministic regression suite. This is intentionally heavy and is not run on Windows nightly.
+- **online** — Tests that interact with real agent CLIs (requires `ANTHROPIC_API_KEY` for Claude).
+- **nightly** — Long-running soak/leak tests.
 
 ## Configuration
 
-`playwright.config.ts` at the project root defines two projects:
+`playwright.config.ts` at the project root defines the projects:
 
-| Property     | Core         | Online         |
-| ------------ | ------------ | -------------- |
-| testDir      | `./e2e/core` | `./e2e/online` |
-| timeout      | 120s         | 300s           |
-| retries (CI) | 2            | 1              |
-| workers      | 1            | 1              |
+| Property     | Core         | Full         | Online         | Nightly         |
+| ------------ | ------------ | ------------ | -------------- | --------------- |
+| testDir      | `./e2e/core` | `./e2e/full` | `./e2e/online` | `./e2e/nightly` |
+| retries (CI) | 2            | 2            | 1              | 0               |
+| workers      | 1-2          | 1-2          | 1-2            | 1               |
 
 ## Directory Structure
 
@@ -46,12 +49,17 @@ e2e/
 │   ├── terminal.ts      # getTerminalText(), waitForTerminalText(), runTerminalCommand()
 │   └── panels.ts        # getFirstGridPanel(), getGridPanelCount(), getDockPanelCount()
 ├── core/
-│   ├── core-terminal-panels.spec.ts     # Onboarding, terminal lifecycle, grid/dock, context flow
-│   ├── core-shell-settings.spec.ts      # App shell, keyboard shortcuts, settings persistence
-│   ├── core-advanced.spec.ts            # Browser, portal, notes, worktree lifecycle, project switch
-│   └── core-v030-features.spec.ts       # Sidebar search, settings subtabs/search, review hub, layout
+│   ├── core-first-run-onboarding.spec.ts
+│   ├── core-persistence.spec.ts
+│   ├── core-process-badge.spec.ts
+│   ├── core-terminal-agent-promotion.spec.ts
+│   └── core-worktree-lifecycle.spec.ts
+├── full/
+│   └── *.spec.ts                        # Broad deterministic UI, settings, layout, recovery, stress coverage
 └── online/
-    └── claude-online.spec.ts            # Full Claude agent interaction flow
+    ├── claude-online.spec.ts
+    ├── opencode-online.spec.ts
+    └── terminal-identity-transitions.spec.ts
 ```
 
 ## Shared Helpers
@@ -119,19 +127,19 @@ Components have `data-testid` and `data-worktree-branch` attributes for reliable
 
 ### `e2e-core.yml`
 
-- **Triggers:** push to main/develop, PRs, workflow_dispatch, workflow_call
+- **Triggers:** workflow_dispatch, workflow_call
 - **Matrix:** macOS-14, ubuntu-22.04, windows-latest
 - **No secrets needed**
 
 ### `e2e-online.yml`
 
-- **Triggers:** nightly (3am UTC), push to main, workflow_dispatch, workflow_call
+- **Triggers:** workflow_dispatch, workflow_call
 - **Requires:** `ANTHROPIC_API_KEY` secret
 - **Nightly failure notification:** Creates/updates a GitHub issue labeled `e2e-nightly-failure`
 
 ### Release Gating
 
-Both `e2e-core` and `e2e-online` must pass before `release.yml` publishes artifacts.
+`release.yml` runs checks, unit tests, and all three e2e gates (`core`, `full`, `online`) before platform packaging starts. Release e2e gates run on non-Windows runners; Windows release confidence comes from the platform build/package smoke plus the lightweight Windows nightly core gate.
 
 ### Cross-Platform Matrix
 

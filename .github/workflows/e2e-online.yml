@@ -12,6 +12,7 @@ on:
           - macos
           - linux
           - windows
+          - non-windows
   workflow_call:
     inputs:
       platform:

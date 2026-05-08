@@ -12,8 +12,9 @@ on:
           - macos
           - linux
           - windows
+          - non-windows
       test_file:
-        description: "Single test file to run (e.g. e2e/core/core-terminal-panels.spec.ts). Leave empty to run all."
+        description: "Single test file to run (e.g. e2e/core/core-worktree-lifecycle.spec.ts). Leave empty to run all."
         type: string
         default: ""
       project:

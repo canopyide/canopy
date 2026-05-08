@@ -24,7 +24,75 @@ env:
   NODE_VERSION: "22"
 
 jobs:
+  checks:
+    name: Checks
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libarchive-tools
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check
+        run: npm run check
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libarchive-tools
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm run test
+
+  e2e-core-gate:
+    needs: [checks, unit-tests]
+    uses: ./.github/workflows/e2e-core.yml
+    with:
+      project: core
+      platform: non-windows
+
+  e2e-full-gate:
+    needs: [checks, unit-tests]
+    uses: ./.github/workflows/e2e-core.yml
+    with:
+      project: full
+      platform: non-windows
+
+  e2e-online-gate:
+    needs: [checks, unit-tests]
+    uses: ./.github/workflows/e2e-online.yml
+    with:
+      platform: non-windows
+    secrets: inherit
+
   build-daintree:
+    needs: [checks, unit-tests, e2e-core-gate, e2e-full-gate, e2e-online-gate]
     name: Build Daintree (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
@@ -181,45 +249,9 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
-  unit-tests:
-    name: Unit Tests
-    runs-on: ubuntu-22.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-
-      - name: Install Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libarchive-tools
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Test
-        run: npm run test
-
-  e2e-core-gate:
-    needs: build-daintree
-    uses: ./.github/workflows/e2e-core.yml
-    with:
-      platform: non-windows
-
-  e2e-online-gate:
-    needs: build-daintree
-    uses: ./.github/workflows/e2e-online.yml
-    with:
-      platform: non-windows
-    secrets: inherit
-
   publish-daintree:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build-daintree, e2e-core-gate, e2e-online-gate, unit-tests]
+    needs: [build-daintree]
     runs-on: ubuntu-22.04
     timeout-minutes: 15
 
