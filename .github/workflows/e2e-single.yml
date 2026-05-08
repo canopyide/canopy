@@ -42,7 +42,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: e2e-single-${{ github.ref }}-${{ inputs.platform }}-${{ inputs.suite }}-${{ inputs.test_file }}-${{ inputs.grep }}
+  group: e2e-single-${{ github.ref }}-${{ inputs.platform }}-${{ inputs.suite }}-${{ github.run_id }}
   cancel-in-progress: false
 
 env:
