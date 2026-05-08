@@ -25,6 +25,7 @@ import {
   SESSION_EVICTION_MAX_BYTES,
 } from "../services/pty/terminalSessionPersistence.js";
 import { initializeSystemSleepService } from "../services/SystemSleepService.js";
+import { getDatabaseMaintenanceService } from "../services/DatabaseMaintenanceService.js";
 import { getCrashRecoveryService } from "../services/CrashRecoveryService.js";
 import {
   markPerformance,
@@ -106,8 +107,8 @@ async function evictStaleSessionFiles(): Promise<void> {
 /**
  * Run the once-per-app-lifecycle global initialization on the first window
  * setup. Migrations run inline (synchronous, blocking); everything else is
- * either a synchronous boot (GitHubAuth storage, preAgentSnapshot, ccrConfig)
- * or registered as a deferred task that drains after first-interactive.
+ * either a synchronous boot (GitHubAuth storage, preAgentSnapshot) or
+ * registered as a deferred task that drains after first-interactive.
  *
  * Returns "exit-requested" when migrations fail and `app.exit(1)` has been
  * called — the caller MUST early-return without continuing setup.
@@ -244,17 +245,43 @@ export async function initGlobalServices(
     },
   });
 
-  // CCR config — discover Claude Code Router models as agent presets
-  try {
-    const { CcrConfigService } = await import("../services/CcrConfigService.js");
-    const ccr = CcrConfigService.getInstance();
-    setCcrConfigService(ccr);
-    await ccr.loadAndApply();
-    ccr.startWatching();
-    console.log("[MAIN] CcrConfigService initialized");
-  } catch (err) {
-    console.warn("[MAIN] CcrConfigService init failed (non-fatal):", err);
-  }
+  // CCR config — discover Claude Code Router models as agent presets.
+  // Deferred: the renderer fetches presets via getCcrPresets() which falls
+  // through to [] when the cache is empty, and AGENT_PRESETS_UPDATED broadcasts
+  // populate the renderer store as soon as loadAndApply() completes.
+  registerDeferredTask({
+    name: "ccr-config",
+    run: async () => {
+      const { CcrConfigService } = await import("../services/CcrConfigService.js");
+      const ccr = CcrConfigService.getInstance();
+      setCcrConfigService(ccr);
+      try {
+        await ccr.loadAndApply();
+      } catch (err) {
+        console.warn("[MAIN] CcrConfigService loadAndApply failed (non-fatal):", err);
+      }
+      // Watcher is independent of initial load success — if the config file
+      // is malformed on first boot, polling lets us pick up the fix later.
+      // startWatching() is idempotent.
+      ccr.startWatching();
+      console.log("[MAIN] CcrConfigService initialized");
+    },
+  });
+
+  // Plugin service — IPC handlers are registered eagerly in windowServices.ts
+  // and return empty lists from internal Maps until initialize() populates them.
+  // Plugin contributions broadcast on registration, so late init is renderer-safe.
+  registerDeferredTask({
+    name: "plugin-service",
+    run: async () => {
+      const { pluginService } = await import("../services/PluginService.js");
+      try {
+        await pluginService.initialize();
+      } catch (err) {
+        console.error("[MAIN] PluginService initialization failed:", err);
+      }
+    },
+  });
 
   // ── Deferred global service starts ──
   // These were previously run on the same tick as loadRenderer(), contending
@@ -290,6 +317,18 @@ export async function initGlobalServices(
     name: "system-sleep-service",
     run: () => {
       initializeSystemSleepService();
+    },
+  });
+
+  // Deferred timer + suspend-listener install for DB maintenance. The probe
+  // and recovery still run synchronously in main.ts before the shared DB is
+  // opened — only the 5-minute maintenance tick and the SystemSleepService
+  // suspend hook are deferred. Registered AFTER system-sleep-service so the
+  // suspend listener attaches to a live service.
+  registerDeferredTask({
+    name: "database-maintenance",
+    run: () => {
+      getDatabaseMaintenanceService().startMaintenance();
     },
   });
 

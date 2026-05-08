@@ -153,18 +153,14 @@ export async function setupWindowServices(
 
   console.log("[MAIN] Registering IPC handlers...");
 
-  // IPC handlers are globally scoped — register only once
+  // IPC handlers are globally scoped — register only once. PluginService
+  // initialization moved to a deferred task in globalServicesInit.ts; the
+  // plugin IPC handlers registered above return empty lists until init
+  // completes, and contribution broadcasts populate the renderer when ready.
   if (!getIpcHandlersRegistered()) {
     setIpcHandlersRegistered(true);
     setCleanupIpcHandlers(registerIpcHandlers(handlerDeps));
     markPerformance(PERF_MARKS.SERVICE_INIT_IPC_READY);
-
-    try {
-      const { pluginService } = await import("../services/PluginService.js");
-      await pluginService.initialize();
-    } catch (error) {
-      console.error("[MAIN] PluginService initialization failed:", error);
-    }
   }
 
   // Renderer load is gated by DAINTREE_EARLY_RENDERER. With the flag, the
@@ -247,8 +243,9 @@ export async function setupWindowServices(
     });
     setWorkspaceClientRef(workspaceClient);
 
-    // Give PluginService the WorkspaceClient reference now that it's ready —
-    // PluginService.initialize() ran earlier before workspaceClient existed.
+    // Give PluginService the WorkspaceClient reference now that it's ready.
+    // initialize() is deferred and may run before or after this point — the
+    // service's pendingWorktreeSubs replay handles either ordering.
     try {
       const { pluginService } = await import("../services/PluginService.js");
       pluginService.setWorkspaceClient(workspaceClient);

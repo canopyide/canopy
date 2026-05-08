@@ -17,9 +17,11 @@ class DatabaseMaintenanceService {
   private removeSuspendListener: (() => void) | null = null;
   private backupPromise: Promise<void> | null = null;
   private disposed = false;
+  private initialized = false;
 
   initialize(): void {
-    if (this.timer) return; // already initialized
+    if (this.initialized) return;
+    this.initialized = true;
 
     const dbPath = getDbPath();
 
@@ -33,6 +35,16 @@ class DatabaseMaintenanceService {
       }
     }
 
+    console.log("[DatabaseMaintenance] Initialized (probe complete)");
+  }
+
+  startMaintenance(): void {
+    // Defensive: dispose() may run before startMaintenance() drains from the
+    // deferred queue (window closed before first-interactive). The timer/listener
+    // installation must not happen post-dispose.
+    if (this.disposed) return;
+    if (this.timer) return;
+
     this.timer = setInterval(() => this.tick(), TICK_INTERVAL_MS);
 
     try {
@@ -44,7 +56,7 @@ class DatabaseMaintenanceService {
       // The suspend hook is best-effort — periodic timer covers the gap.
     }
 
-    console.log("[DatabaseMaintenance] Initialized");
+    console.log("[DatabaseMaintenance] Maintenance started");
   }
 
   async dispose(): Promise<void> {

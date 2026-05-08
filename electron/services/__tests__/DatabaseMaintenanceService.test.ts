@@ -102,9 +102,21 @@ describe("DatabaseMaintenanceService", () => {
     void service.dispose();
   });
 
+  it("initialize alone does NOT install timer or suspend listener", () => {
+    const service = new DatabaseMaintenanceService();
+    service.initialize();
+
+    expect(mockSystemSleepService.onSuspend).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(5 * 60 * 1000 + 100);
+    expect(mockSqlite.pragma).not.toHaveBeenCalled();
+    expect(mockSqlite.backup).not.toHaveBeenCalled();
+    void service.dispose();
+  });
+
   it("registers suspend listener via SystemSleepService", () => {
     const service = new DatabaseMaintenanceService();
     service.initialize();
+    service.startMaintenance();
 
     expect(mockSystemSleepService.onSuspend).toHaveBeenCalledWith(expect.any(Function));
     void service.dispose();
@@ -113,6 +125,7 @@ describe("DatabaseMaintenanceService", () => {
   it("runs PASSIVE checkpoint on suspend", () => {
     const service = new DatabaseMaintenanceService();
     service.initialize();
+    service.startMaintenance();
 
     const suspendCallback = mockSystemSleepService.onSuspend.mock.calls[0][0] as () => void;
     suspendCallback();
@@ -126,6 +139,7 @@ describe("DatabaseMaintenanceService", () => {
 
     const service = new DatabaseMaintenanceService();
     service.initialize();
+    service.startMaintenance();
 
     // Advance past tick interval (5 minutes)
     vi.advanceTimersByTime(5 * 60 * 1000 + 100);
@@ -140,6 +154,7 @@ describe("DatabaseMaintenanceService", () => {
 
     const service = new DatabaseMaintenanceService();
     service.initialize();
+    service.startMaintenance();
 
     vi.advanceTimersByTime(5 * 60 * 1000 + 100);
 
@@ -153,6 +168,7 @@ describe("DatabaseMaintenanceService", () => {
 
     const service = new DatabaseMaintenanceService();
     service.initialize();
+    service.startMaintenance();
 
     vi.advanceTimersByTime(5 * 60 * 1000 + 100);
 
@@ -163,6 +179,7 @@ describe("DatabaseMaintenanceService", () => {
   it("dispose runs final backup and TRUNCATE checkpoint", async () => {
     const service = new DatabaseMaintenanceService();
     service.initialize();
+    service.startMaintenance();
 
     await service.dispose();
 
@@ -179,6 +196,7 @@ describe("DatabaseMaintenanceService", () => {
   it("dispose is idempotent", async () => {
     const service = new DatabaseMaintenanceService();
     service.initialize();
+    service.startMaintenance();
 
     await service.dispose();
     mockSqlite.pragma.mockClear();
@@ -188,6 +206,28 @@ describe("DatabaseMaintenanceService", () => {
     expect(mockSqlite.pragma).not.toHaveBeenCalledWith("wal_checkpoint(TRUNCATE)");
   });
 
+  it("dispose before startMaintenance completes without error", async () => {
+    const service = new DatabaseMaintenanceService();
+    service.initialize();
+
+    await expect(service.dispose()).resolves.toBeUndefined();
+    expect(mockSystemSleepService.onSuspend).not.toHaveBeenCalled();
+  });
+
+  it("startMaintenance after dispose is a no-op", async () => {
+    const service = new DatabaseMaintenanceService();
+    service.initialize();
+    await service.dispose();
+    // dispose runs its final backup; clear before asserting no further timer activity
+    mockSqlite.backup.mockClear();
+
+    service.startMaintenance();
+    expect(mockSystemSleepService.onSuspend).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(5 * 60 * 1000 + 100);
+    expect(mockSqlite.backup).not.toHaveBeenCalled();
+  });
+
   it("initialize is idempotent", () => {
     const service = new DatabaseMaintenanceService();
     service.initialize();
@@ -195,6 +235,17 @@ describe("DatabaseMaintenanceService", () => {
 
     // probeDb should only be called once
     expect(mockDbModule.probeDb).toHaveBeenCalledTimes(1);
+    void service.dispose();
+  });
+
+  it("startMaintenance is idempotent", () => {
+    const service = new DatabaseMaintenanceService();
+    service.initialize();
+    service.startMaintenance();
+    service.startMaintenance();
+
+    // onSuspend should only register once even if called twice
+    expect(mockSystemSleepService.onSuspend).toHaveBeenCalledTimes(1);
     void service.dispose();
   });
 });

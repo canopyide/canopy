@@ -107,6 +107,7 @@ describe("DatabaseMaintenanceService adversarial", () => {
 
     const service = new DatabaseMaintenanceService();
     service.initialize();
+    service.startMaintenance();
 
     vi.advanceTimersByTime(5 * 60 * 1000);
     expect(mockSqlite.backup).toHaveBeenCalledTimes(1);
@@ -141,6 +142,7 @@ describe("DatabaseMaintenanceService adversarial", () => {
 
     const service = new DatabaseMaintenanceService();
     service.initialize();
+    service.startMaintenance();
 
     vi.advanceTimersByTime(5 * 60 * 1000);
     const disposePromise = service.dispose();
@@ -165,6 +167,7 @@ describe("DatabaseMaintenanceService adversarial", () => {
 
     const service = new DatabaseMaintenanceService();
     service.initialize();
+    service.startMaintenance();
 
     vi.advanceTimersByTime(5 * 60 * 1000);
     await flushMicrotasks();
@@ -183,6 +186,7 @@ describe("DatabaseMaintenanceService adversarial", () => {
 
     const service = new DatabaseMaintenanceService();
     service.initialize();
+    service.startMaintenance();
 
     vi.advanceTimersByTime(5 * 60 * 1000);
 
@@ -203,6 +207,7 @@ describe("DatabaseMaintenanceService adversarial", () => {
   it("DISPOSED_SERVICE_IGNORES_LATE_TIMER_FIRE", async () => {
     const service = new DatabaseMaintenanceService();
     service.initialize();
+    service.startMaintenance();
 
     await service.dispose();
     mockSqlite.backup.mockClear();
@@ -212,5 +217,23 @@ describe("DatabaseMaintenanceService adversarial", () => {
 
     expect(mockSqlite.backup).not.toHaveBeenCalled();
     expect(mockSqlite.pragma).not.toHaveBeenCalled();
+  });
+
+  it("DISPOSE_BEFORE_START_MAINTENANCE_IS_SAFE", async () => {
+    const service = new DatabaseMaintenanceService();
+    service.initialize();
+
+    await service.dispose();
+
+    // Late drain of deferred queue tries to start maintenance after dispose;
+    // must be a no-op (no timer installed, no listener registered).
+    service.startMaintenance();
+
+    expect(mockSystemSleepService.onSuspend).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(10 * 60 * 1000);
+    // backup may have been called once during dispose itself; ensure no further calls
+    mockSqlite.backup.mockClear();
+    vi.advanceTimersByTime(10 * 60 * 1000);
+    expect(mockSqlite.backup).not.toHaveBeenCalled();
   });
 });
