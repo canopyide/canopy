@@ -94,6 +94,12 @@ server.listen(0, '127.0.0.1', () => {
 `;
     writeFileSync(path.join(binDir, "next"), fakeNextScript);
     chmodSync(path.join(binDir, "next"), 0o755);
+    if (process.platform === "win32") {
+      writeFileSync(
+        path.join(binDir, "next.cmd"),
+        ["@echo off", 'node "%~dp0next" %*', ""].join("\r\n")
+      );
+    }
 
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureRepoPath, PROJECT_NAME);

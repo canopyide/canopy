@@ -37,6 +37,17 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
+function powershellQuote(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+function prependPathCommand(dir: string): string {
+  if (process.platform === "win32") {
+    return `$env:PATH = ${powershellQuote(`${dir}${path.delimiter}`)} + $env:PATH`;
+  }
+  return `export PATH=${shellQuote(dir)}:$PATH`;
+}
+
 async function expectPanelHeaderIcon(panel: Locator, iconId: string): Promise<void> {
   await expect
     .poll(() => panelHeaderIcon(panel).getAttribute("data-terminal-icon-id"), {
@@ -392,7 +403,7 @@ test.describe.serial("Core: terminal runtime agent promotion", () => {
       await expectPanelHeaderIcon(panel, "terminal");
       await expectPanelHasNoAgentState(panel);
 
-      await runTerminalCommand(window, panel, `export PATH=${shellQuote(fakeBinDir)}:$PATH`);
+      await runTerminalCommand(window, panel, prependPathCommand(fakeBinDir));
       await runTerminalCommand(window, panel, "npm run build");
       await waitForTerminalText(panel, "NPM_READY", T_LONG);
       await expect

@@ -33,26 +33,74 @@ let fixtureCleanup: (() => void) | undefined;
 const BRANCH = "e2e/resource-lifecycle";
 const mod = process.platform === "darwin" ? "Meta" : "Control";
 
+function commandArg(value: string): string {
+  return `"${value.replace(/"/g, '\\"')}"`;
+}
+
+function nodeScriptCommand(scriptPath: string, args: string[] = []): string {
+  return ["node", commandArg(scriptPath), ...args].join(" ");
+}
+
+function writeResourceHelper(daintreeDir: string, stateFile: string): string {
+  const scriptPath = path.join(daintreeDir, "resource-action.cjs");
+  fs.writeFileSync(
+    scriptPath,
+    [
+      "const fs = require('fs');",
+      `const stateFile = ${JSON.stringify(stateFile)};`,
+      "const action = process.argv[2];",
+      "const writeState = (status) => fs.writeFileSync(stateFile, JSON.stringify({ status }));",
+      "if (action === 'provision' || action === 'resume') {",
+      "  writeState('ready');",
+      "} else if (action === 'pause') {",
+      "  writeState('paused');",
+      "} else if (action === 'teardown') {",
+      "  fs.rmSync(stateFile, { force: true });",
+      "} else if (action === 'status') {",
+      "  try { process.stdout.write(fs.readFileSync(stateFile, 'utf8')); }",
+      "  catch { process.stdout.write(JSON.stringify({ status: 'unknown' })); }",
+      "} else if (action === 'env-status') {",
+      "  const markerFile = process.argv[3];",
+      "  fs.writeFileSync(markerFile, [",
+      "    process.env.DAINTREE_WORKTREE_NAME || '',",
+      "    process.env.DAINTREE_WORKTREE_PATH || '',",
+      "    process.env.DAINTREE_PROJECT_ROOT || '',",
+      "  ].join('\\n'));",
+      "  try { process.stdout.write(fs.readFileSync(stateFile, 'utf8')); }",
+      "  catch { process.stdout.write(JSON.stringify({ status: 'unknown' })); }",
+      "} else if (action === 'connect') {",
+      "  console.log(process.argv.slice(3).join(' '));",
+      "  setInterval(() => {}, 1000);",
+      "} else {",
+      "  console.error('Unknown resource action: ' + action);",
+      "  process.exit(1);",
+      "}",
+      "",
+    ].join("\n")
+  );
+  return scriptPath;
+}
+
 function writeResourceConfig(repoDir: string) {
   const daintreeDir = path.join(repoDir, ".daintree");
   fs.mkdirSync(daintreeDir, { recursive: true });
 
   const stateFile = path.join(daintreeDir, "resource-state.json");
+  const helperScript = writeResourceHelper(daintreeDir, stateFile);
 
   const config = {
     setup: [],
     teardown: [],
     resource: {
-      provision: [
-        `printf '{"status":"provisioning"}' > "${stateFile}"`,
-        `sleep 0.1`,
-        `printf '{"status":"ready"}' > "${stateFile}"`,
-      ],
-      teardown: [`rm -f "${stateFile}"`],
-      resume: [`printf '{"status":"ready"}' > "${stateFile}"`],
-      pause: [`printf '{"status":"paused"}' > "${stateFile}"`],
-      status: `cat "${stateFile}" 2>/dev/null || printf '{"status":"unknown"}'`,
-      connect: `echo CONNECTED_TO_{{worktree_name}}; bash --norc --noprofile`,
+      provision: [nodeScriptCommand(helperScript, [commandArg("provision")])],
+      teardown: [nodeScriptCommand(helperScript, [commandArg("teardown")])],
+      resume: [nodeScriptCommand(helperScript, [commandArg("resume")])],
+      pause: [nodeScriptCommand(helperScript, [commandArg("pause")])],
+      status: nodeScriptCommand(helperScript, [commandArg("status")]),
+      connect: nodeScriptCommand(helperScript, [
+        commandArg("connect"),
+        "CONNECTED_TO_{{worktree_name}}",
+      ]),
     },
   };
 
@@ -512,10 +560,10 @@ test.describe.serial("Full: Worktree Resource Lifecycle", () => {
 
     // Modify status command to dump DAINTREE_* env vars into a marker file,
     // then still output valid JSON for the badge
-    config.resource.status = [
-      `printf '%s\\n%s\\n%s' "$DAINTREE_WORKTREE_NAME" "$DAINTREE_WORKTREE_PATH" "$DAINTREE_PROJECT_ROOT" > "${markerFile}"`,
-      `cat "${path.join(mainDaintreeDir, "resource-state.json")}" 2>/dev/null || printf '{"status":"unknown"}'`,
-    ].join(" && ");
+    config.resource.status = nodeScriptCommand(path.join(mainDaintreeDir, "resource-action.cjs"), [
+      commandArg("env-status"),
+      commandArg(markerFile),
+    ]);
 
     // Ensure the state file exists so badge shows something
     fs.writeFileSync(
@@ -591,7 +639,12 @@ test.describe.serial("Full: Worktree Resource Lifecycle", () => {
     const originalConfig = fs.readFileSync(path.join(mainDaintreeDir, "config.json"), "utf-8");
     const config = JSON.parse(originalConfig);
 
-    config.resource.connect = `echo BRANCH={{branch}} PATH={{worktree_path}} PROJECT={{project_root}}; bash --norc --noprofile`;
+    config.resource.connect = nodeScriptCommand(path.join(mainDaintreeDir, "resource-action.cjs"), [
+      commandArg("connect"),
+      "BRANCH={{branch}}",
+      "PATH={{worktree_path}}",
+      "PROJECT={{project_root}}",
+    ]);
     fs.writeFileSync(wtConfigPath, JSON.stringify(config, null, 2));
 
     // Re-provision to pick up new connect command (provision stores the substituted connect command)
@@ -628,7 +681,7 @@ test.describe.serial("Full: Worktree Resource Lifecycle", () => {
     // {{branch}} should be substituted with the actual branch name
     await waitForTerminalText(newPanel, `BRANCH=${BRANCH}`);
     // {{worktree_path}} should be substituted with a real path (not the literal placeholder)
-    await waitForTerminalText(newPanel, "PATH=/");
+    await waitForTerminalText(newPanel, process.platform === "win32" ? "PATH=" : "PATH=/");
 
     // Clean up: remove modified config from worktree
     if (fs.existsSync(wtConfigPath)) fs.unlinkSync(wtConfigPath);
