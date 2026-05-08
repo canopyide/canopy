@@ -42,7 +42,8 @@ export class TerminalWebGLManager {
   }
 
   static setMaxContexts(n: number): void {
-    TerminalWebGLManager._maxContexts = Math.max(1, n);
+    if (!Number.isFinite(n) || n < 1) return;
+    TerminalWebGLManager._maxContexts = Math.floor(n);
   }
 
   private pool = new Map<string, WebGLEntry>();
@@ -56,10 +57,13 @@ export class TerminalWebGLManager {
   // event-loop ticks (see CONTEXTS_PER_DRAIN). Insertion order is the drain order.
   private pending = new Map<string, ManagedTerminal>();
   private drainScheduled = false;
-  // Timestamp of the most recent recorded loss. Used together with
-  // LOSS_CLUSTER_MS to collapse clustered upstream loss events that all
-  // belong to the same burst-overflow wave.
-  private lastLossAt: number | null = null;
+  // Anchor for the active loss-cluster window. Losses arriving within
+  // LOSS_CLUSTER_MS of the cluster start collapse to a single timestamp;
+  // the next loss outside that window opens a new cluster. Anchoring on
+  // start (not rolling on each loss) ensures sustained near-threshold
+  // faults still trip the breaker — a 400ms-interval fault closes one
+  // cluster every ~500ms and accumulates timestamps normally.
+  private clusterStartAt: number | null = null;
 
   setHardwareAvailable(available: boolean): void {
     this.hardwareAvailable = available;
@@ -215,16 +219,18 @@ export class TerminalWebGLManager {
 
     // Cluster collapse: when bulk-creation overflows Chromium's 16-context
     // cap, the upstream addon's 3000ms timer fires for every evicted addon
-    // at once. Treat losses arriving within LOSS_CLUSTER_MS of the previous
-    // one as the same wave, recording at most one timestamp per cluster.
+    // at once. Collapse all losses arriving within LOSS_CLUSTER_MS of the
+    // cluster start to a single timestamp; the next loss outside that
+    // window opens a new cluster. The anchor is the cluster start (not the
+    // last loss) so sustained near-threshold faults can't extend the window
+    // indefinitely.
     if (
-      this.lastLossAt !== null &&
-      now - this.lastLossAt < TerminalWebGLManager.LOSS_CLUSTER_MS
+      this.clusterStartAt !== null &&
+      now - this.clusterStartAt < TerminalWebGLManager.LOSS_CLUSTER_MS
     ) {
-      this.lastLossAt = now;
       return;
     }
-    this.lastLossAt = now;
+    this.clusterStartAt = now;
 
     this.lossTimestamps = this.lossTimestamps.filter(
       (t) => now - t < TerminalWebGLManager.LOSS_WINDOW_MS

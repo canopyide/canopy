@@ -487,6 +487,32 @@ describe("TerminalWebGLManager", () => {
       expect(WebglAddonMock).toHaveBeenCalledTimes(1);
       expect(manager.isActive("t1")).toBe(true);
     });
+
+    it("destroy + re-ensure with new managed ref attaches to the new ref only", () => {
+      const managedOld = makeManagedTerminal();
+      const managedNew = makeManagedTerminal();
+
+      manager.ensureContext("t1", managedOld);
+      manager.onTerminalDestroyed("t1");
+      manager.ensureContext("t1", managedNew);
+      flushDrain();
+
+      expect(managedOld.terminal.loadAddon).not.toHaveBeenCalled();
+      expect(managedNew.terminal.loadAddon).toHaveBeenCalledTimes(1);
+      expect(manager.isActive("t1")).toBe(true);
+    });
+
+    it("coalesce keeps the latest managed ref when same id is re-enqueued before drain", () => {
+      const managedOld = makeManagedTerminal();
+      const managedNew = makeManagedTerminal();
+
+      manager.ensureContext("t1", managedOld);
+      manager.ensureContext("t1", managedNew);
+      flushDrain();
+
+      expect(managedOld.terminal.loadAddon).not.toHaveBeenCalled();
+      expect(managedNew.terminal.loadAddon).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("circuit breaker", () => {
@@ -745,6 +771,36 @@ describe("TerminalWebGLManager", () => {
       handlers[handlers.length - 1]!();
 
       // Now hardware should be disabled.
+      const blocked = makeManagedTerminal();
+      manager.ensureContext("blocked", blocked);
+      flushDrain();
+      expect(manager.isActive("blocked")).toBe(false);
+    });
+
+    it("sustained near-threshold losses still trip the breaker (cluster anchored on start)", () => {
+      // A genuine GPU fault producing losses every 400ms — each within
+      // LOSS_CLUSTER_MS (500ms) of the previous — must still trip the
+      // breaker. The cluster window is anchored on start, not rolled on
+      // each loss, so each cluster closes after ~500ms and a new one opens.
+      const handlers = captureContextLossHandlers();
+
+      // Allocate enough contexts to fire many losses against.
+      const ms: ReturnType<typeof makeManagedTerminal>[] = [];
+      for (let i = 0; i < 6; i++) {
+        ms.push(makeManagedTerminal());
+        manager.ensureContext(`t${i}`, ms[i]!);
+        flushDrain();
+        flushDrain();
+      }
+
+      // Fire losses every 400ms (below LOSS_CLUSTER_MS=500). Each is its
+      // own cluster because the anchor moves only on cluster open.
+      for (let i = 0; i < 6; i++) {
+        vi.setSystemTime(i * 400);
+        handlers[i]!();
+      }
+
+      // After several losses spread over ~2s, breaker should have tripped.
       const blocked = makeManagedTerminal();
       manager.ensureContext("blocked", blocked);
       flushDrain();
