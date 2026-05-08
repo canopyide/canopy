@@ -83,7 +83,7 @@ def main():
     # Load and ensure 1024x1024
     source = Image.open(source_path).convert("RGBA")
     if source.size != (CANVAS, CANVAS):
-        source = source.resize((CANVAS, CANVAS), Image.LANCZOS)
+        source = source.resize((CANVAS, CANVAS), Image.Resampling.LANCZOS)
 
     # Generate superellipse mask
     mask = generate_superellipse_mask(CANVAS, ICON_SIZE, SUPERELLIPSE_N)
