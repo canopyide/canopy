@@ -506,7 +506,7 @@ export function GitHubResourceList({
     if (isFilterActive) {
       const title =
         exactNumberNotFound !== null
-          ? `${type === "issue" ? "Issue" : "PR"} #${exactNumberNotFound} not found`
+          ? `No ${type === "issue" ? "issue" : "PR"} #${exactNumberNotFound} in this view`
           : trimmedSearch.length > 0
             ? `No ${resourceLabel} match "${trimmedSearch}"`
             : `No ${resourceLabel} in this view`;
@@ -608,7 +608,11 @@ export function GitHubResourceList({
             type="button"
             onClick={handleManualRefreshClick}
             disabled={loading || refreshing}
-            aria-label={`Refresh ${type === "issue" ? "issues" : "pull requests"}`}
+            aria-label={
+              showSpinner
+                ? "Refreshing…"
+                : `Refresh ${type === "issue" ? "issues" : "pull requests"}`
+            }
             title={
               showSpinner
                 ? "Refreshing…"
@@ -627,13 +631,17 @@ export function GitHubResourceList({
             <PopoverTrigger asChild>
               <button
                 type="button"
-                aria-label={`Sort ${type === "issue" ? "issues" : "pull requests"}`}
+                aria-label={
+                  sortOrder === "created"
+                    ? `Sort ${type === "issue" ? "issues" : "pull requests"}`
+                    : `Sort ${type === "issue" ? "issues" : "pull requests"}, sorted by recently updated`
+                }
                 aria-haspopup="dialog"
+                aria-expanded={sortPopoverOpen}
                 className={cn(
                   "relative flex items-center justify-center w-7 h-7 rounded shrink-0",
                   "text-daintree-text/60 hover:text-daintree-text hover:bg-tint/[0.06]",
-                  "transition-colors",
-                  sortOrder !== "created" && "text-status-info"
+                  "transition-colors"
                 )}
               >
                 <Filter className="w-3.5 h-3.5" />
@@ -659,42 +667,61 @@ export function GitHubResourceList({
                 Sort by
               </div>
               <div className="flex flex-col gap-1" role="radiogroup" aria-label="Sort order">
-                {(
-                  [
+                {(() => {
+                  const sortOptions = [
                     { value: "created", label: "Newest" },
                     { value: "updated", label: "Recently updated" },
-                  ] as const
-                ).map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setSortOrder(option.value)}
-                    role="radio"
-                    aria-checked={sortOrder === option.value}
-                    className={cn(
-                      "flex items-center gap-2 px-2 py-1 text-xs rounded",
-                      sortOrder === option.value
-                        ? "bg-overlay-soft text-daintree-text"
-                        : "text-daintree-text/70 hover:bg-overlay-medium"
-                    )}
-                  >
-                    <div
+                  ] as const;
+                  return sortOptions.map((option, idx) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setSortOrder(option.value)}
+                      role="radio"
+                      aria-checked={sortOrder === option.value}
+                      tabIndex={sortOrder === option.value ? 0 : -1}
+                      onKeyDown={(e) => {
+                        const isNext = e.key === "ArrowDown" || e.key === "ArrowRight";
+                        const isPrev = e.key === "ArrowUp" || e.key === "ArrowLeft";
+                        if (!isNext && !isPrev) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const delta = isNext ? 1 : -1;
+                        const nextIdx = (idx + delta + sortOptions.length) % sortOptions.length;
+                        const nextValue = sortOptions[nextIdx]!.value;
+                        setSortOrder(nextValue);
+                        const group = e.currentTarget.parentElement;
+                        requestAnimationFrame(() => {
+                          const radios =
+                            group?.querySelectorAll<HTMLButtonElement>('[role="radio"]');
+                          radios?.[nextIdx]?.focus();
+                        });
+                      }}
                       className={cn(
-                        "w-3 h-3 rounded-full border",
+                        "flex items-center gap-2 px-2 py-1 text-xs rounded",
                         sortOrder === option.value
-                          ? "border-daintree-text bg-daintree-text"
-                          : "border-daintree-border"
+                          ? "bg-overlay-soft text-daintree-text"
+                          : "text-daintree-text/70 hover:bg-overlay-medium"
                       )}
                     >
-                      {sortOrder === option.value && (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <div className="w-1.5 h-1.5 bg-text-inverse rounded-full" />
-                        </div>
-                      )}
-                    </div>
-                    {option.label}
-                  </button>
-                ))}
+                      <div
+                        className={cn(
+                          "w-3 h-3 rounded-full border",
+                          sortOrder === option.value
+                            ? "border-daintree-text bg-daintree-text"
+                            : "border-daintree-border"
+                        )}
+                      >
+                        {sortOrder === option.value && (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <div className="w-1.5 h-1.5 bg-text-inverse rounded-full" />
+                          </div>
+                        )}
+                      </div>
+                      {option.label}
+                    </button>
+                  ));
+                })()}
               </div>
             </PopoverContent>
           </Popover>
@@ -745,17 +772,35 @@ export function GitHubResourceList({
 
         <div
           className="flex p-0.5 bg-overlay-soft border border-[var(--border-divider)] rounded-[var(--radius-md)]"
-          role="group"
+          role="radiogroup"
           aria-label="Filter by state"
         >
-          {stateTabs.map((tab) => {
+          {stateTabs.map((tab, idx) => {
             const isActive = filterState === tab.id;
             return (
               <button
                 key={tab.id}
                 type="button"
                 onClick={() => setFilterState(tab.id as StateFilter)}
-                aria-pressed={isActive}
+                role="radio"
+                aria-checked={isActive}
+                tabIndex={isActive ? 0 : -1}
+                onKeyDown={(e) => {
+                  const isNext = e.key === "ArrowRight" || e.key === "ArrowDown";
+                  const isPrev = e.key === "ArrowLeft" || e.key === "ArrowUp";
+                  if (!isNext && !isPrev) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const delta = isNext ? 1 : -1;
+                  const nextIdx = (idx + delta + stateTabs.length) % stateTabs.length;
+                  const nextTab = stateTabs[nextIdx]!;
+                  setFilterState(nextTab.id as StateFilter);
+                  const group = e.currentTarget.parentElement;
+                  requestAnimationFrame(() => {
+                    const radios = group?.querySelectorAll<HTMLButtonElement>('[role="radio"]');
+                    radios?.[nextIdx]?.focus();
+                  });
+                }}
                 className={cn(
                   "flex-1 px-3 py-1 text-xs font-medium rounded transition-colors",
                   isActive
@@ -865,7 +910,7 @@ export function GitHubResourceList({
               <div
                 id={listId}
                 role="listbox"
-                aria-multiselectable={true}
+                aria-multiselectable={selection.isSelectionActive}
                 aria-busy={loading || refreshing}
                 className="flex-1 min-h-0"
               >
