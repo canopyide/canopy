@@ -3,7 +3,7 @@ import type { ProjectPulse, PulseRangeDays } from "@shared/types";
 import { actionService } from "@/services/ActionService";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 
-const MAX_RETRIES = 3;
+export const PULSE_MAX_RETRIES = 3;
 const RETRY_BASE_DELAY = 2000;
 const RETRY_MAX_DELAY = 30000;
 
@@ -139,7 +139,8 @@ export const usePulseStore = create<PulseStore>()((set, get) => ({
       const currentState = get();
 
       if (currentState.requestIds.get(worktreeId) === requestId) {
-        const shouldRetry = currentRetries < MAX_RETRIES && !forceRefresh && userMessage !== null;
+        const shouldRetry =
+          currentRetries < PULSE_MAX_RETRIES && !forceRefresh && userMessage !== null;
 
         set((prev) => ({
           errors: new Map(prev.errors).set(worktreeId, userMessage),

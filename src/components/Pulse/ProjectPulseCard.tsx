@@ -1,7 +1,7 @@
 import { useEffect, useCallback } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { PulseRangeDays, ProjectPulse, ProjectHealthData } from "@shared/types";
-import { usePulseStore, useProjectStore } from "@/store";
+import { usePulseStore, useProjectStore, PULSE_PULSE_MAX_RETRIES } from "@/store";
 import { cn } from "@/lib/utils";
 import {
   AlertCircle,
@@ -222,8 +222,6 @@ function HealthSignals({
   );
 }
 
-const MAX_RETRIES = 3;
-
 const SKELETON_COLS = 60;
 const SKELETON_CELL = 10;
 const SKELETON_GAP = 3;
@@ -380,7 +378,7 @@ export function ProjectPulseCard({ worktreeId, className }: ProjectPulseCardProp
   }
 
   if (error && !pulse) {
-    const isRetrying = retryCount > 0 && retryCount < MAX_RETRIES;
+    const isRetrying = retryCount > 0 && retryCount < PULSE_MAX_RETRIES;
 
     return (
       <div
@@ -409,7 +407,7 @@ export function ProjectPulseCard({ worktreeId, className }: ProjectPulseCardProp
             >
               <Spinner size="xs" />
               <span className="text-xs">
-                Retrying ({retryCount}/{MAX_RETRIES})...
+                Retrying ({retryCount}/{PULSE_MAX_RETRIES})...
               </span>
             </div>
           )}
