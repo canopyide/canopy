@@ -58,10 +58,14 @@ vi.mock("@/services/ActionService", () => ({
   actionService: { dispatch: (...args: unknown[]) => dispatchMock(...args) },
 }));
 
+let mockIsSelectionActive = false;
+
 vi.mock("@/hooks/useIssueSelection", () => ({
   useIssueSelection: () => ({
     selectedIds: new Set<number>(),
-    isSelectionActive: false,
+    get isSelectionActive() {
+      return mockIsSelectionActive;
+    },
     toggle: vi.fn(),
     toggleRange: vi.fn(),
     selectAll: vi.fn(),
@@ -191,6 +195,7 @@ beforeEach(() => {
   LiveTimeAgoMock.mockClear();
   dispatchMock.mockReset();
   initializeMock.mockClear();
+  mockIsSelectionActive = false;
   mockGitHubConfig = { hasToken: true };
   mockGitHubConfigInitialized = true;
   const filterStore = useGitHubFilterStore.getState();
@@ -811,7 +816,7 @@ describe("GitHubResourceList empty state branching", () => {
     render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Issue #999 not found/)).toBeTruthy();
+      expect(screen.getByText(/No issue #999 in this view/)).toBeTruthy();
     });
     expect(screen.getByRole("button", { name: /clear filters/i })).toBeTruthy();
   });
@@ -1399,7 +1404,7 @@ describe("GitHubResourceList aria-busy placement (#6867)", () => {
       expect(listbox.getAttribute("aria-busy")).toBe("true");
     });
 
-    const refreshButton = screen.getByRole("button", { name: /refresh issues/i });
+    const refreshButton = screen.getByRole("button", { name: /^refresh/i });
     expect(refreshButton.hasAttribute("aria-busy")).toBe(false);
   });
 });
@@ -1586,7 +1591,7 @@ describe("GitHubResourceList number-query chip (#6867)", () => {
     render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Issue #999 not found/)).toBeTruthy();
+      expect(screen.getByText(/No issue #999 in this view/)).toBeTruthy();
     });
     // The chip would contradict the empty state — it must not render alongside.
     expect(screen.queryByText("Showing issue #999")).toBeNull();
@@ -1636,9 +1641,7 @@ describe("GitHubResourceList spinner gate (#6867)", () => {
 
       await vi.advanceTimersByTimeAsync(399);
 
-      const refreshIcon = screen
-        .getByRole("button", { name: /refresh issues/i })
-        .querySelector("svg");
+      const refreshIcon = screen.getByRole("button", { name: /^refresh/i }).querySelector("svg");
       expect(refreshIcon?.classList.contains("animate-spin")).toBe(false);
     }
   );
@@ -1657,9 +1660,7 @@ describe("GitHubResourceList spinner gate (#6867)", () => {
 
     await vi.advanceTimersByTimeAsync(450);
 
-    const refreshIcon = screen
-      .getByRole("button", { name: /refresh issues/i })
-      .querySelector("svg");
+    const refreshIcon = screen.getByRole("button", { name: /^refresh/i }).querySelector("svg");
     expect(refreshIcon?.classList.contains("animate-spin")).toBe(true);
   });
 
@@ -1678,9 +1679,7 @@ describe("GitHubResourceList spinner gate (#6867)", () => {
     // Let the fetch settle well within the 400ms gate.
     await vi.advanceTimersByTimeAsync(50);
 
-    const refreshIcon = screen
-      .getByRole("button", { name: /refresh issues/i })
-      .querySelector("svg");
+    const refreshIcon = screen.getByRole("button", { name: /^refresh/i }).querySelector("svg");
     expect(refreshIcon?.classList.contains("animate-spin")).toBe(false);
   });
 
@@ -1707,7 +1706,7 @@ describe("GitHubResourceList spinner gate (#6867)", () => {
     // is cleared before the click.
     await vi.advanceTimersByTimeAsync(500);
 
-    const refreshButton = screen.getByRole("button", { name: /refresh issues/i });
+    const refreshButton = screen.getByRole("button", { name: /^refresh/i });
     act(() => {
       refreshButton.click();
     });
@@ -1746,22 +1745,125 @@ describe("GitHubResourceList spinner gate (#6867)", () => {
 
     // Cross the 400ms gate so the spinner becomes visible.
     await vi.advanceTimersByTimeAsync(450);
-    const refreshIcon = screen
-      .getByRole("button", { name: /refresh issues/i })
-      .querySelector("svg");
+    const refreshIcon = screen.getByRole("button", { name: /^refresh/i }).querySelector("svg");
     expect(refreshIcon?.classList.contains("animate-spin")).toBe(true);
 
     // Resolve immediately — dwell timer kicks in for the remaining 500ms.
     resolveFetch(makeResponse([makeIssue(1)]));
     await vi.advanceTimersByTimeAsync(0);
-    const stillSpinning = screen
-      .getByRole("button", { name: /refresh issues/i })
-      .querySelector("svg");
+    const stillSpinning = screen.getByRole("button", { name: /^refresh/i }).querySelector("svg");
     expect(stillSpinning?.classList.contains("animate-spin")).toBe(true);
 
     // After the full 500ms minimum dwell elapses, the spinner clears.
     await vi.advanceTimersByTimeAsync(550);
-    const finalIcon = screen.getByRole("button", { name: /refresh issues/i }).querySelector("svg");
+    const finalIcon = screen.getByRole("button", { name: /^refresh/i }).querySelector("svg");
     expect(finalIcon?.classList.contains("animate-spin")).toBe(false);
+  });
+});
+
+describe("GitHubResourceList polish (#7202)", () => {
+  it("state filter renders as a radiogroup with aria-checked + roving tabindex", async () => {
+    mockListIssues.mockResolvedValue(makeResponse([makeIssue(1)]));
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    const group = await screen.findByRole("radiogroup", { name: /filter by state/i });
+    const radios = group.querySelectorAll<HTMLButtonElement>('[role="radio"]');
+    expect(radios.length).toBe(2); // Open, Closed for issues
+
+    const openRadio = radios[0]!;
+    const closedRadio = radios[1]!;
+    expect(openRadio.getAttribute("aria-checked")).toBe("true");
+    expect(openRadio.tabIndex).toBe(0);
+    expect(closedRadio.getAttribute("aria-checked")).toBe("false");
+    expect(closedRadio.tabIndex).toBe(-1);
+
+    // ArrowRight on the active radio moves checked state and focus to the next.
+    act(() => {
+      openRadio.focus();
+      openRadio.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    });
+
+    await waitFor(() => {
+      const updated = group.querySelectorAll<HTMLButtonElement>('[role="radio"]');
+      expect(updated[1]!.getAttribute("aria-checked")).toBe("true");
+      expect(updated[0]!.getAttribute("aria-checked")).toBe("false");
+    });
+  });
+
+  it("sort popover trigger reflects open state via aria-expanded", async () => {
+    mockListIssues.mockResolvedValue(makeResponse([makeIssue(1)]));
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    const sortButton = await screen.findByRole("button", { name: /^sort/i });
+    expect(sortButton.getAttribute("aria-expanded")).toBe("false");
+
+    act(() => {
+      sortButton.click();
+    });
+
+    await waitFor(() => {
+      expect(sortButton.getAttribute("aria-expanded")).toBe("true");
+    });
+  });
+
+  it("sort trigger drops the accent tint when sort is non-default; only the dot remains", async () => {
+    mockListIssues.mockResolvedValue(makeResponse([makeIssue(1)]));
+    useGitHubFilterStore.getState().setIssueSortOrder("updated");
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    const sortButton = await screen.findByRole("button", { name: /^sort/i });
+    expect(sortButton.classList.contains("text-status-info")).toBe(false);
+
+    // The dot is the sole signal — find the absolutely-positioned status-info span inside the button.
+    const dot = sortButton.querySelector("span.bg-status-info");
+    expect(dot).not.toBeNull();
+  });
+
+  it("listbox aria-multiselectable tracks selection.isSelectionActive", async () => {
+    mockListIssues.mockResolvedValue(makeResponse([makeIssue(1)]));
+    mockIsSelectionActive = false;
+
+    const { unmount } = render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    const listbox = await screen.findByRole("listbox");
+    expect(listbox.getAttribute("aria-multiselectable")).toBe("false");
+
+    unmount();
+
+    mockIsSelectionActive = true;
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+    const activeListbox = await screen.findByRole("listbox");
+    expect(activeListbox.getAttribute("aria-multiselectable")).toBe("true");
+  });
+
+  it("refresh button aria-label flips to 'Refreshing…' once the spinner fires", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+      setCache(cacheKey, {
+        items: [makeIssue(1)],
+        endCursor: null,
+        hasNextPage: false,
+        timestamp: Date.now(),
+      });
+      mockListIssues.mockImplementation(() => new Promise(() => {}));
+
+      render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+      // Before the gate elapses, label is "Refresh issues".
+      await vi.advanceTimersByTimeAsync(50);
+      expect(screen.getByRole("button", { name: /refresh issues/i })).toBeTruthy();
+
+      // After the 400ms gate, the label should reflect the active spinner.
+      await vi.advanceTimersByTimeAsync(450);
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: /refreshing/i })).toBeTruthy();
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
