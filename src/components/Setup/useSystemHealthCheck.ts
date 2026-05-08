@@ -45,15 +45,15 @@ export function useSystemHealthCheck(): SystemHealthCheckState {
     isCheckingRef.current = true;
     setIsChecking(true);
     setError(null);
-    setSpecs([]);
-    setCheckStates({});
 
     try {
       const resolvedSpecs = await systemClient.getHealthCheckSpecs();
       if (!activeRef.current) return;
 
       setSpecs(resolvedSpecs);
-      setCheckStates(Object.fromEntries(resolvedSpecs.map((s) => [s.tool, "loading" as const])));
+      setCheckStates(() =>
+        Object.fromEntries(resolvedSpecs.map((s) => [s.tool, "loading" as const]))
+      );
 
       await runPool(resolvedSpecs, POOL_CONCURRENCY, async (spec) => {
         try {
