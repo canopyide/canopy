@@ -2,6 +2,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { EventTimeline } from "../EventTimeline";
+import type { EventRecord } from "@/store/eventStore";
 
 vi.stubGlobal(
   "ResizeObserver",
@@ -13,7 +14,7 @@ vi.stubGlobal(
 );
 
 describe("EventTimeline accessibility", () => {
-  const mockEvents = [
+  const mockEvents: EventRecord[] = [
     {
       id: "1",
       timestamp: Date.now(),
