@@ -1,7 +1,7 @@
 import { useEffect, useCallback } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { PulseRangeDays, ProjectPulse, ProjectHealthData } from "@shared/types";
-import { usePulseStore, useProjectStore, PULSE_PULSE_MAX_RETRIES } from "@/store";
+import { usePulseStore, useProjectStore, PULSE_MAX_RETRIES } from "@/store";
 import { cn } from "@/lib/utils";
 import {
   AlertCircle,
