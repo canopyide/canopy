@@ -1,5 +1,5 @@
-import { useMemo } from "react";
-import type { CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import type { CSSProperties, KeyboardEvent } from "react";
 import type { HeatCell, PulseRangeDays } from "@shared/types";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
@@ -125,17 +125,142 @@ export function PulseHeatmap({ cells, rangeDays, compact = false }: PulseHeatmap
   const columns = compact ? Math.min(COLUMNS_PER_ROW, totalCells) : COLUMNS_PER_ROW;
   const rowWidth = columns > 0 ? cellSize * columns + gap * (columns - 1) : 0;
 
+  const cellRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  const initialFocusKey = useMemo(() => {
+    for (const row of rows) {
+      for (const cell of row) {
+        if (cell.isMostRecentActive) return cell.date;
+      }
+    }
+    return rows[0]?.[0]?.date ?? null;
+  }, [rows]);
+
+  // Roving tabindex: only the active cell holds tabIndex=0; arrow keys move focus
+  // by mutating refs directly to avoid re-rendering 180 cells per keypress.
+  useEffect(() => {
+    const validKeys = new Set<string>();
+    rows.forEach((row) => row.forEach((c) => validKeys.add(c.date)));
+    cellRefs.current.forEach((_, key) => {
+      if (!validKeys.has(key)) cellRefs.current.delete(key);
+    });
+  }, [rows]);
+
+  const focusCell = useCallback(
+    (rowIndex: number, colIndex: number) => {
+      const row = rows[rowIndex];
+      if (!row) return;
+      const target = row[colIndex];
+      if (!target) return;
+      const node = cellRefs.current.get(target.date);
+      if (!node) return;
+      cellRefs.current.forEach((el) => {
+        el.tabIndex = -1;
+      });
+      node.tabIndex = 0;
+      node.focus();
+    },
+    [rows]
+  );
+
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      const target = event.target as HTMLElement;
+      const date = target.getAttribute("data-cell-date");
+      if (!date) return;
+
+      let rowIndex = -1;
+      let colIndex = -1;
+      for (let r = 0; r < rows.length; r += 1) {
+        const row = rows[r]!;
+        for (let c = 0; c < row.length; c += 1) {
+          if (row[c]!.date === date) {
+            rowIndex = r;
+            colIndex = c;
+            break;
+          }
+        }
+        if (rowIndex !== -1) break;
+      }
+      if (rowIndex === -1) return;
+
+      const lastRow = rows.length - 1;
+      const lastCol = (rows[rowIndex]?.length ?? 0) - 1;
+
+      switch (event.key) {
+        case "ArrowRight": {
+          event.preventDefault();
+          if (colIndex < lastCol) {
+            focusCell(rowIndex, colIndex + 1);
+          } else if (rowIndex < lastRow) {
+            focusCell(rowIndex + 1, 0);
+          }
+          break;
+        }
+        case "ArrowLeft": {
+          event.preventDefault();
+          if (colIndex > 0) {
+            focusCell(rowIndex, colIndex - 1);
+          } else if (rowIndex > 0) {
+            const prevRow = rows[rowIndex - 1]!;
+            focusCell(rowIndex - 1, prevRow.length - 1);
+          }
+          break;
+        }
+        case "ArrowDown": {
+          event.preventDefault();
+          if (rowIndex < lastRow) {
+            const nextRow = rows[rowIndex + 1]!;
+            focusCell(rowIndex + 1, Math.min(colIndex, nextRow.length - 1));
+          }
+          break;
+        }
+        case "ArrowUp": {
+          event.preventDefault();
+          if (rowIndex > 0) {
+            const prevRow = rows[rowIndex - 1]!;
+            focusCell(rowIndex - 1, Math.min(colIndex, prevRow.length - 1));
+          }
+          break;
+        }
+        case "Home": {
+          event.preventDefault();
+          if (event.ctrlKey || event.metaKey) {
+            focusCell(0, 0);
+          } else {
+            focusCell(rowIndex, 0);
+          }
+          break;
+        }
+        case "End": {
+          event.preventDefault();
+          if (event.ctrlKey || event.metaKey) {
+            const last = rows[lastRow];
+            if (last) focusCell(lastRow, last.length - 1);
+          } else {
+            focusCell(rowIndex, lastCol);
+          }
+          break;
+        }
+      }
+    },
+    [rows, focusCell]
+  );
+
   return (
     <div
       className="flex flex-col"
       style={{ gap: `${gap}px`, width: `${rowWidth}px` }}
-      role="group"
+      role="grid"
       aria-label={`Activity over the last ${rangeDays} days`}
+      aria-rowcount={rows.length}
+      aria-colcount={columns}
       data-testid="pulse-heatmap"
+      onKeyDown={handleKeyDown}
     >
       {rows.map((row, rowIndex) => (
         <div
           key={rowIndex}
+          role="row"
           className={cn(
             "flex",
             rowIndex === 0 && rows.length > 1 && row.length < columns && "justify-end"
@@ -155,12 +280,20 @@ export function PulseHeatmap({ cells, rangeDays, compact = false }: PulseHeatmap
                 : {}
             ) as CSSProperties;
 
+            const isInitialFocus = cell.date === initialFocusKey;
+
             return (
               // 0ms: dense scrub-hover surface — skip-delay alone doesn't cover the cold first-cell hover (mirrors GitHub contribution-heatmap)
               <Tooltip key={cell.date} delayDuration={0}>
                 <TooltipTrigger asChild>
                   <button
+                    ref={(el) => {
+                      if (el) cellRefs.current.set(cell.date, el);
+                      else cellRefs.current.delete(cell.date);
+                    }}
                     type="button"
+                    role="gridcell"
+                    data-cell-date={cell.date}
                     style={{
                       width: `${cellSize}px`,
                       height: `${cellSize}px`,
@@ -169,10 +302,10 @@ export function PulseHeatmap({ cells, rangeDays, compact = false }: PulseHeatmap
                     }}
                     className={cn(
                       "rounded-[2px] shrink-0 border-0 p-0 cursor-default transition-[transform,background-color,box-shadow] duration-150",
-                      cell.isMostRecentActive && "ring-1 ring-daintree-accent/45 ring-offset-1"
+                      cell.isMostRecentActive && "ring-1 ring-daintree-text/25 ring-offset-1"
                     )}
                     aria-label={`${formatted}: ${getTooltipText(cell)}`}
-                    tabIndex={0}
+                    tabIndex={isInitialFocus ? 0 : -1}
                   />
                 </TooltipTrigger>
                 <TooltipContent side="top" className="text-xs">
