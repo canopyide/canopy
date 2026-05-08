@@ -238,12 +238,12 @@ export class PortQueueManager {
   }
 
   dispose(): void {
-    for (const [id, safetyTimeout] of this.pausedTerminals) {
-      clearTimeout(safetyTimeout);
+    // Release any held pause tokens before tearing down so the coordinator
+    // doesn't outlive this manager with a stale hold.
+    for (const id of this.pausedTerminals.keys()) {
       console.log(`[PtyHost] Cleared port backpressure monitor for terminal ${id}`);
     }
-    this.pausedTerminals.clear();
-    this.pauseStartTimes.clear();
+    this.resumeAll();
     this.queuedBytes.clear();
     this.totalQueuedBytes = 0;
   }

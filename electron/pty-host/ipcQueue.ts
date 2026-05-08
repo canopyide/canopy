@@ -225,8 +225,11 @@ export class IpcQueueManager {
   }
 
   dispose(): void {
+    // Release any held pause tokens before tearing down so the coordinator
+    // doesn't outlive this manager with a stale hold.
     for (const [id, safetyTimeout] of this.pausedTerminals) {
       clearTimeout(safetyTimeout);
+      this.deps.getPauseCoordinator(id)?.resume("ipc-queue");
       console.log(`[PtyHost] Cleared IPC backpressure monitor for terminal ${id}`);
     }
     this.pausedTerminals.clear();

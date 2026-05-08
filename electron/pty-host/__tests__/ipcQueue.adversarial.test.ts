@@ -210,7 +210,7 @@ describe("IpcQueueManager adversarial", () => {
     expect(startMetric).toBeUndefined();
   });
 
-  it("dispose clears all paused terminals and cancels their safety timeouts", () => {
+  it("dispose releases held pause tokens and cancels their safety timeouts", () => {
     mgr.addBytes("t1", HIGH_BYTES);
     mgr.applyBackpressure("t1", mgr.getUtilization("t1"));
     mgr.addBytes("t2", HIGH_BYTES);
@@ -221,8 +221,14 @@ describe("IpcQueueManager adversarial", () => {
 
     expect(mgr.isPaused("t1")).toBe(false);
     expect(mgr.isPaused("t2")).toBe(false);
+    // Held tokens MUST be released during dispose so the coordinator does not
+    // outlive this manager with a stale hold.
+    expect(coord.resume).toHaveBeenCalledTimes(2);
+    expect(coord.resume).toHaveBeenCalledWith("ipc-queue");
 
+    coord.resume.mockClear();
     vi.advanceTimersByTime(IPC_MAX_PAUSE_MS * 2);
+    // Safety timers must have been cancelled — no further resume calls.
     expect(coord.resume).not.toHaveBeenCalled();
   });
 

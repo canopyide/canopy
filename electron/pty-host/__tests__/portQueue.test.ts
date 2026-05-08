@@ -5,6 +5,7 @@ import {
   IPC_MAX_QUEUE_BYTES,
   IPC_HIGH_WATERMARK_PERCENT,
   IPC_LOW_WATERMARK_PERCENT,
+  IPC_MAX_PAUSE_MS,
 } from "../../services/pty/types.js";
 
 function createMockDeps(): PortQueueDeps {
@@ -151,7 +152,7 @@ describe("PortQueueManager", () => {
 
     expect(mgr.isPaused("t1")).toBe(true);
 
-    vi.advanceTimersByTime(5000);
+    vi.advanceTimersByTime(IPC_MAX_PAUSE_MS);
 
     expect(mgr.isPaused("t1")).toBe(false);
     const coordinator = deps.getPauseCoordinator("t1");
@@ -171,7 +172,7 @@ describe("PortQueueManager", () => {
     mgr.addBytes("t1", highWatermark + 1);
     mgr.applyBackpressure("t1", mgr.getUtilization("t1"));
 
-    vi.advanceTimersByTime(5000);
+    vi.advanceTimersByTime(IPC_MAX_PAUSE_MS);
 
     expect(mgr.getQueuedBytes("t1")).toBe(0);
 
@@ -240,7 +241,7 @@ describe("PortQueueManager", () => {
     expect(coordinator!.resume).toHaveBeenCalledWith("port-queue-7");
   });
 
-  it("dispose clears all terminals", () => {
+  it("dispose clears all terminals and releases held pause tokens", () => {
     const deps = createMockDeps();
     const mgr = new PortQueueManager(deps);
 
@@ -250,12 +251,18 @@ describe("PortQueueManager", () => {
     mgr.applyBackpressure("t1", mgr.getUtilization("t1"));
     mgr.applyBackpressure("t2", mgr.getUtilization("t2"));
 
+    const coordinator = deps.getPauseCoordinator("t1")!;
+    vi.mocked(coordinator.resume).mockClear();
+
     mgr.dispose();
 
     expect(mgr.getQueuedBytes("t1")).toBe(0);
     expect(mgr.getQueuedBytes("t2")).toBe(0);
     expect(mgr.isPaused("t1")).toBe(false);
     expect(mgr.isPaused("t2")).toBe(false);
+    // Held pause tokens MUST be released so the coordinator does not outlive
+    // this manager with a stale hold.
+    expect(coordinator.resume).toHaveBeenCalledWith("port-queue");
   });
 
   it("removeBytes clamps to zero for unknown terminals", () => {
@@ -344,7 +351,7 @@ describe("PortQueueManager", () => {
       const totalBefore = mgr.getTotalQueuedBytes();
       expect(totalBefore).toBe(highWatermark + 1 + 1000);
 
-      vi.advanceTimersByTime(5000);
+      vi.advanceTimersByTime(IPC_MAX_PAUSE_MS);
 
       // Only t1's bytes were dropped on force-resume; t2 untouched.
       expect(mgr.getQueuedBytes("t1")).toBe(0);

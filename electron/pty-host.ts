@@ -242,8 +242,11 @@ const resourceGovernor = new ResourceGovernor({
   getPendingBytesSnapshot: () => {
     // Merge SAB-path, IPC-path, and per-window MessagePort-path queue depths so
     // the reliability gauge captures every in-flight byte the pty-host is holding.
-    // A given terminal id should only appear in one path at a time, so concatenating
-    // the perTerminal arrays is safe.
+    // totalPendingBytes is an exact sum across paths. The perTerminal array may
+    // contain duplicate entries for a terminal that streams to multiple windows
+    // simultaneously (one entry per window's port queue) — that's intentional
+    // for the reliability gauge, which wants per-path attribution rather than a
+    // collapsed per-terminal view.
     const sab = backpressureManager.getPendingBytesSnapshot();
     const ipc = ipcQueueManager.getQueueSnapshot();
     let totalPendingBytes = sab.totalPendingBytes + ipc.totalPendingBytes;
