@@ -21,6 +21,8 @@ const MENU_TO_ACTION_MAP: Record<string, ActionId> = {
   "clone-repo": "project.cloneRepo",
   "close-project": "project.closeActive",
   "duplicate-panel": "terminal.duplicate",
+  "focus-next-terminal": "terminal.focusNext",
+  "focus-previous-terminal": "terminal.focusPrevious",
   "new-terminal": "terminal.new",
   "new-window": "app.newWindow",
   "new-worktree": "worktree.createDialog.open",

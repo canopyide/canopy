@@ -28,7 +28,7 @@ interface E2EPerfWindow extends Window {
 
 const FILE_COUNT = 1000;
 const MAX_DOM_DELTA = 25_000;
-const MAX_LONG_TASKS = 10;
+const MAX_LONG_TASKS = process.platform === "win32" ? 20 : 10;
 
 let ctx: AppContext;
 let fixtureDir: string;

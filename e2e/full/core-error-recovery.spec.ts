@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { launchApp, closeApp, type AppContext } from "../helpers/launch";
-import { createFixtureRepo, createMultiProjectFixture } from "../helpers/fixtures";
+import { createFixtureRepo, createMultiProjectFixture, removePathSync } from "../helpers/fixtures";
 import { openAndOnboardProject } from "../helpers/project";
 import { runTerminalCommand } from "../helpers/terminal";
 import { getGridPanelCount } from "../helpers/panels";
@@ -11,7 +11,6 @@ import {
 } from "../helpers/workflows";
 import { SEL } from "../helpers/selectors";
 import { T_LONG, T_MEDIUM } from "../helpers/timeouts";
-import { rmSync } from "fs";
 import path from "path";
 
 /* ------------------------------------------------------------------ */
@@ -118,7 +117,7 @@ test.describe.serial("Core: Error Recovery — Missing Worktree", () => {
       path.basename(fixtureDir) + "-worktrees",
       "feature-test-branch"
     );
-    rmSync(worktreeDir, { recursive: true, force: true });
+    removePathSync(worktreeDir);
 
     // After commit dfb7f1df2 the watcher-driven cadence relaxed the recursive
     // fallback poll to 5min — and macOS `fs.watch` doesn't reliably fire on
@@ -159,7 +158,7 @@ test.describe.serial("Core: Error Recovery — Missing Project", () => {
     const { window } = ctx;
 
     // Delete the inactive project B directory
-    rmSync(fixture.repoB, { recursive: true, force: true });
+    removePathSync(fixture.repoB);
 
     // Open project switcher — this triggers loadProjects → checkMissingProjects
     await window.locator(SEL.toolbar.projectSwitcherTrigger).click();

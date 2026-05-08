@@ -22,13 +22,35 @@ function git(cmd: string, cwd: string) {
   execSync(`git ${cmd}`, { cwd, stdio: "ignore" });
 }
 
+function waitSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+export function removePathSync(targetPath: string): void {
+  const maxAttempts = process.platform === "win32" ? 12 : 3;
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      rmSync(targetPath, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt === maxAttempts) break;
+      waitSync(150 * attempt);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(`Failed to remove ${targetPath}`);
+}
+
 function makeFixtureCleanup(dir: string): () => void {
   return () => {
     const worktreeSibling = path.join(path.dirname(dir), path.basename(dir) + "-worktrees");
     if (existsSync(worktreeSibling)) {
-      rmSync(worktreeSibling, { recursive: true, force: true });
+      removePathSync(worktreeSibling);
     }
-    rmSync(dir, { recursive: true, force: true });
+    removePathSync(dir);
   };
 }
 
@@ -159,7 +181,7 @@ export function createMultiProjectFixture(
   const cleanup = () => {
     cleanupA();
     cleanupB();
-    rmSync(rootDir, { recursive: true, force: true });
+    removePathSync(rootDir);
   };
 
   return { rootDir, repoA, repoB, cleanup };

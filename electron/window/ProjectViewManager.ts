@@ -27,6 +27,7 @@ import { notifyError } from "../ipc/errorHandlers.js";
 import { logInfo, logWarn } from "../utils/logger.js";
 import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 import { injectSkeletonCss } from "./skeletonCss.js";
+import { CHANNELS } from "../ipc/channels.js";
 import {
   attachRendererConsoleCapture,
   detachRendererConsoleCapture,
@@ -572,8 +573,23 @@ export class ProjectViewManager {
       webPreferences.partition = params.partition;
     };
 
-    const handleBeforeInputEvent = (_event: Electron.Event, input: Electron.Input) => {
+    const handleBeforeInputEvent = (event: Electron.Event, input: Electron.Input) => {
       const isMac = process.platform === "darwin";
+      const isTerminalFocusShortcut =
+        input.type === "keyDown" &&
+        input.key.toLowerCase() === "tab" &&
+        input.control &&
+        !input.meta &&
+        !input.alt;
+      if (isTerminalFocusShortcut) {
+        event.preventDefault();
+        wc.send(
+          CHANNELS.MENU_ACTION,
+          input.shift ? "focus-previous-terminal" : "focus-next-terminal"
+        );
+        return;
+      }
+
       const isCloseShortcut =
         input.type === "keyDown" &&
         input.key.toLowerCase() === "w" &&

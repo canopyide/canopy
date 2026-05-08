@@ -167,10 +167,8 @@ test.describe.serial("Persistence: Theme, Notifications & Keybindings across res
     await searchInput.fill("Open settings");
     await w1.waitForTimeout(T_SETTLE);
 
-    const row = w1
-      .locator(".group")
-      .filter({ has: w1.locator("button", { hasText: "Edit" }) })
-      .first();
+    const row = w1.locator('[class*="group/row"]').filter({ hasText: "Open settings" }).first();
+    await expect(row).toBeVisible({ timeout: T_MEDIUM });
     await row.scrollIntoViewIfNeeded();
     await row.hover();
 
@@ -236,10 +234,8 @@ test.describe.serial("Persistence: Theme, Notifications & Keybindings across res
     await searchInput2.fill("Open settings");
     await w2.waitForTimeout(T_SETTLE);
 
-    const row2 = w2
-      .locator(".group")
-      .filter({ has: w2.locator("button", { hasText: "Edit" }) })
-      .first();
+    const row2 = w2.locator('[class*="group/row"]').filter({ hasText: "Open settings" }).first();
+    await expect(row2).toBeVisible({ timeout: T_MEDIUM });
     await row2.scrollIntoViewIfNeeded();
     await row2.hover();
 

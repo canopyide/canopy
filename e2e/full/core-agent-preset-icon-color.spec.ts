@@ -130,16 +130,24 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
+function powershellQuote(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
 function fakeAgentCommand(agentId: "claude" | "codex"): string {
   const scriptPath =
     process.platform === "win32"
       ? path.join(fakeBinDir, `${agentId}.cmd`)
       : path.join(fakeBinDir, agentId);
-  const quotedPath = shellQuote(scriptPath);
-  return process.platform === "win32" ? `& ${quotedPath}` : quotedPath;
+  return process.platform === "win32" ? `& ${powershellQuote(scriptPath)}` : shellQuote(scriptPath);
 }
 
 function manualFakeAgentCommand(agentId: "claude" | "codex"): string {
+  if (process.platform === "win32") {
+    return `& ${powershellQuote(process.execPath)} ${powershellQuote(
+      path.join(fakeBinDir, agentId)
+    )} --manual`;
+  }
   return `${fakeAgentCommand(agentId)} --manual`;
 }
 

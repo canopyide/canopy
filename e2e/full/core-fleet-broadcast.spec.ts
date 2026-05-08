@@ -48,6 +48,17 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
+function powershellQuote(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+function prependPathCommand(dir: string): string {
+  if (process.platform === "win32") {
+    return `$env:PATH = ${powershellQuote(`${dir}${path.delimiter}`)} + $env:PATH`;
+  }
+  return `export PATH=${shellQuote(dir)}:$PATH`;
+}
+
 async function startClaudeAgentFromTerminal(page: Page): Promise<{ id: string; panel: Locator }> {
   const beforeIds = new Set(await getGridPanelIds(page));
   await openTerminal(page);
@@ -63,7 +74,7 @@ async function startClaudeAgentFromTerminal(page: Page): Promise<{ id: string; p
 
   const panel = getPanelById(page, terminalId);
   await expect(panel).toBeVisible({ timeout: T_LONG });
-  await runTerminalCommand(page, panel, `export PATH=${shellQuote(fakeBinDir)}:$PATH`);
+  await runTerminalCommand(page, panel, prependPathCommand(fakeBinDir));
   await runTerminalCommand(page, panel, "claude");
   await waitForTerminalText(panel, "FAKE_FLEET_AGENT_READY", T_LONG);
   await expect
@@ -113,6 +124,7 @@ function prepareFixture(): void {
   mkdirSync(fakeBinDir, { recursive: true });
 
   const fakeClaude = path.join(fakeBinDir, "claude");
+  const fakeClaudeCmd = path.join(fakeBinDir, "claude.cmd");
   writeFileSync(
     fakeClaude,
     [
@@ -160,6 +172,7 @@ function prepareFixture(): void {
     ].join("\n")
   );
   chmodSync(fakeClaude, 0o755);
+  writeFileSync(fakeClaudeCmd, `@echo off\r\nnode "%~dp0\\claude" %*\r\n`);
 }
 
 test.describe.serial("Core: Fleet terminal broadcast", () => {

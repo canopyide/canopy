@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { launchApp, closeApp, waitForProcessExit, type AppContext } from "../helpers/launch";
-import { createFixtureRepo } from "../helpers/fixtures";
+import { createFixtureRepo, removePathSync } from "../helpers/fixtures";
 import { openAndOnboardProject } from "../helpers/project";
 import { getGridPanelIds, getDockPanelIds } from "../helpers/panels";
 import { SEL } from "../helpers/selectors";
@@ -109,7 +109,7 @@ test.describe.serial("Core: Crash Recovery", () => {
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
     try {
-      rmSync(userDataDir, { recursive: true, force: true });
+      removePathSync(userDataDir);
     } catch {
       // best-effort cleanup
     }
@@ -353,7 +353,7 @@ test.describe.serial("Core: Crash Recovery — Panel Restoration", () => {
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
     try {
-      rmSync(userDataDir, { recursive: true, force: true });
+      removePathSync(userDataDir);
     } catch {
       // best-effort cleanup
     }

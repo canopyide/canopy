@@ -129,6 +129,11 @@ test.describe.serial("Core: IPC Cleanup Verification", () => {
         ).toBeLessThanOrEqual(1);
       }
     } finally {
+      await selectExistingProjectAndRefresh(ctx.app, ctx.window, "ipc-cleanup")
+        .then((page) => {
+          ctx.window = page;
+        })
+        .catch(() => {});
       fixture.cleanup();
     }
   });
