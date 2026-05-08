@@ -4,7 +4,6 @@ import { AppDialog } from "@/components/ui/AppDialog";
 import { AlertTriangle, Trash2 } from "lucide-react";
 import { FolderGit2 } from "@/components/icons";
 import { useWorktreeTerminals } from "@/hooks/useWorktreeTerminals";
-import { usePanelStore } from "@/store";
 import { actionService } from "@/services/ActionService";
 import type { WorktreeState } from "@/types";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
@@ -27,7 +26,6 @@ export function WorktreeDeleteDialog({ isOpen, onClose, worktree }: WorktreeDele
   const deleteInFlightRef = useRef(false);
 
   const { counts: terminalCounts } = useWorktreeTerminals(worktree.id);
-  const bulkCloseByWorktree = usePanelStore((state) => state.bulkCloseByWorktree);
 
   const changes = worktree.worktreeChanges?.changes ?? [];
   const hasTrackedChanges = changes.some((c) => c.status !== "untracked" && c.status !== "ignored");
@@ -79,16 +77,15 @@ export function WorktreeDeleteDialog({ isOpen, onClose, worktree }: WorktreeDele
     const effectiveDeleteBranch = deleteBranch && canDeleteBranch;
 
     try {
-      const result = await actionService.dispatch(
-        "worktree.delete",
-        { worktreeId: worktree.id, force, deleteBranch: effectiveDeleteBranch },
-        { source: "user" }
-      );
+      const payload = {
+        worktreeId: worktree.id,
+        force,
+        deleteBranch: effectiveDeleteBranch,
+        ...(closeTerminals && hasTerminals ? { closeTerminals: true } : {}),
+      };
+      const result = await actionService.dispatch("worktree.delete", payload, { source: "user" });
       if (!result.ok) {
         throw new Error(result.error.message);
-      }
-      if (closeTerminals && hasTerminals) {
-        bulkCloseByWorktree(worktree.id);
       }
       onClose();
     } catch (err) {

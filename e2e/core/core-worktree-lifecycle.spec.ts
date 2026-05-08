@@ -137,11 +137,11 @@ test.describe.serial("Core: Worktree Lifecycle", () => {
     await test.step("Verify main card auto-selects after active worktree deletion", async () => {
       const mainCard = window.locator(SEL.worktree.card(mainBranch));
       await expect
-        .poll(() => mainCard.getAttribute("aria-label"), {
+        .poll(() => mainCard.getAttribute("data-active"), {
           timeout: T_LONG,
           message: "Main card should become selected after deleting active worktree",
         })
-        .toContain("selected");
+        .toBe("true");
     });
   });
 

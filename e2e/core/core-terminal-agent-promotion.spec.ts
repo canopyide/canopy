@@ -319,7 +319,12 @@ test.describe.serial("Core: terminal runtime agent promotion", () => {
       await expectPanelHeaderIcon(panel, "claude");
       await expectPanelHasAgentState(panel);
       await expectWorktreeTracksAgent(window, toolbarPanelId, "claude");
-      expect(await getTerminalText(panel)).not.toContain(".e2e bin");
+      // PowerShell echoes the resolved shim path when launching a .cmd agent on
+      // Windows; the Unix guard still protects against leaking the helper path
+      // into the agent's own visible output.
+      if (process.platform !== "win32") {
+        expect(await getTerminalText(panel)).not.toContain(".e2e bin");
+      }
 
       // Regression guard: shell-command evidence has a 30s expiry. A live
       // agent must not demote to plain terminal when that timer elapses.

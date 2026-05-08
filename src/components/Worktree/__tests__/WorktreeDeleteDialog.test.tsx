@@ -15,8 +15,9 @@ vi.stubGlobal(
   }
 );
 
-const { dispatchMock } = vi.hoisted(() => ({
+const { dispatchMock, terminalCountsMock } = vi.hoisted(() => ({
   dispatchMock: vi.fn().mockResolvedValue({ ok: true }),
+  terminalCountsMock: { total: 0 },
 }));
 
 vi.mock("@/services/ActionService", () => ({
@@ -26,11 +27,7 @@ vi.mock("@/services/ActionService", () => ({
 }));
 
 vi.mock("@/hooks/useWorktreeTerminals", () => ({
-  useWorktreeTerminals: () => ({ counts: { total: 0 } }),
-}));
-
-vi.mock("@/store", () => ({
-  usePanelStore: () => vi.fn(),
+  useWorktreeTerminals: () => ({ counts: terminalCountsMock }),
 }));
 
 vi.mock("@/components/ui/AppDialog", () => {
@@ -108,6 +105,7 @@ describe("WorktreeDeleteDialog — warning messages", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     dispatchMock.mockResolvedValue({ ok: true });
+    terminalCountsMock.total = 0;
   });
 
   afterEach(() => {
@@ -207,6 +205,7 @@ describe("WorktreeDeleteDialog — body copy", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     dispatchMock.mockResolvedValue({ ok: true });
+    terminalCountsMock.total = 0;
   });
 
   afterEach(() => {
@@ -237,6 +236,7 @@ describe("WorktreeDeleteDialog — medium tier (no name confirmation)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     dispatchMock.mockResolvedValue({ ok: true });
+    terminalCountsMock.total = 0;
   });
 
   afterEach(() => {
@@ -273,12 +273,30 @@ describe("WorktreeDeleteDialog — medium tier (no name confirmation)", () => {
       { source: "user" }
     );
   });
+
+  it("asks the delete action to close associated terminals before deleting", async () => {
+    terminalCountsMock.total = 2;
+    const worktree = makeWorktree(makeChanges([]));
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    fireEvent.click(screen.getByTestId("delete-worktree-confirm"));
+
+    await waitFor(() => {
+      expect(dispatchMock).toHaveBeenCalledTimes(1);
+    });
+    expect(dispatchMock).toHaveBeenCalledWith(
+      "worktree.delete",
+      { worktreeId: "wt-1", force: false, deleteBranch: false, closeTerminals: true },
+      { source: "user" }
+    );
+  });
 });
 
 describe("WorktreeDeleteDialog — high tier (name confirmation)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     dispatchMock.mockResolvedValue({ ok: true });
+    terminalCountsMock.total = 0;
   });
 
   afterEach(() => {
@@ -403,6 +421,7 @@ describe("WorktreeDeleteDialog — high tier (name confirmation)", () => {
 describe("WorktreeDeleteDialog — in-flight skeleton", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    terminalCountsMock.total = 0;
   });
 
   afterEach(() => {
@@ -441,6 +460,7 @@ describe("WorktreeDeleteDialog — state reset", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     dispatchMock.mockResolvedValue({ ok: true });
+    terminalCountsMock.total = 0;
   });
 
   afterEach(() => {
@@ -473,6 +493,7 @@ describe("WorktreeDeleteDialog — state reset", () => {
 describe("WorktreeDeleteDialog — error handling", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    terminalCountsMock.total = 0;
   });
 
   afterEach(() => {
@@ -500,6 +521,7 @@ describe("WorktreeDeleteDialog — error handling", () => {
 describe("WorktreeDeleteDialog — reentrancy", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    terminalCountsMock.total = 0;
   });
 
   afterEach(() => {

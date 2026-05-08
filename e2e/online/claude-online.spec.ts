@@ -10,6 +10,7 @@ import { createFixtureRepo } from "../helpers/fixtures";
 import { dismissTelemetryConsent } from "../helpers/project";
 import { getTerminalText } from "../helpers/terminal";
 import { SEL } from "../helpers/selectors";
+import { configureClaudeAuthEnv, hasClaudeApiKey } from "../helpers/claudeAuth";
 
 let ctx: AppContext;
 let fixtureDir: string;
@@ -28,6 +29,8 @@ test.describe("Claude Online Flow", () => {
   });
 
   test("full Claude agent interaction", async () => {
+    test.skip(!hasClaudeApiKey(), "ANTHROPIC_API_KEY is required for Claude online flow");
+
     await test.step("launch app", async () => {
       ctx = await launchApp();
     });
@@ -44,6 +47,7 @@ test.describe("Claude Online Flow", () => {
     // dialog if it appears.
     ctx.window = await refreshActiveWindow(ctx.app, ctx.window);
     await dismissTelemetryConsent(ctx.window);
+    await configureClaudeAuthEnv(ctx.window);
 
     await test.step("launch Claude agent", async () => {
       const { window } = ctx;
