@@ -1,4 +1,5 @@
 import { useEffect, useEffectEvent, useMemo, useRef, useState, useCallback } from "react";
+import { useKeybindingDisplay } from "@/hooks/useKeybinding";
 import { getAgentIds, getAgentConfig, getMergedPresets, type AgentPreset } from "@/config/agents";
 import { useAgentSettingsStore, useCliAvailabilityStore, useAgentPreferencesStore } from "@/store";
 import { cliAvailabilityClient } from "@/clients";
@@ -59,6 +60,7 @@ export function AgentSettings({
 
   useEffect(() => {
     initialize();
+    setLoadTimedOut(false);
     const timer = setTimeout(() => setLoadTimedOut(true), 10_000);
     return () => clearTimeout(timer);
   }, [initialize]);
@@ -108,6 +110,8 @@ export function AgentSettings({
   // Rate limiting refs
   const lastAddTimeRef = useRef(0);
   const lastEditTimeRef = useRef(0);
+
+  const helpShortcut = useKeybindingDisplay("help.launchAgent");
 
   // Preset editing state
   const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
@@ -223,7 +227,7 @@ export function AgentSettings({
   }
 
   if (isLoading && !settings) {
-    if (loadTimedOut) {
+    if (isLoading && loadTimedOut) {
       return (
         <div className="flex flex-col items-center justify-center h-32 gap-3">
           <div className="text-status-error text-sm">Settings load timed out</div>
@@ -314,7 +318,8 @@ export function AgentSettings({
                 ))}
               </select>
               <p className="text-xs text-daintree-text/40 select-text">
-                Agent used for the help dock button (⌘⇧H) and automated workflows ("What's Next?",
+                Agent used for the help dock button
+                {helpShortcut && ` (${helpShortcut})`} and automated workflows ("What's Next?",
                 onboarding, project explanations). Distinct from the Portal "Default New Tab Agent"
                 which controls the browser panel opened by the + button.
               </p>
@@ -431,6 +436,8 @@ export function AgentSettings({
               agentId={activeAgent.id}
               agentName={activeAgent.name}
               usageUrl={activeAgent.usageUrl}
+              availability={cliAvailability[activeAgent.id] ?? "missing"}
+              isCliLoading={isCliLoading}
             />
 
             {/* Installation */}

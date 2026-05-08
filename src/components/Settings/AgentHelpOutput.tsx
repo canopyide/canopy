@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Copy, RefreshCw } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
 import { agentHelpClient } from "@/clients";
-import { cliAvailabilityClient } from "@/clients";
+
 import type { AgentHelpResult } from "@shared/types/ipc/agent";
 import type { AgentAvailabilityState } from "@shared/types";
 import { isAgentInstalled, isAgentMissing } from "../../../shared/utils/agentAvailability";
@@ -15,39 +15,30 @@ interface AgentHelpOutputProps {
   agentId: string;
   agentName: string;
   usageUrl?: string;
+  availability: AgentAvailabilityState;
+  isCliLoading?: boolean;
 }
 
-export function AgentHelpOutput({ agentId, agentName, usageUrl }: AgentHelpOutputProps) {
+export function AgentHelpOutput({
+  agentId,
+  agentName,
+  usageUrl,
+  availability,
+  isCliLoading,
+}: AgentHelpOutputProps) {
   const [helpResult, setHelpResult] = useState<AgentHelpResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isCliAvailable, setIsCliAvailable] = useState<AgentAvailabilityState | null>(null);
   const [isCopied, setIsCopied] = useState(false);
-  const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMountedRef = useRef(true);
-
-  const checkCliAvailability = useCallback(async () => {
-    try {
-      const availability = await cliAvailabilityClient.get();
-      return availability[agentId] ?? "missing";
-    } catch {
-      return "missing";
-    }
-  }, [agentId]);
-
-  useEffect(() => {
-    void checkCliAvailability().then((available) => {
-      if (isMountedRef.current) {
-        setIsCliAvailable(available);
-      }
-    });
-  }, [checkCliAvailability]);
+  const loadGenRef = useRef(0);
 
   useEffect(() => {
     setHelpResult(null);
     setError(null);
     setIsCopied(false);
-  }, [agentId]);
+  }, [agentId, availability]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -61,27 +52,27 @@ export function AgentHelpOutput({ agentId, agentName, usageUrl }: AgentHelpOutpu
 
   const loadHelp = useCallback(
     async (refresh = false) => {
+      const gen = ++loadGenRef.current;
       setIsLoading(true);
       setError(null);
 
-      const available = await checkCliAvailability();
-      setIsCliAvailable(available);
-
-      if (!isAgentInstalled(available)) {
+      if (!isAgentInstalled(availability)) {
         setIsLoading(false);
         return;
       }
 
       try {
         const result = await agentHelpClient.get({ agentId, refresh });
+        if (loadGenRef.current !== gen) return;
         setHelpResult(result);
       } catch (err) {
+        if (loadGenRef.current !== gen) return;
         setError(formatErrorMessage(err, "Failed to load help output"));
       } finally {
-        setIsLoading(false);
+        if (loadGenRef.current === gen) setIsLoading(false);
       }
     },
-    [agentId, checkCliAvailability]
+    [agentId, availability]
   );
 
   const handleCopy = useCallback(async () => {
@@ -163,7 +154,7 @@ export function AgentHelpOutput({ agentId, agentName, usageUrl }: AgentHelpOutpu
             </p>
           </div>
 
-          {isAgentInstalled(isCliAvailable ?? undefined) && (
+          {isAgentInstalled(availability) && (
             <div className="flex items-center gap-2">
               <Button
                 size="sm"
@@ -199,7 +190,7 @@ export function AgentHelpOutput({ agentId, agentName, usageUrl }: AgentHelpOutpu
         </div>
       )}
 
-      {!isLoading && isAgentMissing(isCliAvailable ?? undefined) && isCliAvailable !== null && (
+      {!isLoading && isAgentMissing(availability) && !isCliLoading && (
         <div className="px-4 py-6 rounded-[var(--radius-md)] border border-daintree-border bg-surface text-center space-y-2">
           <p className="text-sm text-daintree-text/60">CLI not found</p>
           <p className="text-xs text-daintree-text/40 select-text">
