@@ -336,6 +336,7 @@ export function FleetArmingRibbon(): ReactElement | null {
       <div
         role="status"
         aria-live="polite"
+        aria-atomic="true"
         className={cn(
           "relative flex items-center gap-3 border-b border-daintree-border px-3 py-2 text-[12px] text-daintree-text",
           // Keep the Fleet surface continuous through confirm-pending so the
@@ -493,7 +494,7 @@ export function FleetArmingRibbon(): ReactElement | null {
                 data-testid="fleet-paste-confirm-send"
                 className="rounded bg-category-amber-subtle border border-category-amber-border px-2 py-0.5 text-category-amber-text transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:pointer-events-none"
               >
-                Send anyway
+                Send broadcast
               </button>
             </div>
           ) : (
