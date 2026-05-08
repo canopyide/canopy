@@ -360,23 +360,14 @@ jobs:
       - name: Run integration tests
         run: npm run test:integration
 
-  # E2E suites run in parallel with build (both gate on check + test).
-  # Windows runs the lightweight core gate here; the full e2e suite is too
-  # large for GitHub's Windows runners and stays on Linux/macOS.
+  # Nightly runs lightweight core plus online e2e. Full and soak e2e suites are
+  # reserved for release gating or targeted manual dispatches.
   e2e-core:
     needs: [check, test]
     uses: ./.github/workflows/e2e-core.yml
     with:
       project: core
       platform: ${{ inputs.platform || 'all' }}
-
-  e2e-full:
-    if: ${{ (inputs.platform || 'all') != 'windows' }}
-    needs: [check, test]
-    uses: ./.github/workflows/e2e-core.yml
-    with:
-      project: full
-      platform: ${{ (inputs.platform || 'all') == 'all' && 'non-windows' || inputs.platform }}
 
   e2e-online:
     needs: [check, test]
@@ -385,15 +376,9 @@ jobs:
       platform: ${{ inputs.platform || 'all' }}
     secrets: inherit
 
-  e2e-nightly:
-    needs: [check, test]
-    uses: ./.github/workflows/e2e-nightly.yml
-    with:
-      platform: ${{ inputs.platform || 'all' }}
-
   publish:
     if: inputs.platform == '' || inputs.platform == 'all'
-    needs: [build, e2e-core, e2e-full, e2e-online, e2e-nightly]
+    needs: [build, e2e-core, e2e-online]
     runs-on: ubuntu-22.04
     timeout-minutes: 15
 
@@ -494,8 +479,7 @@ jobs:
 
   notify:
     if: failure() && github.event_name == 'schedule'
-    needs:
-      [check, test, build, integration-test, e2e-core, e2e-full, e2e-online, e2e-nightly, publish]
+    needs: [check, test, build, integration-test, e2e-core, e2e-online, publish]
     runs-on: ubuntu-22.04
     permissions:
       issues: write

@@ -23,7 +23,7 @@ PWDEBUG=1 npx playwright test --project=core       # Debug mode
 Tests are split into four projects:
 
 - **core** — Lightweight deterministic release gate for essential app/project/terminal/persistence/agent coverage.
-- **full** — Broad deterministic regression suite. This is intentionally heavy and is not run on Windows nightly.
+- **full** — Broad deterministic regression suite. This is intentionally heavy and is not run by nightly.
 - **online** — Tests that interact with real agent CLIs (requires `ANTHROPIC_API_KEY` for Claude).
 - **nightly** — Long-running soak/leak tests.
 
@@ -139,7 +139,7 @@ Components have `data-testid` and `data-worktree-branch` attributes for reliable
 
 ### Release Gating
 
-`release.yml` runs checks, unit tests, and all three e2e gates (`core`, `full`, `online`) before platform packaging starts. Release e2e gates run on non-Windows runners; Windows release confidence comes from the platform build/package smoke plus the lightweight Windows nightly core gate.
+`release.yml` runs checks, unit tests, and all three e2e gates (`core`, `full`, `online`) before platform packaging starts. Release e2e gates run on non-Windows runners; Windows release confidence comes from the platform build/package smoke plus the lightweight Windows nightly core gate. Nightly runs core and online e2e only.
 
 ### Cross-Platform Matrix
 
