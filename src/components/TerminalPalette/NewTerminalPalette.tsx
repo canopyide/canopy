@@ -1,15 +1,14 @@
 import { useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { AppPaletteDialog, PaletteFooterHints } from "@/components/ui/AppPaletteDialog";
-import { PaletteOverflowNotice } from "@/components/ui/PaletteOverflowNotice";
 import { useEffectiveCombo } from "@/hooks/useKeybinding";
+import { useEscapeStack } from "@/hooks";
 import type { LaunchOption } from "./launchOptions";
 
 interface NewTerminalPaletteProps {
   isOpen: boolean;
   query: string;
   results: LaunchOption[];
-  totalResults?: number;
   selectedIndex: number;
   onQueryChange: (q: string) => void;
   onSelectPrevious: () => void;
@@ -17,13 +16,13 @@ interface NewTerminalPaletteProps {
   onSelect: (option: LaunchOption) => void;
   onConfirm: () => void;
   onClose: () => void;
+  onHoverIndex?: (index: number) => void;
 }
 
 export function NewTerminalPalette({
   isOpen,
   query,
   results,
-  totalResults,
   selectedIndex,
   onQueryChange,
   onSelectPrevious,
@@ -31,6 +30,7 @@ export function NewTerminalPalette({
   onSelect,
   onConfirm,
   onClose,
+  onHoverIndex,
 }: NewTerminalPaletteProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -38,9 +38,19 @@ export function NewTerminalPalette({
 
   useEffect(() => {
     if (isOpen) {
-      requestAnimationFrame(() => inputRef.current?.focus());
+      const rafId = requestAnimationFrame(() => inputRef.current?.focus());
+      return () => cancelAnimationFrame(rafId);
     }
+    return undefined;
   }, [isOpen]);
+
+  useEscapeStack(isOpen, () => {
+    if (query !== "") {
+      onQueryChange("");
+    } else {
+      onClose();
+    }
+  });
 
   useEffect(() => {
     if (listRef.current && selectedIndex >= 0) {
@@ -54,22 +64,22 @@ export function NewTerminalPalette({
       switch (e.key) {
         case "ArrowUp":
           e.preventDefault();
+          e.stopPropagation();
           onSelectPrevious();
           break;
         case "ArrowDown":
           e.preventDefault();
+          e.stopPropagation();
           onSelectNext();
           break;
         case "Enter":
           e.preventDefault();
+          e.stopPropagation();
           onConfirm();
-          break;
-        case "Escape":
-          e.preventDefault();
-          onClose();
           break;
         case "Tab":
           e.preventDefault();
+          e.stopPropagation();
           if (e.shiftKey) {
             onSelectPrevious();
           } else {
@@ -78,7 +88,7 @@ export function NewTerminalPalette({
           break;
       }
     },
-    [onSelectPrevious, onSelectNext, onConfirm, onClose]
+    [onSelectPrevious, onSelectNext, onConfirm]
   );
 
   return (
@@ -89,10 +99,9 @@ export function NewTerminalPalette({
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Select terminal type..."
+          placeholder="Search terminal types"
           role="combobox"
           aria-expanded={isOpen}
-          aria-haspopup="listbox"
           aria-label="Select terminal type"
           aria-controls="new-terminal-list"
           aria-activedescendant={
@@ -104,18 +113,22 @@ export function NewTerminalPalette({
       </AppPaletteDialog.Header>
 
       <AppPaletteDialog.Body>
-        <div ref={listRef} id="new-terminal-list" role="listbox" aria-label="Terminal types">
-          {results.length === 0 ? (
-            <div className="px-3 py-8 text-center text-daintree-text/50 text-sm">
-              No terminal types match "{query}"
-            </div>
-          ) : (
-            results.map((option, index) => (
+        {results.length > 0 && (
+          <div role="status" aria-live="polite" className="sr-only">
+            {results.length} terminal types
+          </div>
+        )}
+        {results.length === 0 ? (
+          <AppPaletteDialog.Empty query={query} />
+        ) : (
+          <div ref={listRef} id="new-terminal-list" role="listbox" aria-label="Terminal types">
+            {results.map((option, index) => (
               <button
                 key={option.id}
                 id={`new-terminal-option-${option.id}`}
                 tabIndex={-1}
                 onPointerDown={(e) => e.preventDefault()}
+                onPointerMove={() => onHoverIndex?.(index)}
                 role="option"
                 aria-selected={index === selectedIndex}
                 className={cn(
@@ -132,11 +145,8 @@ export function NewTerminalPalette({
                   <div className="text-xs text-daintree-text/50 truncate">{option.description}</div>
                 </div>
               </button>
-            ))
-          )}
-        </div>
-        {totalResults != null && (
-          <PaletteOverflowNotice shown={results.length} total={totalResults} />
+            ))}
+          </div>
         )}
       </AppPaletteDialog.Body>
 
@@ -145,7 +155,6 @@ export function NewTerminalPalette({
           primaryHint={{ keys: ["↵"], label: "to launch" }}
           hints={[
             { keys: ["↑", "↓"], label: "to navigate" },
-            { keys: ["↵"], label: "to launch" },
             { keys: ["Esc"], label: "to close" },
           ]}
         />

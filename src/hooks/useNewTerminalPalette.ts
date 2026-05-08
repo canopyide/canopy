@@ -67,7 +67,6 @@ export function useNewTerminalPalette({
   const { results, selectedIndex, close, ...paletteRest } = useSearchablePalette<LaunchOption>({
     items: options,
     filterFn: filterLaunchOptions,
-    maxResults: 20,
     paletteId: "new-terminal",
   });
 
