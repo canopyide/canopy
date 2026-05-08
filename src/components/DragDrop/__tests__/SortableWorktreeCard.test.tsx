@@ -29,7 +29,12 @@ describe("SortableWorktreeCard", () => {
   it("isolates the card at idle so the flash overlay's blend mode anchors to the active background", () => {
     mockIsDragging = false;
     const { container } = render(
-      <SortableWorktreeCard worktreeId="wt1" dragStartOrder={["wt1"]}>
+      <SortableWorktreeCard
+        worktreeId="wt1"
+        dragStartOrder={["wt1"]}
+        ariaRowIndex={1}
+        isActive={false}
+      >
         {() => <div data-testid="child" />}
       </SortableWorktreeCard>
     );
@@ -43,7 +48,12 @@ describe("SortableWorktreeCard", () => {
   it("clears isolation during drag so dnd-kit transforms compose with the card root", () => {
     mockIsDragging = true;
     const { container } = render(
-      <SortableWorktreeCard worktreeId="wt1" dragStartOrder={["wt1"]}>
+      <SortableWorktreeCard
+        worktreeId="wt1"
+        dragStartOrder={["wt1"]}
+        ariaRowIndex={1}
+        isActive={false}
+      >
         {() => <div data-testid="child" />}
       </SortableWorktreeCard>
     );
@@ -56,7 +66,12 @@ describe("SortableWorktreeCard", () => {
   it("keeps data-worktree-row and tabIndex on the inner div for roving focus compatibility", () => {
     mockIsDragging = false;
     const { container } = render(
-      <SortableWorktreeCard worktreeId="wt1" dragStartOrder={["wt1"]}>
+      <SortableWorktreeCard
+        worktreeId="wt1"
+        dragStartOrder={["wt1"]}
+        ariaRowIndex={1}
+        isActive={false}
+      >
         {() => <div data-testid="child" />}
       </SortableWorktreeCard>
     );
@@ -70,7 +85,12 @@ describe("SortableWorktreeCard", () => {
   it("does not apply opacity-40 class (opacity now driven by framer-motion animate)", () => {
     mockIsDragging = true;
     const { container } = render(
-      <SortableWorktreeCard worktreeId="wt1" dragStartOrder={["wt1"]}>
+      <SortableWorktreeCard
+        worktreeId="wt1"
+        dragStartOrder={["wt1"]}
+        ariaRowIndex={1}
+        isActive={false}
+      >
         {() => <div data-testid="child" />}
       </SortableWorktreeCard>
     );

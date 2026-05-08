@@ -24,6 +24,7 @@ interface SidebarWorktreeRowProps {
   isSortDisabled: boolean;
   isPinned: boolean;
   rowIndex: number;
+  ariaRowIndex: number;
 }
 
 const SidebarWorktreeRow = React.memo(function SidebarWorktreeRow({
@@ -40,6 +41,7 @@ const SidebarWorktreeRow = React.memo(function SidebarWorktreeRow({
   isSortDisabled,
   isPinned,
   rowIndex,
+  ariaRowIndex,
 }: SidebarWorktreeRowProps) {
   const worktreeSnap = useWorktreeStore((state) => state.worktrees.get(worktreeId));
   const worktree = useMemo(
@@ -109,6 +111,8 @@ const SidebarWorktreeRow = React.memo(function SidebarWorktreeRow({
         worktreeId={worktreeId}
         dragStartOrder={dragStartOrder}
         disabled={isSortDisabled || isPinned}
+        ariaRowIndex={ariaRowIndex}
+        isActive={isActive}
       >
         {({ isDraggingSort, dragHandleListeners, dragHandleActivatorRef }) => (
           <ErrorBoundary
@@ -146,7 +150,13 @@ const SidebarWorktreeRow = React.memo(function SidebarWorktreeRow({
   }
 
   return (
-    <SortableWorktreeCard worktreeId={worktreeId} dragStartOrder={dragStartOrder} disabled={true}>
+    <SortableWorktreeCard
+      worktreeId={worktreeId}
+      dragStartOrder={dragStartOrder}
+      disabled={true}
+      ariaRowIndex={ariaRowIndex}
+      isActive={isActive}
+    >
       {({ isDraggingSort }) => (
         <ErrorBoundary
           variant="component"

@@ -81,7 +81,9 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   const overviewAriaShortcut = useAriaKeyshortcuts("worktree.overview");
   const refreshAriaShortcut = useAriaKeyshortcuts("worktree.refresh");
   const createWorktreeAriaShortcut = useAriaKeyshortcuts("worktree.createDialog.open");
-  const { gridRef, handleGridKeyDown, handleGridFocusCapture } = useWorktreeGridRovingFocus();
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const { gridRef, handleGridKeyDown, handleGridFocusCapture } =
+    useWorktreeGridRovingFocus(scrollContainerRef);
   const { worktrees, isLoading, isReconnecting, error, refresh } = useWorktrees();
   const deferredWorktrees = useDeferredValue(worktrees);
   const [isRefreshing, startRefreshTransition] = useTransition();
@@ -164,7 +166,6 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   const isInTrash = usePanelStore((state) => state.isInTrash);
   const worktreeIds = useWorktreeIds();
 
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const scrollContentRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -573,7 +574,21 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   const hasQuery = query.trim().length > 0;
   const isSortDisabled = isGroupedByType || hasQuery;
 
-  const renderWorktreeCard = (worktree: WorktreeState) => (
+  // 1-based aria-rowindex slots for the pinned rows.
+  const mainRowIndex = mainMatchesQuery ? 1 : 0;
+  const integrationRowIndex = integrationMatchesQuery ? mainRowIndex + 1 : mainRowIndex;
+  // First slot available to the scrollable section (1-based).
+  const firstScrollableRowIndex = integrationRowIndex + 1;
+
+  // Total rows in the grid — pinned rows + group header rows + data rows.
+  // Group header rows count toward aria-rowcount because they carry role="row".
+  const ariaRowCount =
+    integrationRowIndex +
+    (groupedSections
+      ? groupedSections.reduce((n, s) => n + 1 + s.worktrees.length, 0)
+      : filteredWorktrees.length);
+
+  const renderWorktreeCard = (worktree: WorktreeState, ariaRowIndex: number) => (
     <StaticWorktreeRow
       key={worktree.id}
       worktreeId={worktree.id}
@@ -585,6 +600,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
       availability={availability}
       agentSettings={agentSettings}
       homeDir={homeDir}
+      ariaRowIndex={ariaRowIndex}
     />
   );
 
@@ -729,6 +745,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
         ref={gridRef}
         role="grid"
         aria-label="Worktrees"
+        aria-rowcount={ariaRowCount}
         onKeyDown={handleGridKeyDown}
         onFocusCapture={handleGridFocusCapture}
         className="flex flex-col flex-1 min-h-0"
@@ -751,6 +768,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
               agentSettings={agentSettings}
               homeDir={homeDir}
               aggregateCounts={mainWorktreeAggregateCounts}
+              ariaRowIndex={mainRowIndex}
             />
           </div>
         )}
@@ -761,7 +779,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
             className="shrink-0"
             style={{ contentVisibility: "auto", containIntrinsicSize: "auto 180px" }}
           >
-            {renderWorktreeCard(integrationWorktree)}
+            {renderWorktreeCard(integrationWorktree, integrationRowIndex)}
           </div>
         )}
 
@@ -810,14 +828,33 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                 />
               ) : groupedSections ? (
                 <div className="flex flex-col">
-                  {groupedSections.map((section) => (
-                    <div key={section.type}>
-                      <div className="sticky top-0 z-10 px-4 py-2 text-[10px] font-medium text-daintree-text/50 uppercase tracking-wide bg-daintree-sidebar border-b border-divider">
-                        {section.displayName} ({section.worktrees.length})
-                      </div>
-                      {section.worktrees.map(renderWorktreeCard)}
-                    </div>
-                  ))}
+                  {(() => {
+                    let nextRowIndex = firstScrollableRowIndex;
+                    return groupedSections.map((section) => {
+                      const headerRowIndex = nextRowIndex++;
+                      const sectionWorktreeRows = section.worktrees.map((worktree) =>
+                        renderWorktreeCard(worktree, nextRowIndex++)
+                      );
+                      return (
+                        <div key={section.type} role="rowgroup">
+                          <div
+                            role="row"
+                            aria-rowindex={headerRowIndex}
+                            className="sticky top-0 z-10 bg-daintree-sidebar border-b border-divider"
+                          >
+                            <div
+                              role="rowheader"
+                              aria-colspan={1}
+                              className="px-4 py-2 text-[10px] font-medium text-daintree-text/50 uppercase tracking-wide"
+                            >
+                              {section.displayName} ({section.worktrees.length})
+                            </div>
+                          </div>
+                          {sectionWorktreeRows}
+                        </div>
+                      );
+                    });
+                  })()}
                 </div>
               ) : (
                 <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
@@ -840,6 +877,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                           isSortDisabled={isSortDisabled}
                           isPinned={isPinned}
                           rowIndex={idx}
+                          ariaRowIndex={firstScrollableRowIndex + idx}
                         />
                       );
                     })}

@@ -34,6 +34,8 @@ interface SortableWorktreeCardProps {
   worktreeId: string;
   dragStartOrder: string[];
   disabled?: boolean;
+  ariaRowIndex: number;
+  isActive: boolean;
   children: (props: {
     isDraggingSort: boolean;
     dragHandleListeners: SyntheticListenerMap | undefined;
@@ -48,6 +50,8 @@ function sortableWorktreeCardPropsAreEqual(
   if (
     prev.worktreeId !== next.worktreeId ||
     prev.disabled !== next.disabled ||
+    prev.ariaRowIndex !== next.ariaRowIndex ||
+    prev.isActive !== next.isActive ||
     prev.children !== next.children
   ) {
     return false;
@@ -64,6 +68,8 @@ export const SortableWorktreeCard = React.memo(function SortableWorktreeCard({
   worktreeId,
   dragStartOrder,
   disabled,
+  ariaRowIndex,
+  isActive,
   children,
 }: SortableWorktreeCardProps) {
   const dragData: WorktreeSortDragData = {
@@ -111,6 +117,8 @@ export const SortableWorktreeCard = React.memo(function SortableWorktreeCard({
         style={style}
         role="row"
         aria-roledescription="sortable worktree"
+        aria-rowindex={ariaRowIndex}
+        aria-current={isActive ? "true" : undefined}
         data-worktree-row={worktreeId}
         tabIndex={-1}
       >

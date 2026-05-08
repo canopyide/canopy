@@ -585,7 +585,7 @@ export function WorktreeCard({
           data-worktree-is-main={isMainWorktree ? "true" : undefined}
           data-resource-status={resourceStatusLabel ?? undefined}
           role={variant === "grid" ? "group" : undefined}
-          aria-label={`Worktree: ${worktree.issueTitle ?? branchLabel}${worktree.issueTitle ? ` (${branchLabel})` : ""}${isActive ? " (selected)" : ""}${worktree.isCurrent ? " (current)" : ""}, Status: ${spineState}${hasChanges ? ", has uncommitted changes" : ""}`}
+          aria-label={`Worktree: ${worktree.issueTitle ?? branchLabel}${worktree.issueTitle ? ` (${branchLabel})` : ""}${worktree.isCurrent ? " (current)" : ""}, Status: ${spineState}${hasChanges ? ", has uncommitted changes" : ""}`}
           onClick={onSelect}
           onDoubleClick={handleDoubleClick}
         >
