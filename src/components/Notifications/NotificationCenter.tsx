@@ -770,9 +770,7 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
                   section={section}
                   indexOffset={
                     needsAttentionGroups.length +
-                    chronoSections
-                      .slice(0, sectionIdx)
-                      .reduce((sum, s) => sum + s.groups.length, 0)
+                    chronoSections.slice(0, sectionIdx).reduce((sum, s) => sum + s.groups.length, 0)
                   }
                   focusedIndex={focusedIndex}
                   setRowRef={setRowRef}

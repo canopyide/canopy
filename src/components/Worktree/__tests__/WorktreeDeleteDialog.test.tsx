@@ -447,7 +447,7 @@ describe("WorktreeDeleteDialog — high tier (name confirmation)", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: /force delete/i }));
 
     const button = screen.getByTestId("delete-worktree-confirm") as HTMLButtonElement;
-    expect(button.textContent).toBe("Delete 'abc1234'");
+    expect(button.textContent).toBe("Delete worktree");
     expect(button.disabled).toBe(true);
 
     const input = screen.getByTestId("delete-worktree-confirm-input") as HTMLInputElement;
