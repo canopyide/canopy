@@ -36,6 +36,7 @@ export const AUTHENTICATED_GIT_CONFIG = [...SAFE_GIT_CONFIG] as const;
 
 const UNSAFE_FLAGS = {
   allowUnsafeProtocolOverride: true,
+  allowUnsafeFsMonitor: true,
   allowUnsafeSshCommand: true,
   allowUnsafeGitProxy: true,
   allowUnsafeHooksPath: true,

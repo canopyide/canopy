@@ -118,6 +118,7 @@ describe("createHardenedGit", () => {
     const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(options.unsafe).toEqual({
       allowUnsafeProtocolOverride: true,
+      allowUnsafeFsMonitor: true,
       allowUnsafeSshCommand: true,
       allowUnsafeGitProxy: true,
       allowUnsafeHooksPath: true,
@@ -460,6 +461,7 @@ describe("createAuthenticatedGit", () => {
     const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(options.unsafe).toEqual({
       allowUnsafeProtocolOverride: true,
+      allowUnsafeFsMonitor: true,
       allowUnsafeSshCommand: true,
       allowUnsafeGitProxy: true,
       allowUnsafeHooksPath: true,
@@ -749,6 +751,7 @@ describe("createWslHardenedGit", () => {
     const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(options.unsafe).toEqual({
       allowUnsafeProtocolOverride: true,
+      allowUnsafeFsMonitor: true,
       allowUnsafeSshCommand: true,
       allowUnsafeGitProxy: true,
       allowUnsafeHooksPath: true,
