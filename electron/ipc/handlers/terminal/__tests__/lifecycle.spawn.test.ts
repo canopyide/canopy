@@ -75,7 +75,46 @@ vi.mock("../../../utils.js", () => ({
 
 vi.mock("../../../../shared/config/agentRegistry.js", () => ({
   isRegisteredAgent: vi.fn(() => false),
-  getAssistantSupportedAgentIds: vi.fn(() => ["claude", "codex"]),
+  getAssistantWiredAgentIds: vi.fn(() => ["claude", "codex", "gemini"]),
+  getEffectiveAgentConfig: vi.fn((id: string) => {
+    if (id === "claude") {
+      return {
+        supports: {
+          mcpInjection: "project-config",
+          settingsOverlay: true,
+          permissionBypass: true,
+          trustDialog: true,
+          versionProbe: true,
+          tier: "stable",
+        },
+      };
+    }
+    if (id === "codex") {
+      return {
+        supports: {
+          mcpInjection: "cli-flags",
+          settingsOverlay: false,
+          permissionBypass: true,
+          trustDialog: false,
+          versionProbe: true,
+          tier: "stable",
+        },
+      };
+    }
+    if (id === "gemini") {
+      return {
+        supports: {
+          mcpInjection: "project-config",
+          settingsOverlay: false,
+          permissionBypass: false,
+          trustDialog: false,
+          versionProbe: true,
+          tier: "experimental",
+        },
+      };
+    }
+    return undefined;
+  }),
 }));
 
 const {
@@ -96,6 +135,10 @@ const mockGetCodexLaunchArgs = vi.hoisted(() =>
   vi.fn<(token: string) => string[] | null>(() => null)
 );
 
+const mockGetGeminiLaunchArgs = vi.hoisted(() =>
+  vi.fn<(token: string) => string[] | null>(() => null)
+);
+
 const mockMarkTerminalForToken = vi.hoisted(() =>
   vi.fn<(token: string, terminalId: string) => boolean>(() => true)
 );
@@ -108,6 +151,7 @@ vi.mock("../../../../services/HelpSessionService.js", () => ({
   helpSessionService: {
     validateToken: (token: string) => mockValidateToken(token),
     getCodexLaunchArgs: (token: string) => mockGetCodexLaunchArgs(token),
+    getGeminiLaunchArgs: (token: string) => mockGetGeminiLaunchArgs(token),
     getBypassPermissions: (token: string) => mockGetBypassPermissions(token),
     markTerminalForToken: (token: string, terminalId: string) =>
       mockMarkTerminalForToken(token, terminalId),
@@ -578,6 +622,8 @@ describe("terminal spawn handler - help session detection (#6524)", () => {
     mockCurrentPort.mockReturnValue(null);
     mockGetCodexLaunchArgs.mockReset();
     mockGetCodexLaunchArgs.mockReturnValue(null);
+    mockGetGeminiLaunchArgs.mockReset();
+    mockGetGeminiLaunchArgs.mockReturnValue(null);
     mockGetBypassPermissions.mockReset();
     mockGetBypassPermissions.mockReturnValue(false);
     mockMarkTerminalForToken.mockReset();
@@ -1004,6 +1050,112 @@ describe("terminal spawn handler - help session detection (#6524)", () => {
 
     const spawnArgs = ptyClient.spawn.mock.calls[0][1];
     expect(spawnArgs.command).toBe("codex");
+  });
+
+  it("appends --approval-mode=plan to a Gemini help-session spawn (#7533)", async () => {
+    mockValidateToken.mockImplementation((token) => (token === "help-token" ? "action" : false));
+    mockGetGeminiLaunchArgs.mockImplementation((token) =>
+      token === "help-token" ? ["--approval-mode=plan"] : null
+    );
+
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+    await handler(
+      {} as Electron.IpcMainInvokeEvent,
+      {
+        cols: 80,
+        rows: 24,
+        cwd: tmpDir,
+        command: "gemini",
+        launchAgentId: "gemini",
+        env: { DAINTREE_MCP_TOKEN: "help-token" },
+      } as unknown as Parameters<typeof handler>[1]
+    );
+
+    const spawnArgs = ptyClient.spawn.mock.calls[0][1];
+    expect(spawnArgs.command).toContain("'--approval-mode=plan'");
+    // Gemini Phase 1 does not flow through per-pane MCP injection — that
+    // path is Claude-only.
+    expect(mockPreparePaneConfig).not.toHaveBeenCalled();
+  });
+
+  it("does NOT append --yolo to a Gemini help-session spawn even when bypassPermissions is on (#7533)", async () => {
+    // Gemini's `supports.permissionBypass` is `false` — Phase 1 stays in
+    // plan mode regardless of the user's help-assistant bypass setting.
+    mockValidateToken.mockImplementation((token) => (token === "bypass-token" ? "system" : false));
+    mockGetBypassPermissions.mockImplementation((token) => token === "bypass-token");
+    mockGetGeminiLaunchArgs.mockReturnValue(["--approval-mode=plan"]);
+
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+    await handler(
+      {} as Electron.IpcMainInvokeEvent,
+      {
+        cols: 80,
+        rows: 24,
+        cwd: tmpDir,
+        command: "gemini",
+        launchAgentId: "gemini",
+        env: { DAINTREE_MCP_TOKEN: "bypass-token" },
+      } as unknown as Parameters<typeof handler>[1]
+    );
+
+    const spawnArgs = ptyClient.spawn.mock.calls[0][1];
+    expect(spawnArgs.command).not.toContain("--yolo");
+    expect(spawnArgs.command).toContain("'--approval-mode=plan'");
+  });
+
+  it("strips a smuggled --yolo from a Gemini help-session spawn (#7533)", async () => {
+    // Defense-in-depth: even if a user customFlags entry leaked --yolo
+    // into the command string, the dangerous-strip pass removes it before
+    // the agent runs in plan mode.
+    mockValidateToken.mockImplementation((token) => (token === "help-token" ? "action" : false));
+    mockGetGeminiLaunchArgs.mockReturnValue(["--approval-mode=plan"]);
+
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+    await handler(
+      {} as Electron.IpcMainInvokeEvent,
+      {
+        cols: 80,
+        rows: 24,
+        cwd: tmpDir,
+        command: "gemini --yolo",
+        launchAgentId: "gemini",
+        env: { DAINTREE_MCP_TOKEN: "help-token" },
+      } as unknown as Parameters<typeof handler>[1]
+    );
+
+    const spawnArgs = ptyClient.spawn.mock.calls[0][1];
+    expect(spawnArgs.command).not.toContain("--yolo");
+    expect(spawnArgs.command).toContain("'--approval-mode=plan'");
+  });
+
+  it("does not query Gemini launch args for a non-help Gemini launch (#7533)", async () => {
+    mockValidateToken.mockReturnValue(false);
+
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+    await handler(
+      {} as Electron.IpcMainInvokeEvent,
+      {
+        cols: 80,
+        rows: 24,
+        cwd: tmpDir,
+        command: "gemini",
+        launchAgentId: "gemini",
+      } as unknown as Parameters<typeof handler>[1]
+    );
+
+    expect(mockGetGeminiLaunchArgs).not.toHaveBeenCalled();
   });
 
   it("binds terminalId to the help session before spawn so HelpSessionService can kill it on displacement (#7509)", async () => {

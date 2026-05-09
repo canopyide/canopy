@@ -639,6 +639,24 @@ export function getAssistantSupportedAgentIds(): string[] {
   });
 }
 
+/**
+ * IDs of built-in agents whose assistant wiring is structurally complete at
+ * any tier (`"stable"` or `"experimental"`). Used by `HelpSessionService`'s
+ * provision validator and `lifecycle.ts`'s help-launch detector — both must
+ * accept experimental agents so a help session can spawn under them, even
+ * though the picker (driven by `getAssistantSupportedAgentIds`) keeps them
+ * hidden until promoted.
+ *
+ * Excludes only `supports: false` (structurally ineligible) and
+ * `supports: undefined` (not yet wired).
+ */
+export function getAssistantWiredAgentIds(): string[] {
+  return BUILT_IN_AGENT_IDS.filter((id) => {
+    const supports = AGENT_REGISTRY[id]?.supports;
+    return supports !== false && supports !== undefined;
+  });
+}
+
 export function getAgentDisplayTitle(agentId: string, modelId?: string): string {
   const config = getEffectiveAgentConfig(agentId);
   const baseName = config?.name ?? agentId;

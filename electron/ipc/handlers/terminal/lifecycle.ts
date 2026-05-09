@@ -20,7 +20,10 @@ import type { HandlerDependencies } from "../../types.js";
 import { TerminalSpawnOptionsSchema } from "../../../schemas/ipc.js";
 import { resolveDaintreeMcpTier } from "../../../../shared/types/project.js";
 import { DEFAULT_DANGEROUS_ARGS } from "../../../../shared/types/agentSettings.js";
-import { getAssistantSupportedAgentIds } from "../../../../shared/config/agentRegistry.js";
+import {
+  getAssistantWiredAgentIds,
+  getEffectiveAgentConfig,
+} from "../../../../shared/config/agentRegistry.js";
 
 type ValidatedTerminalSpawnOptions = z.output<typeof TerminalSpawnOptionsSchema>;
 import {
@@ -224,7 +227,7 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
     const helpToken = spawnEnv?.DAINTREE_MCP_TOKEN ?? "";
     const helpTier = helpToken ? helpSessionService.validateToken(helpToken) : false;
     const isAssistantAgent =
-      typeof launchAgentId === "string" && getAssistantSupportedAgentIds().includes(launchAgentId);
+      typeof launchAgentId === "string" && getAssistantWiredAgentIds().includes(launchAgentId);
     const isHelpLaunch = helpTier !== false && isAssistantAgent && safeCommand.length > 0;
 
     // If a help-session token was supplied but is invalid (revoked between
@@ -243,22 +246,34 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
     if (isHelpLaunch && launchAgentId) {
       const dangerous = DEFAULT_DANGEROUS_ARGS[launchAgentId];
       const bypassPermissions = helpSessionService.getBypassPermissions(helpToken);
+      // Honor the agent's `supports.permissionBypass` declaration: only
+      // append the dangerous flag when the agent has opted in. Gemini help
+      // sessions sit at `permissionBypass: false` (Phase 1 stays in plan
+      // mode), so a stored `bypassPermissions: true` from the user's
+      // help-assistant settings must not flip Gemini into `--yolo`.
+      const launchAgentConfig = getEffectiveAgentConfig(launchAgentId);
+      const agentAllowsBypass = launchAgentConfig?.supports
+        ? launchAgentConfig.supports.permissionBypass === true
+        : true;
       if (dangerous) {
         // The session-snapshotted `bypassPermissions` flag is the source of
         // truth for whether the assistant runs in dangerous mode — set per
         // help session at provision time, decoupled from the MCP `tier`.
         // Always strip first (covering bare flag and `--flag=value`
         // lookalikes that could survive a substring-only check). Then append
-        // the canonical flag iff bypass is on. The strip-first pass means
-        // `--dangerously-skip-permissions=false` smuggled via customArgs on
-        // a resume launch never wins over the session's stored preference.
+        // the canonical flag iff bypass is on AND the agent declares it
+        // accepts bypass. The strip-first pass means
+        // `--dangerously-skip-permissions=false` (or `--yolo` smuggled via
+        // customArgs against a Gemini help session) never wins over the
+        // session's stored preference or the agent's `permissionBypass`
+        // opt-out.
         const dangerousEscaped = dangerous.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         const stripPattern = new RegExp(`(^|\\s)${dangerousEscaped}(?:=\\S*)?(?=\\s|$)`, "g");
         safeCommand = safeCommand
           .replace(stripPattern, "$1")
           .replace(/\s{2,}/g, " ")
           .trim();
-        if (bypassPermissions) {
+        if (bypassPermissions && agentAllowsBypass) {
           safeCommand = safeCommand.length > 0 ? `${safeCommand} ${dangerous}` : dangerous;
         }
       }
@@ -272,6 +287,17 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
         const codexArgs = helpSessionService.getCodexLaunchArgs(helpToken);
         if (codexArgs && codexArgs.length > 0) {
           safeCommand = `${safeCommand} ${codexArgs.map(shellQuote).join(" ")}`;
+        }
+      }
+      // Gemini help sessions are pinned to `--approval-mode=plan` (strict
+      // read-only) at spawn time. The flag is a CLI-only knob — it cannot
+      // come from the bundled `.gemini/settings.json`, which only carries
+      // the docs MCP entry and the tool allowlist. Append shell-quoted so
+      // a future args extension carrying spaces stays safe.
+      if (launchAgentId === "gemini") {
+        const geminiArgs = helpSessionService.getGeminiLaunchArgs(helpToken);
+        if (geminiArgs && geminiArgs.length > 0) {
+          safeCommand = `${safeCommand} ${geminiArgs.map(shellQuote).join(" ")}`;
         }
       }
 

@@ -14,6 +14,7 @@ import {
   getAgentPreset,
   setAgentPresets,
   getAssistantSupportedAgentIds,
+  getAssistantWiredAgentIds,
   AGENT_REGISTRY,
   type AgentConfig,
   type AssistantSupports,
@@ -307,17 +308,46 @@ describe("agentRegistry", () => {
 
     it("agents with no supports field are excluded from the stable list", () => {
       const ids = getAssistantSupportedAgentIds();
-      // gemini, goose, cursor, etc. have not been wired yet — they leave
-      // `supports` undefined and must not leak into the dropdown.
-      expect(ids).not.toContain("gemini");
+      // goose, cursor, etc. have not been wired yet — they leave `supports`
+      // undefined and must not leak into the dropdown. Gemini IS wired
+      // (`tier: "experimental"`) but is intentionally excluded from the
+      // stable list — see the experimental-tier exclusion test below and
+      // the dedicated Gemini block.
       expect(ids).not.toContain("goose");
       expect(ids).not.toContain("cursor");
+    });
+
+    it("gemini has structured assistant supports at experimental tier (#7533)", () => {
+      const gemini = getAgentConfig("gemini");
+      expect(gemini?.supports).toMatchObject({
+        mcpInjection: "project-config",
+        settingsOverlay: false,
+        permissionBypass: false,
+        trustDialog: false,
+        versionProbe: true,
+        tier: "experimental",
+      });
+    });
+
+    it("excludes gemini from the stable list — picker stays Claude/Codex only", () => {
+      const ids = getAssistantSupportedAgentIds();
+      expect(ids).not.toContain("gemini");
     });
 
     it("agents marked structurally ineligible are excluded", () => {
       const ids = getAssistantSupportedAgentIds();
       expect(ids).not.toContain("aider");
       expect(ids).not.toContain("interpreter");
+    });
+
+    it("getAssistantWiredAgentIds includes both stable and experimental tiers (#7533)", () => {
+      const wired = getAssistantWiredAgentIds();
+      expect(wired).toEqual(expect.arrayContaining(["claude", "codex", "gemini"]));
+      // structurally ineligible / not wired entries must still be excluded
+      expect(wired).not.toContain("aider");
+      expect(wired).not.toContain("interpreter");
+      expect(wired).not.toContain("goose");
+      expect(wired).not.toContain("cursor");
     });
 
     it("excludes agents whose supports object is at experimental tier", () => {
