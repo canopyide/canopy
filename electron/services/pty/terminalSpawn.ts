@@ -8,7 +8,7 @@ import {
 import { getDefaultShell, getDefaultShellArgs } from "./terminalShell.js";
 import { computePoolEnvHash } from "./ptyPoolEnvHash.js";
 import type { PtySpawnOptions } from "./types.js";
-import type { PtyPool } from "../PtyPool.js";
+import type { PooledPtyDataHandoff, PtyPool } from "../PtyPool.js";
 
 // Agent CLIs that ship as Node binaries and benefit from V8 bytecode
 // caching across launches. Codex is a Rust binary and would silently
@@ -127,6 +127,7 @@ export interface AcquiredTerminalProcess {
    * renderer's data path so the user sees the prompt — see PtyPool.acquireByKey.
    */
   prelude: string;
+  dataHandoff?: PooledPtyDataHandoff;
 }
 
 export function acquirePtyProcess(
@@ -161,6 +162,11 @@ export function acquirePtyProcess(
         resizeError
       );
       try {
+        pooled.dataHandoff.dispose();
+      } catch {
+        // Ignore disposal errors
+      }
+      try {
         pooled.process.kill();
       } catch {
         // Process may already be dead
@@ -185,7 +191,11 @@ export function acquirePtyProcess(
       );
     }
 
-    return { ptyProcess: pooled.process, prelude: pooled.prelude };
+    return {
+      ptyProcess: pooled.process,
+      prelude: pooled.prelude,
+      dataHandoff: pooled.dataHandoff,
+    };
   }
 
   // Pool miss — kick off a background warm for this exact (cwd, envHash) key

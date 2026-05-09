@@ -1,7 +1,18 @@
-import type { Locator, Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 import { SEL } from "./selectors";
+import { T_LONG } from "./timeouts";
 
 const mod = process.platform === "darwin" ? "Meta" : "Control";
+
+const toolbarOverflowLabels: Record<string, string> = {
+  "Open Terminal": "Terminal",
+  "Open Browser": "Browser",
+  "Open settings": "Settings",
+};
+
+function extractExactAriaLabel(selector: string): string | null {
+  return selector.match(/aria-label="([^"]+)"/)?.[1] ?? null;
+}
 
 /**
  * Click a toolbar button, handling the case where it may be hidden
@@ -13,25 +24,35 @@ export async function clickToolbarButton(
   selector: string,
   timeout = 5000
 ): Promise<void> {
-  const button = page.locator(selector);
+  const toolbar = page.getByRole("toolbar", { name: "Main toolbar" });
+  const button = toolbar.locator(selector);
 
-  // Try direct click first — Playwright auto-waits for visibility
-  try {
-    await button.click({ timeout: 3000, noWaitAfter: true });
-    return;
-  } catch {
-    // Button not clickable — might be in overflow menu
+  const buttonCount = await button.count();
+  for (let i = 0; i < buttonCount; i++) {
+    const candidate = button.nth(i);
+    if (!(await candidate.isVisible({ timeout: 250 }).catch(() => false))) {
+      continue;
+    }
+    try {
+      await candidate.click({ timeout: 3000, noWaitAfter: true });
+      return;
+    } catch {
+      // Another toolbar layout pass may have moved the item into overflow.
+    }
   }
 
   // Button might be in the overflow menu — look for and open it
-  const overflowTrigger = page.locator('[aria-label*="more toolbar items"]').first();
+  const overflowTrigger = toolbar.getByRole("button", { name: /more/i }).first();
   if (await overflowTrigger.isVisible({ timeout: 1000 }).catch(() => false)) {
     await overflowTrigger.click();
 
     // Extract the aria-label from the selector to find the menu item
-    const labelMatch = selector.match(/aria-label="([^"]+)"/);
-    if (labelMatch) {
-      const menuItem = page.getByRole("menuitem", { name: labelMatch[1] });
+    const label = extractExactAriaLabel(selector);
+    if (label) {
+      const menuItem = page.getByRole("menuitem", {
+        name: toolbarOverflowLabels[label] ?? label,
+        exact: true,
+      });
       await menuItem.click({ timeout });
       return;
     }
@@ -68,6 +89,17 @@ export async function openSettings(page: Page, timeout = 10000): Promise<void> {
  * otherwise falls back to keyboard shortcut.
  */
 export async function openTerminal(page: Page): Promise<void> {
+  const before = await page.locator(SEL.panel.anyPanel).count();
+  await page.keyboard.press(`${mod}+Alt+t`);
+  try {
+    await expect
+      .poll(() => page.locator(SEL.panel.anyPanel).count(), { timeout: T_LONG })
+      .toBe(before + 1);
+    return;
+  } catch {
+    // Some tests leave focus in surfaces that can swallow shortcuts; click the toolbar path.
+  }
+
   await clickToolbarButton(page, SEL.toolbar.openTerminal);
 }
 

@@ -25,7 +25,7 @@ import {
 import { WriteQueue } from "./WriteQueue.js";
 import { events } from "../events.js";
 import { AgentSpawnedSchema } from "../../schemas/agent.js";
-import type { PtyPool } from "../PtyPool.js";
+import type { PooledPtyDataHandoff, PtyPool } from "../PtyPool.js";
 import { installHeadlessResponder } from "./headlessResponder.js";
 import { handleOscColorQueries } from "./OscResponder.js";
 import { SynchronizedFrameDetector } from "./SynchronizedFrameDetector.js";
@@ -133,6 +133,7 @@ export class TerminalProcess {
   private exitObservers!: TerminalExitObservers;
 
   private _scrollback: number;
+  private ptyDataDisposable: { dispose: () => void } | null = null;
   private headlessResponderDisposable: { dispose: () => void } | null = null;
   private synchronizedFrameDetector: SynchronizedFrameDetector | null = null;
   private sessionSnapshotter!: SessionSnapshotter;
@@ -285,7 +286,8 @@ export class TerminalProcess {
      * live `onData` handler — otherwise the live handler can interleave the
      * first user-typed chunk with the prelude. See PtyPool / acquirePtyProcess.
      */
-    prelude: string = ""
+    prelude: string = "",
+    dataHandoff?: PooledPtyDataHandoff
   ) {
     const { shell, args: spawnArgs } = spawnContext;
     const spawnedAt = Date.now();
@@ -409,7 +411,7 @@ export class TerminalProcess {
       this.replayPrelude(prelude);
     }
 
-    this.setupPtyHandlers(ptyProcess);
+    this.setupPtyHandlers(ptyProcess, dataHandoff);
 
     const ptyPid = ptyProcess.pid;
     if (ptyPid !== undefined && deps.processTreeCache) {
@@ -561,6 +563,15 @@ export class TerminalProcess {
     this.stopActivityMonitor();
     this.identityWatcher.stop();
     this.semanticBufferManager.flush();
+
+    if (this.ptyDataDisposable) {
+      try {
+        this.ptyDataDisposable.dispose();
+      } catch {
+        // Ignore disposal errors
+      }
+      this.ptyDataDisposable = null;
+    }
 
     this.writeQueue.dispose();
     this.processTreeKiller.abort();
@@ -1495,83 +1506,86 @@ export class TerminalProcess {
     this.semanticBufferManager.onData(prelude);
   }
 
-  private setupPtyHandlers(ptyProcess: pty.IPty): void {
+  private handlePtyData(ptyProcess: pty.IPty, data: string): void {
     const terminal = this.terminalInfo;
+    if (terminal.ptyProcess !== ptyProcess) {
+      return;
+    }
 
-    ptyProcess.onData((data) => {
-      if (terminal.ptyProcess !== ptyProcess) {
-        return;
-      }
+    const now = Date.now();
+    // One-shot startup metric: wall-clock time of the first PTY data byte.
+    // Surfaces in `getPublicState()` and the `[AgentStartup]` structured log.
+    if (terminal.firstByteAt === undefined) {
+      terminal.firstByteAt = now;
+    }
+    terminal.lastOutputTime = now;
+    const beforeContentSnapshot = this.isAgentLive
+      ? this.getAgentOutputContentSnapshot()
+      : undefined;
 
-      const now = Date.now();
-      // One-shot startup metric: wall-clock time of the first PTY data byte.
-      // Surfaces in `getPublicState()` and the `[AgentStartup]` structured log.
-      if (terminal.firstByteAt === undefined) {
-        terminal.firstByteAt = now;
-      }
-      terminal.lastOutputTime = now;
-      const beforeContentSnapshot = this.isAgentLive
-        ? this.getAgentOutputContentSnapshot()
-        : undefined;
+    if (this.activityMonitor) {
+      this.activityMonitor.onData(data);
+    }
 
-      if (this.activityMonitor) {
-        this.activityMonitor.onData(data);
-      }
+    // The headless responder answers device-attribute queries (CSI 6n, 5n)
+    // for plain terminals so zsh et al. don't block waiting. When an agent
+    // is live the renderer's xterm.js is the sole responder (installing
+    // both would double-respond and corrupt TUI parsers), so skip.
+    if (!this.isAgentLive && (data.includes("\x1b[6n") || data.includes("\x1b[5n"))) {
+      this.ensureHeadlessResponder();
+    }
 
-      // The headless responder answers device-attribute queries (CSI 6n, 5n)
-      // for plain terminals so zsh et al. don't block waiting. When an agent
-      // is live the renderer's xterm.js is the sole responder (installing
-      // both would double-respond and corrupt TUI parsers), so skip.
-      if (!this.isAgentLive && (data.includes("\x1b[6n") || data.includes("\x1b[5n"))) {
-        this.ensureHeadlessResponder();
-      }
+    // OSC 10/11 color queries are answered whenever the terminal is agent-owned
+    // (spawn-time agent panel OR runtime-promoted plain terminal). The
+    // call-site gate and quick-test heuristic stay here; the responder logic
+    // lives in OscResponder. See OscResponder.ts for the strip-on-success
+    // contract that keeps the renderer's xterm.js from double-responding.
+    let rendererData = data;
+    if (this.shouldHandleOscColorQueries && data.includes("\x1b]1")) {
+      rendererData = handleOscColorQueries(data, (response) => {
+        terminal.ptyProcess.write(response);
+      });
+    }
 
-      // OSC 10/11 color queries are answered whenever the terminal is agent-owned
-      // (spawn-time agent panel OR runtime-promoted plain terminal). The
-      // call-site gate and quick-test heuristic stay here; the responder logic
-      // lives in OscResponder. See OscResponder.ts for the strip-on-success
-      // contract that keeps the renderer's xterm.js from double-responding.
-      let rendererData = data;
-      if (this.shouldHandleOscColorQueries && data.includes("\x1b]1")) {
-        rendererData = handleOscColorQueries(data, (response) => {
-          terminal.ptyProcess.write(response);
-        });
-      }
-
-      if (terminal.headlessTerminal) {
-        terminal.headlessTerminal.write(data, () => {
-          this.noteAgentOutputActivity(beforeContentSnapshot);
-        });
-      } else {
+    if (terminal.headlessTerminal) {
+      terminal.headlessTerminal.write(data, () => {
         this.noteAgentOutputActivity(beforeContentSnapshot);
+      });
+    } else {
+      this.noteAgentOutputActivity(beforeContentSnapshot);
+    }
+    this.sessionSnapshotter.schedule();
+
+    this.emitData(rendererData);
+    this.forensicsBuffer.capture(data);
+    this.semanticBufferManager.onData(data);
+
+    // Output mirror for agent consumers: keep a rolling recent-output
+    // buffer and emit agent:output whenever an agent is live (launched
+    // hint or detection). Plain terminals skip both to save work.
+    if (this.isAgentLive) {
+      terminal.outputBuffer += data;
+      if (terminal.outputBuffer.length > OUTPUT_BUFFER_SIZE) {
+        terminal.outputBuffer = terminal.outputBuffer.slice(-OUTPUT_BUFFER_SIZE);
       }
-      this.sessionSnapshotter.schedule();
 
-      this.emitData(rendererData);
-      this.forensicsBuffer.capture(data);
-      this.semanticBufferManager.onData(data);
-
-      // Output mirror for agent consumers: keep a rolling recent-output
-      // buffer and emit agent:output whenever an agent is live (launched
-      // hint or detection). Plain terminals skip both to save work.
-      if (this.isAgentLive) {
-        terminal.outputBuffer += data;
-        if (terminal.outputBuffer.length > OUTPUT_BUFFER_SIZE) {
-          terminal.outputBuffer = terminal.outputBuffer.slice(-OUTPUT_BUFFER_SIZE);
-        }
-
-        const liveId = getLiveAgentId(terminal);
-        if (liveId) {
-          events.emit("agent:output", {
-            agentId: liveId,
-            data,
-            timestamp: Date.now(),
-            traceId: terminal.traceId,
-            terminalId: this.id,
-          });
-        }
+      const liveId = getLiveAgentId(terminal);
+      if (liveId) {
+        events.emit("agent:output", {
+          agentId: liveId,
+          data,
+          timestamp: Date.now(),
+          traceId: terminal.traceId,
+          terminalId: this.id,
+        });
       }
-    });
+    }
+  }
+
+  private setupPtyHandlers(ptyProcess: pty.IPty, dataHandoff?: PooledPtyDataHandoff): void {
+    const terminal = this.terminalInfo;
+    const onData = (data: string) => this.handlePtyData(ptyProcess, data);
+    this.ptyDataDisposable = dataHandoff ? dataHandoff.takeOver(onData) : ptyProcess.onData(onData);
 
     ptyProcess.onExit(({ exitCode, signal }) => {
       if (terminal.ptyProcess !== ptyProcess) {

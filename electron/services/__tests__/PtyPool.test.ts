@@ -17,6 +17,7 @@ interface FakePtyProcess {
 
 interface FakePtyProcessWithEmit extends FakePtyProcess {
   emitData: (chunk: string) => void;
+  getDataHandlerCount: () => number;
 }
 
 function createFakeProcess(pid: number | "missing" = 100): FakePtyProcessWithEmit {
@@ -38,6 +39,7 @@ function createFakeProcess(pid: number | "missing" = 100): FakePtyProcessWithEmi
     emitData: (chunk: string) => {
       for (const handler of dataHandlers) handler(chunk);
     },
+    getDataHandlerCount: () => dataHandlers.size,
     // Real node-pty kill() triggers onExit asynchronously. Mirror that here so
     // drain tests exercise the onExit→refill cascade against the epoch guard.
     kill: vi.fn(() => {
@@ -367,6 +369,36 @@ describe("PtyPool", () => {
       const acquired = pool.acquireByKey("/repo", "env-empty");
       expect(acquired?.process).toBe(proc);
       expect(acquired?.prelude).toBe("Welcome to zsh\r\nrepo % ");
+      pool.dispose();
+    });
+
+    it("buffers post-acquire output until the live owner takes over the data listener", async () => {
+      const proc = createFakeProcess(1104);
+      const replacement = createFakeProcess(1105);
+      spawnMock.mockReturnValueOnce(proc).mockReturnValueOnce(replacement);
+      const pool = new PtyPool({ poolSize: 1, defaultCwd: "/repo" });
+      await pool.warmPool();
+
+      proc.emitData("repo % ");
+      const acquired = pool.acquireByKey("/repo", "env-empty");
+      expect(acquired?.process).toBe(proc);
+      expect(acquired?.prelude).toBe("repo % ");
+
+      proc.emitData("late prompt");
+      proc.emitData("\r\n");
+      const received: string[] = [];
+      const disposable = acquired?.dataHandoff.takeOver((chunk) => received.push(chunk));
+
+      expect(received).toEqual(["late prompt", "\r\n"]);
+
+      proc.emitData("live chunk");
+      expect(received).toEqual(["late prompt", "\r\n", "live chunk"]);
+
+      disposable?.dispose();
+      expect(proc.getDataHandlerCount()).toBe(0);
+      proc.emitData("ignored");
+      expect(received).toEqual(["late prompt", "\r\n", "live chunk"]);
+
       pool.dispose();
     });
 

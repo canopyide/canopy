@@ -29,6 +29,7 @@ interface PooledPty {
   env: Record<string, string>;
   createdAt: number;
   dataDisposable: IDisposable;
+  dataHandoff?: BufferedPooledPtyDataHandoff;
   /**
    * Bounded buffer of shell-init output (banner, MOTD, first prompt) emitted
    * before this entry was acquired. Replayed on acquire so the consumer's
@@ -54,6 +55,59 @@ export interface AcquiredPty {
   process: pty.IPty;
   /** Bytes the pooled shell emitted before acquire. May be empty. */
   prelude: string;
+  /** Takes ownership of bytes emitted after acquire and before live attach. */
+  dataHandoff: PooledPtyDataHandoff;
+}
+
+export interface PooledPtyDataHandoff {
+  takeOver(handler: (data: string) => void): IDisposable;
+  dispose(): void;
+}
+
+class BufferedPooledPtyDataHandoff implements PooledPtyDataHandoff {
+  private handler: ((data: string) => void) | null = null;
+  private buffered: string[] = [];
+  private isDisposed = false;
+
+  constructor(private readonly dataDisposable: IDisposable) {}
+
+  handle(data: string): void {
+    if (this.isDisposed) return;
+    if (this.handler) {
+      this.handler(data);
+      return;
+    }
+    this.buffered.push(data);
+  }
+
+  takeOver(handler: (data: string) => void): IDisposable {
+    if (this.isDisposed) {
+      return { dispose: () => {} };
+    }
+    if (this.handler) {
+      throw new Error("Pooled PTY data handoff already taken over");
+    }
+
+    this.handler = handler;
+    const buffered = this.buffered;
+    this.buffered = [];
+    for (const chunk of buffered) {
+      if (this.isDisposed) break;
+      handler(chunk);
+    }
+
+    return {
+      dispose: () => this.dispose(),
+    };
+  }
+
+  dispose(): void {
+    if (this.isDisposed) return;
+    this.isDisposed = true;
+    this.buffered = [];
+    this.handler = null;
+    this.dataDisposable.dispose();
+  }
 }
 
 function makePoolKey(cwd: string, envHash: string): string {
@@ -156,6 +210,10 @@ export class PtyPool {
       const dataDisposable = ptyProcess.onData((data) => {
         const entry = entryRef.current;
         if (!entry) return;
+        if (entry.dataHandoff) {
+          entry.dataHandoff.handle(data);
+          return;
+        }
         if (entry.prelude.length >= PRELUDE_BYTE_CAP) return;
         const remaining = PRELUDE_BYTE_CAP - entry.prelude.length;
         entry.prelude += data.length <= remaining ? data : data.slice(0, remaining);
@@ -271,7 +329,8 @@ export class PtyPool {
       return null;
     }
 
-    entry.dataDisposable.dispose();
+    const dataHandoff = new BufferedPooledPtyDataHandoff(entry.dataDisposable);
+    entry.dataHandoff = dataHandoff;
     const prelude = entry.prelude;
 
     if (process.env.DAINTREE_VERBOSE) {
@@ -285,7 +344,7 @@ export class PtyPool {
     // way is fine.
     this.warmForKey(cwd, entry.env, envHash);
 
-    return { process: entry.process, prelude };
+    return { process: entry.process, prelude, dataHandoff };
   }
 
   /**
