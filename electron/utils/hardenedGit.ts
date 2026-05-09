@@ -35,12 +35,50 @@ export const HARDENED_GIT_CONFIG = [
 export const AUTHENTICATED_GIT_CONFIG = [...SAFE_GIT_CONFIG] as const;
 
 const UNSAFE_FLAGS = {
+  allowUnsafeAskPass: true,
+  allowUnsafeCredentialHelper: true,
   allowUnsafeProtocolOverride: true,
   allowUnsafeFsMonitor: true,
+  allowUnsafePager: true,
   allowUnsafeSshCommand: true,
   allowUnsafeGitProxy: true,
   allowUnsafeHooksPath: true,
 } as const;
+
+const BLOCKED_INHERITED_GIT_ENV_KEYS = new Set([
+  "EDITOR",
+  "GIT_ASKPASS",
+  "GIT_CONFIG",
+  "GIT_CONFIG_COUNT",
+  "GIT_CONFIG_GLOBAL",
+  "GIT_CONFIG_SYSTEM",
+  "GIT_EDITOR",
+  "GIT_EXEC_PATH",
+  "GIT_EXTERNAL_DIFF",
+  "GIT_PAGER",
+  "GIT_PROXY_COMMAND",
+  "GIT_SEQUENCE_EDITOR",
+  "GIT_SSH",
+  "GIT_SSH_COMMAND",
+  "GIT_TEMPLATE_DIR",
+  "PAGER",
+  "PREFIX",
+  "SSH_ASKPASS",
+]);
+
+function getSanitizedProcessEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  for (const key of Object.keys(env)) {
+    const normalizedKey = key.toUpperCase();
+    if (
+      BLOCKED_INHERITED_GIT_ENV_KEYS.has(normalizedKey) ||
+      /^GIT_CONFIG_(KEY|VALUE)_\d+$/.test(normalizedKey)
+    ) {
+      delete env[key];
+    }
+  }
+  return env;
+}
 
 export function validateCwd(cwd: unknown): asserts cwd is string {
   if (typeof cwd !== "string" || !cwd.trim()) {
@@ -84,7 +122,7 @@ export function createHardenedGit(
     ...(signal ? { abort: signal } : {}),
     unsafe: UNSAFE_FLAGS,
   }).env({
-    ...process.env,
+    ...getSanitizedProcessEnv(),
     ...getGitLocaleEnv(platform),
     // Clear inherited LC_ALL so the more specific LC_CTYPE / LC_MESSAGES
     // values above actually take effect. POSIX locale resolution gives LC_ALL
@@ -183,7 +221,7 @@ export function createWslHardenedGit(
     ...(signal ? { abort: signal } : {}),
     unsafe: UNSAFE_FLAGS,
   }).env({
-    ...process.env,
+    ...getSanitizedProcessEnv(),
     LC_CTYPE: "C.UTF-8",
     LC_ALL: "",
     LC_MESSAGES: "C",
@@ -221,7 +259,7 @@ export function createAuthenticatedGit(cwd: string, opts: AuthenticatedGitOption
     ...(progress ? { progress } : {}),
     unsafe: UNSAFE_FLAGS,
   }).env({
-    ...process.env,
+    ...getSanitizedProcessEnv(),
     ...getGitLocaleEnv(),
     LC_ALL: "",
     LC_MESSAGES: "C",
@@ -285,7 +323,7 @@ export function createBackgroundFetchGit(cwd: string, opts: BackgroundFetchGitOp
   });
   if (platform !== "win32") {
     return git.env({
-      ...process.env,
+      ...getSanitizedProcessEnv(),
       ...getGitLocaleEnv(platform),
       LC_ALL: "",
       LC_MESSAGES: "C",

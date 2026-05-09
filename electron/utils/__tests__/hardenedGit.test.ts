@@ -117,8 +117,11 @@ describe("createHardenedGit", () => {
 
     const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(options.unsafe).toEqual({
+      allowUnsafeAskPass: true,
+      allowUnsafeCredentialHelper: true,
       allowUnsafeProtocolOverride: true,
       allowUnsafeFsMonitor: true,
+      allowUnsafePager: true,
       allowUnsafeSshCommand: true,
       allowUnsafeGitProxy: true,
       allowUnsafeHooksPath: true,
@@ -220,6 +223,40 @@ describe("createHardenedGit", () => {
       expect(envArg.DAINTREE_TEST_SENTINEL).toBe("sentinel_value");
     } finally {
       delete process.env.DAINTREE_TEST_SENTINEL;
+    }
+  });
+
+  it("strips inherited git execution env before applying hardened overrides", () => {
+    const envKeys = [
+      "EDITOR",
+      "GIT_CONFIG_COUNT",
+      "GIT_CONFIG_KEY_0",
+      "GIT_CONFIG_VALUE_0",
+      "GIT_PAGER",
+      "GIT_SSH",
+      "GIT_SSH_COMMAND",
+      "PAGER",
+      "PREFIX",
+      "SSH_ASKPASS",
+    ];
+    const originals = new Map(envKeys.map((key) => [key, process.env[key]]));
+    for (const key of envKeys) {
+      process.env[key] = "inherited-unsafe-value";
+    }
+    try {
+      createHardenedGit("/test/repo", undefined, "linux");
+
+      const envArg = mockGitInstance.env.mock.calls[0][0];
+      for (const key of envKeys) {
+        expect(envArg[key]).toBeUndefined();
+      }
+      expect(envArg.GIT_ASKPASS).toBe("true");
+      expect(envArg.GIT_TERMINAL_PROMPT).toBe("0");
+    } finally {
+      for (const [key, value] of originals) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
     }
   });
 
@@ -420,10 +457,12 @@ describe("createAuthenticatedGit", () => {
   it("forced env values override conflicting process.env entries", () => {
     const origPrompt = process.env.GIT_TERMINAL_PROMPT;
     const origSsh = process.env.GIT_SSH_COMMAND;
+    const origPager = process.env.GIT_PAGER;
     const origMessages = process.env.LC_MESSAGES;
     const origLanguage = process.env.LANGUAGE;
     process.env.GIT_TERMINAL_PROMPT = "1";
     process.env.GIT_SSH_COMMAND = "ssh -i /custom/key";
+    process.env.GIT_PAGER = "dangerous-pager";
     process.env.LC_MESSAGES = "fr_FR.UTF-8";
     process.env.LANGUAGE = "fr_FR";
     try {
@@ -434,6 +473,7 @@ describe("createAuthenticatedGit", () => {
       expect(envArg.GIT_SSH_COMMAND).toBe(
         "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=15"
       );
+      expect(envArg.GIT_PAGER).toBeUndefined();
       expect(envArg.LC_MESSAGES).toBe("C");
       expect(envArg.LANGUAGE).toBe("");
     } finally {
@@ -441,6 +481,8 @@ describe("createAuthenticatedGit", () => {
       else process.env.GIT_TERMINAL_PROMPT = origPrompt;
       if (origSsh === undefined) delete process.env.GIT_SSH_COMMAND;
       else process.env.GIT_SSH_COMMAND = origSsh;
+      if (origPager === undefined) delete process.env.GIT_PAGER;
+      else process.env.GIT_PAGER = origPager;
       if (origMessages === undefined) delete process.env.LC_MESSAGES;
       else process.env.LC_MESSAGES = origMessages;
       if (origLanguage === undefined) delete process.env.LANGUAGE;
@@ -460,8 +502,11 @@ describe("createAuthenticatedGit", () => {
 
     const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(options.unsafe).toEqual({
+      allowUnsafeAskPass: true,
+      allowUnsafeCredentialHelper: true,
       allowUnsafeProtocolOverride: true,
       allowUnsafeFsMonitor: true,
+      allowUnsafePager: true,
       allowUnsafeSshCommand: true,
       allowUnsafeGitProxy: true,
       allowUnsafeHooksPath: true,
@@ -750,8 +795,11 @@ describe("createWslHardenedGit", () => {
 
     const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(options.unsafe).toEqual({
+      allowUnsafeAskPass: true,
+      allowUnsafeCredentialHelper: true,
       allowUnsafeProtocolOverride: true,
       allowUnsafeFsMonitor: true,
+      allowUnsafePager: true,
       allowUnsafeSshCommand: true,
       allowUnsafeGitProxy: true,
       allowUnsafeHooksPath: true,
