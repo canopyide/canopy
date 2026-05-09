@@ -95,4 +95,15 @@ describe("LogsContent — filtered-empty recovery", () => {
       expect(queryByText("Clear filters")).toBeNull();
     });
   });
+
+  it("does not flag inert filter keys (undefined values) as active", async () => {
+    mockGetAll.mockResolvedValue([makeLog("a", { level: "info" })]);
+    useLogsStore.setState({ filters: { search: undefined, levels: [] } });
+    const { queryByText, findByTestId } = render(<LogsContent />);
+
+    await findByTestId("virtuoso");
+    await waitFor(() => {
+      expect(queryByText("No logs match filters")).toBeNull();
+    });
+  });
 });

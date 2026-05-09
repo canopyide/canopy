@@ -46,6 +46,15 @@ export function LogFilters({
     return () => clearTimeout(timer);
   }, [searchValue, filters.search, onFiltersChange]);
 
+  // External resets (e.g. clearFilters) zero filters.search but cannot reach
+  // this component's local searchValue. Without this sync the debounce above
+  // would resurrect the cleared search 200ms later.
+  useEffect(() => {
+    if (!filters.search && searchValue) {
+      setSearchValue("");
+    }
+  }, [filters.search, searchValue]);
+
   const handleLevelToggle = useCallback(
     (level: LogLevel) => {
       const currentLevels = filters.levels || [];

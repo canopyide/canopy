@@ -200,7 +200,12 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
   const displayEntries = useMemo(() => collapseConsecutiveDuplicates(mainLogs), [mainLogs]);
   const deferredDisplayEntries = useDeferredValue(displayEntries);
 
-  const hasActiveFilters = Object.keys(filters).length > 0;
+  const hasActiveFilters =
+    (filters.levels?.length ?? 0) > 0 ||
+    (filters.sources?.length ?? 0) > 0 ||
+    !!filters.search ||
+    filters.startTime !== undefined ||
+    filters.endTime !== undefined;
 
   const handleAtBottomChange = useCallback(
     (bottom: boolean) => {
