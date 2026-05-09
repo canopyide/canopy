@@ -70,6 +70,7 @@ const RESULT_LABEL: Record<McpAuditResult, string> = {
   error: "Error",
   "confirmation-pending": "Awaiting confirmation",
   unauthorized: "Unauthorized",
+  dedup: "Deduplicated",
 };
 
 const RESULT_DOT_CLASS: Record<McpAuditResult, string> = {
@@ -77,6 +78,7 @@ const RESULT_DOT_CLASS: Record<McpAuditResult, string> = {
   error: "bg-status-danger",
   "confirmation-pending": "bg-status-warning",
   unauthorized: "bg-status-danger",
+  dedup: "bg-status-info",
 };
 
 function formatRelativeTimestamp(ts: number): string {
