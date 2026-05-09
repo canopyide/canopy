@@ -135,6 +135,10 @@ function NotificationCenterEntryImpl({
           "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-daintree-accent/50"
       )}
     >
+      <span
+        aria-hidden="true"
+        className={cn("w-1.5 shrink-0 self-center", isNew && "h-1.5 rounded-full bg-status-info")}
+      />
       <div className={cn("mt-0.5 shrink-0", config.className)}>
         <Icon className="h-3.5 w-3.5" />
       </div>
@@ -230,9 +234,6 @@ function NotificationCenterEntryImpl({
             </span>
           );
         })()}
-        {isNew && (
-          <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-status-info shrink-0" />
-        )}
         {(entry.context?.projectId || entry.context?.eventKind) &&
           (() => {
             const eventKind = entry.context?.eventKind;
