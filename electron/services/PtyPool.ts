@@ -3,7 +3,7 @@ import type { IDisposable } from "node-pty";
 import os from "os";
 import { getDefaultShell, getDefaultShellArgs } from "./pty/terminalShell.js";
 import { filterEnvironment, ensureUtf8Locale } from "./pty/EnvironmentFilter.js";
-import { computePoolEnvHash, POOL_ENV_EMPTY_HASH } from "./pty/ptyPoolEnvHash.js";
+import { POOL_ENV_EMPTY_HASH } from "./pty/ptyPoolEnvHash.js";
 
 export interface PtyPoolConfig {
   poolSize?: number;

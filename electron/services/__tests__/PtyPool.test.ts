@@ -369,7 +369,7 @@ describe("PtyPool", () => {
     });
 
     it("warmForKey is idempotent under concurrent calls for the same key (no stampede)", async () => {
-      let inFlightResolve: (() => void) | null = null;
+      let inFlightResolve!: () => void;
       const inFlightPromise = new Promise<void>((resolve) => {
         inFlightResolve = resolve;
       });
@@ -392,7 +392,7 @@ describe("PtyPool", () => {
       // until the first resolves.
       expect(spawnMock).toHaveBeenCalledTimes(1);
 
-      inFlightResolve?.();
+      inFlightResolve();
       await inFlightPromise;
       pool.dispose();
     });

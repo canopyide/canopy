@@ -32,9 +32,11 @@ interface FakePoolOpts {
 
 function createFakePool(opts: FakePoolOpts): PtyPool {
   return {
-    acquire: opts.acquire ?? vi.fn(() => null),
-    acquireByKey: opts.acquireByKey ?? vi.fn(() => null),
-    warmForKey: opts.warmForKey ?? vi.fn(),
+    acquire: opts.acquire ?? vi.fn<() => unknown>(() => null),
+    acquireByKey: opts.acquireByKey ?? vi.fn<(cwd: string, envHash: string) => unknown>(() => null),
+    warmForKey:
+      opts.warmForKey ??
+      vi.fn<(cwd: string, env: Record<string, string> | undefined, envHash: string) => void>(),
     getDefaultCwd: () => opts.defaultCwd,
   } as unknown as PtyPool;
 }
@@ -52,7 +54,7 @@ describe("acquirePtyProcess pool handling", () => {
 
   it("acquires a pooled PTY when an env-keyed slot is available for the request cwd", () => {
     const pooled = createFakePooledPty();
-    const acquireByKey = vi.fn(() => pooled);
+    const acquireByKey = vi.fn<(cwd: string, envHash: string) => FakePooledPty>(() => pooled);
     const pool = createFakePool({
       defaultCwd: "/repo",
       acquireByKey,
@@ -87,8 +89,9 @@ describe("acquirePtyProcess pool handling", () => {
   });
 
   it("falls back to direct spawn when the pool has no entry for the (cwd, envHash) key", () => {
-    const acquireByKey = vi.fn(() => null);
-    const warmForKey = vi.fn();
+    const acquireByKey = vi.fn<(cwd: string, envHash: string) => null>(() => null);
+    const warmForKey =
+      vi.fn<(cwd: string, env: Record<string, string> | undefined, envHash: string) => void>();
     const pool = createFakePool({
       defaultCwd: "/repo-a",
       acquireByKey,
@@ -119,7 +122,7 @@ describe("acquirePtyProcess pool handling", () => {
   });
 
   it("computes distinct envHash keys for differing options.env, isolating pool slots", () => {
-    const acquireByKey = vi.fn(() => null);
+    const acquireByKey = vi.fn<(cwd: string, envHash: string) => null>(() => null);
     const pool = createFakePool({
       defaultCwd: "/repo",
       acquireByKey,
@@ -153,7 +156,7 @@ describe("acquirePtyProcess pool handling", () => {
   });
 
   it("uses the same envHash for the same options.env shape", () => {
-    const acquireByKey = vi.fn(() => null);
+    const acquireByKey = vi.fn<(cwd: string, envHash: string) => null>(() => null);
     const pool = createFakePool({
       defaultCwd: "/repo",
       acquireByKey,
@@ -169,8 +172,9 @@ describe("acquirePtyProcess pool handling", () => {
   });
 
   it("on miss, passes the same envHash to acquireByKey and warmForKey", () => {
-    const acquireByKey = vi.fn(() => null);
-    const warmForKey = vi.fn();
+    const acquireByKey = vi.fn<(cwd: string, envHash: string) => null>(() => null);
+    const warmForKey =
+      vi.fn<(cwd: string, env: Record<string, string> | undefined, envHash: string) => void>();
     const pool = createFakePool({
       defaultCwd: "/repo",
       acquireByKey,
