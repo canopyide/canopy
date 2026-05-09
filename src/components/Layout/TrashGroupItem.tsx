@@ -8,6 +8,8 @@ import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import { deriveTerminalChrome } from "@/utils/terminalChrome";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useGlobalSecondTicker } from "@/hooks/useGlobalSecondTicker";
+import { isUselessTitle } from "@shared/utils/isUselessTitle";
+import { getEffectiveAgentConfig } from "@shared/config/agentRegistry";
 
 interface TrashGroupItemProps {
   groupRestoreId: string;
@@ -57,7 +59,33 @@ export function TrashGroupItem({
   }, [removePanel, terminals]);
 
   const tabCount = terminals.length;
-  const groupName = `Tab Group (${tabCount} ${tabCount === 1 ? "tab" : "tabs"})`;
+
+  // Only resolve the headline title when the active id still points at a real
+  // terminal in the group — if individual deletes have left the id stale, the
+  // (active) marker won't render either, so falling back to the count-only
+  // label keeps the header and expanded list consistent.
+  const activeEntry = terminals.find(({ terminal }) => terminal.id === groupMetadata.activeTabId);
+
+  const resolvedActiveTitle = (() => {
+    if (!activeEntry) return null;
+    const { terminal } = activeEntry;
+    const observed = terminal.lastObservedTitle;
+    if (observed && !isUselessTitle(observed)) return observed;
+    if (terminal.launchAgentId) {
+      if (terminal.title && !isUselessTitle(terminal.title)) return terminal.title;
+      const agentConfig = getEffectiveAgentConfig(terminal.launchAgentId);
+      return agentConfig?.name ?? terminal.launchAgentId;
+    }
+    if (terminal.title && !isUselessTitle(terminal.title)) return terminal.title;
+    return null;
+  })();
+
+  const fallbackName = `Tab Group (${tabCount} ${tabCount === 1 ? "tab" : "tabs"})`;
+  const groupName = resolvedActiveTitle
+    ? tabCount > 1
+      ? `${resolvedActiveTitle} +${tabCount - 1} more`
+      : resolvedActiveTitle
+    : fallbackName;
 
   return (
     <div className="rounded-[var(--radius-sm)] bg-transparent hover:bg-tint/5 transition-colors">
