@@ -53,6 +53,9 @@ export async function initRendererSentry(): Promise<void> {
       if (!consentState.hasSeenPrompt || consentState.level === "off") return null;
       return breadcrumb;
     },
+    // Match the main-process ring size — renderer breadcrumbs merge into
+    // crash payloads via IPC, but each process keeps its own buffer. See #7575.
+    maxBreadcrumbs: 250,
   });
 
   consentUnsubscribe?.();

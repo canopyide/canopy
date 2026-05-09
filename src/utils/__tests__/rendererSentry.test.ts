@@ -5,6 +5,7 @@ type SentryInit = {
   integrations?: unknown;
   beforeSend?: (event: unknown) => unknown;
   beforeBreadcrumb?: (breadcrumb: unknown) => unknown;
+  maxBreadcrumbs?: number;
 };
 
 const sentryInit = vi.fn<(opts: SentryInit) => void>();
@@ -64,6 +65,16 @@ describe("rendererSentry", () => {
     expect(result).not.toContain("GlobalHandlers");
     expect(result).toContain("BrowserApiErrors");
     expect(result).toContain("Dedupe");
+  });
+
+  // #7575 — the renderer keeps its own breadcrumb ring buffer, so the bump must
+  // be applied here too or renderer breadcrumbs stay capped at the SDK default 100.
+  it("passes maxBreadcrumbs: 250 to Sentry.init", async () => {
+    const mod = await import("../rendererSentry");
+    await mod.initRendererSentry();
+
+    const opts = sentryInit.mock.calls[0]![0];
+    expect(opts.maxBreadcrumbs).toBe(250);
   });
 
   it.each([

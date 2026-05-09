@@ -723,6 +723,9 @@ describe("initializeTelemetry", () => {
     // normalizeMaxBreadth is frozen at the current SDK default to insulate
     // against a future SDK change silently narrowing the breadth limit.
     expect(options.normalizeMaxBreadth).toBe(1000);
+    // maxBreadcrumbs raises the default 100-slot ring so a crash-triggering
+    // breadcrumb isn't rotated out by high-frequency action dispatches. See #7575.
+    expect(options.maxBreadcrumbs).toBe(250);
     process.env.SENTRY_DSN = original;
   });
 
