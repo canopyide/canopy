@@ -89,7 +89,7 @@ describe("helpPanelStore persistence migration", () => {
 
   it("clears a legacy preferredAgentId for an agent without assistant wiring (issue #6612)", async () => {
     const legacyBlob = JSON.stringify({
-      state: { width: 420, preferredAgentId: "gemini" },
+      state: { width: 420, preferredAgentId: "opencode" },
     });
     installLocalStorage({ [STORAGE_KEY]: legacyBlob });
 
@@ -114,7 +114,7 @@ describe("helpPanelStore persistence migration", () => {
   it("clears a v0 preferredAgentId when migrating to v1 if the agent is unsupported", async () => {
     const v0Blob = JSON.stringify({
       version: 0,
-      state: { width: 420, preferredAgentId: "gemini" },
+      state: { width: 420, preferredAgentId: "opencode" },
     });
     installLocalStorage({ [STORAGE_KEY]: v0Blob });
 
@@ -125,7 +125,7 @@ describe("helpPanelStore persistence migration", () => {
 
   it("writes the current version with a cleared preferredAgentId after rehydrating an unsupported v0 agent", async () => {
     const legacyBlob = JSON.stringify({
-      state: { width: 420, preferredAgentId: "gemini" },
+      state: { width: 420, preferredAgentId: "opencode" },
     });
     const backing = installLocalStorage({ [STORAGE_KEY]: legacyBlob });
 

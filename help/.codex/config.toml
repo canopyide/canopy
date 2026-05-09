@@ -1,7 +1,0 @@
-sandbox = "full"
-writable_roots = []
-allowed_commands = ["gh"]
-
-[mcp_servers.daintree-docs]
-url = "https://daintree.org/api/mcp"
-enabled = true

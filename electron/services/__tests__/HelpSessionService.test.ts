@@ -74,6 +74,7 @@ import { HelpSessionService } from "../HelpSessionService.js";
 async function makeBundledHelpFolder(root: string): Promise<string> {
   const helpDir = path.join(root, "help");
   await fs.mkdir(path.join(helpDir, ".claude"), { recursive: true });
+  await fs.mkdir(path.join(helpDir, ".gemini"), { recursive: true });
   await fs.writeFile(
     path.join(helpDir, ".mcp.json"),
     JSON.stringify({
@@ -86,6 +87,15 @@ async function makeBundledHelpFolder(root: string): Promise<string> {
       permissions: {
         allow: ["Read(**)", "WebFetch", "mcp__daintree-docs__*", "Bash(gh issue list*)"],
         deny: ["Write(**)", "Edit(**)", "Bash(**)"],
+      },
+    })
+  );
+  await fs.writeFile(
+    path.join(helpDir, ".gemini", "settings.json"),
+    JSON.stringify({
+      toolsAllowlist: ["read_file", "list_directory", "search_files", "web_search", "shell"],
+      mcpServers: {
+        "daintree-docs": { httpUrl: "https://daintree.org/api/mcp", trust: true },
       },
     })
   );
@@ -1073,6 +1083,103 @@ describe("HelpSessionService", () => {
       );
 
       expect(await expectedTemplateHash(altHelp)).toBe(await expectedTemplateHash(helpFolder));
+    });
+  });
+
+  describe("Gemini", () => {
+    function geminiInput() {
+      return { ...provisionInput(), agentId: "gemini" };
+    }
+
+    it("accepts Gemini as an assistant-supported agent (#7533)", async () => {
+      const result = await service.provisionSession(geminiInput());
+      expect(result).not.toBeNull();
+      if (!result) throw new Error("expected result");
+      expect(service.validateToken(result.token)).toBe("action");
+    });
+
+    it("returns mcpUrl=null for Gemini — Phase 1 is docs-only, no local MCP", async () => {
+      const result = await service.provisionSession(geminiInput());
+      if (!result) throw new Error("expected result");
+      expect(result.mcpUrl).toBeNull();
+    });
+
+    it("does NOT write .mcp.json or .claude/settings.json for a Gemini provision", async () => {
+      const result = await service.provisionSession(geminiInput());
+      if (!result) throw new Error("expected result");
+
+      // The bundled `help/.mcp.json` carries only `daintree-docs` and is
+      // copied via `fs.cp` — Gemini's branch must NOT rewrite it with the
+      // Claude-shaped daintree entry that bakes a literal bearer token.
+      const mcp = JSON.parse(
+        await fs.readFile(path.join(result.sessionPath, ".mcp.json"), "utf-8")
+      );
+      expect(mcp.mcpServers.daintree).toBeUndefined();
+      expect(mcp.mcpServers["daintree-docs"]).toBeDefined();
+
+      // .claude/settings.json arrives from the bundled template (copied) but
+      // must NOT be rewritten with daintree-control allowlist or
+      // bypassPermissions — those are Claude-only concerns.
+      const claudeSettings = JSON.parse(
+        await fs.readFile(path.join(result.sessionPath, ".claude", "settings.json"), "utf-8")
+      );
+      expect(claudeSettings.enableAllProjectMcpServers).toBeUndefined();
+      expect(claudeSettings.permissions.allow).not.toContain("mcp__daintree__*");
+    });
+
+    it("copies the bundled .gemini/settings.json into the session path so Gemini reads daintree-docs from cwd", async () => {
+      const result = await service.provisionSession(geminiInput());
+      if (!result) throw new Error("expected result");
+
+      // Gemini reads `<cwd>/.gemini/settings.json`. The bundled file is the
+      // runtime config — verify it landed.
+      const gemini = JSON.parse(
+        await fs.readFile(path.join(result.sessionPath, ".gemini", "settings.json"), "utf-8")
+      );
+      expect(gemini.mcpServers["daintree-docs"]).toEqual({
+        httpUrl: "https://daintree.org/api/mcp",
+        trust: true,
+      });
+    });
+
+    it("does NOT probe the local MCP server for Gemini — neither at warm-up nor post-provision", async () => {
+      await service.provisionSession(geminiInput());
+      expect(mockProbeMcpServer).not.toHaveBeenCalled();
+      expect(mockProbeMcpSseServer).not.toHaveBeenCalled();
+    });
+
+    it("does NOT call setEnabled / start on the in-process MCP server for Gemini", async () => {
+      // Gemini Phase 1 doesn't depend on the local server, so the MCP
+      // server must not be coerced-enabled or started by a Gemini provision.
+      mockMcpServerService.enabled = false;
+      mockMcpServerService.isRunning = false;
+
+      const result = await service.provisionSession(geminiInput());
+      expect(result).not.toBeNull();
+      expect(mockMcpServerService.setEnabled).not.toHaveBeenCalled();
+      expect(mockMcpServerService.start).not.toHaveBeenCalled();
+    });
+
+    it("getCodexLaunchArgs returns null for a Gemini session (cross-agent leakage defense)", async () => {
+      const result = await service.provisionSession(geminiInput());
+      if (!result) throw new Error("expected result");
+
+      expect(service.getCodexLaunchArgs(result.token)).toBeNull();
+    });
+
+    it("revoking a Gemini session preserves the bundled .gemini/settings.json on disk", async () => {
+      const result = await service.provisionSession(geminiInput());
+      if (!result) throw new Error("expected result");
+
+      await service.revokeSession(result.sessionId);
+
+      // The bundled file isn't a Claude-shaped `.mcp.json` carrying a literal
+      // bearer, so the strip path doesn't apply — the file must remain so
+      // the next launch can reuse the per-project session dir.
+      const gemini = JSON.parse(
+        await fs.readFile(path.join(result.sessionPath, ".gemini", "settings.json"), "utf-8")
+      );
+      expect(gemini.mcpServers["daintree-docs"]).toBeDefined();
     });
   });
 });

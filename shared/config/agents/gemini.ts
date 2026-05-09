@@ -8,6 +8,20 @@ export const config: AgentConfig = {
   color: "#4285F4",
   iconId: "gemini",
   supportsContextInjection: true,
+  // Phase 1 docs-only: Gemini reads `<sessionPath>/.gemini/settings.json` from
+  // cwd (project-config style; the bundled file is the runtime config and is
+  // copied into the session dir by `fs.cp`). It does NOT use a Claude-style
+  // settings overlay, does NOT exercise a permission-bypass CLI flag through
+  // the system tier, and does NOT participate in a trust-dialog handshake —
+  // the assistant only reaches the public `daintree-docs` endpoint.
+  supports: {
+    mcpInjection: "project-config",
+    settingsOverlay: false,
+    permissionBypass: false,
+    trustDialog: false,
+    versionProbe: true,
+    tier: "stable",
+  },
   shortcut: "Cmd/Ctrl+Alt+G",
   tooltip: "quick exploration",
   version: {

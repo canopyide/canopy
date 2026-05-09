@@ -23,15 +23,16 @@ help/
 ├── CLAUDE.md                  # Claude Code system prompt
 ├── GEMINI.md                  # Gemini CLI system prompt
 ├── AGENTS.md                  # Codex CLI system prompt (OpenAI convention)
-├── .mcp.json                  # Shared MCP server config (Claude + Codex)
+├── .mcp.json                  # Claude project-scoped MCP config (rewritten per session by HelpSessionService)
 ├── .claude/settings.json      # Claude permission lockdown
 ├── .gemini/settings.json      # Gemini tool allowlist + MCP config
-├── .codex/config.toml         # Codex sandbox + MCP config
 ├── .gitignore                 # Excludes agent caches, sessions, logs
 ├── docs/
 │   └── issue-guidelines.md    # What issues the project accepts/rejects
 └── README.md                  # This file
 ```
+
+Codex has no bundled config file — codex-cli 0.129.0 doesn't read project-scoped `.codex/config.toml` from cwd. MCP servers are wired into Codex via `-c key=value` flags appended to the spawn command at runtime by `HelpSessionService`.
 
 ## Supported Agents
 
@@ -39,7 +40,7 @@ help/
 | --- | --- | --- | --- | --- |
 | Claude Code | `claude` | `CLAUDE.md` | `.claude/settings.json` + `.mcp.json` | Explicit allow/deny lists |
 | Gemini CLI | `gemini` | `GEMINI.md` | `.gemini/settings.json` | Tool allowlist |
-| Codex CLI | `codex` | `AGENTS.md` | `.codex/config.toml` | Full sandbox, no writable roots |
+| Codex CLI | `codex` | `AGENTS.md` | `-c` CLI flags injected at spawn | Built-in sandbox |
 
 Adding a new agent requires three things:
 
@@ -91,9 +92,10 @@ Claude and Codex block file writes, edits, and arbitrary shell commands at the t
 - MCP configured inline with `"trust": true`
 - Issue creation requires user confirmation via instruction-level guardrails
 
-**Codex** (`.codex/config.toml`):
+**Codex** (spawn-time `-c` flags):
 
-- `sandbox = "full"`, `writable_roots = []`, `allowed_commands = ["gh"]`
+- Codex doesn't read project-scoped TOML from cwd, so `HelpSessionService` injects MCP servers via `-c mcp_servers.<name>.transport=...` flags appended to the spawn argv. The bearer token rides on `DAINTREE_MCP_TOKEN` in the PTY environment via `bearer_token_env_var` — never embedded in argv or written to disk.
+- Sandbox lockdown comes from Codex's built-in defaults plus the help-session system prompt in `AGENTS.md`.
 - Issue creation requires user confirmation via instruction-level guardrails
 
 ## MCP Documentation Server
@@ -114,8 +116,9 @@ All documentation is served exclusively through MCP — there are no bundled fal
 
 **MCP config locations:**
 
-- Claude and Codex read from the shared `.mcp.json` in the workspace root
-- Gemini has MCP configured inline in `.gemini/settings.json`
+- Claude reads from `.mcp.json` in the session-dir workspace root (rewritten on each provision with a freshly minted bearer)
+- Codex receives MCP servers as `-c` CLI flags injected at spawn time by `HelpSessionService` — no project-scoped file is read
+- Gemini has MCP configured inline in `.gemini/settings.json` (the bundled file lands in the session dir via `fs.cp` and Gemini reads it from cwd)
 
 ## How Daintree Launches Help Agents
 

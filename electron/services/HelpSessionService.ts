@@ -320,7 +320,10 @@ export class HelpSessionService {
     const sessionsRoot = this.getSessionsRoot();
     const sessionPath = path.join(sessionsRoot, pathHash);
 
-    if (settings.daintreeControl) {
+    // Gemini is docs-only in Phase 1 (only `daintree-docs` MCP, no local
+    // `daintree` MCP), so it doesn't need the in-process server warm. Claude
+    // and Codex both depend on it when daintreeControl is on.
+    if (settings.daintreeControl && input.agentId !== "gemini") {
       try {
         await this.ensureMcpServerReady();
       } catch (err) {
@@ -378,7 +381,7 @@ export class HelpSessionService {
     await fs.chmod(sessionPath, 0o700).catch(() => {});
 
     const port = await this.getMcpPort(settings.daintreeControl);
-    if (input.agentId !== "codex") {
+    if (input.agentId === "claude") {
       await this.writeMcpConfig(sessionPath, settings, port, token);
       await this.writeClaudeSettings(sessionPath, helpFolder, settings);
     } else {
@@ -396,6 +399,12 @@ export class HelpSessionService {
     // CLI flag (verified against codex-cli 0.129.0). MCP servers are appended
     // to the spawn command in `lifecycle.ts` via the `getCodexLaunchArgs`
     // accessor below; nothing is written to disk for Codex.
+    //
+    // Gemini reads `<sessionPath>/.gemini/settings.json` from cwd directly,
+    // and the bundled `help/.gemini/settings.json` is already copied above
+    // by `fs.cp(helpFolder, sessionPath)`. Phase 1 is docs-only against the
+    // public `daintree-docs` endpoint, so there is no live token or port to
+    // inject — the bundled file is the runtime config as-is.
 
     const codexLaunchArgs =
       input.agentId === "codex"
@@ -427,7 +436,8 @@ export class HelpSessionService {
     this.sessionsByToken.set(token, record);
     this.sessionsById.set(sessionId, record);
 
-    if (settings.daintreeControl && port) {
+    // Gemini Phase 1 is docs-only — no local MCP bearer to probe.
+    if (settings.daintreeControl && port && input.agentId !== "gemini") {
       try {
         if (input.agentId === "codex") {
           // Codex's MCP transport is Streamable HTTP at /mcp; Claude Code
@@ -441,7 +451,7 @@ export class HelpSessionService {
         record.revoked = true;
         this.sessionsByToken.delete(token);
         this.sessionsById.delete(sessionId);
-        if (input.agentId !== "codex") {
+        if (input.agentId === "claude") {
           await this.stripStaleDaintreeMcpEntry(sessionPath);
         }
         const reason = formatErrorMessage(err, "assistant MCP session isn't ready");
@@ -462,6 +472,11 @@ export class HelpSessionService {
     port: number | null
   ): string | null {
     if (!daintreeControl || !port) return null;
+    // Gemini Phase 1 doesn't speak to the local `daintree` MCP server — the
+    // assistant only reaches the public docs endpoint via the bundled
+    // `.gemini/settings.json`. Surface `null` so the renderer doesn't pin a
+    // dead `DAINTREE_MCP_URL` env var to the PTY.
+    if (agentId === "gemini") return null;
     if (agentId === "codex") return `http://127.0.0.1:${port}/mcp`;
     return `http://127.0.0.1:${port}/sse`;
   }
@@ -546,9 +561,10 @@ export class HelpSessionService {
       this.killTerminal(terminalId, "help-session-revoked");
     }
 
-    // Codex sessions write nothing to disk (config is `-c` flags), so the
-    // file-strip dance is Claude-only.
-    if (record.agentId !== "codex") {
+    // Codex writes nothing to disk (config is `-c` flags); Gemini's bundled
+    // `.gemini/settings.json` carries no live bearer (Phase 1 docs-only).
+    // The literal-token strip is a Claude-only `.mcp.json` concern.
+    if (record.agentId === "claude") {
       await this.stripStaleDaintreeMcpEntry(record.sessionPath);
     }
   }
