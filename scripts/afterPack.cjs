@@ -132,6 +132,20 @@ exports.default = async function afterPack(context) {
     console.log(
       "[afterPack] Windows node-pty binaries verified (conpty.node, conpty_console_list.node, conpty/conpty.dll, conpty/OpenConsole.exe)"
     );
+
+    // win-job-object: help-session PTY tree reaping (#7526). Source-only
+    // addon — must be compiled on a Windows runner with VS 2022 Build Tools.
+    const winJobObjectBinary = path.join(
+      unpackedPath,
+      "node_modules/win-job-object/build/Release/win_job_object.node"
+    );
+    if (!fs.existsSync(winJobObjectBinary)) {
+      throw new Error(
+        `[afterPack] CRITICAL: win-job-object native binary not found at ${winJobObjectBinary}. ` +
+          'Help-session crash-safe reaping (#7526) will be disabled. Run "npm run rebuild" on a Windows runner with VS 2022 Build Tools.'
+      );
+    }
+    console.log(`[afterPack] win-job-object verified: ${winJobObjectBinary}`);
   } else {
     // macOS and Linux use pty.node
     const nativeBinaryPath = path.join(nodePtyPath, "build/Release/pty.node");

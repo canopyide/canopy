@@ -248,6 +248,22 @@ export class HelpSessionService {
   }
 
   /**
+   * Reports whether `terminalId` is currently the active help-session PTY
+   * for any project. The PtyEventRouter's `terminal-pid` callback uses this
+   * to filter help-session terminals into the Windows Job Object so the OS
+   * reaps the agent tree on a hard Daintree crash (#7526). Returns false
+   * once the binding is dropped (revoke / displace / unbind) — a late PID
+   * arrival for a torn-down session is treated as a non-help terminal.
+   */
+  isHelpTerminal(terminalId: string): boolean {
+    if (!terminalId) return false;
+    for (const boundId of this.activeHelpTerminalByProjectId.values()) {
+      if (boundId === terminalId) return true;
+    }
+    return false;
+  }
+
+  /**
    * Looks up the renderer WebContents id pinned to a help-session bearer at
    * provision time. The MCP server uses this at handshake to pin each
    * transport session to the window that minted it, so a tool call from the

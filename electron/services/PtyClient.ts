@@ -51,6 +51,8 @@ const logInfo = (msg: string, ctx?: Record<string, unknown>) =>
 const logWarn = (msg: string, ctx?: Record<string, unknown>) =>
   ctx ? logger.warn(msg, ctx) : logger.warn(msg);
 import { getTrashedPidTracker } from "./TrashedPidTracker.js";
+import { helpSessionService } from "./HelpSessionService.js";
+import { helpSessionJobService } from "./HelpSessionJobService.js";
 import { RequestResponseBroker, BrokerError } from "./rpc/index.js";
 import { routeHostEvent, type PtyEventRouterDeps } from "./pty/PtyEventRouter.js";
 import { PtyHealthWatchdog } from "./pty/PtyHealthWatchdog.js";
@@ -296,6 +298,14 @@ export class PtyClient extends EventEmitter {
         onReady: () => this.handleReady(),
         onPong: () => this.healthWatchdog.recordPong(),
         onTerminalRemovedFromTrash: (id) => getTrashedPidTracker().removeTrashed(id),
+        // #7526: filter help-session PTYs into the Windows Job Object so the
+        // OS reaps the agent tree on a hard Daintree crash. No-op on
+        // non-Windows and on non-help terminals.
+        onTerminalPid: (id, pid) => {
+          if (helpSessionService.isHelpTerminal(id)) {
+            helpSessionJobService.attachHelpSessionPid(pid);
+          }
+        },
       },
       logWarn: (message) => console.warn(message),
     };

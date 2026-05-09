@@ -730,6 +730,49 @@ describe("HelpSessionService", () => {
     });
   });
 
+  describe("isHelpTerminal (#7526)", () => {
+    it("returns false for unknown / empty terminal ids", () => {
+      expect(service.isHelpTerminal("not-a-help-term")).toBe(false);
+      expect(service.isHelpTerminal("")).toBe(false);
+    });
+
+    it("returns true once a terminal is bound via markTerminalForToken", async () => {
+      const result = await service.provisionSession(provisionInput());
+      if (!result) throw new Error("expected result");
+      expect(service.isHelpTerminal("term-1")).toBe(false);
+
+      expect(service.markTerminalForToken(result.token, "term-1")).toBe(true);
+      expect(service.isHelpTerminal("term-1")).toBe(true);
+    });
+
+    it("returns false after unbindTerminal", async () => {
+      const result = await service.provisionSession(provisionInput());
+      if (!result) throw new Error("expected result");
+      expect(service.markTerminalForToken(result.token, "term-1")).toBe(true);
+
+      service.unbindTerminal("term-1");
+      expect(service.isHelpTerminal("term-1")).toBe(false);
+    });
+
+    it("returns false after revokeSession", async () => {
+      const result = await service.provisionSession(provisionInput());
+      if (!result) throw new Error("expected result");
+      expect(service.markTerminalForToken(result.token, "term-1")).toBe(true);
+
+      await service.revokeSession(result.sessionId);
+      expect(service.isHelpTerminal("term-1")).toBe(false);
+    });
+
+    it("returns false for the displaced terminal after a same-project re-provision", async () => {
+      const first = await service.provisionSession(provisionInput());
+      if (!first) throw new Error("expected first provision");
+      expect(service.markTerminalForToken(first.token, "term-1")).toBe(true);
+
+      await service.provisionSession(provisionInput());
+      expect(service.isHelpTerminal("term-1")).toBe(false);
+    });
+  });
+
   describe("Codex", () => {
     function codexInput() {
       return { ...provisionInput(), agentId: "codex" };
