@@ -726,6 +726,65 @@ describe("terminal spawn handler - help session detection (#6524)", () => {
     expect(spawnArgs.command).not.toContain("--dangerously-skip-permissions");
   });
 
+  it("strips a lookalike --dangerously-skip-permissions=false from help launches with bypass off", async () => {
+    // Defense-in-depth: a customArgs lookalike like
+    // `--dangerously-skip-permissions=false` could survive a substring-only
+    // check. The strip must use a token-boundary regex that also matches
+    // `--flag=value` forms.
+    mockValidateToken.mockImplementation((token) => (token === "help-token" ? "action" : false));
+    mockGetBypassPermissions.mockImplementation(() => false);
+
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+    await handler(
+      {} as Electron.IpcMainInvokeEvent,
+      {
+        cols: 80,
+        rows: 24,
+        cwd: tmpDir,
+        command: "claude --dangerously-skip-permissions=false --resume abc",
+        launchAgentId: "claude",
+        env: { DAINTREE_MCP_TOKEN: "help-token" },
+      } as unknown as Parameters<typeof handler>[1]
+    );
+
+    const spawnArgs = ptyClient.spawn.mock.calls[0][1];
+    expect(spawnArgs.command).not.toContain("--dangerously-skip-permissions");
+    expect(spawnArgs.command).toContain("--resume abc");
+  });
+
+  it("strips lookalike =false and appends canonical --dangerously-skip-permissions when bypass is on", async () => {
+    // Strip-first then conditionally append guarantees the session's
+    // bypass preference wins over a smuggled `=false` form in customArgs.
+    mockValidateToken.mockImplementation((token) => (token === "bypass-token" ? "action" : false));
+    mockGetBypassPermissions.mockImplementation((token) => token === "bypass-token");
+
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+    await handler(
+      {} as Electron.IpcMainInvokeEvent,
+      {
+        cols: 80,
+        rows: 24,
+        cwd: tmpDir,
+        command: "claude --dangerously-skip-permissions=false --resume abc",
+        launchAgentId: "claude",
+        env: { DAINTREE_MCP_TOKEN: "bypass-token" },
+      } as unknown as Parameters<typeof handler>[1]
+    );
+
+    const spawnArgs = ptyClient.spawn.mock.calls[0][1];
+    // No `=false` lookalike survives.
+    expect(spawnArgs.command).not.toContain("--dangerously-skip-permissions=false");
+    // Canonical flag is present as a standalone token.
+    expect(spawnArgs.command).toMatch(/(^|\s)--dangerously-skip-permissions(\s|$)/);
+    expect(spawnArgs.command).toContain("--resume abc");
+  });
+
   it("refuses to spawn when DAINTREE_MCP_TOKEN is present but invalid for an assistant-supported launch (#7509)", async () => {
     // Models the orphan-backend scenario: the renderer provisioned a session,
     // a sibling provision displaced it, then the renderer's spawn IPC arrived

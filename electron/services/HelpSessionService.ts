@@ -937,8 +937,13 @@ export class HelpSessionService {
     // server interactively on first launch, which would block the assistant.
     merged.enableAllProjectMcpServers = true;
 
+    // Always assign defaultMode explicitly so a baseline change (or a future
+    // bundled template that ships with `defaultMode` set) can never silently
+    // bypass permissions when the user has bypass off.
     if (settings.bypassPermissions) {
       merged.defaultMode = "bypassPermissions";
+    } else {
+      delete merged.defaultMode;
     }
 
     const target = path.join(sessionPath, ".claude", "settings.json");

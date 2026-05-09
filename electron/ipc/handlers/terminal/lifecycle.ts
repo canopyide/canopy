@@ -243,26 +243,24 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
     if (isHelpLaunch && launchAgentId) {
       const dangerous = DEFAULT_DANGEROUS_ARGS[launchAgentId];
       const bypassPermissions = helpSessionService.getBypassPermissions(helpToken);
-      if (bypassPermissions) {
-        if (dangerous && !safeCommand.includes(dangerous)) {
-          safeCommand = `${safeCommand} ${dangerous}`;
-        }
-      } else if (dangerous) {
+      if (dangerous) {
         // The session-snapshotted `bypassPermissions` flag is the source of
         // truth for whether the assistant runs in dangerous mode — set per
         // help session at provision time, decoupled from the MCP `tier`.
-        // Strip the flag if it leaked in via `entry.dangerousEnabled` from
-        // the agent registry, otherwise a session with bypass off would
-        // silently skip permission prompts despite the assistant config
-        // saying otherwise.
-        const stripPattern = new RegExp(
-          `(^|\\s)${dangerous.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}(?=\\s|$)`,
-          "g"
-        );
+        // Always strip first (covering bare flag and `--flag=value`
+        // lookalikes that could survive a substring-only check). Then append
+        // the canonical flag iff bypass is on. The strip-first pass means
+        // `--dangerously-skip-permissions=false` smuggled via customArgs on
+        // a resume launch never wins over the session's stored preference.
+        const dangerousEscaped = dangerous.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const stripPattern = new RegExp(`(^|\\s)${dangerousEscaped}(?:=\\S*)?(?=\\s|$)`, "g");
         safeCommand = safeCommand
           .replace(stripPattern, "$1")
           .replace(/\s{2,}/g, " ")
           .trim();
+        if (bypassPermissions) {
+          safeCommand = safeCommand.length > 0 ? `${safeCommand} ${dangerous}` : dangerous;
+        }
       }
       // Codex doesn't read project-scoped `.codex/config.toml` from cwd —
       // its only override mechanism is the `-c key=value` CLI flag. The
