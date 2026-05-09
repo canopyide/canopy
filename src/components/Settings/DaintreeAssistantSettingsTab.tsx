@@ -269,7 +269,8 @@ export function DaintreeAssistantSettingsTab() {
     setShowRotateConfirm(false);
   }, [isRotating]);
 
-  const apiKeySuffix = mcpStatus?.apiKey ? mcpStatus.apiKey.slice(-4) : "";
+  const apiKeySuffix =
+    mcpStatus?.apiKey && mcpStatus.apiKey.length >= 8 ? mcpStatus.apiKey.slice(-4) : "";
 
   const handleCopyConfig = useCallback(async () => {
     try {
@@ -473,7 +474,9 @@ export function DaintreeAssistantSettingsTab() {
               <button
                 type="button"
                 onClick={() => setShowRotateConfirm(true)}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-md)] text-xs font-medium border border-daintree-border text-daintree-text/70 hover:text-daintree-text hover:bg-overlay-soft transition-colors"
+                disabled={!apiKeySuffix}
+                title={apiKeySuffix ? undefined : "Waiting for the MCP key to load…"}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-md)] text-xs font-medium border border-daintree-border text-daintree-text/70 hover:text-daintree-text hover:bg-overlay-soft transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-daintree-text/70"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
                 Rotate MCP key

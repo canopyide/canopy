@@ -304,6 +304,33 @@ describe("DaintreeAssistantSettingsTab", () => {
     });
   });
 
+  it("disables the Rotate MCP key button when the API key has not loaded yet", async () => {
+    installApi(
+      {},
+      {
+        getStatus: vi.fn().mockResolvedValue({
+          enabled: true,
+          port: 45454,
+          configuredPort: 45454,
+          apiKey: "",
+        }),
+      }
+    );
+
+    const { container } = render(
+      <SettingsValidationProvider>
+        <DaintreeAssistantSettingsTab />
+      </SettingsValidationProvider>
+    );
+    await waitForContent(container, "Rotate MCP key");
+
+    const button = screen.getByRole("button", { name: /rotate mcp key/i }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+
+    fireEvent.click(button);
+    expect(screen.queryByRole("heading", { name: /rotate api key\?/i })).toBeNull();
+  });
+
   it("does not expose the full API key in the rotate dialog body", async () => {
     const { container } = render(
       <SettingsValidationProvider>

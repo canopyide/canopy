@@ -203,6 +203,25 @@ describe("ConfirmDialog — typed-name gate", () => {
     expect(onConfirm).not.toHaveBeenCalled();
   });
 
+  it("does not call onConfirm when the primary button is clicked while unmatched", () => {
+    const onConfirm = vi.fn();
+    render(
+      <ConfirmDialog
+        isOpen={true}
+        onClose={() => {}}
+        title="Delete repo?"
+        confirmLabel="Delete it"
+        onConfirm={onConfirm}
+        variant="destructive"
+        typedNameTarget="my-repo"
+      />
+    );
+
+    const button = findConfirmButton();
+    fireEvent.click(button);
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
   it("submits on Enter when the typed value matches", () => {
     const onConfirm = vi.fn();
     render(

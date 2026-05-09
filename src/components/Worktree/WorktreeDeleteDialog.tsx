@@ -40,7 +40,7 @@ export function WorktreeDeleteDialog({ isOpen, onClose, worktree }: WorktreeDele
   const canDeleteBranch =
     !isProtectedBranch && !isDetachedHead && worktree.isMainWorktree === false;
 
-  const confirmTarget = worktree.branch ?? worktree.name;
+  const confirmTarget = worktree.branch || worktree.name;
   const isHighTier = force && (isProtectedBranch || worktree.isMainWorktree === true);
   const isConfirmMatched = confirmInput === confirmTarget;
   const canSubmit = !isDeleting && (!isHighTier || isConfirmMatched);
