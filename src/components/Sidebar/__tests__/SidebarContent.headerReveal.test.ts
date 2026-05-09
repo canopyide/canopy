@@ -37,15 +37,11 @@ describe("SidebarContent header reveal — issue #6964", () => {
     expect(source).toContain("delay-75");
     expect(source).toContain("group-hover/header:delay-75");
     expect(source).toContain("group-focus-within/header:delay-75");
-    expect(source).not.toMatch(
-      /transition-\[opacity,visibility\][^"]*\bdelay-0\b/
-    );
+    expect(source).not.toMatch(/transition-\[opacity,visibility\][^"]*\bdelay-0\b/);
   });
 
   it("renders focus-visible outlines on all four header icon buttons — issue #7602", () => {
-    const focusVisibleCount = (
-      source.match(/focus-visible:outline-daintree-accent/g) ?? []
-    ).length;
+    const focusVisibleCount = (source.match(/focus-visible:outline-daintree-accent/g) ?? []).length;
     expect(focusVisibleCount).toBe(4);
     expect(source).toContain("focus-visible:outline focus-visible:outline-2");
   });
