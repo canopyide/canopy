@@ -503,6 +503,95 @@ describe("MigrationRunner", () => {
       expect(store.data._schemaVersion).toBe(1);
     });
 
+    it("runMigrations throws on critical disk before _schemaVersion normalization", async () => {
+      // Guard must fire before getCurrentVersion() runs, so an invalid stored
+      // _schemaVersion (e.g. a string) must not be normalized to 0 on a
+      // critical-pressure volume.
+      const store = createMockStore(storePath, { _schemaVersion: "3" });
+      const runner = new MigrationRunner(store as never);
+      mockGetCurrentDiskSpaceStatus.mockReturnValue({
+        status: "critical",
+        availableMb: 50,
+        writesSuppressed: true,
+      });
+
+      await expect(
+        runner.runMigrations([{ version: 1, description: "v1", up: () => {} }])
+      ).rejects.toThrow(/disk space is critical/);
+
+      expect(store.data._schemaVersion).toBe("3");
+    });
+
+    it("runMigrations throws on critical disk even when no migrations are pending", async () => {
+      // Guard fires unconditionally — having nothing to do is not a reason to
+      // skip the disk check, since callers may still rely on the throw to
+      // surface the condition.
+      const store = createMockStore(storePath, { _schemaVersion: 2 });
+      const runner = new MigrationRunner(store as never);
+      mockGetCurrentDiskSpaceStatus.mockReturnValue({
+        status: "critical",
+        availableMb: 50,
+        writesSuppressed: true,
+      });
+
+      await expect(
+        runner.runMigrations([
+          { version: 1, description: "v1", up: () => {} },
+          { version: 2, description: "v2", up: () => {} },
+        ])
+      ).rejects.toThrow(/disk space is critical/);
+    });
+
+    it("runMigrations throws on critical disk even when current version is ahead (downgrade compat mode)", async () => {
+      // Guard fires before the compatibility-mode early-return, so a critical
+      // disk surfaces an error rather than silently logging the downgrade
+      // warning and returning success.
+      const store = createMockStore(storePath, { _schemaVersion: 99 });
+      const runner = new MigrationRunner(store as never);
+      mockGetCurrentDiskSpaceStatus.mockReturnValue({
+        status: "critical",
+        availableMb: 50,
+        writesSuppressed: true,
+      });
+
+      await expect(
+        runner.runMigrations([{ version: 5, description: "v5", up: () => {} }])
+      ).rejects.toThrow(/disk space is critical/);
+    });
+
+    it("runMigrations throws when disk transitions to critical between guard and backupStore", async () => {
+      // Mid-flight TOCTOU: the top-of-method guard sees normal, the volume
+      // fills before backupStore is reached, backupStore correctly skips the
+      // copy, and the post-backup re-check then surfaces the condition. Without
+      // the re-check, migrations would mutate the live store with no backup.
+      const upSpy = vi.fn();
+      const store = createMockStore(storePath, { _schemaVersion: 0 });
+      const runner = new MigrationRunner(store as never);
+      mockGetCurrentDiskSpaceStatus
+        .mockReturnValueOnce({
+          status: "normal",
+          availableMb: 4096,
+          writesSuppressed: false,
+        })
+        .mockReturnValue({
+          status: "critical",
+          availableMb: 50,
+          writesSuppressed: true,
+        });
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      await expect(
+        runner.runMigrations([{ version: 1, description: "v1", up: upSpy }])
+      ).rejects.toThrow(/disk space is critical/);
+
+      expect(upSpy).not.toHaveBeenCalled();
+      expect(store.data._schemaVersion).toBe(0);
+      const backups = fs.readdirSync(tempDir).filter((f) => f.startsWith("config.json.backup-"));
+      expect(backups).toHaveLength(0);
+
+      warnSpy.mockRestore();
+    });
+
     it("backupStore returns null without writing a file when disk is critical", () => {
       // Defense-in-depth check: if a future caller invokes backupStore directly
       // (bypassing runMigrations' guard), it must still skip the copy.

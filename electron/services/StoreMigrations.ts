@@ -232,6 +232,12 @@ export class MigrationRunner {
     const backupPath = this.backupStore(current);
     if (backupPath) {
       console.log(`[Migrations] Store backed up, can restore from: ${backupPath}`);
+    } else if (getCurrentDiskSpaceStatus().status === "critical") {
+      // Disk transitioned to critical between the top-of-method guard and the
+      // backup write — backupStore skipped the copy. Don't proceed without a
+      // backup on a critical volume; surface the condition before mutating
+      // the live store.
+      throw new Error("Cannot run migrations: disk space is critical");
     }
 
     let stage: "loop" | "validate" = "loop";
