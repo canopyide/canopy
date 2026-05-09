@@ -126,7 +126,6 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
     isMaximized = false,
     location = "grid",
     isTrashing = false,
-    gridPanelCount,
     worktreeId,
     onFocus,
     onClose,
@@ -225,7 +224,7 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
     return undefined;
   }, [titleEditing.isEditingTitle]);
 
-  const showGridAttention = location === "grid" && !isMaximized && (gridPanelCount ?? 2) > 1;
+  const showGridAttention = location === "grid" && !isMaximized;
   const showGridAgentHighlights = usePreferencesStore((s) => s.showGridAgentHighlights);
 
   // Per-worktree color identity
