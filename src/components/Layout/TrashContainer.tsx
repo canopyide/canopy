@@ -13,16 +13,11 @@ import {
   useIsWorktreeSortDragging,
   TRASH_DROPPABLE_ID,
 } from "@/components/DragDrop";
-import { DURATION_200 } from "@/lib/animationUtils";
+import { DURATION_200, UI_TRANSIENT_HINT_DWELL_MS } from "@/lib/animationUtils";
 import type { TerminalInstance } from "@/store";
 import type { TrashedTerminal, TrashedTerminalGroupMetadata } from "@/store/slices";
 import { TrashBinItem } from "./TrashBinItem";
 import { TrashGroupItem } from "./TrashGroupItem";
-
-// How long the "Moved to trash" hint stays visible above the trash icon after
-// a panel is closed. One second is enough to draw the eye to the trash without
-// dwelling — discovery cue, not an undo affordance (the trash itself is that).
-const MOVED_HINT_DURATION_MS = 1_000;
 
 interface TrashContainerProps {
   trashedTerminals: Array<{
@@ -95,7 +90,7 @@ export function TrashContainer({ trashedTerminals, compact = false }: TrashConta
   // so back-to-back closes keep showing the hint instead of flickering off.
   useEffect(() => {
     if (!showMovedHint) return;
-    const timer = setTimeout(() => setShowMovedHint(false), MOVED_HINT_DURATION_MS);
+    const timer = setTimeout(() => setShowMovedHint(false), UI_TRANSIENT_HINT_DWELL_MS);
     return () => clearTimeout(timer);
   }, [showMovedHint, trashedTerminals.length]);
 

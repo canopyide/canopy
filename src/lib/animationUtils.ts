@@ -56,6 +56,12 @@ export const UI_DOHERTY_THRESHOLD = 400;
  *  label change before the toast disappears. */
 export const UI_ACTION_SUCCESS_DWELL_MS = 2000;
 
+/** How long a transient discovery hint stays visible after the event that
+ *  triggered it (e.g. the "Moved to trash" tooltip above the trash icon after
+ *  a panel is closed). One second is enough to draw the eye without dwelling
+ *  — discovery cue, not an undo affordance. */
+export const UI_TRANSIENT_HINT_DWELL_MS = 1_000;
+
 export const UI_TOOLTIP_DELAY_DURATION = 500;
 export const UI_TOOLTIP_SKIP_DELAY_DURATION = DURATION_150;
 
