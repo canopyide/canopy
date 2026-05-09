@@ -404,7 +404,10 @@ export class HelpSessionService {
     // and the bundled `help/.gemini/settings.json` is already copied above
     // by `fs.cp(helpFolder, sessionPath)`. Phase 1 is docs-only against the
     // public `daintree-docs` endpoint, so there is no live token or port to
-    // inject — the bundled file is the runtime config as-is.
+    // inject — the bundled file is the runtime config as-is. Note: this also
+    // means `helpAssistant.docSearch` is inert for Gemini today (the docs
+    // server is hard-coded in the bundled file); honouring the toggle would
+    // require a session-time rewrite path, which is intentionally deferred.
 
     const codexLaunchArgs =
       input.agentId === "codex"

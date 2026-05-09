@@ -1181,5 +1181,27 @@ describe("HelpSessionService", () => {
       );
       expect(gemini.mcpServers["daintree-docs"]).toBeDefined();
     });
+
+    it("gcStaleSessions leaves a Gemini session's bundled config untouched (regression guard)", async () => {
+      // Models post-restart cleanup of a Gemini session dir. The dir's
+      // .mcp.json holds only the bundled daintree-docs entry (no `daintree`
+      // key), so stripStaleDaintreeMcpEntry must early-return without
+      // damaging the bundled `.gemini/settings.json` config.
+      const result = await service.provisionSession(geminiInput());
+      if (!result) throw new Error("expected result");
+
+      await service.gcStaleSessions();
+
+      const gemini = JSON.parse(
+        await fs.readFile(path.join(result.sessionPath, ".gemini", "settings.json"), "utf-8")
+      );
+      expect(gemini.mcpServers["daintree-docs"]).toBeDefined();
+
+      const mcp = JSON.parse(
+        await fs.readFile(path.join(result.sessionPath, ".mcp.json"), "utf-8")
+      );
+      expect(mcp.mcpServers["daintree-docs"]).toBeDefined();
+      expect(mcp.mcpServers.daintree).toBeUndefined();
+    });
   });
 });
