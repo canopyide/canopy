@@ -7,28 +7,17 @@ vi.mock("@/lib/utils", () => ({ cn: (...args: unknown[]) => args.filter(Boolean)
 import { HelpIntroBanner } from "../HelpIntroBanner";
 
 describe("HelpIntroBanner", () => {
-  it("renders the link copy and a Dismiss button", () => {
-    const { getByText, getByLabelText } = render(
-      <HelpIntroBanner onDismiss={vi.fn()} onLinkClick={vi.fn()} />
-    );
+  it("renders the Shift+Enter tip and a Dismiss button", () => {
+    const { getByText, getByLabelText } = render(<HelpIntroBanner onDismiss={vi.fn()} />);
 
-    expect(getByText("See what the Daintree Assistant can do")).toBeTruthy();
+    expect(getByText(/Shift\+Enter/)).toBeTruthy();
+    expect(getByText(/add a newline without/i)).toBeTruthy();
     expect(getByLabelText("Dismiss")).toBeTruthy();
-  });
-
-  it("calls onLinkClick when the link is clicked", () => {
-    const onLinkClick = vi.fn();
-    const { getByText } = render(<HelpIntroBanner onDismiss={vi.fn()} onLinkClick={onLinkClick} />);
-
-    fireEvent.click(getByText("See what the Daintree Assistant can do"));
-    expect(onLinkClick).toHaveBeenCalledTimes(1);
   });
 
   it("calls onDismiss when the X button is clicked", () => {
     const onDismiss = vi.fn();
-    const { getByLabelText } = render(
-      <HelpIntroBanner onDismiss={onDismiss} onLinkClick={vi.fn()} />
-    );
+    const { getByLabelText } = render(<HelpIntroBanner onDismiss={onDismiss} />);
 
     fireEvent.click(getByLabelText("Dismiss"));
     expect(onDismiss).toHaveBeenCalledTimes(1);
@@ -39,7 +28,7 @@ describe("HelpIntroBanner", () => {
     const outerKeyDown = vi.fn();
     const { getByLabelText } = render(
       <div onKeyDown={outerKeyDown}>
-        <HelpIntroBanner onDismiss={onDismiss} onLinkClick={vi.fn()} />
+        <HelpIntroBanner onDismiss={onDismiss} />
       </div>
     );
 
@@ -49,26 +38,9 @@ describe("HelpIntroBanner", () => {
     expect(outerKeyDown).toHaveBeenCalledTimes(1);
   });
 
-  it("Escape on the link button bubbles and does not dismiss", () => {
-    const onDismiss = vi.fn();
-    const outerKeyDown = vi.fn();
-    const { getByText } = render(
-      <div onKeyDown={outerKeyDown}>
-        <HelpIntroBanner onDismiss={onDismiss} onLinkClick={vi.fn()} />
-      </div>
-    );
-
-    fireEvent.keyDown(getByText("See what the Daintree Assistant can do"), { key: "Escape" });
-
-    expect(onDismiss).not.toHaveBeenCalled();
-    expect(outerKeyDown).toHaveBeenCalledTimes(1);
-  });
-
   it("does not call onDismiss for non-Escape keys", () => {
     const onDismiss = vi.fn();
-    const { getByLabelText } = render(
-      <HelpIntroBanner onDismiss={onDismiss} onLinkClick={vi.fn()} />
-    );
+    const { getByLabelText } = render(<HelpIntroBanner onDismiss={onDismiss} />);
 
     fireEvent.keyDown(getByLabelText("Dismiss"), { key: "Enter" });
     fireEvent.keyDown(getByLabelText("Dismiss"), { key: "Tab" });

@@ -35,8 +35,13 @@ import { TABBABLE_SELECTOR } from "@/lib/accessibility";
 const RESIZE_STEP = 10;
 const RESIZE_PAGE_STEP = 50;
 
-const ASSISTANT_DOCS_URL = "https://daintree.org/assistant";
 const DAINTREE_HOME_URL = "https://daintree.org";
+
+const SEED_PROMPTS = [
+  "Explain this codebase to me",
+  "Review my recent changes",
+  "Help me debug an issue",
+] as const;
 
 const HIBERNATE_VALID_MINUTES: readonly number[] = [0, 15, 30, 60, 120];
 const DEFAULT_HIBERNATE_MINUTES = 30;
@@ -225,6 +230,17 @@ export function HelpPanel({
 
   const terminal = usePanelStore((s) => (terminalId ? s.panelsById[terminalId] : undefined));
   const removePanel = usePanelStore((s) => s.removePanel);
+  // Mirrors useGettingStartedChecklist.ts:45-55 — must stay in sync. Gates the
+  // intro banner so it never reappears once the user has launched any assistant
+  // (`everDetectedAgent` is persisted via panelStore so this survives restarts).
+  const hasEverLaunchedAgent = usePanelStore((s) =>
+    s.panelIds.some((id) => {
+      const p = s.panelsById[id];
+      return (
+        Boolean(p?.launchAgentId) || Boolean(p?.detectedAgentId) || p?.everDetectedAgent === true
+      );
+    })
+  );
   const cliDetail = useCliAvailabilityStore((s) => (agentId ? s.details[agentId] : undefined));
   const cliAvailability = useCliAvailabilityStore((s) => s.availability);
   const cliHasRealData = useCliAvailabilityStore((s) => s.hasRealData);
@@ -820,7 +836,7 @@ export function HelpPanel({
 
   const isLaunchingRef = useRef(false);
   const handleSelectAgent = useCallback(
-    async (selectedAgentId: string) => {
+    async (selectedAgentId: string, seedPrompt?: string) => {
       if (isLaunchingRef.current) return;
       if (!isReadyToLaunch || !currentProject) {
         notifyLaunchFailed(selectedAgentId, "Project state is still loading. Try again.");
@@ -898,6 +914,7 @@ export function HelpPanel({
             ephemeral: true,
             ...(env && { env }),
             ...(customLaunchFlags.length > 0 && { agentLaunchFlags: customLaunchFlags }),
+            ...(seedPrompt && { prompt: seedPrompt }),
           },
           { source: "user" }
         );
@@ -1131,6 +1148,27 @@ export function HelpPanel({
     void actionService.dispatch("app.settings.openTab", { tab: "assistant" }, { source: "user" });
   }, []);
 
+  // Picks the agent to launch when a seed-prompt chip is clicked. Falls back to
+  // the single installed assistant-supported agent when the user hasn't picked
+  // a preference yet — matches the auto-launch effect's resolution rule. Returns
+  // null only when zero supported agents are installed; in that state the chips
+  // are inert and the user is steered to the bottom settings link.
+  const seedAgentToLaunch = preferredAgentId
+    ? preferredAgentId
+    : supportedInstalledAgentIds.length === 1
+      ? (supportedInstalledAgentIds[0] ?? null)
+      : null;
+
+  const handleSeedPromptClick = useCallback(
+    (prompt: string) => {
+      if (!seedAgentToLaunch) return;
+      safeFireAndForget(handleSelectAgent(seedAgentToLaunch, prompt), {
+        context: "HelpPanel: seed-prompt chip launch",
+      });
+    },
+    [seedAgentToLaunch, handleSelectAgent]
+  );
+
   // Esc-to-close. The xterm-helper-textarea check lets Escape reach the
   // running PTY (Codex/Claude/etc.) when the assistant terminal has focus
   // instead of closing the panel out from under the user.
@@ -1140,15 +1178,6 @@ export function HelpPanel({
     handleClose();
   }, [handleClose]);
   useEscapeStack(isOpen, handleEscape);
-
-  const handleIntroLinkClick = useCallback(() => {
-    dismissIntro();
-    void actionService.dispatch(
-      "system.openExternal",
-      { url: ASSISTANT_DOCS_URL },
-      { source: "user" }
-    );
-  }, [dismissIntro]);
 
   const handleRunAnyway = useCallback(() => {
     if (!terminalId || !agentId) return;
@@ -1343,8 +1372,8 @@ export function HelpPanel({
             />
           ) : (
             <>
-              {!introDismissed && (
-                <HelpIntroBanner onDismiss={dismissIntro} onLinkClick={handleIntroLinkClick} />
+              {!introDismissed && !hasEverLaunchedAgent && (
+                <HelpIntroBanner onDismiss={dismissIntro} />
               )}
               {showResumeBanner && (
                 <div
@@ -1381,24 +1410,29 @@ export function HelpPanel({
             </>
           )
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center gap-3 p-8 text-center">
-            <p className="text-sm text-daintree-text/70">No assistant configured</p>
-            <p className="text-xs text-daintree-text/50 max-w-[28ch]">
-              Turn on an agent in the Daintree Assistant settings to get started.
+          <div className="flex-1 flex flex-col items-center justify-center gap-6 p-8 text-center">
+            <p className="text-sm text-daintree-text/70 max-w-[30ch]">
+              Ask the assistant to explain code, review changes, or debug issues.
             </p>
-            <button
-              type="button"
-              onClick={handleOpenSettings}
-              className={cn(
-                "mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-md)]",
-                "text-xs font-medium border border-daintree-border text-daintree-text/80",
-                "hover:bg-overlay-soft hover:text-daintree-text transition-colors",
-                "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
-              )}
-            >
-              <Settings2 className="w-3.5 h-3.5" />
-              <span>Open assistant settings</span>
-            </button>
+            <div className="flex flex-col gap-2 w-full max-w-[28ch]">
+              {SEED_PROMPTS.map((prompt) => (
+                <button
+                  key={prompt}
+                  type="button"
+                  onClick={() => handleSeedPromptClick(prompt)}
+                  disabled={!seedAgentToLaunch}
+                  className={cn(
+                    "w-full px-3 py-1.5 rounded-[var(--radius-md)] text-xs text-left",
+                    "border border-daintree-border text-daintree-text/80",
+                    "hover:bg-overlay-soft hover:text-daintree-text transition-colors",
+                    "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2",
+                    "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-daintree-text/80"
+                  )}
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -1424,6 +1458,18 @@ export function HelpPanel({
           >
             <DaintreeIcon className="w-3.5 h-3.5" />
             Daintree.org
+          </button>
+        </div>
+      )}
+      {!showTerminal && (
+        <div className="flex items-center justify-end px-3 py-1.5 border-t border-daintree-border shrink-0 text-[11px] text-daintree-text/40">
+          <button
+            type="button"
+            onClick={handleOpenSettings}
+            className="flex items-center gap-1 hover:text-daintree-text/60 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
+          >
+            <Settings2 className="w-3.5 h-3.5" />
+            Assistant settings
           </button>
         </div>
       )}
