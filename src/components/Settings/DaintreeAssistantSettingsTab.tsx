@@ -28,6 +28,7 @@ import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { useDebounce } from "@/hooks/useDebounce";
 
 import { logError } from "@/utils/logger";
+import { safeFireAndForget } from "@/utils/safeFireAndForget";
 import { getAgentConfig, getAssistantSupportedAgentIds } from "@/config/agents";
 import { useHelpPanelStore } from "@/store/helpPanelStore";
 import type {
@@ -235,26 +236,29 @@ export function DaintreeAssistantSettingsTab() {
   useEffect(() => {
     let cancelled = false;
     setAuditLoading(true);
-    Promise.allSettled([
-      window.electron.mcpServer.getAuditRecords(),
-      window.electron.mcpServer.getAuditStats(),
-    ])
-      .then(([recordsResult, statsResult]) => {
-        if (cancelled) return;
-        if (recordsResult.status === "fulfilled") {
-          setAuditRecords(recordsResult.value);
-        } else {
-          logError("Failed initial audit load for assistant tab", recordsResult.reason);
-        }
-        if (statsResult.status === "fulfilled") {
-          setAuditStats(statsResult.value);
-        } else {
-          logError("Failed initial audit stats load for assistant tab", statsResult.reason);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setAuditLoading(false);
-      });
+    safeFireAndForget(
+      Promise.allSettled([
+        window.electron.mcpServer.getAuditRecords(),
+        window.electron.mcpServer.getAuditStats(),
+      ])
+        .then(([recordsResult, statsResult]) => {
+          if (cancelled) return;
+          if (recordsResult.status === "fulfilled") {
+            setAuditRecords(recordsResult.value);
+          } else {
+            logError("Failed initial audit load for assistant tab", recordsResult.reason);
+          }
+          if (statsResult.status === "fulfilled") {
+            setAuditStats(statsResult.value);
+          } else {
+            logError("Failed initial audit stats load for assistant tab", statsResult.reason);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setAuditLoading(false);
+        }),
+      { context: "initial audit load for assistant tab" }
+    );
     return () => {
       cancelled = true;
       if (auditCopyTimeoutRef.current) clearTimeout(auditCopyTimeoutRef.current);
