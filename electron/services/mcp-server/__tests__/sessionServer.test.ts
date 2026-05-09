@@ -1005,16 +1005,23 @@ describe("CallTool error envelope (integration through sessionServer)", () => {
     const server = createSessionServer("s-tier", deps);
     await server.connect(makeMockTransport());
 
-    const result = (await callTool(server, {
-      name: "terminal.killAll",
-      arguments: {},
-    })) as { isError: boolean; content: { type: string; text: string }[] };
-
-    expect(result.isError).toBe(true);
-    const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.code).toBe(TIER_NOT_PERMITTED_CODE);
-    expect(parsed.retriable).toBe(false);
-    expect(parsed.message).toContain("workbench");
+    try {
+      await callTool(server, {
+        name: "terminal.killAll",
+        arguments: {},
+      });
+      expect.fail("Should have thrown McpError");
+    } catch (err) {
+      expect(err).toBeInstanceOf(McpError);
+      const mcpErr = err as McpError;
+      // McpError.message is "MCP error {code}: {json}" so extract the JSON part
+      const jsonMatch = mcpErr.message.match(/{.*}$/);
+      expect(jsonMatch).toBeTruthy();
+      const parsed = JSON.parse(jsonMatch![0]);
+      expect(parsed.code).toBe(TIER_NOT_PERMITTED_CODE);
+      expect(parsed.retriable).toBe(false);
+      expect(parsed.message).toContain("workbench");
+    }
   });
 
   it("propagates ActionError.details through the envelope", async () => {
@@ -1045,16 +1052,23 @@ describe("CallTool error envelope (integration through sessionServer)", () => {
     const server = createSessionServer("s-details", deps);
     await server.connect(makeMockTransport());
 
-    const result = (await callTool(server, {
-      name: "files.search",
-      arguments: { badKey: 1 },
-    })) as { isError: boolean; content: { type: string; text: string }[] };
-
-    expect(result.isError).toBe(true);
-    const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.code).toBe("VALIDATION_ERROR");
-    expect(parsed.details).toEqual({ unknownArguments: ["badKey"] });
-    expect(parsed.retriable).toBe(false);
+    try {
+      await callTool(server, {
+        name: "files.search",
+        arguments: { badKey: 1 },
+      });
+      expect.fail("Should have thrown McpError");
+    } catch (err) {
+      expect(err).toBeInstanceOf(McpError);
+      const mcpErr = err as McpError;
+      // McpError.message is "MCP error {code}: {json}" so extract the JSON part
+      const jsonMatch = mcpErr.message.match(/{.*}$/);
+      expect(jsonMatch).toBeTruthy();
+      const parsed = JSON.parse(jsonMatch![0]);
+      expect(parsed.code).toBe("VALIDATION_ERROR");
+      expect(parsed.details).toEqual({ unknownArguments: ["badKey"] });
+      expect(parsed.retriable).toBe(false);
+    }
   });
 
   it("synthesises EXECUTION_ERROR with retriable=true when dispatch throws", async () => {
@@ -1076,16 +1090,23 @@ describe("CallTool error envelope (integration through sessionServer)", () => {
     const server = createSessionServer("s-throw", deps);
     await server.connect(makeMockTransport());
 
-    const result = (await callTool(server, {
-      name: "files.search",
-      arguments: {},
-    })) as { isError: boolean; content: { type: string; text: string }[] };
-
-    expect(result.isError).toBe(true);
-    const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.code).toBe(EXECUTION_ERROR_CODE);
-    expect(parsed.retriable).toBe(true);
-    expect(parsed.message).toContain("transport went away");
+    try {
+      await callTool(server, {
+        name: "files.search",
+        arguments: {},
+      });
+      expect.fail("Should have thrown McpError");
+    } catch (err) {
+      expect(err).toBeInstanceOf(McpError);
+      const mcpErr = err as McpError;
+      // McpError.message is "MCP error {code}: {json}" so extract the JSON part
+      const jsonMatch = mcpErr.message.match(/{.*}$/);
+      expect(jsonMatch).toBeTruthy();
+      const parsed = JSON.parse(jsonMatch![0]);
+      expect(parsed.code).toBe(EXECUTION_ERROR_CODE);
+      expect(parsed.retriable).toBe(true);
+      expect(parsed.message).toContain("transport went away");
+    }
   });
 });
 
