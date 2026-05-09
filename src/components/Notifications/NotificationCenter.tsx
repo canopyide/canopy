@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Bell, CheckCheck, Ellipsis, Layers, Moon, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowDown, Bell, CheckCheck, Ellipsis, Layers, Moon, Trash2 } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import {
   useNotificationHistoryStore,
@@ -20,7 +20,14 @@ import { muteForDuration, muteUntilNextMorning, notify, setSessionQuietUntil } f
 import { useNotificationSettingsStore } from "@/store/notificationSettingsStore";
 import { useUIStore } from "@/store/uiStore";
 import { useWorktreeStore } from "@/hooks/useWorktreeStore";
+import { useAnnouncerStore } from "@/store/accessibilityAnnouncerStore";
 import { isScheduledQuietNow, nextOccurrenceTimestamp } from "@shared/utils/quietHours";
+import {
+  UI_ENTER_DURATION,
+  UI_EXIT_DURATION,
+  UI_ENTER_EASING,
+  UI_EXIT_EASING,
+} from "@/lib/animationUtils";
 import type { NotificationType } from "@/store/notificationStore";
 
 const SEVERITY_WEIGHTS: Record<NotificationType, number> = {
@@ -160,6 +167,10 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
 
   const [filter, setFilter] = useState<"all" | "unread">("all");
   const [frozenUnreadIds, setFrozenUnreadIds] = useState<Set<string> | null>(null);
+  const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
+  const [dividerEl, setDividerEl] = useState<HTMLDivElement | null>(null);
+  const [showJumpPill, setShowJumpPill] = useState(false);
+  const prevShowJumpPillRef = useRef(false);
 
   // Re-render at session-mute expiry and at scheduled quiet-hours boundaries —
   // mirrors the toolbar bell pattern so the pill auto-clears without an
@@ -207,6 +218,42 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
       for (const i of intervals) clearInterval(i);
     };
   }, [open, isSessionMuted, quietUntil, quietHoursEnabled]);
+
+  useEffect(() => {
+    if (!scrollContainer || !dividerEl || typeof IntersectionObserver === "undefined") {
+      setShowJumpPill(false);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            setShowJumpPill(false);
+            continue;
+          }
+          // Only show pill when divider has scrolled BELOW the viewport.
+          // If divider is above the top, the user has scrolled past unread
+          // content intentionally — don't summon them back.
+          const rootBounds = entry.rootBounds;
+          if (!rootBounds) {
+            setShowJumpPill(false);
+            continue;
+          }
+          setShowJumpPill(entry.boundingClientRect.top > rootBounds.bottom);
+        }
+      },
+      { root: scrollContainer, threshold: 0 }
+    );
+    observer.observe(dividerEl);
+    return () => observer.disconnect();
+  }, [scrollContainer, dividerEl]);
+
+  useEffect(() => {
+    if (showJumpPill && !prevShowJumpPillRef.current) {
+      useAnnouncerStore.getState().announce("New notifications below", "polite");
+    }
+    prevShowJumpPillRef.current = showJumpPill;
+  }, [showJumpPill]);
 
   const filteredEntries = useMemo(() => {
     if (filter === "all") return entries;
@@ -488,68 +535,103 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
           )}
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto">
-        {totalChronoGroups === 0 && needsAttentionGroups.length === 0 ? (
-          filter === "unread" && entries.length > 0 ? (
-            <EmptyState
-              variant="user-cleared"
-              title="You're all caught up"
-              icon={<Bell />}
-              className="py-10"
-            />
-          ) : showMutedPill ? (
-            <div data-testid="notification-muted-empty-state">
+      <div className="relative flex-1 min-h-0">
+        <div ref={setScrollContainer} className="h-full overflow-y-auto">
+          {totalChronoGroups === 0 && needsAttentionGroups.length === 0 ? (
+            filter === "unread" && entries.length > 0 ? (
               <EmptyState
-                variant="zero-data"
-                title="Notifications paused"
-                icon={<Moon />}
-                description={mutedEmptyDescription}
+                variant="user-cleared"
+                title="You're all caught up"
+                icon={<Bell />}
                 className="py-10"
               />
-            </div>
+            ) : showMutedPill ? (
+              <div data-testid="notification-muted-empty-state">
+                <EmptyState
+                  variant="zero-data"
+                  title="Notifications paused"
+                  icon={<Moon />}
+                  description={mutedEmptyDescription}
+                  className="py-10"
+                />
+              </div>
+            ) : (
+              <EmptyState
+                variant="zero-data"
+                title="No notifications yet"
+                icon={<Bell />}
+                description={
+                  <>
+                    Notifications appear here. Adjust which ones at{" "}
+                    <button
+                      type="button"
+                      onClick={openNotificationSettings}
+                      className="underline text-daintree-text/70 hover:text-daintree-text transition-colors"
+                    >
+                      Notification settings
+                    </button>
+                    .
+                  </>
+                }
+                className="py-10"
+              />
+            )
           ) : (
-            <EmptyState
-              variant="zero-data"
-              title="No notifications yet"
-              icon={<Bell />}
-              description={
-                <>
-                  Notifications appear here. Adjust which ones at{" "}
-                  <button
-                    type="button"
-                    onClick={openNotificationSettings}
-                    className="underline text-daintree-text/70 hover:text-daintree-text transition-colors"
-                  >
-                    Notification settings
-                  </button>
-                  .
-                </>
-              }
-              className="py-10"
-            />
-          )
-        ) : (
-          <>
-            {needsAttentionGroups.length > 0 && (
-              <NeedsAttentionSection
-                groups={needsAttentionGroups}
-                onDismiss={dismissEntry}
-                onDismissThread={dismissByCorrelationId}
-              />
+            <>
+              {needsAttentionGroups.length > 0 && (
+                <NeedsAttentionSection
+                  groups={needsAttentionGroups}
+                  onDismiss={dismissEntry}
+                  onDismissThread={dismissByCorrelationId}
+                />
+              )}
+              {chronoSections.map((section) => (
+                <ChronoSection
+                  key={section.key}
+                  section={section}
+                  groupByContext={groupByContext}
+                  dividerGroupId={dividerGroupId}
+                  dividerRef={setDividerEl}
+                  lastClosedAt={lastClosedAt}
+                  onDismiss={dismissEntry}
+                  onDismissThread={dismissByCorrelationId}
+                  onMarkIdsRead={markIdsReadWithUndo}
+                />
+              ))}
+            </>
+          )}
+        </div>
+        {dividerGroupId !== null && (
+          <button
+            type="button"
+            data-testid="jump-to-new-pill"
+            aria-label="Jump to new notifications"
+            aria-hidden={!showJumpPill || undefined}
+            tabIndex={showJumpPill ? 0 : -1}
+            onClick={() => {
+              dividerEl?.scrollIntoView({ block: "start", behavior: "instant" });
+              dividerEl?.focus();
+            }}
+            className={cn(
+              "absolute bottom-2 left-1/2 -translate-x-1/2 z-10",
+              "inline-flex items-center gap-1.5 px-3 py-1 rounded-full",
+              "bg-overlay-emphasis border border-tint/[0.08]",
+              "shadow-[var(--theme-shadow-floating)]",
+              "text-[11px] font-medium text-daintree-text/80",
+              "hover:text-daintree-text hover:bg-overlay-emphasis",
+              "transition-[transform,opacity] motion-reduce:transition-none",
+              showJumpPill
+                ? "opacity-100 translate-y-0 pointer-events-auto"
+                : "opacity-0 translate-y-2 pointer-events-none"
             )}
-            {chronoSections.map((section) => (
-              <ChronoSection
-                key={section.key}
-                section={section}
-                groupByContext={groupByContext}
-                dividerGroupId={dividerGroupId}
-                lastClosedAt={lastClosedAt}
-                onDismiss={dismissEntry}
-                onDismissThread={dismissByCorrelationId}
-                onMarkIdsRead={markIdsReadWithUndo}
-              />
-            ))}
-          </>
+            style={{
+              transitionDuration: `${showJumpPill ? UI_ENTER_DURATION : UI_EXIT_DURATION}ms`,
+              transitionTimingFunction: showJumpPill ? UI_ENTER_EASING : UI_EXIT_EASING,
+            }}
+          >
+            <ArrowDown className="h-3 w-3" aria-hidden="true" />
+            Jump to new
+          </button>
         )}
       </div>
     </div>
@@ -581,6 +663,7 @@ function ChronoSection({
   section,
   groupByContext,
   dividerGroupId,
+  dividerRef,
   lastClosedAt,
   onDismiss,
   onDismissThread,
@@ -589,6 +672,7 @@ function ChronoSection({
   section: ContextSection;
   groupByContext: boolean;
   dividerGroupId: string | null;
+  dividerRef?: (el: HTMLDivElement | null) => void;
   lastClosedAt: number;
   onDismiss: (id: string) => void;
   onDismissThread: (correlationId: string) => void;
@@ -620,6 +704,7 @@ function ChronoSection({
             <div key={groupKey}>
               {isDivider && (
                 <NewSinceLastLookedDivider
+                  ref={dividerRef}
                   unreadCount={newSinceUnreadIds.length}
                   onMarkRead={() => onMarkIdsRead(newSinceUnreadIds, { resetLastClosed: true })}
                 />
@@ -701,16 +786,20 @@ function ContextSectionHeader({
 }
 
 function NewSinceLastLookedDivider({
+  ref,
   unreadCount,
   onMarkRead,
 }: {
+  ref?: (el: HTMLDivElement | null) => void;
   unreadCount: number;
   onMarkRead: () => void;
 }) {
   return (
     <div
+      ref={ref}
+      tabIndex={-1}
       data-testid="new-since-last-looked"
-      className="flex items-center gap-2 px-3 py-1 text-[10px] font-medium text-daintree-text/50"
+      className="flex items-center gap-2 px-3 py-1 text-[10px] font-medium text-daintree-text/50 outline-none"
     >
       <span className="h-px flex-1 bg-divider" aria-hidden="true" />
       <span>New since you last looked</span>
