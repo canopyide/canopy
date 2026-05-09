@@ -11,9 +11,8 @@ describe("windowRecreationState", () => {
   });
 
   it("becomes true after begin and false after a matching end", async () => {
-    const { beginWindowRecreating, endWindowRecreating, isWindowRecreating } = await import(
-      "../windowRecreationState.js"
-    );
+    const { beginWindowRecreating, endWindowRecreating, isWindowRecreating } =
+      await import("../windowRecreationState.js");
     beginWindowRecreating();
     expect(isWindowRecreating()).toBe(true);
     endWindowRecreating();
@@ -21,9 +20,8 @@ describe("windowRecreationState", () => {
   });
 
   it("stays true while a concurrent recreation is still in flight", async () => {
-    const { beginWindowRecreating, endWindowRecreating, isWindowRecreating } = await import(
-      "../windowRecreationState.js"
-    );
+    const { beginWindowRecreating, endWindowRecreating, isWindowRecreating } =
+      await import("../windowRecreationState.js");
     // Two windows OOM at once — a boolean would fail this: the first end()
     // would clear the flag while the second recreation is still running.
     beginWindowRecreating();
@@ -35,9 +33,7 @@ describe("windowRecreationState", () => {
   });
 
   it("clamps at zero when end is called more times than begin", async () => {
-    const { endWindowRecreating, isWindowRecreating } = await import(
-      "../windowRecreationState.js"
-    );
+    const { endWindowRecreating, isWindowRecreating } = await import("../windowRecreationState.js");
     // Defensive — a stray double-decrement must not push the counter
     // negative, which would leave isWindowRecreating() permanently false even
     // after a legitimate begin().
