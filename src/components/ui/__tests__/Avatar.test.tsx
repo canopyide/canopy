@@ -22,6 +22,10 @@ describe("Avatar", () => {
     expect(img!.style.opacity).toBe("0");
     const skeleton = container.querySelector(".animate-pulse-delayed");
     expect(skeleton).toBeTruthy();
+    // Regression guard for #7572: bg-muted resolves to the panel surface
+    // color, making the placeholder invisible against the dropdown row.
+    expect(skeleton!.className).toContain("bg-muted-foreground/20");
+    expect(skeleton!.className).not.toMatch(/(?:^|\s)bg-muted(?:\s|$)/);
   });
 
   it("shows skeleton when complete is true but naturalWidth is 0", () => {
