@@ -1498,6 +1498,27 @@ describe("AutoUpdaterService", () => {
 
       expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
     });
+
+    it("retries on Electron net::ERR_CONNECTION_REFUSED", () => {
+      // Symmetry with the Node `ECONNREFUSED` code in TRANSIENT_ERROR_CODES —
+      // a brief firewall block or server restart is recoverable.
+      errorHandler(new Error("net::ERR_CONNECTION_REFUSED"));
+      vi.advanceTimersByTime(36_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+
+    it("permanent net token wins when both tokens appear in same message", () => {
+      // Even if a transient token appears first in the message, a permanent
+      // cert token elsewhere in the same string must short-circuit. Real
+      // Electron messages are single-token, but the invariant must hold.
+      errorHandler(
+        new Error("net::ERR_INTERNET_DISCONNECTED chained with net::ERR_CERT_AUTHORITY_INVALID")
+      );
+      vi.advanceTimersByTime(60_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+    });
   });
 
   describe("menu state lifecycle", () => {

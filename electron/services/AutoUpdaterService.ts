@@ -63,6 +63,7 @@ const TRANSIENT_NET_ERROR_TOKENS = new Set([
   "ERR_CONNECTION_RESET",
   "ERR_CONNECTION_ABORTED",
   "ERR_CONNECTION_CLOSED",
+  "ERR_CONNECTION_REFUSED",
   "ERR_CONNECTION_TIMED_OUT",
   "ERR_TIMED_OUT",
   "ERR_NAME_NOT_RESOLVED",
@@ -79,7 +80,7 @@ const PERMANENT_NET_ERROR_TOKENS = new Set([
   "ERR_NETWORK_ACCESS_DENIED",
   "ERR_HSTS_POLICY_BYPASSED",
 ]);
-const ELECTRON_NET_TOKEN_RE = /net::([A-Z0-9_]+)/;
+const ELECTRON_NET_TOKEN_RE = /net::([A-Z0-9_]+)/g;
 const STABLE_FEED_URL = "https://updates.daintree.org/releases/";
 const NIGHTLY_FEED_URL = "https://updates.daintree.org/nightly/";
 const { autoUpdater } = electronUpdater;
@@ -216,8 +217,11 @@ class AutoUpdaterService {
       }
       const message = (current as { message?: unknown }).message;
       if (typeof message === "string") {
-        const token = ELECTRON_NET_TOKEN_RE.exec(message)?.[1];
-        if (token) {
+        // Walk every `net::ERR_*` token in the message — a permanent token
+        // anywhere in the string must short-circuit even if a transient token
+        // appears first (preserves permanent-wins inside a single message).
+        for (const match of message.matchAll(ELECTRON_NET_TOKEN_RE)) {
+          const token = match[1];
           if (PERMANENT_NET_ERROR_TOKENS.has(token)) return false;
           if (TRANSIENT_NET_ERROR_TOKENS.has(token)) foundTransient = true;
         }
