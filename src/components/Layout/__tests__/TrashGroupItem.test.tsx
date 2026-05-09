@@ -506,7 +506,7 @@ describe("TrashGroupItem", () => {
         (el) => el.textContent?.includes("s remaining")
       );
       expect(matches.length).toBe(1);
-      return matches[0];
+      return matches[0]!;
     }
 
     it("removes aria-live and marks the countdown aria-hidden", () => {
