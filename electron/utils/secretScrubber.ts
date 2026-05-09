@@ -267,7 +267,7 @@ export const PATTERNS: readonly SecretPattern[] = [
   {
     name: "vercel-token",
     // Covers `vcp_` (personal), `vci_` (CI), `vca_` (account), `vcr_` (refresh), `vck_` (key).
-    regex: /\bvc[piackr]_[A-Za-z0-9]{24,40}\b/g,
+    regex: /\bvc[piakr]_[A-Za-z0-9]{24,40}\b/g,
     replacement: REDACTED,
   },
   {
@@ -282,7 +282,9 @@ export const PATTERNS: readonly SecretPattern[] = [
   },
   {
     name: "together-api-key",
-    regex: /\btgp_v1_[A-Za-z0-9_-]{43}\b/g,
+    // No trailing `\b` because the body charset includes `-` and `_` (non-word
+    // chars), so a token ending in either would silently slip past a boundary.
+    regex: /\btgp_v1_[A-Za-z0-9_-]{43}/g,
     replacement: REDACTED,
   },
   {
@@ -292,7 +294,9 @@ export const PATTERNS: readonly SecretPattern[] = [
   },
   {
     name: "heroku-oauth-token",
-    regex: /\bHRKU-[A-Za-z0-9_-]{60}\b/g,
+    // No trailing `\b`: body charset includes `-` and `_` (non-word) so tokens
+    // ending in either would silently miss the boundary check.
+    regex: /\bHRKU-[A-Za-z0-9_-]{60}/g,
     replacement: REDACTED,
   },
   {

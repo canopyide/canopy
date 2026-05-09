@@ -360,6 +360,13 @@ describe("secretScrubber", () => {
         expected: `TOGETHER_API_KEY=${REDACTED} end`,
       },
       {
+        name: "together-api-key-trailing-dash",
+        // Body ending in `-` or `_` (non-word) must still redact — the lack of
+        // a trailing `\b` is what makes this work.
+        input: `TOGETHER_API_KEY=tgp_v1_${"A".repeat(42)}-`,
+        expected: `TOGETHER_API_KEY=${REDACTED}`,
+      },
+      {
         name: "resend-api-key",
         input: `RESEND_API_KEY=re_${"A".repeat(48)}`,
         expected: `RESEND_API_KEY=${REDACTED}`,
@@ -368,6 +375,12 @@ describe("secretScrubber", () => {
         name: "heroku-oauth-token",
         input: `HEROKU_API_KEY=HRKU-${"a".repeat(60)} end`,
         expected: `HEROKU_API_KEY=${REDACTED} end`,
+      },
+      {
+        name: "heroku-oauth-token-trailing-underscore",
+        // Body ending in `_` must still redact (no trailing `\b`).
+        input: `HEROKU_API_KEY=HRKU-${"a".repeat(59)}_`,
+        expected: `HEROKU_API_KEY=${REDACTED}`,
       },
       {
         name: "telegram-bot-token",
@@ -562,6 +575,13 @@ describe("secretScrubber", () => {
     it("does not flag hf_ as substring in ordinary text", () => {
       const ordinary = "The chef_example text here is not a secret key at all";
       expect(scrubSecrets(ordinary)).toBe(ordinary);
+    });
+
+    it("does not flag vcc_ as a Vercel token (not a real prefix)", () => {
+      // Vercel issues vcp_/vci_/vca_/vcr_/vck_ — `vcc_` is not a real prefix
+      // and the character class must reject it.
+      const fake = `vcc_${"A".repeat(32)}`;
+      expect(scrubSecrets(fake)).toBe(fake);
     });
 
     it("does not flag a bare timestamp:token shape without telegram context", () => {
