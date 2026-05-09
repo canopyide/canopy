@@ -318,9 +318,9 @@ describe("ConfirmDialog — typed-name gate", () => {
     );
 
     expect(errorSpy).toHaveBeenCalled();
-    const message = errorSpy.mock.calls.map((call) => call[0]).join("\n");
-    expect(message).toContain("typedNameTarget");
-    expect(message).toContain('variant="default"');
+    const firstMessage = String(errorSpy.mock.calls[0]?.[0] ?? "");
+    expect(firstMessage).toContain("typedNameTarget");
+    expect(firstMessage).toContain('variant="default"');
   });
 
   it("is silent for typedNameTarget on a destructive variant", () => {
