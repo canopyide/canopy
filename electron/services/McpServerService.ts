@@ -48,6 +48,15 @@ export class McpServerService {
   private readonly pendingManifests = new Map<string, PendingRequest<ActionManifestEntry[]>>();
   private readonly pendingDispatches = new Map<string, PendingRequest<DispatchEnvelope>>();
   private readonly cleanupListeners: Array<() => void> = [];
+  /**
+   * Long-lived event subscriptions (agent state, agent output, terminal
+   * lifecycle) that must survive `HttpLifecycle.stop()` / restart. Kept
+   * separate from `cleanupListeners` because that array is owned by
+   * `HttpLifecycle` and zeroed on every stop or unexpected close —
+   * placing these subscriptions there would silently disable turn-outcome
+   * recording the first time the MCP server restarts.
+   */
+  private readonly persistentListeners: Array<() => void> = [];
   private readonly bridge;
   private readonly statusListeners = new Set<(running: boolean) => void>();
   private readonly runtimeStateListeners = new Set<(snapshot: McpRuntimeSnapshot) => void>();
@@ -80,23 +89,23 @@ export class McpServerService {
         timestamp: payload.timestamp,
       });
     });
-    this.cleanupListeners.push(offStateChanged);
+    this.persistentListeners.push(offStateChanged);
 
     const offOutput = events.on("agent:output", (payload) => {
       if (!payload.terminalId) return;
       this.turnOutcomeService.appendOutput(payload.terminalId, payload.data);
     });
-    this.cleanupListeners.push(offOutput);
+    this.persistentListeners.push(offOutput);
 
     const offTrashed = events.on("terminal:trashed", (payload) => {
       this.turnOutcomeService.dropTerminal(payload.id);
     });
-    this.cleanupListeners.push(offTrashed);
+    this.persistentListeners.push(offTrashed);
 
     const offExited = events.on("terminal:exited", (payload) => {
       this.turnOutcomeService.dropTerminal(payload.terminalId);
     });
-    this.cleanupListeners.push(offExited);
+    this.persistentListeners.push(offExited);
 
     this.bridge = createRendererBridge(
       this.pendingManifests,
@@ -107,6 +116,7 @@ export class McpServerService {
     this.httpLifecycle = new HttpLifecycle({
       sessionStore: this.sessionStore,
       auditService: this.auditService,
+      turnOutcomeService: this.turnOutcomeService,
       requestManifest: () => this.bridge.requestManifest(),
       dispatchAction: (actionId, args, confirmed) =>
         this.bridge.dispatchAction(actionId, args, confirmed),

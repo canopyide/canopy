@@ -18,6 +18,13 @@ import { AUDIT_FLUSH_DEBOUNCE_MS, TIER_NOT_PERMITTED_CODE } from "./shared.js";
  */
 const RECENT_OUTPUT_RING_SIZE = 4000;
 /**
+ * Hard fallback when the per-terminal turn-start timestamp is unknown
+ * (e.g. classification fires before any prior `idle → working` was seen).
+ * Limits cross-turn audit poisoning to recent activity rather than the
+ * full session history.
+ */
+const AUDIT_LOOKBACK_MS = 60_000;
+/**
  * Number of trailing characters of `recentOutput` to scan for outcome
  * classification. Bounded well under the ring so a pathological prompt
  * never balloons the regex pass.
@@ -93,17 +100,25 @@ export interface FsmTransition {
 
 /**
  * Per-terminal turn classifier. Examines the trailing `recentOutput` buffer
- * plus the most recent audit record for the bound session and returns one
- * `TurnOutcomeClass`. Pure function aside from the audit-records lookup —
- * no IO.
+ * plus audit records that fell inside the current turn window, and returns
+ * one `TurnOutcomeClass`. Pure function aside from the audit-records
+ * lookup — no IO.
+ *
+ * `recentAuditRecords` is expected to arrive newest-first (matches
+ * `AuditService.getRecords()` ordering) — the classifier picks the
+ * most-recent matching record. `turnStartTimestamp` is the lower bound for
+ * which audit records belong to *this* turn; defaults to a fixed lookback
+ * window when the caller has no boundary information.
  */
 export function classifyTurnOutcome(args: {
   transition: FsmTransition;
   recentOutput: string;
   recentAuditRecords: readonly McpAuditRecord[];
   sessionId: string | null;
+  turnStartTimestamp?: number;
 }): TurnOutcomeClass {
   const { transition, recentOutput, recentAuditRecords, sessionId } = args;
+  const turnStartTimestamp = args.turnStartTimestamp ?? transition.timestamp - AUDIT_LOOKBACK_MS;
 
   // Watchdog-driven `waiting → idle` is the agent-stuck signal — see #4974
   // and #4560 for why we trust the watchdog trigger as authoritative and
@@ -117,8 +132,13 @@ export function classifyTurnOutcome(args: {
   }
 
   if (sessionId) {
-    const sessionRecords = recentAuditRecords.filter((r) => r.sessionId === sessionId);
-    const lastRecord = sessionRecords[sessionRecords.length - 1];
+    // recentAuditRecords arrives newest-first; the FIRST matching record is
+    // the most recent. Filter to records that fall inside the current turn
+    // window so a stale error from a prior turn cannot poison the
+    // classification.
+    const lastRecord = recentAuditRecords.find(
+      (r) => r.sessionId === sessionId && r.timestamp >= turnStartTimestamp
+    );
     if (lastRecord) {
       if (
         lastRecord.result === "unauthorized" ||
@@ -181,6 +201,12 @@ export class TurnOutcomeService {
    * fires on the same dormant session would each append a record (#4974).
    */
   private stuckRecorded = new Set<string>();
+  /**
+   * Per-terminal timestamp of the most recent entry into an active state.
+   * Used as the lower bound for audit-record lookup so a stale error from
+   * a prior turn doesn't poison the current classification.
+   */
+  private turnStartByTerminal = new Map<string, number>();
 
   constructor(private readonly deps: TurnOutcomeServiceDeps) {}
 
@@ -208,6 +234,7 @@ export class TurnOutcomeService {
   dropTerminal(terminalId: string): void {
     this.recentOutput.delete(terminalId);
     this.stuckRecorded.delete(terminalId);
+    this.turnStartByTerminal.delete(terminalId);
   }
 
   getRecentOutput(terminalId: string): string {
@@ -251,9 +278,12 @@ export class TurnOutcomeService {
     // Entering an active state marks the start of a new turn — reset the
     // stuck-recorded guard so a subsequent timeout in this fresh turn can
     // append its own record. Resetting on the *exit* would prevent the
-    // very recording we just guarded against.
+    // very recording we just guarded against. Also stamp the turn-start
+    // timestamp so the classifier can ignore audit records from prior
+    // turns when this turn ends.
     if (toGroup === "active") {
       this.stuckRecorded.delete(transition.terminalId);
+      this.turnStartByTerminal.set(transition.terminalId, transition.timestamp);
     }
 
     const isStuckTimeout =
@@ -277,11 +307,13 @@ export class TurnOutcomeService {
     this.hydrate();
 
     const recentOutput = this.recentOutput.get(transition.terminalId) ?? "";
+    const turnStartTimestamp = this.turnStartByTerminal.get(transition.terminalId);
     const outcome = classifyTurnOutcome({
       transition,
       recentOutput,
       recentAuditRecords: this.deps.getRecentAuditRecords(),
       sessionId,
+      turnStartTimestamp,
     });
 
     const record: AssistantTurnRecord = {
@@ -373,6 +405,7 @@ export class TurnOutcomeService {
     this.records = [];
     this.stuckRecorded.clear();
     this.recentOutput.clear();
+    this.turnStartByTerminal.clear();
     this.flushNow();
   }
 }

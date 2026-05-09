@@ -149,6 +149,43 @@ describe("classifyTurnOutcome", () => {
     ).toBe("answered");
   });
 
+  it("ignores audit records from prior turns (turnStartTimestamp filter)", () => {
+    // Newest-first ordering as produced by AuditService.getRecords().
+    const records = [
+      makeAuditRecord({ id: "r-current", timestamp: 1100, result: "success" }),
+      makeAuditRecord({ id: "r-prior", timestamp: 500, result: "error" }),
+    ];
+    expect(
+      classifyTurnOutcome({
+        transition: makeTransition({ timestamp: 1200 }),
+        recentOutput:
+          "Done — the requested change has been applied to the file. Anything else to fix?",
+        recentAuditRecords: records,
+        sessionId: "session-1",
+        turnStartTimestamp: 1000,
+      })
+    ).toBe("answered");
+  });
+
+  it("uses the most recent (newest-first) record, not the oldest", () => {
+    // If the classifier picked the array-tail (oldest) record, this would
+    // return "tool-error" — guarding against the array-ordering regression.
+    const records = [
+      makeAuditRecord({ id: "r-newest", timestamp: 1100, result: "success" }),
+      makeAuditRecord({ id: "r-oldest", timestamp: 1050, result: "error" }),
+    ];
+    expect(
+      classifyTurnOutcome({
+        transition: makeTransition({ timestamp: 1200 }),
+        recentOutput:
+          "Done — the requested change has been applied to the file. Anything else to fix?",
+        recentAuditRecords: records,
+        sessionId: "session-1",
+        turnStartTimestamp: 1000,
+      })
+    ).toBe("answered");
+  });
+
   it("classifies refused output", () => {
     const out = "Sorry, I cannot do that — it goes against my guidelines.".padEnd(200, " ");
     expect(
@@ -352,6 +389,55 @@ describe("TurnOutcomeService.handleTransition", () => {
     }
     // 50 is the floor (MCP_AUDIT_MIN_RECORDS), so 60 records get trimmed to 50.
     expect(f.service.getRecords().length).toBeLessThanOrEqual(50);
+  });
+
+  it("uses the recorded turn-start timestamp to scope audit lookups", () => {
+    // Audit record from BEFORE the new turn started — must be ignored.
+    const auditRecords = [
+      makeAuditRecord({
+        id: "r-prior-error",
+        timestamp: 500,
+        sessionId: "session-1",
+        result: "error",
+      }),
+    ];
+    const f = makeFixture({ auditRecords });
+    // Enter active state at t=1000 — this is the turn-start lower bound.
+    f.service.handleTransition(
+      makeTransition({
+        previousState: "idle",
+        state: "working",
+        trigger: "input",
+        timestamp: 1000,
+      })
+    );
+    f.service.appendOutput("term-1", "Done — the file was updated and the tests pass cleanly.");
+    // Exit active state at t=1100 — classifier should ignore the prior
+    // error (timestamp 500 < turnStart 1000) and report `answered`.
+    f.service.handleTransition(
+      makeTransition({
+        previousState: "working",
+        state: "idle",
+        trigger: "output",
+        timestamp: 1100,
+      })
+    );
+    expect(f.service.getRecords()[0]?.outcome).toBe("answered");
+  });
+
+  it("flushNow persists pending records synchronously", () => {
+    const f = makeFixture();
+    f.service.appendOutput("term-1", "Done — the file was updated and the tests pass cleanly.");
+    f.service.handleTransition(
+      makeTransition({ previousState: "working", state: "idle", trigger: "output" })
+    );
+    expect(f.saveConfig).not.toHaveBeenCalledWith(
+      expect.objectContaining({ turnOutcomeLog: expect.any(Array) })
+    );
+    f.flushPersist();
+    expect(f.saveConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ turnOutcomeLog: expect.any(Array) })
+    );
   });
 
   it("hydrates persisted records on first read", () => {
