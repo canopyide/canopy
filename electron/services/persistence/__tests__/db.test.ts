@@ -39,7 +39,7 @@ vi.mock("drizzle-orm/better-sqlite3", () => ({
   drizzle: vi.fn(() => ({})),
 }));
 
-import { probeDb, attemptRecovery, closeSharedDb, withDiskRecovery } from "../db.js";
+import { openDb, probeDb, attemptRecovery, closeSharedDb, withDiskRecovery } from "../db.js";
 
 describe("probeDb", () => {
   let tmpDir: string;
@@ -218,6 +218,47 @@ describe("attemptRecovery", () => {
 describe("closeSharedDb", () => {
   it("does nothing when no shared instance exists", () => {
     expect(() => closeSharedDb({ checkpoint: true })).not.toThrow();
+  });
+});
+
+describe("openDb", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("throws before constructing a Database when disk space is critical", () => {
+    mockGetCurrentDiskSpaceStatus.mockReturnValue({
+      status: "critical",
+      availableMb: 100,
+      writesSuppressed: true,
+    });
+
+    expect(() => openDb("/fake/userData/daintree.db", "/fake/migrations")).toThrow(
+      /disk space is critical/
+    );
+    expect(mockDatabaseConstructor).not.toHaveBeenCalled();
+  });
+
+  it("does not block on the disk guard when status is warning (only critical bails)", () => {
+    // status === "warning" should still allow opens — the guard fires only on
+    // "critical" so writes can keep draining at the warning tier. We force the
+    // constructor to throw a sentinel error so we don't depend on the rest of
+    // openDb's wiring; reaching the constructor at all proves the guard passed.
+    mockGetCurrentDiskSpaceStatus.mockReturnValue({
+      status: "warning",
+      availableMb: 1024,
+      writesSuppressed: false,
+    });
+    const sentinel = new Error("sentinel — should not be reached on critical");
+    mockDatabaseConstructor.mockImplementation(() => ({ error: sentinel }));
+
+    expect(() => openDb("/fake/userData/daintree.db", "/fake/migrations")).toThrow(sentinel);
+    expect(mockDatabaseConstructor).toHaveBeenCalled();
   });
 });
 

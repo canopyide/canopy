@@ -73,6 +73,13 @@ export function openDb(
   dbPath: string,
   migrationsFolder?: string
 ): { sqlite: Database.Database; db: AppDb } {
+  // Pre-flight disk-space gate. better-sqlite3's constructor creates the file
+  // on open; on a critical-pressure volume that leaves a zero-byte database
+  // for probeDb to quarantine next boot. Bail before allocating a handle.
+  if (getCurrentDiskSpaceStatus().status === "critical") {
+    throw new Error("Cannot open database: disk space is critical");
+  }
+
   const sqlite = new Database(dbPath);
   try {
     sqlite.pragma("journal_mode = WAL");
