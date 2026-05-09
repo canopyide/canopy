@@ -94,11 +94,10 @@ export async function launchApp(options: LaunchOptions = {}): Promise<AppContext
   const maxAttempts = isWindowsCI ? 3 : isMacOSLocal ? 3 : 1;
   // On macOS local dev, the first 1–2 launches in a Playwright worker can
   // hang through the full launch window before recovering on retry. Cap each
-  // non-final attempt at 35s and keep the retry-prep wait short so all three
-  // attempts fit inside the per-test 120s timeout
-  // (35 + 1 + 35 + 1 + 35 = 107s).
-  const attemptTimeout = (attempt: number) =>
-    isMacOSLocal && attempt < maxAttempts ? 35_000 : launchTimeout;
+  // attempt at 50s — long enough for cold-start CDP handshake, short enough
+  // that all three attempts fit inside the bumped 240s test timeout
+  // (50 + 1 + 50 + 1 + 50 = 152s, leaves ~88s for test work).
+  const attemptTimeout = (_attempt: number) => (isMacOSLocal ? 50_000 : launchTimeout);
   let lastError: unknown = null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -131,6 +130,10 @@ export async function launchApp(options: LaunchOptions = {}): Promise<AppContext
       );
       cleanupWindowsElectronProcesses();
     }
+    // macOS local: reap any leftover e2e Electron processes from prior specs
+    // before each fresh launch. Zombie crashpad helpers from a closed app can
+    // hold Mach ports and contribute to first-launch flakes.
+    if (isMacOSLocal) cleanupMacElectronE2eProcesses();
 
     if (options.extraArgs?.length) {
       args.unshift(...options.extraArgs);
