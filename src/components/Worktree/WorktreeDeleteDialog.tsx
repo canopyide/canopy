@@ -29,8 +29,12 @@ export function WorktreeDeleteDialog({ isOpen, onClose, worktree }: WorktreeDele
   const { counts: terminalCounts } = useWorktreeTerminals(worktree.id);
 
   const changes = worktree.worktreeChanges?.changes ?? [];
-  const hasTrackedChanges = changes.some((c) => c.status !== "untracked" && c.status !== "ignored");
-  const hasUntrackedFiles = changes.some((c) => c.status === "untracked");
+  const trackedChangeCount = changes.filter(
+    (c) => c.status !== "untracked" && c.status !== "ignored"
+  ).length;
+  const untrackedFileCount = changes.filter((c) => c.status === "untracked").length;
+  const hasTrackedChanges = trackedChangeCount > 0;
+  const hasUntrackedFiles = untrackedFileCount > 0;
   const hasChanges = hasTrackedChanges || hasUntrackedFiles;
   const hasTerminals = terminalCounts.total > 0;
 
@@ -161,10 +165,10 @@ export function WorktreeDeleteDialog({ isOpen, onClose, worktree }: WorktreeDele
                 <p>
                   This worktree has{" "}
                   {hasTrackedChanges && hasUntrackedFiles
-                    ? "uncommitted changes and untracked files"
+                    ? `${trackedChangeCount} uncommitted file${trackedChangeCount === 1 ? "" : "s"} and ${untrackedFileCount} untracked file${untrackedFileCount === 1 ? "" : "s"}`
                     : hasTrackedChanges
-                      ? "uncommitted changes"
-                      : "untracked files"}
+                      ? `${trackedChangeCount} uncommitted file${trackedChangeCount === 1 ? "" : "s"}`
+                      : `${untrackedFileCount} untracked file${untrackedFileCount === 1 ? "" : "s"}`}
                   . Standard deletion will fail.
                 </p>
               </div>

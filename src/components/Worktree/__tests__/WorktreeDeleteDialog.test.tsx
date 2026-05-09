@@ -119,7 +119,7 @@ describe("WorktreeDeleteDialog — warning messages", () => {
     expect(screen.queryByText(/Standard deletion will fail/)).toBeNull();
   });
 
-  it('shows "untracked files" warning when only untracked files exist', () => {
+  it("shows untracked-file count when only untracked files exist", () => {
     const worktree = makeWorktree(
       makeChanges([
         { path: "new.txt", status: "untracked" },
@@ -129,11 +129,11 @@ describe("WorktreeDeleteDialog — warning messages", () => {
     render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
 
     const warning = screen.getByText(/Standard deletion will fail/);
-    expect(warning.textContent).toContain("untracked files");
-    expect(warning.textContent).not.toContain("uncommitted changes");
+    expect(warning.textContent).toContain("2 untracked files");
+    expect(warning.textContent).not.toContain("uncommitted file");
   });
 
-  it('shows "uncommitted changes" warning when only tracked changes exist', () => {
+  it("shows uncommitted-file count when only tracked changes exist", () => {
     const worktree = makeWorktree(
       makeChanges([
         { path: "src/app.ts", status: "modified" },
@@ -143,21 +143,53 @@ describe("WorktreeDeleteDialog — warning messages", () => {
     render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
 
     const warning = screen.getByText(/Standard deletion will fail/);
-    expect(warning.textContent).toContain("uncommitted changes");
-    expect(warning.textContent).not.toContain("untracked files");
+    expect(warning.textContent).toContain("2 uncommitted files");
+    expect(warning.textContent).not.toContain("untracked file");
   });
 
-  it('shows "uncommitted changes and untracked files" when both exist', () => {
+  it("shows both counts when tracked and untracked files exist", () => {
     const worktree = makeWorktree(
       makeChanges([
         { path: "src/app.ts", status: "modified" },
+        { path: "src/index.ts", status: "modified" },
         { path: "new.txt", status: "untracked" },
       ])
     );
     render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
 
     const warning = screen.getByText(/Standard deletion will fail/);
-    expect(warning.textContent).toContain("uncommitted changes and untracked files");
+    expect(warning.textContent).toContain("2 uncommitted files and 1 untracked file");
+  });
+
+  it("uses singular form for a single tracked change", () => {
+    const worktree = makeWorktree(makeChanges([{ path: "src/app.ts", status: "modified" }]));
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    const warning = screen.getByText(/Standard deletion will fail/);
+    expect(warning.textContent).toContain("1 uncommitted file.");
+    expect(warning.textContent).not.toContain("1 uncommitted files");
+  });
+
+  it("uses singular form for a single untracked file", () => {
+    const worktree = makeWorktree(makeChanges([{ path: "new.txt", status: "untracked" }]));
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    const warning = screen.getByText(/Standard deletion will fail/);
+    expect(warning.textContent).toContain("1 untracked file.");
+    expect(warning.textContent).not.toContain("1 untracked files");
+  });
+
+  it("excludes ignored files from the uncommitted count", () => {
+    const worktree = makeWorktree(
+      makeChanges([
+        { path: "src/app.ts", status: "modified" },
+        { path: "node_modules/foo", status: "ignored" },
+      ])
+    );
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    const warning = screen.getByText(/Standard deletion will fail/);
+    expect(warning.textContent).toContain("1 uncommitted file.");
   });
 
   it("hides warning when force is checked", () => {
