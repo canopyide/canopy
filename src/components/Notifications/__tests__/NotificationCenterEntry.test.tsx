@@ -106,6 +106,10 @@ describe("NotificationCenterEntry unread signal", () => {
       expect(slot.tagName).toBe("SPAN");
       expect(slot.className).toMatch(/bg-status-info/);
       expect(slot.className).toMatch(/rounded-full/);
+      // Stable spacer classes must be present in both states so the leading
+      // slot reserves the same horizontal width regardless of read/unread.
+      expect(slot.className).toMatch(/\bw-1\.5\b/);
+      expect(slot.className).toMatch(/\bshrink-0\b/);
     }
   });
 
@@ -117,6 +121,10 @@ describe("NotificationCenterEntry unread signal", () => {
       expect(slot.tagName).toBe("SPAN");
       expect(slot.className).not.toMatch(/bg-status-info/);
       expect(slot.className).not.toMatch(/rounded-full/);
+      // The spacer must always reserve the leading width — losing these
+      // classes would re-introduce the layout shift on read/unread toggle.
+      expect(slot.className).toMatch(/\bw-1\.5\b/);
+      expect(slot.className).toMatch(/\bshrink-0\b/);
     }
   });
 
