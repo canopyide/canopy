@@ -55,8 +55,11 @@ export function registerTerminalSpawnActions(
       const nonTrashed = state.panelIds
         .map((id) => state.panelsById[id])
         .filter((t) => t && t.location !== "trash");
+      const focusedPanel = state.focusedId ? state.panelsById[state.focusedId] : undefined;
+      const liveFocusedId =
+        focusedPanel && focusedPanel.location !== "trash" ? state.focusedId : undefined;
       const targetId =
-        terminalId ?? state.focusedId ?? (nonTrashed.length === 1 ? nonTrashed[0]!.id : undefined);
+        terminalId ?? liveFocusedId ?? (nonTrashed.length === 1 ? nonTrashed[0]!.id : undefined);
 
       if (targetId) {
         const terminal = state.panelsById[targetId];
