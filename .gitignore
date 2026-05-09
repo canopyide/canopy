@@ -92,6 +92,10 @@ reports/
 *.rpm
 .daintree/daintree-remote
 
+# Native addon build outputs (electron-rebuild + node-gyp)
+electron/native/*/build/
+electron/native/*/bin/
+
 # Planning docs (private)
 planning/
 .planning/
