@@ -608,13 +608,6 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
 
   const hasNonMainWorktrees = deferredWorktrees.length > 1;
   const hasFilters = hasActiveFilters();
-  const hasPopoverFilters =
-    query.trim().length > 0 ||
-    statusFilters.size > 0 ||
-    typeFilters.size > 0 ||
-    githubFilters.size > 0 ||
-    sessionFilters.size > 0 ||
-    activityFilters.size > 0;
   const showQuickStateEmptyState =
     filteredWorktrees.length === 0 &&
     quickStateFilter !== "all" &&
@@ -838,9 +831,6 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                 <EmptyState
                   variant="filtered-empty"
                   title={`No ${quickStateFilter} worktrees`}
-                  description={
-                    hasPopoverFilters ? "Clear filters to show every worktree" : undefined
-                  }
                   action={
                     <button
                       onClick={clearAllFilters}

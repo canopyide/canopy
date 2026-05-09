@@ -517,7 +517,7 @@ export function GitHubResourceList({
           title={title}
           action={
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
               onClick={() => {
                 setSearchQuery("");
