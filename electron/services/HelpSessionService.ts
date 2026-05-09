@@ -381,6 +381,15 @@ export class HelpSessionService {
     if (input.agentId !== "codex") {
       await this.writeMcpConfig(sessionPath, settings, port, token);
       await this.writeClaudeSettings(sessionPath, helpFolder, settings);
+    } else {
+      // Codex skips `writeMcpConfig`, so when the template hash gate (#7525)
+      // also skips `fs.cp`, a `.mcp.json` from a prior Claude provision for
+      // this same project keeps its stale `daintree` Bearer in cwd. The
+      // bearer is already revoked in-memory (single-backend invariant), but
+      // before the gate, `fs.cp` would have restored the bundled `.mcp.json`
+      // and wiped the entry. Strip it now to preserve that hygiene — no-op
+      // when the entry is absent or its bearer is still live.
+      await this.stripStaleDaintreeMcpEntry(sessionPath);
     }
     // Codex doesn't read project-scoped `.codex/config.toml` from cwd —
     // its only mechanism for overriding the global config is the `-c key=value`

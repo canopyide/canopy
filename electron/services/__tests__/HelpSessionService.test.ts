@@ -910,12 +910,17 @@ describe("HelpSessionService", () => {
       // second provision will overwrite this with the bundled version.
       await fs.writeFile(path.join(first.sessionPath, "CLAUDE.md"), "# mutated", "utf-8");
 
+      const cpSpy = vi.spyOn(fs, "cp");
       const second = await service.provisionSession(provisionInput());
       if (!second) throw new Error("expected second provision");
       expect(second.sessionPath).toBe(first.sessionPath);
+      // Direct assertion: the gate must short-circuit `fs.cp` entirely,
+      // not just preserve the mutated file by chance.
+      expect(cpSpy).not.toHaveBeenCalled();
 
       const claude = await fs.readFile(path.join(second.sessionPath, "CLAUDE.md"), "utf-8");
       expect(claude).toBe("# mutated");
+      cpSpy.mockRestore();
     });
 
     it("re-copies the template when the bundled source hash differs from the on-disk stamp", async () => {
@@ -966,12 +971,15 @@ describe("HelpSessionService", () => {
       cpSpy.mockRestore();
     });
 
-    it("treats a non-ENOENT stamp read failure as missing — provision succeeds and re-copies", async () => {
+    it("treats a non-ENOENT stamp read failure as missing — provision succeeds and re-copies the template", async () => {
       const first = await service.provisionSession(provisionInput());
       if (!first) throw new Error("expected first provision");
 
-      // Spy ONLY on the stamp read; pass everything else through. EACCES
-      // models a corrupted/locked stamp file: provision must not abort.
+      // Mutate the session-dir CLAUDE.md so we can detect that fs.cp ran
+      // (the bundled value would replace the mutation). Then make the stamp
+      // read fail with EACCES — provision must not abort and must re-copy.
+      await fs.writeFile(path.join(first.sessionPath, "CLAUDE.md"), "# mutated", "utf-8");
+
       const stampPath = path.join(first.sessionPath, ".template-hash");
       const realReadFile = fs.readFile.bind(fs);
       const readSpy = vi
@@ -991,6 +999,9 @@ describe("HelpSessionService", () => {
       const second = await service.provisionSession(provisionInput());
       expect(second).not.toBeNull();
       readSpy.mockRestore();
+
+      const claude = await fs.readFile(path.join(first.sessionPath, "CLAUDE.md"), "utf-8");
+      expect(claude).toBe("# Help");
     });
 
     it("rewrites .mcp.json with a fresh bearer on every provision, even when the template copy is skipped", async () => {
@@ -1006,6 +1017,34 @@ describe("HelpSessionService", () => {
         await fs.readFile(path.join(second.sessionPath, ".mcp.json"), "utf-8")
       );
       expect(mcp.mcpServers.daintree.headers.Authorization).toBe(`Bearer ${second.token}`);
+    });
+
+    it("strips a prior Claude bearer from .mcp.json on Codex hash-skip switch (no stale Authorization in cwd)", async () => {
+      // Provision Claude first — writes `.mcp.json` with a literal Bearer.
+      const claudeResult = await service.provisionSession(provisionInput());
+      if (!claudeResult) throw new Error("expected claude provision");
+      const claudeMcp = JSON.parse(
+        await fs.readFile(path.join(claudeResult.sessionPath, ".mcp.json"), "utf-8")
+      );
+      expect(claudeMcp.mcpServers.daintree.headers.Authorization).toBe(
+        `Bearer ${claudeResult.token}`
+      );
+
+      // Provision Codex for the same project. Template is unchanged →
+      // hash gate skips fs.cp. Codex skips writeMcpConfig. Without the
+      // stale-strip in the codex branch, the dead Claude bearer would
+      // remain on disk in cwd (regression vs pre-#7525 behavior, where
+      // fs.cp would have restored the bundled `.mcp.json`).
+      const codexResult = await service.provisionSession({ ...provisionInput(), agentId: "codex" });
+      if (!codexResult) throw new Error("expected codex provision");
+      expect(codexResult.sessionPath).toBe(claudeResult.sessionPath);
+
+      const after = JSON.parse(
+        await fs.readFile(path.join(codexResult.sessionPath, ".mcp.json"), "utf-8")
+      );
+      expect(after.mcpServers.daintree).toBeUndefined();
+      // daintree-docs is not session-bound — must remain.
+      expect(after.mcpServers["daintree-docs"]).toBeDefined();
     });
 
     it("hashes nested template files deterministically (subdir order independence)", async () => {
