@@ -662,36 +662,38 @@ describe("terminal spawn handler - help session detection (#6524)", () => {
     expect(spawnArgs.command).not.toContain("--dangerously-skip-permissions");
   });
 
-  it("falls back to per-pane MCP injection when DAINTREE_MCP_TOKEN is not a valid help token", async () => {
+  it("refuses to spawn when DAINTREE_MCP_TOKEN is present but invalid for an assistant-supported launch (#7509)", async () => {
+    // Models the orphan-backend scenario: the renderer provisioned a session,
+    // a sibling provision displaced it, then the renderer's spawn IPC arrived
+    // carrying the now-revoked token. Falling back to per-pane MCP injection
+    // here would resurrect the bug — silently spawning an unmanaged Claude
+    // instance in the assistant's slot without single-backend enforcement.
+    // The handler must refuse so the renderer is forced to provision fresh.
     mockValidateToken.mockReturnValue(false);
     mockIsRunning.mockReturnValue(true);
     mockCurrentPort.mockReturnValue(45454);
-    mockPreparePaneConfig.mockResolvedValue({
-      configPath: "/tmp/pane-config.json",
-      token: "pane-token",
-    });
     mockGetProjectSettings.mockResolvedValue({ daintreeMcpTier: "action" });
 
     const deps = { ptyClient } as unknown as HandlerDependencies;
     registerTerminalLifecycleHandlers(deps);
 
     const handler = getSpawnHandler();
-    await handler(
-      {} as Electron.IpcMainInvokeEvent,
-      {
-        cols: 80,
-        rows: 24,
-        cwd: tmpDir,
-        command: "claude",
-        launchAgentId: "claude",
-        env: { DAINTREE_MCP_TOKEN: "stale-or-spoofed" },
-      } as unknown as Parameters<typeof handler>[1]
-    );
+    await expect(
+      handler(
+        {} as Electron.IpcMainInvokeEvent,
+        {
+          cols: 80,
+          rows: 24,
+          cwd: tmpDir,
+          command: "claude",
+          launchAgentId: "claude",
+          env: { DAINTREE_MCP_TOKEN: "stale-or-spoofed" },
+        } as unknown as Parameters<typeof handler>[1]
+      )
+    ).rejects.toThrow(/Daintree Assistant session token is invalid/);
 
-    const spawnArgs = ptyClient.spawn.mock.calls[0][1];
-    expect(spawnArgs.command).toContain("--mcp-config");
-    expect(spawnArgs.command).not.toContain("--strict-mcp-config");
-    expect(mockPreparePaneConfig).toHaveBeenCalledTimes(1);
+    expect(ptyClient.spawn).not.toHaveBeenCalled();
+    expect(mockPreparePaneConfig).not.toHaveBeenCalled();
   });
 
   it("starts MCP on demand before injecting config for restored Claude agent spawns", async () => {

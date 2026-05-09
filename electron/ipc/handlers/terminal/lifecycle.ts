@@ -221,11 +221,22 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
     // (skipPermissions), append the dangerous flag.
     const helpToken = spawnEnv?.DAINTREE_MCP_TOKEN ?? "";
     const helpTier = helpToken ? helpSessionService.validateToken(helpToken) : false;
-    const isHelpLaunch =
-      helpTier !== false &&
-      typeof launchAgentId === "string" &&
-      getAssistantSupportedAgentIds().includes(launchAgentId) &&
-      safeCommand.length > 0;
+    const isAssistantAgent =
+      typeof launchAgentId === "string" && getAssistantSupportedAgentIds().includes(launchAgentId);
+    const isHelpLaunch = helpTier !== false && isAssistantAgent && safeCommand.length > 0;
+
+    // If a help-session token was supplied but is invalid (revoked between
+    // provision and spawn — typically because a sibling provision displaced
+    // the session under the single-backend invariant), refuse to silently
+    // fall back to a normal Claude launch with per-pane MCP injection. The
+    // renderer must always provision a fresh session before spawning the
+    // assistant; falling through would resurrect the orphan-backend failure
+    // mode (#7509) by spawning an unmanaged Claude in the assistant slot.
+    if (!isHelpLaunch && helpToken && isAssistantAgent && safeCommand.length > 0) {
+      throw new Error(
+        "Daintree Assistant session token is invalid or already displaced; refusing to spawn"
+      );
+    }
 
     if (isHelpLaunch && launchAgentId) {
       const dangerous = DEFAULT_DANGEROUS_ARGS[launchAgentId];
