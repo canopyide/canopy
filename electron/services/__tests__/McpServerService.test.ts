@@ -5251,7 +5251,39 @@ describe("McpServerService", () => {
         .getAuditRecords()
         .filter((r) => r.toolId === "terminal.waitUntilIdle");
       expect(matching.length - baselineMatching).toBe(1);
-      expect(matching.at(-1)?.result).toBe("success");
+      const record = matching.at(-1)!;
+      expect(record.result).toBe("success");
+      expect(record.toolId).toBe("terminal.waitUntilIdle");
+      expect(record.tier).toBe("external");
+      expect(record.durationMs).toBeGreaterThanOrEqual(0);
+      expect(record.errorCode).toBeUndefined();
+    });
+
+    it("releases its event listener after a timeout exit", async () => {
+      const { events } = await import("../events.js");
+      const innerBus = (events as unknown as { bus: import("node:events").EventEmitter }).bus;
+      const { terminalId, agentId } = nextIds();
+      await seedTerminalAgent(terminalId, agentId, "working");
+
+      const { window } = createMockWindow({ getManifest: () => [] });
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      const baseline = innerBus.listenerCount("agent:state-changed");
+
+      const result = (await client.callTool({
+        name: "terminal.waitUntilIdle",
+        arguments: { terminalId, timeoutMs: 50 },
+      })) as TextToolResult;
+      expect(result.isError).toBeFalsy();
+      const payload = JSON.parse(result.content[0]!.text);
+      expect(payload.timedOut).toBe(true);
+
+      // The timeout exit path runs through the same `finally` cleanup as the
+      // resolved path — the listener must be removed even when the wait
+      // expires without a state transition.
+      expect(innerBus.listenerCount("agent:state-changed")).toBe(baseline);
     });
   });
 });
