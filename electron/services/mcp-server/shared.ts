@@ -1,3 +1,5 @@
+import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { ActionDispatchResult } from "../../../shared/types/actions.js";
 import type {
   McpAuditRecord,
@@ -87,6 +89,80 @@ export const CONFIRMATION_REQUIRED_CODE = "CONFIRMATION_REQUIRED";
 export const USER_REJECTED_CODE = "USER_REJECTED";
 export const CONFIRMATION_TIMEOUT_CODE = "CONFIRMATION_TIMEOUT";
 export const ELICITATION_FAILED_CODE = "ELICITATION_FAILED";
+export const EXECUTION_ERROR_CODE = "EXECUTION_ERROR";
+
+/**
+ * Application-level convention: codes here flag transient failures that a
+ * model could reasonably retry without changing arguments. Other codes are
+ * structural (validation, permission, missing entity) and a retry would just
+ * fail the same way. Not part of the MCP spec — surfaced in the tool-error
+ * JSON payload and McpError.data on resource errors.
+ */
+export const RETRIABLE_ERROR_CODES: ReadonlySet<string> = new Set([
+  EXECUTION_ERROR_CODE,
+  CONFIRMATION_TIMEOUT_CODE,
+]);
+
+export interface McpErrorPayload {
+  code: string;
+  message: string;
+  details?: unknown;
+  retriable: boolean;
+}
+
+/**
+ * Build the structured envelope shared by both surfaces:
+ * - Tool path: serialised as JSON in `content[0].text` alongside `isError: true`
+ * - Resource path: passed as `data` on the thrown `McpError`
+ *
+ * `details` is run through `JSON.stringify` once as a safety check — the SDK's
+ * transport will stringify the payload again when serialising `McpError.data`
+ * or the tool response, and an unserialisable `details` (BigInt, Symbol,
+ * circular ref) would crash that downstream serialisation. On failure the
+ * field is replaced with `{ serializationError: true }`. `details` is omitted
+ * entirely when the caller passes `undefined`, but a caller-supplied `null`
+ * is preserved.
+ */
+export function buildMcpErrorPayload(input: {
+  code: string;
+  message: string;
+  details?: unknown;
+}): McpErrorPayload {
+  const payload: McpErrorPayload = {
+    code: input.code,
+    message: input.message,
+    retriable: RETRIABLE_ERROR_CODES.has(input.code),
+  };
+  if (input.details !== undefined) {
+    let safeDetails: unknown = input.details;
+    try {
+      JSON.stringify(input.details);
+    } catch {
+      safeDetails = { serializationError: true };
+    }
+    payload.details = safeDetails;
+  }
+  return payload;
+}
+
+/**
+ * Tool-path error envelope. The text is plain JSON so existing
+ * `.toContain("CODE")` assertions remain green and models can `JSON.parse` it
+ * for self-correction. Typed as `CallToolResult` so the SDK union (which
+ * includes a separate task-result variant requiring `task`) accepts it at
+ * the `setRequestHandler` call site.
+ */
+export function buildToolError(input: {
+  code: string;
+  message: string;
+  details?: unknown;
+}): CallToolResult {
+  const payload = buildMcpErrorPayload(input);
+  return {
+    content: [{ type: "text", text: JSON.stringify(payload) }],
+    isError: true,
+  };
+}
 
 export const OPEN_WORLD_CATEGORIES: ReadonlySet<string> = new Set([
   "browser",
@@ -529,10 +605,26 @@ export function parseResourceUri(uri: string): ParsedResourceUri | null {
   return null;
 }
 
+/**
+ * Unwrap a successful dispatch result, or throw a structured `McpError` for the
+ * failure case. Used inside resource handlers where the SDK serialises thrown
+ * errors as JSON-RPC error responses — embedding the action's `code`, `details`
+ * and `retriable` flag in `McpError.data` keeps the resource error wire shape
+ * aligned with the tool-path JSON envelope.
+ */
 export function unwrapDispatchResult(envelope: DispatchEnvelope): unknown {
   const result = envelope.result;
   if (result.ok) return result.result;
-  throw new Error(`Action failed [${result.error.code}]: ${result.error.message}`);
+  const message = `Action failed [${result.error.code}]: ${result.error.message}`;
+  throw new McpError(
+    ErrorCode.InternalError,
+    message,
+    buildMcpErrorPayload({
+      code: result.error.code,
+      message: result.error.message,
+      details: result.error.details,
+    })
+  );
 }
 
 export function serializeResourcePayload(value: unknown): string {
