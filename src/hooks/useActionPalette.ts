@@ -3,7 +3,7 @@ import { useCallback, useMemo } from "react";
 import { actionService } from "@/services/ActionService";
 import { keybindingService } from "@/services/KeybindingService";
 import { notify } from "@/lib/notify";
-import type { ActionManifestEntry } from "@shared/types/actions";
+import type { ActionDanger, ActionManifestEntry } from "@shared/types/actions";
 import { usePaletteStore } from "@/store/paletteStore";
 import { useActionMruStore } from "@/store/actionMruStore";
 import { extractAcronym, rankActionMatches } from "@/lib/actionPaletteSearch";
@@ -16,6 +16,7 @@ export interface ActionPaletteItem {
   description: string;
   category: string;
   enabled: boolean;
+  danger: ActionDanger;
   disabledReason?: string;
   keybinding?: string;
   kind: string;
@@ -67,6 +68,7 @@ function toActionPaletteItem(entry: ActionManifestEntry): ActionPaletteItem {
     description,
     category,
     enabled: entry.enabled,
+    danger: entry.danger,
     disabledReason,
     keybinding: keybindingService.getDisplayCombo(entry.id),
     kind: entry.kind,
@@ -143,7 +145,9 @@ export function useActionPalette(): UseActionPaletteReturn {
       // Only record frecency for enabled items so disabled actions don't get
       // promoted to the top from repeated attempts. Dispatch still runs for
       // disabled items so ActionService can surface the disabled-reason toast.
-      if (item.enabled) {
+      // Also skip confirm-danger actions (e.g. "Delete worktree") so destructive
+      // actions don't land in the "Recently used" rail (issue #7481).
+      if (item.enabled && item.danger !== "confirm") {
         useActionMruStore.getState().recordActionMru(item.id);
       }
       close();

@@ -37,7 +37,8 @@ function makeEntry(
   id: string,
   title: string,
   enabled = true,
-  category = "General"
+  category = "General",
+  danger: "safe" | "confirm" | "restricted" = "safe"
 ): {
   id: string;
   title: string;
@@ -45,9 +46,10 @@ function makeEntry(
   category: string;
   kind: string;
   enabled: boolean;
+  danger: "safe" | "confirm" | "restricted";
   requiresArgs?: boolean;
 } {
-  return { id, title, description: "", category, kind: "command", enabled };
+  return { id, title, description: "", category, kind: "command", enabled, danger };
 }
 
 describe("useActionPalette", () => {
@@ -301,6 +303,40 @@ describe("useActionPalette", () => {
     expect(sorted.length).toBe(1);
     expect(sorted[0]!.id).toBe("a.action");
     expect(dispatchMock).toHaveBeenCalledWith("a.action", {}, { source: "user" });
+  });
+
+  it("does NOT record frecency when executeAction is called on confirm-danger item", async () => {
+    dispatchMock.mockResolvedValue({ ok: true });
+    listMock.mockReturnValue([
+      makeEntry("worktree.delete", "Delete worktree", true, "worktree", "confirm"),
+    ]);
+
+    const { result } = renderHook(() => useActionPalette());
+
+    act(() => {
+      result.current.open();
+    });
+
+    act(() => {
+      result.current.setQuery("delete");
+    });
+
+    await waitFor(
+      () => {
+        expect(result.current.results.length).toBe(1);
+      },
+      { timeout: 2000 }
+    );
+
+    act(() => {
+      result.current.executeAction(result.current.results[0]!);
+    });
+
+    // Dispatch still runs so ActionService can show the confirmation dialog,
+    // but MRU stays clean — destructive actions must not land in the
+    // "Recently used" rail (issue #7481).
+    expect(useActionMruStore.getState().getSortedActionMruList().length).toBe(0);
+    expect(dispatchMock).toHaveBeenCalledWith("worktree.delete", {}, { source: "user" });
   });
 
   it("does NOT record frecency when executeAction is called on disabled item", async () => {
