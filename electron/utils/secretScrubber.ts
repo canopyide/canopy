@@ -304,8 +304,7 @@ export const PATTERNS: readonly SecretPattern[] = [
     // A bare `[0-9]{8,12}:[A-Za-z0-9_-]{35}` would collide with Unix-timestamp +
     // 35-char-alphanumeric strings in log lines, so this requires the surrounding
     // key name as context — same precedent as `aws-secret-access-key` above.
-    regex:
-      /\btelegram(?:_bot)?_token\s{0,4}[:=]\s{0,4}[0-9]{8,12}:[A-Za-z0-9_-]{35}\b/gi,
+    regex: /\btelegram(?:_bot)?_token\s{0,4}[:=]\s{0,4}[0-9]{8,12}:[A-Za-z0-9_-]{35}\b/gi,
     replacement: REDACTED,
   },
   {
