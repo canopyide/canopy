@@ -110,6 +110,29 @@ describe("sessionServer prompt handler", () => {
     expect((result as Record<string, unknown>).messages).toBeDefined();
   });
 
+  it("renders triage_terminals fleet-polling recipe with key anchors", async () => {
+    const deps = fakeDeps();
+    const server = createSessionServer("s_triage_terminals", deps);
+    await server.connect(makeMockTransport());
+
+    const result = (await getPrompt(server, {
+      name: "triage_terminals",
+      arguments: {},
+    })) as { messages: Array<{ role: string; content: { type: string; text: string } }> };
+
+    expect(result.messages).toBeDefined();
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0].role).toBe("user");
+    expect(result.messages[0].content.type).toBe("text");
+
+    const text = result.messages[0].content.text;
+    expect(text).toContain("terminal.getStatus");
+    expect(text).toContain("lastTransitionAt");
+    expect(text).toContain("ScheduleWakeup");
+    expect(text).toContain("terminal.waitUntilIdle");
+    expect(text).toContain("includeOutput");
+  });
+
   it("throws McpError for unknown prompt name", async () => {
     const deps = fakeDeps();
     const server = createSessionServer("s3", deps);
