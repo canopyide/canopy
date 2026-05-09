@@ -194,6 +194,7 @@ export function NotificationCenterEntry({
           const ts = formatNotificationTimestamp(entry.timestamp);
           return (
             <span
+              data-testid="notification-timestamp"
               title={ts.absolute}
               aria-label={ts.absolute}
               className="text-[10px] text-daintree-text/40 tabular-nums"

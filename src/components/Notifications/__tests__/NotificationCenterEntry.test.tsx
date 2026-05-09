@@ -289,12 +289,7 @@ describe("NotificationCenterEntry timestamp formatting", () => {
   });
 
   function timestampSpan(): HTMLElement {
-    // The timestamp span carries both `title` and `aria-label` set to the
-    // absolute datetime; query by tabular-nums + text-[10px] class which is
-    // unique to this span among siblings in the row.
-    const spans = document.querySelectorAll("span.tabular-nums.text-\\[10px\\]");
-    if (spans.length === 0) throw new Error("timestamp span not found");
-    return spans[0] as HTMLElement;
+    return screen.getByTestId("notification-timestamp");
   }
 
   it("renders 'just now' for sub-60s timestamps", () => {
@@ -364,18 +359,63 @@ describe("NotificationCenterEntry timestamp formatting", () => {
     expect(timestampSpan().textContent).toBe(expected);
   });
 
-  it("exposes the absolute datetime via title and aria-label on the span", () => {
+  it("exposes the absolute datetime via title and aria-label on every branch", () => {
+    vi.useFakeTimers();
+    const now = new Date(2026, 5, 15, 12, 0, 0);
+    vi.setSystemTime(now);
+    const cases: Array<{ name: string; ts: Date | number }> = [
+      { name: "today", ts: now.getTime() - 5 * 60 * 1000 },
+      { name: "yesterday", ts: new Date(2026, 5, 14, 9, 30, 0) },
+      { name: "older same year", ts: new Date(2026, 0, 5, 14, 30, 0) },
+      { name: "prior year", ts: new Date(2024, 0, 5, 14, 30, 0) },
+    ];
+    for (const { ts } of cases) {
+      const date = ts instanceof Date ? ts : new Date(ts);
+      const expected = new Intl.DateTimeFormat(undefined, {
+        dateStyle: "full",
+        timeStyle: "short",
+      }).format(date);
+      const { unmount } = render(
+        <NotificationCenterEntry
+          entry={makeEntry({ timestamp: ts instanceof Date ? ts.getTime() : ts })}
+        />
+      );
+      const span = timestampSpan();
+      expect(span.getAttribute("title")).toBe(expected);
+      expect(span.getAttribute("aria-label")).toBe(expected);
+      unmount();
+    }
+  });
+
+  it("treats a year-boundary cross-night as 'Yesterday' rather than prior year", () => {
+    vi.useFakeTimers();
+    const now = new Date(2026, 0, 1, 0, 30, 0);
+    vi.setSystemTime(now);
+    const ts = new Date(2025, 11, 31, 23, 30, 0);
+    render(<NotificationCenterEntry entry={makeEntry({ timestamp: ts.getTime() })} />);
+    const expectedTime = new Intl.DateTimeFormat(undefined, {
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(ts);
+    expect(timestampSpan().textContent).toBe(`Yesterday ${expectedTime}`);
+  });
+
+  it("respects the 60s and 60m boundaries between relative-time tiers", () => {
     vi.useFakeTimers();
     const now = new Date(2026, 0, 15, 12, 0, 0);
     vi.setSystemTime(now);
-    const ts = new Date(2026, 0, 14, 9, 30, 0);
-    render(<NotificationCenterEntry entry={makeEntry({ timestamp: ts.getTime() })} />);
-    const expectedAbsolute = new Intl.DateTimeFormat(undefined, {
-      dateStyle: "full",
-      timeStyle: "short",
-    }).format(ts);
-    const span = timestampSpan();
-    expect(span.getAttribute("title")).toBe(expectedAbsolute);
-    expect(span.getAttribute("aria-label")).toBe(expectedAbsolute);
+    const cases: Array<{ deltaMs: number; expected: string }> = [
+      { deltaMs: 59 * 1000, expected: "just now" },
+      { deltaMs: 60 * 1000, expected: "1m ago" },
+      { deltaMs: 59 * 60 * 1000 + 59 * 1000, expected: "59m ago" },
+      { deltaMs: 60 * 60 * 1000, expected: "1h ago" },
+    ];
+    for (const { deltaMs, expected } of cases) {
+      const { unmount } = render(
+        <NotificationCenterEntry entry={makeEntry({ timestamp: now.getTime() - deltaMs })} />
+      );
+      expect(timestampSpan().textContent).toBe(expected);
+      unmount();
+    }
   });
 });
