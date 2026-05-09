@@ -1,3 +1,4 @@
+import * as path from "node:path";
 import * as pty from "node-pty";
 import {
   filterEnvironment,
@@ -18,7 +19,36 @@ export function computeSpawnContext(id: string, options: PtySpawnOptions): Spawn
   const shell = options.shell || getDefaultShell();
   const args = options.args || getDefaultShellArgs(shell);
   const env = buildTerminalEnv(options, id, shell);
+  injectAgentStartupProfiling(env, options);
   return { shell, args, env };
+}
+
+/**
+ * Dev-only opt-in CPU profiling for agent CLI startup. Activates when ALL of:
+ *   - `options.launchAgentId` is set (agent panel, not a plain shell)
+ *   - `DAINTREE_PROFILE_AGENT_STARTUP === "1"` (caller opt-in)
+ *   - `DAINTREE_IS_PACKAGED === "0"` (forwarded by `PtyHostLifecycle`; the
+ *      strict-equality check disables profiling whenever the flag is missing
+ *      or anything other than `"0"`)
+ *   - `DAINTREE_USER_DATA` is available (target directory for `.cpuprofile`s)
+ *
+ * Appends `--cpu-prof --cpu-prof-dir=<userData>/agent-profiles` to any existing
+ * `NODE_OPTIONS`. Note this is inherited by every Node.js child process the
+ * agent spawns (npm, tsc, MCP servers); the resulting `.cpuprofile` files are
+ * still loadable in Chrome DevTools but the directory will fill with
+ * subprocess profiles too. See `docs/development.md` for the full caveat.
+ */
+function injectAgentStartupProfiling(env: Record<string, string>, options: PtySpawnOptions): void {
+  if (!options.launchAgentId) return;
+  if (process.env.DAINTREE_PROFILE_AGENT_STARTUP !== "1") return;
+  if (process.env.DAINTREE_IS_PACKAGED !== "0") return;
+  const userData = process.env.DAINTREE_USER_DATA;
+  if (!userData) return;
+
+  const profileDir = path.join(userData, "agent-profiles");
+  const injection = `--cpu-prof --cpu-prof-dir=${profileDir}`;
+  const existing = env.NODE_OPTIONS;
+  env.NODE_OPTIONS = existing && existing.length > 0 ? `${existing} ${injection}` : injection;
 }
 
 /**

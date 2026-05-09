@@ -116,6 +116,14 @@ export interface ActivityMonitorOptions {
   // reachable.
   waitingWatchdogFailThreshold?: number;
   onWaitingTimeout?: (id: string, spawnedAt: number) => void;
+  /**
+   * Fires once per boot cycle the first time `BootDetector.check()` returns
+   * true (or `markExited()` is invoked indirectly). The timestamp is the
+   * wall-clock `Date.now()` at the moment boot completion is observed. Used
+   * by `TerminalProcess` to record `bootCompleteAt` and emit the
+   * `[AgentStartup]` structured log entry.
+   */
+  onBootComplete?: (bootCompleteAt: number) => void;
 }
 
 export interface ActivityStateMetadata {
@@ -170,6 +178,8 @@ export class ActivityMonitor {
   private resizeSuppressUntil = 0;
 
   private readonly onWaitingTimeout?: (id: string, spawnedAt: number) => void;
+  private readonly onBootComplete?: (bootCompleteAt: number) => void;
+  private bootCompleteCallbackFired = false;
   private readonly processStateValidator?: ProcessStateValidator;
   private lastActivityTimestamp = Date.now();
   private lastDataTimestamp = Date.now();
@@ -236,6 +246,7 @@ export class ActivityMonitor {
 
     this.processStateValidator = options?.processStateValidator;
     this.onWaitingTimeout = options?.onWaitingTimeout;
+    this.onBootComplete = options?.onBootComplete;
 
     // Initialize subsystems
     this.inputTracker = new InputTracker({
@@ -352,6 +363,23 @@ export class ActivityMonitor {
     this.structuralRecoveryDebouncer.setDelay(delay);
   }
 
+  /**
+   * Fires the configured `onBootComplete` callback at most once per boot
+   * cycle. Reset by `startPolling()` when boot detection re-enters from
+   * `hasExitedBootState=false`. Both `BootDetector.check()` call sites (data
+   * path and polling cycle) must funnel through this guard.
+   */
+  private fireBootComplete(timestamp: number): void {
+    if (this.bootCompleteCallbackFired) return;
+    this.bootCompleteCallbackFired = true;
+    if (!this.onBootComplete) return;
+    try {
+      this.onBootComplete(timestamp);
+    } catch {
+      // Callback failure must not destabilize the activity monitor.
+    }
+  }
+
   private isEscInterruptFallback(input: string): boolean {
     return (
       input.toLowerCase().includes("esc to interrupt") ||
@@ -421,6 +449,7 @@ export class ActivityMonitor {
       if (!this.bootDetector.hasExitedBootState) {
         if (this.bootDetector.check(bufferText, false, 0, Infinity)) {
           // Boot detected via pattern in rolling buffer
+          this.fireBootComplete(now);
         }
       }
 
@@ -804,6 +833,9 @@ export class ActivityMonitor {
       }
     } else {
       this.bootDetector.hasExitedBootState = false;
+      // Re-arm the one-shot boot-complete callback for restart paths so the
+      // next observed boot completion fires telemetry again.
+      this.bootCompleteCallbackFired = false;
 
       this.state = "busy";
       this.onStateChange(this.terminalId, this.spawnedAt, "busy", { trigger: "pattern" });
@@ -901,6 +933,7 @@ export class ActivityMonitor {
         this.bootDetector.check(strippedText, isPrompt, timeSinceBoot, this.POLLING_MAX_BOOT_MS)
       ) {
         // Boot complete, continue to normal detection
+        this.fireBootComplete(now);
       } else {
         return; // Still booting, stay busy
       }

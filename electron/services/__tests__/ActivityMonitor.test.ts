@@ -5138,4 +5138,113 @@ describe("ActivityMonitor", () => {
       monitor.dispose();
     });
   });
+
+  describe("onBootComplete callback (Issue #7616)", () => {
+    it("fires once when boot completion is detected via the data-path", () => {
+      vi.setSystemTime(10000);
+      const onStateChange = vi.fn();
+      const onBootComplete = vi.fn();
+      const monitor = new ActivityMonitor("boot-data", 1000, onStateChange, {
+        getVisibleLines: () => ["> "],
+        getCursorLine: () => "> ",
+        bootCompletePatterns: [/ready/i],
+        idleDebounceMs: 4000,
+        onBootComplete,
+      });
+
+      monitor.startPolling();
+      // The data path runs through onData() and triggers bootDetector.check
+      // against the rolling pattern buffer.
+      monitor.onData("starting up\nstill working\n");
+      expect(onBootComplete).not.toHaveBeenCalled();
+
+      monitor.onData("system ready\n");
+      expect(onBootComplete).toHaveBeenCalledTimes(1);
+      expect(onBootComplete).toHaveBeenCalledWith(expect.any(Number));
+
+      // Subsequent matching data must not re-fire.
+      monitor.onData("ready again ready\n");
+      expect(onBootComplete).toHaveBeenCalledTimes(1);
+
+      monitor.dispose();
+    });
+
+    it("fires once when boot completion is detected via the polling cycle", () => {
+      vi.setSystemTime(10000);
+      const onStateChange = vi.fn();
+      const onBootComplete = vi.fn();
+      // Visible lines stable; the polling cycle's bootDetector.check observes
+      // the boot pattern in the joined visible text.
+      const monitor = new ActivityMonitor("boot-poll", 1000, onStateChange, {
+        getVisibleLines: () => ["welcome banner", "agent ready"],
+        getCursorLine: () => "agent ready",
+        bootCompletePatterns: [/ready/i],
+        pollingIntervalMs: 50,
+        idleDebounceMs: 4000,
+        onBootComplete,
+      });
+
+      monitor.startPolling();
+      // One polling tick is enough for the boot detector to see "ready".
+      vi.advanceTimersByTime(60);
+      expect(onBootComplete).toHaveBeenCalledTimes(1);
+
+      // Further polling cycles must not re-fire.
+      vi.advanceTimersByTime(500);
+      expect(onBootComplete).toHaveBeenCalledTimes(1);
+
+      monitor.dispose();
+    });
+
+    it("re-arms the one-shot guard when polling restarts on a fresh PTY", () => {
+      vi.setSystemTime(10000);
+      const onStateChange = vi.fn();
+      const onBootComplete = vi.fn();
+      let visibleText = ["agent ready"];
+      const monitor = new ActivityMonitor("boot-restart", 1000, onStateChange, {
+        getVisibleLines: () => visibleText,
+        getCursorLine: () => visibleText[visibleText.length - 1] ?? null,
+        bootCompletePatterns: [/ready/i],
+        pollingIntervalMs: 50,
+        idleDebounceMs: 4000,
+        onBootComplete,
+      });
+
+      monitor.startPolling();
+      vi.advanceTimersByTime(60);
+      expect(onBootComplete).toHaveBeenCalledTimes(1);
+
+      // Simulate a restart: stop polling, then start again. The boot path is
+      // re-entered (skipInitialStateEmit is false by default), so the one-shot
+      // flag must reset and the next observed boot must fire telemetry again.
+      monitor.stopPolling();
+      visibleText = ["restarting", "agent ready"];
+      monitor.startPolling();
+      vi.advanceTimersByTime(60);
+      expect(onBootComplete).toHaveBeenCalledTimes(2);
+
+      monitor.dispose();
+    });
+
+    it("does not throw if the callback throws", () => {
+      vi.setSystemTime(10000);
+      const onStateChange = vi.fn();
+      const onBootComplete = vi.fn(() => {
+        throw new Error("boom");
+      });
+      const monitor = new ActivityMonitor("boot-throw", 1000, onStateChange, {
+        getVisibleLines: () => ["> "],
+        getCursorLine: () => "> ",
+        bootCompletePatterns: [/ready/i],
+        idleDebounceMs: 4000,
+        onBootComplete,
+      });
+
+      monitor.startPolling();
+      expect(() => monitor.onData("system ready\n")).not.toThrow();
+      expect(onBootComplete).toHaveBeenCalledTimes(1);
+
+      monitor.dispose();
+    });
+  });
 });
