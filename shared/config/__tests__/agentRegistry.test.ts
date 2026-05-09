@@ -13,7 +13,10 @@ import {
   getAgentDisplayTitle,
   getAgentPreset,
   setAgentPresets,
+  getAssistantSupportedAgentIds,
+  AGENT_REGISTRY,
   type AgentConfig,
+  type AssistantSupports,
 } from "../agentRegistry.js";
 import {
   AgentRoutingConfigSchema,
@@ -258,6 +261,85 @@ describe("agentRegistry", () => {
       const effective = getEffectiveAgentConfig("claude");
       expect(effective?.name).toBe("Claude");
       expect(effective?.command).toBe("claude");
+    });
+  });
+
+  describe("assistant support", () => {
+    it("returns claude and codex as the stable-tier assistant agents", () => {
+      const ids = getAssistantSupportedAgentIds();
+      expect(ids).toEqual(expect.arrayContaining(["claude", "codex"]));
+      expect(ids).toHaveLength(2);
+    });
+
+    it("claude has structured assistant supports at stable tier", () => {
+      const claude = getAgentConfig("claude");
+      expect(claude?.supports).toMatchObject({
+        mcpInjection: "project-config",
+        settingsOverlay: true,
+        permissionBypass: true,
+        trustDialog: true,
+        versionProbe: true,
+        tier: "stable",
+      });
+    });
+
+    it("codex has structured assistant supports at stable tier", () => {
+      const codex = getAgentConfig("codex");
+      expect(codex?.supports).toMatchObject({
+        mcpInjection: "cli-flags",
+        settingsOverlay: false,
+        permissionBypass: true,
+        trustDialog: false,
+        versionProbe: true,
+        tier: "stable",
+      });
+    });
+
+    it("aider is explicitly marked structurally ineligible", () => {
+      const aider = getAgentConfig("aider");
+      expect(aider?.supports).toBe(false);
+    });
+
+    it("interpreter is explicitly marked structurally ineligible", () => {
+      const interpreter = getAgentConfig("interpreter");
+      expect(interpreter?.supports).toBe(false);
+    });
+
+    it("agents with no supports field are excluded from the stable list", () => {
+      const ids = getAssistantSupportedAgentIds();
+      // gemini, goose, cursor, etc. have not been wired yet — they leave
+      // `supports` undefined and must not leak into the dropdown.
+      expect(ids).not.toContain("gemini");
+      expect(ids).not.toContain("goose");
+      expect(ids).not.toContain("cursor");
+    });
+
+    it("agents marked structurally ineligible are excluded", () => {
+      const ids = getAssistantSupportedAgentIds();
+      expect(ids).not.toContain("aider");
+      expect(ids).not.toContain("interpreter");
+    });
+
+    it("excludes agents whose supports object is at experimental tier", () => {
+      // Temporarily downgrade codex to experimental and verify the real
+      // filter function (not a local copy of the predicate) excludes it.
+      const original = AGENT_REGISTRY.codex as AgentConfig;
+      const experimentalSupports: AssistantSupports = {
+        mcpInjection: "cli-flags",
+        settingsOverlay: false,
+        permissionBypass: true,
+        trustDialog: false,
+        versionProbe: true,
+        tier: "experimental",
+      };
+      AGENT_REGISTRY.codex = { ...original, supports: experimentalSupports } as AgentConfig;
+      try {
+        const ids = getAssistantSupportedAgentIds();
+        expect(ids).not.toContain("codex");
+        expect(ids).toContain("claude");
+      } finally {
+        AGENT_REGISTRY.codex = original;
+      }
     });
   });
 });
