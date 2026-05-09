@@ -85,7 +85,9 @@ describe("registerHelpAssistantHandlers", () => {
   });
 
   it("migrates legacy skipPermissions=true to tier='system' + bypassPermissions=true", async () => {
-    storeMock.get.mockReturnValue({ skipPermissions: true });
+    storeMock.get.mockReturnValue({
+      skipPermissions: true,
+    } as unknown as Partial<HelpAssistantSettings>);
     registerHelpAssistantHandlers();
     const handler = ipcMainMock._handlers.get(GET_CHANNEL)!;
 
@@ -94,7 +96,9 @@ describe("registerHelpAssistantHandlers", () => {
   });
 
   it("migrates legacy skipPermissions=false to tier='action' + bypassPermissions=false", async () => {
-    storeMock.get.mockReturnValue({ skipPermissions: false });
+    storeMock.get.mockReturnValue({
+      skipPermissions: false,
+    } as unknown as Partial<HelpAssistantSettings>);
     registerHelpAssistantHandlers();
     const handler = ipcMainMock._handlers.get(GET_CHANNEL)!;
 
@@ -107,7 +111,7 @@ describe("registerHelpAssistantHandlers", () => {
       skipPermissions: true,
       tier: "action",
       bypassPermissions: false,
-    });
+    } as unknown as Partial<HelpAssistantSettings>);
     registerHelpAssistantHandlers();
     const handler = ipcMainMock._handlers.get(GET_CHANNEL)!;
 
@@ -119,7 +123,7 @@ describe("registerHelpAssistantHandlers", () => {
     storeMock.get.mockReturnValue({
       tier: "external",
       bypassPermissions: false,
-    });
+    } as unknown as Partial<HelpAssistantSettings>);
     registerHelpAssistantHandlers();
     const handler = ipcMainMock._handlers.get(GET_CHANNEL)!;
 
