@@ -799,7 +799,7 @@ function NewSinceLastLookedDivider({
       ref={ref}
       tabIndex={-1}
       data-testid="new-since-last-looked"
-      className="flex items-center gap-2 px-3 py-1 text-[10px] font-medium text-daintree-text/50 outline-none"
+      className="flex items-center gap-2 px-3 py-1 text-[10px] font-medium text-daintree-text/50 outline-hidden"
     >
       <span className="h-px flex-1 bg-divider" aria-hidden="true" />
       <span>New since you last looked</span>
