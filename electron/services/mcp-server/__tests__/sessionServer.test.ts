@@ -709,6 +709,12 @@ describe("CallTool idempotency dedup", () => {
 });
 
 describe("buildToolError envelope", () => {
+  function getErrorText(result: ReturnType<typeof buildToolError>): string {
+    const block = result.content[0];
+    if (block.type !== "text") throw new Error("Expected text block");
+    return block.text;
+  }
+
   it("produces a parseable JSON payload with code, message, and retriable", () => {
     const result = buildToolError({
       code: TIER_NOT_PERMITTED_CODE,
@@ -718,7 +724,7 @@ describe("buildToolError envelope", () => {
     expect(result.content).toHaveLength(1);
     expect(result.content[0].type).toBe("text");
 
-    const parsed = JSON.parse(result.content[0].text);
+    const parsed = JSON.parse(getErrorText(result));
     expect(parsed).toEqual({
       code: TIER_NOT_PERMITTED_CODE,
       message: "action 'foo' is not permitted for the 'workbench' tier.",
@@ -728,22 +734,22 @@ describe("buildToolError envelope", () => {
 
   it("marks EXECUTION_ERROR as retriable", () => {
     const result = buildToolError({ code: EXECUTION_ERROR_CODE, message: "boom" });
-    const parsed = JSON.parse(result.content[0].text);
+    const parsed = JSON.parse(getErrorText(result));
     expect(parsed.retriable).toBe(true);
   });
 
   it("marks CONFIRMATION_TIMEOUT as retriable", () => {
     const result = buildToolError({ code: CONFIRMATION_TIMEOUT_CODE, message: "timed out" });
-    const parsed = JSON.parse(result.content[0].text);
+    const parsed = JSON.parse(getErrorText(result));
     expect(parsed.retriable).toBe(true);
   });
 
   it("marks USER_REJECTED and ELICITATION_FAILED as non-retriable", () => {
     const rejected = JSON.parse(
-      buildToolError({ code: USER_REJECTED_CODE, message: "no" }).content[0].text
+      getErrorText(buildToolError({ code: USER_REJECTED_CODE, message: "no" }))
     );
     const elicit = JSON.parse(
-      buildToolError({ code: ELICITATION_FAILED_CODE, message: "fail" }).content[0].text
+      getErrorText(buildToolError({ code: ELICITATION_FAILED_CODE, message: "fail" }))
     );
     expect(rejected.retriable).toBe(false);
     expect(elicit.retriable).toBe(false);
@@ -755,7 +761,7 @@ describe("buildToolError envelope", () => {
       message: "Invalid input",
       details: { unknownArguments: ["foo"], missingVariables: ["bar"] },
     });
-    const parsed = JSON.parse(result.content[0].text);
+    const parsed = JSON.parse(getErrorText(result));
     expect(parsed.details).toEqual({
       unknownArguments: ["foo"],
       missingVariables: ["bar"],
@@ -764,13 +770,13 @@ describe("buildToolError envelope", () => {
 
   it("omits details key when undefined", () => {
     const result = buildToolError({ code: "NOT_FOUND", message: "missing" });
-    const parsed = JSON.parse(result.content[0].text);
+    const parsed = JSON.parse(getErrorText(result));
     expect("details" in parsed).toBe(false);
   });
 
   it("preserves null details when caller explicitly passes null", () => {
     const result = buildToolError({ code: "NOT_FOUND", message: "missing", details: null });
-    const parsed = JSON.parse(result.content[0].text);
+    const parsed = JSON.parse(getErrorText(result));
     expect("details" in parsed).toBe(true);
     expect(parsed.details).toBeNull();
   });
@@ -783,8 +789,8 @@ describe("buildToolError envelope", () => {
       message: "boom",
       details: circular,
     });
-    expect(() => JSON.parse(result.content[0].text)).not.toThrow();
-    const parsed = JSON.parse(result.content[0].text);
+    expect(() => JSON.parse(getErrorText(result))).not.toThrow();
+    const parsed = JSON.parse(getErrorText(result));
     expect(parsed.details).toEqual({ serializationError: true });
   });
 
@@ -793,7 +799,7 @@ describe("buildToolError envelope", () => {
       code: TIER_NOT_PERMITTED_CODE,
       message: "action 'panel.gridLayout.setStrategy' is not permitted for the 'workbench' tier.",
     });
-    const text = result.content[0].text;
+    const text = getErrorText(result);
     expect(text).toContain("TIER_NOT_PERMITTED");
     expect(text).toContain("workbench");
     expect(text).toContain("panel.gridLayout.setStrategy");

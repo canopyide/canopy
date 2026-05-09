@@ -1,4 +1,5 @@
 import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { ActionDispatchResult } from "../../../shared/types/actions.js";
 import type {
   McpAuditRecord,
@@ -144,25 +145,22 @@ export function buildMcpErrorPayload(input: {
   return payload;
 }
 
-export interface McpToolErrorResult {
-  content: [{ type: "text"; text: string }];
-  isError: true;
-}
-
 /**
  * Tool-path error envelope. The text is plain JSON so existing
  * `.toContain("CODE")` assertions remain green and models can `JSON.parse` it
- * for self-correction.
+ * for self-correction. Typed as `CallToolResult` so the SDK union (which
+ * includes a separate task-result variant requiring `task`) accepts it at
+ * the `setRequestHandler` call site.
  */
 export function buildToolError(input: {
   code: string;
   message: string;
   details?: unknown;
-}): McpToolErrorResult {
+}): CallToolResult {
   const payload = buildMcpErrorPayload(input);
   return {
-    content: [{ type: "text" as const, text: JSON.stringify(payload) }],
-    isError: true as const,
+    content: [{ type: "text", text: JSON.stringify(payload) }],
+    isError: true,
   };
 }
 
