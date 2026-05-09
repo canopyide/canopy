@@ -134,8 +134,14 @@ vi.mock("@/hooks/useFindInPage", () => ({
   }),
 }));
 
+const { browserToolbarPropsSpy } = vi.hoisted(() => ({
+  browserToolbarPropsSpy: vi.fn(),
+}));
 vi.mock("@/components/Browser/BrowserToolbar", () => ({
-  BrowserToolbar: () => <div data-testid="browser-toolbar" />,
+  BrowserToolbar: (props: Record<string, unknown>) => {
+    browserToolbarPropsSpy(props);
+    return <div data-testid="browser-toolbar" />;
+  },
 }));
 
 vi.mock("@/components/Panel", () => ({
@@ -193,7 +199,6 @@ describe("BrowserPane webview lifecycle regression", () => {
     vi.useFakeTimers();
     vi.clearAllMocks();
 
-    // Mock window.electron.webview for CDP console capture
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (globalThis as any).window = globalThis.window ?? {};
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -202,14 +207,7 @@ describe("BrowserPane webview lifecycle regression", () => {
         writeImage: vi.fn(() => Promise.resolve({ ok: true })),
       },
       webview: {
-        startConsoleCapture: vi.fn(() => Promise.resolve()),
-        stopConsoleCapture: vi.fn(() => Promise.resolve()),
-        clearConsoleCapture: vi.fn(() => Promise.resolve()),
-        getConsoleProperties: vi.fn(() => Promise.resolve({ properties: [] })),
-        onConsoleMessage: vi.fn(() => vi.fn()),
-        onConsoleContextCleared: vi.fn(() => vi.fn()),
         setLifecycleState: vi.fn(() => Promise.resolve()),
-        registerPanel: vi.fn(() => Promise.resolve()),
         respondToDialog: vi.fn(() => Promise.resolve()),
         onDialogRequest: vi.fn(() => vi.fn()),
         onNavigationBlocked: vi.fn(() => vi.fn()),
@@ -248,6 +246,36 @@ describe("BrowserPane webview lifecycle regression", () => {
     const { container } = render(<BrowserPane {...baseProps} />);
     const webview = getWebviewElement(container);
     expect(webview.hasAttribute("allowpopups")).toBe(true);
+  });
+
+  it("does not pass console-toggle props to BrowserToolbar (regression #7495)", () => {
+    // The plain Browser panel must not surface the console button via the
+    // shared toolbar — that wiring belongs to DevPreviewPane only.
+    render(<BrowserPane {...baseProps} />);
+    expect(browserToolbarPropsSpy).toHaveBeenCalled();
+    const props = browserToolbarPropsSpy.mock.calls.at(-1)![0] as Record<string, unknown>;
+    expect(props.onToggleConsole).toBeUndefined();
+    expect(props.isConsoleOpen).toBeUndefined();
+  });
+
+  it("ignores window-dispatched console events without throwing (regression #7495)", () => {
+    // The optional `onToggleConsole`/`onClearConsole` callbacks are guarded with
+    // optional chaining in the action listener. Dispatching the events on a
+    // plain BrowserPane must be a safe no-op.
+    render(<BrowserPane {...baseProps} />);
+
+    expect(() => {
+      window.dispatchEvent(
+        new CustomEvent("daintree:browser-toggle-console", {
+          detail: { id: "browser-panel-1" },
+        })
+      );
+      window.dispatchEvent(
+        new CustomEvent("daintree:browser-clear-console", {
+          detail: { id: "browser-panel-1" },
+        })
+      );
+    }).not.toThrow();
   });
 
   it("uses theme-backed browser chrome surfaces", () => {

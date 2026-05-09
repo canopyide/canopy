@@ -9,7 +9,6 @@ const REPO_ROOT = path.resolve(TEST_DIR, "../../..");
 const CRITICAL_THEME_FILES = [
   "src/components/Browser/BrowserPane.tsx",
   "src/components/Browser/BrowserToolbar.tsx",
-  "src/components/Browser/ConsolePanel.tsx",
   "src/components/DevPreview/ConsoleDrawer.tsx",
   "src/components/DevPreview/DevPreviewPane.tsx",
   "src/components/Layout/Toolbar.tsx",

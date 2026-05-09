@@ -12,7 +12,6 @@ import { usePanelStore } from "@/store";
 import type { BrowserHistory } from "@shared/types/browser";
 import { ContentPanel, type BasePanelProps } from "@/components/Panel";
 import { BrowserToolbar } from "./BrowserToolbar";
-import { ConsolePanel } from "./ConsolePanel";
 import {
   normalizeBrowserUrl,
   extractHostPort,
@@ -33,8 +32,6 @@ import { FindBar } from "./FindBar";
 import { useIsDragging } from "@/components/DragDrop";
 import { cn } from "@/lib/utils";
 import { safeFireAndForget } from "@/utils/safeFireAndForget";
-import { useConsoleCaptureStore } from "@/store/consoleCaptureStore";
-import type { SerializedConsoleRow } from "@shared/types/ipc/webviewConsole";
 import { useProjectStore } from "@/store";
 import { useProjectSettingsStore } from "@/store/projectSettingsStore";
 import { useProjectSettings } from "@/hooks/useProjectSettings";
@@ -116,13 +113,6 @@ export function BrowserPane({
   const setBrowserHistory = usePanelStore((state) => state.setBrowserHistory);
   const setBrowserZoom = usePanelStore((state) => state.setBrowserZoom);
   const isDragging = useIsDragging();
-  const addStructuredMessage = useConsoleCaptureStore((state) => state.addStructuredMessage);
-  const markStale = useConsoleCaptureStore((state) => state.markStale);
-  const clearConsoleMessages = useConsoleCaptureStore((state) => state.clearMessages);
-  const removePane = useConsoleCaptureStore((state) => state.removePane);
-  const webContentsIdRef = useRef<number | null>(null);
-  // Mirror into state so JSX doesn't read the ref during render (React Compiler).
-  const [webContentsId, setWebContentsId] = useState<number | null>(null);
   const projectId = useProjectStore((state) => state.currentProject?.id);
   const devServerLoadTimeout = useProjectSettingsStore(
     (state) => state.settings?.devServerLoadTimeout
@@ -133,11 +123,6 @@ export function BrowserPane({
     () => projectSettings?.browserAllowedHosts ?? [],
     [projectSettings?.browserAllowedHosts]
   );
-
-  const isConsoleOpen = usePanelStore(
-    (state) => state.getTerminal(id)?.browserConsoleOpen ?? false
-  );
-  const setBrowserConsoleOpen = usePanelStore((state) => state.setBrowserConsoleOpen);
 
   // Seed history from the `initialHistory` prop (threaded by buildPanelProps from
   // the persisted terminal state). Reading the store via getState() inside a lazy
@@ -216,13 +201,6 @@ export function BrowserPane({
     setBrowserZoom(id, zoomFactor);
   }, [id, zoomFactor, setBrowserZoom]);
 
-  // Clean up console messages when pane unmounts
-  useEffect(() => {
-    return () => {
-      removePane(id);
-    };
-  }, [id, removePane]);
-
   // Listen for blocked navigation events from main process (debounced 150ms for redirect chains)
   useEffect(() => {
     const cleanup = window.electron.webview.onNavigationBlocked((data) => {
@@ -250,53 +228,6 @@ export function BrowserPane({
     const timer = setTimeout(() => setBlockedNav(null), 10_000);
     return () => clearTimeout(timer);
   }, [blockedNav]);
-
-  // CDP console capture: start when webview is ready, subscribe to push events
-  useEffect(() => {
-    if (!webviewElement || !isWebviewReady) return;
-
-    let wcId: number;
-    try {
-      wcId = (webviewElement as unknown as { getWebContentsId(): number }).getWebContentsId();
-    } catch {
-      return;
-    }
-    webContentsIdRef.current = wcId;
-    setWebContentsId(wcId);
-
-    // Subscribe to push events BEFORE starting capture to avoid missing early messages
-    const cleanupMessage = window.electron.webview.onConsoleMessage((row: SerializedConsoleRow) => {
-      if (row.paneId === id) {
-        addStructuredMessage(row);
-      }
-    });
-
-    const cleanupContext = window.electron.webview.onConsoleContextCleared(
-      (payload: { paneId: string; navigationGeneration: number }) => {
-        if (payload.paneId === id) {
-          markStale(id, payload.navigationGeneration);
-        }
-      }
-    );
-
-    safeFireAndForget(
-      (async () => {
-        await window.electron.webview.registerPanel(wcId, id);
-        await window.electron.webview.startConsoleCapture(wcId, id);
-      })(),
-      { context: "Registering browser webview and starting console capture" }
-    );
-
-    return () => {
-      safeFireAndForget(window.electron.webview.stopConsoleCapture(wcId, id), {
-        context: "Stopping browser console capture",
-      });
-      cleanupMessage();
-      cleanupContext();
-      webContentsIdRef.current = null;
-      setWebContentsId(null);
-    };
-  }, [webviewElement, isWebviewReady, id, addStructuredMessage, markStale]);
 
   useWebviewEvents({
     webviewElement,
@@ -517,20 +448,6 @@ export function BrowserPane({
     }
   }, [isWebviewReady]);
 
-  const handleToggleConsole = useCallback(() => {
-    setBrowserConsoleOpen(id, !isConsoleOpen);
-  }, [id, isConsoleOpen, setBrowserConsoleOpen]);
-
-  const handleClearConsole = useCallback(() => {
-    const wcId = webContentsIdRef.current;
-    if (wcId != null) {
-      safeFireAndForget(window.electron.webview.clearConsoleCapture(wcId, id), {
-        context: "Clearing browser console capture",
-      });
-    }
-    clearConsoleMessages(id);
-  }, [id, clearConsoleMessages]);
-
   // Cleanup timeouts on unmount
   useEffect(() => {
     return () => {
@@ -557,8 +474,6 @@ export function BrowserPane({
     onForward: handleForward,
     onSetZoom: handleSetZoom,
     onCaptureScreenshot: handleCaptureScreenshot,
-    onToggleConsole: handleToggleConsole,
-    onClearConsole: handleClearConsole,
     onToggleDevTools: handleToggleDevTools,
     onHardReload: handleHardReload,
   });
@@ -606,7 +521,6 @@ export function BrowserPane({
       canGoForward={canGoForward}
       isLoading={showLoadingOverlay}
       zoomFactor={zoomFactor}
-      isConsoleOpen={isConsoleOpen}
       isWebviewReady={isWebviewReady}
       onNavigate={(url) =>
         void actionService.dispatch("browser.navigate", { terminalId: id, url }, { source: "user" })
@@ -637,9 +551,6 @@ export function BrowserPane({
           { terminalId: id },
           { source: "user" }
         )
-      }
-      onToggleConsole={() =>
-        void actionService.dispatch("browser.toggleConsole", { terminalId: id }, { source: "user" })
       }
       onToggleDevTools={() =>
         void actionService.dispatch(
@@ -674,12 +585,7 @@ export function BrowserPane({
       onTabRename={onTabRename}
       onAddTab={onAddTab}
     >
-      <div
-        className={cn(
-          "relative flex-1 min-h-0 flex flex-col bg-surface-canvas",
-          isConsoleOpen && "min-h-0"
-        )}
-      >
+      <div className="relative flex-1 min-h-0 flex flex-col bg-surface-canvas">
         {pendingApproval && (
           <div
             aria-live="assertive"
@@ -857,9 +763,6 @@ export function BrowserPane({
               />
               <WebviewDialog dialog={currentDialog} onRespond={handleDialogRespond} />
             </div>
-            {isConsoleOpen && (
-              <ConsolePanel paneId={id} height={200} webContentsId={webContentsId ?? undefined} />
-            )}
           </>
         )}
       </div>
