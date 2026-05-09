@@ -124,7 +124,6 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
     isFocused,
     isMaximized = false,
     location = "grid",
-    gridPanelCount,
     worktreeId,
     onFocus,
     onClose,
