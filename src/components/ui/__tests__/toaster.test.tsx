@@ -1622,3 +1622,144 @@ describe("Toast a11y, focus, and ergonomics polish (issue #7238)", () => {
     expect(chipAfter.className).not.toContain("animate-badge-bump");
   });
 });
+
+describe("Toast action variant rendering (issue #7595)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    useNotificationStore.getState().reset();
+    useNotificationHistoryStore.setState({ entries: [], unreadCount: 0, evictedToInboxCount: 0 });
+    useAnnouncerStore.setState({ polite: null, assertive: null });
+    resetEscapeStack();
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+    resetEscapeStack();
+    for (const el of fixtureElements) {
+      el.remove();
+    }
+    fixtureElements = [];
+  });
+
+  it("renders primary action with the tonal info fill", async () => {
+    render(<Toaster />);
+    await act(async () => {
+      addToast({
+        actions: [{ label: "Primary", variant: "primary", onClick: vi.fn() }],
+      });
+      vi.advanceTimersByTime(16);
+    });
+
+    const button = screen.getByRole("button", { name: "Primary" });
+    expect(button.className).toContain("bg-status-info/10");
+    expect(button.className).toContain("text-status-info");
+  });
+
+  it("renders secondary action as text-only — no fill, no border", async () => {
+    render(<Toaster />);
+    await act(async () => {
+      addToast({
+        actions: [{ label: "Secondary", variant: "secondary", onClick: vi.fn() }],
+      });
+      vi.advanceTimersByTime(16);
+    });
+
+    const button = screen.getByRole("button", { name: "Secondary" });
+    expect(button.className).not.toContain("bg-status-info/10");
+    expect(button.className).not.toContain("text-status-info");
+    expect(button.className).not.toMatch(/\bborder\b/);
+    expect(button.className).toContain("text-daintree-text/70");
+    expect(button.className).toContain("hover:bg-tint/10");
+  });
+
+  it("defaults to primary when variant is omitted", async () => {
+    render(<Toaster />);
+    await act(async () => {
+      addToast({
+        actions: [{ label: "Default", onClick: vi.fn() }],
+      });
+      vi.advanceTimersByTime(16);
+    });
+
+    const button = screen.getByRole("button", { name: "Default" });
+    expect(button.className).toContain("bg-status-info/10");
+    expect(button.className).toContain("text-status-info");
+  });
+
+  it("renders mixed primary+secondary actions distinctly in the same toast", async () => {
+    render(<Toaster />);
+    await act(async () => {
+      addToast({
+        actions: [
+          { label: "Confirm", variant: "primary", onClick: vi.fn() },
+          { label: "Cancel", variant: "secondary", onClick: vi.fn() },
+        ],
+      });
+      vi.advanceTimersByTime(16);
+    });
+
+    const confirm = screen.getByRole("button", { name: "Confirm" });
+    const cancel = screen.getByRole("button", { name: "Cancel" });
+    expect(confirm.className).toContain("bg-status-info/10");
+    expect(cancel.className).not.toContain("bg-status-info/10");
+    expect(cancel.className).toContain("text-daintree-text/70");
+  });
+
+  it("dimmed secondary action retains opacity-50 + pointer-events-none", async () => {
+    let resolvePrimary: () => void = () => {};
+    const primaryClick = vi.fn(
+      () =>
+        new Promise<void>((res) => {
+          resolvePrimary = res;
+        })
+    );
+
+    render(<Toaster />);
+    await act(async () => {
+      addToast({
+        actions: [
+          {
+            label: "Confirm",
+            variant: "primary",
+            successLabel: "Confirmed",
+            onClick: primaryClick,
+          },
+          { label: "Cancel", variant: "secondary", onClick: vi.fn() },
+        ],
+      });
+      vi.advanceTimersByTime(16);
+    });
+
+    const confirm = screen.getByRole("button", { name: "Confirm" });
+    fireEvent.click(confirm);
+
+    // The secondary button should now be dimmed (other action active).
+    const cancel = screen.getByRole("button", { name: "Cancel" });
+    expect(cancel.className).toContain("opacity-50");
+    expect(cancel.className).toContain("pointer-events-none");
+    // And it must still carry the secondary text-only styling.
+    expect(cancel.className).toContain("text-daintree-text/70");
+    expect(cancel.className).not.toContain("bg-status-info/10");
+
+    // Cleanup the in-flight promise so afterEach timers settle.
+    resolvePrimary();
+    await act(async () => {
+      vi.advanceTimersByTime(0);
+    });
+  });
+
+  it("legacy singular `action` honors variant: secondary", async () => {
+    render(<Toaster />);
+    await act(async () => {
+      addToast({
+        action: { label: "Mute", variant: "secondary", onClick: vi.fn() },
+      });
+      vi.advanceTimersByTime(16);
+    });
+
+    const button = screen.getByRole("button", { name: "Mute" });
+    expect(button.className).toContain("text-daintree-text/70");
+    expect(button.className).not.toContain("bg-status-info/10");
+  });
+});

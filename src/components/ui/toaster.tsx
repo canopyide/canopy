@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { logError } from "@/utils/logger";
 import {
   DURATION_150,
+  DURATION_200,
   DURATION_300,
   UI_ENTER_DURATION,
   UI_EXIT_DURATION,
@@ -149,7 +150,7 @@ function Toast({ notification, isTopmost }: { notification: Notification; isTopm
       if (!mountedRef.current) return;
       setIsCountBumping(false);
       bumpFallbackRef.current = null;
-    }, 200);
+    }, DURATION_200);
   }, [notification.count]);
 
   useLayoutEffect(() => {
@@ -341,7 +342,7 @@ function Toast({ notification, isTopmost }: { notification: Notification; isTopm
                     "shrink-0 rounded-full bg-tint/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-daintree-text/60 tabular-nums min-w-[3.5ch] text-center",
                     isCountBumping && "animate-badge-bump"
                   )}
-                  style={{ animationDuration: "150ms" }}
+                  style={{ animationDuration: `${DURATION_150}ms` }}
                   onAnimationEnd={(e) => {
                     if (e.animationName === "badge-bump") setIsCountBumping(false);
                   }}
@@ -360,7 +361,7 @@ function Toast({ notification, isTopmost }: { notification: Notification; isTopm
                 "inline-block rounded-full bg-tint/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-daintree-text/60 tabular-nums min-w-[3.5ch] text-center",
                 isCountBumping && "animate-badge-bump"
               )}
-              style={{ animationDuration: "150ms" }}
+              style={{ animationDuration: `${DURATION_150}ms` }}
               onAnimationEnd={(e) => {
                 if (e.animationName === "badge-bump") setIsCountBumping(false);
               }}
@@ -471,6 +472,7 @@ function Toast({ notification, isTopmost }: { notification: Notification; isTopm
               {actions.map((action, index) => {
                 const isActive = activeActionIndex === index;
                 const isDimmed = activeActionIndex !== null && !isActive;
+                const variant = action.variant ?? "primary";
 
                 return (
                   <button
@@ -479,9 +481,10 @@ function Toast({ notification, isTopmost }: { notification: Notification; isTopm
                     onClick={() => handleActionClick(action, index)}
                     className={cn(
                       "px-2.5 py-1 rounded-[var(--radius-xs)]",
-                      "text-xs font-medium",
-                      "bg-status-info/10 text-status-info",
-                      "hover:bg-status-info/20 transition-colors",
+                      "text-xs font-medium transition-colors",
+                      variant === "secondary"
+                        ? "text-daintree-text/70 hover:text-daintree-text hover:bg-tint/10"
+                        : "bg-status-info/10 text-status-info hover:bg-status-info/20",
                       "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2",
                       isDimmed && "opacity-50 pointer-events-none"
                     )}
