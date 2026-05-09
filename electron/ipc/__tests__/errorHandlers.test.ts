@@ -751,9 +751,14 @@ describe("errorHandlers", () => {
       const persistCalls = storeMock.store.set.mock.calls.filter(
         ([key]) => key === "pendingErrors"
       );
-      const lastPersisted = persistCalls[persistCalls.length - 1]?.[1] as Array<{ id: string }>;
+      const lastPersisted = persistCalls[persistCalls.length - 1]?.[1] as Array<{
+        id: string;
+        type: string;
+      }>;
       expect(lastPersisted).toHaveLength(50);
       expect(lastPersisted[0].id).toBe("seeded-1");
+      expect(lastPersisted[lastPersisted.length - 1].type).toBe("config");
+      expect(lastPersisted[lastPersisted.length - 1].id).not.toMatch(/^seeded-/);
     });
 
     it("preserves correlationId through buffer and flush", async () => {
