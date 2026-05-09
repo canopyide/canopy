@@ -421,6 +421,14 @@ export class ActivityMonitor {
         return;
       }
       this.lastDataTimestamp = now;
+      // Boot detection runs in the simple-output path too so onBootComplete
+      // (#7616) fires for real agent terminals — `simpleOutputState` is true
+      // for every agent monitor built via `buildActivityMonitorOptions`.
+      if (!this.bootDetector.hasExitedBootState) {
+        if (this.bootDetector.check(stripAnsi(data), false, 0, Infinity)) {
+          this.fireBootComplete(now);
+        }
+      }
       if (!this.getVisibleLines) {
         this.noteSimpleOutputSnapshot(createVisibleContentSnapshot(stripAnsi(data)), now);
       }
@@ -863,6 +871,18 @@ export class ActivityMonitor {
     const now = Date.now();
 
     if (this.simpleOutputState) {
+      // Boot detection in the simple-output polling path so the timeout
+      // fallback (`timeSinceBoot >= POLLING_MAX_BOOT_MS`) still fires
+      // onBootComplete (#7616) when agents emit no recognizable boot pattern.
+      if (!this.bootDetector.hasExitedBootState && this.getVisibleLines) {
+        const lines = this.getVisibleLines(50);
+        const strippedText = stripAnsi(lines.join(" "));
+        const timeSinceBoot = now - this.bootDetector.pollingStartTime;
+        if (this.bootDetector.check(strippedText, false, timeSinceBoot, this.POLLING_MAX_BOOT_MS)) {
+          this.fireBootComplete(now);
+        }
+      }
+
       const snapshot = this.captureSimpleOutputSnapshot();
       if (snapshot !== undefined) {
         this.noteSimpleOutputSnapshot(snapshot, now);

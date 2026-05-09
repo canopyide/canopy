@@ -1416,9 +1416,12 @@ export class TerminalProcess {
    */
   private recordBootComplete(timestamp: number): void {
     const terminal = this.terminalInfo;
-    if (terminal.bootCompleteAt === undefined) {
-      terminal.bootCompleteAt = timestamp;
-    }
+    // Idempotent: only the first call captures bootCompleteAt and emits the
+    // log. The `ActivityMonitor.fireBootComplete` one-shot guard normally
+    // already prevents re-entry, but this defends against accidental direct
+    // calls and restart paths that re-arm the upstream guard.
+    if (terminal.bootCompleteAt !== undefined) return;
+    terminal.bootCompleteAt = timestamp;
 
     const agentId = terminal.launchAgentId;
     if (!agentId) return;

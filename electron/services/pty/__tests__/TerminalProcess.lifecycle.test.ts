@@ -979,6 +979,38 @@ describe("TerminalProcess — agent startup instrumentation (Issue #7616)", () =
     }
   });
 
+  it("emits the [AgentStartup] log only on the first recordBootComplete call (idempotency)", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(7000);
+    const pty = createControllablePty();
+    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+    const terminal = createTerminal(pty, {
+      kind: "terminal",
+      launchAgentId: "claude",
+    });
+
+    try {
+      const recordBootComplete = (
+        terminal as unknown as { recordBootComplete: (ts: number) => void }
+      ).recordBootComplete.bind(terminal);
+
+      recordBootComplete(7100);
+      recordBootComplete(7200);
+      recordBootComplete(7300);
+
+      const startupLogs = consoleLog.mock.calls
+        .map((c) => String(c[0] ?? ""))
+        .filter((line) => line.startsWith("[AgentStartup] "));
+      expect(startupLogs).toHaveLength(1);
+      // The first timestamp wins; later calls do not mutate or re-emit.
+      expect(terminal.getPublicState().bootCompleteAt).toBe(7100);
+    } finally {
+      consoleLog.mockRestore();
+      terminal.dispose();
+      vi.useRealTimers();
+    }
+  });
+
   it("omits firstByteAt/timeToFirstByteMs from the log when no data was observed before boot completes", () => {
     const pty = createControllablePty();
     const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
