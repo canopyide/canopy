@@ -230,7 +230,15 @@ export function routeHostEvent(event: PtyHostEvent, deps: PtyEventRouterDeps): b
 
     case "terminal-pid":
       state.terminalPids.set(event.id, event.pid);
-      callbacks.onTerminalPid?.(event.id, event.pid);
+      if (callbacks.onTerminalPid) {
+        try {
+          callbacks.onTerminalPid(event.id, event.pid);
+        } catch (err) {
+          // Hardens the documented "must not throw" contract — a future
+          // callback that does throw must not break unrelated PTY routing.
+          deps.logWarn(`[PtyClient] onTerminalPid threw for ${event.id}: ${String(err)}`);
+        }
+      }
       return true;
 
     case "spawn-result": {

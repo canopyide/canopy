@@ -255,6 +255,24 @@ describe("routeHostEvent", () => {
     expect(callbacks.terminalPidCalls).toEqual([{ id: "t1", pid: 4242 }]);
   });
 
+  it("swallows a throwing onTerminalPid and logs without breaking routing (#7526)", () => {
+    const logWarn = vi.fn();
+    const { deps, state } = makeDeps(
+      { logWarn },
+      {
+        onTerminalPid: () => {
+          throw new Error("boom");
+        },
+      }
+    );
+
+    const handled = routeHostEvent({ type: "terminal-pid", id: "t1", pid: 42 }, deps);
+
+    expect(handled).toBe(true);
+    expect(state.terminalPids.get("t1")).toBe(42);
+    expect(logWarn).toHaveBeenCalledWith(expect.stringContaining("onTerminalPid threw"));
+  });
+
   it("does not throw when onTerminalPid is omitted from callbacks", () => {
     const emitter = new EventEmitter();
     const state: PtyEventRouterDeps["state"] = {
