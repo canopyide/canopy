@@ -32,13 +32,20 @@ vi.mock("../ProjectStore.js", () => ({
 
 // Mock DiskSpaceMonitor so MigrationRunner's pre-flight guard is controllable.
 // Defaults to a normal-status return; individual tests override per-case.
-const { mockGetCurrentDiskSpaceStatus } = vi.hoisted(() => ({
-  mockGetCurrentDiskSpaceStatus: vi.fn(() => ({
-    status: "normal" as const,
-    availableMb: 4096,
-    writesSuppressed: false,
-  })),
-}));
+const { mockGetCurrentDiskSpaceStatus } = vi.hoisted(() => {
+  type DiskSpaceStatusResult = {
+    status: "normal" | "warning" | "critical";
+    availableMb: number;
+    writesSuppressed: boolean;
+  };
+  return {
+    mockGetCurrentDiskSpaceStatus: vi.fn<() => DiskSpaceStatusResult>(() => ({
+      status: "normal" as const,
+      availableMb: 4096,
+      writesSuppressed: false,
+    })),
+  };
+});
 vi.mock("../DiskSpaceMonitor.js", () => ({
   getCurrentDiskSpaceStatus: () => mockGetCurrentDiskSpaceStatus(),
 }));
@@ -449,7 +456,7 @@ describe("MigrationRunner", () => {
       const store = createMockStore(storePath, { _schemaVersion: 0 });
       const runner = new MigrationRunner(store as never);
       mockGetCurrentDiskSpaceStatus.mockReturnValue({
-        status: "critical",
+        status: "critical" as const,
         availableMb: 50,
         writesSuppressed: true,
       });
@@ -471,7 +478,7 @@ describe("MigrationRunner", () => {
       const store = createMockStore(storePath, { _schemaVersion: 1, sentinel: "keep" });
       const runner = new MigrationRunner(store as never, { floorVersion: 5 });
       mockGetCurrentDiskSpaceStatus.mockReturnValue({
-        status: "critical",
+        status: "critical" as const,
         availableMb: 50,
         writesSuppressed: true,
       });
@@ -492,7 +499,7 @@ describe("MigrationRunner", () => {
       const store = createMockStore(storePath, { _schemaVersion: 0 });
       const runner = new MigrationRunner(store as never);
       mockGetCurrentDiskSpaceStatus.mockReturnValue({
-        status: "warning",
+        status: "warning" as const,
         availableMb: 1024,
         writesSuppressed: false,
       });
@@ -510,7 +517,7 @@ describe("MigrationRunner", () => {
       const store = createMockStore(storePath, { _schemaVersion: "3" });
       const runner = new MigrationRunner(store as never);
       mockGetCurrentDiskSpaceStatus.mockReturnValue({
-        status: "critical",
+        status: "critical" as const,
         availableMb: 50,
         writesSuppressed: true,
       });
@@ -529,7 +536,7 @@ describe("MigrationRunner", () => {
       const store = createMockStore(storePath, { _schemaVersion: 2 });
       const runner = new MigrationRunner(store as never);
       mockGetCurrentDiskSpaceStatus.mockReturnValue({
-        status: "critical",
+        status: "critical" as const,
         availableMb: 50,
         writesSuppressed: true,
       });
@@ -549,7 +556,7 @@ describe("MigrationRunner", () => {
       const store = createMockStore(storePath, { _schemaVersion: 99 });
       const runner = new MigrationRunner(store as never);
       mockGetCurrentDiskSpaceStatus.mockReturnValue({
-        status: "critical",
+        status: "critical" as const,
         availableMb: 50,
         writesSuppressed: true,
       });
@@ -569,12 +576,12 @@ describe("MigrationRunner", () => {
       const runner = new MigrationRunner(store as never);
       mockGetCurrentDiskSpaceStatus
         .mockReturnValueOnce({
-          status: "normal",
+          status: "normal" as const,
           availableMb: 4096,
           writesSuppressed: false,
         })
         .mockReturnValue({
-          status: "critical",
+          status: "critical" as const,
           availableMb: 50,
           writesSuppressed: true,
         });
@@ -598,7 +605,7 @@ describe("MigrationRunner", () => {
       const store = createMockStore(storePath, { _schemaVersion: 3 });
       const runner = new MigrationRunner(store as never);
       mockGetCurrentDiskSpaceStatus.mockReturnValue({
-        status: "critical",
+        status: "critical" as const,
         availableMb: 50,
         writesSuppressed: true,
       });
