@@ -50,27 +50,6 @@ describe("SidebarContent quick-state empty state — issue #6333 (CTA collapsed 
     });
   });
 
-  describe("hasPopoverFilters derivation", () => {
-    it("excludes quickStateFilter from the popover-only check", () => {
-      // hasPopoverFilters powers the secondary "Clear all filters" CTA — it
-      // must NOT include quickStateFilter, otherwise the second button shows
-      // even when the only active filter is the quick state itself.
-      const block = source.match(/const hasPopoverFilters =\s*[\s\S]*?activityFilters\.size > 0;/);
-      expect(block).not.toBeNull();
-      expect(block![0]).not.toContain("quickStateFilter");
-    });
-
-    it("includes query, statusFilters, typeFilters, githubFilters, sessionFilters, activityFilters", () => {
-      const block = source.match(/const hasPopoverFilters =\s*[\s\S]*?activityFilters\.size > 0;/);
-      expect(block![0]).toContain("query.trim().length > 0");
-      expect(block![0]).toContain("statusFilters.size > 0");
-      expect(block![0]).toContain("typeFilters.size > 0");
-      expect(block![0]).toContain("githubFilters.size > 0");
-      expect(block![0]).toContain("sessionFilters.size > 0");
-      expect(block![0]).toContain("activityFilters.size > 0");
-    });
-  });
-
   describe("showQuickStateEmptyState gate", () => {
     it("requires zero results, non-'all' filter, would-match-without, and non-main worktrees", () => {
       const block = source.match(/const showQuickStateEmptyState =\s*[\s\S]*?hasNonMainWorktrees;/);
@@ -130,16 +109,16 @@ describe("SidebarContent quick-state empty state — issue #6333 (CTA collapsed 
       expect(source).not.toContain("Clear all filters");
     });
 
-    it("gates the description on hasPopoverFilters so the no-popover-filters case stays quiet", () => {
-      // When only the quick-state filter is active, the title and single
-      // CTA already convey everything; an additional descriptive line would
-      // be redundant noise. The description prop passes `undefined` in that
-      // path, which the EmptyState primitive treats as "no description".
+    it("does not render a description in the quick-state branch (single CTA conveys recovery)", () => {
+      // CLAUDE.md popover/sidebar empty-state rule: when the filter input above
+      // explains the cause and the title + CTA convey recovery, an additional
+      // description is redundant. The `description` prop is intentionally
+      // omitted; the visible filter chips above the empty state carry any
+      // additional active-filter signal.
       const branchStart = source.indexOf("showQuickStateEmptyState ?");
       const branchEnd = source.indexOf("filteredWorktrees.length === 0 && hasFilters", branchStart);
       const branch = source.slice(branchStart, branchEnd);
-      expect(branch).toMatch(/description=\{[\s\S]*?hasPopoverFilters[\s\S]*?\}/);
-      expect(branch).toContain("undefined");
+      expect(branch).not.toMatch(/description=/);
     });
 
     it("renders the popover-filtered empty state via the EmptyState primitive with a noun-phrase title", () => {
