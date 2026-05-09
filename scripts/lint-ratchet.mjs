@@ -40,7 +40,7 @@ function main() {
     // ESLint exits with code 1 when there are warnings/errors
     // The output is still valid JSON in stdout
     if (error.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
-      console.error("❌ ESLint output exceeded buffer size (10MB)");
+      console.error("❌ ESLint output exceeded buffer size (16MB)");
       console.error("   Try reducing the number of files or increasing maxBuffer");
       process.exit(1);
     }

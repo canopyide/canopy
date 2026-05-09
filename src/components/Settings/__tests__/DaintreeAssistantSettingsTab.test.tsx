@@ -857,7 +857,9 @@ describe("DaintreeAssistantSettingsTab", () => {
 
       const confirmButtons = screen.getAllByRole("button", { name: /^clear log$/i });
       // The dialog confirm button is the second match (the inline button stays mounted).
-      fireEvent.click(confirmButtons[confirmButtons.length - 1]);
+      const confirmButton = confirmButtons[confirmButtons.length - 1];
+      expect(confirmButton).toBeDefined();
+      fireEvent.click(confirmButton!);
 
       await waitFor(() => {
         expect(clearAuditLog).toHaveBeenCalledTimes(1);
