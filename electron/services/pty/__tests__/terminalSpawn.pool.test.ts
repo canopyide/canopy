@@ -54,7 +54,9 @@ describe("acquirePtyProcess pool handling", () => {
 
   it("acquires a pooled PTY when an env-keyed slot is available for the request cwd", () => {
     const pooled = createFakePooledPty();
-    const acquireByKey = vi.fn<(cwd: string, envHash: string) => FakePooledPty>(() => pooled);
+    const acquireByKey = vi.fn<
+      (cwd: string, envHash: string) => { process: FakePooledPty; prelude: string }
+    >(() => ({ process: pooled, prelude: "" }));
     const pool = createFakePool({
       defaultCwd: "/repo",
       acquireByKey,
@@ -65,7 +67,8 @@ describe("acquirePtyProcess pool handling", () => {
     expect(acquireByKey).toHaveBeenCalledTimes(1);
     expect(acquireByKey.mock.calls[0]?.[0]).toBe("/repo");
     expect(typeof acquireByKey.mock.calls[0]?.[1]).toBe("string");
-    expect(result).toBe(pooled);
+    expect(result.ptyProcess).toBe(pooled);
+    expect(result.prelude).toBe("");
     expect(spawnMock).not.toHaveBeenCalled();
   });
 
@@ -73,7 +76,7 @@ describe("acquirePtyProcess pool handling", () => {
     const pooled = createFakePooledPty();
     const pool = createFakePool({
       defaultCwd: "/repo",
-      acquireByKey: vi.fn(() => pooled),
+      acquireByKey: vi.fn(() => ({ process: pooled, prelude: "" })),
     });
 
     acquirePtyProcess("t1", baseOptions, {}, "/bin/bash", [], pool, () => {});
@@ -86,6 +89,20 @@ describe("acquirePtyProcess pool handling", () => {
     }
     // No screen-clear preamble is written on pool acquire (removed in hard-break).
     expect(pooled.write).not.toHaveBeenCalled();
+  });
+
+  it("propagates the pool prelude unchanged so the renderer can replay it", () => {
+    const pooled = createFakePooledPty();
+    const prelude = "myhost:project user$ ";
+    const pool = createFakePool({
+      defaultCwd: "/repo",
+      acquireByKey: vi.fn(() => ({ process: pooled, prelude })),
+    });
+
+    const result = acquirePtyProcess("t1", baseOptions, {}, "/bin/bash", [], pool, () => {});
+
+    expect(result.ptyProcess).toBe(pooled);
+    expect(result.prelude).toBe(prelude);
   });
 
   it("falls back to direct spawn when the pool has no entry for the (cwd, envHash) key", () => {
@@ -118,7 +135,8 @@ describe("acquirePtyProcess pool handling", () => {
     expect(warmForKey.mock.calls[0]?.[0]).toBe("/repo-b");
     expect(spawnMock).toHaveBeenCalledTimes(1);
     expect(spawnMock.mock.calls[0]?.[2]).toMatchObject({ cwd: "/repo-b" });
-    expect(result).toBe(spawnedPty);
+    expect(result.ptyProcess).toBe(spawnedPty);
+    expect(result.prelude).toBe("");
   });
 
   it("computes distinct envHash keys for differing options.env, isolating pool slots", () => {
@@ -200,7 +218,8 @@ describe("acquirePtyProcess pool handling", () => {
     const result = acquirePtyProcess("t3", baseOptions, {}, "/bin/bash", ["-i"], null, () => {});
 
     expect(spawnMock).toHaveBeenCalledTimes(1);
-    expect(result).toBe(spawnedPty);
+    expect(result.ptyProcess).toBe(spawnedPty);
+    expect(result.prelude).toBe("");
   });
 
   it("skips the pool entirely for dev-preview panes", () => {

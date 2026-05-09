@@ -277,7 +277,15 @@ export class TerminalProcess {
     private callbacks: TerminalProcessCallbacks,
     private deps: TerminalProcessDependencies,
     spawnContext: SpawnContext,
-    ptyProcess: pty.IPty
+    ptyProcess: pty.IPty,
+    /**
+     * Output the pooled shell printed before this constructor took ownership
+     * of the PTY (prompt, banner, MOTD). Empty for fresh-spawn paths. Replayed
+     * through the same data path live PTY output uses, BEFORE installing the
+     * live `onData` handler — otherwise the live handler can interleave the
+     * first user-typed chunk with the prelude. See PtyPool / acquirePtyProcess.
+     */
+    prelude: string = ""
   ) {
     const { shell, args: spawnArgs } = spawnContext;
     const spawnedAt = Date.now();
@@ -391,6 +399,16 @@ export class TerminalProcess {
       forensicsBuffer: this.forensicsBuffer,
       agentStateService: this.deps.agentStateService,
     });
+
+    // Replay any output the pooled shell printed before we took ownership
+    // (banner, MOTD, first prompt). Must run BEFORE setupPtyHandlers so the
+    // prelude lands in the renderer xterm and the headless serialization
+    // buffer in chronological order, ahead of any live PTY chunks. See
+    // PtyPool.acquireByKey for why this is necessary.
+    if (prelude.length > 0) {
+      this.replayPrelude(prelude);
+    }
+
     this.setupPtyHandlers(ptyProcess);
 
     const ptyPid = ptyProcess.pid;
@@ -1444,6 +1462,37 @@ export class TerminalProcess {
     }
 
     console.log(`[AgentStartup] ${JSON.stringify(entry)}`);
+  }
+
+  /**
+   * Replay output that a pooled shell emitted before this TerminalProcess
+   * owned the PTY. The pool's prelude buffer captures the prompt/banner/MOTD
+   * that would otherwise be lost — without this, fast Macs that hit a warm
+   * pool slot would attach an xterm to a shell that has already finished
+   * printing, leaving the pane visually blank until the user types.
+   *
+   * Mirrors the data sinks of the live `onData` handler in `setupPtyHandlers`
+   * (firstByteAt, lastOutputTime, headless write, renderer emit, forensics,
+   * semantic buffer, snapshotter). Skips agent-only state (activityMonitor,
+   * agent:output, outputBuffer) — by the time an agent CLI is launched into
+   * the PTY the prelude is overwritten on screen anyway, and feeding shell-
+   * prompt bytes into agent state machines would mis-classify the session.
+   */
+  private replayPrelude(prelude: string): void {
+    const terminal = this.terminalInfo;
+    const now = Date.now();
+    if (terminal.firstByteAt === undefined) {
+      terminal.firstByteAt = now;
+    }
+    terminal.lastOutputTime = now;
+
+    if (terminal.headlessTerminal) {
+      terminal.headlessTerminal.write(prelude);
+    }
+    this.sessionSnapshotter.schedule();
+    this.emitData(prelude);
+    this.forensicsBuffer.capture(prelude);
+    this.semanticBufferManager.onData(prelude);
   }
 
   private setupPtyHandlers(ptyProcess: pty.IPty): void {

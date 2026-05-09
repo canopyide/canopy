@@ -119,6 +119,16 @@ export function buildTerminalEnv(
   return ensureUtf8Locale(mergedEnv);
 }
 
+export interface AcquiredTerminalProcess {
+  ptyProcess: pty.IPty;
+  /**
+   * Bytes the pooled shell emitted before this acquire (banner, MOTD, prompt).
+   * Empty for fresh-spawn paths. Callers MUST replay this through the
+   * renderer's data path so the user sees the prompt — see PtyPool.acquireByKey.
+   */
+  prelude: string;
+}
+
 export function acquirePtyProcess(
   id: string,
   options: PtySpawnOptions,
@@ -127,7 +137,7 @@ export function acquirePtyProcess(
   args: string[],
   ptyPool: PtyPool | null,
   onWriteError: (error: unknown, context: { operation: string }) => void
-): pty.IPty {
+): AcquiredTerminalProcess {
   // The pool is a global singleton; entries are keyed by (cwd, envHash).
   // We can hit the pool whenever the pool exists and the request is a plain
   // shell launch (no custom shell/args, not a dev-preview pane). The env-hash
@@ -136,44 +146,46 @@ export function acquirePtyProcess(
   // wanted key and we fall through to fresh spawn + background warm.
   const canUsePool = !!ptyPool && !options.shell && !options.args && options.kind !== "dev-preview";
   const envHash = canUsePool ? computePoolEnvHash(options.env) : null;
-  let pooledPty =
-    canUsePool && envHash !== null ? ptyPool!.acquireByKey(options.cwd, envHash) : null;
+  let pooled = canUsePool && envHash !== null ? ptyPool!.acquireByKey(options.cwd, envHash) : null;
   // Suppress unused-parameter lint for the write-error callback; kept in the
   // signature so future pool-acquisition logic (e.g. agent-preamble writes) can
   // still report through the same channel.
   void onWriteError;
 
-  if (pooledPty) {
+  if (pooled) {
     try {
-      pooledPty.resize(options.cols, options.rows);
+      pooled.process.resize(options.cols, options.rows);
     } catch (resizeError) {
       console.warn(
         `[TerminalProcess] Failed to resize pooled PTY for ${id}, falling back to spawn:`,
         resizeError
       );
       try {
-        pooledPty.kill();
+        pooled.process.kill();
       } catch {
         // Process may already be dead
       }
-      pooledPty = null;
+      pooled = null;
     }
   }
 
-  if (pooledPty) {
+  if (pooled) {
     // Pool entries are pre-spawned with the project cwd via node-pty's
     // `cwd` option (kernel-level chdir before exec), so no shell-level
     // `cd` write is needed and user `cd` overrides (zoxide, oh-my-zsh)
     // cannot interfere. See issue #5097.
     //
-    // No clear-screen preamble is written here. The shell's RC output is
-    // what the user should see first — it's the prompt. Hiding it
-    // historically produced visible escape-garbage on slow pools.
+    // The pool's `prelude` carries any output the shell emitted before
+    // acquire (typically the first prompt). TerminalProcess replays it
+    // through the same data path live PTY output uses, so the renderer
+    // xterm sees the prompt the user expects — see PtyPool.acquireByKey.
     if (process.env.DAINTREE_VERBOSE) {
-      console.log(`[TerminalProcess] Acquired terminal ${id} from pool (instant spawn)`);
+      console.log(
+        `[TerminalProcess] Acquired terminal ${id} from pool (instant spawn, prelude=${pooled.prelude.length}B)`
+      );
     }
 
-    return pooledPty;
+    return { ptyProcess: pooled.process, prelude: pooled.prelude };
   }
 
   // Pool miss — kick off a background warm for this exact (cwd, envHash) key
@@ -184,13 +196,14 @@ export function acquirePtyProcess(
   }
 
   try {
-    return pty.spawn(shell, args, {
+    const ptyProcess = pty.spawn(shell, args, {
       name: "xterm-256color",
       cols: options.cols,
       rows: options.rows,
       cwd: options.cwd,
       env,
     });
+    return { ptyProcess, prelude: "" };
   } catch (error) {
     console.error(`Failed to spawn terminal ${id}:`, error);
     throw error;

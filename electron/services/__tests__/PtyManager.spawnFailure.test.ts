@@ -71,7 +71,7 @@ describe("PtyManager.spawn — PTY cleanup on constructor failure", () => {
   beforeEach(() => {
     shouldThrow = false;
     mockPty = createMockPty();
-    vi.mocked(acquirePtyProcess).mockReturnValue(mockPty);
+    vi.mocked(acquirePtyProcess).mockReturnValue({ ptyProcess: mockPty, prelude: "" });
     manager = new PtyManager();
   });
 

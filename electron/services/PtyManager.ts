@@ -225,7 +225,7 @@ export class PtyManager extends EventEmitter {
     );
 
     const spawnContext = computeSpawnContext(id, options);
-    const ptyProcess = acquirePtyProcess(
+    const acquired = acquirePtyProcess(
       id,
       options,
       spawnContext.env,
@@ -239,6 +239,7 @@ export class PtyManager extends EventEmitter {
         );
       }
     );
+    const { ptyProcess, prelude } = acquired;
 
     let terminalProcess: TerminalProcess;
     try {
@@ -265,7 +266,8 @@ export class PtyManager extends EventEmitter {
           processTreeCache: this.processTreeCache,
         },
         spawnContext,
-        ptyProcess
+        ptyProcess,
+        prelude
       );
     } catch (error) {
       logError(`TerminalProcess constructor failed for ${id}, killing orphaned PTY`, error);

@@ -25,10 +25,32 @@ interface PooledPty {
   env: Record<string, string>;
   createdAt: number;
   dataDisposable: IDisposable;
+  /**
+   * Bounded buffer of shell-init output (banner, MOTD, first prompt) emitted
+   * before this entry was acquired. Replayed on acquire so the consumer's
+   * xterm sees the prompt the user expects. Without this, fast Macs that
+   * pre-warm the pool before the first openTerminal call would hand out a
+   * shell that has already finished printing — the renderer xterm attaches
+   * after the prompt and stays blank. See PR for #7625.
+   */
+  prelude: string;
 }
 
 const DEFAULT_POOL_SIZE = 2;
 const DEFAULT_MAX_ENTRIES = 8;
+/**
+ * Cap on bytes of pre-acquire shell output buffered per pool entry. Sized to
+ * comfortably hold zsh/bash MOTD + prompt (typically <1 KB) while bounding
+ * memory if a noisy `.zshrc` keeps writing. Anything past the cap is silently
+ * dropped, which matches the prior (unbuffered) behaviour for that overflow.
+ */
+const PRELUDE_BYTE_CAP = 64 * 1024;
+
+export interface AcquiredPty {
+  process: pty.IPty;
+  /** Bytes the pooled shell emitted before acquire. May be empty. */
+  prelude: string;
+}
 
 function makePoolKey(cwd: string, envHash: string): string {
   return `${cwd}\0${envHash}`;
@@ -124,7 +146,16 @@ export class PtyPool {
         env,
       });
 
-      const dataDisposable = ptyProcess.onData(() => {});
+      // Hold a reference so the data listener can append into the same entry
+      // without a Map lookup on every chunk.
+      const entryRef: { current: PooledPty | null } = { current: null };
+      const dataDisposable = ptyProcess.onData((data) => {
+        const entry = entryRef.current;
+        if (!entry) return;
+        if (entry.prelude.length >= PRELUDE_BYTE_CAP) return;
+        const remaining = PRELUDE_BYTE_CAP - entry.prelude.length;
+        entry.prelude += data.length <= remaining ? data : data.slice(0, remaining);
+      });
 
       ptyProcess.onExit(({ exitCode }) => {
         if (process.env.DAINTREE_VERBOSE) {
@@ -155,7 +186,7 @@ export class PtyPool {
         return;
       }
 
-      this.pool.set(id, {
+      const entry: PooledPty = {
         process: ptyProcess,
         cwd,
         envHash,
@@ -163,7 +194,10 @@ export class PtyPool {
         env,
         createdAt: Date.now(),
         dataDisposable,
-      });
+        prelude: "",
+      };
+      entryRef.current = entry;
+      this.pool.set(id, entry);
 
       if (process.env.DAINTREE_VERBOSE) {
         console.log(
@@ -179,7 +213,7 @@ export class PtyPool {
    * Backward-compatible zero-arg acquire — used only by tests and legacy
    * callers. Internally targets the env-empty key at the pool's default cwd.
    */
-  acquire(): pty.IPty | null {
+  acquire(): AcquiredPty | null {
     return this.acquireByKey(this.defaultCwd, POOL_ENV_EMPTY_HASH);
   }
 
@@ -187,8 +221,13 @@ export class PtyPool {
    * Acquire a pre-warmed PTY for a specific (cwd, envHash) key. Returns null
    * if no matching entry exists. Triggers a background refill of the same key
    * so the next acquire is also instant.
+   *
+   * The returned `prelude` is whatever the pooled shell printed before
+   * acquire (banner, MOTD, first prompt). Callers MUST replay this through
+   * the renderer's data path or the user will see a blank pane until they
+   * type something — see #7625 for the failure mode this prevents.
    */
-  acquireByKey(cwd: string, envHash: string): pty.IPty | null {
+  acquireByKey(cwd: string, envHash: string): AcquiredPty | null {
     if (this.isDisposed) {
       console.warn("[PtyPool] Cannot acquire - pool disposed");
       return null;
@@ -229,9 +268,12 @@ export class PtyPool {
     }
 
     entry.dataDisposable.dispose();
+    const prelude = entry.prelude;
 
     if (process.env.DAINTREE_VERBOSE) {
-      console.log(`[PtyPool] Acquired PTY ${id} for key ${wantedKey}, ${this.pool.size} remaining`);
+      console.log(
+        `[PtyPool] Acquired PTY ${id} for key ${wantedKey} (prelude=${prelude.length}B), ${this.pool.size} remaining`
+      );
     }
 
     // Refill the same key so the next acquire is also instant. Fire-and-
@@ -239,7 +281,7 @@ export class PtyPool {
     // way is fine.
     this.warmForKey(cwd, entry.env, envHash);
 
-    return entry.process;
+    return { process: entry.process, prelude };
   }
 
   /**

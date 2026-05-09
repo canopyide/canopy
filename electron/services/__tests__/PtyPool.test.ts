@@ -15,14 +15,29 @@ interface FakePtyProcess {
   emitExit: (exitCode: number) => void;
 }
 
-function createFakeProcess(pid: number | "missing" = 100): FakePtyProcess {
+interface FakePtyProcessWithEmit extends FakePtyProcess {
+  emitData: (chunk: string) => void;
+}
+
+function createFakeProcess(pid: number | "missing" = 100): FakePtyProcessWithEmit {
   let onExitHandler: ((event: { exitCode: number }) => void) | null = null;
+  const dataHandlers = new Set<(chunk: string) => void>();
   let alive = true;
-  const process: FakePtyProcess = {
-    onData: vi.fn(() => ({ dispose: vi.fn() })),
+  const process: FakePtyProcessWithEmit = {
+    onData: vi.fn((callback: (chunk: string) => void) => {
+      dataHandlers.add(callback);
+      return {
+        dispose: vi.fn(() => {
+          dataHandlers.delete(callback);
+        }),
+      };
+    }),
     onExit: vi.fn((callback: (event: { exitCode: number }) => void) => {
       onExitHandler = callback;
     }),
+    emitData: (chunk: string) => {
+      for (const handler of dataHandlers) handler(chunk);
+    },
     // Real node-pty kill() triggers onExit asynchronously. Mirror that here so
     // drain tests exercise the onExit→refill cascade against the epoch guard.
     kill: vi.fn(() => {
@@ -307,7 +322,43 @@ describe("PtyPool", () => {
       await pool.warmPool();
 
       const acquired = pool.acquireByKey("/repo", "env-empty");
-      expect(acquired).toBe(proc);
+      expect(acquired?.process).toBe(proc);
+      expect(acquired?.prelude).toBe("");
+      pool.dispose();
+    });
+
+    it("buffers shell-init output during pool residency and returns it as prelude on acquire", async () => {
+      const proc = createFakeProcess(1102);
+      spawnMock.mockReturnValueOnce(proc);
+      const pool = new PtyPool({ poolSize: 1, defaultCwd: "/repo" });
+      await pool.warmPool();
+
+      // Simulate zsh printing its banner + prompt while the entry sits in the pool.
+      // Without the prelude buffer, this output would be discarded and the
+      // renderer xterm would attach to a blank shell on acquire (#7625 root cause).
+      proc.emitData("Welcome to zsh\r\n");
+      proc.emitData("repo % ");
+
+      const acquired = pool.acquireByKey("/repo", "env-empty");
+      expect(acquired?.process).toBe(proc);
+      expect(acquired?.prelude).toBe("Welcome to zsh\r\nrepo % ");
+      pool.dispose();
+    });
+
+    it("caps the prelude buffer to bound memory under noisy shell init", async () => {
+      const proc = createFakeProcess(1103);
+      spawnMock.mockReturnValueOnce(proc);
+      const pool = new PtyPool({ poolSize: 1, defaultCwd: "/repo" });
+      await pool.warmPool();
+
+      // 64 KB cap; emit 70 KB and verify the tail is dropped, not the head
+      // (preserving the prompt-bearing prefix is more important than tail).
+      const big = "x".repeat(70 * 1024);
+      proc.emitData(big);
+
+      const acquired = pool.acquireByKey("/repo", "env-empty");
+      expect(acquired?.prelude.length).toBe(64 * 1024);
+      expect(acquired?.prelude.startsWith("xxxx")).toBe(true);
       pool.dispose();
     });
 
@@ -341,7 +392,7 @@ describe("PtyPool", () => {
       expect(spawnMock).toHaveBeenCalledTimes(1);
 
       const acquired = pool.acquireByKey("/repo", "env-empty");
-      expect(acquired).toBe(first);
+      expect(acquired?.process).toBe(first);
 
       // Background warm for the same key fires asynchronously.
       await flushMicrotasks();
@@ -364,7 +415,7 @@ describe("PtyPool", () => {
       // First acquire on a different key (env-empty) misses; the env-foo slot
       // remains, and a subsequent acquire on env-foo hits.
       expect(pool.acquireByKey("/repo", "env-empty")).toBeNull();
-      expect(pool.acquireByKey("/repo", "env-foo")).toBe(proc);
+      expect(pool.acquireByKey("/repo", "env-foo")?.process).toBe(proc);
       pool.dispose();
     });
 
@@ -441,7 +492,7 @@ describe("PtyPool", () => {
       expect(procs[0]?.kill).toHaveBeenCalledTimes(1);
       expect(procs[1]?.kill).not.toHaveBeenCalled();
       // env-c entry is now in the pool
-      expect(pool.acquireByKey("/repo", "env-c")).toBe(procs[2]);
+      expect(pool.acquireByKey("/repo", "env-c")?.process).toBe(procs[2]);
       pool.dispose();
     });
   });
