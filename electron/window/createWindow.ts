@@ -12,6 +12,7 @@ import {
   registerWebContents,
   registerAppView,
 } from "./webContentsRegistry.js";
+import { getProjectViewManager } from "./windowRef.js";
 import path from "path";
 import { createWindowWithState } from "../windowState.js";
 import { store } from "../store.js";
@@ -300,7 +301,9 @@ export function setupBrowserWindow(
           unresponsiveDialogOpen = false;
           if (response === 1 && !win.isDestroyed()) {
             console.warn("[MAIN] User triggered force-restart of unresponsive renderer");
-            appWebContents.forcefullyCrashRenderer();
+            const activeWc = getProjectViewManager()?.getActiveView()?.webContents;
+            const target = activeWc && !activeWc.isDestroyed() ? activeWc : appWebContents;
+            if (!target.isDestroyed()) target.forcefullyCrashRenderer();
           }
         })
         .catch(() => {
