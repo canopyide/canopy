@@ -10,6 +10,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useGlobalSecondTicker } from "@/hooks/useGlobalSecondTicker";
 import { isUselessTitle } from "@shared/utils/isUselessTitle";
 import { getEffectiveAgentConfig } from "@shared/config/agentRegistry";
+import { cn } from "@/lib/utils";
+
+const COUNTDOWN_CRITICAL_SECONDS = 5;
 
 interface TrashGroupItemProps {
   groupRestoreId: string;
@@ -121,7 +124,15 @@ export function TrashGroupItem({
               </span>
             ) : null}
           </div>
-          <div className="text-[11px] text-daintree-text/40" aria-live="off">
+          <div
+            className={cn(
+              "text-[11px] tabular-nums transition-opacity",
+              seconds <= COUNTDOWN_CRITICAL_SECONDS
+                ? "opacity-100 text-status-warning/70"
+                : "text-daintree-text/40 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+            )}
+            aria-hidden="true"
+          >
             {seconds}s remaining
           </div>
         </div>

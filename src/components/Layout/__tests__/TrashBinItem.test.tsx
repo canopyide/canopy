@@ -252,4 +252,95 @@ describe("TrashBinItem", () => {
       expect(container.textContent).toContain("0s remaining");
     });
   });
+
+  describe("countdown accessibility and visibility", () => {
+    function findCountdownEl(container: HTMLElement): HTMLElement {
+      const matches = Array.from(container.querySelectorAll<HTMLElement>("[aria-hidden]")).filter(
+        (el) => el.textContent?.includes("s remaining")
+      );
+      expect(matches.length).toBe(1);
+      return matches[0]!;
+    }
+
+    it("removes aria-live and marks the countdown aria-hidden", () => {
+      const terminal = makeAgentTerminal();
+      const trashedInfo: TrashedTerminal = {
+        id: "t1",
+        expiresAt: Date.now() + 20000,
+        originalLocation: "grid",
+      };
+      const { container } = render(<TrashBinItem terminal={terminal} trashedInfo={trashedInfo} />);
+      const el = findCountdownEl(container);
+      expect(el.getAttribute("aria-hidden")).toBe("true");
+      expect(el.hasAttribute("aria-live")).toBe(false);
+    });
+
+    it("uses tabular-nums to keep digits aligned", () => {
+      const terminal = makeAgentTerminal();
+      const trashedInfo: TrashedTerminal = {
+        id: "t1",
+        expiresAt: Date.now() + 20000,
+        originalLocation: "grid",
+      };
+      const { container } = render(<TrashBinItem terminal={terminal} trashedInfo={trashedInfo} />);
+      const el = findCountdownEl(container);
+      expect(el.className).toContain("tabular-nums");
+    });
+
+    it("hides the countdown by default outside the final approach window", () => {
+      const terminal = makeAgentTerminal();
+      const trashedInfo: TrashedTerminal = {
+        id: "t1",
+        expiresAt: Date.now() + 20000,
+        originalLocation: "grid",
+      };
+      const { container } = render(<TrashBinItem terminal={terminal} trashedInfo={trashedInfo} />);
+      const el = findCountdownEl(container);
+      expect(el.className).toContain("opacity-0");
+      expect(el.className).toContain("group-hover:opacity-100");
+      expect(el.className).toContain("group-focus-within:opacity-100");
+      expect(el.className).not.toContain("motion-reduce:opacity-100");
+      expect(el.className).not.toContain("text-status-warning");
+    });
+
+    it("surfaces the countdown unconditionally at the 5s threshold", () => {
+      const terminal = makeAgentTerminal();
+      const trashedInfo: TrashedTerminal = {
+        id: "t1",
+        expiresAt: Date.now() + 5000,
+        originalLocation: "grid",
+      };
+      const { container } = render(<TrashBinItem terminal={terminal} trashedInfo={trashedInfo} />);
+      const el = findCountdownEl(container);
+      expect(el.className).toContain("opacity-100");
+      expect(el.className).toContain("text-status-warning");
+      expect(el.className).not.toContain("opacity-0");
+    });
+
+    it("keeps the warning treatment below the threshold", () => {
+      const terminal = makeAgentTerminal();
+      const trashedInfo: TrashedTerminal = {
+        id: "t1",
+        expiresAt: Date.now() + 4000,
+        originalLocation: "grid",
+      };
+      const { container } = render(<TrashBinItem terminal={terminal} trashedInfo={trashedInfo} />);
+      const el = findCountdownEl(container);
+      expect(el.className).toContain("opacity-100");
+      expect(el.className).toContain("text-status-warning");
+    });
+
+    it("stays quiet just above the threshold", () => {
+      const terminal = makeAgentTerminal();
+      const trashedInfo: TrashedTerminal = {
+        id: "t1",
+        expiresAt: Date.now() + 6000,
+        originalLocation: "grid",
+      };
+      const { container } = render(<TrashBinItem terminal={terminal} trashedInfo={trashedInfo} />);
+      const el = findCountdownEl(container);
+      expect(el.className).toContain("opacity-0");
+      expect(el.className).not.toContain("text-status-warning");
+    });
+  });
 });
