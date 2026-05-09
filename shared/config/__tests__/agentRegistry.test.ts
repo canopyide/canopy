@@ -323,7 +323,7 @@ describe("agentRegistry", () => {
     it("excludes agents whose supports object is at experimental tier", () => {
       // Temporarily downgrade codex to experimental and verify the real
       // filter function (not a local copy of the predicate) excludes it.
-      const original = AGENT_REGISTRY.codex;
+      const original = AGENT_REGISTRY.codex as AgentConfig;
       const experimentalSupports: AssistantSupports = {
         mcpInjection: "cli-flags",
         settingsOverlay: false,
@@ -332,7 +332,7 @@ describe("agentRegistry", () => {
         versionProbe: true,
         tier: "experimental",
       };
-      AGENT_REGISTRY.codex = { ...original, supports: experimentalSupports };
+      AGENT_REGISTRY.codex = { ...original, supports: experimentalSupports } as AgentConfig;
       try {
         const ids = getAssistantSupportedAgentIds();
         expect(ids).not.toContain("codex");
