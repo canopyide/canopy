@@ -97,7 +97,7 @@ describe("HelpSessionService", () => {
   let userData: string;
   let helpFolder: string;
   let service: HelpSessionService;
-  let mockPtyKill: ReturnType<typeof vi.fn>;
+  let mockPtyKill: ReturnType<typeof vi.fn<(id: string, reason?: string) => void>>;
 
   beforeEach(async () => {
     tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "help-session-svc-"));
