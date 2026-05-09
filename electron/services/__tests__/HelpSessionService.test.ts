@@ -542,7 +542,7 @@ describe("HelpSessionService", () => {
     // The session dir is provisioned only after the readiness gate passes,
     // so neither the dir nor `.mcp.json` should exist on disk.
     const sessionsRoot = path.join(userData, "help-sessions");
-    let entries: string[] = [];
+    let entries: string[];
     try {
       entries = await fs.readdir(sessionsRoot);
     } catch {
