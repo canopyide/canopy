@@ -1,4 +1,3 @@
-import * as path from "node:path";
 import * as pty from "node-pty";
 import path from "node:path";
 import {
