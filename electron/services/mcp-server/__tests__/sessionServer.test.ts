@@ -1089,7 +1089,7 @@ describe("CallTool error envelope (integration through sessionServer)", () => {
   });
 });
 
-describe("Resource permission denial", () => {
+describe("Resource error envelope (integration through sessionServer)", () => {
   async function readResource(
     server: ReturnType<typeof createSessionServer>,
     uri: string
@@ -1112,19 +1112,96 @@ describe("Resource permission denial", () => {
     );
   }
 
-  it("throws McpError with structured data on tier denial", async () => {
-    const store = fakeSessionStore();
-    (store.getTier as unknown as ReturnType<typeof vi.fn>).mockReturnValue("workbench");
+  it("propagates ActionError as McpError with structured payload in data", async () => {
+    // Backing dispatch fails with a NOT_FOUND ActionError carrying details.
+    // unwrapDispatchResult should rethrow as McpError with the structured
+    // payload attached as `data`, mirroring the tool-path JSON envelope.
     const deps = fakeDeps({
-      sessionStore: store,
-      getFullToolSurface: vi.fn(() => false),
+      dispatchAction: vi.fn().mockResolvedValue({
+        result: {
+          ok: false,
+          error: {
+            code: "NOT_FOUND",
+            message: "Worktree 'wt-missing' not found",
+            details: { worktreeId: "wt-missing" },
+          },
+        },
+      }),
     });
-    const server = createSessionServer("s-res", deps);
+    const server = createSessionServer("s-res-fail", deps);
     await server.connect(makeMockTransport());
 
-    // pulse resource is permitted at workbench, but issues at workbench is too
-    // — both pass; pick a denied case by stubbing isTierPermitted via tier.
-    // Instead, test the not-found path which still throws McpError without data.
+    try {
+      await readResource(server, "daintree://worktree/wt-missing/pulse");
+      expect.fail("Expected McpError");
+    } catch (err) {
+      expect(err).toBeInstanceOf(McpError);
+      const mcpErr = err as McpError;
+      expect(mcpErr.message).toContain("NOT_FOUND");
+      expect(mcpErr.message).toContain("Worktree 'wt-missing' not found");
+      expect(mcpErr.data).toEqual({
+        code: "NOT_FOUND",
+        message: "Worktree 'wt-missing' not found",
+        details: { worktreeId: "wt-missing" },
+        retriable: false,
+      });
+    }
+  });
+
+  it("hardens unserialisable details in McpError.data so transport JSON.stringify won't crash", async () => {
+    const circular: { self?: unknown } = {};
+    circular.self = circular;
+    const deps = fakeDeps({
+      dispatchAction: vi.fn().mockResolvedValue({
+        result: {
+          ok: false,
+          error: {
+            code: "EXECUTION_ERROR",
+            message: "boom",
+            details: circular,
+          },
+        },
+      }),
+    });
+    const server = createSessionServer("s-res-circular", deps);
+    await server.connect(makeMockTransport());
+
+    try {
+      await readResource(server, "daintree://worktree/wt-1/pulse");
+      expect.fail("Expected McpError");
+    } catch (err) {
+      expect(err).toBeInstanceOf(McpError);
+      const mcpErr = err as McpError;
+      // The downstream transport will JSON.stringify(message). If we hadn't
+      // hardened buildMcpErrorPayload this would throw and crash the response.
+      expect(() => JSON.stringify(mcpErr.data)).not.toThrow();
+      const data = mcpErr.data as { details: unknown };
+      expect(data.details).toEqual({ serializationError: true });
+    }
+  });
+
+  it("returns successful resource contents when dispatch succeeds", async () => {
+    const deps = fakeDeps({
+      dispatchAction: vi.fn().mockResolvedValue({
+        result: { ok: true, result: { commits: [], status: "clean" } },
+      }),
+    });
+    const server = createSessionServer("s-res-ok", deps);
+    await server.connect(makeMockTransport());
+
+    const result = (await readResource(server, "daintree://worktree/wt-1/pulse")) as {
+      contents: { uri: string; mimeType: string; text: string }[];
+    };
+    expect(result.contents).toHaveLength(1);
+    expect(result.contents[0].mimeType).toBe("application/json");
+    expect(JSON.parse(result.contents[0].text)).toEqual({ commits: [], status: "clean" });
+  });
+
+  it("throws InvalidRequest McpError on unknown URI (no structured data)", async () => {
+    const deps = fakeDeps();
+    const server = createSessionServer("s-res-unknown", deps);
+    await server.connect(makeMockTransport());
+
     try {
       await readResource(server, "daintree://something/else");
       expect.fail("Expected McpError");

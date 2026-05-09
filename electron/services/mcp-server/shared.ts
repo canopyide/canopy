@@ -114,7 +114,13 @@ export interface McpErrorPayload {
  * - Tool path: serialised as JSON in `content[0].text` alongside `isError: true`
  * - Resource path: passed as `data` on the thrown `McpError`
  *
- * `details` is omitted from the payload when undefined to keep wire output tight.
+ * `details` is run through `JSON.stringify` once as a safety check — the SDK's
+ * transport will stringify the payload again when serialising `McpError.data`
+ * or the tool response, and an unserialisable `details` (BigInt, Symbol,
+ * circular ref) would crash that downstream serialisation. On failure the
+ * field is replaced with `{ serializationError: true }`. `details` is omitted
+ * entirely when the caller passes `undefined`, but a caller-supplied `null`
+ * is preserved.
  */
 export function buildMcpErrorPayload(input: {
   code: string;
@@ -127,7 +133,13 @@ export function buildMcpErrorPayload(input: {
     retriable: RETRIABLE_ERROR_CODES.has(input.code),
   };
   if (input.details !== undefined) {
-    payload.details = input.details;
+    let safeDetails: unknown = input.details;
+    try {
+      JSON.stringify(input.details);
+    } catch {
+      safeDetails = { serializationError: true };
+    }
+    payload.details = safeDetails;
   }
   return payload;
 }
@@ -140,8 +152,7 @@ export interface McpToolErrorResult {
 /**
  * Tool-path error envelope. The text is plain JSON so existing
  * `.toContain("CODE")` assertions remain green and models can `JSON.parse` it
- * for self-correction. Unserialisable `details` (circular refs, etc.) fall
- * back to a `{ serializationError: true }` marker rather than throwing.
+ * for self-correction.
  */
 export function buildToolError(input: {
   code: string;
@@ -149,22 +160,8 @@ export function buildToolError(input: {
   details?: unknown;
 }): McpToolErrorResult {
   const payload = buildMcpErrorPayload(input);
-  let safeDetails: unknown = payload.details;
-  if (payload.details !== undefined) {
-    try {
-      JSON.stringify(payload.details);
-    } catch {
-      safeDetails = { serializationError: true };
-    }
-  }
-  const wirePayload: McpErrorPayload = {
-    code: payload.code,
-    message: payload.message,
-    retriable: payload.retriable,
-    ...(payload.details !== undefined ? { details: safeDetails } : {}),
-  };
   return {
-    content: [{ type: "text" as const, text: JSON.stringify(wirePayload) }],
+    content: [{ type: "text" as const, text: JSON.stringify(payload) }],
     isError: true as const,
   };
 }
