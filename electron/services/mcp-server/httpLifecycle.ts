@@ -729,10 +729,16 @@ export class HttpLifecycle {
 
   /**
    * Promote a help-session's tier in-memory (Approve once). Refuses downgrades
-   * — a malicious renderer cannot drop its own privileges. Returns the new
-   * tier or throws if the session is unknown / the request is invalid.
+   * — a malicious renderer cannot drop its own privileges. When `callerWcId`
+   * is supplied, also requires the caller to be the WebContents the session
+   * was pinned to at handshake (cross-window forgery defence). Returns the
+   * new tier or throws if the session is unknown / the request is invalid.
    */
-  setSessionTier(sessionId: string, tier: McpTier): { sessionId: string; tier: McpTier } {
+  setSessionTier(
+    sessionId: string,
+    tier: McpTier,
+    callerWcId?: number
+  ): { sessionId: string; tier: McpTier } {
     if (!sessionId || typeof sessionId !== "string") {
       throw new Error("Invalid sessionId");
     }
@@ -743,11 +749,27 @@ export class HttpLifecycle {
     if (current === undefined) {
       throw new Error("Unknown session");
     }
+    // Reject elevations for sessions whose transport already closed (idle
+    // timeout, server shutdown). The tier-map entry can outlive the transport
+    // briefly during cleanup; mutating a dead entry would silently fail when
+    // the next call lands.
+    if (
+      !this.deps.sessionStore.sessions.has(sessionId) &&
+      !this.deps.sessionStore.httpSessions.has(sessionId)
+    ) {
+      throw new Error("Session is no longer active");
+    }
     // Only help-session bearers should be elevated through this surface —
     // an unpinned session is api-key/external and has no UI invariant to
     // satisfy.
-    if (!this.deps.sessionStore.sessionWebContentsMap.has(sessionId)) {
+    const pinnedWcId = this.deps.sessionStore.sessionWebContentsMap.get(sessionId);
+    if (pinnedWcId === undefined) {
       throw new Error("Session is not eligible for renderer tier elevation");
+    }
+    if (callerWcId !== undefined && callerWcId !== pinnedWcId) {
+      // Cross-WebContents forgery: another renderer is trying to elevate a
+      // session that wasn't minted by it. Reject loudly.
+      throw new Error("Caller is not the pinned renderer for this session");
     }
     const order: McpTier[] = ["workbench", "action", "system", "external"];
     const currentRank = order.indexOf(current);

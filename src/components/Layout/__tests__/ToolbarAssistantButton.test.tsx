@@ -6,11 +6,15 @@ import { useHelpPanelStore } from "@/store/helpPanelStore";
 import { usePanelStore } from "@/store";
 import type { McpRuntimeSnapshot } from "@shared/types";
 
-const mcpReadiness = vi.fn<[], McpRuntimeSnapshot>(() => ({
-  state: "ready",
-  port: 0,
-  lastError: null,
-}));
+const mcpReadiness: () => McpRuntimeSnapshot = vi.fn(
+  (): McpRuntimeSnapshot => ({
+    enabled: true,
+    state: "ready",
+    port: 0,
+    lastError: null,
+  })
+);
+const mcpReadinessMock = mcpReadiness as ReturnType<typeof vi.fn>;
 
 vi.mock("@/components/ui/tooltip", () => ({
   Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -86,7 +90,7 @@ function setPanel(id: string, agentState: string | undefined): void {
 
 describe("ToolbarAssistantButton — working pip", () => {
   beforeEach(() => {
-    mcpReadiness.mockReturnValue({ state: "ready", port: 0, lastError: null });
+    mcpReadinessMock.mockReturnValue({ enabled: true, state: "ready", port: 0, lastError: null });
     useHelpPanelStore.setState({
       isOpen: false,
       terminalId: null,
@@ -127,7 +131,7 @@ describe("ToolbarAssistantButton — working pip", () => {
   });
 
   it("MCP-health pip takes precedence over the working pip when both would apply", () => {
-    mcpReadiness.mockReturnValue({
+    mcpReadinessMock.mockReturnValue({
       state: "failed",
       port: 0,
       lastError: "oops",

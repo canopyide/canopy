@@ -366,9 +366,10 @@ export class McpServerService {
 
   setSessionTier(
     sessionId: string,
-    tier: "workbench" | "action" | "system"
+    tier: "workbench" | "action" | "system",
+    callerWcId?: number
   ): { sessionId: string; tier: McpTier } {
-    return this.httpLifecycle.setSessionTier(sessionId, tier);
+    return this.httpLifecycle.setSessionTier(sessionId, tier, callerWcId);
   }
 
   // Delegates for test access — tests call .bind(service) on these.

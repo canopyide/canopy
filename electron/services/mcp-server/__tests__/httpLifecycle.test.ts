@@ -232,10 +232,19 @@ describe("HttpLifecycle", () => {
   });
 
   describe("setSessionTier", () => {
+    function pinnedSession(deps: HttpLifecycleDeps, sessionId: string, wcId: number) {
+      deps.sessionStore.sessionWebContentsMap.set(sessionId, wcId);
+      // Mark transport active so the live-session guard passes.
+      (deps.sessionStore.httpSessions as Map<string, unknown>).set(sessionId, {
+        transport: { close: vi.fn().mockResolvedValue(undefined) },
+        idleTimer: setTimeout(() => {}, 1_000_000),
+      } as never);
+    }
+
     it("elevates a help-session tier and updates sessionTierMap", () => {
       const deps = fakeDeps();
       deps.sessionStore.sessionTierMap.set("sess-1", "workbench");
-      deps.sessionStore.sessionWebContentsMap.set("sess-1", 42);
+      pinnedSession(deps, "sess-1", 42);
 
       const lc = new HttpLifecycle(deps);
       const result = lc.setSessionTier("sess-1", "system");
@@ -247,7 +256,7 @@ describe("HttpLifecycle", () => {
     it("refuses downgrades silently and keeps current tier", () => {
       const deps = fakeDeps();
       deps.sessionStore.sessionTierMap.set("sess-2", "system");
-      deps.sessionStore.sessionWebContentsMap.set("sess-2", 42);
+      pinnedSession(deps, "sess-2", 42);
 
       const lc = new HttpLifecycle(deps);
       const result = lc.setSessionTier("sess-2", "workbench");
@@ -262,9 +271,44 @@ describe("HttpLifecycle", () => {
       expect(() => lc.setSessionTier("nonexistent", "system")).toThrow(/Unknown session/);
     });
 
+    it("throws when caller WebContents id doesn't match the pinned id", () => {
+      const deps = fakeDeps();
+      deps.sessionStore.sessionTierMap.set("sess-pin", "workbench");
+      pinnedSession(deps, "sess-pin", 42);
+
+      const lc = new HttpLifecycle(deps);
+      expect(() => lc.setSessionTier("sess-pin", "system", 99)).toThrow(/not the pinned renderer/);
+      // Tier must remain unchanged on rejection.
+      expect(deps.sessionStore.sessionTierMap.get("sess-pin")).toBe("workbench");
+    });
+
+    it("accepts caller WebContents id when it matches the pinned id", () => {
+      const deps = fakeDeps();
+      deps.sessionStore.sessionTierMap.set("sess-ok", "workbench");
+      pinnedSession(deps, "sess-ok", 42);
+
+      const lc = new HttpLifecycle(deps);
+      const result = lc.setSessionTier("sess-ok", "action", 42);
+      expect(result.tier).toBe("action");
+    });
+
+    it("throws when the session's transport has already closed (idle/torn down)", () => {
+      const deps = fakeDeps();
+      deps.sessionStore.sessionTierMap.set("sess-dead", "workbench");
+      deps.sessionStore.sessionWebContentsMap.set("sess-dead", 42);
+      // Don't add to sessions/httpSessions — transport is dead.
+
+      const lc = new HttpLifecycle(deps);
+      expect(() => lc.setSessionTier("sess-dead", "system")).toThrow(/no longer active/);
+    });
+
     it("throws for sessions without a pinned WebContents (api-key/external)", () => {
       const deps = fakeDeps();
       deps.sessionStore.sessionTierMap.set("ext-1", "external");
+      (deps.sessionStore.httpSessions as Map<string, unknown>).set("ext-1", {
+        transport: { close: vi.fn().mockResolvedValue(undefined) },
+        idleTimer: setTimeout(() => {}, 1_000_000),
+      } as never);
       // No sessionWebContentsMap entry — this is an api-key session.
 
       const lc = new HttpLifecycle(deps);
@@ -276,7 +320,7 @@ describe("HttpLifecycle", () => {
     it("throws for invalid tier values", () => {
       const deps = fakeDeps();
       deps.sessionStore.sessionTierMap.set("sess-3", "workbench");
-      deps.sessionStore.sessionWebContentsMap.set("sess-3", 42);
+      pinnedSession(deps, "sess-3", 42);
 
       const lc = new HttpLifecycle(deps);
       expect(() => lc.setSessionTier("sess-3", "external" as never)).toThrow(/Invalid tier/);

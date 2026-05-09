@@ -81,6 +81,12 @@ interface TierMismatchState {
   toolId: string;
   tier: string;
   targetTier: "workbench" | "action" | "system" | null;
+  /**
+   * Captured at event time so "Always allow" persists to the project the
+   * banner originated from, not whichever project is current at click time —
+   * matters during rapid project switches.
+   */
+  projectId: string | null;
 }
 
 function notifyMcpNotReady(reason: string): void {
@@ -605,11 +611,16 @@ export function HelpPanel({
   // for our help-session.
   useEffect(() => {
     const dispose = window.electron.mcpServer.onTierNotPermitted((payload) => {
+      // Capture the project at event time. If the user switches projects
+      // before clicking "Always allow", the persisted tier should still
+      // belong to the project the banner originated from.
+      const projectId = useProjectStore.getState().currentProject?.id ?? null;
       setTierMismatch({
         sessionId: payload.sessionId,
         toolId: payload.toolId,
         tier: payload.tier,
         targetTier: payload.targetTier,
+        projectId,
       });
     });
     return dispose;
@@ -637,7 +648,12 @@ export function HelpPanel({
         const tier = resolveDaintreeMcpTier(settings);
         if (tier !== "system") return;
         const snapshot = await window.electron.git.snapshotGet(worktreeId);
-        if (cancelled || !snapshot) return;
+        // PreAgentSnapshotService records a sentinel (`stashRef: ""`) before
+        // the actual stash completes, to coordinate concurrent creation. A
+        // sentinel means the snapshot is still in-flight (or failed early) —
+        // surfacing the banner would lie about the user's safety. Wait for a
+        // real ref.
+        if (cancelled || !snapshot || !snapshot.stashRef) return;
         setPreflightSnapshot(snapshot);
       })().catch((err) => {
         logError("HelpPanel: snapshot pre-flight failed", err);
@@ -1375,15 +1391,27 @@ export function HelpPanel({
     setTierMismatch(null);
   }, []);
 
+  // Clears the banner only if a fresh denial hasn't arrived during the IPC
+  // round-trip. Without this, a second denial that fires while the user's
+  // approval is in flight gets silently wiped out by the resolver.
+  const clearIfStillCurrent = useCallback((sessionId: string, toolId: string) => {
+    setTierMismatch((prev) =>
+      prev && prev.sessionId === sessionId && prev.toolId === toolId ? null : prev
+    );
+  }, []);
+
   const handleApproveOnce = useCallback(() => {
     const current = tierMismatch;
     if (!current?.targetTier || isApprovingTier) return;
+    const targetTier = current.targetTier;
+    const sessionId = current.sessionId;
+    const toolId = current.toolId;
     setIsApprovingTier(true);
     safeFireAndForget(
       window.electron.mcpServer
-        .setSessionTier(current.sessionId, current.targetTier)
+        .setSessionTier(sessionId, targetTier)
         .then(() => {
-          setTierMismatch(null);
+          clearIfStillCurrent(sessionId, toolId);
         })
         .catch((err) => {
           logError("HelpPanel: setSessionTier failed", err);
@@ -1398,19 +1426,23 @@ export function HelpPanel({
         }),
       { context: "HelpPanel:setSessionTier" }
     );
-  }, [tierMismatch, isApprovingTier]);
+  }, [tierMismatch, isApprovingTier, clearIfStillCurrent]);
 
   const handleAlwaysAllow = useCallback(() => {
     const current = tierMismatch;
     if (!current?.targetTier || isApprovingTier) return;
-    // Read fresh state at click time — currentProject from render-time closure
-    // can drift if the user switches projects after the banner appears.
-    const projectId = useProjectStore.getState().currentProject?.id;
+    // Use the project captured at event time — `current.projectId` is
+    // immutable for this banner instance, so a project switch after the
+    // banner appears doesn't redirect the save to the wrong project. Fall
+    // back to the live currentProject only if the event didn't carry one.
+    const projectId = current.projectId ?? useProjectStore.getState().currentProject?.id ?? null;
     if (!projectId) {
       dismissTierMismatch();
       return;
     }
     const targetTier = current.targetTier;
+    const sessionId = current.sessionId;
+    const toolId = current.toolId;
     setIsApprovingTier(true);
     safeFireAndForget(
       (async () => {
@@ -1425,8 +1457,8 @@ export function HelpPanel({
         });
         // Also lift the live session immediately so the assistant doesn't have
         // to wait for a new session to pick up the persisted change.
-        await window.electron.mcpServer.setSessionTier(current.sessionId, targetTier);
-        setTierMismatch(null);
+        await window.electron.mcpServer.setSessionTier(sessionId, targetTier);
+        clearIfStillCurrent(sessionId, toolId);
       })()
         .catch((err) => {
           logError("HelpPanel: always-allow tier write failed", err);
@@ -1441,7 +1473,7 @@ export function HelpPanel({
         }),
       { context: "HelpPanel:alwaysAllowTier" }
     );
-  }, [tierMismatch, isApprovingTier, dismissTierMismatch]);
+  }, [tierMismatch, isApprovingTier, dismissTierMismatch, clearIfStillCurrent]);
 
   // Esc-to-close. The xterm-helper-textarea check lets Escape reach the
   // running PTY (Codex/Claude/etc.) when the assistant terminal has focus

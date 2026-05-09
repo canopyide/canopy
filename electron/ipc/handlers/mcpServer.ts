@@ -1,6 +1,6 @@
 import { CHANNELS } from "../channels.js";
 import type * as McpServerServiceModule from "../../services/McpServerService.js";
-import { broadcastToRenderer, typedHandle } from "../utils.js";
+import { broadcastToRenderer, typedHandle, typedHandleWithContext } from "../utils.js";
 
 type McpServerSingleton = typeof McpServerServiceModule.mcpServerService;
 
@@ -113,9 +113,9 @@ export function registerMcpServerHandlers(): () => void {
   );
 
   handlers.push(
-    typedHandle(
+    typedHandleWithContext(
       CHANNELS.MCP_SERVER_SET_SESSION_TIER,
-      async (payload: { sessionId: string; tier: "workbench" | "action" | "system" }) => {
+      async (ctx, payload: { sessionId: string; tier: "workbench" | "action" | "system" }) => {
         if (!payload || typeof payload !== "object") {
           throw new Error("Invalid payload");
         }
@@ -127,7 +127,10 @@ export function registerMcpServerHandlers(): () => void {
           throw new Error("Invalid tier");
         }
         const svc = await getMcpServerService();
-        const result = svc.setSessionTier(sessionId, tier);
+        // Caller-pin check: only the renderer that minted the help-session
+        // can elevate it. Without this, a different window/view could pass
+        // a sessionId pinned to another WebContents and succeed.
+        const result = svc.setSessionTier(sessionId, tier, ctx.webContentsId);
         return {
           sessionId: result.sessionId,
           tier: result.tier as "workbench" | "action" | "system",
