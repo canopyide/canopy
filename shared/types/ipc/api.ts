@@ -1308,6 +1308,27 @@ export interface ElectronAPI {
     onRuntimeStateChanged(
       callback: (snapshot: import("./mcpServer.js").McpRuntimeSnapshot) => void
     ): () => void;
+    /**
+     * Elevate an active help-session's tier (Approve once). Server-side
+     * validates that the new tier is not a downgrade.
+     */
+    setSessionTier(
+      sessionId: string,
+      tier: "workbench" | "action" | "system"
+    ): Promise<{ sessionId: string; tier: "workbench" | "action" | "system" }>;
+    /**
+     * Subscribe to tier-not-permitted pushes for the pinned help-session in
+     * this WebContents. The callback fires when a tool call is denied because
+     * the session tier doesn't permit it.
+     */
+    onTierNotPermitted(
+      callback: (payload: {
+        sessionId: string;
+        toolId: string;
+        tier: string;
+        targetTier: "workbench" | "action" | "system" | null;
+      }) => void
+    ): () => void;
   };
   helpAssistant: {
     getSettings(): Promise<HelpAssistantSettings>;

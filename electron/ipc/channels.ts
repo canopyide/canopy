@@ -525,6 +525,18 @@ export const CHANNELS = {
   MCP_SERVER_DISPATCH_ACTION_REQUEST: "mcp:dispatch-action-request",
   /** Bridge: renderer returns the action dispatch result to the main process. */
   MCP_SERVER_DISPATCH_ACTION_RESPONSE: "mcp:dispatch-action-response",
+  /**
+   * Push channel: a tool call from a help-session was denied because the
+   * session tier doesn't permit it. Targeted at the pinned WebContents — the
+   * renderer surfaces this in the assistant panel as an inline approval banner.
+   */
+  MCP_TIER_NOT_PERMITTED: "mcp-server:tier-not-permitted",
+  /**
+   * Elevate the tier of an active help-session (Approve once). Mutates
+   * `sessionTierMap` in-place — never downgrades, so a malicious renderer
+   * cannot drop its own privileges.
+   */
+  MCP_SERVER_SET_SESSION_TIER: "mcp-server:set-session-tier",
 
   // Voice Input channels
   VOICE_INPUT_GET_SETTINGS: "voice-input:get-settings",

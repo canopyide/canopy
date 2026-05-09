@@ -333,6 +333,24 @@ export const MCP_DEDUP_TTL_MS = 120_000;
  */
 export const MCP_DEDUP_MAX_ENTRIES_PER_SESSION = 256;
 
+/**
+ * Compute the minimum non-external tier that permits the given tool. Used to
+ * tell the renderer how to elevate the session in response to a
+ * TIER_NOT_PERMITTED denial: "Approve once" / "Always allow" both target this
+ * tier rather than blanket-elevating to `system`. Returns `null` if the tool
+ * isn't permitted at any tier (unknown tool).
+ *
+ * The `external` tier is intentionally excluded because it's a peer of the
+ * help-session tiers (api-key sessions only) and is never the right target
+ * for renderer-driven elevation.
+ */
+export function minimumPermittingTier(toolId: string): "workbench" | "action" | "system" | null {
+  if (TIER_ALLOWLISTS.workbench.has(toolId)) return "workbench";
+  if (TIER_ALLOWLISTS.action.has(toolId)) return "action";
+  if (TIER_ALLOWLISTS.system.has(toolId)) return "system";
+  return null;
+}
+
 export type ResourceKind = "pulse" | "scrollback" | "agentState" | "issues";
 
 export interface ParsedResourceUri {

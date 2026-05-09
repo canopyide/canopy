@@ -1827,6 +1827,10 @@ export interface IpcInvokeMap {
     args: [];
     result: import("./mcpServer.js").McpRuntimeSnapshot;
   };
+  "mcp-server:set-session-tier": {
+    args: [payload: { sessionId: string; tier: "workbench" | "action" | "system" }];
+    result: { sessionId: string; tier: "workbench" | "action" | "system" };
+  };
 
   // Webview console capture
   "webview:start-console-capture": {
@@ -2361,6 +2365,21 @@ export interface IpcEventMap {
    * binary reachability.
    */
   "mcp-server:runtime-state-changed": import("./mcpServer.js").McpRuntimeSnapshot;
+
+  /**
+   * Targeted push: a help-session tool call was denied because its tier
+   * doesn't permit the tool. Sent to the pinned WebContents so the renderer
+   * can surface an inline approval banner. Tier is `string` (not `McpTier`)
+   * because the type is main-process only — see `McpAuditRecord.tier`
+   * precedent. `targetTier` is the minimum tier that permits the tool, or
+   * `null` if the tool isn't recognized at any tier.
+   */
+  "mcp-server:tier-not-permitted": {
+    sessionId: string;
+    toolId: string;
+    tier: string;
+    targetTier: "workbench" | "action" | "system" | null;
+  };
 
   // Error events
   "error:notify": ErrorRecord;

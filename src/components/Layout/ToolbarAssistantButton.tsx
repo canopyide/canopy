@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { DaintreeIcon } from "@/components/icons/DaintreeIcon";
 import { useFocusStore } from "@/store/focusStore";
 import { useHelpPanelStore } from "@/store/helpPanelStore";
+import { usePanelStore } from "@/store";
 import { suppressSidebarResizes } from "@/lib/sidebarToggle";
 import { useMcpReadiness } from "@/hooks/useMcpReadiness";
 import type { McpRuntimeSnapshot } from "@shared/types";
@@ -48,6 +49,13 @@ export const ToolbarAssistantButton = memo(function ToolbarAssistantButton({
 }) {
   const isOpen = useHelpPanelStore((s) => s.isOpen);
   const toggle = useHelpPanelStore((s) => s.toggle);
+  // Two-step primitive selectors so the button only re-renders when the
+  // assistant terminal id changes, then when its agentState transitions in or
+  // out of "working". Returning a primitive avoids needing useShallow.
+  const assistantTerminalId = useHelpPanelStore((s) => s.terminalId);
+  const isWorking = usePanelStore((s) =>
+    assistantTerminalId ? s.panelsById[assistantTerminalId]?.agentState === "working" : false
+  );
   const mcp = useMcpReadiness();
   const shortcut = useKeybindingDisplay("help.togglePanel");
   const ariaShortcut = useAriaKeyshortcuts("help.togglePanel");
@@ -60,8 +68,18 @@ export const ToolbarAssistantButton = memo(function ToolbarAssistantButton({
   }, [toggle]);
 
   const pip = describePip(mcp);
+  // The MCP-health pip takes precedence — when it's showing, the working pip
+  // would compete for the same corner. The neutral working dot is intentionally
+  // non-pulsing and non-accent (per CLAUDE.md accent-color restraint) so it
+  // reads as ambient state rather than a call to action.
+  const showWorkingPip = !pip && isWorking && !isOpen;
   const baseTooltip = isOpen ? "Close Daintree Assistant" : "Open Daintree Assistant";
-  const ariaLabel = pip ? `Daintree Assistant — ${pip.tooltip}` : "Daintree Assistant";
+  const workingTooltip = "Assistant is working";
+  const ariaLabel = pip
+    ? `Daintree Assistant — ${pip.tooltip}`
+    : showWorkingPip
+      ? `Daintree Assistant — ${workingTooltip}`
+      : "Daintree Assistant";
 
   return (
     <Tooltip>
@@ -79,7 +97,7 @@ export const ToolbarAssistantButton = memo(function ToolbarAssistantButton({
           aria-keyshortcuts={ariaShortcut}
         >
           <DaintreeIcon />
-          {pip && (
+          {pip ? (
             <span
               aria-hidden="true"
               className={cn(
@@ -88,12 +106,30 @@ export const ToolbarAssistantButton = memo(function ToolbarAssistantButton({
                 pip.delayed && "animate-pulse-delayed"
               )}
             />
+          ) : (
+            showWorkingPip && (
+              <span
+                aria-hidden="true"
+                data-testid="assistant-working-pip"
+                className={cn(
+                  "absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full ring-2 ring-daintree-bg",
+                  "bg-daintree-text/30"
+                )}
+              />
+            )
           )}
           <ShortcutRevealChip actionId="help.togglePanel" />
         </Button>
       </TooltipTrigger>
       <TooltipContent side="bottom">
-        {createTooltipContent(pip ? `${baseTooltip} — ${pip.tooltip}` : baseTooltip, shortcut)}
+        {createTooltipContent(
+          pip
+            ? `${baseTooltip} — ${pip.tooltip}`
+            : showWorkingPip
+              ? `${baseTooltip} — ${workingTooltip}`
+              : baseTooltip,
+          shortcut
+        )}
       </TooltipContent>
     </Tooltip>
   );

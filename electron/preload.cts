@@ -2393,6 +2393,16 @@ const api: ElectronAPI = {
     getRuntimeState: () => _unwrappingInvoke(CHANNELS.MCP_SERVER_GET_RUNTIME_STATE),
     onRuntimeStateChanged: (callback: (snapshot: McpRuntimeSnapshot) => void) =>
       _typedOn(CHANNELS.MCP_SERVER_RUNTIME_STATE_CHANGED, callback),
+    setSessionTier: (sessionId: string, tier: "workbench" | "action" | "system") =>
+      _unwrappingInvoke(CHANNELS.MCP_SERVER_SET_SESSION_TIER, { sessionId, tier }),
+    onTierNotPermitted: (
+      callback: (payload: {
+        sessionId: string;
+        toolId: string;
+        tier: string;
+        targetTier: "workbench" | "action" | "system" | null;
+      }) => void
+    ) => _typedOn(CHANNELS.MCP_TIER_NOT_PERMITTED, callback),
   },
 
   helpAssistant: {
