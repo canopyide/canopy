@@ -11,8 +11,16 @@
  * - `unauthorized`: the session's tier was not permitted to invoke the
  *   action — the dispatch was rejected before reaching the renderer. Carries
  *   `errorCode: "TIER_NOT_PERMITTED"`.
+ * - `dedup`: a duplicate creation-tool call was suppressed by the
+ *   per-session idempotency guard and the cached or in-flight result was
+ *   returned. No second dispatch was performed.
  */
-export type McpAuditResult = "success" | "error" | "confirmation-pending" | "unauthorized";
+export type McpAuditResult =
+  | "success"
+  | "error"
+  | "confirmation-pending"
+  | "unauthorized"
+  | "dedup";
 
 /**
  * Persisted audit record for a single MCP tool dispatch. Written once per

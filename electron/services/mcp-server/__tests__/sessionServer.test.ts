@@ -12,20 +12,26 @@ import { createSessionServer } from "../sessionServer.js";
 import type { SessionServerDeps } from "../sessionServer.js";
 import type { SessionStore } from "../sessionStore.js";
 
-function fakeSessionStore(): SessionStore {
-  return {
+function fakeSessionStore(
+  tier: "workbench" | "action" | "system" | "external" = "workbench"
+): SessionStore {
+  const store = {
     sessions: new Map(),
     httpSessions: new Map(),
     sessionTierMap: new Map(),
     sessionWebContentsMap: new Map(),
     resourceSubscriptions: new Map(),
+    dedupInFlight: new Map(),
+    dedupResultCache: new Map(),
     drain: vi.fn(),
-    getTier: vi.fn(() => "workbench" as const),
+    getTier: vi.fn(() => tier),
     createIdleTimer: vi.fn(() => setTimeout(() => {}, 1_000_000)),
     createHttpIdleTimer: vi.fn(() => setTimeout(() => {}, 1_000_000)),
     resetIdleTimer: vi.fn(),
     resetHttpIdleTimer: vi.fn(),
+    clearDedupState: vi.fn(),
   } as unknown as SessionStore;
+  return store;
 }
 
 function fakeDeps(overrides?: Partial<SessionServerDeps>): SessionServerDeps {
@@ -105,6 +111,38 @@ async function listPrompts(server: ReturnType<typeof createSessionServer>) {
       requestId: 1,
     }
   );
+}
+
+/**
+ * Invoke the tools/call handler directly (skips SDK Zod validation since
+ * the SDK's CallToolRequestSchema validates only the outer request shape,
+ * and our tier/dedup logic operates after that).
+ */
+async function callTool(
+  server: ReturnType<typeof createSessionServer>,
+  params: { name: string; arguments?: Record<string, unknown> }
+) {
+  const handlers = (
+    server as unknown as {
+      _requestHandlers: Map<string, (req: unknown, extra: unknown) => Promise<unknown>>;
+    }
+  )._requestHandlers;
+  const handler = handlers.get("tools/call");
+  if (!handler) throw new Error("tools/call handler not found");
+  return handler(
+    {
+      method: "tools/call",
+      params,
+      jsonrpc: "2.0",
+      id: 1,
+    },
+    {
+      signal: new AbortController().signal,
+      _meta: {},
+      sendNotification: vi.fn(),
+      requestId: 1,
+    }
+  ) as Promise<{ content: unknown; isError?: boolean; structuredContent?: unknown }>;
 }
 
 describe("sessionServer prompt handler", () => {
@@ -254,5 +292,245 @@ describe("sessionServer prompt handler", () => {
       }
     )._requestHandlers;
     expect(handlers.has("prompts/get")).toBe(true);
+  });
+});
+
+describe("CallTool idempotency dedup", () => {
+  it("coalesces same-moment duplicates via singleflight (dispatch invoked once)", async () => {
+    // Hold the dispatch with a manually-resolved promise so two callers race
+    // through the handler before the first one resolves.
+    let resolveDispatch: ((envelope: unknown) => void) | undefined;
+    const dispatchAction = vi.fn().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveDispatch = resolve as (envelope: unknown) => void;
+        })
+    );
+    const deps = fakeDeps({
+      sessionStore: fakeSessionStore("system"),
+      dispatchAction,
+    });
+    const server = createSessionServer("dedup-1", deps);
+
+    const a = callTool(server, {
+      name: "terminal.new",
+      arguments: { spawnedBy: { kind: "user" } },
+    });
+    const b = callTool(server, {
+      name: "terminal.new",
+      arguments: { spawnedBy: { kind: "user" } },
+    });
+
+    // Both handlers are now suspended; A awaits requestManifest then dispatchAction,
+    // B detects the in-flight entry A registered synchronously and awaits the same
+    // promise. Yield microtasks until A's handler has reached the held dispatch.
+    for (let i = 0; i < 50 && !resolveDispatch; i++) {
+      await Promise.resolve();
+    }
+    expect(resolveDispatch).toBeDefined();
+
+    resolveDispatch!({ result: { ok: true, result: { terminalId: "t-1" } } });
+
+    const [resultA, resultB] = await Promise.all([a, b]);
+
+    expect(dispatchAction).toHaveBeenCalledTimes(1);
+    expect(resultA).toEqual(resultB);
+    expect((resultA as { content: Array<{ text: string }> }).content[0].text).toContain("t-1");
+  });
+
+  it("returns the cached result for a post-completion duplicate within TTL", async () => {
+    const dispatchAction = vi
+      .fn()
+      .mockResolvedValue({ result: { ok: true, result: { terminalId: "t-2" } } });
+    const deps = fakeDeps({
+      sessionStore: fakeSessionStore("system"),
+      dispatchAction,
+    });
+    const server = createSessionServer("dedup-2", deps);
+
+    const args = { spawnedBy: { kind: "user" } };
+    const first = await callTool(server, { name: "terminal.new", arguments: args });
+    const second = await callTool(server, { name: "terminal.new", arguments: args });
+
+    expect(dispatchAction).toHaveBeenCalledTimes(1);
+    expect(second).toEqual(first);
+  });
+
+  it("does not dedup non-allowlisted actions", async () => {
+    const dispatchAction = vi
+      .fn()
+      .mockResolvedValue({ result: { ok: true, result: { ok: true } } });
+    const deps = fakeDeps({
+      sessionStore: fakeSessionStore("system"),
+      dispatchAction,
+    });
+    const server = createSessionServer("dedup-3", deps);
+
+    await callTool(server, { name: "terminal.list", arguments: {} });
+    await callTool(server, { name: "terminal.list", arguments: {} });
+
+    expect(dispatchAction).toHaveBeenCalledTimes(2);
+  });
+
+  it("treats different args as distinct keys", async () => {
+    const dispatchAction = vi
+      .fn()
+      .mockResolvedValue({ result: { ok: true, result: { terminalId: "t-x" } } });
+    const deps = fakeDeps({
+      sessionStore: fakeSessionStore("system"),
+      dispatchAction,
+    });
+    const server = createSessionServer("dedup-4", deps);
+
+    await callTool(server, {
+      name: "terminal.new",
+      arguments: { spawnedBy: { kind: "user" } },
+    });
+    await callTool(server, {
+      name: "terminal.new",
+      arguments: { spawnedBy: { kind: "agent" } },
+    });
+
+    expect(dispatchAction).toHaveBeenCalledTimes(2);
+  });
+
+  it("honors explicit requestKey over arg hash and strips it before dispatch", async () => {
+    const dispatchAction = vi
+      .fn()
+      .mockResolvedValue({ result: { ok: true, result: { terminalId: "t-rk" } } });
+    const deps = fakeDeps({
+      sessionStore: fakeSessionStore("system"),
+      dispatchAction,
+    });
+    const server = createSessionServer("dedup-5", deps);
+
+    // Same requestKey, different args — should still dedup as the same call.
+    await callTool(server, {
+      name: "terminal.new",
+      arguments: { requestKey: "rk-1", spawnedBy: { kind: "user" } },
+    });
+    await callTool(server, {
+      name: "terminal.new",
+      arguments: { requestKey: "rk-1", spawnedBy: { kind: "agent" } },
+    });
+
+    expect(dispatchAction).toHaveBeenCalledTimes(1);
+    // requestKey must not reach dispatchAction.
+    const dispatchedArgs = dispatchAction.mock.calls[0][1] as Record<string, unknown>;
+    expect(dispatchedArgs).not.toHaveProperty("requestKey");
+  });
+
+  it("does not cache failed dispatches; retries re-dispatch", async () => {
+    const dispatchAction = vi
+      .fn()
+      .mockResolvedValueOnce({
+        result: { ok: false, error: { code: "BOOM", message: "kaboom" } },
+      })
+      .mockResolvedValueOnce({ result: { ok: true, result: { terminalId: "t-retry" } } });
+    const deps = fakeDeps({
+      sessionStore: fakeSessionStore("system"),
+      dispatchAction,
+    });
+    const server = createSessionServer("dedup-6", deps);
+
+    const args = { spawnedBy: { kind: "user" } };
+    const first = (await callTool(server, { name: "terminal.new", arguments: args })) as {
+      isError?: boolean;
+    };
+    expect(first.isError).toBe(true);
+
+    const second = await callTool(server, { name: "terminal.new", arguments: args });
+
+    expect(dispatchAction).toHaveBeenCalledTimes(2);
+    expect((second as { content: Array<{ text: string }> }).content[0].text).toContain("t-retry");
+  });
+
+  it("does not cache thrown dispatches; retries re-dispatch", async () => {
+    const dispatchAction = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("network down"))
+      .mockResolvedValueOnce({ result: { ok: true, result: { terminalId: "t-throw" } } });
+    const deps = fakeDeps({
+      sessionStore: fakeSessionStore("system"),
+      dispatchAction,
+    });
+    const server = createSessionServer("dedup-7", deps);
+
+    const args = { spawnedBy: { kind: "user" } };
+    const first = (await callTool(server, { name: "terminal.new", arguments: args })) as {
+      isError?: boolean;
+    };
+    expect(first.isError).toBe(true);
+
+    const second = await callTool(server, { name: "terminal.new", arguments: args });
+
+    expect(dispatchAction).toHaveBeenCalledTimes(2);
+    expect((second as { content: Array<{ text: string }> }).content[0].text).toContain("t-throw");
+  });
+
+  it("logs a 'dedup' audit record when a duplicate is suppressed", async () => {
+    const appendAuditRecord = vi.fn();
+    const dispatchAction = vi
+      .fn()
+      .mockResolvedValue({ result: { ok: true, result: { terminalId: "t-audit" } } });
+    const deps = fakeDeps({
+      sessionStore: fakeSessionStore("system"),
+      dispatchAction,
+      appendAuditRecord,
+    });
+    const server = createSessionServer("dedup-8", deps);
+
+    const args = { spawnedBy: { kind: "user" } };
+    await callTool(server, { name: "terminal.new", arguments: args });
+    await callTool(server, { name: "terminal.new", arguments: args });
+
+    const outcomes = appendAuditRecord.mock.calls.map(
+      (call) => (call[0] as { outcome: { kind: string } }).outcome.kind
+    );
+    expect(outcomes).toContain("dedup");
+    expect(outcomes.filter((k) => k === "dedup")).toHaveLength(1);
+  });
+
+  it("treats requestKey:'' as absent (falls through to auto-hash)", async () => {
+    const dispatchAction = vi
+      .fn()
+      .mockResolvedValue({ result: { ok: true, result: { terminalId: "t-empty" } } });
+    const deps = fakeDeps({
+      sessionStore: fakeSessionStore("system"),
+      dispatchAction,
+    });
+    const server = createSessionServer("dedup-9", deps);
+
+    // Same auto-hash key (same args), so even with empty requestKey both dedupe.
+    await callTool(server, {
+      name: "terminal.new",
+      arguments: { requestKey: "", spawnedBy: { kind: "user" } },
+    });
+    await callTool(server, {
+      name: "terminal.new",
+      arguments: { requestKey: "", spawnedBy: { kind: "user" } },
+    });
+
+    expect(dispatchAction).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-dispatches after drain() clears the cache", async () => {
+    const dispatchAction = vi
+      .fn()
+      .mockResolvedValue({ result: { ok: true, result: { terminalId: "t-drain" } } });
+    const sessionStore = fakeSessionStore("system");
+    const deps = fakeDeps({ sessionStore, dispatchAction });
+    const server = createSessionServer("dedup-10", deps);
+
+    const args = { spawnedBy: { kind: "user" } };
+    await callTool(server, { name: "terminal.new", arguments: args });
+
+    // Wipe the cache the way drain() does.
+    sessionStore.dedupInFlight.clear();
+    sessionStore.dedupResultCache.clear();
+
+    await callTool(server, { name: "terminal.new", arguments: args });
+
+    expect(dispatchAction).toHaveBeenCalledTimes(2);
   });
 });

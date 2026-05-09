@@ -300,6 +300,30 @@ export const TIER_ALLOWLISTS: Readonly<Record<McpTier, ReadonlySet<string>>> = {
 
 export const TIER_NOT_PERMITTED_CODE = "TIER_NOT_PERMITTED";
 
+/**
+ * Creation-tool allowlist for per-session idempotency dedup. LLMs replay
+ * tool calls during multi-step planning, especially across reconnects. For
+ * these four actions a duplicate call would silently produce a duplicate
+ * resource — orphaned terminal, redundant agent, etc. Inside the TTL
+ * window the duplicate returns the original result instead of redispatching.
+ *
+ * Deliberately narrow: blanket-applying dedup to all mutations would mask
+ * legitimate "do it again" cases (re-running the same git command, etc.).
+ */
+export const MCP_DEDUP_ALLOWLIST: ReadonlySet<string> = new Set([
+  "terminal.new",
+  "worktree.createWithRecipe",
+  "agent.launch",
+  "recipe.run",
+]);
+
+/**
+ * Dedup window for the creation-tool allowlist. Sized to cover the MCP
+ * dispatch timeout (30s) plus a generous LLM retry window without growing
+ * unbounded inside a long-running Electron process.
+ */
+export const MCP_DEDUP_TTL_MS = 120_000;
+
 export type ResourceKind = "pulse" | "scrollback" | "agentState" | "issues";
 
 export interface ParsedResourceUri {
