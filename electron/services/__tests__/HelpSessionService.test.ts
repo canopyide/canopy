@@ -97,6 +97,7 @@ describe("HelpSessionService", () => {
   let userData: string;
   let helpFolder: string;
   let service: HelpSessionService;
+  let mockPtyKill: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "help-session-svc-"));
@@ -128,6 +129,8 @@ describe("HelpSessionService", () => {
     // happy path; one test below intentionally tests the registry-set flow
     // by overriding to a different fakeRegistry.
     service.setMcpRegistry({} as never);
+    mockPtyKill = vi.fn();
+    service.setPtyClient({ kill: mockPtyKill });
     vi.spyOn(console, "warn").mockImplementation(() => {});
   });
 
@@ -264,13 +267,18 @@ describe("HelpSessionService", () => {
   });
 
   it("getWebContentsIdForToken returns the per-session pin when two sessions are minted from different views", async () => {
+    // Distinct projectIds so the single-backend invariant (#7509) doesn't
+    // displace `a` when `b` is provisioned. The intent of this test is the
+    // per-session WebContents pin, not multi-tenancy of one project.
     const a = await service.provisionSession({
       ...provisionInput(),
+      projectId: "proj-a",
       projectPath: "/tmp/proj-a",
       projectViewWebContentsId: 100,
     });
     const b = await service.provisionSession({
       ...provisionInput(),
+      projectId: "proj-b",
       projectPath: "/tmp/proj-b",
       projectViewWebContentsId: 200,
     });
@@ -562,6 +570,159 @@ describe("HelpSessionService", () => {
     );
     expect(mcp.mcpServers.daintree).toBeUndefined();
     expect(mcp.mcpServers["daintree-docs"]).toBeDefined();
+  });
+
+  describe("single-backend invariant (#7509)", () => {
+    it("provisioning a second session for the same project revokes the first token and kills its bound PTY", async () => {
+      const first = await service.provisionSession(provisionInput());
+      if (!first) throw new Error("expected first provision");
+      expect(service.markTerminalForToken(first.token, "term-1")).toBe(true);
+
+      const second = await service.provisionSession(provisionInput());
+      if (!second) throw new Error("expected second provision");
+
+      expect(service.validateToken(first.token)).toBe(false);
+      expect(service.validateToken(second.token)).toBe("action");
+      expect(mockPtyKill).toHaveBeenCalledWith("term-1", "help-session-displaced");
+    });
+
+    it("provisioning a second session for the same project displaces the first even when no terminal was ever bound", async () => {
+      // Models the renderer race where the new provision arrives before
+      // `markTerminalForToken` was called for the prior session — bearer
+      // is still revoked, no PTY kill (nothing to kill).
+      const first = await service.provisionSession(provisionInput());
+      if (!first) throw new Error("expected first provision");
+
+      const second = await service.provisionSession(provisionInput());
+      if (!second) throw new Error("expected second provision");
+
+      expect(service.validateToken(first.token)).toBe(false);
+      expect(service.validateToken(second.token)).toBe("action");
+      expect(mockPtyKill).not.toHaveBeenCalled();
+    });
+
+    it("provisioning a session for a different project does not displace the first project's PTY", async () => {
+      const first = await service.provisionSession({
+        ...provisionInput(),
+        projectId: "proj-1",
+        projectPath: "/tmp/proj-1",
+      });
+      if (!first) throw new Error("expected first provision");
+      expect(service.markTerminalForToken(first.token, "term-1")).toBe(true);
+
+      const second = await service.provisionSession({
+        ...provisionInput(),
+        projectId: "proj-2",
+        projectPath: "/tmp/proj-2",
+      });
+      if (!second) throw new Error("expected second provision");
+
+      expect(service.validateToken(first.token)).toBe("action");
+      expect(service.validateToken(second.token)).toBe("action");
+      expect(mockPtyKill).not.toHaveBeenCalled();
+    });
+
+    it("revokeSession kills the bound PTY", async () => {
+      const result = await service.provisionSession(provisionInput());
+      if (!result) throw new Error("expected result");
+      expect(service.markTerminalForToken(result.token, "term-1")).toBe(true);
+
+      await service.revokeSession(result.sessionId);
+
+      expect(mockPtyKill).toHaveBeenCalledWith("term-1", "help-session-revoked");
+    });
+
+    it("revokeSession is idempotent — kill is called at most once", async () => {
+      const result = await service.provisionSession(provisionInput());
+      if (!result) throw new Error("expected result");
+      expect(service.markTerminalForToken(result.token, "term-1")).toBe(true);
+
+      await service.revokeSession(result.sessionId);
+      await service.revokeSession(result.sessionId);
+
+      expect(mockPtyKill).toHaveBeenCalledTimes(1);
+    });
+
+    it("markTerminalForToken returns false for an unknown token without firing kill", async () => {
+      expect(service.markTerminalForToken("not-a-token", "term-1")).toBe(false);
+      expect(mockPtyKill).not.toHaveBeenCalled();
+    });
+
+    it("markTerminalForToken returns false for a revoked token without firing kill", async () => {
+      const result = await service.provisionSession(provisionInput());
+      if (!result) throw new Error("expected result");
+      await service.revokeSession(result.sessionId);
+
+      expect(service.markTerminalForToken(result.token, "term-1")).toBe(false);
+      expect(mockPtyKill).not.toHaveBeenCalled();
+    });
+
+    it("markTerminalForToken displaces a stale terminal binding for the same project", async () => {
+      // Models the renderer race where two spawn IPCs land back-to-back for
+      // the same provisioned session: the second binding must displace the
+      // first PTY so the project's slot doesn't end up holding a stale id.
+      const result = await service.provisionSession(provisionInput());
+      if (!result) throw new Error("expected result");
+      expect(service.markTerminalForToken(result.token, "term-old")).toBe(true);
+      expect(service.markTerminalForToken(result.token, "term-new")).toBe(true);
+
+      expect(mockPtyKill).toHaveBeenCalledWith("term-old", "help-session-displaced");
+    });
+
+    it("PTY kill failures during displacement do not prevent provisioning", async () => {
+      mockPtyKill.mockImplementationOnce(() => {
+        throw new Error("pty host crashed");
+      });
+      const first = await service.provisionSession(provisionInput());
+      if (!first) throw new Error("expected first provision");
+      expect(service.markTerminalForToken(first.token, "term-1")).toBe(true);
+
+      const second = await service.provisionSession(provisionInput());
+      expect(second).not.toBeNull();
+      // Bearer revocation is the security gate; the kill is best-effort.
+      expect(service.validateToken(first.token)).toBe(false);
+    });
+
+    it("displacement still revokes the prior bearer when no PtyClient is wired", async () => {
+      // Cold-boot edge case: provision before the deferred wiring drains.
+      // The orphan's MCP calls 401 even without the kill landing.
+      service.setPtyClient(null);
+      const first = await service.provisionSession(provisionInput());
+      if (!first) throw new Error("expected first provision");
+      expect(service.markTerminalForToken(first.token, "term-1")).toBe(true);
+
+      const second = await service.provisionSession(provisionInput());
+      expect(second).not.toBeNull();
+      expect(service.validateToken(first.token)).toBe(false);
+    });
+
+    it("unbindTerminal removes the binding so a subsequent provision does not kill the unbound PTY", async () => {
+      const first = await service.provisionSession(provisionInput());
+      if (!first) throw new Error("expected first provision");
+      expect(service.markTerminalForToken(first.token, "term-1")).toBe(true);
+
+      service.unbindTerminal("term-1");
+
+      // A second provision for the same project still revokes the first's
+      // bearer — but now there is no PTY id to kill.
+      const second = await service.provisionSession(provisionInput());
+      if (!second) throw new Error("expected second provision");
+      expect(service.validateToken(first.token)).toBe(false);
+      expect(mockPtyKill).not.toHaveBeenCalled();
+    });
+
+    it("revokeByWebContentsId kills the bound PTY for the matching session", async () => {
+      const result = await service.provisionSession({
+        ...provisionInput(),
+        projectViewWebContentsId: 99,
+      });
+      if (!result) throw new Error("expected result");
+      expect(service.markTerminalForToken(result.token, "term-99")).toBe(true);
+
+      await service.revokeByWebContentsId(99);
+
+      expect(mockPtyKill).toHaveBeenCalledWith("term-99", "help-session-revoked");
+    });
   });
 
   describe("Codex", () => {

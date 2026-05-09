@@ -10,6 +10,12 @@ import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 import { probeMcpServer, probeMcpSseServer } from "./mcp-server/readinessProbe.js";
 import { getAssistantSupportedAgentIds } from "../../shared/config/agentRegistry.js";
 import type { HelpAssistantTier } from "../../shared/types/ipc/maps.js";
+import type { PtyClient } from "./PtyClient.js";
+
+// Narrow type so the test suite (and any future caller) can satisfy this
+// dependency without instantiating a full PtyClient. Only `kill` is needed —
+// the help-session displacement path is fire-and-forget by design.
+type PtyKillClient = Pick<PtyClient, "kill">;
 
 const SESSIONS_DIR_NAME = "help-sessions";
 const META_FILE_NAME = "meta.json";
@@ -105,11 +111,24 @@ export class HelpSessionService {
   // otherwise race the .mcp.json overwrite, producing a Claude instance
   // authenticating with the wrong session record.
   private readonly provisionLocks = new Map<string, Promise<void>>();
+  // Single-backend invariant (#7509): at most one assistant PTY per project
+  // at any given time. The renderer's cooperative cleanup paths (removePanel,
+  // gracefulKill on hibernate, visibilitychange tearDown) are fire-and-forget
+  // and can drop the kill IPC, leaving an orphan PTY that keeps dispatching
+  // MCP tool calls under a still-valid bearer. These maps let the main process
+  // displace prior backends regardless of what the renderer did.
+  private readonly activeHelpTerminalByProjectId = new Map<string, string>();
+  private readonly terminalBySessionId = new Map<string, string>();
   private mcpRegistry: WindowRegistry | null = null;
+  private ptyClient: PtyKillClient | null = null;
   private disposed = false;
 
   setMcpRegistry(registry: WindowRegistry): void {
     this.mcpRegistry = registry;
+  }
+
+  setPtyClient(client: PtyKillClient | null): void {
+    this.ptyClient = client;
   }
 
   validateToken(token: string): HelpAssistantTier | false {
@@ -118,6 +137,48 @@ export class HelpSessionService {
     if (!record) return false;
     if (record.revoked) return false;
     return record.tier;
+  }
+
+  /**
+   * Binds a freshly spawned PTY terminal id to its help-session token. Called
+   * from the lifecycle spawn handler after `validateToken` confirms the
+   * launch is a help session, so the main process owns the terminalId↔session
+   * association without depending on a renderer-issued `help.markTerminal`
+   * round-trip. Returns false for unknown or revoked tokens — the spawn
+   * handler treats that as a hard failure (the token was revoked between
+   * provision and spawn — almost certainly a stale resume against a session
+   * that was already displaced).
+   *
+   * If a different terminal was already bound for the same project, kills it
+   * here too. This is the second line of defense behind the displacement in
+   * `doProvision`: covers the renderer race where a new spawn arrives before
+   * a prior provision's terminal binding was recorded.
+   */
+  markTerminalForToken(token: string, terminalId: string): boolean {
+    if (!token || !terminalId) return false;
+    const record = this.sessionsByToken.get(token);
+    if (!record || record.revoked) return false;
+
+    const existingTerminal = this.activeHelpTerminalByProjectId.get(record.projectId);
+    if (existingTerminal && existingTerminal !== terminalId) {
+      this.killTerminal(existingTerminal, "help-session-displaced");
+      this.removeTerminalFromMaps(existingTerminal);
+    }
+
+    this.activeHelpTerminalByProjectId.set(record.projectId, terminalId);
+    this.terminalBySessionId.set(record.sessionId, terminalId);
+    return true;
+  }
+
+  /**
+   * Drops a terminal id from the help-session indexes without revoking the
+   * session record. Used by the spawn handler's catch block when the PTY
+   * spawn never landed — the session is still valid (caller may retry),
+   * but this terminalId is dead.
+   */
+  unbindTerminal(terminalId: string): void {
+    if (!terminalId) return;
+    this.removeTerminalFromMaps(terminalId);
   }
 
   /**
@@ -208,6 +269,17 @@ export class HelpSessionService {
         );
       }
     }
+
+    // Single-backend invariant (#7509): displace any prior unrevoked record
+    // for this project BEFORE writing a fresh `.mcp.json`. The bearer is
+    // marked revoked first so any in-flight MCP call from the orphan 401s
+    // before the kill IPC reaches the PTY host. Runs inside `provisionLocks`
+    // (per pathHash), so concurrent provisions for the same project see this
+    // as an atomic step. The renderer still calls `revokeHelpSession` from
+    // its cooperative cleanup paths — this enforcement is defense-in-depth
+    // for when those paths drop the kill or never fire (crash, project
+    // switch, hibernate race).
+    this.displacePriorSessions(input.projectId);
 
     await fs.mkdir(sessionsRoot, { recursive: true, mode: 0o700 });
     await fs.chmod(sessionsRoot, 0o700).catch(() => {});
@@ -364,10 +436,68 @@ export class HelpSessionService {
     record.revoked = true;
     this.sessionsById.delete(sessionId);
     this.sessionsByToken.delete(record.token);
+
+    // Single-backend invariant (#7509): kill the bound PTY now so the orphan
+    // can't keep dispatching MCP calls under the just-revoked bearer. Guard
+    // against clobbering a sibling session that took over the project's
+    // active-terminal slot before this revoke ran.
+    const terminalId = this.terminalBySessionId.get(sessionId);
+    if (terminalId) {
+      this.terminalBySessionId.delete(sessionId);
+      if (this.activeHelpTerminalByProjectId.get(record.projectId) === terminalId) {
+        this.activeHelpTerminalByProjectId.delete(record.projectId);
+      }
+      this.killTerminal(terminalId, "help-session-revoked");
+    }
+
     // Codex sessions write nothing to disk (config is `-c` flags), so the
     // file-strip dance is Claude-only.
     if (record.agentId !== "codex") {
       await this.stripStaleDaintreeMcpEntry(record.sessionPath);
+    }
+  }
+
+  private displacePriorSessions(projectId: string): void {
+    const priors = [...this.sessionsById.values()].filter(
+      (record) => record.projectId === projectId && !record.revoked
+    );
+    for (const prior of priors) {
+      prior.revoked = true;
+      this.sessionsByToken.delete(prior.token);
+      this.sessionsById.delete(prior.sessionId);
+      const terminalId = this.terminalBySessionId.get(prior.sessionId);
+      if (terminalId) {
+        this.terminalBySessionId.delete(prior.sessionId);
+        this.killTerminal(terminalId, "help-session-displaced");
+      }
+    }
+    // Also clear any stale active-terminal binding the renderer never
+    // confirmed via `markTerminalForToken` — leaving it would leak the
+    // project's slot and cause the next `markTerminalForToken` to kill
+    // the wrong PTY.
+    this.activeHelpTerminalByProjectId.delete(projectId);
+  }
+
+  private killTerminal(terminalId: string, reason: string): void {
+    if (!this.ptyClient) return;
+    try {
+      this.ptyClient.kill(terminalId, reason);
+    } catch (err) {
+      console.warn(
+        "[HelpSessionService] Failed to kill displaced help PTY:",
+        terminalId,
+        reason,
+        err
+      );
+    }
+  }
+
+  private removeTerminalFromMaps(terminalId: string): void {
+    for (const [pid, tid] of this.activeHelpTerminalByProjectId.entries()) {
+      if (tid === terminalId) this.activeHelpTerminalByProjectId.delete(pid);
+    }
+    for (const [sid, tid] of this.terminalBySessionId.entries()) {
+      if (tid === terminalId) this.terminalBySessionId.delete(sid);
     }
   }
 

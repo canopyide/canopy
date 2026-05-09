@@ -153,7 +153,9 @@ vi.mock("../../setup/environment.js", () => ({
 vi.mock("../../services/HelpSessionService.js", () => ({
   helpSessionService: {
     setMcpRegistry,
+    setPtyClient: vi.fn(),
     validateToken: vi.fn(),
+    gcStaleSessions: vi.fn(async () => {}),
   },
 }));
 
@@ -242,7 +244,14 @@ describe("initGlobalServices task ordering", () => {
 
     expect(registeredTaskNames).not.toContain("mcp-server");
     expect(registeredTaskNames).not.toContain("help-session-gc");
+    expect(registeredTaskNames).not.toContain("help-session-pty");
     expect(setMcpRegistry).not.toHaveBeenCalled();
+  });
+
+  it("registers help-session-pty so HelpSessionService gets a PtyClient ref for displacement (#7509)", async () => {
+    const fakeRegistry = { all: () => [], size: 0 } as unknown as WindowRegistry;
+    await initGlobalServices(fakeRegistry);
+    expect(registeredTaskNames).toContain("help-session-pty");
   });
 
   it("registers database-maintenance after system-sleep-service so onSuspend can attach to a live service", async () => {
