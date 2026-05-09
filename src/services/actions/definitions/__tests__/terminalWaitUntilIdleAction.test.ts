@@ -36,13 +36,9 @@ describe("terminal.waitUntilIdle action definition", () => {
     expect(def.argsSchema?.safeParse({ terminalId: "term-1" }).success).toBe(true);
     expect(def.argsSchema?.safeParse({ terminalId: "" }).success).toBe(false);
     expect(def.argsSchema?.safeParse({}).success).toBe(false);
-    expect(
-      def.argsSchema?.safeParse({ terminalId: "term-1", timeoutMs: 0 }).success
-    ).toBe(true);
+    expect(def.argsSchema?.safeParse({ terminalId: "term-1", timeoutMs: 0 }).success).toBe(true);
     // Negative timeout — rejected by min(0).
-    expect(
-      def.argsSchema?.safeParse({ terminalId: "term-1", timeoutMs: -1 }).success
-    ).toBe(false);
+    expect(def.argsSchema?.safeParse({ terminalId: "term-1", timeoutMs: -1 }).success).toBe(false);
   });
 
   it("throws when run() is invoked through renderer dispatch", async () => {
