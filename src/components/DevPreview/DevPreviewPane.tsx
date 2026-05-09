@@ -198,7 +198,6 @@ export function DevPreviewPane({
   onTitleChange,
   onMinimize,
   onRestore,
-  isTrashing = false,
   gridPanelCount,
 }: DevPreviewPaneProps) {
   const webviewRef = useRef<Electron.WebviewTag>(null);
@@ -725,7 +724,6 @@ export function DevPreviewPane({
       onTitleChange={onTitleChange}
       onMinimize={onMinimize}
       onRestore={onRestore}
-      isTrashing={isTrashing}
       gridPanelCount={gridPanelCount}
       kind="dev-preview"
     >

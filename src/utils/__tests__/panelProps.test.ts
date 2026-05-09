@@ -33,7 +33,6 @@ function build(terminal: TerminalInstance) {
   return buildPanelProps({
     terminal,
     isFocused: false,
-    isTrashing: false,
     overrides: { onFocus: noop, onClose: noop },
   });
 }

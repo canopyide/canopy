@@ -1800,7 +1800,7 @@ body[data-reduce-animations="true"] [data-state][data-side] {
   --tw-exit-translate-y: 0;
 }
 
-/* Terminal trash/restore animations */
+/* Terminal restore animation. Closing is instant — no trash animation. */
 @keyframes terminal-restore {
   from {
     opacity: 0;
@@ -1812,33 +1812,17 @@ body[data-reduce-animations="true"] [data-state][data-side] {
   }
 }
 
-@keyframes terminal-trash {
-  from {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  to {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-}
-
 .terminal-restoring {
   animation: terminal-restore var(--terminal-animation-duration) ease-out;
 }
 
-.terminal-trashing {
-  animation: terminal-trash var(--terminal-animation-duration) ease-out forwards;
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .terminal-restoring,
-  .terminal-trashing {
+  .terminal-restoring {
     animation: none;
   }
 }
 
-body[data-reduce-animations="true"] :is(.terminal-restoring, .terminal-trashing) {
+body[data-reduce-animations="true"] .terminal-restoring {
   animation: none;
 }
 

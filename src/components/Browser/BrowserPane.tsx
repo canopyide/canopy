@@ -95,7 +95,6 @@ export function BrowserPane({
   onTitleChange,
   onMinimize,
   onRestore,
-  isTrashing = false,
   gridPanelCount,
   tabs,
   onTabClick,
@@ -570,7 +569,6 @@ export function BrowserPane({
       isFocused={isFocused}
       isMaximized={isMaximized}
       location={location}
-      isTrashing={isTrashing}
       gridPanelCount={gridPanelCount}
       onFocus={onFocus}
       onClose={onClose}

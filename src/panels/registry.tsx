@@ -35,7 +35,6 @@ export interface PanelComponentProps {
   onMinimize?: () => void;
   onRestore?: () => void;
   gridPanelCount?: number;
-  isTrashing?: boolean;
   extensionState?: Record<string, unknown>;
   [key: string]: unknown;
 }

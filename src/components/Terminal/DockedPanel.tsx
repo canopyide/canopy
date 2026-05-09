@@ -8,7 +8,6 @@ import {
   type PanelComponentProps,
 } from "@/registry";
 import { ContentPanel, PluginMissingPanel, triggerPanelTransition } from "@/components/Panel";
-import { usePanelLifecycle } from "@/hooks/usePanelLifecycle";
 import { usePanelHandlers } from "@/hooks/usePanelHandlers";
 import { buildPanelProps } from "@/utils/panelProps";
 
@@ -22,10 +21,8 @@ export function DockedPanel({ terminal, onPopoverClose, onAddTab }: DockedPanelP
   const moveTerminalToGrid = usePanelStore((state) => state.moveTerminalToGrid);
   const closeDockTerminal = usePanelStore((state) => state.closeDockTerminal);
 
-  const lifecycle = usePanelLifecycle();
   const { handleFocus, handleClose, handleTitleChange } = usePanelHandlers({
     terminalId: terminal.id,
-    lifecycle,
     onAfterClose: onPopoverClose,
   });
 
@@ -78,7 +75,6 @@ export function DockedPanel({ terminal, onPopoverClose, onAddTab }: DockedPanelP
       buildPanelProps({
         terminal,
         isFocused,
-        isTrashing: lifecycle.isTrashing,
         overrides: {
           location: "dock" as const,
           onFocus: handleFocus,
@@ -92,7 +88,6 @@ export function DockedPanel({ terminal, onPopoverClose, onAddTab }: DockedPanelP
     [
       terminal,
       isFocused,
-      lifecycle.isTrashing,
       handleFocus,
       handleClose,
       handleRestore,

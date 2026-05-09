@@ -42,14 +42,12 @@ function getStableActivity(
 export interface BuildPanelPropsConfig {
   terminal: TerminalInstance;
   isFocused: boolean;
-  isTrashing: boolean;
   overrides: Partial<PanelComponentProps>;
 }
 
 export function buildPanelProps({
   terminal,
   isFocused,
-  isTrashing,
   overrides,
 }: BuildPanelPropsConfig): PanelComponentProps {
   return {
@@ -58,7 +56,6 @@ export function buildPanelProps({
     worktreeId: terminal.worktreeId,
 
     isFocused,
-    isTrashing,
 
     // Required by PanelComponentProps — overridden by caller
     onFocus: overrides.onFocus!,

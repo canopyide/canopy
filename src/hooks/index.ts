@@ -97,9 +97,6 @@ export { useMainProcessToastListener } from "./useMainProcessToastListener";
 export { useAnimatedPresence } from "./useAnimatedPresence";
 export type { UseAnimatedPresenceOptions, UseAnimatedPresenceReturn } from "./useAnimatedPresence";
 
-export { usePanelLifecycle } from "./usePanelLifecycle";
-export type { PanelLifecycle } from "./usePanelLifecycle";
-
 export { usePanelHandlers } from "./usePanelHandlers";
 export type { UsePanelHandlersConfig, PanelHandlers } from "./usePanelHandlers";
 

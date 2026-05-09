@@ -36,7 +36,6 @@ export interface BasePanelProps {
   isFocused: boolean;
   isMaximized?: boolean;
   location?: "grid" | "dock";
-  isTrashing?: boolean;
   gridPanelCount?: number;
   onFocus: () => void;
   onClose: (force?: boolean) => void;
@@ -125,7 +124,6 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
     isFocused,
     isMaximized = false,
     location = "grid",
-    isTrashing = false,
     worktreeId,
     onFocus,
     onClose,
@@ -419,7 +417,6 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
                   : "border-overlay hover:border-tint/[0.08]"),
           location === "grid" && isMaximized && "border-0 rounded-none z-[var(--z-maximized)]",
           worktreeAccentColor && location === "grid" && !isMaximized && "panel-worktree-identity",
-          isTrashing && "terminal-trashing",
           className
         )}
         onClick={handleClick}
