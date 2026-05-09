@@ -75,6 +75,13 @@ export function registerMcpServerHandlers(): () => void {
   );
 
   handlers.push(
+    typedHandle(CHANNELS.MCP_SERVER_GET_AUDIT_STATS, async () => {
+      const svc = await getMcpServerService();
+      return svc.getAuditStats();
+    })
+  );
+
+  handlers.push(
     typedHandle(CHANNELS.MCP_SERVER_CLEAR_AUDIT_LOG, async () => {
       const svc = await getMcpServerService();
       svc.clearAuditLog();

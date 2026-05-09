@@ -1,12 +1,14 @@
-import os from "os";
 import { randomUUID } from "node:crypto";
 import { app } from "electron";
 import { store } from "../store.js";
 import type { ActionBreadcrumb } from "../../shared/types/ipc/crashRecovery.js";
 import type { SanitizedTelemetryEvent } from "../../shared/types/ipc/telemetryPreview.js";
 import { scrubSecrets } from "../utils/secretScrubber.js";
+import { sanitizePath } from "../utils/pathScrubber.js";
 import { emitTelemetryPreview, isTelemetryPreviewActive } from "./TelemetryPreviewBroadcaster.js";
 import { getWritesSuppressed } from "./diskPressureState.js";
+
+export { sanitizePath };
 
 export interface SentryBreadcrumb {
   message?: string;
@@ -44,18 +46,6 @@ export interface SentryEvent {
   breadcrumbs?: SentryBreadcrumb[];
   extra?: Record<string, unknown>;
   [key: string]: unknown;
-}
-
-const HOME_DIR = os.homedir();
-
-export function sanitizePath(str: string): string {
-  const escaped = HOME_DIR.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return str
-    .replace(new RegExp(escaped, "g"), "~")
-    .replace(/\/Users\/[^/]+\//g, "/Users/USER/")
-    .replace(/\/home\/[^/]+\//g, "/home/USER/")
-    .replace(/C:\\Users\\[^\\]+\\/gi, "C:\\Users\\USER\\")
-    .replace(/C:\/Users\/[^/]+\//gi, "C:/Users/USER/");
 }
 
 function sanitizeString(value: string): string {

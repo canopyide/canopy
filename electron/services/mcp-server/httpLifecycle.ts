@@ -463,6 +463,7 @@ export class HttpLifecycle {
 
     const authHeader = req.headers.authorization ?? "";
     if (!isAuthorized(authHeader, this.apiKeyBearerHash, this.helpTokenValidator)) {
+      this.deps.auditService.recordAuth401();
       res.writeHead(401, {
         "Content-Type": "text/plain",
         "WWW-Authenticate": 'Bearer realm="Daintree MCP"',

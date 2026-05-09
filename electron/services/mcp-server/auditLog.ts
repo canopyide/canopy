@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type {
   McpAuditRecord,
   McpAuditResult,
+  McpAuditStats,
   McpConfirmationDecision,
 } from "../../../shared/types/ipc/mcpServer.js";
 import {
@@ -16,12 +17,21 @@ import {
   CONFIRMATION_REQUIRED_CODE,
   USER_REJECTED_CODE,
   CONFIRMATION_TIMEOUT_CODE,
+  minimumPermittingTier,
 } from "./shared.js";
+import { scrubSecrets } from "../../utils/secretScrubber.js";
+import { sanitizePath } from "../../utils/pathScrubber.js";
 
 export class AuditService {
   private records: McpAuditRecord[] = [];
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private hydrated = false;
+  /**
+   * Session-scoped 401 counter. Tracks bearer auth rejections that fail
+   * before any tool dispatch — those never reach `appendRecord` because
+   * no `toolId`/`tier` is known. Reset on app restart by design.
+   */
+  private auth401Count = 0;
 
   constructor(
     private readonly saveConfig: (patch: Record<string, unknown>) => void,
@@ -96,13 +106,20 @@ export class AuditService {
 
     const classification = this.classifyDispatchResult(input.outcome);
     const decision = this.deriveConfirmationDecision(input.outcome, input.confirmationDecision);
+    // Defense in depth: `summarizeMcpArgs` already truncates long strings and
+    // collapses nested objects, but a structural secret (Bearer prefix,
+    // sk-...-shaped key, JWT) inside a short value would slip through. Apply
+    // the same `sanitizePath`/`scrubSecrets` pipeline used by Sentry/Diagnostics
+    // so audit-record viewers see the same redaction guarantees as those
+    // outbound surfaces.
+    const safeArgsSummary = scrubSecrets(sanitizePath(input.argsSummary));
     const record: McpAuditRecord = {
       id: randomUUID(),
       timestamp: Date.now(),
       toolId: input.toolId,
       sessionId: input.sessionId,
       tier: input.tier,
-      argsSummary: input.argsSummary,
+      argsSummary: safeArgsSummary,
       result: classification.result,
       durationMs: Math.max(0, Math.round(input.durationMs)),
     };
@@ -112,6 +129,9 @@ export class AuditService {
     if (decision !== undefined) {
       record.confirmationDecision = decision;
     }
+    if (classification.result === "unauthorized") {
+      record.tierHint = minimumPermittingTier(input.toolId);
+    }
 
     this.records.push(record);
     const cap = this.normalizeMaxRecords(this.readConfig().auditMaxRecords);
@@ -119,6 +139,25 @@ export class AuditService {
       this.records.splice(0, this.records.length - cap);
     }
     this.scheduleFlush();
+  }
+
+  /**
+   * Increment the session-scoped 401 counter. Called from the HTTP lifecycle
+   * on bearer auth failures (missing/malformed/revoked) before any tool
+   * dispatch occurs. Gated by the same `auditEnabled` kill switch as
+   * `appendRecord` so toggling audit logging off uniformly silences both
+   * record writes and counter increments.
+   */
+  recordAuth401(): void {
+    if (this.readConfig().auditEnabled === false) return;
+    this.auth401Count += 1;
+  }
+
+  /**
+   * Read the session-scoped audit health counters. Renderer-facing.
+   */
+  getAuditStats(): McpAuditStats {
+    return { auth401Count: this.auth401Count };
   }
 
   private scheduleFlush(): void {

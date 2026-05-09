@@ -1298,6 +1298,11 @@ export interface ElectronAPI {
     getAuditRecords(): Promise<import("./mcpServer.js").McpAuditRecord[]>;
     /** Get the persisted audit-log configuration. */
     getAuditConfig(): Promise<{ enabled: boolean; maxRecords: number }>;
+    /**
+     * Read the session-scoped audit health counters (currently the
+     * since-launch 401 counter). Resets on app restart.
+     */
+    getAuditStats(): Promise<import("./mcpServer.js").McpAuditStats>;
     /** Clear all audit records from the ring buffer and persistence. */
     clearAuditLog(): Promise<void>;
     /** Toggle audit-log capture without losing existing records. */

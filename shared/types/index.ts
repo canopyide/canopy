@@ -323,6 +323,7 @@ export { CONNECTIVITY_SERVICE_KEYS } from "./ipc/connectivity.js";
 export type {
   McpAuditRecord,
   McpAuditResult,
+  McpAuditStats,
   McpRuntimeSnapshot,
   McpRuntimeState,
 } from "./ipc/mcpServer.js";

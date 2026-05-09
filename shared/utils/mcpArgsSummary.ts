@@ -9,6 +9,21 @@ export const MCP_ARGS_INLINE_STRING_LIMIT = 50;
 export const MCP_ARGS_SUMMARY_LIMIT = 300;
 
 /**
+ * Per-key heuristic for sensitive argument names. Catches short secret
+ * values (API keys, bearer tokens, short JWTs) that fit under the 50-char
+ * inline limit and would otherwise pass through verbatim. The downstream
+ * `scrubSecrets` pass on the serialized summary covers structural patterns
+ * (`Bearer ...`, `sk-...`, etc.) but only when the surrounding context is
+ * present — a bare value like `"abc123"` keyed under `token` has none.
+ *
+ * Applies at the single-level summarization site only; nested objects
+ * already collapse to `<object>`.
+ */
+const SENSITIVE_KEY_PATTERN = /(?:token|secret|password|auth|key|credential|bearer|api[_-]?key)/i;
+
+const REDACTED_PLACEHOLDER = "<redacted>";
+
+/**
  * Build a redacted, single-level JSON summary of an MCP tool-call argument
  * blob. Long strings collapse to `<string: N chars>` and nested
  * objects/arrays collapse to `<object>`. The same logic powers the audit
@@ -39,6 +54,10 @@ export function summarizeMcpArgs(args: unknown): string {
     const out: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(args as Record<string, unknown>)) {
       if (key === "_meta") continue;
+      if (SENSITIVE_KEY_PATTERN.test(key) && typeof value === "string" && value.length > 0) {
+        out[key] = REDACTED_PLACEHOLDER;
+        continue;
+      }
       const reduced = summarize(value);
       if (reduced !== undefined) {
         out[key] = reduced;

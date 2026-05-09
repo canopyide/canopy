@@ -60,6 +60,8 @@ function fakeDeps(overrides?: Partial<HttpLifecycleDeps>): HttpLifecycleDeps {
       hydrate: vi.fn(),
       flushNow: vi.fn(),
       appendRecord: vi.fn(),
+      recordAuth401: vi.fn(),
+      getAuditStats: vi.fn(() => ({ auth401Count: 0 })),
     },
     turnOutcomeService: {
       flushNow: vi.fn(),
@@ -362,6 +364,34 @@ describe("HttpLifecycle", () => {
         expect.objectContaining({ "WWW-Authenticate": 'Bearer realm="Daintree MCP"' })
       );
       expect(res.end).toHaveBeenCalledWith("Unauthorized");
+      expect(deps.auditService.recordAuth401).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not increment the 401 counter on a 403 (host mismatch)", async () => {
+      const deps = fakeDeps();
+      const lc = new HttpLifecycle(deps);
+      lc.setApiKey("test-api-key");
+      (lc as unknown as { port: number }).port = 45454;
+
+      const res = {
+        writeHead: vi.fn(),
+        end: vi.fn(),
+        headersSent: false,
+      } as unknown as http.ServerResponse;
+      const req = {
+        method: "GET",
+        url: "/sse",
+        headers: { host: "evil.example.com" },
+      } as unknown as http.IncomingMessage;
+
+      await (
+        lc as unknown as {
+          handleRequest: (req: http.IncomingMessage, res: http.ServerResponse) => Promise<void>;
+        }
+      ).handleRequest(req, res);
+
+      expect(res.writeHead).toHaveBeenCalledWith(403, expect.anything());
+      expect(deps.auditService.recordAuth401).not.toHaveBeenCalled();
     });
   });
 });

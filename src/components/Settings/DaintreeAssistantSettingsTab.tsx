@@ -21,6 +21,7 @@ import { SettingsInput } from "./SettingsInput";
 import { SettingsSelect } from "./SettingsSelect";
 import { SettingsSwitchCard } from "./SettingsSwitchCard";
 import { McpAuditLogViewer } from "./McpAuditLogViewer";
+import { McpAuditLatencyTable } from "./McpAuditLatencyTable";
 import { useSettingsTabValidation } from "./SettingsValidationRegistry";
 import { useSettingsTabFlush } from "./SettingsFlushRegistry";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
@@ -29,7 +30,12 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { logError } from "@/utils/logger";
 import { getAgentConfig, getAssistantSupportedAgentIds } from "@/config/agents";
 import { useHelpPanelStore } from "@/store/helpPanelStore";
-import type { HelpAssistantSettings, HelpAssistantTier, McpAuditRecord } from "@shared/types";
+import type {
+  HelpAssistantSettings,
+  HelpAssistantTier,
+  McpAuditRecord,
+  McpAuditStats,
+} from "@shared/types";
 import {
   HELP_TIER_CUMULATIVE,
   HELP_TIER_INCREMENTAL,
@@ -109,6 +115,7 @@ export function DaintreeAssistantSettingsTab() {
   const [isRotating, setIsRotating] = useState(false);
   const [showBlastRadius, setShowBlastRadius] = useState(false);
   const [auditRecords, setAuditRecords] = useState<McpAuditRecord[]>([]);
+  const [auditStats, setAuditStats] = useState<McpAuditStats | null>(null);
   const [auditLoading, setAuditLoading] = useState(true);
   const [auditCopied, setAuditCopied] = useState(false);
   const [showClearAuditConfirm, setShowClearAuditConfirm] = useState(false);
@@ -209,8 +216,12 @@ export function DaintreeAssistantSettingsTab() {
   // viewer hydrate independently of the settings + MCP status round-trips.
   const refreshAuditRecords = useCallback(async (): Promise<void> => {
     try {
-      const records = await window.electron.mcpServer.getAuditRecords();
+      const [records, stats] = await Promise.all([
+        window.electron.mcpServer.getAuditRecords(),
+        window.electron.mcpServer.getAuditStats(),
+      ]);
       setAuditRecords(records);
+      setAuditStats(stats);
     } catch (err) {
       logError("Failed to load MCP audit records for assistant tab", err);
     }
@@ -219,11 +230,14 @@ export function DaintreeAssistantSettingsTab() {
   useEffect(() => {
     let cancelled = false;
     setAuditLoading(true);
-    window.electron.mcpServer
-      .getAuditRecords()
-      .then((records) => {
+    Promise.all([
+      window.electron.mcpServer.getAuditRecords(),
+      window.electron.mcpServer.getAuditStats(),
+    ])
+      .then(([records, stats]) => {
         if (cancelled) return;
         setAuditRecords(records);
+        setAuditStats(stats);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -575,6 +589,17 @@ export function DaintreeAssistantSettingsTab() {
           copyFlashActive={auditCopied}
           includeRecord={(record) => record.tier !== "external"}
         />
+        <McpAuditLatencyTable
+          records={auditRecords}
+          includeRecord={(record) => record.tier !== "external"}
+        />
+        {auditStats && auditStats.auth401Count > 0 && (
+          <p className="text-xs text-daintree-text/60 select-text">
+            <span className="font-mono text-daintree-text/80">{auditStats.auth401Count}</span>{" "}
+            bearer rejection{auditStats.auth401Count === 1 ? "" : "s"} since last launch — an
+            external client is connecting with a stale or missing API key.
+          </p>
+        )}
       </SettingsSection>
 
       {/* Connection */}
