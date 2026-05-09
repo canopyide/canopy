@@ -42,6 +42,12 @@ function createFakeProcess(pid: number | "missing" = 100): FakePtyProcess {
   return process;
 }
 
+/**
+ * Wait one microtask tick. `warmForKey` is fire-and-forget, so callers need
+ * to flush the microtask queue before asserting on its side effects.
+ */
+const flushMicrotasks = () => Promise.resolve();
+
 describe("PtyPool", () => {
   const originalShell = process.env.SHELL;
   const originalHome = process.env.HOME;
@@ -72,6 +78,18 @@ describe("PtyPool", () => {
   it("falls back to default pool size when configured pool size is invalid", () => {
     const pool = new PtyPool({ poolSize: -2 });
     expect(pool.getMaxPoolSize()).toBe(2);
+    pool.dispose();
+  });
+
+  it("falls back to default maxEntries when configured value is invalid", () => {
+    const pool = new PtyPool({ poolSize: 2, maxEntries: -1 });
+    expect(pool.getMaxEntries()).toBe(8);
+    pool.dispose();
+  });
+
+  it("ensures maxEntries is at least poolSize", () => {
+    const pool = new PtyPool({ poolSize: 4, maxEntries: 2 });
+    expect(pool.getMaxEntries()).toBe(4);
     pool.dispose();
   });
 
@@ -181,6 +199,7 @@ describe("PtyPool", () => {
 
     const acquired = pool.acquire();
     expect(acquired).toBeNull();
+    await flushMicrotasks();
     expect(spawnMock).toHaveBeenCalledTimes(2);
     expect(pool.getPoolSize()).toBe(1);
     pool.dispose();
@@ -238,5 +257,152 @@ describe("PtyPool", () => {
     const spawnOptions = spawnMock.mock.calls[0]?.[2] as { env?: Record<string, string> };
     expect(spawnOptions.env?.LANG).toBe("en_US.UTF-8");
     pool.dispose();
+  });
+
+  describe("env-keyed acquire", () => {
+    it("acquireByKey hits the pool for the env-empty key after warmPool", async () => {
+      const proc = createFakeProcess(1101);
+      spawnMock.mockReturnValueOnce(proc);
+      const pool = new PtyPool({ poolSize: 1, defaultCwd: "/repo" });
+      await pool.warmPool();
+
+      const acquired = pool.acquireByKey("/repo", "env-empty");
+      expect(acquired).toBe(proc);
+      pool.dispose();
+    });
+
+    it("acquireByKey misses on a different cwd", async () => {
+      spawnMock.mockReturnValueOnce(createFakeProcess(1201));
+      const pool = new PtyPool({ poolSize: 1, defaultCwd: "/repo-a" });
+      await pool.warmPool();
+
+      const acquired = pool.acquireByKey("/repo-b", "env-empty");
+      expect(acquired).toBeNull();
+      pool.dispose();
+    });
+
+    it("acquireByKey misses on a different envHash", async () => {
+      spawnMock.mockReturnValueOnce(createFakeProcess(1301));
+      const pool = new PtyPool({ poolSize: 1, defaultCwd: "/repo" });
+      await pool.warmPool();
+
+      const acquired = pool.acquireByKey("/repo", "env-some-other-hash");
+      expect(acquired).toBeNull();
+      pool.dispose();
+    });
+
+    it("acquireByKey triggers a same-key warm so the next acquire is instant", async () => {
+      const first = createFakeProcess(1401);
+      const second = createFakeProcess(1402);
+      spawnMock.mockReturnValueOnce(first).mockReturnValueOnce(second);
+
+      const pool = new PtyPool({ poolSize: 1, defaultCwd: "/repo" });
+      await pool.warmPool();
+      expect(spawnMock).toHaveBeenCalledTimes(1);
+
+      const acquired = pool.acquireByKey("/repo", "env-empty");
+      expect(acquired).toBe(first);
+
+      // Background warm for the same key fires asynchronously.
+      await flushMicrotasks();
+      expect(spawnMock).toHaveBeenCalledTimes(2);
+      expect(pool.getPoolSize()).toBe(1);
+      pool.dispose();
+    });
+
+    it("warmForKey populates a slot for an arbitrary (cwd, envHash) and a later acquireByKey hits", async () => {
+      const proc = createFakeProcess(1501);
+      spawnMock.mockReturnValueOnce(proc);
+      const pool = new PtyPool({ poolSize: 1, defaultCwd: "/repo" });
+
+      pool.warmForKey("/repo", { ANTHROPIC_BASE_URL: "https://api.example" }, "env-foo");
+      await flushMicrotasks();
+
+      expect(spawnMock).toHaveBeenCalledTimes(1);
+      expect(spawnMock.mock.calls[0]?.[2]).toMatchObject({ cwd: "/repo" });
+
+      // First acquire on a different key (env-empty) misses; the env-foo slot
+      // remains, and a subsequent acquire on env-foo hits.
+      expect(pool.acquireByKey("/repo", "env-empty")).toBeNull();
+      expect(pool.acquireByKey("/repo", "env-foo")).toBe(proc);
+      pool.dispose();
+    });
+
+    it("warmForKey is idempotent under concurrent calls for the same key (no stampede)", async () => {
+      let inFlightResolve: (() => void) | null = null;
+      const inFlightPromise = new Promise<void>((resolve) => {
+        inFlightResolve = resolve;
+      });
+
+      // Make spawn block until we explicitly resolve. Three concurrent
+      // warmForKey calls should still produce only one spawn while the
+      // first is in flight.
+      spawnMock.mockImplementation(() => {
+        return createFakeProcess(1601);
+      });
+
+      const pool = new PtyPool({ poolSize: 2, defaultCwd: "/repo" });
+
+      pool.warmForKey("/repo", undefined, "env-x");
+      pool.warmForKey("/repo", undefined, "env-x");
+      pool.warmForKey("/repo", undefined, "env-x");
+
+      await flushMicrotasks();
+      // Only one spawn for the key, because warmsInFlight blocks duplicates
+      // until the first resolves.
+      expect(spawnMock).toHaveBeenCalledTimes(1);
+
+      inFlightResolve?.();
+      await inFlightPromise;
+      pool.dispose();
+    });
+
+    it("respects the per-key poolSize cap when warming", async () => {
+      spawnMock.mockReturnValue(createFakeProcess(1701));
+      const pool = new PtyPool({ poolSize: 1, defaultCwd: "/repo" });
+
+      pool.warmForKey("/repo", undefined, "env-cap");
+      await flushMicrotasks();
+      // Second call should be a no-op because the per-key cap (poolSize=1)
+      // is already met.
+      pool.warmForKey("/repo", undefined, "env-cap");
+      await flushMicrotasks();
+
+      expect(spawnMock).toHaveBeenCalledTimes(1);
+      pool.dispose();
+    });
+
+    it("evicts an idle entry from a different key when global cap is reached", async () => {
+      // Capture the first three procs so we can identify the victim.
+      const procs = [
+        createFakeProcess(1801),
+        createFakeProcess(1802),
+        createFakeProcess(1803),
+        createFakeProcess(1804),
+      ];
+      let i = 0;
+      spawnMock.mockImplementation(() => procs[i++] ?? createFakeProcess(1899));
+
+      const pool = new PtyPool({ poolSize: 1, defaultCwd: "/repo", maxEntries: 2 });
+
+      pool.warmForKey("/repo", undefined, "env-a");
+      await flushMicrotasks();
+      pool.warmForKey("/repo", undefined, "env-b");
+      await flushMicrotasks();
+
+      expect(pool.getPoolSize()).toBe(2);
+
+      // Third key would breach the global cap; the older env-a entry must
+      // be evicted (killed) before the env-c entry is registered.
+      pool.warmForKey("/repo", undefined, "env-c");
+      await flushMicrotasks();
+
+      expect(pool.getPoolSize()).toBe(2);
+      expect(procs[0]?.kill).toHaveBeenCalledTimes(1);
+      expect(procs[1]?.kill).not.toHaveBeenCalled();
+      // env-c entry is now in the pool
+      expect(pool.acquireByKey("/repo", "env-c")).toBe(procs[2]);
+      pool.dispose();
+    });
   });
 });

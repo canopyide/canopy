@@ -6,6 +6,7 @@ import {
   ensureUtf8Locale,
 } from "./EnvironmentFilter.js";
 import { getDefaultShell, getDefaultShellArgs } from "./terminalShell.js";
+import { computePoolEnvHash } from "./ptyPoolEnvHash.js";
 import type { PtySpawnOptions } from "./types.js";
 import type { PtyPool } from "../PtyPool.js";
 
@@ -104,20 +105,16 @@ export function acquirePtyProcess(
   ptyPool: PtyPool | null,
   onWriteError: (error: unknown, context: { operation: string }) => void
 ): pty.IPty {
-  // The pool is a global singleton pre-warmed at whichever project most
-  // recently called drainAndRefill(). In multi-window setups a different
-  // window may have drained the pool to a different cwd, so skip the pool
-  // when its current cwd doesn't match the caller's request — the direct
-  // pty.spawn below will honour options.cwd via node-pty's kernel chdir.
-  const poolCwdMatches = ptyPool ? ptyPool.getDefaultCwd() === options.cwd : false;
-  const canUsePool =
-    ptyPool &&
-    poolCwdMatches &&
-    !options.shell &&
-    !options.env &&
-    !options.args &&
-    options.kind !== "dev-preview";
-  let pooledPty = canUsePool ? ptyPool!.acquire() : null;
+  // The pool is a global singleton; entries are keyed by (cwd, envHash).
+  // We can hit the pool whenever the pool exists and the request is a plain
+  // shell launch (no custom shell/args, not a dev-preview pane). The env-hash
+  // lookup handles cases where another window pre-warmed at a different cwd
+  // or with different env additions — those entries simply don't match the
+  // wanted key and we fall through to fresh spawn + background warm.
+  const canUsePool = !!ptyPool && !options.shell && !options.args && options.kind !== "dev-preview";
+  const envHash = canUsePool ? computePoolEnvHash(options.env) : null;
+  let pooledPty =
+    canUsePool && envHash !== null ? ptyPool!.acquireByKey(options.cwd, envHash) : null;
   // Suppress unused-parameter lint for the write-error callback; kept in the
   // signature so future pool-acquisition logic (e.g. agent-preamble writes) can
   // still report through the same channel.
@@ -154,6 +151,13 @@ export function acquirePtyProcess(
     }
 
     return pooledPty;
+  }
+
+  // Pool miss — kick off a background warm for this exact (cwd, envHash) key
+  // so the next spawn with the same shape hits the pool. The fresh spawn
+  // below proceeds in parallel; the warm is fire-and-forget.
+  if (canUsePool && envHash !== null) {
+    ptyPool!.warmForKey(options.cwd, options.env, envHash);
   }
 
   try {
