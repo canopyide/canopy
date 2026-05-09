@@ -1,5 +1,7 @@
 import { UI_EXIT_DURATION } from "../lib/animationUtils";
 import { prefersReducedMotion } from "../lib/appThemeViewTransition";
+import { flushFinalCls } from "./layoutShiftMonitor";
+import { flushPendingPerfMarks } from "./performance";
 
 const SKELETON_ID = "startup-skeleton";
 
@@ -13,6 +15,14 @@ type ViewTransitionDocument = Document & {
 let firstInteractiveNotified = false;
 
 function notifyFirstInteractive(): void {
+  // Snapshot cumulative CLS at the renderer-side first-interactive boundary
+  // before the IPC roundtrip — this is the regression-relevant window. The
+  // follow-up `flushPendingPerfMarks` is required because the only other
+  // flush point (HYDRATE_COMPLETE in stateHydration/index.ts) clears the
+  // buffer; without this drain `renderer_cls_final` and any post-hydration
+  // marks would never reach the NDJSON. Both calls are idempotent.
+  flushFinalCls();
+  flushPendingPerfMarks();
   if (firstInteractiveNotified) return;
   firstInteractiveNotified = true;
   try {

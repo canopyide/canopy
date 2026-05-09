@@ -15,7 +15,7 @@ import { startDevDiagnostics } from "./setup/devDiagnostics.js";
 import path from "path";
 import { fileURLToPath } from "url";
 import { PERF_MARKS } from "../shared/perf/marks.js";
-import { markPerformance } from "./utils/performance.js";
+import { getOsToAppBootMs, markPerformance } from "./utils/performance.js";
 import { enforceIpcSenderValidation, setupPermissionLockdown } from "./setup/security.js";
 import {
   registerAppProtocol,
@@ -87,7 +87,13 @@ import { emergencyLogMainFatal } from "./utils/emergencyLog.js";
 
 // CRITICAL: Run IPC sender validation before any handlers are registered
 enforceIpcSenderValidation();
-markPerformance(PERF_MARKS.APP_BOOT_START);
+{
+  const osToAppBootMs = getOsToAppBootMs();
+  markPerformance(
+    PERF_MARKS.APP_BOOT_START,
+    osToAppBootMs !== null ? { osToAppBootMs } : undefined
+  );
+}
 
 protocol.registerSchemesAsPrivileged([
   {

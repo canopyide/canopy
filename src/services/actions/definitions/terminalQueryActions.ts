@@ -4,6 +4,7 @@ import { stripAnsiCodes } from "@shared/utils/artifactParser";
 import { panelKindHasPty } from "@shared/config/panelKindRegistry";
 import { terminalClient } from "@/clients";
 import { usePanelStore, type TerminalInstance } from "@/store/panelStore";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 import {
   MAX_WAIT_UNTIL_IDLE_TIMEOUT_MS,
   WAIT_UNTIL_IDLE_DESCRIPTION,
@@ -264,7 +265,7 @@ export function registerTerminalQueryActions(
           try {
             outputs = await window.electron.terminal.getSerializedStates(idsToFetch);
           } catch (err) {
-            outputError = err instanceof Error ? err.message : String(err);
+            outputError = formatErrorMessage(err, "Failed to fetch terminal output");
           }
         } else {
           outputs = {};

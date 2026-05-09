@@ -2,6 +2,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UI_EXIT_DURATION } from "../../lib/animationUtils";
 
+const flushFinalClsMock = vi.fn();
+const flushPendingPerfMarksMock = vi.fn();
+
+vi.mock("../layoutShiftMonitor", () => ({
+  flushFinalCls: flushFinalClsMock,
+}));
+
+vi.mock("../performance", async () => {
+  const actual = await vi.importActual<typeof import("../performance")>("../performance");
+  return {
+    ...actual,
+    flushPendingPerfMarks: flushPendingPerfMarksMock,
+  };
+});
+
 describe("removeStartupSkeleton", () => {
   let rafQueue: FrameRequestCallback[];
   let notifyFirstInteractive: ReturnType<typeof vi.fn>;
@@ -12,6 +27,8 @@ describe("removeStartupSkeleton", () => {
     rafQueue = [];
     notifyFirstInteractive = vi.fn(() => Promise.resolve());
     matchesReducedMotion = false;
+    flushFinalClsMock.mockClear();
+    flushPendingPerfMarksMock.mockClear();
 
     vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
       rafQueue.push(cb);
@@ -220,6 +237,38 @@ describe("removeStartupSkeleton", () => {
 
     removeStartupSkeleton(); // no-op, should not throw
     expect(notifyFirstInteractive).toHaveBeenCalledTimes(1);
+  });
+
+  it("flushes the final CLS sample and drains the perf buffer before the IPC notify", async () => {
+    const callOrder: string[] = [];
+    flushFinalClsMock.mockImplementation(() => callOrder.push("flushFinalCls"));
+    flushPendingPerfMarksMock.mockImplementation(() => callOrder.push("flushPendingPerfMarks"));
+    notifyFirstInteractive.mockImplementation(() => {
+      callOrder.push("notifyFirstInteractive");
+      return Promise.resolve();
+    });
+
+    const { removeStartupSkeleton } = await import("../removeStartupSkeleton");
+    addSkeleton();
+    removeStartupSkeleton();
+
+    flushRaf();
+    flushRaf();
+
+    expect(flushFinalClsMock).toHaveBeenCalledTimes(1);
+    expect(flushPendingPerfMarksMock).toHaveBeenCalledTimes(1);
+    expect(notifyFirstInteractive).toHaveBeenCalledTimes(1);
+    // Without this ordering, the renderer_cls_final mark would be pushed after
+    // the only flush point in stateHydration cleared the buffer — silently
+    // dropping the entire CLS signal.
+    expect(callOrder).toEqual(["flushFinalCls", "flushPendingPerfMarks", "notifyFirstInteractive"]);
+  });
+
+  it("flushes the perf buffer even when the skeleton element is absent", async () => {
+    const { removeStartupSkeleton } = await import("../removeStartupSkeleton");
+    removeStartupSkeleton();
+    expect(flushFinalClsMock).toHaveBeenCalledTimes(1);
+    expect(flushPendingPerfMarksMock).toHaveBeenCalledTimes(1);
   });
 
   it("swallows errors from the IPC bridge", async () => {
