@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { render, screen, act, fireEvent } from "@testing-library/react";
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import type { NotificationHistoryEntry } from "@/store/slices/notificationHistorySlice";
 import { NotificationCenterEntry } from "../NotificationCenterEntry";
 
@@ -277,5 +277,105 @@ describe("NotificationCenterEntry thread count chip", () => {
 
     rerender(<NotificationCenterEntry entry={entry} threadCount={Number.NaN} />);
     expect(container.querySelector('[aria-label$="events"]')).toBeNull();
+  });
+});
+
+describe("NotificationCenterEntry timestamp formatting", () => {
+  // Per-test fake timers — must not be set in a top-level beforeEach because
+  // the chip throttle test above uses `vi.spyOn(Date, 'now')` directly and
+  // must run with real timers.
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function timestampSpan(): HTMLElement {
+    // The timestamp span carries both `title` and `aria-label` set to the
+    // absolute datetime; query by tabular-nums + text-[10px] class which is
+    // unique to this span among siblings in the row.
+    const spans = document.querySelectorAll("span.tabular-nums.text-\\[10px\\]");
+    if (spans.length === 0) throw new Error("timestamp span not found");
+    return spans[0] as HTMLElement;
+  }
+
+  it("renders 'just now' for sub-60s timestamps", () => {
+    vi.useFakeTimers();
+    const now = new Date(2026, 0, 15, 12, 0, 0);
+    vi.setSystemTime(now);
+    const ts = now.getTime() - 30 * 1000;
+    render(<NotificationCenterEntry entry={makeEntry({ timestamp: ts })} />);
+    expect(timestampSpan().textContent).toBe("just now");
+  });
+
+  it("renders 'Nm ago' for minute-scale today timestamps", () => {
+    vi.useFakeTimers();
+    const now = new Date(2026, 0, 15, 12, 0, 0);
+    vi.setSystemTime(now);
+    const ts = now.getTime() - 5 * 60 * 1000;
+    render(<NotificationCenterEntry entry={makeEntry({ timestamp: ts })} />);
+    expect(timestampSpan().textContent).toBe("5m ago");
+  });
+
+  it("renders 'Nh ago' for hour-scale today timestamps", () => {
+    vi.useFakeTimers();
+    const now = new Date(2026, 0, 15, 12, 0, 0);
+    vi.setSystemTime(now);
+    const ts = now.getTime() - 2 * 60 * 60 * 1000;
+    render(<NotificationCenterEntry entry={makeEntry({ timestamp: ts })} />);
+    expect(timestampSpan().textContent).toBe("2h ago");
+  });
+
+  it("pivots a yesterday timestamp to 'Yesterday HH:MM' instead of 'Nd ago'", () => {
+    vi.useFakeTimers();
+    const now = new Date(2026, 0, 15, 12, 0, 0);
+    vi.setSystemTime(now);
+    const ts = new Date(2026, 0, 14, 9, 30, 0);
+    render(<NotificationCenterEntry entry={makeEntry({ timestamp: ts.getTime() })} />);
+    const expectedTime = new Intl.DateTimeFormat(undefined, {
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(ts);
+    expect(timestampSpan().textContent).toBe(`Yesterday ${expectedTime}`);
+  });
+
+  it("renders older same-year timestamps as 'Mon DD'", () => {
+    vi.useFakeTimers();
+    const now = new Date(2026, 5, 1, 12, 0, 0);
+    vi.setSystemTime(now);
+    const ts = new Date(2026, 0, 5, 14, 30, 0);
+    render(<NotificationCenterEntry entry={makeEntry({ timestamp: ts.getTime() })} />);
+    const expected = new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+    }).format(ts);
+    expect(timestampSpan().textContent).toBe(expected);
+  });
+
+  it("renders prior-year timestamps as 'Mon DD YYYY'", () => {
+    vi.useFakeTimers();
+    const now = new Date(2026, 0, 15, 12, 0, 0);
+    vi.setSystemTime(now);
+    const ts = new Date(2024, 0, 5, 14, 30, 0);
+    render(<NotificationCenterEntry entry={makeEntry({ timestamp: ts.getTime() })} />);
+    const expected = new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }).format(ts);
+    expect(timestampSpan().textContent).toBe(expected);
+  });
+
+  it("exposes the absolute datetime via title and aria-label on the span", () => {
+    vi.useFakeTimers();
+    const now = new Date(2026, 0, 15, 12, 0, 0);
+    vi.setSystemTime(now);
+    const ts = new Date(2026, 0, 14, 9, 30, 0);
+    render(<NotificationCenterEntry entry={makeEntry({ timestamp: ts.getTime() })} />);
+    const expectedAbsolute = new Intl.DateTimeFormat(undefined, {
+      dateStyle: "full",
+      timeStyle: "short",
+    }).format(ts);
+    const span = timestampSpan();
+    expect(span.getAttribute("title")).toBe(expectedAbsolute);
+    expect(span.getAttribute("aria-label")).toBe(expectedAbsolute);
   });
 });
