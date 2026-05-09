@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import { QuickStateFilterBar } from "../QuickStateFilterBar";
 
 describe("QuickStateFilterBar", () => {
@@ -21,9 +21,12 @@ describe("QuickStateFilterBar", () => {
       />
     );
     expect(screen.getByText("All")).toBeTruthy();
-    expect(screen.getByText(/Working \(3\)/)).toBeTruthy();
-    expect(screen.getByText(/Waiting \(1\)/)).toBeTruthy();
-    expect(screen.getByText(/Finished \(5\)/)).toBeTruthy();
+    const working = screen.getByRole("button", { name: /Working/ });
+    const waiting = screen.getByRole("button", { name: /Waiting/ });
+    const finished = screen.getByRole("button", { name: /Finished/ });
+    expect(within(working).getByText("(3)", { exact: false })).toBeTruthy();
+    expect(within(waiting).getByText("(1)", { exact: false })).toBeTruthy();
+    expect(within(finished).getByText("(5)", { exact: false })).toBeTruthy();
   });
 
   it("renders zero counts explicitly", () => {
@@ -34,9 +37,50 @@ describe("QuickStateFilterBar", () => {
         counts={{ working: 0, waiting: 0, finished: 0 }}
       />
     );
-    expect(screen.getByText(/Working \(0\)/)).toBeTruthy();
-    expect(screen.getByText(/Waiting \(0\)/)).toBeTruthy();
-    expect(screen.getByText(/Finished \(0\)/)).toBeTruthy();
+    const working = screen.getByRole("button", { name: /Working/ });
+    const waiting = screen.getByRole("button", { name: /Waiting/ });
+    const finished = screen.getByRole("button", { name: /Finished/ });
+    expect(within(working).getByText("(0)", { exact: false })).toBeTruthy();
+    expect(within(waiting).getByText("(0)", { exact: false })).toBeTruthy();
+    expect(within(finished).getByText("(0)", { exact: false })).toBeTruthy();
+  });
+
+  it("hides the visual count from screen readers and adds an sr-only count", () => {
+    render(
+      <QuickStateFilterBar
+        value="all"
+        onChange={() => {}}
+        counts={{ working: 3, waiting: 1, finished: 0 }}
+      />
+    );
+    const working = screen.getByRole("button", { name: /Working/ });
+    const visibleCount = within(working).getByText("(3)", { exact: false });
+    expect(visibleCount.getAttribute("aria-hidden")).toBe("true");
+    expect(within(working).getByText(", 3 worktrees")).toBeTruthy();
+
+    const waiting = screen.getByRole("button", { name: /Waiting/ });
+    expect(within(waiting).getByText(", 1 worktree")).toBeTruthy();
+
+    const finished = screen.getByRole("button", { name: /Finished/ });
+    expect(within(finished).getByText(", 0 worktrees")).toBeTruthy();
+  });
+
+  it("uses an inset ring (not a translucent fill) for the active pill", () => {
+    render(
+      <QuickStateFilterBar
+        value="working"
+        onChange={() => {}}
+        counts={{ working: 2, waiting: 0, finished: 0 }}
+      />
+    );
+    const active = screen.getByRole("button", { name: /Working/ });
+    expect(active.className).toContain("ring-1");
+    expect(active.className).toContain("ring-inset");
+    expect(active.className).toContain("ring-text-secondary");
+    expect(active.className).not.toContain("bg-tint/[0.12]");
+
+    const inactive = screen.getByRole("button", { name: /Waiting/ });
+    expect(inactive.className).not.toContain("ring-text-secondary");
   });
 
   it("marks the active pill with aria-pressed=true", () => {
