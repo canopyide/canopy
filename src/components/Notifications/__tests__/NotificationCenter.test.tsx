@@ -1260,6 +1260,211 @@ describe("NotificationCenter — New since you last looked divider", () => {
   });
 });
 
+describe("NotificationCenter — bulk mark-read with Undo", () => {
+  function getLastNotifyPayload() {
+    const calls = vi.mocked(notifyLib.notify).mock.calls;
+    expect(calls.length).toBeGreaterThan(0);
+    return calls[calls.length - 1]![0];
+  }
+
+  it("'Mark all read' marks every unread entry and emits an undo toast", async () => {
+    setEntries([
+      makeEntry({ id: "u1", message: "Unread 1", seenAsToast: false }),
+      makeEntry({ id: "u2", message: "Unread 2", seenAsToast: false }),
+      makeEntry({ id: "r1", message: "Already read", seenAsToast: true }),
+    ]);
+
+    render(<NotificationCenter open onClose={vi.fn()} />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Mark all read"));
+    });
+
+    expect(useNotificationHistoryStore.getState().unreadCount).toBe(0);
+
+    const payload = getLastNotifyPayload();
+    expect(payload.type).toBe("success");
+    expect(payload.message).toBe("Marked 2 read");
+    expect(payload.duration).toBe(5000);
+    expect(payload.urgent).toBe(true);
+    expect(payload.transient).toBe(true);
+    expect(payload.priority).toBe("high");
+    expect(payload.context).toBeUndefined();
+    expect(payload.action?.label).toBe("Undo");
+  });
+
+  it("'Mark all read' resets lastNotificationCenterClosedAt to clear the divider", async () => {
+    useUIStore.setState({ lastNotificationCenterClosedAt: 12345 });
+    setEntries([makeEntry({ message: "Unread", seenAsToast: false })]);
+
+    render(<NotificationCenter open onClose={vi.fn()} />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Mark all read"));
+    });
+
+    expect(useUIStore.getState().lastNotificationCenterClosedAt).toBe(0);
+  });
+
+  it("undo restores the captured ids back to unread", async () => {
+    setEntries([
+      makeEntry({ id: "u1", message: "Unread 1", seenAsToast: false }),
+      makeEntry({ id: "u2", message: "Unread 2", seenAsToast: false }),
+    ]);
+
+    render(<NotificationCenter open onClose={vi.fn()} />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Mark all read"));
+    });
+    expect(useNotificationHistoryStore.getState().unreadCount).toBe(0);
+
+    const payload = getLastNotifyPayload();
+    await act(async () => {
+      payload.action?.onClick?.();
+    });
+
+    expect(useNotificationHistoryStore.getState().unreadCount).toBe(2);
+    const entries = useNotificationHistoryStore.getState().entries;
+    expect(entries.find((e) => e.id === "u1")?.seenAsToast).toBe(false);
+    expect(entries.find((e) => e.id === "u2")?.seenAsToast).toBe(false);
+  });
+
+  it("undo does not increment evictedToInboxCount (silent restore)", async () => {
+    setEntries([makeEntry({ message: "Unread", seenAsToast: false })]);
+
+    render(<NotificationCenter open onClose={vi.fn()} />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Mark all read"));
+    });
+
+    const payload = getLastNotifyPayload();
+    await act(async () => {
+      payload.action?.onClick?.();
+    });
+
+    expect(useNotificationHistoryStore.getState().evictedToInboxCount).toBe(0);
+  });
+
+  it("does nothing and emits no toast when there are no unread entries", () => {
+    setEntries([makeEntry({ message: "Read", seenAsToast: true })]);
+
+    render(<NotificationCenter open onClose={vi.fn()} />);
+
+    // The "Mark all read" button only renders when unreadCount > 0.
+    expect(screen.queryByText("Mark all read")).toBeNull();
+    expect(vi.mocked(notifyLib.notify)).not.toHaveBeenCalled();
+  });
+
+  it("'Mark these N read' on the divider marks only entries above the divider", async () => {
+    const closedAt = Date.now() - 5000;
+    useUIStore.setState({ lastNotificationCenterClosedAt: closedAt });
+    setEntries([
+      makeEntry({
+        id: "new-1",
+        message: "Newer 1",
+        timestamp: closedAt + 4000,
+        seenAsToast: false,
+      }),
+      makeEntry({
+        id: "new-2",
+        message: "Newer 2",
+        timestamp: closedAt + 3000,
+        seenAsToast: false,
+      }),
+      makeEntry({
+        id: "old-1",
+        message: "Older",
+        timestamp: closedAt - 1000,
+        seenAsToast: false,
+      }),
+    ]);
+
+    render(<NotificationCenter open onClose={vi.fn()} />);
+
+    expect(screen.queryByTestId("new-since-last-looked")).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByText("Mark these 2 read"));
+    });
+
+    const entries = useNotificationHistoryStore.getState().entries;
+    expect(entries.find((e) => e.id === "new-1")?.seenAsToast).toBe(true);
+    expect(entries.find((e) => e.id === "new-2")?.seenAsToast).toBe(true);
+    expect(entries.find((e) => e.id === "old-1")?.seenAsToast).toBe(false);
+
+    const payload = getLastNotifyPayload();
+    expect(payload.message).toBe("Marked 2 read");
+    expect(useUIStore.getState().lastNotificationCenterClosedAt).toBe(0);
+  });
+
+  it("section 'Mark read' marks only the section's unread entries and does NOT reset lastClosedAt", async () => {
+    worktreeStoreMock.worktrees.set("wt-1", { worktreeId: "wt-1", name: "feature/login" });
+    worktreeStoreMock.worktrees.set("wt-2", { worktreeId: "wt-2", name: "feature/billing" });
+    useNotificationSettingsStore.setState({ groupByContext: true });
+    useUIStore.setState({ lastNotificationCenterClosedAt: 99999 });
+    setEntries([
+      makeEntry({
+        id: "wt1-1",
+        message: "Login msg 1",
+        seenAsToast: false,
+        context: { worktreeId: "wt-1" },
+      }),
+      makeEntry({
+        id: "wt1-2",
+        message: "Login msg 2",
+        seenAsToast: false,
+        context: { worktreeId: "wt-1" },
+      }),
+      makeEntry({
+        id: "wt2-1",
+        message: "Billing msg",
+        seenAsToast: false,
+        context: { worktreeId: "wt-2" },
+      }),
+    ]);
+
+    render(<NotificationCenter open onClose={vi.fn()} />);
+
+    const headers = screen.getAllByTestId("context-section-header");
+    const loginHeader = headers.find((h) => (h.textContent ?? "").includes("feature/login"));
+    expect(loginHeader).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(within(loginHeader!).getByText("Mark read"));
+    });
+
+    const entries = useNotificationHistoryStore.getState().entries;
+    expect(entries.find((e) => e.id === "wt1-1")?.seenAsToast).toBe(true);
+    expect(entries.find((e) => e.id === "wt1-2")?.seenAsToast).toBe(true);
+    expect(entries.find((e) => e.id === "wt2-1")?.seenAsToast).toBe(false);
+
+    // Section "Mark read" must NOT reset the divider — only header + divider do.
+    expect(useUIStore.getState().lastNotificationCenterClosedAt).toBe(99999);
+
+    const payload = getLastNotifyPayload();
+    expect(payload.message).toBe("Marked 2 read");
+  });
+
+  it("section header 'Mark read' button is not rendered when the section has no unread entries", () => {
+    worktreeStoreMock.worktrees.set("wt-1", { worktreeId: "wt-1", name: "feature/login" });
+    useNotificationSettingsStore.setState({ groupByContext: true });
+    setEntries([
+      makeEntry({
+        id: "wt1-1",
+        message: "All read",
+        seenAsToast: true,
+        context: { worktreeId: "wt-1" },
+      }),
+    ]);
+
+    render(<NotificationCenter open onClose={vi.fn()} />);
+
+    const header = screen.getByTestId("context-section-header");
+    expect(within(header).queryByText("Mark read")).toBeNull();
+  });
+});
+
 describe("uiStore — closeNotificationCenter records timestamp", () => {
   it("sets lastNotificationCenterClosedAt to Date.now() when closing", () => {
     useUIStore.setState({ notificationCenterOpen: true, lastNotificationCenterClosedAt: 0 });

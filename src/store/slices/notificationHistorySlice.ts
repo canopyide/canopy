@@ -62,6 +62,13 @@ interface NotificationHistoryState {
   dismissByCorrelationId: (correlationId: string) => void;
   clearAll: () => void;
   markAllRead: () => void;
+  /**
+   * Flips `seenAsToast` to true on the targeted entries in a single atomic
+   * update. Skips entries that are already read or missing. Used by the
+   * bulk-mark-read flows that need to capture an exact ID set up-front for an
+   * undo affordance.
+   */
+  markIdsRead: (ids: string[]) => void;
   markSummarized: (ids: string[]) => void;
   resetEvictedCount: () => void;
 }
@@ -126,6 +133,24 @@ export const useNotificationHistoryStore = create<NotificationHistoryState>((set
       unreadCount: 0,
       entries: state.entries.map((e) => (e.seenAsToast ? e : { ...e, seenAsToast: true })),
     })),
+  markIdsRead: (ids) =>
+    set((state) => {
+      if (ids.length === 0) return state;
+      const idSet = new Set(ids);
+      let mutated = false;
+      const entries = state.entries.map((e) => {
+        if (idSet.has(e.id) && !e.seenAsToast) {
+          mutated = true;
+          return { ...e, seenAsToast: true };
+        }
+        return e;
+      });
+      if (!mutated) return state;
+      return {
+        entries,
+        unreadCount: entries.filter((e) => !e.seenAsToast && e.countable !== false).length,
+      };
+    }),
   markSummarized: (ids) =>
     set((state) => {
       const idSet = new Set(ids);

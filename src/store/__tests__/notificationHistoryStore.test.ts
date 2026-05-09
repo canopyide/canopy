@@ -231,6 +231,111 @@ describe("notificationHistorySlice", () => {
     });
   });
 
+  describe("markIdsRead", () => {
+    it("flips seenAsToast to true on targeted ids only", () => {
+      addEntry({ message: "a" });
+      addEntry({ message: "b" });
+      addEntry({ message: "c" });
+      const entries = getState().entries;
+      const targets = [entries[0]!.id, entries[2]!.id];
+
+      getState().markIdsRead(targets);
+
+      const updated = getState().entries;
+      expect(updated[0]!.seenAsToast).toBe(true);
+      expect(updated[1]!.seenAsToast).toBe(false);
+      expect(updated[2]!.seenAsToast).toBe(true);
+    });
+
+    it("decrements unreadCount by the number of newly-read entries", () => {
+      addEntry();
+      addEntry();
+      addEntry();
+      expect(getState().unreadCount).toBe(3);
+      const ids = getState()
+        .entries.slice(0, 2)
+        .map((e) => e.id);
+
+      getState().markIdsRead(ids);
+
+      expect(getState().unreadCount).toBe(1);
+    });
+
+    it("skips entries that are already read", () => {
+      const seenId = getState().addEntry({ type: "info", message: "seen", seenAsToast: true });
+      addEntry({ message: "missed" });
+      const before = getState().entries.find((e) => e.id === seenId);
+
+      getState().markIdsRead([seenId]);
+
+      const after = getState().entries.find((e) => e.id === seenId);
+      expect(after).toBe(before!);
+    });
+
+    it("is a no-op when ids is empty", () => {
+      addEntry();
+      const before = getState();
+      getState().markIdsRead([]);
+      const after = getState();
+      expect(after.entries).toBe(before.entries);
+      expect(after.unreadCount).toBe(before.unreadCount);
+    });
+
+    it("is a no-op when no targeted ids exist", () => {
+      addEntry();
+      const before = getState();
+      getState().markIdsRead(["nonexistent-1", "nonexistent-2"]);
+      const after = getState();
+      expect(after.entries).toBe(before.entries);
+      expect(after.unreadCount).toBe(before.unreadCount);
+    });
+
+    it("handles duplicate ids idempotently", () => {
+      addEntry();
+      const id = getState().entries[0]!.id;
+      getState().markIdsRead([id, id, id]);
+      expect(getState().entries[0]!.seenAsToast).toBe(true);
+      expect(getState().unreadCount).toBe(0);
+    });
+
+    it("excludes non-countable entries from unreadCount as expected", () => {
+      addEntry({ message: "countable" });
+      addEntry({ message: "uncountable", countable: false });
+      const ids = getState().entries.map((e) => e.id);
+      expect(getState().unreadCount).toBe(1);
+      getState().markIdsRead(ids);
+      expect(getState().unreadCount).toBe(0);
+      expect(getState().entries.every((e) => e.seenAsToast)).toBe(true);
+    });
+
+    it("does not change evictedToInboxCount", () => {
+      addEntry();
+      addEntry();
+      const ids = getState().entries.map((e) => e.id);
+      getState().markIdsRead(ids);
+      expect(getState().evictedToInboxCount).toBe(0);
+    });
+
+    it("handles mixed unread + already-read + non-countable + missing ids in one call", () => {
+      const seenId = getState().addEntry({ type: "info", message: "seen", seenAsToast: true });
+      addEntry({ message: "unread countable" });
+      addEntry({ message: "unread non-countable", countable: false });
+      const unreadCountable = getState().entries.find((e) => e.message === "unread countable")!.id;
+      const unreadNonCountable = getState().entries.find(
+        (e) => e.message === "unread non-countable"
+      )!.id;
+      expect(getState().unreadCount).toBe(1);
+
+      getState().markIdsRead([seenId, unreadCountable, unreadNonCountable, "missing"]);
+
+      const after = getState();
+      expect(after.entries.find((e) => e.id === seenId)?.seenAsToast).toBe(true);
+      expect(after.entries.find((e) => e.id === unreadCountable)?.seenAsToast).toBe(true);
+      expect(after.entries.find((e) => e.id === unreadNonCountable)?.seenAsToast).toBe(true);
+      expect(after.unreadCount).toBe(0);
+    });
+  });
+
   describe("markSummarized", () => {
     it("defaults summarized to false on new entries", () => {
       addEntry({ message: "test" });

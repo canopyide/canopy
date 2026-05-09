@@ -16,7 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { actionService } from "@/services/ActionService";
-import { muteForDuration, muteUntilNextMorning, setSessionQuietUntil } from "@/lib/notify";
+import { muteForDuration, muteUntilNextMorning, notify, setSessionQuietUntil } from "@/lib/notify";
 import { useNotificationSettingsStore } from "@/store/notificationSettingsStore";
 import { useUIStore } from "@/store/uiStore";
 import { useWorktreeStore } from "@/hooks/useWorktreeStore";
@@ -130,7 +130,8 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
   const entries = useNotificationHistoryStore((s) => s.entries);
   const unreadCount = useNotificationHistoryStore((s) => s.unreadCount);
   const clearAll = useNotificationHistoryStore((s) => s.clearAll);
-  const markAllRead = useNotificationHistoryStore((s) => s.markAllRead);
+  const markIdsRead = useNotificationHistoryStore((s) => s.markIdsRead);
+  const markUnseenAsToast = useNotificationHistoryStore((s) => s.markUnseenAsToast);
   const dismissEntry = useNotificationHistoryStore((s) => s.dismissEntry);
   const dismissByCorrelationId = useNotificationHistoryStore((s) => s.dismissByCorrelationId);
 
@@ -258,12 +259,51 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
 
   const totalChronoGroups = chronoSections.reduce((sum, s) => sum + s.groups.length, 0);
 
-  const handleMarkAllRead = () => {
-    if (filter === "unread") {
-      setFrozenUnreadIds(new Set(entries.filter((e) => !e.seenAsToast).map((e) => e.id)));
+  const markIdsReadWithUndo = (requestedIds: string[], options: { resetLastClosed: boolean }) => {
+    if (requestedIds.length === 0) return;
+    // Re-filter against live store state so a rapid second click on a stale
+    // closure doesn't fire a ghost toast for entries already marked read.
+    const liveEntries = useNotificationHistoryStore.getState().entries;
+    const liveById = new Map(liveEntries.map((e) => [e.id, e] as const));
+    const ids = requestedIds.filter((id) => {
+      const entry = liveById.get(id);
+      return entry !== undefined && !entry.seenAsToast;
+    });
+    if (ids.length === 0) return;
+    markIdsRead(ids);
+    if (options.resetLastClosed) {
+      resetLastClosedAt();
     }
-    markAllRead();
-    resetLastClosedAt();
+    notify({
+      type: "success",
+      message: `Marked ${ids.length} read`,
+      // Action-bearing toasts default to sticky (duration: 0). Keep the undo
+      // window short and explicit so the toast clears itself.
+      duration: 5000,
+      priority: "high",
+      // Time-bound undo — surface even during quiet hours so the user has a
+      // recovery path.
+      urgent: true,
+      // Confirmation toast only — no inbox entry. (Don't pair with `context`:
+      // notify warns and silently drops in DEV.)
+      transient: true,
+      action: {
+        label: "Undo",
+        onClick: () => {
+          for (const id of ids) {
+            markUnseenAsToast(id, { silent: true });
+          }
+        },
+      },
+    });
+  };
+
+  const handleMarkAllRead = () => {
+    const ids = entries.filter((e) => !e.seenAsToast).map((e) => e.id);
+    if (filter === "unread") {
+      setFrozenUnreadIds(new Set(ids));
+    }
+    markIdsReadWithUndo(ids, { resetLastClosed: true });
   };
 
   const handleMuteFor = (durationMs: number) => {
@@ -503,8 +543,10 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
                 section={section}
                 groupByContext={groupByContext}
                 dividerGroupId={dividerGroupId}
+                lastClosedAt={lastClosedAt}
                 onDismiss={dismissEntry}
                 onDismissThread={dismissByCorrelationId}
+                onMarkIdsRead={markIdsReadWithUndo}
               />
             ))}
           </>
@@ -539,15 +581,26 @@ function ChronoSection({
   section,
   groupByContext,
   dividerGroupId,
+  lastClosedAt,
   onDismiss,
   onDismissThread,
+  onMarkIdsRead,
 }: {
   section: ContextSection;
   groupByContext: boolean;
   dividerGroupId: string | null;
+  lastClosedAt: number;
   onDismiss: (id: string) => void;
   onDismissThread: (correlationId: string) => void;
+  onMarkIdsRead: (ids: string[], options: { resetLastClosed: boolean }) => void;
 }) {
+  const sectionUnreadIds = section.groups.flatMap((g) =>
+    g.entries.filter((e) => !e.seenAsToast).map((e) => e.id)
+  );
+  const newSinceUnreadIds = section.groups
+    .filter((g) => g.latestTimestamp > lastClosedAt)
+    .flatMap((g) => g.entries.filter((e) => !e.seenAsToast).map((e) => e.id));
+
   return (
     <div data-testid="chrono-section">
       {groupByContext && (
@@ -555,6 +608,8 @@ function ChronoSection({
           worktreeId={section.worktreeId}
           projectId={section.projectId}
           count={section.groups.length}
+          unreadIds={sectionUnreadIds}
+          onMarkRead={() => onMarkIdsRead(sectionUnreadIds, { resetLastClosed: false })}
         />
       )}
       <div className="divide-y divide-tint/[0.04]">
@@ -563,7 +618,12 @@ function ChronoSection({
           const isDivider = dividerGroupId !== null && groupKey === dividerGroupId;
           return (
             <div key={groupKey}>
-              {isDivider && <NewSinceLastLookedDivider />}
+              {isDivider && (
+                <NewSinceLastLookedDivider
+                  unreadCount={newSinceUnreadIds.length}
+                  onMarkRead={() => onMarkIdsRead(newSinceUnreadIds, { resetLastClosed: true })}
+                />
+              )}
               {renderGroup(group, onDismiss, onDismissThread)}
             </div>
           );
@@ -602,29 +662,51 @@ function ContextSectionHeader({
   worktreeId,
   projectId,
   count,
+  unreadIds,
+  onMarkRead,
 }: {
   worktreeId?: string;
   projectId?: string;
   count: number;
+  unreadIds: string[];
+  onMarkRead: () => void;
 }) {
   const worktreeName = useWorktreeStore((s) =>
     worktreeId ? s.worktrees.get(worktreeId)?.name : undefined
   );
   const label = worktreeName ?? worktreeId ?? projectId ?? "Other";
+  const hasUnread = unreadIds.length > 0;
   return (
     <div
       data-testid="context-section-header"
-      className="flex items-center justify-between px-3 py-1 bg-overlay-subtle text-[10px] font-medium uppercase tracking-wide text-daintree-text/60"
+      className="group/section flex items-center justify-between px-3 py-1 bg-overlay-subtle text-[10px] font-medium uppercase tracking-wide text-daintree-text/60"
     >
       <span className="truncate">{label}</span>
-      <span aria-hidden="true" className="ml-2 shrink-0 text-daintree-text/40 tabular-nums">
-        {count}
-      </span>
+      <div className="ml-2 shrink-0 flex items-center gap-2">
+        {hasUnread && (
+          <button
+            type="button"
+            onClick={onMarkRead}
+            className="invisible opacity-0 pointer-events-none transition-[opacity,visibility] duration-150 motion-reduce:transition-none group-hover/section:visible group-hover/section:opacity-100 group-hover/section:pointer-events-auto group-focus-within/section:visible group-focus-within/section:opacity-100 group-focus-within/section:pointer-events-auto inline-flex items-center rounded-[var(--radius-sm)] px-1.5 py-0.5 normal-case tracking-normal text-daintree-text/60 hover:bg-overlay-emphasis hover:text-daintree-text"
+          >
+            Mark read
+          </button>
+        )}
+        <span aria-hidden="true" className="text-daintree-text/40 tabular-nums">
+          {count}
+        </span>
+      </div>
     </div>
   );
 }
 
-function NewSinceLastLookedDivider() {
+function NewSinceLastLookedDivider({
+  unreadCount,
+  onMarkRead,
+}: {
+  unreadCount: number;
+  onMarkRead: () => void;
+}) {
   return (
     <div
       data-testid="new-since-last-looked"
@@ -632,6 +714,15 @@ function NewSinceLastLookedDivider() {
     >
       <span className="h-px flex-1 bg-divider" aria-hidden="true" />
       <span>New since you last looked</span>
+      {unreadCount > 0 && (
+        <button
+          type="button"
+          onClick={onMarkRead}
+          className="inline-flex items-center rounded-[var(--radius-sm)] px-1.5 py-0.5 text-daintree-text/60 hover:bg-overlay-emphasis hover:text-daintree-text transition-colors"
+        >
+          Mark these {unreadCount} read
+        </button>
+      )}
       <span className="h-px flex-1 bg-divider" aria-hidden="true" />
     </div>
   );
