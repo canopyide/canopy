@@ -35,6 +35,17 @@ function cleanupWindowsElectronProcesses(): void {
   }
 }
 
+function cleanupMacElectronE2eProcesses(): void {
+  if (process.platform !== "darwin") return;
+  try {
+    // Kill only e2e-launched Electron processes (matched on `daintree-e2e`
+    // user-data-dir). Production Daintree.app and dev sessions are untouched.
+    execSync('pkill -f "node_modules/electron.*daintree-e2e"', { stdio: "ignore" });
+  } catch {
+    // Ignore "no matching process" errors.
+  }
+}
+
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -70,10 +81,24 @@ async function pollForAppWindow(app: ElectronApplication, timeoutMs: number): Pr
 export async function launchApp(options: LaunchOptions = {}): Promise<AppContext> {
   // Windows CI can be slow during Playwright's electron.launch handshake even
   // when the app process is already running. Use fewer, longer attempts so a
-  // slow-but-healthy first launch is not killed just before it becomes ready.
+  // slow-but-longer-than-expected first launch is not killed just before it
+  // becomes ready.
+  // macOS local dev: first 1–2 launches per Playwright worker can hang at
+  // electron.launch's CDP handshake even though the app reaches steady-state
+  // (services start, agent connectivity probes complete). Subsequent launches
+  // in the same worker succeed immediately. Allow a single retry so a flaky
+  // first launch doesn't fail the spec.
   const isWindowsCI = process.env.CI && process.platform === "win32";
+  const isMacOSLocal = process.platform === "darwin" && !process.env.CI;
   const launchTimeout = isWindowsCI ? 75_000 : 60_000;
-  const maxAttempts = isWindowsCI ? 3 : 1;
+  const maxAttempts = isWindowsCI ? 3 : isMacOSLocal ? 3 : 1;
+  // On macOS local dev, the first 1–2 launches in a Playwright worker can
+  // hang through the full launch window before recovering on retry. Cap each
+  // non-final attempt at 35s and keep the retry-prep wait short so all three
+  // attempts fit inside the per-test 120s timeout
+  // (35 + 1 + 35 + 1 + 35 = 107s).
+  const attemptTimeout = (attempt: number) =>
+    isMacOSLocal && attempt < maxAttempts ? 35_000 : launchTimeout;
   let lastError: unknown = null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -134,7 +159,7 @@ export async function launchApp(options: LaunchOptions = {}): Promise<AppContext
         executablePath: electronPath,
         args,
         env: launchEnv,
-        timeout: launchTimeout,
+        timeout: attemptTimeout(attempt),
       });
 
       app.on("close", () => console.log("[e2e] Electron app closed"));
@@ -205,7 +230,10 @@ export async function launchApp(options: LaunchOptions = {}): Promise<AppContext
       if (attempt < maxAttempts) {
         console.warn(`[e2e] Launch attempt ${attempt}/${maxAttempts} failed, retrying...`);
         if (isWindowsCI) cleanupWindowsElectronProcesses();
-        await wait(2000 * attempt);
+        if (isMacOSLocal) cleanupMacElectronE2eProcesses();
+        // macOS local retry needs to fit inside the 120s test timeout.
+        // Keep the retry-prep wait short so the retry attempt has its full budget.
+        await wait(isMacOSLocal ? 1000 : 2000 * attempt);
       }
     }
   }

@@ -51,11 +51,32 @@ export async function selectExistingProject(window: Page, projectName: string): 
       // though the trigger is in the DOM. Wait for visibility explicitly,
       // then `force` past the stability check (mirroring how the in-palette
       // add button is clicked above).
+      //
+      // Additionally on macOS local dev, the very first click after a
+      // WebContentsView swap can land before the new project view's React
+      // tree has fully wired its handlers — the trigger is in the DOM and
+      // visible but the popover state callback is a no-op until the next
+      // microtask. Retry the click + visibility check up to 3 times so a
+      // single dropped click doesn't fail the spec.
       const trigger = window.locator(SEL.toolbar.projectSwitcherTrigger);
       await expect(trigger).toBeVisible({ timeout: T_MEDIUM });
-      await trigger.click({ force: true });
       const palette = window.locator(SEL.projectSwitcher.palette);
-      await expect(palette).toBeVisible({ timeout: T_MEDIUM });
+      let opened = false;
+      for (let attempt = 0; attempt < 3 && !opened; attempt++) {
+        await trigger.click({ force: true });
+        try {
+          await expect(palette).toBeVisible({ timeout: T_SHORT });
+          opened = true;
+        } catch {
+          // Click was likely dropped pre-hydration; settle and retry.
+          await window.waitForTimeout(250);
+        }
+      }
+      if (!opened) {
+        // Final attempt — let it surface the real error if it still fails.
+        await trigger.click({ force: true });
+        await expect(palette).toBeVisible({ timeout: T_MEDIUM });
+      }
 
       // Substring match — createFixtureRepo produces directories like
       // daintree-e2e-${name}-XXXXXX and projectClient.add() derives the
