@@ -530,6 +530,10 @@ export interface IpcInvokeMap {
     args: [];
     result: AgentVersionInfo[];
   };
+  "system:get-agent-version": {
+    args: [agentId: string, refresh?: boolean];
+    result: AgentVersionInfo;
+  };
   "system:refresh-agent-versions": {
     args: [];
     result: AgentVersionInfo[];

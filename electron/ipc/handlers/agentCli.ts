@@ -72,6 +72,29 @@ export function registerAgentCliHandlers(deps: HandlerDependencies): () => void 
   };
   handlers.push(typedHandle(CHANNELS.SYSTEM_GET_AGENT_VERSIONS, handleSystemGetAgentVersions));
 
+  const handleSystemGetAgentVersion = async (agentId: string, refresh?: boolean) => {
+    if (typeof agentId !== "string" || !agentId) {
+      throw new Error("Invalid agentId");
+    }
+
+    if (!agentVersionService) {
+      console.warn("[IPC] AgentVersionService not available");
+      return {
+        agentId: agentId as import("../../../shared/types/agent.js").AgentId,
+        installedVersion: null,
+        latestVersion: null,
+        updateAvailable: false,
+        lastChecked: null,
+      };
+    }
+
+    return await agentVersionService.getVersion(
+      agentId as import("../../../shared/types/agent.js").AgentId,
+      refresh === true
+    );
+  };
+  handlers.push(typedHandle(CHANNELS.SYSTEM_GET_AGENT_VERSION, handleSystemGetAgentVersion));
+
   const handleSystemRefreshAgentVersions = async () => {
     if (!agentVersionService) {
       console.warn("[IPC] AgentVersionService not available");

@@ -1,5 +1,6 @@
 import { Suspense, useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { Settings2, ChevronRight, Plus, X } from "lucide-react";
+import * as semver from "semver";
 import { cn } from "@/lib/utils";
 import { DaintreeIcon } from "@/components/icons/DaintreeIcon";
 import { XtermAdapter } from "@/components/Terminal/XtermAdapter";
@@ -136,6 +137,53 @@ async function provisionHelpSession(
   }
 }
 
+interface VersionTooOld {
+  agentId: string;
+  agentName: string;
+  installedVersion: string;
+  requiredVersion: string;
+}
+
+// Probes the installed CLI version and compares it against the agent's
+// `assistantMinVersion` floor. Returns a block descriptor when the installed
+// version is definitively below the floor; returns null otherwise (no minimum
+// configured, probe failed, version unparseable, or installed >= required).
+// A null pass-through preserves the existing missing-CLI surface and avoids
+// blocking on transient probe failures. `refresh=true` bypasses the 12h
+// AgentVersionService cache — pass it on retry so a user who manually
+// updates the CLI outside Daintree's update flow can recover within one
+// panel reopen instead of waiting for cache expiry.
+async function checkAssistantVersion(
+  agentId: string,
+  agentName: string,
+  refresh = false
+): Promise<VersionTooOld | null> {
+  const config = getAgentConfig(agentId);
+  const required = config?.assistantMinVersion;
+  if (!required) return null;
+
+  let info;
+  try {
+    info = await window.electron.system.getAgentVersion(agentId, refresh);
+  } catch (err) {
+    logError("Failed to probe assistant CLI version", err);
+    return null;
+  }
+
+  const installed = info?.installedVersion;
+  if (!installed) return null;
+
+  try {
+    if (semver.lt(installed, required)) {
+      return { agentId, agentName, installedVersion: installed, requiredVersion: required };
+    }
+  } catch (err) {
+    logError("Failed to compare assistant CLI version", err);
+    return null;
+  }
+  return null;
+}
+
 // Fetches the user-configured custom CLI args from helpAssistant settings and
 // splits them into a flag array. Settings are loaded at launch time (not at
 // render) so changes in the Daintree Assistant settings tab take effect on the
@@ -212,6 +260,12 @@ export function HelpPanel({
   const isVisible = isVisibleProp ?? effectiveWidth > 0;
   const [showNewSessionConfirm, setShowNewSessionConfirm] = useState(false);
   const [showResumeBanner, setShowResumeBanner] = useState(false);
+  const [assistantVersionTooOld, setAssistantVersionTooOld] = useState<VersionTooOld | null>(null);
+  // Tracks whether the version gate has blocked at any point in this panel
+  // instance. When true, the next `checkAssistantVersion` call passes
+  // `refresh=true` so an externally-updated CLI is detected without waiting
+  // for the 12h AgentVersionService cache TTL. Cleared once a probe passes.
+  const hasBlockedThisSessionRef = useRef(false);
 
   const {
     isOpen,
@@ -600,6 +654,34 @@ export function HelpPanel({
           return;
         }
 
+        // Version gate runs BEFORE provisionHelpSession to avoid minting a
+        // session token (with .mcp.json side effects) we'd immediately
+        // discard. Pass-through on null preserves missing-CLI behavior.
+        const launchAgentName = getAgentConfig(launchAgentId)?.name ?? launchAgentId;
+        const versionBlock = await checkAssistantVersion(
+          launchAgentId,
+          launchAgentName,
+          hasBlockedThisSessionRef.current
+        );
+        if (versionBlock) {
+          // Stale-agent guard: only relevant when we're about to paint a
+          // block. If the user changed `preferredAgentId` while the probe
+          // was in flight, skip the block so the new agent's empty state
+          // isn't covered by an "Update Claude" message that no longer
+          // applies. The non-block path falls through to provision/dispatch
+          // and the existing post-dispatch stale guard handles cleanup.
+          if (useHelpPanelStore.getState().preferredAgentId !== launchAgentId) {
+            hasAutoLaunched.current = false;
+            return;
+          }
+          hasAutoLaunched.current = false;
+          hasBlockedThisSessionRef.current = true;
+          setAssistantVersionTooOld(versionBlock);
+          return;
+        }
+        hasBlockedThisSessionRef.current = false;
+        setAssistantVersionTooOld(null);
+
         const outcome = await provisionHelpSession(launchProject, launchAgentId);
         if (!outcome.ok) {
           hasAutoLaunched.current = false;
@@ -721,6 +803,14 @@ export function HelpPanel({
       hasAutoLaunched.current = false;
     }
   }, [isOpen]);
+
+  // Clear the version-too-old block when the preferred agent changes — the
+  // stale block belongs to the previous agent and would otherwise paint over
+  // the new agent's empty state. The retry-refresh ref intentionally
+  // survives this reset so a recovering panel still busts the cache.
+  useEffect(() => {
+    setAssistantVersionTooOld(null);
+  }, [preferredAgentId]);
 
   // Register the panel root with the macro-focus store so the assistant
   // participates in cross-region cycling.
@@ -859,6 +949,27 @@ export function HelpPanel({
           notifyLaunchFailed(selectedAgentId, "Help folder is not available.");
           return;
         }
+
+        // Version gate runs BEFORE provisionHelpSession so we don't mint a
+        // session token we'd immediately discard. Pass-through on null
+        // (probe failure / unparseable installed version) lets the existing
+        // missing-CLI surface handle those edge cases. `refresh=true` on
+        // retry busts the 12h AgentVersionService cache so an externally
+        // updated CLI is detected without waiting for TTL expiry.
+        const selectedAgentName = getAgentConfig(selectedAgentId)?.name ?? selectedAgentId;
+        const versionBlock = await checkAssistantVersion(
+          selectedAgentId,
+          selectedAgentName,
+          hasBlockedThisSessionRef.current
+        );
+        if (versionBlock) {
+          hasAutoLaunched.current = false;
+          hasBlockedThisSessionRef.current = true;
+          setAssistantVersionTooOld(versionBlock);
+          return;
+        }
+        hasBlockedThisSessionRef.current = false;
+        setAssistantVersionTooOld(null);
 
         const outcome = await provisionHelpSession(launchProject, selectedAgentId);
         if (!outcome.ok) {
@@ -1414,6 +1525,33 @@ export function HelpPanel({
               </div>
             </>
           )
+        ) : assistantVersionTooOld ? (
+          <div
+            className="flex-1 flex flex-col items-center justify-center gap-3 p-8 text-center"
+            data-testid="help-version-too-old"
+          >
+            <p className="text-sm text-daintree-text/70">
+              Update {assistantVersionTooOld.agentName} to use Daintree Assistant
+            </p>
+            <p className="text-xs text-daintree-text/50 max-w-[32ch]">
+              Daintree Assistant needs {assistantVersionTooOld.agentName}{" "}
+              {assistantVersionTooOld.requiredVersion} or later. You're on{" "}
+              {assistantVersionTooOld.installedVersion}.
+            </p>
+            <button
+              type="button"
+              onClick={handleOpenSettings}
+              className={cn(
+                "mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-md)]",
+                "text-xs font-medium border border-daintree-border text-daintree-text/80",
+                "hover:bg-overlay-soft hover:text-daintree-text transition-colors",
+                "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
+              )}
+            >
+              <Settings2 className="w-3.5 h-3.5" />
+              <span>Update {assistantVersionTooOld.agentName}</span>
+            </button>
+          </div>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center gap-6 p-8 text-center">
             <p className="text-sm text-daintree-text/70 max-w-[30ch]">
