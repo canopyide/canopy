@@ -683,11 +683,11 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
           )}
         </div>
         <div className="flex items-center gap-1">
-          <div className="invisible opacity-0 pointer-events-none transition-[opacity,visibility] duration-150 delay-0 group-hover/header:visible group-hover/header:opacity-100 group-hover/header:pointer-events-auto group-hover/header:delay-75 group-focus-within/header:visible group-focus-within/header:opacity-100 group-focus-within/header:pointer-events-auto group-focus-within/header:delay-75 motion-reduce:transition-none flex items-center gap-1">
+          <div className="invisible opacity-0 pointer-events-none transition-[opacity,visibility] duration-150 delay-75 group-hover/header:visible group-hover/header:opacity-100 group-hover/header:pointer-events-auto group-hover/header:delay-75 group-focus-within/header:visible group-focus-within/header:opacity-100 group-focus-within/header:pointer-events-auto group-focus-within/header:delay-75 motion-reduce:transition-none flex items-center gap-1">
             <button
               type="button"
               onClick={onOpenOverview}
-              className="p-1 text-daintree-text/40 hover:text-daintree-text hover:bg-tint/[0.06] rounded transition-colors"
+              className="p-1 text-daintree-text/40 hover:text-daintree-text hover:bg-tint/[0.06] rounded transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent"
               aria-label="Open worktrees overview"
               aria-keyshortcuts={overviewAriaShortcut}
               title={formatButtonTitle("Open worktrees overview", overviewShortcut)}
@@ -697,7 +697,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
             <button
               type="button"
               onClick={openFleetPicker}
-              className="p-1 text-daintree-text/40 hover:text-daintree-text hover:bg-tint/[0.06] rounded transition-colors"
+              className="p-1 text-daintree-text/40 hover:text-daintree-text hover:bg-tint/[0.06] rounded transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent"
               aria-label="Select terminals to arm"
               title="Select terminals to arm"
             >
@@ -707,7 +707,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
               type="button"
               onClick={handleRefreshAll}
               disabled={isRefreshing}
-              className="p-1 text-daintree-text/40 hover:text-daintree-text hover:bg-tint/[0.06] rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-daintree-text/40"
+              className="p-1 text-daintree-text/40 hover:text-daintree-text hover:bg-tint/[0.06] rounded transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-daintree-text/40"
               aria-label="Refresh sidebar"
               aria-keyshortcuts={refreshAriaShortcut}
               title={formatButtonTitle("Refresh sidebar", refreshShortcut)}
@@ -723,7 +723,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
               })
             }
             onPointerEnter={() => void preloadNewWorktreeDialog()}
-            className="p-1 text-daintree-text/40 hover:text-daintree-text hover:bg-tint/[0.06] rounded transition-colors"
+            className="p-1 text-daintree-text/60 hover:text-daintree-text hover:bg-tint/[0.06] rounded transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent"
             aria-label="Create new worktree"
             aria-keyshortcuts={createWorktreeAriaShortcut}
             title={formatButtonTitle("Create new worktree", createWorktreeShortcut)}

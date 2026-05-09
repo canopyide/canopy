@@ -33,10 +33,23 @@ describe("SidebarContent header reveal — issue #6964", () => {
     expect(source).toMatch(/transition-\[opacity,visibility\][^"]*duration-150/);
   });
 
-  it("applies a 75ms hover-intent delay on the hover/focus state with instant exit (delay-0)", () => {
-    expect(source).toContain("delay-0");
+  it("applies a symmetric 75ms enter/exit delay on the hover/focus state — issue #7602", () => {
+    expect(source).toContain("delay-75");
     expect(source).toContain("group-hover/header:delay-75");
     expect(source).toContain("group-focus-within/header:delay-75");
+    expect(source).not.toMatch(/transition-\[opacity,visibility\][^"]*\bdelay-0\b/);
+  });
+
+  it("renders focus-visible outlines on all four header icon buttons — issue #7602", () => {
+    const focusVisibleCount = (source.match(/focus-visible:outline-daintree-accent/g) ?? []).length;
+    expect(focusVisibleCount).toBe(4);
+    expect(source).toContain("focus-visible:outline focus-visible:outline-2");
+  });
+
+  it("lifts the always-visible create button to text-daintree-text/60 while siblings stay at /40 — issue #7602", () => {
+    expect(source).toContain("text-daintree-text/60");
+    const fortyCount = (source.match(/text-daintree-text\/40/g) ?? []).length;
+    expect(fortyCount).toBe(4);
   });
 
   it("respects prefers-reduced-motion via motion-reduce:transition-none", () => {
