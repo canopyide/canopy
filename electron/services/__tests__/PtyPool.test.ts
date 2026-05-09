@@ -20,13 +20,19 @@ interface FakePtyProcessWithEmit extends FakePtyProcess {
   getDataHandlerCount: () => number;
 }
 
-function createFakeProcess(pid: number | "missing" = 100): FakePtyProcessWithEmit {
+function createFakeProcess(
+  pid: number | "missing" = 100,
+  options: { emitDuringOnData?: string[] } = {}
+): FakePtyProcessWithEmit {
   let onExitHandler: ((event: { exitCode: number }) => void) | null = null;
   const dataHandlers = new Set<(chunk: string) => void>();
   let alive = true;
   const process: FakePtyProcessWithEmit = {
     onData: vi.fn((callback: (chunk: string) => void) => {
       dataHandlers.add(callback);
+      for (const chunk of options.emitDuringOnData ?? []) {
+        callback(chunk);
+      }
       return {
         dispose: vi.fn(() => {
           dataHandlers.delete(callback);
@@ -369,6 +375,17 @@ describe("PtyPool", () => {
       const acquired = pool.acquireByKey("/repo", "env-empty");
       expect(acquired?.process).toBe(proc);
       expect(acquired?.prelude).toBe("Welcome to zsh\r\nrepo % ");
+      pool.dispose();
+    });
+
+    it("captures shell-init output emitted during listener registration", async () => {
+      const proc = createFakeProcess(1106, { emitDuringOnData: ["instant prompt"] });
+      spawnMock.mockReturnValueOnce(proc);
+      const pool = new PtyPool({ poolSize: 1, defaultCwd: "/repo" });
+      await pool.warmPool();
+
+      const acquired = pool.acquireByKey("/repo", "env-empty");
+      expect(acquired?.prelude).toBe("instant prompt");
       pool.dispose();
     });
 

@@ -29,7 +29,7 @@ interface PooledPty {
   env: Record<string, string>;
   createdAt: number;
   dataDisposable: IDisposable;
-  dataHandoff?: BufferedPooledPtyDataHandoff;
+  dataHandoff?: BufferedPtyDataHandoff;
   /**
    * Bounded buffer of shell-init output (banner, MOTD, first prompt) emitted
    * before this entry was acquired. Replayed on acquire so the consumer's
@@ -64,12 +64,21 @@ export interface PooledPtyDataHandoff {
   dispose(): void;
 }
 
-class BufferedPooledPtyDataHandoff implements PooledPtyDataHandoff {
+export class BufferedPtyDataHandoff implements PooledPtyDataHandoff {
   private handler: ((data: string) => void) | null = null;
   private buffered: string[] = [];
   private isDisposed = false;
 
-  constructor(private readonly dataDisposable: IDisposable) {}
+  constructor(private dataDisposable: IDisposable | null = null) {}
+
+  setDataDisposable(dataDisposable: IDisposable): void {
+    if (this.isDisposed) {
+      dataDisposable.dispose();
+      return;
+    }
+    this.dataDisposable?.dispose();
+    this.dataDisposable = dataDisposable;
+  }
 
   handle(data: string): void {
     if (this.isDisposed) return;
@@ -106,7 +115,8 @@ class BufferedPooledPtyDataHandoff implements PooledPtyDataHandoff {
     this.isDisposed = true;
     this.buffered = [];
     this.handler = null;
-    this.dataDisposable.dispose();
+    this.dataDisposable?.dispose();
+    this.dataDisposable = null;
   }
 }
 
@@ -204,9 +214,23 @@ export class PtyPool {
         env,
       });
 
+      const entry: PooledPty = {
+        process: ptyProcess,
+        cwd,
+        envHash,
+        poolKey,
+        env,
+        createdAt: Date.now(),
+        dataDisposable: { dispose: () => {} },
+        prelude: "",
+      };
+
       // Hold a reference so the data listener can append into the same entry
-      // without a Map lookup on every chunk.
+      // without a Map lookup on every chunk. Set it before registering onData:
+      // fast macOS shells can emit prompt bytes synchronously during listener
+      // registration.
       const entryRef: { current: PooledPty | null } = { current: null };
+      entryRef.current = entry;
       const dataDisposable = ptyProcess.onData((data) => {
         const entry = entryRef.current;
         if (!entry) return;
@@ -218,6 +242,7 @@ export class PtyPool {
         const remaining = PRELUDE_BYTE_CAP - entry.prelude.length;
         entry.prelude += data.length <= remaining ? data : data.slice(0, remaining);
       });
+      entry.dataDisposable = dataDisposable;
 
       ptyProcess.onExit(({ exitCode }) => {
         if (process.env.DAINTREE_VERBOSE) {
@@ -248,17 +273,6 @@ export class PtyPool {
         return;
       }
 
-      const entry: PooledPty = {
-        process: ptyProcess,
-        cwd,
-        envHash,
-        poolKey,
-        env,
-        createdAt: Date.now(),
-        dataDisposable,
-        prelude: "",
-      };
-      entryRef.current = entry;
       this.pool.set(id, entry);
 
       if (process.env.DAINTREE_VERBOSE) {
@@ -329,7 +343,7 @@ export class PtyPool {
       return null;
     }
 
-    const dataHandoff = new BufferedPooledPtyDataHandoff(entry.dataDisposable);
+    const dataHandoff = new BufferedPtyDataHandoff(entry.dataDisposable);
     entry.dataHandoff = dataHandoff;
     const prelude = entry.prelude;
 

@@ -8,7 +8,7 @@ import {
 import { getDefaultShell, getDefaultShellArgs } from "./terminalShell.js";
 import { computePoolEnvHash } from "./ptyPoolEnvHash.js";
 import type { PtySpawnOptions } from "./types.js";
-import type { PooledPtyDataHandoff, PtyPool } from "../PtyPool.js";
+import { BufferedPtyDataHandoff, type PooledPtyDataHandoff, type PtyPool } from "../PtyPool.js";
 
 // Agent CLIs that ship as Node binaries and benefit from V8 bytecode
 // caching across launches. Codex is a Rust binary and would silently
@@ -130,6 +130,13 @@ export interface AcquiredTerminalProcess {
   dataHandoff?: PooledPtyDataHandoff;
 }
 
+function attachFreshSpawnDataHandoff(ptyProcess: pty.IPty): PooledPtyDataHandoff {
+  const dataHandoff = new BufferedPtyDataHandoff();
+  const dataDisposable = ptyProcess.onData((data) => dataHandoff.handle(data));
+  dataHandoff.setDataDisposable(dataDisposable);
+  return dataHandoff;
+}
+
 export function acquirePtyProcess(
   id: string,
   options: PtySpawnOptions,
@@ -213,7 +220,7 @@ export function acquirePtyProcess(
       cwd: options.cwd,
       env,
     });
-    return { ptyProcess, prelude: "" };
+    return { ptyProcess, prelude: "", dataHandoff: attachFreshSpawnDataHandoff(ptyProcess) };
   } catch (error) {
     console.error(`Failed to spawn terminal ${id}:`, error);
     throw error;
