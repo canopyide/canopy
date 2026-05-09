@@ -369,4 +369,33 @@ describe("registerAppLifecycleHandlers – window-all-closed", () => {
 
     expect(appMock.quit).not.toHaveBeenCalled();
   });
+
+  it("calls app.quit on win32 when no recreation is in flight", async () => {
+    // Pin the `!== "darwin"` branch for Windows — if a future refactor
+    // narrowed the check (e.g. to `=== "linux"`), this test would catch it.
+    Object.defineProperty(process, "platform", { value: "win32" });
+    const { registerAppLifecycleHandlers } = await import("../appLifecycle.js");
+    registerAppLifecycleHandlers(makeOpts());
+
+    getWindowAllClosedHandler()();
+
+    expect(appMock.quit).toHaveBeenCalledOnce();
+  });
+
+  it("resumes calling app.quit after the recreation flag returns to false", async () => {
+    // Round-trip: a suppressed event during recreation must not leave the
+    // quit path permanently disabled once the recreation settles.
+    Object.defineProperty(process, "platform", { value: "linux" });
+    const { registerAppLifecycleHandlers } = await import("../appLifecycle.js");
+    registerAppLifecycleHandlers(makeOpts());
+    const handler = getWindowAllClosedHandler();
+
+    isWindowRecreatingMock.mockReturnValue(true);
+    handler();
+    expect(appMock.quit).not.toHaveBeenCalled();
+
+    isWindowRecreatingMock.mockReturnValue(false);
+    handler();
+    expect(appMock.quit).toHaveBeenCalledOnce();
+  });
 });
