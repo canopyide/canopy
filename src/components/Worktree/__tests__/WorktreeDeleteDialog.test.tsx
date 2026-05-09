@@ -230,6 +230,57 @@ describe("WorktreeDeleteDialog — body copy", () => {
     const body = screen.getByText(/This will permanently delete the worktree directory/);
     expect(body.textContent).toMatch(/This cannot be undone\.$/);
   });
+
+  it("uses singular 'terminal' when one terminal is associated", () => {
+    terminalCountsMock.total = 1;
+    const worktree = makeWorktree(makeChanges([]));
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    const body = screen.getByText(/This will permanently delete the worktree directory/);
+    expect(body.textContent).toContain("1 terminal will be closed.");
+    expect(body.textContent).not.toContain("1 terminals");
+  });
+
+  it("uses plural 'terminals' when multiple terminals are associated", () => {
+    terminalCountsMock.total = 3;
+    const worktree = makeWorktree(makeChanges([]));
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    const body = screen.getByText(/This will permanently delete the worktree directory/);
+    expect(body.textContent).toContain("3 terminals will be closed.");
+  });
+
+  it("omits the terminal sentence when no terminals are associated", () => {
+    terminalCountsMock.total = 0;
+    const worktree = makeWorktree(makeChanges([]));
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    const body = screen.getByText(/This will permanently delete the worktree directory/);
+    expect(body.textContent).not.toMatch(/terminals? will be closed/);
+  });
+
+  it("omits the terminal sentence when closeTerminals is unchecked", () => {
+    terminalCountsMock.total = 2;
+    const worktree = makeWorktree(makeChanges([]));
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    const closeTerminalsCheckbox = screen.getByRole("checkbox", {
+      name: /close all terminals/i,
+    });
+    fireEvent.click(closeTerminalsCheckbox);
+
+    const body = screen.getByText(/This will permanently delete the worktree directory/);
+    expect(body.textContent).not.toMatch(/terminals? will be closed/);
+  });
+
+  it("states 'Uncommitted changes will be lost.' without the git-restore hint", () => {
+    const worktree = makeWorktree(makeChanges([{ path: "src/app.ts", status: "modified" }]));
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    const body = screen.getByText(/This will permanently delete the worktree directory/);
+    expect(body.textContent).toContain("Uncommitted changes will be lost.");
+    expect(body.textContent).not.toContain("restored from git");
+  });
 });
 
 describe("WorktreeDeleteDialog — medium tier (no name confirmation)", () => {
@@ -314,7 +365,7 @@ describe("WorktreeDeleteDialog — high tier (name confirmation)", () => {
 
     expect(screen.getByTestId("delete-worktree-confirm-input")).toBeDefined();
     const button = screen.getByTestId("delete-worktree-confirm") as HTMLButtonElement;
-    expect(button.textContent).toBe("Delete 'main'");
+    expect(button.textContent).toBe("Delete worktree");
     expect(button.disabled).toBe(true);
   });
 
@@ -383,7 +434,7 @@ describe("WorktreeDeleteDialog — high tier (name confirmation)", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: /force delete/i }));
 
     const button = screen.getByTestId("delete-worktree-confirm") as HTMLButtonElement;
-    expect(button.textContent).toBe("Delete 'abc1234'");
+    expect(button.textContent).toBe("Delete worktree");
 
     const input = screen.getByTestId("delete-worktree-confirm-input") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "abc1234" } });
