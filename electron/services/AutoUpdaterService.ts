@@ -53,6 +53,33 @@ const PERMANENT_CERT_ERROR_CODES = new Set([
   "ERR_TLS_CERT_ALTNAME_INVALID",
   "CERT_UNTRUSTED",
 ]);
+// Issue #7592: Electron's net stack rejects with errors whose only signal is
+// `err.message = "net::ERR_*"` — no Node-style `code`, no `cause`. These two
+// allowlists cover the Chromium tokens we explicitly know how to classify.
+// Anything outside both sets falls through to the permanent path (fail closed).
+const TRANSIENT_NET_ERROR_TOKENS = new Set([
+  "ERR_INTERNET_DISCONNECTED",
+  "ERR_NETWORK_CHANGED",
+  "ERR_CONNECTION_RESET",
+  "ERR_CONNECTION_ABORTED",
+  "ERR_CONNECTION_CLOSED",
+  "ERR_CONNECTION_TIMED_OUT",
+  "ERR_TIMED_OUT",
+  "ERR_NAME_NOT_RESOLVED",
+  "ERR_DNS_TIMED_OUT",
+  "ERR_ADDRESS_UNREACHABLE",
+]);
+const PERMANENT_NET_ERROR_TOKENS = new Set([
+  "ERR_CERT_DATE_INVALID",
+  "ERR_CERT_AUTHORITY_INVALID",
+  "ERR_CERT_COMMON_NAME_INVALID",
+  "ERR_CERT_REVOKED",
+  "ERR_SSL_PROTOCOL_ERROR",
+  "ERR_BLOCKED_BY_CLIENT",
+  "ERR_NETWORK_ACCESS_DENIED",
+  "ERR_HSTS_POLICY_BYPASSED",
+]);
+const ELECTRON_NET_TOKEN_RE = /net::([A-Z0-9_]+)/;
 const STABLE_FEED_URL = "https://updates.daintree.org/releases/";
 const NIGHTLY_FEED_URL = "https://updates.daintree.org/nightly/";
 const { autoUpdater } = electronUpdater;
@@ -164,12 +191,13 @@ class AutoUpdaterService {
   }
 
   // electron-updater 6.3.x doesn't surface a categorized error type, so classify
-  // by Node `err.code` (network/DNS) and `err.statusCode` (HTTP). Walk the
-  // `cause` chain so transient codes nested by builder-util-runtime's HTTP
-  // executor (or future Node error-chaining) aren't hidden from the classifier.
-  // Cert errors at any depth return false immediately (permanent wins); transient
-  // signals are deferred until the full chain is walked so a deeper cert error
-  // can override. Anything we can't positively prove is transient is treated as
+  // by Node `err.code` (network/DNS), `err.statusCode` (HTTP), and `err.message`
+  // (Electron net errors, which carry a `net::ERR_*` token in the message and
+  // no `code`). Walk the `cause` chain so signals nested by builder-util-runtime
+  // or future Node error-chaining aren't hidden from the classifier. Cert errors
+  // at any depth return false immediately (permanent wins); transient signals
+  // are deferred until the full chain is walked so a deeper cert error can
+  // override. Anything we can't positively prove is transient is treated as
   // permanent — fail closed so we don't loop on a misconfigured feed.
   private isTransientUpdateError(err: unknown): boolean {
     let current: unknown = err;
@@ -185,6 +213,14 @@ class AutoUpdaterService {
         if (statusCode === 404 || statusCode === 401 || statusCode === 403) return false;
         if (statusCode >= 500 && statusCode < 600) foundTransient = true;
         if (statusCode === 408 || statusCode === 429) foundTransient = true;
+      }
+      const message = (current as { message?: unknown }).message;
+      if (typeof message === "string") {
+        const token = ELECTRON_NET_TOKEN_RE.exec(message)?.[1];
+        if (token) {
+          if (PERMANENT_NET_ERROR_TOKENS.has(token)) return false;
+          if (TRANSIENT_NET_ERROR_TOKENS.has(token)) foundTransient = true;
+        }
       }
       current = (current as { cause?: unknown }).cause;
     }

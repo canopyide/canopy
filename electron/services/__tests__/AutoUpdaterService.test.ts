@@ -290,6 +290,20 @@ describe("AutoUpdaterService", () => {
       );
     });
 
+    it("does not schedule background retry for manual-check transient errors", () => {
+      // Manual checks own their own retry button — the background retry path
+      // would shadow it. The wasManual guard must short-circuit even when the
+      // error would otherwise classify as transient (issue #7592).
+      vi.advanceTimersByTime(STARTUP_JITTER_MAX_MS);
+      autoUpdaterMock.checkForUpdatesAndNotify.mockClear();
+
+      autoUpdaterService.checkForUpdatesManually();
+      errorHandler(new Error("net::ERR_INTERNET_DISCONNECTED"));
+      vi.advanceTimersByTime(60_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+    });
+
     it("resets isManualCheck flag when update-available fires", () => {
       autoUpdaterService.checkForUpdatesManually();
       availableHandler({ version: "2.0.0" });
@@ -1430,6 +1444,56 @@ describe("AutoUpdaterService", () => {
 
     it("does not retry on HTTP 403 (forbidden)", () => {
       errorHandler(Object.assign(new Error("forbidden"), { statusCode: 403 }));
+      vi.advanceTimersByTime(60_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+    });
+
+    it("retries on Electron net::ERR_INTERNET_DISCONNECTED (issue #7592)", () => {
+      // Telemetry shows Electron net errors arrive with the token only in
+      // err.message, no err.code — must be classified as transient.
+      errorHandler(new Error("net::ERR_INTERNET_DISCONNECTED"));
+      vi.advanceTimersByTime(36_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+
+    it("retries on Electron net::ERR_NETWORK_CHANGED", () => {
+      errorHandler(new Error("net::ERR_NETWORK_CHANGED"));
+      vi.advanceTimersByTime(36_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+
+    it("retries on Electron net token nested under err.cause", () => {
+      const cause = new Error("net::ERR_INTERNET_DISCONNECTED");
+      const wrapper = Object.assign(new Error("request failed"), { cause });
+
+      errorHandler(wrapper);
+      vi.advanceTimersByTime(36_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not retry on Electron net::ERR_CERT_AUTHORITY_INVALID", () => {
+      errorHandler(new Error("net::ERR_CERT_AUTHORITY_INVALID"));
+      vi.advanceTimersByTime(60_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+    });
+
+    it("permanent net token in cause wins over transient outer message", () => {
+      const cause = new Error("net::ERR_CERT_AUTHORITY_INVALID");
+      const wrapper = Object.assign(new Error("net::ERR_INTERNET_DISCONNECTED"), { cause });
+
+      errorHandler(wrapper);
+      vi.advanceTimersByTime(60_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+    });
+
+    it("does not retry on unknown Electron net token (fail closed)", () => {
+      errorHandler(new Error("net::ERR_SOME_UNKNOWN_VALUE"));
       vi.advanceTimersByTime(60_000);
 
       expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
