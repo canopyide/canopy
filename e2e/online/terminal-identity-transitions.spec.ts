@@ -109,6 +109,61 @@ async function interruptAgentSession(page: Page, terminalId: string): Promise<vo
   await sendTerminalKey(page, terminalId, "ctrl+c");
 }
 
+function hasClaudeReadyPrompt(text: string): boolean {
+  return text.includes("welcome") || text.includes("try ") || /(?:^|\n)\s*>\s*(?:$|\n)/.test(text);
+}
+
+async function answerClaudeStartupPrompt(
+  page: Page,
+  terminalId: string,
+  text: string
+): Promise<boolean> {
+  if (
+    text.includes("quick safety check") ||
+    text.includes("trust this folder") ||
+    text.includes("do you trust")
+  ) {
+    await sendTerminalKey(page, terminalId, "enter");
+    return true;
+  }
+
+  if (text.includes("api key")) {
+    await sendTerminalKey(page, terminalId, "up");
+    await page.waitForTimeout(250);
+    await sendTerminalKey(page, terminalId, "enter");
+    return true;
+  }
+
+  return false;
+}
+
+async function waitForClaudeInteractivePrompt(
+  page: Page,
+  panel: Locator,
+  terminalId: string,
+  timeoutMs: number
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  let lastText = "";
+  while (Date.now() < deadline) {
+    await dismissTelemetryConsent(page);
+    const text = (await getTerminalText(panel)).toLowerCase();
+    lastText = text;
+
+    if (hasClaudeReadyPrompt(text)) return;
+    if (await answerClaudeStartupPrompt(page, terminalId, text)) {
+      await page.waitForTimeout(1_000);
+      continue;
+    }
+
+    await page.waitForTimeout(1_000);
+  }
+
+  throw new Error(
+    `Claude did not reach an interactive prompt. Last output:\n${lastText.slice(-2_000)}`
+  );
+}
+
 async function expectAgentChromeSurvivesIdle(
   page: Page,
   panel: Locator,
@@ -487,24 +542,12 @@ test.describe("Terminal chrome ↔ live process identity (bidirectional)", () =>
     await test.step("wait for Claude to reach welcome or any interactive prompt", async () => {
       const { window } = ctx;
       const panel = window.locator(`[data-panel-id="${claudePanelId}"]`);
-      const cmEditor = panel.locator(SEL.terminal.cmEditor);
-
-      const deadline = Date.now() + 90_000 * SLOW_HOST_MULTIPLIER;
-      while (Date.now() < deadline) {
-        await dismissTelemetryConsent(window);
-        const text = (await getTerminalText(panel)).toLowerCase();
-
-        if (text.includes("welcome") || text.includes("try ") || text.includes(">")) break;
-        if (text.includes("trust")) {
-          await cmEditor.click();
-          await window.keyboard.press("Enter");
-        } else if (text.includes("api key")) {
-          await cmEditor.click();
-          await window.keyboard.press("ArrowUp");
-          await window.keyboard.press("Enter");
-        }
-        await window.waitForTimeout(1_000);
-      }
+      await waitForClaudeInteractivePrompt(
+        window,
+        panel,
+        claudePanelId,
+        90_000 * SLOW_HOST_MULTIPLIER
+      );
     });
 
     await test.step("cold-launched Claude remains agent-branded after idle wait", async () => {
@@ -650,24 +693,12 @@ test.describe("Terminal chrome ↔ live process identity (bidirectional)", () =>
     await test.step("quit Claude from the promoted plain terminal", async () => {
       const { window } = ctx;
       const panel = window.locator(`[data-panel-id="${plainPanelId}"]`);
-      const cmEditor = panel.locator(SEL.terminal.cmEditor);
-      const deadline = Date.now() + 60_000 * SLOW_HOST_MULTIPLIER;
-      let reachedPrompt = false;
-      while (Date.now() < deadline && !reachedPrompt) {
-        await dismissTelemetryConsent(window);
-        const text = (await getTerminalText(panel)).toLowerCase();
-        if (text.includes("welcome") || text.includes("try ") || text.includes(">")) {
-          reachedPrompt = true;
-        } else if (text.includes("trust")) {
-          await cmEditor.click();
-          await window.keyboard.press("Enter");
-        } else if (text.includes("api key")) {
-          await cmEditor.click();
-          await window.keyboard.press("ArrowUp");
-          await window.keyboard.press("Enter");
-        }
-        await window.waitForTimeout(1_000);
-      }
+      await waitForClaudeInteractivePrompt(
+        window,
+        panel,
+        plainPanelId,
+        60_000 * SLOW_HOST_MULTIPLIER
+      );
       await interruptAgentSession(window, plainPanelId);
       await diagnostics?.captureSnapshot("interrupted promoted plain terminal", window);
     });
