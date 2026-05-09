@@ -23,6 +23,7 @@ export const config: AgentConfig = {
     versionProbe: true,
     tier: "stable",
   },
+  assistantMinVersion: "1.0.0",
   shortcut: "Cmd/Ctrl+Alt+C",
   usageUrl: "https://claude.ai/settings/usage",
   version: {

@@ -352,6 +352,7 @@ export interface ElectronAPI {
     refreshCliAvailability(): Promise<CliAvailability>;
     getAgentCliDetails(): Promise<AgentCliDetails>;
     getAgentVersions(): Promise<AgentVersionInfo[]>;
+    getAgentVersion(agentId: string): Promise<AgentVersionInfo>;
     refreshAgentVersions(): Promise<AgentVersionInfo[]>;
     getAgentUpdateSettings(): Promise<AgentUpdateSettings>;
     setAgentUpdateSettings(settings: AgentUpdateSettings): Promise<void>;

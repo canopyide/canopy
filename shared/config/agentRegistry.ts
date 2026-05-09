@@ -330,6 +330,16 @@ export interface AgentConfig {
    * is structurally enabled but hidden from the picker until promoted.
    */
   supports?: AssistantSupports | false;
+  /**
+   * Minimum installed CLI semver required for the Daintree Assistant launch
+   * path. Compared against the live `AgentVersionService.getVersion()` probe
+   * before `provisionHelpSession` runs — when the installed version is
+   * definitively below this floor, `HelpPanel` surfaces an inline upgrade
+   * prompt instead of minting a session token. A `null` probe result (CLI
+   * missing or version unparseable) passes through so existing missing-CLI
+   * surfaces handle it. Omit when no minimum applies.
+   */
+  assistantMinVersion?: string;
   shortcut?: string | null;
   tooltip?: string;
   usageUrl?: string;

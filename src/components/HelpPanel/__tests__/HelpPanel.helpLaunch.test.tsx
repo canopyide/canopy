@@ -12,6 +12,7 @@ const {
   mockRevokeSession,
   mockGetAssistantSupportedAgentIds,
   mockGetHelpAssistantSettings,
+  mockGetAgentVersion,
   mockSystemSleepGetMetrics,
   mockSystemSleepOnSuspend,
   mockSystemSleepOnWake,
@@ -37,6 +38,13 @@ const {
     skipPermissions: false,
     auditRetention: 7,
     customArgs: "",
+  }),
+  mockGetAgentVersion: vi.fn().mockResolvedValue({
+    agentId: "claude",
+    installedVersion: null,
+    latestVersion: null,
+    updateAvailable: false,
+    lastChecked: null,
   }),
   mockSystemSleepGetMetrics: vi.fn().mockResolvedValue({
     totalSleepMs: 0,
@@ -134,7 +142,12 @@ vi.mock("@/config/agents", () => ({
   },
   getAgentConfig: (id: string) =>
     ({
-      claude: { name: "Claude", icon: () => null, models: [] },
+      claude: {
+        name: "Claude",
+        icon: () => null,
+        models: [],
+        assistantMinVersion: "1.0.0",
+      },
       gemini: { name: "Gemini", icon: () => null, models: [] },
       codex: { name: "Codex", icon: () => null, models: [] },
     })[id],
@@ -313,6 +326,14 @@ function resetState() {
     auditRetention: 7,
     customArgs: "",
   });
+  mockGetAgentVersion.mockReset();
+  mockGetAgentVersion.mockResolvedValue({
+    agentId: "claude",
+    installedVersion: null,
+    latestVersion: null,
+    updateAvailable: false,
+    lastChecked: null,
+  });
 }
 
 beforeEach(() => {
@@ -356,6 +377,9 @@ beforeEach(() => {
         },
         helpAssistant: {
           getSettings: mockGetHelpAssistantSettings,
+        },
+        system: {
+          getAgentVersion: mockGetAgentVersion,
         },
         systemSleep: {
           getMetrics: mockSystemSleepGetMetrics,
@@ -2292,5 +2316,190 @@ describe("HelpPanel — visibilitychange re-launch after teardown (issue #7201)"
       { source: "user" }
     );
     expect(mockProvisionSession).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("HelpPanel — assistantMinVersion gate (issue #7539)", () => {
+  it("blocks the single-supported-agent launch when installed version is below assistantMinVersion", async () => {
+    helpPanelState.preferredAgentId = null;
+    cliAvailabilityState.availability = { claude: "ready" };
+    mockGetAssistantSupportedAgentIds.mockReturnValue(["claude"]);
+    mockGetFolderPath.mockResolvedValue("/help");
+    mockGetAgentVersion.mockResolvedValue({
+      agentId: "claude",
+      installedVersion: "0.2.74",
+      latestVersion: "1.0.0",
+      updateAvailable: true,
+      lastChecked: Date.now(),
+    });
+    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "blocked-term" } });
+
+    const { findByTestId } = render(<HelpPanel width={380} />);
+
+    await findByTestId("help-version-too-old");
+
+    expect(mockGetAgentVersion).toHaveBeenCalledWith("claude");
+    expect(mockProvisionSession).not.toHaveBeenCalled();
+    expect(mockDispatch).not.toHaveBeenCalled();
+    expect(helpPanelState.setTerminal).not.toHaveBeenCalled();
+  });
+
+  it("blocks the preferredAgentId auto-launch when installed version is below assistantMinVersion", async () => {
+    helpPanelState.preferredAgentId = "claude";
+    mockGetFolderPath.mockResolvedValue("/help");
+    mockGetAgentVersion.mockResolvedValue({
+      agentId: "claude",
+      installedVersion: "0.9.0",
+      latestVersion: "1.0.0",
+      updateAvailable: true,
+      lastChecked: Date.now(),
+    });
+    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "auto-term-1" } });
+
+    const { findByTestId } = render(<HelpPanel width={380} />);
+
+    await findByTestId("help-version-too-old");
+
+    expect(mockGetAgentVersion).toHaveBeenCalledWith("claude");
+    expect(mockProvisionSession).not.toHaveBeenCalled();
+    expect(mockDispatch).not.toHaveBeenCalled();
+    expect(helpPanelState.setTerminal).not.toHaveBeenCalled();
+  });
+
+  it("renders the upgrade copy with required and installed versions", async () => {
+    helpPanelState.preferredAgentId = "claude";
+    mockGetFolderPath.mockResolvedValue("/help");
+    mockGetAgentVersion.mockResolvedValue({
+      agentId: "claude",
+      installedVersion: "0.2.74",
+      latestVersion: "1.0.0",
+      updateAvailable: true,
+      lastChecked: Date.now(),
+    });
+
+    const { findByTestId } = render(<HelpPanel width={380} />);
+
+    const block = await findByTestId("help-version-too-old");
+    expect(block.textContent).toContain("Update Claude to use Daintree Assistant");
+    expect(block.textContent).toContain("1.0.0");
+    expect(block.textContent).toContain("0.2.74");
+  });
+
+  it("update CTA dispatches app.settings.openTab to the assistant tab", async () => {
+    helpPanelState.preferredAgentId = "claude";
+    mockGetFolderPath.mockResolvedValue("/help");
+    mockGetAgentVersion.mockResolvedValue({
+      agentId: "claude",
+      installedVersion: "0.2.74",
+      latestVersion: "1.0.0",
+      updateAvailable: true,
+      lastChecked: Date.now(),
+    });
+
+    const { findByRole } = render(<HelpPanel width={380} />);
+
+    const cta = await findByRole("button", { name: /update claude/i });
+    fireEvent.click(cta);
+
+    expect(mockDispatch).toHaveBeenCalledWith(
+      "app.settings.openTab",
+      { tab: "assistant" },
+      { source: "user" }
+    );
+  });
+
+  it("passes through when installed version equals assistantMinVersion", async () => {
+    helpPanelState.preferredAgentId = "claude";
+    mockGetFolderPath.mockResolvedValue("/help");
+    mockGetAgentVersion.mockResolvedValue({
+      agentId: "claude",
+      installedVersion: "1.0.0",
+      latestVersion: "1.2.0",
+      updateAvailable: true,
+      lastChecked: Date.now(),
+    });
+    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "auto-term-1" } });
+
+    await act(async () => {
+      render(<HelpPanel width={380} />);
+    });
+
+    expect(mockProvisionSession).toHaveBeenCalled();
+    expect(mockDispatch).toHaveBeenCalledWith(
+      "agent.launch",
+      expect.objectContaining({ agentId: "claude" }),
+      { source: "user" }
+    );
+  });
+
+  it("passes through when installedVersion is null (probe could not determine version)", async () => {
+    helpPanelState.preferredAgentId = "claude";
+    mockGetFolderPath.mockResolvedValue("/help");
+    mockGetAgentVersion.mockResolvedValue({
+      agentId: "claude",
+      installedVersion: null,
+      latestVersion: null,
+      updateAvailable: false,
+      lastChecked: null,
+    });
+    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "auto-term-1" } });
+
+    await act(async () => {
+      render(<HelpPanel width={380} />);
+    });
+
+    expect(mockProvisionSession).toHaveBeenCalled();
+    expect(mockDispatch).toHaveBeenCalledWith(
+      "agent.launch",
+      expect.objectContaining({ agentId: "claude" }),
+      { source: "user" }
+    );
+  });
+
+  it("passes through when the version probe IPC throws (transient failure does not block launch)", async () => {
+    helpPanelState.preferredAgentId = "claude";
+    mockGetFolderPath.mockResolvedValue("/help");
+    mockGetAgentVersion.mockRejectedValueOnce(new Error("ipc disconnected"));
+    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "auto-term-1" } });
+
+    await act(async () => {
+      render(<HelpPanel width={380} />);
+    });
+
+    expect(mockProvisionSession).toHaveBeenCalled();
+    expect(mockDispatch).toHaveBeenCalled();
+    expect(mockLogError).toHaveBeenCalledWith(
+      "Failed to probe assistant CLI version",
+      expect.any(Error)
+    );
+  });
+
+  it("does not gate agents without an assistantMinVersion (e.g., codex)", async () => {
+    mockGetAssistantSupportedAgentIds.mockReturnValue(["codex"]);
+    helpPanelState.preferredAgentId = "codex";
+    cliAvailabilityState.availability = { codex: "ready" };
+    mockGetFolderPath.mockResolvedValue("/help");
+    mockGetAgentVersion.mockResolvedValue({
+      agentId: "codex",
+      installedVersion: "0.0.1",
+      latestVersion: "1.0.0",
+      updateAvailable: true,
+      lastChecked: Date.now(),
+    });
+    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "codex-term-1" } });
+
+    await act(async () => {
+      render(<HelpPanel width={380} />);
+    });
+
+    // Without an assistantMinVersion, the helper short-circuits to null and the IPC
+    // probe should never be called — saves a probe per launch on un-gated agents.
+    expect(mockGetAgentVersion).not.toHaveBeenCalled();
+    expect(mockProvisionSession).toHaveBeenCalled();
+    expect(mockDispatch).toHaveBeenCalledWith(
+      "agent.launch",
+      expect.objectContaining({ agentId: "codex" }),
+      { source: "user" }
+    );
   });
 });

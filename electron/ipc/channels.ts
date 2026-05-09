@@ -100,6 +100,7 @@ export const CHANNELS = {
   SYSTEM_REFRESH_CLI_AVAILABILITY: "system:refresh-cli-availability",
   SYSTEM_GET_AGENT_CLI_DETAILS: "system:get-agent-cli-details",
   SYSTEM_GET_AGENT_VERSIONS: "system:get-agent-versions",
+  SYSTEM_GET_AGENT_VERSION: "system:get-agent-version",
   SYSTEM_REFRESH_AGENT_VERSIONS: "system:refresh-agent-versions",
   SYSTEM_GET_AGENT_UPDATE_SETTINGS: "system:get-agent-update-settings",
   SYSTEM_SET_AGENT_UPDATE_SETTINGS: "system:set-agent-update-settings",
