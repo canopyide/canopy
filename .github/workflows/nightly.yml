@@ -298,6 +298,16 @@ jobs:
       # Windows: package validation still runs above, but Windows artifacts are
       # intentionally not uploaded from nightly. Microsoft Store distribution
       # happens through the release workflow only.
+      - name: Generate update metadata (macOS)
+        if: startsWith(matrix.os, 'macos')
+        shell: bash
+        run: node scripts/ci/generate-update-metadata.mjs mac release/latest-mac.yml
+
+      - name: Generate update metadata (Linux)
+        if: matrix.os == 'ubuntu-22.04'
+        shell: bash
+        run: node scripts/ci/generate-update-metadata.mjs linux release/latest-linux.yml
+
       - name: Validate update metadata (macOS)
         if: startsWith(matrix.os, 'macos')
         shell: bash

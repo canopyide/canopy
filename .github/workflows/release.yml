@@ -300,6 +300,7 @@ jobs:
         if: startsWith(matrix.os, 'macos')
         shell: bash
         run: |
+          node scripts/ci/generate-update-metadata.mjs mac "release/${UPDATE_METADATA_PREFIX}-mac.yml"
           if [ ! -f "release/${UPDATE_METADATA_PREFIX}-mac.yml" ]; then
             echo "::error::Missing release/${UPDATE_METADATA_PREFIX}-mac.yml - macOS auto-update metadata was not generated"
             exit 1
@@ -318,6 +319,7 @@ jobs:
         if: matrix.os == 'ubuntu-22.04'
         shell: bash
         run: |
+          node scripts/ci/generate-update-metadata.mjs linux "release/${UPDATE_METADATA_PREFIX}-linux.yml"
           if [ ! -f "release/${UPDATE_METADATA_PREFIX}-linux.yml" ]; then
             echo "::error::Missing release/${UPDATE_METADATA_PREFIX}-linux.yml - Linux auto-update metadata was not generated"
             exit 1
