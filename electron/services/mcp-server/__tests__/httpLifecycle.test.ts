@@ -262,4 +262,45 @@ describe("HttpLifecycle", () => {
       expect(res.end).toHaveBeenCalledWith("Unauthorized");
     });
   });
+
+  describe("unauthorized counter", () => {
+    function buildUnauthorizedRequestPair() {
+      const res = {
+        writeHead: vi.fn(),
+        end: vi.fn(),
+        headersSent: false,
+      } as unknown as http.ServerResponse;
+      const req = {
+        method: "GET",
+        url: "/sse",
+        headers: { host: "127.0.0.1:45454" },
+      } as unknown as http.IncomingMessage;
+      return { req, res };
+    }
+
+    it("starts at zero", () => {
+      const lc = new HttpLifecycle(fakeDeps());
+      expect(lc.getUnauthorizedCount()).toBe(0);
+    });
+
+    it("increments on each 401 response", async () => {
+      const lc = new HttpLifecycle(fakeDeps());
+      lc.setApiKey("test-api-key");
+      (lc as unknown as { port: number }).port = 45454;
+
+      const handle = (
+        lc as unknown as {
+          handleRequest: (req: http.IncomingMessage, res: http.ServerResponse) => Promise<void>;
+        }
+      ).handleRequest.bind(lc);
+
+      const first = buildUnauthorizedRequestPair();
+      await handle(first.req, first.res);
+      expect(lc.getUnauthorizedCount()).toBe(1);
+
+      const second = buildUnauthorizedRequestPair();
+      await handle(second.req, second.res);
+      expect(lc.getUnauthorizedCount()).toBe(2);
+    });
+  });
 });

@@ -162,6 +162,10 @@ interface McpServerApi {
   rotateApiKey: ReturnType<typeof vi.fn>;
   getConfigSnippet: ReturnType<typeof vi.fn>;
   onRuntimeStateChanged: ReturnType<typeof vi.fn>;
+  getAuditConfig: ReturnType<typeof vi.fn>;
+  getAuditRecords: ReturnType<typeof vi.fn>;
+  getMetrics: ReturnType<typeof vi.fn>;
+  clearAuditLog: ReturnType<typeof vi.fn>;
 }
 
 function installApi(
@@ -194,6 +198,10 @@ function installApi(
     rotateApiKey: vi.fn().mockResolvedValue("dnt-key-new"),
     getConfigSnippet: vi.fn().mockResolvedValue('{ "url": "http://127.0.0.1:45454/sse" }'),
     onRuntimeStateChanged: vi.fn(() => () => {}),
+    getAuditConfig: vi.fn().mockResolvedValue({ enabled: true, maxRecords: 500 }),
+    getAuditRecords: vi.fn().mockResolvedValue([]),
+    getMetrics: vi.fn().mockResolvedValue({ unauthorizedCount: 0 }),
+    clearAuditLog: vi.fn().mockResolvedValue(undefined),
   };
   window.electron = {
     helpAssistant: { ...helpDefaults, ...helpAssistant },
@@ -654,6 +662,211 @@ describe("DaintreeAssistantSettingsTab", () => {
       expect(window.electron.helpAssistant.setSettings).toHaveBeenCalledWith({
         customArgs: "",
       });
+    });
+  });
+
+  describe("activity log", () => {
+    let recordCounter = 0;
+    function makeRecord(overrides: Partial<import("@shared/types").McpAuditRecord> = {}) {
+      recordCounter += 1;
+      return {
+        id: overrides.id ?? `record-${recordCounter}`,
+        timestamp: Date.now() - 1000,
+        toolId: "panel.focus",
+        sessionId: "sess-1",
+        tier: "workbench",
+        argsSummary: '{"panelId":"abc"}',
+        result: "success" as const,
+        durationMs: 12,
+        ...overrides,
+      };
+    }
+
+    it("renders the empty state when audit logging is off", async () => {
+      installApi(
+        {},
+        {
+          getAuditConfig: vi.fn().mockResolvedValue({ enabled: false, maxRecords: 500 }),
+        }
+      );
+
+      const { container } = render(
+        <SettingsValidationProvider>
+          <DaintreeAssistantSettingsTab />
+        </SettingsValidationProvider>
+      );
+
+      await waitForContent(container, "Activity log");
+      expect(container.textContent).toContain("Audit log is off");
+      expect(container.textContent).toContain("Turn it on in the MCP Server tab");
+    });
+
+    it("renders the empty state when audit is enabled but no records", async () => {
+      const { container } = render(
+        <SettingsValidationProvider>
+          <DaintreeAssistantSettingsTab />
+        </SettingsValidationProvider>
+      );
+
+      await waitForContent(container, "Activity log");
+      expect(container.textContent).toContain("No help-session calls recorded yet");
+    });
+
+    it("filters out records with tier='external' from the help-session view", async () => {
+      const records = [
+        makeRecord({ id: "ext-1", toolId: "external.only.tool", tier: "external" }),
+        makeRecord({ id: "wb-1", toolId: "workbench.tool", tier: "workbench" }),
+      ];
+      installApi(
+        {},
+        {
+          getAuditRecords: vi.fn().mockResolvedValue(records),
+        }
+      );
+
+      const { container } = render(
+        <SettingsValidationProvider>
+          <DaintreeAssistantSettingsTab />
+        </SettingsValidationProvider>
+      );
+
+      await waitForContent(container, "workbench.tool");
+      expect(container.textContent).not.toContain("external.only.tool");
+    });
+
+    it("shows the unauthorized response counter from getMetrics", async () => {
+      installApi(
+        {},
+        {
+          getAuditRecords: vi
+            .fn()
+            .mockResolvedValue([makeRecord({ id: "wb-1", toolId: "panel.focus" })]),
+          getMetrics: vi.fn().mockResolvedValue({ unauthorizedCount: 7 }),
+        }
+      );
+
+      const { container } = render(
+        <SettingsValidationProvider>
+          <DaintreeAssistantSettingsTab />
+        </SettingsValidationProvider>
+      );
+
+      await waitForContent(container, "Unauthorized responses");
+      expect(container.textContent).toContain("7");
+    });
+
+    it("renders the recent tier rejections sub-list", async () => {
+      installApi(
+        {},
+        {
+          getAuditRecords: vi.fn().mockResolvedValue([
+            makeRecord({
+              id: "rej-1",
+              toolId: "system.restart",
+              result: "unauthorized",
+              errorCode: "TIER_NOT_PERMITTED",
+            }),
+            makeRecord({ id: "ok-1", toolId: "panel.focus" }),
+          ]),
+        }
+      );
+
+      const { container } = render(
+        <SettingsValidationProvider>
+          <DaintreeAssistantSettingsTab />
+        </SettingsValidationProvider>
+      );
+
+      await waitForContent(container, "Recent tier rejections");
+      expect(container.textContent).toContain("system.restart");
+    });
+
+    it("renders the per-tool latency table when records exist", async () => {
+      installApi(
+        {},
+        {
+          getAuditRecords: vi
+            .fn()
+            .mockResolvedValue([
+              makeRecord({ id: "a", toolId: "panel.focus", durationMs: 10 }),
+              makeRecord({ id: "b", toolId: "panel.focus", durationMs: 20 }),
+              makeRecord({ id: "c", toolId: "panel.focus", durationMs: 30 }),
+            ]),
+        }
+      );
+
+      const { container } = render(
+        <SettingsValidationProvider>
+          <DaintreeAssistantSettingsTab />
+        </SettingsValidationProvider>
+      );
+
+      await waitForContent(container, "Tool latency");
+      expect(container.textContent).toContain("panel.focus");
+      // Header columns
+      expect(container.textContent).toContain("p50");
+      expect(container.textContent).toContain("p95");
+    });
+
+    it("clear log opens confirm dialog and calls clearAuditLog on confirm", async () => {
+      const clearAuditLog = vi.fn().mockResolvedValue(undefined);
+      installApi(
+        {},
+        {
+          getAuditRecords: vi
+            .fn()
+            .mockResolvedValue([makeRecord({ id: "wb-1", toolId: "panel.focus" })]),
+          clearAuditLog,
+        }
+      );
+
+      const { container } = render(
+        <SettingsValidationProvider>
+          <DaintreeAssistantSettingsTab />
+        </SettingsValidationProvider>
+      );
+      await waitForContent(container, "panel.focus");
+
+      const clearButton = screen.getByRole("button", { name: /^clear log$/i });
+      fireEvent.click(clearButton);
+
+      await waitFor(() => {
+        expect(screen.getByRole("heading", { name: /clear activity log\?/i })).toBeTruthy();
+      });
+      expect(clearAuditLog).not.toHaveBeenCalled();
+
+      const confirmButtons = screen.getAllByRole("button", { name: /^clear log$/i });
+      // The dialog confirm button is the second match (the inline button stays mounted).
+      fireEvent.click(confirmButtons[confirmButtons.length - 1]);
+
+      await waitFor(() => {
+        expect(clearAuditLog).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    it("does not crash if getMetrics rejects — records still render", async () => {
+      installApi(
+        {},
+        {
+          getAuditRecords: vi
+            .fn()
+            .mockResolvedValue([makeRecord({ id: "wb-1", toolId: "panel.focus" })]),
+          getMetrics: vi.fn().mockRejectedValue(new Error("ipc down")),
+        }
+      );
+
+      const { container } = render(
+        <SettingsValidationProvider>
+          <DaintreeAssistantSettingsTab />
+        </SettingsValidationProvider>
+      );
+      await waitForContent(container, "Activity log");
+
+      // Audit fetch is bundled — when one promise rejects, the whole audit
+      // load is treated as failed. The fallback copy renders instead of the
+      // log list, but the rest of the tab is still present.
+      expect(container.textContent).toContain("Couldn't load activity log");
+      expect(container.textContent).toContain("Search documentation");
     });
   });
 });

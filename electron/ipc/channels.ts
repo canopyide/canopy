@@ -509,6 +509,13 @@ export const CHANNELS = {
   MCP_SERVER_SET_AUDIT_MAX_RECORDS: "mcp-server:set-audit-max-records",
   MCP_SERVER_GET_AUDIT_CONFIG: "mcp-server:get-audit-config",
   /**
+   * Read process-lifetime connection metrics that aren't part of the per-
+   * dispatch audit ring buffer (e.g. unauthorized 401 responses). Surfaced
+   * separately so the assistant settings tab can show a "rejected
+   * connections" counter without reaching into HTTP-server internals.
+   */
+  MCP_SERVER_GET_METRICS: "mcp-server:get-metrics",
+  /**
    * Mount-time hydration of the runtime-state snapshot. Distinct from
    * `MCP_SERVER_GET_STATUS` (which exposes config — enabled/port/apiKey)
    * because the renderer needs the derived `disabled|starting|ready|failed`

@@ -329,6 +329,7 @@ export {
   MCP_AUDIT_MIN_RECORDS,
   MCP_AUDIT_MAX_RECORDS,
   MCP_AUDIT_DEFAULT_MAX_RECORDS,
+  TIER_NOT_PERMITTED_CODE,
 } from "./ipc/mcpServer.js";
 
 // Event types - event context for correlation

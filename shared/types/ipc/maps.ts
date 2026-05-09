@@ -1823,6 +1823,10 @@ export interface IpcInvokeMap {
     args: [max: number];
     result: { enabled: boolean; maxRecords: number };
   };
+  "mcp-server:get-metrics": {
+    args: [];
+    result: { unauthorizedCount: number };
+  };
   "mcp-server:get-runtime-state": {
     args: [];
     result: import("./mcpServer.js").McpRuntimeSnapshot;

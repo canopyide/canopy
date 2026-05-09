@@ -1292,6 +1292,12 @@ export interface ElectronAPI {
     getAuditRecords(): Promise<import("./mcpServer.js").McpAuditRecord[]>;
     /** Get the persisted audit-log configuration. */
     getAuditConfig(): Promise<{ enabled: boolean; maxRecords: number }>;
+    /**
+     * Read process-lifetime connection metrics (e.g. count of 401 responses
+     * for unauthorized bearers). Distinct from the per-dispatch audit
+     * records: not persisted, not affected by `clearAuditLog()`.
+     */
+    getMetrics(): Promise<{ unauthorizedCount: number }>;
     /** Clear all audit records from the ring buffer and persistence. */
     clearAuditLog(): Promise<void>;
     /** Toggle audit-log capture without losing existing records. */

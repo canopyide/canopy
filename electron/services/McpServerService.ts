@@ -317,6 +317,10 @@ export class McpServerService {
     return this.httpLifecycle.getConfigSnippet();
   }
 
+  getMetrics(): { unauthorizedCount: number } {
+    return { unauthorizedCount: this.httpLifecycle.getUnauthorizedCount() };
+  }
+
   getAuditRecords(): McpAuditRecord[] {
     return this.auditService.getRecords();
   }

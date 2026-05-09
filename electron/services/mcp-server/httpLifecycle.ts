@@ -7,6 +7,7 @@ import type { WindowRegistry } from "../../window/WindowRegistry.js";
 import { store } from "../../store.js";
 import { formatErrorMessage } from "../../../shared/utils/errorMessage.js";
 import { summarizeMcpArgs } from "../../../shared/utils/mcpArgsSummary.js";
+import { redactArgsSummary } from "./redactArgsSummary.js";
 import type { HelpTokenValidator, HelpSessionWebContentsResolver } from "./shared.js";
 import {
   extractBearerToken,
@@ -89,6 +90,10 @@ export class HttpLifecycle {
   private restartAttempts = 0;
   private restartTimer: ReturnType<typeof setTimeout> | null = null;
   private stableTimer: ReturnType<typeof setTimeout> | null = null;
+  // Process-lifetime counter of 401 responses, surfaced via getMetrics().
+  // Not persisted and not affected by clearAuditLog() — connection-attempt
+  // metrics are a distinct signal from the per-dispatch audit ring buffer.
+  private unauthorizedCount = 0;
 
   constructor(private readonly deps: HttpLifecycleDeps) {}
 
@@ -461,6 +466,7 @@ export class HttpLifecycle {
 
     const authHeader = req.headers.authorization ?? "";
     if (!isAuthorized(authHeader, this.apiKeyBearerHash, this.helpTokenValidator)) {
+      this.unauthorizedCount++;
       res.writeHead(401, {
         "Content-Type": "text/plain",
         "WWW-Authenticate": 'Bearer realm="Daintree MCP"',
@@ -694,12 +700,21 @@ export class HttpLifecycle {
       appendAuditRecord: (input) => {
         this.deps.auditService.appendRecord({
           ...input,
-          argsSummary: summarizeMcpArgs(input.args),
+          // Redact at the persist boundary — `summarizeMcpArgs` truncates and
+          // collapses but does not strip home paths or short secret sigils
+          // from the surviving ≤50-char strings. Keeping `summarizeMcpArgs`
+          // unchanged preserves readable values for the confirmation modal
+          // path in `sessionServer.ts`, which is the only other caller.
+          argsSummary: redactArgsSummary(summarizeMcpArgs(input.args)),
         });
       },
       getCachedManifest,
       getFullToolSurface: () => this.getConfig().fullToolSurface === true,
     };
+  }
+
+  getUnauthorizedCount(): number {
+    return this.unauthorizedCount;
   }
 
   getStatus(): {

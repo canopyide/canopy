@@ -69,6 +69,15 @@ export const MCP_AUDIT_MAX_RECORDS = 10000;
 export const MCP_AUDIT_DEFAULT_MAX_RECORDS = 500;
 
 /**
+ * Error code recorded on `result: "unauthorized"` audit entries when a
+ * dispatch is rejected because the session's tier was not permitted to invoke
+ * the action. Mirrors the main-process `TIER_NOT_PERMITTED_CODE` constant in
+ * `electron/services/mcp-server/shared.ts`; re-exported here so the renderer
+ * can reference it without reaching into main-process modules.
+ */
+export const TIER_NOT_PERMITTED_CODE = "TIER_NOT_PERMITTED";
+
+/**
  * Outcome classification for a single assistant turn (one `active → passive`
  * FSM transition for an MCP-bound help session, or a pre-turn failure such
  * as `mcp-not-ready`). The waterfall below is the deterministic priority

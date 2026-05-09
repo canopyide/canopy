@@ -8,6 +8,7 @@ import {
   KeyRound,
   Moon,
   RefreshCw,
+  ScrollText,
   ShieldAlert,
   Sliders,
   Wrench,
@@ -27,7 +28,8 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { logError } from "@/utils/logger";
 import { getAgentConfig, getAssistantSupportedAgentIds } from "@/config/agents";
 import { useHelpPanelStore } from "@/store/helpPanelStore";
-import type { HelpAssistantSettings } from "@shared/types";
+import type { HelpAssistantSettings, McpAuditRecord, McpAuditResult } from "@shared/types";
+import { TIER_NOT_PERMITTED_CODE } from "@shared/types";
 
 const COPY_RESET_DELAY_MS = 2000;
 const CUSTOM_ARGS_DEBOUNCE_MS = 500;
@@ -61,6 +63,64 @@ const HIBERNATE_OPTIONS = [
   { value: "120", label: "2 hours" },
 ];
 
+const RECENT_REJECTION_LIMIT = 5;
+
+const RESULT_LABEL: Record<McpAuditResult, string> = {
+  success: "Success",
+  error: "Error",
+  "confirmation-pending": "Awaiting confirmation",
+  unauthorized: "Unauthorized",
+};
+
+const RESULT_DOT_CLASS: Record<McpAuditResult, string> = {
+  success: "bg-status-success",
+  error: "bg-status-danger",
+  "confirmation-pending": "bg-status-warning",
+  unauthorized: "bg-status-danger",
+};
+
+function formatRelativeTimestamp(ts: number): string {
+  const diffMs = Date.now() - ts;
+  if (diffMs < 0) return "just now";
+  const sec = Math.floor(diffMs / 1000);
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  return `${day}d ago`;
+}
+
+interface ToolLatencyRow {
+  toolId: string;
+  count: number;
+  p50: number;
+  p95: number;
+}
+
+function computeToolLatencyStats(records: McpAuditRecord[]): ToolLatencyRow[] {
+  const byTool = new Map<string, number[]>();
+  for (const record of records) {
+    if (!Number.isFinite(record.durationMs)) continue;
+    const arr = byTool.get(record.toolId);
+    if (arr) {
+      arr.push(record.durationMs);
+    } else {
+      byTool.set(record.toolId, [record.durationMs]);
+    }
+  }
+  const rows: ToolLatencyRow[] = [];
+  for (const [toolId, durations] of byTool) {
+    const sorted = [...durations].sort((a, b) => a - b);
+    const p50 = sorted[Math.floor((sorted.length - 1) * 0.5)] ?? 0;
+    const p95 = sorted[Math.floor((sorted.length - 1) * 0.95)] ?? 0;
+    rows.push({ toolId, count: durations.length, p50, p95 });
+  }
+  rows.sort((a, b) => b.count - a.count || a.toolId.localeCompare(b.toolId));
+  return rows;
+}
+
 export function DaintreeAssistantSettingsTab() {
   const [settings, setSettings] = useState<HelpAssistantSettings>(DEFAULT_SETTINGS);
   const [mcpStatus, setMcpStatus] = useState<McpStatusSnapshot | null>(null);
@@ -69,6 +129,12 @@ export function DaintreeAssistantSettingsTab() {
   const [copied, setCopied] = useState(false);
   const [showRotateConfirm, setShowRotateConfirm] = useState(false);
   const [isRotating, setIsRotating] = useState(false);
+  const [auditEnabled, setAuditEnabled] = useState(true);
+  const [auditRecords, setAuditRecords] = useState<McpAuditRecord[]>([]);
+  const [unauthorizedCount, setUnauthorizedCount] = useState(0);
+  const [auditLoadFailed, setAuditLoadFailed] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // customArgs is a free-form text input; persisting on every keystroke would
@@ -140,6 +206,27 @@ export function DaintreeAssistantSettingsTab() {
       logError("Failed initial MCP status load for assistant tab", err);
     });
 
+    // Audit data is non-fatal — capture failures into a local flag so the
+    // rest of the tab still renders. The activity log is purely diagnostic;
+    // a transient IPC error here should never block settings access.
+    const auditLoad = Promise.all([
+      window.electron.mcpServer.getAuditConfig(),
+      window.electron.mcpServer.getAuditRecords(),
+      window.electron.mcpServer.getMetrics(),
+    ])
+      .then(([cfg, records, metrics]) => {
+        if (cancelled) return;
+        setAuditEnabled(cfg.enabled);
+        setAuditRecords(records);
+        setUnauthorizedCount(metrics.unauthorizedCount);
+        setAuditLoadFailed(false);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setAuditLoadFailed(true);
+        logError("Failed to load MCP audit data for assistant tab", err);
+      });
+
     // Refetch the connection panel whenever the runtime state transitions.
     // Without this, toggling Daintree control on triggers main-process
     // auto-coupling (`helpAssistant.setSettings` calls `mcpServer.setEnabled`),
@@ -148,7 +235,7 @@ export function DaintreeAssistantSettingsTab() {
       void refreshStatus();
     });
 
-    void Promise.all([settingsLoad, mcpLoad]).finally(() => {
+    void Promise.all([settingsLoad, mcpLoad, auditLoad]).finally(() => {
       if (!cancelled) setLoading(false);
     });
 
@@ -271,6 +358,45 @@ export function DaintreeAssistantSettingsTab() {
 
   const apiKeySuffix =
     mcpStatus?.apiKey && mcpStatus.apiKey.length >= 8 ? mcpStatus.apiKey.slice(-4) : "";
+
+  // Help-session activity only — calls authorized via the api-key bearer
+  // (`tier === "external"`) belong to the MCP Server tab, not this one.
+  const helpSessionRecords = useMemo(
+    () => auditRecords.filter((record) => record.tier !== "external"),
+    [auditRecords]
+  );
+
+  const toolLatencyStats = useMemo(
+    () => computeToolLatencyStats(helpSessionRecords),
+    [helpSessionRecords]
+  );
+
+  const recentRejections = useMemo(() => {
+    const rejections = helpSessionRecords.filter(
+      (record) => record.result === "unauthorized" && record.errorCode === TIER_NOT_PERMITTED_CODE
+    );
+    return rejections.slice(0, RECENT_REJECTION_LIMIT);
+  }, [helpSessionRecords]);
+
+  const confirmClearAuditLog = useCallback(async () => {
+    if (isClearing) return;
+    setIsClearing(true);
+    try {
+      await window.electron.mcpServer.clearAuditLog();
+      setAuditRecords([]);
+      setShowClearConfirm(false);
+    } catch (err) {
+      setError(formatErrorMessage(err, "Couldn't clear activity log"));
+      logError("Failed to clear MCP audit log from assistant tab", err);
+    } finally {
+      setIsClearing(false);
+    }
+  }, [isClearing]);
+
+  const handleCancelClearAuditLog = useCallback(() => {
+    if (isClearing) return;
+    setShowClearConfirm(false);
+  }, [isClearing]);
 
   const handleCopyConfig = useCallback(async () => {
     try {
@@ -427,6 +553,141 @@ export function DaintreeAssistantSettingsTab() {
         />
       </SettingsSection>
 
+      {/* Activity log */}
+      <SettingsSection
+        icon={ScrollText}
+        title="Activity log"
+        description="Help-session calls only. Records are stored on this device and retained per the privacy setting above."
+      >
+        {auditLoadFailed ? (
+          <p className="text-xs text-daintree-text/50">Couldn't load activity log.</p>
+        ) : !auditEnabled ? (
+          <div className="rounded-[var(--radius-md)] border border-dashed border-daintree-border p-4">
+            <p className="text-sm font-medium text-daintree-text/70">Audit log is off</p>
+            <p className="mt-1 text-xs text-daintree-text/50">
+              Turn it on in the MCP Server tab to capture help-session activity.
+            </p>
+          </div>
+        ) : helpSessionRecords.length === 0 ? (
+          <p className="text-xs text-daintree-text/50">No help-session calls recorded yet.</p>
+        ) : (
+          <div className="contents">
+            <div className="max-h-64 overflow-y-auto rounded-[var(--radius-md)] border border-daintree-border bg-daintree-bg">
+              <ul className="divide-y divide-daintree-border">
+                {helpSessionRecords.map((record) => (
+                  <li key={record.id} className="grid grid-cols-[auto_1fr_auto] gap-2 p-2 text-xs">
+                    <span
+                      className={cn(
+                        "mt-1 h-2 w-2 rounded-full shrink-0",
+                        RESULT_DOT_CLASS[record.result]
+                      )}
+                      aria-label={RESULT_LABEL[record.result]}
+                      title={RESULT_LABEL[record.result]}
+                    />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-daintree-text/90 truncate">
+                          {record.toolId}
+                        </span>
+                        {record.errorCode && (
+                          <span className="text-[10px] uppercase tracking-wide text-status-danger/80">
+                            {record.errorCode}
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-0.5 font-mono text-daintree-text/50 truncate">
+                        {record.argsSummary || "{}"}
+                      </div>
+                    </div>
+                    <div className="text-right text-daintree-text/40 whitespace-nowrap">
+                      <div>{formatRelativeTimestamp(record.timestamp)}</div>
+                      <div>{record.durationMs}ms</div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {toolLatencyStats.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-daintree-text/70">Tool latency</p>
+                <div className="mt-2 overflow-hidden rounded-[var(--radius-md)] border border-daintree-border">
+                  <table className="w-full text-xs">
+                    <thead className="bg-overlay-soft text-daintree-text/60">
+                      <tr>
+                        <th className="px-2 py-1.5 text-left font-medium">Tool</th>
+                        <th className="px-2 py-1.5 text-right font-medium">Calls</th>
+                        <th className="px-2 py-1.5 text-right font-medium">p50</th>
+                        <th className="px-2 py-1.5 text-right font-medium">p95</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-daintree-border">
+                      {toolLatencyStats.map((row) => (
+                        <tr key={row.toolId}>
+                          <td className="px-2 py-1.5 font-mono text-daintree-text/80 truncate">
+                            {row.toolId}
+                          </td>
+                          <td className="px-2 py-1.5 text-right text-daintree-text/60 font-mono">
+                            {row.count}
+                          </td>
+                          <td className="px-2 py-1.5 text-right text-daintree-text/60 font-mono">
+                            {row.p50}ms
+                          </td>
+                          <td className="px-2 py-1.5 text-right text-daintree-text/60 font-mono">
+                            {row.p95}ms
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {recentRejections.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-daintree-text/70">Recent tier rejections</p>
+                <ul className="mt-2 divide-y divide-daintree-border rounded-[var(--radius-md)] border border-daintree-border bg-daintree-bg">
+                  {recentRejections.map((record) => (
+                    <li
+                      key={record.id}
+                      className="flex items-center justify-between gap-2 p-2 text-xs"
+                    >
+                      <span className="font-mono text-daintree-text/80 truncate">
+                        {record.toolId}
+                      </span>
+                      <span className="text-daintree-text/40 whitespace-nowrap">
+                        {formatRelativeTimestamp(record.timestamp)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-daintree-text/60">
+                Unauthorized responses:{" "}
+                <span className="font-mono text-daintree-text/80">{unauthorizedCount}</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowClearConfirm(true)}
+                disabled={helpSessionRecords.length === 0}
+                className={cn(
+                  "ml-auto px-3 py-1.5 text-xs font-medium rounded-[var(--radius-md)] border transition-colors",
+                  helpSessionRecords.length === 0
+                    ? "border-daintree-border text-daintree-text/30 cursor-not-allowed"
+                    : "border-daintree-border text-status-danger hover:text-status-danger hover:bg-status-danger/10 hover:border-status-danger/20"
+                )}
+              >
+                Clear log
+              </button>
+            </div>
+          </div>
+        )}
+      </SettingsSection>
+
       {/* Connection */}
       <SettingsSection
         icon={McpServerIcon}
@@ -497,6 +758,19 @@ export function DaintreeAssistantSettingsTab() {
           <p className="text-xs text-status-danger">{error}</p>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={showClearConfirm}
+        onClose={isClearing ? undefined : handleCancelClearAuditLog}
+        title="Clear activity log?"
+        description="All recorded help-session calls will be deleted from this device."
+        confirmLabel="Clear log"
+        cancelLabel="Cancel"
+        onConfirm={confirmClearAuditLog}
+        isConfirmLoading={isClearing}
+        variant="destructive"
+        zIndex="nested"
+      />
 
       <ConfirmDialog
         isOpen={showRotateConfirm}
