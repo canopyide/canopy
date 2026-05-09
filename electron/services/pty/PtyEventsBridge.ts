@@ -18,6 +18,7 @@ export interface PtyEventsBridgeConfig {
     bufferUtilization?: number;
     pauseDuration?: number;
     reason?: string;
+    droppedBytes?: number;
     timestamp: number;
   }) => void;
 
