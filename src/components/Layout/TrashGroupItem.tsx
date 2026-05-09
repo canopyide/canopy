@@ -60,8 +60,11 @@ export function TrashGroupItem({
 
   const tabCount = terminals.length;
 
-  const activeEntry =
-    terminals.find(({ terminal }) => terminal.id === groupMetadata.activeTabId) ?? terminals[0];
+  // Only resolve the headline title when the active id still points at a real
+  // terminal in the group — if individual deletes have left the id stale, the
+  // (active) marker won't render either, so falling back to the count-only
+  // label keeps the header and expanded list consistent.
+  const activeEntry = terminals.find(({ terminal }) => terminal.id === groupMetadata.activeTabId);
 
   const resolvedActiveTitle = (() => {
     if (!activeEntry) return null;

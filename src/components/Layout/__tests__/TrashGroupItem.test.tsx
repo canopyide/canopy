@@ -277,11 +277,29 @@ describe("TrashGroupItem", () => {
       expect(container.textContent).toContain("Second tab +1 more");
     });
 
-    it("shows active tab marker", () => {
+    it("falls back to count-only label when activeTabId is stale", () => {
+      // If the originally active tab was individually removed, activeTabId no
+      // longer matches any terminal — the headline must not silently promote
+      // terminals[0] as if it were active, since the (active) marker won't
+      // render in the expanded list either.
       const { container } = render(
         <TrashGroupItem
           groupRestoreId="grp1"
-          groupMetadata={groupMetadata}
+          groupMetadata={{ ...groupMetadata, activeTabId: "t-removed" }}
+          terminals={terminals}
+          earliestExpiry={Date.now() + 20000}
+        />
+      );
+      expect(container.textContent).toContain("Tab Group (2 tabs)");
+      expect(container.textContent).not.toContain("First tab +1 more");
+      expect(container.textContent).not.toContain("Second tab +1 more");
+    });
+
+    it("shows active tab marker on the correct tab", () => {
+      const { container } = render(
+        <TrashGroupItem
+          groupRestoreId="grp1"
+          groupMetadata={{ ...groupMetadata, activeTabId: "t2" }}
           terminals={terminals}
           earliestExpiry={Date.now() + 20000}
         />
@@ -289,7 +307,12 @@ describe("TrashGroupItem", () => {
       // Expand to see child tabs
       const expandBtn = container.querySelector("button");
       act(() => expandBtn?.click());
-      expect(container.textContent).toContain("(active)");
+      // The marker should be in the same row as Second tab, not First tab
+      const rows = container.querySelectorAll('[role="region"] > div');
+      const matchingRow = Array.from(rows).find((row) => row.textContent?.includes("Second tab"));
+      expect(matchingRow?.textContent).toContain("(active)");
+      const otherRow = Array.from(rows).find((row) => row.textContent?.includes("First tab"));
+      expect(otherRow?.textContent).not.toContain("(active)");
     });
 
     it("shows worktree name when provided", () => {
