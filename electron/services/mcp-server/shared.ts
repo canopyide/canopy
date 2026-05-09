@@ -500,7 +500,7 @@ export const PROMPT_DEFINITIONS: readonly PromptDefinition[] = [
     arguments: [],
     render() {
       return [
-        "Use `terminal.getStatus` for fleet polling. It returns the full agent state (`idle | working | waiting | completed | exited`), `waitingReason`, and `lastTransitionAt` for many terminals in a single call, with optional recent-output tails for cross-checking the state cache. Don't fan `terminal.waitUntilIdle({ timeoutMs: 0 })` out across N terminals — that pattern is N IPC round-trips per round and gives no cheap way to verify state against actual scrollback.",
+        "Use `terminal.getStatus` for fleet polling. It returns the full agent state (`idle | working | waiting | directing | completed | exited`), `waitingReason`, and `lastTransitionAt` for many terminals in a single call, with optional recent-output tails for cross-checking the state cache. Don't fan `terminal.waitUntilIdle({ timeoutMs: 0 })` out across N terminals — that pattern is N IPC round-trips per round and gives no cheap way to verify state against actual scrollback.",
         "",
         "**Recipe:**",
         "",

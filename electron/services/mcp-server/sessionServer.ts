@@ -678,12 +678,17 @@ async function collectPromptContext(
 ): Promise<PromptRenderContext> {
   const context: PromptRenderContext = {};
 
-  const worktree = await safeDispatch("worktree.getCurrent", undefined, dispatchAction);
-  if (worktree && typeof worktree === "object") {
-    const w = worktree as Record<string, unknown>;
-    if (typeof w.path === "string") context.worktreePath = w.path;
-    if (typeof w.branch === "string") context.worktreeBranch = w.branch;
-    if (typeof w.issueNumber === "number") context.worktreeIssueNumber = w.issueNumber;
+  // triage_terminals is a static recipe — render() ignores context, so skip
+  // the worktree dispatch to avoid a 30s safeDispatch timeout penalty when the
+  // renderer is unavailable (startup, view teardown, project switch).
+  if (definition.name !== "triage_terminals") {
+    const worktree = await safeDispatch("worktree.getCurrent", undefined, dispatchAction);
+    if (worktree && typeof worktree === "object") {
+      const w = worktree as Record<string, unknown>;
+      if (typeof w.path === "string") context.worktreePath = w.path;
+      if (typeof w.branch === "string") context.worktreeBranch = w.branch;
+      if (typeof w.issueNumber === "number") context.worktreeIssueNumber = w.issueNumber;
+    }
   }
 
   if (definition.name === "triage_failed_agent") {

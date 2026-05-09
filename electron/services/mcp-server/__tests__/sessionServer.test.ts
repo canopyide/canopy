@@ -83,6 +83,30 @@ async function getPrompt(
   );
 }
 
+async function listPrompts(server: ReturnType<typeof createSessionServer>) {
+  const handlers = (
+    server as unknown as {
+      _requestHandlers: Map<string, (req: unknown, extra: unknown) => Promise<unknown>>;
+    }
+  )._requestHandlers;
+  const handler = handlers.get("prompts/list");
+  if (!handler) throw new Error("prompts/list handler not found");
+  return handler(
+    {
+      method: "prompts/list",
+      params: {},
+      jsonrpc: "2.0",
+      id: 1,
+    },
+    {
+      signal: new AbortController().signal,
+      _meta: {},
+      sendNotification: vi.fn(),
+      requestId: 1,
+    }
+  );
+}
+
 describe("sessionServer prompt handler", () => {
   it("renders start_issue prompt with valid string argument", async () => {
     const deps = fakeDeps();
@@ -110,7 +134,7 @@ describe("sessionServer prompt handler", () => {
     expect((result as Record<string, unknown>).messages).toBeDefined();
   });
 
-  it("renders triage_terminals fleet-polling recipe with key anchors", async () => {
+  it("renders triage_terminals fleet-polling recipe with key anchors and behavioral guardrails", async () => {
     const deps = fakeDeps();
     const server = createSessionServer("s_triage_terminals", deps);
     await server.connect(makeMockTransport());
@@ -126,11 +150,48 @@ describe("sessionServer prompt handler", () => {
     expect(result.messages[0].content.type).toBe("text");
 
     const text = result.messages[0].content.text;
+    // Tool/concept anchors
     expect(text).toContain("terminal.getStatus");
     expect(text).toContain("lastTransitionAt");
     expect(text).toContain("ScheduleWakeup");
     expect(text).toContain("terminal.waitUntilIdle");
     expect(text).toContain("includeOutput");
+    // Behavioral guardrails — catch adversarial rewrites that keep keywords but invert advice
+    expect(text).toContain("Don't fan");
+    expect(text).toContain("Don't busy-loop");
+    // directing must appear alongside working as a state to skip
+    expect(text).toContain("directing");
+    // waitingReason discrimination must survive future edits
+    expect(text).toContain('"prompt"');
+    expect(text).toContain('"question"');
+  });
+
+  it("does not dispatch worktree.getCurrent for triage_terminals (static prompt)", async () => {
+    const dispatchAction = vi.fn().mockResolvedValue({ result: { ok: true, result: null } });
+    const deps = fakeDeps({ dispatchAction });
+    const server = createSessionServer("s_triage_terminals_static", deps);
+    await server.connect(makeMockTransport());
+
+    await getPrompt(server, { name: "triage_terminals", arguments: {} });
+
+    const worktreeCalls = dispatchAction.mock.calls.filter(([id]) => id === "worktree.getCurrent");
+    expect(worktreeCalls).toHaveLength(0);
+  });
+
+  it("lists triage_terminals in prompts/list with no arguments", async () => {
+    const deps = fakeDeps();
+    const server = createSessionServer("s_prompts_list", deps);
+    await server.connect(makeMockTransport());
+
+    const result = (await listPrompts(server)) as {
+      prompts: Array<{ name: string; description: string; arguments?: unknown[] }>;
+    };
+
+    expect(Array.isArray(result.prompts)).toBe(true);
+    const triage = result.prompts.find((p) => p.name === "triage_terminals");
+    expect(triage).toBeDefined();
+    expect(triage!.description.length).toBeGreaterThan(0);
+    expect(triage!.arguments).toEqual([]);
   });
 
   it("throws McpError for unknown prompt name", async () => {
