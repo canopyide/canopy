@@ -383,6 +383,10 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
 
       - name: Resolve update metadata prefix
         shell: bash
@@ -448,6 +452,12 @@ jobs:
             --include "*.deb" \
             --include "*.blockmap" \
             --cache-control "public, max-age=31536000, immutable"
+
+      - name: Verify binaries reachable on R2
+        shell: bash
+        env:
+          PUBLISH_URL: https://updates.daintree.org/releases/
+        run: node scripts/ci/verify-r2-uploads.mjs
 
       - name: Upload metadata to R2
         shell: bash
