@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import { Pause, Lock } from "lucide-react";
 import type {
   AgentState,
@@ -59,11 +59,17 @@ function formatMemory(kb: number): string {
   return `${kb}K`;
 }
 
-function getResourceSeverity(cpuPercent: number, memoryKb: number): "muted" | "amber" | "red" {
+type ResourceSeverity = "muted" | "amber" | "red";
+
+function getResourceSeverity(cpuPercent: number, memoryKb: number): ResourceSeverity {
   if (cpuPercent >= 80 || memoryKb >= 2097152) return "red";
   if (cpuPercent >= 50 || memoryKb >= 1048576) return "amber";
   return "muted";
 }
+
+// Three consecutive same-direction polls before the displayed band changes —
+// prevents flicker at threshold boundaries (CPU 50/80, mem 1G/2G).
+const SEVERITY_HYSTERESIS_POLLS = 3;
 
 function TerminalHeaderContentComponent({
   id,
@@ -81,6 +87,36 @@ function TerminalHeaderContentComponent({
   const resourceState = useResourceMonitoringStore((s) => s.metrics.get(id));
   const isPtyPanel = kind == null || panelKindHasPty(kind);
   const showResource = resourceEnabled && isPtyPanel && resourceState != null;
+
+  const [stickySeverity, setStickySeverity] = useState<ResourceSeverity>("muted");
+  const pendingCandidateRef = useRef<ResourceSeverity | null>(null);
+  const pendingCountRef = useRef(0);
+
+  if (showResource) {
+    const rawSeverity = getResourceSeverity(resourceState.cpuPercent, resourceState.memoryKb);
+    if (rawSeverity === stickySeverity) {
+      pendingCandidateRef.current = null;
+      pendingCountRef.current = 0;
+    } else if (rawSeverity === pendingCandidateRef.current) {
+      pendingCountRef.current += 1;
+      if (pendingCountRef.current >= SEVERITY_HYSTERESIS_POLLS) {
+        pendingCandidateRef.current = null;
+        pendingCountRef.current = 0;
+        setStickySeverity(rawSeverity);
+      }
+    } else {
+      pendingCandidateRef.current = rawSeverity;
+      pendingCountRef.current = 1;
+    }
+  } else {
+    if (pendingCandidateRef.current !== null) {
+      pendingCandidateRef.current = null;
+      pendingCountRef.current = 0;
+    }
+    if (stickySeverity !== "muted") {
+      setStickySeverity("muted");
+    }
+  }
 
   const {
     isInputLocked,
@@ -211,7 +247,12 @@ function TerminalHeaderContentComponent({
             )}
             <span>
               State: {stateLabel}
-              {showStateDuration && <> · {formatElapsedDuration(now - lastStateChange!)}</>}
+              {showStateDuration && (
+                <span className="motion-safe:animate-in motion-safe:fade-in motion-safe:duration-150">
+                  {" · "}
+                  {formatElapsedDuration(now - lastStateChange!)}
+                </span>
+              )}
               {stateChangeTrigger && <> · {TRIGGER_LABELS[stateChangeTrigger]}</>}
               {showConfidence && <> ({Math.round(stateChangeConfidence * 100)}%)</>}
             </span>
@@ -288,8 +329,11 @@ function TerminalHeaderContentComponent({
               Paused
             </div>
           </TooltipTrigger>
-          <TooltipContent side="bottom">
-            Terminal paused due to buffer overflow (right-click for Force Resume)
+          <TooltipContent side="bottom" className="max-w-xs">
+            <div className="flex flex-col gap-0.5">
+              <span className="font-medium">Buffer overflow</span>
+              <span>Output paused to prevent data loss.</span>
+            </div>
           </TooltipContent>
         </Tooltip>
       )}
@@ -307,8 +351,11 @@ function TerminalHeaderContentComponent({
               Suspended
             </div>
           </TooltipTrigger>
-          <TooltipContent side="bottom">
-            Terminal output streaming suspended due to a stall (auto-recovers on focus)
+          <TooltipContent side="bottom" className="max-w-xs">
+            <div className="flex flex-col gap-0.5">
+              <span className="font-medium">Output suspended</span>
+              <span>Streaming stalled. Recovers automatically on focus.</span>
+            </div>
           </TooltipContent>
         </Tooltip>
       )}
@@ -330,14 +377,14 @@ function TerminalHeaderContentComponent({
         <Tooltip>
           <TooltipTrigger asChild>
             <div
-              className={cn("inline-flex items-center gap-1 text-[11px] font-mono shrink-0 ml-1", {
-                "text-daintree-text/40":
-                  getResourceSeverity(resourceState.cpuPercent, resourceState.memoryKb) === "muted",
-                "text-status-warning":
-                  getResourceSeverity(resourceState.cpuPercent, resourceState.memoryKb) === "amber",
-                "text-status-error":
-                  getResourceSeverity(resourceState.cpuPercent, resourceState.memoryKb) === "red",
-              })}
+              className={cn(
+                "inline-flex items-center gap-1 text-[11px] font-mono shrink-0 ml-1 transition-colors duration-150",
+                {
+                  "text-daintree-text/40": stickySeverity === "muted",
+                  "text-status-warning": stickySeverity === "amber",
+                  "text-status-error": stickySeverity === "red",
+                }
+              )}
               style={{ fontVariantNumeric: "tabular-nums" }}
               role="status"
             >
