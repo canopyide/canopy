@@ -1,5 +1,7 @@
-import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -92,5 +94,64 @@ describe("help prompt outputs", () => {
         expect(body.endsWith("\n\n")).toBe(false);
       }
     });
+  });
+});
+
+describe("build-help-prompts script integration", () => {
+  let workdir;
+
+  beforeEach(() => {
+    workdir = mkdtempSync(path.join(os.tmpdir(), "help-prompts-"));
+    mkdirSync(path.join(workdir, "scripts"));
+    mkdirSync(path.join(workdir, "help"));
+    cpSync(path.join(root, "scripts/help-src"), path.join(workdir, "scripts/help-src"), {
+      recursive: true,
+    });
+    cpSync(
+      path.join(root, "scripts/build-help-prompts.mjs"),
+      path.join(workdir, "scripts/build-help-prompts.mjs")
+    );
+  });
+
+  afterEach(() => {
+    rmSync(workdir, { recursive: true, force: true });
+  });
+
+  function runScript(args = []) {
+    return spawnSync("node", [path.join(workdir, "scripts/build-help-prompts.mjs"), ...args], {
+      cwd: workdir,
+      encoding: "utf8",
+    });
+  }
+
+  it("write mode produces all three outputs matching real generated files", () => {
+    const result = runScript();
+    expect(result.status).toBe(0);
+    for (const [name, expected] of ALL_THREE) {
+      const actual = readFileSync(path.join(workdir, "help", name), "utf8");
+      expect(actual).toBe(expected);
+    }
+  });
+
+  it("--check exits 0 when generated files match sources", () => {
+    runScript();
+    const check = runScript(["--check"]);
+    expect(check.status).toBe(0);
+  });
+
+  it("--check exits 1 and names the stale file when an output drifts", () => {
+    runScript();
+    const stale = path.join(workdir, "help/CLAUDE.md");
+    writeFileSync(stale, readFileSync(stale, "utf8") + "DRIFT_MARKER\n");
+    const check = runScript(["--check"]);
+    expect(check.status).toBe(1);
+    expect(check.stderr).toContain("help/CLAUDE.md");
+    expect(check.stderr).toContain("out of sync");
+  });
+
+  it("--check exits 1 when an output is missing", () => {
+    const missing = runScript(["--check"]);
+    expect(missing.status).toBe(1);
+    expect(missing.stderr).toContain("missing generated file");
   });
 });

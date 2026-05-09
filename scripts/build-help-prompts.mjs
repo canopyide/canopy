@@ -54,14 +54,14 @@ function main() {
         actual = read(out);
       } catch (err) {
         console.error(
-          `::error file=${out}::missing generated file ${relative(out)} — run \`npm run build:help\``
+          `::error file=${relative(out)}::missing generated file ${relative(out)} — run \`npm run build:help\``
         );
         failures++;
         continue;
       }
       if (actual !== expected) {
         console.error(
-          `::error file=${out}::${relative(out)} is out of sync with sources in scripts/help-src/. ` +
+          `::error file=${relative(out)}::${relative(out)} is out of sync with sources in scripts/help-src/. ` +
             `Run \`npm run build:help\` and commit the result.`
         );
         failures++;
