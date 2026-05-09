@@ -3,10 +3,9 @@ import { cn } from "@/lib/utils";
 
 interface HelpIntroBannerProps {
   onDismiss: () => void;
-  onLinkClick: () => void;
 }
 
-export function HelpIntroBanner({ onDismiss, onLinkClick }: HelpIntroBannerProps) {
+export function HelpIntroBanner({ onDismiss }: HelpIntroBannerProps) {
   return (
     <div
       className={cn(
@@ -15,19 +14,8 @@ export function HelpIntroBanner({ onDismiss, onLinkClick }: HelpIntroBannerProps
       )}
     >
       <span className="flex-1 min-w-0 truncate">
-        New here?{" "}
-        <button
-          type="button"
-          onClick={onLinkClick}
-          className={cn(
-            "text-daintree-text underline underline-offset-4",
-            "decoration-daintree-border hover:decoration-daintree-text",
-            "transition-colors"
-          )}
-        >
-          See what the Daintree Assistant can do
-        </button>
-        .
+        Tip: Press <kbd className="text-daintree-text/70">Shift+Enter</kbd> to add a newline without
+        sending.
       </span>
       <button
         type="button"

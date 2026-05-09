@@ -76,6 +76,7 @@ const {
     clearHibernateSession: vi.fn(),
   },
   panelStoreState: {
+    panelIds: [] as string[],
     panelsById: {} as Record<string, unknown>,
     removePanel: vi.fn(),
     addPanel: vi.fn().mockResolvedValue(""),
@@ -263,6 +264,7 @@ function resetState() {
   helpPanelState.setHibernateSession = vi.fn();
   helpPanelState.clearHibernateSession = vi.fn();
 
+  panelStoreState.panelIds = [];
   panelStoreState.panelsById = {};
   panelStoreState.removePanel = vi.fn();
   panelStoreState.addPanel = vi.fn().mockResolvedValue("");
