@@ -5,6 +5,7 @@ import type { NotificationHistoryEntry } from "@/store/slices/notificationHistor
 import { useNotificationHistoryStore } from "@/store/slices/notificationHistorySlice";
 import { useNotificationSettingsStore } from "@/store/notificationSettingsStore";
 import { useUIStore } from "@/store/uiStore";
+import { useAnnouncerStore } from "@/store/accessibilityAnnouncerStore";
 import * as notifyLib from "@/lib/notify";
 import { NotificationCenter } from "../NotificationCenter";
 
@@ -1462,6 +1463,353 @@ describe("NotificationCenter — bulk mark-read with Undo", () => {
 
     const header = screen.getByTestId("context-section-header");
     expect(within(header).queryByText("Mark read")).toBeNull();
+  });
+});
+
+describe("NotificationCenter — Jump to new pill", () => {
+  type ObserverCallback = (entries: IntersectionObserverEntry[]) => void;
+  const observers: { cb: ObserverCallback; targets: Element[]; root: Element | null }[] = [];
+
+  function fireObserver(
+    rootBounds: { top: number; bottom: number; left: number; right: number },
+    targetTop: number,
+    isIntersecting: boolean
+  ) {
+    for (const o of observers) {
+      for (const target of o.targets) {
+        o.cb([
+          {
+            isIntersecting,
+            boundingClientRect: {
+              top: targetTop,
+              bottom: targetTop + 16,
+              left: 0,
+              right: 100,
+              width: 100,
+              height: 16,
+              x: 0,
+              y: targetTop,
+              toJSON() {
+                return this;
+              },
+            } as DOMRectReadOnly,
+            rootBounds: {
+              top: rootBounds.top,
+              bottom: rootBounds.bottom,
+              left: rootBounds.left,
+              right: rootBounds.right,
+              width: rootBounds.right - rootBounds.left,
+              height: rootBounds.bottom - rootBounds.top,
+              x: rootBounds.left,
+              y: rootBounds.top,
+              toJSON() {
+                return this;
+              },
+            } as DOMRectReadOnly,
+            intersectionRatio: isIntersecting ? 1 : 0,
+            intersectionRect: {} as DOMRectReadOnly,
+            target,
+            time: Date.now(),
+          } as IntersectionObserverEntry,
+        ]);
+      }
+    }
+  }
+
+  beforeEach(() => {
+    observers.length = 0;
+    useAnnouncerStore.setState({ polite: null, assertive: null, nextId: 1 });
+    class MockIntersectionObserver implements IntersectionObserver {
+      readonly root: Element | Document | null;
+      readonly rootMargin: string = "0px";
+      readonly thresholds: ReadonlyArray<number> = [0];
+      private targets: Element[] = [];
+      constructor(callback: ObserverCallback, options?: IntersectionObserverInit) {
+        this.root = (options?.root as Element | null) ?? null;
+        observers.push({ cb: callback, targets: this.targets, root: this.root as Element | null });
+      }
+      observe(target: Element) {
+        this.targets.push(target);
+      }
+      unobserve(target: Element) {
+        const idx = this.targets.indexOf(target);
+        if (idx >= 0) this.targets.splice(idx, 1);
+      }
+      disconnect() {
+        const idx = observers.findIndex((o) => o.targets === this.targets);
+        if (idx >= 0) observers.splice(idx, 1);
+        this.targets.length = 0;
+      }
+      takeRecords(): IntersectionObserverEntry[] {
+        return [];
+      }
+    }
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+  });
+
+  it("does not render when there is no unread divider (cold session)", () => {
+    setEntries([makeEntry({ message: "Old msg" })]);
+    render(<NotificationCenter open onClose={vi.fn()} />);
+    expect(screen.queryByTestId("jump-to-new-pill")).toBeNull();
+  });
+
+  it("renders pill (hidden) when divider exists and is initially visible", () => {
+    const closedAt = Date.now() - 5000;
+    useUIStore.setState({ lastNotificationCenterClosedAt: closedAt });
+    setEntries([makeEntry({ message: "Newer", timestamp: closedAt + 4000 })]);
+
+    render(<NotificationCenter open onClose={vi.fn()} />);
+    const pill = screen.getByTestId("jump-to-new-pill");
+    expect(pill).toBeTruthy();
+    expect(pill.className).toMatch(/opacity-0/);
+    expect(pill.className).toMatch(/pointer-events-none/);
+  });
+
+  it("becomes visible when divider scrolls below the viewport", () => {
+    const closedAt = Date.now() - 5000;
+    useUIStore.setState({ lastNotificationCenterClosedAt: closedAt });
+    setEntries([makeEntry({ message: "Newer", timestamp: closedAt + 4000 })]);
+
+    render(<NotificationCenter open onClose={vi.fn()} />);
+
+    act(() => {
+      fireObserver({ top: 0, bottom: 400, left: 0, right: 360 }, 500, false);
+    });
+
+    const pill = screen.getByTestId("jump-to-new-pill");
+    expect(pill.className).toMatch(/opacity-100/);
+    expect(pill.className).toMatch(/pointer-events-auto/);
+  });
+
+  it("stays hidden when divider scrolls above the viewport", () => {
+    const closedAt = Date.now() - 5000;
+    useUIStore.setState({ lastNotificationCenterClosedAt: closedAt });
+    setEntries([makeEntry({ message: "Newer", timestamp: closedAt + 4000 })]);
+
+    render(<NotificationCenter open onClose={vi.fn()} />);
+
+    act(() => {
+      fireObserver({ top: 0, bottom: 400, left: 0, right: 360 }, -50, false);
+    });
+
+    const pill = screen.getByTestId("jump-to-new-pill");
+    expect(pill.className).toMatch(/opacity-0/);
+  });
+
+  it("hides again when divider returns to the viewport", () => {
+    const closedAt = Date.now() - 5000;
+    useUIStore.setState({ lastNotificationCenterClosedAt: closedAt });
+    setEntries([makeEntry({ message: "Newer", timestamp: closedAt + 4000 })]);
+
+    render(<NotificationCenter open onClose={vi.fn()} />);
+
+    act(() => {
+      fireObserver({ top: 0, bottom: 400, left: 0, right: 360 }, 500, false);
+    });
+    expect(screen.getByTestId("jump-to-new-pill").className).toMatch(/opacity-100/);
+
+    act(() => {
+      fireObserver({ top: 0, bottom: 400, left: 0, right: 360 }, 100, true);
+    });
+    expect(screen.getByTestId("jump-to-new-pill").className).toMatch(/opacity-0/);
+  });
+
+  it("announces 'New notifications below' when pill becomes visible", () => {
+    const closedAt = Date.now() - 5000;
+    useUIStore.setState({ lastNotificationCenterClosedAt: closedAt });
+    setEntries([makeEntry({ message: "Newer", timestamp: closedAt + 4000 })]);
+
+    render(<NotificationCenter open onClose={vi.fn()} />);
+
+    expect(useAnnouncerStore.getState().polite).toBeNull();
+
+    act(() => {
+      fireObserver({ top: 0, bottom: 400, left: 0, right: 360 }, 500, false);
+    });
+
+    expect(useAnnouncerStore.getState().polite?.msg).toBe("New notifications below");
+  });
+
+  it("clicking the pill calls scrollIntoView and focus on the divider", () => {
+    const closedAt = Date.now() - 5000;
+    useUIStore.setState({ lastNotificationCenterClosedAt: closedAt });
+    setEntries([makeEntry({ message: "Newer", timestamp: closedAt + 4000 })]);
+
+    const proto = HTMLElement.prototype as unknown as {
+      scrollIntoView?: (...args: unknown[]) => void;
+    };
+    const originalScroll = proto.scrollIntoView;
+    const scrollSpy = vi.fn();
+    proto.scrollIntoView = scrollSpy;
+
+    try {
+      render(<NotificationCenter open onClose={vi.fn()} />);
+
+      const divider = screen.getByTestId("new-since-last-looked");
+      const focusSpy = vi.spyOn(divider, "focus").mockImplementation(() => undefined);
+
+      act(() => {
+        fireObserver({ top: 0, bottom: 400, left: 0, right: 360 }, 500, false);
+      });
+
+      fireEvent.click(screen.getByTestId("jump-to-new-pill"));
+
+      expect(scrollSpy).toHaveBeenCalledWith({ block: "start", behavior: "instant" });
+      expect(focusSpy).toHaveBeenCalled();
+    } finally {
+      proto.scrollIntoView = originalScroll;
+    }
+  });
+
+  it("does not auto-scroll when the panel opens (no scrollIntoView on mount)", () => {
+    const closedAt = Date.now() - 5000;
+    useUIStore.setState({ lastNotificationCenterClosedAt: closedAt });
+    setEntries([makeEntry({ message: "Newer", timestamp: closedAt + 4000 })]);
+
+    const proto = HTMLElement.prototype as unknown as {
+      scrollIntoView?: (...args: unknown[]) => void;
+    };
+    const original = proto.scrollIntoView;
+    const spy = vi.fn();
+    proto.scrollIntoView = spy;
+    try {
+      render(<NotificationCenter open onClose={vi.fn()} />);
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      proto.scrollIntoView = original;
+    }
+  });
+
+  it("hidden pill is aria-hidden and not focusable; visible pill is reachable", () => {
+    const closedAt = Date.now() - 5000;
+    useUIStore.setState({ lastNotificationCenterClosedAt: closedAt });
+    setEntries([makeEntry({ message: "Newer", timestamp: closedAt + 4000 })]);
+
+    render(<NotificationCenter open onClose={vi.fn()} />);
+
+    const pill = screen.getByTestId("jump-to-new-pill");
+    expect(pill.getAttribute("aria-hidden")).toBe("true");
+    expect(pill.getAttribute("tabindex")).toBe("-1");
+
+    act(() => {
+      fireObserver({ top: 0, bottom: 400, left: 0, right: 360 }, 500, false);
+    });
+
+    expect(pill.getAttribute("aria-hidden")).toBeNull();
+    expect(pill.getAttribute("tabindex")).toBe("0");
+  });
+
+  it("uses Tier 2 timing — 200ms enter, 120ms exit", () => {
+    const closedAt = Date.now() - 5000;
+    useUIStore.setState({ lastNotificationCenterClosedAt: closedAt });
+    setEntries([makeEntry({ message: "Newer", timestamp: closedAt + 4000 })]);
+
+    render(<NotificationCenter open onClose={vi.fn()} />);
+
+    const pill = screen.getByTestId("jump-to-new-pill") as HTMLButtonElement;
+    expect(pill.style.transitionDuration).toBe("120ms");
+
+    act(() => {
+      fireObserver({ top: 0, bottom: 400, left: 0, right: 360 }, 500, false);
+    });
+    expect(pill.style.transitionDuration).toBe("200ms");
+
+    act(() => {
+      fireObserver({ top: 0, bottom: 400, left: 0, right: 360 }, 100, true);
+    });
+    expect(pill.style.transitionDuration).toBe("120ms");
+  });
+
+  it("observer's root is the scroll container (not the popover or document)", () => {
+    const closedAt = Date.now() - 5000;
+    useUIStore.setState({ lastNotificationCenterClosedAt: closedAt });
+    setEntries([makeEntry({ message: "Newer", timestamp: closedAt + 4000 })]);
+
+    const { container } = render(<NotificationCenter open onClose={vi.fn()} />);
+
+    expect(observers.length).toBeGreaterThan(0);
+    const root = observers[observers.length - 1]!.root;
+    expect(root).not.toBeNull();
+    const scrollDiv = container.querySelector(".overflow-y-auto");
+    expect(scrollDiv).not.toBeNull();
+    expect(root).toBe(scrollDiv);
+  });
+
+  it("disconnects the observer on unmount", () => {
+    const closedAt = Date.now() - 5000;
+    useUIStore.setState({ lastNotificationCenterClosedAt: closedAt });
+    setEntries([makeEntry({ message: "Newer", timestamp: closedAt + 4000 })]);
+
+    const { unmount } = render(<NotificationCenter open onClose={vi.fn()} />);
+    expect(observers.length).toBeGreaterThan(0);
+
+    unmount();
+    expect(observers.length).toBe(0);
+  });
+});
+
+describe("NotificationCenter — Thread title weight reflects unread state", () => {
+  it("renders thread title with font-semibold when any entry is unread", async () => {
+    const correlationId = "thread-mixed";
+    useNotificationHistoryStore.getState().addEntry(
+      makeEntry({
+        id: "thread-old",
+        type: "info",
+        title: "Mixed thread",
+        message: "First message",
+        correlationId,
+        timestamp: Date.now() - 2000,
+        seenAsToast: false,
+      })
+    );
+    useNotificationHistoryStore.getState().addEntry(
+      makeEntry({
+        id: "thread-latest",
+        type: "info",
+        title: "Mixed thread",
+        message: "Latest message",
+        correlationId,
+        timestamp: Date.now() - 1000,
+        seenAsToast: true,
+      })
+    );
+
+    render(<NotificationCenter open onClose={vi.fn()} />);
+
+    const titleEls = await screen.findAllByText("Mixed thread");
+    expect(titleEls[0]!.className).toMatch(/font-semibold/);
+    expect(titleEls[0]!.className).not.toMatch(/font-medium/);
+  });
+
+  it("renders thread title with font-normal when all entries are read", async () => {
+    const correlationId = "thread-all-read";
+    useNotificationHistoryStore.getState().addEntry(
+      makeEntry({
+        id: "read-1",
+        type: "info",
+        title: "Quiet thread",
+        message: "First",
+        correlationId,
+        timestamp: Date.now() - 2000,
+        seenAsToast: true,
+      })
+    );
+    useNotificationHistoryStore.getState().addEntry(
+      makeEntry({
+        id: "read-2",
+        type: "info",
+        title: "Quiet thread",
+        message: "Second",
+        correlationId,
+        timestamp: Date.now() - 1000,
+        seenAsToast: true,
+      })
+    );
+
+    render(<NotificationCenter open onClose={vi.fn()} />);
+
+    const titleEls = await screen.findAllByText("Quiet thread");
+    expect(titleEls[0]!.className).toMatch(/font-normal/);
   });
 });
 

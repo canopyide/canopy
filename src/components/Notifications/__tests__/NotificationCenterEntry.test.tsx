@@ -99,6 +99,29 @@ describe("NotificationCenterEntry unread signal", () => {
   });
 });
 
+describe("NotificationCenterEntry title font weight", () => {
+  it("renders unread title with font-semibold and not font-medium", () => {
+    render(<NotificationCenterEntry entry={makeEntry({ title: "Build failed" })} isNew />);
+    const titleEl = screen.getByText("Build failed");
+    expect(titleEl.className).toMatch(/font-semibold/);
+    expect(titleEl.className).not.toMatch(/font-medium/);
+  });
+
+  it("renders read title with font-normal and not font-medium or font-semibold", () => {
+    render(<NotificationCenterEntry entry={makeEntry({ title: "Build complete" })} />);
+    const titleEl = screen.getByText("Build complete");
+    expect(titleEl.className).toMatch(/font-normal/);
+    expect(titleEl.className).not.toMatch(/font-medium/);
+    expect(titleEl.className).not.toMatch(/font-semibold/);
+  });
+
+  it("renders read title (isNew=false explicitly) with font-normal", () => {
+    render(<NotificationCenterEntry entry={makeEntry({ title: "Caught up" })} isNew={false} />);
+    const titleEl = screen.getByText("Caught up");
+    expect(titleEl.className).toMatch(/font-normal/);
+  });
+});
+
 describe("NotificationCenterEntry thread count chip", () => {
   it("renders a count chip with the bare number when threadCount >= 2", () => {
     render(<NotificationCenterEntry entry={makeEntry({ title: "Build" })} threadCount={3} />);

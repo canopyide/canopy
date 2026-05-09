@@ -121,7 +121,14 @@ export function NotificationCenterEntry({
       <div className="flex-1 min-w-0">
         {entry.title && (
           <div className="flex items-center gap-1.5">
-            <p className="text-xs font-medium text-daintree-text truncate">{entry.title}</p>
+            <p
+              className={cn(
+                "text-xs text-daintree-text truncate",
+                isNew ? "font-semibold" : "font-normal"
+              )}
+            >
+              {entry.title}
+            </p>
             {showChip && (
               <span
                 key={bumpKey}
