@@ -21,7 +21,7 @@ export function KeybindingProfileActions({ onImportComplete }: KeybindingProfile
         notify({
           type: "success",
           title: "Shortcuts exported",
-          message: "Keybinding profile saved successfully.",
+          message: "Profile saved to disk",
           transient: true,
         });
       }
@@ -29,7 +29,8 @@ export function KeybindingProfileActions({ onImportComplete }: KeybindingProfile
       notify({
         type: "error",
         title: "Export failed",
-        message: "Could not save the keybinding profile.",
+        message:
+          "Couldn't save the profile. The destination may be read-only. Try a different location.",
       });
     } finally {
       setIsLoading(false);
@@ -59,15 +60,15 @@ export function KeybindingProfileActions({ onImportComplete }: KeybindingProfile
         title: "Shortcuts imported",
         message:
           result.applied > 0
-            ? `Applied ${result.applied} shortcut${result.applied !== 1 ? "s" : ""}.`
-            : "No shortcuts were applied.",
+            ? `Applied ${result.applied} shortcut${result.applied !== 1 ? "s" : ""}`
+            : "No shortcuts were applied",
         transient: true,
       });
     } catch {
       notify({
         type: "error",
         title: "Import failed",
-        message: "Could not read the keybinding profile.",
+        message: "Couldn't read the profile. The file may be missing or invalid JSON.",
       });
     } finally {
       setIsLoading(false);

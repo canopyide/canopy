@@ -403,7 +403,7 @@ describe("SettingsShortcutCapture", () => {
     });
 
     expect(screen.getByText("Existing chord")).toBeTruthy();
-    expect(screen.getByText("(chord overlap)")).toBeTruthy();
+    expect(screen.getByText("shadows this chord")).toBeTruthy();
     expect(screen.queryByText("Unbind")).toBeNull();
   });
 
