@@ -322,7 +322,15 @@ export function setupLifecycleListeners(): DisposableStore {
   d.add(
     toDisposable(
       terminalRegistryController.onStatus((data: TerminalStatusPayload) => {
-        const { id, status, timestamp } = data;
+        const { id, status, timestamp, droppedBytes } = data;
+        // data-loss is a transient pulse, not a durable flow state. Inject a
+        // visible discontinuity marker into the xterm buffer and return —
+        // never persist via updateFlowStatus or the runtime status would
+        // freeze on "data-loss" forever.
+        if (status === "data-loss") {
+          terminalInstanceService.injectDataLossMarker(id, droppedBytes ?? 0);
+          return;
+        }
         usePanelStore.getState().updateFlowStatus(id, status, timestamp);
         if (status === "suspended" || status === "paused-backpressure") {
           terminalInstanceService.wake(id);

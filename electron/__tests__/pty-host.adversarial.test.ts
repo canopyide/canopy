@@ -664,6 +664,114 @@ describe("pty-host adversarial", () => {
     expect(statusPayloads.some((payload) => payload.status === "running")).toBe(false);
   });
 
+  it("IPC_QUEUE_FULL_EMITS_DATA_LOSS_STATUS", async () => {
+    const parentPort = await loadHost();
+    const terminal = createTerminal("t1");
+    hostState.terminals.set("t1", terminal);
+
+    parentPort.emit("message", { type: "spawn", id: "t1", options: {} });
+    await flushMicrotasks();
+
+    // Force the IPC fallback path to consider the queue full. No init-buffers
+    // means the SAB write loop never runs, so visualWritten stays false and
+    // the IPC fallback branch is the only data sink.
+    const ipcQueue = hostState.ipcQueueManagers[0];
+    ipcQueue.isAtCapacity.mockReturnValue(true);
+    ipcQueue.getUtilization.mockReturnValue(100);
+    parentPort.postMessage.mockClear();
+
+    const payload = "a".repeat(123);
+    (hostState.currentPtyManager as MiniEmitter).emit("data", "t1", payload);
+    await flushMicrotasks();
+
+    const statusPayloads = terminalStatusPayloads(parentPort);
+    const dataLoss = statusPayloads.filter((p) => p.status === "data-loss");
+    expect(dataLoss).toHaveLength(1);
+    expect(dataLoss[0]).toMatchObject({
+      type: "terminal-status",
+      id: "t1",
+      status: "data-loss",
+      droppedBytes: payload.length,
+    });
+
+    // The reliability metric must still fire alongside the new status event —
+    // existing telemetry consumers must keep working.
+    const backpressure = hostState.backpressureManagers[0];
+    expect(backpressure.emitReliabilityMetric).toHaveBeenCalledTimes(1);
+    expect(backpressure.emitReliabilityMetric).toHaveBeenCalledWith(
+      expect.objectContaining({
+        terminalId: "t1",
+        metricType: "suspend",
+        bufferUtilization: 100,
+      })
+    );
+
+    // Drop path returns early, so addBytes and the data event are never sent.
+    expect(ipcQueue.addBytes).not.toHaveBeenCalled();
+    const dataEvents = parentPort.postMessage.mock.calls
+      .map((call: unknown[]) => call[0])
+      .filter(
+        (msg: unknown) =>
+          typeof msg === "object" && msg !== null && (msg as { type?: string }).type === "data"
+      );
+    expect(dataEvents).toHaveLength(0);
+  });
+
+  it("IPC_QUEUE_FULL_DROPPED_BYTES_USES_UTF8_BYTE_COUNT", async () => {
+    // Multi-byte chars must report UTF-8 byte count, not JS string length.
+    // Using payload.length here would silently mis-report drops for any
+    // non-ASCII output (CJK terminals, emoji, accented characters).
+    const parentPort = await loadHost();
+    const terminal = createTerminal("t1");
+    hostState.terminals.set("t1", terminal);
+
+    parentPort.emit("message", { type: "spawn", id: "t1", options: {} });
+    await flushMicrotasks();
+
+    const ipcQueue = hostState.ipcQueueManagers[0];
+    ipcQueue.isAtCapacity.mockReturnValue(true);
+    ipcQueue.getUtilization.mockReturnValue(100);
+    parentPort.postMessage.mockClear();
+
+    const payload = "⚠".repeat(10); // 10 chars, 30 UTF-8 bytes
+    expect(payload.length).toBe(10);
+    expect(Buffer.byteLength(payload, "utf8")).toBe(30);
+
+    (hostState.currentPtyManager as MiniEmitter).emit("data", "t1", payload);
+    await flushMicrotasks();
+
+    const dataLoss = terminalStatusPayloads(parentPort).filter((p) => p.status === "data-loss");
+    expect(dataLoss).toHaveLength(1);
+    expect(dataLoss[0].droppedBytes).toBe(30);
+  });
+
+  it("IPC_QUEUE_FULL_BYPASSES_TERMINAL_STATUS_DEDUP", async () => {
+    const parentPort = await loadHost();
+    const terminal = createTerminal("t1");
+    hostState.terminals.set("t1", terminal);
+
+    parentPort.emit("message", { type: "spawn", id: "t1", options: {} });
+    await flushMicrotasks();
+
+    const ipcQueue = hostState.ipcQueueManagers[0];
+    ipcQueue.isAtCapacity.mockReturnValue(true);
+    ipcQueue.getUtilization.mockReturnValue(100);
+    parentPort.postMessage.mockClear();
+
+    // Two consecutive drops on the same terminal must produce two distinct
+    // data-loss events. BackpressureManager.emitTerminalStatus dedup would
+    // collapse repeated identical statuses, so the drop site must call
+    // sendEvent directly to bypass it.
+    (hostState.currentPtyManager as MiniEmitter).emit("data", "t1", "a".repeat(50));
+    (hostState.currentPtyManager as MiniEmitter).emit("data", "t1", "b".repeat(80));
+    await flushMicrotasks();
+
+    const dataLoss = terminalStatusPayloads(parentPort).filter((p) => p.status === "data-loss");
+    expect(dataLoss).toHaveLength(2);
+    expect(dataLoss[0].droppedBytes).toBe(50);
+    expect(dataLoss[1].droppedBytes).toBe(80);
+  });
+
   it("LATE_ACK_AFTER_TIMEOUT_IS_IGNORED", async () => {
     const parentPort = await loadHost();
     const terminal = createTerminal("t1");

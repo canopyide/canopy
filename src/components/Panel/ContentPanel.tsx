@@ -13,7 +13,7 @@ import { useIsDragging } from "@/components/DragDrop";
 import { TitleEditingProvider, useTitleEditing } from "./TitleEditingContext";
 import { TerminalHeaderContent } from "@/components/Terminal/TerminalHeaderContent";
 import { TerminalContextMenu } from "@/components/Terminal/TerminalContextMenu";
-import type { PanelKind, AgentState } from "@/types";
+import type { PanelKind, AgentState, PersistableFlowStatus } from "@/types";
 import type { TerminalRuntimeIdentity } from "@shared/types/panel";
 import type { ActivityState } from "@/components/Terminal/TerminalPane";
 import type { TabInfo } from "./TabButton";
@@ -84,7 +84,7 @@ export interface ContentPanelProps extends BasePanelProps {
   activityStatus?: "working" | "waiting" | "success" | "failure";
   lastCommand?: string;
   queueCount?: number;
-  flowStatus?: "running" | "paused-backpressure" | "paused-user" | "suspended";
+  flowStatus?: PersistableFlowStatus;
   onRestart?: () => void;
   isPinged?: boolean;
   wasJustSelected?: boolean;

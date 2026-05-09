@@ -1,6 +1,11 @@
 import React, { useCallback } from "react";
 import { Pause, Lock } from "lucide-react";
-import type { AgentState, PanelKind, AgentStateChangeTrigger } from "@/types";
+import type {
+  AgentState,
+  PanelKind,
+  AgentStateChangeTrigger,
+  PersistableFlowStatus,
+} from "@/types";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -45,7 +50,7 @@ export interface TerminalHeaderContentProps {
   isExited?: boolean;
   exitCode?: number | null;
   queueCount?: number;
-  flowStatus?: "running" | "paused-backpressure" | "paused-user" | "suspended";
+  flowStatus?: PersistableFlowStatus;
 }
 
 function formatMemory(kb: number): string {

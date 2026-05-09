@@ -18,6 +18,7 @@ export interface PtyEventsBridgeConfig {
     bufferUtilization?: number;
     pauseDuration?: number;
     reason?: string;
+    droppedBytes?: number;
     timestamp: number;
   }) => void;
 
@@ -131,6 +132,7 @@ export function bridgePtyEvent(event: PtyHostEvent, config?: PtyEventsBridgeConf
         bufferUtilization: event.bufferUtilization,
         pauseDuration: event.pauseDuration,
         reason: event.reason,
+        droppedBytes: event.droppedBytes,
         timestamp: event.timestamp,
       };
       events.emit("terminal:status", statusPayload);

@@ -382,6 +382,35 @@ describe("routeHostEvent", () => {
     );
   });
 
+  it("forwards droppedBytes on data-loss terminal-status events", () => {
+    const { deps, emitter } = makeDeps();
+    const listener = vi.fn();
+    emitter.on("terminal-status", listener);
+
+    const handled = routeHostEvent(
+      {
+        type: "terminal-status",
+        id: "t1",
+        status: "data-loss",
+        bufferUtilization: 100,
+        droppedBytes: 2048,
+        timestamp: 12345,
+      } as PtyHostEvent,
+      deps
+    );
+
+    expect(handled).toBe(true);
+    expect(listener).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "t1",
+        status: "data-loss",
+        droppedBytes: 2048,
+        bufferUtilization: 100,
+        timestamp: 12345,
+      })
+    );
+  });
+
   it("logs and returns false for unknown event types", () => {
     const logWarn = vi.fn();
     const { deps } = makeDeps({ logWarn });

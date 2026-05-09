@@ -45,6 +45,7 @@ export type {
   TerminalRestartError,
   TerminalReconnectError,
   TerminalRuntimeStatus,
+  PersistableFlowStatus,
   TerminalSpawnSource,
   TerminalInstance,
   PtySpawnOptions,

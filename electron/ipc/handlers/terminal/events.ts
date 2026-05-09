@@ -73,6 +73,7 @@ export function registerTerminalEventHandlers(deps: HandlerDependencies): () => 
     status: string;
     bufferUtilization?: number;
     pauseDuration?: number;
+    droppedBytes?: number;
     timestamp: number;
   }) => {
     broadcastToRenderer(CHANNELS.TERMINAL_STATUS, payload);
