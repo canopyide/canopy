@@ -403,7 +403,47 @@ describe("SettingsShortcutCapture", () => {
     });
 
     expect(screen.getByText("Existing chord")).toBeTruthy();
-    expect(screen.getByText("(chord overlap)")).toBeTruthy();
+    expect(screen.getByText("is shadowed by this chord")).toBeTruthy();
+    expect(screen.queryByText("Unbind")).toBeNull();
+  });
+
+  it("renders 'shadows this chord' when existing single shadows captured chord", async () => {
+    const { keybindingService } = await import("@/services/KeybindingService");
+    vi.mocked(keybindingService.findConflicts).mockReturnValue([
+      {
+        actionId: "shadowing.single",
+        description: "Existing single",
+        combo: "Cmd+K",
+        scope: "global",
+        priority: 0,
+        kind: "shadowed",
+      },
+    ]);
+
+    render(
+      <SettingsShortcutCapture
+        onCapture={mockOnCapture}
+        onCancel={mockOnCancel}
+        excludeActionId="test.action"
+      />
+    );
+
+    fireEvent.click(screen.getByText("Click to record shortcut"));
+
+    act(() => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "k", code: "KeyK", ctrlKey: true, bubbles: true })
+      );
+    });
+    act(() => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "s", code: "KeyS", ctrlKey: true, bubbles: true })
+      );
+      vi.advanceTimersByTime(1100);
+    });
+
+    expect(screen.getByText("Existing single")).toBeTruthy();
+    expect(screen.getByText("shadows this chord")).toBeTruthy();
     expect(screen.queryByText("Unbind")).toBeNull();
   });
 
