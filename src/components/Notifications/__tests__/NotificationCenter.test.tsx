@@ -791,6 +791,37 @@ describe("NotificationCenter empty state — muted", () => {
     }
   });
 
+  it("uses the scheduled quiet-hours end time when both session and scheduled mutes overlap and scheduled ends later", () => {
+    const fixedNow = new Date();
+    fixedNow.setHours(2, 0, 0, 0);
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+    try {
+      // Session expires at 03:00, scheduled quiet hours end at 08:00 — notifications
+      // do not actually resume until 08:00, so the body must show that.
+      useNotificationSettingsStore.setState({
+        quietUntil: fixedNow.getTime() + 60 * 60 * 1000,
+        quietHoursEnabled: true,
+        quietHoursStartMin: 22 * 60,
+        quietHoursEndMin: 8 * 60,
+        quietHoursWeekdays: [],
+      });
+
+      render(<NotificationCenter open onClose={vi.fn()} />);
+
+      const emptyState = screen.getByTestId("notification-muted-empty-state");
+      expect(emptyState.textContent).toMatch(/Quiet hours active\. Resuming at /);
+      // Must not advertise the earlier (session) resume time.
+      const formatted = new Intl.DateTimeFormat(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+      }).format(new Date(fixedNow.getTime() + 60 * 60 * 1000));
+      expect(emptyState.textContent).not.toContain(formatted);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("falls through to the zero-data empty state when scheduled quiet hours are enabled but the current time is outside the window", () => {
     const fixedNow = new Date();
     fixedNow.setHours(12, 0, 0, 0);
