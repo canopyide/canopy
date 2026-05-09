@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import type { ElectronApplication, Locator, Page } from "@playwright/test";
 import { mockOpenDialog, refreshActiveWindow } from "./launch";
 import { dismissTelemetryConsent } from "./project";
-import { waitForTerminalText } from "./terminal";
+import { waitForTerminalReady, waitForTerminalText } from "./terminal";
 import { getGridPanelCount, openTerminal } from "./panels";
 import { SEL } from "./selectors";
 import { T_SHORT, T_MEDIUM, T_LONG } from "./timeouts";
@@ -80,8 +80,28 @@ export async function selectExistingProject(window: Page, projectName: string): 
 
       // Substring match — createFixtureRepo produces directories like
       // daintree-e2e-${name}-XXXXXX and projectClient.add() derives the
-      // displayed name from path.basename, so callers pass the stem.
-      await palette.getByText(projectName, { exact: false }).first().click();
+      // displayed name from path.basename, so callers pass the stem. The
+      // options can re-render while the active view swaps, so use the option
+      // row and retry a forced click if the first target detaches mid-action.
+      let selected = false;
+      for (let attempt = 0; attempt < 3 && !selected; attempt++) {
+        const option = palette.getByRole("option").filter({ hasText: projectName }).first();
+        await expect(option).toBeVisible({ timeout: T_MEDIUM });
+        try {
+          await option.click({ force: true, noWaitAfter: true, timeout: T_SHORT });
+          selected = true;
+        } catch {
+          if (!(await palette.isVisible().catch(() => false))) {
+            selected = true;
+            break;
+          }
+          await window.waitForTimeout(250);
+        }
+      }
+      if (!selected) {
+        const option = palette.getByRole("option").filter({ hasText: projectName }).first();
+        await option.click({ force: true, noWaitAfter: true, timeout: T_MEDIUM });
+      }
       // After WebContentsView migration the palette is rendered in the
       // outgoing project's view, which is hidden (not destroyed) once the
       // switch lands — so the close-after-click assertion can race with the
@@ -125,6 +145,7 @@ export async function spawnTerminalAndVerify(
 
       const panel = window.locator(SEL.panel.gridPanel).last();
       await expect(panel).toBeVisible({ timeout: T_MEDIUM });
+      await waitForTerminalReady(window, panel, T_LONG);
 
       if (expectedText) {
         await waitForTerminalText(panel, expectedText);

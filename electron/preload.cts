@@ -113,18 +113,75 @@ const isDemoMode =
 // Instead, we use window.postMessage to transfer it to the main world.
 
 let cachedToken: string | null = null;
+let pendingTerminalPort: MessagePort | null = null;
+let pendingTerminalPortToken: string | null = null;
+let terminalPortMainWorldReady = false;
 
 function isAllowedTerminalPortTarget(): boolean {
   return isTrustedRendererUrl(window.location.href);
 }
 
+function isSameWindowMessage(event: MessageEvent): boolean {
+  if (window.top !== window) return false;
+  if (event.source !== window) return false;
+
+  const eventOrigin = event.origin;
+  const windowOrigin = window.location.origin;
+  const isFile = window.location.protocol === "file:";
+  return (
+    eventOrigin === windowOrigin || (isFile && eventOrigin === "null" && windowOrigin === "null")
+  );
+}
+
+function closePendingTerminalPort(): void {
+  if (!pendingTerminalPort) return;
+  try {
+    pendingTerminalPort.close();
+  } catch {
+    // Port may already be closed.
+  }
+  pendingTerminalPort = null;
+  pendingTerminalPortToken = null;
+}
+
+function flushPendingTerminalPort(): void {
+  if (!terminalPortMainWorldReady || !pendingTerminalPort || !pendingTerminalPortToken) {
+    return;
+  }
+
+  if (!isAllowedTerminalPortTarget()) {
+    console.error(
+      "[Preload] Refusing to forward terminal MessagePort to untrusted origin:",
+      window.location.href
+    );
+    closePendingTerminalPort();
+    cachedToken = null;
+    return;
+  }
+
+  const port = pendingTerminalPort;
+  const token = pendingTerminalPortToken;
+  pendingTerminalPort = null;
+  pendingTerminalPortToken = null;
+  cachedToken = null;
+
+  const targetOrigin = window.location.origin;
+  window.postMessage({ type: "terminal-port-token", token }, targetOrigin);
+  window.postMessage({ type: "terminal-port", token }, targetOrigin, [port]);
+  console.log("[Preload] MessagePort transferred to main world");
+}
+
+window.addEventListener("message", (event) => {
+  if (!isSameWindowMessage(event)) return;
+  if (event.data?.type !== "terminal-port-ready") return;
+
+  terminalPortMainWorldReady = true;
+  flushPendingTerminalPort();
+});
+
 ipcRenderer.on("terminal-port-token", (_event, payload: { token: string }) => {
   cachedToken = payload.token;
-
-  if (window.top !== window) return;
-  if (!isAllowedTerminalPortTarget()) return;
-
-  window.postMessage({ type: "terminal-port-token", token: payload.token }, window.location.origin);
+  flushPendingTerminalPort();
 });
 
 ipcRenderer.on("terminal-port", (event, payload: { token: string }) => {
@@ -146,13 +203,18 @@ ipcRenderer.on("terminal-port", (event, payload: { token: string }) => {
 
     if (!token) {
       console.error("[Preload] No handshake token available");
+      try {
+        port.close();
+      } catch {
+        // Port may already be closed.
+      }
       return;
     }
 
-    const targetOrigin = window.location.origin;
-    window.postMessage({ type: "terminal-port", token }, targetOrigin, [port]);
-    cachedToken = null;
-    console.log("[Preload] MessagePort transferred to main world");
+    closePendingTerminalPort();
+    pendingTerminalPort = port;
+    pendingTerminalPortToken = token;
+    flushPendingTerminalPort();
   }
 });
 

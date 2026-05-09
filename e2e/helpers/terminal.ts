@@ -5,7 +5,10 @@ import { T_SHORT } from "./timeouts";
 
 type TerminalBridge = {
   getInfo?: (terminalId: string) => Promise<{ hasPty?: boolean } | null | undefined>;
+  setActivityTier?: (terminalId: string, tier: "active" | "background") => void;
+  wake?: (terminalId: string) => Promise<{ state: string | null; warnings?: string[] }>;
   write?: (terminalId: string, data: string) => void;
+  submit?: (terminalId: string, text: string) => Promise<void>;
 };
 
 async function getPanelId(panelLocator: Locator): Promise<string> {
@@ -44,13 +47,13 @@ export async function waitForTerminalText(
     .toContain(text);
 }
 
-export async function writeTerminalInput(
+export async function waitForTerminalPty(
   page: Page,
   panelLocator: Locator,
-  data: string
+  timeout = 10_000
 ): Promise<void> {
   const panelId = await getPanelId(panelLocator);
-  if (!panelId) throw new Error("Could not resolve panel ID for terminal input");
+  if (!panelId) throw new Error("Could not resolve panel ID for terminal PTY");
 
   await expect
     .poll(
@@ -69,9 +72,56 @@ export async function writeTerminalInput(
             return false;
           }
         }, panelId),
-      { timeout: 10_000, intervals: [100, 250, 500] }
+      { timeout, intervals: [100, 250, 500] }
     )
     .toBe(true);
+}
+
+export async function waitForTerminalReady(
+  page: Page,
+  panelLocator: Locator,
+  timeout = 10_000
+): Promise<void> {
+  await waitForTerminalPty(page, panelLocator, timeout);
+
+  await expect
+    .poll(
+      async () => {
+        const text = await getTerminalText(panelLocator);
+        return text.trim().length > 0;
+      },
+      { timeout, intervals: [100, 250, 500] }
+    )
+    .toBe(true);
+}
+
+async function activateTerminal(page: Page, panelId: string): Promise<void> {
+  await page.evaluate(async (id) => {
+    const api = (
+      window as unknown as {
+        electron?: { terminal?: TerminalBridge };
+      }
+    ).electron?.terminal;
+
+    if (typeof api?.wake === "function") {
+      await api.wake(id);
+      return;
+    }
+
+    api?.setActivityTier?.(id, "active");
+  }, panelId);
+}
+
+export async function writeTerminalInput(
+  page: Page,
+  panelLocator: Locator,
+  data: string
+): Promise<void> {
+  const panelId = await getPanelId(panelLocator);
+  if (!panelId) throw new Error("Could not resolve panel ID for terminal input");
+
+  await waitForTerminalPty(page, panelLocator);
+  await activateTerminal(page, panelId);
 
   const wrote = await page.evaluate(
     ({ id, input }) => {
@@ -96,7 +146,30 @@ export async function runTerminalCommand(
   command: string
 ): Promise<void> {
   await expect(panelLocator).toBeVisible({ timeout: 5_000 });
-  await writeTerminalInput(page, panelLocator, `${command}\r`);
+  const panelId = await getPanelId(panelLocator);
+  if (!panelId) throw new Error("Could not resolve panel ID for terminal command");
+
+  await waitForTerminalReady(page, panelLocator);
+  await activateTerminal(page, panelId);
+
+  const payload = command.endsWith("\n") ? command : `${command}\n`;
+  const submitted = await page.evaluate(
+    async ({ id, input }) => {
+      const api = (
+        window as unknown as {
+          electron?: { terminal?: TerminalBridge };
+        }
+      ).electron?.terminal;
+      if (typeof api?.submit !== "function") return false;
+      await api.submit(id, input);
+      return true;
+    },
+    { id: panelId, input: payload }
+  );
+
+  if (!submitted) {
+    await writeTerminalInput(page, panelLocator, `${command}\r`);
+  }
 }
 
 export async function getTerminalBufferLength(panelLocator: Locator): Promise<number> {

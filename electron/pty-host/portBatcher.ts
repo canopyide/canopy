@@ -7,11 +7,17 @@ import type { PortQueueManager } from "./portQueue.js";
 export interface PortBatcherDeps {
   portQueueManager: PortQueueManager;
   postMessage: (id: string, data: Uint8Array, bytes: number) => void;
-  onError: (error: unknown) => void;
+  onError: (error: unknown, failedBatches: PortBatcherFailedBatch[]) => void;
 }
 
 interface PendingTerminal {
   chunks: Uint8Array[];
+  bytes: number;
+}
+
+export interface PortBatcherFailedBatch {
+  id: string;
+  data: Uint8Array;
   bytes: number;
 }
 
@@ -77,9 +83,12 @@ export class PortBatcher {
     this.cancelTimers();
     this.mode = "idle";
 
-    for (const [id, { chunks, bytes }] of snapshot) {
+    const entries = Array.from(snapshot.entries());
+    for (let i = 0; i < entries.length; i++) {
+      const [id, { chunks, bytes }] = entries[i];
+      let data: Uint8Array = new Uint8Array(0);
       try {
-        const data = mergeChunks(chunks, bytes);
+        data = mergeChunks(chunks, bytes);
         this.deps.postMessage(id, data, bytes);
         this.deps.portQueueManager.addBytes(id, bytes);
         this.deps.portQueueManager.applyBackpressure(
@@ -87,7 +96,15 @@ export class PortBatcher {
           this.deps.portQueueManager.getUtilization(id)
         );
       } catch (error) {
-        this.deps.onError(error);
+        const failedBatches: PortBatcherFailedBatch[] = [{ id, data, bytes }];
+        for (const [failedId, pending] of entries.slice(i + 1)) {
+          failedBatches.push({
+            id: failedId,
+            data: mergeChunks(pending.chunks, pending.bytes),
+            bytes: pending.bytes,
+          });
+        }
+        this.deps.onError(error, failedBatches);
         return;
       }
     }
@@ -106,8 +123,9 @@ export class PortBatcher {
       this.mode = "idle";
     }
 
+    let data: Uint8Array = new Uint8Array(0);
     try {
-      const data = mergeChunks(entry.chunks, entry.bytes);
+      data = mergeChunks(entry.chunks, entry.bytes);
       this.deps.postMessage(id, data, entry.bytes);
       this.deps.portQueueManager.addBytes(id, entry.bytes);
       this.deps.portQueueManager.applyBackpressure(
@@ -115,7 +133,7 @@ export class PortBatcher {
         this.deps.portQueueManager.getUtilization(id)
       );
     } catch (error) {
-      this.deps.onError(error);
+      this.deps.onError(error, [{ id, data, bytes: entry.bytes }]);
     }
   }
 
