@@ -92,7 +92,15 @@ export function useActionPalette(): UseActionPaletteReturn {
 
   const filterFn = useCallback(
     (items: ActionPaletteItem[], query: string): ActionPaletteItem[] => {
-      const actionMruList = getSortedActionMruList().map(({ id }) => id);
+      // Strip confirm-danger ids from the MRU list so destructive actions
+      // persisted from a pre-fix session don't keep surfacing in the
+      // "Recently used" rail or get a search-rank bonus (issue #7481).
+      const confirmDangerIds = new Set(
+        items.filter((item) => item.danger === "confirm").map((item) => item.id)
+      );
+      const actionMruList = getSortedActionMruList()
+        .map(({ id }) => id)
+        .filter((id) => !confirmDangerIds.has(id));
 
       if (!query.trim()) {
         if (actionMruList.length === 0) return [];
