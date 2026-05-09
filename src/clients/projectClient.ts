@@ -29,11 +29,32 @@ let hasCachedValue = false;
 let cacheVersion = 0;
 let subscribed = false;
 
+// Per-projectId singleflight for getSettings(). Multiple panels spawned
+// in rapid succession from the same button click all read identical bytes;
+// dedup the IPC and let the cached result satisfy follow-on calls within
+// SETTINGS_TTL_MS. Invalidated synchronously by saveSettings() and by
+// project switch (so a stale cache cannot bleed across project boundaries).
+const SETTINGS_TTL_MS = 150;
+const settingsInflight: Map<string, Promise<ProjectSettings>> = new Map();
+const settingsCache: Map<string, { value: ProjectSettings; expiresAt: number }> = new Map();
+
 export function invalidateCurrentCache(): void {
   hasCachedValue = false;
   cachedResult = null;
   inflight = null;
   cacheVersion++;
+  settingsInflight.clear();
+  settingsCache.clear();
+}
+
+export function invalidateProjectSettingsCache(projectId?: string): void {
+  if (projectId === undefined) {
+    settingsInflight.clear();
+    settingsCache.clear();
+    return;
+  }
+  settingsInflight.delete(projectId);
+  settingsCache.delete(projectId);
 }
 
 function ensureSubscribed(): void {
@@ -117,10 +138,40 @@ export const projectClient = {
   },
 
   getSettings: (projectId: string): Promise<ProjectSettings> => {
-    return window.electron.project.getSettings(projectId);
+    // Subscribe to project switch so external switches (multi-window,
+    // app menu, IPC) clear the per-projectId settings cache. Cheap to
+    // call repeatedly; the subscriber dedups internally.
+    ensureSubscribed();
+    const cached = settingsCache.get(projectId);
+    if (cached && cached.expiresAt > Date.now()) {
+      return Promise.resolve(cached.value);
+    }
+    const existing = settingsInflight.get(projectId);
+    if (existing) return existing;
+
+    const promise = window.electron.project
+      .getSettings(projectId)
+      .then((result) => {
+        // Only repopulate the cache if no invalidation happened while in flight.
+        if (settingsInflight.get(projectId) === promise) {
+          settingsCache.set(projectId, {
+            value: result,
+            expiresAt: Date.now() + SETTINGS_TTL_MS,
+          });
+        }
+        return result;
+      })
+      .finally(() => {
+        if (settingsInflight.get(projectId) === promise) {
+          settingsInflight.delete(projectId);
+        }
+      });
+    settingsInflight.set(projectId, promise);
+    return promise;
   },
 
   saveSettings: (projectId: string, settings: ProjectSettings): Promise<void> => {
+    invalidateProjectSettingsCache(projectId);
     return window.electron.project.saveSettings(projectId, settings);
   },
 

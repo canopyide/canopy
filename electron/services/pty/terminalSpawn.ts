@@ -1,5 +1,6 @@
 import * as path from "node:path";
 import * as pty from "node-pty";
+import path from "node:path";
 import {
   filterEnvironment,
   injectDaintreeMetadata,
@@ -9,6 +10,13 @@ import { getDefaultShell, getDefaultShellArgs } from "./terminalShell.js";
 import { computePoolEnvHash } from "./ptyPoolEnvHash.js";
 import type { PtySpawnOptions } from "./types.js";
 import type { PtyPool } from "../PtyPool.js";
+
+// Agent CLIs that ship as Node binaries and benefit from V8 bytecode
+// caching across launches. Codex is a Rust binary and would silently
+// no-op; the rest are excluded conservatively until we confirm their
+// runtime. NODE_COMPILE_CACHE has been respected by Node ≥22.1; older
+// runtimes silently ignore it.
+const NODE_COMPILE_CACHE_AGENTS: ReadonlySet<string> = new Set(["claude", "gemini"]);
 
 export interface SpawnContext {
   shell: string;
@@ -92,6 +100,22 @@ export function buildTerminalEnv(
   // agent CLIs both benefit; neither suffers.
   mergedEnv.FORCE_COLOR = mergedEnv.FORCE_COLOR ?? "3";
   mergedEnv.COLORTERM = mergedEnv.COLORTERM ?? "truecolor";
+
+  // V8 bytecode cache for Node-based agent CLIs. Path is per-agent to
+  // avoid cross-CLI cache invalidation; Node also auto-isolates by
+  // version + V8 flags so a single dir is safe across runtime upgrades.
+  // Only set when DAINTREE_USER_DATA is available (production) and the
+  // caller has not provided an explicit override via intentionalEnv.
+  const userData = process.env.DAINTREE_USER_DATA;
+  const launchAgentId = options.launchAgentId;
+  if (
+    userData &&
+    launchAgentId &&
+    NODE_COMPILE_CACHE_AGENTS.has(launchAgentId) &&
+    mergedEnv.NODE_COMPILE_CACHE === undefined
+  ) {
+    mergedEnv.NODE_COMPILE_CACHE = path.join(userData, "agent-compile-cache", launchAgentId);
+  }
 
   return ensureUtf8Locale(mergedEnv);
 }

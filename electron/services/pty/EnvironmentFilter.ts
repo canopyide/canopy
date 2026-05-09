@@ -52,8 +52,10 @@ const SENSITIVE_EXACT = new Set([
   "STRIPE_API_KEY",
 ]);
 
+// `APIKEY` is a non-underscored variant some SDKs use (e.g. `OPENAI_APIKEY`,
+// `MY_APIKEY`); without an explicit alternation it slips past `API_KEY`.
 const SENSITIVE_PATTERN =
-  /(?:^|_)(?:SECRET|PASSWORD|PASSWD|TOKEN|CREDENTIAL|CREDENTIALS|PRIVATE_KEY|API_KEY|ACCESS_KEY|AUTH_TOKEN|CLIENT_SECRET|SIGNING_KEY|ENCRYPTION_KEY)(?:_|$)/i;
+  /(?:^|_)(?:SECRET|PASSWORD|PASSWD|TOKEN|CREDENTIAL|CREDENTIALS|PRIVATE_KEY|API_KEY|APIKEY|ACCESS_KEY|AUTH_TOKEN|CLIENT_SECRET|SIGNING_KEY|ENCRYPTION_KEY)(?:_|$)/i;
 
 /**
  * Metadata to inject as DAINTREE_* vars in each spawned terminal.

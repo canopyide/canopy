@@ -273,6 +273,15 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
         let launchFlags: string[] | undefined;
         let presetEnv: Record<string, string> | undefined;
         let preset: import("../../shared/config/agentRegistry").AgentPreset | undefined;
+        // Hoisted so the soft-launch gate below reuses the result of the
+        // single fetch inside the agentConfig block — avoids a second call
+        // (and its potential `refresh(true)` fan-out across all CLIs) on
+        // every launch. Background `refreshCliAvailability` (focus / wake
+        // handlers) can still race against awaits between this fetch and
+        // the gate, but that race is benign and pre-existing: at worst a
+        // launch sees a slightly stale `state` and creates the diagnostic
+        // panel, which the user can retry.
+        let cachedLaunchCliDetail: AgentCliDetail | undefined;
         if (agentConfig) {
           if (!useAgentSettingsStore.getState().isInitialized) {
             await useAgentSettingsStore.getState().initialize();
@@ -379,8 +388,11 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
             }
           }
 
-          const launchCliDetail = await getCurrentLaunchCliDetail(agentId);
-          const baseCommand = resolveAgentLaunchBaseCommand(agentConfig.command, launchCliDetail);
+          cachedLaunchCliDetail = await getCurrentLaunchCliDetail(agentId);
+          const baseCommand = resolveAgentLaunchBaseCommand(
+            agentConfig.command,
+            cachedLaunchCliDetail
+          );
           command = generateAgentCommand(baseCommand, effectiveEntry, agentId, {
             initialPrompt: launchOptions?.prompt,
             interactive: launchOptions?.interactive ?? true,
@@ -467,7 +479,11 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
         // diagnostic panel instead of a failed PTY spawn. `unauthenticated` is
         // launchable — the CLI handles first-run auth itself.
         if (isAgent && !launchOptions?.force) {
-          const launchCliDetail = await getCurrentLaunchCliDetail(agentId);
+          // Reuse the detail captured during command construction above.
+          // Falls through to a fresh fetch only when there was no agentConfig
+          // (defensive — `isAgent` implies `agentConfig` in practice).
+          const launchCliDetail =
+            cachedLaunchCliDetail ?? (await getCurrentLaunchCliDetail(agentId));
           if (launchCliDetail && !isAgentLaunchable(launchCliDetail.state)) {
             const gateId = `terminal-${crypto.randomUUID()}`;
             const gatePanel: TerminalInstance = {

@@ -31,6 +31,11 @@ vi.mock("@/clients", () => ({
     setTabGroups: vi.fn().mockResolvedValue(undefined),
     getSettings: vi.fn().mockResolvedValue({}),
   },
+  globalEnvClient: {
+    get: vi.fn().mockResolvedValue({}),
+    set: vi.fn().mockResolvedValue(undefined),
+    invalidate: vi.fn(),
+  },
   agentSettingsClient: {
     get: vi.fn().mockResolvedValue({}),
   },
@@ -332,24 +337,20 @@ describe("optimistic panel spawn (#5789)", () => {
   });
 
   it("does not block the panel render on env fetch latency", async () => {
-    // The panel must appear before window.electron.globalEnv.get() and
+    // The panel must appear before globalEnvClient.get() and
     // projectClient.getSettings() resolve — env fetch is background, not gating.
-    const electron = (
-      globalThis as unknown as {
-        window: { electron: { globalEnv: { get: ReturnType<typeof vi.fn> } } };
-      }
-    ).window.electron;
+    const { globalEnvClient, projectClient } = (await import("@/clients")) as unknown as {
+      globalEnvClient: { get: ReturnType<typeof vi.fn> };
+      projectClient: { getSettings: ReturnType<typeof vi.fn> };
+    };
     let releaseEnv: () => void = () => {};
-    electron.globalEnv.get = vi.fn().mockImplementation(
+    globalEnvClient.get.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
           releaseEnv = () => resolve({});
         })
     );
 
-    const { projectClient } = (await import("@/clients")) as unknown as {
-      projectClient: { getSettings: ReturnType<typeof vi.fn> };
-    };
     let releaseSettings: () => void = () => {};
     projectClient.getSettings.mockImplementationOnce(
       () =>

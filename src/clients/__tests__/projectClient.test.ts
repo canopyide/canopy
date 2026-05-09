@@ -196,3 +196,187 @@ describe("projectClient getCurrent caching", () => {
     expect(result).toBe(fakeProject2);
   });
 });
+
+describe("projectClient getSettings caching", () => {
+  let getSettingsMock: ReturnType<typeof vi.fn>;
+  let saveSettingsMock: ReturnType<typeof vi.fn>;
+  let projectClient: typeof import("../projectClient").projectClient;
+  let invalidateProjectSettingsCache: typeof import("../projectClient").invalidateProjectSettingsCache;
+
+  const settingsA = { environmentVariables: { FOO: "a" } } as never;
+  const settingsB = { environmentVariables: { FOO: "b" } } as never;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    vi.useFakeTimers({ shouldAdvanceTime: false });
+
+    getSettingsMock = vi.fn();
+    saveSettingsMock = vi.fn().mockResolvedValue(undefined);
+
+    typedGlobal.window = {
+      electron: {
+        project: {
+          getCurrent: vi.fn(),
+          onSwitch: vi.fn(() => () => {}),
+          switch: vi.fn(),
+          reopen: vi.fn(),
+          getSettings: getSettingsMock,
+          saveSettings: saveSettingsMock,
+        },
+      },
+    };
+
+    const mod = await import("../projectClient");
+    projectClient = mod.projectClient;
+    invalidateProjectSettingsCache = mod.invalidateProjectSettingsCache;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    delete typedGlobal.window;
+  });
+
+  it("coalesces concurrent getSettings(projectId) calls into a single IPC call", async () => {
+    let resolve!: (v: unknown) => void;
+    const deferred = new Promise((r) => {
+      resolve = r;
+    });
+    getSettingsMock.mockReturnValue(deferred);
+
+    const p1 = projectClient.getSettings("proj-1");
+    const p2 = projectClient.getSettings("proj-1");
+
+    expect(getSettingsMock).toHaveBeenCalledTimes(1);
+    expect(p1).toBe(p2);
+
+    resolve(settingsA);
+    const [r1, r2] = await Promise.all([p1, p2]);
+    expect(r1).toBe(settingsA);
+    expect(r2).toBe(settingsA);
+  });
+
+  it("returns cached result for follow-on calls within TTL", async () => {
+    getSettingsMock.mockResolvedValue(settingsA);
+
+    const r1 = await projectClient.getSettings("proj-1");
+    const r2 = await projectClient.getSettings("proj-1");
+
+    expect(getSettingsMock).toHaveBeenCalledTimes(1);
+    expect(r1).toBe(settingsA);
+    expect(r2).toBe(settingsA);
+  });
+
+  it("isolates cache per projectId", async () => {
+    getSettingsMock.mockImplementation((id: string) =>
+      Promise.resolve(id === "proj-1" ? settingsA : settingsB)
+    );
+
+    const r1 = await projectClient.getSettings("proj-1");
+    const r2 = await projectClient.getSettings("proj-2");
+
+    expect(getSettingsMock).toHaveBeenCalledTimes(2);
+    expect(r1).toBe(settingsA);
+    expect(r2).toBe(settingsB);
+  });
+
+  it("re-fetches after the 150ms TTL expires", async () => {
+    vi.setSystemTime(new Date(0));
+    getSettingsMock.mockResolvedValue(settingsA);
+
+    await projectClient.getSettings("proj-1");
+    expect(getSettingsMock).toHaveBeenCalledTimes(1);
+
+    // Within TTL: cached
+    vi.setSystemTime(new Date(149));
+    await projectClient.getSettings("proj-1");
+    expect(getSettingsMock).toHaveBeenCalledTimes(1);
+
+    // After TTL: fresh fetch
+    vi.setSystemTime(new Date(200));
+    getSettingsMock.mockResolvedValue(settingsB);
+    const r3 = await projectClient.getSettings("proj-1");
+    expect(getSettingsMock).toHaveBeenCalledTimes(2);
+    expect(r3).toBe(settingsB);
+  });
+
+  it("saveSettings invalidates the project's cached settings", async () => {
+    getSettingsMock.mockResolvedValue(settingsA);
+    await projectClient.getSettings("proj-1");
+    expect(getSettingsMock).toHaveBeenCalledTimes(1);
+
+    await projectClient.saveSettings("proj-1", settingsB);
+    expect(saveSettingsMock).toHaveBeenCalledWith("proj-1", settingsB);
+
+    getSettingsMock.mockResolvedValue(settingsB);
+    const result = await projectClient.getSettings("proj-1");
+    expect(getSettingsMock).toHaveBeenCalledTimes(2);
+    expect(result).toBe(settingsB);
+  });
+
+  it("saveSettings only invalidates the affected projectId", async () => {
+    getSettingsMock.mockImplementation((id: string) =>
+      Promise.resolve(id === "proj-1" ? settingsA : settingsB)
+    );
+
+    await projectClient.getSettings("proj-1");
+    await projectClient.getSettings("proj-2");
+    expect(getSettingsMock).toHaveBeenCalledTimes(2);
+
+    await projectClient.saveSettings("proj-1", settingsA);
+
+    // proj-1 should re-fetch, proj-2 still cached
+    await projectClient.getSettings("proj-1");
+    await projectClient.getSettings("proj-2");
+    expect(getSettingsMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("invalidateProjectSettingsCache() with no args clears all entries", async () => {
+    getSettingsMock.mockImplementation((id: string) =>
+      Promise.resolve(id === "proj-1" ? settingsA : settingsB)
+    );
+
+    await projectClient.getSettings("proj-1");
+    await projectClient.getSettings("proj-2");
+    expect(getSettingsMock).toHaveBeenCalledTimes(2);
+
+    invalidateProjectSettingsCache();
+
+    await projectClient.getSettings("proj-1");
+    await projectClient.getSettings("proj-2");
+    expect(getSettingsMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("does not poison cache on IPC rejection", async () => {
+    getSettingsMock.mockRejectedValueOnce(new Error("IPC error"));
+
+    await expect(projectClient.getSettings("proj-1")).rejects.toThrow("IPC error");
+
+    getSettingsMock.mockResolvedValue(settingsA);
+    const result = await projectClient.getSettings("proj-1");
+    expect(getSettingsMock).toHaveBeenCalledTimes(2);
+    expect(result).toBe(settingsA);
+  });
+
+  it("saveSettings during in-flight getSettings does not let stale data poison the cache", async () => {
+    let resolve!: (v: unknown) => void;
+    const deferred = new Promise((r) => {
+      resolve = r;
+    });
+    getSettingsMock.mockReturnValueOnce(deferred);
+
+    const inflight = projectClient.getSettings("proj-1");
+
+    // Mid-flight write — invalidate the per-projectId cache.
+    await projectClient.saveSettings("proj-1", settingsB);
+    expect(saveSettingsMock).toHaveBeenCalledWith("proj-1", settingsB);
+
+    // Old fetch resolves with stale data; cache must not repopulate from it.
+    resolve(settingsA);
+    await inflight;
+
+    getSettingsMock.mockResolvedValue(settingsB);
+    const fresh = await projectClient.getSettings("proj-1");
+    expect(getSettingsMock).toHaveBeenCalledTimes(2);
+    expect(fresh).toBe(settingsB);
+  });
+});

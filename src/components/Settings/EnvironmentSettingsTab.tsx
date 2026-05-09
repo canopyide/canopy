@@ -10,6 +10,7 @@ import { useSettingsTabValidation } from "./SettingsValidationRegistry";
 import { useSettingsTabFlush } from "./SettingsFlushRegistry";
 import { logError } from "@/utils/logger";
 import { notify } from "@/lib/notify";
+import { invalidateGlobalEnvCache } from "@/clients/globalEnvClient";
 
 interface EnvVar {
   id: string;
@@ -195,6 +196,9 @@ export function EnvironmentSettingsTab() {
     try {
       const record = envVarsToRecord(envRows);
       await window.electron.globalEnv.set(record);
+      // Invalidate the renderer-side cache so the next spawn fetches the
+      // freshly saved values rather than the pre-save snapshot.
+      invalidateGlobalEnvCache();
       setSavedSnapshot(record);
       setIsDirty(false);
     } catch (err) {

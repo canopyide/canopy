@@ -1,6 +1,12 @@
 import type { PanelLocation } from "@/types";
 import type { PanelRegistryStoreApi, PanelRegistrySlice } from "./types";
-import { terminalClient, agentSettingsClient, projectClient, systemClient } from "@/clients";
+import {
+  terminalClient,
+  agentSettingsClient,
+  projectClient,
+  systemClient,
+  globalEnvClient,
+} from "@/clients";
 import {
   generateAgentCommand,
   buildAgentLaunchFlags,
@@ -66,10 +72,7 @@ function mergeSpawnEnv(
 }
 
 async function fetchGlobalEnv(): Promise<Record<string, string>> {
-  if (typeof window === "undefined" || !window.electron?.globalEnv?.get) {
-    return {};
-  }
-  return window.electron.globalEnv.get().catch((error: unknown) => {
+  return globalEnvClient.get().catch((error: unknown) => {
     logWarn("[TerminalStore] Failed to fetch global environment variables", { error });
     return {} as Record<string, string>;
   });

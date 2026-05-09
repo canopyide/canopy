@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Image } from "lucide-react";
 import { SettingsSection } from "@/components/Settings/SettingsSection";
 import { useProjectStore } from "@/store";
+import { projectClient } from "@/clients";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { logError } from "@/utils/logger";
 
@@ -83,8 +84,11 @@ export function ImageViewerTab() {
     setSaveError(null);
     setSaved(false);
     try {
-      const settings = await window.electron.project.getSettings(activeProjectId);
-      await window.electron.project.saveSettings(activeProjectId, {
+      // Routed through projectClient so the per-projectId getSettings cache
+      // is invalidated on save. Bypassing it left other readers reading
+      // stale data for up to the cache TTL.
+      const settings = await projectClient.getSettings(activeProjectId);
+      await projectClient.saveSettings(activeProjectId, {
         ...settings,
         preferredImageViewer: {
           mode,

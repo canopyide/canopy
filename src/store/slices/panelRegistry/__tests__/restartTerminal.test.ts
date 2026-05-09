@@ -32,6 +32,11 @@ vi.mock("@/clients", () => ({
     setTabGroups: vi.fn().mockResolvedValue(undefined),
     getSettings: vi.fn().mockResolvedValue(null),
   },
+  globalEnvClient: {
+    get: vi.fn().mockResolvedValue({}),
+    set: vi.fn().mockResolvedValue(undefined),
+    invalidate: vi.fn(),
+  },
   agentSettingsClient: {
     get: vi.fn().mockResolvedValue({}),
   },
