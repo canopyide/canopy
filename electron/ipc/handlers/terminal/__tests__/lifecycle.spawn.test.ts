@@ -102,10 +102,13 @@ const mockMarkTerminalForToken = vi.hoisted(() =>
 
 const mockUnbindTerminal = vi.hoisted(() => vi.fn<(terminalId: string) => void>());
 
+const mockGetBypassPermissions = vi.hoisted(() => vi.fn<(token: string) => boolean>(() => false));
+
 vi.mock("../../../../services/HelpSessionService.js", () => ({
   helpSessionService: {
     validateToken: (token: string) => mockValidateToken(token),
     getCodexLaunchArgs: (token: string) => mockGetCodexLaunchArgs(token),
+    getBypassPermissions: (token: string) => mockGetBypassPermissions(token),
     markTerminalForToken: (token: string, terminalId: string) =>
       mockMarkTerminalForToken(token, terminalId),
     unbindTerminal: (terminalId: string) => mockUnbindTerminal(terminalId),
@@ -575,6 +578,8 @@ describe("terminal spawn handler - help session detection (#6524)", () => {
     mockCurrentPort.mockReturnValue(null);
     mockGetCodexLaunchArgs.mockReset();
     mockGetCodexLaunchArgs.mockReturnValue(null);
+    mockGetBypassPermissions.mockReset();
+    mockGetBypassPermissions.mockReturnValue(false);
     mockMarkTerminalForToken.mockReset();
     mockMarkTerminalForToken.mockReturnValue(true);
     mockUnbindTerminal.mockReset();
@@ -608,8 +613,9 @@ describe("terminal spawn handler - help session detection (#6524)", () => {
     expect(mockPreparePaneConfig).not.toHaveBeenCalled();
   });
 
-  it("appends --dangerously-skip-permissions when help session tier is 'system'", async () => {
-    mockValidateToken.mockImplementation((token) => (token === "system-token" ? "system" : false));
+  it("appends --dangerously-skip-permissions when help session bypassPermissions is true", async () => {
+    mockValidateToken.mockImplementation((token) => (token === "bypass-token" ? "system" : false));
+    mockGetBypassPermissions.mockImplementation((token) => token === "bypass-token");
 
     const deps = { ptyClient } as unknown as HandlerDependencies;
     registerTerminalLifecycleHandlers(deps);
@@ -623,7 +629,7 @@ describe("terminal spawn handler - help session detection (#6524)", () => {
         cwd: tmpDir,
         command: "claude",
         launchAgentId: "claude",
-        env: { DAINTREE_MCP_TOKEN: "system-token" },
+        env: { DAINTREE_MCP_TOKEN: "bypass-token" },
       } as unknown as Parameters<typeof handler>[1]
     );
 
@@ -633,13 +639,71 @@ describe("terminal spawn handler - help session detection (#6524)", () => {
     expect(mockPreparePaneConfig).not.toHaveBeenCalled();
   });
 
-  it("strips --dangerously-skip-permissions from action-tier help launches even if it leaked in via agent settings", async () => {
-    // The help-tier classification — driven by `helpAssistant.skipPermissions`
-    // — is the source of truth. If a user has Claude's global
-    // `dangerousEnabled` on, the renderer's command generator may include
-    // `--dangerously-skip-permissions`, and the action-tier help session must
-    // strip it so the assistant doesn't silently bypass permission prompts.
+  it("appends --dangerously-skip-permissions even at action tier when bypassPermissions is on", async () => {
+    // Tier and bypassPermissions are decoupled (#7532): an action-tier
+    // session with bypass on should still skip the CLI confirmation gate.
+    mockValidateToken.mockImplementation((token) =>
+      token === "bypass-action-token" ? "action" : false
+    );
+    mockGetBypassPermissions.mockImplementation((token) => token === "bypass-action-token");
+
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+    await handler(
+      {} as Electron.IpcMainInvokeEvent,
+      {
+        cols: 80,
+        rows: 24,
+        cwd: tmpDir,
+        command: "claude",
+        launchAgentId: "claude",
+        env: { DAINTREE_MCP_TOKEN: "bypass-action-token" },
+      } as unknown as Parameters<typeof handler>[1]
+    );
+
+    const spawnArgs = ptyClient.spawn.mock.calls[0][1];
+    expect(spawnArgs.command).toContain("--dangerously-skip-permissions");
+  });
+
+  it("does NOT append --dangerously-skip-permissions when tier=system but bypassPermissions=false", async () => {
+    // Tier and bypassPermissions are decoupled (#7532): a system-tier
+    // session can still respect Claude's permission gate.
+    mockValidateToken.mockImplementation((token) =>
+      token === "system-no-bypass" ? "system" : false
+    );
+    mockGetBypassPermissions.mockImplementation(() => false);
+
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+    await handler(
+      {} as Electron.IpcMainInvokeEvent,
+      {
+        cols: 80,
+        rows: 24,
+        cwd: tmpDir,
+        command: "claude",
+        launchAgentId: "claude",
+        env: { DAINTREE_MCP_TOKEN: "system-no-bypass" },
+      } as unknown as Parameters<typeof handler>[1]
+    );
+
+    const spawnArgs = ptyClient.spawn.mock.calls[0][1];
+    expect(spawnArgs.command).toBe("claude");
+    expect(spawnArgs.command).not.toContain("--dangerously-skip-permissions");
+  });
+
+  it("strips --dangerously-skip-permissions from help launches with bypass off, even if it leaked in via agent settings", async () => {
+    // The session-snapshotted bypassPermissions flag is the source of
+    // truth. If a user has Claude's global `dangerousEnabled` on, the
+    // renderer's command generator may include `--dangerously-skip-permissions`,
+    // and a help session with bypass off must strip it so the assistant
+    // doesn't silently bypass permission prompts.
     mockValidateToken.mockImplementation((token) => (token === "help-token" ? "action" : false));
+    mockGetBypassPermissions.mockImplementation(() => false);
 
     const deps = { ptyClient } as unknown as HandlerDependencies;
     registerTerminalLifecycleHandlers(deps);
@@ -660,6 +724,65 @@ describe("terminal spawn handler - help session detection (#6524)", () => {
     const spawnArgs = ptyClient.spawn.mock.calls[0][1];
     expect(spawnArgs.command).toBe("claude");
     expect(spawnArgs.command).not.toContain("--dangerously-skip-permissions");
+  });
+
+  it("strips a lookalike --dangerously-skip-permissions=false from help launches with bypass off", async () => {
+    // Defense-in-depth: a customArgs lookalike like
+    // `--dangerously-skip-permissions=false` could survive a substring-only
+    // check. The strip must use a token-boundary regex that also matches
+    // `--flag=value` forms.
+    mockValidateToken.mockImplementation((token) => (token === "help-token" ? "action" : false));
+    mockGetBypassPermissions.mockImplementation(() => false);
+
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+    await handler(
+      {} as Electron.IpcMainInvokeEvent,
+      {
+        cols: 80,
+        rows: 24,
+        cwd: tmpDir,
+        command: "claude --dangerously-skip-permissions=false --resume abc",
+        launchAgentId: "claude",
+        env: { DAINTREE_MCP_TOKEN: "help-token" },
+      } as unknown as Parameters<typeof handler>[1]
+    );
+
+    const spawnArgs = ptyClient.spawn.mock.calls[0][1];
+    expect(spawnArgs.command).not.toContain("--dangerously-skip-permissions");
+    expect(spawnArgs.command).toContain("--resume abc");
+  });
+
+  it("strips lookalike =false and appends canonical --dangerously-skip-permissions when bypass is on", async () => {
+    // Strip-first then conditionally append guarantees the session's
+    // bypass preference wins over a smuggled `=false` form in customArgs.
+    mockValidateToken.mockImplementation((token) => (token === "bypass-token" ? "action" : false));
+    mockGetBypassPermissions.mockImplementation((token) => token === "bypass-token");
+
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+    await handler(
+      {} as Electron.IpcMainInvokeEvent,
+      {
+        cols: 80,
+        rows: 24,
+        cwd: tmpDir,
+        command: "claude --dangerously-skip-permissions=false --resume abc",
+        launchAgentId: "claude",
+        env: { DAINTREE_MCP_TOKEN: "bypass-token" },
+      } as unknown as Parameters<typeof handler>[1]
+    );
+
+    const spawnArgs = ptyClient.spawn.mock.calls[0][1];
+    // No `=false` lookalike survives.
+    expect(spawnArgs.command).not.toContain("--dangerously-skip-permissions=false");
+    // Canonical flag is present as a standalone token.
+    expect(spawnArgs.command).toMatch(/(^|\s)--dangerously-skip-permissions(\s|$)/);
+    expect(spawnArgs.command).toContain("--resume abc");
   });
 
   it("refuses to spawn when DAINTREE_MCP_TOKEN is present but invalid for an assistant-supported launch (#7509)", async () => {
@@ -813,8 +936,9 @@ describe("terminal spawn handler - help session detection (#6524)", () => {
     expect(mockPreparePaneConfig).not.toHaveBeenCalled();
   });
 
-  it("appends --dangerously-bypass-approvals-and-sandbox to a system-tier Codex help launch", async () => {
+  it("appends --dangerously-bypass-approvals-and-sandbox when bypassPermissions is on for a Codex help launch", async () => {
     mockValidateToken.mockImplementation((token) => (token === "system-token" ? "system" : false));
+    mockGetBypassPermissions.mockImplementation((token) => token === "system-token");
     mockGetCodexLaunchArgs.mockReturnValue([]);
 
     const deps = { ptyClient } as unknown as HandlerDependencies;

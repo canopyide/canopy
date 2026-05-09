@@ -38,7 +38,8 @@ const {
   mockGetHelpAssistantSettings: vi.fn().mockResolvedValue({
     docSearch: true,
     daintreeControl: true,
-    skipPermissions: false,
+    tier: "action" as const,
+    bypassPermissions: false,
     auditRetention: 7,
     customArgs: "",
     idleHibernateMinutes: 30,
@@ -298,7 +299,8 @@ function resetState() {
   mockGetHelpAssistantSettings.mockResolvedValue({
     docSearch: true,
     daintreeControl: true,
-    skipPermissions: false,
+    tier: "action" as const,
+    bypassPermissions: false,
     auditRetention: 7,
     customArgs: "",
     idleHibernateMinutes: 30,
@@ -593,7 +595,8 @@ describe("HelpPanel — resume preserves user-configured launch flags", () => {
     mockGetHelpAssistantSettings.mockResolvedValue({
       docSearch: true,
       daintreeControl: true,
-      skipPermissions: false,
+      tier: "action" as const,
+      bypassPermissions: false,
       auditRetention: 7,
       customArgs: "--model claude-opus-4-5",
       idleHibernateMinutes: 30,
@@ -776,7 +779,8 @@ describe("HelpPanel — idle hibernation timer", () => {
       mockGetHelpAssistantSettings.mockResolvedValue({
         docSearch: true,
         daintreeControl: true,
-        skipPermissions: false,
+        tier: "action" as const,
+        bypassPermissions: false,
         auditRetention: 7,
         customArgs: "",
         idleHibernateMinutes: 0,

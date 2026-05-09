@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Copy,
   Check,
@@ -19,11 +19,11 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { SettingsSection } from "@/components/Settings/SettingsSection";
 import { SettingsSwitchCard } from "@/components/Settings/SettingsSwitchCard";
 import { useSettingsTabValidation } from "@/components/Settings/SettingsValidationRegistry";
+import { McpAuditLogViewer } from "@/components/Settings/McpAuditLogViewer";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { logError } from "@/utils/logger";
 import {
   type McpAuditRecord,
-  type McpAuditResult,
   MCP_AUDIT_DEFAULT_MAX_RECORDS,
   MCP_AUDIT_MAX_RECORDS,
   MCP_AUDIT_MIN_RECORDS,
@@ -36,40 +36,9 @@ interface McpServerStatus {
   apiKey: string;
 }
 
-type AuditResultFilter = "all" | McpAuditResult;
-
 const COPY_FEEDBACK_MS = 2000;
 
 const MASKED_KEY = "•".repeat(24);
-
-const RESULT_LABEL: Record<McpAuditResult, string> = {
-  success: "Success",
-  error: "Error",
-  "confirmation-pending": "Awaiting confirmation",
-  unauthorized: "Unauthorized",
-  dedup: "Deduplicated",
-};
-
-const RESULT_DOT_CLASS: Record<McpAuditResult, string> = {
-  success: "bg-status-success",
-  error: "bg-status-danger",
-  "confirmation-pending": "bg-status-warning",
-  unauthorized: "bg-status-danger",
-  dedup: "bg-status-info",
-};
-
-function formatRelativeTimestamp(ts: number): string {
-  const diffMs = Date.now() - ts;
-  if (diffMs < 0) return "just now";
-  const sec = Math.floor(diffMs / 1000);
-  if (sec < 60) return `${sec}s ago`;
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  const day = Math.floor(hr / 24);
-  return `${day}d ago`;
-}
 
 export function McpServerSettingsTab() {
   const [status, setStatus] = useState<McpServerStatus>({
@@ -95,8 +64,6 @@ export function McpServerSettingsTab() {
   const [auditMaxRecords, setAuditMaxRecords] = useState(MCP_AUDIT_DEFAULT_MAX_RECORDS);
   const [maxRecordsInput, setMaxRecordsInput] = useState(MCP_AUDIT_DEFAULT_MAX_RECORDS.toString());
   const [auditLoading, setAuditLoading] = useState(true);
-  const [toolFilter, setToolFilter] = useState("");
-  const [resultFilter, setResultFilter] = useState<AuditResultFilter>("all");
 
   const [showRotateConfirm, setShowRotateConfirm] = useState(false);
   const [isRotating, setIsRotating] = useState(false);
@@ -341,15 +308,6 @@ export function McpServerSettingsTab() {
       logError("Failed to copy MCP audit log", err);
     }
   }, []);
-
-  const filteredAuditRecords = useMemo(() => {
-    const needle = toolFilter.trim().toLowerCase();
-    return auditRecords.filter((record) => {
-      if (resultFilter !== "all" && record.result !== resultFilter) return false;
-      if (needle.length > 0 && !record.toolId.toLowerCase().includes(needle)) return false;
-      return true;
-    });
-  }, [auditRecords, resultFilter, toolFilter]);
 
   const sseUrl = status.port ? `http://127.0.0.1:${status.port}/sse` : null;
 
@@ -602,140 +560,15 @@ export function McpServerSettingsTab() {
                 </span>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  type="text"
-                  value={toolFilter}
-                  onChange={(e) => setToolFilter(e.target.value)}
-                  placeholder="Filter by tool ID"
-                  aria-label="Filter audit by tool name"
-                  className="flex-1 min-w-[160px] bg-daintree-bg border border-border-strong rounded-[var(--radius-md)] px-2 py-1 text-xs text-daintree-text placeholder:text-daintree-text/40 font-mono focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
-                />
-                <select
-                  value={resultFilter}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (
-                      value === "all" ||
-                      value === "success" ||
-                      value === "error" ||
-                      value === "confirmation-pending" ||
-                      value === "unauthorized"
-                    ) {
-                      setResultFilter(value);
-                    }
-                  }}
-                  aria-label="Filter audit by result"
-                  className="bg-daintree-bg border border-border-strong rounded-[var(--radius-md)] px-2 py-1 text-xs text-daintree-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
-                >
-                  <option value="all">All results</option>
-                  <option value="success">Success</option>
-                  <option value="error">Error</option>
-                  <option value="confirmation-pending">Awaiting confirmation</option>
-                  <option value="unauthorized">Unauthorized</option>
-                </select>
-              </div>
-
-              <div className="max-h-64 overflow-y-auto rounded-[var(--radius-md)] border border-daintree-border bg-daintree-bg">
-                {auditLoading ? (
-                  <p className="p-3 text-xs text-daintree-text/50">Loading…</p>
-                ) : filteredAuditRecords.length === 0 ? (
-                  <p className="p-3 text-xs text-daintree-text/50">
-                    {auditRecords.length === 0
-                      ? "No tool dispatches recorded yet."
-                      : "No records match the current filters."}
-                  </p>
-                ) : (
-                  <ul className="divide-y divide-daintree-border">
-                    {filteredAuditRecords.map((record) => (
-                      <li
-                        key={record.id}
-                        className="grid grid-cols-[auto_1fr_auto] gap-2 p-2 text-xs"
-                      >
-                        <span
-                          className={cn(
-                            "mt-1 h-2 w-2 rounded-full shrink-0",
-                            RESULT_DOT_CLASS[record.result]
-                          )}
-                          aria-label={RESULT_LABEL[record.result]}
-                          title={RESULT_LABEL[record.result]}
-                        />
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono text-daintree-text/90 truncate">
-                              {record.toolId}
-                            </span>
-                            {record.errorCode && (
-                              <span className="text-[10px] uppercase tracking-wide text-status-danger/80">
-                                {record.errorCode}
-                              </span>
-                            )}
-                          </div>
-                          <div className="mt-0.5 font-mono text-daintree-text/50 truncate">
-                            {record.argsSummary || "{}"}
-                          </div>
-                        </div>
-                        <div className="text-right text-daintree-text/40 whitespace-nowrap">
-                          <div>{formatRelativeTimestamp(record.timestamp)}</div>
-                          <div>{record.durationMs}ms</div>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => void refreshAuditRecords()}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-[var(--radius-md)] border border-daintree-border text-daintree-text/70 hover:text-daintree-text hover:bg-overlay-soft transition-colors"
-                  aria-label="Refresh audit log"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  Refresh
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleCopyAuditAsJson(filteredAuditRecords)}
-                  disabled={filteredAuditRecords.length === 0}
-                  className={cn(
-                    "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-[var(--radius-md)] border transition-colors",
-                    filteredAuditRecords.length === 0
-                      ? "border-daintree-border text-daintree-text/30 cursor-not-allowed"
-                      : copiedAudit
-                        ? "text-status-success border-status-success/30"
-                        : "border-daintree-border text-daintree-text/70 hover:text-daintree-text hover:bg-overlay-soft"
-                  )}
-                >
-                  {copiedAudit ? (
-                    <Check className="w-3.5 h-3.5" />
-                  ) : (
-                    <Copy className="w-3.5 h-3.5" />
-                  )}
-                  {copiedAudit
-                    ? "Copied!"
-                    : `Copy ${filteredAuditRecords.length === auditRecords.length ? "all" : "filtered"} as JSON`}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowClearConfirm(true)}
-                  disabled={auditRecords.length === 0}
-                  className={cn(
-                    "px-3 py-1.5 text-xs font-medium rounded-[var(--radius-md)] border transition-colors",
-                    auditRecords.length === 0
-                      ? "border-daintree-border text-daintree-text/30 cursor-not-allowed"
-                      : "border-daintree-border text-status-danger hover:text-status-danger hover:bg-status-danger/10 hover:border-status-danger/20"
-                  )}
-                >
-                  Clear log
-                </button>
-                <span className="ml-auto text-xs text-daintree-text/40">
-                  {resultFilter !== "all" || toolFilter.trim().length > 0
-                    ? `${filteredAuditRecords.length} of ${auditRecords.length}`
-                    : `${auditRecords.length} of ${auditMaxRecords}`}
-                </span>
-              </div>
+              <McpAuditLogViewer
+                records={auditRecords}
+                loading={auditLoading}
+                onRefresh={refreshAuditRecords}
+                onCopy={handleCopyAuditAsJson}
+                onClear={() => setShowClearConfirm(true)}
+                copyFlashActive={copiedAudit}
+                maxRecords={auditMaxRecords}
+              />
             </div>
           </SettingsSection>
         </>

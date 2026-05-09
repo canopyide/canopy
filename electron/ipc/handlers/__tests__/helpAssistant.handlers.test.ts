@@ -55,7 +55,8 @@ describe("registerHelpAssistantHandlers", () => {
     expect(result).toEqual({
       docSearch: true,
       daintreeControl: true,
-      skipPermissions: false,
+      tier: "action",
+      bypassPermissions: false,
       auditRetention: 7,
       customArgs: "",
       idleHibernateMinutes: 30,
@@ -63,7 +64,11 @@ describe("registerHelpAssistantHandlers", () => {
   });
 
   it("merges stored values over defaults so legacy partial state still loads", async () => {
-    storeMock.get.mockReturnValue({ skipPermissions: true, auditRetention: 30 });
+    storeMock.get.mockReturnValue({
+      tier: "system",
+      bypassPermissions: true,
+      auditRetention: 30,
+    });
     registerHelpAssistantHandlers();
     const handler = ipcMainMock._handlers.get(GET_CHANNEL)!;
 
@@ -71,22 +76,94 @@ describe("registerHelpAssistantHandlers", () => {
     expect(result).toEqual({
       docSearch: true,
       daintreeControl: true,
-      skipPermissions: true,
+      tier: "system",
+      bypassPermissions: true,
       auditRetention: 30,
       customArgs: "",
       idleHibernateMinutes: 30,
     });
   });
 
+  it("migrates legacy skipPermissions=true to tier='system' + bypassPermissions=true", async () => {
+    storeMock.get.mockReturnValue({
+      skipPermissions: true,
+    } as unknown as Partial<HelpAssistantSettings>);
+    registerHelpAssistantHandlers();
+    const handler = ipcMainMock._handlers.get(GET_CHANNEL)!;
+
+    const result = await handler(null);
+    expect(result).toMatchObject({ tier: "system", bypassPermissions: true });
+  });
+
+  it("migrates legacy skipPermissions=false to tier='action' + bypassPermissions=false", async () => {
+    storeMock.get.mockReturnValue({
+      skipPermissions: false,
+    } as unknown as Partial<HelpAssistantSettings>);
+    registerHelpAssistantHandlers();
+    const handler = ipcMainMock._handlers.get(GET_CHANNEL)!;
+
+    const result = await handler(null);
+    expect(result).toMatchObject({ tier: "action", bypassPermissions: false });
+  });
+
+  it("prefers new fields over legacy skipPermissions when both are present", async () => {
+    storeMock.get.mockReturnValue({
+      skipPermissions: true,
+      tier: "action",
+      bypassPermissions: false,
+    } as unknown as Partial<HelpAssistantSettings>);
+    registerHelpAssistantHandlers();
+    const handler = ipcMainMock._handlers.get(GET_CHANNEL)!;
+
+    const result = await handler(null);
+    expect(result).toMatchObject({ tier: "action", bypassPermissions: false });
+  });
+
+  it("rejects an invalid stored tier and falls back to default", async () => {
+    storeMock.get.mockReturnValue({
+      tier: "external",
+      bypassPermissions: false,
+    } as unknown as Partial<HelpAssistantSettings>);
+    registerHelpAssistantHandlers();
+    const handler = ipcMainMock._handlers.get(GET_CHANNEL)!;
+
+    const result = await handler(null);
+    expect(result).toMatchObject({ tier: "action", bypassPermissions: false });
+  });
+
   it("persists each touched key under helpAssistant.<field>", async () => {
     registerHelpAssistantHandlers();
     const handler = ipcMainMock._handlers.get(SET_CHANNEL)!;
 
-    await handler(null, { docSearch: false, skipPermissions: true });
+    await handler(null, { docSearch: false, bypassPermissions: true });
 
     expect(storeMock.set).toHaveBeenCalledWith("helpAssistant.docSearch", false);
-    expect(storeMock.set).toHaveBeenCalledWith("helpAssistant.skipPermissions", true);
+    expect(storeMock.set).toHaveBeenCalledWith("helpAssistant.bypassPermissions", true);
     expect(storeMock.set).toHaveBeenCalledTimes(2);
+  });
+
+  it("persists tier when set to a valid value", async () => {
+    registerHelpAssistantHandlers();
+    const handler = ipcMainMock._handlers.get(SET_CHANNEL)!;
+
+    await handler(null, { tier: "system" });
+    await handler(null, { tier: "workbench" });
+    await handler(null, { tier: "action" });
+
+    expect(storeMock.set).toHaveBeenCalledWith("helpAssistant.tier", "system");
+    expect(storeMock.set).toHaveBeenCalledWith("helpAssistant.tier", "workbench");
+    expect(storeMock.set).toHaveBeenCalledWith("helpAssistant.tier", "action");
+  });
+
+  it("rejects tier values outside the valid HelpAssistantTier union", async () => {
+    registerHelpAssistantHandlers();
+    const handler = ipcMainMock._handlers.get(SET_CHANNEL)!;
+
+    await handler(null, { tier: "external" });
+    await handler(null, { tier: "off" });
+    await handler(null, { tier: 0 });
+
+    expect(storeMock.set).not.toHaveBeenCalled();
   });
 
   it("ignores undefined values so partial patches do not erase keys", async () => {
@@ -137,7 +214,7 @@ describe("registerHelpAssistantHandlers", () => {
     registerHelpAssistantHandlers();
     const handler = ipcMainMock._handlers.get(SET_CHANNEL)!;
 
-    await handler(null, { docSearch: "yes", daintreeControl: 1, skipPermissions: 0 });
+    await handler(null, { docSearch: "yes", daintreeControl: 1, bypassPermissions: 0 });
 
     expect(storeMock.set).not.toHaveBeenCalled();
   });
@@ -160,7 +237,8 @@ describe("registerHelpAssistantHandlers", () => {
     storeMock.get.mockReturnValue({
       docSearch: "not-a-boolean" as unknown as boolean,
       daintreeControl: 42 as unknown as boolean,
-      skipPermissions: null as unknown as boolean,
+      tier: null as unknown as "action",
+      bypassPermissions: "yes" as unknown as boolean,
       auditRetention: 365 as unknown as 7,
     });
     registerHelpAssistantHandlers();
@@ -170,7 +248,8 @@ describe("registerHelpAssistantHandlers", () => {
     expect(result).toEqual({
       docSearch: true,
       daintreeControl: true,
-      skipPermissions: false,
+      tier: "action",
+      bypassPermissions: false,
       auditRetention: 7,
       customArgs: "",
       idleHibernateMinutes: 30,

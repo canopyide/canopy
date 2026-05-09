@@ -216,7 +216,7 @@ describe("HelpSessionService", () => {
     expect(settings.permissions.deny).toContain("Write(**)");
   });
 
-  it("sets defaultMode=bypassPermissions and tier=system when skipPermissions is true", async () => {
+  it("sets defaultMode=bypassPermissions and tier=system when legacy skipPermissions is true", async () => {
     mockStoreGet.mockReturnValue({ skipPermissions: true });
 
     const result = await service.provisionSession(provisionInput());
@@ -227,6 +227,54 @@ describe("HelpSessionService", () => {
       await fs.readFile(path.join(result.sessionPath, ".claude", "settings.json"), "utf-8")
     );
     expect(settings.defaultMode).toBe("bypassPermissions");
+  });
+
+  it("writes defaultMode=bypassPermissions when bypassPermissions is on but tier stays at action", async () => {
+    mockStoreGet.mockReturnValue({ tier: "action", bypassPermissions: true });
+
+    const result = await service.provisionSession(provisionInput());
+    if (!result) throw new Error("expected result");
+    // tier and bypassPermissions are decoupled — action tier with bypass
+    // on writes defaultMode but does NOT elevate the MCP tier to system.
+    expect(result.tier).toBe("action");
+
+    const settings = JSON.parse(
+      await fs.readFile(path.join(result.sessionPath, ".claude", "settings.json"), "utf-8")
+    );
+    expect(settings.defaultMode).toBe("bypassPermissions");
+  });
+
+  it("does NOT write defaultMode when tier=system but bypassPermissions is off", async () => {
+    mockStoreGet.mockReturnValue({ tier: "system", bypassPermissions: false });
+
+    const result = await service.provisionSession(provisionInput());
+    if (!result) throw new Error("expected result");
+    expect(result.tier).toBe("system");
+
+    const settings = JSON.parse(
+      await fs.readFile(path.join(result.sessionPath, ".claude", "settings.json"), "utf-8")
+    );
+    expect(settings.defaultMode).toBeUndefined();
+  });
+
+  it("getBypassPermissions returns the snapshot taken at provision time", async () => {
+    mockStoreGet.mockReturnValue({ tier: "action", bypassPermissions: true });
+
+    const result = await service.provisionSession(provisionInput());
+    if (!result) throw new Error("expected result");
+
+    expect(service.getBypassPermissions(result.token)).toBe(true);
+    expect(service.getBypassPermissions("not-a-token")).toBe(false);
+    expect(service.getBypassPermissions("")).toBe(false);
+
+    await service.revokeSession(result.sessionId);
+    expect(service.getBypassPermissions(result.token)).toBe(false);
+  });
+
+  it("getBypassPermissions defaults to false when settings have not been touched", async () => {
+    const result = await service.provisionSession(provisionInput());
+    if (!result) throw new Error("expected result");
+    expect(service.getBypassPermissions(result.token)).toBe(false);
   });
 
   it("omits the daintree MCP server when daintreeControl is false", async () => {

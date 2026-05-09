@@ -35,7 +35,8 @@ const {
   mockGetHelpAssistantSettings: vi.fn().mockResolvedValue({
     docSearch: true,
     daintreeControl: true,
-    skipPermissions: false,
+    tier: "action" as const,
+    bypassPermissions: false,
     auditRetention: 7,
     customArgs: "",
   }),
@@ -328,7 +329,8 @@ function resetState() {
   mockGetHelpAssistantSettings.mockResolvedValue({
     docSearch: true,
     daintreeControl: true,
-    skipPermissions: false,
+    tier: "action" as const,
+    bypassPermissions: false,
     auditRetention: 7,
     customArgs: "",
   });
@@ -1457,7 +1459,8 @@ describe("HelpPanel — customArgs threading", () => {
     mockGetHelpAssistantSettings.mockResolvedValue({
       docSearch: true,
       daintreeControl: true,
-      skipPermissions: false,
+      tier: "action" as const,
+      bypassPermissions: false,
       auditRetention: 7,
       customArgs: "--model sonnet --verbose",
     });
@@ -1481,7 +1484,8 @@ describe("HelpPanel — customArgs threading", () => {
     mockGetHelpAssistantSettings.mockResolvedValue({
       docSearch: true,
       daintreeControl: true,
-      skipPermissions: false,
+      tier: "action" as const,
+      bypassPermissions: false,
       auditRetention: 7,
       customArgs: "",
     });
@@ -1503,7 +1507,8 @@ describe("HelpPanel — customArgs threading", () => {
     mockGetHelpAssistantSettings.mockResolvedValue({
       docSearch: true,
       daintreeControl: true,
-      skipPermissions: false,
+      tier: "action" as const,
+      bypassPermissions: false,
       auditRetention: 7,
       customArgs: "   \t  ",
     });
@@ -1526,7 +1531,8 @@ describe("HelpPanel — customArgs threading", () => {
     mockGetHelpAssistantSettings.mockResolvedValue({
       docSearch: true,
       daintreeControl: true,
-      skipPermissions: false,
+      tier: "action" as const,
+      bypassPermissions: false,
       auditRetention: 7,
       customArgs: "--model sonnet",
     });

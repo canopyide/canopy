@@ -217,8 +217,10 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
     // a .claude/settings.json that sets `enableAllProjectMcpServers: true` so
     // Claude Code auto-trusts the project-scoped servers without prompting.
     // Skip per-pane MCP config injection (the session dir owns it) and let
-    // Claude's normal cwd discovery do its thing. For `system`-tier sessions
-    // (skipPermissions), append the dangerous flag.
+    // Claude's normal cwd discovery do its thing. The CLI bypass flag is
+    // gated on the session's snapshotted `bypassPermissions` (independent
+    // of `tier`), so an `action`-tier session can still skip permission
+    // prompts and a `system`-tier session can still respect them.
     const helpToken = spawnEnv?.DAINTREE_MCP_TOKEN ?? "";
     const helpTier = helpToken ? helpSessionService.validateToken(helpToken) : false;
     const isAssistantAgent =
@@ -240,25 +242,25 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
 
     if (isHelpLaunch && launchAgentId) {
       const dangerous = DEFAULT_DANGEROUS_ARGS[launchAgentId];
-      if (helpTier === "system") {
-        if (dangerous && !safeCommand.includes(dangerous)) {
-          safeCommand = `${safeCommand} ${dangerous}`;
-        }
-      } else if (dangerous) {
-        // The help-tier classification is the source of truth for whether the
-        // assistant runs in dangerous mode — `helpAssistant.skipPermissions`
-        // governs it, not the global Claude agent settings. Strip the flag if
-        // it leaked in via `entry.dangerousEnabled` from the agent registry,
-        // otherwise an `action`-tier session would silently skip permission
-        // prompts despite the assistant config saying otherwise.
-        const stripPattern = new RegExp(
-          `(^|\\s)${dangerous.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}(?=\\s|$)`,
-          "g"
-        );
+      const bypassPermissions = helpSessionService.getBypassPermissions(helpToken);
+      if (dangerous) {
+        // The session-snapshotted `bypassPermissions` flag is the source of
+        // truth for whether the assistant runs in dangerous mode — set per
+        // help session at provision time, decoupled from the MCP `tier`.
+        // Always strip first (covering bare flag and `--flag=value`
+        // lookalikes that could survive a substring-only check). Then append
+        // the canonical flag iff bypass is on. The strip-first pass means
+        // `--dangerously-skip-permissions=false` smuggled via customArgs on
+        // a resume launch never wins over the session's stored preference.
+        const dangerousEscaped = dangerous.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const stripPattern = new RegExp(`(^|\\s)${dangerousEscaped}(?:=\\S*)?(?=\\s|$)`, "g");
         safeCommand = safeCommand
           .replace(stripPattern, "$1")
           .replace(/\s{2,}/g, " ")
           .trim();
+        if (bypassPermissions) {
+          safeCommand = safeCommand.length > 0 ? `${safeCommand} ${dangerous}` : dangerous;
+        }
       }
       // Codex doesn't read project-scoped `.codex/config.toml` from cwd —
       // its only override mechanism is the `-c key=value` CLI flag. The

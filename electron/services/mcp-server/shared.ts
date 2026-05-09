@@ -16,6 +16,11 @@ import {
   WAIT_UNTIL_IDLE_OUTPUT_SCHEMA,
   WAIT_UNTIL_IDLE_DESCRIPTION,
 } from "../../../shared/types/terminalWaitUntilIdle.js";
+import {
+  ACTION_TIER_ADDONS as ACTION_TIER_ADDONS_LIST,
+  SYSTEM_TIER_ADDONS as SYSTEM_TIER_ADDONS_LIST,
+  WORKBENCH_TIER_TOOLS as WORKBENCH_TIER_TOOLS_LIST,
+} from "../../../shared/config/helpAssistantTierAllowlists.js";
 
 export {
   type WaitUntilIdleResult,
@@ -94,117 +99,14 @@ export const OPEN_WORLD_CATEGORIES: ReadonlySet<string> = new Set([
 
 export type McpTier = "workbench" | "action" | "system" | "external";
 
-const WORKBENCH_TOOLS: ReadonlySet<string> = new Set([
-  ACTIONS_LIST_TOOL,
-  "actions.getContext",
-
-  "project.getAll",
-  "project.getCurrent",
-  "project.getSettings",
-  "project.getStats",
-  "project.detectRunners",
-
-  "worktree.list",
-  "worktree.getCurrent",
-  "worktree.listBranches",
-  "worktree.getDefaultPath",
-  "worktree.getAvailableBranch",
-  "worktree.resource.status",
-
-  "files.search",
-  "file.view",
-
-  "copyTree.generate",
-
-  "terminal.list",
-  "terminal.getOutput",
-  "terminal.getStatus",
-
-  "agent.getState",
-
-  "agentSettings.get",
-  "keybinding.getOverrides",
-
-  "slashCommands.list",
-
-  "git.getProjectPulse",
-  "git.getFileDiff",
-  "git.listCommits",
-  "git.getStagingStatus",
-  "git.snapshotGet",
-  "git.snapshotList",
-
-  "github.checkCli",
-  "github.getRepoStats",
-  "github.listIssues",
-  "github.listPullRequests",
-  "github.getIssueByNumber",
-
-  "workflow.prepBranchForReview",
-
-  "system.checkCommand",
-  "system.checkDirectory",
-]);
-
-const ACTION_TIER_ADDONS: ReadonlySet<string> = new Set([
-  "worktree.createWithRecipe",
-  "worktree.setActive",
-  "worktree.refresh",
-
-  "terminal.inject",
-  "terminal.new",
-  "terminal.waitUntilIdle",
-
-  "recipe.list",
-  "recipe.run",
-
-  "copyTree.injectToTerminal",
-
-  "file.openInEditor",
-
-  "agent.terminal",
-  "agent.focusNextWaiting",
-  "agent.focusNextWorking",
-  "agent.focusNextAgent",
-  "agent.focusPreviousAgent",
-
-  "workflow.startWorkOnIssue",
-  "workflow.focusNextAttention",
-
-  "app.theme.pick",
-  "app.theme.browser.open",
-  "app.theme.toggle",
-
-  "project.update",
-  "project.saveSettings",
-  "project.muteNotifications",
-]);
-
-const SYSTEM_TIER_ADDONS: ReadonlySet<string> = new Set([
-  "worktree.delete",
-
-  "terminal.sendCommand",
-  "terminal.close",
-  "terminal.closeAll",
-  "terminal.kill",
-  "terminal.killAll",
-
-  "copyTree.generateAndCopyFile",
-
-  "agent.launch",
-
-  "git.stageFile",
-  "git.unstageFile",
-  "git.stageAll",
-  "git.unstageAll",
-  "git.commit",
-  "git.push",
-  "git.snapshotRevert",
-  "git.snapshotDelete",
-
-  "github.openIssue",
-  "github.openPR",
-]);
+// Tier tool lists live in `shared/config/helpAssistantTierAllowlists.ts`
+// so the renderer's blast-radius preview can read them without an IPC
+// round-trip. The arrays remain the single source of truth; this module
+// just lifts them into Sets for O(1) membership checks at dispatch time.
+// `terminal.waitUntilIdle` is included in `ACTION_TIER_ADDONS_LIST`.
+const WORKBENCH_TOOLS: ReadonlySet<string> = new Set(WORKBENCH_TIER_TOOLS_LIST);
+const ACTION_TIER_ADDONS: ReadonlySet<string> = new Set(ACTION_TIER_ADDONS_LIST);
+const SYSTEM_TIER_ADDONS: ReadonlySet<string> = new Set(SYSTEM_TIER_ADDONS_LIST);
 
 export function unionSet(...sets: ReadonlySet<string>[]): ReadonlySet<string> {
   const out = new Set<string>();

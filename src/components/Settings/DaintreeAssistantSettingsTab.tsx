@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   BookOpen,
   Check,
+  ChevronRight,
   Copy,
   KeyRound,
   Moon,
@@ -19,6 +20,7 @@ import { SettingsSection } from "./SettingsSection";
 import { SettingsInput } from "./SettingsInput";
 import { SettingsSelect } from "./SettingsSelect";
 import { SettingsSwitchCard } from "./SettingsSwitchCard";
+import { McpAuditLogViewer } from "./McpAuditLogViewer";
 import { useSettingsTabValidation } from "./SettingsValidationRegistry";
 import { useSettingsTabFlush } from "./SettingsFlushRegistry";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
@@ -27,7 +29,12 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { logError } from "@/utils/logger";
 import { getAgentConfig, getAssistantSupportedAgentIds } from "@/config/agents";
 import { useHelpPanelStore } from "@/store/helpPanelStore";
-import type { HelpAssistantSettings } from "@shared/types";
+import type { HelpAssistantSettings, HelpAssistantTier, McpAuditRecord } from "@shared/types";
+import {
+  HELP_TIER_CUMULATIVE,
+  HELP_TIER_INCREMENTAL,
+  SYSTEM_TIER_HIGH_BLAST_RADIUS,
+} from "@shared/config/helpAssistantTierAllowlists";
 
 const COPY_RESET_DELAY_MS = 2000;
 const CUSTOM_ARGS_DEBOUNCE_MS = 500;
@@ -35,11 +42,42 @@ const CUSTOM_ARGS_DEBOUNCE_MS = 500;
 const DEFAULT_SETTINGS: HelpAssistantSettings = {
   docSearch: true,
   daintreeControl: true,
-  skipPermissions: false,
+  tier: "action",
+  bypassPermissions: false,
   auditRetention: 7,
   customArgs: "",
   idleHibernateMinutes: 30,
 };
+
+const TIER_OPTIONS = [
+  { value: "workbench", label: "Workbench — read-only" },
+  { value: "action", label: "Action — read + write (default)" },
+  { value: "system", label: "System — destructive actions" },
+];
+
+const TIER_DESCRIPTIONS: Record<HelpAssistantTier, string> = {
+  workbench:
+    "The assistant can read project state but can't change it. Best when you're handing off observation tasks.",
+  action:
+    "The assistant can edit files, run terminals, and trigger workflows. Most assistance tasks need this.",
+  system:
+    "Includes destructive actions: delete worktrees, kill terminals, push commits. Reserve for trusted automation.",
+};
+
+function groupToolsByNamespace(tools: readonly string[]): Array<[string, string[]]> {
+  const groups = new Map<string, string[]>();
+  for (const tool of tools) {
+    const dot = tool.indexOf(".");
+    const ns = dot >= 0 ? tool.slice(0, dot) : tool;
+    const list = groups.get(ns);
+    if (list) {
+      list.push(tool);
+    } else {
+      groups.set(ns, [tool]);
+    }
+  }
+  return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
+}
 
 interface McpStatusSnapshot {
   enabled: boolean;
@@ -69,7 +107,14 @@ export function DaintreeAssistantSettingsTab() {
   const [copied, setCopied] = useState(false);
   const [showRotateConfirm, setShowRotateConfirm] = useState(false);
   const [isRotating, setIsRotating] = useState(false);
+  const [showBlastRadius, setShowBlastRadius] = useState(false);
+  const [auditRecords, setAuditRecords] = useState<McpAuditRecord[]>([]);
+  const [auditLoading, setAuditLoading] = useState(true);
+  const [auditCopied, setAuditCopied] = useState(false);
+  const [showClearAuditConfirm, setShowClearAuditConfirm] = useState(false);
+  const [isClearingAudit, setIsClearingAudit] = useState(false);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const auditCopyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // customArgs is a free-form text input; persisting on every keystroke would
   // spam IPC. We track a pending edit alongside the persisted value: when the
@@ -159,6 +204,78 @@ export function DaintreeAssistantSettingsTab() {
     };
   }, []);
 
+  // Separate audit fetch effect — keeps the settings init effect's cancellation
+  // semantics simple (per past lesson #4958) while still letting the audit
+  // viewer hydrate independently of the settings + MCP status round-trips.
+  const refreshAuditRecords = useCallback(async (): Promise<void> => {
+    try {
+      const records = await window.electron.mcpServer.getAuditRecords();
+      setAuditRecords(records);
+    } catch (err) {
+      logError("Failed to load MCP audit records for assistant tab", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setAuditLoading(true);
+    window.electron.mcpServer
+      .getAuditRecords()
+      .then((records) => {
+        if (cancelled) return;
+        setAuditRecords(records);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        logError("Failed initial audit load for assistant tab", err);
+      })
+      .finally(() => {
+        if (!cancelled) setAuditLoading(false);
+      });
+    return () => {
+      cancelled = true;
+      if (auditCopyTimeoutRef.current) clearTimeout(auditCopyTimeoutRef.current);
+    };
+  }, []);
+
+  const handleCopyAuditAsJson = useCallback(async (records: McpAuditRecord[]) => {
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(records, null, 2));
+      setAuditCopied(true);
+      if (auditCopyTimeoutRef.current) clearTimeout(auditCopyTimeoutRef.current);
+      auditCopyTimeoutRef.current = setTimeout(() => setAuditCopied(false), COPY_RESET_DELAY_MS);
+    } catch (err) {
+      setAuditCopied(false);
+      if (auditCopyTimeoutRef.current) {
+        clearTimeout(auditCopyTimeoutRef.current);
+        auditCopyTimeoutRef.current = null;
+      }
+      setError(formatErrorMessage(err, "Couldn't copy audit log"));
+      logError("Failed to copy MCP audit log from assistant tab", err);
+    }
+  }, []);
+
+  const confirmClearAuditLog = useCallback(async () => {
+    if (isClearingAudit) return;
+    setIsClearingAudit(true);
+    try {
+      setError(null);
+      await window.electron.mcpServer.clearAuditLog();
+      setAuditRecords([]);
+      setShowClearAuditConfirm(false);
+    } catch (err) {
+      setError(formatErrorMessage(err, "Couldn't clear audit log"));
+      logError("Failed to clear MCP audit log from assistant tab", err);
+    } finally {
+      setIsClearingAudit(false);
+    }
+  }, [isClearingAudit]);
+
+  const handleCancelClearAudit = useCallback(() => {
+    if (isClearingAudit) return;
+    setShowClearAuditConfirm(false);
+  }, [isClearingAudit]);
+
   const persist = useCallback(
     async (patch: Partial<HelpAssistantSettings>) => {
       const next = { ...settings, ...patch } as HelpAssistantSettings;
@@ -183,9 +300,17 @@ export function DaintreeAssistantSettingsTab() {
     void persist({ daintreeControl: !settings.daintreeControl });
   }, [persist, settings.daintreeControl]);
 
-  const toggleSkipPermissions = useCallback(() => {
-    void persist({ skipPermissions: !settings.skipPermissions });
-  }, [persist, settings.skipPermissions]);
+  const setTier = useCallback(
+    (value: string) => {
+      if (value !== "workbench" && value !== "action" && value !== "system") return;
+      void persist({ tier: value });
+    },
+    [persist]
+  );
+
+  const toggleBypassPermissions = useCallback(() => {
+    void persist({ bypassPermissions: !settings.bypassPermissions });
+  }, [persist, settings.bypassPermissions]);
 
   const setRetention = useCallback(
     (value: string) => {
@@ -382,20 +507,35 @@ export function DaintreeAssistantSettingsTab() {
       <SettingsSection
         icon={ShieldAlert}
         title="Security"
-        description="Confirmation prompts protect destructive actions. Disable only if you understand the risk."
+        description="Pick how much the assistant can do without prompting, and whether to bypass Claude Code's per-tool confirmation gate."
       >
+        <SettingsSelect
+          label="Capability tier"
+          description={TIER_DESCRIPTIONS[settings.tier]}
+          value={settings.tier}
+          onValueChange={setTier}
+          options={TIER_OPTIONS}
+          disabled={loading}
+        />
+
+        <BlastRadiusPreview
+          tier={settings.tier}
+          isOpen={showBlastRadius}
+          onToggle={() => setShowBlastRadius((v) => !v)}
+        />
+
         <SettingsSwitchCard
           variant="compact"
           icon={ShieldAlert}
-          title="Skip permission prompts"
-          subtitle="Bypass Claude Code's confirmation gate for help sessions"
-          isEnabled={settings.skipPermissions}
-          onChange={toggleSkipPermissions}
-          ariaLabel="Skip permission prompts during help sessions"
+          title="Bypass Claude permission prompts"
+          subtitle="Skip Claude Code's per-tool confirmation gate (passes --dangerously-skip-permissions)"
+          isEnabled={settings.bypassPermissions}
+          onChange={toggleBypassPermissions}
+          ariaLabel="Bypass Claude Code permission prompts during help sessions"
           colorScheme="amber"
           disabled={loading}
         />
-        {settings.skipPermissions && (
+        {settings.bypassPermissions && (
           <div
             className={cn(
               "flex items-start gap-2 p-3 rounded-[var(--radius-md)]",
@@ -405,7 +545,8 @@ export function DaintreeAssistantSettingsTab() {
             <AlertTriangle className="w-4 h-4 text-status-warning shrink-0 mt-0.5" />
             <div className="text-xs text-daintree-text/70 leading-relaxed select-text">
               With this on, Claude Code's permission gate is bypassed for all tools — built-in
-              (Bash, Write) and MCP. The Daintree MCP becomes the only safeguard.
+              (Bash, Write) and MCP. The capability tier above is the only remaining safeguard for
+              Daintree actions.
             </div>
           </div>
         )}
@@ -424,6 +565,15 @@ export function DaintreeAssistantSettingsTab() {
           onValueChange={setRetention}
           options={RETENTION_OPTIONS}
           disabled={loading}
+        />
+        <McpAuditLogViewer
+          records={auditRecords}
+          loading={auditLoading}
+          onRefresh={refreshAuditRecords}
+          onCopy={handleCopyAuditAsJson}
+          onClear={() => setShowClearAuditConfirm(true)}
+          copyFlashActive={auditCopied}
+          includeRecord={(record) => record.tier !== "external"}
         />
       </SettingsSection>
 
@@ -499,6 +649,19 @@ export function DaintreeAssistantSettingsTab() {
       )}
 
       <ConfirmDialog
+        isOpen={showClearAuditConfirm}
+        onClose={isClearingAudit ? undefined : handleCancelClearAudit}
+        title="Clear audit log?"
+        description="All recorded tool dispatches will be permanently deleted — including those from external MCP clients."
+        confirmLabel="Clear log"
+        cancelLabel="Cancel"
+        onConfirm={confirmClearAuditLog}
+        isConfirmLoading={isClearingAudit}
+        variant="destructive"
+        zIndex="nested"
+      />
+
+      <ConfirmDialog
         isOpen={showRotateConfirm}
         onClose={isRotating ? undefined : handleCancelRotate}
         title="Rotate API key?"
@@ -526,6 +689,84 @@ export function DaintreeAssistantSettingsTab() {
         zIndex="nested"
         typedNameTarget={apiKeySuffix || undefined}
       />
+    </div>
+  );
+}
+
+interface BlastRadiusPreviewProps {
+  tier: HelpAssistantTier;
+  isOpen: boolean;
+  onToggle: () => void;
+}
+
+function BlastRadiusPreview({ tier, isOpen, onToggle }: BlastRadiusPreviewProps) {
+  const totalCount = HELP_TIER_CUMULATIVE[tier].length;
+  const newAtTier = HELP_TIER_INCREMENTAL[tier].length;
+  const groups = useMemo(() => {
+    const cumulative = HELP_TIER_CUMULATIVE[tier];
+    if (tier !== "system") return groupToolsByNamespace(cumulative);
+    // Pin the load-bearing dangerous actions at the top of the system tier
+    // so users don't miss them when scanning a long alphabetical list.
+    const pinned = new Set(SYSTEM_TIER_HIGH_BLAST_RADIUS);
+    const rest = cumulative.filter((tool) => !pinned.has(tool));
+    const pinnedList = SYSTEM_TIER_HIGH_BLAST_RADIUS.filter((tool) => cumulative.includes(tool));
+    return [
+      ["⚠ high blast radius", pinnedList] as [string, string[]],
+      ...groupToolsByNamespace(rest),
+    ];
+  }, [tier]);
+
+  return (
+    <div className="rounded-[var(--radius-md)] border border-daintree-border bg-overlay-subtle/40">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={isOpen}
+        className={cn(
+          "w-full flex items-center justify-between gap-3 px-3 py-2 text-xs",
+          "text-daintree-text/80 hover:text-daintree-text transition-colors"
+        )}
+      >
+        <span className="flex items-center gap-2">
+          <ChevronRight
+            className={cn(
+              "w-3.5 h-3.5 transition-transform duration-150",
+              isOpen ? "rotate-90" : "rotate-0"
+            )}
+          />
+          <span>
+            {totalCount} actions allowed without prompting
+            {tier !== "workbench" && (
+              <span className="text-daintree-text/50"> ({newAtTier} new at this tier)</span>
+            )}
+          </span>
+        </span>
+      </button>
+      {isOpen && (
+        <div className="px-3 pb-3 pt-1 space-y-2">
+          {groups.map(([ns, tools]) => (
+            <div key={ns} className="space-y-1">
+              <div className="text-[10px] uppercase tracking-wide text-daintree-text/50 font-mono">
+                {ns}
+                <span className="ml-1 text-daintree-text/30">({tools.length})</span>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {tools.map((tool) => (
+                  <span
+                    key={tool}
+                    className={cn(
+                      "px-1.5 py-0.5 rounded text-[10px] font-mono",
+                      "bg-daintree-bg border border-daintree-border text-daintree-text/70"
+                    )}
+                  >
+                    {tool}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
