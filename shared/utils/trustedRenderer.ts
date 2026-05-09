@@ -24,11 +24,11 @@ function getRendererOrigin(urlString: string): string | null {
  * (`app://daintree` in production; Vite dev-server origins in development).
  *
  * Trust is origin-scoped, not route-scoped: any path under `app://daintree`
- * passes. The preload blocks contextBridge in sub-frames via a
- * `window.top === window` guard, so `window.electron` is not directly exposed
- * there. A same-origin sub-frame can still reach the parent's `window.electron`
- * via `window.parent` (DOM same-origin access), and `event.senderFrame.url` on
- * the resulting IPC call resolves to the trusted origin. Adding a route beyond
+ * passes. The preload guards `window.electron` exposure with
+ * `window.top === window` so it is not directly available in sub-frames, but a
+ * same-origin sub-frame can still reach the parent's `window.electron` via
+ * `window.parent` (DOM same-origin access), and `event.senderFrame.url` on the
+ * resulting IPC call resolves to the trusted origin. Adding a route beyond
  * `index.html` / `recovery.html` under `app://daintree/` therefore widens the
  * effective IPC trust surface.
  *
