@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { render, screen, act, fireEvent } from "@testing-library/react";
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import type { NotificationHistoryEntry } from "@/store/slices/notificationHistorySlice";
 import { NotificationCenterEntry } from "../NotificationCenterEntry";
 
@@ -277,5 +277,145 @@ describe("NotificationCenterEntry thread count chip", () => {
 
     rerender(<NotificationCenterEntry entry={entry} threadCount={Number.NaN} />);
     expect(container.querySelector('[aria-label$="events"]')).toBeNull();
+  });
+});
+
+describe("NotificationCenterEntry timestamp formatting", () => {
+  // Per-test fake timers — must not be set in a top-level beforeEach because
+  // the chip throttle test above uses `vi.spyOn(Date, 'now')` directly and
+  // must run with real timers.
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function timestampSpan(): HTMLElement {
+    return screen.getByTestId("notification-timestamp");
+  }
+
+  it("renders 'just now' for sub-60s timestamps", () => {
+    vi.useFakeTimers();
+    const now = new Date(2026, 0, 15, 12, 0, 0);
+    vi.setSystemTime(now);
+    const ts = now.getTime() - 30 * 1000;
+    render(<NotificationCenterEntry entry={makeEntry({ timestamp: ts })} />);
+    expect(timestampSpan().textContent).toBe("just now");
+  });
+
+  it("renders 'Nm ago' for minute-scale today timestamps", () => {
+    vi.useFakeTimers();
+    const now = new Date(2026, 0, 15, 12, 0, 0);
+    vi.setSystemTime(now);
+    const ts = now.getTime() - 5 * 60 * 1000;
+    render(<NotificationCenterEntry entry={makeEntry({ timestamp: ts })} />);
+    expect(timestampSpan().textContent).toBe("5m ago");
+  });
+
+  it("renders 'Nh ago' for hour-scale today timestamps", () => {
+    vi.useFakeTimers();
+    const now = new Date(2026, 0, 15, 12, 0, 0);
+    vi.setSystemTime(now);
+    const ts = now.getTime() - 2 * 60 * 60 * 1000;
+    render(<NotificationCenterEntry entry={makeEntry({ timestamp: ts })} />);
+    expect(timestampSpan().textContent).toBe("2h ago");
+  });
+
+  it("pivots a yesterday timestamp to 'Yesterday HH:MM' instead of 'Nd ago'", () => {
+    vi.useFakeTimers();
+    const now = new Date(2026, 0, 15, 12, 0, 0);
+    vi.setSystemTime(now);
+    const ts = new Date(2026, 0, 14, 9, 30, 0);
+    render(<NotificationCenterEntry entry={makeEntry({ timestamp: ts.getTime() })} />);
+    const expectedTime = new Intl.DateTimeFormat(undefined, {
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(ts);
+    expect(timestampSpan().textContent).toBe(`Yesterday ${expectedTime}`);
+  });
+
+  it("renders older same-year timestamps as 'Mon DD'", () => {
+    vi.useFakeTimers();
+    const now = new Date(2026, 5, 1, 12, 0, 0);
+    vi.setSystemTime(now);
+    const ts = new Date(2026, 0, 5, 14, 30, 0);
+    render(<NotificationCenterEntry entry={makeEntry({ timestamp: ts.getTime() })} />);
+    const expected = new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+    }).format(ts);
+    expect(timestampSpan().textContent).toBe(expected);
+  });
+
+  it("renders prior-year timestamps as 'Mon DD YYYY'", () => {
+    vi.useFakeTimers();
+    const now = new Date(2026, 0, 15, 12, 0, 0);
+    vi.setSystemTime(now);
+    const ts = new Date(2024, 0, 5, 14, 30, 0);
+    render(<NotificationCenterEntry entry={makeEntry({ timestamp: ts.getTime() })} />);
+    const expected = new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }).format(ts);
+    expect(timestampSpan().textContent).toBe(expected);
+  });
+
+  it("exposes the absolute datetime via title and aria-label on every branch", () => {
+    vi.useFakeTimers();
+    const now = new Date(2026, 5, 15, 12, 0, 0);
+    vi.setSystemTime(now);
+    const cases: Array<{ name: string; ts: Date | number }> = [
+      { name: "today", ts: now.getTime() - 5 * 60 * 1000 },
+      { name: "yesterday", ts: new Date(2026, 5, 14, 9, 30, 0) },
+      { name: "older same year", ts: new Date(2026, 0, 5, 14, 30, 0) },
+      { name: "prior year", ts: new Date(2024, 0, 5, 14, 30, 0) },
+    ];
+    for (const { ts } of cases) {
+      const date = ts instanceof Date ? ts : new Date(ts);
+      const expected = new Intl.DateTimeFormat(undefined, {
+        dateStyle: "full",
+        timeStyle: "short",
+      }).format(date);
+      const { unmount } = render(
+        <NotificationCenterEntry
+          entry={makeEntry({ timestamp: ts instanceof Date ? ts.getTime() : ts })}
+        />
+      );
+      const span = timestampSpan();
+      expect(span.getAttribute("title")).toBe(expected);
+      expect(span.getAttribute("aria-label")).toBe(expected);
+      unmount();
+    }
+  });
+
+  it("treats a year-boundary cross-night as 'Yesterday' rather than prior year", () => {
+    vi.useFakeTimers();
+    const now = new Date(2026, 0, 1, 0, 30, 0);
+    vi.setSystemTime(now);
+    const ts = new Date(2025, 11, 31, 23, 30, 0);
+    render(<NotificationCenterEntry entry={makeEntry({ timestamp: ts.getTime() })} />);
+    const expectedTime = new Intl.DateTimeFormat(undefined, {
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(ts);
+    expect(timestampSpan().textContent).toBe(`Yesterday ${expectedTime}`);
+  });
+
+  it("respects the 60s and 60m boundaries between relative-time tiers", () => {
+    vi.useFakeTimers();
+    const now = new Date(2026, 0, 15, 12, 0, 0);
+    vi.setSystemTime(now);
+    const cases: Array<{ deltaMs: number; expected: string }> = [
+      { deltaMs: 59 * 1000, expected: "just now" },
+      { deltaMs: 60 * 1000, expected: "1m ago" },
+      { deltaMs: 59 * 60 * 1000 + 59 * 1000, expected: "59m ago" },
+      { deltaMs: 60 * 60 * 1000, expected: "1h ago" },
+    ];
+    for (const { deltaMs, expected } of cases) {
+      const { unmount } = render(
+        <NotificationCenterEntry entry={makeEntry({ timestamp: now.getTime() - deltaMs })} />
+      );
+      expect(timestampSpan().textContent).toBe(expected);
+      unmount();
+    }
   });
 });

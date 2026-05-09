@@ -25,15 +25,52 @@ const TYPE_CONFIG = {
   warning: { icon: AlertTriangle, className: "text-status-warning" },
 };
 
-function formatRelativeTime(timestamp: number): string {
-  const seconds = Math.floor((Date.now() - timestamp) / 1000);
-  if (seconds < 60) return "just now";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+const yesterdayTimeFormatter = new Intl.DateTimeFormat(undefined, {
+  hour: "2-digit",
+  minute: "2-digit",
+});
+const sameYearFormatter = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+});
+const priorYearFormatter = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
+const absoluteFormatter = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "full",
+  timeStyle: "short",
+});
+
+function formatNotificationTimestamp(timestamp: number): {
+  label: string;
+  absolute: string;
+} {
+  const now = new Date();
+  const date = new Date(timestamp);
+  const absolute = absoluteFormatter.format(date);
+
+  if (date.toDateString() === now.toDateString()) {
+    const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+    if (seconds < 60) return { label: "just now", absolute };
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return { label: `${minutes}m ago`, absolute };
+    const hours = Math.floor(minutes / 60);
+    return { label: `${hours}h ago`, absolute };
+  }
+
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) {
+    return { label: `Yesterday ${yesterdayTimeFormatter.format(date)}`, absolute };
+  }
+
+  if (date.getFullYear() === now.getFullYear()) {
+    return { label: sameYearFormatter.format(date), absolute };
+  }
+
+  return { label: priorYearFormatter.format(date), absolute };
 }
 
 interface NotificationCenterEntryProps {
@@ -153,9 +190,19 @@ export function NotificationCenterEntry({
         )}
       </div>
       <div className="shrink-0 flex items-center gap-1.5 mt-0.5">
-        <span className="text-[10px] text-daintree-text/40 tabular-nums">
-          {formatRelativeTime(entry.timestamp)}
-        </span>
+        {(() => {
+          const ts = formatNotificationTimestamp(entry.timestamp);
+          return (
+            <span
+              data-testid="notification-timestamp"
+              title={ts.absolute}
+              aria-label={ts.absolute}
+              className="text-[10px] text-daintree-text/40 tabular-nums"
+            >
+              {ts.label}
+            </span>
+          );
+        })()}
         {isNew && (
           <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-status-info shrink-0" />
         )}
