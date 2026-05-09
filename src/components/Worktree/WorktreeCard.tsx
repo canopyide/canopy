@@ -565,7 +565,7 @@ export function WorktreeCard({
         <div
           ref={droppableRef}
           className={cn(
-            "sidebar-worktree-card group/card relative isolate transition duration-150",
+            "sidebar-worktree-card group/card relative isolate transition-colors duration-150",
             variant === "sidebar" && "border-b border-border-default",
             variant === "grid" && "rounded-lg border border-divider bg-overlay-subtle",
             isActive && variant !== "sidebar" && "bg-surface-panel-elevated",
