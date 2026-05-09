@@ -407,25 +407,28 @@ export async function refreshActiveWindow(app: ElectronApplication, oldPage?: Pa
     .locator('[aria-label="Toggle Sidebar"]')
     .waitFor({ state: "visible", timeout: refreshTimeout });
 
+  // Wait for the sidebar element to appear in the DOM. AppLayout only mounts
+  // <Sidebar> when currentProject != null, so this guards against returning
+  // before the IPC loadCurrentProject call resolves. Without this gate the
+  // worktree wait below times out (no sidebar = no worktree cards), and the
+  // previous "Loading worktrees..." fallback was a no-op because that text is
+  // sr-only in the Skeleton component and was never found by the locator.
+  await newWindow
+    .locator('aside[aria-label="Sidebar"]')
+    .waitFor({ state: "attached", timeout: refreshTimeout })
+    .catch(() => {});
+
   // Wait for the project's active worktree to finish loading. Without this,
   // shortcuts like Cmd+Alt+T fire with `activeWorktreeId=undefined`, which
   // creates an orphan panel that never renders (worktree-filtered out) — the
   // root cause of the original "Cmd+Alt+T opens a new terminal" flake.
-  // The worktree sidebar heading stops showing "Loading worktrees..." once
-  // the first worktree entry is in the DOM.
   await newWindow
     .locator(
       '[data-worktree-branch], [data-worktree-is-main="true"], [aria-label="Worktrees"] a, [aria-label="Worktrees"] [role="button"], .worktree-item'
     )
     .first()
     .waitFor({ state: "attached", timeout: refreshTimeout })
-    .catch(async () => {
-      // Fallback: just wait for the loading text to disappear.
-      await newWindow
-        .locator("text=Loading worktrees...")
-        .waitFor({ state: "hidden", timeout: refreshTimeout })
-        .catch(() => {});
-    });
+    .catch(() => {});
 
   // After WebContentsView creation, the new view's renderer may not receive
   // keyboard events from Playwright's CDP `Input.dispatchKeyEvent` until the
