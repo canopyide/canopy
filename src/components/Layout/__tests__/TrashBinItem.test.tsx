@@ -299,7 +299,7 @@ describe("TrashBinItem", () => {
       expect(el.className).toContain("opacity-0");
       expect(el.className).toContain("group-hover:opacity-100");
       expect(el.className).toContain("group-focus-within:opacity-100");
-      expect(el.className).toContain("motion-reduce:opacity-100");
+      expect(el.className).not.toContain("motion-reduce:opacity-100");
       expect(el.className).not.toContain("text-status-warning");
     });
 
