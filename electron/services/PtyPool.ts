@@ -459,9 +459,14 @@ export class PtyPool {
   }
 
   /**
-   * Build the env that's actually written into the spawned shell. Mirrors
-   * the merge order in terminalSpawn.buildTerminalEnv: filtered process
-   * env, then caller overrides, then UTF-8 / colour normalisation.
+   * Build the env that's actually written into the spawned shell.
+   *
+   * Critically, callerEnv is run through `filterEnvironment` here even though
+   * the fresh-spawn path (`buildTerminalEnv` in terminalSpawn.ts) merges it
+   * raw. The pool entry outlives a single acquire — a shell warmed with one
+   * caller's secrets can be handed to a future caller whose hash matches
+   * (because the hash is also computed post-filter). Filtering at warm time
+   * guarantees no secret persists in an idle pool process.
    *
    * DAINTREE_* metadata is NOT injected here — pool entries don't have
    * a paneId until acquire time, and the metadata is meaningful only for
@@ -473,14 +478,14 @@ export class PtyPool {
     const filtered = filterEnvironment(process.env as Record<string, string | undefined>);
 
     if (callerEnv) {
-      for (const [key, value] of Object.entries(callerEnv)) {
-        if (value === undefined) continue;
-        filtered[key] = value;
-      }
+      Object.assign(filtered, filterEnvironment(callerEnv));
     }
 
-    // TUI reliability: ensure rich terminal capabilities for Claude/Gemini CLIs
+    // TUI reliability: ensure rich terminal capabilities for Claude/Gemini CLIs.
+    // Mirrors `buildTerminalEnv` so agent CLIs get the same color-rendering
+    // hints whether they spawn fresh or come out of the pool.
     filtered.TERM = "xterm-256color";
+    filtered.FORCE_COLOR = filtered.FORCE_COLOR ?? "3";
     filtered.COLORTERM = "truecolor";
 
     // Avoid tools treating the environment as CI/non-interactive

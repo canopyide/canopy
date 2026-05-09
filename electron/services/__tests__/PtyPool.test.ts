@@ -230,8 +230,48 @@ describe("PtyPool", () => {
     expect(spawnOptions.env?.CI).toBeUndefined();
     expect(spawnOptions.env?.TERM).toBe("xterm-256color");
     expect(spawnOptions.env?.COLORTERM).toBe("truecolor");
+    expect(spawnOptions.env?.FORCE_COLOR).toBe("3");
     expect(spawnOptions.env?.LANG).toBe("en_US.UTF-8");
     expect(spawnOptions.env?.LC_ALL).toBeUndefined();
+    pool.dispose();
+  });
+
+  it("filters secrets out of caller env before baking into the pool entry", async () => {
+    spawnMock.mockReturnValue(createFakeProcess(411));
+    const pool = new PtyPool({ poolSize: 1, defaultCwd: "/repo" });
+
+    pool.warmForKey(
+      "/repo",
+      {
+        ANTHROPIC_API_KEY: "sk-secret",
+        GITHUB_TOKEN: "ghp-x",
+        OPENAI_API_KEY: "sk-openai",
+        MY_SERVICE_PASSWORD: "pw",
+        FOO: "bar",
+      },
+      "env-empty"
+    );
+    await flushMicrotasks();
+
+    const spawnOptions = spawnMock.mock.calls[0]?.[2] as { env?: Record<string, string> };
+    expect(spawnOptions.env?.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(spawnOptions.env?.GITHUB_TOKEN).toBeUndefined();
+    expect(spawnOptions.env?.OPENAI_API_KEY).toBeUndefined();
+    expect(spawnOptions.env?.MY_SERVICE_PASSWORD).toBeUndefined();
+    expect(spawnOptions.env?.FOO).toBe("bar");
+    pool.dispose();
+  });
+
+  it("preserves caller-supplied non-secret env when warming a key", async () => {
+    spawnMock.mockReturnValue(createFakeProcess(412));
+    const pool = new PtyPool({ poolSize: 1, defaultCwd: "/repo" });
+
+    pool.warmForKey("/repo", { ANTHROPIC_BASE_URL: "https://api.example", ANOTHER: "x" }, "env-x");
+    await flushMicrotasks();
+
+    const spawnOptions = spawnMock.mock.calls[0]?.[2] as { env?: Record<string, string> };
+    expect(spawnOptions.env?.ANTHROPIC_BASE_URL).toBe("https://api.example");
+    expect(spawnOptions.env?.ANOTHER).toBe("x");
     pool.dispose();
   });
 

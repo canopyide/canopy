@@ -168,6 +168,27 @@ describe("acquirePtyProcess pool handling", () => {
     expect(acquireByKey.mock.calls[0]?.[1]).toBe(acquireByKey.mock.calls[1]?.[1]);
   });
 
+  it("on miss, passes the same envHash to acquireByKey and warmForKey", () => {
+    const acquireByKey = vi.fn(() => null);
+    const warmForKey = vi.fn();
+    const pool = createFakePool({
+      defaultCwd: "/repo",
+      acquireByKey,
+      warmForKey,
+    });
+    spawnMock.mockReturnValue({ fake: "pty" });
+
+    const callerEnv = { FOO: "1", BAR: "2" };
+    acquirePtyProcess("p", { ...baseOptions, env: callerEnv }, {}, "/bin/bash", [], pool, () => {});
+
+    expect(acquireByKey).toHaveBeenCalledTimes(1);
+    expect(warmForKey).toHaveBeenCalledTimes(1);
+    // Same hash on the lookup side and the warm side — guarantees the
+    // background warm actually populates the slot the next acquire will
+    // look up.
+    expect(acquireByKey.mock.calls[0]?.[1]).toBe(warmForKey.mock.calls[0]?.[2]);
+  });
+
   it("falls back to direct spawn when pool is null", () => {
     const spawnedPty = { fake: "pty" };
     spawnMock.mockReturnValue(spawnedPty);
