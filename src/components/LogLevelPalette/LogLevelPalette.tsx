@@ -30,6 +30,9 @@ interface LoggerItem {
   current: OverrideLevel | null;
 }
 
+const getLoggerActionLabel = (_item: LoggerItem | null): string => "Set logger";
+const getLevelActionLabel = (_item: (typeof LEVEL_OPTIONS)[number] | null): string => "Set level";
+
 /**
  * Two-step picker modelled on VS Code's "Set Log Level…".
  * Step 1: choose a logger (or wildcard). Step 2: choose a level (or "Clear").
@@ -147,6 +150,7 @@ export function LogLevelPalette({ isOpen, onClose }: LogLevelPaletteProps) {
         onConfirm={handleLoggerConfirm}
         onClose={onClose}
         getItemId={(item) => item.id}
+        getActionLabel={getLoggerActionLabel}
         label="Set Log Level"
         ariaLabel="Set log level — choose a module"
         searchPlaceholder="Search modules"
@@ -186,6 +190,7 @@ export function LogLevelPalette({ isOpen, onClose }: LogLevelPaletteProps) {
       onConfirm={handleLevelConfirm}
       onClose={onClose}
       getItemId={(item) => item.id}
+      getActionLabel={getLevelActionLabel}
       label={`Level for ${pendingLogger ?? ""}`}
       ariaLabel="Set log level — choose a level"
       searchPlaceholder="Search levels"

@@ -106,6 +106,8 @@ export function PanelPalette({
   const showCounter = hardLimit > 0 && panelCount / hardLimit >= 0.75;
 
   const isSearching = query.trim().length > 0;
+  const selectedKind =
+    selectedIndex >= 0 && selectedIndex < results.length ? results[selectedIndex] : null;
 
   const renderOption = (kind: PanelKindOption, index: number) => {
     const isUnavailable = kind.installed === false;
@@ -229,10 +231,12 @@ export function PanelPalette({
 
       <AppPaletteDialog.Footer>
         <PaletteFooterHints
-          primaryHint={{ keys: ["↵"], label: "to create" }}
+          primaryHint={{
+            keys: ["↵"],
+            label: selectedKind ? `to create ${selectedKind.name.toLowerCase()}` : "to create",
+          }}
           hints={[
             { keys: ["↑", "↓"], label: "to navigate" },
-            { keys: ["↵"], label: "to create" },
             { keys: ["Esc"], label: "to close" },
           ]}
         />

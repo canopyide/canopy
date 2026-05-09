@@ -7,6 +7,8 @@ import { Lock } from "lucide-react";
 import { useKeybindingDisplay, useEffectiveCombo } from "@/hooks/useKeybinding";
 import type { SendToAgentItem } from "@/hooks/useSendToAgentPalette";
 
+const getSendToAgentActionLabel = (_item: SendToAgentItem | null): string => "Send to agent";
+
 export interface SendToAgentPaletteProps {
   isOpen: boolean;
   query: string;
@@ -105,6 +107,7 @@ export function SendToAgentPalette({
       onConfirm={confirmSelection}
       onClose={close}
       getItemId={(item) => item.id}
+      getActionLabel={getSendToAgentActionLabel}
       renderItem={(item, _index, isItemSelected) => (
         <SendToAgentItemRow
           key={item.id}

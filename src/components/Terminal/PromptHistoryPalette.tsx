@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from "react";
 import { SearchablePalette } from "@/components/ui/SearchablePalette";
+import { KBD_CLASS } from "@/components/ui/AppPaletteDialog";
 import {
   usePromptHistoryPalette,
   type UsePromptHistoryPaletteOptions,
@@ -92,19 +93,13 @@ export function PromptHistoryPalette({ onOpenRef, ...props }: PromptHistoryPalet
     <div className="flex items-center justify-between w-full">
       <div className="flex items-center gap-4">
         <span>
-          <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-daintree-border text-daintree-text/60">
-            ↑
-          </kbd>
-          <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-daintree-border text-daintree-text/60 ml-1">
-            ↓
-          </kbd>
-          <span className="ml-1.5">navigate</span>
+          <kbd className={KBD_CLASS}>↵</kbd>
+          <span className="ml-1.5">to recall</span>
         </span>
         <span>
-          <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-daintree-border text-daintree-text/60">
-            Enter
-          </kbd>
-          <span className="ml-1.5">select</span>
+          <kbd className={KBD_CLASS}>↑</kbd>
+          <kbd className={cn(KBD_CLASS, "ml-1")}>↓</kbd>
+          <span className="ml-1.5">to navigate</span>
         </span>
       </div>
       <button

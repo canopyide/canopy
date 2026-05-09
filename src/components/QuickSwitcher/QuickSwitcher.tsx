@@ -70,7 +70,6 @@ export function QuickSwitcher({
             primaryHint={{ keys: ["↵"], label }}
             hints={[
               { keys: ["↑", "↓"], label: "to navigate" },
-              { keys: ["↵"], label },
               { keys: ["Esc"], label: "to close" },
             ]}
           />

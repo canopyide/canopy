@@ -93,6 +93,9 @@ export function NewTerminalPalette({
     [onSelectPrevious, onSelectNext, onConfirm]
   );
 
+  const selectedOption =
+    selectedIndex >= 0 && selectedIndex < results.length ? results[selectedIndex] : null;
+
   return (
     <AppPaletteDialog isOpen={isOpen} onClose={onClose} ariaLabel="New terminal palette">
       <AppPaletteDialog.Header label="New Terminal" shortcut={newTerminalShortcut}>
@@ -152,7 +155,10 @@ export function NewTerminalPalette({
 
       <AppPaletteDialog.Footer>
         <PaletteFooterHints
-          primaryHint={{ keys: ["↵"], label: "to launch" }}
+          primaryHint={{
+            keys: ["↵"],
+            label: selectedOption ? `to launch ${selectedOption.label.toLowerCase()}` : "to launch",
+          }}
           hints={[
             { keys: ["↑", "↓"], label: "to navigate" },
             { keys: ["Esc"], label: "to close" },

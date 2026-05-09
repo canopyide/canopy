@@ -17,6 +17,8 @@ interface ThemePaletteProps {
   onClose: () => void;
 }
 
+const getThemeActionLabel = (_item: AppColorScheme | null): string => "Apply theme";
+
 function ThemeListItem({
   scheme,
   isSelected,
@@ -187,6 +189,7 @@ export function ThemePalette({ isOpen, onClose }: ThemePaletteProps) {
       onConfirm={handleConfirm}
       onClose={onClose}
       getItemId={(scheme) => scheme.id}
+      getActionLabel={getThemeActionLabel}
       renderItem={(scheme, _index, isSelected) => (
         <ThemeListItem
           key={scheme.id}
