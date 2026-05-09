@@ -42,8 +42,8 @@ interface Fixture {
   config: Record<string, unknown>;
   service: TurnOutcomeService;
   saveConfig: ReturnType<typeof vi.fn>;
-  getSessionIdForTerminal: ReturnType<typeof vi.fn>;
-  getRecentAuditRecords: ReturnType<typeof vi.fn>;
+  getSessionIdForTerminal: (terminalId: string) => string | null;
+  getRecentAuditRecords: () => readonly McpAuditRecord[];
   flushPersist: () => void;
 }
 
@@ -63,10 +63,12 @@ function makeFixture(
     Object.assign(config, patch);
   });
   const sessionId = "sessionId" in opts ? opts.sessionId : "session-1";
-  const getSessionIdForTerminal = vi.fn((_terminalId: string) => sessionId);
-  const getRecentAuditRecords = vi.fn<readonly McpAuditRecord[], []>(
+  const getSessionIdForTerminal = vi.fn((_terminalId: string) => sessionId) as unknown as (
+    terminalId: string
+  ) => string | null;
+  const getRecentAuditRecords = vi.fn(
     () => opts?.auditRecords ?? []
-  );
+  ) as unknown as () => readonly McpAuditRecord[];
   const deps: TurnOutcomeServiceDeps = {
     saveConfig,
     readConfig: () => config,

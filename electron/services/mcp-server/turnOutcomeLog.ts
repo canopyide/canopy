@@ -43,6 +43,7 @@ const MIN_CLASSIFY_LENGTH = 50;
  */
 const RESUME_STALE_PROBE_CHARS = 500;
 
+// eslint-disable-next-line no-control-regex
 const ANSI_PATTERN = /\[[0-9;?]*[A-Za-z]|\][^]*(?:|\\)/g;
 
 const REFUSED_PATTERNS: readonly RegExp[] = [
