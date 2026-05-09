@@ -265,6 +265,59 @@ export const PATTERNS: readonly SecretPattern[] = [
     replacement: "$1<redacted>@",
   },
   {
+    name: "vercel-token",
+    // Covers `vcp_` (personal), `vci_` (CI), `vca_` (account), `vcr_` (refresh), `vck_` (key).
+    regex: /\bvc[piakr]_[A-Za-z0-9]{24,40}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "perplexity-api-key",
+    regex: /\bpplx-[a-f0-9]{48}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "xai-api-key",
+    regex: /\bxai-[A-Za-z0-9]{80}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "together-api-key",
+    // No trailing `\b` because the body charset includes `-` and `_` (non-word
+    // chars), so a token ending in either would silently slip past a boundary.
+    regex: /\btgp_v1_[A-Za-z0-9_-]{43}/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "resend-api-key",
+    regex: /\bre_[A-Za-z0-9]{48}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "heroku-oauth-token",
+    // No trailing `\b`: body charset includes `-` and `_` (non-word) so tokens
+    // ending in either would silently miss the boundary check.
+    regex: /\bHRKU-[A-Za-z0-9_-]{60}/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "telegram-bot-token",
+    // A bare `[0-9]{8,12}:[A-Za-z0-9_-]{35}` would collide with Unix-timestamp +
+    // 35-char-alphanumeric strings in log lines, so this requires the surrounding
+    // key name as context — same precedent as `aws-secret-access-key` above.
+    regex: /\btelegram(?:_bot)?_token\s{0,4}[:=]\s{0,4}[0-9]{8,12}:[A-Za-z0-9_-]{35}\b/gi,
+    replacement: REDACTED,
+  },
+  {
+    name: "datadog-key",
+    // A bare `{32,40}` lowercase-hex run is just an MD5 or SHA1 hash, so this
+    // requires the key name as context. Covers both DD_API_KEY (32 hex) and
+    // DD_APP_KEY (40 hex) in one pattern; no trailing `\b` because the closing
+    // `["']?` may be a non-word char (mirrors `aws-secret-access-key`).
+    regex:
+      /\b(?:DD_API_KEY|DD_APP_KEY|datadog_api_key|datadog_app_key)["']?\s{0,8}[:=]\s{0,8}["']?[a-f0-9]{32,40}["']?/gi,
+    replacement: REDACTED,
+  },
+  {
     name: "generic-key-fallback",
     // Last-resort fallback for `.env`-shaped lines using common API key names.
     // The 16-char minimum body excludes short numeric values like `MAX_TOKENS=8192`,

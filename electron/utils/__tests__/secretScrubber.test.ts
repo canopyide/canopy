@@ -319,6 +319,84 @@ describe("secretScrubber", () => {
         input: `SLACK_SIGNING_SECRET=${"a".repeat(32)} end`,
         expected: `${REDACTED} end`,
       },
+      {
+        name: "vercel-vcp",
+        input: `VERCEL_TOKEN=vcp_${"A".repeat(32)} end`,
+        expected: `VERCEL_TOKEN=${REDACTED} end`,
+      },
+      {
+        name: "vercel-vci",
+        input: `VERCEL_TOKEN=vci_${"a".repeat(24)}`,
+        expected: `VERCEL_TOKEN=${REDACTED}`,
+      },
+      {
+        name: "vercel-vca",
+        input: `VERCEL_TOKEN=vca_${"Z".repeat(40)} next`,
+        expected: `VERCEL_TOKEN=${REDACTED} next`,
+      },
+      {
+        name: "vercel-vcr",
+        input: `VERCEL_TOKEN=vcr_${"0".repeat(36)}`,
+        expected: `VERCEL_TOKEN=${REDACTED}`,
+      },
+      {
+        name: "vercel-vck",
+        input: `VERCEL_TOKEN=vck_${"X".repeat(28)}`,
+        expected: `VERCEL_TOKEN=${REDACTED}`,
+      },
+      {
+        name: "perplexity-api-key",
+        input: `PPLX_API_KEY=pplx-${"a".repeat(48)} end`,
+        expected: `PPLX_API_KEY=${REDACTED} end`,
+      },
+      {
+        name: "xai-api-key",
+        input: `XAI_API_KEY=xai-${"A".repeat(80)}`,
+        expected: `XAI_API_KEY=${REDACTED}`,
+      },
+      {
+        name: "together-api-key",
+        input: `TOGETHER_API_KEY=tgp_v1_${"A".repeat(43)} end`,
+        expected: `TOGETHER_API_KEY=${REDACTED} end`,
+      },
+      {
+        name: "together-api-key-trailing-dash",
+        // Body ending in `-` or `_` (non-word) must still redact — the lack of
+        // a trailing `\b` is what makes this work.
+        input: `TOGETHER_API_KEY=tgp_v1_${"A".repeat(42)}-`,
+        expected: `TOGETHER_API_KEY=${REDACTED}`,
+      },
+      {
+        name: "resend-api-key",
+        input: `RESEND_API_KEY=re_${"A".repeat(48)}`,
+        expected: `RESEND_API_KEY=${REDACTED}`,
+      },
+      {
+        name: "heroku-oauth-token",
+        input: `HEROKU_API_KEY=HRKU-${"a".repeat(60)} end`,
+        expected: `HEROKU_API_KEY=${REDACTED} end`,
+      },
+      {
+        name: "heroku-oauth-token-trailing-underscore",
+        // Body ending in `_` must still redact (no trailing `\b`).
+        input: `HEROKU_API_KEY=HRKU-${"a".repeat(59)}_`,
+        expected: `HEROKU_API_KEY=${REDACTED}`,
+      },
+      {
+        name: "telegram-bot-token",
+        input: `TELEGRAM_BOT_TOKEN=1234567890:${"A".repeat(35)} end`,
+        expected: `${REDACTED} end`,
+      },
+      {
+        name: "datadog-api-key",
+        input: `DD_API_KEY=${"a".repeat(32)} next`,
+        expected: `${REDACTED} next`,
+      },
+      {
+        name: "datadog-app-key",
+        input: `DD_APP_KEY="${"f".repeat(40)}" next`,
+        expected: `${REDACTED} next`,
+      },
     ];
 
     for (const { name, input, expected } of positive) {
@@ -497,6 +575,32 @@ describe("secretScrubber", () => {
     it("does not flag hf_ as substring in ordinary text", () => {
       const ordinary = "The chef_example text here is not a secret key at all";
       expect(scrubSecrets(ordinary)).toBe(ordinary);
+    });
+
+    it("does not flag vcc_ as a Vercel token (not a real prefix)", () => {
+      // Vercel issues vcp_/vci_/vca_/vcr_/vck_ — `vcc_` is not a real prefix
+      // and the character class must reject it.
+      const fake = `vcc_${"A".repeat(32)}`;
+      expect(scrubSecrets(fake)).toBe(fake);
+    });
+
+    it("does not flag a bare timestamp:token shape without telegram context", () => {
+      // 10-digit Unix timestamp + colon + 35-char alphanumeric tail can appear
+      // in ordinary log lines; the telegram pattern's anchor must keep it safe.
+      const bare = `1700000000:${"A".repeat(35)}`;
+      expect(scrubSecrets(bare)).toBe(bare);
+    });
+
+    it("does not flag a bare 32-char hex without datadog context", () => {
+      // Plain MD5 hash — must remain visible without the DD_API_KEY anchor.
+      const md5 = `digest=${"a".repeat(32)}`;
+      expect(scrubSecrets(md5)).toBe(md5);
+    });
+
+    it("does not flag a bare 40-char hex without datadog context", () => {
+      // Plain SHA1 hash — must remain visible without the DD_APP_KEY anchor.
+      const sha1 = `commit=${"f".repeat(40)}`;
+      expect(scrubSecrets(sha1)).toBe(sha1);
     });
 
     it("redacts realistically-sized Atlassian token bodies fully", () => {
