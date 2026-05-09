@@ -61,4 +61,4 @@ export const WAIT_UNTIL_IDLE_OUTPUT_SCHEMA: Record<string, unknown> = {
 };
 
 export const WAIT_UNTIL_IDLE_DESCRIPTION =
-  "[terminal] Wait until idle: blocks until the agent in the given terminal transitions out of the `working` state, or until the timeout elapses. Resolves immediately if the agent is already non-working or no agent is attached. When the agent settles in `waiting_for_user`, the result also includes `waitingReason` (`prompt` = empty input prompt, safe to auto-drive; `question` = agent is asking the user a question). Honours client cancellation. When orchestrating multiple terminals, call with `timeoutMs: 0` in parallel for snapshots — do not issue concurrent default-timeout waits, which race unpredictably and can each block for 30 minutes.";
+  "Wait until the agent transitions from working state or the timeout elapses";
