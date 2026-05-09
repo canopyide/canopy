@@ -198,9 +198,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # x64 has no arch suffix because electron-builder treats it as the default arch
+          # (builder-util getArchSuffix returns "" for the default); arm64 and universal do.
           apps=(
             "release/mac-arm64/Daintree.app"
-            "release/mac-x64/Daintree.app"
+            "release/mac/Daintree.app"
             "release/mac-universal/Daintree.app"
           )
           for app in "${apps[@]}"; do
