@@ -5,7 +5,7 @@ import { getCrashLoopGuard } from "../services/CrashLoopGuardService.js";
 import { closeTelemetry } from "../services/TelemetryService.js";
 import { broadcastToRenderer } from "../ipc/utils.js";
 import { CHANNELS } from "../ipc/channels.js";
-import { store } from "../store.js";
+import { appendPendingError } from "../ipc/pendingErrorsStore.js";
 import type { ErrorRecord } from "../../shared/types/ipc/errors.js";
 import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 
@@ -46,9 +46,7 @@ function notifyRenderer(appError: ErrorRecord): void {
 
 function persistPendingError(appError: ErrorRecord): void {
   try {
-    const existing = store.get("pendingErrors");
-    const pending = Array.isArray(existing) ? existing : [];
-    store.set("pendingErrors", [...pending, { ...appError, fromPreviousSession: true }]);
+    appendPendingError({ ...appError, fromPreviousSession: true });
   } catch {
     // best-effort only
   }

@@ -720,6 +720,47 @@ describe("errorHandlers", () => {
       );
     });
 
+    it("caps persisted pendingErrors at 50 when store already holds 50 entries", async () => {
+      const CHANNELS = await getChannels();
+      const { ConfigError } = await import("../../utils/errorTypes.js");
+
+      const seeded = Array.from({ length: 50 }, (_, i) => ({
+        id: `seeded-${i}`,
+        type: "config",
+        message: `seeded ${i}`,
+        timestamp: i,
+        source: "main-process",
+        isTransient: false,
+        dismissed: false,
+      }));
+      storeMock.store.get.mockReturnValue(seeded);
+      createMockWindow({ destroyed: true });
+
+      const spawn = vi.fn(() => {
+        throw new ConfigError("Bad config", { key: "config-key" });
+      });
+      registerErrorHandlers(null, createPtyClientMock(spawn));
+
+      const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
+      await retryHandler({} as never, {
+        errorId: "e",
+        action: "terminal",
+        args: { id: "t", cwd: "/" },
+      }).catch(() => {});
+
+      const persistCalls = storeMock.store.set.mock.calls.filter(
+        ([key]) => key === "pendingErrors"
+      );
+      const lastPersisted = persistCalls[persistCalls.length - 1]?.[1] as Array<{
+        id: string;
+        type: string;
+      }>;
+      expect(lastPersisted).toHaveLength(50);
+      expect(lastPersisted[0].id).toBe("seeded-1");
+      expect(lastPersisted[lastPersisted.length - 1].type).toBe("config");
+      expect(lastPersisted[lastPersisted.length - 1].id).not.toMatch(/^seeded-/);
+    });
+
     it("preserves correlationId through buffer and flush", async () => {
       const CHANNELS = await getChannels();
       createMockWindow({ destroyed: true });

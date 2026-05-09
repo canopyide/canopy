@@ -176,6 +176,28 @@ describe("globalErrorHandlers", () => {
       );
     });
 
+    it("caps persisted pendingErrors at 50 when store already holds 50 entries", () => {
+      const seeded = Array.from({ length: 50 }, (_, i) => ({
+        id: `seeded-${i}`,
+        timestamp: i,
+        type: "unknown",
+        message: `seeded ${i}`,
+        source: "main-process",
+        isTransient: false,
+        dismissed: false,
+      }));
+      storeMock.get.mockReturnValue(seeded);
+
+      uncaughtHandler(new Error("new crash"));
+
+      const persisted = storeMock.set.mock.calls.find(
+        ([key]) => key === "pendingErrors"
+      )?.[1] as Array<{ id: string }>;
+      expect(persisted).toHaveLength(50);
+      expect(persisted[0].id).toBe("seeded-1");
+      expect(persisted[persisted.length - 1].id).toMatch(/^fatal-/);
+    });
+
     it("sends error notification to renderer via broadcast", () => {
       const error = new Error("test crash");
       uncaughtHandler(error);
@@ -376,6 +398,28 @@ describe("globalErrorHandlers", () => {
         "pendingErrors",
         expect.arrayContaining([expect.objectContaining({ fromPreviousSession: true })])
       );
+    });
+
+    it("caps persisted pendingErrors at 50 when store already holds 50 entries", () => {
+      const seeded = Array.from({ length: 50 }, (_, i) => ({
+        id: `seeded-${i}`,
+        timestamp: i,
+        type: "unknown",
+        message: `seeded ${i}`,
+        source: "main-process",
+        isTransient: false,
+        dismissed: false,
+      }));
+      storeMock.get.mockReturnValue(seeded);
+
+      rejectionHandler(new Error("rejected"));
+
+      const persisted = storeMock.set.mock.calls.find(
+        ([key]) => key === "pendingErrors"
+      )?.[1] as Array<{ id: string }>;
+      expect(persisted).toHaveLength(50);
+      expect(persisted[0].id).toBe("seeded-1");
+      expect(persisted[persisted.length - 1].id).toMatch(/^fatal-/);
     });
 
     it("handles non-Error rejection reasons", () => {
