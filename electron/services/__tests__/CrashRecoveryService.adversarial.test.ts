@@ -23,6 +23,12 @@ const browserWindowMock = vi.hoisted(() => ({
   getAllWindows: vi.fn(() => [{}]),
 }));
 
+const utilsMock = vi.hoisted(() => ({
+  resilientAtomicWriteFileSync: vi.fn(),
+}));
+
+vi.mock("../../utils/fs.js", () => utilsMock);
+
 vi.mock("../../store.js", () => ({
   store: storeMock,
   windowStatesStore: windowStatesStoreMock,
@@ -81,6 +87,11 @@ describe("CrashRecoveryService adversarial", () => {
       return undefined;
     });
     storeMock.set.mockImplementation(() => {});
+    utilsMock.resilientAtomicWriteFileSync.mockImplementation(
+      (fp: string, data: string, enc?: BufferEncoding) => {
+        fs.writeFileSync(fp, data, enc ?? "utf-8");
+      }
+    );
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
