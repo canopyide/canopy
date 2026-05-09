@@ -10,6 +10,12 @@ export const config: AgentConfig = {
   color: "#14B014",
   iconId: "aider",
   supportsContextInjection: true,
+  // Aider has no MCP-client wiring of its own — it operates as a self-contained
+  // git-aware editor with model providers configured directly via CLI flags.
+  // The Daintree assistant overlay relies on injecting MCP servers into the
+  // agent's session, so Aider is structurally ineligible until/unless
+  // upstream adds MCP-client support.
+  supports: false,
   tooltip: "Pip-distributed, git-aware coding agent",
   usageUrl: "https://aider.chat/",
   // packages.pypi triggers uv/pipx path synthesis in CliAvailabilityService,
