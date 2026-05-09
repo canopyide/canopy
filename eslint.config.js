@@ -370,6 +370,10 @@ export default tseslint.config(
       "build/**",
       "public/**",
       ".claude/**",
+      // Native N-API addons live under electron/native/. The CJS wrapper
+      // and binding.gyp aren't part of the TypeScript build graph; they're
+      // packaged build infrastructure (analogous to scripts/).
+      "electron/native/**",
     ],
   }
 );

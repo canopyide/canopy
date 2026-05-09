@@ -1,0 +1,16 @@
+{
+  "name": "win-job-object",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Windows Job Object binding for help-session PTY tree reaping (#7526)",
+  "main": "index.cjs",
+  "gypfile": true,
+  "os": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "dependencies": {
+    "node-addon-api": "^7.1.0"
+  }
+}

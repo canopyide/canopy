@@ -43,5 +43,5 @@ export function teardown(): void {
   // the same addon is loaded into a sibling process can race with finalizers.
   if (process.env.CI) return;
   console.log("[vitest-teardown] Restoring better-sqlite3 for Electron...");
-  execSync("npx electron-rebuild -f -w better-sqlite3 --silent", { stdio: "inherit" });
+  execSync("npx electron-rebuild -f -w better-sqlite3", { stdio: "inherit" });
 }

@@ -30,7 +30,7 @@
     "package:linux": "npm run build && electron-builder --linux",
     "package:local": "npm run build && electron-builder --mac --dir -c.mac.identity=null -c.mac.forceCodeSigning=false -c.mac.notarize=false",
     "package:local:dmg": "npm run build && electron-builder --mac dmg -c.mac.identity=null -c.mac.forceCodeSigning=false -c.mac.notarize=false",
-    "rebuild": "electron-rebuild -f -w node-pty,better-sqlite3 && node node_modules/node-pty/scripts/post-install.js",
+    "rebuild": "electron-rebuild -f -w node-pty,better-sqlite3,win-job-object && node node_modules/node-pty/scripts/post-install.js",
     "postinstall": "node scripts/postinstall.cjs",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -88,8 +88,10 @@
     "better-sqlite3": "^12.8.0",
     "copytree": "^0.14.2",
     "js-yaml": "^4.1.1",
+    "node-addon-api": "^7.1.0",
     "node-pty": "1.2.0-beta.12",
-    "react-colorful": "^5.6.1"
+    "react-colorful": "^5.6.1",
+    "win-job-object": "file:electron/native/win-job-object"
   },
   "optionalDependencies": {
     "ffmpeg-static": "^5.2.0"

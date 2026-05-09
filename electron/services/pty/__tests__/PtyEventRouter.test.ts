@@ -13,12 +13,20 @@ interface BrokerCall {
   result: unknown;
 }
 
-function makeDeps(overrides: Partial<PtyEventRouterDeps> = {}): {
+function makeDeps(
+  overrides: Partial<PtyEventRouterDeps> = {},
+  callbackOverrides: { onTerminalPid?: (id: string, pid: number) => void } = {}
+): {
   deps: PtyEventRouterDeps;
   emitter: EventEmitter;
   brokerCalls: BrokerCall[];
   state: PtyEventRouterDeps["state"];
-  callbacks: { onReadyCount: number; onPongCount: number; trashIdsRemoved: string[] };
+  callbacks: {
+    onReadyCount: number;
+    onPongCount: number;
+    trashIdsRemoved: string[];
+    terminalPidCalls: Array<{ id: string; pid: number }>;
+  };
 } {
   const emitter = new EventEmitter();
   const brokerCalls: BrokerCall[] = [];
@@ -31,6 +39,7 @@ function makeDeps(overrides: Partial<PtyEventRouterDeps> = {}): {
     onReadyCount: 0,
     onPongCount: 0,
     trashIdsRemoved: [] as string[],
+    terminalPidCalls: [] as Array<{ id: string; pid: number }>,
   };
   const deps: PtyEventRouterDeps = {
     isDisposed: () => false,
@@ -52,6 +61,11 @@ function makeDeps(overrides: Partial<PtyEventRouterDeps> = {}): {
       onTerminalRemovedFromTrash: (id) => {
         callbacks.trashIdsRemoved.push(id);
       },
+      onTerminalPid:
+        callbackOverrides.onTerminalPid ??
+        ((id, pid) => {
+          callbacks.terminalPidCalls.push({ id, pid });
+        }),
     },
     logWarn: vi.fn(),
     ...overrides,
@@ -232,6 +246,55 @@ describe("routeHostEvent", () => {
     const { deps, state } = makeDeps();
     routeHostEvent({ type: "terminal-pid", id: "t1", pid: 12345 }, deps);
     expect(state.terminalPids.get("t1")).toBe(12345);
+  });
+
+  it("invokes onTerminalPid with id and pid after updating the state map (#7526)", () => {
+    const { deps, state, callbacks } = makeDeps();
+    routeHostEvent({ type: "terminal-pid", id: "t1", pid: 4242 }, deps);
+    expect(state.terminalPids.get("t1")).toBe(4242);
+    expect(callbacks.terminalPidCalls).toEqual([{ id: "t1", pid: 4242 }]);
+  });
+
+  it("swallows a throwing onTerminalPid and logs without breaking routing (#7526)", () => {
+    const logWarn = vi.fn();
+    const { deps, state } = makeDeps(
+      { logWarn },
+      {
+        onTerminalPid: () => {
+          throw new Error("boom");
+        },
+      }
+    );
+
+    const handled = routeHostEvent({ type: "terminal-pid", id: "t1", pid: 42 }, deps);
+
+    expect(handled).toBe(true);
+    expect(state.terminalPids.get("t1")).toBe(42);
+    expect(logWarn).toHaveBeenCalledWith(expect.stringContaining("onTerminalPid threw"));
+  });
+
+  it("does not throw when onTerminalPid is omitted from callbacks", () => {
+    const emitter = new EventEmitter();
+    const state: PtyEventRouterDeps["state"] = {
+      pendingSpawns: new Map(),
+      pendingKillCount: new Map(),
+      terminalPids: new Map(),
+    };
+    const deps: PtyEventRouterDeps = {
+      isDisposed: () => false,
+      broker: { resolve: () => true },
+      emitter,
+      state,
+      callbacks: {
+        onReady: () => {},
+        onPong: () => {},
+        onTerminalRemovedFromTrash: () => {},
+      },
+      logWarn: vi.fn(),
+    };
+
+    expect(() => routeHostEvent({ type: "terminal-pid", id: "t1", pid: 99 }, deps)).not.toThrow();
+    expect(state.terminalPids.get("t1")).toBe(99);
   });
 
   it("emits spawn-result and clears pendingSpawns on failed spawn", () => {

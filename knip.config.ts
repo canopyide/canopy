@@ -103,6 +103,9 @@ const config: KnipConfig = {
     "@types/trusted-types",
     "@octokit/request-error",
     "@octokit/types",
+    // Native addon support, consumed only from electron/native/win-job-object/
+    // binding.gyp (#7526). Knip walks JS/TS imports, not gyp files.
+    "node-addon-api",
   ],
 
   // why: the repo pre-dates knip and carries a ~150-entry backlog of unused

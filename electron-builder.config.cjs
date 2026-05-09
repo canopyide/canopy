@@ -61,6 +61,7 @@ module.exports = async function () {
     asarUnpack: [
       "node_modules/node-pty/**/*",
       "node_modules/better-sqlite3/**/*",
+      "node_modules/win-job-object/**/*",
     ],
     electronFuses: {
       runAsNode: false,

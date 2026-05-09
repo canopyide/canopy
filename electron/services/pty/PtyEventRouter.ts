@@ -58,6 +58,14 @@ export interface PtyEventRouterCallbacks {
   onPong: () => void;
   /** Invoked when the host removes a trashed terminal (delegated to the tracker). */
   onTerminalRemovedFromTrash: (id: string) => void;
+  /**
+   * Optional. Fires after `state.terminalPids` has been updated for a
+   * `terminal-pid` event. Consumed by the help-session Job Object wiring
+   * (#7526) so help-session PTYs can be attached to a Windows Job Object
+   * for crash-safe reaping. Must not throw — the router treats this as a
+   * pure side effect.
+   */
+  onTerminalPid?: (id: string, pid: number) => void;
 }
 
 export interface PtyEventRouterDeps {
@@ -222,6 +230,15 @@ export function routeHostEvent(event: PtyHostEvent, deps: PtyEventRouterDeps): b
 
     case "terminal-pid":
       state.terminalPids.set(event.id, event.pid);
+      if (callbacks.onTerminalPid) {
+        try {
+          callbacks.onTerminalPid(event.id, event.pid);
+        } catch (err) {
+          // Hardens the documented "must not throw" contract — a future
+          // callback that does throw must not break unrelated PTY routing.
+          deps.logWarn(`[PtyClient] onTerminalPid threw for ${event.id}: ${String(err)}`);
+        }
+      }
       return true;
 
     case "spawn-result": {
