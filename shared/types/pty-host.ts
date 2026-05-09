@@ -254,6 +254,8 @@ export type PtyHostEvent =
       bufferUtilization?: number;
       pauseDuration?: number;
       reason?: string;
+      /** Byte count discarded — only set when status is "data-loss". */
+      droppedBytes?: number;
       timestamp: number;
     }
   | {
@@ -459,6 +461,8 @@ export interface TerminalStatusPayload {
   bufferUtilization?: number;
   pauseDuration?: number;
   reason?: string;
+  /** Byte count discarded — only set when status is "data-loss". */
+  droppedBytes?: number;
   timestamp: number;
 }
 

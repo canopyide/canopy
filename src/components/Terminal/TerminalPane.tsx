@@ -2,7 +2,12 @@ import React, { Suspense, lazy, useEffect, useEffectEvent, useRef, useState } fr
 import { useShallow } from "zustand/react/shallow";
 import { Settings } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
-import type { TerminalRestartError, SpawnError, TerminalReconnectError } from "@/types";
+import type {
+  TerminalRestartError,
+  SpawnError,
+  TerminalReconnectError,
+  PersistableFlowStatus,
+} from "@/types";
 import { cn } from "@/lib/utils";
 import { XtermAdapter } from "./XtermAdapter";
 import { ArtifactOverlay } from "./ArtifactOverlay";
@@ -84,7 +89,7 @@ export interface TerminalPaneProps {
   agentState?: AgentState;
   activity?: ActivityState | null;
   lastCommand?: string;
-  flowStatus?: "running" | "paused-backpressure" | "paused-user" | "suspended";
+  flowStatus?: PersistableFlowStatus;
   onFocus: () => void;
   onClose: (force?: boolean) => void;
   onToggleMaximize?: () => void;

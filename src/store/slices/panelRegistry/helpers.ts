@@ -1,4 +1,4 @@
-import type { TerminalFlowStatus, TerminalRuntimeStatus } from "@/types";
+import type { PersistableFlowStatus, TerminalRuntimeStatus } from "@/types";
 import type { PanelKind } from "@/types";
 import type { TabGroup } from "@/types";
 import { getDefaultPanelTitle } from "@shared/config/panelKindRegistry";
@@ -28,7 +28,7 @@ export const DOCK_PREWARM_HEIGHT_PX = 800;
 
 export const deriveRuntimeStatus = (
   isVisible: boolean | undefined,
-  flowStatus?: TerminalFlowStatus,
+  flowStatus?: PersistableFlowStatus,
   currentStatus?: TerminalRuntimeStatus
 ): TerminalRuntimeStatus => {
   if (currentStatus === "exited" || currentStatus === "error") {

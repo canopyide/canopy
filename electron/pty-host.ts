@@ -457,6 +457,18 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
         timestamp: Date.now(),
         bufferUtilization: utilization,
       });
+      // Surface the drop to the renderer so a discontinuity marker is shown.
+      // Bypasses BackpressureManager.emitTerminalStatus() because each drop
+      // is a distinct pulse — the dedup guard there would silently swallow
+      // repeated data-loss events on the same terminal.
+      sendEvent({
+        type: "terminal-status",
+        id,
+        status: "data-loss",
+        bufferUtilization: utilization,
+        droppedBytes: dataBytes,
+        timestamp: Date.now(),
+      });
       return; // Drop this chunk to prevent OOM
     }
 

@@ -3,7 +3,7 @@ import type {
   TerminalInstance as TerminalInstanceType,
   AgentState,
   AgentStateChangeTrigger,
-  TerminalFlowStatus,
+  PersistableFlowStatus,
   TerminalRuntimeStatus,
   SpawnError,
   TerminalReconnectError,
@@ -143,7 +143,7 @@ export interface PanelRegistrySlice {
   updateTerminalCwd: (id: string, cwd: string) => void;
   moveTerminalToWorktree: (id: string, worktreeId: string) => void;
   moveToNewWorktreeAndTransfer: (id: string) => void;
-  updateFlowStatus: (id: string, status: TerminalFlowStatus, timestamp: number) => void;
+  updateFlowStatus: (id: string, status: PersistableFlowStatus, timestamp: number) => void;
   setRuntimeStatus: (id: string, status: TerminalRuntimeStatus) => void;
   setInputLocked: (id: string, locked: boolean) => void;
   toggleInputLocked: (id: string) => void;

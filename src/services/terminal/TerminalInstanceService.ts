@@ -643,6 +643,19 @@ class TerminalInstanceService {
     this.wakeManager.wake(id);
   }
 
+  /**
+   * Inject a visible discontinuity marker into the xterm buffer at the point
+   * where the PTY host discarded bytes from the IPC fallback queue. The
+   * leading `\x18` (CAN) cancels any partial in-progress escape sequence so
+   * the styled marker renders correctly mid-stream.
+   */
+  injectDataLossMarker(id: string, droppedBytes: number): void {
+    const managed = this.instances.get(id);
+    if (!managed || managed.isHibernated) return;
+    const label = droppedBytes > 0 ? `~${droppedBytes} bytes` : "output";
+    managed.terminal.write(`\x18\r\n\x1b[33m⚠ Output dropped (${label})\x1b[0m\r\n`);
+  }
+
   getOrCreate(
     id: string,
     launchAgentId: string | undefined,

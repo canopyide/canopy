@@ -78,11 +78,25 @@ export enum TerminalRefreshTier {
   BACKGROUND = 1000, // 1fps
 }
 
-/** Flow-control states emitted by the PTY host */
-export type TerminalFlowStatus = "running" | "paused-backpressure" | "paused-user" | "suspended";
+/** Flow-control states emitted by the PTY host. `data-loss` is a transient
+ *  pulse fired when the IPC fallback queue discards bytes — it is not a
+ *  durable state, must not be persisted as `flowStatus`, and is consumed
+ *  by the renderer to inject a discontinuity marker into the xterm buffer. */
+export type TerminalFlowStatus =
+  | "running"
+  | "paused-backpressure"
+  | "paused-user"
+  | "suspended"
+  | "data-loss";
 
-/** Runtime lifecycle status for terminals (visibility + flow + exit/error) */
-export type TerminalRuntimeStatus = TerminalFlowStatus | "background" | "exited" | "error";
+/** Subset of `TerminalFlowStatus` that is safe to persist as the durable
+ *  flow state of a terminal. `data-loss` is excluded because it is a pulse,
+ *  not a state — persisting it would freeze the runtime status indefinitely. */
+export type PersistableFlowStatus = Exclude<TerminalFlowStatus, "data-loss">;
+
+/** Runtime lifecycle status for terminals (visibility + flow + exit/error).
+ *  Derived from a `PersistableFlowStatus`, so `data-loss` never appears here. */
+export type TerminalRuntimeStatus = PersistableFlowStatus | "background" | "exited" | "error";
 
 /** Origin that spawned a terminal */
 export type TerminalSpawnSource = "quickrun" | "recipe" | "agent" | "palette" | "mcp";
@@ -237,8 +251,9 @@ export interface PtyPanelData extends BasePanelData {
   restartError?: TerminalRestartError;
   /** Reconnection failure error - set when reconnection fails during project switch */
   reconnectError?: TerminalReconnectError;
-  /** Flow control status - indicates if terminal is paused/suspended due to backpressure or safety policy */
-  flowStatus?: TerminalFlowStatus;
+  /** Flow control status - indicates if terminal is paused/suspended due to backpressure or safety policy.
+   *  Excludes `data-loss` (transient pulse only — never persisted as state). */
+  flowStatus?: PersistableFlowStatus;
   /** Combined lifecycle status for UI + diagnostics */
   runtimeStatus?: TerminalRuntimeStatus;
   /** Timestamp when flow status last changed */
@@ -437,7 +452,7 @@ export interface TerminalInstance {
   reconnectError?: TerminalReconnectError;
   /** Error that occurred when spawning the PTY process */
   spawnError?: import("./pty-host.js").SpawnError;
-  flowStatus?: TerminalFlowStatus;
+  flowStatus?: PersistableFlowStatus;
   runtimeStatus?: TerminalRuntimeStatus;
   flowStatusTimestamp?: number;
   isInputLocked?: boolean;
