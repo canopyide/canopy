@@ -1679,6 +1679,138 @@ describe("NotificationCenter — Jump to new pill", () => {
       proto.scrollIntoView = original;
     }
   });
+
+  it("hidden pill is aria-hidden and not focusable; visible pill is reachable", () => {
+    const closedAt = Date.now() - 5000;
+    useUIStore.setState({ lastNotificationCenterClosedAt: closedAt });
+    setEntries([makeEntry({ message: "Newer", timestamp: closedAt + 4000 })]);
+
+    render(<NotificationCenter open onClose={vi.fn()} />);
+
+    const pill = screen.getByTestId("jump-to-new-pill");
+    expect(pill.getAttribute("aria-hidden")).toBe("true");
+    expect(pill.getAttribute("tabindex")).toBe("-1");
+
+    act(() => {
+      fireObserver({ top: 0, bottom: 400, left: 0, right: 360 }, 500, false);
+    });
+
+    expect(pill.getAttribute("aria-hidden")).toBeNull();
+    expect(pill.getAttribute("tabindex")).toBe("0");
+  });
+
+  it("uses Tier 2 timing — 200ms enter, 120ms exit", () => {
+    const closedAt = Date.now() - 5000;
+    useUIStore.setState({ lastNotificationCenterClosedAt: closedAt });
+    setEntries([makeEntry({ message: "Newer", timestamp: closedAt + 4000 })]);
+
+    render(<NotificationCenter open onClose={vi.fn()} />);
+
+    const pill = screen.getByTestId("jump-to-new-pill") as HTMLButtonElement;
+    expect(pill.style.transitionDuration).toBe("120ms");
+
+    act(() => {
+      fireObserver({ top: 0, bottom: 400, left: 0, right: 360 }, 500, false);
+    });
+    expect(pill.style.transitionDuration).toBe("200ms");
+
+    act(() => {
+      fireObserver({ top: 0, bottom: 400, left: 0, right: 360 }, 100, true);
+    });
+    expect(pill.style.transitionDuration).toBe("120ms");
+  });
+
+  it("observer's root is the scroll container (not the popover or document)", () => {
+    const closedAt = Date.now() - 5000;
+    useUIStore.setState({ lastNotificationCenterClosedAt: closedAt });
+    setEntries([makeEntry({ message: "Newer", timestamp: closedAt + 4000 })]);
+
+    const { container } = render(<NotificationCenter open onClose={vi.fn()} />);
+
+    expect(observers.length).toBeGreaterThan(0);
+    const root = observers[observers.length - 1]!.root;
+    expect(root).not.toBeNull();
+    const scrollDiv = container.querySelector(".overflow-y-auto");
+    expect(scrollDiv).not.toBeNull();
+    expect(root).toBe(scrollDiv);
+  });
+
+  it("disconnects the observer on unmount", () => {
+    const closedAt = Date.now() - 5000;
+    useUIStore.setState({ lastNotificationCenterClosedAt: closedAt });
+    setEntries([makeEntry({ message: "Newer", timestamp: closedAt + 4000 })]);
+
+    const { unmount } = render(<NotificationCenter open onClose={vi.fn()} />);
+    expect(observers.length).toBeGreaterThan(0);
+
+    unmount();
+    expect(observers.length).toBe(0);
+  });
+});
+
+describe("NotificationCenter — Thread title weight reflects unread state", () => {
+  it("renders thread title with font-semibold when any entry is unread", async () => {
+    const correlationId = "thread-mixed";
+    useNotificationHistoryStore.getState().addEntry(
+      makeEntry({
+        id: "thread-old",
+        type: "info",
+        title: "Mixed thread",
+        message: "First message",
+        correlationId,
+        timestamp: Date.now() - 2000,
+        seenAsToast: false,
+      })
+    );
+    useNotificationHistoryStore.getState().addEntry(
+      makeEntry({
+        id: "thread-latest",
+        type: "info",
+        title: "Mixed thread",
+        message: "Latest message",
+        correlationId,
+        timestamp: Date.now() - 1000,
+        seenAsToast: true,
+      })
+    );
+
+    render(<NotificationCenter open onClose={vi.fn()} />);
+
+    const titleEls = await screen.findAllByText("Mixed thread");
+    expect(titleEls[0]!.className).toMatch(/font-semibold/);
+    expect(titleEls[0]!.className).not.toMatch(/font-medium/);
+  });
+
+  it("renders thread title with font-normal when all entries are read", async () => {
+    const correlationId = "thread-all-read";
+    useNotificationHistoryStore.getState().addEntry(
+      makeEntry({
+        id: "read-1",
+        type: "info",
+        title: "Quiet thread",
+        message: "First",
+        correlationId,
+        timestamp: Date.now() - 2000,
+        seenAsToast: true,
+      })
+    );
+    useNotificationHistoryStore.getState().addEntry(
+      makeEntry({
+        id: "read-2",
+        type: "info",
+        title: "Quiet thread",
+        message: "Second",
+        correlationId,
+        timestamp: Date.now() - 1000,
+        seenAsToast: true,
+      })
+    );
+
+    render(<NotificationCenter open onClose={vi.fn()} />);
+
+    const titleEls = await screen.findAllByText("Quiet thread");
+    expect(titleEls[0]!.className).toMatch(/font-normal/);
+  });
 });
 
 describe("uiStore — closeNotificationCenter records timestamp", () => {
