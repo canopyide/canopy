@@ -1,6 +1,6 @@
 import type { TerminalRuntimeStatus } from "@/types";
 import type { PanelRegistryStoreApi, PanelRegistrySlice, TerminalInstance } from "./types";
-import { terminalClient, projectClient } from "@/clients";
+import { terminalClient, projectClient, globalEnvClient } from "@/clients";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { TerminalRefreshTier } from "@/types";
 import {
@@ -608,7 +608,7 @@ export const createAddPanelActions = (
       let mergedEnv: Record<string, string> | undefined = options.env;
       try {
         const [globalEnvVars, projectEnvVars] = await Promise.all([
-          window.electron.globalEnv.get().catch((error: unknown) => {
+          globalEnvClient.get().catch((error: unknown) => {
             logWarn("[TerminalStore] Failed to fetch global environment variables", { error });
             return {} as Record<string, string>;
           }),
