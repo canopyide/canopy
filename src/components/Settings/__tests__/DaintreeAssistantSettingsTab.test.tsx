@@ -285,11 +285,42 @@ describe("DaintreeAssistantSettingsTab", () => {
     });
     expect(window.electron.mcpServer.rotateApiKey).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: /^rotate key$/i }));
+    const confirmButton = screen.getByRole("button", {
+      name: /^rotate key$/i,
+    }) as HTMLButtonElement;
+    expect(confirmButton.disabled).toBe(true);
+
+    const typedInput = screen.getByLabelText(/^Type .* to confirm$/i) as HTMLInputElement;
+    fireEvent.change(typedInput, { target: { value: "y-abc" } });
+    expect(confirmButton.disabled).toBe(true);
+
+    fireEvent.change(typedInput, { target: { value: "-abc" } });
+    expect(confirmButton.disabled).toBe(false);
+
+    fireEvent.click(confirmButton);
 
     await waitFor(() => {
       expect(window.electron.mcpServer.rotateApiKey).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("does not expose the full API key in the rotate dialog body", async () => {
+    const { container } = render(
+      <SettingsValidationProvider>
+        <DaintreeAssistantSettingsTab />
+      </SettingsValidationProvider>
+    );
+    await waitForContent(container, "Rotate MCP key");
+
+    fireEvent.click(screen.getByRole("button", { name: /rotate mcp key/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /rotate api key\?/i })).toBeTruthy();
+    });
+
+    const dialogText = document.body.textContent ?? "";
+    expect(dialogText).not.toContain("dnt-key-abc");
+    expect(dialogText).toContain("-abc");
   });
 
   it("rotate key dialog can be canceled without rotating", async () => {

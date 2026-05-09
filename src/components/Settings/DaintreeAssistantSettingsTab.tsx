@@ -269,6 +269,8 @@ export function DaintreeAssistantSettingsTab() {
     setShowRotateConfirm(false);
   }, [isRotating]);
 
+  const apiKeySuffix = mcpStatus?.apiKey ? mcpStatus.apiKey.slice(-4) : "";
+
   const handleCopyConfig = useCallback(async () => {
     try {
       const snippet = await window.electron.mcpServer.getConfigSnippet();
@@ -497,13 +499,29 @@ export function DaintreeAssistantSettingsTab() {
         isOpen={showRotateConfirm}
         onClose={isRotating ? undefined : handleCancelRotate}
         title="Rotate API key?"
-        description="The current key will be invalidated immediately. External clients using this key will need to update their configuration."
+        description={
+          <>
+            The current key will be invalidated immediately. External clients using this key will
+            need to update their configuration.
+            {apiKeySuffix && (
+              <>
+                {" "}
+                Type the last 4 characters of the current key (
+                <code className="font-mono text-xs bg-daintree-bg/50 px-1.5 py-0.5 rounded border border-daintree-border">
+                  {apiKeySuffix}
+                </code>
+                ) to confirm.
+              </>
+            )}
+          </>
+        }
         confirmLabel="Rotate key"
         cancelLabel="Cancel"
         onConfirm={confirmRotateKey}
         isConfirmLoading={isRotating}
         variant="destructive"
         zIndex="nested"
+        typedNameTarget={apiKeySuffix || undefined}
       />
     </div>
   );
