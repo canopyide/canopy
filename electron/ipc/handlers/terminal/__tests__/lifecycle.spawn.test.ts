@@ -1028,7 +1028,10 @@ describe("terminal spawn handler - help session detection (#6524)", () => {
     expect(mockGetCodexLaunchArgs).not.toHaveBeenCalled();
   });
 
-  it("does not append Codex flags when getCodexLaunchArgs returns null (defense-in-depth)", async () => {
+  it("refuses to spawn when getCodexLaunchArgs returns null — cross-agent token reuse signal (#7533)", async () => {
+    // `null` from the agent-specific arg accessor with a valid help token
+    // means the token belongs to a different agent. Spawning Codex without
+    // its MCP wiring would silently degrade the help session — fail hard.
     mockValidateToken.mockImplementation((token) => (token === "help-token" ? "action" : false));
     mockGetCodexLaunchArgs.mockReturnValue(null);
 
@@ -1036,20 +1039,47 @@ describe("terminal spawn handler - help session detection (#6524)", () => {
     registerTerminalLifecycleHandlers(deps);
 
     const handler = getSpawnHandler();
-    await handler(
-      {} as Electron.IpcMainInvokeEvent,
-      {
-        cols: 80,
-        rows: 24,
-        cwd: tmpDir,
-        command: "codex",
-        launchAgentId: "codex",
-        env: { DAINTREE_MCP_TOKEN: "help-token" },
-      } as unknown as Parameters<typeof handler>[1]
-    );
+    await expect(
+      handler(
+        {} as Electron.IpcMainInvokeEvent,
+        {
+          cols: 80,
+          rows: 24,
+          cwd: tmpDir,
+          command: "codex",
+          launchAgentId: "codex",
+          env: { DAINTREE_MCP_TOKEN: "help-token" },
+        } as unknown as Parameters<typeof handler>[1]
+      )
+    ).rejects.toThrow(/does not belong to a Codex session/);
+    expect(ptyClient.spawn).not.toHaveBeenCalled();
+  });
 
-    const spawnArgs = ptyClient.spawn.mock.calls[0][1];
-    expect(spawnArgs.command).toBe("codex");
+  it("refuses to spawn when getGeminiLaunchArgs returns null — cross-agent token reuse signal (#7533)", async () => {
+    // Symmetric to the Codex case — silently spawning Gemini without
+    // `--approval-mode=plan` would lose the read-only guardrail, so a
+    // mismatched token must hard-fail.
+    mockValidateToken.mockImplementation((token) => (token === "help-token" ? "action" : false));
+    mockGetGeminiLaunchArgs.mockReturnValue(null);
+
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+    await expect(
+      handler(
+        {} as Electron.IpcMainInvokeEvent,
+        {
+          cols: 80,
+          rows: 24,
+          cwd: tmpDir,
+          command: "gemini",
+          launchAgentId: "gemini",
+          env: { DAINTREE_MCP_TOKEN: "help-token" },
+        } as unknown as Parameters<typeof handler>[1]
+      )
+    ).rejects.toThrow(/does not belong to a Gemini session/);
+    expect(ptyClient.spawn).not.toHaveBeenCalled();
   });
 
   it("appends --approval-mode=plan to a Gemini help-session spawn (#7533)", async () => {
@@ -1106,6 +1136,68 @@ describe("terminal spawn handler - help session detection (#6524)", () => {
 
     const spawnArgs = ptyClient.spawn.mock.calls[0][1];
     expect(spawnArgs.command).not.toContain("--yolo");
+    expect(spawnArgs.command).toContain("'--approval-mode=plan'");
+  });
+
+  it("strips a smuggled --approval-mode=yolo from a Gemini help-session spawn so plan mode is unambiguously authoritative (#7533)", async () => {
+    // Defense-in-depth: Gemini CLI's flag parser treats repeated flags as
+    // last-wins in practice, but the read-only guardrail must not depend
+    // on parser quirks. Strip any user-supplied `--approval-mode=...`
+    // before appending the canonical `--approval-mode=plan`.
+    mockValidateToken.mockImplementation((token) => (token === "help-token" ? "action" : false));
+    mockGetGeminiLaunchArgs.mockReturnValue(["--approval-mode=plan"]);
+
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+    await handler(
+      {} as Electron.IpcMainInvokeEvent,
+      {
+        cols: 80,
+        rows: 24,
+        cwd: tmpDir,
+        command: "gemini --approval-mode=yolo",
+        launchAgentId: "gemini",
+        env: { DAINTREE_MCP_TOKEN: "help-token" },
+      } as unknown as Parameters<typeof handler>[1]
+    );
+
+    const spawnArgs = ptyClient.spawn.mock.calls[0][1];
+    expect(spawnArgs.command).not.toContain("--approval-mode=yolo");
+    // Exactly one occurrence of approval-mode (the appended plan flag),
+    // never the smuggled yolo.
+    const matches = spawnArgs.command.match(/--approval-mode/g) ?? [];
+    expect(matches).toHaveLength(1);
+    expect(spawnArgs.command).toContain("'--approval-mode=plan'");
+  });
+
+  it("strips a smuggled --approval-mode auto_edit form (space-separated value) (#7533)", async () => {
+    // Some users may use the long form with a space; the strip must catch
+    // both `--approval-mode=value` and `--approval-mode value`.
+    mockValidateToken.mockImplementation((token) => (token === "help-token" ? "action" : false));
+    mockGetGeminiLaunchArgs.mockReturnValue(["--approval-mode=plan"]);
+
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+    await handler(
+      {} as Electron.IpcMainInvokeEvent,
+      {
+        cols: 80,
+        rows: 24,
+        cwd: tmpDir,
+        command: "gemini --approval-mode auto_edit",
+        launchAgentId: "gemini",
+        env: { DAINTREE_MCP_TOKEN: "help-token" },
+      } as unknown as Parameters<typeof handler>[1]
+    );
+
+    const spawnArgs = ptyClient.spawn.mock.calls[0][1];
+    expect(spawnArgs.command).not.toContain("auto_edit");
+    const matches = spawnArgs.command.match(/--approval-mode/g) ?? [];
+    expect(matches).toHaveLength(1);
     expect(spawnArgs.command).toContain("'--approval-mode=plan'");
   });
 

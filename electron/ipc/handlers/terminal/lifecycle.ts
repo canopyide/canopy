@@ -283,21 +283,48 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
       // MCP servers at provision time; append them here, shell-quoted. No
       // literal token is ever in the args (Codex reads
       // `DAINTREE_MCP_TOKEN` from PTY env via `bearer_token_env_var`).
+      //
+      // A `null` return is the agent-mismatch signal (e.g. a Claude help
+      // token reused with `launchAgentId: "codex"`) — refuse to spawn
+      // rather than silently launching Codex without its MCP wiring.
       if (launchAgentId === "codex") {
         const codexArgs = helpSessionService.getCodexLaunchArgs(helpToken);
-        if (codexArgs && codexArgs.length > 0) {
+        if (codexArgs === null) {
+          throw new Error(
+            "Daintree Assistant help token does not belong to a Codex session; refusing to spawn"
+          );
+        }
+        if (codexArgs.length > 0) {
           safeCommand = `${safeCommand} ${codexArgs.map(shellQuote).join(" ")}`;
         }
       }
       // Gemini help sessions are pinned to `--approval-mode=plan` (strict
       // read-only) at spawn time. The flag is a CLI-only knob — it cannot
       // come from the bundled `.gemini/settings.json`, which only carries
-      // the docs MCP entry and the tool allowlist. Append shell-quoted so
-      // a future args extension carrying spaces stays safe.
+      // the docs MCP entry and the tool allowlist.
+      //
+      // A `null` return is the agent-mismatch signal (e.g. a Claude help
+      // token reused with `launchAgentId: "gemini"`) — refuse to spawn,
+      // because silently dropping the launch args would mean spawning
+      // Gemini without the read-only plan-mode guardrail.
+      //
+      // Strip any user-supplied `--approval-mode=...` first so the
+      // appended `--approval-mode=plan` is unambiguously authoritative
+      // (Gemini's flag parser treats repeated flags as last-wins, but we
+      // don't rely on parser quirks for a security-relevant guardrail).
       if (launchAgentId === "gemini") {
         const geminiArgs = helpSessionService.getGeminiLaunchArgs(helpToken);
-        if (geminiArgs && geminiArgs.length > 0) {
-          safeCommand = `${safeCommand} ${geminiArgs.map(shellQuote).join(" ")}`;
+        if (geminiArgs === null) {
+          throw new Error(
+            "Daintree Assistant help token does not belong to a Gemini session; refusing to spawn"
+          );
+        }
+        safeCommand = safeCommand
+          .replace(/(^|\s)--approval-mode(?:=\S*|\s+\S+)?(?=\s|$)/g, "$1")
+          .replace(/\s{2,}/g, " ")
+          .trim();
+        if (geminiArgs.length > 0) {
+          safeCommand = `${safeCommand} ${geminiArgs.map(shellQuote).join(" ")}`.trim();
         }
       }
 
