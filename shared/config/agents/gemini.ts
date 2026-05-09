@@ -8,6 +8,19 @@ export const config: AgentConfig = {
   color: "#4285F4",
   iconId: "gemini",
   supportsContextInjection: true,
+  // Gemini help sessions read MCP from the bundled `.gemini/settings.json`
+  // copied into the per-session cwd; `--approval-mode=plan` is injected at
+  // spawn time via `HelpSessionService.buildGeminiLaunchArgs`. Held at the
+  // `"experimental"` tier so the help-panel picker stays Claude/Codex only
+  // until end-to-end validation lands.
+  supports: {
+    mcpInjection: "project-config",
+    settingsOverlay: false,
+    permissionBypass: false,
+    trustDialog: false,
+    versionProbe: true,
+    tier: "experimental",
+  },
   shortcut: "Cmd/Ctrl+Alt+G",
   tooltip: "quick exploration",
   version: {

@@ -8,7 +8,7 @@ import { getHelpFolderPath } from "./HelpService.js";
 import { resilientAtomicWriteFile } from "../utils/fs.js";
 import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 import { probeMcpServer, probeMcpSseServer } from "./mcp-server/readinessProbe.js";
-import { getAssistantSupportedAgentIds } from "../../shared/config/agentRegistry.js";
+import { getAssistantWiredAgentIds } from "../../shared/config/agentRegistry.js";
 import type { HelpAssistantTier } from "../../shared/types/ipc/maps.js";
 import type { PtyClient } from "./PtyClient.js";
 
@@ -79,6 +79,8 @@ interface HelpSessionRecord {
   revoked: boolean;
   /** Computed at provision for codex sessions; consumed by lifecycle.ts. */
   codexLaunchArgs?: string[];
+  /** Computed at provision for gemini sessions; consumed by lifecycle.ts. */
+  geminiLaunchArgs?: string[];
 }
 
 interface SessionMeta {
@@ -421,17 +423,18 @@ export class HelpSessionService {
     await fs.chmod(sessionPath, 0o700).catch(() => {});
 
     const port = await this.getMcpPort(settings.daintreeControl);
-    if (input.agentId !== "codex") {
+    if (input.agentId === "claude") {
       await this.writeMcpConfig(sessionPath, settings, port, token);
       await this.writeClaudeSettings(sessionPath, helpFolder, settings);
     } else {
-      // Codex skips `writeMcpConfig`, so when the template hash gate (#7525)
-      // also skips `fs.cp`, a `.mcp.json` from a prior Claude provision for
-      // this same project keeps its stale `daintree` Bearer in cwd. The
-      // bearer is already revoked in-memory (single-backend invariant), but
-      // before the gate, `fs.cp` would have restored the bundled `.mcp.json`
-      // and wiped the entry. Strip it now to preserve that hygiene — no-op
-      // when the entry is absent or its bearer is still live.
+      // Codex and Gemini both skip `writeMcpConfig`, so when the template
+      // hash gate (#7525) also skips `fs.cp`, a `.mcp.json` from a prior
+      // Claude provision for this same project keeps its stale `daintree`
+      // Bearer in cwd. The bearer is already revoked in-memory (single-
+      // backend invariant), but before the gate, `fs.cp` would have
+      // restored the bundled `.mcp.json` and wiped the entry. Strip it now
+      // to preserve that hygiene — no-op when the entry is absent or its
+      // bearer is still live.
       await this.stripStaleDaintreeMcpEntry(sessionPath);
     }
     // Codex doesn't read project-scoped `.codex/config.toml` from cwd —
@@ -439,11 +442,19 @@ export class HelpSessionService {
     // CLI flag (verified against codex-cli 0.129.0). MCP servers are appended
     // to the spawn command in `lifecycle.ts` via the `getCodexLaunchArgs`
     // accessor below; nothing is written to disk for Codex.
+    //
+    // Gemini reads its workspace-level `.gemini/settings.json` from cwd
+    // (already copied via `fs.cp`), which carries the docs MCP entry and
+    // the tool allowlist. The `--approval-mode=plan` flag is appended at
+    // spawn time via `getGeminiLaunchArgs` because it is a CLI flag, not a
+    // settings key — Gemini Phase 1 also skips the local Daintree MCP, so
+    // there is no per-session bearer to mint.
 
     const codexLaunchArgs =
       input.agentId === "codex"
         ? this.buildCodexLaunchArgs(settings.daintreeControl, settings.docSearch, port)
         : undefined;
+    const geminiLaunchArgs = input.agentId === "gemini" ? this.buildGeminiLaunchArgs() : undefined;
 
     const now = Date.now();
     const record: HelpSessionRecord = {
@@ -460,6 +471,7 @@ export class HelpSessionService {
       createdAt: now,
       revoked: false,
       codexLaunchArgs,
+      geminiLaunchArgs,
     };
 
     await this.writeSessionMeta(sessionPath, {
@@ -471,12 +483,13 @@ export class HelpSessionService {
     this.sessionsByToken.set(token, record);
     this.sessionsById.set(sessionId, record);
 
-    if (settings.daintreeControl && port) {
+    if (settings.daintreeControl && port && input.agentId !== "gemini") {
       try {
         if (input.agentId === "codex") {
           // Codex's MCP transport is Streamable HTTP at /mcp; Claude Code
           // reads SSE at /sse. Both probes warm the same in-memory MCP token
-          // map, so neither leaks across agents.
+          // map, so neither leaks across agents. Gemini Phase 1 doesn't
+          // connect to the Daintree MCP server, so neither probe runs.
           await probeMcpServer(port, token);
         } else {
           await probeMcpSseServer(port, token);
@@ -485,7 +498,7 @@ export class HelpSessionService {
         record.revoked = true;
         this.sessionsByToken.delete(token);
         this.sessionsById.delete(sessionId);
-        if (input.agentId !== "codex") {
+        if (input.agentId === "claude") {
           await this.stripStaleDaintreeMcpEntry(sessionPath);
         }
         const reason = formatErrorMessage(err, "assistant MCP session isn't ready");
@@ -507,6 +520,10 @@ export class HelpSessionService {
     port: number | null
   ): string | null {
     if (!daintreeControl || !port) return null;
+    // Gemini Phase 1 does not connect to the local Daintree MCP server;
+    // returning null keeps the renderer from advertising an SSE URL the
+    // agent will never call.
+    if (agentId === "gemini") return null;
     if (agentId === "codex") return `http://127.0.0.1:${port}/mcp`;
     return `http://127.0.0.1:${port}/sse`;
   }
@@ -562,6 +579,36 @@ export class HelpSessionService {
   }
 
   /**
+   * Builds the CLI flags that constrain a Gemini help-session spawn to
+   * read-only behaviour. Phase 1 always pins `--approval-mode=plan` (strict
+   * read-only — Gemini can only run context-gathering tools like `read_file`
+   * and `glob`). The bundled `.gemini/settings.json` in the session cwd
+   * carries the docs MCP entry and tool allowlist; nothing else needs to be
+   * injected at spawn time.
+   *
+   * Verified flag spelling per Gemini CLI 0.x: `--approval-mode=plan` is the
+   * canonical form and accepts the values `default`, `auto_edit`, `plan`,
+   * and `yolo`.
+   */
+  private buildGeminiLaunchArgs(): string[] {
+    return ["--approval-mode=plan"];
+  }
+
+  /**
+   * Returns the cached CLI flags for a Gemini help session. lifecycle.ts
+   * appends them to the spawn command after the help token validates.
+   * Returns null for unknown / revoked tokens or non-Gemini sessions, so the
+   * spawn handler never injects flags for the wrong agent.
+   */
+  getGeminiLaunchArgs(token: string): string[] | null {
+    if (!token) return null;
+    const record = this.sessionsByToken.get(token);
+    if (!record || record.revoked) return null;
+    if (record.agentId !== "gemini") return null;
+    return record.geminiLaunchArgs ?? [];
+  }
+
+  /**
    * Invalidates the in-memory bearer for this session. The on-disk dir is
    * intentionally preserved across launches so the user's one-time Claude
    * Code workspace-trust acceptance for this project carries over to the
@@ -591,9 +638,11 @@ export class HelpSessionService {
       this.killTerminal(terminalId, "help-session-revoked");
     }
 
-    // Codex sessions write nothing to disk (config is `-c` flags), so the
-    // file-strip dance is Claude-only.
-    if (record.agentId !== "codex") {
+    // Only Claude writes a managed `.mcp.json` carrying a literal session
+    // bearer (Codex uses `-c` flags; Gemini reads its settings.json from
+    // cwd and skips the local MCP in Phase 1), so the file-strip dance is
+    // Claude-only.
+    if (record.agentId === "claude") {
       await this.stripStaleDaintreeMcpEntry(record.sessionPath);
     }
   }
@@ -728,7 +777,10 @@ export class HelpSessionService {
     if (typeof input.agentId !== "string" || !input.agentId.trim()) {
       throw new Error("agentId is required");
     }
-    if (!getAssistantSupportedAgentIds().includes(input.agentId)) {
+    // Use the wired list (stable + experimental) so a Gemini help session
+    // can provision even though the picker (driven by the stable-only list)
+    // keeps it hidden until promoted.
+    if (!getAssistantWiredAgentIds().includes(input.agentId)) {
       throw new Error(`agentId "${input.agentId}" is not assistant-supported`);
     }
   }

@@ -76,6 +76,7 @@ import { HelpSessionService } from "../HelpSessionService.js";
 async function makeBundledHelpFolder(root: string): Promise<string> {
   const helpDir = path.join(root, "help");
   await fs.mkdir(path.join(helpDir, ".claude"), { recursive: true });
+  await fs.mkdir(path.join(helpDir, ".gemini"), { recursive: true });
   await fs.writeFile(
     path.join(helpDir, ".mcp.json"),
     JSON.stringify({
@@ -91,7 +92,17 @@ async function makeBundledHelpFolder(root: string): Promise<string> {
       },
     })
   );
+  await fs.writeFile(
+    path.join(helpDir, ".gemini", "settings.json"),
+    JSON.stringify({
+      toolsAllowlist: ["read_file", "list_directory", "search_files", "web_search", "shell"],
+      mcpServers: {
+        "daintree-docs": { httpUrl: "https://daintree.org/api/mcp", trust: true },
+      },
+    })
+  );
   await fs.writeFile(path.join(helpDir, "CLAUDE.md"), "# Help");
+  await fs.writeFile(path.join(helpDir, "GEMINI.md"), "# Gemini Help");
   return helpDir;
 }
 
@@ -964,6 +975,111 @@ describe("HelpSessionService", () => {
     });
   });
 
+  describe("Gemini (#7533)", () => {
+    function geminiInput() {
+      return { ...provisionInput(), agentId: "gemini" };
+    }
+
+    it("accepts agentId: 'gemini' even though the picker stays Claude/Codex only", async () => {
+      const result = await service.provisionSession(geminiInput());
+      expect(result).not.toBeNull();
+    });
+
+    it("returns mcpUrl=null for Gemini even when daintreeControl is enabled", async () => {
+      // Phase 1: Gemini does not connect to the local Daintree MCP server.
+      // The renderer must not advertise an SSE URL the agent never calls.
+      const result = await service.provisionSession(geminiInput());
+      if (!result) throw new Error("expected result");
+      expect(result.mcpUrl).toBeNull();
+    });
+
+    it("does NOT rewrite .mcp.json with a Claude-shaped daintree entry", async () => {
+      const result = await service.provisionSession(geminiInput());
+      if (!result) throw new Error("expected result");
+
+      // The bundled help template carries a `.mcp.json` (copied via fs.cp),
+      // so the file exists on disk — but the Gemini branch must not bake a
+      // literal bearer token into it the way the Claude branch does.
+      const mcp = JSON.parse(
+        await fs.readFile(path.join(result.sessionPath, ".mcp.json"), "utf-8")
+      );
+      expect(mcp.mcpServers.daintree).toBeUndefined();
+    });
+
+    it("does NOT rewrite .claude/settings.json with help-assistant overrides (Claude-only overlay)", async () => {
+      // The bundled template contains the Claude settings file because the
+      // template is shared (`fs.cp` copies the whole tree). The Gemini
+      // branch must NOT re-overlay it with help-assistant overrides —
+      // those carry Claude-only keys (`enableAllProjectMcpServers`,
+      // `defaultMode`, `mcp__daintree__*` allow entry) that have no
+      // meaning for Gemini and would clutter the on-disk session.
+      const result = await service.provisionSession(geminiInput());
+      if (!result) throw new Error("expected result");
+      const settings = JSON.parse(
+        await fs.readFile(path.join(result.sessionPath, ".claude", "settings.json"), "utf-8")
+      );
+      expect(settings.enableAllProjectMcpServers).toBeUndefined();
+      expect(settings.permissions?.allow ?? []).not.toContain("mcp__daintree__*");
+    });
+
+    it("does NOT call probeMcpServer or probeMcpSseServer with the session token", async () => {
+      // ensureMcpServerReady runs probeMcpServer once with the API key
+      // before provision; Gemini Phase 1 skips both post-provision probes.
+      const result = await service.provisionSession(geminiInput());
+      if (!result) throw new Error("expected result");
+
+      expect(mockProbeMcpServer).toHaveBeenCalledTimes(1);
+      expect(mockProbeMcpServer).toHaveBeenLastCalledWith(45454, "test-api-key");
+      expect(mockProbeMcpSseServer).not.toHaveBeenCalled();
+    });
+
+    it("getGeminiLaunchArgs returns ['--approval-mode=plan'] for a Gemini session", async () => {
+      const result = await service.provisionSession(geminiInput());
+      if (!result) throw new Error("expected result");
+
+      const args = service.getGeminiLaunchArgs(result.token);
+      expect(args).toEqual(["--approval-mode=plan"]);
+    });
+
+    it("getGeminiLaunchArgs returns null for a Claude session (cross-agent defense)", async () => {
+      const result = await service.provisionSession(provisionInput());
+      if (!result) throw new Error("expected result");
+
+      expect(service.getGeminiLaunchArgs(result.token)).toBeNull();
+    });
+
+    it("getGeminiLaunchArgs returns null for a Codex session (cross-agent defense)", async () => {
+      const result = await service.provisionSession({ ...provisionInput(), agentId: "codex" });
+      if (!result) throw new Error("expected result");
+
+      expect(service.getGeminiLaunchArgs(result.token)).toBeNull();
+    });
+
+    it("getCodexLaunchArgs returns null for a Gemini session (cross-agent defense)", async () => {
+      const result = await service.provisionSession(geminiInput());
+      if (!result) throw new Error("expected result");
+
+      expect(service.getCodexLaunchArgs(result.token)).toBeNull();
+    });
+
+    it("getGeminiLaunchArgs returns null for unknown / revoked tokens", async () => {
+      const result = await service.provisionSession(geminiInput());
+      if (!result) throw new Error("expected result");
+
+      expect(service.getGeminiLaunchArgs("not-a-real-token")).toBeNull();
+      expect(service.getGeminiLaunchArgs("")).toBeNull();
+
+      await service.revokeSession(result.sessionId);
+      expect(service.getGeminiLaunchArgs(result.token)).toBeNull();
+    });
+
+    it("rejects an unknown agentId via the wired-list gate", async () => {
+      await expect(
+        service.provisionSession({ ...provisionInput(), agentId: "not-an-agent" })
+      ).rejects.toThrow(/not assistant-supported/);
+    });
+  });
+
   describe("template hash gate (#7525)", () => {
     /** Mirrors the algorithm in HelpSessionService.computeTemplateHash. */
     async function expectedTemplateHash(folder: string): Promise<string> {
@@ -1149,8 +1265,19 @@ describe("HelpSessionService", () => {
       // basename) ensures order stability.
       const altHelp = path.join(tmpRoot, "help-alt");
       await fs.mkdir(path.join(altHelp, ".claude"), { recursive: true });
+      await fs.mkdir(path.join(altHelp, ".gemini"), { recursive: true });
       // Write in REVERSE order from makeBundledHelpFolder to test stability.
+      await fs.writeFile(path.join(altHelp, "GEMINI.md"), "# Gemini Help");
       await fs.writeFile(path.join(altHelp, "CLAUDE.md"), "# Help");
+      await fs.writeFile(
+        path.join(altHelp, ".gemini", "settings.json"),
+        JSON.stringify({
+          toolsAllowlist: ["read_file", "list_directory", "search_files", "web_search", "shell"],
+          mcpServers: {
+            "daintree-docs": { httpUrl: "https://daintree.org/api/mcp", trust: true },
+          },
+        })
+      );
       await fs.writeFile(
         path.join(altHelp, ".claude", "settings.json"),
         JSON.stringify({
