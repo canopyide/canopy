@@ -144,8 +144,11 @@ export function aggregate(runs: RunData[]): Aggregate {
           top && typeof (top as Record<string, unknown>).sourceURL === "string"
             ? ((top as Record<string, unknown>).sourceURL as string) || "<unknown>"
             : "<unknown>";
+        // `typeof NaN === "number"` is true, so a malformed mark could poison
+        // mean/percentile stats. `Number.isFinite` excludes NaN and ±Infinity.
+        const rawBlocking = record.meta?.blockingDurationMs;
         const blockingMs =
-          typeof record.meta?.blockingDurationMs === "number" ? record.meta.blockingDurationMs : 0;
+          typeof rawBlocking === "number" && Number.isFinite(rawBlocking) ? rawBlocking : 0;
         const list = loafBySource.get(sourceURL) ?? [];
         list.push(blockingMs);
         loafBySource.set(sourceURL, list);

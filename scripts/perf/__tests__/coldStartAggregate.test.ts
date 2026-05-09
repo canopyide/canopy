@@ -71,6 +71,39 @@ describe("cold-start aggregate", () => {
     expect(agg.loaf["app://./assets/index-xyz.js"].totalBlockingMs).toBe(30);
   });
 
+  it("treats NaN/Infinity blockingDurationMs as 0 to keep stats from being poisoned", () => {
+    const agg = aggregate([
+      makeRun({
+        marks: [
+          {
+            mark: "renderer_long_animation_frame",
+            timestamp: "t",
+            elapsedMs: 100,
+            meta: {
+              blockingDurationMs: Number.NaN,
+              topScripts: [{ sourceURL: "app://./assets/x.js" }],
+            },
+          },
+          {
+            mark: "renderer_long_animation_frame",
+            timestamp: "t",
+            elapsedMs: 200,
+            meta: {
+              blockingDurationMs: 50,
+              topScripts: [{ sourceURL: "app://./assets/x.js" }],
+            },
+          },
+        ],
+      }),
+    ]);
+
+    const stats = agg.loaf["app://./assets/x.js"];
+    expect(stats.frames).toBe(2);
+    expect(Number.isFinite(stats.totalBlockingMs)).toBe(true);
+    expect(stats.totalBlockingMs).toBe(50);
+    expect(Number.isFinite(stats.p95BlockingMs)).toBe(true);
+  });
+
   it("falls back to <unknown> bucket when topScripts is missing or empty", () => {
     const agg = aggregate([
       makeRun({
