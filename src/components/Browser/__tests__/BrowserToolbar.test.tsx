@@ -359,6 +359,34 @@ describe("BrowserToolbar ARIA semantics", () => {
   });
 });
 
+describe("BrowserToolbar console button capability gate (#7495)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("does not render the console toggle when onToggleConsole is omitted", () => {
+    const { queryByLabelText } = renderToolbar();
+    expect(queryByLabelText("Toggle console")).toBeNull();
+  });
+
+  it("renders the console toggle when onToggleConsole is provided", () => {
+    const onToggleConsole = vi.fn();
+    const { getByLabelText } = renderToolbar({ onToggleConsole });
+    const button = getByLabelText("Toggle console");
+    expect(button).toBeTruthy();
+    fireEvent.click(button);
+    expect(onToggleConsole).toHaveBeenCalledOnce();
+  });
+
+  it("reflects isConsoleOpen state via aria-pressed when toggle is provided", () => {
+    const { getByLabelText } = renderToolbar({
+      onToggleConsole: vi.fn(),
+      isConsoleOpen: true,
+    });
+    expect(getByLabelText("Toggle console").getAttribute("aria-pressed")).toBe("true");
+  });
+});
+
 describe("BrowserToolbar address-bar scheme icon and input", () => {
   beforeEach(() => {
     vi.clearAllMocks();

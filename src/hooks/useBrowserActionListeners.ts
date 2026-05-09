@@ -7,8 +7,8 @@ export type BrowserActionCallbacks = {
   onForward: () => void;
   onSetZoom: (rawZoom: number) => void;
   onCaptureScreenshot: () => void;
-  onToggleConsole: () => void;
-  onClearConsole: () => void;
+  onToggleConsole?: () => void;
+  onClearConsole?: () => void;
   onToggleDevTools: () => void;
   onHardReload: () => void;
 };
@@ -56,10 +56,10 @@ export function useBrowserActionListeners(id: string, callbacks: BrowserActionCa
         callbacks.onCaptureScreenshot();
         return;
       case "daintree:browser-toggle-console":
-        callbacks.onToggleConsole();
+        callbacks.onToggleConsole?.();
         return;
       case "daintree:browser-clear-console":
-        callbacks.onClearConsole();
+        callbacks.onClearConsole?.();
         return;
       case "daintree:browser-toggle-devtools":
         callbacks.onToggleDevTools();

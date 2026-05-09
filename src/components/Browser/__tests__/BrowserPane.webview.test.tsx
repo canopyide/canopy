@@ -193,7 +193,6 @@ describe("BrowserPane webview lifecycle regression", () => {
     vi.useFakeTimers();
     vi.clearAllMocks();
 
-    // Mock window.electron.webview for CDP console capture
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (globalThis as any).window = globalThis.window ?? {};
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -202,14 +201,7 @@ describe("BrowserPane webview lifecycle regression", () => {
         writeImage: vi.fn(() => Promise.resolve({ ok: true })),
       },
       webview: {
-        startConsoleCapture: vi.fn(() => Promise.resolve()),
-        stopConsoleCapture: vi.fn(() => Promise.resolve()),
-        clearConsoleCapture: vi.fn(() => Promise.resolve()),
-        getConsoleProperties: vi.fn(() => Promise.resolve({ properties: [] })),
-        onConsoleMessage: vi.fn(() => vi.fn()),
-        onConsoleContextCleared: vi.fn(() => vi.fn()),
         setLifecycleState: vi.fn(() => Promise.resolve()),
-        registerPanel: vi.fn(() => Promise.resolve()),
         respondToDialog: vi.fn(() => Promise.resolve()),
         onDialogRequest: vi.fn(() => vi.fn()),
         onNavigationBlocked: vi.fn(() => vi.fn()),
@@ -248,6 +240,23 @@ describe("BrowserPane webview lifecycle regression", () => {
     const { container } = render(<BrowserPane {...baseProps} />);
     const webview = getWebviewElement(container);
     expect(webview.hasAttribute("allowpopups")).toBe(true);
+  });
+
+  it("does not wire CDP console capture (regression #7495)", () => {
+    // The plain Browser panel must not call into the webview-console IPC surface;
+    // those entrypoints exist for the Dev Preview panel only. We assert the
+    // console namespace is undefined here so a future re-introduction of the
+    // capture wiring would throw at access time.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const webview = (window as any).electron.webview;
+    expect(webview.startConsoleCapture).toBeUndefined();
+    expect(webview.stopConsoleCapture).toBeUndefined();
+    expect(webview.clearConsoleCapture).toBeUndefined();
+    expect(webview.onConsoleMessage).toBeUndefined();
+    expect(webview.onConsoleContextCleared).toBeUndefined();
+    expect(webview.registerPanel).toBeUndefined();
+
+    expect(() => render(<BrowserPane {...baseProps} />)).not.toThrow();
   });
 
   it("uses theme-backed browser chrome surfaces", () => {
