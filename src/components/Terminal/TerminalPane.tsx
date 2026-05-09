@@ -711,7 +711,7 @@ function TerminalPaneComponent({
   }, [id, agentState]);
 
   const isWorking = agentState === "working";
-  const allowPing = !isMaximized;
+  const allowPing = !isMaximized && (location !== "grid" || (gridPanelCount ?? 2) > 1);
 
   const agentHeaderActions = (() => {
     if (!effectiveAgentId) return undefined;
