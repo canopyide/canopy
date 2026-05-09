@@ -348,6 +348,16 @@ jobs:
     timeout-minutes: 15
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
       - name: Resolve update metadata prefix
         shell: bash
         run: |
@@ -380,6 +390,16 @@ jobs:
 
       - name: List release files
         run: ls -lah release/
+
+      - name: Install gate dependencies
+        shell: bash
+        run: npm install --no-save --no-audit --no-fund --ignore-scripts js-yaml semver
+
+      - name: Check version is monotonically increasing
+        shell: bash
+        env:
+          UPDATE_METADATA_PREFIX: ${{ env.UPDATE_METADATA_PREFIX }}
+        run: node scripts/ci/check-version-monotonic.mjs
 
       - name: Upload binaries to R2
         shell: bash
