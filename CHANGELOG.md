@@ -1,5 +1,204 @@
 # Changelog
 
+## [0.9.0] - 2026-05-09
+
+### Features
+
+**Daintree Assistant**
+
+- Bundled help session with Claude, Gemini, and Codex backends
+- Live version probe gates assistant launch when the CLI is too old (#7539)
+- Tier picker splits skip-permissions into supervised tiers + explicit CLI bypass (#7532)
+- Hibernation captures Claude resume code so idle assistants release agent slots
+- Custom CLI args, drop in-panel agent picker, and "+ New session" header button
+- Right-side push sidebar layout for the assistant pane
+- Tier-mismatch banner, auto-snapshot indicator, and live working-state in the help panel
+- Per-session MCP tokens with hash-gated provisioning and stale-token rejection
+- Single-backend invariant per project; cross-agent token reuse is a hard fail (#7509, #7533)
+- Replace operational empty state with intent-first hero
+- Settings tab dedicated to assistant configuration
+
+**MCP Server**
+
+- Streamable HTTP transport at `/mcp` with SSE-path readiness probe
+- Per-tier authorization enforced at dispatch time and per-project tier opt-in
+- Audit log for every tool dispatch with latency rollup, tier hints, and 401 counter
+- Idempotency dedup for creation tools with bounded memory
+- New tools: `agent.getState`, `terminal.getStatus` (batched fleet polling), `triage_terminals` prompt
+- Project edit actions, consolidated worktree creation tool with PR support
+- Native confirmation modal for `danger:"confirm"` tool calls and elicitation/create migration
+- Prompts capability with starter slash commands; Daintree state exposed as MCP resources
+- Workflow macro tools, terminal close/kill actions, and waitingReason on terminal state
+- Allowlisted focus, theme, and read-only settings actions; default cwd/worktreeId/projectId from active context
+- `outputSchema` and `structuredContent` on tool responses; ToolAnnotations on exposed tools
+- Curated allowlist shrinks the default tool surface; assistant turn outcomes recorded alongside tool calls
+- Persistent api key dropped from electron-store with rotate action
+- Daintree MCP exposed to per-project Claude Code agents
+- Fleet-polling recipe lifted into the `triage_terminals` prompt
+- 4-state runtime readiness API and supervised restart
+
+**Fleet Broadcasting**
+
+- `FleetPickerPalette` is the cold-start fleet entry point with keyboard navigation (#6471)
+- Save and recall named fleets
+- Smart-arm bar suggestion pill and additive filtered arming
+- In-flight progress counter for large broadcasts
+- `FleetDraftingPill` shows resolved per-target prompts
+- Health, worktree scope, and a leading exit surfaced on the fleet bar
+- "+ Add panes…" in-popover picker on `FleetCountChip`
+- Selection discoverability shortcuts, lifted row-ref management, fixed tooltip binding
+- Multi-cursor terminal selection refinements and broadcast lifecycle polish
+
+**Notifications**
+
+- Keyboard navigation in the inbox; muted-state empty state when inbox is empty
+- Pin severe entries, group by context, and mark new since last looked
+- Suppress toasts when the origin surface is on screen; transient flag for confirmation toasts
+- Per-event-kind silence from toast and notification-center kebab
+- Undo on bulk mark-read; dismiss entire thread on X click
+- Day-boundary timestamp pivot with absolute fallback
+- BellOff indicator on muted projects in sidebar and switcher
+- Leading-edge unread dot; legibility polish on inbox open
+- `GridNotificationBar` entry/exit animation; thread visualization polish
+- Toast eviction surfaced via overflow pill and bell animation
+
+**Onboarding**
+
+- Welcome screen first-run polish with quieter completion empty states
+- Getting Started checklist completion choreography (counter accent, confirmation beat)
+- Cold-start skeleton with Doherty gate and stuck-state cue
+- Removed post-creation project onboarding wizard (#6750)
+- Quieter first-run empty states across sidebar and content grid
+- First-run shortcut pedagogy with 500ms hold and biased tip rotation
+- Silent privacy default confirmed; capture wizard step on abandon
+- `AgentTrayButton` shows a labelled empty state when no agents are pinned
+
+**GitHub Integration**
+
+- ETag-based REST branch-to-PR discovery
+- Toolbar pill counts hydrated from disk cache on cold start
+- +N delta badge since dropdown last opened; rising-count digit flash (#6529)
+- Per-bucket rate-limit details tooltip
+- Pre-warmed PR tooltip cache from poll batch
+- Focus-aware `PullRequestService` cadence
+- Background git fetch for worktree ahead/behind counts; freshness on dashboard cards
+- Skeleton-to-content crossfade in dropdown lists; status indicator microcopy
+
+**Recipes & Scratch**
+
+- Scratch entity for one-off agent tasks with 30-day auto-cleanup and save-as-project promotion (#6778)
+- Partial spawn failure surfacing with retry banner
+- Async lifecycle hazard handling in recipe runner banner
+- Project-recipe empty-state copy and CTAs polish
+
+**Resilience & Recovery**
+
+- Global host-crash banner with recovery action
+- Linux Wayland multi-GPU ANGLE/Vulkan fallback
+- `GpuCrashMonitor` sliding-window crash counter and structured logger
+- External main-process watchdog for deadlock recovery
+- Concurrent-OOM and rejected-window-recreation handling; suppress `app.quit` during OOM recreate
+- Persistence: `foreign_keys` pragma, `quick_check` upgrade, disk-space pre-flight, TOCTOU close (#7568)
+- Schema-version header on `.restore` files
+- `pendingErrors` cap unified across renderer and main paths
+- Sentry `maxBreadcrumbs` raised to 250 in main and renderer
+- `ErrorBoundary` `onReset` hook for upstream state invalidation
+
+**Security**
+
+- Trusted Types adopted in the Daintree renderer (#6397)
+- IPC trust envelope size and arg-count gate; correlationId in error envelopes
+- Secret scrubber covers Vercel, Perplexity, xAI, Together, Resend, Heroku, Telegram, and Datadog token shapes
+- `process.env` suppressed in Node diagnostic reports
+- Trust-boundary invariants documented in `csp.ts` and `trustedRenderer.ts`
+- Cross-agent token reuse is a hard fail in spawn
+
+**Auto-Updater**
+
+- Lifecycle state surfaced in the application menu and last-checked timestamp in settings
+- Retry on Electron `net::ERR_*` transient errors with permanent-wins precedence
+- Blockmap files included in release artifacts and R2 upload (#7570)
+- R2 binary reachability verified before publishing metadata (#7569)
+- macOS notarization staple verified after build (#7574)
+- Monotonic publish gate blocks `latest.yml` regressions (#7573)
+
+**UI & Interaction Polish**
+
+- Chord-pill tooltips rolled out to top chrome, panel header, dock, and stash
+- Palette headers migrated to `KbdChord` pill rendering with `aria-keyshortcuts`
+- Command palette dialog animates height when results filter; opt-in shell defaults for action label, empty-state chip, and no-match copy
+- Pickup lift animation and cancel snap-back on drag overlay; `KeyboardSensor` wired through `DndProvider`
+- Panel tabs use Priority+ overflow menu in place of chevron scroll (#6429)
+- `ConfirmDialog` typed-name primitive for destructive confirmations
+- Terminal close-confirm dialog replaced with undo toast
+- Unicode 11 width tables for emoji and CJK rendering
+- Browser toolbar polish (zoom, load-state visuals)
+- Dev preview viewport presets refreshed for 2025-2026 devices
+- Settings dialog tablist, primitives, and persistence polish
+- Action palette: foreground emphasis match highlight, footer hint reflects selected row, "Recently used" empty state, async loading affordance
+- Worktree per-chip match counts and quick-state-filter zero-result recovery
+- Toast success-flash on action buttons; row-recency cue in `FileChangeList` (#6544)
+- Trash-dock active tab title in group label; dock drop targets neutral ring + drag-to-trash + ghost pill
+- View Transitions API smooths cold-start handoff
+- Skeleton primitive shared; `SkeletonHint` companion for long-tail loads
+
+**Accessibility**
+
+- Sidebar one-tab-stop worktree list (#6422); ARIA tightened on worktree grid keyboard model
+- ARIA semantics on logs and event inspector
+- IME composition guard and ARIA improvements in palette shell
+- WCAG 1.4.11 contrast on active `QuickStateFilterBar` pill
+- Screen-reader noise reduction in theme browser and palette components
+- `kbd` chips exposed via `aria-keyshortcuts`
+- `AccessibilityAnnouncer` timer cleanup and identity tracking
+- Reduced-motion support and ARIA attributes on Getting Started checklist
+- Dev-preview viewport-preset radiogroup a11y with persisted last preset
+- Diagnostics dock keyboard, ARIA, and resize behavior
+
+### Performance
+
+- Cold-start: CLS flush gap closed, LoAF aggregation hardened, four warn-only first-launch quality signals
+- Spawn-blocking critical path tightened for agent launches; env-keyed pty pool serves agent terminal launches
+- Lazy-loaded 24 modal, palette, and dialog hosts; `@xterm/addon-webgl` pulled off the eager critical path
+- React compiler bailout reasons captured in report; `BrowserPane.tsx` bailouts cleared
+- Panel store: per-row selectors scoped via worktree index; redundant `useShallow` removed
+- Workspace host: watcher-driven cadence, watcher pipeline tuning (#7455)
+- Terminal: cursor blink centralized and silenced in background panes; scrollback churn gated; coalesced writes sliced to 32 KiB
+- Git: `GIT_OPTIONAL_LOCKS`, `--no-renames`, `safe.directory` write dedup, byte-by-byte null-scan replacement (#7041)
+- Per-file diff insertion/deletion counts cached
+- Boot: non-critical service init deferred; connectivity probes and token-health start deferred; ResourceProfileService import deferred to first-interactive
+- Font: JetBrains Mono cold-paint loading optimized; refractor language pack deferred out of cold start
+- Project switch: outgoing state save parallelized with SQLite operations
+- File tree: `lstat` parallelized, `realpath` memoized, empty fields omitted
+- Console: auto-collapse cursor tracked by tail id; render-path allocations cut
+- Per-frame visible-cell snapshot skipped for plain terminals
+- Resource profile: hysteresis tuned, max-lag diagnostics added; service intervals paused on system suspend
+- LazyMotion provider consolidated with dynamic features (#6391)
+- Palette filtering deferred via `useDeferredValue` (#6415)
+- Theme: RAF-coalesced injection DOM writes; portal offsets moved to `documentElement`
+- Pty host: per-terminal byte queue aligned with renderer watermarks (#7453)
+- ProjectStore `getAllProjects` reconciliation batched in a transaction
+- `useResizeObserverRaf` hook with four ResizeObserver callsites migrated
+- Window-blur throttle extended to `DiskSpaceMonitor`, `ProcessMemoryMonitor`, `IdleTerminalNotificationService`, `PreAgentSnapshotService`
+- Idle-window timer-pressure perf scenarios added (PERF-090, PERF-091)
+- List-mount perf budget added to E2E core suite
+
+### Bug Fixes
+
+- 870+ targeted fixes across spawn, pty, terminal lifecycle, multi-window, project-switch race conditions, theme, palette, drag-and-drop, sidebar, settings, dialogs, recovery, MCP server, help session, fleet, notifications, browser, dev-preview, diagnostics, e2e harness, build, CI, and Windows-specific identity paths
+- Notable: agent terminal blanks during bulk worktree creation; armed fleet panes kept visible; force GPU slot release on terminal destroy; Cmd+W focus to next panel; Windows agent identity preserved during PowerShell prompts; Claude welcome identity preserved on Windows; ctrl shortcuts matched on Windows; project switcher MRU cycle includes current project for cancel; webContentsRegistry listener leak fixed
+- Pty host: `droppedBytes` forwarded through event routing; IPC fallback queue drops surfaced as terminal-status; pause tokens released on dispose (#7453)
+- Workspace host: hysteresis preserved through `ensureState` and recovered on focus
+
+### Other Changes
+
+- Plugin system: panel-kind registry events on register/unregister
+- IPC error envelope shape unified across MCP server paths
+- E2E core: 31 fixed 35s CCR poll waits replaced with state-backed polling
+- Build: `win-job-object` externalized and made cross-platform; `node-addon-api` knip silenced
+
+---
+
 ## [0.8.0] - 2026-04-30
 
 ### Breaking Changes
