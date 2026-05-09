@@ -41,7 +41,18 @@ export function KeybindingProfileActions({ onImportComplete }: KeybindingProfile
     if (isLoading) return;
     setIsLoading(true);
     try {
-      const result: KeybindingImportResult = await window.electron.keybinding.importProfile();
+      let result: KeybindingImportResult;
+      try {
+        result = await window.electron.keybinding.importProfile();
+      } catch {
+        notify({
+          type: "error",
+          title: "Import failed",
+          message: "Couldn't read the profile. The file may be missing or invalid JSON.",
+        });
+        return;
+      }
+
       if (!result.ok) {
         if (result.errors[0] === "Cancelled") return;
         notify({
@@ -63,12 +74,6 @@ export function KeybindingProfileActions({ onImportComplete }: KeybindingProfile
             ? `Applied ${result.applied} shortcut${result.applied !== 1 ? "s" : ""}`
             : "No shortcuts were applied",
         transient: true,
-      });
-    } catch {
-      notify({
-        type: "error",
-        title: "Import failed",
-        message: "Couldn't read the profile. The file may be missing or invalid JSON.",
       });
     } finally {
       setIsLoading(false);

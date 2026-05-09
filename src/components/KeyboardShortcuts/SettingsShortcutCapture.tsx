@@ -323,7 +323,13 @@ export function SettingsShortcutCapture({
                   // Shadowed = chord-prefix overlap. Auto-unbind can't resolve it
                   // (the conflicting binding's combo doesn't equal the captured one),
                   // so surface the relationship and leave resolution to the user.
-                  <span className="text-xs text-daintree-text/50">shadows this chord</span>
+                  // Direction by chord length: shorter prefix shadows the longer chord.
+                  <span className="text-xs text-daintree-text/50">
+                    {(conflict.combo?.split(" ").length ?? 0) >
+                    (capturedCombo?.split(" ").length ?? 0)
+                      ? "is shadowed by this chord"
+                      : "shadows this chord"}
+                  </span>
                 ) : (
                   <button
                     onClick={() => handleUnbindConflict(conflict)}
