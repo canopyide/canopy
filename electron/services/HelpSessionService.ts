@@ -262,6 +262,21 @@ export class HelpSessionService {
   }
 
   /**
+   * Inverse of `terminalBySessionId` for the assistant-turn audit. Returns
+   * the help-session id currently bound to a given terminal id, or null
+   * when the terminal is not (or no longer) a help-session terminal. Linear
+   * scan is intentional: the map is bounded by simultaneously active help
+   * sessions per project and stays small in practice.
+   */
+  getSessionIdForTerminal(terminalId: string): string | null {
+    if (!terminalId) return null;
+    for (const [sessionId, tid] of this.terminalBySessionId.entries()) {
+      if (tid === terminalId) return sessionId;
+    }
+    return null;
+  }
+
+  /**
    * Provisions the per-project session directory for the Daintree Assistant
    * under userData/help-sessions/<projectPathHash>/. The dir is reused across
    * launches so Claude Code's per-folder workspace-trust prompt only fires
@@ -329,6 +344,7 @@ export class HelpSessionService {
         // entry and launching anyway) is exactly the silent-degrade path
         // the user observed and asked us to fix.
         const reason = formatErrorMessage(err, "in-process MCP server isn't ready");
+        await this.recordMcpNotReady(sessionId, reason);
         throw new HelpSessionError(
           "MCP_NOT_READY",
           `Daintree Assistant needs the in-process MCP server, but it isn't ready: ${reason}`
@@ -445,6 +461,7 @@ export class HelpSessionService {
           await this.stripStaleDaintreeMcpEntry(sessionPath);
         }
         const reason = formatErrorMessage(err, "assistant MCP session isn't ready");
+        await this.recordMcpNotReady(sessionId, reason);
         throw new HelpSessionError(
           "MCP_NOT_READY",
           `Daintree Assistant minted an MCP session, but the assistant bearer was not ready: ${reason}`
@@ -744,6 +761,7 @@ export class HelpSessionService {
     mcpServerService.setHelpSessionWebContentsResolver((token) =>
       this.getWebContentsIdForToken(token)
     );
+    mcpServerService.setSessionIdResolver((terminalId) => this.getSessionIdForTerminal(terminalId));
     if (!mcpServerService.isEnabled()) {
       // setEnabled() will only call start() internally if it has its own
       // `registry` already set — which it doesn't on cold boot if the
@@ -776,6 +794,25 @@ export class HelpSessionService {
       throw new Error("MCP server is running but port or API key is unavailable");
     }
     await probeMcpServer(port, apiKey);
+  }
+
+  /**
+   * Best-effort: persist a `mcp-not-ready` turn-outcome record so the audit
+   * captures pre-turn provisioning failures alongside FSM-driven outcomes.
+   * Swallows errors — the audit write must never mask the original
+   * `HelpSessionError` the caller is about to throw.
+   */
+  private async recordMcpNotReady(sessionId: string | null, detail: string): Promise<void> {
+    try {
+      const { mcpServerService } = await import("./McpServerService.js");
+      mcpServerService.recordTurnOutcome({
+        outcome: "mcp-not-ready",
+        sessionId,
+        detail,
+      });
+    } catch (err) {
+      console.warn("[HelpSessionService] Failed to record mcp-not-ready outcome:", err);
+    }
   }
 
   private async getMcpPort(daintreeControl: boolean): Promise<number | null> {

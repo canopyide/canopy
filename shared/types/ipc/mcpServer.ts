@@ -69,6 +69,75 @@ export const MCP_AUDIT_MAX_RECORDS = 10000;
 export const MCP_AUDIT_DEFAULT_MAX_RECORDS = 500;
 
 /**
+ * Outcome classification for a single assistant turn (one `active → passive`
+ * FSM transition for an MCP-bound help session, or a pre-turn failure such
+ * as `mcp-not-ready`). The waterfall below is the deterministic priority
+ * applied by the classifier — earlier classes win when multiple signals are
+ * present.
+ *
+ * - `tier-rejected`: a tool dispatch in the same session was blocked because
+ *   the session's tier was not permitted to invoke it.
+ * - `mcp-not-ready`: the in-process MCP server was not ready at provision
+ *   time; the help session never reached a turn boundary.
+ * - `agent-stuck`: the watchdog fired a `waiting → idle` timeout — the
+ *   agent went silent without resolving its turn.
+ * - `tool-error`: the most recent tool dispatch in this session resolved
+ *   with `result: "error"` (and is not a tier rejection).
+ * - `refused`: the agent's recent output indicates it declined to act.
+ * - `hedged`: the agent expressed uncertainty without producing a concrete
+ *   answer.
+ * - `docs-empty`: the agent reported it could not find the requested
+ *   documentation or results.
+ * - `hibernate-resume-stale`: an attempted `--resume` produced no prior
+ *   conversation, so the session started without context.
+ * - `answered`: the turn produced output and matched no failure pattern
+ *   (the success default).
+ * - `unknown`: classification fell through every rule (e.g. empty buffer);
+ *   used as the explicit fallback rather than skipping the record.
+ */
+export type TurnOutcomeClass =
+  | "answered"
+  | "hedged"
+  | "refused"
+  | "docs-empty"
+  | "tier-rejected"
+  | "mcp-not-ready"
+  | "agent-stuck"
+  | "tool-error"
+  | "hibernate-resume-stale"
+  | "unknown";
+
+/**
+ * Persisted record for one assistant turn outcome. Written once per
+ * `active → passive` FSM transition for an MCP-bound help session, or
+ * synchronously at the failure site for pre-turn failures (`mcp-not-ready`).
+ *
+ * `terminalId` is the primary correlation key; `sessionId` is best-effort
+ * (resolved from the `HelpSessionService` terminal↔session map at write
+ * time) and may be null when the terminal is not currently bound to a
+ * help session — e.g. for `mcp-not-ready` failures where provisioning
+ * failed before any spawn.
+ *
+ * `trigger` records the FSM trigger that caused the boundary
+ * (`output`, `timeout`, `activity`, …) so audit readers can distinguish
+ * a watchdog-driven `agent-stuck` from a normal output-driven turn end.
+ */
+export interface AssistantTurnRecord {
+  id: string;
+  timestamp: number;
+  terminalId: string | null;
+  sessionId: string | null;
+  outcome: TurnOutcomeClass;
+  trigger?: string;
+  /** Most recent agent state at the time the record was written. */
+  state?: string;
+  /** Previous state if this record was triggered by an FSM transition. */
+  previousState?: string;
+  /** Free-text diagnostic for non-classified failures (e.g. mcp-not-ready reason). */
+  detail?: string;
+}
+
+/**
  * Coarse readiness state surfaced to the renderer for the in-process MCP
  * server. Distinct from the boolean `running` flag emitted by
  * `onStatusChange` because the renderer needs to distinguish "the user

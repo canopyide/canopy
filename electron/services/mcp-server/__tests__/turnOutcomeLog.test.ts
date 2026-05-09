@@ -1,0 +1,454 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  TurnOutcomeService,
+  classifyTurnOutcome,
+  type FsmTransition,
+  type TurnOutcomeServiceDeps,
+} from "../turnOutcomeLog.js";
+import type {
+  AssistantTurnRecord,
+  McpAuditRecord,
+} from "../../../../shared/types/ipc/mcpServer.js";
+
+function makeAuditRecord(overrides: Partial<McpAuditRecord>): McpAuditRecord {
+  return {
+    id: overrides.id ?? "audit-1",
+    timestamp: overrides.timestamp ?? Date.now(),
+    toolId: overrides.toolId ?? "agent.getState",
+    sessionId: overrides.sessionId ?? "session-1",
+    tier: overrides.tier ?? "action",
+    argsSummary: overrides.argsSummary ?? "{}",
+    result: overrides.result ?? "success",
+    durationMs: overrides.durationMs ?? 12,
+    ...(overrides.errorCode !== undefined ? { errorCode: overrides.errorCode } : {}),
+    ...(overrides.confirmationDecision !== undefined
+      ? { confirmationDecision: overrides.confirmationDecision }
+      : {}),
+  };
+}
+
+function makeTransition(overrides: Partial<FsmTransition> = {}): FsmTransition {
+  return {
+    terminalId: "term-1",
+    state: "idle",
+    previousState: "working",
+    trigger: "output",
+    timestamp: Date.now(),
+    ...overrides,
+  };
+}
+
+interface Fixture {
+  config: Record<string, unknown>;
+  service: TurnOutcomeService;
+  saveConfig: ReturnType<typeof vi.fn>;
+  getSessionIdForTerminal: ReturnType<typeof vi.fn>;
+  getRecentAuditRecords: ReturnType<typeof vi.fn>;
+  flushPersist: () => void;
+}
+
+function makeFixture(
+  opts: {
+    initialConfig?: Record<string, unknown>;
+    sessionId?: string | null;
+    auditRecords?: McpAuditRecord[];
+  } = {}
+): Fixture {
+  const config: Record<string, unknown> = {
+    auditEnabled: true,
+    auditMaxRecords: 500,
+    ...(opts.initialConfig ?? {}),
+  };
+  const saveConfig = vi.fn((patch: Record<string, unknown>) => {
+    Object.assign(config, patch);
+  });
+  const sessionId = "sessionId" in opts ? opts.sessionId : "session-1";
+  const getSessionIdForTerminal = vi.fn((_terminalId: string) => sessionId);
+  const getRecentAuditRecords = vi.fn<readonly McpAuditRecord[], []>(
+    () => opts?.auditRecords ?? []
+  );
+  const deps: TurnOutcomeServiceDeps = {
+    saveConfig,
+    readConfig: () => config,
+    getSessionIdForTerminal,
+    getRecentAuditRecords,
+  };
+  const service = new TurnOutcomeService(deps);
+  return {
+    config,
+    service,
+    saveConfig,
+    getSessionIdForTerminal,
+    getRecentAuditRecords,
+    flushPersist: () => {
+      service.flushNow();
+    },
+  };
+}
+
+describe("classifyTurnOutcome", () => {
+  it("returns agent-stuck on watchdog-timeout waiting → idle regardless of buffer", () => {
+    expect(
+      classifyTurnOutcome({
+        transition: makeTransition({
+          previousState: "waiting",
+          state: "idle",
+          trigger: "timeout",
+        }),
+        recentOutput: "(empty)",
+        recentAuditRecords: [],
+        sessionId: "session-1",
+      })
+    ).toBe("agent-stuck");
+  });
+
+  it("returns tier-rejected when most recent session audit is unauthorized", () => {
+    const audit = makeAuditRecord({
+      sessionId: "session-1",
+      result: "unauthorized",
+      errorCode: "TIER_NOT_PERMITTED",
+    });
+    expect(
+      classifyTurnOutcome({
+        transition: makeTransition(),
+        recentOutput: "I cannot do that".padEnd(120, " "),
+        recentAuditRecords: [audit],
+        sessionId: "session-1",
+      })
+    ).toBe("tier-rejected");
+  });
+
+  it("returns tool-error when most recent session audit is error and not unauthorized", () => {
+    const audit = makeAuditRecord({
+      sessionId: "session-1",
+      result: "error",
+      errorCode: "DISPATCH_THREW",
+    });
+    expect(
+      classifyTurnOutcome({
+        transition: makeTransition(),
+        recentOutput: "Done.".padEnd(120, " "),
+        recentAuditRecords: [audit],
+        sessionId: "session-1",
+      })
+    ).toBe("tool-error");
+  });
+
+  it("ignores audit records from other sessions", () => {
+    const audit = makeAuditRecord({
+      sessionId: "session-other",
+      result: "error",
+    });
+    expect(
+      classifyTurnOutcome({
+        transition: makeTransition(),
+        recentOutput: "Here is the answer you asked for: the file was updated and tests pass.",
+        recentAuditRecords: [audit],
+        sessionId: "session-1",
+      })
+    ).toBe("answered");
+  });
+
+  it("classifies refused output", () => {
+    const out = "Sorry, I cannot do that — it goes against my guidelines.".padEnd(200, " ");
+    expect(
+      classifyTurnOutcome({
+        transition: makeTransition(),
+        recentOutput: out,
+        recentAuditRecords: [],
+        sessionId: "session-1",
+      })
+    ).toBe("refused");
+  });
+
+  it("classifies hedged output", () => {
+    const out = "I'm not sure about that — I don't have enough information.".padEnd(200, " ");
+    expect(
+      classifyTurnOutcome({
+        transition: makeTransition(),
+        recentOutput: out,
+        recentAuditRecords: [],
+        sessionId: "session-1",
+      })
+    ).toBe("hedged");
+  });
+
+  it("classifies docs-empty output", () => {
+    const out = "No matching documentation found in the local index.".padEnd(200, " ");
+    expect(
+      classifyTurnOutcome({
+        transition: makeTransition(),
+        recentOutput: out,
+        recentAuditRecords: [],
+        sessionId: "session-1",
+      })
+    ).toBe("docs-empty");
+  });
+
+  it("classifies hibernate-resume-stale from leading buffer", () => {
+    const head = "No conversations to resume in this directory.".padEnd(80, " ");
+    const tail = "Here is some later output that should not match.".padEnd(200, " ");
+    expect(
+      classifyTurnOutcome({
+        transition: makeTransition(),
+        recentOutput: head + "\n" + tail,
+        recentAuditRecords: [],
+        sessionId: "session-1",
+      })
+    ).toBe("hibernate-resume-stale");
+  });
+
+  it("falls through to answered with non-trivial output and no failure signal", () => {
+    expect(
+      classifyTurnOutcome({
+        transition: makeTransition(),
+        recentOutput:
+          "Done — the file has been updated as requested. Let me know if anything else needs to change.".padEnd(
+            200,
+            " "
+          ),
+        recentAuditRecords: [],
+        sessionId: "session-1",
+      })
+    ).toBe("answered");
+  });
+
+  it("falls through to unknown when output is too short", () => {
+    expect(
+      classifyTurnOutcome({
+        transition: makeTransition(),
+        recentOutput: "ok",
+        recentAuditRecords: [],
+        sessionId: "session-1",
+      })
+    ).toBe("unknown");
+  });
+
+  it("strips ANSI escapes before matching", () => {
+    // ANSI-wrapped refusal long enough to clear MIN_CLASSIFY_LENGTH after strip.
+    const ansiRefusal = "\x1b[31mI cannot do that — it goes against my guidelines for now.\x1b[0m";
+    expect(
+      classifyTurnOutcome({
+        transition: makeTransition(),
+        recentOutput: ansiRefusal,
+        recentAuditRecords: [],
+        sessionId: "session-1",
+      })
+    ).toBe("refused");
+  });
+});
+
+describe("TurnOutcomeService.handleTransition", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("records one outcome on active → passive transition", () => {
+    const f = makeFixture();
+    f.service.appendOutput(
+      "term-1",
+      "Done with the requested change. The file has been updated and saved successfully."
+    );
+    f.service.handleTransition(
+      makeTransition({ previousState: "working", state: "idle", trigger: "output" })
+    );
+    f.flushPersist();
+    const records = f.service.getRecords();
+    expect(records).toHaveLength(1);
+    expect(records[0]?.outcome).toBe("answered");
+    expect(records[0]?.terminalId).toBe("term-1");
+    expect(records[0]?.sessionId).toBe("session-1");
+  });
+
+  it("ignores passive → passive transitions that aren't watchdog timeouts", () => {
+    const f = makeFixture();
+    f.service.handleTransition(
+      makeTransition({ previousState: "idle", state: "waiting", trigger: "activity" })
+    );
+    expect(f.service.getRecords()).toHaveLength(0);
+  });
+
+  it("records agent-stuck on waiting → idle with timeout trigger", () => {
+    const f = makeFixture();
+    f.service.handleTransition(
+      makeTransition({ previousState: "waiting", state: "idle", trigger: "timeout" })
+    );
+    expect(f.service.getRecords()[0]?.outcome).toBe("agent-stuck");
+  });
+
+  it("does not double-record agent-stuck without an intervening active transition", () => {
+    const f = makeFixture();
+    f.service.handleTransition(
+      makeTransition({ previousState: "waiting", state: "idle", trigger: "timeout" })
+    );
+    f.service.handleTransition(
+      makeTransition({ previousState: "waiting", state: "idle", trigger: "timeout" })
+    );
+    expect(f.service.getRecords()).toHaveLength(1);
+  });
+
+  it("re-records agent-stuck after a new active turn", () => {
+    const f = makeFixture();
+    f.service.handleTransition(
+      makeTransition({ previousState: "waiting", state: "idle", trigger: "timeout" })
+    );
+    f.service.handleTransition(
+      makeTransition({ previousState: "idle", state: "working", trigger: "output" })
+    );
+    f.service.handleTransition(
+      makeTransition({ previousState: "waiting", state: "idle", trigger: "timeout" })
+    );
+    expect(f.service.getRecords().filter((r) => r.outcome === "agent-stuck")).toHaveLength(2);
+  });
+
+  it("skips when the terminal has no help session binding", () => {
+    const f = makeFixture({ sessionId: null });
+    f.service.appendOutput(
+      "term-1",
+      "Done with the requested change. The file has been updated and saved successfully."
+    );
+    f.service.handleTransition(
+      makeTransition({ previousState: "working", state: "idle", trigger: "output" })
+    );
+    expect(f.service.getRecords()).toHaveLength(0);
+  });
+
+  it("skips entirely when auditEnabled is false", () => {
+    const f = makeFixture({ initialConfig: { auditEnabled: false, auditMaxRecords: 500 } });
+    f.service.handleTransition(
+      makeTransition({ previousState: "working", state: "idle", trigger: "output" })
+    );
+    expect(f.service.getRecords()).toHaveLength(0);
+  });
+
+  it("clears the recent-output ring after recording so the next turn classifies fresh", () => {
+    const f = makeFixture();
+    f.service.appendOutput("term-1", "I cannot do that — it goes against my guidelines for now.");
+    f.service.handleTransition(
+      makeTransition({ previousState: "working", state: "idle", trigger: "output" })
+    );
+    expect(f.service.getRecentOutput("term-1")).toBe("");
+    expect(f.service.getRecords()[0]?.outcome).toBe("refused");
+  });
+
+  it("trims the records ring to the configured cap (clamped to MIN_RECORDS)", () => {
+    // auditMaxRecords below MIN gets clamped to 50
+    const f = makeFixture({
+      initialConfig: { auditEnabled: true, auditMaxRecords: 5 },
+    });
+    for (let i = 0; i < 60; i++) {
+      f.service.handleTransition(
+        makeTransition({
+          terminalId: `term-${i}`,
+          previousState: "working",
+          state: "idle",
+          trigger: "output",
+          timestamp: Date.now() + i,
+        })
+      );
+    }
+    // 50 is the floor (MCP_AUDIT_MIN_RECORDS), so 60 records get trimmed to 50.
+    expect(f.service.getRecords().length).toBeLessThanOrEqual(50);
+  });
+
+  it("hydrates persisted records on first read", () => {
+    const persisted: AssistantTurnRecord[] = [
+      {
+        id: "rec-1",
+        timestamp: 1,
+        terminalId: "term-x",
+        sessionId: "sess-x",
+        outcome: "answered",
+      },
+    ];
+    const f = makeFixture({
+      initialConfig: {
+        auditEnabled: true,
+        auditMaxRecords: 500,
+        turnOutcomeLog: persisted,
+      },
+    });
+    expect(f.service.getRecords()).toHaveLength(1);
+    expect(f.service.getRecords()[0]?.id).toBe("rec-1");
+  });
+});
+
+describe("TurnOutcomeService.recordDirectOutcome", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("appends a mcp-not-ready record without an FSM transition", () => {
+    const f = makeFixture();
+    f.service.recordDirectOutcome({
+      outcome: "mcp-not-ready",
+      sessionId: "sess-failed",
+      detail: "Probe failed",
+    });
+    const records = f.service.getRecords();
+    expect(records[0]?.outcome).toBe("mcp-not-ready");
+    expect(records[0]?.sessionId).toBe("sess-failed");
+    expect(records[0]?.detail).toBe("Probe failed");
+    expect(records[0]?.terminalId).toBeNull();
+  });
+
+  it("respects auditEnabled=false for direct records", () => {
+    const f = makeFixture({
+      initialConfig: { auditEnabled: false, auditMaxRecords: 500 },
+    });
+    f.service.recordDirectOutcome({ outcome: "mcp-not-ready" });
+    expect(f.service.getRecords()).toHaveLength(0);
+  });
+});
+
+describe("TurnOutcomeService.appendOutput / dropTerminal", () => {
+  it("does not buffer for terminals without a help-session binding", () => {
+    const f = makeFixture({ sessionId: null });
+    f.service.appendOutput("term-1", "abc");
+    expect(f.service.getRecentOutput("term-1")).toBe("");
+  });
+
+  it("rolls the buffer at the ring size", () => {
+    const f = makeFixture();
+    f.service.appendOutput("term-1", "x".repeat(8000));
+    expect(f.service.getRecentOutput("term-1").length).toBe(4000);
+  });
+
+  it("clears per-terminal buffers on dropTerminal", () => {
+    const f = makeFixture();
+    f.service.appendOutput("term-1", "abc");
+    f.service.dropTerminal("term-1");
+    expect(f.service.getRecentOutput("term-1")).toBe("");
+  });
+});
+
+describe("TurnOutcomeService.clear", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("empties records and resets stuck guard + buffers", () => {
+    const f = makeFixture();
+    f.service.appendOutput("term-1", "x".repeat(80));
+    f.service.handleTransition(
+      makeTransition({ previousState: "waiting", state: "idle", trigger: "timeout" })
+    );
+    expect(f.service.getRecords()).toHaveLength(1);
+    f.service.clear();
+    expect(f.service.getRecords()).toHaveLength(0);
+    // Stuck guard cleared — next timeout records again
+    f.service.handleTransition(
+      makeTransition({ previousState: "waiting", state: "idle", trigger: "timeout" })
+    );
+    expect(f.service.getRecords()).toHaveLength(1);
+  });
+});
