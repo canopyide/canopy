@@ -3,12 +3,15 @@ import { store } from "../store.js";
 import type { WindowRegistry } from "../window/WindowRegistry.js";
 import { getWindowRegistry } from "../window/windowRef.js";
 import type {
+  AssistantTurnRecord,
   McpRuntimeSnapshot,
   McpRuntimeState,
   McpAuditRecord,
+  TurnOutcomeClass,
 } from "../../shared/types/ipc/mcpServer.js";
 import { SessionStore } from "./mcp-server/sessionStore.js";
 import { AuditService } from "./mcp-server/auditLog.js";
+import { TurnOutcomeService } from "./mcp-server/turnOutcomeLog.js";
 import { createRendererBridge } from "./mcp-server/rendererBridge.js";
 import { handleWaitUntilIdle } from "./mcp-server/waitUntilIdle.js";
 import { cleanupResourceSubscriptions } from "./mcp-server/sessionServer.js";
@@ -20,6 +23,7 @@ import type {
   HelpSessionWebContentsResolver,
 } from "./mcp-server/shared.js";
 import type { ActionManifestEntry } from "../../shared/types/actions.js";
+import { events } from "./events.js";
 
 // Re-export types for backward compatibility with existing importers.
 export type { HelpTokenValidator } from "./mcp-server/shared.js";
@@ -32,10 +36,27 @@ export class McpServerService {
 
   private readonly sessionStore: SessionStore;
   private readonly auditService: AuditService;
+  private readonly turnOutcomeService: TurnOutcomeService;
   private readonly httpLifecycle: HttpLifecycle;
+  /**
+   * Resolver injected by `HelpSessionService` after construction. Returns
+   * the help-session id bound to a terminal id, or null when the terminal
+   * isn't a help session. Held as a function so the MCP service doesn't
+   * import `HelpSessionService` (which would create a cycle).
+   */
+  private getSessionIdForTerminal: (terminalId: string) => string | null = () => null;
   private readonly pendingManifests = new Map<string, PendingRequest<ActionManifestEntry[]>>();
   private readonly pendingDispatches = new Map<string, PendingRequest<DispatchEnvelope>>();
   private readonly cleanupListeners: Array<() => void> = [];
+  /**
+   * Long-lived event subscriptions (agent state, agent output, terminal
+   * lifecycle) that must survive `HttpLifecycle.stop()` / restart. Kept
+   * separate from `cleanupListeners` because that array is owned by
+   * `HttpLifecycle` and zeroed on every stop or unexpected close —
+   * placing these subscriptions there would silently disable turn-outcome
+   * recording the first time the MCP server restarts.
+   */
+  private readonly persistentListeners: Array<() => void> = [];
   private readonly bridge;
   private readonly statusListeners = new Set<(running: boolean) => void>();
   private readonly runtimeStateListeners = new Set<(snapshot: McpRuntimeSnapshot) => void>();
@@ -50,6 +71,42 @@ export class McpServerService {
       () => this.getConfig()
     );
 
+    this.turnOutcomeService = new TurnOutcomeService({
+      saveConfig: (patch) => this.persistConfig(patch),
+      readConfig: () => this.getConfig(),
+      getSessionIdForTerminal: (terminalId) => this.getSessionIdForTerminal(terminalId),
+      getRecentAuditRecords: () => this.auditService.getRecords(),
+    });
+
+    const offStateChanged = events.on("agent:state-changed", (payload) => {
+      const terminalId = payload.terminalId;
+      if (!terminalId) return;
+      this.turnOutcomeService.handleTransition({
+        terminalId,
+        state: payload.state,
+        previousState: payload.previousState,
+        trigger: payload.trigger,
+        timestamp: payload.timestamp,
+      });
+    });
+    this.persistentListeners.push(offStateChanged);
+
+    const offOutput = events.on("agent:output", (payload) => {
+      if (!payload.terminalId) return;
+      this.turnOutcomeService.appendOutput(payload.terminalId, payload.data);
+    });
+    this.persistentListeners.push(offOutput);
+
+    const offTrashed = events.on("terminal:trashed", (payload) => {
+      this.turnOutcomeService.dropTerminal(payload.id);
+    });
+    this.persistentListeners.push(offTrashed);
+
+    const offExited = events.on("terminal:exited", (payload) => {
+      this.turnOutcomeService.dropTerminal(payload.terminalId);
+    });
+    this.persistentListeners.push(offExited);
+
     this.bridge = createRendererBridge(
       this.pendingManifests,
       this.pendingDispatches,
@@ -59,6 +116,7 @@ export class McpServerService {
     this.httpLifecycle = new HttpLifecycle({
       sessionStore: this.sessionStore,
       auditService: this.auditService,
+      turnOutcomeService: this.turnOutcomeService,
       requestManifest: () => this.bridge.requestManifest(),
       dispatchAction: (actionId, args, confirmed) =>
         this.bridge.dispatchAction(actionId, args, confirmed),
@@ -165,6 +223,7 @@ export class McpServerService {
       ...current,
       ...patch,
       auditLog: "auditLog" in patch ? patch.auditLog : current.auditLog,
+      turnOutcomeLog: "turnOutcomeLog" in patch ? patch.turnOutcomeLog : current.turnOutcomeLog,
     });
   }
 
@@ -278,6 +337,33 @@ export class McpServerService {
     return this.auditService.setMaxRecords(max);
   }
 
+  getTurnOutcomeRecords(): AssistantTurnRecord[] {
+    return this.turnOutcomeService.getRecords();
+  }
+
+  clearTurnOutcomeLog(): void {
+    this.turnOutcomeService.clear();
+  }
+
+  recordTurnOutcome(input: {
+    outcome: TurnOutcomeClass;
+    terminalId?: string | null;
+    sessionId?: string | null;
+    detail?: string;
+  }): void {
+    this.turnOutcomeService.recordDirectOutcome(input);
+  }
+
+  /**
+   * Wires the help-session terminal↔session resolver. Called by
+   * `HelpSessionService.ensureMcpServerReady()` (and equivalent sites) so
+   * the turn-outcome classifier can correlate FSM transitions with the
+   * help-session record without a circular import.
+   */
+  setSessionIdResolver(resolver: (terminalId: string) => string | null): void {
+    this.getSessionIdForTerminal = resolver;
+  }
+
   // Delegates for test access — tests call .bind(service) on these.
   requestManifest(...args: Parameters<typeof this.bridge.requestManifest>) {
     return this.bridge.requestManifest(...args);
@@ -323,6 +409,9 @@ export class McpServerService {
   }
   get _auditService() {
     return this.auditService;
+  }
+  get _turnOutcomeService() {
+    return this.turnOutcomeService;
   }
   get _sessionStore() {
     return this.sessionStore;

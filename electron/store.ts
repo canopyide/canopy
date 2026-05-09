@@ -11,7 +11,7 @@ import type {
 } from "../shared/types/index.js";
 import type { IssueAssociation } from "../shared/types/ipc/worktree.js";
 import type { ErrorRecord } from "../shared/types/ipc/errors.js";
-import type { McpAuditRecord } from "../shared/types/ipc/mcpServer.js";
+import type { AssistantTurnRecord, McpAuditRecord } from "../shared/types/ipc/mcpServer.js";
 import { MCP_AUDIT_DEFAULT_MAX_RECORDS } from "../shared/types/ipc/mcpServer.js";
 import type { BuiltInAgentId } from "../shared/config/agentIds.js";
 import type { AgentId } from "../shared/types/agent.js";
@@ -196,6 +196,7 @@ export interface StoreSchema {
     auditEnabled: boolean;
     auditMaxRecords: number;
     auditLog?: McpAuditRecord[];
+    turnOutcomeLog?: AssistantTurnRecord[];
   };
   /**
    * Help-assistant settings. Includes audit/permission configuration plus

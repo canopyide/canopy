@@ -17,6 +17,7 @@ import {
 import { createSessionServer, cleanupResourceSubscriptions } from "./sessionServer.js";
 import type { SessionStore } from "./sessionStore.js";
 import type { AuditService } from "./auditLog.js";
+import type { TurnOutcomeService } from "./turnOutcomeLog.js";
 import {
   DEFAULT_PORT,
   MAX_PORT_RETRIES,
@@ -31,6 +32,7 @@ import {
 export interface HttpLifecycleDeps {
   sessionStore: SessionStore;
   auditService: AuditService;
+  turnOutcomeService: TurnOutcomeService;
   requestManifest: () => Promise<import("../../../shared/types/actions.js").ActionManifestEntry[]>;
   dispatchAction: (
     actionId: string,
@@ -259,6 +261,7 @@ export class HttpLifecycle {
 
   private handleUnexpectedClose(): void {
     this.deps.auditService.flushNow();
+    this.deps.turnOutcomeService.flushNow();
 
     // Drain sessions
     this.deps.sessionStore.drain();
@@ -349,6 +352,7 @@ export class HttpLifecycle {
         }
 
         this.deps.auditService.flushNow();
+        this.deps.turnOutcomeService.flushNow();
         this.deps.sessionStore.drain();
 
         for (const cleanup of this.deps.cleanupListeners) {

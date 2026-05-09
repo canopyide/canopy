@@ -27,6 +27,8 @@ const {
     setEnabled: vi.fn().mockResolvedValue(undefined),
     setHelpTokenValidator: vi.fn(),
     setHelpSessionWebContentsResolver: vi.fn(),
+    setSessionIdResolver: vi.fn(),
+    recordTurnOutcome: vi.fn(),
     getRuntimeState: vi.fn<
       () => import("../../../shared/types/ipc/mcpServer.js").McpRuntimeSnapshot
     >(() => ({
@@ -118,6 +120,8 @@ describe("HelpSessionService", () => {
     mockMcpServerService.setEnabled.mockClear();
     mockMcpServerService.setHelpTokenValidator.mockClear();
     mockMcpServerService.setHelpSessionWebContentsResolver.mockClear();
+    mockMcpServerService.setSessionIdResolver.mockClear();
+    mockMcpServerService.recordTurnOutcome.mockClear();
     mockProbeMcpServer.mockReset();
     mockProbeMcpServer.mockResolvedValue(undefined);
     mockProbeMcpSseServer.mockReset();
@@ -1073,6 +1077,66 @@ describe("HelpSessionService", () => {
       );
 
       expect(await expectedTemplateHash(altHelp)).toBe(await expectedTemplateHash(helpFolder));
+    });
+  });
+
+  describe("turn-outcome wiring (#7541)", () => {
+    it("getSessionIdForTerminal returns null for a terminal that was never bound", () => {
+      expect(service.getSessionIdForTerminal("term-unbound")).toBeNull();
+      expect(service.getSessionIdForTerminal("")).toBeNull();
+    });
+
+    it("getSessionIdForTerminal returns the session id after markTerminalForToken", async () => {
+      const result = await service.provisionSession(provisionInput());
+      if (!result) throw new Error("expected result");
+      expect(service.markTerminalForToken(result.token, "term-1")).toBe(true);
+      expect(service.getSessionIdForTerminal("term-1")).toBe(result.sessionId);
+    });
+
+    it("getSessionIdForTerminal returns null after the session is revoked", async () => {
+      const result = await service.provisionSession(provisionInput());
+      if (!result) throw new Error("expected result");
+      service.markTerminalForToken(result.token, "term-1");
+      await service.revokeSession(result.sessionId);
+      expect(service.getSessionIdForTerminal("term-1")).toBeNull();
+    });
+
+    it("wires the session resolver on McpServerService during ensureMcpServerReady", async () => {
+      mockStoreGet.mockReset();
+      mockStoreGet.mockReturnValue({ daintreeControl: true });
+      await service.provisionSession(provisionInput());
+      expect(mockMcpServerService.setSessionIdResolver).toHaveBeenCalled();
+    });
+
+    it("records a mcp-not-ready turn outcome when ensureMcpServerReady fails", async () => {
+      mockStoreGet.mockReset();
+      mockStoreGet.mockReturnValue({ daintreeControl: true });
+      mockMcpServerService.isRunning = false;
+      mockMcpServerService.start.mockResolvedValueOnce(undefined);
+      mockMcpServerService.getRuntimeState.mockReturnValue({
+        enabled: true,
+        state: "failed",
+        port: null,
+        lastError: "bind failed",
+      } satisfies McpRuntimeSnapshot);
+
+      await expect(service.provisionSession(provisionInput())).rejects.toMatchObject({
+        code: "MCP_NOT_READY",
+      });
+
+      expect(mockMcpServerService.recordTurnOutcome).toHaveBeenCalledWith(
+        expect.objectContaining({ outcome: "mcp-not-ready" })
+      );
+    });
+
+    it("records mcp-not-ready when the post-provision SSE probe fails", async () => {
+      mockProbeMcpSseServer.mockRejectedValueOnce(new Error("sse probe 500"));
+      await expect(service.provisionSession(provisionInput())).rejects.toMatchObject({
+        code: "MCP_NOT_READY",
+      });
+      expect(mockMcpServerService.recordTurnOutcome).toHaveBeenCalledWith(
+        expect.objectContaining({ outcome: "mcp-not-ready" })
+      );
     });
   });
 });
