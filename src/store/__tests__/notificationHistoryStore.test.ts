@@ -313,6 +313,25 @@ describe("notificationHistorySlice", () => {
       getState().markIdsRead(ids);
       expect(getState().evictedToInboxCount).toBe(0);
     });
+
+    it("handles mixed unread + already-read + non-countable + missing ids in one call", () => {
+      const seenId = getState().addEntry({ type: "info", message: "seen", seenAsToast: true });
+      addEntry({ message: "unread countable" });
+      addEntry({ message: "unread non-countable", countable: false });
+      const unreadCountable = getState().entries.find((e) => e.message === "unread countable")!.id;
+      const unreadNonCountable = getState().entries.find(
+        (e) => e.message === "unread non-countable"
+      )!.id;
+      expect(getState().unreadCount).toBe(1);
+
+      getState().markIdsRead([seenId, unreadCountable, unreadNonCountable, "missing"]);
+
+      const after = getState();
+      expect(after.entries.find((e) => e.id === seenId)?.seenAsToast).toBe(true);
+      expect(after.entries.find((e) => e.id === unreadCountable)?.seenAsToast).toBe(true);
+      expect(after.entries.find((e) => e.id === unreadNonCountable)?.seenAsToast).toBe(true);
+      expect(after.unreadCount).toBe(0);
+    });
   });
 
   describe("markSummarized", () => {
