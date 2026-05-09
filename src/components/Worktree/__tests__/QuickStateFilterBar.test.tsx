@@ -81,7 +81,7 @@ describe("QuickStateFilterBar", () => {
     expect(screen.getByRole("button", { name: "Finished, 0 worktrees" })).toBeTruthy();
   });
 
-  it("uses an inset ring (not a translucent fill) for the active pill", () => {
+  it("uses a soft fill plus subtle inset ring for the active pill", () => {
     render(
       <QuickStateFilterBar
         value="working"
@@ -92,11 +92,13 @@ describe("QuickStateFilterBar", () => {
     const active = screen.getByRole("button", { name: /Working/ });
     expect(active.className).toContain("ring-1");
     expect(active.className).toContain("ring-inset");
-    expect(active.className).toContain("ring-text-secondary");
-    expect(active.className).not.toContain("bg-tint/[0.12]");
+    expect(active.className).toContain("ring-border-strong");
+    expect(active.className).toContain("bg-overlay-strong");
+    expect(active.className).toContain("font-medium");
 
     const inactive = screen.getByRole("button", { name: /Waiting/ });
-    expect(inactive.className).not.toContain("ring-text-secondary");
+    expect(inactive.className).not.toContain("ring-border-strong");
+    expect(inactive.className).not.toContain("bg-overlay-strong");
   });
 
   it("marks the active pill with aria-pressed=true", () => {
