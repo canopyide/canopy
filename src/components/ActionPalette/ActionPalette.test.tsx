@@ -49,6 +49,7 @@ function makeItem(id: string, title: string): ActionPaletteItemType {
     description: "",
     category: "General",
     enabled: true,
+    danger: "safe",
     kind: "command",
     titleLower: title.toLowerCase(),
     categoryLower: "general",

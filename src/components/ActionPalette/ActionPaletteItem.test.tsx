@@ -22,6 +22,7 @@ function makeItem(overrides: Partial<ActionPaletteItemType> = {}): ActionPalette
     description: "Test description",
     category: "terminal",
     enabled: true,
+    danger: "safe",
     kind: "command",
     titleLower: "test action",
     categoryLower: "terminal",
