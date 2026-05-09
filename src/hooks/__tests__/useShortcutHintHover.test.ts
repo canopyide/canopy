@@ -18,9 +18,10 @@ vi.mock("@/services/KeybindingService", () => ({
 
 function createPointerEvent(
   clientX: number,
-  clientY: number
+  clientY: number,
+  currentTarget?: Element
 ): React.PointerEvent<HTMLButtonElement> {
-  return { clientX, clientY } as React.PointerEvent<HTMLButtonElement>;
+  return { clientX, clientY, currentTarget } as unknown as React.PointerEvent<HTMLButtonElement>;
 }
 
 describe("useShortcutHintHover", () => {
@@ -166,6 +167,107 @@ describe("useShortcutHintHover", () => {
       vi.advanceTimersByTime(2000);
     });
     expect(shortcutHintStore.getState().activeHint).toBeNull();
+  });
+
+  it("suppresses dwell hint when trigger data-state is delayed-open", () => {
+    shortcutHintStore.getState().hydrateCounts({ "nav.toggleSidebar": 0 });
+
+    const trigger = document.createElement("button");
+    trigger.setAttribute("data-state", "delayed-open");
+
+    const { result } = renderHook(() => useShortcutHintHover("nav.toggleSidebar"));
+
+    act(() => {
+      vi.advanceTimersByTime(10);
+    });
+
+    act(() => {
+      result.current.onPointerEnter(createPointerEvent(100, 200, trigger));
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+
+    expect(shortcutHintStore.getState().activeHint).toBeNull();
+  });
+
+  it("suppresses dwell hint when trigger data-state is instant-open", () => {
+    shortcutHintStore.getState().hydrateCounts({ "nav.toggleSidebar": 0 });
+
+    const trigger = document.createElement("button");
+    trigger.setAttribute("data-state", "instant-open");
+
+    const { result } = renderHook(() => useShortcutHintHover("nav.toggleSidebar"));
+
+    act(() => {
+      vi.advanceTimersByTime(10);
+    });
+
+    act(() => {
+      result.current.onPointerEnter(createPointerEvent(100, 200, trigger));
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+
+    expect(shortcutHintStore.getState().activeHint).toBeNull();
+  });
+
+  it("suppresses dwell hint when trigger transitions to delayed-open mid-dwell", () => {
+    // Real-world race: Radix tooltip opens at ~500ms during the 1500ms dwell.
+    // The hook must read data-state at fire time, not at pointer-enter time.
+    shortcutHintStore.getState().hydrateCounts({ "nav.toggleSidebar": 0 });
+
+    const trigger = document.createElement("button");
+    trigger.setAttribute("data-state", "closed");
+
+    const { result } = renderHook(() => useShortcutHintHover("nav.toggleSidebar"));
+
+    act(() => {
+      vi.advanceTimersByTime(10);
+    });
+
+    act(() => {
+      result.current.onPointerEnter(createPointerEvent(100, 200, trigger));
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(800);
+      trigger.setAttribute("data-state", "delayed-open");
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(700);
+    });
+
+    expect(shortcutHintStore.getState().activeHint).toBeNull();
+  });
+
+  it("fires dwell hint when trigger data-state is closed", () => {
+    shortcutHintStore.getState().hydrateCounts({ "nav.toggleSidebar": 0 });
+
+    const trigger = document.createElement("button");
+    trigger.setAttribute("data-state", "closed");
+
+    const { result } = renderHook(() => useShortcutHintHover("nav.toggleSidebar"));
+
+    act(() => {
+      vi.advanceTimersByTime(10);
+    });
+
+    act(() => {
+      result.current.onPointerEnter(createPointerEvent(100, 200, trigger));
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+
+    const hint = shortcutHintStore.getState().activeHint;
+    expect(hint).not.toBeNull();
+    expect(hint!.actionId).toBe("nav.toggleSidebar");
   });
 
   it("respects one-shot gating at same count level", () => {

@@ -28,6 +28,12 @@ vi.mock("lucide-react", () => ({
   AlertCircle: () => <span data-testid="icon-alert" />,
 }));
 
+function getIconHostClassName(container: HTMLElement): string {
+  const button = container.querySelector("button");
+  if (!button) throw new Error("button not rendered");
+  return button.className;
+}
+
 vi.mock("@/hooks", () => ({
   useAriaKeyshortcuts: () => "",
   useKeybindingDisplay: () => "",
@@ -62,5 +68,28 @@ describe("ToolbarProblemsButton — aria-expanded / aria-controls", () => {
 
     expect(button?.getAttribute("aria-expanded")).toBe("true");
     expect(button?.getAttribute("aria-controls")).toBe("diagnostics-dock-region");
+  });
+});
+
+describe("ToolbarProblemsButton — single-signal error treatment", () => {
+  beforeEach(() => {
+    useDiagnosticsStore.setState({ isOpen: false });
+  });
+
+  it("does not recolor the icon host when errorCount > 0 (badge dot is the only signal)", () => {
+    const { container } = render(<ToolbarProblemsButton errorCount={3} />);
+    expect(getIconHostClassName(container)).not.toMatch(/text-status-error/);
+  });
+
+  it("shows the badge as visible when errorCount > 0", () => {
+    const { container } = render(<ToolbarProblemsButton errorCount={1} />);
+    const badge = container.querySelector(".toolbar-problems-badge");
+    expect(badge?.getAttribute("data-visible")).toBe("true");
+  });
+
+  it("hides the badge when errorCount is 0", () => {
+    const { container } = render(<ToolbarProblemsButton errorCount={0} />);
+    const badge = container.querySelector(".toolbar-problems-badge");
+    expect(badge?.getAttribute("data-visible")).toBe("false");
   });
 });

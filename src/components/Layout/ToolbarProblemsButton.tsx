@@ -36,7 +36,7 @@ export const ToolbarProblemsButton = memo(function ToolbarProblemsButton({
           size="icon"
           data-toolbar-item={dataToolbarItem}
           onClick={onToggleProblems}
-          className={cn(toolbarIconButtonClass, "relative", errorCount > 0 && "text-status-error")}
+          className={cn(toolbarIconButtonClass, "relative")}
           aria-label={`Problems: ${errorCount} error${errorCount !== 1 ? "s" : ""}`}
           aria-keyshortcuts={diagnosticsAriaShortcut}
           aria-expanded={isDockOpen}
