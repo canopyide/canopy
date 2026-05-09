@@ -191,7 +191,7 @@ jobs:
             echo "::warning::Skipping macOS notarization (manually disabled)"
             EXTRA_ARGS="-c.mac.notarize=false"
           fi
-          npx electron-builder --config electron-builder.config.cjs --publish never -c.buildDependenciesFromSource=true $EXTRA_ARGS
+          npx electron-builder --config electron-builder.config.cjs --publish always -c.buildDependenciesFromSource=true $EXTRA_ARGS
 
       - name: Build
         if: ${{ !startsWith(matrix.os, 'macos') }}
@@ -201,7 +201,11 @@ jobs:
           DEBUG: electron-builder,electron-notarize*,electron-osx-sign*
         run: |
           npm run build
-          npx electron-builder --config electron-builder.config.cjs --publish never
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            npx electron-builder --config electron-builder.config.cjs --publish never
+          else
+            npx electron-builder --config electron-builder.config.cjs --publish always
+          fi
 
       - name: Verify Windows Store package was built
         if: matrix.os == 'windows-latest'

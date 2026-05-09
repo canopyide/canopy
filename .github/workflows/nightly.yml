@@ -276,7 +276,7 @@ jobs:
           DEBUG: electron-builder,electron-notarize*,electron-osx-sign*
           npm_config_build_from_source: "true"
         run: |
-          npx electron-builder --publish never \
+          npx electron-builder --config electron-builder.config.cjs --publish always \
             -c.buildDependenciesFromSource=true
 
       - name: Package (Linux/Windows)
@@ -285,7 +285,11 @@ jobs:
         env:
           DEBUG: electron-builder,electron-notarize*,electron-osx-sign*
         run: |
-          npx electron-builder --config electron-builder.config.cjs --publish never
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            npx electron-builder --config electron-builder.config.cjs --publish never
+          else
+            npx electron-builder --config electron-builder.config.cjs --publish always
+          fi
 
       # Nightly and stable both publish `latest*.yml` — URL separation (not
       # channel-name separation) distinguishes them. The nightly URL prefix is
