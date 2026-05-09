@@ -9,6 +9,8 @@ import { store } from "../../store.js";
 import { CHANNELS } from "../../ipc/channels.js";
 import { formatErrorMessage } from "../../../shared/utils/errorMessage.js";
 import { summarizeMcpArgs } from "../../../shared/utils/mcpArgsSummary.js";
+import { scrubSecrets } from "../../utils/secretScrubber.js";
+import { sanitizePath } from "../../utils/pathScrubber.js";
 import type { HelpTokenValidator, HelpSessionWebContentsResolver, McpTier } from "./shared.js";
 import {
   extractBearerToken,
@@ -717,9 +719,13 @@ export class HttpLifecycle {
       dispatchAction,
       handleWaitUntilIdle: this.deps.handleWaitUntilIdle,
       appendAuditRecord: (input) => {
+        // Scrub structural secrets BEFORE the truncation step inside
+        // `summarizeMcpArgs` — running the scrubber after truncation would
+        // miss bearer tokens whose body got cut below the scrubber's
+        // 8-char minimum match length.
         this.deps.auditService.appendRecord({
           ...input,
-          argsSummary: summarizeMcpArgs(input.args),
+          argsSummary: summarizeMcpArgs(input.args, (s) => scrubSecrets(sanitizePath(s))),
         });
       },
       getCachedManifest,

@@ -1811,6 +1811,10 @@ export interface IpcInvokeMap {
     args: [];
     result: { enabled: boolean; maxRecords: number };
   };
+  "mcp-server:get-audit-stats": {
+    args: [];
+    result: import("./mcpServer.js").McpAuditStats;
+  };
   "mcp-server:clear-audit-log": {
     args: [];
     result: void;

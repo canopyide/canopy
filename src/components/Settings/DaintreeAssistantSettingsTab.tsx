@@ -214,34 +214,43 @@ export function DaintreeAssistantSettingsTab() {
   // Separate audit fetch effect — keeps the settings init effect's cancellation
   // semantics simple (per past lesson #4958) while still letting the audit
   // viewer hydrate independently of the settings + MCP status round-trips.
+  // `allSettled` so a stats failure doesn't silently blank the record list.
   const refreshAuditRecords = useCallback(async (): Promise<void> => {
-    try {
-      const [records, stats] = await Promise.all([
-        window.electron.mcpServer.getAuditRecords(),
-        window.electron.mcpServer.getAuditStats(),
-      ]);
-      setAuditRecords(records);
-      setAuditStats(stats);
-    } catch (err) {
-      logError("Failed to load MCP audit records for assistant tab", err);
+    const [recordsResult, statsResult] = await Promise.allSettled([
+      window.electron.mcpServer.getAuditRecords(),
+      window.electron.mcpServer.getAuditStats(),
+    ]);
+    if (recordsResult.status === "fulfilled") {
+      setAuditRecords(recordsResult.value);
+    } else {
+      logError("Failed to load MCP audit records for assistant tab", recordsResult.reason);
+    }
+    if (statsResult.status === "fulfilled") {
+      setAuditStats(statsResult.value);
+    } else {
+      logError("Failed to load MCP audit stats for assistant tab", statsResult.reason);
     }
   }, []);
 
   useEffect(() => {
     let cancelled = false;
     setAuditLoading(true);
-    Promise.all([
+    Promise.allSettled([
       window.electron.mcpServer.getAuditRecords(),
       window.electron.mcpServer.getAuditStats(),
     ])
-      .then(([records, stats]) => {
+      .then(([recordsResult, statsResult]) => {
         if (cancelled) return;
-        setAuditRecords(records);
-        setAuditStats(stats);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        logError("Failed initial audit load for assistant tab", err);
+        if (recordsResult.status === "fulfilled") {
+          setAuditRecords(recordsResult.value);
+        } else {
+          logError("Failed initial audit load for assistant tab", recordsResult.reason);
+        }
+        if (statsResult.status === "fulfilled") {
+          setAuditStats(statsResult.value);
+        } else {
+          logError("Failed initial audit stats load for assistant tab", statsResult.reason);
+        }
       })
       .finally(() => {
         if (!cancelled) setAuditLoading(false);

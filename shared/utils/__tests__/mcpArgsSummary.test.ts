@@ -88,3 +88,34 @@ describe("summarizeMcpArgs", () => {
     expect(out).toBe('{"name":"hello"}');
   });
 });
+
+describe("summarizeMcpArgs postSerializeScrub", () => {
+  it("runs the callback on the serialized JSON before truncation", () => {
+    const out = summarizeMcpArgs({ q: "hello" }, (s) => s.replace(/hello/g, "REDACTED"));
+    expect(out).toBe('{"q":"REDACTED"}');
+  });
+
+  it("scrubs structural secrets that would otherwise survive truncation", () => {
+    // Scrubber stub matches Bearer tokens with at least 8 chars of body.
+    const scrub = (s: string) => s.replace(/Bearer [A-Za-z0-9]{8,}/g, "Bearer [REDACTED]");
+    const padding = "x".repeat(MCP_ARGS_INLINE_STRING_LIMIT);
+    const out = summarizeMcpArgs({ padding, ctx: "Bearer aabbccddeeff" }, scrub);
+    expect(out).toContain("Bearer [REDACTED]");
+    expect(out).not.toContain("aabbccddeeff");
+  });
+
+  it("scrubs before truncation so a sliced bearer body is not leaked", () => {
+    // Build args whose serialized form places a bearer token at a position
+    // where the 300-char truncation would cut its body. With pre-truncation
+    // scrub the bearer body never reaches the slice.
+    const padding = "x".repeat(MCP_ARGS_INLINE_STRING_LIMIT);
+    const args: Record<string, string> = {};
+    for (let i = 0; i < 5; i += 1) args[`a${i}`] = padding;
+    args.tail = "Bearer abcdefghij";
+    const scrub = (s: string) => s.replace(/Bearer [A-Za-z0-9]{8,}/g, "Bearer [REDACTED]");
+    const out = summarizeMcpArgs(args, scrub);
+    // Either the bearer body was scrubbed before truncation, or the entire
+    // tail was truncated. Neither leaves the partial body visible.
+    expect(out).not.toMatch(/Bearer abcd/);
+  });
+});

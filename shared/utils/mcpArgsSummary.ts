@@ -29,8 +29,17 @@ const REDACTED_PLACEHOLDER = "<redacted>";
  * objects/arrays collapse to `<object>`. The same logic powers the audit
  * record and the renderer-side confirmation modal so both surfaces show
  * identical, never-leaking values.
+ *
+ * `postSerializeScrub` runs against the serialized JSON before the final
+ * `MCP_ARGS_SUMMARY_LIMIT` truncation. The audit-write path passes a
+ * `scrubSecrets(sanitizePath(...))` pipeline here so structural secrets
+ * (Bearer prefixes, sk-... keys, JWTs) cannot survive a truncation that
+ * cuts the token body below the scrubber's minimum match length.
  */
-export function summarizeMcpArgs(args: unknown): string {
+export function summarizeMcpArgs(
+  args: unknown,
+  postSerializeScrub?: (value: string) => string
+): string {
   const summarize = (value: unknown): unknown => {
     if (value === null) return null;
     if (typeof value === "string") {
@@ -71,6 +80,9 @@ export function summarizeMcpArgs(args: unknown): string {
     serialized = JSON.stringify(summary) ?? "";
   } catch {
     serialized = "<unserializable>";
+  }
+  if (postSerializeScrub) {
+    serialized = postSerializeScrub(serialized);
   }
   if (serialized.length > MCP_ARGS_SUMMARY_LIMIT) {
     return `${serialized.slice(0, MCP_ARGS_SUMMARY_LIMIT - 1)}…`;

@@ -22,7 +22,9 @@ const successOutcome: AuditOutcome = {
 const unauthorizedOutcome: AuditOutcome = { kind: "unauthorized" };
 
 describe("AuditService.appendRecord", () => {
-  it("scrubs path-like substrings in argsSummary", () => {
+  it("stores the caller-provided argsSummary verbatim", () => {
+    // Redaction lives in the call-site `summarizeMcpArgs` pipeline; the
+    // service trusts what it's handed.
     const { service } = makeFixture();
     service.appendRecord({
       toolId: "files.search",
@@ -31,28 +33,10 @@ describe("AuditService.appendRecord", () => {
       args: {},
       durationMs: 10,
       outcome: successOutcome,
-      argsSummary: '{"path":"/Users/jane/secret/file.ts"}',
+      argsSummary: '{"q":"<redacted>"}',
     });
     const [record] = service.getRecords();
-    expect(record).toBeDefined();
-    expect(record!.argsSummary).toContain("/Users/USER/");
-    expect(record!.argsSummary).not.toContain("/Users/jane/");
-  });
-
-  it("scrubs structural secret patterns in argsSummary", () => {
-    const { service } = makeFixture();
-    service.appendRecord({
-      toolId: "agent.launch",
-      sessionId: "sess-1",
-      tier: "action",
-      args: {},
-      durationMs: 10,
-      outcome: successOutcome,
-      argsSummary: '{"auth":"Bearer abcdefghijklmnop"}',
-    });
-    const [record] = service.getRecords();
-    expect(record!.argsSummary).toContain("Bearer [REDACTED]");
-    expect(record!.argsSummary).not.toContain("abcdefghijklmnop");
+    expect(record!.argsSummary).toBe('{"q":"<redacted>"}');
   });
 
   it("populates tierHint on unauthorized records using the static allowlist", () => {

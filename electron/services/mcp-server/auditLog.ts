@@ -19,8 +19,6 @@ import {
   CONFIRMATION_TIMEOUT_CODE,
   minimumPermittingTier,
 } from "./shared.js";
-import { scrubSecrets } from "../../utils/secretScrubber.js";
-import { sanitizePath } from "../../utils/pathScrubber.js";
 
 export class AuditService {
   private records: McpAuditRecord[] = [];
@@ -106,20 +104,16 @@ export class AuditService {
 
     const classification = this.classifyDispatchResult(input.outcome);
     const decision = this.deriveConfirmationDecision(input.outcome, input.confirmationDecision);
-    // Defense in depth: `summarizeMcpArgs` already truncates long strings and
-    // collapses nested objects, but a structural secret (Bearer prefix,
-    // sk-...-shaped key, JWT) inside a short value would slip through. Apply
-    // the same `sanitizePath`/`scrubSecrets` pipeline used by Sentry/Diagnostics
-    // so audit-record viewers see the same redaction guarantees as those
-    // outbound surfaces.
-    const safeArgsSummary = scrubSecrets(sanitizePath(input.argsSummary));
+    // `argsSummary` is expected to have already passed through the
+    // `summarizeMcpArgs` redactor (key-name + scrub + sanitizePath) at the
+    // call site in `httpLifecycle.ts`. Stored verbatim here.
     const record: McpAuditRecord = {
       id: randomUUID(),
       timestamp: Date.now(),
       toolId: input.toolId,
       sessionId: input.sessionId,
       tier: input.tier,
-      argsSummary: safeArgsSummary,
+      argsSummary: input.argsSummary,
       result: classification.result,
       durationMs: Math.max(0, Math.round(input.durationMs)),
     };
