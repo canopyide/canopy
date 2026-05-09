@@ -10,11 +10,11 @@ import {
 import { createFixtureRepos } from "../helpers/fixtures";
 import { openAndOnboardProject, dismissTelemetryConsent } from "../helpers/project";
 import { selectExistingProjectAndRefresh, spawnTerminalAndVerify } from "../helpers/workflows";
-import { waitForTerminalText } from "../helpers/terminal";
+import { runTerminalCommand, waitForTerminalText } from "../helpers/terminal";
 import { getGridPanelCount, getGridPanelIds, getPanelById } from "../helpers/panels";
 import { SEL } from "../helpers/selectors";
 import { T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
-import type { Locator, Page } from "@playwright/test";
+import type { Locator } from "@playwright/test";
 
 const PROJECT_A = "project-A";
 const PROJECT_B = "project-B";
@@ -23,18 +23,6 @@ const PROJECT_C = "project-C";
 let ctx: AppContext;
 let fixtureCleanups: Array<() => void> = [];
 let panelIdsA: string[] = [];
-
-async function focusAndRunCommand(page: Page, panel: Locator, command: string): Promise<void> {
-  const xterm = panel.locator(SEL.terminal.xtermRows);
-  await xterm.click();
-  // Wait for xterm's helper textarea to receive focus before typing —
-  // typing too early can drop the leading characters of the command.
-  await expect(panel.locator(".xterm-helper-textarea")).toBeFocused({ timeout: 5_000 });
-  await page.waitForTimeout(150);
-  // Per-key delay; PTY can drop bursts on cold-start or after switches.
-  await page.keyboard.type(command, { delay: 15 });
-  await page.keyboard.press("Enter");
-}
 
 test.describe.serial("Core: Cross-Project Terminal Workflows", () => {
   test.beforeAll(async () => {
@@ -98,10 +86,10 @@ test.describe.serial("Core: Cross-Project Terminal Workflows", () => {
         const panel1 = getPanelById(page, panelIdsA[0]);
         const panel2 = getPanelById(page, panelIdsA[1]);
 
-        await focusAndRunCommand(page, panel1, "echo MARKER_ALPHA_ONE");
+        await runTerminalCommand(page, panel1, "echo MARKER_ALPHA_ONE");
         await waitForTerminalText(panel1, "MARKER_ALPHA_ONE");
 
-        await focusAndRunCommand(page, panel2, "echo MARKER_ALPHA_TWO");
+        await runTerminalCommand(page, panel2, "echo MARKER_ALPHA_TWO");
         await waitForTerminalText(panel2, "MARKER_ALPHA_TWO");
       },
       { box: true }
@@ -183,7 +171,7 @@ test.describe.serial("Core: Cross-Project Terminal Workflows", () => {
             .locator(SEL.terminal.xtermRows)
             .waitFor({ state: "visible", timeout: T_LONG });
         }
-        await focusAndRunCommand(ctx.window, panel, "echo INPUT_OK_$((40+2))");
+        await runTerminalCommand(ctx.window, panel, "echo INPUT_OK_$((40+2))");
         await waitForTerminalText(panel, "INPUT_OK_42");
       },
       { box: true }

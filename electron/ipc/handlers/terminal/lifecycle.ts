@@ -37,6 +37,8 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
+const MACOS_COMMAND_LAUNCH_STARTUP_DELAY_SECONDS = "0.05";
+
 function supportsCommandLaunchShell(shell: string): boolean {
   const name = shell.split(/[\\/]/).pop()?.toLowerCase() ?? "";
   return (
@@ -88,8 +90,22 @@ function buildCommandLaunchShell(
   // Use a no-op trap rather than SIG_IGN so child CLIs don't inherit ignored
   // SIGINT.
   const script = `trap : INT\n${command}\ntrap - INT\n${execInteractiveShell}`;
+  const interactiveArgs =
+    name.includes("zsh") || name.includes("bash")
+      ? `-lic ${shellQuote(script)}`
+      : `-i -c ${shellQuote(script)}`;
+  // macOS CI can emit the first shell/agent bytes before node-pty returns
+  // from spawn. Defer the interactive shell by one tick so the PTY data
+  // handoff listener is installed before startup output begins.
   const args =
-    name.includes("zsh") || name.includes("bash") ? ["-lic", script] : ["-i", "-c", script];
+    process.platform === "darwin"
+      ? [
+          "-c",
+          `sleep ${MACOS_COMMAND_LAUNCH_STARTUP_DELAY_SECONDS}\nexec ${shellQuote(shell)} ${interactiveArgs}`,
+        ]
+      : name.includes("zsh") || name.includes("bash")
+        ? ["-lic", script]
+        : ["-i", "-c", script];
 
   return { shell, args };
 }

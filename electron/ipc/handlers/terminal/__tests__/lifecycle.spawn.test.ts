@@ -491,13 +491,22 @@ describe("terminal spawn shell-injection hardening (#6065)", () => {
       const spawnArgs = ptyClient.spawn.mock.calls[0][1];
       expect(spawnArgs.command).toBe(command);
 
-      // Lock the security-critical script template against structural regressions.
-      // The shell path must be single-quoted and the user command must appear
-      // verbatim between the trap markers — no further wrapping or rewriting.
-      expect(spawnArgs.args).toEqual([
-        "-lic",
-        `trap : INT\n${command}\ntrap - INT\nexec '/bin/zsh' -l`,
-      ]);
+      // Lock the security-critical inner script template against structural
+      // regressions. The shell path must be single-quoted and the user command
+      // must appear verbatim between the trap markers.
+      if (process.platform === "darwin") {
+        expect(spawnArgs.args[0]).toBe("-c");
+        expect(spawnArgs.args[1]).toContain("sleep 0.05");
+        expect(spawnArgs.args[1]).toContain("exec '/bin/zsh' -lic");
+        expect(spawnArgs.args[1]).toContain("trap : INT");
+        expect(spawnArgs.args[1]).toContain(command);
+        expect(spawnArgs.args[1]).toContain("trap - INT");
+      } else {
+        expect(spawnArgs.args).toEqual([
+          "-lic",
+          `trap : INT\n${command}\ntrap - INT\nexec '/bin/zsh' -l`,
+        ]);
+      }
     }
   );
 
@@ -521,7 +530,11 @@ describe("terminal spawn shell-injection hardening (#6065)", () => {
       );
 
       const spawnArgs = ptyClient.spawn.mock.calls[0][1];
-      expect(spawnArgs.args[1]).toContain("exec '/tmp/o'\\''hare/zsh' -l");
+      if (process.platform === "darwin") {
+        expect(spawnArgs.args[1]).toContain("exec '/tmp/o'\\''hare/zsh' -lic");
+      } else {
+        expect(spawnArgs.args[1]).toContain("exec '/tmp/o'\\''hare/zsh' -l");
+      }
     }
   );
 });

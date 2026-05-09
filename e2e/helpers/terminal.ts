@@ -3,6 +3,11 @@ import { expect } from "@playwright/test";
 import { SEL } from "./selectors";
 import { T_SHORT } from "./timeouts";
 
+type TerminalBridge = {
+  getInfo?: (terminalId: string) => Promise<{ hasPty?: boolean } | null | undefined>;
+  write?: (terminalId: string, data: string) => void;
+};
+
 async function getPanelId(panelLocator: Locator): Promise<string> {
   return panelLocator.evaluate((el) => {
     const panel = el.closest("[data-panel-id]");
@@ -39,25 +44,59 @@ export async function waitForTerminalText(
     .toContain(text);
 }
 
+export async function writeTerminalInput(
+  page: Page,
+  panelLocator: Locator,
+  data: string
+): Promise<void> {
+  const panelId = await getPanelId(panelLocator);
+  if (!panelId) throw new Error("Could not resolve panel ID for terminal input");
+
+  await expect
+    .poll(
+      () =>
+        page.evaluate(async (id) => {
+          const api = (
+            window as unknown as {
+              electron?: { terminal?: TerminalBridge };
+            }
+          ).electron?.terminal;
+          if (typeof api?.getInfo !== "function") return false;
+          try {
+            const info = await api.getInfo(id);
+            return info?.hasPty === true;
+          } catch {
+            return false;
+          }
+        }, panelId),
+      { timeout: 10_000, intervals: [100, 250, 500] }
+    )
+    .toBe(true);
+
+  const wrote = await page.evaluate(
+    ({ id, input }) => {
+      const api = (
+        window as unknown as {
+          electron?: { terminal?: TerminalBridge };
+        }
+      ).electron?.terminal;
+      if (typeof api?.write !== "function") return false;
+      api.write(id, input);
+      return true;
+    },
+    { id: panelId, input: data }
+  );
+
+  if (!wrote) throw new Error(`terminal.write bridge unavailable for panel ${panelId}`);
+}
+
 export async function runTerminalCommand(
   page: Page,
   panelLocator: Locator,
   command: string
 ): Promise<void> {
-  const xterm = panelLocator.locator(SEL.terminal.xtermRows);
-  await xterm.click();
-  // Wait for xterm's helper textarea to receive focus before typing —
-  // typing too early can drop the leading characters of the command.
-  await expect(panelLocator.locator(SEL.terminal.xtermHelperTextarea)).toBeFocused({
-    timeout: 5_000,
-  });
-  // Small settle delay so xterm's internal data handler is wired before we
-  // type. Without this, the renderer can swallow leading characters on the
-  // first click into a freshly opened terminal.
-  await page.waitForTimeout(150);
-  // Type with a small per-key delay; PTY can drop bursts on cold-start.
-  await page.keyboard.type(command, { delay: 15 });
-  await page.keyboard.press("Enter");
+  await expect(panelLocator).toBeVisible({ timeout: 5_000 });
+  await writeTerminalInput(page, panelLocator, `${command}\r`);
 }
 
 export async function getTerminalBufferLength(panelLocator: Locator): Promise<number> {
