@@ -234,11 +234,12 @@ describe("GettingStartedChecklist", () => {
   });
 
   describe("completed-state surface", () => {
-    it("uses neutral elevated surface tokens when allComplete is true", () => {
+    it("uses neutral elevated surface tokens and drops the accent tint when allComplete is true", () => {
       render(<GettingStartedChecklist {...defaultProps} checklist={allComplete} />);
       const region = screen.getByRole("region", { name: "Getting started checklist" });
       expect(region.className).toContain("bg-surface-panel");
       expect(region.className).toContain("border-border-default");
+      expect(region.className).not.toContain("color-mix");
     });
 
     it("keeps the accent-tinted surface when not all items are complete", () => {
@@ -246,6 +247,20 @@ describe("GettingStartedChecklist", () => {
       const region = screen.getByRole("region", { name: "Getting started checklist" });
       expect(region.className).toContain("color-mix");
       expect(region.className).not.toContain("bg-surface-panel");
+    });
+
+    it("accents the counter label on completion and mutes it otherwise", () => {
+      const { rerender } = render(
+        <GettingStartedChecklist {...defaultProps} checklist={mixedState} />
+      );
+      const muted = screen.getByText("1/4");
+      expect(muted.className).toContain("text-daintree-text/50");
+      expect(muted.className).not.toContain("text-daintree-accent");
+
+      rerender(<GettingStartedChecklist {...defaultProps} checklist={allComplete} />);
+      const accented = screen.getByText("All set");
+      expect(accented.className).toContain("text-daintree-accent");
+      expect(accented.className).not.toContain("text-daintree-text/50");
     });
   });
 

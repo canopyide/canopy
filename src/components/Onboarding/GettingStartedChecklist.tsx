@@ -176,7 +176,10 @@ export function GettingStartedChecklist({
             <AnimatedLabel
               label={counterLabel}
               animateKey={counterAnimateKey}
-              textClassName="text-[10px] text-daintree-text/50 font-mono tabular-nums"
+              textClassName={cn(
+                "text-[10px] font-mono tabular-nums",
+                allComplete ? "text-daintree-accent" : "text-daintree-text/50"
+              )}
             />
             {collapsed ? (
               <ChevronUp className="h-3 w-3 text-daintree-text/50 shrink-0" />
