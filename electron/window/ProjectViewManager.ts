@@ -710,9 +710,17 @@ export class ProjectViewManager {
         });
       } else {
         console.log("[ProjectViewManager] Renderer crash, auto-reloading view");
-        notifyError(new Error("A project view crashed and was automatically reloaded."), {
-          source: "renderer-crash",
-        });
+        // Only the active view's crash is observable to the user — a cached
+        // view auto-reloading silently has no UI signal worth a toast.
+        if (projectId && projectId === this.activeProjectId) {
+          notifyError(new Error("A project view crashed and was automatically reloaded."), {
+            source: "renderer-crash",
+          });
+        } else {
+          console.warn(
+            `[ProjectViewManager] Cached view crashed and was auto-reloaded (project: ${projectId})`
+          );
+        }
         setImmediate(() => {
           if (!wc.isDestroyed()) wc.reload();
         });

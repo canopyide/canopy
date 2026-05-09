@@ -45,6 +45,9 @@ interface SetupOptions {
   onViewCrashed?: (wc: ReturnType<typeof createMockWebContents>) => void;
   /** Mirrors `projectId === activeProjectId` in the real PVM. Defaults to true. */
   isActiveProject?: boolean;
+  /** Mirrors the real `notifyError` import — kept as an injected fn so the test
+   *  doesn't need to vi.mock the module. Auto-reload branch only. */
+  notifyError?: (err: Error, ctx: { source: string }) => void;
 }
 
 /**
@@ -57,7 +60,13 @@ function setupCrashRecovery(
   wc: ReturnType<typeof createMockWebContents>,
   options: SetupOptions = {}
 ) {
-  const { entry = null, backupTimestamp = null, onViewCrashed, isActiveProject = true } = options;
+  const {
+    entry = null,
+    backupTimestamp = null,
+    onViewCrashed,
+    isActiveProject = true,
+    notifyError,
+  } = options;
   const crashTimestamps: number[] = entry?.crashTimestamps ?? [];
 
   wc.on("render-process-gone", (_event, ...args) => {
@@ -92,6 +101,13 @@ function setupCrashRecovery(
         wc.loadURL(`app://daintree/recovery.html?${params}`);
       });
     } else {
+      // Mirrors the gated notifyError in the real handler: only the active
+      // view's auto-reload is observable to the user; cached views stay quiet.
+      if (isActiveProject) {
+        notifyError?.(new Error("A project view crashed and was automatically reloaded."), {
+          source: "renderer-crash",
+        });
+      }
       setImmediate(() => {
         if (!wc.isDestroyed()) wc.reload();
       });
@@ -314,5 +330,77 @@ describe("ProjectViewManager — onViewCrashed callback (#6244)", () => {
     wc._emit("render-process-gone", { reason: "crashed", exitCode: 1 });
 
     expect(onViewCrashed).not.toHaveBeenCalled();
+  });
+});
+
+describe("ProjectViewManager — auto-reload notifyError gate (#7565)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("fires notifyError on auto-reload when the active view crashes", () => {
+    const win = createMockWindow();
+    const wc = createMockWebContents();
+    const entry: ViewEntryLike = {
+      projectPath: "/home/user/proj-a",
+      crashTimestamps: [],
+      state: "active",
+    };
+    const notifyError = vi.fn();
+    setupCrashRecovery(win, wc, { entry, notifyError, isActiveProject: true });
+
+    wc._emit("render-process-gone", { reason: "crashed", exitCode: 1 });
+    vi.advanceTimersByTime(0);
+
+    expect(notifyError).toHaveBeenCalledTimes(1);
+    expect(notifyError.mock.calls[0][1]).toEqual({ source: "renderer-crash" });
+    expect(wc.reload).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT fire notifyError when a cached (non-active) view auto-reloads", () => {
+    // Per CLAUDE.md notify() policy: only emit for events the user could not
+    // otherwise observe. A cached view crash-reload is invisible — the user
+    // is looking at a different project — so demote to console.warn.
+    const win = createMockWindow();
+    const wc = createMockWebContents();
+    const entry: ViewEntryLike = {
+      projectPath: "/home/user/proj-cached",
+      crashTimestamps: [],
+      state: "cached",
+    };
+    const notifyError = vi.fn();
+    setupCrashRecovery(win, wc, { entry, notifyError, isActiveProject: false });
+
+    wc._emit("render-process-gone", { reason: "crashed", exitCode: 1 });
+    vi.advanceTimersByTime(0);
+
+    expect(notifyError).not.toHaveBeenCalled();
+    // Reload still happens — the gate is on the toast, not the recovery action.
+    expect(wc.reload).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not fire notifyError on the crash-loop branch (recovery page)", () => {
+    // The crash-loop threshold loads recovery.html; that's a separate UX
+    // surface from the auto-reload toast and shouldn't trigger notifyError.
+    const win = createMockWindow();
+    const wc = createMockWebContents();
+    const entry: ViewEntryLike = {
+      projectPath: "/home/user/proj-a",
+      crashTimestamps: [],
+      state: "active",
+    };
+    const notifyError = vi.fn();
+    setupCrashRecovery(win, wc, { entry, notifyError, isActiveProject: true });
+
+    crashThrice(wc);
+
+    // Two auto-reload notifies (first two crashes) then the third loads
+    // recovery.html without notifying.
+    expect(notifyError).toHaveBeenCalledTimes(2);
+    expect(wc.loadURL).toHaveBeenCalledTimes(1);
   });
 });

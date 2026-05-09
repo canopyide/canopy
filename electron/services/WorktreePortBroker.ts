@@ -62,7 +62,10 @@ export class WorktreePortBroker {
       return false;
     }
 
-    // Set up lifecycle listeners (stored for cleanup to prevent accumulation)
+    // Lifecycle listeners (stored for cleanup to prevent accumulation).
+    // port1.on("close") covers host-side shutdown/transfer paths where the
+    // renderer-side webContents events don't fire; closePortsForView is
+    // already idempotent via the map-deletion guard.
     const onDestroyed = () => {
       this.closePortsForView(wcId);
     };
@@ -73,10 +76,15 @@ export class WorktreePortBroker {
         this.closePortsForView(wcId);
       }
     };
+    const onPortClose = () => {
+      this.closePortsForView(wcId);
+    };
     webContents.once("destroyed", onDestroyed);
     webContents.on("did-start-navigation", onNavigation);
+    port1.on("close", onPortClose);
 
     const cleanupListeners = () => {
+      port1.removeListener("close", onPortClose);
       webContents.removeListener("destroyed", onDestroyed);
       webContents.removeListener("did-start-navigation", onNavigation);
     };
