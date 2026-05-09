@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, ChevronDown, ChevronUp, X } from "lucide-react";
+import { useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { actionService } from "@/services/ActionService";
 import { AnimatedLabel } from "@/components/ui/AnimatedLabel";
@@ -8,6 +9,31 @@ import type { ChecklistState, ChecklistItemId } from "@shared/types/ipc/maps";
 import { CHECKLIST_ITEMS } from "./checklistItems";
 
 const CHECKLIST_BODY_ID = "getting-started-checklist-body";
+
+interface CheckBadgeProps {
+  done: boolean;
+  isPopping: boolean;
+  onPopEnd: () => void;
+}
+
+// Renders the round check badge for a checklist row. The pop animation is
+// driven from the parent (see GettingStartedChecklist) so that toggling
+// `done` — which swaps the row's parent element between <button> and <div>
+// and would otherwise remount this component — does not lose pop state.
+function CheckBadge({ done, isPopping, onPopEnd }: CheckBadgeProps) {
+  return (
+    <div
+      onAnimationEnd={onPopEnd}
+      className={cn(
+        "h-4 w-4 rounded-full border flex items-center justify-center shrink-0 transition-colors duration-150",
+        done ? "bg-daintree-accent border-daintree-accent" : "border-daintree-text/30",
+        isPopping && "animate-badge-bump"
+      )}
+    >
+      {done && <Check className="h-2.5 w-2.5 text-daintree-bg" />}
+    </div>
+  );
+}
 
 interface GettingStartedChecklistProps {
   checklist: ChecklistState;
@@ -25,17 +51,86 @@ export function GettingStartedChecklist({
   onMarkItem,
 }: GettingStartedChecklistProps) {
   const [isVisible, setIsVisible] = useState(false);
+  const prefersReducedMotion = useReducedMotion();
+  const items = checklist.items;
+  const prevItemsRef = useRef(items);
+  const popTimersRef = useRef(new Map<ChecklistItemId, ReturnType<typeof setTimeout>>());
+  const mountedRef = useRef(true);
+  const [poppingItems, setPoppingItems] = useState<Set<ChecklistItemId>>(() => new Set());
 
   useEffect(() => {
     const rafId = requestAnimationFrame(() => setIsVisible(true));
     return () => cancelAnimationFrame(rafId);
   }, []);
 
-  const completedCount = Object.values(checklist.items).filter(Boolean).length;
+  useEffect(() => {
+    mountedRef.current = true;
+    const timers = popTimersRef.current;
+    return () => {
+      mountedRef.current = false;
+      timers.forEach((timer) => clearTimeout(timer));
+      timers.clear();
+    };
+  }, []);
+
+  // When an item flips from incomplete → complete, pop its badge for 200ms.
+  // The 200ms setTimeout is a safety fallback for the moments when
+  // `animationend` does not fire (reduced motion, data-reduce-animations,
+  // performance mode) — it ensures isPopping is cleared even when the CSS
+  // animation is suppressed. Mirrors the toaster `bumpFallbackRef` pattern.
+  useEffect(() => {
+    const prev = prevItemsRef.current;
+    prevItemsRef.current = items;
+    if (prefersReducedMotion) return;
+
+    const newlyDone: ChecklistItemId[] = [];
+    for (const { id } of CHECKLIST_ITEMS) {
+      if (items[id] && !prev[id]) newlyDone.push(id);
+    }
+    if (newlyDone.length === 0) return;
+
+    setPoppingItems((current) => {
+      const next = new Set(current);
+      for (const id of newlyDone) next.add(id);
+      return next;
+    });
+
+    for (const id of newlyDone) {
+      const existing = popTimersRef.current.get(id);
+      if (existing) clearTimeout(existing);
+      const timer = setTimeout(() => {
+        if (!mountedRef.current) return;
+        setPoppingItems((current) => {
+          if (!current.has(id)) return current;
+          const next = new Set(current);
+          next.delete(id);
+          return next;
+        });
+        popTimersRef.current.delete(id);
+      }, 200);
+      popTimersRef.current.set(id, timer);
+    }
+  }, [items, prefersReducedMotion]);
+
+  const clearPop = (id: ChecklistItemId) => {
+    setPoppingItems((current) => {
+      if (!current.has(id)) return current;
+      const next = new Set(current);
+      next.delete(id);
+      return next;
+    });
+    const existing = popTimersRef.current.get(id);
+    if (existing) {
+      clearTimeout(existing);
+      popTimersRef.current.delete(id);
+    }
+  };
+
+  const completedCount = Object.values(items).filter(Boolean).length;
   const totalCount = CHECKLIST_ITEMS.length;
   const allComplete = completedCount === totalCount;
-  const counterLabel = allComplete ? "All done" : `${completedCount}/${totalCount}`;
-  const counterAnimateKey = allComplete ? "all-done" : String(completedCount);
+  const counterLabel = allComplete ? "All set" : `${completedCount}/${totalCount}`;
+  const counterAnimateKey = allComplete ? "all-set" : String(completedCount);
 
   return createPortal(
     <div
@@ -54,11 +149,15 @@ export function GettingStartedChecklist({
           "rounded-[var(--radius-sm)] border",
           "text-sm text-daintree-text",
           "shadow-[var(--theme-shadow-floating)]",
-          "transition-[transform,opacity] duration-300 ease-out",
+          "transition-[transform,opacity,background-color,border-color] duration-200 ease-out",
           "motion-reduce:transition-none motion-reduce:duration-0 motion-reduce:transform-none",
           isVisible ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0",
-          "bg-[color-mix(in_oklab,var(--color-daintree-accent)_8%,var(--color-daintree-bg))]",
-          "border-[color:color-mix(in_oklab,var(--color-daintree-accent)_20%,transparent)]",
+          allComplete
+            ? "bg-surface-panel border-border-default"
+            : [
+                "bg-[color-mix(in_oklab,var(--color-daintree-accent)_8%,var(--color-daintree-bg))]",
+                "border-[color:color-mix(in_oklab,var(--color-daintree-accent)_20%,transparent)]",
+              ],
           "backdrop-blur-sm"
         )}
       >
@@ -114,19 +213,15 @@ export function GettingStartedChecklist({
           <div className="px-3 pb-3 space-y-1.5">
             {CHECKLIST_ITEMS.map(
               ({ id, label, description, icon: Icon, actionId, actionArgs, markOnClick }) => {
-                const done = checklist.items[id];
+                const done = items[id];
+                const isPopping = poppingItems.has(id);
                 const content = (
                   <>
-                    <div
-                      className={cn(
-                        "h-4 w-4 rounded-full border flex items-center justify-center shrink-0 transition-colors duration-150",
-                        done
-                          ? "bg-daintree-accent border-daintree-accent"
-                          : "border-daintree-text/30"
-                      )}
-                    >
-                      {done && <Check className="h-2.5 w-2.5 text-daintree-bg" />}
-                    </div>
+                    <CheckBadge
+                      done={done}
+                      isPopping={isPopping}
+                      onPopEnd={() => clearPop(id)}
+                    />
                     <Icon
                       className={cn(
                         "h-3.5 w-3.5 shrink-0",

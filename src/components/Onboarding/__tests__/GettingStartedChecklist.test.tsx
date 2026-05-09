@@ -2,8 +2,9 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-const { dispatchMock } = vi.hoisted(() => ({
+const { dispatchMock, useReducedMotionMock } = vi.hoisted(() => ({
   dispatchMock: vi.fn(() => Promise.resolve()),
+  useReducedMotionMock: vi.fn(() => false),
 }));
 
 vi.mock("@/services/ActionService", () => ({
@@ -14,6 +15,10 @@ vi.mock("@/services/ActionService", () => ({
 
 vi.mock("@/lib/utils", () => ({
   cn: (...args: unknown[]) => args.filter(Boolean).join(" "),
+}));
+
+vi.mock("framer-motion", () => ({
+  useReducedMotion: useReducedMotionMock,
 }));
 
 import { GettingStartedChecklist } from "../GettingStartedChecklist";
@@ -154,12 +159,12 @@ describe("GettingStartedChecklist", () => {
   it("renders the n/n counter while the checklist is incomplete", () => {
     render(<GettingStartedChecklist {...defaultProps} checklist={mixedState} />);
     expect(screen.getByText("1/4")).toBeTruthy();
-    expect(screen.queryByText("All done")).toBeNull();
+    expect(screen.queryByText("All set")).toBeNull();
   });
 
-  it("renders the 'All done' milestone label when every item is complete", () => {
+  it("renders the 'All set' milestone label when every item is complete", () => {
     render(<GettingStartedChecklist {...defaultProps} checklist={allComplete} />);
-    expect(screen.getByText("All done")).toBeTruthy();
+    expect(screen.getByText("All set")).toBeTruthy();
     expect(screen.queryByText("4/4")).toBeNull();
   });
 
@@ -216,6 +221,61 @@ describe("GettingStartedChecklist", () => {
       const toggle = screen.getByRole("button", { name: /getting started/i });
       fireEvent.click(toggle);
       expect(defaultProps.onToggleCollapse).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("entry transition timing", () => {
+    it("uses the Tier 2 enter duration (200ms) on the panel surface", () => {
+      render(<GettingStartedChecklist {...defaultProps} checklist={allIncomplete} />);
+      const region = screen.getByRole("region", { name: "Getting started checklist" });
+      expect(region.className).toContain("duration-200");
+      expect(region.className).not.toContain("duration-300");
+    });
+  });
+
+  describe("completed-state surface", () => {
+    it("uses neutral elevated surface tokens when allComplete is true", () => {
+      render(<GettingStartedChecklist {...defaultProps} checklist={allComplete} />);
+      const region = screen.getByRole("region", { name: "Getting started checklist" });
+      expect(region.className).toContain("bg-surface-panel");
+      expect(region.className).toContain("border-border-default");
+    });
+
+    it("keeps the accent-tinted surface when not all items are complete", () => {
+      render(<GettingStartedChecklist {...defaultProps} checklist={mixedState} />);
+      const region = screen.getByRole("region", { name: "Getting started checklist" });
+      expect(region.className).toContain("color-mix");
+      expect(region.className).not.toContain("bg-surface-panel");
+    });
+  });
+
+  describe("check badge pop animation", () => {
+    beforeEach(() => {
+      useReducedMotionMock.mockReturnValue(false);
+    });
+
+    it("does NOT apply animate-badge-bump on first render for already-complete items", () => {
+      render(<GettingStartedChecklist {...defaultProps} checklist={allComplete} />);
+      expect(document.body.querySelector(".animate-badge-bump")).toBeNull();
+    });
+
+    it("applies animate-badge-bump when an item transitions from incomplete to complete", () => {
+      const { rerender } = render(
+        <GettingStartedChecklist {...defaultProps} checklist={allIncomplete} />
+      );
+      expect(document.body.querySelector(".animate-badge-bump")).toBeNull();
+
+      rerender(<GettingStartedChecklist {...defaultProps} checklist={mixedState} />);
+      expect(document.body.querySelector(".animate-badge-bump")).not.toBeNull();
+    });
+
+    it("skips the pop under prefers-reduced-motion even when an item ticks", () => {
+      useReducedMotionMock.mockReturnValue(true);
+      const { rerender } = render(
+        <GettingStartedChecklist {...defaultProps} checklist={allIncomplete} />
+      );
+      rerender(<GettingStartedChecklist {...defaultProps} checklist={mixedState} />);
+      expect(document.body.querySelector(".animate-badge-bump")).toBeNull();
     });
   });
 });
