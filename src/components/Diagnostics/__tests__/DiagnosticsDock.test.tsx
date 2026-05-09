@@ -2,7 +2,11 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, act, fireEvent } from "@testing-library/react";
 import { DiagnosticsDock, DIAGNOSTICS_DOCK_REGION_ID } from "../DiagnosticsDock";
-import { useDiagnosticsStore, DIAGNOSTICS_MIN_HEIGHT } from "@/store/diagnosticsStore";
+import {
+  useDiagnosticsStore,
+  DIAGNOSTICS_MIN_HEIGHT,
+  DIAGNOSTICS_DEFAULT_HEIGHT,
+} from "@/store/diagnosticsStore";
 import { useErrorStore } from "@/store";
 
 vi.mock("@/components/ui/tooltip", () => ({
@@ -204,6 +208,27 @@ describe("DiagnosticsDock — separator keyboard resize", () => {
     const separator = container.querySelector('[role="separator"]') as HTMLDivElement;
     fireEvent.keyDown(separator, { key: "PageUp" });
     expect(useDiagnosticsStore.getState().height).toBe(480);
+  });
+
+  it("double-click resets height to DIAGNOSTICS_DEFAULT_HEIGHT", () => {
+    const { container } = renderWith(420, 600);
+    const separator = container.querySelector('[role="separator"]') as HTMLDivElement;
+    fireEvent.doubleClick(separator);
+    expect(useDiagnosticsStore.getState().height).toBe(DIAGNOSTICS_DEFAULT_HEIGHT);
+  });
+
+  it("Enter key resets height to DIAGNOSTICS_DEFAULT_HEIGHT", () => {
+    const { container } = renderWith(420, 600);
+    const separator = container.querySelector('[role="separator"]') as HTMLDivElement;
+    fireEvent.keyDown(separator, { key: "Enter" });
+    expect(useDiagnosticsStore.getState().height).toBe(DIAGNOSTICS_DEFAULT_HEIGHT);
+  });
+
+  it("Space key resets height to DIAGNOSTICS_DEFAULT_HEIGHT", () => {
+    const { container } = renderWith(420, 600);
+    const separator = container.querySelector('[role="separator"]') as HTMLDivElement;
+    fireEvent.keyDown(separator, { key: " " });
+    expect(useDiagnosticsStore.getState().height).toBe(DIAGNOSTICS_DEFAULT_HEIGHT);
   });
 });
 

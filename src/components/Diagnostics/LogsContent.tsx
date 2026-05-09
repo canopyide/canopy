@@ -3,6 +3,7 @@ import { useShallow } from "zustand/react/shallow";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/EmptyState";
 import {
   useLogsStore,
   filterLogs,
@@ -199,6 +200,8 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
   const displayEntries = useMemo(() => collapseConsecutiveDuplicates(mainLogs), [mainLogs]);
   const deferredDisplayEntries = useDeferredValue(displayEntries);
 
+  const hasActiveFilters = Object.keys(filters).length > 0;
+
   const handleAtBottomChange = useCallback(
     (bottom: boolean) => {
       setAtBottom(bottom);
@@ -261,13 +264,28 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
 
       <div className="flex-1 relative min-h-0">
         {displayEntries.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-daintree-text/60 text-sm">
-            {logs.length === 0 && !previousSessionEntry
-              ? "No logs yet"
-              : logs.length === 0
-                ? "No new logs this session"
-                : "No logs match filters"}
-          </div>
+          logs.length > 0 && hasActiveFilters ? (
+            <div className="flex items-center justify-center h-full">
+              <EmptyState
+                variant="filtered-empty"
+                title="No logs match filters"
+                action={
+                  <button
+                    onClick={clearFilters}
+                    className="text-xs px-3 py-1.5 text-daintree-text/60 hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors"
+                  >
+                    Clear filters
+                  </button>
+                }
+              />
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-full text-daintree-text/60 text-sm">
+              {logs.length === 0 && !previousSessionEntry
+                ? "No logs yet"
+                : "No new logs this session"}
+            </div>
+          )
         ) : (
           <Virtuoso
             ref={virtuosoRef}
