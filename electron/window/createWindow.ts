@@ -38,6 +38,7 @@ import { markPerformance } from "../utils/performance.js";
 import { registerProtocolsForSession, getDistPath } from "../setup/protocols.js";
 import { isSmokeTest } from "../setup/environment.js";
 import { SMOKE_BOOT_TIMEOUT_MS } from "../services/smokeTest.js";
+import { setWindowRecreating } from "../lifecycle/windowRecreationState.js";
 
 const CRASH_LOOP_WINDOW_MS = 60_000;
 const CRASH_LOOP_THRESHOLD = 3;
@@ -493,10 +494,17 @@ export function setupBrowserWindow(
           { source: "renderer-crash" }
         );
         setImmediate(() => {
+          // Set the guard before `destroy()` — Electron emits
+          // `window-all-closed` synchronously inside the destroy call.
+          setWindowRecreating(true);
           if (!win.isDestroyed()) win.destroy();
-          onRecreateWindow().catch((err) => {
-            console.error("[MAIN] Failed to recreate window after OOM:", err);
-          });
+          onRecreateWindow()
+            .catch((err) => {
+              console.error("[MAIN] Failed to recreate window after OOM:", err);
+            })
+            .finally(() => {
+              setWindowRecreating(false);
+            });
         });
       }
     } else {
