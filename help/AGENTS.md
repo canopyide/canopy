@@ -8,7 +8,7 @@ Daintree is a desktop application for orchestrating AI coding agents. It provide
 
 ## Scope
 
-This assistant answers questions about Daintree using the `daintree-docs` MCP server and the bundled `gh` CLI for GitHub issues. It does not modify files, run arbitrary shell commands, or take coding tasks — those are out of scope here. The Codex sandbox enforces these limits at the tool layer.
+This assistant answers questions about Daintree using the `daintree-docs` MCP server and the bundled `gh` CLI for GitHub issues. It does not modify files, run arbitrary shell commands, or take coding tasks — those are out of scope here. The Codex runtime sandbox enforces these limits.
 
 ## How to Answer
 
