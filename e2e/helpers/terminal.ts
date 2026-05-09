@@ -13,6 +13,7 @@ type TerminalBridge = {
 
 const WINDOWS_COMMAND_ECHO_TIMEOUT_MS = 7_500;
 const WINDOWS_COMMAND_ECHO_RETRIES = 2;
+const WINDOWS_COMMAND_ECHO_MAX_CHARS = 80;
 
 async function getPanelId(panelLocator: Locator): Promise<string> {
   return panelLocator.evaluate((el) => {
@@ -166,11 +167,16 @@ async function runWindowsEchoGuardedCommand(
   if (process.platform !== "win32") return false;
 
   const { body, enterSuffix } = splitCommandForSubmit(command);
-  if (body.length === 0 || body.length > 512 || body.includes("\n")) return false;
+  if (
+    body.length === 0 ||
+    body.length > WINDOWS_COMMAND_ECHO_MAX_CHARS ||
+    body.includes("\n") ||
+    body.startsWith("/")
+  ) {
+    return false;
+  }
 
-  let lastError: unknown;
   for (let attempt = 1; attempt <= WINDOWS_COMMAND_ECHO_RETRIES; attempt++) {
-    const beforeLength = (await getTerminalText(panelLocator)).length;
     await writeTerminalInput(page, panelLocator, body);
 
     try {
@@ -178,8 +184,7 @@ async function runWindowsEchoGuardedCommand(
         .poll(
           async () => {
             const text = await getTerminalText(panelLocator);
-            const appendedText = text.length >= beforeLength ? text.slice(beforeLength) : text;
-            return compactTerminalText(appendedText);
+            return compactTerminalText(text);
           },
           {
             timeout: WINDOWS_COMMAND_ECHO_TIMEOUT_MS,
@@ -190,8 +195,7 @@ async function runWindowsEchoGuardedCommand(
 
       await writeTerminalInput(page, panelLocator, enterSuffix);
       return true;
-    } catch (error) {
-      lastError = error;
+    } catch {
       if (attempt < WINDOWS_COMMAND_ECHO_RETRIES) {
         await writeTerminalInput(page, panelLocator, "\u0003");
         await page.waitForTimeout(250);
@@ -199,8 +203,9 @@ async function runWindowsEchoGuardedCommand(
     }
   }
 
-  if (lastError instanceof Error) throw lastError;
-  throw new Error(`Timed out waiting for terminal command echo: ${body}`);
+  await writeTerminalInput(page, panelLocator, "\u0003");
+  await page.waitForTimeout(250);
+  return false;
 }
 
 export async function runTerminalCommand(
