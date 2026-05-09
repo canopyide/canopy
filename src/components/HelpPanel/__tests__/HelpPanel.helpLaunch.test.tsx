@@ -202,12 +202,18 @@ vi.mock("@/store", () => {
     selector ? selector(preferencesState) : preferencesState;
   preferencesStore.getState = () => preferencesState;
 
+  const worktreeSelectionState = { activeWorktreeId: null as string | null };
+  const worktreeSelectionStore = (selector?: (state: typeof worktreeSelectionState) => unknown) =>
+    selector ? selector(worktreeSelectionState) : worktreeSelectionState;
+  worktreeSelectionStore.getState = () => worktreeSelectionState;
+
   return {
     usePanelStore: panelStore,
     useCliAvailabilityStore: cliStore,
     useAgentSettingsStore: agentSettingsStore,
     useProjectStore: projectStore,
     usePreferencesStore: preferencesStore,
+    useWorktreeSelectionStore: worktreeSelectionStore,
     getTerminalRefreshTier: () => 0,
   };
 });
@@ -385,6 +391,17 @@ beforeEach(() => {
           getMetrics: mockSystemSleepGetMetrics,
           onSuspend: mockSystemSleepOnSuspend,
           onWake: mockSystemSleepOnWake,
+        },
+        mcpServer: {
+          onTierNotPermitted: vi.fn(() => () => {}),
+          setSessionTier: vi.fn().mockResolvedValue({ sessionId: "", tier: "workbench" }),
+        },
+        git: {
+          snapshotGet: vi.fn().mockResolvedValue(null),
+        },
+        project: {
+          getSettings: vi.fn().mockResolvedValue({}),
+          saveSettings: vi.fn().mockResolvedValue(undefined),
         },
       },
     },

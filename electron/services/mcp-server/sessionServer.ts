@@ -43,6 +43,7 @@ import {
   MCP_DEDUP_ALLOWLIST,
   MCP_DEDUP_TTL_MS,
   MCP_DEDUP_MAX_ENTRIES_PER_SESSION,
+  minimumPermittingTier,
 } from "./shared.js";
 import { buildDedupKey, readDedupCache, type CallToolResultLike } from "./sessionDedup.js";
 import {
@@ -81,6 +82,24 @@ export interface SessionServerDeps {
   }) => void;
   getCachedManifest: () => import("../../../shared/types/actions.js").ActionManifestEntry[] | null;
   getFullToolSurface: () => boolean;
+  /**
+   * Optional renderer notifier fired when a help-session tool call is denied
+   * because the session tier doesn't permit it. Implemented by httpLifecycle
+   * for help-session bearers (pinned WebContents); absent for external/api-key
+   * sessions, which have no associated UI.
+   */
+  notifyTierMismatch?: (payload: {
+    sessionId: string;
+    toolId: string;
+    tier: McpTier;
+    /**
+     * Minimum tier that permits the denied tool, or `null` if no tier permits
+     * it (unknown tool). The renderer uses this to label the elevation buttons
+     * — "Allow Action tier" / "Allow System tier" — and to drive the
+     * `setSessionTier` call.
+     */
+    targetTier: "workbench" | "action" | "system" | null;
+  }) => void;
 }
 
 export function createSessionServer(sessionId: string, deps: SessionServerDeps): Server {
@@ -92,6 +111,7 @@ export function createSessionServer(sessionId: string, deps: SessionServerDeps):
     appendAuditRecord,
     getCachedManifest,
     getFullToolSurface,
+    notifyTierMismatch,
   } = deps;
 
   const server = new Server(
@@ -144,6 +164,18 @@ export function createSessionServer(sessionId: string, deps: SessionServerDeps):
         });
       } catch (err) {
         console.error("[MCP] Failed to append audit record:", err);
+      }
+      if (notifyTierMismatch) {
+        try {
+          notifyTierMismatch({
+            sessionId,
+            toolId: actionId,
+            tier,
+            targetTier: minimumPermittingTier(actionId),
+          });
+        } catch (err) {
+          console.error("[MCP] Failed to notify tier-mismatch:", err);
+        }
       }
       return {
         content: [

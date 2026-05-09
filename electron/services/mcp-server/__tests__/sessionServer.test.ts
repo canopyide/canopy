@@ -696,3 +696,109 @@ describe("CallTool idempotency dedup", () => {
     expect(dispatchAction).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("sessionServer tier-mismatch notifier", () => {
+  async function callTool(
+    server: ReturnType<typeof createSessionServer>,
+    params: { name: string; arguments?: Record<string, unknown> }
+  ) {
+    const handlers = (
+      server as unknown as {
+        _requestHandlers: Map<string, (req: unknown, extra: unknown) => Promise<unknown>>;
+      }
+    )._requestHandlers;
+    const handler = handlers.get("tools/call");
+    if (!handler) throw new Error("tools/call handler not found");
+    return handler(
+      {
+        method: "tools/call",
+        params,
+        jsonrpc: "2.0",
+        id: 1,
+      },
+      {
+        signal: new AbortController().signal,
+        _meta: {},
+        sendNotification: vi.fn(),
+        requestId: 1,
+      }
+    );
+  }
+
+  it("invokes notifyTierMismatch with targetTier when a workbench session calls a system-tier tool", async () => {
+    const notify = vi.fn();
+    const dispatchAction = vi.fn();
+    const deps = fakeDeps({ notifyTierMismatch: notify, dispatchAction });
+    const server = createSessionServer("session-A", deps);
+    await server.connect(makeMockTransport());
+
+    // worktree.delete is in SYSTEM_TIER_ADDONS — denied at workbench tier.
+    const result = (await callTool(server, {
+      name: "worktree.delete",
+      arguments: {},
+    })) as { isError?: boolean; content: Array<{ text: string }> };
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("TIER_NOT_PERMITTED");
+    expect(dispatchAction).not.toHaveBeenCalled();
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify).toHaveBeenCalledWith({
+      sessionId: "session-A",
+      toolId: "worktree.delete",
+      tier: "workbench",
+      targetTier: "system",
+    });
+  });
+
+  it("does not invoke notifyTierMismatch when the call is permitted", async () => {
+    const notify = vi.fn();
+    const dispatchAction = vi.fn().mockResolvedValue({ result: { ok: true, result: { ok: 1 } } });
+    const deps = fakeDeps({ notifyTierMismatch: notify, dispatchAction });
+    const server = createSessionServer("session-B", deps);
+    await server.connect(makeMockTransport());
+
+    // worktree.list is in WORKBENCH_TOOLS — permitted at workbench tier.
+    await callTool(server, { name: "worktree.list", arguments: {} });
+
+    expect(notify).not.toHaveBeenCalled();
+    expect(dispatchAction).toHaveBeenCalled();
+  });
+
+  it("computes targetTier=action for action-tier tools and forwards it", async () => {
+    const notify = vi.fn();
+    const deps = fakeDeps({ notifyTierMismatch: notify });
+    const server = createSessionServer("session-C", deps);
+    await server.connect(makeMockTransport());
+
+    // worktree.createWithRecipe is in ACTION_TIER_ADDONS — denied at workbench.
+    await callTool(server, {
+      name: "worktree.createWithRecipe",
+      arguments: { branchName: "x" },
+    });
+
+    expect(notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolId: "worktree.createWithRecipe",
+        targetTier: "action",
+      })
+    );
+  });
+
+  it("survives a notifyTierMismatch throw without crashing the call", async () => {
+    const notify = vi.fn(() => {
+      throw new Error("boom");
+    });
+    const deps = fakeDeps({ notifyTierMismatch: notify });
+    const server = createSessionServer("session-D", deps);
+    await server.connect(makeMockTransport());
+
+    // The denial response should still be returned even if the notifier throws.
+    const result = (await callTool(server, {
+      name: "worktree.delete",
+      arguments: {},
+    })) as { isError?: boolean; content: Array<{ text: string }> };
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("TIER_NOT_PERMITTED");
+  });
+});

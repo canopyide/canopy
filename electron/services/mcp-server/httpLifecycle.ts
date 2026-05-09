@@ -3,11 +3,13 @@ import { randomUUID } from "node:crypto";
 import type { AddressInfo } from "node:net";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { webContents as webContentsModule } from "electron";
 import type { WindowRegistry } from "../../window/WindowRegistry.js";
 import { store } from "../../store.js";
+import { CHANNELS } from "../../ipc/channels.js";
 import { formatErrorMessage } from "../../../shared/utils/errorMessage.js";
 import { summarizeMcpArgs } from "../../../shared/utils/mcpArgsSummary.js";
-import type { HelpTokenValidator, HelpSessionWebContentsResolver } from "./shared.js";
+import type { HelpTokenValidator, HelpSessionWebContentsResolver, McpTier } from "./shared.js";
 import {
   extractBearerToken,
   isAuthorized,
@@ -686,6 +688,28 @@ export class HttpLifecycle {
         return this.deps.getCachedManifest();
       };
 
+    const notifyTierMismatch: import("./sessionServer.js").SessionServerDeps["notifyTierMismatch"] =
+      (payload) => {
+        // Help-session bearers only — external/api-key sessions have no
+        // associated UI to surface a banner. Targeted at the pinned WebContents
+        // so the assistant panel that triggered the call gets the event,
+        // even if a different project view is currently focused.
+        const id = this.deps.sessionStore.sessionWebContentsMap.get(payload.sessionId);
+        if (id === undefined) return;
+        const wc = webContentsModule.fromId(id);
+        if (!wc || wc.isDestroyed()) return;
+        try {
+          wc.send(CHANNELS.MCP_TIER_NOT_PERMITTED, {
+            sessionId: payload.sessionId,
+            toolId: payload.toolId,
+            tier: payload.tier,
+            targetTier: payload.targetTier,
+          });
+        } catch (err) {
+          console.error("[MCP] tier-not-permitted send failed:", err);
+        }
+      };
+
     return {
       sessionStore: this.deps.sessionStore,
       requestManifest,
@@ -699,7 +723,41 @@ export class HttpLifecycle {
       },
       getCachedManifest,
       getFullToolSurface: () => this.getConfig().fullToolSurface === true,
+      notifyTierMismatch,
     };
+  }
+
+  /**
+   * Promote a help-session's tier in-memory (Approve once). Refuses downgrades
+   * — a malicious renderer cannot drop its own privileges. Returns the new
+   * tier or throws if the session is unknown / the request is invalid.
+   */
+  setSessionTier(sessionId: string, tier: McpTier): { sessionId: string; tier: McpTier } {
+    if (!sessionId || typeof sessionId !== "string") {
+      throw new Error("Invalid sessionId");
+    }
+    if (tier !== "workbench" && tier !== "action" && tier !== "system") {
+      throw new Error("Invalid tier");
+    }
+    const current = this.deps.sessionStore.sessionTierMap.get(sessionId);
+    if (current === undefined) {
+      throw new Error("Unknown session");
+    }
+    // Only help-session bearers should be elevated through this surface —
+    // an unpinned session is api-key/external and has no UI invariant to
+    // satisfy.
+    if (!this.deps.sessionStore.sessionWebContentsMap.has(sessionId)) {
+      throw new Error("Session is not eligible for renderer tier elevation");
+    }
+    const order: McpTier[] = ["workbench", "action", "system", "external"];
+    const currentRank = order.indexOf(current);
+    const newRank = order.indexOf(tier);
+    if (newRank < currentRank) {
+      // Refuse downgrades — keep current tier.
+      return { sessionId, tier: current };
+    }
+    this.deps.sessionStore.sessionTierMap.set(sessionId, tier);
+    return { sessionId, tier };
   }
 
   getStatus(): {

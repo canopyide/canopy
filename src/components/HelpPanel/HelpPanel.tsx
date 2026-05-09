@@ -1,5 +1,5 @@
 import { Suspense, useCallback, useEffect, useRef, useState, useMemo } from "react";
-import { Settings2, ChevronRight, Plus, X } from "lucide-react";
+import { Settings2, ChevronRight, Plus, X, ShieldAlert, History } from "lucide-react";
 import * as semver from "semver";
 import { cn } from "@/lib/utils";
 import { DaintreeIcon } from "@/components/icons/DaintreeIcon";
@@ -16,6 +16,7 @@ import {
   getTerminalRefreshTier,
   useCliAvailabilityStore,
   useProjectStore,
+  useWorktreeSelectionStore,
 } from "@/store";
 import { useMacroFocusStore } from "@/store/macroFocusStore";
 import { getAgentConfig, getAssistantSupportedAgentIds } from "@/config/agents";
@@ -32,6 +33,9 @@ import { ACTIVE_AGENT_STATES, CLOSE_CONFIRM_AGENT_STATES } from "@shared/types/a
 import { buildResumeCommand } from "@shared/types/agentSettings";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { TABBABLE_SELECTOR } from "@/lib/accessibility";
+import { projectClient } from "@/clients/projectClient";
+import { resolveDaintreeMcpTier } from "@shared/types/project";
+import type { SnapshotInfo } from "@shared/types/ipc/git";
 
 const RESIZE_STEP = 10;
 const RESIZE_PAGE_STEP = 50;
@@ -66,6 +70,18 @@ const HIBERNATE_BUSY_RECHECK_MS = 2 * 60 * 1000;
 // usually see it for the moment they return to the panel; long-lived banners
 // distract from the conversation.
 const RESUME_BANNER_AUTO_DISMISS_MS = 10_000;
+
+// Tier-1 ambient banner auto-dismiss for the auto-snapshot pre-flight notice.
+// The signal is reassurance, not a call to action — fade once the user has had
+// time to see it.
+const SNAPSHOT_BANNER_AUTO_DISMISS_MS = 12_000;
+
+interface TierMismatchState {
+  sessionId: string;
+  toolId: string;
+  tier: string;
+  targetTier: "workbench" | "action" | "system" | null;
+}
 
 function notifyMcpNotReady(reason: string): void {
   notify({
@@ -266,6 +282,10 @@ export function HelpPanel({
   // `refresh=true` so an externally-updated CLI is detected without waiting
   // for the 12h AgentVersionService cache TTL. Cleared once a probe passes.
   const hasBlockedThisSessionRef = useRef(false);
+  const [tierMismatch, setTierMismatch] = useState<TierMismatchState | null>(null);
+  const [preflightSnapshot, setPreflightSnapshot] = useState<SnapshotInfo | null>(null);
+  const [isApprovingTier, setIsApprovingTier] = useState(false);
+  const activeWorktreeId = useWorktreeSelectionStore((s) => s.activeWorktreeId);
 
   const {
     isOpen,
@@ -316,6 +336,12 @@ export function HelpPanel({
   // store. If the user closes/navigates while `agent.launch` is in flight,
   // cleanup paths revoke this ref so the token isn't leaked until 7-day GC.
   const pendingSessionIdRef = useRef<string | null>(null);
+
+  // Once-per-session guard for the auto-snapshot pre-flight. Set TRUE
+  // synchronously before the async snapshotGet IPC so React 19 StrictMode's
+  // double-invoke of the effect can't fire two parallel pre-flights. Reset
+  // when the underlying terminal id (the assistant session boundary) changes.
+  const hasTakenPreflightSnapshotRef = useRef<string | null>(null);
 
   // Set true while the OS is suspended so the visibilitychange teardown below
   // distinguishes "system slept" from "project switched / window unloaded".
@@ -573,6 +599,66 @@ export function HelpPanel({
   // conversationTouched=true and would otherwise dismiss the banner before
   // the user has a chance to see it. The user can also dismiss manually via
   // the X button.
+  // Subscribe to tier-mismatch pushes from the MCP server. The push is
+  // targeted at this WebContents (only fires for help-session bearers minted
+  // here), so we don't need to filter by sessionId — any event we receive is
+  // for our help-session.
+  useEffect(() => {
+    const dispose = window.electron.mcpServer.onTierNotPermitted((payload) => {
+      setTierMismatch({
+        sessionId: payload.sessionId,
+        toolId: payload.toolId,
+        tier: payload.tier,
+        targetTier: payload.targetTier,
+      });
+    });
+    return dispose;
+  }, []);
+
+  // Auto-snapshot pre-flight: when the project's MCP tier is `system`, take a
+  // pre-flight snapshot once per session and surface a Tier-1 ambient banner.
+  // Triggered when the assistant terminal first becomes active (terminalId
+  // commits and `terminal` exists). Sets the ref synchronously to survive
+  // React 19 StrictMode double-mount; the `cancelled` flag handles in-flight
+  // cleanup on unmount.
+  useEffect(() => {
+    if (!terminalId || !terminal) return;
+    if (hasTakenPreflightSnapshotRef.current === terminalId) return;
+    const projectId = currentProject?.id;
+    if (!projectId) return;
+    const worktreeId = terminal.worktreeId ?? activeWorktreeId;
+    if (!worktreeId) return;
+
+    let cancelled = false;
+    hasTakenPreflightSnapshotRef.current = terminalId;
+    safeFireAndForget(
+      (async () => {
+        const settings = await projectClient.getSettings(projectId);
+        const tier = resolveDaintreeMcpTier(settings);
+        if (tier !== "system") return;
+        const snapshot = await window.electron.git.snapshotGet(worktreeId);
+        if (cancelled || !snapshot) return;
+        setPreflightSnapshot(snapshot);
+      })().catch((err) => {
+        logError("HelpPanel: snapshot pre-flight failed", err);
+      }),
+      { context: "HelpPanel:snapshot pre-flight" }
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [terminalId, terminal, currentProject?.id, activeWorktreeId]);
+
+  // Auto-dismiss the pre-flight snapshot banner after the read-window. Mirrors
+  // the resume-banner pattern at RESUME_BANNER_AUTO_DISMISS_MS — ambient signal,
+  // not a call to action.
+  useEffect(() => {
+    if (!preflightSnapshot) return;
+    const id = setTimeout(() => setPreflightSnapshot(null), SNAPSHOT_BANNER_AUTO_DISMISS_MS);
+    return () => clearTimeout(id);
+  }, [preflightSnapshot]);
+
   useEffect(() => {
     if (!showResumeBanner) return;
     const id = setTimeout(() => setShowResumeBanner(false), RESUME_BANNER_AUTO_DISMISS_MS);
@@ -1285,6 +1371,78 @@ export function HelpPanel({
     [seedAgentToLaunch, handleSelectAgent]
   );
 
+  const dismissTierMismatch = useCallback(() => {
+    setTierMismatch(null);
+  }, []);
+
+  const handleApproveOnce = useCallback(() => {
+    const current = tierMismatch;
+    if (!current?.targetTier || isApprovingTier) return;
+    setIsApprovingTier(true);
+    safeFireAndForget(
+      window.electron.mcpServer
+        .setSessionTier(current.sessionId, current.targetTier)
+        .then(() => {
+          setTierMismatch(null);
+        })
+        .catch((err) => {
+          logError("HelpPanel: setSessionTier failed", err);
+          notify({
+            type: "error",
+            title: "Couldn't approve tool",
+            message: formatErrorMessage(err, "Couldn't elevate the assistant's tier."),
+          });
+        })
+        .finally(() => {
+          setIsApprovingTier(false);
+        }),
+      { context: "HelpPanel:setSessionTier" }
+    );
+  }, [tierMismatch, isApprovingTier]);
+
+  const handleAlwaysAllow = useCallback(() => {
+    const current = tierMismatch;
+    if (!current?.targetTier || isApprovingTier) return;
+    // Read fresh state at click time — currentProject from render-time closure
+    // can drift if the user switches projects after the banner appears.
+    const projectId = useProjectStore.getState().currentProject?.id;
+    if (!projectId) {
+      dismissTierMismatch();
+      return;
+    }
+    const targetTier = current.targetTier;
+    setIsApprovingTier(true);
+    safeFireAndForget(
+      (async () => {
+        // projectClient.saveSettings goes directly to the IPC handler — using
+        // the `project.saveSettings` action would silently strip the
+        // `daintreeMcpTier` field (sanitized to keep agents from
+        // self-elevating).
+        const settings = await projectClient.getSettings(projectId);
+        await projectClient.saveSettings(projectId, {
+          ...settings,
+          daintreeMcpTier: targetTier,
+        });
+        // Also lift the live session immediately so the assistant doesn't have
+        // to wait for a new session to pick up the persisted change.
+        await window.electron.mcpServer.setSessionTier(current.sessionId, targetTier);
+        setTierMismatch(null);
+      })()
+        .catch((err) => {
+          logError("HelpPanel: always-allow tier write failed", err);
+          notify({
+            type: "error",
+            title: "Couldn't save permission",
+            message: formatErrorMessage(err, "Couldn't update project tier setting."),
+          });
+        })
+        .finally(() => {
+          setIsApprovingTier(false);
+        }),
+      { context: "HelpPanel:alwaysAllowTier" }
+    );
+  }, [tierMismatch, isApprovingTier, dismissTierMismatch]);
+
   // Esc-to-close. The xterm-helper-textarea check lets Escape reach the
   // running PTY (Codex/Claude/etc.) when the assistant terminal has focus
   // instead of closing the panel out from under the user.
@@ -1511,6 +1669,112 @@ export function HelpPanel({
                   >
                     <X className="w-3 h-3" />
                   </button>
+                </div>
+              )}
+              {preflightSnapshot && (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className={cn(
+                    "flex items-start gap-2 px-3 py-2 mx-3 mt-3 mb-1",
+                    "rounded-[var(--radius-md)] bg-overlay-subtle border border-daintree-border",
+                    "text-xs text-daintree-text/80"
+                  )}
+                  data-testid="help-snapshot-banner"
+                >
+                  <History
+                    className="w-3.5 h-3.5 shrink-0 mt-0.5 text-daintree-text/60"
+                    aria-hidden="true"
+                  />
+                  <span className="flex-1 select-text">
+                    Saved a snapshot of this worktree before any changes.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPreflightSnapshot(null)}
+                    aria-label="Dismiss snapshot notice"
+                    className="text-daintree-text/50 hover:text-daintree-text transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
+              {tierMismatch && (
+                <div
+                  role="alert"
+                  className={cn(
+                    "flex flex-col gap-2 px-3 py-2.5 mx-3 mt-3 mb-1",
+                    "rounded-[var(--radius-md)]",
+                    "bg-status-warning/10 border border-status-warning/40",
+                    "text-xs text-daintree-text/85"
+                  )}
+                  data-testid="help-tier-mismatch-banner"
+                >
+                  <div className="flex items-start gap-2">
+                    <ShieldAlert
+                      className="w-3.5 h-3.5 shrink-0 mt-0.5 text-status-warning"
+                      aria-hidden="true"
+                    />
+                    <div className="flex-1 select-text">
+                      <p className="font-medium text-daintree-text">Tool not permitted</p>
+                      <p className="mt-0.5 text-daintree-text/70">
+                        {tierMismatch.targetTier
+                          ? `${tierMismatch.toolId} needs ${tierMismatch.targetTier} tier access.`
+                          : `${tierMismatch.toolId} isn't available at any project tier.`}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={dismissTierMismatch}
+                      aria-label="Dismiss tier mismatch notice"
+                      className="text-daintree-text/50 hover:text-daintree-text transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                  {tierMismatch.targetTier && (
+                    <div className="flex items-center gap-2 flex-wrap pl-5">
+                      <button
+                        type="button"
+                        onClick={handleApproveOnce}
+                        disabled={isApprovingTier}
+                        className={cn(
+                          "px-2 py-1 rounded-[var(--radius-sm)] text-xs font-medium",
+                          "bg-daintree-text/10 hover:bg-daintree-text/15 text-daintree-text",
+                          "disabled:opacity-50 disabled:cursor-not-allowed transition-colors",
+                          "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
+                        )}
+                      >
+                        Approve once
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleAlwaysAllow}
+                        disabled={isApprovingTier}
+                        className={cn(
+                          "px-2 py-1 rounded-[var(--radius-sm)] text-xs font-medium",
+                          "bg-daintree-text/5 hover:bg-daintree-text/10 text-daintree-text/85",
+                          "disabled:opacity-50 disabled:cursor-not-allowed transition-colors",
+                          "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
+                        )}
+                      >
+                        Always allow for this project
+                      </button>
+                      <button
+                        type="button"
+                        onClick={dismissTierMismatch}
+                        disabled={isApprovingTier}
+                        className={cn(
+                          "px-2 py-1 rounded-[var(--radius-sm)] text-xs",
+                          "text-daintree-text/65 hover:text-daintree-text",
+                          "disabled:opacity-50 disabled:cursor-not-allowed transition-colors",
+                          "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
+                        )}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
               <div className="flex-1 relative min-h-0">

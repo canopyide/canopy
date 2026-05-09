@@ -364,6 +364,13 @@ export class McpServerService {
     this.getSessionIdForTerminal = resolver;
   }
 
+  setSessionTier(
+    sessionId: string,
+    tier: "workbench" | "action" | "system"
+  ): { sessionId: string; tier: McpTier } {
+    return this.httpLifecycle.setSessionTier(sessionId, tier);
+  }
+
   // Delegates for test access — tests call .bind(service) on these.
   requestManifest(...args: Parameters<typeof this.bridge.requestManifest>) {
     return this.bridge.requestManifest(...args);

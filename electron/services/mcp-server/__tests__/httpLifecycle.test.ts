@@ -231,6 +231,64 @@ describe("HttpLifecycle", () => {
     });
   });
 
+  describe("setSessionTier", () => {
+    it("elevates a help-session tier and updates sessionTierMap", () => {
+      const deps = fakeDeps();
+      deps.sessionStore.sessionTierMap.set("sess-1", "workbench");
+      deps.sessionStore.sessionWebContentsMap.set("sess-1", 42);
+
+      const lc = new HttpLifecycle(deps);
+      const result = lc.setSessionTier("sess-1", "system");
+
+      expect(result).toEqual({ sessionId: "sess-1", tier: "system" });
+      expect(deps.sessionStore.sessionTierMap.get("sess-1")).toBe("system");
+    });
+
+    it("refuses downgrades silently and keeps current tier", () => {
+      const deps = fakeDeps();
+      deps.sessionStore.sessionTierMap.set("sess-2", "system");
+      deps.sessionStore.sessionWebContentsMap.set("sess-2", 42);
+
+      const lc = new HttpLifecycle(deps);
+      const result = lc.setSessionTier("sess-2", "workbench");
+
+      expect(result.tier).toBe("system");
+      expect(deps.sessionStore.sessionTierMap.get("sess-2")).toBe("system");
+    });
+
+    it("throws for unknown sessions", () => {
+      const deps = fakeDeps();
+      const lc = new HttpLifecycle(deps);
+      expect(() => lc.setSessionTier("nonexistent", "system")).toThrow(/Unknown session/);
+    });
+
+    it("throws for sessions without a pinned WebContents (api-key/external)", () => {
+      const deps = fakeDeps();
+      deps.sessionStore.sessionTierMap.set("ext-1", "external");
+      // No sessionWebContentsMap entry — this is an api-key session.
+
+      const lc = new HttpLifecycle(deps);
+      expect(() => lc.setSessionTier("ext-1", "system")).toThrow(
+        /not eligible for renderer tier elevation/
+      );
+    });
+
+    it("throws for invalid tier values", () => {
+      const deps = fakeDeps();
+      deps.sessionStore.sessionTierMap.set("sess-3", "workbench");
+      deps.sessionStore.sessionWebContentsMap.set("sess-3", 42);
+
+      const lc = new HttpLifecycle(deps);
+      expect(() => lc.setSessionTier("sess-3", "external" as never)).toThrow(/Invalid tier/);
+    });
+
+    it("throws for blank session ids", () => {
+      const deps = fakeDeps();
+      const lc = new HttpLifecycle(deps);
+      expect(() => lc.setSessionTier("", "system")).toThrow(/Invalid sessionId/);
+    });
+  });
+
   describe("auth gate", () => {
     it("returns 401 with WWW-Authenticate: Bearer realm header", async () => {
       const deps = fakeDeps();

@@ -112,6 +112,30 @@ export function registerMcpServerHandlers(): () => void {
     })
   );
 
+  handlers.push(
+    typedHandle(
+      CHANNELS.MCP_SERVER_SET_SESSION_TIER,
+      async (payload: { sessionId: string; tier: "workbench" | "action" | "system" }) => {
+        if (!payload || typeof payload !== "object") {
+          throw new Error("Invalid payload");
+        }
+        const { sessionId, tier } = payload;
+        if (typeof sessionId !== "string" || !sessionId) {
+          throw new Error("Invalid sessionId");
+        }
+        if (tier !== "workbench" && tier !== "action" && tier !== "system") {
+          throw new Error("Invalid tier");
+        }
+        const svc = await getMcpServerService();
+        const result = svc.setSessionTier(sessionId, tier);
+        return {
+          sessionId: result.sessionId,
+          tier: result.tier as "workbench" | "action" | "system",
+        };
+      }
+    )
+  );
+
   // Push runtime-state transitions to every renderer. Subscribed lazily so
   // we don't pay the McpServerService import cost just to register a no-op
   // listener — but cleanup MUST observe whichever side won the race:
