@@ -15,6 +15,7 @@ const external = [
   "electron",
   "node-pty", // Native module
   "better-sqlite3", // Native module
+  "win-job-object", // Native module — Windows-only help-session Job Object (#7526)
   "copytree", // Externalize to preserve file structure (config files)
 ];
 
