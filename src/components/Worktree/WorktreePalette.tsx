@@ -55,6 +55,8 @@ function WorktreeListItem({ worktree, isActive, isSelected, onClick }: WorktreeL
   );
 }
 
+const getWorktreeActionLabel = (_item: WorktreeState | null): string => "Switch worktree";
+
 export interface WorktreePaletteProps {
   isOpen: boolean;
   query: string;
@@ -101,6 +103,7 @@ export function WorktreePalette({
       onConfirm={onConfirm}
       onClose={onClose}
       getItemId={(worktree) => worktree.id}
+      getActionLabel={getWorktreeActionLabel}
       isFiltering={isStale}
       renderItem={(worktree, _index, isSelected) => (
         <WorktreeListItem

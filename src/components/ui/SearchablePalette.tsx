@@ -259,7 +259,6 @@ export function SearchablePalette<T>({
         primaryHint={{ keys: ["↵"], label: phrase }}
         hints={[
           { keys: ["↑", "↓"], label: "to navigate" },
-          { keys: ["↵"], label: phrase },
           { keys: ["Esc"], label: "to close" },
         ]}
       />

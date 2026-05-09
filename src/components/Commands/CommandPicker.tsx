@@ -14,6 +14,9 @@ interface CommandPickerProps {
 
 const CATEGORY_ORDER: CommandCategory[] = ["github", "git", "workflow", "project", "system"];
 
+const getCommandActionLabel = (item: CommandManifestEntry | null): string =>
+  item?.label ?? "Run command";
+
 const CATEGORY_LABELS: Record<CommandCategory, string> = {
   github: "GitHub",
   git: "Git",
@@ -158,6 +161,7 @@ export function CommandPicker({
       onConfirm={handleConfirm}
       onClose={onDismiss}
       getItemId={(cmd) => cmd.id}
+      getActionLabel={getCommandActionLabel}
       isLoading={isLoading}
       isFiltering={isStale}
       renderItem={(cmd, index, isSelected) => {

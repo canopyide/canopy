@@ -12,6 +12,9 @@ beforeAll(() => {
   if (typeof globalThis.ResizeObserver === "undefined") {
     globalThis.ResizeObserver = ResizeObserverStub as typeof ResizeObserver;
   }
+  if (typeof Element.prototype.scrollIntoView !== "function") {
+    Element.prototype.scrollIntoView = function scrollIntoView() {};
+  }
 });
 
 vi.mock("@/lib/utils", () => ({
@@ -187,5 +190,64 @@ describe("SearchablePalette footer", () => {
     renderPalette({ footer: false, getActionLabel: () => "Switch terminal" });
     expect(document.body.textContent).not.toContain("to switch terminal");
     expect(document.body.textContent).not.toContain("to select");
+  });
+
+  it("getActionLabel updates when selectedIndex moves to a different item", () => {
+    const fn = (item: Item | null) => (item ? `Switch to ${item.label}` : "Pick");
+    const { rerender } = render(
+      <SearchablePalette<Item>
+        isOpen
+        query=""
+        results={items}
+        selectedIndex={0}
+        onQueryChange={() => {}}
+        onSelectPrevious={() => {}}
+        onSelectNext={() => {}}
+        onConfirm={() => {}}
+        onClose={() => {}}
+        getItemId={(item) => item.id}
+        renderItem={(item) => (
+          <button key={item.id} data-testid={`row-${item.id}`}>
+            {item.label}
+          </button>
+        )}
+        label="Test"
+        ariaLabel="Test palette"
+        getActionLabel={fn}
+      />
+    );
+    expect(document.body.textContent).toContain("to switch to alpha");
+
+    rerender(
+      <SearchablePalette<Item>
+        isOpen
+        query=""
+        results={items}
+        selectedIndex={2}
+        onQueryChange={() => {}}
+        onSelectPrevious={() => {}}
+        onSelectNext={() => {}}
+        onConfirm={() => {}}
+        onClose={() => {}}
+        getItemId={(item) => item.id}
+        renderItem={(item) => (
+          <button key={item.id} data-testid={`row-${item.id}`}>
+            {item.label}
+          </button>
+        )}
+        label="Test"
+        ariaLabel="Test palette"
+        getActionLabel={fn}
+      />
+    );
+    expect(document.body.textContent).toContain("to switch to charlie");
+    expect(document.body.textContent).not.toContain("to switch to alpha");
+  });
+
+  it("getActionLabel receives null when selectedIndex is out of range", () => {
+    const fn = vi.fn((item: Item | null) => (item ? `Switch ${item.label}` : "Fallback"));
+    renderPalette({ selectedIndex: 99, getActionLabel: fn });
+    expect(fn).toHaveBeenCalledWith(null);
+    expect(document.body.textContent).toContain("to fallback");
   });
 });

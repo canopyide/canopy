@@ -1,11 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { CircleHelp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TABBABLE_SELECTOR } from "@/lib/accessibility";
 import { ScrollShadow } from "@/components/ui/ScrollShadow";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { KbdChord } from "@/components/ui/Kbd";
 import { useOverlayState, useEscapeStack } from "@/hooks";
 import {
@@ -328,53 +326,56 @@ export interface PaletteFooterHint {
 }
 
 export interface PaletteFooterHintsProps {
+  /** Action chip rendered on the leading edge. Never hides. */
   primaryHint: PaletteFooterHint;
+  /**
+   * Secondary chips rendered on the trailing edge. They drop in reverse order
+   * (last hides first) as the footer narrows, so order them by ascending
+   * importance — the most-droppable chip last.
+   */
   hints: PaletteFooterHint[];
 }
 
-export function PaletteFooterHints({ primaryHint, hints }: PaletteFooterHintsProps) {
-  const [helpOpen, setHelpOpen] = useState(false);
-
+function HintChip({ hint, className }: { hint: PaletteFooterHint; className?: string }) {
   return (
-    <div className="w-full flex items-center justify-between">
-      <span>
-        {primaryHint.keys.map((key, i) => (
-          <kbd key={key} className={cn(KBD_CLASS, i > 0 && "ml-1")}>
-            {key}
-          </kbd>
-        ))}
-        <span className="ml-1.5">{primaryHint.label}</span>
-      </span>
-      <Popover open={helpOpen} onOpenChange={setHelpOpen}>
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            className="p-0.5 rounded transition-colors text-daintree-text/40 hover:text-daintree-text/60 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent"
-            aria-label="Keyboard shortcuts"
-          >
-            <CircleHelp className="w-3.5 h-3.5" />
-          </button>
-        </PopoverTrigger>
-        <PopoverContent
-          side="top"
-          align="end"
-          className="w-auto p-3"
-          onOpenAutoFocus={(e) => e.preventDefault()}
-        >
-          <div className="flex flex-col gap-1.5 text-xs text-daintree-text/60">
-            {hints.map(({ keys, label }) => (
-              <span key={label}>
-                {keys.map((key, i) => (
-                  <kbd key={key} className={cn(KBD_CLASS, i > 0 && "ml-1")}>
-                    {key}
-                  </kbd>
-                ))}
-                <span className="ml-1.5">{label}</span>
-              </span>
-            ))}
-          </div>
-        </PopoverContent>
-      </Popover>
+    <span className={cn("inline-flex items-baseline shrink-0", className)}>
+      {hint.keys.map((key, i) => (
+        <kbd key={key} className={cn(KBD_CLASS, i > 0 && "ml-1")}>
+          {key}
+        </kbd>
+      ))}
+      <span className="ml-1.5">{hint.label}</span>
+    </span>
+  );
+}
+
+// Width-priority drop classes for secondary chips, matched by index from the
+// trailing edge. Index 0 is the rightmost chip (drops first), index 1 is the
+// next-to-rightmost, etc. Tailwind needs each variant present in source for the
+// JIT compiler — keep as a static array.
+const SECONDARY_DROP_CLASSES = [
+  "@max-[380px]/palette-footer:hidden",
+  "@max-[280px]/palette-footer:hidden",
+  "@max-[200px]/palette-footer:hidden",
+];
+
+export function PaletteFooterHints({ primaryHint, hints }: PaletteFooterHintsProps) {
+  return (
+    <div className="@container/palette-footer w-full flex items-center justify-between gap-3">
+      <HintChip hint={primaryHint} />
+      {hints.length > 0 && (
+        <div className="flex items-center gap-3 min-w-0">
+          {hints.map((hint, i) => {
+            // Map render index → drop priority: rightmost chip (last in array) gets
+            // index 0 from the trailing edge, hiding first. Clamp to the table.
+            const fromEnd = hints.length - 1 - i;
+            const dropClass =
+              SECONDARY_DROP_CLASSES[fromEnd] ??
+              SECONDARY_DROP_CLASSES[SECONDARY_DROP_CLASSES.length - 1]!;
+            return <HintChip key={`${i}-${hint.label}`} hint={hint} className={dropClass} />;
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -385,7 +386,6 @@ function DefaultKeyboardHints() {
       primaryHint={{ keys: ["↵"], label: "to select" }}
       hints={[
         { keys: ["↑", "↓"], label: "to navigate" },
-        { keys: ["↵"], label: "to select" },
         { keys: ["Esc"], label: "to close" },
       ]}
     />

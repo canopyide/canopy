@@ -93,26 +93,26 @@ function renderQuickSwitcher({ results, selectedIndex }: RenderArgs) {
 }
 
 describe("QuickSwitcher dynamic footer hint", () => {
-  it("shows 'Switch terminal' when a terminal row is selected", () => {
+  it("shows 'to switch terminal' when a terminal row is selected", () => {
     renderQuickSwitcher({ results: [terminalItem, worktreeItem], selectedIndex: 0 });
 
-    expect(screen.getByText("Switch terminal")).toBeTruthy();
-    expect(screen.queryByText("Switch worktree")).toBeNull();
+    expect(screen.getByText("to switch terminal")).toBeTruthy();
+    expect(screen.queryByText("to switch worktree")).toBeNull();
   });
 
-  it("shows 'Switch worktree' when a worktree row is selected", () => {
+  it("shows 'to switch worktree' when a worktree row is selected", () => {
     renderQuickSwitcher({ results: [terminalItem, worktreeItem], selectedIndex: 1 });
 
-    expect(screen.getByText("Switch worktree")).toBeTruthy();
-    expect(screen.queryByText("Switch terminal")).toBeNull();
+    expect(screen.getByText("to switch worktree")).toBeTruthy();
+    expect(screen.queryByText("to switch terminal")).toBeNull();
   });
 
   it("falls back to default hints when results are empty", () => {
     renderQuickSwitcher({ results: [], selectedIndex: -1 });
 
     expect(screen.getByText("to select")).toBeTruthy();
-    expect(screen.queryByText("Switch terminal")).toBeNull();
-    expect(screen.queryByText("Switch worktree")).toBeNull();
+    expect(screen.queryByText("to switch terminal")).toBeNull();
+    expect(screen.queryByText("to switch worktree")).toBeNull();
   });
 
   it("updates the footer when selection moves between item types", () => {
@@ -132,11 +132,11 @@ describe("QuickSwitcher dynamic footer hint", () => {
     };
 
     const { rerender } = render(<QuickSwitcher {...props} selectedIndex={0} />);
-    expect(screen.getByText("Switch terminal")).toBeTruthy();
+    expect(screen.getByText("to switch terminal")).toBeTruthy();
 
     rerender(<QuickSwitcher {...props} selectedIndex={1} />);
-    expect(screen.getByText("Switch worktree")).toBeTruthy();
-    expect(screen.queryByText("Switch terminal")).toBeNull();
+    expect(screen.getByText("to switch worktree")).toBeTruthy();
+    expect(screen.queryByText("to switch terminal")).toBeNull();
   });
 
   it("restores default hints when results transition from populated to empty", () => {
@@ -157,10 +157,10 @@ describe("QuickSwitcher dynamic footer hint", () => {
     const { rerender } = render(
       <QuickSwitcher {...baseProps} results={[terminalItem]} selectedIndex={0} />
     );
-    expect(screen.getByText("Switch terminal")).toBeTruthy();
+    expect(screen.getByText("to switch terminal")).toBeTruthy();
 
     rerender(<QuickSwitcher {...baseProps} results={[]} selectedIndex={-1} />);
-    expect(screen.queryByText("Switch terminal")).toBeNull();
+    expect(screen.queryByText("to switch terminal")).toBeNull();
     expect(screen.getByText("to select")).toBeTruthy();
   });
 
@@ -177,7 +177,7 @@ describe("QuickSwitcher dynamic footer hint", () => {
 
     const hintEl = document.getElementById(describedBy!);
     expect(hintEl).not.toBeNull();
-    expect(hintEl?.textContent).toContain("Switch terminal");
+    expect(hintEl?.textContent).toContain("to switch terminal");
   });
 
   it("does not render an aria-live region", () => {

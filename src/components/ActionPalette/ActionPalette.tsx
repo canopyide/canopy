@@ -11,6 +11,10 @@ import type {
 // re-renders driven only by a freshly-created callback identity.
 const getActionItemId = (item: ActionPaletteItemType): string => item.id;
 
+// Verb-noun derived from the highlighted action's title — empty selection
+// falls back to a generic "run action" so the chip never goes blank.
+const getActionLabel = (item: ActionPaletteItemType | null): string => item?.title ?? "Run action";
+
 type ActionPaletteProps = Pick<
   UseActionPaletteReturn,
   | "isOpen"
@@ -67,6 +71,7 @@ export function ActionPalette({
       onClose={close}
       onHoverIndex={setSelectedIndex}
       getItemId={getActionItemId}
+      getActionLabel={getActionLabel}
       isFiltering={isStale}
       renderItem={(item, index, isSelected, onHoverIndex) => (
         <ActionPaletteItem

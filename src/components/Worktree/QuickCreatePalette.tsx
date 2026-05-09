@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { SearchablePalette } from "@/components/ui/SearchablePalette";
+import { PaletteFooterHints } from "@/components/ui/AppPaletteDialog";
 import type { QuickCreateItem, UseQuickCreatePaletteReturn } from "@/hooks/useQuickCreatePalette";
 import { getAutoAssign } from "@shared/types/project";
 import type { TerminalRecipe } from "@/types";
@@ -175,20 +176,10 @@ export function QuickCreatePalette({ palette }: QuickCreatePaletteProps) {
         ) : undefined
       }
       footer={
-        <div className="flex items-center gap-3 text-xs text-daintree-text/40">
-          <span>
-            <kbd className="px-1 py-0.5 rounded bg-daintree-bg border border-daintree-border/40 text-[11px]">
-              ↵
-            </kbd>{" "}
-            {palette.isPending ? "Creating…" : "Create"}
-          </span>
-          <span>
-            <kbd className="px-1 py-0.5 rounded bg-daintree-bg border border-daintree-border/40 text-[11px]">
-              Esc
-            </kbd>{" "}
-            Cancel
-          </span>
-        </div>
+        <PaletteFooterHints
+          primaryHint={{ keys: ["↵"], label: palette.isPending ? "creating…" : "to create" }}
+          hints={[{ keys: ["Esc"], label: "to cancel" }]}
+        />
       }
     />
   );
