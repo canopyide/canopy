@@ -1,6 +1,5 @@
-import { expect, type Locator, type Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { SEL } from "./selectors";
-import { T_LONG } from "./timeouts";
 
 const mod = process.platform === "darwin" ? "Meta" : "Control";
 
@@ -10,8 +9,40 @@ const toolbarOverflowLabels: Record<string, string> = {
   "Open settings": "Settings",
 };
 
+const toolbarButtonIds: Record<string, string> = {
+  "Open Terminal": "terminal",
+  "Open Browser": "browser",
+  "Open settings": "settings",
+};
+
+const toolbarShortcuts: Record<string, string> = {
+  "Open Terminal": `${mod}+Alt+t`,
+  "Open Browser": `${mod}+Alt+b`,
+};
+
 function extractExactAriaLabel(selector: string): string | null {
   return selector.match(/aria-label="([^"]+)"/)?.[1] ?? null;
+}
+
+async function clickFirstVisible(
+  locator: Locator,
+  clickTimeout = 3000,
+  visibilityTimeout = 250
+): Promise<boolean> {
+  const count = await locator.count();
+  for (let i = 0; i < count; i++) {
+    const candidate = locator.nth(i);
+    if (!(await candidate.isVisible({ timeout: visibilityTimeout }).catch(() => false))) {
+      continue;
+    }
+    try {
+      await candidate.click({ timeout: clickTimeout, noWaitAfter: true });
+      return true;
+    } catch {
+      // Another toolbar layout pass may have moved the item into overflow.
+    }
+  }
+  return false;
 }
 
 /**
@@ -25,20 +56,27 @@ export async function clickToolbarButton(
   timeout = 5000
 ): Promise<void> {
   const toolbar = page.getByRole("toolbar", { name: "Main toolbar" });
+  const label = extractExactAriaLabel(selector);
+
+  if (label) {
+    const toolbarButtonId = toolbarButtonIds[label];
+    if (toolbarButtonId) {
+      const buttonById = toolbar.locator(`[data-toolbar-button-id="${toolbarButtonId}"] button`);
+      if (await clickFirstVisible(buttonById, 3000, 1000)) {
+        return;
+      }
+    }
+
+    const roleButtons = toolbar.getByRole("button", { name: label, exact: true });
+    if (await clickFirstVisible(roleButtons, 3000, 1000)) {
+      return;
+    }
+  }
+
   const button = toolbar.locator(selector);
 
-  const buttonCount = await button.count();
-  for (let i = 0; i < buttonCount; i++) {
-    const candidate = button.nth(i);
-    if (!(await candidate.isVisible({ timeout: 250 }).catch(() => false))) {
-      continue;
-    }
-    try {
-      await candidate.click({ timeout: 3000, noWaitAfter: true });
-      return;
-    } catch {
-      // Another toolbar layout pass may have moved the item into overflow.
-    }
+  if (await clickFirstVisible(button)) {
+    return;
   }
 
   // Button might be in the overflow menu — look for and open it
@@ -47,7 +85,6 @@ export async function clickToolbarButton(
     await overflowTrigger.click();
 
     // Extract the aria-label from the selector to find the menu item
-    const label = extractExactAriaLabel(selector);
     if (label) {
       const menuItem = page.getByRole("menuitem", {
         name: toolbarOverflowLabels[label] ?? label,
@@ -58,8 +95,12 @@ export async function clickToolbarButton(
     }
   }
 
-  // Last resort: try clicking with longer timeout
-  await button.click({ timeout, noWaitAfter: true });
+  if (label && toolbarShortcuts[label]) {
+    await page.keyboard.press(toolbarShortcuts[label]);
+    return;
+  }
+
+  throw new Error(`Toolbar button ${label ?? selector} was not visible or present`);
 }
 
 /**
@@ -89,17 +130,6 @@ export async function openSettings(page: Page, timeout = 10000): Promise<void> {
  * otherwise falls back to keyboard shortcut.
  */
 export async function openTerminal(page: Page): Promise<void> {
-  const before = await page.locator(SEL.panel.anyPanel).count();
-  await page.keyboard.press(`${mod}+Alt+t`);
-  try {
-    await expect
-      .poll(() => page.locator(SEL.panel.anyPanel).count(), { timeout: T_LONG })
-      .toBe(before + 1);
-    return;
-  } catch {
-    // Some tests leave focus in surfaces that can swallow shortcuts; click the toolbar path.
-  }
-
   await clickToolbarButton(page, SEL.toolbar.openTerminal);
 }
 
