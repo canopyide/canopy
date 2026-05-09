@@ -282,6 +282,7 @@ export class IdentityWatcher {
       knownAgentPrompt.test(visibleTail) ||
       /^\s*[>❯›]\s+\d+\./m.test(visibleTail) ||
       (/^\s*>\s*$/m.test(visibleTail) && /\?\s+for\s+shortcuts/i.test(visibleTail)) ||
+      (hasPtyDescendants && /^\s*PS\s+\S.*>\s*$/i.test(currentVisibleLine ?? "")) ||
       (hasPtyDescendants && /^\s*[>❯›]\s*$/.test(currentVisibleLine ?? ""))
     );
   }

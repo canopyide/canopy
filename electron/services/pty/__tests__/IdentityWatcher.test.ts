@@ -586,6 +586,33 @@ describe("IdentityWatcher", () => {
       expect(state.detectionCalls).toHaveLength(0);
     });
 
+    it("holds agent demotion when a stale PowerShell prompt is visible while a child process remains active", async () => {
+      const inject = vi.fn();
+      const clear = vi.fn();
+      const fakeDetector = {
+        injectShellCommandEvidence: inject,
+        clearShellCommandEvidence: clear,
+      } as unknown as ProcessDetector;
+      const powerShellPrompt = "PS C:\\Users\\runneradmin\\AppData\\Local\\Temp\\project>";
+      const { delegate, state } = createFakeDelegate({
+        processDetector: fakeDetector,
+        visibleLines: ["& 'C:\\npm\\prefix\\claude.cmd'", powerShellPrompt],
+        cursorLine: powerShellPrompt,
+        ptyDescendantCount: 1,
+        foreground: null,
+      });
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.onShellSubmit("& 'C:\\npm\\prefix\\claude.cmd'");
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(watcher.isFallbackCommitted).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(clear).not.toHaveBeenCalledWith("prompt-return");
+      expect(state.detectionCalls).toHaveLength(0);
+    });
+
     // Inverse of the OR→AND test below: fallback is icon-only (no agentType),
     // live icon disagrees. A correct AND check must let the commit proceed
     // rather than pre-empting on the (absent) agentType match.
