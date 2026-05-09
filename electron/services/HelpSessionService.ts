@@ -35,7 +35,11 @@ const TEMPLATE_HASH_FILE = ".template-hash";
 const DEFAULT_TIER: HelpAssistantTier = "action";
 const DEFAULT_DAINTREE_CONTROL = true;
 const DEFAULT_DOC_SEARCH = true;
-const DEFAULT_SKIP_PERMISSIONS = false;
+const DEFAULT_BYPASS_PERMISSIONS = false;
+
+function isHelpAssistantTier(value: unknown): value is HelpAssistantTier {
+  return value === "workbench" || value === "action" || value === "system";
+}
 
 interface ProvisionInput {
   projectId: string;
@@ -64,6 +68,13 @@ interface HelpSessionRecord {
   sessionPath: string;
   agentId: string;
   tier: HelpAssistantTier;
+  /**
+   * Snapshot at provision time of the user's CLI bypass preference. Consumed
+   * by `lifecycle.ts` to decide whether to append `--dangerously-skip-permissions`
+   * to the spawn command. Decoupled from `tier` so a `tier="action"` session
+   * can still bypass Claude's confirmation gate (and vice versa).
+   */
+  bypassPermissions: boolean;
   createdAt: number;
   revoked: boolean;
   /** Computed at provision for codex sessions; consumed by lifecycle.ts. */
@@ -345,7 +356,7 @@ export class HelpSessionService {
     pathHash: string
   ): Promise<ProvisionResult | null> {
     const settings = this.readSettings();
-    const tier = this.resolveTier(settings.skipPermissions);
+    const tier = settings.tier;
     const sessionId = randomUUID();
     const token = randomBytes(SESSION_TOKEN_BYTES).toString("hex");
     const sessionsRoot = this.getSessionsRoot();
@@ -445,6 +456,7 @@ export class HelpSessionService {
       sessionPath,
       agentId: input.agentId,
       tier,
+      bypassPermissions: settings.bypassPermissions,
       createdAt: now,
       revoked: false,
       codexLaunchArgs,
@@ -724,24 +736,51 @@ export class HelpSessionService {
   private readSettings(): {
     daintreeControl: boolean;
     docSearch: boolean;
-    skipPermissions: boolean;
+    tier: HelpAssistantTier;
+    bypassPermissions: boolean;
   } {
     const stored = (store.get("helpAssistant") as Record<string, unknown> | undefined) ?? {};
+    // Read-time migration from the legacy `skipPermissions` boolean. This
+    // mirrors the IPC handler's `sanitizeStored` exactly — both must stay in
+    // lockstep so a session provisioned during the same boot as a renderer
+    // settings load reads identical values from the store.
+    const legacySkip = typeof stored.skipPermissions === "boolean" ? stored.skipPermissions : null;
+    const tier: HelpAssistantTier = isHelpAssistantTier(stored.tier)
+      ? stored.tier
+      : legacySkip !== null
+        ? legacySkip
+          ? "system"
+          : "action"
+        : DEFAULT_TIER;
+    const bypassPermissions =
+      typeof stored.bypassPermissions === "boolean"
+        ? stored.bypassPermissions
+        : legacySkip !== null
+          ? legacySkip
+          : DEFAULT_BYPASS_PERMISSIONS;
     return {
       daintreeControl:
         typeof stored.daintreeControl === "boolean"
           ? stored.daintreeControl
           : DEFAULT_DAINTREE_CONTROL,
       docSearch: typeof stored.docSearch === "boolean" ? stored.docSearch : DEFAULT_DOC_SEARCH,
-      skipPermissions:
-        typeof stored.skipPermissions === "boolean"
-          ? stored.skipPermissions
-          : DEFAULT_SKIP_PERMISSIONS,
+      tier,
+      bypassPermissions,
     };
   }
 
-  private resolveTier(skipPermissions: boolean): HelpAssistantTier {
-    return skipPermissions ? "system" : DEFAULT_TIER;
+  /**
+   * Returns the snapshot of the user's CLI bypass preference taken at
+   * provision time. `lifecycle.ts` reads this to decide whether to append
+   * `--dangerously-skip-permissions` to the assistant spawn command —
+   * decoupled from `tier` (which controls MCP capability) so the two
+   * controls are truly orthogonal.
+   */
+  getBypassPermissions(token: string): boolean {
+    if (!token) return false;
+    const record = this.sessionsByToken.get(token);
+    if (!record || record.revoked) return false;
+    return record.bypassPermissions;
   }
 
   private getSessionsRoot(): string {
@@ -880,7 +919,7 @@ export class HelpSessionService {
   private async writeClaudeSettings(
     sessionPath: string,
     bundledHelpFolder: string,
-    settings: { daintreeControl: boolean; skipPermissions: boolean }
+    settings: { daintreeControl: boolean; bypassPermissions: boolean }
   ): Promise<void> {
     const bundledSettingsPath = path.join(bundledHelpFolder, ".claude", "settings.json");
     const baseline = await this.readBundledSettings(bundledSettingsPath);
@@ -898,7 +937,7 @@ export class HelpSessionService {
     // server interactively on first launch, which would block the assistant.
     merged.enableAllProjectMcpServers = true;
 
-    if (settings.skipPermissions) {
+    if (settings.bypassPermissions) {
       merged.defaultMode = "bypassPermissions";
     }
 

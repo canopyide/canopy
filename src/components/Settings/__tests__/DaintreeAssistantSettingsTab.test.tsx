@@ -162,6 +162,8 @@ interface McpServerApi {
   rotateApiKey: ReturnType<typeof vi.fn>;
   getConfigSnippet: ReturnType<typeof vi.fn>;
   onRuntimeStateChanged: ReturnType<typeof vi.fn>;
+  getAuditRecords: ReturnType<typeof vi.fn>;
+  clearAuditLog: ReturnType<typeof vi.fn>;
 }
 
 function installApi(
@@ -172,7 +174,8 @@ function installApi(
     getSettings: vi.fn().mockResolvedValue({
       docSearch: true,
       daintreeControl: true,
-      skipPermissions: false,
+      tier: "action" as const,
+      bypassPermissions: false,
       auditRetention: 7,
       customArgs: "",
     }),
@@ -194,6 +197,8 @@ function installApi(
     rotateApiKey: vi.fn().mockResolvedValue("dnt-key-new"),
     getConfigSnippet: vi.fn().mockResolvedValue('{ "url": "http://127.0.0.1:45454/sse" }'),
     onRuntimeStateChanged: vi.fn(() => () => {}),
+    getAuditRecords: vi.fn().mockResolvedValue([]),
+    clearAuditLog: vi.fn().mockResolvedValue(undefined),
   };
   window.electron = {
     helpAssistant: { ...helpDefaults, ...helpAssistant },
@@ -251,22 +256,42 @@ describe("DaintreeAssistantSettingsTab", () => {
     });
   });
 
-  it("turning on skip permissions reveals the inline warning copy", async () => {
+  it("turning on bypass permissions reveals the inline warning copy", async () => {
     const { container } = render(
       <SettingsValidationProvider>
         <DaintreeAssistantSettingsTab />
       </SettingsValidationProvider>
     );
-    await waitForContent(container, "Skip permission prompts");
+    await waitForContent(container, "Bypass Claude permission prompts");
 
-    expect(container.textContent).not.toContain("becomes the only safeguard");
+    expect(container.textContent).not.toContain("only remaining safeguard");
 
-    const toggle = screen.getByLabelText("Skip permission prompts during help sessions");
+    const toggle = screen.getByLabelText(
+      "Bypass Claude Code permission prompts during help sessions"
+    );
     fireEvent.click(toggle);
 
-    await waitForContent(container, "becomes the only safeguard");
+    await waitForContent(container, "only remaining safeguard");
     expect(window.electron.helpAssistant.setSettings).toHaveBeenCalledWith({
-      skipPermissions: true,
+      bypassPermissions: true,
+    });
+  });
+
+  it("changing the capability tier persists tier=system", async () => {
+    const { container } = render(
+      <SettingsValidationProvider>
+        <DaintreeAssistantSettingsTab />
+      </SettingsValidationProvider>
+    );
+    await waitForContent(container, "Capability tier");
+
+    const select = screen.getByLabelText("Capability tier") as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: "system" } });
+
+    await waitFor(() => {
+      expect(window.electron.helpAssistant.setSettings).toHaveBeenCalledWith({
+        tier: "system",
+      });
     });
   });
 
@@ -464,7 +489,8 @@ describe("DaintreeAssistantSettingsTab", () => {
         getSettings: vi.fn().mockResolvedValue({
           docSearch: false,
           daintreeControl: true,
-          skipPermissions: false,
+          tier: "action" as const,
+          bypassPermissions: false,
           auditRetention: 7,
         }),
       },
@@ -594,7 +620,8 @@ describe("DaintreeAssistantSettingsTab", () => {
       getSettings: vi.fn().mockResolvedValue({
         docSearch: true,
         daintreeControl: true,
-        skipPermissions: false,
+        tier: "action" as const,
+        bypassPermissions: false,
         auditRetention: 7,
         customArgs: "--model sonnet",
       }),
@@ -634,7 +661,8 @@ describe("DaintreeAssistantSettingsTab", () => {
       getSettings: vi.fn().mockResolvedValue({
         docSearch: true,
         daintreeControl: true,
-        skipPermissions: false,
+        tier: "action" as const,
+        bypassPermissions: false,
         auditRetention: 7,
         customArgs: "--model sonnet",
       }),

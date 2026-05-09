@@ -10,7 +10,13 @@ import type {
   TerminalRecipe,
   TerminalSnapshot,
 } from "../project.js";
-import type { OnboardingState, ChecklistState, ChecklistItemId, IpcEventBusMap } from "./maps.js";
+import type {
+  OnboardingState,
+  ChecklistState,
+  ChecklistItemId,
+  HelpAssistantTier,
+  IpcEventBusMap,
+} from "./maps.js";
 import type { AgentSettings, AgentSettingsEntry } from "../agentSettings.js";
 import type { AgentPreset } from "../../config/agentRegistry.js";
 import type { VoiceInputStatus } from "../voice.js";
@@ -1520,8 +1526,17 @@ export interface HelpAssistantSettings {
   docSearch: boolean;
   /** Allow the help assistant to call Daintree control tools via the local MCP. Defaults to true. */
   daintreeControl: boolean;
-  /** Pass --dangerously-skip-permissions when launching the help assistant. Defaults to false. */
-  skipPermissions: boolean;
+  /**
+   * MCP capability tier the help assistant runs at — controls which Daintree
+   * actions the assistant can call without prompting. Defaults to `"action"`.
+   */
+  tier: HelpAssistantTier;
+  /**
+   * Pass `--dangerously-skip-permissions` (Claude) and write
+   * `defaultMode: "bypassPermissions"` into the session's `.claude/settings.json`.
+   * Bypasses Claude Code's per-tool confirmation gate. Defaults to false.
+   */
+  bypassPermissions: boolean;
   /** How long to retain help-session audit logs. 7 = 7 days, 30 = 30 days, 0 = off. Defaults to 7. */
   auditRetention: HelpAssistantAuditRetention;
   /** Whitespace-separated CLI flags appended at assistant launch (e.g. "--model sonnet"). Defaults to "". */

@@ -497,6 +497,7 @@ export type {
   ChecklistState,
   ChecklistItems,
   ChecklistItemId,
+  HelpAssistantTier,
 } from "./ipc/maps.js";
 
 // Task Queue types - DAG-based task management

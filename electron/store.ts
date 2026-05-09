@@ -18,6 +18,7 @@ import type { AgentId } from "../shared/types/agent.js";
 import { DEFAULT_AGENT_SETTINGS, DEFAULT_APP_AGENT_CONFIG } from "../shared/types/index.js";
 import type { AppThemeConfig } from "../shared/types/appTheme.js";
 import type { SettingsRecovery, ActionFrecencyEntry } from "../shared/types/ipc/app.js";
+import type { HelpAssistantTier } from "../shared/types/ipc/maps.js";
 
 interface WindowStateEntry {
   x?: number;
@@ -208,7 +209,24 @@ export interface StoreSchema {
   helpAssistant: {
     docSearch: boolean;
     daintreeControl: boolean;
-    skipPermissions: boolean;
+    /**
+     * MCP capability tier for the help assistant. Migrated at read time from
+     * the legacy `skipPermissions` boolean — see `helpAssistant.ts`
+     * `sanitizeStored` and `HelpSessionService.readSettings`.
+     */
+    tier: HelpAssistantTier;
+    /**
+     * Bypass Claude Code's per-tool confirmation prompt for help sessions.
+     * Migrated at read time from the legacy `skipPermissions` boolean.
+     */
+    bypassPermissions: boolean;
+    /**
+     * Legacy field — kept in the schema for backward compatibility so old
+     * stored values round-trip through the read-time migration without being
+     * stripped by the typed accessor. New writes use `tier` and
+     * `bypassPermissions`; this field is no longer written to.
+     */
+    skipPermissions?: boolean;
     auditRetention: 7 | 30 | 0;
   };
   pendingErrors: ErrorRecord[];
@@ -356,7 +374,8 @@ const storeOptions = {
     helpAssistant: {
       docSearch: true,
       daintreeControl: true,
-      skipPermissions: false,
+      tier: "action" as const,
+      bypassPermissions: false,
       auditRetention: 7 as const,
     },
     pendingErrors: [],
