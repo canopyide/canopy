@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { checkVersionMonotonic, extractVersion } from "./check-version-monotonic.mjs";
+import {
+  ALLOWED_PREFIXES,
+  checkVersionMonotonic,
+  extractVersion,
+  validatePrefix,
+} from "./check-version-monotonic.mjs";
 
 describe("check-version-monotonic", () => {
   describe("checkVersionMonotonic", () => {
@@ -91,6 +96,20 @@ describe("check-version-monotonic", () => {
       expect(() => extractVersion({ version: 1 }, "test.yml")).toThrow(/must be a string/);
     });
 
+    it("throws when version field is a boolean (YAML `version: true`)", () => {
+      expect(() => extractVersion({ version: true }, "test.yml")).toThrow(/must be a string/);
+    });
+
+    it("throws when version field is an array (YAML sequence)", () => {
+      expect(() => extractVersion({ version: ["1.0.0"] }, "test.yml")).toThrow(/must be a string/);
+    });
+
+    it("throws when version field is a nested object", () => {
+      expect(() => extractVersion({ version: { major: 1 } }, "test.yml")).toThrow(
+        /must be a string/
+      );
+    });
+
     it("throws when version field is a non-semver string", () => {
       expect(() => extractVersion({ version: "v1" }, "test.yml")).toThrow(/not a valid semver/);
     });
@@ -101,6 +120,46 @@ describe("check-version-monotonic", () => {
 
     it("includes the label in the error message", () => {
       expect(() => extractVersion({}, "live latest-mac.yml")).toThrow(/live latest-mac\.yml/);
+    });
+  });
+
+  describe("validatePrefix", () => {
+    it("accepts every prefix in ALLOWED_PREFIXES", () => {
+      for (const prefix of ALLOWED_PREFIXES) {
+        expect(validatePrefix(prefix)).toEqual({ ok: true });
+      }
+    });
+
+    it("exposes the canonical channel allowlist", () => {
+      // Lock the public surface — adding a channel should be a deliberate edit
+      // (the upload step in release.yml uses the same prefix to glob YAMLs).
+      expect(ALLOWED_PREFIXES).toEqual(["latest", "rc", "beta"]);
+    });
+
+    it("rejects an empty string with the not-set guidance", () => {
+      const result = validatePrefix("");
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain("not set");
+      expect(result.error).toContain("latest");
+    });
+
+    it("rejects undefined with the not-set guidance", () => {
+      const result = validatePrefix(undefined);
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain("not set");
+    });
+
+    it("rejects a typo (latset) so the gate doesn't silently 404 every channel", () => {
+      const result = validatePrefix("latset");
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain("'latset'");
+      expect(result.error).toContain("not a known channel");
+    });
+
+    it("rejects nightly (channel was retired before the gate landed)", () => {
+      const result = validatePrefix("nightly");
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain("not a known channel");
     });
   });
 });

@@ -26,6 +26,7 @@ import semver from "semver";
 const FEED_BASE_URL = "https://updates.daintree.org/releases";
 const FETCH_TIMEOUT_MS = 15_000;
 const PLATFORMS = ["mac", "linux"];
+const ALLOWED_PREFIXES = ["latest", "rc", "beta"];
 
 function fail(message) {
   console.error(`::error::${message}`);
@@ -53,6 +54,26 @@ export function extractVersion(parsed, label) {
   return raw;
 }
 
+export function validatePrefix(prefix) {
+  if (!prefix) {
+    return {
+      ok: false,
+      error:
+        "UPDATE_METADATA_PREFIX env var is not set — refusing to guess the channel. " +
+        `Set it to one of: ${ALLOWED_PREFIXES.join(", ")}.`,
+    };
+  }
+  if (!ALLOWED_PREFIXES.includes(prefix)) {
+    return {
+      ok: false,
+      error:
+        `UPDATE_METADATA_PREFIX='${prefix}' is not a known channel. ` +
+        `Expected one of: ${ALLOWED_PREFIXES.join(", ")}.`,
+    };
+  }
+  return { ok: true };
+}
+
 export function checkVersionMonotonic(liveVersion, newVersion) {
   if (!semver.valid(liveVersion)) {
     return { ok: false, error: `live version '${liveVersion}' is not valid semver` };
@@ -72,36 +93,47 @@ export function checkVersionMonotonic(liveVersion, newVersion) {
 async function fetchLiveVersion(prefix, platform) {
   const url = `${FEED_BASE_URL}/${prefix}-${platform}.yml`;
   const controller = new AbortController();
+  // Keep the abort signal armed across both the headers fetch and the body
+  // read — a CDN that returns 200 then stalls the body would otherwise hang
+  // until the job-level 15min timeout instead of failing closed at 15s.
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  let response;
   try {
-    response = await fetch(url, {
-      signal: controller.signal,
-      headers: { "cache-control": "no-cache" },
-    });
-  } catch (error) {
-    const cause = error instanceof Error ? error.message : String(error);
-    throw new Error(`failed to fetch ${url}: ${cause}`);
+    let response;
+    try {
+      response = await fetch(url, {
+        signal: controller.signal,
+        headers: { "cache-control": "no-cache" },
+      });
+    } catch (error) {
+      const cause = error instanceof Error ? error.message : String(error);
+      throw new Error(`failed to fetch ${url}: ${cause}`);
+    }
+
+    if (response.status === 404) {
+      return { url, status: 404, version: null };
+    }
+    if (!response.ok) {
+      throw new Error(`unexpected HTTP ${response.status} from ${url}`);
+    }
+    let body;
+    try {
+      body = await response.text();
+    } catch (error) {
+      const cause = error instanceof Error ? error.message : String(error);
+      throw new Error(`failed to read body from ${url}: ${cause}`);
+    }
+    let parsed;
+    try {
+      parsed = load(body);
+    } catch (error) {
+      const cause = error instanceof Error ? error.message : String(error);
+      throw new Error(`failed to parse YAML from ${url}: ${cause}`);
+    }
+    const version = extractVersion(parsed, `live ${prefix}-${platform}.yml`);
+    return { url, status: response.status, version };
   } finally {
     clearTimeout(timer);
   }
-
-  if (response.status === 404) {
-    return { url, status: 404, version: null };
-  }
-  if (!response.ok) {
-    throw new Error(`unexpected HTTP ${response.status} from ${url}`);
-  }
-  const body = await response.text();
-  let parsed;
-  try {
-    parsed = load(body);
-  } catch (error) {
-    const cause = error instanceof Error ? error.message : String(error);
-    throw new Error(`failed to parse YAML from ${url}: ${cause}`);
-  }
-  const version = extractVersion(parsed, `live ${prefix}-${platform}.yml`);
-  return { url, status: response.status, version };
 }
 
 async function readLocalVersion(releaseDir, prefix, platform) {
@@ -125,11 +157,12 @@ async function readLocalVersion(releaseDir, prefix, platform) {
 
 async function main() {
   const prefix = process.env.UPDATE_METADATA_PREFIX;
-  if (!prefix) {
-    fail(
-      "UPDATE_METADATA_PREFIX env var is not set — refusing to guess the channel. " +
-        "Set it to one of: latest, rc, beta."
-    );
+  // A typo like "latset" would otherwise make every live URL 404, which the
+  // gate treats as "first release in channel" and silently passes — exactly
+  // the regression we're trying to prevent.
+  const prefixCheck = validatePrefix(prefix);
+  if (!prefixCheck.ok) {
+    fail(prefixCheck.error);
   }
 
   const releaseDir = process.env.RELEASE_DIR ?? "release";
@@ -154,17 +187,23 @@ async function main() {
   }
   const newVersion = macLocal.version;
 
-  let lives;
-  try {
-    lives = await Promise.all(PLATFORMS.map((platform) => fetchLiveVersion(prefix, platform)));
-  } catch (error) {
-    fail(error instanceof Error ? error.message : String(error));
-  }
+  // Fetch every channel feed in parallel so a transient mac error and a real
+  // linux regression both surface in the same `::error::` annotation block,
+  // rather than fail-fast hiding the second issue until the first is rerun.
+  const fetchResults = await Promise.allSettled(
+    PLATFORMS.map((platform) => fetchLiveVersion(prefix, platform))
+  );
 
   const failures = [];
   for (let i = 0; i < PLATFORMS.length; i++) {
     const platform = PLATFORMS[i];
-    const live = lives[i];
+    const settled = fetchResults[i];
+    if (settled.status === "rejected") {
+      const reason = settled.reason;
+      failures.push(`${platform}: ${reason instanceof Error ? reason.message : String(reason)}`);
+      continue;
+    }
+    const live = settled.value;
     if (live.version === null) {
       console.log(
         `[monotonic] ${platform}: no live ${prefix}-${platform}.yml (HTTP 404) — first release in channel, allowing.`
@@ -194,5 +233,5 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   await main();
 }
 
-// Re-export for tests that want the shared constant without hardcoding the URL.
-export { FEED_BASE_URL, PLATFORMS };
+// Re-export for tests that want the shared constants without hardcoding values.
+export { FEED_BASE_URL, PLATFORMS, ALLOWED_PREFIXES };
