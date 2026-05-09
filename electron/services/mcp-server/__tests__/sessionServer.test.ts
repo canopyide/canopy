@@ -22,6 +22,7 @@ import {
   USER_REJECTED_CODE,
   ELICITATION_FAILED_CODE,
   unwrapDispatchResult,
+  type McpErrorPayload,
 } from "../shared.js";
 
 function fakeSessionStore(
@@ -1014,13 +1015,11 @@ describe("CallTool error envelope (integration through sessionServer)", () => {
     } catch (err) {
       expect(err).toBeInstanceOf(McpError);
       const mcpErr = err as McpError;
-      // McpError.message is "MCP error {code}: {json}" so extract the JSON part
-      const jsonMatch = mcpErr.message.match(/{.*}$/);
-      expect(jsonMatch).toBeTruthy();
-      const parsed = JSON.parse(jsonMatch![0]);
-      expect(parsed.code).toBe(TIER_NOT_PERMITTED_CODE);
-      expect(parsed.retriable).toBe(false);
-      expect(parsed.message).toContain("workbench");
+      const payload = (mcpErr as unknown as { data?: McpErrorPayload }).data;
+      expect(payload).toBeTruthy();
+      expect(payload!.code).toBe(TIER_NOT_PERMITTED_CODE);
+      expect(payload!.retriable).toBe(false);
+      expect(payload!.message).toContain("workbench");
     }
   });
 
@@ -1061,13 +1060,11 @@ describe("CallTool error envelope (integration through sessionServer)", () => {
     } catch (err) {
       expect(err).toBeInstanceOf(McpError);
       const mcpErr = err as McpError;
-      // McpError.message is "MCP error {code}: {json}" so extract the JSON part
-      const jsonMatch = mcpErr.message.match(/{.*}$/);
-      expect(jsonMatch).toBeTruthy();
-      const parsed = JSON.parse(jsonMatch![0]);
-      expect(parsed.code).toBe("VALIDATION_ERROR");
-      expect(parsed.details).toEqual({ unknownArguments: ["badKey"] });
-      expect(parsed.retriable).toBe(false);
+      const payload = (mcpErr as unknown as { data?: McpErrorPayload }).data;
+      expect(payload).toBeTruthy();
+      expect(payload!.code).toBe("VALIDATION_ERROR");
+      expect(payload!.details).toEqual({ unknownArguments: ["badKey"] });
+      expect(payload!.retriable).toBe(false);
     }
   });
 
@@ -1099,13 +1096,11 @@ describe("CallTool error envelope (integration through sessionServer)", () => {
     } catch (err) {
       expect(err).toBeInstanceOf(McpError);
       const mcpErr = err as McpError;
-      // McpError.message is "MCP error {code}: {json}" so extract the JSON part
-      const jsonMatch = mcpErr.message.match(/{.*}$/);
-      expect(jsonMatch).toBeTruthy();
-      const parsed = JSON.parse(jsonMatch![0]);
-      expect(parsed.code).toBe(EXECUTION_ERROR_CODE);
-      expect(parsed.retriable).toBe(true);
-      expect(parsed.message).toContain("transport went away");
+      const payload = (mcpErr as unknown as { data?: McpErrorPayload }).data;
+      expect(payload).toBeTruthy();
+      expect(payload!.code).toBe(EXECUTION_ERROR_CODE);
+      expect(payload!.retriable).toBe(true);
+      expect(payload!.message).toContain("transport went away");
     }
   });
 });
