@@ -96,6 +96,7 @@ export function routeHostEvent(event: PtyHostEvent, deps: PtyEventRouterDeps): b
         bufferUtilization: payload.bufferUtilization,
         pauseDuration: payload.pauseDuration,
         reason: payload.reason,
+        droppedBytes: payload.droppedBytes,
         timestamp: payload.timestamp,
       };
       deps.emitter.emit("terminal-status", statusPayload);

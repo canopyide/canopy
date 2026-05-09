@@ -82,6 +82,41 @@ describe("bridgePtyEvent", () => {
     expect(callbackPayloads).toEqual([{ id: "term-2", status: "paused" }]);
   });
 
+  it("forwards droppedBytes on data-loss terminal-status events", () => {
+    const callbackPayloads: Array<{ id: string; status: string; droppedBytes?: number }> = [];
+    const busPayloads: Array<{ id: string; status: string; droppedBytes?: number }> = [];
+    events.on("terminal:status", (payload) => {
+      busPayloads.push({
+        id: payload.id,
+        status: payload.status,
+        droppedBytes: (payload as { droppedBytes?: number }).droppedBytes,
+      });
+    });
+
+    const handled = bridgePtyEvent(
+      {
+        type: "terminal-status",
+        id: "term-3",
+        status: "data-loss",
+        droppedBytes: 1024,
+        timestamp: Date.now(),
+      } as never,
+      {
+        onTerminalStatus: (payload) => {
+          callbackPayloads.push({
+            id: payload.id,
+            status: payload.status,
+            droppedBytes: (payload as { droppedBytes?: number }).droppedBytes,
+          });
+        },
+      }
+    );
+
+    expect(handled).toBe(true);
+    expect(busPayloads).toEqual([{ id: "term-3", status: "data-loss", droppedBytes: 1024 }]);
+    expect(callbackPayloads).toEqual([{ id: "term-3", status: "data-loss", droppedBytes: 1024 }]);
+  });
+
   it("returns false for unhandled event types", () => {
     const handled = bridgePtyEvent({ type: "unknown-event" } as never);
     expect(handled).toBe(false);

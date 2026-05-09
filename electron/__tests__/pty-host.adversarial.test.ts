@@ -717,6 +717,34 @@ describe("pty-host adversarial", () => {
     expect(dataEvents).toHaveLength(0);
   });
 
+  it("IPC_QUEUE_FULL_DROPPED_BYTES_USES_UTF8_BYTE_COUNT", async () => {
+    // Multi-byte chars must report UTF-8 byte count, not JS string length.
+    // Using payload.length here would silently mis-report drops for any
+    // non-ASCII output (CJK terminals, emoji, accented characters).
+    const parentPort = await loadHost();
+    const terminal = createTerminal("t1");
+    hostState.terminals.set("t1", terminal);
+
+    parentPort.emit("message", { type: "spawn", id: "t1", options: {} });
+    await flushMicrotasks();
+
+    const ipcQueue = hostState.ipcQueueManagers[0];
+    ipcQueue.isAtCapacity.mockReturnValue(true);
+    ipcQueue.getUtilization.mockReturnValue(100);
+    parentPort.postMessage.mockClear();
+
+    const payload = "⚠".repeat(10); // 10 chars, 30 UTF-8 bytes
+    expect(payload.length).toBe(10);
+    expect(Buffer.byteLength(payload, "utf8")).toBe(30);
+
+    (hostState.currentPtyManager as MiniEmitter).emit("data", "t1", payload);
+    await flushMicrotasks();
+
+    const dataLoss = terminalStatusPayloads(parentPort).filter((p) => p.status === "data-loss");
+    expect(dataLoss).toHaveLength(1);
+    expect(dataLoss[0].droppedBytes).toBe(30);
+  });
+
   it("IPC_QUEUE_FULL_BYPASSES_TERMINAL_STATUS_DEDUP", async () => {
     const parentPort = await loadHost();
     const terminal = createTerminal("t1");
