@@ -32,6 +32,7 @@ export type BuiltInActionId =
   | "terminal.getOutput"
   | "terminal.getStatus"
   | "terminal.sendCommand"
+  | "terminal.waitUntilIdle"
   | "panel.list"
   | "worktree.list"
   | "worktree.getCurrent"

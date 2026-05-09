@@ -19,6 +19,30 @@ import type {
 } from "../../../shared/types/actions.js";
 import { CHANNELS } from "../../ipc/channels.js";
 import { ACTIONS_LIST_TOOL } from "../mcp-server/shared.js";
+import {
+  WAIT_UNTIL_IDLE_DESCRIPTION,
+  WAIT_UNTIL_IDLE_INPUT_SCHEMA,
+  WAIT_UNTIL_IDLE_OUTPUT_SCHEMA,
+} from "../../../shared/types/terminalWaitUntilIdle.js";
+
+const waitUntilIdleManifestEntry = (): ActionManifestEntry => ({
+  id: "terminal.waitUntilIdle" as ActionId,
+  name: "terminal.waitUntilIdle",
+  title: "Wait until terminal idle",
+  description: WAIT_UNTIL_IDLE_DESCRIPTION,
+  category: "terminal",
+  kind: "query" as ActionKind,
+  danger: "safe" as ActionDanger,
+  inputSchema: WAIT_UNTIL_IDLE_INPUT_SCHEMA,
+  outputSchema: WAIT_UNTIL_IDLE_OUTPUT_SCHEMA,
+  enabled: true,
+  requiresArgs: true,
+  mcpAnnotations: {
+    readOnlyHint: true,
+    idempotentHint: false,
+    destructiveHint: false,
+  },
+});
 
 const testHomeDir = vi.hoisted(
   () => `${process.cwd()}/.vitest-mcp-home-${Math.random().toString(36).slice(2)}`
@@ -4713,7 +4737,9 @@ describe("McpServerService", () => {
 
     it("listTools advertises the native tool with the documented schema for the action tier", async () => {
       paneTokenTiers.set("token-wait-action", "action");
-      const { window } = createMockWindow({ getManifest: () => [] });
+      const { window } = createMockWindow({
+        getManifest: () => [waitUntilIdleManifestEntry()],
+      });
       await service.start(window);
       const { client, transport } = await connectClient(service.currentPort!, {
         Authorization: "Bearer token-wait-action",
@@ -4731,7 +4757,9 @@ describe("McpServerService", () => {
 
     it("listTools hides the native tool from the workbench tier", async () => {
       paneTokenTiers.set("token-wait-wb", "workbench");
-      const { window } = createMockWindow({ getManifest: () => [] });
+      const { window } = createMockWindow({
+        getManifest: () => [waitUntilIdleManifestEntry()],
+      });
       await service.start(window);
       const { client, transport } = await connectClient(service.currentPort!, {
         Authorization: "Bearer token-wait-wb",
@@ -5195,6 +5223,66 @@ describe("McpServerService", () => {
 
       // Listener count should not grow per call — the handler must remove its
       // subscription on every exit path.
+      expect(innerBus.listenerCount("agent:state-changed")).toBe(baseline);
+    });
+
+    it("emits exactly one audit record per call via the shared finally path", async () => {
+      // Regression guard for the post-#7529 refactor: the wait-until-idle
+      // branch short-circuits before dispatchAction but must still feed the
+      // single shared audit `finally` block — never duplicate the record.
+      const { terminalId, agentId } = nextIds();
+      await seedTerminalAgent(terminalId, agentId, "idle");
+
+      const { window } = createMockWindow({ getManifest: () => [] });
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      const baselineMatching = service
+        .getAuditRecords()
+        .filter((r) => r.toolId === "terminal.waitUntilIdle").length;
+      const result = (await client.callTool({
+        name: "terminal.waitUntilIdle",
+        arguments: { terminalId },
+      })) as TextToolResult;
+      expect(result.isError).toBeFalsy();
+
+      const matching = service
+        .getAuditRecords()
+        .filter((r) => r.toolId === "terminal.waitUntilIdle");
+      expect(matching.length - baselineMatching).toBe(1);
+      const record = matching.at(-1)!;
+      expect(record.result).toBe("success");
+      expect(record.toolId).toBe("terminal.waitUntilIdle");
+      expect(record.tier).toBe("external");
+      expect(record.durationMs).toBeGreaterThanOrEqual(0);
+      expect(record.errorCode).toBeUndefined();
+    });
+
+    it("releases its event listener after a timeout exit", async () => {
+      const { events } = await import("../events.js");
+      const innerBus = (events as unknown as { bus: import("node:events").EventEmitter }).bus;
+      const { terminalId, agentId } = nextIds();
+      await seedTerminalAgent(terminalId, agentId, "working");
+
+      const { window } = createMockWindow({ getManifest: () => [] });
+      await service.start(window);
+      const { client, transport } = await connectClient(service.currentPort!);
+      transports.push(transport);
+
+      const baseline = innerBus.listenerCount("agent:state-changed");
+
+      const result = (await client.callTool({
+        name: "terminal.waitUntilIdle",
+        arguments: { terminalId, timeoutMs: 50 },
+      })) as TextToolResult;
+      expect(result.isError).toBeFalsy();
+      const payload = JSON.parse(result.content[0]!.text);
+      expect(payload.timedOut).toBe(true);
+
+      // The timeout exit path runs through the same `finally` cleanup as the
+      // resolved path — the listener must be removed even when the wait
+      // expires without a state transition.
       expect(innerBus.listenerCount("agent:state-changed")).toBe(baseline);
     });
   });

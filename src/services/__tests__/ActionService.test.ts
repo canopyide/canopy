@@ -145,6 +145,52 @@ describe("ActionService", () => {
       expect(service.get("acme.plugin.maybe" as ActionId)!.requiresArgs).toBe(false);
     });
 
+    it("propagates rawOutputSchema onto ActionManifestEntry when no Zod resultSchema is set", () => {
+      const rawOutput = {
+        type: "object",
+        properties: { ok: { type: "boolean" } },
+        required: ["ok"],
+      };
+      const action = {
+        id: "acme.plugin.report" as ActionId,
+        title: "Report",
+        description: "Returns a payload with a raw output schema",
+        category: "plugin",
+        kind: "query",
+        danger: "safe",
+        scope: "renderer",
+        rawOutputSchema: rawOutput,
+        run: vi.fn().mockResolvedValue({ ok: true }),
+      };
+      service.register(action as unknown as ActionDefinition);
+      expect(service.get("acme.plugin.report" as ActionId)!.outputSchema).toEqual(rawOutput);
+    });
+
+    it("prefers Zod resultSchema over rawOutputSchema when both are provided", async () => {
+      const { z } = await import("zod");
+      const rawOutput = { type: "object", properties: { fallback: { type: "string" } } };
+      const action = {
+        id: "acme.plugin.both" as ActionId,
+        title: "Both Schemas",
+        description: "Has both result and raw output",
+        category: "plugin",
+        kind: "query",
+        danger: "safe",
+        scope: "renderer",
+        resultSchema: z.object({ canonical: z.string() }),
+        rawOutputSchema: rawOutput,
+        run: vi.fn().mockResolvedValue({ canonical: "x" }),
+      };
+      service.register(action as unknown as ActionDefinition);
+      const entry = service.get("acme.plugin.both" as ActionId)!;
+      expect(entry.outputSchema).toBeDefined();
+      // resultSchema (Zod) wins — produced schema must mention the canonical
+      // property, not the raw schema's `fallback`.
+      const props = (entry.outputSchema as { properties: Record<string, unknown> }).properties;
+      expect(props.canonical).toBeDefined();
+      expect(props.fallback).toBeUndefined();
+    });
+
     it("should throw when registering duplicate action and preserve the original registration", async () => {
       const originalRun = vi.fn().mockResolvedValue("original");
       const original: ActionDefinition = {

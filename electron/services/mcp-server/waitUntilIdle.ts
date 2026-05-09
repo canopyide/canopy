@@ -6,9 +6,8 @@ import {
   type WaitUntilIdleResult,
   DEFAULT_WAIT_UNTIL_IDLE_TIMEOUT_MS,
   MAX_WAIT_UNTIL_IDLE_TIMEOUT_MS,
-  mapAgentStateToBusyState,
-  mapAgentStateToIdleReason,
-} from "./shared.js";
+} from "../../../shared/types/terminalWaitUntilIdle.js";
+import { mapAgentStateToBusyState, mapAgentStateToIdleReason } from "./shared.js";
 
 export async function handleWaitUntilIdle(
   rawArgs: unknown,

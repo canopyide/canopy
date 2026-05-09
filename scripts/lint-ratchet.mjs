@@ -33,7 +33,7 @@ function main() {
     lintOutput = execSync("npx eslint . --format json", {
       cwd: ROOT,
       encoding: "utf-8",
-      maxBuffer: 10 * 1024 * 1024, // 10MB buffer for large output
+      maxBuffer: 50 * 1024 * 1024, // 50MB buffer for large output
       stdio: ["pipe", "pipe", "pipe"],
     });
   } catch (error) {
