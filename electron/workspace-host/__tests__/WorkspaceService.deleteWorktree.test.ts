@@ -578,6 +578,47 @@ describe("WorkspaceService.deleteWorktree", () => {
     expect(service["monitors"].has("/test/worktree")).toBe(true);
   });
 
+  it("retries transient filesystem locks from git worktree remove", async () => {
+    vi.useFakeTimers();
+    try {
+      const fsModule = await import("fs/promises");
+      const mockAccess = vi.mocked(fsModule.access);
+      mockAccess.mockImplementation(async (p: unknown) => {
+        if (n(p as string) === "/test/worktree") return undefined;
+        throw new Error("ENOENT");
+      });
+
+      let removeAttempts = 0;
+      mockSimpleGit.raw.mockImplementation(async (args: string[]) => {
+        if (args[0] === "worktree" && args[1] === "remove") {
+          removeAttempts += 1;
+          if (removeAttempts === 1) {
+            throw new Error("fatal: failed to delete '/test/worktree': Permission denied");
+          }
+        }
+        return undefined;
+      });
+
+      createAndRegisterMonitor();
+
+      const promise = service.deleteWorktree("req-permission-retry", "/test/worktree");
+      await vi.advanceTimersByTimeAsync(250);
+      await promise;
+
+      expect(removeAttempts).toBe(2);
+      expect(mockSendEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "delete-worktree-result",
+          requestId: "req-permission-retry",
+          success: true,
+        })
+      );
+      expect(service["monitors"].has("/test/worktree")).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("skips teardown when no config file exists", async () => {
     const fsModule = await import("fs/promises");
     vi.mocked(fsModule.access).mockRejectedValue(new Error("ENOENT"));

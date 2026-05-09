@@ -11,11 +11,29 @@ type TerminalBridge = {
   submit?: (terminalId: string, text: string) => Promise<void>;
 };
 
+const WINDOWS_COMMAND_ECHO_TIMEOUT_MS = 7_500;
+const WINDOWS_COMMAND_ECHO_RETRIES = 2;
+
 async function getPanelId(panelLocator: Locator): Promise<string> {
   return panelLocator.evaluate((el) => {
     const panel = el.closest("[data-panel-id]");
     return panel?.getAttribute("data-panel-id") ?? "";
   });
+}
+
+function compactTerminalText(text: string): string {
+  return text.replace(/\r?\n/g, "");
+}
+
+function splitCommandForSubmit(command: string): { body: string; enterSuffix: string } {
+  let body = command.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  let enterCount = 0;
+  while (body.endsWith("\n")) {
+    body = body.slice(0, -1);
+    enterCount++;
+  }
+  if (enterCount === 0) enterCount = 1;
+  return { body, enterSuffix: "\r".repeat(enterCount) };
 }
 
 export async function getTerminalText(panelLocator: Locator): Promise<string> {
@@ -140,6 +158,51 @@ export async function writeTerminalInput(
   if (!wrote) throw new Error(`terminal.write bridge unavailable for panel ${panelId}`);
 }
 
+async function runWindowsEchoGuardedCommand(
+  page: Page,
+  panelLocator: Locator,
+  command: string
+): Promise<boolean> {
+  if (process.platform !== "win32") return false;
+
+  const { body, enterSuffix } = splitCommandForSubmit(command);
+  if (body.length === 0 || body.length > 512 || body.includes("\n")) return false;
+
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= WINDOWS_COMMAND_ECHO_RETRIES; attempt++) {
+    const beforeLength = (await getTerminalText(panelLocator)).length;
+    await writeTerminalInput(page, panelLocator, body);
+
+    try {
+      await expect
+        .poll(
+          async () => {
+            const text = await getTerminalText(panelLocator);
+            const appendedText = text.length >= beforeLength ? text.slice(beforeLength) : text;
+            return compactTerminalText(appendedText);
+          },
+          {
+            timeout: WINDOWS_COMMAND_ECHO_TIMEOUT_MS,
+            intervals: [100, 250, 500],
+          }
+        )
+        .toContain(compactTerminalText(body));
+
+      await writeTerminalInput(page, panelLocator, enterSuffix);
+      return true;
+    } catch (error) {
+      lastError = error;
+      if (attempt < WINDOWS_COMMAND_ECHO_RETRIES) {
+        await writeTerminalInput(page, panelLocator, "\u0003");
+        await page.waitForTimeout(250);
+      }
+    }
+  }
+
+  if (lastError instanceof Error) throw lastError;
+  throw new Error(`Timed out waiting for terminal command echo: ${body}`);
+}
+
 export async function runTerminalCommand(
   page: Page,
   panelLocator: Locator,
@@ -151,6 +214,10 @@ export async function runTerminalCommand(
 
   await waitForTerminalReady(page, panelLocator);
   await activateTerminal(page, panelId);
+
+  if (await runWindowsEchoGuardedCommand(page, panelLocator, command)) {
+    return;
+  }
 
   const payload = command.endsWith("\n") ? command : `${command}\n`;
   const submitted = await page.evaluate(
