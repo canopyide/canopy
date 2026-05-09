@@ -290,6 +290,31 @@ describe("PtyPool", () => {
     pool.dispose();
   });
 
+  it("preserves caller-supplied DAINTREE_* keys (e.g. agent preset metadata)", async () => {
+    // Regression: 5572d21de ran caller env through the full filterEnvironment,
+    // which strips DAINTREE_*. That broke caller-supplied agent preset env
+    // (DAINTREE_E2E_AGENT_COLOR, custom metadata). DAINTREE_* in caller env
+    // is intentional and must reach the spawned shell. Anti-spoofing of
+    // inherited process.env is handled separately and still strips DAINTREE_*.
+    spawnMock.mockReturnValue(createFakeProcess(413));
+    const pool = new PtyPool({ poolSize: 1, defaultCwd: "/repo" });
+
+    pool.warmForKey(
+      "/repo",
+      {
+        DAINTREE_E2E_AGENT_COLOR: "#3366ff",
+        DAINTREE_E2E_PROVIDER: "claude",
+      },
+      "env-color"
+    );
+    await flushMicrotasks();
+
+    const spawnOptions = spawnMock.mock.calls[0]?.[2] as { env?: Record<string, string> };
+    expect(spawnOptions.env?.DAINTREE_E2E_AGENT_COLOR).toBe("#3366ff");
+    expect(spawnOptions.env?.DAINTREE_E2E_PROVIDER).toBe("claude");
+    pool.dispose();
+  });
+
   it("preserves user's UTF-8 LANG instead of overriding to en_US", async () => {
     process.env.LANG = "ja_JP.UTF-8";
     spawnMock.mockReturnValue(createFakeProcess(501));

@@ -2,7 +2,11 @@ import * as pty from "node-pty";
 import type { IDisposable } from "node-pty";
 import os from "os";
 import { getDefaultShell, getDefaultShellArgs } from "./pty/terminalShell.js";
-import { filterEnvironment, ensureUtf8Locale } from "./pty/EnvironmentFilter.js";
+import {
+  filterEnvironment,
+  filterSensitiveOnly,
+  ensureUtf8Locale,
+} from "./pty/EnvironmentFilter.js";
 import { POOL_ENV_EMPTY_HASH } from "./pty/ptyPoolEnvHash.js";
 
 export interface PtyPoolConfig {
@@ -503,24 +507,34 @@ export class PtyPool {
   /**
    * Build the env that's actually written into the spawned shell.
    *
-   * Critically, callerEnv is run through `filterEnvironment` here even though
-   * the fresh-spawn path (`buildTerminalEnv` in terminalSpawn.ts) merges it
-   * raw. The pool entry outlives a single acquire — a shell warmed with one
-   * caller's secrets can be handed to a future caller whose hash matches
-   * (because the hash is also computed post-filter). Filtering at warm time
-   * guarantees no secret persists in an idle pool process.
+   * Two different filter strengths are applied:
    *
-   * DAINTREE_* metadata is NOT injected here — pool entries don't have
-   * a paneId until acquire time, and the metadata is meaningful only for
-   * the assigned terminal. (Terminals acquired from the pool inherit
-   * whatever the pool warmed; if you need fresh metadata, fall back to
-   * direct spawn.)
+   *   - **Inherited `process.env`** runs through the full `filterEnvironment`,
+   *     which strips both sensitive vars AND `DAINTREE_*` keys. The latter is
+   *     anti-spoofing: only `injectDaintreeMetadata` (fresh-spawn path) is
+   *     allowed to set DAINTREE_*; anything inherited from the OS env is
+   *     dropped.
+   *
+   *   - **Caller `options.env`** runs through `filterSensitiveOnly`, which
+   *     strips only credentials. Pool entries outlive a single acquire, so a
+   *     shell warmed with one caller's secrets could be handed to a future
+   *     caller whose hash matches — filtering at warm time guarantees no
+   *     secret persists in an idle pool process. But `DAINTREE_*` keys are
+   *     **kept** here: the caller is intentionally setting them (e.g. e2e
+   *     presets pass DAINTREE_E2E_AGENT_COLOR through so the agent CLI can
+   *     read it). Stripping them caused #7625-class regressions where the
+   *     pool key collapsed to env-empty and warm shells were served without
+   *     the caller's metadata.
+   *
+   * DAINTREE_* metadata for live panes (PANE_ID, CWD, PROJECT_ID, WORKTREE_ID)
+   * is NOT injected here — pool entries don't have a paneId until acquire
+   * time, and that metadata is meaningful only for the assigned terminal.
    */
   private buildSpawnEnv(callerEnv: Record<string, string> | undefined): Record<string, string> {
     const filtered = filterEnvironment(process.env as Record<string, string | undefined>);
 
     if (callerEnv) {
-      Object.assign(filtered, filterEnvironment(callerEnv));
+      Object.assign(filtered, filterSensitiveOnly(callerEnv));
     }
 
     // TUI reliability: ensure rich terminal capabilities for Claude/Gemini CLIs.

@@ -1,4 +1,4 @@
-import { filterEnvironment } from "./EnvironmentFilter.js";
+import { filterSensitiveOnly } from "./EnvironmentFilter.js";
 
 /**
  * Volatile env keys that change with shell session state but don't change the
@@ -7,26 +7,50 @@ import { filterEnvironment } from "./EnvironmentFilter.js";
  */
 export const VOLATILE_ENV_KEYS: ReadonlySet<string> = new Set(["SHLVL", "PWD", "OLDPWD", "_"]);
 
+/**
+ * DAINTREE_* keys that `injectDaintreeMetadata` always overwrites on the
+ * fresh-spawn path. Excluded from the pool key because the caller's value
+ * (if any) gets overridden by injection — two callers differing only in
+ * these keys functionally share a slot. Other DAINTREE_* keys (e2e probes,
+ * caller-defined metadata) are NOT excluded — they reach the child intact
+ * and must therefore key the slot.
+ */
+const AUTO_INJECTED_DAINTREE_KEYS: ReadonlySet<string> = new Set([
+  "DAINTREE_PANE_ID",
+  "DAINTREE_CWD",
+  "DAINTREE_PROJECT_ID",
+  "DAINTREE_WORKTREE_ID",
+]);
+
 const EMPTY_HASH = "env-empty";
 
 /**
  * Stable identifier for a pool slot keyed by env. Two calls with the same
  * post-filter env additions (modulo volatile keys) return the same string.
  *
- * The hash runs over the post-`filterEnvironment` view because that's what
- * actually reaches the child process — secrets are stripped before hashing,
- * so two callers that differ only in stripped-away secrets share a slot
- * (correct: stripped secrets never reach the pre-warmed shell).
+ * The hash runs over the post-`filterSensitiveOnly` view of the caller env,
+ * matching what `PtyPool.buildSpawnEnv` actually writes into the spawned
+ * shell. Two important consequences:
+ *
+ *   - Secrets (API keys, tokens) are stripped before hashing, so two callers
+ *     that differ only in stripped-away secrets share a slot — correct,
+ *     because the stripped secrets never reach the pre-warmed shell anyway.
+ *   - `DAINTREE_*` keys ARE kept in the hash. Caller-supplied DAINTREE_*
+ *     vars (e.g. agent preset metadata, e2e probe vars) reach the child
+ *     intact and must therefore key the slot, otherwise a warm slot
+ *     populated for caller A would be served to caller B whose preset
+ *     intentionally set different DAINTREE_* values (#7625 family).
  */
 export function computePoolEnvHash(env: Record<string, string | undefined> | undefined): string {
   if (!env) {
     return EMPTY_HASH;
   }
 
-  const filtered = filterEnvironment(env);
+  const filtered = filterSensitiveOnly(env);
   const entries: string[] = [];
   for (const [key, value] of Object.entries(filtered)) {
     if (VOLATILE_ENV_KEYS.has(key)) continue;
+    if (AUTO_INJECTED_DAINTREE_KEYS.has(key)) continue;
     entries.push(`${key}=${value}`);
   }
 

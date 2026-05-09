@@ -63,14 +63,29 @@ describe("computePoolEnvHash", () => {
     );
   });
 
-  it("excludes DAINTREE_* metadata vars (they're injected fresh per spawn)", () => {
+  it("excludes auto-injected DAINTREE_* metadata vars (they're overwritten fresh per spawn)", () => {
     const base = computePoolEnvHash({ FOO: "1" });
     const withMetadata = computePoolEnvHash({
       FOO: "1",
       DAINTREE_PANE_ID: "abc",
       DAINTREE_CWD: "/repo",
+      DAINTREE_PROJECT_ID: "proj-1",
+      DAINTREE_WORKTREE_ID: "wt-1",
     });
     expect(withMetadata).toBe(base);
+  });
+
+  it("DOES distinguish on caller-supplied DAINTREE_* keys outside the auto-injected set", () => {
+    // Caller-supplied DAINTREE_E2E_AGENT_COLOR (e.g. agent preset metadata)
+    // reaches the child intact, so the pool slot must key on it — otherwise
+    // a slot warmed for caller A would be served to caller B whose preset
+    // intentionally set a different value (#7625 family regression).
+    const base = computePoolEnvHash({ FOO: "1" });
+    const withCustom = computePoolEnvHash({
+      FOO: "1",
+      DAINTREE_E2E_AGENT_COLOR: "#3366ff",
+    });
+    expect(withCustom).not.toBe(base);
   });
 
   it("strips undefined values before hashing", () => {
