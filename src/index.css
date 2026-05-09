@@ -1599,6 +1599,16 @@ body,
     will-change: auto;
   }
 
+  /* Checklist completion overlay — pure transient flash with no static-state
+   * meaning. Match the input-receipt-flash treatment: drop the keyframe and
+   * keep the overlay invisible so it can't ghost over content.
+   */
+  .animate-checklist-complete-flash {
+    animation: none;
+    opacity: 0;
+    will-change: auto;
+  }
+
   /* Label swap under reduced motion — animation removed entirely. The swap
    * still happens (the new value renders), it just snaps into place rather
    * than crossfading. WCAG 2.3.3: remove motion, don't just speed it up.
@@ -1721,6 +1731,12 @@ body[data-reduce-animations="true"] .file-change-row-new::before {
 }
 
 body[data-reduce-animations="true"] .animate-input-receipt-flash {
+  animation: none;
+  opacity: 0;
+  will-change: auto;
+}
+
+body[data-reduce-animations="true"] .animate-checklist-complete-flash {
   animation: none;
   opacity: 0;
   will-change: auto;
