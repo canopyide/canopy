@@ -20,6 +20,7 @@ import {
   UI_ENTER_EASING,
   UI_EXIT_EASING,
   UI_DOHERTY_THRESHOLD,
+  getUiPaletteTransitionDuration,
 } from "@/lib/animationUtils";
 
 export const KBD_CLASS =
@@ -61,7 +62,7 @@ export function AppPaletteDialog({
 
   const { isVisible, shouldRender } = useAnimatedPresence({
     isOpen,
-    animationDuration: UI_PALETTE_EXIT_DURATION,
+    animationDuration: getUiPaletteTransitionDuration("exit"),
     onAnimateOut: restoreFocus,
   });
 
