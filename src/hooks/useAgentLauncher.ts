@@ -276,9 +276,11 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
         // Hoisted so the soft-launch gate below reuses the result of the
         // single fetch inside the agentConfig block — avoids a second call
         // (and its potential `refresh(true)` fan-out across all CLIs) on
-        // every launch. The two reads are sequential within `launch()` and
-        // there are no interleaving awaits that could touch
-        // useCliAvailabilityStore between them.
+        // every launch. Background `refreshCliAvailability` (focus / wake
+        // handlers) can still race against awaits between this fetch and
+        // the gate, but that race is benign and pre-existing: at worst a
+        // launch sees a slightly stale `state` and creates the diagnostic
+        // panel, which the user can retry.
         let cachedLaunchCliDetail: AgentCliDetail | undefined;
         if (agentConfig) {
           if (!useAgentSettingsStore.getState().isInitialized) {

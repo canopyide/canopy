@@ -138,6 +138,10 @@ export const projectClient = {
   },
 
   getSettings: (projectId: string): Promise<ProjectSettings> => {
+    // Subscribe to project switch so external switches (multi-window,
+    // app menu, IPC) clear the per-projectId settings cache. Cheap to
+    // call repeatedly; the subscriber dedups internally.
+    ensureSubscribed();
     const cached = settingsCache.get(projectId);
     if (cached && cached.expiresAt > Date.now()) {
       return Promise.resolve(cached.value);

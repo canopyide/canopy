@@ -136,4 +136,26 @@ describe("globalEnvClient", () => {
     const result = await globalEnvClient.get();
     expect(result).toEqual({});
   });
+
+  it("set() during an in-flight get() does not let stale data poison the cache", async () => {
+    let resolve!: (v: unknown) => void;
+    const deferred = new Promise((r) => {
+      resolve = r;
+    });
+    getMock.mockReturnValueOnce(deferred);
+
+    const inflight = globalEnvClient.get();
+
+    // Mid-flight write — must invalidate before the IPC set resolves.
+    await globalEnvClient.set({ FOO: "new" });
+
+    // Old fetch resolves with stale data, but invalidation prevents cache repopulation.
+    resolve({ FOO: "old" });
+    await inflight;
+
+    getMock.mockResolvedValue({ FOO: "new" });
+    const fresh = await globalEnvClient.get();
+    expect(getMock).toHaveBeenCalledTimes(2);
+    expect(fresh).toEqual({ FOO: "new" });
+  });
 });

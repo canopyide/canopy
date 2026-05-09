@@ -356,4 +356,27 @@ describe("projectClient getSettings caching", () => {
     expect(getSettingsMock).toHaveBeenCalledTimes(2);
     expect(result).toBe(settingsA);
   });
+
+  it("saveSettings during in-flight getSettings does not let stale data poison the cache", async () => {
+    let resolve!: (v: unknown) => void;
+    const deferred = new Promise((r) => {
+      resolve = r;
+    });
+    getSettingsMock.mockReturnValueOnce(deferred);
+
+    const inflight = projectClient.getSettings("proj-1");
+
+    // Mid-flight write — invalidate the per-projectId cache.
+    await projectClient.saveSettings("proj-1", settingsB);
+    expect(saveSettingsMock).toHaveBeenCalledWith("proj-1", settingsB);
+
+    // Old fetch resolves with stale data; cache must not repopulate from it.
+    resolve(settingsA);
+    await inflight;
+
+    getSettingsMock.mockResolvedValue(settingsB);
+    const fresh = await projectClient.getSettings("proj-1");
+    expect(getSettingsMock).toHaveBeenCalledTimes(2);
+    expect(fresh).toBe(settingsB);
+  });
 });
