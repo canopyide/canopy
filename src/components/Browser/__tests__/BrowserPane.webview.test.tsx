@@ -178,6 +178,12 @@ describe("BrowserPane webview lifecycle regression", () => {
     id: "browser-panel-1",
     title: "Browser",
     initialUrl: "http://localhost:5173/",
+    initialHistory: {
+      past: [],
+      present: "http://localhost:5173/",
+      future: [],
+    },
+    initialZoom: 1.35,
     isFocused: true,
     onFocus: vi.fn(),
     onClose: vi.fn(),

@@ -28,6 +28,14 @@ export function extractHostPort(url: string): string {
   }
 }
 
+export function extractHostname(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
+}
+
 export function isValidBrowserUrl(url: string | undefined | null): boolean {
   if (!url || !url.trim()) return false;
   // Pass an empty allow-list so non-loopback hosts return `{ url, requiresConfirmation }`

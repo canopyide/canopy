@@ -2,6 +2,7 @@ import type { TerminalInstance } from "@/store";
 import type { PanelComponentProps } from "@/registry";
 import type { ActivityState } from "@/components/Terminal/TerminalPane";
 import { deriveTerminalChrome } from "@/utils/terminalChrome";
+import { clampZoom } from "@/components/Browser/browserUtils";
 
 const activityCache = new Map<string, ActivityState>();
 
@@ -105,6 +106,8 @@ export function buildPanelProps({
 
     // Browser-specific
     initialUrl: terminal.browserUrl || "http://localhost:3000",
+    initialHistory: terminal.browserHistory,
+    initialZoom: clampZoom(terminal.browserZoom ?? 1.0),
 
     ...overrides,
   };

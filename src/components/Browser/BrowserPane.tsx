@@ -16,6 +16,7 @@ import { ConsolePanel } from "./ConsolePanel";
 import {
   normalizeBrowserUrl,
   extractHostPort,
+  extractHostname,
   isValidBrowserUrl,
   clampZoom,
   type LoadError,
@@ -44,6 +45,8 @@ import { logError } from "@/utils/logger";
 
 export interface BrowserPaneProps extends BasePanelProps {
   initialUrl: string;
+  initialHistory?: BrowserHistory;
+  initialZoom?: number;
   // Tab support
   tabs?: import("@/components/Panel/TabButton").TabInfo[];
   onTabClick?: (tabId: string) => void;
@@ -84,6 +87,8 @@ export function BrowserPane({
   id,
   title,
   initialUrl,
+  initialHistory,
+  initialZoom,
   isFocused,
   isMaximized = false,
   location = "grid",
@@ -134,39 +139,25 @@ export function BrowserPane({
   );
   const setBrowserConsoleOpen = usePanelStore((state) => state.setBrowserConsoleOpen);
 
-  // Initialize history from persisted state or initialUrl. Compute both
-  // `history` and `isRestoredLoad` in a single useState initializer so the ref
-  // below can be seeded without writing to a ref during the lazy-init closure
-  // (React Compiler bailout).
-  const [initialHistoryComputation] = useState<{
-    history: BrowserHistory;
-    isRestoredLoad: boolean;
-  }>(() => {
-    const terminal = usePanelStore.getState().getTerminal(id);
-    const saved = terminal?.browserHistory;
-    // Use extended mode (empty allowedHosts) so private/LAN URLs in session state
-    // are recognized as valid-syntax and return a normalized string; restored URLs
-    // bypass the approval prompt since being in history implies prior approval.
+  // Seed history from the `initialHistory` prop (threaded by buildPanelProps from
+  // the persisted terminal state). Reading the store via getState() inside a lazy
+  // useState initializer was a React Compiler bailout (Globals); prop threading
+  // moves the read to the parent and keeps the leaf component compiler-friendly.
+  // Use extended mode (empty allowedHosts) so private/LAN URLs in session state
+  // are recognized as valid-syntax and return a normalized string; restored URLs
+  // bypass the approval prompt since being in history implies prior approval.
+  const [history, setHistory] = useState<BrowserHistory>(() => {
     const normalized = normalizeBrowserUrl(initialUrl, { allowedHosts: [] });
-    const fallbackPresent = terminal?.browserUrl || normalized.url || initialUrl;
-    return {
-      history: initializeBrowserHistory(saved, fallbackPresent),
-      // Only treat this as a restored session load if we actually have persisted history
-      isRestoredLoad: Boolean(saved?.present),
-    };
+    const fallbackPresent = normalized.url || initialUrl;
+    return initializeBrowserHistory(initialHistory ?? null, fallbackPresent);
   });
 
   // Track whether the current load is the initial session-restored load (not a fresh panel)
-  const isInitialRestoredLoadRef = useRef(initialHistoryComputation.isRestoredLoad);
+  const isInitialRestoredLoadRef = useRef(Boolean(initialHistory?.present));
 
-  const [history, setHistory] = useState<BrowserHistory>(initialHistoryComputation.history);
-
-  // Initialize zoom factor from persisted state (default 1.0 = 100%)
-  // Clamp to valid range [0.25, 2.0] to handle corrupt storage
-  const [zoomFactor, setZoomFactor] = useState<number>(() => {
-    const terminal = usePanelStore.getState().getTerminal(id);
-    return clampZoom(terminal?.browserZoom ?? 1.0);
-  });
+  // Initialize zoom factor from the `initialZoom` prop (already clamped at the
+  // prop-build site). Default 1.0 (100%) when the prop is absent.
+  const [zoomFactor, setZoomFactor] = useState<number>(() => clampZoom(initialZoom ?? 1.0));
 
   const [isLoading, setIsLoading] = useState(true);
   // Doherty 400ms gate: skip loading affordances on fast loads to prevent flicker.
@@ -455,10 +446,13 @@ export function BrowserPane({
     }
     setIsSlowLoad(false);
     setIsLoading(false);
-    try {
-      webviewRef.current?.stop();
-    } catch {
-      // Webview detached
+    const webview = webviewRef.current;
+    if (webview) {
+      try {
+        webview.stop();
+      } catch {
+        // Webview detached
+      }
     }
     setLoadError({ kind: "cancelled", message: "Load cancelled." });
   }, []);
@@ -497,9 +491,14 @@ export function BrowserPane({
   const handleCaptureScreenshot = useCallback(async () => {
     const webview = webviewRef.current;
     if (!webview || !isWebviewReady) return;
+    let url: string;
     try {
-      const url = webview.getURL();
-      if (!url || url === "about:blank") return;
+      url = webview.getURL();
+    } catch {
+      return;
+    }
+    if (!url || url === "about:blank") return;
+    try {
       const image = await webview.capturePage();
       const pngData = new Uint8Array(image.toPNG());
       await window.electron.clipboard.writeImage(pngData);
@@ -795,14 +794,7 @@ export function BrowserPane({
               >
                 <ExternalLink className="h-3.5 w-3.5 shrink-0 text-status-warning" />
                 <span className="truncate flex-1">
-                  Navigation to external site blocked:{" "}
-                  {(() => {
-                    try {
-                      return new URL(blockedNav.url).hostname;
-                    } catch {
-                      return blockedNav.url;
-                    }
-                  })()}
+                  Navigation to external site blocked: {extractHostname(blockedNav.url)}
                 </span>
                 {blockedNav.canOpenExternal && (
                   <button
