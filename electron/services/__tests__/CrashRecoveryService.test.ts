@@ -19,6 +19,12 @@ const appMock = vi.hoisted(() => ({
   isPackaged: false as boolean,
 }));
 
+const utilsMock = vi.hoisted(() => ({
+  resilientAtomicWriteFileSync: vi.fn(),
+}));
+
+vi.mock("../../utils/fs.js", () => utilsMock);
+
 vi.mock("../../store.js", () => ({
   store: storeMock,
   windowStatesStore: windowStatesStoreMock,
@@ -63,6 +69,11 @@ describe("CrashRecoveryService", () => {
     appMock.isPackaged = false;
     storeMock.get.mockReturnValue({ autoRestoreOnCrash: false });
     storeMock.set.mockImplementation(() => {});
+    utilsMock.resilientAtomicWriteFileSync.mockImplementation(
+      (fp: string, data: string, enc?: BufferEncoding) => {
+        fs.writeFileSync(fp, data, enc ?? "utf-8");
+      }
+    );
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
@@ -995,6 +1006,55 @@ describe("CrashRecoveryService", () => {
       svc.cleanupOnExit();
 
       expect(svc.restoreBackup()).toBe(false);
+    });
+  });
+
+  describe("atomic write routing", () => {
+    it("routes initialize() marker write through resilientAtomicWriteFileSync", () => {
+      const svc = makeService();
+      svc.initialize();
+
+      const markerPath = path.join(userData, "running.lock");
+      expect(utilsMock.resilientAtomicWriteFileSync).toHaveBeenCalledWith(
+        markerPath,
+        expect.any(String),
+        "utf-8"
+      );
+    });
+
+    it("routes recordCrash() log and marker rewrite through resilientAtomicWriteFileSync", () => {
+      const svc = makeService();
+      svc.initialize();
+      utilsMock.resilientAtomicWriteFileSync.mockClear();
+
+      svc.recordCrash(new Error("boom"));
+
+      const markerPath = path.join(userData, "running.lock");
+      const calls = utilsMock.resilientAtomicWriteFileSync.mock.calls;
+      const crashLogCalls = calls.filter(([fp]) =>
+        String(fp).startsWith(path.join(userData, "crashes", "crash-"))
+      );
+      const markerCalls = calls.filter(([fp]) => fp === markerPath);
+
+      expect(crashLogCalls).toHaveLength(1);
+      expect(markerCalls).toHaveLength(1);
+      expect(crashLogCalls[0][2]).toBe("utf-8");
+      expect(markerCalls[0][2]).toBe("utf-8");
+    });
+
+    it("routes takeBackup() through resilientAtomicWriteFileSync", () => {
+      const svc = makeService();
+      svc.initialize();
+      utilsMock.resilientAtomicWriteFileSync.mockClear();
+
+      svc.takeBackup();
+
+      const backupPath = path.join(userData, "backups", "session-state.json");
+      expect(utilsMock.resilientAtomicWriteFileSync).toHaveBeenCalledWith(
+        backupPath,
+        expect.any(String),
+        "utf-8"
+      );
     });
   });
 });

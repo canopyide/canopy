@@ -13,6 +13,7 @@ import { store, windowStatesStore } from "../store.js";
 import { isGpuDisabledByFlag } from "./GpuCrashMonitorService.js";
 import { getSystemSleepService } from "./SystemSleepService.js";
 import { getActionBreadcrumbService } from "./ActionBreadcrumbService.js";
+import { resilientAtomicWriteFileSync } from "../utils/fs.js";
 
 const MAX_CRASH_LOGS = 10;
 const MARKER_FILENAME = "running.lock";
@@ -85,7 +86,7 @@ export class CrashRecoveryService {
 
       const entry = this.buildCrashEntry(error);
       const logPath = path.join(this.crashesDir, `crash-${entry.id}.json`);
-      this.atomicWrite(logPath, JSON.stringify(entry, null, 2));
+      resilientAtomicWriteFileSync(logPath, JSON.stringify(entry, null, 2), "utf-8");
       this.writeMarker(entry);
       this.pruneOldLogs();
       console.log("[CrashRecovery] Crash recorded:", logPath);
@@ -163,7 +164,7 @@ export class CrashRecoveryService {
       fs.mkdirSync(backupDir, { recursive: true });
 
       const snapshot = this.captureSessionSnapshot();
-      this.atomicWrite(this.backupPath, JSON.stringify(snapshot, null, 2));
+      resilientAtomicWriteFileSync(this.backupPath, JSON.stringify(snapshot, null, 2), "utf-8");
     } catch (err) {
       console.error("[CrashRecovery] Failed to take backup:", err);
     }
@@ -355,7 +356,7 @@ export class CrashRecoveryService {
           ? path.join(this.crashesDir, `crash-${crashEntry.id}.json`)
           : undefined,
       };
-      this.atomicWrite(this.markerPath, JSON.stringify(marker));
+      resilientAtomicWriteFileSync(this.markerPath, JSON.stringify(marker), "utf-8");
     } catch (err) {
       console.error("[CrashRecovery] Failed to write marker:", err);
     }
@@ -557,23 +558,6 @@ export class CrashRecoveryService {
       }
     } catch (err) {
       console.error("[CrashRecovery] Failed to prune logs:", err);
-    }
-  }
-
-  private atomicWrite(targetPath: string, data: string): void {
-    const tmpPath = `${targetPath}.${Date.now()}.tmp`;
-    try {
-      fs.writeFileSync(tmpPath, data, { encoding: "utf8", flush: true } as Parameters<
-        typeof fs.writeFileSync
-      >[2]);
-      fs.renameSync(tmpPath, targetPath);
-    } catch (err) {
-      try {
-        fs.unlinkSync(tmpPath);
-      } catch {
-        // ignore
-      }
-      throw err;
     }
   }
 }
