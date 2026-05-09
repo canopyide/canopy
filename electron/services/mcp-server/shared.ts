@@ -324,6 +324,15 @@ export const MCP_DEDUP_ALLOWLIST: ReadonlySet<string> = new Set([
  */
 export const MCP_DEDUP_TTL_MS = 120_000;
 
+/**
+ * Maximum number of cached results per session in the dedup result cache.
+ * Entries are lazy-evicted on read once expired, but a session that issues
+ * many unique creation calls (e.g. each with a fresh `requestKey`) would
+ * otherwise accumulate entries up to the idle timeout. FIFO-evict on
+ * insertion above this cap so memory stays bounded at session lifetime.
+ */
+export const MCP_DEDUP_MAX_ENTRIES_PER_SESSION = 256;
+
 export type ResourceKind = "pulse" | "scrollback" | "agentState" | "issues";
 
 export interface ParsedResourceUri {

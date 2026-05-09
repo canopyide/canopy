@@ -160,14 +160,23 @@ export function buildStructuredContent(
 }
 
 /**
+ * Maximum accepted length for the optional `requestKey` dedup hint. A
+ * generous cap that comfortably fits UUIDs, ULIDs, hashes, and short
+ * descriptive labels while preventing a caller from pinning arbitrarily
+ * large strings in the per-session dedup map for the TTL window.
+ */
+export const MAX_REQUEST_KEY_LENGTH = 256;
+
+/**
  * Parse the raw `tools/call` arguments shape, stripping MCP-protocol-only
  * fields (`_meta`) and the per-call idempotency hint (`requestKey`) so they
  * never reach `dispatchAction`. The extracted `requestKey` is returned to
  * the caller so the dedup guard can use it as an explicit cache key.
  *
- * `requestKey` must be a non-empty string to be honored — anything else
- * (number, object, empty string) falls through to the auto-computed
- * canonical-args hash, matching the `readStringField` convention.
+ * `requestKey` must be a non-empty string of at most `MAX_REQUEST_KEY_LENGTH`
+ * characters to be honored — anything else (number, object, empty string,
+ * over-long string) falls through to the auto-computed canonical-args hash,
+ * matching the `readStringField` convention.
  */
 export function parseToolArguments(rawArgs: unknown): {
   args: unknown;
@@ -184,7 +193,11 @@ export function parseToolArguments(rawArgs: unknown): {
 
   const { _meta: _ignored, requestKey: rawRequestKey, ...actionArgs } = argsRecord;
   const requestKey =
-    typeof rawRequestKey === "string" && rawRequestKey.length > 0 ? rawRequestKey : undefined;
+    typeof rawRequestKey === "string" &&
+    rawRequestKey.length > 0 &&
+    rawRequestKey.length <= MAX_REQUEST_KEY_LENGTH
+      ? rawRequestKey
+      : undefined;
   return {
     args: Object.keys(actionArgs).length > 0 ? actionArgs : {},
     requestKey,

@@ -40,6 +40,15 @@ describe("sessionDedup", () => {
         canonicalArgsHash("terminal.new", null)
       );
     });
+
+    it("treats { x: undefined } as equivalent to {} (JSON-serialization parity)", () => {
+      // JSON.stringify drops undefined-valued keys, matching how MCP would
+      // never receive `undefined` over the wire. Two callers that pass
+      // semantically-equivalent args must dedup.
+      const a = canonicalArgsHash("terminal.new", { cwd: undefined });
+      const b = canonicalArgsHash("terminal.new", {});
+      expect(a).toBe(b);
+    });
   });
 
   describe("buildDedupKey", () => {

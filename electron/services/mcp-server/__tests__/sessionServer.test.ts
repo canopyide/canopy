@@ -11,6 +11,7 @@ vi.mock("electron", () => ({
 import { createSessionServer } from "../sessionServer.js";
 import type { SessionServerDeps } from "../sessionServer.js";
 import type { SessionStore } from "../sessionStore.js";
+import { SessionStore as RealSessionStore } from "../sessionStore.js";
 
 function fakeSessionStore(
   tier: "workbench" | "action" | "system" | "external" = "workbench"
@@ -532,5 +533,166 @@ describe("CallTool idempotency dedup", () => {
     await callTool(server, { name: "terminal.new", arguments: args });
 
     expect(dispatchAction).toHaveBeenCalledTimes(2);
+  });
+
+  it("re-dispatches after the TTL window elapses", async () => {
+    vi.useFakeTimers();
+    try {
+      const dispatchAction = vi
+        .fn()
+        .mockResolvedValue({ result: { ok: true, result: { terminalId: "t-ttl" } } });
+      const deps = fakeDeps({
+        sessionStore: fakeSessionStore("system"),
+        dispatchAction,
+      });
+      const server = createSessionServer("dedup-ttl", deps);
+
+      const args = { spawnedBy: { kind: "user" } };
+      await callTool(server, { name: "terminal.new", arguments: args });
+
+      // Just before the TTL expires — still cached.
+      vi.advanceTimersByTime(119_999);
+      await callTool(server, { name: "terminal.new", arguments: args });
+      expect(dispatchAction).toHaveBeenCalledTimes(1);
+
+      // After the TTL expires — should redispatch.
+      vi.advanceTimersByTime(2);
+      await callTool(server, { name: "terminal.new", arguments: args });
+      expect(dispatchAction).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("isolates dedup state between sessions (same store, different session ids)", async () => {
+    const dispatchAction = vi
+      .fn()
+      .mockResolvedValue({ result: { ok: true, result: { terminalId: "t-iso" } } });
+    const sessionStore = fakeSessionStore("system");
+    const deps = fakeDeps({ sessionStore, dispatchAction });
+    const serverA = createSessionServer("session-a", deps);
+    const serverB = createSessionServer("session-b", deps);
+
+    const args = { requestKey: "shared-key", spawnedBy: { kind: "user" } };
+    await callTool(serverA, { name: "terminal.new", arguments: args });
+    await callTool(serverB, { name: "terminal.new", arguments: args });
+
+    // Same requestKey, but different sessions — both must dispatch.
+    expect(dispatchAction).toHaveBeenCalledTimes(2);
+  });
+
+  it("dedups agent.launch with the same arguments", async () => {
+    const dispatchAction = vi
+      .fn()
+      .mockResolvedValue({ result: { ok: true, result: { terminalId: "t-agent" } } });
+    const deps = fakeDeps({
+      sessionStore: fakeSessionStore("system"),
+      dispatchAction,
+    });
+    const server = createSessionServer("dedup-agent", deps);
+
+    await callTool(server, { name: "agent.launch", arguments: { agentId: "claude" } });
+    await callTool(server, { name: "agent.launch", arguments: { agentId: "claude" } });
+
+    expect(dispatchAction).toHaveBeenCalledTimes(1);
+  });
+
+  it("dedups worktree.createWithRecipe with the same arguments", async () => {
+    const dispatchAction = vi
+      .fn()
+      .mockResolvedValue({ result: { ok: true, result: { worktreeId: "wt-1" } } });
+    const deps = fakeDeps({
+      sessionStore: fakeSessionStore("system"),
+      dispatchAction,
+    });
+    const server = createSessionServer("dedup-wt", deps);
+
+    const args = { branchName: "feature/x" };
+    await callTool(server, { name: "worktree.createWithRecipe", arguments: args });
+    await callTool(server, { name: "worktree.createWithRecipe", arguments: args });
+
+    expect(dispatchAction).toHaveBeenCalledTimes(1);
+  });
+
+  it("dedups recipe.run with the same arguments", async () => {
+    const dispatchAction = vi
+      .fn()
+      .mockResolvedValue({ result: { ok: true, result: { terminalId: "t-recipe" } } });
+    const deps = fakeDeps({
+      sessionStore: fakeSessionStore("system"),
+      dispatchAction,
+    });
+    const server = createSessionServer("dedup-recipe", deps);
+
+    const args = { recipeId: "build" };
+    await callTool(server, { name: "recipe.run", arguments: args });
+    await callTool(server, { name: "recipe.run", arguments: args });
+
+    expect(dispatchAction).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not resurrect dedup state when drain() runs during an in-flight dispatch", async () => {
+    const realStore = new RealSessionStore(() => {});
+    realStore.sessionTierMap.set("dedup-resurrect", "system");
+
+    let resolveDispatch: ((envelope: unknown) => void) | undefined;
+    const dispatchAction = vi.fn().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveDispatch = resolve as (envelope: unknown) => void;
+        })
+    );
+    const deps = fakeDeps({ sessionStore: realStore, dispatchAction });
+    const server = createSessionServer("dedup-resurrect", deps);
+
+    const inFlightCall = callTool(server, {
+      name: "terminal.new",
+      arguments: { spawnedBy: { kind: "user" } },
+    });
+
+    for (let i = 0; i < 50 && !resolveDispatch; i++) {
+      await Promise.resolve();
+    }
+    expect(realStore.dedupInFlight.get("dedup-resurrect")?.size).toBe(1);
+
+    // Drain mid-flight — wipes dedup state and the session tier map.
+    realStore.drain();
+    expect(realStore.dedupInFlight.size).toBe(0);
+    expect(realStore.dedupResultCache.size).toBe(0);
+
+    // Resolve the held dispatch. The .then() cache hook must NOT resurrect
+    // dedupResultCache for the torn-down session.
+    resolveDispatch!({ result: { ok: true, result: { terminalId: "t-resurrect" } } });
+    await inFlightCall;
+    // Flush microtasks so the .then() cache hook had a chance to misfire.
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+
+    expect(realStore.dedupResultCache.size).toBe(0);
+    expect(realStore.dedupInFlight.size).toBe(0);
+  });
+
+  it("rejects requestKey strings beyond the length cap (falls back to auto-hash)", async () => {
+    const dispatchAction = vi
+      .fn()
+      .mockResolvedValue({ result: { ok: true, result: { terminalId: "t-long" } } });
+    const deps = fakeDeps({
+      sessionStore: fakeSessionStore("system"),
+      dispatchAction,
+    });
+    const server = createSessionServer("dedup-long", deps);
+
+    const oversized = "x".repeat(257); // MAX_REQUEST_KEY_LENGTH = 256
+    // Same args, different oversized requestKeys → still dedups via auto-hash
+    // because the oversized requestKey is rejected and ignored.
+    await callTool(server, {
+      name: "terminal.new",
+      arguments: { requestKey: oversized + "a", spawnedBy: { kind: "user" } },
+    });
+    await callTool(server, {
+      name: "terminal.new",
+      arguments: { requestKey: oversized + "b", spawnedBy: { kind: "user" } },
+    });
+
+    expect(dispatchAction).toHaveBeenCalledTimes(1);
   });
 });

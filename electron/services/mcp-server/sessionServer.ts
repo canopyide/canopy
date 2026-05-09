@@ -42,6 +42,7 @@ import {
   ELICITATION_FAILED_CODE,
   MCP_DEDUP_ALLOWLIST,
   MCP_DEDUP_TTL_MS,
+  MCP_DEDUP_MAX_ENTRIES_PER_SESSION,
 } from "./shared.js";
 import { buildDedupKey, readDedupCache, type CallToolResultLike } from "./sessionDedup.js";
 import {
@@ -386,6 +387,14 @@ export function createSessionServer(sessionId: string, deps: SessionServerDeps):
               result,
               expiresAt: Date.now() + MCP_DEDUP_TTL_MS,
             });
+            // FIFO-evict the oldest entries when the per-session cap is
+            // exceeded. Map iteration is insertion-order, so the first key
+            // returned by `.keys()` is the oldest still-living entry.
+            while (cache.size > MCP_DEDUP_MAX_ENTRIES_PER_SESSION) {
+              const oldestKey = cache.keys().next().value;
+              if (oldestKey === undefined) break;
+              cache.delete(oldestKey);
+            }
           }
         },
         () => {
