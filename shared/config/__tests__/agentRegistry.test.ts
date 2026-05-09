@@ -14,6 +14,7 @@ import {
   getAgentPreset,
   setAgentPresets,
   getAssistantSupportedAgentIds,
+  AGENT_REGISTRY,
   type AgentConfig,
   type AssistantSupports,
 } from "../agentRegistry.js";
@@ -319,24 +320,26 @@ describe("agentRegistry", () => {
       expect(ids).not.toContain("interpreter");
     });
 
-    it("filter predicate treats false, undefined, and experimental tier as excluded", () => {
-      const stable: AssistantSupports = {
-        mcpInjection: "project-config",
-        settingsOverlay: true,
+    it("excludes agents whose supports object is at experimental tier", () => {
+      // Temporarily downgrade codex to experimental and verify the real
+      // filter function (not a local copy of the predicate) excludes it.
+      const original = AGENT_REGISTRY.codex;
+      const experimentalSupports: AssistantSupports = {
+        mcpInjection: "cli-flags",
+        settingsOverlay: false,
         permissionBypass: true,
-        trustDialog: true,
+        trustDialog: false,
         versionProbe: true,
-        tier: "stable",
+        tier: "experimental",
       };
-      const experimental: AssistantSupports = { ...stable, tier: "experimental" };
-
-      const isStableTier = (s: AssistantSupports | false | undefined): boolean =>
-        s !== false && s?.tier === "stable";
-
-      expect(isStableTier(stable)).toBe(true);
-      expect(isStableTier(experimental)).toBe(false);
-      expect(isStableTier(false)).toBe(false);
-      expect(isStableTier(undefined)).toBe(false);
+      AGENT_REGISTRY.codex = { ...original, supports: experimentalSupports };
+      try {
+        const ids = getAssistantSupportedAgentIds();
+        expect(ids).not.toContain("codex");
+        expect(ids).toContain("claude");
+      } finally {
+        AGENT_REGISTRY.codex = original;
+      }
     });
   });
 });
