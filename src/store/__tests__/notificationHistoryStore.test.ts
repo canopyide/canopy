@@ -252,7 +252,9 @@ describe("notificationHistorySlice", () => {
       addEntry();
       addEntry();
       expect(getState().unreadCount).toBe(3);
-      const ids = getState().entries.slice(0, 2).map((e) => e.id);
+      const ids = getState()
+        .entries.slice(0, 2)
+        .map((e) => e.id);
 
       getState().markIdsRead(ids);
 

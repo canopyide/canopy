@@ -259,10 +259,7 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
 
   const totalChronoGroups = chronoSections.reduce((sum, s) => sum + s.groups.length, 0);
 
-  const markIdsReadWithUndo = (
-    requestedIds: string[],
-    options: { resetLastClosed: boolean }
-  ) => {
+  const markIdsReadWithUndo = (requestedIds: string[], options: { resetLastClosed: boolean }) => {
     if (requestedIds.length === 0) return;
     // Re-filter against live store state so a rapid second click on a stale
     // closure doesn't fire a ghost toast for entries already marked read.
@@ -624,9 +621,7 @@ function ChronoSection({
               {isDivider && (
                 <NewSinceLastLookedDivider
                   unreadCount={newSinceUnreadIds.length}
-                  onMarkRead={() =>
-                    onMarkIdsRead(newSinceUnreadIds, { resetLastClosed: true })
-                  }
+                  onMarkRead={() => onMarkIdsRead(newSinceUnreadIds, { resetLastClosed: true })}
                 />
               )}
               {renderGroup(group, onDismiss, onDismissThread)}
