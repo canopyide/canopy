@@ -15,14 +15,12 @@ import {
 import { useAnimatedPresence } from "@/hooks/useAnimatedPresence";
 import { usePaletteStore } from "@/store/paletteStore";
 import {
-  UI_ENTER_DURATION,
-  UI_EXIT_DURATION,
   UI_PALETTE_ENTER_DURATION,
   UI_PALETTE_EXIT_DURATION,
   UI_ENTER_EASING,
   UI_EXIT_EASING,
   UI_DOHERTY_THRESHOLD,
-  getUiTransitionDuration,
+  getUiPaletteTransitionDuration,
 } from "@/lib/animationUtils";
 
 export const KBD_CLASS =
@@ -64,7 +62,7 @@ export function AppPaletteDialog({
 
   const { isVisible, shouldRender } = useAnimatedPresence({
     isOpen,
-    animationDuration: getUiTransitionDuration("exit"),
+    animationDuration: getUiPaletteTransitionDuration("exit"),
     onAnimateOut: restoreFocus,
   });
 
@@ -185,7 +183,9 @@ export function AppPaletteDialog({
         isVisible ? "opacity-100" : "opacity-0"
       )}
       style={{
-        transitionDuration: isVisible ? `${UI_ENTER_DURATION}ms` : `${UI_EXIT_DURATION}ms`,
+        transitionDuration: isVisible
+          ? `${UI_PALETTE_ENTER_DURATION}ms`
+          : `${UI_PALETTE_EXIT_DURATION}ms`,
         transitionTimingFunction: "linear",
       }}
       onClick={handleBackdropClick}

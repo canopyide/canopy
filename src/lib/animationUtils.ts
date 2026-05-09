@@ -85,6 +85,17 @@ export function getUiTransitionDuration(direction: "enter" | "exit"): number {
   return direction === "enter" ? UI_ENTER_DURATION : UI_EXIT_DURATION;
 }
 
+export function getUiPaletteTransitionDuration(direction: "enter" | "exit"): number {
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return direction === "enter" ? UI_PALETTE_ENTER_DURATION : UI_PALETTE_EXIT_DURATION;
+  }
+
+  const performanceMode = document.body.dataset.performanceMode === "true";
+  if (performanceMode) return 0;
+
+  return direction === "enter" ? UI_PALETTE_ENTER_DURATION : UI_PALETTE_EXIT_DURATION;
+}
+
 export const PANEL_MINIMIZE_DURATION = 120;
 export const PANEL_RESTORE_DURATION = DURATION_200;
 
