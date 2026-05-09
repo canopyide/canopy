@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const appMock = vi.hoisted(() => ({
   isPackaged: false as boolean,
@@ -28,6 +28,11 @@ vi.mock("../../menu.js", () => ({
 const setSignalShutdownMock = vi.fn();
 vi.mock("../signalShutdownState.js", () => ({
   setSignalShutdown: setSignalShutdownMock,
+}));
+
+const isWindowRecreatingMock = vi.fn(() => false);
+vi.mock("../windowRecreationState.js", () => ({
+  isWindowRecreating: isWindowRecreatingMock,
 }));
 
 import type { AppLifecycleOptions } from "../appLifecycle.js";
@@ -311,5 +316,86 @@ describe("registerAppLifecycleHandlers – second-instance", () => {
 
     expect(mainWindow.restore).toHaveBeenCalled();
     expect(mainWindow.focus).toHaveBeenCalled();
+  });
+});
+
+describe("registerAppLifecycleHandlers – window-all-closed", () => {
+  const originalPlatform = process.platform;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    isWindowRecreatingMock.mockReturnValue(false);
+    vi.spyOn(process, "on").mockImplementation(() => process);
+    vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, "platform", { value: originalPlatform });
+  });
+
+  function getWindowAllClosedHandler(): () => void {
+    const call = appMock.on.mock.calls.find(([event]: string[]) => event === "window-all-closed");
+    return call![1] as () => void;
+  }
+
+  it("calls app.quit on linux when no recreation is in flight", async () => {
+    Object.defineProperty(process, "platform", { value: "linux" });
+    const { registerAppLifecycleHandlers } = await import("../appLifecycle.js");
+    registerAppLifecycleHandlers(makeOpts());
+
+    getWindowAllClosedHandler()();
+
+    expect(appMock.quit).toHaveBeenCalledOnce();
+  });
+
+  it("skips app.quit on linux while a window recreation is in flight", async () => {
+    Object.defineProperty(process, "platform", { value: "linux" });
+    isWindowRecreatingMock.mockReturnValue(true);
+    const { registerAppLifecycleHandlers } = await import("../appLifecycle.js");
+    registerAppLifecycleHandlers(makeOpts());
+
+    getWindowAllClosedHandler()();
+
+    // Suppressing the quit during OOM recreate is the whole point of #5724.
+    expect(appMock.quit).not.toHaveBeenCalled();
+  });
+
+  it("does not call app.quit on darwin even when no recreation is in flight", async () => {
+    Object.defineProperty(process, "platform", { value: "darwin" });
+    const { registerAppLifecycleHandlers } = await import("../appLifecycle.js");
+    registerAppLifecycleHandlers(makeOpts());
+
+    getWindowAllClosedHandler()();
+
+    expect(appMock.quit).not.toHaveBeenCalled();
+  });
+
+  it("calls app.quit on win32 when no recreation is in flight", async () => {
+    // Pin the `!== "darwin"` branch for Windows — if a future refactor
+    // narrowed the check (e.g. to `=== "linux"`), this test would catch it.
+    Object.defineProperty(process, "platform", { value: "win32" });
+    const { registerAppLifecycleHandlers } = await import("../appLifecycle.js");
+    registerAppLifecycleHandlers(makeOpts());
+
+    getWindowAllClosedHandler()();
+
+    expect(appMock.quit).toHaveBeenCalledOnce();
+  });
+
+  it("resumes calling app.quit after the recreation flag returns to false", async () => {
+    // Round-trip: a suppressed event during recreation must not leave the
+    // quit path permanently disabled once the recreation settles.
+    Object.defineProperty(process, "platform", { value: "linux" });
+    const { registerAppLifecycleHandlers } = await import("../appLifecycle.js");
+    registerAppLifecycleHandlers(makeOpts());
+    const handler = getWindowAllClosedHandler();
+
+    isWindowRecreatingMock.mockReturnValue(true);
+    handler();
+    expect(appMock.quit).not.toHaveBeenCalled();
+
+    isWindowRecreatingMock.mockReturnValue(false);
+    handler();
+    expect(appMock.quit).toHaveBeenCalledOnce();
   });
 });

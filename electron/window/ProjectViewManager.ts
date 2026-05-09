@@ -33,6 +33,11 @@ import {
   detachRendererConsoleCapture,
 } from "./rendererConsoleCapture.js";
 import { ACTIVE_AGENT_STATES } from "../../shared/types/agent.js";
+import {
+  beginWindowRecreating,
+  endWindowRecreating,
+  isWindowRecreating,
+} from "../lifecycle/windowRecreationState.js";
 
 const LOAD_TIMEOUT_MS = 10_000;
 const CRASH_LOOP_WINDOW_MS = 60_000;
@@ -679,10 +684,29 @@ export class ProjectViewManager {
           source: "renderer-crash",
         });
         setImmediate(() => {
+          // Increment the guard before `destroy()` — Electron emits
+          // `window-all-closed` synchronously inside the destroy call.
+          beginWindowRecreating();
           if (!win.isDestroyed()) win.destroy();
-          this.onRecreateWindow!().catch((err) => {
-            console.error("[ProjectViewManager] Failed to recreate window after OOM:", err);
-          });
+          this.onRecreateWindow!()
+            .catch((err) => {
+              console.error("[ProjectViewManager] Failed to recreate window after OOM:", err);
+            })
+            .finally(() => {
+              endWindowRecreating();
+              // The suppressed `window-all-closed` event must be replayed if
+              // the recreation failed — otherwise on non-darwin the process
+              // hangs headless with no windows and no quit path. Skip when
+              // another OOM recreate is still in flight or any window remains
+              // (the natural `window-all-closed` path will cover those cases).
+              if (
+                !isWindowRecreating() &&
+                process.platform !== "darwin" &&
+                BrowserWindow.getAllWindows().length === 0
+              ) {
+                app.quit();
+              }
+            });
         });
       } else {
         console.log("[ProjectViewManager] Renderer crash, auto-reloading view");

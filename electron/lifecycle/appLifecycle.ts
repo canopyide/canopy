@@ -4,6 +4,7 @@ import type { WindowRegistry } from "../window/WindowRegistry.js";
 import { handleDirectoryOpen } from "../menu.js";
 import { getCrashRecoveryService } from "../services/CrashRecoveryService.js";
 import { setSignalShutdown } from "./signalShutdownState.js";
+import { isWindowRecreating } from "./windowRecreationState.js";
 import { CLEANUP_TIMEOUT_MS } from "./shutdownConfig.js";
 
 let pendingCliPath: string | null = null;
@@ -110,6 +111,11 @@ export function registerAppLifecycleHandlers(opts: AppLifecycleOptions): void {
   });
 
   app.on("window-all-closed", () => {
+    // `BrowserWindow.destroy()` in the OOM recreate path synchronously emits
+    // `window-all-closed` before the replacement window registers. On
+    // non-darwin this would call `app.quit()` mid-recreate; the flag suppresses
+    // that until the recreation settles. See `windowRecreationState.ts`.
+    if (isWindowRecreating()) return;
     if (process.platform !== "darwin") {
       app.quit();
     }
