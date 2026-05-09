@@ -412,7 +412,7 @@ export function BrowserToolbar({
 
       {/* Zoom controls */}
       {onZoomChange && (
-        <div className="flex items-center gap-0.5">
+        <div className="flex items-center gap-0.5 rounded-md bg-overlay-subtle p-0.5">
           <Tooltip>
             <TooltipTrigger asChild>
               <span className="inline-flex">
@@ -437,9 +437,8 @@ export function BrowserToolbar({
                   onClick={handleZoomReset}
                   disabled={!isNonDefaultZoom}
                   className={cn(
-                    "px-1.5 py-1 rounded text-xs font-medium transition-colors",
-                    "hover:bg-overlay-medium disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none",
-                    isNonDefaultZoom ? "text-status-info" : "text-daintree-text/60"
+                    "px-1.5 py-1 rounded text-xs font-medium text-daintree-text transition-colors",
+                    "hover:bg-overlay-medium disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none"
                   )}
                   aria-label="Reset zoom"
                 >
