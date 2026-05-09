@@ -139,4 +139,36 @@ describe("built-in themes", () => {
       );
     }
   });
+
+  it("every source defines perceptible sidebar hover and active extension tokens", () => {
+    // Both extensions must exist (daintree previously omitted sidebar-hover-bg, leaving the
+    // sidebar WorktreeCard with an invisible 1.5% fallback). Hover must be at or above the
+    // overlay-subtle baseline (3% dark / 2.5% light) and active must be one step stronger
+    // so the selected row is distinguishable from the hovered row.
+    const minHoverAlpha = { dark: 0.03, light: 0.025 } as const;
+    const minActiveAlpha = { dark: 0.05, light: 0.04 } as const;
+    const parseAlpha = (value: string): number => {
+      const match = value.match(/rgba?\([^)]*?,\s*([0-9.]+)\s*\)/);
+      return match ? Number(match[1]) : NaN;
+    };
+    for (const source of BUILT_IN_THEME_SOURCES) {
+      const hover = source.extensions?.["sidebar-hover-bg"];
+      const active = source.extensions?.["sidebar-active-bg"];
+      expect(hover, `${source.id} missing sidebar-hover-bg extension`).toBeTruthy();
+      expect(active, `${source.id} missing sidebar-active-bg extension`).toBeTruthy();
+      const polarity = source.type;
+      expect(
+        parseAlpha(hover!),
+        `${source.id} sidebar-hover-bg ${hover} below ${minHoverAlpha[polarity]} threshold`
+      ).toBeGreaterThanOrEqual(minHoverAlpha[polarity]);
+      expect(
+        parseAlpha(active!),
+        `${source.id} sidebar-active-bg ${active} below ${minActiveAlpha[polarity]} threshold`
+      ).toBeGreaterThanOrEqual(minActiveAlpha[polarity]);
+      expect(
+        parseAlpha(active!),
+        `${source.id} sidebar-active-bg ${active} should be stronger than sidebar-hover-bg ${hover}`
+      ).toBeGreaterThan(parseAlpha(hover!));
+    }
+  });
 });
