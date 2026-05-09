@@ -234,6 +234,10 @@ export async function initializeTelemetry(): Promise<void> {
         // against a future change silently narrowing the breadth limit.
         normalizeDepth: MAX_DEEP_SANITIZE_DEPTH,
         normalizeMaxBreadth: 1000,
+        // Raise the default 100-entry ring so high-frequency action dispatches
+        // (drag bursts, agent-state polls, file-watcher fanouts) don't rotate
+        // the crash-triggering breadcrumb out before flush. See #7575.
+        maxBreadcrumbs: 250,
         // Do not set `sampleRate` — it defaults to 1.0 (100% error capture). If
         // performance tracing is ever added, use `tracesSampleRate` instead.
         // The local `SentryEvent` interface is a narrower projection of the
