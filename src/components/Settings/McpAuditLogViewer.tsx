@@ -1,9 +1,15 @@
-import { useMemo, useState } from "react";
-import { Check, Copy, RefreshCw } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
+import { Check, Copy, RefreshCw, ShieldOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { McpAuditRecord, McpAuditResult } from "@shared/types";
 
 type AuditResultFilter = "all" | McpAuditResult;
+
+const TIER_HINT_LABEL: Record<"workbench" | "action" | "system", string> = {
+  workbench: "workbench",
+  action: "action",
+  system: "system",
+};
 
 const RESULT_LABEL: Record<McpAuditResult, string> = {
   success: "Success",
@@ -68,6 +74,11 @@ export function McpAuditLogViewer({
     return records.filter(includeRecord);
   }, [records, includeRecord]);
 
+  const unauthorizedCount = useMemo(
+    () => visibleRecords.reduce((n, r) => (r.result === "unauthorized" ? n + 1 : n), 0),
+    [visibleRecords]
+  );
+
   const filteredRecords = useMemo(() => {
     const needle = toolFilter.trim().toLowerCase();
     return visibleRecords.filter((record) => {
@@ -78,6 +89,10 @@ export function McpAuditLogViewer({
   }, [visibleRecords, resultFilter, toolFilter]);
 
   const showCopyAll = filteredRecords.length === visibleRecords.length;
+
+  const showTierRejections = useCallback(() => {
+    setResultFilter("unauthorized");
+  }, []);
 
   return (
     <div className="contents">
@@ -99,7 +114,8 @@ export function McpAuditLogViewer({
               value === "success" ||
               value === "error" ||
               value === "confirmation-pending" ||
-              value === "unauthorized"
+              value === "unauthorized" ||
+              value === "dedup"
             ) {
               setResultFilter(value);
             }
@@ -112,7 +128,18 @@ export function McpAuditLogViewer({
           <option value="error">Error</option>
           <option value="confirmation-pending">Awaiting confirmation</option>
           <option value="unauthorized">Unauthorized</option>
+          <option value="dedup">Deduplicated</option>
         </select>
+        {unauthorizedCount > 0 && resultFilter !== "unauthorized" && (
+          <button
+            type="button"
+            onClick={showTierRejections}
+            className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded-[var(--radius-md)] border border-daintree-border text-daintree-text/70 hover:text-daintree-text hover:bg-overlay-soft transition-colors"
+          >
+            <ShieldOff className="w-3.5 h-3.5" />
+            Show tier rejections ({unauthorizedCount})
+          </button>
+        )}
       </div>
 
       <div className="max-h-64 overflow-y-auto rounded-[var(--radius-md)] border border-daintree-border bg-daintree-bg">
@@ -150,6 +177,16 @@ export function McpAuditLogViewer({
                   <div className="mt-0.5 font-mono text-daintree-text/50 truncate">
                     {record.argsSummary || "{}"}
                   </div>
+                  {record.result === "unauthorized" && record.tierHint && (
+                    <div className="mt-0.5 text-[10px] text-daintree-text/50">
+                      Raise capability tier to {TIER_HINT_LABEL[record.tierHint]} to allow.
+                    </div>
+                  )}
+                  {record.result === "unauthorized" && record.tierHint === null && (
+                    <div className="mt-0.5 text-[10px] text-daintree-text/50">
+                      Tool isn't permitted at any tier.
+                    </div>
+                  )}
                 </div>
                 <div className="text-right text-daintree-text/40 whitespace-nowrap">
                   <div>{formatRelativeTimestamp(record.timestamp)}</div>

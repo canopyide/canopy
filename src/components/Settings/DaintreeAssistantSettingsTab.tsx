@@ -21,15 +21,22 @@ import { SettingsInput } from "./SettingsInput";
 import { SettingsSelect } from "./SettingsSelect";
 import { SettingsSwitchCard } from "./SettingsSwitchCard";
 import { McpAuditLogViewer } from "./McpAuditLogViewer";
+import { McpAuditLatencyTable } from "./McpAuditLatencyTable";
 import { useSettingsTabValidation } from "./SettingsValidationRegistry";
 import { useSettingsTabFlush } from "./SettingsFlushRegistry";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { useDebounce } from "@/hooks/useDebounce";
 
 import { logError } from "@/utils/logger";
+import { safeFireAndForget } from "@/utils/safeFireAndForget";
 import { getAgentConfig, getAssistantSupportedAgentIds } from "@/config/agents";
 import { useHelpPanelStore } from "@/store/helpPanelStore";
-import type { HelpAssistantSettings, HelpAssistantTier, McpAuditRecord } from "@shared/types";
+import type {
+  HelpAssistantSettings,
+  HelpAssistantTier,
+  McpAuditRecord,
+  McpAuditStats,
+} from "@shared/types";
 import {
   HELP_TIER_CUMULATIVE,
   HELP_TIER_INCREMENTAL,
@@ -109,6 +116,7 @@ export function DaintreeAssistantSettingsTab() {
   const [isRotating, setIsRotating] = useState(false);
   const [showBlastRadius, setShowBlastRadius] = useState(false);
   const [auditRecords, setAuditRecords] = useState<McpAuditRecord[]>([]);
+  const [auditStats, setAuditStats] = useState<McpAuditStats | null>(null);
   const [auditLoading, setAuditLoading] = useState(true);
   const [auditCopied, setAuditCopied] = useState(false);
   const [showClearAuditConfirm, setShowClearAuditConfirm] = useState(false);
@@ -207,31 +215,50 @@ export function DaintreeAssistantSettingsTab() {
   // Separate audit fetch effect — keeps the settings init effect's cancellation
   // semantics simple (per past lesson #4958) while still letting the audit
   // viewer hydrate independently of the settings + MCP status round-trips.
+  // `allSettled` so a stats failure doesn't silently blank the record list.
   const refreshAuditRecords = useCallback(async (): Promise<void> => {
-    try {
-      const records = await window.electron.mcpServer.getAuditRecords();
-      setAuditRecords(records);
-    } catch (err) {
-      logError("Failed to load MCP audit records for assistant tab", err);
+    const [recordsResult, statsResult] = await Promise.allSettled([
+      window.electron.mcpServer.getAuditRecords(),
+      window.electron.mcpServer.getAuditStats(),
+    ]);
+    if (recordsResult.status === "fulfilled") {
+      setAuditRecords(recordsResult.value);
+    } else {
+      logError("Failed to load MCP audit records for assistant tab", recordsResult.reason);
+    }
+    if (statsResult.status === "fulfilled") {
+      setAuditStats(statsResult.value);
+    } else {
+      logError("Failed to load MCP audit stats for assistant tab", statsResult.reason);
     }
   }, []);
 
   useEffect(() => {
     let cancelled = false;
     setAuditLoading(true);
-    window.electron.mcpServer
-      .getAuditRecords()
-      .then((records) => {
-        if (cancelled) return;
-        setAuditRecords(records);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        logError("Failed initial audit load for assistant tab", err);
-      })
-      .finally(() => {
-        if (!cancelled) setAuditLoading(false);
-      });
+    safeFireAndForget(
+      Promise.allSettled([
+        window.electron.mcpServer.getAuditRecords(),
+        window.electron.mcpServer.getAuditStats(),
+      ])
+        .then(([recordsResult, statsResult]) => {
+          if (cancelled) return;
+          if (recordsResult.status === "fulfilled") {
+            setAuditRecords(recordsResult.value);
+          } else {
+            logError("Failed initial audit load for assistant tab", recordsResult.reason);
+          }
+          if (statsResult.status === "fulfilled") {
+            setAuditStats(statsResult.value);
+          } else {
+            logError("Failed initial audit stats load for assistant tab", statsResult.reason);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setAuditLoading(false);
+        }),
+      { context: "initial audit load for assistant tab" }
+    );
     return () => {
       cancelled = true;
       if (auditCopyTimeoutRef.current) clearTimeout(auditCopyTimeoutRef.current);
@@ -575,6 +602,17 @@ export function DaintreeAssistantSettingsTab() {
           copyFlashActive={auditCopied}
           includeRecord={(record) => record.tier !== "external"}
         />
+        <McpAuditLatencyTable
+          records={auditRecords}
+          includeRecord={(record) => record.tier !== "external"}
+        />
+        {auditStats && auditStats.auth401Count > 0 && (
+          <p className="text-xs text-daintree-text/60 select-text">
+            <span className="font-mono text-daintree-text/80">{auditStats.auth401Count}</span>{" "}
+            bearer rejection{auditStats.auth401Count === 1 ? "" : "s"} since last launch — an
+            external client is connecting with a stale or missing API key.
+          </p>
+        )}
       </SettingsSection>
 
       {/* Connection */}

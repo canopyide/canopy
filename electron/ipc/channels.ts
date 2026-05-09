@@ -509,6 +509,12 @@ export const CHANNELS = {
   MCP_SERVER_SET_AUDIT_MAX_RECORDS: "mcp-server:set-audit-max-records",
   MCP_SERVER_GET_AUDIT_CONFIG: "mcp-server:get-audit-config",
   /**
+   * Read the session-scoped audit health counters (currently the
+   * since-launch 401 counter). Distinct from `MCP_SERVER_GET_AUDIT_RECORDS`
+   * because pre-dispatch auth failures never reach the record ring buffer.
+   */
+  MCP_SERVER_GET_AUDIT_STATS: "mcp-server:get-audit-stats",
+  /**
    * Mount-time hydration of the runtime-state snapshot. Distinct from
    * `MCP_SERVER_GET_STATUS` (which exposes config — enabled/port/apiKey)
    * because the renderer needs the derived `disabled|starting|ready|failed`

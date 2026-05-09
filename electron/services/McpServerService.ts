@@ -4,9 +4,10 @@ import type { WindowRegistry } from "../window/WindowRegistry.js";
 import { getWindowRegistry } from "../window/windowRef.js";
 import type {
   AssistantTurnRecord,
+  McpAuditRecord,
+  McpAuditStats,
   McpRuntimeSnapshot,
   McpRuntimeState,
-  McpAuditRecord,
   TurnOutcomeClass,
 } from "../../shared/types/ipc/mcpServer.js";
 import { SessionStore } from "./mcp-server/sessionStore.js";
@@ -323,6 +324,10 @@ export class McpServerService {
 
   getAuditConfig(): { enabled: boolean; maxRecords: number } {
     return this.auditService.getAuditConfig();
+  }
+
+  getAuditStats(): McpAuditStats {
+    return this.auditService.getAuditStats();
   }
 
   clearAuditLog(): void {

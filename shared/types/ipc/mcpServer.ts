@@ -61,12 +61,35 @@ export interface McpAuditRecord {
   errorCode?: string;
   durationMs: number;
   confirmationDecision?: McpConfirmationDecision;
+  /**
+   * For `unauthorized` outcomes, the lowest help-session tier that would have
+   * permitted the dispatch — `workbench`, `action`, or `system`. Set at
+   * record-write time from the static `TIER_ALLOWLISTS`. `null` means the
+   * tool isn't permitted at any tier (unknown tool). Optional and absent on
+   * non-unauthorized outcomes.
+   */
+  tierHint?: "workbench" | "action" | "system" | null;
 }
 
 /** Minimum and maximum values accepted for the configurable ring-buffer cap. */
 export const MCP_AUDIT_MIN_RECORDS = 50;
 export const MCP_AUDIT_MAX_RECORDS = 10000;
 export const MCP_AUDIT_DEFAULT_MAX_RECORDS = 500;
+
+/**
+ * Session-scoped audit health counters. Reset on app restart by design —
+ * these capture "since-launch" signals that complement the persisted
+ * audit-record ring buffer.
+ *
+ * - `auth401Count`: number of MCP HTTP requests rejected with `401
+ *   Unauthorized` since the current process started. Increments cover the
+ *   missing-bearer, malformed-bearer, and revoked-bearer paths uniformly —
+ *   none of which reach `appendRecord` because no `toolId`/`tier` is known
+ *   when authentication fails.
+ */
+export interface McpAuditStats {
+  auth401Count: number;
+}
 
 /**
  * Outcome classification for a single assistant turn (one `active → passive`
