@@ -108,9 +108,14 @@ function TerminalHeaderContentComponent({
       pendingCandidateRef.current = rawSeverity;
       pendingCountRef.current = 1;
     }
-  } else if (pendingCandidateRef.current !== null) {
-    pendingCandidateRef.current = null;
-    pendingCountRef.current = 0;
+  } else {
+    if (pendingCandidateRef.current !== null) {
+      pendingCandidateRef.current = null;
+      pendingCountRef.current = 0;
+    }
+    if (stickySeverity !== "muted") {
+      setStickySeverity("muted");
+    }
   }
 
   const {

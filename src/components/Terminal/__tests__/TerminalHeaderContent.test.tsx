@@ -429,6 +429,83 @@ describe("TerminalHeaderContent — resource severity hysteresis", () => {
     expect(wrapper!.getAttribute("class")).not.toContain("text-daintree-text/40");
   });
 
+  it("commits red, amber, then muted on a sustained downward sequence", () => {
+    mockResourceEnabled = true;
+    mockResourceState = makeResourceState(10);
+
+    const { rerender, container } = render(
+      <TerminalHeaderContent id="t1" kind="terminal" queueCount={0} />
+    );
+    const wrapperFor = () =>
+      container.querySelector(".inline-flex.items-center.gap-1.text-\\[11px\\]")!;
+
+    pollResource(rerender, 90, 1);
+    pollResource(rerender, 90, 2);
+    pollResource(rerender, 90, 3);
+    expect(wrapperFor().getAttribute("class")).toContain("text-status-error");
+
+    pollResource(rerender, 60, 4);
+    pollResource(rerender, 60, 5);
+    pollResource(rerender, 60, 6);
+    expect(wrapperFor().getAttribute("class")).toContain("text-status-warning");
+    expect(wrapperFor().getAttribute("class")).not.toContain("text-status-error");
+
+    pollResource(rerender, 10, 7);
+    pollResource(rerender, 10, 8);
+    pollResource(rerender, 10, 9);
+    expect(wrapperFor().getAttribute("class")).toContain("text-daintree-text/40");
+    expect(wrapperFor().getAttribute("class")).not.toContain("text-status-warning");
+  });
+
+  it("commits to red via the memory threshold alone", () => {
+    mockResourceEnabled = true;
+    mockResourceState = makeResourceState(10, 200_000);
+
+    const { rerender, container } = render(
+      <TerminalHeaderContent id="t1" kind="terminal" queueCount={0} />
+    );
+
+    function pollMemory(memoryKb: number, iteration: number) {
+      mockResourceState = makeResourceState(10, memoryKb);
+      rerender(<TerminalHeaderContent id="t1" kind="terminal" queueCount={iteration} />);
+    }
+
+    pollMemory(2_500_000, 1);
+    pollMemory(2_500_000, 2);
+    pollMemory(2_500_000, 3);
+
+    const wrapper = container.querySelector(".inline-flex.items-center.gap-1.text-\\[11px\\]");
+    expect(wrapper!.getAttribute("class")).toContain("text-status-error");
+    expect(wrapper!.getAttribute("class")).not.toContain("text-daintree-text/40");
+  });
+
+  it("resets sticky severity to muted when monitoring is disabled and re-enabled", () => {
+    mockResourceEnabled = true;
+    mockResourceState = makeResourceState(10);
+
+    const { rerender, container } = render(
+      <TerminalHeaderContent id="t1" kind="terminal" queueCount={0} />
+    );
+
+    pollResource(rerender, 60, 1);
+    pollResource(rerender, 60, 2);
+    pollResource(rerender, 60, 3);
+    let wrapper = container.querySelector(".inline-flex.items-center.gap-1.text-\\[11px\\]");
+    expect(wrapper!.getAttribute("class")).toContain("text-status-warning");
+
+    mockResourceEnabled = false;
+    mockResourceState = null;
+    rerender(<TerminalHeaderContent id="t1" kind="terminal" queueCount={4} />);
+
+    mockResourceEnabled = true;
+    mockResourceState = makeResourceState(10);
+    rerender(<TerminalHeaderContent id="t1" kind="terminal" queueCount={5} />);
+
+    wrapper = container.querySelector(".inline-flex.items-center.gap-1.text-\\[11px\\]");
+    expect(wrapper!.getAttribute("class")).toContain("text-daintree-text/40");
+    expect(wrapper!.getAttribute("class")).not.toContain("text-status-warning");
+  });
+
   it("resets candidate counter when severity oscillates back during the run", () => {
     mockResourceEnabled = true;
     mockResourceState = makeResourceState(10);
