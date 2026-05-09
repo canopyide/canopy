@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, ChevronDown, ChevronUp, X } from "lucide-react";
 import { useReducedMotion } from "framer-motion";
+import { DURATION_200 } from "@/lib/animationUtils";
 import { cn } from "@/lib/utils";
 import { actionService } from "@/services/ActionService";
 import { AnimatedLabel } from "@/components/ui/AnimatedLabel";
@@ -107,7 +108,7 @@ export function GettingStartedChecklist({
           return next;
         });
         popTimersRef.current.delete(id);
-      }, 200);
+      }, DURATION_200);
       popTimersRef.current.set(id, timer);
     }
   }, [items, prefersReducedMotion]);
@@ -220,11 +221,7 @@ export function GettingStartedChecklist({
                 const isPopping = poppingItems.has(id);
                 const content = (
                   <>
-                    <CheckBadge
-                      done={done}
-                      isPopping={isPopping}
-                      onPopEnd={() => clearPop(id)}
-                    />
+                    <CheckBadge done={done} isPopping={isPopping} onPopEnd={() => clearPop(id)} />
                     <Icon
                       className={cn(
                         "h-3.5 w-3.5 shrink-0",
