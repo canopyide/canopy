@@ -134,8 +134,14 @@ vi.mock("@/hooks/useFindInPage", () => ({
   }),
 }));
 
+const { browserToolbarPropsSpy } = vi.hoisted(() => ({
+  browserToolbarPropsSpy: vi.fn(),
+}));
 vi.mock("@/components/Browser/BrowserToolbar", () => ({
-  BrowserToolbar: () => <div data-testid="browser-toolbar" />,
+  BrowserToolbar: (props: Record<string, unknown>) => {
+    browserToolbarPropsSpy(props);
+    return <div data-testid="browser-toolbar" />;
+  },
 }));
 
 vi.mock("@/components/Panel", () => ({
@@ -242,21 +248,34 @@ describe("BrowserPane webview lifecycle regression", () => {
     expect(webview.hasAttribute("allowpopups")).toBe(true);
   });
 
-  it("does not wire CDP console capture (regression #7495)", () => {
-    // The plain Browser panel must not call into the webview-console IPC surface;
-    // those entrypoints exist for the Dev Preview panel only. We assert the
-    // console namespace is undefined here so a future re-introduction of the
-    // capture wiring would throw at access time.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const webview = (window as any).electron.webview;
-    expect(webview.startConsoleCapture).toBeUndefined();
-    expect(webview.stopConsoleCapture).toBeUndefined();
-    expect(webview.clearConsoleCapture).toBeUndefined();
-    expect(webview.onConsoleMessage).toBeUndefined();
-    expect(webview.onConsoleContextCleared).toBeUndefined();
-    expect(webview.registerPanel).toBeUndefined();
+  it("does not pass console-toggle props to BrowserToolbar (regression #7495)", () => {
+    // The plain Browser panel must not surface the console button via the
+    // shared toolbar — that wiring belongs to DevPreviewPane only.
+    render(<BrowserPane {...baseProps} />);
+    expect(browserToolbarPropsSpy).toHaveBeenCalled();
+    const props = browserToolbarPropsSpy.mock.calls.at(-1)![0] as Record<string, unknown>;
+    expect(props.onToggleConsole).toBeUndefined();
+    expect(props.isConsoleOpen).toBeUndefined();
+  });
 
-    expect(() => render(<BrowserPane {...baseProps} />)).not.toThrow();
+  it("ignores window-dispatched console events without throwing (regression #7495)", () => {
+    // The optional `onToggleConsole`/`onClearConsole` callbacks are guarded with
+    // optional chaining in the action listener. Dispatching the events on a
+    // plain BrowserPane must be a safe no-op.
+    render(<BrowserPane {...baseProps} />);
+
+    expect(() => {
+      window.dispatchEvent(
+        new CustomEvent("daintree:browser-toggle-console", {
+          detail: { id: "browser-panel-1" },
+        })
+      );
+      window.dispatchEvent(
+        new CustomEvent("daintree:browser-clear-console", {
+          detail: { id: "browser-panel-1" },
+        })
+      );
+    }).not.toThrow();
   });
 
   it("uses theme-backed browser chrome surfaces", () => {
