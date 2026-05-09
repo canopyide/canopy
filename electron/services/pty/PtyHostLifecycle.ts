@@ -286,6 +286,10 @@ export class PtyHostLifecycle {
         env: {
           ...(process.env as Record<string, string>),
           DAINTREE_USER_DATA: app.getPath("userData"),
+          // Forward packaged-build state to the pty host so dev-only diagnostics
+          // (e.g. agent CLI CPU profiling via `DAINTREE_PROFILE_AGENT_STARTUP`)
+          // can gate themselves on `!== "0"` without touching `app.isPackaged`.
+          DAINTREE_IS_PACKAGED: app.isPackaged ? "1" : "0",
           DAINTREE_UTILITY_PROCESS_KIND: "pty-host",
           // node-pty 1.x hangs intermittently on Linux kernels with io_uring
           // enabled (microsoft/node-pty#630, closed as not planned). The fix

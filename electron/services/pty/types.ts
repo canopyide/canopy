@@ -40,6 +40,10 @@ export interface TerminalPublicState {
   /** Command submitted immediately after shell spawn, if any. */
   command?: string;
   spawnedAt: number;
+  /** Wall-clock timestamp of the first PTY data byte after spawn. */
+  firstByteAt?: number;
+  /** Wall-clock timestamp when BootDetector first declared boot complete. */
+  bootCompleteAt?: number;
   wasKilled?: boolean;
   isExited?: boolean;
   agentState?: AgentState;

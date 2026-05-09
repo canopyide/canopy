@@ -874,3 +874,168 @@ describe("TerminalProcess — getPublicState lifecycle derivation", () => {
     expect(state.exitCode).toBe(0);
   });
 });
+
+describe("TerminalProcess — agent startup instrumentation (Issue #7616)", () => {
+  it("leaves firstByteAt and bootCompleteAt undefined before any data arrives", () => {
+    const pty = createControllablePty();
+    const terminal = createTerminal(pty);
+
+    const state = terminal.getPublicState();
+    expect(state.firstByteAt).toBeUndefined();
+    expect(state.bootCompleteAt).toBeUndefined();
+    terminal.dispose();
+  });
+
+  it("captures firstByteAt on the first data event and does not overwrite it on subsequent data", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(2000);
+    const pty = createControllablePty();
+    const terminal = createTerminal(pty);
+
+    try {
+      await emitDataAndFlush(pty, "first");
+      const initial = terminal.getPublicState().firstByteAt;
+      expect(initial).toBe(2000);
+
+      vi.setSystemTime(2500);
+      await emitDataAndFlush(pty, "second");
+      expect(terminal.getPublicState().firstByteAt).toBe(initial);
+    } finally {
+      terminal.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("emits a single [AgentStartup] log line keyed on (agentId, cwdHash) for agent terminals", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(5000);
+    const pty = createControllablePty();
+    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+    const terminal = createTerminal(pty, {
+      kind: "terminal",
+      launchAgentId: "claude",
+      cwd: "/repo/agent",
+    });
+
+    try {
+      // Drive ActivityMonitor's onData path to surface the boot-complete callback.
+      terminal.getInfo().firstByteAt = 5050;
+      terminal.getInfo().bootCompleteAt = undefined;
+      // Invoke recordBootComplete via the public path: simulate boot at 5100ms.
+      // We expose this by reading through getPublicState after manually firing.
+      // (We bypass ActivityMonitor here because the production wiring is
+      // covered by ActivityMonitor.test.ts; this test asserts the log shape.)
+      const recordBootComplete = (
+        terminal as unknown as { recordBootComplete: (ts: number) => void }
+      ).recordBootComplete.bind(terminal);
+      recordBootComplete(5100);
+
+      const startupLogs = consoleLog.mock.calls
+        .map((c) => String(c[0] ?? ""))
+        .filter((line) => line.startsWith("[AgentStartup] "));
+      expect(startupLogs).toHaveLength(1);
+
+      const json = JSON.parse(startupLogs[0]!.replace(/^\[AgentStartup\] /, ""));
+      expect(json).toMatchObject({
+        agentId: "claude",
+        terminalId: expect.any(String),
+        spawnedAt: expect.any(Number),
+        firstByteAt: 5050,
+        bootCompleteAt: 5100,
+        bootDurationMs: expect.any(Number),
+        timeToFirstByteMs: expect.any(Number),
+      });
+      // 8-char md5 hex slice
+      expect(typeof json.cwdHash).toBe("string");
+      expect(json.cwdHash).toMatch(/^[0-9a-f]{8}$/);
+
+      const state = terminal.getPublicState();
+      expect(state.bootCompleteAt).toBe(5100);
+    } finally {
+      consoleLog.mockRestore();
+      terminal.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not emit [AgentStartup] for plain terminals without a launch hint", () => {
+    const pty = createControllablePty();
+    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+    const terminal = createTerminal(pty);
+
+    try {
+      const recordBootComplete = (
+        terminal as unknown as { recordBootComplete: (ts: number) => void }
+      ).recordBootComplete.bind(terminal);
+      recordBootComplete(Date.now());
+
+      const startupLogs = consoleLog.mock.calls
+        .map((c) => String(c[0] ?? ""))
+        .filter((line) => line.startsWith("[AgentStartup] "));
+      expect(startupLogs).toHaveLength(0);
+    } finally {
+      consoleLog.mockRestore();
+      terminal.dispose();
+    }
+  });
+
+  it("emits the [AgentStartup] log only on the first recordBootComplete call (idempotency)", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(7000);
+    const pty = createControllablePty();
+    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+    const terminal = createTerminal(pty, {
+      kind: "terminal",
+      launchAgentId: "claude",
+    });
+
+    try {
+      const recordBootComplete = (
+        terminal as unknown as { recordBootComplete: (ts: number) => void }
+      ).recordBootComplete.bind(terminal);
+
+      recordBootComplete(7100);
+      recordBootComplete(7200);
+      recordBootComplete(7300);
+
+      const startupLogs = consoleLog.mock.calls
+        .map((c) => String(c[0] ?? ""))
+        .filter((line) => line.startsWith("[AgentStartup] "));
+      expect(startupLogs).toHaveLength(1);
+      // The first timestamp wins; later calls do not mutate or re-emit.
+      expect(terminal.getPublicState().bootCompleteAt).toBe(7100);
+    } finally {
+      consoleLog.mockRestore();
+      terminal.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("omits firstByteAt/timeToFirstByteMs from the log when no data was observed before boot completes", () => {
+    const pty = createControllablePty();
+    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+    const terminal = createTerminal(pty, {
+      kind: "terminal",
+      launchAgentId: "codex",
+    });
+
+    try {
+      const recordBootComplete = (
+        terminal as unknown as { recordBootComplete: (ts: number) => void }
+      ).recordBootComplete.bind(terminal);
+      recordBootComplete(Date.now());
+
+      const line = consoleLog.mock.calls
+        .map((c) => String(c[0] ?? ""))
+        .find((l) => l.startsWith("[AgentStartup] "));
+      expect(line).toBeDefined();
+      const json = JSON.parse(line!.replace(/^\[AgentStartup\] /, ""));
+      expect(json.firstByteAt).toBeUndefined();
+      expect(json.timeToFirstByteMs).toBeUndefined();
+      expect(json.bootDurationMs).toEqual(expect.any(Number));
+    } finally {
+      consoleLog.mockRestore();
+      terminal.dispose();
+    }
+  });
+});

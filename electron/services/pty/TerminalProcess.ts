@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type * as pty from "node-pty";
 import type { Terminal as HeadlessTerminalType } from "@xterm/headless";
 import headless from "@xterm/headless";
@@ -443,6 +444,7 @@ export class TerminalProcess {
               0.6
             );
           },
+          onBootComplete: (timestamp) => this.recordBootComplete(timestamp),
         }
       );
       this.activityMonitor.startPolling();
@@ -592,6 +594,8 @@ export class TerminalProcess {
       titleMode: t.titleMode,
       command: t.command,
       spawnedAt: t.spawnedAt,
+      firstByteAt: t.firstByteAt,
+      bootCompleteAt: t.bootCompleteAt,
       wasKilled,
       isExited,
       agentState: t.agentState,
@@ -1279,6 +1283,7 @@ export class TerminalProcess {
               0.6
             );
           },
+          onBootComplete: (timestamp) => this.recordBootComplete(timestamp),
         }
       );
       this.activityMonitor.startPolling();
@@ -1402,6 +1407,45 @@ export class TerminalProcess {
     }
   }
 
+  /**
+   * Wired into `ActivityMonitor` via `onBootComplete`. Captures
+   * `bootCompleteAt` on the terminal once per boot cycle and emits a
+   * structured `[AgentStartup]` JSON log entry keyed on `(agentId,
+   * cwdHash)` so traces from independent launches can be compared. Does
+   * nothing for plain (non-agent) terminals.
+   */
+  private recordBootComplete(timestamp: number): void {
+    const terminal = this.terminalInfo;
+    // Idempotent: only the first call captures bootCompleteAt and emits the
+    // log. The `ActivityMonitor.fireBootComplete` one-shot guard normally
+    // already prevents re-entry, but this defends against accidental direct
+    // calls and restart paths that re-arm the upstream guard.
+    if (terminal.bootCompleteAt !== undefined) return;
+    terminal.bootCompleteAt = timestamp;
+
+    const agentId = terminal.launchAgentId;
+    if (!agentId) return;
+
+    const spawnedAt = terminal.spawnedAt;
+    const firstByteAt = terminal.firstByteAt;
+    const cwdHash = createHash("md5").update(terminal.cwd).digest("hex").slice(0, 8);
+
+    const entry: Record<string, unknown> = {
+      agentId,
+      cwdHash,
+      terminalId: terminal.id,
+      spawnedAt,
+      bootCompleteAt: timestamp,
+      bootDurationMs: timestamp - spawnedAt,
+    };
+    if (firstByteAt !== undefined) {
+      entry.firstByteAt = firstByteAt;
+      entry.timeToFirstByteMs = firstByteAt - spawnedAt;
+    }
+
+    console.log(`[AgentStartup] ${JSON.stringify(entry)}`);
+  }
+
   private setupPtyHandlers(ptyProcess: pty.IPty): void {
     const terminal = this.terminalInfo;
 
@@ -1410,7 +1454,13 @@ export class TerminalProcess {
         return;
       }
 
-      terminal.lastOutputTime = Date.now();
+      const now = Date.now();
+      // One-shot startup metric: wall-clock time of the first PTY data byte.
+      // Surfaces in `getPublicState()` and the `[AgentStartup]` structured log.
+      if (terminal.firstByteAt === undefined) {
+        terminal.firstByteAt = now;
+      }
+      terminal.lastOutputTime = now;
       const beforeContentSnapshot = this.isAgentLive
         ? this.getAgentOutputContentSnapshot()
         : undefined;

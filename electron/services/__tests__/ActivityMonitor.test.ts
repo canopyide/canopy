@@ -5138,4 +5138,168 @@ describe("ActivityMonitor", () => {
       monitor.dispose();
     });
   });
+
+  describe("onBootComplete callback (Issue #7616)", () => {
+    it("fires once when boot completion is detected via the data-path", () => {
+      vi.setSystemTime(10000);
+      const onStateChange = vi.fn();
+      const onBootComplete = vi.fn();
+      const monitor = new ActivityMonitor("boot-data", 1000, onStateChange, {
+        getVisibleLines: () => ["> "],
+        getCursorLine: () => "> ",
+        bootCompletePatterns: [/ready/i],
+        idleDebounceMs: 4000,
+        onBootComplete,
+      });
+
+      monitor.startPolling();
+      // The data path runs through onData() and triggers bootDetector.check
+      // against the rolling pattern buffer.
+      monitor.onData("starting up\nstill working\n");
+      expect(onBootComplete).not.toHaveBeenCalled();
+
+      monitor.onData("system ready\n");
+      expect(onBootComplete).toHaveBeenCalledTimes(1);
+      expect(onBootComplete).toHaveBeenCalledWith(expect.any(Number));
+
+      // Subsequent matching data must not re-fire.
+      monitor.onData("ready again ready\n");
+      expect(onBootComplete).toHaveBeenCalledTimes(1);
+
+      monitor.dispose();
+    });
+
+    it("fires once when boot completion is detected via the polling cycle", () => {
+      vi.setSystemTime(10000);
+      const onStateChange = vi.fn();
+      const onBootComplete = vi.fn();
+      // Visible lines stable; the polling cycle's bootDetector.check observes
+      // the boot pattern in the joined visible text.
+      const monitor = new ActivityMonitor("boot-poll", 1000, onStateChange, {
+        getVisibleLines: () => ["welcome banner", "agent ready"],
+        getCursorLine: () => "agent ready",
+        bootCompletePatterns: [/ready/i],
+        pollingIntervalMs: 50,
+        idleDebounceMs: 4000,
+        onBootComplete,
+      });
+
+      monitor.startPolling();
+      // One polling tick is enough for the boot detector to see "ready".
+      vi.advanceTimersByTime(60);
+      expect(onBootComplete).toHaveBeenCalledTimes(1);
+
+      // Further polling cycles must not re-fire.
+      vi.advanceTimersByTime(500);
+      expect(onBootComplete).toHaveBeenCalledTimes(1);
+
+      monitor.dispose();
+    });
+
+    it("re-arms the one-shot guard when polling restarts on a fresh PTY", () => {
+      vi.setSystemTime(10000);
+      const onStateChange = vi.fn();
+      const onBootComplete = vi.fn();
+      let visibleText = ["agent ready"];
+      const monitor = new ActivityMonitor("boot-restart", 1000, onStateChange, {
+        getVisibleLines: () => visibleText,
+        getCursorLine: () => visibleText[visibleText.length - 1] ?? null,
+        bootCompletePatterns: [/ready/i],
+        pollingIntervalMs: 50,
+        idleDebounceMs: 4000,
+        onBootComplete,
+      });
+
+      monitor.startPolling();
+      vi.advanceTimersByTime(60);
+      expect(onBootComplete).toHaveBeenCalledTimes(1);
+
+      // Simulate a restart: stop polling, then start again. The boot path is
+      // re-entered (skipInitialStateEmit is false by default), so the one-shot
+      // flag must reset and the next observed boot must fire telemetry again.
+      monitor.stopPolling();
+      visibleText = ["restarting", "agent ready"];
+      monitor.startPolling();
+      vi.advanceTimersByTime(60);
+      expect(onBootComplete).toHaveBeenCalledTimes(2);
+
+      monitor.dispose();
+    });
+
+    it("does not throw if the callback throws", () => {
+      vi.setSystemTime(10000);
+      const onStateChange = vi.fn();
+      const onBootComplete = vi.fn(() => {
+        throw new Error("boom");
+      });
+      const monitor = new ActivityMonitor("boot-throw", 1000, onStateChange, {
+        getVisibleLines: () => ["> "],
+        getCursorLine: () => "> ",
+        bootCompletePatterns: [/ready/i],
+        idleDebounceMs: 4000,
+        onBootComplete,
+      });
+
+      monitor.startPolling();
+      expect(() => monitor.onData("system ready\n")).not.toThrow();
+      expect(onBootComplete).toHaveBeenCalledTimes(1);
+
+      monitor.dispose();
+    });
+
+    it("fires for agent monitors using simpleOutputState (real-world wiring)", () => {
+      // Regression for #7616 review: every monitor built via
+      // `buildActivityMonitorOptions(<agentId>, ...)` runs with
+      // `simpleOutputState: true`, which short-circuits the regular
+      // boot-detection path. The simple-output branches must also call
+      // `fireBootComplete`, otherwise the entire instrumentation is a no-op
+      // for real agent terminals.
+      vi.setSystemTime(10000);
+      const onStateChange = vi.fn();
+      const onBootComplete = vi.fn();
+      const monitor = new ActivityMonitor("boot-simple-data", 1000, onStateChange, {
+        agentId: "claude",
+        simpleOutputState: true,
+        getVisibleLines: () => ["claude code v0.5.6", "Type your message"],
+        getCursorLine: () => "Type your message",
+        bootCompletePatterns: [/claude\s+code\s+v?\d/i],
+        idleDebounceMs: 4000,
+        onBootComplete,
+      });
+
+      // Data path: onData runs in simpleOutputState mode and must still detect
+      // the boot pattern from the immediate chunk.
+      monitor.onData("claude code v0.5.6\n");
+      expect(onBootComplete).toHaveBeenCalledTimes(1);
+
+      monitor.dispose();
+    });
+
+    it("fires from the simple-output polling path on the boot-timeout fallback", () => {
+      // When the agent's banner does not match a known boot pattern, the
+      // POLLING_MAX_BOOT_MS timeout still flips boot state. The
+      // simpleOutputState polling branch must run that check.
+      vi.setSystemTime(10000);
+      const onStateChange = vi.fn();
+      const onBootComplete = vi.fn();
+      const monitor = new ActivityMonitor("boot-simple-timeout", 1000, onStateChange, {
+        agentId: "claude",
+        simpleOutputState: true,
+        getVisibleLines: () => ["miscellaneous output", "no boot marker here"],
+        getCursorLine: () => "no boot marker here",
+        bootCompletePatterns: [/never matches/],
+        pollingIntervalMs: 50,
+        pollingMaxBootMs: 200,
+        idleDebounceMs: 4000,
+        onBootComplete,
+      });
+
+      monitor.startPolling();
+      // Advance well past pollingMaxBootMs so the timeout branch fires.
+      vi.advanceTimersByTime(400);
+      expect(onBootComplete).toHaveBeenCalledTimes(1);
+
+      monitor.dispose();
+    });
+  });
 });
