@@ -56,13 +56,29 @@ describe("QuickStateFilterBar", () => {
     const working = screen.getByRole("button", { name: /Working/ });
     const visibleCount = within(working).getByText("(3)", { exact: false });
     expect(visibleCount.getAttribute("aria-hidden")).toBe("true");
-    expect(within(working).getByText(", 3 worktrees")).toBeTruthy();
+    const workingSrOnly = within(working).getByText(", 3 worktrees");
+    expect(workingSrOnly.className).toContain("sr-only");
 
     const waiting = screen.getByRole("button", { name: /Waiting/ });
-    expect(within(waiting).getByText(", 1 worktree")).toBeTruthy();
+    const waitingSrOnly = within(waiting).getByText(", 1 worktree");
+    expect(waitingSrOnly.className).toContain("sr-only");
 
     const finished = screen.getByRole("button", { name: /Finished/ });
-    expect(within(finished).getByText(", 0 worktrees")).toBeTruthy();
+    const finishedSrOnly = within(finished).getByText(", 0 worktrees");
+    expect(finishedSrOnly.className).toContain("sr-only");
+  });
+
+  it("exposes the count in the button's accessible name", () => {
+    render(
+      <QuickStateFilterBar
+        value="all"
+        onChange={() => {}}
+        counts={{ working: 3, waiting: 1, finished: 0 }}
+      />
+    );
+    expect(screen.getByRole("button", { name: "Working, 3 worktrees" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Waiting, 1 worktree" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Finished, 0 worktrees" })).toBeTruthy();
   });
 
   it("uses an inset ring (not a translucent fill) for the active pill", () => {
