@@ -568,45 +568,50 @@ export function DaintreeAssistantSettingsTab() {
               Turn it on in the MCP Server tab to capture help-session activity.
             </p>
           </div>
-        ) : helpSessionRecords.length === 0 ? (
-          <p className="text-xs text-daintree-text/50">No help-session calls recorded yet.</p>
         ) : (
           <div className="contents">
-            <div className="max-h-64 overflow-y-auto rounded-[var(--radius-md)] border border-daintree-border bg-daintree-bg">
-              <ul className="divide-y divide-daintree-border">
-                {helpSessionRecords.map((record) => (
-                  <li key={record.id} className="grid grid-cols-[auto_1fr_auto] gap-2 p-2 text-xs">
-                    <span
-                      className={cn(
-                        "mt-1 h-2 w-2 rounded-full shrink-0",
-                        RESULT_DOT_CLASS[record.result]
-                      )}
-                      aria-label={RESULT_LABEL[record.result]}
-                      title={RESULT_LABEL[record.result]}
-                    />
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-daintree-text/90 truncate">
-                          {record.toolId}
-                        </span>
-                        {record.errorCode && (
-                          <span className="text-[10px] uppercase tracking-wide text-status-danger/80">
-                            {record.errorCode}
-                          </span>
+            {helpSessionRecords.length === 0 ? (
+              <p className="text-xs text-daintree-text/50">No help-session calls recorded yet.</p>
+            ) : (
+              <div className="max-h-64 overflow-y-auto rounded-[var(--radius-md)] border border-daintree-border bg-daintree-bg">
+                <ul className="divide-y divide-daintree-border">
+                  {helpSessionRecords.map((record) => (
+                    <li
+                      key={record.id}
+                      className="grid grid-cols-[auto_1fr_auto] gap-2 p-2 text-xs"
+                    >
+                      <span
+                        className={cn(
+                          "mt-1 h-2 w-2 rounded-full shrink-0",
+                          RESULT_DOT_CLASS[record.result]
                         )}
+                        aria-label={RESULT_LABEL[record.result]}
+                        title={RESULT_LABEL[record.result]}
+                      />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-daintree-text/90 truncate">
+                            {record.toolId}
+                          </span>
+                          {record.errorCode && (
+                            <span className="text-[10px] uppercase tracking-wide text-status-danger/80">
+                              {record.errorCode}
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-0.5 font-mono text-daintree-text/50 truncate">
+                          {record.argsSummary || "{}"}
+                        </div>
                       </div>
-                      <div className="mt-0.5 font-mono text-daintree-text/50 truncate">
-                        {record.argsSummary || "{}"}
+                      <div className="text-right text-daintree-text/40 whitespace-nowrap">
+                        <div>{formatRelativeTimestamp(record.timestamp)}</div>
+                        <div>{record.durationMs}ms</div>
                       </div>
-                    </div>
-                    <div className="text-right text-daintree-text/40 whitespace-nowrap">
-                      <div>{formatRelativeTimestamp(record.timestamp)}</div>
-                      <div>{record.durationMs}ms</div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {toolLatencyStats.length > 0 && (
               <div>
@@ -665,6 +670,9 @@ export function DaintreeAssistantSettingsTab() {
               </div>
             )}
 
+            {/* Counter + Clear are always visible when audit is on, even with
+               zero records — a 401 surge is exactly the case where no records
+               land but the user still needs the diagnostic signal. */}
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs text-daintree-text/60">
                 Unauthorized responses:{" "}
@@ -673,10 +681,10 @@ export function DaintreeAssistantSettingsTab() {
               <button
                 type="button"
                 onClick={() => setShowClearConfirm(true)}
-                disabled={helpSessionRecords.length === 0}
+                disabled={auditRecords.length === 0}
                 className={cn(
                   "ml-auto px-3 py-1.5 text-xs font-medium rounded-[var(--radius-md)] border transition-colors",
-                  helpSessionRecords.length === 0
+                  auditRecords.length === 0
                     ? "border-daintree-border text-daintree-text/30 cursor-not-allowed"
                     : "border-daintree-border text-status-danger hover:text-status-danger hover:bg-status-danger/10 hover:border-status-danger/20"
                 )}
@@ -763,7 +771,7 @@ export function DaintreeAssistantSettingsTab() {
         isOpen={showClearConfirm}
         onClose={isClearing ? undefined : handleCancelClearAuditLog}
         title="Clear activity log?"
-        description="All recorded help-session calls will be deleted from this device."
+        description="Clears the entire MCP audit log on this device, including any calls from external clients."
         confirmLabel="Clear log"
         cancelLabel="Cancel"
         onConfirm={confirmClearAuditLog}

@@ -755,6 +755,26 @@ describe("DaintreeAssistantSettingsTab", () => {
       expect(container.textContent).toContain("7");
     });
 
+    it("shows the unauthorized counter even when no help-session records exist", async () => {
+      installApi(
+        {},
+        {
+          getAuditRecords: vi.fn().mockResolvedValue([]),
+          getMetrics: vi.fn().mockResolvedValue({ unauthorizedCount: 12 }),
+        }
+      );
+
+      const { container } = render(
+        <SettingsValidationProvider>
+          <DaintreeAssistantSettingsTab />
+        </SettingsValidationProvider>
+      );
+
+      await waitForContent(container, "Unauthorized responses");
+      expect(container.textContent).toContain("12");
+      expect(container.textContent).toContain("No help-session calls recorded yet");
+    });
+
     it("renders the recent tier rejections sub-list", async () => {
       installApi(
         {},
