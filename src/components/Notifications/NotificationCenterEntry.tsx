@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState, type Ref } from "react";
 import { CheckCircle2, XCircle, Info, AlertTriangle, MoreHorizontal, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { NotificationHistoryEntry } from "@/store/slices/notificationHistorySlice";
@@ -79,14 +79,24 @@ interface NotificationCenterEntryProps {
   threadCount?: number;
   isNew?: boolean;
   onDismiss?: () => void;
+  rowRef?: Ref<HTMLDivElement>;
+  tabIndex?: number;
+  role?: string;
+  onFocus?: () => void;
+  onDropdownOpenChange?: (open: boolean) => void;
 }
 
-export function NotificationCenterEntry({
+function NotificationCenterEntryImpl({
   entry,
   displayType,
   threadCount,
   isNew = false,
   onDismiss,
+  rowRef,
+  tabIndex,
+  role,
+  onFocus,
+  onDropdownOpenChange,
 }: NotificationCenterEntryProps) {
   const config = TYPE_CONFIG[displayType ?? entry.type];
   const Icon = config.icon;
@@ -114,7 +124,17 @@ export function NotificationCenterEntry({
   }, [safeCount]);
 
   return (
-    <div className="group flex items-start gap-2.5 px-3 py-2 hover:bg-overlay-medium transition-colors">
+    <div
+      ref={rowRef}
+      tabIndex={tabIndex}
+      role={role}
+      onFocus={onFocus}
+      className={cn(
+        "group flex items-start gap-2.5 px-3 py-2 hover:bg-overlay-medium transition-colors",
+        tabIndex !== undefined &&
+          "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-daintree-accent/50"
+      )}
+    >
       <div className={cn("mt-0.5 shrink-0", config.className)}>
         <Icon className="h-3.5 w-3.5" />
       </div>
@@ -217,13 +237,13 @@ export function NotificationCenterEntry({
           (() => {
             const eventKind = entry.context?.eventKind;
             return (
-              <DropdownMenu>
+              <DropdownMenu onOpenChange={onDropdownOpenChange}>
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
                     aria-label="Notification options"
                     onClick={(e) => e.stopPropagation()}
-                    className="opacity-0 group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 h-4 w-4 flex items-center justify-center rounded text-daintree-text/40 hover:text-daintree-text/70 transition-opacity"
+                    className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 h-4 w-4 flex items-center justify-center rounded text-daintree-text/40 hover:text-daintree-text/70 transition-opacity"
                   >
                     <MoreHorizontal className="h-3 w-3" />
                   </button>
@@ -269,7 +289,7 @@ export function NotificationCenterEntry({
               e.stopPropagation();
               onDismiss();
             }}
-            className="opacity-0 group-hover:opacity-100 focus:opacity-100 h-4 w-4 flex items-center justify-center rounded text-daintree-text/40 hover:text-daintree-text/70 transition-opacity"
+            className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 h-4 w-4 flex items-center justify-center rounded text-daintree-text/40 hover:text-daintree-text/70 transition-opacity"
           >
             <X className="h-3 w-3" />
           </button>
@@ -278,3 +298,5 @@ export function NotificationCenterEntry({
     </div>
   );
 }
+
+export const NotificationCenterEntry = memo(NotificationCenterEntryImpl);

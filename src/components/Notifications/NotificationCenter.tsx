@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, Bell, CheckCheck, Ellipsis, Layers, Moon, Trash2 } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import {
@@ -16,6 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { actionService } from "@/services/ActionService";
+import type { ActionId } from "@shared/types/actions";
 import { muteForDuration, muteUntilNextMorning, notify, setSessionQuietUntil } from "@/lib/notify";
 import { useNotificationSettingsStore } from "@/store/notificationSettingsStore";
 import { useUIStore } from "@/store/uiStore";
@@ -82,6 +83,28 @@ interface ContextSection {
   worktreeId?: string;
   projectId?: string;
   groups: ThreadGroup[];
+}
+
+type NotificationAction = NonNullable<NotificationHistoryEntry["actions"]>[number];
+
+interface FlatRow {
+  key: string;
+  isThread: boolean;
+  correlationId: string | undefined;
+  entryId: string;
+  primaryAction: NotificationAction | undefined;
+}
+
+function buildFlatRow(group: ThreadGroup): FlatRow {
+  const isThread = !!group.correlationId && group.entries.length > 1;
+  const latest = group.entries[0]!;
+  return {
+    key: group.correlationId ?? latest.id,
+    isThread,
+    correlationId: group.correlationId,
+    entryId: latest.id,
+    primaryAction: latest.actions?.[0],
+  };
 }
 
 function groupByCorrelationId(entries: NotificationHistoryEntry[]): ThreadGroup[] {
@@ -345,6 +368,151 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
     });
   };
 
+  const flatRows = useMemo<FlatRow[]>(() => {
+    const rows: FlatRow[] = [];
+    for (const g of needsAttentionGroups) {
+      rows.push(buildFlatRow(g));
+    }
+    for (const section of chronoSections) {
+      for (const g of section.groups) {
+        rows.push(buildFlatRow(g));
+      }
+    }
+    return rows;
+  }, [needsAttentionGroups, chronoSections]);
+
+  const rowCount = flatRows.length;
+  const [focusedIndex, setFocusedIndex] = useState(0);
+  const rowRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  const dropdownOpenCountRef = useRef(0);
+  const prevRowCountRef = useRef(rowCount);
+
+  const setRowRef = useCallback((index: number, el: HTMLDivElement | null) => {
+    if (el) {
+      rowRefs.current.set(index, el);
+    } else {
+      rowRefs.current.delete(index);
+    }
+  }, []);
+
+  const handleDropdownOpenChange = useCallback((open: boolean) => {
+    dropdownOpenCountRef.current = Math.max(0, dropdownOpenCountRef.current + (open ? 1 : -1));
+  }, []);
+
+  // After any row count change, clamp focusedIndex; reset the dropdown
+  // counter (a row removed mid-menu may never fire onOpenChange(false)); and
+  // when row count *decreases* with focus dropped to <body> (the focused row
+  // just unmounted), snap focus back to the surviving slot at the prior
+  // index. Only on decrease — never on mount or addition — to avoid
+  // hijacking focus from the toolbar bell button when the panel opens.
+  useEffect(() => {
+    const prevRowCount = prevRowCountRef.current;
+    prevRowCountRef.current = rowCount;
+
+    dropdownOpenCountRef.current = 0;
+
+    if (rowCount === 0) {
+      if (focusedIndex !== 0) setFocusedIndex(0);
+      return;
+    }
+
+    const clamped = Math.min(focusedIndex, rowCount - 1);
+    if (clamped !== focusedIndex) {
+      setFocusedIndex(clamped);
+    }
+
+    if (rowCount >= prevRowCount) return;
+    if (typeof document === "undefined") return;
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    rowRefs.current.get(clamped)?.focus();
+  }, [rowCount, focusedIndex]);
+
+  const dispatchPrimaryAction = useCallback((row: FlatRow) => {
+    const action = row.primaryAction;
+    if (!action) return;
+    const manifest = actionService.get(action.actionId as ActionId);
+    if (!manifest || !manifest.enabled) return;
+    void actionService.dispatch(action.actionId as ActionId, action.actionArgs);
+  }, []);
+
+  const dismissRow = useCallback(
+    (row: FlatRow) => {
+      if (row.isThread && row.correlationId) {
+        dismissByCorrelationId(row.correlationId);
+      } else {
+        dismissEntry(row.entryId);
+      }
+    },
+    [dismissByCorrelationId, dismissEntry]
+  );
+
+  const moveFocusTo = useCallback((index: number) => {
+    const target = rowRefs.current.get(index);
+    if (target) {
+      target.focus();
+    }
+    setFocusedIndex(index);
+  }, []);
+
+  const handleListKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (dropdownOpenCountRef.current > 0) return;
+      if (rowCount === 0) return;
+
+      const active = document.activeElement;
+      let activeIndex = -1;
+      for (const [idx, el] of rowRefs.current.entries()) {
+        if (el === active) {
+          activeIndex = idx;
+          break;
+        }
+      }
+      if (activeIndex === -1) return;
+
+      switch (e.key) {
+        case "j":
+        case "ArrowDown": {
+          e.preventDefault();
+          moveFocusTo(Math.min(activeIndex + 1, rowCount - 1));
+          return;
+        }
+        case "k":
+        case "ArrowUp": {
+          e.preventDefault();
+          moveFocusTo(Math.max(activeIndex - 1, 0));
+          return;
+        }
+        case "Home": {
+          e.preventDefault();
+          moveFocusTo(0);
+          return;
+        }
+        case "End": {
+          e.preventDefault();
+          moveFocusTo(rowCount - 1);
+          return;
+        }
+        case "e": {
+          e.preventDefault();
+          const row = flatRows[activeIndex];
+          if (row) dismissRow(row);
+          return;
+        }
+        case "Enter": {
+          const row = flatRows[activeIndex];
+          if (!row || !row.primaryAction) return;
+          e.preventDefault();
+          dispatchPrimaryAction(row);
+          return;
+        }
+        default:
+          return;
+      }
+    },
+    [rowCount, flatRows, moveFocusTo, dismissRow, dispatchPrimaryAction]
+  );
+
   const handleMarkAllRead = () => {
     const ids = entries.filter((e) => !e.seenAsToast).map((e) => e.id);
     if (filter === "unread") {
@@ -536,7 +704,13 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
         </div>
       </div>
       <div className="relative flex-1 min-h-0">
-        <div ref={setScrollContainer} className="h-full overflow-y-auto">
+        <div
+          ref={setScrollContainer}
+          onKeyDown={handleListKeyDown}
+          role={rowCount > 0 ? "list" : undefined}
+          aria-label={rowCount > 0 ? "Notifications" : undefined}
+          className="h-full overflow-y-auto"
+        >
           {totalChronoGroups === 0 && needsAttentionGroups.length === 0 ? (
             filter === "unread" && entries.length > 0 ? (
               <EmptyState
@@ -581,14 +755,29 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
               {needsAttentionGroups.length > 0 && (
                 <NeedsAttentionSection
                   groups={needsAttentionGroups}
+                  indexOffset={0}
+                  focusedIndex={focusedIndex}
+                  setRowRef={setRowRef}
+                  onRowFocus={setFocusedIndex}
+                  onDropdownOpenChange={handleDropdownOpenChange}
                   onDismiss={dismissEntry}
                   onDismissThread={dismissByCorrelationId}
                 />
               )}
-              {chronoSections.map((section) => (
+              {chronoSections.map((section, sectionIdx) => (
                 <ChronoSection
                   key={section.key}
                   section={section}
+                  indexOffset={
+                    needsAttentionGroups.length +
+                    chronoSections
+                      .slice(0, sectionIdx)
+                      .reduce((sum, s) => sum + s.groups.length, 0)
+                  }
+                  focusedIndex={focusedIndex}
+                  setRowRef={setRowRef}
+                  onRowFocus={setFocusedIndex}
+                  onDropdownOpenChange={handleDropdownOpenChange}
                   groupByContext={groupByContext}
                   dividerGroupId={dividerGroupId}
                   dividerRef={setDividerEl}
@@ -638,22 +827,43 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
   );
 }
 
+interface RovingSectionProps {
+  indexOffset: number;
+  focusedIndex: number;
+  setRowRef: (index: number, el: HTMLDivElement | null) => void;
+  onRowFocus: (index: number) => void;
+  onDropdownOpenChange: (open: boolean) => void;
+}
+
 function NeedsAttentionSection({
   groups,
+  indexOffset,
+  focusedIndex,
+  setRowRef,
+  onRowFocus,
+  onDropdownOpenChange,
   onDismiss,
   onDismissThread,
 }: {
   groups: ThreadGroup[];
   onDismiss: (id: string) => void;
   onDismissThread: (correlationId: string) => void;
-}) {
+} & RovingSectionProps) {
   return (
     <div data-testid="needs-attention-section" className="border-b border-divider">
       <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-daintree-text/50">
         Needs attention
       </div>
-      <div className="divide-y divide-tint/[0.04]">
-        {groups.map((group) => renderGroup(group, onDismiss, onDismissThread))}
+      <div role="group" aria-label="Needs attention" className="divide-y divide-tint/[0.04]">
+        {groups.map((group, idx) =>
+          renderGroup(group, onDismiss, onDismissThread, {
+            flatIndex: indexOffset + idx,
+            focusedIndex,
+            setRowRef,
+            onRowFocus,
+            onDropdownOpenChange,
+          })
+        )}
       </div>
     </div>
   );
@@ -665,6 +875,11 @@ function ChronoSection({
   dividerGroupId,
   dividerRef,
   lastClosedAt,
+  indexOffset,
+  focusedIndex,
+  setRowRef,
+  onRowFocus,
+  onDropdownOpenChange,
   onDismiss,
   onDismissThread,
   onMarkIdsRead,
@@ -677,14 +892,14 @@ function ChronoSection({
   onDismiss: (id: string) => void;
   onDismissThread: (correlationId: string) => void;
   onMarkIdsRead: (ids: string[], options: { resetLastClosed: boolean }) => void;
-}) {
+} & RovingSectionProps) {
   const sectionUnreadIds = section.groups.flatMap((g) =>
     g.entries.filter((e) => !e.seenAsToast).map((e) => e.id)
   );
   const newSinceUnreadIds = section.groups
     .filter((g) => g.latestTimestamp > lastClosedAt)
     .flatMap((g) => g.entries.filter((e) => !e.seenAsToast).map((e) => e.id));
-
+  const sectionLabel = groupByContext ? "Notifications for this context" : "All notifications";
   return (
     <div data-testid="chrono-section">
       {groupByContext && (
@@ -696,8 +911,8 @@ function ChronoSection({
           onMarkRead={() => onMarkIdsRead(sectionUnreadIds, { resetLastClosed: false })}
         />
       )}
-      <div className="divide-y divide-tint/[0.04]">
-        {section.groups.map((group) => {
+      <div role="group" aria-label={sectionLabel} className="divide-y divide-tint/[0.04]">
+        {section.groups.map((group, idx) => {
           const groupKey = group.correlationId ?? group.entries[0]!.id;
           const isDivider = dividerGroupId !== null && groupKey === dividerGroupId;
           return (
@@ -709,7 +924,13 @@ function ChronoSection({
                   onMarkRead={() => onMarkIdsRead(newSinceUnreadIds, { resetLastClosed: true })}
                 />
               )}
-              {renderGroup(group, onDismiss, onDismissThread)}
+              {renderGroup(group, onDismiss, onDismissThread, {
+                flatIndex: indexOffset + idx,
+                focusedIndex,
+                setRowRef,
+                onRowFocus,
+                onDropdownOpenChange,
+              })}
             </div>
           );
         })}
@@ -718,17 +939,35 @@ function ChronoSection({
   );
 }
 
+interface RowRovingProps {
+  flatIndex: number;
+  focusedIndex: number;
+  setRowRef: (index: number, el: HTMLDivElement | null) => void;
+  onRowFocus: (index: number) => void;
+  onDropdownOpenChange: (open: boolean) => void;
+}
+
 function renderGroup(
   group: ThreadGroup,
   onDismiss: (id: string) => void,
-  onDismissThread: (correlationId: string) => void
+  onDismissThread: (correlationId: string) => void,
+  roving: RowRovingProps
 ) {
+  const isFocused = roving.flatIndex === roving.focusedIndex;
+  const tabIndex = isFocused ? 0 : -1;
+  const rowRef = (el: HTMLDivElement | null) => roving.setRowRef(roving.flatIndex, el);
+  const handleFocus = () => roving.onRowFocus(roving.flatIndex);
+
   if (group.correlationId && group.entries.length > 1) {
     return (
       <NotificationThread
         key={group.correlationId}
         group={group}
         onDismiss={() => onDismissThread(group.correlationId!)}
+        rowRef={rowRef}
+        tabIndex={tabIndex}
+        onRowFocus={handleFocus}
+        onDropdownOpenChange={roving.onDropdownOpenChange}
       />
     );
   }
@@ -739,6 +978,11 @@ function renderGroup(
       entry={entry}
       isNew={!entry.seenAsToast}
       onDismiss={() => onDismiss(entry.id)}
+      rowRef={rowRef}
+      tabIndex={tabIndex}
+      role="listitem"
+      onFocus={handleFocus}
+      onDropdownOpenChange={roving.onDropdownOpenChange}
     />
   );
 }
@@ -817,7 +1061,21 @@ function NewSinceLastLookedDivider({
   );
 }
 
-function NotificationThread({ group, onDismiss }: { group: ThreadGroup; onDismiss: () => void }) {
+function NotificationThread({
+  group,
+  onDismiss,
+  rowRef,
+  tabIndex,
+  onRowFocus,
+  onDropdownOpenChange,
+}: {
+  group: ThreadGroup;
+  onDismiss: () => void;
+  rowRef?: (el: HTMLDivElement | null) => void;
+  tabIndex?: number;
+  onRowFocus?: () => void;
+  onDropdownOpenChange?: (open: boolean) => void;
+}) {
   const latest = group.entries[0];
   const isNew = group.entries.some((e) => !e.seenAsToast);
 
@@ -826,13 +1084,25 @@ function NotificationThread({ group, onDismiss }: { group: ThreadGroup; onDismis
   const displayType = getWorstSeverity(group.entries);
 
   return (
-    <div data-testid="notification-thread" className="relative border-l-2 border-tint/15">
+    <div
+      ref={rowRef}
+      tabIndex={tabIndex}
+      role="listitem"
+      onFocus={onRowFocus}
+      data-testid="notification-thread"
+      className={cn(
+        "group relative border-l-2 border-tint/15",
+        tabIndex !== undefined &&
+          "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-daintree-accent/50"
+      )}
+    >
       <NotificationCenterEntry
         entry={latest}
         displayType={displayType}
         threadCount={group.entries.length}
         isNew={isNew}
         onDismiss={onDismiss}
+        onDropdownOpenChange={onDropdownOpenChange}
       />
     </div>
   );

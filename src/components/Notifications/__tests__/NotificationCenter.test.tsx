@@ -1844,3 +1844,371 @@ describe("uiStore — closeNotificationCenter records timestamp", () => {
     expect(useUIStore.getState().lastNotificationCenterClosedAt).toBeGreaterThan(0);
   });
 });
+
+describe("NotificationCenter — keyboard navigation", () => {
+  function getRows(container: HTMLElement): HTMLElement[] {
+    return Array.from(container.querySelectorAll<HTMLElement>('[role="listitem"]'));
+  }
+
+  it("marks the scroll container as role=list with an aria-label", () => {
+    setEntries([
+      makeEntry({ id: "row-a", message: "First" }),
+      makeEntry({ id: "row-b", message: "Second" }),
+    ]);
+    const { container } = render(<NotificationCenter open onClose={vi.fn()} />);
+    const list = container.querySelector('[role="list"][aria-label="Notifications"]');
+    expect(list).not.toBeNull();
+  });
+
+  it("does not mark the container as a list when there are no rows", () => {
+    const { container } = render(<NotificationCenter open onClose={vi.fn()} />);
+    expect(container.querySelector('[role="list"]')).toBeNull();
+  });
+
+  it("renders the first row with tabIndex=0 and the rest with tabIndex=-1", () => {
+    setEntries([
+      makeEntry({ id: "a", message: "First" }),
+      makeEntry({ id: "b", message: "Second" }),
+      makeEntry({ id: "c", message: "Third" }),
+    ]);
+    const { container } = render(<NotificationCenter open onClose={vi.fn()} />);
+    const rows = getRows(container);
+    expect(rows).toHaveLength(3);
+    expect(rows[0]?.getAttribute("tabindex")).toBe("0");
+    expect(rows[1]?.getAttribute("tabindex")).toBe("-1");
+    expect(rows[2]?.getAttribute("tabindex")).toBe("-1");
+  });
+
+  it("moves the roving focus to the next row on j and ArrowDown", () => {
+    setEntries([
+      makeEntry({ id: "a", message: "First" }),
+      makeEntry({ id: "b", message: "Second" }),
+      makeEntry({ id: "c", message: "Third" }),
+    ]);
+    const { container } = render(<NotificationCenter open onClose={vi.fn()} />);
+    const rows = getRows(container);
+    const list = container.querySelector('[role="list"]') as HTMLElement;
+
+    act(() => {
+      rows[0]?.focus();
+    });
+    fireEvent.keyDown(list, { key: "j" });
+    expect(getRows(container)[1]?.getAttribute("tabindex")).toBe("0");
+    expect(document.activeElement).toBe(getRows(container)[1]);
+
+    fireEvent.keyDown(list, { key: "ArrowDown" });
+    expect(getRows(container)[2]?.getAttribute("tabindex")).toBe("0");
+    expect(document.activeElement).toBe(getRows(container)[2]);
+  });
+
+  it("moves the roving focus to the previous row on k and ArrowUp", () => {
+    setEntries([
+      makeEntry({ id: "a", message: "First" }),
+      makeEntry({ id: "b", message: "Second" }),
+      makeEntry({ id: "c", message: "Third" }),
+    ]);
+    const { container } = render(<NotificationCenter open onClose={vi.fn()} />);
+    const list = container.querySelector('[role="list"]') as HTMLElement;
+    const lastRow = getRows(container)[2]!;
+
+    act(() => {
+      lastRow.focus();
+    });
+    fireEvent.keyDown(list, { key: "k" });
+    expect(document.activeElement).toBe(getRows(container)[1]);
+
+    fireEvent.keyDown(list, { key: "ArrowUp" });
+    expect(document.activeElement).toBe(getRows(container)[0]);
+  });
+
+  it("clamps at the last row instead of wrapping", () => {
+    setEntries([makeEntry({ id: "a" }), makeEntry({ id: "b" })]);
+    const { container } = render(<NotificationCenter open onClose={vi.fn()} />);
+    const list = container.querySelector('[role="list"]') as HTMLElement;
+
+    act(() => {
+      getRows(container)[1]?.focus();
+    });
+    fireEvent.keyDown(list, { key: "j" });
+    expect(document.activeElement).toBe(getRows(container)[1]);
+  });
+
+  it("clamps at the first row instead of wrapping", () => {
+    setEntries([makeEntry({ id: "a" }), makeEntry({ id: "b" })]);
+    const { container } = render(<NotificationCenter open onClose={vi.fn()} />);
+    const list = container.querySelector('[role="list"]') as HTMLElement;
+
+    act(() => {
+      getRows(container)[0]?.focus();
+    });
+    fireEvent.keyDown(list, { key: "k" });
+    expect(document.activeElement).toBe(getRows(container)[0]);
+  });
+
+  it("Home jumps to the first row and End to the last", () => {
+    setEntries([
+      makeEntry({ id: "a" }),
+      makeEntry({ id: "b" }),
+      makeEntry({ id: "c" }),
+      makeEntry({ id: "d" }),
+    ]);
+    const { container } = render(<NotificationCenter open onClose={vi.fn()} />);
+    const list = container.querySelector('[role="list"]') as HTMLElement;
+
+    act(() => {
+      getRows(container)[0]?.focus();
+    });
+    fireEvent.keyDown(list, { key: "End" });
+    expect(document.activeElement).toBe(getRows(container)[3]);
+
+    fireEvent.keyDown(list, { key: "Home" });
+    expect(document.activeElement).toBe(getRows(container)[0]);
+  });
+
+  it("does nothing when focus is outside the row set", () => {
+    setEntries([makeEntry({ id: "a" }), makeEntry({ id: "b" })]);
+    const { container } = render(<NotificationCenter open onClose={vi.fn()} />);
+    const list = container.querySelector('[role="list"]') as HTMLElement;
+
+    // No row is focused — j must be a no-op.
+    expect(document.activeElement).not.toBe(getRows(container)[0]);
+    fireEvent.keyDown(list, { key: "j" });
+    expect(getRows(container)[0]?.getAttribute("tabindex")).toBe("0");
+    expect(getRows(container)[1]?.getAttribute("tabindex")).toBe("-1");
+  });
+
+  it("dismisses the focused row on 'e' and clamps focus to the new last row", async () => {
+    setEntries([
+      makeEntry({ id: "a", message: "First" }),
+      makeEntry({ id: "b", message: "Second" }),
+      makeEntry({ id: "c", message: "Last to remove" }),
+    ]);
+    const { container } = render(<NotificationCenter open onClose={vi.fn()} />);
+    const list = container.querySelector('[role="list"]') as HTMLElement;
+
+    act(() => {
+      getRows(container)[2]?.focus();
+    });
+
+    await act(async () => {
+      fireEvent.keyDown(list, { key: "e" });
+    });
+
+    await waitFor(() => {
+      expect(getRows(container)).toHaveLength(2);
+    });
+    expect(screen.queryByText("Last to remove")).toBeNull();
+    // After the last row is removed, the clamping effect drops focusedIndex to 1.
+    expect(getRows(container)[1]?.getAttribute("tabindex")).toBe("0");
+  });
+
+  it("dispatches the focused row's primary action on Enter", async () => {
+    getMock.mockReturnValue({ enabled: true });
+    setEntries([
+      makeEntry({
+        id: "a",
+        message: "Has action",
+        actions: [{ actionId: "test.action", label: "Open", actionArgs: { x: 1 } }],
+      }),
+    ]);
+    const { container } = render(<NotificationCenter open onClose={vi.fn()} />);
+    const list = container.querySelector('[role="list"]') as HTMLElement;
+
+    act(() => {
+      getRows(container)[0]?.focus();
+    });
+
+    await act(async () => {
+      fireEvent.keyDown(list, { key: "Enter" });
+    });
+
+    expect(dispatchMock).toHaveBeenCalledWith("test.action", { x: 1 });
+  });
+
+  it("does not dispatch on Enter when the action is unavailable", async () => {
+    getMock.mockReturnValue({ enabled: false });
+    setEntries([
+      makeEntry({
+        id: "a",
+        message: "Disabled action",
+        actions: [{ actionId: "test.action", label: "Open" }],
+      }),
+    ]);
+    const { container } = render(<NotificationCenter open onClose={vi.fn()} />);
+    const list = container.querySelector('[role="list"]') as HTMLElement;
+
+    act(() => {
+      getRows(container)[0]?.focus();
+    });
+
+    await act(async () => {
+      fireEvent.keyDown(list, { key: "Enter" });
+    });
+
+    expect(dispatchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not steal navigation keys while a row dropdown is open", () => {
+    setEntries([
+      makeEntry({ id: "a", context: { projectId: "p1" } }),
+      makeEntry({ id: "b", context: { projectId: "p1" } }),
+    ]);
+    const { container } = render(<NotificationCenter open onClose={vi.fn()} />);
+    const list = container.querySelector('[role="list"]') as HTMLElement;
+    const rows = getRows(container);
+
+    act(() => {
+      rows[0]?.focus();
+    });
+
+    // Open the kebab menu on the first row — emulates Radix DropdownMenu open.
+    const trigger = within(rows[0]!).getByLabelText("Notification options");
+    act(() => {
+      fireEvent.pointerDown(trigger, { button: 0 });
+      fireEvent.pointerUp(trigger, { button: 0 });
+      fireEvent.click(trigger);
+    });
+
+    // While the dropdown is open, j must NOT navigate.
+    fireEvent.keyDown(list, { key: "j" });
+    expect(getRows(container)[0]?.getAttribute("tabindex")).toBe("0");
+    expect(getRows(container)[1]?.getAttribute("tabindex")).toBe("-1");
+  });
+
+  it("orders the flat row index across needs-attention and chrono sections", () => {
+    setEntries([
+      makeEntry({ id: "info-1", type: "info", message: "Info note", seenAsToast: true }),
+      makeEntry({
+        id: "err-1",
+        type: "error",
+        message: "Pinned error",
+        seenAsToast: false,
+      }),
+    ]);
+    const { container } = render(<NotificationCenter open onClose={vi.fn()} />);
+    const rows = getRows(container);
+    // Pinned needs-attention section comes first; it dedupes the entry from chrono not.
+    expect(rows.length).toBeGreaterThanOrEqual(2);
+    expect(rows[0]?.getAttribute("tabindex")).toBe("0");
+  });
+
+  it("restores focus to the surviving row after dismissing the focused row via 'e'", async () => {
+    setEntries([
+      makeEntry({ id: "a", message: "Stay-1" }),
+      makeEntry({ id: "b", message: "Stay-2" }),
+      makeEntry({ id: "c", message: "Will go" }),
+    ]);
+    const { container } = render(<NotificationCenter open onClose={vi.fn()} />);
+    const list = container.querySelector('[role="list"]') as HTMLElement;
+
+    act(() => {
+      getRows(container)[2]?.focus();
+    });
+
+    await act(async () => {
+      fireEvent.keyDown(list, { key: "e" });
+    });
+
+    await waitFor(() => {
+      expect(getRows(container)).toHaveLength(2);
+    });
+    // Focus must have followed to the new last surviving row, not dropped to <body>.
+    expect(document.activeElement).toBe(getRows(container)[1]);
+  });
+
+  it("resumes navigation after the row dropdown is closed", async () => {
+    setEntries([
+      makeEntry({ id: "a", context: { projectId: "p1" } }),
+      makeEntry({ id: "b", context: { projectId: "p1" } }),
+    ]);
+    const { container } = render(<NotificationCenter open onClose={vi.fn()} />);
+    const list = container.querySelector('[role="list"]') as HTMLElement;
+    const rows = getRows(container);
+
+    act(() => {
+      rows[0]?.focus();
+    });
+
+    const trigger = within(rows[0]!).getByLabelText("Notification options");
+    await act(async () => {
+      fireEvent.pointerDown(trigger, { button: 0 });
+      fireEvent.pointerUp(trigger, { button: 0 });
+      fireEvent.click(trigger);
+    });
+
+    // Close via Escape — Radix should fire onOpenChange(false).
+    await act(async () => {
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+    });
+
+    // After the menu closes, j must navigate again.
+    act(() => {
+      getRows(container)[0]?.focus();
+    });
+    fireEvent.keyDown(list, { key: "j" });
+    expect(document.activeElement).toBe(getRows(container)[1]);
+  });
+
+  it("recovers navigation after a focused-menu row is externally dismissed", async () => {
+    setEntries([
+      makeEntry({ id: "a", context: { projectId: "p1" } }),
+      makeEntry({ id: "b" }),
+      makeEntry({ id: "c" }),
+    ]);
+    const { container } = render(<NotificationCenter open onClose={vi.fn()} />);
+    const list = container.querySelector('[role="list"]') as HTMLElement;
+    const rows = getRows(container);
+
+    act(() => {
+      rows[0]?.focus();
+    });
+
+    const trigger = within(rows[0]!).getByLabelText("Notification options");
+    await act(async () => {
+      fireEvent.pointerDown(trigger, { button: 0 });
+      fireEvent.pointerUp(trigger, { button: 0 });
+      fireEvent.click(trigger);
+    });
+
+    // External dismissal — bypass the kebab menu entirely. The dropdown
+    // counter must reset so navigation isn't permanently stuck.
+    await act(async () => {
+      useNotificationHistoryStore.getState().dismissEntry("a");
+    });
+
+    await waitFor(() => {
+      expect(getRows(container)).toHaveLength(2);
+    });
+
+    act(() => {
+      getRows(container)[0]?.focus();
+    });
+    fireEvent.keyDown(list, { key: "j" });
+    expect(document.activeElement).toBe(getRows(container)[1]);
+  });
+
+  it("does not navigate or dismiss when focus is on a descendant button inside the row", async () => {
+    getMock.mockReturnValue({ enabled: true });
+    setEntries([
+      makeEntry({
+        id: "a",
+        message: "Has action",
+        actions: [{ actionId: "test.action", label: "Open", actionArgs: { x: 1 } }],
+      }),
+      makeEntry({ id: "b", message: "Plain row" }),
+    ]);
+    const { container } = render(<NotificationCenter open onClose={vi.fn()} />);
+    const list = container.querySelector('[role="list"]') as HTMLElement;
+
+    const actionButton = screen.getByText("Open");
+    act(() => {
+      actionButton.focus();
+    });
+
+    fireEvent.keyDown(list, { key: "j" });
+    expect(document.activeElement).toBe(actionButton);
+
+    fireEvent.keyDown(list, { key: "e" });
+    expect(useNotificationHistoryStore.getState().entries.length).toBe(2);
+  });
+});

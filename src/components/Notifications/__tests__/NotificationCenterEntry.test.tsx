@@ -442,3 +442,81 @@ describe("NotificationCenterEntry timestamp formatting", () => {
     }
   });
 });
+
+describe("NotificationCenterEntry roving focus props", () => {
+  it("applies tabIndex and role to the root row when provided", () => {
+    const { container } = render(
+      <NotificationCenterEntry entry={makeEntry()} tabIndex={0} role="listitem" />
+    );
+    const root = container.firstElementChild as HTMLElement;
+    expect(root.getAttribute("tabindex")).toBe("0");
+    expect(root.getAttribute("role")).toBe("listitem");
+  });
+
+  it("invokes rowRef with the row DOM element", () => {
+    const rowRef = vi.fn();
+    render(<NotificationCenterEntry entry={makeEntry()} tabIndex={-1} rowRef={rowRef} />);
+    expect(rowRef).toHaveBeenCalledTimes(1);
+    expect(rowRef.mock.calls[0]?.[0]).toBeInstanceOf(HTMLDivElement);
+  });
+
+  it("calls onFocus when the row receives focus", () => {
+    const onFocus = vi.fn();
+    const { container } = render(
+      <NotificationCenterEntry entry={makeEntry()} tabIndex={0} onFocus={onFocus} />
+    );
+    const root = container.firstElementChild as HTMLElement;
+    act(() => {
+      root.focus();
+    });
+    expect(onFocus).toHaveBeenCalledTimes(1);
+  });
+
+  it("adds focus-visible ring classes only when tabIndex is set", () => {
+    const { container, rerender } = render(<NotificationCenterEntry entry={makeEntry()} />);
+    expect((container.firstElementChild as HTMLElement).className).not.toMatch(
+      /focus-visible:ring/
+    );
+
+    rerender(<NotificationCenterEntry entry={makeEntry()} tabIndex={0} />);
+    expect((container.firstElementChild as HTMLElement).className).toMatch(/focus-visible:ring/);
+  });
+
+  it("reveals the dismiss button on group-focus-within (focus inside the row)", () => {
+    render(<NotificationCenterEntry entry={makeEntry()} onDismiss={vi.fn()} />);
+    const dismiss = screen.getByLabelText("Dismiss notification");
+    expect(dismiss.className).toMatch(/group-focus-within:opacity-100/);
+  });
+
+  it("reveals the kebab trigger on group-focus-within", () => {
+    render(<NotificationCenterEntry entry={makeEntry({ context: { projectId: "p1" } })} />);
+    const kebab = screen.getByLabelText("Notification options");
+    expect(kebab.className).toMatch(/group-focus-within:opacity-100/);
+  });
+
+  it("invokes onDropdownOpenChange when the kebab menu opens and closes", async () => {
+    const onDropdownOpenChange = vi.fn();
+    render(
+      <NotificationCenterEntry
+        entry={makeEntry({ context: { projectId: "p1" } })}
+        onDropdownOpenChange={onDropdownOpenChange}
+      />
+    );
+    const trigger = screen.getByLabelText("Notification options");
+
+    await act(async () => {
+      fireEvent.pointerDown(trigger, { button: 0 });
+      fireEvent.pointerUp(trigger, { button: 0 });
+      fireEvent.click(trigger);
+    });
+
+    expect(onDropdownOpenChange).toHaveBeenCalledWith(true);
+
+    // Press Escape on the menu — Radix closes and fires onOpenChange(false).
+    await act(async () => {
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+    });
+
+    expect(onDropdownOpenChange).toHaveBeenCalledWith(false);
+  });
+});
