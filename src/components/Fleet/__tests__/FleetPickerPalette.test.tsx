@@ -15,6 +15,7 @@ vi.mock("@/lib/animationUtils", () => ({
   UI_PALETTE_ENTER_DURATION: 0,
   UI_PALETTE_EXIT_DURATION: 0,
   getUiTransitionDuration: () => 0,
+  getUiPaletteTransitionDuration: () => 0,
 }));
 
 vi.mock("@/hooks/useAnimatedPresence", () => ({
