@@ -9,7 +9,6 @@ import {
 } from "@/registry";
 import { ContentPanel, PluginMissingPanel, triggerPanelTransition } from "@/components/Panel";
 import type { TabInfo } from "@/components/Panel/TabButton";
-import { usePanelLifecycle } from "@/hooks/usePanelLifecycle";
 import { usePanelHandlers } from "@/hooks/usePanelHandlers";
 import { buildPanelProps } from "@/utils/panelProps";
 import type { AgentState } from "@/types";
@@ -145,10 +144,8 @@ export const GridPanel = React.memo(function GridPanel({
   const getPanelGroup = usePanelStore((state) => state.getPanelGroup);
   const moveTerminalToDock = usePanelStore((state) => state.moveTerminalToDock);
 
-  const lifecycle = usePanelLifecycle();
   const { handleFocus, handleClose, handleTitleChange } = usePanelHandlers({
     terminalId: terminal.id,
-    lifecycle,
   });
 
   const handleToggleMaximize = useCallback(() => {
@@ -196,7 +193,6 @@ export const GridPanel = React.memo(function GridPanel({
       buildPanelProps({
         terminal,
         isFocused,
-        isTrashing: lifecycle.isTrashing,
         overrides: {
           location: "grid" as const,
           isMaximized,
@@ -226,7 +222,6 @@ export const GridPanel = React.memo(function GridPanel({
       terminal,
       isFocused,
       isMaximized,
-      lifecycle.isTrashing,
       gridPanelCount,
       ambientAgentState,
       handleFocus,

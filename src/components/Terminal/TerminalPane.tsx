@@ -93,7 +93,6 @@ export interface TerminalPaneProps {
   onRestore?: () => void;
   location?: "grid" | "dock";
   restartKey?: number;
-  isTrashing?: boolean;
   restartError?: TerminalRestartError;
   reconnectError?: TerminalReconnectError;
   spawnError?: SpawnError;
@@ -138,7 +137,6 @@ function TerminalPaneComponent({
   onRestore,
   location = "grid",
   restartKey = 0,
-  isTrashing = false,
   restartError,
   reconnectError,
   spawnError,
@@ -745,7 +743,6 @@ function TerminalPaneComponent({
       isFocused={isFocused}
       isMaximized={isMaximized}
       location={location}
-      isTrashing={isTrashing}
       gridPanelCount={gridPanelCount}
       onFocus={onFocus}
       onClose={onClose}
