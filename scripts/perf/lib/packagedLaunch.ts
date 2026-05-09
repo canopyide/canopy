@@ -198,9 +198,16 @@ export async function launchPackagedAndMeasure(
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), `daintree-perf-${iteration}-`));
   const ndjsonPath = path.join(userDataDir, "perf-metrics.ndjson");
 
+  // Wall-clock anchor captured immediately before electron.launch() so the
+  // Electron main process can compute `os_to_app_boot_ms` against a Unix-epoch
+  // reference. Cannot use performance.now() across processes — different time
+  // origins. Date.now() aligns to the Unix epoch on both sides.
+  const spawnWallMs = Date.now();
+
   const env: Record<string, string> = {
     DAINTREE_PERF_CAPTURE: "1",
     DAINTREE_PERF_METRICS_FILE: ndjsonPath,
+    DAINTREE_PERF_SPAWN_WALL_MS: String(spawnWallMs),
     DAINTREE_E2E_MODE: "1",
     DAINTREE_E2E_SKIP_FIRST_RUN_DIALOGS: "1",
     NODE_ENV: "production",

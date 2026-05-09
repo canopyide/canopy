@@ -2,44 +2,17 @@ import fs from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { findPackagedExecutable, launchPackagedAndMeasure } from "./lib/packagedLaunch";
-import { mean, percentile, round, stdDev } from "./lib/stats";
-import { PERF_MARKS } from "../../shared/perf/marks";
-
-interface MarkRecord {
-  mark: string;
-  timestamp: string;
-  elapsedMs: number;
-  meta?: Record<string, unknown>;
-}
-
-interface RunData {
-  index: number;
-  durationMs: number;
-  notes?: string;
-  marks: MarkRecord[];
-  failed?: boolean;
-  error?: string;
-  degraded?: boolean;
-}
-
-interface MarkStats {
-  runs: number;
-  p50Ms: number;
-  p95Ms: number;
-  meanMs: number;
-  stdDevMs: number;
-}
-
-interface IpcChannelStats extends MarkStats {
-  samples: number;
-  errorCount: number;
-}
-
-interface Aggregate {
-  marks: Record<string, MarkStats>;
-  phaseDurations: Record<string, MarkStats>;
-  ipc: Record<string, IpcChannelStats>;
-}
+import { round } from "./lib/stats";
+import {
+  aggregate,
+  CLS_WARN_THRESHOLD,
+  LOAF_SOURCE_P95_WARN_MS,
+  LOAF_SOURCE_TOTAL_WARN_MS,
+  OS_TO_APP_BOOT_WARN_MS,
+  type Aggregate,
+  type MarkRecord,
+  type RunData,
+} from "./lib/coldStartAggregate";
 
 interface JsonOutput {
   runs: Array<{
@@ -56,18 +29,6 @@ interface JsonOutput {
   aggregates: Aggregate;
 }
 
-const PHASE_PAIRS: Array<[string, string, string]> = [
-  [PERF_MARKS.APP_BOOT_START, PERF_MARKS.RENDERER_READY, "boot → renderer_ready"],
-  [PERF_MARKS.APP_BOOT_START, PERF_MARKS.RENDERER_FIRST_INTERACTIVE, "boot → first_interactive"],
-  [PERF_MARKS.SERVICE_INIT_START, PERF_MARKS.SERVICE_INIT_COMPLETE, "service_init"],
-  [PERF_MARKS.HYDRATE_START, PERF_MARKS.HYDRATE_COMPLETE, "hydrate"],
-  [
-    PERF_MARKS.HYDRATE_RESTORE_PANELS_START,
-    PERF_MARKS.HYDRATE_RESTORE_PANELS_END,
-    "hydrate_restore_panels",
-  ],
-];
-
 function parseNdjson(ndjsonPath: string): MarkRecord[] {
   if (!fs.existsSync(ndjsonPath)) return [];
   const contents = fs.readFileSync(ndjsonPath, "utf-8").trim();
@@ -82,93 +43,6 @@ function parseNdjson(ndjsonPath: string): MarkRecord[] {
     }
   }
   return records;
-}
-
-function statsFor(values: number[]): MarkStats {
-  return {
-    runs: values.length,
-    p50Ms: round(percentile(values, 50)),
-    p95Ms: round(percentile(values, 95)),
-    meanMs: round(mean(values)),
-    stdDevMs: round(stdDev(values)),
-  };
-}
-
-function aggregate(runs: RunData[]): Aggregate {
-  // Degraded runs (wall-clock fallback — RENDERER_READY mark never arrived)
-  // still produce useful IPC samples but must be excluded from mark/phase
-  // aggregates to avoid contaminating p50/p95 with incomplete timelines.
-  const successful = runs.filter((r) => !r.failed);
-  const withMarks = successful.filter((r) => !r.degraded);
-
-  const markElapsed = new Map<string, number[]>();
-  const phaseElapsed = new Map<string, number[]>();
-  const ipcByChannel = new Map<string, { durations: number[]; errors: number }>();
-
-  for (const run of successful) {
-    for (const record of run.marks) {
-      if (record.mark !== "ipc_request_sample") continue;
-      const channel = typeof record.meta?.channel === "string" ? record.meta.channel : "unknown";
-      const durationMs =
-        typeof record.meta?.durationMs === "number" ? record.meta.durationMs : null;
-      if (durationMs === null) continue;
-      const errored = Boolean(record.meta?.errored);
-      const bucket = ipcByChannel.get(channel) ?? { durations: [], errors: 0 };
-      bucket.durations.push(durationMs);
-      if (errored) bucket.errors += 1;
-      ipcByChannel.set(channel, bucket);
-    }
-  }
-
-  for (const run of withMarks) {
-    const firstByMark = new Map<string, MarkRecord>();
-    for (const record of run.marks) {
-      if (record.mark === "ipc_request_sample") continue;
-      if (!firstByMark.has(record.mark)) {
-        firstByMark.set(record.mark, record);
-        const list = markElapsed.get(record.mark) ?? [];
-        list.push(record.elapsedMs);
-        markElapsed.set(record.mark, list);
-      }
-    }
-
-    for (const [fromMark, toMark, label] of PHASE_PAIRS) {
-      const from = firstByMark.get(fromMark);
-      const to = firstByMark.get(toMark);
-      if (!from || !to) continue;
-      const delta = to.elapsedMs - from.elapsedMs;
-      if (delta < 0) {
-        console.error(
-          `[cold-start] skipping negative phase delta for ${label} in run ${run.index + 1} (${delta.toFixed(1)}ms)`
-        );
-        continue;
-      }
-      const list = phaseElapsed.get(label) ?? [];
-      list.push(delta);
-      phaseElapsed.set(label, list);
-    }
-  }
-
-  const marks: Record<string, MarkStats> = {};
-  for (const [name, values] of markElapsed) {
-    marks[name] = statsFor(values);
-  }
-
-  const phaseDurations: Record<string, MarkStats> = {};
-  for (const [label, values] of phaseElapsed) {
-    phaseDurations[label] = statsFor(values);
-  }
-
-  const ipc: Record<string, IpcChannelStats> = {};
-  for (const [channel, bucket] of ipcByChannel) {
-    ipc[channel] = {
-      ...statsFor(bucket.durations),
-      samples: bucket.durations.length,
-      errorCount: bucket.errors,
-    };
-  }
-
-  return { marks, phaseDurations, ipc };
 }
 
 function padRight(value: string, width: number): string {
@@ -274,6 +148,100 @@ function renderTextReport(
   } else {
     lines.push("IPC round-trip per channel: no samples captured");
     lines.push("");
+  }
+
+  // Sort by total blocking time so the loudest sources rise to the top of
+  // the table and the warn-only signal is immediately visible.
+  const loafRows = Object.entries(agg.loaf)
+    .sort(([, a], [, b]) => b.totalBlockingMs - a.totalBlockingMs)
+    .map(([sourceURL, stats]) => ({
+      source: sourceURL,
+      frames: String(stats.frames),
+      p50: formatMs(stats.p50BlockingMs),
+      p95: formatMs(stats.p95BlockingMs),
+      total: formatMs(stats.totalBlockingMs),
+      warn:
+        stats.p95BlockingMs > LOAF_SOURCE_P95_WARN_MS ||
+        stats.totalBlockingMs > LOAF_SOURCE_TOTAL_WARN_MS
+          ? "⚠"
+          : "",
+    }));
+
+  if (loafRows.length > 0) {
+    lines.push(
+      `Long-animation-frame blocking by source (warn p95 > ${LOAF_SOURCE_P95_WARN_MS}ms or total > ${LOAF_SOURCE_TOTAL_WARN_MS}ms — warn-only)`
+    );
+    lines.push(formatTable(loafRows, ["source", "frames", "p50", "p95", "total", "warn"]));
+    lines.push("");
+    for (const [sourceURL, stats] of Object.entries(agg.loaf)) {
+      if (stats.p95BlockingMs > LOAF_SOURCE_P95_WARN_MS) {
+        console.warn(
+          `::warning::LoAF p95 blocking ${stats.p95BlockingMs}ms for ${sourceURL} (warn-only threshold: ${LOAF_SOURCE_P95_WARN_MS}ms)`
+        );
+      }
+      if (stats.totalBlockingMs > LOAF_SOURCE_TOTAL_WARN_MS) {
+        console.warn(
+          `::warning::LoAF total blocking ${stats.totalBlockingMs}ms for ${sourceURL} (warn-only threshold: ${LOAF_SOURCE_TOTAL_WARN_MS}ms)`
+        );
+      }
+    }
+  }
+
+  if (agg.cls) {
+    const exceeds = agg.cls.p95 > CLS_WARN_THRESHOLD;
+    lines.push(`Cumulative layout shift (warn p95 > ${CLS_WARN_THRESHOLD} — warn-only)`);
+    lines.push(
+      formatTable(
+        [
+          {
+            metric: "cls",
+            runs: String(agg.cls.runs),
+            p50: agg.cls.p50.toFixed(4),
+            p95: agg.cls.p95.toFixed(4),
+            mean: agg.cls.mean.toFixed(4),
+            max: agg.cls.max.toFixed(4),
+            warn: exceeds ? "⚠" : "",
+          },
+        ],
+        ["metric", "runs", "p50", "p95", "mean", "max", "warn"]
+      )
+    );
+    lines.push("");
+    if (exceeds) {
+      console.warn(
+        `::warning::CLS p95 ${agg.cls.p95.toFixed(4)} exceeds warn-only threshold ${CLS_WARN_THRESHOLD}`
+      );
+    }
+  }
+
+  if (agg.osToAppBoot) {
+    const platform = process.platform;
+    const warnMs = OS_TO_APP_BOOT_WARN_MS[platform];
+    const exceeds = warnMs !== undefined && agg.osToAppBoot.p95Ms > warnMs;
+    const warnLabel = warnMs !== undefined ? `warn p95 > ${warnMs}ms` : "no warn threshold";
+    lines.push(`OS-to-app-boot wall-clock — ${platform} (${warnLabel}, warn-only)`);
+    lines.push(
+      formatTable(
+        [
+          {
+            metric: "os_to_app_boot",
+            runs: String(agg.osToAppBoot.runs),
+            p50: formatMs(agg.osToAppBoot.p50Ms),
+            p95: formatMs(agg.osToAppBoot.p95Ms),
+            mean: formatMs(agg.osToAppBoot.meanMs),
+            max: formatMs(agg.osToAppBoot.maxMs),
+            warn: exceeds ? "⚠" : "",
+          },
+        ],
+        ["metric", "runs", "p50", "p95", "mean", "max", "warn"]
+      )
+    );
+    lines.push("");
+    if (exceeds) {
+      console.warn(
+        `::warning::os_to_app_boot_ms p95 ${agg.osToAppBoot.p95Ms}ms exceeds warn-only threshold ${warnMs}ms on ${platform}`
+      );
+    }
   }
 
   return lines.join("\n");

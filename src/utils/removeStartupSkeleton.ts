@@ -1,5 +1,6 @@
 import { UI_EXIT_DURATION } from "../lib/animationUtils";
 import { prefersReducedMotion } from "../lib/appThemeViewTransition";
+import { flushFinalCls } from "./layoutShiftMonitor";
 
 const SKELETON_ID = "startup-skeleton";
 
@@ -13,6 +14,11 @@ type ViewTransitionDocument = Document & {
 let firstInteractiveNotified = false;
 
 function notifyFirstInteractive(): void {
+  // Snapshot cumulative CLS at the renderer-side first-interactive boundary
+  // before the IPC roundtrip — this is the regression-relevant window.
+  // Idempotent and guarded inside `flushFinalCls`, so safe even on the
+  // duplicate-call path where the IPC notify is skipped.
+  flushFinalCls();
   if (firstInteractiveNotified) return;
   firstInteractiveNotified = true;
   try {

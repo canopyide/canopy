@@ -325,6 +325,11 @@ export default defineConfig(({ command, mode }) => {
       outDir: "dist",
       emptyOutDir: true,
       sourcemap: false,
+      // Emits dist/.vite/manifest.json with chunk graph metadata (imports[]
+      // for sync deps, dynamicImports[] for React.lazy / dynamic import()).
+      // Consumed by scripts/check-first-render-chunk-budget.mjs to bound the
+      // gzip closure of chunks reachable from the first-render path.
+      manifest: true,
       rolldownOptions: {
         onLog(level, log, defaultHandler) {
           if (log.code === "INEFFECTIVE_DYNAMIC_IMPORT" || log.code === "PLUGIN_TIMINGS") return;
