@@ -98,7 +98,7 @@ export function WorktreeDeleteDialog({ isOpen, onClose, worktree }: WorktreeDele
     }
   };
 
-  const deleteButtonLabel = isHighTier ? `Delete '${confirmTarget}'` : "Delete worktree";
+  const deleteButtonLabel = "Delete worktree";
 
   return (
     <AppDialog
@@ -143,9 +143,11 @@ export function WorktreeDeleteDialog({ isOpen, onClose, worktree }: WorktreeDele
                   </span>
                 </>
               )}
-              .{closeTerminals && hasTerminals && " All associated terminals will be closed."}
-              {hasChanges &&
-                " Uncommitted changes will be lost unless the worktree is first restored from git."}
+              .
+              {closeTerminals &&
+                hasTerminals &&
+                ` ${terminalCounts.total} terminal${terminalCounts.total === 1 ? "" : "s"} will be closed.`}
+              {hasChanges && " Uncommitted changes will be lost."}
               {" This cannot be undone."}
             </p>
 
