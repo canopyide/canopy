@@ -97,6 +97,34 @@ describe("NotificationCenterEntry unread signal", () => {
       expect(row.className).not.toMatch(/bg-daintree-accent\/\[0\.04\]/);
     }
   });
+
+  it("renders the unread dot at the leading edge, as the first child of the row", () => {
+    const { container } = render(<NotificationCenterEntry entry={makeEntry()} isNew />);
+    const slot = container.firstElementChild?.firstElementChild;
+    expect(slot).not.toBeNull();
+    if (slot instanceof HTMLElement) {
+      expect(slot.tagName).toBe("SPAN");
+      expect(slot.className).toMatch(/bg-status-info/);
+      expect(slot.className).toMatch(/rounded-full/);
+    }
+  });
+
+  it("renders an invisible leading slot (no dot styling) when isNew is false", () => {
+    const { container } = render(<NotificationCenterEntry entry={makeEntry()} />);
+    const slot = container.firstElementChild?.firstElementChild;
+    expect(slot).not.toBeNull();
+    if (slot instanceof HTMLElement) {
+      expect(slot.tagName).toBe("SPAN");
+      expect(slot.className).not.toMatch(/bg-status-info/);
+      expect(slot.className).not.toMatch(/rounded-full/);
+    }
+  });
+
+  it("does not render a duplicate dot in the trailing metadata column", () => {
+    const { container } = render(<NotificationCenterEntry entry={makeEntry()} isNew />);
+    const dots = container.querySelectorAll(".bg-status-info.rounded-full");
+    expect(dots.length).toBe(1);
+  });
 });
 
 describe("NotificationCenterEntry title font weight", () => {
