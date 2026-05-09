@@ -193,6 +193,29 @@ jobs:
           fi
           npx electron-builder --config electron-builder.config.cjs --publish always -c.buildDependenciesFromSource=true $EXTRA_ARGS
 
+      - name: Verify macOS notarization staple
+        if: startsWith(matrix.os, 'macos') && inputs.skip_notarization != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          apps=(
+            "release/mac-arm64/Daintree.app"
+            "release/mac-x64/Daintree.app"
+            "release/mac-universal/Daintree.app"
+          )
+          for app in "${apps[@]}"; do
+            if [[ ! -d "$app" ]]; then
+              echo "::error::Missing expected macOS app bundle: $app"
+              exit 1
+            fi
+            echo "--- codesign: $app"
+            codesign --verify --deep --strict --verbose=4 "$app"
+            echo "--- stapler validate: $app"
+            xcrun stapler validate "$app"
+            echo "--- spctl (diagnostic only): $app"
+            spctl --assess --type execute --verbose --ignore-cache --no-cache "$app" || true
+          done
+
       - name: Build
         if: ${{ !startsWith(matrix.os, 'macos') }}
         shell: bash
