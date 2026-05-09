@@ -30,6 +30,14 @@ export const TRUSTED_TYPES_POLICY_NAME = "daintree-svg";
  *      at build time by the Vite plugin in vite.config.ts.
  *   2. `Content-Security-Policy` HTTP response header set by the main process
  *      via `webRequest.onHeadersReceived` on the persist:daintree session.
+ *
+ * Per the W3C CSP3 spec, `frame-ancestors`, `report-uri`, and `sandbox` are
+ * not supported when delivered via `<meta http-equiv>` — Chromium 146 drops
+ * them with a DevTools warning. Those directives must appear on the HTTP
+ * response header only (layer 2 above); adding them to the meta layer is a
+ * no-op and gives a false sense of coverage. `report-to` is technically
+ * honored in meta but its endpoint mapping requires the `Reporting-Endpoints`
+ * HTTP response header, so it is also effectively header-only.
  */
 export function getDaintreeAppProdCSP(): string {
   return [
