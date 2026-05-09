@@ -2091,4 +2091,124 @@ describe("NotificationCenter — keyboard navigation", () => {
     expect(rows.length).toBeGreaterThanOrEqual(2);
     expect(rows[0]?.getAttribute("tabindex")).toBe("0");
   });
+
+  it("restores focus to the surviving row after dismissing the focused row via 'e'", async () => {
+    setEntries([
+      makeEntry({ id: "a", message: "Stay-1" }),
+      makeEntry({ id: "b", message: "Stay-2" }),
+      makeEntry({ id: "c", message: "Will go" }),
+    ]);
+    const { container } = render(<NotificationCenter open onClose={vi.fn()} />);
+    const list = container.querySelector('[role="list"]') as HTMLElement;
+
+    act(() => {
+      getRows(container)[2]?.focus();
+    });
+
+    await act(async () => {
+      fireEvent.keyDown(list, { key: "e" });
+    });
+
+    await waitFor(() => {
+      expect(getRows(container)).toHaveLength(2);
+    });
+    // Focus must have followed to the new last surviving row, not dropped to <body>.
+    expect(document.activeElement).toBe(getRows(container)[1]);
+  });
+
+  it("resumes navigation after the row dropdown is closed", async () => {
+    setEntries([
+      makeEntry({ id: "a", context: { projectId: "p1" } }),
+      makeEntry({ id: "b", context: { projectId: "p1" } }),
+    ]);
+    const { container } = render(<NotificationCenter open onClose={vi.fn()} />);
+    const list = container.querySelector('[role="list"]') as HTMLElement;
+    const rows = getRows(container);
+
+    act(() => {
+      rows[0]?.focus();
+    });
+
+    const trigger = within(rows[0]!).getByLabelText("Notification options");
+    await act(async () => {
+      fireEvent.pointerDown(trigger, { button: 0 });
+      fireEvent.pointerUp(trigger, { button: 0 });
+      fireEvent.click(trigger);
+    });
+
+    // Close via Escape — Radix should fire onOpenChange(false).
+    await act(async () => {
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+    });
+
+    // After the menu closes, j must navigate again.
+    act(() => {
+      getRows(container)[0]?.focus();
+    });
+    fireEvent.keyDown(list, { key: "j" });
+    expect(document.activeElement).toBe(getRows(container)[1]);
+  });
+
+  it("recovers navigation after a focused-menu row is externally dismissed", async () => {
+    setEntries([
+      makeEntry({ id: "a", context: { projectId: "p1" } }),
+      makeEntry({ id: "b" }),
+      makeEntry({ id: "c" }),
+    ]);
+    const { container } = render(<NotificationCenter open onClose={vi.fn()} />);
+    const list = container.querySelector('[role="list"]') as HTMLElement;
+    const rows = getRows(container);
+
+    act(() => {
+      rows[0]?.focus();
+    });
+
+    const trigger = within(rows[0]!).getByLabelText("Notification options");
+    await act(async () => {
+      fireEvent.pointerDown(trigger, { button: 0 });
+      fireEvent.pointerUp(trigger, { button: 0 });
+      fireEvent.click(trigger);
+    });
+
+    // External dismissal — bypass the kebab menu entirely. The dropdown
+    // counter must reset so navigation isn't permanently stuck.
+    await act(async () => {
+      useNotificationHistoryStore.getState().dismissEntry("a");
+    });
+
+    await waitFor(() => {
+      expect(getRows(container)).toHaveLength(2);
+    });
+
+    act(() => {
+      getRows(container)[0]?.focus();
+    });
+    fireEvent.keyDown(list, { key: "j" });
+    expect(document.activeElement).toBe(getRows(container)[1]);
+  });
+
+  it("does not navigate or dismiss when focus is on a descendant button inside the row", async () => {
+    getMock.mockReturnValue({ enabled: true });
+    setEntries([
+      makeEntry({
+        id: "a",
+        message: "Has action",
+        actions: [{ actionId: "test.action", label: "Open", actionArgs: { x: 1 } }],
+      }),
+      makeEntry({ id: "b", message: "Plain row" }),
+    ]);
+    const { container } = render(<NotificationCenter open onClose={vi.fn()} />);
+    const list = container.querySelector('[role="list"]') as HTMLElement;
+
+    const actionButton = screen.getByText("Open");
+    act(() => {
+      actionButton.focus();
+    });
+
+    fireEvent.keyDown(list, { key: "j" });
+    expect(document.activeElement).toBe(actionButton);
+
+    fireEvent.keyDown(list, { key: "e" });
+    expect(useNotificationHistoryStore.getState().entries.length).toBe(2);
+  });
 });

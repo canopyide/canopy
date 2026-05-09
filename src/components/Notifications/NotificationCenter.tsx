@@ -385,12 +385,7 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
   const [focusedIndex, setFocusedIndex] = useState(0);
   const rowRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const dropdownOpenCountRef = useRef(0);
-
-  useEffect(() => {
-    if (focusedIndex >= rowCount) {
-      setFocusedIndex(Math.max(0, rowCount - 1));
-    }
-  }, [rowCount, focusedIndex]);
+  const prevRowCountRef = useRef(rowCount);
 
   const setRowRef = useCallback((index: number, el: HTMLDivElement | null) => {
     if (el) {
@@ -403,6 +398,35 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
   const handleDropdownOpenChange = useCallback((open: boolean) => {
     dropdownOpenCountRef.current = Math.max(0, dropdownOpenCountRef.current + (open ? 1 : -1));
   }, []);
+
+  // After any row count change, clamp focusedIndex; reset the dropdown
+  // counter (a row removed mid-menu may never fire onOpenChange(false)); and
+  // when row count *decreases* with focus dropped to <body> (the focused row
+  // just unmounted), snap focus back to the surviving slot at the prior
+  // index. Only on decrease — never on mount or addition — to avoid
+  // hijacking focus from the toolbar bell button when the panel opens.
+  useEffect(() => {
+    const prevRowCount = prevRowCountRef.current;
+    prevRowCountRef.current = rowCount;
+
+    dropdownOpenCountRef.current = 0;
+
+    if (rowCount === 0) {
+      if (focusedIndex !== 0) setFocusedIndex(0);
+      return;
+    }
+
+    const clamped = Math.min(focusedIndex, rowCount - 1);
+    if (clamped !== focusedIndex) {
+      setFocusedIndex(clamped);
+    }
+
+    if (rowCount >= prevRowCount) return;
+    if (typeof document === "undefined") return;
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    rowRefs.current.get(clamped)?.focus();
+  }, [rowCount, focusedIndex]);
 
   const dispatchPrimaryAction = useCallback((row: FlatRow) => {
     const action = row.primaryAction;
