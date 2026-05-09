@@ -38,7 +38,7 @@ async function getAllTerminals(page: typeof ctx.window): Promise<TerminalInfo[]>
   });
 }
 
-async function getCurrentProject(page: typeof ctx.window): Promise<ProjectInfo> {
+async function getCurrentProject(page: typeof ctx.window): Promise<ProjectInfo | null> {
   return page.evaluate(async () => {
     return await (window as any).electron.project.getCurrent();
   });
@@ -50,7 +50,7 @@ async function switchToProject(
 ): Promise<typeof ctx.window> {
   // Skip if already on the target project
   const current = await getCurrentProject(page);
-  if (current.name === projectName) return page;
+  if (current?.name === projectName) return page;
 
   await page.locator(SEL.toolbar.projectSwitcherTrigger).click();
   const palette = page.locator(SEL.projectSwitcher.palette);
