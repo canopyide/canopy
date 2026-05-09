@@ -26,6 +26,21 @@ if (typeof globalThis !== "undefined") {
   }
 }
 
+// node env does not implement requestAnimationFrame/cancelAnimationFrame.
+// Several renderer-side modules (TerminalWebGLManager, etc.) schedule work via
+// rAF in production. Install a sync default that runs the callback inline so
+// tests retain synchronous expectations without each file repeating the shim.
+// Tests that exercise rAF pacing explicitly override these globals locally.
+if (typeof globalThis.requestAnimationFrame !== "function") {
+  globalThis.requestAnimationFrame = ((cb: FrameRequestCallback): number => {
+    cb(0);
+    return 0;
+  }) as typeof globalThis.requestAnimationFrame;
+}
+if (typeof globalThis.cancelAnimationFrame !== "function") {
+  globalThis.cancelAnimationFrame = (() => {}) as typeof globalThis.cancelAnimationFrame;
+}
+
 // Node 25 exposes a broken native `localStorage` stub on `globalThis` (no
 // `clear`/`getItem`/etc) that shadows JSDOM's Storage and leaks the warning
 // `--localstorage-file was provided without a valid path`. JSDOM's env setup

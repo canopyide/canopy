@@ -8,8 +8,12 @@ const WEBGL_DISABLED = import.meta.env.DAINTREE_DISABLE_WEBGL === "1";
 type WebglAddonConstructor = new () => WebglAddonType;
 
 // @xterm/addon-webgl loads via dynamic import so it stays out of the renderer's
-// eager critical path. ensureContext() remains synchronous: requests that arrive
-// before the chunk finishes loading are queued and replayed on resolution.
+// eager critical path. ensureContext() routes every new request through a
+// requestAnimationFrame drain queue (one attach per frame): without that
+// stagger, a burst of synchronous attaches during bulk worktree creation
+// over-subscribes Chromium's 16-context-per-renderer cap, causing silent
+// eviction of older contexts that then sit blank for 3s waiting on
+// webglcontextrestored before xterm's onContextLoss fires (see #7467).
 let WebglAddonClass: WebglAddonConstructor | null = null;
 let webglAddonLoadPromise: Promise<WebglAddonConstructor> | null = null;
 
@@ -30,9 +34,28 @@ function loadWebglAddon(): Promise<WebglAddonConstructor> {
   return webglAddonLoadPromise;
 }
 
+// Force synchronous GPU-side context release. Reaches into @xterm/addon-webgl
+// 0.19's renderer internals to get the WebGL context and call loseContext()
+// before addon.dispose() — without this, Chromium's 16-context budget is not
+// freed until garbage collection runs the WebGL teardown. Wrapped in try/catch
+// so a future addon shape change degrades gracefully rather than throwing.
+function forceGpuSlotRelease(addon: WebglAddonType): void {
+  try {
+    const gl = (
+      addon as unknown as {
+        _renderer?: { _gl?: WebGL2RenderingContext | WebGLRenderingContext };
+      }
+    )._renderer?._gl;
+    gl?.getExtension("WEBGL_lose_context")?.loseContext();
+  } catch {
+    // ignore — internal addon shape may have changed in a future version
+  }
+}
+
 interface WebGLEntry {
   addon: WebglAddonType;
   contextLossDisposable: IDisposable;
+  captureDisposable: (() => void) | null;
 }
 
 export class TerminalWebGLManager {
@@ -64,8 +87,14 @@ export class TerminalWebGLManager {
   private hasLoggedSoftwareSkip = false;
   private lossTimestamps: number[] = [];
   private hasLoggedBreakerTrip = false;
-  // Latest pending ensure request per terminal id, awaiting addon-webgl load.
+  // Queue of pending ensure requests: drained one-per-rAF so each context
+  // allocation completes its GPU IPC roundtrip before the next is requested.
   private pendingEnsures = new Map<string, ManagedTerminal>();
+  // Tracked separately from the rAF id: the "scheduled" flag has different
+  // semantics than the cancellation handle when rAF runs synchronously (e.g.
+  // under a test shim that invokes the callback inline).
+  private pendingDrainScheduled = false;
+  private pendingEnsureRafId: number | null = null;
 
   setHardwareAvailable(available: boolean): void {
     this.hardwareAvailable = available;
@@ -82,15 +111,16 @@ export class TerminalWebGLManager {
     }
     if (!managed.isOpened) return;
 
+    // Dedupe: latest request per id wins until the queue drains.
+    this.pendingEnsures.set(id, managed);
+
     if (WebglAddonClass) {
-      this.attachWithLoadedAddon(id, managed, WebglAddonClass);
+      this.scheduleDrain();
       return;
     }
 
-    // Dedupe: latest request per id wins until the addon resolves.
-    this.pendingEnsures.set(id, managed);
     void loadWebglAddon().then(
-      () => this.flushPendingEnsures(),
+      () => this.scheduleDrain(),
       () => {
         // Retain pending; a subsequent ensureContext call will retry the load.
       }
@@ -117,31 +147,71 @@ export class TerminalWebGLManager {
       } catch {
         // ignore
       }
+      try {
+        entry.captureDisposable?.();
+      } catch {
+        // ignore
+      }
+      // terminal.dispose() handles addon cleanup, so we skip addon.dispose()
+      // here — but we still need to force the synchronous GPU-slot release so
+      // a hibernation-then-bulk-recreate cycle does not stall on the 16-slot
+      // Chromium budget the same way #7467 stalled the attach path.
+      forceGpuSlotRelease(entry.addon);
       this.pool.delete(id);
       this.removeFromLru(id);
     }
   }
 
   dispose(): void {
+    if (this.pendingEnsureRafId !== null) {
+      try {
+        cancelAnimationFrame(this.pendingEnsureRafId);
+      } catch {
+        // ignore
+      }
+    }
+    this.pendingEnsureRafId = null;
+    this.pendingDrainScheduled = false;
     this.pendingEnsures.clear();
     for (const id of [...this.pool.keys()]) {
       this.doRelease(id);
     }
   }
 
-  private flushPendingEnsures(): void {
+  private scheduleDrain(): void {
+    if (this.pendingDrainScheduled) return;
+    if (this.pendingEnsures.size === 0) return;
+    this.pendingDrainScheduled = true;
+    const id = requestAnimationFrame(this.drainOne);
+    // If drainOne ran synchronously (test shim or unusual host), it will have
+    // already cleared pendingDrainScheduled and there is no rAF id to cancel.
+    if (this.pendingDrainScheduled) {
+      this.pendingEnsureRafId = id;
+    }
+  }
+
+  private drainOne = (): void => {
+    this.pendingDrainScheduled = false;
+    this.pendingEnsureRafId = null;
     if (!WebglAddonClass) return;
     if (!this.hardwareAvailable) {
       this.pendingEnsures.clear();
       return;
     }
-    const pending = this.pendingEnsures;
-    this.pendingEnsures = new Map();
-    for (const [id, managed] of pending) {
-      if (!managed.isOpened) continue;
+    const next = this.pendingEnsures.entries().next();
+    if (next.done) return;
+    const [id, managed] = next.value;
+    this.pendingEnsures.delete(id);
+    if (managed.isOpened) {
+      // attachWithLoadedAddon dedups via pool.has(id) and routes the
+      // already-active case through moveLruToEnd so the touch semantics of
+      // a repeat ensure are preserved.
       this.attachWithLoadedAddon(id, managed, WebglAddonClass);
     }
-  }
+    if (this.pendingEnsures.size > 0) {
+      this.scheduleDrain();
+    }
+  };
 
   private attachWithLoadedAddon(
     id: string,
@@ -162,6 +232,7 @@ export class TerminalWebGLManager {
 
     let addon: WebglAddonType | null = null;
     let clDisposable: IDisposable | null = null;
+    let captureDisposable: (() => void) | null = null;
     try {
       addon = new AddonClass();
       const ownAddon = addon;
@@ -173,11 +244,39 @@ export class TerminalWebGLManager {
         }
       });
       managed.terminal.loadAddon(addon);
-      this.pool.set(id, { addon, contextLossDisposable: clDisposable });
+      // Capture-phase listener on the terminal element fires before xterm's
+      // own webglcontextlost handler (which would otherwise sit on a 3s
+      // restore timer before notifying us). Pre-empting that timer eliminates
+      // the visible blank window when Chromium evicts the context.
+      const element = managed.terminal.element;
+      if (element) {
+        const captureHandler = (): void => {
+          if (this.pool.get(id)?.addon !== ownAddon) return;
+          this.recordContextLoss();
+          this.releaseContext(id);
+          try {
+            if (managed.isOpened && managed.terminal.rows > 0) {
+              managed.terminal.refresh(0, managed.terminal.rows - 1);
+            }
+          } catch {
+            // ignore — DOM-renderer fallback paints on next frame regardless
+          }
+        };
+        element.addEventListener("webglcontextlost", captureHandler, { capture: true });
+        captureDisposable = () => {
+          element.removeEventListener("webglcontextlost", captureHandler, { capture: true });
+        };
+      }
+      this.pool.set(id, { addon, contextLossDisposable: clDisposable, captureDisposable });
       this.lruOrder.push(id);
     } catch {
       try {
         clDisposable?.dispose();
+      } catch {
+        // ignore
+      }
+      try {
+        captureDisposable?.();
       } catch {
         // ignore
       }
@@ -193,6 +292,9 @@ export class TerminalWebGLManager {
     const entry = this.pool.get(id);
     if (!entry) return;
 
+    // Delete from pool/lru first so the capture-phase listener (and stale
+    // onContextLoss fires) treat the loseContext below as a self-initiated
+    // release rather than a real eviction.
     this.pool.delete(id);
     this.removeFromLru(id);
 
@@ -201,6 +303,15 @@ export class TerminalWebGLManager {
     } catch {
       // ignore
     }
+    try {
+      entry.captureDisposable?.();
+    } catch {
+      // ignore
+    }
+    // Force synchronous GPU-side context release before addon.dispose() so the
+    // 16-context Chromium budget actually frees this slot before the next
+    // getContext() call.
+    forceGpuSlotRelease(entry.addon);
     try {
       entry.addon.dispose();
     } catch {
