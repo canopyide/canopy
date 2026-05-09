@@ -291,6 +291,17 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
     ? `Muted until ${timeFormatter.format(new Date(quietUntil))}`
     : "Quiet hours";
   const morningLabel = `Until ${timeFormatter.format(new Date(nextOccurrenceTimestamp(8 * 60)))}`;
+  const mutedEmptyDescription = (() => {
+    if (isScheduledMuted) {
+      const scheduledEnd = nextOccurrenceTimestamp(quietHoursEndMin);
+      // When both mutes overlap, the later end-time is what actually unblocks
+      // notifications — show that, not the session-mute expiry.
+      if (!isSessionMuted || scheduledEnd > quietUntil) {
+        return `Quiet hours active. Resuming at ${timeFormatter.format(new Date(scheduledEnd))}`;
+      }
+    }
+    return `Resuming at ${timeFormatter.format(new Date(quietUntil))}`;
+  })();
 
   const showGroupToggle = entries.length > 0;
 
@@ -446,6 +457,16 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
               icon={<Bell />}
               className="py-10"
             />
+          ) : showMutedPill ? (
+            <div data-testid="notification-muted-empty-state">
+              <EmptyState
+                variant="zero-data"
+                title="Notifications paused"
+                icon={<Moon />}
+                description={mutedEmptyDescription}
+                className="py-10"
+              />
+            </div>
           ) : (
             <EmptyState
               variant="zero-data"
