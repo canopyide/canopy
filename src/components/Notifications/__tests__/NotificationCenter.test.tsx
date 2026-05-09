@@ -749,6 +749,88 @@ describe("NotificationCenter empty state — zero data", () => {
   });
 });
 
+describe("NotificationCenter empty state — muted", () => {
+  it("renders the muted empty state with a 'Resuming at' description when session mute is active and inbox is empty", () => {
+    const until = Date.now() + 60 * 60 * 1000;
+    useNotificationSettingsStore.setState({ quietUntil: until });
+
+    render(<NotificationCenter open onClose={vi.fn()} />);
+
+    const emptyState = screen.getByTestId("notification-muted-empty-state");
+    expect(emptyState).toBeTruthy();
+    expect(within(emptyState).getByText("Notifications paused")).toBeTruthy();
+    expect(emptyState.textContent).toMatch(/Resuming at /);
+    expect(emptyState.textContent).not.toMatch(/Quiet hours active/);
+    expect(screen.queryByText("No notifications yet")).toBeNull();
+    expect(screen.queryByText(/Notifications appear here/)).toBeNull();
+    // No duplicate Resume affordance inside the empty state — header pill owns it.
+    expect(within(emptyState).queryByLabelText("Resume notifications")).toBeNull();
+  });
+
+  it("renders the muted empty state with 'Quiet hours active' provenance when only scheduled quiet hours are active", () => {
+    const fixedNow = new Date();
+    fixedNow.setHours(2, 0, 0, 0);
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+    try {
+      useNotificationSettingsStore.setState({
+        quietHoursEnabled: true,
+        quietHoursStartMin: 22 * 60,
+        quietHoursEndMin: 8 * 60,
+        quietHoursWeekdays: [],
+      });
+
+      render(<NotificationCenter open onClose={vi.fn()} />);
+
+      const emptyState = screen.getByTestId("notification-muted-empty-state");
+      expect(within(emptyState).getByText("Notifications paused")).toBeTruthy();
+      expect(emptyState.textContent).toMatch(/Quiet hours active\. Resuming at /);
+      expect(screen.queryByText("No notifications yet")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("falls through to the zero-data empty state when scheduled quiet hours are enabled but the current time is outside the window", () => {
+    const fixedNow = new Date();
+    fixedNow.setHours(12, 0, 0, 0);
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+    try {
+      useNotificationSettingsStore.setState({
+        quietHoursEnabled: true,
+        quietHoursStartMin: 22 * 60,
+        quietHoursEndMin: 8 * 60,
+        quietHoursWeekdays: [],
+      });
+
+      render(<NotificationCenter open onClose={vi.fn()} />);
+
+      expect(screen.queryByTestId("notification-muted-empty-state")).toBeNull();
+      expect(screen.getByText("No notifications yet")).toBeTruthy();
+      expect(screen.getByText(/Notifications appear here/)).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("prefers the user-cleared empty state over the muted empty state when filter=unread and entries exist", async () => {
+    const until = Date.now() + 60 * 60 * 1000;
+    useNotificationSettingsStore.setState({ quietUntil: until });
+    setEntries([makeEntry({ seenAsToast: true })]);
+
+    render(<NotificationCenter open onClose={vi.fn()} />);
+
+    const unreadButton = screen.getByText("Unread");
+    await act(async () => {
+      fireEvent.click(unreadButton);
+    });
+
+    expect(screen.getByText("You're all caught up")).toBeTruthy();
+    expect(screen.queryByTestId("notification-muted-empty-state")).toBeNull();
+  });
+});
+
 describe("NotificationCenter overflow menu", () => {
   it("does not render overflow trigger when there are no entries", () => {
     render(<NotificationCenter open onClose={() => {}} />);

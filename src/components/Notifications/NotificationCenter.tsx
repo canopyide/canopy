@@ -291,6 +291,9 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
     ? `Muted until ${timeFormatter.format(new Date(quietUntil))}`
     : "Quiet hours";
   const morningLabel = `Until ${timeFormatter.format(new Date(nextOccurrenceTimestamp(8 * 60)))}`;
+  const mutedEmptyDescription = isSessionMuted
+    ? `Resuming at ${timeFormatter.format(new Date(quietUntil))}`
+    : `Quiet hours active. Resuming at ${timeFormatter.format(new Date(nextOccurrenceTimestamp(quietHoursEndMin)))}`;
 
   const showGroupToggle = entries.length > 0;
 
@@ -446,6 +449,16 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
               icon={<Bell />}
               className="py-10"
             />
+          ) : showMutedPill ? (
+            <div data-testid="notification-muted-empty-state">
+              <EmptyState
+                variant="zero-data"
+                title="Notifications paused"
+                icon={<Moon />}
+                description={mutedEmptyDescription}
+                className="py-10"
+              />
+            </div>
           ) : (
             <EmptyState
               variant="zero-data"
