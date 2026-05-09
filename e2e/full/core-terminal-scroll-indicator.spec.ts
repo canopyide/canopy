@@ -11,6 +11,31 @@ let ctx: AppContext;
 let fixtureDir: string;
 let fixtureCleanup: (() => void) | undefined;
 
+async function dismissBlockingPalette(window: AppContext["window"]): Promise<void> {
+  const palette = window
+    .locator(
+      [
+        '[role="dialog"][aria-label="Action palette"]',
+        '[role="dialog"][aria-label="New terminal palette"]',
+        '[role="dialog"][aria-label="Panel palette"]',
+        '[role="dialog"][aria-label="Project switcher"]',
+        '[role="dialog"][aria-label="Worktree palette"]',
+        '[role="dialog"][aria-label="Quick create worktree palette"]',
+      ].join(", ")
+    )
+    .first();
+
+  if (!(await palette.isVisible({ timeout: 500 }).catch(() => false))) return;
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await window.keyboard.press("Escape").catch(() => undefined);
+    if (!(await palette.isVisible({ timeout: 500 }).catch(() => false))) return;
+  }
+
+  await window.mouse.click(10, 10).catch(() => undefined);
+  await expect(palette).not.toBeVisible({ timeout: T_SHORT });
+}
+
 test.describe.serial("Core: Terminal Scroll Indicator", () => {
   test.beforeAll(async () => {
     ({ dir: fixtureDir, cleanup: fixtureCleanup } = createFixtureRepo({
@@ -55,6 +80,7 @@ test.describe.serial("Core: Terminal Scroll Indicator", () => {
     await waitForTerminalText(panel, "SCRL_A_FILL_200", T_LONG);
 
     // Scroll up using keyboard (proven pattern from core-terminal-search.spec.ts)
+    await dismissBlockingPalette(window);
     await panel.locator(SEL.terminal.xtermRows).click();
     await window.waitForTimeout(T_SETTLE);
     for (let i = 0; i < 15; i++) {

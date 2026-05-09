@@ -1,15 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- window.electron is untyped in Playwright evaluate() */
 import { test, expect } from "@playwright/test";
-import {
-  launchApp,
-  closeApp,
-  mockOpenDialog,
-  refreshActiveWindow,
-  type AppContext,
-} from "../helpers/launch";
+import { launchApp, closeApp, type AppContext } from "../helpers/launch";
 import { createFixtureRepos } from "../helpers/fixtures";
-import { openAndOnboardProject, dismissTelemetryConsent } from "../helpers/project";
-import { selectExistingProjectAndRefresh, spawnTerminalAndVerify } from "../helpers/workflows";
+import { openAndOnboardProject } from "../helpers/project";
+import {
+  addAndSwitchToProject,
+  openProjectSwitcherPalette,
+  selectExistingProjectAndRefresh,
+  spawnTerminalAndVerify,
+} from "../helpers/workflows";
 import { runTerminalCommand, waitForTerminalText } from "../helpers/terminal";
 import { getGridPanelCount, getGridPanelIds, getPanelById } from "../helpers/panels";
 import { SEL } from "../helpers/selectors";
@@ -41,24 +40,12 @@ test.describe.serial("Core: Cross-Project Terminal Workflows", () => {
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, repoA, PROJECT_A);
 
     // Add Project B
-    await mockOpenDialog(ctx.app, repoB);
-    await ctx.window.locator(SEL.toolbar.projectSwitcherTrigger).click();
-    const palette = ctx.window.locator(SEL.projectSwitcher.palette);
-    await expect(palette).toBeVisible({ timeout: T_MEDIUM });
-    await ctx.window.locator(SEL.projectSwitcher.addButton).click({ force: true });
-    ctx.window = await refreshActiveWindow(ctx.app, ctx.window);
-    await dismissTelemetryConsent(ctx.window);
+    ctx.window = await addAndSwitchToProject(ctx.app, ctx.window, repoB, PROJECT_B);
 
     // Switch back to A, then add Project C
     ctx.window = await selectExistingProjectAndRefresh(ctx.app, ctx.window, PROJECT_A);
 
-    await mockOpenDialog(ctx.app, repoC);
-    await ctx.window.locator(SEL.toolbar.projectSwitcherTrigger).click();
-    const palette2 = ctx.window.locator(SEL.projectSwitcher.palette);
-    await expect(palette2).toBeVisible({ timeout: T_MEDIUM });
-    await ctx.window.locator(SEL.projectSwitcher.addButton).click({ force: true });
-    ctx.window = await refreshActiveWindow(ctx.app, ctx.window);
-    await dismissTelemetryConsent(ctx.window);
+    ctx.window = await addAndSwitchToProject(ctx.app, ctx.window, repoC, PROJECT_C);
 
     // Return to A as baseline
     ctx.window = await selectExistingProjectAndRefresh(ctx.app, ctx.window, PROJECT_A);
@@ -242,9 +229,7 @@ test.describe.serial("Core: Cross-Project Terminal Workflows", () => {
       "verify palette shows C, B, A order",
       async () => {
         const page = ctx.window;
-        await page.locator(SEL.toolbar.projectSwitcherTrigger).click();
-        const palette = page.locator(SEL.projectSwitcher.palette);
-        await expect(palette).toBeVisible({ timeout: T_MEDIUM });
+        const palette = await openProjectSwitcherPalette(page);
         await page.waitForTimeout(T_SETTLE);
 
         const optionTexts = await page.evaluate(() => {
