@@ -4,6 +4,11 @@ import { stripAnsiCodes } from "@shared/utils/artifactParser";
 import { panelKindHasPty } from "@shared/config/panelKindRegistry";
 import { terminalClient } from "@/clients";
 import { usePanelStore, type TerminalInstance } from "@/store/panelStore";
+import {
+  MAX_WAIT_UNTIL_IDLE_TIMEOUT_MS,
+  WAIT_UNTIL_IDLE_DESCRIPTION,
+  WAIT_UNTIL_IDLE_OUTPUT_SCHEMA,
+} from "@shared/types/terminalWaitUntilIdle";
 export function registerTerminalQueryActions(
   actions: ActionRegistry,
   _callbacks: ActionCallbacks
@@ -312,6 +317,49 @@ export function registerTerminalQueryActions(
       });
 
       return { terminals: entries };
+    },
+  }));
+
+  // terminal.waitUntilIdle is registered here purely for manifest registration —
+  // schema, description, tier, and audit metadata. Execution is handled inline
+  // in the MCP CallTool handler (electron/services/mcp-server/sessionServer.ts)
+  // because the request must stay in the main process: the renderer-dispatch
+  // path has a 30s timeout (waitUntilIdle defaults to 30 minutes) and cannot
+  // serialize the AbortSignal that powers MCP request cancellation. `run()`
+  // throws if the renderer ever invokes it directly.
+  actions.set("terminal.waitUntilIdle", () => ({
+    id: "terminal.waitUntilIdle",
+    title: "Wait until terminal idle",
+    description: WAIT_UNTIL_IDLE_DESCRIPTION,
+    category: "terminal",
+    kind: "query",
+    danger: "safe",
+    scope: "renderer",
+    argsSchema: z.object({
+      terminalId: z
+        .string()
+        .min(1)
+        .describe("Panel UUID returned by `terminal.list` (the `id` field)."),
+      timeoutMs: z
+        .number()
+        .int()
+        .min(0)
+        .max(MAX_WAIT_UNTIL_IDLE_TIMEOUT_MS)
+        .optional()
+        .describe(
+          "Pass 0 for an immediate non-blocking snapshot. Otherwise, the maximum time to block in milliseconds; defaults to 30 minutes and clamped to 2 hours."
+        ),
+    }),
+    rawOutputSchema: WAIT_UNTIL_IDLE_OUTPUT_SCHEMA,
+    mcpAnnotations: {
+      readOnlyHint: true,
+      idempotentHint: false,
+      destructiveHint: false,
+    },
+    run: async () => {
+      throw new Error(
+        "terminal.waitUntilIdle must be invoked through the MCP main-process path, not renderer dispatch."
+      );
     },
   }));
 

@@ -26,10 +26,6 @@ import type {
   DispatchEnvelope,
 } from "./shared.js";
 import {
-  TERMINAL_WAIT_UNTIL_IDLE_TOOL,
-  WAIT_UNTIL_IDLE_DESCRIPTION,
-  WAIT_UNTIL_IDLE_INPUT_SCHEMA,
-  WAIT_UNTIL_IDLE_OUTPUT_SCHEMA,
   PROMPT_DEFINITIONS,
   PROMPT_TERMINAL_OUTPUT_MAX_CHARS,
   RESOURCE_SCROLLBACK_TAIL_LINES,
@@ -54,6 +50,8 @@ import {
   buildStructuredContent,
   parseToolArguments,
 } from "./tierAuth.js";
+
+const TERMINAL_WAIT_UNTIL_IDLE_TOOL = "terminal.waitUntilIdle";
 import type { SessionStore } from "./sessionStore.js";
 
 export interface SessionServerDeps {
@@ -120,22 +118,6 @@ export function createSessionServer(sessionId: string, deps: SessionServerDeps):
         };
       });
 
-    if (isTierPermitted(tier, TERMINAL_WAIT_UNTIL_IDLE_TOOL, fullToolSurface)) {
-      tools.push({
-        name: TERMINAL_WAIT_UNTIL_IDLE_TOOL,
-        description: WAIT_UNTIL_IDLE_DESCRIPTION,
-        inputSchema: WAIT_UNTIL_IDLE_INPUT_SCHEMA,
-        annotations: {
-          title: "Wait until terminal idle",
-          readOnlyHint: true,
-          idempotentHint: false,
-          destructiveHint: false,
-          openWorldHint: false,
-        },
-        outputSchema: WAIT_UNTIL_IDLE_OUTPUT_SCHEMA,
-      });
-    }
-
     return { tools };
   });
 
@@ -170,48 +152,6 @@ export function createSessionServer(sessionId: string, deps: SessionServerDeps):
       };
     }
 
-    if (actionId === TERMINAL_WAIT_UNTIL_IDLE_TOOL) {
-      let nativeOutcome:
-        | { kind: "result"; value: import("../../../shared/types/actions.js").ActionDispatchResult }
-        | { kind: "throw"; error: unknown }
-        | undefined;
-      try {
-        const result = await waitUntilIdle(args, extra.signal);
-        nativeOutcome = { kind: "result", value: { ok: true, result } };
-        return {
-          content: [{ type: "text" as const, text: safeSerializeToolResult(result) }],
-          structuredContent: result as unknown as Record<string, unknown>,
-        };
-      } catch (err) {
-        nativeOutcome = { kind: "throw", error: err };
-        if (err instanceof McpError) {
-          throw err;
-        }
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error: ${formatErrorMessage(err, "waitUntilIdle failed")}`,
-            },
-          ],
-          isError: true,
-        };
-      } finally {
-        try {
-          appendAuditRecord({
-            toolId: actionId,
-            sessionId,
-            tier,
-            args,
-            durationMs: Date.now() - startedAt,
-            outcome: nativeOutcome ?? { kind: "throw", error: new Error("unknown") },
-          });
-        } catch (auditErr) {
-          console.error("[MCP] Failed to append audit record:", auditErr);
-        }
-      }
-    }
-
     let outcome:
       | { kind: "result"; value: import("../../../shared/types/actions.js").ActionDispatchResult }
       | { kind: "throw"; error: unknown };
@@ -221,6 +161,36 @@ export function createSessionServer(sessionId: string, deps: SessionServerDeps):
     let dispatchConfirmed = false;
 
     try {
+      // Short-circuit: terminal.waitUntilIdle runs in the main process. The
+      // action manifest entry handles schema, tier, and audit registration; the
+      // execution must bypass renderer dispatch because (a) the MCP AbortSignal
+      // can't cross IPC, and (b) renderer dispatch has a 30s wall — too short
+      // for the 30-minute default wait. Audit unifies via the shared finally.
+      if (actionId === TERMINAL_WAIT_UNTIL_IDLE_TOOL) {
+        try {
+          const result = await waitUntilIdle(args, extra.signal);
+          outcome = { kind: "result", value: { ok: true, result } };
+          return {
+            content: [{ type: "text" as const, text: safeSerializeToolResult(result) }],
+            structuredContent: result as unknown as Record<string, unknown>,
+          };
+        } catch (err) {
+          outcome = { kind: "throw", error: err };
+          if (err instanceof McpError) {
+            throw err;
+          }
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Error: ${formatErrorMessage(err, "waitUntilIdle failed")}`,
+              },
+            ],
+            isError: true,
+          };
+        }
+      }
+
       const entry = await lookupManifestEntry(actionId, getCachedManifest, requestManifest);
       if (!dispatchConfirmed && entry?.danger === "confirm") {
         const supportsForm = server.getClientCapabilities()?.elicitation?.form !== undefined;
