@@ -407,12 +407,9 @@ export async function refreshActiveWindow(app: ElectronApplication, oldPage?: Pa
     .locator('[aria-label="Toggle Sidebar"]')
     .waitFor({ state: "visible", timeout: refreshTimeout });
 
-  // Wait for the sidebar element to appear in the DOM. AppLayout only mounts
-  // <Sidebar> when currentProject != null, so this guards against returning
-  // before the IPC loadCurrentProject call resolves. Without this gate the
-  // worktree wait below times out (no sidebar = no worktree cards), and the
-  // previous "Loading worktrees..." fallback was a no-op because that text is
-  // sr-only in the Skeleton component and was never found by the locator.
+  // <Sidebar> mounts only after currentProject hydrates — best-effort gate
+  // before the worktree poll. Use attached not visible: a gesture-hidden
+  // sidebar is aria-hidden/inert but still in the DOM.
   await newWindow
     .locator('aside[aria-label="Sidebar"]')
     .waitFor({ state: "attached", timeout: refreshTimeout })
