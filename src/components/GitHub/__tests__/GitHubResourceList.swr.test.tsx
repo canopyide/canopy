@@ -777,7 +777,14 @@ describe("GitHubResourceList empty state branching", () => {
     await waitFor(() => {
       expect(screen.getByText(/No issues match "nonexistent"/)).toBeTruthy();
     });
-    expect(screen.getByRole("button", { name: /clear filters/i })).toBeTruthy();
+    const clearButton = screen.getByRole("button", { name: /clear filters/i });
+    expect(clearButton).toBeTruthy();
+    // CLAUDE.md popover/palette empty-state rule: never render primary-weight
+    // buttons. The Clear filters CTA must use the ghost variant — locking the
+    // class signature catches a regression to outline (ring-border-strong) or
+    // any other heavier variant.
+    expect(clearButton.className).toContain("text-text-secondary");
+    expect(clearButton.className).not.toContain("ring-border-strong");
   });
 
   it("renders filtered-empty when a non-default state filter is active", async () => {
