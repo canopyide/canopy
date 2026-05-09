@@ -30,6 +30,11 @@ export const TRUSTED_TYPES_POLICY_NAME = "daintree-svg";
  *      at build time by the Vite plugin in vite.config.ts.
  *   2. `Content-Security-Policy` HTTP response header set by the main process
  *      via `webRequest.onHeadersReceived` on the persist:daintree session.
+ *
+ * Chromium 146 silently ignores `frame-ancestors`, `report-uri`, `report-to`,
+ * and `sandbox` when delivered via `<meta http-equiv>`. Those directives must
+ * appear on the HTTP response header only (layer 2 above) — adding them to
+ * the meta layer is a no-op and gives a false sense of coverage.
  */
 export function getDaintreeAppProdCSP(): string {
   return [
