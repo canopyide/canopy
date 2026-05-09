@@ -6,35 +6,11 @@ import { waitForTerminalText, runTerminalCommand } from "../helpers/terminal";
 import { getFirstGridPanel, openTerminal } from "../helpers/panels";
 import { SEL } from "../helpers/selectors";
 import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
+import { dismissBlockingPalette } from "../helpers/overlays";
 
 let ctx: AppContext;
 let fixtureDir: string;
 let fixtureCleanup: (() => void) | undefined;
-
-async function dismissBlockingPalette(window: AppContext["window"]): Promise<void> {
-  const palette = window
-    .locator(
-      [
-        '[role="dialog"][aria-label="Action palette"]',
-        '[role="dialog"][aria-label="New terminal palette"]',
-        '[role="dialog"][aria-label="Panel palette"]',
-        '[role="dialog"][aria-label="Project switcher"]',
-        '[role="dialog"][aria-label="Worktree palette"]',
-        '[role="dialog"][aria-label="Quick create worktree palette"]',
-      ].join(", ")
-    )
-    .first();
-
-  if (!(await palette.isVisible({ timeout: 500 }).catch(() => false))) return;
-
-  for (let attempt = 0; attempt < 3; attempt++) {
-    await window.keyboard.press("Escape").catch(() => undefined);
-    if (!(await palette.isVisible({ timeout: 500 }).catch(() => false))) return;
-  }
-
-  await window.mouse.click(10, 10).catch(() => undefined);
-  await expect(palette).not.toBeVisible({ timeout: T_SHORT });
-}
 
 test.describe.serial("Core: Terminal Scroll Indicator", () => {
   test.beforeAll(async () => {

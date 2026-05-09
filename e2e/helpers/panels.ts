@@ -110,14 +110,19 @@ export async function clickToolbarButton(
  */
 export async function openSettings(page: Page, timeout = 10000): Promise<void> {
   const heading = page.locator(SEL.settings.heading);
+  const shortcutTimeout = process.env.CI && process.platform === "win32" ? 7000 : 3000;
 
   // Try keyboard shortcut first (works regardless of toolbar overflow)
   await page.keyboard.press(`${mod}+,`);
   try {
-    await heading.waitFor({ state: "visible", timeout: 3000 });
+    await heading.waitFor({ state: "visible", timeout: Math.min(timeout, shortcutTimeout) });
     return;
   } catch {
     // Shortcut may not have registered — try clicking the toolbar button
+  }
+
+  if (await heading.isVisible({ timeout: 1000 }).catch(() => false)) {
+    return;
   }
 
   // Fall back to clicking the settings button (handles overflow via menu)

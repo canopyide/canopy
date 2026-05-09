@@ -2,6 +2,7 @@ import type { ElectronApplication, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
 import path from "path";
 import { mockOpenDialog, refreshActiveWindow, waitForActiveProject } from "./launch";
+import { dismissBlockingPalette } from "./overlays";
 
 export async function openProject(
   app: ElectronApplication,
@@ -36,6 +37,7 @@ export async function openAndOnboardProject(
     await refreshActiveWindow(app, window),
     projectBasename
   );
+  await dismissBlockingPalette(newWindow);
   await dismissTelemetryConsent(newWindow);
   return newWindow;
 }

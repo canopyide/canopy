@@ -34,9 +34,8 @@ async function waitForTerminalsToClose(terminalIds: string[]): Promise<void> {
       Array.from(remaining, async (terminalId) => {
         try {
           const info = await window.electron.terminal.getInfo(terminalId);
-          if (info.hasPty === false) {
-            remaining.delete(terminalId);
-          }
+          // hasPty flips before the backend forgets the terminal, which can leave cwd locked on Windows.
+          if (info.hasPty === false) return;
         } catch {
           remaining.delete(terminalId);
         }
