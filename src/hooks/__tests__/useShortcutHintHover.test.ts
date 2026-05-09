@@ -215,6 +215,36 @@ describe("useShortcutHintHover", () => {
     expect(shortcutHintStore.getState().activeHint).toBeNull();
   });
 
+  it("suppresses dwell hint when trigger transitions to delayed-open mid-dwell", () => {
+    // Real-world race: Radix tooltip opens at ~500ms during the 1500ms dwell.
+    // The hook must read data-state at fire time, not at pointer-enter time.
+    shortcutHintStore.getState().hydrateCounts({ "nav.toggleSidebar": 0 });
+
+    const trigger = document.createElement("button");
+    trigger.setAttribute("data-state", "closed");
+
+    const { result } = renderHook(() => useShortcutHintHover("nav.toggleSidebar"));
+
+    act(() => {
+      vi.advanceTimersByTime(10);
+    });
+
+    act(() => {
+      result.current.onPointerEnter(createPointerEvent(100, 200, trigger));
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(800);
+      trigger.setAttribute("data-state", "delayed-open");
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(700);
+    });
+
+    expect(shortcutHintStore.getState().activeHint).toBeNull();
+  });
+
   it("fires dwell hint when trigger data-state is closed", () => {
     shortcutHintStore.getState().hydrateCounts({ "nav.toggleSidebar": 0 });
 
