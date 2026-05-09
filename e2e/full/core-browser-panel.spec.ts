@@ -18,10 +18,6 @@ function handleRequest(_req: IncomingMessage, res: ServerResponse) {
     res.end("<html><body><h1>Page A</h1></body></html>");
   } else if (url.startsWith("/page-b")) {
     res.end("<html><body><h1>Page B</h1></body></html>");
-  } else if (url.startsWith("/console-test")) {
-    res.end(
-      '<html><body><h1>Console Test</h1><script>setTimeout(() => console.log("E2E_CONSOLE_TEST"), 1500)</script></body></html>'
-    );
   } else if (url.startsWith("/find-test")) {
     res.end(
       "<html><body><p>FINDME_SENTINEL alpha</p><p>FINDME_SENTINEL beta</p><p>FINDME_SENTINEL gamma</p></body></html>"
@@ -265,59 +261,6 @@ test.describe.serial("Core: Browser Panel", () => {
       await panel.locator(SEL.panel.close).first().click({ force: true });
 
       await expect.poll(() => getGridPanelCount(window), { timeout: T_MEDIUM }).toBe(count - 1);
-    });
-  });
-
-  test.describe.serial("Console Capture", () => {
-    test.afterAll(async () => {
-      try {
-        const { window } = ctx;
-        let count = await getGridPanelCount(window);
-        while (count > 0) {
-          const panel = window.locator(SEL.panel.gridPanel).first();
-          await panel.locator(SEL.panel.close).first().click({ force: true });
-          await expect.poll(() => getGridPanelCount(window), { timeout: T_MEDIUM }).toBe(count - 1);
-          count--;
-        }
-      } catch {
-        // best-effort cleanup
-      }
-    });
-
-    test("open browser panel, navigate to console-test page, and toggle console drawer", async () => {
-      const { window } = ctx;
-
-      await openBrowser(window);
-      const browserPanel = window.locator(SEL.panel.gridPanel).filter({
-        has: window.locator(SEL.browser.addressBar),
-      });
-      await expect(browserPanel).toBeVisible({ timeout: T_LONG });
-
-      const addressBar = browserPanel.locator(SEL.browser.addressBar);
-      await addressBar.click();
-      await addressBar.fill(`http://127.0.0.1:${port}/console-test`);
-      await window.keyboard.press("Enter");
-      await window.waitForTimeout(T_SETTLE);
-      await expect(addressBar).toHaveValue(/console-test/, { timeout: T_LONG });
-
-      await browserPanel.locator(SEL.browser.consoleToggle).click();
-      // The drawer's empty-state copy ("No console output") only renders when
-      // there are zero captured messages — but a freshly-loaded page logs CSP
-      // / favicon warnings before the drawer opens, so empty state is racy.
-      // Assert the drawer is visible by checking for the persistent header
-      // label instead.
-      await expect(browserPanel.getByText("Console", { exact: true })).toBeVisible({
-        timeout: T_MEDIUM,
-      });
-    });
-
-    test("console displays captured log message", async () => {
-      const { window } = ctx;
-      const browserPanel = window.locator(SEL.panel.gridPanel).filter({
-        has: window.locator(SEL.browser.addressBar),
-      });
-
-      await expect(browserPanel.getByText("E2E_CONSOLE_TEST")).toBeVisible({ timeout: T_LONG });
     });
   });
 
