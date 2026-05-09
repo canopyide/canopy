@@ -149,10 +149,14 @@ interface VersionTooOld {
 // version is definitively below the floor; returns null otherwise (no minimum
 // configured, probe failed, version unparseable, or installed >= required).
 // A null pass-through preserves the existing missing-CLI surface and avoids
-// blocking on transient probe failures.
+// blocking on transient probe failures. `refresh=true` bypasses the 12h
+// AgentVersionService cache — pass it on retry so a user who manually
+// updates the CLI outside Daintree's update flow can recover within one
+// panel reopen instead of waiting for cache expiry.
 async function checkAssistantVersion(
   agentId: string,
-  agentName: string
+  agentName: string,
+  refresh = false
 ): Promise<VersionTooOld | null> {
   const config = getAgentConfig(agentId);
   const required = config?.assistantMinVersion;
@@ -160,7 +164,7 @@ async function checkAssistantVersion(
 
   let info;
   try {
-    info = await window.electron.system.getAgentVersion(agentId);
+    info = await window.electron.system.getAgentVersion(agentId, refresh);
   } catch (err) {
     logError("Failed to probe assistant CLI version", err);
     return null;
@@ -257,6 +261,11 @@ export function HelpPanel({
   const [showNewSessionConfirm, setShowNewSessionConfirm] = useState(false);
   const [showResumeBanner, setShowResumeBanner] = useState(false);
   const [assistantVersionTooOld, setAssistantVersionTooOld] = useState<VersionTooOld | null>(null);
+  // Tracks whether the version gate has blocked at any point in this panel
+  // instance. When true, the next `checkAssistantVersion` call passes
+  // `refresh=true` so an externally-updated CLI is detected without waiting
+  // for the 12h AgentVersionService cache TTL. Cleared once a probe passes.
+  const hasBlockedThisSessionRef = useRef(false);
 
   const {
     isOpen,
@@ -649,12 +658,28 @@ export function HelpPanel({
         // session token (with .mcp.json side effects) we'd immediately
         // discard. Pass-through on null preserves missing-CLI behavior.
         const launchAgentName = getAgentConfig(launchAgentId)?.name ?? launchAgentId;
-        const versionBlock = await checkAssistantVersion(launchAgentId, launchAgentName);
+        const versionBlock = await checkAssistantVersion(
+          launchAgentId,
+          launchAgentName,
+          hasBlockedThisSessionRef.current
+        );
         if (versionBlock) {
+          // Stale-agent guard: only relevant when we're about to paint a
+          // block. If the user changed `preferredAgentId` while the probe
+          // was in flight, skip the block so the new agent's empty state
+          // isn't covered by an "Update Claude" message that no longer
+          // applies. The non-block path falls through to provision/dispatch
+          // and the existing post-dispatch stale guard handles cleanup.
+          if (useHelpPanelStore.getState().preferredAgentId !== launchAgentId) {
+            hasAutoLaunched.current = false;
+            return;
+          }
           hasAutoLaunched.current = false;
+          hasBlockedThisSessionRef.current = true;
           setAssistantVersionTooOld(versionBlock);
           return;
         }
+        hasBlockedThisSessionRef.current = false;
         setAssistantVersionTooOld(null);
 
         const outcome = await provisionHelpSession(launchProject, launchAgentId);
@@ -778,6 +803,14 @@ export function HelpPanel({
       hasAutoLaunched.current = false;
     }
   }, [isOpen]);
+
+  // Clear the version-too-old block when the preferred agent changes — the
+  // stale block belongs to the previous agent and would otherwise paint over
+  // the new agent's empty state. The retry-refresh ref intentionally
+  // survives this reset so a recovering panel still busts the cache.
+  useEffect(() => {
+    setAssistantVersionTooOld(null);
+  }, [preferredAgentId]);
 
   // Register the panel root with the macro-focus store so the assistant
   // participates in cross-region cycling.
@@ -920,14 +953,22 @@ export function HelpPanel({
         // Version gate runs BEFORE provisionHelpSession so we don't mint a
         // session token we'd immediately discard. Pass-through on null
         // (probe failure / unparseable installed version) lets the existing
-        // missing-CLI surface handle those edge cases.
+        // missing-CLI surface handle those edge cases. `refresh=true` on
+        // retry busts the 12h AgentVersionService cache so an externally
+        // updated CLI is detected without waiting for TTL expiry.
         const selectedAgentName = getAgentConfig(selectedAgentId)?.name ?? selectedAgentId;
-        const versionBlock = await checkAssistantVersion(selectedAgentId, selectedAgentName);
+        const versionBlock = await checkAssistantVersion(
+          selectedAgentId,
+          selectedAgentName,
+          hasBlockedThisSessionRef.current
+        );
         if (versionBlock) {
           hasAutoLaunched.current = false;
+          hasBlockedThisSessionRef.current = true;
           setAssistantVersionTooOld(versionBlock);
           return;
         }
+        hasBlockedThisSessionRef.current = false;
         setAssistantVersionTooOld(null);
 
         const outcome = await provisionHelpSession(launchProject, selectedAgentId);

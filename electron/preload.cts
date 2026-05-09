@@ -966,8 +966,8 @@ const api: ElectronAPI = {
 
     getAgentVersions: () => _unwrappingInvoke(CHANNELS.SYSTEM_GET_AGENT_VERSIONS),
 
-    getAgentVersion: (agentId: string) =>
-      _unwrappingInvoke(CHANNELS.SYSTEM_GET_AGENT_VERSION, agentId),
+    getAgentVersion: (agentId: string, refresh?: boolean) =>
+      _unwrappingInvoke(CHANNELS.SYSTEM_GET_AGENT_VERSION, agentId, refresh),
 
     refreshAgentVersions: () => _unwrappingInvoke(CHANNELS.SYSTEM_REFRESH_AGENT_VERSIONS),
 

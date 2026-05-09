@@ -2338,7 +2338,7 @@ describe("HelpPanel — assistantMinVersion gate (issue #7539)", () => {
 
     await findByTestId("help-version-too-old");
 
-    expect(mockGetAgentVersion).toHaveBeenCalledWith("claude");
+    expect(mockGetAgentVersion).toHaveBeenCalledWith("claude", false);
     expect(mockProvisionSession).not.toHaveBeenCalled();
     expect(mockDispatch).not.toHaveBeenCalled();
     expect(helpPanelState.setTerminal).not.toHaveBeenCalled();
@@ -2360,7 +2360,7 @@ describe("HelpPanel — assistantMinVersion gate (issue #7539)", () => {
 
     await findByTestId("help-version-too-old");
 
-    expect(mockGetAgentVersion).toHaveBeenCalledWith("claude");
+    expect(mockGetAgentVersion).toHaveBeenCalledWith("claude", false);
     expect(mockProvisionSession).not.toHaveBeenCalled();
     expect(mockDispatch).not.toHaveBeenCalled();
     expect(helpPanelState.setTerminal).not.toHaveBeenCalled();
@@ -2499,6 +2499,117 @@ describe("HelpPanel — assistantMinVersion gate (issue #7539)", () => {
     expect(mockDispatch).toHaveBeenCalledWith(
       "agent.launch",
       expect.objectContaining({ agentId: "codex" }),
+      { source: "user" }
+    );
+  });
+
+  it("clears the version-too-old block when preferredAgentId changes", async () => {
+    helpPanelState.preferredAgentId = "claude";
+    mockGetFolderPath.mockResolvedValue("/help");
+    mockGetAgentVersion.mockResolvedValue({
+      agentId: "claude",
+      installedVersion: "0.2.74",
+      latestVersion: "1.0.0",
+      updateAvailable: true,
+      lastChecked: Date.now(),
+    });
+
+    const { findByTestId, queryByTestId, rerender } = render(<HelpPanel width={380} />);
+    await findByTestId("help-version-too-old");
+
+    // User clears their preferred agent — the stale block should disappear so
+    // the no-preference empty state can render correctly.
+    helpPanelState.preferredAgentId = null;
+    cliAvailabilityState.availability = { claude: "ready", codex: "ready" };
+    mockGetAssistantSupportedAgentIds.mockReturnValue(["claude", "codex"]);
+
+    await act(async () => {
+      rerender(<HelpPanel width={380} />);
+    });
+
+    expect(queryByTestId("help-version-too-old")).toBeNull();
+  });
+
+  it("does not paint a stale version-too-old block when preferredAgentId changes mid-probe", async () => {
+    helpPanelState.preferredAgentId = "claude";
+    mockGetFolderPath.mockResolvedValue("/help");
+
+    let resolveProbe: (info: unknown) => void = () => {};
+    mockGetAgentVersion.mockImplementationOnce(
+      () =>
+        new Promise((r) => {
+          resolveProbe = r;
+        })
+    );
+    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "term-1" } });
+
+    const { queryByTestId, rerender } = render(<HelpPanel width={380} />);
+
+    // User switches preference while probe is in flight.
+    helpPanelState.preferredAgentId = "codex";
+    await act(async () => {
+      rerender(<HelpPanel width={380} />);
+    });
+
+    // Probe finally returns "too old" for the now-stale claude.
+    await act(async () => {
+      resolveProbe({
+        agentId: "claude",
+        installedVersion: "0.2.74",
+        latestVersion: "1.0.0",
+        updateAvailable: true,
+        lastChecked: Date.now(),
+      });
+    });
+
+    // The stale block must NOT be rendered; the new preferred agent's launch
+    // should proceed unobstructed.
+    expect(queryByTestId("help-version-too-old")).toBeNull();
+  });
+
+  it("passes refresh=true on retry so an externally-updated CLI recovers without waiting for cache TTL", async () => {
+    helpPanelState.preferredAgentId = "claude";
+    mockGetFolderPath.mockResolvedValue("/help");
+
+    // First probe: blocked.
+    mockGetAgentVersion.mockResolvedValueOnce({
+      agentId: "claude",
+      installedVersion: "0.2.74",
+      latestVersion: "1.0.0",
+      updateAvailable: true,
+      lastChecked: Date.now(),
+    });
+    // Second probe (retry after user updated externally): passes.
+    mockGetAgentVersion.mockResolvedValueOnce({
+      agentId: "claude",
+      installedVersion: "1.5.0",
+      latestVersion: "1.5.0",
+      updateAvailable: false,
+      lastChecked: Date.now(),
+    });
+    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "recovered-term" } });
+
+    const { findByTestId, rerender } = render(<HelpPanel width={380} />);
+    await findByTestId("help-version-too-old");
+
+    // First call uses cached path (refresh=false). Confirm call signature.
+    expect(mockGetAgentVersion).toHaveBeenNthCalledWith(1, "claude", false);
+
+    // Simulate a retry: close + reopen flips hasAutoLaunched, retriggering the effect.
+    helpPanelState.isOpen = false;
+    await act(async () => {
+      rerender(<HelpPanel width={380} />);
+    });
+    helpPanelState.isOpen = true;
+    await act(async () => {
+      rerender(<HelpPanel width={380} />);
+    });
+
+    // Second probe must pass refresh=true to bust the 12h cache.
+    expect(mockGetAgentVersion).toHaveBeenNthCalledWith(2, "claude", true);
+    expect(mockDispatch).toHaveBeenCalledWith(
+      "agent.launch",
+      expect.objectContaining({ agentId: "claude" }),
       { source: "user" }
     );
   });

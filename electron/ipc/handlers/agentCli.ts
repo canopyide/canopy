@@ -72,7 +72,7 @@ export function registerAgentCliHandlers(deps: HandlerDependencies): () => void 
   };
   handlers.push(typedHandle(CHANNELS.SYSTEM_GET_AGENT_VERSIONS, handleSystemGetAgentVersions));
 
-  const handleSystemGetAgentVersion = async (agentId: string) => {
+  const handleSystemGetAgentVersion = async (agentId: string, refresh?: boolean) => {
     if (typeof agentId !== "string" || !agentId) {
       throw new Error("Invalid agentId");
     }
@@ -89,7 +89,8 @@ export function registerAgentCliHandlers(deps: HandlerDependencies): () => void 
     }
 
     return await agentVersionService.getVersion(
-      agentId as import("../../../shared/types/agent.js").AgentId
+      agentId as import("../../../shared/types/agent.js").AgentId,
+      refresh === true
     );
   };
   handlers.push(typedHandle(CHANNELS.SYSTEM_GET_AGENT_VERSION, handleSystemGetAgentVersion));
