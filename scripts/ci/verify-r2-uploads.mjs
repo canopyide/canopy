@@ -100,13 +100,22 @@ export async function verifyAllFiles({
 }) {
   const failures = [];
   for (const filePath of metadataFiles) {
-    const data = loadMetadata(filePath);
+    let data;
+    try {
+      data = loadMetadata(filePath);
+    } catch (err) {
+      failures.push({
+        filePath,
+        message: `failed to read or parse metadata: ${err?.message ?? err}`,
+      });
+      continue;
+    }
     if (!Array.isArray(data?.files) || data.files.length === 0) {
       failures.push({ filePath, message: "files[] missing or empty" });
       continue;
     }
     for (const entry of data.files) {
-      if (!entry?.url || typeof entry.size !== "number") {
+      if (!entry?.url || !Number.isFinite(entry?.size)) {
         failures.push({
           filePath,
           message: `invalid file entry in metadata: ${JSON.stringify(entry)}`,

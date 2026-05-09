@@ -313,6 +313,56 @@ describe("verifyAllFiles", () => {
     }
   });
 
+  it("flags malformed YAML as a structured failure rather than throwing", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "verify-r2-test-"));
+    try {
+      const yml = path.join(dir, "latest-mac.yml");
+      await writeFile(yml, "files:\n  - url: foo\n    size: [unclosed\n");
+
+      const fetchFn = vi.fn();
+      const failures = await verifyAllFiles({
+        metadataFiles: [yml],
+        publishUrl,
+        fetch: fetchFn,
+        sleep: vi.fn(),
+        log: () => {},
+      });
+
+      expect(failures).toHaveLength(1);
+      expect(failures[0].filePath).toBe(yml);
+      expect(failures[0].message).toContain("failed to read or parse metadata");
+      expect(fetchFn).not.toHaveBeenCalled();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("flags non-finite entry.size (NaN) as invalid metadata", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "verify-r2-test-"));
+    try {
+      const yml = path.join(dir, "latest-mac.yml");
+      await writeFile(
+        yml,
+        "version: 1.0.0\nfiles:\n  - url: mac.zip\n    sha512: aaa\n    size: .nan\npath: mac.zip\nsha512: aaa\nreleaseDate: 2024-01-01\n"
+      );
+
+      const fetchFn = vi.fn();
+      const failures = await verifyAllFiles({
+        metadataFiles: [yml],
+        publishUrl,
+        fetch: fetchFn,
+        sleep: vi.fn(),
+        log: () => {},
+      });
+
+      expect(failures).toHaveLength(1);
+      expect(failures[0].message).toContain("invalid file entry");
+      expect(fetchFn).not.toHaveBeenCalled();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("flags metadata with empty files[]", async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), "verify-r2-test-"));
     try {
