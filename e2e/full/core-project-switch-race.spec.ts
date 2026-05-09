@@ -127,6 +127,7 @@ test.describe.serial("Core: Project Switch Race Conditions", () => {
 
     // Capture Project A's ID
     const projectA = await getCurrentProject(ctx.window);
+    expect(projectA).not.toBeNull();
 
     // Open a terminal in Project A to confirm normal flow works
     await openTerminal(ctx.window);
@@ -164,7 +165,7 @@ test.describe.serial("Core: Project Switch Race Conditions", () => {
     const withProject = activeTerminals.filter((t: TerminalInfo) => t.projectId !== undefined);
     expect(withProject.length).toBeGreaterThanOrEqual(1);
     for (const t of withProject) {
-      expect(t.projectId).toBe(projectA.id);
+      expect(t.projectId).toBe(projectA!.id);
     }
   });
 
@@ -221,6 +222,7 @@ test.describe.serial("Core: Project Switch Race Conditions", () => {
     // Switch to Project A to spawn from there
     await switchToProject(ctx.window, PROJECT_A_NAME);
     const projectA = await getCurrentProject(ctx.window);
+    expect(projectA).not.toBeNull();
 
     // Inject delay and trigger a spawn
     await injectDelay(ctx.app, "terminal:spawn", 2000);
@@ -248,7 +250,7 @@ test.describe.serial("Core: Project Switch Race Conditions", () => {
     const withProject = activeTerminals.filter((t: TerminalInfo) => t.projectId !== undefined);
     expect(withProject.length).toBeGreaterThanOrEqual(1);
     for (const t of withProject) {
-      expect(t.projectId).toBe(projectA.id);
+      expect(t.projectId).toBe(projectA!.id);
     }
   });
 });
