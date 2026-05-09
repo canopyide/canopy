@@ -24,6 +24,13 @@ const SESSION_TOKEN_BYTES = 32;
 // in 64 bits of project-path-derived entropy are not a real concern for a
 // machine-local set of projects.
 const PROJECT_HASH_LEN = 16;
+// Stamp file written into the per-project session dir after a successful
+// `fs.cp` of the bundled help template. Lives inside the session dir (not
+// inside `helpFolder`), so it's never part of the source being hashed and
+// gets reaped along with the dir. Filename starts with `.` so it's hidden
+// from casual `ls` and unlikely to collide with anything the help template
+// might grow to ship.
+const TEMPLATE_HASH_FILE = ".template-hash";
 
 const DEFAULT_TIER: HelpAssistantTier = "action";
 const DEFAULT_DAINTREE_CONTROL = true;
@@ -85,6 +92,65 @@ function deepClonePlainJson<T>(value: T): T {
 
 function projectPathHash(projectPath: string): string {
   return createHash("sha256").update(projectPath).digest("hex").slice(0, PROJECT_HASH_LEN);
+}
+
+/**
+ * Deterministic SHA-256 over the bundled help template. The hash is content-
+ * only (no mtimes, no inode metadata): walk the tree, sort by full relative
+ * path normalized to forward slashes, and feed `<rel>\0<contents>` for each
+ * file into one running hash. Skips symlinks and empty dirs by virtue of
+ * the `isFile()` filter. The null-byte separator stops `"a"+"bc"` colliding
+ * with `"ab"+"c"` across path/content boundaries.
+ *
+ * `Dirent.parentPath` is the absolute dir of each entry — we use it (not the
+ * deprecated `.path`, which is removed in Node 24) and rejoin with `name`
+ * to derive the absolute path. Sorting by the full relative path string —
+ * not just `name` — ensures files with identical basenames in different
+ * subdirs hash deterministically across runs.
+ */
+async function computeTemplateHash(helpFolder: string): Promise<string> {
+  const entries = await fs.readdir(helpFolder, { recursive: true, withFileTypes: true });
+  const files = entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => ({
+      absolute: path.join(entry.parentPath, entry.name),
+      relative: path
+        .relative(helpFolder, path.join(entry.parentPath, entry.name))
+        .split(path.sep)
+        .join("/"),
+    }))
+    .sort((a, b) => (a.relative < b.relative ? -1 : a.relative > b.relative ? 1 : 0));
+
+  const hash = createHash("sha256");
+  for (const file of files) {
+    hash.update(file.relative);
+    hash.update("\0");
+    hash.update(await fs.readFile(file.absolute));
+  }
+  return hash.digest("hex");
+}
+
+/**
+ * Reads the on-disk template hash stamp. Returns null when the stamp is
+ * absent (first provision, or the user manually removed the dir contents).
+ * Non-ENOENT failures (e.g. EACCES on a corrupt stamp) are warn-and-treat-
+ * as-missing — the stamp is a copy-skip optimization, not a security gate,
+ * and the next launch shouldn't be blocked because this file is unreadable.
+ */
+async function readTemplateHashStamp(sessionPath: string): Promise<string | null> {
+  const stampPath = path.join(sessionPath, TEMPLATE_HASH_FILE);
+  try {
+    const raw = await fs.readFile(stampPath, "utf-8");
+    return raw.trim();
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+    console.warn(
+      "[HelpSessionService] Failed to read template hash stamp; treating as missing:",
+      stampPath,
+      err
+    );
+    return null;
+  }
 }
 
 /**
@@ -283,17 +349,47 @@ export class HelpSessionService {
 
     await fs.mkdir(sessionsRoot, { recursive: true, mode: 0o700 });
     await fs.chmod(sessionsRoot, 0o700).catch(() => {});
-    // `force: true` is the default — overwrites existing files in the dir
-    // with the bundled template, picking up any updates to CLAUDE.md /
-    // settings baseline / etc. without losing Claude Code's per-folder trust
-    // acceptance (which lives in ~/.claude.json, not here).
-    await fs.cp(helpFolder, sessionPath, { recursive: true });
+    // Hash-gate the template overwrite (#7525). `fs.cp` is non-atomic — a
+    // crash mid-copy would leave a torn session dir whose template files
+    // are a mix of old and new. Most launches see an unchanged template
+    // (same app version since last open), so we skip the copy entirely
+    // when the on-disk stamp matches the bundled hash. The stamp is only
+    // written AFTER `fs.cp` resolves, so a failed copy never marks itself
+    // as valid: next launch sees the mismatch and re-runs the copy.
+    //
+    // The `.mcp.json`, `.claude/settings.json`, and `meta.json` writes
+    // below stay unconditional — those carry per-session secrets (rotated
+    // bearer, current user settings) and are not template content.
+    const sourceHash = await computeTemplateHash(helpFolder);
+    const existingHash = await readTemplateHashStamp(sessionPath);
+    if (existingHash !== sourceHash) {
+      // `force: true` is the default — overwrites existing files in the dir
+      // with the bundled template, picking up any updates to CLAUDE.md /
+      // settings baseline / etc. without losing Claude Code's per-folder trust
+      // acceptance (which lives in ~/.claude.json, not here).
+      await fs.cp(helpFolder, sessionPath, { recursive: true });
+      await resilientAtomicWriteFile(
+        path.join(sessionPath, TEMPLATE_HASH_FILE),
+        sourceHash + "\n",
+        "utf-8",
+        { mode: 0o600 }
+      );
+    }
     await fs.chmod(sessionPath, 0o700).catch(() => {});
 
     const port = await this.getMcpPort(settings.daintreeControl);
     if (input.agentId !== "codex") {
       await this.writeMcpConfig(sessionPath, settings, port, token);
       await this.writeClaudeSettings(sessionPath, helpFolder, settings);
+    } else {
+      // Codex skips `writeMcpConfig`, so when the template hash gate (#7525)
+      // also skips `fs.cp`, a `.mcp.json` from a prior Claude provision for
+      // this same project keeps its stale `daintree` Bearer in cwd. The
+      // bearer is already revoked in-memory (single-backend invariant), but
+      // before the gate, `fs.cp` would have restored the bundled `.mcp.json`
+      // and wiped the entry. Strip it now to preserve that hygiene — no-op
+      // when the entry is absent or its bearer is still live.
+      await this.stripStaleDaintreeMcpEntry(sessionPath);
     }
     // Codex doesn't read project-scoped `.codex/config.toml` from cwd —
     // its only mechanism for overriding the global config is the `-c key=value`
