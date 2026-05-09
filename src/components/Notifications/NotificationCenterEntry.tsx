@@ -137,10 +137,7 @@ function NotificationCenterEntryImpl({
     >
       <span
         aria-hidden="true"
-        className={cn(
-          "w-1.5 shrink-0 self-center",
-          isNew && "h-1.5 rounded-full bg-status-info"
-        )}
+        className={cn("w-1.5 shrink-0 self-center", isNew && "h-1.5 rounded-full bg-status-info")}
       />
       <div className={cn("mt-0.5 shrink-0", config.className)}>
         <Icon className="h-3.5 w-3.5" />
