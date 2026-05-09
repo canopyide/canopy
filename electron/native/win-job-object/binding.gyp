@@ -1,9 +1,9 @@
 {
-  "conditions": [
-    ["OS==\"win\"", {
-      "targets": [
-        {
-          "target_name": "win_job_object",
+  "targets": [
+    {
+      "target_name": "win_job_object",
+      "conditions": [
+        ["OS==\"win\"", {
           "sources": [ "src/win_job_object.cc" ],
           "include_dirs": [
             "<!@(node -p \"require('node-addon-api').include\")"
@@ -15,10 +15,8 @@
               "ExceptionHandling": 1
             }
           }
-        }
+        }]
       ]
-    }, {
-      "targets": []
-    }]
+    }
   ]
 }
