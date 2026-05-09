@@ -4,8 +4,6 @@ import { isElectronAvailable } from "../useElectron";
 import { useProjectStore } from "@/store/projectStore";
 import { usePanelStore } from "@/store/panelStore";
 import { getCurrentViewStore } from "@/store/createWorktreeStore";
-import { notify } from "@/lib/notify";
-import { keybindingService } from "@/services/KeybindingService";
 import { logError } from "@/utils/logger";
 import { safeFireAndForget } from "@/utils/safeFireAndForget";
 import type { ChecklistState, ChecklistItemId } from "@shared/types/ipc/maps";
@@ -123,17 +121,6 @@ export function useGettingStartedChecklist(isStateLoaded: boolean): GettingStart
         context: "Dismissing onboarding checklist",
       });
       if (!prev.celebrationShown) {
-        const paletteCombo = keybindingService.getDisplayCombo("panel.palette");
-        const message = paletteCombo
-          ? `You're all set. Open the panel palette (${paletteCombo}) to launch an agent`
-          : "You're all set. Open the panel palette to launch an agent";
-        notify({
-          type: "success",
-          title: "Checklist complete",
-          message,
-          duration: 5000,
-          transient: true,
-        });
         setShowCelebration(true);
         safeFireAndForget(window.electron.onboarding.markChecklistCelebrationShown(), {
           context: "Marking onboarding celebration shown",

@@ -286,7 +286,7 @@ describe("useGettingStartedChecklist", () => {
     expect(onboardingMock.markChecklistItem).toHaveBeenCalledWith("createdWorktree");
   });
 
-  describe("completion toast", () => {
+  describe("completion side effects", () => {
     beforeEach(() => {
       // Use real timers so Promise.all hydration microtasks resolve naturally.
       vi.useRealTimers();
@@ -311,13 +311,13 @@ describe("useGettingStartedChecklist", () => {
       });
     }
 
-    it("includes the panel.palette keybinding in the completion toast when bound", async () => {
-      getDisplayComboMock.mockReturnValue("⌘+N");
-
+    it("does not emit a toast or read keybinding when the final item completes", async () => {
+      // Regression guard for #7499: the on-screen CelebrationConfetti is the
+      // sole completion signal. A toast would be redundant (Visible-another-way)
+      // and its CTA would point to an action the user just finished (Helpful).
       const { result } = renderHook(() => useGettingStartedChecklist(true));
       await flushHydration();
 
-      expect(result.current.checklist).not.toBeNull();
       expect(result.current.checklist?.items.ranSecondParallelAgent).toBe(false);
 
       await act(async () => {
@@ -325,29 +325,10 @@ describe("useGettingStartedChecklist", () => {
       });
 
       expect(onboardingMock.markChecklistItem).toHaveBeenCalledWith("ranSecondParallelAgent");
-      expect(getDisplayComboMock).toHaveBeenCalledWith("panel.palette");
-      expect(notifyMock).toHaveBeenCalledTimes(1);
-      const args = notifyMock.mock.calls[0]![0];
-      expect(args.type).toBe("success");
-      expect(args.title).toBe("Checklist complete");
-      expect(args.message).toBe("You're all set. Open the panel palette (⌘+N) to launch an agent");
-      expect(args.transient).toBe(true);
-    });
-
-    it("omits the keybinding parens when panel.palette is unbound", async () => {
-      getDisplayComboMock.mockReturnValue("");
-
-      const { result } = renderHook(() => useGettingStartedChecklist(true));
-      await flushHydration();
-
-      await act(async () => {
-        result.current.markItem("ranSecondParallelAgent");
-      });
-
-      expect(notifyMock).toHaveBeenCalledTimes(1);
-      const args = notifyMock.mock.calls[0]![0];
-      expect(args.message).toBe("You're all set. Open the panel palette to launch an agent");
-      expect(args.message).not.toContain("(");
+      expect(notifyMock).not.toHaveBeenCalled();
+      expect(getDisplayComboMock).not.toHaveBeenCalled();
+      expect(onboardingMock.markChecklistCelebrationShown).toHaveBeenCalledTimes(1);
+      expect(result.current.showCelebration).toBe(true);
     });
   });
 
