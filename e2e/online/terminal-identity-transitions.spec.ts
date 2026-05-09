@@ -103,10 +103,22 @@ async function sendTerminalKey(page: Page, terminalId: string, key: string): Pro
   );
 }
 
-async function interruptAgentSession(page: Page, terminalId: string): Promise<void> {
-  await sendTerminalKey(page, terminalId, "ctrl+c");
-  await page.waitForTimeout(750);
-  await sendTerminalKey(page, terminalId, "ctrl+c");
+async function writeTerminal(page: Page, terminalId: string, data: string): Promise<void> {
+  await page.evaluate(
+    ({ id, payload }) => {
+      window.electron.terminal.write(id, payload);
+    },
+    { id: terminalId, payload: data }
+  );
+}
+
+async function quitClaudeAgentSession(page: Page, terminalId: string): Promise<void> {
+  // Match the production Claude graceful-shutdown path: clear any partial
+  // prompt input, then submit /quit and Enter in one PTY write so Claude's
+  // slash-command parser handles it reliably on Windows.
+  await writeTerminal(page, terminalId, "\x05\x15");
+  await page.waitForTimeout(150);
+  await writeTerminal(page, terminalId, "/quit\r");
 }
 
 function hasClaudeReadyPrompt(text: string): boolean {
@@ -475,7 +487,7 @@ test.describe("Terminal chrome ↔ live process identity (bidirectional)", () =>
     diagnostics = null;
   });
 
-  test("chrome tracks live process: promote on `claude`, demote on Ctrl+C", async () => {
+  test("chrome tracks live process: promote on `claude`, demote after Claude exits", async () => {
     test.skip(!hasClaudeApiKey(), "ANTHROPIC_API_KEY is required for Claude online flow");
     test.setTimeout(300_000);
 
@@ -494,7 +506,7 @@ test.describe("Terminal chrome ↔ live process identity (bidirectional)", () =>
     await diagnostics?.captureSnapshot("active project window refreshed", ctx.window);
 
     // ---------------------------------------------------------------------
-    // FLOW 1: Claude cold-launch → Ctrl+C → demotes to plain shell
+    // FLOW 1: Claude cold-launch -> /quit -> demotes to plain shell
     // ---------------------------------------------------------------------
 
     let claudePanelId = "";
@@ -557,10 +569,10 @@ test.describe("Terminal chrome ↔ live process identity (bidirectional)", () =>
       await diagnostics?.captureSnapshot("cold-launched Claude survived idle wait", window);
     });
 
-    await test.step("interrupt Claude from the cold-launched terminal", async () => {
+    await test.step("quit Claude from the cold-launched terminal", async () => {
       const { window } = ctx;
-      await interruptAgentSession(window, claudePanelId);
-      await diagnostics?.captureSnapshot("interrupted cold-launched Claude", window);
+      await quitClaudeAgentSession(window, claudePanelId);
+      await diagnostics?.captureSnapshot("quit cold-launched Claude", window);
     });
 
     await test.step("chrome DEMOTES to plain shell", async () => {
@@ -685,7 +697,7 @@ test.describe("Terminal chrome ↔ live process identity (bidirectional)", () =>
     });
 
     // ---------------------------------------------------------------------
-    // FLOW 3: Promoted plain shell → Ctrl+C → demotes back
+    // FLOW 3: Promoted plain shell -> /quit -> demotes back
     // Covers the full enter-exit cycle on a single terminal — the scenario
     // that most directly proves a terminal can enter and exit agent affinity.
     // ---------------------------------------------------------------------
@@ -699,11 +711,11 @@ test.describe("Terminal chrome ↔ live process identity (bidirectional)", () =>
         plainPanelId,
         60_000 * SLOW_HOST_MULTIPLIER
       );
-      await interruptAgentSession(window, plainPanelId);
-      await diagnostics?.captureSnapshot("interrupted promoted plain terminal", window);
+      await quitClaudeAgentSession(window, plainPanelId);
+      await diagnostics?.captureSnapshot("quit promoted plain terminal", window);
     });
 
-    await test.step("chrome demotes after Ctrl+C on the same terminal (full cycle)", async () => {
+    await test.step("chrome demotes after /quit on the same terminal (full cycle)", async () => {
       const { window } = ctx;
       const panel = window.locator(`[data-panel-id="${plainPanelId}"]`);
 
