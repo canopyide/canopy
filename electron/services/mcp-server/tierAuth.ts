@@ -159,16 +159,47 @@ export function buildStructuredContent(
   return result as Record<string, unknown>;
 }
 
-export function parseToolArguments(rawArgs: unknown): { args: unknown } {
+/**
+ * Maximum accepted length for the optional `requestKey` dedup hint. A
+ * generous cap that comfortably fits UUIDs, ULIDs, hashes, and short
+ * descriptive labels while preventing a caller from pinning arbitrarily
+ * large strings in the per-session dedup map for the TTL window.
+ */
+export const MAX_REQUEST_KEY_LENGTH = 256;
+
+/**
+ * Parse the raw `tools/call` arguments shape, stripping MCP-protocol-only
+ * fields (`_meta`) and the per-call idempotency hint (`requestKey`) so they
+ * never reach `dispatchAction`. The extracted `requestKey` is returned to
+ * the caller so the dedup guard can use it as an explicit cache key.
+ *
+ * `requestKey` must be a non-empty string of at most `MAX_REQUEST_KEY_LENGTH`
+ * characters to be honored — anything else (number, object, empty string,
+ * over-long string) falls through to the auto-computed canonical-args hash,
+ * matching the `readStringField` convention.
+ */
+export function parseToolArguments(rawArgs: unknown): {
+  args: unknown;
+  requestKey: string | undefined;
+} {
   if (!rawArgs || typeof rawArgs !== "object" || Array.isArray(rawArgs)) {
-    return { args: {} };
+    return { args: {}, requestKey: undefined };
   }
 
   const argsRecord = rawArgs as Record<string, unknown>;
-  if (!("_meta" in argsRecord)) {
-    return { args: rawArgs };
+  if (!("_meta" in argsRecord) && !("requestKey" in argsRecord)) {
+    return { args: rawArgs, requestKey: undefined };
   }
 
-  const { _meta: _ignored, ...actionArgs } = argsRecord;
-  return { args: Object.keys(actionArgs).length > 0 ? actionArgs : {} };
+  const { _meta: _ignored, requestKey: rawRequestKey, ...actionArgs } = argsRecord;
+  const requestKey =
+    typeof rawRequestKey === "string" &&
+    rawRequestKey.length > 0 &&
+    rawRequestKey.length <= MAX_REQUEST_KEY_LENGTH
+      ? rawRequestKey
+      : undefined;
+  return {
+    args: Object.keys(actionArgs).length > 0 ? actionArgs : {},
+    requestKey,
+  };
 }

@@ -56,6 +56,9 @@ export class AuditService {
     if (outcome.kind === "unauthorized") {
       return { result: "unauthorized", errorCode: TIER_NOT_PERMITTED_CODE };
     }
+    if (outcome.kind === "dedup") {
+      return { result: "dedup" };
+    }
     const value = outcome.value;
     if (value.ok) return { result: "success" };
     if (value.error.code === CONFIRMATION_REQUIRED_CODE) {
@@ -184,4 +187,5 @@ export class AuditService {
 export type AuditOutcome =
   | { kind: "result"; value: import("../../../shared/types/actions.js").ActionDispatchResult }
   | { kind: "throw"; error: unknown }
-  | { kind: "unauthorized" };
+  | { kind: "unauthorized" }
+  | { kind: "dedup" };

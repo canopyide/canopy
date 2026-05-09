@@ -1,5 +1,6 @@
 import type { McpTier, McpSseSession, McpHttpSession } from "./shared.js";
 import { MCP_SSE_IDLE_TIMEOUT_MS } from "./shared.js";
+import type { CallToolResultLike, DedupCacheEntry } from "./sessionDedup.js";
 
 export class SessionStore {
   readonly sessions = new Map<string, McpSseSession>();
@@ -10,11 +11,22 @@ export class SessionStore {
   // fall through to the focused-window dispatch path. See #7002.
   readonly sessionWebContentsMap = new Map<string, number>();
   readonly resourceSubscriptions = new Map<string, Map<string, () => void>>();
+  // Per-session idempotency dedup state for the MCP creation-tool allowlist.
+  // Two phases: in-flight singleflight (same-moment duplicates share the
+  // original Promise) and TTL'd result cache (post-completion duplicates
+  // return the original result). Cleared on drain and idle expiry.
+  readonly dedupInFlight = new Map<string, Map<string, Promise<CallToolResultLike>>>();
+  readonly dedupResultCache = new Map<string, Map<string, DedupCacheEntry>>();
 
   private readonly cleanupResourceSubscriptionsFn: (sessionId: string) => void;
 
   constructor(cleanupResourceSubscriptions: (sessionId: string) => void) {
     this.cleanupResourceSubscriptionsFn = cleanupResourceSubscriptions;
+  }
+
+  clearDedupState(sessionId: string): void {
+    this.dedupInFlight.delete(sessionId);
+    this.dedupResultCache.delete(sessionId);
   }
 
   createIdleTimer(sessionId: string): ReturnType<typeof setTimeout> {
@@ -24,6 +36,7 @@ export class SessionStore {
       this.sessions.delete(sessionId);
       this.sessionTierMap.delete(sessionId);
       this.sessionWebContentsMap.delete(sessionId);
+      this.clearDedupState(sessionId);
       this.cleanupResourceSubscriptionsFn(sessionId);
       session.transport.close().catch(() => {
         // ignore close errors during idle timeout cleanup
@@ -47,6 +60,7 @@ export class SessionStore {
       this.httpSessions.delete(sessionId);
       this.sessionTierMap.delete(sessionId);
       this.sessionWebContentsMap.delete(sessionId);
+      this.clearDedupState(sessionId);
       this.cleanupResourceSubscriptionsFn(sessionId);
       session.transport.close().catch(() => {
         // ignore close errors during idle timeout cleanup
@@ -68,6 +82,12 @@ export class SessionStore {
   }
 
   drain(): void {
+    // Clear dedup state up-front so an in-flight `.finally()` resolving
+    // after drain finds no session to write back into and does not
+    // resurrect a torn-down session's cache.
+    this.dedupInFlight.clear();
+    this.dedupResultCache.clear();
+
     for (const session of this.sessions.values()) {
       clearTimeout(session.idleTimer);
       try {

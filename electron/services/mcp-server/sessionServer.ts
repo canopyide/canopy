@@ -40,7 +40,11 @@ import {
   CONFIRMATION_TIMEOUT_CODE,
   USER_REJECTED_CODE,
   ELICITATION_FAILED_CODE,
+  MCP_DEDUP_ALLOWLIST,
+  MCP_DEDUP_TTL_MS,
+  MCP_DEDUP_MAX_ENTRIES_PER_SESSION,
 } from "./shared.js";
+import { buildDedupKey, readDedupCache, type CallToolResultLike } from "./sessionDedup.js";
 import {
   shouldExposeTool,
   isTierPermitted,
@@ -123,7 +127,7 @@ export function createSessionServer(sessionId: string, deps: SessionServerDeps):
 
   server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     const actionId = request.params.name;
-    const { args } = parseToolArguments(request.params.arguments);
+    const { args, requestKey } = parseToolArguments(request.params.arguments);
     const startedAt = Date.now();
     const tier = sessionStore.getTier(sessionId);
     const fullToolSurface = getFullToolSurface();
@@ -152,147 +156,259 @@ export function createSessionServer(sessionId: string, deps: SessionServerDeps):
       };
     }
 
+    // Idempotency dedup for the creation-tool allowlist. Same-moment duplicates
+    // share the original Promise (singleflight); post-completion duplicates
+    // within MCP_DEDUP_TTL_MS return the cached result without redispatching.
+    // Keyed by `requestKey` if the caller supplied one, otherwise a hash of
+    // `(actionId, args)`. See #7531.
+    let dedupKey: string | undefined;
+    if (MCP_DEDUP_ALLOWLIST.has(actionId)) {
+      dedupKey = buildDedupKey(actionId, requestKey, args);
+
+      const resultCache = sessionStore.dedupResultCache.get(sessionId);
+      if (resultCache) {
+        const cached = readDedupCache(resultCache, dedupKey, Date.now());
+        if (cached) {
+          try {
+            appendAuditRecord({
+              toolId: actionId,
+              sessionId,
+              tier,
+              args,
+              durationMs: Date.now() - startedAt,
+              outcome: { kind: "dedup" },
+            });
+          } catch (err) {
+            console.error("[MCP] Failed to append audit record:", err);
+          }
+          return cached;
+        }
+      }
+
+      const inFlightForSession = sessionStore.dedupInFlight.get(sessionId);
+      const sharedPromise = inFlightForSession?.get(dedupKey);
+      if (sharedPromise) {
+        try {
+          appendAuditRecord({
+            toolId: actionId,
+            sessionId,
+            tier,
+            args,
+            durationMs: Date.now() - startedAt,
+            outcome: { kind: "dedup" },
+          });
+        } catch (err) {
+          console.error("[MCP] Failed to append audit record:", err);
+        }
+        return await sharedPromise;
+      }
+    }
+
     let outcome:
       | { kind: "result"; value: import("../../../shared/types/actions.js").ActionDispatchResult }
-      | { kind: "throw"; error: unknown };
+      | { kind: "throw"; error: unknown }
+      | undefined;
     let confirmationDecision:
       | import("../../../shared/types/ipc/mcpServer.js").McpConfirmationDecision
       | undefined;
     let dispatchConfirmed = false;
 
-    try {
-      // Short-circuit: terminal.waitUntilIdle runs in the main process. The
-      // action manifest entry handles schema, tier, and audit registration; the
-      // execution must bypass renderer dispatch because (a) the MCP AbortSignal
-      // can't cross IPC, and (b) renderer dispatch has a 30s wall — too short
-      // for the 30-minute default wait. Audit unifies via the shared finally.
-      if (actionId === TERMINAL_WAIT_UNTIL_IDLE_TOOL) {
+    // Wrapped in an inner IIFE so the dedup guard below can register this
+    // Promise in `dedupInFlight` (singleflight) and attach a `.then()` cache
+    // hook that fires before any other awaiter sees the resolved result.
+    const dispatchPromise: Promise<CallToolResultLike> = (async () => {
+      try {
+        // Short-circuit: terminal.waitUntilIdle runs in the main process. The
+        // action manifest entry handles schema, tier, and audit registration; the
+        // execution must bypass renderer dispatch because (a) the MCP AbortSignal
+        // can't cross IPC, and (b) renderer dispatch has a 30s wall — too short
+        // for the 30-minute default wait. Audit unifies via the shared finally.
+        if (actionId === TERMINAL_WAIT_UNTIL_IDLE_TOOL) {
+          try {
+            const result = await waitUntilIdle(args, extra.signal);
+            outcome = { kind: "result", value: { ok: true, result } };
+            return {
+              content: [{ type: "text" as const, text: safeSerializeToolResult(result) }],
+              structuredContent: result as unknown as Record<string, unknown>,
+            };
+          } catch (err) {
+            outcome = { kind: "throw", error: err };
+            if (err instanceof McpError) {
+              throw err;
+            }
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: `Error: ${formatErrorMessage(err, "waitUntilIdle failed")}`,
+                },
+              ],
+              isError: true,
+            };
+          }
+        }
+
+        const entry = await lookupManifestEntry(actionId, getCachedManifest, requestManifest);
+        if (!dispatchConfirmed && entry?.danger === "confirm") {
+          const supportsForm = server.getClientCapabilities()?.elicitation?.form !== undefined;
+          if (supportsForm) {
+            const elicitationOutcome = await runElicitationConfirmation(server, entry, args);
+            if (elicitationOutcome.kind === "throw") {
+              const failureMessage = formatErrorMessage(
+                elicitationOutcome.error,
+                "Elicitation request failed"
+              );
+              const value: import("../../../shared/types/actions.js").ActionDispatchResult = {
+                ok: false,
+                error: {
+                  code: ELICITATION_FAILED_CODE,
+                  message: failureMessage,
+                },
+              };
+              outcome = { kind: "result", value };
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: `Error [${ELICITATION_FAILED_CODE}]: ${failureMessage}`,
+                  },
+                ],
+                isError: true,
+              };
+            }
+            if (elicitationOutcome.kind === "rejected") {
+              outcome = { kind: "result", value: elicitationOutcome.value };
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: `Error [${elicitationOutcome.value.error.code}]: ${elicitationOutcome.value.error.message}`,
+                  },
+                ],
+                isError: true,
+              };
+            }
+            dispatchConfirmed = true;
+            confirmationDecision = "approved";
+          }
+        }
+
         try {
-          const result = await waitUntilIdle(args, extra.signal);
-          outcome = { kind: "result", value: { ok: true, result } };
-          return {
-            content: [{ type: "text" as const, text: safeSerializeToolResult(result) }],
-            structuredContent: result as unknown as Record<string, unknown>,
-          };
+          const envelope = await dispatchAction(actionId, args, dispatchConfirmed);
+          outcome = { kind: "result", value: envelope.result };
+          confirmationDecision = confirmationDecision ?? envelope.confirmationDecision;
         } catch (err) {
           outcome = { kind: "throw", error: err };
-          if (err instanceof McpError) {
-            throw err;
-          }
           return {
             content: [
               {
                 type: "text" as const,
-                text: `Error: ${formatErrorMessage(err, "waitUntilIdle failed")}`,
+                text: `Error: ${formatErrorMessage(err, "Action dispatch failed")}`,
               },
             ],
             isError: true,
           };
         }
-      }
 
-      const entry = await lookupManifestEntry(actionId, getCachedManifest, requestManifest);
-      if (!dispatchConfirmed && entry?.danger === "confirm") {
-        const supportsForm = server.getClientCapabilities()?.elicitation?.form !== undefined;
-        if (supportsForm) {
-          const elicitationOutcome = await runElicitationConfirmation(server, entry, args);
-          if (elicitationOutcome.kind === "throw") {
-            const failureMessage = formatErrorMessage(
-              elicitationOutcome.error,
-              "Elicitation request failed"
-            );
-            const value: import("../../../shared/types/actions.js").ActionDispatchResult = {
-              ok: false,
-              error: {
-                code: ELICITATION_FAILED_CODE,
-                message: failureMessage,
+        if (outcome.value.ok) {
+          const structuredContent = buildStructuredContent(entry, outcome.value.result);
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text:
+                  outcome.value.result !== undefined && outcome.value.result !== null
+                    ? safeSerializeToolResult(outcome.value.result)
+                    : "OK",
               },
-            };
-            outcome = { kind: "result", value };
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: `Error [${ELICITATION_FAILED_CODE}]: ${failureMessage}`,
-                },
-              ],
-              isError: true,
-            };
-          }
-          if (elicitationOutcome.kind === "rejected") {
-            outcome = { kind: "result", value: elicitationOutcome.value };
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: `Error [${elicitationOutcome.value.error.code}]: ${elicitationOutcome.value.error.message}`,
-                },
-              ],
-              isError: true,
-            };
-          }
-          dispatchConfirmed = true;
-          confirmationDecision = "approved";
+            ],
+            ...(structuredContent ? { structuredContent } : {}),
+          };
         }
-      }
 
-      try {
-        const envelope = await dispatchAction(actionId, args, dispatchConfirmed);
-        outcome = { kind: "result", value: envelope.result };
-        confirmationDecision = confirmationDecision ?? envelope.confirmationDecision;
-      } catch (err) {
-        outcome = { kind: "throw", error: err };
         return {
           content: [
             {
               type: "text" as const,
-              text: `Error: ${formatErrorMessage(err, "Action dispatch failed")}`,
+              text: `Error [${outcome.value.error.code}]: ${outcome.value.error.message}`,
             },
           ],
           isError: true,
         };
+      } finally {
+        try {
+          appendAuditRecord({
+            toolId: actionId,
+            sessionId,
+            tier,
+            args,
+            durationMs: Date.now() - startedAt,
+            outcome: outcome ?? { kind: "throw", error: new Error("unknown") },
+            confirmationDecision,
+          });
+        } catch (err) {
+          console.error("[MCP] Failed to append audit record:", err);
+        }
       }
+    })();
 
-      if (outcome.value.ok) {
-        const structuredContent = buildStructuredContent(entry, outcome.value.result);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text:
-                outcome.value.result !== undefined && outcome.value.result !== null
-                  ? safeSerializeToolResult(outcome.value.result)
-                  : "OK",
-            },
-          ],
-          ...(structuredContent ? { structuredContent } : {}),
-        };
+    if (dedupKey !== undefined) {
+      let inFlight = sessionStore.dedupInFlight.get(sessionId);
+      if (!inFlight) {
+        inFlight = new Map();
+        sessionStore.dedupInFlight.set(sessionId, inFlight);
       }
+      const ownedInFlight = inFlight;
+      const cleanupKey = dedupKey;
+      ownedInFlight.set(cleanupKey, dispatchPromise);
 
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: `Error [${outcome.value.error.code}]: ${outcome.value.error.message}`,
-          },
-        ],
-        isError: true,
-      };
-    } finally {
-      try {
-        appendAuditRecord({
-          toolId: actionId,
-          sessionId,
-          tier,
-          args,
-          durationMs: Date.now() - startedAt,
-          outcome: outcome!,
-          confirmationDecision,
-        });
-      } catch (err) {
-        console.error("[MCP] Failed to append audit record:", err);
-      }
+      dispatchPromise.then(
+        (result) => {
+          // Session-liveness guard: drain() clears `dedupInFlight` up-front,
+          // so a torn-down session leaves `liveInFlight` undefined and we
+          // skip both cleanup and caching. Same protection if the session
+          // was recreated under the same id (different Map identity).
+          const liveInFlight = sessionStore.dedupInFlight.get(sessionId);
+          if (liveInFlight !== ownedInFlight) return;
+
+          ownedInFlight.delete(cleanupKey);
+          if (ownedInFlight.size === 0) {
+            sessionStore.dedupInFlight.delete(sessionId);
+          }
+
+          // Cache only successful results — transient failures must retry.
+          if (outcome?.kind === "result" && outcome.value.ok) {
+            let cache = sessionStore.dedupResultCache.get(sessionId);
+            if (!cache) {
+              cache = new Map();
+              sessionStore.dedupResultCache.set(sessionId, cache);
+            }
+            cache.set(cleanupKey, {
+              result,
+              expiresAt: Date.now() + MCP_DEDUP_TTL_MS,
+            });
+            // FIFO-evict the oldest entries when the per-session cap is
+            // exceeded. Map iteration is insertion-order, so the first key
+            // returned by `.keys()` is the oldest still-living entry.
+            while (cache.size > MCP_DEDUP_MAX_ENTRIES_PER_SESSION) {
+              const oldestKey = cache.keys().next().value;
+              if (oldestKey === undefined) break;
+              cache.delete(oldestKey);
+            }
+          }
+        },
+        () => {
+          const liveInFlight = sessionStore.dedupInFlight.get(sessionId);
+          if (liveInFlight !== ownedInFlight) return;
+          ownedInFlight.delete(cleanupKey);
+          if (ownedInFlight.size === 0) {
+            sessionStore.dedupInFlight.delete(sessionId);
+          }
+        }
+      );
     }
+
+    return await dispatchPromise;
   });
 
   server.setRequestHandler(ListResourcesRequestSchema, async () => {
