@@ -44,6 +44,9 @@ import {
   MCP_DEDUP_TTL_MS,
   MCP_DEDUP_MAX_ENTRIES_PER_SESSION,
   minimumPermittingTier,
+  EXECUTION_ERROR_CODE,
+  buildToolError,
+  buildMcpErrorPayload,
 } from "./shared.js";
 import { buildDedupKey, readDedupCache, type CallToolResultLike } from "./sessionDedup.js";
 import {
@@ -177,15 +180,10 @@ export function createSessionServer(sessionId: string, deps: SessionServerDeps):
           console.error("[MCP] Failed to notify tier-mismatch:", err);
         }
       }
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: `Error [${TIER_NOT_PERMITTED_CODE}]: action '${actionId}' is not permitted for the '${tier}' tier.`,
-          },
-        ],
-        isError: true,
-      };
+      return buildToolError({
+        code: TIER_NOT_PERMITTED_CODE,
+        message: `action '${actionId}' is not permitted for the '${tier}' tier.`,
+      });
     }
 
     // Idempotency dedup for the creation-tool allowlist. Same-moment duplicates
@@ -268,15 +266,10 @@ export function createSessionServer(sessionId: string, deps: SessionServerDeps):
             if (err instanceof McpError) {
               throw err;
             }
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: `Error: ${formatErrorMessage(err, "waitUntilIdle failed")}`,
-                },
-              ],
-              isError: true,
-            };
+            return buildToolError({
+              code: EXECUTION_ERROR_CODE,
+              message: formatErrorMessage(err, "waitUntilIdle failed"),
+            });
           }
         }
 
@@ -298,27 +291,18 @@ export function createSessionServer(sessionId: string, deps: SessionServerDeps):
                 },
               };
               outcome = { kind: "result", value };
-              return {
-                content: [
-                  {
-                    type: "text" as const,
-                    text: `Error [${ELICITATION_FAILED_CODE}]: ${failureMessage}`,
-                  },
-                ],
-                isError: true,
-              };
+              return buildToolError({
+                code: ELICITATION_FAILED_CODE,
+                message: failureMessage,
+              });
             }
             if (elicitationOutcome.kind === "rejected") {
               outcome = { kind: "result", value: elicitationOutcome.value };
-              return {
-                content: [
-                  {
-                    type: "text" as const,
-                    text: `Error [${elicitationOutcome.value.error.code}]: ${elicitationOutcome.value.error.message}`,
-                  },
-                ],
-                isError: true,
-              };
+              return buildToolError({
+                code: elicitationOutcome.value.error.code,
+                message: elicitationOutcome.value.error.message,
+                details: elicitationOutcome.value.error.details,
+              });
             }
             dispatchConfirmed = true;
             confirmationDecision = "approved";
@@ -331,15 +315,10 @@ export function createSessionServer(sessionId: string, deps: SessionServerDeps):
           confirmationDecision = confirmationDecision ?? envelope.confirmationDecision;
         } catch (err) {
           outcome = { kind: "throw", error: err };
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `Error: ${formatErrorMessage(err, "Action dispatch failed")}`,
-              },
-            ],
-            isError: true,
-          };
+          return buildToolError({
+            code: EXECUTION_ERROR_CODE,
+            message: formatErrorMessage(err, "Action dispatch failed"),
+          });
         }
 
         if (outcome.value.ok) {
@@ -358,15 +337,11 @@ export function createSessionServer(sessionId: string, deps: SessionServerDeps):
           };
         }
 
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error [${outcome.value.error.code}]: ${outcome.value.error.message}`,
-            },
-          ],
-          isError: true,
-        };
+        return buildToolError({
+          code: outcome.value.error.code,
+          message: outcome.value.error.message,
+          details: outcome.value.error.details,
+        });
       } finally {
         try {
           appendAuditRecord({
@@ -458,9 +433,12 @@ export function createSessionServer(sessionId: string, deps: SessionServerDeps):
       throw new McpError(ErrorCode.InvalidRequest, `Unknown resource URI: ${uri}`);
     }
     if (!isResourcePermitted(sessionId, deps, parsed.kind)) {
+      const tier = sessionStore.getTier(sessionId);
+      const message = `Resource '${uri}' is not permitted for the '${tier}' tier.`;
       throw new McpError(
         ErrorCode.InvalidRequest,
-        `Resource '${uri}' is not permitted for the '${sessionStore.getTier(sessionId)}' tier.`
+        message,
+        buildMcpErrorPayload({ code: TIER_NOT_PERMITTED_CODE, message })
       );
     }
     const contents = await readResourceContents(uri, parsed, dispatchAction);
@@ -474,9 +452,12 @@ export function createSessionServer(sessionId: string, deps: SessionServerDeps):
       throw new McpError(ErrorCode.InvalidRequest, `Unknown resource URI: ${uri}`);
     }
     if (!isResourcePermitted(sessionId, deps, parsed.kind)) {
+      const tier = sessionStore.getTier(sessionId);
+      const message = `Resource '${uri}' is not permitted for the '${tier}' tier.`;
       throw new McpError(
         ErrorCode.InvalidRequest,
-        `Resource '${uri}' is not permitted for the '${sessionStore.getTier(sessionId)}' tier.`
+        message,
+        buildMcpErrorPayload({ code: TIER_NOT_PERMITTED_CODE, message })
       );
     }
     subscribeResource(sessionId, server, uri, parsed, sessionStore);
