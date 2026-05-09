@@ -72,4 +72,25 @@ describe("LogFilters accessibility", () => {
       expect(screen.queryByText("renderer")).toBeNull();
     });
   });
+
+  it("syncs the local search input when filters.search is cleared externally", async () => {
+    const onFiltersChange = vi.fn();
+    const { rerender } = render(
+      <LogFilters {...baseProps} filters={{ search: "foo" }} onFiltersChange={onFiltersChange} />
+    );
+    const input = screen.getByPlaceholderText("Search logs...") as HTMLInputElement;
+    expect(input.value).toBe("foo");
+
+    rerender(<LogFilters {...baseProps} filters={{}} onFiltersChange={onFiltersChange} />);
+
+    await waitFor(() => {
+      expect(input.value).toBe("");
+    });
+
+    onFiltersChange.mockClear();
+    await new Promise((r) => setTimeout(r, 250));
+    expect(onFiltersChange).not.toHaveBeenCalledWith(
+      expect.objectContaining({ search: "foo" })
+    );
+  });
 });

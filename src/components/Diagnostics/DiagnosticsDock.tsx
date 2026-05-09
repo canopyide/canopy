@@ -7,6 +7,7 @@ import {
   type DiagnosticsTab,
   DIAGNOSTICS_MIN_HEIGHT,
   DIAGNOSTICS_MAX_HEIGHT_RATIO,
+  DIAGNOSTICS_DEFAULT_HEIGHT,
 } from "@/store/diagnosticsStore";
 import { useErrorStore } from "@/store";
 import { ProblemsContent } from "./ProblemsContent";
@@ -114,6 +115,10 @@ export function DiagnosticsDock({ onRetry, onCancelRetry, className }: Diagnosti
     [height]
   );
 
+  const handleResetHeight = useCallback(() => {
+    setHeight(DIAGNOSTICS_DEFAULT_HEIGHT);
+  }, [setHeight]);
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       const step = e.shiftKey ? RESIZE_STEP_LARGE : RESIZE_STEP;
@@ -141,6 +146,11 @@ export function DiagnosticsDock({ onRetry, onCancelRetry, className }: Diagnosti
         case "End":
           e.preventDefault();
           setHeight(maxHeight);
+          break;
+        case "Enter":
+        case " ":
+          e.preventDefault();
+          setHeight(DIAGNOSTICS_DEFAULT_HEIGHT);
           break;
         default:
           return;
@@ -296,10 +306,11 @@ export function DiagnosticsDock({ onRetry, onCancelRetry, className }: Diagnosti
           isResizing && "bg-overlay-medium"
         )}
         onMouseDown={handleResizeStart}
+        onDoubleClick={handleResetHeight}
         onKeyDown={handleKeyDown}
         role="separator"
         aria-orientation="horizontal"
-        aria-label="Resize diagnostics dock"
+        aria-label="Resize diagnostics dock (double-click to reset)"
         aria-valuenow={Math.round(height)}
         aria-valuemin={DIAGNOSTICS_MIN_HEIGHT}
         aria-valuemax={Math.round(maxHeight)}
