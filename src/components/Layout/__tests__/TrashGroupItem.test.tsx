@@ -5,6 +5,11 @@ import { TrashGroupItem } from "../TrashGroupItem";
 import type { TerminalInstance } from "@/store";
 import type { TrashedTerminal, TrashedTerminalGroupMetadata } from "@/store/slices";
 
+vi.mock("@shared/config/agentRegistry", () => ({
+  getEffectiveAgentConfig: (id: string) =>
+    id === "claude" ? { name: "Claude" } : id === "codex" ? { name: "Codex" } : null,
+}));
+
 vi.mock("@/store", () => ({
   usePanelStore: (selector: (s: unknown) => unknown) =>
     selector({
@@ -91,7 +96,7 @@ const terminals = [
 
 describe("TrashGroupItem", () => {
   describe("rendering", () => {
-    it("shows group name with tab count", () => {
+    it("shows active tab title with +N more for multi-tab groups", () => {
       const { container } = render(
         <TrashGroupItem
           groupRestoreId="grp1"
@@ -100,10 +105,10 @@ describe("TrashGroupItem", () => {
           earliestExpiry={Date.now() + 20000}
         />
       );
-      expect(container.textContent).toContain("Tab Group (2 tabs)");
+      expect(container.textContent).toContain("First tab +1 more");
     });
 
-    it("shows singular tab label for one terminal", () => {
+    it("shows just the active tab title for single-tab groups", () => {
       const single = [
         {
           terminal: makeTerminal({ id: "t1", title: "First tab" }),
@@ -122,7 +127,154 @@ describe("TrashGroupItem", () => {
           earliestExpiry={Date.now() + 20000}
         />
       );
-      expect(container.textContent).toContain("Tab Group (1 tab)");
+      expect(container.textContent).toContain("First tab");
+      expect(container.textContent).not.toContain("+0 more");
+      expect(container.textContent).not.toContain("Tab Group");
+    });
+
+    it("uses lastObservedTitle when present and non-useless", () => {
+      const withObserved = [
+        {
+          terminal: makeTerminal({
+            id: "t1",
+            title: "claude",
+            lastObservedTitle: "Fixing auth bug",
+          }),
+          trashedInfo: {
+            id: "t1",
+            expiresAt: Date.now() + 20000,
+            originalLocation: "grid",
+          } as TrashedTerminal,
+        },
+        {
+          terminal: makeTerminal({ id: "t2", title: "Second tab" }),
+          trashedInfo: {
+            id: "t2",
+            expiresAt: Date.now() + 30000,
+            originalLocation: "grid",
+          } as TrashedTerminal,
+        },
+      ];
+      const { container } = render(
+        <TrashGroupItem
+          groupRestoreId="grp1"
+          groupMetadata={groupMetadata}
+          terminals={withObserved}
+          earliestExpiry={Date.now() + 20000}
+        />
+      );
+      expect(container.textContent).toContain("Fixing auth bug +1 more");
+    });
+
+    it("ignores useless lastObservedTitle and falls through to title", () => {
+      const uselessObserved = [
+        {
+          terminal: makeTerminal({
+            id: "t1",
+            title: "Working on something",
+            lastObservedTitle: "claude",
+            launchAgentId: "claude",
+          }),
+          trashedInfo: {
+            id: "t1",
+            expiresAt: Date.now() + 20000,
+            originalLocation: "grid",
+          } as TrashedTerminal,
+        },
+        {
+          terminal: makeTerminal({ id: "t2", title: "Second tab" }),
+          trashedInfo: {
+            id: "t2",
+            expiresAt: Date.now() + 30000,
+            originalLocation: "grid",
+          } as TrashedTerminal,
+        },
+      ];
+      const { container } = render(
+        <TrashGroupItem
+          groupRestoreId="grp1"
+          groupMetadata={groupMetadata}
+          terminals={uselessObserved}
+          earliestExpiry={Date.now() + 20000}
+        />
+      );
+      expect(container.textContent).toContain("Working on something +1 more");
+    });
+
+    it("falls back to agent config name when launchAgentId set with no usable title", () => {
+      const agentOnly = [
+        {
+          terminal: makeTerminal({
+            id: "t1",
+            title: "claude",
+            launchAgentId: "claude",
+          }),
+          trashedInfo: {
+            id: "t1",
+            expiresAt: Date.now() + 20000,
+            originalLocation: "grid",
+          } as TrashedTerminal,
+        },
+        {
+          terminal: makeTerminal({ id: "t2", title: "Second tab" }),
+          trashedInfo: {
+            id: "t2",
+            expiresAt: Date.now() + 30000,
+            originalLocation: "grid",
+          } as TrashedTerminal,
+        },
+      ];
+      const { container } = render(
+        <TrashGroupItem
+          groupRestoreId="grp1"
+          groupMetadata={groupMetadata}
+          terminals={agentOnly}
+          earliestExpiry={Date.now() + 20000}
+        />
+      );
+      expect(container.textContent).toContain("Claude +1 more");
+    });
+
+    it("falls back to count-only label when no usable title can be resolved", () => {
+      const useless = [
+        {
+          terminal: makeTerminal({ id: "t1", title: "claude" }),
+          trashedInfo: {
+            id: "t1",
+            expiresAt: Date.now() + 20000,
+            originalLocation: "grid",
+          } as TrashedTerminal,
+        },
+        {
+          terminal: makeTerminal({ id: "t2", title: "bash" }),
+          trashedInfo: {
+            id: "t2",
+            expiresAt: Date.now() + 30000,
+            originalLocation: "grid",
+          } as TrashedTerminal,
+        },
+      ];
+      const { container } = render(
+        <TrashGroupItem
+          groupRestoreId="grp1"
+          groupMetadata={groupMetadata}
+          terminals={useless}
+          earliestExpiry={Date.now() + 20000}
+        />
+      );
+      expect(container.textContent).toContain("Tab Group (2 tabs)");
+    });
+
+    it("uses the active tab when activeTabId points to non-first panel", () => {
+      const { container } = render(
+        <TrashGroupItem
+          groupRestoreId="grp1"
+          groupMetadata={{ ...groupMetadata, activeTabId: "t2" }}
+          terminals={terminals}
+          earliestExpiry={Date.now() + 20000}
+        />
+      );
+      expect(container.textContent).toContain("Second tab +1 more");
     });
 
     it("shows active tab marker", () => {
@@ -176,7 +328,9 @@ describe("TrashGroupItem", () => {
           earliestExpiry={Date.now() + 20000}
         />
       );
-      expect(container.textContent).not.toContain("First tab");
+      // "Second tab" only appears in the expanded child list — the headline
+      // surfaces the active tab ("First tab"), not the others.
+      expect(container.textContent).not.toContain("Second tab");
     });
 
     it("expands to show child terminals on click", () => {
