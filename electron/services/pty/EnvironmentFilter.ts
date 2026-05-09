@@ -75,12 +75,40 @@ export function isSensitiveVar(name: string): boolean {
 /**
  * Filter an environment object, removing sensitive variables and DAINTREE_* vars.
  * Undefined values are also stripped (node-pty requires Record<string, string>).
+ *
+ * Use this on **inherited `process.env`** to defend against spoofing — DAINTREE_*
+ * metadata is always re-injected fresh by `injectDaintreeMetadata`, so anything
+ * that snuck in via the OS environment is dropped here. For **caller-supplied env**
+ * (`options.env`, preset overrides) use `filterSensitiveOnly` instead, which keeps
+ * DAINTREE_* keys because the caller is intentionally setting them.
  */
 export function filterEnvironment(env: Record<string, string | undefined>): Record<string, string> {
   const result: Record<string, string> = {};
   for (const [key, value] of Object.entries(env)) {
     if (value === undefined) continue;
     if (key.startsWith(DAINTREE_PREFIX)) continue;
+    if (isSensitiveVar(key)) continue;
+    result[key] = value;
+  }
+  return result;
+}
+
+/**
+ * Filter only sensitive variables (secrets, tokens, API keys) from an env map.
+ * Unlike `filterEnvironment`, this does NOT strip `DAINTREE_*` keys — caller-
+ * supplied env may legitimately set DAINTREE_* (e.g. e2e tests passing
+ * DAINTREE_E2E_AGENT_COLOR through preset env so the agent CLI sees it).
+ *
+ * Used for caller-supplied env where the caller knows what they're doing and
+ * the only safety concern is preventing their secrets from outliving an
+ * acquire and leaking into a future pool consumer's shell.
+ */
+export function filterSensitiveOnly(
+  env: Record<string, string | undefined>
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (value === undefined) continue;
     if (isSensitiveVar(key)) continue;
     result[key] = value;
   }
