@@ -81,6 +81,7 @@ export function useIdleTerminalNotifications(): void {
             count > 1
               ? {
                   label: "View",
+                  variant: "primary" as const,
                   onClick: () => {
                     useUIStore.getState().openNotificationCenter();
                   },

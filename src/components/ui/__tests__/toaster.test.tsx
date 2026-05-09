@@ -1706,7 +1706,7 @@ describe("Toast action variant rendering (issue #7595)", () => {
     expect(cancel.className).toContain("text-daintree-text/70");
   });
 
-  it("dimmed secondary action retains opacity-50 + pointer-events-none", async () => {
+  it("dimmed secondary action retains opacity-50, stays disabled, and ignores clicks", async () => {
     let resolvePrimary: () => void = () => {};
     const primaryClick = vi.fn(
       () =>
@@ -1714,6 +1714,7 @@ describe("Toast action variant rendering (issue #7595)", () => {
           resolvePrimary = res;
         })
     );
+    const cancelClick = vi.fn();
 
     render(<Toaster />);
     await act(async () => {
@@ -1725,7 +1726,7 @@ describe("Toast action variant rendering (issue #7595)", () => {
             successLabel: "Confirmed",
             onClick: primaryClick,
           },
-          { label: "Cancel", variant: "secondary", onClick: vi.fn() },
+          { label: "Cancel", variant: "secondary", onClick: cancelClick },
         ],
       });
       vi.advanceTimersByTime(16);
@@ -1734,13 +1735,17 @@ describe("Toast action variant rendering (issue #7595)", () => {
     const confirm = screen.getByRole("button", { name: "Confirm" });
     fireEvent.click(confirm);
 
-    // The secondary button should now be dimmed (other action active).
-    const cancel = screen.getByRole("button", { name: "Cancel" });
+    const cancel = screen.getByRole("button", { name: "Cancel" }) as HTMLButtonElement;
     expect(cancel.className).toContain("opacity-50");
     expect(cancel.className).toContain("pointer-events-none");
-    // And it must still carry the secondary text-only styling.
+    // Still carries the secondary text-only styling under the dim.
     expect(cancel.className).toContain("text-daintree-text/70");
     expect(cancel.className).not.toContain("bg-status-info/10");
+    // Behavioral inertness: HTML `disabled` is the real guard (CSS
+    // pointer-events doesn't block fireEvent in JSDOM). Confirm both.
+    expect(cancel.disabled).toBe(true);
+    fireEvent.click(cancel);
+    expect(cancelClick).not.toHaveBeenCalled();
 
     // Cleanup the in-flight promise so afterEach timers settle.
     resolvePrimary();
