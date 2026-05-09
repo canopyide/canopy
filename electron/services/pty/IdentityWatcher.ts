@@ -276,7 +276,7 @@ export class IdentityWatcher {
       .filter((line): line is string => typeof line === "string" && line.trim().length > 0)
       .join("\n");
     const knownAgentPrompt =
-      /(?:accessing workspace|yes,\s*i trust this folder|enter to confirm|quick safety check)/i;
+      /(?:accessing workspace|yes,\s*i trust this folder|enter to confirm|quick safety check|\?\s+for\s+shortcuts|tips\s+for\s+getting\s+started|welcome\s+back!|claude code v\d)/i;
     return (
       knownAgentPrompt.test(recent) ||
       knownAgentPrompt.test(visibleTail) ||

@@ -890,5 +890,20 @@ describe("IdentityWatcher", () => {
 
       expect(watcher.hasAgentUiPromptFalsePositive()).toBe(true);
     });
+
+    it("returns true for Claude Code's Windows welcome prompt when the input marker scrolled out", () => {
+      const { delegate } = createFakeDelegate({
+        visibleLines: [
+          "Claude Code v2.1.136",
+          "Welcome back!",
+          "Tips for getting started",
+          "? for shortcuts",
+        ],
+        cursorLine: "",
+      });
+      const watcher = new IdentityWatcher(delegate);
+
+      expect(watcher.hasAgentUiPromptFalsePositive()).toBe(true);
+    });
   });
 });
