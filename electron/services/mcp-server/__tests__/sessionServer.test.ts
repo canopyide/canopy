@@ -1090,10 +1090,7 @@ describe("CallTool error envelope (integration through sessionServer)", () => {
 });
 
 describe("Resource error envelope (integration through sessionServer)", () => {
-  async function readResource(
-    server: ReturnType<typeof createSessionServer>,
-    uri: string
-  ) {
+  async function readResource(server: ReturnType<typeof createSessionServer>, uri: string) {
     const handlers = (
       server as unknown as {
         _requestHandlers: Map<string, (req: unknown, extra: unknown) => Promise<unknown>>;
