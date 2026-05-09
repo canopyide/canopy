@@ -881,8 +881,13 @@ export function HelpPanel({
 
         // Resume path: matches the auto-launch effect — if the persisted
         // hibernate entry is for this exact project + agent, resume that
-        // conversation instead of starting fresh.
-        const hibernated = useHelpPanelStore.getState().hibernateSessions[launchProject.id];
+        // conversation instead of starting fresh. Skipped when a seedPrompt is
+        // provided (chip click): the user explicitly asked to start a fresh
+        // conversation with that prompt, so silently resuming the prior chat
+        // would drop the prompt and confuse them.
+        const hibernated = seedPrompt
+          ? null
+          : useHelpPanelStore.getState().hibernateSessions[launchProject.id];
         if (hibernated && hibernated.agentId === selectedAgentId) {
           const resumedId = await spawnResumed(selectedAgentId, hibernated, session, folderPath);
           if (resumedId) {

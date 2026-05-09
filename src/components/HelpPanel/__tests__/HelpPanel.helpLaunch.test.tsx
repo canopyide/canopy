@@ -1327,6 +1327,55 @@ describe("HelpPanel — empty state hero (intent-first replacement)", () => {
     );
   });
 
+  it("skips hibernate resume when a seed prompt is provided (regression: prompt must reach agent.launch)", async () => {
+    helpPanelState.preferredAgentId = "claude";
+    helpPanelState.hibernateSessions = {
+      "proj-default": { sessionId: "h-sess", cwd: "/help", agentId: "claude" },
+    };
+    cliAvailabilityState.availability = { claude: "ready", codex: "ready" };
+    mockGetAssistantSupportedAgentIds.mockReturnValue(["claude", "codex"]);
+    mockGetFolderPath.mockResolvedValue("/help");
+    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "fresh-term" } });
+
+    const { findByRole } = render(<HelpPanel width={380} />);
+
+    // The auto-launch effect for preferredAgentId fires on mount and would
+    // hit the resume path (no seedPrompt). Wait, then clear so we can
+    // isolate the chip-click dispatch.
+    await act(async () => {
+      // flush
+    });
+    mockDispatch.mockClear();
+    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "fresh-term-2" } });
+    helpPanelState.terminalId = null;
+
+    const chip = await findByRole("button", { name: "Help me debug an issue" });
+    await act(async () => {
+      fireEvent.click(chip);
+    });
+
+    expect(mockDispatch).toHaveBeenCalledWith(
+      "agent.launch",
+      expect.objectContaining({
+        agentId: "claude",
+        prompt: "Help me debug an issue",
+      }),
+      { source: "user" }
+    );
+  });
+
+  it("does not render the bottom 'Assistant settings' link when a terminal is active", () => {
+    helpPanelState.terminalId = "term-1";
+    helpPanelState.agentId = "claude";
+    panelStoreState.panelsById = {
+      "term-1": { id: "term-1", kind: "terminal", spawnStatus: "ready", cwd: "/help" },
+    };
+
+    const { queryByRole } = render(<HelpPanel width={380} />);
+
+    expect(queryByRole("button", { name: "Assistant settings" })).toBeNull();
+  });
+
   it("falls back to the single installed supported agent when no preferred agent is set", async () => {
     helpPanelState.preferredAgentId = null;
     cliAvailabilityState.availability = { claude: "missing", codex: "ready" };
