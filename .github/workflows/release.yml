@@ -337,6 +337,7 @@ jobs:
             release/*.msix
             release/*.AppImage
             release/*.deb
+            release/*.blockmap
             release/*.yml
           retention-days: 7
           if-no-files-found: error
@@ -420,6 +421,7 @@ jobs:
             --include "*.msix" \
             --include "*.AppImage" \
             --include "*.deb" \
+            --include "*.blockmap" \
             --cache-control "public, max-age=31536000, immutable"
 
       - name: Upload metadata to R2
