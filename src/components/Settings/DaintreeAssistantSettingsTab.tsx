@@ -269,6 +269,9 @@ export function DaintreeAssistantSettingsTab() {
     setShowRotateConfirm(false);
   }, [isRotating]);
 
+  const apiKeySuffix =
+    mcpStatus?.apiKey && mcpStatus.apiKey.length >= 8 ? mcpStatus.apiKey.slice(-4) : "";
+
   const handleCopyConfig = useCallback(async () => {
     try {
       const snippet = await window.electron.mcpServer.getConfigSnippet();
@@ -471,7 +474,9 @@ export function DaintreeAssistantSettingsTab() {
               <button
                 type="button"
                 onClick={() => setShowRotateConfirm(true)}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-md)] text-xs font-medium border border-daintree-border text-daintree-text/70 hover:text-daintree-text hover:bg-overlay-soft transition-colors"
+                disabled={!apiKeySuffix}
+                title={apiKeySuffix ? undefined : "Waiting for the MCP key to load…"}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-md)] text-xs font-medium border border-daintree-border text-daintree-text/70 hover:text-daintree-text hover:bg-overlay-soft transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-daintree-text/70"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
                 Rotate MCP key
@@ -497,13 +502,29 @@ export function DaintreeAssistantSettingsTab() {
         isOpen={showRotateConfirm}
         onClose={isRotating ? undefined : handleCancelRotate}
         title="Rotate API key?"
-        description="The current key will be invalidated immediately. External clients using this key will need to update their configuration."
+        description={
+          <>
+            The current key will be invalidated immediately. External clients using this key will
+            need to update their configuration.
+            {apiKeySuffix && (
+              <>
+                {" "}
+                Type the last 4 characters of the current key (
+                <code className="font-mono text-xs bg-daintree-bg/50 px-1.5 py-0.5 rounded border border-daintree-border">
+                  {apiKeySuffix}
+                </code>
+                ) to confirm.
+              </>
+            )}
+          </>
+        }
         confirmLabel="Rotate key"
         cancelLabel="Cancel"
         onConfirm={confirmRotateKey}
         isConfirmLoading={isRotating}
         variant="destructive"
         zIndex="nested"
+        typedNameTarget={apiKeySuffix || undefined}
       />
     </div>
   );

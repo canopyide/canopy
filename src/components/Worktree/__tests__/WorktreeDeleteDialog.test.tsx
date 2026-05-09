@@ -353,6 +353,25 @@ describe("WorktreeDeleteDialog — high tier (name confirmation)", () => {
     expect(button.disabled).toBe(false);
   });
 
+  it("falls back to worktree.name when branch is the empty string", () => {
+    const worktree = makeWorktree(makeChanges([]), {
+      branch: "",
+      name: "abc1234",
+      isMainWorktree: true,
+    });
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /force delete/i }));
+
+    const button = screen.getByTestId("delete-worktree-confirm") as HTMLButtonElement;
+    expect(button.textContent).toBe("Delete 'abc1234'");
+    expect(button.disabled).toBe(true);
+
+    const input = screen.getByTestId("delete-worktree-confirm-input") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "abc1234" } });
+    expect(button.disabled).toBe(false);
+  });
+
   it("uses worktree.name as the confirmation target for detached HEAD", () => {
     const worktree = makeWorktree(makeChanges([]), {
       branch: undefined,

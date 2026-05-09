@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { AppDialog } from "@/components/ui/AppDialog";
+import { TypedNameConfirmInput } from "@/components/ui/TypedNameConfirmInput";
 import { AlertTriangle, Trash2 } from "lucide-react";
 import { FolderGit2 } from "@/components/icons";
 import { useWorktreeTerminals } from "@/hooks/useWorktreeTerminals";
@@ -39,7 +40,7 @@ export function WorktreeDeleteDialog({ isOpen, onClose, worktree }: WorktreeDele
   const canDeleteBranch =
     !isProtectedBranch && !isDetachedHead && worktree.isMainWorktree === false;
 
-  const confirmTarget = worktree.branch ?? worktree.name;
+  const confirmTarget = worktree.branch || worktree.name;
   const isHighTier = force && (isProtectedBranch || worktree.isMainWorktree === true);
   const isConfirmMatched = confirmInput === confirmTarget;
   const canSubmit = !isDeleting && (!isHighTier || isConfirmMatched);
@@ -234,35 +235,22 @@ export function WorktreeDeleteDialog({ isOpen, onClose, worktree }: WorktreeDele
             )}
 
             {isHighTier && (
-              <div className="space-y-2 p-3 bg-status-error/5 border border-status-error/20 rounded">
-                <p id="worktree-delete-confirm-instructions" className="text-sm text-daintree-text">
-                  Force-deleting this protected worktree is irreversible. Type{" "}
-                  <code className="font-mono text-xs bg-daintree-bg/50 px-1.5 py-0.5 rounded border border-daintree-border">
-                    {confirmTarget}
-                  </code>{" "}
-                  to confirm.
-                </p>
-                <input
-                  type="text"
-                  value={confirmInput}
-                  onChange={(e) => setConfirmInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && isConfirmMatched) {
-                      e.preventDefault();
-                      void handleDelete();
-                    }
-                  }}
-                  aria-describedby="worktree-delete-confirm-instructions"
-                  aria-label={`Type ${confirmTarget} to confirm deletion`}
-                  autoComplete="off"
-                  spellCheck={false}
-                  className="w-full px-3 py-2 text-sm font-mono bg-daintree-bg border border-daintree-border rounded focus:outline-hidden focus:ring-2 focus:ring-status-error"
-                  data-testid="delete-worktree-confirm-input"
-                />
-                <span className="sr-only" aria-live="polite">
-                  {isConfirmMatched ? "Name confirmed. You may now delete." : ""}
-                </span>
-              </div>
+              <TypedNameConfirmInput
+                target={confirmTarget}
+                value={confirmInput}
+                onChange={setConfirmInput}
+                onMatchSubmit={() => void handleDelete()}
+                instructions={
+                  <>
+                    Force-deleting this protected worktree is irreversible. Type{" "}
+                    <code className="font-mono text-xs bg-daintree-bg/50 px-1.5 py-0.5 rounded border border-daintree-border">
+                      {confirmTarget}
+                    </code>{" "}
+                    to confirm.
+                  </>
+                }
+                data-testid="delete-worktree-confirm-input"
+              />
             )}
           </div>
         )}
