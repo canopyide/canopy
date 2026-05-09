@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Pause, Lock } from "lucide-react";
 import type {
   AgentState,
@@ -92,31 +92,38 @@ function TerminalHeaderContentComponent({
   const pendingCandidateRef = useRef<ResourceSeverity | null>(null);
   const pendingCountRef = useRef(0);
 
-  if (showResource) {
-    const rawSeverity = getResourceSeverity(resourceState.cpuPercent, resourceState.memoryKb);
-    if (rawSeverity === stickySeverity) {
+  useEffect(() => {
+    if (!showResource || resourceState == null) {
       pendingCandidateRef.current = null;
       pendingCountRef.current = 0;
-    } else if (rawSeverity === pendingCandidateRef.current) {
-      pendingCountRef.current += 1;
-      if (pendingCountRef.current >= SEVERITY_HYSTERESIS_POLLS) {
+      setStickySeverity((current) => (current === "muted" ? current : "muted"));
+      return;
+    }
+
+    const rawSeverity = getResourceSeverity(resourceState.cpuPercent, resourceState.memoryKb);
+    setStickySeverity((current) => {
+      if (rawSeverity === current) {
         pendingCandidateRef.current = null;
         pendingCountRef.current = 0;
-        setStickySeverity(rawSeverity);
+        return current;
       }
-    } else {
-      pendingCandidateRef.current = rawSeverity;
-      pendingCountRef.current = 1;
-    }
-  } else {
-    if (pendingCandidateRef.current !== null) {
+
+      if (rawSeverity === pendingCandidateRef.current) {
+        pendingCountRef.current += 1;
+      } else {
+        pendingCandidateRef.current = rawSeverity;
+        pendingCountRef.current = 1;
+      }
+
+      if (pendingCountRef.current < SEVERITY_HYSTERESIS_POLLS) {
+        return current;
+      }
+
       pendingCandidateRef.current = null;
       pendingCountRef.current = 0;
-    }
-    if (stickySeverity !== "muted") {
-      setStickySeverity("muted");
-    }
-  }
+      return rawSeverity;
+    });
+  }, [resourceState, showResource]);
 
   const {
     isInputLocked,
