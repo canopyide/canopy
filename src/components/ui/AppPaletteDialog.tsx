@@ -372,7 +372,7 @@ export function PaletteFooterHints({ primaryHint, hints }: PaletteFooterHintsPro
             const dropClass =
               SECONDARY_DROP_CLASSES[fromEnd] ??
               SECONDARY_DROP_CLASSES[SECONDARY_DROP_CLASSES.length - 1]!;
-            return <HintChip key={hint.label} hint={hint} className={dropClass} />;
+            return <HintChip key={`${i}-${hint.label}`} hint={hint} className={dropClass} />;
           })}
         </div>
       )}

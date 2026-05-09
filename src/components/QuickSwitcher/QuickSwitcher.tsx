@@ -11,9 +11,9 @@ import type {
 function getQuickSwitcherActionLabel(item: QuickSwitcherItemData): string {
   switch (item.type) {
     case "terminal":
-      return "Switch terminal";
+      return "to switch terminal";
     case "worktree":
-      return "Switch worktree";
+      return "to switch worktree";
   }
   const _exhaustive: never = item.type;
   return _exhaustive;

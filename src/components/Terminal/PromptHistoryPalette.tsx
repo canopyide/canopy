@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from "react";
 import { SearchablePalette } from "@/components/ui/SearchablePalette";
-import { KBD_CLASS } from "@/components/ui/AppPaletteDialog";
+import { PaletteFooterHints } from "@/components/ui/AppPaletteDialog";
 import {
   usePromptHistoryPalette,
   type UsePromptHistoryPaletteOptions,
@@ -90,22 +90,20 @@ export function PromptHistoryPalette({ onOpenRef, ...props }: PromptHistoryPalet
   );
 
   const footer = (
-    <div className="flex items-center justify-between w-full">
-      <div className="flex items-center gap-4">
-        <span>
-          <kbd className={KBD_CLASS}>↵</kbd>
-          <span className="ml-1.5">to recall</span>
-        </span>
-        <span>
-          <kbd className={KBD_CLASS}>↑</kbd>
-          <kbd className={cn(KBD_CLASS, "ml-1")}>↓</kbd>
-          <span className="ml-1.5">to navigate</span>
-        </span>
+    <div className="flex items-center gap-3 w-full">
+      <div className="flex-1 min-w-0">
+        <PaletteFooterHints
+          primaryHint={{ keys: ["↵"], label: "to recall" }}
+          hints={[
+            { keys: ["↑", "↓"], label: "to navigate" },
+            { keys: ["Esc"], label: "to close" },
+          ]}
+        />
       </div>
       <button
         type="button"
         onClick={toggleScope}
-        className="text-[11px] px-2 py-0.5 rounded-[var(--radius-sm)] bg-daintree-border/50 hover:bg-daintree-border text-daintree-text/60 hover:text-daintree-text/80 transition-colors"
+        className="shrink-0 text-[11px] px-2 py-0.5 rounded-[var(--radius-sm)] bg-daintree-border/50 hover:bg-daintree-border text-daintree-text/60 hover:text-daintree-text/80 transition-colors"
       >
         {scope === "project" ? "This project" : "All projects"}
       </button>
