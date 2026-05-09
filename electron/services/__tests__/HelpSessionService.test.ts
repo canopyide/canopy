@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs/promises";
@@ -865,6 +866,174 @@ describe("HelpSessionService", () => {
         name: "HelpSessionError",
         code: "MCP_NOT_READY",
       });
+    });
+  });
+
+  describe("template hash gate (#7525)", () => {
+    /** Mirrors the algorithm in HelpSessionService.computeTemplateHash. */
+    async function expectedTemplateHash(folder: string): Promise<string> {
+      const entries = await fs.readdir(folder, { recursive: true, withFileTypes: true });
+      const files = entries
+        .filter((entry) => entry.isFile())
+        .map((entry) => ({
+          absolute: path.join(entry.parentPath, entry.name),
+          relative: path
+            .relative(folder, path.join(entry.parentPath, entry.name))
+            .split(path.sep)
+            .join("/"),
+        }))
+        .sort((a, b) => (a.relative < b.relative ? -1 : a.relative > b.relative ? 1 : 0));
+      const hash = createHash("sha256");
+      for (const file of files) {
+        hash.update(file.relative);
+        hash.update("\0");
+        hash.update(await fs.readFile(file.absolute));
+      }
+      return hash.digest("hex");
+    }
+
+    it("writes a .template-hash stamp on first provision matching the source template hash", async () => {
+      const result = await service.provisionSession(provisionInput());
+      if (!result) throw new Error("expected result");
+
+      const stamp = (
+        await fs.readFile(path.join(result.sessionPath, ".template-hash"), "utf-8")
+      ).trim();
+      expect(stamp).toBe(await expectedTemplateHash(helpFolder));
+    });
+
+    it("skips fs.cp on a second provision when the template is unchanged, preserving session-dir state", async () => {
+      const first = await service.provisionSession(provisionInput());
+      if (!first) throw new Error("expected first provision");
+
+      // Mutate the on-disk template content. If the gate is broken, the
+      // second provision will overwrite this with the bundled version.
+      await fs.writeFile(path.join(first.sessionPath, "CLAUDE.md"), "# mutated", "utf-8");
+
+      const second = await service.provisionSession(provisionInput());
+      if (!second) throw new Error("expected second provision");
+      expect(second.sessionPath).toBe(first.sessionPath);
+
+      const claude = await fs.readFile(path.join(second.sessionPath, "CLAUDE.md"), "utf-8");
+      expect(claude).toBe("# mutated");
+    });
+
+    it("re-copies the template when the bundled source hash differs from the on-disk stamp", async () => {
+      const first = await service.provisionSession(provisionInput());
+      if (!first) throw new Error("expected first provision");
+      const firstStamp = (
+        await fs.readFile(path.join(first.sessionPath, ".template-hash"), "utf-8")
+      ).trim();
+
+      // Simulate an app upgrade that updated the bundled help template.
+      await fs.writeFile(path.join(helpFolder, "CLAUDE.md"), "# Help v2", "utf-8");
+
+      const second = await service.provisionSession(provisionInput());
+      if (!second) throw new Error("expected second provision");
+
+      const claude = await fs.readFile(path.join(second.sessionPath, "CLAUDE.md"), "utf-8");
+      expect(claude).toBe("# Help v2");
+
+      const secondStamp = (
+        await fs.readFile(path.join(second.sessionPath, ".template-hash"), "utf-8")
+      ).trim();
+      expect(secondStamp).toBe(await expectedTemplateHash(helpFolder));
+      expect(secondStamp).not.toBe(firstStamp);
+    });
+
+    it("does not write the stamp when fs.cp fails — next launch re-copies", async () => {
+      // First provision succeeds and writes a valid stamp.
+      const first = await service.provisionSession(provisionInput());
+      if (!first) throw new Error("expected first provision");
+
+      // Bump the bundled template so the gate triggers another copy on the
+      // next provision. Then make `fs.cp` reject — the stamp must not be
+      // updated to the new hash, otherwise next launch would skip the copy
+      // and leave the session dir torn.
+      await fs.writeFile(path.join(helpFolder, "CLAUDE.md"), "# Help v2", "utf-8");
+      const cpSpy = vi.spyOn(fs, "cp").mockRejectedValueOnce(new Error("disk full"));
+      const stampBefore = (
+        await fs.readFile(path.join(first.sessionPath, ".template-hash"), "utf-8")
+      ).trim();
+
+      await expect(service.provisionSession(provisionInput())).rejects.toThrow();
+
+      // Stamp must still match the pre-failure state, NOT the new source.
+      const stampAfter = (
+        await fs.readFile(path.join(first.sessionPath, ".template-hash"), "utf-8")
+      ).trim();
+      expect(stampAfter).toBe(stampBefore);
+      cpSpy.mockRestore();
+    });
+
+    it("treats a non-ENOENT stamp read failure as missing — provision succeeds and re-copies", async () => {
+      const first = await service.provisionSession(provisionInput());
+      if (!first) throw new Error("expected first provision");
+
+      // Spy ONLY on the stamp read; pass everything else through. EACCES
+      // models a corrupted/locked stamp file: provision must not abort.
+      const stampPath = path.join(first.sessionPath, ".template-hash");
+      const realReadFile = fs.readFile.bind(fs);
+      const readSpy = vi
+        .spyOn(fs, "readFile")
+        .mockImplementation(async (file: Parameters<typeof fs.readFile>[0], ...rest) => {
+          if (file === stampPath) {
+            const err = new Error("permission denied") as NodeJS.ErrnoException;
+            err.code = "EACCES";
+            throw err;
+          }
+          return realReadFile(
+            file,
+            ...(rest as Parameters<typeof realReadFile> extends [unknown, ...infer R] ? R : never)
+          );
+        });
+
+      const second = await service.provisionSession(provisionInput());
+      expect(second).not.toBeNull();
+      readSpy.mockRestore();
+    });
+
+    it("rewrites .mcp.json with a fresh bearer on every provision, even when the template copy is skipped", async () => {
+      const first = await service.provisionSession(provisionInput());
+      if (!first) throw new Error("expected first provision");
+      await service.revokeSession(first.sessionId);
+
+      const second = await service.provisionSession(provisionInput());
+      if (!second) throw new Error("expected second provision");
+      expect(second.token).not.toBe(first.token);
+
+      const mcp = JSON.parse(
+        await fs.readFile(path.join(second.sessionPath, ".mcp.json"), "utf-8")
+      );
+      expect(mcp.mcpServers.daintree.headers.Authorization).toBe(`Bearer ${second.token}`);
+    });
+
+    it("hashes nested template files deterministically (subdir order independence)", async () => {
+      // Two help folders with identical content but different on-disk
+      // creation order must produce the same hash. The .claude/settings.json
+      // file lives one level deep; sorting by full relative path (not just
+      // basename) ensures order stability.
+      const altHelp = path.join(tmpRoot, "help-alt");
+      await fs.mkdir(path.join(altHelp, ".claude"), { recursive: true });
+      // Write in REVERSE order from makeBundledHelpFolder to test stability.
+      await fs.writeFile(path.join(altHelp, "CLAUDE.md"), "# Help");
+      await fs.writeFile(
+        path.join(altHelp, ".claude", "settings.json"),
+        JSON.stringify({
+          permissions: {
+            allow: ["Read(**)", "WebFetch", "mcp__daintree-docs__*", "Bash(gh issue list*)"],
+            deny: ["Write(**)", "Edit(**)", "Bash(**)"],
+          },
+        })
+      );
+      await fs.writeFile(
+        path.join(altHelp, ".mcp.json"),
+        JSON.stringify({
+          mcpServers: { "daintree-docs": { type: "http", url: "https://daintree.org/api/mcp" } },
+        })
+      );
+
+      expect(await expectedTemplateHash(altHelp)).toBe(await expectedTemplateHash(helpFolder));
     });
   });
 });
