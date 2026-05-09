@@ -1,17 +1,14 @@
 import os from "os";
 import PQueue from "p-queue";
-import { execFile } from "child_process";
-import { mkdir, writeFile, stat, readFile } from "fs/promises";
-import { join as pathJoin, dirname, resolve as pathResolve, isAbsolute } from "path";
+import { existsSync } from "fs";
+import { stat, readFile, access, mkdir } from "fs/promises";
+import { resolve as pathResolve, isAbsolute, dirname } from "path";
+import { validateBranchName } from "../../shared/utils/pathPattern.js";
 import { generateProjectId, settingsFilePath } from "../services/projectStorePaths.js";
 import { SimpleGit, BranchSummary } from "simple-git";
-import {
-  createHardenedGit,
-  createAuthenticatedGit,
-  getGitLocaleEnv,
-} from "../utils/hardenedGit.js";
+import { createHardenedGit, createAuthenticatedGit } from "../utils/hardenedGit.js";
 import { classifyGitError, getGitRecoveryAction } from "../../shared/utils/gitOperationErrors.js";
-import type { Worktree, WorktreeResourceStatus } from "../../shared/types/worktree.js";
+import type { Worktree } from "../../shared/types/worktree.js";
 import type {
   WorkspaceHostEvent,
   WorktreeSnapshot,
@@ -22,105 +19,40 @@ import type {
 } from "../../shared/types/workspace-host.js";
 import { invalidateGitStatusCache } from "../utils/git.js";
 import { detectWslPath, listFirstWslDistro } from "../utils/wsl.js";
-import { getGitDir, clearGitDirCache } from "../utils/gitUtils.js";
+import {
+  getGitDir,
+  getGitCommonDir,
+  clearGitDirCache,
+  clearGitCommonDirCache,
+} from "../utils/gitUtils.js";
 import { extractIssueNumberSync, extractIssueNumber } from "../services/issueExtractor.js";
 import { GitHubAuth } from "../services/github/GitHubAuth.js";
 import { pullRequestService } from "../services/PullRequestService.js";
 import { events } from "../services/events.js";
-import { NOTE_PATH } from "./types.js";
 import { WorktreeLifecycleService } from "./WorktreeLifecycleService.js";
 import { WorktreeMonitor } from "./WorktreeMonitor.js";
 import { WorktreeListService } from "./WorktreeListService.js";
 import { PRIntegrationService } from "./PRIntegrationService.js";
+import { RepoFetchCoordinator } from "./RepoFetchCoordinator.js";
 import { waitForPathExists } from "../utils/fs.js";
 import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
+import {
+  probeGitLfsAvailable,
+  isGitHubRemoteUrl,
+  parseCheckedOutBranches,
+  nextAvailableBranchName,
+  ensureNoteFile,
+} from "./worktreeUtils.js";
+import { applyResourceConfigToMonitor } from "./resourceConfigHelpers.js";
+import { ResourceActionExecutor } from "./ResourceActionExecutor.js";
+
+// Re-export so existing test imports (`probeGitLfsAvailable` from
+// `../WorkspaceService.js`) continue to work without modification.
+export { probeGitLfsAvailable } from "./worktreeUtils.js";
 
 // Configuration
 const DEFAULT_ACTIVE_WORKTREE_INTERVAL_MS = 2000;
 const DEFAULT_BACKGROUND_WORKTREE_INTERVAL_MS = 10000;
-
-// Hard ceiling on the `git lfs version` probe. `git` is already on PATH, so a
-// healthy probe returns in milliseconds; the 3 s cap only matters on slow/
-// network-mounted filesystems or misconfigured shells. On timeout we treat LFS
-// as unavailable rather than delay the load-project-result event (precedent:
-// #4852 — don't block startup on optional probes).
-const LFS_PROBE_TIMEOUT_MS = 3000;
-
-/**
- * Probe whether `git lfs` is installed on the user's PATH. Uses raw `execFile`
- * (not simple-git / hardenedGit) because LFS availability is a read-only CLI
- * check that has nothing to do with the project's git repo; routing it through
- * hardenedGit would strip credential helpers for no reason. Returns `false` on
- * any error, non-matching stdout, or timeout.
- */
-export function probeGitLfsAvailable(): Promise<boolean> {
-  return new Promise((resolve) => {
-    let settled = false;
-    const done = (value: boolean) => {
-      if (settled) return;
-      settled = true;
-      resolve(value);
-    };
-
-    const child = execFile(
-      "git",
-      ["lfs", "version"],
-      {
-        timeout: LFS_PROBE_TIMEOUT_MS,
-        windowsHide: true,
-        env: { ...process.env, ...getGitLocaleEnv(), LC_ALL: "" },
-      },
-      (err, stdout) => {
-        if (err) {
-          done(false);
-          return;
-        }
-        done(/^git-lfs\//.test(stdout.trim()));
-      }
-    );
-
-    // Defence in depth: if execFile's timeout fails to fire (e.g. child is
-    // detached from the event loop), cap the wait ourselves.
-    const timer = setTimeout(() => {
-      try {
-        child.kill();
-      } catch {
-        // Best-effort — process may already have exited.
-      }
-      done(false);
-    }, LFS_PROBE_TIMEOUT_MS + 500);
-
-    child.on("exit", () => clearTimeout(timer));
-    child.on("error", () => {
-      clearTimeout(timer);
-      done(false);
-    });
-  });
-}
-
-async function ensureNoteFile(worktreePath: string): Promise<void> {
-  const gitDir = getGitDir(worktreePath);
-  if (!gitDir) {
-    return;
-  }
-
-  const notePath = pathJoin(gitDir, NOTE_PATH);
-
-  try {
-    await stat(notePath);
-  } catch {
-    try {
-      const daintreeDir = dirname(notePath);
-      await mkdir(daintreeDir, { recursive: true });
-      await writeFile(notePath, "", { flag: "wx" });
-    } catch (createError) {
-      const code = (createError as NodeJS.ErrnoException).code;
-      if (code !== "EEXIST") {
-        console.warn("[WorkspaceHost] Failed to create note file:", notePath);
-      }
-    }
-  }
-}
 
 export class WorkspaceService {
   private monitors = new Map<string, WorktreeMonitor>();
@@ -141,9 +73,11 @@ export class WorkspaceService {
   private lifecycleService = new WorktreeLifecycleService();
   private listService = new WorktreeListService();
   private prService: PRIntegrationService;
+  private fetchCoordinator: RepoFetchCoordinator;
   private _shutdownController = new AbortController();
   private resourceActionQueues = new Map<string, PQueue>();
   private resourceActionAbortControllers = new Map<string, AbortController>();
+  private readonly resourceActionExecutor: ResourceActionExecutor;
   /** Session-scoped guard so we notify the user about Linux inotify limits
    *  only once, even if many worktrees hit ENOSPC concurrently. */
   private inotifyLimitNotified = false;
@@ -157,6 +91,17 @@ export class WorkspaceService {
   private wslDefaultDistroPromise: Promise<string | null> | null = null;
 
   constructor(private readonly sendEvent: (event: WorkspaceHostEvent) => void) {
+    this.fetchCoordinator = new RepoFetchCoordinator({
+      onFetchSuccess: (worktreeId) => {
+        const monitor = this.monitors.get(worktreeId);
+        if (!monitor || !monitor.isRunning) return;
+        // A successful fetch updated remote refs, so the next `rev-list` for
+        // ahead/behind will return fresh counts. Trigger a status refresh
+        // immediately rather than waiting for the next poll tick — but
+        // fire-and-forget; fetch success must never block.
+        monitor.triggerRefreshIfUpdating();
+      },
+    });
     this.prService = new PRIntegrationService(pullRequestService, events, {
       onPRDetected: (worktreeId, data) => {
         const monitor = this.monitors.get(worktreeId);
@@ -232,6 +177,15 @@ export class WorkspaceService {
         });
       },
     });
+
+    this.resourceActionExecutor = new ResourceActionExecutor({
+      getProjectRootPath: () => this.projectRootPath,
+      getMonitor: (id) => this.monitors.get(id),
+      getProjectEnvVars: () => this.projectEnvVars,
+      emitUpdate: (monitor) => this.emitUpdate(monitor),
+      sendEvent: (event) => this.sendEvent(event),
+      lifecycleService: this.lifecycleService,
+    });
   }
 
   async loadProject(
@@ -253,6 +207,18 @@ export class WorkspaceService {
       this.projectEnvVars = { ...(globalEnvVars ?? {}), ...projectEnvVars };
       this.git = createHardenedGit(projectRootPath, this._shutdownController.signal);
       this.listService.setGit(this.git, projectRootPath);
+
+      // #6669: prune at startup so externally-deleted worktrees (kept in
+      // `worktree list --porcelain` as `prunable` since Git 2.31+) don't
+      // re-appear in the sidebar after restart. Best-effort — a prune
+      // failure must not block project load.
+      try {
+        await this.git.raw(["worktree", "prune"]);
+      } catch (pruneError) {
+        console.warn(
+          `[WorkspaceHost] worktree prune at load failed for ${projectRootPath}: ${(pruneError as Error).message}`
+        );
+      }
 
       const rawWorktrees = await this.listService.list();
       const worktrees = this.listService.mapToWorktrees(rawWorktrees);
@@ -517,6 +483,29 @@ export class WorkspaceService {
         },
         onInotifyLimitReached: () => this.handleInotifyLimitReached(),
         onEmfileLimitReached: () => this.handleEmfileLimitReached(),
+        onScheduleFetch: async (worktreeId, _isCurrent, force) => {
+          const target = this.monitors.get(worktreeId);
+          if (!target || !target.isRunning) return;
+          const result = await this.fetchCoordinator.fetchForWorktree({
+            worktreeId,
+            worktreePath: target.path,
+            force,
+          });
+          // Skipped for "no-common-dir" (e.g. path was just removed) means we
+          // have no commondir to fan out on — bail.
+          if (
+            result.lastFetchedAt === undefined &&
+            result.authFailed === undefined &&
+            result.networkFailed === undefined
+          ) {
+            return;
+          }
+          this.applyFetchResultToSiblings(target, {
+            lastFetchedAt: result.lastFetchedAt ?? null,
+            authFailed: result.authFailed ?? false,
+            networkFailed: result.networkFailed ?? false,
+          });
+        },
       },
       this.mainBranch,
       this.pollQueue
@@ -546,6 +535,11 @@ export class WorkspaceService {
         this.emitUpdate(monitor);
       }
     })();
+
+    // Resolve origin → github.com? once at monitor start. Setter re-emits the
+    // snapshot only if the value differs from the initial `false`, so this is
+    // a no-op for the (small) set of non-GitHub repos.
+    void this.probeGitHubRemoteAsync(monitor);
   }
 
   private async initResourceConfigAsync(
@@ -594,19 +588,7 @@ export class WorkspaceService {
         monitor.branch
       );
       const sub = (cmd: string) => this.lifecycleService.substituteVariables(cmd, vars);
-      monitor.setHasResourceConfig(true);
-      monitor.setHasStatusCommand(!!resourceConfig.status);
-      monitor.setHasPauseCommand(!!resourceConfig.pause?.length);
-      monitor.setHasResumeCommand(!!resourceConfig.resume?.length);
-      monitor.setHasTeardownCommand(!!resourceConfig.teardown?.length);
-      monitor.setHasProvisionCommand(!!resourceConfig.provision?.length);
-      monitor.setResourceProvider(resourceConfig.provider);
-      monitor.setResourceConnectCommand(
-        resourceConfig.connect ? sub(resourceConfig.connect) : undefined
-      );
-      if (resourceConfig.statusInterval) {
-        monitor.setResourcePollInterval(resourceConfig.statusInterval * 1000);
-      }
+      applyResourceConfigToMonitor(monitor, resourceConfig, sub);
 
       // Runtime behavior (emits, polling) requires monitor.isRunning
       if (!monitor.isRunning) return;
@@ -646,7 +628,7 @@ export class WorkspaceService {
       type: "worktree-update",
       worktree: snapshot,
     });
-    events.emit("sys:worktree:update", snapshot as any);
+    events.emit("sys:worktree:update", snapshot);
   }
 
   private emitUpdate(monitor: WorktreeMonitor): void {
@@ -655,7 +637,56 @@ export class WorkspaceService {
       type: "worktree-update",
       worktree: snapshot,
     });
-    events.emit("sys:worktree:update", snapshot as any);
+    events.emit("sys:worktree:update", snapshot);
+  }
+
+  /**
+   * Fan a coordinator-level fetch result out to every monitor sharing the same
+   * `git common-dir`. Linked worktrees back the same `.git/objects`, so a
+   * single `git fetch origin` updates upstream refs for all of them — and the
+   * coordinator's per-commondir `lastSuccessfulFetch` and auth-failure state
+   * apply uniformly. Without this fan-out, only the worktree that triggered
+   * the fetch would surface "Last fetched X ago"; sibling cards would still
+   * show stale (or absent) timestamps.
+   *
+   * `getGitCommonDir` is synchronous and cached, so the O(n) scan is cheap
+   * after the first call per worktree.
+   */
+  private applyFetchResultToSiblings(
+    triggering: WorktreeMonitor,
+    result: { lastFetchedAt: number | null; authFailed: boolean; networkFailed: boolean }
+  ): void {
+    const triggeringCommonDir = getGitCommonDir(triggering.path, { logErrors: false });
+    if (!triggeringCommonDir) {
+      // Without a commondir we can't identify siblings. Apply to the
+      // triggering monitor only — its own card still benefits.
+      triggering.setFetchState(result.lastFetchedAt, result.authFailed, result.networkFailed);
+      return;
+    }
+    for (const monitor of this.monitors.values()) {
+      if (!monitor.isRunning) continue;
+      const monitorCommonDir = getGitCommonDir(monitor.path, { logErrors: false });
+      if (monitorCommonDir === triggeringCommonDir) {
+        monitor.setFetchState(result.lastFetchedAt, result.authFailed, result.networkFailed);
+      }
+    }
+  }
+
+  /**
+   * Probe origin's fetch URL once and tell the monitor whether it points at
+   * github.com. Runs off the critical path — failures are silent (the
+   * affordance simply stays hidden, which matches the non-GitHub behavior).
+   */
+  private async probeGitHubRemoteAsync(monitor: WorktreeMonitor): Promise<void> {
+    try {
+      const git = createHardenedGit(monitor.path);
+      const remotes = await git.getRemotes(true);
+      const origin = remotes.find((r) => r.name === "origin") ?? remotes[0];
+      const fetchUrl = origin?.refs?.fetch;
+      monitor.setIsGitHubRemote(isGitHubRemoteUrl(fetchUrl));
+    } catch {
+      // Remote probe is best-effort; keep the affordance hidden on failure.
+    }
   }
 
   private handleInotifyLimitReached(): void {
@@ -805,6 +836,10 @@ export class WorkspaceService {
    */
   async refreshOnWake(requestId: string): Promise<void> {
     try {
+      // Drop network/transient fetch failures so the post-wake fetch attempt
+      // is allowed to run even if the network was down before sleep. Auth
+      // suspensions stay sticky — they require explicit re-auth.
+      this.fetchCoordinator.clearNetworkFailures();
       for (const monitor of this.monitors.values()) {
         monitor.resetPollingStrategy();
       }
@@ -821,6 +856,15 @@ export class WorkspaceService {
         })
       );
       await Promise.all(promises);
+      // Kick off background fetches across all worktrees so ahead/behind
+      // counts catch up against the network state we just reconnected to.
+      // Fire-and-forget — the fetch coordinator serializes per-repo and
+      // failures don't block the wake refresh result.
+      for (const monitor of this.monitors.values()) {
+        if (monitor.isRunning) {
+          void monitor.triggerFetchNow();
+        }
+      }
       await pullRequestService.refresh();
       this.sendEvent({ type: "refresh-result", requestId, success: true });
     } catch (error) {
@@ -836,6 +880,22 @@ export class WorkspaceService {
   private async discoverAndSyncWorktrees(): Promise<void> {
     if (!this.git) {
       return;
+    }
+
+    // #6669: prune before listing so externally-deleted worktrees (which Git
+    // 2.31+ keeps in `worktree list --porcelain` with a `prunable` marker)
+    // are dropped from the list. Without this, `syncMonitors` re-creates a
+    // monitor for the phantom path and the sidebar entry never clears.
+    // `prune` skips locked worktrees, so this is safe to run on every refresh.
+    // Best-effort: if prune fails (e.g. EPERM on .git/worktrees/), don't block
+    // the rest of the refresh — that would recreate the original "refresh is a
+    // no-op" symptom under a different trigger.
+    try {
+      await this.git.raw(["worktree", "prune"]);
+    } catch (pruneError) {
+      console.warn(
+        `[WorkspaceHost] worktree prune during refresh failed: ${(pruneError as Error).message}`
+      );
     }
 
     const rawWorktrees = await this.listService.list({ forceRefresh: true });
@@ -866,25 +926,120 @@ export class WorkspaceService {
   ): Promise<void> {
     try {
       const git = createHardenedGit(rootPath);
-      const {
-        baseBranch,
-        newBranch,
-        path,
-        fromRemote = false,
-        useExistingBranch = false,
-      } = options;
+      const { baseBranch, path } = options;
+      let { newBranch } = options;
+      let { fromRemote = false, useExistingBranch = false } = options;
 
+      // Authoritative validation gate. Every caller (IPC, MCP, recipes,
+      // worktree:create-for-task) reaches this method, so any branch-name or
+      // parent-dir issue caught here surfaces a clear error instead of
+      // bubbling up as a low-level git fatal. #7033. Also rejects argv-shaped
+      // names (leading dash) and git-special characters before any git call.
+      if (typeof newBranch !== "string" || newBranch.trim().length === 0) {
+        throw new Error("Branch name cannot be empty");
+      }
+      const newBranchValidation = validateBranchName(newBranch);
+      if (!newBranchValidation.valid) {
+        throw new Error(
+          `Invalid branch name '${newBranch}': ${newBranchValidation.error ?? "invalid"}`
+        );
+      }
+      const baseBranchValidation = validateBranchName(baseBranch);
+      if (!baseBranchValidation.valid) {
+        throw new Error(
+          `Invalid base branch '${baseBranch}': ${baseBranchValidation.error ?? "invalid"}`
+        );
+      }
+      // Resolve before taking dirname so a relative `path` (rare, but allowed
+      // through programmatic callers) is checked against the right parent
+      // rather than against process.cwd.
+      const absoluteCreatePath = isAbsolute(path) ? path : pathResolve(rootPath, path);
+      const parentDir = dirname(absoluteCreatePath);
+      if (!existsSync(parentDir)) {
+        await mkdir(parentDir, { recursive: true });
+      }
+
+      // #6463: when not explicitly reusing a branch, guard against a stale
+      // local branch with the same name. Without this, `git worktree add -b`
+      // hits "fatal: a branch named '...' already exists" whenever a previous
+      // worktree was deleted but its branch was kept. Two recoveries:
+      // (a) branch exists but is not checked out anywhere → reuse it (drop
+      //     -b, switch to the useExistingBranch arg form);
+      // (b) branch is live in another worktree → suffix -2/-3/... and create
+      //     a fresh branch.
+      // Inlined (not behind a helper) so the happy-path microtask timing
+      // matches the pre-fix behavior — the next await is still the worktree
+      // add, not a wrapper-promise resolution.
+      if (!useExistingBranch) {
+        let localBranches: string[] = [];
+        try {
+          localBranches = (await git.branchLocal()).all;
+        } catch {
+          // Best-effort: if branch listing fails, fall through and let the
+          // actual worktree command surface its own error.
+        }
+
+        if (localBranches.includes(newBranch)) {
+          let checkedOut = new Set<string>();
+          let listFailed = false;
+          try {
+            const output = await git.raw(["worktree", "list", "--porcelain"]);
+            checkedOut = parseCheckedOutBranches(output);
+          } catch {
+            // We can't tell if the branch is live elsewhere; fall through to
+            // the suffix path rather than risk reusing a checked-out branch.
+            listFailed = true;
+          }
+
+          // For fromRemote (PR mode) we never reuse a stale local branch:
+          // the local ref is at the previous tip, and dropping --track would
+          // strip @{u} that ahead/behind badges depend on. Suffix instead so
+          // a fresh tracking branch is created.
+          const canReuse = !listFailed && !fromRemote && !checkedOut.has(newBranch);
+
+          if (canReuse) {
+            useExistingBranch = true;
+            // The -b path tracks baseBranch; reuse drops that. Stale local
+            // branches typically retain their original config, so this is
+            // the right tradeoff vs. failing the user-visible create.
+            fromRemote = false;
+          } else {
+            newBranch = nextAvailableBranchName(newBranch, new Set(localBranches));
+          }
+        }
+      }
+
+      // `--end-of-options` after the subcommand flags so any leading-dash ref
+      // or path that slipped past validation is treated as positional.
       if (useExistingBranch) {
-        await git.raw(["worktree", "add", path, newBranch]);
+        await git.raw(["worktree", "add", "--end-of-options", path, newBranch]);
       } else if (fromRemote) {
-        await git.raw(["worktree", "add", "-b", newBranch, "--track", path, baseBranch]);
+        await git.raw([
+          "worktree",
+          "add",
+          "-b",
+          newBranch,
+          "--track",
+          "--end-of-options",
+          path,
+          baseBranch,
+        ]);
       } else {
         // --no-track: local-base branches shouldn't auto-track a local ref even
         // when the user has branch.autoSetupMerge=always. Skipping tracking also
         // avoids a .git/config.lock acquisition, cutting contention under bulk
         // creation. PR-mode (fromRemote) keeps --track — ahead/behind badges
         // at WorktreeMonitor.ts:1092 depend on @{u} resolving.
-        await git.raw(["worktree", "add", "-b", newBranch, "--no-track", path, baseBranch]);
+        await git.raw([
+          "worktree",
+          "add",
+          "-b",
+          newBranch,
+          "--no-track",
+          "--end-of-options",
+          path,
+          baseBranch,
+        ]);
       }
 
       const absolutePath = isAbsolute(path) ? path : pathResolve(rootPath, path);
@@ -1023,21 +1178,8 @@ export class WorkspaceService {
             m.name,
             m.branch
           );
-          m.setHasResourceConfig(true);
-          m.setHasStatusCommand(!!resolvedResource.status);
-          m.setHasPauseCommand(!!resolvedResource.pause?.length);
-          m.setHasResumeCommand(!!resolvedResource.resume?.length);
-          m.setHasTeardownCommand(!!resolvedResource.teardown?.length);
-          m.setHasProvisionCommand(!!resolvedResource.provision?.length);
-          m.setResourceProvider(resolvedResource.provider);
-          m.setResourceConnectCommand(
-            resolvedResource.connect
-              ? this.lifecycleService.substituteVariables(resolvedResource.connect, v)
-              : undefined
-          );
-          if (resolvedResource.statusInterval) {
-            m.setResourcePollInterval(resolvedResource.statusInterval * 1000);
-          }
+          const subCache = (cmd: string) => this.lifecycleService.substituteVariables(cmd, v);
+          applyResourceConfigToMonitor(m, resolvedResource, subCache);
           this.emitUpdate(m);
         }
       }
@@ -1123,19 +1265,7 @@ export class WorkspaceService {
     if (resolvedResource) {
       const m = this.monitors.get(worktreeId);
       if (m) {
-        m.setHasResourceConfig(true);
-        m.setHasStatusCommand(!!resolvedResource.status);
-        m.setHasPauseCommand(!!resolvedResource.pause?.length);
-        m.setHasResumeCommand(!!resolvedResource.resume?.length);
-        m.setHasTeardownCommand(!!resolvedResource.teardown?.length);
-        m.setHasProvisionCommand(!!resolvedResource.provision?.length);
-        m.setResourceProvider(resolvedResource.provider);
-        m.setResourceConnectCommand(
-          resolvedResource.connect ? sub(resolvedResource.connect) : undefined
-        );
-        if (resolvedResource.statusInterval) {
-          m.setResourcePollInterval(resolvedResource.statusInterval * 1000);
-        }
+        applyResourceConfigToMonitor(m, resolvedResource, sub);
         this.emitUpdate(m);
       }
     }
@@ -1426,12 +1556,62 @@ export class WorkspaceService {
       await this.runLifecycleTeardown(worktreeId, monitor, force);
 
       if (this.git) {
-        const args = ["worktree", "remove"];
-        if (force) {
-          args.push("--force");
+        // #6669: if the directory is already gone (deleted externally), skip
+        // `git worktree remove` (which fails with `is not a working tree`)
+        // and run `git worktree prune` instead to clean up the leftover
+        // metadata. This is the only UI recovery path for a phantom entry.
+        // Only ENOENT routes to prune — other access errors (EPERM, EACCES,
+        // ENOTDIR) fall through so we don't skip the remove on transient
+        // permission issues; the remove call's own errors will surface.
+        let pathMissing = false;
+        try {
+          await access(monitor.path);
+        } catch (accessError) {
+          if ((accessError as NodeJS.ErrnoException).code === "ENOENT") {
+            pathMissing = true;
+          }
         }
-        args.push(monitor.path);
-        await this.git.raw(args);
+
+        if (pathMissing) {
+          try {
+            await this.git.raw(["worktree", "prune"]);
+          } catch (pruneError) {
+            // Best-effort: the directory is already gone, so failing to clean
+            // up the metadata shouldn't block the UI from removing the entry.
+            console.warn(
+              `[WorkspaceHost] worktree prune failed for missing path ${monitor.path}: ${(pruneError as Error).message}`
+            );
+          }
+        } else {
+          const args = ["worktree", "remove"];
+          if (force) {
+            args.push("--force");
+          }
+          // `--end-of-options` so a leading-dash worktree path is treated as
+          // positional rather than parsed as a flag.
+          args.push("--end-of-options", monitor.path);
+          try {
+            await this.git.raw(args);
+          } catch (removeError) {
+            // Race: the directory disappeared between our access check and
+            // the remove call, or git's metadata is already inconsistent.
+            // Both surface as `fatal: '<path>' is not a working tree`. Fall
+            // back to prune so the UI cleanup path still runs.
+            const message = (removeError as Error).message || "";
+            if (message.includes("is not a working tree")) {
+              try {
+                await this.git.raw(["worktree", "prune"]);
+              } catch (pruneError) {
+                console.warn(
+                  `[WorkspaceHost] worktree prune failed after stale remove for ${monitor.path}: ${(pruneError as Error).message}`
+                );
+              }
+            } else {
+              throw removeError;
+            }
+          }
+        }
+
         clearGitDirCache(monitor.path);
 
         const cacheKey = this.listService.getCacheKey();
@@ -1454,8 +1634,10 @@ export class WorkspaceService {
 
       if (branchToDelete && this.git) {
         try {
-          await this.git.raw(["branch", "-d", branchToDelete]);
-          console.log(`[WorkspaceHost] Deleted branch: ${branchToDelete} (safe)`);
+          await this.git.raw(["branch", force ? "-D" : "-d", branchToDelete]);
+          console.log(
+            `[WorkspaceHost] Deleted branch: ${branchToDelete} (${force ? "force" : "safe"})`
+          );
         } catch (branchError) {
           const errorMsg = (branchError as Error).message || "";
           if (errorMsg.includes("not found")) {
@@ -1631,7 +1813,16 @@ ${lines.map((l) => "+" + l).join("\n")}`;
         return;
       }
 
-      const diff = await git.diff(["HEAD", "--no-ext-diff", "--no-color", "--", normalizedPath]);
+      // `--no-textconv` blocks user-defined diff drivers that would otherwise
+      // execute arbitrary binaries via `.gitattributes` textconv mappings.
+      const diff = await git.diff([
+        "HEAD",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--no-color",
+        "--",
+        normalizedPath,
+      ]);
 
       if (diff.includes("Binary files")) {
         this.sendEvent({ type: "get-file-diff-result", requestId, diff: "BINARY_FILE" });
@@ -1700,9 +1891,6 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     } catch {
       // Sandboxed environments may deny setpriority — non-fatal
     }
-    if (typeof global.gc === "function") {
-      global.gc();
-    }
   }
 
   resume(): void {
@@ -1740,6 +1928,17 @@ ${lines.map((l) => "+" + l).join("\n")}`;
   updateGitHubToken(token: string | null): void {
     GitHubAuth.setMemoryToken(token);
     if (token) {
+      // A new token may resolve previously-failing auth — drop suspensions so
+      // the next scheduled fetch retries. Network/transient entries stay so we
+      // don't immediately re-storm an offline remote.
+      this.fetchCoordinator.clearAuthFailures();
+      // Trigger an opportunistic fetch on every worktree so the user sees
+      // refreshed counts shortly after sign-in / token rotation.
+      for (const monitor of this.monitors.values()) {
+        if (monitor.isRunning) {
+          void monitor.triggerFetchNow();
+        }
+      }
       pullRequestService.refresh();
     } else {
       pullRequestService.reset();
@@ -1781,14 +1980,21 @@ ${lines.map((l) => "+" + l).join("\n")}`;
       monitor.stop();
     }
     this.monitors.clear();
+    // Drop in-flight fetch chains and per-repo failure state — the next
+    // project's monitors get a clean coordinator and stale completions are
+    // discarded by the generation guard.
+    this.fetchCoordinator.destroy();
+    this.pollQueue.clear();
 
     this.activeWorktreeId = null;
     this.mainBranch = "main";
     this.git = null;
     this.projectRootPath = null;
     this.projectEnvVars = {};
+    this.wslDefaultDistroPromise = null;
 
     clearGitDirCache();
+    clearGitCommonDirCache();
     this.listService.invalidateCache();
     this.listService.setGit(null, null);
 
@@ -1918,348 +2124,20 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     return queued ?? { success: false, error: "Aborted" };
   }
 
-  private async _executeResourceAction(
+  private _executeResourceAction(
     requestId: string,
     worktreeId: string,
     action: "provision" | "teardown" | "resume" | "pause" | "status",
     environmentId: string | undefined,
     signal: AbortSignal
   ): Promise<{ success: boolean; error?: string; output?: string }> {
-    const monitor = this.monitors.get(worktreeId);
-    if (!monitor || !this.projectRootPath) {
-      return { success: false, error: "Worktree not found" };
-    }
-
-    if (signal.aborted) {
-      this.sendEvent({
-        type: "resource-action-result",
-        requestId,
-        success: false,
-        error: "Aborted",
-      });
-      return { success: false, error: "Aborted" };
-    }
-
-    const config = await this.lifecycleService.loadConfig(monitor.path, this.projectRootPath);
-
-    // Resolve resource config: prefer resources (plural) over resource (singular)
-    let resourceConfig = config?.resource;
-    if (config?.resources) {
-      if (environmentId && config.resources[environmentId]) {
-        resourceConfig = config.resources[environmentId];
-      } else if (config.resources["default"]) {
-        resourceConfig = config.resources["default"];
-      } else {
-        const keys = Object.keys(config.resources);
-        if (keys.length > 0) {
-          resourceConfig = config.resources[keys[0]];
-        }
-      }
-    }
-
-    // Fallback: resolve from project settings resourceEnvironments
-    if (!resourceConfig && this.projectRootPath) {
-      const envKey = monitor.worktreeMode;
-      if (envKey && envKey !== "local") {
-        const envs = await this.lifecycleService.loadProjectResourceEnvironments(
-          this.projectRootPath
-        );
-        resourceConfig = envs?.[envKey] ?? undefined;
-      }
-    }
-
-    if (!resourceConfig) {
-      this.sendEvent({
-        type: "resource-action-result",
-        requestId,
-        success: false,
-        error: "No resource config found",
-      });
-      return { success: false, error: "No resource config found" };
-    }
-
-    const vars = this.lifecycleService.buildVariables(
-      monitor.path,
-      this.projectRootPath,
-      monitor.name,
-      monitor.branch
-    );
-    const sub = (cmd: string) => this.lifecycleService.substituteVariables(cmd, vars);
-
-    monitor.setHasResourceConfig(true);
-    monitor.setHasStatusCommand(!!resourceConfig.status);
-    monitor.setHasPauseCommand(!!resourceConfig.pause?.length);
-    monitor.setHasResumeCommand(!!resourceConfig.resume?.length);
-    monitor.setHasTeardownCommand(!!resourceConfig.teardown?.length);
-    monitor.setHasProvisionCommand(!!resourceConfig.provision?.length);
-    monitor.setResourceProvider(resourceConfig.provider);
-    monitor.setResourceConnectCommand(
-      resourceConfig.connect ? sub(resourceConfig.connect) : undefined
-    );
-    if (resourceConfig.statusInterval) {
-      monitor.setResourcePollInterval(resourceConfig.statusInterval * 1000);
-    }
-
-    const env = this.lifecycleService.buildEnv(
-      monitor.path,
-      this.projectRootPath,
-      monitor.name,
-      monitor.branch,
-      {
-        provider: resourceConfig.provider,
-        endpoint: monitor.resourceStatus?.endpoint,
-        lastOutput: monitor.resourceStatus?.lastOutput,
-      },
-      this.projectEnvVars
-    );
-
-    // Idempotent provision: route to resume when paused, no-op when already running.
-    let effectiveAction = action;
-    if (action === "provision") {
-      const currentStatus = monitor.resourceStatus?.lastStatus?.toLowerCase();
-      if (
-        currentStatus === "ready" ||
-        currentStatus === "running" ||
-        currentStatus === "healthy" ||
-        currentStatus === "up"
-      ) {
-        console.log(
-          `[WorktreeLifecycle] Provision no-op for worktree ${worktreeId}: already ${currentStatus}`
-        );
-        this.sendEvent({
-          type: "resource-action-result",
-          requestId,
-          success: true,
-          output: `Resource is already ${currentStatus}`,
-        });
-        return { success: true, output: `Resource is already ${currentStatus}` };
-      }
-      if (currentStatus === "paused" || currentStatus === "stopped") {
-        // "stopped" kept here only to gracefully handle a transient read from a CLI
-        // that hasn't switched to "paused" yet; the schema/UI no longer emit it.
-        console.log(
-          `[WorktreeLifecycle] Provision routing to resume for worktree ${worktreeId}: currently ${currentStatus}`
-        );
-        effectiveAction = "resume";
-      }
-      // otherwise (not configured / error / unknown / undefined) fall through to provision.
-    }
-
-    if (action === "status") {
-      if (!resourceConfig.status) {
-        this.sendEvent({
-          type: "resource-action-result",
-          requestId,
-          success: false,
-          error: "No status command configured",
-        });
-        return { success: false, error: "No status command configured" };
-      }
-
-      const statusCmd = sub(resourceConfig.status);
-
-      monitor.setLifecycleStatus({
-        phase: "resource-status",
-        state: "running",
-        commandIndex: 0,
-        totalCommands: 1,
-        currentCommand: statusCmd,
-        startedAt: Date.now(),
-      });
-      this.emitUpdate(monitor);
-
-      const statusTimeoutSec = resourceConfig.timeouts?.status;
-      const statusTimeoutMs = statusTimeoutSec != null ? statusTimeoutSec * 1000 : 120_000;
-      const result = await this.lifecycleService.runCommands([statusCmd], {
-        cwd: monitor.path,
-        env,
-        timeoutMs: statusTimeoutMs,
-        signal,
-        onProgress: () => {},
-      });
-
-      if (result.aborted) {
-        this.sendEvent({
-          type: "resource-action-result",
-          requestId,
-          success: false,
-          error: "Aborted",
-        });
-        return { success: false, error: "Aborted" };
-      }
-
-      // Re-read monitor after await — it may have been removed during the command
-      const statusMonitor = this.monitors.get(worktreeId);
-      if (!statusMonitor) return { success: false, error: "Worktree removed" };
-
-      try {
-        const parsed = JSON.parse(result.output);
-        statusMonitor.setResourceStatus({
-          lastStatus: parsed.status ?? "unhealthy",
-          lastOutput: result.output,
-          lastCheckedAt: Date.now(),
-          endpoint: typeof parsed.endpoint === "string" ? parsed.endpoint : undefined,
-          meta: parsed.meta != null && typeof parsed.meta === "object" ? parsed.meta : undefined,
-        });
-      } catch {
-        // Non-JSON output: if command succeeded (exit 0), treat as "unknown" (neutral) rather
-        // than "unhealthy" — the script may not emit JSON but still indicates a live resource.
-        // Only mark "unhealthy" when the command itself failed (non-zero exit).
-        statusMonitor.setResourceStatus({
-          lastStatus: result.success ? "unknown" : "unhealthy",
-          lastOutput: result.output,
-          lastCheckedAt: Date.now(),
-        });
-      }
-
-      // Re-substitute connect command with endpoint from status
-      const statusEndpoint = statusMonitor.resourceStatus?.endpoint;
-      if (statusEndpoint && resourceConfig.connect && this.projectRootPath) {
-        const varsWithEndpoint = this.lifecycleService.buildVariables(
-          statusMonitor.path,
-          this.projectRootPath,
-          statusMonitor.name,
-          statusMonitor.branch,
-          statusEndpoint
-        );
-        statusMonitor.setResourceConnectCommand(
-          this.lifecycleService.substituteVariables(resourceConfig.connect, varsWithEndpoint)
-        );
-      }
-
-      if (statusEndpoint && statusMonitor.resourceStatus?.lastStatus === "ready") {
-        const resolvedConnect = statusMonitor.resourceConnectCommand;
-        if (resolvedConnect) {
-          await this.generateRemoteWrapper(statusMonitor.path, resolvedConnect, statusEndpoint);
-        }
-      }
-
-      statusMonitor.setLifecycleStatus({
-        phase: "resource-status",
-        state: result.timedOut ? "timed-out" : result.success ? "success" : "failed",
-        totalCommands: 1,
-        output: result.output,
-        error: result.error,
-        startedAt: statusMonitor.lifecycleStatus?.startedAt ?? Date.now(),
-        completedAt: Date.now(),
-      });
-      this.emitUpdate(statusMonitor);
-
-      this.sendEvent({
-        type: "resource-action-result",
-        requestId,
-        success: result.success,
-        output: result.output,
-        error: result.error,
-      });
-      return { success: result.success, output: result.output, error: result.error };
-    }
-
-    const commands = (
-      resourceConfig[effectiveAction as "provision" | "teardown" | "resume" | "pause"] as
-        | string[]
-        | undefined
-    )?.map(sub);
-    if (!commands?.length) {
-      this.sendEvent({
-        type: "resource-action-result",
-        requestId,
-        success: false,
-        error: `No ${effectiveAction} commands configured`,
-      });
-      return { success: false, error: `No ${effectiveAction} commands configured` };
-    }
-
-    const phase = `resource-${effectiveAction}` as const;
-    const DEFAULT_TIMEOUT: Record<string, number> = {
-      provision: 300_000,
-      teardown: 300_000,
-      resume: 120_000,
-      pause: 120_000,
-      status: 120_000,
-    };
-    const configTimeoutSec =
-      resourceConfig.timeouts?.[effectiveAction as keyof typeof resourceConfig.timeouts];
-    const timeoutMs =
-      configTimeoutSec != null
-        ? configTimeoutSec * 1000
-        : (DEFAULT_TIMEOUT[effectiveAction] ?? 120_000);
-
-    monitor.setLifecycleStatus({
-      phase,
-      state: "running",
-      commandIndex: 0,
-      totalCommands: commands.length,
-      currentCommand: commands[0],
-      startedAt: Date.now(),
-    });
-    this.emitUpdate(monitor);
-
-    const startedAt = monitor.lifecycleStatus?.startedAt ?? Date.now();
-
-    const result = await this.lifecycleService.runCommands(commands, {
-      cwd: monitor.path,
-      env,
-      timeoutMs,
-      signal,
-      onProgress: (commandIndex, totalCommands, command) => {
-        const m = this.monitors.get(worktreeId);
-        if (m) {
-          m.setLifecycleStatus({
-            phase,
-            state: "running",
-            commandIndex,
-            totalCommands,
-            currentCommand: command,
-            startedAt: m.lifecycleStatus?.startedAt ?? startedAt,
-          });
-          this.emitUpdate(m);
-        }
-      },
-    });
-
-    if (result.aborted) return { success: false, error: "Aborted" };
-
-    const finalMonitor = this.monitors.get(worktreeId);
-    if (finalMonitor) {
-      finalMonitor.setLifecycleStatus({
-        phase,
-        state: result.timedOut ? "timed-out" : result.success ? "success" : "failed",
-        totalCommands: commands.length,
-        output: result.output,
-        error: result.error,
-        startedAt,
-        completedAt: Date.now(),
-      });
-
-      if (result.success && (effectiveAction === "resume" || effectiveAction === "pause")) {
-        const prevStatus = finalMonitor.resourceStatus;
-        const timestampUpdate: Partial<WorktreeResourceStatus> =
-          effectiveAction === "resume" ? { resumedAt: Date.now() } : { pausedAt: Date.now() };
-        finalMonitor.setResourceStatus({
-          ...prevStatus,
-          ...timestampUpdate,
-        });
-      }
-
-      this.emitUpdate(finalMonitor);
-    }
-
-    if (!result.success) {
-      console.warn(
-        `[WorktreeLifecycle] Resource ${action} failed for worktree ${worktreeId}:`,
-        result.error
-      );
-    }
-
-    this.sendEvent({
-      type: "resource-action-result",
+    return this.resourceActionExecutor.execute(
       requestId,
-      success: result.success,
-      output: result.output,
-      error: result.error,
-    });
-    return { success: result.success, output: result.output, error: result.error };
+      worktreeId,
+      action,
+      environmentId,
+      signal
+    );
   }
 
   async hasResourceConfig(rootPath: string): Promise<boolean> {
@@ -2270,33 +2148,6 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     if (config?.resource || config?.resources) return true;
     const envs = await this.lifecycleService.loadProjectResourceEnvironments(this.projectRootPath);
     return envs !== null && Object.keys(envs).length > 0;
-  }
-
-  private async generateRemoteWrapper(
-    worktreePath: string,
-    connectCommand: string,
-    endpoint: string
-  ): Promise<void> {
-    try {
-      const wrapperPath = pathJoin(worktreePath, ".daintree", "daintree-remote");
-      await mkdir(pathJoin(worktreePath, ".daintree"), { recursive: true });
-
-      const scriptContent = `#!/usr/bin/env bash
-# Auto-generated by Daintree - wraps remote compute access
-# Endpoint: ${endpoint}
-set -euo pipefail
-if [ $# -eq 0 ]; then
-  echo "Usage: daintree-remote <command>" >&2
-  exit 1
-fi
-${connectCommand} "$@"
-`;
-
-      await writeFile(wrapperPath, scriptContent, { mode: 0o755 });
-    } catch (error) {
-      const msg = formatErrorMessage(error, "Failed to generate daintree-remote wrapper");
-      console.warn("[WorkspaceService] Failed to generate daintree-remote wrapper:", msg);
-    }
   }
 
   private async loadProjectEnvVars(projectRootPath: string): Promise<Record<string, string>> {
@@ -2332,6 +2183,8 @@ ${connectCommand} "$@"
       monitor.stop();
     }
     this.monitors.clear();
+    this.fetchCoordinator.destroy();
+    this.pollQueue.clear();
     this.listService.invalidateCache();
   }
 }

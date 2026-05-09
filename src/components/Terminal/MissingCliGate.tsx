@@ -1,6 +1,6 @@
-import { useState, useCallback } from "react";
-import { AlertTriangle, Terminal, Clipboard, Check, ExternalLink } from "lucide-react";
+import { AlertTriangle, Terminal, Check, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CopyableCommand } from "@/components/Setup/CopyableCommand";
 import { getAgentConfig } from "@/config/agents";
 import { isMac, isLinux } from "@/lib/platform";
 import { cn } from "@/lib/utils";
@@ -64,9 +64,8 @@ function StateBanner({ state, detail }: { state: AgentAvailabilityState; detail:
           </p>
           <p className="text-xs text-daintree-text/60 mt-1">
             {isWsl
-              ? `Found in WSL (${detail.wslDistro ?? "unknown distro"}) but Daintree launches binaries directly from the host. Install a native binary or use "Run anyway" if you have a wrapper.`
-              : (detail.message ??
-                "The binary is installed but Daintree cannot launch it directly.")}
+              ? `Found in WSL (${detail.wslDistro ?? "unknown distro"}) — only host binaries can be launched directly. Install a native binary or use "Run anyway" if you have a wrapper.`
+              : (detail.message ?? "The binary is installed but can't be launched directly.")}
           </p>
         </div>
       </div>
@@ -109,8 +108,8 @@ function InstallCommands({ blocks }: { blocks: AgentInstallBlock[] }) {
           )}
           {block.commands && (
             <div className="space-y-1.5">
-              {block.commands.map((cmd, j) => (
-                <CopyableCommand key={j} command={cmd} />
+              {block.commands.map((cmd) => (
+                <CopyableCommand key={cmd} command={cmd} />
               ))}
             </div>
           )}
@@ -125,38 +124,6 @@ function InstallCommands({ blocks }: { blocks: AgentInstallBlock[] }) {
           )}
         </div>
       ))}
-    </div>
-  );
-}
-
-function CopyableCommand({ command }: { command: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(command);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // clipboard unavailable
-    }
-  }, [command]);
-
-  return (
-    <div className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-sm)] bg-overlay-subtle border border-daintree-border font-mono text-xs select-text group">
-      <span className="flex-1 truncate text-daintree-text/70">{command}</span>
-      <button
-        type="button"
-        onClick={handleCopy}
-        className="shrink-0 p-0.5 rounded hover:bg-overlay transition-colors duration-150 text-daintree-text/30 hover:text-daintree-text/60"
-        aria-label={copied ? "Copied" : "Copy command"}
-      >
-        {copied ? (
-          <Check className="w-3.5 h-3.5 text-status-success" />
-        ) : (
-          <Clipboard className="w-3.5 h-3.5" />
-        )}
-      </button>
     </div>
   );
 }

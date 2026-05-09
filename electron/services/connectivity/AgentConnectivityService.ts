@@ -62,7 +62,7 @@ interface AgentConnectivityServiceOptions {
 class AgentConnectivityServiceImpl {
   private readonly providers: AgentConnectivityProvider[] = ["claude", "gemini", "codex"];
   private readonly state: Record<AgentConnectivityProvider, ProviderState>;
-  private pollTimer: ReturnType<typeof setInterval> | null = null;
+  private pollTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly listeners = new Set<StateChangeListener>();
   private disposed = false;
 
@@ -102,16 +102,15 @@ class AgentConnectivityServiceImpl {
    * after startup without blocking the caller.
    */
   start(): void {
+    this.disposed = false;
     if (this.pollTimer) return;
-    this.pollTimer = setInterval(() => {
-      void this.refresh({ reason: "interval" });
-    }, AGENT_CONNECTIVITY_INTERVAL_MS);
+    this.scheduleNextPoll();
     void this.refresh({ reason: "start", force: true });
   }
 
   stop(): void {
     if (this.pollTimer) {
-      clearInterval(this.pollTimer);
+      clearTimeout(this.pollTimer);
       this.pollTimer = null;
     }
   }
@@ -125,12 +124,28 @@ class AgentConnectivityServiceImpl {
     }
   }
 
+  private scheduleNextPoll(): void {
+    if (this.disposed) return;
+    // ±20% full jitter centered on the base interval, matching
+    // AutoUpdaterService's canonical jitter pattern.
+    const jitterFactor = 0.8 + 0.4 * Math.random();
+    const delay = Math.floor(AGENT_CONNECTIVITY_INTERVAL_MS * jitterFactor);
+    this.pollTimer = setTimeout(() => {
+      void this.refresh({ reason: "interval" }).finally(() => {
+        if (this.pollTimer !== null) {
+          this.scheduleNextPoll();
+        }
+      });
+    }, delay);
+  }
+
   /**
    * Run probes for every provider, subject to a per-provider cooldown unless
    * `force` is set. Returns once every issued probe has settled — providers
    * that are skipped due to cooldown resolve immediately.
    */
   refresh(options: { force?: boolean; reason?: string } = {}): Promise<void> {
+    if (this.disposed) return Promise.resolve();
     const reason = options.reason ?? "refresh";
     const force = options.force === true;
     const probes = this.providers.map((provider) => this.runCheck(provider, { force, reason }));
@@ -181,10 +196,12 @@ class AgentConnectivityServiceImpl {
 
     const probe = (async () => {
       try {
-        await this.fetchImpl(url, {
+        const res = await this.fetchImpl(url, {
           method: "GET",
           signal: AbortSignal.timeout(AGENT_CONNECTIVITY_FETCH_TIMEOUT_MS),
         });
+        // Release the undici keep-alive socket back to the pool.
+        void res.body?.cancel()?.catch(() => {});
         // Any HTTP response — including 4xx — means the host is reachable.
         // We send no auth headers, so 401/403 are expected and authoritative
         // about network reachability, not token validity.
@@ -194,6 +211,12 @@ class AgentConnectivityServiceImpl {
         logDebug("Agent connectivity: probe failed (network/transport)", {
           provider,
           error: formatErrorMessage(err, "Agent connectivity probe failed"),
+          errorName: err instanceof Error ? err.name : undefined,
+          errorCode:
+            err != null
+              ? ((err as { cause?: { code?: string } }).cause?.code ??
+                (err as { code?: string }).code)
+              : undefined,
           reason: context.reason,
         });
         this.transitionTo(provider, "unreachable");

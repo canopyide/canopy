@@ -24,6 +24,8 @@ const crashLoopGuardMock = vi.hoisted(() => ({
   shouldRelaunch: vi.fn(() => true),
 }));
 
+const closeTelemetryMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+
 vi.mock("electron", () => ({
   app: appMock,
 }));
@@ -38,6 +40,10 @@ vi.mock("../../utils/emergencyLog.js", () => ({
 
 vi.mock("../../services/CrashRecoveryService.js", () => ({
   getCrashRecoveryService: () => crashRecoveryMock,
+}));
+
+vi.mock("../../services/TelemetryService.js", () => ({
+  closeTelemetry: closeTelemetryMock,
 }));
 
 vi.mock("../../ipc/utils.js", () => ({
@@ -65,12 +71,24 @@ describe("globalErrorHandlers", () => {
     unhandledRejection: [] as NodeJS.UnhandledRejectionListener[],
   };
 
+  // The fatal handler now drains Sentry asynchronously before exiting, so
+  // observable state (app.exit, process.exit fallback) settles after the
+  // microtask queue flushes. flushMicrotasks() yields twice to cover the
+  // closeTelemetry().catch().finally() chain.
+  const flushMicrotasks = async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
     _resetHandlingFatalForTesting();
 
     // Reset mock return values
     storeMock.get.mockReturnValue([]);
+    closeTelemetryMock.mockReset();
+    closeTelemetryMock.mockReturnValue(Promise.resolve());
 
     // Save existing listeners
     originalListeners.uncaughtException = process.listeners(
@@ -158,6 +176,28 @@ describe("globalErrorHandlers", () => {
       );
     });
 
+    it("caps persisted pendingErrors at 50 when store already holds 50 entries", () => {
+      const seeded = Array.from({ length: 50 }, (_, i) => ({
+        id: `seeded-${i}`,
+        timestamp: i,
+        type: "unknown",
+        message: `seeded ${i}`,
+        source: "main-process",
+        isTransient: false,
+        dismissed: false,
+      }));
+      storeMock.get.mockReturnValue(seeded);
+
+      uncaughtHandler(new Error("new crash"));
+
+      const persisted = storeMock.set.mock.calls.find(
+        ([key]) => key === "pendingErrors"
+      )?.[1] as Array<{ id: string }>;
+      expect(persisted).toHaveLength(50);
+      expect(persisted[0].id).toBe("seeded-1");
+      expect(persisted[persisted.length - 1].id).toMatch(/^fatal-/);
+    });
+
     it("sends error notification to renderer via broadcast", () => {
       const error = new Error("test crash");
       uncaughtHandler(error);
@@ -171,46 +211,51 @@ describe("globalErrorHandlers", () => {
       );
     });
 
-    it("calls app.relaunch then app.exit(1)", () => {
+    it("calls app.relaunch then app.exit(1)", async () => {
       uncaughtHandler(new Error("crash"));
+      await flushMicrotasks();
 
       expect(appMock.relaunch).toHaveBeenCalled();
       expect(appMock.exit).toHaveBeenCalledWith(1);
     });
 
-    it("skips app.relaunch when crash loop guard disallows it", () => {
+    it("skips app.relaunch when crash loop guard disallows it", async () => {
       crashLoopGuardMock.shouldRelaunch.mockReturnValueOnce(false);
       _resetHandlingFatalForTesting();
       uncaughtHandler(new Error("crash"));
+      await flushMicrotasks();
 
       expect(appMock.relaunch).not.toHaveBeenCalled();
       expect(appMock.exit).toHaveBeenCalledWith(1);
     });
 
-    it("does not throw when emergencyLogMainFatal throws", () => {
+    it("does not throw when emergencyLogMainFatal throws", async () => {
       emergencyLogMock.emergencyLogMainFatal.mockImplementation(() => {
         throw new Error("log failed");
       });
 
       expect(() => uncaughtHandler(new Error("crash"))).not.toThrow();
+      await flushMicrotasks();
       expect(appMock.exit).toHaveBeenCalledWith(1);
     });
 
-    it("does not throw when recordCrash throws", () => {
+    it("does not throw when recordCrash throws", async () => {
       crashRecoveryMock.recordCrash.mockImplementation(() => {
         throw new Error("record failed");
       });
 
       expect(() => uncaughtHandler(new Error("crash"))).not.toThrow();
+      await flushMicrotasks();
       expect(appMock.exit).toHaveBeenCalledWith(1);
     });
 
-    it("does not throw when broadcast fails", () => {
+    it("does not throw when broadcast fails", async () => {
       broadcastToRendererMock.mockImplementation(() => {
         throw new Error("broadcast failed");
       });
 
       expect(() => uncaughtHandler(new Error("crash"))).not.toThrow();
+      await flushMicrotasks();
       expect(appMock.exit).toHaveBeenCalledWith(1);
     });
 
@@ -218,14 +263,64 @@ describe("globalErrorHandlers", () => {
       uncaughtHandler(new Error("first crash"));
       vi.clearAllMocks();
 
-      // Second call should hit the re-entrancy guard
+      // Second call hits the re-entrancy guard and exits synchronously —
+      // a second crash mid-flush should not wait another 2s for closeTelemetry.
       uncaughtHandler(new Error("second crash"));
 
       expect(emergencyLogMock.emergencyLogMainFatal).not.toHaveBeenCalled();
       expect(crashRecoveryMock.recordCrash).not.toHaveBeenCalled();
       expect(storeMock.set).not.toHaveBeenCalled();
       expect(appMock.relaunch).not.toHaveBeenCalled();
+      expect(closeTelemetryMock).not.toHaveBeenCalled();
       expect(appMock.exit).toHaveBeenCalledWith(1);
+    });
+
+    it("calls closeTelemetry before app.exit so Sentry can flush in-flight crash reports", async () => {
+      const order: string[] = [];
+      closeTelemetryMock.mockImplementationOnce(() => {
+        order.push("closeTelemetry");
+        return Promise.resolve();
+      });
+      appMock.exit.mockImplementationOnce(() => {
+        order.push("exit");
+      });
+
+      uncaughtHandler(new Error("crash"));
+      // exit must NOT have happened synchronously — it waits for the flush
+      expect(order).toEqual(["closeTelemetry"]);
+
+      await flushMicrotasks();
+      expect(order).toEqual(["closeTelemetry", "exit"]);
+      expect(appMock.exit).toHaveBeenCalledWith(1);
+    });
+
+    it("still exits when closeTelemetry rejects", async () => {
+      closeTelemetryMock.mockReturnValueOnce(Promise.reject(new Error("flush failed")));
+
+      uncaughtHandler(new Error("crash"));
+      await flushMicrotasks();
+
+      expect(closeTelemetryMock).toHaveBeenCalled();
+      expect(appMock.exit).toHaveBeenCalledWith(1);
+    });
+
+    it("falls back to process.exit(1) when app.exit throws", async () => {
+      // mockImplementationOnce so the throwing impl is consumed by this test
+      // and does not leak into subsequent tests (vi.clearAllMocks resets call
+      // history but not implementations).
+      appMock.exit.mockImplementationOnce(() => {
+        throw new Error("exit unavailable");
+      });
+      const processExitSpy = vi
+        .spyOn(process, "exit")
+        .mockImplementation(((_code?: number) => undefined) as never);
+
+      uncaughtHandler(new Error("crash"));
+      await flushMicrotasks();
+
+      expect(appMock.exit).toHaveBeenCalledWith(1);
+      expect(processExitSpy).toHaveBeenCalledWith(1);
+      processExitSpy.mockRestore();
     });
 
     it("builds AppError with correct message from Error", () => {
@@ -269,11 +364,11 @@ describe("globalErrorHandlers", () => {
       expect(appMock.relaunch).not.toHaveBeenCalled();
     });
 
-    it("calls CrashRecoveryService.recordCrash with the reason", () => {
+    it("does NOT call CrashRecoveryService.recordCrash (transient rejections must not poison the crash marker)", () => {
       const reason = new Error("rejected");
       rejectionHandler(reason);
 
-      expect(crashRecoveryMock.recordCrash).toHaveBeenCalledWith(reason);
+      expect(crashRecoveryMock.recordCrash).not.toHaveBeenCalled();
     });
 
     it("persists error to pendingErrors store with UNHANDLED_REJECTION payload", () => {
@@ -305,12 +400,26 @@ describe("globalErrorHandlers", () => {
       );
     });
 
-    it("does not throw when recordCrash throws", () => {
-      crashRecoveryMock.recordCrash.mockImplementation(() => {
-        throw new Error("record failed");
-      });
+    it("caps persisted pendingErrors at 50 when store already holds 50 entries", () => {
+      const seeded = Array.from({ length: 50 }, (_, i) => ({
+        id: `seeded-${i}`,
+        timestamp: i,
+        type: "unknown",
+        message: `seeded ${i}`,
+        source: "main-process",
+        isTransient: false,
+        dismissed: false,
+      }));
+      storeMock.get.mockReturnValue(seeded);
 
-      expect(() => rejectionHandler(new Error("rejected"))).not.toThrow();
+      rejectionHandler(new Error("rejected"));
+
+      const persisted = storeMock.set.mock.calls.find(
+        ([key]) => key === "pendingErrors"
+      )?.[1] as Array<{ id: string }>;
+      expect(persisted).toHaveLength(50);
+      expect(persisted[0].id).toBe("seeded-1");
+      expect(persisted[persisted.length - 1].id).toMatch(/^fatal-/);
     });
 
     it("handles non-Error rejection reasons", () => {

@@ -1,23 +1,16 @@
-import { useState, useCallback, useEffect, useRef, useId } from "react";
+import { useState, useCallback, useEffect, useRef, useId, useMemo } from "react";
+import path from "path-browserify";
 import { Button } from "@/components/ui/button";
 import { AppDialog } from "@/components/ui/AppDialog";
 import { FolderPlus, FolderOpen } from "lucide-react";
 import { projectClient } from "@/clients";
 import { useProjectStore } from "@/store/projectStore";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
+import { validateFolderName } from "@shared/utils/folderName";
 
 interface CreateProjectFolderDialogProps {
   isOpen: boolean;
   onClose: () => void;
-}
-
-function validateFolderName(name: string): string | null {
-  const trimmed = name.trim();
-  if (!trimmed) return "Folder name is required";
-  if (trimmed === ".." || trimmed === ".") return "Invalid folder name";
-  if (trimmed.includes("/") || trimmed.includes("\\"))
-    return "Folder name must not contain path separators";
-  return null;
 }
 
 export function CreateProjectFolderDialog({ isOpen, onClose }: CreateProjectFolderDialogProps) {
@@ -112,6 +105,12 @@ export function CreateProjectFolderDialog({ isOpen, onClose }: CreateProjectFold
     [handleCreate, isCreating]
   );
 
+  const previewPath = useMemo(() => {
+    const trimmed = folderName.trim();
+    if (!parentPath || !trimmed) return null;
+    return path.join(parentPath, trimmed);
+  }, [parentPath, folderName]);
+
   return (
     <AppDialog isOpen={isOpen} onClose={onClose} size="md" dismissible={!isCreating}>
       <AppDialog.Header>
@@ -134,6 +133,7 @@ export function CreateProjectFolderDialog({ isOpen, onClose }: CreateProjectFold
               id="create-folder-parent"
               type="text"
               readOnly
+              aria-readonly="true"
               value={parentPath}
               className="flex-1 rounded-[var(--radius-md)] border border-daintree-border bg-muted/50 px-3 py-2 text-sm font-mono text-daintree-text/70 truncate"
               placeholder="Select parent directory..."
@@ -174,6 +174,11 @@ export function CreateProjectFolderDialog({ isOpen, onClose }: CreateProjectFold
           {error && (
             <p id={errorId} role="alert" className="text-xs text-status-error">
               {error}
+            </p>
+          )}
+          {!error && previewPath && (
+            <p className="text-xs font-mono text-daintree-text/40 truncate" title={previewPath}>
+              {previewPath}
             </p>
           )}
         </div>

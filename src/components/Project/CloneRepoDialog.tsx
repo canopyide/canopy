@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { AppDialog } from "@/components/ui/AppDialog";
-import { Check, AlertCircle, FolderOpen } from "lucide-react";
+import { Check, AlertCircle, FolderOpen, X } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
 import { FolderGit2 } from "@/components/icons";
 import { projectClient } from "@/clients";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
+import { validateFolderName } from "@shared/utils/folderName";
 import type { CloneRepoProgressEvent } from "@shared/types/ipc/gitClone";
 
 interface CloneRepoDialogProps {
@@ -14,15 +15,15 @@ interface CloneRepoDialogProps {
   onCancel: () => void;
 }
 
-const AUTO_CLOSE_DELAY_MS = 800;
+const AUTO_CLOSE_DELAY_MS = 2000;
 
 function extractFolderName(url: string): string {
   const trimmed = url
     .trim()
-    .replace(/\/+$/, "")
+    .replace(/[/\\]+$/, "")
     .replace(/\.git$/, "");
-  const lastSegment = trimmed.split("/").pop() || "";
-  return lastSegment.replace(/[^\w.-]/g, "") || "";
+  const lastSegment = trimmed.split(/[/\\]/).filter(Boolean).pop() ?? "";
+  return lastSegment.replace(/[^\p{L}\p{N}\p{M}_.-]/gu, "");
 }
 
 function isOwnerRepoShorthand(input: string): boolean {
@@ -83,7 +84,14 @@ export function CloneRepoDialog({ isOpen, onSuccess, onCancel }: CloneRepoDialog
     }
 
     const cleanup = projectClient.onCloneProgress((event) => {
-      setProgressEvents((prev) => [...prev, event]);
+      setProgressEvents((prev) => {
+        // Dedup by stage so a long clone (hundreds of byte-count updates per
+        // stage) shows one live-updating row per stage instead of an unbounded
+        // log. Final `complete`/`error`/`cancelled` events also dedup.
+        const merged = new Map(prev.map((e) => [e.stage, e]));
+        merged.set(event.stage, event);
+        return [...merged.values()];
+      });
     });
 
     return cleanup;
@@ -156,8 +164,26 @@ export function CloneRepoDialog({ isOpen, onSuccess, onCancel }: CloneRepoDialog
     }
   };
 
-  const canClone = isValidCloneUrl(url) && parentPath.trim() !== "" && folderName.trim() !== "";
+  // Show validation errors only after the user has touched the field or the
+  // URL-derived name is non-empty — keeps the empty-state quiet while ensuring
+  // a bad auto-derived name (e.g. URL ending in "con.git") still surfaces.
+  const folderNameError =
+    folderNameEdited || folderName.trim() !== "" ? validateFolderName(folderName) : null;
+  const canClone =
+    isValidCloneUrl(url) &&
+    parentPath.trim() !== "" &&
+    folderName.trim() !== "" &&
+    folderNameError === null;
   const showProgress = isCloning || progressEvents.length > 0;
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // Enter acts as Retry too — startClone resets `error` internally, so this
+    // matches the on-screen Retry button instead of going dead after a failure.
+    if (e.key === "Enter" && canClone && !isCloning && !isComplete) {
+      e.preventDefault();
+      void startClone();
+    }
+  };
 
   return (
     <AppDialog isOpen={isOpen} onClose={handleClose} size="md" dismissible={!isCloning}>
@@ -176,6 +202,7 @@ export function CloneRepoDialog({ isOpen, onSuccess, onCancel }: CloneRepoDialog
             type="text"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
+            onKeyDown={handleKeyDown}
             placeholder="owner/repo or https://github.com/user/repo.git"
             disabled={isCloning || isComplete}
             className="w-full rounded-md border border-daintree-border bg-daintree-bg px-3 py-2 text-sm text-daintree-text placeholder:text-daintree-text/40 focus:outline-hidden focus:ring-2 focus:ring-daintree-accent/50 disabled:opacity-50"
@@ -212,25 +239,41 @@ export function CloneRepoDialog({ isOpen, onSuccess, onCancel }: CloneRepoDialog
             type="text"
             value={folderName}
             onChange={(e) => {
-              setFolderName(e.target.value);
-              setFolderNameEdited(true);
+              const next = e.target.value;
+              setFolderName(next);
+              // Clearing the field re-enables URL-derived auto-suggest so the
+              // user can recover after a manual edit they no longer want.
+              setFolderNameEdited(next !== "");
             }}
+            onKeyDown={handleKeyDown}
             disabled={isCloning || isComplete}
-            className="w-full rounded-md border border-daintree-border bg-daintree-bg px-3 py-2 text-sm text-daintree-text placeholder:text-daintree-text/40 focus:outline-hidden focus:ring-2 focus:ring-daintree-accent/50 disabled:opacity-50"
+            aria-invalid={folderNameError != null}
+            className="w-full rounded-md border border-daintree-border bg-daintree-bg px-3 py-2 text-sm text-daintree-text placeholder:text-daintree-text/40 focus:outline-hidden focus:ring-2 focus:ring-daintree-accent/50 disabled:opacity-50 aria-invalid:border-status-error"
           />
+          {folderNameError && (
+            <p role="alert" className="text-xs text-status-error">
+              {folderNameError}
+            </p>
+          )}
         </div>
 
         {/* Shallow Clone */}
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={shallowClone}
-            onChange={(e) => setShallowClone(e.target.checked)}
-            disabled={isCloning || isComplete}
-            className="rounded border-daintree-border accent-daintree-accent"
-          />
-          <span className="text-sm text-daintree-text/70">Shallow clone (--depth 1)</span>
-        </label>
+        <div className="space-y-1">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={shallowClone}
+              onChange={(e) => setShallowClone(e.target.checked)}
+              disabled={isCloning || isComplete}
+              className="rounded border-daintree-border accent-daintree-accent"
+            />
+            <span className="text-sm text-daintree-text/70">Shallow clone (--depth 1)</span>
+          </label>
+          <p className="ml-6 text-xs text-daintree-text/50">
+            Only fetches the latest commit — faster for large repos, but limits history and some
+            push paths.
+          </p>
+        </div>
 
         {/* Progress Log */}
         {showProgress && (
@@ -248,6 +291,8 @@ export function CloneRepoDialog({ isOpen, onSuccess, onCancel }: CloneRepoDialog
                   <Check className="h-4 w-4 text-status-success shrink-0 mt-0.5" />
                 ) : event.stage === "error" ? (
                   <AlertCircle className="h-4 w-4 text-status-error shrink-0 mt-0.5" />
+                ) : event.stage === "cancelled" ? (
+                  <X className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
                 ) : (
                   <Spinner size="md" className="text-status-info shrink-0" />
                 )}
@@ -257,7 +302,9 @@ export function CloneRepoDialog({ isOpen, onSuccess, onCancel }: CloneRepoDialog
                       ? "text-status-error"
                       : event.stage === "complete"
                         ? "text-status-success"
-                        : "text-foreground"
+                        : event.stage === "cancelled"
+                          ? "text-muted-foreground"
+                          : "text-foreground"
                   }
                 >
                   {event.message}
@@ -302,7 +349,7 @@ export function CloneRepoDialog({ isOpen, onSuccess, onCancel }: CloneRepoDialog
                 variant="outline"
                 onClick={isCloning ? () => void projectClient.cancelClone() : onCancel}
               >
-                Cancel
+                {isCloning ? "Stop clone" : "Cancel"}
               </Button>
               <Button onClick={() => void startClone()} disabled={!canClone || isCloning}>
                 {isCloning ? (

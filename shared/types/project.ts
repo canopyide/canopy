@@ -284,16 +284,28 @@ export type ResourceEnvironment = {
   icon?: string;
 };
 
-/** A saved fleet scope — a named selection of terminal IDs or filter preset */
-export interface FleetSavedScope {
+/** Snapshot fleet scope: stores the exact pane IDs at save time. Missing IDs are silently dropped on recall. */
+export interface SnapshotFleetSavedScope {
+  kind: "snapshot";
   id: string;
   name: string;
-  /** Explicit terminal IDs — takes precedence over filter when present */
-  terminalIds?: string[];
-  /** Filter-based scope that is re-evaluated against current panels on recall */
-  filter?: { scope: "current" | "all"; stateFilter: string };
+  terminalIds: string[];
   createdAt: number;
 }
+
+/** Predicate fleet scope: stores a filter rule that is re-evaluated against the current panel set on recall. */
+export interface PredicateFleetSavedScope {
+  kind: "predicate";
+  id: string;
+  name: string;
+  scope: "current" | "all";
+  /** "all" maps to armAll(scope); "working"/"waiting"/"finished" map to armByState(preset, scope, false). */
+  stateFilter: "all" | "working" | "waiting" | "finished";
+  createdAt: number;
+}
+
+/** A saved fleet scope — a named selection persisted per-project for quick recall. */
+export type FleetSavedScope = SnapshotFleetSavedScope | PredicateFleetSavedScope;
 
 /** Per-project terminal configuration overrides */
 export interface ProjectTerminalSettings {
@@ -333,8 +345,6 @@ export interface ProjectSettings {
   devServerAutoDetected?: boolean;
   /** User dismissed cloud sync folder warning for this project */
   cloudSyncWarningDismissed?: boolean;
-  /** User dismissed the offer to import detected project context files (CLAUDE.md, AGENTS.md, etc.) */
-  contextFilesOfferDismissed?: boolean;
   /** Timeout in seconds before a slow-loading dev preview is automatically reloaded (default: 30, max: 120) */
   devServerLoadTimeout?: number;
   /** Whether to auto-inject --turbopack for Next.js 15+ projects (default: true) */
@@ -386,4 +396,32 @@ export interface ProjectSettings {
   defaultWorktreeMode?: string;
   /** Hostnames the user approved for the browser panel beyond the implicit local/private allow-list */
   browserAllowedHosts?: string[];
+  /**
+   * Tier of Daintree MCP access exposed to agents launched in this project's worktrees.
+   * - `off` (default): no MCP server injected
+   * - `workbench`: read-only introspection (worktree/files/terminal output, project state, history)
+   * - `action`: workbench + non-destructive operations (create worktrees, inject context, stage changes)
+   * - `system`: action + destructive/irreversible operations (delete worktrees, commit/push, send terminal commands)
+   */
+  daintreeMcpTier?: DaintreeMcpTier;
+  /**
+   * @deprecated Use `daintreeMcpTier` instead. Kept for one-cycle migration of existing project files.
+   * `true` migrates to `workbench` on read; `false`/undefined migrates to `off`.
+   */
+  exposeDaintreeMcpToAgents?: boolean;
+}
+
+/** Tier of Daintree MCP access exposed to agents in a project. */
+export type DaintreeMcpTier = "off" | "workbench" | "action" | "system";
+
+/** Resolve the legacy boolean field into the new tier enum. */
+export function resolveDaintreeMcpTier(settings: {
+  daintreeMcpTier?: DaintreeMcpTier;
+  exposeDaintreeMcpToAgents?: boolean;
+}): DaintreeMcpTier {
+  const tier = settings.daintreeMcpTier;
+  if (tier === "workbench" || tier === "action" || tier === "system") return tier;
+  if (tier === "off") return "off";
+  if (settings.exposeDaintreeMcpToAgents === true) return "workbench";
+  return "off";
 }

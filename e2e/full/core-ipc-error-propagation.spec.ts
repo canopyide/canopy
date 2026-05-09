@@ -107,6 +107,7 @@ async function clearErrorsAndCloseDock(window: Page) {
 /* ---------- tests ---------- */
 
 let ctx: AppContext;
+const deferredFixtureCleanups: Array<() => void> = [];
 
 test.describe.serial("Core: IPC Error Propagation", () => {
   test.beforeAll(async () => {
@@ -120,6 +121,9 @@ test.describe.serial("Core: IPC Error Propagation", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    for (const cleanup of deferredFixtureCleanups.splice(0)) {
+      cleanup();
+    }
   });
 
   test("git error opens diagnostics dock and shows in problems panel with recovery hint", async () => {
@@ -173,12 +177,18 @@ test.describe.serial("Core: IPC Error Propagation", () => {
     await bell.click();
 
     // The notification center renders in a FixedDropdown portal.
-    // Look for the error message inside the surface-overlay container.
+    // Look for the error inside the surface-overlay container. The renderer
+    // routes errors through humanizeAppError, which maps `type: "network"` to
+    // a friendly title — the raw IPC message ("ECONNREFUSED: ...") is
+    // intentionally never piped to UI copy (see shared/utils/errorMessage.ts).
+    // The notification center splits into "Needs attention" + "Chronological"
+    // sections, so the title appears in both — assert against the chronological
+    // history section, which is the surface this test is named after.
     const dropdownContent = ctx.window.locator(".surface-overlay");
     await expect(dropdownContent).toBeVisible({ timeout: 3000 });
-    await expect(dropdownContent.getByText("ECONNREFUSED: connection refused")).toBeVisible({
-      timeout: 3000,
-    });
+    await expect(
+      dropdownContent.getByTestId("chrono-section").getByText("Network problem")
+    ).toBeVisible({ timeout: 3000 });
 
     // Close notification center by clicking the bell again
     await bell.click();
@@ -272,7 +282,8 @@ test.describe.serial("Core: IPC Error Propagation", () => {
   test("ENOENT spawn error shows SpawnErrorBanner with retry and trash", async () => {
     // AC 3: Terminal spawn ENOENT renders SpawnErrorBanner
     // We need a project open to spawn terminals
-    const repo = createFixtureRepo({ name: "spawn-error-test" });
+    const { dir: repo, cleanup } = createFixtureRepo({ name: "spawn-error-test" });
+    deferredFixtureCleanups.push(cleanup);
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, repo, "SpawnErrorTest");
 
     // Click open terminal to create a terminal panel
@@ -294,16 +305,16 @@ test.describe.serial("Core: IPC Error Propagation", () => {
     const banner = targetPanel.locator('[role="alert"]');
     await expect(banner).toBeVisible({ timeout: 5000 });
 
-    // Title should say "Shell or Command Not Found"
-    await expect(banner.getByText("Shell or Command Not Found")).toBeVisible();
+    // Title should say "Couldn't find shell or command"
+    await expect(banner.getByText("Couldn't find shell or command")).toBeVisible();
 
     // Retry and Trash buttons should be visible
     await expect(banner.locator('[aria-label="Retry starting terminal"]')).toBeVisible();
     await expect(banner.locator('[aria-label="Move to trash"]')).toBeVisible();
   });
 
-  test("ENOTDIR spawn error shows Update Directory action", async () => {
-    // AC 4: Terminal spawn ENOTDIR renders SpawnErrorBanner with "Update Directory"
+  test("ENOTDIR spawn error shows Change directory action", async () => {
+    // AC 4: Terminal spawn ENOTDIR renders SpawnErrorBanner with "Change directory"
     // Project is already open from previous test
     await openTerminal(ctx.window);
 
@@ -319,10 +330,10 @@ test.describe.serial("Core: IPC Error Propagation", () => {
     const banner = lastPanel.locator('[role="alert"]');
     await expect(banner).toBeVisible({ timeout: 5000 });
 
-    // Title should say "Invalid Working Directory"
-    await expect(banner.getByText("Invalid Working Directory")).toBeVisible();
+    // Title should say "Invalid working directory"
+    await expect(banner.getByText("Invalid working directory")).toBeVisible();
 
-    // "Update Directory" button should be visible
+    // "Change directory" button should be visible
     await expect(banner.locator('[aria-label="Update working directory"]')).toBeVisible();
 
     // Retry and Trash should also be visible

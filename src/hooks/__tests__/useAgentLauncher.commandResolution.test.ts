@@ -14,7 +14,7 @@ function detail(overrides: Partial<AgentCliDetail>): AgentCliDetail {
 describe("resolveAgentLaunchBaseCommand", () => {
   it("uses the availability-resolved executable path when the CLI is ready", () => {
     expect(
-      resolveAgentLaunchBaseCommand("claude", detail({ resolvedPath: "/tmp/bin/claude" }))
+      resolveAgentLaunchBaseCommand("claude", detail({ resolvedPath: "/tmp/bin/claude" }), "posix")
     ).toBe("/tmp/bin/claude");
   });
 
@@ -22,9 +22,30 @@ describe("resolveAgentLaunchBaseCommand", () => {
     expect(
       resolveAgentLaunchBaseCommand(
         "claude",
-        detail({ resolvedPath: "/tmp/Daintree Test/bin/claude" })
+        detail({ resolvedPath: "/tmp/Daintree Test/bin/claude" }),
+        "posix"
       )
     ).toBe("'/tmp/Daintree Test/bin/claude'");
+  });
+
+  it("uses PowerShell call syntax for resolved Windows executable paths", () => {
+    expect(
+      resolveAgentLaunchBaseCommand(
+        "claude",
+        detail({ resolvedPath: String.raw`C:\npm\prefix\claude.cmd` }),
+        "windows"
+      )
+    ).toBe(String.raw`& 'C:\npm\prefix\claude.cmd'`);
+  });
+
+  it("escapes single quotes in resolved Windows executable paths", () => {
+    expect(
+      resolveAgentLaunchBaseCommand(
+        "claude",
+        detail({ resolvedPath: String.raw`C:\Tools\Daintree's Bin\claude.cmd` }),
+        "windows"
+      )
+    ).toBe(String.raw`& 'C:\Tools\Daintree''s Bin\claude.cmd'`);
   });
 
   it("falls back to the registry command when the detail is missing or not ready", () => {

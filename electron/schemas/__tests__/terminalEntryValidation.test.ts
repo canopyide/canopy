@@ -827,6 +827,70 @@ describe("Recipe Validation Schemas", () => {
         expect(result.data).toHaveProperty("unknownField", "kept");
       }
     });
+
+    it("rejects recipe with NaN createdAt", () => {
+      const result = TerminalRecipeSchema.safeParse({
+        id: "r1",
+        name: "Recipe",
+        terminals: [],
+        createdAt: Number.NaN,
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects recipe with Infinity createdAt", () => {
+      const result = TerminalRecipeSchema.safeParse({
+        id: "r1",
+        name: "Recipe",
+        terminals: [],
+        createdAt: Number.POSITIVE_INFINITY,
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects recipe with NaN lastUsedAt", () => {
+      const result = TerminalRecipeSchema.safeParse({
+        id: "r1",
+        name: "Recipe",
+        terminals: [],
+        createdAt: 0,
+        lastUsedAt: Number.NaN,
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects recipe with non-finite usageHistory entry", () => {
+      const result = TerminalRecipeSchema.safeParse({
+        id: "r1",
+        name: "Recipe",
+        terminals: [],
+        createdAt: 0,
+        usageHistory: [1700000000000, Number.POSITIVE_INFINITY],
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("accepts usageHistory at the 20-entry cap", () => {
+      const result = TerminalRecipeSchema.safeParse({
+        id: "r1",
+        name: "Recipe",
+        terminals: [],
+        createdAt: 0,
+        usageHistory: Array.from({ length: 20 }, (_v, i) => i + 1),
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("rejects usageHistory exceeding the 20-entry cap", () => {
+      const result = TerminalRecipeSchema.safeParse({
+        id: "r1",
+        name: "Recipe",
+        terminals: [],
+        createdAt: 0,
+        usageHistory: Array.from({ length: 21 }, (_v, i) => i + 1),
+      });
+      expect(result.success).toBe(false);
+    });
   });
 
   describe("filterValidTerminalEntries with TerminalRecipeSchema", () => {

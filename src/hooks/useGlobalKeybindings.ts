@@ -19,9 +19,26 @@ export function useGlobalKeybindings(enabled: boolean = true): void {
   useEffect(() => {
     if (!enabled) return;
 
+    // Region-focus bypass: let the user's current focusRegion bindings escape
+    // the editable/.xterm bailouts, even when the user has rebound them away
+    // from the default F6 / Shift+F6. Match the full combo via matchesEvent so
+    // a Ctrl+F6 rebind doesn't accidentally let bare F6 through.
+    const isFocusRegionEvent = (e: KeyboardEvent): boolean => {
+      const next = keybindingService.getEffectiveCombo("nav.focusRegion.next");
+      if (next && keybindingService.matchesEvent(e, next)) return true;
+      const prev = keybindingService.getEffectiveCombo("nav.focusRegion.prev");
+      if (prev && keybindingService.matchesEvent(e, prev)) return true;
+      return false;
+    };
+
     const handler = (e: KeyboardEvent) => {
       // Skip repeat events
       if (e.repeat) return;
+
+      // During IME composition, let the browser/IME own the event lifecycle.
+      // keyCode 229 is Chromium's "Process" key signal during active composition
+      // where isComposing may not yet be set on the first keydown.
+      if (e.isComposing || e.keyCode === 229) return;
 
       // Skip if user is typing in an input/textarea or editable content
       // Exception: allow shortcuts with modifiers (Cmd, Ctrl)
@@ -37,6 +54,11 @@ export function useGlobalKeybindings(enabled: boolean = true): void {
 
       // Don't process modifier-only keypresses
       if (isModifierOnly) return;
+
+      // Dead-key keydowns (accent layout first-press, e.g. ´ on macOS Romance
+      // layouts) emit `key === "Dead"` and aren't a valid chord step on any
+      // layout. Bail entirely so they neither start nor clear a chord.
+      if (e.key === "Dead") return;
 
       // Handle Shift+F10 and ContextMenu key for panel context menus.
       // Must be checked before the editable/terminal bailouts below.
@@ -66,16 +88,35 @@ export function useGlobalKeybindings(enabled: boolean = true): void {
         return;
       }
 
-      // For editable contexts without modifiers, let native behavior happen
-      // Exception: allow chord completion even without modifiers, and F6 for region cycling
-      const hasModifier = e.metaKey || e.ctrlKey;
-
-      if (isEditable && !hasModifier && !pendingChord && e.key !== "F6") {
+      // Backspace pops the last key off the pending chord. The current chord buffer
+      // holds a single token, so a pop empties it. During IME composition, bail
+      // out entirely — otherwise the resolveKeybinding fallthrough below would
+      // silently clear the chord while the user is mid-composition.
+      if (e.key === "Backspace" && pendingChord) {
+        if (e.isComposing) return;
+        e.preventDefault();
+        e.stopPropagation();
+        keybindingService.popPendingChord();
         return;
       }
 
-      // Let xterm handle its own keys except for global shortcuts with modifiers, chord completion, or F6
-      if (isInTerminal && !hasModifier && !pendingChord && e.key !== "F6") {
+      // For editable contexts without modifiers, let native behavior happen.
+      // Exception: chord completion, region-focus cycling (default F6 / Shift+F6,
+      // user-rebindable), and bare keys that are scope-gated (e.g. X in
+      // worktreeGrid scope for fleet arming). Scope-gated bindings are checked
+      // below in resolveKeybinding → canExecute.
+      const hasModifier = e.metaKey || e.ctrlKey;
+      const isFocusRegion = isFocusRegionEvent(e);
+
+      if (isEditable && !hasModifier && !pendingChord && !isFocusRegion) {
+        return;
+      }
+
+      // Let xterm handle its own keys except for global shortcuts with modifiers,
+      // chord completion, or region focus. Bare keys (like X for fleet arming)
+      // are blocked inside terminals so they don't steal typing — scoped
+      // bindings only match when focus is outside .xterm.
+      if (isInTerminal && !hasModifier && !pendingChord && !isFocusRegion) {
         return;
       }
 
@@ -89,9 +130,17 @@ export function useGlobalKeybindings(enabled: boolean = true): void {
         if (result.match) {
           // When a dialog/palette is open, route Cmd+W to the escape stack so it
           // dismisses the topmost layer instead of falling through to the terminal.
+          // Skip this diversion when focus is inside a grid panel — persistent
+          // docks like the assistant keep an escape handler registered the whole
+          // time they are open, but Cmd+W from a focused grid panel must close
+          // that panel rather than the dock.
           if (result.match.actionId === "terminal.close" && hasHandlers()) {
-            dispatchEscape();
-            return;
+            const active = document.activeElement as HTMLElement | null;
+            const isFocusInsideGridPanel = active?.closest("[data-panel-location='grid']") != null;
+            if (!isFocusInsideGridPanel) {
+              dispatchEscape();
+              return;
+            }
           }
 
           // Dispatch through ActionService

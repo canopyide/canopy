@@ -1,14 +1,12 @@
-import { appendFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { scrubSecrets } from "../utils/secretScrubber.js";
 
+const MAX_LOG_SIZE = 1024 * 1024; // 1MB
+
 export function getEmergencyLogPath(): string {
   const userData = process.env.DAINTREE_USER_DATA;
-  const logDir = userData
-    ? path.join(userData, "logs")
-    : process.env.NODE_ENV === "development"
-      ? path.join(process.cwd(), "logs")
-      : path.join(process.cwd(), "logs");
+  const logDir = userData ? path.join(userData, "logs") : path.join(process.cwd(), "logs");
   return path.join(logDir, "pty-host.log");
 }
 
@@ -16,7 +14,18 @@ export function appendEmergencyLog(lines: string): void {
   try {
     const logFile = getEmergencyLogPath();
     mkdirSync(path.dirname(logFile), { recursive: true });
-    appendFileSync(logFile, lines, "utf8");
+
+    try {
+      const stat = statSync(logFile);
+      if (stat.size > MAX_LOG_SIZE) {
+        writeFileSync(logFile, lines, { encoding: "utf8", flush: true });
+        return;
+      }
+    } catch {
+      // File doesn't exist yet — will be created by appendFileSync
+    }
+
+    appendFileSync(logFile, lines, { encoding: "utf8", flush: true });
   } catch {
     // best-effort only
   }
@@ -27,10 +36,15 @@ export function emergencyLogFatal(kind: string, error: unknown): void {
   const pid = process.pid;
   const uptimeMs = Math.round(process.uptime() * 1000);
   const memory = process.memoryUsage();
-  const details =
-    error instanceof Error
-      ? { name: error.name, message: error.message, stack: error.stack }
-      : { message: String(error) };
+  let details: unknown;
+  try {
+    details =
+      error instanceof Error
+        ? { name: error.name, message: error.message, stack: error.stack }
+        : { message: String(error) };
+  } catch {
+    details = { message: "[unable to serialize error]" };
+  }
 
   appendEmergencyLog(
     scrubSecrets(

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { notify } from "@/lib/notify";
 import { actionService } from "@/services/ActionService";
+import { useGitHubTokenHealthStore } from "@/store/githubTokenHealthStore";
 
 /**
  * Surfaces a high-priority notification when the repository-stats poll detects
@@ -13,9 +14,10 @@ import { actionService } from "@/services/ActionService";
  */
 export function useGitHubTokenExpiryNotification(isTokenError: boolean): void {
   const firedRef = useRef(false);
+  const isUnhealthy = useGitHubTokenHealthStore((s) => s.isUnhealthy);
 
   useEffect(() => {
-    if (isTokenError) {
+    if (isTokenError && isUnhealthy) {
       if (firedRef.current) return;
       firedRef.current = true;
       notify({
@@ -47,5 +49,5 @@ export function useGitHubTokenExpiryNotification(isTokenError: boolean): void {
     } else {
       firedRef.current = false;
     }
-  }, [isTokenError]);
+  }, [isTokenError, isUnhealthy]);
 }

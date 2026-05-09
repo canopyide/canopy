@@ -13,16 +13,42 @@ import {
 import { useNotificationSettingsStore } from "@/store/notificationSettingsStore";
 import { isScheduledQuietNow, nextOccurrenceTimestamp } from "@shared/utils/quietHours";
 import type { ErrorType } from "@/store/errorStore";
+import type { NotificationSettings } from "@shared/types/ipc/api";
+
+export type NotificationEventKind = "completed" | "waiting" | "workingPulse" | "uiFeedback";
+
+export const EVENT_KIND_TO_SETTING_KEY: Record<NotificationEventKind, keyof NotificationSettings> =
+  {
+    completed: "completedEnabled",
+    waiting: "waitingEnabled",
+    workingPulse: "workingPulseEnabled",
+    uiFeedback: "uiFeedbackSoundEnabled",
+  };
+
+export const EVENT_KIND_LABEL: Record<NotificationEventKind, string> = {
+  completed: "completed notifications",
+  waiting: "waiting notifications",
+  workingPulse: "working pulse sound",
+  uiFeedback: "UI feedback sounds",
+};
+
+const EVENT_KIND_VALUES: ReadonlySet<string> = new Set(Object.keys(EVENT_KIND_LABEL));
+
+export function isNotificationEventKind(v: string | undefined): v is NotificationEventKind {
+  return v !== undefined && EVENT_KIND_VALUES.has(v);
+}
 
 /**
  * Default auto-dismiss durations (ms) by notification type.
  *
  * Errors and warnings get a generous 12s so the user has time to read them;
- * success dismisses in 4s (two-word confirmations need no more). Info gets
- * 8s to match the Atlassian accessibility minimum for sentence-length
- * content. The
- * persistent inbox is the WCAG 2.2.1 conforming alternative — users who miss
- * a toast can always recover it from the notification center.
+ * success dismisses in 5s — Adobe Spectrum's accessibility minimum, leaving
+ * room for short-sentence copy without rushing slow readers. Info gets 8s to
+ * match the Atlassian accessibility minimum for sentence-length content. When
+ * a toast fires, the persistent inbox is the WCAG 2.2.1 conforming alternative
+ * — users who miss a toast can always recover it from the notification center.
+ * When no toast is shown (priority "low"), the inbox is the primary channel and
+ * carries no compliance load.
  *
  * Action-bearing toasts override this to `0` (sticky) so the action remains
  * available; explicit `duration` on the payload always wins.
@@ -30,15 +56,9 @@ import type { ErrorType } from "@/store/errorStore";
 export const TOAST_DURATION: Record<NotificationType, number> = {
   error: 12000,
   warning: 12000,
-  success: 4000,
+  success: 5000,
   info: 8000,
 };
-
-export interface ComboOptions {
-  key: string;
-  tiers: readonly string[];
-  windowMs?: number;
-}
 
 export interface CoalesceOptions {
   key: string;
@@ -71,10 +91,16 @@ export interface NotifyPayload {
   correlationId?: string;
   /** When set, rapidly fired notifications with the same key coalesce into a single updating toast */
   coalesce?: CoalesceOptions;
-  /** When set, rapid repeats of the same combo key escalate the toast message through tiers */
-  combo?: ComboOptions;
   /** When false, the history entry exists but does not increment the unread badge. Defaults to true. */
   countable?: boolean;
+  /**
+   * When true, the notification is shown as a toast only — no history entry is
+   * written and no unread badge increments. Use only for one-shot confirmations
+   * where the result is already visible elsewhere (clipboard write, file dialog
+   * outcome, in-place UI state). Stronger than `countable: false`, which still
+   * writes the entry; `transient` skips the inbox entirely.
+   */
+  transient?: boolean;
   /** When true, the notification bypasses the startup quiet period gate */
   urgent?: boolean;
   /** Fires exactly once when the user explicitly dismisses the toast via the close or action button */
@@ -88,6 +114,8 @@ export interface NotifyPayload {
     projectId?: string;
     worktreeId?: string;
     panelId?: string;
+    /** When set, per-kind silence affordances are surfaced on the toast and notification center kebab. */
+    eventKind?: NotificationEventKind;
   };
 }
 
@@ -103,15 +131,63 @@ export function _resetCoalesceMap(): void {
   _activeCoalesced.clear();
 }
 
-interface ComboEntry {
-  count: number;
-  lastAt: number;
+// ── active-context suppression ──────────────────────────────────────────────
+//
+// When a focused, high-priority notification originates from a surface the
+// user is already looking at (matching `context.worktreeId` or
+// `context.panelId`), the toast is suppressed and the event is recorded
+// only in the inbox. A 500ms grace window catches navigate-away races: if
+// the user moves to a different surface before the timer expires, the
+// suppressed event is promoted to a real toast so the missed signal still
+// reaches them.
+
+export interface ActiveContextAccessors {
+  getActiveWorktreeId: () => string | null;
+  getFocusedPanelId: () => string | null;
+  /** Subscribes to changes in either active worktree or focused panel. Returns an unsubscribe. */
+  subscribeActiveContext: (cb: () => void) => () => void;
 }
 
-const _comboCounts = new Map<string, ComboEntry>();
+let _activeContextAccessors: ActiveContextAccessors | null = null;
 
-export function _resetComboMap(): void {
-  _comboCounts.clear();
+export function setActiveContextAccessors(accessors: ActiveContextAccessors): void {
+  _activeContextAccessors = accessors;
+}
+
+export function _resetActiveContextAccessorsForTest(): void {
+  _activeContextAccessors = null;
+}
+
+const SUPPRESS_GRACE_MS = 500;
+
+interface PendingSuppressedEntry {
+  timerId: ReturnType<typeof setTimeout>;
+  unsub: () => void;
+}
+
+const _pendingSuppressed = new Map<string, PendingSuppressedEntry>();
+
+export function _resetPendingSuppressedForTest(): void {
+  for (const entry of _pendingSuppressed.values()) {
+    clearTimeout(entry.timerId);
+    entry.unsub();
+  }
+  _pendingSuppressed.clear();
+}
+
+function isOriginSurfaceVisible(context: NotifyPayload["context"]): boolean {
+  if (!context) return false;
+  if (!_activeContextAccessors) return false;
+  if (typeof document !== "undefined" && !document.hasFocus()) return false;
+
+  if (context.worktreeId) {
+    if (_activeContextAccessors.getActiveWorktreeId() === context.worktreeId) return true;
+  }
+  if (context.panelId) {
+    if (_activeContextAccessors.getFocusedPanelId() === context.panelId) return true;
+  }
+  // `projectId` alone is not a surface — a project can have many worktrees.
+  return false;
 }
 
 // ── transient error escalation ──────────────────────────────────────────────
@@ -306,9 +382,24 @@ export function isScheduledQuietHours(now: Date = new Date()): boolean {
  *
  * The `grid-bar` placement bypasses priority routing and always renders inline.
  *
+ * `transient: true` skips step 1 — no history entry, no badge tick. Use it
+ * only for one-shot confirmations whose result is already visible elsewhere
+ * (clipboard, file dialog, in-place UI). It is stronger than `countable:
+ * false`, which still writes the entry but suppresses the badge. Constraints:
+ * combine with `priority: "high"` (or default) only — `priority: "low"` is a
+ * no-op (no toast and no inbox), and `priority: "watch"` still fires the OS
+ * native banner with no inbox fallback. Don't pair with `context` either:
+ * the active-context suppression-grace path needs an inbox entry to fall
+ * back to and silently drops the event when one isn't written.
+ *
+ * Only call for events the user could not otherwise observe: completion, failure,
+ * or required action. Don't duplicate in-place UI state changes — those are
+ * already visible without a notification.
+ *
  * When `message` is a non-string ReactNode, `inboxMessage` is required —
- * otherwise the persistent inbox history entry is silently dropped (WCAG 2.2.1).
- * String messages auto-derive the history text from the message itself.
+ * otherwise the history entry is dropped and a toast (when shown) has no
+ * WCAG 2.2.1 recoverable alternative. String messages auto-derive the history
+ * text from the message itself.
  */
 export function notify(
   payload: Omit<NotifyPayload, "message" | "inboxMessage"> & {
@@ -335,18 +426,48 @@ export function notify(payload: NotifyPayload): string {
     );
   }
 
+  if (import.meta.env.DEV && payload.transient) {
+    // transient bypasses the inbox, so combinations that depend on the inbox
+    // as a fallback (priority="low" routes only to inbox; context-suppression
+    // promotes the inbox entry on navigate-away) collapse to a silent drop.
+    // Surface here so the contradictory shape is caught at write-time.
+    if (priority === "low") {
+      console.warn(
+        "[notify] transient: true with priority: 'low' is a silent no-op — low priority skips the toast and transient skips the inbox."
+      );
+    }
+    if (context) {
+      console.warn(
+        "[notify] transient: true with context drops the event when the origin surface is visible — the suppression-grace path needs an inbox entry to fall back to."
+      );
+    }
+  }
+
   const historyMessage = inboxMessage ?? (typeof message === "string" ? message : undefined);
 
   const allActions = [...(payload.actions ?? []), ...(payload.action ? [payload.action] : [])];
+
+  if (import.meta.env.DEV && type === "error" && allActions.length === 0) {
+    // CLAUDE.md microcopy contract: error toasts use Title-Message-Action and
+    // need at least one action when there's a real recovery path. Surfaced
+    // here so callers find the gap during development. Not a runtime crash —
+    // some errors are genuinely action-free, but the prompt nudges authors to
+    // confirm before shipping.
+    console.warn(
+      "[notify] error notification has no actions — provide at least one action for the Title-Message-Action contract, or confirm there is no recovery path.",
+      payload
+    );
+  }
 
   // Action-bearing toasts persist by default so users can act; toaster's 3s fallback would otherwise dismiss them.
   if (payload.duration === undefined && allActions.length > 0) {
     payload = { ...payload, duration: 0 };
   }
 
-  // Severity-based dismiss defaults. The persistent inbox is the WCAG 2.2.1
-  // conforming alternative for time-limited content, so error/warning use a
-  // generous 12s instead of full sticky to keep the active stack from growing.
+  // Severity-based dismiss defaults. When a toast fires, the persistent inbox is
+  // the WCAG 2.2.1 conforming alternative for time-limited content, so
+  // error/warning use a generous 12s instead of full sticky to keep the active
+  // stack from growing.
   if (payload.duration === undefined) {
     payload = { ...payload, duration: TOAST_DURATION[type] };
   }
@@ -367,18 +488,19 @@ export function notify(payload: NotifyPayload): string {
   const isQuiet = !payload.urgent && (Date.now() < _quietUntil || isScheduledQuietHours());
 
   if (placement === "grid-bar") {
-    const entryId = historyMessage
-      ? useNotificationHistoryStore.getState().addEntry({
-          type,
-          title,
-          message: historyMessage,
-          correlationId,
-          seenAsToast: !isQuiet,
-          countable: payload.countable,
-          actions: historyActions.length > 0 ? historyActions : undefined,
-          context,
-        })
-      : undefined;
+    const entryId =
+      historyMessage && !payload.transient
+        ? useNotificationHistoryStore.getState().addEntry({
+            type,
+            title,
+            message: historyMessage,
+            correlationId,
+            seenAsToast: !isQuiet,
+            countable: payload.countable,
+            actions: historyActions.length > 0 ? historyActions : undefined,
+            context,
+          })
+        : undefined;
     if (!notificationsEnabled || isQuiet) return "";
     return useNotificationStore.getState().addNotification({
       ...payload,
@@ -389,21 +511,23 @@ export function notify(payload: NotifyPayload): string {
 
   const isFocused = typeof document !== "undefined" ? document.hasFocus() : true;
 
-  const shouldToast = priority === "watch" || (priority === "high" && isFocused);
+  const originVisible = priority === "high" && isFocused && isOriginSurfaceVisible(context);
+  const shouldToast = priority === "watch" || (priority === "high" && isFocused && !originVisible);
   const shouldNative = priority === "watch";
 
-  const historyEntryId = historyMessage
-    ? useNotificationHistoryStore.getState().addEntry({
-        type,
-        title,
-        message: historyMessage,
-        correlationId,
-        seenAsToast: !isQuiet && notificationsEnabled && shouldToast,
-        countable: payload.countable,
-        actions: historyActions.length > 0 ? historyActions : undefined,
-        context,
-      })
-    : undefined;
+  const historyEntryId =
+    historyMessage && !payload.transient
+      ? useNotificationHistoryStore.getState().addEntry({
+          type,
+          title,
+          message: historyMessage,
+          correlationId,
+          seenAsToast: !isQuiet && notificationsEnabled && (shouldToast || originVisible),
+          countable: payload.countable,
+          actions: historyActions.length > 0 ? historyActions : undefined,
+          context,
+        })
+      : undefined;
 
   if (!notificationsEnabled || isQuiet) return "";
 
@@ -414,24 +538,9 @@ export function notify(payload: NotifyPayload): string {
     });
   }
 
-  if (shouldToast && payload.combo) {
-    const { combo } = payload;
-    const windowMs = combo.windowMs ?? 2000;
-    const now = Date.now();
-    const entry = _comboCounts.get(combo.key);
-
-    let count: number;
-    if (entry && now - entry.lastAt <= windowMs) {
-      count = entry.count + 1;
-    } else {
-      count = 1;
-    }
-    _comboCounts.set(combo.key, { count, lastAt: now });
-
-    const tierIndex = Math.min(count - 1, combo.tiers.length - 1);
-    const comboMessage = combo.tiers[tierIndex];
-
-    payload = { ...payload, message: comboMessage };
+  if (originVisible && historyEntryId) {
+    scheduleSuppressionGrace(historyEntryId, payload, priority, context);
+    return "";
   }
 
   if (shouldToast && payload.coalesce) {
@@ -513,4 +622,69 @@ export function notify(payload: NotifyPayload): string {
   }
 
   return "";
+}
+
+function scheduleSuppressionGrace(
+  historyEntryId: string,
+  payload: NotifyPayload,
+  priority: NotificationPriority,
+  context: NotifyPayload["context"]
+): void {
+  const subscriber = _activeContextAccessors?.subscribeActiveContext;
+
+  // Replace any prior pending entry for this id (defensive — historyEntryId
+  // is a UUID, but cancel-and-replace keeps the invariant clean).
+  const prev = _pendingSuppressed.get(historyEntryId);
+  if (prev) {
+    clearTimeout(prev.timerId);
+    prev.unsub();
+    _pendingSuppressed.delete(historyEntryId);
+  }
+
+  const cleanup = (): void => {
+    const entry = _pendingSuppressed.get(historyEntryId);
+    if (!entry) return;
+    clearTimeout(entry.timerId);
+    entry.unsub();
+    _pendingSuppressed.delete(historyEntryId);
+  };
+
+  const promote = (): void => {
+    // Re-read state at callback time to avoid the stale-closure trap (#5087).
+    if (isOriginSurfaceVisible(context)) return;
+    cleanup();
+    if (!useNotificationSettingsStore.getState().enabled) return;
+    if (!payload.urgent && (Date.now() < _quietUntil || isScheduledQuietHours())) return;
+    useNotificationStore.getState().addNotification({
+      ...payload,
+      priority,
+      historyEntryId,
+    });
+  };
+
+  const timerId = setTimeout(() => {
+    cleanup();
+  }, SUPPRESS_GRACE_MS);
+
+  // If no subscriber is registered (very early startup), the timer is the
+  // sole gate — falls back to "suppress for 500ms then drop".
+  const unsubContext = subscriber ? subscriber(promote) : () => {};
+
+  // Window blur during grace means the user can no longer see the inline
+  // affordance, but no worktree/panel state changes to fire `subscriber`.
+  // Treat it as navigate-away so the missed signal still surfaces when they
+  // come back instead of being silently swallowed with `seenAsToast: true`.
+  let unsubBlur = (): void => {};
+  if (typeof window !== "undefined") {
+    const blurHandler = (): void => promote();
+    window.addEventListener("blur", blurHandler);
+    unsubBlur = (): void => window.removeEventListener("blur", blurHandler);
+  }
+
+  const unsub = (): void => {
+    unsubContext();
+    unsubBlur();
+  };
+
+  _pendingSuppressed.set(historyEntryId, { timerId, unsub });
 }

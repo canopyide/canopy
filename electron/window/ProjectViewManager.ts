@@ -21,19 +21,24 @@ import { isTrustedRendererUrl } from "../../shared/utils/trustedRenderer.js";
 import { isLocalhostUrl } from "../../shared/utils/urlUtils.js";
 import { canOpenExternalUrl, openExternalUrl } from "../utils/openExternal.js";
 import { getCrashRecoveryService } from "../services/CrashRecoveryService.js";
-import { forgetBlinkSample } from "../services/ProcessMemoryMonitor.js";
+import { forgetBlinkSample, forgetEluSample } from "../services/ProcessMemoryMonitor.js";
 import { getPtyManager } from "../services/PtyManager.js";
 import { notifyError } from "../ipc/errorHandlers.js";
 import { logInfo, logWarn } from "../utils/logger.js";
 import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 import { injectSkeletonCss } from "./skeletonCss.js";
+import { CHANNELS } from "../ipc/channels.js";
 import {
   attachRendererConsoleCapture,
   detachRendererConsoleCapture,
 } from "./rendererConsoleCapture.js";
 import { ACTIVE_AGENT_STATES } from "../../shared/types/agent.js";
+import {
+  beginWindowRecreating,
+  endWindowRecreating,
+  isWindowRecreating,
+} from "../lifecycle/windowRecreationState.js";
 
-const GC_DELAY_MS = 100;
 const LOAD_TIMEOUT_MS = 10_000;
 const CRASH_LOOP_WINDOW_MS = 60_000;
 const CRASH_LOOP_THRESHOLD = 3;
@@ -363,25 +368,39 @@ export class ProjectViewManager {
       }
       current.view.webContents.setBackgroundThrottling(true);
 
-      // Trigger V8 GC after a short delay to reclaim orphaned heap from
-      // unmounted React components, stale closures, and detached DOM.
-      // The delay lets React's unmount microtasks flush before collection.
+      // Flush pending DOMStorage writes (synchronous — view stays alive in
+      // cache, so data loss is not a concern)
+      try {
+        current.view.webContents.session.flushStorageData();
+      } catch {
+        // Renderer may have torn down between the isDestroyed check and this call
+      }
+
+      // Release back-forward history entries to free associated DOM/JS state
+      try {
+        current.view.webContents.navigationHistory.clear();
+      } catch {
+        // Renderer may have torn down between the isDestroyed check and this call
+      }
+
+      // Trigger V8 GC during idle callbacks so the call doesn't synchronously
+      // block the renderer. The timeout (1s) guarantees it runs even under
+      // background throttling.
       const capturedProjectId = current.projectId;
       const { view, webContents } = { view: current.view, webContents: current.view.webContents };
-      setTimeout(() => {
-        const liveEntry = this.views.get(capturedProjectId);
-        if (
-          liveEntry &&
-          liveEntry.view === view &&
-          liveEntry.state === "cached" &&
-          !webContents.isDestroyed()
-        ) {
-          webContents.executeJavaScript("window.gc && window.gc()").catch(() => {
-            // Intentional: V8 GC is best-effort — failure (no --js-flags=--expose-gc,
-            // destroyed context) is harmless and noisy if logged.
-          });
-        }
-      }, GC_DELAY_MS);
+      const liveEntry = this.views.get(capturedProjectId);
+      if (
+        liveEntry &&
+        liveEntry.view === view &&
+        liveEntry.state === "cached" &&
+        !webContents.isDestroyed()
+      ) {
+        webContents
+          .executeJavaScript(
+            "requestIdleCallback(() => { if (window.gc) window.gc(); }, { timeout: 1000 })"
+          )
+          .catch(() => {});
+      }
     }
   }
 
@@ -559,11 +578,27 @@ export class ProjectViewManager {
       webPreferences.partition = params.partition;
     };
 
-    const handleBeforeInputEvent = (_event: Electron.Event, input: Electron.Input) => {
+    const handleBeforeInputEvent = (event: Electron.Event, input: Electron.Input) => {
       const isMac = process.platform === "darwin";
+      const key = input.key.toLowerCase();
+      const isTerminalFocusShortcut =
+        input.type === "keyDown" &&
+        (key === "tab" || input.code === "Tab") &&
+        input.control &&
+        !input.meta &&
+        !input.alt;
+      if (isTerminalFocusShortcut) {
+        event.preventDefault();
+        wc.send(
+          CHANNELS.MENU_ACTION,
+          input.shift ? "focus-previous-terminal" : "focus-next-terminal"
+        );
+        return;
+      }
+
       const isCloseShortcut =
         input.type === "keyDown" &&
-        input.key.toLowerCase() === "w" &&
+        key === "w" &&
         ((isMac && input.meta && !input.control) || (!isMac && input.control && !input.meta)) &&
         !input.alt;
       wc.setIgnoreMenuShortcuts(isCloseShortcut);
@@ -649,16 +684,43 @@ export class ProjectViewManager {
           source: "renderer-crash",
         });
         setImmediate(() => {
+          // Increment the guard before `destroy()` — Electron emits
+          // `window-all-closed` synchronously inside the destroy call.
+          beginWindowRecreating();
           if (!win.isDestroyed()) win.destroy();
-          this.onRecreateWindow!().catch((err) => {
-            console.error("[ProjectViewManager] Failed to recreate window after OOM:", err);
-          });
+          this.onRecreateWindow!()
+            .catch((err) => {
+              console.error("[ProjectViewManager] Failed to recreate window after OOM:", err);
+            })
+            .finally(() => {
+              endWindowRecreating();
+              // The suppressed `window-all-closed` event must be replayed if
+              // the recreation failed — otherwise on non-darwin the process
+              // hangs headless with no windows and no quit path. Skip when
+              // another OOM recreate is still in flight or any window remains
+              // (the natural `window-all-closed` path will cover those cases).
+              if (
+                !isWindowRecreating() &&
+                process.platform !== "darwin" &&
+                BrowserWindow.getAllWindows().length === 0
+              ) {
+                app.quit();
+              }
+            });
         });
       } else {
         console.log("[ProjectViewManager] Renderer crash, auto-reloading view");
-        notifyError(new Error("A project view crashed and was automatically reloaded."), {
-          source: "renderer-crash",
-        });
+        // Only the active view's crash is observable to the user — a cached
+        // view auto-reloading silently has no UI signal worth a toast.
+        if (projectId && projectId === this.activeProjectId) {
+          notifyError(new Error("A project view crashed and was automatically reloaded."), {
+            source: "renderer-crash",
+          });
+        } else {
+          console.warn(
+            `[ProjectViewManager] Cached view crashed and was auto-reloaded (project: ${projectId})`
+          );
+        }
         setImmediate(() => {
           if (!wc.isDestroyed()) wc.reload();
         });
@@ -723,6 +785,7 @@ export class ProjectViewManager {
     this.webContentsToProject.delete(wcId);
     unregisterProjectView(wcId);
     forgetBlinkSample(wcId);
+    forgetEluSample(wcId);
 
     // Notify listeners (e.g. WorkspaceClient) so they can clean up direct ports
     this.onViewEvicted?.(wcId);

@@ -132,9 +132,7 @@ export function RecipeRunnerList({
                 >
                   Pinned
                 </div>
-                <div role="group" aria-labelledby="section-pinned">
-                  {sections.pinned.map(renderItem)}
-                </div>
+                <div role="presentation">{sections.pinned.map(renderItem)}</div>
               </>
             )}
             {sections.recent.length > 0 && (
@@ -146,9 +144,7 @@ export function RecipeRunnerList({
                 >
                   Recent
                 </div>
-                <div role="group" aria-labelledby="section-recent">
-                  {sections.recent.map(renderItem)}
-                </div>
+                <div role="presentation">{sections.recent.map(renderItem)}</div>
               </>
             )}
             {sections.all.length > 0 && (
@@ -160,9 +156,7 @@ export function RecipeRunnerList({
                 >
                   All
                 </div>
-                <div role="group" aria-labelledby="section-all">
-                  {sections.all.map(renderItem)}
-                </div>
+                <div role="presentation">{sections.all.map(renderItem)}</div>
               </>
             )}
           </>

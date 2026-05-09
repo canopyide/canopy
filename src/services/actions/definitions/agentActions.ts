@@ -1,11 +1,12 @@
 import type { ActionCallbacks, ActionRegistry } from "../actionTypes";
-import { AgentIdSchema, LaunchLocationSchema } from "./schemas";
+import { AgentIdSchema, LaunchLocationSchema, TerminalSpawnSourceSchema } from "./schemas";
 import { z } from "zod";
 import { usePanelStore } from "@/store/panelStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { getCurrentViewStore } from "@/store/createWorktreeStore";
 import { AGENT_REGISTRY } from "@/config/agents";
 import type { ActionId } from "@shared/types/actions";
+import type { TerminalSpawnSource } from "@shared/types/panel";
 export function registerAgentActions(actions: ActionRegistry, callbacks: ActionCallbacks): void {
   actions.set("agent.launch", () => ({
     id: "agent.launch",
@@ -24,9 +25,28 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
       interactive: z.boolean().optional(),
       model: z.string().optional(),
       presetId: z.string().nullable().optional(),
+      activateDockOnCreate: z.boolean().optional(),
+      env: z.record(z.string(), z.string()).optional(),
+      ephemeral: z.boolean().optional(),
+      agentLaunchFlags: z.array(z.string()).optional(),
+      spawnedBy: TerminalSpawnSourceSchema.optional(),
     }),
     run: async (args: unknown) => {
-      const { agentId, location, cwd, worktreeId, prompt, interactive, model, presetId } = args as {
+      const {
+        agentId,
+        location,
+        cwd,
+        worktreeId,
+        prompt,
+        interactive,
+        model,
+        presetId,
+        activateDockOnCreate,
+        env,
+        ephemeral,
+        agentLaunchFlags,
+        spawnedBy,
+      } = args as {
         agentId: string;
         location?: "grid" | "dock";
         cwd?: string;
@@ -35,6 +55,11 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
         interactive?: boolean;
         model?: string;
         presetId?: string | null;
+        activateDockOnCreate?: boolean;
+        env?: Record<string, string>;
+        ephemeral?: boolean;
+        agentLaunchFlags?: string[];
+        spawnedBy?: TerminalSpawnSource;
       };
       const terminalId = await callbacks.onLaunchAgent(agentId, {
         location,
@@ -44,6 +69,11 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
         interactive,
         modelId: model,
         presetId,
+        activateDockOnCreate,
+        env,
+        ephemeral,
+        agentLaunchFlags,
+        spawnedBy,
       });
       return { terminalId };
     },
@@ -62,6 +92,13 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
     },
   }));
 
+  // Per-agent shortcut actions (`agent.claude`, `agent.codex`, …) accept an
+  // optional `spawnedBy` arg so MCP-initiated launches can be marked
+  // non-focus-stealing. See #6959.
+  const shortcutLaunchSchema = z.object({
+    spawnedBy: TerminalSpawnSourceSchema.optional(),
+  });
+
   for (const [id, config] of Object.entries(AGENT_REGISTRY)) {
     const actionId = `agent.${id}` as ActionId;
     actions.set(actionId, () => ({
@@ -72,8 +109,10 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
       kind: "command",
       danger: "safe",
       scope: "renderer",
-      run: async () => {
-        const terminalId = await callbacks.onLaunchAgent(id);
+      argsSchema: shortcutLaunchSchema,
+      run: async (args: unknown) => {
+        const { spawnedBy } = (args ?? {}) as { spawnedBy?: TerminalSpawnSource };
+        const terminalId = await callbacks.onLaunchAgent(id, ...(spawnedBy ? [{ spawnedBy }] : []));
         return { terminalId };
       },
     }));
@@ -87,8 +126,13 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
     kind: "command",
     danger: "safe",
     scope: "renderer",
-    run: async () => {
-      const terminalId = await callbacks.onLaunchAgent("terminal");
+    argsSchema: shortcutLaunchSchema,
+    run: async (args: unknown) => {
+      const { spawnedBy } = (args ?? {}) as { spawnedBy?: TerminalSpawnSource };
+      const terminalId = await callbacks.onLaunchAgent(
+        "terminal",
+        ...(spawnedBy ? [{ spawnedBy }] : [])
+      );
       return { terminalId };
     },
   }));
@@ -165,6 +209,53 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
       const state = usePanelStore.getState();
       const activeWorktreeId = useWorktreeSelectionStore.getState().activeWorktreeId;
       state.focusNextBlockedDock(activeWorktreeId ?? undefined, state.getPanelGroup);
+    },
+  }));
+
+  actions.set("agent.getState", () => ({
+    id: "agent.getState",
+    title: "Get Agent State",
+    description:
+      "Query agent state; returns state, waitingReason ('prompt'|'question', non-null when waiting), terminalId, found.",
+    category: "agent",
+    kind: "query",
+    danger: "safe",
+    scope: "renderer",
+    argsSchema: z.object({
+      agentId: z
+        .string()
+        .min(1)
+        .describe("Agent ID to look up (e.g., 'claude', 'codex'). From terminal.list[].agentId."),
+    }),
+    run: async (args: unknown) => {
+      const { agentId } = args as { agentId: string };
+      const state = usePanelStore.getState();
+      for (const id of state.panelIds) {
+        const panel = state.panelsById[id];
+        // Skip ephemeral panels (e.g. the Daintree Assistant's own dock
+        // terminal) for the same reason terminal.list filters them — the
+        // assistant must not be able to introspect its own process.
+        if (!panel || panel.ephemeral === true) continue;
+        const effectiveAgentId = panel.detectedAgentId ?? panel.launchAgentId;
+        if (effectiveAgentId === agentId) {
+          return {
+            agentId,
+            state: panel.agentState ?? null,
+            waitingReason: panel.agentState === "waiting" ? (panel.waitingReason ?? null) : null,
+            lastTransitionAt: panel.lastStateChange ?? null,
+            terminalId: panel.id,
+            found: true,
+          };
+        }
+      }
+      return {
+        agentId,
+        state: null,
+        waitingReason: null,
+        lastTransitionAt: null,
+        terminalId: null,
+        found: false,
+      };
     },
   }));
 

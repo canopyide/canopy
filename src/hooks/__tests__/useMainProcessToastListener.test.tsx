@@ -21,7 +21,10 @@ let capturedCallback: ToastCallback | null = null;
 const cleanupFn = vi.fn();
 
 describe("useMainProcessToastListener", () => {
+  const originalPlatformDescriptor = Object.getOwnPropertyDescriptor(process, "platform");
+
   beforeEach(() => {
+    Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
     capturedCallback = null;
     cleanupFn.mockClear();
     notifyMock.mockClear();
@@ -39,6 +42,9 @@ describe("useMainProcessToastListener", () => {
   afterEach(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     delete (window as any).electron;
+    if (originalPlatformDescriptor) {
+      Object.defineProperty(process, "platform", originalPlatformDescriptor);
+    }
   });
 
   it("subscribes to onShowToast on mount and cleans up on unmount", () => {
@@ -57,14 +63,14 @@ describe("useMainProcessToastListener", () => {
     act(() => {
       capturedCallback!({
         type: "success",
-        title: "CLI Installed",
+        title: "CLI installed",
         message: "The daintree command is now available",
       });
     });
 
     expect(notifyMock).toHaveBeenCalledWith({
       type: "success",
-      title: "CLI Installed",
+      title: "CLI installed",
       message: "The daintree command is now available",
       action: undefined,
     });
@@ -82,7 +88,7 @@ describe("useMainProcessToastListener", () => {
     act(() => {
       capturedCallback!({
         type: "error",
-        title: "Update Failed",
+        title: "Update failed",
         message: "Network error",
         action: { label: "Retry", ipcChannel: "update:check-for-updates" },
       });
@@ -91,7 +97,7 @@ describe("useMainProcessToastListener", () => {
     expect(notifyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "error",
-        title: "Update Failed",
+        title: "Update failed",
         action: expect.objectContaining({ label: "Retry" }),
       })
     );
@@ -100,6 +106,30 @@ describe("useMainProcessToastListener", () => {
     const call = notifyMock.mock.calls[0]![0];
     call.action!.onClick();
     expect(checkForUpdatesMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores update retry toast actions on Windows Store builds", () => {
+    Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+    const checkForUpdatesMock = vi.fn(() => Promise.resolve());
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window.electron as any).update = {
+      checkForUpdates: checkForUpdatesMock,
+    };
+
+    renderHook(() => useMainProcessToastListener());
+
+    act(() => {
+      capturedCallback!({
+        type: "error",
+        title: "Update failed",
+        message: "Network error",
+        action: { label: "Retry", ipcChannel: "update:check-for-updates" },
+      });
+    });
+
+    const call = notifyMock.mock.calls[0]![0];
+    call.action!.onClick();
+    expect(checkForUpdatesMock).not.toHaveBeenCalled();
   });
 
   it("does not crash when window.electron is undefined", () => {

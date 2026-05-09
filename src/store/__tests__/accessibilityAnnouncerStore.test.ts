@@ -3,7 +3,7 @@ import { useAnnouncerStore } from "../accessibilityAnnouncerStore";
 
 describe("accessibilityAnnouncerStore", () => {
   beforeEach(() => {
-    useAnnouncerStore.setState({ polite: null, assertive: null });
+    useAnnouncerStore.setState({ polite: null, assertive: null, nextId: 1 });
   });
 
   it("starts with null polite and assertive", () => {
@@ -42,5 +42,14 @@ describe("accessibilityAnnouncerStore", () => {
     const state = useAnnouncerStore.getState();
     expect(state.polite?.msg).toBe("info");
     expect(state.assertive?.msg).toBe("critical");
+  });
+
+  it("resets ID counter to 1 after setState reset, giving deterministic IDs across tests", () => {
+    useAnnouncerStore.getState().announce("first");
+    expect(useAnnouncerStore.getState().polite?.id).toBe(1);
+
+    useAnnouncerStore.setState({ polite: null, assertive: null, nextId: 1 });
+    useAnnouncerStore.getState().announce("second");
+    expect(useAnnouncerStore.getState().polite?.id).toBe(1);
   });
 });

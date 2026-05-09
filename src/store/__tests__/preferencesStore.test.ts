@@ -248,4 +248,58 @@ describe("preferencesStore migration", () => {
       expect(store.getState().reduceAnimations).toBe(false);
     });
   });
+
+  describe("skipWorkingCloseConfirm retirement (v6 migration)", () => {
+    it("drops a persisted skipWorkingCloseConfirm field when migrating from v5", async () => {
+      setStoredState(
+        {
+          skipWorkingCloseConfirm: true,
+          showProjectPulse: true,
+          showDeveloperTools: false,
+          showGridAgentHighlights: false,
+          showDockAgentHighlights: false,
+          dockDensity: "normal",
+          assignWorktreeToSelf: false,
+          reduceAnimations: false,
+          lastSelectedWorktreeRecipeIdByProject: {},
+        },
+        5
+      );
+
+      const store = await loadStore();
+      const state = store.getState() as unknown as Record<string, unknown>;
+      expect(state.skipWorkingCloseConfirm).toBeUndefined();
+      expect(state.showProjectPulse).toBe(true);
+      expect(state.dockDensity).toBe("normal");
+      expect(state.reduceAnimations).toBe(false);
+    });
+
+    it("drops a persisted skipWorkingCloseConfirm field when migrating from v4 cumulatively", async () => {
+      setStoredState(
+        {
+          skipWorkingCloseConfirm: true,
+          showProjectPulse: true,
+          showDeveloperTools: false,
+          showGridAgentHighlights: false,
+          showDockAgentHighlights: false,
+          dockDensity: "normal",
+          assignWorktreeToSelf: false,
+          reduceAnimations: false,
+          lastSelectedWorktreeRecipeIdByProject: {},
+        },
+        4
+      );
+
+      const store = await loadStore();
+      const state = store.getState() as unknown as Record<string, unknown>;
+      expect(state.skipWorkingCloseConfirm).toBeUndefined();
+    });
+
+    it("does not introduce skipWorkingCloseConfirm on a fresh install", async () => {
+      const store = await loadStore();
+      const state = store.getState() as unknown as Record<string, unknown>;
+      expect(state.skipWorkingCloseConfirm).toBeUndefined();
+      expect(state.setSkipWorkingCloseConfirm).toBeUndefined();
+    });
+  });
 });

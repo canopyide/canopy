@@ -19,9 +19,6 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, "..");
 
-const buildVariant = process.env.BUILD_VARIANT === "canopy" ? "canopy" : "daintree";
-const isLegacyBuild = buildVariant === "canopy";
-
 const external = ["electron", "node-pty", "better-sqlite3", "copytree"];
 
 const METAFILE_OUT = path.join(root, "dist-electron", "eager-import-meta.json");
@@ -40,8 +37,6 @@ async function run() {
     logLevel: "warning",
     define: {
       "process.env.SENTRY_DSN": JSON.stringify(process.env.SENTRY_DSN || ""),
-      "process.env.BUILD_VARIANT": JSON.stringify(buildVariant),
-      IS_LEGACY_BUILD: JSON.stringify(isLegacyBuild),
     },
   });
 

@@ -7,6 +7,7 @@ import type { ActionFrecencyEntry } from "@shared/types/actions";
 const dispatchMock = vi.fn();
 const setAgentPinnedMock = vi.fn().mockResolvedValue(undefined);
 const updateWorktreePresetMock = vi.fn().mockResolvedValue(undefined);
+const updateAgentMock = vi.fn().mockResolvedValue(undefined);
 const setFocusedMock = vi.fn();
 const refreshAvailabilityMock = vi.fn().mockResolvedValue(undefined);
 let openChangeSpy: ((open: boolean) => void) | null = null;
@@ -53,12 +54,19 @@ type MockAgentStoreState = {
 };
 
 vi.mock("@/store/agentSettingsStore", () => ({
-  useAgentSettingsStore: (selector: (s: MockAgentStoreState) => unknown) =>
-    selector({
-      settings: mockSettings,
-      setAgentPinned: setAgentPinnedMock,
-      updateWorktreePreset: updateWorktreePresetMock,
-    }),
+  useAgentSettingsStore: Object.assign(
+    (selector: (s: MockAgentStoreState) => unknown) =>
+      selector({
+        settings: mockSettings,
+        setAgentPinned: setAgentPinnedMock,
+        updateWorktreePreset: updateWorktreePresetMock,
+      }),
+    {
+      getState: () => ({
+        updateAgent: updateAgentMock,
+      }),
+    }
+  ),
 }));
 
 vi.mock("@/store/actionMruStore", () => ({
@@ -101,6 +109,7 @@ vi.mock("@/store/worktreeStore", () => ({
 
 vi.mock("@/hooks", () => ({
   useKeybindingDisplay: () => null,
+  useAriaKeyshortcuts: () => undefined,
 }));
 
 let mockCcrPresetsByAgent: Record<string, Array<{ id: string; name: string }>> = {};
@@ -270,15 +279,27 @@ vi.mock("@/components/ui/tooltip", () => ({
 vi.mock("@/components/ui/button", () => ({
   Button: ({
     children,
+    size,
     ...props
-  }: { children: React.ReactNode } & React.ButtonHTMLAttributes<HTMLButtonElement>) => (
-    <button {...props}>{children}</button>
+  }: {
+    children: React.ReactNode;
+    size?: string;
+  } & React.ButtonHTMLAttributes<HTMLButtonElement>) => (
+    <button data-size={size} {...props}>
+      {children}
+    </button>
   ),
 }));
 
 vi.mock("lucide-react", () => ({
   Check: ({ className }: { className?: string }) => (
     <span data-testid="check-icon" data-classname={className} />
+  ),
+  Circle: ({ className }: { className?: string }) => (
+    <span data-testid="circle-icon" data-classname={className} />
+  ),
+  CheckCircle2: ({ className }: { className?: string }) => (
+    <span data-testid="check-circle2-icon" data-classname={className} />
   ),
   Plug: () => <span data-testid="plug-icon" />,
   Pin: ({ className }: { className?: string; strokeWidth?: number }) => (
@@ -291,7 +312,12 @@ vi.mock("lucide-react", () => ({
 
 import { AgentTrayButton } from "../AgentTrayButton";
 
-function settingsWith(overrides: Record<string, { pinned?: boolean }>): AgentSettings {
+function settingsWith(
+  overrides: Record<
+    string,
+    { pinned?: boolean; presetId?: string; worktreePresets?: Record<string, string> }
+  >
+): AgentSettings {
   return { agents: overrides } as unknown as AgentSettings;
 }
 
@@ -310,6 +336,7 @@ describe("AgentTrayButton", () => {
     dispatchMock.mockClear();
     setAgentPinnedMock.mockClear();
     updateWorktreePresetMock.mockClear();
+    updateAgentMock.mockClear();
     setFocusedMock.mockClear();
     refreshAvailabilityMock.mockClear();
     openChangeSpy = null;
@@ -854,8 +881,10 @@ describe("AgentTrayButton", () => {
     mockWelcomeCardDismissed = true;
     mockSeenAgentIds = ["gemini"];
 
-    const { queryByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
-    expect(queryByTestId("agent-tray-discovery-badge")).toBeTruthy();
+    const { getByTestId, queryByTestId } = render(
+      <AgentTrayButton agentAvailability={availability} />
+    );
+    expect(getByTestId("agent-tray-discovery-badge").getAttribute("data-visible")).toBe("true");
     expect(queryByTestId("agent-tray-new-pill-claude")).toBeTruthy();
     expect(queryByTestId("agent-tray-new-pill-gemini")).toBeNull();
   });
@@ -866,8 +895,10 @@ describe("AgentTrayButton", () => {
     mockWelcomeCardDismissed = false;
     mockSeenAgentIds = [];
 
-    const { queryByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
-    expect(queryByTestId("agent-tray-discovery-badge")).toBeNull();
+    const { getByTestId, queryByTestId } = render(
+      <AgentTrayButton agentAvailability={availability} />
+    );
+    expect(getByTestId("agent-tray-discovery-badge").getAttribute("data-visible")).toBe("false");
     expect(queryByTestId("agent-tray-new-pill-claude")).toBeNull();
   });
 
@@ -895,8 +926,8 @@ describe("AgentTrayButton", () => {
     mockWelcomeCardDismissed = true;
     mockSeenAgentIds = ["claude", "gemini"];
 
-    const { queryByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
-    expect(queryByTestId("agent-tray-discovery-badge")).toBeNull();
+    const { getByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
+    expect(getByTestId("agent-tray-discovery-badge").getAttribute("data-visible")).toBe("false");
   });
 
   it("calls markAgentsSeen with all ready agent ids on tray open", () => {
@@ -1063,13 +1094,24 @@ describe("AgentTrayButton", () => {
     }
 
     it("Default keyboard launch clears the scoped override and dispatches presetId: null", () => {
+      // Seed an agent-level presetId so the updateAgent assertion proves the
+      // fix actually clears it — without a stale agent-level value to fall
+      // through to, the original #6358 bug couldn't manifest.
       mockActiveWorktreeId = "wt-A";
       const availability = arrangeAgentWithPresets();
+      mockSettings = settingsWith({
+        claude: {
+          pinned: false,
+          presetId: "user-alpha",
+          worktreePresets: { "wt-A": "user-alpha" },
+        },
+      });
       const { getAllByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
       const submenuTrigger = getAllByTestId("submenu-trigger")[0]!;
 
       fireEvent.keyDown(submenuTrigger, { key: "Enter" });
 
+      expect(updateAgentMock).toHaveBeenCalledWith("claude", { presetId: undefined });
       expect(updateWorktreePresetMock).toHaveBeenCalledWith("claude", "wt-A", undefined);
       expect(dispatchMock).toHaveBeenCalledWith(
         "agent.launch",
@@ -1164,6 +1206,105 @@ describe("AgentTrayButton", () => {
       const { getByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
       const row = getByTestId("agent-tray-row-claude");
       expect(badgeIn(row)).toBeNull();
+    });
+  });
+
+  describe("empty-state trigger label", () => {
+    it("shows 'Pin agents' label on trigger when agents are available but not pinned", () => {
+      const availability = {
+        claude: "ready",
+        gemini: "ready",
+        codex: "ready",
+      } as unknown as CliAvailability;
+      mockSettings = settingsWith({
+        claude: { pinned: false },
+        gemini: { pinned: false },
+        codex: { pinned: false },
+      });
+      mockSeenAgentIds = ["claude", "gemini", "codex"];
+
+      const { container, getAllByTestId } = render(
+        <AgentTrayButton agentAvailability={availability} />
+      );
+
+      const button = container.querySelector("button")!;
+      expect(button.textContent).toContain("Pin agents");
+      expect(button.getAttribute("aria-label")).toBe("Agent tray — Pin agents");
+      expect(button.getAttribute("data-size")).toBe("sm");
+      expect(getAllByTestId("plug-icon").length).toBeGreaterThan(0);
+    });
+
+    it("shows 'Set up agents' label on trigger when nothing is installed", () => {
+      mockHasRealData = true;
+      const availability = {
+        claude: "missing",
+        gemini: "missing",
+        codex: "missing",
+      } as unknown as CliAvailability;
+
+      const { container, getAllByTestId } = render(
+        <AgentTrayButton agentAvailability={availability} />
+      );
+
+      const button = container.querySelector("button")!;
+      expect(button.textContent).toContain("Set up agents");
+      expect(button.getAttribute("aria-label")).toBe("Agent tray — Set up agents");
+      expect(button.getAttribute("data-size")).toBe("sm");
+      expect(getAllByTestId("plug-icon").length).toBeGreaterThan(0);
+    });
+
+    it("shows no label on trigger during availability loading", () => {
+      mockHasRealData = false;
+      mockSettings = settingsWith({
+        claude: { pinned: false },
+        gemini: { pinned: false },
+        codex: { pinned: false },
+      });
+
+      const { queryByText, container } = render(<AgentTrayButton />);
+
+      expect(queryByText("Pin agents")).toBeNull();
+      expect(queryByText("Set up agents")).toBeNull();
+      expect(container.querySelector('[aria-label="Agent tray"]')).toBeTruthy();
+    });
+
+    it("shows neither label when only needs-setup agents exist", () => {
+      mockHasRealData = true;
+      const availability = {
+        claude: "installed",
+        codex: "blocked",
+      } as unknown as CliAvailability;
+      mockSettings = settingsWith({
+        claude: { pinned: false },
+        codex: { pinned: false },
+      });
+
+      const { queryByText, container } = render(
+        <AgentTrayButton agentAvailability={availability} />
+      );
+
+      expect(queryByText("Pin agents")).toBeNull();
+      expect(queryByText("Set up agents")).toBeNull();
+      expect(container.querySelector("button")!.getAttribute("data-size")).toBe("icon");
+    });
+
+    it("suppresses label when at least one agent is pinned", () => {
+      const availability = {
+        claude: "ready",
+        gemini: "ready",
+      } as unknown as CliAvailability;
+      mockSettings = settingsWith({
+        claude: { pinned: true },
+        gemini: { pinned: false },
+      });
+
+      const { queryByText, container } = render(
+        <AgentTrayButton agentAvailability={availability} />
+      );
+
+      expect(queryByText("Pin agents")).toBeNull();
+      expect(queryByText("Set up agents")).toBeNull();
+      expect(container.querySelector("button")!.getAttribute("data-size")).toBe("icon");
     });
   });
 

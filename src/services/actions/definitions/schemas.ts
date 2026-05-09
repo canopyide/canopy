@@ -5,6 +5,14 @@ export const AgentIdSchema = z.enum([...BUILT_IN_AGENT_IDS, "terminal", "browser
 
 export const LaunchLocationSchema = z.enum(["grid", "dock"]);
 
+/**
+ * Mirror of `TerminalSpawnSource` from `shared/types/panel.ts`. Kept in lockstep
+ * with that union so action argsSchemas can validate the field. The MCP bridge
+ * stamps `"mcp"` on spawn-producing dispatches; user surfaces stamp their own
+ * origin (`"quickrun"`, `"recipe"`, `"agent"`, `"palette"`).
+ */
+export const TerminalSpawnSourceSchema = z.enum(["quickrun", "recipe", "agent", "palette", "mcp"]);
+
 export const SettingsTabSchema = z.enum([
   "general",
   "keyboard",
@@ -12,6 +20,7 @@ export const SettingsTabSchema = z.enum([
   "terminalAppearance",
   "worktree",
   "agents",
+  "assistant",
   "github",
   "portal",
   "toolbar",
@@ -52,16 +61,24 @@ export const GitStatusSchema = z.enum([
   "copied",
 ]);
 
-export const PulseRangeDaysSchema = z.union([z.literal(60), z.literal(120), z.literal(180)]);
+export const PulseRangeDaysSchema = z
+  .union([z.literal(60), z.literal(120), z.literal(180)])
+  .optional()
+  .default(60);
 
 export const FileSearchPayloadSchema = z.object({
-  cwd: z.string().describe("Working directory to search in (project root path)"),
+  cwd: z
+    .string()
+    .optional()
+    .describe(
+      "Working directory to search in (project root path). Defaults to the active worktree path."
+    ),
   query: z.string().describe("File name search query"),
   limit: z.number().int().positive().optional().describe("Max results to return"),
 });
 
 export const CopyTreeOptionsSchema = z.object({
-  format: z.enum(["xml", "json", "markdown", "tree", "ndjson"]).optional(),
+  format: z.enum(["xml", "json", "markdown", "tree", "ndjson", "sarif"]).optional(),
   filter: z.union([z.string(), z.array(z.string())]).optional(),
   exclude: z.union([z.string(), z.array(z.string())]).optional(),
   always: z.array(z.string()).optional(),

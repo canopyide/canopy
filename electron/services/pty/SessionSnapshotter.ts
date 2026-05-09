@@ -1,6 +1,5 @@
 import {
   TERMINAL_SESSION_PERSISTENCE_ENABLED,
-  SESSION_SNAPSHOT_MAX_BYTES,
   SESSION_SNAPSHOT_DEBOUNCE_MS,
   persistSessionSnapshotSync,
   persistSessionSnapshotAsync,
@@ -63,9 +62,6 @@ export class SessionSnapshotter {
       // serialize would otherwise stomp the sync snapshot written from kill().
       if (this.disposed || this.host.wasKilled) return;
       if (!state) return;
-      if (Buffer.byteLength(state, "utf8") > SESSION_SNAPSHOT_MAX_BYTES) {
-        return;
-      }
       await persistSessionSnapshotAsync(this.host.id, state);
     } catch (error) {
       console.warn(`[TerminalProcess] Failed to persist session for ${this.host.id}:`, error);
@@ -87,9 +83,8 @@ export class SessionSnapshotter {
     if (now - this.lastEventDrivenFlushAt < EVENT_DRIVEN_SNAPSHOT_THROTTLE_MS) return;
     this.lastEventDrivenFlushAt = now;
 
-    const state = this.host.getSerializedState();
+    const state = this.host.serializeForPersistence();
     if (!state) return;
-    if (Buffer.byteLength(state, "utf8") > SESSION_SNAPSHOT_MAX_BYTES) return;
 
     persistSessionSnapshotAsync(this.host.id, state).catch((error) => {
       console.warn(`[TerminalProcess] Event-driven snapshot failed for ${this.host.id}:`, error);
@@ -97,16 +92,16 @@ export class SessionSnapshotter {
   }
 
   // Last-chance unconditional flush invoked by kill() before wasKilled is set.
-  // Mirrors the legacy inline block: plain sync serialize, no banner awareness,
-  // skipped only when persistence is disabled / suppressed / agent terminal.
+  // Banner-aware: uses serializeForPersistence() so a hibernate→restore→hibernate
+  // cycle doesn't bake the previous restore banner into the snapshot.
   flushSyncOnKill(): void {
     if (!TERMINAL_SESSION_PERSISTENCE_ENABLED) return;
     if (isSessionPersistSuppressed()) return;
     if (this.host.launchAgentId) return;
 
     try {
-      const state = this.host.getSerializedState();
-      if (state && Buffer.byteLength(state, "utf8") <= SESSION_SNAPSHOT_MAX_BYTES) {
+      const state = this.host.serializeForPersistence();
+      if (state) {
         persistSessionSnapshotSync(this.host.id, state);
       }
     } catch {
@@ -125,7 +120,7 @@ export class SessionSnapshotter {
 
     try {
       const state = this.host.serializeForPersistence() ?? this.host.getSerializedState();
-      if (state && Buffer.byteLength(state, "utf8") <= SESSION_SNAPSHOT_MAX_BYTES) {
+      if (state) {
         persistSessionSnapshotSync(this.host.id, state);
         this.dirty = false;
       }

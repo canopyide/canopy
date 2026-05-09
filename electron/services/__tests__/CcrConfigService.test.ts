@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { AgentPreset } from "../../../shared/config/agentRegistry.js";
 import { CcrConfigService } from "../CcrConfigService.js";
+import { formatErrorMessage } from "../../../shared/utils/errorMessage.js";
 
 vi.mock("fs/promises", () => ({
   readFile: vi.fn(),
@@ -14,7 +15,7 @@ vi.mock("../../ipc/channels.js", () => ({
   CHANNELS: { AGENT_PRESETS_UPDATED: "agent-presets:updated" },
 }));
 
-vi.mock("../config/agentRegistry.js", () => ({
+vi.mock("../../../shared/config/agentRegistry.js", () => ({
   setAgentPresets: vi.fn(),
 }));
 
@@ -31,10 +32,29 @@ describe("CcrConfigService", () => {
   });
 
   describe("discoverPresets", () => {
-    it("returns empty array when config file does not exist", async () => {
-      mockReadFile.mockRejectedValue(new Error("ENOENT"));
+    it("returns empty array silently when config file does not exist (ENOENT)", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      mockReadFile.mockRejectedValue(
+        Object.assign(new Error("ENOENT: no such file or directory"), { code: "ENOENT" })
+      );
       const presets = await service.discoverPresets();
       expect(presets).toEqual([]);
+      // ENOENT is the expected case (CCR not installed) — must NOT warn.
+      expect(warnSpy).not.toHaveBeenCalled();
+      warnSpy.mockRestore();
+    });
+
+    it("warns and returns empty array on permission error (EACCES)", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      mockReadFile.mockRejectedValue(
+        Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" })
+      );
+      const presets = await service.discoverPresets();
+      expect(presets).toEqual([]);
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy.mock.calls[0][0]).toContain("[CcrConfigService]");
+      expect(warnSpy.mock.calls[0][0]).toContain("Failed to read config");
+      warnSpy.mockRestore();
     });
 
     it("returns empty array when config has no models", async () => {
@@ -113,10 +133,160 @@ describe("CcrConfigService", () => {
       expect(presets[0].id).toBe("ccr-valid");
     });
 
-    it("handles invalid JSON", async () => {
+    it("warns and returns empty array on malformed JSON", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
       mockReadFile.mockResolvedValue("not json at all");
       const presets = await service.discoverPresets();
       expect(presets).toEqual([]);
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy.mock.calls[0][0]).toContain("[CcrConfigService]");
+      expect(warnSpy.mock.calls[0][0]).toContain("Failed to parse config");
+      warnSpy.mockRestore();
+    });
+
+    it("does not log raw config contents on parse error (avoid leaking inline keys)", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      // A user pastes their literal API key inline by mistake, then breaks the JSON.
+      const leakySnippet = "sk-ant-api03-SECRET-DO-NOT-LOG";
+      mockReadFile.mockResolvedValue(`{ "models": [{ "id": "x", "apiKey": "${leakySnippet}" }`);
+      await service.discoverPresets();
+      const allLoggedText = warnSpy.mock.calls
+        .flatMap((call) =>
+          call.map((arg) =>
+            arg instanceof Error ? formatErrorMessage(arg, "parse error") : String(arg)
+          )
+        )
+        .join(" ");
+      expect(allLoggedText).not.toContain(leakySnippet);
+      warnSpy.mockRestore();
+    });
+
+    it("filters entries with non-string id (e.g. object) — no ccr-[object Object] preset", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      mockReadFile.mockResolvedValue(
+        JSON.stringify({
+          models: [
+            { id: { nested: "object" }, name: "bad" },
+            { id: 42, name: "also bad" },
+            { id: "valid", model: "valid-model" },
+          ],
+        })
+      );
+
+      const presets = await service.discoverPresets();
+      expect(presets).toHaveLength(1);
+      expect(presets[0].id).toBe("ccr-valid");
+      expect(presets.every((p) => !p.id.includes("[object Object]"))).toBe(true);
+      warnSpy.mockRestore();
+    });
+
+    it("filters entries with empty-string id when no model fallback — no ccr- preset", async () => {
+      mockReadFile.mockResolvedValue(
+        JSON.stringify({
+          models: [
+            { id: "", name: "empty id" },
+            { id: "", model: "" },
+            { id: "valid", model: "valid-model" },
+          ],
+        })
+      );
+
+      const presets = await service.discoverPresets();
+      expect(presets).toHaveLength(1);
+      expect(presets[0].id).toBe("ccr-valid");
+      expect(presets.every((p) => p.id !== "ccr-")).toBe(true);
+    });
+
+    it("falls back to model when id is empty string but model is valid", async () => {
+      mockReadFile.mockResolvedValue(
+        JSON.stringify({
+          models: [{ id: "", model: "fallback-model" }],
+        })
+      );
+
+      const presets = await service.discoverPresets();
+      expect(presets).toHaveLength(1);
+      expect(presets[0].id).toBe("ccr-fallback-model");
+    });
+
+    it("falls back to model when id is non-string but model is valid", async () => {
+      mockReadFile.mockResolvedValue(
+        JSON.stringify({
+          models: [{ id: { foo: "bar" }, model: "real-model" }],
+        })
+      );
+
+      const presets = await service.discoverPresets();
+      expect(presets).toHaveLength(1);
+      expect(presets[0].id).toBe("ccr-real-model");
+      expect(presets[0].id).not.toContain("[object Object]");
+    });
+
+    it("filters entries with non-string model and no valid id", async () => {
+      mockReadFile.mockResolvedValue(
+        JSON.stringify({
+          models: [
+            { model: 42 },
+            { model: { nested: true } },
+            { id: "valid", model: "valid-model" },
+          ],
+        })
+      );
+
+      const presets = await service.discoverPresets();
+      expect(presets).toHaveLength(1);
+      expect(presets[0].id).toBe("ccr-valid");
+    });
+
+    it("returns empty array (without throwing) when top-level JSON is null", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      mockReadFile.mockResolvedValue("null");
+      const presets = await service.discoverPresets();
+      expect(presets).toEqual([]);
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy.mock.calls[0][0]).toContain("not an object");
+      warnSpy.mockRestore();
+    });
+
+    it("returns empty array (without throwing) when top-level JSON is an array", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      mockReadFile.mockResolvedValue('[{"id":"x"}]');
+      const presets = await service.discoverPresets();
+      expect(presets).toEqual([]);
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      warnSpy.mockRestore();
+    });
+
+    it("skips null entries in models array and still maps remaining valid ones", async () => {
+      mockReadFile.mockResolvedValue(
+        JSON.stringify({
+          models: [null, { id: "valid", model: "valid-model" }, undefined],
+        })
+      );
+      const presets = await service.discoverPresets();
+      expect(presets).toHaveLength(1);
+      expect(presets[0].id).toBe("ccr-valid");
+    });
+
+    it("skips primitive entries in models array (e.g. strings/numbers)", async () => {
+      mockReadFile.mockResolvedValue(
+        JSON.stringify({
+          models: ["just-a-string", 42, { id: "valid", model: "valid-model" }],
+        })
+      );
+      const presets = await service.discoverPresets();
+      expect(presets).toHaveLength(1);
+      expect(presets[0].id).toBe("ccr-valid");
+    });
+
+    it("warns on non-Error read rejection (e.g. raw string thrown)", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      mockReadFile.mockRejectedValue("boom");
+      const presets = await service.discoverPresets();
+      expect(presets).toEqual([]);
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy.mock.calls[0][0]).toContain("Failed to read config");
+      warnSpy.mockRestore();
     });
 
     it("includes apiKeyEnv as template in env", async () => {
@@ -359,6 +529,25 @@ describe("CcrConfigService", () => {
       );
       await service.loadAndApply();
       expect(broadcastMock.mock.calls.length).toBeGreaterThan(initialCalls);
+    });
+
+    it("clears stale presets after a previously-good config goes malformed", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      mockReadFile.mockResolvedValueOnce(
+        JSON.stringify({ models: [{ id: "alpha", model: "alpha-model" }] })
+      );
+      await service.loadAndApply();
+      expect(service.getPresets()).toHaveLength(1);
+
+      // User edits config and breaks the JSON. The next poll iteration must
+      // reset cached presets to [] so the renderer doesn't keep launching
+      // with stale routing.
+      mockReadFile.mockResolvedValueOnce("not json at all");
+      await service.loadAndApply();
+      expect(service.getPresets()).toEqual([]);
+
+      warnSpy.mockRestore();
     });
 
     it("does NOT broadcast when presets are fully unchanged", async () => {

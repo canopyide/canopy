@@ -79,6 +79,105 @@ describe("createWorktreeStore — reconnecting state", () => {
   });
 });
 
+describe("createWorktreeStore — applySnapshot identity preservation", () => {
+  it("preserves Map identity when every snapshot is value-equal", () => {
+    const store = createWorktreeStore();
+
+    const v1 = store.getState().nextVersion();
+    store.getState().applySnapshot([makeSnapshot("wt-1"), makeSnapshot("wt-2")], v1);
+    const firstMap = store.getState().worktrees;
+
+    const v2 = store.getState().nextVersion();
+    store.getState().applySnapshot([makeSnapshot("wt-1"), makeSnapshot("wt-2")], v2);
+
+    expect(store.getState().worktrees).toBe(firstMap);
+    expect(store.getState().version).toBe(v2);
+  });
+
+  it("rebuilds the Map when any snapshot's value differs", () => {
+    const store = createWorktreeStore();
+
+    const v1 = store.getState().nextVersion();
+    store.getState().applySnapshot([makeSnapshot("wt-1")], v1);
+    const firstMap = store.getState().worktrees;
+
+    const changed = makeSnapshot("wt-1");
+    (changed as { branch: string }).branch = "feature/x";
+
+    const v2 = store.getState().nextVersion();
+    store.getState().applySnapshot([changed], v2);
+
+    expect(store.getState().worktrees).not.toBe(firstMap);
+    expect(store.getState().worktrees.get("wt-1")?.branch).toBe("feature/x");
+  });
+
+  it("rebuilds when the snapshot set has different size", () => {
+    const store = createWorktreeStore();
+
+    const v1 = store.getState().nextVersion();
+    store.getState().applySnapshot([makeSnapshot("wt-1")], v1);
+    const firstMap = store.getState().worktrees;
+
+    const v2 = store.getState().nextVersion();
+    store.getState().applySnapshot([makeSnapshot("wt-1"), makeSnapshot("wt-2")], v2);
+
+    expect(store.getState().worktrees).not.toBe(firstMap);
+    expect(store.getState().worktrees.size).toBe(2);
+  });
+
+  it("rebuilds when an id is replaced (same size, different keys)", () => {
+    const store = createWorktreeStore();
+
+    const v1 = store.getState().nextVersion();
+    store.getState().applySnapshot([makeSnapshot("wt-1")], v1);
+    const firstMap = store.getState().worktrees;
+
+    const v2 = store.getState().nextVersion();
+    store.getState().applySnapshot([makeSnapshot("wt-2")], v2);
+
+    expect(store.getState().worktrees).not.toBe(firstMap);
+    expect(store.getState().worktrees.has("wt-2")).toBe(true);
+    expect(store.getState().worktrees.has("wt-1")).toBe(false);
+  });
+
+  it("always rebuilds on cold start so isInitialized flips", () => {
+    const store = createWorktreeStore();
+    expect(store.getState().isInitialized).toBe(false);
+    const initialMap = store.getState().worktrees;
+
+    const v1 = store.getState().nextVersion();
+    store.getState().applySnapshot([], v1);
+
+    expect(store.getState().isInitialized).toBe(true);
+    expect(store.getState().worktrees).not.toBe(initialMap);
+  });
+
+  it("advances version on a no-op snapshot", () => {
+    const store = createWorktreeStore();
+
+    const v1 = store.getState().nextVersion();
+    store.getState().applySnapshot([makeSnapshot("wt-1")], v1);
+
+    const v2 = store.getState().nextVersion();
+    store.getState().applySnapshot([makeSnapshot("wt-1")], v2);
+
+    expect(store.getState().version).toBe(v2);
+  });
+
+  it("clears isReconnecting on a no-op snapshot", () => {
+    const store = createWorktreeStore();
+
+    const v1 = store.getState().nextVersion();
+    store.getState().applySnapshot([makeSnapshot("wt-1")], v1);
+    store.getState().setReconnecting(true);
+
+    const v2 = store.getState().nextVersion();
+    store.getState().applySnapshot([makeSnapshot("wt-1")], v2);
+
+    expect(store.getState().isReconnecting).toBe(false);
+  });
+});
+
 describe("createWorktreeStore — fatal error state", () => {
   it("setFatalError sets error, clears isReconnecting, and resets isInitialized", () => {
     const store = createWorktreeStore();

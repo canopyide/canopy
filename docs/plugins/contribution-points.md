@@ -33,15 +33,15 @@ Commands are callable actions that appear in the command palette and can be boun
 
 **Fields:**
 
-| Field         | Required | Notes                                                                                                                                                                                                      |
-| ------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`        | yes      | Matches `/^[a-z0-9][a-z0-9-]*$/`. Namespaced at runtime as `{pluginId}.{name}`. Also determines the handler file path — see below.                                                                         |
-| `title`       | yes      | Palette label.                                                                                                                                                                                             |
-| `description` | yes      | Subtitle in the palette and command detail views.                                                                                                                                                          |
-| `category`    | yes      | Grouping label; keep consistent across commands in the same plugin.                                                                                                                                        |
-| `kind`        | no       | `"command"` (default) or `"query"`. Queries are expected to be read-only and idempotent.                                                                                                                   |
-| `danger`      | no       | `"safe"` (default) or `"confirm"`. A `confirm` command requires `{ confirmed: true }` when invoked by an agent. See [action-system](../architecture/action-system.md) for how danger works across the IDE. |
-| `keywords`    | no       | Extra search terms for the palette.                                                                                                                                                                        |
+| Field | Required | Notes |
+| --- | --- | --- |
+| `name` | yes | Matches `/^[a-z0-9][a-z0-9-]*$/`. Namespaced at runtime as `{pluginId}.{name}`. Also determines the handler file path — see below. |
+| `title` | yes | Palette label. |
+| `description` | yes | Subtitle in the palette and command detail views. |
+| `category` | yes | Grouping label; keep consistent across commands in the same plugin. |
+| `kind` | no | `"command"` (default) or `"query"`. Queries are expected to be read-only and idempotent. |
+| `danger` | no | `"safe"` (default) or `"confirm"`. A `confirm` command requires `{ confirmed: true }` when invoked by an agent. See [action-system](../architecture/action-system.md) for how danger works across the IDE. |
+| `keywords` | no | Extra search terms for the palette. |
 
 **Handler binding** — two ways:
 
@@ -111,16 +111,16 @@ Panels are full-sized workspaces in Daintree's grid (alongside terminal panels, 
 
 **Fields:**
 
-| Field           | Required | Notes                                                                                                           |
-| --------------- | -------- | --------------------------------------------------------------------------------------------------------------- |
-| `id`            | yes      | Namespaced at runtime as `{pluginId}.{id}`.                                                                     |
-| `name`          | yes      | Display label in the panel header and palette.                                                                  |
-| `iconId`        | yes      | Must match a registered icon ID — see the icon registry in `src/components/icons/`.                             |
-| `color`         | yes      | HSL string used for the panel tab accent.                                                                       |
-| `hasPty`        | no       | `false` (default) for UI-only panels. `true` is reserved for PTY-backed panels, not available to plugins in v1. |
-| `canRestart`    | no       | Show a "restart" control in the panel header.                                                                   |
-| `canConvert`    | no       | Allow conversion between compatible panel kinds. Rarely useful for plugins.                                     |
-| `showInPalette` | no       | Include in the "New Panel…" palette. Default `true`.                                                            |
+| Field | Required | Notes |
+| --- | --- | --- |
+| `id` | yes | Namespaced at runtime as `{pluginId}.{id}`. |
+| `name` | yes | Display label in the panel header and palette. |
+| `iconId` | yes | Must match a registered icon ID — see the icon registry in `src/components/icons/`. |
+| `color` | yes | HSL string used for the panel tab accent. |
+| `hasPty` | no | `false` (default) for UI-only panels. `true` is reserved for PTY-backed panels, not available to plugins in v1. |
+| `canRestart` | no | Show a "restart" control in the panel header. |
+| `canConvert` | no | Allow conversion between compatible panel kinds. Rarely useful for plugins. |
+| `showInPalette` | no | Include in the "New Panel…" palette. Default `true`. |
 
 **Component registration** is covered by the **views** contribution point below — panels declare the slot, views provide the component.
 
@@ -146,14 +146,14 @@ Views are the React components that render inside a panel. They depend on Daintr
 
 **Fields:**
 
-| Field           | Required | Notes                                                                                               |
-| --------------- | -------- | --------------------------------------------------------------------------------------------------- |
-| `id`            | yes      | Matches the panel `id` it provides a component for. Namespaced at runtime as `{pluginId}.{id}`.     |
-| `name`          | yes      | Display label.                                                                                      |
-| `componentPath` | yes      | Relative path to an ESM module inside the plugin. The module's default export is a React component. |
-| `location`      | yes      | `"panel"` (docked in the grid) or `"sidebar"` (sidebar contribution — future).                      |
-| `iconId`        | no       | Override the panel's icon for this view.                                                            |
-| `description`   | no       | Surface text for palette/preferences.                                                               |
+| Field | Required | Notes |
+| --- | --- | --- |
+| `id` | yes | Matches the panel `id` it provides a component for. Namespaced at runtime as `{pluginId}.{id}`. |
+| `name` | yes | Display label. |
+| `componentPath` | yes | Relative path to an ESM module inside the plugin. The module's default export is a React component. |
+| `location` | yes | `"panel"` (docked in the grid) or `"sidebar"` (sidebar contribution — future). |
+| `iconId` | no | Override the panel's icon for this view. |
+| `description` | no | Surface text for palette/preferences. |
 
 **Bundling** — plugin views ship as **pre-built ESM modules**. You don't compile TypeScript or JSX at plugin-load time. `@daintreehq/plugin-vite` produces the bundle with the correct externals for React 19 sharing. See [Architecture → Renderer host](./architecture.md#renderer-host) for the internals.
 
@@ -194,13 +194,13 @@ Toolbar buttons dispatch an existing action from the main toolbar.
 
 **Fields:**
 
-| Field      | Required | Notes                                                                                                    |
-| ---------- | -------- | -------------------------------------------------------------------------------------------------------- |
-| `id`       | yes      | Namespaced at runtime as `plugin.{pluginId}.{id}`.                                                       |
-| `label`    | yes      | Hover tooltip.                                                                                           |
-| `iconId`   | yes      | Registered icon ID.                                                                                      |
-| `actionId` | yes      | Fully-qualified action ID, including plugin namespace. Built-in actions (e.g. `terminal.new`) also work. |
-| `priority` | no       | `1`–`5`, lower = earlier in sort order. Default `3`.                                                     |
+| Field | Required | Notes |
+| --- | --- | --- |
+| `id` | yes | Namespaced at runtime as `plugin.{pluginId}.{id}`. |
+| `label` | yes | Hover tooltip. |
+| `iconId` | yes | Registered icon ID. |
+| `actionId` | yes | Fully-qualified action ID, including plugin namespace. Built-in actions (e.g. `terminal.new`) also work. |
+| `priority` | no | `1`–`5`, lower = earlier in sort order. Default `3`. |
 
 ## Menu items — _Shipped_
 
@@ -223,12 +223,12 @@ Menu items add entries to Daintree's application menus.
 
 **Fields:**
 
-| Field         | Required | Notes                                                                                                   |
-| ------------- | -------- | ------------------------------------------------------------------------------------------------------- |
-| `label`       | yes      | Menu entry label.                                                                                       |
-| `actionId`    | yes      | Fully-qualified action ID to dispatch.                                                                  |
-| `location`    | yes      | One of `"terminal"`, `"file"`, `"view"`, `"help"`. Determines which top-level menu the item appears in. |
-| `accelerator` | no       | Platform-neutral shortcut, e.g. `"Cmd+Shift+L"` (becomes `Ctrl+Shift+L` on Windows/Linux).              |
+| Field | Required | Notes |
+| --- | --- | --- |
+| `label` | yes | Menu entry label. |
+| `actionId` | yes | Fully-qualified action ID to dispatch. |
+| `location` | yes | One of `"terminal"`, `"file"`, `"view"`, `"help"`. Determines which top-level menu the item appears in. |
+| `accelerator` | no | Platform-neutral shortcut, e.g. `"Cmd+Shift+L"` (becomes `Ctrl+Shift+L` on Windows/Linux). |
 
 ## Keybindings — _Planned_
 
@@ -250,11 +250,11 @@ Keybindings map a key combination to an action.
 
 **Fields:**
 
-| Field      | Required | Notes                                                                                                           |
-| ---------- | -------- | --------------------------------------------------------------------------------------------------------------- |
-| `actionId` | yes      | Fully-qualified action ID, usually one your plugin declared.                                                    |
-| `combo`    | yes      | Normalized key combo string, same format as Daintree's default keybindings. Chords (`"Cmd+K Cmd+S"`) supported. |
-| `when`     | no       | Context expression. Future; in v1 always-active bindings only.                                                  |
+| Field | Required | Notes |
+| --- | --- | --- |
+| `actionId` | yes | Fully-qualified action ID, usually one your plugin declared. |
+| `combo` | yes | Normalized key combo string, same format as Daintree's default keybindings. Chords (`"Cmd+K Cmd+S"`) supported. |
+| `when` | no | Context expression. Future; in v1 always-active bindings only. |
 
 Conflicts with user overrides or other plugins' bindings are resolved by Daintree's existing keybinding service — plugin bindings are low-priority and yield to user overrides. See `src/services/KeybindingService.ts:325` for the registration API.
 
@@ -343,13 +343,13 @@ Declares Model Context Protocol servers the plugin ships. See [Agent extensions 
 
 **Fields:**
 
-| Field     | Required | Notes                                                                                     |
-| --------- | -------- | ----------------------------------------------------------------------------------------- |
-| `id`      | yes      | Namespaced at runtime as `{pluginId}.{id}`.                                               |
-| `name`    | yes      | Display name.                                                                             |
-| `command` | yes      | Executable — `node`, `python`, `npx`, or an absolute path.                                |
-| `args`    | no       | Argv after the command.                                                                   |
-| `env`     | no       | Environment variables. Values can reference settings with `${settings:settingId}` syntax. |
+| Field | Required | Notes |
+| --- | --- | --- |
+| `id` | yes | Namespaced at runtime as `{pluginId}.{id}`. |
+| `name` | yes | Display name. |
+| `command` | yes | Executable — `node`, `python`, `npx`, or an absolute path. |
+| `args` | no | Argv after the command. |
+| `env` | no | Environment variables. Values can reference settings with `${settings:settingId}` syntax. |
 
 Daintree supervises the process: lazy spawn on first tool use, hard kill on Daintree exit, exponential backoff on crash. The plugin's tools are exposed to any agent running in Daintree through the same MCP surface user-configured MCP servers use.
 

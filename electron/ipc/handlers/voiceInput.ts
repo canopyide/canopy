@@ -171,6 +171,7 @@ export class PromisePool {
 
 let sessionBuffer: TranscriptionBuffer | null = null;
 let correctionPool: PromisePool | null = null;
+let sessionController: AbortController | null = null;
 let sessionProjectInfo: { name?: string; path?: string } = {};
 
 const VOICE_INPUT_DEFAULTS: VoiceInputSettings = {
@@ -257,8 +258,10 @@ function openMicSettings(): void {
     // Linux: try gnome-control-center, fall back silently
     try {
       spawn("gnome-control-center", ["sound"], { detached: true, stdio: "ignore" }).unref();
-    } catch {
-      // No standard way to open mic settings on Linux
+    } catch (err) {
+      logDebug("[VoiceInput] Failed to open mic settings", {
+        error: (err as Error)?.message ?? String(err),
+      });
     }
   }
 }
@@ -467,6 +470,8 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
     // Reset streaming correction state
     sessionBuffer = new TranscriptionBuffer();
     correctionPool = new PromisePool(POOL_CONCURRENCY_LIMIT);
+    sessionController = new AbortController();
+    correctionService.setSessionSignal(sessionController.signal);
 
     // Capture project info at session start.
     sessionProjectInfo = getProjectInfo();
@@ -530,6 +535,7 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
           const projectPath = sessionProjectInfo.path;
           const apiKey = liveSettings.correctionApiKey;
           if (projectPath && apiKey) {
+            const signal = sessionController?.signal;
             correctionPool.add(async () => {
               if (!correctionService) return;
               const tokens = await correctionService.detectFileLinkTokens(rawText, { apiKey });
@@ -538,6 +544,7 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
                   cwd: projectPath,
                   description,
                   apiKey,
+                  signal,
                 });
                 const replacement = resolved ? `@${resolved}` : `@?${description}`;
                 if (!win.isDestroyed()) {
@@ -591,6 +598,10 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
   };
 
   const handleStop = async (): Promise<{ rawText: string | null; correctionId: string | null }> => {
+    // Snapshot the session controller so concurrent start/stop cannot
+    // cross-abort. All references below use this captured reference.
+    const controller = sessionController;
+
     if (service) {
       // Drain Deepgram first (waits for pending transcriptions, fires remaining complete events).
       await service.stopGracefully();
@@ -605,12 +616,26 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
       }
     }
 
+    // Abort in-flight OpenAI calls so the pool drains promptly
+    controller?.abort();
+
     // Wait for all in-flight micro-corrections to complete (with timeout)
+    let drained = false;
     if (correctionPool) {
       await Promise.race([
-        correctionPool.drain(),
+        correctionPool.drain().then(() => {
+          drained = true;
+        }),
         new Promise<void>((resolve) => setTimeout(resolve, POOL_DRAIN_TIMEOUT_MS)),
       ]);
+    }
+
+    // Only clear the signal if drain completed. If the timeout fired,
+    // tasks may still be queued; keeping the aborted signal ensures
+    // late-dequeued tasks fail fast instead of making uncancelable calls.
+    if (drained && sessionController === controller) {
+      correctionService?.setSessionSignal(null);
+      sessionController = null;
     }
 
     cleanupActiveSubscription();
@@ -678,5 +703,6 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
     correctionService = null;
     sessionBuffer = null;
     correctionPool = null;
+    sessionController = null;
   };
 }

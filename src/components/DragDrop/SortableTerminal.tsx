@@ -1,7 +1,8 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { motion, type TransformProperties, type Transition } from "framer-motion";
+import { m, type TransformProperties, type Transition } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { UI_ANIMATION_DURATION, DRAG_GHOST_OPACITY, DRAG_GHOST_EASING } from "@/lib/animationUtils";
 import type { TerminalInstance } from "@/store";
 import type { DragData } from "./DndProvider";
 import { DragHandleProvider } from "./DragHandleContext";
@@ -9,7 +10,7 @@ import { DragHandleProvider } from "./DragHandleContext";
 // Force integer-pixel translations on the FLIP wrapper. xterm canvas/WebGL
 // renderers blur when their ancestor chain receives a fractional CSS transform
 // (Chromium bug 40892376), so we snap mid-flight to the nearest device pixel.
-function pixelSnapTransform({ x, y }: TransformProperties): string {
+export function pixelSnapTransform({ x, y }: TransformProperties): string {
   const tx = typeof x === "number" ? x : parseFloat(x ?? "0") || 0;
   const ty = typeof y === "number" ? y : parseFloat(y ?? "0") || 0;
   return `translate3d(${Math.round(tx)}px, ${Math.round(ty)}px, 0)`;
@@ -47,7 +48,15 @@ export function SortableTerminal({
     groupPanelIds,
   };
 
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
     id: terminal.id,
     data: dragData,
     disabled,
@@ -58,7 +67,7 @@ export function SortableTerminal({
   });
 
   const sortableStyle = {
-    transform: CSS.Transform.toString(transform),
+    transform: CSS.Translate.toString(transform),
     transition,
   };
 
@@ -74,7 +83,7 @@ export function SortableTerminal({
   void _tabIndex;
 
   return (
-    <motion.div
+    <m.div
       layout="position"
       transition={layoutTransition}
       transformTemplate={pixelSnapTransform}
@@ -88,11 +97,22 @@ export function SortableTerminal({
         style={sortableStyle}
         className={cn(
           "h-full min-w-0 contain-layout contain-style",
-          isDragging && "opacity-40 ring-2 ring-daintree-text/20 rounded"
+          isDragging && "ring-2 ring-daintree-text/20 rounded"
         )}
       >
-        <DragHandleProvider value={{ listeners }}>{children}</DragHandleProvider>
+        <m.div
+          className="h-full"
+          animate={{ opacity: isDragging ? DRAG_GHOST_OPACITY : 1 }}
+          transition={{
+            duration: isDragging ? UI_ANIMATION_DURATION / 1000 : 0,
+            ease: DRAG_GHOST_EASING,
+          }}
+        >
+          <DragHandleProvider value={{ listeners, setActivatorNodeRef }}>
+            {children}
+          </DragHandleProvider>
+        </m.div>
       </div>
-    </motion.div>
+    </m.div>
   );
 }

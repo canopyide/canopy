@@ -13,7 +13,7 @@ import { useIsDragging } from "@/components/DragDrop";
 import { TitleEditingProvider, useTitleEditing } from "./TitleEditingContext";
 import { TerminalHeaderContent } from "@/components/Terminal/TerminalHeaderContent";
 import { TerminalContextMenu } from "@/components/Terminal/TerminalContextMenu";
-import type { PanelKind, AgentState } from "@/types";
+import type { PanelKind, AgentState, PersistableFlowStatus } from "@/types";
 import type { TerminalRuntimeIdentity } from "@shared/types/panel";
 import type { ActivityState } from "@/components/Terminal/TerminalPane";
 import type { TabInfo } from "./TabButton";
@@ -23,6 +23,7 @@ import { useFleetArmingStore } from "@/store/fleetArmingStore";
 import { useWorktreeColorMap } from "@/hooks/useWorktreeColorMap";
 import { useWorktreeStore } from "@/hooks/useWorktreeStore";
 import { deriveTerminalChrome, type TerminalChromeDescriptor } from "@/utils/terminalChrome";
+import { getTerminalAgentDisplayState } from "@/utils/terminalAgentDisplayState";
 
 /**
  * Base props for all panel types.
@@ -35,7 +36,6 @@ export interface BasePanelProps {
   isFocused: boolean;
   isMaximized?: boolean;
   location?: "grid" | "dock";
-  isTrashing?: boolean;
   gridPanelCount?: number;
   onFocus: () => void;
   onClose: (force?: boolean) => void;
@@ -84,7 +84,7 @@ export interface ContentPanelProps extends BasePanelProps {
   activityStatus?: "working" | "waiting" | "success" | "failure";
   lastCommand?: string;
   queueCount?: number;
-  flowStatus?: "running" | "paused-backpressure" | "paused-user" | "suspended";
+  flowStatus?: PersistableFlowStatus;
   onRestart?: () => void;
   isPinged?: boolean;
   wasJustSelected?: boolean;
@@ -124,7 +124,6 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
     isFocused,
     isMaximized = false,
     location = "grid",
-    isTrashing = false,
     gridPanelCount,
     worktreeId,
     onFocus,
@@ -180,6 +179,7 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
   const isDragging = useIsDragging();
   const titleInputRef = useRef<HTMLInputElement>(null);
   const titleEditing = useTitleEditing();
+  const editingStartedAt = titleEditing.editingStartedAt;
 
   // Hover/focus preview from the fleet selection menu — true when the user
   // is previewing a state-preset menu item that *would* arm this pane. The
@@ -211,11 +211,13 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
   }, [id]);
 
   // Focus and select input when editing starts (handles context menu rename).
-  // Use a short delay instead of rAF so the context menu's focus restoration
-  // (Radix returns focus to the trigger) completes before we grab focus.
+  // The delay must outlast Radix's `onCloseAutoFocus` window — otherwise the
+  // dropdown/context-menu's focus restoration steals focus from the input
+  // immediately after we grab it, the input fires `onBlur`, and editing ends
+  // before the user sees it. 200ms covers Tier 2-fast palette/menu exit.
   useEffect(() => {
     if (titleEditing.isEditingTitle && titleInputRef.current) {
-      const timer = setTimeout(() => titleInputRef.current?.select(), 60);
+      const timer = setTimeout(() => titleInputRef.current?.select(), 200);
       return () => clearTimeout(timer);
     }
     return undefined;
@@ -264,7 +266,8 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
       presetColor,
     ]
   );
-  const ownAgentState = terminalChrome.isAgent ? agentState : undefined;
+  const ownAgentState = agentState;
+  const headerAgentState = getTerminalAgentDisplayState(terminalChrome, ownAgentState);
   // Determine effective agent state for container border styling.
   // ambientAgentState takes priority so tab groups can surface highest-urgency
   // state from hidden live-agent tabs without affecting the active header chip.
@@ -280,7 +283,7 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
         <TerminalHeaderContent
           id={id}
           kind={kind}
-          agentState={ownAgentState}
+          agentState={headerAgentState}
           activity={activity}
           activityStatus={activityStatus}
           lastCommand={lastCommand}
@@ -296,7 +299,7 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
     headerContent,
     kind,
     id,
-    ownAgentState,
+    headerAgentState,
     activity,
     activityStatus,
     lastCommand,
@@ -316,12 +319,29 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
     [onTitleChange, titleEditing]
   );
 
-  const handleTitleSave = useCallback(() => {
+  const commitTitle = useCallback(() => {
     titleEditing.stopEditing();
     if (titleEditing.editingValue.trim() && titleEditing.editingValue !== title) {
       onTitleChange?.(titleEditing.editingValue.trim());
     }
   }, [titleEditing, title, onTitleChange]);
+
+  const handleTitleSave = useCallback(() => {
+    // Ignore spurious blurs that happen while overlay-restoration logic is
+    // racing the input's mount. When the rename action starts editing from a
+    // context menu, Radix's `onCloseAutoFocus` may steal focus from the input
+    // moments after we focus it — this fires a stray blur. Re-anchor focus on
+    // the input instead of saving with the unchanged value.
+    //
+    // Only the BLUR path needs this suppression — explicit Enter (handled
+    // by handleTitleInputKeyDown) calls commitTitle directly so a fast
+    // type-then-Enter flow still saves immediately.
+    if (editingStartedAt && Date.now() - editingStartedAt < 300) {
+      requestAnimationFrame(() => titleInputRef.current?.focus());
+      return;
+    }
+    commitTitle();
+  }, [editingStartedAt, commitTitle]);
 
   const handleTitleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -338,13 +358,14 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
   const handleTitleInputKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === "Enter") {
-        handleTitleSave();
+        e.preventDefault();
+        commitTitle();
       } else if (e.key === "Escape") {
         titleEditing.stopEditing();
         titleEditing.setEditingValue(title);
       }
     },
-    [handleTitleSave, title, titleEditing]
+    [commitTitle, title, titleEditing]
   );
 
   const handleClick = useCallback(
@@ -368,7 +389,7 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
         data-launch-agent-id={agentId || undefined}
         data-ever-detected-agent={everDetectedAgent ? "true" : undefined}
         data-chrome-agent-id={terminalChrome.agentId || undefined}
-        data-agent-state={ownAgentState || undefined}
+        data-agent-state={headerAgentState || undefined}
         data-ambient-agent-state={ambientAgentState || undefined}
         data-runtime-kind={terminalChrome.runtimeKind}
         data-runtime-icon-id={terminalChrome.iconId || undefined}
@@ -397,7 +418,6 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
                   : "border-overlay hover:border-tint/[0.08]"),
           location === "grid" && isMaximized && "border-0 rounded-none z-[var(--z-maximized)]",
           worktreeAccentColor && location === "grid" && !isMaximized && "panel-worktree-identity",
-          isTrashing && "terminal-trashing",
           className
         )}
         onClick={handleClick}

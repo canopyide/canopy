@@ -15,13 +15,13 @@ export function GitHubTokenBanner() {
   return (
     <div
       role="status"
-      aria-live="polite"
       className="flex items-center gap-3 px-4 py-2 bg-[var(--color-status-warning)]/15 border-b border-[var(--color-status-warning)]/30 text-[var(--color-status-warning)] text-sm shrink-0"
     >
       <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden="true" />
-      <span className="flex-1">
-        GitHub token expired. Reconnect to restore issue, PR, and repository data.
-      </span>
+      <div className="flex-1 flex flex-col gap-0.5">
+        <p className="font-medium">GitHub token expired</p>
+        <p>Reconnect to restore issue, PR, and repository data.</p>
+      </div>
       <button
         type="button"
         onClick={handleReconnect}

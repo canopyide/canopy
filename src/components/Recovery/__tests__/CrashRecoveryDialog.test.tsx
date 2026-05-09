@@ -5,6 +5,11 @@ import type { ReactNode, ButtonHTMLAttributes } from "react";
 import { CrashRecoveryDialog } from "../CrashRecoveryDialog";
 import type { PendingCrash, CrashRecoveryConfig } from "@shared/types/ipc";
 
+const notifyMock = vi.fn();
+vi.mock("@/lib/notify", () => ({
+  notify: (payload: unknown) => notifyMock(payload),
+}));
+
 vi.mock("@/components/ui/AppDialog", () => {
   interface MockProps {
     isOpen: boolean;
@@ -127,6 +132,7 @@ function setup(overrides?: {
 }
 
 beforeEach(() => {
+  notifyMock.mockReset();
   Object.defineProperty(window, "electron", {
     configurable: true,
     writable: true,
@@ -211,7 +217,7 @@ describe("CrashRecoveryDialog", () => {
       expect(call.panelIds).not.toContain("t2");
     });
 
-    it("calls onResolve with fresh when Start Fresh is clicked", async () => {
+    it("calls onResolve with fresh when 'Continue without restoring' is clicked", async () => {
       const { onResolve } = setup();
       fireEvent.click(screen.getByTestId("fresh-button"));
       await waitFor(() => expect(onResolve).toHaveBeenCalledWith({ kind: "fresh" }));
@@ -303,15 +309,74 @@ describe("CrashRecoveryDialog", () => {
     expect(window.electron.system.openPath).toHaveBeenCalledWith(mockCrash.logPath);
   });
 
+  it("shows error notification when openPath fails", async () => {
+    (window.electron.system.openPath as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error("ENOENT")
+    );
+    setup();
+    fireEvent.click(screen.getByTestId("details-toggle"));
+    fireEvent.click(screen.getByTestId("open-log-button"));
+
+    await waitFor(() => {
+      expect(notifyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "error",
+          title: "Couldn't open log file",
+        })
+      );
+    });
+  });
+
+  it("copy stack button appears when errorStack is present", () => {
+    setup();
+    fireEvent.click(screen.getByTestId("details-toggle"));
+    expect(screen.getByTestId("copy-stack-button")).toBeTruthy();
+    expect(screen.getByTestId("copy-stack-button").textContent).toContain("Copy stack");
+  });
+
+  it("copy stack button not rendered when errorStack is absent", () => {
+    setup({ crash: { entry: { ...mockCrash.entry, errorStack: undefined } } });
+    fireEvent.click(screen.getByTestId("details-toggle"));
+    expect(screen.queryByTestId("copy-stack-button")).toBeNull();
+  });
+
+  it("copy stack button not rendered when errorStack is empty string", () => {
+    setup({ crash: { entry: { ...mockCrash.entry, errorStack: "" } } });
+    fireEvent.click(screen.getByTestId("details-toggle"));
+    expect(screen.queryByTestId("copy-stack-button")).toBeNull();
+  });
+
+  it("copy stack calls clipboard.writeText with errorStack", async () => {
+    setup();
+    fireEvent.click(screen.getByTestId("details-toggle"));
+    fireEvent.click(screen.getByTestId("copy-stack-button"));
+
+    await waitFor(() => {
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(mockCrash.entry.errorStack);
+    });
+  });
+
+  it("copy stack shows Copied feedback independently from report button", async () => {
+    setup();
+    fireEvent.click(screen.getByTestId("details-toggle"));
+    fireEvent.click(screen.getByTestId("copy-stack-button"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("copy-stack-button").textContent).toContain("Copied");
+    });
+    // Report button still shows its default label
+    expect(screen.getByTestId("report-button").textContent).toContain("Report this crash");
+  });
+
   it("shows privacy warning on first report click, copies on second click", async () => {
     setup();
     fireEvent.click(screen.getByTestId("details-toggle"));
     fireEvent.click(screen.getByTestId("report-button"));
     expect(screen.getByTestId("privacy-warning")).toBeTruthy();
-    expect(screen.getByTestId("privacy-warning").textContent).toContain("copy to clipboard");
     expect(screen.getByTestId("privacy-warning").textContent).toContain(
-      "You'll need to paste the info into the form"
+      "Opens GitHub Issues in your browser"
     );
+    expect(screen.getByTestId("privacy-warning").textContent).toContain("publicly visible");
     expect(screen.getByTestId("report-button").textContent).toContain("Copy & report on GitHub");
 
     fireEvent.click(screen.getByTestId("report-button"));
@@ -321,10 +386,60 @@ describe("CrashRecoveryDialog", () => {
     );
   });
 
+  it("first report click does not write to clipboard or open browser", () => {
+    setup();
+    fireEvent.click(screen.getByTestId("details-toggle"));
+    fireEvent.click(screen.getByTestId("report-button"));
+    expect(navigator.clipboard.writeText).not.toHaveBeenCalled();
+    expect(window.electron.system.openExternal).not.toHaveBeenCalled();
+  });
+
+  it("does not open the browser when clipboard write fails", async () => {
+    (navigator.clipboard.writeText as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error("denied")
+    );
+    setup();
+    fireEvent.click(screen.getByTestId("details-toggle"));
+    fireEvent.click(screen.getByTestId("report-button"));
+    fireEvent.click(screen.getByTestId("report-button"));
+    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalled());
+    // Allow the awaited copy promise rejection to settle.
+    await Promise.resolve();
+    expect(window.electron.system.openExternal).not.toHaveBeenCalled();
+  });
+
   it("calls onUpdateConfig when auto-restore checkbox is changed", async () => {
     const { onUpdateConfig } = setup();
     fireEvent.click(screen.getByTestId("auto-restore-checkbox"));
     await waitFor(() => expect(onUpdateConfig).toHaveBeenCalledWith({ autoRestoreOnCrash: true }));
+  });
+
+  describe("crash-loop guard", () => {
+    it("shows the auto-restore checkbox when crashCount is undefined", () => {
+      setup();
+      expect(screen.getByTestId("auto-restore-checkbox")).toBeTruthy();
+      expect(screen.queryByTestId("auto-restore-paused")).toBeNull();
+    });
+
+    it("shows the auto-restore checkbox when crashCount is 1", () => {
+      setup({ crash: { crashCount: 1 } });
+      expect(screen.getByTestId("auto-restore-checkbox")).toBeTruthy();
+      expect(screen.queryByTestId("auto-restore-paused")).toBeNull();
+    });
+
+    it("hides the checkbox at crashCount 2 with auto-restore disabled", () => {
+      setup({ crash: { crashCount: 2 }, config: { autoRestoreOnCrash: false } });
+      expect(screen.queryByTestId("auto-restore-checkbox")).toBeNull();
+      expect(screen.queryByTestId("auto-restore-paused")).toBeNull();
+    });
+
+    it("hides the checkbox and shows paused note at crashCount 2 with auto-restore enabled", () => {
+      setup({ crash: { crashCount: 2 }, config: { autoRestoreOnCrash: true } });
+      expect(screen.queryByTestId("auto-restore-checkbox")).toBeNull();
+      const note = screen.getByTestId("auto-restore-paused");
+      expect(note.textContent).toContain("Auto-restore paused");
+      expect(note.textContent).toContain("too many consecutive crashes");
+    });
   });
 
   it("shows environment metadata in detail section", () => {

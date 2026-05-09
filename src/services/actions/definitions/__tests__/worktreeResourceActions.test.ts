@@ -7,6 +7,7 @@ vi.mock("@/lib/notify", () => ({
 }));
 
 const mockResourceAction = vi.fn();
+const mockOnAddTerminal = vi.fn();
 
 // Stub all external imports that worktreeActions.ts pulls in
 vi.mock("@/clients", () => ({
@@ -57,6 +58,7 @@ describe("worktree resource action definitions", () => {
       onCreateWorktree: vi.fn(),
       onDeleteWorktree: vi.fn(),
       onSwitchWorktree: vi.fn(),
+      onAddTerminal: mockOnAddTerminal,
     };
     registerWorktreeActions(registry as never, callbacks as never);
   });
@@ -68,10 +70,10 @@ describe("worktree resource action definitions", () => {
   });
 
   it.each([
-    ["worktree.resource.provision", "confirm"],
-    ["worktree.resource.teardown", "confirm"],
+    ["worktree.resource.provision", "safe"],
+    ["worktree.resource.teardown", "safe"],
     ["worktree.resource.resume", "safe"],
-    ["worktree.resource.pause", "confirm"],
+    ["worktree.resource.pause", "safe"],
     ["worktree.resource.status", "safe"],
     ["worktree.resource.connect", "safe"],
   ] as const)("%s has danger=%s", (id, expectedDanger) => {
@@ -97,6 +99,7 @@ describe("worktree resource action definitions", () => {
 
   beforeEach(() => {
     mockResourceAction.mockReset();
+    mockOnAddTerminal.mockReset();
     mockNotify.mockReset();
   });
 
@@ -109,20 +112,70 @@ describe("worktree resource action definitions", () => {
     ["worktree.resource.teardown", "hasTeardownCommand"],
     ["worktree.resource.resume", "hasResumeCommand"],
     ["worktree.resource.pause", "hasPauseCommand"],
-    ["worktree.resource.status", "hasStatusCommand"],
   ] as const)("%s is enabled when %s is true", (actionId, flag) => {
     mockWorktrees.set("/test", { [flag]: true });
     const def = registry.get(actionId)!();
     expect(def.isEnabled!({ activeWorktreeId: "/test" })).toBe(true);
   });
 
-  it("provision/teardown/resume/pause/status are disabled when worktree lacks command-specific flags", () => {
-    const nonConnectIds = RESOURCE_ACTION_IDS.filter((id) => id !== "worktree.resource.connect");
-    for (const id of nonConnectIds) {
+  it("provision/teardown/resume/pause are disabled when worktree lacks command-specific flags", () => {
+    const gatedIds = RESOURCE_ACTION_IDS.filter(
+      (id) => id !== "worktree.resource.connect" && id !== "worktree.resource.status"
+    );
+    for (const id of gatedIds) {
       const def = registry.get(id)!();
       // No worktree in the mocked store → isEnabled should return false
       expect(def.isEnabled!({ activeWorktreeId: "/test" }), `${id} should be disabled`).toBe(false);
     }
+  });
+
+  it("worktree.resource.status is always enabled (no isEnabled gate)", () => {
+    const def = registry.get("worktree.resource.status")!();
+    expect(def.isEnabled).toBeUndefined();
+    expect(def.disabledReason).toBeUndefined();
+  });
+
+  it("worktree.resource.status returns { configured: false, status: null } when no status command", async () => {
+    mockWorktrees.set("/test", { hasStatusCommand: false });
+    const def = registry.get("worktree.resource.status")!();
+    const result = await def.run!({}, { activeWorktreeId: "/test" });
+
+    expect(result).toEqual({ configured: false, status: null });
+    expect(mockResourceAction).not.toHaveBeenCalled();
+    expect(mockNotify).not.toHaveBeenCalled();
+  });
+
+  it("worktree.resource.status returns { configured: true, status } on success", async () => {
+    const resourceStatus = { lastStatus: "healthy" as const, lastCheckedAt: 0 };
+    mockWorktrees.set("/test", { hasStatusCommand: true, resourceStatus });
+    mockResourceAction.mockResolvedValueOnce(undefined);
+
+    const def = registry.get("worktree.resource.status")!();
+    const result = await def.run!({}, { activeWorktreeId: "/test" });
+
+    expect(mockResourceAction).toHaveBeenCalledWith("/test", "status");
+    expect(result).toEqual({ configured: true, status: resourceStatus });
+    expect(mockNotify).not.toHaveBeenCalled();
+  });
+
+  it("worktree.resource.connect passes spawnedBy through to terminal creation", async () => {
+    mockWorktrees.set("wt-1", {
+      path: "/repo/worktree",
+      name: "Remote Resource",
+      resourceConnectCommand: "ssh devbox",
+    });
+    const def = registry.get("worktree.resource.connect")!();
+
+    await def.run!({ worktreeId: "wt-1", spawnedBy: "mcp" }, {});
+
+    expect(mockOnAddTerminal).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "terminal",
+        command: "ssh devbox",
+        worktreeId: "wt-1",
+        spawnedBy: "mcp",
+      })
+    );
   });
 
   it.each([
@@ -132,6 +185,8 @@ describe("worktree resource action definitions", () => {
     ["worktree.resource.pause", "pause", "Pause failed"],
     ["worktree.resource.status", "status", "Status check failed"],
   ] as const)("%s calls notify on failure", async (actionId, _action, expectedTitle) => {
+    // status action gates on hasStatusCommand inside run() — seed it so we reach resourceAction
+    mockWorktrees.set("/test", { hasStatusCommand: true });
     mockResourceAction.mockRejectedValueOnce(new Error("Command exited with code 1"));
     const def = registry.get(actionId)!();
     await def.run!({}, { activeWorktreeId: "/test" });
@@ -158,6 +213,8 @@ describe("worktree resource action definitions", () => {
     "worktree.resource.pause",
     "worktree.resource.status",
   ] as const)("%s does not notify on success", async (actionId) => {
+    // status action gates on hasStatusCommand inside run() — seed it so we reach resourceAction
+    mockWorktrees.set("/test", { hasStatusCommand: true });
     mockResourceAction.mockResolvedValueOnce(undefined);
     const def = registry.get(actionId)!();
     await def.run!({}, { activeWorktreeId: "/test" });
@@ -174,6 +231,8 @@ describe("worktree resource action definitions", () => {
   ] as const)(
     "%s uses fallback message for non-Error rejections",
     async (actionId, expectedTitle, fallbackMessage) => {
+      // status action gates on hasStatusCommand inside run() — seed it so we reach resourceAction
+      mockWorktrees.set("/test", { hasStatusCommand: true });
       mockResourceAction.mockRejectedValueOnce(null);
       const def = registry.get(actionId)!();
       await def.run!({}, { activeWorktreeId: "/test" });

@@ -11,8 +11,10 @@ import { disposePowerSaveBlockerService } from "../services/PowerSaveBlockerServ
 import { disposeAgentRouter } from "../services/AgentRouter.js";
 
 import { disposeTaskOrchestrator } from "../services/TaskOrchestrator.js";
+import { taskQueueService } from "../services/TaskQueueService.js";
 import { disposePtyClient } from "../services/PtyClient.js";
 import { disposeWorkspaceClient } from "../services/WorkspaceClient.js";
+import { disposeMainProcessWatchdog } from "../services/MainProcessWatchdogClient.js";
 import { getCrashRecoveryService } from "../services/CrashRecoveryService.js";
 import { getCrashLoopGuard } from "../services/CrashLoopGuardService.js";
 import { getDatabaseMaintenanceService } from "../services/DatabaseMaintenanceService.js";
@@ -20,6 +22,9 @@ import { closeSharedDb } from "../services/persistence/db.js";
 import { closeTelemetry } from "../services/TelemetryService.js";
 import { isSmokeTest } from "../setup/environment.js";
 import { isSignalShutdown } from "./signalShutdownState.js";
+import { CLEANUP_TIMEOUT_MS } from "./shutdownConfig.js";
+
+export { CLEANUP_TIMEOUT_MS };
 
 export interface ShutdownDeps {
   getPtyClient: () => PtyClient | null;
@@ -39,8 +44,6 @@ export interface ShutdownDeps {
   setStopDiskSpaceMonitor: (v: (() => void) | null) => void;
   windowRegistry?: import("../window/WindowRegistry.js").WindowRegistry;
 }
-
-const CLEANUP_TIMEOUT_MS = 10_000;
 
 let isQuitting = false;
 let isConfirmingQuit = false;
@@ -88,8 +91,6 @@ export function registerShutdownHandler(deps: ShutdownDeps): void {
     console.log("[MAIN] Starting graceful shutdown...");
     const { drainRateLimitQueues } = await import("../ipc/utils.js");
     drainRateLimitQueues();
-    getCrashRecoveryService().cleanupOnExit();
-    getCrashLoopGuard().markCleanExit();
 
     const ptyClient = deps.getPtyClient();
     const workspaceClient = deps.getWorkspaceClient();
@@ -140,6 +141,11 @@ export function registerShutdownHandler(deps: ShutdownDeps): void {
           import("../services/McpServerService.js")
             .then(({ mcpServerService }) => mcpServerService.stop())
             .catch(() => {}),
+          // Revoke and remove any in-flight help-session dirs. Same lazy-import
+          // guard as MCP — the module only loads if a help session was provisioned.
+          import("../services/HelpSessionService.js")
+            .then(({ helpSessionService }) => helpSessionService.revokeAll())
+            .catch(() => {}),
           new Promise<void>((resolve) => {
             disposeTaskOrchestrator();
             disposeAgentRouter();
@@ -151,6 +157,7 @@ export function registerShutdownHandler(deps: ShutdownDeps): void {
             }
             disposePtyClient();
             disposeWorkspaceClient();
+            disposeMainProcessWatchdog();
             resolve();
           }),
         ])
@@ -189,6 +196,12 @@ export function registerShutdownHandler(deps: ShutdownDeps): void {
         }
 
         try {
+          await taskQueueService.flushPersistence();
+        } catch (error) {
+          console.warn("[MAIN] Failed to flush task persistence:", error);
+        }
+
+        try {
           await getDatabaseMaintenanceService().dispose();
         } catch (error) {
           console.warn("[MAIN] Database maintenance dispose failed:", error);
@@ -217,7 +230,24 @@ export function registerShutdownHandler(deps: ShutdownDeps): void {
         exitCalled = true;
         clearTimeout(hardTimer);
         console.log("[MAIN] Graceful shutdown complete");
-        await closeTelemetry();
+        // Mark the exit clean BEFORE telemetry — telemetry is best-effort and
+        // a closeTelemetry failure must never make the next launch think we crashed.
+        // Independent try blocks so a failure in one marker write doesn't skip the other.
+        try {
+          getCrashRecoveryService().cleanupOnExit();
+        } catch (err) {
+          console.warn("[MAIN] CrashRecoveryService.cleanupOnExit failed:", err);
+        }
+        try {
+          getCrashLoopGuard().markCleanExit();
+        } catch (err) {
+          console.warn("[MAIN] CrashLoopGuard.markCleanExit failed:", err);
+        }
+        try {
+          await closeTelemetry();
+        } catch (err) {
+          console.warn("[MAIN] closeTelemetry failed:", err);
+        }
         app.exit(0);
       })
       .catch(async (error) => {
@@ -225,7 +255,13 @@ export function registerShutdownHandler(deps: ShutdownDeps): void {
         exitCalled = true;
         clearTimeout(hardTimer);
         console.error("[MAIN] Error during cleanup:", error);
-        await closeTelemetry();
+        // Intentionally do NOT clean up the marker on the error/timeout path —
+        // leaving running.lock on disk is the dirty-exit signal for next launch.
+        try {
+          await closeTelemetry();
+        } catch (err) {
+          console.warn("[MAIN] closeTelemetry failed:", err);
+        }
         app.exit(1);
       });
   });

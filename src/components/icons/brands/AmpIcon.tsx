@@ -1,22 +1,21 @@
+import type { SVGProps } from "react";
 import { cn } from "@/lib/utils";
 
-interface AmpIconProps {
-  className?: string;
+type AmpIconProps = SVGProps<SVGSVGElement> & {
   size?: number;
   brandColor?: string;
-}
+};
 
-export function AmpIcon({ className, size = 16, brandColor }: AmpIconProps) {
+export function AmpIcon({ className, size = 16, brandColor, ...props }: AmpIconProps) {
   const fill = brandColor || "currentColor";
   return (
     <svg
       width={size}
       height={size}
       viewBox="0 0 21 21"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
       className={cn(className)}
       aria-hidden="true"
+      {...props}
     >
       <path
         d="M3.76879 18.3015L8.49839 13.505L10.2196 20.0399L12.72 19.3561L10.2288 9.86749L0.890876 7.33844L0.22594 9.89331L6.65134 11.6388L1.94138 16.4282L3.76879 18.3015Z"

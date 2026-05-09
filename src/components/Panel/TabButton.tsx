@@ -1,9 +1,8 @@
 import React, { useCallback, useState, useRef, useEffect, forwardRef } from "react";
 import type { DraggableAttributes, DraggableSyntheticListeners } from "@dnd-kit/core";
-import { m } from "framer-motion";
+import { m, AnimatePresence } from "framer-motion";
 import { X, AlertTriangle } from "lucide-react";
 import type { PanelKind, AgentState } from "@/types";
-import type { WaitingReason } from "@shared/types/agent";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
@@ -11,8 +10,11 @@ import {
   getEffectiveStateIcon,
   getEffectiveStateColor,
 } from "@/components/Worktree/terminalStateConfig";
-import { usePanelStore } from "@/store";
 import type { TerminalChromeDescriptor } from "@/utils/terminalChrome";
+import { getTerminalAgentDisplayState } from "@/utils/terminalAgentDisplayState";
+import { UI_ANIMATION_DURATION, DURATION_100, EASE_OUT_EXPO_FM } from "@/lib/animationUtils";
+
+const RENAME_ERROR_TINT_HOLD_MS = 300;
 
 export interface TabInfo {
   id: string;
@@ -67,8 +69,29 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
 ) {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(title);
+  const [showRenameError, setShowRenameError] = useState(false);
+  const [showRenameErrorTint, setShowRenameErrorTint] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const didCommitOrCancelRef = useRef(false);
+  const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const errorTintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearErrorTimers = useCallback(() => {
+    if (errorTimerRef.current !== null) {
+      clearTimeout(errorTimerRef.current);
+      errorTimerRef.current = null;
+    }
+    if (errorTintTimerRef.current !== null) {
+      clearTimeout(errorTintTimerRef.current);
+      errorTintTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clearErrorTimers();
+    };
+  }, [clearErrorTimers]);
 
   // Focus input when entering edit mode
   useEffect(() => {
@@ -94,8 +117,12 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
       const detail = e.detail as unknown;
       if (!detail || typeof (detail as { id?: unknown }).id !== "string") return;
       if ((detail as { id: string }).id === id) {
+        clearErrorTimers();
+        setShowRenameError(false);
+        setShowRenameErrorTint(false);
         setEditValue(title);
         setIsEditing(true);
+        didCommitOrCancelRef.current = false;
       }
     };
 
@@ -104,7 +131,7 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
       signal: controller.signal,
     });
     return () => controller.abort();
-  }, [id, title, onRename]);
+  }, [id, title, onRename, clearErrorTimers]);
 
   const handleClose = useCallback(
     (e: React.MouseEvent) => {
@@ -154,21 +181,41 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       e.stopPropagation();
       if (e.key === "Enter") {
+        // Don't intercept Enter while an IME composition is being committed.
+        if (e.nativeEvent.isComposing) return;
         e.preventDefault();
         const trimmed = editValue.trim();
-        if (trimmed && trimmed !== title) {
-          onRename?.(trimmed);
+        if (!trimmed || trimmed === title) {
+          clearErrorTimers();
+          setShowRenameError(true);
+          setShowRenameErrorTint(true);
+          errorTimerRef.current = setTimeout(() => {
+            setShowRenameError(false);
+            errorTimerRef.current = null;
+          }, UI_ANIMATION_DURATION);
+          errorTintTimerRef.current = setTimeout(() => {
+            setShowRenameErrorTint(false);
+            errorTintTimerRef.current = null;
+          }, RENAME_ERROR_TINT_HOLD_MS);
+          return;
         }
+        onRename?.(trimmed);
+        clearErrorTimers();
+        setShowRenameError(false);
+        setShowRenameErrorTint(false);
         didCommitOrCancelRef.current = true;
         setIsEditing(false);
       } else if (e.key === "Escape") {
         e.preventDefault();
         setEditValue(title);
+        clearErrorTimers();
+        setShowRenameError(false);
+        setShowRenameErrorTint(false);
         didCommitOrCancelRef.current = true;
         setIsEditing(false);
       }
     },
-    [editValue, title, onRename]
+    [editValue, title, onRename, clearErrorTimers]
   );
 
   const handleInputBlur = useCallback(() => {
@@ -179,8 +226,11 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
         onRename?.(trimmed);
       }
     }
+    clearErrorTimers();
+    setShowRenameError(false);
+    setShowRenameErrorTint(false);
     setIsEditing(false);
-  }, [editValue, title, onRename]);
+  }, [editValue, title, onRename, clearErrorTimers]);
 
   const handleInputClick = useCallback((e: React.MouseEvent) => {
     // Prevent click from bubbling to tab click handler
@@ -213,12 +263,8 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
     [onClick]
   );
 
-  const waitingReason = usePanelStore((state) => state.panelsById[id]?.waitingReason) as
-    | WaitingReason
-    | undefined;
-  const showStateIcon =
-    chrome.isAgent && agentState && agentState !== "idle" && agentState !== "completed";
-  const StateIcon = showStateIcon ? getEffectiveStateIcon(agentState, waitingReason) : null;
+  const displayAgentState = getTerminalAgentDisplayState(chrome, agentState);
+  const StateIcon = displayAgentState ? getEffectiveStateIcon(displayAgentState) : null;
 
   return (
     <Tooltip>
@@ -248,7 +294,7 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
               layoutId="panel-tab-indicator"
               layout="position"
               className="absolute inset-x-0 bottom-0 h-0.5 bg-daintree-accent pointer-events-none"
-              transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
+              transition={{ duration: UI_ANIMATION_DURATION / 1000, ease: EASE_OUT_EXPO_FM }}
               aria-hidden="true"
             />
           )}
@@ -262,7 +308,7 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
           </span>
 
           {isEditing ? (
-            <input
+            <m.input
               ref={inputRef}
               type="text"
               value={editValue}
@@ -272,28 +318,67 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
               onClick={handleInputClick}
               onDoubleClick={handleInputDoubleClick}
               onPointerDown={handleInputPointerDown}
-              className="text-xs bg-daintree-bg/80 border border-border-strong px-1 h-4 min-w-[60px] max-w-[100px] text-daintree-text select-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-daintree-accent"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.1 }}
+              className={cn(
+                "text-xs bg-daintree-bg/80 border px-1 h-4 min-w-[60px] max-w-[100px] text-daintree-text select-text transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-daintree-accent",
+                showRenameError
+                  ? "border-status-error duration-150"
+                  : "border-border-strong duration-250",
+                showRenameErrorTint && "bg-status-error/5"
+              )}
               aria-label={`Rename tab ${title}`}
+              aria-invalid={showRenameError || undefined}
             />
           ) : (
             <span
-              className={cn("truncate max-w-[100px]", onRename && "cursor-text")}
+              className={cn(
+                "truncate max-w-[100px] inline-block border border-transparent px-1",
+                onRename && "cursor-text"
+              )}
               onDoubleClick={handleDoubleClick}
             >
               {title}
             </span>
           )}
 
-          {showStateIcon && StateIcon && (
-            <StateIcon
-              className={cn(
-                "w-3 h-3 shrink-0",
-                getEffectiveStateColor(agentState, waitingReason),
-                agentState === "working" && "animate-spin-slow",
-                "motion-reduce:animate-none"
+          {document.body.dataset.performanceMode === "true" ? (
+            displayAgentState &&
+            StateIcon && (
+              <StateIcon
+                className={cn(
+                  "w-3 h-3 shrink-0",
+                  getEffectiveStateColor(displayAgentState),
+                  displayAgentState === "working" && "animate-spin-slow",
+                  "motion-reduce:animate-none"
+                )}
+                aria-hidden="true"
+              />
+            )
+          ) : (
+            <AnimatePresence initial={false} mode="wait">
+              {displayAgentState && StateIcon && (
+                <m.span
+                  key={displayAgentState}
+                  initial={{ opacity: 0, scale: 0.85 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.85 }}
+                  transition={{ duration: DURATION_100 / 1000, ease: [0.16, 1, 0.3, 1] }}
+                  className="inline-flex shrink-0"
+                >
+                  <StateIcon
+                    className={cn(
+                      "w-3 h-3",
+                      getEffectiveStateColor(displayAgentState),
+                      displayAgentState === "working" && "animate-spin-slow",
+                      "motion-reduce:animate-none"
+                    )}
+                    aria-hidden="true"
+                  />
+                </m.span>
               )}
-              aria-hidden="true"
-            />
+            </AnimatePresence>
           )}
 
           {isUsingFallback && (
@@ -331,8 +416,8 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
                 onClick={handleClose}
                 onKeyDown={handleCloseKeyDown}
                 className={cn(
-                  "shrink-0 p-0.5 -mr-1 rounded transition-colors",
-                  "opacity-0 group-hover/tab:opacity-100 focus-visible:opacity-100",
+                  "shrink-0 p-0.5 -mr-1 rounded transition-[opacity,color,background-color,border-color]",
+                  "opacity-0 group-hover/tab:opacity-100 group-focus-visible/tab:opacity-100 focus-visible:opacity-100",
                   "hover:bg-[color-mix(in_oklab,var(--color-status-error)_15%,transparent)]",
                   "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-1",
                   "text-daintree-text/40 hover:text-status-error"

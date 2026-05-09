@@ -30,7 +30,7 @@ function ShortcutRow({ binding, isEditing, onEdit, onSave, onCancel, onReset }: 
 
   if (isEditing) {
     return (
-      <div className="py-2 border-b border-daintree-border/50">
+      <div data-testid="shortcut-row" className="py-2 border-b border-daintree-border/50">
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm text-daintree-text">
             {binding.description || binding.actionId}
@@ -40,13 +40,17 @@ function ShortcutRow({ binding, isEditing, onEdit, onSave, onCancel, onReset }: 
           onCapture={handleCapture}
           onCancel={onCancel}
           excludeActionId={binding.actionId}
+          scope={binding.scope}
         />
       </div>
     );
   }
 
   return (
-    <div className="flex items-center justify-between py-2 border-b border-daintree-border/50 group">
+    <div
+      data-testid="shortcut-row"
+      className="flex items-center justify-between py-2 border-b border-daintree-border/50 group/row"
+    >
       <span className="text-sm text-daintree-text">{binding.description || binding.actionId}</span>
       <div className="flex items-center gap-2">
         {binding.effectiveCombo ? (
@@ -65,7 +69,7 @@ function ShortcutRow({ binding, isEditing, onEdit, onSave, onCancel, onReset }: 
         )}
         <button
           onClick={onEdit}
-          className="px-2 py-0.5 text-xs text-daintree-text/60 hover:text-daintree-text opacity-0 group-hover:opacity-100 transition-opacity"
+          className="px-2 py-0.5 text-xs text-daintree-text/60 hover:text-daintree-text opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100 focus-visible:opacity-100 transition-opacity"
         >
           Edit
         </button>
@@ -74,7 +78,7 @@ function ShortcutRow({ binding, isEditing, onEdit, onSave, onCancel, onReset }: 
             <TooltipTrigger asChild>
               <button
                 onClick={onReset}
-                className="p-0.5 text-daintree-text/60 hover:text-daintree-text opacity-0 group-hover:opacity-100 transition-opacity"
+                className="p-0.5 text-daintree-text/60 hover:text-daintree-text opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100 focus-visible:opacity-100 transition-opacity"
                 aria-label="Reset to default"
               >
                 <RotateCcw className="w-3 h-3" />
@@ -268,7 +272,7 @@ export function KeyboardShortcutsTab() {
           )}
         >
           <RotateCcw className="w-3.5 h-3.5" />
-          Reset All
+          Reset all
         </button>
       </div>
 

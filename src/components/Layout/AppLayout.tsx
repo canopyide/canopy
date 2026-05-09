@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { cn } from "@/lib/utils";
 import { Toolbar } from "./Toolbar";
 import { Sidebar } from "./Sidebar";
 import { TerminalDockRegion } from "./TerminalDockRegion";
@@ -17,6 +18,7 @@ import { AllClearOverlay } from "../AllClearOverlay";
 import {
   useDiagnosticsStore,
   useDockStore,
+  useFocusStore,
   usePreferencesStore,
   useUIStore,
   type PanelState,
@@ -75,7 +77,9 @@ export function AppLayout({
   const isThemeBrowserOpen = overlayClaims.has("theme-browser");
   const themeBrowserOpen = useThemeBrowserStore((s) => s.isOpen);
   const reduceAnimations = usePreferencesStore((s) => s.reduceAnimations);
-  const showSidebar = !layout.isFocusMode && currentProject != null;
+  const showSidebar = !layout.gestureSidebarHidden && currentProject != null;
+  const showAssistant = !layout.gestureAssistantHidden && layout.helpPanelOpen;
+  const effectiveAssistantWidth = showAssistant ? layout.helpPanelWidth : 0;
 
   useEffect(() => {
     if (layout.performanceMode) {
@@ -130,7 +134,11 @@ export function AppLayout({
   }, []);
 
   useEffect(() => {
-    if (layout.isFocusMode) return;
+    if (layout.gestureSidebarHidden) return;
+    // Skip until hydration completes — the pre-hydration mount uses the
+    // default 350px and would otherwise overwrite the persisted value before
+    // restoreState() reads it back.
+    if (!isHydrated) return;
 
     const persistSidebarWidth = async () => {
       try {
@@ -142,7 +150,7 @@ export function AppLayout({
 
     const timer = setTimeout(persistSidebarWidth, 300);
     return () => clearTimeout(timer);
-  }, [sidebarWidth, layout.isFocusMode]);
+  }, [sidebarWidth, layout.gestureSidebarHidden, isHydrated]);
 
   useEffect(() => {
     // Gate persistence until hydration completes and project switching ends
@@ -151,12 +159,18 @@ export function AppLayout({
       return;
     }
 
+    // Persist worktree-sidebar suppression as the legacy `focusMode` boolean.
+    // The assistant's own visibility is owned by `helpPanelStore.isOpen` at
+    // runtime and intentionally starts hidden on app boot, so it doesn't need
+    // to round-trip through the per-project focus state.
+    const persistedFocusMode = layout.gestureSidebarHidden;
+
     const persistFocusMode = async () => {
       // Persist focus mode to per-project state if a project is active
       if (!currentProject?.id) {
         // No project - fall back to global state for backward compatibility
         try {
-          await appClient.setState({ focusMode: layout.isFocusMode });
+          await appClient.setState({ focusMode: persistedFocusMode });
         } catch (error) {
           logError("Failed to persist focus mode to global state", error);
         }
@@ -166,7 +180,7 @@ export function AppLayout({
       try {
         await window.electron.project.setFocusMode(
           currentProject.id,
-          layout.isFocusMode,
+          persistedFocusMode,
           layout.savedPanelState as PanelState | undefined
         );
       } catch (error) {
@@ -176,10 +190,16 @@ export function AppLayout({
 
     const timer = setTimeout(persistFocusMode, 100);
     return () => clearTimeout(timer);
-  }, [layout.isFocusMode, layout.savedPanelState, currentProject?.id, isHydrated]);
+  }, [layout.gestureSidebarHidden, layout.savedPanelState, currentProject?.id, isHydrated]);
 
   const handleToggleFocusMode = async () => {
-    if (layout.isFocusMode) {
+    // Gesture-active signal is "snapshot present", not the combined
+    // isFocusMode flag — that flag also flips when the Toolbar button hides
+    // only the worktree sidebar, and using it here would treat that single
+    // toolbar action as a gesture exit (clearing the sidebar gesture instead
+    // of entering the gesture and hiding the assistant).
+    const gestureActive = useFocusStore.getState().gestureSnapshot !== null;
+    if (gestureActive) {
       if (layout.savedPanelState) {
         setSidebarWidth((layout.savedPanelState as PanelState).sidebarWidth);
       }
@@ -207,8 +227,14 @@ export function AppLayout({
         sidebarWidth,
         diagnosticsOpen: layout.diagnosticsOpen,
       };
-      layout.toggleFocusMode(currentPanelState);
-      // Persist to per-project state
+      layout.toggleFocusMode(currentPanelState, {
+        sidebarVisible: showSidebar,
+        assistantVisible: showAssistant,
+      });
+      // Persist to per-project state — only when something actually changed.
+      // toggleFocusMode is a no-op if neither sidebar was visible.
+      const persistFocusMode = useFocusStore.getState().isFocusMode || showSidebar || showAssistant;
+      if (!persistFocusMode) return;
       if (currentProject?.id) {
         try {
           await window.electron.project.setFocusMode(currentProject.id, true, currentPanelState);
@@ -230,6 +256,35 @@ export function AppLayout({
   useEffect(() => {
     handleToggleFocusModeRef.current = handleToggleFocusMode;
   });
+
+  // Worktree-sidebar-only toggle (Toolbar button + nav.toggleSidebar action).
+  // Independent from the assistant: clicking this button hides/shows only the
+  // worktree sidebar, leaving the Daintree Assistant untouched.
+  const handleToggleSidebar = useCallback(() => {
+    suppressSidebarResizes();
+    const focus = useFocusStore.getState();
+    focus.setSidebarGestureHidden(!focus.gestureSidebarHidden, {
+      sidebarWidth,
+      diagnosticsOpen: layout.diagnosticsOpen,
+    });
+  }, [sidebarWidth, layout.diagnosticsOpen]);
+
+  const handleToggleSidebarRef = useRef(handleToggleSidebar);
+  useEffect(() => {
+    handleToggleSidebarRef.current = handleToggleSidebar;
+  });
+
+  useEffect(() => {
+    const handleSidebarToggle = () => {
+      if (useUIStore.getState().hasOpenOverlays()) return;
+      handleToggleSidebarRef.current();
+    };
+
+    window.addEventListener("daintree:toggle-sidebar", handleSidebarToggle);
+    return () => {
+      window.removeEventListener("daintree:toggle-sidebar", handleSidebarToggle);
+    };
+  }, []);
 
   useEffect(() => {
     const handleFocusModeToggle = () => {
@@ -264,6 +319,17 @@ export function AppLayout({
       window.removeEventListener("daintree:reset-sidebar-width", handleResetSidebarWidth);
   }, []);
 
+  useEffect(() => {
+    // Bridge for stores that need to suppress xterm resize events without
+    // pulling sidebarToggle directly (avoids circular imports — sidebarToggle
+    // reads worktree state). Stores dispatch this event; AppLayout invokes
+    // the suppression helper that knows about both grid panels and the
+    // assistant terminal.
+    const handleSuppress = () => suppressSidebarResizes();
+    window.addEventListener("daintree:suppress-sidebar-resizes", handleSuppress);
+    return () => window.removeEventListener("daintree:suppress-sidebar-resizes", handleSuppress);
+  }, []);
+
   // Sync macro focus region visibility from layout state
   useEffect(() => {
     useMacroFocusStore.getState().setVisibility("sidebar", showSidebar);
@@ -272,6 +338,10 @@ export function AppLayout({
   useEffect(() => {
     useMacroFocusStore.getState().setVisibility("portal", layout.portalOpen);
   }, [layout.portalOpen]);
+
+  useEffect(() => {
+    useMacroFocusStore.getState().setVisibility("assistant", showAssistant);
+  }, [showAssistant]);
 
   // Clear macro focus on mouse interaction
   useEffect(() => {
@@ -302,16 +372,31 @@ export function AppLayout({
     onSettings?.();
   }, [onSettings]);
 
-  const effectiveSidebarWidth = layout.isFocusMode ? 0 : sidebarWidth;
+  const effectiveSidebarWidth = showSidebar ? sidebarWidth : 0;
 
   useEffect(() => {
-    const offset = layout.portalOpen ? `${layout.portalWidth}px` : "0px";
-    document.body.style.setProperty("--portal-right-offset", offset);
+    const portalOffset = layout.portalOpen ? layout.portalWidth : 0;
+    // Two separate vars because they encode different layout truths.
+    // --portal-right-offset: width of the body-portaled Portal (web chat) only.
+    //   Used by toolbar dropdowns, which sit above the main row and only need
+    //   to dodge body-portaled overlays — the Assistant is a flex sibling
+    //   below the toolbar, not an overlay (issue #6800).
+    // --right-obstruction-offset: max of Portal and Assistant width — the
+    //   total occupied right-edge viewport space. Used by fixed body-portaled
+    //   elements (toaster, popovers, ReEntrySummary, GettingStartedChecklist,
+    //   ThemeBrowser overlay) that would otherwise be hidden behind whichever
+    //   is wider. Portal overlays the Assistant when both are open, so the
+    //   rightmost obstruction is max, not sum (issue #6629).
+    const obstructionOffset = Math.max(portalOffset, effectiveAssistantWidth);
+    const rootStyle = document.documentElement.style;
+    rootStyle.setProperty("--portal-right-offset", `${portalOffset}px`);
+    rootStyle.setProperty("--right-obstruction-offset", `${obstructionOffset}px`);
 
     return () => {
-      document.body.style.removeProperty("--portal-right-offset");
+      rootStyle.removeProperty("--portal-right-offset");
+      rootStyle.removeProperty("--right-obstruction-offset");
     };
-  }, [layout.portalOpen, layout.portalWidth]);
+  }, [layout.portalOpen, layout.portalWidth, effectiveAssistantWidth]);
 
   return (
     <div
@@ -333,8 +418,8 @@ export function AppLayout({
           onPreloadSettings={onPreloadSettings}
           errorCount={layout.errorCount}
           onToggleProblems={handleToggleProblems}
-          isFocusMode={layout.isFocusMode}
-          onToggleFocusMode={handleToggleFocusMode}
+          isFocusMode={layout.gestureSidebarHidden}
+          onToggleFocusMode={handleToggleSidebar}
           agentAvailability={agentAvailability}
           agentSettings={agentSettings}
           projectSwitcherPalette={projectSwitcherPalette}
@@ -347,16 +432,32 @@ export function AppLayout({
         style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}
       >
         <div
-          className="flex-1 flex overflow-hidden"
-          style={{ flex: 1, display: "flex", overflow: "hidden" }}
+          className="flex-1 flex overflow-hidden relative"
+          style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}
         >
-          {currentProject != null && (
-            <ErrorBoundary variant="section" componentName="Sidebar">
-              <Sidebar width={effectiveSidebarWidth} onResize={handleSidebarResize}>
-                {sidebarContent}
-              </Sidebar>
-            </ErrorBoundary>
-          )}
+          <div
+            className={cn(
+              "relative h-full shrink-0 overflow-clip",
+              !reduceAnimations &&
+                "transition-[width] duration-[var(--duration-250)] ease-[var(--ease-out-expo)] motion-reduce:transition-none",
+              !showSidebar && "pointer-events-none"
+            )}
+            style={{ width: effectiveSidebarWidth, overflowClipMargin: "6px" }}
+          >
+            <div className="absolute top-0 left-0 h-full" style={{ width: sidebarWidth }}>
+              {currentProject != null && (
+                <ErrorBoundary variant="section" componentName="Sidebar">
+                  <Sidebar
+                    width={sidebarWidth}
+                    onResize={handleSidebarResize}
+                    isVisible={showSidebar}
+                  >
+                    {sidebarContent}
+                  </Sidebar>
+                </ErrorBoundary>
+              )}
+            </div>
+          </div>
           <ErrorBoundary variant="section" componentName="MainContent">
             <main
               aria-label="Content"
@@ -372,26 +473,29 @@ export function AppLayout({
               <div className="flex-1 overflow-hidden min-h-0">{children}</div>
               {/* Terminal Dock Region - manages dock visibility and overlays */}
               <TerminalDockRegion />
-              {layout.helpPanelOpen && (
-                <ErrorBoundary variant="section" componentName="HelpPanel">
-                  <div
-                    className="absolute top-0 bottom-0 z-40"
-                    style={{
-                      right: layout.portalOpen ? `${layout.portalWidth}px` : "0px",
-                    }}
-                  >
-                    <HelpPanel />
-                  </div>
-                </ErrorBoundary>
-              )}
-              {layout.portalOpen && (
-                <ErrorBoundary variant="section" componentName="PortalDock">
-                  <div className="absolute right-0 top-0 bottom-0 z-50 shadow-2xl border-l border-daintree-border">
-                    <PortalDock />
-                  </div>
-                </ErrorBoundary>
-              )}
             </main>
+          </ErrorBoundary>
+          <ErrorBoundary variant="section" componentName="HelpPanel">
+            <div
+              className={cn(
+                "relative h-full shrink-0 overflow-hidden",
+                !reduceAnimations &&
+                  "transition-[width] duration-[var(--duration-250)] ease-[var(--ease-out-expo)] motion-reduce:transition-none",
+                !showAssistant && "pointer-events-none"
+              )}
+              style={{ width: effectiveAssistantWidth }}
+            >
+              <div
+                className="absolute top-0 right-0 h-full"
+                style={{ width: layout.helpPanelWidth }}
+              >
+                <HelpPanel
+                  width={layout.helpPanelWidth}
+                  isVisible={showAssistant}
+                  isReadyToLaunch={isHydrated}
+                />
+              </div>
+            </div>
           </ErrorBoundary>
         </div>
         {/* Unified diagnostics dock replaces LogsPanel, EventInspectorPanel, and ProblemsPanel */}
@@ -419,13 +523,29 @@ export function AppLayout({
               <div
                 className="fixed inset-y-0 z-40 pointer-events-auto"
                 style={{
-                  right: layout.portalOpen ? `${layout.portalWidth}px` : "0px",
+                  right: "var(--right-obstruction-offset, 0px)",
                 }}
               >
                 <ThemeBrowser />
               </div>
             </ErrorBoundary>
           </>,
+          document.body
+        )}
+      {layout.portalOpen &&
+        createPortal(
+          <ErrorBoundary variant="section" componentName="PortalDock">
+            {/* inert mirrors the toolbar / main-content wrappers: when the
+                ThemeBrowser overlay is open, the Portal's React chrome (tabs,
+                toolbar, resize handle) must not be interactive. The native
+                WebContentsView is already hidden via PortalVisibilityController. */}
+            <div
+              {...(isThemeBrowserOpen ? { inert: true } : {})}
+              className="fixed top-12 right-0 bottom-0 z-50 shadow-2xl border-l border-daintree-border"
+            >
+              <PortalDock />
+            </div>
+          </ErrorBoundary>,
           document.body
         )}
       {window.electron?.demo && (

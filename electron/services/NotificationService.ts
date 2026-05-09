@@ -122,7 +122,7 @@ class NotificationService {
     }
 
     if (process.platform === "darwin") {
-      app.setBadgeCount(waitingCount > 0 ? waitingCount : 0);
+      app.setBadgeCount(waitingCount);
     }
   }
 
@@ -153,8 +153,8 @@ class NotificationService {
     const cleanup = () => {
       this.activeNotifications.delete(notification);
     };
-    notification.on("close", cleanup);
-    notification.on("failed" as "close", cleanup);
+    notification.once("close", cleanup);
+    notification.once("failed", cleanup);
 
     notification.show();
   }
@@ -164,7 +164,7 @@ class NotificationService {
     body: string,
     context: WatchNotificationContext,
     navigateChannel: string,
-    silent = false
+    silent = true
   ): void {
     if (!Notification.isSupported()) return;
 
@@ -174,10 +174,10 @@ class NotificationService {
     const cleanup = () => {
       this.activeNotifications.delete(notification);
     };
-    notification.on("close", cleanup);
-    notification.on("failed" as "close", cleanup);
+    notification.once("close", cleanup);
+    notification.once("failed", cleanup);
 
-    notification.on("click", () => {
+    notification.once("click", () => {
       cleanup();
       const targetWin = this.registry?.getPrimary()?.browserWindow;
       if (targetWin && !targetWin.isDestroyed()) {
@@ -201,6 +201,10 @@ class NotificationService {
 
     this.detachAllWindowListeners();
     this.clearNotifications();
+
+    for (const notification of this.activeNotifications) {
+      notification.removeAllListeners();
+    }
     this.activeNotifications.clear();
 
     this.registry = null;

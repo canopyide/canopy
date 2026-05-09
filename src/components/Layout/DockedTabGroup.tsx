@@ -12,11 +12,18 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, horizontalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { restrictToHorizontalAxis, restrictToParentElement } from "@dnd-kit/modifiers";
-import { LayoutGroup, LazyMotion, domMax } from "framer-motion";
-import { Plus } from "lucide-react";
+import { LayoutGroup } from "framer-motion";
+import { ChevronDown, Plus } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn, getBaseTitle } from "@/lib/utils";
 import { logError } from "@/utils/logger";
+import { useTabOverflow } from "@/hooks";
 import {
   useTerminalInputStore,
   usePanelStore,
@@ -32,6 +39,7 @@ import { TerminalContextMenu } from "@/components/Terminal/TerminalContextMenu";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import { getTerminalFocusTarget } from "@/components/Terminal/terminalFocus";
 import { deriveTerminalChrome } from "@/utils/terminalChrome";
+import { getTerminalAgentDisplayState } from "@/utils/terminalAgentDisplayState";
 import {
   getEffectiveStateIcon,
   getEffectiveStateColor,
@@ -94,14 +102,13 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
   // Derive isOpen from store state - open if ANY panel in this group is active
   const isOpen = panels.some((p) => p.id === activeDockTerminalId);
 
-  // Track when popover was just programmatically opened
-  const wasJustOpenedRef = useRef(false);
-  const prevIsOpenRef = useRef(isOpen);
-  const tabListRef = useRef<HTMLDivElement>(null);
+  // Track when popover was just programmatically opened. Initialized to `isOpen` so a group
+  // that mounts already-open is armed before Radix's DismissableLayer can fire a spurious
+  // mount-time onOpenChange(false).
+  const wasJustOpenedRef = useRef(isOpen);
+  const [tabListEl, setTabListEl] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    prevIsOpenRef.current = isOpen;
-
     if (!isOpen) return;
 
     wasJustOpenedRef.current = true;
@@ -115,17 +122,19 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
     useShallow((s) => ({ isOpen: s.isOpen, width: s.width }))
   );
 
-  const isFocusMode = useFocusStore((s) => s.isFocusMode);
+  // Mirrors DockedTerminalItem: only the worktree-sidebar-hidden state
+  // changes left-side popover collision padding.
+  const sidebarHidden = useFocusStore((s) => s.gestureSidebarHidden);
 
   const collisionPadding = useMemo(() => {
     const basePadding = 32;
     return {
       top: basePadding,
-      left: isFocusMode ? 8 : basePadding,
+      left: sidebarHidden ? 8 : basePadding,
       bottom: basePadding,
       right: portalOpen ? portalWidth + basePadding : basePadding,
     };
-  }, [isFocusMode, portalOpen, portalWidth]);
+  }, [sidebarHidden, portalOpen, portalWidth]);
 
   // Toggle buffering based on popover open state
   useEffect(() => {
@@ -234,7 +243,6 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
 
   const handleTabClose = useCallback(
     (tabId: string) => {
-      // If closing the active tab, switch to another tab first
       if (tabId === activeTabId) {
         const currentIndex = panels.findIndex((p) => p.id === tabId);
         const nextPanel = panels[currentIndex + 1] ?? panels[currentIndex - 1];
@@ -243,7 +251,6 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
           setFocused(nextPanel.id);
         }
       }
-      // Trash the terminal (store auto-removes from group)
       trashPanel(tabId);
     },
     [activeTabId, panels, group.id, setActiveTab, setFocused, trashPanel]
@@ -261,6 +268,8 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
 
   // Tab IDs for sortable context
   const tabIds = useMemo(() => panels.map((p) => p.id), [panels]);
+
+  const hiddenTabIds = useTabOverflow(tabListEl, tabIds);
 
   // Handle tab reorder drag end
   const handleTabDragEnd = useCallback(
@@ -320,13 +329,13 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
       if (nextPanel) {
         handleTabClick(nextPanel.id);
         // Focus the new tab button
-        const tabButton = tabListRef.current?.querySelector(
+        const tabButton = tabListEl?.querySelector(
           `[data-tab-id="${nextPanel.id}"]`
         ) as HTMLElement | null;
         tabButton?.focus();
       }
     },
-    [panels, activeTabId, handleTabClick]
+    [panels, activeTabId, handleTabClick, tabListEl]
   );
 
   // Handle add tab - duplicate the current panel as a new tab
@@ -335,25 +344,17 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
 
     try {
       const options = await buildPanelDuplicateOptions(activePanel, "dock");
-      const newPanelId = await addPanel(options);
+      // `activateDockOnCreate` folds dock activation into the panel commit so
+      // the watchdog effect cannot collapse the just-created tab. See #6590.
+      const newPanelId = await addPanel({ ...options, activateDockOnCreate: true });
       if (!newPanelId) return;
 
       addPanelToGroup(group.id, newPanelId);
       setActiveTab(group.id, newPanelId);
-      setFocused(newPanelId);
-      openDockTerminal(newPanelId);
     } catch (error) {
       logError("Failed to add tab", error);
     }
-  }, [
-    activePanel,
-    group.id,
-    addPanel,
-    addPanelToGroup,
-    setActiveTab,
-    setFocused,
-    openDockTerminal,
-  ]);
+  }, [activePanel, group.id, addPanel, addPanelToGroup, setActiveTab]);
 
   const groupBlockedState = getGroupBlockedAgentState(panels);
   const blockedState = useDockBlockedState(groupBlockedState);
@@ -399,16 +400,14 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
     exitCode: activePanel.exitCode,
     presetColor: brandColor,
   });
-  const agentState = activeChrome.isAgent ? getDockDisplayAgentState(activePanel) : undefined;
+  const agentState = getDockDisplayAgentState(activePanel);
   const isWorking = agentState === "working";
   const isWaiting = agentState === "waiting";
   const isActive = isWorking || isWaiting;
   const commandText = activePanel.activityHeadline || activePanel.lastCommand;
   const displayTitle = getBaseTitle(activePanel.title);
-  const showStateIcon = agentState && agentState !== "idle" && agentState !== "completed";
-  const StateIcon = showStateIcon
-    ? getEffectiveStateIcon(agentState, activePanel.waitingReason)
-    : null;
+  const displayAgentState = getTerminalAgentDisplayState(activeChrome, agentState);
+  const StateIcon = displayAgentState ? getEffectiveStateIcon(displayAgentState) : null;
 
   return (
     <Popover open={isOpen} onOpenChange={handleOpenChange}>
@@ -473,26 +472,26 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
               </>
             )}
 
-            {showStateIcon && StateIcon && (
+            {displayAgentState && StateIcon && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <div
                     className={cn(
                       "flex items-center shrink-0",
-                      getEffectiveStateColor(agentState, activePanel.waitingReason)
+                      getEffectiveStateColor(displayAgentState)
                     )}
                   >
                     <StateIcon
                       className={cn(
                         "w-3.5 h-3.5",
-                        agentState === "working" && "animate-spin-slow",
+                        displayAgentState === "working" && "animate-spin-slow",
                         "motion-reduce:animate-none"
                       )}
                       aria-hidden="true"
                     />
                   </div>
                 </TooltipTrigger>
-                <TooltipContent side="bottom">{`Agent ${agentState}`}</TooltipContent>
+                <TooltipContent side="bottom">{`Agent ${displayAgentState}`}</TooltipContent>
               </Tooltip>
             )}
           </button>
@@ -509,6 +508,9 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
         onEscapeKeyDown={(e) => handleDockEscapeKeyDown(e, portalContainer)}
         onOpenAutoFocus={(event) => {
           event.preventDefault();
+          if (activePanel.spawnedBy === "mcp") {
+            return;
+          }
           const focusTarget = getTerminalFocusTarget({
             hasHybridInputSurface: activeChrome.isAgent,
             isInputDisabled: backendStatus === "disconnected" || backendStatus === "recovering",
@@ -531,11 +533,11 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
           modifiers={[restrictToHorizontalAxis, restrictToParentElement]}
         >
           <SortableContext items={tabIds} strategy={horizontalListSortingStrategy}>
-            <LazyMotion features={domMax}>
-              <LayoutGroup id={`dock-tabs-${group.id}`}>
+            <LayoutGroup id={`dock-tabs-${group.id}`}>
+              <div className="flex items-stretch border-b border-divider bg-daintree-sidebar shrink-0">
                 <div
-                  ref={tabListRef}
-                  className="flex items-center border-b border-divider bg-daintree-sidebar shrink-0"
+                  ref={setTabListEl}
+                  className="flex items-center min-w-0 flex-1 overflow-x-auto scrollbar-none"
                   role="tablist"
                   aria-label="Dock panel tabs"
                   onKeyDown={handleTabListKeyDown}
@@ -559,7 +561,7 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
                         title={getBaseTitle(panel.title)}
                         chrome={tabChrome}
                         kind={panel.kind ?? "terminal"}
-                        agentState={tabChrome.isAgent ? getDockDisplayAgentState(panel) : undefined}
+                        agentState={getDockDisplayAgentState(panel)}
                         isActive={panel.id === activeTabId}
                         presetColor={panelPresetColors.get(panel.id)}
                         isUsingFallback={panel.isUsingFallback}
@@ -587,8 +589,68 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
                     <TooltipContent side="bottom">Duplicate panel as new tab</TooltipContent>
                   </Tooltip>
                 </div>
-              </LayoutGroup>
-            </LazyMotion>
+                {hiddenTabIds.size > 0 && (
+                  <DropdownMenu>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            type="button"
+                            onPointerDown={(e) => e.stopPropagation()}
+                            className="shrink-0 p-1.5 hover:bg-daintree-text/10 text-daintree-text/40 hover:text-daintree-text transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-1"
+                            aria-label="Show hidden tabs"
+                            aria-haspopup="menu"
+                            data-testid="dock-tabs-overflow"
+                          >
+                            <ChevronDown className="w-3 h-3" aria-hidden="true" />
+                            <span className="sr-only"> ({hiddenTabIds.size} hidden)</span>
+                          </button>
+                        </DropdownMenuTrigger>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">Show hidden tabs</TooltipContent>
+                    </Tooltip>
+                    <DropdownMenuContent
+                      align="end"
+                      className="min-w-[200px] max-w-[320px] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto"
+                    >
+                      {panels
+                        .filter((p) => hiddenTabIds.has(p.id))
+                        .map((panel) => {
+                          const tabChrome = deriveTerminalChrome({
+                            kind: panel.kind,
+                            launchAgentId: panel.launchAgentId,
+                            runtimeIdentity: panel.runtimeIdentity,
+                            detectedAgentId: panel.detectedAgentId,
+                            detectedProcessId: panel.detectedProcessId,
+                            agentState: panel.agentState,
+                            runtimeStatus: panel.runtimeStatus,
+                            exitCode: panel.exitCode,
+                            presetColor: panelPresetColors.get(panel.id),
+                          });
+                          const isActive = panel.id === activeTabId;
+                          return (
+                            <DropdownMenuItem
+                              key={panel.id}
+                              onSelect={() => handleTabClick(panel.id)}
+                              aria-current={isActive ? "true" : undefined}
+                              className={cn(isActive && "font-medium")}
+                            >
+                              <span className="shrink-0 mr-2 inline-flex items-center justify-center w-3.5 h-3.5">
+                                <TerminalIcon
+                                  kind={panel.kind ?? "terminal"}
+                                  chrome={tabChrome}
+                                  className="w-3.5 h-3.5"
+                                />
+                              </span>
+                              <span className="truncate">{getBaseTitle(panel.title)}</span>
+                            </DropdownMenuItem>
+                          );
+                        })}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </div>
+            </LayoutGroup>
           </SortableContext>
         </DndContext>
 

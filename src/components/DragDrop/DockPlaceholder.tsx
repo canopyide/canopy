@@ -1,5 +1,6 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { m } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useDndPlaceholder } from "./DndProvider";
 import { PlaceholderContent } from "./PlaceholderContent";
@@ -41,6 +42,7 @@ export function SortableDockPlaceholder() {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
     id: DOCK_PLACEHOLDER_ID,
     data: { container: "dock", isPlaceholder: true },
+    animateLayoutChanges: () => false,
   });
 
   const style = {
@@ -49,15 +51,17 @@ export function SortableDockPlaceholder() {
   };
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      {...listeners}
-      className="h-full"
-      data-placeholder-id={DOCK_PLACEHOLDER_ID}
-    >
-      <DockPlaceholder />
-    </div>
+    <m.div layout="position" className="h-full">
+      <div
+        ref={setNodeRef}
+        style={style}
+        {...attributes}
+        {...listeners}
+        className="h-full"
+        data-placeholder-id={DOCK_PLACEHOLDER_ID}
+      >
+        <DockPlaceholder />
+      </div>
+    </m.div>
   );
 }

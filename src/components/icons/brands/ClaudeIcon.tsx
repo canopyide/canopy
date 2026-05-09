@@ -2,24 +2,23 @@
  * Source: https://upload.wikimedia.org/wikipedia/commons/b/b0/Claude_AI_symbol.svg
  */
 
+import type { SVGProps } from "react";
 import { cn } from "@/lib/utils";
 
-interface ClaudeIconProps {
-  className?: string;
+type ClaudeIconProps = SVGProps<SVGSVGElement> & {
   size?: number;
   brandColor?: string;
-}
+};
 
-export function ClaudeIcon({ className, size = 16, brandColor }: ClaudeIconProps) {
+export function ClaudeIcon({ className, size = 16, brandColor, ...props }: ClaudeIconProps) {
   return (
     <svg
       width={size}
       height={size}
       viewBox="0 0 1200 1200"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
       className={cn(className)}
       aria-hidden="true"
+      {...props}
     >
       <path
         fill={brandColor || "currentColor"}

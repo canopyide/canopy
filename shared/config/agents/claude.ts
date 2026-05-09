@@ -15,6 +15,15 @@ export const config: AgentConfig = {
   color: "#CC785C",
   iconId: "claude",
   supportsContextInjection: true,
+  supports: {
+    mcpInjection: "project-config",
+    settingsOverlay: true,
+    permissionBypass: true,
+    trustDialog: true,
+    versionProbe: true,
+    tier: "stable",
+  },
+  assistantMinVersion: "1.0.0",
   shortcut: "Cmd/Ctrl+Alt+C",
   usageUrl: "https://claude.ai/settings/usage",
   version: {
@@ -66,6 +75,7 @@ export const config: AgentConfig = {
     supportsBracketedPaste: true,
     softNewlineSequence: "\x1b\r",
     ignoredInputSequences: ["\x1b\r"],
+    quitSubmitMode: "single-write",
   },
   detection: {
     primaryPatterns: [
@@ -101,7 +111,7 @@ export const config: AgentConfig = {
     primaryConfidence: 0.95,
     fallbackConfidence: 0.75,
     promptConfidence: 0.85,
-    debounceMs: 4000,
+    debounceMs: 6000,
   },
   routing: {
     capabilities: [

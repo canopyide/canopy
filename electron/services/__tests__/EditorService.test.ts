@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fsMock = vi.hoisted(() => ({
   statSync: vi.fn<(path: string) => { isFile: () => boolean }>(),
+  accessSync: vi.fn<(path: string, mode?: number) => void>(),
+  constants: { X_OK: 1 },
 }));
 
 const execaMock = vi.hoisted(() => {
@@ -50,6 +52,10 @@ describe("EditorService.discover", () => {
         return { isFile: () => true };
       }
       throw new Error("ENOENT");
+    });
+    fsMock.accessSync.mockImplementation((filePath: string) => {
+      if (pathSet.has(filePath)) return;
+      throw new Error("EACCES");
     });
   }
 
@@ -243,6 +249,9 @@ describe("EditorService.openFile", () => {
     fsMock.statSync.mockImplementation(() => {
       throw new Error("ENOENT");
     });
+    fsMock.accessSync.mockImplementation(() => {
+      throw new Error("EACCES");
+    });
   });
 
   afterEach(() => {
@@ -266,7 +275,7 @@ describe("EditorService.openFile", () => {
     const openFile = await loadOpenFile();
     await openFile("/absolute/path/file.ts");
 
-    expect(execaMock.execa).toHaveBeenCalledWith("open", ["/absolute/path/file.ts"], {
+    expect(execaMock.execa).toHaveBeenCalledWith("open", ["-t", "/absolute/path/file.ts"], {
       detached: true,
       stdio: "ignore",
       cleanup: false,

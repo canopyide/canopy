@@ -8,17 +8,21 @@ import {
   writeCcrConfig,
   removeCcrConfig,
   navigateToAgentSettings,
+  waitForCcrPresets,
+  waitForCcrPresetsRemoved,
   getPresetOptionLabels,
   getPresetRowByName,
 } from "../helpers/presets";
 
 let ctx: AppContext;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Presets: IPC Sync — Main ↔ Renderer (77–82)", () => {
   test.beforeAll(async () => {
     removeCcrConfig();
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "preset-ipc-sync" });
+    const { dir: fixtureDir, cleanup } = createFixtureRepo({ name: "preset-ipc-sync" });
+    fixtureCleanup = cleanup;
     ctx.window = await openAndOnboardProject(
       ctx.app,
       ctx.window,
@@ -30,6 +34,7 @@ test.describe.serial("Presets: IPC Sync — Main ↔ Renderer (77–82)", () => 
   test.afterAll(async () => {
     removeCcrConfig();
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("77. CCR config write triggers IPC event and presets appear in settings", async () => {
@@ -39,9 +44,7 @@ test.describe.serial("Presets: IPC Sync — Main ↔ Renderer (77–82)", () => 
       { id: "ipc-sync-model", name: "IPC Sync Model", model: "ipc-model-v1" },
       { id: "ipc-sync-aux", name: "IPC Sync Aux", model: "ipc-model-v2" },
     ]);
-    await ctx.window.waitForTimeout(35_000);
-
-    await navigateToAgentSettings(ctx.window, "claude");
+    await waitForCcrPresets(ctx.window, ["IPC Sync Model"]);
     await expect(ctx.window.locator(SEL.preset.section)).toBeVisible({ timeout: T_MEDIUM });
 
     // With the Popover-based PresetSelector, preset names only render inside
@@ -113,9 +116,7 @@ test.describe.serial("Presets: IPC Sync — Main ↔ Renderer (77–82)", () => 
 
   test("82. Removing CCR config does not crash the app — settings still loads", async () => {
     removeCcrConfig();
-    await ctx.window.waitForTimeout(35_000);
-
-    await navigateToAgentSettings(ctx.window, "claude");
+    await waitForCcrPresetsRemoved(ctx.window, ["IPC Sync Model", "IPC Sync Aux"]);
     await expect(ctx.window.locator(SEL.settings.heading)).toBeVisible({ timeout: T_MEDIUM });
   });
 });

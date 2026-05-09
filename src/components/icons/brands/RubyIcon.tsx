@@ -1,20 +1,19 @@
+import type { SVGProps } from "react";
 import { cn } from "@/lib/utils";
 
-interface RubyIconProps {
-  className?: string;
+type RubyIconProps = SVGProps<SVGSVGElement> & {
   size?: number;
-}
+};
 
-export function RubyIcon({ className, size = 16 }: RubyIconProps) {
+export function RubyIcon({ className, size = 16, ...props }: RubyIconProps) {
   return (
     <svg
       width={size}
       height={size}
       viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
       className={cn(className)}
       aria-hidden="true"
+      {...props}
     >
       <path
         fill="currentColor"

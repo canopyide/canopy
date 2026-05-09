@@ -8,6 +8,19 @@ export const config: AgentConfig = {
   color: "#4285F4",
   iconId: "gemini",
   supportsContextInjection: true,
+  // Gemini help sessions read MCP from the bundled `.gemini/settings.json`
+  // copied into the per-session cwd; `--approval-mode=plan` is injected at
+  // spawn time via `HelpSessionService.buildGeminiLaunchArgs`. Held at the
+  // `"experimental"` tier so the help-panel picker stays Claude/Codex only
+  // until end-to-end validation lands.
+  supports: {
+    mcpInjection: "project-config",
+    settingsOverlay: false,
+    permissionBypass: false,
+    trustDialog: false,
+    versionProbe: true,
+    tier: "experimental",
+  },
   shortcut: "Cmd/Ctrl+Alt+G",
   tooltip: "quick exploration",
   version: {
@@ -64,14 +77,14 @@ export const config: AgentConfig = {
   detection: {
     primaryPatterns: [
       // @generated:gemini:primaryPatterns:start
-      "[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\\s+[^()\\n]{2,80}\\s*\\(esc to cancel",
+      "[⠀-⣿]\\s+[^()\\n]{2,80}\\s*\\(esc to cancel",
       "esc to cancel[^)\\n]*\\)?$",
       "\\(\\d+s,?\\s*esc to cancel",
       // @generated:gemini:primaryPatterns:end
     ],
     fallbackPatterns: [
       // @generated:gemini:fallbackPatterns:start
-      "[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\\s+\\w",
+      "[⠀-⣿]\\s+\\w",
       // @generated:gemini:fallbackPatterns:end
     ],
     bootCompletePatterns: [
@@ -92,7 +105,7 @@ export const config: AgentConfig = {
     primaryConfidence: 0.95,
     fallbackConfidence: 0.7,
     promptConfidence: 0.85,
-    debounceMs: 4000,
+    debounceMs: 6000,
     titleStatePatterns: {
       working: ["✦"],
       waiting: ["◇", "✋"],

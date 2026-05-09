@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import type { WorktreeTerminalCounts } from "@/hooks/useWorktreeTerminals";
 import { getAgentConfig } from "@/config/agents";
 import { deriveTerminalChrome } from "@/utils/terminalChrome";
+import { getTerminalAgentDisplayState } from "@/utils/terminalAgentDisplayState";
 import {
   STATE_LABELS,
   STATE_PRIORITY,
@@ -28,7 +29,9 @@ import {
   SortableWorktreeTerminal,
   getAccordionDragId,
 } from "@/components/DragDrop/SortableWorktreeTerminal";
+import { useDragHandle } from "@/components/DragDrop/DragHandleContext";
 import { useFleetArmingStore, isFleetArmEligible } from "@/store/fleetArmingStore";
+import { useKeybindingScope } from "@/hooks/useKeybinding";
 
 interface StateIconProps {
   state: AgentState;
@@ -74,16 +77,20 @@ interface MarqueeBox {
 
 interface TerminalRowProps {
   term: TerminalInstance;
-  listeners: React.HTMLAttributes<HTMLElement> | undefined;
   onClick: (term: TerminalInstance) => void;
 }
 
-function TerminalRow({ term, listeners, onClick }: TerminalRowProps) {
+function TerminalRow({ term, onClick }: TerminalRowProps) {
   const { ref, isTruncated } = useTruncationDetection();
+  const dragHandle = useDragHandle();
   const isArmed = useFleetArmingStore((s) => s.armedIds.has(term.id));
   const armBadge = useFleetArmingStore((s) => s.armOrderById[term.id]);
   const chrome = deriveTerminalChrome(term);
-  const agentState = chrome.isAgent ? term.agentState : undefined;
+  // Mirror the panel-level `data-agent-state` attribute: only surface the
+  // agent state while the chrome is rendering an agent. Once the chrome
+  // demotes back to a plain terminal (agent exited or never lived), there
+  // is nothing for the sidebar row to track either.
+  const agentState = getTerminalAgentDisplayState(chrome, term.agentState);
   // Only the primary ("last armed") row gets the accent ring — it's the
   // singular focus anchor that will receive keyboard focus when fleet scope
   // exits. Secondary armed peers keep the dashed shape but use a neutral
@@ -113,7 +120,7 @@ function TerminalRow({ term, listeners, onClick }: TerminalRowProps) {
               onClick(term);
             }}
             aria-selected={isArmed}
-            className="flex items-center gap-2 min-w-0 flex-1 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-[-2px] rounded"
+            className="flex items-center gap-2 min-w-0 flex-1 text-left cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-[-2px] rounded"
           >
             <div className="shrink-0 opacity-60 group-hover/termrow:opacity-100 transition-opacity">
               <TerminalIcon kind={term.kind} chrome={chrome} className="w-3 h-3" />
@@ -149,21 +156,21 @@ function TerminalRow({ term, listeners, onClick }: TerminalRowProps) {
             </span>
           )}
 
-          {agentState &&
-            agentState !== "idle" &&
-            (() => {
-              const Icon = getEffectiveStateIcon(agentState, term.waitingReason);
-              return (
-                <Icon
-                  className={cn(
-                    "w-3 h-3",
-                    getEffectiveStateColor(agentState, term.waitingReason),
-                    agentState === "working" && "animate-spin-slow motion-reduce:animate-none"
-                  )}
-                  aria-label={STATE_LABELS[agentState]}
-                />
-              );
-            })()}
+          {(() => {
+            const displayAgentState = getTerminalAgentDisplayState(chrome, agentState);
+            if (!displayAgentState) return null;
+            const Icon = getEffectiveStateIcon(displayAgentState);
+            return (
+              <Icon
+                className={cn(
+                  "w-3 h-3",
+                  getEffectiveStateColor(displayAgentState),
+                  displayAgentState === "working" && "animate-spin-slow motion-reduce:animate-none"
+                )}
+                aria-label={STATE_LABELS[displayAgentState]}
+              />
+            );
+          })()}
 
           <Tooltip>
             <TooltipTrigger asChild>
@@ -181,11 +188,12 @@ function TerminalRow({ term, listeners, onClick }: TerminalRowProps) {
           </Tooltip>
 
           <button
+            ref={dragHandle?.setActivatorNodeRef}
             type="button"
             data-drag-handle
             className="cursor-grab rounded text-text-muted transition-colors hover:text-text-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-1 active:cursor-grabbing"
             aria-label="Drag to move terminal"
-            {...(listeners as React.HTMLAttributes<HTMLElement>)}
+            {...(dragHandle?.listeners as React.HTMLAttributes<HTMLElement> | undefined)}
           >
             <GripVertical className="w-3.5 h-3.5" />
           </button>
@@ -204,6 +212,8 @@ export interface WorktreeTerminalSectionProps {
   onTerminalSelect: (terminal: TerminalInstance) => void;
 }
 
+const FLEET_HINT_DISMISSED_KEY = "daintree:fleet-selection-hint-dismissed";
+
 export function WorktreeTerminalSection({
   worktreeId,
   isExpanded,
@@ -212,10 +222,17 @@ export function WorktreeTerminalSection({
   onToggle,
   onTerminalSelect,
 }: WorktreeTerminalSectionProps) {
+  useKeybindingScope("worktreeGrid", isExpanded);
+
   const showMetaFooter = counts.total > 0;
 
   const terminalsId = `worktree-${worktreeId}-terminals`;
   const terminalsPanelId = `worktree-${worktreeId}-terminals-panel`;
+
+  const [hintDismissed, setHintDismissed] = useState(
+    () => localStorage.getItem(FLEET_HINT_DISMISSED_KEY) === "1"
+  );
+  const armedIdsSize = useFleetArmingStore((s) => s.armedIds.size);
 
   const topTerminalState = ((): { state: AgentState; count: number } | null => {
     for (const state of STATE_PRIORITY) {
@@ -346,6 +363,8 @@ export function WorktreeTerminalSection({
           .filter((id) => hits.includes(id) && eligible.has(id));
         if (orderedHits.length > 0) {
           useFleetArmingStore.getState().armIds(orderedHits);
+          localStorage.setItem(FLEET_HINT_DISMISSED_KEY, "1");
+          setHintDismissed(true);
         }
       }
     },
@@ -417,6 +436,22 @@ export function WorktreeTerminalSection({
             items={orderedWorktreeTerminals.map((t) => getAccordionDragId(t.id))}
             strategy={verticalListSortingStrategy}
           >
+            {eligibleTerminals.length >= 2 && armedIdsSize === 0 && !hintDismissed && (
+              <div className="flex items-center justify-between px-3 py-1.5 text-[11px] text-text-muted bg-surface-inset border-b border-border-default">
+                <span>Drag to select multiple, ⇧-click to add</span>
+                <button
+                  type="button"
+                  className="ml-2 rounded-sm text-text-muted hover:text-text-secondary transition-colors"
+                  aria-label="Dismiss hint"
+                  onClick={() => {
+                    localStorage.setItem(FLEET_HINT_DISMISSED_KEY, "1");
+                    setHintDismissed(true);
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            )}
             <div
               id={terminalsPanelId}
               ref={scrollRef}
@@ -427,7 +462,7 @@ export function WorktreeTerminalSection({
               onPointerMove={handlePointerMove}
               onPointerUp={handlePointerUp}
               onPointerCancel={handlePointerCancel}
-              className="relative max-h-[300px] overflow-y-auto bg-surface-inset"
+              className="relative max-h-[300px] overflow-y-auto bg-surface-inset cursor-crosshair"
             >
               {orderedWorktreeTerminals.map((term, index) => (
                 <SortableWorktreeTerminal
@@ -436,13 +471,7 @@ export function WorktreeTerminalSection({
                   worktreeId={worktreeId}
                   sourceIndex={index}
                 >
-                  {({ listeners }) => (
-                    <TerminalRow
-                      term={term}
-                      listeners={listeners as React.HTMLAttributes<HTMLElement> | undefined}
-                      onClick={handleTerminalClick}
-                    />
-                  )}
+                  <TerminalRow term={term} onClick={handleTerminalClick} />
                 </SortableWorktreeTerminal>
               ))}
               {marqueeBox && (

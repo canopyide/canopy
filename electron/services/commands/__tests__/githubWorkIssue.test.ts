@@ -56,6 +56,7 @@ vi.mock("../../../../shared/utils/pathPattern.js", () => ({
   DEFAULT_WORKTREE_PATH_PATTERN: "{repo}/{branch}",
   generateWorktreePath: generateWorktreePathMock,
   validatePathPattern: validatePathPatternMock,
+  validateBranchName: vi.fn(() => ({ valid: true })),
 }));
 
 vi.mock("../../../utils/worktreePattern.js", () => ({
@@ -128,5 +129,98 @@ describe("githubWorkIssueCommand", () => {
 
     expect(result.success).toBe(true);
     expect(result.data?.issueUrl).toBe("https://github.com/daintree/app/issues/55");
+  });
+
+  it("normalizes accented Latin characters in slugified branch names", async () => {
+    createClientMock.mockReturnValue(
+      vi.fn().mockResolvedValue({
+        repository: {
+          issue: {
+            number: 55,
+            title: "Café résumé",
+            url: "https://github.com/daintree/app/issues/55",
+            state: "OPEN",
+          },
+        },
+      })
+    );
+
+    const result = await githubWorkIssueCommand.execute({ cwd: "/repo" } as never, {
+      issueNumber: 55,
+    });
+
+    expect(result.success).toBe(true);
+    expect(findAvailableBranchNameMock).toHaveBeenCalledWith("issue-55-cafe-resume");
+  });
+
+  it("normalizes naïve to naive in slugified branch names", async () => {
+    createClientMock.mockReturnValue(
+      vi.fn().mockResolvedValue({
+        repository: {
+          issue: {
+            number: 7,
+            title: "Fix naïve approach",
+            url: "https://github.com/daintree/app/issues/7",
+            state: "OPEN",
+          },
+        },
+      })
+    );
+
+    const result = await githubWorkIssueCommand.execute({ cwd: "/repo" } as never, {
+      issueNumber: 7,
+    });
+
+    expect(result.success).toBe(true);
+    expect(findAvailableBranchNameMock).toHaveBeenCalledWith("issue-7-fix-naive-approach");
+  });
+
+  it("prefers trunk over main when develop is absent", async () => {
+    listBranchesMock.mockResolvedValue([
+      { name: "trunk", remote: false },
+      { name: "main", remote: false },
+    ]);
+
+    const result = await githubWorkIssueCommand.execute({ cwd: "/repo" } as never, {
+      issueNumber: 55,
+    });
+
+    expect(result.success).toBe(true);
+    const workspaceClient = getWorkspaceClientMock.mock.results[0]?.value as {
+      createWorktree: ReturnType<typeof vi.fn>;
+    };
+    expect(workspaceClient.createWorktree).toHaveBeenCalledWith(
+      "/repo",
+      expect.objectContaining({ baseBranch: "trunk" })
+    );
+  });
+
+  it("maps GraphQL TimeoutError to GITHUB_ERROR with timeout message", async () => {
+    const timeoutError = new Error("The operation was aborted due to timeout");
+    timeoutError.name = "TimeoutError";
+    createClientMock.mockReturnValue(vi.fn().mockRejectedValue(timeoutError));
+
+    const result = await githubWorkIssueCommand.execute({ cwd: "/repo" } as never, {
+      issueNumber: 55,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.code).toBe("GITHUB_ERROR");
+    expect(result.error?.message).toContain("Timed out");
+  });
+
+  it("maps GraphQL fetch errors with cause.code to GITHUB_ERROR with network message", async () => {
+    const transportError = Object.assign(new TypeError("fetch failed"), {
+      cause: { code: "ECONNREFUSED" },
+    });
+    createClientMock.mockReturnValue(vi.fn().mockRejectedValue(transportError));
+
+    const result = await githubWorkIssueCommand.execute({ cwd: "/repo" } as never, {
+      issueNumber: 55,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.code).toBe("GITHUB_ERROR");
+    expect(result.error?.message).toContain("Network error");
   });
 });

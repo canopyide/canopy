@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useCallback } from "react";
 import { RotateCcw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { usePanelStore, type TerminalInstance } from "@/store";
@@ -9,6 +9,13 @@ import { deriveTerminalChrome } from "@/utils/terminalChrome";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { isUselessTitle } from "@shared/utils/isUselessTitle";
 import { getEffectiveAgentConfig } from "@shared/config/agentRegistry";
+import { useGlobalSecondTicker } from "@/hooks/useGlobalSecondTicker";
+import { cn } from "@/lib/utils";
+
+// Reveal precise seconds only when the deadline is imminent (≤5s, the M3/WCAG
+// "final approach" window). Outside that, the row stays quiet and the value is
+// available on hover or keyboard focus. Sub-threshold meta-info should not tick.
+const COUNTDOWN_CRITICAL_SECONDS = 5;
 
 interface TrashBinItemProps {
   terminal: TerminalInstance;
@@ -23,23 +30,9 @@ export function TrashBinItem({ terminal, trashedInfo, worktreeName }: TrashBinIt
 
   const isOrphan = !!terminal.worktreeId && !worktreeName;
 
-  const [timeRemaining, setTimeRemaining] = useState(() => {
-    return Math.max(0, trashedInfo.expiresAt - Date.now());
-  });
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const remaining = Math.max(0, trashedInfo.expiresAt - Date.now());
-      setTimeRemaining(remaining);
-
-      if (remaining <= 0) {
-        clearInterval(interval);
-      }
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [trashedInfo.expiresAt]);
-
+  const tick = useGlobalSecondTicker();
+  void tick;
+  const timeRemaining = Math.max(0, trashedInfo.expiresAt - Date.now());
   const seconds = Math.ceil(timeRemaining / 1000);
 
   const canRestore = !isOrphan || !!activeWorktreeId;
@@ -90,7 +83,15 @@ export function TrashBinItem({ terminal, trashedInfo, worktreeName }: TrashBinIt
             </span>
           ) : null}
         </div>
-        <div className="text-[11px] text-daintree-text/40" aria-live="polite">
+        <div
+          className={cn(
+            "text-[11px] tabular-nums transition-opacity",
+            seconds <= COUNTDOWN_CRITICAL_SECONDS
+              ? "opacity-100 text-status-warning/70"
+              : "text-daintree-text/40 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+          )}
+          aria-hidden="true"
+        >
           {seconds}s remaining
         </div>
       </div>

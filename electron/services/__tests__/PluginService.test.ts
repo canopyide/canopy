@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import type { PanelKindConfig } from "../../../shared/config/panelKindRegistry.js";
 
 const appMock = vi.hoisted(() => ({
   getVersion: vi.fn(() => "0.0.0"),
@@ -18,6 +19,9 @@ vi.mock("../../ipc/utils.js", () => ({
 vi.mock("../../../shared/config/panelKindRegistry.js", () => ({
   registerPanelKind: vi.fn(),
   unregisterPluginPanelKinds: vi.fn(),
+  onPanelKindRegistered: vi.fn(() => () => {}),
+  onPanelKindUnregistered: vi.fn(() => () => {}),
+  getPluginPanelKinds: vi.fn(() => []),
 }));
 vi.mock("../../../shared/config/toolbarButtonRegistry.js", () => ({
   registerToolbarButton: vi.fn(),
@@ -1389,6 +1393,49 @@ describe("Plugin action registry", () => {
 
     const [descriptor] = service.listPluginActions();
     expect(descriptor.inputSchema).toEqual({ type: "object", properties: { a: 1 } });
+  });
+});
+
+describe("Plugin panel kind registry broadcast", () => {
+  it("dispose() drops a microtask scheduled before disposal", async () => {
+    // Capture the listener PluginService passes into onPanelKindRegistered so
+    // we can fire it directly — this simulates a register event arriving from
+    // the shared registry during the test.
+    const registryMock = await import("../../../shared/config/panelKindRegistry.js");
+    const onRegisteredMock = vi.mocked(registryMock.onPanelKindRegistered);
+    let capturedRegisterListener: ((config: PanelKindConfig) => void) | null = null;
+    onRegisteredMock.mockImplementation((listener: (config: PanelKindConfig) => void) => {
+      capturedRegisterListener = listener;
+      return () => {};
+    });
+
+    const service = new PluginService();
+    expect(capturedRegisterListener).toBeTypeOf("function");
+
+    // Simulate a register event — schedules a microtask broadcast
+    const mockConfig: PanelKindConfig = {
+      id: "test-panel",
+      name: "Test Panel",
+      iconId: "test",
+      color: "#000000",
+      hasPty: false,
+      canRestart: false,
+      canConvert: false,
+      extensionId: "test-ext",
+    };
+    capturedRegisterListener!(mockConfig);
+    // Dispose before the microtask drains
+    service.dispose();
+
+    // Allow microtasks to drain
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Disposal must have cancelled the pending broadcast
+    const panelKindBroadcasts = broadcastToRendererMock.mock.calls.filter(
+      (call) => (call[1] as { name?: unknown })?.name === "plugin:panel-kinds-changed"
+    );
+    expect(panelKindBroadcasts).toHaveLength(0);
   });
 });
 

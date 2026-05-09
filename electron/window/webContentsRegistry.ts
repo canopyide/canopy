@@ -18,13 +18,41 @@ import {
 } from "electron";
 
 const webContentsToWindow = new Map<number, BrowserWindow>();
+const webContentsDestroyListeners = new Map<
+  number,
+  { webContents: WebContents; listener: () => void }
+>();
 
 // App view tracking: maps BrowserWindow.id → the WebContentsView hosting the React app.
 // When no app view is registered (Phase 1 compat), helpers fall back to win.webContents.
 const windowToAppView = new Map<number, WebContentsView>();
+const appViewDestroyListeners = new Map<
+  number,
+  {
+    webContents: WebContents;
+    windowId: number;
+    view: WebContentsView;
+    listener: () => void;
+  }
+>();
 
 // Project view tracking: maps webContents.id → projectId for scoped IPC routing.
 const viewToProject = new Map<number, string>();
+const projectViewDestroyListeners = new Map<
+  number,
+  { webContents: WebContents; listener: () => void }
+>();
+
+function removeDestroyedListener(registration: {
+  webContents: WebContents;
+  listener: () => void;
+}): void {
+  try {
+    registration.webContents.removeListener("destroyed", registration.listener);
+  } catch {
+    // Electron can throw if the WebContents is already torn down.
+  }
+}
 
 /**
  * Register a webContents → BrowserWindow mapping.
@@ -32,11 +60,17 @@ const viewToProject = new Map<number, string>();
  * Also call for the BrowserWindow's own webContents (identity mapping).
  */
 export function registerWebContents(webContents: WebContents, win: BrowserWindow): void {
-  webContentsToWindow.set(webContents.id, win);
+  const wcId = webContents.id;
+  webContentsToWindow.set(wcId, win);
 
-  webContents.once("destroyed", () => {
-    webContentsToWindow.delete(webContents.id);
-  });
+  if (!webContentsDestroyListeners.has(wcId)) {
+    const onDestroyed = () => {
+      webContentsToWindow.delete(wcId);
+      webContentsDestroyListeners.delete(wcId);
+    };
+    webContentsDestroyListeners.set(wcId, { webContents, listener: onDestroyed });
+    webContents.once("destroyed", onDestroyed);
+  }
 }
 
 /**
@@ -44,7 +78,14 @@ export function registerWebContents(webContents: WebContents, win: BrowserWindow
  * Call when destroying a WebContentsView before its webContents fires 'destroyed'.
  */
 export function unregisterWebContents(webContents: WebContents): void {
-  webContentsToWindow.delete(webContents.id);
+  const wcId = webContents.id;
+  webContentsToWindow.delete(wcId);
+
+  const registration = webContentsDestroyListeners.get(wcId);
+  if (registration) {
+    removeDestroyedListener(registration);
+    webContentsDestroyListeners.delete(wcId);
+  }
 }
 
 /**
@@ -76,12 +117,32 @@ export function registerAppView(win: BrowserWindow, view: WebContentsView): void
   windowToAppView.set(win.id, view);
   registerWebContents(view.webContents, win);
 
-  view.webContents.once("destroyed", () => {
-    // Only remove if this is still the registered app view (not replaced by a new one)
-    if (windowToAppView.get(win.id) === view) {
-      windowToAppView.delete(win.id);
+  const wcId = view.webContents.id;
+  const existing = appViewDestroyListeners.get(wcId);
+  if (existing && (existing.windowId !== win.id || existing.view !== view)) {
+    removeDestroyedListener(existing);
+    if (windowToAppView.get(existing.windowId) === existing.view) {
+      windowToAppView.delete(existing.windowId);
     }
-  });
+    appViewDestroyListeners.delete(wcId);
+  }
+
+  if (!appViewDestroyListeners.has(wcId)) {
+    const onDestroyed = () => {
+      appViewDestroyListeners.delete(wcId);
+      // Only remove if this is still the registered app view (not replaced by a new one)
+      if (windowToAppView.get(win.id) === view) {
+        windowToAppView.delete(win.id);
+      }
+    };
+    appViewDestroyListeners.set(wcId, {
+      webContents: view.webContents,
+      windowId: win.id,
+      view,
+      listener: onDestroyed,
+    });
+    view.webContents.once("destroyed", onDestroyed);
+  }
 }
 
 /**
@@ -167,10 +228,17 @@ export function getAllAppWebContents(): WebContents[] {
  * Call when a view is created or switched to a project.
  */
 export function registerProjectView(projectId: string, webContents: WebContents): void {
-  viewToProject.set(webContents.id, projectId);
-  webContents.once("destroyed", () => {
-    viewToProject.delete(webContents.id);
-  });
+  const wcId = webContents.id;
+  viewToProject.set(wcId, projectId);
+
+  if (!projectViewDestroyListeners.has(wcId)) {
+    const onDestroyed = () => {
+      viewToProject.delete(wcId);
+      projectViewDestroyListeners.delete(wcId);
+    };
+    projectViewDestroyListeners.set(wcId, { webContents, listener: onDestroyed });
+    webContents.once("destroyed", onDestroyed);
+  }
 }
 
 /**
@@ -178,6 +246,12 @@ export function registerProjectView(projectId: string, webContents: WebContents)
  */
 export function unregisterProjectView(webContentsId: number): void {
   viewToProject.delete(webContentsId);
+
+  const registration = projectViewDestroyListeners.get(webContentsId);
+  if (registration) {
+    removeDestroyedListener(registration);
+    projectViewDestroyListeners.delete(webContentsId);
+  }
 }
 
 /**

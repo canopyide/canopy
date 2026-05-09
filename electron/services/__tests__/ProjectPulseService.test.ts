@@ -673,4 +673,342 @@ describe("ProjectPulseService", () => {
     // No cells marked because firstCommitDate (300 days ago) precedes every cell in the range.
     expect(pulse.heatmap.every((cell) => !cell.isBeforeProject)).toBe(true);
   });
+
+  it("passes AbortSignal to createHardenedGit", async () => {
+    let capturedSignal: AbortSignal | undefined;
+
+    const raw = vi.fn(async (args: string[]) => {
+      const cmd = args[0];
+      if (cmd === "rev-parse" && args[1] === "--verify" && args[2] === "HEAD") return "deadbeef\n";
+      if (cmd === "rev-parse" && args.includes("--abbrev-ref")) return "main\n";
+      if (cmd === "log") return "";
+      return "";
+    });
+
+    vi.doMock("../../utils/hardenedGit.js", () => ({
+      createHardenedGit: (_cwd: string, signal?: AbortSignal) => {
+        capturedSignal = signal;
+        return createGitStub(raw);
+      },
+    }));
+
+    const { ProjectPulseService } = await import("../ProjectPulseService.js");
+    const svc = new ProjectPulseService();
+
+    await svc.getPulse({
+      worktreePath: "/repo",
+      worktreeId: "wt-1",
+      mainBranch: "main",
+      rangeDays: 60 as const,
+      includeDelta: false,
+      includeRecentCommits: false,
+    });
+
+    expect(capturedSignal).toBeDefined();
+    expect(capturedSignal instanceof AbortSignal).toBe(true);
+    expect(capturedSignal!.aborted).toBe(false);
+  });
+
+  it("invalidate(worktreeId) aborts active AbortController", async () => {
+    let capturedSignal: AbortSignal | undefined;
+
+    const raw = vi.fn(async (args: string[]) => {
+      const cmd = args[0];
+      if (cmd === "rev-parse" && args[1] === "--verify" && args[2] === "HEAD") {
+        // Stall to keep the computation in-flight; listen for abort on signal
+        await new Promise<void>((_resolve, reject) => {
+          capturedSignal?.addEventListener("abort", () =>
+            reject(new DOMException("Aborted", "AbortError"))
+          );
+        });
+        return "deadbeef\n";
+      }
+      return "";
+    });
+
+    vi.doMock("../../utils/hardenedGit.js", () => ({
+      createHardenedGit: (_cwd: string, signal?: AbortSignal) => {
+        capturedSignal = signal;
+        return createGitStub(raw);
+      },
+    }));
+
+    const { ProjectPulseService } = await import("../ProjectPulseService.js");
+    const svc = new ProjectPulseService();
+
+    const pulsePromise = svc.getPulse({
+      worktreePath: "/repo",
+      worktreeId: "wt-1",
+      mainBranch: "main",
+      rangeDays: 60 as const,
+      includeDelta: false,
+      includeRecentCommits: false,
+    });
+
+    // Let the computation start and stall
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(capturedSignal).toBeDefined();
+    expect(capturedSignal!.aborted).toBe(false);
+
+    svc.invalidate("wt-1");
+
+    expect(capturedSignal!.aborted).toBe(true);
+
+    // The promise should reject due to the abort
+    await expect(pulsePromise).rejects.toThrow("Aborted");
+  });
+
+  it("invalidate(worktreeId) clears matching inFlight entries", async () => {
+    let capturedSignal: AbortSignal | undefined;
+
+    const raw = vi.fn(async (args: string[]) => {
+      const cmd = args[0];
+      if (cmd === "rev-parse" && args[1] === "--verify" && args[2] === "HEAD") {
+        await new Promise<void>((_resolve, reject) => {
+          capturedSignal?.addEventListener("abort", () =>
+            reject(new DOMException("Aborted", "AbortError"))
+          );
+        });
+        return "deadbeef\n";
+      }
+      return "";
+    });
+
+    vi.doMock("../../utils/hardenedGit.js", () => ({
+      createHardenedGit: (_cwd: string, signal?: AbortSignal) => {
+        capturedSignal = signal;
+        return createGitStub(raw);
+      },
+    }));
+
+    const { ProjectPulseService } = await import("../ProjectPulseService.js");
+    const svc = new ProjectPulseService();
+
+    const pulsePromise = svc.getPulse({
+      worktreePath: "/repo",
+      worktreeId: "wt-1",
+      mainBranch: "main",
+      rangeDays: 60 as const,
+      includeDelta: false,
+      includeRecentCommits: false,
+    });
+
+    await vi.advanceTimersByTimeAsync(0);
+
+    const inFlight = (svc as any).inFlight as Map<string, unknown>;
+    expect(inFlight.size).toBeGreaterThan(0);
+
+    svc.invalidate("wt-1");
+
+    expect(inFlight.size).toBe(0);
+    await expect(pulsePromise).rejects.toThrow("Aborted");
+  });
+
+  it("invalidate(worktreeId) is idempotent", async () => {
+    const raw = vi.fn(async (args: string[]) => {
+      const cmd = args[0];
+      if (cmd === "rev-parse" && args[1] === "HEAD") return "deadbeef\n";
+      if (cmd === "rev-parse" && args.includes("--abbrev-ref")) return "main\n";
+      if (cmd === "log") return "";
+      return "";
+    });
+
+    vi.doMock("../../utils/hardenedGit.js", () => ({
+      createHardenedGit: () => createGitStub(raw),
+    }));
+
+    const { ProjectPulseService } = await import("../ProjectPulseService.js");
+    const svc = new ProjectPulseService();
+
+    // Populate cache
+    await svc.getPulse({
+      worktreePath: "/repo",
+      worktreeId: "wt-1",
+      mainBranch: "main",
+      rangeDays: 60 as const,
+      includeDelta: false,
+      includeRecentCommits: false,
+    });
+
+    // Two back-to-back invalidate calls must not throw
+    expect(() => svc.invalidate("wt-1")).not.toThrow();
+    expect(() => svc.invalidate("wt-1")).not.toThrow();
+  });
+
+  it("invalidate(worktreeId) only affects matching worktree", async () => {
+    const baseTime = new Date("2025-01-15T12:00:00.000Z");
+    vi.setSystemTime(baseTime);
+
+    const raw = vi.fn(async (args: string[]) => {
+      const cmd = args[0];
+      if (cmd === "rev-parse" && args[1] === "HEAD") return "deadbeef\n";
+      if (cmd === "rev-parse" && args.includes("--abbrev-ref")) return "main\n";
+      if (cmd === "log") return "";
+      return "";
+    });
+
+    vi.doMock("../../utils/hardenedGit.js", () => ({
+      createHardenedGit: () => createGitStub(raw),
+    }));
+
+    const { ProjectPulseService } = await import("../ProjectPulseService.js");
+    const svc = new ProjectPulseService();
+
+    await svc.getPulse({
+      worktreePath: "/repo-a",
+      worktreeId: "wt-a",
+      mainBranch: "main",
+      rangeDays: 60 as const,
+      includeDelta: false,
+      includeRecentCommits: false,
+    });
+
+    await svc.getPulse({
+      worktreePath: "/repo-b",
+      worktreeId: "wt-b",
+      mainBranch: "main",
+      rangeDays: 60 as const,
+      includeDelta: false,
+      includeRecentCommits: false,
+    });
+
+    svc.invalidate("wt-a");
+
+    // wt-a should recompute (cache miss), wt-b should still be cached
+    const logCallsAfter = raw.mock.calls.length;
+    await svc.getPulse({
+      worktreePath: "/repo-a",
+      worktreeId: "wt-a",
+      mainBranch: "main",
+      rangeDays: 60 as const,
+      includeDelta: false,
+      includeRecentCommits: false,
+    });
+    // Additional raw calls for wt-a recompute
+    expect(raw.mock.calls.length).toBeGreaterThan(logCallsAfter);
+
+    const callsBeforeB = raw.mock.calls.length;
+    await svc.getPulse({
+      worktreePath: "/repo-b",
+      worktreeId: "wt-b",
+      mainBranch: "main",
+      rangeDays: 60 as const,
+      includeDelta: false,
+      includeRecentCommits: false,
+    });
+    // No additional raw calls for wt-b — it was cached
+    expect(raw.mock.calls.length).toBe(callsBeforeB);
+  });
+
+  it("getPulse creates a fresh controller after invalidation", async () => {
+    const raw = vi.fn(async (args: string[]) => {
+      const cmd = args[0];
+      if (cmd === "rev-parse" && args[1] === "--verify" && args[2] === "HEAD") return "deadbeef\n";
+      if (cmd === "rev-parse" && args.includes("--abbrev-ref")) return "main\n";
+      if (cmd === "log") return "";
+      return "";
+    });
+
+    vi.doMock("../../utils/hardenedGit.js", () => ({
+      createHardenedGit: () => createGitStub(raw),
+    }));
+
+    const { ProjectPulseService } = await import("../ProjectPulseService.js");
+    const svc = new ProjectPulseService();
+
+    const opts = {
+      worktreePath: "/repo",
+      worktreeId: "wt-1",
+      mainBranch: "main",
+      rangeDays: 60 as const,
+      includeDelta: false,
+      includeRecentCommits: false,
+    };
+
+    // Complete a computation, which cleans up its controller
+    await svc.getPulse(opts);
+
+    const abortControllers = (svc as any).abortControllers as Map<string, AbortController>;
+    // Controller should be deleted by the finally block
+    expect(abortControllers.has("wt-1")).toBe(false);
+
+    // Simulate stale controller left by an interrupted computation
+    const staleController = new AbortController();
+    abortControllers.set("wt-1", staleController);
+
+    // Invalidate should abort and remove the stale controller
+    svc.invalidate("wt-1");
+    expect(staleController.signal.aborted).toBe(true);
+    expect(abortControllers.has("wt-1")).toBe(false);
+
+    // A new getPulse creates a fresh controller
+    const pulsePromise = svc.getPulse(opts);
+    const freshController = abortControllers.get("wt-1");
+    expect(freshController).toBeDefined();
+    expect(freshController).not.toBe(staleController);
+    expect(freshController!.signal.aborted).toBe(false);
+
+    await pulsePromise;
+    // Fresh controller should be cleaned up after successful computation
+    expect(abortControllers.has("wt-1")).toBe(false);
+  });
+
+  it("does not cache result when aborted during parallel git phase", async () => {
+    let capturedSignal: AbortSignal | undefined;
+
+    const raw = vi.fn(async (args: string[]) => {
+      const cmd = args[0];
+      if (cmd === "rev-parse" && args[1] === "--verify" && args[2] === "HEAD") {
+        return "deadbeef\n";
+      }
+      if (cmd === "rev-parse" && args.includes("--abbrev-ref")) return "feature\n";
+      // Stall on heatmap log (the first allSettled call) to simulate late abort
+      if (cmd === "log" && args.some((a) => a.startsWith("--since="))) {
+        await new Promise<void>((_resolve, reject) => {
+          capturedSignal?.addEventListener("abort", () =>
+            reject(new DOMException("Aborted", "AbortError"))
+          );
+        });
+        return "";
+      }
+      if (cmd === "log") return "";
+      return "";
+    });
+
+    vi.doMock("../../utils/hardenedGit.js", () => ({
+      createHardenedGit: (_cwd: string, signal?: AbortSignal) => {
+        capturedSignal = signal;
+        return createGitStub(raw);
+      },
+    }));
+
+    const { ProjectPulseService } = await import("../ProjectPulseService.js");
+    const svc = new ProjectPulseService();
+
+    const opts = {
+      worktreePath: "/repo",
+      worktreeId: "wt-1",
+      mainBranch: "main",
+      rangeDays: 60 as const,
+      includeDelta: false,
+      includeRecentCommits: false,
+    };
+
+    const pulsePromise = svc.getPulse(opts);
+    await vi.advanceTimersByTimeAsync(0);
+
+    // HEAD + branch resolution completed; now stalled in heatmap
+    svc.invalidate("wt-1");
+
+    expect(capturedSignal!.aborted).toBe(true);
+
+    // allSettled absorbs the abort, so the promise resolves with fallback values.
+    // The cache guard must prevent writing the fallback result.
+    const pulse = await pulsePromise;
+    expect(pulse.commitsInRange).toBe(0);
+
+    const cache = (svc as any).cache as Map<string, unknown>;
+    expect(cache.size).toBe(0);
+  });
 });

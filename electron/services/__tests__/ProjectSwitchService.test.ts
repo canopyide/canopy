@@ -7,7 +7,10 @@ const projectStoreMock = vi.hoisted(() => ({
   setCurrentProject: vi.fn<(id: string) => Promise<void>>(),
   getProjectState: vi.fn<(id: string) => Promise<Record<string, unknown>>>(),
   saveProjectState: vi.fn<(id: string, state: Record<string, unknown>) => Promise<void>>(),
-  readInRepoProjectIdentity: vi.fn<(p: string) => Promise<{ found: boolean }>>(),
+  readInRepoProjectIdentity:
+    vi.fn<
+      (p: string) => Promise<{ found: boolean; name?: string; emoji?: string; color?: string }>
+    >(),
   updateProject: vi.fn<(id: string, updates: Record<string, unknown>) => Record<string, unknown>>(),
 }));
 
@@ -338,6 +341,151 @@ describe("ProjectSwitchService", () => {
     expect(payload).not.toHaveProperty("hydrateResult");
     expect(payload.project).toMatchObject({ id: "project-new" });
     expect(payload.switchId).toBe("switch-id-1");
+  });
+
+  it("initiates outgoing project state save before setCurrentProject completes", async () => {
+    let resolveSave!: () => void;
+    const savePromise = new Promise<void>((resolve) => {
+      resolveSave = resolve;
+    });
+    projectStoreMock.saveProjectState.mockReturnValueOnce(savePromise);
+
+    const { service } = createService();
+
+    const switchPromise = service.switchProject("project-new");
+
+    for (let i = 0; i < 20 && projectStoreMock.setCurrentProject.mock.calls.length === 0; i += 1) {
+      await Promise.resolve();
+    }
+
+    expect(projectStoreMock.setCurrentProject).toHaveBeenCalledWith("project-new");
+
+    resolveSave();
+    await expect(switchPromise).resolves.toMatchObject({ id: "project-new" });
+  });
+
+  it("does not resolve switch before outgoing project state save completes", async () => {
+    let resolveSave!: () => void;
+    const savePromise = new Promise<void>((resolve) => {
+      resolveSave = resolve;
+    });
+    projectStoreMock.saveProjectState.mockReturnValueOnce(savePromise);
+
+    const { service } = createService();
+
+    let resolved = false;
+    const switchPromise = service.switchProject("project-new");
+    const trackedPromise = switchPromise.then((result) => {
+      resolved = true;
+      return result;
+    });
+
+    for (let i = 0; i < 50; i += 1) {
+      await Promise.resolve();
+    }
+
+    expect(resolved).toBe(false);
+
+    resolveSave();
+    await expect(trackedPromise).resolves.toMatchObject({ id: "project-new" });
+    expect(resolved).toBe(true);
+  });
+
+  it("applies in-repo project identity during switch", async () => {
+    projectStoreMock.readInRepoProjectIdentity.mockResolvedValue({
+      found: true,
+      name: "Repo Name",
+      emoji: "📦",
+    });
+    // Set the project name to the default (path.basename) so the identity
+    // override fires: inRepo.name is set above and project.name === "new"
+    projectStoreMock.getProjectById.mockImplementation((id: string) => {
+      if (id === "project-new") {
+        return { id, name: "new", path: "/tmp/new", status: "active", emoji: "🌲" };
+      }
+      if (id === "project-old") {
+        return { id, name: "Old Project", path: "/tmp/old", status: "active" };
+      }
+      return null;
+    });
+
+    const { service } = createService();
+    await service.switchProject("project-new");
+
+    expect(projectStoreMock.readInRepoProjectIdentity).toHaveBeenCalledWith("/tmp/new");
+    expect(projectStoreMock.updateProject).toHaveBeenCalledWith(
+      "project-new",
+      expect.objectContaining({ name: "Repo Name", emoji: "📦" })
+    );
+  });
+
+  it("proves save initiation precedes setCurrentProject via call-order log", async () => {
+    const callLog: string[] = [];
+    const getProjectStateOrig = projectStoreMock.getProjectState.getMockImplementation();
+    projectStoreMock.getProjectState.mockImplementation(async (id: string) => {
+      callLog.push("getProjectState");
+      return getProjectStateOrig!(id);
+    });
+    projectStoreMock.saveProjectState.mockImplementation(async () => {
+      callLog.push("saveProjectState");
+    });
+    projectStoreMock.setCurrentProject.mockImplementation(async () => {
+      callLog.push("setCurrentProject");
+    });
+
+    const { service } = createService();
+    await service.switchProject("project-new");
+
+    const getIdx = callLog.indexOf("getProjectState");
+    const setIdx = callLog.indexOf("setCurrentProject");
+    expect(getIdx).toBeLessThan(setIdx);
+    // saveProjectState fires in a microtask after getProjectState resolves;
+    // the key invariant is that save initiation (getProjectState) precedes setCurrentProject.
+  });
+
+  it("holds switchChain until pending save drains on failure path", async () => {
+    let resolveSave!: () => void;
+    const savePromise = new Promise<void>((resolve) => {
+      resolveSave = resolve;
+    });
+    projectStoreMock.saveProjectState.mockReturnValueOnce(savePromise);
+    projectStoreMock.setCurrentProject.mockRejectedValueOnce(new Error("setCurrent failed"));
+
+    const { service } = createService();
+
+    // First switch fails — catch block should await saveOutgoingPromise
+    const firstSwitch = service.switchProject("project-new");
+
+    // Give the catch block time to enter its await
+    for (let i = 0; i < 10; i += 1) {
+      await Promise.resolve();
+    }
+
+    // Second switch queues behind switchChain, which is held by the
+    // catch block's await on saveOutgoingPromise
+    projectStoreMock.getCurrentProjectId.mockReturnValue("project-new");
+    const secondSwitch = service.switchProject("project-old");
+
+    let secondResolved = false;
+    secondSwitch.then(
+      () => {
+        secondResolved = true;
+      },
+      () => {
+        secondResolved = true;
+      }
+    );
+
+    for (let i = 0; i < 10; i += 1) {
+      await Promise.resolve();
+    }
+    expect(secondResolved).toBe(false);
+
+    // Drain the save → catch block finishes → switchChain unblocks → second switch runs
+    resolveSave();
+    await firstSwitch.catch(() => {});
+    await secondSwitch;
+    expect(secondResolved).toBe(true);
   });
 
   it("preserves original switch error when rollback throws", async () => {

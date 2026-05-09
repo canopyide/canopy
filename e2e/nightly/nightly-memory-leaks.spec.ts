@@ -40,16 +40,20 @@ async function openAndCloseTerminal(window: AppContext["window"]): Promise<void>
 
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Nightly: Memory Leak Detection", () => {
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "memory-leaks" });
+    const { dir, cleanup } = createFixtureRepo({ name: "memory-leaks" });
+    fixtureDir = dir;
+    fixtureCleanup = cleanup;
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Memory Leak Test");
   });
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("main process heap growth bounded after terminal churn", async () => {

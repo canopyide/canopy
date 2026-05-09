@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo, useId } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -7,6 +7,7 @@ import {
   Copy,
   Check,
   Globe,
+  Lock,
   ZoomIn,
   ZoomOut,
   Camera,
@@ -21,7 +22,7 @@ import { actionService } from "@/services/ActionService";
 import { useUrlHistoryStore, getFrecencySuggestions } from "@/store/urlHistoryStore";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ViewportPresetId } from "@shared/types/panel";
-import { VIEWPORT_PRESET_LIST, getViewportPreset } from "@/panels/dev-preview/viewportPresets";
+import { VIEWPORT_PRESET_LIST } from "@/panels/dev-preview/viewportPresets";
 import { logError } from "@/utils/logger";
 
 const ZOOM_PRESETS = [
@@ -43,7 +44,6 @@ interface BrowserToolbarProps {
   canGoBack: boolean;
   canGoForward: boolean;
   isLoading: boolean;
-  urlMightBeStale?: boolean;
   zoomFactor?: number;
   isConsoleOpen?: boolean;
   isWebviewReady?: boolean;
@@ -68,7 +68,6 @@ export function BrowserToolbar({
   canGoBack,
   canGoForward,
   isLoading,
-  urlMightBeStale = false,
   zoomFactor = 1.0,
   isConsoleOpen = false,
   isWebviewReady = false,
@@ -91,9 +90,20 @@ export function BrowserToolbar({
   const [copied, setCopied] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [historyAnnouncement, setHistoryAnnouncement] = useState("");
+
+  const announceHistoryChange = useCallback((text: string) => {
+    // ZWSP toggle forces re-announce when consecutive removals share a display URL
+    // eslint-disable-next-line no-irregular-whitespace
+    setHistoryAnnouncement((prev) => (prev === text ? `${text}​` : text));
+  }, []);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const chipRowRef = useRef<HTMLDivElement>(null);
+  const lastViewportPresetRef = useRef<ViewportPresetId>("iphone");
+  const [chipFocusedIndex, setChipFocusedIndex] = useState<number>(-1);
+  const listboxId = useId();
 
   const projectEntries = useUrlHistoryStore(
     (state) => (projectId ? state.entries[projectId] : undefined) ?? EMPTY_ENTRIES
@@ -108,6 +118,58 @@ export function BrowserToolbar({
     setHighlightedIndex(-1);
     setIsDropdownOpen(isEditing && suggestions.length > 0);
   }, [suggestions, isEditing]);
+
+  useEffect(() => {
+    if (viewportPreset) lastViewportPresetRef.current = viewportPreset;
+  }, [viewportPreset]);
+
+  useEffect(() => {
+    const container = chipRowRef.current;
+    if (!container) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const buttons = Array.from(
+        container.querySelectorAll<HTMLButtonElement>("button[role='radio']:not(:disabled)")
+      );
+      if (buttons.length === 0) return;
+
+      const currentIndex = buttons.findIndex((b) => b === document.activeElement);
+
+      let nextIndex = currentIndex;
+
+      if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+        e.preventDefault();
+        nextIndex = currentIndex < buttons.length - 1 ? currentIndex + 1 : 0;
+      } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+        e.preventDefault();
+        nextIndex = currentIndex > 0 ? currentIndex - 1 : buttons.length - 1;
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        nextIndex = 0;
+      } else if (e.key === "End") {
+        e.preventDefault();
+        nextIndex = buttons.length - 1;
+      } else if ((e.key === " " || e.key === "Enter") && currentIndex >= 0) {
+        e.preventDefault();
+        const button = buttons[currentIndex];
+        if (!button) return;
+        const presetId = button.getAttribute("data-viewport-preset-id") as ViewportPresetId | null;
+        if (presetId && button.getAttribute("aria-checked") !== "true") {
+          onViewportPresetChange?.(presetId);
+        }
+        return;
+      }
+
+      if (nextIndex !== currentIndex && nextIndex >= 0 && nextIndex < buttons.length) {
+        buttons[nextIndex]?.focus();
+        setChipFocusedIndex(nextIndex);
+      }
+    };
+
+    container.addEventListener("keydown", handleKeyDown as unknown as EventListener);
+    return () =>
+      container.removeEventListener("keydown", handleKeyDown as unknown as EventListener);
+  }, [onViewportPresetChange, viewportPreset]);
 
   useEffect(() => {
     if (!isEditing) {
@@ -190,6 +252,7 @@ export function BrowserToolbar({
           if (projectId) {
             useUrlHistoryStore.getState().removeUrl(projectId, entry.url);
           }
+          announceHistoryChange(`Removed ${getDisplayUrl(entry.url)} from history`);
           const remaining = suggestions.length - 1;
           if (remaining === 0) {
             setIsDropdownOpen(false);
@@ -206,7 +269,7 @@ export function BrowserToolbar({
         inputRef.current?.blur();
       }
     },
-    [isDropdownOpen, suggestions, highlightedIndex, onNavigate, projectId]
+    [isDropdownOpen, suggestions, highlightedIndex, onNavigate, projectId, announceHistoryChange]
   );
 
   const handleCopy = useCallback(async () => {
@@ -270,11 +333,25 @@ export function BrowserToolbar({
   const canZoomOut = zoomFactor > minZoom + 0.001;
   const canZoomIn = zoomFactor < maxZoom - 0.001;
 
+  const isHttps = useMemo(() => {
+    try {
+      return new URL(url).protocol === "https:";
+    } catch {
+      return false;
+    }
+  }, [url]);
+
   const buttonClass =
     "p-1.5 rounded hover:bg-overlay-medium disabled:opacity-30 disabled:cursor-not-allowed transition-colors";
 
   return (
     <div className="flex items-center gap-1.5 px-2 py-1.5 bg-surface border-b border-overlay">
+      <span role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+        {historyAnnouncement}
+      </span>
+      <span role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+        {copied ? "Copied to clipboard" : ""}
+      </span>
       {/* Navigation buttons */}
       <Tooltip>
         <TooltipTrigger asChild>
@@ -335,7 +412,7 @@ export function BrowserToolbar({
 
       {/* Zoom controls */}
       {onZoomChange && (
-        <div className="flex items-center gap-0.5">
+        <div className="flex items-center gap-0.5 rounded-md bg-overlay-subtle p-0.5">
           <Tooltip>
             <TooltipTrigger asChild>
               <span className="inline-flex">
@@ -360,9 +437,8 @@ export function BrowserToolbar({
                   onClick={handleZoomReset}
                   disabled={!isNonDefaultZoom}
                   className={cn(
-                    "px-1.5 py-1 rounded text-xs font-medium transition-colors",
-                    "hover:bg-overlay-medium disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none",
-                    isNonDefaultZoom ? "text-status-info" : "text-daintree-text/60"
+                    "px-1.5 py-1 rounded text-xs font-medium text-daintree-text transition-colors",
+                    "hover:bg-overlay-medium disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none"
                   )}
                   aria-label="Reset zoom"
                 >
@@ -402,7 +478,7 @@ export function BrowserToolbar({
                   if (viewportPreset) {
                     onViewportPresetChange(undefined);
                   } else {
-                    onViewportPresetChange("iphone");
+                    onViewportPresetChange(lastViewportPresetRef.current);
                   }
                 }}
                 className={cn(
@@ -415,34 +491,44 @@ export function BrowserToolbar({
                 <Smartphone className="w-4 h-4" />
               </button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {viewportPreset
-                ? `Viewport: ${getViewportPreset(viewportPreset).label}`
-                : "Responsive viewport"}
-            </TooltipContent>
+            <TooltipContent side="bottom">Viewport preset</TooltipContent>
           </Tooltip>
           {viewportPreset && (
-            <div className="flex items-center ml-0.5">
-              {VIEWPORT_PRESET_LIST.map((preset) => (
-                <button
-                  key={preset.id}
-                  type="button"
-                  onClick={() =>
-                    onViewportPresetChange(viewportPreset === preset.id ? undefined : preset.id)
-                  }
-                  className={cn(
-                    "px-1.5 py-1 rounded text-[10px] font-medium transition-colors",
-                    "hover:bg-overlay-medium",
-                    viewportPreset === preset.id
-                      ? "bg-overlay-emphasis text-daintree-text"
-                      : "text-daintree-text/50"
-                  )}
-                  aria-label={preset.label}
-                  aria-pressed={viewportPreset === preset.id}
-                >
-                  {preset.label}
-                </button>
-              ))}
+            <div
+              ref={chipRowRef}
+              role="radiogroup"
+              aria-label="Select viewport preset"
+              className="flex items-center ml-0.5"
+            >
+              {VIEWPORT_PRESET_LIST.map((preset, index) => {
+                const isSelected = viewportPreset === preset.id;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={isSelected}
+                    aria-label={preset.label}
+                    data-viewport-preset-id={preset.id}
+                    tabIndex={isSelected || chipFocusedIndex === index ? 0 : -1}
+                    onClick={() => {
+                      if (!isSelected) onViewportPresetChange(preset.id);
+                    }}
+                    onFocus={() => setChipFocusedIndex(index)}
+                    onBlur={() => setChipFocusedIndex(-1)}
+                    className={cn(
+                      "px-1.5 py-1 rounded text-[10px] font-medium transition-colors",
+                      "hover:bg-overlay-medium",
+                      "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2",
+                      isSelected
+                        ? "bg-overlay-emphasis text-daintree-text"
+                        : "text-daintree-text/50"
+                    )}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
@@ -452,21 +538,31 @@ export function BrowserToolbar({
       <div ref={containerRef} className="relative flex-1 min-w-0">
         <form onSubmit={handleSubmit}>
           <div className="relative flex items-center">
-            <Globe className="absolute left-2 w-3.5 h-3.5 text-daintree-text/40 pointer-events-none" />
-            {urlMightBeStale && !isEditing && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="absolute left-6 w-1.5 h-1.5 rounded-full bg-status-warning/60" />
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  URL may differ from page shown (in-page navigation)
-                </TooltipContent>
-              </Tooltip>
+            {isHttps ? (
+              <Lock
+                data-testid="browser-url-scheme-lock"
+                className="absolute left-2 w-3.5 h-3.5 text-daintree-text/40 pointer-events-none"
+              />
+            ) : (
+              <Globe
+                data-testid="browser-url-scheme-globe"
+                className="absolute left-2 w-3.5 h-3.5 text-daintree-text/40 pointer-events-none"
+              />
             )}
             <input
               ref={inputRef}
               type="text"
               data-testid="browser-address-bar"
+              role="combobox"
+              aria-label="Address bar"
+              aria-autocomplete="list"
+              aria-expanded={isDropdownOpen}
+              aria-controls={listboxId}
+              aria-activedescendant={
+                isDropdownOpen && highlightedIndex >= 0
+                  ? `${listboxId}-option-${highlightedIndex}`
+                  : undefined
+              }
               value={inputValue}
               onChange={(e) => {
                 setInputValue(e.target.value);
@@ -476,6 +572,7 @@ export function BrowserToolbar({
               onBlur={handleBlur}
               onKeyDown={handleKeyDown}
               autoComplete="off"
+              spellCheck={false}
               className={cn(
                 "w-full pl-7 pr-2 py-1 text-xs rounded",
                 "bg-daintree-bg border border-overlay",
@@ -496,12 +593,24 @@ export function BrowserToolbar({
         {isDropdownOpen && suggestions.length > 0 && (
           <div
             ref={dropdownRef}
+            id={listboxId}
+            role="listbox"
             className="absolute left-0 right-0 top-full mt-1 z-50 bg-daintree-bg border border-overlay rounded shadow-[var(--theme-shadow-floating)] overflow-hidden"
           >
             {suggestions.map((entry, index) => (
               <div
                 key={entry.url}
+                id={`${listboxId}-option-${index}`}
+                role="option"
+                aria-selected={index === highlightedIndex}
                 onMouseEnter={() => setHighlightedIndex(index)}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setIsEditing(false);
+                  setIsDropdownOpen(false);
+                  setHighlightedIndex(-1);
+                  onNavigate(entry.url);
+                }}
                 className={cn(
                   "group/row w-full text-left px-2.5 py-1.5 flex items-center gap-2 cursor-pointer",
                   index === highlightedIndex ? "bg-overlay-medium" : "hover:bg-overlay-soft"
@@ -528,31 +637,22 @@ export function BrowserToolbar({
                 ) : (
                   <Globe className="w-4 h-4 shrink-0 text-daintree-text/30" />
                 )}
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    setIsEditing(false);
-                    setIsDropdownOpen(false);
-                    setHighlightedIndex(-1);
-                    onNavigate(entry.url);
-                  }}
-                  className="flex-1 min-w-0 flex flex-col gap-0.5 text-left"
-                >
+                <div className="flex-1 min-w-0 flex flex-col gap-0.5 text-left">
                   {entry.title && (
                     <span className="text-xs text-daintree-text truncate">{entry.title}</span>
                   )}
                   <span className="text-xs text-daintree-text/50 truncate">{entry.url}</span>
-                </button>
+                </div>
                 {projectId && (
                   <button
                     type="button"
                     tabIndex={-1}
+                    aria-hidden="true"
                     onMouseDown={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
                       useUrlHistoryStore.getState().removeUrl(projectId, entry.url);
+                      announceHistoryChange(`Removed ${getDisplayUrl(entry.url)} from history`);
                       const remaining = suggestions.length - 1;
                       if (remaining === 0) {
                         setIsDropdownOpen(false);
@@ -562,7 +662,7 @@ export function BrowserToolbar({
                       }
                     }}
                     className="shrink-0 p-0.5 rounded opacity-0 group-hover/row:opacity-100 hover:bg-overlay-strong transition-opacity text-daintree-text/40 hover:text-daintree-text/70"
-                    aria-label={`Remove ${entry.url} from history`}
+                    aria-label={`Remove ${getDisplayUrl(entry.url)} from history`}
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -576,7 +676,7 @@ export function BrowserToolbar({
       {/* Action buttons */}
       <Tooltip>
         <TooltipTrigger asChild>
-          <button type="button" onClick={handleCopy} className={buttonClass}>
+          <button type="button" onClick={handleCopy} className={buttonClass} aria-label="Copy URL">
             {copied ? (
               <Check className="w-4 h-4 text-status-success" />
             ) : (

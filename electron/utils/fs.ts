@@ -1,6 +1,6 @@
 import { dirname } from "path";
-import { access, open, unlink as fsUnlink } from "fs/promises";
-import { closeSync, fsyncSync, openSync, unlinkSync, writeFileSync } from "fs";
+import { access, chmod as fsChmod, open, unlink as fsUnlink } from "fs/promises";
+import { chmodSync, closeSync, fsyncSync, openSync, unlinkSync, writeFileSync } from "fs";
 import stubbornFs from "stubborn-fs";
 
 // Wall-clock retry budgets for transient file-locking errors (EPERM/EBUSY/EACCES).
@@ -85,11 +85,17 @@ function syncParentDirectorySync(filePath: string): void {
  * Atomic writeFile: writes to a temp file with flush, then renames to the
  * target path. If any step fails the temp file is cleaned up best-effort.
  * Accepts strings (encoded with `encoding`) or binary buffers.
+ *
+ * `mode` (POSIX only) is applied to the temp file before rename so the
+ * destination has the right permissions atomically — closing the window
+ * where a sensitive file would briefly be world-readable at the umask
+ * default. Silently skipped on Windows.
  */
 export async function resilientAtomicWriteFile(
   filePath: string,
   data: string | Buffer | Uint8Array,
-  encoding: BufferEncoding = "utf-8"
+  encoding: BufferEncoding = "utf-8",
+  options?: { mode?: number }
 ): Promise<void> {
   const tempPath = generateTempPath(filePath);
   const writeOptions =
@@ -98,6 +104,9 @@ export async function resilientAtomicWriteFile(
       : ({ flush: true } as Parameters<typeof writeFileSync>[2]);
   try {
     await stubbornFs.retry.writeFile({ timeout: RETRY_TIMEOUT_MS })(tempPath, data, writeOptions);
+    if (options?.mode !== undefined && process.platform !== "win32") {
+      await fsChmod(tempPath, options.mode);
+    }
     await resilientRename(tempPath, filePath);
     await syncParentDirectory(filePath);
   } catch (error) {
@@ -114,11 +123,15 @@ export async function resilientAtomicWriteFile(
 export function resilientAtomicWriteFileSync(
   filePath: string,
   data: string,
-  encoding: BufferEncoding = "utf-8"
+  encoding: BufferEncoding = "utf-8",
+  options?: { mode?: number }
 ): void {
   const tempPath = generateTempPath(filePath);
   try {
     writeFileSync(tempPath, data, { encoding, flush: true } as Parameters<typeof writeFileSync>[2]);
+    if (options?.mode !== undefined && process.platform !== "win32") {
+      chmodSync(tempPath, options.mode);
+    }
     resilientRenameSync(tempPath, filePath);
     syncParentDirectorySync(filePath);
   } catch (error) {

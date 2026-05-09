@@ -132,6 +132,20 @@ exports.default = async function afterPack(context) {
     console.log(
       "[afterPack] Windows node-pty binaries verified (conpty.node, conpty_console_list.node, conpty/conpty.dll, conpty/OpenConsole.exe)"
     );
+
+    // win-job-object: help-session PTY tree reaping (#7526). Source-only
+    // addon — must be compiled on a Windows runner with VS 2022 Build Tools.
+    const winJobObjectBinary = path.join(
+      unpackedPath,
+      "node_modules/win-job-object/build/Release/win_job_object.node"
+    );
+    if (!fs.existsSync(winJobObjectBinary)) {
+      throw new Error(
+        `[afterPack] CRITICAL: win-job-object native binary not found at ${winJobObjectBinary}. ` +
+          'Help-session crash-safe reaping (#7526) will be disabled. Run "npm run rebuild" on a Windows runner with VS 2022 Build Tools.'
+      );
+    }
+    console.log(`[afterPack] win-job-object verified: ${winJobObjectBinary}`);
   } else {
     // macOS and Linux use pty.node
     const nativeBinaryPath = path.join(nodePtyPath, "build/Release/pty.node");
@@ -147,25 +161,14 @@ exports.default = async function afterPack(context) {
       // Inject pre-compiled Assets.car for macOS 26+ Liquid Glass icon.
       // The .car was compiled from build/AppIcon.icon via actool on a machine
       // with Xcode 26, so CI runners don't need Xcode installed.
-      //
-      // TODO(0.9.0): Drop the variant guard — only Daintree will remain.
-      // The canopy variant has no Liquid Glass asset, so we skip injection
-      // to avoid stamping the Daintree icon onto the legacy Canopy build.
-      const isLegacyCanopy = process.env.BUILD_VARIANT === "canopy";
-      if (isLegacyCanopy) {
-        console.log(
-          "[afterPack] Canopy variant: skipping Assets.car (no legacy Liquid Glass icon)"
-        );
+      const assetsCar = path.join(__dirname, "..", "build", "icon-compiled", "Assets.car");
+      if (fs.existsSync(assetsCar)) {
+        const resourcesDir = path.join(appOutDir, `${appName}.app`, "Contents/Resources");
+        const dest = path.join(resourcesDir, "Assets.car");
+        fs.copyFileSync(assetsCar, dest);
+        console.log(`[afterPack] Injected Assets.car into ${dest}`);
       } else {
-        const assetsCar = path.join(__dirname, "..", "build", "icon-compiled", "Assets.car");
-        if (fs.existsSync(assetsCar)) {
-          const resourcesDir = path.join(appOutDir, `${appName}.app`, "Contents/Resources");
-          const dest = path.join(resourcesDir, "Assets.car");
-          fs.copyFileSync(assetsCar, dest);
-          console.log(`[afterPack] Injected Assets.car into ${dest}`);
-        } else {
-          console.log("[afterPack] No pre-compiled Assets.car found, skipping Liquid Glass icon");
-        }
+        console.log("[afterPack] No pre-compiled Assets.car found, skipping Liquid Glass icon");
       }
 
       console.log("[afterPack] Native modules will be signed during code signing phase");

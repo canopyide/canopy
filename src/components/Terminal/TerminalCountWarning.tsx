@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { X, AlertTriangle, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePanelStore } from "@/store/panelStore";
@@ -17,7 +17,7 @@ export function TerminalCountWarning({ className, onOpenBulkActions }: TerminalC
       let completed = 0;
       for (const id of state.panelIds) {
         const t = state.panelsById[id];
-        if (t && t.location !== "trash") {
+        if (t && t.location !== "trash" && t.ephemeral !== true) {
           active++;
           if (t.agentState === "completed" || t.agentState === "exited") completed++;
         }
@@ -38,17 +38,27 @@ export function TerminalCountWarning({ className, onOpenBulkActions }: TerminalC
 
   const [isDismissed, setIsDismissed] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
+  const rafRef = useRef<number | null>(null);
 
   const showWarning =
     !isDismissed &&
     shouldShowSoftWarning(activeCount, softLimit, warningsDisabled, lastDismissedAt);
 
   useEffect(() => {
-    if (showWarning) {
-      requestAnimationFrame(() => setIsVisible(true));
-    } else {
+    if (!showWarning) {
       setIsVisible(false);
+      return;
     }
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      setIsVisible(true);
+    });
+    return () => {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    };
   }, [showWarning]);
 
   useEffect(() => {
@@ -60,24 +70,28 @@ export function TerminalCountWarning({ className, onOpenBulkActions }: TerminalC
     }
   }, [activeCount, softLimit, warningsDisabled, lastDismissedAt, isDismissed]);
 
-  const [dismissTimeoutId, setDismissTimeoutId] = useState<NodeJS.Timeout | null>(null);
+  const dismissTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleDismiss = useCallback(() => {
     setIsVisible(false);
-    const timeoutId = setTimeout(() => {
+    if (dismissTimeoutRef.current !== null) {
+      clearTimeout(dismissTimeoutRef.current);
+    }
+    dismissTimeoutRef.current = setTimeout(() => {
+      dismissTimeoutRef.current = null;
       dismissSoftWarning(activeCount);
       setIsDismissed(true);
     }, 200);
-    setDismissTimeoutId(timeoutId);
   }, [activeCount, dismissSoftWarning]);
 
   useEffect(() => {
     return () => {
-      if (dismissTimeoutId) {
-        clearTimeout(dismissTimeoutId);
+      if (dismissTimeoutRef.current !== null) {
+        clearTimeout(dismissTimeoutRef.current);
+        dismissTimeoutRef.current = null;
       }
     };
-  }, [dismissTimeoutId]);
+  }, []);
 
   const handleCleanup = useCallback(() => {
     if (onOpenBulkActions) {
@@ -89,7 +103,8 @@ export function TerminalCountWarning({ className, onOpenBulkActions }: TerminalC
         if (
           t &&
           (t.agentState === "completed" || t.agentState === "exited") &&
-          t.location !== "trash"
+          t.location !== "trash" &&
+          t.ephemeral !== true
         ) {
           usePanelStore.getState().trashPanel(t.id);
         }
@@ -109,8 +124,9 @@ export function TerminalCountWarning({ className, onOpenBulkActions }: TerminalC
         isVisible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2",
         className
       )}
-      role="alert"
-      aria-live="assertive"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
     >
       <div className="flex items-center gap-3">
         <AlertTriangle className="h-5 w-5 text-status-warning shrink-0" />
@@ -126,7 +142,7 @@ export function TerminalCountWarning({ className, onOpenBulkActions }: TerminalC
                 <button
                   type="button"
                   onClick={handleCleanup}
-                  className="underline hover:text-daintree-text transition-colors inline-flex items-center gap-1"
+                  className="underline hover:text-daintree-text transition-colors inline-flex items-center gap-1 outline-hidden focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-daintree-accent rounded-sm"
                 >
                   <Trash2 className="h-3 w-3" />
                   Close <span className="tabular-nums">{completedCount}</span> completed agent
@@ -145,7 +161,7 @@ export function TerminalCountWarning({ className, onOpenBulkActions }: TerminalC
           "rounded-[var(--radius-sm)] p-1",
           "text-status-warning/60 transition-colors",
           "hover:text-status-warning hover:bg-status-warning/10",
-          "focus:outline-hidden focus:ring-1 focus:ring-status-warning/50"
+          "outline-hidden focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-daintree-accent"
         )}
         aria-label="Dismiss warning"
       >

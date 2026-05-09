@@ -14,6 +14,7 @@ const MEMORY_THRESHOLD_MB = 20;
 
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 
 async function openTerminalAndGetPid(window: AppContext["window"]): Promise<{
   panel: ReturnType<typeof getFirstGridPanel>;
@@ -56,7 +57,7 @@ test.describe.serial("Core: Rapid Terminal Create/Destroy Cycles", () => {
   const trackedPids: number[] = [];
 
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "rapid-terminal" });
+    ({ dir: fixtureDir, cleanup: fixtureCleanup } = createFixtureRepo({ name: "rapid-terminal" }));
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(
       ctx.app,
@@ -77,6 +78,7 @@ test.describe.serial("Core: Rapid Terminal Create/Destroy Cycles", () => {
       }
     }
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("rapid create/destroy cycles with leak and memory checks", async () => {
@@ -99,14 +101,14 @@ test.describe.serial("Core: Rapid Terminal Create/Destroy Cycles", () => {
     await test.step("verify no leaked PIDs", async () => {
       if (process.platform === "win32") return;
 
-      // Allow a brief settle for the last batch
-      await window.waitForTimeout(2000);
-
-      let leakedCount = 0;
-      for (const pid of trackedPids) {
-        if (isPidAlive(pid)) leakedCount++;
-      }
-      expect(leakedCount).toBe(0);
+      // Poll until every tracked PID is reaped — replaces a fixed 2s settle
+      // wait with stepped backoff so fast reaps don't pay the full delay.
+      await expect
+        .poll(() => trackedPids.filter((pid) => isPidAlive(pid)).length, {
+          timeout: 10_000,
+          intervals: [200, 500, 1000],
+        })
+        .toBe(0);
     });
 
     await test.step("verify memory growth is bounded", async () => {
@@ -120,8 +122,8 @@ test.describe.serial("Core: Rapid Terminal Create/Destroy Cycles", () => {
       trackedPids.push(ptyPid);
       expect(ptyPid).toBeGreaterThan(0);
 
-      // Wait for shell prompt, then run a command
-      await window.waitForTimeout(2000);
+      // Wait for shell prompt, then run a command (fixture name appears in cwd prompt)
+      await waitForTerminalText(panel, "rapid-terminal", T_LONG);
       await runTerminalCommand(window, panel, 'echo "RAPID_STRESS_OK"');
       await waitForTerminalText(panel, "RAPID_STRESS_OK", T_LONG);
 

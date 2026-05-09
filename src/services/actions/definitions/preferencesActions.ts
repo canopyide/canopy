@@ -10,15 +10,17 @@ import {
   worktreeConfigClient,
 } from "@/clients";
 import { dispatchEscape } from "@/lib/escapeStack";
+import { suppressSidebarResizes } from "@/lib/sidebarToggle";
 import { notify } from "@/lib/notify";
 import { actionService } from "@/services/ActionService";
 import { keybindingService } from "@/services/KeybindingService";
 import { useAgentPreferencesStore } from "@/store/agentPreferencesStore";
 import { useAgentSettingsStore } from "@/store/agentSettingsStore";
 import { useCliAvailabilityStore } from "@/store/cliAvailabilityStore";
+import { useFocusStore } from "@/store/focusStore";
 import { useHelpPanelStore } from "@/store/helpPanelStore";
-import { ASSISTANT_FAST_MODELS, getEffectiveAgentConfig } from "@shared/config/agentRegistry";
-import { getAgentSettingsEntry } from "@shared/types";
+import { useProjectStore } from "@/store/projectStore";
+import { logError } from "@/utils/logger";
 import { getDefaultAgentId } from "@/lib/resolveAgentId";
 import { usePerformanceModeStore } from "@/store/performanceModeStore";
 import { usePreferencesStore } from "@/store/preferencesStore";
@@ -117,6 +119,7 @@ export function registerPreferencesActions(
     kind: "command",
     danger: "safe",
     scope: "renderer",
+    keywords: ["maximize", "presentation", "immersive", "expand"],
     run: async () => {
       await window.electron.window.toggleFullscreen();
     },
@@ -128,8 +131,9 @@ export function registerPreferencesActions(
     description: "Reload the renderer via Electron webContents",
     category: "ui",
     kind: "command",
-    danger: "confirm",
+    danger: "safe",
     scope: "renderer",
+    keywords: ["refresh", "restart", "renderer", "soft"],
     run: async () => {
       await window.electron.window.reload();
     },
@@ -141,8 +145,9 @@ export function registerPreferencesActions(
     description: "Reload the renderer ignoring cache",
     category: "ui",
     kind: "command",
-    danger: "confirm",
+    danger: "safe",
     scope: "renderer",
+    keywords: ["refresh", "cache", "hard", "renderer"],
     run: async () => {
       await window.electron.window.forceReload();
     },
@@ -154,8 +159,9 @@ export function registerPreferencesActions(
     description: "Toggle Electron DevTools for the current window",
     category: "ui",
     kind: "command",
-    danger: "confirm",
+    danger: "safe",
     scope: "renderer",
+    keywords: ["developer", "inspect", "console", "debug"],
     run: async () => {
       await window.electron.window.toggleDevTools();
     },
@@ -169,6 +175,7 @@ export function registerPreferencesActions(
     kind: "command",
     danger: "safe",
     scope: "renderer",
+    keywords: ["larger", "increase", "scale", "magnify"],
     run: async () => {
       await window.electron.window.zoomIn();
     },
@@ -182,6 +189,7 @@ export function registerPreferencesActions(
     kind: "command",
     danger: "safe",
     scope: "renderer",
+    keywords: ["smaller", "decrease", "scale", "shrink"],
     run: async () => {
       await window.electron.window.zoomOut();
     },
@@ -195,6 +203,7 @@ export function registerPreferencesActions(
     kind: "command",
     danger: "safe",
     scope: "renderer",
+    keywords: ["default", "normal", "scale", "restore"],
     run: async () => {
       await window.electron.window.zoomReset();
     },
@@ -206,8 +215,9 @@ export function registerPreferencesActions(
     description: "Close the current window",
     category: "ui",
     kind: "command",
-    danger: "confirm",
+    danger: "safe",
     scope: "renderer",
+    keywords: ["dismiss", "shut", "exit", "hide"],
     run: async () => {
       await window.electron.window.close();
     },
@@ -301,7 +311,7 @@ export function registerPreferencesActions(
     description: "Update settings for an agent",
     category: "settings",
     kind: "command",
-    danger: "confirm",
+    danger: "safe",
     scope: "renderer",
     argsSchema: z.object({ agentId: z.string(), settings: AgentSettingsEntrySchema }),
     run: async (args: unknown) => {
@@ -323,8 +333,9 @@ export function registerPreferencesActions(
     description: "Reset settings for one agent or all agents",
     category: "settings",
     kind: "command",
-    danger: "confirm",
+    danger: "safe",
     scope: "renderer",
+    keywords: ["defaults", "restore", "clear", "agents"],
     argsSchema: z
       .object({
         agentId: z.string().optional(),
@@ -395,8 +406,9 @@ export function registerPreferencesActions(
     description: "Reset all keybinding overrides",
     category: "settings",
     kind: "command",
-    danger: "confirm",
+    danger: "safe",
     scope: "renderer",
+    keywords: ["shortcuts", "hotkeys", "defaults", "restore"],
     run: async () => {
       await keybindingService.resetAllOverrides();
       return keybindingService.getOverridesSnapshot();
@@ -644,6 +656,7 @@ export function registerPreferencesActions(
     kind: "command",
     danger: "safe",
     scope: "renderer",
+    keywords: ["hotkeys", "keys", "reference", "bindings"],
     run: async () => {
       callbacks.onOpenShortcuts();
     },
@@ -657,6 +670,7 @@ export function registerPreferencesActions(
     kind: "command",
     danger: "safe",
     scope: "renderer",
+    keywords: ["hotkeys", "keys", "reference", "bindings"],
     run: async () => {
       callbacks.onOpenShortcuts();
     },
@@ -670,6 +684,7 @@ export function registerPreferencesActions(
     kind: "command",
     danger: "safe",
     scope: "renderer",
+    keywords: ["assistant", "support", "docs", "guide"],
     argsSchema: z.object({ agentId: AgentIdSchema.optional() }).optional(),
     run: async (args?: unknown) => {
       const folderPath = await window.electron.help.getFolderPath();
@@ -695,33 +710,91 @@ export function registerPreferencesActions(
         agentId = resolved ?? "claude";
       }
 
-      // Resolve assistant model override from agent settings
-      const agentSettings = useAgentSettingsStore.getState().settings;
-      const agentEntry = getAgentSettingsEntry(agentSettings, agentId);
-      const storedModel = agentEntry.assistantModelId as string | undefined;
-      const agentCfg = getEffectiveAgentConfig(agentId);
-      let model: string | undefined;
-      if (storedModel && agentCfg?.models?.some((m) => m.id === storedModel)) {
-        model = storedModel;
-      } else {
-        const fast = ASSISTANT_FAST_MODELS[agentId];
-        model = fast && agentCfg?.models?.some((m) => m.id === fast) ? fast : undefined;
-      }
-
       const helpPrompt =
         "I need help with Daintree, an Electron-based IDE for orchestrating AI coding agents. Please briefly tell me how you can help.";
 
+      const project = useProjectStore.getState().currentProject;
+      let session: Awaited<ReturnType<typeof window.electron.help.provisionSession>> | null = null;
+      if (!project) {
+        notify({
+          type: "error",
+          title: "Daintree Assistant",
+          message: "Project state is still loading. Try again.",
+        });
+        return;
+      }
+
+      try {
+        session = await window.electron.help.provisionSession({
+          projectId: project.id,
+          projectPath: project.path,
+          agentId,
+        });
+      } catch (err) {
+        logError("Failed to provision help session", err);
+        const code =
+          err && typeof err === "object" && "code" in err
+            ? (err as Record<string, unknown>).code
+            : undefined;
+        notify({
+          type: "error",
+          title: code === "MCP_NOT_READY" ? "Start MCP failed" : "Assistant launch failed",
+          message:
+            code === "MCP_NOT_READY"
+              ? "Daintree Assistant needs MCP, but the server didn't start."
+              : "Couldn't provision the Daintree Assistant session.",
+        });
+        return;
+      }
+
+      if (!session) {
+        notify({
+          type: "error",
+          title: "Assistant launch failed",
+          message: "Couldn't provision the Daintree Assistant session.",
+        });
+        return;
+      }
+
+      const cwd = session.sessionPath;
+      const env: Record<string, string> = {
+        DAINTREE_MCP_TOKEN: session.token,
+        DAINTREE_WINDOW_ID: String(session.windowId),
+        ...(session.mcpUrl ? { DAINTREE_MCP_URL: session.mcpUrl } : {}),
+        DAINTREE_PROJECT_ID: project.id,
+      };
+
       const result = await actionService.dispatch<{ terminalId: string | null }>(
         "agent.launch",
-        { agentId, cwd: folderPath, location: "dock", prompt: helpPrompt, ...(model && { model }) },
+        {
+          agentId,
+          cwd,
+          location: "dock",
+          prompt: helpPrompt,
+          ephemeral: true,
+          ...(env && { env }),
+        },
         { source: "user" }
       );
 
       // Store the terminal in the help panel
       if (result.ok && result.result?.terminalId) {
-        useHelpPanelStore.getState().setTerminal(result.result.terminalId, agentId);
-        useHelpPanelStore.getState().setOpen(true);
+        useHelpPanelStore
+          .getState()
+          .setTerminal(result.result.terminalId, agentId, session?.sessionId ?? null);
+        // Always clear the assistant gesture — a successful launch should
+        // make the panel visible regardless of whether isOpen was already
+        // true (gesture-hidden) or had to be flipped on.
+        useFocusStore.getState().clearAssistantGesture();
+        if (!useHelpPanelStore.getState().isOpen) {
+          suppressSidebarResizes();
+          useHelpPanelStore.getState().setOpen(true);
+        }
         window.electron.help.markTerminal(result.result.terminalId).catch(() => {});
+      } else if (session) {
+        window.electron.help.revokeSession(session.sessionId).catch((err) => {
+          logError("Failed to revoke help session after failed launch", err);
+        });
       }
     },
   }));
@@ -734,7 +807,12 @@ export function registerPreferencesActions(
     kind: "command",
     danger: "safe",
     scope: "renderer",
+    keywords: ["docs", "support", "guide", "assistant"],
     run: async () => {
+      suppressSidebarResizes();
+      // Clear any lingering assistant gesture suppression — this explicit
+      // toggle takes ownership of the assistant's visibility.
+      useFocusStore.getState().clearAssistantGesture();
       useHelpPanelStore.getState().toggle();
     },
   }));
@@ -747,6 +825,7 @@ export function registerPreferencesActions(
     kind: "command",
     danger: "safe",
     scope: "renderer",
+    keywords: ["dismiss", "escape", "dialog", "overlay"],
     nonRepeatable: true,
     run: async () => {
       dispatchEscape();
@@ -759,8 +838,9 @@ export function registerPreferencesActions(
     description: "Quit Daintree",
     category: "app",
     kind: "command",
-    danger: "confirm",
+    danger: "safe",
     scope: "renderer",
+    keywords: ["exit", "close", "shutdown", "leave"],
     run: async () => {
       await appClient.quit();
     },
@@ -772,8 +852,9 @@ export function registerPreferencesActions(
     description: "Force quit Daintree immediately (no graceful shutdown)",
     category: "app",
     kind: "command",
-    danger: "confirm",
+    danger: "safe",
     scope: "renderer",
+    keywords: ["exit", "kill", "shutdown", "terminate"],
     run: async () => {
       await appClient.forceQuit();
     },

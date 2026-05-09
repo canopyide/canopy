@@ -7,17 +7,19 @@ import { T_SHORT, T_MEDIUM, T_SETTLE } from "../helpers/timeouts";
 import {
   writeCcrConfig,
   removeCcrConfig,
-  navigateToAgentSettings,
+  waitForCcrPresets,
   getPresetRowByName,
 } from "../helpers/presets";
 
 let ctx: AppContext;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Presets: Launch Env Overrides (63–70)", () => {
   test.beforeAll(async () => {
     removeCcrConfig();
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "preset-launch-env" });
+    const { dir: fixtureDir, cleanup } = createFixtureRepo({ name: "preset-launch-env" });
+    fixtureCleanup = cleanup;
     ctx.window = await openAndOnboardProject(
       ctx.app,
       ctx.window,
@@ -29,17 +31,13 @@ test.describe.serial("Presets: Launch Env Overrides (63–70)", () => {
   test.afterAll(async () => {
     removeCcrConfig();
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
-
-  const goToClaudeSettings = async () => {
-    await navigateToAgentSettings(ctx.window, "claude");
-  };
 
   test("63. CCR preset with model shows ANTHROPIC_MODEL env key in preset row", async () => {
     writeCcrConfig([{ id: "env-model", name: "Env Model", model: "claude-sonnet-4" }]);
-    await ctx.window.waitForTimeout(35_000);
+    await waitForCcrPresets(ctx.window, ["Env Model"]);
 
-    await goToClaudeSettings();
     const row = await getPresetRowByName(ctx.window, "Env Model");
     await expect(row).toBeVisible({ timeout: T_MEDIUM });
     await expect(row.getByText("ANTHROPIC_MODEL")).toBeVisible({ timeout: T_SHORT });
@@ -54,9 +52,8 @@ test.describe.serial("Presets: Launch Env Overrides (63–70)", () => {
         baseUrl: "https://proxy.internal/v1",
       },
     ]);
-    await ctx.window.waitForTimeout(35_000);
+    await waitForCcrPresets(ctx.window, ["Env Url"]);
 
-    await goToClaudeSettings();
     const row = await getPresetRowByName(ctx.window, "Env Url");
     await expect(row).toBeVisible({ timeout: T_MEDIUM });
     await expect(row.getByText("ANTHROPIC_BASE_URL")).toBeVisible({ timeout: T_SHORT });
@@ -64,12 +61,11 @@ test.describe.serial("Presets: Launch Env Overrides (63–70)", () => {
 
   test("65. Selecting default option (empty value) clears preset overrides", async () => {
     writeCcrConfig([{ id: "default-test", name: "Default Test", model: "default-model" }]);
-    await ctx.window.waitForTimeout(35_000);
+    await waitForCcrPresets(ctx.window, ["Default Test"]);
 
-    await goToClaudeSettings();
     await expect(ctx.window.locator(SEL.preset.section)).toBeVisible({ timeout: T_MEDIUM });
 
-    const select = ctx.window.locator(SEL.preset.defaultSelect);
+    const select = ctx.window.locator(SEL.preset.selectorTrigger);
     await expect(select).toBeVisible({ timeout: T_SHORT });
 
     const options = select.locator("option");
@@ -91,9 +87,8 @@ test.describe.serial("Presets: Launch Env Overrides (63–70)", () => {
         apiKeyEnv: "MY_SECRET_KEY",
       },
     ]);
-    await ctx.window.waitForTimeout(35_000);
+    await waitForCcrPresets(ctx.window, ["Multi Env"]);
 
-    await goToClaudeSettings();
     const row = await getPresetRowByName(ctx.window, "Multi Env");
     await expect(row).toBeVisible({ timeout: T_MEDIUM });
     await expect(row.getByText("ANTHROPIC_MODEL")).toBeVisible({ timeout: T_SHORT });
@@ -103,12 +98,11 @@ test.describe.serial("Presets: Launch Env Overrides (63–70)", () => {
 
   test("67. Select preset then switch to default clears default selection", async () => {
     writeCcrConfig([{ id: "select-a", name: "Select A", model: "select-a-model" }]);
-    await ctx.window.waitForTimeout(35_000);
+    await waitForCcrPresets(ctx.window, ["Select A"]);
 
-    await goToClaudeSettings();
     await expect(ctx.window.locator(SEL.preset.section)).toBeVisible({ timeout: T_MEDIUM });
 
-    const select = ctx.window.locator(SEL.preset.defaultSelect);
+    const select = ctx.window.locator(SEL.preset.selectorTrigger);
     await expect(select).toBeVisible({ timeout: T_SHORT });
 
     const options = select.locator("option");
@@ -136,9 +130,8 @@ test.describe.serial("Presets: Launch Env Overrides (63–70)", () => {
         baseUrl: "https://very-long-base-url.example.com/api/v1/longer-path",
       },
     ]);
-    await ctx.window.waitForTimeout(35_000);
+    await waitForCcrPresets(ctx.window, ["Mono Env"]);
 
-    await goToClaudeSettings();
     const row = await getPresetRowByName(ctx.window, "Mono Env");
     await expect(row).toBeVisible({ timeout: T_MEDIUM });
 
@@ -158,9 +151,7 @@ test.describe.serial("Presets: Launch Env Overrides (63–70)", () => {
       { id: "dup-first", name: "Dup First", model: "dup-model-a" },
       { id: "dup-second", name: "Dup Second", model: "dup-model-b" },
     ]);
-    await ctx.window.waitForTimeout(35_000);
-
-    await goToClaudeSettings();
+    await waitForCcrPresets(ctx.window, ["Dup First", "Dup Second"]);
 
     // Select first preset and check its env key
     const row1 = await getPresetRowByName(ctx.window, "Dup First");
@@ -188,9 +179,8 @@ test.describe.serial("Presets: Launch Env Overrides (63–70)", () => {
         apiKeyEnv: "SECTION_KEY",
       },
     ]);
-    await ctx.window.waitForTimeout(35_000);
+    await waitForCcrPresets(ctx.window, ["Section Env"]);
 
-    await goToClaudeSettings();
     const section = ctx.window.locator(SEL.preset.section);
     await expect(section).toBeVisible({ timeout: T_MEDIUM });
 

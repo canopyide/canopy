@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import { actionService } from "@/services/ActionService";
+import { useCopyWithFeedback } from "@/hooks/useCopyWithFeedback";
 import { TriangleAlert } from "lucide-react";
 
 export interface ErrorFallbackProps {
@@ -9,7 +10,8 @@ export interface ErrorFallbackProps {
   variant?: "fullscreen" | "section" | "component";
   componentName?: string;
   incidentId?: string | null;
-  onReport?: () => void;
+  onReport?: () => void | Promise<void>;
+  reportInFlight?: boolean;
 }
 
 const VARIANT_STYLES = {
@@ -48,18 +50,36 @@ export function ErrorFallback({
   componentName,
   incidentId,
   onReport,
+  reportInFlight = false,
 }: ErrorFallbackProps) {
   const sizes = VARIANT_SIZES[variant];
+  const { copied: incidentIdCopied, copy: copyIncidentId } = useCopyWithFeedback({
+    announcement: "Error ID copied",
+  });
 
   const handleOpenLogs = () => {
     void actionService.dispatch("logs.openFile", undefined, { source: "user" });
   };
+
+  const handleCopyIncidentId = () => {
+    if (!incidentId) return;
+    void copyIncidentId(incidentId);
+  };
+
+  const isFullscreen = variant === "fullscreen";
 
   return (
     <div
       className={cn(VARIANT_STYLES[variant])}
       data-testid="error-fallback"
       data-variant={variant}
+      {...(isFullscreen
+        ? {
+            role: "alertdialog",
+            "aria-modal": true,
+            "aria-labelledby": "error-fallback-title",
+          }
+        : {})}
     >
       <div className="flex flex-col items-center gap-4 max-w-2xl">
         <TriangleAlert className={cn("text-status-error", sizes.icon)} />
@@ -68,6 +88,7 @@ export function ErrorFallback({
           <h2
             className={cn("font-semibold text-status-error", sizes.title)}
             data-testid="error-fallback-title"
+            {...(isFullscreen ? { id: "error-fallback-title" } : {})}
           >
             {variant === "fullscreen" && "Daintree hit an unrecoverable error"}
             {variant === "section" && `${componentName || "Section"} stopped working`}
@@ -86,7 +107,16 @@ export function ErrorFallback({
 
           {!import.meta.env.DEV && incidentId && variant !== "component" && (
             <p className={cn("text-daintree-text/50 font-mono break-all", sizes.message)}>
-              Error ID: {incidentId}
+              Error ID:{" "}
+              <button
+                type="button"
+                onClick={handleCopyIncidentId}
+                aria-label="Copy error ID"
+                data-testid="error-fallback-copy-id"
+                className="cursor-copy hover:text-daintree-text/80 transition-colors text-left break-all"
+              >
+                {incidentIdCopied ? "Copied" : incidentId}
+              </button>
             </p>
           )}
         </div>
@@ -96,13 +126,14 @@ export function ErrorFallback({
             type="button"
             onClick={resetError}
             data-testid="error-fallback-restart"
+            autoFocus={isFullscreen}
             className={cn(
               "bg-status-error hover:bg-[color-mix(in_oklab,var(--color-status-error)_85%,transparent)] text-daintree-bg rounded transition-colors",
               sizes.button
             )}
           >
             {variant === "fullscreen"
-              ? "Reload window"
+              ? "Try again"
               : variant === "section"
                 ? "Reload pane"
                 : "Try again"}
@@ -112,33 +143,37 @@ export function ErrorFallback({
             <button
               type="button"
               onClick={onReport}
+              disabled={reportInFlight}
               data-testid="error-fallback-report"
+              className={cn(
+                "bg-daintree-border hover:bg-daintree-border/80 text-daintree-text rounded transition-colors",
+                "disabled:opacity-60 disabled:cursor-not-allowed",
+                sizes.button
+              )}
+            >
+              Report issue
+            </button>
+          )}
+
+          {variant !== "component" && (
+            <button
+              type="button"
+              onClick={handleOpenLogs}
+              data-testid="error-fallback-logs"
               className={cn(
                 "bg-daintree-border hover:bg-daintree-border/80 text-daintree-text rounded transition-colors",
                 sizes.button
               )}
             >
-              Report Issue
+              View logs
             </button>
           )}
-
-          <button
-            type="button"
-            onClick={handleOpenLogs}
-            data-testid="error-fallback-logs"
-            className={cn(
-              "bg-daintree-border hover:bg-daintree-border/80 text-daintree-text rounded transition-colors",
-              sizes.button
-            )}
-          >
-            View Logs
-          </button>
         </div>
 
         {import.meta.env.DEV && errorInfo?.componentStack && variant !== "component" && (
           <details className="w-full mt-4">
             <summary className="cursor-pointer text-xs text-daintree-text/60 hover:text-daintree-text/80">
-              Technical Details
+              Technical details
             </summary>
             <pre className="mt-2 p-3 bg-scrim-soft rounded text-xs text-status-error/80 overflow-auto max-h-48 select-text">
               {error.stack || "No stack trace available"}

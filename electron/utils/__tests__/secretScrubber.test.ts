@@ -74,6 +74,16 @@ describe("secretScrubber", () => {
         expected: `OPENAI_API_KEY=${REDACTED}`,
       },
       {
+        name: "openai-admin-key",
+        input: `OPENAI_API_KEY=sk-admin-${"A".repeat(155)}`,
+        expected: `OPENAI_API_KEY=${REDACTED}`,
+      },
+      {
+        name: "openrouter-api-key",
+        input: `OPENROUTER_API_KEY=sk-or-v1-${"a".repeat(64)}`,
+        expected: `OPENROUTER_API_KEY=${REDACTED}`,
+      },
+      {
         name: "openai-api-key",
         input: `OPENAI_API_KEY=sk-${"A".repeat(48)}`,
         expected: `OPENAI_API_KEY=${REDACTED}`,
@@ -104,6 +114,26 @@ describe("secretScrubber", () => {
         expected: REDACTED,
       },
       {
+        name: "slack-app-token",
+        input: `token=xapp-${"A".repeat(100)} end`,
+        expected: `token=${REDACTED} end`,
+      },
+      {
+        name: "slack-access-token-xoxb",
+        input: `token=xoxe.xoxb-${"A".repeat(170)} end`,
+        expected: `token=${REDACTED} end`,
+      },
+      {
+        name: "slack-access-token-xoxp",
+        input: `token=xoxe.xoxp-${"0".repeat(175)}`,
+        expected: `token=${REDACTED}`,
+      },
+      {
+        name: "slack-refresh-token",
+        input: `token=xoxe-${"A".repeat(145)} end`,
+        expected: `token=${REDACTED} end`,
+      },
+      {
         name: "google-api-key",
         input: `url=AIza${"A".repeat(35)}/path`,
         expected: `url=${REDACTED}/path`,
@@ -112,6 +142,16 @@ describe("secretScrubber", () => {
         name: "aws-access-key",
         input: "aws_access_key=AKIAIOSFODNN7EXAMPLE trailing",
         expected: `aws_access_key=${REDACTED} trailing`,
+      },
+      {
+        name: "aws-sts-access-key",
+        input: "aws_access_key=ASIAIOSFODNN7EXAMPLE trailing",
+        expected: `aws_access_key=${REDACTED} trailing`,
+      },
+      {
+        name: "aws-sts-variant-key",
+        input: "aws_access_key=ABIAIOSFODNN7EXAMPLE",
+        expected: `aws_access_key=${REDACTED}`,
       },
       {
         name: "aws-secret-access-key-credentials-file",
@@ -184,6 +224,36 @@ describe("secretScrubber", () => {
         expected: `SUPABASE_KEY=${REDACTED} next`,
       },
       {
+        name: "replicate-api-token",
+        input: `REPLICATE_API_TOKEN=r8_${"A".repeat(37)}`,
+        expected: `REPLICATE_API_TOKEN=${REDACTED}`,
+      },
+      {
+        name: "huggingface-api-token",
+        input: `HF_TOKEN=hf_${"a".repeat(34)} end`,
+        expected: `HF_TOKEN=${REDACTED} end`,
+      },
+      {
+        name: "groq-api-key",
+        input: `GROQ_API_KEY=gsk_${"z".repeat(50)} end`,
+        expected: `GROQ_API_KEY=${REDACTED} end`,
+      },
+      {
+        name: "linear-api-key",
+        input: `LINEAR_API_KEY=lin_api_${"A".repeat(40)}`,
+        expected: `LINEAR_API_KEY=${REDACTED}`,
+      },
+      {
+        name: "notion-api-key",
+        input: `NOTION_API_KEY=ntn_${"a".repeat(47)} end`,
+        expected: `NOTION_API_KEY=${REDACTED} end`,
+      },
+      {
+        name: "sendgrid-api-key",
+        input: `SENDGRID_API_KEY=SG.${"A".repeat(22)}.${"z".repeat(43)} end`,
+        expected: `SENDGRID_API_KEY=${REDACTED} end`,
+      },
+      {
         name: "azure-connection-string",
         input: `conn=DefaultEndpointsProtocol=https;AccountName=myacct;AccountKey=${"A".repeat(86)}== end`,
         expected: `conn=${REDACTED} end`,
@@ -243,6 +313,89 @@ describe("secretScrubber", () => {
         name: "generic-client-secret-fallback",
         input: `client_secret = ${"x".repeat(40)}`,
         expected: REDACTED,
+      },
+      {
+        name: "slack-signing-secret-fallback",
+        input: `SLACK_SIGNING_SECRET=${"a".repeat(32)} end`,
+        expected: `${REDACTED} end`,
+      },
+      {
+        name: "vercel-vcp",
+        input: `VERCEL_TOKEN=vcp_${"A".repeat(32)} end`,
+        expected: `VERCEL_TOKEN=${REDACTED} end`,
+      },
+      {
+        name: "vercel-vci",
+        input: `VERCEL_TOKEN=vci_${"a".repeat(24)}`,
+        expected: `VERCEL_TOKEN=${REDACTED}`,
+      },
+      {
+        name: "vercel-vca",
+        input: `VERCEL_TOKEN=vca_${"Z".repeat(40)} next`,
+        expected: `VERCEL_TOKEN=${REDACTED} next`,
+      },
+      {
+        name: "vercel-vcr",
+        input: `VERCEL_TOKEN=vcr_${"0".repeat(36)}`,
+        expected: `VERCEL_TOKEN=${REDACTED}`,
+      },
+      {
+        name: "vercel-vck",
+        input: `VERCEL_TOKEN=vck_${"X".repeat(28)}`,
+        expected: `VERCEL_TOKEN=${REDACTED}`,
+      },
+      {
+        name: "perplexity-api-key",
+        input: `PPLX_API_KEY=pplx-${"a".repeat(48)} end`,
+        expected: `PPLX_API_KEY=${REDACTED} end`,
+      },
+      {
+        name: "xai-api-key",
+        input: `XAI_API_KEY=xai-${"A".repeat(80)}`,
+        expected: `XAI_API_KEY=${REDACTED}`,
+      },
+      {
+        name: "together-api-key",
+        input: `TOGETHER_API_KEY=tgp_v1_${"A".repeat(43)} end`,
+        expected: `TOGETHER_API_KEY=${REDACTED} end`,
+      },
+      {
+        name: "together-api-key-trailing-dash",
+        // Body ending in `-` or `_` (non-word) must still redact — the lack of
+        // a trailing `\b` is what makes this work.
+        input: `TOGETHER_API_KEY=tgp_v1_${"A".repeat(42)}-`,
+        expected: `TOGETHER_API_KEY=${REDACTED}`,
+      },
+      {
+        name: "resend-api-key",
+        input: `RESEND_API_KEY=re_${"A".repeat(48)}`,
+        expected: `RESEND_API_KEY=${REDACTED}`,
+      },
+      {
+        name: "heroku-oauth-token",
+        input: `HEROKU_API_KEY=HRKU-${"a".repeat(60)} end`,
+        expected: `HEROKU_API_KEY=${REDACTED} end`,
+      },
+      {
+        name: "heroku-oauth-token-trailing-underscore",
+        // Body ending in `_` must still redact (no trailing `\b`).
+        input: `HEROKU_API_KEY=HRKU-${"a".repeat(59)}_`,
+        expected: `HEROKU_API_KEY=${REDACTED}`,
+      },
+      {
+        name: "telegram-bot-token",
+        input: `TELEGRAM_BOT_TOKEN=1234567890:${"A".repeat(35)} end`,
+        expected: `${REDACTED} end`,
+      },
+      {
+        name: "datadog-api-key",
+        input: `DD_API_KEY=${"a".repeat(32)} next`,
+        expected: `${REDACTED} next`,
+      },
+      {
+        name: "datadog-app-key",
+        input: `DD_APP_KEY="${"f".repeat(40)}" next`,
+        expected: `${REDACTED} next`,
       },
     ];
 
@@ -328,6 +481,126 @@ describe("secretScrubber", () => {
     it("does not flag a URL without basic-auth credentials", () => {
       const url = "https://example.com/path?foo=bar";
       expect(scrubSecrets(url)).toBe(url);
+    });
+
+    it("does not flag sk-or-v1- with uppercase hex body", () => {
+      const upperHex = `sk-or-v1-${"A".repeat(64)}`;
+      expect(scrubSecrets(upperHex)).toBe(upperHex);
+    });
+
+    it("does not flag a too-short openrouter key", () => {
+      const tooShort = `sk-or-v1-${"a".repeat(54)}`;
+      expect(scrubSecrets(tooShort)).toBe(tooShort);
+    });
+
+    it("does not flag bare 32-char hex without slack_signing_secret context", () => {
+      const bareHex = `${"a".repeat(32)}`;
+      expect(scrubSecrets(bareHex)).toBe(bareHex);
+    });
+
+    it("does not flag a too-short xapp token", () => {
+      const tooShort = `xapp-${"A".repeat(89)}`;
+      expect(scrubSecrets(tooShort)).toBe(tooShort);
+    });
+
+    it("does not flag xoxe- with too-short body", () => {
+      const tooShort = `xoxe-${"A".repeat(139)}`;
+      expect(scrubSecrets(tooShort)).toBe(tooShort);
+    });
+
+    it("partially redacts xoxe.xoxb- with too-short body via slack-token fallback", () => {
+      // 159-char body is below the {160,180} access-token floor, but the
+      // `xoxb-` portion still matches the existing slack-token pattern.
+      const tooShort = `xoxe.xoxb-${"A".repeat(159)}`;
+      expect(scrubSecrets(tooShort)).toBe(`xoxe.${REDACTED}`);
+    });
+
+    it("does not flag ACIA as an AWS key (wrong prefix)", () => {
+      const wrongPrefix = "ACIAIOSFODNN7EXAMPLE";
+      expect(scrubSecrets(wrongPrefix)).toBe(wrongPrefix);
+    });
+
+    it("does not flag too-short r8_ token", () => {
+      const tooShort = `r8_${"A".repeat(34)}`;
+      expect(scrubSecrets(tooShort)).toBe(tooShort);
+    });
+
+    it("does not flag too-short hf_ token", () => {
+      const tooShort = `hf_${"a".repeat(24)}`;
+      expect(scrubSecrets(tooShort)).toBe(tooShort);
+    });
+
+    it("does not flag too-short gsk_ token", () => {
+      const tooShort = `gsk_${"z".repeat(39)}`;
+      expect(scrubSecrets(tooShort)).toBe(tooShort);
+    });
+
+    it("does not flag AIIA as an AWS key (invalid prefix)", () => {
+      const invalid = "AIIAIOSFODNN7EXAMPLE";
+      expect(scrubSecrets(invalid)).toBe(invalid);
+    });
+
+    it("does not flag too-short lin_api_ token", () => {
+      const tooShort = `lin_api_${"A".repeat(34)}`;
+      expect(scrubSecrets(tooShort)).toBe(tooShort);
+    });
+
+    it("does not flag too-short ntn_ token", () => {
+      const tooShort = `ntn_${"a".repeat(39)}`;
+      expect(scrubSecrets(tooShort)).toBe(tooShort);
+    });
+
+    it("does not flag sendgrid with wrong segment count (2 segments)", () => {
+      const malformed = `SG.${"A".repeat(22)}`;
+      expect(scrubSecrets(malformed)).toBe(malformed);
+    });
+
+    it("scrubs valid-key portion of sendgrid-like string with trailing segment", () => {
+      // The first three segments form a valid key shape; the regex scrubs them
+      // and the trailing `.extra` is preserved as non-secret context.
+      const withExtra = `SG.${"A".repeat(22)}.${"b".repeat(43)}.extra`;
+      expect(scrubSecrets(withExtra)).toBe(`${REDACTED}.extra`);
+    });
+
+    it("does not flag sendgrid with wrong segment lengths", () => {
+      const malformed = `SG.${"A".repeat(21)}.${"b".repeat(42)}`;
+      expect(scrubSecrets(malformed)).toBe(malformed);
+    });
+
+    it("does not flag r8_ as substring in ordinary text", () => {
+      const ordinary = "The car8_example text here is not a secret key at all";
+      expect(scrubSecrets(ordinary)).toBe(ordinary);
+    });
+
+    it("does not flag hf_ as substring in ordinary text", () => {
+      const ordinary = "The chef_example text here is not a secret key at all";
+      expect(scrubSecrets(ordinary)).toBe(ordinary);
+    });
+
+    it("does not flag vcc_ as a Vercel token (not a real prefix)", () => {
+      // Vercel issues vcp_/vci_/vca_/vcr_/vck_ — `vcc_` is not a real prefix
+      // and the character class must reject it.
+      const fake = `vcc_${"A".repeat(32)}`;
+      expect(scrubSecrets(fake)).toBe(fake);
+    });
+
+    it("does not flag a bare timestamp:token shape without telegram context", () => {
+      // 10-digit Unix timestamp + colon + 35-char alphanumeric tail can appear
+      // in ordinary log lines; the telegram pattern's anchor must keep it safe.
+      const bare = `1700000000:${"A".repeat(35)}`;
+      expect(scrubSecrets(bare)).toBe(bare);
+    });
+
+    it("does not flag a bare 32-char hex without datadog context", () => {
+      // Plain MD5 hash — must remain visible without the DD_API_KEY anchor.
+      const md5 = `digest=${"a".repeat(32)}`;
+      expect(scrubSecrets(md5)).toBe(md5);
+    });
+
+    it("does not flag a bare 40-char hex without datadog context", () => {
+      // Plain SHA1 hash — must remain visible without the DD_APP_KEY anchor.
+      const sha1 = `commit=${"f".repeat(40)}`;
+      expect(scrubSecrets(sha1)).toBe(sha1);
     });
 
     it("redacts realistically-sized Atlassian token bodies fully", () => {
@@ -443,6 +716,42 @@ describe("secretScrubber", () => {
     it("Bearer token at upper bound (4000 chars) is scrubbed", () => {
       const input = `Authorization: Bearer ${"A".repeat(4000)}`;
       expect(scrubSecrets(input)).toBe(`Authorization: Bearer ${REDACTED}`);
+    });
+  });
+
+  describe("ordering regression", () => {
+    it("xoxe.xoxb- access token is fully scrubbed (not partially by xoxe-)", () => {
+      const token = `xoxe.xoxb-${"A".repeat(170)}`;
+      const out = scrubSecrets(token);
+      expect(out).toBe(REDACTED);
+      // If the broader `xoxe-` pattern matched first, we'd see `xoxb-` remnants.
+      expect(out).not.toContain("xoxb");
+      expect(out).not.toContain("xoxe");
+    });
+
+    it("sk-or-v1- token fully scrubbed (not partially by sk-{48})", () => {
+      const token = `sk-or-v1-${"a".repeat(64)}`;
+      const out = scrubSecrets(token);
+      expect(out).toBe(REDACTED);
+      expect(out).not.toContain("or-v1");
+    });
+
+    it("all four sk- variants redact independently in one string", () => {
+      const input = [
+        `sk-proj-${"A".repeat(120)}`,
+        `sk-svcacct-${"B".repeat(130)}`,
+        `sk-admin-${"C".repeat(155)}`,
+        `sk-or-v1-${"a".repeat(64)}`,
+        `sk-${"D".repeat(48)}`,
+      ].join(" | ");
+      const out = scrubSecrets(input);
+      expect(out).not.toContain("sk-proj");
+      expect(out).not.toContain("sk-svcacct");
+      expect(out).not.toContain("sk-admin");
+      expect(out).not.toContain("sk-or-v1");
+      expect(out).not.toContain("sk-D");
+      const redactionCount = (out.match(/\[REDACTED\]/g) ?? []).length;
+      expect(redactionCount).toBe(5);
     });
   });
 

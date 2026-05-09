@@ -13,6 +13,16 @@ export function parseSpawnError(error: unknown): SpawnError {
       code = "ENOTDIR";
     } else if (nodeErr.code === "EIO") {
       code = "EIO";
+    } else if (nodeErr.code === "EMFILE") {
+      code = "EMFILE";
+    } else if (nodeErr.code === "EAGAIN") {
+      code = "EAGAIN";
+    } else if (nodeErr.code === "ENOMEM") {
+      code = "ENOMEM";
+    } else if (nodeErr.code === "ENXIO") {
+      code = "ENXIO";
+    } else if (nodeErr.code === "EBUSY") {
+      code = "EBUSY";
     }
 
     return {

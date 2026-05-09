@@ -47,36 +47,49 @@ describe("advanceMruIndex", () => {
     expect(advanceMruIndex(1, "newer", 0)).toBe(1);
   });
 
-  it("advances older from 1 to 2", () => {
-    expect(advanceMruIndex(1, "older", 5)).toBe(2);
+  describe("older direction", () => {
+    it("advances 1 → 2", () => {
+      expect(advanceMruIndex(1, "older", 5)).toBe(2);
+    });
+
+    it("wraps last → 0 (current project)", () => {
+      expect(advanceMruIndex(4, "older", 5)).toBe(0);
+    });
+
+    it("advances 0 → 1", () => {
+      expect(advanceMruIndex(0, "older", 5)).toBe(1);
+    });
+
+    it("with length 2, cycles 1 ↔ 0", () => {
+      expect(advanceMruIndex(1, "older", 2)).toBe(0);
+      expect(advanceMruIndex(0, "older", 2)).toBe(1);
+    });
+
+    it("clamps above-range index then wraps to 0 (list shrank mid-session)", () => {
+      expect(advanceMruIndex(5, "older", 3)).toBe(0);
+    });
   });
 
-  it("wraps older from last index back to 1", () => {
-    expect(advanceMruIndex(4, "older", 5)).toBe(1);
-  });
+  describe("newer direction", () => {
+    it("advances last → last-1", () => {
+      expect(advanceMruIndex(4, "newer", 5)).toBe(3);
+    });
 
-  it("advances newer from last toward 1", () => {
-    expect(advanceMruIndex(4, "newer", 5)).toBe(3);
-  });
+    it("advances 1 → 0 (current project)", () => {
+      expect(advanceMruIndex(1, "newer", 5)).toBe(0);
+    });
 
-  it("wraps newer from 1 to last index (skipping 0)", () => {
-    expect(advanceMruIndex(1, "newer", 5)).toBe(4);
-  });
+    it("wraps 0 → last", () => {
+      expect(advanceMruIndex(0, "newer", 5)).toBe(4);
+    });
 
-  it("with length 2, older/newer cycle only between indices 1 and 1", () => {
-    expect(advanceMruIndex(1, "older", 2)).toBe(1);
-    expect(advanceMruIndex(1, "newer", 2)).toBe(1);
-  });
+    it("with length 2, cycles 1 ↔ 0", () => {
+      expect(advanceMruIndex(1, "newer", 2)).toBe(0);
+      expect(advanceMruIndex(0, "newer", 2)).toBe(1);
+    });
 
-  it("clamps sub-1 index back to 1 on older", () => {
-    expect(advanceMruIndex(0, "older", 5)).toBe(1);
-  });
-
-  it("clamps above-range index on newer (list shrank mid-session)", () => {
-    expect(advanceMruIndex(3, "newer", 2)).toBe(1);
-  });
-
-  it("wraps above-range index on older (list shrank mid-session)", () => {
-    expect(advanceMruIndex(5, "older", 3)).toBe(1);
+    it("clamps above-range index then advances down (list shrank mid-session)", () => {
+      expect(advanceMruIndex(3, "newer", 2)).toBe(0);
+    });
   });
 });

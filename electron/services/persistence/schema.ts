@@ -48,7 +48,23 @@ export const appState = sqliteTable("app_state", {
   value: text("value").notNull(),
 });
 
+export const scratches = sqliteTable("scratches", {
+  id: text("id").primaryKey(),
+  path: text("path").notNull(),
+  name: text("name").notNull(),
+  createdAt: integer("created_at").notNull(),
+  lastOpened: integer("last_opened").notNull(),
+  // Set when the auto-cleanup sweep tombstones a stale scratch. The DB row is
+  // retained as crash-safe state so a partially-deleted directory can be
+  // re-attempted on the next startup; rows with `deletedAt` set are filtered
+  // out of all renderer-facing queries.
+  deletedAt: integer("deleted_at"),
+});
+
 export type TaskRow = typeof tasks.$inferInsert;
 
 export type ProjectRow = typeof projects.$inferSelect;
 export type ProjectInsertRow = typeof projects.$inferInsert;
+
+export type ScratchRow = typeof scratches.$inferSelect;
+export type ScratchInsertRow = typeof scratches.$inferInsert;

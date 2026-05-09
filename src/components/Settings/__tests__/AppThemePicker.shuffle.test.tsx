@@ -205,6 +205,20 @@ describe("AppThemePicker image loading attributes", () => {
     const listboxes = container.querySelectorAll('[role="listbox"]');
     expect(listboxes.length).toBe(0);
   });
+
+  it("shows fallback (token background + PaletteStrip) instead of broken hero image", () => {
+    const { container } = render(<AppThemePicker />);
+    const heroImg = container.querySelector<HTMLImageElement>("img[src='/themes/theme-a.webp']");
+    expect(heroImg).not.toBeNull();
+
+    fireEvent.error(heroImg!);
+
+    // The broken img should be gone
+    expect(container.querySelector<HTMLImageElement>("img[src='/themes/theme-a.webp']")).toBeNull();
+    // PaletteStrip chips in the hero fallback only (scoped to hero container)
+    const heroChips = container.querySelectorAll(".h-\\[200px\\] .w-3.h-3");
+    expect(heroChips.length).toBe(8);
+  });
 });
 
 describe("AppThemePicker Change theme button", () => {

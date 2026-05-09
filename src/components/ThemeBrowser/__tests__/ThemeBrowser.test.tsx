@@ -28,6 +28,10 @@ function otherDarkScheme() {
   return BUILT_IN_APP_SCHEMES.find((s) => s.type !== "light" && s.id !== DEFAULT_APP_SCHEME_ID)!;
 }
 
+function darkSchemeAt(index: number) {
+  return BUILT_IN_APP_SCHEMES.filter((s) => s.type !== "light")[index];
+}
+
 function findRowByName(name: string) {
   return screen
     .getAllByRole("option")
@@ -222,5 +226,315 @@ describe("ThemeBrowser", () => {
     usePortalStore.getState().toggle();
 
     expect(usePortalStore.getState().isOpen).toBe(false);
+  });
+
+  it("PaletteStrip color swatches are hidden from screen readers", () => {
+    render(<Harness />);
+
+    // PaletteStrip is used in ThemeRow buttons (the list) and in the hero
+    // fallback. Every PaletteStrip container should carry aria-hidden="true"
+    // so screen readers skip the eight decorative color swatches.
+    const paletteStrips = document.querySelectorAll('[aria-hidden="true"]');
+    // At least one PaletteStrip in each ThemeRow plus the hero fallback.
+    // With default dark schemes (including Daintree which has a heroImage),
+    // we only see them in the list rows. The minimum bound is len(darkSchemes).
+    const darkCount = BUILT_IN_APP_SCHEMES.filter((s) => s.type !== "light").length;
+    expect(paletteStrips.length).toBeGreaterThanOrEqual(darkCount);
+  });
+
+  describe("live region debounce", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("ArrowDown debounces live-region announcement by 300ms", () => {
+      const { container } = render(<Harness />);
+      const live = container.querySelector('[aria-live="polite"]')!;
+
+      const list = screen.getByRole("listbox", { name: "Theme list" });
+      fireEvent.keyDown(list, { key: "ArrowDown" });
+
+      // Not announced immediately
+      expect(live.textContent).toBe("");
+
+      // Not announced before the debounce window
+      act(() => {
+        vi.advanceTimersByTime(299);
+      });
+      expect(live.textContent).toBe("");
+
+      // Announced after 300ms
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+      const darkSchemes = BUILT_IN_APP_SCHEMES.filter((s) => s.type !== "light");
+      const initialIndex = darkSchemes.findIndex((s) => s.id === DEFAULT_APP_SCHEME_ID);
+      const expectedNext = darkSchemes[initialIndex + 1];
+      expect(live.textContent).toBe(`Previewing: ${expectedNext?.name}`);
+    });
+
+    it("rapid ArrowDown only announces the final settled theme", () => {
+      const { container } = render(<Harness />);
+      const live = container.querySelector('[aria-live="polite"]')!;
+
+      const darkSchemes = BUILT_IN_APP_SCHEMES.filter((s) => s.type !== "light");
+      const initialIndex = darkSchemes.findIndex((s) => s.id === DEFAULT_APP_SCHEME_ID);
+      const expectedFinal = darkSchemes[initialIndex + 2];
+
+      const list = screen.getByRole("listbox", { name: "Theme list" });
+      fireEvent.keyDown(list, { key: "ArrowDown" });
+      fireEvent.keyDown(list, { key: "ArrowDown" });
+
+      // Not yet announced
+      expect(live.textContent).toBe("");
+
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+
+      // Only the final theme is announced
+      expect(live.textContent).toBe(`Previewing: ${expectedFinal?.name}`);
+    });
+
+    it("commit before debounce fires clears the pending announcement", () => {
+      const { container } = render(<Harness />);
+      const live = container.querySelector('[aria-live="polite"]')!;
+
+      const list = screen.getByRole("listbox", { name: "Theme list" });
+      fireEvent.keyDown(list, { key: "ArrowDown" });
+
+      // Click Set theme before the debounce fires
+      fireEvent.click(screen.getByRole("button", { name: "Set theme" }));
+
+      // Live region should be empty
+      expect(live.textContent).toBe("");
+
+      // Advancing timers should not produce a stale announcement
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      expect(live.textContent).toBe("");
+    });
+
+    it("click during pending keyboard debounce announces immediately", () => {
+      const { container } = render(<Harness />);
+      const live = container.querySelector('[aria-live="polite"]')!;
+
+      // ArrowDown from default selects darkSchemes[1]; click darkSchemes[2]
+      // so the assertion actually catches a stale keyboard overwrite.
+      const keyboardTarget = darkSchemeAt(1);
+      const clickTarget = darkSchemeAt(2);
+
+      const list = screen.getByRole("listbox", { name: "Theme list" });
+      fireEvent.keyDown(list, { key: "ArrowDown" });
+      expect(live.textContent).toBe("");
+      expect(useAppThemeStore.getState().previewSchemeId).toBe(keyboardTarget?.id);
+
+      // Click a different row before the debounce fires
+      fireEvent.click(findRowByName(clickTarget!.name));
+
+      expect(live.textContent).toBe(`Previewing: ${clickTarget!.name}`);
+
+      // Pending keyboard debounce should not overwrite the click announcement
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      expect(live.textContent).toBe(`Previewing: ${clickTarget!.name}`);
+    });
+
+    it("boundary-clamped ArrowDown produces no redundant announcement", () => {
+      const { container } = render(<Harness />);
+      const live = container.querySelector('[aria-live="polite"]')!;
+
+      const darkSchemes = BUILT_IN_APP_SCHEMES.filter((s) => s.type !== "light");
+      const lastIndex = darkSchemes.length - 1;
+
+      const list = screen.getByRole("listbox", { name: "Theme list" });
+
+      // Navigate to the last row
+      for (let i = 0; i < lastIndex; i++) {
+        fireEvent.keyDown(list, { key: "ArrowDown" });
+      }
+
+      // Let the final navigation announcement settle
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      const settledText = live.textContent;
+
+      // Boundary press — ArrowDown when already at last row
+      fireEvent.keyDown(list, { key: "ArrowDown" });
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+
+      // No redundant re-announcement of the same theme
+      expect(live.textContent).toBe(settledText);
+    });
+
+    it("Cancel before debounce fires clears the pending announcement", () => {
+      const { container } = render(<Harness />);
+      const live = container.querySelector('[aria-live="polite"]')!;
+
+      const list = screen.getByRole("listbox", { name: "Theme list" });
+      fireEvent.keyDown(list, { key: "ArrowDown" });
+
+      // Press Cancel before the debounce fires
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+      expect(live.textContent).toBe("");
+
+      // Advancing timers should not produce a stale announcement
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      expect(live.textContent).toBe("");
+    });
+  });
+
+  describe("autofocus", () => {
+    let rafHandle: number;
+    let rafCallback: FrameRequestCallback | null;
+
+    beforeEach(() => {
+      rafHandle = 1;
+      rafCallback = null;
+      vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+        rafCallback = cb;
+        return rafHandle;
+      });
+      vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    const flushRaf = () => {
+      const cb = rafCallback;
+      rafCallback = null;
+      if (cb) cb(0);
+    };
+
+    it("auto-focuses the search input on mount after RAF", () => {
+      render(<Harness />);
+
+      const searchInput = screen.getByLabelText("Filter themes") as HTMLInputElement;
+      expect(document.activeElement).not.toBe(searchInput);
+
+      flushRaf();
+
+      expect(document.activeElement).toBe(searchInput);
+    });
+
+    it("cancels the RAF on unmount so a detached input is never focused", () => {
+      const { unmount } = render(<Harness />);
+
+      unmount();
+
+      expect(cancelAnimationFrame).toHaveBeenCalledWith(rafHandle);
+    });
+  });
+
+  it("clicking the already-previewed row does not re-trigger preview injection or announcement", () => {
+    const target = otherDarkScheme();
+    const { container } = render(<Harness />);
+
+    fireEvent.click(findRowByName(target.name));
+    expect(useAppThemeStore.getState().previewSchemeId).toBe(target.id);
+
+    const live = container.querySelector('[aria-live="polite"]');
+    const firstAnnouncement = live?.textContent;
+
+    // Click the same row again — should be a no-op
+    fireEvent.click(findRowByName(target.name));
+    expect(useAppThemeStore.getState().previewSchemeId).toBe(target.id);
+    expect(live?.textContent).toBe(firstAnnouncement);
+  });
+
+  it("clicking the committed row when no preview is active does not re-inject or announce", () => {
+    const { container } = render(<Harness />);
+
+    // No preview is active; the committed scheme is already shown.
+    expect(useAppThemeStore.getState().previewSchemeId).toBeNull();
+
+    const committedName = BUILT_IN_APP_SCHEMES.find((s) => s.id === DEFAULT_APP_SCHEME_ID)?.name;
+    const committedRow = findRowByName(committedName!);
+
+    const live = container.querySelector('[aria-live="polite"]');
+    const beforeText = live?.textContent;
+
+    fireEvent.click(committedRow);
+
+    // previewSchemeId should remain null — no preview was set because the
+    // scheme is already active.
+    expect(useAppThemeStore.getState().previewSchemeId).toBeNull();
+    // Live region should not have changed.
+    expect(live?.textContent).toBe(beforeText);
+  });
+
+  it("ArrowDown on the search input previews the next theme without a prior click into the panel", () => {
+    render(<Harness />);
+
+    const searchInput = screen.getByLabelText("Filter themes") as HTMLInputElement;
+
+    const darkSchemes = BUILT_IN_APP_SCHEMES.filter((s) => s.type !== "light");
+    const initialIndex = darkSchemes.findIndex((s) => s.id === DEFAULT_APP_SCHEME_ID);
+    const expectedNext = darkSchemes[initialIndex + 1];
+
+    fireEvent.keyDown(searchInput, { key: "ArrowDown" });
+
+    expect(useAppThemeStore.getState().previewSchemeId).toBe(expectedNext?.id);
+  });
+
+  it("ArrowDown then ArrowUp on the search input restores preview to the original scheme", () => {
+    render(<Harness />);
+
+    const searchInput = screen.getByLabelText("Filter themes") as HTMLInputElement;
+
+    fireEvent.keyDown(searchInput, { key: "ArrowDown" });
+
+    const afterDown = useAppThemeStore.getState().previewSchemeId;
+    expect(afterDown).not.toBeNull();
+
+    fireEvent.keyDown(searchInput, { key: "ArrowUp" });
+
+    const afterUp = useAppThemeStore.getState().previewSchemeId;
+    expect(afterUp).toBe(DEFAULT_APP_SCHEME_ID);
+  });
+
+  describe("image error fallback", () => {
+    it("shows fallback background div instead of broken thumbnail image", () => {
+      render(<Harness />);
+      const thumbImgs = document.querySelectorAll<HTMLImageElement>("img[src*='/themes/thumb/']");
+      expect(thumbImgs.length).toBeGreaterThan(0);
+
+      const img = thumbImgs[0]!;
+      fireEvent.error(img);
+
+      // The errored img should be removed from the document
+      expect(document.body.contains(img)).toBe(false);
+      // The fallback div with border should be present
+      const fallbackDivs = document.querySelectorAll(".border-daintree-border\\/50");
+      expect(fallbackDivs.length).toBeGreaterThan(0);
+    });
+
+    it("shows fallback (token background + PaletteStrip) instead of broken hero image", () => {
+      const { container } = render(<Harness />);
+      const heroImg = container.querySelector<HTMLImageElement>(".h-\\[200px\\] img.object-cover");
+      expect(heroImg).not.toBeNull();
+
+      fireEvent.error(heroImg!);
+
+      // The broken hero img should be gone
+      expect(container.querySelector(".h-\\[200px\\] img.object-cover")).toBeNull();
+      // PaletteStrip chips in the hero fallback (scoped to hero container only)
+      const heroChips = container.querySelectorAll(".h-\\[200px\\] .w-3.h-3");
+      expect(heroChips.length).toBe(8);
+    });
   });
 });

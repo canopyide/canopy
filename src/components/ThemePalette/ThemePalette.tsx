@@ -4,6 +4,7 @@ import { logError } from "@/utils/logger";
 import { SearchablePalette } from "@/components/ui/SearchablePalette";
 import { PaletteStrip } from "@/components/ui/PaletteStrip";
 import { useSearchablePalette } from "@/hooks/useSearchablePalette";
+import { useEffectiveCombo } from "@/hooks/useKeybinding";
 import { useAppThemeStore, injectSchemeToDOM } from "@/store/appThemeStore";
 import { notify } from "@/lib/notify";
 import { appThemeClient } from "@/clients/appThemeClient";
@@ -15,6 +16,8 @@ interface ThemePaletteProps {
   isOpen: boolean;
   onClose: () => void;
 }
+
+const getThemeActionLabel = (_item: AppColorScheme | null): string => "Apply theme";
 
 function ThemeListItem({
   scheme,
@@ -68,6 +71,7 @@ export function ThemePalette({ isOpen, onClose }: ThemePaletteProps) {
   const selectedSchemeId = useAppThemeStore((s) => s.selectedSchemeId);
   const customSchemes = useAppThemeStore((s) => s.customSchemes);
   const setSelectedSchemeId = useAppThemeStore((s) => s.setSelectedSchemeId);
+  const themePaletteShortcut = useEffectiveCombo("app.theme.pick");
 
   const allSchemes = useMemo(() => [...BUILT_IN_APP_SCHEMES, ...customSchemes], [customSchemes]);
 
@@ -156,7 +160,7 @@ export function ThemePalette({ isOpen, onClose }: ThemePaletteProps) {
         notify({
           type: "error",
           priority: "high",
-          message: `Failed to save theme: ${scheme.name}`,
+          message: `Couldn't save theme preference — '${scheme.name}' is applied but the choice will be lost on restart.`,
           duration: 3000,
         });
       });
@@ -185,6 +189,7 @@ export function ThemePalette({ isOpen, onClose }: ThemePaletteProps) {
       onConfirm={handleConfirm}
       onClose={onClose}
       getItemId={(scheme) => scheme.id}
+      getActionLabel={getThemeActionLabel}
       renderItem={(scheme, _index, isSelected) => (
         <ThemeListItem
           key={scheme.id}
@@ -195,14 +200,13 @@ export function ThemePalette({ isOpen, onClose }: ThemePaletteProps) {
         />
       )}
       label="Theme switcher"
-      keyHint="⌘K, T"
+      shortcut={themePaletteShortcut}
       ariaLabel="Theme palette"
-      searchPlaceholder="Search themes..."
+      searchPlaceholder="Search themes"
       searchAriaLabel="Search themes"
       listId="theme-palette-list"
       itemIdPrefix="theme-option"
       emptyMessage="No themes available"
-      noMatchMessage={`No themes match "${query}"`}
       totalResults={totalResults}
     />
   );

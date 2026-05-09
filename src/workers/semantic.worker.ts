@@ -15,8 +15,8 @@ import {
   type AgentEvent,
 } from "./WorkerAgentStateService.js";
 import type {
-  WorkerInboundMessage,
-  WorkerOutboundMessage,
+  SemanticWorkerInboundMessage,
+  SemanticWorkerOutboundMessage,
   WorkerTerminalState,
 } from "../../shared/types/worker-messages.js";
 import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
@@ -34,7 +34,7 @@ let isPolling = false;
 /**
  * Send a typed message to the main thread.
  */
-function postTypedMessage(message: WorkerOutboundMessage): void {
+function postTypedMessage(message: SemanticWorkerOutboundMessage): void {
   self.postMessage(message);
 }
 
@@ -179,7 +179,7 @@ function startPolling(): void {
 /**
  * Handle messages from the main thread.
  */
-self.onmessage = (event: MessageEvent<WorkerInboundMessage>) => {
+self.onmessage = (event: MessageEvent<SemanticWorkerInboundMessage>) => {
   const message = event.data;
 
   switch (message.type) {

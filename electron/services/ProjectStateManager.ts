@@ -130,7 +130,7 @@ export class ProjectStateManager {
     }
 
     const filePath = stateFilePath(this.projectsConfigDir, projectId);
-    if (!filePath || !existsSync(filePath)) {
+    if (!filePath) {
       this.setProjectStateCache(projectId, null);
       return null;
     }
@@ -214,6 +214,14 @@ export class ProjectStateManager {
       this.setProjectStateCache(projectId, state);
       return this.cloneProjectState(state);
     } catch (error) {
+      const code =
+        error instanceof Error && "code" in error
+          ? (error as NodeJS.ErrnoException).code
+          : undefined;
+      if (code === "ENOENT") {
+        this.setProjectStateCache(projectId, null);
+        return null;
+      }
       console.error(`[ProjectStateManager] Failed to load state for project ${projectId}:`, error);
       try {
         const quarantinePath = `${filePath}.corrupted.${Date.now()}`;
@@ -248,21 +256,27 @@ export class ProjectStateManager {
       return;
     }
 
-    if (!existsSync(filePath)) {
-      if (process.env.DAINTREE_VERBOSE) {
-        console.log(`[ProjectStateManager] No state file to clear for project ${projectId}`);
-      }
-      this.invalidateProjectStateCache(projectId);
-      return;
-    }
+    // Invalidate cache eagerly: a failed unlink must not leave callers reading
+    // a presumed-deleted state from the 60s TTL cache.
+    this.invalidateProjectStateCache(projectId);
 
     try {
       await resilientUnlink(filePath);
+      // Re-invalidate after the unlink completes: a concurrent getProjectState
+      // racing the unlink could have re-read the still-present file and
+      // repopulated the cache after our pre-unlink wipe.
       this.invalidateProjectStateCache(projectId);
       if (process.env.DAINTREE_VERBOSE) {
         console.log(`[ProjectStateManager] Cleared state for project ${projectId}`);
       }
     } catch (error) {
+      const code =
+        error instanceof Error && "code" in error
+          ? (error as NodeJS.ErrnoException).code
+          : undefined;
+      if (code === "ENOENT") {
+        return;
+      }
       console.error(`[ProjectStateManager] Failed to clear state for ${projectId}:`, error);
       throw error;
     }

@@ -70,7 +70,7 @@ export function RecipeManager({
   const [importScope, setImportScope] = useState<"global" | "project">("project");
   const [importJson, setImportJson] = useState("");
   const [importError, setImportError] = useState<string | null>(null);
-  const exportTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const exportTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
@@ -369,23 +369,25 @@ export function RecipeManager({
                   title="No project recipes"
                   description="Project recipes stay private to this machine until you save them to the repo."
                   action={
-                    <div className="flex flex-wrap gap-2 justify-center">
+                    <div className="flex flex-col items-center gap-2">
                       <Button variant="outline" size="sm" onClick={() => onCreateRecipe("project")}>
                         <Plus className="h-3 w-3" />
                         New project recipe
                       </Button>
-                      <Button variant="outline" size="sm" onClick={() => setShowImportDialog(true)}>
-                        <FileDown className="h-3 w-3" />
-                        Import from clipboard
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => void importRecipeFromFile(currentProject?.id)}
-                      >
-                        <FileUp className="h-3 w-3" />
-                        Import from file
-                      </Button>
+                      <div className="flex flex-wrap justify-center gap-2">
+                        <Button variant="ghost" size="sm" onClick={() => setShowImportDialog(true)}>
+                          <FileDown className="h-3 w-3" />
+                          Import from clipboard
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => void importRecipeFromFile(currentProject?.id)}
+                        >
+                          <FileUp className="h-3 w-3" />
+                          Import from file
+                        </Button>
+                      </div>
                     </div>
                   }
                 />
@@ -458,7 +460,7 @@ export function RecipeManager({
 
       <ConfirmDialog
         isOpen={recipeToDeleteAfterSave !== null}
-        title="Delete original?"
+        title={`Delete original '${globalRecipes.find((r) => r.id === recipeToDeleteAfterSave)?.name ?? rawProjectRecipes.find((r) => r.id === recipeToDeleteAfterSave)?.name ?? inRepoRecipes.find((r) => r.id === recipeToDeleteAfterSave)?.name ?? "recipe"}'?`}
         description="The recipe has been saved to the repository. The original copy on this machine will be permanently removed."
         confirmLabel="Delete original"
         cancelLabel="Keep both"

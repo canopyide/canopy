@@ -11,6 +11,7 @@ export type AppErrorCode =
   | "FILE_TOO_LARGE"
   | "LFS_POINTER"
   | "NOT_FOUND"
+  | "NOT_A_GIT_REPO"
   | "CLIPBOARD_EMPTY"
   | "CLIPBOARD_INVALID"
   | "UNSUPPORTED"
@@ -18,4 +19,6 @@ export type AppErrorCode =
   | "RATE_LIMITED"
   | "VALIDATION"
   | "PERMISSION"
+  | "ARG_COUNT_EXCEEDED"
+  | "PAYLOAD_TOO_LARGE"
   | "INTERNAL";

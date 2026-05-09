@@ -30,7 +30,6 @@ export interface TerminalAppearanceConfig {
 /**
  * Base terminal options that apply to all terminals.
  * These are the common options shared across all xterm instances.
- * Note: fontLigatures is a valid xterm option but may not be in @types
  */
 export const BASE_TERMINAL_OPTIONS = {
   cursorBlink: true,
@@ -38,16 +37,16 @@ export const BASE_TERMINAL_OPTIONS = {
   cursorInactiveStyle: "block" as const,
   lineHeight: 1.1,
   letterSpacing: 0,
-  fontLigatures: false,
   fontWeight: "normal" as const,
   fontWeightBold: "700" as const,
   allowProposedApi: true,
+  customGlyphs: true,
   macOptionIsMeta: true,
   macOptionClickForcesSelection: true,
   scrollOnUserInput: false,
   fastScrollSensitivity: 5,
   scrollSensitivity: 1.5,
-} satisfies Partial<ITerminalOptions> & { fontLigatures: boolean };
+} satisfies Partial<ITerminalOptions>;
 
 /**
  * Get complete xterm options for a terminal instance.
@@ -66,7 +65,6 @@ export function getXtermOptions(config: TerminalAppearanceConfig): ITerminalOpti
     theme,
     scrollback: config.scrollback,
     screenReaderMode: config.screenReaderMode ?? false,
-    // Performance mode disables smooth scrolling
     smoothScrollDuration: 0,
   };
 }

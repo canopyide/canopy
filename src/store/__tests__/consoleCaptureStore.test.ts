@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { useConsoleCaptureStore, EMPTY_MESSAGES } from "../consoleCaptureStore";
+import { useConsoleCaptureStore, EMPTY_MESSAGES, ZERO_COUNTS } from "../consoleCaptureStore";
 import type { SerializedConsoleRow } from "@shared/types/ipc/webviewConsole";
 
 function makeRow(overrides: Partial<SerializedConsoleRow> = {}): SerializedConsoleRow {
@@ -19,7 +19,7 @@ function makeRow(overrides: Partial<SerializedConsoleRow> = {}): SerializedConso
 
 describe("consoleCaptureStore", () => {
   beforeEach(() => {
-    useConsoleCaptureStore.setState({ messages: new Map() });
+    useConsoleCaptureStore.setState({ messages: new Map(), counters: new Map() });
   });
 
   it("adds a structured message with correct level", () => {
@@ -182,5 +182,194 @@ describe("consoleCaptureStore", () => {
     expect(msg!.stackTrace).toBeDefined();
     expect(msg!.stackTrace!.callFrames).toHaveLength(1);
     expect(msg!.stackTrace!.callFrames[0]!.functionName).toBe("foo");
+  });
+
+  describe("precomputed fields", () => {
+    it("precomputes timeLabel as HH:MM:SS.mmm at insert time", () => {
+      const store = useConsoleCaptureStore.getState();
+      // 2024-06-15 14:30:25.123 in UTC; rendered using local time
+      const ts = new Date(2024, 5, 15, 14, 30, 25, 123).getTime();
+      store.addStructuredMessage(makeRow({ id: 1, timestamp: ts }));
+
+      const [msg] = useConsoleCaptureStore.getState().getMessages("pane1");
+      expect(msg!.timeLabel).toBe("14:30:25.123");
+    });
+
+    it("sets isGroupHeader true for startGroup and startGroupCollapsed, false otherwise", () => {
+      const store = useConsoleCaptureStore.getState();
+      store.addStructuredMessage(makeRow({ id: 1, cdpType: "startGroup" }));
+      store.addStructuredMessage(makeRow({ id: 2, cdpType: "startGroupCollapsed" }));
+      store.addStructuredMessage(makeRow({ id: 3, cdpType: "log" }));
+      store.addStructuredMessage(makeRow({ id: 4, cdpType: "error", level: "error" }));
+
+      const messages = useConsoleCaptureStore.getState().getMessages("pane1");
+      expect(messages[0]!.isGroupHeader).toBe(true);
+      expect(messages[1]!.isGroupHeader).toBe(true);
+      expect(messages[2]!.isGroupHeader).toBe(false);
+      expect(messages[3]!.isGroupHeader).toBe(false);
+    });
+  });
+
+  describe("error/warn counters", () => {
+    it("returns ZERO_COUNTS for an unknown pane", () => {
+      const counts = useConsoleCaptureStore.getState().getCounts("nope");
+      expect(counts).toBe(ZERO_COUNTS);
+      expect(counts).toEqual({ errorCount: 0, warnCount: 0 });
+    });
+
+    it("increments counts for error and warning levels only", () => {
+      const store = useConsoleCaptureStore.getState();
+      store.addStructuredMessage(makeRow({ id: 1, level: "log" }));
+      store.addStructuredMessage(makeRow({ id: 2, level: "info" }));
+      store.addStructuredMessage(makeRow({ id: 3, level: "warning" }));
+      store.addStructuredMessage(makeRow({ id: 4, level: "error" }));
+      store.addStructuredMessage(makeRow({ id: 5, level: "error" }));
+
+      const counts = useConsoleCaptureStore.getState().getCounts("pane1");
+      expect(counts.errorCount).toBe(2);
+      expect(counts.warnCount).toBe(1);
+    });
+
+    it("keeps counts isolated per pane", () => {
+      const store = useConsoleCaptureStore.getState();
+      store.addStructuredMessage(makeRow({ id: 1, paneId: "pane1", level: "error" }));
+      store.addStructuredMessage(makeRow({ id: 2, paneId: "pane2", level: "warning" }));
+
+      expect(useConsoleCaptureStore.getState().getCounts("pane1")).toEqual({
+        errorCount: 1,
+        warnCount: 0,
+      });
+      expect(useConsoleCaptureStore.getState().getCounts("pane2")).toEqual({
+        errorCount: 0,
+        warnCount: 1,
+      });
+    });
+
+    it("decrements counts when an error/warning message is evicted by the cap", () => {
+      const store = useConsoleCaptureStore.getState();
+      // First 100 messages are errors; the rest are logs that will push them out
+      for (let i = 0; i < 100; i++) {
+        store.addStructuredMessage(makeRow({ id: i, level: "error" }));
+      }
+      expect(useConsoleCaptureStore.getState().getCounts("pane1").errorCount).toBe(100);
+
+      // Add 500 logs to push every error message out of the 500-cap window
+      for (let i = 100; i < 600; i++) {
+        store.addStructuredMessage(makeRow({ id: i, level: "log" }));
+      }
+
+      const counts = useConsoleCaptureStore.getState().getCounts("pane1");
+      const messages = useConsoleCaptureStore.getState().getMessages("pane1");
+      expect(messages).toHaveLength(500);
+      expect(counts.errorCount).toBe(0);
+      expect(counts.warnCount).toBe(0);
+    });
+
+    it("does not decrement counts when an evicted message was log/info", () => {
+      const store = useConsoleCaptureStore.getState();
+      // Start with a log that will be the first to be evicted
+      store.addStructuredMessage(makeRow({ id: 0, level: "log" }));
+      // Then add 500 errors to fill the cap and evict the leading log
+      for (let i = 1; i <= 500; i++) {
+        store.addStructuredMessage(makeRow({ id: i, level: "error" }));
+      }
+
+      const counts = useConsoleCaptureStore.getState().getCounts("pane1");
+      const messages = useConsoleCaptureStore.getState().getMessages("pane1");
+      expect(messages).toHaveLength(500);
+      expect(counts.errorCount).toBe(500);
+    });
+
+    it("resets counts to zero after clearMessages and leaves other panes untouched", () => {
+      const store = useConsoleCaptureStore.getState();
+      store.addStructuredMessage(makeRow({ id: 1, paneId: "pane1", level: "error" }));
+      store.addStructuredMessage(makeRow({ id: 2, paneId: "pane2", level: "warning" }));
+
+      useConsoleCaptureStore.getState().clearMessages("pane1");
+
+      expect(useConsoleCaptureStore.getState().getCounts("pane1")).toBe(ZERO_COUNTS);
+      expect(useConsoleCaptureStore.getState().getCounts("pane2")).toEqual({
+        errorCount: 0,
+        warnCount: 1,
+      });
+    });
+
+    it("drops the counter entry on removePane", () => {
+      const store = useConsoleCaptureStore.getState();
+      store.addStructuredMessage(makeRow({ id: 1, paneId: "pane1", level: "error" }));
+      useConsoleCaptureStore.getState().removePane("pane1");
+
+      const state = useConsoleCaptureStore.getState();
+      expect(state.counters.has("pane1")).toBe(false);
+      expect(state.getCounts("pane1")).toBe(ZERO_COUNTS);
+    });
+
+    it("keeps the counters Map reference stable across non-counting inserts (selector-stability)", () => {
+      const store = useConsoleCaptureStore.getState();
+      // Establish a baseline counters entry
+      store.addStructuredMessage(makeRow({ id: 1, level: "error" }));
+      const beforeCounters = useConsoleCaptureStore.getState().counters;
+      const beforeCounts = beforeCounters.get("pane1");
+
+      // Adding only log/info messages should NOT churn the counters Map reference
+      store.addStructuredMessage(makeRow({ id: 2, level: "log" }));
+      store.addStructuredMessage(makeRow({ id: 3, level: "info" }));
+
+      const afterCounters = useConsoleCaptureStore.getState().counters;
+      expect(afterCounters).toBe(beforeCounters);
+      expect(afterCounters.get("pane1")).toBe(beforeCounts);
+    });
+
+    it("keeps the counters Map reference stable on log-evicts-log inserts at the cap", () => {
+      const store = useConsoleCaptureStore.getState();
+      // Fill exactly to the 500-cap with log messages — no counter activity
+      for (let i = 0; i < 500; i++) {
+        store.addStructuredMessage(makeRow({ id: i, level: "log" }));
+      }
+      const beforeCounters = useConsoleCaptureStore.getState().counters;
+
+      // Eviction: this insert pushes one log out and adds one log; net delta is zero
+      store.addStructuredMessage(makeRow({ id: 500, level: "log" }));
+
+      const afterCounters = useConsoleCaptureStore.getState().counters;
+      expect(afterCounters).toBe(beforeCounters);
+    });
+
+    it("handles mixed eviction deltas correctly under realistic sequences", () => {
+      const store = useConsoleCaptureStore.getState();
+      // 498 logs + 1 warning + 1 error = 500 total, in that order
+      for (let i = 0; i < 498; i++) {
+        store.addStructuredMessage(makeRow({ id: i, level: "log" }));
+      }
+      store.addStructuredMessage(makeRow({ id: 498, level: "warning" }));
+      store.addStructuredMessage(makeRow({ id: 499, level: "error" }));
+      expect(useConsoleCaptureStore.getState().getCounts("pane1")).toEqual({
+        errorCount: 1,
+        warnCount: 1,
+      });
+
+      // Add an error (evicts log 0): error+1, no decrement
+      store.addStructuredMessage(makeRow({ id: 500, level: "error" }));
+      expect(useConsoleCaptureStore.getState().getCounts("pane1")).toEqual({
+        errorCount: 2,
+        warnCount: 1,
+      });
+
+      // Add a warning (evicts log 1): warning+1, no decrement
+      store.addStructuredMessage(makeRow({ id: 501, level: "warning" }));
+      expect(useConsoleCaptureStore.getState().getCounts("pane1")).toEqual({
+        errorCount: 2,
+        warnCount: 2,
+      });
+
+      // Add 497 more logs to push every log out — eventually evicts the original warning at id 498
+      for (let i = 502; i < 502 + 497; i++) {
+        store.addStructuredMessage(makeRow({ id: i, level: "log" }));
+      }
+      expect(useConsoleCaptureStore.getState().getCounts("pane1")).toEqual({
+        errorCount: 2,
+        warnCount: 1,
+      });
+    });
   });
 });

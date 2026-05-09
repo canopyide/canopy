@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 import { SearchablePalette } from "@/components/ui/SearchablePalette";
-import { useKeybindingDisplay } from "@/hooks/useKeybinding";
+import { KBD_CLASS } from "@/components/ui/AppPaletteDialog";
+import { useKeybindingDisplay, useEffectiveCombo } from "@/hooks/useKeybinding";
 import { useTruncationDetection } from "@/hooks/useTruncationDetection";
 import { TruncatedTooltip } from "@/components/ui/TruncatedTooltip";
 import type { WorktreeState } from "@/types";
@@ -54,6 +55,8 @@ function WorktreeListItem({ worktree, isActive, isSelected, onClick }: WorktreeL
   );
 }
 
+const getWorktreeActionLabel = (_item: WorktreeState | null): string => "Switch worktree";
+
 export interface WorktreePaletteProps {
   isOpen: boolean;
   query: string;
@@ -61,6 +64,7 @@ export interface WorktreePaletteProps {
   totalResults: number;
   activeWorktreeId: string | null;
   selectedIndex: number;
+  isStale?: boolean;
   onQueryChange: (query: string) => void;
   onSelectPrevious: () => void;
   onSelectNext: () => void;
@@ -76,6 +80,7 @@ export function WorktreePalette({
   totalResults,
   activeWorktreeId,
   selectedIndex,
+  isStale = false,
   onQueryChange,
   onSelectPrevious,
   onSelectNext,
@@ -84,6 +89,7 @@ export function WorktreePalette({
   onClose,
 }: WorktreePaletteProps) {
   const createWorktreeShortcut = useKeybindingDisplay("worktree.createDialog.open");
+  const worktreePaletteShortcut = useEffectiveCombo("worktree.openPalette");
 
   return (
     <SearchablePalette<WorktreeState>
@@ -97,6 +103,8 @@ export function WorktreePalette({
       onConfirm={onConfirm}
       onClose={onClose}
       getItemId={(worktree) => worktree.id}
+      getActionLabel={getWorktreeActionLabel}
+      isFiltering={isStale}
       renderItem={(worktree, _index, isSelected) => (
         <WorktreeListItem
           key={worktree.id}
@@ -107,24 +115,19 @@ export function WorktreePalette({
         />
       )}
       label="Worktree switcher"
-      keyHint="⌘K, W"
+      shortcut={worktreePaletteShortcut}
       ariaLabel="Worktree palette"
-      searchPlaceholder="Search worktrees..."
+      searchPlaceholder="Search worktrees"
       searchAriaLabel="Search worktrees"
       listId="worktree-palette-list"
       itemIdPrefix="worktree-option"
       emptyMessage="No worktrees yet"
-      noMatchMessage={`No worktrees match "${query}"`}
       totalResults={totalResults}
       emptyContent={
         <p className="mt-2 text-xs text-daintree-text/40">
           {createWorktreeShortcut ? (
             <>
-              Press{" "}
-              <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-daintree-border text-daintree-text/60">
-                {createWorktreeShortcut}
-              </kbd>{" "}
-              to create a worktree.
+              Press <kbd className={KBD_CLASS}>{createWorktreeShortcut}</kbd> to create a worktree.
             </>
           ) : (
             "Create a worktree to get started."

@@ -61,6 +61,7 @@ export type BuiltInKeyAction =
   | "worktree.copyTree"
   | "worktree.openEditor"
   | "worktree.openPalette"
+  | "worktree.createDialog.open"
   | "worktree.overview"
   | "worktree.sessions.minimizeAll"
   | "worktree.sessions.maximizeAll"
@@ -128,6 +129,7 @@ export type BuiltInKeyAction =
   | "fleet.kill"
   | "fleet.trash"
   | "fleet.armFocused"
+  | "fleet.armAll"
 
   // Agent spawning
   | "agent.palette"
@@ -247,6 +249,7 @@ export const KEY_ACTION_VALUES: ReadonlySet<string> = new Set<string>([
   "worktree.copyTree",
   "worktree.openEditor",
   "worktree.openPalette",
+  "worktree.createDialog.open",
   "worktree.overview",
   "worktree.sessions.minimizeAll",
   "worktree.sessions.maximizeAll",
@@ -292,6 +295,7 @@ export const KEY_ACTION_VALUES: ReadonlySet<string> = new Set<string>([
   "terminal.moveToGrid",
   "terminal.watch",
   "terminal.duplicate",
+  "terminal.background",
   "terminal.contextMenu",
   "terminal.stashInput",
   "terminal.popStash",
@@ -307,6 +311,7 @@ export const KEY_ACTION_VALUES: ReadonlySet<string> = new Set<string>([
   "fleet.kill",
   "fleet.trash",
   "fleet.armFocused",
+  "fleet.armAll",
   "agent.palette",
   ...BUILT_IN_AGENT_KEY_ACTIONS,
   "agent.terminal",

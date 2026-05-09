@@ -7,6 +7,7 @@ import {
   type DiagnosticsTab,
   DIAGNOSTICS_MIN_HEIGHT,
   DIAGNOSTICS_MAX_HEIGHT_RATIO,
+  DIAGNOSTICS_DEFAULT_HEIGHT,
 } from "@/store/diagnosticsStore";
 import { useErrorStore } from "@/store";
 import { ProblemsContent } from "./ProblemsContent";
@@ -22,6 +23,8 @@ import {
 import type { RetryAction } from "@/store";
 import { appClient } from "@/clients";
 import { logError } from "@/utils/logger";
+
+export const DIAGNOSTICS_DOCK_REGION_ID = "diagnostics-dock-region";
 
 interface TabButtonProps {
   tab: DiagnosticsTab;
@@ -41,7 +44,9 @@ const TabButton = memo(function TabButton({
   return (
     <button
       id={`diagnostics-${tab}-tab`}
+      data-tab={tab}
       onClick={onClick}
+      tabIndex={isActive ? 0 : -1}
       className={cn(
         "px-3 py-1.5 text-sm font-medium transition-colors relative rounded",
         "hover:text-daintree-text hover:bg-overlay-soft",
@@ -69,9 +74,21 @@ interface DiagnosticsDockProps {
   className?: string;
 }
 
+const RESIZE_STEP = 10;
+const RESIZE_STEP_LARGE = 50;
+
 export function DiagnosticsDock({ onRetry, onCancelRetry, className }: DiagnosticsDockProps) {
-  const { isOpen, activeTab, height, openDock, closeDock, setActiveTab, setHeight } =
-    useDiagnosticsStore();
+  const {
+    isOpen,
+    activeTab,
+    height,
+    maxHeight,
+    openDock,
+    closeDock,
+    setActiveTab,
+    setHeight,
+    setMaxHeight,
+  } = useDiagnosticsStore();
   const errorCount = useErrorStore((state) => state.errors.filter((e) => !e.dismissed).length);
   const prevErrorCountRef = useRef(0);
 
@@ -85,8 +102,8 @@ export function DiagnosticsDock({ onRetry, onCancelRetry, className }: Diagnosti
   const [isResizing, setIsResizing] = useState(false);
   const resizeStartY = useRef(0);
   const resizeStartHeight = useRef(0);
-
-  const RESIZE_STEP = 10;
+  const outerRef = useRef<HTMLDivElement>(null);
+  const tablistRef = useRef<HTMLDivElement>(null);
 
   const handleResizeStart = useCallback(
     (e: React.MouseEvent) => {
@@ -98,20 +115,85 @@ export function DiagnosticsDock({ onRetry, onCancelRetry, className }: Diagnosti
     [height]
   );
 
+  const handleResetHeight = useCallback(() => {
+    setHeight(DIAGNOSTICS_DEFAULT_HEIGHT);
+  }, [setHeight]);
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key === "ArrowUp") {
-        e.preventDefault();
-        const maxHeight = window.innerHeight * DIAGNOSTICS_MAX_HEIGHT_RATIO;
-        const newHeight = Math.min(height + RESIZE_STEP, maxHeight);
-        setHeight(newHeight);
-      } else if (e.key === "ArrowDown") {
-        e.preventDefault();
-        const newHeight = Math.max(height - RESIZE_STEP, DIAGNOSTICS_MIN_HEIGHT);
-        setHeight(newHeight);
+      const step = e.shiftKey ? RESIZE_STEP_LARGE : RESIZE_STEP;
+      switch (e.key) {
+        case "ArrowUp":
+          e.preventDefault();
+          setHeight(height + step);
+          break;
+        case "ArrowDown":
+          e.preventDefault();
+          setHeight(height - step);
+          break;
+        case "PageUp":
+          e.preventDefault();
+          setHeight(height + RESIZE_STEP_LARGE);
+          break;
+        case "PageDown":
+          e.preventDefault();
+          setHeight(height - RESIZE_STEP_LARGE);
+          break;
+        case "Home":
+          e.preventDefault();
+          setHeight(DIAGNOSTICS_MIN_HEIGHT);
+          break;
+        case "End":
+          e.preventDefault();
+          setHeight(maxHeight);
+          break;
+        case "Enter":
+        case " ":
+          e.preventDefault();
+          setHeight(DIAGNOSTICS_DEFAULT_HEIGHT);
+          break;
+        default:
+          return;
       }
     },
-    [height, setHeight]
+    [height, maxHeight, setHeight]
+  );
+
+  const handleTablistKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      const container = tablistRef.current;
+      if (!container) return;
+
+      const tabButtons = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
+      const focusedIndex = tabButtons.indexOf(document.activeElement as HTMLButtonElement);
+      if (focusedIndex === -1) return;
+
+      let nextIndex: number | null = null;
+      switch (e.key) {
+        case "ArrowRight":
+          nextIndex = (focusedIndex + 1) % tabButtons.length;
+          break;
+        case "ArrowLeft":
+          nextIndex = (focusedIndex - 1 + tabButtons.length) % tabButtons.length;
+          break;
+        case "Home":
+          nextIndex = 0;
+          break;
+        case "End":
+          nextIndex = tabButtons.length - 1;
+          break;
+        default:
+          return;
+      }
+
+      e.preventDefault();
+      const nextTab = tabButtons[nextIndex];
+      if (!nextTab) return;
+      nextTab.focus();
+      const tabId = nextTab.dataset.tab as DiagnosticsTab | undefined;
+      if (tabId) setActiveTab(tabId);
+    },
+    [setActiveTab]
   );
 
   useEffect(() => {
@@ -120,9 +202,7 @@ export function DiagnosticsDock({ onRetry, onCancelRetry, className }: Diagnosti
     const handleMouseMove = (e: MouseEvent) => {
       const deltaY = resizeStartY.current - e.clientY;
       const newHeight = resizeStartHeight.current + deltaY;
-      const maxHeight = window.innerHeight * DIAGNOSTICS_MAX_HEIGHT_RATIO;
-      const clampedHeight = Math.min(Math.max(newHeight, DIAGNOSTICS_MIN_HEIGHT), maxHeight);
-      setHeight(clampedHeight);
+      setHeight(newHeight);
     };
 
     const handleMouseUp = () => {
@@ -137,6 +217,36 @@ export function DiagnosticsDock({ onRetry, onCancelRetry, className }: Diagnosti
       document.removeEventListener("mouseup", handleMouseUp);
     };
   }, [isResizing, setHeight]);
+
+  // Track the available container height so aria-valuemax and the in-store
+  // clamp stay accurate when the viewport or sidebars resize. Observe the
+  // dock's parent (a flex column whose height is bounded by the viewport,
+  // not by our own height) to avoid Chromium's ResizeObserver loop guard.
+  useEffect(() => {
+    if (!isOpen) return;
+    const node = outerRef.current;
+    const parent = node?.parentElement;
+    if (!parent) return;
+
+    const apply = (containerHeight: number) => {
+      const next = Math.max(
+        Math.floor(containerHeight * DIAGNOSTICS_MAX_HEIGHT_RATIO),
+        DIAGNOSTICS_MIN_HEIGHT
+      );
+      setMaxHeight(next);
+    };
+
+    apply(parent.getBoundingClientRect().height);
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const blockSize = entry.contentBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
+      apply(blockSize);
+    });
+    observer.observe(parent);
+    return () => observer.disconnect();
+  }, [isOpen, setMaxHeight]);
 
   useEffect(() => {
     if (!isResizing && isOpen) {
@@ -177,13 +287,15 @@ export function DiagnosticsDock({ onRetry, onCancelRetry, className }: Diagnosti
 
   return (
     <div
+      ref={outerRef}
+      id={DIAGNOSTICS_DOCK_REGION_ID}
       className={cn(
-        "flex flex-col border-t border-[var(--dock-border)] bg-[var(--dock-bg)]/95 backdrop-blur-sm shadow-[var(--dock-shadow)]",
-        "transition-[height] duration-200 ease-out",
+        "diagnostics-dock flex flex-col border-t border-[var(--dock-border)] bg-[var(--dock-bg)]/95 backdrop-blur-sm shadow-[var(--dock-shadow)]",
         isResizing && "select-none",
         className
       )}
       style={{ height }}
+      data-resizing={isResizing ? "true" : undefined}
       role="region"
       aria-label="Diagnostics dock"
     >
@@ -194,13 +306,14 @@ export function DiagnosticsDock({ onRetry, onCancelRetry, className }: Diagnosti
           isResizing && "bg-overlay-medium"
         )}
         onMouseDown={handleResizeStart}
+        onDoubleClick={handleResetHeight}
         onKeyDown={handleKeyDown}
         role="separator"
         aria-orientation="horizontal"
-        aria-label="Resize diagnostics dock"
+        aria-label="Resize diagnostics dock (double-click to reset)"
         aria-valuenow={Math.round(height)}
         aria-valuemin={DIAGNOSTICS_MIN_HEIGHT}
-        aria-valuemax={Math.round(window.innerHeight * DIAGNOSTICS_MAX_HEIGHT_RATIO)}
+        aria-valuemax={Math.round(maxHeight)}
         tabIndex={0}
       >
         <div
@@ -214,7 +327,13 @@ export function DiagnosticsDock({ onRetry, onCancelRetry, className }: Diagnosti
       </div>
 
       <div className="flex items-center justify-between px-4 h-10 border-b border-[var(--dock-border)] bg-daintree-sidebar/50 shrink-0">
-        <div className="flex items-center gap-2" role="tablist" aria-label="Diagnostics tabs">
+        <div
+          ref={tablistRef}
+          className="flex items-center gap-2"
+          role="tablist"
+          aria-label="Diagnostics tabs"
+          onKeyDown={handleTablistKeyDown}
+        >
           {tabs.map((tab) => (
             <TabButton
               key={tab.id}

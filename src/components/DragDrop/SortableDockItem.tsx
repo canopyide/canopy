@@ -1,6 +1,8 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { m } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { UI_ANIMATION_DURATION, DRAG_GHOST_OPACITY, DRAG_GHOST_EASING } from "@/lib/animationUtils";
 import type { TerminalInstance } from "@/store";
 import type { DragData } from "./DndProvider";
 import { DragHandleProvider } from "./DragHandleContext";
@@ -30,9 +32,18 @@ export function SortableDockItem({
     groupPanelIds,
   };
 
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
     id: terminal.id,
     data: dragData,
+    animateLayoutChanges: () => false,
   });
 
   const style = {
@@ -40,17 +51,33 @@ export function SortableDockItem({
     transition,
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  const destructured = attributes as unknown as Record<string, unknown>;
+  const { role: _role, tabIndex: _tabIndex, ...remainingAttributes } = destructured;
+  void _role;
+  void _tabIndex;
+
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={cn("flex-shrink-0", isDragging && "opacity-40")}
-      {...attributes}
-      {...listeners}
-      role="listitem"
+    <m.div
+      layout="position"
+      className="flex-shrink-0"
+      {...remainingAttributes}
       aria-roledescription="sortable item"
     >
-      <DragHandleProvider value={{ listeners }}>{children}</DragHandleProvider>
-    </div>
+      <div ref={setNodeRef} style={style} role="listitem" className={cn("flex-shrink-0")}>
+        <m.div
+          className="h-full"
+          animate={{ opacity: isDragging ? DRAG_GHOST_OPACITY : 1 }}
+          transition={{
+            duration: isDragging ? UI_ANIMATION_DURATION / 1000 : 0,
+            ease: DRAG_GHOST_EASING,
+          }}
+        >
+          <DragHandleProvider value={{ listeners, setActivatorNodeRef }}>
+            {children}
+          </DragHandleProvider>
+        </m.div>
+      </div>
+    </m.div>
   );
 }

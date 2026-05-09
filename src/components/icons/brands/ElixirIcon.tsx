@@ -1,20 +1,19 @@
+import type { SVGProps } from "react";
 import { cn } from "@/lib/utils";
 
-interface ElixirIconProps {
-  className?: string;
+type ElixirIconProps = SVGProps<SVGSVGElement> & {
   size?: number;
-}
+};
 
-export function ElixirIcon({ className, size = 16 }: ElixirIconProps) {
+export function ElixirIcon({ className, size = 16, ...props }: ElixirIconProps) {
   return (
     <svg
       width={size}
       height={size}
       viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
       className={cn(className)}
       aria-hidden="true"
+      {...props}
     >
       <path
         fill="currentColor"

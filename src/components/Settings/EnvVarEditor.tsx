@@ -4,6 +4,7 @@ import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/compon
 import { cn } from "@/lib/utils";
 import { looksLikeSecret } from "@/utils/secretDetection";
 import { isSensitiveEnvKey } from "../../../shared/utils/envVars";
+import { notify } from "@/lib/notify";
 import { ImportEnvDialog } from "./ImportEnvDialog";
 
 /**
@@ -78,6 +79,14 @@ let rowIdCounter = 0;
 function nextRowId(): string {
   rowIdCounter += 1;
   return `row-${rowIdCounter}`;
+}
+
+function normalizePastedEnvValue(raw: string): string {
+  return raw
+    .replace(/[‘’‛‚′ʼ]/g, "'")
+    .replace(/[“”‟„″]/g, '"')
+    .replace(/[–—]/g, "-")
+    .trim();
 }
 
 function envToDraft(
@@ -538,6 +547,31 @@ export function EnvVarEditor({
     setRows((prev) => prev.map((r) => (r.rowId === rowId ? { ...r, value: newValue } : r)));
   }, []);
 
+  const handleValuePaste = useCallback(
+    (rowId: string, e: React.ClipboardEvent<HTMLInputElement>) => {
+      if (e.currentTarget.disabled) return;
+      const raw = e.clipboardData?.getData("text");
+      if (raw == null) return;
+      const cleaned = normalizePastedEnvValue(raw);
+      if (cleaned === raw) return;
+      e.preventDefault();
+      const inserted = document.execCommand("insertText", false, cleaned);
+      if (!inserted) {
+        const input = e.currentTarget;
+        const start = input.selectionStart ?? 0;
+        const end = input.selectionEnd ?? 0;
+        handleValueChange(rowId, input.value.slice(0, start) + cleaned + input.value.slice(end));
+      }
+      notify({
+        type: "info",
+        title: "Pasted text normalized",
+        message: "Quotation marks, dashes, and surrounding whitespace were cleaned up.",
+        transient: true,
+      });
+    },
+    [handleValueChange]
+  );
+
   const handleOverride = useCallback(
     (rowId: string) => {
       setRows((prev) => {
@@ -750,6 +784,10 @@ export function EnvVarEditor({
                     placeholder={valuePlaceholder}
                     spellCheck={false}
                     autoComplete={isSecret ? "new-password" : "off"}
+                    data-1p-ignore
+                    data-lpignore="true"
+                    data-bwignore
+                    data-form-type="other"
                     disabled={row.isInherited}
                     aria-label={`Env var value for row ${row.rowId}`}
                     onChange={(e) => handleValueChange(row.rowId, e.target.value)}
@@ -769,6 +807,7 @@ export function EnvVarEditor({
                         e.currentTarget.blur();
                       }
                     }}
+                    onPaste={(e) => handleValuePaste(row.rowId, e)}
                     data-testid="env-editor-value"
                   />
                   {isSecret && (

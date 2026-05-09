@@ -1,10 +1,14 @@
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useMemo, useSyncExternalStore } from "react";
 import { usePanelStore, type TerminalInstance } from "@/store";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { getPanelKindDefinition, type PanelComponentProps } from "@/registry";
+import {
+  getPanelKindDefinition,
+  getPanelKindDefinitionsSnapshot,
+  subscribeToPanelKindDefinitions,
+  type PanelComponentProps,
+} from "@/registry";
 import { ContentPanel, PluginMissingPanel, triggerPanelTransition } from "@/components/Panel";
 import type { TabInfo } from "@/components/Panel/TabButton";
-import { usePanelLifecycle } from "@/hooks/usePanelLifecycle";
 import { usePanelHandlers } from "@/hooks/usePanelHandlers";
 import { buildPanelProps } from "@/utils/panelProps";
 import type { AgentState } from "@/types";
@@ -140,10 +144,8 @@ export const GridPanel = React.memo(function GridPanel({
   const getPanelGroup = usePanelStore((state) => state.getPanelGroup);
   const moveTerminalToDock = usePanelStore((state) => state.moveTerminalToDock);
 
-  const lifecycle = usePanelLifecycle();
   const { handleFocus, handleClose, handleTitleChange } = usePanelHandlers({
     terminalId: terminal.id,
-    lifecycle,
   });
 
   const handleToggleMaximize = useCallback(() => {
@@ -181,6 +183,9 @@ export const GridPanel = React.memo(function GridPanel({
   }, [moveTerminalToDock, terminal.id]);
 
   const kind = terminal.kind ?? "terminal";
+  // Subscribe to definition registry mutations so a plugin re-registering its
+  // panel kind hot-swaps the PluginMissingPanel placeholder without a reload.
+  useSyncExternalStore(subscribeToPanelKindDefinitions, getPanelKindDefinitionsSnapshot);
   const definition = getPanelKindDefinition(kind);
 
   const panelProps: PanelComponentProps = useMemo(
@@ -188,7 +193,6 @@ export const GridPanel = React.memo(function GridPanel({
       buildPanelProps({
         terminal,
         isFocused,
-        isTrashing: lifecycle.isTrashing,
         overrides: {
           location: "grid" as const,
           isMaximized,
@@ -218,7 +222,6 @@ export const GridPanel = React.memo(function GridPanel({
       terminal,
       isFocused,
       isMaximized,
-      lifecycle.isTrashing,
       gridPanelCount,
       ambientAgentState,
       handleFocus,

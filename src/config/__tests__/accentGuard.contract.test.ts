@@ -110,8 +110,11 @@ const DURABLE_ALLOWLIST = new Set([
   // HealthChip accent tone routing + color-mix CSS custom property usage
   "src/components/Pulse/ProjectPulseCard.tsx",
 
-  // Focused worktree card left-edge accent bar (single primary anchor per view)
+  // Current worktree card left-edge accent bar (single primary anchor per view)
   "src/components/Worktree/WorktreeCard.tsx",
+
+  // PanelPalette selected-row left-edge accent stripe (single primary anchor per view)
+  "src/components/PanelPalette/PanelPalette.tsx",
 
   // Setup wizard step indicators, accent icon, telemetry toggle (one-time setup flow)
   "src/components/Setup/AgentSetupWizard.tsx",
@@ -154,6 +157,10 @@ const ALLOWLIST_BY_ISSUE: Record<string, string[]> = {
   "#5984": [
     "src/components/GitHub/BulkCreateWorktreeDialog.tsx",
     "src/components/Worktree/NewWorktreeDialog.tsx",
+    "src/components/Worktree/views/ExistingBranchPicker.tsx",
+    "src/components/Worktree/views/HighlightBranchText.tsx",
+    "src/components/Worktree/views/IssueSelectorView.tsx",
+    "src/components/Worktree/views/RecipePickerPopover.tsx",
   ],
 
   // #5985: [panels] Exit Focus badge competes with macro-focus ring
@@ -178,8 +185,8 @@ const ALLOWLIST_BY_ISSUE: Record<string, string[]> = {
     "src/components/DevPreview/DevPreviewPane.tsx",
     "src/components/Diagnostics/DiagnosticsDock.tsx",
     "src/components/Diagnostics/TelemetryContent.tsx",
-    "src/components/Fleet/FleetArmingDialog.tsx",
     "src/components/Fleet/FleetArmingRibbon.tsx",
+    "src/components/Fleet/FleetPickerContent.tsx",
     "src/components/GitHub/BulkActionBar.tsx",
     "src/components/GitHub/GitHubDropdownSkeletons.tsx",
     "src/components/GitHub/GitHubListItem.tsx",
@@ -187,7 +194,6 @@ const ALLOWLIST_BY_ISSUE: Record<string, string[]> = {
     "src/components/KeyboardShortcuts/SettingsShortcutCapture.tsx",
     "src/components/LogLevelPalette/LogLevelPalette.tsx",
     "src/components/Notifications/NotificationCenterEntry.tsx",
-    "src/components/PanelPalette/PanelPalette.tsx",
     "src/components/Portal/PortalDock.tsx",
     "src/components/Portal/PortalToolbar.tsx",
     "src/components/Project/AutomationTab.tsx",
@@ -220,7 +226,6 @@ const ALLOWLIST_BY_ISSUE: Record<string, string[]> = {
     "src/components/Settings/ResourceEnvironmentsSection.tsx",
     "src/components/Settings/SettingsDialog.tsx",
     "src/components/Settings/SettingsInput.tsx",
-    "src/components/Settings/settingsSearchUtils.tsx",
     "src/components/Settings/SettingsSelect.tsx",
     "src/components/Settings/SettingsSubtabBar.tsx",
     "src/components/Settings/SettingsTextarea.tsx",
@@ -232,6 +237,8 @@ const ALLOWLIST_BY_ISSUE: Record<string, string[]> = {
     "src/components/Setup/SystemToolsStep.tsx",
     "src/components/Sidebar/SidebarContent.tsx",
     "src/components/Terminal/ContentGrid.tsx",
+    "src/components/Terminal/ContentGridDefault.tsx",
+    "src/components/Terminal/ContentGridTwoPaneSplit.tsx",
     "src/components/Terminal/HybridInputBar.tsx",
     "src/components/Terminal/InlineStatusBanner.tsx",
     "src/components/Terminal/PromptHistoryPalette.tsx",
@@ -255,7 +262,6 @@ const ALLOWLIST_BY_ISSUE: Record<string, string[]> = {
     "src/components/Worktree/WorktreeCard/WorktreeTerminalSection.tsx",
     "src/components/Worktree/WorktreeDeleteDialog.tsx",
     "src/components/Worktree/WorktreeFilterPopover.tsx",
-    "src/components/Worktree/WorktreeOverviewModal.tsx",
     "src/components/Worktree/WorktreePalette.tsx",
     "src/hooks/useUpdateListener.tsx",
     "src/components/agents/AgentCard.tsx",
@@ -483,7 +489,8 @@ describe("accent guard", () => {
 
     for (const filePath of collectSourceFiles(SRC_ROOT)) {
       const source = fs.readFileSync(filePath, "utf8");
-      const relativePath = path.relative(REPO_ROOT, filePath);
+      // Normalize to posix-style separators so allowlist hits match on Windows.
+      const relativePath = path.relative(REPO_ROOT, filePath).replace(/\\/g, "/");
 
       if (fullAllowlist.has(relativePath)) continue;
 

@@ -13,6 +13,10 @@ export function normalizeScrollbackLines(value: unknown): number {
 
   const intValue = Math.trunc(coerced);
 
+  // Both -1 and 0 are "use max" sentinels: -1 is the explicit user intent for
+  // "unlimited", and 0 is a backwards-compatible alias preserved because
+  // earlier persisted configs may still contain it. xterm.js itself rejects 0
+  // as a scrollback value, so we never pass either through unchanged.
   if (intValue === -1 || intValue === 0) {
     return SCROLLBACK_MAX;
   }

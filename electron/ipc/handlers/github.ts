@@ -12,8 +12,15 @@ import type {
   GitHubTokenValidation,
   RepoStatsAndPagePayload,
   GitHubFirstPageCachePayload,
+  GitHubRateLimitDetails,
 } from "../../types/index.js";
-import { gitHubRateLimitService, gitHubTokenHealthService } from "../../services/github/index.js";
+import {
+  GitHubAuth,
+  GITHUB_API_TIMEOUT_MS,
+  captureAuthMetadata,
+  gitHubRateLimitService,
+  gitHubTokenHealthService,
+} from "../../services/github/index.js";
 import { getWorkspaceClient } from "../../services/WorkspaceClient.js";
 import { formatErrorMessage } from "../../../shared/utils/errorMessage.js";
 
@@ -81,6 +88,49 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
   // the token stays unhealthy).
   const handleGetTokenHealth = async () => gitHubTokenHealthService.getState();
   handlers.push(typedHandle(CHANNELS.GITHUB_GET_TOKEN_HEALTH, handleGetTokenHealth));
+
+  // GitHub's `/rate_limit` endpoint is itself quota-free, so the renderer
+  // can call this on demand (e.g. opening the rate-limit tooltip) without
+  // worrying about feedback loops with the very limit it's reporting on.
+  const handleGetRateLimitDetails = async (): Promise<GitHubRateLimitDetails | null> => {
+    checkRateLimit(CHANNELS.GITHUB_GET_RATE_LIMIT_DETAILS, 30, 60_000);
+    const token = GitHubAuth.getToken();
+    if (!token) return null;
+    try {
+      const response = await fetch("https://api.github.com/rate_limit", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github.v3+json",
+        },
+        signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS),
+      });
+      if (!response.ok) return null;
+      captureAuthMetadata(response.headers);
+      const body = (await response.json()) as {
+        resources?: Record<
+          string,
+          { limit: number; used: number; remaining: number; reset: number } | undefined
+        >;
+      };
+      const resources = body.resources;
+      if (!resources?.core || !resources.graphql || !resources.search) return null;
+      const toBucket = (b: { limit: number; used: number; remaining: number; reset: number }) => ({
+        limit: b.limit,
+        used: b.used,
+        remaining: b.remaining,
+        resetAt: b.reset * 1000,
+      });
+      return {
+        core: toBucket(resources.core),
+        graphql: toBucket(resources.graphql),
+        search: toBucket(resources.search),
+        fetchedAt: Date.now(),
+      };
+    } catch {
+      return null;
+    }
+  };
+  handlers.push(typedHandle(CHANNELS.GITHUB_GET_RATE_LIMIT_DETAILS, handleGetRateLimitDetails));
 
   const handleGitHubGetRepoStats = async (
     cwd: string,
@@ -191,18 +241,49 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
       if (!stat.isDirectory()) return null;
 
       const { GitHubFirstPageCache } = await import("../../services/GitHubFirstPageCache.js");
+      const { GitHubStatsCache } = await import("../../services/GitHubStatsCache.js");
       const { getRepoContext } = await import("../../services/GitHubService.js");
       const context = await getRepoContext(resolved);
       if (!context) return null;
       const repoKey = `${context.owner}/${context.repo}`;
       const entry = GitHubFirstPageCache.getInstance().get(repoKey);
-      if (!entry) return null;
+      const cachedStats = GitHubStatsCache.getInstance().getForBootstrap(repoKey);
 
+      // Neither cache has data — let the network poll populate everything.
+      if (!entry && !cachedStats) return null;
+
+      // First-page items present: attach bootstrap stats if available.
+      if (entry) {
+        const payload: GitHubFirstPageCachePayload = {
+          projectPath: resolved,
+          issues: entry.issues,
+          prs: entry.prs,
+          lastUpdated: entry.lastUpdated,
+        };
+        if (cachedStats) {
+          payload.stats = {
+            issueCount: cachedStats.issueCount,
+            prCount: cachedStats.prCount,
+            lastUpdated: cachedStats.lastUpdated,
+          };
+        }
+        return payload;
+      }
+
+      // Stats-only payload: first-page cache expired but stats are still within
+      // the 60-minute bootstrap TTL. Return empty pages so the hydration effect
+      // can seed toolbar counts without damaging the renderer items cache.
+      if (!cachedStats) return null;
       return {
         projectPath: resolved,
-        issues: entry.issues,
-        prs: entry.prs,
-        lastUpdated: entry.lastUpdated,
+        issues: { items: [], endCursor: null, hasNextPage: false },
+        prs: { items: [], endCursor: null, hasNextPage: false },
+        lastUpdated: cachedStats.lastUpdated,
+        stats: {
+          issueCount: cachedStats.issueCount,
+          prCount: cachedStats.prCount,
+          lastUpdated: cachedStats.lastUpdated,
+        },
       };
     } catch {
       // Disk-cache reads are best-effort: a missing cache file, malformed
@@ -356,7 +437,11 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
     if (!path.isAbsolute(payload.cwd)) {
       throw new Error("Working directory must be an absolute path");
     }
-    if (typeof payload.issueNumber !== "number" || payload.issueNumber <= 0) {
+    if (
+      typeof payload.issueNumber !== "number" ||
+      !Number.isInteger(payload.issueNumber) ||
+      payload.issueNumber <= 0
+    ) {
       throw new Error("Invalid issue number");
     }
     const { getIssueUrl } = await import("../../services/GitHubService.js");
@@ -375,8 +460,12 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
     }
     try {
       const url = new URL(prUrl);
-      if (!["https:", "http:"].includes(url.protocol)) {
-        throw new Error(`Only https:// or http:// PR URLs are allowed, got ${url.protocol}`);
+      if (url.protocol !== "https:") {
+        throw new Error(`Only https:// GitHub PR URLs are allowed, got ${url.protocol}`);
+      }
+      const hostname = url.hostname.toLowerCase();
+      if (hostname !== "github.com" && !hostname.endsWith(".github.com")) {
+        throw new Error(`Only GitHub PR URLs are allowed, got ${url.hostname}`);
       }
     } catch (error) {
       throw new Error(formatErrorMessage(error, "Invalid PR URL"));
@@ -407,14 +496,15 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
     if (typeof token !== "string" || !token.trim()) {
       return { valid: false, scopes: [], error: "Token is required" };
     }
+    const trimmed = token.trim();
 
     const { validateGitHubToken, setGitHubToken } = await import("../../services/GitHubService.js");
     const { GitHubAuth } = await import("../../services/github/index.js");
 
-    const validation = await validateGitHubToken(token.trim());
+    const validation = await validateGitHubToken(trimmed);
 
     if (validation.valid) {
-      setGitHubToken(token.trim());
+      setGitHubToken(trimmed);
       const versionAfterSet = GitHubAuth.getTokenVersion();
 
       if (validation.username) {
@@ -428,7 +518,7 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
 
       try {
         const workspaceClient = getWorkspaceClient();
-        workspaceClient.updateGitHubToken(token.trim());
+        workspaceClient.updateGitHubToken(trimmed);
       } catch {
         // WorkspaceClient may not be initialized yet
       }

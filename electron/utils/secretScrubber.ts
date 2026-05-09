@@ -11,6 +11,10 @@
  *   4. Main-process emergency crash log (`emergencyLogMainFatal`)
  *   5. Pty-host emergency crash log (`emergencyLogFatal`)
  *   6. IPC error envelope (`sanitizeErrorForRenderer` in setup/security.ts)
+ *   7. WorktreeLifecycleService tail-output scrub before renderer
+ *   8. AgentInstallService progress stdout/stderr scrubbing
+ *   9. AgentHelpService command output scrubbing
+ *  10. AgentVersionService error-message scrubbing
  *
  * All patterns use bounded quantifiers for ReDoS safety. See the
  * `secretScrubber.test.ts` sibling for the `safe-regex2` assertion that
@@ -67,7 +71,14 @@ export const PATTERNS: readonly SecretPattern[] = [
     name: "openai-project-key",
     // MUST precede `openai-api-key` so the shorter `sk-` prefix doesn't
     // greedily consume `sk-proj-`/`sk-svcacct-` and leave the body unredacted.
-    regex: /\bsk-(?:proj|svcacct)-[A-Za-z0-9_-]{100,256}\b/g,
+    regex: /\bsk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{100,256}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "openrouter-api-key",
+    // MUST precede `openai-api-key` so the generic `sk-` prefix doesn't
+    // greedily consume `sk-or-v1-` and leave the body unredacted.
+    regex: /\bsk-or-v1-[0-9a-f]{55,70}\b/g,
     replacement: REDACTED,
   },
   {
@@ -86,8 +97,27 @@ export const PATTERNS: readonly SecretPattern[] = [
     replacement: REDACTED,
   },
   {
+    name: "slack-access-token",
+    // MUST precede `slack-refresh-token` (more-specific `xoxe.xox[bp]-`
+    // before broader `xoxe-`) AND `slack-token` (`xox[abprs]-` would
+    // greedily consume `xox[bp]-` from `xoxe.xox[bp]-` tokens).
+    regex: /\bxoxe\.xox[bp]-[A-Za-z0-9-]{160,180}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "slack-refresh-token",
+    regex: /\bxoxe-[A-Z0-9-]{140,150}\b/g,
+    replacement: REDACTED,
+  },
+  {
     name: "slack-token",
     regex: /\bxox[abprs]-[A-Za-z0-9-]{10,255}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "slack-app-token",
+    // `xapp-` covers Socket Mode and Audit Logs API tokens (post-Dec-2020).
+    regex: /\bxapp-[A-Za-z0-9-]{90,140}\b/g,
     replacement: REDACTED,
   },
   {
@@ -97,7 +127,8 @@ export const PATTERNS: readonly SecretPattern[] = [
   },
   {
     name: "aws-access-key-id",
-    regex: /\bAKIA[0-9A-Z]{16}\b/g,
+    // Covers AKIA (IAM long-term), ASIA (STS short-term), and ABIA (STS variant).
+    regex: /\bA[SKB]IA[0-9A-Z]{16}\b/g,
     replacement: REDACTED,
   },
   {
@@ -141,6 +172,38 @@ export const PATTERNS: readonly SecretPattern[] = [
   {
     name: "supabase-key",
     regex: /\bsb_(?:publishable|secret)_[A-Za-z0-9_]{32,64}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "replicate-api-token",
+    regex: /\br8_[A-Za-z0-9]{35,40}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "huggingface-api-token",
+    regex: /\bhf_[A-Za-z0-9]{25,40}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "groq-api-key",
+    regex: /\bgsk_[A-Za-z0-9]{40,64}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "linear-api-key",
+    regex: /\blin_api_[A-Za-z0-9]{35,45}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "notion-api-key",
+    regex: /\bntn_[A-Za-z0-9]{40,55}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "sendgrid-api-key",
+    // Three-segment format: `SG.{22-char ID}.{43-char secret}`. No trailing
+    // `\b` because the final segment can end with `-` (non-word char).
+    regex: /\bSG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}/g,
     replacement: REDACTED,
   },
   {
@@ -202,13 +265,66 @@ export const PATTERNS: readonly SecretPattern[] = [
     replacement: "$1<redacted>@",
   },
   {
+    name: "vercel-token",
+    // Covers `vcp_` (personal), `vci_` (CI), `vca_` (account), `vcr_` (refresh), `vck_` (key).
+    regex: /\bvc[piakr]_[A-Za-z0-9]{24,40}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "perplexity-api-key",
+    regex: /\bpplx-[a-f0-9]{48}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "xai-api-key",
+    regex: /\bxai-[A-Za-z0-9]{80}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "together-api-key",
+    // No trailing `\b` because the body charset includes `-` and `_` (non-word
+    // chars), so a token ending in either would silently slip past a boundary.
+    regex: /\btgp_v1_[A-Za-z0-9_-]{43}/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "resend-api-key",
+    regex: /\bre_[A-Za-z0-9]{48}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "heroku-oauth-token",
+    // No trailing `\b`: body charset includes `-` and `_` (non-word) so tokens
+    // ending in either would silently miss the boundary check.
+    regex: /\bHRKU-[A-Za-z0-9_-]{60}/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "telegram-bot-token",
+    // A bare `[0-9]{8,12}:[A-Za-z0-9_-]{35}` would collide with Unix-timestamp +
+    // 35-char-alphanumeric strings in log lines, so this requires the surrounding
+    // key name as context — same precedent as `aws-secret-access-key` above.
+    regex: /\btelegram(?:_bot)?_token\s{0,4}[:=]\s{0,4}[0-9]{8,12}:[A-Za-z0-9_-]{35}\b/gi,
+    replacement: REDACTED,
+  },
+  {
+    name: "datadog-key",
+    // A bare `{32,40}` lowercase-hex run is just an MD5 or SHA1 hash, so this
+    // requires the key name as context. Covers both DD_API_KEY (32 hex) and
+    // DD_APP_KEY (40 hex) in one pattern; no trailing `\b` because the closing
+    // `["']?` may be a non-word char (mirrors `aws-secret-access-key`).
+    regex:
+      /\b(?:DD_API_KEY|DD_APP_KEY|datadog_api_key|datadog_app_key)["']?\s{0,8}[:=]\s{0,8}["']?[a-f0-9]{32,40}["']?/gi,
+    replacement: REDACTED,
+  },
+  {
     name: "generic-key-fallback",
     // Last-resort fallback for `.env`-shaped lines using common API key names.
     // The 16-char minimum body excludes short numeric values like `MAX_TOKENS=8192`,
     // and the listed key names exclude `MAX_TOKENS` / `TOTAL_TOKENS` / request-id
     // shapes by construction.
     regex:
-      /\b(?:api_key|api_secret|access_key|secret_key|private_key|auth_token|auth_secret|client_secret|app_secret|app_key)[ \t]{0,4}=[ \t]{0,4}[A-Za-z0-9/+_-]{16,512}/gi,
+      /\b(?:api_key|api_secret|access_key|secret_key|private_key|auth_token|auth_secret|client_secret|app_secret|app_key|slack_signing_secret)[ \t]{0,4}=[ \t]{0,4}[A-Za-z0-9/+_-]{16,512}/gi,
     replacement: REDACTED,
   },
 ];

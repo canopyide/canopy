@@ -2,6 +2,17 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vite
 import type { PtyClient } from "../PtyClient.js";
 import type { WorkspaceClient } from "../WorkspaceClient.js";
 import type { HibernationService } from "../HibernationService.js";
+import type { ProjectStatsService } from "../ProjectStatsService.js";
+
+const lagState = vi.hoisted(() => ({
+  // Returned by histogram.percentile(99) — nanoseconds.
+  p99Nanoseconds: 0,
+  // Returned by histogram.max — nanoseconds. Independent so payload
+  // assertions can verify maxMs is sourced from .max, not percentile(99).
+  maxNanoseconds: 0,
+  utilization: 0,
+  resetCount: 0,
+}));
 
 vi.mock("electron", () => ({
   app: {
@@ -9,6 +20,7 @@ vi.mock("electron", () => ({
   },
   powerMonitor: {
     isOnBatteryPower: vi.fn(() => false),
+    getCurrentThermalState: vi.fn(() => "unknown" as const),
     on: vi.fn(),
     removeListener: vi.fn(),
   },
@@ -25,15 +37,40 @@ vi.mock("../../utils/logger.js", () => ({
   logInfo: vi.fn(),
 }));
 
+vi.mock("node:perf_hooks", () => ({
+  monitorEventLoopDelay: () => ({
+    enable: vi.fn(),
+    disable: vi.fn(),
+    percentile: () => lagState.p99Nanoseconds,
+    reset: () => {
+      lagState.resetCount += 1;
+    },
+    // max is diagnostic-only and tracked independently so tests can verify
+    // the implementation reads .max instead of percentile(99).
+    get max() {
+      return lagState.maxNanoseconds;
+    },
+  }),
+  performance: {
+    eventLoopUtilization: (_current?: unknown, _previous?: unknown) => ({
+      idle: 0,
+      active: 0,
+      utilization: lagState.utilization,
+    }),
+  },
+}));
+
 import os from "os";
 import { app, powerMonitor } from "electron";
 import { broadcastToRenderer } from "../../ipc/utils.js";
+import { logInfo } from "../../utils/logger.js";
 import { ResourceProfileService, type ResourceProfileDeps } from "../ResourceProfileService.js";
 
 const EIGHT_GB = 8 * 1024 * 1024 * 1024;
 
 const mockGetAppMetrics = app.getAppMetrics as Mock;
 const mockIsOnBatteryPower = powerMonitor.isOnBatteryPower as unknown as Mock;
+const mockGetCurrentThermalState = powerMonitor.getCurrentThermalState as unknown as Mock;
 const mockPowerMonitorOn = powerMonitor.on as unknown as Mock;
 const mockPowerMonitorRemoveListener = powerMonitor.removeListener as unknown as Mock;
 
@@ -48,6 +85,10 @@ interface MockWorkspaceClient {
 
 interface MockHibernationService {
   setMemoryPressureThresholdMs: Mock;
+}
+
+interface MockProjectStatsService {
+  updatePollInterval: Mock;
 }
 
 interface Deferred<T> {
@@ -87,6 +128,7 @@ function createDeps(overrides?: Partial<ResourceProfileDeps>): {
   workspace: MockWorkspaceClient;
   pty: MockPtyClient;
   hibernation: MockHibernationService;
+  stats: MockProjectStatsService;
 } {
   const pty: MockPtyClient = {
     setResourceProfile: vi.fn(),
@@ -98,6 +140,9 @@ function createDeps(overrides?: Partial<ResourceProfileDeps>): {
   const hibernation: MockHibernationService = {
     setMemoryPressureThresholdMs: vi.fn(),
   };
+  const stats: MockProjectStatsService = {
+    updatePollInterval: vi.fn(),
+  };
 
   return {
     deps: {
@@ -105,24 +150,39 @@ function createDeps(overrides?: Partial<ResourceProfileDeps>): {
       getWorkspaceClient: () => workspace as unknown as WorkspaceClient,
       getHibernationService: () => hibernation as unknown as HibernationService,
       getProjectViewManager: () => null,
+      getProjectStatsService: () => stats as unknown as ProjectStatsService,
       getUserCachedViewLimit: () => 1,
       ...overrides,
     },
     workspace,
     pty,
     hibernation,
+    stats,
   };
+}
+
+function setLag(p99Ms: number, utilization: number, maxMs?: number): void {
+  lagState.p99Nanoseconds = p99Ms * 1_000_000;
+  // Default max to p99 so existing tests stay realistic (max ≥ p99 always);
+  // tests that need to discriminate pass an explicit value.
+  lagState.maxNanoseconds = (maxMs ?? p99Ms) * 1_000_000;
+  lagState.utilization = utilization;
 }
 
 describe("ResourceProfileService adversarial", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.setSystemTime(1_830_001);
     vi.clearAllMocks();
     // Pin total RAM so MB-based test values cross the intended threshold bands
     // regardless of the CI host's actual memory.
     vi.spyOn(os, "totalmem").mockReturnValue(EIGHT_GB);
     mockGetAppMetrics.mockReturnValue([]);
     mockIsOnBatteryPower.mockReturnValue(false);
+    mockGetCurrentThermalState.mockReturnValue("unknown" as const);
+    setLag(0, 0);
+    lagState.resetCount = 0;
+    lagState.maxNanoseconds = 0;
   });
 
   afterEach(() => {
@@ -133,23 +193,34 @@ describe("ResourceProfileService adversarial", () => {
   it("does not thrash profiles when pressure oscillates around the hysteresis boundary", () => {
     const { deps } = createDeps();
     const service = new ResourceProfileService(deps);
-
+    mockIsOnBatteryPower.mockReturnValue(true);
     service.start();
+
+    const onBatteryHandler = mockPowerMonitorOn.mock.calls.find(
+      (call: string[]) => call[0] === "on-battery"
+    )?.[1] as (() => void) | undefined;
+    const onAcHandler = mockPowerMonitorOn.mock.calls.find(
+      (call: string[]) => call[0] === "on-ac"
+    )?.[1] as (() => void) | undefined;
 
     vi.advanceTimersByTime(60_000);
 
     const oscillatingSignals = [
-      { metrics: [makeMetric(1300)], battery: true },
-      { metrics: [makeMetric(200)], battery: false },
-      { metrics: [makeMetric(1300)], battery: true },
-      { metrics: [makeMetric(200)], battery: false },
-      { metrics: [makeMetric(900)], battery: false },
-      { metrics: [makeMetric(200)], battery: false },
+      { metrics: [makeMetric(1300)], battery: "on" as const },
+      { metrics: [makeMetric(200)], battery: "off" as const },
+      { metrics: [makeMetric(1300)], battery: "on" as const },
+      { metrics: [makeMetric(200)], battery: "off" as const },
+      { metrics: [makeMetric(900)], battery: "off" as const },
+      { metrics: [makeMetric(200)], battery: "off" as const },
     ];
 
     for (const signal of oscillatingSignals) {
       mockGetAppMetrics.mockReturnValue(signal.metrics);
-      mockIsOnBatteryPower.mockReturnValue(signal.battery);
+      if (signal.battery === "on") {
+        onBatteryHandler!();
+      } else {
+        onAcHandler!();
+      }
       vi.advanceTimersByTime(30_000);
       expect(service.getProfile()).toBe("balanced");
     }
@@ -241,6 +312,8 @@ describe("ResourceProfileService adversarial", () => {
 
     expect(mockPowerMonitorOn).toHaveBeenCalledWith("thermal-state-change", expect.any(Function));
     expect(mockPowerMonitorOn).toHaveBeenCalledWith("speed-limit-change", expect.any(Function));
+    expect(mockPowerMonitorOn).toHaveBeenCalledWith("on-battery", expect.any(Function));
+    expect(mockPowerMonitorOn).toHaveBeenCalledWith("on-ac", expect.any(Function));
 
     service.stop();
   });
@@ -263,11 +336,11 @@ describe("ResourceProfileService adversarial", () => {
     const service = new ResourceProfileService(deps);
 
     service.setWorktreeCount(9);
+    mockIsOnBatteryPower.mockReturnValue(true);
     service.start();
 
     // Low memory (0) + battery (+1) + thermal serious (+1) + worktrees (+1) = 3 => efficiency
     mockGetAppMetrics.mockReturnValue([makeMetric(200)]);
-    mockIsOnBatteryPower.mockReturnValue(true);
     (service as unknown as { thermalState: string }).thermalState = "serious";
 
     vi.advanceTimersByTime(60_000 + 30_000 + 30_000);
@@ -293,7 +366,507 @@ describe("ResourceProfileService adversarial", () => {
     service.stop();
   });
 
-  it.todo(
-    "loop-lag profile mismatches cannot be exercised yet because ResourceProfileService has no loop-lag signal"
-  );
+  describe("event-loop lag", () => {
+    it("drops to efficiency on sustained lag without waiting for the 30s eval", () => {
+      const { deps } = createDeps();
+      const service = new ResourceProfileService(deps);
+      service.start();
+
+      // No memory/battery/thermal pressure — only lag is the trigger.
+      mockGetAppMetrics.mockReturnValue([]);
+      mockIsOnBatteryPower.mockReturnValue(false);
+
+      setLag(300, 0.85);
+      // Two 5s ticks satisfy the 10s sustained-entry requirement.
+      vi.advanceTimersByTime(5_000);
+      expect(service.getProfile()).toBe("balanced");
+      vi.advanceTimersByTime(5_000);
+      expect(service.getProfile()).toBe("efficiency");
+
+      service.stop();
+    });
+
+    it("does not enter degraded mode on an isolated lag spike", () => {
+      const { deps } = createDeps();
+      const service = new ResourceProfileService(deps);
+      service.start();
+
+      setLag(400, 0.9);
+      vi.advanceTimersByTime(5_000);
+      expect(service.getProfile()).toBe("balanced");
+
+      // Single clean tick resets the entry counter.
+      setLag(50, 0.2);
+      vi.advanceTimersByTime(5_000);
+
+      // Another spike — should NOT trigger immediately because the counter reset.
+      setLag(400, 0.9);
+      vi.advanceTimersByTime(5_000);
+      expect(service.getProfile()).toBe("balanced");
+
+      service.stop();
+    });
+
+    it("AND-gates with ELU — high lag with low utilization is treated as a GC pause", () => {
+      const { deps } = createDeps();
+      const service = new ResourceProfileService(deps);
+      service.start();
+
+      // p99 high, ELU low → suspected GC; do not enter degraded mode.
+      setLag(400, 0.3);
+      vi.advanceTimersByTime(5_000);
+      vi.advanceTimersByTime(5_000);
+      vi.advanceTimersByTime(5_000);
+      expect(service.getProfile()).toBe("balanced");
+
+      service.stop();
+    });
+
+    it("does not retrigger applyProfile when already at efficiency", () => {
+      const { deps } = createDeps();
+      const service = new ResourceProfileService(deps);
+      mockIsOnBatteryPower.mockReturnValue(true);
+      service.start();
+
+      // Drive into efficiency via memory + battery first.
+      mockGetAppMetrics.mockReturnValue([makeMetric(1300)]);
+      vi.advanceTimersByTime(60_000 + 30_000 + 30_000);
+      expect(service.getProfile()).toBe("efficiency");
+
+      const broadcastsBefore = (broadcastToRenderer as Mock).mock.calls.length;
+
+      // Now lag spikes too — should NOT re-broadcast or reapply.
+      setLag(400, 0.9);
+      vi.advanceTimersByTime(5_000);
+      vi.advanceTimersByTime(5_000);
+
+      expect(service.getProfile()).toBe("efficiency");
+      expect((broadcastToRenderer as Mock).mock.calls.length).toBe(broadcastsBefore);
+
+      service.stop();
+    });
+
+    it("recovers after 45s of clean p99 readings", () => {
+      const { deps } = createDeps();
+      const service = new ResourceProfileService(deps);
+      service.start();
+
+      // Enter degraded.
+      setLag(300, 0.85);
+      vi.advanceTimersByTime(5_000);
+      vi.advanceTimersByTime(5_000);
+      expect(service.getProfile()).toBe("efficiency");
+      expect((service as unknown as { lagPressureActive: boolean }).lagPressureActive).toBe(true);
+
+      // Nine clean 5s windows = 45s sustained recovery.
+      setLag(50, 0.1);
+      for (let i = 0; i < 9; i++) {
+        vi.advanceTimersByTime(5_000);
+      }
+
+      expect((service as unknown as { lagPressureActive: boolean }).lagPressureActive).toBe(false);
+
+      service.stop();
+    });
+
+    it("a single non-clean tick resets the recovery counter", () => {
+      const { deps } = createDeps();
+      const service = new ResourceProfileService(deps);
+      service.start();
+
+      // Enter degraded.
+      setLag(300, 0.85);
+      vi.advanceTimersByTime(5_000);
+      vi.advanceTimersByTime(5_000);
+      expect((service as unknown as { lagPressureActive: boolean }).lagPressureActive).toBe(true);
+
+      // Eight clean ticks (one short of the 9-tick threshold).
+      setLag(50, 0.1);
+      for (let i = 0; i < 8; i++) {
+        vi.advanceTimersByTime(5_000);
+      }
+      expect((service as unknown as { lagPressureActive: boolean }).lagPressureActive).toBe(true);
+
+      // One non-clean tick (above exit threshold) resets the counter.
+      setLag(200, 0.5);
+      vi.advanceTimersByTime(5_000);
+
+      // Now eight more clean ticks should still NOT recover (counter restarted).
+      setLag(50, 0.1);
+      for (let i = 0; i < 8; i++) {
+        vi.advanceTimersByTime(5_000);
+      }
+      expect((service as unknown as { lagPressureActive: boolean }).lagPressureActive).toBe(true);
+
+      // Ninth clean tick clears it.
+      vi.advanceTimersByTime(5_000);
+      expect((service as unknown as { lagPressureActive: boolean }).lagPressureActive).toBe(false);
+
+      service.stop();
+    });
+
+    it("escalates after one tick above 500ms while degraded", () => {
+      const { deps } = createDeps();
+      const service = new ResourceProfileService(deps);
+      service.start();
+
+      // Enter degraded at 300ms first.
+      setLag(300, 0.85);
+      vi.advanceTimersByTime(5_000);
+      vi.advanceTimersByTime(5_000);
+      expect((service as unknown as { lagEscalatedActive: boolean }).lagEscalatedActive).toBe(
+        false
+      );
+
+      // Spike past 500ms → escalation flag flips.
+      setLag(600, 0.9);
+      vi.advanceTimersByTime(5_000);
+      expect((service as unknown as { lagEscalatedActive: boolean }).lagEscalatedActive).toBe(true);
+
+      service.stop();
+    });
+
+    it("escalation skips refreshWorktreeCount", async () => {
+      const { deps, workspace } = createDeps();
+      const service = new ResourceProfileService(deps);
+      service.start();
+
+      // start() invokes refreshWorktreeCount once unconditionally.
+      const initialCalls = workspace.getAllStatesAsync.mock.calls.length;
+
+      // Enter degraded.
+      setLag(300, 0.85);
+      vi.advanceTimersByTime(5_000);
+      vi.advanceTimersByTime(5_000);
+
+      // Escalate.
+      setLag(600, 0.9);
+      vi.advanceTimersByTime(5_000);
+      expect((service as unknown as { lagEscalatedActive: boolean }).lagEscalatedActive).toBe(true);
+
+      // The next 30s eval should NOT call refreshWorktreeCount.
+      vi.advanceTimersByTime(30_000);
+      expect(workspace.getAllStatesAsync).toHaveBeenCalledTimes(initialCalls);
+
+      service.stop();
+    });
+
+    it("lag-pressure floor blocks the slow scoring loop from upgrading out of efficiency", () => {
+      const { deps, workspace } = createDeps();
+      const service = new ResourceProfileService(deps);
+      service.start();
+
+      // Enter degraded via lag, with no other pressure signals.
+      mockGetAppMetrics.mockReturnValue([]);
+      mockIsOnBatteryPower.mockReturnValue(false);
+      setLag(300, 0.85);
+      vi.advanceTimersByTime(5_000);
+      vi.advanceTimersByTime(5_000);
+      expect(service.getProfile()).toBe("efficiency");
+
+      // Reset broadcast counter to track only post-degraded broadcasts.
+      (broadcastToRenderer as Mock).mockClear();
+      workspace.updateMonitorConfig.mockClear();
+
+      // Lag stays high (not in exit range). Advance 60s of eval ticks — even
+      // though computeTargetProfile() now reports score 0 → "performance",
+      // the floor must hold.
+      setLag(300, 0.85);
+      vi.advanceTimersByTime(30_000);
+      vi.advanceTimersByTime(30_000);
+      vi.advanceTimersByTime(30_000);
+
+      expect(service.getProfile()).toBe("efficiency");
+      expect(broadcastToRenderer).not.toHaveBeenCalled();
+      expect(workspace.updateMonitorConfig).not.toHaveBeenCalled();
+
+      service.stop();
+    });
+
+    it("exit clears escalation state alongside pressure", () => {
+      const { deps } = createDeps();
+      const service = new ResourceProfileService(deps);
+      service.start();
+
+      setLag(300, 0.85);
+      vi.advanceTimersByTime(5_000);
+      vi.advanceTimersByTime(5_000);
+
+      setLag(600, 0.9);
+      vi.advanceTimersByTime(5_000);
+      expect((service as unknown as { lagEscalatedActive: boolean }).lagEscalatedActive).toBe(true);
+
+      setLag(50, 0.1);
+      for (let i = 0; i < 9; i++) {
+        vi.advanceTimersByTime(5_000);
+      }
+
+      const internals = service as unknown as {
+        lagPressureActive: boolean;
+        lagEscalatedActive: boolean;
+      };
+      expect(internals.lagPressureActive).toBe(false);
+      expect(internals.lagEscalatedActive).toBe(false);
+
+      service.stop();
+    });
+
+    it("resets the histogram on every sample", () => {
+      const { deps } = createDeps();
+      const service = new ResourceProfileService(deps);
+      service.start();
+
+      const before = lagState.resetCount;
+      vi.advanceTimersByTime(5_000);
+      vi.advanceTimersByTime(5_000);
+      vi.advanceTimersByTime(5_000);
+      expect(lagState.resetCount - before).toBe(3);
+
+      service.stop();
+    });
+
+    it("entry log payload carries maxMs sourced from histogram.max, not p99", () => {
+      const { deps } = createDeps();
+      const service = new ResourceProfileService(deps);
+      service.start();
+
+      // p99 = 300ms (entry threshold), max = 900ms (a single long block in
+      // the window). Distinct values verify the implementation reads .max
+      // rather than re-using percentile(99).
+      setLag(300, 0.85, 900);
+      vi.advanceTimersByTime(5_000);
+      vi.advanceTimersByTime(5_000);
+
+      expect(logInfo).toHaveBeenCalledWith(
+        "event-loop-lag-detected",
+        expect.objectContaining({ p99Ms: 300, maxMs: 900 })
+      );
+
+      service.stop();
+    });
+
+    it("escalation and clear log payloads carry maxMs", () => {
+      const { deps } = createDeps();
+      const service = new ResourceProfileService(deps);
+      service.start();
+
+      // Enter degraded — used to seed escalation, payload not asserted here.
+      setLag(300, 0.85, 350);
+      vi.advanceTimersByTime(5_000);
+      vi.advanceTimersByTime(5_000);
+
+      // Escalate with distinct max.
+      setLag(600, 0.9, 1200);
+      vi.advanceTimersByTime(5_000);
+      expect(logInfo).toHaveBeenCalledWith(
+        "event-loop-lag-escalated",
+        expect.objectContaining({ p99Ms: 600, maxMs: 1200 })
+      );
+
+      // Recover with low p99 and a small residual max.
+      setLag(50, 0.1, 80);
+      for (let i = 0; i < 9; i++) {
+        vi.advanceTimersByTime(5_000);
+      }
+      expect(logInfo).toHaveBeenCalledWith(
+        "event-loop-lag-cleared",
+        expect.objectContaining({ p99Ms: 50, maxMs: 80 })
+      );
+
+      service.stop();
+    });
+
+    it("entry thresholds are strict greater-than (boundary values do not trigger)", () => {
+      const { deps } = createDeps();
+      const service = new ResourceProfileService(deps);
+      service.start();
+
+      // Exactly at thresholds: p99 === 250 and util === 0.7. Neither satisfies `>`.
+      setLag(250, 0.7);
+      vi.advanceTimersByTime(5_000);
+      vi.advanceTimersByTime(5_000);
+      vi.advanceTimersByTime(5_000);
+      expect(service.getProfile()).toBe("balanced");
+
+      // p99 just over while util at boundary — still no entry.
+      setLag(251, 0.7);
+      vi.advanceTimersByTime(5_000);
+      vi.advanceTimersByTime(5_000);
+      expect(service.getProfile()).toBe("balanced");
+
+      // util just over while p99 at boundary — still no entry.
+      setLag(250, 0.71);
+      vi.advanceTimersByTime(5_000);
+      vi.advanceTimersByTime(5_000);
+      expect(service.getProfile()).toBe("balanced");
+
+      // Both strictly over → enters as expected.
+      setLag(251, 0.71);
+      vi.advanceTimersByTime(5_000);
+      vi.advanceTimersByTime(5_000);
+      expect(service.getProfile()).toBe("efficiency");
+
+      service.stop();
+    });
+
+    it("normal scoring upgrades out of efficiency after lag recovery", () => {
+      const { deps } = createDeps();
+      const service = new ResourceProfileService(deps);
+      service.start();
+
+      // Drive into efficiency via lag.
+      mockGetAppMetrics.mockReturnValue([]);
+      mockIsOnBatteryPower.mockReturnValue(false);
+      setLag(300, 0.85);
+      vi.advanceTimersByTime(5_000);
+      vi.advanceTimersByTime(5_000);
+      expect(service.getProfile()).toBe("efficiency");
+
+      // Recover.
+      setLag(50, 0.1);
+      for (let i = 0; i < 9; i++) {
+        vi.advanceTimersByTime(5_000);
+      }
+      expect((service as unknown as { lagPressureActive: boolean }).lagPressureActive).toBe(false);
+
+      // From here, normal scoring should drive back up. While lag was active,
+      // evaluate() returned early at the lag floor without exiting warmup,
+      // so tickCount has only crossed the floor branch. Drive past the
+      // 2-warmup ticks + 90s upgrade hold combination.
+      vi.advanceTimersByTime(30_000);
+      vi.advanceTimersByTime(30_000);
+      vi.advanceTimersByTime(30_000);
+      vi.advanceTimersByTime(30_000);
+      vi.advanceTimersByTime(30_000);
+      expect(service.getProfile()).toBe("performance");
+
+      service.stop();
+    });
+
+    it("getCurrentThermalState throwing does not crash start", () => {
+      vi.spyOn(process, "platform", "get").mockReturnValue("darwin");
+      mockGetCurrentThermalState.mockImplementation(() => {
+        throw new Error("thermal unavailable");
+      });
+
+      const { deps } = createDeps();
+      const service = new ResourceProfileService(deps);
+      expect(() => service.start()).not.toThrow();
+
+      const internals = service as unknown as { thermalState: string };
+      expect(internals.thermalState).toBe("unknown");
+
+      service.stop();
+    });
+
+    it("isOnBatteryPower throwing during priming does not crash start", () => {
+      mockIsOnBatteryPower.mockImplementation(() => {
+        throw new Error("battery unavailable");
+      });
+
+      const { deps } = createDeps();
+      const service = new ResourceProfileService(deps);
+      expect(() => service.start()).not.toThrow();
+
+      const internals = service as unknown as { isOnBattery: boolean };
+      expect(internals.isOnBattery).toBe(false);
+
+      service.stop();
+    });
+
+    it("cold start with thermal critical contributes to first evaluation", () => {
+      vi.spyOn(process, "platform", "get").mockReturnValue("darwin");
+      mockGetCurrentThermalState.mockReturnValue("critical" as const);
+      mockIsOnBatteryPower.mockReturnValue(true);
+
+      const { deps } = createDeps();
+      const service = new ResourceProfileService(deps);
+      service.start();
+
+      // Low memory (0) + battery (+1) + thermal critical (+2) = 3 => efficiency
+      // Without thermal priming the score would be 1 => balanced
+      mockGetAppMetrics.mockReturnValue([makeMetric(200)]);
+      vi.advanceTimersByTime(60_000 + 30_000 + 30_000);
+      expect(service.getProfile()).toBe("efficiency");
+
+      service.stop();
+    });
+
+    it("stop/start resets tickCount and enforces warmup on restart", () => {
+      const { deps } = createDeps();
+      const service = new ResourceProfileService(deps);
+
+      service.start();
+      // Advance past warmup
+      vi.advanceTimersByTime(60_000);
+      expect((service as unknown as { tickCount: number }).tickCount).toBeGreaterThan(0);
+
+      service.stop();
+      service.start();
+
+      expect((service as unknown as { tickCount: number }).tickCount).toBe(0);
+      // High pressure signals should NOT transition during warmup after restart
+      mockGetAppMetrics.mockReturnValue([makeMetric(1300)]);
+      mockIsOnBatteryPower.mockReturnValue(true);
+      vi.advanceTimersByTime(60_000);
+      expect(service.getProfile()).toBe("balanced");
+
+      service.stop();
+    });
+
+    it("isOnBatteryPower not called on evaluation ticks", () => {
+      const { deps } = createDeps();
+      const service = new ResourceProfileService(deps);
+      service.start();
+      const callsAfterStart = mockIsOnBatteryPower.mock.calls.length;
+
+      // Several eval ticks
+      vi.advanceTimersByTime(60_000 + 30_000 + 30_000);
+      expect(mockIsOnBatteryPower).toHaveBeenCalledTimes(callsAfterStart);
+
+      service.stop();
+    });
+
+    it("malformed thermal event payload preserves last valid state", () => {
+      const { deps } = createDeps();
+      const service = new ResourceProfileService(deps);
+      service.start();
+
+      const thermalHandler = mockPowerMonitorOn.mock.calls.find(
+        (call: string[]) => call[0] === "thermal-state-change"
+      )?.[1] as ((details: { state: string }) => void) | undefined;
+      expect(thermalHandler).toBeDefined();
+
+      // Set a known-good state first
+      thermalHandler!({ state: "critical" });
+      expect((service as unknown as { thermalState: string }).thermalState).toBe("critical");
+
+      // Bogus state value must not throw and must preserve last valid state
+      expect(() => thermalHandler!({ state: "bogus" })).not.toThrow();
+      expect((service as unknown as { thermalState: string }).thermalState).toBe("critical");
+
+      service.stop();
+    });
+
+    it("stop tears down the lag timer and histogram", () => {
+      const { deps } = createDeps();
+      const service = new ResourceProfileService(deps);
+      service.start();
+
+      service.stop();
+
+      // After stop, advancing timers must not change state or invoke histogram reset.
+      const before = lagState.resetCount;
+      setLag(600, 0.9);
+      vi.advanceTimersByTime(60_000);
+      expect(lagState.resetCount).toBe(before);
+
+      const internals = service as unknown as {
+        lagInterval: NodeJS.Timeout | null;
+        lagHistogram: unknown;
+      };
+      expect(internals.lagInterval).toBeNull();
+      expect(internals.lagHistogram).toBeNull();
+    });
+  });
 });

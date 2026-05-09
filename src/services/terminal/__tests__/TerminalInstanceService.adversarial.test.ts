@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TerminalRefreshTier } from "../../../../shared/types/panel";
 import type { ManagedTerminal } from "../types";
+import { preloadMockWebglAddon } from "./_preloadWebglAddon";
 
 const testState = vi.hoisted(() => ({
   webglAddons: [] as Array<{
@@ -194,6 +195,14 @@ describe("TerminalInstanceService adversarial", () => {
   beforeEach(async () => {
     vi.resetModules();
     vi.useFakeTimers();
+    // useFakeTimers replaces requestAnimationFrame with its own queue; the
+    // WebGL manager's drain queue needs sync rAF for these tests to retain
+    // their ensureContext()→isActive() inline expectations.
+    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback): number => {
+      cb(0);
+      return 0;
+    }) as typeof globalThis.requestAnimationFrame;
+    globalThis.cancelAnimationFrame = (() => {}) as typeof globalThis.cancelAnimationFrame;
     testState.webglAddons.length = 0;
     Object.values(testState.clientMocks).forEach((mock) => {
       if ("mockReset" in mock && typeof mock.mockReset === "function") {
@@ -215,6 +224,7 @@ describe("TerminalInstanceService adversarial", () => {
 
     const { TerminalWebGLManager } = await import("../TerminalWebGLManager");
     originalMaxContexts = TerminalWebGLManager.MAX_CONTEXTS;
+    await preloadMockWebglAddon();
   });
 
   afterEach(async () => {
@@ -345,5 +355,45 @@ describe("TerminalInstanceService adversarial", () => {
     expect(testState.clientMocks.acknowledgeData).not.toHaveBeenCalled();
     expect(notifyWriteCompleteSpy).toHaveBeenCalledWith("t1", 3);
     expect(managed.terminal.write).not.toHaveBeenCalled();
+  });
+
+  // Verifies the contract that @xterm/addon-image's async IIPHandler.end() relies on:
+  // xterm 6.0's WriteBuffer pauses _bufferOffset on a Promise-returning parser handler,
+  // so terminal.write(data, cb) only fires `cb` after the async decode settles. The
+  // pty-host credit acks (acknowledgeData / acknowledgePortData) live inside that
+  // callback — see TerminalInstanceService.ts:522-529 — so async image decoding must
+  // not release flow-control credit prematurely.
+  it("ASYNC_IMAGE_DECODE_HOLDS_WRITE_CALLBACK", async () => {
+    let capturedCallback: (() => void) | undefined;
+    const managed = makeManaged({
+      terminal: {
+        ...makeManaged().terminal,
+        write: vi.fn((_data: string | Uint8Array, cb?: () => void) => {
+          capturedCallback = cb;
+          Promise.resolve().then(() => cb?.());
+        }),
+        registerMarker: vi.fn(() => ({ dispose: vi.fn() })),
+      } as unknown as ManagedTerminal["terminal"],
+    });
+    service.instances.set("t1", managed);
+    const notifyWriteCompleteSpy = vi.spyOn(service.dataBuffer, "notifyWriteComplete");
+
+    service.writeToTerminal("t1", "abc");
+
+    expect(capturedCallback).toBeTypeOf("function");
+    expect(managed.pendingWrites).toBe(1);
+    expect(testState.clientMocks.acknowledgePortData).not.toHaveBeenCalled();
+    expect(testState.clientMocks.acknowledgeData).not.toHaveBeenCalled();
+    expect(notifyWriteCompleteSpy).not.toHaveBeenCalled();
+
+    await Promise.resolve();
+
+    expect(managed.pendingWrites).toBe(0);
+    expect(testState.clientMocks.acknowledgePortData).toHaveBeenCalledTimes(1);
+    expect(testState.clientMocks.acknowledgePortData).toHaveBeenCalledWith("t1", 3);
+    expect(testState.clientMocks.acknowledgeData).toHaveBeenCalledTimes(1);
+    expect(testState.clientMocks.acknowledgeData).toHaveBeenCalledWith("t1", 3);
+    expect(notifyWriteCompleteSpy).toHaveBeenCalledTimes(1);
+    expect(notifyWriteCompleteSpy).toHaveBeenCalledWith("t1", 3);
   });
 });

@@ -23,6 +23,7 @@ export function QuickStateFilterBar({ value, onChange, counts }: QuickStateFilte
     >
       {FILTER_OPTIONS.map((option) => {
         const isActive = option.value === value;
+        const count = counts && option.value !== "all" ? counts[option.value] : undefined;
         return (
           <button
             key={option.value}
@@ -32,12 +33,18 @@ export function QuickStateFilterBar({ value, onChange, counts }: QuickStateFilte
             className={cn(
               "inline-flex items-center px-2 py-0.5 text-[11px] rounded-full transition-colors",
               isActive
-                ? "bg-tint/[0.12] text-daintree-text font-medium"
-                : "text-daintree-text/50 hover:text-daintree-text/70 hover:bg-tint/[0.04]"
+                ? "ring-1 ring-inset ring-text-secondary text-daintree-text font-medium"
+                : "text-daintree-text/60 hover:text-daintree-text hover:bg-tint/[0.04]"
             )}
           >
             {option.label}
-            {counts && option.value !== "all" && ` (${counts[option.value]})`}
+            {/* "All" has no count — quickStateCounts excludes main/integration worktrees, so the sum != the sidebar header's (N) total. */}
+            {count !== undefined && (
+              <>
+                <span aria-hidden="true">{` (${count})`}</span>
+                <span className="sr-only">{`, ${count} ${count === 1 ? "worktree" : "worktrees"}`}</span>
+              </>
+            )}
           </button>
         );
       })}

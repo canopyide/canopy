@@ -23,7 +23,8 @@ import { Spinner } from "@/components/ui/Spinner";
 import { Folders, McpServerIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { shortcutHintStore } from "@/store/shortcutHintStore";
-import { isMac, isLinux, createTooltipWithShortcut } from "@/lib/platform";
+import { isMac, isLinux } from "@/lib/platform";
+import { createTooltipContent } from "@/lib/tooltipShortcut";
 import { AgentButton } from "./AgentButton";
 import { AgentTrayButton } from "./AgentTrayButton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -37,7 +38,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useToolbarOverflow } from "@/hooks/useToolbarOverflow";
 import { useWorktreeActions } from "@/hooks/useWorktreeActions";
-import { useKeybindingDisplay, useShortcutHintHover } from "@/hooks";
+import { useAriaKeyshortcuts, useKeybindingDisplay, useShortcutHintHover } from "@/hooks";
 import type { UseProjectSwitcherPaletteReturn } from "@/hooks";
 import type { SearchableProject } from "@/hooks/useProjectSwitcherPalette";
 import { useProjectStore } from "@/store/projectStore";
@@ -62,6 +63,8 @@ import { ToolbarLauncherButton } from "./ToolbarLauncherButton";
 import { ToolbarSettingsButton } from "./ToolbarSettingsButton";
 import { ToolbarProblemsButton } from "./ToolbarProblemsButton";
 import { ToolbarPortalButton } from "./ToolbarPortalButton";
+import { ToolbarAssistantButton } from "./ToolbarAssistantButton";
+import { useOverflowBadgeSeverity, type OverflowBadgeSeverity } from "./useOverflowBadgeSeverity";
 
 import { BUILT_IN_AGENT_IDS, type BuiltInAgentId } from "@shared/config/agentIds";
 import { getAgentConfig } from "@/config/agents";
@@ -73,7 +76,7 @@ const AGENT_TOOLBAR_IDS = new Set<ToolbarButtonId>([
 
 type OverflowMenuMeta = { label: string; icon: React.ComponentType<{ className?: string }> };
 
-const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text transition-colors relative";
+const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text relative";
 
 export function PluginToolbarButton({
   pluginId,
@@ -216,6 +219,9 @@ export function Toolbar({
   const { handleCopyTree } = useWorktreeActions();
   const sidebarShortcut = useKeybindingDisplay("nav.toggleSidebar");
   const copyTreeShortcut = useKeybindingDisplay("worktree.copyTree");
+  const devServerShortcut = useKeybindingDisplay("devServer.start");
+  const sidebarAriaShortcut = useAriaKeyshortcuts("nav.toggleSidebar");
+  const copyTreeAriaShortcut = useAriaKeyshortcuts("worktree.copyTree");
 
   const sidebarHintHover = useShortcutHintHover("nav.toggleSidebar");
   const devServerHintHover = useShortcutHintHover("devServer.start");
@@ -389,16 +395,14 @@ export function Toolbar({
                 className={toolbarIconButtonClass}
                 aria-label="Toggle Sidebar"
                 aria-pressed={!isFocusMode}
+                aria-keyshortcuts={sidebarAriaShortcut}
               >
                 {isFocusMode ? <PanelLeftOpen /> : <PanelLeftClose />}
                 <ShortcutRevealChip actionId="nav.toggleSidebar" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              {createTooltipWithShortcut(
-                isFocusMode ? "Show Sidebar" : "Hide Sidebar",
-                sidebarShortcut
-              )}
+              {createTooltipContent(isFocusMode ? "Show Sidebar" : "Hide Sidebar", sidebarShortcut)}
             </TooltipContent>
           </Tooltip>
         ),
@@ -472,7 +476,9 @@ export function Toolbar({
                 <MonitorPlay />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">Open Dev Preview</TooltipContent>
+            <TooltipContent side="bottom">
+              {createTooltipContent("Open Dev Preview", devServerShortcut)}
+            </TooltipContent>
           </Tooltip>
         ),
         isAvailable: !!currentProject,
@@ -500,7 +506,7 @@ export function Toolbar({
       },
       "copy-tree": {
         render: () => (
-          <Tooltip open={treeCopied || undefined} delayDuration={treeCopied ? 0 : 300}>
+          <Tooltip open={treeCopied || undefined}>
             <TooltipTrigger asChild>
               <Button
                 {...copyTreeHintHover}
@@ -510,7 +516,7 @@ export function Toolbar({
                 onClick={handleCopyTreeClick}
                 disabled={isCopyingTree || !activeWorktree}
                 className={cn(
-                  "toolbar-icon-button transition-colors relative",
+                  "toolbar-icon-button relative",
                   treeCopied ? "text-status-success bg-status-success/10" : "text-daintree-text",
                   isCopyingTree && "cursor-wait opacity-70",
                   !activeWorktree && "opacity-50"
@@ -518,6 +524,7 @@ export function Toolbar({
                 aria-label={
                   isCopyingTree ? "Copying…" : treeCopied ? "Context Copied" : "Copy Context"
                 }
+                aria-keyshortcuts={copyTreeAriaShortcut}
               >
                 {isCopyingTree ? <Spinner /> : treeCopied ? <Check /> : <Folders />}
                 {!treeCopied && !isCopyingTree && (
@@ -533,7 +540,7 @@ export function Toolbar({
                   {copyFeedback}
                 </span>
               ) : (
-                createTooltipWithShortcut("Copy Context", copyTreeShortcut)
+                createTooltipContent("Copy Context", copyTreeShortcut)
               )}
             </TooltipContent>
           </Tooltip>
@@ -562,6 +569,10 @@ export function Toolbar({
         ),
         isAvailable: showDeveloperTools,
       },
+      "assistant-toggle": {
+        render: () => <ToolbarAssistantButton key="assistant-toggle" data-toolbar-item="" />,
+        isAvailable: true,
+      },
       "portal-toggle": {
         render: () => <ToolbarPortalButton key="portal-toggle" data-toolbar-item="" />,
         isAvailable: true,
@@ -588,7 +599,11 @@ export function Toolbar({
       effectiveAgentSettings,
       onLaunchAgent,
       sidebarShortcut,
+      sidebarAriaShortcut,
+      sidebarHintHover,
       copyTreeShortcut,
+      copyTreeAriaShortcut,
+      copyTreeHintHover,
       hasActiveVoiceRecording,
       currentProject,
       handleCopyTreeClick,
@@ -604,6 +619,8 @@ export function Toolbar({
       notificationsEnabled,
       pluginButtonIds,
       pluginConfigs,
+      devServerShortcut,
+      devServerHintHover,
     ]
   );
 
@@ -639,6 +656,9 @@ export function Toolbar({
     availableLeftIds,
     availableRightIds
   );
+
+  const leftOverflowSeverity = useOverflowBadgeSeverity(leftOverflow, errorCount);
+  const rightOverflowSeverity = useOverflowBadgeSeverity(rightOverflow, errorCount);
 
   const leftVisibleSet = useMemo(() => new Set<AnyToolbarButtonId>(leftVisible), [leftVisible]);
   const rightVisibleSet = useMemo(() => new Set<AnyToolbarButtonId>(rightVisible), [rightVisible]);
@@ -779,8 +799,28 @@ export function Toolbar({
     ]
   );
 
-  const renderOverflowMenu = (overflowIds: AnyToolbarButtonId[], side: "left" | "right") => {
+  const renderOverflowMenu = (
+    overflowIds: AnyToolbarButtonId[],
+    side: "left" | "right",
+    severity: OverflowBadgeSeverity
+  ) => {
     if (overflowIds.length === 0) return null;
+    // voice-recording is intentionally absent from OVERFLOW_MENU_META — it
+    // doesn't render a dropdown menu item and has no actionable target while
+    // already active. Surface it in the tooltip/aria-label only so the
+    // count and the named list stay in sync.
+    const itemLabels = overflowIds
+      .map((id) => {
+        if (id === "voice-recording") return "Voice recording";
+        return OVERFLOW_MENU_META[id]?.label ?? pluginOverflowMeta[id]?.label;
+      })
+      .filter((label): label is string => Boolean(label));
+    const tooltipText =
+      itemLabels.length > 0
+        ? `${overflowIds.length} more — ${itemLabels.join(", ")}`
+        : `${overflowIds.length} more toolbar items`;
+    const ariaLabel =
+      itemLabels.length > 0 ? tooltipText : `${overflowIds.length} more toolbar items`;
     return (
       <DropdownMenu>
         <Tooltip>
@@ -791,13 +831,20 @@ export function Toolbar({
                 size="icon"
                 data-toolbar-item=""
                 className={toolbarIconButtonClass}
-                aria-label={`${overflowIds.length} more toolbar items`}
+                aria-label={ariaLabel}
               >
                 <Ellipsis />
+                <span
+                  aria-hidden="true"
+                  data-testid="toolbar-overflow-badge"
+                  data-severity={severity}
+                  data-visible={severity !== null}
+                  className="toolbar-overflow-badge toolbar-badge absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full ring-1 ring-daintree-bg/60 pointer-events-none"
+                />
               </Button>
             </DropdownMenuTrigger>
           </TooltipTrigger>
-          <TooltipContent side="bottom">More items</TooltipContent>
+          <TooltipContent side="bottom">{tooltipText}</TooltipContent>
         </Tooltip>
         <DropdownMenuContent
           align={side === "left" ? "start" : "end"}
@@ -869,7 +916,7 @@ export function Toolbar({
         aria-label="Main toolbar"
         onKeyDown={handleToolbarKeyDown}
         onFocusCapture={handleToolbarFocusCapture}
-        className="@container/toolbar relative grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] h-12 items-center px-4 pt-1 shrink-0 app-drag-region surface-toolbar border-b border-divider"
+        className="@container/toolbar relative z-[60] grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] h-12 items-center px-4 pt-1 shrink-0 app-drag-region surface-toolbar border-b border-divider"
       >
         {!isLinux() && <div className="window-resize-strip" />}
 
@@ -897,7 +944,9 @@ export function Toolbar({
           >
             {renderLeftButtons(effectiveLeftButtons, leftVisibleSet)}
           </div>
-          <div className="app-no-drag">{renderOverflowMenu(leftOverflow, "left")}</div>
+          <div className="app-no-drag">
+            {renderOverflowMenu(leftOverflow, "left", leftOverflowSeverity)}
+          </div>
         </div>
 
         {/* CENTER GROUP - Grid-centered, shrinks gracefully on narrow windows */}
@@ -929,11 +978,23 @@ export function Toolbar({
             onRemoveConfirmClose={handleRemoveConfirmClose}
             onConfirmRemove={projectSwitcher.confirmRemoveProject}
             isRemovingProject={projectSwitcher.isRemovingProject}
+            scratchResults={projectSwitcher.scratchResults}
+            onCreateScratch={() => void projectSwitcher.createScratch()}
+            onSelectScratch={(scratch) => void projectSwitcher.selectScratch(scratch)}
+            onRemoveScratch={(scratchId) => void projectSwitcher.removeScratchAction(scratchId)}
+            onSaveAsProject={(scratchId) => void projectSwitcher.saveAsProject(scratchId)}
+            saveAsProjectConfirm={projectSwitcher.saveAsProjectConfirm}
+            onDismissSaveAsProjectConfirm={projectSwitcher.dismissSaveAsProjectConfirm}
+            onConfirmDeleteOriginalScratch={() =>
+              void projectSwitcher.confirmDeleteOriginalScratch()
+            }
+            isDeletingOriginalScratch={projectSwitcher.isDeletingOriginalScratch}
           >
             <button
               data-toolbar-item=""
               className="toolbar-project-pill app-no-drag pointer-events-auto flex h-9 min-w-0 max-w-full items-center justify-center gap-2 overflow-hidden border px-3 outline-hidden"
               data-testid="project-switcher-trigger"
+              aria-label={currentProject ? undefined : "Open project"}
               onClick={() => projectSwitcher.open("dropdown")}
             >
               {currentProject ? (
@@ -958,10 +1019,7 @@ export function Toolbar({
               ) : (
                 <>
                   <span className="text-xs font-medium text-daintree-text tracking-wide truncate min-w-0">
-                    Daintree
-                  </span>
-                  <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-status-info/15 text-status-info shrink-0">
-                    Beta
+                    Open project
                   </span>
                   <ChevronsUpDown className="toolbar-project-meta ml-0.5 h-3 w-3 shrink-0" />
                 </>
@@ -982,11 +1040,16 @@ export function Toolbar({
           >
             {renderButtons(effectiveRightButtons, rightVisibleSet)}
           </div>
-          <div className="app-no-drag">{renderOverflowMenu(rightOverflow, "right")}</div>
+          <div className="app-no-drag">
+            {renderOverflowMenu(rightOverflow, "right", rightOverflowSeverity)}
+          </div>
 
           <div className={toolbarDividerClass} />
 
-          <div className="app-no-drag">{buttonRegistry["portal-toggle"]!.render()}</div>
+          <div className="app-no-drag flex items-center gap-0.5">
+            {buttonRegistry["assistant-toggle"]!.render()}
+            {buttonRegistry["portal-toggle"]!.render()}
+          </div>
         </div>
       </div>
     </header>

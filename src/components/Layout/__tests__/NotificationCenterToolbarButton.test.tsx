@@ -12,6 +12,15 @@
  *  - aria-label / tooltip describes the muted state with a time-of-day when known
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
+
+// jsdom does not ship AnimationEvent.
+if (typeof AnimationEvent === "undefined") {
+  (globalThis as Record<string, unknown>).AnimationEvent = class AnimationEvent extends Event {
+    constructor(type: string, init?: EventInit) {
+      super(type, init);
+    }
+  };
+}
 import { render, act } from "@testing-library/react";
 import { NotificationCenterToolbarButton } from "../NotificationCenterToolbarButton";
 import { useNotificationHistoryStore } from "@/store/slices/notificationHistorySlice";
@@ -56,7 +65,11 @@ vi.mock("lucide-react", () => ({
 }));
 
 function resetStores() {
-  useNotificationHistoryStore.setState({ entries: [], unreadCount: 0 });
+  useNotificationHistoryStore.setState({
+    entries: [],
+    unreadCount: 0,
+    evictedToInboxCount: 0,
+  });
   useNotificationSettingsStore.setState({
     enabled: true,
     hydrated: true,
@@ -150,27 +163,18 @@ describe("NotificationCenterToolbarButton — DND state surface", () => {
   });
 
   describe("unread dot", () => {
-    it("does not render when unreadCount is 0", () => {
-      const { queryByTestId } = render(<NotificationCenterToolbarButton />);
-      expect(queryByTestId("notification-unread-dot")).toBeNull();
+    it("renders hidden when unreadCount is 0", () => {
+      const { getByTestId } = render(<NotificationCenterToolbarButton />);
+      const dot = getByTestId("notification-unread-dot");
+      expect(dot.getAttribute("data-visible")).toBe("false");
     });
 
-    it("renders a plain dot (no number) when unreadCount > 0 and DND is off", () => {
+    it("renders visible when unreadCount > 0 and DND is off", () => {
       useNotificationHistoryStore.setState({ unreadCount: 5 });
       const { getByTestId } = render(<NotificationCenterToolbarButton />);
       const dot = getByTestId("notification-unread-dot");
-      expect(dot).toBeTruthy();
+      expect(dot.getAttribute("data-visible")).toBe("true");
       expect(dot.textContent).toBe("");
-      expect(dot.className).not.toContain("bg-daintree-accent");
-    });
-
-    it("uses a dimmer non-accent color when DND is active and there are unreads", () => {
-      useNotificationHistoryStore.setState({ unreadCount: 2 });
-      useNotificationSettingsStore.setState({ quietUntil: Date.now() + 60 * 1000 });
-      const { getByTestId } = render(<NotificationCenterToolbarButton />);
-      const dot = getByTestId("notification-unread-dot");
-      expect(dot.className).toContain("bg-daintree-text/30");
-      expect(dot.className).not.toContain("bg-daintree-accent");
     });
   });
 
@@ -432,6 +436,135 @@ describe("NotificationCenterToolbarButton — DND state surface", () => {
 
       unmount();
       expect(visibilityListeners.length).toBe(0);
+    });
+  });
+
+  // Issue #6424 — when a notification lands in the inbox (toast eviction or
+  // priority:"low" direct-to-inbox), the bell should play a brief one-shot
+  // arrival animation. The animation must not fire during DND/quiet hours
+  // and must not fire on the initial mount baseline. Cleanup uses the
+  // onAnimationEnd + safety-timeout pattern from AgentStatusIndicator so
+  // no will-change layer hint lingers on the toolbar element.
+  describe("inbox arrival animation (issue #6424)", () => {
+    it("does not animate on the initial render", () => {
+      useNotificationHistoryStore.setState({ evictedToInboxCount: 0 });
+      const { getByTestId } = render(<NotificationCenterToolbarButton />);
+      const wrapper = getByTestId("notification-bell-icon");
+      expect(wrapper.className).not.toContain("animate-activity-blip");
+    });
+
+    it("does not animate when mounted with a non-zero baseline (e.g. fast-refresh)", () => {
+      useNotificationHistoryStore.setState({ evictedToInboxCount: 5 });
+      const { getByTestId } = render(<NotificationCenterToolbarButton />);
+      const wrapper = getByTestId("notification-bell-icon");
+      expect(wrapper.className).not.toContain("animate-activity-blip");
+    });
+
+    it("animates the bell when evictedToInboxCount increases and DND is inactive", async () => {
+      const { getByTestId } = render(<NotificationCenterToolbarButton />);
+      await act(async () => {
+        useNotificationHistoryStore.setState({ evictedToInboxCount: 1 });
+      });
+      const wrapper = getByTestId("notification-bell-icon");
+      expect(wrapper.className).toContain("animate-activity-blip");
+    });
+
+    it("does not animate when DND is active", async () => {
+      useNotificationSettingsStore.setState({ quietUntil: Date.now() + 60 * 60 * 1000 });
+      const { getByTestId } = render(<NotificationCenterToolbarButton />);
+      await act(async () => {
+        useNotificationHistoryStore.setState({ evictedToInboxCount: 1 });
+      });
+      const wrapper = getByTestId("notification-bell-icon");
+      expect(wrapper.className).not.toContain("animate-activity-blip");
+    });
+
+    it("does not re-animate when the count drops back to zero (no new arrival)", async () => {
+      const { getByTestId } = render(<NotificationCenterToolbarButton />);
+      await act(async () => {
+        useNotificationHistoryStore.setState({ evictedToInboxCount: 1 });
+      });
+      expect(getByTestId("notification-bell-icon").className).toContain("animate-activity-blip");
+
+      // Reset — count drops 1 → 0. Decrease clears isBellBlipping so the
+      // next increase triggers a fresh animation cycle.
+      await act(async () => {
+        useNotificationHistoryStore.setState({ evictedToInboxCount: 0 });
+      });
+      await act(async () => {
+        useNotificationHistoryStore.setState({ evictedToInboxCount: 1 });
+      });
+      expect(getByTestId("notification-bell-icon").className).toContain("animate-activity-blip");
+    });
+
+    it("toggling the center open resets the eviction counter; closing does not", async () => {
+      // Seed the counter as if two toasts had been evicted into the inbox.
+      useNotificationHistoryStore.setState({ evictedToInboxCount: 2 });
+      const { container } = render(<NotificationCenterToolbarButton />);
+      const button = container.querySelector("button")!;
+
+      // First click: closed → open. Reset must fire.
+      await act(async () => {
+        button.click();
+      });
+      expect(useUIStore.getState().notificationCenterOpen).toBe(true);
+      expect(useNotificationHistoryStore.getState().evictedToInboxCount).toBe(0);
+
+      // Second click: open → closed. Closing must NOT silently zero a fresh
+      // counter that arrives after the user has already opened the center.
+      await act(async () => {
+        button.click();
+      });
+      expect(useUIStore.getState().notificationCenterOpen).toBe(false);
+      // Simulate a fresh eviction landing while the center is closed.
+      await act(async () => {
+        useNotificationHistoryStore.setState({ evictedToInboxCount: 1 });
+      });
+      expect(useNotificationHistoryStore.getState().evictedToInboxCount).toBe(1);
+
+      // Third click: closed → open again. Reset must fire on every entry to
+      // the open state, not just the first.
+      await act(async () => {
+        button.click();
+      });
+      expect(useNotificationHistoryStore.getState().evictedToInboxCount).toBe(0);
+    });
+
+    it("animation class persists across multiple subsequent increments", async () => {
+      const { getByTestId } = render(<NotificationCenterToolbarButton />);
+      await act(async () => {
+        useNotificationHistoryStore.setState({ evictedToInboxCount: 1 });
+      });
+      expect(getByTestId("notification-bell-icon").className).toContain("animate-activity-blip");
+      await act(async () => {
+        useNotificationHistoryStore.setState({ evictedToInboxCount: 2 });
+      });
+      expect(getByTestId("notification-bell-icon").className).toContain("animate-activity-blip");
+      await act(async () => {
+        useNotificationHistoryStore.setState({ evictedToInboxCount: 3 });
+      });
+      expect(getByTestId("notification-bell-icon").className).toContain("animate-activity-blip");
+    });
+
+    it("removes the animation class via safety timeout when the animation completes", async () => {
+      vi.useFakeTimers();
+      const { getByTestId } = render(<NotificationCenterToolbarButton />);
+      await act(async () => {
+        useNotificationHistoryStore.setState({ evictedToInboxCount: 1 });
+      });
+      expect(getByTestId("notification-bell-icon").className).toContain("animate-activity-blip");
+
+      // Advance past the 250ms safety timeout (DURATION_200 + 50). In jsdom
+      // `animationend` doesn't fire via dispatchEvent, so the safety timeout
+      // is the testable cleanup path — same as AgentStatusIndicator.
+      await act(async () => {
+        vi.advanceTimersByTime(300);
+      });
+
+      expect(getByTestId("notification-bell-icon").className).not.toContain(
+        "animate-activity-blip"
+      );
+      vi.useRealTimers();
     });
   });
 });

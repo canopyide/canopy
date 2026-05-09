@@ -391,6 +391,118 @@ describe("DiagnosticsCollector adversarial", () => {
     expect(msg).toContain("[REDACTED]");
   });
 
+  it("PROCESS_REPORT_HEADER_PII_REDACTED", async () => {
+    const reportSpy = vi.spyOn(process, "report", "get").mockReturnValue({
+      getReport: () =>
+        ({
+          header: {
+            reportVersion: 5,
+            event: "JavaScript API",
+            trigger: "GetReport",
+            nodejsVersion: "v20.0.0",
+            arch: "arm64",
+            platform: "darwin",
+            host: "Joes-MacBook.local",
+            cwd: "/Users/joe/project",
+            filename: "/Users/joe/report.json",
+            commandLine: [
+              "node",
+              "/Users/joe/app.js",
+              "--token=ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef0123456",
+            ],
+            networkInterfaces: [{ mac: "aa:bb:cc:dd:ee:ff", address: "192.168.1.10" }],
+          },
+          resourceUsage: {},
+          libuv: [],
+        }) as unknown as ReturnType<NonNullable<typeof process.report>["getReport"]>,
+    } as unknown as typeof process.report);
+
+    try {
+      const payload = (await diagnostics.collectDiagnostics(createDeps())) as {
+        process: {
+          nodeReport: {
+            header: {
+              host?: string;
+              cwd?: string;
+              filename?: string;
+              commandLine?: string[];
+              networkInterfaces?: unknown;
+              nodejsVersion?: string;
+              arch?: string;
+            };
+          };
+        };
+      };
+
+      const header = payload.process.nodeReport.header;
+      expect(header.host).toBe("<hostname>");
+      expect(header.cwd).not.toContain("/Users/joe");
+      expect(header.filename).not.toContain("/Users/joe");
+      expect(header.commandLine?.join(" ")).not.toContain("ghp_");
+      expect(header.commandLine?.join(" ")).not.toContain(
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef0123456"
+      );
+      expect(header.commandLine?.join(" ")).not.toContain("/Users/joe");
+      expect(header.networkInterfaces).toBeUndefined();
+      // Safe metadata preserved.
+      expect(header.nodejsVersion).toBe("v20.0.0");
+      expect(header.arch).toBe("arm64");
+    } finally {
+      reportSpy.mockRestore();
+    }
+  });
+
+  it("PROCESS_REPORT_HEADER_TOLERATES_MISSING_FIELDS", async () => {
+    const reportSpy = vi.spyOn(process, "report", "get").mockReturnValue({
+      getReport: () =>
+        ({
+          header: {
+            reportVersion: 5,
+            nodejsVersion: "v20.0.0",
+          },
+          resourceUsage: {},
+          libuv: [],
+        }) as unknown as ReturnType<NonNullable<typeof process.report>["getReport"]>,
+    } as unknown as typeof process.report);
+
+    try {
+      const payload = (await diagnostics.collectDiagnostics(createDeps())) as {
+        process: {
+          nodeReport: { header: { host?: string; cwd?: string } };
+        };
+      };
+
+      // No throw, host overlay still applied, omitted fields absent.
+      expect(payload.process.nodeReport.header.host).toBe("<hostname>");
+      expect(payload.process.nodeReport.header.cwd).toBeUndefined();
+    } finally {
+      reportSpy.mockRestore();
+    }
+  });
+
+  it("ARGV_SECRET_SCRUBBED_AT_CAPTURE_SITE", async () => {
+    const argvSpy = vi
+      .spyOn(process, "argv", "get")
+      .mockReturnValue([
+        "node",
+        "/Users/alice/app.js",
+        "--token=ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef0123456",
+      ]);
+
+    try {
+      const payload = (await diagnostics.collectDiagnostics(createDeps())) as {
+        runtime: { argv: string[] };
+      };
+
+      const joined = payload.runtime.argv.join(" ");
+      expect(joined).not.toContain("ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef0123456");
+      expect(joined).not.toContain("/Users/alice");
+      expect(joined).toContain("[REDACTED]");
+    } finally {
+      argvSpy.mockRestore();
+    }
+  });
+
   it("FREE_TEXT_PEM_BLOCK_SCRUBBED", async () => {
     shared.logEntries = [
       {

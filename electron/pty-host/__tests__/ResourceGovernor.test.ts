@@ -188,6 +188,126 @@ describe("ResourceGovernor", () => {
 
       governor.dispose();
     });
+
+    it("emits forced: false on threshold-cleared resume", () => {
+      const { coordinator } = createMockCoordinator();
+      const deps = createMockDeps({
+        getTerminalIds: vi.fn().mockReturnValue(["t1"]),
+        getPauseCoordinator: vi.fn().mockReturnValue(coordinator),
+      });
+
+      vi.spyOn(process, "memoryUsage").mockReturnValue({
+        heapUsed: 900 * 1024 * 1024,
+        rss: 1024 * 1024 * 1024,
+        external: 0,
+        arrayBuffers: 0,
+      } as ReturnType<typeof process.memoryUsage>);
+
+      const governor = new ResourceGovernor(deps);
+      governor.start();
+      vi.advanceTimersByTime(2000);
+
+      // Drop memory below resume threshold
+      vi.spyOn(process, "memoryUsage").mockReturnValue({
+        heapUsed: 500 * 1024 * 1024,
+        rss: 1024 * 1024 * 1024,
+        external: 0,
+        arrayBuffers: 0,
+      } as ReturnType<typeof process.memoryUsage>);
+      vi.advanceTimersByTime(2000);
+
+      const event = (deps.sendEvent as ReturnType<typeof vi.fn>).mock.calls.find(
+        (c: unknown[]) =>
+          (c[0] as Record<string, unknown>)?.type === "host-throttled" &&
+          (c[0] as Record<string, unknown>)?.isThrottled === false
+      )?.[0] as Record<string, unknown> | undefined;
+
+      expect(event).toBeDefined();
+      expect(event?.forced).toBe(false);
+      expect(event?.reason).toContain("High memory usage");
+      expect(event?.duration).toBeGreaterThan(0);
+
+      governor.dispose();
+    });
+
+    it("emits forced: true on force-resume timeout", () => {
+      const { coordinator } = createMockCoordinator();
+      const deps = createMockDeps({
+        getTerminalIds: vi.fn().mockReturnValue(["t1"]),
+        getPauseCoordinator: vi.fn().mockReturnValue(coordinator),
+      });
+
+      vi.spyOn(process, "memoryUsage").mockReturnValue({
+        heapUsed: 900 * 1024 * 1024,
+        rss: 1024 * 1024 * 1024,
+        external: 0,
+        arrayBuffers: 0,
+      } as ReturnType<typeof process.memoryUsage>);
+
+      const governor = new ResourceGovernor(deps);
+      governor.start();
+      vi.advanceTimersByTime(2000);
+
+      // Keep memory above resume threshold past force-resume timeout
+      vi.advanceTimersByTime(12000);
+
+      const event = (deps.sendEvent as ReturnType<typeof vi.fn>).mock.calls.find(
+        (c: unknown[]) =>
+          (c[0] as Record<string, unknown>)?.type === "host-throttled" &&
+          (c[0] as Record<string, unknown>)?.isThrottled === false
+      )?.[0] as Record<string, unknown> | undefined;
+
+      expect(event).toBeDefined();
+      expect(event?.forced).toBe(true);
+      expect(event?.reason).toContain("High memory usage");
+
+      governor.dispose();
+    });
+  });
+
+  describe("dispose", () => {
+    it("releases resource-governor token from coordinators when throttling", () => {
+      const { coordinator, raw } = createMockCoordinator();
+      const deps = createMockDeps({
+        getTerminalIds: vi.fn().mockReturnValue(["t1"]),
+        getPauseCoordinator: vi.fn().mockReturnValue(coordinator),
+      });
+
+      vi.spyOn(process, "memoryUsage").mockReturnValue({
+        heapUsed: 900 * 1024 * 1024,
+        rss: 1024 * 1024 * 1024,
+        external: 0,
+        arrayBuffers: 0,
+      } as ReturnType<typeof process.memoryUsage>);
+
+      const governor = new ResourceGovernor(deps);
+      governor.start();
+      vi.advanceTimersByTime(2000);
+
+      expect(coordinator.hasToken("resource-governor")).toBe(true);
+      raw.resume.mockClear();
+
+      governor.dispose();
+
+      expect(coordinator.hasToken("resource-governor")).toBe(false);
+      expect(raw.resume).toHaveBeenCalled();
+    });
+
+    it("does not throw when not throttling", () => {
+      const deps = createMockDeps();
+      const governor = new ResourceGovernor(deps);
+      governor.start();
+
+      expect(() => governor.dispose()).not.toThrow();
+    });
+
+    it("double dispose does not throw", () => {
+      const deps = createMockDeps();
+      const governor = new ResourceGovernor(deps);
+      governor.start();
+      governor.dispose();
+      expect(() => governor.dispose()).not.toThrow();
+    });
   });
 
   describe("coordination with other managers", () => {

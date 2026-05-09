@@ -26,7 +26,11 @@ function addEntry(
 
 describe("notificationHistorySlice", () => {
   beforeEach(() => {
-    useNotificationHistoryStore.setState({ entries: [], unreadCount: 0 });
+    useNotificationHistoryStore.setState({
+      entries: [],
+      unreadCount: 0,
+      evictedToInboxCount: 0,
+    });
   });
 
   it("adds an entry with id and timestamp", () => {
@@ -227,6 +231,111 @@ describe("notificationHistorySlice", () => {
     });
   });
 
+  describe("markIdsRead", () => {
+    it("flips seenAsToast to true on targeted ids only", () => {
+      addEntry({ message: "a" });
+      addEntry({ message: "b" });
+      addEntry({ message: "c" });
+      const entries = getState().entries;
+      const targets = [entries[0]!.id, entries[2]!.id];
+
+      getState().markIdsRead(targets);
+
+      const updated = getState().entries;
+      expect(updated[0]!.seenAsToast).toBe(true);
+      expect(updated[1]!.seenAsToast).toBe(false);
+      expect(updated[2]!.seenAsToast).toBe(true);
+    });
+
+    it("decrements unreadCount by the number of newly-read entries", () => {
+      addEntry();
+      addEntry();
+      addEntry();
+      expect(getState().unreadCount).toBe(3);
+      const ids = getState()
+        .entries.slice(0, 2)
+        .map((e) => e.id);
+
+      getState().markIdsRead(ids);
+
+      expect(getState().unreadCount).toBe(1);
+    });
+
+    it("skips entries that are already read", () => {
+      const seenId = getState().addEntry({ type: "info", message: "seen", seenAsToast: true });
+      addEntry({ message: "missed" });
+      const before = getState().entries.find((e) => e.id === seenId);
+
+      getState().markIdsRead([seenId]);
+
+      const after = getState().entries.find((e) => e.id === seenId);
+      expect(after).toBe(before!);
+    });
+
+    it("is a no-op when ids is empty", () => {
+      addEntry();
+      const before = getState();
+      getState().markIdsRead([]);
+      const after = getState();
+      expect(after.entries).toBe(before.entries);
+      expect(after.unreadCount).toBe(before.unreadCount);
+    });
+
+    it("is a no-op when no targeted ids exist", () => {
+      addEntry();
+      const before = getState();
+      getState().markIdsRead(["nonexistent-1", "nonexistent-2"]);
+      const after = getState();
+      expect(after.entries).toBe(before.entries);
+      expect(after.unreadCount).toBe(before.unreadCount);
+    });
+
+    it("handles duplicate ids idempotently", () => {
+      addEntry();
+      const id = getState().entries[0]!.id;
+      getState().markIdsRead([id, id, id]);
+      expect(getState().entries[0]!.seenAsToast).toBe(true);
+      expect(getState().unreadCount).toBe(0);
+    });
+
+    it("excludes non-countable entries from unreadCount as expected", () => {
+      addEntry({ message: "countable" });
+      addEntry({ message: "uncountable", countable: false });
+      const ids = getState().entries.map((e) => e.id);
+      expect(getState().unreadCount).toBe(1);
+      getState().markIdsRead(ids);
+      expect(getState().unreadCount).toBe(0);
+      expect(getState().entries.every((e) => e.seenAsToast)).toBe(true);
+    });
+
+    it("does not change evictedToInboxCount", () => {
+      addEntry();
+      addEntry();
+      const ids = getState().entries.map((e) => e.id);
+      getState().markIdsRead(ids);
+      expect(getState().evictedToInboxCount).toBe(0);
+    });
+
+    it("handles mixed unread + already-read + non-countable + missing ids in one call", () => {
+      const seenId = getState().addEntry({ type: "info", message: "seen", seenAsToast: true });
+      addEntry({ message: "unread countable" });
+      addEntry({ message: "unread non-countable", countable: false });
+      const unreadCountable = getState().entries.find((e) => e.message === "unread countable")!.id;
+      const unreadNonCountable = getState().entries.find(
+        (e) => e.message === "unread non-countable"
+      )!.id;
+      expect(getState().unreadCount).toBe(1);
+
+      getState().markIdsRead([seenId, unreadCountable, unreadNonCountable, "missing"]);
+
+      const after = getState();
+      expect(after.entries.find((e) => e.id === seenId)?.seenAsToast).toBe(true);
+      expect(after.entries.find((e) => e.id === unreadCountable)?.seenAsToast).toBe(true);
+      expect(after.entries.find((e) => e.id === unreadNonCountable)?.seenAsToast).toBe(true);
+      expect(after.unreadCount).toBe(0);
+    });
+  });
+
   describe("markSummarized", () => {
     it("defaults summarized to false on new entries", () => {
       addEntry({ message: "test" });
@@ -355,6 +464,81 @@ describe("notificationHistorySlice", () => {
     });
   });
 
+  describe("evictedToInboxCount", () => {
+    it("starts at 0", () => {
+      expect(getState().evictedToInboxCount).toBe(0);
+    });
+
+    it("increments when markUnseenAsToast flips a seen entry", () => {
+      const id = getState().addEntry({ type: "info", message: "seen", seenAsToast: true });
+      expect(getState().evictedToInboxCount).toBe(0);
+      getState().markUnseenAsToast(id);
+      expect(getState().evictedToInboxCount).toBe(1);
+    });
+
+    it("does not increment when markUnseenAsToast targets a missing id", () => {
+      addEntry({ message: "test" });
+      expect(getState().evictedToInboxCount).toBe(0);
+      getState().markUnseenAsToast("nonexistent-id");
+      expect(getState().evictedToInboxCount).toBe(0);
+    });
+
+    it("does not increment when markUnseenAsToast targets an already-unseen entry", () => {
+      const id = getState().addEntry({ type: "info", message: "missed", seenAsToast: false });
+      expect(getState().evictedToInboxCount).toBe(0);
+      getState().markUnseenAsToast(id);
+      expect(getState().evictedToInboxCount).toBe(0);
+    });
+
+    it("accumulates across multiple evictions", () => {
+      const a = getState().addEntry({ type: "info", message: "a", seenAsToast: true });
+      const b = getState().addEntry({ type: "info", message: "b", seenAsToast: true });
+      const c = getState().addEntry({ type: "info", message: "c", seenAsToast: true });
+      getState().markUnseenAsToast(a);
+      getState().markUnseenAsToast(b);
+      getState().markUnseenAsToast(c);
+      expect(getState().evictedToInboxCount).toBe(3);
+    });
+
+    it("resetEvictedCount zeroes the counter without touching entries or unreadCount", () => {
+      const id = getState().addEntry({ type: "info", message: "seen", seenAsToast: true });
+      getState().markUnseenAsToast(id);
+      expect(getState().evictedToInboxCount).toBe(1);
+      expect(getState().unreadCount).toBe(1);
+      getState().resetEvictedCount();
+      expect(getState().evictedToInboxCount).toBe(0);
+      expect(getState().unreadCount).toBe(1);
+      expect(getState().entries).toHaveLength(1);
+    });
+
+    it("resetEvictedCount returns the same state object when already zero", () => {
+      const before = getState();
+      getState().resetEvictedCount();
+      const after = getState();
+      // No-op set: same evictedToInboxCount value, no spurious render trigger.
+      expect(after.evictedToInboxCount).toBe(before.evictedToInboxCount);
+    });
+
+    it("clearAll resets the eviction counter", () => {
+      const id = getState().addEntry({ type: "info", message: "seen", seenAsToast: true });
+      getState().markUnseenAsToast(id);
+      expect(getState().evictedToInboxCount).toBe(1);
+      getState().clearAll();
+      expect(getState().evictedToInboxCount).toBe(0);
+    });
+
+    it("does NOT increment when called with { silent: true }", () => {
+      const id = getState().addEntry({ type: "info", message: "seen", seenAsToast: true });
+      expect(getState().evictedToInboxCount).toBe(0);
+      getState().markUnseenAsToast(id, { silent: true });
+      // The seenAsToast flip + unreadCount update still happen — only the
+      // discoverability cue is suppressed.
+      expect(getState().entries[0]!.seenAsToast).toBe(false);
+      expect(getState().unreadCount).toBe(1);
+      expect(getState().evictedToInboxCount).toBe(0);
+    });
+  });
+
   describe("dismissEntry", () => {
     it("removes the entry and decrements unreadCount when entry is unread", () => {
       addEntry({ message: "missed" });
@@ -394,6 +578,90 @@ describe("notificationHistorySlice", () => {
       expect(getState().unreadCount).toBe(0);
       expect(getState().entries).toHaveLength(1);
       expect(getState().entries[0]!.message).toBe("missed 1");
+    });
+  });
+
+  describe("dismissByCorrelationId", () => {
+    it("removes all entries with matching correlationId", () => {
+      addEntry({ message: "first", correlationId: "panel-1" });
+      addEntry({ message: "second", correlationId: "panel-1" });
+      addEntry({ message: "third", correlationId: "panel-1" });
+      expect(getState().entries).toHaveLength(3);
+      getState().dismissByCorrelationId("panel-1");
+      expect(getState().entries).toHaveLength(0);
+    });
+
+    it("preserves entries with different correlationId", () => {
+      addEntry({ message: "a", correlationId: "panel-1" });
+      addEntry({ message: "b", correlationId: "panel-2" });
+      addEntry({ message: "c", correlationId: "panel-1" });
+      getState().dismissByCorrelationId("panel-1");
+      expect(getState().entries).toHaveLength(1);
+      expect(getState().entries[0]!.message).toBe("b");
+    });
+
+    it("preserves entries with no correlationId", () => {
+      addEntry({ message: "correlated", correlationId: "panel-1" });
+      addEntry({ message: "uncorrelated" });
+      getState().dismissByCorrelationId("panel-1");
+      expect(getState().entries).toHaveLength(1);
+      expect(getState().entries[0]!.message).toBe("uncorrelated");
+    });
+
+    it("recomputes unreadCount after removal", () => {
+      addEntry({ message: "missed 1", correlationId: "panel-1" });
+      addEntry({ message: "missed 2", correlationId: "panel-1" });
+      getState().addEntry({
+        type: "info",
+        message: "seen",
+        correlationId: "panel-1",
+        seenAsToast: true,
+      });
+      expect(getState().unreadCount).toBe(2);
+      getState().dismissByCorrelationId("panel-1");
+      expect(getState().unreadCount).toBe(0);
+    });
+
+    it("recomputes unreadCount correctly with mixed seenAsToast and correlationIds", () => {
+      addEntry({ message: "missed a", correlationId: "panel-1" });
+      addEntry({ message: "missed b", correlationId: "panel-2" });
+      getState().addEntry({
+        type: "info",
+        message: "seen",
+        correlationId: "panel-1",
+        seenAsToast: true,
+      });
+      expect(getState().unreadCount).toBe(2);
+      getState().dismissByCorrelationId("panel-1");
+      expect(getState().entries).toHaveLength(1);
+      expect(getState().unreadCount).toBe(1);
+      expect(getState().entries[0]!.message).toBe("missed b");
+    });
+
+    it("is a no-op when correlationId does not exist", () => {
+      addEntry({ message: "test", correlationId: "panel-1" });
+      getState().dismissByCorrelationId("nonexistent");
+      expect(getState().entries).toHaveLength(1);
+      expect(getState().unreadCount).toBe(1);
+    });
+
+    it("correctly dismisses non-countable entries without affecting unreadCount of remaining", () => {
+      addEntry({ message: "countable", correlationId: "panel-1" });
+      addEntry({ message: "uncountable", correlationId: "panel-1", countable: false });
+      addEntry({ message: "other countable", correlationId: "panel-2" });
+      expect(getState().unreadCount).toBe(2);
+      getState().dismissByCorrelationId("panel-1");
+      expect(getState().entries).toHaveLength(1);
+      expect(getState().unreadCount).toBe(1);
+    });
+
+    it("idempotent — second call with same correlationId is a no-op", () => {
+      addEntry({ message: "first", correlationId: "panel-1" });
+      getState().dismissByCorrelationId("panel-1");
+      expect(getState().entries).toHaveLength(0);
+      getState().dismissByCorrelationId("panel-1");
+      expect(getState().entries).toHaveLength(0);
+      expect(getState().unreadCount).toBe(0);
     });
   });
 });

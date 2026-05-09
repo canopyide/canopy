@@ -18,11 +18,11 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import type { PortalTab, PortalLink } from "@shared/types";
 import { cn } from "@/lib/utils";
-import { createTooltipWithShortcut } from "@/lib/platform";
+import { createTooltipContent } from "@/lib/tooltipShortcut";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { usePortalStore } from "@/store/portalStore";
 import { PortalIcon } from "./PortalIcon";
-import { useKeybindingDisplay } from "@/hooks";
+import { useAriaKeyshortcuts, useKeybindingDisplay } from "@/hooks";
 import { safeFireAndForget } from "@/utils/safeFireAndForget";
 import {
   ContextMenu,
@@ -112,7 +112,7 @@ const SortableTab = memo(function SortableTab({
         >
           {tab.icon && (
             <div className="flex-shrink-0">
-              <PortalIcon icon={tab.icon} size="tab" url={tab.url ?? undefined} />
+              <PortalIcon icon={tab.icon} size="tab" />
             </div>
           )}
           <span className="truncate max-w-[120px]">{tab.title}</span>
@@ -209,6 +209,8 @@ export function PortalToolbar({
   const reorderTabs = usePortalStore((s) => s.reorderTabs);
   const closePortalShortcut = useKeybindingDisplay("panel.togglePortal");
   const newTabShortcut = useKeybindingDisplay("portal.newTab");
+  const closePortalAriaShortcut = useAriaKeyshortcuts("panel.togglePortal");
+  const newTabAriaShortcut = useAriaKeyshortcuts("portal.newTab");
 
   const duplicateTab = onDuplicateTab ?? noopTabAction;
   const closeOthers = onCloseOthers ?? noopTabAction;
@@ -309,13 +311,14 @@ export function PortalToolbar({
               <button
                 onClick={onClose}
                 aria-label="Close portal"
+                aria-keyshortcuts={closePortalAriaShortcut}
                 className="p-1 rounded hover:bg-tint/[0.06] text-muted-foreground hover:text-daintree-text transition-colors ml-1"
               >
                 <X className="w-4 h-4" />
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              {createTooltipWithShortcut("Close portal", closePortalShortcut)}
+              {createTooltipContent("Close portal", closePortalShortcut)}
             </TooltipContent>
           </Tooltip>
         </div>
@@ -385,13 +388,14 @@ export function PortalToolbar({
                     }}
                     className="flex items-center justify-center w-8 h-[26px] rounded-full bg-overlay-subtle hover:bg-overlay-soft text-daintree-text/70 hover:text-daintree-text border border-divider transition"
                     aria-label="New Tab"
+                    aria-keyshortcuts={newTabAriaShortcut}
                     aria-haspopup="menu"
                   >
                     <Plus className="w-4 h-4" />
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom">
-                  {createTooltipWithShortcut("New Tab", newTabShortcut)}
+                  {createTooltipContent("New Tab", newTabShortcut)}
                 </TooltipContent>
               </Tooltip>
             </div>

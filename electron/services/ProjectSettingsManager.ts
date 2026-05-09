@@ -9,8 +9,12 @@ import { resilientAtomicWriteFile, resilientRename } from "../utils/fs.js";
 import { sanitizeSvg } from "../../shared/utils/svgSanitizer.js";
 import { isSensitiveEnvKey } from "../../shared/utils/envVars.js";
 import { projectEnvSecureStorage } from "./ProjectEnvSecureStorage.js";
-import { getProjectStateDir, settingsFilePath } from "./projectStorePaths.js";
-import { parseTerminalSettings, parseNotificationOverrides } from "./projectSettingsParsers.js";
+import { getProjectStateDir, settingsFilePath, UTF8_BOM } from "./projectStorePaths.js";
+import {
+  parseFleetSavedScopes,
+  parseNotificationOverrides,
+  parseTerminalSettings,
+} from "./projectSettingsParsers.js";
 import { Cache } from "../utils/cache.js";
 
 export class ProjectSettingsManager {
@@ -66,7 +70,8 @@ export class ProjectSettingsManager {
 
     try {
       const content = await fs.readFile(filePath, "utf-8");
-      const parsed = JSON.parse(content);
+      const stripped = content.startsWith(UTF8_BOM) ? content.slice(UTF8_BOM.length) : content;
+      const parsed = JSON.parse(stripped);
 
       let sanitizedIconSvg: string | undefined;
       if (typeof parsed.projectIconSvg === "string" && parsed.projectIconSvg.trim()) {
@@ -168,10 +173,6 @@ export class ProjectSettingsManager {
           typeof parsed.cloudSyncWarningDismissed === "boolean"
             ? parsed.cloudSyncWarningDismissed
             : undefined,
-        contextFilesOfferDismissed:
-          typeof parsed.contextFilesOfferDismissed === "boolean"
-            ? parsed.contextFilesOfferDismissed
-            : undefined,
         devServerLoadTimeout:
           typeof parsed.devServerLoadTimeout === "number" &&
           Number.isFinite(parsed.devServerLoadTimeout) &&
@@ -209,6 +210,7 @@ export class ProjectSettingsManager {
             : undefined,
         terminalSettings: parseTerminalSettings(parsed.terminalSettings),
         notificationOverrides: parseNotificationOverrides(parsed.notificationOverrides),
+        fleetSavedScopes: parseFleetSavedScopes(parsed.fleetSavedScopes),
         resourceEnvironments:
           parsed.resourceEnvironments &&
           typeof parsed.resourceEnvironments === "object" &&
@@ -221,6 +223,17 @@ export class ProjectSettingsManager {
             : undefined,
         defaultWorktreeMode:
           typeof parsed.defaultWorktreeMode === "string" ? parsed.defaultWorktreeMode : undefined,
+        daintreeMcpTier:
+          parsed.daintreeMcpTier === "off" ||
+          parsed.daintreeMcpTier === "workbench" ||
+          parsed.daintreeMcpTier === "action" ||
+          parsed.daintreeMcpTier === "system"
+            ? parsed.daintreeMcpTier
+            : undefined,
+        exposeDaintreeMcpToAgents:
+          typeof parsed.exposeDaintreeMcpToAgents === "boolean"
+            ? parsed.exposeDaintreeMcpToAgents
+            : undefined,
       };
 
       this.notificationOverridesCache.set(projectId, settings.notificationOverrides);
@@ -228,14 +241,29 @@ export class ProjectSettingsManager {
 
       return settings;
     } catch (error) {
-      console.error(`[ProjectSettingsManager] Failed to load settings for ${projectId}:`, error);
       this.notificationOverridesCache.delete(projectId);
-      try {
-        const quarantinePath = `${filePath}.corrupted.${Date.now()}`;
-        await resilientRename(filePath, quarantinePath);
-        console.warn(`[ProjectSettingsManager] Corrupted settings file moved to ${quarantinePath}`);
-      } catch {
-        // Ignore
+      if (error instanceof SyntaxError) {
+        console.error(`[ProjectSettingsManager] Failed to parse settings for ${projectId}:`, error);
+        try {
+          const quarantinePath = `${filePath}.corrupted.${Date.now()}`;
+          await resilientRename(filePath, quarantinePath);
+          console.warn(
+            `[ProjectSettingsManager] Corrupted settings file moved to ${quarantinePath}`
+          );
+        } catch {
+          // Ignore rename failures — quarantine is best-effort
+        }
+      } else {
+        const code =
+          error && typeof error === "object" && "code" in error
+            ? (error as NodeJS.ErrnoException).code
+            : undefined;
+        if (code !== "ENOENT") {
+          console.error(
+            `[ProjectSettingsManager] Failed to load settings for ${projectId}:`,
+            error
+          );
+        }
       }
       return { runCommands: [] };
     }
@@ -306,10 +334,6 @@ export class ProjectSettingsManager {
       cloudSyncWarningDismissed:
         typeof settings.cloudSyncWarningDismissed === "boolean"
           ? settings.cloudSyncWarningDismissed
-          : undefined,
-      contextFilesOfferDismissed:
-        typeof settings.contextFilesOfferDismissed === "boolean"
-          ? settings.contextFilesOfferDismissed
           : undefined,
       devServerLoadTimeout:
         typeof settings.devServerLoadTimeout === "number" &&
@@ -391,7 +415,12 @@ export class ProjectSettingsManager {
       if (ensureDir) {
         await fs.mkdir(stateDir, { recursive: true });
       }
-      await resilientAtomicWriteFile(filePath, JSON.stringify(sanitizedSettings, null, 2), "utf-8");
+      await resilientAtomicWriteFile(
+        filePath,
+        JSON.stringify(sanitizedSettings, null, 2),
+        "utf-8",
+        { mode: 0o600 }
+      );
     };
 
     try {
@@ -413,6 +442,30 @@ export class ProjectSettingsManager {
         throw retryError;
       }
     }
+
+    // Invalidate after durable write succeeds. Dynamic import avoids
+    // expanding the static module graph for tests that mock ProjectStore.
+    const { commandService } = await import("./CommandService.js");
+    commandService.invalidateOverridesCache(projectId);
+  }
+
+  async getProjectNotificationOverrides(
+    projectIds: string[]
+  ): Promise<Record<string, Partial<NotificationSettings>>> {
+    const unique = [...new Set(projectIds)];
+    const results = await Promise.all(
+      unique.map(async (id) => {
+        const settings = await this.getProjectSettings(id);
+        return { id, overrides: settings.notificationOverrides };
+      })
+    );
+    const record: Record<string, Partial<NotificationSettings>> = {};
+    for (const { id, overrides } of results) {
+      if (overrides) {
+        record[id] = overrides;
+      }
+    }
+    return record;
   }
 
   deleteAllEnvForProject(projectId: string): void {

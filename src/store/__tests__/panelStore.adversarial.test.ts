@@ -20,6 +20,10 @@ vi.mock("@/services/terminal/panelDuplicationService", () => ({
   buildPanelSnapshotOptions: vi.fn((p: { id: string }) => ({ id: p.id })),
 }));
 
+vi.mock("@/lib/notify", () => ({
+  notify: vi.fn(() => "mock-notification-id"),
+}));
+
 vi.mock("@/store/terminalInputStore", () => ({
   useTerminalInputStore: {
     getState: () => ({ clearAllDraftInputs: vi.fn() }),
@@ -32,6 +36,8 @@ vi.mock("@/store/terminalInputStore", () => ({
 (window as unknown as Record<string, unknown>).electron = {
   terminal: {
     trash: vi.fn().mockResolvedValue(undefined),
+    kill: vi.fn().mockResolvedValue(undefined),
+    restore: vi.fn().mockResolvedValue(undefined),
   },
 };
 
@@ -194,6 +200,33 @@ describe("panelStore adversarial", () => {
     const post = usePanelStore.getState().watchedPanels;
     expect(post).not.toBe(pre);
     expect(post.size).toBe(0);
+  });
+
+  it("trashPanel does not emit a toast notification", async () => {
+    // The undo toast was removed — the trash flow + reopen-last-closed
+    // keybinding cover recovery without adding visual noise on every close.
+    const { notify } = await import("@/lib/notify");
+    const notifyMock = vi.mocked(notify);
+
+    usePanelStore.setState({
+      panelsById: {
+        "term-1": {
+          id: "term-1",
+          title: "agent-foo",
+          cwd: "/a",
+          location: "grid",
+          createdAt: 1,
+          type: "claude",
+          kind: "terminal",
+        } as unknown as never,
+      },
+      panelIds: ["term-1"],
+    });
+
+    usePanelStore.getState().trashPanel("term-1");
+    usePanelStore.getState().trashPanelGroup("term-1");
+
+    expect(notifyMock).not.toHaveBeenCalled();
   });
 
   it("trashPanel preserves existing lastClosedConfig when snapshot returns null", async () => {

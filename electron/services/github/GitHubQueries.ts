@@ -6,6 +6,11 @@ export const REPO_STATS_QUERY = `
       issues(states: OPEN) { totalCount }
       pullRequests(states: OPEN) { totalCount }
     }
+    rateLimit {
+      cost
+      remaining
+      resetAt
+    }
   }
 `;
 
@@ -30,7 +35,7 @@ export const REPO_STATS_AND_PAGE_QUERY = `
           state
           updatedAt
           author { login avatarUrl }
-          assignees(first: 5) { nodes { login avatarUrl } }
+          assignees(first: 10) { nodes { login avatarUrl } }
           comments { totalCount }
           labels(first: 10) { nodes { name color } }
           timelineItems(itemTypes: [CROSS_REFERENCED_EVENT, CONNECTED_EVENT], last: 20) {
@@ -72,6 +77,11 @@ export const REPO_STATS_AND_PAGE_QUERY = `
         }
       }
     }
+    rateLimit {
+      cost
+      remaining
+      resetAt
+    }
   }
 `;
 
@@ -107,6 +117,11 @@ export const PROJECT_HEALTH_QUERY = `
     mergedPRs180: search(query: $merged180, type: ISSUE, first: 1) {
       issueCount
     }
+    rateLimit {
+      cost
+      remaining
+      resetAt
+    }
   }
 `;
 
@@ -129,7 +144,7 @@ export const LIST_ISSUES_QUERY = `
             login
             avatarUrl
           }
-          assignees(first: 5) {
+          assignees(first: 10) {
             nodes {
               login
               avatarUrl
@@ -170,6 +185,11 @@ export const LIST_ISSUES_QUERY = `
           }
         }
       }
+    }
+    rateLimit {
+      cost
+      remaining
+      resetAt
     }
   }
 `;
@@ -220,6 +240,11 @@ export const LIST_PRS_QUERY = `
         }
       }
     }
+    rateLimit {
+      cost
+      remaining
+      resetAt
+    }
   }
 `;
 
@@ -242,7 +267,7 @@ export const SEARCH_QUERY = `
             login
             avatarUrl
           }
-          assignees(first: 5) {
+          assignees(first: 10) {
             nodes {
               login
               avatarUrl
@@ -295,6 +320,11 @@ export const SEARCH_QUERY = `
         }
       }
     }
+    rateLimit {
+      cost
+      remaining
+      resetAt
+    }
   }
 `;
 
@@ -313,7 +343,7 @@ export const GET_ISSUE_QUERY = `
           login
           avatarUrl
         }
-        assignees(first: 5) {
+        assignees(first: 10) {
           nodes {
             login
             avatarUrl
@@ -354,6 +384,11 @@ export const GET_ISSUE_QUERY = `
         }
       }
     }
+    rateLimit {
+      cost
+      remaining
+      resetAt
+    }
   }
 `;
 
@@ -381,7 +416,7 @@ export const GET_PR_QUERY = `
           login
           avatarUrl
         }
-        assignees(first: 5) {
+        assignees(first: 10) {
           nodes {
             login
             avatarUrl
@@ -400,6 +435,11 @@ export const GET_PR_QUERY = `
           totalCount
         }
       }
+    }
+    rateLimit {
+      cost
+      remaining
+      resetAt
     }
   }
 `;
@@ -450,6 +490,11 @@ export function buildBatchPRQuery(
                       state
                       isDraft
                       merged
+                      bodyText
+                      createdAt
+                      author { login avatarUrl }
+                      assignees(first: 10) { nodes { login avatarUrl } }
+                      labels(first: 10) { nodes { name color } }
                     }
                   }
                 }
@@ -462,6 +507,11 @@ export function buildBatchPRQuery(
                       state
                       isDraft
                       merged
+                      bodyText
+                      createdAt
+                      author { login avatarUrl }
+                      assignees(first: 10) { nodes { login avatarUrl } }
+                      labels(first: 10) { nodes { name color } }
                     }
                   }
                 }
@@ -486,6 +536,11 @@ export function buildBatchPRQuery(
               state
               isDraft
               merged
+              bodyText
+              createdAt
+              author { login avatarUrl }
+              assignees(first: 10) { nodes { login avatarUrl } }
+              labels(first: 10) { nodes { name color } }
             }
           }
         }
@@ -493,7 +548,7 @@ export function buildBatchPRQuery(
     }
   }
 
-  return `query { ${issueQueries.join("\n")} ${branchQueries.join("\n")} }`;
+  return `query { ${issueQueries.join("\n")} ${branchQueries.join("\n")} rateLimit { cost remaining resetAt } }`;
 }
 
 /**
@@ -524,7 +579,7 @@ export function buildBatchRequiredChecksQuery(
               commit {
                 statusCheckRollup {
                   state
-                  contexts(first: 50) {
+                  contexts(first: 100) {
                     pageInfo { hasNextPage }
                     nodes {
                       __typename
@@ -548,5 +603,5 @@ export function buildBatchRequiredChecksQuery(
     `
   );
 
-  return `query { ${parts.join("\n")} }`;
+  return `query { ${parts.join("\n")} rateLimit { cost remaining resetAt } }`;
 }

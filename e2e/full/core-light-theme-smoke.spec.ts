@@ -6,20 +6,22 @@ import { openAndOnboardProject } from "../helpers/project";
 import { SEL } from "../helpers/selectors";
 import { getThemeChromeMetrics, setAppTheme } from "../helpers/theme";
 
-const PROJECT_NAME = "Light Theme Smoke";
+const PROJECT_NAME = "light-theme-smoke";
 const LIGHT_SCHEME_IDS = BUILT_IN_APP_SCHEMES.filter((scheme) => scheme.type === "light").map(
   (scheme) => scheme.id
 );
 
 let ctx: AppContext;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Core: Light Theme Smoke", () => {
   test.beforeAll(async () => {
-    const fixture = createFixtureRepo({
+    const { dir: fixture, cleanup } = createFixtureRepo({
       name: "light-theme-smoke",
       withFeatureBranch: true,
       withUncommittedChanges: true,
     });
+    fixtureCleanup = cleanup;
 
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixture, PROJECT_NAME);
@@ -31,6 +33,7 @@ test.describe.serial("Core: Light Theme Smoke", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   // eslint-disable-next-line no-empty-pattern

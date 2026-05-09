@@ -8,22 +8,26 @@ import {
   writeCcrConfig,
   removeCcrConfig,
   navigateToAgentSettings,
+  waitForCcrPresets,
   addCustomPreset,
 } from "../helpers/presets";
 
 let ctx: AppContext;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Presets: Onboarding/Wizard Integration (83–88)", () => {
   test.beforeAll(async () => {
     removeCcrConfig();
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "preset-wizard" });
+    const { dir: fixtureDir, cleanup } = createFixtureRepo({ name: "preset-wizard" });
+    fixtureCleanup = cleanup;
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Preset Wizard Test");
   });
 
   test.afterAll(async () => {
     removeCcrConfig();
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("83. Write CCR config with 2 models, open wizard, verify Claude shows preset count badge", async () => {
@@ -32,7 +36,9 @@ test.describe.serial("Presets: Onboarding/Wizard Integration (83–88)", () => {
       { id: "gpt5", name: "GPT-5", model: "gpt-5.4" },
     ]);
 
-    await ctx.window.waitForTimeout(35_000);
+    await waitForCcrPresets(ctx.window, ["DeepSeek V3", "GPT-5"]);
+    await ctx.window.keyboard.press("Escape");
+    await ctx.window.waitForTimeout(T_SETTLE);
 
     await ctx.window.evaluate(() =>
       window.dispatchEvent(new CustomEvent("daintree:open-agent-setup-wizard"))

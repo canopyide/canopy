@@ -33,6 +33,7 @@ export class PortQueueManager {
   private readonly pausedTerminals = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly pauseStartTimes = new Map<string, number>();
   private readonly pauseToken: PauseToken;
+  private totalQueuedBytes = 0;
 
   constructor(private readonly deps: PortQueueDeps) {
     this.pauseToken = deps.pauseToken ?? "port-queue";
@@ -47,21 +48,42 @@ export class PortQueueManager {
     const current = this.queuedBytes.get(id) ?? 0;
     const next = current + bytes;
     this.queuedBytes.set(id, next);
+    this.totalQueuedBytes += bytes;
     return next;
   }
 
   removeBytes(id: string, bytes: number): void {
     const current = this.queuedBytes.get(id) ?? 0;
-    const next = Math.max(0, current - bytes);
+    // Clamp the aggregate delta to the per-terminal balance to prevent
+    // underflow when callers over-remove (the per-terminal value is
+    // already clamped via Math.max below).
+    const removed = Math.min(bytes, current);
+    const next = current - removed;
     if (next === 0) {
       this.queuedBytes.delete(id);
     } else {
       this.queuedBytes.set(id, next);
     }
+    this.totalQueuedBytes = Math.max(0, this.totalQueuedBytes - removed);
   }
 
   getQueuedBytes(id: string): number {
     return this.queuedBytes.get(id) ?? 0;
+  }
+
+  getTotalQueuedBytes(): number {
+    return this.totalQueuedBytes;
+  }
+
+  getQueueSnapshot(): {
+    totalPendingBytes: number;
+    perTerminal: Array<{ terminalId: string; pendingBytes: number }>;
+  } {
+    const perTerminal: Array<{ terminalId: string; pendingBytes: number }> = [];
+    for (const [terminalId, pendingBytes] of this.queuedBytes) {
+      perTerminal.push({ terminalId, pendingBytes });
+    }
+    return { totalPendingBytes: this.totalQueuedBytes, perTerminal };
   }
 
   isAtCapacity(id: string, additionalBytes: number): boolean {
@@ -117,7 +139,9 @@ export class PortQueueManager {
         // Drop stale byte accounting alongside the pause maps. Without this,
         // the next addBytes call immediately re-triggers applyBackpressure
         // and the pause loop wedges across the entire renderer reload (#6244).
+        const droppedBytes = this.queuedBytes.get(id) ?? 0;
         this.queuedBytes.delete(id);
+        this.totalQueuedBytes = Math.max(0, this.totalQueuedBytes - droppedBytes);
 
         const coordinator = this.deps.getPauseCoordinator(id);
         if (coordinator) {
@@ -182,12 +206,22 @@ export class PortQueueManager {
   }
 
   clearQueue(id: string): void {
-    this.queuedBytes.delete(id);
+    const wasPaused = this.pausedTerminals.has(id);
     const safetyTimeout = this.pausedTerminals.get(id);
     if (safetyTimeout) {
       clearTimeout(safetyTimeout);
-      this.pausedTerminals.delete(id);
     }
+    // Release the coordinator hold before clearing internal maps so any
+    // re-entrant applyBackpressure sees a clean state. resume() is a no-op
+    // when the token isn't held, so guarding on wasPaused is purely an
+    // optimization to avoid a useless coordinator lookup. See #7008.
+    if (wasPaused) {
+      this.deps.getPauseCoordinator(id)?.resume(this.pauseToken);
+    }
+    const removed = this.queuedBytes.get(id) ?? 0;
+    this.queuedBytes.delete(id);
+    this.totalQueuedBytes = Math.max(0, this.totalQueuedBytes - removed);
+    this.pausedTerminals.delete(id);
     this.pauseStartTimes.delete(id);
   }
 
@@ -204,12 +238,13 @@ export class PortQueueManager {
   }
 
   dispose(): void {
-    for (const [id, safetyTimeout] of this.pausedTerminals) {
-      clearTimeout(safetyTimeout);
+    // Release any held pause tokens before tearing down so the coordinator
+    // doesn't outlive this manager with a stale hold.
+    for (const id of this.pausedTerminals.keys()) {
       console.log(`[PtyHost] Cleared port backpressure monitor for terminal ${id}`);
     }
-    this.pausedTerminals.clear();
-    this.pauseStartTimes.clear();
+    this.resumeAll();
     this.queuedBytes.clear();
+    this.totalQueuedBytes = 0;
   }
 }

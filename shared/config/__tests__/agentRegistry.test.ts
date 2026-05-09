@@ -13,8 +13,11 @@ import {
   getAgentDisplayTitle,
   getAgentPreset,
   setAgentPresets,
-  ASSISTANT_FAST_MODELS,
+  getAssistantSupportedAgentIds,
+  getAssistantWiredAgentIds,
+  AGENT_REGISTRY,
   type AgentConfig,
+  type AssistantSupports,
 } from "../agentRegistry.js";
 import {
   AgentRoutingConfigSchema,
@@ -261,6 +264,114 @@ describe("agentRegistry", () => {
       expect(effective?.command).toBe("claude");
     });
   });
+
+  describe("assistant support", () => {
+    it("returns claude and codex as the stable-tier assistant agents", () => {
+      const ids = getAssistantSupportedAgentIds();
+      expect(ids).toEqual(expect.arrayContaining(["claude", "codex"]));
+      expect(ids).toHaveLength(2);
+    });
+
+    it("claude has structured assistant supports at stable tier", () => {
+      const claude = getAgentConfig("claude");
+      expect(claude?.supports).toMatchObject({
+        mcpInjection: "project-config",
+        settingsOverlay: true,
+        permissionBypass: true,
+        trustDialog: true,
+        versionProbe: true,
+        tier: "stable",
+      });
+    });
+
+    it("codex has structured assistant supports at stable tier", () => {
+      const codex = getAgentConfig("codex");
+      expect(codex?.supports).toMatchObject({
+        mcpInjection: "cli-flags",
+        settingsOverlay: false,
+        permissionBypass: true,
+        trustDialog: false,
+        versionProbe: true,
+        tier: "stable",
+      });
+    });
+
+    it("aider is explicitly marked structurally ineligible", () => {
+      const aider = getAgentConfig("aider");
+      expect(aider?.supports).toBe(false);
+    });
+
+    it("interpreter is explicitly marked structurally ineligible", () => {
+      const interpreter = getAgentConfig("interpreter");
+      expect(interpreter?.supports).toBe(false);
+    });
+
+    it("agents with no supports field are excluded from the stable list", () => {
+      const ids = getAssistantSupportedAgentIds();
+      // goose, cursor, etc. have not been wired yet — they leave `supports`
+      // undefined and must not leak into the dropdown. Gemini IS wired
+      // (`tier: "experimental"`) but is intentionally excluded from the
+      // stable list — see the experimental-tier exclusion test below and
+      // the dedicated Gemini block.
+      expect(ids).not.toContain("goose");
+      expect(ids).not.toContain("cursor");
+    });
+
+    it("gemini has structured assistant supports at experimental tier (#7533)", () => {
+      const gemini = getAgentConfig("gemini");
+      expect(gemini?.supports).toMatchObject({
+        mcpInjection: "project-config",
+        settingsOverlay: false,
+        permissionBypass: false,
+        trustDialog: false,
+        versionProbe: true,
+        tier: "experimental",
+      });
+    });
+
+    it("excludes gemini from the stable list — picker stays Claude/Codex only", () => {
+      const ids = getAssistantSupportedAgentIds();
+      expect(ids).not.toContain("gemini");
+    });
+
+    it("agents marked structurally ineligible are excluded", () => {
+      const ids = getAssistantSupportedAgentIds();
+      expect(ids).not.toContain("aider");
+      expect(ids).not.toContain("interpreter");
+    });
+
+    it("getAssistantWiredAgentIds includes both stable and experimental tiers (#7533)", () => {
+      const wired = getAssistantWiredAgentIds();
+      expect(wired).toEqual(expect.arrayContaining(["claude", "codex", "gemini"]));
+      // structurally ineligible / not wired entries must still be excluded
+      expect(wired).not.toContain("aider");
+      expect(wired).not.toContain("interpreter");
+      expect(wired).not.toContain("goose");
+      expect(wired).not.toContain("cursor");
+    });
+
+    it("excludes agents whose supports object is at experimental tier", () => {
+      // Temporarily downgrade codex to experimental and verify the real
+      // filter function (not a local copy of the predicate) excludes it.
+      const original = AGENT_REGISTRY.codex as AgentConfig;
+      const experimentalSupports: AssistantSupports = {
+        mcpInjection: "cli-flags",
+        settingsOverlay: false,
+        permissionBypass: true,
+        trustDialog: false,
+        versionProbe: true,
+        tier: "experimental",
+      };
+      AGENT_REGISTRY.codex = { ...original, supports: experimentalSupports } as AgentConfig;
+      try {
+        const ids = getAssistantSupportedAgentIds();
+        expect(ids).not.toContain("codex");
+        expect(ids).toContain("claude");
+      } finally {
+        AGENT_REGISTRY.codex = original;
+      }
+    });
+  });
 });
 
 describe("AgentRoutingConfigSchema", () => {
@@ -470,10 +581,10 @@ describe("mistral configuration", () => {
     }
   });
 
-  it("relies on prompt fast-path with no completion patterns", () => {
+  it("relies on prompt fast-path with the shared 6s waiting debounce", () => {
     const detection = getAgentConfig("mistral")?.detection;
     expect(detection?.completionPatterns).toBeUndefined();
-    expect(detection?.promptFastPathMinQuietMs).toBe(700);
+    expect(detection?.promptFastPathMinQuietMs).toBe(6000);
   });
 
   it("declares the PyPI package for path synthesis", () => {
@@ -1226,22 +1337,6 @@ describe("all built-in agents have Windows or generic install", () => {
     const hasWindows = (config?.install?.byOs?.windows?.length ?? 0) > 0;
     const hasGeneric = (config?.install?.byOs?.generic?.length ?? 0) > 0;
     expect(hasWindows || hasGeneric).toBe(true);
-  });
-});
-
-describe("ASSISTANT_FAST_MODELS", () => {
-  it("has entries for claude, gemini, and codex", () => {
-    expect(ASSISTANT_FAST_MODELS).toHaveProperty("claude");
-    expect(ASSISTANT_FAST_MODELS).toHaveProperty("gemini");
-    expect(ASSISTANT_FAST_MODELS).toHaveProperty("codex");
-  });
-
-  it("each fast model ID exists in the agent's models array", () => {
-    for (const [agentId, modelId] of Object.entries(ASSISTANT_FAST_MODELS)) {
-      const config = getAgentConfig(agentId);
-      const modelIds = config?.models?.map((m) => m.id) ?? [];
-      expect(modelIds).toContain(modelId);
-    }
   });
 });
 

@@ -64,6 +64,14 @@ vi.mock("../../services/TaskOrchestrator.js", () => ({
   disposeTaskOrchestrator: vi.fn(),
 }));
 
+const taskQueueServiceMock = vi.hoisted(() => ({
+  flushPersistence: vi.fn(() => Promise.resolve()),
+}));
+
+vi.mock("../../services/TaskQueueService.js", () => ({
+  taskQueueService: taskQueueServiceMock,
+}));
+
 vi.mock("../../services/PtyClient.js", () => ({
   disposePtyClient: vi.fn(),
 }));
@@ -183,12 +191,12 @@ describe("registerShutdownHandler", () => {
     // Should still preventDefault and run cleanup
     expect(event.preventDefault).toHaveBeenCalled();
     expect(quitWarningMock.showQuitWarning).not.toHaveBeenCalled();
-    expect(crashRecoveryMock.cleanupOnExit).toHaveBeenCalled();
 
     // Wait for cleanup promise chain to settle
     await vi.waitFor(() => {
       expect(appMock.exit).toHaveBeenCalledWith(0);
     });
+    expect(crashRecoveryMock.cleanupOnExit).toHaveBeenCalled();
   });
 
   it("runs cleanup without dialog on signal shutdown even with active agents", async () => {
@@ -206,11 +214,11 @@ describe("registerShutdownHandler", () => {
 
     expect(event.preventDefault).toHaveBeenCalled();
     expect(quitWarningMock.showQuitWarning).not.toHaveBeenCalled();
-    expect(crashRecoveryMock.cleanupOnExit).toHaveBeenCalled();
 
     await vi.waitFor(() => {
       expect(appMock.exit).toHaveBeenCalledWith(0);
     });
+    expect(crashRecoveryMock.cleanupOnExit).toHaveBeenCalled();
   });
 
   it("shows dialog when window exists, agents active, and user cancels", async () => {
@@ -246,11 +254,11 @@ describe("registerShutdownHandler", () => {
     await beforeQuitCb(event);
 
     expect(quitWarningMock.showQuitWarning).toHaveBeenCalled();
-    expect(crashRecoveryMock.cleanupOnExit).toHaveBeenCalled();
 
     await vi.waitFor(() => {
       expect(appMock.exit).toHaveBeenCalledWith(0);
     });
+    expect(crashRecoveryMock.cleanupOnExit).toHaveBeenCalled();
   });
 
   it("skips dialog when window exists but no active agents", async () => {
@@ -266,11 +274,11 @@ describe("registerShutdownHandler", () => {
     await beforeQuitCb(event);
 
     expect(quitWarningMock.showQuitWarning).not.toHaveBeenCalled();
-    expect(crashRecoveryMock.cleanupOnExit).toHaveBeenCalled();
 
     await vi.waitFor(() => {
       expect(appMock.exit).toHaveBeenCalledWith(0);
     });
+    expect(crashRecoveryMock.cleanupOnExit).toHaveBeenCalled();
   });
 
   it("runs cleanup when no window and signal shutdown", async () => {
@@ -282,16 +290,19 @@ describe("registerShutdownHandler", () => {
 
     expect(event.preventDefault).toHaveBeenCalled();
     expect(quitWarningMock.showQuitWarning).not.toHaveBeenCalled();
-    expect(crashRecoveryMock.cleanupOnExit).toHaveBeenCalled();
 
     await vi.waitFor(() => {
       expect(appMock.exit).toHaveBeenCalledWith(0);
     });
+    expect(crashRecoveryMock.cleanupOnExit).toHaveBeenCalled();
   });
 
   describe("SQLite connection close", () => {
-    it("calls closeSharedDb after DatabaseMaintenanceService.dispose", async () => {
+    it("flushes task persistence before dispose and closeSharedDb", async () => {
       const callOrder: string[] = [];
+      taskQueueServiceMock.flushPersistence.mockImplementation(async () => {
+        callOrder.push("flushPersistence");
+      });
       dbMaintenanceMock.dispose.mockImplementation(async () => {
         callOrder.push("dispose");
       });
@@ -306,7 +317,26 @@ describe("registerShutdownHandler", () => {
         expect(appMock.exit).toHaveBeenCalledWith(0);
       });
 
-      expect(callOrder).toEqual(["dispose", "closeSharedDb"]);
+      expect(callOrder).toEqual(["flushPersistence", "dispose", "closeSharedDb"]);
+    });
+
+    it("still closes the database and exits when flushPersistence rejects", async () => {
+      taskQueueServiceMock.flushPersistence.mockRejectedValueOnce(new Error("flush boom"));
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const { beforeQuitCb } = await setup({});
+      await beforeQuitCb(makeEvent());
+
+      await vi.waitFor(() => {
+        expect(appMock.exit).toHaveBeenCalledWith(0);
+      });
+
+      expect(closeSharedDbMock.closeSharedDb).toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith(
+        "[MAIN] Failed to flush task persistence:",
+        expect.any(Error)
+      );
+      warnSpy.mockRestore();
     });
 
     it("still calls closeSharedDb and exits when dispose fails", async () => {
@@ -419,7 +449,7 @@ describe("registerShutdownHandler", () => {
       vi.useRealTimers();
     });
 
-    it("calls app.exit(1) when cleanup hangs past hard timeout", async () => {
+    it("calls app.exit(1) when cleanup hangs past hard timeout and leaves the crash marker on disk", async () => {
       mcpServerMock.stop.mockReturnValue(new Promise(() => {}));
       const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
@@ -428,10 +458,16 @@ describe("registerShutdownHandler", () => {
       await beforeQuitCb(event);
 
       await vi.advanceTimersByTimeAsync(10_000);
+      // Drain the post-timeout async chain (closeTelemetry await + app.exit).
+      await vi.runAllTimersAsync();
 
       expect(appMock.exit).toHaveBeenCalledWith(1);
       expect(appMock.exit).toHaveBeenCalledTimes(1);
       expect(closeTelemetryMock).toHaveBeenCalled();
+      // Critical: a hard-timeout exit must NOT mark itself clean. The intact
+      // marker file is the dirty-exit signal the next launch reads.
+      expect(crashRecoveryMock.cleanupOnExit).not.toHaveBeenCalled();
+      expect(crashLoopGuardMock.markCleanExit).not.toHaveBeenCalled();
       expect(consoleSpy).toHaveBeenCalledWith(
         "[MAIN] Error during cleanup:",
         expect.objectContaining({
@@ -446,6 +482,67 @@ describe("registerShutdownHandler", () => {
       );
 
       consoleSpy.mockRestore();
+    });
+
+    it("calls cleanupOnExit and markCleanExit only after the cleanup chain resolves on a clean shutdown", async () => {
+      mcpServerMock.stop.mockReturnValue(Promise.resolve());
+
+      const { beforeQuitCb } = await setup({});
+      const event = makeEvent();
+      await beforeQuitCb(event);
+
+      // Immediately after before-quit returns, the cleanup chain hasn't resolved
+      // yet — markers must not have been touched.
+      expect(crashRecoveryMock.cleanupOnExit).not.toHaveBeenCalled();
+      expect(crashLoopGuardMock.markCleanExit).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(100);
+
+      // Now the chain has resolved and the success branch has marked clean.
+      expect(crashRecoveryMock.cleanupOnExit).toHaveBeenCalledTimes(1);
+      expect(crashLoopGuardMock.markCleanExit).toHaveBeenCalledTimes(1);
+      expect(appMock.exit).toHaveBeenCalledWith(0);
+    });
+
+    it("still calls markCleanExit and exits with 0 when cleanupOnExit throws (independent failure modes)", async () => {
+      mcpServerMock.stop.mockReturnValue(Promise.resolve());
+      crashRecoveryMock.cleanupOnExit.mockImplementationOnce(() => {
+        throw new Error("delete marker boom");
+      });
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const { beforeQuitCb } = await setup({});
+      await beforeQuitCb(makeEvent());
+
+      await vi.advanceTimersByTimeAsync(100);
+
+      expect(crashRecoveryMock.cleanupOnExit).toHaveBeenCalledTimes(1);
+      expect(crashLoopGuardMock.markCleanExit).toHaveBeenCalledTimes(1);
+      expect(appMock.exit).toHaveBeenCalledWith(0);
+      expect(warnSpy).toHaveBeenCalledWith(
+        "[MAIN] CrashRecoveryService.cleanupOnExit failed:",
+        expect.any(Error)
+      );
+
+      warnSpy.mockRestore();
+    });
+
+    it("still marks clean exit and exits with 0 when closeTelemetry rejects (telemetry must not gate marker cleanup)", async () => {
+      mcpServerMock.stop.mockReturnValue(Promise.resolve());
+      closeTelemetryMock.mockReturnValueOnce(Promise.reject(new Error("telemetry boom")));
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const { beforeQuitCb } = await setup({});
+      await beforeQuitCb(makeEvent());
+
+      await vi.advanceTimersByTimeAsync(100);
+
+      expect(crashRecoveryMock.cleanupOnExit).toHaveBeenCalledTimes(1);
+      expect(crashLoopGuardMock.markCleanExit).toHaveBeenCalledTimes(1);
+      expect(appMock.exit).toHaveBeenCalledWith(0);
+      expect(warnSpy).toHaveBeenCalledWith("[MAIN] closeTelemetry failed:", expect.any(Error));
+
+      warnSpy.mockRestore();
     });
 
     it("normal cleanup exits with code 0 and timeout does not fire", async () => {

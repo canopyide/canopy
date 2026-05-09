@@ -1,12 +1,9 @@
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { usePanelStore } from "@/store";
 import { logError } from "@/utils/logger";
-import { getTerminalAnimationDuration } from "@/lib/animationUtils";
-import type { PanelLifecycle } from "./usePanelLifecycle";
 
 export interface UsePanelHandlersConfig {
   terminalId: string;
-  lifecycle: PanelLifecycle;
   onAfterClose?: () => void;
 }
 
@@ -18,7 +15,6 @@ export interface PanelHandlers {
 
 export function usePanelHandlers({
   terminalId,
-  lifecycle,
   onAfterClose,
 }: UsePanelHandlersConfig): PanelHandlers {
   const setFocused = usePanelStore((state) => state.setFocused);
@@ -26,33 +22,34 @@ export function usePanelHandlers({
   const removePanel = usePanelStore((state) => state.removePanel);
   const updateTitle = usePanelStore((state) => state.updateTitle);
 
+  // Synchronous guard against rapid Cmd+W double-fires. useState would batch
+  // and read stale on the second tick; refs mutate atomically.
+  const trashedRef = useRef(false);
+
   const handleFocus = useCallback(() => {
     setFocused(terminalId);
   }, [setFocused, terminalId]);
 
   const handleClose = useCallback(
     (force?: boolean) => {
+      if (trashedRef.current) return;
+      trashedRef.current = true;
+
       if (force) {
         removePanel(terminalId);
         onAfterClose?.();
-      } else {
-        const duration = getTerminalAnimationDuration();
-        lifecycle.setIsTrashing(true);
-        lifecycle.timeoutRef.current = setTimeout(() => {
-          try {
-            trashPanelGroup(terminalId);
-          } catch (error) {
-            logError("Failed to trash terminal", error);
-          } finally {
-            if (lifecycle.mountedRef.current) {
-              lifecycle.setIsTrashing(false);
-            }
-            onAfterClose?.();
-          }
-        }, duration);
+        return;
+      }
+
+      try {
+        trashPanelGroup(terminalId);
+      } catch (error) {
+        logError("Failed to trash terminal", error);
+      } finally {
+        onAfterClose?.();
       }
     },
-    [removePanel, trashPanelGroup, terminalId, onAfterClose, lifecycle]
+    [removePanel, trashPanelGroup, terminalId, onAfterClose]
   );
 
   const handleTitleChange = useCallback(

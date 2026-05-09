@@ -7,7 +7,7 @@ export const SEL = {
     openDevPreview: '[aria-label="Open Dev Preview"]',
     copyContext: '[aria-label="Copy Context"]',
     projectSwitcherTrigger: '[data-testid="project-switcher-trigger"]',
-    portalToggle: '[aria-label*="context portal"]',
+    portalToggle: '[aria-label*="web chat"]',
   },
   portal: {
     region: 'aside[aria-label="Portal"]',
@@ -25,6 +25,7 @@ export const SEL = {
   },
   sidebar: {
     resizeHandle: '[aria-label="Resize sidebar"]',
+    aside: 'aside[aria-label="Sidebar"]',
   },
   settings: {
     heading: 'h2:has-text("Settings")',
@@ -37,6 +38,7 @@ export const SEL = {
     searchInput: '[aria-label="Search settings"]',
     searchClear: '[aria-label="Clear search"]',
     shortcutsSearchInput: 'input[placeholder="Search shortcuts..."]',
+    shortcutRow: '[data-testid="shortcut-row"]',
     shortcutRecordPrompt: 'button:has-text("Click to record shortcut")',
     shortcutCancelButton: 'button:has-text("Cancel")',
     shortcutResetButton: '[aria-label="Reset to default"]',
@@ -137,7 +139,7 @@ export const SEL = {
   },
   pulse: {
     heatmap: '[data-testid="pulse-heatmap"]',
-    rangeTrigger: '[aria-label="Select pulse range"]',
+    rangeTrigger: '[aria-label="Activity range"]',
     refreshButton: '[aria-label="Refresh"]',
   },
   reviewHub: {
@@ -160,15 +162,11 @@ export const SEL = {
   firstRun: {
     welcomeTitle: 'h1:has-text("Welcome to Daintree")',
     agentTitle: 'text="Choose your AI agents"',
-    agentSetupTitle: 'text="Agent Setup"',
+    agentSetupDialog:
+      '[role="dialog"]:has-text("Agent Setup"), [role="dialog"]:has-text("Welcome to Daintree")',
     agentSetupBanner: '[data-testid="agent-setup-banner"]',
     agentSetupBannerCta: '[data-testid="agent-setup-banner-cta"]',
     agentSetupBannerDismiss: '[data-testid="agent-setup-banner-dismiss"]',
-  },
-  onboarding: {
-    heading: 'h2:has-text("Set up your project")',
-    projectNameInput: '[aria-label="Project Name"]',
-    finishButton: 'button:has-text("Finish")',
   },
   agent: {
     panel: '[aria-label^="Claude agent:"]',
@@ -270,10 +268,8 @@ export const SEL = {
   preset: {
     section: "#agents-presets",
     addButton: '[data-testid="preset-add-button"]',
-    // Back-compat alias for the preset picker trigger (Popover now, was <select>).
-    defaultSelect: '[data-testid="preset-selector-trigger"]',
     selectorTrigger: '[data-testid="preset-selector-trigger"]',
-    selectorListbox: '[data-testid="preset-selector-listbox"]',
+    selectorListbox: '[data-testid="preset-selector-listbox"][data-state="open"]',
     presetRow: "#agents-presets [data-testid]",
     autoBadge: "[data-testid='preset-badge-auto']",
     customBadge: "[data-testid='preset-badge-custom']",

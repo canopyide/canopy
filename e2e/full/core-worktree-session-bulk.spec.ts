@@ -8,14 +8,16 @@ import { SEL } from "../helpers/selectors";
 import { T_SHORT, T_LONG, T_SETTLE } from "../helpers/timeouts";
 
 let ctx: AppContext;
+let fixtureCleanup: (() => void) | undefined;
 const FEATURE = "feature/test-branch";
 
 test.describe.serial("Core: Worktree Session Bulk", () => {
   test.beforeAll(async () => {
-    const fixture = createFixtureRepo({
+    const { dir: fixture, cleanup } = createFixtureRepo({
       name: "worktree-session-bulk",
       withFeatureBranch: true,
     });
+    fixtureCleanup = cleanup;
 
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixture, "Session Bulk");
@@ -23,6 +25,7 @@ test.describe.serial("Core: Worktree Session Bulk", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   async function openSessionsSubmenu() {

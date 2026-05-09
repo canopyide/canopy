@@ -8,15 +8,16 @@ import {
   type AppContext,
 } from "../helpers/launch";
 import { createFixtureRepos } from "../helpers/fixtures";
-import { openAndOnboardProject, completeOnboarding } from "../helpers/project";
+import { openAndOnboardProject, dismissTelemetryConsent } from "../helpers/project";
 import { injectDelay, clearAllFaults } from "../helpers/ipcFaults";
 import { getGridPanelCount, openTerminal } from "../helpers/panels";
 import { SEL } from "../helpers/selectors";
 import { T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
 
 let ctx: AppContext;
-const PROJECT_A_NAME = "Race Project A";
-const PROJECT_B_NAME = "Race Project B";
+let fixtureCleanups: Array<() => void> = [];
+const PROJECT_A_NAME = "project-A";
+const PROJECT_B_NAME = "project-B";
 
 interface TerminalInfo {
   id: string;
@@ -37,7 +38,7 @@ async function getAllTerminals(page: typeof ctx.window): Promise<TerminalInfo[]>
   });
 }
 
-async function getCurrentProject(page: typeof ctx.window): Promise<ProjectInfo> {
+async function getCurrentProject(page: typeof ctx.window): Promise<ProjectInfo | null> {
   return page.evaluate(async () => {
     return await (window as any).electron.project.getCurrent();
   });
@@ -49,7 +50,7 @@ async function switchToProject(
 ): Promise<typeof ctx.window> {
   // Skip if already on the target project
   const current = await getCurrentProject(page);
-  if (current.name === projectName) return page;
+  if (current?.name === projectName) return page;
 
   await page.locator(SEL.toolbar.projectSwitcherTrigger).click();
   const palette = page.locator(SEL.projectSwitcher.palette);
@@ -86,7 +87,9 @@ async function switchToProject(
 
 test.describe.serial("Core: Project Switch Race Conditions", () => {
   test.beforeAll(async () => {
-    const [repoA, repoB] = createFixtureRepos(2);
+    const fixtures = createFixtureRepos(2);
+    fixtureCleanups = fixtures.map((f) => f.cleanup);
+    const [repoA, repoB] = fixtures.map((f) => f.dir);
 
     ctx = await launchApp({ env: { DAINTREE_E2E_FAULT_MODE: "1" } });
 
@@ -100,10 +103,10 @@ test.describe.serial("Core: Project Switch Race Conditions", () => {
     await expect(palette).toBeVisible({ timeout: T_MEDIUM });
     await ctx.window.locator(SEL.projectSwitcher.addButton).click({ force: true });
 
-    await completeOnboarding(ctx.window, PROJECT_B_NAME);
-
-    // Re-acquire window after onboarding may have created a new WebContentsView
+    // Re-acquire window after the WebContentsView swap, then dismiss the
+    // telemetry consent dialog if it appears.
     ctx.window = await refreshActiveWindow(ctx.app, ctx.window);
+    await dismissTelemetryConsent(ctx.window);
 
     // Switch back to Project A as the starting baseline
     await switchToProject(ctx.window, PROJECT_A_NAME);
@@ -116,6 +119,7 @@ test.describe.serial("Core: Project Switch Race Conditions", () => {
   test.afterAll(async () => {
     await clearAllFaults(ctx.app);
     if (ctx?.app) await closeApp(ctx.app);
+    for (const cleanup of fixtureCleanups) cleanup();
   });
 
   test("delayed spawn assigns terminal to originating project", async () => {
@@ -123,6 +127,7 @@ test.describe.serial("Core: Project Switch Race Conditions", () => {
 
     // Capture Project A's ID
     const projectA = await getCurrentProject(ctx.window);
+    expect(projectA).not.toBeNull();
 
     // Open a terminal in Project A to confirm normal flow works
     await openTerminal(ctx.window);
@@ -160,7 +165,7 @@ test.describe.serial("Core: Project Switch Race Conditions", () => {
     const withProject = activeTerminals.filter((t: TerminalInfo) => t.projectId !== undefined);
     expect(withProject.length).toBeGreaterThanOrEqual(1);
     for (const t of withProject) {
-      expect(t.projectId).toBe(projectA.id);
+      expect(t.projectId).toBe(projectA!.id);
     }
   });
 
@@ -169,6 +174,13 @@ test.describe.serial("Core: Project Switch Race Conditions", () => {
 
     // Ensure faults are cleared from previous test before spawning
     await clearAllFaults(ctx.app);
+    // The prior `delayed spawn` test leaves an in-flight terminal
+    // that may still be settling into the cached Project A view when
+    // this test starts. Give the main process time to drain queued
+    // PTY-attach IPCs against the cached view before reactivating it
+    // — without this, the cached view's IPC handlers race with
+    // unregister-on-deactivate and the renderer can crash uncaughtly.
+    await ctx.window.waitForTimeout(2_000);
 
     // Ensure we're on Project A with a fresh terminal fully spawned
     await switchToProject(ctx.window, PROJECT_A_NAME);
@@ -185,7 +197,13 @@ test.describe.serial("Core: Project Switch Race Conditions", () => {
 
     // Switch to Project B then back — the key invariant is that A's panels survive
     await switchToProject(ctx.window, PROJECT_B_NAME);
-    await ctx.window.waitForTimeout(T_SETTLE);
+    // The previous test (`delayed spawn`) left a terminal mid-spawn that
+    // arrives in Project A AFTER its WebContentsView was deactivated. The
+    // cached view's IPC handlers continue draining queued messages for a
+    // short period — switching back too soon races handler unregistration
+    // against the activation flow and the renderer crashes uncaughtly. Wait
+    // long enough for those messages to drain before reactivating A.
+    await ctx.window.waitForTimeout(2_000);
 
     // Switch back to Project A — its panels should reappear
     await switchToProject(ctx.window, PROJECT_A_NAME);
@@ -204,6 +222,7 @@ test.describe.serial("Core: Project Switch Race Conditions", () => {
     // Switch to Project A to spawn from there
     await switchToProject(ctx.window, PROJECT_A_NAME);
     const projectA = await getCurrentProject(ctx.window);
+    expect(projectA).not.toBeNull();
 
     // Inject delay and trigger a spawn
     await injectDelay(ctx.app, "terminal:spawn", 2000);
@@ -231,7 +250,7 @@ test.describe.serial("Core: Project Switch Race Conditions", () => {
     const withProject = activeTerminals.filter((t: TerminalInfo) => t.projectId !== undefined);
     expect(withProject.length).toBeGreaterThanOrEqual(1);
     for (const t of withProject) {
-      expect(t.projectId).toBe(projectA.id);
+      expect(t.projectId).toBe(projectA!.id);
     }
   });
 });

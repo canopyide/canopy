@@ -13,7 +13,7 @@ export function TerminalDragPreview({ terminal, groupTabCount }: TerminalDragPre
   // Drag visual color mirrors the same chrome descriptor used by tabs/panels.
   const chrome = deriveTerminalChrome(terminal);
   const brandColor = chrome.color;
-  const isWorking = chrome.isAgent && terminal.agentState === "working";
+  const isWorking = terminal.agentState === "working";
   const isGroupDrag = (groupTabCount ?? 0) > 1;
 
   return (

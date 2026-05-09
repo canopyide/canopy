@@ -4,9 +4,10 @@ import { logDebug } from "../utils/logger.js";
 
 const P = "[VoiceKeyterms]";
 
-const MAX_KEYTERMS = 80;
+const MAX_KEYTERMS = 96;
 const ASSEMBLY_TIMEOUT_MS = 500;
 const MIN_TERM_LENGTH = 4;
+const MAX_KEYTERM_LINES = 200;
 
 const BLOCKLIST = new Set([
   // Shell commands
@@ -267,7 +268,7 @@ async function getTerminalLines(ptyClient: PtyClient): Promise<string[]> {
     for (const snap of snapshots) {
       allLines.push(...snap.lines);
     }
-    return allLines;
+    return allLines.slice(-MAX_KEYTERM_LINES);
   } catch {
     logDebug(`${P} Failed to get terminal snapshots`);
     return [];
@@ -298,8 +299,10 @@ export async function assembleKeyterms(opts: KeytermAssemblyOpts): Promise<strin
 
   // Priority 2: Project name tokens
   if (projectName) {
-    // Add the full project name if it's a single meaningful word
-    add(projectName);
+    const trimmed = projectName.trim();
+    if (trimmed.length >= 2 && !/^\d+$/.test(trimmed)) {
+      add(trimmed);
+    }
     for (const token of tokenizeProjectName(projectName)) {
       add(token);
     }
@@ -309,11 +312,13 @@ export async function assembleKeyterms(opts: KeytermAssemblyOpts): Promise<strin
   // Branch tokens run first (Priority 3), then terminal identifiers (Priority 4).
   // We await sequentially to preserve priority ordering for the dedup/cap logic.
   if (projectPath) {
+    let branchTimer: NodeJS.Timeout | undefined;
     try {
-      const branchName = await Promise.race([
-        getBranchName(projectPath),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), ASSEMBLY_TIMEOUT_MS)),
-      ]);
+      const timeoutPromise = new Promise<null>((resolve) => {
+        branchTimer = setTimeout(() => resolve(null), ASSEMBLY_TIMEOUT_MS);
+        branchTimer.unref();
+      });
+      const branchName = await Promise.race([getBranchName(projectPath), timeoutPromise]);
       if (branchName) {
         for (const token of tokenizeBranchName(branchName)) {
           add(token);
@@ -321,21 +326,27 @@ export async function assembleKeyterms(opts: KeytermAssemblyOpts): Promise<strin
       }
     } catch {
       logDebug(`${P} Branch name lookup failed`);
+    } finally {
+      if (branchTimer) clearTimeout(branchTimer);
     }
   }
 
   if (ptyClient) {
+    let linesTimer: NodeJS.Timeout | undefined;
     try {
-      const lines = await Promise.race([
-        getTerminalLines(ptyClient),
-        new Promise<string[]>((resolve) => setTimeout(() => resolve([]), ASSEMBLY_TIMEOUT_MS)),
-      ]);
+      const timeoutPromise = new Promise<string[]>((resolve) => {
+        linesTimer = setTimeout(() => resolve([]), ASSEMBLY_TIMEOUT_MS);
+        linesTimer.unref();
+      });
+      const lines = await Promise.race([getTerminalLines(ptyClient), timeoutPromise]);
       const identifiers = extractTerminalIdentifiers(lines);
       for (const id of identifiers) {
         add(id);
       }
     } catch {
       logDebug(`${P} Terminal identifier extraction failed`);
+    } finally {
+      if (linesTimer) clearTimeout(linesTimer);
     }
   }
 

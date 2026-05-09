@@ -23,11 +23,7 @@ vi.mock("@dnd-kit/sortable", () => ({
 }));
 
 vi.mock("@/components/DragDrop/SortableWorktreeTerminal", () => ({
-  SortableWorktreeTerminal: ({
-    children,
-  }: {
-    children: (arg: { listeners: Record<string, unknown> }) => ReactNode;
-  }) => <>{children({ listeners: {} })}</>,
+  SortableWorktreeTerminal: ({ children }: { children: ReactNode }) => <>{children}</>,
   getAccordionDragId: (id: string) => `accordion-${id}`,
 }));
 
@@ -410,5 +406,159 @@ describe("WorktreeTerminalSection arming click handlers", () => {
 
     const scrollContainer = container.querySelector('[aria-multiselectable="true"]');
     expect(scrollContainer).toBeTruthy();
+  });
+});
+
+// Terminal row state icon: active states (working/waiting/directing) pass
+// through regardless of identity (#6650 boot window). Once the agent chrome is
+// live, the indicator stays visible — idle/missing/completed state coerce to
+// waiting so the activity indicator never silently disappears mid-flight.
+describe("WorktreeTerminalSection row state icon", () => {
+  beforeEach(() => {
+    useFleetArmingStore.setState({
+      armedIds: new Set<string>(),
+      armOrder: [],
+      armOrderById: {},
+      lastArmedId: null,
+    });
+  });
+
+  it("renders working icon when agentState='working' and no agent identity is set", () => {
+    const term = makeTerminal({
+      id: "no-id-1",
+      kind: "terminal",
+      hasPty: true,
+      agentState: "working",
+    });
+    const { container } = renderSection({
+      isExpanded: true,
+      terminals: [term],
+      counts: { ...baseCounts, total: 1 },
+    });
+    const row = container.querySelector('[data-terminal-id="no-id-1"]');
+    expect(row).not.toBeNull();
+    expect(row?.getAttribute("data-terminal-agent-state")).toBe("working");
+    const stateIcon = row?.querySelector('[aria-label="working"]');
+    expect(stateIcon).not.toBeNull();
+  });
+
+  it("renders waiting icon for identity-less terminal with agentState='waiting'", () => {
+    const term = makeTerminal({
+      id: "no-id-2",
+      kind: "terminal",
+      hasPty: true,
+      agentState: "waiting",
+    });
+    const { container } = renderSection({
+      isExpanded: true,
+      terminals: [term],
+      counts: { ...baseCounts, total: 1 },
+    });
+    const row = container.querySelector('[data-terminal-id="no-id-2"]');
+    const stateIcon = row?.querySelector('[aria-label="waiting"]');
+    expect(stateIcon).not.toBeNull();
+  });
+
+  it("renders waiting icon when agentState='idle' and agent chrome is live", () => {
+    const term = makeTerminal({
+      id: "idle-1",
+      kind: "terminal",
+      hasPty: true,
+      detectedAgentId: "claude",
+      agentState: "idle",
+    });
+    const { container } = renderSection({
+      isExpanded: true,
+      terminals: [term],
+      counts: { ...baseCounts, total: 1 },
+    });
+    const row = container.querySelector('[data-terminal-id="idle-1"]');
+    const waitingIcon = row?.querySelector('[aria-label="waiting"]');
+    expect(waitingIcon).not.toBeNull();
+  });
+
+  it("does not render any state icon when agentState='exited'", () => {
+    const term = makeTerminal({
+      id: "exited-1",
+      kind: "terminal",
+      hasPty: true,
+      launchAgentId: "claude",
+      agentState: "exited",
+    });
+    const { container } = renderSection({
+      isExpanded: true,
+      terminals: [term],
+      counts: { ...baseCounts, total: 1 },
+    });
+    const row = container.querySelector('[data-terminal-id="exited-1"]');
+    const stateIcons = row?.querySelectorAll(
+      '[aria-label="working"], [aria-label="waiting"], [aria-label="directing"], [aria-label="done"], [aria-label="exited"], [aria-label="idle"]'
+    );
+    expect(stateIcons?.length ?? 0).toBe(0);
+  });
+
+  it("does not render any state icon during the post-exit IPC race (stale agentState)", () => {
+    // Renderer can receive `terminal:exit` (sets exitCode/runtimeStatus) before
+    // the `agent:state-changed` "exited" event lands — agentState may still
+    // read "working". The chrome's hasExited gate must suppress the indicator.
+    const term = makeTerminal({
+      id: "exit-race-1",
+      kind: "terminal",
+      hasPty: true,
+      launchAgentId: "claude",
+      agentState: "working",
+      runtimeStatus: "exited",
+      exitCode: 0,
+    });
+    const { container } = renderSection({
+      isExpanded: true,
+      terminals: [term],
+      counts: { ...baseCounts, total: 1 },
+    });
+    const row = container.querySelector('[data-terminal-id="exit-race-1"]');
+    const stateIcons = row?.querySelectorAll(
+      '[aria-label="working"], [aria-label="waiting"], [aria-label="directing"], [aria-label="done"], [aria-label="exited"], [aria-label="idle"]'
+    );
+    expect(stateIcons?.length ?? 0).toBe(0);
+  });
+
+  it("renders waiting icon when agentState='completed' and agent chrome is live", () => {
+    const term = makeTerminal({
+      id: "completed-1",
+      kind: "terminal",
+      hasPty: true,
+      detectedAgentId: "claude",
+      agentState: "completed",
+    });
+    const { container } = renderSection({
+      isExpanded: true,
+      terminals: [term],
+      counts: { ...baseCounts, total: 1 },
+    });
+    const row = container.querySelector('[data-terminal-id="completed-1"]');
+    const waitingIcon = row?.querySelector('[aria-label="waiting"]');
+    expect(waitingIcon).not.toBeNull();
+  });
+
+  it("does not render state icon when agentState is undefined (plain shell)", () => {
+    const term = makeTerminal({
+      id: "plain-1",
+      kind: "terminal",
+      hasPty: true,
+    });
+    const { container } = renderSection({
+      isExpanded: true,
+      terminals: [term],
+      counts: { ...baseCounts, total: 1 },
+    });
+    const row = container.querySelector('[data-terminal-id="plain-1"]');
+    const stateIcons = row?.querySelectorAll("[aria-label]");
+    const stateRelated = Array.from(stateIcons ?? []).filter((el) => {
+      const label = el.getAttribute("aria-label");
+      return (
+        label === "working" || label === "waiting" || label === "directing" || label === "idle"
+      );
+    });
+    expect(stateRelated.length).toBe(0);
   });
 });

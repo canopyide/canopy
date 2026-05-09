@@ -1,105 +1,174 @@
-import { ipcMain } from "electron";
-import type { WindowRegistry } from "../window/WindowRegistry.js";
-import http from "node:http";
-import net from "node:net";
 import { randomUUID } from "node:crypto";
-import os from "node:os";
-import path from "node:path";
-import fs from "node:fs/promises";
-import type { AddressInfo } from "node:net";
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
-import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import type { ActionManifestEntry, ActionDispatchResult } from "../../shared/types/actions.js";
 import { store } from "../store.js";
-import { resilientAtomicWriteFile } from "../utils/fs.js";
-import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
+import type { WindowRegistry } from "../window/WindowRegistry.js";
+import { getWindowRegistry } from "../window/windowRef.js";
+import type {
+  AssistantTurnRecord,
+  McpAuditRecord,
+  McpAuditStats,
+  McpRuntimeSnapshot,
+  McpRuntimeState,
+  TurnOutcomeClass,
+} from "../../shared/types/ipc/mcpServer.js";
+import { SessionStore } from "./mcp-server/sessionStore.js";
+import { AuditService } from "./mcp-server/auditLog.js";
+import { TurnOutcomeService } from "./mcp-server/turnOutcomeLog.js";
+import { createRendererBridge } from "./mcp-server/rendererBridge.js";
+import { handleWaitUntilIdle } from "./mcp-server/waitUntilIdle.js";
+import { cleanupResourceSubscriptions } from "./mcp-server/sessionServer.js";
+import { HttpLifecycle } from "./mcp-server/httpLifecycle.js";
+import type {
+  PendingRequest,
+  DispatchEnvelope,
+  HelpTokenValidator,
+  HelpSessionWebContentsResolver,
+} from "./mcp-server/shared.js";
+import type { ActionManifestEntry } from "../../shared/types/actions.js";
+import { events } from "./events.js";
 
-const DISCOVERY_DIR = path.join(os.homedir(), ".daintree");
-const DISCOVERY_FILE = path.join(DISCOVERY_DIR, "mcp.json");
-const MCP_SERVER_KEY = "daintree";
-
-const DEFAULT_PORT = 45454;
-const MAX_PORT_RETRIES = 10;
-
-interface PendingRequest<T> {
-  resolve: (value: T) => void;
-  reject: (err: Error) => void;
-  timer: ReturnType<typeof setTimeout>;
-}
-
-function safeSerializeToolResult(value: unknown): string {
-  const seen = new WeakSet<object>();
-
-  try {
-    const serialized = JSON.stringify(
-      value,
-      (_key, currentValue) => {
-        if (typeof currentValue === "bigint") {
-          return currentValue.toString();
-        }
-        if (typeof currentValue === "symbol") {
-          return currentValue.toString();
-        }
-        if (typeof currentValue === "function") {
-          return `[Function: ${currentValue.name || "anonymous"}]`;
-        }
-        if (currentValue instanceof Error) {
-          return {
-            name: currentValue.name,
-            message: currentValue.message,
-            stack: currentValue.stack,
-          };
-        }
-        if (currentValue !== null && typeof currentValue === "object") {
-          if (seen.has(currentValue)) {
-            return "[Circular]";
-          }
-          seen.add(currentValue);
-        }
-        return currentValue;
-      },
-      2
-    );
-
-    if (serialized !== undefined) {
-      return serialized;
-    }
-  } catch {
-    // Fall through to string coercion.
-  }
-
-  try {
-    return String(value);
-  } catch {
-    return Object.prototype.toString.call(value);
-  }
-}
+// Re-export types for backward compatibility with existing importers.
+export type { HelpTokenValidator } from "./mcp-server/shared.js";
+export type McpAuthClass = import("./mcp-server/shared.js").McpAuthClass;
+export type McpTier = import("./mcp-server/shared.js").McpTier;
 
 export class McpServerService {
-  private httpServer: http.Server | null = null;
-  private port: number | null = null;
-  private registry: WindowRegistry | null = null;
-  private sessions = new Map<string, SSEServerTransport>();
-  private pendingManifests = new Map<string, PendingRequest<ActionManifestEntry[]>>();
-  private pendingDispatches = new Map<string, PendingRequest<ActionDispatchResult>>();
-  private cleanupListeners: Array<() => void> = [];
-  private statusListeners = new Set<(running: boolean) => void>();
+  // Mutable reference updated by start(); read by bridge's getActiveProjectWebContents.
+  private _registry: WindowRegistry | null = null;
 
-  get isRunning(): boolean {
-    return this.httpServer !== null && this.port !== null;
+  private readonly sessionStore: SessionStore;
+  private readonly auditService: AuditService;
+  private readonly turnOutcomeService: TurnOutcomeService;
+  private readonly httpLifecycle: HttpLifecycle;
+  /**
+   * Resolver injected by `HelpSessionService` after construction. Returns
+   * the help-session id bound to a terminal id, or null when the terminal
+   * isn't a help session. Held as a function so the MCP service doesn't
+   * import `HelpSessionService` (which would create a cycle).
+   */
+  private getSessionIdForTerminal: (terminalId: string) => string | null = () => null;
+  private readonly pendingManifests = new Map<string, PendingRequest<ActionManifestEntry[]>>();
+  private readonly pendingDispatches = new Map<string, PendingRequest<DispatchEnvelope>>();
+  private readonly cleanupListeners: Array<() => void> = [];
+  /**
+   * Long-lived event subscriptions (agent state, agent output, terminal
+   * lifecycle) that must survive `HttpLifecycle.stop()` / restart. Kept
+   * separate from `cleanupListeners` because that array is owned by
+   * `HttpLifecycle` and zeroed on every stop or unexpected close —
+   * placing these subscriptions there would silently disable turn-outcome
+   * recording the first time the MCP server restarts.
+   */
+  private readonly persistentListeners: Array<() => void> = [];
+  private readonly bridge;
+  private readonly statusListeners = new Set<(running: boolean) => void>();
+  private readonly runtimeStateListeners = new Set<(snapshot: McpRuntimeSnapshot) => void>();
+
+  constructor() {
+    this.sessionStore = new SessionStore((sessionId) => {
+      cleanupResourceSubscriptions(sessionId, this.sessionStore);
+    });
+
+    this.auditService = new AuditService(
+      (patch) => this.persistConfig(patch),
+      () => this.getConfig()
+    );
+
+    this.turnOutcomeService = new TurnOutcomeService({
+      saveConfig: (patch) => this.persistConfig(patch),
+      readConfig: () => this.getConfig(),
+      getSessionIdForTerminal: (terminalId) => this.getSessionIdForTerminal(terminalId),
+      getRecentAuditRecords: () => this.auditService.getRecords(),
+    });
+
+    const offStateChanged = events.on("agent:state-changed", (payload) => {
+      const terminalId = payload.terminalId;
+      if (!terminalId) return;
+      this.turnOutcomeService.handleTransition({
+        terminalId,
+        state: payload.state,
+        previousState: payload.previousState,
+        trigger: payload.trigger,
+        timestamp: payload.timestamp,
+      });
+    });
+    this.persistentListeners.push(offStateChanged);
+
+    const offOutput = events.on("agent:output", (payload) => {
+      if (!payload.terminalId) return;
+      this.turnOutcomeService.appendOutput(payload.terminalId, payload.data);
+    });
+    this.persistentListeners.push(offOutput);
+
+    const offTrashed = events.on("terminal:trashed", (payload) => {
+      this.turnOutcomeService.dropTerminal(payload.id);
+    });
+    this.persistentListeners.push(offTrashed);
+
+    const offExited = events.on("terminal:exited", (payload) => {
+      this.turnOutcomeService.dropTerminal(payload.terminalId);
+    });
+    this.persistentListeners.push(offExited);
+
+    this.bridge = createRendererBridge(
+      this.pendingManifests,
+      this.pendingDispatches,
+      () => this._registry
+    );
+
+    this.httpLifecycle = new HttpLifecycle({
+      sessionStore: this.sessionStore,
+      auditService: this.auditService,
+      turnOutcomeService: this.turnOutcomeService,
+      requestManifest: () => this.bridge.requestManifest(),
+      dispatchAction: (actionId, args, confirmed) =>
+        this.bridge.dispatchAction(actionId, args, confirmed),
+      requestManifestForWebContents: (id) => this.bridge.requestManifestForWebContents(id),
+      dispatchActionForWebContents: (id, actionId, args, confirmed) =>
+        this.bridge.dispatchActionForWebContents(id, actionId, args, confirmed),
+      handleWaitUntilIdle: (rawArgs, signal) => handleWaitUntilIdle(rawArgs, signal),
+      getCachedManifest: () => this.bridge.getCachedManifest(),
+      clearCachedManifest: () => this.bridge.clearCache(),
+      cleanupListeners: this.cleanupListeners,
+      pendingManifests: this.pendingManifests,
+      pendingDispatches: this.pendingDispatches,
+      setupIpcListeners: () => this.bridge.setupListeners(this.cleanupListeners),
+      emitStatusChange: () => this.emitStatusChange(),
+      emitRuntimeStateChange: () => this.emitRuntimeStateChange(),
+      setConfig: (patch) => this.persistConfig(patch),
+    });
   }
 
-  /**
-   * Register a subscriber that fires whenever the server transitions between
-   * running and stopped. Used by `ServiceConnectivityRegistry` to surface MCP
-   * reachability without polling.
-   */
+  get isRunning(): boolean {
+    return this.httpLifecycle.isRunning;
+  }
+
+  get currentPort(): number | null {
+    return this.httpLifecycle.currentPort;
+  }
+
+  get currentApiKey(): string | null {
+    return this.httpLifecycle.currentApiKey;
+  }
+
   onStatusChange(listener: (running: boolean) => void): () => void {
     this.statusListeners.add(listener);
     return () => {
       this.statusListeners.delete(listener);
     };
+  }
+
+  onRuntimeStateChange(listener: (snapshot: McpRuntimeSnapshot) => void): () => void {
+    this.runtimeStateListeners.add(listener);
+    return () => {
+      this.runtimeStateListeners.delete(listener);
+    };
+  }
+
+  setHelpTokenValidator(validator: HelpTokenValidator | null): void {
+    this.httpLifecycle.setHelpTokenValidator(validator);
+  }
+
+  setHelpSessionWebContentsResolver(resolver: HelpSessionWebContentsResolver | null): void {
+    this.httpLifecycle.setHelpSessionWebContentsResolver(resolver);
   }
 
   private emitStatusChange(): void {
@@ -111,14 +180,52 @@ export class McpServerService {
         console.error("[MCP] Status change listener threw:", err);
       }
     }
+    this.emitRuntimeStateChange();
   }
 
-  get currentPort(): number | null {
-    return this.port;
+  private emitRuntimeStateChange(): void {
+    const snapshot = this.getRuntimeState();
+    for (const listener of this.runtimeStateListeners) {
+      try {
+        listener(snapshot);
+      } catch (err) {
+        console.error("[MCP] Runtime-state listener threw:", err);
+      }
+    }
+  }
+
+  getRuntimeState(): McpRuntimeSnapshot {
+    const enabled = this.isEnabled();
+    let state: McpRuntimeState;
+    if (!enabled) {
+      state = "disabled";
+    } else if (this.isRunning) {
+      state = "ready";
+    } else if (this.httpLifecycle.lastErrorState) {
+      state = "failed";
+    } else {
+      state = "starting";
+    }
+    return {
+      enabled,
+      state,
+      port: this.currentPort,
+      lastError: this.httpLifecycle.lastErrorState,
+    };
   }
 
   private getConfig() {
     return store.get("mcpServer");
+  }
+
+  private persistConfig(patch: Record<string, unknown>): void {
+    const current = this.getConfig();
+    store.set("mcpServer", {
+      ...current,
+      ...patch,
+      auditLog: "auditLog" in patch ? patch.auditLog : current.auditLog,
+      turnOutcomeLog: "turnOutcomeLog" in patch ? patch.turnOutcomeLog : current.turnOutcomeLog,
+    });
   }
 
   isEnabled(): boolean {
@@ -126,124 +233,76 @@ export class McpServerService {
   }
 
   async setEnabled(enabled: boolean): Promise<void> {
-    store.set("mcpServer", { ...this.getConfig(), enabled });
-    if (enabled && this.registry && !this.isRunning) {
-      await this.start(this.registry);
+    const wasEnabled = this.isEnabled();
+    this.persistConfig({ enabled });
+    if (enabled && this._registry && !this.isRunning) {
+      await this.httpLifecycle.start(this._registry);
     } else if (!enabled && this.isRunning) {
-      await this.stop();
+      await this.httpLifecycle.stop();
+    } else if (wasEnabled !== enabled) {
+      if (!enabled) this.httpLifecycle.setLastError(null);
+      this.emitRuntimeStateChange();
     }
   }
 
   async setPort(port: number | null): Promise<void> {
-    const config = this.getConfig();
-    store.set("mcpServer", { ...config, port });
-    if (config.enabled && this.isRunning) {
-      await this.stop();
-      if (this.registry) await this.start(this.registry);
+    const wasEnabled = this.getConfig().enabled;
+    this.persistConfig({ port });
+    if (wasEnabled && this.isRunning) {
+      await this.httpLifecycle.stop();
+      if (this._registry) await this.httpLifecycle.start(this._registry);
     }
   }
 
-  async setApiKey(apiKey: string): Promise<void> {
-    store.set("mcpServer", { ...this.getConfig(), apiKey });
-    if (this.isRunning) {
-      await this.writeDiscoveryFile();
-    }
-  }
+  private rotateInFlight: Promise<string> | null = null;
 
-  async generateApiKey(): Promise<string> {
-    const key = `daintree_${randomUUID().replace(/-/g, "")}`;
-    store.set("mcpServer", { ...this.getConfig(), apiKey: key });
-    if (this.isRunning) {
-      await this.writeDiscoveryFile();
+  async rotateApiKey(): Promise<string> {
+    if (this.rotateInFlight) return this.rotateInFlight;
+    const promise = (async (): Promise<string> => {
+      const newKey = `daintree_${randomUUID().replace(/-/g, "")}`;
+      const previousKey = this.httpLifecycle.currentApiKey;
+      this.httpLifecycle.setApiKey(newKey);
+      try {
+        this.persistConfig({ apiKey: newKey });
+      } catch (err) {
+        this.httpLifecycle.setApiKey(previousKey);
+        throw err;
+      }
+      return newKey;
+    })();
+    this.rotateInFlight = promise;
+    try {
+      return await promise;
+    } finally {
+      this.rotateInFlight = null;
     }
-    return key;
   }
 
   async start(registry: WindowRegistry): Promise<void> {
-    this.registry = registry;
+    this._registry = registry;
+    await this.httpLifecycle.start(registry);
+  }
 
-    if (this.httpServer) {
-      return;
-    }
-
+  async ensureReady(): Promise<boolean> {
     if (!this.isEnabled()) {
-      console.log("[MCP] Server disabled — skipping start");
-      return;
+      return false;
     }
 
-    this.setupIpcListeners();
-
-    const server = http.createServer((req, res) => {
-      this.handleRequest(req, res).catch((err) => {
-        console.error("[MCP] Request handler error:", err);
-        if (!res.headersSent) {
-          res.writeHead(500, { "Content-Type": "text/plain" });
-          res.end("Internal server error");
-        }
-      });
-    });
-
-    const configuredPort = this.getConfig().port ?? DEFAULT_PORT;
-    const boundPort = await this.listenWithRetry(server, configuredPort);
-
-    if (boundPort === null) {
-      for (const cleanup of this.cleanupListeners) {
-        cleanup();
-      }
-      this.cleanupListeners = [];
-      throw new Error(
-        `Failed to bind MCP server: ports ${configuredPort}–${configuredPort + MAX_PORT_RETRIES} all in use`
-      );
+    if (this.isRunning) {
+      return true;
     }
 
-    this.port = boundPort;
-    this.httpServer = server;
-    await this.writeDiscoveryFile();
-    console.log(`[MCP] Server started on http://127.0.0.1:${this.port}/sse`);
-    this.emitStatusChange();
+    const registry = this._registry ?? getWindowRegistry();
+    if (!registry) {
+      return false;
+    }
+
+    await this.start(registry);
+    return this.isRunning;
   }
 
   async stop(): Promise<void> {
-    for (const transport of this.sessions.values()) {
-      try {
-        await transport.close();
-      } catch {
-        // ignore close errors during shutdown
-      }
-    }
-    this.sessions.clear();
-
-    for (const cleanup of this.cleanupListeners) {
-      cleanup();
-    }
-    this.cleanupListeners = [];
-
-    for (const [id, pending] of this.pendingManifests) {
-      clearTimeout(pending.timer);
-      pending.reject(new Error("MCP server stopped"));
-      this.pendingManifests.delete(id);
-    }
-    for (const [id, pending] of this.pendingDispatches) {
-      clearTimeout(pending.timer);
-      pending.reject(new Error("MCP server stopped"));
-      this.pendingDispatches.delete(id);
-    }
-
-    let wasRunning = false;
-    if (this.httpServer) {
-      wasRunning = true;
-      await new Promise<void>((resolve) => {
-        this.httpServer!.close(() => resolve());
-      });
-      this.httpServer = null;
-      this.port = null;
-    }
-
-    await this.removeDiscoveryFile();
-    console.log("[MCP] Server stopped");
-    if (wasRunning) {
-      this.emitStatusChange();
-    }
+    await this.httpLifecycle.stop();
   }
 
   getStatus(): {
@@ -252,458 +311,129 @@ export class McpServerService {
     configuredPort: number | null;
     apiKey: string;
   } {
-    const config = this.getConfig();
-    return {
-      enabled: config.enabled,
-      port: this.port,
-      configuredPort: config.port,
-      apiKey: config.apiKey,
-    };
+    return this.httpLifecycle.getStatus();
   }
 
   getConfigSnippet(): string {
-    const config = this.getConfig();
-    const url = this.port ? `http://127.0.0.1:${this.port}/sse` : "http://127.0.0.1:<port>/sse";
-    const entry: Record<string, unknown> = { type: "sse", url };
-    if (config.apiKey) {
-      entry.headers = { Authorization: `Bearer ${config.apiKey}` };
-    }
-    return JSON.stringify({ mcpServers: { [MCP_SERVER_KEY]: entry } }, null, 2);
+    return this.httpLifecycle.getConfigSnippet();
   }
 
-  private async listenWithRetry(server: http.Server, startPort: number): Promise<number | null> {
-    for (let attempt = 0; attempt <= MAX_PORT_RETRIES; attempt++) {
-      const port = startPort + attempt;
-      if (port > 65535) break;
-
-      const available = await this.isPortAvailable(port);
-      if (!available) {
-        console.log(`[MCP] Port ${port} in use, trying next…`);
-        continue;
-      }
-
-      try {
-        await new Promise<void>((resolve, reject) => {
-          const onError = (err: Error) => {
-            server.removeListener("error", onError);
-            reject(err);
-          };
-          server.on("error", onError);
-          server.listen(port, "127.0.0.1", () => {
-            server.removeListener("error", onError);
-            resolve();
-          });
-        });
-        const addr = server.address() as AddressInfo | null;
-        return addr?.port ?? null;
-      } catch {
-        console.log(`[MCP] Port ${port} bind failed, trying next…`);
-        continue;
-      }
-    }
-    return null;
+  getAuditRecords(): McpAuditRecord[] {
+    return this.auditService.getRecords();
   }
 
-  private isPortAvailable(port: number): Promise<boolean> {
-    return new Promise((resolve) => {
-      const tester = net.createServer();
-      tester.once("error", () => resolve(false));
-      tester.listen(port, "127.0.0.1", () => {
-        tester.close(() => resolve(true));
-      });
-    });
+  getAuditConfig(): { enabled: boolean; maxRecords: number } {
+    return this.auditService.getAuditConfig();
   }
 
-  private setupIpcListeners(): void {
-    const manifestHandler = (
-      _event: Electron.IpcMainEvent,
-      payload: { requestId: string; manifest: unknown }
-    ) => {
-      const pending = this.pendingManifests.get(payload.requestId);
-      if (pending) {
-        clearTimeout(pending.timer);
-        this.pendingManifests.delete(payload.requestId);
-        pending.resolve(
-          Array.isArray(payload.manifest) ? (payload.manifest as ActionManifestEntry[]) : []
-        );
-      }
-    };
-
-    const dispatchHandler = (
-      _event: Electron.IpcMainEvent,
-      payload: { requestId: string; result: ActionDispatchResult }
-    ) => {
-      const pending = this.pendingDispatches.get(payload.requestId);
-      if (pending) {
-        clearTimeout(pending.timer);
-        this.pendingDispatches.delete(payload.requestId);
-        pending.resolve(payload.result);
-      }
-    };
-
-    ipcMain.on("mcp:get-manifest-response", manifestHandler);
-    ipcMain.on("mcp:dispatch-action-response", dispatchHandler);
-
-    this.cleanupListeners.push(
-      () => ipcMain.removeListener("mcp:get-manifest-response", manifestHandler),
-      () => ipcMain.removeListener("mcp:dispatch-action-response", dispatchHandler)
-    );
+  getAuditStats(): McpAuditStats {
+    return this.auditService.getAuditStats();
   }
 
-  private requestManifest(): Promise<ActionManifestEntry[]> {
-    return new Promise((resolve, reject) => {
-      let webContents: Electron.WebContents;
-      try {
-        webContents = this.getLiveWebContents();
-      } catch (err) {
-        reject(this.normalizeError(err, "MCP renderer bridge unavailable"));
-        return;
-      }
-
-      const requestId = randomUUID();
-      const timer = setTimeout(() => {
-        this.pendingManifests.delete(requestId);
-        reject(new Error("Manifest request timed out"));
-      }, 5000);
-
-      this.pendingManifests.set(requestId, { resolve, reject, timer });
-      try {
-        webContents.send("mcp:get-manifest-request", { requestId });
-      } catch (err) {
-        clearTimeout(timer);
-        this.pendingManifests.delete(requestId);
-        reject(this.normalizeError(err, "Failed to request action manifest"));
-      }
-    });
+  clearAuditLog(): void {
+    this.auditService.clear();
   }
 
-  private dispatchAction(
-    actionId: string,
-    args: unknown,
-    confirmed = false
-  ): Promise<ActionDispatchResult> {
-    return new Promise((resolve, reject) => {
-      let webContents: Electron.WebContents;
-      try {
-        webContents = this.getLiveWebContents();
-      } catch (err) {
-        reject(this.normalizeError(err, "MCP renderer bridge unavailable"));
-        return;
-      }
-
-      const requestId = randomUUID();
-      const timer = setTimeout(() => {
-        this.pendingDispatches.delete(requestId);
-        reject(new Error(`Action dispatch timed out: ${actionId}`));
-      }, 30000);
-
-      this.pendingDispatches.set(requestId, { resolve, reject, timer });
-
-      try {
-        webContents.send("mcp:dispatch-action-request", {
-          requestId,
-          actionId,
-          args,
-          confirmed,
-        });
-      } catch (err) {
-        clearTimeout(timer);
-        this.pendingDispatches.delete(requestId);
-        reject(this.normalizeError(err, `Failed to dispatch action: ${actionId}`));
-      }
-    });
+  setAuditEnabled(enabled: boolean): { enabled: boolean; maxRecords: number } {
+    return this.auditService.setEnabled(enabled);
   }
 
-  private createSessionServer(): Server {
-    const server = new Server(
-      { name: "Daintree", version: "1.0.0" },
-      { capabilities: { tools: {} } }
-    );
-
-    server.setRequestHandler(ListToolsRequestSchema, async () => {
-      const manifest = await this.requestManifest();
-      return {
-        tools: manifest
-          .filter((entry) => entry.danger !== "restricted")
-          .map((entry) => ({
-            name: entry.id,
-            description: this.buildToolDescription(entry),
-            inputSchema: this.buildToolInputSchema(entry),
-          })),
-      };
-    });
-
-    server.setRequestHandler(CallToolRequestSchema, async (request) => {
-      const actionId = request.params.name;
-      const { args, confirmed } = this.parseToolArguments(request.params.arguments);
-
-      let result: ActionDispatchResult;
-      try {
-        result = await this.dispatchAction(actionId, args, confirmed);
-      } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error: ${formatErrorMessage(err, "Action dispatch failed")}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-
-      if (result.ok) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text:
-                result.result !== undefined && result.result !== null
-                  ? safeSerializeToolResult(result.result)
-                  : "OK",
-            },
-          ],
-        };
-      }
-
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: `Error [${result.error.code}]: ${result.error.message}`,
-          },
-        ],
-        isError: true,
-      };
-    });
-
-    return server;
+  setAuditMaxRecords(max: number): { enabled: boolean; maxRecords: number } {
+    return this.auditService.setMaxRecords(max);
   }
 
-  private isValidHost(req: http.IncomingMessage): boolean {
-    const host = req.headers.host ?? "";
-    return (
-      host === `127.0.0.1:${this.port}` ||
-      host === `localhost:${this.port}` ||
-      host === "127.0.0.1" ||
-      host === "localhost"
-    );
+  getTurnOutcomeRecords(): AssistantTurnRecord[] {
+    return this.turnOutcomeService.getRecords();
   }
 
-  private isAuthorized(req: http.IncomingMessage): boolean {
-    const apiKey = this.getConfig().apiKey;
-    if (!apiKey) return true;
-    const auth = req.headers.authorization ?? "";
-    return auth === `Bearer ${apiKey}`;
+  clearTurnOutcomeLog(): void {
+    this.turnOutcomeService.clear();
   }
 
-  private buildToolDescription(entry: ActionManifestEntry): string {
-    let description = `[${entry.category}] ${entry.title}: ${entry.description}`;
-    if (entry.danger === "confirm") {
-      description += " Requires explicit confirmation via _meta.confirmed=true.";
-    }
-    return description;
+  recordTurnOutcome(input: {
+    outcome: TurnOutcomeClass;
+    terminalId?: string | null;
+    sessionId?: string | null;
+    detail?: string;
+  }): void {
+    this.turnOutcomeService.recordDirectOutcome(input);
   }
 
-  private buildToolInputSchema(entry: ActionManifestEntry): Record<string, unknown> {
-    const baseSchema =
-      entry.inputSchema &&
-      typeof entry.inputSchema === "object" &&
-      !Array.isArray(entry.inputSchema) &&
-      entry.inputSchema["type"] === "object"
-        ? ({ ...entry.inputSchema } as Record<string, unknown>)
-        : {
-            type: "object",
-            properties: {},
-          };
-
-    if (entry.danger !== "confirm") {
-      return baseSchema;
-    }
-
-    const properties =
-      baseSchema["properties"] &&
-      typeof baseSchema["properties"] === "object" &&
-      !Array.isArray(baseSchema["properties"])
-        ? { ...(baseSchema["properties"] as Record<string, unknown>) }
-        : {};
-
-    properties["_meta"] = {
-      type: "object",
-      description: "Reserved Daintree MCP metadata.",
-      properties: {
-        confirmed: {
-          type: "boolean",
-          description: "Must be true to execute this destructive action.",
-        },
-      },
-      additionalProperties: false,
-    };
-
-    return {
-      ...baseSchema,
-      properties,
-    };
+  /**
+   * Wires the help-session terminal↔session resolver. Called by
+   * `HelpSessionService.ensureMcpServerReady()` (and equivalent sites) so
+   * the turn-outcome classifier can correlate FSM transitions with the
+   * help-session record without a circular import.
+   */
+  setSessionIdResolver(resolver: (terminalId: string) => string | null): void {
+    this.getSessionIdForTerminal = resolver;
   }
 
-  private parseToolArguments(rawArgs: unknown): { args: unknown; confirmed: boolean } {
-    if (!rawArgs || typeof rawArgs !== "object" || Array.isArray(rawArgs)) {
-      return {
-        args: rawArgs ?? {},
-        confirmed: false,
-      };
-    }
-
-    const argsRecord = rawArgs as Record<string, unknown>;
-    const meta = argsRecord["_meta"];
-    const metaRecord =
-      meta !== null && typeof meta === "object" && !Array.isArray(meta)
-        ? (meta as Record<string, unknown>)
-        : null;
-    const confirmed = metaRecord?.["confirmed"] === true;
-
-    if (!("_meta" in argsRecord)) {
-      return {
-        args: rawArgs,
-        confirmed,
-      };
-    }
-
-    const { _meta: _ignored, ...actionArgs } = argsRecord;
-    return {
-      args: Object.keys(actionArgs).length > 0 ? actionArgs : {},
-      confirmed,
-    };
+  setSessionTier(
+    sessionId: string,
+    tier: "workbench" | "action" | "system",
+    callerWcId?: number
+  ): { sessionId: string; tier: McpTier } {
+    return this.httpLifecycle.setSessionTier(sessionId, tier, callerWcId);
   }
 
-  private getLiveWebContents(): Electron.WebContents {
-    if (this.registry) {
-      const primary = this.registry.getPrimary();
-      if (primary && !primary.browserWindow.isDestroyed()) {
-        const { webContents } = primary.browserWindow;
-        if (webContents && !webContents.isDestroyed()) {
-          return webContents;
-        }
-      }
-      for (const ctx of this.registry.all()) {
-        if (!ctx.browserWindow.isDestroyed()) {
-          const { webContents } = ctx.browserWindow;
-          if (webContents && !webContents.isDestroyed()) {
-            return webContents;
-          }
-        }
-      }
-    }
-
-    throw new Error("MCP renderer bridge unavailable");
+  // Delegates for test access — tests call .bind(service) on these.
+  requestManifest(...args: Parameters<typeof this.bridge.requestManifest>) {
+    return this.bridge.requestManifest(...args);
+  }
+  dispatchAction(...args: Parameters<typeof this.bridge.dispatchAction>) {
+    return this.bridge.dispatchAction(...args);
+  }
+  createIdleTimer(sessionId: string) {
+    return this.sessionStore.createIdleTimer(sessionId);
+  }
+  resetIdleTimer(sessionId: string) {
+    return this.sessionStore.resetIdleTimer(sessionId);
+  }
+  createHttpIdleTimer(sessionId: string) {
+    return this.sessionStore.createHttpIdleTimer(sessionId);
+  }
+  resetHttpIdleTimer(sessionId: string) {
+    return this.sessionStore.resetHttpIdleTimer(sessionId);
+  }
+  handleRequest(...args: Parameters<(typeof this.httpLifecycle)["handleRequest"]>) {
+    // Use explicit type to bridge private method access
+    return (this.httpLifecycle as any).handleRequest?.(...args);
   }
 
-  private normalizeError(err: unknown, fallback: string): Error {
-    return err instanceof Error ? err : new Error(fallback);
+  // Exposed for test access to internals that moved to sub-modules.
+  get _sessions() {
+    return this.sessionStore.sessions;
   }
-
-  private async handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-    if (!this.isValidHost(req)) {
-      res.writeHead(403, { "Content-Type": "text/plain" });
-      res.end("Forbidden");
-      return;
-    }
-
-    if (!this.isAuthorized(req)) {
-      res.writeHead(401, { "Content-Type": "text/plain" });
-      res.end("Unauthorized");
-      return;
-    }
-
-    const url = new URL(req.url ?? "/", `http://127.0.0.1:${this.port}`);
-
-    if (req.method === "GET" && url.pathname === "/sse") {
-      const transport = new SSEServerTransport("/messages", res);
-      const server = this.createSessionServer();
-      const sessionId = transport.sessionId;
-
-      this.sessions.set(sessionId, transport);
-      transport.onclose = () => {
-        this.sessions.delete(sessionId);
-      };
-
-      await server.connect(transport);
-    } else if (req.method === "POST" && url.pathname === "/messages") {
-      const sessionId = url.searchParams.get("sessionId") ?? "";
-      const transport = this.sessions.get(sessionId);
-
-      if (transport) {
-        await transport.handlePostMessage(req, res);
-      } else {
-        res.writeHead(404, { "Content-Type": "text/plain" });
-        res.end("Session not found");
-      }
-    } else {
-      res.writeHead(404, { "Content-Type": "text/plain" });
-      res.end("Not found");
-    }
+  get _httpSessions() {
+    return this.sessionStore.httpSessions;
   }
-
-  private async writeDiscoveryFile(): Promise<void> {
-    if (!this.port) return;
-    try {
-      await fs.mkdir(DISCOVERY_DIR, { recursive: true });
-
-      let existing: Record<string, unknown> = {};
-      try {
-        const raw = await fs.readFile(DISCOVERY_FILE, "utf-8");
-        existing = JSON.parse(raw) as Record<string, unknown>;
-      } catch {
-        // file doesn't exist or isn't valid JSON — start fresh
-      }
-
-      const mcpServers = (existing["mcpServers"] as Record<string, unknown> | undefined) ?? {};
-      const entry: Record<string, unknown> = {
-        type: "sse",
-        url: `http://127.0.0.1:${this.port}/sse`,
-      };
-      const apiKey = this.getConfig().apiKey;
-      if (apiKey) {
-        entry.headers = { Authorization: `Bearer ${apiKey}` };
-      }
-      mcpServers[MCP_SERVER_KEY] = entry;
-
-      await resilientAtomicWriteFile(
-        DISCOVERY_FILE,
-        JSON.stringify({ ...existing, mcpServers }, null, 2) + "\n",
-        "utf-8"
-      );
-    } catch (err) {
-      console.error("[MCP] Failed to write discovery file:", err);
-    }
+  get _sessionTierMap() {
+    return this.sessionStore.sessionTierMap;
   }
-
-  private async removeDiscoveryFile(): Promise<void> {
-    try {
-      const raw = await fs.readFile(DISCOVERY_FILE, "utf-8");
-      const existing = JSON.parse(raw) as Record<string, unknown>;
-      const mcpServers = (existing["mcpServers"] as Record<string, unknown> | undefined) ?? {};
-
-      delete mcpServers[MCP_SERVER_KEY];
-
-      if (Object.keys(mcpServers).length === 0) {
-        delete existing["mcpServers"];
-      } else {
-        existing["mcpServers"] = mcpServers;
-      }
-
-      if (Object.keys(existing).length === 0) {
-        await fs.unlink(DISCOVERY_FILE);
-      } else {
-        await resilientAtomicWriteFile(
-          DISCOVERY_FILE,
-          JSON.stringify(existing, null, 2) + "\n",
-          "utf-8"
-        );
-      }
-    } catch {
-      // best-effort removal — don't crash on cleanup errors
-    }
+  get _resourceSubscriptions() {
+    return this.sessionStore.resourceSubscriptions;
+  }
+  get _pendingManifests() {
+    return this.pendingManifests;
+  }
+  get _pendingDispatches() {
+    return this.pendingDispatches;
+  }
+  get _auditService() {
+    return this.auditService;
+  }
+  get _turnOutcomeService() {
+    return this.turnOutcomeService;
+  }
+  get _sessionStore() {
+    return this.sessionStore;
+  }
+  get _httpLifecycle() {
+    return this.httpLifecycle;
+  }
+  get _bridge() {
+    return this.bridge;
   }
 }
 

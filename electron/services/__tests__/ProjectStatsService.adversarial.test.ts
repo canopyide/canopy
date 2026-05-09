@@ -47,6 +47,7 @@ function makePtyClient(): FakePtyClient {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.useFakeTimers();
+  vi.setSystemTime(1_830_001);
   eventEmitter._reset();
   projectStoreMock.getAllProjects.mockReturnValue([]);
 });
@@ -60,7 +61,6 @@ describe("ProjectStatsService adversarial", () => {
     const ptyClient = makePtyClient();
     const svc = new ProjectStatsService(ptyClient as never);
     svc.start();
-    await Promise.resolve(); // flush initial compute microtask
 
     eventEmitter.emit("agent:state-changed");
     svc.stop();
@@ -79,9 +79,6 @@ describe("ProjectStatsService adversarial", () => {
     projectStoreMock.getAllProjects.mockReturnValue([{ id: "p1" }]);
     const svc = new ProjectStatsService(ptyClient as never);
     svc.start();
-    // Flush initial compute microtask
-    await Promise.resolve();
-    await Promise.resolve();
 
     svc.updatePollInterval(1_000);
     ptyClient.getAllTerminalsAsync.mockClear();
@@ -204,8 +201,6 @@ describe("ProjectStatsService adversarial", () => {
     projectStoreMock.getAllProjects.mockReturnValue([{ id: "p1" }]);
     const svc = new ProjectStatsService(ptyClient as never);
     svc.start();
-    await Promise.resolve();
-    await Promise.resolve();
     ptyClient.getAllTerminalsAsync.mockClear();
 
     for (let i = 0; i < 10; i++) {
@@ -268,6 +263,133 @@ describe("ProjectStatsService adversarial", () => {
     const svc = new ProjectStatsService(null);
     svc.refresh();
     await vi.runAllTimersAsync();
+    expect(broadcastMock).not.toHaveBeenCalled();
+  });
+
+  it("start() does not fire an eager initial compute (deferred to first-interactive)", async () => {
+    const ptyClient = makePtyClient();
+    projectStoreMock.getAllProjects.mockReturnValue([{ id: "p1" }]);
+
+    const svc = new ProjectStatsService(ptyClient as never);
+    svc.start();
+    await vi.advanceTimersByTimeAsync(0);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(ptyClient.getAllTerminalsAsync).not.toHaveBeenCalled();
+    expect(ptyClient.getProjectStats).not.toHaveBeenCalled();
+    expect(broadcastMock).not.toHaveBeenCalled();
+    svc.stop();
+  });
+
+  it("race guard: a slow older compute does not overwrite a newer broadcast", async () => {
+    const ptyClient = makePtyClient();
+    projectStoreMock.getAllProjects.mockReturnValue([{ id: "p1" }]);
+
+    let resolveOldTerminals!: (terms: unknown[]) => void;
+    let resolveNewTerminals!: (terms: unknown[]) => void;
+    const oldTerminalsPromise = new Promise<unknown[]>((r) => {
+      resolveOldTerminals = r;
+    });
+    const newTerminalsPromise = new Promise<unknown[]>((r) => {
+      resolveNewTerminals = r;
+    });
+
+    ptyClient.getAllTerminalsAsync
+      .mockReturnValueOnce(oldTerminalsPromise)
+      .mockReturnValueOnce(newTerminalsPromise);
+
+    let statsCallCount = 0;
+    ptyClient.getProjectStats.mockImplementation(async (id: string) => {
+      statsCallCount += 1;
+      // First call carries stale data (terminalCount: 99), second the truth (1)
+      return { projectId: id, terminalCount: statsCallCount === 1 ? 99 : 1 };
+    });
+
+    const svc = new ProjectStatsService(ptyClient as never);
+    svc.refresh(); // older compute — generation 1
+    await Promise.resolve();
+    svc.refresh(); // newer compute — generation 2
+    await Promise.resolve();
+
+    // Resolve newer first → newer broadcast commits
+    resolveNewTerminals([]);
+    await vi.runAllTimersAsync();
+    await Promise.resolve();
+
+    expect(broadcastMock).toHaveBeenCalled();
+    const broadcastsAfterNew = broadcastMock.mock.calls.length;
+    const lastPayload = broadcastMock.mock.calls.at(-1)![1] as Record<
+      string,
+      { processCount: number }
+    >;
+    expect(lastPayload.p1.processCount).toBe(1);
+
+    // Now resolve the older compute — it must NOT broadcast the stale 99
+    resolveOldTerminals([]);
+    await vi.runAllTimersAsync();
+    await Promise.resolve();
+
+    expect(broadcastMock.mock.calls.length).toBe(broadcastsAfterNew);
+    svc.stop();
+  });
+
+  it("empty broadcast resets lastBroadcast so a same-shape non-empty result still fires", async () => {
+    const ptyClient = makePtyClient();
+    ptyClient.getProjectStats.mockResolvedValue({ projectId: "p1", terminalCount: 3 });
+
+    const svc = new ProjectStatsService(ptyClient as never);
+
+    // 1) Non-empty broadcast — lastBroadcast = { p1: {processCount: 3, ...} }
+    projectStoreMock.getAllProjects.mockReturnValue([{ id: "p1" }]);
+    svc.refresh();
+    await vi.runAllTimersAsync();
+    const afterFirst = broadcastMock.mock.calls.length;
+    expect(afterFirst).toBeGreaterThanOrEqual(1);
+
+    // 2) Projects removed — empty broadcast fires; must reset lastBroadcast
+    projectStoreMock.getAllProjects.mockReturnValue([]);
+    svc.refresh();
+    await vi.runAllTimersAsync();
+
+    // 3) Same project re-added with identical stats — must broadcast
+    // (would be suppressed by shallowEqual if lastBroadcast still held it)
+    projectStoreMock.getAllProjects.mockReturnValue([{ id: "p1" }]);
+    svc.refresh();
+    await vi.runAllTimersAsync();
+
+    const lastPayload = broadcastMock.mock.calls.at(-1)![1] as Record<
+      string,
+      { processCount: number }
+    >;
+    expect(lastPayload.p1?.processCount).toBe(3);
+    svc.stop();
+  });
+
+  it("stop() invalidates an in-flight compute — no broadcast after teardown", async () => {
+    const ptyClient = makePtyClient();
+    projectStoreMock.getAllProjects.mockReturnValue([{ id: "p1" }]);
+
+    let resolvePty!: (terms: unknown[]) => void;
+    ptyClient.getAllTerminalsAsync.mockReturnValueOnce(
+      new Promise<unknown[]>((r) => {
+        resolvePty = r;
+      })
+    );
+
+    const svc = new ProjectStatsService(ptyClient as never);
+    svc.start();
+    svc.refresh(); // arms the in-flight compute
+    await Promise.resolve();
+
+    broadcastMock.mockClear();
+
+    svc.stop();
+
+    resolvePty([]);
+    await vi.runAllTimersAsync();
+    await Promise.resolve();
+
     expect(broadcastMock).not.toHaveBeenCalled();
   });
 });

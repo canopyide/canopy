@@ -209,18 +209,35 @@ describe("CommandService adversarial", () => {
   });
 
   it("only returns stack details for execution failures in development", async () => {
-    const command = createCommand({
-      execute: vi.fn(async () => {
-        throw new Error("boom");
-      }),
-    });
-    commandService.register(command);
-
+    // IS_DEV is a module-level constant evaluated at import time.
+    // Re-import the module under each NODE_ENV to test both branches.
     process.env.NODE_ENV = "development";
-    const devResult = await commandService.execute("project:test", {}, {});
+    vi.resetModules();
+    const devMod = await import("../CommandService.js");
+    const devService = devMod.commandService;
+    devService.register(
+      createCommand({
+        execute: vi.fn(async () => {
+          throw new Error("boom");
+        }),
+      })
+    );
+    const devResult = await devService.execute("project:test", {}, {});
+    devService.clear();
 
     process.env.NODE_ENV = "production";
-    const prodResult = await commandService.execute("project:test", {}, {});
+    vi.resetModules();
+    const prodMod = await import("../CommandService.js");
+    const prodService = prodMod.commandService;
+    prodService.register(
+      createCommand({
+        execute: vi.fn(async () => {
+          throw new Error("boom");
+        }),
+      })
+    );
+    const prodResult = await prodService.execute("project:test", {}, {});
+    prodService.clear();
 
     expect(devResult).toMatchObject({
       success: false,

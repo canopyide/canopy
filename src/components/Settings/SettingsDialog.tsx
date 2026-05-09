@@ -1,11 +1,11 @@
 import {
   Suspense,
-  lazy,
   startTransition,
   useState,
   useEffect,
   useEffectEvent,
   useDeferredValue,
+  useLayoutEffect,
   useMemo,
   useRef,
   useCallback,
@@ -25,27 +25,18 @@ import {
 } from "@/store";
 import {
   X,
-  Blocks,
   Github,
-  LayoutGrid,
-  Mic,
-  PanelRight,
-  Keyboard,
-  SquareTerminal,
   Settings as SettingsIcon,
-  Settings2,
-  LifeBuoy,
   Bell,
   Search,
   ChevronRight,
   KeyRound,
-  Shield,
   FileCode,
   GitBranch,
   Command,
   AlertTriangle,
 } from "lucide-react";
-import { FolderGit2, Plug, Workflow, McpServerIcon } from "@/components/icons";
+import { Workflow } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { ScrollShadow } from "@/components/ui/ScrollShadow";
 import {
@@ -58,88 +49,17 @@ import {
 import { appClient } from "@/clients";
 import { AppDialog } from "@/components/ui/AppDialog";
 import { GeneralTab } from "./GeneralTab";
-const importAgentSettings = () => import("./AgentSettings");
-const importTerminalSettingsTab = () => import("./TerminalSettingsTab");
-const importTerminalAppearanceTab = () => import("./TerminalAppearanceTab");
-const importGitHubSettingsTab = () => import("./GitHubSettingsTab");
-const importTroubleshootingTab = () => import("./TroubleshootingTab");
-const importNotificationSettingsTab = () => import("./NotificationSettingsTab");
-const importPortalSettingsTab = () => import("./PortalSettingsTab");
-const importKeyboardShortcutsTab = () => import("./KeyboardShortcutsTab");
-const importWorktreeSettingsTab = () => import("./WorktreeSettingsTab");
-const importToolbarSettingsTab = () => import("./ToolbarSettingsTab");
-const importIntegrationsTab = () => import("./IntegrationsTab");
-const importVoiceInputSettingsTab = () => import("./VoiceInputSettingsTab");
-
-const importMcpServerSettingsTab = () => import("./McpServerSettingsTab");
-const importEnvironmentSettingsTab = () => import("./EnvironmentSettingsTab");
-const importPrivacyDataTab = () => import("./PrivacyDataTab");
-
-const LazyAgentSettings = lazy(() =>
-  importAgentSettings().then((m) => ({ default: m.AgentSettings }))
-);
-const LazyTerminalSettingsTab = lazy(() =>
-  importTerminalSettingsTab().then((m) => ({ default: m.TerminalSettingsTab }))
-);
-const LazyTerminalAppearanceTab = lazy(() =>
-  importTerminalAppearanceTab().then((m) => ({ default: m.TerminalAppearanceTab }))
-);
-const LazyGitHubSettingsTab = lazy(() =>
-  importGitHubSettingsTab().then((m) => ({ default: m.GitHubSettingsTab }))
-);
-const LazyTroubleshootingTab = lazy(() =>
-  importTroubleshootingTab().then((m) => ({ default: m.TroubleshootingTab }))
-);
-const LazyNotificationSettingsTab = lazy(() =>
-  importNotificationSettingsTab().then((m) => ({ default: m.NotificationSettingsTab }))
-);
-const LazyPortalSettingsTab = lazy(() =>
-  importPortalSettingsTab().then((m) => ({ default: m.PortalSettingsTab }))
-);
-const LazyKeyboardShortcutsTab = lazy(() =>
-  importKeyboardShortcutsTab().then((m) => ({ default: m.KeyboardShortcutsTab }))
-);
-const LazyWorktreeSettingsTab = lazy(() =>
-  importWorktreeSettingsTab().then((m) => ({ default: m.WorktreeSettingsTab }))
-);
-const LazyToolbarSettingsTab = lazy(() =>
-  importToolbarSettingsTab().then((m) => ({ default: m.ToolbarSettingsTab }))
-);
-const LazyIntegrationsTab = lazy(() =>
-  importIntegrationsTab().then((m) => ({ default: m.IntegrationsTab }))
-);
-const LazyVoiceInputSettingsTab = lazy(() =>
-  importVoiceInputSettingsTab().then((m) => ({ default: m.VoiceInputSettingsTab }))
-);
-
-const LazyMcpServerSettingsTab = lazy(() =>
-  importMcpServerSettingsTab().then((m) => ({ default: m.McpServerSettingsTab }))
-);
-const LazyEnvironmentSettingsTab = lazy(() =>
-  importEnvironmentSettingsTab().then((m) => ({ default: m.EnvironmentSettingsTab }))
-);
-const LazyPrivacyDataTab = lazy(() =>
-  importPrivacyDataTab().then((m) => ({ default: m.PrivacyDataTab }))
-);
-
-function preloadAllSettingsTabs() {
-  importAgentSettings();
-  importTerminalSettingsTab();
-  importTerminalAppearanceTab();
-  importGitHubSettingsTab();
-  importTroubleshootingTab();
-  importNotificationSettingsTab();
-  importPortalSettingsTab();
-  importKeyboardShortcutsTab();
-  importWorktreeSettingsTab();
-  importToolbarSettingsTab();
-  importIntegrationsTab();
-  importVoiceInputSettingsTab();
-
-  importMcpServerSettingsTab();
-  importEnvironmentSettingsTab();
-  importPrivacyDataTab();
-}
+import {
+  SETTINGS_REGISTRY,
+  globalTabTitles,
+  globalTabIcons,
+  getSettingsNavGroups,
+  preloadAllSettingsTabs,
+  scopeForTab,
+  type SettingsTab,
+  type SettingsScope,
+  type LazySettingsTabEntry,
+} from "./settingsTabRegistry";
 import { SETTINGS_SEARCH_INDEX } from "./settingsSearchIndex";
 import {
   filterSettings,
@@ -149,6 +69,7 @@ import {
 } from "./settingsSearchUtils";
 import { SCROLLBACK_DEFAULT } from "@shared/config/scrollback";
 import { useProjectSettingsForm } from "@/hooks/useProjectSettingsForm";
+import { useFlushOnHide } from "@/hooks/useFlushOnHide";
 import { GeneralTab as ProjectGeneralTab } from "@/components/Project/GeneralTab";
 import { ContextTab as ProjectContextTab } from "@/components/Project/ContextTab";
 import { EnvironmentVariablesEditor } from "@/components/Project/EnvironmentVariablesEditor";
@@ -161,9 +82,15 @@ import {
   SettingsValidationProvider,
   SettingsValidationContext,
 } from "./SettingsValidationRegistry";
+import { SettingsFlushProvider, SettingsFlushContext } from "./SettingsFlushRegistry";
 
 let rememberedTab: SettingsTab = "general";
 let rememberedProjectTab: SettingsTab = "project:general";
+
+// How long the `settings-highlight` pulse stays on the scrolled-to section
+// before the class is removed. Long enough to read, short enough not to draw
+// attention after the user has oriented.
+const SETTINGS_HIGHLIGHT_DECAY_MS = 1500;
 
 export interface SettingsNavTarget {
   tab: SettingsTab;
@@ -181,44 +108,19 @@ interface SettingsDialogProps {
   projectId?: string | null;
 }
 
-export type SettingsTab =
-  | "general"
-  | "keyboard"
-  | "terminal"
-  | "terminalAppearance"
-  | "worktree"
-  | "agents"
-  | "github"
-  | "portal"
-  | "toolbar"
-  | "notifications"
-  | "integrations"
-  | "voice"
-  | "mcp"
-  | "environment"
-  | "privacy"
-  | "troubleshooting"
-  | "project:general"
-  | "project:context"
-  | "project:variables"
-  | "project:automation"
-  | "project:recipes"
-  | "project:commands"
-  | "project:notifications"
-  | "project:github";
-
-export type SettingsScope = "global" | "project";
-
-function scopeForTab(tab: SettingsTab): SettingsScope {
-  return tab.startsWith("project:") ? "project" : "global";
-}
+// SettingsTab, SettingsScope, scopeForTab imported from settingsTabRegistry.
+// Re-exported for backward compatibility.
+export type { SettingsTab, SettingsScope } from "./settingsTabRegistry";
+export { scopeForTab } from "./settingsTabRegistry";
 
 export function SettingsDialog(props: SettingsDialogProps) {
   // Provider must wrap SettingsDialogInner: the inner component reads the registry
   // via useContext to render nav-sidebar error dots.
   return (
     <SettingsValidationProvider>
-      <SettingsDialogInner {...props} />
+      <SettingsFlushProvider>
+        <SettingsDialogInner {...props} />
+      </SettingsFlushProvider>
     </SettingsValidationProvider>
   );
 }
@@ -281,6 +183,18 @@ function SettingsDialogInner({
   }, [isOpen, setPortalOpen]);
 
   const [appVersion, setAppVersion] = useState<string>("Loading...");
+
+  const [hiddenSettingBanner, setHiddenSettingBanner] = useState<{
+    label: string;
+    settingId: string;
+  } | null>(null);
+
+  // Deep-link: scroll to a specific section after navigating.
+  // The active tab's panel subtree fires a `useLayoutEffect` (via
+  // `SettingsTabScrollEffect` / `LazyTabContent`) when it commits — that's
+  // the only reliable signal that lazy-loaded content is in the DOM, so we
+  // drive the scroll from the child rather than polling from the parent.
+  const [scrollToSection, setScrollToSection] = useState<string | null>(null);
 
   // activeTab is read non-reactively via useEffectEvent to avoid re-running
   // this reset-on-open effect when the user changes tabs mid-session.
@@ -432,6 +346,22 @@ function SettingsDialogInner({
   const validationRegistry = useContext(SettingsValidationContext);
   const tabsWithErrors = validationRegistry?.tabsWithErrors ?? new Set();
 
+  // Tabs with their own dirty buffer (env vars, worktree pattern) register
+  // a flush callback here so the dialog can persist them on close or detach.
+  const flushRegistry = useContext(SettingsFlushContext);
+  const flushAllTabs = flushRegistry?.flushAll;
+
+  const flushDialog = useCallback(async () => {
+    if (flushAllTabs) await flushAllTabs();
+    await projectForm.flush();
+  }, [flushAllTabs, projectForm]);
+
+  // Electron 41 WebContentsView detach (project switch, window close) does not
+  // fire beforeunload — visibilitychange is the reliable signal. Flushing on
+  // hide ensures debounced autosaves and per-tab dirty state persist before
+  // the view is evicted.
+  useFlushOnHide(flushDialog, isOpen);
+
   const [globalEnvVars, setGlobalEnvVars] = useState<Record<string, string>>({});
   useEffect(() => {
     if (!isOpen) return;
@@ -446,14 +376,14 @@ function SettingsDialogInner({
   }, [isOpen]);
 
   const handleBeforeClose = useCallback(async () => {
-    await projectForm.flush();
+    await flushDialog();
     return true;
-  }, [projectForm]);
+  }, [flushDialog]);
 
   const handleClose = useCallback(async () => {
-    await projectForm.flush();
+    await flushDialog();
     onClose();
-  }, [onClose, projectForm]);
+  }, [onClose, flushDialog]);
 
   const searchResults = useMemo(
     () =>
@@ -469,24 +399,25 @@ function SettingsDialogInner({
   // deferredQuery drives the expensive filtering computation only.
   const isSearching = searchQuery.trim().length > 0;
 
-  const [hiddenSettingBanner, setHiddenSettingBanner] = useState<{
-    label: string;
-    settingId: string;
-  } | null>(null);
-
   const handleResultClick = (
     { tab, subtab, sectionId }: SettingsNavTarget,
     requiresEnabled?: { settingId: string; label: string }
   ) => {
     markTabVisited(tab);
     setSearchQuery("");
-    setScrollToSection(sectionId ?? null);
     setHiddenSettingBanner(requiresEnabled ?? null);
     if (subtab !== undefined) {
       setActiveSubtabs((prev) => ({ ...prev, [tab]: subtab }));
     }
     searchInputRef.current?.blur();
-    startTransition(() => setActiveTab(tab));
+    // Defer scrollToSection together with the tab change. Setting it
+    // urgently would let the previously-active tab's effect consume the
+    // pending id (it sees isActive=true after the urgent commit but
+    // before the transition makes the new tab active).
+    startTransition(() => {
+      setActiveTab(tab);
+      setScrollToSection(sectionId ?? null);
+    });
   };
 
   const [activeResultIndex, setActiveResultIndex] = useState(-1);
@@ -523,35 +454,9 @@ function SettingsDialogInner({
     }
   };
 
-  // Deep-link: scroll to a specific section after navigating
-  const [scrollToSection, setScrollToSection] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!scrollToSection || isSearching) return;
-    let highlightTimer: ReturnType<typeof setTimeout>;
-    let attempt = 0;
-    const maxAttempts = 20;
-    const tryScroll = () => {
-      const el = document.getElementById(scrollToSection);
-      if (el && el.offsetParent !== null) {
-        el.scrollIntoView({ behavior: "instant", block: "start" });
-        el.querySelector<HTMLInputElement>("input")?.focus({ preventScroll: true });
-        el.classList.add("settings-highlight");
-        highlightTimer = setTimeout(() => el.classList.remove("settings-highlight"), 1500);
-        return;
-      }
-      attempt++;
-      if (attempt < maxAttempts) {
-        frameIds.push(requestAnimationFrame(tryScroll));
-      }
-    };
-    const frameIds: number[] = [];
-    frameIds.push(requestAnimationFrame(tryScroll));
-    return () => {
-      frameIds.forEach(cancelAnimationFrame);
-      clearTimeout(highlightTimer);
-    };
-  }, [scrollToSection, activeTab, isSearching]);
+  const handleScrollToSectionHandled = useCallback((sectionId: string) => {
+    setScrollToSection((current) => (current === sectionId ? null : current));
+  }, []);
 
   const handleNavSelect = useCallback(
     (tab: SettingsTab) => {
@@ -578,60 +483,42 @@ function SettingsDialogInner({
 
   const tablistRef = useRef<HTMLDivElement>(null);
 
-  const handleTablistKeyDown = useCallback(
-    (e: ReactKeyboardEvent<HTMLDivElement>) => {
-      const container = tablistRef.current;
-      if (!container) return;
+  const handleTablistKeyDown = useCallback((e: ReactKeyboardEvent<HTMLDivElement>) => {
+    const container = tablistRef.current;
+    if (!container) return;
 
-      const tabs = Array.from(container.querySelectorAll<HTMLElement>('[role="tab"]'));
-      const focusedIndex = tabs.indexOf(document.activeElement as HTMLElement);
-      if (focusedIndex === -1) return;
+    const tabs = Array.from(container.querySelectorAll<HTMLElement>('[role="tab"]'));
+    const focusedIndex = tabs.indexOf(document.activeElement as HTMLElement);
+    if (focusedIndex === -1) return;
 
-      let nextIndex: number | null = null;
+    let nextIndex: number | null = null;
 
-      switch (e.key) {
-        case "ArrowDown":
-          nextIndex = (focusedIndex + 1) % tabs.length;
-          break;
-        case "ArrowUp":
-          nextIndex = (focusedIndex - 1 + tabs.length) % tabs.length;
-          break;
-        case "Home":
-          nextIndex = 0;
-          break;
-        case "End":
-          nextIndex = tabs.length - 1;
-          break;
-        default:
-          return;
-      }
+    switch (e.key) {
+      case "ArrowDown":
+        nextIndex = (focusedIndex + 1) % tabs.length;
+        break;
+      case "ArrowUp":
+        nextIndex = (focusedIndex - 1 + tabs.length) % tabs.length;
+        break;
+      case "Home":
+        nextIndex = 0;
+        break;
+      case "End":
+        nextIndex = tabs.length - 1;
+        break;
+      default:
+        return;
+    }
 
-      e.preventDefault();
-      tabs[nextIndex]!.focus();
-      const tabId = tabs[nextIndex]!.dataset.tab as SettingsTab | undefined;
-      if (tabId) handleNavSelect(tabId);
-    },
-    [handleNavSelect]
-  );
+    e.preventDefault();
+    // Manual activation: arrow keys move focus only. Native <button role="tab">
+    // already fires onClick on Enter/Space, so the existing onSelect handler
+    // covers activation without an explicit keydown branch here.
+    tabs[nextIndex]!.focus();
+  }, []);
 
   const tabTitles: Record<SettingsTab, string> = {
-    general: "General",
-    keyboard: "Keyboard Shortcuts",
-    terminal: "Panel Grid",
-    terminalAppearance: "Appearance",
-    worktree: "Worktree Paths",
-    agents: "CLI Agents",
-    github: "GitHub Integration",
-    portal: "Portal Links",
-    toolbar: "Toolbar Customization",
-    notifications: "Notifications",
-    integrations: "Integrations",
-    voice: "Voice Input",
-
-    mcp: "MCP Server",
-    environment: "Environment Variables",
-    privacy: "Privacy & Data",
-    troubleshooting: "Troubleshooting",
+    ...globalTabTitles,
     "project:general": "General",
     "project:context": "Context",
     "project:variables": "Variables",
@@ -640,26 +527,10 @@ function SettingsDialogInner({
     "project:commands": "Commands",
     "project:notifications": "Notifications",
     "project:github": "GitHub",
-  };
+  } as Record<SettingsTab, string>;
 
   const tabIcons: Record<SettingsTab, React.ReactNode> = {
-    general: <Settings2 className="w-5 h-5 text-text-secondary" />,
-    keyboard: <Keyboard className="w-5 h-5 text-text-secondary" />,
-    terminal: <LayoutGrid className="w-5 h-5 text-text-secondary" />,
-    terminalAppearance: <SquareTerminal className="w-5 h-5 text-text-secondary" />,
-    worktree: <FolderGit2 className="w-5 h-5 text-text-secondary" />,
-    agents: <Plug className="w-5 h-5 text-text-secondary" />,
-    github: <Github className="w-5 h-5 text-text-secondary" />,
-    portal: <PanelRight className="w-5 h-5 text-text-secondary" />,
-    toolbar: <SettingsIcon className="w-5 h-5 text-text-secondary" />,
-    notifications: <Bell className="w-5 h-5 text-text-secondary" />,
-    integrations: <Blocks className="w-5 h-5 text-text-secondary" />,
-    voice: <Mic className="w-5 h-5 text-text-secondary" />,
-
-    mcp: <McpServerIcon className="w-5 h-5 text-text-secondary" />,
-    environment: <KeyRound className="w-5 h-5 text-text-secondary" />,
-    privacy: <Shield className="w-5 h-5 text-text-secondary" />,
-    troubleshooting: <LifeBuoy className="w-5 h-5 text-text-secondary" />,
+    ...globalTabIcons,
     "project:general": <SettingsIcon className="w-5 h-5 text-text-secondary" />,
     "project:context": <FileCode className="w-5 h-5 text-text-secondary" />,
     "project:variables": <KeyRound className="w-5 h-5 text-text-secondary" />,
@@ -668,7 +539,7 @@ function SettingsDialogInner({
     "project:commands": <Command className="w-5 h-5 text-text-secondary" />,
     "project:notifications": <Bell className="w-5 h-5 text-text-secondary" />,
     "project:github": <Github className="w-5 h-5 text-text-secondary" />,
-  };
+  } as Record<SettingsTab, React.ReactNode>;
 
   return (
     <AppDialog
@@ -757,178 +628,27 @@ function SettingsDialogInner({
           >
             {activeScope === "global" ? (
               <>
-                <NavGroup label="General">
-                  <NavItem
-                    tab="general"
-                    icon={<Settings2 className="w-4 h-4" />}
-                    label="General"
-                    activeTab={activeTab}
-                    isSearching={isSearching}
-                    matchCount={matchCounts.general}
-                    modified={modifiedTabs.has("general")}
-                    hasError={tabsWithErrors.has("general")}
-                    onSelect={handleNavSelect}
-                  />
-                  <NavItem
-                    tab="terminalAppearance"
-                    icon={<SquareTerminal className="w-4 h-4" />}
-                    label="Appearance"
-                    activeTab={activeTab}
-                    isSearching={isSearching}
-                    matchCount={matchCounts.terminalAppearance}
-                    modified={modifiedTabs.has("terminalAppearance")}
-                    hasError={tabsWithErrors.has("terminalAppearance")}
-                    onSelect={handleNavSelect}
-                  />
-                  <NavItem
-                    tab="keyboard"
-                    icon={<Keyboard className="w-4 h-4" />}
-                    label="Keyboard"
-                    activeTab={activeTab}
-                    isSearching={isSearching}
-                    matchCount={matchCounts.keyboard}
-                    hasError={tabsWithErrors.has("keyboard")}
-                    onSelect={handleNavSelect}
-                  />
-                  <NavItem
-                    tab="notifications"
-                    icon={<Bell className="w-4 h-4" />}
-                    label="Notifications"
-                    activeTab={activeTab}
-                    isSearching={isSearching}
-                    matchCount={matchCounts.notifications}
-                    hasError={tabsWithErrors.has("notifications")}
-                    onSelect={handleNavSelect}
-                  />
-                  <NavItem
-                    tab="privacy"
-                    icon={<Shield className="w-4 h-4" />}
-                    label="Privacy & Data"
-                    activeTab={activeTab}
-                    isSearching={isSearching}
-                    matchCount={matchCounts.privacy}
-                    hasError={tabsWithErrors.has("privacy")}
-                    onSelect={handleNavSelect}
-                  />
-                </NavGroup>
-                <NavGroup label="Terminal">
-                  <NavItem
-                    tab="terminal"
-                    icon={<LayoutGrid className="w-4 h-4" />}
-                    label="Panel Grid"
-                    activeTab={activeTab}
-                    isSearching={isSearching}
-                    matchCount={matchCounts.terminal}
-                    modified={modifiedTabs.has("terminal")}
-                    hasError={tabsWithErrors.has("terminal")}
-                    onSelect={handleNavSelect}
-                  />
-                  <NavItem
-                    tab="worktree"
-                    icon={<FolderGit2 className="w-4 h-4" />}
-                    label="Worktree"
-                    activeTab={activeTab}
-                    isSearching={isSearching}
-                    matchCount={matchCounts.worktree}
-                    hasError={tabsWithErrors.has("worktree")}
-                    onSelect={handleNavSelect}
-                  />
-                  <NavItem
-                    tab="toolbar"
-                    icon={<SettingsIcon className="w-4 h-4" />}
-                    label="Toolbar"
-                    activeTab={activeTab}
-                    isSearching={isSearching}
-                    matchCount={matchCounts.toolbar}
-                    hasError={tabsWithErrors.has("toolbar")}
-                    onSelect={handleNavSelect}
-                  />
-                  <NavItem
-                    tab="environment"
-                    icon={<KeyRound className="w-4 h-4" />}
-                    label="Environment"
-                    activeTab={activeTab}
-                    isSearching={isSearching}
-                    matchCount={matchCounts.environment}
-                    hasError={tabsWithErrors.has("environment")}
-                    onSelect={handleNavSelect}
-                  />
-                </NavGroup>
-                <NavGroup label="Integrations">
-                  <NavItem
-                    tab="agents"
-                    icon={<Plug className="w-4 h-4" />}
-                    label="CLI Agents"
-                    activeTab={activeTab}
-                    isSearching={isSearching}
-                    matchCount={matchCounts.agents}
-                    hasError={tabsWithErrors.has("agents")}
-                    onSelect={handleNavSelect}
-                  />
-                  <NavItem
-                    tab="github"
-                    icon={<Github className="w-4 h-4" />}
-                    label="GitHub"
-                    activeTab={activeTab}
-                    isSearching={isSearching}
-                    matchCount={matchCounts.github}
-                    hasError={tabsWithErrors.has("github")}
-                    onSelect={handleNavSelect}
-                  />
-                  <NavItem
-                    tab="integrations"
-                    icon={<Blocks className="w-4 h-4" />}
-                    label="Integrations"
-                    activeTab={activeTab}
-                    isSearching={isSearching}
-                    matchCount={matchCounts.integrations}
-                    hasError={tabsWithErrors.has("integrations")}
-                    onSelect={handleNavSelect}
-                  />
-                  <NavItem
-                    tab="voice"
-                    icon={<Mic className="w-4 h-4" />}
-                    label="Voice Input"
-                    activeTab={activeTab}
-                    isSearching={isSearching}
-                    matchCount={matchCounts.voice}
-                    hasError={tabsWithErrors.has("voice")}
-                    onSelect={handleNavSelect}
-                  />
-                  <NavItem
-                    tab="portal"
-                    icon={<PanelRight className="w-4 h-4" />}
-                    label="Portal"
-                    activeTab={activeTab}
-                    isSearching={isSearching}
-                    matchCount={matchCounts.portal}
-                    hasError={tabsWithErrors.has("portal")}
-                    onSelect={handleNavSelect}
-                  />
-                  <NavItem
-                    tab="mcp"
-                    icon={<McpServerIcon className="w-4 h-4" />}
-                    label="MCP Server"
-                    activeTab={activeTab}
-                    isSearching={isSearching}
-                    matchCount={matchCounts.mcp}
-                    hasError={tabsWithErrors.has("mcp")}
-                    onSelect={handleNavSelect}
-                  />
-                </NavGroup>
-
-                <NavGroup label="Support">
-                  <NavItem
-                    tab="troubleshooting"
-                    icon={<LifeBuoy className="w-4 h-4" />}
-                    label="Troubleshooting"
-                    activeTab={activeTab}
-                    isSearching={isSearching}
-                    matchCount={matchCounts.troubleshooting}
-                    hasError={tabsWithErrors.has("troubleshooting")}
-                    onSelect={handleNavSelect}
-                  />
-                </NavGroup>
+                {getSettingsNavGroups("global").map((group) => (
+                  <NavGroup key={group.label} label={group.label}>
+                    {group.entries.map((entry) => {
+                      const tabId = entry.id as SettingsTab;
+                      return (
+                        <NavItem
+                          key={entry.id}
+                          tab={tabId}
+                          icon={entry.icon}
+                          label={entry.label}
+                          activeTab={activeTab}
+                          isSearching={isSearching}
+                          matchCount={matchCounts[tabId]}
+                          modified={modifiedTabs.has(tabId)}
+                          hasError={tabsWithErrors.has(tabId)}
+                          onSelect={handleNavSelect}
+                        />
+                      );
+                    })}
+                  </NavGroup>
+                ))}
               </>
             ) : (
               <NavGroup label="Project">
@@ -1099,258 +819,58 @@ function SettingsDialogInner({
                     </button>
                   </div>
                 )}
-                <div
-                  role="tabpanel"
-                  id="settings-panel-general"
-                  aria-labelledby="settings-tab-general"
-                  tabIndex={0}
-                  className={activeTab === "general" ? "" : "hidden"}
-                >
-                  <GeneralTab
-                    appVersion={appVersion}
-                    onNavigateToAgents={(agentId?: string) => {
-                      markTabVisited("agents");
-                      if (agentId) {
-                        setActiveSubtabs((prev) => ({ ...prev, agents: agentId }));
-                      }
-                      startTransition(() => setActiveTab("agents"));
-                    }}
-                    activeSubtab={activeSubtabs["general"] ?? null}
-                    onSubtabChange={(id) => setActiveSubtabs((prev) => ({ ...prev, general: id }))}
-                  />
-                </div>
-
-                <div
-                  role="tabpanel"
-                  id="settings-panel-keyboard"
-                  aria-labelledby="settings-tab-keyboard"
-                  tabIndex={0}
-                  className={activeTab === "keyboard" ? "" : "hidden"}
-                >
-                  {visitedTabs.has("keyboard") && (
-                    <Suspense fallback={null}>
-                      <LazyKeyboardShortcutsTab />
-                    </Suspense>
-                  )}
-                </div>
-
-                <div
-                  role="tabpanel"
-                  id="settings-panel-terminal"
-                  aria-labelledby="settings-tab-terminal"
-                  tabIndex={0}
-                  className={activeTab === "terminal" ? "" : "hidden"}
-                >
-                  {visitedTabs.has("terminal") && (
-                    <Suspense fallback={null}>
-                      <LazyTerminalSettingsTab
-                        activeSubtab={activeSubtabs["terminal"] ?? null}
-                        onSubtabChange={(id) =>
-                          setActiveSubtabs((prev) => ({ ...prev, terminal: id }))
-                        }
-                      />
-                    </Suspense>
-                  )}
-                </div>
-
-                <div
-                  role="tabpanel"
-                  id="settings-panel-terminalAppearance"
-                  aria-labelledby="settings-tab-terminalAppearance"
-                  tabIndex={0}
-                  className={activeTab === "terminalAppearance" ? "" : "hidden"}
-                >
-                  {visitedTabs.has("terminalAppearance") && (
-                    <Suspense fallback={null}>
-                      <LazyTerminalAppearanceTab
-                        activeSubtab={activeSubtabs["terminalAppearance"] ?? null}
-                        onSubtabChange={(id) =>
-                          setActiveSubtabs((prev) => ({ ...prev, terminalAppearance: id }))
-                        }
-                        onClose={handleClose}
-                      />
-                    </Suspense>
-                  )}
-                </div>
-
-                <div
-                  role="tabpanel"
-                  id="settings-panel-worktree"
-                  aria-labelledby="settings-tab-worktree"
-                  tabIndex={0}
-                  className={activeTab === "worktree" ? "" : "hidden"}
-                >
-                  {visitedTabs.has("worktree") && (
-                    <Suspense fallback={null}>
-                      <LazyWorktreeSettingsTab />
-                    </Suspense>
-                  )}
-                </div>
-
-                <div
-                  role="tabpanel"
-                  id="settings-panel-agents"
-                  aria-labelledby="settings-tab-agents"
-                  tabIndex={0}
-                  className={activeTab === "agents" ? "" : "hidden"}
-                >
-                  {visitedTabs.has("agents") && (
-                    <Suspense fallback={null}>
-                      <LazyAgentSettings
-                        activeSubtab={activeSubtabs["agents"] ?? null}
-                        onSubtabChange={(id) =>
-                          setActiveSubtabs((prev) => ({ ...prev, agents: id }))
-                        }
-                        onSettingsChange={onSettingsChange}
-                      />
-                    </Suspense>
-                  )}
-                </div>
-
-                <div
-                  role="tabpanel"
-                  id="settings-panel-github"
-                  aria-labelledby="settings-tab-github"
-                  tabIndex={0}
-                  className={activeTab === "github" ? "" : "hidden"}
-                >
-                  {visitedTabs.has("github") && (
-                    <Suspense fallback={null}>
-                      <LazyGitHubSettingsTab />
-                    </Suspense>
-                  )}
-                </div>
-
-                <div
-                  role="tabpanel"
-                  id="settings-panel-portal"
-                  aria-labelledby="settings-tab-portal"
-                  tabIndex={0}
-                  className={activeTab === "portal" ? "" : "hidden"}
-                >
-                  {visitedTabs.has("portal") && (
-                    <Suspense fallback={null}>
-                      <LazyPortalSettingsTab />
-                    </Suspense>
-                  )}
-                </div>
-
-                <div
-                  role="tabpanel"
-                  id="settings-panel-toolbar"
-                  aria-labelledby="settings-tab-toolbar"
-                  tabIndex={0}
-                  className={activeTab === "toolbar" ? "" : "hidden"}
-                >
-                  {visitedTabs.has("toolbar") && (
-                    <Suspense fallback={null}>
-                      <LazyToolbarSettingsTab />
-                    </Suspense>
-                  )}
-                </div>
-
-                <div
-                  role="tabpanel"
-                  id="settings-panel-notifications"
-                  aria-labelledby="settings-tab-notifications"
-                  tabIndex={0}
-                  className={activeTab === "notifications" ? "" : "hidden"}
-                >
-                  {visitedTabs.has("notifications") && (
-                    <Suspense fallback={null}>
-                      <LazyNotificationSettingsTab />
-                    </Suspense>
-                  )}
-                </div>
-
-                <div
-                  role="tabpanel"
-                  id="settings-panel-integrations"
-                  aria-labelledby="settings-tab-integrations"
-                  tabIndex={0}
-                  className={activeTab === "integrations" ? "" : "hidden"}
-                >
-                  {visitedTabs.has("integrations") && (
-                    <Suspense fallback={null}>
-                      <LazyIntegrationsTab />
-                    </Suspense>
-                  )}
-                </div>
-
-                <div
-                  role="tabpanel"
-                  id="settings-panel-voice"
-                  aria-labelledby="settings-tab-voice"
-                  tabIndex={0}
-                  className={activeTab === "voice" ? "" : "hidden"}
-                >
-                  {visitedTabs.has("voice") && (
-                    <Suspense fallback={null}>
-                      <LazyVoiceInputSettingsTab />
-                    </Suspense>
-                  )}
-                </div>
-
-                <div
-                  role="tabpanel"
-                  id="settings-panel-mcp"
-                  aria-labelledby="settings-tab-mcp"
-                  tabIndex={0}
-                  className={activeTab === "mcp" ? "" : "hidden"}
-                >
-                  {visitedTabs.has("mcp") && (
-                    <Suspense fallback={null}>
-                      <LazyMcpServerSettingsTab />
-                    </Suspense>
-                  )}
-                </div>
-
-                <div
-                  role="tabpanel"
-                  id="settings-panel-environment"
-                  aria-labelledby="settings-tab-environment"
-                  tabIndex={0}
-                  className={activeTab === "environment" ? "" : "hidden"}
-                >
-                  {visitedTabs.has("environment") && (
-                    <Suspense fallback={null}>
-                      <LazyEnvironmentSettingsTab />
-                    </Suspense>
-                  )}
-                </div>
-
-                <div
-                  role="tabpanel"
-                  id="settings-panel-privacy"
-                  aria-labelledby="settings-tab-privacy"
-                  tabIndex={0}
-                  className={activeTab === "privacy" ? "" : "hidden"}
-                >
-                  {visitedTabs.has("privacy") && (
-                    <Suspense fallback={null}>
-                      <LazyPrivacyDataTab
-                        activeSubtab={activeSubtabs["privacy"] ?? null}
-                        onSubtabChange={(id) =>
-                          setActiveSubtabs((prev) => ({ ...prev, privacy: id }))
-                        }
-                      />
-                    </Suspense>
-                  )}
-                </div>
-
-                <div
-                  role="tabpanel"
-                  id="settings-panel-troubleshooting"
-                  aria-labelledby="settings-tab-troubleshooting"
-                  tabIndex={0}
-                  className={activeTab === "troubleshooting" ? "" : "hidden"}
-                >
-                  {visitedTabs.has("troubleshooting") && (
-                    <Suspense fallback={null}>
-                      <LazyTroubleshootingTab />
-                    </Suspense>
-                  )}
-                </div>
+                {SETTINGS_REGISTRY.map((entry) => {
+                  const tabId = entry.id as SettingsTab;
+                  const isActive = activeTab === tabId;
+                  return (
+                    <div
+                      key={entry.id}
+                      role="tabpanel"
+                      id={`settings-panel-${entry.id}`}
+                      aria-labelledby={`settings-tab-${entry.id}`}
+                      tabIndex={0}
+                      className={isActive ? "" : "hidden"}
+                    >
+                      {entry.importKind === "eager" ? (
+                        // Only GeneralTab is eager — render with its specific props
+                        <>
+                          <GeneralTab
+                            appVersion={appVersion}
+                            onNavigateToAgents={(agentId?: string) => {
+                              markTabVisited("agents");
+                              if (agentId) {
+                                setActiveSubtabs((prev) => ({ ...prev, agents: agentId }));
+                              }
+                              startTransition(() => setActiveTab("agents"));
+                            }}
+                            activeSubtab={activeSubtabs["general"] ?? null}
+                            onSubtabChange={(id) =>
+                              setActiveSubtabs((prev) => ({ ...prev, general: id }))
+                            }
+                          />
+                          <SettingsTabScrollEffect
+                            isActive={isActive && !isSearching}
+                            scrollToSectionId={scrollToSection}
+                            onScrollToSectionHandled={handleScrollToSectionHandled}
+                          />
+                        </>
+                      ) : visitedTabs.has(tabId) ? (
+                        <Suspense fallback={null}>
+                          <LazyTabContent
+                            entry={entry as LazySettingsTabEntry}
+                            activeSubtabs={activeSubtabs}
+                            setActiveSubtabs={setActiveSubtabs}
+                            onClose={handleClose}
+                            onSettingsChange={onSettingsChange}
+                            isActive={isActive && !isSearching}
+                            scrollToSectionId={scrollToSection}
+                            onScrollToSectionHandled={handleScrollToSectionHandled}
+                          />
+                        </Suspense>
+                      ) : null}
+                    </div>
+                  );
+                })}
 
                 {/* Project settings panels */}
                 {activeScope === "project" && projectId && (
@@ -1386,27 +906,36 @@ function SettingsDialogInner({
                           className={activeTab === "project:general" ? "" : "hidden"}
                         >
                           {visitedTabs.has("project:general") && (
-                            <ProjectGeneralTab
-                              currentProject={projectForm.currentProject}
-                              name={projectForm.projectName}
-                              onNameChange={projectForm.setProjectName}
-                              emoji={projectForm.projectEmoji}
-                              onEmojiChange={projectForm.setProjectEmoji}
-                              color={projectForm.projectColor}
-                              onColorChange={projectForm.setProjectColor}
-                              devServerCommand={projectForm.devServerCommand}
-                              onDevServerCommandChange={projectForm.setDevServerCommand}
-                              devServerLoadTimeout={projectForm.devServerLoadTimeout}
-                              onDevServerLoadTimeoutChange={projectForm.setDevServerLoadTimeout}
-                              turbopackEnabled={projectForm.turbopackEnabled}
-                              onTurbopackEnabledChange={projectForm.setTurbopackEnabled}
-                              projectIconSvg={projectForm.projectIconSvg}
-                              onProjectIconSvgChange={projectForm.setProjectIconSvg}
-                              enableInRepoSettings={projectForm.enableInRepoSettings}
-                              disableInRepoSettings={projectForm.disableInRepoSettings}
-                              projectId={projectId}
-                              isOpen={isOpen}
-                            />
+                            <>
+                              <ProjectGeneralTab
+                                currentProject={projectForm.currentProject}
+                                name={projectForm.projectName}
+                                onNameChange={projectForm.setProjectName}
+                                emoji={projectForm.projectEmoji}
+                                onEmojiChange={projectForm.setProjectEmoji}
+                                color={projectForm.projectColor}
+                                onColorChange={projectForm.setProjectColor}
+                                devServerCommand={projectForm.devServerCommand}
+                                onDevServerCommandChange={projectForm.setDevServerCommand}
+                                devServerLoadTimeout={projectForm.devServerLoadTimeout}
+                                onDevServerLoadTimeoutChange={projectForm.setDevServerLoadTimeout}
+                                turbopackEnabled={projectForm.turbopackEnabled}
+                                onTurbopackEnabledChange={projectForm.setTurbopackEnabled}
+                                daintreeMcpTier={projectForm.daintreeMcpTier}
+                                onDaintreeMcpTierChange={projectForm.setDaintreeMcpTier}
+                                projectIconSvg={projectForm.projectIconSvg}
+                                onProjectIconSvgChange={projectForm.setProjectIconSvg}
+                                enableInRepoSettings={projectForm.enableInRepoSettings}
+                                disableInRepoSettings={projectForm.disableInRepoSettings}
+                                projectId={projectId}
+                                isOpen={isOpen}
+                              />
+                              <SettingsTabScrollEffect
+                                isActive={activeTab === "project:general" && !isSearching}
+                                scrollToSectionId={scrollToSection}
+                                onScrollToSectionHandled={handleScrollToSectionHandled}
+                              />
+                            </>
                           )}
                         </div>
 
@@ -1418,14 +947,21 @@ function SettingsDialogInner({
                           className={activeTab === "project:context" ? "" : "hidden"}
                         >
                           {visitedTabs.has("project:context") && (
-                            <ProjectContextTab
-                              excludedPaths={projectForm.excludedPaths}
-                              onExcludedPathsChange={projectForm.setExcludedPaths}
-                              copyTreeSettings={projectForm.copyTreeSettings}
-                              onCopyTreeSettingsChange={projectForm.setCopyTreeSettings}
-                              worktrees={projectForm.worktrees}
-                              isOpen={isOpen}
-                            />
+                            <>
+                              <ProjectContextTab
+                                excludedPaths={projectForm.excludedPaths}
+                                onExcludedPathsChange={projectForm.setExcludedPaths}
+                                copyTreeSettings={projectForm.copyTreeSettings}
+                                onCopyTreeSettingsChange={projectForm.setCopyTreeSettings}
+                                worktrees={projectForm.worktrees}
+                                isOpen={isOpen}
+                              />
+                              <SettingsTabScrollEffect
+                                isActive={activeTab === "project:context" && !isSearching}
+                                scrollToSectionId={scrollToSection}
+                                onScrollToSectionHandled={handleScrollToSectionHandled}
+                              />
+                            </>
                           )}
                         </div>
 
@@ -1437,15 +973,22 @@ function SettingsDialogInner({
                           className={activeTab === "project:variables" ? "" : "hidden"}
                         >
                           {visitedTabs.has("project:variables") && (
-                            <EnvironmentVariablesEditor
-                              environmentVariables={projectForm.environmentVariables}
-                              onEnvironmentVariablesChange={projectForm.setEnvironmentVariables}
-                              settings={projectForm.projectSettings}
-                              isOpen={isOpen}
-                              onFlush={projectForm.flush}
-                              projectLabel={projectLabel}
-                              globalEnvironmentVariables={globalEnvVars}
-                            />
+                            <>
+                              <EnvironmentVariablesEditor
+                                environmentVariables={projectForm.environmentVariables}
+                                onEnvironmentVariablesChange={projectForm.setEnvironmentVariables}
+                                settings={projectForm.projectSettings}
+                                isOpen={isOpen}
+                                onFlush={projectForm.flush}
+                                projectLabel={projectLabel}
+                                globalEnvironmentVariables={globalEnvVars}
+                              />
+                              <SettingsTabScrollEffect
+                                isActive={activeTab === "project:variables" && !isSearching}
+                                scrollToSectionId={scrollToSection}
+                                onScrollToSectionHandled={handleScrollToSectionHandled}
+                              />
+                            </>
                           )}
                         </div>
 
@@ -1457,44 +1000,51 @@ function SettingsDialogInner({
                           className={activeTab === "project:automation" ? "" : "hidden"}
                         >
                           {visitedTabs.has("project:automation") && (
-                            <ProjectAutomationTab
-                              currentProject={projectForm.currentProject}
-                              runCommands={projectForm.runCommands}
-                              onRunCommandsChange={projectForm.setRunCommands}
-                              defaultWorktreeRecipeId={projectForm.defaultWorktreeRecipeId}
-                              onDefaultWorktreeRecipeIdChange={
-                                projectForm.setDefaultWorktreeRecipeId
-                              }
-                              branchPrefixMode={projectForm.branchPrefixMode}
-                              onBranchPrefixModeChange={projectForm.setBranchPrefixMode}
-                              branchPrefixCustom={projectForm.branchPrefixCustom}
-                              onBranchPrefixCustomChange={projectForm.setBranchPrefixCustom}
-                              worktreePathPattern={projectForm.worktreePathPattern}
-                              onWorktreePathPatternChange={projectForm.setWorktreePathPattern}
-                              terminalShell={projectForm.terminalShell}
-                              onTerminalShellChange={projectForm.setTerminalShell}
-                              terminalShellArgs={projectForm.terminalShellArgs}
-                              onTerminalShellArgsChange={projectForm.setTerminalShellArgs}
-                              terminalDefaultCwd={projectForm.terminalDefaultCwd}
-                              onTerminalDefaultCwdChange={projectForm.setTerminalDefaultCwd}
-                              terminalScrollback={projectForm.terminalScrollback}
-                              onTerminalScrollbackChange={projectForm.setTerminalScrollback}
-                              recipes={projectForm.recipes}
-                              recipesLoading={projectForm.recipesLoading}
-                              onNavigateToRecipes={() => {
-                                markTabVisited("project:recipes");
-                                startTransition(() => setActiveTab("project:recipes"));
-                              }}
-                              resourceEnvironments={projectForm.resourceEnvironments}
-                              onResourceEnvironmentsChange={projectForm.setResourceEnvironments}
-                              activeResourceEnvironment={projectForm.activeResourceEnvironment}
-                              onActiveResourceEnvironmentChange={
-                                projectForm.setActiveResourceEnvironment
-                              }
-                              defaultWorktreeMode={projectForm.defaultWorktreeMode}
-                              onDefaultWorktreeModeChange={projectForm.setDefaultWorktreeMode}
-                              isOpen={isOpen}
-                            />
+                            <>
+                              <ProjectAutomationTab
+                                currentProject={projectForm.currentProject}
+                                runCommands={projectForm.runCommands}
+                                onRunCommandsChange={projectForm.setRunCommands}
+                                defaultWorktreeRecipeId={projectForm.defaultWorktreeRecipeId}
+                                onDefaultWorktreeRecipeIdChange={
+                                  projectForm.setDefaultWorktreeRecipeId
+                                }
+                                branchPrefixMode={projectForm.branchPrefixMode}
+                                onBranchPrefixModeChange={projectForm.setBranchPrefixMode}
+                                branchPrefixCustom={projectForm.branchPrefixCustom}
+                                onBranchPrefixCustomChange={projectForm.setBranchPrefixCustom}
+                                worktreePathPattern={projectForm.worktreePathPattern}
+                                onWorktreePathPatternChange={projectForm.setWorktreePathPattern}
+                                terminalShell={projectForm.terminalShell}
+                                onTerminalShellChange={projectForm.setTerminalShell}
+                                terminalShellArgs={projectForm.terminalShellArgs}
+                                onTerminalShellArgsChange={projectForm.setTerminalShellArgs}
+                                terminalDefaultCwd={projectForm.terminalDefaultCwd}
+                                onTerminalDefaultCwdChange={projectForm.setTerminalDefaultCwd}
+                                terminalScrollback={projectForm.terminalScrollback}
+                                onTerminalScrollbackChange={projectForm.setTerminalScrollback}
+                                recipes={projectForm.recipes}
+                                recipesLoading={projectForm.recipesLoading}
+                                onNavigateToRecipes={() => {
+                                  markTabVisited("project:recipes");
+                                  startTransition(() => setActiveTab("project:recipes"));
+                                }}
+                                resourceEnvironments={projectForm.resourceEnvironments}
+                                onResourceEnvironmentsChange={projectForm.setResourceEnvironments}
+                                activeResourceEnvironment={projectForm.activeResourceEnvironment}
+                                onActiveResourceEnvironmentChange={
+                                  projectForm.setActiveResourceEnvironment
+                                }
+                                defaultWorktreeMode={projectForm.defaultWorktreeMode}
+                                onDefaultWorktreeModeChange={projectForm.setDefaultWorktreeMode}
+                                isOpen={isOpen}
+                              />
+                              <SettingsTabScrollEffect
+                                isActive={activeTab === "project:automation" && !isSearching}
+                                scrollToSectionId={scrollToSection}
+                                onScrollToSectionHandled={handleScrollToSectionHandled}
+                              />
+                            </>
                           )}
                         </div>
 
@@ -1506,15 +1056,22 @@ function SettingsDialogInner({
                           className={activeTab === "project:recipes" ? "" : "hidden"}
                         >
                           {visitedTabs.has("project:recipes") && (
-                            <ProjectRecipesTab
-                              projectId={projectId}
-                              defaultWorktreeRecipeId={projectForm.defaultWorktreeRecipeId}
-                              onDefaultWorktreeRecipeIdChange={
-                                projectForm.setDefaultWorktreeRecipeId
-                              }
-                              worktreeMap={projectForm.worktreeMap}
-                              isOpen={isOpen}
-                            />
+                            <>
+                              <ProjectRecipesTab
+                                projectId={projectId}
+                                defaultWorktreeRecipeId={projectForm.defaultWorktreeRecipeId}
+                                onDefaultWorktreeRecipeIdChange={
+                                  projectForm.setDefaultWorktreeRecipeId
+                                }
+                                worktreeMap={projectForm.worktreeMap}
+                                isOpen={isOpen}
+                              />
+                              <SettingsTabScrollEffect
+                                isActive={activeTab === "project:recipes" && !isSearching}
+                                scrollToSectionId={scrollToSection}
+                                onScrollToSectionHandled={handleScrollToSectionHandled}
+                              />
+                            </>
                           )}
                         </div>
 
@@ -1526,11 +1083,18 @@ function SettingsDialogInner({
                           className={activeTab === "project:commands" ? "" : "hidden"}
                         >
                           {visitedTabs.has("project:commands") && (
-                            <CommandOverridesTab
-                              projectId={projectId}
-                              overrides={projectForm.commandOverrides}
-                              onChange={projectForm.setCommandOverrides}
-                            />
+                            <>
+                              <CommandOverridesTab
+                                projectId={projectId}
+                                overrides={projectForm.commandOverrides}
+                                onChange={projectForm.setCommandOverrides}
+                              />
+                              <SettingsTabScrollEffect
+                                isActive={activeTab === "project:commands" && !isSearching}
+                                scrollToSectionId={scrollToSection}
+                                onScrollToSectionHandled={handleScrollToSectionHandled}
+                              />
+                            </>
                           )}
                         </div>
 
@@ -1542,10 +1106,17 @@ function SettingsDialogInner({
                           className={activeTab === "project:notifications" ? "" : "hidden"}
                         >
                           {visitedTabs.has("project:notifications") && (
-                            <ProjectNotificationsTab
-                              overrides={projectForm.notificationOverrides}
-                              onChange={projectForm.setNotificationOverrides}
-                            />
+                            <>
+                              <ProjectNotificationsTab
+                                overrides={projectForm.notificationOverrides}
+                                onChange={projectForm.setNotificationOverrides}
+                              />
+                              <SettingsTabScrollEffect
+                                isActive={activeTab === "project:notifications" && !isSearching}
+                                scrollToSectionId={scrollToSection}
+                                onScrollToSectionHandled={handleScrollToSectionHandled}
+                              />
+                            </>
                           )}
                         </div>
 
@@ -1556,12 +1127,21 @@ function SettingsDialogInner({
                           tabIndex={0}
                           className={activeTab === "project:github" ? "" : "hidden"}
                         >
-                          {visitedTabs.has("project:github") && projectForm.currentProject && (
-                            <ProjectGitHubTab
-                              githubRemote={projectForm.githubRemote}
-                              onGithubRemoteChange={projectForm.setGithubRemote}
-                              projectPath={projectForm.currentProject.path}
-                            />
+                          {visitedTabs.has("project:github") && (
+                            <>
+                              {projectForm.currentProject && (
+                                <ProjectGitHubTab
+                                  githubRemote={projectForm.githubRemote}
+                                  onGithubRemoteChange={projectForm.setGithubRemote}
+                                  projectPath={projectForm.currentProject.path}
+                                />
+                              )}
+                              <SettingsTabScrollEffect
+                                isActive={activeTab === "project:github" && !isSearching}
+                                scrollToSectionId={scrollToSection}
+                                onScrollToSectionHandled={handleScrollToSectionHandled}
+                              />
+                            </>
                           )}
                         </div>
                       </>
@@ -1575,6 +1155,97 @@ function SettingsDialogInner({
       </div>
     </AppDialog>
   );
+}
+
+function LazyTabContent({
+  entry,
+  activeSubtabs,
+  setActiveSubtabs,
+  onClose,
+  onSettingsChange,
+  isActive,
+  scrollToSectionId,
+  onScrollToSectionHandled,
+}: {
+  entry: LazySettingsTabEntry;
+  activeSubtabs: Partial<Record<SettingsTab, string>>;
+  setActiveSubtabs: React.Dispatch<React.SetStateAction<Partial<Record<SettingsTab, string>>>>;
+  onClose: () => void;
+  onSettingsChange?: () => void;
+  isActive: boolean;
+  scrollToSectionId: string | null;
+  onScrollToSectionHandled: (id: string) => void;
+}) {
+  const id = entry.id as SettingsTab;
+  const activeSubtab = activeSubtabs[id] ?? null;
+  const onSubtabChange = entry.needsSubtabs
+    ? (next: string) => setActiveSubtabs((prev) => ({ ...prev, [id]: next }))
+    : undefined;
+
+  const props: Record<string, unknown> = {};
+  if (entry.needsSubtabs) {
+    props.activeSubtab = activeSubtab;
+    props.onSubtabChange = onSubtabChange;
+  }
+  if (entry.needsOnClose) {
+    props.onClose = onClose;
+  }
+  if (entry.needsOnSettingsChange) {
+    props.onSettingsChange = onSettingsChange;
+  }
+
+  // Runs synchronously after the lazy chunk's Suspense boundary commits, so
+  // the target section element is guaranteed to exist in the DOM. Replaces
+  // the rAF polling loop that was racing the Suspense reveal (#6878).
+  useSettingsScrollToSection(isActive, scrollToSectionId, onScrollToSectionHandled);
+
+  const LazyComp = entry.LazyComponent;
+  return <LazyComp {...props} />;
+}
+
+// Scrolls to the section with the given DOM id, focuses the first input
+// within it, and applies the highlight pulse. Returns whether the element
+// was found. Stays a module-level helper so it can be unit-tested in
+// isolation without React's effect machinery.
+export function scrollAndHighlightSettingsSection(sectionId: string): boolean {
+  const el = document.getElementById(sectionId);
+  if (!el) return false;
+  el.scrollIntoView({ behavior: "instant", block: "start" });
+  el.querySelector<HTMLInputElement>("input")?.focus({ preventScroll: true });
+  el.classList.add("settings-highlight");
+  setTimeout(() => el.classList.remove("settings-highlight"), SETTINGS_HIGHLIGHT_DECAY_MS);
+  return true;
+}
+
+// Fires the scroll/highlight when its host subtree commits (via
+// useLayoutEffect — runs after DOM mutation, before paint). The active-tab
+// guard keeps inactive panels from racing each other when state cycles.
+// `onHandled` is called unconditionally so the parent can clear pending
+// state even when the section id doesn't resolve to a real DOM element
+// (e.g. project tab search entries with non-DOM ids).
+export function useSettingsScrollToSection(
+  isActive: boolean,
+  scrollToSectionId: string | null,
+  onHandled: (id: string) => void
+): void {
+  useLayoutEffect(() => {
+    if (!isActive || !scrollToSectionId) return;
+    scrollAndHighlightSettingsSection(scrollToSectionId);
+    onHandled(scrollToSectionId);
+  }, [isActive, scrollToSectionId, onHandled]);
+}
+
+function SettingsTabScrollEffect({
+  isActive,
+  scrollToSectionId,
+  onScrollToSectionHandled,
+}: {
+  isActive: boolean;
+  scrollToSectionId: string | null;
+  onScrollToSectionHandled: (id: string) => void;
+}) {
+  useSettingsScrollToSection(isActive, scrollToSectionId, onScrollToSectionHandled);
+  return null;
 }
 
 function NavGroup({ label, children }: { label: string; children: React.ReactNode }) {
@@ -1645,7 +1316,8 @@ function NavItem({
               "absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full",
               hasError ? "bg-status-warning" : "bg-state-modified"
             )}
-            title={hasError ? "Contains validation errors" : "Modified from default"}
+            role="img"
+            aria-label={hasError ? "Contains validation errors" : "Modified from default"}
           />
         )}
       </span>
@@ -1659,7 +1331,7 @@ function MatchBadge({ count }: { count: number }) {
   return (
     <span
       aria-hidden="true"
-      className="ml-auto text-[10px] font-medium tabular-nums px-1.5 py-0.5 rounded-full bg-daintree-accent/20 text-daintree-accent leading-none"
+      className="ml-auto text-[10px] font-medium tabular-nums px-1.5 py-0.5 rounded-full bg-tint/10 text-daintree-text/60 leading-none"
     >
       {count}
     </span>
@@ -1731,7 +1403,7 @@ function SearchResults({
           className={cn(
             "group w-full text-left p-3 rounded-[var(--radius-md)] border transition-colors",
             index === activeIndex
-              ? "bg-overlay-soft border-daintree-accent/30"
+              ? "bg-overlay-selected border-border-strong"
               : "border-transparent hover:bg-overlay-soft hover:border-daintree-border",
             "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
           )}
@@ -1739,7 +1411,7 @@ function SearchResults({
           <div className="flex items-center gap-3">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-0.5">
-                <span className="text-[10px] font-medium text-daintree-accent/80 uppercase tracking-wide">
+                <span className="text-[10px] font-medium text-daintree-text/40 uppercase tracking-wide">
                   {result.tabLabel}
                 </span>
                 {result.subtabLabel && (
@@ -1768,7 +1440,7 @@ function SearchResults({
               className={cn(
                 "w-4 h-4 text-daintree-text/20 shrink-0 transition",
                 index === activeIndex
-                  ? "text-daintree-accent/60 translate-x-0.5"
+                  ? "text-daintree-text/40 translate-x-0.5"
                   : "group-hover:text-daintree-text/40"
               )}
             />

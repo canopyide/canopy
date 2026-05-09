@@ -24,6 +24,7 @@ import fs from "fs";
 import { existsSync } from "fs";
 import os from "os";
 import fixPath from "fix-path";
+import { isLinuxWaylandHybridGpu } from "../utils/gpuDetection.js";
 
 export let exposeGc: (() => void) | undefined;
 try {
@@ -44,22 +45,12 @@ if (app.isPackaged) {
 // each test run gets its own isolated data directory.
 const hasExplicitUserDataDir = process.argv.some((a) => a.startsWith("--user-data-dir"));
 if (!app.isPackaged && !hasExplicitUserDataDir) {
-  // Keep dev data separate per variant so `BUILD_VARIANT=canopy npm run dev`
-  // doesn't collide with the default Daintree dev instance.
-  const devDirName = process.env.BUILD_VARIANT === "canopy" ? "canopy-app-dev" : "daintree-dev";
-  app.setPath("userData", path.join(app.getPath("appData"), devDirName));
-}
-
-// GPU crash fallback: disable hardware acceleration before app.whenReady()
-// This flag is written by GpuCrashMonitorService after repeated GPU crashes.
-const gpuFlagPath = path.join(app.getPath("userData"), "gpu-disabled.flag");
-export const gpuHardwareAccelerationDisabled = fs.existsSync(gpuFlagPath);
-if (gpuHardwareAccelerationDisabled) {
-  app.disableHardwareAcceleration();
-  console.log("[GPU] Hardware acceleration disabled by crash fallback flag");
+  app.setPath("userData", path.join(app.getPath("appData"), "daintree-dev"));
 }
 
 // Handle --reset-data: wipe userData before Chromium acquires file locks
+// AND before reading any flag files below — otherwise a reset-while-disabled
+// launch would carry the stale GPU flag forward by one cycle.
 const shouldResetData =
   process.argv.includes("--reset-data") || process.env.DAINTREE_RESET_DATA === "1";
 if (shouldResetData) {
@@ -75,6 +66,23 @@ if (shouldResetData) {
   }
 }
 
+// GPU crash fallback: disable hardware acceleration before app.whenReady()
+// This flag is written by GpuCrashMonitorService after repeated GPU crashes.
+const gpuFlagPath = path.join(app.getPath("userData"), "gpu-disabled.flag");
+export const gpuHardwareAccelerationDisabled = fs.existsSync(gpuFlagPath);
+if (gpuHardwareAccelerationDisabled) {
+  app.disableHardwareAcceleration();
+  console.log("[GPU] Hardware acceleration disabled by crash fallback flag");
+}
+
+// Soft GPU fallback: ANGLE/Vulkan flags for Linux Wayland multi-GPU systems.
+// Triggered proactively when a hybrid NVIDIA+Intel/AMD configuration is
+// detected, or reactively after the first GPU crash (flag written by
+// GpuCrashMonitorService). Skipped entirely when hardware acceleration has
+// already been nuked.
+const gpuAngleFallbackFlagPath = path.join(app.getPath("userData"), "gpu-angle-fallback.flag");
+export const gpuAngleFallbackActive = fs.existsSync(gpuAngleFallbackFlagPath);
+
 // Chromium feature flags: memory reclamation + platform-specific features
 const enabledFeatures = ["PartitionAllocMemoryReclaimer"];
 
@@ -85,6 +93,25 @@ if (process.platform === "linux") {
   if (process.env.XDG_SESSION_TYPE === "wayland") {
     enabledFeatures.push("WaylandWindowDecorations");
     app.commandLine.appendSwitch("enable-wayland-ime");
+
+    // Apply ANGLE/Vulkan fallback when hardware acceleration is still on and
+    // either (a) the user has crashed once already, or (b) the system has a
+    // hybrid GPU configuration that historically picks the wrong driver. The
+    // existing `ozone-platform-hint=auto` is sufficient — no explicit
+    // `ozone-platform=wayland` switch is needed.
+    if (!gpuHardwareAccelerationDisabled) {
+      const shouldApplyAngleFallback = gpuAngleFallbackActive || isLinuxWaylandHybridGpu();
+      if (shouldApplyAngleFallback) {
+        app.commandLine.appendSwitch("use-angle", "vulkan");
+        app.commandLine.appendSwitch("use-cmd-decoder", "passthrough");
+        app.commandLine.appendSwitch("ignore-gpu-blocklist");
+        console.log(
+          `[GPU] Applied ANGLE/Vulkan fallback (reason=${
+            gpuAngleFallbackActive ? "crash-flag" : "hybrid-detected"
+          })`
+        );
+      }
+    }
   }
 }
 

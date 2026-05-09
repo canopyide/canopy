@@ -1,5 +1,6 @@
 import type { ActionDefinition, ActionId } from "@shared/types/actions";
 import type { Worktree } from "@shared/types/worktree";
+import type { TerminalSpawnSource } from "@shared/types/panel";
 import type { SettingsNavTarget } from "@/components/Settings";
 import type { AddPanelOptions } from "@/store";
 
@@ -15,6 +16,14 @@ export type AnyActionDefinition = ActionDefinition<any, any> & {
    * which is surfaced directly in the MCP manifest.
    */
   rawInputSchema?: Record<string, unknown>;
+  /**
+   * Raw JSON-Schema object for the action result. Mirrors `rawInputSchema` for
+   * cases where a Zod `resultSchema` isn't practical — for example, when the
+   * canonical schema lives outside the renderer (shared with the main process)
+   * and is the source of truth for both the MCP tool definition and runtime
+   * structuredContent shape.
+   */
+  rawOutputSchema?: Record<string, unknown>;
 };
 
 export type ActionRegistry = Map<ActionId, () => AnyActionDefinition>;
@@ -49,6 +58,11 @@ export interface ActionCallbacks {
       interactive?: boolean;
       modelId?: string;
       presetId?: string | null;
+      activateDockOnCreate?: boolean;
+      env?: Record<string, string>;
+      ephemeral?: boolean;
+      agentLaunchFlags?: string[];
+      spawnedBy?: TerminalSpawnSource;
     }
   ) => Promise<string | null>;
   onInject: (worktreeId: string) => void;

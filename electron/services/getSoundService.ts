@@ -5,13 +5,10 @@
 
 import type * as SoundServiceModule from "./SoundService.js";
 
-let cached: typeof SoundServiceModule | null = null;
+let pending: Promise<typeof SoundServiceModule> | null = null;
 
-async function loadModule(): Promise<typeof SoundServiceModule> {
-  if (!cached) {
-    cached = await import("./SoundService.js");
-  }
-  return cached;
+function loadModule(): Promise<typeof SoundServiceModule> {
+  return (pending ??= import("./SoundService.js"));
 }
 
 export async function getSoundService(): Promise<typeof SoundServiceModule.soundService> {

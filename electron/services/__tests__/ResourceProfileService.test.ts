@@ -3,6 +3,7 @@ import type { PtyClient } from "../PtyClient.js";
 import type { WorkspaceClient } from "../WorkspaceClient.js";
 import type { HibernationService } from "../HibernationService.js";
 import type { ProjectViewManager } from "../../window/ProjectViewManager.js";
+import type { ProjectStatsService } from "../ProjectStatsService.js";
 
 // Mock electron modules before importing
 vi.mock("electron", () => ({
@@ -11,6 +12,7 @@ vi.mock("electron", () => ({
   },
   powerMonitor: {
     isOnBatteryPower: vi.fn(() => false),
+    getCurrentThermalState: vi.fn(() => "unknown" as const),
     on: vi.fn(),
     removeListener: vi.fn(),
   },
@@ -27,6 +29,21 @@ vi.mock("../../utils/logger.js", () => ({
   logInfo: vi.fn(),
 }));
 
+// Neutral perf_hooks stub: returns zero lag and zero utilization, so the new
+// 5s lag-monitor timer fires harmlessly inside fake-timer windows.
+vi.mock("node:perf_hooks", () => ({
+  monitorEventLoopDelay: () => ({
+    enable: vi.fn(),
+    disable: vi.fn(),
+    percentile: () => 0,
+    reset: vi.fn(),
+    max: 0,
+  }),
+  performance: {
+    eventLoopUtilization: () => ({ idle: 0, active: 0, utilization: 0 }),
+  },
+}));
+
 import os from "os";
 import { app, powerMonitor } from "electron";
 import { broadcastToRenderer } from "../../ipc/utils.js";
@@ -37,6 +54,7 @@ const EIGHT_GB = 8 * 1024 * 1024 * 1024;
 
 const mockGetAppMetrics = app.getAppMetrics as Mock;
 const mockIsOnBatteryPower = powerMonitor.isOnBatteryPower as unknown as Mock;
+const mockGetCurrentThermalState = powerMonitor.getCurrentThermalState as unknown as Mock;
 const mockPowerMonitorOn = powerMonitor.on as unknown as Mock;
 const mockPowerMonitorRemoveListener = powerMonitor.removeListener as unknown as Mock;
 
@@ -69,6 +87,9 @@ interface MockHibernationService {
 interface MockProjectViewManager {
   setCachedViewLimit: Mock;
 }
+interface MockProjectStatsService {
+  updatePollInterval: Mock;
+}
 
 function createDeps(overrides?: Partial<ResourceProfileDeps>): ResourceProfileDeps {
   const mockPtyClient: MockPtyClient = {
@@ -84,12 +105,16 @@ function createDeps(overrides?: Partial<ResourceProfileDeps>): ResourceProfileDe
   const mockProjectViewManager: MockProjectViewManager = {
     setCachedViewLimit: vi.fn(),
   };
+  const mockProjectStatsService: MockProjectStatsService = {
+    updatePollInterval: vi.fn(),
+  };
 
   return {
     getPtyClient: () => mockPtyClient as unknown as PtyClient,
     getWorkspaceClient: () => mockWorkspaceClient as unknown as WorkspaceClient,
     getHibernationService: () => mockHibernationService as unknown as HibernationService,
     getProjectViewManager: () => mockProjectViewManager as unknown as ProjectViewManager,
+    getProjectStatsService: () => mockProjectStatsService as unknown as ProjectStatsService,
     getUserCachedViewLimit: () => 2,
     ...overrides,
   };
@@ -98,12 +123,14 @@ function createDeps(overrides?: Partial<ResourceProfileDeps>): ResourceProfileDe
 describe("ResourceProfileService", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.setSystemTime(1_830_001);
     vi.clearAllMocks();
     // Pin total RAM so threshold-crossing tests behave identically across CI hosts.
     // 8 GB yields ~1229 MB HIGH / ~655 MB LOW, matching the originally-tuned constants.
     vi.spyOn(os, "totalmem").mockReturnValue(EIGHT_GB);
     mockGetAppMetrics.mockReturnValue([]);
     mockIsOnBatteryPower.mockReturnValue(false);
+    mockGetCurrentThermalState.mockReturnValue("unknown" as const);
   });
 
   afterEach(() => {
@@ -120,10 +147,10 @@ describe("ResourceProfileService", () => {
   it("does not transition during warmup ticks", () => {
     const deps = createDeps();
     const service = new ResourceProfileService(deps);
+    mockIsOnBatteryPower.mockReturnValue(true);
     service.start();
 
     mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 800), makeMetric("Tab", 500)]);
-    mockIsOnBatteryPower.mockReturnValue(true);
 
     // Advance through 2 warmup ticks
     vi.advanceTimersByTime(30_000);
@@ -136,11 +163,11 @@ describe("ResourceProfileService", () => {
   it("transitions to efficiency after sustained pressure past hysteresis", () => {
     const deps = createDeps();
     const service = new ResourceProfileService(deps);
+    mockIsOnBatteryPower.mockReturnValue(true);
     service.start();
 
     // High memory + battery = pressure score >= 3
     mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 800), makeMetric("Tab", 500)]);
-    mockIsOnBatteryPower.mockReturnValue(true);
 
     // 2 warmup ticks
     vi.advanceTimersByTime(60_000);
@@ -160,11 +187,15 @@ describe("ResourceProfileService", () => {
   it("does not oscillate — resets candidate when signals change", () => {
     const deps = createDeps();
     const service = new ResourceProfileService(deps);
+    mockIsOnBatteryPower.mockReturnValue(true);
     service.start();
+
+    const onAcHandler = mockPowerMonitorOn.mock.calls.find(
+      (call: string[]) => call[0] === "on-ac"
+    )?.[1] as (() => void) | undefined;
 
     // High pressure
     mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 1300)]);
-    mockIsOnBatteryPower.mockReturnValue(true);
 
     // Past warmup
     vi.advanceTimersByTime(60_000);
@@ -174,7 +205,7 @@ describe("ResourceProfileService", () => {
 
     // Pressure relieved before hold completes
     mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 200)]);
-    mockIsOnBatteryPower.mockReturnValue(false);
+    onAcHandler!();
     vi.advanceTimersByTime(30_000);
 
     // Should still be balanced — candidate reset
@@ -182,7 +213,7 @@ describe("ResourceProfileService", () => {
     service.stop();
   });
 
-  it("transitions to performance after 60s sustained low load", () => {
+  it("transitions to performance after 90s sustained low load", () => {
     const deps = createDeps();
     const service = new ResourceProfileService(deps);
     service.start();
@@ -197,7 +228,9 @@ describe("ResourceProfileService", () => {
     vi.advanceTimersByTime(30_000);
     expect(service.getProfile()).toBe("balanced");
 
-    // 60s upgrade hold = 2 more ticks
+    // 90s upgrade hold = 3 more ticks
+    vi.advanceTimersByTime(30_000);
+    expect(service.getProfile()).toBe("balanced");
     vi.advanceTimersByTime(30_000);
     expect(service.getProfile()).toBe("balanced");
     vi.advanceTimersByTime(30_000);
@@ -209,10 +242,10 @@ describe("ResourceProfileService", () => {
   it("broadcasts to renderer on profile change", () => {
     const deps = createDeps();
     const service = new ResourceProfileService(deps);
+    mockIsOnBatteryPower.mockReturnValue(true);
     service.start();
 
     mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 1300)]);
-    mockIsOnBatteryPower.mockReturnValue(true);
 
     // Past warmup + hysteresis
     vi.advanceTimersByTime(60_000 + 30_000 + 30_000);
@@ -234,10 +267,10 @@ describe("ResourceProfileService", () => {
   it("calls workspace client and hibernation service on profile change", () => {
     const deps = createDeps();
     const service = new ResourceProfileService(deps);
+    mockIsOnBatteryPower.mockReturnValue(true);
     service.start();
 
     mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 1300)]);
-    mockIsOnBatteryPower.mockReturnValue(true);
 
     vi.advanceTimersByTime(60_000 + 30_000 + 30_000);
 
@@ -252,6 +285,11 @@ describe("ResourceProfileService", () => {
       RESOURCE_PROFILE_CONFIGS.efficiency.memoryPressureInactiveMs
     );
 
+    const stats = deps.getProjectStatsService() as unknown as MockProjectStatsService;
+    expect(stats.updatePollInterval).toHaveBeenCalledWith(
+      RESOURCE_PROFILE_CONFIGS.efficiency.projectStatsPollInterval
+    );
+
     service.stop();
   });
 
@@ -261,12 +299,13 @@ describe("ResourceProfileService", () => {
       getWorkspaceClient: () => null,
       getHibernationService: () => null,
       getProjectViewManager: () => null,
+      getProjectStatsService: () => null,
     });
     const service = new ResourceProfileService(deps);
+    mockIsOnBatteryPower.mockReturnValue(true);
     service.start();
 
     mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 1300)]);
-    mockIsOnBatteryPower.mockReturnValue(true);
 
     // Should not throw
     vi.advanceTimersByTime(60_000 + 30_000 + 30_000);
@@ -278,10 +317,10 @@ describe("ResourceProfileService", () => {
   it("clamps cached project views to 1 when transitioning to efficiency", () => {
     const deps = createDeps();
     const service = new ResourceProfileService(deps);
+    mockIsOnBatteryPower.mockReturnValue(true);
     service.start();
 
     mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 1300)]);
-    mockIsOnBatteryPower.mockReturnValue(true);
 
     vi.advanceTimersByTime(60_000 + 30_000 + 30_000);
     expect(service.getProfile()).toBe("efficiency");
@@ -296,11 +335,15 @@ describe("ResourceProfileService", () => {
   it("restores user cached view limit when upgrading from efficiency to balanced", () => {
     const deps = createDeps({ getUserCachedViewLimit: () => 3 });
     const service = new ResourceProfileService(deps);
+    mockIsOnBatteryPower.mockReturnValue(true);
     service.start();
+
+    const onAcHandler = mockPowerMonitorOn.mock.calls.find(
+      (call: string[]) => call[0] === "on-ac"
+    )?.[1] as (() => void) | undefined;
 
     // Drive into efficiency
     mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 1300)]);
-    mockIsOnBatteryPower.mockReturnValue(true);
     vi.advanceTimersByTime(60_000 + 30_000 + 30_000);
     expect(service.getProfile()).toBe("efficiency");
 
@@ -309,9 +352,10 @@ describe("ResourceProfileService", () => {
 
     // Relieve to moderate pressure (score 1 = balanced)
     mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 700)]);
-    mockIsOnBatteryPower.mockReturnValue(false);
+    onAcHandler!();
 
-    // First real eval sets candidate; 60s upgrade hold = 2 more ticks to apply
+    // First real eval sets candidate; 90s upgrade hold = 3 more ticks to apply
+    vi.advanceTimersByTime(30_000);
     vi.advanceTimersByTime(30_000);
     vi.advanceTimersByTime(30_000);
     vi.advanceTimersByTime(30_000);
@@ -326,19 +370,24 @@ describe("ResourceProfileService", () => {
   it("restores user cached view limit when upgrading from efficiency to performance", () => {
     const deps = createDeps({ getUserCachedViewLimit: () => 2 });
     const service = new ResourceProfileService(deps);
+    mockIsOnBatteryPower.mockReturnValue(true);
     service.start();
+
+    const onAcHandler = mockPowerMonitorOn.mock.calls.find(
+      (call: string[]) => call[0] === "on-ac"
+    )?.[1] as (() => void) | undefined;
 
     // Drive into efficiency
     mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 1300)]);
-    mockIsOnBatteryPower.mockReturnValue(true);
     vi.advanceTimersByTime(60_000 + 30_000 + 30_000);
     expect(service.getProfile()).toBe("efficiency");
 
     // Relieve to zero pressure (score 0 = performance)
     mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 200)]);
-    mockIsOnBatteryPower.mockReturnValue(false);
+    onAcHandler!();
 
-    // First real eval sets candidate; 60s upgrade hold = 2 more ticks to apply
+    // First real eval sets candidate; 90s upgrade hold = 3 more ticks to apply
+    vi.advanceTimersByTime(30_000);
     vi.advanceTimersByTime(30_000);
     vi.advanceTimersByTime(30_000);
     vi.advanceTimersByTime(30_000);
@@ -360,7 +409,8 @@ describe("ResourceProfileService", () => {
     mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 200)]);
     mockIsOnBatteryPower.mockReturnValue(false);
 
-    vi.advanceTimersByTime(60_000 + 30_000 + 30_000 + 30_000);
+    // Warmup (2 ticks = 60s) + first real eval (30s) + 90s upgrade hold (3 ticks)
+    vi.advanceTimersByTime(60_000 + 30_000 + 30_000 + 30_000 + 30_000);
     expect(service.getProfile()).toBe("performance");
 
     const pvm = deps.getProjectViewManager() as unknown as MockProjectViewManager;
@@ -372,10 +422,10 @@ describe("ResourceProfileService", () => {
   it("handles null project view manager on efficiency transition", () => {
     const deps = createDeps({ getProjectViewManager: () => null });
     const service = new ResourceProfileService(deps);
+    mockIsOnBatteryPower.mockReturnValue(true);
     service.start();
 
     mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 1300)]);
-    mockIsOnBatteryPower.mockReturnValue(true);
 
     // Should not throw
     vi.advanceTimersByTime(60_000 + 30_000 + 30_000);
@@ -389,6 +439,7 @@ describe("ResourceProfileService", () => {
     expect(balanced.pollIntervalActive).toBe(2000);
     expect(balanced.pollIntervalBackground).toBe(10000);
     expect(balanced.processTreePollInterval).toBe(2500);
+    expect(balanced.projectStatsPollInterval).toBe(5000);
     expect(balanced.maxWebGLContexts).toBe(12);
     expect(balanced.memoryPressureInactiveMs).toBe(30 * 60 * 1000);
   });
@@ -396,11 +447,11 @@ describe("ResourceProfileService", () => {
   it("battery on its own contributes to pressure score", () => {
     const deps = createDeps();
     const service = new ResourceProfileService(deps);
+    mockIsOnBatteryPower.mockReturnValue(true);
     service.start();
 
     // Moderate memory (+1) + battery (+1) = 2 => balanced
     mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 700)]);
-    mockIsOnBatteryPower.mockReturnValue(true);
 
     // Past warmup + hysteresis for downgrade
     vi.advanceTimersByTime(60_000 + 30_000 + 30_000);
@@ -413,11 +464,11 @@ describe("ResourceProfileService", () => {
     const deps = createDeps();
     const service = new ResourceProfileService(deps);
     service.setWorktreeCount(10);
+    mockIsOnBatteryPower.mockReturnValue(true);
     service.start();
 
     // Low memory (0) + battery (+1) + worktrees (+1) = 2 => balanced
     mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 200)]);
-    mockIsOnBatteryPower.mockReturnValue(true);
 
     vi.advanceTimersByTime(60_000 + 30_000 + 30_000);
     expect(service.getProfile()).toBe("balanced");
@@ -436,10 +487,9 @@ describe("ResourceProfileService", () => {
     service.start();
 
     mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 1300)]);
-    mockIsOnBatteryPower.mockReturnValue(false);
 
-    // Warmup (2 ticks = 60s) + first real eval (30s) + 60s upgrade hold (2 ticks)
-    vi.advanceTimersByTime(60_000 + 30_000 + 30_000 + 30_000);
+    // Warmup (2 ticks = 60s) + first real eval (30s) + 90s upgrade hold (3 ticks)
+    vi.advanceTimersByTime(60_000 + 30_000 + 30_000 + 30_000 + 30_000);
     expect(service.getProfile()).toBe("performance");
 
     service.stop();
@@ -448,11 +498,11 @@ describe("ResourceProfileService", () => {
   it("thermal critical + battery drives to efficiency", () => {
     const deps = createDeps();
     const service = new ResourceProfileService(deps);
+    mockIsOnBatteryPower.mockReturnValue(true);
     service.start();
 
     // Low memory (0) + battery (+1) + thermal critical (+2) = 3 => efficiency
     mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 200)]);
-    mockIsOnBatteryPower.mockReturnValue(true);
     (service as unknown as { thermalState: string }).thermalState = "critical";
 
     vi.advanceTimersByTime(60_000 + 30_000 + 30_000);
@@ -464,11 +514,11 @@ describe("ResourceProfileService", () => {
   it("thermal serious + battery + moderate memory = efficiency", () => {
     const deps = createDeps();
     const service = new ResourceProfileService(deps);
+    mockIsOnBatteryPower.mockReturnValue(true);
     service.start();
 
     // Moderate memory (+1) + battery (+1) + thermal serious (+1) = 3 => efficiency
     mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 700)]);
-    mockIsOnBatteryPower.mockReturnValue(true);
     (service as unknown as { thermalState: string }).thermalState = "serious";
 
     vi.advanceTimersByTime(60_000 + 30_000 + 30_000);
@@ -480,11 +530,11 @@ describe("ResourceProfileService", () => {
   it("thermal fair and nominal do not contribute to pressure", () => {
     const deps = createDeps();
     const service = new ResourceProfileService(deps);
+    mockIsOnBatteryPower.mockReturnValue(true);
     service.start();
 
     // Moderate memory (+1) + battery (+1) + thermal fair (0) = 2 => balanced
     mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 700)]);
-    mockIsOnBatteryPower.mockReturnValue(true);
     (service as unknown as { thermalState: string }).thermalState = "fair";
 
     vi.advanceTimersByTime(60_000 + 30_000 + 30_000);
@@ -535,7 +585,8 @@ describe("ResourceProfileService", () => {
     mockIsOnBatteryPower.mockReturnValue(false);
     (service as unknown as { speedLimit: number }).speedLimit = 100;
 
-    vi.advanceTimersByTime(60_000 + 30_000 + 30_000 + 30_000);
+    // Warmup (2 ticks = 60s) + first real eval (30s) + 90s upgrade hold (3 ticks)
+    vi.advanceTimersByTime(60_000 + 30_000 + 30_000 + 30_000 + 30_000);
     expect(service.getProfile()).toBe("performance");
 
     service.stop();
@@ -544,6 +595,7 @@ describe("ResourceProfileService", () => {
   it("routes thermal-state-change event through handler to profile scoring", () => {
     const deps = createDeps();
     const service = new ResourceProfileService(deps);
+    mockIsOnBatteryPower.mockReturnValue(true);
     service.start();
 
     // Capture the thermal handler registered with powerMonitor.on
@@ -557,7 +609,6 @@ describe("ResourceProfileService", () => {
 
     // Low memory (0) + thermal critical (+2) + battery (+1) = 3 => efficiency
     mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 200)]);
-    mockIsOnBatteryPower.mockReturnValue(true);
 
     vi.advanceTimersByTime(60_000 + 30_000 + 30_000);
     expect(service.getProfile()).toBe("efficiency");
@@ -601,6 +652,12 @@ describe("ResourceProfileService", () => {
     const speedOnArg = mockPowerMonitorOn.mock.calls.find(
       (call: string[]) => call[0] === "speed-limit-change"
     )?.[1];
+    const batteryOnArg = mockPowerMonitorOn.mock.calls.find(
+      (call: string[]) => call[0] === "on-battery"
+    )?.[1];
+    const acOnArg = mockPowerMonitorOn.mock.calls.find(
+      (call: string[]) => call[0] === "on-ac"
+    )?.[1];
 
     // Get the handlers passed to removeListener
     const thermalOffArg = mockPowerMonitorRemoveListener.mock.calls.find(
@@ -609,6 +666,12 @@ describe("ResourceProfileService", () => {
     const speedOffArg = mockPowerMonitorRemoveListener.mock.calls.find(
       (call: string[]) => call[0] === "speed-limit-change"
     )?.[1];
+    const batteryOffArg = mockPowerMonitorRemoveListener.mock.calls.find(
+      (call: string[]) => call[0] === "on-battery"
+    )?.[1];
+    const acOffArg = mockPowerMonitorRemoveListener.mock.calls.find(
+      (call: string[]) => call[0] === "on-ac"
+    )?.[1];
 
     expect(thermalOnArg).toBeDefined();
     expect(thermalOffArg).toBeDefined();
@@ -616,6 +679,12 @@ describe("ResourceProfileService", () => {
     expect(speedOnArg).toBeDefined();
     expect(speedOffArg).toBeDefined();
     expect(speedOnArg).toBe(speedOffArg);
+    expect(batteryOnArg).toBeDefined();
+    expect(batteryOffArg).toBeDefined();
+    expect(batteryOnArg).toBe(batteryOffArg);
+    expect(acOnArg).toBeDefined();
+    expect(acOffArg).toBeDefined();
+    expect(acOnArg).toBe(acOffArg);
   });
 
   it("registers powerMonitor listeners on start", () => {
@@ -624,6 +693,8 @@ describe("ResourceProfileService", () => {
 
     expect(mockPowerMonitorOn).toHaveBeenCalledWith("thermal-state-change", expect.any(Function));
     expect(mockPowerMonitorOn).toHaveBeenCalledWith("speed-limit-change", expect.any(Function));
+    expect(mockPowerMonitorOn).toHaveBeenCalledWith("on-battery", expect.any(Function));
+    expect(mockPowerMonitorOn).toHaveBeenCalledWith("on-ac", expect.any(Function));
 
     service.stop();
   });
@@ -641,6 +712,8 @@ describe("ResourceProfileService", () => {
       "speed-limit-change",
       expect.any(Function)
     );
+    expect(mockPowerMonitorRemoveListener).toHaveBeenCalledWith("on-battery", expect.any(Function));
+    expect(mockPowerMonitorRemoveListener).toHaveBeenCalledWith("on-ac", expect.any(Function));
   });
 
   it("scales thresholds down on low-RAM devices so 500 MB usage is detected", () => {
@@ -661,6 +734,108 @@ describe("ResourceProfileService", () => {
 
     vi.advanceTimersByTime(60_000 + 30_000 + 30_000);
     expect(service.getProfile()).toBe("balanced");
+
+    service.stop();
+  });
+
+  it("primes thermal state from getCurrentThermalState at start", () => {
+    vi.spyOn(process, "platform", "get").mockReturnValue("darwin");
+    mockGetCurrentThermalState.mockReturnValue("fair" as const);
+
+    const deps = createDeps();
+    const service = new ResourceProfileService(deps);
+    service.start();
+
+    expect(mockGetCurrentThermalState).toHaveBeenCalled();
+    const internals = service as unknown as { thermalState: string };
+    expect(internals.thermalState).toBe("fair");
+
+    service.stop();
+  });
+
+  it("primes battery state from isOnBatteryPower at start", () => {
+    mockIsOnBatteryPower.mockReturnValue(true);
+
+    const deps = createDeps();
+    const service = new ResourceProfileService(deps);
+    service.start();
+
+    const internals = service as unknown as { isOnBattery: boolean };
+    expect(internals.isOnBattery).toBe(true);
+    // isOnBatteryPower called exactly once (during start), not per-tick
+    expect(mockIsOnBatteryPower).toHaveBeenCalledTimes(1);
+
+    service.stop();
+  });
+
+  it("on-battery event updates cached battery state", () => {
+    const deps = createDeps();
+    const service = new ResourceProfileService(deps);
+    service.start();
+
+    const onBatteryHandler = mockPowerMonitorOn.mock.calls.find(
+      (call: string[]) => call[0] === "on-battery"
+    )?.[1] as (() => void) | undefined;
+    expect(onBatteryHandler).toBeDefined();
+
+    onBatteryHandler!();
+    const internals = service as unknown as { isOnBattery: boolean };
+    expect(internals.isOnBattery).toBe(true);
+
+    service.stop();
+  });
+
+  it("on-ac event clears cached battery state", () => {
+    const deps = createDeps();
+    const service = new ResourceProfileService(deps);
+    mockIsOnBatteryPower.mockReturnValue(true);
+    service.start();
+
+    const onAcHandler = mockPowerMonitorOn.mock.calls.find(
+      (call: string[]) => call[0] === "on-ac"
+    )?.[1] as (() => void) | undefined;
+    expect(onAcHandler).toBeDefined();
+
+    const internals = service as unknown as { isOnBattery: boolean };
+    expect(internals.isOnBattery).toBe(true);
+
+    onAcHandler!();
+    expect(internals.isOnBattery).toBe(false);
+
+    service.stop();
+  });
+
+  it("cold start with thermal critical contributes to first evaluation", () => {
+    vi.spyOn(process, "platform", "get").mockReturnValue("darwin");
+    mockGetCurrentThermalState.mockReturnValue("critical" as const);
+    mockIsOnBatteryPower.mockReturnValue(true);
+
+    const deps = createDeps();
+    const service = new ResourceProfileService(deps);
+    service.start();
+
+    // Low memory (0) + battery (+1) + thermal critical (+2) = 3 => efficiency
+    // Without thermal priming the score would be 1 => balanced
+    mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 200)]);
+    vi.advanceTimersByTime(60_000 + 30_000 + 30_000);
+    expect(service.getProfile()).toBe("efficiency");
+
+    service.stop();
+  });
+
+  it("isOnBatteryPower not called on evaluation ticks after priming", () => {
+    const deps = createDeps();
+    const service = new ResourceProfileService(deps);
+    service.start();
+
+    // Past warmup
+    vi.advanceTimersByTime(60_000);
+    // Several evaluation ticks
+    vi.advanceTimersByTime(30_000);
+    vi.advanceTimersByTime(30_000);
+
+    // isOnBatteryPower should only have been called once (during start)
+    expect(mockIsOnBatteryPower).toHaveBeenCalledTimes(1);
 
     service.stop();
   });

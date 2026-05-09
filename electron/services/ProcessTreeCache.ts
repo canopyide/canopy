@@ -194,7 +194,8 @@ export class ProcessTreeCache {
     // Include %cpu for activity detection
     const { stdout } = await execAsync("ps -eo pid,ppid,%cpu,rss,comm,command", {
       timeout: 5000,
-      maxBuffer: 10 * 1024 * 1024, // 10MB to handle systems with many processes
+      maxBuffer: 10 * 1024 * 1024,
+      env: { ...process.env, LC_ALL: process.platform === "darwin" ? "en_US.UTF-8" : "C.UTF-8" },
     });
 
     const newCache = new Map<number, ProcessInfo>();
@@ -262,6 +263,8 @@ export class ProcessTreeCache {
     const psCommand =
       'powershell -NoProfile -NonInteractive -NoLogo -Command "' +
       "$ErrorActionPreference = 'SilentlyContinue'; " +
+      "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); " +
+      "$OutputEncoding = [System.Text.UTF8Encoding]::new($false); " +
       "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CommandLine," +
       "@{N='KernelModeTime';E={[string]$_.KernelModeTime}}," +
       "@{N='UserModeTime';E={[string]$_.UserModeTime}}," +
@@ -298,7 +301,7 @@ export class ProcessTreeCache {
     const newCache = new Map<number, ProcessInfo>();
     const newChildrenMap = new Map<number, number[]>();
     const now = Date.now();
-    const numCpus = Math.max(os.cpus().length, 1);
+    const numCpus = Math.max(os.availableParallelism(), 1);
     const activeSnapshotKeys = new Set<string>();
 
     for (const p of processes) {
@@ -443,8 +446,8 @@ export class ProcessTreeCache {
 
   /**
    * Get the total CPU usage of all descendants of a process.
-   * Returns the sum of cpuPercent for all child processes recursively.
-   * Useful for detecting if a process tree is actually doing work.
+   * Returns the sum of cpuPercent for child processes recursively; the root
+   * process itself is intentionally excluded.
    */
   getDescendantsCpuUsage(ppid: number): number {
     let totalCpu = 0;
@@ -456,10 +459,9 @@ export class ProcessTreeCache {
       if (visited.has(pid)) continue;
       visited.add(pid);
 
-      const process = this.cache.get(pid);
-      if (process) {
-        totalCpu += process.cpuPercent;
-        // Add grandchildren to queue
+      const processInfo = this.cache.get(pid);
+      if (processInfo) {
+        totalCpu += processInfo.cpuPercent;
         queue.push(...this.getChildPids(pid));
       }
     }
@@ -468,9 +470,7 @@ export class ProcessTreeCache {
   }
 
   /**
-   * Check if any descendant of a process has significant CPU activity.
-   * @param ppid Parent process ID
-   * @param threshold Minimum CPU% to consider as "active" (default 0.5%)
+   * Check whether any descendant of a process has meaningful CPU activity.
    */
   hasActiveDescendants(ppid: number, threshold: number = 0.5): boolean {
     const visited = new Set<number>();
@@ -481,12 +481,11 @@ export class ProcessTreeCache {
       if (visited.has(pid)) continue;
       visited.add(pid);
 
-      const process = this.cache.get(pid);
-      if (process) {
-        if (process.cpuPercent >= threshold) {
+      const processInfo = this.cache.get(pid);
+      if (processInfo) {
+        if (processInfo.cpuPercent >= threshold) {
           return true;
         }
-        // Add grandchildren to queue
         queue.push(...this.getChildPids(pid));
       }
     }

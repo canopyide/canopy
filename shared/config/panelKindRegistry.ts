@@ -1,8 +1,18 @@
-import type { PanelKind, BuiltInPanelKind, TerminalInstance } from "../types/panel.js";
+import type { PanelKind, TerminalInstance } from "../types/panel.js";
 import type { TerminalSnapshot } from "../types/project.js";
 import type { AddPanelOptions } from "../types/addPanelOptions.js";
 import { getAgentConfig } from "./agentRegistry.js";
 import { PANEL_KIND_BRAND_COLORS } from "../theme/index.js";
+
+/**
+ * Single source of truth for the set of built-in panel kinds. Adding a fourth
+ * built-in kind is a one-line change here — every guard and registry helper
+ * derives from this array.
+ */
+export const BUILT_IN_PANEL_KINDS = ["terminal", "browser", "dev-preview"] as const;
+
+/** Built-in panel kinds — derived from `BUILT_IN_PANEL_KINDS` */
+export type BuiltInPanelKind = (typeof BUILT_IN_PANEL_KINDS)[number];
 
 /**
  * Configuration for a panel kind.
@@ -100,16 +110,88 @@ export function getExtensionFallbackDefaults(): Partial<TerminalInstance> {
 }
 
 /**
+ * Listener sets for plugin-owned registration events. Built-in kinds (no
+ * `extensionId`) are registered at module load before any subscriber exists,
+ * so they are deliberately excluded — emitting for them would produce noise
+ * with no listeners and force consumers to filter on every dispatch.
+ *
+ * Kept as plain Sets rather than Node `EventEmitter` so this module stays
+ * browser-safe (the renderer imports it with no `events` polyfill).
+ */
+type RegisterListener = (config: PanelKindConfig) => void;
+type UnregisterListener = (kindId: string) => void;
+
+const registerListeners = new Set<RegisterListener>();
+const unregisterListeners = new Set<UnregisterListener>();
+
+/**
+ * Subscribe to plugin panel kind registrations. Fires once per
+ * `registerPanelKind` call where the config has an `extensionId`. Built-in
+ * kinds are intentionally not emitted.
+ *
+ * @returns Unsubscribe function. Safe to call multiple times.
+ */
+export function onPanelKindRegistered(listener: RegisterListener): () => void {
+  registerListeners.add(listener);
+  return () => {
+    registerListeners.delete(listener);
+  };
+}
+
+/**
+ * Subscribe to plugin panel kind unregistrations. Fires once per kind
+ * removed by `unregisterPluginPanelKinds` — N fires for N removed kinds.
+ *
+ * @returns Unsubscribe function. Safe to call multiple times.
+ */
+export function onPanelKindUnregistered(listener: UnregisterListener): () => void {
+  unregisterListeners.add(listener);
+  return () => {
+    unregisterListeners.delete(listener);
+  };
+}
+
+function emitRegistered(config: PanelKindConfig): void {
+  for (const listener of registerListeners) {
+    try {
+      listener(config);
+    } catch (err) {
+      console.error(`[panelKindRegistry] register listener threw for "${config.id}":`, err);
+    }
+  }
+}
+
+function emitUnregistered(kindId: string): void {
+  for (const listener of unregisterListeners) {
+    try {
+      listener(kindId);
+    } catch (err) {
+      console.error(`[panelKindRegistry] unregister listener threw for "${kindId}":`, err);
+    }
+  }
+}
+
+/**
  * Register a new panel kind configuration.
  * Used by extensions to add custom panel types.
  *
  * @param config - The panel kind configuration to register
  */
 export function registerPanelKind(config: PanelKindConfig): void {
-  if (PANEL_KIND_REGISTRY[config.id]) {
+  const existing = PANEL_KIND_REGISTRY[config.id];
+  if (existing && existing.extensionId === undefined && config.extensionId !== undefined) {
+    console.error(
+      `[panelKindRegistry] Refusing to overwrite built-in panel kind "${config.id}" with extension "${config.extensionId}"`
+    );
+    return;
+  }
+  if (existing) {
     console.warn(`Panel kind "${config.id}" already registered, overwriting`);
   }
   PANEL_KIND_REGISTRY[config.id] = config;
+  if (config.extensionId !== undefined) {
+    emitRegistered(config);
+  }
 }
 
 /**
@@ -124,11 +206,33 @@ export function registerPanelKind(config: PanelKindConfig): void {
  */
 export function unregisterPluginPanelKinds(pluginId: string): void {
   if (typeof pluginId !== "string" || pluginId.length === 0) return;
+  const removed: string[] = [];
   for (const [key, config] of Object.entries(PANEL_KIND_REGISTRY)) {
     if (config.extensionId === pluginId) {
       delete PANEL_KIND_REGISTRY[key];
+      removed.push(key);
     }
   }
+  for (const key of removed) {
+    emitUnregistered(key);
+  }
+}
+
+/**
+ * Remove a single plugin-contributed panel kind. Built-in kinds (entries
+ * without an `extensionId`) are protected — passing a built-in id is a
+ * no-op so a buggy caller cannot strip the registry of its bootstrap state.
+ *
+ * @param kindId - The panel kind ID to remove
+ * @returns true if a plugin entry was removed, false otherwise
+ */
+export function unregisterPanelKind(kindId: string): boolean {
+  if (typeof kindId !== "string" || kindId.length === 0) return false;
+  const config = PANEL_KIND_REGISTRY[kindId];
+  if (!config || config.extensionId === undefined) return false;
+  delete PANEL_KIND_REGISTRY[kindId];
+  emitUnregistered(kindId);
+  return true;
 }
 
 /**
@@ -148,6 +252,15 @@ export function getPanelKindConfig(kind: PanelKind): PanelKindConfig | undefined
  */
 export function getPanelKindIds(): string[] {
   return Object.keys(PANEL_KIND_REGISTRY);
+}
+
+/**
+ * Get all panel kind configurations contributed by plugins (entries with an
+ * `extensionId`). Built-in kinds are excluded. Used by the IPC bridge to
+ * snapshot plugin state for renderer pull-on-mount and broadcast pushes.
+ */
+export function getPluginPanelKinds(): PanelKindConfig[] {
+  return Object.values(PANEL_KIND_REGISTRY).filter((config) => config.extensionId !== undefined);
 }
 
 /**
@@ -202,8 +315,9 @@ export function getPanelKindColor(kind: PanelKind, agentId?: string): string {
   const config = getPanelKindConfig(kind);
   if (config) return config.color;
 
-  // Fallback for unknown kinds
-  return PANEL_KIND_BRAND_COLORS.terminal;
+  // Neutral fallback for unrecognized kinds — avoids visually impersonating
+  // a built-in (terminal teal) for an unknown extension panel.
+  return "var(--theme-text-secondary)";
 }
 
 /**
@@ -270,7 +384,7 @@ export function panelKindKeepsAliveOnProjectSwitch(kind: PanelKind): boolean {
  * Get all built-in panel kinds.
  */
 export function getBuiltInPanelKinds(): BuiltInPanelKind[] {
-  return ["terminal", "browser", "dev-preview"];
+  return [...BUILT_IN_PANEL_KINDS];
 }
 
 /**
@@ -282,9 +396,14 @@ export function getBuiltInPanelKinds(): BuiltInPanelKind[] {
  * must clear extension entries between cases.
  */
 export function clearPanelKindRegistry(): void {
+  const removed: string[] = [];
   for (const [key, config] of Object.entries(PANEL_KIND_REGISTRY)) {
     if (config.extensionId !== undefined) {
       delete PANEL_KIND_REGISTRY[key];
+      removed.push(key);
     }
+  }
+  for (const key of removed) {
+    emitUnregistered(key);
   }
 }

@@ -1,6 +1,11 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Pause, Lock } from "lucide-react";
-import type { AgentState, PanelKind, AgentStateChangeTrigger } from "@/types";
+import type {
+  AgentState,
+  PanelKind,
+  AgentStateChangeTrigger,
+  PersistableFlowStatus,
+} from "@/types";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -45,7 +50,7 @@ export interface TerminalHeaderContentProps {
   isExited?: boolean;
   exitCode?: number | null;
   queueCount?: number;
-  flowStatus?: "running" | "paused-backpressure" | "paused-user" | "suspended";
+  flowStatus?: PersistableFlowStatus;
 }
 
 function formatMemory(kb: number): string {
@@ -54,11 +59,17 @@ function formatMemory(kb: number): string {
   return `${kb}K`;
 }
 
-function getResourceSeverity(cpuPercent: number, memoryKb: number): "muted" | "amber" | "red" {
+type ResourceSeverity = "muted" | "amber" | "red";
+
+function getResourceSeverity(cpuPercent: number, memoryKb: number): ResourceSeverity {
   if (cpuPercent >= 80 || memoryKb >= 2097152) return "red";
   if (cpuPercent >= 50 || memoryKb >= 1048576) return "amber";
   return "muted";
 }
+
+// Three consecutive same-direction polls before the displayed band changes —
+// prevents flicker at threshold boundaries (CPU 50/80, mem 1G/2G).
+const SEVERITY_HYSTERESIS_POLLS = 3;
 
 function TerminalHeaderContentComponent({
   id,
@@ -77,13 +88,49 @@ function TerminalHeaderContentComponent({
   const isPtyPanel = kind == null || panelKindHasPty(kind);
   const showResource = resourceEnabled && isPtyPanel && resourceState != null;
 
+  const [stickySeverity, setStickySeverity] = useState<ResourceSeverity>("muted");
+  const pendingCandidateRef = useRef<ResourceSeverity | null>(null);
+  const pendingCountRef = useRef(0);
+
+  useEffect(() => {
+    if (!showResource || resourceState == null) {
+      pendingCandidateRef.current = null;
+      pendingCountRef.current = 0;
+      setStickySeverity((current) => (current === "muted" ? current : "muted"));
+      return;
+    }
+
+    const rawSeverity = getResourceSeverity(resourceState.cpuPercent, resourceState.memoryKb);
+    setStickySeverity((current) => {
+      if (rawSeverity === current) {
+        pendingCandidateRef.current = null;
+        pendingCountRef.current = 0;
+        return current;
+      }
+
+      if (rawSeverity === pendingCandidateRef.current) {
+        pendingCountRef.current += 1;
+      } else {
+        pendingCandidateRef.current = rawSeverity;
+        pendingCountRef.current = 1;
+      }
+
+      if (pendingCountRef.current < SEVERITY_HYSTERESIS_POLLS) {
+        return current;
+      }
+
+      pendingCandidateRef.current = null;
+      pendingCountRef.current = 0;
+      return rawSeverity;
+    });
+  }, [resourceState, showResource]);
+
   const {
     isInputLocked,
     startedAt,
     lastStateChange,
     stateChangeTrigger,
     stateChangeConfidence,
-    waitingReason,
     sessionCost,
     sessionTokens,
   } = usePanelStore(
@@ -95,7 +142,6 @@ function TerminalHeaderContentComponent({
         lastStateChange: t?.lastStateChange,
         stateChangeTrigger: t?.stateChangeTrigger,
         stateChangeConfidence: t?.stateChangeConfidence,
-        waitingReason: t?.waitingReason,
         sessionCost: t?.sessionCost,
         sessionTokens: t?.sessionTokens,
       };
@@ -136,10 +182,10 @@ function TerminalHeaderContentComponent({
       return null;
     }
 
-    const StateIcon = getEffectiveStateIcon(agentState, waitingReason);
+    const StateIcon = getEffectiveStateIcon(agentState);
     if (!StateIcon) return null;
 
-    const effectiveColor = getEffectiveStateColor(agentState, waitingReason);
+    const effectiveColor = getEffectiveStateColor(agentState);
 
     const chipStyle =
       agentState === "working"
@@ -150,13 +196,11 @@ function TerminalHeaderContentComponent({
             ? "bg-[color-mix(in_oklab,var(--color-status-success)_15%,transparent)] border-status-success/40"
             : agentState === "exited"
               ? "bg-overlay-soft border-divider"
-              : agentState === "waiting" && waitingReason === "prompt"
-                ? "bg-[color-mix(in_oklab,var(--color-status-warning)_15%,transparent)] border-status-warning/40"
-                : "bg-[color-mix(in_oklab,var(--color-state-waiting)_15%,transparent)] border-state-waiting/40";
+              : "bg-[color-mix(in_oklab,var(--color-state-waiting)_15%,transparent)] border-state-waiting/40";
 
     const headline = activity?.headline?.trim() || `Agent ${agentState}`;
     const showConfidence = stateChangeConfidence != null && stateChangeConfidence < 1;
-    const stateLabel = getEffectiveStateLabel(agentState, waitingReason);
+    const stateLabel = getEffectiveStateLabel(agentState);
 
     return (
       <Tooltip>
@@ -210,7 +254,12 @@ function TerminalHeaderContentComponent({
             )}
             <span>
               State: {stateLabel}
-              {showStateDuration && <> · {formatElapsedDuration(now - lastStateChange!)}</>}
+              {showStateDuration && (
+                <span className="motion-safe:animate-in motion-safe:fade-in motion-safe:duration-150">
+                  {" · "}
+                  {formatElapsedDuration(now - lastStateChange!)}
+                </span>
+              )}
               {stateChangeTrigger && <> · {TRIGGER_LABELS[stateChangeTrigger]}</>}
               {showConfidence && <> ({Math.round(stateChangeConfidence * 100)}%)</>}
             </span>
@@ -287,8 +336,11 @@ function TerminalHeaderContentComponent({
               Paused
             </div>
           </TooltipTrigger>
-          <TooltipContent side="bottom">
-            Terminal paused due to buffer overflow (right-click for Force Resume)
+          <TooltipContent side="bottom" className="max-w-xs">
+            <div className="flex flex-col gap-0.5">
+              <span className="font-medium">Buffer overflow</span>
+              <span>Output paused to prevent data loss.</span>
+            </div>
           </TooltipContent>
         </Tooltip>
       )}
@@ -306,8 +358,11 @@ function TerminalHeaderContentComponent({
               Suspended
             </div>
           </TooltipTrigger>
-          <TooltipContent side="bottom">
-            Terminal output streaming suspended due to a stall (auto-recovers on focus)
+          <TooltipContent side="bottom" className="max-w-xs">
+            <div className="flex flex-col gap-0.5">
+              <span className="font-medium">Output suspended</span>
+              <span>Streaming stalled. Recovers automatically on focus.</span>
+            </div>
           </TooltipContent>
         </Tooltip>
       )}
@@ -329,14 +384,14 @@ function TerminalHeaderContentComponent({
         <Tooltip>
           <TooltipTrigger asChild>
             <div
-              className={cn("inline-flex items-center gap-1 text-[11px] font-mono shrink-0 ml-1", {
-                "text-daintree-text/40":
-                  getResourceSeverity(resourceState.cpuPercent, resourceState.memoryKb) === "muted",
-                "text-status-warning":
-                  getResourceSeverity(resourceState.cpuPercent, resourceState.memoryKb) === "amber",
-                "text-status-error":
-                  getResourceSeverity(resourceState.cpuPercent, resourceState.memoryKb) === "red",
-              })}
+              className={cn(
+                "inline-flex items-center gap-1 text-[11px] font-mono shrink-0 ml-1 transition-colors duration-150",
+                {
+                  "text-daintree-text/40": stickySeverity === "muted",
+                  "text-status-warning": stickySeverity === "amber",
+                  "text-status-error": stickySeverity === "red",
+                }
+              )}
               style={{ fontVariantNumeric: "tabular-nums" }}
               role="status"
             >

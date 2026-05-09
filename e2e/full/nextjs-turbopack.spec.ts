@@ -9,6 +9,7 @@ import { T_SHORT, T_LONG } from "../helpers/timeouts";
 
 let ctx: AppContext;
 let fixtureRepoPath: string;
+let fixtureCleanup: (() => void) | undefined;
 const PROJECT_NAME = "Next.js Turbopack Test";
 
 /**
@@ -25,7 +26,9 @@ const PROJECT_NAME = "Next.js Turbopack Test";
  */
 test.describe("Next.js Turbopack Normalization (#4557)", () => {
   test.beforeAll(async () => {
-    fixtureRepoPath = createFixtureRepo({ name: "nextjs-turbopack" });
+    ({ dir: fixtureRepoPath, cleanup: fixtureCleanup } = createFixtureRepo({
+      name: "nextjs-turbopack",
+    }));
 
     // Create package.json with a Next.js dev script
     writeFileSync(
@@ -91,6 +94,12 @@ server.listen(0, '127.0.0.1', () => {
 `;
     writeFileSync(path.join(binDir, "next"), fakeNextScript);
     chmodSync(path.join(binDir, "next"), 0o755);
+    if (process.platform === "win32") {
+      writeFileSync(
+        path.join(binDir, "next.cmd"),
+        ["@echo off", 'node "%~dp0next" %*', ""].join("\r\n")
+      );
+    }
 
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureRepoPath, PROJECT_NAME);
@@ -98,6 +107,7 @@ server.listen(0, '127.0.0.1', () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("auto-injects --turbopack and webview renders styled content", async () => {

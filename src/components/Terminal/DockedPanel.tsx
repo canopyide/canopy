@@ -1,9 +1,13 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { usePanelStore, type TerminalInstance } from "@/store";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { getPanelKindDefinition, type PanelComponentProps } from "@/registry";
+import {
+  getPanelKindDefinition,
+  getPanelKindDefinitionsSnapshot,
+  subscribeToPanelKindDefinitions,
+  type PanelComponentProps,
+} from "@/registry";
 import { ContentPanel, PluginMissingPanel, triggerPanelTransition } from "@/components/Panel";
-import { usePanelLifecycle } from "@/hooks/usePanelLifecycle";
 import { usePanelHandlers } from "@/hooks/usePanelHandlers";
 import { buildPanelProps } from "@/utils/panelProps";
 
@@ -17,10 +21,8 @@ export function DockedPanel({ terminal, onPopoverClose, onAddTab }: DockedPanelP
   const moveTerminalToGrid = usePanelStore((state) => state.moveTerminalToGrid);
   const closeDockTerminal = usePanelStore((state) => state.closeDockTerminal);
 
-  const lifecycle = usePanelLifecycle();
   const { handleFocus, handleClose, handleTitleChange } = usePanelHandlers({
     terminalId: terminal.id,
-    lifecycle,
     onAfterClose: onPopoverClose,
   });
 
@@ -63,6 +65,9 @@ export function DockedPanel({ terminal, onPopoverClose, onAddTab }: DockedPanelP
   const isFocused = focusedId === terminal.id;
 
   const kind = terminal.kind ?? "terminal";
+  // Subscribe to definition registry mutations so a plugin re-registering its
+  // panel kind hot-swaps the PluginMissingPanel placeholder without a reload.
+  useSyncExternalStore(subscribeToPanelKindDefinitions, getPanelKindDefinitionsSnapshot);
   const definition = getPanelKindDefinition(kind);
 
   const panelProps: PanelComponentProps = useMemo(
@@ -70,7 +75,6 @@ export function DockedPanel({ terminal, onPopoverClose, onAddTab }: DockedPanelP
       buildPanelProps({
         terminal,
         isFocused,
-        isTrashing: lifecycle.isTrashing,
         overrides: {
           location: "dock" as const,
           onFocus: handleFocus,
@@ -84,7 +88,6 @@ export function DockedPanel({ terminal, onPopoverClose, onAddTab }: DockedPanelP
     [
       terminal,
       isFocused,
-      lifecycle.isTrashing,
       handleFocus,
       handleClose,
       handleRestore,

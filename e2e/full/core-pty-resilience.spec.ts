@@ -22,10 +22,11 @@ import {
 
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Core: PTY Resilience", () => {
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "pty-resilience" });
+    ({ dir: fixtureDir, cleanup: fixtureCleanup } = createFixtureRepo({ name: "pty-resilience" }));
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(
       ctx.app,
@@ -37,6 +38,7 @@ test.describe.serial("Core: PTY Resilience", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("terminal flood with PTY lifecycle verification", async () => {
@@ -48,8 +50,8 @@ test.describe.serial("Core: PTY Resilience", () => {
     const panel = getFirstGridPanel(window);
     await expect(panel).toBeVisible({ timeout: T_LONG });
 
-    // Wait for shell prompt to be ready
-    await window.waitForTimeout(2000);
+    // Wait for shell prompt to be ready (fixture name appears in cwd prompt)
+    await waitForTerminalText(panel, "pty-resilience", T_LONG);
 
     // Extract PTY PID
     const ptyPid = await getPtyPid(window, panel);
@@ -130,8 +132,8 @@ test.describe.serial("Core: PTY Resilience", () => {
       const panel = getFirstGridPanel(window);
       await expect(panel).toBeVisible({ timeout: T_LONG });
 
-      // Wait for shell to be ready (prompt char varies by shell)
-      await window.waitForTimeout(2000);
+      // Wait for shell to be ready (fixture name appears in cwd prompt)
+      await waitForTerminalText(panel, "pty-resilience", T_LONG);
 
       // Close panel
       const closeBtn = panel.locator(SEL.panel.close);
@@ -147,6 +149,7 @@ test.describe.serial("Core: PTY Resilience", () => {
   });
 
   test("PTY crash mid-output: spawn terminal and start flood", async () => {
+    test.skip(process.platform === "win32", "Unix-only: kills the PTY shell with SIGKILL");
     test.setTimeout(120_000);
     const { window } = ctx;
 

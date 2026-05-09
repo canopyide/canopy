@@ -12,6 +12,14 @@ export const config: AgentConfig = {
   color: "#10a37f",
   iconId: "codex",
   supportsContextInjection: true,
+  supports: {
+    mcpInjection: "cli-flags",
+    settingsOverlay: false,
+    permissionBypass: true,
+    trustDialog: false,
+    versionProbe: true,
+    tier: "stable",
+  },
   shortcut: "Cmd/Ctrl+Alt+X",
   tooltip: "careful, methodical runs",
   usageUrl: "https://chatgpt.com/codex/settings/usage",
@@ -101,7 +109,7 @@ export const config: AgentConfig = {
     primaryConfidence: 0.95,
     fallbackConfidence: 0.75,
     promptConfidence: 0.85,
-    debounceMs: 4000,
+    debounceMs: 6000,
   },
   routing: {
     capabilities: [

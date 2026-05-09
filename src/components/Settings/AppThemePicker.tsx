@@ -19,6 +19,7 @@ import { APP_THEME_PREVIEW_KEYS } from "@shared/theme";
 import type { AppColorScheme, AppThemeValidationWarning } from "@shared/types/appTheme";
 import { SettingsSwitchCard } from "./SettingsSwitchCard";
 import { logError } from "@/utils/logger";
+import { useImageError } from "@/hooks/useImageError";
 
 function shuffleArray<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -105,6 +106,12 @@ export function AppThemePicker({ onClose }: AppThemePickerProps = {}) {
     [allSchemes, selectedSchemeId]
   );
 
+  const {
+    imgRef: heroImgRef,
+    error: heroError,
+    onError: onHeroError,
+  } = useImageError(selectedScheme.heroImage);
+
   const effectiveAccent = useMemo(
     () => accentColorOverride ?? selectedScheme.tokens["accent-primary"],
     [accentColorOverride, selectedScheme]
@@ -149,7 +156,7 @@ export function AppThemePicker({ onClose }: AppThemePickerProps = {}) {
 
       commitSchemeSelection(id);
       const scheme = resolveAppTheme(id, useAppThemeStore.getState().customSchemes);
-      runThemeReveal(origin ?? null, () => injectSchemeToDOM(scheme));
+      runThemeReveal(origin ?? null, () => injectSchemeToDOM(scheme, { immediate: true }));
 
       try {
         await appThemeClient.setColorScheme(id);
@@ -317,10 +324,12 @@ export function AppThemePicker({ onClose }: AppThemePickerProps = {}) {
 
       <div className="flex flex-col rounded-[var(--radius-md)] border border-daintree-border overflow-hidden">
         <div className="relative h-[200px] shrink-0 overflow-hidden">
-          {selectedScheme.heroImage ? (
+          {selectedScheme.heroImage && !heroError ? (
             <img
+              ref={heroImgRef}
               src={selectedScheme.heroImage}
-              alt={selectedScheme.name}
+              alt=""
+              onError={onHeroError}
               className="w-full h-full object-cover"
             />
           ) : (

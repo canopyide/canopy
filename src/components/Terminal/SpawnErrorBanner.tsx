@@ -1,7 +1,16 @@
 import React from "react";
-import { AlertTriangle, RotateCcw, FolderEdit, Trash2 } from "lucide-react";
+import { AlertTriangle, RotateCcw, FolderEdit, Trash2, Settings2 } from "lucide-react";
 import { InlineStatusBanner, type BannerAction } from "./InlineStatusBanner";
+import { sanitizeErrorText, boundedErrorText } from "@/utils/errorText";
+import { actionService } from "@/services/ActionService";
 import type { SpawnError } from "@/types";
+
+const RESOURCE_LIMIT_CODES: ReadonlySet<SpawnError["code"]> = new Set([
+  "EMFILE",
+  "EAGAIN",
+  "ENOMEM",
+  "ENXIO",
+]);
 
 export interface SpawnErrorBannerProps {
   terminalId: string;
@@ -10,43 +19,66 @@ export interface SpawnErrorBannerProps {
   onUpdateCwd: (id: string) => void;
   onRetry: (id: string) => void;
   onTrash: (id: string) => void;
+  isRestarting?: boolean;
   className?: string;
 }
 
 function getErrorTitle(code: SpawnError["code"]): string {
   switch (code) {
     case "ENOENT":
-      return "Shell or Command Not Found";
+      return "Couldn't find shell or command";
     case "EACCES":
-      return "Permission Denied";
+      return "Couldn't execute shell";
     case "ENOTDIR":
-      return "Invalid Working Directory";
+      return "Invalid working directory";
     case "EIO":
-      return "PTY Allocation Failed";
+      return "Couldn't allocate terminal";
+    case "EMFILE":
+      return "File descriptor limit reached";
+    case "EAGAIN":
+      return "Process limit reached";
+    case "ENOMEM":
+      return "Out of memory";
+    case "ENXIO":
+      return "PTY pool exhausted";
+    case "EBUSY":
+      return "Terminal device busy";
     case "DISCONNECTED":
-      return "Terminal Disconnected";
+      return "Terminal disconnected";
     default:
-      return "Failed to Start Terminal";
+      return "Couldn't start terminal";
   }
 }
 
 function getErrorDescription(error: SpawnError, cwd?: string): string {
+  const safePath = error.path ? boundedErrorText(error.path) : "";
+  const safeCwd = cwd ? boundedErrorText(cwd) : "";
   switch (error.code) {
     case "ENOENT":
-      if (error.path) {
-        return `Could not find: ${error.path}`;
+      if (safePath) {
+        return `Couldn't find: ${safePath}`;
       }
-      return error.message;
+      return boundedErrorText(error.message);
     case "EACCES":
-      return `You don't have permission to execute: ${error.path || "the shell"}`;
+      return `Couldn't execute ${safePath || "the shell"} — check permissions`;
     case "ENOTDIR":
-      return `The working directory is not valid: ${cwd || "(unknown)"}`;
+      return `The working directory isn't valid: ${safeCwd || "(unknown)"}`;
     case "EIO":
-      return "Failed to allocate a pseudo-terminal. The system may be running low on resources.";
+      return "Couldn't allocate a terminal session. The system may be running low on resources.";
+    case "EMFILE":
+      return "The per-process file descriptor limit was reached. Try closing some terminals to free up descriptors.";
+    case "EAGAIN":
+      return "The system process limit was hit (fork failed). Wait a moment and retry, or close some terminals.";
+    case "ENOMEM":
+      return "The system is out of memory. Try closing other applications to free up memory.";
+    case "ENXIO":
+      return "The pseudo-terminal pool is exhausted. Try closing some terminals and retrying.";
+    case "EBUSY":
+      return "The terminal device is busy. Retry or close the conflicting terminal.";
     case "DISCONNECTED":
-      return "The terminal process is no longer running. Click Retry to start a new session.";
+      return "The terminal process is no longer running.";
     default:
-      return error.message;
+      return boundedErrorText(error.message);
   }
 }
 
@@ -57,20 +89,40 @@ function SpawnErrorBannerComponent({
   onUpdateCwd,
   onRetry,
   onTrash,
+  isRestarting = false,
   className,
 }: SpawnErrorBannerProps) {
   const isCwdError = error.code === "ENOTDIR";
+  const isResourceLimit = RESOURCE_LIMIT_CODES.has(error.code);
 
   const actions: BannerAction[] = [];
   if (isCwdError) {
     actions.push({
       id: "update-cwd",
-      label: "Update Directory",
+      label: "Change directory",
       icon: FolderEdit,
       variant: "accent",
       onClick: () => onUpdateCwd(terminalId),
-      title: "Update Working Directory",
+      title: "Change working directory",
       ariaLabel: "Update working directory",
+      disabled: isRestarting,
+    });
+  }
+  if (isResourceLimit) {
+    actions.push({
+      id: "open-limits",
+      label: "Terminal limits",
+      icon: Settings2,
+      variant: "accent",
+      onClick: () => {
+        void actionService.dispatch(
+          "app.settings.openTab",
+          { tab: "terminal", subtab: "performance", sectionId: "terminal-panel-limits" },
+          { source: "user" }
+        );
+      },
+      title: "Open terminal limits settings",
+      ariaLabel: "Open terminal limits settings",
     });
   }
   actions.push(
@@ -82,15 +134,17 @@ function SpawnErrorBannerComponent({
       onClick: () => onRetry(terminalId),
       title: "Retry",
       ariaLabel: "Retry starting terminal",
+      loading: isRestarting,
     },
     {
       id: "trash",
-      label: "Trash",
+      label: "Remove terminal",
       icon: Trash2,
       variant: "danger",
       onClick: () => onTrash(terminalId),
-      title: "Move to Trash",
+      title: "Move to trash",
       ariaLabel: "Move to trash",
+      disabled: isRestarting,
     }
   );
 
@@ -99,7 +153,7 @@ function SpawnErrorBannerComponent({
       icon={AlertTriangle}
       title={getErrorTitle(error.code)}
       description={getErrorDescription(error, cwd)}
-      contextLine={cwd && `Directory: ${cwd}`}
+      contextLine={cwd ? `Directory: ${sanitizeErrorText(cwd)}` : undefined}
       severity="error"
       actions={actions}
       className={className}

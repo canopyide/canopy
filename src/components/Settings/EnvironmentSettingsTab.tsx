@@ -7,8 +7,10 @@ import { SettingsSection } from "./SettingsSection";
 import { isSensitiveEnvKey } from "@shared/utils/envVars";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { useSettingsTabValidation } from "./SettingsValidationRegistry";
+import { useSettingsTabFlush } from "./SettingsFlushRegistry";
 import { logError } from "@/utils/logger";
 import { notify } from "@/lib/notify";
+import { invalidateGlobalEnvCache } from "@/clients/globalEnvClient";
 
 interface EnvVar {
   id: string;
@@ -185,6 +187,7 @@ export function EnvironmentSettingsTab() {
   }, [envRows]);
 
   const handleSave = useCallback(async () => {
+    if (isSaving) return;
     if (!validate()) return;
 
     setIsSaving(true);
@@ -193,6 +196,9 @@ export function EnvironmentSettingsTab() {
     try {
       const record = envVarsToRecord(envRows);
       await window.electron.globalEnv.set(record);
+      // Invalidate the renderer-side cache so the next spawn fetches the
+      // freshly saved values rather than the pre-save snapshot.
+      invalidateGlobalEnvCache();
       setSavedSnapshot(record);
       setIsDirty(false);
     } catch (err) {
@@ -200,7 +206,7 @@ export function EnvironmentSettingsTab() {
     } finally {
       setIsSaving(false);
     }
-  }, [envRows, validate]);
+  }, [envRows, validate, isSaving]);
 
   const handleDiscard = useCallback(() => {
     setEnvRows(envVarsFromRecord(savedSnapshot));
@@ -209,6 +215,12 @@ export function EnvironmentSettingsTab() {
     setSaveError(null);
     setIsDirty(false);
   }, [savedSnapshot]);
+
+  // Persist pending edits before the dialog dismisses (X click) or the
+  // WebContentsView detaches on project switch. handleSave's validate() gate
+  // is intentional — invalid rows are dropped rather than persisted (matches
+  // user-initiated save).
+  useSettingsTabFlush("environment", handleSave, isDirty);
 
   if (isLoading) {
     return (
@@ -253,6 +265,7 @@ export function EnvironmentSettingsTab() {
               const isVisible = visibleEnvVars.has(envVar.id);
               const shouldMask = isSensitive && !isVisible;
               const error = rowErrors[envVar.id];
+              const errorId = error ? `${envVar.id}-error` : undefined;
 
               return (
                 <div key={envVar.id}>
@@ -271,6 +284,8 @@ export function EnvironmentSettingsTab() {
                       className="flex-1 bg-transparent border border-border-strong rounded px-2 py-1 text-sm text-daintree-text font-mono focus:outline-hidden focus:border-daintree-accent focus:ring-1 focus:ring-daintree-accent/30"
                       placeholder="VARIABLE_NAME"
                       aria-label="Environment variable name"
+                      aria-invalid={!!error || undefined}
+                      aria-describedby={errorId}
                     />
                     <span className="text-daintree-text/60">=</span>
                     <div className="flex-1 relative">
@@ -287,6 +302,7 @@ export function EnvironmentSettingsTab() {
                         )}
                         placeholder="e.g. /usr/local/bin"
                         aria-label="Environment variable value"
+                        aria-describedby={errorId}
                       />
                       {isSensitive && (
                         <button
@@ -313,7 +329,11 @@ export function EnvironmentSettingsTab() {
                       <Trash2 className="h-4 w-4 text-status-error" />
                     </button>
                   </div>
-                  {error && <p className="text-[11px] text-status-error mt-1 ml-1">{error}</p>}
+                  {error && (
+                    <p id={errorId} className="text-[11px] text-status-error mt-1 ml-1">
+                      {error}
+                    </p>
+                  )}
                 </div>
               );
             })
@@ -325,7 +345,11 @@ export function EnvironmentSettingsTab() {
           </Button>
         </div>
 
-        {saveError && <p className="text-xs text-status-error">{saveError}</p>}
+        {saveError && (
+          <p role="alert" className="text-xs text-status-error">
+            {saveError}
+          </p>
+        )}
 
         {isDirty && (
           <div className="flex items-center gap-2 pt-2">

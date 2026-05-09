@@ -24,6 +24,8 @@ const SHELL_PROMPT_PATTERNS = [
   // whitespace-separated tokens followed by a single trailing prompt char so
   // command output like `cat <foo>` or `foo > bar.txt` doesn't false-positive.
   /^\s*\S+:\S+\s+\S+\s*[#$%>]\s*$/,
+  // PowerShell default — `PS C:\repo>` or `PS /home/user>`.
+  /^\s*PS\s+\S.*>\s*$/i,
 ] as const;
 
 // Locale-independent fallback signals for "command not found" detection. POSIX
@@ -101,13 +103,17 @@ export class IdentityWatcher {
   private sawPtyDescendant = false;
   private suppressNext = false;
   private inputBuffer = "";
+  // ESC parser state, persisted across captureInput calls so a VT sequence
+  // split across two writes (e.g. `\x1b` then `[Aclaude\r`) doesn't reset
+  // mid-sequence and leak its bytes into the buffer.
+  private escState: 0 | 1 | 2 | 3 = 0;
   private seededCommand: string | undefined;
   private stopped = false;
 
   constructor(private readonly delegate: IdentityWatcherDelegate) {}
 
   seed(commandText?: string): void {
-    if (!this.delegate.processDetector) return;
+    if (this.stopped) return;
     const normalized = normalizeShellCommandText(commandText);
     if (!normalized) return;
     const identity = detectCommandIdentity(normalized);
@@ -118,25 +124,68 @@ export class IdentityWatcher {
         `agent=${identity.agentType ?? "<none>"} icon=${identity.processIconId ?? "<none>"} ` +
         `argv0=${redactArgv(normalized)}`
     );
-    this.delegate.processDetector.injectShellCommandEvidence(identity, normalized);
-    this.onShellSubmit(normalized, { allowWhenAgentDetected: true });
-    this.seededCommand = undefined;
+    this.delegate.processDetector?.injectShellCommandEvidence(identity, normalized);
+    try {
+      this.onShellSubmit(normalized, { allowWhenAgentDetected: true });
+    } finally {
+      this.seededCommand = undefined;
+    }
   }
 
   captureInput(data: string): string | undefined {
+    if (this.stopped) return undefined;
+
     let submittedCommandText: string | undefined;
-    let inEscapeSequence = false;
+    // ESC parser states:
+    //   0 = normal text
+    //   1 = saw ESC, awaiting intro byte (Fe escape vs. CSI/OSC opener)
+    //   2 = inside CSI — terminates on a final byte in 0x40..0x7E
+    //   3 = inside OSC/DCS/SOS/APC/PM — terminates on BEL (or ST `ESC \`,
+    //       handled implicitly when the embedded ESC restarts the parser)
+    // A 2-state ESC machine treated `[` as a final byte (0x5B is inside
+    // 0x40..0x7E), so `\x1b[A` leaked its final byte into the buffer; folding
+    // OSC into the same state would also break, because OSC parameter bytes
+    // include lowercase letters in 0x40..0x7E (e.g. the `w` in
+    // `\x1b]0;window-title\x07`). The `this.escState` instance field persists
+    // across calls so a sequence split between two writes still parses.
 
     for (const char of data) {
-      if (inEscapeSequence) {
-        if ((char >= "@" && char <= "~") || char === "\u0007") {
-          inEscapeSequence = false;
+      if (this.escState === 3) {
+        if (char === "\u0007") {
+          this.escState = 0;
+        } else if (char === "\x1b") {
+          // Treat embedded ESC as restart — also recovers the `\` of an ST
+          // terminator (`ESC \`) via the state-1 fall-through to state 0.
+          this.escState = 1;
+        }
+        continue;
+      }
+
+      if (this.escState === 2) {
+        if (char >= "@" && char <= "~") {
+          this.escState = 0;
+        } else if (char === "\x1b") {
+          this.escState = 1;
+        }
+        continue;
+      }
+
+      if (this.escState === 1) {
+        if (char === "[") {
+          this.escState = 2;
+        } else if (char === "]" || char === "P" || char === "X" || char === "_" || char === "^") {
+          this.escState = 3;
+        } else {
+          // Fe escape (e.g. `ESC A`, `ESC M`) — the single intro byte
+          // completes the sequence; this branch also recovers the trailing
+          // `\` of an ST terminator.
+          this.escState = 0;
         }
         continue;
       }
 
       if (char === "\x1b") {
-        inEscapeSequence = true;
+        this.escState = 1;
         continue;
       }
 
@@ -155,9 +204,13 @@ export class IdentityWatcher {
         continue;
       }
 
-      if (this.inputBuffer.length < SHELL_INPUT_BUFFER_MAX) {
-        this.inputBuffer += char;
+      if (this.inputBuffer.length >= SHELL_INPUT_BUFFER_MAX) {
+        // Drop oldest chars; preserve the live tail (most recent keystrokes matter for identity).
+        this.inputBuffer = this.inputBuffer.slice(
+          this.inputBuffer.length - SHELL_INPUT_BUFFER_MAX + 1
+        );
       }
+      this.inputBuffer += char;
     }
 
     return submittedCommandText;
@@ -208,18 +261,29 @@ export class IdentityWatcher {
     return false;
   }
 
-  hasAgentUiPromptFalsePositive(): boolean {
+  hasAgentUiPromptFalsePositive(hasPtyDescendants = false): boolean {
     const lines = this.delegate.getLastNLines(SHELL_IDENTITY_FALLBACK_SCAN_LINES);
     const lastVisibleLine = [...lines]
       .reverse()
       .find((line) => typeof line === "string" && line.trim().length > 0);
+    const cursorLine = this.delegate.getCursorLine();
+    const currentVisibleLine =
+      cursorLine && cursorLine.trim().length > 0 ? cursorLine : lastVisibleLine;
     const recent = [this.delegate.getCursorLine(), lastVisibleLine]
       .filter((line): line is string => typeof line === "string" && line.trim().length > 0)
       .join("\n");
+    const visibleTail = [this.delegate.getCursorLine(), ...lines]
+      .filter((line): line is string => typeof line === "string" && line.trim().length > 0)
+      .join("\n");
+    const knownAgentPrompt =
+      /(?:accessing workspace|yes,\s*i trust this folder|enter to confirm|quick safety check|\?\s+for\s+shortcuts|tips\s+for\s+getting\s+started|welcome\s+back!|claude code v\d)/i;
     return (
-      /(?:accessing workspace|yes,\s*i trust this folder|enter to confirm|quick safety check)/i.test(
-        recent
-      ) || /^\s*[❯›]\s+\d+\./m.test(recent)
+      knownAgentPrompt.test(recent) ||
+      knownAgentPrompt.test(visibleTail) ||
+      /^\s*[>❯›]\s+\d+\./m.test(visibleTail) ||
+      (/^\s*>\s*$/m.test(visibleTail) && /\?\s+for\s+shortcuts/i.test(visibleTail)) ||
+      (hasPtyDescendants && /^\s*PS\s+\S.*>\s*$/i.test(currentVisibleLine ?? "")) ||
+      (hasPtyDescendants && /^\s*[>❯›]\s*$/.test(currentVisibleLine ?? ""))
     );
   }
 
@@ -252,6 +316,15 @@ export class IdentityWatcher {
   dispose(): void {
     this.stopped = true;
     this.stop();
+    // Drop any injected shell evidence so a torn-down watcher doesn't leave a
+    // stale identity hanging on the detector for the full TTL. Default reason
+    // ("manual") respects the `promptReturned`/`shellWasSoleSupport` gate, so
+    // an agent the process tree independently corroborates won't be demoted.
+    this.delegate.processDetector?.clearShellCommandEvidence();
+    // Mark the MutableDisposable container itself disposed (safety fence) so
+    // any later assignment to `this.timer.value` short-circuits instead of
+    // silently retaining a new disposable.
+    this.timer.dispose();
   }
 
   private start(): void {
@@ -259,7 +332,13 @@ export class IdentityWatcher {
       return;
     }
     const id = setInterval(() => {
-      this.poll();
+      // An uncaught throw in a setInterval callback would tear down the
+      // interval (and on Electron 37+ utility processes, crash the host).
+      try {
+        this.poll();
+      } catch (err) {
+        console.error(`[IdentityWatcher] poll failed for ${this.delegate.terminalId}:`, err);
+      }
     }, SHELL_IDENTITY_FALLBACK_POLL_MS);
     this.timer.value = toDisposable(() => clearInterval(id));
   }
@@ -330,12 +409,17 @@ export class IdentityWatcher {
     // icon hasn't been cleared yet) must NOT block the fallback from emitting
     // a fresh `pnpm`/`docker`/etc. detection for the next command. #5813
     const fallbackIdentity = this.identity;
+    // "If the field is provided, it must agree" — AND across every populated
+    // field on the fallback identity. OR semantics let a single-field match
+    // pre-empt the commit even when the *other* field disagreed (a stale icon
+    // could short-circuit a freshly typed agent command, or vice versa).
     const liveIdentityMatchesFallback =
       fallbackIdentity !== null &&
-      ((fallbackIdentity.agentType !== undefined &&
-        this.delegate.detectedAgentId === fallbackIdentity.agentType) ||
-        (fallbackIdentity.processIconId !== undefined &&
-          this.delegate.lastDetectedProcessIconId === fallbackIdentity.processIconId));
+      (fallbackIdentity.agentType !== undefined || fallbackIdentity.processIconId !== undefined) &&
+      (fallbackIdentity.agentType === undefined ||
+        this.delegate.detectedAgentId === fallbackIdentity.agentType) &&
+      (fallbackIdentity.processIconId === undefined ||
+        this.delegate.lastDetectedProcessIconId === fallbackIdentity.processIconId);
 
     if (!this.identity) {
       if (promptVisible && Date.now() - submittedAt >= SHELL_IDENTITY_FALLBACK_COMMIT_MS) {
@@ -353,7 +437,7 @@ export class IdentityWatcher {
         return;
       }
 
-      if (promptVisible && !this.identity.agentType) {
+      if (promptVisible && !this.identity.agentType && ptyDescendantCount === 0) {
         console.log(
           `[IdentityDebug] shell-fallback-stop term=${this.delegate.terminalId.slice(-8)} ` +
             `reason=prompt-before-commit icon=${this.identity.processIconId ?? "<none>"}`
@@ -398,9 +482,16 @@ export class IdentityWatcher {
       return;
     }
 
+    if (!this.identity.agentType && ptyDescendantCount === undefined) {
+      this.promptStreak = 0;
+      return;
+    }
+
+    const hasRecentCommandFailureOutput = this.hasRecentCommandFailureOutput();
+
     if (
       this.identity.agentType &&
-      !this.hasRecentCommandFailureOutput() &&
+      !hasRecentCommandFailureOutput &&
       !this.isForegroundShellIdleForAgentDemotion()
     ) {
       if (this.promptStreak > 0) {
@@ -415,8 +506,8 @@ export class IdentityWatcher {
 
     if (
       this.identity.agentType &&
-      !this.hasRecentCommandFailureOutput() &&
-      this.hasAgentUiPromptFalsePositive()
+      !hasRecentCommandFailureOutput &&
+      this.hasAgentUiPromptFalsePositive(hasPtyDescendants)
     ) {
       if (this.promptStreak > 0) {
         console.log(

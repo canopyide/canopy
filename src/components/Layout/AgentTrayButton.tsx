@@ -41,7 +41,7 @@ import { useCcrPresetsStore } from "@/store/ccrPresetsStore";
 import { useProjectPresetsStore } from "@/store/projectPresetsStore";
 import { usePanelStore } from "@/store/panelStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
-import { useShallow } from "zustand/react/shallow";
+
 import { useKeybindingDisplay } from "@/hooks";
 import { useAgentDiscoveryOnboarding } from "@/hooks/app/useAgentDiscoveryOnboarding";
 import { BUILT_IN_AGENT_IDS, type BuiltInAgentId } from "@shared/config/agentIds";
@@ -280,7 +280,7 @@ export function AgentTrayButton({
   const setAgentPinned = useAgentSettingsStore((s) => s.setAgentPinned);
   const updateWorktreePreset = useAgentSettingsStore((s) => s.updateWorktreePreset);
 
-  const getSortedActionMruList = useActionMruStore(useShallow((s) => s.getSortedActionMruList));
+  const getSortedActionMruList = useActionMruStore((s) => s.getSortedActionMruList);
 
   const refreshAvailability = useCliAvailabilityStore((s) => s.refresh);
   const hasRealData = useCliAvailabilityStore((s) => s.hasRealData);
@@ -294,8 +294,8 @@ export function AgentTrayButton({
 
   const [open, setOpen] = useState(false);
 
-  const panelsById = usePanelStore(useShallow((s) => s.panelsById));
-  const panelIds = usePanelStore(useShallow((s) => s.panelIds));
+  const panelsById = usePanelStore((s) => s.panelsById);
+  const panelIds = usePanelStore((s) => s.panelIds);
   const activeWorktreeId = useWorktreeSelectionStore((s) => s.activeWorktreeId);
 
   // Before the first real availability result lands we can't distinguish
@@ -480,6 +480,12 @@ export function AgentTrayButton({
   const handleLaunch = useCallback(
     (agentId: BuiltInAgentId, presetId?: string | null) => {
       setOpen(false);
+      // `null` = explicit default — clear both the worktree-scoped override
+      // and the agent-level presetId so resolveEffectivePresetId returns
+      // undefined and the radio group visually selects "Default".
+      if (presetId === null) {
+        void useAgentSettingsStore.getState().updateAgent(agentId, { presetId: undefined });
+      }
       // Persist the pick to the worktree-scoped slot so a subsequent main-
       // button press on this worktree relaunches the same preset while other
       // worktrees keep their own. `null` clears the scoped override (and
@@ -552,6 +558,15 @@ export function AgentTrayButton({
   // availability data has landed.
   const showFallback = !isAvailabilityLoading && !hasAnyContent && fallbackSetup.length > 0;
 
+  const shouldShowEmptyTrayLabel = hasNoPinnedAgents && !isAvailabilityLoading;
+  const emptyTrayLabel: string | null = !shouldShowEmptyTrayLabel
+    ? null
+    : showFallback
+      ? "Set up agents"
+      : launchable.length > 0
+        ? "Pin agents"
+        : null;
+
   const renderLaunchItem = (row: AgentRow) => {
     if (row.presets && row.presets.length > 0) {
       return <SplitLaunchItem key={`launch-${row.id}`} row={row} onLaunch={handleLaunch} />;
@@ -582,22 +597,28 @@ export function AgentTrayButton({
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
-              size="icon"
+              size={emptyTrayLabel ? "sm" : "icon"}
               data-toolbar-item={dataToolbarItem}
-              className="toolbar-agent-button text-daintree-text transition-colors"
-              aria-label={showDiscoveryBadge ? "Agent tray — new agents detected" : "Agent tray"}
+              className={`toolbar-agent-button${emptyTrayLabel ? "" : " text-daintree-text"}`}
+              aria-label={
+                emptyTrayLabel
+                  ? `Agent tray — ${emptyTrayLabel}`
+                  : showDiscoveryBadge
+                    ? "Agent tray — new agents detected"
+                    : "Agent tray"
+              }
               onPointerEnter={clearFocusRestoreSuppression}
             >
               <span className="relative inline-flex items-center justify-center">
                 <Plug />
-                {showDiscoveryBadge && (
-                  <span
-                    data-testid="agent-tray-discovery-badge"
-                    className="absolute top-0 right-0 size-1.5 rounded-full bg-status-info ring-1 ring-daintree-sidebar"
-                    aria-hidden="true"
-                  />
-                )}
+                <span
+                  data-testid="agent-tray-discovery-badge"
+                  data-visible={showDiscoveryBadge}
+                  className="toolbar-badge absolute top-0 right-0 size-1.5 rounded-full bg-status-info ring-1 ring-daintree-sidebar"
+                  aria-hidden="true"
+                />
               </span>
+              {emptyTrayLabel}
             </Button>
           </DropdownMenuTrigger>
         </TooltipTrigger>

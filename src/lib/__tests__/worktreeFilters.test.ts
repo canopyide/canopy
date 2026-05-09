@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import {
   getWorktreeType,
-  buildSearchableText,
   scoreWorktree,
   computeStatus,
   matchesFilters,
@@ -12,6 +11,9 @@ import {
   hasAnyFilters,
   findIntegrationWorktree,
   filterTriageWorktrees,
+  computeChipCounts,
+  emptyChipCounts,
+  compareWorktreeNames,
   type DerivedWorktreeMeta,
   type FilterState,
 } from "../worktreeFilters";
@@ -143,56 +145,22 @@ describe("getWorktreeType", () => {
   });
 });
 
-describe("buildSearchableText", () => {
-  it("includes name", () => {
-    const worktree = createMockWorktree({ name: "test-name" });
-    expect(buildSearchableText(worktree)).toContain("test-name");
+describe("compareWorktreeNames", () => {
+  it("orders names with embedded numbers naturally", () => {
+    expect(compareWorktreeNames("feature-2", "feature-10")).toBeLessThan(0);
   });
 
-  it("includes branch", () => {
-    const worktree = createMockWorktree({ branch: "feature/my-branch" });
-    expect(buildSearchableText(worktree)).toContain("feature/my-branch");
+  it("ranks bare numeric prefixes naturally", () => {
+    expect(compareWorktreeNames("9-foo", "10-foo")).toBeLessThan(0);
   });
 
-  it("does not include path", () => {
-    const worktree = createMockWorktree({ path: "/home/user/my-project" });
-    expect(buildSearchableText(worktree)).not.toContain("/home/user/my-project");
+  it("treats case-only differences as equal (sensitivity: base)", () => {
+    expect(compareWorktreeNames("Alpha", "alpha")).toBe(0);
   });
 
-  it("includes issue number with hash", () => {
-    const worktree = createMockWorktree({ issueNumber: 123 });
-    expect(buildSearchableText(worktree)).toContain("#123");
-  });
-
-  it("includes PR number with hash", () => {
-    const worktree = createMockWorktree({ prNumber: 456 });
-    expect(buildSearchableText(worktree)).toContain("#456");
-  });
-
-  it("does not include summary", () => {
-    const worktree = createMockWorktree({ summary: "Working on feature X" });
-    expect(buildSearchableText(worktree)).not.toContain("working on feature x");
-  });
-
-  it("includes issue title", () => {
-    const worktree = createMockWorktree({ issueTitle: "Add dark mode toggle" });
-    expect(buildSearchableText(worktree)).toContain("add dark mode toggle");
-  });
-
-  it("includes PR title", () => {
-    const worktree = createMockWorktree({ prTitle: "Fix authentication bug" });
-    expect(buildSearchableText(worktree)).toContain("fix authentication bug");
-  });
-
-  it("does not include aiNote", () => {
-    const worktree = createMockWorktree({ aiNote: "Agent is implementing tests" });
-    expect(buildSearchableText(worktree)).not.toContain("agent is implementing tests");
-  });
-
-  it("returns lowercase text", () => {
-    const worktree = createMockWorktree({ name: "MyWorktree", branch: "Feature/Test" });
-    const text = buildSearchableText(worktree);
-    expect(text).toBe(text.toLowerCase());
+  it("orders pure alpha names lexicographically", () => {
+    expect(compareWorktreeNames("alpha", "bravo")).toBeLessThan(0);
+    expect(compareWorktreeNames("zulu", "alpha")).toBeGreaterThan(0);
   });
 });
 
@@ -693,6 +661,16 @@ describe("sortWorktrees", () => {
     ];
     const sorted = sortWorktrees(worktrees, "alpha");
     expect(sorted.map((w) => w.name)).toEqual(["alpha", "bravo", "charlie"]);
+  });
+
+  it("uses natural-numeric ordering on alpha sort (feature-2 before feature-10)", () => {
+    const worktrees = [
+      createMockWorktree({ id: "1", name: "feature-10" }),
+      createMockWorktree({ id: "2", name: "feature-2" }),
+      createMockWorktree({ id: "3", name: "feature-1" }),
+    ];
+    const sorted = sortWorktrees(worktrees, "alpha");
+    expect(sorted.map((w) => w.name)).toEqual(["feature-1", "feature-2", "feature-10"]);
   });
 
   it("uses name as tiebreaker for recent sort", () => {
@@ -1258,5 +1236,158 @@ describe("matchesQuickStateFilter", () => {
   it('"finished" does NOT match chipState "waiting"', () => {
     const meta = { ...createEmptyMeta(), chipState: "waiting" as const };
     expect(matchesQuickStateFilter("finished", meta)).toBe(false);
+  });
+});
+
+describe("computeChipCounts", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-01T12:00:00Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("returns all-zero counts for an empty worktree list", () => {
+    const counts = computeChipCounts([], new Map(), null);
+    expect(counts).toEqual(emptyChipCounts());
+  });
+
+  it("counts branch types independently", () => {
+    const worktrees = [
+      createMockWorktree({ id: "1", branch: "feature/a" }),
+      createMockWorktree({ id: "2", branch: "feature/b" }),
+      createMockWorktree({ id: "3", branch: "bugfix/c" }),
+    ];
+    const counts = computeChipCounts(worktrees, new Map(), null);
+    expect(counts.branchType.feature).toBe(2);
+    expect(counts.branchType.bugfix).toBe(1);
+    expect(counts.branchType.refactor).toBe(0);
+  });
+
+  it("counts GitHub chips by issue and PR state", () => {
+    const worktrees = [
+      createMockWorktree({ id: "1", issueNumber: 100, prNumber: 200, prState: "open" }),
+      createMockWorktree({ id: "2", issueNumber: 101 }),
+      createMockWorktree({ id: "3", prNumber: 202, prState: "merged" }),
+      createMockWorktree({ id: "4", prNumber: 203, prState: "closed" }),
+    ];
+    const counts = computeChipCounts(worktrees, new Map(), null);
+    expect(counts.github.hasIssue).toBe(2);
+    expect(counts.github.hasPR).toBe(3);
+    expect(counts.github.prOpen).toBe(1);
+    expect(counts.github.prMerged).toBe(1);
+    expect(counts.github.prClosed).toBe(1);
+  });
+
+  it("counts status chips and respects activeWorktreeId for the 'active' chip", () => {
+    const worktrees = [
+      createMockWorktree({ id: "1", branch: "feature/a", mood: "stale" }),
+      createMockWorktree({
+        id: "2",
+        branch: "feature/b",
+        worktreeChanges: {
+          worktreeId: "2",
+          rootPath: "/x",
+          changedFileCount: 3,
+          changes: [],
+        },
+      }),
+      createMockWorktree({ id: "3", branch: "feature/c" }),
+    ];
+    const counts = computeChipCounts(worktrees, new Map(), "3");
+    expect(counts.status.active).toBe(1);
+    expect(counts.status.dirty).toBe(1);
+    expect(counts.status.stale).toBe(1);
+    // id 2 is dirty (not idle); id 3 is active-only -> idle; id 1 is stale (not idle)
+    expect(counts.status.idle).toBe(1);
+  });
+
+  it("counts session chips from derivedMetaMap", () => {
+    const worktrees = [
+      createMockWorktree({ id: "1" }),
+      createMockWorktree({ id: "2" }),
+      createMockWorktree({ id: "3" }),
+    ];
+    const map = new Map<string, DerivedWorktreeMeta>([
+      [
+        "1",
+        {
+          ...createEmptyMeta(),
+          terminalCount: 2,
+          hasWorkingAgent: true,
+        },
+      ],
+      [
+        "2",
+        {
+          ...createEmptyMeta(),
+          terminalCount: 1,
+          hasWaitingAgent: true,
+        },
+      ],
+      [
+        "3",
+        {
+          ...createEmptyMeta(),
+          hasCompletedAgent: true,
+          hasExitedAgent: true,
+        },
+      ],
+    ]);
+    const counts = computeChipCounts(worktrees, map, null);
+    expect(counts.sessions.hasTerminals).toBe(2);
+    expect(counts.sessions.working).toBe(1);
+    expect(counts.sessions.waiting).toBe(1);
+    expect(counts.sessions.completed).toBe(1);
+    expect(counts.sessions.exited).toBe(1);
+  });
+
+  it("counts activity chips against current time windows (cumulative)", () => {
+    const now = Date.now();
+    const worktrees = [
+      createMockWorktree({ id: "1", lastActivityTimestamp: now - 5 * 60 * 1000 }), // 5m
+      createMockWorktree({ id: "2", lastActivityTimestamp: now - 30 * 60 * 1000 }), // 30m
+      createMockWorktree({ id: "3", lastActivityTimestamp: now - 5 * 60 * 60 * 1000 }), // 5h
+      createMockWorktree({ id: "4", lastActivityTimestamp: now - 3 * 24 * 60 * 60 * 1000 }), // 3d
+      createMockWorktree({ id: "5", lastActivityTimestamp: now - 30 * 24 * 60 * 60 * 1000 }), // 30d
+    ];
+    const counts = computeChipCounts(worktrees, new Map(), null);
+    expect(counts.activity.last15m).toBe(1);
+    expect(counts.activity.last1h).toBe(2);
+    expect(counts.activity.last24h).toBe(3);
+    expect(counts.activity.last7d).toBe(4);
+  });
+
+  it("ignores worktrees with no lastActivityTimestamp for activity chips", () => {
+    const worktrees = [createMockWorktree({ id: "1" })];
+    const counts = computeChipCounts(worktrees, new Map(), null);
+    expect(counts.activity.last15m).toBe(0);
+    expect(counts.activity.last7d).toBe(0);
+  });
+
+  it("treats lastActivityTimestamp === 0 the same as missing", () => {
+    const worktrees = [createMockWorktree({ id: "1", lastActivityTimestamp: 0 })];
+    const counts = computeChipCounts(worktrees, new Map(), null);
+    expect(counts.activity.last15m).toBe(0);
+    expect(counts.activity.last7d).toBe(0);
+  });
+
+  it("excludes worktrees at the exact window boundary (strict less-than)", () => {
+    const now = Date.now();
+    const worktrees = [
+      createMockWorktree({ id: "1", lastActivityTimestamp: now - 15 * 60 * 1000 }),
+    ];
+    const counts = computeChipCounts(worktrees, new Map(), null);
+    expect(counts.activity.last15m).toBe(0);
+    expect(counts.activity.last1h).toBe(1);
+  });
+
+  it("does not crash when derivedMetaMap is missing entries", () => {
+    const worktrees = [createMockWorktree({ id: "1", branch: "feature/a" })];
+    const counts = computeChipCounts(worktrees, new Map(), null);
+    expect(counts.branchType.feature).toBe(1);
+    expect(counts.sessions.working).toBe(0);
   });
 });

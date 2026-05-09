@@ -1,54 +1,34 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Bell, AlertTriangle, AlertCircle, CheckCircle2 } from "lucide-react";
+import { X, Bell, AlertTriangle, AlertCircle, CheckCircle2, Pin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/store/uiStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
+import { getCurrentViewStoreOrNull } from "@/store/createWorktreeStore";
 import type { ReEntrySummaryState } from "@/hooks/useReEntrySummary";
+import type { NotificationHistoryEntry } from "@/store/slices/notificationHistorySlice";
 
 const AUTO_DISMISS_MS = 8000;
 
-function buildLines(counts: ReEntrySummaryState["counts"]): Array<{
-  icon: typeof AlertCircle;
-  text: string;
-  emphasis: boolean;
-}> {
-  const lines: Array<{ icon: typeof AlertCircle; text: string; emphasis: boolean }> = [];
-  if (counts.error > 0) {
-    lines.push({
-      icon: AlertCircle,
-      text: `${counts.error} failed`,
-      emphasis: true,
-    });
-  }
-  if (counts.warning > 0) {
-    lines.push({
-      icon: AlertTriangle,
-      text: `${counts.warning} waiting for input`,
-      emphasis: true,
-    });
-  }
-  if (counts.success > 0) {
-    lines.push({
-      icon: CheckCircle2,
-      text: `${counts.success} completed`,
-      emphasis: false,
-    });
-  }
-  if (counts.info > 0) {
-    lines.push({
-      icon: Bell,
-      text: `${counts.info} update${counts.info !== 1 ? "s" : ""}`,
-      emphasis: false,
-    });
-  }
-  return lines;
-}
+const SEVERITY_ICON: Record<NotificationHistoryEntry["type"], typeof AlertCircle> = {
+  error: AlertCircle,
+  warning: AlertTriangle,
+  info: Bell,
+  success: CheckCircle2,
+};
+
+const SEVERITY_CLASS: Record<NotificationHistoryEntry["type"], string> = {
+  error: "text-red-400",
+  warning: "text-amber-400",
+  info: "text-blue-400",
+  success: "text-green-400",
+};
 
 export function ReEntrySummary({ state }: { state: ReEntrySummaryState }) {
-  const { visible, dismiss, entries } = state;
+  const { visible, dismiss, entries, rows, overflowCount } = state;
   const [isVisible, setIsVisible] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
+  const [isPinned, setIsPinned] = useState(false);
   const entryCount = entries.length;
 
   useEffect(() => {
@@ -56,20 +36,22 @@ export function ReEntrySummary({ state }: { state: ReEntrySummaryState }) {
       setIsVisible(false);
       return;
     }
+    setIsPinned(false);
     const handle = requestAnimationFrame(() => setIsVisible(true));
     return () => cancelAnimationFrame(handle);
   }, [visible, entryCount]);
 
+  const rowsKey = rows.map((r) => r.worktreeId).join(",");
+
   useEffect(() => {
-    if (!visible || isPaused) return;
+    if (!visible || isPaused || isPinned) return;
     const timer = setTimeout(dismiss, AUTO_DISMISS_MS);
     return () => clearTimeout(timer);
-  }, [visible, dismiss, isPaused, entryCount]);
+  }, [visible, dismiss, isPaused, isPinned, rowsKey]);
 
   if (!state.visible) return null;
 
-  const lines = buildLines(state.counts);
-  const hasUrgent = state.counts.error > 0 || state.counts.warning > 0;
+  const hasUrgent = rows.some((r) => r.worstType === "error" || r.worstType === "warning");
   const accentClass = hasUrgent ? "border-l-status-warning" : "border-l-status-success";
 
   const handleOpenNotifications = () => {
@@ -77,17 +59,17 @@ export function ReEntrySummary({ state }: { state: ReEntrySummaryState }) {
     state.dismiss();
   };
 
-  const handleGoToWorktree = () => {
-    if (state.singleWorktreeId) {
-      useWorktreeSelectionStore.getState().selectWorktree(state.singleWorktreeId);
-    }
+  const handleRowClick = (worktreeId: string) => {
+    const hasWorktree = getCurrentViewStoreOrNull()?.getState().worktrees.has(worktreeId) ?? false;
+    if (!hasWorktree) return;
+    useWorktreeSelectionStore.getState().selectWorktree(worktreeId);
     state.dismiss();
   };
 
   return createPortal(
     <div
       className="fixed top-3 z-[var(--z-toast)] flex flex-col gap-3 w-full max-w-[380px] pointer-events-none p-4"
-      style={{ right: "calc(var(--portal-right-offset, 0px))" }}
+      style={{ right: "calc(var(--right-obstruction-offset, 0px))" }}
     >
       <div
         className={cn(
@@ -111,35 +93,81 @@ export function ReEntrySummary({ state }: { state: ReEntrySummaryState }) {
           <h4 className="font-medium leading-tight tracking-tight text-xs text-daintree-text">
             While you were away
           </h4>
-          <button
-            type="button"
-            onClick={state.dismiss}
-            aria-label="Dismiss summary"
-            className={cn(
-              "shrink-0 rounded-[var(--radius-xs)]",
-              "h-6 w-6 flex items-center justify-center",
-              "text-daintree-text/40 transition-colors duration-150",
-              "hover:text-daintree-text/80 hover:bg-tint/10",
-              "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
-            )}
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
+          <div className="flex items-center gap-0.5">
+            <button
+              type="button"
+              onClick={() => setIsPinned((p) => !p)}
+              aria-label={isPinned ? "Unpin summary" : "Pin summary"}
+              aria-pressed={isPinned}
+              className={cn(
+                "shrink-0 rounded-[var(--radius-xs)]",
+                "h-6 w-6 flex items-center justify-center",
+                "text-daintree-text/40 transition-colors duration-150",
+                "hover:text-daintree-text/80 hover:bg-tint/10",
+                "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2",
+                isPinned && "text-daintree-text/80"
+              )}
+            >
+              <Pin className={cn("h-3.5 w-3.5", isPinned && "fill-current")} />
+            </button>
+            <button
+              type="button"
+              onClick={state.dismiss}
+              aria-label="Dismiss summary"
+              className={cn(
+                "shrink-0 rounded-[var(--radius-xs)]",
+                "h-6 w-6 flex items-center justify-center",
+                "text-daintree-text/40 transition-colors duration-150",
+                "hover:text-daintree-text/80 hover:bg-tint/10",
+                "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
+              )}
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
 
         <ul className="mt-1.5 space-y-0.5">
-          {lines.map((line) => (
-            <li
-              key={line.text}
-              className={cn(
-                "flex items-center gap-1.5 text-xs",
-                line.emphasis ? "text-daintree-text" : "text-daintree-text/70"
-              )}
-            >
-              <line.icon className="h-3.5 w-3.5 shrink-0" />
-              <span className="tabular-nums">{line.text}</span>
+          {rows.map((row) => {
+            const Icon = SEVERITY_ICON[row.worstType];
+            return (
+              <li key={row.worktreeId}>
+                <button
+                  type="button"
+                  onClick={() => handleRowClick(row.worktreeId)}
+                  className={cn(
+                    "flex items-center gap-1.5 w-full text-left text-xs",
+                    "rounded-[var(--radius-xs)] px-0.5 py-0.5 -mx-0.5",
+                    "hover:bg-tint/5 transition-colors duration-150",
+                    "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2",
+                    row.worstType === "error" || row.worstType === "warning"
+                      ? "text-daintree-text"
+                      : "text-daintree-text/70"
+                  )}
+                >
+                  <Icon className={cn("h-3.5 w-3.5 shrink-0", SEVERITY_CLASS[row.worstType])} />
+                  <span className="font-medium truncate min-w-0">{row.worktreeName}</span>
+                  <span className="text-daintree-text/50 truncate min-w-0">
+                    {row.highlightTitle}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+          {overflowCount > 0 && (
+            <li>
+              <button
+                type="button"
+                onClick={handleOpenNotifications}
+                className={cn(
+                  "text-xs text-daintree-text/50 hover:text-daintree-text/70",
+                  "px-0.5 py-0.5 transition-colors duration-150"
+                )}
+              >
+                +{overflowCount} more
+              </button>
             </li>
-          ))}
+          )}
         </ul>
 
         <div className="mt-2 flex flex-wrap gap-1.5">
@@ -156,21 +184,6 @@ export function ReEntrySummary({ state }: { state: ReEntrySummaryState }) {
           >
             Open Notifications
           </button>
-          {state.singleWorktreeId && (
-            <button
-              type="button"
-              onClick={handleGoToWorktree}
-              className={cn(
-                "px-2.5 py-1 rounded-[var(--radius-xs)]",
-                "text-xs font-medium",
-                "bg-tint/5 text-daintree-text/70",
-                "hover:bg-tint/10 hover:text-daintree-text transition-colors",
-                "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
-              )}
-            >
-              Go to Worktree
-            </button>
-          )}
         </div>
       </div>
     </div>,

@@ -11,10 +11,12 @@ import {
   EASE_SNAPPY,
   EASE_SPRING_CRITICAL,
   getPanelTransitionDuration,
+  getTerminalAnimationDuration,
   getUiAnimationDuration,
   getUiTransitionDuration,
   PANEL_MINIMIZE_DURATION,
   PANEL_RESTORE_DURATION,
+  TERMINAL_ANIMATION_DURATION,
   UI_ANIMATION_DURATION,
   UI_ENTER_DURATION,
   UI_EXIT_DURATION,
@@ -96,6 +98,13 @@ describe("getUiTransitionDuration", () => {
     document.body.dataset.performanceMode = "true";
     expect(getUiTransitionDuration("enter")).toBe(0);
     expect(getUiTransitionDuration("exit")).toBe(0);
+  });
+});
+
+describe("getTerminalAnimationDuration", () => {
+  it("returns 0 — panel close is instant", () => {
+    expect(getTerminalAnimationDuration()).toBe(TERMINAL_ANIMATION_DURATION);
+    expect(getTerminalAnimationDuration()).toBe(0);
   });
 });
 

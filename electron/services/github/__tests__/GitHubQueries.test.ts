@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildBatchPRQuery,
   buildBatchRequiredChecksQuery,
+  REPO_STATS_QUERY,
   LIST_PRS_QUERY,
   REPO_STATS_AND_PAGE_QUERY,
   SEARCH_QUERY,
@@ -100,7 +101,7 @@ describe("REPO_STATS_AND_PAGE_QUERY", () => {
       REPO_STATS_AND_PAGE_QUERY.indexOf("pullRequests(first: 20")
     );
     expect(issuesBlock).toContain("author { login avatarUrl }");
-    expect(issuesBlock).toContain("assignees");
+    expect(issuesBlock).toContain("assignees(first: 10) { nodes { login avatarUrl } }");
   });
 
   it("returns the PR fields the disk-cache validator (isPRLike) requires", () => {
@@ -169,7 +170,7 @@ describe("buildBatchPRQuery", () => {
     expect(query).toContain("pullRequest(number: 34)");
     expect(query).toContain("isRequired(pullRequestNumber: 12)");
     expect(query).toContain("isRequired(pullRequestNumber: 34)");
-    expect(query).toContain("contexts(first: 50)");
+    expect(query).toContain("contexts(first: 100)");
     expect(query).toContain("... on CheckRun");
     expect(query).toContain("... on StatusContext");
     expect(query).toContain("hasNextPage");
@@ -198,5 +199,119 @@ describe("buildBatchPRQuery", () => {
     expect(query).not.toContain("issue(number: 2.5)");
     expect(query).toContain("issue(number: 7)");
     expect(query).toContain('headRefName: "feature-branch"');
+  });
+
+  describe("tooltip pre-warm fields", () => {
+    // The poll-driven batch query over-fetches PR fields that match
+    // PRTooltipData so `prTooltipCache` can be warmed without an extra
+    // round-trip on first hover. Both query paths (issue timeline + branch
+    // search) must emit the same field shape.
+
+    it("includes tooltip fields on the issue-path PR fragments", () => {
+      const query = buildBatchPRQuery("owner", "repo", [{ worktreeId: "wt-1", issueNumber: 42 }]);
+
+      // Locate the issue path slice (no branch path emitted for this candidate).
+      const issuePathStart = query.indexOf("wt_0_issue:");
+      expect(issuePathStart).toBeGreaterThanOrEqual(0);
+      const issuePath = query.slice(issuePathStart);
+
+      // Both timeline event types resolve to PullRequest fragments — both
+      // need the tooltip projection so either codepath warms the cache.
+      const sourceFragmentStart = issuePath.indexOf("source");
+      const subjectFragmentStart = issuePath.indexOf("subject");
+      expect(sourceFragmentStart).toBeGreaterThanOrEqual(0);
+      expect(subjectFragmentStart).toBeGreaterThan(sourceFragmentStart);
+
+      const sourceFragment = issuePath.slice(sourceFragmentStart, subjectFragmentStart);
+      const subjectFragment = issuePath.slice(subjectFragmentStart);
+
+      for (const fragment of [sourceFragment, subjectFragment]) {
+        expect(fragment).toContain("bodyText");
+        expect(fragment).toContain("createdAt");
+        expect(fragment).toContain("author { login avatarUrl }");
+        expect(fragment).toContain("assignees(first: 10) { nodes { login avatarUrl } }");
+        expect(fragment).toContain("labels(first: 10) { nodes { name color } }");
+      }
+    });
+
+    it("includes tooltip fields on the branch-path PR nodes", () => {
+      const query = buildBatchPRQuery("owner", "repo", [
+        { worktreeId: "wt-1", branchName: "feature-branch" },
+      ]);
+
+      const branchPathStart = query.indexOf("wt_0_branch:");
+      expect(branchPathStart).toBeGreaterThanOrEqual(0);
+      const branchPath = query.slice(branchPathStart);
+
+      expect(branchPath).toContain("bodyText");
+      expect(branchPath).toContain("createdAt");
+      expect(branchPath).toContain("author { login avatarUrl }");
+      expect(branchPath).toContain("assignees(first: 10) { nodes { login avatarUrl } }");
+      expect(branchPath).toContain("labels(first: 10) { nodes { name color } }");
+    });
+
+    it("does not add an orderBy argument to assignees or labels connections", () => {
+      // Past lesson #3339: schema-context mismatches on connection ordering
+      // produce silent failures. Neither GitHub's PR.assignees nor PR.labels
+      // accepts an order arg; keep the call sites bare.
+      const query = buildBatchPRQuery("owner", "repo", [
+        { worktreeId: "wt-1", issueNumber: 42, branchName: "feature-branch" },
+      ]);
+
+      expect(query).not.toMatch(/assignees\(first:\s*\d+,\s*orderBy/);
+      expect(query).not.toMatch(/labels\(first:\s*10,\s*orderBy/);
+    });
+
+    it("uses bodyText (not body) so the response carries plain-text excerpt content", () => {
+      // GraphQL has both `body` (Markdown) and `bodyText` (plain text). The
+      // tooltip excerpt is rendered as plain text; using `body` would force
+      // every consumer to strip Markdown and breaks parity with getPRTooltip.
+      const query = buildBatchPRQuery("owner", "repo", [
+        { worktreeId: "wt-1", issueNumber: 42, branchName: "feature-branch" },
+      ]);
+
+      expect(query).toContain("bodyText");
+      // `body` is not present as a standalone field on either path. Match
+      // a word boundary to avoid matching `bodyText`.
+      expect(query).not.toMatch(/\bbody\b(?!Text)/);
+    });
+  });
+
+  describe("rateLimit field", () => {
+    it("includes rateLimit at operation root in REPO_STATS_QUERY", () => {
+      expect(REPO_STATS_QUERY).toContain("rateLimit {");
+      expect(REPO_STATS_QUERY).toContain("cost");
+      expect(REPO_STATS_QUERY).toContain("remaining");
+      expect(REPO_STATS_QUERY).toContain("resetAt");
+    });
+
+    it("includes rateLimit in REPO_STATS_AND_PAGE_QUERY", () => {
+      expect(REPO_STATS_AND_PAGE_QUERY).toContain("rateLimit {");
+    });
+
+    it("includes rateLimit in PROJECT_HEALTH_QUERY", () => {
+      expect(PROJECT_HEALTH_QUERY).toContain("rateLimit {");
+    });
+
+    it("includes rateLimit in SEARCH_QUERY", () => {
+      expect(SEARCH_QUERY).toContain("rateLimit {");
+    });
+
+    it("includes rateLimit in GET_PR_QUERY", () => {
+      expect(GET_PR_QUERY).toContain("rateLimit {");
+    });
+
+    it("includes rateLimit in generated batch PR query", () => {
+      const query = buildBatchPRQuery("owner", "repo", [{ worktreeId: "wt-1", issueNumber: 42 }]);
+      expect(query).toContain("rateLimit {");
+      expect(query).toContain("cost");
+      expect(query).toContain("remaining");
+      expect(query).toContain("resetAt");
+    });
+
+    it("includes rateLimit in generated batch required checks query", () => {
+      const query = buildBatchRequiredChecksQuery("owner", "repo", [12]);
+      expect(query).toContain("rateLimit {");
+    });
   });
 });

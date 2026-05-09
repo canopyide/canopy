@@ -4,17 +4,21 @@ import path from "path";
 import type {
   AgentSettings,
   PanelGridConfig,
+  PanelKind,
   UserAgentRegistry,
   AgentUpdateSettings,
   AppAgentConfig,
 } from "../shared/types/index.js";
 import type { IssueAssociation } from "../shared/types/ipc/worktree.js";
 import type { ErrorRecord } from "../shared/types/ipc/errors.js";
+import type { AssistantTurnRecord, McpAuditRecord } from "../shared/types/ipc/mcpServer.js";
+import { MCP_AUDIT_DEFAULT_MAX_RECORDS } from "../shared/types/ipc/mcpServer.js";
 import type { BuiltInAgentId } from "../shared/config/agentIds.js";
 import type { AgentId } from "../shared/types/agent.js";
 import { DEFAULT_AGENT_SETTINGS, DEFAULT_APP_AGENT_CONFIG } from "../shared/types/index.js";
 import type { AppThemeConfig } from "../shared/types/appTheme.js";
 import type { SettingsRecovery, ActionFrecencyEntry } from "../shared/types/ipc/app.js";
+import type { HelpAssistantTier } from "../shared/types/ipc/maps.js";
 
 interface WindowStateEntry {
   x?: number;
@@ -77,7 +81,7 @@ export interface StoreSchema {
     };
     terminals: Array<{
       id: string;
-      kind?: "terminal" | "browser" | "dev-preview" | string;
+      kind?: PanelKind;
       launchAgentId?: AgentId;
       title: string;
       titleMode?: "default" | "custom";
@@ -140,6 +144,7 @@ export interface StoreSchema {
     quietHoursStartMin: number;
     quietHoursEndMin: number;
     quietHoursWeekdays: number[];
+    groupByContext?: boolean;
   };
   userAgentRegistry: UserAgentRegistry;
   agentUpdateSettings: AgentUpdateSettings;
@@ -188,6 +193,41 @@ export interface StoreSchema {
     enabled: boolean;
     port: number | null;
     apiKey: string;
+    fullToolSurface: boolean;
+    auditEnabled: boolean;
+    auditMaxRecords: number;
+    auditLog?: McpAuditRecord[];
+    turnOutcomeLog?: AssistantTurnRecord[];
+  };
+  /**
+   * Help-assistant settings. Includes audit/permission configuration plus
+   * help-session provisioning options. Fields in the provisioning subset are
+   * optional to remain forward-compatible with the dedicated settings UI
+   * landing in #6517 / #6522 — the service falls back to safe defaults
+   * when keys are absent.
+   */
+  helpAssistant: {
+    docSearch: boolean;
+    daintreeControl: boolean;
+    /**
+     * MCP capability tier for the help assistant. Migrated at read time from
+     * the legacy `skipPermissions` boolean — see `helpAssistant.ts`
+     * `sanitizeStored` and `HelpSessionService.readSettings`.
+     */
+    tier: HelpAssistantTier;
+    /**
+     * Bypass Claude Code's per-tool confirmation prompt for help sessions.
+     * Migrated at read time from the legacy `skipPermissions` boolean.
+     */
+    bypassPermissions: boolean;
+    /**
+     * Legacy field — kept in the schema for backward compatibility so old
+     * stored values round-trip through the read-time migration without being
+     * stripped by the typed accessor. New writes use `tier` and
+     * `bypassPermissions`; this field is no longer written to.
+     */
+    skipPermissions?: boolean;
+    auditRetention: 7 | 30 | 0;
   };
   pendingErrors: ErrorRecord[];
   gpu: {
@@ -223,6 +263,7 @@ export interface StoreSchema {
   updateChannel: "stable" | "nightly";
   dismissedUpdateVersion?: string;
   dismissedUpdateAt?: number;
+  lastUpdateCheck?: number | null;
   /**
    * Per-logger level overrides keyed by stable `"<process>:Module"` names (or
    * `"*"` / `"<process>:*"` wildcards). Values are `"debug" | "info" | "warn"
@@ -288,6 +329,7 @@ const storeOptions = {
       quietHoursStartMin: 22 * 60,
       quietHoursEndMin: 8 * 60,
       quietHoursWeekdays: [],
+      groupByContext: false,
     },
     userAgentRegistry: {},
     agentUpdateSettings: {
@@ -325,6 +367,16 @@ const storeOptions = {
       enabled: false,
       port: 45454,
       apiKey: "",
+      fullToolSurface: false,
+      auditEnabled: true,
+      auditMaxRecords: MCP_AUDIT_DEFAULT_MAX_RECORDS,
+    },
+    helpAssistant: {
+      docSearch: true,
+      daintreeControl: true,
+      tier: "action" as const,
+      bypassPermissions: false,
+      auditRetention: 7 as const,
     },
     pendingErrors: [],
     gpu: {
@@ -358,6 +410,7 @@ const storeOptions = {
     orchestrationMilestones: {},
     shortcutHintCounts: {},
     updateChannel: "stable" as const,
+    lastUpdateCheck: null,
     logLevelOverrides: {},
   },
   cwd: process.env.DAINTREE_USER_DATA,
@@ -399,6 +452,9 @@ function quarantineCorruptConfig(configPath: string): string | null {
   try {
     const quarantinePath = `${configPath}.corrupted.${Date.now()}`;
     fs.renameSync(configPath, quarantinePath);
+    // The quarantined file inherits the original (potentially 0o644) inode mode
+    // and may contain partial secrets; tighten before it lingers on disk.
+    tightenFilePermissions(quarantinePath);
     console.log(`[Store] Quarantined corrupt config to ${quarantinePath}`);
     return quarantinePath;
   } catch (err) {
@@ -414,6 +470,10 @@ function restoreFromBackup(configPath: string): boolean {
     const raw = fs.readFileSync(backupPath, "utf8");
     JSON.parse(raw);
     fs.copyFileSync(backupPath, configPath);
+    // copyFileSync's mode propagation varies across platforms/filesystems and
+    // a subsequent Store constructor failure would leave the restored file at
+    // the backup's original mode — tighten unconditionally.
+    tightenFilePermissions(configPath);
     console.log("[Store] Restored config from backup");
     return true;
   } catch {
@@ -425,10 +485,28 @@ function restoreFromBackup(configPath: string): boolean {
 function refreshBackup(configPath: string): void {
   try {
     if (fs.existsSync(configPath)) {
-      fs.copyFileSync(configPath, `${configPath}.bak`);
+      const backupPath = `${configPath}.bak`;
+      fs.copyFileSync(configPath, backupPath);
+      tightenFilePermissions(backupPath);
     }
   } catch (err) {
     console.warn("[Store] Failed to create config backup:", err);
+  }
+}
+
+// Restrict the user-data store file (and its sidecar backup) to owner-only
+// read/write. The store persists secrets — github tokens, voice/MCP API keys —
+// and conf's default 0o666 lands at 0o644 after the typical umask, leaving the
+// file world-readable on multi-user macOS/Linux machines. Windows ignores
+// POSIX mode bits, so the platform guard keeps the call a no-op there.
+function tightenFilePermissions(filePath: string): void {
+  if (process.platform === "win32") return;
+  if (!filePath) return;
+  try {
+    if (!fs.existsSync(filePath)) return;
+    fs.chmodSync(filePath, 0o600);
+  } catch (err) {
+    console.warn("[Store] Failed to tighten file permissions:", filePath, err);
   }
 }
 
@@ -528,6 +606,7 @@ export function initializeStore(options: typeof storeOptions = storeOptions): St
     const created = new Store<StoreSchema>({
       ...options,
       clearInvalidConfig: true,
+      configFileMode: 0o600,
     });
     const postSnapshot = configPath ? readRawSnapshot(configPath) : null;
     const wipedDuringConstruction =
@@ -543,6 +622,10 @@ export function initializeStore(options: typeof storeOptions = storeOptions): St
     } else {
       refreshBackup(created.path);
     }
+    // Migrate existing 0o644 files (created before configFileMode landed) to
+    // 0o600 even when the user never triggers a write this session.
+    tightenFilePermissions(created.path);
+    tightenFilePermissions(`${created.path}.bak`);
     storeInstance = created;
     return created;
   } catch (error) {
@@ -591,12 +674,15 @@ export const store = new Proxy({} as Store<StoreSchema>, {
 
 function initializeWindowStatesStore(): Store<WindowStatesStoreSchema> {
   try {
-    return new Store<WindowStatesStoreSchema>({
+    const created = new Store<WindowStatesStoreSchema>({
       name: "window-states",
       cwd: storeOptions.cwd,
       defaults: { windowStates: {} },
       clearInvalidConfig: true,
+      configFileMode: 0o600,
     });
+    tightenFilePermissions(created.path);
+    return created;
   } catch (error) {
     console.warn(
       "[Store] Failed to initialize window-states store, using in-memory fallback:",
@@ -626,4 +712,5 @@ export {
   restoreFromBackup,
   refreshBackup,
   createInMemoryFallback,
+  tightenFilePermissions,
 };

@@ -695,13 +695,13 @@ Washes use the `overlay-base` tint color. They're used for toolbar project pill 
 
 Borders use a 5-tier system from nearly invisible to prominent:
 
-| Token                | Opacity (Dark) | Opacity (Light) | Usage                                                   |
-| -------------------- | -------------- | --------------- | ------------------------------------------------------- |
-| `border-divider`     | white 5%       | black 4%        | Structural separators (toolbar sections, dock sections) |
-| `border-subtle`      | white 8%       | black 5%        | Panel-internal dividers, card borders                   |
-| `border-default`     | solid hex      | solid hex       | Primary borders on cards, inputs, panels                |
-| `border-strong`      | white 14%      | black 14%       | Focused elements, emphasized containers                 |
-| `border-interactive` | white 20%      | black 10%       | Hovered inputs, interactive element borders             |
+| Token | Opacity (Dark) | Opacity (Light) | Usage |
+| --- | --- | --- | --- |
+| `border-divider` | white 5% | black 4% | Structural separators (toolbar sections, dock sections) |
+| `border-subtle` | white 8% | black 5% | Panel-internal dividers, card borders |
+| `border-default` | solid hex | solid hex | Primary borders on cards, inputs, panels |
+| `border-strong` | white 14% | black 14% | Focused elements, emphasized containers |
+| `border-interactive` | white 20% | black 10% | Hovered inputs, interactive element borders |
 
 **Polarity pattern:** Dark themes use white-alpha borders (they lighten). Light themes use black-alpha borders (they darken). This ensures borders are always visible as a step darker/lighter than their surface.
 
@@ -711,12 +711,12 @@ Borders use a 5-tier system from nearly invisible to prominent:
 
 Shadows have four tiers:
 
-| Token             | Usage                                  | Character                                              |
-| ----------------- | -------------------------------------- | ------------------------------------------------------ |
-| `shadow-ambient`  | Cards, panels, pills, subtle elevation | Barely there — just enough to separate from background |
-| `shadow-floating` | Dropdowns, popovers, tooltips          | Moderate depth — element clearly floats above content  |
-| `shadow-dialog`   | Modal dialogs, palettes                | Maximum depth — element is the topmost layer           |
-| `shadow-color`    | Base color for all composite shadows   | Single color input, opacity varied per depth           |
+| Token | Usage | Character |
+| --- | --- | --- |
+| `shadow-ambient` | Cards, panels, pills, subtle elevation | Barely there — just enough to separate from background |
+| `shadow-floating` | Dropdowns, popovers, tooltips | Moderate depth — element clearly floats above content |
+| `shadow-dialog` | Modal dialogs, palettes | Maximum depth — element is the topmost layer |
+| `shadow-color` | Base color for all composite shadows | Single color input, opacity varied per depth |
 
 The `strategy.shadowStyle` in the palette controls all three profiles at once:
 
@@ -729,14 +729,14 @@ The `strategy.shadowStyle` in the palette controls all three profiles at once:
 
 ## 13. Text Hierarchy
 
-| Token              | Weight        | Usage                                                           |
-| ------------------ | ------------- | --------------------------------------------------------------- |
-| `text-primary`     | Bold/semibold | Headings, panel titles, active labels, primary content          |
-| `text-secondary`   | Regular       | Descriptions, inactive tabs, metadata, subtitles                |
-| `text-muted`       | Regular       | Timestamps, disabled text, helper text (may fall below WCAG AA) |
-| `text-placeholder` | Regular       | Input placeholder text (derived: primary at 32-35%)             |
-| `text-inverse`     | Bold/regular  | Text on accent-colored backgrounds (buttons, badges)            |
-| `text-link`        | Regular       | Hyperlinks (defaults to accent-primary)                         |
+| Token | Weight | Usage |
+| --- | --- | --- |
+| `text-primary` | Bold/semibold | Headings, panel titles, active labels, primary content |
+| `text-secondary` | Regular | Descriptions, inactive tabs, metadata, subtitles |
+| `text-muted` | Regular | Timestamps, disabled text, helper text (may fall below WCAG AA) |
+| `text-placeholder` | Regular | Input placeholder text (derived: primary at 32-35%) |
+| `text-inverse` | Bold/regular | Text on accent-colored backgrounds (buttons, badges) |
+| `text-link` | Regular | Hyperlinks (defaults to accent-primary) |
 
 ---
 

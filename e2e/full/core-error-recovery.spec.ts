@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { launchApp, closeApp, type AppContext } from "../helpers/launch";
-import { createFixtureRepo, createMultiProjectFixture } from "../helpers/fixtures";
+import { createFixtureRepo, createMultiProjectFixture, removePathSync } from "../helpers/fixtures";
 import { openAndOnboardProject } from "../helpers/project";
 import { runTerminalCommand } from "../helpers/terminal";
 import { getGridPanelCount } from "../helpers/panels";
@@ -11,7 +11,6 @@ import {
 } from "../helpers/workflows";
 import { SEL } from "../helpers/selectors";
 import { T_LONG, T_MEDIUM } from "../helpers/timeouts";
-import { rmSync } from "fs";
 import path from "path";
 
 /* ------------------------------------------------------------------ */
@@ -21,9 +20,12 @@ import path from "path";
 test.describe.serial("Core: Error Recovery — Terminal Exit", () => {
   let ctx: AppContext;
   let fixtureDir: string;
+  let fixtureCleanup: (() => void) | undefined;
 
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "error-recovery-exit" });
+    const { dir, cleanup } = createFixtureRepo({ name: "error-recovery-exit" });
+    fixtureDir = dir;
+    fixtureCleanup = cleanup;
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(
       ctx.app,
@@ -35,6 +37,7 @@ test.describe.serial("Core: Error Recovery — Terminal Exit", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("terminal shows exit indicator and banner after exit 1", async () => {
@@ -83,15 +86,22 @@ test.describe.serial("Core: Error Recovery — Terminal Exit", () => {
 test.describe.serial("Core: Error Recovery — Missing Worktree", () => {
   let ctx: AppContext;
   let fixtureDir: string;
+  let fixtureCleanup: (() => void) | undefined;
 
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "error-recovery-wt", withFeatureBranch: true });
+    const { dir, cleanup } = createFixtureRepo({
+      name: "error-recovery-wt",
+      withFeatureBranch: true,
+    });
+    fixtureDir = dir;
+    fixtureCleanup = cleanup;
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Error Recovery WT");
   });
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("detects externally deleted worktree", async () => {
@@ -107,11 +117,18 @@ test.describe.serial("Core: Error Recovery — Missing Worktree", () => {
       path.basename(fixtureDir) + "-worktrees",
       "feature-test-branch"
     );
-    rmSync(worktreeDir, { recursive: true, force: true });
+    removePathSync(worktreeDir);
 
-    // The WorktreeMonitor polls every 2s (active) or 10s (background).
-    // The card should disappear once the removal is detected.
-    await expect(card).not.toBeVisible({ timeout: 30_000 });
+    // After commit dfb7f1df2 the watcher-driven cadence relaxed the recursive
+    // fallback poll to 5min — and macOS `fs.watch` doesn't reliably fire on
+    // its own watch-target removal, so auto-detection can take minutes. Drive
+    // detection deterministically by calling worktree.refresh(), which runs
+    // `git worktree prune` inside discoverAndSyncWorktrees and clears the
+    // phantom monitor. This mirrors core-worktree-external.spec.ts, which
+    // refreshes after external git mutations for the same reason.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await window.evaluate(() => (window as any).electron.worktree.refresh());
+    await expect(card).not.toBeVisible({ timeout: T_LONG });
   });
 });
 
@@ -126,10 +143,10 @@ test.describe.serial("Core: Error Recovery — Missing Project", () => {
   test.beforeAll(async () => {
     fixture = createMultiProjectFixture();
     ctx = await launchApp();
-    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixture.repoA, "Project A");
-    ctx.window = await addAndSwitchToProject(ctx.app, ctx.window, fixture.repoB, "Project B");
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixture.repoA, "project-A");
+    ctx.window = await addAndSwitchToProject(ctx.app, ctx.window, fixture.repoB, "project-B");
     // Switch back to A so B is inactive (checkMissingProjects skips the active project)
-    ctx.window = await selectExistingProjectAndRefresh(ctx.app, ctx.window, "Project A");
+    ctx.window = await selectExistingProjectAndRefresh(ctx.app, ctx.window, "project-A");
   });
 
   test.afterAll(async () => {
@@ -141,7 +158,7 @@ test.describe.serial("Core: Error Recovery — Missing Project", () => {
     const { window } = ctx;
 
     // Delete the inactive project B directory
-    rmSync(fixture.repoB, { recursive: true, force: true });
+    removePathSync(fixture.repoB);
 
     // Open project switcher — this triggers loadProjects → checkMissingProjects
     await window.locator(SEL.toolbar.projectSwitcherTrigger).click();

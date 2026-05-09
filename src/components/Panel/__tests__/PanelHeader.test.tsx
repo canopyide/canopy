@@ -12,6 +12,7 @@ vi.mock("react-dom", async () => {
 });
 
 vi.mock("framer-motion", () => {
+  const passthrough = ({ children }: { children: React.ReactNode }) => <>{children}</>;
   const MotionDiv = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
     ({ children, ...props }, ref) => {
       const {
@@ -28,8 +29,9 @@ vi.mock("framer-motion", () => {
     }
   );
   return {
-    LayoutGroup: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-    LazyMotion: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    AnimatePresence: passthrough,
+    LayoutGroup: passthrough,
+    LazyMotion: passthrough,
     domAnimation: {},
     domMax: {},
     m: { div: MotionDiv },
@@ -37,28 +39,22 @@ vi.mock("framer-motion", () => {
   };
 });
 
-const mockScrollLeft = vi.fn();
-const mockScrollRight = vi.fn();
-let mockScrollControls = {
-  isOverflowing: false,
-  canScrollLeft: false,
-  canScrollRight: false,
-  scrollLeft: mockScrollLeft,
-  scrollRight: mockScrollRight,
-};
+let mockHiddenTabIds: ReadonlySet<string> = new Set();
 
 vi.mock("@/hooks", () => ({
   useBackgroundPanelStats: () => ({ activeCount: 0, workingCount: 0 }),
-  useHorizontalScrollControls: () => mockScrollControls,
+  useTabOverflow: () => mockHiddenTabIds,
   useKeybindingDisplay: () => "",
+  useAriaKeyshortcuts: () => undefined,
 }));
+
+let mockDragHandle: {
+  listeners: Record<string, (e: unknown) => void> | undefined;
+  setActivatorNodeRef?: (node: HTMLElement | null) => void;
+} | null = null;
 
 vi.mock("@/components/DragDrop/DragHandleContext", () => ({
-  useDragHandle: () => null,
-}));
-
-vi.mock("zustand/react/shallow", () => ({
-  useShallow: (fn: (...args: unknown[]) => unknown) => fn,
+  useDragHandle: () => mockDragHandle,
 }));
 
 const mockWatchPanel = vi.fn();
@@ -124,8 +120,17 @@ vi.mock("@/components/ui/dropdown-menu", () => ({
     onOpenChange?: (open: boolean) => void;
   }) => <div>{children}</div>,
   DropdownMenuTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  DropdownMenuContent: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="overflow-menu">{children}</div>
+  DropdownMenuContent: ({
+    children,
+    className,
+  }: {
+    children: React.ReactNode;
+    className?: string;
+    align?: string;
+  }) => (
+    <div data-testid="overflow-menu" className={className}>
+      {children}
+    </div>
   ),
   DropdownMenuItem: ({
     children,
@@ -180,13 +185,7 @@ describe("PanelHeader", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockHasPty = false;
-    mockScrollControls = {
-      isOverflowing: false,
-      canScrollLeft: false,
-      canScrollRight: false,
-      scrollLeft: mockScrollLeft,
-      scrollRight: mockScrollRight,
-    };
+    mockHiddenTabIds = new Set();
     mockStoreState = {
       watchedPanels: new Set<string>(),
       watchPanel: mockWatchPanel,
@@ -456,8 +455,8 @@ describe("PanelHeader", () => {
     });
   });
 
-  describe("tab scroll arrows", () => {
-    const twoTabs = [
+  describe("tab overflow menu (#6429)", () => {
+    const threeTabs = [
       {
         id: "t1",
         title: "Tab 1",
@@ -472,47 +471,75 @@ describe("PanelHeader", () => {
         chrome: deriveTerminalChrome(),
         isActive: false,
       },
+      {
+        id: "t3",
+        title: "Tab 3",
+        kind: "terminal" as const,
+        chrome: deriveTerminalChrome(),
+        isActive: false,
+      },
     ];
 
-    it("renders scroll arrows when tabs overflow", () => {
-      mockScrollControls = {
-        ...mockScrollControls,
-        canScrollLeft: true,
-        canScrollRight: true,
-      };
-      render(<PanelHeader {...makeProps({ tabs: twoTabs, onTabClick: vi.fn() })} />);
-      expect(screen.getByLabelText("Scroll left")).toBeDefined();
-      expect(screen.getByLabelText("Scroll right")).toBeDefined();
+    it("does not render the overflow trigger when no tabs are hidden", () => {
+      render(<PanelHeader {...makeProps({ tabs: threeTabs, onTabClick: vi.fn() })} />);
+      expect(screen.queryByLabelText("Show hidden tabs")).toBeNull();
+      expect(screen.queryByTestId("panel-tabs-overflow")).toBeNull();
     });
 
-    it("does not render scroll arrows when tabs do not overflow", () => {
-      render(<PanelHeader {...makeProps({ tabs: twoTabs, onTabClick: vi.fn() })} />);
-      expect(screen.queryByLabelText("Scroll left")).toBeNull();
-      expect(screen.queryByLabelText("Scroll right")).toBeNull();
+    it("renders the overflow trigger when one or more tabs are hidden", () => {
+      mockHiddenTabIds = new Set(["t2", "t3"]);
+      render(<PanelHeader {...makeProps({ tabs: threeTabs, onTabClick: vi.fn() })} />);
+      const trigger = screen.getByLabelText("Show hidden tabs");
+      expect(trigger).toBeDefined();
+      expect(trigger.getAttribute("aria-haspopup")).toBe("menu");
     });
 
-    it("calls scrollLeft/scrollRight when arrows are clicked", () => {
-      mockScrollControls = {
-        ...mockScrollControls,
-        canScrollLeft: true,
-        canScrollRight: true,
-      };
-      render(<PanelHeader {...makeProps({ tabs: twoTabs, onTabClick: vi.fn() })} />);
-      screen.getByLabelText("Scroll left").click();
-      expect(mockScrollLeft).toHaveBeenCalledTimes(1);
-      screen.getByLabelText("Scroll right").click();
-      expect(mockScrollRight).toHaveBeenCalledTimes(1);
+    it("lists hidden tabs by full title in the dropdown", () => {
+      mockHiddenTabIds = new Set(["t2", "t3"]);
+      render(<PanelHeader {...makeProps({ tabs: threeTabs, onTabClick: vi.fn() })} />);
+      const menus = screen.getAllByTestId("overflow-menu");
+      const tabsMenu = menus.find((m) => m.textContent?.includes("Tab 2"));
+      expect(tabsMenu).toBeDefined();
+      expect(tabsMenu!.textContent).toContain("Tab 2");
+      expect(tabsMenu!.textContent).toContain("Tab 3");
+      expect(tabsMenu!.textContent).not.toContain("Tab 1");
     });
 
-    it("renders only the right arrow when scrolled to the start", () => {
-      mockScrollControls = {
-        ...mockScrollControls,
-        canScrollLeft: false,
-        canScrollRight: true,
-      };
-      render(<PanelHeader {...makeProps({ tabs: twoTabs, onTabClick: vi.fn() })} />);
-      expect(screen.queryByLabelText("Scroll left")).toBeNull();
-      expect(screen.getByLabelText("Scroll right")).toBeDefined();
+    it("calls onTabClick with the hidden tab id when a menu item is selected", () => {
+      mockHiddenTabIds = new Set(["t2", "t3"]);
+      const onTabClick = vi.fn();
+      render(<PanelHeader {...makeProps({ tabs: threeTabs, onTabClick })} />);
+      const menus = screen.getAllByTestId("overflow-menu");
+      const tabsMenu = menus.find((m) => m.textContent?.includes("Tab 2"))!;
+      const tab2Item = Array.from(tabsMenu.querySelectorAll("button")).find((b) =>
+        b.textContent?.includes("Tab 2")
+      );
+      tab2Item?.click();
+      expect(onTabClick).toHaveBeenCalledWith("t2");
+    });
+
+    it("marks an active hidden tab with aria-current and font-medium", () => {
+      mockHiddenTabIds = new Set(["t1", "t2"]);
+      render(<PanelHeader {...makeProps({ tabs: threeTabs, onTabClick: vi.fn() })} />);
+      const menus = screen.getAllByTestId("overflow-menu");
+      const tabsMenu = menus.find((m) => m.textContent?.includes("Tab 1"))!;
+      const items = Array.from(tabsMenu.querySelectorAll("button"));
+      const activeItem = items.find((b) => b.textContent?.includes("Tab 1"));
+      expect(activeItem?.getAttribute("aria-current")).toBe("true");
+      expect(activeItem?.className).toContain("font-medium");
+      const inactiveItem = items.find((b) => b.textContent?.includes("Tab 2"));
+      expect(inactiveItem?.getAttribute("aria-current")).toBeNull();
+    });
+
+    it("constrains the dropdown content height to available viewport (#4402)", () => {
+      mockHiddenTabIds = new Set(["t2"]);
+      render(<PanelHeader {...makeProps({ tabs: threeTabs, onTabClick: vi.fn() })} />);
+      const menus = screen.getAllByTestId("overflow-menu");
+      const tabsMenu = menus.find((m) => m.textContent?.includes("Tab 2"))!;
+      expect(tabsMenu.className).toContain(
+        "max-h-[var(--radix-dropdown-menu-content-available-height)]"
+      );
+      expect(tabsMenu.className).toContain("overflow-y-auto");
     });
   });
 
@@ -540,6 +567,40 @@ describe("PanelHeader", () => {
       const closeButton = screen.getByTestId("panel-close");
       fireEvent.dblClick(closeButton);
       expect(mockDispatch).not.toHaveBeenCalledWith("nav.toggleFocusMode");
+    });
+  });
+
+  describe("mousedown handling", () => {
+    it("does not call preventDefault on a double-click mousedown (#7279)", () => {
+      // Calling preventDefault on the second mousedown of a double-click
+      // suppressed the resulting click and left armed-fleet panels stuck
+      // unclickable. Text-selection prevention is handled by the `select-none`
+      // CSS class on the container instead — see #6978 / #7279.
+      const { container } = render(<PanelHeader {...makeProps({ location: "grid" })} />);
+      const header = container.firstElementChild as HTMLElement;
+      const event = new MouseEvent("mousedown", { bubbles: true, cancelable: true, detail: 2 });
+      header.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(false);
+    });
+
+    it("forwards all mousedowns to the dnd-kit drag listener", () => {
+      const dragMouseDown = vi.fn();
+      mockDragHandle = { listeners: { onMouseDown: dragMouseDown } };
+      try {
+        const { container } = render(<PanelHeader {...makeProps({ location: "grid" })} />);
+        const header = container.firstElementChild as HTMLElement;
+        fireEvent.mouseDown(header, { detail: 1 });
+        fireEvent.mouseDown(header, { detail: 2 });
+        expect(dragMouseDown).toHaveBeenCalledTimes(2);
+      } finally {
+        mockDragHandle = null;
+      }
+    });
+
+    it("applies select-none to the header container (#6978 selection guard)", () => {
+      const { container } = render(<PanelHeader {...makeProps({ location: "grid" })} />);
+      const header = container.firstElementChild as HTMLElement;
+      expect(header.className).toContain("select-none");
     });
   });
 
@@ -582,6 +643,53 @@ describe("PanelHeader", () => {
       );
       const header = container.firstElementChild as HTMLElement;
       expect(header.className).not.toContain("bg-overlay-subtle");
+    });
+  });
+
+  describe("keyboard drag activation (#7262)", () => {
+    it("registers setActivatorNodeRef on the header div when drag listeners are present", () => {
+      // KeyboardSensor watches whichever element receives setActivatorNodeRef.
+      // The whole header is the drag surface, so the ref must land there.
+      const setActivatorNodeRef = vi.fn();
+      mockDragHandle = {
+        listeners: { onMouseDown: vi.fn() },
+        setActivatorNodeRef,
+      };
+      try {
+        const { container } = render(<PanelHeader {...makeProps({ location: "grid" })} />);
+        const header = container.firstElementChild as HTMLElement;
+        expect(setActivatorNodeRef).toHaveBeenCalledWith(header);
+      } finally {
+        mockDragHandle = null;
+      }
+    });
+
+    it("makes the header focusable (tabIndex=0) and groups it for screen readers when draggable", () => {
+      mockDragHandle = {
+        listeners: { onMouseDown: vi.fn() },
+        setActivatorNodeRef: vi.fn(),
+      };
+      try {
+        const { container } = render(<PanelHeader {...makeProps({ location: "grid" })} />);
+        const header = container.firstElementChild as HTMLElement;
+        expect(header.getAttribute("tabindex")).toBe("0");
+        expect(header.getAttribute("role")).toBe("group");
+        expect(header.getAttribute("aria-roledescription")).toContain("Draggable");
+      } finally {
+        mockDragHandle = null;
+      }
+    });
+
+    it("does not make the header focusable when no drag listeners are attached", () => {
+      // Without dragListeners (e.g. maximized panel), the header is not a drag
+      // surface — leaving tabIndex unset preserves the existing tab order so
+      // every panel chrome doesn't become a Tab stop.
+      mockDragHandle = null;
+      const { container } = render(<PanelHeader {...makeProps({ location: "grid" })} />);
+      const header = container.firstElementChild as HTMLElement;
+      expect(header.getAttribute("tabindex")).toBeNull();
+      expect(header.getAttribute("role")).toBeNull();
+      expect(header.getAttribute("aria-roledescription")).toBeNull();
     });
   });
 

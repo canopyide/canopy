@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Check, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BUILT_IN_APP_SCHEMES } from "@/config/appColorSchemes";
@@ -16,18 +16,19 @@ import {
 import { PaletteStrip } from "@/components/ui/PaletteStrip";
 import type { AppColorScheme, AppThemeValidationWarning } from "@shared/types/appTheme";
 import { useEscapeStack } from "@/hooks/useEscapeStack";
-import { useOverlayClaim } from "@/hooks";
+import { useOverlayClaim, useImageError } from "@/hooks";
 
 const PANEL_WIDTH = 380;
+const EMPTY_WARNINGS: AppThemeValidationWarning[] = [];
 
-function ThemeRow({
+const ThemeRow = memo(function ThemeRow({
   scheme,
   isCommitted,
   isActive,
   isKeyboardFocused,
   onSelect,
   warnings,
-  rowRef,
+  onRowRef,
 }: {
   scheme: AppColorScheme;
   isCommitted: boolean;
@@ -35,8 +36,18 @@ function ThemeRow({
   isKeyboardFocused: boolean;
   onSelect: (id: string) => void;
   warnings: AppThemeValidationWarning[];
-  rowRef: (el: HTMLButtonElement | null) => void;
+  onRowRef: (id: string, el: HTMLButtonElement | null) => void;
 }) {
+  const { imgRef, error, onError } = useImageError(
+    scheme.heroImage?.replace("/themes/", "/themes/thumb/")
+  );
+  const rowRef = useCallback(
+    (el: HTMLButtonElement | null) => {
+      onRowRef(scheme.id, el);
+    },
+    [onRowRef, scheme.id]
+  );
+
   return (
     <button
       ref={rowRef}
@@ -51,13 +62,15 @@ function ThemeRow({
         isActive ? "bg-daintree-accent/10" : "hover:bg-surface-hover"
       )}
     >
-      {scheme.heroImage ? (
+      {scheme.heroImage && !error ? (
         <img
+          ref={imgRef}
           src={scheme.heroImage.replace("/themes/", "/themes/thumb/")}
           alt=""
           width={80}
           height={80}
           loading="lazy"
+          onError={onError}
           className="w-10 h-10 rounded-sm shrink-0 object-cover"
         />
       ) : (
@@ -88,7 +101,7 @@ function ThemeRow({
       </div>
     </button>
   );
-}
+});
 
 export function ThemeBrowser() {
   useOverlayClaim("theme-browser", true);
@@ -112,9 +125,23 @@ export function ThemeBrowser() {
     return committed?.type === "light" ? "light" : "dark";
   });
 
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
   const commitButtonRef = useRef<HTMLButtonElement>(null);
+  const announceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearAnnouncementTimer = useCallback(() => {
+    if (announceTimerRef.current) {
+      clearTimeout(announceTimerRef.current);
+      announceTimerRef.current = null;
+    }
+  }, []);
+
+  const clearPendingAnnouncement = useCallback(() => {
+    clearAnnouncementTimer();
+    setPreviewAnnouncement("");
+  }, [clearAnnouncementTimer]);
 
   const allSchemes = useMemo(() => [...BUILT_IN_APP_SCHEMES, ...customSchemes], [customSchemes]);
   const darkSchemes = useMemo(() => allSchemes.filter((s) => s.type !== "light"), [allSchemes]);
@@ -128,6 +155,12 @@ export function ThemeBrowser() {
     () => allSchemes.find((s) => s.id === activeSchemeId) ?? committedScheme,
     [allSchemes, activeSchemeId, committedScheme]
   );
+
+  const {
+    imgRef: heroImgRef,
+    error: heroError,
+    onError: onHeroError,
+  } = useImageError(activeScheme.heroImage);
 
   const lowerQuery = query.toLowerCase();
   const filteredThemes = useMemo(() => {
@@ -165,22 +198,41 @@ export function ThemeBrowser() {
     if (state.previewSchemeId !== null) {
       const committed = resolveAppTheme(state.selectedSchemeId, state.customSchemes);
       setPreviewSchemeId(null);
-      injectSchemeToDOM(committed);
+      injectSchemeToDOM(committed, { immediate: true });
     }
-    setPreviewAnnouncement("");
-  }, [setPreviewSchemeId]);
+    clearPendingAnnouncement();
+  }, [setPreviewSchemeId, clearPendingAnnouncement]);
 
   const handlePreview = useCallback(
-    (id: string) => {
-      // Click = intentional preview; no debounce (distinct from the hover
-      // preview in AppThemePicker which debounces at 300ms).
-      const scheme = resolveAppTheme(id, useAppThemeStore.getState().customSchemes);
+    (id: string, debounceAnnounce?: boolean) => {
+      const state = useAppThemeStore.getState();
+      if (state.previewSchemeId === id) return;
+      if (state.previewSchemeId === null && state.selectedSchemeId === id) return;
+      const scheme = resolveAppTheme(id, state.customSchemes);
       setPreviewSchemeId(id);
       injectSchemeToDOM(scheme);
-      setPreviewAnnouncement(`Previewing: ${scheme.name}`);
+      if (debounceAnnounce) {
+        if (announceTimerRef.current) clearTimeout(announceTimerRef.current);
+        announceTimerRef.current = setTimeout(() => {
+          setPreviewAnnouncement(`Previewing: ${scheme.name}`);
+        }, 300);
+      } else {
+        if (announceTimerRef.current) {
+          clearTimeout(announceTimerRef.current);
+          announceTimerRef.current = null;
+        }
+        setPreviewAnnouncement(`Previewing: ${scheme.name}`);
+      }
     },
     [setPreviewSchemeId]
   );
+
+  // Clear any pending keyboard-triggered announcement when the search query
+  // changes so a stale announcement from a pre-filter theme doesn't fire after
+  // the user has context-switched to filtering.
+  useEffect(() => {
+    clearPendingAnnouncement();
+  }, [query, clearPendingAnnouncement]);
 
   const handleCommit = useCallback(async () => {
     const targetId = previewSchemeId ?? selectedSchemeId;
@@ -200,11 +252,11 @@ export function ThemeBrowser() {
     // mutation callback would still see `previewSchemeId` in the store and
     // `injectSchemeToDOM` could be undone (see PR #5087).
     setPreviewSchemeId(null);
-    setPreviewAnnouncement("");
+    clearPendingAnnouncement();
 
     commitSchemeSelection(targetId);
     const scheme = resolveAppTheme(targetId, useAppThemeStore.getState().customSchemes);
-    runThemeReveal(origin, () => injectSchemeToDOM(scheme));
+    runThemeReveal(origin, () => injectSchemeToDOM(scheme, { immediate: true }));
 
     // Close the browser synchronously after the reveal fires — the Settings
     // reopen effect keys on this store transition, so deferring it until after
@@ -225,6 +277,7 @@ export function ThemeBrowser() {
     selectedSchemeId,
     setFollowSystem,
     setPreviewSchemeId,
+    clearPendingAnnouncement,
   ]);
 
   const handleCancel = useCallback(() => {
@@ -233,6 +286,26 @@ export function ThemeBrowser() {
   }, [close, revertPreview]);
 
   useEscapeStack(true, handleCancel);
+
+  // On unmount (browser closed via either path), guarantee any lingering
+  // preview is reverted and the DOM reflects the committed scheme. This is
+  // a safety net for close paths that bypass handleCancel/handleCommit.
+  useEffect(() => {
+    return () => {
+      clearAnnouncementTimer();
+      const state = useAppThemeStore.getState();
+      if (state.previewSchemeId !== null) {
+        const committed = resolveAppTheme(state.selectedSchemeId, state.customSchemes);
+        useAppThemeStore.getState().setPreviewSchemeId(null);
+        injectSchemeToDOM(committed, { immediate: true });
+      }
+    };
+  }, [clearAnnouncementTimer]);
+
+  useEffect(() => {
+    const rafId = requestAnimationFrame(() => searchInputRef.current?.focus());
+    return () => cancelAnimationFrame(rafId);
+  }, []);
 
   // Scroll the committed theme into view on open so the user lands at their
   // current choice, not the top of the list. Keyboard index is already
@@ -249,20 +322,6 @@ export function ThemeBrowser() {
     }
   }, []);
 
-  // On unmount (browser closed via either path), guarantee any lingering
-  // preview is reverted and the DOM reflects the committed scheme. This is
-  // a safety net for close paths that bypass handleCancel/handleCommit.
-  useEffect(() => {
-    return () => {
-      const state = useAppThemeStore.getState();
-      if (state.previewSchemeId !== null) {
-        const committed = resolveAppTheme(state.selectedSchemeId, state.customSchemes);
-        useAppThemeStore.getState().setPreviewSchemeId(null);
-        injectSchemeToDOM(committed);
-      }
-    };
-  }, []);
-
   const focusRow = useCallback((schemeId: string) => {
     const node = rowRefs.current.get(schemeId);
     if (node) node.focus();
@@ -276,8 +335,8 @@ export function ThemeBrowser() {
         const next = Math.min(keyboardIndex + 1, filteredThemes.length - 1);
         setKeyboardIndex(next);
         const scheme = filteredThemes[next];
-        if (scheme) {
-          handlePreview(scheme.id);
+        if (scheme && scheme.id !== activeSchemeId) {
+          handlePreview(scheme.id, true);
           focusRow(scheme.id);
         }
       } else if (e.key === "ArrowUp") {
@@ -285,8 +344,8 @@ export function ThemeBrowser() {
         const next = Math.max(keyboardIndex - 1, 0);
         setKeyboardIndex(next);
         const scheme = filteredThemes[next];
-        if (scheme) {
-          handlePreview(scheme.id);
+        if (scheme && scheme.id !== activeSchemeId) {
+          handlePreview(scheme.id, true);
           focusRow(scheme.id);
         }
       } else if (e.key === "Enter") {
@@ -294,7 +353,7 @@ export function ThemeBrowser() {
         void handleCommit();
       }
     },
-    [filteredThemes, focusRow, handleCommit, handlePreview, keyboardIndex]
+    [filteredThemes, focusRow, handleCommit, handlePreview, keyboardIndex, activeSchemeId]
   );
 
   const handleSearchKeyDown = useCallback(
@@ -313,13 +372,10 @@ export function ThemeBrowser() {
   );
 
   const isEmpty = filteredThemes.length === 0;
-  const setRowRef = useCallback(
-    (id: string) => (el: HTMLButtonElement | null) => {
-      if (el) rowRefs.current.set(id, el);
-      else rowRefs.current.delete(id);
-    },
-    []
-  );
+  const registerRowRef = useCallback((id: string, el: HTMLButtonElement | null) => {
+    if (el) rowRefs.current.set(id, el);
+    else rowRefs.current.delete(id);
+  }, []);
 
   return (
     <div
@@ -331,10 +387,12 @@ export function ThemeBrowser() {
     >
       {/* Sticky hero */}
       <div className="relative h-[200px] shrink-0 overflow-hidden">
-        {activeScheme.heroImage ? (
+        {activeScheme.heroImage && !heroError ? (
           <img
+            ref={heroImgRef}
             src={activeScheme.heroImage}
-            alt={activeScheme.name}
+            alt=""
+            onError={onHeroError}
             className="w-full h-full object-cover"
           />
         ) : (
@@ -372,6 +430,7 @@ export function ThemeBrowser() {
         <div className="flex items-center gap-1.5 flex-1 min-w-0 focus-within:border-daintree-accent">
           <Search className="w-3.5 h-3.5 shrink-0 text-daintree-text/40 pointer-events-none" />
           <input
+            ref={searchInputRef}
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -445,8 +504,8 @@ export function ThemeBrowser() {
               isActive={scheme.id === activeSchemeId}
               isKeyboardFocused={index === keyboardIndex}
               onSelect={handlePreview}
-              warnings={warningsByScheme.get(scheme.id) ?? []}
-              rowRef={setRowRef(scheme.id)}
+              warnings={warningsByScheme.get(scheme.id) ?? EMPTY_WARNINGS}
+              onRowRef={registerRowRef}
             />
           ))
         )}

@@ -17,6 +17,7 @@ import {
 } from "../utils/errorTypes.js";
 import { getGitRecoveryAction, getGitRecoveryHint } from "../../shared/utils/gitOperationErrors.js";
 import { store } from "../store.js";
+import { appendPendingError, MAX_PENDING_ERRORS } from "./pendingErrorsStore.js";
 import { FAULT_MODE_ENABLED } from "./faultRegistry.js";
 import type { PtyClient } from "../services/PtyClient.js";
 import type { WorkspaceClient } from "../services/WorkspaceClient.js";
@@ -28,8 +29,6 @@ interface RetryPayload {
   action: RetryAction;
   args?: Record<string, unknown>;
 }
-
-const MAX_PENDING_ERRORS = 50;
 
 const MAX_RETRY_ATTEMPTS: Record<RetryAction, number> = {
   terminal: 3,
@@ -202,6 +201,12 @@ function getRecoveryHint(error: unknown): string | undefined {
       return "Check your network connection and try again.";
     case "ECONNRESET":
       return "The connection was reset — try again in a moment.";
+    case "EMFILE":
+      return "Close some terminals to free up file descriptors and retry.";
+    case "ENOMEM":
+      return "Close other applications to free up memory and retry.";
+    case "ENXIO":
+      return "Close some terminals to free PTY resources and retry.";
     case "EBUSY":
       return "Close other applications using this file and retry.";
     case "EAGAIN":
@@ -288,9 +293,7 @@ class ErrorService {
 
   private persistError(error: ErrorRecord): void {
     try {
-      const existing = (store.get("pendingErrors") as ErrorRecord[] | undefined) ?? [];
-      const updated = [...existing, error].slice(-MAX_PENDING_ERRORS);
-      store.set("pendingErrors", updated);
+      appendPendingError(error);
     } catch {
       // Don't let persistence failure block error handling
     }

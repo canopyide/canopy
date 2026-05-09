@@ -21,6 +21,7 @@ vi.mock("../../utils/fs.js", () => ({
 vi.mock("../../utils/hardenedGit.js", () => ({
   createHardenedGit: vi.fn(() => mockSimpleGit),
   createAuthenticatedGit: vi.fn(() => mockSimpleGit),
+  validateBranchName: vi.fn(),
 }));
 
 vi.mock("../../utils/git.js", () => ({
@@ -71,6 +72,12 @@ vi.mock("fs/promises", () => ({
   access: vi.fn().mockResolvedValue(undefined),
   readFile: vi.fn().mockRejectedValue(new Error("ENOENT")),
   cp: vi.fn().mockResolvedValue(undefined),
+}));
+
+// Default to "exists" so existing tests focus on the git/monitor logic rather
+// than the parent-directory creation path.
+vi.mock("fs", () => ({
+  existsSync: vi.fn().mockReturnValue(true),
 }));
 
 describe("WorkspaceService adversarial", () => {

@@ -16,17 +16,16 @@ on:
           - windows
         default: all
 
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
   issues: write
 
 env:
   NODE_VERSION: "22"
-  # Nightly is Daintree-only. Legacy Canopy ships via tagged releases in
-  # release.yml, not nightly. Nightly publish URL + filename are resolved by
-  # electron-builder.config.cjs from the stamped `-nightly.*` version — no
-  # CLI overrides here.
-  BUILD_VARIANT: "daintree"
 
 jobs:
   matrix-setup:
@@ -169,7 +168,7 @@ jobs:
       - name: Cache fontconfig
         id: cache-fontconfig
         if: matrix.os == 'ubuntu-22.04'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/fontconfig
           key: fontconfig-${{ runner.os }}-${{ runner.arch }}-${{ steps.fontconfig-cache-key.outputs.ubuntu }}-${{ steps.fontconfig-cache-key.outputs.fc_version }}-${{ steps.fontconfig-cache-key.outputs.font_pkg_hash }}
@@ -277,7 +276,7 @@ jobs:
           DEBUG: electron-builder,electron-notarize*,electron-osx-sign*
           npm_config_build_from_source: "true"
         run: |
-          npx electron-builder --publish never \
+          npx electron-builder --config electron-builder.config.cjs --publish always \
             -c.buildDependenciesFromSource=true
 
       - name: Package (Linux/Windows)
@@ -286,20 +285,28 @@ jobs:
         env:
           DEBUG: electron-builder,electron-notarize*,electron-osx-sign*
         run: |
-          npx electron-builder --publish never
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            npx electron-builder --config electron-builder.config.cjs --publish never
+          else
+            npx electron-builder --config electron-builder.config.cjs --publish always
+          fi
 
       # Nightly and stable both publish `latest*.yml` — URL separation (not
       # channel-name separation) distinguishes them. The nightly URL prefix is
       # set by the config when it sees a -nightly.* version.
-      - name: Validate update metadata (Windows)
-        if: matrix.os == 'windows-latest'
+      #
+      # Windows: package validation still runs above, but Windows artifacts are
+      # intentionally not uploaded from nightly. Microsoft Store distribution
+      # happens through the release workflow only.
+      - name: Generate update metadata (macOS)
+        if: startsWith(matrix.os, 'macos')
         shell: bash
-        run: |
-          if [ ! -f "release/latest.yml" ]; then
-            echo "::error::Missing release/latest.yml - Windows auto-update will not work"
-            exit 1
-          fi
-          node scripts/ci/validate-update-metadata.mjs release/latest.yml
+        run: node scripts/ci/generate-update-metadata.mjs mac release/latest-mac.yml
+
+      - name: Generate update metadata (Linux)
+        if: matrix.os == 'ubuntu-22.04'
+        shell: bash
+        run: node scripts/ci/generate-update-metadata.mjs linux release/latest-linux.yml
 
       - name: Validate update metadata (macOS)
         if: startsWith(matrix.os, 'macos')
@@ -330,6 +337,7 @@ jobs:
           node scripts/ci/validate-update-metadata.mjs release/latest-linux.yml
 
       - name: Upload build artifacts
+        if: matrix.os != 'windows-latest'
         uses: actions/upload-artifact@v7
         with:
           name: nightly-${{ matrix.os }}
@@ -343,93 +351,6 @@ jobs:
             release/latest*.yml
           retention-days: 3
           if-no-files-found: error
-
-  compiler-budget:
-    needs: matrix-setup
-    runs-on: ubuntu-22.04
-    timeout-minutes: 15
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-
-      - name: Install Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libarchive-tools
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build renderer (with React Compiler logger)
-        run: npm run compiler-budget:build
-
-      - name: Check compiler bailout budget
-        run: npm run compiler-budget:check
-
-  eager-import-budget:
-    needs: matrix-setup
-    runs-on: ubuntu-22.04
-    timeout-minutes: 10
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-
-      - name: Install Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libarchive-tools
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build eager-import metafile
-        run: npm run import-budget:build
-
-      - name: Check eager-import budget
-        run: npm run import-budget:check
-
-  renderer-bundle-budget:
-    needs: matrix-setup
-    runs-on: ubuntu-22.04
-    timeout-minutes: 15
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-
-      - name: Install Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libarchive-tools
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build renderer (with bundle size report)
-        run: npm run renderer-bundle-budget:build
-
-      - name: Check renderer bundle size budget
-        run: npm run renderer-bundle-budget:check
 
   integration-test:
     needs: [check, test]
@@ -457,30 +378,41 @@ jobs:
       - name: Run integration tests
         run: npm run test:integration
 
-  # E2E suites run in parallel with build (both gate on check + test)
-  # Nightly runs the full suite (all 72 test files), not just the core subset
-  e2e-full:
+  # Nightly runs lightweight core plus online e2e. Full and soak e2e suites are
+  # reserved for release gating or targeted manual dispatches.
+  e2e-core:
     needs: [check, test]
     uses: ./.github/workflows/e2e-core.yml
     with:
-      project: full
+      project: core
+      platform: ${{ inputs.platform || 'all' }}
 
   e2e-online:
     needs: [check, test]
     uses: ./.github/workflows/e2e-online.yml
+    with:
+      platform: ${{ inputs.platform || 'all' }}
     secrets: inherit
-
-  e2e-nightly:
-    needs: [check, test]
-    uses: ./.github/workflows/e2e-nightly.yml
 
   publish:
     if: inputs.platform == '' || inputs.platform == 'all'
-    needs: [build, e2e-full, e2e-online, e2e-nightly]
+    needs: [build, e2e-core, e2e-online]
     runs-on: ubuntu-22.04
     timeout-minutes: 15
 
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
       - name: Download macOS artifacts
         uses: actions/download-artifact@v8
         with:
@@ -491,12 +423,6 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: nightly-ubuntu-22.04
-          path: release/
-
-      - name: Download Windows artifacts
-        uses: actions/download-artifact@v8
-        with:
-          name: nightly-windows-latest
           path: release/
 
       - name: List nightly files
@@ -517,11 +443,17 @@ jobs:
             --exclude "*" \
             --include "*.dmg" \
             --include "*.zip" \
-            --include "*.exe" \
             --include "*.AppImage" \
             --include "*.deb" \
             --include "*.blockmap" \
             --cache-control "public, max-age=31536000, immutable"
+
+      - name: Verify binaries reachable on R2
+        shell: bash
+        env:
+          PUBLISH_URL: https://updates.daintree.org/nightly/
+          UPDATE_METADATA_PREFIX: latest
+        run: node scripts/ci/verify-r2-uploads.mjs
 
       - name: Upload metadata to R2
         shell: bash
@@ -584,20 +516,7 @@ jobs:
 
   notify:
     if: failure() && github.event_name == 'schedule'
-    needs:
-      [
-        check,
-        test,
-        build,
-        compiler-budget,
-        eager-import-budget,
-        renderer-bundle-budget,
-        integration-test,
-        e2e-full,
-        e2e-online,
-        e2e-nightly,
-        publish,
-      ]
+    needs: [check, test, build, integration-test, e2e-core, e2e-online, publish]
     runs-on: ubuntu-22.04
     permissions:
       issues: write

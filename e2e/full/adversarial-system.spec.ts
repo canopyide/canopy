@@ -9,15 +9,18 @@ import {
   addCustomPreset,
   removeCcrConfig,
   writeCcrConfig,
+  waitForCcrPresets,
 } from "../helpers/presets";
 
 let ctx: AppContext;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Adversarial E2E Tests: System Breakage", () => {
   test.beforeAll(async () => {
     removeCcrConfig();
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "adversarial-e2e" });
+    const { dir: fixtureDir, cleanup } = createFixtureRepo({ name: "adversarial-e2e" });
+    fixtureCleanup = cleanup;
     ctx.window = await openAndOnboardProject(
       ctx.app,
       ctx.window,
@@ -29,6 +32,7 @@ test.describe.serial("Adversarial E2E Tests: System Breakage", () => {
   test.afterAll(async () => {
     removeCcrConfig();
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   const goToClaudeSettings = async () => {
@@ -80,7 +84,7 @@ test.describe.serial("Adversarial E2E Tests: System Breakage", () => {
 
     // Try to commit the edit
     await input.press("Enter");
-    await ctx.window.waitForTimeout(35000); // Wait for CCR poll
+    await waitForCcrPresets(ctx.window, ["Race Preset"]);
 
     // UI should still be functional
     const section = ctx.window.locator(SEL.preset.section);

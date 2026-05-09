@@ -12,6 +12,8 @@ const config: KnipConfig = {
     "electron/pty-host-bootstrap.ts",
     "electron/workspace-host.ts",
     "electron/workspace-host-bootstrap.ts",
+    "electron/watchdog-host.ts",
+    "electron/watchdog-host-bootstrap.ts",
     "electron/preload.cts",
 
     // Web workers instantiated via `new Worker(new URL(...))`. Static analysis
@@ -59,10 +61,14 @@ const config: KnipConfig = {
     // API surface for plugin authors.
     "src/hooks/useActiveWorktree.ts",
 
-    // why: Ambient global type declarations for `IS_LEGACY_BUILD` and
-    // `BUILD_VARIANT` — injected by esbuild `define` in scripts/build-main.mjs.
-    // Loaded implicitly by tsc via include globs, not via import.
-    "electron/types/buildVariant.d.ts",
+    // why: Barrel files only reachable via React.lazy() dynamic imports in
+    // src/App.tsx. Knip cannot trace import() calls, so these index.ts
+    // re-exports appear unused despite being public API surfaces.
+    "src/components/ActionPalette/index.ts",
+    "src/components/LogLevelPalette/index.ts",
+    "src/components/QuickSwitcher/index.ts",
+    "src/components/TerminalPalette/index.ts",
+    "src/components/ThemePalette/index.ts",
   ],
 
   // why: these packages are consumed via mechanisms Knip can't trace:
@@ -75,25 +81,31 @@ const config: KnipConfig = {
   // The entries below are imported directly but satisfied transitively today.
   // Flagged here as known debt — silencing knip keeps CI green, but the
   // explicit-declare fix should happen in a follow-up:
-  //   - axe-core: imported in e2e/full/core-accessibility.spec.ts; transitive
-  //     via @axe-core/playwright.
   //   - conf: imported in electron/__tests__/storeBackupRestore.test.ts;
   //     transitive via electron-store.
   //   - shell-env: imported in electron/setup/environment.ts; transitive
   //     via fix-path.
   //   - glob, @babel/core: imported in scripts/find-critical-compiler-errors.mjs;
   //     transitive via babel-plugin-react-compiler and related toolchain.
+  //   - @types/trusted-types: provides the ambient `TrustedHTML` /
+  //     `TrustedTypePolicyFactory` globals used in src/lib/trustedTypesPolicy.ts.
+  //     Knip walks `import` edges and never sees ambient type references.
   ignoreDependencies: [
     "tailwindcss",
     "@tailwindcss/typography",
     "tw-animate-css",
     "wait-on",
     "fast-check",
-    "axe-core",
     "conf",
     "shell-env",
     "glob",
     "@babel/core",
+    "@types/trusted-types",
+    "@octokit/request-error",
+    "@octokit/types",
+    // Native addon support, consumed only from electron/native/win-job-object/
+    // binding.gyp (#7526). Knip walks JS/TS imports, not gyp files.
+    "node-addon-api",
   ],
 
   // why: the repo pre-dates knip and carries a ~150-entry backlog of unused

@@ -6,6 +6,7 @@ const deepgramMock = vi.hoisted(() => {
     Open: "open",
     Close: "close",
     Error: "error",
+    Metadata: "Metadata",
     Transcript: "Results",
     UtteranceEnd: "UtteranceEnd",
   };
@@ -407,7 +408,7 @@ describe("VoiceTranscriptionService", () => {
   });
 
   describe("paragraphing strategy — Deepgram connection options", () => {
-    it("spoken-command strategy sends dictation:true and punctuate:true to Deepgram", async () => {
+    it("spoken-command strategy sends dictation:true to Deepgram", async () => {
       const capturedOpts: Record<string, unknown>[] = [];
       deepgramMock.mockClient.listen.live = (opts: unknown) => {
         capturedOpts.push(opts as Record<string, unknown>);
@@ -419,7 +420,8 @@ describe("VoiceTranscriptionService", () => {
       const service = new VoiceTranscriptionService();
       void service.start({ ...BASE_SETTINGS, paragraphingStrategy: "spoken-command" });
 
-      expect(capturedOpts[0]).toMatchObject({ dictation: true, punctuate: true });
+      expect(capturedOpts[0]).toMatchObject({ dictation: true });
+      expect(capturedOpts[0]).not.toHaveProperty("punctuate");
       expect(capturedOpts[0]).not.toHaveProperty("paragraphs");
       expect(capturedOpts[0].endpointing).toBe(800);
     });
@@ -437,6 +439,7 @@ describe("VoiceTranscriptionService", () => {
       void service.start({ ...BASE_SETTINGS, paragraphingStrategy: "manual" });
 
       expect(capturedOpts[0]).not.toHaveProperty("dictation");
+      expect(capturedOpts[0]).not.toHaveProperty("punctuate");
       expect(capturedOpts[0]).not.toHaveProperty("paragraphs");
       expect(capturedOpts[0].endpointing).toBe(800);
     });
@@ -457,7 +460,8 @@ describe("VoiceTranscriptionService", () => {
         paragraphingStrategy: undefined as unknown as "spoken-command",
       });
 
-      expect(capturedOpts[0]).toMatchObject({ dictation: true, punctuate: true });
+      expect(capturedOpts[0]).toMatchObject({ dictation: true });
+      expect(capturedOpts[0]).not.toHaveProperty("punctuate");
     });
 
     it("spoken-command strategy does not enable dictation for non-English languages", async () => {
@@ -919,13 +923,24 @@ describe("VoiceTranscriptionService", () => {
       return { service, events, conn };
     }
 
-    it("returns empty string when no utterance is in flight", async () => {
-      const { service } = await startService();
-      expect(service.commitParagraphBoundary().text).toBe("");
+    it("commits empty state when no utterance is in flight (no suppression)", async () => {
+      const { service, conn, events } = await startService();
+
+      service.commitParagraphBoundary();
+      events.length = 0;
+
+      // No suppression — events flow normally
+      conn.emit(
+        deepgramMock.LiveTranscriptionEvents.Transcript,
+        makeTranscriptEvent("new text", true, true)
+      );
+
+      expect(events.filter((e) => e.type === "complete")).toHaveLength(1);
+      expect(events.find((e) => e.type === "complete")?.text).toBe("new text");
     });
 
-    it("returns accumulated delta text (liveText) and clears utterance state", async () => {
-      const { service, conn } = await startService();
+    it("commits accumulated delta text and suppresses late speech_final", async () => {
+      const { service, conn, events } = await startService();
 
       // Interim delta builds liveText
       conn.emit(
@@ -933,24 +948,47 @@ describe("VoiceTranscriptionService", () => {
         makeTranscriptEvent("how are", false, false)
       );
 
-      const result = service.commitParagraphBoundary();
-      expect(result.text).toBe("how are");
-      expect(result.confidence.minConfidence).toBe(0);
+      service.commitParagraphBoundary();
+      events.length = 0;
 
-      // Subsequent call returns empty — utterance state was cleared
-      expect(service.commitParagraphBoundary().text).toBe("");
+      // Late speech_final for the committed utterance is suppressed
+      conn.emit(
+        deepgramMock.LiveTranscriptionEvents.Transcript,
+        makeTranscriptEvent("how are you", true, true)
+      );
+
+      expect(events.filter((e) => e.type === "complete")).toHaveLength(0);
+
+      // Second commit finds nothing — suppression was armed only for non-empty text
+      events.length = 0;
+      conn.emit(
+        deepgramMock.LiveTranscriptionEvents.Transcript,
+        makeTranscriptEvent("next utterance", true, true)
+      );
+
+      expect(events.filter((e) => e.type === "complete")).toHaveLength(1);
+      expect(events.find((e) => e.type === "complete")?.text).toBe("next utterance");
     });
 
-    it("returns is_final accumulated text (which is_final also stores in liveText)", async () => {
-      const { service, conn } = await startService();
+    it("suppresses is_final accumulated utterance after commit", async () => {
+      const { service, conn, events } = await startService();
 
       // is_final events accumulate in utteranceSegments AND update liveText via
-      // emitIncrementalDelta, so commitParagraphBoundary returns the liveText value.
+      // emitIncrementalDelta, so commit captures them for suppression.
       conn.emit(
         deepgramMock.LiveTranscriptionEvents.Transcript,
         makeTranscriptEvent("hello world", true, false)
       );
-      expect(service.commitParagraphBoundary().text).toBe("hello world");
+      service.commitParagraphBoundary();
+      events.length = 0;
+
+      // Late is_final + speech_final is suppressed
+      conn.emit(
+        deepgramMock.LiveTranscriptionEvents.Transcript,
+        makeTranscriptEvent("hello world extended", true, true)
+      );
+
+      expect(events.filter((e) => e.type === "complete")).toHaveLength(0);
     });
 
     it("late speech_final after commitParagraphBoundary does not emit complete", async () => {
@@ -1075,13 +1113,11 @@ describe("VoiceTranscriptionService", () => {
         makeTranscriptEvent("first", false, false)
       );
 
-      const result1 = service.commitParagraphBoundary();
-      // Second call finds no in-flight text — returns "" and does NOT clear the
+      // First commit captures text and arms suppression
+      service.commitParagraphBoundary();
+      // Second call finds no in-flight text — does NOT clear the
       // first call's suppression flag (only armed when non-empty text was captured).
-      const result2 = service.commitParagraphBoundary();
-
-      expect(result1.text).toBe("first");
-      expect(result2.text).toBe("");
+      service.commitParagraphBoundary();
 
       events.length = 0;
 
@@ -1369,17 +1405,24 @@ describe("VoiceTranscriptionService", () => {
       expect(completes[1].confidence).toMatchObject({ minConfidence: 0.99 });
     });
 
-    it("commitParagraphBoundary returns conservative confidence (minConfidence=0)", async () => {
-      const { service, conn } = await startService();
+    it("commitParagraphBoundary commits in-flight text and arms suppression", async () => {
+      const { service, conn, events } = await startService();
 
       conn.emit(
         deepgramMock.LiveTranscriptionEvents.Transcript,
         makeTranscriptEvent("in flight", false, false)
       );
 
-      const result = service.commitParagraphBoundary();
-      expect(result.text).toBe("in flight");
-      expect(result.confidence.minConfidence).toBe(0);
+      service.commitParagraphBoundary();
+      events.length = 0;
+
+      // Late speech_final suppressed — in-flight text was captured by commit
+      conn.emit(
+        deepgramMock.LiveTranscriptionEvents.Transcript,
+        makeTranscriptEvent("in flight final", true, true)
+      );
+
+      expect(events.filter((e) => e.type === "complete")).toHaveLength(0);
     });
 
     it("includes confidence on complete events emitted via UtteranceEnd flush", async () => {
@@ -1398,6 +1441,163 @@ describe("VoiceTranscriptionService", () => {
         uncertainWords: [],
         words: [{ word: "hello", confidence: 0.88 }],
       });
+    });
+  });
+
+  describe("Metadata event", () => {
+    it("logs request_id when Metadata event is received", async () => {
+      const logger = await import("../../utils/logger.js");
+      const logInfoSpy = vi.spyOn(logger, "logInfo");
+
+      const service = new VoiceTranscriptionService();
+      const p = service.start(BASE_SETTINGS);
+      const conn = deepgramMock.instances.at(-1)!;
+      conn.emit(deepgramMock.LiveTranscriptionEvents.Open);
+      await p;
+
+      conn.emit(deepgramMock.LiveTranscriptionEvents.Metadata, {
+        type: "Metadata",
+        request_id: "abc-123-def",
+        transaction_key: "tx-key",
+        sha256: "hash",
+        created: "2024-01-01T00:00:00Z",
+        duration: 1.0,
+        channels: 1,
+      });
+
+      expect(logInfoSpy).toHaveBeenCalled();
+      const call = logInfoSpy.mock.calls.find(
+        (c) => typeof c[0] === "string" && (c[0] as string).includes("Metadata received")
+      );
+      expect(call).toBeDefined();
+      expect(call?.[1]).toMatchObject({ request_id: "abc-123-def" });
+
+      logInfoSpy.mockRestore();
+    });
+
+    it("ignores Metadata from stale sessions", async () => {
+      const logger = await import("../../utils/logger.js");
+      const logInfoSpy = vi.spyOn(logger, "logInfo");
+
+      const service = new VoiceTranscriptionService();
+
+      // Start session A
+      const pA = service.start(BASE_SETTINGS);
+      const connA = deepgramMock.instances.at(-1)!;
+      connA.emit(deepgramMock.LiveTranscriptionEvents.Open);
+      await pA;
+
+      logInfoSpy.mockClear();
+
+      // Start session B — increments sessionId
+      const pB = service.start(BASE_SETTINGS);
+      const connB = deepgramMock.instances.at(-1)!;
+      connB.emit(deepgramMock.LiveTranscriptionEvents.Open);
+      await pB;
+
+      logInfoSpy.mockClear();
+
+      // Emit Metadata on session A's connection — should be ignored
+      connA.emit(deepgramMock.LiveTranscriptionEvents.Metadata, {
+        type: "Metadata",
+        request_id: "stale-req-id",
+        transaction_key: "tx",
+        sha256: "h",
+        created: "2024-01-01T00:00:00Z",
+        duration: 1.0,
+        channels: 1,
+      });
+
+      const metadataCalls = logInfoSpy.mock.calls.filter(
+        (c) => typeof c[0] === "string" && (c[0] as string).includes("Metadata received")
+      );
+      expect(metadataCalls).toHaveLength(0);
+
+      logInfoSpy.mockRestore();
+    });
+  });
+
+  describe("pre-connect buffer overflow", () => {
+    it("warns once when buffer reaches 100-chunk cap", async () => {
+      const logger = await import("../../utils/logger.js");
+      const logWarnSpy = vi.spyOn(logger, "logWarn");
+
+      const service = new VoiceTranscriptionService();
+      void service.start(BASE_SETTINGS);
+
+      // Send 101 chunks — the 101st should trigger overflow warning
+      for (let i = 0; i < 101; i++) {
+        service.sendAudioChunk(new ArrayBuffer(4));
+      }
+
+      const overflowCalls = logWarnSpy.mock.calls.filter(
+        (c) => typeof c[0] === "string" && (c[0] as string).includes("Pre-connect buffer full")
+      );
+      expect(overflowCalls).toHaveLength(1);
+
+      logWarnSpy.mockRestore();
+    });
+
+    it("does not warn a second time within the same session", async () => {
+      const logger = await import("../../utils/logger.js");
+      const logWarnSpy = vi.spyOn(logger, "logWarn");
+
+      const service = new VoiceTranscriptionService();
+      void service.start(BASE_SETTINGS);
+
+      // Trigger overflow
+      for (let i = 0; i < 101; i++) {
+        service.sendAudioChunk(new ArrayBuffer(4));
+      }
+
+      logWarnSpy.mockClear();
+
+      // More chunks — no second warning
+      for (let i = 0; i < 10; i++) {
+        service.sendAudioChunk(new ArrayBuffer(4));
+      }
+
+      const overflowCalls = logWarnSpy.mock.calls.filter(
+        (c) => typeof c[0] === "string" && (c[0] as string).includes("Pre-connect buffer full")
+      );
+      expect(overflowCalls).toHaveLength(0);
+
+      logWarnSpy.mockRestore();
+    });
+
+    it("resets overflow warning on new session", async () => {
+      const logger = await import("../../utils/logger.js");
+      const logWarnSpy = vi.spyOn(logger, "logWarn");
+
+      const service = new VoiceTranscriptionService();
+
+      // Session 1: overflow
+      void service.start(BASE_SETTINGS);
+      for (let i = 0; i < 101; i++) {
+        service.sendAudioChunk(new ArrayBuffer(4));
+      }
+
+      expect(
+        logWarnSpy.mock.calls.filter(
+          (c) => typeof c[0] === "string" && (c[0] as string).includes("Pre-connect buffer full")
+        )
+      ).toHaveLength(1);
+
+      logWarnSpy.mockClear();
+
+      // Session 2: should overflow again (flag reset)
+      void service.start(BASE_SETTINGS);
+      for (let i = 0; i < 101; i++) {
+        service.sendAudioChunk(new ArrayBuffer(4));
+      }
+
+      expect(
+        logWarnSpy.mock.calls.filter(
+          (c) => typeof c[0] === "string" && (c[0] as string).includes("Pre-connect buffer full")
+        )
+      ).toHaveLength(1);
+
+      logWarnSpy.mockRestore();
     });
   });
 });

@@ -28,22 +28,25 @@ describe("SettingsInput", () => {
     render(<SettingsInput label="Port" error="Must be a number" />);
     const input = screen.getByLabelText("Port");
     expect(input.getAttribute("aria-invalid")).toBe("true");
-    expect(screen.getByRole("alert")?.textContent).toBe("Must be a number");
+    const errorId = input.getAttribute("aria-describedby")!;
+    expect(document.getElementById(errorId)?.textContent).toBe("Must be a number");
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("hides description when error is shown", () => {
+  it("keeps description visible alongside error", () => {
     render(<SettingsInput label="Port" description="Server port" error="Invalid" />);
-    expect(screen.queryByText("Server port")).toBeNull();
+    expect(screen.getByText("Server port")).toBeTruthy();
     expect(screen.getByText("Invalid")).toBeTruthy();
   });
 
-  it("aria-describedby only references error when both description and error exist", () => {
+  it("aria-describedby references both error and description when both exist", () => {
     render(<SettingsInput label="Port" description="Server port" error="Required" />);
     const input = screen.getByLabelText("Port");
     const describedBy = input.getAttribute("aria-describedby")!;
     const ids = describedBy.split(" ");
-    expect(ids).toHaveLength(1);
+    expect(ids).toHaveLength(2);
     expect(document.getElementById(ids[0]!)?.textContent).toBe("Required");
+    expect(document.getElementById(ids[1]!)?.textContent).toBe("Server port");
   });
 
   it("shows modified indicator when isModified", () => {
@@ -136,7 +139,27 @@ describe("SettingsSelect", () => {
     );
     const trigger = screen.getByLabelText("Lang");
     expect(trigger.getAttribute("aria-invalid")).toBe("true");
-    expect(screen.getByRole("alert")?.textContent).toBe("Required");
+    const errorId = trigger.getAttribute("aria-describedby")!;
+    expect(document.getElementById(errorId)?.textContent).toBe("Required");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("aria-describedby references both error and description when both exist", () => {
+    render(
+      <SettingsSelect
+        label="Theme"
+        description="Choose a color theme"
+        error="Required"
+        value="d"
+        onValueChange={() => {}}
+        options={DEFAULT_OPTIONS}
+      />
+    );
+    const trigger = screen.getByLabelText("Theme");
+    const ids = trigger.getAttribute("aria-describedby")!.split(" ");
+    expect(ids).toHaveLength(2);
+    expect(document.getElementById(ids[0]!)?.textContent).toBe("Required");
+    expect(document.getElementById(ids[1]!)?.textContent).toBe("Choose a color theme");
   });
 
   it("shows reset button when modified", () => {
@@ -178,6 +201,26 @@ describe("SettingsTextarea", () => {
     const descId = textarea.getAttribute("aria-describedby");
     expect(descId).toBeTruthy();
     expect(document.getElementById(descId!)?.textContent).toBe("Additional notes");
+  });
+
+  it("shows error and sets aria-invalid without role=alert", () => {
+    render(<SettingsTextarea label="Notes" error="Cannot be empty" />);
+    const textarea = screen.getByLabelText("Notes");
+    expect(textarea.getAttribute("aria-invalid")).toBe("true");
+    const errorId = textarea.getAttribute("aria-describedby")!;
+    expect(document.getElementById(errorId)?.textContent).toBe("Cannot be empty");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("aria-describedby references both error and description when both exist", () => {
+    render(
+      <SettingsTextarea label="Notes" description="Additional notes" error="Cannot be empty" />
+    );
+    const textarea = screen.getByLabelText("Notes");
+    const ids = textarea.getAttribute("aria-describedby")!.split(" ");
+    expect(ids).toHaveLength(2);
+    expect(document.getElementById(ids[0]!)?.textContent).toBe("Cannot be empty");
+    expect(document.getElementById(ids[1]!)?.textContent).toBe("Additional notes");
   });
 
   it("forwards ref to the textarea element", () => {
@@ -271,10 +314,12 @@ describe("SettingsChoicebox", () => {
     );
     const group = screen.getByRole("radiogroup");
     expect(group.getAttribute("aria-invalid")).toBe("true");
-    expect(screen.getByRole("alert")?.textContent).toBe("Invalid selection");
+    const errorId = group.getAttribute("aria-describedby")!;
+    expect(document.getElementById(errorId)?.textContent).toBe("Invalid selection");
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("hides description when error is shown", () => {
+  it("keeps description visible alongside error", () => {
     render(
       <SettingsChoicebox
         label="Density"
@@ -285,11 +330,11 @@ describe("SettingsChoicebox", () => {
         options={MOCK_OPTIONS}
       />
     );
-    expect(screen.queryByText("Choose dock density")).toBeNull();
+    expect(screen.getByText("Choose dock density")).toBeTruthy();
     expect(screen.getByText("Invalid selection")).toBeTruthy();
   });
 
-  it("aria-describedby only references error when both description and error exist", () => {
+  it("aria-describedby references both error and description when both exist", () => {
     render(
       <SettingsChoicebox
         label="Density"
@@ -303,8 +348,9 @@ describe("SettingsChoicebox", () => {
     const group = screen.getByRole("radiogroup");
     const describedBy = group.getAttribute("aria-describedby")!;
     const ids = describedBy.split(" ");
-    expect(ids).toHaveLength(1);
+    expect(ids).toHaveLength(2);
     expect(document.getElementById(ids[0]!)?.textContent).toBe("Invalid selection");
+    expect(document.getElementById(ids[1]!)?.textContent).toBe("Choose dock density");
   });
 
   it("shows modified indicator when isModified", () => {
@@ -616,10 +662,25 @@ describe("SettingsCheckbox", () => {
     );
     const checkbox = screen.getByRole("checkbox");
     expect(checkbox.getAttribute("aria-invalid")).toBe("true");
-    expect(screen.getByRole("alert")?.textContent).toBe("Invalid state");
+    const ids = checkbox.getAttribute("aria-describedby")!.split(" ");
+    expect(document.getElementById(ids[0]!)?.textContent).toBe("Invalid state");
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("hides description when error is shown", () => {
+  it("omits aria-invalid when no error is present", () => {
+    render(
+      <SettingsCheckbox
+        label="Test Setting"
+        description="A test description"
+        checked={false}
+        onChange={vi.fn()}
+      />
+    );
+    const checkbox = screen.getByRole("checkbox");
+    expect(checkbox.getAttribute("aria-invalid")).toBeNull();
+  });
+
+  it("keeps description visible alongside error", () => {
     render(
       <SettingsCheckbox
         label="Test Setting"
@@ -629,8 +690,26 @@ describe("SettingsCheckbox", () => {
         error="Invalid state"
       />
     );
-    expect(screen.queryByText("A test description")).toBeNull();
+    expect(screen.getByText("A test description")).toBeTruthy();
     expect(screen.getByText("Invalid state")).toBeTruthy();
+  });
+
+  it("aria-describedby references both error and description when both exist", () => {
+    render(
+      <SettingsCheckbox
+        label="Test Setting"
+        description="A test description"
+        checked={false}
+        onChange={vi.fn()}
+        error="Invalid state"
+      />
+    );
+    const checkbox = screen.getByRole("checkbox");
+    const describedBy = checkbox.getAttribute("aria-describedby")!;
+    const ids = describedBy.split(" ");
+    expect(ids).toHaveLength(2);
+    expect(document.getElementById(ids[0]!)?.textContent).toBe("Invalid state");
+    expect(document.getElementById(ids[1]!)?.textContent).toBe("A test description");
   });
 
   it("calls onChange with false when unchecking", async () => {

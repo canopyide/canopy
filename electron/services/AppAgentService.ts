@@ -3,6 +3,31 @@ import type { AppAgentConfig } from "../../shared/types/appAgent.js";
 import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 
 const FIREWORKS_BASE_URL = "https://api.fireworks.ai/inference/v1";
+export const API_TEST_TIMEOUT_MS = 15_000;
+
+function formatApiErrorText(rawText: string): string {
+  const MAX_CHARS = 200;
+
+  let message = rawText;
+  try {
+    const parsed = JSON.parse(rawText);
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      parsed.error &&
+      typeof parsed.error.message === "string"
+    ) {
+      message = parsed.error.message;
+    }
+  } catch {
+    // Not JSON, use raw text
+  }
+
+  if (message.length > MAX_CHARS) {
+    return message.slice(0, MAX_CHARS) + "...";
+  }
+  return message;
+}
 
 export class AppAgentService {
   getConfig(): Omit<AppAgentConfig, "apiKey"> {
@@ -36,7 +61,7 @@ export class AppAgentService {
     }
 
     const abortController = new AbortController();
-    const timeoutId = setTimeout(() => abortController.abort(), 15000);
+    const timeoutId = setTimeout(() => abortController.abort(), API_TEST_TIMEOUT_MS);
 
     try {
       const response = await fetch(url.toString(), {
@@ -53,27 +78,33 @@ export class AppAgentService {
         signal: abortController.signal,
       });
 
-      clearTimeout(timeoutId);
-
       if (response.ok) {
+        clearTimeout(timeoutId);
         return { valid: true };
       }
 
       if (response.status === 401) {
+        clearTimeout(timeoutId);
         return { valid: false, error: "Invalid API key" };
       }
 
       if (response.status === 403) {
+        clearTimeout(timeoutId);
         return { valid: false, error: "API key does not have access to this model" };
       }
 
       if (response.status === 429) {
+        clearTimeout(timeoutId);
         // Rate limited but key is valid
         return { valid: true };
       }
 
       const errorText = await response.text().catch(() => "");
-      return { valid: false, error: `API error: ${response.status} ${errorText}`.trim() };
+      clearTimeout(timeoutId);
+      return {
+        valid: false,
+        error: `API error: ${response.status} ${formatApiErrorText(errorText)}`.trim(),
+      };
     } catch (error) {
       clearTimeout(timeoutId);
 
@@ -105,7 +136,7 @@ export class AppAgentService {
     }
 
     const abortController = new AbortController();
-    const timeoutId = setTimeout(() => abortController.abort(), 15000);
+    const timeoutId = setTimeout(() => abortController.abort(), API_TEST_TIMEOUT_MS);
 
     try {
       const response = await fetch(url.toString(), {
@@ -122,27 +153,33 @@ export class AppAgentService {
         signal: abortController.signal,
       });
 
-      clearTimeout(timeoutId);
-
       if (response.ok) {
+        clearTimeout(timeoutId);
         return { valid: true };
       }
 
       if (response.status === 401) {
+        clearTimeout(timeoutId);
         return { valid: false, error: "API key is invalid" };
       }
 
       if (response.status === 404) {
+        clearTimeout(timeoutId);
         return { valid: false, error: "Model not found" };
       }
 
       if (response.status === 429) {
+        clearTimeout(timeoutId);
         // Rate limited but model is valid
         return { valid: true };
       }
 
       const errorText = await response.text().catch(() => "");
-      return { valid: false, error: `API error: ${response.status} ${errorText}`.trim() };
+      clearTimeout(timeoutId);
+      return {
+        valid: false,
+        error: `API error: ${response.status} ${formatApiErrorText(errorText)}`.trim(),
+      };
     } catch (error) {
       clearTimeout(timeoutId);
 

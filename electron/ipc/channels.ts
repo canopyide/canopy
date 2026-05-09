@@ -61,6 +61,7 @@ export const CHANNELS = {
   TERMINAL_REDUCE_SCROLLBACK: "terminal:reduce-scrollback",
   TERMINAL_RESTORE_SCROLLBACK: "terminal:restore-scrollback",
   TERMINAL_RESTART_SERVICE: "terminal:restart-service",
+  TERMINAL_FD_LEAK_WARNING: "terminal:fd-leak-warning",
   TERMINAL_RESOURCE_METRICS: "terminal:resource-metrics",
 
   AGENT_SESSION_LIST: "agent-session:list",
@@ -99,6 +100,7 @@ export const CHANNELS = {
   SYSTEM_REFRESH_CLI_AVAILABILITY: "system:refresh-cli-availability",
   SYSTEM_GET_AGENT_CLI_DETAILS: "system:get-agent-cli-details",
   SYSTEM_GET_AGENT_VERSIONS: "system:get-agent-versions",
+  SYSTEM_GET_AGENT_VERSION: "system:get-agent-version",
   SYSTEM_REFRESH_AGENT_VERSIONS: "system:refresh-agent-versions",
   SYSTEM_GET_AGENT_UPDATE_SETTINGS: "system:get-agent-update-settings",
   SYSTEM_SET_AGENT_UPDATE_SETTINGS: "system:set-agent-update-settings",
@@ -118,6 +120,7 @@ export const CHANNELS = {
   DIAGNOSTICS_GET_HEAP_STATS: "diagnostics:get-heap-stats",
   DIAGNOSTICS_GET_INFO: "diagnostics:get-info",
   SYSTEM_REPORT_BLINK_MEMORY: "system:report-blink-memory",
+  SYSTEM_REPORT_RENDERER_ELU: "system:report-renderer-elu",
 
   PR_DETECTED: "pr:detected",
   PR_CLEARED: "pr:cleared",
@@ -146,6 +149,7 @@ export const CHANNELS = {
   GITHUB_GET_PR_BY_NUMBER: "github:get-pr-by-number",
   GITHUB_LIST_REMOTES: "github:list-remotes",
   GITHUB_RATE_LIMIT_CHANGED: "github:rate-limit-changed",
+  GITHUB_GET_RATE_LIMIT_DETAILS: "github:get-rate-limit-details",
   GITHUB_TOKEN_HEALTH_CHANGED: "github:token-health-changed",
   GITHUB_GET_TOKEN_HEALTH: "github:get-token-health",
   GITHUB_REPO_STATS_AND_PAGE_UPDATED: "github:repo-stats-and-page-updated",
@@ -210,6 +214,7 @@ export const CHANNELS = {
   PROJECT_REOPEN: "project:reopen",
   PROJECT_GET_STATS: "project:get-stats",
   PROJECT_GET_BULK_STATS: "project:get-bulk-stats",
+  PROJECT_GET_NOTIFICATION_OVERRIDES: "project:get-notification-overrides",
   PROJECT_STATS_UPDATED: "project:stats-updated",
   PROJECT_CREATE_FOLDER: "project:create-folder",
   PROJECT_INIT_GIT: "project:init-git",
@@ -252,7 +257,6 @@ export const CHANNELS = {
   PROJECT_WRITE_CLAUDE_MD: "project:write-claude-md",
   PROJECT_ENABLE_IN_REPO_SETTINGS: "project:enable-in-repo-settings",
   PROJECT_DISABLE_IN_REPO_SETTINGS: "project:disable-in-repo-settings",
-  PROJECT_DETECT_CONTEXT_FILES: "project:detect-context-files",
   PROJECT_CHECK_MISSING: "project:check-missing",
   PROJECT_LOCATE: "project:locate",
   AGENT_SETTINGS_GET: "agent-settings:get",
@@ -404,6 +408,7 @@ export const CHANNELS = {
   UPDATE_GET_CHANNEL: "update:get-channel",
   UPDATE_SET_CHANNEL: "update:set-channel",
   UPDATE_DISMISS_TOAST: "update:dismiss-toast",
+  UPDATE_GET_LAST_CHECK: "update:get-last-check",
 
   SLASH_COMMANDS_LIST: "slash-commands:list",
 
@@ -445,6 +450,8 @@ export const CHANNELS = {
   HELP_GET_FOLDER_PATH: "help:get-folder-path",
   HELP_MARK_TERMINAL: "help:mark-terminal",
   HELP_UNMARK_TERMINAL: "help:unmark-terminal",
+  HELP_PROVISION_SESSION: "help:provision-session",
+  HELP_REVOKE_SESSION: "help:revoke-session",
 
   CLIPBOARD_SAVE_IMAGE: "clipboard:save-image",
   CLIPBOARD_THUMBNAIL_FROM_PATH: "clipboard:thumbnail-from-path",
@@ -494,9 +501,48 @@ export const CHANNELS = {
   MCP_SERVER_GET_STATUS: "mcp-server:get-status",
   MCP_SERVER_SET_ENABLED: "mcp-server:set-enabled",
   MCP_SERVER_SET_PORT: "mcp-server:set-port",
-  MCP_SERVER_SET_API_KEY: "mcp-server:set-api-key",
-  MCP_SERVER_GENERATE_API_KEY: "mcp-server:generate-api-key",
+  MCP_SERVER_ROTATE_API_KEY: "mcp-server:rotate-api-key",
   MCP_SERVER_GET_CONFIG_SNIPPET: "mcp-server:get-config-snippet",
+  MCP_SERVER_GET_AUDIT_RECORDS: "mcp-server:get-audit-records",
+  MCP_SERVER_CLEAR_AUDIT_LOG: "mcp-server:clear-audit-log",
+  MCP_SERVER_SET_AUDIT_ENABLED: "mcp-server:set-audit-enabled",
+  MCP_SERVER_SET_AUDIT_MAX_RECORDS: "mcp-server:set-audit-max-records",
+  MCP_SERVER_GET_AUDIT_CONFIG: "mcp-server:get-audit-config",
+  /**
+   * Read the session-scoped audit health counters (currently the
+   * since-launch 401 counter). Distinct from `MCP_SERVER_GET_AUDIT_RECORDS`
+   * because pre-dispatch auth failures never reach the record ring buffer.
+   */
+  MCP_SERVER_GET_AUDIT_STATS: "mcp-server:get-audit-stats",
+  /**
+   * Mount-time hydration of the runtime-state snapshot. Distinct from
+   * `MCP_SERVER_GET_STATUS` (which exposes config — enabled/port/apiKey)
+   * because the renderer needs the derived `disabled|starting|ready|failed`
+   * state plus `lastError` to drive the dock-button readiness pip.
+   */
+  MCP_SERVER_GET_RUNTIME_STATE: "mcp-server:get-runtime-state",
+  /** Push channel for runtime-state transitions. */
+  MCP_SERVER_RUNTIME_STATE_CHANGED: "mcp-server:runtime-state-changed",
+  /** Bridge: main process requests the action manifest from the renderer. */
+  MCP_SERVER_GET_MANIFEST_REQUEST: "mcp:get-manifest-request",
+  /** Bridge: renderer returns the action manifest to the main process. */
+  MCP_SERVER_GET_MANIFEST_RESPONSE: "mcp:get-manifest-response",
+  /** Bridge: main process dispatches an action request to the renderer. */
+  MCP_SERVER_DISPATCH_ACTION_REQUEST: "mcp:dispatch-action-request",
+  /** Bridge: renderer returns the action dispatch result to the main process. */
+  MCP_SERVER_DISPATCH_ACTION_RESPONSE: "mcp:dispatch-action-response",
+  /**
+   * Push channel: a tool call from a help-session was denied because the
+   * session tier doesn't permit it. Targeted at the pinned WebContents — the
+   * renderer surfaces this in the assistant panel as an inline approval banner.
+   */
+  MCP_TIER_NOT_PERMITTED: "mcp-server:tier-not-permitted",
+  /**
+   * Elevate the tier of an active help-session (Approve once). Mutates
+   * `sessionTierMap` in-place — never downgrades, so a malicious renderer
+   * cannot drop its own privileges.
+   */
+  MCP_SERVER_SET_SESSION_TIER: "mcp-server:set-session-tier",
 
   // Voice Input channels
   VOICE_INPUT_GET_SETTINGS: "voice-input:get-settings",
@@ -518,6 +564,10 @@ export const CHANNELS = {
   VOICE_INPUT_FLUSH_PARAGRAPH: "voice-input:flush-paragraph",
   VOICE_INPUT_PARAGRAPH_BOUNDARY: "voice-input:paragraph-boundary",
   VOICE_INPUT_FILE_TOKEN_RESOLVED: "voice-input:file-token-resolved",
+
+  // Help assistant settings channels
+  HELP_ASSISTANT_GET_SETTINGS: "help-assistant:get-settings",
+  HELP_ASSISTANT_SET_SETTINGS: "help-assistant:set-settings",
 
   // Onboarding channels
   ONBOARDING_GET: "onboarding:get",
@@ -611,6 +661,7 @@ export const CHANNELS = {
   PLUGIN_ACTIONS_GET: "plugin:actions-get",
   PLUGIN_ACTIONS_REGISTER: "plugin:actions-register",
   PLUGIN_ACTIONS_UNREGISTER: "plugin:actions-unregister",
+  PLUGIN_PANEL_KINDS_GET: "plugin:panel-kinds-get",
 
   // Config reload channels
   APP_RELOAD_CONFIG: "app:reload-config",
@@ -626,6 +677,18 @@ export const CHANNELS = {
   // Per-service connectivity channels
   CONNECTIVITY_GET_STATE: "connectivity:get-state",
   CONNECTIVITY_SERVICE_CHANGED: "connectivity:service-changed",
+
+  // Scratch (throwaway one-off agent workspace) channels
+  SCRATCH_GET_ALL: "scratch:get-all",
+  SCRATCH_GET_CURRENT: "scratch:get-current",
+  SCRATCH_CREATE: "scratch:create",
+  SCRATCH_UPDATE: "scratch:update",
+  SCRATCH_REMOVE: "scratch:remove",
+  SCRATCH_SWITCH: "scratch:switch",
+  SCRATCH_SAVE_AS_PROJECT: "scratch:save-as-project",
+  SCRATCH_UPDATED: "scratch:updated",
+  SCRATCH_REMOVED: "scratch:removed",
+  SCRATCH_ON_SWITCH: "scratch:on-switch",
 } as const;
 
 export type ChannelName = (typeof CHANNELS)[keyof typeof CHANNELS];

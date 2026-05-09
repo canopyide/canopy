@@ -70,7 +70,6 @@ describe("appThemeImporter", () => {
         type: "dark",
         location: "Daintree Rainforest, Queensland, Australia",
         heroImage: "/themes/daintree.webp",
-        heroVideo: "/themes/daintree.webm",
         tokens: {
           "surface-canvas": "#19191a",
           "accent-primary": "#3E9066",
@@ -84,7 +83,6 @@ describe("appThemeImporter", () => {
 
     expect(result.scheme.location).toBe("Daintree Rainforest, Queensland, Australia");
     expect(result.scheme.heroImage).toBe("/themes/daintree.webp");
-    expect(result.scheme.heroVideo).toBe("/themes/daintree.webm");
   });
 
   it("parses palette-format themes with extensions", () => {
@@ -181,7 +179,6 @@ describe("appThemeImporter", () => {
 
     expect(result.scheme.location).toBeUndefined();
     expect(result.scheme.heroImage).toBeUndefined();
-    expect(result.scheme.heroVideo).toBeUndefined();
   });
 
   it("does not treat metadata keys as unknown tokens in flat format", () => {

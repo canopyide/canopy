@@ -14,6 +14,8 @@ import { isTrustedRendererUrl } from "../shared/utils/trustedRenderer.js";
 import { isIpcEnvelope } from "../shared/types/ipc/errors.js";
 import { deserializeError } from "../shared/utils/ipcErrorSerialization.js";
 import type { AppErrorCode } from "../shared/types/appError.js";
+import type { McpRuntimeSnapshot } from "../shared/types/ipc/mcpServer.js";
+import type { HelpAssistantTier } from "../shared/types/ipc/maps.js";
 import { CHANNELS } from "./ipc/channels.js";
 import { buildClipboardPreloadBindings } from "./ipc/handlers/clipboard.preload.js";
 import { buildSlashCommandsPreloadBindings } from "./ipc/handlers/slashCommands.preload.js";
@@ -88,6 +90,7 @@ import type {
   SpawnResult,
   TerminalResourceBatchPayload,
   BroadcastWriteResultPayload,
+  FdLeakWarningPayload,
 } from "../shared/types/pty-host.js";
 
 type SpawnResultPayload = SpawnResult;
@@ -98,6 +101,7 @@ import type {
 import type { ShowContextMenuPayload } from "../shared/types/menu.js";
 import type { ResourceProfilePayload } from "../shared/types/resourceProfile.js";
 import type { PluginActionDescriptor } from "../shared/types/plugin.js";
+import type { PanelKindConfig } from "../shared/config/panelKindRegistry.js";
 
 export type { ElectronAPI };
 
@@ -817,6 +821,9 @@ const api: ElectronAPI = {
       callback: (data: { metrics: TerminalResourceBatchPayload; timestamp: number }) => void
     ) => _typedOn(CHANNELS.TERMINAL_RESOURCE_METRICS, callback),
 
+    onFdLeakWarning: (callback: (data: FdLeakWarningPayload) => void) =>
+      _typedOn(CHANNELS.TERMINAL_FD_LEAK_WARNING, callback),
+
     onBackendCrashed: (
       callback: (data: {
         crashType: string;
@@ -959,6 +966,9 @@ const api: ElectronAPI = {
     getAgentCliDetails: () => _unwrappingInvoke(CHANNELS.SYSTEM_GET_AGENT_CLI_DETAILS),
 
     getAgentVersions: () => _unwrappingInvoke(CHANNELS.SYSTEM_GET_AGENT_VERSIONS),
+
+    getAgentVersion: (agentId: string, refresh?: boolean) =>
+      _unwrappingInvoke(CHANNELS.SYSTEM_GET_AGENT_VERSION, agentId, refresh),
 
     refreshAgentVersions: () => _unwrappingInvoke(CHANNELS.SYSTEM_REFRESH_AGENT_VERSIONS),
 
@@ -1197,6 +1207,9 @@ const api: ElectronAPI = {
     getBulkStats: (projectIds: string[]) =>
       _unwrappingInvoke(CHANNELS.PROJECT_GET_BULK_STATS, projectIds),
 
+    getNotificationOverrides: (projectIds: string[]) =>
+      _unwrappingInvoke(CHANNELS.PROJECT_GET_NOTIFICATION_OVERRIDES, projectIds),
+
     onStatsUpdated: (
       callback: (stats: import("../shared/types/ipc/project.js").ProjectStatusMap) => void
     ) => _typedOn(CHANNELS.PROJECT_STATS_UPDATED, callback),
@@ -1355,13 +1368,49 @@ const api: ElectronAPI = {
     disableInRepoSettings: (projectId: string): Promise<Project> =>
       _unwrappingInvoke(CHANNELS.PROJECT_DISABLE_IN_REPO_SETTINGS, projectId),
 
-    detectContextFiles: (projectId: string): Promise<string[]> =>
-      _unwrappingInvoke(CHANNELS.PROJECT_DETECT_CONTEXT_FILES, projectId),
-
     checkMissing: (): Promise<string[]> => _unwrappingInvoke(CHANNELS.PROJECT_CHECK_MISSING),
 
     locate: (projectId: string): Promise<Project | null> =>
       _unwrappingInvoke(CHANNELS.PROJECT_LOCATE, projectId),
+  },
+
+  // Scratch (one-off agent workspace) API
+  scratch: {
+    getAll: (): Promise<import("../shared/types/scratch.js").Scratch[]> =>
+      _unwrappingInvoke(CHANNELS.SCRATCH_GET_ALL),
+
+    getCurrent: (): Promise<import("../shared/types/scratch.js").Scratch | null> =>
+      _unwrappingInvoke(CHANNELS.SCRATCH_GET_CURRENT),
+
+    create: (name?: string): Promise<import("../shared/types/scratch.js").Scratch> =>
+      _unwrappingInvoke(CHANNELS.SCRATCH_CREATE, name),
+
+    update: (
+      scratchId: string,
+      updates: { name?: string; lastOpened?: number }
+    ): Promise<import("../shared/types/scratch.js").Scratch> =>
+      _unwrappingInvoke(CHANNELS.SCRATCH_UPDATE, scratchId, updates),
+
+    remove: (scratchId: string): Promise<void> =>
+      _unwrappingInvoke(CHANNELS.SCRATCH_REMOVE, scratchId),
+
+    switch: (scratchId: string): Promise<import("../shared/types/scratch.js").Scratch> =>
+      _unwrappingInvoke(CHANNELS.SCRATCH_SWITCH, scratchId),
+
+    saveAsProject: (
+      scratchId: string
+    ): Promise<import("../shared/types/ipc/scratch.js").ScratchSaveAsProjectResult> =>
+      _unwrappingInvoke(CHANNELS.SCRATCH_SAVE_AS_PROJECT, scratchId),
+
+    onUpdated: (callback: (scratch: import("../shared/types/scratch.js").Scratch) => void) =>
+      _typedOn(CHANNELS.SCRATCH_UPDATED, callback),
+
+    onRemoved: (callback: (scratchId: string) => void) =>
+      _typedOn(CHANNELS.SCRATCH_REMOVED, callback),
+
+    onSwitch: (
+      callback: (payload: import("../shared/types/ipc/scratch.js").ScratchSwitchPayload) => void
+    ) => _typedOn(CHANNELS.SCRATCH_ON_SWITCH, callback),
   },
 
   // Global Recipes API
@@ -1497,6 +1546,8 @@ const api: ElectronAPI = {
 
     onRateLimitChanged: (callback: (data: GitHubRateLimitPayload) => void) =>
       _typedOn(CHANNELS.GITHUB_RATE_LIMIT_CHANGED, callback),
+
+    getRateLimitDetails: () => _unwrappingInvoke(CHANNELS.GITHUB_GET_RATE_LIMIT_DETAILS),
 
     onTokenHealthChanged: (callback: (data: GitHubTokenHealthPayload) => void) =>
       _typedOn(CHANNELS.GITHUB_TOKEN_HEALTH_CHANGED, callback),
@@ -2014,6 +2065,8 @@ const api: ElectronAPI = {
       _unwrappingInvoke(CHANNELS.UPDATE_SET_CHANNEL, channel),
 
     notifyDismiss: (version: string) => _unwrappingInvoke(CHANNELS.UPDATE_DISMISS_TOAST, version),
+
+    getLastCheck: () => _unwrappingInvoke(CHANNELS.UPDATE_GET_LAST_CHECK),
   },
 
   // Gemini API
@@ -2329,21 +2382,54 @@ const api: ElectronAPI = {
     getStatus: () => _unwrappingInvoke(CHANNELS.MCP_SERVER_GET_STATUS),
     setEnabled: (enabled: boolean) => _unwrappingInvoke(CHANNELS.MCP_SERVER_SET_ENABLED, enabled),
     setPort: (port: number | null) => _unwrappingInvoke(CHANNELS.MCP_SERVER_SET_PORT, port),
-    setApiKey: (apiKey: string) => _unwrappingInvoke(CHANNELS.MCP_SERVER_SET_API_KEY, apiKey),
-    generateApiKey: () => _unwrappingInvoke(CHANNELS.MCP_SERVER_GENERATE_API_KEY),
+    rotateApiKey: () => _unwrappingInvoke(CHANNELS.MCP_SERVER_ROTATE_API_KEY),
     getConfigSnippet: () => _unwrappingInvoke(CHANNELS.MCP_SERVER_GET_CONFIG_SNIPPET),
+    getAuditRecords: () => _unwrappingInvoke(CHANNELS.MCP_SERVER_GET_AUDIT_RECORDS),
+    getAuditConfig: () => _unwrappingInvoke(CHANNELS.MCP_SERVER_GET_AUDIT_CONFIG),
+    getAuditStats: () => _unwrappingInvoke(CHANNELS.MCP_SERVER_GET_AUDIT_STATS),
+    clearAuditLog: () => _unwrappingInvoke(CHANNELS.MCP_SERVER_CLEAR_AUDIT_LOG),
+    setAuditEnabled: (enabled: boolean) =>
+      _unwrappingInvoke(CHANNELS.MCP_SERVER_SET_AUDIT_ENABLED, enabled),
+    setAuditMaxRecords: (max: number) =>
+      _unwrappingInvoke(CHANNELS.MCP_SERVER_SET_AUDIT_MAX_RECORDS, max),
+    getRuntimeState: () => _unwrappingInvoke(CHANNELS.MCP_SERVER_GET_RUNTIME_STATE),
+    onRuntimeStateChanged: (callback: (snapshot: McpRuntimeSnapshot) => void) =>
+      _typedOn(CHANNELS.MCP_SERVER_RUNTIME_STATE_CHANGED, callback),
+    setSessionTier: (sessionId: string, tier: "workbench" | "action" | "system") =>
+      _unwrappingInvoke(CHANNELS.MCP_SERVER_SET_SESSION_TIER, { sessionId, tier }),
+    onTierNotPermitted: (
+      callback: (payload: {
+        sessionId: string;
+        toolId: string;
+        tier: string;
+        targetTier: "workbench" | "action" | "system" | null;
+      }) => void
+    ) => _typedOn(CHANNELS.MCP_TIER_NOT_PERMITTED, callback),
+  },
+
+  helpAssistant: {
+    getSettings: () => _unwrappingInvoke(CHANNELS.HELP_ASSISTANT_GET_SETTINGS),
+    setSettings: (
+      patch: Partial<{
+        docSearch: boolean;
+        daintreeControl: boolean;
+        tier: HelpAssistantTier;
+        bypassPermissions: boolean;
+        auditRetention: 7 | 30 | 0;
+      }>
+    ) => _unwrappingInvoke(CHANNELS.HELP_ASSISTANT_SET_SETTINGS, patch),
   },
 
   mcpBridge: {
     onGetManifestRequest: (callback: (requestId: string) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: { requestId: string }) =>
         callback(payload.requestId);
-      ipcRenderer.on("mcp:get-manifest-request", handler);
-      return () => ipcRenderer.removeListener("mcp:get-manifest-request", handler);
+      ipcRenderer.on(CHANNELS.MCP_SERVER_GET_MANIFEST_REQUEST, handler);
+      return () => ipcRenderer.removeListener(CHANNELS.MCP_SERVER_GET_MANIFEST_REQUEST, handler);
     },
 
     sendGetManifestResponse: (requestId: string, manifest: unknown) => {
-      ipcRenderer.send("mcp:get-manifest-response", { requestId, manifest });
+      ipcRenderer.send(CHANNELS.MCP_SERVER_GET_MANIFEST_RESPONSE, { requestId, manifest });
     },
 
     onDispatchActionRequest: (
@@ -2358,12 +2444,16 @@ const api: ElectronAPI = {
         _event: Electron.IpcRendererEvent,
         payload: { requestId: string; actionId: string; args?: unknown; confirmed?: boolean }
       ) => callback(payload);
-      ipcRenderer.on("mcp:dispatch-action-request", handler);
-      return () => ipcRenderer.removeListener("mcp:dispatch-action-request", handler);
+      ipcRenderer.on(CHANNELS.MCP_SERVER_DISPATCH_ACTION_REQUEST, handler);
+      return () => ipcRenderer.removeListener(CHANNELS.MCP_SERVER_DISPATCH_ACTION_REQUEST, handler);
     },
 
-    sendDispatchActionResponse: (payload: { requestId: string; result: unknown }) => {
-      ipcRenderer.send("mcp:dispatch-action-response", payload);
+    sendDispatchActionResponse: (payload: {
+      requestId: string;
+      result: unknown;
+      confirmationDecision?: "approved" | "rejected" | "timeout";
+    }) => {
+      ipcRenderer.send(CHANNELS.MCP_SERVER_DISPATCH_ACTION_RESPONSE, payload);
     },
   },
 
@@ -2394,6 +2484,9 @@ const api: ElectronAPI = {
       _unwrappingInvoke(CHANNELS.PLUGIN_ACTIONS_UNREGISTER, pluginId, actionId),
     onActionsChanged: (callback: (payload: { actions: PluginActionDescriptor[] }) => void) =>
       _eventBusOn("plugin:actions-changed", callback),
+    getPanelKinds: () => _unwrappingInvoke(CHANNELS.PLUGIN_PANEL_KINDS_GET),
+    onPanelKindsChanged: (callback: (payload: { kinds: PanelKindConfig[] }) => void) =>
+      _eventBusOn("plugin:panel-kinds-changed", callback),
   },
 
   crashRecovery: {
@@ -2569,6 +2662,63 @@ _eventBusOn("window:sample-blink-memory", ({ requestId }) => {
       marked: info.marked,
       total: info.total,
       partitionAlloc: info.partitionAlloc,
+    });
+  } catch {
+    /* observability is best-effort */
+  }
+});
+
+// Renderer event-loop utilization sampler. The Node ELU API
+// (performance.eventLoopUtilization) is unavailable under sandbox: true, so we
+// observe the Web `long-animation-frame` PerformanceObserver and accumulate
+// `blockingDuration` between sample events. The preload runs on the same
+// renderer main thread as the page, so LoAF entries reflect the user-visible
+// JS thread saturation. blockingDuration is 0 for entries < 50ms by spec —
+// that's the intended noise floor for "long task" detection.
+//
+// No startup suppression: ProcessMemoryMonitor's poll cadence is 30s, so any
+// LoAF replay from `buffered: true` is diluted across a full window before
+// the first sample. The 0.85 ratio + 6-sample streak threshold on the main
+// side absorbs the residual cold-start noise.
+type LoAFEntry = PerformanceEntry & { blockingDuration?: number };
+let eluAccumulatedBlockingMs = 0;
+let eluWindowStartMs =
+  typeof performance !== "undefined" && typeof performance.now === "function"
+    ? performance.now()
+    : 0;
+try {
+  if (typeof PerformanceObserver === "function") {
+    const observer = new PerformanceObserver((list) => {
+      for (const entry of list.getEntries() as LoAFEntry[]) {
+        const blocking = entry.blockingDuration;
+        if (typeof blocking === "number" && blocking > 0) {
+          eluAccumulatedBlockingMs += blocking;
+        }
+      }
+    });
+    // long-animation-frame is in Chromium 123+. Older runtimes throw on
+    // observe() — caught and ignored; the handler will report 0 blocking.
+    // The observer is intentionally not stored — it lives for the renderer's
+    // lifetime and never needs to be disconnected.
+    observer.observe({ type: "long-animation-frame", buffered: true });
+  }
+} catch {
+  /* observer unavailable — sampler reports 0/window */
+}
+_eventBusOn("window:sample-renderer-elu", ({ requestId }) => {
+  try {
+    const now =
+      typeof performance !== "undefined" && typeof performance.now === "function"
+        ? performance.now()
+        : Date.now();
+    const sampleWindowMs = Math.max(0, Math.round(now - eluWindowStartMs));
+    const blockingDurationMs = Math.max(0, Math.round(eluAccumulatedBlockingMs));
+    eluAccumulatedBlockingMs = 0;
+    eluWindowStartMs = now;
+    void ipcRenderer.invoke(CHANNELS.SYSTEM_REPORT_RENDERER_ELU, {
+      requestId,
+      blockingDurationMs,
+      sampleWindowMs,
     });
   } catch {
     /* observability is best-effort */

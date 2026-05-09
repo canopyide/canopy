@@ -3,25 +3,8 @@ import { useShallow } from "zustand/react/shallow";
 import { usePanelStore, type TerminalInstance } from "@/store/panelStore";
 import { useWorktreeStore } from "@/hooks/useWorktreeStore";
 import type { WorktreeSnapshot } from "@shared/types";
-
-export function isTerminalOrphaned(terminal: TerminalInstance, worktreeIds: Set<string>): boolean {
-  const worktreeId = typeof terminal.worktreeId === "string" ? terminal.worktreeId.trim() : "";
-  if (!worktreeId) return false;
-  if (worktreeIds.size === 0) return false;
-  return !worktreeIds.has(worktreeId);
-}
-
-export function isTerminalVisible(
-  terminal: TerminalInstance,
-  isInTrash: (id: string) => boolean,
-  worktreeIds: Set<string>
-): boolean {
-  if (isInTrash(terminal.id)) return false;
-  if (terminal.location === "trash") return false;
-  if (terminal.location === "background") return false;
-  if (isTerminalOrphaned(terminal, worktreeIds)) return false;
-  return true;
-}
+import { isTerminalOrphaned, isTerminalVisible } from "@/lib/terminalVisibility";
+export { isTerminalOrphaned, isTerminalVisible };
 
 let _cachedWorktrees: Map<string, WorktreeSnapshot> | null = null;
 let _cachedIds: Set<string> | null = null;
@@ -97,19 +80,19 @@ export function useTerminalNotificationCounts(blurTime?: number | null): {
 
 export function useWaitingTerminals(): TerminalInstance[] {
   const worktreeIds = useWorktreeIds();
-  const panelIds = usePanelStore((state) => state.panelIds);
-  const panelsById = usePanelStore((state) => state.panelsById);
-  const isInTrash = usePanelStore((state) => state.isInTrash);
 
-  return useMemo(
-    () =>
-      panelIds
-        .map((id) => panelsById[id])
-        .filter(
-          (t): t is TerminalInstance =>
-            !!t && t.agentState === "waiting" && isTerminalVisible(t, isInTrash, worktreeIds)
-        ),
-    [panelIds, panelsById, isInTrash, worktreeIds]
+  return usePanelStore(
+    useShallow((state) => {
+      const out: TerminalInstance[] = [];
+      for (const id of state.panelIds) {
+        const t = state.panelsById[id];
+        if (!t) continue;
+        if (t.agentState !== "waiting") continue;
+        if (!isTerminalVisible(t, state.isInTrash, worktreeIds)) continue;
+        out.push(t);
+      }
+      return out;
+    })
   );
 }
 
@@ -120,18 +103,19 @@ export function useWaitingTerminalIds(): string[] {
 
 export function useBackgroundedTerminals(): TerminalInstance[] {
   const worktreeIds = useWorktreeIds();
-  const panelIds = usePanelStore((state) => state.panelIds);
-  const panelsById = usePanelStore((state) => state.panelsById);
 
-  return useMemo(
-    () =>
-      panelIds
-        .map((id) => panelsById[id])
-        .filter(
-          (t): t is TerminalInstance =>
-            !!t && t.location === "background" && !isTerminalOrphaned(t, worktreeIds)
-        ),
-    [panelIds, panelsById, worktreeIds]
+  return usePanelStore(
+    useShallow((state) => {
+      const out: TerminalInstance[] = [];
+      for (const id of state.panelIds) {
+        const t = state.panelsById[id];
+        if (!t) continue;
+        if (t.location !== "background") continue;
+        if (isTerminalOrphaned(t, worktreeIds)) continue;
+        out.push(t);
+      }
+      return out;
+    })
   );
 }
 

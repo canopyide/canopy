@@ -1,21 +1,20 @@
+import type { SVGProps } from "react";
 import { cn } from "@/lib/utils";
 
-interface KiroIconProps {
-  className?: string;
+type KiroIconProps = SVGProps<SVGSVGElement> & {
   size?: number;
   brandColor?: string;
-}
+};
 
-export function KiroIcon({ className, size = 16, brandColor }: KiroIconProps) {
+export function KiroIcon({ className, size = 16, brandColor, ...props }: KiroIconProps) {
   return (
     <svg
       width={size}
       height={size}
       viewBox="0 0 1200 1200"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
       className={cn(className)}
       aria-hidden="true"
+      {...props}
     >
       <rect width="1200" height="1200" rx="260" fill={brandColor || "currentColor"} />
       <mask

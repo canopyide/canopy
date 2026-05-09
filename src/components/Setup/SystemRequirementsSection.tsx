@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, ChevronDown, CircleCheck, Loader2, RotateCw } from "lucide-react";
+import { AlertTriangle, ChevronDown, CircleCheck, Loader2, RotateCw, CircleX } from "lucide-react";
 import { m, useReducedMotion } from "framer-motion";
 import { UI_ENTER_DURATION } from "@/lib/animationUtils";
 import { useSystemHealthCheck } from "./useSystemHealthCheck";
@@ -30,32 +30,49 @@ export function SystemRequirementsSection({
     onCheckingChange(isChecking);
   }, [isChecking, onCheckingChange]);
 
-  const hasWarning =
-    allDone &&
-    visibleSpecs.some((s) => {
-      const state = checkStates[s.tool];
-      return state !== "loading" && (!state?.available || !state.meetsMinVersion);
-    });
+  // Derived collections for UI
+  const readyTools = visibleSpecs.filter((s) => {
+    const state = checkStates[s.tool];
+    return state !== "loading" && state?.available && state.meetsMinVersion;
+  });
 
-  const summaryText = allDone
-    ? visibleSpecs
-        .filter((s) => {
-          const state = checkStates[s.tool];
-          return state !== "loading" && state?.available && state.meetsMinVersion;
-        })
-        .map((s) => {
-          const state = checkStates[s.tool];
-          const version = state !== "loading" && state?.version ? ` ${state.version}` : "";
-          return `${s.label}${version}`;
-        })
-        .join(", ")
-    : "";
+  const warningTools = visibleSpecs.filter((s) => {
+    const state = checkStates[s.tool];
+    return (
+      state !== "loading" && s.severity === "warn" && (!state?.available || !state.meetsMinVersion)
+    );
+  });
+
+  const fatalTools = visibleSpecs.filter((s) => {
+    const state = checkStates[s.tool];
+    return (
+      state !== "loading" && (!state?.available || !state.meetsMinVersion) && s.severity === "fatal"
+    );
+  });
+
+  const missingFatalTools = fatalTools.filter((s) => {
+    const state = checkStates[s.tool];
+    return state !== "loading" && !state?.available;
+  });
+
+  const outdatedFatalTools = fatalTools.filter((s) => {
+    const state = checkStates[s.tool];
+    return state !== "loading" && state?.available && !state.meetsMinVersion;
+  });
+
+  const readyCount = readyTools.length;
+  const totalCount = visibleSpecs.length;
+
+  // Warning state: has any warnings (warn severity tools not meeting version or missing)
+  const hasWarning = allDone && warningTools.length > 0;
 
   return (
     <div className="rounded-[var(--radius-md)] border border-daintree-border bg-daintree-bg/30">
       <button
         type="button"
         onClick={() => setUserExpanded((v) => !v)}
+        aria-expanded={isExpanded}
+        aria-controls="system-requirements-panel"
         className="flex items-center gap-2.5 w-full px-3 py-2.5 text-left"
       >
         <ChevronDown
@@ -70,28 +87,30 @@ export function SystemRequirementsSection({
           </span>
         )}
 
-        {allDone && !hasFatalFailure && !hasWarning && (
+        {allDone && !hasFatalFailure && !hasWarning && !error && (
           <span className="flex items-center gap-1.5 ml-auto text-[11px] text-status-success">
             <CircleCheck className="w-3.5 h-3.5" />
-            {summaryText}
+            All system tools ready
           </span>
         )}
 
         {allDone && hasFatalFailure && (
           <span className="flex items-center gap-1.5 ml-auto text-[11px] text-status-error">
-            Required tools missing
+            <CircleX className="w-3.5 h-3.5" />
+            Action required: {readyCount} of {totalCount} tools ready
           </span>
         )}
 
         {allDone && !hasFatalFailure && hasWarning && (
           <span className="flex items-center gap-1.5 ml-auto text-[11px] text-status-warning">
             <AlertTriangle className="w-3.5 h-3.5" />
-            {summaryText}
+            Warning: {readyCount} of {totalCount} tools ready
           </span>
         )}
       </button>
 
       <m.div
+        id="system-requirements-panel"
         animate={{ height: isExpanded ? "auto" : 0 }}
         initial={false}
         transition={
@@ -132,10 +151,25 @@ export function SystemRequirementsSection({
           )}
 
           {allDone && hasFatalFailure && (
-            <div className="px-3 py-2.5 rounded-[var(--radius-md)] border border-status-warning/20 bg-status-warning/5">
-              <p className="text-xs text-status-warning">
-                Some required tools are missing or outdated. Install them to continue setup.
-              </p>
+            <div
+              role="alert"
+              aria-live="assertive"
+              className="px-3 py-2.5 rounded-[var(--radius-md)] border border-status-error/20 bg-status-error/5 space-y-1.5"
+            >
+              {missingFatalTools.map((spec) => (
+                <p key={spec.tool} className="text-xs text-status-error">
+                  {spec.label} not found
+                </p>
+              ))}
+              {outdatedFatalTools.map((spec) => {
+                const state = checkStates[spec.tool];
+                if (!state || state === "loading") return null;
+                return (
+                  <p key={spec.tool} className="text-xs text-status-error">
+                    {spec.label} v{state.version} installed, needs v{spec.minVersion}+
+                  </p>
+                );
+              })}
             </div>
           )}
 

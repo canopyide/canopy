@@ -3,6 +3,8 @@ import { useWebviewThrottle } from "@/hooks/useWebviewThrottle";
 import { useHasBeenVisible } from "@/hooks/useHasBeenVisible";
 import { useWebviewEviction } from "@/hooks/useWebviewEviction";
 import { useWebviewDialog } from "@/hooks/useWebviewDialog";
+import { useWebviewEvents } from "@/hooks/useWebviewEvents";
+import { useBrowserActionListeners } from "@/hooks/useBrowserActionListeners";
 import { AlertTriangle, ExternalLink, RotateCw, Square } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
 import { Button } from "@/components/ui/button";
@@ -10,8 +12,14 @@ import { usePanelStore } from "@/store";
 import type { BrowserHistory } from "@shared/types/browser";
 import { ContentPanel, type BasePanelProps } from "@/components/Panel";
 import { BrowserToolbar } from "./BrowserToolbar";
-import { ConsolePanel } from "./ConsolePanel";
-import { normalizeBrowserUrl, extractHostPort, isValidBrowserUrl } from "./browserUtils";
+import {
+  normalizeBrowserUrl,
+  extractHostPort,
+  extractHostname,
+  isValidBrowserUrl,
+  clampZoom,
+  type LoadError,
+} from "./browserUtils";
 import {
   goBackBrowserHistory,
   goForwardBrowserHistory,
@@ -24,17 +32,18 @@ import { FindBar } from "./FindBar";
 import { useIsDragging } from "@/components/DragDrop";
 import { cn } from "@/lib/utils";
 import { safeFireAndForget } from "@/utils/safeFireAndForget";
-import { useConsoleCaptureStore } from "@/store/consoleCaptureStore";
-import type { SerializedConsoleRow } from "@shared/types/ipc/webviewConsole";
 import { useProjectStore } from "@/store";
 import { useProjectSettingsStore } from "@/store/projectSettingsStore";
 import { useProjectSettings } from "@/hooks/useProjectSettings";
-import { useUrlHistoryStore } from "@/store/urlHistoryStore";
 import { useFindInPage } from "@/hooks/useFindInPage";
+import { useDeferredLoading } from "@/hooks/useDeferredLoading";
+import { UI_DOHERTY_THRESHOLD } from "@/lib/animationUtils";
 import { logError } from "@/utils/logger";
 
 export interface BrowserPaneProps extends BasePanelProps {
   initialUrl: string;
+  initialHistory?: BrowserHistory;
+  initialZoom?: number;
   // Tab support
   tabs?: import("@/components/Panel/TabButton").TabInfo[];
   onTabClick?: (tabId: string) => void;
@@ -43,10 +52,40 @@ export interface BrowserPaneProps extends BasePanelProps {
   onAddTab?: () => void;
 }
 
+// ERR_ABORTED (-3) fires when a pending load is superseded by a new navigation —
+// benign. Any other rejection is unexpected and worth a log; did-fail-load
+// surfaces user-visible failures, so this only catches non-event paths.
+function loadWebviewUrl(webview: Electron.WebviewTag, url: string): void {
+  const result = (webview.loadURL as (url: string) => unknown)(url);
+  if (
+    result &&
+    typeof result === "object" &&
+    "catch" in result &&
+    typeof result.catch === "function"
+  ) {
+    (result as { catch: (fn: (err: unknown) => void) => void }).catch((err: unknown) => {
+      if (
+        err &&
+        typeof err === "object" &&
+        "errorCode" in err &&
+        (err as { errorCode: unknown }).errorCode === -3
+      ) {
+        return;
+      }
+      logError(
+        "[BrowserPane] Unexpected loadURL rejection",
+        err instanceof Error ? err : new Error(String(err))
+      );
+    });
+  }
+}
+
 export function BrowserPane({
   id,
   title,
   initialUrl,
+  initialHistory,
+  initialZoom,
   isFocused,
   isMaximized = false,
   location = "grid",
@@ -56,7 +95,6 @@ export function BrowserPane({
   onTitleChange,
   onMinimize,
   onRestore,
-  isTrashing = false,
   gridPanelCount,
   tabs,
   onTabClick,
@@ -74,13 +112,6 @@ export function BrowserPane({
   const setBrowserHistory = usePanelStore((state) => state.setBrowserHistory);
   const setBrowserZoom = usePanelStore((state) => state.setBrowserZoom);
   const isDragging = useIsDragging();
-  const addStructuredMessage = useConsoleCaptureStore((state) => state.addStructuredMessage);
-  const markStale = useConsoleCaptureStore((state) => state.markStale);
-  const clearConsoleMessages = useConsoleCaptureStore((state) => state.clearMessages);
-  const removePane = useConsoleCaptureStore((state) => state.removePane);
-  const webContentsIdRef = useRef<number | null>(null);
-  // Mirror into state so JSX doesn't read the ref during render (React Compiler).
-  const [webContentsId, setWebContentsId] = useState<number | null>(null);
   const projectId = useProjectStore((state) => state.currentProject?.id);
   const devServerLoadTimeout = useProjectSettingsStore(
     (state) => state.settings?.devServerLoadTimeout
@@ -92,48 +123,30 @@ export function BrowserPane({
     [projectSettings?.browserAllowedHosts]
   );
 
-  const isConsoleOpen = usePanelStore(
-    (state) => state.getTerminal(id)?.browserConsoleOpen ?? false
-  );
-  const setBrowserConsoleOpen = usePanelStore((state) => state.setBrowserConsoleOpen);
-
-  // Initialize history from persisted state or initialUrl. Compute both
-  // `history` and `isRestoredLoad` in a single useState initializer so the ref
-  // below can be seeded without writing to a ref during the lazy-init closure
-  // (React Compiler bailout).
-  const [initialHistoryComputation] = useState<{
-    history: BrowserHistory;
-    isRestoredLoad: boolean;
-  }>(() => {
-    const terminal = usePanelStore.getState().getTerminal(id);
-    const saved = terminal?.browserHistory;
-    // Use extended mode (empty allowedHosts) so private/LAN URLs in session state
-    // are recognized as valid-syntax and return a normalized string; restored URLs
-    // bypass the approval prompt since being in history implies prior approval.
+  // Seed history from the `initialHistory` prop (threaded by buildPanelProps from
+  // the persisted terminal state). Reading the store via getState() inside a lazy
+  // useState initializer was a React Compiler bailout (Globals); prop threading
+  // moves the read to the parent and keeps the leaf component compiler-friendly.
+  // Use extended mode (empty allowedHosts) so private/LAN URLs in session state
+  // are recognized as valid-syntax and return a normalized string; restored URLs
+  // bypass the approval prompt since being in history implies prior approval.
+  const [history, setHistory] = useState<BrowserHistory>(() => {
     const normalized = normalizeBrowserUrl(initialUrl, { allowedHosts: [] });
-    const fallbackPresent = terminal?.browserUrl || normalized.url || initialUrl;
-    return {
-      history: initializeBrowserHistory(saved, fallbackPresent),
-      // Only treat this as a restored session load if we actually have persisted history
-      isRestoredLoad: Boolean(saved?.present),
-    };
+    const fallbackPresent = normalized.url || initialUrl;
+    return initializeBrowserHistory(initialHistory ?? null, fallbackPresent);
   });
 
   // Track whether the current load is the initial session-restored load (not a fresh panel)
-  const isInitialRestoredLoadRef = useRef(initialHistoryComputation.isRestoredLoad);
+  const isInitialRestoredLoadRef = useRef(Boolean(initialHistory?.present));
 
-  const [history, setHistory] = useState<BrowserHistory>(initialHistoryComputation.history);
-
-  // Initialize zoom factor from persisted state (default 1.0 = 100%)
-  // Clamp to valid range [0.25, 2.0] to handle corrupt storage
-  const [zoomFactor, setZoomFactor] = useState<number>(() => {
-    const terminal = usePanelStore.getState().getTerminal(id);
-    const savedZoom = terminal?.browserZoom ?? 1.0;
-    return Number.isFinite(savedZoom) ? Math.max(0.25, Math.min(2.0, savedZoom)) : 1.0;
-  });
+  // Initialize zoom factor from the `initialZoom` prop (already clamped at the
+  // prop-build site). Default 1.0 (100%) when the prop is absent.
+  const [zoomFactor, setZoomFactor] = useState<number>(() => clampZoom(initialZoom ?? 1.0));
 
   const [isLoading, setIsLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  // Doherty 400ms gate: skip loading affordances on fast loads to prevent flicker.
+  const showLoadingOverlay = useDeferredLoading(isLoading, UI_DOHERTY_THRESHOLD);
+  const [loadError, setLoadError] = useState<LoadError | null>(null);
   const [blockedNav, setBlockedNav] = useState<{
     url: string;
     canOpenExternal: boolean;
@@ -187,11 +200,6 @@ export function BrowserPane({
     setBrowserZoom(id, zoomFactor);
   }, [id, zoomFactor, setBrowserZoom]);
 
-  // Clean up console messages when pane unmounts
-  useEffect(() => {
-    return () => removePane(id);
-  }, [id, removePane]);
-
   // Listen for blocked navigation events from main process (debounced 150ms for redirect chains)
   useEffect(() => {
     const cleanup = window.electron.webview.onNavigationBlocked((data) => {
@@ -220,318 +228,23 @@ export function BrowserPane({
     return () => clearTimeout(timer);
   }, [blockedNav]);
 
-  // CDP console capture: start when webview is ready, subscribe to push events
-  useEffect(() => {
-    if (!webviewElement || !isWebviewReady) return;
-
-    let wcId: number;
-    try {
-      wcId = (webviewElement as unknown as { getWebContentsId(): number }).getWebContentsId();
-    } catch {
-      return;
-    }
-    webContentsIdRef.current = wcId;
-    setWebContentsId(wcId);
-
-    // Subscribe to push events BEFORE starting capture to avoid missing early messages
-    const cleanupMessage = window.electron.webview.onConsoleMessage((row: SerializedConsoleRow) => {
-      if (row.paneId === id) {
-        addStructuredMessage(row);
-      }
-    });
-
-    const cleanupContext = window.electron.webview.onConsoleContextCleared(
-      (payload: { paneId: string; navigationGeneration: number }) => {
-        if (payload.paneId === id) {
-          markStale(id, payload.navigationGeneration);
-        }
-      }
-    );
-
-    safeFireAndForget(
-      (async () => {
-        await window.electron.webview.registerPanel(wcId, id);
-        await window.electron.webview.startConsoleCapture(wcId, id);
-      })(),
-      { context: "Registering browser webview and starting console capture" }
-    );
-
-    return () => {
-      safeFireAndForget(window.electron.webview.stopConsoleCapture(wcId, id), {
-        context: "Stopping browser console capture",
-      });
-      cleanupMessage();
-      cleanupContext();
-      webContentsIdRef.current = null;
-      setWebContentsId(null);
-    };
-  }, [webviewElement, isWebviewReady, id, addStructuredMessage, markStale]);
-
-  // Set up webview event listeners - reattach whenever webview element changes
-  useEffect(() => {
-    const webview = webviewElement;
-    if (!webview) {
-      setIsWebviewReady(false);
-      return;
-    }
-
-    const clearAllTimers = () => {
-      if (slowLoadTimeoutRef.current) {
-        clearTimeout(slowLoadTimeoutRef.current);
-        slowLoadTimeoutRef.current = null;
-      }
-      if (loadTimeoutRef.current) {
-        clearTimeout(loadTimeoutRef.current);
-        loadTimeoutRef.current = null;
-      }
-    };
-
-    const handleDomReady = () => {
-      isInitialRestoredLoadRef.current = false;
-      setIsWebviewReady(true);
-      clearAllTimers();
-    };
-
-    const handleDidStartLoading = () => {
-      setIsLoading(true);
-      setLoadError(null);
-      setIsSlowLoad(false);
-      if (slowLoadTimeoutRef.current) {
-        clearTimeout(slowLoadTimeoutRef.current);
-      }
-      if (loadTimeoutRef.current) {
-        clearTimeout(loadTimeoutRef.current);
-      }
-      slowLoadTimeoutRef.current = setTimeout(() => {
-        try {
-          if (webview.isLoading()) {
-            setIsSlowLoad(true);
-          }
-        } catch {
-          // Webview detached before timeout fired
-        }
-      }, 5000);
-      loadTimeoutRef.current = setTimeout(() => {
-        loadTimeoutRef.current = null;
-        try {
-          if (webview.isLoading()) {
-            webview.stop();
-            setIsSlowLoad(false);
-            setIsLoading(false);
-            setLoadError(
-              `Load timed out after ${Math.round(loadTimeoutMs / 1000)}s. The server at ${webview.getURL()} may be unreachable or slow to respond.`
-            );
-          }
-        } catch {
-          // Webview detached before timeout fired
-        }
-      }, loadTimeoutMs);
-    };
-
-    const handleDidStopLoading = () => {
-      setIsLoading(false);
-      setIsSlowLoad(false);
-      if (slowLoadTimeoutRef.current) {
-        clearTimeout(slowLoadTimeoutRef.current);
-        slowLoadTimeoutRef.current = null;
-      }
-      if (loadTimeoutRef.current) {
-        clearTimeout(loadTimeoutRef.current);
-        loadTimeoutRef.current = null;
-      }
-    };
-
-    const handleDidFailLoad = (event: Electron.DidFailLoadEvent) => {
-      setIsSlowLoad(false);
-      if (slowLoadTimeoutRef.current) {
-        clearTimeout(slowLoadTimeoutRef.current);
-        slowLoadTimeoutRef.current = null;
-      }
-      if (loadTimeoutRef.current) {
-        clearTimeout(loadTimeoutRef.current);
-        loadTimeoutRef.current = null;
-      }
-      // Ignore aborted loads (e.g., navigation interrupted by another navigation)
-      if (event.errorCode === -3) return;
-      // Ignore cancellations
-      if (event.errorCode === -6) return;
-      setIsLoading(false);
-      const ERR_CONNECTION_REFUSED = -102;
-      const ERR_NAME_NOT_RESOLVED = -105;
-      const ERR_INTERNET_DISCONNECTED = -106;
-      const ERR_CONNECTION_TIMED_OUT = -118;
-      if (
-        event.isMainFrame &&
-        event.errorCode === ERR_CONNECTION_REFUSED &&
-        isInitialRestoredLoadRef.current
-      ) {
-        setLoadError(
-          "The saved URL is no longer reachable. The server may have moved to a different port."
-        );
-      } else if (
-        event.isMainFrame &&
-        event.errorCode === ERR_NAME_NOT_RESOLVED &&
-        event.validatedURL
-      ) {
-        let hostname = event.validatedURL;
-        try {
-          hostname = new URL(event.validatedURL).hostname;
-        } catch {
-          // Use raw validatedURL if parsing fails
-        }
-        setLoadError(`Couldn't resolve ${hostname}. Check the URL or your connection.`);
-      } else if (event.isMainFrame && event.errorCode === ERR_INTERNET_DISCONNECTED) {
-        setLoadError("No internet connection. Check your network.");
-      } else if (
-        event.isMainFrame &&
-        event.errorCode === ERR_CONNECTION_TIMED_OUT &&
-        event.validatedURL
-      ) {
-        setLoadError(
-          `Connection to ${event.validatedURL} timed out. The server may be unreachable.`
-        );
-      } else if (event.isMainFrame) {
-        const urlContext = event.validatedURL ? ` at ${event.validatedURL}` : "";
-        setLoadError(
-          event.errorDescription
-            ? `${event.errorDescription}${urlContext}`
-            : `Failed to load page${urlContext}. The site may be unavailable.`
-        );
-      }
-    };
-
-    const handleDidNavigate = (event: Electron.DidNavigateEvent) => {
-      const newUrl = event.url;
-      // Suppress about:blank navigations triggered by eviction
-      if (newUrl === "about:blank" && evictingRef.current) return;
-      isInitialRestoredLoadRef.current = false;
-      setBlockedNav(null);
-      // Only update history if this is a new URL (not our programmatic navigation)
-      if (newUrl !== lastSetUrlRef.current) {
-        setHistory((prev) => pushBrowserHistory(prev, newUrl));
-        lastSetUrlRef.current = newUrl;
-      }
-      if (projectId) {
-        let title: string | undefined;
-        try {
-          title = webview.getTitle();
-        } catch {
-          // webview may not be ready for getTitle
-        }
-        useUrlHistoryStore.getState().recordVisit(projectId, newUrl, title);
-      }
-    };
-
-    const handleDidNavigateInPage = (event: Electron.DidNavigateInPageEvent) => {
-      if (!event.isMainFrame) return;
-      setBlockedNav(null);
-      const newUrl = event.url;
-      if (newUrl !== lastSetUrlRef.current) {
-        setHistory((prev) => pushBrowserHistory(prev, newUrl));
-        lastSetUrlRef.current = newUrl;
-      }
-      if (projectId) {
-        let title: string | undefined;
-        try {
-          title = webview.getTitle();
-        } catch {
-          // webview may not be ready for getTitle
-        }
-        useUrlHistoryStore.getState().recordVisit(projectId, newUrl, title);
-      }
-    };
-
-    const handlePageTitleUpdated = (event: Event) => {
-      const detail = event as Event & { title?: string; explicitSet?: boolean };
-      if (detail.explicitSet === false) return;
-      if (projectId && detail.title) {
-        try {
-          useUrlHistoryStore.getState().updateTitle(projectId, webview.getURL(), detail.title);
-        } catch {
-          // webview may be detached
-        }
-      }
-    };
-
-    // Debounce favicon updates to avoid store thrashing on rapid events
-    let faviconDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-    const handlePageFaviconUpdated = (event: Event) => {
-      const detail = event as Event & { favicons?: string[] };
-      if (!projectId || !detail.favicons?.length) return;
-      const favicon = detail.favicons[0]!;
-      // Skip oversized data URLs that could exceed localStorage quota
-      if (favicon.startsWith("data:") && favicon.length > 8192) return;
-      // Capture URL at event time to avoid race with navigation
-      let capturedUrl: string;
-      try {
-        capturedUrl = webview.getURL();
-      } catch {
-        return;
-      }
-      if (!capturedUrl || capturedUrl === "about:blank") return;
-      if (faviconDebounceTimer) clearTimeout(faviconDebounceTimer);
-      const url = capturedUrl;
-      faviconDebounceTimer = setTimeout(() => {
-        faviconDebounceTimer = null;
-        useUrlHistoryStore.getState().updateFavicon(projectId, url, favicon);
-      }, 200);
-    };
-
-    try {
-      const existingUrl = webview.getURL();
-      if (existingUrl && existingUrl !== "about:blank" && !webview.isLoading()) {
-        setIsWebviewReady(true);
-        setIsLoading(false);
-        const savedZoom = zoomFactor;
-        if (Number.isFinite(savedZoom)) {
-          webview.setZoomFactor(savedZoom);
-        }
-      }
-    } catch {
-      // Webview not yet attached to DOM - dom-ready handler will take over
-    }
-
-    webview.addEventListener("dom-ready", handleDomReady);
-    webview.addEventListener("did-start-loading", handleDidStartLoading);
-    webview.addEventListener("did-stop-loading", handleDidStopLoading);
-    webview.addEventListener("did-fail-load", handleDidFailLoad);
-    webview.addEventListener("did-navigate", handleDidNavigate);
-    webview.addEventListener("did-navigate-in-page", handleDidNavigateInPage);
-    webview.addEventListener("page-title-updated", handlePageTitleUpdated);
-    webview.addEventListener("page-favicon-updated", handlePageFaviconUpdated);
-
-    return () => {
-      webview.removeEventListener("dom-ready", handleDomReady);
-      webview.removeEventListener("did-start-loading", handleDidStartLoading);
-      webview.removeEventListener("did-stop-loading", handleDidStopLoading);
-      webview.removeEventListener("did-fail-load", handleDidFailLoad);
-      webview.removeEventListener("did-navigate", handleDidNavigate);
-      webview.removeEventListener("did-navigate-in-page", handleDidNavigateInPage);
-      webview.removeEventListener("page-title-updated", handlePageTitleUpdated);
-      webview.removeEventListener("page-favicon-updated", handlePageFaviconUpdated);
-      if (faviconDebounceTimer) {
-        clearTimeout(faviconDebounceTimer);
-        faviconDebounceTimer = null;
-      }
-      if (slowLoadTimeoutRef.current) {
-        clearTimeout(slowLoadTimeoutRef.current);
-        slowLoadTimeoutRef.current = null;
-      }
-      if (loadTimeoutRef.current) {
-        clearTimeout(loadTimeoutRef.current);
-        loadTimeoutRef.current = null;
-      }
-    };
-  }, [
+  useWebviewEvents({
     webviewElement,
-    hasValidUrl,
-    loadError,
-    zoomFactor,
-    id,
+    isInitialRestoredLoadRef,
+    lastSetUrlRef,
+    slowLoadTimeoutRef,
+    loadTimeoutRef,
+    evictingRef,
     projectId,
     loadTimeoutMs,
-    evictingRef,
-  ]);
+    zoomFactor,
+    setIsWebviewReady,
+    setIsLoading,
+    setLoadError,
+    setIsSlowLoad,
+    setBlockedNav,
+    setHistory,
+  });
 
   const commitNavigation = useCallback(
     (url: string) => {
@@ -545,7 +258,13 @@ export function BrowserPane({
 
       const webview = webviewRef.current;
       if (webview && isWebviewReady) {
-        webview.loadURL(url);
+        // ERR_ABORTED (-3) is benign: emitted when a pending load is superseded
+        // by a fresh navigation (typing a new URL while the previous one is
+        // still loading). The did-fail-load handler already filters -3 — we
+        // mirror that here on the loadURL Promise so the rejection doesn't
+        // bubble to the global unhandled-rejection handler. Any genuine load
+        // failure will surface through did-fail-load with a non-(-3) code.
+        loadWebviewUrl(webview, url);
       }
     },
     [isWebviewReady]
@@ -602,10 +321,12 @@ export function BrowserPane({
       const previousUrl = next.present;
       lastSetUrlRef.current = previousUrl;
 
-      // Navigate webview back
+      // Navigate webview back. Swallow ERR_ABORTED-class rejections — see
+      // commitNavigation comment above; did-fail-load is the source of truth
+      // for genuine failures.
       const webview = webviewRef.current;
       if (webview && isWebviewReady) {
-        webview.loadURL(previousUrl);
+        loadWebviewUrl(webview, previousUrl);
       }
 
       return next;
@@ -623,10 +344,11 @@ export function BrowserPane({
       const nextUrl = next.present;
       lastSetUrlRef.current = nextUrl;
 
-      // Navigate webview forward
+      // Navigate webview forward. Swallow ERR_ABORTED-class rejections —
+      // see commitNavigation comment.
       const webview = webviewRef.current;
       if (webview && isWebviewReady) {
-        webview.loadURL(nextUrl);
+        loadWebviewUrl(webview, nextUrl);
       }
 
       return next;
@@ -654,12 +376,15 @@ export function BrowserPane({
     }
     setIsSlowLoad(false);
     setIsLoading(false);
-    try {
-      webviewRef.current?.stop();
-    } catch {
-      // Webview detached
+    const webview = webviewRef.current;
+    if (webview) {
+      try {
+        webview.stop();
+      } catch {
+        // Webview detached
+      }
     }
-    setLoadError("Load cancelled.");
+    setLoadError({ kind: "cancelled", message: "Load cancelled." });
   }, []);
 
   const handleRetryFromError = useCallback(() => {
@@ -667,7 +392,11 @@ export function BrowserPane({
     setIsSlowLoad(false);
     setIsLoading(true);
     if (currentUrl) {
-      webviewRef.current?.loadURL(currentUrl);
+      // Swallow ERR_ABORTED-class rejections — see commitNavigation comment.
+      const webview = webviewRef.current;
+      if (webview) {
+        loadWebviewUrl(webview, currentUrl);
+      }
     } else {
       webviewRef.current?.reload();
     }
@@ -692,9 +421,14 @@ export function BrowserPane({
   const handleCaptureScreenshot = useCallback(async () => {
     const webview = webviewRef.current;
     if (!webview || !isWebviewReady) return;
+    let url: string;
     try {
-      const url = webview.getURL();
-      if (!url || url === "about:blank") return;
+      url = webview.getURL();
+    } catch {
+      return;
+    }
+    if (!url || url === "about:blank") return;
+    try {
       const image = await webview.capturePage();
       const pngData = new Uint8Array(image.toPNG());
       await window.electron.clipboard.writeImage(pngData);
@@ -713,20 +447,6 @@ export function BrowserPane({
     }
   }, [isWebviewReady]);
 
-  const handleToggleConsole = useCallback(() => {
-    setBrowserConsoleOpen(id, !isConsoleOpen);
-  }, [id, isConsoleOpen, setBrowserConsoleOpen]);
-
-  const handleClearConsole = useCallback(() => {
-    const wcId = webContentsIdRef.current;
-    if (wcId != null) {
-      safeFireAndForget(window.electron.webview.clearConsoleCapture(wcId, id), {
-        context: "Clearing browser console capture",
-      });
-    }
-    clearConsoleMessages(id);
-  }, [id, clearConsoleMessages]);
-
   // Cleanup timeouts on unmount
   useEffect(() => {
     return () => {
@@ -742,147 +462,20 @@ export function BrowserPane({
     };
   }, []);
 
-  // Listen for action-driven browser events
-  useEffect(() => {
-    const handleReloadEvent = (e: Event) => {
-      if (!(e instanceof CustomEvent)) return;
-      const detail = e.detail as unknown;
-      if (!detail || typeof (detail as { id?: unknown }).id !== "string") return;
-      if ((detail as { id: string }).id === id) {
-        handleReload();
-      }
-    };
+  const handleSetZoom = useCallback((rawZoom: number) => {
+    setZoomFactor(clampZoom(rawZoom));
+  }, []);
 
-    const handleNavigateEvent = (e: Event) => {
-      if (!(e instanceof CustomEvent)) return;
-      const detail = e.detail as unknown;
-      if (!detail || typeof (detail as { id?: unknown }).id !== "string") return;
-      if (typeof (detail as { url?: unknown }).url !== "string") return;
-      if ((detail as { id: string }).id === id) {
-        handleNavigate((detail as { url: string }).url);
-      }
-    };
-
-    const handleBackEvent = (e: Event) => {
-      if (!(e instanceof CustomEvent)) return;
-      const detail = e.detail as unknown;
-      if (!detail || typeof (detail as { id?: unknown }).id !== "string") return;
-      if ((detail as { id: string }).id === id) {
-        handleBack();
-      }
-    };
-
-    const handleForwardEvent = (e: Event) => {
-      if (!(e instanceof CustomEvent)) return;
-      const detail = e.detail as unknown;
-      if (!detail || typeof (detail as { id?: unknown }).id !== "string") return;
-      if ((detail as { id: string }).id === id) {
-        handleForward();
-      }
-    };
-
-    const handleSetZoomEvent = (e: Event) => {
-      if (!(e instanceof CustomEvent)) return;
-      const detail = e.detail as unknown;
-      if (!detail || typeof (detail as { id?: unknown }).id !== "string") return;
-      if (typeof (detail as { zoomFactor?: unknown }).zoomFactor !== "number") return;
-      if ((detail as { id: string }).id === id) {
-        const rawZoom = (detail as { zoomFactor: number }).zoomFactor;
-        // Validate and clamp zoom factor to [0.25, 2.0]
-        const validZoom = Number.isFinite(rawZoom) ? Math.max(0.25, Math.min(2.0, rawZoom)) : 1.0;
-        setZoomFactor(validZoom);
-      }
-    };
-
-    const handleCaptureScreenshotEvent = (e: Event) => {
-      if (!(e instanceof CustomEvent)) return;
-      const detail = e.detail as unknown;
-      if (!detail || typeof (detail as { id?: unknown }).id !== "string") return;
-      if ((detail as { id: string }).id === id) {
-        void handleCaptureScreenshot();
-      }
-    };
-
-    const handleToggleConsoleEvent = (e: Event) => {
-      if (!(e instanceof CustomEvent)) return;
-      const detail = e.detail as unknown;
-      if (!detail || typeof (detail as { id?: unknown }).id !== "string") return;
-      if ((detail as { id: string }).id === id) {
-        handleToggleConsole();
-      }
-    };
-
-    const handleClearConsoleEvent = (e: Event) => {
-      if (!(e instanceof CustomEvent)) return;
-      const detail = e.detail as unknown;
-      if (!detail || typeof (detail as { id?: unknown }).id !== "string") return;
-      if ((detail as { id: string }).id === id) {
-        handleClearConsole();
-      }
-    };
-
-    const handleToggleDevToolsEvent = (e: Event) => {
-      if (!(e instanceof CustomEvent)) return;
-      const detail = e.detail as unknown;
-      if (!detail || typeof (detail as { id?: unknown }).id !== "string") return;
-      if ((detail as { id: string }).id === id) {
-        handleToggleDevTools();
-      }
-    };
-
-    const handleHardReloadEvent = (e: Event) => {
-      if (!(e instanceof CustomEvent)) return;
-      const detail = e.detail as unknown;
-      if (!detail || typeof (detail as { id?: unknown }).id !== "string") return;
-      if ((detail as { id: string }).id === id) {
-        handleHardReload();
-      }
-    };
-
-    const controller = new AbortController();
-    window.addEventListener("daintree:reload-browser", handleReloadEvent, {
-      signal: controller.signal,
-    });
-    window.addEventListener("daintree:browser-navigate", handleNavigateEvent, {
-      signal: controller.signal,
-    });
-    window.addEventListener("daintree:browser-back", handleBackEvent, {
-      signal: controller.signal,
-    });
-    window.addEventListener("daintree:browser-forward", handleForwardEvent, {
-      signal: controller.signal,
-    });
-    window.addEventListener("daintree:browser-set-zoom", handleSetZoomEvent, {
-      signal: controller.signal,
-    });
-    window.addEventListener("daintree:browser-capture-screenshot", handleCaptureScreenshotEvent, {
-      signal: controller.signal,
-    });
-    window.addEventListener("daintree:browser-toggle-console", handleToggleConsoleEvent, {
-      signal: controller.signal,
-    });
-    window.addEventListener("daintree:browser-clear-console", handleClearConsoleEvent, {
-      signal: controller.signal,
-    });
-    window.addEventListener("daintree:browser-toggle-devtools", handleToggleDevToolsEvent, {
-      signal: controller.signal,
-    });
-    window.addEventListener("daintree:hard-reload-browser", handleHardReloadEvent, {
-      signal: controller.signal,
-    });
-    return () => controller.abort();
-  }, [
-    id,
-    handleReload,
-    handleNavigate,
-    handleBack,
-    handleForward,
-    handleCaptureScreenshot,
-    handleToggleConsole,
-    handleClearConsole,
-    handleToggleDevTools,
-    handleHardReload,
-  ]);
+  useBrowserActionListeners(id, {
+    onReload: handleReload,
+    onNavigate: handleNavigate,
+    onBack: handleBack,
+    onForward: handleForward,
+    onSetZoom: handleSetZoom,
+    onCaptureScreenshot: handleCaptureScreenshot,
+    onToggleDevTools: handleToggleDevTools,
+    onHardReload: handleHardReload,
+  });
 
   // Blank the webview before React unmounts it for faster memory reclamation
   useEffect(() => {
@@ -925,10 +518,8 @@ export function BrowserPane({
       url={currentUrl}
       canGoBack={canGoBack}
       canGoForward={canGoForward}
-      isLoading={isLoading}
-      urlMightBeStale={false}
+      isLoading={showLoadingOverlay}
       zoomFactor={zoomFactor}
-      isConsoleOpen={isConsoleOpen}
       isWebviewReady={isWebviewReady}
       onNavigate={(url) =>
         void actionService.dispatch("browser.navigate", { terminalId: id, url }, { source: "user" })
@@ -960,9 +551,6 @@ export function BrowserPane({
           { source: "user" }
         )
       }
-      onToggleConsole={() =>
-        void actionService.dispatch("browser.toggleConsole", { terminalId: id }, { source: "user" })
-      }
       onToggleDevTools={() =>
         void actionService.dispatch(
           "browser.toggleDevTools",
@@ -981,7 +569,6 @@ export function BrowserPane({
       isFocused={isFocused}
       isMaximized={isMaximized}
       location={location}
-      isTrashing={isTrashing}
       gridPanelCount={gridPanelCount}
       onFocus={onFocus}
       onClose={onClose}
@@ -996,14 +583,13 @@ export function BrowserPane({
       onTabRename={onTabRename}
       onAddTab={onAddTab}
     >
-      <div
-        className={cn(
-          "relative flex-1 min-h-0 flex flex-col bg-surface-canvas",
-          isConsoleOpen && "min-h-0"
-        )}
-      >
+      <div className="relative flex-1 min-h-0 flex flex-col bg-surface-canvas">
         {pendingApproval && (
-          <div className="absolute top-0 left-0 right-0 z-20 flex items-center gap-2 px-3 py-1.5 text-xs bg-status-info/10 border-b border-status-info/30 text-daintree-text/90">
+          <div
+            aria-live="assertive"
+            aria-atomic="true"
+            className="absolute top-0 left-0 right-0 z-20 flex items-center gap-2 px-3 py-1.5 text-xs bg-status-info/10 border-b border-status-info/30 text-daintree-text/90"
+          >
             <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-status-info" />
             <span className="truncate flex-1">
               Allow browser panel to load{" "}
@@ -1020,7 +606,7 @@ export function BrowserPane({
               type="button"
               onClick={handleDismissApproval}
               className="shrink-0 text-daintree-text/40 hover:text-daintree-text/70 transition-colors"
-              aria-label="Dismiss"
+              aria-label="Dismiss host approval"
             >
               ×
             </button>
@@ -1062,17 +648,24 @@ export function BrowserPane({
         ) : (
           <>
             {loadError && (
-              <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-daintree-bg text-daintree-text p-6">
+              <div
+                role="alert"
+                className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-daintree-bg text-daintree-text p-6"
+              >
                 <AlertTriangle className="w-6 h-6 text-status-warning mb-3" />
                 <h3 className="text-sm font-medium text-daintree-text/70 mb-1">
-                  {loadError.startsWith("Load timed out")
+                  {loadError.kind === "timeout"
                     ? "Page Load Timed Out"
-                    : loadError.startsWith("Load cancelled")
+                    : loadError.kind === "cancelled"
                       ? "Load Cancelled"
-                      : "Unable to Display Page"}
+                      : loadError.kind === "cert"
+                        ? "Certificate Error"
+                        : loadError.kind === "network"
+                          ? "Connection Failed"
+                          : "Unable to Display Page"}
                 </h3>
                 <p className="text-xs text-daintree-text/50 text-center mb-3 max-w-md">
-                  {loadError}
+                  {loadError.message}
                 </p>
                 <div className="flex items-center gap-1">
                   <Button
@@ -1098,17 +691,14 @@ export function BrowserPane({
               </div>
             )}
             {blockedNav && (
-              <div className="flex items-center gap-2 px-3 py-1.5 text-xs bg-status-warning/10 border-b border-status-warning/20 text-daintree-text/80">
+              <div
+                aria-live="polite"
+                aria-atomic="true"
+                className="flex items-center gap-2 px-3 py-1.5 text-xs bg-status-warning/10 border-b border-status-warning/20 text-daintree-text/80"
+              >
                 <ExternalLink className="h-3.5 w-3.5 shrink-0 text-status-warning" />
                 <span className="truncate flex-1">
-                  Navigation to external site blocked:{" "}
-                  {(() => {
-                    try {
-                      return new URL(blockedNav.url).hostname;
-                    } catch {
-                      return blockedNav.url;
-                    }
-                  })()}
+                  Navigation to external site blocked: {extractHostname(blockedNav.url)}
                 </span>
                 {blockedNav.canOpenExternal && (
                   <button
@@ -1130,7 +720,7 @@ export function BrowserPane({
                   type="button"
                   onClick={() => setBlockedNav(null)}
                   className="shrink-0 text-daintree-text/40 hover:text-daintree-text/70 transition-colors"
-                  aria-label="Dismiss"
+                  aria-label="Dismiss navigation notice"
                 >
                   ×
                 </button>
@@ -1138,7 +728,7 @@ export function BrowserPane({
             )}
             <div className="relative flex-1 min-h-0">
               {isDragging && <div className="absolute inset-0 z-10 bg-transparent" />}
-              {isLoading && (
+              {showLoadingOverlay && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-daintree-bg z-10 gap-3">
                   <Spinner size="2xl" className="text-status-info" />
                   {isSlowLoad && (
@@ -1171,9 +761,6 @@ export function BrowserPane({
               />
               <WebviewDialog dialog={currentDialog} onRespond={handleDialogRespond} />
             </div>
-            {isConsoleOpen && (
-              <ConsolePanel paneId={id} height={200} webContentsId={webContentsId ?? undefined} />
-            )}
           </>
         )}
       </div>

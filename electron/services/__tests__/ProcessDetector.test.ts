@@ -73,6 +73,39 @@ describe("ProcessDetector", () => {
     );
   });
 
+  it("detects agent npm command shims from Windows process paths", () => {
+    const cache = createCacheMock();
+    cache.setChildren(100, [
+      {
+        pid: 200,
+        comm: "C:\\npm\\prefix\\claude.cmd",
+        command: '"C:\\npm\\prefix\\claude.cmd" --resume',
+      },
+    ]);
+    const callback = vi.fn();
+
+    const detector = new ProcessDetector(
+      "terminal-windows-shim",
+      Date.now(),
+      100,
+      callback,
+      cache as never
+    );
+    detector.start();
+    cache.emitRefresh();
+
+    expect(callback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        detected: true,
+        agentType: "claude",
+        processName: "claude",
+        isBusy: true,
+        currentCommand: '"C:\\npm\\prefix\\claude.cmd" --resume',
+      }),
+      expect.any(Number)
+    );
+  });
+
   it("avoids duplicate callbacks when state has not changed on refresh", () => {
     const cache = createCacheMock();
     cache.setChildren(100, [
@@ -428,6 +461,65 @@ describe("ProcessDetector", () => {
         processIconId: "codex",
         processName: "codex",
         currentCommand: "codex --model o3",
+      }),
+      expect.any(Number)
+    );
+  });
+
+  it("promotes shell-command process evidence even when the PTY pid is invalid", () => {
+    const cache = createCacheMock();
+    const callback = vi.fn();
+
+    const detector = new ProcessDetector(
+      "terminal-invalid-pid-node",
+      Date.now(),
+      0,
+      callback,
+      cache as never
+    );
+    detector.start();
+    detector.injectShellCommandEvidence(
+      { processIconId: "node", processName: "node" },
+      `node -e "setTimeout(()=>{}, 8000)"`
+    );
+
+    expect(callback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        detected: true,
+        detectionState: "agent",
+        processIconId: "node",
+        processName: "node",
+        evidenceSource: "shell_command",
+      }),
+      expect.any(Number)
+    );
+  });
+
+  it("promotes shell-command agent evidence even when the PTY pid is invalid", () => {
+    const cache = createCacheMock();
+    const callback = vi.fn();
+
+    const detector = new ProcessDetector(
+      "terminal-invalid-pid-claude",
+      Date.now(),
+      0,
+      callback,
+      cache as never
+    );
+    detector.start();
+    detector.injectShellCommandEvidence(
+      { agentType: "claude", processIconId: "claude", processName: "claude" },
+      "& 'C:\\npm\\prefix\\claude.cmd'"
+    );
+
+    expect(callback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        detected: true,
+        detectionState: "agent",
+        agentType: "claude",
+        processIconId: "claude",
+        processName: "claude",
+        evidenceSource: "shell_command",
       }),
       expect.any(Number)
     );
@@ -1190,6 +1282,80 @@ describe("ProcessDetector", () => {
       );
     });
   });
+
+  describe("zombie child filtering", () => {
+    it("does not set isBusy when children are all defunct", () => {
+      const cache = createCacheMock();
+      cache.setChildren(100, [{ pid: 200, comm: "node", command: "<defunct>" }]);
+      const callback = vi.fn();
+      const detector = new ProcessDetector(
+        "terminal-zombie-only",
+        Date.now(),
+        100,
+        callback,
+        cache as never
+      );
+      detector.start();
+      cache.emitRefresh();
+      // No children after filtering → should be no_agent (negative evidence)
+      expect(callback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          detected: false,
+          detectionState: "no_agent",
+        }),
+        expect.any(Number)
+      );
+    });
+
+    it("reports isBusy: true with mixed live and defunct children", () => {
+      const cache = createCacheMock();
+      cache.setChildren(100, [
+        { pid: 200, comm: "node", command: "<defunct>" },
+        { pid: 201, comm: "claude", command: "claude --resume" },
+      ]);
+      const callback = vi.fn();
+      const detector = new ProcessDetector(
+        "terminal-mixed-defunct",
+        Date.now(),
+        100,
+        callback,
+        cache as never
+      );
+      detector.start();
+      cache.emitRefresh();
+      expect(callback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          detected: true,
+          detectionState: "agent",
+        }),
+        expect.any(Number)
+      );
+    });
+
+    it("unmatched-children diagnostic skips defunct entries", () => {
+      const cache = createCacheMock();
+      cache.setChildren(100, [{ pid: 200, comm: "bash", command: "<defunct>" }]);
+      const callback = vi.fn();
+      const detector = new ProcessDetector(
+        "terminal-defunct-diag",
+        Date.now(),
+        100,
+        callback,
+        cache as never
+      );
+      detector.start();
+      cache.emitRefresh();
+      // No live children → no_agent. The defunct child is filtered before
+      // the processes mapping, so the diagnostic never sees it.
+      expect(callback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          detected: false,
+          detectionState: "no_agent",
+        }),
+        expect.any(Number)
+      );
+    });
+  });
 });
 
 describe("extractScriptBasenameFromCommand", () => {
@@ -1205,11 +1371,14 @@ describe("extractScriptBasenameFromCommand", () => {
     );
   });
 
-  it("strips .js / .mjs / .cjs / .ts / .py / .rb extensions", () => {
+  it("strips .js / .mjs / .cjs / .ts / .py / .rb / .tsx / .jsx extensions", () => {
     expect(extractScriptBasenameFromCommand("node /path/to/gemini.mjs")).toBe("gemini");
     expect(extractScriptBasenameFromCommand("python3 /opt/script.py")).toBe("script");
     expect(extractScriptBasenameFromCommand("ruby /opt/tool.rb")).toBe("tool");
     expect(extractScriptBasenameFromCommand("deno /opt/thing.ts")).toBe("thing");
+    expect(extractScriptBasenameFromCommand("node /path/to/claude.tsx --flag")).toBe("claude");
+    expect(extractScriptBasenameFromCommand("node /path/to/claude.jsx --flag")).toBe("claude");
+    expect(extractScriptBasenameFromCommand("node /path/to/claude.mjsx --flag")).toBe("claude");
   });
 
   it("extracts command basenames from quoted absolute launch paths", () => {
@@ -1233,8 +1402,46 @@ describe("extractScriptBasenameFromCommand", () => {
     });
   });
 
+  it("detects agents from PowerShell launch commands that call Windows shims", () => {
+    expect(
+      extractCommandNameCandidates("& 'C:\\npm\\prefix\\claude.cmd' --dangerously-skip-permissions")
+    ).toEqual(["claude"]);
+    expect(
+      detectCommandIdentity("& 'C:\\npm\\prefix\\claude.cmd' --dangerously-skip-permissions")
+    ).toMatchObject({
+      agentType: "claude",
+      processIconId: "claude",
+      processName: "claude",
+    });
+  });
+
   it("skips leading flags", () => {
     expect(extractScriptBasenameFromCommand("node --inspect /path/to/claude")).toBe("claude");
+  });
+
+  it("bumps candidate cap to 5 and skips pure-numeric tokens", () => {
+    expect(extractCommandNameCandidates("time nice -n 10 claude")).toContain("claude");
+    expect(extractCommandNameCandidates("time nice -n 10 claude")).not.toContain("10");
+    expect(extractCommandNameCandidates("time nice -n 10 -adjust 3.14 npx claude")).toEqual([
+      "time",
+      "nice",
+      "npx",
+      "claude",
+    ]);
+  });
+
+  it("fills all 5 candidate slots from a deep wrapper stack", () => {
+    // 6 non-flag, non-numeric tokens before the agent — cap of 5 verified
+    // (slot 6 'codex' should be excluded by the cap)
+    const candidates = extractCommandNameCandidates("env FOO=bar direnv exec mise x npx codex");
+    expect(candidates).toHaveLength(5);
+    expect(candidates).toEqual(["env", "direnv", "exec", "mise", "x"]);
+  });
+
+  it("preserves names containing digits (not pure-numeric)", () => {
+    const candidates = extractCommandNameCandidates("node20 /path/to/claude2 --flag");
+    expect(candidates).toContain("node20");
+    expect(candidates).toContain("claude2");
   });
 
   it("returns null for a bare runtime (no argv[1])", () => {

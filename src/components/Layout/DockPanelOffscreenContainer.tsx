@@ -10,6 +10,7 @@ import {
 import { createPortal } from "react-dom";
 import { useShallow } from "zustand/react/shallow";
 import { usePanelStore, useWorktreeSelectionStore, type TerminalInstance } from "@/store";
+import { useHelpPanelStore } from "@/store/helpPanelStore";
 import { DockedPanel } from "@/components/Terminal/DockedPanel";
 import { buildPanelDuplicateOptions } from "@/services/terminal/panelDuplicationService";
 import { logError } from "@/utils/logger";
@@ -45,6 +46,7 @@ export function DockPanelOffscreenContainer({ children }: DockPanelOffscreenCont
 
   const activeWorktreeId = useWorktreeSelectionStore((s) => s.activeWorktreeId);
   const activeDockTerminalId = usePanelStore((s) => s.activeDockTerminalId);
+  const helpTerminalId = useHelpPanelStore((s) => s.terminalId);
   const dockTerminals = usePanelStore(
     useShallow((s) => {
       const result: TerminalInstance[] = [];
@@ -54,6 +56,7 @@ export function DockPanelOffscreenContainer({ children }: DockPanelOffscreenCont
           t &&
           t.location === "dock" &&
           !s.trashedTerminals.has(t.id) &&
+          t.id !== helpTerminalId &&
           // Show terminals that match active worktree OR have no worktree (global terminals)
           (t.worktreeId == null || t.worktreeId === activeWorktreeId)
         ) {
@@ -71,7 +74,6 @@ export function DockPanelOffscreenContainer({ children }: DockPanelOffscreenCont
   const addPanelToGroup = usePanelStore((s) => s.addPanelToGroup);
   const deleteTabGroup = usePanelStore((s) => s.deleteTabGroup);
   const setActiveTab = usePanelStore((s) => s.setActiveTab);
-  const openDockTerminal = usePanelStore((s) => s.openDockTerminal);
 
   const handlePopoverClose = useCallback(() => {
     closeDockTerminal();
@@ -80,6 +82,9 @@ export function DockPanelOffscreenContainer({ children }: DockPanelOffscreenCont
   useEffect(() => {
     if (!activeDockTerminalId) return;
     if (dockTerminals.some((terminal) => terminal.id === activeDockTerminalId)) return;
+    // Harden against transient states where the panel exists in the canonical
+    // store but hasn't yet landed in the filtered dockTerminals view (#7278).
+    if (usePanelStore.getState().panelsById[activeDockTerminalId]) return;
     closeDockTerminal();
   }, [activeDockTerminalId, dockTerminals, closeDockTerminal]);
 
@@ -99,7 +104,9 @@ export function DockPanelOffscreenContainer({ children }: DockPanelOffscreenCont
         }
 
         const options = await buildPanelDuplicateOptions(panel, "dock");
-        const newPanelId = await addPanel(options);
+        // `activateDockOnCreate` folds dock activation into the panel commit so
+        // the watchdog effect cannot collapse the just-created tab. See #6590.
+        const newPanelId = await addPanel({ ...options, activateDockOnCreate: true });
         if (!newPanelId) {
           if (createdNewGroup && groupId!) deleteTabGroup(groupId);
           return;
@@ -107,7 +114,6 @@ export function DockPanelOffscreenContainer({ children }: DockPanelOffscreenCont
 
         addPanelToGroup(groupId, newPanelId);
         setActiveTab(groupId, newPanelId);
-        openDockTerminal(newPanelId);
       } catch (error) {
         logError("Failed to add tab", error);
         if (createdNewGroup && groupId!) {
@@ -115,15 +121,7 @@ export function DockPanelOffscreenContainer({ children }: DockPanelOffscreenCont
         }
       }
     },
-    [
-      getPanelGroup,
-      createTabGroup,
-      addPanelToGroup,
-      deleteTabGroup,
-      addPanel,
-      setActiveTab,
-      openDockTerminal,
-    ]
+    [getPanelGroup, createTabGroup, addPanelToGroup, deleteTabGroup, addPanel, setActiveTab]
   );
 
   // Create offscreen slots eagerly after container mounts

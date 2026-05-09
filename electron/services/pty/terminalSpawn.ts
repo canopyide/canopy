@@ -1,12 +1,21 @@
 import * as pty from "node-pty";
+import path from "node:path";
 import {
   filterEnvironment,
   injectDaintreeMetadata,
   ensureUtf8Locale,
 } from "./EnvironmentFilter.js";
 import { getDefaultShell, getDefaultShellArgs } from "./terminalShell.js";
+import { computePoolEnvHash } from "./ptyPoolEnvHash.js";
 import type { PtySpawnOptions } from "./types.js";
 import type { PtyPool } from "../PtyPool.js";
+
+// Agent CLIs that ship as Node binaries and benefit from V8 bytecode
+// caching across launches. Codex is a Rust binary and would silently
+// no-op; the rest are excluded conservatively until we confirm their
+// runtime. NODE_COMPILE_CACHE has been respected by Node ≥22.1; older
+// runtimes silently ignore it.
+const NODE_COMPILE_CACHE_AGENTS: ReadonlySet<string> = new Set(["claude", "gemini"]);
 
 export interface SpawnContext {
   shell: string;
@@ -18,7 +27,36 @@ export function computeSpawnContext(id: string, options: PtySpawnOptions): Spawn
   const shell = options.shell || getDefaultShell();
   const args = options.args || getDefaultShellArgs(shell);
   const env = buildTerminalEnv(options, id, shell);
+  injectAgentStartupProfiling(env, options);
   return { shell, args, env };
+}
+
+/**
+ * Dev-only opt-in CPU profiling for agent CLI startup. Activates when ALL of:
+ *   - `options.launchAgentId` is set (agent panel, not a plain shell)
+ *   - `DAINTREE_PROFILE_AGENT_STARTUP === "1"` (caller opt-in)
+ *   - `DAINTREE_IS_PACKAGED === "0"` (forwarded by `PtyHostLifecycle`; the
+ *      strict-equality check disables profiling whenever the flag is missing
+ *      or anything other than `"0"`)
+ *   - `DAINTREE_USER_DATA` is available (target directory for `.cpuprofile`s)
+ *
+ * Appends `--cpu-prof --cpu-prof-dir=<userData>/agent-profiles` to any existing
+ * `NODE_OPTIONS`. Note this is inherited by every Node.js child process the
+ * agent spawns (npm, tsc, MCP servers); the resulting `.cpuprofile` files are
+ * still loadable in Chrome DevTools but the directory will fill with
+ * subprocess profiles too. See `docs/development.md` for the full caveat.
+ */
+function injectAgentStartupProfiling(env: Record<string, string>, options: PtySpawnOptions): void {
+  if (!options.launchAgentId) return;
+  if (process.env.DAINTREE_PROFILE_AGENT_STARTUP !== "1") return;
+  if (process.env.DAINTREE_IS_PACKAGED !== "0") return;
+  const userData = process.env.DAINTREE_USER_DATA;
+  if (!userData) return;
+
+  const profileDir = path.join(userData, "agent-profiles");
+  const injection = `--cpu-prof --cpu-prof-dir=${profileDir}`;
+  const existing = env.NODE_OPTIONS;
+  env.NODE_OPTIONS = existing && existing.length > 0 ? `${existing} ${injection}` : injection;
 }
 
 /**
@@ -62,6 +100,22 @@ export function buildTerminalEnv(
   mergedEnv.FORCE_COLOR = mergedEnv.FORCE_COLOR ?? "3";
   mergedEnv.COLORTERM = mergedEnv.COLORTERM ?? "truecolor";
 
+  // V8 bytecode cache for Node-based agent CLIs. Path is per-agent to
+  // avoid cross-CLI cache invalidation; Node also auto-isolates by
+  // version + V8 flags so a single dir is safe across runtime upgrades.
+  // Only set when DAINTREE_USER_DATA is available (production) and the
+  // caller has not provided an explicit override via intentionalEnv.
+  const userData = process.env.DAINTREE_USER_DATA;
+  const launchAgentId = options.launchAgentId;
+  if (
+    userData &&
+    launchAgentId &&
+    NODE_COMPILE_CACHE_AGENTS.has(launchAgentId) &&
+    mergedEnv.NODE_COMPILE_CACHE === undefined
+  ) {
+    mergedEnv.NODE_COMPILE_CACHE = path.join(userData, "agent-compile-cache", launchAgentId);
+  }
+
   return ensureUtf8Locale(mergedEnv);
 }
 
@@ -74,20 +128,16 @@ export function acquirePtyProcess(
   ptyPool: PtyPool | null,
   onWriteError: (error: unknown, context: { operation: string }) => void
 ): pty.IPty {
-  // The pool is a global singleton pre-warmed at whichever project most
-  // recently called drainAndRefill(). In multi-window setups a different
-  // window may have drained the pool to a different cwd, so skip the pool
-  // when its current cwd doesn't match the caller's request — the direct
-  // pty.spawn below will honour options.cwd via node-pty's kernel chdir.
-  const poolCwdMatches = ptyPool ? ptyPool.getDefaultCwd() === options.cwd : false;
-  const canUsePool =
-    ptyPool &&
-    poolCwdMatches &&
-    !options.shell &&
-    !options.env &&
-    !options.args &&
-    options.kind !== "dev-preview";
-  let pooledPty = canUsePool ? ptyPool!.acquire() : null;
+  // The pool is a global singleton; entries are keyed by (cwd, envHash).
+  // We can hit the pool whenever the pool exists and the request is a plain
+  // shell launch (no custom shell/args, not a dev-preview pane). The env-hash
+  // lookup handles cases where another window pre-warmed at a different cwd
+  // or with different env additions — those entries simply don't match the
+  // wanted key and we fall through to fresh spawn + background warm.
+  const canUsePool = !!ptyPool && !options.shell && !options.args && options.kind !== "dev-preview";
+  const envHash = canUsePool ? computePoolEnvHash(options.env) : null;
+  let pooledPty =
+    canUsePool && envHash !== null ? ptyPool!.acquireByKey(options.cwd, envHash) : null;
   // Suppress unused-parameter lint for the write-error callback; kept in the
   // signature so future pool-acquisition logic (e.g. agent-preamble writes) can
   // still report through the same channel.
@@ -124,6 +174,13 @@ export function acquirePtyProcess(
     }
 
     return pooledPty;
+  }
+
+  // Pool miss — kick off a background warm for this exact (cwd, envHash) key
+  // so the next spawn with the same shape hits the pool. The fresh spawn
+  // below proceeds in parallel; the warm is fire-and-forget.
+  if (canUsePool && envHash !== null) {
+    ptyPool!.warmForKey(options.cwd, options.env, envHash);
   }
 
   try {

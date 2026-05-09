@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { useEventStore, type EventRecord, type EventFilterOptions } from "@/store/eventStore";
 import { Copy, Check, ChevronDown, ChevronRight, Filter, X } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { logError } from "@/utils/logger";
+import { sanitizeErrorText } from "@/utils/errorText";
 
 interface EventDetailProps {
   event: EventRecord | null;
@@ -61,12 +62,17 @@ export function EventDetail({ event, className }: EventDetailProps) {
   const setFilters = useEventStore((state) => state.setFilters);
   const [copied, setCopied] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["payload"]));
-  const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleContextToggle = (key: keyof EventFilterOptions, value: string | number) => {
     const newValue = filters[key] === value ? undefined : value;
     setFilters({ [key]: newValue });
   };
+
+  const formattedPayload = useMemo(
+    () => (event ? JSON.stringify(event.payload, null, 2) : ""),
+    [event]
+  );
 
   useEffect(() => {
     setCopied(false);
@@ -75,6 +81,15 @@ export function EventDetail({ event, className }: EventDetailProps) {
       copyTimeoutRef.current = null;
     }
   }, [event]);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+        copyTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   if (!event) {
     return (
@@ -103,8 +118,7 @@ export function EventDetail({ event, className }: EventDetailProps) {
 
   const copyPayload = async () => {
     try {
-      const payloadStr = JSON.stringify(event.payload, null, 2);
-      await navigator.clipboard.writeText(payloadStr);
+      await navigator.clipboard.writeText(sanitizeErrorText(formattedPayload));
       setCopied(true);
 
       if (copyTimeoutRef.current) {
@@ -231,7 +245,7 @@ export function EventDetail({ event, className }: EventDetailProps) {
         {expandedSections.has("payload") && (
           <div className="flex-1 overflow-auto px-4 pb-3">
             <pre className="text-xs font-mono bg-muted/50 p-3 rounded overflow-x-auto select-text">
-              {JSON.stringify(event.payload, null, 2)}
+              {formattedPayload}
             </pre>
           </div>
         )}

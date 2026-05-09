@@ -12,7 +12,12 @@ import {
 } from "@/components/Project/projectSettingsDirty";
 import { validatePathPattern } from "@shared/utils/pathPattern";
 import type { RunCommand, CopyTreeSettings } from "@/types";
-import type { ProjectTerminalSettings, ResourceEnvironment } from "@shared/types/project";
+import type {
+  DaintreeMcpTier,
+  ProjectTerminalSettings,
+  ResourceEnvironment,
+} from "@shared/types/project";
+import { resolveDaintreeMcpTier } from "@shared/types/project";
 import type { CommandOverride } from "@shared/types/commands";
 import type { NotificationSettings } from "@shared/types/ipc/api";
 import { SCROLLBACK_MIN, SCROLLBACK_MAX } from "@shared/config/scrollback";
@@ -51,6 +56,7 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
   const [devServerCommand, setDevServerCommand] = useState<string>("");
   const [devServerLoadTimeout, setDevServerLoadTimeout] = useState<number | undefined>(undefined);
   const [turbopackEnabled, setTurbopackEnabled] = useState<boolean>(true);
+  const [daintreeMcpTier, setDaintreeMcpTier] = useState<DaintreeMcpTier>("off");
   const [commandOverrides, setCommandOverrides] = useState<CommandOverride[]>([]);
   const [copyTreeSettings, setCopyTreeSettings] = useState<CopyTreeSettings>({});
   const [branchPrefixMode, setBranchPrefixMode] = useState<"none" | "username" | "custom">("none");
@@ -133,7 +139,8 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
       resourceEnvironments,
       activeResourceEnvironment,
       defaultWorktreeMode,
-      turbopackEnabled
+      turbopackEnabled,
+      daintreeMcpTier
     );
   }, [
     projectName,
@@ -159,6 +166,7 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
     activeResourceEnvironment,
     defaultWorktreeMode,
     turbopackEnabled,
+    daintreeMcpTier,
   ]);
   useEffect(() => {
     currentProjectSnapshotRef.current = currentProjectSnapshot;
@@ -181,6 +189,7 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
       setDevServerCommand("");
       setDevServerLoadTimeout(undefined);
       setTurbopackEnabled(true);
+      setDaintreeMcpTier("off");
       setCommandOverrides([]);
       setCopyTreeSettings({});
       setProjectAutoSaveError(null);
@@ -217,6 +226,7 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
     const initialDevServerCommand = projectSettings.devServerCommand || "";
     const initialDevServerLoadTimeout = projectSettings.devServerLoadTimeout;
     const initialTurbopackEnabled = projectSettings.turbopackEnabled ?? true;
+    const initialDaintreeMcpTier = resolveDaintreeMcpTier(projectSettings);
     const initialCommandOverrides = projectSettings.commandOverrides || [];
     const initialCopyTreeSettings = projectSettings.copyTreeSettings || {};
     const initialBranchPrefixMode = projectSettings.branchPrefixMode ?? "none";
@@ -256,6 +266,7 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
     setDevServerCommand(initialDevServerCommand);
     setDevServerLoadTimeout(initialDevServerLoadTimeout);
     setTurbopackEnabled(initialTurbopackEnabled);
+    setDaintreeMcpTier(initialDaintreeMcpTier);
     setCommandOverrides(initialCommandOverrides);
     setCopyTreeSettings(initialCopyTreeSettings);
     setBranchPrefixMode(initialBranchPrefixMode);
@@ -297,7 +308,8 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
       initialResourceEnvironments,
       initialActiveResourceEnvironment,
       initialDefaultWorktreeMode,
-      initialTurbopackEnabled
+      initialTurbopackEnabled,
+      initialDaintreeMcpTier
     );
     setProjectIsInitialized(true);
   }, [projectSettings, isOpen, projectIsInitialized, currentProject, projectIsLoading, projectId]);
@@ -383,6 +395,8 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
         devServerCommand: devServerCommand.trim() || undefined,
         devServerLoadTimeout,
         turbopackEnabled: turbopackEnabled === true ? undefined : false,
+        daintreeMcpTier: daintreeMcpTier !== "off" ? daintreeMcpTier : undefined,
+        exposeDaintreeMcpToAgents: undefined,
         commandOverrides: commandOverrides.length > 0 ? commandOverrides : undefined,
         copyTreeSettings: hasCopyTreeSettings ? sanitizedCopyTreeSettings : undefined,
         branchPrefixMode: effectivePrefixMode !== "none" ? effectivePrefixMode : undefined,
@@ -460,6 +474,8 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
     setDevServerLoadTimeout,
     turbopackEnabled,
     setTurbopackEnabled,
+    daintreeMcpTier,
+    setDaintreeMcpTier,
     commandOverrides,
     setCommandOverrides,
     copyTreeSettings,

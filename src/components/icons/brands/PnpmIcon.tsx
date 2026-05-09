@@ -1,20 +1,19 @@
+import type { SVGProps } from "react";
 import { cn } from "@/lib/utils";
 
-interface PnpmIconProps {
-  className?: string;
+type PnpmIconProps = SVGProps<SVGSVGElement> & {
   size?: number;
-}
+};
 
-export function PnpmIcon({ className, size = 16 }: PnpmIconProps) {
+export function PnpmIcon({ className, size = 16, ...props }: PnpmIconProps) {
   return (
     <svg
       width={size}
       height={size}
       viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
       className={cn(className)}
       aria-hidden="true"
+      {...props}
     >
       <path
         fill="currentColor"

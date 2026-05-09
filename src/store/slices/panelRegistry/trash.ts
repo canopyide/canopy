@@ -3,6 +3,7 @@ import type { PanelRegistryStoreApi } from "./types";
 export interface TrashExpiryHelpers {
   clearTrashExpiryTimer: (id: string) => void;
   scheduleTrashExpiry: (id: string, expiresAt: number) => void;
+  cleanupTrashExpiryListeners: () => void;
 }
 
 export const createTrashExpiryHelpers = (
@@ -42,5 +43,55 @@ export const createTrashExpiryHelpers = (
     trashExpiryTimers.set(id, timer);
   };
 
-  return { clearTrashExpiryTimer, scheduleTrashExpiry };
+  // Sweep expired trash entries on visibility restore. Chromium's
+  // IntensiveWakeUpThrottling coalesces setTimeout wake-ups to max 1/minute
+  // when the document is hidden, so the 20s trash TTL timer can fire 30-60s
+  // late. On visibility restore, immediately remove any entry whose wall-clock
+  // expiry has passed.
+  const sweepExpiredTrash = () => {
+    const state = get();
+    const now = Date.now();
+    for (const [id, trashedInfo] of Array.from(state.trashedTerminals.entries())) {
+      if (trashedInfo.expiresAt > now) continue;
+      const terminal = state.panelsById[id];
+      try {
+        if (terminal?.location === "trash") {
+          state.removePanel(id);
+        } else {
+          // Terminal either doesn't exist or isn't in trash — the trash
+          // metadata is stale/corrupted. Clean it up without touching
+          // the terminal itself.
+          set((state) => {
+            if (!state.trashedTerminals.has(id)) return state;
+            const newTrashed = new Map(state.trashedTerminals);
+            newTrashed.delete(id);
+            return { trashedTerminals: newTrashed };
+          });
+        }
+      } catch {
+        // Abort this entry but continue sweeping remaining entries.
+      }
+    }
+  };
+
+  const handleVisibilityChange = () => {
+    if (typeof document === "undefined") return;
+    if (document.visibilityState !== "visible") return;
+    sweepExpiredTrash();
+  };
+
+  let visibilityListenerAttached = false;
+  if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    visibilityListenerAttached = true;
+  }
+
+  const cleanupTrashExpiryListeners = () => {
+    if (visibilityListenerAttached) {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      visibilityListenerAttached = false;
+    }
+  };
+
+  return { clearTrashExpiryTimer, scheduleTrashExpiry, cleanupTrashExpiryListeners };
 };

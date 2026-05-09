@@ -3,6 +3,9 @@ import path from "node:path";
 import { mkdirSync } from "node:fs";
 import { app } from "electron";
 import { logDebug, logInfo, logWarn } from "../utils/logger.js";
+import { setAlignedInterval } from "../utils/setAlignedInterval.js";
+import { getSystemSleepService } from "./SystemSleepService.js";
+import { getWritesSuppressed } from "./diskPressureState.js";
 
 const POLL_INTERVAL_MS = 30_000;
 const SNAPSHOT_COOLDOWN_MS = 5 * 60 * 1000;
@@ -86,6 +89,93 @@ export function getBlinkSamples(): ReadonlyMap<number, BlinkMemorySample> {
   return blinkSamples;
 }
 
+/** Ratio (blocking / sample window) considered "saturated" for a single sample. */
+export const RENDERER_ELU_HIGH_RATIO = 0.85;
+
+/**
+ * Number of consecutive saturated samples required before logging a
+ * sustained-high warning. POLL_INTERVAL_MS is 30s, so 6 samples = 3 minutes
+ * of continuous saturation. A single sub-threshold sample resets the streak.
+ */
+export const RENDERER_ELU_HIGH_SAMPLE_COUNT = 6;
+
+export interface RendererEluSample {
+  /** Total LoAF blockingDuration accumulated by the preload over the window, in ms. */
+  blockingDurationMs: number;
+  /** Wall-clock width of the sample window the preload measured against, in ms. */
+  sampleWindowMs: number;
+  /** Derived ratio = blockingDurationMs / sampleWindowMs, clamped to [0, 1]. */
+  ratio: number;
+  /** Wall-clock time the sample was recorded. */
+  timestamp: number;
+}
+
+const eluSamples = new Map<number, RendererEluSample>();
+const eluHighStreak = new Map<number, number>();
+
+/**
+ * Called by the IPC handler when a renderer reports its accumulated long-
+ * animation-frame blocking time. Keyed by webContents id; cleared on view
+ * eviction via `forgetEluSample`. Logs at debug level for every sample;
+ * emits exactly one `renderer-elu-sustained-high` warn when the per-view
+ * streak first hits {@link RENDERER_ELU_HIGH_SAMPLE_COUNT}. The streak
+ * continues incrementing past the threshold, but only the boundary crossing
+ * is logged to avoid flooding.
+ */
+export function recordEluSample(
+  webContentsId: number,
+  payload: { blockingDurationMs: number; sampleWindowMs: number }
+): void {
+  const { blockingDurationMs, sampleWindowMs } = payload;
+  if (sampleWindowMs <= 0) return;
+  const rawRatio = blockingDurationMs / sampleWindowMs;
+  const ratio = rawRatio < 0 ? 0 : rawRatio > 1 ? 1 : rawRatio;
+  const stored: RendererEluSample = {
+    blockingDurationMs,
+    sampleWindowMs,
+    ratio,
+    timestamp: Date.now(),
+  };
+  eluSamples.set(webContentsId, stored);
+  logDebug("renderer-elu-sample", {
+    webContentsId,
+    ratio: Math.round(ratio * 100) / 100,
+    blockingDurationMs: Math.round(blockingDurationMs),
+    sampleWindowMs,
+  });
+
+  if (ratio >= RENDERER_ELU_HIGH_RATIO) {
+    const next = (eluHighStreak.get(webContentsId) ?? 0) + 1;
+    eluHighStreak.set(webContentsId, next);
+    if (next === RENDERER_ELU_HIGH_SAMPLE_COUNT) {
+      logWarn("renderer-elu-sustained-high", {
+        webContentsId,
+        ratio: Math.round(ratio * 100) / 100,
+        consecutiveSamples: next,
+        windowMs: sampleWindowMs * next,
+      });
+    }
+  } else {
+    eluHighStreak.delete(webContentsId);
+  }
+}
+
+/** Drop a renderer's last ELU sample and streak (call from view eviction). */
+export function forgetEluSample(webContentsId: number): void {
+  eluSamples.delete(webContentsId);
+  eluHighStreak.delete(webContentsId);
+}
+
+/** Read-only view for diagnostics / tests. */
+export function getEluSamples(): ReadonlyMap<number, RendererEluSample> {
+  return eluSamples;
+}
+
+/** Read-only view of per-view consecutive saturated-sample counts (tests). */
+export function getEluHighStreaks(): ReadonlyMap<number, number> {
+  return eluHighStreak;
+}
+
 export interface MemoryPressureActions {
   clearCaches: () => Promise<void>;
   destroyHiddenWebviews: (tier: 1 | 2) => Promise<void>;
@@ -99,28 +189,56 @@ export interface MemoryPressureActions {
    * `system:report-blink-memory` IPC channel which calls `recordBlinkSample`.
    */
   sampleBlinkMemory?: () => void;
+  /**
+   * Optional renderer event-loop utilization sampler. If wired, fans a
+   * `window:sample-renderer-elu` push event to every active renderer (cached
+   * views are skipped — JS timer throttling makes their samples meaningless).
+   * Renderers reply via `system:report-renderer-elu` which calls
+   * `recordEluSample`. Failures are non-critical observability.
+   */
+  sampleRendererElu?: () => void;
 }
 
 function getProcessMemoryMb(proc: Electron.ProcessMetric): number {
   return (proc.memory.privateBytes ?? proc.memory.workingSetSize) / 1024;
 }
 
+let currentAppMetricsPollIntervalMs = POLL_INTERVAL_MS;
+let rearmAppMetricsTimer: (() => void) | null = null;
+let appMetricsPollFn: (() => void) | null = null;
+
+export function setAppMetricsMonitorPollInterval(ms: number): void {
+  if (ms === currentAppMetricsPollIntervalMs) return;
+  currentAppMetricsPollIntervalMs = ms;
+  rearmAppMetricsTimer?.();
+}
+
+export function refreshAppMetricsMonitor(): void {
+  appMetricsPollFn?.();
+}
+
 export function startAppMetricsMonitor(actions?: MemoryPressureActions): () => void {
   const snapshotCooldowns = new Map<number, number>();
   const trendState = new Map<number, PidTrendState>();
+  let removeSuspendListener: (() => void) | null = null;
+  let removeWakeListener: (() => void) | null = null;
   let pollCount = 0;
   let consecutivePressureCount = 0;
   let lastTier2At = 0;
   let mitigationInFlight = false;
+  const thresholdExceededPids = new Set<number>();
+  const trendWarnedPids = new Set<number>();
 
-  const timer = setInterval(() => {
+  const poll = () => {
     try {
       pollCount++;
-      // Kick off a Blink-memory sample fan-out for this tick. Renderer replies
-      // arrive asynchronously via the SYSTEM_REPORT_BLINK_MEMORY handler and
-      // populate `blinkSamples` for the next poll's diagnostics.
       try {
         actions?.sampleBlinkMemory?.();
+      } catch {
+        /* non-critical */
+      }
+      try {
+        actions?.sampleRendererElu?.();
       } catch {
         /* non-critical */
       }
@@ -138,15 +256,19 @@ export function startAppMetricsMonitor(actions?: MemoryPressureActions): () => v
         const threshold = WARN_THRESHOLDS_MB[proc.type];
         if (threshold !== undefined && mb > threshold) {
           hasPressure = true;
-          logWarn("process-memory-threshold-exceeded", {
-            pid: proc.pid,
-            type: proc.type,
-            mb: Math.round(mb),
-            thresholdMb: threshold,
-          });
+          if (!thresholdExceededPids.has(proc.pid)) {
+            thresholdExceededPids.add(proc.pid);
+            logWarn("process-memory-threshold-exceeded", {
+              pid: proc.pid,
+              type: proc.type,
+              mb: Math.round(mb),
+              thresholdMb: threshold,
+            });
+          }
+        } else if (threshold !== undefined) {
+          thresholdExceededPids.delete(proc.pid);
         }
 
-        // Trend detection: bucket-minimum + EMA
         let state = trendState.get(proc.pid);
         if (!state) {
           state = {
@@ -169,7 +291,6 @@ export function startAppMetricsMonitor(actions?: MemoryPressureActions): () => v
             state.emaHistory.shift();
           }
 
-          // Evaluate trend with dual suppression
           if (
             Date.now() - state.startedAt >= STARTUP_SUPPRESSION_MS &&
             state.emaHistory.length === BUCKET_WINDOW
@@ -179,11 +300,16 @@ export function startAppMetricsMonitor(actions?: MemoryPressureActions): () => v
             const windowHours = ((BUCKET_WINDOW - 1) * 60) / 3600;
             const growthMbPerHour = (newest - oldest) / windowHours;
             if (growthMbPerHour > TREND_WARN_MB_PER_HOUR) {
-              logWarn("process-memory-trend-warning", {
-                pid: proc.pid,
-                type: proc.type,
-                growthMbPerHour: Math.round(growthMbPerHour),
-              });
+              if (!trendWarnedPids.has(proc.pid)) {
+                trendWarnedPids.add(proc.pid);
+                logWarn("process-memory-trend-warning", {
+                  pid: proc.pid,
+                  type: proc.type,
+                  growthMbPerHour: Math.round(growthMbPerHour),
+                });
+              }
+            } else if (growthMbPerHour <= 0) {
+              trendWarnedPids.delete(proc.pid);
             }
           }
 
@@ -196,12 +322,19 @@ export function startAppMetricsMonitor(actions?: MemoryPressureActions): () => v
           const last = snapshotCooldowns.get(proc.pid) ?? 0;
           if (now - last > SNAPSHOT_COOLDOWN_MS) {
             try {
-              const dir = app.getPath("logs");
-              mkdirSync(dir, { recursive: true });
-              const file = path.join(dir, `heap-${proc.pid}-${now}.heapsnapshot`);
-              const written = v8.writeHeapSnapshot(file);
-              snapshotCooldowns.set(proc.pid, now);
-              logWarn("heap-snapshot-written", { path: written });
+              if (getWritesSuppressed()) {
+                logDebug("heap-snapshot-suppressed", {
+                  pid: proc.pid,
+                  reason: "disk-pressure-write-gate",
+                });
+              } else {
+                const dir = app.getPath("logs");
+                mkdirSync(dir, { recursive: true });
+                const file = path.join(dir, `heap-${proc.pid}-${now}.heapsnapshot`);
+                const written = v8.writeHeapSnapshot(file);
+                snapshotCooldowns.set(proc.pid, now);
+                logWarn("heap-snapshot-written", { path: written });
+              }
             } catch (err) {
               logWarn("heap-snapshot-failed", { error: String(err) });
             }
@@ -209,9 +342,14 @@ export function startAppMetricsMonitor(actions?: MemoryPressureActions): () => v
         }
       }
 
-      // Prune stale PID state
       for (const pid of trendState.keys()) {
         if (!activePids.has(pid)) trendState.delete(pid);
+      }
+      for (const pid of thresholdExceededPids) {
+        if (!activePids.has(pid)) thresholdExceededPids.delete(pid);
+      }
+      for (const pid of trendWarnedPids) {
+        if (!activePids.has(pid)) trendWarnedPids.delete(pid);
       }
       for (const pid of snapshotCooldowns.keys()) {
         if (!activePids.has(pid)) snapshotCooldowns.delete(pid);
@@ -268,8 +406,45 @@ export function startAppMetricsMonitor(actions?: MemoryPressureActions): () => v
     } catch (err) {
       logWarn("process-memory-poll-failed", { error: String(err) });
     }
-  }, POLL_INTERVAL_MS);
+  };
 
-  timer.unref();
-  return () => clearInterval(timer);
+  appMetricsPollFn = poll;
+
+  let clearAlignedInterval: (() => void) | null = null;
+  const armTimer = () => {
+    clearAlignedInterval?.();
+    clearAlignedInterval = setAlignedInterval(poll, currentAppMetricsPollIntervalMs);
+  };
+  rearmAppMetricsTimer = armTimer;
+
+  armTimer();
+
+  try {
+    removeSuspendListener = getSystemSleepService().onSuspend(() => {
+      clearAlignedInterval?.();
+      clearAlignedInterval = null;
+      trendState.clear();
+      thresholdExceededPids.clear();
+      trendWarnedPids.clear();
+      consecutivePressureCount = 0;
+      lastTier2At = 0;
+      mitigationInFlight = false;
+    });
+    removeWakeListener = getSystemSleepService().onWake(() => {
+      if (clearAlignedInterval !== null) return;
+      poll();
+      armTimer();
+    });
+  } catch {
+    // SystemSleepService may not be initialized yet at early startup.
+  }
+
+  return () => {
+    clearAlignedInterval?.();
+    clearAlignedInterval = null;
+    appMetricsPollFn = null;
+    rearmAppMetricsTimer = null;
+    removeSuspendListener?.();
+    removeWakeListener?.();
+  };
 }

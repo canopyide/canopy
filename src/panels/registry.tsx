@@ -1,7 +1,8 @@
-import { Suspense, lazy, type ComponentType } from "react";
+import { Suspense, lazy, type ComponentProps, type ComponentType } from "react";
 import type { PanelKindConfig } from "@shared/config/panelKindRegistry";
 import { getPanelKindConfig } from "@shared/config/panelKindRegistry";
 import type { PtyPanelData, BrowserPanelData, DevPreviewPanelData } from "@shared/types/panel";
+import { isBuiltInPanelKind } from "@shared/types/panel";
 import type {
   TerminalPanelOptions,
   BrowserPanelOptions,
@@ -11,6 +12,8 @@ import type { PanelSnapshot } from "@shared/types/project";
 import { TerminalPane } from "@/components/Terminal/TerminalPane";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { BrowserPaneSkeleton } from "@/components/Browser/BrowserPaneSkeleton";
+import { ContentFadeIn } from "@/components/ui/ContentFadeIn";
+import { logError } from "@/utils/logger";
 
 import { serializePtyPanel } from "./terminal/serializer";
 import { createTerminalDefaults } from "./terminal/defaults";
@@ -32,7 +35,6 @@ export interface PanelComponentProps {
   onMinimize?: () => void;
   onRestore?: () => void;
   gridPanelCount?: number;
-  isTrashing?: boolean;
   extensionState?: Record<string, unknown>;
   [key: string]: unknown;
 }
@@ -53,23 +55,25 @@ const LazyDevPreviewPane = lazy(() =>
 // correct componentName attribution on chunk-load failures. The per-panel
 // boundary in GridPanel catches render errors; this wrapper catches import
 // failures with proper attribution — the two boundaries serve different roles.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function BrowserPaneWrapper(props: any) {
+function BrowserPaneWrapper(props: ComponentProps<typeof LazyBrowserPane>) {
   return (
     <ErrorBoundary variant="component" componentName="BrowserPane">
       <Suspense fallback={<BrowserPaneSkeleton />}>
-        <LazyBrowserPane {...props} />
+        <ContentFadeIn className="flex flex-col h-full w-full">
+          <LazyBrowserPane {...props} />
+        </ContentFadeIn>
       </Suspense>
     </ErrorBoundary>
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function DevPreviewPaneWrapper(props: any) {
+function DevPreviewPaneWrapper(props: ComponentProps<typeof LazyDevPreviewPane>) {
   return (
     <ErrorBoundary variant="component" componentName="DevPreviewPane">
       <Suspense fallback={<BrowserPaneSkeleton label="Loading dev preview panel" />}>
-        <LazyDevPreviewPane {...props} />
+        <ContentFadeIn className="flex flex-col h-full w-full">
+          <LazyDevPreviewPane {...props} />
+        </ContentFadeIn>
       </Suspense>
     </ErrorBoundary>
   );
@@ -112,6 +116,11 @@ export function initBuiltInPanelKinds(): void {
     // here — this is the single seam between the typed registry map above and
     // the extension-friendly wide interface. Function parameter contravariance
     // makes this cast necessary; it is intentionally isolated to this function.
+    // Do NOT change PanelKindConfig.serialize / createDefaults to method syntax
+    // (`serialize(panel: …): …`). Method syntax is bivariant under
+    // strictFunctionTypes and would silently accept the unsafe widening this
+    // cast deliberately isolates — the property-syntax form is what makes the
+    // cast meaningful instead of redundant.
     const serialize = hooks.serialize as PanelKindConfig["serialize"];
     const createDefaults = hooks.createDefaults as PanelKindConfig["createDefaults"];
     if (existing.serialize !== serialize || existing.createDefaults !== createDefaults) {
@@ -129,11 +138,58 @@ function requirePanelKindConfig(kind: string): PanelKindConfig {
   return config;
 }
 
+// `Record<string, …>` is intentional: registerPanelKindDefinition mutates this
+// object by dynamic id, which requires the index signature. `satisfies` would
+// strip it from the inferred type and break the mutation site.
 const PANEL_KIND_DEFINITION_REGISTRY: Record<string, PanelKindDefinition> = {
   terminal: { ...requirePanelKindConfig("terminal"), component: TerminalPane },
   browser: { ...requirePanelKindConfig("browser"), component: BrowserPaneWrapper },
   "dev-preview": { ...requirePanelKindConfig("dev-preview"), component: DevPreviewPaneWrapper },
 };
+
+/**
+ * Reactive snapshot for `useSyncExternalStore`. Replaced (not mutated) on
+ * every registry change so React's `Object.is` identity check schedules a
+ * rerender — components observing this snapshot then re-evaluate
+ * `getPanelKindDefinition(kind)` and pick up newly-registered plugin panels
+ * without needing a window reload.
+ */
+let definitionsSnapshot: Readonly<Record<string, PanelKindDefinition>> = {
+  ...PANEL_KIND_DEFINITION_REGISTRY,
+};
+const definitionListeners = new Set<() => void>();
+
+function notifyDefinitionListeners(): void {
+  definitionsSnapshot = { ...PANEL_KIND_DEFINITION_REGISTRY };
+  for (const listener of definitionListeners) {
+    try {
+      listener();
+    } catch (err) {
+      logError("[panelKindRegistry] definition listener threw", err);
+    }
+  }
+}
+
+/**
+ * Subscribe to panel kind definition registry changes. Stable function
+ * reference (module-scope) so `useSyncExternalStore` doesn't re-subscribe
+ * on every render.
+ */
+export function subscribeToPanelKindDefinitions(listener: () => void): () => void {
+  definitionListeners.add(listener);
+  return () => {
+    definitionListeners.delete(listener);
+  };
+}
+
+/**
+ * Snapshot for `useSyncExternalStore`. Returns the same reference until a
+ * registration changes the registry; React uses identity comparison to
+ * detect changes.
+ */
+export function getPanelKindDefinitionsSnapshot(): Readonly<Record<string, PanelKindDefinition>> {
+  return definitionsSnapshot;
+}
 
 export function getPanelKindDefinition(kind: string): PanelKindDefinition | undefined {
   return PANEL_KIND_DEFINITION_REGISTRY[kind];
@@ -160,13 +216,49 @@ export function registerPanelKindDefinition(
       );
       return;
     }
-    definition = { ...config, component: component! };
+    if (!component) {
+      logError(
+        `[panelKindRegistry] registerPanelKindDefinition("${definitionOrKindId}") called without a component`
+      );
+      return;
+    }
+    definition = { ...config, component };
   } else {
     definition = definitionOrKindId;
   }
 
-  if (PANEL_KIND_DEFINITION_REGISTRY[definition.id]) {
+  const existing = PANEL_KIND_DEFINITION_REGISTRY[definition.id];
+  if (existing && existing.extensionId === undefined && definition.extensionId !== undefined) {
+    logError(
+      `[panelKindRegistry] Refusing to overwrite built-in panel kind definition "${definition.id}" with extension "${definition.extensionId}"`
+    );
+    return;
+  }
+  if (existing) {
     console.warn(`Panel kind definition "${definition.id}" already registered, overwriting`);
   }
   PANEL_KIND_DEFINITION_REGISTRY[definition.id] = definition;
+  notifyDefinitionListeners();
+}
+
+/**
+ * Remove a panel kind definition. Used when a plugin unregisters a kind so
+ * `getPanelKindDefinition` falls back to `undefined` and panel components
+ * render their `PluginMissingPanel` placeholder again.
+ *
+ * Built-in kinds (entries with no `extensionId`) are never removable — their
+ * components are wired at module load and unregistering would leave panels
+ * orphaned with no recovery path. Mirrors the `extensionId === undefined`
+ * guard used by `unregisterPanelKind` in the shared registry.
+ */
+export function unregisterPanelKindDefinition(kindId: string): boolean {
+  if (isBuiltInPanelKind(kindId)) {
+    return false;
+  }
+  if (!(kindId in PANEL_KIND_DEFINITION_REGISTRY)) {
+    return false;
+  }
+  delete PANEL_KIND_DEFINITION_REGISTRY[kindId];
+  notifyDefinitionListeners();
+  return true;
 }

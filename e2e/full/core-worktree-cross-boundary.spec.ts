@@ -22,12 +22,14 @@ const FEATURE_DIR_NAME = "feature-test-branch";
 
 test.describe.serial("Core: Cross-Worktree Terminal Isolation", () => {
   let ctx: AppContext;
+  let fixtureCleanup: (() => void) | undefined;
 
   test.beforeAll(async () => {
-    const fixture = createFixtureRepo({
+    const { dir: fixture, cleanup } = createFixtureRepo({
       name: "cross-boundary",
       withFeatureBranch: true,
     });
+    fixtureCleanup = cleanup;
 
     ctx = await launchApp();
 
@@ -52,6 +54,7 @@ test.describe.serial("Core: Cross-Worktree Terminal Isolation", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("terminal CWD matches feature worktree path", async () => {
@@ -257,7 +260,7 @@ test.describe.serial("Core: Worktree Selection Persists Across Project Switch", 
     );
 
     ctx = await launchApp();
-    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixture.repoA, "Project A");
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixture.repoA, "project-A-cross");
   });
 
   test.afterAll(async () => {
@@ -286,7 +289,7 @@ test.describe.serial("Core: Worktree Selection Persists Across Project Switch", 
 
     // Switch to Project B
     await test.step("switch to Project B", async () => {
-      await addAndSwitchToProject(ctx.app, window, fixture.repoB, "Project B");
+      await addAndSwitchToProject(ctx.app, window, fixture.repoB, "project-B-cross");
       // Verify Project B loaded
       await expect(window.locator("[data-worktree-branch]").first()).toBeVisible({
         timeout: T_LONG,
@@ -295,7 +298,7 @@ test.describe.serial("Core: Worktree Selection Persists Across Project Switch", 
 
     // Switch back to Project A
     await test.step("switch back to Project A", async () => {
-      await selectExistingProject(window, "Project A");
+      await selectExistingProject(window, "project-A-cross");
       await expect(window.locator("[data-worktree-branch]").first()).toBeVisible({
         timeout: T_LONG,
       });
@@ -322,10 +325,12 @@ test.describe.serial("Core: Worktree Selection Persists Across Project Switch", 
 
 test.describe.serial("Core: Worktree Creation Resilience", () => {
   let ctx: AppContext;
+  let fixtureCleanup: (() => void) | undefined;
   const RESILIENCE_BRANCH = "e2e/resilience-test";
 
   test.beforeAll(async () => {
-    const fixture = createFixtureRepo({ name: "creation-resilience" });
+    const { dir: fixture, cleanup } = createFixtureRepo({ name: "creation-resilience" });
+    fixtureCleanup = cleanup;
 
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixture, "Creation Resilience");
@@ -333,6 +338,7 @@ test.describe.serial("Core: Worktree Creation Resilience", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("existing terminal survives new worktree creation", async () => {

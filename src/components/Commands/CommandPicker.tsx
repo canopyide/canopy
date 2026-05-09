@@ -1,7 +1,6 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useDeferredValue } from "react";
 import { cn } from "@/lib/utils";
 import { SearchablePalette } from "@/components/ui/SearchablePalette";
-import { Spinner } from "@/components/ui/Spinner";
 import type { CommandManifestEntry, CommandCategory } from "@shared/types/commands";
 
 interface CommandPickerProps {
@@ -14,6 +13,9 @@ interface CommandPickerProps {
 }
 
 const CATEGORY_ORDER: CommandCategory[] = ["github", "git", "workflow", "project", "system"];
+
+const getCommandActionLabel = (item: CommandManifestEntry | null): string =>
+  item?.label ?? "Run command";
 
 const CATEGORY_LABELS: Record<CommandCategory, string> = {
   github: "GitHub",
@@ -49,6 +51,9 @@ export function CommandPicker({
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
 
+  const deferredQuery = useDeferredValue(query);
+  const isStale = query !== deferredQuery;
+
   const filteredCommands = useMemo(() => {
     let result = commands;
 
@@ -56,15 +61,15 @@ export function CommandPicker({
       result = result.filter((cmd) => filter.includes(cmd.category));
     }
 
-    if (query.trim()) {
+    if (deferredQuery.trim()) {
       result = result.filter((cmd) => {
         const searchText = `${cmd.id} ${cmd.label} ${cmd.description} ${cmd.keywords?.join(" ") ?? ""}`;
-        return fuzzyMatch(searchText, query.trim());
+        return fuzzyMatch(searchText, deferredQuery.trim());
       });
     }
 
     return result;
-  }, [commands, filter, query]);
+  }, [commands, filter, deferredQuery]);
 
   const groupedCommands = useMemo(() => {
     const groups = new Map<CommandCategory, CommandManifestEntry[]>();
@@ -136,41 +141,13 @@ export function CommandPicker({
   }, [flatCommands]);
 
   const handleConfirm = useCallback(() => {
+    // While the deferred filter is catching up, results may not match the input.
+    // No-op and wait for the next render; a repeat Enter lands on the right item.
+    if (isStale) return;
     if (flatCommands[selectedIndex]?.enabled) {
       onSelect(flatCommands[selectedIndex]);
     }
-  }, [flatCommands, selectedIndex, onSelect]);
-
-  if (isLoading) {
-    return (
-      <SearchablePalette<CommandManifestEntry>
-        isOpen={isOpen}
-        query={query}
-        results={[]}
-        selectedIndex={0}
-        onQueryChange={setQuery}
-        onSelectPrevious={handleSelectPrevious}
-        onSelectNext={handleSelectNext}
-        onConfirm={handleConfirm}
-        onClose={onDismiss}
-        getItemId={(cmd) => cmd.id}
-        renderItem={() => null}
-        label="Commands"
-        keyHint="⌘K"
-        ariaLabel="Command picker"
-        searchPlaceholder="Search commands..."
-        searchAriaLabel="Search commands"
-        listId="command-list"
-        itemIdPrefix="command"
-        renderBody={() => (
-          <div className="flex flex-col items-center justify-center py-8 space-y-2">
-            <Spinner size="xl" className="text-daintree-text/40" />
-            <p className="text-sm text-daintree-text/50">Loading commands...</p>
-          </div>
-        )}
-      />
-    );
-  }
+  }, [flatCommands, selectedIndex, onSelect, isStale]);
 
   return (
     <SearchablePalette<CommandManifestEntry>
@@ -184,6 +161,9 @@ export function CommandPicker({
       onConfirm={handleConfirm}
       onClose={onDismiss}
       getItemId={(cmd) => cmd.id}
+      getActionLabel={getCommandActionLabel}
+      isLoading={isLoading}
+      isFiltering={isStale}
       renderItem={(cmd, index, isSelected) => {
         const category = categoryStarts.get(cmd.id);
         return (
@@ -214,7 +194,10 @@ export function CommandPicker({
                   : "border-transparent text-daintree-text/70 hover:bg-overlay-subtle hover:text-daintree-text",
                 !cmd.enabled && "opacity-50 cursor-not-allowed"
               )}
-              onClick={() => cmd.enabled && onSelect(cmd)}
+              onClick={() => {
+                if (isStale) return;
+                if (cmd.enabled) onSelect(cmd);
+              }}
             >
               <div className="flex items-center justify-between">
                 <span className="font-mono text-sm text-daintree-text/90">/{cmd.id}</span>
@@ -233,14 +216,12 @@ export function CommandPicker({
         );
       }}
       label="Commands"
-      keyHint="⌘K"
       ariaLabel="Command picker"
-      searchPlaceholder="Search commands..."
+      searchPlaceholder="Search commands"
       searchAriaLabel="Search commands"
       listId="command-list"
       itemIdPrefix="command"
       emptyMessage="No commands available"
-      noMatchMessage={`No commands match "${query}"`}
       emptyContent={
         <p className="mt-2 text-xs text-daintree-text/40">
           Commands are context-dependent and may vary by project.

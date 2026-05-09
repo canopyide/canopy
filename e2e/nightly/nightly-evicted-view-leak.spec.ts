@@ -12,8 +12,8 @@ import {
   cleanupHeapSnapshot,
 } from "../helpers/heapSnapshot";
 
-const PROJECT_A = "Heap A";
-const PROJECT_B = "Heap B";
+const PROJECT_A = "project-A";
+const PROJECT_B = "project-B";
 
 // Class names whose instance counts we log diagnostically. These are real
 // main-process ES6 classes — TypeScript interfaces (e.g. `ViewEntry`) are
@@ -24,11 +24,14 @@ const PROJECT_B = "Heap B";
 const DIAGNOSTIC_CLASS_NAMES = ["ProjectViewManager", "PortalManager", "EventBuffer"];
 
 let ctx: AppContext;
+let fixtureCleanups: Array<() => void> = [];
 let snapshotPath: string;
 
 test.describe.serial("Nightly: Evicted project view leak detection", () => {
   test.beforeAll(async () => {
-    const [repoA, repoB] = createFixtureRepos(2);
+    const fixtures = createFixtureRepos(2);
+    fixtureCleanups = fixtures.map((f) => f.cleanup);
+    const [repoA, repoB] = fixtures.map((f) => f.dir);
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, repoA, PROJECT_A);
     ctx.window = await addAndSwitchToProject(ctx.app, ctx.window, repoB, PROJECT_B);
@@ -42,6 +45,7 @@ test.describe.serial("Nightly: Evicted project view leak detection", () => {
   test.afterAll(async () => {
     if (snapshotPath) cleanupHeapSnapshot(snapshotPath);
     if (ctx?.app) await closeApp(ctx.app);
+    for (const cleanup of fixtureCleanups) cleanup();
   });
 
   test("evicted project view is destroyed and removed from PVM cache", async () => {
@@ -94,10 +98,9 @@ test.describe.serial("Nightly: Evicted project view leak detection", () => {
       pvm?.setCachedViewLimit(1);
     });
 
-    // Poll until eviction completes. GC_DELAY_MS in ProjectViewManager is
-    // 100ms but webContents.close() can be slower on loaded CI runners — a
-    // fixed sleep races there. Re-read state until the evicted view is gone
-    // or we hit a meaningful timeout.
+    // Poll until eviction completes. webContents.close() can be slower on
+    // loaded CI runners — a fixed sleep races there. Re-read state until the
+    // evicted view is gone or we hit a meaningful timeout.
     const readEvictionState = () =>
       app.evaluate(({ webContents }, wcId) => {
         const g = globalThis as Record<string, unknown>;

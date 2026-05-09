@@ -38,6 +38,56 @@ describe("RunCommandDetector", () => {
     expect(npmCommands.some((cmd) => cmd.command.includes(";"))).toBe(false);
   });
 
+  it("uses bun runner when bun.lock (text format) is present", async () => {
+    await fs.writeFile(
+      path.join(tempDir, "package.json"),
+      JSON.stringify({ name: "test", scripts: { dev: "vite" } }),
+      "utf-8"
+    );
+    await fs.writeFile(path.join(tempDir, "bun.lock"), "", "utf-8");
+
+    const commands = await detector.detect(tempDir);
+    const npmCommands = commands.filter((cmd) => cmd.id.startsWith("npm-"));
+
+    expect(npmCommands).toEqual([
+      expect.objectContaining({ id: "npm-dev", command: "bun run dev" }),
+    ]);
+  });
+
+  it("prefers bun.lock over bun.lockb when both exist", async () => {
+    await fs.writeFile(
+      path.join(tempDir, "package.json"),
+      JSON.stringify({ name: "test", scripts: { dev: "vite" } }),
+      "utf-8"
+    );
+    await fs.writeFile(path.join(tempDir, "bun.lock"), "", "utf-8");
+    await fs.writeFile(path.join(tempDir, "bun.lockb"), "", "utf-8");
+
+    const commands = await detector.detect(tempDir);
+    const npmCommands = commands.filter((cmd) => cmd.id.startsWith("npm-"));
+
+    expect(npmCommands).toEqual([
+      expect.objectContaining({ id: "npm-dev", command: "bun run dev" }),
+    ]);
+  });
+
+  it("prefers bun.lock over pnpm-lock.yaml when both exist", async () => {
+    await fs.writeFile(
+      path.join(tempDir, "package.json"),
+      JSON.stringify({ name: "test", scripts: { dev: "vite" } }),
+      "utf-8"
+    );
+    await fs.writeFile(path.join(tempDir, "bun.lock"), "", "utf-8");
+    await fs.writeFile(path.join(tempDir, "pnpm-lock.yaml"), "", "utf-8");
+
+    const commands = await detector.detect(tempDir);
+    const npmCommands = commands.filter((cmd) => cmd.id.startsWith("npm-"));
+
+    expect(npmCommands).toEqual([
+      expect.objectContaining({ id: "npm-dev", command: "bun run dev" }),
+    ]);
+  });
+
   it("filters composer scripts with unsafe names", async () => {
     const scripts: Record<string, string> = {
       test: "phpunit",
@@ -393,6 +443,64 @@ describe("RunCommandDetector", () => {
       ]);
     });
 
+    it("detects Taskfile.dist.yml variant", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "Taskfile.dist.yml"),
+        [
+          "version: '3'",
+          "tasks:",
+          "  ci:",
+          "    desc: Run CI checks",
+          "    cmds:",
+          "      - go test ./...",
+        ].join("\n"),
+        "utf-8"
+      );
+
+      const commands = await detector.detect(tempDir);
+      const taskCommands = commands.filter((cmd) => cmd.id.startsWith("task-"));
+
+      expect(taskCommands).toEqual([
+        expect.objectContaining({
+          id: "task-ci",
+          command: "task ci",
+          description: "Run CI checks",
+        }),
+      ]);
+    });
+
+    it("prefers Taskfile.yml over Taskfile.dist.yml when both exist", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "Taskfile.yml"),
+        [
+          "version: '3'",
+          "tasks:",
+          "  build:",
+          "    desc: Local build",
+          "    cmds:",
+          "      - go build .",
+        ].join("\n"),
+        "utf-8"
+      );
+      await fs.writeFile(
+        path.join(tempDir, "Taskfile.dist.yml"),
+        [
+          "version: '3'",
+          "tasks:",
+          "  ci:",
+          "    desc: CI checks",
+          "    cmds:",
+          "      - go test ./...",
+        ].join("\n"),
+        "utf-8"
+      );
+
+      const commands = await detector.detect(tempDir);
+      const taskCommands = commands.filter((cmd) => cmd.id.startsWith("task-"));
+
+      expect(taskCommands.map((cmd) => cmd.id)).toEqual(["task-build"]);
+    });
+
     it("returns empty for empty tasks object", async () => {
       await fs.writeFile(
         path.join(tempDir, "Taskfile.yml"),
@@ -422,6 +530,203 @@ describe("RunCommandDetector", () => {
       const taskCommands = commands.filter((cmd) => cmd.id.startsWith("task-"));
 
       expect(taskCommands).toEqual([]);
+    });
+  });
+
+  describe("devcontainer detection", () => {
+    it("detects string postStartCommand", async () => {
+      const devcontainerDir = path.join(tempDir, ".devcontainer");
+      await fs.mkdir(devcontainerDir);
+      await fs.writeFile(
+        path.join(devcontainerDir, "devcontainer.json"),
+        JSON.stringify({ postStartCommand: "npm run dev" }),
+        "utf-8"
+      );
+
+      const commands = await detector.detect(tempDir);
+      const dc = commands.filter((cmd) => cmd.id === "devcontainer-poststart");
+
+      expect(dc).toEqual([
+        expect.objectContaining({
+          id: "devcontainer-poststart",
+          name: "postStartCommand",
+          command: "npm run dev",
+          description: "from .devcontainer/devcontainer.json",
+        }),
+      ]);
+    });
+
+    it("joins array postStartCommand with spaces", async () => {
+      const devcontainerDir = path.join(tempDir, ".devcontainer");
+      await fs.mkdir(devcontainerDir);
+      await fs.writeFile(
+        path.join(devcontainerDir, "devcontainer.json"),
+        JSON.stringify({ postStartCommand: ["npm", "run", "dev"] }),
+        "utf-8"
+      );
+
+      const commands = await detector.detect(tempDir);
+      const dc = commands.filter((cmd) => cmd.id === "devcontainer-poststart");
+
+      expect(dc[0]?.command).toBe("npm run dev");
+    });
+
+    it("picks highest-priority key from object postStartCommand", async () => {
+      const devcontainerDir = path.join(tempDir, ".devcontainer");
+      await fs.mkdir(devcontainerDir);
+      await fs.writeFile(
+        path.join(devcontainerDir, "devcontainer.json"),
+        JSON.stringify({
+          postStartCommand: {
+            app: "npm start",
+            server: "npm run dev",
+            watcher: "npm run watch",
+          },
+        }),
+        "utf-8"
+      );
+
+      const commands = await detector.detect(tempDir);
+      const dc = commands.filter((cmd) => cmd.id === "devcontainer-poststart");
+
+      expect(dc[0]?.command).toBe("npm run dev");
+    });
+
+    it("skips empty-string priority key in object postStartCommand", async () => {
+      const devcontainerDir = path.join(tempDir, ".devcontainer");
+      await fs.mkdir(devcontainerDir);
+      await fs.writeFile(
+        path.join(devcontainerDir, "devcontainer.json"),
+        JSON.stringify({
+          postStartCommand: {
+            server: "",
+            dev: "npm run dev",
+          },
+        }),
+        "utf-8"
+      );
+
+      const commands = await detector.detect(tempDir);
+      const dc = commands.filter((cmd) => cmd.id === "devcontainer-poststart");
+
+      expect(dc[0]?.command).toBe("npm run dev");
+    });
+
+    it("falls back to first valid key when no priority keys match", async () => {
+      const devcontainerDir = path.join(tempDir, ".devcontainer");
+      await fs.mkdir(devcontainerDir);
+      await fs.writeFile(
+        path.join(devcontainerDir, "devcontainer.json"),
+        JSON.stringify({
+          postStartCommand: {
+            watcher: "npm run watch",
+            db: "docker-compose up",
+          },
+        }),
+        "utf-8"
+      );
+
+      const commands = await detector.detect(tempDir);
+      const dc = commands.filter((cmd) => cmd.id === "devcontainer-poststart");
+
+      expect(dc[0]?.command).toBe("npm run watch");
+    });
+
+    it("strips nohup bash -c wrapper", async () => {
+      const devcontainerDir = path.join(tempDir, ".devcontainer");
+      await fs.mkdir(devcontainerDir);
+      await fs.writeFile(
+        path.join(devcontainerDir, "devcontainer.json"),
+        JSON.stringify({
+          postStartCommand: "nohup bash -c 'npm run dev &'",
+        }),
+        "utf-8"
+      );
+
+      const commands = await detector.detect(tempDir);
+      const dc = commands.filter((cmd) => cmd.id === "devcontainer-poststart");
+
+      expect(dc[0]?.command).toBe("npm run dev");
+    });
+
+    it("strips sh -c wrapper", async () => {
+      const devcontainerDir = path.join(tempDir, ".devcontainer");
+      await fs.mkdir(devcontainerDir);
+      await fs.writeFile(
+        path.join(devcontainerDir, "devcontainer.json"),
+        JSON.stringify({
+          postStartCommand: "sh -c 'python manage.py runserver'",
+        }),
+        "utf-8"
+      );
+
+      const commands = await detector.detect(tempDir);
+      const dc = commands.filter((cmd) => cmd.id === "devcontainer-poststart");
+
+      expect(dc[0]?.command).toBe("python manage.py runserver");
+    });
+
+    it("returns empty for missing devcontainer.json", async () => {
+      const commands = await detector.detect(tempDir);
+      const dc = commands.filter((cmd) => cmd.id === "devcontainer-poststart");
+      expect(dc).toEqual([]);
+    });
+
+    it("returns empty for devcontainer.json without postStartCommand", async () => {
+      const devcontainerDir = path.join(tempDir, ".devcontainer");
+      await fs.mkdir(devcontainerDir);
+      await fs.writeFile(
+        path.join(devcontainerDir, "devcontainer.json"),
+        JSON.stringify({ image: "node:20" }),
+        "utf-8"
+      );
+
+      const commands = await detector.detect(tempDir);
+      const dc = commands.filter((cmd) => cmd.id === "devcontainer-poststart");
+      expect(dc).toEqual([]);
+    });
+
+    it("returns empty for malformed JSON", async () => {
+      const devcontainerDir = path.join(tempDir, ".devcontainer");
+      await fs.mkdir(devcontainerDir);
+      await fs.writeFile(path.join(devcontainerDir, "devcontainer.json"), "{invalid json", "utf-8");
+
+      const commands = await detector.detect(tempDir);
+      const dc = commands.filter((cmd) => cmd.id === "devcontainer-poststart");
+      expect(dc).toEqual([]);
+    });
+
+    it("returns empty for null postStartCommand", async () => {
+      const devcontainerDir = path.join(tempDir, ".devcontainer");
+      await fs.mkdir(devcontainerDir);
+      await fs.writeFile(
+        path.join(devcontainerDir, "devcontainer.json"),
+        JSON.stringify({ postStartCommand: null }),
+        "utf-8"
+      );
+
+      const commands = await detector.detect(tempDir);
+      const dc = commands.filter((cmd) => cmd.id === "devcontainer-poststart");
+      expect(dc).toEqual([]);
+    });
+
+    it("does not outrank npm dev script in full detect", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({ name: "test", scripts: { dev: "vite" } }),
+        "utf-8"
+      );
+      const devcontainerDir = path.join(tempDir, ".devcontainer");
+      await fs.mkdir(devcontainerDir);
+      await fs.writeFile(
+        path.join(devcontainerDir, "devcontainer.json"),
+        JSON.stringify({ postStartCommand: "npm run start" }),
+        "utf-8"
+      );
+
+      const commands = await detector.detect(tempDir);
+      const npmIds = commands.filter((cmd) => cmd.id.startsWith("npm-")).map((cmd) => cmd.id);
+      expect(npmIds).toContain("npm-dev");
     });
   });
 

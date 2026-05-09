@@ -4,11 +4,15 @@ import { useErrorStore } from "@/store/errorStore";
 import { actionService } from "@/services/ActionService";
 import { logError } from "@/utils/logger";
 import { captureRendererException } from "@/utils/rendererSentry";
+import { safeFireAndForget } from "@/utils/safeFireAndForget";
+import { buildReportIssueUrl } from "./buildReportIssueUrl";
+import { notify } from "@/lib/notify";
 
 interface ErrorBoundaryProps {
   children: ReactNode;
   fallback?: React.ComponentType<ErrorFallbackProps>;
   onError?: (error: Error, errorInfo: React.ErrorInfo) => void;
+  onReset?: () => void;
   resetKeys?: Array<string | number>;
   variant?: "fullscreen" | "section" | "component";
   componentName?: string;
@@ -23,9 +27,17 @@ interface ErrorBoundaryState {
   error: Error | null;
   errorInfo: React.ErrorInfo | null;
   incidentId: string | null;
+  reportInFlight: boolean;
 }
 
 export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  // Synchronous guard against same-tick double-clicks on "Report issue".
+  // setState is batched, so two clicks in one event tick can both observe
+  // `state.reportInFlight === false`. The class field flips synchronously
+  // and prevents the underlying async chain from firing twice; the React
+  // state drives the visible `disabled` prop on the button.
+  private reportInFlight = false;
+
   constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = {
@@ -33,6 +45,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       error: null,
       errorInfo: null,
       incidentId: null,
+      reportInFlight: false,
     };
   }
 
@@ -47,13 +60,9 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     const { onError, context, componentName } = this.props;
     const componentStack = errorInfo.componentStack || "";
 
-    this.setState({
-      errorInfo,
-    });
-
     const correlationId = crypto.randomUUID();
 
-    captureRendererException(error, {
+    const sentryEventId = captureRendererException(error, {
       tags: {
         source: "react-error-boundary",
         component: componentName ?? "ErrorBoundary",
@@ -62,9 +71,9 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       extra: { correlationId, ...(context ?? {}) },
     });
 
-    let incidentId: string | null = null;
+    let storeIncidentId: string | null = null;
     try {
-      incidentId = useErrorStore.getState().addError({
+      storeIncidentId = useErrorStore.getState().addError({
         type: "unknown",
         message: error.message || "Component rendering error",
         details: `${error.stack || ""}\n\nComponent Stack:${componentStack}`,
@@ -76,6 +85,11 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     } catch (storeError) {
       logError("Failed to add error to store", storeError);
     }
+
+    // Prefer the Sentry event ID for the user-visible "Error ID" — engineers
+    // can search Sentry by it directly. Fall back to the error-store ID when
+    // Sentry isn't initialized so users always have *something* to quote.
+    const incidentId = sentryEventId ?? storeIncidentId;
 
     this.setState({
       errorInfo,
@@ -97,8 +111,6 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       componentStack,
       incidentId,
     });
-
-    logError("ErrorBoundary caught error", error, { errorInfo });
   }
 
   componentDidUpdate(prevProps: ErrorBoundaryProps): void {
@@ -118,47 +130,97 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 
   resetError = (): void => {
+    const { onReset } = this.props;
+
+    if (onReset) {
+      try {
+        onReset();
+      } catch (error) {
+        logError("Error in onReset handler", error);
+      }
+    }
+
+    // Reset the synchronous class-field guard alongside state so a hung
+    // report from the previous error session doesn't permanently disable
+    // the Report issue button after recovery.
+    this.reportInFlight = false;
     this.setState({
       hasError: false,
       error: null,
       errorInfo: null,
       incidentId: null,
+      reportInFlight: false,
     });
   };
 
-  handleReport = (): void => {
-    const { error, errorInfo, incidentId } = this.state;
-    const { componentName, context } = this.props;
+  handleReport = async (): Promise<void> => {
+    if (this.reportInFlight) return;
+    this.reportInFlight = true;
+    this.setState({ reportInFlight: true });
+    try {
+      const { error, errorInfo, incidentId } = this.state;
+      const { componentName, context } = this.props;
 
-    const issueBody = encodeURIComponent(
-      `## Error Report\n\n` +
-        `**Component:** ${componentName || "Unknown"}\n` +
-        `**Incident ID:** ${incidentId ?? "unknown"}\n` +
-        `**Message:** ${error?.message || "Unknown error"}\n\n` +
-        `**Context:**\n` +
-        `${context ? JSON.stringify(context, null, 2) : "None"}\n\n` +
-        `**Stack Trace:**\n\`\`\`\n${error?.stack || "No stack trace"}\n\`\`\`\n\n` +
-        `**Component Stack:**\n\`\`\`\n${errorInfo?.componentStack || "No component stack"}\n\`\`\``
-    );
+      if (!error) return;
 
-    const issueUrl = `https://github.com/daintreehq/daintree/issues/new?title=${encodeURIComponent(`Component Error: ${error?.message || "Unknown"}`)}&body=${issueBody}`;
+      const { url, fullBody, usedClipboardFallback } = buildReportIssueUrl({
+        incidentId,
+        componentName,
+        message: error.message,
+        stack: error.stack ?? "",
+        componentStack: errorInfo?.componentStack ?? "",
+        context,
+      });
 
-    if (window.electron?.system?.openExternal) {
-      actionService
-        .dispatch("system.openExternal", { url: issueUrl }, { source: "user" })
-        .then((result) => {
-          if (!result.ok) {
-            window.electron.system.openExternal(issueUrl);
+      if (usedClipboardFallback) {
+        const writeText = window.electron?.clipboard?.writeText;
+        let clipboardOk = false;
+        if (writeText) {
+          try {
+            await writeText(fullBody);
+            clipboardOk = true;
+          } catch (clipboardError) {
+            logError("Failed to copy crash report to clipboard", clipboardError);
           }
-        })
-        .catch(() => {
-          window.electron.system.openExternal(issueUrl);
+        }
+        notify({
+          type: "info",
+          title: clipboardOk ? "Error details copied" : "Error details too long",
+          message: clipboardOk
+            ? "The full crash report was copied to your clipboard — paste it into the issue body."
+            : "Couldn't copy the full report. Quote the Error ID shown above when filing the issue.",
+          inboxMessage: clipboardOk
+            ? "Crash report copied to clipboard for the issue body."
+            : "Couldn't copy crash report to clipboard.",
         });
+      }
+
+      if (!window.electron?.system?.openExternal) return;
+
+      try {
+        const result = await actionService.dispatch(
+          "system.openExternal",
+          { url },
+          { source: "user" }
+        );
+        if (!result.ok) {
+          safeFireAndForget(window.electron.system.openExternal(url), {
+            context: "ErrorBoundary.handleReport openExternal fallback",
+          });
+        }
+      } catch {
+        safeFireAndForget(window.electron.system.openExternal(url), {
+          context: "ErrorBoundary.handleReport openExternal fallback",
+        });
+      }
+    } finally {
+      this.reportInFlight = false;
+      this.setState({ reportInFlight: false });
     }
   };
 
   render(): ReactNode {
-    const { hasError, error, errorInfo, incidentId } = this.state;
+    const { hasError, error, errorInfo, incidentId, reportInFlight } = this.state;
     const { children, fallback: FallbackComponent, variant, componentName } = this.props;
 
     if (hasError && error) {
@@ -173,6 +235,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
           componentName={componentName}
           incidentId={incidentId}
           onReport={variant !== "component" ? this.handleReport : undefined}
+          reportInFlight={reportInFlight}
         />
       );
     }
@@ -188,6 +251,7 @@ export interface WithErrorBoundaryOptions {
     worktreeId?: string;
     terminalId?: string;
   };
+  onReset?: () => void;
   resetKeys?: Array<string | number>;
 }
 
@@ -200,6 +264,7 @@ export function withErrorBoundary<P extends object>(
       variant={options.variant || "component"}
       componentName={options.componentName || Component.displayName || Component.name}
       context={options.context}
+      onReset={options.onReset}
       resetKeys={options.resetKeys}
     >
       <Component {...props} />

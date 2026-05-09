@@ -500,6 +500,64 @@ describe("toolbarPreferencesStore", () => {
       expect(layout.hiddenButtons).not.toContain("notes");
     });
 
+    it("v6→v7 strips 'assistant-toggle' from all button arrays", async () => {
+      storageMock.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          state: {
+            layout: {
+              leftButtons: ["terminal", "assistant-toggle", "browser"],
+              rightButtons: ["assistant-toggle", "settings"],
+              hiddenButtons: ["assistant-toggle"],
+            },
+            launcher: { alwaysShowDevServer: false },
+          },
+          version: 6,
+        })
+      );
+
+      const store = await loadStore();
+      const { layout } = store.getState();
+      expect(layout.leftButtons).not.toContain("assistant-toggle");
+      expect(layout.rightButtons).not.toContain("assistant-toggle");
+      expect(layout.hiddenButtons).not.toContain("assistant-toggle");
+    });
+
+    it("v6→v7 is idempotent on state already lacking assistant-toggle", async () => {
+      storageMock.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          state: {
+            layout: {
+              leftButtons: ["terminal", "browser"],
+              rightButtons: ["settings"],
+              hiddenButtons: [],
+            },
+            launcher: { alwaysShowDevServer: false },
+          },
+          version: 6,
+        })
+      );
+
+      const store = await loadStore();
+      const { layout } = store.getState();
+      expect(layout.leftButtons).toContain("terminal");
+      expect(layout.leftButtons).toContain("browser");
+      expect(layout.rightButtons).toContain("settings");
+      expect(layout.hiddenButtons).toEqual([]);
+    });
+
+    it("sanitizeButtonList strips assistant-toggle when set via setRightButtons", async () => {
+      const store = await loadStore();
+
+      store.getState().setRightButtons(["settings", "assistant-toggle" as never, "copy-tree"]);
+
+      const { layout } = store.getState();
+      expect(layout.rightButtons).not.toContain("assistant-toggle");
+      expect(layout.rightButtons).toContain("settings");
+      expect(layout.rightButtons).toContain("copy-tree");
+    });
+
     it("v4→v5 handles missing layout without throwing", async () => {
       storageMock.setItem(
         STORAGE_KEY,

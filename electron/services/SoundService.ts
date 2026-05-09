@@ -119,11 +119,17 @@ class SoundService {
   }
 
   cancel(): void {
-    broadcastToRenderer(CHANNELS.EVENTS_PUSH, { name: "sound:cancel", payload: undefined });
+    // Always cancel OS-fallback handles — they may have been started before
+    // a renderer window existed and would otherwise play to completion.
     for (const voice of this.activeVoices) {
       voice.handle.cancel();
     }
     this.activeVoices = [];
+
+    // Skip the renderer broadcast when no window is listening.
+    if (BrowserWindow.getAllWindows().length > 0) {
+      broadcastToRenderer(CHANNELS.EVENTS_PUSH, { name: "sound:cancel", payload: undefined });
+    }
   }
 
   playPulse(soundFile: string, detuneCents?: number): void {
@@ -146,10 +152,8 @@ class SoundService {
   // -- Private: dampening --
 
   private playBypassed(soundFile: string, detune?: number): void {
-    const soundPath = path.join(getSoundsDir(), soundFile);
-    if (!existsSync(soundPath)) return;
-
-    // Try Web Audio via renderer first
+    // Try Web Audio via renderer first — renderer fetches via daintree-file://
+    // and falls through gracefully on a miss, so no need to stat here.
     if (BrowserWindow.getAllWindows().length > 0) {
       const payload: { soundFile: string; detune?: number } = { soundFile };
       if (detune !== undefined) payload.detune = detune;
@@ -159,6 +163,8 @@ class SoundService {
 
     // Fallback to OS process spawning when no renderer is available
     // (OS playback doesn't support detune — cadence variation still helps)
+    const soundPath = path.join(getSoundsDir(), soundFile);
+    if (!existsSync(soundPath)) return;
     const handle = playSound(soundPath);
     this.activeVoices.push({ handle, priority: 0, startedAt: Date.now() });
   }
@@ -167,9 +173,6 @@ class SoundService {
     soundFile: string,
     opts: { debounceKey?: string; volume?: number; priority: number }
   ): void {
-    const soundPath = path.join(getSoundsDir(), soundFile);
-    if (!existsSync(soundPath)) return;
-
     const now = Date.now();
 
     // Debounce on base sound name (not variant) to catch rapid same-type triggers
@@ -181,7 +184,8 @@ class SoundService {
     // Compute volume via exponential decay
     const effectiveVolume = opts.volume ?? this.computeVolume(now);
 
-    // Try Web Audio via renderer first
+    // Try Web Audio via renderer first — renderer fetches via daintree-file://
+    // and falls through gracefully on a miss, so no need to stat here.
     if (BrowserWindow.getAllWindows().length > 0) {
       broadcastToRenderer(CHANNELS.SOUND_TRIGGER, {
         soundFile,
@@ -191,6 +195,9 @@ class SoundService {
     }
 
     // Fallback to OS process spawning when no renderer is available
+    const soundPath = path.join(getSoundsDir(), soundFile);
+    if (!existsSync(soundPath)) return;
+
     this.pruneStaleVoices(now);
     if (!this.acquireVoiceSlot(opts.priority)) return;
 
@@ -283,26 +290,51 @@ class SoundService {
     return variants[nextIdx];
   }
 
+  /**
+   * Scan the sounds directory once at startup and seed the variant cache for
+   * every known SOUND_FILES entry. Avoids per-sound lazy `readdirSync` on the
+   * IPC thread when each sound first plays.
+   */
+  initVariantCache(): void {
+    let files: string[];
+    try {
+      files = readdirSync(getSoundsDir());
+    } catch {
+      // sounds dir missing or unreadable — leave cache empty so lazy
+      // ensureCache() can retry later (e.g., during tests with stubbed paths).
+      return;
+    }
+
+    for (const soundFile of Object.values(SOUND_FILES)) {
+      this.populateCache(soundFile, files);
+    }
+  }
+
   private ensureCache(soundFile: string): void {
     if (this.variantCache.has(soundFile)) return;
 
+    try {
+      const files = readdirSync(getSoundsDir());
+      this.populateCache(soundFile, files);
+    } catch {
+      // sounds dir missing or unreadable
+      this.variantCache.set(soundFile, [soundFile]);
+    }
+  }
+
+  private populateCache(soundFile: string, files: string[]): void {
     const ext = path.extname(soundFile);
     const base = path.basename(soundFile, ext);
     const variants = [soundFile];
 
     const variantPattern = new RegExp(`^${base}\\.v\\d+${ext.replace(".", "\\.")}$`);
-    try {
-      const files = readdirSync(getSoundsDir());
-      for (const f of files) {
-        if (variantPattern.test(f)) variants.push(f);
-      }
-      variants.sort();
-    } catch {
-      // sounds dir missing or unreadable
+    for (const f of files) {
+      if (variantPattern.test(f)) variants.push(f);
     }
-
+    variants.sort();
     this.variantCache.set(soundFile, variants);
   }
 }
 
 export const soundService = new SoundService();
+soundService.initVariantCache();

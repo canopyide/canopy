@@ -1,8 +1,9 @@
 import { test, expect } from "@playwright/test";
 import { launchApp, closeApp, type AppContext } from "../helpers/launch";
+import { removePathSync } from "../helpers/fixtures";
 import { SEL } from "../helpers/selectors";
 import { T_SHORT, T_LONG } from "../helpers/timeouts";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "fs";
+import { mkdtempSync, mkdirSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 
@@ -114,7 +115,7 @@ test.describe.serial("Core: Crash Recovery — corrupted running.lock", () => {
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
     try {
-      rmSync(userDataDir, { recursive: true, force: true });
+      removePathSync(userDataDir);
     } catch {
       // best-effort cleanup
     }
@@ -144,7 +145,7 @@ test.describe.serial("Core: Crash Recovery — corrupted session backup", () => 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
     try {
-      rmSync(userDataDir, { recursive: true, force: true });
+      removePathSync(userDataDir);
     } catch {
       // best-effort cleanup
     }
@@ -186,7 +187,7 @@ test.describe.serial("Core: Crash Recovery — stale tmp file", () => {
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
     try {
-      rmSync(userDataDir, { recursive: true, force: true });
+      removePathSync(userDataDir);
     } catch {
       // best-effort cleanup
     }
@@ -216,7 +217,7 @@ test.describe.serial("Core: Crash Recovery — panel with non-existent worktreeI
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
     try {
-      rmSync(userDataDir, { recursive: true, force: true });
+      removePathSync(userDataDir);
     } catch {
       // best-effort cleanup
     }

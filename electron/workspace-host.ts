@@ -14,9 +14,11 @@ for (const stream of [process.stdout, process.stderr]) {
 }
 
 import nodeV8 from "node:v8";
-// Auto-dump up to two heap snapshots when this utility process is genuinely
-// close to V8's heap limit. Snapshot path follows the parent's `--diagnostic-dir`
-// execArgv (set in WorkspaceHostProcess).
+// Cap at 2 total heap snapshots (anti-thrash). Snapshots block the event loop
+// and each needs ~2x heap at creation time; after 2, V8 stops generating more
+// to prevent the process burning remaining CPU on dumps instead of finalizing.
+// The snapshot directory is controlled by `--diagnostic-dir` (a V8 execArgv
+// flag set in WorkspaceHostProcess.ts) and is independent of `initializeLogger()` below.
 nodeV8.setHeapSnapshotNearHeapLimit(2);
 
 import { MessagePort } from "node:worker_threads";
@@ -186,7 +188,10 @@ function attachWorktreePort(newPort: MessagePort): void {
   worktreePorts.push(newPort);
 
   newPort.on("message", (rawMsg: any) => {
-    const raw = rawMsg?.data ? rawMsg.data : rawMsg;
+    const raw =
+      rawMsg && typeof rawMsg === "object" && "data" in rawMsg
+        ? (rawMsg as { data: unknown }).data
+        : rawMsg;
     if (!raw?.id || !raw?.action) return;
 
     // Renderer is trusted; runtime validation happens at the input boundary in
@@ -282,7 +287,10 @@ gitHubRateLimitService.onStateChange((state) => {
 
 // Handle requests from Main
 port.on("message", async (rawMsg: any) => {
-  const msg = rawMsg?.data ? rawMsg.data : rawMsg;
+  const msg =
+    rawMsg && typeof rawMsg === "object" && "data" in rawMsg
+      ? (rawMsg as { data: unknown }).data
+      : rawMsg;
 
   // Handle MessagePort transfers (worktree-specific port with request/response correlation)
   const transferredPorts = rawMsg?.ports || [];
@@ -426,6 +434,13 @@ port.on("message", async (rawMsg: any) => {
         workspaceService.setPollingEnabled(request.enabled);
         break;
 
+      case "set-pr-poll-cadence":
+        {
+          const { pullRequestService } = await import("./services/PullRequestService.js");
+          pullRequestService.setFocusCadence(request.focused);
+        }
+        break;
+
       case "background":
         workspaceService.pause();
         break;
@@ -496,11 +511,11 @@ port.on("message", async (rawMsg: any) => {
         break;
 
       case "copytree:test-config": {
-        const { requestId, rootPath, options } = request;
+        const { requestId, operationId, rootPath, options } = request;
         console.log(`[WorkspaceHost] CopyTree test-config started`);
 
         try {
-          const result = await copyTreeService.testConfig(rootPath, options || {});
+          const result = await copyTreeService.testConfig(rootPath, options || {}, operationId);
           sendEvent({
             type: "copytree:test-config-result",
             requestId,
@@ -514,7 +529,7 @@ port.on("message", async (rawMsg: any) => {
               includedFiles: 0,
               includedSize: 0,
               excluded: { byTruncation: 0, bySize: 0, byPattern: 0 },
-              error: (error as Error).message,
+              error: formatErrorMessage(error, "Failed to test CopyTree config"),
             },
           });
         }
@@ -618,6 +633,15 @@ port.on("message", async (rawMsg: any) => {
             error: (error as Error).message,
           });
         }
+        break;
+      }
+
+      case "invalidate-pulse-cache": {
+        if (typeof request.worktreeId !== "string" || !request.worktreeId.trim()) {
+          console.warn("[WorkspaceHost] invalidate-pulse-cache: invalid worktreeId");
+          break;
+        }
+        projectPulseService.invalidate(request.worktreeId);
         break;
       }
 

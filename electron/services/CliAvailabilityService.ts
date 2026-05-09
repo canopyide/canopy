@@ -1,6 +1,6 @@
 import { execFile, execFileSync } from "child_process";
 import { access, constants } from "fs/promises";
-import { delimiter, dirname, join } from "path";
+import { delimiter, dirname, join, win32 as pathWin32 } from "path";
 import { homedir } from "os";
 import type {
   CliAvailability,
@@ -56,6 +56,15 @@ interface AgentCheckOutcome {
 
 const SECURITY_ERROR_CODES = new Set(["EACCES", "EPERM"]);
 
+const WINDOWS_EXECUTABLE_PRIORITY = new Map<string, number>([
+  [".cmd", 0],
+  [".exe", 1],
+  [".bat", 2],
+  [".com", 3],
+  [".ps1", 4],
+  ["", 5],
+]);
+
 /**
  * Synthesise probe paths for PyPI-distributed agents. Modern Python tool
  * installs land in well-known per-user locations: uv tool, pipx (current
@@ -93,23 +102,38 @@ function synthesisePypiProbePaths(command: string, pypiPackage: string): string[
 
 /**
  * Collapse PATH-resolved binary candidates that live in the same install
- * directory. `where.exe` returns both `claude.cmd` and `claude.exe` for a
- * single npm-global install — counting them as two installations would
- * false-positive the duplicate-detection notification. Comparison is
- * case-insensitive on Windows to mirror NTFS path semantics
- * (matches `electron/setup/environment.ts:128`).
+ * directory. `where.exe` can return `claude`, `claude.cmd`, `claude.ps1`, and
+ * `claude.exe` for a single npm-global install. Counting them as separate
+ * installs false-positives duplicate detection, and keeping the extensionless
+ * shim makes PowerShell execute a file that only echoes the shim path. Keep
+ * the first directory order, but prefer launchable Windows wrappers inside a
+ * directory. Comparison is case-insensitive on Windows to mirror NTFS path
+ * semantics (matches `electron/setup/environment.ts:128`).
  */
 function dedupePathsByDirectory(paths: string[], isWindows: boolean): string[] {
-  const seen = new Set<string>();
+  const seen = new Map<string, number>();
   const out: string[] = [];
   for (const p of paths) {
-    const dir = dirname(p);
+    const dir = isWindows ? pathWin32.dirname(p) : dirname(p);
     const key = isWindows ? dir.toLowerCase() : dir;
-    if (seen.has(key)) continue;
-    seen.add(key);
+    const existingIndex = seen.get(key);
+    if (existingIndex !== undefined) {
+      if (
+        isWindows &&
+        windowsExecutablePriority(p) < windowsExecutablePriority(out[existingIndex])
+      ) {
+        out[existingIndex] = p;
+      }
+      continue;
+    }
+    seen.set(key, out.length);
     out.push(p);
   }
   return out;
+}
+
+function windowsExecutablePriority(candidatePath: string): number {
+  return WINDOWS_EXECUTABLE_PRIORITY.get(pathWin32.extname(candidatePath).toLowerCase()) ?? 6;
 }
 
 export class CliAvailabilityService {
@@ -123,6 +147,7 @@ export class CliAvailabilityService {
   private availability: CliAvailability | null = null;
   private details: AgentCliDetails | null = null;
   private inFlightCheck: Promise<CliAvailability> | null = null;
+  private npmPrefixCache: { promise: Promise<string | null>; checkId: number } | null = null;
   private checkId = 0;
 
   async checkAvailability(): Promise<CliAvailability> {
@@ -480,7 +505,7 @@ export class CliAvailabilityService {
 
     const commandCandidates =
       process.platform === "win32"
-        ? [command, `${command}.exe`, `${command}.cmd`, `${command}.bat`]
+        ? [`${command}.cmd`, `${command}.exe`, `${command}.bat`, `${command}.com`, command]
         : [command];
 
     for (const dir of pathPrefix.split(delimiter).filter(Boolean)) {
@@ -643,42 +668,27 @@ export class CliAvailabilityService {
    */
   private probeNpmGlobal(command: string): Promise<ProbeResult> {
     return new Promise((resolve) => {
-      execFile(
-        "npm",
-        ["config", "get", "prefix"],
-        {
-          timeout: CliAvailabilityService.NPM_PREFIX_TIMEOUT_MS,
-          windowsHide: true,
-        },
-        async (err, stdout) => {
-          if (err) {
-            resolve({ status: "missing" });
-            return;
-          }
-          const prefix = String(stdout ?? "").trim();
-          if (!prefix || prefix === "undefined") {
-            resolve({ status: "missing" });
-            return;
-          }
+      const checkShim = (prefix: string | null) => {
+        if (prefix === null) {
+          resolve({ status: "missing" });
+          return;
+        }
 
-          // Guard against a prefix that would slip by `path.join` — the
-          // command name is already validated against VALID_COMMAND_RE, but
-          // defensively reject a prefix containing NUL bytes (fs.access would
-          // throw) rather than passing it through.
-          if (prefix.includes("\0")) {
-            resolve({ status: "missing" });
-            return;
-          }
+        if (prefix.includes("\0")) {
+          resolve({ status: "missing" });
+          return;
+        }
 
-          const shimPath =
-            process.platform === "win32"
-              ? join(prefix, `${command}.cmd`)
-              : join(prefix, "bin", command);
+        const shimPath =
+          process.platform === "win32"
+            ? join(prefix, `${command}.cmd`)
+            : join(prefix, "bin", command);
 
-          try {
-            await access(shimPath, constants.X_OK);
+        access(shimPath, constants.X_OK)
+          .then(() => {
             resolve({ status: "found", path: shimPath, via: "npm-global" });
-          } catch (accessErr) {
+          })
+          .catch((accessErr) => {
             const code = (accessErr as NodeJS.ErrnoException | undefined)?.code;
             if (typeof code === "string" && SECURITY_ERROR_CODES.has(code)) {
               resolve({
@@ -691,9 +701,38 @@ export class CliAvailabilityService {
               return;
             }
             resolve({ status: "missing" });
-          }
-        }
-      );
+          });
+      };
+
+      if (!this.npmPrefixCache || this.npmPrefixCache.checkId !== this.checkId) {
+        this.npmPrefixCache = {
+          checkId: this.checkId,
+          promise: new Promise<string | null>((res) => {
+            execFile(
+              "npm",
+              ["config", "get", "prefix"],
+              {
+                timeout: CliAvailabilityService.NPM_PREFIX_TIMEOUT_MS,
+                windowsHide: true,
+              },
+              (err, stdout) => {
+                if (err) {
+                  res(null);
+                  return;
+                }
+                const prefix = String(stdout ?? "").trim();
+                if (!prefix || prefix === "undefined") {
+                  res(null);
+                  return;
+                }
+                res(prefix);
+              }
+            );
+          }),
+        };
+      }
+
+      this.npmPrefixCache.promise.then(checkShim);
     });
   }
 
@@ -737,8 +776,11 @@ export class CliAvailabilityService {
       // (env var not set) to avoid probing a literal path like
       // "%LOCALAPPDATA%\claude-code\bin\claude.exe".
       if (expanded.includes("%")) return null;
-    } else if (expanded.includes("\\")) {
-      // Windows-only candidates should not be probed on Unix.
+    } else if (input.includes("\\")) {
+      // Windows-only candidates should not be probed on Unix. Inspect the
+      // original input rather than `expanded`, since `join(home, …)` on a
+      // Windows host can introduce backslashes even for posix-shaped inputs
+      // (matters when tests mock `process.platform` to "darwin").
       return null;
     }
     return expanded;

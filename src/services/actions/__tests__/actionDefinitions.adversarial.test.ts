@@ -229,6 +229,10 @@ vi.mock("../../../store/persistence/panelPersistence", () => ({
   },
 }));
 
+vi.mock("@/lib/notify", () => ({
+  notify: vi.fn(() => "mock-notification-id"),
+}));
+
 const { registerTerminalQueryActions } = await import("../definitions/terminalQueryActions");
 const { registerTerminalSpawnActions } = await import("../definitions/terminalSpawnActions");
 const { registerTerminalLifecycleActions } =
@@ -485,6 +489,43 @@ describe("terminal action hardening", () => {
     expect(mocks.appClient.quit).not.toHaveBeenCalled();
   });
 
+  // #6920: terminal.close trashes immediately for every agent state — the
+  // close-confirm dialog and CustomEvent dispatch were retired in favour of
+  // an undo toast emitted by panelStore.trashPanel.
+  it.each(["idle", "working", "waiting", "directing", "completed", "exited"] as const)(
+    "trashes a %s agent terminal immediately on terminal.close (no confirm event)",
+    async (state) => {
+      const actions = buildRegistry(registerTerminalActions);
+      const closeTerminal = actions.get("terminal.close")!();
+
+      const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+      usePanelStore.setState({
+        panelsById: {
+          "term-1": createTerminal({
+            id: "term-1",
+            location: "grid",
+            agentState: state,
+          }),
+        },
+        panelIds: ["term-1"],
+        focusedId: "term-1",
+      });
+
+      await closeTerminal.run(undefined, {} as never);
+
+      expect(usePanelStore.getState().panelsById["term-1"]?.location).toBe("trash");
+      const confirmEvents = dispatchSpy.mock.calls
+        .map(([event]) => event)
+        .filter(
+          (e): e is CustomEvent => e instanceof CustomEvent && e.type === "daintree:close-confirm"
+        );
+      expect(confirmEvents).toHaveLength(0);
+
+      dispatchSpy.mockRestore();
+    }
+  );
+
   it("duplicates trashed terminals back into the grid with a copied title", async () => {
     const actions = buildRegistry(registerTerminalActions);
     const duplicate = actions.get("terminal.duplicate")!();
@@ -663,6 +704,143 @@ describe("terminal action hardening", () => {
       },
       panelIds: ["term-a", "term-b"],
       focusedId: null,
+      addPanel,
+    } as never);
+
+    await duplicate.run(undefined, {} as never);
+
+    expect(addPanel).not.toHaveBeenCalled();
+  });
+
+  // #7477: focusedId can lag behind a trash op (e.g. cross-process IPC race).
+  // The duplicate handler must treat a focusedId pointing at a trashed panel
+  // as if there were no implicit focus, falling through to the same paths as
+  // focusedId === null.
+  it("ignores stale focusedId that points at a trashed panel and creates a fresh terminal", async () => {
+    const actions = buildRegistry(registerTerminalActions);
+    const duplicate = actions.get("terminal.duplicate")!();
+    const addPanel = vi.fn().mockResolvedValue("new-id");
+
+    usePanelStore.setState({
+      panelsById: {
+        "term-trash": createTerminal({
+          id: "term-trash",
+          location: "trash",
+          title: "Stale Focus",
+          command: "npm test",
+        }),
+      },
+      panelIds: ["term-trash"],
+      focusedId: "term-trash",
+      lastClosedConfig: null,
+      addPanel,
+    } as never);
+
+    await duplicate.run(undefined, {} as never);
+
+    expect(addPanel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "terminal",
+        cwd: "/repo",
+        location: "grid",
+      })
+    );
+    expect(addPanel).not.toHaveBeenCalledWith(
+      expect.objectContaining({ title: expect.stringContaining("Stale Focus") })
+    );
+    expect(addPanel).not.toHaveBeenCalledWith(expect.objectContaining({ command: "npm test" }));
+  });
+
+  it("duplicates the lone live terminal when focusedId is stale-trashed", async () => {
+    const actions = buildRegistry(registerTerminalActions);
+    const duplicate = actions.get("terminal.duplicate")!();
+    const addPanel = vi.fn().mockResolvedValue("copy-id");
+
+    usePanelStore.setState({
+      panelsById: {
+        "term-trash": createTerminal({
+          id: "term-trash",
+          location: "trash",
+          title: "Stale Focus",
+        }),
+        "term-live": createTerminal({ id: "term-live", title: "Live One" }),
+      },
+      panelIds: ["term-trash", "term-live"],
+      focusedId: "term-trash",
+      addPanel,
+    } as never);
+
+    await duplicate.run(undefined, {} as never);
+
+    expect(addPanel).toHaveBeenCalledWith(expect.objectContaining({ title: "Live One (copy)" }));
+  });
+
+  it("ignores dangling focusedId pointing at a missing panel and falls back to the lone live terminal", async () => {
+    const actions = buildRegistry(registerTerminalActions);
+    const duplicate = actions.get("terminal.duplicate")!();
+    const addPanel = vi.fn().mockResolvedValue("copy-id");
+
+    usePanelStore.setState({
+      panelsById: { "term-live": createTerminal({ id: "term-live", title: "Live One" }) },
+      panelIds: ["term-live"],
+      focusedId: "gone",
+      addPanel,
+    } as never);
+
+    await duplicate.run(undefined, {} as never);
+
+    expect(addPanel).toHaveBeenCalledWith(expect.objectContaining({ title: "Live One (copy)" }));
+  });
+
+  it("falls through to lastClosedConfig snapshot when focusedId is stale-trashed and no live panels exist", async () => {
+    const actions = buildRegistry(registerTerminalActions);
+    const duplicate = actions.get("terminal.duplicate")!();
+    const addPanel = vi.fn().mockResolvedValue("new-id");
+
+    usePanelStore.setState({
+      panelsById: {
+        "term-trash": createTerminal({ id: "term-trash", location: "trash" }),
+      },
+      panelIds: ["term-trash"],
+      focusedId: "term-trash",
+      lastClosedConfig: {
+        kind: "terminal",
+        type: "terminal",
+        cwd: "/projects/app",
+        worktreeId: "wt-1",
+      },
+      addPanel,
+    } as never);
+
+    await duplicate.run(undefined, {} as never);
+
+    expect(addPanel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cwd: "/projects/app",
+        worktreeId: "wt-1",
+        location: "grid",
+      })
+    );
+  });
+
+  it("does not duplicate trashed panel when focusedId is stale-trashed and multiple live panels exist", async () => {
+    const actions = buildRegistry(registerTerminalActions);
+    const duplicate = actions.get("terminal.duplicate")!();
+    const addPanel = vi.fn().mockResolvedValue("copy-id");
+
+    usePanelStore.setState({
+      panelsById: {
+        "term-trash": createTerminal({
+          id: "term-trash",
+          location: "trash",
+          title: "Stale Focus",
+          command: "npm test",
+        }),
+        "term-a": createTerminal({ id: "term-a" }),
+        "term-b": createTerminal({ id: "term-b" }),
+      },
+      panelIds: ["term-trash", "term-a", "term-b"],
+      focusedId: "term-trash",
       addPanel,
     } as never);
 
@@ -1092,6 +1270,7 @@ describe("worktree cycling respects sidebar order", () => {
           id: "term-working",
           worktreeId: "wt-working",
           agentState: "working",
+          detectedAgentId: "claude",
         }),
       },
       panelIds: ["term-working"],
@@ -1128,6 +1307,7 @@ describe("worktree cycling respects sidebar order", () => {
           id: "term-working",
           worktreeId: "wt-working",
           agentState: "working",
+          detectedAgentId: "claude",
         }),
       },
       panelIds: ["term-working"],
@@ -1166,6 +1346,7 @@ describe("worktree cycling respects sidebar order", () => {
           id: "term-working",
           worktreeId: "wt-working",
           agentState: "working",
+          detectedAgentId: "claude",
         }),
       },
       panelIds: ["term-working"],

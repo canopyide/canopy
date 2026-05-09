@@ -12,6 +12,7 @@ import {
   registerWebContents,
   registerAppView,
 } from "./webContentsRegistry.js";
+import { getProjectViewManager } from "./windowRef.js";
 import path from "path";
 import { createWindowWithState } from "../windowState.js";
 import { store } from "../store.js";
@@ -38,6 +39,11 @@ import { markPerformance } from "../utils/performance.js";
 import { registerProtocolsForSession, getDistPath } from "../setup/protocols.js";
 import { isSmokeTest } from "../setup/environment.js";
 import { SMOKE_BOOT_TIMEOUT_MS } from "../services/smokeTest.js";
+import {
+  beginWindowRecreating,
+  endWindowRecreating,
+  isWindowRecreating,
+} from "../lifecycle/windowRecreationState.js";
 
 const CRASH_LOOP_WINDOW_MS = 60_000;
 const CRASH_LOOP_THRESHOLD = 3;
@@ -217,7 +223,12 @@ export function setupBrowserWindow(
   // Without this, the BW stays at about:blank (no Target.targetCreated event)
   // and electron.launch() times out after the WebContentsView migration.
   if (process.env.DAINTREE_E2E_MODE) {
-    win.loadURL("data:text/html,<!doctype html><html><body></body></html>");
+    win.loadURL("data:text/html,<!doctype html><html><body></body></html>").catch((err) => {
+      console.warn("[MAIN] Failed to load E2E BrowserWindow sentinel:", err);
+    });
+    if (process.env.DAINTREE_E2E_DEFER_RENDERER_LOAD === "1" && !win.isDestroyed()) {
+      win.show();
+    }
   }
 
   // ── Create WebContentsView for the React app ──
@@ -290,7 +301,9 @@ export function setupBrowserWindow(
           unresponsiveDialogOpen = false;
           if (response === 1 && !win.isDestroyed()) {
             console.warn("[MAIN] User triggered force-restart of unresponsive renderer");
-            appWebContents.forcefullyCrashRenderer();
+            const activeWc = getProjectViewManager()?.getActiveView()?.webContents;
+            const target = activeWc && !activeWc.isDestroyed() ? activeWc : appWebContents;
+            if (!target.isDestroyed()) target.forcefullyCrashRenderer();
           }
         })
         .catch(() => {
@@ -401,12 +414,30 @@ export function setupBrowserWindow(
     webPreferences.partition = params.partition;
   });
 
-  // Prevent Cmd+W / Ctrl+W from closing the window — listen on app view's webContents
-  appWebContents.on("before-input-event", (_event, input) => {
+  // Prevent Cmd+W / Ctrl+W from closing the window, and route Ctrl+Tab terminal
+  // focus shortcuts for the initial app view. ProjectViewManager installs the
+  // same Ctrl+Tab bridge for cold-started project views.
+  appWebContents.on("before-input-event", (event, input) => {
+    const key = input.key.toLowerCase();
+    const isTerminalFocusShortcut =
+      input.type === "keyDown" &&
+      (key === "tab" || input.code === "Tab") &&
+      input.control &&
+      !input.meta &&
+      !input.alt;
+    if (isTerminalFocusShortcut) {
+      event.preventDefault();
+      appWebContents.send(
+        CHANNELS.MENU_ACTION,
+        input.shift ? "focus-previous-terminal" : "focus-next-terminal"
+      );
+      return;
+    }
+
     const isMac = process.platform === "darwin";
     const isCloseShortcut =
       input.type === "keyDown" &&
-      input.key.toLowerCase() === "w" &&
+      key === "w" &&
       ((isMac && input.meta && !input.control) || (!isMac && input.control && !input.meta)) &&
       !input.alt;
 
@@ -470,10 +501,29 @@ export function setupBrowserWindow(
           { source: "renderer-crash" }
         );
         setImmediate(() => {
+          // Increment the guard before `destroy()` — Electron emits
+          // `window-all-closed` synchronously inside the destroy call.
+          beginWindowRecreating();
           if (!win.isDestroyed()) win.destroy();
-          onRecreateWindow().catch((err) => {
-            console.error("[MAIN] Failed to recreate window after OOM:", err);
-          });
+          onRecreateWindow()
+            .catch((err) => {
+              console.error("[MAIN] Failed to recreate window after OOM:", err);
+            })
+            .finally(() => {
+              endWindowRecreating();
+              // The suppressed `window-all-closed` event must be replayed if
+              // the recreation failed — otherwise on non-darwin the process
+              // hangs headless with no windows and no quit path. Skip when
+              // another OOM recreate is still in flight or any window remains
+              // (the natural `window-all-closed` path will cover those cases).
+              if (
+                !isWindowRecreating() &&
+                process.platform !== "darwin" &&
+                BrowserWindow.getAllWindows().length === 0
+              ) {
+                app.quit();
+              }
+            });
         });
       }
     } else {

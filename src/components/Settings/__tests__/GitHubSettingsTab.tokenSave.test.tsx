@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { GitHubSettingsTab } from "../GitHubSettingsTab";
+import { SettingsValidationProvider } from "../SettingsValidationRegistry";
 
 vi.mock("@/store", () => ({
   useGitHubConfigStore: vi.fn(),
@@ -63,7 +64,11 @@ describe("GitHubSettingsTab handleSaveToken", () => {
       return { ok: true, result: undefined } as never;
     });
 
-    render(<GitHubSettingsTab />);
+    render(
+      <SettingsValidationProvider>
+        <GitHubSettingsTab />
+      </SettingsValidationProvider>
+    );
 
     fireEvent.change(screen.getByLabelText(/github personal access token/i), {
       target: { value: "ghp_valid_token" },
@@ -96,7 +101,11 @@ describe("GitHubSettingsTab handleSaveToken", () => {
       return { ok: true, result: undefined } as never;
     });
 
-    render(<GitHubSettingsTab />);
+    render(
+      <SettingsValidationProvider>
+        <GitHubSettingsTab />
+      </SettingsValidationProvider>
+    );
 
     fireEvent.change(screen.getByLabelText(/github personal access token/i), {
       target: { value: "ghp_invalid" },
@@ -119,7 +128,7 @@ describe("GitHubSettingsTab handleSaveToken", () => {
     );
   });
 
-  it("routes IPC failure to inbox via low-priority notify alongside inline error", async () => {
+  it("shows inline error on IPC failure without firing notify", async () => {
     mockedDispatch.mockImplementation(async (actionId: string) => {
       if (actionId === "github.setToken") {
         return { ok: false, error: { message: "IPC down" } } as never;
@@ -127,7 +136,11 @@ describe("GitHubSettingsTab handleSaveToken", () => {
       return { ok: true, result: undefined } as never;
     });
 
-    render(<GitHubSettingsTab />);
+    render(
+      <SettingsValidationProvider>
+        <GitHubSettingsTab />
+      </SettingsValidationProvider>
+    );
 
     fireEvent.change(screen.getByLabelText(/github personal access token/i), {
       target: { value: "ghp_token" },
@@ -135,15 +148,9 @@ describe("GitHubSettingsTab handleSaveToken", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save token" }));
 
     await waitFor(() => {
-      expect(mockedNotify).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: "error",
-          priority: "low",
-          title: "GitHub token save failed",
-        })
-      );
+      expect(screen.getByText(/failed to save token/i)).toBeTruthy();
     });
 
-    expect(screen.getByText(/failed to save token/i)).toBeTruthy();
+    expect(mockedNotify).not.toHaveBeenCalled();
   });
 });

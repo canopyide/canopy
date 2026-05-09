@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const appMock = vi.hoisted(() => ({
   isPackaged: false as boolean,
@@ -30,8 +30,14 @@ vi.mock("../signalShutdownState.js", () => ({
   setSignalShutdown: setSignalShutdownMock,
 }));
 
+const isWindowRecreatingMock = vi.fn(() => false);
+vi.mock("../windowRecreationState.js", () => ({
+  isWindowRecreating: isWindowRecreatingMock,
+}));
+
 import type { AppLifecycleOptions } from "../appLifecycle.js";
 import { handleDirectoryOpen } from "../../menu.js";
+import { CLEANUP_TIMEOUT_MS } from "../shutdownConfig.js";
 
 function makeOpts(overrides?: Partial<AppLifecycleOptions>): AppLifecycleOptions {
   return {
@@ -74,6 +80,19 @@ describe("registerAppLifecycleHandlers – signal handling", () => {
     }
   });
 
+  it("registers SIGHUP only when !isPackaged", async () => {
+    const { registerAppLifecycleHandlers } = await import("../appLifecycle.js");
+
+    appMock.isPackaged = false;
+    registerAppLifecycleHandlers(makeOpts());
+    expect(processOnSpy.mock.calls.some(([sig]: string[]) => sig === "SIGHUP")).toBe(true);
+
+    vi.clearAllMocks();
+    appMock.isPackaged = true;
+    registerAppLifecycleHandlers(makeOpts());
+    expect(processOnSpy.mock.calls.some(([sig]: string[]) => sig === "SIGHUP")).toBe(false);
+  });
+
   it("signal handler calls setSignalShutdown, schedules timeout, and calls app.quit", async () => {
     const { registerAppLifecycleHandlers } = await import("../appLifecycle.js");
     registerAppLifecycleHandlers(makeOpts());
@@ -86,12 +105,16 @@ describe("registerAppLifecycleHandlers – signal handling", () => {
     expect(setSignalShutdownMock).toHaveBeenCalledOnce();
     expect(appMock.quit).toHaveBeenCalledOnce();
 
+    // Belt must outlast CLEANUP_TIMEOUT_MS plus telemetry-drain buffer so it
+    // doesn't fire mid-cleanup. Advancing to (CLEANUP_TIMEOUT_MS + 3000 - 1)
+    // confirms the belt hasn't fired prematurely.
+    vi.advanceTimersByTime(CLEANUP_TIMEOUT_MS + 3000 - 1);
     expect(processExitSpy).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(5000);
+    vi.advanceTimersByTime(1);
     expect(processExitSpy).toHaveBeenCalledWith(0);
   });
 
-  it("signal handler is idempotent — second call is a no-op", async () => {
+  it("rapid second signal within 2s force-exits with status 1", async () => {
     const { registerAppLifecycleHandlers } = await import("../appLifecycle.js");
     registerAppLifecycleHandlers(makeOpts());
 
@@ -99,13 +122,50 @@ describe("registerAppLifecycleHandlers – signal handling", () => {
     const handler = sigTermCall![1] as () => void;
 
     handler();
+    // Same tick — Date.now() delta is ~0ms, well within the 2000ms force-exit window.
     handler();
 
     expect(setSignalShutdownMock).toHaveBeenCalledOnce();
     expect(appMock.quit).toHaveBeenCalledOnce();
+    expect(processExitSpy).toHaveBeenCalledWith(1);
   });
 
-  it("SIGTERM then SIGINT shares the same one-shot guard", async () => {
+  it("second signal at 1999ms force-exits (boundary inside window)", async () => {
+    vi.setSystemTime(new Date(1_000_000));
+    const { registerAppLifecycleHandlers } = await import("../appLifecycle.js");
+    registerAppLifecycleHandlers(makeOpts());
+
+    const sigTermCall = processOnSpy.mock.calls.find(([sig]: string[]) => sig === "SIGTERM");
+    const handler = sigTermCall![1] as () => void;
+
+    handler();
+    // 1ms inside the 2000ms exclusive boundary — must force-exit. Pins the
+    // `<` boundary so an accidental change to `<=` would surface here.
+    vi.setSystemTime(new Date(1_001_999));
+    handler();
+
+    expect(processExitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it("second signal after 2s force-exit window is ignored", async () => {
+    vi.setSystemTime(new Date(1_000_000));
+    const { registerAppLifecycleHandlers } = await import("../appLifecycle.js");
+    registerAppLifecycleHandlers(makeOpts());
+
+    const sigTermCall = processOnSpy.mock.calls.find(([sig]: string[]) => sig === "SIGTERM");
+    const handler = sigTermCall![1] as () => void;
+
+    handler();
+    // Boundary is exclusive — exactly 2000ms later is outside the window.
+    vi.setSystemTime(new Date(1_002_000));
+    handler();
+
+    expect(setSignalShutdownMock).toHaveBeenCalledOnce();
+    expect(appMock.quit).toHaveBeenCalledOnce();
+    expect(processExitSpy).not.toHaveBeenCalled();
+  });
+
+  it("SIGTERM then SIGINT within window force-exits", async () => {
     const { registerAppLifecycleHandlers } = await import("../appLifecycle.js");
     registerAppLifecycleHandlers(makeOpts());
 
@@ -119,6 +179,7 @@ describe("registerAppLifecycleHandlers – signal handling", () => {
 
     expect(setSignalShutdownMock).toHaveBeenCalledOnce();
     expect(appMock.quit).toHaveBeenCalledOnce();
+    expect(processExitSpy).toHaveBeenCalledWith(1);
   });
 });
 
@@ -255,5 +316,86 @@ describe("registerAppLifecycleHandlers – second-instance", () => {
 
     expect(mainWindow.restore).toHaveBeenCalled();
     expect(mainWindow.focus).toHaveBeenCalled();
+  });
+});
+
+describe("registerAppLifecycleHandlers – window-all-closed", () => {
+  const originalPlatform = process.platform;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    isWindowRecreatingMock.mockReturnValue(false);
+    vi.spyOn(process, "on").mockImplementation(() => process);
+    vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, "platform", { value: originalPlatform });
+  });
+
+  function getWindowAllClosedHandler(): () => void {
+    const call = appMock.on.mock.calls.find(([event]: string[]) => event === "window-all-closed");
+    return call![1] as () => void;
+  }
+
+  it("calls app.quit on linux when no recreation is in flight", async () => {
+    Object.defineProperty(process, "platform", { value: "linux" });
+    const { registerAppLifecycleHandlers } = await import("../appLifecycle.js");
+    registerAppLifecycleHandlers(makeOpts());
+
+    getWindowAllClosedHandler()();
+
+    expect(appMock.quit).toHaveBeenCalledOnce();
+  });
+
+  it("skips app.quit on linux while a window recreation is in flight", async () => {
+    Object.defineProperty(process, "platform", { value: "linux" });
+    isWindowRecreatingMock.mockReturnValue(true);
+    const { registerAppLifecycleHandlers } = await import("../appLifecycle.js");
+    registerAppLifecycleHandlers(makeOpts());
+
+    getWindowAllClosedHandler()();
+
+    // Suppressing the quit during OOM recreate is the whole point of #5724.
+    expect(appMock.quit).not.toHaveBeenCalled();
+  });
+
+  it("does not call app.quit on darwin even when no recreation is in flight", async () => {
+    Object.defineProperty(process, "platform", { value: "darwin" });
+    const { registerAppLifecycleHandlers } = await import("../appLifecycle.js");
+    registerAppLifecycleHandlers(makeOpts());
+
+    getWindowAllClosedHandler()();
+
+    expect(appMock.quit).not.toHaveBeenCalled();
+  });
+
+  it("calls app.quit on win32 when no recreation is in flight", async () => {
+    // Pin the `!== "darwin"` branch for Windows — if a future refactor
+    // narrowed the check (e.g. to `=== "linux"`), this test would catch it.
+    Object.defineProperty(process, "platform", { value: "win32" });
+    const { registerAppLifecycleHandlers } = await import("../appLifecycle.js");
+    registerAppLifecycleHandlers(makeOpts());
+
+    getWindowAllClosedHandler()();
+
+    expect(appMock.quit).toHaveBeenCalledOnce();
+  });
+
+  it("resumes calling app.quit after the recreation flag returns to false", async () => {
+    // Round-trip: a suppressed event during recreation must not leave the
+    // quit path permanently disabled once the recreation settles.
+    Object.defineProperty(process, "platform", { value: "linux" });
+    const { registerAppLifecycleHandlers } = await import("../appLifecycle.js");
+    registerAppLifecycleHandlers(makeOpts());
+    const handler = getWindowAllClosedHandler();
+
+    isWindowRecreatingMock.mockReturnValue(true);
+    handler();
+    expect(appMock.quit).not.toHaveBeenCalled();
+
+    isWindowRecreatingMock.mockReturnValue(false);
+    handler();
+    expect(appMock.quit).toHaveBeenCalledOnce();
   });
 });

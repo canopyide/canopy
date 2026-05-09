@@ -35,7 +35,7 @@ export async function waitForTerminalText(
   timeout = 60_000
 ): Promise<void> {
   await expect
-    .poll(() => getTerminalText(panelLocator), { timeout, intervals: [500] })
+    .poll(() => getTerminalText(panelLocator), { timeout, intervals: [200, 500, 1000] })
     .toContain(text);
 }
 

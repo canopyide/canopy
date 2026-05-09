@@ -3,6 +3,23 @@ import * as path from "path";
 import { createHardenedGit } from "../utils/hardenedGit.js";
 import type { FileTreeNode } from "../../shared/types/ipc.js";
 
+const _baseRealpathCache = new Map<string, Promise<string>>();
+
+export function _resetBaseRealpathCacheForTests(): void {
+  _baseRealpathCache.clear();
+}
+
+function _getBaseRealpath(resolvedBasePath: string): Promise<string> {
+  const cached = _baseRealpathCache.get(resolvedBasePath);
+  if (cached) return cached;
+  const promise = fs.realpath(resolvedBasePath).catch((_err) => {
+    _baseRealpathCache.delete(resolvedBasePath);
+    return resolvedBasePath;
+  });
+  _baseRealpathCache.set(resolvedBasePath, promise);
+  return promise;
+}
+
 export class FileTreeService {
   async getFileTree(basePath: string, dirPath: string = ""): Promise<FileTreeNode[]> {
     const resolvedBasePath = path.resolve(basePath);
@@ -31,9 +48,7 @@ export class FileTreeService {
     }
 
     try {
-      const resolvedBaseRealPath = await fs
-        .realpath(resolvedBasePath)
-        .catch(() => resolvedBasePath);
+      const resolvedBaseRealPath = await _getBaseRealpath(resolvedBasePath);
       const targetRealPath = await fs.realpath(targetPath).catch(() => targetPath);
       const relativeRealTarget = path.relative(resolvedBaseRealPath, targetRealPath);
       if (relativeRealTarget.startsWith("..") || path.isAbsolute(relativeRealTarget)) {
@@ -48,7 +63,9 @@ export class FileTreeService {
       const entries = await fs.readdir(targetPath, { withFileTypes: true });
 
       const toGitPath = (p: string) => p.split(path.sep).join("/");
-      const pathsToCheck = entries.map((e) => toGitPath(path.join(relativeDirPath, e.name)));
+      const pathsToCheck = entries
+        .filter((e) => e.name !== ".git")
+        .map((e) => toGitPath(path.join(relativeDirPath, e.name)));
       const ignoredPaths = new Set<string>();
 
       try {
@@ -60,51 +77,43 @@ export class FileTreeService {
       } catch (_e) {
         // ignore
       }
+
+      const statResults = await Promise.all(
+        entries.map(async (entry) => {
+          if (entry.name === ".git") return null;
+          if (entry.isSymbolicLink()) return null;
+
+          const relativePath = path.join(relativeDirPath, entry.name);
+          const gitRelativePath = toGitPath(relativePath);
+
+          if (ignoredPaths.has(gitRelativePath)) return null;
+
+          const absolutePath = path.join(resolvedBasePath, relativePath);
+          try {
+            const fileStat = await fs.lstat(absolutePath);
+            return { fileStat, name: entry.name, gitRelativePath };
+          } catch {
+            return null;
+          }
+        })
+      );
+
       const nodes: FileTreeNode[] = [];
-
-      for (const entry of entries) {
-        const relativePath = path.join(relativeDirPath, entry.name);
-        const gitRelativePath = toGitPath(relativePath);
-        const absolutePath = path.join(resolvedBasePath, relativePath);
-
-        if (entry.name === ".git") {
-          continue;
-        }
-
-        if (ignoredPaths.has(gitRelativePath)) {
-          continue;
-        }
-
-        let fileStat: Awaited<ReturnType<typeof fs.lstat>>;
-        try {
-          fileStat = await fs.lstat(absolutePath);
-        } catch {
-          continue;
-        }
-        const isSymlink = fileStat.isSymbolicLink();
-
-        if (isSymlink) {
-          continue;
-        }
+      for (const result of statResults) {
+        if (!result) continue;
+        const { fileStat, name, gitRelativePath } = result;
 
         const isDirectory = fileStat.isDirectory();
-        let size = 0;
-
-        if (!isDirectory) {
-          try {
-            size = fileStat.size;
-          } catch {
-            continue;
-          }
+        if (isDirectory) {
+          nodes.push({ name, path: gitRelativePath, isDirectory });
+          continue;
         }
 
-        nodes.push({
-          name: entry.name,
-          path: gitRelativePath,
-          isDirectory,
-          size,
-          children: undefined,
-        });
+        try {
+          nodes.push({ name, path: gitRelativePath, isDirectory, size: fileStat.size });
+        } catch {
+          // skip entries where size read fails
+        }
       }
 
       nodes.sort((a, b) => {

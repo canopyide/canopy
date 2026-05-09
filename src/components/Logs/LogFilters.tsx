@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState, useRef } from "react";
+import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { useEscapeStack } from "@/hooks/useEscapeStack";
 import type { LogLevel, LogFilterOptions } from "@/types";
 
 interface LogFiltersProps {
@@ -33,6 +35,8 @@ export function LogFilters({
   const [isSourcesOpen, setIsSourcesOpen] = useState(false);
   const sourcesRef = useRef<HTMLDivElement>(null);
 
+  useEscapeStack(isSourcesOpen, () => setIsSourcesOpen(false));
+
   useEffect(() => {
     const timer = setTimeout(() => {
       if (searchValue !== filters.search) {
@@ -41,6 +45,15 @@ export function LogFilters({
     }, 200);
     return () => clearTimeout(timer);
   }, [searchValue, filters.search, onFiltersChange]);
+
+  // External resets (e.g. clearFilters) zero filters.search but cannot reach
+  // this component's local searchValue. Without this sync the debounce above
+  // would resurrect the cleared search 200ms later.
+  useEffect(() => {
+    if (!filters.search && searchValue) {
+      setSearchValue("");
+    }
+  }, [filters.search, searchValue]);
 
   const handleLevelToggle = useCallback(
     (level: LogLevel) => {
@@ -91,7 +104,7 @@ export function LogFilters({
     <div className="flex flex-wrap items-center gap-2 p-2 border-b border-daintree-border bg-daintree-sidebar/50">
       <div className="relative flex-1 min-w-[150px] max-w-[250px]">
         <input
-          type="text"
+          type="search"
           value={searchValue}
           onChange={(e) => setSearchValue(e.target.value)}
           placeholder="Search logs..."
@@ -99,7 +112,8 @@ export function LogFilters({
             "w-full px-2 py-1 text-xs rounded",
             "bg-daintree-bg border border-daintree-border",
             "text-daintree-text placeholder-daintree-text/40",
-            "focus:outline-hidden focus:border-status-info"
+            "focus:outline-hidden focus:border-status-info",
+            "[&::-webkit-search-cancel-button]:hidden"
           )}
         />
         {searchValue && (
@@ -110,7 +124,7 @@ export function LogFilters({
             className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6"
             aria-label="Clear search"
           >
-            ×
+            <X className="w-3 h-3" />
           </Button>
         )}
       </div>
@@ -118,7 +132,7 @@ export function LogFilters({
       <div className="flex items-center gap-1">
         <span className="text-daintree-text/60 text-xs mr-1">Level:</span>
         {LOG_LEVELS.map(({ level, label, color }) => {
-          const isActive = filters.levels?.includes(level);
+          const isActive = filters.levels?.includes(level) ?? false;
           const count = levelCounts?.[level] ?? 0;
           return (
             <Button
@@ -127,6 +141,7 @@ export function LogFilters({
               size="xs"
               onClick={() => handleLevelToggle(level)}
               className={cn(isActive ? "bg-daintree-border font-medium" : "bg-daintree-bg/50", color)}
+              aria-pressed={isActive}
               aria-label={`${label}${count > 0 ? ` (${count})` : ""}`}
             >
               {label}
@@ -143,6 +158,7 @@ export function LogFilters({
             size="xs"
             onClick={() => setIsSourcesOpen(!isSourcesOpen)}
             aria-expanded={isSourcesOpen}
+            aria-haspopup="true"
           >
             Sources {filters.sources?.length ? <span className="tabular-nums">({filters.sources.length})</span> : ""}
           </Button>
@@ -155,7 +171,7 @@ export function LogFilters({
               )}
             >
               {availableSources.map((source) => {
-                const isActive = filters.sources?.includes(source);
+                const isActive = filters.sources?.includes(source) ?? false;
                 return (
                   <Button
                     key={source}
@@ -166,6 +182,7 @@ export function LogFilters({
                       "w-full justify-start rounded-none",
                       isActive ? "text-status-info bg-status-info/10" : "text-daintree-text"
                     )}
+                    aria-pressed={isActive}
                   >
                     {isActive && "* "}
                     {source}

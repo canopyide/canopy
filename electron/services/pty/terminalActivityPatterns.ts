@@ -5,6 +5,11 @@ import {
 import type { PatternDetectionConfig } from "./AgentPatternDetector.js";
 import type { ActivityMonitorOptions, ProcessStateValidator } from "../ActivityMonitor.js";
 import type { ProcessTreeCache } from "../ProcessTreeCache.js";
+import type { VisibleContentSnapshot } from "./SustainedChangeTracker.js";
+
+// Agent status is intentionally output-driven: any observed output means
+// working, and sustained silence means waiting.
+const AGENT_WAITING_QUIET_MS = 8000;
 
 export function buildPatternConfig(
   detection: AgentDetectionConfig | undefined,
@@ -135,9 +140,9 @@ export function createProcessStateValidator(
     return undefined;
   }
 
-  const CPU_ACTIVITY_THRESHOLD = 0.5;
   const shellHelperProcesses = new Set(["gitstatus", "gitstatusd", "async", "zsh-async"]);
   const shellProcesses = new Set(["zsh", "bash", "sh", "fish", "powershell", "pwsh", "cmd"]);
+  const CPU_ACTIVITY_THRESHOLD = 0.5;
 
   return {
     hasActiveChildren: () => {
@@ -166,6 +171,7 @@ export function buildActivityMonitorOptions(
   effectiveAgentId: string | undefined,
   deps: {
     getVisibleLines?: (n: number) => string[];
+    getVisibleContentSnapshot?: (n: number) => VisibleContentSnapshot | undefined;
     getCursorLine?: () => string | null;
   }
 ): ActivityMonitorOptions {
@@ -181,21 +187,39 @@ export function buildActivityMonitorOptions(
   const promptHintPatterns = buildPromptHintPatterns(detection, effectiveAgentId);
   const completionPatterns = buildCompletionPatterns(detection, effectiveAgentId);
 
+  // Sample-cadence-invariant leaky bucket (#6666), tuned back toward the
+  // v0.7.1 contract: small visible output should recover an agent to working,
+  // and sustained silence should return it to waiting. Idle protocol noise is
+  // stripped before this detector, so the threshold can remain low.
   const outputActivityDetection = {
     enabled: true,
-    windowMs: 1000,
-    minFrames: 2,
-    minBytes: 32,
+    leakRatePerMs: 0.032,
+    activationThreshold: 32,
+    maxBytesPerFrame: 64,
   };
 
   const getVisibleLines = effectiveAgentId ? deps.getVisibleLines : undefined;
+  const getVisibleContentSnapshot = effectiveAgentId ? deps.getVisibleContentSnapshot : undefined;
   const getCursorLine = effectiveAgentId ? deps.getCursorLine : undefined;
+  let idleDebounceMs: number | undefined;
+  let promptFastPathMinQuietMs = detection?.promptFastPathMinQuietMs;
+  if (effectiveAgentId) {
+    idleDebounceMs = Math.max(
+      detection?.debounceMs ?? AGENT_WAITING_QUIET_MS,
+      AGENT_WAITING_QUIET_MS
+    );
+    promptFastPathMinQuietMs = Math.max(
+      detection?.promptFastPathMinQuietMs ?? idleDebounceMs,
+      idleDebounceMs
+    );
+  }
 
   return {
     ignoredInputSequences,
     agentId: effectiveAgentId,
     outputActivityDetection,
     getVisibleLines,
+    getVisibleContentSnapshot,
     getCursorLine,
     patternConfig,
     bootCompletePatterns,
@@ -205,8 +229,14 @@ export function buildActivityMonitorOptions(
     completionConfidence: detection?.completionConfidence,
     promptScanLineCount: detection?.promptScanLineCount,
     promptConfidence: detection?.promptConfidence,
-    idleDebounceMs: effectiveAgentId ? (detection?.debounceMs ?? 4000) : undefined,
-    promptFastPathMinQuietMs: detection?.promptFastPathMinQuietMs,
+    idleDebounceMs,
+    promptFastPathMinQuietMs,
+    simpleOutputState: effectiveAgentId !== undefined,
     maxWaitingSilenceMs: 600_000,
+    // Background polling (500ms) shortens the recovery debouncer so
+    // backgrounded agents can escape "waiting" when output resumes (#6641).
+    // The volume detector is now sample-cadence invariant (#6666) and needs
+    // no tier-specific override.
+    backgroundWorkingRecoveryDelayMs: 600,
   };
 }

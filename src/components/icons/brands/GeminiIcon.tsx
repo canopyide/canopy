@@ -1,21 +1,20 @@
+import type { SVGProps } from "react";
 import { cn } from "@/lib/utils";
 
-interface GeminiIconProps {
-  className?: string;
+type GeminiIconProps = SVGProps<SVGSVGElement> & {
   size?: number;
   brandColor?: string;
-}
+};
 
-export function GeminiIcon({ className, size = 16, brandColor }: GeminiIconProps) {
+export function GeminiIcon({ className, size = 16, brandColor, ...props }: GeminiIconProps) {
   return (
     <svg
       width={size}
       height={size}
       viewBox="0 0 65 65"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
       className={cn(className)}
       aria-hidden="true"
+      {...props}
     >
       <path
         fill={brandColor || "currentColor"}

@@ -29,7 +29,9 @@ test.describe("Core: Process Cleanup", () => {
   test("clean exit kills PTY process tree", async () => {
     test.setTimeout(240_000);
 
-    const fixtureDir = createFixtureRepo({ name: "process-cleanup" });
+    const { dir: fixtureDir, cleanup: fixtureCleanup } = createFixtureRepo({
+      name: "process-cleanup",
+    });
     const userDataDir = mkdtempSync(path.join(tmpdir(), "daintree-e2e-cleanup-"));
     let ptyPid = 0;
     let descendants: number[] = [];
@@ -96,14 +98,16 @@ test.describe("Core: Process Cleanup", () => {
         }
       }
       rmSync(userDataDir, { recursive: true, force: true });
-      rmSync(fixtureDir, { recursive: true, force: true });
+      fixtureCleanup();
     }
   });
 
   test("TrashedPidTracker cleans up orphans after unclean exit", async () => {
     test.setTimeout(180_000);
 
-    const fixtureDir = createFixtureRepo({ name: "process-cleanup-unclean" });
+    const { dir: fixtureDir, cleanup: fixtureCleanup } = createFixtureRepo({
+      name: "process-cleanup-unclean",
+    });
     const userDataDir = mkdtempSync(path.join(tmpdir(), "daintree-e2e-unclean-"));
     let orphanPid = 0;
 
@@ -176,7 +180,7 @@ test.describe("Core: Process Cleanup", () => {
         }
       }
       rmSync(userDataDir, { recursive: true, force: true });
-      rmSync(fixtureDir, { recursive: true, force: true });
+      fixtureCleanup();
     }
   });
 });
@@ -186,10 +190,11 @@ test.describe.serial("Core: Process Cleanup on Shutdown", () => {
 
   let ctx: AppContext;
   let fixtureDir: string;
+  let fixtureCleanup: (() => void) | undefined;
   let trackedPids: number[] = [];
 
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "process-cleanup" });
+    ({ dir: fixtureDir, cleanup: fixtureCleanup } = createFixtureRepo({ name: "process-cleanup" }));
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(
       ctx.app,
@@ -216,6 +221,7 @@ test.describe.serial("Core: Process Cleanup on Shutdown", () => {
         // Best-effort
       }
     }
+    fixtureCleanup?.();
   });
 
   test("graceful shutdown kills PTY processes within time limit", async () => {

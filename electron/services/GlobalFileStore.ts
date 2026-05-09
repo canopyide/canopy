@@ -1,6 +1,5 @@
 import type { TerminalRecipe } from "../types/index.js";
 import fs from "fs/promises";
-import { existsSync } from "fs";
 import path from "path";
 import { resilientRename, resilientAtomicWriteFile } from "../utils/fs.js";
 import { TerminalRecipeSchema, filterValidTerminalEntries } from "../schemas/ipc.js";
@@ -15,24 +14,23 @@ export class GlobalFileStore {
   }
 
   async getRecipes(): Promise<TerminalRecipe[]> {
-    if (!existsSync(this.recipesPath)) {
-      return [];
-    }
-
     try {
       const content = await fs.readFile(this.recipesPath, "utf-8");
       const parsed = JSON.parse(content);
 
       if (!Array.isArray(parsed)) {
-        console.warn("[GlobalFileStore] Invalid recipes format, expected array");
-        return [];
+        throw new Error("recipes is not an array");
       }
 
       return filterValidTerminalEntries(parsed, TerminalRecipeSchema, "GlobalFileStore");
     } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+        return [];
+      }
       console.error("[GlobalFileStore] Failed to load recipes:", error);
       try {
-        const quarantinePath = `${this.recipesPath}.corrupted.${Date.now()}`;
+        const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const quarantinePath = `${this.recipesPath}.corrupted.${suffix}`;
         await resilientRename(this.recipesPath, quarantinePath);
         console.warn(`[GlobalFileStore] Corrupted recipes file moved to ${quarantinePath}`);
       } catch {
@@ -89,6 +87,7 @@ export class GlobalFileStore {
       id: _id,
       projectId: _pid,
       createdAt: _ca,
+      worktreeId: _wid,
       ...safeUpdates
     } = updates as Record<string, unknown>;
     recipes[index] = { ...recipes[index], ...safeUpdates };

@@ -2,11 +2,24 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi } from "vitest";
+
+// jsdom does not implement Trusted Types — mock the renderer policy module
+// with a pass-through so chip widgets that call setTrustedInnerHTML in
+// toDOM() can render under jsdom. See #6392.
+vi.mock("@/lib/trustedTypesPolicy", () => ({
+  createTrustedHTML: (s: string) => s,
+  setTrustedInnerHTML: (el: Element, html: string) => {
+    el.innerHTML = html;
+  },
+}));
+
 import { EditorState } from "@codemirror/state";
+import type { Extension } from "@codemirror/state";
 import { EditorView, runScopeHandlers } from "@codemirror/view";
 import type { ITheme } from "@xterm/xterm";
 import {
   buildInputBarTheme,
+  chipEntranceTheme,
   computeAutoSize,
   createAutoSize,
   createCustomKeymap,
@@ -22,7 +35,23 @@ import {
   terminalChipField,
   selectionChipField,
   formatFileSize,
+  chipPendingDeleteField,
+  setChipPendingDelete,
+  createChipBackspaceKeymap,
+  isChipSelected,
+  createSlashChipField,
 } from "../inputEditorExtensions";
+import type { SlashCommand } from "@shared/types";
+
+function makeSlashCommand(label: string, description = ""): SlashCommand {
+  return {
+    id: label.replace(/^\//, ""),
+    label,
+    description,
+    scope: "built-in",
+    agentId: "claude",
+  };
+}
 import { resolveInputBarColors } from "@/utils/terminalTheme";
 
 describe("computeAutoSize", () => {
@@ -1374,5 +1403,558 @@ describe("buildInputBarTheme", () => {
       extensions: [buildInputBarTheme(theme)],
     });
     expect(state.doc.toString()).toBe("test");
+  });
+
+  it("styles slash chip with chipColor (neutral), not accent", () => {
+    const css = readGeneratedCss([buildInputBarTheme(theme)]);
+    const colors = resolveInputBarColors(theme);
+    expect(colors.chipColor).not.toBe(colors.accent);
+    const slashRule = extractRuleBody(css, ".cm-slash-command-chip");
+    expect(slashRule).toContain(`color: ${colors.chipColor}`);
+    expect(slashRule).not.toContain(`color: ${colors.accent}`);
+  });
+
+  it("retains errorColor on the .cm-slash-command-chip-invalid rule", () => {
+    const css = readGeneratedCss([buildInputBarTheme(theme)]);
+    const colors = resolveInputBarColors(theme);
+    const invalidRule = extractRuleBody(css, ".cm-slash-command-chip-invalid");
+    expect(invalidRule).toContain(`color: ${colors.errorColor}`);
+  });
+});
+
+const ALL_CHIP_SELECTORS = [
+  ".cm-file-chip",
+  ".cm-slash-command-chip",
+  ".cm-image-chip",
+  ".cm-file-drop-chip",
+  ".cm-diff-chip",
+  ".cm-terminal-chip",
+  ".cm-selection-chip",
+];
+
+describe("chipEntranceTheme", () => {
+  it("is a valid Extension", () => {
+    expect(chipEntranceTheme).toBeDefined();
+    expect(chipEntranceTheme).not.toBeNull();
+  });
+
+  it("can be used to create an EditorState alongside buildInputBarTheme", () => {
+    const theme: ITheme = {
+      background: "#282a36",
+      foreground: "#f8f8f2",
+      cursor: "#ff79c6",
+      cyan: "#8be9fd",
+    };
+    const state = EditorState.create({
+      doc: "hello",
+      extensions: [buildInputBarTheme(theme), chipEntranceTheme],
+    });
+    expect(state.doc.toString()).toBe("hello");
+  });
+
+  it("defines a chip-enter @keyframes with opacity + translateY drift", () => {
+    const css = readGeneratedCss([chipEntranceTheme]);
+    expect(css).toMatch(/@keyframes\s+chip-enter/);
+    expect(css).toMatch(/opacity:\s*0/);
+    expect(css).toMatch(/translateY\(2px\)/);
+  });
+
+  it("applies the chip-enter animation with fill-mode 'both' to all 7 chip classes", () => {
+    const css = readGeneratedCss([chipEntranceTheme]);
+    for (const selector of ALL_CHIP_SELECTORS) {
+      const rule = extractRuleBody(css, selector);
+      expect(rule, `${selector} animation rule`).toMatch(/animation:\s*chip-enter/);
+      expect(rule, `${selector} fill-mode`).toContain("both");
+    }
+  });
+
+  it("disables the animation under prefers-reduced-motion", () => {
+    const css = readGeneratedCss([chipEntranceTheme]);
+    const reducedBlock = extractAtRuleBody(css, "@media (prefers-reduced-motion: reduce)");
+    for (const selector of ALL_CHIP_SELECTORS) {
+      const rule = extractRuleBody(reducedBlock, selector);
+      expect(rule, `${selector} reduced-motion override`).toContain("animation: none");
+    }
+  });
+
+  it("disables the animation under body[data-reduce-animations='true']", () => {
+    const css = readGeneratedCss([chipEntranceTheme]);
+    for (const selector of ALL_CHIP_SELECTORS) {
+      const composed = `body[data-reduce-animations="true"] ${selector}`;
+      const rule = extractRuleBody(css, composed);
+      expect(rule, `${composed} override`).toContain("animation: none");
+    }
+  });
+});
+
+function readGeneratedCss(extensions: Extension[]) {
+  const state = EditorState.create({ doc: "", extensions });
+  const modules = state.facet(EditorView.styleModule);
+  return modules.map((m) => m.getRules()).join("\n");
+}
+
+function extractRuleBody(css: string, selector: string): string {
+  // Match the selector at a brace boundary so ".cm-slash-command-chip" doesn't
+  // accidentally capture ".cm-slash-command-chip-invalid".
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = css.match(new RegExp(`(?:^|[,}\\s])${escaped}\\s*\\{([^}]*)\\}`));
+  if (!match || match[1] === undefined) {
+    throw new Error(`selector ${selector} not found in CSS`);
+  }
+  return match[1];
+}
+
+function extractAtRuleBody(css: string, atRule: string): string {
+  const idx = css.indexOf(atRule);
+  if (idx === -1) {
+    throw new Error(`at-rule ${atRule} not found in CSS`);
+  }
+  let depth = 0;
+  let start = -1;
+  for (let i = idx; i < css.length; i++) {
+    if (css[i] === "{") {
+      if (depth === 0) start = i + 1;
+      depth++;
+    } else if (css[i] === "}") {
+      depth--;
+      if (depth === 0) return css.slice(start, i);
+    }
+  }
+  throw new Error(`unterminated at-rule ${atRule}`);
+}
+
+describe("chipPendingDeleteField", () => {
+  function makeView(doc: string, extensions: import("@codemirror/state").Extension[] = []) {
+    const parent = document.createElement("div");
+    document.body.appendChild(parent);
+    return new EditorView({
+      parent,
+      state: EditorState.create({
+        doc,
+        extensions: [chipPendingDeleteField, ...extensions],
+      }),
+    });
+  }
+
+  it("starts null", () => {
+    const view = makeView("hello");
+    expect(view.state.field(chipPendingDeleteField)).toBeNull();
+    view.destroy();
+  });
+
+  it("stages a range when setChipPendingDelete effect fires", () => {
+    const view = makeView("hello world");
+    view.dispatch({ effects: setChipPendingDelete.of({ from: 0, to: 5 }) });
+    expect(view.state.field(chipPendingDeleteField)).toEqual({ from: 0, to: 5 });
+    view.destroy();
+  });
+
+  it("clears when document changes", () => {
+    const view = makeView("hello world");
+    view.dispatch({ effects: setChipPendingDelete.of({ from: 0, to: 5 }) });
+    view.dispatch({ changes: { from: 5, insert: "X" } });
+    expect(view.state.field(chipPendingDeleteField)).toBeNull();
+    view.destroy();
+  });
+
+  it("clears when cursor moves off the staged range", () => {
+    const view = makeView("hello world");
+    view.dispatch({
+      effects: setChipPendingDelete.of({ from: 0, to: 5 }),
+      selection: { anchor: 0, head: 5 },
+    });
+    expect(view.state.field(chipPendingDeleteField)).toEqual({ from: 0, to: 5 });
+
+    view.dispatch({ selection: { anchor: 8 } });
+    expect(view.state.field(chipPendingDeleteField)).toBeNull();
+    view.destroy();
+  });
+
+  it("preserves staged range while cursor remains at boundary", () => {
+    const view = makeView("hello world");
+    view.dispatch({
+      effects: setChipPendingDelete.of({ from: 0, to: 5 }),
+      selection: { anchor: 0, head: 5 },
+    });
+    view.dispatch({ selection: { anchor: 5 } });
+    expect(view.state.field(chipPendingDeleteField)).toEqual({ from: 0, to: 5 });
+    view.destroy();
+  });
+
+  it("explicit null effect clears staging", () => {
+    const view = makeView("hello world");
+    view.dispatch({ effects: setChipPendingDelete.of({ from: 0, to: 5 }) });
+    view.dispatch({ effects: setChipPendingDelete.of(null) });
+    expect(view.state.field(chipPendingDeleteField)).toBeNull();
+    view.destroy();
+  });
+
+  it("clears invalid out-of-bounds range", () => {
+    const view = makeView("hi");
+    view.dispatch({ effects: setChipPendingDelete.of({ from: 0, to: 100 }) });
+    expect(view.state.field(chipPendingDeleteField)).toBeNull();
+    view.destroy();
+  });
+});
+
+describe("isChipSelected helper", () => {
+  it("returns false when pending is null", () => {
+    expect(isChipSelected(null, 0, 5)).toBe(false);
+  });
+
+  it("returns true when pending matches range", () => {
+    expect(isChipSelected({ from: 0, to: 5 }, 0, 5)).toBe(true);
+  });
+
+  it("returns false when pending range is different", () => {
+    expect(isChipSelected({ from: 0, to: 5 }, 6, 11)).toBe(false);
+  });
+
+  it("returns false when only one boundary matches", () => {
+    expect(isChipSelected({ from: 0, to: 5 }, 0, 6)).toBe(false);
+    expect(isChipSelected({ from: 0, to: 5 }, 1, 5)).toBe(false);
+  });
+});
+
+describe("two-press Backspace on @file chips", () => {
+  function makeView(doc: string) {
+    const parent = document.createElement("div");
+    document.body.appendChild(parent);
+    return new EditorView({
+      parent,
+      state: EditorState.create({
+        doc,
+        extensions: [chipPendingDeleteField, createFileChipField(), createChipBackspaceKeymap()],
+      }),
+    });
+  }
+
+  it("first Backspace stages chip and selects it without deleting", () => {
+    const view = makeView("@src/App.tsx ");
+    // Cursor right after the chip end (position 12: just before the trailing space)
+    const chipEnd = "@src/App.tsx".length;
+    view.dispatch({ selection: { anchor: chipEnd } });
+
+    runScopeHandlers(view, new KeyboardEvent("keydown", { key: "Backspace" }), "editor");
+
+    expect(view.state.doc.toString()).toBe("@src/App.tsx ");
+    const pending = view.state.field(chipPendingDeleteField);
+    expect(pending).not.toBeNull();
+    expect(pending!.from).toBe(0);
+    expect(pending!.to).toBe(chipEnd);
+    expect(view.state.selection.main.from).toBe(0);
+    expect(view.state.selection.main.to).toBe(chipEnd);
+    view.destroy();
+  });
+
+  it("second Backspace deletes the chip", () => {
+    const view = makeView("@src/App.tsx ");
+    const chipEnd = "@src/App.tsx".length;
+    view.dispatch({ selection: { anchor: chipEnd } });
+
+    runScopeHandlers(view, new KeyboardEvent("keydown", { key: "Backspace" }), "editor");
+    runScopeHandlers(view, new KeyboardEvent("keydown", { key: "Backspace" }), "editor");
+
+    expect(view.state.doc.toString()).toBe(" ");
+    expect(view.state.field(chipPendingDeleteField)).toBeNull();
+    view.destroy();
+  });
+
+  it("Backspace with no chip before cursor returns false and does not stage", () => {
+    const view = makeView("plain text");
+    view.dispatch({ selection: { anchor: 5 } });
+
+    runScopeHandlers(view, new KeyboardEvent("keydown", { key: "Backspace" }), "editor");
+
+    // Our chip-backspace handler returns false when no chip is before the cursor; default
+    // Backspace is not part of this scope so the doc remains unchanged.
+    expect(view.state.doc.toString()).toBe("plain text");
+    expect(view.state.field(chipPendingDeleteField)).toBeNull();
+    view.destroy();
+  });
+
+  it("arrow-away after first press clears staging", () => {
+    const view = makeView("@src/App.tsx ");
+    const chipEnd = "@src/App.tsx".length;
+    view.dispatch({ selection: { anchor: chipEnd } });
+
+    runScopeHandlers(view, new KeyboardEvent("keydown", { key: "Backspace" }), "editor");
+    expect(view.state.field(chipPendingDeleteField)).not.toBeNull();
+
+    view.dispatch({ selection: { anchor: chipEnd + 1 } });
+    expect(view.state.field(chipPendingDeleteField)).toBeNull();
+    view.destroy();
+  });
+
+  it("range selection covering exactly the chip deletes immediately", () => {
+    const view = makeView("@src/App.tsx ");
+    const chipEnd = "@src/App.tsx".length;
+    view.dispatch({ selection: { anchor: 0, head: chipEnd } });
+
+    runScopeHandlers(view, new KeyboardEvent("keydown", { key: "Backspace" }), "editor");
+
+    expect(view.state.doc.toString()).toBe(" ");
+    view.destroy();
+  });
+});
+
+describe("two-press Backspace on /slash chips", () => {
+  function makeView(doc: string, commandMap: Map<string, SlashCommand>) {
+    const parent = document.createElement("div");
+    document.body.appendChild(parent);
+    return new EditorView({
+      parent,
+      state: EditorState.create({
+        doc,
+        extensions: [
+          chipPendingDeleteField,
+          createSlashChipField({ commandMap }),
+          createChipBackspaceKeymap(),
+        ],
+      }),
+    });
+  }
+
+  it("first Backspace stages a valid /slash chip", () => {
+    const map = new Map<string, SlashCommand>([
+      ["/build", makeSlashCommand("/build", "Build the project")],
+    ]);
+    const view = makeView("/build ", map);
+    const chipEnd = "/build".length;
+    view.dispatch({ selection: { anchor: chipEnd } });
+
+    runScopeHandlers(view, new KeyboardEvent("keydown", { key: "Backspace" }), "editor");
+
+    expect(view.state.doc.toString()).toBe("/build ");
+    expect(view.state.field(chipPendingDeleteField)).toEqual({ from: 0, to: chipEnd });
+    view.destroy();
+  });
+
+  it("second Backspace deletes a /slash chip", () => {
+    const map = new Map<string, SlashCommand>([["/build", makeSlashCommand("/build")]]);
+    const view = makeView("/build ", map);
+    const chipEnd = "/build".length;
+    view.dispatch({ selection: { anchor: chipEnd } });
+
+    runScopeHandlers(view, new KeyboardEvent("keydown", { key: "Backspace" }), "editor");
+    runScopeHandlers(view, new KeyboardEvent("keydown", { key: "Backspace" }), "editor");
+
+    expect(view.state.doc.toString()).toBe(" ");
+    view.destroy();
+  });
+
+  it("two-press also works for invalid /slash commands (still atomic)", () => {
+    const map = new Map<string, SlashCommand>();
+    const view = makeView("/unknowncmd ", map);
+    const chipEnd = "/unknowncmd".length;
+    view.dispatch({ selection: { anchor: chipEnd } });
+
+    runScopeHandlers(view, new KeyboardEvent("keydown", { key: "Backspace" }), "editor");
+    expect(view.state.doc.toString()).toBe("/unknowncmd ");
+    expect(view.state.field(chipPendingDeleteField)).toEqual({ from: 0, to: chipEnd });
+
+    runScopeHandlers(view, new KeyboardEvent("keydown", { key: "Backspace" }), "editor");
+    expect(view.state.doc.toString()).toBe(" ");
+    view.destroy();
+  });
+});
+
+describe("slashChipField valid/invalid distinction", () => {
+  it("preserves isValid metadata for known commands", () => {
+    const map = new Map<string, SlashCommand>([["/build", makeSlashCommand("/build")]]);
+    const field = createSlashChipField({ commandMap: map });
+    const state = EditorState.create({
+      doc: "/build /unknowncmd",
+      extensions: [field],
+    });
+    const chipState = state.field(field);
+    expect(chipState.tokens).toHaveLength(2);
+    const validToken = chipState.tokens.find((t) => t.command === "/build");
+    const invalidToken = chipState.tokens.find((t) => t.command === "/unknowncmd");
+    expect(validToken?.isValid).toBe(true);
+    expect(invalidToken?.isValid).toBe(false);
+  });
+});
+
+describe("@file chip yields to fileDropChip when ranges overlap", () => {
+  it("does not render @file widget over a fileDropChip range", () => {
+    const parent = document.createElement("div");
+    document.body.appendChild(parent);
+    const view = new EditorView({
+      parent,
+      state: EditorState.create({
+        doc: "@/Users/test/file.ts ",
+        extensions: [chipPendingDeleteField, createFileChipField(), fileDropChipField],
+      }),
+    });
+
+    view.dispatch({
+      effects: addFileDropChip.of({
+        from: 0,
+        to: 20,
+        filePath: "/Users/test/file.ts",
+        fileName: "file.ts",
+      }),
+    });
+
+    // The rich file-drop chip should be present and own the range; the simple file chip
+    // must not also render a competing widget.
+    const dropChip = view.dom.querySelector(".cm-file-drop-chip");
+    const fileChip = view.dom.querySelector(".cm-file-chip");
+    expect(dropChip).not.toBeNull();
+    expect(fileChip).toBeNull();
+    view.destroy();
+  });
+});
+
+describe("middle-of-text chip deletion", () => {
+  it("preserves surrounding text after two-press delete", () => {
+    const parent = document.createElement("div");
+    document.body.appendChild(parent);
+    const view = new EditorView({
+      parent,
+      state: EditorState.create({
+        doc: "run @src/App.tsx now",
+        extensions: [chipPendingDeleteField, createFileChipField(), createChipBackspaceKeymap()],
+      }),
+    });
+
+    const chipEnd = "run @src/App.tsx".length;
+    view.dispatch({ selection: { anchor: chipEnd } });
+
+    runScopeHandlers(view, new KeyboardEvent("keydown", { key: "Backspace" }), "editor");
+    runScopeHandlers(view, new KeyboardEvent("keydown", { key: "Backspace" }), "editor");
+
+    expect(view.state.doc.toString()).toBe("run  now");
+    view.destroy();
+  });
+});
+
+describe("two-press Backspace edge cases", () => {
+  function makeView(doc: string) {
+    const parent = document.createElement("div");
+    document.body.appendChild(parent);
+    return new EditorView({
+      parent,
+      state: EditorState.create({
+        doc,
+        extensions: [chipPendingDeleteField, createFileChipField(), createChipBackspaceKeymap()],
+      }),
+    });
+  }
+
+  it("partial selection that does not exactly cover a chip returns false", () => {
+    const view = makeView("@src/App.tsx ");
+    const chipEnd = "@src/App.tsx".length;
+    view.dispatch({ selection: { anchor: 0, head: chipEnd - 1 } });
+
+    runScopeHandlers(view, new KeyboardEvent("keydown", { key: "Backspace" }), "editor");
+
+    expect(view.state.doc.toString()).toBe("@src/App.tsx ");
+    expect(view.state.field(chipPendingDeleteField)).toBeNull();
+    view.destroy();
+  });
+
+  it("alreadyStaged path: cursor returns to chip edge then second Backspace deletes", () => {
+    const view = makeView("@src/App.tsx ");
+    const chipEnd = "@src/App.tsx".length;
+    view.dispatch({ selection: { anchor: chipEnd } });
+
+    // First press: stages + selects the chip.
+    runScopeHandlers(view, new KeyboardEvent("keydown", { key: "Backspace" }), "editor");
+    expect(view.state.field(chipPendingDeleteField)).not.toBeNull();
+    expect(view.state.selection.main.empty).toBe(false);
+
+    // Collapse the selection back to the chip's right edge — staging must be preserved
+    // because the cursor is still at the chip boundary.
+    view.dispatch({ selection: { anchor: chipEnd } });
+    expect(view.state.field(chipPendingDeleteField)).toEqual({ from: 0, to: chipEnd });
+    expect(view.state.selection.main.empty).toBe(true);
+
+    // Second press: alreadyStaged branch deletes via the empty-selection path.
+    runScopeHandlers(view, new KeyboardEvent("keydown", { key: "Backspace" }), "editor");
+    expect(view.state.doc.toString()).toBe(" ");
+    view.destroy();
+  });
+});
+
+describe("two-press Backspace on diffChip and terminalChip", () => {
+  function makeView(doc: string, field: import("@codemirror/state").Extension) {
+    const parent = document.createElement("div");
+    document.body.appendChild(parent);
+    return new EditorView({
+      parent,
+      state: EditorState.create({
+        doc,
+        extensions: [chipPendingDeleteField, field, createChipBackspaceKeymap()],
+      }),
+    });
+  }
+
+  it("diffChip: two-press Backspace deletes @diff token", () => {
+    const view = makeView("see @diff please", diffChipField);
+    const chipEnd = "see @diff".length;
+    view.dispatch({ selection: { anchor: chipEnd } });
+
+    runScopeHandlers(view, new KeyboardEvent("keydown", { key: "Backspace" }), "editor");
+    expect(view.state.doc.toString()).toBe("see @diff please");
+    expect(view.state.field(chipPendingDeleteField)).not.toBeNull();
+
+    runScopeHandlers(view, new KeyboardEvent("keydown", { key: "Backspace" }), "editor");
+    expect(view.state.doc.toString()).toBe("see  please");
+    view.destroy();
+  });
+
+  it("terminalChip: two-press Backspace deletes @terminal token", () => {
+    const view = makeView("see @terminal please", terminalChipField);
+    const chipEnd = "see @terminal".length;
+    view.dispatch({ selection: { anchor: chipEnd } });
+
+    runScopeHandlers(view, new KeyboardEvent("keydown", { key: "Backspace" }), "editor");
+    runScopeHandlers(view, new KeyboardEvent("keydown", { key: "Backspace" }), "editor");
+
+    expect(view.state.doc.toString()).toBe("see  please");
+    view.destroy();
+  });
+});
+
+describe("@file chip widget rendering", () => {
+  it("doc text is preserved when chip is rendered as widget", () => {
+    const parent = document.createElement("div");
+    document.body.appendChild(parent);
+    const view = new EditorView({
+      parent,
+      state: EditorState.create({
+        doc: "@src/App.tsx hello",
+        extensions: [chipPendingDeleteField, createFileChipField()],
+      }),
+    });
+
+    expect(view.state.doc.toString()).toBe("@src/App.tsx hello");
+    view.destroy();
+  });
+
+  it("renders cm-chip-pending-delete class when chip is staged", () => {
+    const parent = document.createElement("div");
+    document.body.appendChild(parent);
+    const view = new EditorView({
+      parent,
+      state: EditorState.create({
+        doc: "@src/App.tsx",
+        extensions: [chipPendingDeleteField, createFileChipField()],
+      }),
+    });
+
+    view.dispatch({
+      effects: setChipPendingDelete.of({ from: 0, to: 12 }),
+      selection: { anchor: 0, head: 12 },
+    });
+
+    // Widget DOM should reflect the selected state
+    const chipEl = view.dom.querySelector(".cm-file-chip");
+    expect(chipEl).not.toBeNull();
+    expect(chipEl?.classList.contains("cm-chip-pending-delete")).toBe(true);
+
+    view.destroy();
   });
 });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
 import { AppDialog } from "@/components/ui/AppDialog";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/Spinner";
@@ -13,6 +13,7 @@ import { useCliAvailabilityStore } from "@/store/cliAvailabilityStore";
 import { cliAvailabilityClient } from "@/clients";
 import { logError } from "@/utils/logger";
 import type { CliAvailability } from "@shared/types";
+import { useAgentSetupPoll } from "./useAgentSetupPoll";
 import { isAgentInstalled, isAgentLaunchable } from "../../../shared/utils/agentAvailability";
 import { Sparkles, ChevronLeft, ChevronRight, ArrowRight, Check, Sun, Moon } from "lucide-react";
 import { AnimatePresence, m, useReducedMotion, type Variants } from "framer-motion";
@@ -25,9 +26,9 @@ import { appThemeClient } from "@/clients/appThemeClient";
 import type { AppColorScheme } from "@shared/types/appTheme";
 import { actionService } from "@/services/ActionService";
 import { keybindingService } from "@/services/KeybindingService";
+import { notify } from "@/lib/notify";
 
 const AGENT_ORDER = BUILT_IN_AGENT_IDS;
-const POLL_INTERVAL = 3000;
 
 const daintreeScheme = BUILT_IN_APP_SCHEMES.find((s) => s.id === "daintree")!;
 const bondiScheme = BUILT_IN_APP_SCHEMES.find((s) => s.id === "bondi")!;
@@ -316,6 +317,7 @@ interface AgentSetupWizardProps {
   onClose: () => void;
   initialAvailability?: CliAvailability;
   isFirstRun?: boolean;
+  onStepChange?: (step: WizardStep) => void;
 }
 
 export function AgentSetupWizard({
@@ -323,6 +325,7 @@ export function AgentSetupWizard({
   onClose,
   initialAvailability,
   isFirstRun = false,
+  onStepChange,
 }: AgentSetupWizardProps) {
   const [state, dispatch] = useReducer(
     wizardReducer,
@@ -346,8 +349,12 @@ export function AgentSetupWizard({
   // Telemetry state (first-run only)
   const [telemetryEnabled, setTelemetryEnabled] = useState(false);
   const telemetryCommittedRef = useRef(false);
+  // Tracks whether the user explicitly engaged the privacy toggle (in either
+  // direction). Distinct from `telemetryCommittedRef`: silent close paths still
+  // commit telemetry off, but only fire the inbox confirmation when the user
+  // never touched the toggle — silence is not consent.
+  const telemetryToggleTouchedRef = useRef(false);
 
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isOpenRef = useRef(isOpen);
   const initRef = useRef(false);
   const directionRef = useRef<1 | -1>(1);
@@ -368,6 +375,7 @@ export function AgentSetupWizard({
       initRef.current = false;
       hasAutoSelected.current = false;
       telemetryCommittedRef.current = false;
+      telemetryToggleTouchedRef.current = false;
       setTelemetryEnabled(false);
       void useAgentSettingsStore.getState().initialize();
       directionRef.current = 1;
@@ -375,31 +383,10 @@ export function AgentSetupWizard({
     prevIsOpenRef.current = isOpen;
   }, [isOpen, initialAvailability]);
 
-  // Poll availability
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const poll = () => {
-      cliAvailabilityClient
-        .refresh()
-        .then((result) => {
-          if (isOpenRef.current) {
-            dispatch({ type: "SET_AVAILABILITY", payload: result });
-          }
-        })
-        .catch((err) => logError("Failed to refresh CLI availability", err));
-    };
-
-    poll();
-    pollRef.current = setInterval(poll, POLL_INTERVAL);
-
-    return () => {
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
-    };
-  }, [isOpen]);
+  // Poll availability — paused when document is hidden
+  useAgentSetupPoll(isOpen, (result) => {
+    dispatch({ type: "SET_AVAILABILITY", payload: result });
+  });
 
   // Initialize selections once when availability is ready
   useEffect(() => {
@@ -443,16 +430,49 @@ export function AgentSetupWizard({
     [setSelectedSchemeId]
   );
 
-  const commitTelemetry = useCallback(async (level: "errors" | "off") => {
-    if (telemetryCommittedRef.current) return;
+  // Returns true when this call actually committed the preference this turn
+  // (vs returning early because it was already persisted earlier in the
+  // session). Callers use the return value to gate the silent-default inbox
+  // confirmation. The two IPCs are intentionally NOT treated as one atomic
+  // unit: a successful preference write must still surface the inbox
+  // confirmation even if the prompt-shown bookkeeping fails — otherwise a
+  // partial failure would silently re-introduce the bug this guard exists
+  // to prevent.
+  const commitTelemetry = useCallback(async (level: "errors" | "off"): Promise<boolean> => {
+    if (telemetryCommittedRef.current) return false;
     try {
       await window.electron.privacy.setTelemetryLevel(level);
-      await window.electron.telemetry.markPromptShown();
       telemetryCommittedRef.current = true;
     } catch (error) {
       logError("Failed to commit telemetry preference", error);
+      return false;
     }
+    try {
+      await window.electron.telemetry.markPromptShown();
+    } catch (error) {
+      // Non-fatal: the preference is persisted; the prompt will re-show next
+      // launch, but the user's choice this session is honored.
+      logError("Failed to mark telemetry prompt shown", error);
+    }
+    return true;
   }, []);
+
+  const handleTelemetryChange = useCallback((enabled: boolean) => {
+    telemetryToggleTouchedRef.current = true;
+    setTelemetryEnabled(enabled);
+  }, []);
+
+  // Surface wizard step transitions so OnboardingFlow can record the
+  // sub-step at abandonment time (the wizard's internal step is otherwise
+  // invisible to the parent). Read via ref to keep the parent's callback
+  // identity from triggering this effect.
+  const onStepChangeRef = useRef(onStepChange);
+  useEffect(() => {
+    onStepChangeRef.current = onStepChange;
+  });
+  useEffect(() => {
+    onStepChangeRef.current?.(state.step);
+  }, [state.step]);
 
   const installedAgents = useMemo(
     () => AGENT_ORDER.filter((id) => isAgentLaunchable(state.availability[id])),
@@ -511,21 +531,46 @@ export function AgentSetupWizard({
     onClose();
   }, [onClose]);
 
+  const notifyTelemetryDefault = useCallback(() => {
+    notify({
+      type: "info",
+      title: "Crash reporting off by default",
+      message: "Crash reporting is off. Enable it in Settings → Privacy & Data",
+      priority: "low",
+      countable: false,
+    });
+  }, []);
+
   const handleSelectionSkip = useCallback(async () => {
-    if (isFirstRun) {
-      await commitTelemetry("off");
+    // Mirror handleSelectionContinue's isSaving lock so a rapid double-click
+    // can't race two commits and two close calls through `commitTelemetry`'s
+    // ref guard before it flips.
+    setIsSaving(true);
+    try {
+      let committedNow = false;
+      if (isFirstRun) {
+        committedNow = await commitTelemetry("off");
+      }
+      if (committedNow && !telemetryToggleTouchedRef.current) {
+        notifyTelemetryDefault();
+      }
+      onClose();
+    } finally {
+      setIsSaving(false);
     }
-    onClose();
-  }, [onClose, isFirstRun, commitTelemetry]);
+  }, [onClose, isFirstRun, commitTelemetry, notifyTelemetryDefault]);
 
   const showLoadingSelections = !state.selectionsInitialized && isAvailabilityLoading;
 
   const handleBeforeClose = useCallback(async () => {
     if (isFirstRun && state.step.type === "selection") {
-      await commitTelemetry("off");
+      const committedNow = await commitTelemetry("off");
+      if (committedNow && !telemetryToggleTouchedRef.current) {
+        notifyTelemetryDefault();
+      }
     }
     return true;
-  }, [isFirstRun, state.step.type, commitTelemetry]);
+  }, [isFirstRun, state.step.type, commitTelemetry, notifyTelemetryDefault]);
 
   return (
     <AppDialog
@@ -537,7 +582,7 @@ export function AgentSetupWizard({
     >
       <AppDialog.Header>
         <AppDialog.Title icon={<Plug className="w-5 h-5 text-daintree-accent" />}>
-          Agent Setup
+          {isFirstRun && state.step.type === "selection" ? "Welcome to Daintree" : "Agent Setup"}
         </AppDialog.Title>
         <div className="flex items-center gap-3">
           <span className="text-xs text-daintree-text/40">
@@ -573,7 +618,7 @@ export function AgentSetupWizard({
                   selectedSchemeId={selectedSchemeId}
                   onThemeSelect={handleThemeSelect}
                   telemetryEnabled={telemetryEnabled}
-                  onTelemetryChange={setTelemetryEnabled}
+                  onTelemetryChange={handleTelemetryChange}
                 />
               )}
               {state.step.type === "cli" && (
@@ -589,7 +634,9 @@ export function AgentSetupWizard({
                   }}
                 />
               )}
-              {state.step.type === "complete" && <CompleteStep installedAgents={installedAgents} />}
+              {state.step.type === "complete" && (
+                <CompleteStep installedAgents={installedAgents} onClose={onClose} />
+              )}
             </m.div>
           </AnimatePresence>
         </div>
@@ -601,6 +648,7 @@ export function AgentSetupWizard({
             {Array.from({ length: totalSteps }).map((_, i) => (
               <div
                 key={i}
+                aria-current={i === stepNumber ? "step" : undefined}
                 className={`w-1.5 h-1.5 rounded-full transition-colors ${
                   i === stepNumber
                     ? "bg-daintree-accent"
@@ -700,6 +748,7 @@ function SelectionStep({
   );
 
   const schemes = [daintreeScheme, bondiScheme] as const;
+  const crashReportingLabelId = useId();
 
   return (
     <div className="space-y-6">
@@ -723,7 +772,7 @@ function SelectionStep({
           <p className="text-sm text-daintree-text/60 mb-4">
             Choose your preferred theme. More options available in Settings.
           </p>
-          <div className="grid grid-cols-2 gap-4" role="listbox" aria-label="Theme">
+          <div className="grid grid-cols-2 gap-4" role="listbox" aria-label="Select theme">
             {schemes.map((scheme) => {
               const isSelected = selectedSchemeId === scheme.id;
               const isDark = scheme.type === "dark";
@@ -829,12 +878,14 @@ function SelectionStep({
           </p>
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
-              <p className="text-sm font-medium text-daintree-text">Enable crash reporting</p>
+              <p id={crashReportingLabelId} className="text-sm font-medium text-daintree-text">
+                Enable crash reporting
+              </p>
               <button
                 type="button"
                 role="switch"
                 aria-checked={telemetryEnabled}
-                aria-label="Enable crash reporting"
+                aria-labelledby={crashReportingLabelId}
                 onClick={() => onTelemetryChange(!telemetryEnabled)}
                 className={cn(
                   "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors",
@@ -876,7 +927,20 @@ function SelectionStep({
 
 // --- Complete step ---
 
-function CompleteStep({ installedAgents }: { installedAgents: string[] }) {
+export function CompleteStep({
+  installedAgents,
+  onClose,
+}: {
+  installedAgents: string[];
+  onClose: () => void;
+}) {
+  const hasAgents = installedAgents.length > 0;
+
+  const handleLaunch = useCallback(() => {
+    void actionService.dispatch("panel.palette", undefined, { source: "user" });
+    onClose();
+  }, [onClose]);
+
   return (
     <div className="space-y-6 text-center py-4">
       <div>
@@ -885,13 +949,13 @@ function CompleteStep({ installedAgents }: { installedAgents: string[] }) {
         </div>
         <h3 className="text-base font-semibold text-daintree-text mb-2">Setup Complete</h3>
         <p className="text-sm text-daintree-text/60">
-          {installedAgents.length > 0
+          {hasAgents
             ? `You have ${installedAgents.length} agent${installedAgents.length === 1 ? "" : "s"} ready to use. Launch them from the toolbar or with keyboard shortcuts.`
             : "No agents were installed. You can install them later from Settings > Agents."}
         </p>
       </div>
 
-      {installedAgents.length > 0 && (
+      {hasAgents && (
         <div className="space-y-2">
           {installedAgents.map((id) => {
             const agent = AGENT_REGISTRY[id];
@@ -924,6 +988,15 @@ function CompleteStep({ installedAgents }: { installedAgents: string[] }) {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {hasAgents && (
+        <div className="flex justify-center">
+          <Button onClick={handleLaunch} data-testid="complete-step-launch-agent">
+            <Sparkles className="w-4 h-4 mr-1" />
+            Launch an agent
+          </Button>
         </div>
       )}
 

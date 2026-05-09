@@ -17,9 +17,11 @@ class DatabaseMaintenanceService {
   private removeSuspendListener: (() => void) | null = null;
   private backupPromise: Promise<void> | null = null;
   private disposed = false;
+  private initialized = false;
 
   initialize(): void {
-    if (this.timer) return; // already initialized
+    if (this.initialized) return;
+    this.initialized = true;
 
     const dbPath = getDbPath();
 
@@ -33,6 +35,16 @@ class DatabaseMaintenanceService {
       }
     }
 
+    console.log("[DatabaseMaintenance] Initialized (probe complete)");
+  }
+
+  startMaintenance(): void {
+    // Defensive: dispose() may run before startMaintenance() drains from the
+    // deferred queue (window closed before first-interactive). The timer/listener
+    // installation must not happen post-dispose.
+    if (this.disposed) return;
+    if (this.timer) return;
+
     this.timer = setInterval(() => this.tick(), TICK_INTERVAL_MS);
 
     try {
@@ -44,7 +56,7 @@ class DatabaseMaintenanceService {
       // The suspend hook is best-effort — periodic timer covers the gap.
     }
 
-    console.log("[DatabaseMaintenance] Initialized");
+    console.log("[DatabaseMaintenance] Maintenance started");
   }
 
   async dispose(): Promise<void> {
@@ -73,8 +85,9 @@ class DatabaseMaintenanceService {
     // Final backup + TRUNCATE checkpoint (DB is NOT closed here —
     // shutdown.ts may still need it for project state saves afterward)
     await this.runBackup();
+    this.optimize();
     this.checkpoint("TRUNCATE");
-    console.log("[DatabaseMaintenance] Disposed — final backup + checkpoint complete");
+    console.log("[DatabaseMaintenance] Disposed — optimize + checkpoint complete");
   }
 
   private tick(): void {
@@ -89,7 +102,7 @@ class DatabaseMaintenanceService {
     const sqlite = getSharedSqlite();
     if (!sqlite) return;
 
-    this.checkpoint("PASSIVE");
+    this.checkpoint("TRUNCATE");
     this.backupPromise = this.runBackup();
   }
 
@@ -101,6 +114,17 @@ class DatabaseMaintenanceService {
       sqlite.pragma(`wal_checkpoint(${mode})`);
     } catch (error) {
       console.warn(`[DatabaseMaintenance] WAL checkpoint (${mode}) failed:`, error);
+    }
+  }
+
+  private optimize(): void {
+    const sqlite = getSharedSqlite();
+    if (!sqlite) return;
+
+    try {
+      sqlite.pragma("optimize");
+    } catch (error) {
+      console.warn("[DatabaseMaintenance] PRAGMA optimize failed:", error);
     }
   }
 

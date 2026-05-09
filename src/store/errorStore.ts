@@ -44,7 +44,6 @@ interface ErrorStore {
 
   addError: (error: Omit<ErrorRecord, "id" | "timestamp" | "dismissed">) => string;
   dismissError: (id: string) => void;
-  clearAll: () => void;
   removeError: (id: string) => void;
   togglePanel: () => void;
   setPanelOpen: (open: boolean) => void;
@@ -86,7 +85,18 @@ const createErrorStore: StateCreator<ErrorStore> = (set, get) => ({
 
     if (recentDuplicate) {
       set((s) => ({
-        errors: s.errors.map((e) => (e.id === recentDuplicate.id ? { ...e, timestamp: now } : e)),
+        errors: s.errors.map((e) =>
+          e.id === recentDuplicate.id
+            ? {
+                ...e,
+                timestamp: now,
+                retryAction: error.retryAction ?? e.retryAction,
+                retryArgs: error.retryArgs ?? e.retryArgs,
+                recoveryHint: e.recoveryHint ?? error.recoveryHint,
+                correlationId: e.correlationId ?? error.correlationId,
+              }
+            : e
+        ),
         lastErrorTime: now,
       }));
       return recentDuplicate.id;
@@ -114,14 +124,6 @@ const createErrorStore: StateCreator<ErrorStore> = (set, get) => ({
     set((state) => ({
       errors: state.errors.map((e) => (e.id === id ? { ...e, dismissed: true } : e)),
     }));
-  },
-
-  clearAll: () => {
-    set({
-      errors: [],
-      isPanelOpen: false,
-      lastErrorTime: 0,
-    });
   },
 
   removeError: (id) => {

@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 
-// parsePRNode is not exported — test via the public listPullRequests surface
-// by verifying that the fields are correctly extracted from raw GraphQL node data.
-// We test the transformation logic directly by duplicating the function shape.
+// parsePRNode is exported from GitHubPRs.ts — tested via the public listPullRequests surface,
+// but we duplicate the transformation logic here to keep tests self-contained.
+// When parsePRNode changes, keep this inline copy in sync.
 
 type GitHubPRCIStatus = "SUCCESS" | "FAILURE" | "ERROR" | "PENDING" | "EXPECTED";
 
@@ -27,6 +27,24 @@ interface RawPRNode {
   };
 }
 
+// Inline normalizeRawState from prRequiredCIStatus.ts to keep tests self-contained
+function normalizeRawState(
+  rawRollupState: string | null | undefined
+): GitHubPRCIStatus | undefined {
+  if (!rawRollupState) return undefined;
+  const upper = rawRollupState.toUpperCase();
+  if (
+    upper === "SUCCESS" ||
+    upper === "FAILURE" ||
+    upper === "ERROR" ||
+    upper === "PENDING" ||
+    upper === "EXPECTED"
+  ) {
+    return upper;
+  }
+  return undefined;
+}
+
 // Inline the logic from parsePRNode to keep tests self-contained
 function parsePRNode(node: RawPRNode) {
   const author = node.author;
@@ -46,9 +64,7 @@ function parsePRNode(node: RawPRNode) {
   const baseName = baseRepo?.nameWithOwner;
   const isFork = headName && baseName ? headName !== baseName : undefined;
 
-  const ciStatus = node.commits?.nodes?.[0]?.commit?.statusCheckRollup?.state as
-    | GitHubPRCIStatus
-    | undefined;
+  const ciStatus = normalizeRawState(node.commits?.nodes?.[0]?.commit?.statusCheckRollup?.state);
 
   return {
     number: node.number,
@@ -227,6 +243,22 @@ describe("parsePRNode", () => {
   it("sets ciStatus to undefined when commits field is absent", () => {
     const result = parsePRNode(baseNode);
     expect(result.ciStatus).toBeUndefined();
+  });
+
+  it("sets ciStatus to undefined for unrecognized rollup state", () => {
+    const result = parsePRNode({
+      ...baseNode,
+      commits: { nodes: [{ commit: { statusCheckRollup: { state: "SKIPPED" } } }] },
+    });
+    expect(result.ciStatus).toBeUndefined();
+  });
+
+  it("normalizes lowercase rollup state to uppercase", () => {
+    const result = parsePRNode({
+      ...baseNode,
+      commits: { nodes: [{ commit: { statusCheckRollup: { state: "success" } } }] },
+    });
+    expect(result.ciStatus).toBe("SUCCESS");
   });
 
   it("extracts commentCount from comments totalCount", () => {

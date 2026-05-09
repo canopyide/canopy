@@ -1,5 +1,9 @@
-import { describe, it, expect } from "vitest";
-import { parseTerminalSettings, parseNotificationOverrides } from "../projectSettingsParsers.js";
+import { afterEach, describe, it, expect, vi } from "vitest";
+import {
+  parseFleetSavedScopes,
+  parseNotificationOverrides,
+  parseTerminalSettings,
+} from "../projectSettingsParsers.js";
 
 describe("parseTerminalSettings", () => {
   it("returns undefined for null/undefined/non-object", () => {
@@ -27,9 +31,35 @@ describe("parseTerminalSettings", () => {
     });
   });
 
-  it("rejects non-absolute shell path", () => {
-    const result = parseTerminalSettings({ shell: "zsh" });
-    expect(result).toBeUndefined();
+  describe("non-absolute shell handling", () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it("rejects non-absolute shell path", () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const result = parseTerminalSettings({ shell: "zsh" });
+      expect(result).toBeUndefined();
+    });
+
+    it("warns when a non-absolute shell value is dropped", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      parseTerminalSettings({ shell: "zsh" });
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      const message = warnSpy.mock.calls[0]?.[0];
+      expect(message).toContain("[ProjectSettingsManager]");
+      expect(message).toContain("zsh");
+    });
+
+    it("preserves sibling fields when only shell is dropped", () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const result = parseTerminalSettings({
+        shell: "zsh",
+        shellArgs: ["-l"],
+        scrollbackLines: 5000,
+      });
+      expect(result).toEqual({ shellArgs: ["-l"], scrollbackLines: 5000 });
+    });
   });
 
   it("rejects non-absolute defaultWorkingDirectory", () => {
@@ -104,6 +134,104 @@ describe("parseNotificationOverrides", () => {
       completedEnabled: "yes" as unknown,
       waitingEnabled: 1 as unknown,
     });
+    expect(result).toBeUndefined();
+  });
+});
+
+describe("parseFleetSavedScopes", () => {
+  it("returns undefined for non-array input", () => {
+    expect(parseFleetSavedScopes(null)).toBeUndefined();
+    expect(parseFleetSavedScopes(undefined)).toBeUndefined();
+    expect(parseFleetSavedScopes("string")).toBeUndefined();
+    expect(parseFleetSavedScopes({})).toBeUndefined();
+  });
+
+  it("parses a snapshot scope", () => {
+    const result = parseFleetSavedScopes([
+      {
+        kind: "snapshot",
+        id: "s1",
+        name: "Sprint",
+        terminalIds: ["a", "b"],
+        createdAt: 1700000000000,
+      },
+    ]);
+    expect(result).toEqual([
+      {
+        kind: "snapshot",
+        id: "s1",
+        name: "Sprint",
+        terminalIds: ["a", "b"],
+        createdAt: 1700000000000,
+      },
+    ]);
+  });
+
+  it("parses a predicate scope", () => {
+    const result = parseFleetSavedScopes([
+      {
+        kind: "predicate",
+        id: "p1",
+        name: "Waiting",
+        scope: "all",
+        stateFilter: "waiting",
+        createdAt: 1700000000000,
+      },
+    ]);
+    expect(result).toEqual([
+      {
+        kind: "predicate",
+        id: "p1",
+        name: "Waiting",
+        scope: "all",
+        stateFilter: "waiting",
+        createdAt: 1700000000000,
+      },
+    ]);
+  });
+
+  it("drops entries with unknown kind, missing fields, or invalid enum values", () => {
+    const result = parseFleetSavedScopes([
+      { kind: "snapshot", id: "ok", name: "Good", terminalIds: [], createdAt: 1 },
+      // Drop: missing id
+      { kind: "snapshot", name: "x", terminalIds: [], createdAt: 1 },
+      // Drop: empty name
+      { kind: "snapshot", id: "x", name: "", terminalIds: [], createdAt: 1 },
+      // Drop: unknown kind
+      { kind: "rule", id: "x", name: "x", createdAt: 1 },
+      // Drop: predicate with bogus stateFilter
+      { kind: "predicate", id: "x", name: "x", scope: "all", stateFilter: "bogus", createdAt: 1 },
+      // Drop: predicate with bogus scope
+      {
+        kind: "predicate",
+        id: "x",
+        name: "x",
+        scope: "global",
+        stateFilter: "all",
+        createdAt: 1,
+      },
+      // Drop: snapshot with non-array terminalIds
+      { kind: "snapshot", id: "x", name: "x", terminalIds: "a,b", createdAt: 1 },
+    ]);
+    expect(result).toHaveLength(1);
+    expect(result![0]).toMatchObject({ id: "ok" });
+  });
+
+  it("filters non-string entries from snapshot terminalIds", () => {
+    const result = parseFleetSavedScopes([
+      {
+        kind: "snapshot",
+        id: "s1",
+        name: "Sprint",
+        terminalIds: ["a", 42, null, "b"],
+        createdAt: 1,
+      },
+    ]);
+    expect(result![0]).toMatchObject({ kind: "snapshot", terminalIds: ["a", "b"] });
+  });
+
+  it("returns undefined when every entry is invalid", () => {
+    const result = parseFleetSavedScopes([{ garbage: true }, { kind: "unknown" }]);
     expect(result).toBeUndefined();
   });
 });

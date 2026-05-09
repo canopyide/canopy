@@ -1,7 +1,6 @@
 import { Terminal, ILink, IBufferRange } from "@xterm/xterm";
-import { isMac, isLinux } from "@/lib/platform";
+import { isMac } from "@/lib/platform";
 import { terminalClient } from "@/clients";
-import { installLinuxPrimarySelectionListeners } from "./primarySelection";
 import { TerminalRefreshTier } from "@/types";
 import type { AgentState } from "@/types";
 import {
@@ -9,7 +8,7 @@ import {
   RefreshTierProvider,
   AgentStateCallback,
   PostCompleteHook,
-  HIBERNATION_DELAY_MS,
+  isWebGLEligibleTier,
 } from "./types";
 import {
   setupTerminalAddons,
@@ -29,41 +28,23 @@ import { TerminalWakeManager } from "./TerminalWakeManager";
 import { TerminalAgentStateController } from "./TerminalAgentStateController";
 import { TerminalRestoreController } from "./TerminalRestoreController";
 import { TerminalHibernationManager } from "./TerminalHibernationManager";
+import { TerminalReflowController, forceXtermReflow } from "./TerminalReflowController";
+import { TerminalWriteController } from "./TerminalWriteController";
+import {
+  installTerminalBoundListeners,
+  type TerminalListenerInstallDeps,
+} from "./TerminalListenerInstaller";
 import { reduceScrollback, restoreScrollback } from "./TerminalScrollbackController";
 import { getEffectiveAgentConfig } from "@shared/config/agentRegistry";
+import { usePanelStore } from "@/store/panelStore";
 import { logDebug, logWarn, logError } from "@/utils/logger";
-import { PERF_MARKS } from "@shared/perf/marks";
-import { markRendererPerformance } from "@/utils/performance";
 import { SCROLLBACK_BACKGROUND } from "@shared/config/scrollback";
 import { stripAnsiAndOscCodes } from "@shared/utils/urlUtils";
-import { formatErrorMessage } from "@shared/utils/errorMessage";
-import { isUselessTitle, normalizeObservedTitle } from "@shared/utils/isUselessTitle";
-import { usePanelStore } from "@/store/panelStore";
-import { isNonKeyboardInput } from "./inputUtils";
-import { writeTerminalInputOrFleet } from "./fleetInputRouter";
 
 export { isNonKeyboardInput } from "./inputUtils";
-
-/**
- * Force a synchronous reflow that triggers xterm.js's IntersectionObserver
- * re-evaluation without pausing the renderer. Using display:none would set
- * isIntersecting=false, causing xterm to set _isPaused=true and halt rendering.
- * Sub-pixel padding jitter keeps the element in the layout tree throughout.
- */
-export function forceXtermReflow(element: HTMLElement): void {
-  const prev = element.style.paddingTop;
-  element.style.paddingTop = "0.01px";
-  void element.offsetHeight;
-  element.style.paddingTop = prev;
-}
-
-// Throttle per-terminal reflows to bound layout cost under write bursts while
-// still recovering a paused DOM renderer within one write cadence window.
-const REFLOW_THROTTLE_MS = 250;
-
-// Periodic heartbeat interval — low frequency is enough to recover a paused
-// renderer that has no writes, without costing measurable CPU.
-const REFLOW_HEARTBEAT_MS = 3000;
+// Re-exported so existing consumers (notably tests) that import
+// `forceXtermReflow` from this module don't need to update their imports.
+export { forceXtermReflow };
 
 // Debounce on the visibility-driven WebGL restore path. Hide is immediate;
 // show waits this long before re-acquiring so rapid tab/panel toggles don't
@@ -82,7 +63,6 @@ class TerminalInstanceService {
   private dataBuffer = new TerminalOutputIngestService((id, data) =>
     this.writeToTerminal(id, data)
   );
-  private perfWriteSampleCounter = 0;
   private suppressedExitUntil = new Map<string, number>();
   private unseenTracker = new TerminalUnseenOutputTracker();
   private cwdProviders = new Map<string, () => string>();
@@ -100,18 +80,8 @@ class TerminalInstanceService {
   private agentStateController: TerminalAgentStateController;
   private restoreController: TerminalRestoreController;
   private hibernationManager: TerminalHibernationManager;
-  private reflowHeartbeatTimer: ReturnType<typeof setInterval> | undefined;
-  private readonly _onVisibilityChange = (): void => {
-    if (typeof document === "undefined" || document.visibilityState !== "visible") return;
-    for (const managed of this.instances.values()) {
-      this.maybeReflowTerminal(managed);
-    }
-  };
-  private readonly _onWindowFocus = (): void => {
-    for (const managed of this.instances.values()) {
-      this.maybeReflowTerminal(managed);
-    }
-  };
+  private reflowController: TerminalReflowController;
+  private writeController: TerminalWriteController;
 
   constructor() {
     if (canAutoInitializeTerminalIngest()) {
@@ -132,6 +102,15 @@ class TerminalInstanceService {
       writeData: (id, data) => this.writeToTerminal(id, data),
     });
 
+    this.writeController = new TerminalWriteController({
+      getInstance: (id) => this.instances.get(id),
+      acknowledgePortData: (id, bytes) => terminalClient.acknowledgePortData(id, bytes),
+      acknowledgeData: (id, bytes) => terminalClient.acknowledgeData(id, bytes),
+      notifyWriteComplete: (id, bytes) => this.dataBuffer.notifyWriteComplete(id, bytes),
+      incrementUnseen: (id, isScrolledBack) =>
+        this.unseenTracker.incrementUnseen(id, isScrolledBack),
+    });
+
     this.hibernationManager = new TerminalHibernationManager({
       getInstance: (id) => this.instances.get(id),
       destroyRestoreState: (id) => this.restoreController.destroy(id),
@@ -142,41 +121,12 @@ class TerminalInstanceService {
       applyDeferredResize: (id) => this.resizeController.applyDeferredResize(id),
       openLink: (url, id, event) => this.linkHandler.openLink(url, id, event),
       getCwdProvider: (id) => this.cwdProviders.get(id),
-      onBufferModeChange: (id, isAltBuffer) => this.handleBufferModeChange(id, isAltBuffer),
-      notifyParsed: (id) => this.dataBuffer.notifyParsed(id),
-      scrollToBottomSafe: (managed) => this.scrollToBottomSafe(managed),
-      clearUnseen: (id, fromUser) => this.unseenTracker.clearUnseen(id, fromUser),
-      updateScrollState: (id, isScrolledBack) =>
-        this.unseenTracker.updateScrollState(id, isScrolledBack),
-      setCachedSelection: (id, selection) => this.cachedSelections.set(id, selection),
-      clearDirectingState: (id) => this.agentStateController.clearDirectingState(id),
-      onUserInput: (id, data) => this.onUserInput(id, data),
-      onEnterPressed: (id) => this.onEnterPressed(id),
-      onWriteParsedReflow: (managed) => this.maybeReflowTerminal(managed),
+      ...this.makeListenerInstallDeps(),
     });
 
-    // Periodic heartbeat: recovers a DOM-renderer terminal whose
-    // IntersectionObserver has paused rendering, even while no new writes are
-    // arriving. Cheap (~1–5ms per visible non-agent terminal). Skipped while
-    // the document is hidden — _onVisibilityChange triggers a sweep on regain.
-    if (typeof setInterval === "function") {
-      this.reflowHeartbeatTimer = setInterval(() => {
-        if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
-        for (const managed of this.instances.values()) {
-          this.maybeReflowTerminal(managed);
-        }
-      }, REFLOW_HEARTBEAT_MS);
-    }
-
-    // App-level recovery: reflow visible terminals whenever the window
-    // regains focus or the tab becomes visible. These are the moments a
-    // user is most likely to notice a blank terminal.
-    if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
-      document.addEventListener("visibilitychange", this._onVisibilityChange);
-    }
-    if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
-      window.addEventListener("focus", this._onWindowFocus);
-    }
+    this.reflowController = new TerminalReflowController({
+      getInstances: () => this.instances.values(),
+    });
 
     this.wakeManager = new TerminalWakeManager({
       getInstance: (id) => this.instances.get(id),
@@ -230,6 +180,10 @@ class TerminalInstanceService {
           }
           managed.hoveredLink = null;
         } else {
+          // Tier upgrade path: clear the reduce cooldown so restoreScrollback
+          // is unconditional and the next BACKGROUND drop isn't artificially
+          // delayed by stale state from a long-completed reduce.
+          managed.lastScrollbackReduceAt = undefined;
           restoreScrollback(managed);
 
           if (!managed.imageAddon) {
@@ -279,20 +233,25 @@ class TerminalInstanceService {
         }
 
         if (managed.runtimeAgentId) {
-          if (
-            tier === TerminalRefreshTier.FOCUSED ||
-            tier === TerminalRefreshTier.BURST ||
-            tier === TerminalRefreshTier.VISIBLE
-          ) {
+          if (isWebGLEligibleTier(tier)) {
             this.webGLManager.ensureContext(id, managed);
-          } else {
+          } else if (!managed.isVisible) {
+            // Keep WebGL while visible — releasing here causes a one-frame renderer gap.
             const hadWebGL = this.webGLManager.isActive(id);
             this.webGLManager.releaseContext(id);
-            if (hadWebGL && managed.terminal.rows > 0) {
+            // Only refresh for a visible terminal — repainting an offscreen
+            // DOM produces a stale frame that flashes on next show (#6802).
+            if (hadWebGL && managed.isVisible && managed.terminal.rows > 0) {
               managed.terminal.refresh(0, managed.terminal.rows - 1);
             }
           }
         }
+
+        // Cursor blink is policy-driven: plain terminals run the blink timer
+        // only at FOCUSED/BURST, agent terminals never. Centralised in the
+        // service helper so updateOptions/applyAgentPromotion/getOrCreate all
+        // reach the same answer.
+        this.applyCursorBlinkPolicy(managed);
       },
     });
   }
@@ -303,6 +262,39 @@ class TerminalInstanceService {
 
   notifyUserInput(id: string, data = ""): void {
     this.onUserInput(id, data);
+  }
+
+  /**
+   * Builds the deps surface consumed by `installTerminalBoundListeners`. Both
+   * the create path (`getOrCreate`) and the wake path (via
+   * `TerminalHibernationManager.unhibernate`) install the same listener set
+   * by passing this through, so adding a new terminal-bound listener is a
+   * one-edit operation in `TerminalListenerInstaller.ts`.
+   */
+  private makeListenerInstallDeps(): TerminalListenerInstallDeps {
+    return {
+      onBufferModeChange: (id, isAltBuffer) => this.handleBufferModeChange(id, isAltBuffer),
+      notifyParsed: (id) => this.dataBuffer.notifyParsed(id),
+      scrollToBottomSafe: (managed) => this.scrollToBottomSafe(managed),
+      updateScrollState: (id, isScrolledBack) =>
+        this.unseenTracker.updateScrollState(id, isScrolledBack),
+      clearUnseen: (id, fromUser) => this.unseenTracker.clearUnseen(id, fromUser),
+      onWriteParsedReflow: (managed) => this.maybeReflowTerminal(managed),
+      setCachedSelection: (id, selection) => this.cachedSelections.set(id, selection),
+      deleteCachedSelection: (id) => this.cachedSelections.delete(id),
+      getCachedSelection: (id) => this.cachedSelections.get(id),
+      getBracketedPasteMode: (id) =>
+        this.instances.get(id)?.terminal.modes.bracketedPasteMode ?? false,
+      isDisposed: (id) => !this.instances.has(id),
+      isInputLocked: (id) => this.instances.get(id)?.isInputLocked ?? false,
+      notifyUserInput: (id) => this.notifyUserInput(id),
+      clearDirectingState: (id, trigger) =>
+        this.agentStateController.clearDirectingState(id, trigger),
+      onUserInput: (id, data) => this.onUserInput(id, data),
+      onEnterPressed: (id) => this.onEnterPressed(id),
+      updateLastObservedTitle: (id, title) =>
+        usePanelStore.getState().updateLastObservedTitle(id, title),
+    };
   }
 
   /**
@@ -348,36 +340,37 @@ class TerminalInstanceService {
   }
 
   /**
-   * Force an IntersectionObserver reflow on a standard terminal if it's
-   * eligible — used by onWriteParsed, the periodic heartbeat, and
-   * visibility/focus recovery paths. All guards live here so every caller
-   * stays consistent.
-   *
-   * Skips: agent terminals (WebGL, immune), hibernated/invisible/attaching
-   * terminals, alt-buffer (TUI) sessions, and terminals without a rendered
-   * element. Throttled per terminal.
+   * Thin delegate to {@link TerminalReflowController.maybeReflow}. Kept on
+   * the service for the existing test fixtures that cast the service to a
+   * structural type containing this method.
    */
   private maybeReflowTerminal(managed: ManagedTerminal): void {
-    if (managed.runtimeAgentId) return;
-    if (managed.isHibernated) return;
-    if (!managed.isVisible) return;
-    if (managed.isAttaching) return;
-    if (managed.isAltBuffer) return;
-    const element = managed.terminal.element;
-    if (!element) return;
-    // A transiently-detached element can't be unpaused by a reflow, and
-    // stamping lastReflowAt here would throttle away the next legitimate
-    // reflow once it's reattached.
-    if (!element.isConnected) return;
+    this.reflowController.maybeReflow(managed);
+  }
 
-    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-    if (now - (managed.lastReflowAt ?? 0) < REFLOW_THROTTLE_MS) return;
-    managed.lastReflowAt = now;
-
-    try {
-      forceXtermReflow(element);
-    } catch (err) {
-      logWarn("forceXtermReflow failed", { error: err });
+  /**
+   * Resolves the correct cursorBlink value for a terminal based on its agent
+   * identity and current tier. Single source of truth for the blink policy:
+   * — agent terminals (`runtimeAgentId` set, including runtime-promoted ones):
+   *   always off (the blink timer's eyeball-attractor behaviour fights the
+   *   agent state machine's own indicators).
+   * — plain terminals: on only at FOCUSED/BURST. Off at VISIBLE/BACKGROUND so
+   *   the xterm CursorBlinkStateManager `setInterval` doesn't run in
+   *   non-focused splits or background tabs.
+   *
+   * Falls back to the live `getRefreshTier()` provider when `lastAppliedTier`
+   * hasn't been recorded yet (initial-create path before the first
+   * `applyRendererPolicy` cycle completes).
+   */
+  private applyCursorBlinkPolicy(managed: ManagedTerminal): void {
+    const desired = (() => {
+      if (managed.runtimeAgentId) return false;
+      const tier =
+        managed.lastAppliedTier ?? managed.getRefreshTier?.() ?? TerminalRefreshTier.FOCUSED;
+      return tier === TerminalRefreshTier.FOCUSED || tier === TerminalRefreshTier.BURST;
+    })();
+    if (managed.terminal.options.cursorBlink !== desired) {
+      managed.terminal.options.cursorBlink = desired;
     }
   }
 
@@ -393,12 +386,7 @@ class TerminalInstanceService {
     if (!managed.isVisible) return false;
     if (managed.isAttaching) return false;
     if (managed.isHibernated) return false;
-    const tier = managed.lastAppliedTier ?? managed.getRefreshTier?.();
-    return (
-      tier === TerminalRefreshTier.FOCUSED ||
-      tier === TerminalRefreshTier.BURST ||
-      tier === TerminalRefreshTier.VISIBLE
-    );
+    return isWebGLEligibleTier(managed.lastAppliedTier ?? managed.getRefreshTier?.());
   }
 
   private onUserInput(id: string, data: string): void {
@@ -474,80 +462,13 @@ class TerminalInstanceService {
     this.dataBuffer.stopPolling();
   }
 
+  /**
+   * Thin delegate to {@link TerminalWriteController.write}. Kept on the
+   * service for the existing test fixtures that cast the service to a
+   * structural type containing this method.
+   */
   private writeToTerminal(id: string, data: string | Uint8Array): void {
-    const managed = this.instances.get(id);
-    if (!managed) return;
-
-    if (managed.isHibernated) {
-      const bytes = typeof data === "string" ? data.length : data.byteLength;
-      terminalClient.acknowledgePortData(id, bytes);
-      this.dataBuffer.notifyWriteComplete(id, bytes);
-      return;
-    }
-
-    if (managed.isSerializedRestoreInProgress) {
-      managed.deferredOutput.push(data);
-      const deferredBytes = typeof data === "string" ? data.length : data.byteLength;
-      terminalClient.acknowledgePortData(id, deferredBytes);
-      this.dataBuffer.notifyWriteComplete(id, deferredBytes);
-      return;
-    }
-
-    this.unseenTracker.incrementUnseen(id, managed.isUserScrolledBack);
-
-    this.perfWriteSampleCounter += 1;
-    const shouldSample = this.perfWriteSampleCounter % 64 === 0;
-
-    const sampledBytes = shouldSample
-      ? typeof data === "string"
-        ? data.length
-        : data.byteLength
-      : 0;
-    const acknowledgedBytes = typeof data === "string" ? data.length : data.byteLength;
-
-    if (shouldSample) {
-      markRendererPerformance(PERF_MARKS.TERMINAL_DATA_PARSED, {
-        terminalId: id,
-        bytes: sampledBytes,
-      });
-    }
-
-    const terminal = managed.terminal;
-    managed.pendingWrites = (managed.pendingWrites ?? 0) + 1;
-    const writeQueuedAt = shouldSample
-      ? typeof performance !== "undefined"
-        ? performance.now()
-        : Date.now()
-      : 0;
-    terminal.write(data, () => {
-      if (this.instances.get(id) !== managed) return;
-
-      managed.pendingWrites = Math.max(0, (managed.pendingWrites ?? 1) - 1);
-
-      terminalClient.acknowledgePortData(id, acknowledgedBytes);
-      terminalClient.acknowledgeData(id, acknowledgedBytes);
-      this.dataBuffer.notifyWriteComplete(id, acknowledgedBytes);
-
-      if (shouldSample) {
-        const writeDurationMs =
-          (typeof performance !== "undefined" ? performance.now() : Date.now()) - writeQueuedAt;
-        markRendererPerformance("terminal_write_duration_sample", {
-          terminalId: id,
-          bytes: sampledBytes,
-          durationMs: Number(writeDurationMs.toFixed(3)),
-          pendingWrites: managed.pendingWrites ?? 0,
-        });
-        markRendererPerformance(PERF_MARKS.TERMINAL_DATA_RENDERED, {
-          terminalId: id,
-          bytes: sampledBytes,
-        });
-      }
-
-      if (!managed.isAltBuffer) {
-        managed.lastActivityMarker?.dispose();
-        managed.lastActivityMarker = terminal.registerMarker(0);
-      }
-    });
+    this.writeController.write(id, data);
   }
 
   setVisible(id: string, isVisible: boolean, expectedGeneration?: number): void {
@@ -601,13 +522,6 @@ class TerminalInstanceService {
           forceXtermReflow(termEl);
         }
 
-        requestAnimationFrame(() => {
-          const current = this.instances.get(id);
-          if (current && current.isVisible) {
-            current.terminal.refresh(0, current.terminal.rows - 1);
-          }
-        });
-
         // Debounced WebGL restore for same-tier transitions. If
         // applyRendererPolicy above triggers a tier upgrade (e.g.
         // BACKGROUND→VISIBLE), onTierApplied loads the addon immediately
@@ -621,19 +535,12 @@ class TerminalInstanceService {
           current.webGLRestoreTimer = undefined;
           if (!this.shouldRestoreWebGL(current)) return;
           this.webGLManager.ensureContext(id, current);
-          if (current.terminal.rows > 0) {
-            current.terminal.refresh(0, current.terminal.rows - 1);
-          }
         }, WEBGL_RESTORE_DEBOUNCE_MS);
       } else {
         // Going offscreen. Release the WebGL context immediately to free a
         // pool slot — xterm falls back to the DOM renderer until the
         // terminal becomes visible again.
-        const hadWebGL = this.webGLManager.isActive(id);
         this.webGLManager.releaseContext(id);
-        if (hadWebGL && managed.terminal.rows > 0) {
-          managed.terminal.refresh(0, managed.terminal.rows - 1);
-        }
 
         // If we're already in a hibernation-eligible tier, onTierApplied
         // won't fire to start the timer — do it here instead.
@@ -736,6 +643,19 @@ class TerminalInstanceService {
     this.wakeManager.wake(id);
   }
 
+  /**
+   * Inject a visible discontinuity marker into the xterm buffer at the point
+   * where the PTY host discarded bytes from the IPC fallback queue. The
+   * leading `\x18` (CAN) cancels any partial in-progress escape sequence so
+   * the styled marker renders correctly mid-stream.
+   */
+  injectDataLossMarker(id: string, droppedBytes: number): void {
+    const managed = this.instances.get(id);
+    if (!managed || managed.isHibernated) return;
+    const label = droppedBytes > 0 ? `~${droppedBytes} bytes` : "output";
+    managed.terminal.write(`\x18\r\n\x1b[33m⚠ Output dropped (${label})\x1b[0m\r\n`);
+  }
+
   getOrCreate(
     id: string,
     launchAgentId: string | undefined,
@@ -753,6 +673,10 @@ class TerminalInstanceService {
       }
       if (options) {
         this.updateOptions(id, options);
+      }
+      if (launchAgentId !== undefined && !existing.isHibernated) {
+        existing.terminal.options.cursorBlink = false;
+        existing.terminal.options.rescaleOverlappingGlyphs = false;
       }
       return existing;
     }
@@ -779,6 +703,11 @@ class TerminalInstanceService {
         leave: () => setHoveredLink(null),
       },
     };
+
+    if (launchAgentId !== undefined) {
+      terminalOptions.cursorBlink = false;
+      terminalOptions.rescaleOverlappingGlyphs = false;
+    }
 
     const terminal = new Terminal(terminalOptions);
     this.cwdProviders.set(id, getCwd ?? (() => ""));
@@ -867,258 +796,7 @@ class TerminalInstanceService {
       this.resizeController.applyDeferredResize(id);
     });
 
-    const initialIsAltBuffer = terminal.buffer.active.type === "alternate";
-    managed.isAltBuffer = initialIsAltBuffer;
-
-    const bufferDisposable = terminal.buffer.onBufferChange(() => {
-      const newIsAltBuffer = terminal.buffer.active.type === "alternate";
-      if (newIsAltBuffer !== managed.isAltBuffer) {
-        managed.isAltBuffer = newIsAltBuffer;
-        this.handleBufferModeChange(id, newIsAltBuffer);
-      }
-    });
-    listeners.push(() => bufferDisposable.dispose());
-
-    if (initialIsAltBuffer) {
-      this.handleBufferModeChange(id, true);
-    }
-
-    const oscDisposable = terminal.parser.registerOscHandler(11, () => {
-      if (managed.isAltBuffer) {
-        for (const callback of managed.altBufferListeners) {
-          try {
-            callback(true);
-          } catch (err) {
-            logError("Alt buffer callback error", err);
-          }
-        }
-      }
-      return false;
-    });
-    listeners.push(() => oscDisposable.dispose());
-
-    const writeParsedDisposable = terminal.onWriteParsed(() => {
-      this.dataBuffer.notifyParsed(id);
-      if (managed && !managed.isUserScrolledBack && !managed.isAltBuffer) {
-        if (!managed.terminal.hasSelection()) {
-          this.scrollToBottomSafe(managed);
-        } else {
-          managed.isUserScrolledBack = true;
-          this.unseenTracker.updateScrollState(id, true);
-        }
-      }
-      this.maybeReflowTerminal(managed);
-    });
-    listeners.push(() => writeParsedDisposable.dispose());
-
-    const scrollDisposable = terminal.onScroll(() => {
-      const buffer = terminal.buffer.active;
-      const isAtBottom = buffer.viewportY >= buffer.baseY;
-      managed.latestWasAtBottom = isAtBottom;
-
-      managed._userScrollIntent = false;
-      if (managed._suppressScrollTracking) return;
-
-      if (isAtBottom) {
-        managed.isUserScrolledBack = false;
-        this.unseenTracker.clearUnseen(id, false);
-        if (managed.lastAppliedTier === TerminalRefreshTier.BACKGROUND) {
-          reduceScrollback(managed, SCROLLBACK_BACKGROUND);
-        }
-      } else {
-        managed.isUserScrolledBack = true;
-        this.unseenTracker.updateScrollState(id, true);
-      }
-    });
-    listeners.push(() => scrollDisposable.dispose());
-
-    const SCROLL_KEYS = new Set(["PageUp", "PageDown", "Home", "End", "ArrowUp", "ArrowDown"]);
-    const onWheel = () => {
-      managed._userScrollIntent = true;
-      managed.lastWheelAt = Date.now();
-    };
-    const onKeydownScroll = (e: KeyboardEvent) => {
-      if (SCROLL_KEYS.has(e.key)) managed._userScrollIntent = true;
-    };
-    hostElement.addEventListener("wheel", onWheel, { passive: true });
-    hostElement.addEventListener("keydown", onKeydownScroll);
-    listeners.push(() => {
-      hostElement.removeEventListener("wheel", onWheel);
-      hostElement.removeEventListener("keydown", onKeydownScroll);
-    });
-
-    const selectionDisposable = terminal.onSelectionChange(() => {
-      const sel = terminal.getSelection();
-      if (sel) {
-        this.cachedSelections.set(id, sel);
-      } else {
-        this.cachedSelections.delete(id);
-        if (managed.lastAppliedTier === TerminalRefreshTier.BACKGROUND) {
-          reduceScrollback(managed, SCROLLBACK_BACKGROUND);
-        }
-      }
-    });
-    listeners.push(() => selectionDisposable.dispose());
-
-    if (isLinux()) {
-      const removePrimaryListeners = installLinuxPrimarySelectionListeners({
-        hostElement,
-        terminalId: id,
-        getCachedSelection: () => this.cachedSelections.get(id),
-        getBracketedPasteMode: () => {
-          const current = this.instances.get(id);
-          return current?.terminal.modes.bracketedPasteMode ?? false;
-        },
-        isDisposed: () => !this.instances.has(id),
-        isInputLocked: () => this.instances.get(id)?.isInputLocked ?? false,
-        writeToPty: (termId, data) => terminalClient.write(termId, data),
-        notifyUserInput: (termId) => this.notifyUserInput(termId),
-        writeSelection: (text) => window.electron.clipboard.writeSelection(text),
-        readSelection: () => window.electron.clipboard.readSelection(),
-      });
-      listeners.push(removePrimaryListeners);
-    }
-
-    const observedTitleDisposable = terminal.onTitleChange((title: string) => {
-      if (!managed.runtimeAgentId) return;
-      const normalized = normalizeObservedTitle(title);
-      if (!normalized || isUselessTitle(normalized)) return;
-      if (normalized === managed.lastObservedTitleSent) return;
-      managed.pendingObservedTitle = normalized;
-      if (managed.observedTitleTimer !== undefined) {
-        clearTimeout(managed.observedTitleTimer);
-      }
-      managed.observedTitleTimer = window.setTimeout(() => {
-        managed.observedTitleTimer = undefined;
-        const pending = managed.pendingObservedTitle;
-        managed.pendingObservedTitle = undefined;
-        if (!managed.runtimeAgentId) return;
-        if (!pending || pending === managed.lastObservedTitleSent) return;
-        managed.lastObservedTitleSent = pending;
-        try {
-          window.electron.terminal.updateObservedTitle(id, pending);
-        } catch (err) {
-          logWarn("[TerminalInstanceService] updateObservedTitle failed", {
-            error: formatErrorMessage(err, "Failed to update observed title"),
-          });
-        }
-        try {
-          usePanelStore.getState().updateLastObservedTitle(id, pending);
-        } catch (err) {
-          logWarn("[TerminalInstanceService] panel store title update failed", {
-            error: formatErrorMessage(err, "Failed to update panel store observed title"),
-          });
-        }
-      }, 150);
-    });
-    listeners.push(() => {
-      observedTitleDisposable.dispose();
-      if (managed.observedTitleTimer !== undefined) {
-        clearTimeout(managed.observedTitleTimer);
-        managed.observedTitleTimer = undefined;
-        managed.pendingObservedTitle = undefined;
-      }
-    });
-
-    let lastReportedTitleState: "working" | "waiting" | undefined;
-    const titleDisposable = terminal.onTitleChange((title: string) => {
-      const agentId = managed.runtimeAgentId;
-      const titlePatterns = agentId
-        ? getEffectiveAgentConfig(agentId)?.detection?.titleStatePatterns
-        : undefined;
-      if (!titlePatterns) return;
-
-      let matched: "working" | "waiting" | undefined;
-      for (const pattern of titlePatterns.working) {
-        if (title.includes(pattern)) {
-          matched = "working";
-          break;
-        }
-      }
-      if (!matched) {
-        for (const pattern of titlePatterns.waiting) {
-          if (title.includes(pattern)) {
-            matched = "waiting";
-            break;
-          }
-        }
-      }
-      if (!matched) {
-        if (managed.titleReportTimer !== undefined) {
-          clearTimeout(managed.titleReportTimer);
-          managed.titleReportTimer = undefined;
-          managed.pendingTitleState = undefined;
-        }
-        return;
-      }
-
-      if (matched === "working") {
-        if (managed.titleReportTimer !== undefined) {
-          clearTimeout(managed.titleReportTimer);
-          managed.titleReportTimer = undefined;
-          managed.pendingTitleState = undefined;
-        }
-        if (lastReportedTitleState !== "working") {
-          lastReportedTitleState = "working";
-          window.electron.terminal.reportTitleState(id, "working");
-        }
-      } else {
-        managed.pendingTitleState = "waiting";
-        if (managed.titleReportTimer !== undefined) {
-          clearTimeout(managed.titleReportTimer);
-        }
-        managed.titleReportTimer = window.setTimeout(() => {
-          managed.titleReportTimer = undefined;
-          if (managed.pendingTitleState === "waiting") {
-            managed.pendingTitleState = undefined;
-            if (lastReportedTitleState !== "waiting") {
-              lastReportedTitleState = "waiting";
-              window.electron.terminal.reportTitleState(id, "waiting");
-            }
-          }
-        }, 250);
-      }
-    });
-    listeners.push(() => {
-      titleDisposable.dispose();
-      if (managed.titleReportTimer !== undefined) {
-        clearTimeout(managed.titleReportTimer);
-        managed.titleReportTimer = undefined;
-        managed.pendingTitleState = undefined;
-      }
-    });
-
-    const inputDisposable = terminal.onData((data) => {
-      if (!managed.isInputLocked) {
-        if (isNonKeyboardInput(data)) {
-          if (data === "\x1b") {
-            this.agentStateController.clearDirectingState(id, "escape-key");
-          }
-        } else {
-          this.onUserInput(id, data);
-        }
-        writeTerminalInputOrFleet(id, data);
-        if (onInput) {
-          onInput(data);
-        }
-      }
-    });
-    listeners.push(() => inputDisposable.dispose());
-
-    const keyDisposable = terminal.onKey(({ domEvent }) => {
-      if (
-        !managed.isInputLocked &&
-        domEvent.key === "Enter" &&
-        !domEvent.isComposing &&
-        !domEvent.shiftKey &&
-        !domEvent.ctrlKey &&
-        !domEvent.altKey &&
-        !domEvent.metaKey
-      ) {
-        this.onEnterPressed(id);
-      }
-    });
-    listeners.push(() => keyDisposable.dispose());
+    installTerminalBoundListeners(terminal, managed, id, this.makeListenerInstallDeps());
 
     this.instances.set(id, managed);
 
@@ -1151,6 +829,13 @@ class TerminalInstanceService {
       managed.webLinksAddon = null;
     }
 
+    // The first applyRendererPolicy call is a no-op when the requested tier
+    // matches lastAppliedTier (or the live getRefreshTier()), so onTierApplied
+    // does not fire and the cursorBlink policy is not enforced. Apply it once
+    // here for any non-FOCUSED/BURST initial tier (VISIBLE prewarms in a
+    // non-focused split, or BACKGROUND prewarms in a non-focused tab).
+    this.applyCursorBlinkPolicy(managed);
+
     this.notifyReadinessWaiters(id);
 
     return managed;
@@ -1158,6 +843,16 @@ class TerminalInstanceService {
 
   get(id: string): ManagedTerminal | null {
     return this.instances.get(id) ?? null;
+  }
+
+  /**
+   * Stable accessor for E2E hooks. Avoids the bracket-notation
+   * `service["instances"]` reach-around the test harness used to do, which
+   * would silently break if the private field were renamed or refactored
+   * away. Production code should not use this — use `get(id)` instead.
+   */
+  getInstanceForE2E(id: string): ManagedTerminal | undefined {
+    return this.instances.get(id);
   }
 
   getCachedSelection(id: string): string {
@@ -1254,15 +949,15 @@ class TerminalInstanceService {
     }
 
     if (!managed.isOpened) {
+      // Seed xterm's grid before open() so cold-start restore paints at the
+      // saved size instead of flashing 80x24 then snapping (#6983).
+      if (managed.targetCols && managed.targetRows) {
+        managed.terminal.resize(managed.targetCols, managed.targetRows);
+      }
       managed.terminal.open(managed.hostElement);
       managed.isOpened = true;
       logDebug(`[TIS.attach] Opened terminal ${id}`);
-      if (
-        managed.runtimeAgentId &&
-        (managed.lastAppliedTier === TerminalRefreshTier.FOCUSED ||
-          managed.lastAppliedTier === TerminalRefreshTier.BURST ||
-          managed.lastAppliedTier === TerminalRefreshTier.VISIBLE)
-      ) {
+      if (managed.runtimeAgentId && isWebGLEligibleTier(managed.lastAppliedTier)) {
         this.webGLManager.ensureContext(id, managed);
       }
     }
@@ -1671,6 +1366,22 @@ class TerminalInstanceService {
     return managed?.isAltBuffer ?? false;
   }
 
+  /**
+   * Returns whether DEC private mode 2026 (Synchronized Output / BSU+ESU) is
+   * currently open on the terminal. Returns `null` when the terminal is
+   * unknown or its xterm instance hasn't surfaced the mode (e.g. test mocks).
+   *
+   * Diagnostic-only — the value lags `terminal.write()` by one parser tick
+   * because xterm processes writes asynchronously, so it should not be used
+   * to gate writes synchronously.
+   */
+  getSynchronizedOutputMode(id: string): boolean | null {
+    const managed = this.instances.get(id);
+    if (!managed) return null;
+    const mode = managed.terminal.modes?.synchronizedOutputMode;
+    return typeof mode === "boolean" ? mode : null;
+  }
+
   getAgentState(id: string): AgentState | undefined {
     const managed = this.instances.get(id);
     return managed?.agentState;
@@ -1869,11 +1580,25 @@ class TerminalInstanceService {
         // @ts-expect-error xterm options are indexable
         managed.terminal.options[key] = value;
       });
+      // Theme/font/etc. updates flow through `BASE_TERMINAL_OPTIONS` which
+      // unconditionally sets cursorBlink:true — re-clamp through the policy
+      // helper so a BACKGROUND/VISIBLE plain terminal doesn't silently start
+      // its blink timer again on a font or theme change.
+      this.applyCursorBlinkPolicy(managed);
     }
 
     if (textMetricsChanged) {
       managed.lastWidth = 0;
       managed.lastHeight = 0;
+    }
+
+    if (!managed.isHibernated) {
+      if (textMetricsChanged) {
+        this.resizeController.fit(id);
+      }
+      if ("theme" in options) {
+        managed.terminal.refresh(0, managed.terminal.rows - 1);
+      }
     }
   }
 
@@ -1881,17 +1606,30 @@ class TerminalInstanceService {
     const textMetricKeys = ["fontSize", "fontFamily", "lineHeight", "letterSpacing", "fontWeight"];
     const textMetricsChanged = textMetricKeys.some((key) => key in options);
 
-    this.instances.forEach((managed) => {
+    this.instances.forEach((managed, id) => {
       if (!managed.isHibernated) {
         Object.entries(options).forEach(([key, value]) => {
           // @ts-expect-error xterm options are indexable
           managed.terminal.options[key] = value;
         });
+        // Same rationale as updateOptions: re-clamp cursorBlink so a global
+        // theme/font change doesn't silently re-enable the blink timer on
+        // backgrounded plain terminals.
+        this.applyCursorBlinkPolicy(managed);
       }
 
       if (textMetricsChanged) {
         managed.lastWidth = 0;
         managed.lastHeight = 0;
+      }
+
+      if (!managed.isHibernated) {
+        if (textMetricsChanged) {
+          this.resizeController.fit(id);
+        }
+        if ("theme" in options) {
+          managed.terminal.refresh(0, managed.terminal.rows - 1);
+        }
       }
     });
   }
@@ -1941,13 +1679,12 @@ class TerminalInstanceService {
       return;
     }
     managed.runtimeAgentId = agentId;
+    // Runtime-promoted agents (detected via parser, not launchAgentId) start
+    // life as plain terminals and may have cursorBlink:true. Force the agent
+    // policy now so background promotions don't keep the blink timer alive.
+    this.applyCursorBlinkPolicy(managed);
     restoreScrollback(managed);
-    if (
-      managed.isOpened &&
-      (managed.lastAppliedTier === TerminalRefreshTier.FOCUSED ||
-        managed.lastAppliedTier === TerminalRefreshTier.BURST ||
-        managed.lastAppliedTier === TerminalRefreshTier.VISIBLE)
-    ) {
+    if (managed.isOpened && isWebGLEligibleTier(managed.lastAppliedTier)) {
       this.webGLManager.ensureContext(id, managed);
     }
   }
@@ -1956,6 +1693,9 @@ class TerminalInstanceService {
     const managed = this.instances.get(id);
     if (!managed?.runtimeAgentId) return;
     managed.runtimeAgentId = undefined;
+    // Demoted to plain terminal — re-evaluate the blink policy so a focused
+    // pane gets its blinking cursor back.
+    this.applyCursorBlinkPolicy(managed);
     restoreScrollback(managed);
     this.webGLManager.releaseContext(id);
     this.maybeReflowTerminal(managed);
@@ -1971,7 +1711,10 @@ class TerminalInstanceService {
         managed.canonicalAgentState !== "exited"
       )
         continue;
-      reduceScrollback(managed, targetLines);
+      // Force-bypass the per-terminal cooldown. This is a deliberate bulk
+      // memory-pressure shrink (resource-profile downshift / explicit purge),
+      // not the tab-flip path the cooldown protects against.
+      reduceScrollback(managed, targetLines, { force: true });
     }
   }
 
@@ -1995,31 +1738,15 @@ class TerminalInstanceService {
   }
 
   private isHibernationEligible(tier: TerminalRefreshTier, managed: ManagedTerminal): boolean {
-    if (tier !== TerminalRefreshTier.BACKGROUND) return false;
-    return (
-      !managed.runtimeAgentId ||
-      managed.canonicalAgentState === "completed" ||
-      managed.canonicalAgentState === "exited"
-    );
+    return this.hibernationManager.isHibernationEligible(tier, managed);
   }
 
   private scheduleHibernation(id: string, managed: ManagedTerminal): void {
-    if (managed.hibernationTimer || managed.isHibernated) return;
-    managed.hibernationTimer = setTimeout(() => {
-      managed.hibernationTimer = undefined;
-      const current = this.instances.get(id);
-      // A terminal that became visible (or was revived) between schedule and
-      // fire should not be hibernated — the user is looking at it.
-      if (!current || current.isVisible || current.isHibernated) return;
-      this.hibernate(id);
-    }, HIBERNATION_DELAY_MS);
+    this.hibernationManager.scheduleHibernation(id, managed);
   }
 
   private cancelHibernation(managed: ManagedTerminal): void {
-    if (managed.hibernationTimer) {
-      clearTimeout(managed.hibernationTimer);
-      managed.hibernationTimer = undefined;
-    }
+    this.hibernationManager.cancelHibernation(managed);
   }
 
   destroy(id: string): void {
@@ -2138,16 +1865,7 @@ class TerminalInstanceService {
 
   dispose(): void {
     this.stopPolling();
-    if (this.reflowHeartbeatTimer !== undefined) {
-      clearInterval(this.reflowHeartbeatTimer);
-      this.reflowHeartbeatTimer = undefined;
-    }
-    if (typeof document !== "undefined" && typeof document.removeEventListener === "function") {
-      document.removeEventListener("visibilitychange", this._onVisibilityChange);
-    }
-    if (typeof window !== "undefined" && typeof window.removeEventListener === "function") {
-      window.removeEventListener("focus", this._onWindowFocus);
-    }
+    this.reflowController.dispose();
     this.instances.forEach((_, id) => this.destroy(id));
     this.offscreenManager.dispose();
     this.wakeManager.dispose();
@@ -2193,7 +1911,7 @@ if (typeof window !== "undefined") {
   (window as unknown as Record<string, unknown>).__daintreeReadTerminalBuffer = (
     panelId: string
   ): string => {
-    const managed = terminalInstanceService["instances"].get(panelId);
+    const managed = terminalInstanceService.getInstanceForE2E(panelId);
     if (!managed) return "";
     const buf = managed.terminal.buffer.active;
     const lines: string[] = [];
@@ -2207,7 +1925,7 @@ if (typeof window !== "undefined") {
   (window as unknown as Record<string, unknown>).__daintreeSelectTerminalAll = (
     panelId: string
   ): boolean => {
-    const managed = terminalInstanceService["instances"].get(panelId);
+    const managed = terminalInstanceService.getInstanceForE2E(panelId);
     if (!managed) return false;
     managed.terminal.selectAll();
     return true;
@@ -2216,7 +1934,7 @@ if (typeof window !== "undefined") {
   (window as unknown as Record<string, unknown>).__daintreeGetTerminalBufferLength = (
     panelId: string
   ): number => {
-    const managed = terminalInstanceService["instances"].get(panelId);
+    const managed = terminalInstanceService.getInstanceForE2E(panelId);
     if (!managed) return 0;
     return managed.terminal.buffer.active.length;
   };
@@ -2225,7 +1943,7 @@ if (typeof window !== "undefined") {
     panelId: string,
     url: string
   ): string => {
-    const managed = terminalInstanceService["instances"].get(panelId);
+    const managed = terminalInstanceService.getInstanceForE2E(panelId);
     if (!managed) return "missing-panel";
     const mac = isMac();
     const syntheticEvent = new MouseEvent("click", {

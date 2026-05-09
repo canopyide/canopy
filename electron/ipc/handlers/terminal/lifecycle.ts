@@ -13,8 +13,17 @@ import {
   typedHandleValidated,
 } from "../../utils.js";
 import { projectStore } from "../../../services/ProjectStore.js";
+import { mcpServerService } from "../../../services/McpServerService.js";
+import { mcpPaneConfigService } from "../../../services/McpPaneConfigService.js";
+import { helpSessionService } from "../../../services/HelpSessionService.js";
 import type { HandlerDependencies } from "../../types.js";
 import { TerminalSpawnOptionsSchema } from "../../../schemas/ipc.js";
+import { resolveDaintreeMcpTier } from "../../../../shared/types/project.js";
+import { DEFAULT_DANGEROUS_ARGS } from "../../../../shared/types/agentSettings.js";
+import {
+  getAssistantWiredAgentIds,
+  getEffectiveAgentConfig,
+} from "../../../../shared/config/agentRegistry.js";
 
 type ValidatedTerminalSpawnOptions = z.output<typeof TerminalSpawnOptionsSchema>;
 import {
@@ -203,7 +212,168 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
     if (hasMultilineCommand) {
       console.error("Multi-line commands not allowed for security, ignoring");
     }
-    const safeCommand = hasMultilineCommand ? "" : trimmedCommand;
+    let safeCommand = hasMultilineCommand ? "" : trimmedCommand;
+    let spawnEnv: Record<string, string> | undefined = validatedOptions.env;
+
+    // Help-assistant launches arrive with a pre-provisioned session dir whose
+    // .mcp.json is already in cwd, baked with the literal session token, and
+    // a .claude/settings.json that sets `enableAllProjectMcpServers: true` so
+    // Claude Code auto-trusts the project-scoped servers without prompting.
+    // Skip per-pane MCP config injection (the session dir owns it) and let
+    // Claude's normal cwd discovery do its thing. The CLI bypass flag is
+    // gated on the session's snapshotted `bypassPermissions` (independent
+    // of `tier`), so an `action`-tier session can still skip permission
+    // prompts and a `system`-tier session can still respect them.
+    const helpToken = spawnEnv?.DAINTREE_MCP_TOKEN ?? "";
+    const helpTier = helpToken ? helpSessionService.validateToken(helpToken) : false;
+    const isAssistantAgent =
+      typeof launchAgentId === "string" && getAssistantWiredAgentIds().includes(launchAgentId);
+    const isHelpLaunch = helpTier !== false && isAssistantAgent && safeCommand.length > 0;
+
+    // If a help-session token was supplied but is invalid (revoked between
+    // provision and spawn — typically because a sibling provision displaced
+    // the session under the single-backend invariant), refuse to silently
+    // fall back to a normal Claude launch with per-pane MCP injection. The
+    // renderer must always provision a fresh session before spawning the
+    // assistant; falling through would resurrect the orphan-backend failure
+    // mode (#7509) by spawning an unmanaged Claude in the assistant slot.
+    if (!isHelpLaunch && helpToken && isAssistantAgent && safeCommand.length > 0) {
+      throw new Error(
+        "Daintree Assistant session token is invalid or already displaced; refusing to spawn"
+      );
+    }
+
+    if (isHelpLaunch && launchAgentId) {
+      const dangerous = DEFAULT_DANGEROUS_ARGS[launchAgentId];
+      const bypassPermissions = helpSessionService.getBypassPermissions(helpToken);
+      // Honor the agent's `supports.permissionBypass` declaration: only
+      // append the dangerous flag when the agent has opted in. Gemini help
+      // sessions sit at `permissionBypass: false` (Phase 1 stays in plan
+      // mode), so a stored `bypassPermissions: true` from the user's
+      // help-assistant settings must not flip Gemini into `--yolo`.
+      const launchAgentConfig = getEffectiveAgentConfig(launchAgentId);
+      const agentAllowsBypass = launchAgentConfig?.supports
+        ? launchAgentConfig.supports.permissionBypass === true
+        : true;
+      if (dangerous) {
+        // The session-snapshotted `bypassPermissions` flag is the source of
+        // truth for whether the assistant runs in dangerous mode — set per
+        // help session at provision time, decoupled from the MCP `tier`.
+        // Always strip first (covering bare flag and `--flag=value`
+        // lookalikes that could survive a substring-only check). Then append
+        // the canonical flag iff bypass is on AND the agent declares it
+        // accepts bypass. The strip-first pass means
+        // `--dangerously-skip-permissions=false` (or `--yolo` smuggled via
+        // customArgs against a Gemini help session) never wins over the
+        // session's stored preference or the agent's `permissionBypass`
+        // opt-out.
+        const dangerousEscaped = dangerous.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const stripPattern = new RegExp(`(^|\\s)${dangerousEscaped}(?:=\\S*)?(?=\\s|$)`, "g");
+        safeCommand = safeCommand
+          .replace(stripPattern, "$1")
+          .replace(/\s{2,}/g, " ")
+          .trim();
+        if (bypassPermissions && agentAllowsBypass) {
+          safeCommand = safeCommand.length > 0 ? `${safeCommand} ${dangerous}` : dangerous;
+        }
+      }
+      // Codex doesn't read project-scoped `.codex/config.toml` from cwd —
+      // its only override mechanism is the `-c key=value` CLI flag. The
+      // help-session service computed the exact `-c` args for the toggled
+      // MCP servers at provision time; append them here, shell-quoted. No
+      // literal token is ever in the args (Codex reads
+      // `DAINTREE_MCP_TOKEN` from PTY env via `bearer_token_env_var`).
+      //
+      // A `null` return is the agent-mismatch signal (e.g. a Claude help
+      // token reused with `launchAgentId: "codex"`) — refuse to spawn
+      // rather than silently launching Codex without its MCP wiring.
+      if (launchAgentId === "codex") {
+        const codexArgs = helpSessionService.getCodexLaunchArgs(helpToken);
+        if (codexArgs === null) {
+          throw new Error(
+            "Daintree Assistant help token does not belong to a Codex session; refusing to spawn"
+          );
+        }
+        if (codexArgs.length > 0) {
+          safeCommand = `${safeCommand} ${codexArgs.map(shellQuote).join(" ")}`;
+        }
+      }
+      // Gemini help sessions are pinned to `--approval-mode=plan` (strict
+      // read-only) at spawn time. The flag is a CLI-only knob — it cannot
+      // come from the bundled `.gemini/settings.json`, which only carries
+      // the docs MCP entry and the tool allowlist.
+      //
+      // A `null` return is the agent-mismatch signal (e.g. a Claude help
+      // token reused with `launchAgentId: "gemini"`) — refuse to spawn,
+      // because silently dropping the launch args would mean spawning
+      // Gemini without the read-only plan-mode guardrail.
+      //
+      // Strip any user-supplied `--approval-mode=...` first so the
+      // appended `--approval-mode=plan` is unambiguously authoritative
+      // (Gemini's flag parser treats repeated flags as last-wins, but we
+      // don't rely on parser quirks for a security-relevant guardrail).
+      if (launchAgentId === "gemini") {
+        const geminiArgs = helpSessionService.getGeminiLaunchArgs(helpToken);
+        if (geminiArgs === null) {
+          throw new Error(
+            "Daintree Assistant help token does not belong to a Gemini session; refusing to spawn"
+          );
+        }
+        safeCommand = safeCommand
+          .replace(/(^|\s)--approval-mode(?:=\S*|\s+\S+)?(?=\s|$)/g, "$1")
+          .replace(/\s{2,}/g, " ")
+          .trim();
+        if (geminiArgs.length > 0) {
+          safeCommand = `${safeCommand} ${geminiArgs.map(shellQuote).join(" ")}`.trim();
+        }
+      }
+
+      // Bind this terminalId to the help session so HelpSessionService can
+      // kill the PTY when the session is displaced or revoked (#7509). Owns
+      // the binding from main-process spawn time, so it doesn't depend on
+      // the renderer-issued `help.markTerminal` round-trip landing first.
+      // A false return means the token was revoked between provision and
+      // spawn (e.g. a stale resume against a session a sibling provision
+      // already displaced) — refuse to launch as a help session rather
+      // than silently degrading to a non-help Claude.
+      if (!helpSessionService.markTerminalForToken(helpToken, id)) {
+        throw new Error(
+          "Daintree Assistant session token is invalid or already displaced; refusing to spawn"
+        );
+      }
+    } else if (launchAgentId === "claude" && safeCommand.length > 0 && projectId) {
+      // Daintree MCP injection for normal Claude Code agent launches.
+      // Mints a per-pane bearer token, writes a managed --mcp-config JSON under
+      // userData, and injects the flag into the command + the token into env.
+      // Token is revoked and the file deleted on PTY exit (see registerTerminalEventHandlers).
+      try {
+        const projSettings = await projectStore.getProjectSettings(projectId);
+        const tier = resolveDaintreeMcpTier(projSettings);
+        if (tier !== "off") {
+          const ready = mcpServerService.isRunning || (await mcpServerService.ensureReady());
+          if (!ready) {
+            console.warn(
+              "[TerminalSpawn] Daintree MCP requested for Claude launch, but the MCP server is not ready; continuing without MCP injection"
+            );
+          }
+          const port = mcpServerService.currentPort;
+          if (ready && port) {
+            const { configPath, token } = await mcpPaneConfigService.preparePaneConfig({
+              paneId: id,
+              port,
+              tier,
+            });
+            safeCommand = `${safeCommand} --mcp-config ${shellQuote(configPath)}`;
+            spawnEnv = { ...(spawnEnv ?? {}), DAINTREE_MCP_TOKEN: token };
+          }
+        }
+      } catch (mcpErr) {
+        console.error(
+          "[TerminalSpawn] Failed to prepare Daintree MCP config; continuing without MCP injection:",
+          mcpErr
+        );
+      }
+    }
 
     // Resolve shell and args: project overrides > spawn options > defaults.
     // For command launches on POSIX, run the command through the shell's
@@ -226,7 +396,7 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
         cols,
         rows,
         command: safeCommand || undefined,
-        env: validatedOptions.env,
+        env: spawnEnv,
         kind,
         launchAgentId,
         title,
@@ -254,6 +424,16 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
 
       return id;
     } catch (error) {
+      // If we minted an MCP pane config above and the PTY spawn never landed,
+      // revoke it now so we don't leak per-pane tokens or config files.
+      mcpPaneConfigService.revokePaneConfig(id).catch(() => {
+        // best-effort cleanup
+      });
+      // If we bound this terminalId to a help session above, unbind now so a
+      // future provision doesn't try to kill a PTY that never spawned.
+      if (isHelpLaunch) {
+        helpSessionService.unbindTerminal(id);
+      }
       const errorMessage = formatErrorMessage(error, "Failed to spawn terminal");
       throw new Error(`Failed to spawn terminal: ${errorMessage}`);
     }

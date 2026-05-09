@@ -2,9 +2,10 @@ import { app } from "electron";
 import { emergencyLogMainFatal } from "../utils/emergencyLog.js";
 import { getCrashRecoveryService } from "../services/CrashRecoveryService.js";
 import { getCrashLoopGuard } from "../services/CrashLoopGuardService.js";
+import { closeTelemetry } from "../services/TelemetryService.js";
 import { broadcastToRenderer } from "../ipc/utils.js";
 import { CHANNELS } from "../ipc/channels.js";
-import { store } from "../store.js";
+import { appendPendingError } from "../ipc/pendingErrorsStore.js";
 import type { ErrorRecord } from "../../shared/types/ipc/errors.js";
 import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 
@@ -45,9 +46,7 @@ function notifyRenderer(appError: ErrorRecord): void {
 
 function persistPendingError(appError: ErrorRecord): void {
   try {
-    const existing = store.get("pendingErrors");
-    const pending = Array.isArray(existing) ? existing : [];
-    store.set("pendingErrors", [...pending, { ...appError, fromPreviousSession: true }]);
+    appendPendingError({ ...appError, fromPreviousSession: true });
   } catch {
     // best-effort only
   }
@@ -103,11 +102,22 @@ export function registerGlobalErrorHandlers(): void {
       // silent
     }
 
-    try {
-      app.exit(1);
-    } catch {
-      process.exit(1);
-    }
+    // Drain Sentry's HTTP transport before terminating — this handler is
+    // registered before initializeTelemetry() and fires before Sentry's own
+    // onUncaughtExceptionIntegration, so a synchronous app.exit(1) would kill
+    // the process before any in-flight crash report could flush. closeTelemetry
+    // is idempotent, internally caps at SENTRY_CLOSE_TIMEOUT_MS (2000ms), and
+    // catches all errors. The re-entrant fatal path above keeps a synchronous
+    // exit — a second crash mid-flush should not wait another 2s.
+    closeTelemetry()
+      .catch(() => {})
+      .finally(() => {
+        try {
+          app.exit(1);
+        } catch {
+          process.exit(1);
+        }
+      });
   });
 
   process.on("unhandledRejection", (reason: unknown) => {
@@ -119,11 +129,10 @@ export function registerGlobalErrorHandlers(): void {
       // silent
     }
 
-    try {
-      getCrashRecoveryService().recordCrash(reason);
-    } catch {
-      // silent
-    }
+    // Do NOT call recordCrash here. The app keeps running after an unhandled
+    // rejection (no app.exit follows), so writing a crash marker would poison
+    // every subsequent clean Cmd-Q on the next launch. Only uncaughtException
+    // — which terminates the process — should mark the crash.
 
     const appError = buildFatalErrorRecord("UNHANDLED_REJECTION", reason);
 

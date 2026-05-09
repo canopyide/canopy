@@ -56,6 +56,34 @@ export function markRendererPerformance(
   }
 }
 
+/**
+ * Drain the in-renderer perf buffer to the main process.
+ *
+ * The buffer is filled by `markRendererPerformance` and flushed by callers at
+ * known boundaries (today: `HYDRATE_COMPLETE` in `stateHydration/index.ts` and
+ * the renderer-side first-interactive hand-off in `removeStartupSkeleton`).
+ * Anything emitted between those boundaries — notably `renderer_cls_final` —
+ * stays in the buffer otherwise, because `state hydration` clears the array
+ * after its own flush and no subsequent flush exists.
+ *
+ * Safe to call without a capture run; returns early when `DAINTREE_PERF_CAPTURE`
+ * is unset or the perf bridge is missing (preload not yet ready).
+ */
+export function flushPendingPerfMarks(): void {
+  if (typeof window === "undefined") return;
+  if (!isRendererPerfCaptureEnabled()) return;
+  const bridge = window.electron?.perf;
+  if (!bridge?.flushMarks) return;
+
+  const marks = window.__DAINTREE_PERF_MARKS__ ?? [];
+  bridge.flushMarks({
+    marks,
+    rendererTimeOrigin: typeof performance !== "undefined" ? performance.timeOrigin : 0,
+    rendererT0: RENDERER_T0,
+  });
+  window.__DAINTREE_PERF_MARKS__ = [];
+}
+
 export function startRendererSpan(
   mark: PerfMarkName | string,
   meta?: Record<string, unknown>

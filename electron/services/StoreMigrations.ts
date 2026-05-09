@@ -1,8 +1,10 @@
 import Store from "electron-store";
 import type { StoreSchema } from "../store.js";
+import { tightenFilePermissions } from "../store.js";
 import fs from "fs";
 import { z } from "zod";
 import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
+import { getCurrentDiskSpaceStatus } from "./DiskSpaceMonitor.js";
 
 export const LATEST_SCHEMA_VERSION = 20;
 
@@ -80,6 +82,14 @@ export class MigrationRunner {
   ) {}
 
   private backupStore(fromVersion: number): string | null {
+    // Skip the copy when the volume is already critical — fs.copyFileSync would
+    // either fail with ENOSPC or leave a truncated backup. The runMigrations
+    // guard short-circuits well before this in practice; keep the check anyway
+    // so direct callers (and any future relaxation upstream) stay safe.
+    if (getCurrentDiskSpaceStatus().status === "critical") {
+      console.warn("[Migrations] Skipping pre-migration backup: disk space is critical");
+      return null;
+    }
     try {
       const storePath = this.store.path;
       if (!fs.existsSync(storePath)) {
@@ -89,6 +99,9 @@ export class MigrationRunner {
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       const backupPath = `${storePath}.backup-v${fromVersion}-${timestamp}`;
       fs.copyFileSync(storePath, backupPath);
+      // Pre-migration backups carry the full store including secrets and
+      // are never auto-cleaned, so tighten regardless of source mode.
+      tightenFilePermissions(backupPath);
       console.log(`[Migrations] Created backup at ${backupPath}`);
       return backupPath;
     } catch (error) {
@@ -120,6 +133,9 @@ export class MigrationRunner {
     try {
       if (fs.existsSync(storePath)) {
         fs.renameSync(storePath, failedStatePath);
+        // Preserve the failed-migration file owner-only — it carries the
+        // post-migration store and lingers for diagnostics.
+        tightenFilePermissions(failedStatePath);
         preservedFailedState = true;
       }
     } catch (preserveError) {
@@ -131,6 +147,9 @@ export class MigrationRunner {
 
     try {
       fs.renameSync(backupPath, storePath);
+      // Backups created by older builds may carry 0o644; tighten the
+      // restored live config so the rollback never relaxes permissions.
+      tightenFilePermissions(storePath);
       console.log(`[Migrations] Restored store from backup ${backupPath}`);
       return {
         restored: true,
@@ -159,6 +178,14 @@ export class MigrationRunner {
   }
 
   async runMigrations(migrations: Migration[]): Promise<void> {
+    // Pre-flight disk-space gate. Migrations write the pre-migration backup
+    // and may call electron-store's atomic write under the hood; both fail
+    // hard on a critical-pressure volume. Throw before the chain starts so the
+    // caller can surface the condition instead of partially mutating state.
+    if (getCurrentDiskSpaceStatus().status === "critical") {
+      throw new Error("Cannot run migrations: disk space is critical");
+    }
+
     const current = this.getCurrentVersion();
     const maxKnownVersion = Math.max(...migrations.map((m) => m.version), 0);
 
@@ -205,6 +232,12 @@ export class MigrationRunner {
     const backupPath = this.backupStore(current);
     if (backupPath) {
       console.log(`[Migrations] Store backed up, can restore from: ${backupPath}`);
+    } else if (getCurrentDiskSpaceStatus().status === "critical") {
+      // Disk transitioned to critical between the top-of-method guard and the
+      // backup write — backupStore skipped the copy. Don't proceed without a
+      // backup on a critical volume; surface the condition before mutating
+      // the live store.
+      throw new Error("Cannot run migrations: disk space is critical");
     }
 
     let stage: "loop" | "validate" = "loop";

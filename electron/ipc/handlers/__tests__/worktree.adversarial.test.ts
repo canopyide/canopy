@@ -14,6 +14,9 @@ const generateWorktreePathMock = vi.hoisted(() => vi.fn());
 const validatePathPatternMock = vi.hoisted(() =>
   vi.fn<(pattern: string) => { valid: boolean; error?: string }>(() => ({ valid: true }))
 );
+const validateBranchNameMock = vi.hoisted(() =>
+  vi.fn<(name: string) => { valid: boolean; error?: string }>(() => ({ valid: true }))
+);
 const resolveWorktreePatternMock = vi.hoisted(() => vi.fn().mockResolvedValue("../wt/{branch}"));
 
 const storeMock = vi.hoisted(() => ({
@@ -98,6 +101,7 @@ vi.mock("../../../utils/worktreePattern.js", () => ({
 vi.mock("../../../../shared/utils/pathPattern.js", () => ({
   generateWorktreePath: generateWorktreePathMock,
   validatePathPattern: validatePathPatternMock,
+  validateBranchName: validateBranchNameMock,
 }));
 
 vi.mock("../../../utils/logger.js", () => ({
@@ -139,6 +143,7 @@ describe("worktree IPC adversarial", () => {
     getAllStatesAsync: ReturnType<typeof vi.fn>;
     createWorktree: ReturnType<typeof vi.fn>;
     deleteWorktree: ReturnType<typeof vi.fn>;
+    invalidatePulseCache: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(() => {
@@ -146,11 +151,16 @@ describe("worktree IPC adversarial", () => {
     vi.clearAllMocks();
     storeMock.get.mockImplementation(baseStoreGetImpl());
     waitForRateLimitSlotMock.mockResolvedValue(undefined);
+    // vi.clearAllMocks resets the implementation; re-anchor the default so
+    // every WORKTREE_CREATE call sees a passing branch validator unless the
+    // specific test overrides it.
+    validateBranchNameMock.mockImplementation(() => ({ valid: true }));
 
     worktreeService = {
       getAllStatesAsync: vi.fn().mockResolvedValue([]),
       createWorktree: vi.fn().mockResolvedValue("wt-new"),
       deleteWorktree: vi.fn().mockResolvedValue(undefined),
+      invalidatePulseCache: vi.fn(),
     };
     cleanup = registerWorktreeHandlers({
       worktreeService,
@@ -198,6 +208,54 @@ describe("worktree IPC adversarial", () => {
     // Sound is fire-and-forget via dynamic import — drain microtasks first
     await new Promise((resolve) => setImmediate(resolve));
     expect(soundMock.play).toHaveBeenCalledWith("worktree-create");
+  });
+
+  it("WORKTREE_CREATE rejects invalid branch names before reaching worktreeService (#7033)", async () => {
+    validateBranchNameMock.mockReturnValueOnce({
+      valid: false,
+      error: "Branch name cannot be 'HEAD'",
+    });
+
+    await expect(
+      getHandler(CHANNELS.WORKTREE_CREATE)(fakeEvent(), {
+        rootPath: "/repo",
+        options: { baseBranch: "main", newBranch: "HEAD", path: "/repo/wt-head" },
+      })
+    ).rejects.toThrow(/HEAD/);
+
+    expect(worktreeService.createWorktree).not.toHaveBeenCalled();
+  });
+
+  it("WORKTREE_CREATE surfaces validator error message verbatim (#7033)", async () => {
+    validateBranchNameMock.mockReturnValueOnce({
+      valid: false,
+      error: "Branch name cannot contain '@{'",
+    });
+
+    await expect(
+      getHandler(CHANNELS.WORKTREE_CREATE)(fakeEvent(), {
+        rootPath: "/repo",
+        options: { baseBranch: "main", newBranch: "feat@{x", path: "/repo/wt-bad" },
+      })
+    ).rejects.toThrow(/@\{/);
+
+    expect(worktreeService.createWorktree).not.toHaveBeenCalled();
+  });
+
+  it("WORKTREE_CREATE rejects malformed payloads before validating (#7033)", async () => {
+    const handler = getHandler(CHANNELS.WORKTREE_CREATE);
+
+    await expect(handler(fakeEvent(), null)).rejects.toThrow(/Invalid worktree create payload/);
+    await expect(handler(fakeEvent(), {})).rejects.toThrow(/Invalid worktree create payload/);
+    await expect(handler(fakeEvent(), { rootPath: "/repo" })).rejects.toThrow(
+      /Invalid worktree create payload/
+    );
+    await expect(handler(fakeEvent(), { rootPath: "/repo", options: null })).rejects.toThrow(
+      /Invalid worktree create payload/
+    );
+
+    expect(validateBranchNameMock).not.toHaveBeenCalled();
+    expect(worktreeService.createWorktree).not.toHaveBeenCalled();
   });
 
   it("WORKTREE_DELETE invalidates the exact worktree path and prunes only matching issue mapping", async () => {

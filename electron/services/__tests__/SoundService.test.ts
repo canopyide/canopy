@@ -151,9 +151,59 @@ describe("SoundService", () => {
     expect(mockBroadcastToRenderer).not.toHaveBeenCalled();
   });
 
-  it("cancel sends sound:cancel IPC via broadcast", () => {
+  it("cancel sends sound:cancel IPC via broadcast when renderer windows exist", () => {
+    mockGetAllWindows.mockReturnValue([{ id: 1 }]);
+
     soundService.cancel();
 
+    expect(mockBroadcastToRenderer).toHaveBeenCalledWith("events:push", {
+      name: "sound:cancel",
+      payload: undefined,
+    });
+    expect(mockCancel).not.toHaveBeenCalled();
+  });
+
+  it("cancel does not broadcast when no renderer windows are present", () => {
+    mockGetAllWindows.mockReturnValue([]);
+
+    soundService.cancel();
+
+    expect(mockBroadcastToRenderer).not.toHaveBeenCalledWith(
+      "events:push",
+      expect.objectContaining({ name: "sound:cancel" })
+    );
+  });
+
+  it("cancel cancels OS-fallback voices only when no renderer is present", () => {
+    mockGetAllWindows.mockReturnValue([]);
+    soundService.play("error");
+    vi.advanceTimersByTime(200);
+    soundService.play("ping");
+
+    expect(mockPlaySound).toHaveBeenCalledTimes(2);
+
+    soundService.cancel();
+
+    expect(mockCancel).toHaveBeenCalled();
+    expect(mockBroadcastToRenderer).not.toHaveBeenCalledWith(
+      "events:push",
+      expect.objectContaining({ name: "sound:cancel" })
+    );
+  });
+
+  it("cancel cancels OS-fallback voices even when a renderer window has since opened", () => {
+    // Voices started while no window existed must be cleaned up regardless of
+    // whether a window opens before cancel is called.
+    mockGetAllWindows.mockReturnValue([]);
+    soundService.play("error");
+    vi.advanceTimersByTime(200);
+    soundService.play("ping");
+    expect(mockPlaySound).toHaveBeenCalledTimes(2);
+
+    mockGetAllWindows.mockReturnValue([{ id: 1 }]);
+    soundService.cancel();
+
+    expect(mockCancel).toHaveBeenCalled();
     expect(mockBroadcastToRenderer).toHaveBeenCalledWith("events:push", {
       name: "sound:cancel",
       payload: undefined,
@@ -180,6 +230,16 @@ describe("SoundService", () => {
       volume: 1,
     });
     expect(mockPlaySound).not.toHaveBeenCalled();
+  });
+
+  it("does not stat the sound file when routing to the renderer", () => {
+    mockGetAllWindows.mockReturnValue([{ id: 1 }]);
+    fsMock.existsSync.mockClear();
+
+    soundService.play("error");
+    soundService.preview("chime");
+
+    expect(fsMock.existsSync).not.toHaveBeenCalled();
   });
 
   // -- Pulse detune forwarding --
@@ -267,6 +327,21 @@ describe("SoundService", () => {
   it("discovers and uses variants from the sounds directory", () => {
     const variants = soundService.getVariants("chime.wav");
     expect(variants).toEqual(["chime.v1.wav", "chime.v2.wav", "chime.v3.wav", "chime.wav"]);
+  });
+
+  it("scans the sounds directory exactly once at module load, not per sound", () => {
+    // initVariantCache pre-populates every SOUND_FILES entry from a single
+    // readdirSync, so getVariants for known sounds must not trigger additional scans.
+    const callsAfterInit = fsMock.readdirSync.mock.calls.length;
+
+    soundService.getVariants("chime.wav");
+    soundService.getVariants("error.wav");
+    soundService.getVariants("complete.wav");
+    soundService.getVariants("ping.wav");
+    soundService.getVariants("waiting.wav");
+
+    expect(fsMock.readdirSync.mock.calls.length).toBe(callsAfterInit);
+    expect(callsAfterInit).toBe(1);
   });
 
   it("reads variants from the correct directory in packaged mode", async () => {

@@ -26,6 +26,7 @@ export interface NotificationHistoryEntry {
     projectId?: string;
     worktreeId?: string;
     panelId?: string;
+    eventKind?: "completed" | "waiting" | "workingPulse" | "uiFeedback";
   };
   actions?: NotificationHistoryAction[];
 }
@@ -43,17 +44,39 @@ const MAX_ENTRIES = 200;
 interface NotificationHistoryState {
   entries: NotificationHistoryEntry[];
   unreadCount: number;
+  /**
+   * Number of toasts that have been evicted into the inbox since the user
+   * last opened the notification center. Drives the toaster overflow pill
+   * and the toolbar bell arrival animation. Reset by `resetEvictedCount`.
+   */
+  evictedToInboxCount: number;
   addEntry: (entry: AddEntryInput) => string;
-  markUnseenAsToast: (id: string) => void;
+  /**
+   * Flips an entry's `seenAsToast` back to false (it's no longer visible as a
+   * toast). Pass `silent: true` to skip the discoverability-cue increment
+   * (`evictedToInboxCount`) — used when the notification center is already
+   * open and the user can see the entry land in the inbox directly.
+   */
+  markUnseenAsToast: (id: string, options?: { silent?: boolean }) => void;
   dismissEntry: (id: string) => void;
+  dismissByCorrelationId: (correlationId: string) => void;
   clearAll: () => void;
   markAllRead: () => void;
+  /**
+   * Flips `seenAsToast` to true on the targeted entries in a single atomic
+   * update. Skips entries that are already read or missing. Used by the
+   * bulk-mark-read flows that need to capture an exact ID set up-front for an
+   * undo affordance.
+   */
+  markIdsRead: (ids: string[]) => void;
   markSummarized: (ids: string[]) => void;
+  resetEvictedCount: () => void;
 }
 
 export const useNotificationHistoryStore = create<NotificationHistoryState>((set) => ({
   entries: [],
   unreadCount: 0,
+  evictedToInboxCount: 0,
   addEntry: (entry) => {
     const seenAsToast = entry.seenAsToast ?? false;
     const countable = entry.countable ?? true;
@@ -75,7 +98,7 @@ export const useNotificationHistoryStore = create<NotificationHistoryState>((set
     });
     return newEntry.id;
   },
-  markUnseenAsToast: (id) =>
+  markUnseenAsToast: (id, options) =>
     set((state) => {
       const entry = state.entries.find((e) => e.id === id);
       if (!entry || !entry.seenAsToast) return state;
@@ -83,6 +106,9 @@ export const useNotificationHistoryStore = create<NotificationHistoryState>((set
       return {
         entries,
         unreadCount: entries.filter((e) => !e.seenAsToast && e.countable !== false).length,
+        evictedToInboxCount: options?.silent
+          ? state.evictedToInboxCount
+          : state.evictedToInboxCount + 1,
       };
     }),
   dismissEntry: (id) =>
@@ -93,12 +119,38 @@ export const useNotificationHistoryStore = create<NotificationHistoryState>((set
         unreadCount: entries.filter((e) => !e.seenAsToast && e.countable !== false).length,
       };
     }),
-  clearAll: () => set({ entries: [], unreadCount: 0 }),
+  dismissByCorrelationId: (correlationId) =>
+    set((state) => {
+      const entries = state.entries.filter((e) => e.correlationId !== correlationId);
+      return {
+        entries,
+        unreadCount: entries.filter((e) => !e.seenAsToast && e.countable !== false).length,
+      };
+    }),
+  clearAll: () => set({ entries: [], unreadCount: 0, evictedToInboxCount: 0 }),
   markAllRead: () =>
     set((state) => ({
       unreadCount: 0,
       entries: state.entries.map((e) => (e.seenAsToast ? e : { ...e, seenAsToast: true })),
     })),
+  markIdsRead: (ids) =>
+    set((state) => {
+      if (ids.length === 0) return state;
+      const idSet = new Set(ids);
+      let mutated = false;
+      const entries = state.entries.map((e) => {
+        if (idSet.has(e.id) && !e.seenAsToast) {
+          mutated = true;
+          return { ...e, seenAsToast: true };
+        }
+        return e;
+      });
+      if (!mutated) return state;
+      return {
+        entries,
+        unreadCount: entries.filter((e) => !e.seenAsToast && e.countable !== false).length,
+      };
+    }),
   markSummarized: (ids) =>
     set((state) => {
       const idSet = new Set(ids);
@@ -108,6 +160,8 @@ export const useNotificationHistoryStore = create<NotificationHistoryState>((set
         ),
       };
     }),
+  resetEvictedCount: () =>
+    set((state) => (state.evictedToInboxCount === 0 ? state : { evictedToInboxCount: 0 })),
 }));
 
 /** Returns all history entries that share the given correlationId */

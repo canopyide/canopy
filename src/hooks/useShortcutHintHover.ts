@@ -17,6 +17,7 @@ const HOVER_DWELL_MS = 1500;
 export function useShortcutHintHover(actionId: string) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const displayComboRef = useRef<string>("");
+  const triggerRef = useRef<Element | null>(null);
   // Ref-based callback to avoid stale closures in setTimeout without useEffectEvent.
   const fireDwellRef = useRef<(clientX: number, clientY: number) => void>(() => {});
 
@@ -34,6 +35,11 @@ export function useShortcutHintHover(actionId: string) {
     fireDwellRef.current = (clientX: number, clientY: number) => {
       const displayCombo = displayComboRef.current;
       if (!displayCombo) return;
+
+      // Suppress when a Radix tooltip is already teaching the same shortcut on
+      // this trigger (data-state is merged onto the trigger child via asChild).
+      const tooltipState = triggerRef.current?.getAttribute("data-state");
+      if (tooltipState === "delayed-open" || tooltipState === "instant-open") return;
 
       const store = shortcutHintStore;
       if (!store.getState().isHoverEligible(actionId)) return;
@@ -53,6 +59,7 @@ export function useShortcutHintHover(actionId: string) {
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
+    triggerRef.current = null;
   };
 
   useEffect(() => {
@@ -68,10 +75,12 @@ export function useShortcutHintHover(actionId: string) {
 
     const clientX = e.clientX;
     const clientY = e.clientY;
+    triggerRef.current = e.currentTarget;
 
     timerRef.current = setTimeout(() => {
       timerRef.current = null;
       fireDwellRef.current(clientX, clientY);
+      triggerRef.current = null;
     }, HOVER_DWELL_MS);
   };
 

@@ -2,9 +2,6 @@ import { defineConfig } from "vitest/config";
 import path from "path";
 
 export default defineConfig({
-  define: {
-    IS_LEGACY_BUILD: JSON.stringify(process.env.BUILD_VARIANT === "canopy"),
-  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -16,13 +13,14 @@ export default defineConfig({
     environment: "node",
     globalSetup: "./vitest.global-setup.ts",
     setupFiles: ["./vitest.setup.ts"],
+    onConsoleLog: () => false,
     minWorkers: 3,
     maxConcurrency: 10,
     include: [
       "electron/**/*.{test,spec}.{js,ts}",
       "src/**/*.{test,spec}.{js,ts,jsx,tsx}",
       "shared/**/*.{test,spec}.{js,ts}",
-      "scripts/**/*.{test,spec}.{js,ts}",
+      "scripts/**/*.{test,spec}.{js,ts,mjs}",
     ],
     exclude: [
       "node_modules",

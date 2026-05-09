@@ -16,8 +16,7 @@ import {
   Plus,
   Bell,
   BellOff,
-  ChevronLeft,
-  ChevronRight,
+  ChevronDown,
   CopyPlus,
   Ellipsis,
   Lock,
@@ -38,19 +37,21 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, horizontalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { restrictToHorizontalAxis, restrictToParentElement } from "@dnd-kit/modifiers";
-import { LayoutGroup, LazyMotion, domMax } from "framer-motion";
+import { PanelTabList } from "./PanelTabList";
 import type { PanelKind } from "@/types";
 import { cn, getBaseTitle } from "@/lib/utils";
-import { formatShortcutForTooltip, createTooltipWithShortcut } from "@/lib/platform";
+import { formatShortcutForTooltip } from "@/lib/platform";
+import { createTooltipContent } from "@/lib/tooltipShortcut";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AnimatedLabel } from "@/components/ui/AnimatedLabel";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import { BellDot, FolderGit2 } from "@/components/icons";
 import { useDragHandle } from "@/components/DragDrop/DragHandleContext";
 import {
+  useAriaKeyshortcuts,
   useBackgroundPanelStats,
-  useHorizontalScrollControls,
   useKeybindingDisplay,
+  useTabOverflow,
 } from "@/hooks";
 import { usePanelStore } from "@/store/panelStore";
 import {
@@ -62,7 +63,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { TabButton, type TabInfo } from "./TabButton";
 import { SortableTabButton } from "./SortableTabButton";
-import { useShallow } from "zustand/react/shallow";
+
 import { panelKindCanRestart, panelKindHasPty } from "@shared/config/panelKindRegistry";
 import { actionService } from "@/services/ActionService";
 import { fireWatchNotification } from "@/lib/watchNotification";
@@ -260,9 +261,17 @@ function PanelHeaderComponent({
   const toggleDockShortcut = useKeybindingDisplay("terminal.toggleDock");
   const maximizeShortcut = useKeybindingDisplay("terminal.maximize");
   const closeShortcut = useKeybindingDisplay("terminal.close");
+  const duplicateAriaShortcut = useAriaKeyshortcuts("terminal.duplicate");
+  const moveToDockAriaShortcut = useAriaKeyshortcuts("terminal.moveToDock");
+  const toggleDockAriaShortcut = useAriaKeyshortcuts("terminal.toggleDock");
+  const maximizeAriaShortcut = useAriaKeyshortcuts("terminal.maximize");
+  const closeAriaShortcut = useAriaKeyshortcuts("terminal.close");
+  const addTabTooltipContent = createTooltipContent(
+    "Duplicate panel as new tab",
+    duplicateShortcut
+  );
 
-  // Terminal record for overflow menu actions (single shallow selector, matching TerminalContextMenu pattern)
-  const terminal = usePanelStore(useShallow((state) => state.panelsById[id]));
+  const terminal = usePanelStore((state) => state.panelsById[id]);
   const isInputLocked = terminal?.isInputLocked ?? false;
   const hasPty = panelKindHasPty(kind);
 
@@ -367,37 +376,32 @@ function PanelHeaderComponent({
   };
 
   const hasTabs = tabs && tabs.length > 1;
-  const tabListRef = useRef<HTMLDivElement>(null);
+  const [tabListEl, setTabListEl] = useState<HTMLDivElement | null>(null);
   const canReorderTabs = hasTabs && !!onTabReorder && !!groupId;
   const tabIds = tabs?.map((t) => t.id) ?? [];
 
-  const {
-    canScrollLeft: tabsCanScrollLeft,
-    canScrollRight: tabsCanScrollRight,
-    scrollLeft: tabsScrollLeft,
-    scrollRight: tabsScrollRight,
-  } = useHorizontalScrollControls(tabListRef);
+  const hiddenTabIds = useTabOverflow(tabListEl, tabIds);
+  const hiddenTabs = tabs?.filter((t) => hiddenTabIds.has(t.id)) ?? [];
 
   const activeTabId = tabs?.find((t) => t.isActive)?.id ?? null;
 
   useLayoutEffect(() => {
-    const container = tabListRef.current;
-    if (!container || !activeTabId || isDragging) return;
+    if (!tabListEl || !activeTabId || isDragging) return;
 
-    const tabEl = container.querySelector(`[data-tab-id="${activeTabId}"]`) as HTMLElement | null;
+    const tabEl = tabListEl.querySelector(`[data-tab-id="${activeTabId}"]`) as HTMLElement | null;
     if (!tabEl) return;
 
-    const containerLeft = container.scrollLeft;
-    const containerRight = containerLeft + container.clientWidth;
+    const containerLeft = tabListEl.scrollLeft;
+    const containerRight = containerLeft + tabListEl.clientWidth;
     const tabLeft = tabEl.offsetLeft;
     const tabRight = tabLeft + tabEl.offsetWidth;
 
     if (tabLeft < containerLeft) {
-      container.scrollTo({ left: tabLeft, behavior: "smooth" });
+      tabListEl.scrollTo({ left: tabLeft, behavior: "smooth" });
     } else if (tabRight > containerRight) {
-      container.scrollTo({ left: tabRight - container.clientWidth, behavior: "smooth" });
+      tabListEl.scrollTo({ left: tabRight - tabListEl.clientWidth, behavior: "smooth" });
     }
-  }, [activeTabId, isDragging]);
+  }, [activeTabId, isDragging, tabListEl]);
 
   // Sensors for tab drag-and-drop (require small distance to differentiate from clicks)
   const tabSensors = useSensors(
@@ -460,32 +464,89 @@ function PanelHeaderComponent({
       if (nextTab) {
         onTabClick(nextTab.id);
         // Focus the new tab button
-        const tabButton = tabListRef.current?.querySelector(
+        const tabButton = tabListEl?.querySelector(
           `[data-tab-id="${nextTab.id}"]`
         ) as HTMLElement | null;
         tabButton?.focus();
       }
     },
-    [tabs, onTabClick]
+    [tabs, onTabClick, tabListEl]
   );
 
-  const tabFadeFrom = isMaximized
-    ? "from-daintree-sidebar"
-    : location === "dock"
-      ? "from-surface"
-      : isFocused
-        ? "from-overlay-subtle"
-        : "from-surface";
+  const overflowTrigger = hiddenTabs.length > 0 && (
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              onPointerDown={(e) => e.stopPropagation()}
+              className="shrink-0 p-1.5 hover:bg-daintree-text/10 text-daintree-text/40 hover:text-daintree-text transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-1"
+              aria-label="Show hidden tabs"
+              aria-haspopup="menu"
+              data-testid="panel-tabs-overflow"
+            >
+              <ChevronDown className="w-3 h-3" aria-hidden="true" />
+              <span className="sr-only"> ({hiddenTabs.length} hidden)</span>
+            </button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Show hidden tabs</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent
+        align="end"
+        className="min-w-[200px] max-w-[320px] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto"
+      >
+        {hiddenTabs.map((tab) => (
+          <DropdownMenuItem
+            key={tab.id}
+            onSelect={() => onTabClick?.(tab.id)}
+            aria-current={tab.isActive ? "true" : undefined}
+            className={cn(tab.isActive && "font-medium")}
+          >
+            <span className="shrink-0 mr-2 inline-flex items-center justify-center w-3.5 h-3.5">
+              <TerminalIcon
+                kind={tab.kind}
+                chrome={tab.chrome}
+                className="w-3.5 h-3.5"
+                brandColor={tab.presetColor ?? tab.chrome.color}
+              />
+            </span>
+            <span className="truncate">{getBaseTitle(tab.title)}</span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
+  // The whole header is the drag surface for pointer drag. For keyboard drag,
+  // dnd-kit's KeyboardSensor needs a focusable activator node; falling back to
+  // the sortable container's setNodeRef silently fails because SortableTerminal
+  // / SortableDockItem strip role/tabIndex to satisfy axe nested-interactive.
+  // Attach setActivatorNodeRef here and add tabIndex={0} only when drag
+  // listeners are live (i.e. the panel is reorderable). aria-roledescription
+  // gives screen reader users an action hint paired with the live
+  // screenReaderInstructions wired in DndProvider.
+  const headerHasDrag = !!dragListeners;
+  const headerActivatorRef = headerHasDrag ? dragHandle?.setActivatorNodeRef : undefined;
 
   return (
     <div
+      ref={headerActivatorRef}
       {...dragListeners}
+      tabIndex={headerHasDrag ? 0 : undefined}
+      role={headerHasDrag ? "group" : undefined}
+      aria-roledescription={
+        headerHasDrag
+          ? "Draggable panel header — press Space or Enter to pick up, arrows to move, Escape to cancel"
+          : undefined
+      }
       data-selected={isSelected || undefined}
       data-fleet-follower={isFleetFollower || undefined}
       data-fleet-previewed={isFleetPreviewed || undefined}
       data-pane-chrome=""
       className={cn(
-        "flex items-center justify-between px-3 shrink-0 text-xs transition-colors relative overflow-hidden group",
+        "flex items-center justify-between px-3 shrink-0 text-xs transition-colors relative overflow-hidden group select-none",
         "h-8 border-b border-divider",
         isMaximized
           ? "h-10 bg-daintree-sidebar border-daintree-border"
@@ -514,7 +575,7 @@ function PanelHeaderComponent({
       onDoubleClick={handleHeaderDoubleClick}
     >
       {/* Tab bar - shown when there are multiple tabs */}
-      {hasTabs ? (
+      {hasTabs && tabs ? (
         canReorderTabs ? (
           <DndContext
             sensors={tabSensors}
@@ -523,201 +584,63 @@ function PanelHeaderComponent({
             modifiers={[restrictToHorizontalAxis, restrictToParentElement]}
           >
             <SortableContext items={tabIds} strategy={horizontalListSortingStrategy}>
-              <div className="relative min-w-0 flex-1 flex">
-                {tabsCanScrollLeft && (
-                  <div
-                    className={cn(
-                      "absolute left-0 inset-y-0 w-8 pointer-events-none z-10 bg-gradient-to-r to-transparent flex items-center",
-                      tabFadeFrom
-                    )}
-                  >
-                    <button
-                      type="button"
-                      onClick={tabsScrollLeft}
-                      onPointerDown={(e) => e.stopPropagation()}
-                      className="pointer-events-auto p-1 text-daintree-text/60 hover:text-daintree-text transition-colors"
-                      aria-label="Scroll left"
-                    >
-                      <ChevronLeft className="w-3 h-3" aria-hidden="true" />
-                    </button>
-                  </div>
+              <PanelTabList
+                layoutGroupId={`panel-tabs-dnd-${id}`}
+                tabs={tabs}
+                tabListRef={setTabListEl}
+                onKeyDown={handleTabListKeyDown}
+                onAddTab={onAddTab}
+                addTabTooltipContent={addTabTooltipContent}
+                overflowTrigger={overflowTrigger}
+                renderTab={(tab) => (
+                  <SortableTabButton
+                    key={tab.id}
+                    id={tab.id}
+                    title={getBaseTitle(tab.title)}
+                    chrome={tab.chrome}
+                    kind={tab.kind}
+                    agentState={tab.agentState}
+                    isActive={tab.isActive}
+                    presetColor={tab.presetColor}
+                    isUsingFallback={tab.isUsingFallback}
+                    fallbackTooltip={tab.fallbackTooltip}
+                    hasDangerousFlags={tab.hasDangerousFlags}
+                    onClick={() => onTabClick?.(tab.id)}
+                    onClose={() => onTabClose?.(tab.id)}
+                    onRename={onTabRename ? (newTitle) => onTabRename(tab.id, newTitle) : undefined}
+                  />
                 )}
-                <div
-                  ref={tabListRef}
-                  className="flex items-center min-w-0 flex-1 overflow-x-auto scrollbar-none"
-                  role="tablist"
-                  aria-label="Panel tabs"
-                  onKeyDown={handleTabListKeyDown}
-                >
-                  <LazyMotion features={domMax}>
-                    <LayoutGroup id={`panel-tabs-${id}`}>
-                      <div className="flex items-center">
-                        {tabs.map((tab) => (
-                          <SortableTabButton
-                            key={tab.id}
-                            id={tab.id}
-                            title={getBaseTitle(tab.title)}
-                            chrome={tab.chrome}
-                            kind={tab.kind}
-                            agentState={tab.agentState}
-                            isActive={tab.isActive}
-                            presetColor={tab.presetColor}
-                            isUsingFallback={tab.isUsingFallback}
-                            fallbackTooltip={tab.fallbackTooltip}
-                            hasDangerousFlags={tab.hasDangerousFlags}
-                            onClick={() => onTabClick?.(tab.id)}
-                            onClose={() => onTabClose?.(tab.id)}
-                            onRename={
-                              onTabRename ? (newTitle) => onTabRename(tab.id, newTitle) : undefined
-                            }
-                          />
-                        ))}
-                        {onAddTab && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onAddTab();
-                                }}
-                                onPointerDown={(e) => e.stopPropagation()}
-                                className="shrink-0 p-1.5 hover:bg-daintree-text/10 text-daintree-text/40 hover:text-daintree-text transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-1"
-                                aria-label="Duplicate panel as new tab"
-                                type="button"
-                              >
-                                <Plus className="w-3 h-3" aria-hidden="true" />
-                              </button>
-                            </TooltipTrigger>
-                            <TooltipContent side="bottom">
-                              {createTooltipWithShortcut(
-                                "Duplicate panel as new tab",
-                                duplicateShortcut
-                              )}
-                            </TooltipContent>
-                          </Tooltip>
-                        )}
-                      </div>
-                    </LayoutGroup>
-                  </LazyMotion>
-                </div>
-                {tabsCanScrollRight && (
-                  <div
-                    className={cn(
-                      "absolute right-0 inset-y-0 w-8 pointer-events-none z-10 bg-gradient-to-l to-transparent flex items-center justify-end",
-                      tabFadeFrom
-                    )}
-                  >
-                    <button
-                      type="button"
-                      onClick={tabsScrollRight}
-                      onPointerDown={(e) => e.stopPropagation()}
-                      className="pointer-events-auto p-1 text-daintree-text/60 hover:text-daintree-text transition-colors"
-                      aria-label="Scroll right"
-                    >
-                      <ChevronRight className="w-3 h-3" aria-hidden="true" />
-                    </button>
-                  </div>
-                )}
-              </div>
+              />
             </SortableContext>
           </DndContext>
         ) : (
-          <div className="relative min-w-0 flex-1 flex">
-            {tabsCanScrollLeft && (
-              <div
-                className={cn(
-                  "absolute left-0 inset-y-0 w-8 pointer-events-none z-10 bg-gradient-to-r to-transparent flex items-center",
-                  tabFadeFrom
-                )}
-              >
-                <button
-                  type="button"
-                  onClick={tabsScrollLeft}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  className="pointer-events-auto p-1 text-daintree-text/60 hover:text-daintree-text transition-colors"
-                  aria-label="Scroll left"
-                >
-                  <ChevronLeft className="w-3 h-3" aria-hidden="true" />
-                </button>
-              </div>
+          <PanelTabList
+            layoutGroupId={`panel-tabs-static-${id}`}
+            tabs={tabs}
+            tabListRef={setTabListEl}
+            onKeyDown={handleTabListKeyDown}
+            onAddTab={onAddTab}
+            addTabTooltipContent={addTabTooltipContent}
+            overflowTrigger={overflowTrigger}
+            renderTab={(tab) => (
+              <TabButton
+                key={tab.id}
+                id={tab.id}
+                title={getBaseTitle(tab.title)}
+                chrome={tab.chrome}
+                kind={tab.kind}
+                agentState={tab.agentState}
+                isActive={tab.isActive}
+                presetColor={tab.presetColor}
+                isUsingFallback={tab.isUsingFallback}
+                fallbackTooltip={tab.fallbackTooltip}
+                hasDangerousFlags={tab.hasDangerousFlags}
+                onClick={() => onTabClick?.(tab.id)}
+                onClose={() => onTabClose?.(tab.id)}
+                onRename={onTabRename ? (newTitle) => onTabRename(tab.id, newTitle) : undefined}
+              />
             )}
-            <div
-              ref={tabListRef}
-              className="flex items-center min-w-0 flex-1 overflow-x-auto scrollbar-none"
-              role="tablist"
-              aria-label="Panel tabs"
-              onKeyDown={handleTabListKeyDown}
-            >
-              <LazyMotion features={domMax}>
-                <LayoutGroup id={`panel-tabs-${id}`}>
-                  <div className="flex items-center">
-                    {tabs.map((tab) => (
-                      <TabButton
-                        key={tab.id}
-                        id={tab.id}
-                        title={getBaseTitle(tab.title)}
-                        chrome={tab.chrome}
-                        kind={tab.kind}
-                        agentState={tab.agentState}
-                        isActive={tab.isActive}
-                        presetColor={tab.presetColor}
-                        isUsingFallback={tab.isUsingFallback}
-                        fallbackTooltip={tab.fallbackTooltip}
-                        hasDangerousFlags={tab.hasDangerousFlags}
-                        onClick={() => onTabClick?.(tab.id)}
-                        onClose={() => onTabClose?.(tab.id)}
-                        onRename={
-                          onTabRename ? (newTitle) => onTabRename(tab.id, newTitle) : undefined
-                        }
-                      />
-                    ))}
-                    {onAddTab && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onAddTab();
-                            }}
-                            onPointerDown={(e) => e.stopPropagation()}
-                            className="shrink-0 p-1.5 hover:bg-daintree-text/10 text-daintree-text/40 hover:text-daintree-text transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-1"
-                            aria-label="Duplicate panel as new tab"
-                            type="button"
-                          >
-                            <Plus className="w-3 h-3" aria-hidden="true" />
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom">
-                          {createTooltipWithShortcut(
-                            "Duplicate panel as new tab",
-                            duplicateShortcut
-                          )}
-                        </TooltipContent>
-                      </Tooltip>
-                    )}
-                  </div>
-                </LayoutGroup>
-              </LazyMotion>
-            </div>
-            {tabsCanScrollRight && (
-              <div
-                className={cn(
-                  "absolute right-0 inset-y-0 w-8 pointer-events-none z-10 bg-gradient-to-l to-transparent flex items-center justify-end",
-                  tabFadeFrom
-                )}
-              >
-                <button
-                  type="button"
-                  onClick={tabsScrollRight}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  className="pointer-events-auto p-1 text-daintree-text/60 hover:text-daintree-text transition-colors"
-                  aria-label="Scroll right"
-                >
-                  <ChevronRight className="w-3 h-3" aria-hidden="true" />
-                </button>
-              </div>
-            )}
-          </div>
+          />
         )
       ) : (
         <div className="flex items-center gap-2 min-w-0">
@@ -829,13 +752,14 @@ function PanelHeaderComponent({
                   onPointerDown={(e) => e.stopPropagation()}
                   className="shrink-0 p-1.5 opacity-0 group-hover:opacity-100 hover:bg-daintree-text/10 text-daintree-text/40 hover:text-daintree-text transition focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-1"
                   aria-label="Duplicate panel as new tab"
+                  aria-keyshortcuts={duplicateAriaShortcut}
                   type="button"
                 >
                   <Plus className="w-3.5 h-3.5" aria-hidden="true" />
                 </button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                {createTooltipWithShortcut("Duplicate panel as new tab", duplicateShortcut)}
+                {createTooltipContent("Duplicate panel as new tab", duplicateShortcut)}
               </TooltipContent>
             </Tooltip>
           )}
@@ -1040,13 +964,14 @@ function PanelHeaderComponent({
                 onPointerDown={(e) => e.stopPropagation()}
                 className="p-1.5 hover:bg-daintree-text/10 focus-visible:bg-daintree-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2 text-daintree-text/60 hover:text-daintree-text transition-colors"
                 aria-label="Move to Dock"
+                aria-keyshortcuts={moveToDockAriaShortcut}
                 data-testid="panel-move-to-dock"
               >
                 <PanelBottomClose className="w-3 h-3" />
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              {createTooltipWithShortcut("Move to Dock", moveToDockShortcut)}
+              {createTooltipContent("Move to Dock", moveToDockShortcut)}
             </TooltipContent>
           </Tooltip>
         )}
@@ -1063,13 +988,14 @@ function PanelHeaderComponent({
                 onPointerDown={(e) => e.stopPropagation()}
                 className="p-1.5 hover:bg-daintree-text/10 focus-visible:bg-daintree-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2 text-daintree-text/60 hover:text-daintree-text transition-colors"
                 aria-label="Collapse to Dock"
+                aria-keyshortcuts={toggleDockAriaShortcut}
                 data-testid="panel-collapse-to-dock"
               >
                 <PanelBottomClose className="w-3 h-3" />
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              {createTooltipWithShortcut("Collapse to Dock", toggleDockShortcut)}
+              {createTooltipContent("Collapse to Dock", toggleDockShortcut)}
             </TooltipContent>
           </Tooltip>
         ) : onToggleMaximize && isMaximized ? (
@@ -1084,13 +1010,14 @@ function PanelHeaderComponent({
                 onPointerDown={(e) => e.stopPropagation()}
                 className="flex items-center gap-1.5 px-2 py-1 hover:bg-daintree-text/10 focus-visible:bg-daintree-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2 text-daintree-text/60 hover:text-daintree-text transition-colors"
                 aria-label="Exit Focus mode and restore grid view"
+                aria-keyshortcuts={maximizeAriaShortcut}
               >
                 <Minimize2 className="w-3.5 h-3.5" aria-hidden="true" />
                 <span className="font-medium">Exit Focus</span>
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              {createTooltipWithShortcut("Restore Grid View", maximizeShortcut)}
+              {createTooltipContent("Restore Grid View", maximizeShortcut)}
             </TooltipContent>
           </Tooltip>
         ) : (
@@ -1106,12 +1033,13 @@ function PanelHeaderComponent({
                   onPointerDown={(e) => e.stopPropagation()}
                   className="p-1.5 hover:bg-daintree-text/10 focus-visible:bg-daintree-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2 text-daintree-text/60 hover:text-daintree-text transition-colors"
                   aria-label="Maximize"
+                  aria-keyshortcuts={maximizeAriaShortcut}
                 >
                   <Maximize2 className="w-3 h-3" aria-hidden="true" />
                 </button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                {createTooltipWithShortcut("Maximize", maximizeShortcut)}
+                {createTooltipContent("Maximize", maximizeShortcut)}
               </TooltipContent>
             </Tooltip>
           )
@@ -1138,14 +1066,18 @@ function PanelHeaderComponent({
               aria-label={formatShortcutForTooltip(
                 "Close session. Hold Alt and click to force close without recovery."
               )}
+              aria-keyshortcuts={closeAriaShortcut}
             >
               <X className="w-3 h-3" aria-hidden="true" />
             </button>
           </TooltipTrigger>
           <TooltipContent side="bottom">
-            {createTooltipWithShortcut("Close Session", closeShortcut) +
-              " · " +
-              formatShortcutForTooltip("Alt+Click to force close")}
+            <div className="flex flex-col gap-1">
+              {createTooltipContent("Close Session", closeShortcut)}
+              <span className="text-daintree-text/50 text-[11px]">
+                {formatShortcutForTooltip("Alt+Click to force close")}
+              </span>
+            </div>
           </TooltipContent>
         </Tooltip>
 

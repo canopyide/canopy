@@ -29,8 +29,12 @@ export { useAppThemeConfig } from "./useAppThemeConfig";
 export { useWorktreeTerminals } from "./useWorktreeTerminals";
 export type { WorktreeTerminalCounts, UseWorktreeTerminalsResult } from "./useWorktreeTerminals";
 
-export { useKeybinding, useKeybindingScope, useKeybindingDisplay } from "./useKeybinding";
-export type { UseKeybindingOptions } from "./useKeybinding";
+export {
+  useKeybindingScope,
+  useKeybindingDisplay,
+  useEffectiveCombo,
+  useAriaKeyshortcuts,
+} from "./useKeybinding";
 export { useGlobalKeybindings, usePendingChord } from "./useGlobalKeybindings";
 export { keybindingService } from "../services/KeybindingService";
 export type { KeyScope, KeybindingConfig } from "../services/KeybindingService";
@@ -62,7 +66,7 @@ export { useWindowNotifications } from "./useWindowNotifications";
 export { useWatchedPanelNotifications } from "./useWatchedPanelNotifications";
 
 export { useReEntrySummary } from "./useReEntrySummary";
-export type { ReEntrySummaryState, ReEntryCounts } from "./useReEntrySummary";
+export type { ReEntrySummaryState, WorktreeRow } from "./useReEntrySummary";
 
 export { useWorktreeActions } from "./useWorktreeActions";
 export type { UseWorktreeActionsOptions, WorktreeActions } from "./useWorktreeActions";
@@ -72,6 +76,8 @@ export type { UseMenuActionsOptions } from "./useMenuActions";
 
 export { useHorizontalScrollControls } from "./useHorizontalScrollControls";
 export type { UseHorizontalScrollControlsReturn } from "./useHorizontalScrollControls";
+
+export { useTabOverflow } from "./useTabOverflow";
 
 export { useVerticalScrollShadows } from "./useVerticalScrollShadows";
 export type { UseVerticalScrollShadowsReturn } from "./useVerticalScrollShadows";
@@ -91,9 +97,6 @@ export { useMainProcessToastListener } from "./useMainProcessToastListener";
 export { useAnimatedPresence } from "./useAnimatedPresence";
 export type { UseAnimatedPresenceOptions, UseAnimatedPresenceReturn } from "./useAnimatedPresence";
 
-export { usePanelLifecycle } from "./usePanelLifecycle";
-export type { PanelLifecycle } from "./usePanelLifecycle";
-
 export { usePanelHandlers } from "./usePanelHandlers";
 export type { UsePanelHandlersConfig, PanelHandlers } from "./usePanelHandlers";
 
@@ -111,4 +114,8 @@ export { useShortcutHintHover } from "./useShortcutHintHover";
 
 export { useTruncationDetection, isElementTruncated } from "./useTruncationDetection";
 
+export { useResizeObserverRaf } from "./useResizeObserverRaf";
+
 export { useConnectivity, useConnectivitySnapshot } from "./useConnectivity";
+
+export { useImageError } from "./useImageError";

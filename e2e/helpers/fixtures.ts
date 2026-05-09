@@ -10,13 +10,51 @@ interface FixtureRepoOptions {
   withImageFile?: boolean;
   withUncommittedChanges?: boolean;
   withSpreadCommits?: boolean;
+  unstagedFileCount?: number;
+}
+
+export interface FixtureRepo {
+  dir: string;
+  cleanup: () => void;
 }
 
 function git(cmd: string, cwd: string) {
   execSync(`git ${cmd}`, { cwd, stdio: "ignore" });
 }
 
-export function createFixtureRepo(options: FixtureRepoOptions = {}): string {
+function waitSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+export function removePathSync(targetPath: string): void {
+  const maxAttempts = process.platform === "win32" ? 12 : 3;
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      rmSync(targetPath, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt === maxAttempts) break;
+      waitSync(150 * attempt);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(`Failed to remove ${targetPath}`);
+}
+
+function makeFixtureCleanup(dir: string): () => void {
+  return () => {
+    const worktreeSibling = path.join(path.dirname(dir), path.basename(dir) + "-worktrees");
+    if (existsSync(worktreeSibling)) {
+      removePathSync(worktreeSibling);
+    }
+    removePathSync(dir);
+  };
+}
+
+export function createFixtureRepo(options: FixtureRepoOptions = {}): FixtureRepo {
   const {
     name = "test-project",
     withFeatureBranch = false,
@@ -24,7 +62,12 @@ export function createFixtureRepo(options: FixtureRepoOptions = {}): string {
     withImageFile = false,
     withUncommittedChanges = false,
     withSpreadCommits = false,
+    unstagedFileCount = 0,
   } = options;
+
+  if (!Number.isInteger(unstagedFileCount) || unstagedFileCount < 0) {
+    throw new Error(`unstagedFileCount must be a non-negative integer, got ${unstagedFileCount}`);
+  }
 
   const dir = mkdtempSync(path.join(tmpdir(), `daintree-e2e-${name}-`));
 
@@ -98,11 +141,21 @@ export function createFixtureRepo(options: FixtureRepoOptions = {}): string {
     writeFileSync(path.join(dir, "uncommitted.txt"), "This file is not committed.\n");
   }
 
-  return dir;
+  if (unstagedFileCount > 0) {
+    const bulkDir = path.join(dir, "bulk-unstaged");
+    mkdirSync(bulkDir, { recursive: true });
+    const width = String(unstagedFileCount).length;
+    for (let i = 1; i <= unstagedFileCount; i++) {
+      const filename = `file-${String(i).padStart(width, "0")}.txt`;
+      writeFileSync(path.join(bulkDir, filename), `# file ${i}\n`);
+    }
+  }
+
+  return { dir, cleanup: makeFixtureCleanup(dir) };
 }
 
-export function createFixtureRepos(count: number): string[] {
-  const repos: string[] = [];
+export function createFixtureRepos(count: number): FixtureRepo[] {
+  const repos: FixtureRepo[] = [];
   for (let i = 0; i < count; i++) {
     const name = `project-${String.fromCharCode(65 + i)}`;
     repos.push(createFixtureRepo({ name }));
@@ -122,21 +175,13 @@ export function createMultiProjectFixture(
   optsB?: FixtureRepoOptions
 ): MultiProjectFixture {
   const rootDir = mkdtempSync(path.join(tmpdir(), "daintree-e2e-multi-"));
-  const repoA = createFixtureRepo({ name: "project-A", ...optsA });
-  const repoB = createFixtureRepo({ name: "project-B", ...optsB });
+  const { dir: repoA, cleanup: cleanupA } = createFixtureRepo({ name: "project-A", ...optsA });
+  const { dir: repoB, cleanup: cleanupB } = createFixtureRepo({ name: "project-B", ...optsB });
 
   const cleanup = () => {
-    for (const repoDir of [repoA, repoB]) {
-      const worktreeSibling = path.join(
-        path.dirname(repoDir),
-        path.basename(repoDir) + "-worktrees"
-      );
-      if (existsSync(worktreeSibling)) {
-        rmSync(worktreeSibling, { recursive: true, force: true });
-      }
-      rmSync(repoDir, { recursive: true, force: true });
-    }
-    rmSync(rootDir, { recursive: true, force: true });
+    cleanupA();
+    cleanupB();
+    removePathSync(rootDir);
   };
 
   return { rootDir, repoA, repoB, cleanup };

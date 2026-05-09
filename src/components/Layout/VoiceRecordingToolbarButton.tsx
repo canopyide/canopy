@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ShortcutRevealChip } from "@/components/ui/ShortcutRevealChip";
 import { cn } from "@/lib/utils";
-import { useKeybindingDisplay } from "@/hooks";
+import { useAriaKeyshortcuts, useKeybindingDisplay } from "@/hooks";
 import { useVoiceRecordingStore } from "@/store/voiceRecordingStore";
 import { voiceRecordingService } from "@/services/VoiceRecordingService";
 
@@ -24,6 +24,7 @@ export function VoiceRecordingToolbarButton({
   const elapsedSeconds = useVoiceRecordingStore((state) => state.elapsedSeconds);
   const audioLevel = useVoiceRecordingStore((state) => state.audioLevel);
   const shortcut = useKeybindingDisplay("voiceInput.toggle");
+  const ariaShortcut = useAriaKeyshortcuts("voiceInput.toggle");
 
   if (
     !activeTarget ||
@@ -63,7 +64,7 @@ export function VoiceRecordingToolbarButton({
             void voiceRecordingService.focusActiveTarget();
           }}
           className={cn(
-            "toolbar-icon-button relative transition-colors mr-0.5",
+            "toolbar-icon-button relative mr-0.5",
             isRecording
               ? "text-daintree-text hover:text-[var(--toolbar-control-hover-fg,var(--theme-accent-primary))]"
               : status === "connecting"
@@ -71,6 +72,7 @@ export function VoiceRecordingToolbarButton({
                 : "text-daintree-accent hover:text-daintree-accent"
           )}
           aria-label={tooltipTitle}
+          aria-keyshortcuts={ariaShortcut}
         >
           {status === "finishing" ? (
             <Spinner size="md" />
@@ -82,8 +84,8 @@ export function VoiceRecordingToolbarButton({
                 style={{
                   backgroundColor:
                     status === "connecting"
-                      ? "rgba(var(--theme-accent-rgb), 0.4)"
-                      : `rgba(var(--theme-accent-rgb), ${0.3 + audioLevel * 0.7})`,
+                      ? "rgb(from var(--theme-accent-primary) r g b / 0.4)"
+                      : `rgb(from var(--theme-accent-primary) r g b / ${0.3 + audioLevel * 0.7})`,
                   transitionDuration: "80ms",
                 }}
               />

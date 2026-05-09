@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { subscribeWithSelector } from "zustand/middleware";
 import type { UserAgentRegistry, UserAgentConfig } from "@shared/types";
 import { userAgentRegistryClient } from "@/clients/userAgentRegistryClient";
 import { setUserRegistry } from "../../shared/config/agentRegistry";
@@ -26,106 +27,112 @@ type UserAgentRegistryStore = UserAgentRegistryState & UserAgentRegistryActions;
 
 let initPromise: Promise<void> | null = null;
 
-export const useUserAgentRegistryStore = create<UserAgentRegistryStore>()((set, get) => ({
-  registry: null,
-  isLoading: true,
-  error: null,
-  isInitialized: false,
+export const useUserAgentRegistryStore = create<UserAgentRegistryStore>()(
+  subscribeWithSelector((set, get) => ({
+    registry: null,
+    isLoading: true,
+    error: null,
+    isInitialized: false,
 
-  initialize: () => {
-    if (get().isInitialized) return Promise.resolve();
-    if (initPromise) return initPromise;
+    initialize: () => {
+      if (get().isInitialized) return Promise.resolve();
+      if (initPromise) return initPromise;
 
-    initPromise = (async () => {
+      initPromise = (async () => {
+        try {
+          set({ isLoading: true, error: null });
+
+          const registry = (await userAgentRegistryClient.get()) ?? {};
+          set({ registry, isLoading: false, isInitialized: true });
+        } catch (e) {
+          set({
+            error: formatErrorMessage(e, "Failed to load user agent registry"),
+            isLoading: false,
+            isInitialized: false,
+          });
+        } finally {
+          initPromise = null;
+        }
+      })();
+
+      return initPromise;
+    },
+
+    addAgent: async (config: UserAgentConfig) => {
+      set({ error: null });
       try {
-        set({ isLoading: true, error: null });
-
-        const registry = (await userAgentRegistryClient.get()) ?? {};
-        setUserRegistry(registry);
-        set({ registry, isLoading: false, isInitialized: true });
+        const result = await userAgentRegistryClient.add(config);
+        if (result.success) {
+          const registry = (await userAgentRegistryClient.get()) ?? {};
+          set({ registry });
+        } else {
+          set({ error: result.error });
+        }
+        return result;
       } catch (e) {
-        set({
-          error: formatErrorMessage(e, "Failed to load user agent registry"),
-          isLoading: false,
-          isInitialized: false,
-        });
-      } finally {
-        initPromise = null;
+        const error = formatErrorMessage(e, "Failed to add agent");
+        set({ error });
+        return { success: false, error };
       }
-    })();
+    },
 
-    return initPromise;
-  },
+    updateAgent: async (id: string, config: UserAgentConfig) => {
+      set({ error: null });
+      try {
+        const result = await userAgentRegistryClient.update(id, config);
+        if (result.success) {
+          const registry = (await userAgentRegistryClient.get()) ?? {};
+          set({ registry });
+        } else {
+          set({ error: result.error });
+        }
+        return result;
+      } catch (e) {
+        const error = formatErrorMessage(e, "Failed to update agent");
+        set({ error });
+        return { success: false, error };
+      }
+    },
 
-  addAgent: async (config: UserAgentConfig) => {
-    set({ error: null });
-    try {
-      const result = await userAgentRegistryClient.add(config);
-      if (result.success) {
+    removeAgent: async (id: string) => {
+      set({ error: null });
+      try {
+        const result = await userAgentRegistryClient.remove(id);
+        if (result.success) {
+          const registry = (await userAgentRegistryClient.get()) ?? {};
+          set({ registry });
+        } else {
+          set({ error: result.error });
+        }
+        return result;
+      } catch (e) {
+        const error = formatErrorMessage(e, "Failed to remove agent");
+        set({ error });
+        return { success: false, error };
+      }
+    },
+
+    refresh: async () => {
+      set({ error: null });
+      try {
         const registry = (await userAgentRegistryClient.get()) ?? {};
-        setUserRegistry(registry);
         set({ registry });
-      } else {
-        set({ error: result.error });
+      } catch (e) {
+        set({ error: formatErrorMessage(e, "Failed to refresh user agent registry") });
+        throw e;
       }
-      return result;
-    } catch (e) {
-      const error = formatErrorMessage(e, "Failed to add agent");
-      set({ error });
-      return { success: false, error };
-    }
-  },
+    },
+  }))
+);
 
-  updateAgent: async (id: string, config: UserAgentConfig) => {
-    set({ error: null });
-    try {
-      const result = await userAgentRegistryClient.update(id, config);
-      if (result.success) {
-        const registry = (await userAgentRegistryClient.get()) ?? {};
-        setUserRegistry(registry);
-        set({ registry });
-      } else {
-        set({ error: result.error });
-      }
-      return result;
-    } catch (e) {
-      const error = formatErrorMessage(e, "Failed to update agent");
-      set({ error });
-      return { success: false, error };
-    }
-  },
-
-  removeAgent: async (id: string) => {
-    set({ error: null });
-    try {
-      const result = await userAgentRegistryClient.remove(id);
-      if (result.success) {
-        const registry = (await userAgentRegistryClient.get()) ?? {};
-        setUserRegistry(registry);
-        set({ registry });
-      } else {
-        set({ error: result.error });
-      }
-      return result;
-    } catch (e) {
-      const error = formatErrorMessage(e, "Failed to remove agent");
-      set({ error });
-      return { success: false, error };
-    }
-  },
-
-  refresh: async () => {
-    set({ error: null });
-    try {
-      const registry = (await userAgentRegistryClient.get()) ?? {};
+useUserAgentRegistryStore.subscribe(
+  (state) => state.registry,
+  (registry) => {
+    if (registry !== null) {
       setUserRegistry(registry);
-      set({ registry });
-    } catch (e) {
-      set({ error: formatErrorMessage(e, "Failed to refresh user agent registry") });
-      throw e;
     }
-  },
-}));
+  }
+);
 
 export function cleanupUserAgentRegistryStore() {
   initPromise = null;
@@ -135,4 +142,5 @@ export function cleanupUserAgentRegistryStore() {
     error: null,
     isInitialized: false,
   });
+  setUserRegistry({});
 }

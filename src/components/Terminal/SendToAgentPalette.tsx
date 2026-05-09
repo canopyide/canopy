@@ -1,10 +1,13 @@
 import React, { useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { SearchablePalette } from "@/components/ui/SearchablePalette";
+import { KBD_CLASS } from "@/components/ui/AppPaletteDialog";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import { Lock } from "lucide-react";
-import { useKeybindingDisplay } from "@/hooks/useKeybinding";
+import { useKeybindingDisplay, useEffectiveCombo } from "@/hooks/useKeybinding";
 import type { SendToAgentItem } from "@/hooks/useSendToAgentPalette";
+
+const getSendToAgentActionLabel = (_item: SendToAgentItem | null): string => "Send to agent";
 
 export interface SendToAgentPaletteProps {
   isOpen: boolean;
@@ -90,6 +93,7 @@ export function SendToAgentPalette({
   );
 
   const newTerminalShortcut = useKeybindingDisplay("terminal.new");
+  const sendToAgentShortcut = useEffectiveCombo("terminal.sendToAgent");
 
   return (
     <SearchablePalette<SendToAgentItem>
@@ -103,6 +107,7 @@ export function SendToAgentPalette({
       onConfirm={confirmSelection}
       onClose={close}
       getItemId={(item) => item.id}
+      getActionLabel={getSendToAgentActionLabel}
       renderItem={(item, _index, isItemSelected) => (
         <SendToAgentItemRow
           key={item.id}
@@ -112,24 +117,19 @@ export function SendToAgentPalette({
         />
       )}
       label="Send selection to"
-      keyHint="⌘⇧E"
+      shortcut={sendToAgentShortcut}
       ariaLabel="Send selection to agent"
-      searchPlaceholder="Search terminals and agents..."
+      searchPlaceholder="Search terminals and agents"
       searchAriaLabel="Search terminals and agents"
       listId="send-to-agent-list"
       itemIdPrefix="send-to-agent-option"
       emptyMessage="No other terminals available"
-      noMatchMessage={`No terminals match "${query}"`}
       totalResults={totalResults}
       emptyContent={
         <p className="mt-2 text-xs text-daintree-text/40">
           {newTerminalShortcut ? (
             <>
-              Press{" "}
-              <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-daintree-border text-daintree-text/60">
-                {newTerminalShortcut}
-              </kbd>{" "}
-              to create a new terminal.
+              Press <kbd className={KBD_CLASS}>{newTerminalShortcut}</kbd> to create a new terminal.
             </>
           ) : (
             "Create another terminal to send selections."

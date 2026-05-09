@@ -188,9 +188,10 @@ function parseBinaryPathsFromNumstat(raw: string): Set<string> {
 /**
  * Block commits that would include unresolved merge conflict markers. Reads
  * the staged (index) blob for each non-binary, non-deleted file via
- * `git show :<path>`, which works on both normal and unborn branches. Throws
- * a descriptive `Error` naming the first offending file; the IPC layer
- * surfaces `.message` directly to the UI.
+ * `git cat-file blob :<path>`, which works on both normal and unborn branches
+ * and bypasses smudge/textconv filter machinery (`git show` would still apply
+ * smudge filters depending on git version). Throws a descriptive `Error`
+ * naming the first offending file; the IPC layer surfaces `.message` directly.
  */
 export async function scanStagedFilesForConflictMarkers(git: SimpleGit): Promise<void> {
   const status = await git.status();
@@ -205,14 +206,17 @@ export async function scanStagedFilesForConflictMarkers(git: SimpleGit): Promise
   if (candidates.length === 0) return;
 
   // `--no-ext-diff` is mandatory: without it, a user-configured `diff.external`
-  // tool can break the numstat call (lesson #4221). Matches the pattern in
-  // handleGetWorkingDiff and utils/git.ts.
-  const numstatRaw = await git.diff(["--no-ext-diff", "--cached", "--numstat"]);
+  // tool can break the numstat call (lesson #4221). `--no-textconv` blocks
+  // user-defined diff drivers that would execute arbitrary binaries via
+  // `.gitattributes` textconv mappings.
+  const numstatRaw = await git.diff(["--no-ext-diff", "--no-textconv", "--cached", "--numstat"]);
   const binaryPaths = parseBinaryPathsFromNumstat(numstatRaw);
 
   for (const filePath of candidates) {
     if (binaryPaths.has(filePath)) continue;
-    const content = await git.show([`:${filePath}`]);
+    // `--end-of-options` so a leading-dash path inside the index reference
+    // (e.g. `:-foo.txt`) cannot be parsed as a flag.
+    const content = await git.raw(["cat-file", "blob", "--end-of-options", `:${filePath}`]);
     if (typeof content !== "string") continue;
     // Compare against the UTF-8 byte length so a multibyte file isn't
     // misclassified against a character-count cap.
@@ -583,13 +587,13 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
     let raw: string;
     switch (diffType) {
       case "unstaged":
-        raw = await git.diff(["--no-ext-diff"]);
+        raw = await git.diff(["--no-ext-diff", "--no-textconv"]);
         break;
       case "staged":
-        raw = await git.diff(["--no-ext-diff", "--cached"]);
+        raw = await git.diff(["--no-ext-diff", "--no-textconv", "--cached"]);
         break;
       case "head":
-        raw = await git.diff(["--no-ext-diff", "HEAD"]);
+        raw = await git.diff(["--no-ext-diff", "--no-textconv", "HEAD"]);
         break;
     }
 
@@ -635,6 +639,19 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
   };
   handlers.push(typedHandle(CHANNELS.GIT_SNAPSHOT_DELETE, handleSnapshotDelete));
 
+  // Normalizes a path for comparison against git config safe.directory entries:
+  // resolve → realpath (fall back to resolved) → forward slashes.
+  const canonicalizeSafeDirectoryPath = async (p: string): Promise<string> => {
+    const resolved = path.resolve(p);
+    let canonical: string;
+    try {
+      canonical = await realpath(resolved);
+    } catch {
+      canonical = resolved;
+    }
+    return canonical.replace(/\\/g, "/");
+  };
+
   // Resolves the "fatal: detected dubious ownership" error (CVE-2022-24765) by
   // adding the repo path to the user's global safe.directory list. The caller
   // is expected to retry the original operation after this succeeds.
@@ -649,25 +666,41 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
     if (!path.isAbsolute(repoPath)) {
       throw new Error("Invalid path: must be absolute");
     }
-    // Git compares safe.directory against the canonical repo path. If the
-    // user opened a symlinked repo, writing the link path would leave the
-    // error unresolved. realpath() reconciles the two; if it fails (e.g., the
-    // path no longer exists), fall back to the resolved path so the user
-    // still gets a deterministic write.
-    const resolved = path.resolve(repoPath);
-    let canonical: string;
+    const normalized = await canonicalizeSafeDirectoryPath(repoPath);
+
+    // Check whether the path is already configured to avoid unbounded
+    // duplicate entries in ~/.gitconfig. Exit code 1 (no entries set) is
+    // expected for first-time users and must not propagate as an error.
+    let alreadyConfigured = false;
     try {
-      canonical = await realpath(resolved);
-    } catch {
-      canonical = resolved;
+      const { stdout } = await execFileAsync(
+        "git",
+        ["config", "--global", "--get-all", "safe.directory"],
+        { env: { ...process.env, LC_ALL: "C" } }
+      );
+      const entries = stdout
+        .split("\n")
+        .map((e) => e.trim())
+        .filter(Boolean);
+      for (const entry of entries) {
+        const canonicalized = await canonicalizeSafeDirectoryPath(entry);
+        if (canonicalized === normalized) {
+          alreadyConfigured = true;
+          break;
+        }
+      }
+    } catch (err) {
+      if ((err as { code?: number }).code !== 1) {
+        throw err;
+      }
+      // Exit code 1: no safe.directory entries exist — not configured.
     }
-    // Git for Windows (MSYS2) expects forward-slash Win32 paths like
-    // `C:/Users/foo/repo`. Backslashes or POSIX-prefixed `/c/...` paths can be
-    // misinterpreted relative to the Git installation root.
-    const normalized = canonical.replace(/\\/g, "/");
-    await execFileAsync("git", ["config", "--global", "--add", "safe.directory", normalized], {
-      env: { ...process.env, LC_ALL: "C" },
-    });
+
+    if (!alreadyConfigured) {
+      await execFileAsync("git", ["config", "--global", "--add", "safe.directory", normalized], {
+        env: { ...process.env, LC_ALL: "C" },
+      });
+    }
   };
   handlers.push(typedHandle(CHANNELS.GIT_MARK_SAFE_DIRECTORY, handleMarkSafeDirectory));
 

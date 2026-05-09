@@ -8,20 +8,21 @@ interface AnnouncementEntry {
 interface AnnouncerState {
   polite: AnnouncementEntry | null;
   assertive: AnnouncementEntry | null;
+  nextId: number;
   announce: (msg: string, priority?: "polite" | "assertive") => void;
 }
-
-let counter = 0;
 
 export const useAnnouncerStore = create<AnnouncerState>((set) => ({
   polite: null,
   assertive: null,
+  nextId: 1,
   announce: (msg, priority = "polite") => {
-    const id = ++counter;
-    if (priority === "assertive") {
-      set({ assertive: { msg, id } });
-    } else {
-      set({ polite: { msg, id } });
-    }
+    set((state) => {
+      const id = state.nextId;
+      if (priority === "assertive") {
+        return { nextId: id + 1, assertive: { msg, id } };
+      }
+      return { nextId: id + 1, polite: { msg, id } };
+    });
   },
 }));

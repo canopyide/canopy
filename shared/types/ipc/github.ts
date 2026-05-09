@@ -31,6 +31,29 @@ export interface GitHubRateLimitPayload {
   kind: GitHubRateLimitKind | null;
   /** Unix epoch milliseconds when the block is expected to resume (primary only) */
   resetAt?: number;
+  /** `x-ratelimit-resource` bucket name when the block is per-resource primary */
+  resource?: string;
+}
+
+/** A single rate-limit bucket as reported by `/rate_limit` */
+export interface GitHubRateLimitBucket {
+  limit: number;
+  used: number;
+  remaining: number;
+  /** Unix epoch milliseconds when this bucket's quota resets */
+  resetAt: number;
+}
+
+/**
+ * Detailed per-bucket rate-limit snapshot from `GET /rate_limit`. Calls to that
+ * endpoint don't count against any quota, so consumers can poll it freely.
+ */
+export interface GitHubRateLimitDetails {
+  core: GitHubRateLimitBucket;
+  graphql: GitHubRateLimitBucket;
+  search: GitHubRateLimitBucket;
+  /** Wall-clock timestamp (ms) when the snapshot was fetched */
+  fetchedAt: number;
 }
 
 /**
@@ -179,6 +202,14 @@ export interface GitHubFirstPageCachePayload {
   };
   /** Wall-clock timestamp (ms) when the entry was written. */
   lastUpdated: number;
+  /** Optional cached stats for cold-start toolbar hydration (60-min TTL).
+   *  Present when `GitHubStatsCache` has a bootstrap-eligible entry even if
+   *  the first-page items cache has expired. */
+  stats?: {
+    issueCount: number;
+    prCount: number;
+    lastUpdated: number;
+  };
 }
 
 /**

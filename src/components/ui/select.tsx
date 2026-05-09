@@ -37,7 +37,7 @@ const SelectScrollUpButton = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SelectPrimitive.ScrollUpButton
     ref={ref}
-    className={cn("flex cursor-default items-center justify-center py-1", className)}
+    className={cn("flex cursor-pointer items-center justify-center py-1", className)}
     {...props}
   >
     <ChevronUp className="h-4 w-4" aria-hidden="true" />
@@ -51,7 +51,7 @@ const SelectScrollDownButton = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SelectPrimitive.ScrollDownButton
     ref={ref}
-    className={cn("flex cursor-default items-center justify-center py-1", className)}
+    className={cn("flex cursor-pointer items-center justify-center py-1", className)}
     {...props}
   >
     <ChevronDown className="h-4 w-4" aria-hidden="true" />
@@ -64,7 +64,7 @@ const SelectContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
 >(
   (
-    { className, children, position = "popper", sideOffset = 4, onEscapeKeyDown, ...props },
+    { className, children, position = "popper", sideOffset = 4, onEscapeKeyDown, style, ...props },
     ref
   ) => (
     <SelectPrimitive.Portal>
@@ -76,6 +76,7 @@ const SelectContent = React.forwardRef<
           event.stopPropagation();
           onEscapeKeyDown?.(event);
         }}
+        style={{ transformOrigin: "var(--radix-select-content-transform-origin)", ...style }}
         className={cn(
           "relative z-[var(--z-popover)] overflow-hidden rounded-[var(--radius-lg)] surface-overlay shadow-overlay text-daintree-text",
           "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:duration-200 data-[state=closed]:duration-[120ms] data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",

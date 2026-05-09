@@ -10,7 +10,13 @@ import type {
   TerminalRecipe,
   TerminalSnapshot,
 } from "../project.js";
-import type { OnboardingState, ChecklistState, ChecklistItemId, IpcEventBusMap } from "./maps.js";
+import type {
+  OnboardingState,
+  ChecklistState,
+  ChecklistItemId,
+  HelpAssistantTier,
+  IpcEventBusMap,
+} from "./maps.js";
 import type { AgentSettings, AgentSettingsEntry } from "../agentSettings.js";
 import type { AgentPreset } from "../../config/agentRegistry.js";
 import type { VoiceInputStatus } from "../voice.js";
@@ -99,6 +105,7 @@ import type {
   GitHubTokenConfig,
   GitHubTokenValidation,
   GitHubRateLimitPayload,
+  GitHubRateLimitDetails,
   GitHubTokenHealthPayload,
   RepoStatsAndPagePayload,
   GitHubFirstPageCachePayload,
@@ -126,6 +133,7 @@ import type {
   SpawnResult,
   TerminalResourceBatchPayload,
   BroadcastWriteResultPayload,
+  FdLeakWarningPayload,
 } from "../pty-host.js";
 import type { ShowContextMenuPayload } from "../menu.js";
 import type {
@@ -178,6 +186,8 @@ export interface NotificationSettings {
   quietHoursEndMin: number;
   /** Days the schedule applies to, 0 (Sun) - 6 (Sat). Empty array means every day. */
   quietHoursWeekdays: number[];
+  /** When true, the bell drawer groups entries by worktree/project context. */
+  groupByContext?: boolean;
 }
 
 // ElectronAPI Type (exposed via preload)
@@ -277,6 +287,7 @@ export interface ElectronAPI {
     onResourceMetrics(
       callback: (data: { metrics: TerminalResourceBatchPayload; timestamp: number }) => void
     ): () => void;
+    onFdLeakWarning(callback: (data: FdLeakWarningPayload) => void): () => void;
     onBackendCrashed(
       callback: (data: {
         crashType: string;
@@ -347,6 +358,7 @@ export interface ElectronAPI {
     refreshCliAvailability(): Promise<CliAvailability>;
     getAgentCliDetails(): Promise<AgentCliDetails>;
     getAgentVersions(): Promise<AgentVersionInfo[]>;
+    getAgentVersion(agentId: string, refresh?: boolean): Promise<AgentVersionInfo>;
     refreshAgentVersions(): Promise<AgentVersionInfo[]>;
     getAgentUpdateSettings(): Promise<AgentUpdateSettings>;
     setAgentUpdateSettings(settings: AgentUpdateSettings): Promise<void>;
@@ -467,6 +479,9 @@ export interface ElectronAPI {
     reopen(projectId: string, outgoingState?: ProjectSwitchOutgoingState): Promise<Project>;
     getStats(projectId: string): Promise<ProjectStats>;
     getBulkStats(projectIds: string[]): Promise<BulkProjectStats>;
+    getNotificationOverrides(
+      projectIds: string[]
+    ): Promise<Record<string, Partial<NotificationSettings>>>;
     onStatsUpdated(callback: (stats: ProjectStatusMap) => void): () => void;
     createFolder(parentPath: string, folderName: string): Promise<string>;
     initGit(directoryPath: string): Promise<void>;
@@ -573,11 +588,6 @@ export interface ElectronAPI {
      */
     disableInRepoSettings(projectId: string): Promise<Project>;
     /**
-     * Detect agent context files (e.g. CLAUDE.md, AGENTS.md, .mcp.json) at the project root.
-     * Returns the display names of the files that exist. Order is stable.
-     */
-    detectContextFiles(projectId: string): Promise<string[]>;
-    /**
      * Checks all non-active projects for missing directories.
      * Updates status to "missing" for projects whose paths no longer exist,
      * and resets "missing" back to "closed" for paths that are accessible again.
@@ -591,12 +601,27 @@ export interface ElectronAPI {
      */
     locate(projectId: string): Promise<Project | null>;
   };
+  scratch: {
+    getAll(): Promise<import("../scratch.js").Scratch[]>;
+    getCurrent(): Promise<import("../scratch.js").Scratch | null>;
+    create(name?: string): Promise<import("../scratch.js").Scratch>;
+    update(
+      scratchId: string,
+      updates: { name?: string; lastOpened?: number }
+    ): Promise<import("../scratch.js").Scratch>;
+    remove(scratchId: string): Promise<void>;
+    switch(scratchId: string): Promise<import("../scratch.js").Scratch>;
+    saveAsProject(scratchId: string): Promise<import("./scratch.js").ScratchSaveAsProjectResult>;
+    onUpdated(callback: (scratch: import("../scratch.js").Scratch) => void): () => void;
+    onRemoved(callback: (scratchId: string) => void): () => void;
+    onSwitch(callback: (payload: import("./scratch.js").ScratchSwitchPayload) => void): () => void;
+  };
   globalRecipes: {
     getRecipes(): Promise<TerminalRecipe[]>;
     addRecipe(recipe: TerminalRecipe): Promise<void>;
     updateRecipe(
       recipeId: string,
-      updates: Partial<Omit<TerminalRecipe, "id" | "projectId" | "createdAt">>
+      updates: Partial<Omit<TerminalRecipe, "id" | "projectId" | "createdAt" | "worktreeId">>
     ): Promise<void>;
     deleteRecipe(recipeId: string): Promise<void>;
   };
@@ -674,6 +699,7 @@ export interface ElectronAPI {
     onIssueDetected(callback: (data: IssueDetectedPayload) => void): () => void;
     onIssueNotFound(callback: (data: IssueNotFoundPayload) => void): () => void;
     onRateLimitChanged(callback: (data: GitHubRateLimitPayload) => void): () => void;
+    getRateLimitDetails(): Promise<GitHubRateLimitDetails | null>;
     onTokenHealthChanged(callback: (data: GitHubTokenHealthPayload) => void): () => void;
     onRepoStatsAndPageUpdated(callback: (data: RepoStatsAndPagePayload) => void): () => void;
     getTokenHealth(): Promise<GitHubTokenHealthPayload>;
@@ -997,6 +1023,7 @@ export interface ElectronAPI {
     getChannel(): Promise<"stable" | "nightly">;
     setChannel(channel: "stable" | "nightly"): Promise<"stable" | "nightly">;
     notifyDismiss(version: string): Promise<void>;
+    getLastCheck(): Promise<number | null>;
   };
   gemini: {
     /** Get Gemini config status (exists, alternate buffer enabled) */
@@ -1258,17 +1285,65 @@ export interface ElectronAPI {
       configuredPort: number | null;
       apiKey: string;
     }>;
-    /** Set the API key for bearer token authentication (empty string = no auth) */
-    setApiKey(apiKey: string): Promise<{
-      enabled: boolean;
-      port: number | null;
-      configuredPort: number | null;
-      apiKey: string;
-    }>;
-    /** Generate a random API key and persist it */
-    generateApiKey(): Promise<string>;
+    /**
+     * Mint a fresh bearer token, persist it to electron-store, and return the
+     * new key. Clients pick up the new key on their next request — no server
+     * restart is needed. External clients holding the old bearer in their own
+     * config break and must re-paste from Settings.
+     */
+    rotateApiKey(): Promise<string>;
     /** Get the JSON config snippet to paste into an MCP client config */
     getConfigSnippet(): Promise<string>;
+    /** Read the audit-log ring buffer (newest first). */
+    getAuditRecords(): Promise<import("./mcpServer.js").McpAuditRecord[]>;
+    /** Get the persisted audit-log configuration. */
+    getAuditConfig(): Promise<{ enabled: boolean; maxRecords: number }>;
+    /**
+     * Read the session-scoped audit health counters (currently the
+     * since-launch 401 counter). Resets on app restart.
+     */
+    getAuditStats(): Promise<import("./mcpServer.js").McpAuditStats>;
+    /** Clear all audit records from the ring buffer and persistence. */
+    clearAuditLog(): Promise<void>;
+    /** Toggle audit-log capture without losing existing records. */
+    setAuditEnabled(enabled: boolean): Promise<{ enabled: boolean; maxRecords: number }>;
+    /** Update the ring-buffer cap (clamped to MCP_AUDIT_MIN/MAX). */
+    setAuditMaxRecords(max: number): Promise<{ enabled: boolean; maxRecords: number }>;
+    /**
+     * Get the derived runtime-state snapshot
+     * (`disabled|starting|ready|failed`). Distinct from `getStatus()` —
+     * surfaces the dock-pip readiness state and last-failure reason.
+     */
+    getRuntimeState(): Promise<import("./mcpServer.js").McpRuntimeSnapshot>;
+    /** Subscribe to runtime-state transitions. */
+    onRuntimeStateChanged(
+      callback: (snapshot: import("./mcpServer.js").McpRuntimeSnapshot) => void
+    ): () => void;
+    /**
+     * Elevate an active help-session's tier (Approve once). Server-side
+     * validates that the new tier is not a downgrade.
+     */
+    setSessionTier(
+      sessionId: string,
+      tier: "workbench" | "action" | "system"
+    ): Promise<{ sessionId: string; tier: "workbench" | "action" | "system" }>;
+    /**
+     * Subscribe to tier-not-permitted pushes for the pinned help-session in
+     * this WebContents. The callback fires when a tool call is denied because
+     * the session tier doesn't permit it.
+     */
+    onTierNotPermitted(
+      callback: (payload: {
+        sessionId: string;
+        toolId: string;
+        tier: string;
+        targetTier: "workbench" | "action" | "system" | null;
+      }) => void
+    ): () => void;
+  };
+  helpAssistant: {
+    getSettings(): Promise<HelpAssistantSettings>;
+    setSettings(settings: Partial<HelpAssistantSettings>): Promise<void>;
   };
   mcpBridge: {
     /** Listen for manifest requests from main process */
@@ -1291,6 +1366,7 @@ export interface ElectronAPI {
     sendDispatchActionResponse(payload: {
       requestId: string;
       result: import("../actions.js").ActionDispatchResult;
+      confirmationDecision?: import("./mcpServer.js").McpConfirmationDecision;
     }): void;
   };
   plugin: {
@@ -1320,6 +1396,14 @@ export interface ElectronAPI {
     onActionsChanged(
       callback: (payload: { actions: import("../plugin.js").PluginActionDescriptor[] }) => void
     ): () => void;
+    /** Pull the current set of plugin-contributed panel kinds. */
+    getPanelKinds(): Promise<import("../../config/panelKindRegistry.js").PanelKindConfig[]>;
+    /** Subscribe to plugin panel kind registry changes. Returns a cleanup. */
+    onPanelKindsChanged(
+      callback: (payload: {
+        kinds: import("../../config/panelKindRegistry.js").PanelKindConfig[];
+      }) => void
+    ): () => void;
   };
   crashRecovery: {
     getPending(): Promise<import("./crashRecovery.js").PendingCrash | null>;
@@ -1333,6 +1417,15 @@ export interface ElectronAPI {
     getFolderPath(): Promise<string | null>;
     markTerminal(terminalId: string): Promise<void>;
     unmarkTerminal(terminalId: string): Promise<void>;
+    provisionSession(input: { projectId: string; projectPath: string; agentId: string }): Promise<{
+      sessionId: string;
+      sessionPath: string;
+      token: string;
+      tier: import("./maps.js").HelpAssistantTier;
+      mcpUrl: string | null;
+      windowId: number;
+    } | null>;
+    revokeSession(sessionId: string): Promise<void>;
   };
   perf: {
     flushMarks(payload: import("../../perf/marks.js").RendererPerfFlushPayload): void;
@@ -1427,4 +1520,36 @@ export interface VoiceInputSettings {
   paragraphingStrategy: VoiceParagraphingStrategy;
   /** When enabled, voice commands like "link to X" resolve to @file references. Defaults to true. */
   resolveFileLinks: boolean;
+}
+
+export type HelpAssistantAuditRetention = 7 | 30 | 0;
+
+export type HelpAssistantIdleHibernateMinutes = 0 | 15 | 30 | 60 | 120;
+
+export interface HelpAssistantSettings {
+  /** Allow the help assistant to search Daintree documentation. Defaults to true. */
+  docSearch: boolean;
+  /** Allow the help assistant to call Daintree control tools via the local MCP. Defaults to true. */
+  daintreeControl: boolean;
+  /**
+   * MCP capability tier the help assistant runs at — controls which Daintree
+   * actions the assistant can call without prompting. Defaults to `"action"`.
+   */
+  tier: HelpAssistantTier;
+  /**
+   * Pass `--dangerously-skip-permissions` (Claude) and write
+   * `defaultMode: "bypassPermissions"` into the session's `.claude/settings.json`.
+   * Bypasses Claude Code's per-tool confirmation gate. Defaults to false.
+   */
+  bypassPermissions: boolean;
+  /** How long to retain help-session audit logs. 7 = 7 days, 30 = 30 days, 0 = off. Defaults to 7. */
+  auditRetention: HelpAssistantAuditRetention;
+  /** Whitespace-separated CLI flags appended at assistant launch (e.g. "--model sonnet"). Defaults to "". */
+  customArgs: string;
+  /**
+   * Minutes the assistant panel must be continuously hidden before its PTY is
+   * gracefully shut down to capture the Claude resume session ID. 0 disables
+   * idle hibernation. Defaults to 30.
+   */
+  idleHibernateMinutes: HelpAssistantIdleHibernateMinutes;
 }

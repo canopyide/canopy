@@ -86,10 +86,16 @@ vi.mock("../../../window/portDistribution.js", () => ({
   distributePortsToView: vi.fn(),
 }));
 
+vi.mock("../../../window/deferredInitQueue.js", () => ({
+  registerDeferredTask: vi.fn(),
+}));
+
 import { ipcMain } from "electron";
 import { CHANNELS } from "../../channels.js";
 import { registerProjectCrudHandlers } from "../projectCrud/index.js";
 import type { HandlerDependencies } from "../../types.js";
+import { registerDeferredTask } from "../../../window/deferredInitQueue.js";
+import { projectStore } from "../../../services/ProjectStore.js";
 
 function makePtyClient(overrides: Record<string, unknown> = {}) {
   return {
@@ -560,5 +566,55 @@ describe("handleProjectGetBulkStats", () => {
     >;
 
     expect(result["proj-a"].activeAgentCount).toBe(1); // only t2
+  });
+});
+
+describe("registerProjectStatsHandlers — deferred initial compute", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("defers the initial compute via registerDeferredTask instead of firing it eagerly", async () => {
+    (projectStore.getAllProjects as ReturnType<typeof vi.fn>).mockReturnValue([{ id: "p1" }]);
+    const ptyClient = makePtyClient();
+    const cleanup = registerProjectCrudHandlers(makeDeps(ptyClient));
+
+    expect(ptyClient.getAllTerminalsAsync).not.toHaveBeenCalled();
+    expect(ptyClient.getProjectStats).not.toHaveBeenCalled();
+
+    const mock = registerDeferredTask as unknown as ReturnType<typeof vi.fn>;
+    const taskCall = mock.mock.calls.find(
+      ([t]) => (t as { name?: string } | undefined)?.name === "project-stats-initial-compute"
+    );
+    expect(taskCall).toBeDefined();
+    const task = taskCall![0] as { name: string; run: () => void };
+
+    task.run();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(ptyClient.getAllTerminalsAsync).toHaveBeenCalledTimes(1);
+
+    cleanup();
+  });
+
+  it("deferred initial compute is a no-op once the service has stopped", async () => {
+    (projectStore.getAllProjects as ReturnType<typeof vi.fn>).mockReturnValue([{ id: "p1" }]);
+    const ptyClient = makePtyClient();
+    const cleanup = registerProjectCrudHandlers(makeDeps(ptyClient));
+
+    const mock = registerDeferredTask as unknown as ReturnType<typeof vi.fn>;
+    const task = (mock.mock.calls.find(
+      ([t]) => (t as { name?: string } | undefined)?.name === "project-stats-initial-compute"
+    )?.[0] ?? null) as { name: string; run: () => void } | null;
+    expect(task).not.toBeNull();
+
+    cleanup();
+
+    task!.run();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(ptyClient.getAllTerminalsAsync).not.toHaveBeenCalled();
   });
 });

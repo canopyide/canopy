@@ -35,11 +35,50 @@ export const HARDENED_GIT_CONFIG = [
 export const AUTHENTICATED_GIT_CONFIG = [...SAFE_GIT_CONFIG] as const;
 
 const UNSAFE_FLAGS = {
+  allowUnsafeAskPass: true,
+  allowUnsafeCredentialHelper: true,
   allowUnsafeProtocolOverride: true,
+  allowUnsafeFsMonitor: true,
+  allowUnsafePager: true,
   allowUnsafeSshCommand: true,
   allowUnsafeGitProxy: true,
   allowUnsafeHooksPath: true,
 } as const;
+
+const BLOCKED_INHERITED_GIT_ENV_KEYS = new Set([
+  "EDITOR",
+  "GIT_ASKPASS",
+  "GIT_CONFIG",
+  "GIT_CONFIG_COUNT",
+  "GIT_CONFIG_GLOBAL",
+  "GIT_CONFIG_SYSTEM",
+  "GIT_EDITOR",
+  "GIT_EXEC_PATH",
+  "GIT_EXTERNAL_DIFF",
+  "GIT_PAGER",
+  "GIT_PROXY_COMMAND",
+  "GIT_SEQUENCE_EDITOR",
+  "GIT_SSH",
+  "GIT_SSH_COMMAND",
+  "GIT_TEMPLATE_DIR",
+  "PAGER",
+  "PREFIX",
+  "SSH_ASKPASS",
+]);
+
+function getSanitizedProcessEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  for (const key of Object.keys(env)) {
+    const normalizedKey = key.toUpperCase();
+    if (
+      BLOCKED_INHERITED_GIT_ENV_KEYS.has(normalizedKey) ||
+      /^GIT_CONFIG_(KEY|VALUE)_\d+$/.test(normalizedKey)
+    ) {
+      delete env[key];
+    }
+  }
+  return env;
+}
 
 export function validateCwd(cwd: unknown): asserts cwd is string {
   if (typeof cwd !== "string" || !cwd.trim()) {
@@ -63,15 +102,19 @@ export function getGitLocaleEnv(
   platform: NodeJS.Platform = process.platform
 ): Record<string, string> {
   if (platform === "win32") {
-    return { LC_CTYPE: "C.UTF-8", LANG: "C.UTF-8" };
+    return { LC_CTYPE: "C.UTF-8", LANG: "C.UTF-8", GIT_OPTIONAL_LOCKS: "0" };
   }
   if (platform === "darwin") {
-    return { LC_CTYPE: "en_US.UTF-8" };
+    return { LC_CTYPE: "en_US.UTF-8", GIT_OPTIONAL_LOCKS: "0" };
   }
-  return { LC_CTYPE: "C.UTF-8" };
+  return { LC_CTYPE: "C.UTF-8", GIT_OPTIONAL_LOCKS: "0" };
 }
 
-export function createHardenedGit(cwd: string, signal?: AbortSignal): SimpleGit {
+export function createHardenedGit(
+  cwd: string,
+  signal?: AbortSignal,
+  platform: NodeJS.Platform = process.platform
+): SimpleGit {
   return simpleGit({
     baseDir: cwd,
     config: [...HARDENED_GIT_CONFIG],
@@ -79,14 +122,34 @@ export function createHardenedGit(cwd: string, signal?: AbortSignal): SimpleGit 
     ...(signal ? { abort: signal } : {}),
     unsafe: UNSAFE_FLAGS,
   }).env({
-    ...process.env,
-    ...getGitLocaleEnv(),
+    ...getSanitizedProcessEnv(),
+    ...getGitLocaleEnv(platform),
     // Clear inherited LC_ALL so the more specific LC_CTYPE / LC_MESSAGES
     // values above actually take effect. POSIX locale resolution gives LC_ALL
     // priority over every other LC_* variable.
     LC_ALL: "",
     LC_MESSAGES: "C",
     LANGUAGE: "",
+    // Suppress optional .git/index.lock writes during status-only reads. Only
+    // affects opportunistic locks (stat-cache refresh); mandatory locks for
+    // git add/commit are unaffected, so this is safe even when the hardened
+    // factory is used for write paths.
+    GIT_OPTIONAL_LOCKS: "0",
+    // Block git's built-in TTY prompt for credentials/passphrases. Some
+    // commands (clone, fetch, push) still touch credential helpers even
+    // through the hardened factory's `-c credential.helper=` blank, and an
+    // interactive prompt in the Electron main process hangs forever.
+    GIT_TERMINAL_PROMPT: "0",
+    // Defense in depth: some credential helpers ignore GIT_TERMINAL_PROMPT
+    // and still invoke an ASKPASS binary. `true` exits 0 with empty stdout,
+    // so git treats it as an empty credential and fails fast instead of
+    // hanging. `true` is not on PATH on Windows; GIT_TERMINAL_PROMPT=0 plus
+    // GCM_INTERACTIVE=Never below cover that platform.
+    ...(platform !== "win32" ? { GIT_ASKPASS: "true" } : {}),
+    // Windows-only: prevent Git Credential Manager from spawning GUI auth
+    // dialogs in background processes where no user can interact. No effect
+    // on POSIX or on local read operations.
+    GCM_INTERACTIVE: "Never",
   });
 }
 
@@ -158,14 +221,25 @@ export function createWslHardenedGit(
     ...(signal ? { abort: signal } : {}),
     unsafe: UNSAFE_FLAGS,
   }).env({
-    ...process.env,
+    ...getSanitizedProcessEnv(),
+    LC_CTYPE: "C.UTF-8",
+    LC_ALL: "",
     LC_MESSAGES: "C",
     LANGUAGE: "",
+    GIT_OPTIONAL_LOCKS: "0",
     // Surface the targeted distro to wsl.exe via env. wsl.exe doesn't honour
     // WSL_DISTRO_NAME for selection (it uses the default distro), but having
     // this env var present makes diagnostic output unambiguous if the user
     // captures process state during a hang.
     WSL_DISTRO_NAME: distro,
+    // The git binary inside WSL is Linux git, so the same non-interactive +
+    // lock-suppression hardening that createHardenedGit applies on POSIX
+    // must reach the WSL distro too. GCM_INTERACTIVE is harmless inside
+    // WSL (no GCM there) but kept for defense in depth in case wsl.exe ever
+    // surfaces it back to the host credential helper chain.
+    GIT_TERMINAL_PROMPT: "0",
+    GIT_ASKPASS: "true",
+    GCM_INTERACTIVE: "Never",
   });
 }
 
@@ -185,7 +259,7 @@ export function createAuthenticatedGit(cwd: string, opts: AuthenticatedGitOption
     ...(progress ? { progress } : {}),
     unsafe: UNSAFE_FLAGS,
   }).env({
-    ...process.env,
+    ...getSanitizedProcessEnv(),
     ...getGitLocaleEnv(),
     LC_ALL: "",
     LC_MESSAGES: "C",
@@ -193,5 +267,77 @@ export function createAuthenticatedGit(cwd: string, opts: AuthenticatedGitOption
     GIT_TERMINAL_PROMPT: "0",
     GIT_SSH_COMMAND:
       "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=15",
+    // Same lock-suppression and Windows-GCM hardening as createHardenedGit.
+    // GIT_ASKPASS is intentionally NOT set here — credentialed commands
+    // (clone/push) need legitimate ASKPASS resolution.
+    GIT_OPTIONAL_LOCKS: "0",
+    GCM_INTERACTIVE: "Never",
   });
+}
+
+/**
+ * Background-fetch config additions on top of the authenticated profile:
+ *   - `core.packedRefsTimeout=5000`: when a foreground git operation holds
+ *     `.git/packed-refs.lock`, wait up to 5s instead of failing immediately.
+ *   - `http.lowSpeedLimit=1000` + `http.lowSpeedTime=30`: abort fetches that
+ *     stall under 1 KB/s for 30s, so a half-open TCP connection doesn't sit
+ *     against the 60s AbortSignal timeout.
+ *   - `gc.auto=0`: belt-and-braces — `--no-auto-gc` is also passed at the
+ *     fetch call site, but pinning the config too prevents any sub-invocation
+ *     (e.g., a fetch hook) from racing a gc against foreground git CLI.
+ */
+const BACKGROUND_FETCH_CONFIG = [
+  "core.packedRefsTimeout=5000",
+  "http.lowSpeedLimit=1000",
+  "http.lowSpeedTime=30",
+  "gc.auto=0",
+] as const;
+
+export interface BackgroundFetchGitOptions {
+  signal: AbortSignal;
+  progress?: (data: SimpleGitProgressEvent) => void;
+  extraConfig?: string[];
+  /** Override platform detection — test-only. */
+  platform?: NodeJS.Platform;
+}
+
+/**
+ * SimpleGit instance for background `git fetch` invocations. Wraps
+ * `createAuthenticatedGit` so the system credential helper still works for
+ * HTTPS remotes, but layers on:
+ *   - lock-friendly config (see `BACKGROUND_FETCH_CONFIG`)
+ *   - `GIT_ASKPASS=true` on POSIX so credential helpers that ignore
+ *     `GIT_TERMINAL_PROMPT=0` fail fast instead of hanging on a TTY prompt
+ *     (Windows omits this — `true` is not on PATH there, and
+ *     `GIT_TERMINAL_PROMPT=0` blocks Windows credential dialogs)
+ *
+ * The signal is required: every background fetch must carry an
+ * AbortController so a stalled connection can be cancelled.
+ */
+export function createBackgroundFetchGit(cwd: string, opts: BackgroundFetchGitOptions): SimpleGit {
+  const { signal, progress, extraConfig, platform = process.platform } = opts;
+  const git = createAuthenticatedGit(cwd, {
+    signal,
+    progress,
+    extraConfig: [...BACKGROUND_FETCH_CONFIG, ...(extraConfig ?? [])],
+  });
+  if (platform !== "win32") {
+    return git.env({
+      ...getSanitizedProcessEnv(),
+      ...getGitLocaleEnv(platform),
+      LC_ALL: "",
+      LC_MESSAGES: "C",
+      LANGUAGE: "",
+      GIT_TERMINAL_PROMPT: "0",
+      GIT_SSH_COMMAND:
+        "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=15",
+      GIT_ASKPASS: "true",
+      // simple-git's .env() replaces the env wholesale, so the hardening
+      // flags from createAuthenticatedGit's first .env() call must be
+      // re-stated here or they will be lost on POSIX.
+      GIT_OPTIONAL_LOCKS: "0",
+      GCM_INTERACTIVE: "Never",
+    });
+  }
+  return git;
 }

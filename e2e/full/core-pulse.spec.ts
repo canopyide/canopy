@@ -8,15 +8,18 @@ import { T_SHORT, T_MEDIUM, T_LONG } from "../helpers/timeouts";
 import { openSettings } from "../helpers/panels";
 test.describe.serial("Core: Project Pulse", () => {
   let ctx: AppContext;
+  let fixtureCleanup: (() => void) | undefined;
 
   test.beforeAll(async () => {
     ctx = await launchApp();
-    const dir = createFixtureRepo({ name: "pulse-test", withSpreadCommits: true });
+    const { dir, cleanup } = createFixtureRepo({ name: "pulse-test", withSpreadCommits: true });
+    fixtureCleanup = cleanup;
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, dir, "Pulse Test");
   });
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("pulse card is visible after onboarding", async () => {
@@ -26,7 +29,7 @@ test.describe.serial("Core: Project Pulse", () => {
 
   test("card header shows project name and default range", async () => {
     const { window } = ctx;
-    const title = window.getByText("Pulse Test Project Pulse");
+    const title = window.getByText(/pulse-test.*Project Pulse/i);
     await expect(title).toBeVisible({ timeout: T_MEDIUM });
     const rangeGroup = window.locator(SEL.pulse.rangeTrigger);
     await expect(rangeGroup).toBeVisible({ timeout: T_SHORT });
@@ -89,15 +92,18 @@ test.describe.serial("Core: Project Pulse", () => {
 
 test.describe.serial("Core: Project Pulse — minimal repo", () => {
   let ctx: AppContext;
+  let fixtureCleanup: (() => void) | undefined;
 
   test.beforeAll(async () => {
     ctx = await launchApp();
-    const dir = createFixtureRepo({ name: "pulse-minimal" });
+    const { dir, cleanup } = createFixtureRepo({ name: "pulse-minimal" });
+    fixtureCleanup = cleanup;
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, dir, "Pulse Minimal");
   });
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("card renders without error for a single-commit repo", async () => {

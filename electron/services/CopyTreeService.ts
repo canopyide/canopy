@@ -71,7 +71,6 @@ class CopyTreeService {
       }
 
       const sdkOptions: SdkCopyOptions = {
-        config: config,
         signal: controller.signal,
         display: false,
         clipboard: false,
@@ -93,8 +92,7 @@ class CopyTreeService {
 
         onProgress: onProgress
           ? (event: ProgressEvent) => {
-              const controller = this.activeOperations.get(opId);
-              if (!controller || controller.signal.aborted) return;
+              if (controller.signal.aborted) return;
 
               const progress: CopyTreeProgress = {
                 stage: event.stage || "Processing",
@@ -110,6 +108,9 @@ class CopyTreeService {
           : undefined,
         progressThrottleMs: 100,
       };
+      if (config) {
+        sdkOptions.config = config;
+      }
 
       const result: CopyResult = await copy(rootPath, sdkOptions);
 
@@ -130,8 +131,11 @@ class CopyTreeService {
 
   async testConfig(
     rootPath: string,
-    options: CopyTreeOptions = {}
+    options: CopyTreeOptions = {},
+    traceId?: string
   ): Promise<import("../../shared/types/index.js").CopyTreeTestConfigResult> {
+    const opId = traceId || crypto.randomUUID();
+
     try {
       if (!path.isAbsolute(rootPath)) {
         return {
@@ -153,6 +157,9 @@ class CopyTreeService {
         };
       }
 
+      const controller = new AbortController();
+      this.activeOperations.set(opId, controller);
+
       let config;
       try {
         config = await ConfigManager.create();
@@ -164,7 +171,7 @@ class CopyTreeService {
       }
 
       const sdkOptions: SdkCopyOptions = {
-        config: config,
+        signal: controller.signal,
         display: false,
         clipboard: false,
         format: options.format || "xml",
@@ -184,6 +191,9 @@ class CopyTreeService {
         maxFileCount: options.maxFileCount,
         sort: options.sort,
       };
+      if (config) {
+        sdkOptions.config = config;
+      }
 
       const result: CopyResult = await copy(rootPath, sdkOptions);
 
@@ -198,12 +208,22 @@ class CopyTreeService {
         files: undefined,
       };
     } catch (error: unknown) {
+      if (error instanceof Error && error.name === "AbortError") {
+        return {
+          includedFiles: 0,
+          includedSize: 0,
+          excluded: { byTruncation: 0, bySize: 0, byPattern: 0 },
+          error: "Context generation cancelled",
+        };
+      }
       return {
         includedFiles: 0,
         includedSize: 0,
         excluded: { byTruncation: 0, bySize: 0, byPattern: 0 },
         error: formatErrorMessage(error, "Failed to generate context"),
       };
+    } finally {
+      this.activeOperations.delete(opId);
     }
   }
 

@@ -12,12 +12,14 @@ import {
 } from "../helpers/presets";
 
 let ctx: AppContext;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Presets: Edge Cases & Resilience (97–100)", () => {
   test.beforeAll(async () => {
     removeCcrConfig();
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "preset-edge" });
+    const { dir: fixtureDir, cleanup } = createFixtureRepo({ name: "preset-edge" });
+    fixtureCleanup = cleanup;
     ctx.window = await openAndOnboardProject(
       ctx.app,
       ctx.window,
@@ -29,6 +31,7 @@ test.describe.serial("Presets: Edge Cases & Resilience (97–100)", () => {
   test.afterAll(async () => {
     removeCcrConfig();
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   const goToClaudeSettings = async () => {
@@ -103,9 +106,7 @@ test.describe.serial("Presets: Edge Cases & Resilience (97–100)", () => {
   test("100. Corrupt customPresets data does not crash settings page", async () => {
     try {
       await ctx.window.evaluate(() => {
-        const _stores = Object.keys(window).filter(
-          (k) => k.startsWith("__CANOPY") || k.includes("store")
-        );
+        const _stores = Object.keys(window).filter((k) => k.includes("store"));
         const event = new CustomEvent("preset-test-inject", {
           detail: [{ name: "corrupt-no-id" }],
         });

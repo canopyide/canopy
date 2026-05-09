@@ -40,11 +40,57 @@ describe("ContentDock regression test", () => {
     const content = readFileSync(resolve(__dirname, "../ContentDock.tsx"), "utf-8");
 
     const launchIdx = content.indexOf("<DockLaunchButton");
-    const helpIdx = content.indexOf("<HelpAgentDockButton");
     const trashIdx = content.indexOf("<TrashContainer");
 
     expect(launchIdx).toBeGreaterThan(0);
     expect(launchIdx).toBeLessThan(trashIdx);
-    expect(launchIdx).toBeLessThan(helpIdx);
+  });
+
+  // Issue #6428 — accent ring on isOver was a restraint violation; replace with neutral.
+  it("uses a neutral ring on dock isOver state (no accent)", () => {
+    const content = readFileSync(resolve(__dirname, "../ContentDock.tsx"), "utf-8");
+
+    expect(content).not.toContain("ring-daintree-accent");
+    expect(content).toMatch(/isOver\s*&&\s*[^]*?ring-border-default/);
+  });
+
+  // Issue #6590 — handleAddTerminal must rely on the atomic dock activation
+  // flag instead of a follow-up openDockTerminal() call, otherwise the
+  // watchdog effect collapses the freshly created panel.
+  it("handleAddTerminal passes activateDockOnCreate and does not call openDockTerminal", () => {
+    const content = readFileSync(resolve(__dirname, "../ContentDock.tsx"), "utf-8");
+
+    expect(content).toContain("activateDockOnCreate: true");
+    expect(content).not.toContain("openDockTerminal(result.result.terminalId)");
+    expect(content).not.toMatch(/openDockTerminal\(result\.result\?\.terminalId\)/);
+  });
+
+  // Issue #6590 — DockPanelOffscreenContainer.handleAddTabForPanel must use
+  // the atomic flag too. The same race that collapses dock-launched agents
+  // also collapses the just-created tab in a single-panel-to-tab-group flow.
+  it("DockPanelOffscreenContainer add-tab flow uses atomic dock activation", () => {
+    const content = readFileSync(resolve(__dirname, "../DockPanelOffscreenContainer.tsx"), "utf-8");
+
+    expect(content).toContain("activateDockOnCreate: true");
+    expect(content).not.toContain("openDockTerminal(newPanelId)");
+  });
+
+  // Issue #7278 — the watchdog effect in DockPanelOffscreenContainer must
+  // check panelsById before firing closeDockTerminal, so that a panel that
+  // exists in canonical storage but hasn't landed in the filtered
+  // dockTerminals view yet isn't spuriously collapsed.
+  it("DockPanelOffscreenContainer watchdog guards with panelsById before closing", () => {
+    const content = readFileSync(resolve(__dirname, "../DockPanelOffscreenContainer.tsx"), "utf-8");
+
+    expect(content).toContain("usePanelStore.getState().panelsById[activeDockTerminalId]");
+    // The panelsById guard must appear before closeDockTerminal() inside the
+    // same useEffect block.
+    const effectStart = content.indexOf("if (!activeDockTerminalId) return;");
+    const panelsByIdGuard = content.indexOf("panelsById[activeDockTerminalId]");
+    const closeCall = content.indexOf("closeDockTerminal()", effectStart);
+
+    expect(effectStart).toBeGreaterThan(0);
+    expect(panelsByIdGuard).toBeGreaterThan(effectStart);
+    expect(panelsByIdGuard).toBeLessThan(closeCall);
   });
 });

@@ -6,6 +6,16 @@ import type { RunCommand } from "../types/index.js";
 import { Cache } from "../utils/cache.js";
 
 const RESERVED_SCRIPT_NAMES = new Set(["__proto__", "constructor", "prototype"]);
+const COMPOSER_LIFECYCLE_SCRIPTS = new Set([
+  "pre-install-cmd",
+  "post-install-cmd",
+  "pre-update-cmd",
+  "post-update-cmd",
+  "post-autoload-dump",
+  "pre-autoload-dump",
+  "post-root-package-install",
+  "post-create-project-cmd",
+]);
 const SAFE_SCRIPT_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9:_./-]*$/;
 
 function isSafeScriptName(name: string): boolean {
@@ -32,6 +42,7 @@ export class RunCommandDetector {
       this.detectTaskfile(projectPath),
       this.detectDjango(projectPath),
       this.detectComposer(projectPath),
+      this.detectDevContainer(projectPath),
     ]);
 
     const commands = results.flat();
@@ -49,7 +60,9 @@ export class RunCommandDetector {
       if (!pkg.scripts || typeof pkg.scripts !== "object") return [];
 
       let runner = "npm run";
-      if (existsSync(path.join(root, "bun.lockb"))) {
+      if (existsSync(path.join(root, "bun.lock"))) {
+        runner = "bun run";
+      } else if (existsSync(path.join(root, "bun.lockb"))) {
         runner = "bun run";
       } else if (existsSync(path.join(root, "pnpm-lock.yaml"))) {
         runner = "pnpm run";
@@ -177,7 +190,16 @@ export class RunCommandDetector {
   }
 
   private async detectTaskfile(root: string): Promise<RunCommand[]> {
-    const variants = ["Taskfile.yml", "taskfile.yml", "Taskfile.yaml", "taskfile.yaml"];
+    const variants = [
+      "Taskfile.yml",
+      "taskfile.yml",
+      "Taskfile.yaml",
+      "taskfile.yaml",
+      "Taskfile.dist.yml",
+      "taskfile.dist.yml",
+      "Taskfile.dist.yaml",
+      "taskfile.dist.yaml",
+    ];
     let taskfilePath: string | null = null;
     for (const name of variants) {
       const candidate = path.join(root, name);
@@ -250,17 +272,7 @@ export class RunCommandDetector {
 
       return Object.keys(json.scripts)
         .filter((name) => {
-          const lifecycleScripts = [
-            "pre-install-cmd",
-            "post-install-cmd",
-            "pre-update-cmd",
-            "post-update-cmd",
-            "post-autoload-dump",
-            "pre-autoload-dump",
-            "post-root-package-install",
-            "post-create-project-cmd",
-          ];
-          if (lifecycleScripts.includes(name)) {
+          if (COMPOSER_LIFECYCLE_SCRIPTS.has(name)) {
             return false;
           }
           if (!isSafeScriptName(name)) {
@@ -279,6 +291,96 @@ export class RunCommandDetector {
       console.warn(`[RunCommandDetector] Failed to parse ${composerPath}:`, error);
       return [];
     }
+  }
+  private async detectDevContainer(root: string): Promise<RunCommand[]> {
+    const devcontainerPath = path.join(root, ".devcontainer", "devcontainer.json");
+    if (!existsSync(devcontainerPath)) return [];
+
+    try {
+      const content = await fs.readFile(devcontainerPath, "utf-8");
+      const config = JSON.parse(content);
+      const postStart = config.postStartCommand;
+      if (postStart === undefined || postStart === null) return [];
+
+      let command: string | undefined;
+
+      if (typeof postStart === "string") {
+        command = postStart.trim();
+      } else if (Array.isArray(postStart)) {
+        command = postStart
+          .filter((item): item is string => typeof item === "string")
+          .join(" ")
+          .trim();
+      } else if (typeof postStart === "object" && postStart !== null) {
+        const keys = Object.keys(postStart as Record<string, unknown>);
+        if (keys.length > 0) {
+          const isValidVal = (v: unknown): boolean =>
+            (typeof v === "string" && v.trim().length > 0) || Array.isArray(v);
+
+          const keyPriority = ["server", "dev", "start", "app"];
+          const bestKey =
+            keyPriority.find((k) => {
+              const v = (postStart as Record<string, unknown>)[k];
+              return isValidVal(v);
+            }) ??
+            keys.find((k) => {
+              const v = (postStart as Record<string, unknown>)[k];
+              return isValidVal(v);
+            });
+          if (bestKey) {
+            const val = (postStart as Record<string, unknown>)[bestKey];
+            if (typeof val === "string") {
+              command = val.trim();
+            } else if (Array.isArray(val)) {
+              command = val
+                .filter((item): item is string => typeof item === "string")
+                .join(" ")
+                .trim();
+            }
+          }
+        }
+      }
+
+      if (!command || command.length === 0) return [];
+
+      command = this.stripShellWrappers(command);
+      if (!command || command.length === 0) return [];
+
+      return [
+        {
+          id: "devcontainer-poststart",
+          name: "postStartCommand",
+          command,
+          icon: "terminal",
+          description: "from .devcontainer/devcontainer.json",
+        },
+      ];
+    } catch (error) {
+      console.warn(`[RunCommandDetector] Failed to parse ${devcontainerPath}:`, error);
+      return [];
+    }
+  }
+
+  private stripShellWrappers(command: string): string {
+    let result = command.trim();
+
+    if (result.startsWith("nohup ")) {
+      result = result.slice(6).trim();
+    }
+
+    if (result.endsWith(" &")) {
+      result = result.slice(0, -2).trim();
+    }
+
+    const bashCMatch = result.match(/^(?:bash|sh)\s+-c\s+'([^']*)'$/);
+    if (bashCMatch) {
+      result = bashCMatch[1].trim();
+      if (result.endsWith(" &")) {
+        result = result.slice(0, -2).trim();
+      }
+    }
+
+    return result;
   }
 }
 

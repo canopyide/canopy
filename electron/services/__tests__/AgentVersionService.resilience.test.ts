@@ -9,9 +9,22 @@ const registryMock = vi.hoisted(() => ({
 // Hoisted execFile mock — vi.spyOn can't redefine ESM-namespace exports of
 // `child_process`, so we substitute the whole module at hoist time. Tests
 // that need a custom impl mutate `execFileMock` via mockImplementationOnce.
-const { execFileMock } = vi.hoisted(() => ({
-  execFileMock: vi.fn(),
-}));
+const { execFileMock } = vi.hoisted(() => {
+  const mock = vi.fn();
+  (mock as any)[Symbol.for("nodejs.util.promisify.custom")] = function (
+    cmd: string,
+    args: readonly string[],
+    opts: unknown
+  ) {
+    return new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
+      mock(cmd, args, opts, (err: unknown, stdout: string, stderr: string) => {
+        if (err) return reject(err);
+        resolve({ stdout, stderr });
+      });
+    });
+  };
+  return { execFileMock: mock };
+});
 
 vi.mock("child_process", () => ({
   execFile: execFileMock,
@@ -288,6 +301,295 @@ describe("AgentVersionService resilience", () => {
 
       expect(result.latestVersion).toBeNull();
       expect(result.error ?? "").toMatch(/PyPI/);
+      fetchSpy.mockRestore();
+    });
+  });
+
+  describe("npm version feed", () => {
+    function setExecFileSuccess(): void {
+      execFileMock.mockImplementation(((
+        _cmd: string,
+        _args: readonly string[],
+        _opts: unknown,
+        cb: (err: unknown, stdout: string, stderr: string) => void
+      ) => {
+        cb(null, "1.0.0\n", "");
+      }) as never);
+    }
+
+    beforeEach(() => {
+      execFileMock.mockReset();
+    });
+
+    it("uses the abbreviated packument Accept header and User-Agent", async () => {
+      (registryMock.getEffectiveAgentConfig as Mock).mockReturnValue({
+        id: "npm-agent",
+        name: "NPM Agent",
+        command: "npm-agent",
+        version: { args: ["--version"], npmPackage: "npm-agent-pkg" },
+      });
+
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          "dist-tags": { latest: "2.0.0" },
+          name: "npm-agent-pkg",
+        }),
+        headers: new Headers(),
+      } as Response);
+      setExecFileSuccess();
+
+      const { service } = createService(async () => ({ "npm-agent": "ready" }));
+      const result = await service.getVersion("npm-agent" as AgentId);
+
+      expect(result.latestVersion).toBe("2.0.0");
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "https://registry.npmjs.org/npm-agent-pkg",
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Accept: "application/vnd.npm.install-v1+json",
+            "User-Agent": "Daintree-Electron",
+          }),
+        })
+      );
+      fetchSpy.mockRestore();
+    });
+
+    it("omits the ?fields=dist-tags query parameter from the URL", async () => {
+      (registryMock.getEffectiveAgentConfig as Mock).mockReturnValue({
+        id: "npm-agent",
+        name: "NPM Agent",
+        command: "npm-agent",
+        version: { args: ["--version"], npmPackage: "scoped-pkg" },
+      });
+
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          "dist-tags": { latest: "1.5.0" },
+        }),
+        headers: new Headers(),
+      } as Response);
+      setExecFileSuccess();
+
+      const { service } = createService(async () => ({ "npm-agent": "ready" }));
+      await service.getVersion("npm-agent" as AgentId);
+
+      const url = fetchSpy.mock.calls[0][0] as string;
+      expect(url).not.toContain("?fields=");
+      expect(url).toBe("https://registry.npmjs.org/scoped-pkg");
+      fetchSpy.mockRestore();
+    });
+  });
+
+  describe("parseVersion prerelease coercion", () => {
+    it("preserves prerelease tags when coerce fallback is reached", () => {
+      const { service } = createService(async () => ({}));
+
+      // "2.0-beta" has no X.Y.Z pattern so it bypasses semver.clean() and
+      // all three regex patterns, reaching the coerce fallback.
+      expect(
+        (service as unknown as { parseVersion(v: string): string | null }).parseVersion("2.0-beta")
+      ).toBe("2.0.0-beta");
+    });
+
+    it("still returns null for unparseable strings", () => {
+      const { service } = createService(async () => ({}));
+
+      expect(
+        (service as unknown as { parseVersion(v: string): string | null }).parseVersion(
+          "not a version at all"
+        )
+      ).toBeNull();
+    });
+  });
+
+  describe("isUpdateAvailable prerelease guard", () => {
+    it("returns false when installed is stable and latest is a prerelease", () => {
+      const { service } = createService(async () => ({}));
+
+      expect(
+        (
+          service as unknown as { isUpdateAvailable(i: string | null, l: string | null): boolean }
+        ).isUpdateAvailable("1.9.5", "2.0.0-beta.1")
+      ).toBe(false);
+    });
+
+    it("returns true when both installed and latest are prereleases in the same channel", () => {
+      const { service } = createService(async () => ({}));
+
+      expect(
+        (
+          service as unknown as { isUpdateAvailable(i: string | null, l: string | null): boolean }
+        ).isUpdateAvailable("2.0.0-beta.1", "2.0.0-beta.2")
+      ).toBe(true);
+    });
+
+    it("returns true when installed is a prerelease and latest is stable", () => {
+      const { service } = createService(async () => ({}));
+
+      expect(
+        (
+          service as unknown as { isUpdateAvailable(i: string | null, l: string | null): boolean }
+        ).isUpdateAvailable("2.0.0-beta.1", "2.0.0")
+      ).toBe(true);
+    });
+
+    it("returns true for a normal stable-to-stable upgrade", () => {
+      const { service } = createService(async () => ({}));
+
+      expect(
+        (
+          service as unknown as { isUpdateAvailable(i: string | null, l: string | null): boolean }
+        ).isUpdateAvailable("1.0.0", "2.0.0")
+      ).toBe(true);
+    });
+
+    it("returns false for a normal stable-to-stable downgrade", () => {
+      const { service } = createService(async () => ({}));
+
+      expect(
+        (
+          service as unknown as { isUpdateAvailable(i: string | null, l: string | null): boolean }
+        ).isUpdateAvailable("2.0.0", "1.0.0")
+      ).toBe(false);
+    });
+  });
+
+  describe("checkVersion parallelism", () => {
+    function setExecFileSuccess(): void {
+      execFileMock.mockImplementation(((
+        _cmd: string,
+        _args: readonly string[],
+        _opts: unknown,
+        cb: (err: unknown, stdout: string, stderr: string) => void
+      ) => {
+        cb(null, "1.9.5\n", "");
+      }) as never);
+    }
+
+    beforeEach(() => {
+      execFileMock.mockReset();
+    });
+
+    it("returns both installed and latest when both probes succeed", async () => {
+      (registryMock.getEffectiveAgentConfig as Mock).mockReturnValue({
+        id: "claude",
+        name: "Claude",
+        command: "claude",
+        version: { args: ["--version"], npmPackage: "claude-pkg" },
+      });
+
+      setExecFileSuccess();
+
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ "dist-tags": { latest: "2.0.0" } }),
+        headers: new Headers(),
+      } as Response);
+
+      const { service } = createService(async () => ({ claude: "ready" }));
+      const result = await service.getVersion("claude" as AgentId);
+
+      expect(result.installedVersion).toBe("1.9.5");
+      expect(result.latestVersion).toBe("2.0.0");
+      expect(result.error).toBeUndefined();
+      fetchSpy.mockRestore();
+    });
+
+    it("returns installed version and error when latest probe fails", async () => {
+      (registryMock.getEffectiveAgentConfig as Mock).mockReturnValue({
+        id: "claude",
+        name: "Claude",
+        command: "claude",
+        version: { args: ["--version"], npmPackage: "claude-pkg" },
+      });
+
+      setExecFileSuccess();
+
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockRejectedValueOnce(new Error("network down"));
+
+      const { service } = createService(async () => ({ claude: "ready" }));
+      const result = await service.getVersion("claude" as AgentId);
+
+      expect(result.installedVersion).toBe("1.9.5");
+      expect(result.latestVersion).toBeNull();
+      expect(result.error).toContain("Failed to get latest version");
+      expect(result.error).toContain("network down");
+      fetchSpy.mockRestore();
+    });
+
+    it("returns latest version and error when installed probe fails", async () => {
+      (registryMock.getEffectiveAgentConfig as Mock).mockReturnValue({
+        id: "claude",
+        name: "Claude",
+        command: "claude",
+        version: { args: ["--version"], npmPackage: "claude-pkg" },
+      });
+
+      execFileMock.mockImplementation(((
+        _cmd: string,
+        _args: readonly string[],
+        _opts: unknown,
+        cb: (err: unknown) => void
+      ) => {
+        const error = new Error("EACCES") as NodeJS.ErrnoException;
+        error.code = "EACCES";
+        cb(error);
+      }) as never);
+
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ "dist-tags": { latest: "2.0.0" } }),
+        headers: new Headers(),
+      } as Response);
+
+      const { service } = createService(async () => ({ claude: "ready" }));
+      const result = await service.getVersion("claude" as AgentId);
+
+      expect(result.installedVersion).toBeNull();
+      expect(result.latestVersion).toBe("2.0.0");
+      expect(result.error).toContain("Failed to get installed version");
+      fetchSpy.mockRestore();
+    });
+
+    it("joins both error messages when both probes fail", async () => {
+      (registryMock.getEffectiveAgentConfig as Mock).mockReturnValue({
+        id: "claude",
+        name: "Claude",
+        command: "claude",
+        version: { args: ["--version"], npmPackage: "claude-pkg" },
+      });
+
+      execFileMock.mockImplementation(((
+        _cmd: string,
+        _args: readonly string[],
+        _opts: unknown,
+        cb: (err: unknown) => void
+      ) => {
+        const error = new Error("ETIMEDOUT") as NodeJS.ErrnoException;
+        error.code = "ETIMEDOUT";
+        cb(error);
+      }) as never);
+
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockRejectedValueOnce(new Error("connect timeout"));
+
+      const { service } = createService(async () => ({ claude: "ready" }));
+      const result = await service.getVersion("claude" as AgentId);
+
+      expect(result.installedVersion).toBeNull();
+      expect(result.latestVersion).toBeNull();
+      expect(result.error).toContain("Failed to get installed version");
+      expect(result.error).toContain("Failed to get latest version");
+      expect(result.error).toContain(";");
       fetchSpy.mockRestore();
     });
   });

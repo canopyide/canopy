@@ -15,6 +15,14 @@ const RED_GREEN_OVERRIDES: Record<string, string> = {
   "--theme-terminal-bright-green": "#48c9a0",
   "--theme-terminal-magenta": "#cc79a7",
   "--theme-terminal-bright-magenta": "#d98fc4",
+  "--theme-category-blue": "#0072b2",
+  "--theme-category-orange": "#e69f00",
+  "--theme-category-teal": "#009e73",
+  "--theme-category-pink": "#cc79a7",
+  "--theme-category-amber": "#d55e00",
+  "--theme-category-violet": "#785ef0",
+  "--theme-category-indigo": "#648fff",
+  "--theme-category-cyan": "#56b4e9",
 };
 
 const BLUE_YELLOW_OVERRIDES: Record<string, string> = {
@@ -25,6 +33,14 @@ const BLUE_YELLOW_OVERRIDES: Record<string, string> = {
   "--theme-terminal-blue": "#0072b2",
   "--theme-terminal-bright-yellow": "#d98fc4",
   "--theme-terminal-bright-blue": "#56b4e9",
+  "--theme-category-blue": "#dc267f",
+  "--theme-category-orange": "#fe6100",
+  "--theme-category-teal": "#009e73",
+  "--theme-category-pink": "#d55e00",
+  "--theme-category-amber": "#ffb000",
+  "--theme-category-violet": "#785ef0",
+  "--theme-category-indigo": "#648fff",
+  "--theme-category-cyan": "#228833",
 };
 
 const ALL_CVD_TOKENS = new Set([

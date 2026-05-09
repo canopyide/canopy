@@ -275,10 +275,8 @@ export const GridTabGroup = React.memo(function GridTabGroup({
     [updateTitle]
   );
 
-  // Handle tab close - move to trash (store handles group cleanup)
   const handleTabClose = useCallback(
     (tabId: string) => {
-      // If closing the active tab, switch to another tab first
       if (tabId === activeTabId) {
         const currentIndex = panels.findIndex((p) => p.id === tabId);
         const nextPanel = panels[currentIndex + 1] ?? panels[currentIndex - 1];
@@ -287,7 +285,6 @@ export const GridTabGroup = React.memo(function GridTabGroup({
           setFocused(nextPanel.id);
         }
       }
-      // Trash the terminal (store auto-removes from group)
       trashPanel(tabId);
     },
     [activeTabId, panels, group.id, setActiveTab, setFocused, trashPanel]

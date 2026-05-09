@@ -76,6 +76,39 @@ describe("KeybindingService", () => {
     expect(service.matchesEvent(event, "Cmd+T")).toBe(true);
   });
 
+  it("matches literal Ctrl bindings on non-mac when Ctrl is pressed", () => {
+    setPlatform("Win32");
+
+    const service = new KeybindingService();
+    const event = createKeyboardEvent({
+      key: "Tab",
+      code: "Tab",
+      ctrlKey: true,
+    });
+
+    expect(service.matchesEvent(event, "Ctrl+Tab")).toBe(true);
+  });
+
+  it("resolves Ctrl+Tab terminal focus bindings on non-mac", () => {
+    setPlatform("Win32");
+
+    const service = new KeybindingService();
+    const forward = createKeyboardEvent({
+      key: "Tab",
+      code: "Tab",
+      ctrlKey: true,
+    });
+    const backward = createKeyboardEvent({
+      key: "Tab",
+      code: "Tab",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    expect(service.findMatchingAction(forward)?.actionId).toBe("terminal.focusNext");
+    expect(service.findMatchingAction(backward)?.actionId).toBe("terminal.focusPrevious");
+  });
+
   it("supports two-key chord matching", () => {
     setPlatform("MacIntel");
 
@@ -171,6 +204,80 @@ describe("KeybindingService", () => {
     expect(conflicts.some((binding) => binding.actionId === "terminal.duplicate")).toBe(false);
   });
 
+  describe("findConflicts scope filtering and chord shadowing", () => {
+    // Default `modal.close` is bound to Escape in "modal" scope.
+    // `terminal` and `modal` scopes are disjoint, so a terminal-scoped Escape
+    // candidate must not collide with `modal.close`.
+    it("does not flag scope-disjoint bindings as conflicts", () => {
+      const service = new KeybindingService();
+
+      const conflicts = service.findConflicts("Escape", undefined, "terminal");
+      expect(conflicts.some((c) => c.actionId === "modal.close")).toBe(false);
+    });
+
+    it("flags global-scoped candidates against any scope", () => {
+      const service = new KeybindingService();
+
+      // A "global" candidate would fire everywhere, so it must collide with the
+      // modal-scoped Escape binding.
+      const conflicts = service.findConflicts("Escape", undefined, "global");
+      expect(conflicts.some((c) => c.actionId === "modal.close")).toBe(true);
+    });
+
+    it("marks exact-combo collisions as kind: 'conflict'", () => {
+      const service = new KeybindingService();
+      const conflicts = service.findConflicts("Cmd+T");
+      const dup = conflicts.find((c) => c.actionId === "terminal.duplicate");
+      expect(dup?.kind).toBe("conflict");
+    });
+
+    it("marks new-combo-shadows-existing-chord as kind: 'shadowed'", () => {
+      const service = new KeybindingService();
+      service.registerBinding({
+        actionId: "test.chord",
+        combo: "Cmd+Alt+Shift+J Cmd+Alt+Shift+Q",
+        scope: "global",
+        priority: 0,
+        description: "Test chord",
+      });
+
+      // Registering "Cmd+Alt+Shift+J" alone would make the chord unreachable.
+      const conflicts = service.findConflicts("Cmd+Alt+Shift+J");
+      const shadowed = conflicts.find((c) => c.actionId === "test.chord");
+      expect(shadowed?.kind).toBe("shadowed");
+    });
+
+    it("marks new-chord-shadowed-by-existing as kind: 'shadowed'", () => {
+      const service = new KeybindingService();
+      service.registerBinding({
+        actionId: "test.singleKey",
+        combo: "Cmd+Alt+Shift+J",
+        scope: "global",
+        priority: 0,
+        description: "Test single",
+      });
+
+      // Trying to register a chord starting with the same first step — the
+      // existing single binding makes the chord unreachable.
+      const conflicts = service.findConflicts("Cmd+Alt+Shift+J Cmd+Alt+Shift+Q");
+      const shadowed = conflicts.find((c) => c.actionId === "test.singleKey");
+      expect(shadowed?.kind).toBe("shadowed");
+    });
+
+    it("excludeActionId suppresses both 'conflict' and 'shadowed' returns", () => {
+      const service = new KeybindingService();
+      service.registerBinding({
+        actionId: "test.chord",
+        combo: "Cmd+Alt+Shift+J Cmd+Alt+Shift+Q",
+        scope: "global",
+        priority: 0,
+      });
+
+      const conflicts = service.findConflicts("Cmd+Alt+Shift+J", "test.chord");
+      expect(conflicts.some((c) => c.actionId === "test.chord")).toBe(false);
+    });
+  });
+
   it("surfaces empty effective combo for disabled overrides", () => {
     const service = new KeybindingService();
 
@@ -196,6 +303,30 @@ describe("KeybindingService", () => {
   it("binds Cmd+Alt+T to terminal.new by default", () => {
     const service = new KeybindingService();
     expect(service.getBinding("terminal.new")?.combo).toBe("Cmd+Alt+T");
+  });
+
+  it("binds project MRU plus to down/older and minus to up/newer by default", () => {
+    setPlatform("MacIntel");
+    const service = new KeybindingService();
+
+    expect(service.getBinding("project.mruCycleOlder")?.combo).toBe("Cmd+Alt+=");
+    expect(service.getBinding("project.mruCycleNewer")?.combo).toBe("Cmd+Alt+-");
+
+    const plus = createKeyboardEvent({
+      key: "≠",
+      code: "Equal",
+      metaKey: true,
+      altKey: true,
+    });
+    expect(service.findMatchingAction(plus)?.actionId).toBe("project.mruCycleOlder");
+
+    const minus = createKeyboardEvent({
+      key: "–",
+      code: "Minus",
+      metaKey: true,
+      altKey: true,
+    });
+    expect(service.findMatchingAction(minus)?.actionId).toBe("project.mruCycleNewer");
   });
 
   it("matchesEvent returns true for Shift+F10", () => {
@@ -391,6 +522,178 @@ describe("KeybindingService", () => {
     });
   });
 
+  describe("popPendingChord", () => {
+    it("is a no-op when no chord is pending", () => {
+      const service = new KeybindingService();
+      const listener = vi.fn();
+      service.subscribe(listener);
+
+      service.popPendingChord();
+
+      expect(service.getPendingChord()).toBeNull();
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it("clears the pending chord and notifies listeners", () => {
+      setPlatform("MacIntel");
+      const service = new KeybindingService();
+      const cmdK = createKeyboardEvent({
+        key: "k",
+        code: "KeyK",
+        metaKey: true,
+      });
+      service.resolveKeybinding(cmdK);
+      expect(service.getPendingChord()).not.toBeNull();
+
+      const listener = vi.fn();
+      service.subscribe(listener);
+
+      service.popPendingChord();
+
+      expect(service.getPendingChord()).toBeNull();
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it("is idempotent — repeated calls do not re-notify", () => {
+      setPlatform("MacIntel");
+      const service = new KeybindingService();
+      const cmdK = createKeyboardEvent({
+        key: "k",
+        code: "KeyK",
+        metaKey: true,
+      });
+      service.resolveKeybinding(cmdK);
+
+      const listener = vi.fn();
+      service.subscribe(listener);
+
+      service.popPendingChord();
+      service.popPendingChord();
+
+      expect(service.getPendingChord()).toBeNull();
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it("cancels the chord auto-clear timeout", () => {
+      vi.useFakeTimers();
+      try {
+        setPlatform("MacIntel");
+        const service = new KeybindingService();
+        const cmdK = createKeyboardEvent({
+          key: "k",
+          code: "KeyK",
+          metaKey: true,
+        });
+        service.resolveKeybinding(cmdK);
+        expect(service.getPendingChord()).not.toBeNull();
+
+        service.popPendingChord();
+        expect(service.getPendingChord()).toBeNull();
+
+        const listener = vi.fn();
+        service.subscribe(listener);
+
+        // The original 1000ms timeout would have fired here and re-notified
+        // listeners. After pop, no further notification should occur.
+        vi.advanceTimersByTime(2000);
+
+        expect(listener).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  describe("listener hygiene", () => {
+    function triggerNotify(service: KeybindingService): void {
+      const cmdK = createKeyboardEvent({
+        key: "k",
+        code: "KeyK",
+        metaKey: true,
+      });
+      service.resolveKeybinding(cmdK);
+      service.popPendingChord();
+    }
+
+    it("isolates errors so a throwing listener does not stop subsequent listeners", () => {
+      setPlatform("MacIntel");
+      const service = new KeybindingService();
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const before = vi.fn();
+      const thrower = vi.fn(() => {
+        throw new Error("listener boom");
+      });
+      const after = vi.fn();
+
+      service.subscribe(before);
+      service.subscribe(thrower);
+      service.subscribe(after);
+
+      triggerNotify(service);
+
+      expect(before).toHaveBeenCalled();
+      expect(thrower).toHaveBeenCalled();
+      expect(after).toHaveBeenCalled();
+      expect(after).toHaveBeenCalledTimes(before.mock.calls.length);
+      expect(warnSpy).toHaveBeenCalled();
+
+      warnSpy.mockRestore();
+    });
+
+    it("dedupes a listener subscribed twice via Set semantics", () => {
+      setPlatform("MacIntel");
+      const service = new KeybindingService();
+      const listener = vi.fn();
+
+      service.subscribe(listener);
+      service.subscribe(listener);
+
+      triggerNotify(service);
+
+      // Set dedup: the listener fires once per notification, not twice.
+      // triggerNotify produces 2 notifications (set + pop), so listener: 2 calls.
+      expect(listener).toHaveBeenCalledTimes(2);
+    });
+
+    it("safely handles a listener that unsubscribes itself during notification", () => {
+      setPlatform("MacIntel");
+      const service = new KeybindingService();
+      const after = vi.fn();
+      let unsubscribeSelf: (() => void) | null = null;
+
+      const selfRemover = vi.fn(() => {
+        unsubscribeSelf?.();
+      });
+
+      unsubscribeSelf = service.subscribe(selfRemover);
+      service.subscribe(after);
+
+      triggerNotify(service);
+
+      expect(selfRemover).toHaveBeenCalledTimes(1);
+      // `after` runs on both the set-pending and pop-pending notifications;
+      // mutating the underlying Set during notification must not break the
+      // current iteration's snapshot.
+      expect(after).toHaveBeenCalledTimes(2);
+    });
+
+    it("returns an unsubscribe that detaches the listener", () => {
+      setPlatform("MacIntel");
+      const service = new KeybindingService();
+      const listener = vi.fn();
+      const unsubscribe = service.subscribe(listener);
+
+      triggerNotify(service);
+      const initialCalls = listener.mock.calls.length;
+      expect(initialCalls).toBeGreaterThan(0);
+
+      unsubscribe();
+      triggerNotify(service);
+
+      expect(listener).toHaveBeenCalledTimes(initialCalls);
+    });
+  });
+
   describe("registerBinding collision detection", () => {
     it("warns and keeps incumbent when a different actionId tries to claim an existing combo", () => {
       const service = new KeybindingService();
@@ -485,6 +788,240 @@ describe("KeybindingService", () => {
       expect(service.getBinding("agent.claude")?.combo).toBe("Cmd+Alt+C");
 
       warnSpy.mockRestore();
+    });
+  });
+
+  describe("chord matching is modifier-order-independent — issue #7303", () => {
+    // Use Cmd+Shift+Alt+J as the prefix — not bound to any default non-chord
+    // action, so the chord prefix isn't shadowed by a competing non-chord match.
+    it("matches a chord override stored with non-canonical modifier order on the prefix step", () => {
+      setPlatform("MacIntel");
+      const service = new KeybindingService();
+      service.registerBinding({
+        actionId: "test.reorderedPrefix",
+        // User-stored: Shift+Alt+Cmd+J. Canonical eventToCombo: Cmd+Shift+Alt+J.
+        combo: "Shift+Alt+Cmd+J Cmd+X",
+        scope: "global",
+        priority: 99,
+      });
+
+      const first = createKeyboardEvent({
+        key: "j",
+        code: "KeyJ",
+        metaKey: true,
+        shiftKey: true,
+        altKey: true,
+      });
+
+      const result = service.resolveKeybinding(first);
+      expect(result.chordPrefix).toBe(true);
+      expect(service.getPendingChord()).not.toBeNull();
+    });
+
+    it("completes a chord whose first part uses non-canonical modifier order", () => {
+      setPlatform("MacIntel");
+      const service = new KeybindingService();
+      service.registerBinding({
+        actionId: "test.reorderedChord",
+        combo: "Shift+Alt+Cmd+J Cmd+X",
+        scope: "global",
+        priority: 99,
+      });
+
+      const first = createKeyboardEvent({
+        key: "j",
+        code: "KeyJ",
+        metaKey: true,
+        shiftKey: true,
+        altKey: true,
+      });
+      service.resolveKeybinding(first);
+
+      const second = createKeyboardEvent({
+        key: "x",
+        code: "KeyX",
+        metaKey: true,
+      });
+      const match = service.findMatchingAction(second);
+      expect(match?.actionId).toBe("test.reorderedChord");
+    });
+
+    it("completes a chord whose second part uses non-canonical modifier order", () => {
+      setPlatform("MacIntel");
+      const service = new KeybindingService();
+      service.registerBinding({
+        actionId: "test.reorderedSecond",
+        combo: "Cmd+K Alt+Shift+P",
+        scope: "global",
+        priority: 99,
+      });
+
+      const first = createKeyboardEvent({
+        key: "k",
+        code: "KeyK",
+        metaKey: true,
+      });
+      service.resolveKeybinding(first);
+
+      const second = createKeyboardEvent({
+        key: "p",
+        code: "KeyP",
+        shiftKey: true,
+        altKey: true,
+      });
+      const match = service.findMatchingAction(second);
+      expect(match?.actionId).toBe("test.reorderedSecond");
+    });
+  });
+
+  describe("setScope skips redundant clearPendingChord — issue #7303", () => {
+    it("does not clear a pending chord when pushing the same scope twice", () => {
+      setPlatform("MacIntel");
+      const service = new KeybindingService();
+      // Establish a pending chord first.
+      const cmdK = createKeyboardEvent({
+        key: "k",
+        code: "KeyK",
+        metaKey: true,
+      });
+      service.resolveKeybinding(cmdK);
+      expect(service.getPendingChord()).not.toBeNull();
+
+      // First setScope changes scope and clears the chord (expected).
+      service.setScope("modal");
+      expect(service.getPendingChord()).toBeNull();
+
+      // Re-establish a chord under the new scope, then push the same scope again.
+      service.resolveKeybinding(cmdK);
+      expect(service.getPendingChord()).not.toBeNull();
+
+      service.setScope("modal");
+
+      // Second push is the StrictMode/concurrent-instance case: scope didn't
+      // change, so the chord must survive.
+      expect(service.getPendingChord()).not.toBeNull();
+    });
+
+    it("preserves stack count so restoreScope still pops correctly with concurrent same-scope pushes", () => {
+      const service = new KeybindingService();
+      const stack = (service as unknown as { scopeStack: string[] }).scopeStack;
+
+      service.setScope("modal");
+      service.setScope("modal");
+      expect(stack.filter((s) => s === "modal").length).toBe(2);
+
+      service.restoreScope("modal");
+      expect(stack.filter((s) => s === "modal").length).toBe(1);
+      expect(service.getScope()).toBe("modal");
+
+      service.restoreScope("modal");
+      expect(stack.filter((s) => s === "modal").length).toBe(0);
+      expect(service.getScope()).toBe("global");
+    });
+  });
+
+  describe("override mutation clears pending chord — issue #7303", () => {
+    function startChord(service: KeybindingService) {
+      setPlatform("MacIntel");
+      const cmdK = createKeyboardEvent({
+        key: "k",
+        code: "KeyK",
+        metaKey: true,
+      });
+      service.resolveKeybinding(cmdK);
+      expect(service.getPendingChord()).not.toBeNull();
+    }
+
+    it("setOverride clears the pending chord", async () => {
+      const service = new KeybindingService();
+      startChord(service);
+      await service.setOverride("test.action", ["Cmd+Q"]);
+      expect(service.getPendingChord()).toBeNull();
+    });
+
+    it("removeOverride clears the pending chord", async () => {
+      const service = new KeybindingService();
+      startChord(service);
+      await service.removeOverride("test.action");
+      expect(service.getPendingChord()).toBeNull();
+    });
+
+    it("resetAllOverrides clears the pending chord", async () => {
+      const service = new KeybindingService();
+      startChord(service);
+      await service.resetAllOverrides();
+      expect(service.getPendingChord()).toBeNull();
+    });
+  });
+
+  describe("worktree empty-state shortcut defaults — issue #6437", () => {
+    it("registers Cmd+K N as the default for worktree.createDialog.open", () => {
+      const binding = DEFAULT_KEYBINDINGS.find((b) => b.actionId === "worktree.createDialog.open");
+      expect(binding).toBeDefined();
+      expect(binding?.combo).toBe("Cmd+K N");
+      expect(binding?.scope).toBe("global");
+      expect(binding?.category).toBe("Worktrees");
+    });
+
+    it("does not collide with the existing Cmd+K W worktree-palette chord", () => {
+      const createDialog = DEFAULT_KEYBINDINGS.find(
+        (b) => b.actionId === "worktree.createDialog.open"
+      );
+      const palette = DEFAULT_KEYBINDINGS.find((b) => b.actionId === "worktree.openPalette");
+      expect(createDialog?.combo).toBe("Cmd+K N");
+      expect(palette?.combo).toBe("Cmd+K W");
+      expect(createDialog?.combo).not.toBe(palette?.combo);
+    });
+
+    it("makes the chord resolvable via getChordCompletions for the Cmd+K prefix", () => {
+      setPlatform("MacIntel");
+      const service = new KeybindingService();
+      const completions = service.getChordCompletions("Cmd+K");
+      expect(completions).toContainEqual(
+        expect.objectContaining({ actionId: "worktree.createDialog.open" })
+      );
+    });
+
+    it("returns the display combo for worktree.createDialog.open via getDisplayCombo", () => {
+      setPlatform("MacIntel");
+      const service = new KeybindingService();
+      const display = service.getDisplayCombo("worktree.createDialog.open");
+      expect(display).not.toBe("");
+      expect(display).toContain("⌘");
+      expect(display.toUpperCase()).toContain("K");
+      expect(display.toUpperCase()).toContain("N");
+    });
+
+    it("registers every default-binding actionId in KEY_ACTION_VALUES", async () => {
+      // KEY_ACTION_VALUES is hand-maintained alongside the BuiltInKeyAction
+      // open union (BuiltInKeyAction | (string & {})), so the compiler can't
+      // catch drift. Iterate DEFAULT_KEYBINDINGS so any new action without a
+      // matching value entry fails the build instead of silently falling out
+      // of introspection (settings UI, conflict detection, etc.).
+      const { KEY_ACTION_VALUES } = await import("@shared/types/keymap");
+      const missing = DEFAULT_KEYBINDINGS.map((b) => b.actionId).filter(
+        (id) => !KEY_ACTION_VALUES.has(id)
+      );
+      expect(missing).toEqual([]);
+    });
+  });
+
+  describe("window.zoomIn discoverability alias — issue #7304", () => {
+    it("registers both Cmd+= and Cmd+Shift+= as defaults for window.zoomIn", () => {
+      const combos = DEFAULT_KEYBINDINGS.filter((b) => b.actionId === "window.zoomIn").map(
+        (b) => b.combo
+      );
+      expect(combos).toEqual(expect.arrayContaining(["Cmd+=", "Cmd+Shift+="]));
+      expect(combos).toHaveLength(2);
+    });
+
+    it("resolves Cmd+Shift+= to window.zoomIn at runtime", () => {
+      setPlatform("MacIntel");
+      const service = new KeybindingService();
+      const match = service.findMatchingAction(
+        createKeyboardEvent({ key: "+", code: "Equal", metaKey: true, shiftKey: true })
+      );
+      expect(match?.actionId).toBe("window.zoomIn");
     });
   });
 });

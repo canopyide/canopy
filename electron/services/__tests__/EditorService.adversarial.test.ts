@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fsMock = vi.hoisted(() => ({
   statSync: vi.fn<(path: string) => { isFile: () => boolean }>(),
+  accessSync: vi.fn<(path: string, mode?: number) => void>(),
+  constants: { X_OK: 1 },
 }));
 
 const execaMock = vi.hoisted(() => ({ execa: vi.fn() }));
@@ -24,11 +26,16 @@ function setPlatform(platform: NodeJS.Platform) {
   Object.defineProperty(process, "platform", { value: platform });
 }
 
-function mockExistingFiles(paths: string[]) {
+function mockExistingFiles(paths: string[], options: { executable?: boolean } = {}) {
   const set = new Set(paths);
+  const executable = options.executable ?? true;
   fsMock.statSync.mockImplementation((p: string) => {
     if (set.has(p)) return { isFile: () => true };
     throw new Error("ENOENT");
+  });
+  fsMock.accessSync.mockImplementation((p: string) => {
+    if (set.has(p) && executable) return;
+    throw new Error("EACCES");
   });
 }
 
@@ -85,7 +92,7 @@ describe("EditorService adversarial", () => {
     expect(shellMock.openPath).toHaveBeenCalledWith("/abs/file.ts");
   });
 
-  it("custom template with whitespace splits args naively — file path with spaces is fragmented", async () => {
+  it("custom template tokenizes before substitution — file path with spaces stays one arg", async () => {
     const { openFile } = await loadModule();
 
     await openFile("/abs/file with spaces.ts", 12, 5, {
@@ -97,20 +104,103 @@ describe("EditorService adversarial", () => {
     expect(execaMock.execa).toHaveBeenCalledTimes(1);
     const [binary, args] = execaMock.execa.mock.calls[0];
     expect(binary).toBe("code");
-    expect(args).toEqual(["--goto", "/abs/file", "with", "spaces.ts:12:5"]);
+    expect(args).toEqual(["--goto", "/abs/file with spaces.ts:12:5"]);
   });
 
-  it("VISUAL='code --reuse-window' is passed as a single binary string, not parsed", async () => {
+  it("VISUAL='code --reuse-window' is split into binary + args", async () => {
     process.env.VISUAL = "code --reuse-window";
     const { openFile } = await loadModule();
 
     await openFile("/abs/file.ts");
 
     expect(execaMock.execa).toHaveBeenCalledWith(
-      "code --reuse-window",
+      "code",
+      ["--reuse-window", "/abs/file.ts"],
+      expect.objectContaining({ detached: true })
+    );
+  });
+
+  it("VISUAL with quoted Windows-style path preserves the path as a single binary token", async () => {
+    process.env.VISUAL = '"C:\\Program Files\\Sublime Text\\subl.exe" -w';
+    const { openFile } = await loadModule();
+
+    await openFile("/abs/file.ts");
+
+    expect(execaMock.execa).toHaveBeenCalledWith(
+      "C:\\Program Files\\Sublime Text\\subl.exe",
+      ["-w", "/abs/file.ts"],
+      expect.objectContaining({ detached: true })
+    );
+  });
+
+  it("VISUAL=vim is skipped (terminal editor) and falls through to shell.openPath", async () => {
+    process.env.VISUAL = "vim";
+    const { openFile } = await loadModule();
+
+    await openFile("/abs/file.ts");
+
+    expect(execaMock.execa).not.toHaveBeenCalled();
+    expect(shellMock.openPath).toHaveBeenCalledWith("/abs/file.ts");
+  });
+
+  it("VISUAL='/usr/bin/nvim' with absolute path is still detected as a terminal editor and skipped", async () => {
+    process.env.VISUAL = "/usr/bin/nvim";
+    const { openFile } = await loadModule();
+
+    await openFile("/abs/file.ts");
+
+    expect(execaMock.execa).not.toHaveBeenCalled();
+    expect(shellMock.openPath).toHaveBeenCalledWith("/abs/file.ts");
+  });
+
+  it("VISUAL=vim falls through to EDITOR=code instead of dropping it", async () => {
+    process.env.VISUAL = "vim";
+    process.env.EDITOR = "code";
+    const { openFile } = await loadModule();
+
+    await openFile("/abs/file.ts");
+
+    expect(execaMock.execa).toHaveBeenCalledTimes(1);
+    expect(execaMock.execa).toHaveBeenCalledWith(
+      "code",
       ["/abs/file.ts"],
       expect.objectContaining({ detached: true })
     );
+  });
+
+  it("VISUAL=nvim.exe on Windows is detected as a terminal editor and skipped", async () => {
+    setPlatform("win32");
+    process.env.VISUAL = "nvim.exe";
+    const { openFile } = await loadModule();
+
+    await openFile("/abs/file.ts");
+
+    expect(execaMock.execa).not.toHaveBeenCalled();
+    expect(shellMock.openPath).toHaveBeenCalledWith("/abs/file.ts");
+  });
+
+  it("custom template substitutes every occurrence of {file}/{line}/{col}, not just the first", async () => {
+    const { openFile } = await loadModule();
+
+    await openFile("/abs/file.ts", 10, 2, {
+      id: "custom",
+      customCommand: "code",
+      customTemplate: "--arg={file}:{line}:{col}:{file}",
+    });
+
+    expect(execaMock.execa).toHaveBeenCalledTimes(1);
+    const [, args] = execaMock.execa.mock.calls[0];
+    expect(args).toEqual(["--arg=/abs/file.ts:10:2:/abs/file.ts"]);
+  });
+
+  it("findBinaryInPath skips files that exist but are not executable on Unix", async () => {
+    mockExistingFiles(["/usr/local/bin/code"], { executable: false });
+    const { openFile } = await loadModule();
+
+    await openFile("/abs/file.ts", 1, 1, { id: "vscode" });
+
+    expect(execaMock.execa).not.toHaveBeenCalled();
+    expect(shellMock.openPath).toHaveBeenCalledWith("/abs/file.ts");
   });
 
   it("falls through to shell.openPath and wraps its error string when every launcher fails", async () => {
@@ -126,20 +216,20 @@ describe("EditorService adversarial", () => {
   });
 
   it("accepts absolute paths that traverse outside any project root (no traversal guard)", async () => {
-    process.env.VISUAL = "vim";
+    process.env.VISUAL = "code";
     const { openFile } = await loadModule();
 
     await openFile("/repo/../secret.txt");
 
     expect(execaMock.execa).toHaveBeenCalledWith(
-      "vim",
+      "code",
       ["/repo/../secret.txt"],
       expect.any(Object)
     );
   });
 
   it("custom editor with empty command string falls through to env/discovery instead of silently succeeding", async () => {
-    process.env.VISUAL = "vim";
+    process.env.VISUAL = "code";
     const { openFile } = await loadModule();
 
     await openFile("/abs/file.ts", 1, 1, {
@@ -149,10 +239,10 @@ describe("EditorService adversarial", () => {
     });
 
     expect(execaMock.execa).toHaveBeenCalledTimes(1);
-    expect(execaMock.execa.mock.calls[0][0]).toBe("vim");
+    expect(execaMock.execa.mock.calls[0][0]).toBe("code");
   });
 
-  it("macOS 'open' fallback is used only on darwin when no editor resolves", async () => {
+  it("macOS 'open -t' fallback is used only on darwin when no editor resolves", async () => {
     setPlatform("darwin");
     const { openFile } = await loadModule();
 
@@ -160,7 +250,7 @@ describe("EditorService adversarial", () => {
 
     expect(execaMock.execa).toHaveBeenCalledWith(
       "open",
-      ["/abs/file.ts"],
+      ["-t", "/abs/file.ts"],
       expect.objectContaining({ detached: true })
     );
     expect(shellMock.openPath).not.toHaveBeenCalled();

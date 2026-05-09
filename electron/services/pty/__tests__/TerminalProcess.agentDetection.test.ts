@@ -73,8 +73,6 @@ function createMockProcessTreeCache(): ProcessTreeCache {
     getChildren: vi.fn().mockReturnValue([]),
     getProcess: vi.fn(),
     hasChildren: vi.fn().mockReturnValue(false),
-    getDescendantsCpuUsage: vi.fn().mockReturnValue(0),
-    hasActiveDescendants: vi.fn().mockReturnValue(false),
     start: vi.fn(),
     stop: vi.fn(),
     onRefresh: vi.fn().mockReturnValue(() => {}),
@@ -113,6 +111,23 @@ function createMutableDescendantCache(): {
 type TerminalProcessOptions = ConstructorParameters<typeof TerminalProcess>[1];
 type TerminalProcessDeps = ConstructorParameters<typeof TerminalProcess>[3];
 
+// In tests we override the foreground-pgid probe so it returns null
+// synchronously, restoring the legacy "no foreground gate" default. The
+// production code uses an async stale-while-revalidate cache that returns a
+// "child active" sentinel before the first probe resolves; that sentinel
+// would incorrectly hold the demotion gate closed in tests where no real ps
+// probe runs. Tests that exercise the foreground gate explicitly install
+// their own override after construction (see "does not demote ... while a
+// foreground child owns the PTY").
+function installNullForegroundSnapshot(terminal: TerminalProcess): TerminalProcess {
+  (
+    terminal as unknown as {
+      readForegroundProcessGroupSnapshot: () => null;
+    }
+  ).readForegroundProcessGroupSnapshot = () => null;
+  return terminal;
+}
+
 function createAgentTerminal(deps?: Partial<TerminalProcessDeps>): TerminalProcess {
   const options: TerminalProcessOptions = {
     cwd: process.cwd(),
@@ -126,23 +141,25 @@ function createAgentTerminal(deps?: Partial<TerminalProcessDeps>): TerminalProce
     args: ["-l"],
     env: {},
   };
-  return new TerminalProcess(
-    "t-agent",
-    options,
-    { emitData: () => {}, onExit: () => {} },
-    {
-      agentStateService: {
-        handleActivityState: () => {},
-        updateAgentState: () => {},
-        emitAgentKilled: () => {},
-        emitAgentCompleted: () => {},
-      } as unknown as TerminalProcessDeps["agentStateService"],
-      ptyPool: null,
-      processTreeCache: createMockProcessTreeCache(),
-      ...deps,
-    } as TerminalProcessDeps,
-    ctx,
-    createMockPty()
+  return installNullForegroundSnapshot(
+    new TerminalProcess(
+      "t-agent",
+      options,
+      { emitData: () => {}, onExit: () => {} },
+      {
+        agentStateService: {
+          handleActivityState: () => {},
+          updateAgentState: () => {},
+          emitAgentKilled: () => {},
+          emitAgentCompleted: () => {},
+        } as unknown as TerminalProcessDeps["agentStateService"],
+        ptyPool: null,
+        processTreeCache: createMockProcessTreeCache(),
+        ...deps,
+      } as TerminalProcessDeps,
+      ctx,
+      createMockPty()
+    )
   );
 }
 
@@ -158,23 +175,25 @@ function createPlainTerminal(id = "t-plain", deps?: Partial<TerminalProcessDeps>
     args: ["-l"],
     env: {},
   };
-  return new TerminalProcess(
-    id,
-    options,
-    { emitData: () => {}, onExit: () => {} },
-    {
-      agentStateService: {
-        handleActivityState: () => {},
-        updateAgentState: () => {},
-        emitAgentKilled: () => {},
-        emitAgentCompleted: () => {},
-      } as unknown as TerminalProcessDeps["agentStateService"],
-      ptyPool: null,
-      processTreeCache: createMockProcessTreeCache(),
-      ...deps,
-    } as TerminalProcessDeps,
-    ctx,
-    createMockPty()
+  return installNullForegroundSnapshot(
+    new TerminalProcess(
+      id,
+      options,
+      { emitData: () => {}, onExit: () => {} },
+      {
+        agentStateService: {
+          handleActivityState: () => {},
+          updateAgentState: () => {},
+          emitAgentKilled: () => {},
+          emitAgentCompleted: () => {},
+        } as unknown as TerminalProcessDeps["agentStateService"],
+        ptyPool: null,
+        processTreeCache: createMockProcessTreeCache(),
+        ...deps,
+      } as TerminalProcessDeps,
+      ctx,
+      createMockPty()
+    )
   );
 }
 
@@ -195,23 +214,25 @@ function createPlainTerminalWithCommand(
     args: ["-lc", command],
     env: {},
   };
-  return new TerminalProcess(
-    id,
-    options,
-    { emitData: () => {}, onExit: () => {} },
-    {
-      agentStateService: {
-        handleActivityState: () => {},
-        updateAgentState: () => {},
-        emitAgentKilled: () => {},
-        emitAgentCompleted: () => {},
-      } as unknown as TerminalProcessDeps["agentStateService"],
-      ptyPool: null,
-      processTreeCache: createMockProcessTreeCache(),
-      ...deps,
-    } as TerminalProcessDeps,
-    ctx,
-    createMockPty()
+  return installNullForegroundSnapshot(
+    new TerminalProcess(
+      id,
+      options,
+      { emitData: () => {}, onExit: () => {} },
+      {
+        agentStateService: {
+          handleActivityState: () => {},
+          updateAgentState: () => {},
+          emitAgentKilled: () => {},
+          emitAgentCompleted: () => {},
+        } as unknown as TerminalProcessDeps["agentStateService"],
+        ptyPool: null,
+        processTreeCache: createMockProcessTreeCache(),
+        ...deps,
+      } as TerminalProcessDeps,
+      ctx,
+      createMockPty()
+    )
   );
 }
 
@@ -588,7 +609,7 @@ describe("TerminalProcess shell-command identity fallback", () => {
       expect(terminal.getInfo().detectedAgentId).toBe("claude");
 
       pty.__emitData("^CFAKE_CLAUDE_EXIT\r\n");
-      pty.__emitData("➜  canopy-app git:(main) ");
+      pty.__emitData("➜  daintree-app git:(main) ");
       await vi.advanceTimersByTimeAsync(600);
 
       expect(terminal.getInfo().detectedAgentId).toBeUndefined();
@@ -626,7 +647,7 @@ describe("TerminalProcess shell-command identity fallback", () => {
       // Once the shell reclaims the foreground process group, prompt return is
       // authoritative and demotion is allowed.
       foregroundPgid = 123;
-      pty.__emitData("\r\n➜  canopy-app git:(main) ");
+      pty.__emitData("\r\n➜  daintree-app git:(main) ");
       await vi.advanceTimersByTimeAsync(600);
 
       expect(terminal.getInfo().detectedAgentId).toBeUndefined();
@@ -649,7 +670,7 @@ describe("TerminalProcess shell-command identity fallback", () => {
       await vi.advanceTimersByTimeAsync(2000);
       expect(terminal.getInfo().detectedAgentId).toBe("claude");
 
-      pty.__emitData("\r\ngpriday@macbook canopy-app % ");
+      pty.__emitData("\r\ngpriday@macbook daintree-app % ");
       await vi.advanceTimersByTimeAsync(600);
 
       const info = terminal.getInfo();
@@ -670,12 +691,12 @@ describe("TerminalProcess shell-command identity fallback", () => {
     try {
       terminal.write("npm run dev\r");
       pty.__emitData("npm run dev\r\n");
-      pty.__emitData("> canopy-app@1.0.0 dev\r\n");
+      pty.__emitData("> daintree-app@1.0.0 dev\r\n");
 
       await vi.advanceTimersByTimeAsync(2000);
       expect(terminal.getInfo().detectedProcessIconId).toBe("npm");
 
-      pty.__emitData("\r\ngpriday@macbook canopy-app % ");
+      pty.__emitData("\r\ngpriday@macbook daintree-app % ");
       await vi.advanceTimersByTimeAsync(600);
 
       expect(terminal.getInfo().detectedProcessIconId).toBeUndefined();
@@ -692,7 +713,7 @@ describe("TerminalProcess shell-command identity fallback", () => {
     try {
       terminal.write("claude --version\r");
       pty.__emitData("claude --version\r\n2.1.117\r\n");
-      pty.__emitData("gpriday@macbook canopy-app % ");
+      pty.__emitData("gpriday@macbook daintree-app % ");
 
       await vi.advanceTimersByTimeAsync(2500);
 
@@ -719,7 +740,7 @@ describe("TerminalProcess shell-command identity fallback", () => {
     try {
       terminal.write("npm run dev\r");
       pty.__emitData("npm run dev\r\n");
-      pty.__emitData("> canopy-app@1.0.0 dev\r\n");
+      pty.__emitData("> daintree-app@1.0.0 dev\r\n");
       await vi.advanceTimersByTimeAsync(2000);
       expect(terminal.getInfo().detectedProcessIconId).toBe("npm");
 
@@ -779,7 +800,7 @@ describe("TerminalProcess shell-command identity fallback", () => {
     try {
       terminal.write("npm run dev\r");
       pty.__emitData("npm run dev\r\n");
-      pty.__emitData("> canopy-app@1.0.0 dev\r\n");
+      pty.__emitData("> daintree-app@1.0.0 dev\r\n");
       await vi.advanceTimersByTimeAsync(2000);
       expect(terminal.getInfo().detectedProcessIconId).toBe("npm");
 
@@ -956,7 +977,7 @@ describe("TerminalProcess spawn command identity seeding", () => {
       expect(terminal.getInfo().detectedAgentId).toBe("claude");
 
       setDescendants([]);
-      pty.__emitData("\r\ngpriday@macbook canopy-app % ");
+      pty.__emitData("\r\ngpriday@macbook daintree-app % ");
       await vi.advanceTimersByTimeAsync(600);
 
       expect(terminal.getInfo().detectedAgentId).toBeUndefined();
@@ -987,7 +1008,7 @@ describe("TerminalProcess spawn command identity seeding", () => {
       // zsh/git prompts can briefly spawn helper descendants while the shell
       // prompt is visible. That must not keep the terminal in agent chrome.
       setDescendants([999]);
-      pty.__emitData("\r\n➜  canopy-app git:(main) ");
+      pty.__emitData("\r\n➜  daintree-app git:(main) ");
       await vi.advanceTimersByTimeAsync(600);
 
       expect(terminal.getInfo().detectedAgentId).toBeUndefined();
@@ -1012,7 +1033,7 @@ describe("TerminalProcess spawn command identity seeding", () => {
       pty.__emitData(" Enter to confirm · Esc to cancel\r\n");
       pty.__emitData("FAKE_CLAUDE_READY\r\n");
       pty.__emitData("^CFAKE_CLAUDE_EXIT\r\n");
-      pty.__emitData("➜  canopy-app git:(main) ");
+      pty.__emitData("➜  daintree-app git:(main) ");
       await vi.advanceTimersByTimeAsync(600);
 
       expect(terminal.getInfo().detectedAgentId).toBeUndefined();

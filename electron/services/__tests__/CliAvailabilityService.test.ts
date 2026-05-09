@@ -35,6 +35,17 @@ vi.mock("child_process", () => ({
   execFile: vi.fn(defaultExecFileImpl),
 }));
 
+// Mock os.homedir() to return a stable Unix-style path. On Windows runners
+// the real homedir is `C:\Users\<user>`, which (after join with `~/...`
+// candidates from synthesisePypiProbePaths) yields backslashed strings that
+// `expandPath()` rejects via its Windows-paths-on-Unix guard. Forcing a
+// Unix-shaped homedir keeps the synthesised candidates probeable when
+// `process.platform` is mocked to "darwin" for the bulk of the suite.
+vi.mock("os", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  return { ...actual, homedir: vi.fn(() => "/Users/test") };
+});
+
 vi.mock("../../setup/environment.js", () => ({
   refreshPath: vi.fn().mockResolvedValue(undefined),
   expandWindowsEnvVars: vi.fn((s: string) =>
@@ -90,6 +101,11 @@ describe("CliAvailabilityService", () => {
   const mockedExecFile = vi.mocked(execFile);
   let consoleLogSpy: ReturnType<typeof vi.spyOn>;
   const savedEnv: Record<string, string | undefined> = {};
+  // Default platform to darwin so Unix-style path/probe expectations don't
+  // diverge on Windows CI. Individual tests that exercise Windows-specific
+  // branches (`where.exe`, `<prefix>\<cmd>.cmd` shims, WSL fallback, etc.)
+  // override `process.platform` explicitly via `Object.defineProperty`.
+  const originalPlatformDescriptor = Object.getOwnPropertyDescriptor(process, "platform");
   // Auth env vars consulted by AgentAuthCheck.envVar across the built-in
   // registry. Clear them so local dev shells (which commonly have these set)
   // don't cause the "no auth file" assertions to flip to "ready".
@@ -112,6 +128,10 @@ describe("CliAvailabilityService", () => {
       savedEnv[key] = process.env[key];
       delete process.env[key];
     }
+
+    // Default to darwin — most assertions in this file expect Unix path/probe
+    // semantics. Tests covering Windows behavior re-define platform explicitly.
+    Object.defineProperty(process, "platform", { value: "darwin", writable: true });
 
     service = new CliAvailabilityService();
     // Reset the in-memory store between tests so duplicate-cli milestone
@@ -140,6 +160,9 @@ describe("CliAvailabilityService", () => {
       } else {
         process.env[key] = savedEnv[key];
       }
+    }
+    if (originalPlatformDescriptor) {
+      Object.defineProperty(process, "platform", originalPlatformDescriptor);
     }
   });
 
@@ -246,7 +269,14 @@ describe("CliAvailabilityService", () => {
       // them to "ready" and defeat the "only claude is available" premise.
       mockedAccess.mockImplementation(async (p) => {
         const pathStr = String(p);
-        if (pathStr.includes("/bin/") || pathStr.includes("cursor-agent.app")) {
+        // Match `/bin/` (posix) and `\bin\` (Windows, when path.join runs on a
+        // Windows runner with `process.platform` mocked to darwin and produces
+        // backslashed candidates from `~/...` inputs).
+        if (
+          pathStr.includes("/bin/") ||
+          pathStr.includes("\\bin\\") ||
+          pathStr.includes("cursor-agent.app")
+        ) {
           throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
         }
         return undefined;
@@ -271,6 +301,7 @@ describe("CliAvailabilityService", () => {
       const mockedAccess = vi.mocked(access);
 
       process.env.DAINTREE_CLI_PATH_PREPEND = "/tmp/daintree-fake-bin";
+      const expectedClaudePath = join("/tmp/daintree-fake-bin", "claude");
 
       mockedExecFileSync.mockImplementation((_file, args) => {
         if (cmdOf(args) === "claude") {
@@ -279,7 +310,7 @@ describe("CliAvailabilityService", () => {
         throw new Error("Command not found");
       });
       mockedAccess.mockImplementation(async (p, mode) => {
-        if (String(p) === "/tmp/daintree-fake-bin/claude" && mode === constants.X_OK) {
+        if (String(p) === expectedClaudePath && mode === constants.X_OK) {
           return;
         }
         throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
@@ -288,12 +319,56 @@ describe("CliAvailabilityService", () => {
       const result = await service.checkAvailability();
 
       expect(result.claude).toBe("unauthenticated");
-      expect(service.getDetails()?.claude?.resolvedPath).toBe("/tmp/daintree-fake-bin/claude");
+      expect(service.getDetails()?.claude?.resolvedPath).toBe(expectedClaudePath);
       expect(mockedExecFileSync).not.toHaveBeenCalledWith(
         "which",
         ["-a", "claude"],
         expect.any(Object)
       );
+    });
+
+    it("prefers Windows .cmd shims from DAINTREE_CLI_PATH_PREPEND over extensionless npm shims", async () => {
+      const originalPlatform = process.platform;
+      const { access, constants } = await import("fs/promises");
+      const mockedAccess = vi.mocked(access);
+
+      Object.defineProperty(process, "platform", { value: "win32", writable: true });
+      process.env.DAINTREE_CLI_PATH_PREPEND = "/tmp/daintree-fake-bin";
+      const expectedClaudePath = join("/tmp/daintree-fake-bin", "claude.cmd");
+
+      mockedExecFileSync.mockImplementation((_file, args) => {
+        if (cmdOf(args) === "claude") {
+          return Buffer.from("C:\\npm\\prefix\\claude\r\n");
+        }
+        throw new Error("Command not found");
+      });
+      mockedAccess.mockImplementation(async (p, mode) => {
+        const pathStr = String(p);
+        if (
+          mode === constants.X_OK &&
+          (pathStr === expectedClaudePath || pathStr === join("/tmp/daintree-fake-bin", "claude"))
+        ) {
+          return;
+        }
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      });
+
+      try {
+        const result = await service.checkAvailability();
+
+        expect(result.claude).toBe("unauthenticated");
+        expect(service.getDetails()?.claude?.resolvedPath).toBe(expectedClaudePath);
+        expect(mockedExecFileSync).not.toHaveBeenCalledWith(
+          "where",
+          ["claude"],
+          expect.any(Object)
+        );
+      } finally {
+        Object.defineProperty(process, "platform", {
+          value: originalPlatform,
+          writable: true,
+        });
+      }
     });
 
     it("uses which on Unix-like systems", async () => {
@@ -1299,11 +1374,70 @@ describe("CliAvailabilityService", () => {
       await service.checkAvailability();
 
       const npmCalls = mockedExecFile.mock.calls.filter((c) => c[0] === "npm");
-      expect(npmCalls).toHaveLength(5);
+      // With the per-checkId cache, all npm-backed agents share a single
+      // `npm config get prefix` call instead of issuing one per agent.
+      expect(npmCalls).toHaveLength(1);
       // Deterministic probe form — guards against arg-drift regressions.
       for (const call of npmCalls) {
         expect(call[1]).toEqual(["config", "get", "prefix"]);
       }
+    });
+
+    it("re-issues `npm config get prefix` after refresh() invalidates the cache", async () => {
+      mockedExecFileSync.mockImplementation(() => {
+        throw Object.assign(new Error("not found"), { code: "ENOENT" });
+      });
+      mockedExecFile.mockImplementation(((...args: unknown[]) => {
+        const callback = args.find(
+          (a): a is (err: unknown, stdout?: string) => void => typeof a === "function"
+        );
+        const err = Object.assign(new Error("not found"), { code: "ENOENT" });
+        queueMicrotask(() => callback?.(err));
+        return {} as never;
+      }) as never);
+
+      await service.checkAvailability();
+      expect(mockedExecFile.mock.calls.filter((c) => c[0] === "npm")).toHaveLength(1);
+
+      await service.refresh();
+      expect(mockedExecFile.mock.calls.filter((c) => c[0] === "npm")).toHaveLength(2);
+    });
+
+    it("caches a successful npm prefix and reuses it across all npm-backed agents", async () => {
+      const { access } = await import("fs/promises");
+      const mockedAccess = vi.mocked(access);
+
+      mockedExecFileSync.mockImplementation(() => {
+        throw Object.assign(new Error("not found"), { code: "ENOENT" });
+      });
+
+      mockedExecFile.mockImplementation(((...args: unknown[]) => {
+        const file = args[0] as string;
+        const callback = args.find(
+          (a): a is (err: unknown, stdout?: string) => void => typeof a === "function"
+        );
+        if (file === "npm") {
+          queueMicrotask(() => callback?.(null, "/Users/test/.npm-global\n"));
+        } else {
+          const err = Object.assign(new Error("not found"), { code: "ENOENT" });
+          queueMicrotask(() => callback?.(err));
+        }
+        return {} as never;
+      }) as never);
+
+      const claudeShim = join("/Users/test/.npm-global", "bin", "claude");
+      const geminiShim = join("/Users/test/.npm-global", "bin", "gemini");
+      mockedAccess.mockImplementation(async (p) => {
+        if (String(p) === claudeShim || String(p) === geminiShim) return;
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      });
+
+      await service.checkAvailability();
+
+      const npmCalls = mockedExecFile.mock.calls.filter((c) => c[0] === "npm");
+      expect(npmCalls).toHaveLength(1);
+      expect(service.getDetails()!.claude?.via).toBe("npm-global");
+      expect(service.getDetails()!.gemini?.via).toBe("npm-global");
     });
   });
 
@@ -1562,7 +1696,10 @@ describe("CliAvailabilityService", () => {
       // Filter out paths synthesised for agents whose `packages.pypi`
       // legitimately triggers uv/pipx probing (interpreter, mistral, kimi, aider).
       // Remaining probed paths must not include any uv/pipx layouts.
-      const allProbedPaths = mockedAccess.mock.calls.map((c) => String(c[0]));
+      // Normalize separators so substring checks work regardless of host OS
+      // (Windows runners produce backslashed paths post-`path.join`).
+      const norm = (s: string) => s.replace(/\\/g, "/");
+      const allProbedPaths = mockedAccess.mock.calls.map((c) => norm(String(c[0])));
       const probedPaths = allProbedPaths.filter(
         (p) =>
           !p.includes("open-interpreter") &&
@@ -1789,6 +1926,40 @@ describe("CliAvailabilityService", () => {
         // intentionally omitted — the field signals duplicates only.
         expect(detail.allResolvedPaths).toBeUndefined();
         expect(detail.resolvedPath).toBe("C:\\Users\\x\\AppData\\Roaming\\npm\\claude.cmd");
+
+        const toastCalls = mockedBroadcast.mock.calls.filter(
+          (call) => call[0] === CHANNELS.NOTIFICATION_SHOW_TOAST
+        );
+        expect(toastCalls).toHaveLength(0);
+      } finally {
+        Object.defineProperty(process, "platform", {
+          value: originalPlatform,
+          writable: true,
+        });
+      }
+    });
+
+    it("prefers Windows .cmd shims when where.exe lists an extensionless npm shim first", async () => {
+      const originalPlatform = process.platform;
+      Object.defineProperty(process, "platform", { value: "win32", writable: true });
+      try {
+        mockedExecFileSync.mockImplementation((_file, args) => {
+          const argv = args as string[] | undefined;
+          if (argv?.[0] === "claude") {
+            return Buffer.from(
+              "C:\\npm\\prefix\\claude\r\n" +
+                "C:\\npm\\prefix\\claude.cmd\r\n" +
+                "C:\\npm\\prefix\\claude.ps1\r\n"
+            );
+          }
+          return Buffer.from("");
+        });
+
+        await service.checkAvailability();
+
+        const detail = service.getDetails()!.claude!;
+        expect(detail.allResolvedPaths).toBeUndefined();
+        expect(detail.resolvedPath).toBe("C:\\npm\\prefix\\claude.cmd");
 
         const toastCalls = mockedBroadcast.mock.calls.filter(
           (call) => call[0] === CHANNELS.NOTIFICATION_SHOW_TOAST

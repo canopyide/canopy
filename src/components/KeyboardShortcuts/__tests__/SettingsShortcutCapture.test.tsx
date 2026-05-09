@@ -6,6 +6,7 @@ import { SettingsShortcutCapture } from "../SettingsShortcutCapture";
 
 // Mock dependencies
 vi.mock("@/services/KeybindingService", () => ({
+  CHORD_TIMEOUT_MS: 1000,
   keybindingService: {
     findConflicts: vi.fn(() => []),
     formatComboForDisplay: vi.fn((combo: string) => combo),
@@ -80,6 +81,26 @@ describe("SettingsShortcutCapture", () => {
     fireEvent.click(screen.getByText("Click to record shortcut"));
 
     expect(screen.getByText("Press key combination...")).toBeTruthy();
+  });
+
+  it("status region announces recording state changes via aria-live", () => {
+    render(
+      <SettingsShortcutCapture
+        onCapture={mockOnCapture}
+        onCancel={mockOnCancel}
+        excludeActionId="test.action"
+      />
+    );
+
+    const status = screen.getByRole("status");
+    expect(status.getAttribute("aria-live")).toBe("polite");
+    expect(status.getAttribute("aria-atomic")).toBe("true");
+    expect(status.textContent).toContain("Click to record shortcut");
+
+    fireEvent.click(screen.getByText("Click to record shortcut"));
+
+    const updatedStatus = screen.getByRole("status");
+    expect(updatedStatus.textContent).toContain("Press key combination...");
   });
 
   it("captures single key combination and displays it", async () => {
@@ -283,6 +304,7 @@ describe("SettingsShortcutCapture", () => {
         combo: "Cmd+A",
         scope: "global",
         priority: 0,
+        kind: "conflict",
       },
     ]);
 
@@ -310,6 +332,119 @@ describe("SettingsShortcutCapture", () => {
 
     expect(screen.getByText("Conflicts with:")).toBeTruthy();
     expect(screen.getByText("Conflicting Action")).toBeTruthy();
+  });
+
+  it("threads scope prop into findConflicts", async () => {
+    const { keybindingService } = await import("@/services/KeybindingService");
+    vi.mocked(keybindingService.findConflicts).mockReturnValue([]);
+
+    render(
+      <SettingsShortcutCapture
+        onCapture={mockOnCapture}
+        onCancel={mockOnCancel}
+        excludeActionId="test.action"
+        scope="terminal"
+      />
+    );
+
+    fireEvent.click(screen.getByText("Click to record shortcut"));
+
+    const keyEvent = new KeyboardEvent("keydown", {
+      key: "Escape",
+      code: "Escape",
+      bubbles: true,
+    });
+
+    act(() => {
+      window.dispatchEvent(keyEvent);
+      vi.advanceTimersByTime(1100);
+    });
+
+    expect(keybindingService.findConflicts).toHaveBeenCalledWith(
+      expect.any(String),
+      "test.action",
+      "terminal"
+    );
+  });
+
+  it("hides Unbind for shadowed (chord-overlap) conflicts", async () => {
+    const { keybindingService } = await import("@/services/KeybindingService");
+    vi.mocked(keybindingService.findConflicts).mockReturnValue([
+      {
+        actionId: "shadowed.chord",
+        description: "Existing chord",
+        combo: "Cmd+K Cmd+S",
+        scope: "global",
+        priority: 0,
+        kind: "shadowed",
+      },
+    ]);
+
+    render(
+      <SettingsShortcutCapture
+        onCapture={mockOnCapture}
+        onCancel={mockOnCancel}
+        excludeActionId="test.action"
+      />
+    );
+
+    fireEvent.click(screen.getByText("Click to record shortcut"));
+
+    const keyEvent = new KeyboardEvent("keydown", {
+      key: "k",
+      code: "KeyK",
+      ctrlKey: true,
+      bubbles: true,
+    });
+
+    act(() => {
+      window.dispatchEvent(keyEvent);
+      vi.advanceTimersByTime(1100);
+    });
+
+    expect(screen.getByText("Existing chord")).toBeTruthy();
+    expect(screen.getByText("is shadowed by this chord")).toBeTruthy();
+    expect(screen.queryByText("Unbind")).toBeNull();
+  });
+
+  it("renders 'shadows this chord' when existing single shadows captured chord", async () => {
+    const { keybindingService } = await import("@/services/KeybindingService");
+    vi.mocked(keybindingService.findConflicts).mockReturnValue([
+      {
+        actionId: "shadowing.single",
+        description: "Existing single",
+        combo: "Cmd+K",
+        scope: "global",
+        priority: 0,
+        kind: "shadowed",
+      },
+    ]);
+
+    render(
+      <SettingsShortcutCapture
+        onCapture={mockOnCapture}
+        onCancel={mockOnCancel}
+        excludeActionId="test.action"
+      />
+    );
+
+    fireEvent.click(screen.getByText("Click to record shortcut"));
+
+    act(() => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "k", code: "KeyK", ctrlKey: true, bubbles: true })
+      );
+    });
+    act(() => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "s", code: "KeyS", ctrlKey: true, bubbles: true })
+      );
+      vi.advanceTimersByTime(1100);
+    });
+
+    expect(screen.getByText("Existing single")).toBeTruthy();
+    expect(screen.getByText("shadows this chord")).toBeTruthy();
+    expect(screen.queryByText("Unbind")).toBeNull();
   });
 
   it("uses normalizeKeyForBinding for key normalization", async () => {
@@ -422,6 +557,140 @@ describe("SettingsShortcutCapture", () => {
     expect(clearTimeoutSpy).toHaveBeenCalled();
   });
 
+  describe("IME composition guard", () => {
+    it("ignores keydown when isComposing is true", () => {
+      render(
+        <SettingsShortcutCapture
+          onCapture={mockOnCapture}
+          onCancel={mockOnCancel}
+          excludeActionId="test.action"
+        />
+      );
+
+      fireEvent.click(screen.getByText("Click to record shortcut"));
+
+      const keyEvent = new KeyboardEvent("keydown", {
+        key: "Enter",
+        code: "Enter",
+        bubbles: true,
+        cancelable: true,
+      });
+      // jsdom ignores isComposing in the constructor init dict.
+      Object.defineProperty(keyEvent, "isComposing", { value: true, configurable: true });
+      const stopPropagationSpy = vi.spyOn(keyEvent, "stopPropagation");
+
+      act(() => {
+        window.dispatchEvent(keyEvent);
+      });
+
+      expect(screen.getByText("Press key combination...")).toBeTruthy();
+      expect(keyEvent.defaultPrevented).toBe(false);
+      // Guard must run before stopPropagation — otherwise the IME candidate window
+      // can break in the surrounding application.
+      expect(stopPropagationSpy).not.toHaveBeenCalled();
+    });
+
+    it("ignores keydown when keyCode is 229 (Chromium Process key)", () => {
+      render(
+        <SettingsShortcutCapture
+          onCapture={mockOnCapture}
+          onCancel={mockOnCancel}
+          excludeActionId="test.action"
+        />
+      );
+
+      fireEvent.click(screen.getByText("Click to record shortcut"));
+
+      const keyEvent = new KeyboardEvent("keydown", {
+        key: "Process",
+        bubbles: true,
+        cancelable: true,
+      });
+      Object.defineProperty(keyEvent, "keyCode", { value: 229, configurable: true });
+      const stopPropagationSpy = vi.spyOn(keyEvent, "stopPropagation");
+
+      act(() => {
+        window.dispatchEvent(keyEvent);
+      });
+
+      expect(screen.getByText("Press key combination...")).toBeTruthy();
+      expect(keyEvent.defaultPrevented).toBe(false);
+      expect(stopPropagationSpy).not.toHaveBeenCalled();
+    });
+
+    it("does not record an IME-composing Enter as the first chord token", () => {
+      render(
+        <SettingsShortcutCapture
+          onCapture={mockOnCapture}
+          onCancel={mockOnCancel}
+          excludeActionId="test.action"
+        />
+      );
+
+      fireEvent.click(screen.getByText("Click to record shortcut"));
+
+      const composingEnter = new KeyboardEvent("keydown", {
+        key: "Enter",
+        code: "Enter",
+        bubbles: true,
+        cancelable: true,
+      });
+      Object.defineProperty(composingEnter, "isComposing", { value: true, configurable: true });
+
+      act(() => {
+        window.dispatchEvent(composingEnter);
+        vi.advanceTimersByTime(1100);
+      });
+
+      // No combo captured — Save button should not appear and the prompt is unchanged.
+      expect(screen.queryByText("Save")).toBeNull();
+      expect(screen.getByText("Press key combination...")).toBeTruthy();
+    });
+
+    it("does not record an IME-composing Enter as the second token of a pending chord", () => {
+      render(
+        <SettingsShortcutCapture
+          onCapture={mockOnCapture}
+          onCancel={mockOnCancel}
+          excludeActionId="test.action"
+        />
+      );
+
+      fireEvent.click(screen.getByText("Click to record shortcut"));
+
+      // First chord token — Ctrl+K — opens the "waiting for second key" window.
+      const firstToken = new KeyboardEvent("keydown", {
+        key: "k",
+        code: "KeyK",
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      act(() => {
+        window.dispatchEvent(firstToken);
+      });
+      expect(screen.getByText(/press second key or wait to finish/)).toBeTruthy();
+
+      // IME commit Enter while we're waiting must NOT become the second chord token.
+      const composingEnter = new KeyboardEvent("keydown", {
+        key: "Enter",
+        code: "Enter",
+        bubbles: true,
+        cancelable: true,
+      });
+      Object.defineProperty(composingEnter, "isComposing", { value: true, configurable: true });
+      act(() => {
+        window.dispatchEvent(composingEnter);
+        vi.advanceTimersByTime(1100);
+      });
+
+      // The single-token Ctrl+K should finalize cleanly with no chord suffix.
+      expect(screen.queryByText(/press second key or wait to finish/)).toBeNull();
+      expect(screen.queryByText(/\(chord\)/)).toBeNull();
+      expect(screen.getByText("Save")).toBeTruthy();
+    });
+  });
+
   describe("conflict remediation", () => {
     it("renders unbind buttons for each conflict", async () => {
       const { keybindingService } = await import("@/services/KeybindingService");
@@ -432,6 +701,7 @@ describe("SettingsShortcutCapture", () => {
           combo: "Cmd+A",
           scope: "global",
           priority: 0,
+          kind: "conflict",
         },
         {
           actionId: "conflict.action2",
@@ -439,6 +709,7 @@ describe("SettingsShortcutCapture", () => {
           combo: "Cmd+B",
           scope: "global",
           priority: 0,
+          kind: "conflict",
         },
       ]);
 
@@ -482,6 +753,7 @@ describe("SettingsShortcutCapture", () => {
           combo: "Cmd+A",
           scope: "global",
           priority: 0,
+          kind: "conflict",
         },
       ]);
 
@@ -544,6 +816,7 @@ describe("SettingsShortcutCapture", () => {
           combo: "Cmd+A",
           scope: "global",
           priority: 0,
+          kind: "conflict",
         },
       ]);
 
@@ -603,6 +876,7 @@ describe("SettingsShortcutCapture", () => {
           combo: "Cmd+A",
           scope: "global",
           priority: 0,
+          kind: "conflict",
         },
         {
           actionId: "conflict.action2",
@@ -610,6 +884,7 @@ describe("SettingsShortcutCapture", () => {
           combo: "Cmd+B",
           scope: "global",
           priority: 0,
+          kind: "conflict",
         },
       ]);
 

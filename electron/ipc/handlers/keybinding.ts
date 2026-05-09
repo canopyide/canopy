@@ -17,6 +17,13 @@ function getValidatedOverrides(): Record<string, string[]> {
   for (const [key, value] of Object.entries(raw)) {
     if (Array.isArray(value) && value.every((c) => typeof c === "string" && c.trim() !== "")) {
       validated[key] = value;
+    } else {
+      // Surface malformed persisted entries so a hand-edited or corrupt store
+      // doesn't silently swallow a user's rebinds. typeof keeps the log small
+      // even if the raw value is large.
+      console.warn(
+        `[keybinding] Dropping malformed override "${key}": expected non-empty string[], got ${typeof value}`
+      );
     }
   }
   return validated;

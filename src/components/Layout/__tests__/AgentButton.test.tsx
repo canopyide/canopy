@@ -22,6 +22,7 @@ import type { AgentSettings, CliAvailability } from "@shared/types";
 
 const dispatchMock = vi.fn();
 const updateWorktreePresetMock = vi.fn();
+const updateAgentMock = vi.fn().mockResolvedValue(undefined);
 let dropdownCloseAutoFocusSpy: ((e: { preventDefault: () => void }) => void) | null = null;
 let dropdownPointerDownOutsideSpy: (() => void) | null = null;
 
@@ -44,6 +45,7 @@ vi.mock("@/store/agentSettingsStore", () => ({
       getState: () => ({
         setAgentPinned: vi.fn(),
         updateWorktreePreset: updateWorktreePresetMock,
+        updateAgent: updateAgentMock,
       }),
     }
   ),
@@ -71,9 +73,14 @@ vi.mock("@/store/projectPresetsStore", () => ({
 
 let mockPanelsById: Record<string, unknown> = {};
 let mockPanelIds: string[] = [];
+let mockPanelIdsByWorktreeId: Record<string, string[]> = {};
 vi.mock("@/store/panelStore", () => ({
   usePanelStore: (selector: (s: Record<string, unknown>) => unknown) =>
-    selector({ panelsById: mockPanelsById, panelIds: mockPanelIds }),
+    selector({
+      panelsById: mockPanelsById,
+      panelIds: mockPanelIds,
+      panelIdsByWorktreeId: mockPanelIdsByWorktreeId,
+    }),
 }));
 
 vi.mock("@/store/worktreeStore", () => ({
@@ -94,6 +101,7 @@ vi.mock("@/hooks/useWorktrees", () => ({
 
 vi.mock("@/hooks", () => ({
   useKeybindingDisplay: () => null,
+  useAriaKeyshortcuts: () => undefined,
 }));
 
 vi.mock("@/config/agents", () => ({
@@ -301,6 +309,7 @@ describe("AgentButton preset UX", () => {
   beforeEach(() => {
     dispatchMock.mockClear();
     updateWorktreePresetMock.mockClear();
+    updateAgentMock.mockClear();
     mockSettings = null;
     mockActiveWorktreeId = null;
     mockCcrPresetsByAgent = {};
@@ -310,6 +319,7 @@ describe("AgentButton preset UX", () => {
     mockDotColor = "";
     mockPanelsById = {};
     mockPanelIds = [];
+    mockPanelIdsByWorktreeId = {};
     mockWorktrees = [];
     dropdownCloseAutoFocusSpy = null;
     dropdownPointerDownOutsideSpy = null;
@@ -549,9 +559,12 @@ describe("AgentButton preset UX", () => {
     });
 
     it("dropdown Agent default clears the worktree override without launching", () => {
+      // Seed an agent-level presetId so the updateAgent assertion proves the
+      // fix actually clears it — without a stale agent-level value to fall
+      // through to, the original #6358 bug couldn't manifest.
       mockActiveWorktreeId = "wt-A";
       mockSettings = settingsWith({
-        claude: { worktreePresets: { "wt-A": "user-alpha" } },
+        claude: { presetId: "user-alpha", worktreePresets: { "wt-A": "user-alpha" } },
       });
       mockMergedPresetsFn = () => [
         { id: "user-alpha", name: "Alpha" },
@@ -565,6 +578,7 @@ describe("AgentButton preset UX", () => {
       const defaultItem = items.find((el) => el.textContent?.includes("Agent default"))!;
       fireEvent.click(defaultItem);
 
+      expect(updateAgentMock).toHaveBeenCalledWith("claude", { presetId: undefined });
       expect(updateWorktreePresetMock).toHaveBeenCalledWith("claude", "wt-A", undefined);
       expect(dispatchMock).not.toHaveBeenCalled();
     });
@@ -759,12 +773,13 @@ describe("AgentButton preset UX", () => {
     });
 
     it("context-menu Agent default clears the override and still launches with null preset", () => {
-      // The context-menu sub is intentionally a launcher (unlike the chevron).
-      // Verify the Agent default row mirrors that contract: clear the
-      // worktree-scoped override AND dispatch a null-preset launch.
+      // The context-menu sub is a launcher, but it must also clear the
+      // agent-level presetId — otherwise resolveEffectivePresetId falls back
+      // to the stale agent-level value on the next plain primary click and
+      // the bug from #6358 returns.
       mockActiveWorktreeId = "wt-A";
       mockSettings = settingsWith({
-        claude: { worktreePresets: { "wt-A": "user-blue" } },
+        claude: { presetId: "user-blue", worktreePresets: { "wt-A": "user-blue" } },
       });
       mockMergedPresetsFn = () => [{ id: "user-blue", name: "Blue" }];
 
@@ -775,6 +790,7 @@ describe("AgentButton preset UX", () => {
       const defaultItem = items.find((el) => el.textContent?.includes("Agent default"))!;
       fireEvent.click(defaultItem);
 
+      expect(updateAgentMock).toHaveBeenCalledWith("claude", { presetId: undefined });
       expect(updateWorktreePresetMock).toHaveBeenCalledWith("claude", "wt-A", undefined);
       expect(dispatchMock).toHaveBeenCalledWith(
         "agent.launch",
@@ -822,6 +838,7 @@ describe("AgentButton preset UX", () => {
       mockSettings = settingsWith({ claude: {} });
       mockPanelsById = { "panel-1": activePanel("waiting") };
       mockPanelIds = ["panel-1"];
+      mockPanelIdsByWorktreeId = { "wt-1": ["panel-1"] };
       mockActiveWorktreeId = "wt-1";
       mockDominantState = "waiting";
       mockDotColor = "bg-state-waiting";
@@ -838,6 +855,7 @@ describe("AgentButton preset UX", () => {
       mockSettings = settingsWith({ claude: {} });
       mockPanelsById = { "panel-1": activePanel("working") };
       mockPanelIds = ["panel-1"];
+      mockPanelIdsByWorktreeId = { "wt-1": ["panel-1"] };
       mockActiveWorktreeId = "wt-1";
       mockDominantState = "working";
       mockDotColor = null;

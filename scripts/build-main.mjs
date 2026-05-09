@@ -8,8 +8,6 @@ const root = path.join(__dirname, "..");
 
 const isWatch = process.argv.includes("--watch");
 const isProd = process.env.NODE_ENV === "production";
-const buildVariant = process.env.BUILD_VARIANT === "canopy" ? "canopy" : "daintree";
-const isLegacyBuild = buildVariant === "canopy";
 const buildReadyFile = path.join(root, "dist-electron/.build-ready.js");
 let buildReadyTimer = null;
 
@@ -17,6 +15,7 @@ const external = [
   "electron",
   "node-pty", // Native module
   "better-sqlite3", // Native module
+  "win-job-object", // Native module — Windows-only help-session Job Object (#7526)
   "copytree", // Externalize to preserve file structure (config files)
 ];
 
@@ -32,8 +31,6 @@ const common = {
   pure: isProd ? ["console.log", "console.info", "console.warn", "console.debug"] : [],
   define: {
     "process.env.SENTRY_DSN": JSON.stringify(process.env.SENTRY_DSN || ""),
-    "process.env.BUILD_VARIANT": JSON.stringify(buildVariant),
-    IS_LEGACY_BUILD: JSON.stringify(isLegacyBuild),
   },
 };
 
@@ -105,6 +102,8 @@ async function run() {
       "electron/pty-host-bootstrap.ts",
       "electron/workspace-host.ts",
       "electron/workspace-host-bootstrap.ts",
+      "electron/watchdog-host.ts",
+      "electron/watchdog-host-bootstrap.ts",
     ],
     outdir: "dist-electron/electron",
     format: "esm",

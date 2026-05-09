@@ -21,19 +21,22 @@ import { SEL } from "../helpers/selectors";
 import { T_SHORT, T_MEDIUM, T_LONG } from "../helpers/timeouts";
 
 let ctx: AppContext;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Core: Review Hub Workflow", () => {
   test.beforeAll(async () => {
-    const fixtureDir = createFixtureRepo({
+    const fixture = createFixtureRepo({
       name: "review-hub-workflow",
       withUncommittedChanges: true,
     });
+    fixtureCleanup = fixture.cleanup;
     ctx = await launchApp();
-    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Review Hub Test");
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixture.dir, "Review Hub Test");
   });
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("worktree card shows Review & Commit button", async () => {

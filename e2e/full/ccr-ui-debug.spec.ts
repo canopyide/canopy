@@ -12,16 +12,19 @@ import {
 } from "../helpers/presets";
 
 let ctx: AppContext;
+let fixtureCleanup: (() => void) | undefined;
 test.describe("CCR UI Debug", () => {
   test.beforeAll(async () => {
     writeCcrConfig([{ id: "uidbg", name: "UI Debug", model: "uidbg-model" }]);
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "ccr-ui-debug" });
+    const { dir: fixtureDir, cleanup } = createFixtureRepo({ name: "ccr-ui-debug" });
+    fixtureCleanup = cleanup;
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "UI Debug");
   });
   test.afterAll(async () => {
     removeCcrConfig();
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("presets section appears after navigating to Claude settings", async () => {

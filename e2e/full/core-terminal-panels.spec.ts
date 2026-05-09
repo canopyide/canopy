@@ -15,44 +15,32 @@ import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
 
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Core: Terminal & Panels", () => {
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "terminal-panels", withMultipleFiles: true });
+    ({ dir: fixtureDir, cleanup: fixtureCleanup } = createFixtureRepo({
+      name: "terminal-panels",
+      withMultipleFiles: true,
+    }));
     ctx = await launchApp();
   });
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
-  // ── Project Onboarding (3 tests) ─────────────────────────
+  // ── Project Open ─────────────────────────────────────────
 
-  test.describe.serial("Project Onboarding", () => {
-    test("open folder via mocked dialog shows onboarding wizard", async () => {
+  test.describe.serial("Project Open", () => {
+    test("open folder via mocked dialog and switch to project view", async () => {
       await openProject(ctx.app, ctx.window, fixtureDir);
 
-      const heading = ctx.window.locator("h2", { hasText: "Set up your project" });
-      await expect(heading).toBeVisible({ timeout: T_LONG });
-    });
-
-    test("fill project name and finish onboarding", async () => {
-      const { window } = ctx;
-
-      const nameInput = window.getByRole("textbox", { name: "Project Name" });
-      await nameInput.fill("Terminal Panels Test");
-
-      await window.getByRole("button", { name: "Finish", exact: true }).click();
-
-      const heading = window.locator("h2", { hasText: "Set up your project" });
-      await expect(heading).not.toBeVisible({ timeout: T_MEDIUM });
-
-      await dismissTelemetryConsent(window);
-
-      // Re-acquire the active page: the project view is its own
-      // WebContentsView created during onboarding, so the original
+      // The project view is its own WebContentsView, so the original
       // ctx.window points at the now-stale welcome view.
-      ctx.window = await refreshActiveWindow(ctx.app, window);
+      ctx.window = await refreshActiveWindow(ctx.app, ctx.window);
+      await dismissTelemetryConsent(ctx.window);
     });
 
     test("worktree dashboard appears with at least one card", async () => {

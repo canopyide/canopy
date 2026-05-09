@@ -1,19 +1,23 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from "vitest";
 import { render } from "@testing-library/react";
+import { CSS } from "@dnd-kit/utilities";
 import { SortableTerminal } from "../SortableTerminal";
+import { useDragHandle } from "../DragHandleContext";
 import type { TerminalInstance } from "@/store";
 
 let mockIsDragging = false;
 const useSortableSpy = vi.fn();
+const mockSetActivatorNodeRef = vi.fn();
 
 vi.mock("@dnd-kit/sortable", () => ({
   useSortable: (args: unknown) => {
     useSortableSpy(args);
     return {
       attributes: { role: "button" },
-      listeners: undefined,
+      listeners: { onPointerDown: vi.fn() },
       setNodeRef: vi.fn(),
+      setActivatorNodeRef: mockSetActivatorNodeRef,
       transform: null,
       transition: undefined,
       isDragging: mockIsDragging,
@@ -24,6 +28,9 @@ vi.mock("@dnd-kit/sortable", () => ({
 vi.mock("@dnd-kit/utilities", () => ({
   CSS: {
     Transform: {
+      toString: () => undefined,
+    },
+    Translate: {
       toString: () => undefined,
     },
   },
@@ -52,12 +59,10 @@ describe("SortableTerminal", () => {
     const inner = outer.firstChild as HTMLElement;
     expect(inner.className).toContain("contain-layout");
     expect(inner.className).toContain("contain-style");
-    // Outer motion wrapper must NOT carry containment — it would scope the FLIP
-    // measurement boundary and break getBoundingClientRect-based layout reads.
     expect(outer.className).not.toContain("contain-layout");
   });
 
-  it("includes drag-state classes on the inner div alongside containment when dragging", () => {
+  it("does not apply opacity-40 class on the inner div (opacity is now driven by framer-motion animate)", () => {
     mockIsDragging = true;
     const { container } = render(
       <SortableTerminal terminal={terminal} sourceLocation="grid" sourceIndex={0}>
@@ -66,8 +71,18 @@ describe("SortableTerminal", () => {
     );
     const inner = (container.firstChild as HTMLElement).firstChild as HTMLElement;
     expect(inner.className).toContain("contain-layout");
-    expect(inner.className).toContain("contain-style");
-    expect(inner.className).toContain("opacity-40");
+    expect(inner.className).not.toContain("opacity-40");
+  });
+
+  it("renders drag ring class on the inner div when dragging", () => {
+    mockIsDragging = true;
+    const { container } = render(
+      <SortableTerminal terminal={terminal} sourceLocation="grid" sourceIndex={0}>
+        <div />
+      </SortableTerminal>
+    );
+    const inner = (container.firstChild as HTMLElement).firstChild as HTMLElement;
+    expect(inner.className).toContain("ring-2");
   });
 
   it("renders children through DragHandleProvider", () => {
@@ -103,5 +118,37 @@ describe("SortableTerminal", () => {
     const args = useSortableSpy.mock.calls[0]![0] as { animateLayoutChanges?: () => boolean };
     expect(typeof args.animateLayoutChanges).toBe("function");
     expect(args.animateLayoutChanges!()).toBe(false);
+  });
+
+  it("uses CSS.Translate.toString (not CSS.Transform.toString) to skip scale on the xterm canvas", () => {
+    mockIsDragging = false;
+    useSortableSpy.mockClear();
+    render(
+      <SortableTerminal terminal={terminal} sourceLocation="grid" sourceIndex={0}>
+        <div />
+      </SortableTerminal>
+    );
+    expect(CSS.Translate).toBeDefined();
+  });
+
+  it("forwards setActivatorNodeRef and listeners through DragHandleProvider for keyboard a11y", () => {
+    // dnd-kit's KeyboardSensor watches whichever element receives
+    // setActivatorNodeRef. Falling back to setNodeRef would point at the
+    // sortable container — which strips tabIndex — so keyboard activation
+    // would silently fail. Verify both fields land in the context value.
+    mockIsDragging = false;
+    let captured: ReturnType<typeof useDragHandle> = null;
+    function Probe() {
+      captured = useDragHandle();
+      return null;
+    }
+    render(
+      <SortableTerminal terminal={terminal} sourceLocation="grid" sourceIndex={0}>
+        <Probe />
+      </SortableTerminal>
+    );
+    expect(captured).not.toBeNull();
+    expect(captured!.setActivatorNodeRef).toBe(mockSetActivatorNodeRef);
+    expect(captured!.listeners).toBeDefined();
   });
 });

@@ -5,9 +5,11 @@
 import { CHANNELS } from "../../channels.js";
 import { broadcastToRenderer } from "../../utils.js";
 import { events, type DaintreeEventMap } from "../../../services/events.js";
+import { mcpPaneConfigService } from "../../../services/McpPaneConfigService.js";
 import type {
   SpawnResult,
   BroadcastWriteResultPayload,
+  FdLeakWarningPayload,
 } from "../../../../shared/types/pty-host.js";
 import type { HandlerDependencies } from "../../types.js";
 
@@ -28,6 +30,11 @@ export function registerTerminalEventHandlers(deps: HandlerDependencies): () => 
   handlers.push(() => ptyClient.off("data", handlePtyData));
 
   const handlePtyExit = (id: string, exitCode: number) => {
+    // Best-effort: revoke any per-pane MCP token + delete the managed config
+    // file. Idempotent — no-ops if no pane config was minted for this terminal.
+    mcpPaneConfigService.revokePaneConfig(id).catch((err) => {
+      console.error("[MCP] Failed to revoke pane config on exit:", err);
+    });
     broadcastToRenderer(CHANNELS.EVENTS_PUSH, {
       name: "terminal:exit",
       payload: [id, exitCode],
@@ -44,6 +51,14 @@ export function registerTerminalEventHandlers(deps: HandlerDependencies): () => 
 
   // Spawn result events (success or failure)
   const handleSpawnResult = (id: string, result: SpawnResult) => {
+    if (!result.success) {
+      // Async pty-host spawn rejection (PENDING_SPAWNS_CAPPED, bad shell path,
+      // etc.) doesn't throw from ptyClient.spawn(). Revoke any minted pane
+      // config so the token doesn't outlive the never-running PTY.
+      mcpPaneConfigService.revokePaneConfig(id).catch((err) => {
+        console.error("[MCP] Failed to revoke pane config on spawn failure:", err);
+      });
+    }
     broadcastToRenderer(CHANNELS.EVENTS_PUSH, {
       name: "terminal:spawn-result",
       payload: [id, result],
@@ -58,6 +73,7 @@ export function registerTerminalEventHandlers(deps: HandlerDependencies): () => 
     status: string;
     bufferUtilization?: number;
     pauseDuration?: number;
+    droppedBytes?: number;
     timestamp: number;
   }) => {
     broadcastToRenderer(CHANNELS.TERMINAL_STATUS, payload);
@@ -90,6 +106,14 @@ export function registerTerminalEventHandlers(deps: HandlerDependencies): () => 
   };
   ptyClient.on("resource-metrics", handleResourceMetrics);
   handlers.push(() => ptyClient.off("resource-metrics", handleResourceMetrics));
+
+  // FD leak warning — forwarded to renderer as a diagnostic-only event.
+  // Deduplication is handled renderer-side with a 5-min log cooldown.
+  const handleFdLeakWarning = (payload: FdLeakWarningPayload) => {
+    broadcastToRenderer(CHANNELS.TERMINAL_FD_LEAK_WARNING, payload);
+  };
+  ptyClient.on("fd-leak-warning", handleFdLeakWarning);
+  handlers.push(() => ptyClient.off("fd-leak-warning", handleFdLeakWarning));
 
   // Terminal activity
   const unsubTerminalActivity = events.on(

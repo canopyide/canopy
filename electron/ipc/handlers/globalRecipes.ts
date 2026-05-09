@@ -3,6 +3,7 @@ import { projectStore } from "../../services/ProjectStore.js";
 import type { HandlerDependencies } from "../types.js";
 import type { TerminalRecipe } from "../../types/index.js";
 import { typedHandle } from "../utils.js";
+import { assertRecipeUsageFields } from "./recipeValidation.js";
 
 export function registerGlobalRecipesHandlers(_deps: HandlerDependencies): () => void {
   const handlers: Array<() => void> = [];
@@ -38,13 +39,14 @@ export function registerGlobalRecipesHandlers(_deps: HandlerDependencies): () =>
     if (!Number.isFinite(recipe.createdAt)) {
       throw new Error("Recipe createdAt must be a finite number");
     }
+    assertRecipeUsageFields(recipe);
     return projectStore.addGlobalRecipe(recipe);
   };
   handlers.push(typedHandle(CHANNELS.GLOBAL_ADD_RECIPE, handleAddRecipe));
 
   const handleUpdateRecipe = async (payload: {
     recipeId: string;
-    updates: Partial<Omit<TerminalRecipe, "id" | "projectId" | "createdAt">>;
+    updates: Partial<Omit<TerminalRecipe, "id" | "projectId" | "createdAt" | "worktreeId">>;
   }): Promise<void> => {
     if (!payload || typeof payload !== "object") {
       throw new Error("Invalid payload");
@@ -56,7 +58,7 @@ export function registerGlobalRecipesHandlers(_deps: HandlerDependencies): () =>
     if (!updates || typeof updates !== "object" || Array.isArray(updates)) {
       throw new Error("Invalid updates");
     }
-    const immutableKeys = ["id", "projectId", "createdAt"] as const;
+    const immutableKeys = ["id", "projectId", "createdAt", "worktreeId"] as const;
     for (const key of immutableKeys) {
       if (key in updates) {
         throw new Error(`Cannot update immutable field: ${key}`);
@@ -66,6 +68,7 @@ export function registerGlobalRecipesHandlers(_deps: HandlerDependencies): () =>
     if ("terminals" in patch && !Array.isArray(patch.terminals)) {
       throw new Error("Invalid updates: terminals must be an array");
     }
+    assertRecipeUsageFields(patch);
     return projectStore.updateGlobalRecipe(recipeId, updates);
   };
   handlers.push(typedHandle(CHANNELS.GLOBAL_UPDATE_RECIPE, handleUpdateRecipe));

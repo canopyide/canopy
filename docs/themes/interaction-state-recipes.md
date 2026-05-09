@@ -5,7 +5,7 @@ This document maps each interactive component role to its canonical Tailwind cla
 ## Critical Rules
 
 - **Never use `transition-all`** — forces Chromium to interpolate every computed property on every frame. Use specific transitions: `transition-colors`, `transition-opacity`, `transition-transform`, or explicit property lists like `transition-[width,height]`. (See lesson #4738)
-- **Never use `text-text-inverse` for hover states** — renders invisible in dark themes. Use theme-aware text colors like `text-daintree-text` or `text-canopy-text` instead. (See lesson #4630)
+- **Never use `text-text-inverse` for hover states** — renders invisible in dark themes. Use theme-aware text colors like `text-daintree-text` instead. (See lesson #4630)
 - **Prefer `outline` for focus rings** — `outline` is transparent and supports Windows High Contrast Mode. `ring` (box-shadow-based) is acceptable for active/dock states (e.g., `ring-1 ring-daintree-accent/30`), but for keyboard focus, always use `focus-visible:outline-*`.
 - **Always use `:focus-visible`** — `:focus` shows rings on mouse clicks; `:focus-visible` only shows for keyboard navigation.
 - **Never use accent color as default hover** — it's a scarce resource reserved for one load-bearing signal per component.
@@ -144,7 +144,7 @@ This document maps each interactive component role to its canonical Tailwind cla
 "bg-overlay-medium text-daintree-text border-border-strong aria-selected:bg-overlay-medium aria-selected:text-daintree-text";
 ```
 
-**Usage:** Combine with `transition-colors` for smooth toggle transitions. The active segment gets a neutral background fill and text emphasis; the border distinguishes it from inactive peers. Accent must NOT appear on any toggle segment. Current implementation in `FleetArmingDialog.tsx` ChipButton (lines 538-558) uses `bg-overlay-subtle`; this recipe prescribes the canonical target (`overlay-medium`).
+**Usage:** Combine with `transition-colors` for smooth toggle transitions. The active segment gets a neutral background fill and text emphasis; the border distinguishes it from inactive peers. Accent must NOT appear on any toggle segment. The canonical target is `overlay-medium` for the active fill.
 
 ---
 
@@ -186,13 +186,13 @@ This document maps each interactive component role to its canonical Tailwind cla
 
 ## Transition Patterns
 
-| Need                    | Use Instead                                     | Why                                                                        |
-| ----------------------- | ----------------------------------------------- | -------------------------------------------------------------------------- |
-| Color/bg/border changes | `transition-colors`                             | Covers color, background-color, border-color for most interactive states   |
-| Width/height changes    | `transition-[width]` / `transition-[height]`    | Layout-impacting properties should be explicit                             |
-| Opacity changes         | `transition-opacity`                            | Visual fades only                                                          |
-| Transform changes       | `transition-transform`                          | Animations, scale effects                                                  |
-| Multiple props          | `transition-[color,background-color,transform]` | Explicit is better than `transition-all` — forces all props to interpolate |
+| Need | Use Instead | Why |
+| --- | --- | --- |
+| Color/bg/border changes | `transition-colors` | Covers color, background-color, border-color for most interactive states |
+| Width/height changes | `transition-[width]` / `transition-[height]` | Layout-impacting properties should be explicit |
+| Opacity changes | `transition-opacity` | Visual fades only |
+| Transform changes | `transition-transform` | Animations, scale effects |
+| Multiple props | `transition-[color,background-color,transform]` | Explicit is better than `transition-all` — forces all props to interpolate |
 
 ---
 
@@ -216,21 +216,20 @@ Each recipe is a class fragment to apply to a suitable base component, not a sta
 
 ## Canonical Examples
 
-| Component             | File                                     | Key Pattern                                      |
-| --------------------- | ---------------------------------------- | ------------------------------------------------ |
-| Quick Switcher Item   | `QuickSwitcherItem.tsx`                  | Selected state with accent rail via `before:`    |
-| Settings Input        | `SettingsInput.tsx`                      | Input focus with outline ring                    |
-| Settings Textarea     | `SettingsTextarea.tsx`                   | Input focus with outline ring                    |
-| Button Ghost          | `button.tsx` (line 21)                   | Ghost button hover with overlay-soft             |
-| Button Pill           | `HelpAgentDockButton.tsx`                | Dock item active with border + ring combo        |
-| Settings Subtab       | `SettingsSubtabBar.tsx`                  | Active tab with bottom border accent             |
-| Worktree Card         | `WorktreeCard.tsx`                       | Card hover with accent-tinged border + elevation |
-| GitHub Settings Tab   | `GitHubSettingsTab.tsx` (line 213)       | Input focus with border-shift (no outline)       |
-| Notification Settings | `NotificationSettingsTab.tsx` (line 217) | Input focus with border-shift (no outline)       |
-| Segmented Toggle      | `FleetArmingDialog.tsx` (line 538)       | Active segment with neutral overlay lift         |
-| Settings Switch Row   | `SettingsSwitchCard.tsx`                 | Neutral row, accent only on switch track         |
-| Portal Drag Handle    | `PortalToolbar.tsx` (line 107)           | Drag state with elevation + scale, no accent     |
-| Inline Rename Input   | `TabButton.tsx` (line 274)               | Neutral border with accent focus outline only    |
+| Component | File | Key Pattern |
+| --- | --- | --- |
+| Quick Switcher Item | `QuickSwitcherItem.tsx` | Selected state with accent rail via `before:` |
+| Settings Input | `SettingsInput.tsx` | Input focus with outline ring |
+| Settings Textarea | `SettingsTextarea.tsx` | Input focus with outline ring |
+| Button Ghost | `button.tsx` (line 21) | Ghost button hover with overlay-soft |
+| Button Pill | `HelpAgentDockButton.tsx` | Dock item active with border + ring combo |
+| Settings Subtab | `SettingsSubtabBar.tsx` | Active tab with bottom border accent |
+| Worktree Card | `WorktreeCard.tsx` | Card hover with accent-tinged border + elevation |
+| GitHub Settings Tab | `GitHubSettingsTab.tsx` (line 213) | Input focus with border-shift (no outline) |
+| Notification Settings | `NotificationSettingsTab.tsx` (line 217) | Input focus with border-shift (no outline) |
+| Settings Switch Row | `SettingsSwitchCard.tsx` | Neutral row, accent only on switch track |
+| Portal Drag Handle | `PortalToolbar.tsx` (line 107) | Drag state with elevation + scale, no accent |
+| Inline Rename Input | `TabButton.tsx` (line 274) | Neutral border with accent focus outline only |
 
 ---
 

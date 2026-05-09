@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { FileChangeDetail, GitStatus } from "../../types";
 import { cn } from "../../lib/utils";
 import { FileDiffModal } from "./FileDiffModal";
@@ -91,9 +91,13 @@ interface FolderGroup {
   files: FileChangeWithRelativePath[];
 }
 
+function rowKey(change: { path: string; status: GitStatus }): string {
+  return `${change.path}-${change.status}`;
+}
+
 export function FileChangeList({
   changes,
-  maxVisible = 4,
+  maxVisible = 8,
   rootPath,
   groupByFolder = false,
 }: FileChangeListProps) {
@@ -129,6 +133,28 @@ export function FileChangeList({
     [sortedChanges, maxVisible]
   );
   const remainingCount = Math.max(0, sortedChanges.length - maxVisible);
+
+  // Track which row keys arrived since the previous render. Empty on mount because
+  // prevKeysRef is seeded with the initial keys — the first paint must NOT flash
+  // every existing row. The decay IS the recency signal (semantic exception, ~2s).
+  const prevKeysRef = useRef<Set<string> | null>(null);
+  const [newRowKeys, setNewRowKeys] = useState<Set<string>>(() => new Set());
+
+  useLayoutEffect(() => {
+    const currentKeys = sortedChanges.map(rowKey);
+    if (prevKeysRef.current === null) {
+      prevKeysRef.current = new Set(currentKeys);
+      return;
+    }
+    const added = new Set<string>();
+    for (const key of currentKeys) {
+      if (!prevKeysRef.current.has(key)) {
+        added.add(key);
+      }
+    }
+    prevKeysRef.current = new Set(currentKeys);
+    setNewRowKeys((prev) => (added.size === 0 && prev.size === 0 ? prev : added));
+  }, [sortedChanges]);
   const remainingFiles = useMemo(
     () => sortedChanges.slice(maxVisible, maxVisible + 2),
     [sortedChanges, maxVisible]
@@ -180,12 +206,18 @@ export function FileChangeList({
     const config = STATUS_CONFIG[change.status] || STATUS_CONFIG.untracked;
     const { dir, base } = splitPath(change.relativePath);
     const displayDir = formatDirForDisplay(dir);
+    const key = rowKey(change);
+    const isNew = newRowKeys.has(key);
 
     return (
-      <Tooltip key={`${change.path}-${change.status}`}>
+      <Tooltip key={key}>
         <TooltipTrigger asChild>
           <div
-            className="group/filerow flex items-center text-xs font-mono hover:bg-tint/5 rounded px-1.5 py-0.5 -mx-1.5 cursor-pointer transition-colors"
+            data-recency-new={isNew ? "true" : undefined}
+            className={cn(
+              "group/filerow flex items-center text-xs font-mono hover:bg-tint/5 rounded px-1.5 py-0.5 -mx-1.5 cursor-pointer transition-colors",
+              isNew && "file-change-row-new"
+            )}
             onClick={() => handleFileClick(change)}
           >
             <span className={cn("w-4 font-bold shrink-0", config.color)}>{config.label}</span>

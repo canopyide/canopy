@@ -4,27 +4,15 @@ import { existsSync } from "fs";
 import { readFile, stat } from "fs/promises";
 import { logDebug, logError, logWarn } from "../utils/logger.js";
 import type { GitStatus, WorktreeChanges } from "../../shared/types/index.js";
+import type { BranchInfo, CreateWorktreeOptions } from "../../shared/types/git.js";
 import { WorktreeRemovedError, GitError, toGitOperationError } from "../utils/errorTypes.js";
 import type { CrossWorktreeDiffResult, CrossWorktreeFile } from "../../shared/types/ipc/git.js";
 import { createHardenedGit } from "../utils/hardenedGit.js";
+import { validateBranchName } from "../../shared/utils/pathPattern.js";
 import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 
 function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-export interface BranchInfo {
-  name: string;
-  current: boolean;
-  commit: string;
-  remote?: string;
-}
-
-export interface CreateWorktreeOptions {
-  baseBranch: string;
-  newBranch: string;
-  path: string;
-  fromRemote?: boolean;
 }
 
 export class GitService {
@@ -100,6 +88,19 @@ export class GitService {
       fromRemote: options.fromRemote,
     });
 
+    const newBranchValidation = validateBranchName(newBranch);
+    if (!newBranchValidation.valid) {
+      throw new Error(
+        `Invalid branch name '${newBranch}': ${newBranchValidation.error ?? "invalid"}`
+      );
+    }
+    const baseBranchValidation = validateBranchName(baseBranch);
+    if (!baseBranchValidation.valid) {
+      throw new Error(
+        `Invalid base branch '${baseBranch}': ${baseBranchValidation.error ?? "invalid"}`
+      );
+    }
+
     const pathValidation = this.validatePath(path);
     if (!pathValidation.valid) {
       throw new Error(pathValidation.error);
@@ -118,7 +119,18 @@ export class GitService {
           remoteBranch: baseBranch,
         });
 
-        await this.git.raw(["worktree", "add", "-b", newBranch, "--track", path, baseBranch]);
+        // `--end-of-options` after the subcommand flags so any leading-dash
+        // ref or path that slipped past validation is treated as positional.
+        await this.git.raw([
+          "worktree",
+          "add",
+          "-b",
+          newBranch,
+          "--track",
+          "--end-of-options",
+          path,
+          baseBranch,
+        ]);
       } else {
         logDebug("Creating worktree with new branch", {
           path,
@@ -126,7 +138,15 @@ export class GitService {
           baseBranch,
         });
 
-        await this.git.raw(["worktree", "add", "-b", newBranch, path, baseBranch]);
+        await this.git.raw([
+          "worktree",
+          "add",
+          "-b",
+          newBranch,
+          "--end-of-options",
+          path,
+          baseBranch,
+        ]);
       }
 
       logDebug("Worktree created successfully", { path, newBranch });
@@ -255,9 +275,12 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     }
 
     try {
+      // `--no-textconv` blocks user-defined diff drivers that would otherwise
+      // execute arbitrary binaries via `.gitattributes` textconv mappings.
       const diff = await this.git.diff([
         "HEAD",
         "--no-ext-diff",
+        "--no-textconv",
         "--no-color",
         "--",
         normalizedPath,
@@ -291,11 +314,31 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     filePath?: string,
     useMergeBase?: boolean
   ): Promise<CrossWorktreeDiffResult | string> {
+    // Validate before the equality fast-path so an invalid argv-shaped name
+    // is rejected unconditionally — not silently accepted when both inputs
+    // happen to match.
+    const branch1Validation = validateBranchName(branch1);
+    if (!branch1Validation.valid) {
+      throw new Error(`Invalid branch name '${branch1}': ${branch1Validation.error ?? "invalid"}`);
+    }
+    const branch2Validation = validateBranchName(branch2);
+    if (!branch2Validation.valid) {
+      throw new Error(`Invalid branch name '${branch2}': ${branch2Validation.error ?? "invalid"}`);
+    }
+
     if (branch1 === branch2) {
       return filePath ? "NO_CHANGES" : { branch1, branch2, files: [] };
     }
 
-    const range = useMergeBase ? `${branch1}...${branch2}` : `${branch1}..${branch2}`;
+    // Expand to fully qualified `refs/heads/` so a leading-dash branch name
+    // can never appear at the start of the range token. `--end-of-options`
+    // alone is insufficient — git's revision parser sees `branch1..branch2`
+    // as a single argument and re-parses dashes inside it as flags.
+    // Worktree branches surface as short names (`refs/heads/` is stripped in
+    // `listWorktrees`), so this prefix is always correct.
+    const ref1 = `refs/heads/${branch1}`;
+    const ref2 = `refs/heads/${branch2}`;
+    const range = useMergeBase ? `${ref1}...${ref2}` : `${ref1}..${ref2}`;
 
     if (filePath) {
       // Return the unified diff for a specific file
@@ -303,7 +346,9 @@ ${lines.map((l) => "+" + l).join("\n")}`;
         const diff = await this.git.raw([
           "diff",
           "--no-ext-diff",
+          "--no-textconv",
           "--no-color",
+          "--end-of-options",
           range,
           "--",
           filePath,
@@ -335,7 +380,14 @@ ${lines.map((l) => "+" + l).join("\n")}`;
 
     // Return the list of changed files
     try {
-      const output = await this.git.raw(["diff", "--no-ext-diff", "--name-status", range]);
+      const output = await this.git.raw([
+        "diff",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--name-status",
+        "--end-of-options",
+        range,
+      ]);
       const files: CrossWorktreeFile[] = [];
 
       for (const line of output.split("\n")) {
@@ -375,22 +427,21 @@ ${lines.map((l) => "+" + l).join("\n")}`;
 
   private isBinaryBuffer(buffer: Buffer): boolean {
     const checkLength = Math.min(buffer.length, 8192);
+    if (checkLength === 0) return false;
 
-    for (let i = 0; i < checkLength; i++) {
-      if (buffer[i] === 0) {
-        return true;
-      }
-    }
+    const sample = buffer.subarray(0, checkLength);
+
+    if (sample.indexOf(0) !== -1) return true;
 
     let nonPrintable = 0;
     for (let i = 0; i < checkLength; i++) {
-      const byte = buffer[i];
+      const byte = sample[i];
       if (!(byte >= 0x20 && byte <= 0x7e) && byte !== 0x09 && byte !== 0x0a && byte !== 0x0d) {
         nonPrintable++;
       }
     }
 
-    return checkLength > 0 && nonPrintable / checkLength > 0.3;
+    return nonPrintable / checkLength > 0.3;
   }
 
   async getRemoteUrl(repoPath: string): Promise<string | null> {
@@ -433,7 +484,9 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     if (force) {
       args.push("--force");
     }
-    args.push(worktreePath);
+    // `--end-of-options` so a leading-dash worktree path is treated as
+    // positional rather than parsed as a flag.
+    args.push("--end-of-options", worktreePath);
 
     return this.handleGitOperation(async () => {
       await this.git.raw(args);

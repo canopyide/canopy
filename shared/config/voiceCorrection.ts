@@ -4,6 +4,28 @@ export const CONFIDENCE_SKIP_THRESHOLD = 0.85;
 /** Tag words below this confidence with <uncertain> in the LLM prompt. */
 export const CONFIDENCE_TAG_THRESHOLD = 0.8;
 
+const SHARED_TERMS_BLOCK = `<terms>
+racked/react: React
+type script: TypeScript
+next jess: Next.js
+get hub: GitHub
+cube netties: Kubernetes
+post gress: Postgres
+graph cue el: GraphQL
+engine ex: Nginx
+web pack: Webpack
+pie test: pytest
+see eye: CI
+node jess: Node.js
+vie test: Vitest
+tail wind: Tailwind
+zoo stand: Zustand
+prism a: Prisma
+rediss: Redis
+E S lint: ESLint
+docker compose: Docker Compose
+</terms>`;
+
 export const CORE_CORRECTION_PROMPT = `You are a speech-to-text correction engine for a developer dictating to AI coding agents.
 
 TASK: Clean up the CURRENT TARGET only. Treat it as the full dictated passage for this recording stop. Do not repeat or modify anything outside the target.
@@ -29,27 +51,7 @@ CORRECTION PRIORITY:
 
 PRESERVE: Keep the speaker's meaning, ordering, and phrasing intact. You may lightly restructure punctuation and paragraph breaks so the dictated passage reads cleanly, but do not turn it into polished prose, add new information, or rewrite it stylistically. If the target is already clean enough, return it character-for-character without any modification.
 
-<terms>
-racked/react: React
-type script: TypeScript
-next jess: Next.js
-get hub: GitHub
-cube netties: Kubernetes
-post gress: Postgres
-graph cue el: GraphQL
-engine ex: Nginx
-web pack: Webpack
-pie test: pytest
-see eye: CI
-node jess: Node.js
-vie test: Vitest
-tail wind: Tailwind
-zoo stand: Zustand
-prism a: Prisma
-rediss: Redis
-E S lint: ESLint
-docker compose: Docker Compose
-</terms>`;
+${SHARED_TERMS_BLOCK}`;
 
 const GUARDRAIL_SUFFIX = `Return a JSON object that matches the response schema.
 - Use "no_change" when the input should remain exactly as-is.
@@ -72,27 +74,7 @@ PHONETIC MATCHING PRIORITY:
 2. TECHNICAL TERMS — Correct misheard programming terms using the dictionary below.
 3. HOMOPHONES — Fix their/there, its/it's when context makes the correct form unambiguous.
 
-<terms>
-racked/react: React
-type script: TypeScript
-next jess: Next.js
-get hub: GitHub
-cube netties: Kubernetes
-post gress: Postgres
-graph cue el: GraphQL
-engine ex: Nginx
-web pack: Webpack
-pie test: pytest
-see eye: CI
-node jess: Node.js
-vie test: Vitest
-tail wind: Tailwind
-zoo stand: Zustand
-prism a: Prisma
-rediss: Redis
-E S lint: ESLint
-docker compose: Docker Compose
-</terms>`;
+${SHARED_TERMS_BLOCK}`;
 
 const MICRO_GUARDRAIL_SUFFIX = `Return a JSON object that matches the response schema.
 - Use "no_change" when the uncertain word(s) are correct as-is in context.
@@ -101,7 +83,7 @@ const MICRO_GUARDRAIL_SUFFIX = `Return a JSON object that matches the response s
 
 export const FILE_LINK_DETECTION_PROMPT = `You are a voice-command detector for a developer IDE. Your job is to find file-reference commands in a dictated utterance.
 
-TASK: Scan the utterance for phrases where the user clearly intends to insert a reference to a project file. Output a JSON array of detected file descriptions.
+TASK: Scan the utterance for phrases where the user clearly intends to insert a reference to a project file. Return a JSON object with a "file_references" array of detected file descriptions.
 
 TRIGGER PHRASES (the user must say something like):
 - "link to [description]"
@@ -116,10 +98,10 @@ TRIGGER PHRASES (the user must say something like):
 RULES:
 - Only emit a detection when the user's intent to reference a file is unambiguous.
 - The description should contain the natural-language words the user said to identify the file — strip the trigger phrase itself.
-- If no file-reference commands are found, return an empty array.
+- If no file-reference commands are found, return an empty file_references array.
 - Never fabricate file references that the user did not request.
 
-Return a JSON array matching the response schema. Each entry has a "description" field with the natural-language file description.`;
+Return a JSON object matching the response schema. The file_references array contains entries with a "description" field holding the natural-language file description.`;
 
 export interface CorrectionPromptContext {
   projectName?: string;

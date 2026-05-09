@@ -135,9 +135,16 @@ export default tseslint.config(
   // Also ban `void window.electron.X()` — fire-and-forget IPC must route
   // through safeFireAndForget so rejections reach reportRendererGlobalError
   // with call-site context. See issue #6029.
+  // Also ban bare `dangerouslySetInnerHTML` — Trusted Types CSP requires the
+  // `__html` value to be a `TrustedHTML` from the daintree-svg policy. See
+  // issue #6392.
   // Note: the renderer block below re-declares no-restricted-syntax at "warn"
   // level for src/** with additional selectors. That block's array is the
   // effective set for src/ files, so it must keep these selectors in sync.
+  // Renderer-only selectors (notify({type:"error",priority:"low"}) — #6885;
+  // Math.random in template literals; magic setTimeout/setInterval delays)
+  // intentionally live ONLY in the renderer block since their call sites are
+  // renderer-only — duplicating into the global block would add no coverage.
   {
     files: ["**/*.{ts,tsx}"],
     rules: {
@@ -180,6 +187,19 @@ export default tseslint.config(
             "CallExpression:matches([callee.name=/^(notify|addNotification)$/], [callee.property.name=/^(notify|addNotification)$/]) ObjectExpression > Property[key.name='message'] MemberExpression[property.name='message']:matches([object.name=/^(error|err|e)$/], [object.property.name=/^(error|err|e)$/])",
           message:
             "Don't pipe raw error.message into user-facing notifications. Use humanizeAppError(error) from @shared/utils/errorMessage to produce a friendly title and body, and stash the raw message in a 'Copy details' action. See #6050.",
+        },
+        {
+          // why: Trusted Types CSP (`require-trusted-types-for 'script'`)
+          // means `dangerouslySetInnerHTML.__html` must be a `TrustedHTML`
+          // produced by the `daintree-svg` policy, not a raw string. The
+          // selector requires SOME CallExpression in the value (lint-level
+          // ratchet — the runtime CSP is the actual security boundary, and
+          // a stricter `callee.name='createTrustedHTML'` check breaks under
+          // re-exports / aliasing). See #6392.
+          selector:
+            "JSXAttribute[name.name='dangerouslySetInnerHTML'] > JSXExpressionContainer > ObjectExpression > Property[key.name='__html']:not(:has(CallExpression))",
+          message:
+            "Pass __html through createTrustedHTML(value) from @/lib/trustedTypesPolicy instead of a raw string. See #6392.",
         },
       ],
     },
@@ -260,6 +280,27 @@ export default tseslint.config(
             "Don't pipe raw error.message into user-facing notifications. Use humanizeAppError(error) from @shared/utils/errorMessage to produce a friendly title and body, and stash the raw message in a 'Copy details' action. See #6050.",
         },
         {
+          // why: type:"error" + priority:"low" silently drops the error
+          // into the history inbox with no toast — users won't see it. If
+          // the failure is diagnostic-only (user can still finish their
+          // current task) demote to console.warn; if users need to see it,
+          // remove priority:"low" or raise to "high"/"normal". Direct-child
+          // combinator inside :has() prevents false positives from nested
+          // sub-objects (e.g. context payloads). Literal-only match — the
+          // computed-priority pattern in useErrors.ts is intentionally out
+          // of scope. See #6885.
+          selector:
+            "CallExpression:matches([callee.name=/^(notify|addNotification)$/], [callee.property.name=/^(notify|addNotification)$/]) > ObjectExpression:has(> Property[key.name='type'][value.value='error']):has(> Property[key.name='priority'][value.value='low'])",
+          message:
+            'Don\'t emit low-priority error notifications. Use console.warn for diagnostic-only failures (user can still finish their task), or remove priority:"low" so the error toasts. See #6885.',
+        },
+        {
+          selector:
+            "JSXAttribute[name.name='dangerouslySetInnerHTML'] > JSXExpressionContainer > ObjectExpression > Property[key.name='__html']:not(:has(CallExpression))",
+          message:
+            "Pass __html through createTrustedHTML(value) from @/lib/trustedTypesPolicy instead of a raw string. See #6392.",
+        },
+        {
           selector:
             "TemplateLiteral CallExpression[callee.object.name='Math'][callee.property.name='random']",
           message:
@@ -329,6 +370,10 @@ export default tseslint.config(
       "build/**",
       "public/**",
       ".claude/**",
+      // Native N-API addons live under electron/native/. The CJS wrapper
+      // and binding.gyp aren't part of the TypeScript build graph; they're
+      // packaged build infrastructure (analogous to scripts/).
+      "electron/native/**",
     ],
   }
 );

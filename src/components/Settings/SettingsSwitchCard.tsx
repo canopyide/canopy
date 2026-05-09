@@ -77,6 +77,7 @@ export function SettingsSwitchCard({
         isCard ? "p-4 rounded-[var(--radius-lg)] border hover:bg-tint/5" : "py-2",
         "border-daintree-border text-daintree-text/70",
         isEnabled && "border-daintree-border text-daintree-text",
+        !disabled && "cursor-pointer",
         disabled && "opacity-50"
       )}
       onClick={disabled ? undefined : handleCardClick}
@@ -128,14 +129,12 @@ export function SettingsSwitchCard({
   return (
     <div id={id} className="grid grid-cols-subgrid col-span-full gap-2">
       <div className="group relative">
-        {card}
         <button
           type="button"
           aria-label={resetAriaLabel ?? `Reset ${title} to default`}
           className={cn(
             "absolute top-1/2 -translate-y-1/2 z-10 p-1 rounded-sm",
             "text-daintree-text/40 hover:text-daintree-text",
-            "invisible group-hover:visible group-focus-within:visible focus-visible:visible",
             "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent",
             "transition-colors",
             isCard ? "right-[4.5rem]" : "right-[3.25rem]"
@@ -144,6 +143,7 @@ export function SettingsSwitchCard({
         >
           <RotateCcw className="w-3 h-3" />
         </button>
+        {card}
       </div>
     </div>
   );

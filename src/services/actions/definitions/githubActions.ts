@@ -1,11 +1,15 @@
 import type { ActionCallbacks, ActionRegistry } from "../actionTypes";
+import type { ActionContext } from "@shared/types/actions";
 import { defineAction } from "../defineAction";
 import { z } from "zod";
 import { githubClient } from "@/clients";
 import { useProjectStore } from "@/store/projectStore";
 
 const GitHubListOptionsSchema = z.object({
-  cwd: z.string().describe("Working directory of the git repo"),
+  cwd: z
+    .string()
+    .optional()
+    .describe("Working directory of the git repo. Defaults to the active worktree path."),
   search: z.string().optional().describe("Search query"),
   state: z
     .enum(["open", "closed", "merged", "all"])
@@ -106,9 +110,17 @@ export function registerGithubActions(actions: ActionRegistry, _callbacks: Actio
       kind: "command",
       danger: "safe",
       scope: "renderer",
-      argsSchema: z.object({ cwd: z.string(), issueNumber: z.number().int().positive() }),
-      run: async ({ cwd, issueNumber }) => {
-        await githubClient.openIssue(cwd, issueNumber);
+      argsSchema: z.object({
+        cwd: z
+          .string()
+          .optional()
+          .describe("Working directory of the git repo. Defaults to the active worktree path."),
+        issueNumber: z.number().int().positive(),
+      }),
+      run: async ({ cwd, issueNumber }, ctx: ActionContext) => {
+        const resolvedCwd = cwd ?? ctx.activeWorktreePath;
+        if (!resolvedCwd) throw new Error("No active worktree");
+        await githubClient.openIssue(resolvedCwd, issueNumber);
       },
     })
   );
@@ -138,9 +150,17 @@ export function registerGithubActions(actions: ActionRegistry, _callbacks: Actio
       kind: "query",
       danger: "safe",
       scope: "renderer",
-      argsSchema: z.object({ cwd: z.string(), bypassCache: z.boolean().optional() }),
-      run: async ({ cwd, bypassCache }) => {
-        return await githubClient.getRepoStats(cwd, bypassCache);
+      argsSchema: z.object({
+        cwd: z
+          .string()
+          .optional()
+          .describe("Working directory of the git repo. Defaults to the active worktree path."),
+        bypassCache: z.boolean().optional(),
+      }),
+      run: async ({ cwd, bypassCache }, ctx: ActionContext) => {
+        const resolvedCwd = cwd ?? ctx.activeWorktreePath;
+        if (!resolvedCwd) throw new Error("No active worktree");
+        return await githubClient.getRepoStats(resolvedCwd, bypassCache);
       },
     })
   );
@@ -156,10 +176,39 @@ export function registerGithubActions(actions: ActionRegistry, _callbacks: Actio
       danger: "safe",
       scope: "renderer",
       argsSchema: GitHubListOptionsSchema,
-      run: async (args) => {
+      run: async (args, ctx: ActionContext) => {
+        const resolvedCwd = args.cwd ?? ctx.activeWorktreePath;
+        if (!resolvedCwd) throw new Error("No active worktree");
         // Schema allows `state: "merged"` (valid for PRs); the issues client API
         // does not. Preserved as a runtime gap — see githubActions.adversarial.test.ts.
-        return await githubClient.listIssues(args as Parameters<typeof githubClient.listIssues>[0]);
+        return await githubClient.listIssues({
+          ...args,
+          cwd: resolvedCwd,
+        } as Parameters<typeof githubClient.listIssues>[0]);
+      },
+    })
+  );
+
+  actions.set("github.getIssueByNumber", () =>
+    defineAction({
+      id: "github.getIssueByNumber",
+      title: "Get GitHub Issue",
+      description: "Fetch a single GitHub issue by number, including title, labels, and assignees.",
+      category: "github",
+      kind: "query",
+      danger: "safe",
+      scope: "renderer",
+      argsSchema: z.object({
+        cwd: z
+          .string()
+          .optional()
+          .describe("Working directory of the git repo. Defaults to the active worktree path."),
+        issueNumber: z.number().int().positive().describe("Issue number to fetch"),
+      }),
+      run: async ({ cwd, issueNumber }, ctx: ActionContext) => {
+        const resolvedCwd = cwd ?? ctx.activeWorktreePath;
+        if (!resolvedCwd) throw new Error("No active worktree");
+        return await githubClient.getIssueByNumber(resolvedCwd, issueNumber);
       },
     })
   );
@@ -175,8 +224,10 @@ export function registerGithubActions(actions: ActionRegistry, _callbacks: Actio
       danger: "safe",
       scope: "renderer",
       argsSchema: GitHubListOptionsSchema,
-      run: async (args) => {
-        return await githubClient.listPullRequests(args);
+      run: async (args, ctx: ActionContext) => {
+        const resolvedCwd = args.cwd ?? ctx.activeWorktreePath;
+        if (!resolvedCwd) throw new Error("No active worktree");
+        return await githubClient.listPullRequests({ ...args, cwd: resolvedCwd });
       },
     })
   );
@@ -214,7 +265,7 @@ export function registerGithubActions(actions: ActionRegistry, _callbacks: Actio
       description: "Set the GitHub token used for CLI operations",
       category: "github",
       kind: "command",
-      danger: "confirm",
+      danger: "safe",
       scope: "renderer",
       argsSchema: z.object({ token: z.string() }),
       run: async ({ token }) => {
@@ -229,7 +280,7 @@ export function registerGithubActions(actions: ActionRegistry, _callbacks: Actio
     description: "Clear the stored GitHub token",
     category: "github",
     kind: "command",
-    danger: "confirm",
+    danger: "safe",
     scope: "renderer",
     run: async () => {
       await githubClient.clearToken();

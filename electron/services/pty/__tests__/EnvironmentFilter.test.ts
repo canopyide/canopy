@@ -37,6 +37,14 @@ describe("isSensitiveVar", () => {
     it("blocks JWT_SECRET", () => expect(isSensitiveVar("JWT_SECRET")).toBe(true));
   });
 
+  describe("pattern blocklist — APIKEY (no underscore) variants", () => {
+    it("blocks OPENAI_APIKEY", () => expect(isSensitiveVar("OPENAI_APIKEY")).toBe(true));
+    it("blocks MY_APIKEY", () => expect(isSensitiveVar("MY_APIKEY")).toBe(true));
+    it("blocks SOME_SERVICE_APIKEY", () =>
+      expect(isSensitiveVar("SOME_SERVICE_APIKEY")).toBe(true));
+    it("blocks APIKEY (bare)", () => expect(isSensitiveVar("APIKEY")).toBe(true));
+  });
+
   describe("pattern blocklist — SDK auth vars", () => {
     it("blocks AWS_BEARER_TOKEN_BEDROCK", () =>
       expect(isSensitiveVar("AWS_BEARER_TOKEN_BEDROCK")).toBe(true));

@@ -375,6 +375,97 @@ describe("sanitizeEvent", () => {
     } as unknown as SentryEvent;
     expect(sanitizeEvent(event)).toBeNull();
   });
+
+  it("scrubs frame.context_line, pre_context, post_context populated by contextLinesIntegration", () => {
+    const secret = "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef0123456";
+    const event: SentryEvent = {
+      exception: {
+        values: [
+          {
+            stacktrace: {
+              frames: [
+                {
+                  filename: "/Users/alice/app/src/auth.ts",
+                  context_line: `  const token = "${secret}";`,
+                  pre_context: ["  // load credentials", `  const home = "/Users/alice/Projects";`],
+                  post_context: [
+                    `  return fetch(url, { headers: { Authorization: "Bearer ${secret}" } });`,
+                    "}",
+                  ],
+                },
+              ],
+            },
+          },
+        ],
+      },
+    };
+    const result = sanitizeEvent(event);
+    const frame = result?.exception?.values?.[0]?.stacktrace?.frames?.[0];
+    expect(frame?.context_line).not.toContain(secret);
+    expect(frame?.context_line).toContain("[REDACTED]");
+    expect(frame?.pre_context?.[1]).toBe(`  const home = "/Users/USER/Projects";`);
+    expect(frame?.post_context?.[0]).not.toContain(secret);
+    expect(frame?.post_context?.[0]).toContain("[REDACTED]");
+    expect(JSON.stringify(result)).not.toContain(secret);
+    expect(JSON.stringify(result)).not.toContain("/Users/alice/");
+  });
+
+  it("scrubs frame.vars populated by localVariablesIntegration", () => {
+    const secret = "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef0123456";
+    const event: SentryEvent = {
+      exception: {
+        values: [
+          {
+            stacktrace: {
+              frames: [
+                {
+                  filename: "/Users/alice/app/src/auth.ts",
+                  vars: {
+                    apiToken: secret,
+                    homePath: "/Users/alice/Projects/daintree",
+                    retries: 3,
+                    nested: {
+                      headers: { authorization: `Bearer ${secret}` },
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    };
+    const result = sanitizeEvent(event);
+    const vars = result?.exception?.values?.[0]?.stacktrace?.frames?.[0]?.vars;
+    expect(vars?.apiToken).toBe("[REDACTED]");
+    expect(vars?.homePath).toBe("/Users/USER/Projects/daintree");
+    // non-string values pass through untouched (numeric variable preserved)
+    expect(vars?.retries).toBe(3);
+    expect(JSON.stringify(vars?.nested)).not.toContain(secret);
+    expect(JSON.stringify(vars?.nested)).toContain("[REDACTED]");
+  });
+
+  it("leaves frames without the new fields unchanged (back-compat)", () => {
+    const event: SentryEvent = {
+      exception: {
+        values: [
+          {
+            stacktrace: {
+              frames: [{ filename: "/Users/alice/app/src/auth.ts", abs_path: "/Users/alice/x" }],
+            },
+          },
+        ],
+      },
+    };
+    const result = sanitizeEvent(event);
+    const frame = result?.exception?.values?.[0]?.stacktrace?.frames?.[0];
+    expect(frame?.filename).toBe("/Users/USER/app/src/auth.ts");
+    expect(frame?.abs_path).toBe("/Users/USER/x");
+    expect(frame?.context_line).toBeUndefined();
+    expect(frame?.pre_context).toBeUndefined();
+    expect(frame?.post_context).toBeUndefined();
+    expect(frame?.vars).toBeUndefined();
+  });
 });
 
 describe("getTelemetryLevel", () => {
@@ -625,6 +716,16 @@ describe("initializeTelemetry", () => {
     // capture) and any value < 1 silently drops that fraction of crash
     // reports. Fail closed so reintroduction at any value is caught. See #5255.
     expect(options).not.toHaveProperty("sampleRate");
+    // normalizeDepth must match MAX_DEEP_SANITIZE_DEPTH so the deep-walk
+    // scrubber inspects real data, not already-flattened [Object]/[Array] stubs
+    // produced by Sentry's default depth-3 normalization.
+    expect(options.normalizeDepth).toBe(10);
+    // normalizeMaxBreadth is frozen at the current SDK default to insulate
+    // against a future SDK change silently narrowing the breadth limit.
+    expect(options.normalizeMaxBreadth).toBe(1000);
+    // maxBreadcrumbs raises the default 100-slot ring so a crash-triggering
+    // breadcrumb isn't rotated out by high-frequency action dispatches. See #7575.
+    expect(options.maxBreadcrumbs).toBe(250);
     process.env.SENTRY_DSN = original;
   });
 
@@ -689,7 +790,29 @@ describe("trackEvent", () => {
       expect.objectContaining({
         message: "onboarding_completed",
         tags: { kind: "analytics" },
+        fingerprint: ["analytics", "onboarding_completed"],
       })
+    );
+    process.env.SENTRY_DSN = original;
+  });
+
+  it("stamps a stable fingerprint on every analytics event", async () => {
+    const original = process.env.SENTRY_DSN;
+    process.env.SENTRY_DSN = "https://test@sentry.io/123";
+    setPrivacy({ telemetryLevel: "full", hasSeenPrompt: true });
+    await initializeTelemetry();
+    captureEventMock.mockClear();
+
+    trackEvent("onboarding_step_viewed", { step: "telemetry" });
+    trackEvent("agent_launched", { agent: "claude" });
+
+    expect(captureEventMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ fingerprint: ["analytics", "onboarding_step_viewed"] })
+    );
+    expect(captureEventMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ fingerprint: ["analytics", "agent_launched"] })
     );
     process.env.SENTRY_DSN = original;
   });
@@ -778,6 +901,18 @@ describe("setTelemetryLevel with buffer", () => {
 
     expect(captureEventMock).toHaveBeenCalledTimes(2);
     expect(_getPreConsentBufferLength()).toBe(0);
+
+    // Replayed buffered events must carry the same stable fingerprint as
+    // direct sends — otherwise pre-consent and post-consent events for the
+    // same name would land in different Sentry groups.
+    expect(captureEventMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ fingerprint: ["analytics", "onboarding_step_viewed"] })
+    );
+    expect(captureEventMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ fingerprint: ["analytics", "onboarding_step_viewed"] })
+    );
 
     process.env.SENTRY_DSN = original;
   });
@@ -1186,5 +1321,53 @@ describe("beforeSend wrapper (end-to-end via initializeTelemetry)", () => {
     expect(headers.authorization).toBe("Bearer [REDACTED]");
     expect(out?.extra?.note).not.toContain("sk-ant-");
     expect(out?.extra?.note).toContain("[REDACTED]");
+  });
+
+  it("scrubs frame.context_line, pre_context, post_context, and vars through the registered beforeSend hook", async () => {
+    const mod = await loadFreshModule();
+    await mod.initializeTelemetry();
+    const init = sentryInitMock.mock.calls[0]?.[0] as {
+      beforeSend?: (event: unknown) => unknown;
+    };
+    expect(typeof init.beforeSend).toBe("function");
+
+    const pat = "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef0123456";
+    const input = {
+      exception: {
+        values: [
+          {
+            stacktrace: {
+              frames: [
+                {
+                  filename: "/Users/alice/app/src/auth.ts",
+                  abs_path: "/Users/alice/app/src/auth.ts",
+                  context_line: `  const token = "${pat}";`,
+                  pre_context: [`  const home = "/Users/alice/Projects";`],
+                  post_context: [`  fetch(url, { headers: { Authorization: "Bearer ${pat}" } });`],
+                  vars: {
+                    apiToken: pat,
+                    headers: { authorization: `Bearer ${pat}` },
+                    retries: 3,
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    };
+    const out = init.beforeSend?.(input) as typeof input | null;
+
+    expect(out).not.toBeNull();
+    const serialized = JSON.stringify(out);
+    expect(serialized).not.toContain(pat);
+    expect(serialized).not.toContain("/Users/alice/");
+    expect(serialized).toContain("[REDACTED]");
+    // non-string vars survive
+    const vars = out?.exception?.values?.[0]?.stacktrace?.frames?.[0]?.vars as Record<
+      string,
+      unknown
+    >;
+    expect(vars.retries).toBe(3);
   });
 });

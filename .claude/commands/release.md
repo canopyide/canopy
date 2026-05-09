@@ -50,8 +50,7 @@ Read `package.json` to get the current version.
 
 Use `AskUserQuestion` to confirm. Present your recommendation with reasoning:
 
-> **Current version:** 0.0.1
-> **Recommended next version:** 0.1.0
+> **Current version:** 0.0.1 **Recommended next version:** 0.1.0
 >
 > Reason: [e.g. "This is the initial release" / "N new features since vX.Y.Z warrant a minor bump" / "Only bug fixes since vX.Y.Z — patch bump"]
 
@@ -125,13 +124,13 @@ Run these in parallel:
 
 Group everything into these categories based on commit prefixes and issue/PR labels:
 
-| Category             | Commit Prefixes                                           | Labels                   |
-| -------------------- | --------------------------------------------------------- | ------------------------ |
-| **Features**         | `feat:`, `feat(...)`                                      | `enhancement`, `feature` |
-| **Bug Fixes**        | `fix:`, `fix(...)`                                        | `bug`, `bugfix`          |
-| **Performance**      | `perf:`, `perf(...)`                                      | `performance`            |
-| **Breaking Changes** | `BREAKING CHANGE`, `!:`                                   | `breaking`               |
-| **Other**            | `chore:`, `docs:`, `refactor:`, `style:`, `ci:`, `build:` | —                        |
+| Category | Commit Prefixes | Labels |
+| --- | --- | --- |
+| **Features** | `feat:`, `feat(...)` | `enhancement`, `feature` |
+| **Bug Fixes** | `fix:`, `fix(...)` | `bug`, `bugfix` |
+| **Performance** | `perf:`, `perf(...)` | `performance` |
+| **Breaking Changes** | `BREAKING CHANGE`, `!:` | `breaking` |
+| **Other** | `chore:`, `docs:`, `refactor:`, `style:`, `ci:`, `build:` | — |
 
 Present a summary to the user:
 
@@ -228,8 +227,7 @@ This is used for the very first release when gitflow hasn't been set up yet.
 2. Update version in `package.json` (line 3: `"version": "X.Y.Z"`).
 3. Update version in `package-lock.json` — there are TWO places:
    - Top-level `"version"` field (line 3)
-   - Inside `"packages"."".version`
-     Use `npm version NEW_VERSION --no-git-tag-version` to handle both atomically.
+   - Inside `"packages"."".version` Use `npm version NEW_VERSION --no-git-tag-version` to handle both atomically.
 4. Commit the changelog and version bump: `chore(release): release v0.X.0`
 5. Commit the changelog and version files together in a single commit.
 

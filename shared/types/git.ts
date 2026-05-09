@@ -51,6 +51,12 @@ export interface WorktreeChanges {
   lastCommitMessage?: string;
   /** Last commit time (ms since epoch, committer date) */
   lastCommitTimestampMs?: number;
+  /** Commits ahead of upstream from `git status --porcelain -b` (undefined when no upstream). */
+  ahead?: number;
+  /** Commits behind upstream from `git status --porcelain -b` (undefined when no upstream). */
+  behind?: number;
+  /** Upstream branch name (e.g. "origin/main"); `null` when no upstream is configured. */
+  tracking?: string | null;
 }
 
 export interface StagingFileEntry {
@@ -95,4 +101,25 @@ export interface StagingStatus {
   rebaseStep: number | null;
   /** When `repoState === "REBASING"`, the total step count. Null otherwise. */
   rebaseTotalSteps: number | null;
+}
+
+/** Branch information from git */
+export interface BranchInfo {
+  name: string;
+  current: boolean;
+  commit: string;
+  remote?: string;
+}
+
+/** Options for creating a new worktree */
+export interface CreateWorktreeOptions {
+  baseBranch: string;
+  newBranch: string;
+  path: string;
+  fromRemote?: boolean;
+  useExistingBranch?: boolean;
+  /** Opt-in flag to run resource.provision after setup */
+  provisionResource?: boolean;
+  /** Worktree environment mode ("local" or an environment key from resourceEnvironments) */
+  worktreeMode?: string;
 }

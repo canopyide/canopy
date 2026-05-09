@@ -104,6 +104,7 @@ export function registerPanelActions(actions: ActionRegistry, callbacks: ActionC
     kind: "command",
     danger: "safe",
     scope: "renderer",
+    keywords: ["create", "add", "launcher", "picker"],
     nonRepeatable: true,
     run: async () => {
       callbacks.onOpenPanelPalette();
@@ -162,6 +163,7 @@ export function registerPanelActions(actions: ActionRegistry, callbacks: ActionC
     kind: "command",
     danger: "safe",
     scope: "renderer",
+    keywords: ["debug", "problems", "lint", "events"],
     run: async () => {
       useDiagnosticsStore.getState().toggleDock();
     },
@@ -175,6 +177,7 @@ export function registerPanelActions(actions: ActionRegistry, callbacks: ActionC
     kind: "command",
     danger: "safe",
     scope: "renderer",
+    keywords: ["debug", "output", "trace", "console"],
     run: async () => {
       useDiagnosticsStore.getState().openDock("logs");
     },
@@ -188,6 +191,7 @@ export function registerPanelActions(actions: ActionRegistry, callbacks: ActionC
     kind: "command",
     danger: "safe",
     scope: "renderer",
+    keywords: ["debug", "timeline", "activity", "trace"],
     run: async () => {
       useDiagnosticsStore.getState().openDock("events");
     },
@@ -201,6 +205,7 @@ export function registerPanelActions(actions: ActionRegistry, callbacks: ActionC
     kind: "command",
     danger: "safe",
     scope: "renderer",
+    keywords: ["errors", "warnings", "issues", "lint"],
     run: async () => {
       useDiagnosticsStore.getState().openDock("problems");
     },
@@ -214,6 +219,7 @@ export function registerPanelActions(actions: ActionRegistry, callbacks: ActionC
     kind: "command",
     danger: "safe",
     scope: "renderer",
+    keywords: ["web", "embed", "browser", "dock"],
     run: async () => {
       window.dispatchEvent(new CustomEvent("daintree:toggle-portal"));
     },
@@ -227,6 +233,7 @@ export function registerPanelActions(actions: ActionRegistry, callbacks: ActionC
     kind: "command",
     danger: "safe",
     scope: "renderer",
+    keywords: ["web", "embed", "browser", "dock"],
     run: async () => {
       usePortalStore.getState().toggle();
     },
@@ -292,7 +299,7 @@ export function registerPanelActions(actions: ActionRegistry, callbacks: ActionC
     description: "Remove a portal link by ID",
     category: "portal",
     kind: "command",
-    danger: "confirm",
+    danger: "safe",
     scope: "renderer",
     argsSchema: z.object({ id: z.string() }),
     run: async (args: unknown) => {
@@ -397,6 +404,7 @@ export function registerPanelActions(actions: ActionRegistry, callbacks: ActionC
     kind: "command",
     danger: "safe",
     scope: "renderer",
+    keywords: ["cycle", "forward", "advance", "switch"],
     run: async () => {
       const state = usePortalStore.getState();
       if (state.tabs.length <= 1) return;
@@ -416,6 +424,7 @@ export function registerPanelActions(actions: ActionRegistry, callbacks: ActionC
     kind: "command",
     danger: "safe",
     scope: "renderer",
+    keywords: ["cycle", "back", "switch", "last"],
     run: async () => {
       const state = usePortalStore.getState();
       if (state.tabs.length <= 1) return;
@@ -435,6 +444,7 @@ export function registerPanelActions(actions: ActionRegistry, callbacks: ActionC
     kind: "command",
     danger: "safe",
     scope: "renderer",
+    keywords: ["create", "add", "blank", "open"],
     run: async () => {
       const state = usePortalStore.getState();
 
@@ -464,6 +474,7 @@ export function registerPanelActions(actions: ActionRegistry, callbacks: ActionC
     kind: "command",
     danger: "safe",
     scope: "renderer",
+    keywords: ["home", "blank", "start", "tab"],
     run: async () => {
       usePortalStore.getState().createBlankTab();
       await window.electron.portal.hide().catch(() => {});
@@ -476,8 +487,9 @@ export function registerPanelActions(actions: ActionRegistry, callbacks: ActionC
     description: "Close all portal tabs",
     category: "portal",
     kind: "command",
-    danger: "confirm",
+    danger: "safe",
     scope: "renderer",
+    keywords: ["remove", "clear", "cleanup", "tabs"],
     run: async () => {
       usePortalStore.getState().closeAllTabs();
       await window.electron.portal.hide().catch(() => {});
@@ -771,7 +783,7 @@ export function registerPanelActions(actions: ActionRegistry, callbacks: ActionC
     description: "Close all portal tabs except one",
     category: "portal",
     kind: "command",
-    danger: "confirm",
+    danger: "safe",
     scope: "renderer",
     argsSchema: z.object({ tabId: z.string().optional() }),
     run: async (args: unknown) => {
@@ -795,7 +807,7 @@ export function registerPanelActions(actions: ActionRegistry, callbacks: ActionC
     description: "Close all portal tabs to the right of a tab",
     category: "portal",
     kind: "command",
-    danger: "confirm",
+    danger: "safe",
     scope: "renderer",
     argsSchema: z.object({ tabId: z.string().optional() }),
     run: async (args: unknown) => {
@@ -821,6 +833,7 @@ export function registerPanelActions(actions: ActionRegistry, callbacks: ActionC
     kind: "command",
     danger: "safe",
     scope: "renderer",
+    keywords: ["size", "default", "resize", "layout"],
     run: async () => {
       usePortalStore.getState().setWidth(PORTAL_DEFAULT_WIDTH);
     },

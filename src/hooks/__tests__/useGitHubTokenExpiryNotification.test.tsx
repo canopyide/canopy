@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook } from "@testing-library/react";
+import { renderHook, act } from "@testing-library/react";
 import type { NotifyPayload } from "@/lib/notify";
 
 const notifyMock = vi.fn<(payload: NotifyPayload) => string>();
@@ -17,6 +17,7 @@ vi.mock("@/services/ActionService", () => ({
   },
 }));
 
+import { useGitHubTokenHealthStore } from "@/store/githubTokenHealthStore";
 import { useGitHubTokenExpiryNotification } from "../useGitHubTokenExpiryNotification";
 
 describe("useGitHubTokenExpiryNotification", () => {
@@ -24,6 +25,7 @@ describe("useGitHubTokenExpiryNotification", () => {
     notifyMock.mockReset();
     notifyMock.mockReturnValue("notification-id");
     dispatchMock.mockReset();
+    useGitHubTokenHealthStore.setState({ isUnhealthy: false });
   });
 
   it("does not fire when isTokenError starts false", () => {
@@ -33,7 +35,8 @@ describe("useGitHubTokenExpiryNotification", () => {
     expect(notifyMock).not.toHaveBeenCalled();
   });
 
-  it("fires once on false → true transition", () => {
+  it("fires once on false → true transition when unhealthy", () => {
+    useGitHubTokenHealthStore.setState({ isUnhealthy: true });
     const { rerender } = renderHook(
       ({ isTokenError }) => useGitHubTokenExpiryNotification(isTokenError),
       { initialProps: { isTokenError: false } }
@@ -45,6 +48,7 @@ describe("useGitHubTokenExpiryNotification", () => {
   });
 
   it("does not fire again on subsequent true → true renders", () => {
+    useGitHubTokenHealthStore.setState({ isUnhealthy: true });
     const { rerender } = renderHook(
       ({ isTokenError }) => useGitHubTokenExpiryNotification(isTokenError),
       { initialProps: { isTokenError: true } }
@@ -57,6 +61,7 @@ describe("useGitHubTokenExpiryNotification", () => {
   });
 
   it("re-fires after a true → false → true cycle (latch resets when error clears)", () => {
+    useGitHubTokenHealthStore.setState({ isUnhealthy: true });
     const { rerender } = renderHook(
       ({ isTokenError }) => useGitHubTokenExpiryNotification(isTokenError),
       { initialProps: { isTokenError: true } }
@@ -71,6 +76,7 @@ describe("useGitHubTokenExpiryNotification", () => {
   });
 
   it("constructs an action with actionId, actionArgs, and a working onClick", () => {
+    useGitHubTokenHealthStore.setState({ isUnhealthy: true });
     renderHook(({ isTokenError }) => useGitHubTokenExpiryNotification(isTokenError), {
       initialProps: { isTokenError: true },
     });
@@ -99,5 +105,65 @@ describe("useGitHubTokenExpiryNotification", () => {
       { tab: "github", sectionId: "github-token" },
       { source: "user" }
     );
+  });
+
+  it("does not fire when isTokenError is true but token is healthy (gate)", () => {
+    const { rerender } = renderHook(
+      ({ isTokenError }) => useGitHubTokenExpiryNotification(isTokenError),
+      { initialProps: { isTokenError: false } }
+    );
+    rerender({ isTokenError: true });
+    expect(notifyMock).not.toHaveBeenCalled();
+  });
+
+  it("fires when isTokenError is true and token becomes unhealthy", () => {
+    const { rerender } = renderHook(
+      ({ isTokenError }) => useGitHubTokenExpiryNotification(isTokenError),
+      { initialProps: { isTokenError: true } }
+    );
+    expect(notifyMock).not.toHaveBeenCalled();
+
+    useGitHubTokenHealthStore.setState({ isUnhealthy: true });
+    rerender({ isTokenError: true });
+    expect(notifyMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("latch resets when health recovers while error persists, re-fires on next unhealthy", () => {
+    useGitHubTokenHealthStore.setState({ isUnhealthy: true });
+    const { rerender } = renderHook(
+      ({ isTokenError }) => useGitHubTokenExpiryNotification(isTokenError),
+      { initialProps: { isTokenError: true } }
+    );
+    expect(notifyMock).toHaveBeenCalledTimes(1);
+
+    useGitHubTokenHealthStore.setState({ isUnhealthy: false });
+    rerender({ isTokenError: true });
+    expect(notifyMock).toHaveBeenCalledTimes(1);
+
+    useGitHubTokenHealthStore.setState({ isUnhealthy: true });
+    rerender({ isTokenError: true });
+    expect(notifyMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("suppresses toast when isTokenError is true but isUnhealthy stays false across renders", () => {
+    const { rerender } = renderHook(
+      ({ isTokenError }) => useGitHubTokenExpiryNotification(isTokenError),
+      { initialProps: { isTokenError: true } }
+    );
+    rerender({ isTokenError: true });
+    rerender({ isTokenError: true });
+    expect(notifyMock).not.toHaveBeenCalled();
+  });
+
+  it("reacts to Zustand store change without explicit rerender", () => {
+    renderHook(({ isTokenError }) => useGitHubTokenExpiryNotification(isTokenError), {
+      initialProps: { isTokenError: true },
+    });
+    expect(notifyMock).not.toHaveBeenCalled();
+
+    act(() => {
+      useGitHubTokenHealthStore.setState({ isUnhealthy: true });
+    });
+    expect(notifyMock).toHaveBeenCalledTimes(1);
   });
 });

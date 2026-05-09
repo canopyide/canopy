@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, type CSSProperties } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Spinner } from "@/components/ui/Spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 type ButtonVariant = "primary" | "accent" | "dismiss" | "danger" | "dangerFilled";
@@ -14,19 +15,20 @@ export interface BannerAction {
   ariaLabel?: string;
   title?: string;
   iconOnly?: boolean;
+  loading?: boolean;
+  disabled?: boolean;
 }
 
 export interface InlineStatusBannerProps {
   icon: React.ComponentType<{ className?: string; style?: CSSProperties }>;
   title: React.ReactNode;
   description?: React.ReactNode;
-  contextLine?: React.ReactNode;
+  contextLine?: string;
   severity?: "error" | "warning";
   animated?: boolean;
   className?: string;
   actions: BannerAction[];
   role?: "alert" | "status";
-  ariaLive?: "polite" | "assertive";
   onClose?: () => void;
 }
 
@@ -77,7 +79,6 @@ function InlineStatusBannerComponent({
   className,
   actions,
   role = "alert",
-  ariaLive = "polite",
   onClose,
 }: InlineStatusBannerProps) {
   const prefersReducedMotion =
@@ -121,7 +122,6 @@ function InlineStatusBannerComponent({
         borderBottom: `1px solid color-mix(in oklab, var(${colorVar}) 20%, transparent)`,
       }}
       role={role}
-      aria-live={ariaLive}
     >
       <div className={cn("flex", hasDescription ? "items-start" : "items-center", "gap-2 min-w-0")}>
         <IconComponent
@@ -136,7 +136,7 @@ function InlineStatusBannerComponent({
             </span>
             {description && (
               <p
-                className="text-xs mt-0.5"
+                className="text-xs mt-0.5 break-words"
                 style={{ color: `color-mix(in oklab, var(${colorVar}) 80%, transparent)` }}
               >
                 {description}
@@ -146,6 +146,7 @@ function InlineStatusBannerComponent({
               <p
                 className="text-xs font-mono mt-1 truncate"
                 style={{ color: `color-mix(in oklab, var(${colorVar}) 60%, transparent)` }}
+                title={contextLine}
               >
                 {contextLine}
               </p>
@@ -167,7 +168,7 @@ function InlineStatusBannerComponent({
               onClose();
             }}
             aria-label="Dismiss"
-            className="p-1 rounded text-daintree-text/60 hover:text-daintree-text hover:bg-daintree-border/50 focus-visible:outline-2 focus-visible:outline-daintree-accent"
+            className="p-1 rounded text-daintree-text/60 hover:text-daintree-text hover:bg-daintree-border/50 outline-hidden focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-daintree-accent"
           >
             <X className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
@@ -176,28 +177,35 @@ function InlineStatusBannerComponent({
           const variant = action.variant ?? "primary";
           const variantClasses = getButtonClasses(variant);
           const variantStyle = getButtonStyle(variant, colorVar);
+          const isDisabled = action.disabled || action.loading;
+          const iconClasses = action.iconOnly ? "w-3.5 h-3.5" : "w-3 h-3";
+          const spinnerSize = action.iconOnly ? "sm" : "xs";
           const buttonEl = (
             <button
               key={action.id}
               type="button"
+              disabled={isDisabled}
+              aria-busy={action.loading || undefined}
               onClick={(e) => {
                 e.stopPropagation();
+                if (isDisabled) return;
                 action.onClick();
               }}
               className={cn(
                 action.iconOnly ? "p-1" : "flex items-center gap-1.5 px-2 py-1 text-xs font-medium",
+                "outline-hidden focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-daintree-accent",
                 variantClasses,
                 (variant === "danger" || variant === "dangerFilled") &&
-                  "hover:[color:var(--hover-color)] hover:[background:var(--hover-bg)]"
+                  "hover:[color:var(--hover-color)] hover:[background:var(--hover-bg)]",
+                isDisabled && "cursor-not-allowed opacity-60 hover:bg-transparent"
               )}
               style={variantStyle}
               aria-label={action.ariaLabel}
             >
-              {action.icon && (
-                <action.icon
-                  className={action.iconOnly ? "w-3.5 h-3.5" : "w-3 h-3"}
-                  aria-hidden="true"
-                />
+              {action.loading ? (
+                <Spinner size={spinnerSize} />
+              ) : (
+                action.icon && <action.icon className={iconClasses} aria-hidden="true" />
               )}
               {!action.iconOnly && action.label}
             </button>

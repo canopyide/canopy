@@ -7,7 +7,7 @@ const storeMock = vi.hoisted(() => ({
 
 vi.mock("../../store.js", () => ({ store: storeMock }));
 
-import { AppAgentService } from "../AppAgentService.js";
+import { AppAgentService, API_TEST_TIMEOUT_MS } from "../AppAgentService.js";
 
 function setConfig(config: Record<string, unknown>) {
   storeMock.get.mockImplementation((key: string) => {
@@ -107,7 +107,7 @@ describe("AppAgentService adversarial", () => {
     mockFetch(vi.fn(async () => ({ ok: false, status: 403 })) as unknown as typeof fetch);
     const result = await new AppAgentService().testApiKey("k");
     expect(result.valid).toBe(false);
-    expect(result.error).toContain("access");
+    expect(result.error).toEqual("API key does not have access to this model");
   });
 
   it("testApiKey wraps other non-ok responses with status and error text", async () => {
@@ -156,7 +156,7 @@ describe("AppAgentService adversarial", () => {
     expect(result).toEqual({ valid: false, error: "Model not found" });
   });
 
-  it("testApiKey aborts after 15s timeout and returns 'Request timed out'", async () => {
+  it("testApiKey aborts after timeout and returns 'Request timed out'", async () => {
     vi.useFakeTimers();
     mockFetch(
       vi.fn(
@@ -172,9 +172,103 @@ describe("AppAgentService adversarial", () => {
     );
 
     const pending = new AppAgentService().testApiKey("k");
-    await vi.advanceTimersByTimeAsync(15_000);
+    await vi.advanceTimersByTimeAsync(API_TEST_TIMEOUT_MS);
     const result = await pending;
 
     expect(result).toEqual({ valid: false, error: "Request timed out" });
+  });
+
+  it("testApiKey truncates large raw error text to 200 chars", async () => {
+    const longText = "x".repeat(500);
+    mockFetch(
+      vi.fn(
+        async () =>
+          ({
+            ok: false,
+            status: 500,
+            text: async () => longText,
+          }) as unknown as Response
+      ) as unknown as typeof fetch
+    );
+
+    const result = await new AppAgentService().testApiKey("k");
+    expect(result.valid).toBe(false);
+    expect(result.error).toMatch(/^API error: 500 /);
+    const providerPart = result.error!.replace("API error: 500 ", "");
+    expect(providerPart.length).toBe(203);
+    expect(providerPart.endsWith("...")).toBe(true);
+  });
+
+  it("testApiKey extracts JSON error.message and truncates when long", async () => {
+    const longMessage = "e".repeat(300);
+    const jsonBody = JSON.stringify({ error: { message: longMessage } });
+    mockFetch(
+      vi.fn(
+        async () =>
+          ({
+            ok: false,
+            status: 500,
+            text: async () => jsonBody,
+          }) as unknown as Response
+      ) as unknown as typeof fetch
+    );
+
+    const result = await new AppAgentService().testApiKey("k");
+    expect(result.valid).toBe(false);
+    const providerPart = result.error!.replace("API error: 500 ", "");
+    expect(providerPart).toBe(longMessage.slice(0, 200) + "...");
+  });
+
+  it("testApiKey uses JSON error.message directly when under 200 chars", async () => {
+    const jsonBody = JSON.stringify({ error: { message: "short message" } });
+    mockFetch(
+      vi.fn(
+        async () =>
+          ({
+            ok: false,
+            status: 500,
+            text: async () => jsonBody,
+          }) as unknown as Response
+      ) as unknown as typeof fetch
+    );
+
+    const result = await new AppAgentService().testApiKey("k");
+    expect(result.error).toBe("API error: 500 short message");
+  });
+
+  it("testApiKey falls back to raw text when JSON lacks error.message", async () => {
+    const jsonBody = JSON.stringify({ foo: "bar" });
+    mockFetch(
+      vi.fn(
+        async () =>
+          ({
+            ok: false,
+            status: 500,
+            text: async () => jsonBody,
+          }) as unknown as Response
+      ) as unknown as typeof fetch
+    );
+
+    const result = await new AppAgentService().testApiKey("k");
+    expect(result.error).toBe('API error: 500 {"foo":"bar"}');
+  });
+
+  it("testApiKey truncates malformed JSON as raw text", async () => {
+    const notJson = "not json{{{".repeat(40);
+    mockFetch(
+      vi.fn(
+        async () =>
+          ({
+            ok: false,
+            status: 500,
+            text: async () => notJson,
+          }) as unknown as Response
+      ) as unknown as typeof fetch
+    );
+
+    const result = await new AppAgentService().testApiKey("k");
+    expect(result.valid).toBe(false);
+    const providerPart = result.error!.replace("API error: 500 ", "");
+    expect(providerPart).toBe(notJson.slice(0, 200) + "...");
   });
 });

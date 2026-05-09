@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, memo } from "react";
+import { useRef, useEffect, useState, memo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { FixedDropdown } from "@/components/ui/fixed-dropdown";
 import { Bell, BellOff } from "lucide-react";
@@ -9,8 +9,9 @@ import { useNotificationSettingsStore } from "@/store/notificationSettingsStore"
 import { useUIStore } from "@/store/uiStore";
 import { useShallow } from "zustand/react/shallow";
 import { isScheduledQuietNow } from "@shared/utils/quietHours";
+import { DURATION_200 } from "@/lib/animationUtils";
 
-const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text transition-colors";
+const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text";
 
 const timeFormatter = new Intl.DateTimeFormat(undefined, {
   hour: "numeric",
@@ -31,6 +32,7 @@ export const NotificationCenterToolbarButton = memo(function NotificationCenterT
   );
   const notificationCenterButtonRef = useRef<HTMLButtonElement>(null);
   const notificationUnreadCount = useNotificationHistoryStore((s) => s.unreadCount);
+  const evictedToInboxCount = useNotificationHistoryStore((s) => s.evictedToInboxCount);
   const {
     enabled: notificationsEnabled,
     quietUntil,
@@ -124,6 +126,39 @@ export const NotificationCenterToolbarButton = memo(function NotificationCenterT
     if (!notificationsEnabled && notificationCenterOpen) closeNotificationCenter();
   }, [notificationsEnabled, notificationCenterOpen, closeNotificationCenter]);
 
+  // Toggle a one-shot blip on the bell whenever a new notification lands in the
+  // inbox while DND is inactive. Uses boolean class toggle with onAnimationEnd
+  // cleanup (matching AgentStatusIndicator) instead of key-based remounting, so
+  // no will-change layer hint lingers on the long-lived toolbar element.
+  const prevEvictedRef = useRef(evictedToInboxCount);
+  const [isBellBlipping, setIsBellBlipping] = useState(false);
+  useEffect(() => {
+    const prev = prevEvictedRef.current;
+    prevEvictedRef.current = evictedToInboxCount;
+
+    // Count decreased — clear any in-flight animation state.
+    if (evictedToInboxCount < prev) {
+      setIsBellBlipping(false);
+      return;
+    }
+
+    if (evictedToInboxCount > prev && !isDndActive) {
+      setIsBellBlipping(true);
+    }
+  }, [evictedToInboxCount, isDndActive]);
+
+  const handleBellAnimationEnd = useCallback(() => {
+    setIsBellBlipping(false);
+  }, []);
+
+  // Safety timeout — under reduced-motion CSS sets `animation: none`, so
+  // `animationend` never fires and isBellBlipping would latch true.
+  useEffect(() => {
+    if (!isBellBlipping) return;
+    const timer = setTimeout(() => setIsBellBlipping(false), DURATION_200 + 50);
+    return () => clearTimeout(timer);
+  }, [isBellBlipping]);
+
   if (!notificationsEnabled) return null;
 
   const label = (() => {
@@ -136,7 +171,6 @@ export const NotificationCenterToolbarButton = memo(function NotificationCenterT
   })();
 
   const Icon = isDndActive ? BellOff : Bell;
-  const dotColor = isDndActive ? "bg-daintree-text/30" : "bg-daintree-text/50";
 
   return (
     <div className="relative">
@@ -154,13 +188,19 @@ export const NotificationCenterToolbarButton = memo(function NotificationCenterT
             aria-expanded={notificationCenterOpen}
             aria-haspopup="dialog"
           >
-            <Icon />
-            {notificationUnreadCount > 0 && (
-              <span
-                data-testid="notification-unread-dot"
-                className={`absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full ring-1 ring-daintree-bg/60 ${dotColor}`}
-              />
-            )}
+            <span
+              data-testid="notification-bell-icon"
+              className={isBellBlipping ? "inline-flex animate-activity-blip" : "inline-flex"}
+              onAnimationEnd={handleBellAnimationEnd}
+            >
+              <Icon />
+            </span>
+            <span
+              data-testid="notification-unread-dot"
+              data-visible={notificationUnreadCount > 0}
+              data-dnd-active={isDndActive ? "true" : undefined}
+              className="toolbar-badge absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-daintree-text/50 ring-1 ring-daintree-bg/60"
+            />
           </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">{label}</TooltipContent>

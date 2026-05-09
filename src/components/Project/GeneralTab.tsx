@@ -1,16 +1,53 @@
-import { useState, useRef, useEffect, useCallback } from "react";
-import { Image, Upload, X, Rocket, Check, FolderOpen, Copy, Palette } from "lucide-react";
-import { FolderGit2 } from "@/components/icons";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import {
+  Image,
+  Upload,
+  X,
+  Rocket,
+  Check,
+  FolderOpen,
+  Copy,
+  Palette,
+  AlertTriangle,
+  WandSparkles,
+} from "lucide-react";
+import { FolderGit2, McpServerIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { EmojiPicker } from "@/components/ui/emoji-picker";
 import { SettingsSwitchCard } from "@/components/Settings/SettingsSwitchCard";
+import { SettingsChoicebox, type ChoiceboxOption } from "@/components/Settings/SettingsChoicebox";
 import { getProjectGradient, isValidHexColor } from "@/lib/colorUtils";
 import { cn } from "@/lib/utils";
 import { sanitizeSvg, svgToDataUrl } from "@/lib/svg";
 import { GITIGNORE_SNIPPET } from "./projectSettingsConstants";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
-import type { Project } from "@shared/types/project";
+import type { DaintreeMcpTier, Project } from "@shared/types/project";
+import { useProjectSettingsStore } from "@/store/projectSettingsStore";
+import { findDevServerCandidate } from "@/utils/devServerDetection";
+
+const DAINTREE_MCP_TIER_OPTIONS: readonly ChoiceboxOption<DaintreeMcpTier>[] = [
+  {
+    value: "off",
+    label: "Off",
+    description: "No Daintree MCP access. Default for new projects.",
+  },
+  {
+    value: "workbench",
+    label: "Workbench",
+    description: "Read-only: worktree status, terminal output, file search, project history.",
+  },
+  {
+    value: "action",
+    label: "Action",
+    description: "Workbench + create worktrees, inject context, stage changes.",
+  },
+  {
+    value: "system",
+    label: "System",
+    description: "Action + commit, push, delete, send terminal commands.",
+  },
+];
 
 const PRESET_SWATCHES = [
   { label: "Blue", cssVar: "--theme-category-blue" },
@@ -54,6 +91,8 @@ interface GeneralTabProps {
   onDevServerLoadTimeoutChange: (value: number | undefined) => void;
   turbopackEnabled: boolean;
   onTurbopackEnabledChange: (value: boolean) => void;
+  daintreeMcpTier: DaintreeMcpTier;
+  onDaintreeMcpTierChange: (value: DaintreeMcpTier) => void;
   projectIconSvg: string | undefined;
   onProjectIconSvgChange: (value: string | undefined) => void;
   enableInRepoSettings: (projectId: string) => Promise<Project>;
@@ -76,6 +115,8 @@ export function GeneralTab({
   onDevServerLoadTimeoutChange,
   turbopackEnabled,
   onTurbopackEnabledChange,
+  daintreeMcpTier,
+  onDaintreeMcpTierChange,
   projectIconSvg,
   onProjectIconSvgChange,
   enableInRepoSettings,
@@ -97,6 +138,23 @@ export function GeneralTab({
   const [inRepoError, setInRepoError] = useState<string | null>(null);
   const [gitignoreCopied, setGitignoreCopied] = useState(false);
   const gitignoreCopyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const allDetectedRunners = useProjectSettingsStore((s) => s.allDetectedRunners);
+
+  const detectedCandidate = useMemo(() => {
+    const candidate = findDevServerCandidate(allDetectedRunners, turbopackEnabled);
+    if (candidate) return candidate;
+    return allDetectedRunners?.find((r) => r.id === "devcontainer-poststart");
+  }, [allDetectedRunners, turbopackEnabled]);
+
+  const detectedCandidateRef = useRef(detectedCandidate);
+  detectedCandidateRef.current = detectedCandidate;
+
+  const handleApplyDetected = useCallback(() => {
+    if (detectedCandidateRef.current) {
+      onDevServerCommandChange(detectedCandidateRef.current.command);
+    }
+  }, [onDevServerCommandChange]);
 
   useEffect(() => {
     const raf = requestAnimationFrame(() => {
@@ -393,6 +451,29 @@ export function GeneralTab({
           will appear in the toolbar to start the dev server.
         </p>
 
+        {devServerCommand === "" && detectedCandidate && (
+          <div
+            className={cn(
+              "flex items-center gap-2 mb-3 px-3 py-2 rounded-[var(--radius-md)]",
+              "bg-overlay-subtle border border-daintree-border"
+            )}
+          >
+            <span className="text-xs text-daintree-text/60">
+              Detected:{" "}
+              <code className="font-mono text-daintree-text/80">{detectedCandidate.command}</code>
+            </span>
+            <Button
+              onClick={handleApplyDetected}
+              variant="ghost"
+              size="sm"
+              className="gap-1.5 px-2.5 py-1 h-auto text-daintree-accent"
+            >
+              <WandSparkles className="h-3.5 w-3.5" />
+              Use command
+            </Button>
+          </div>
+        )}
+
         <input
           id="dev-server-command"
           type="text"
@@ -440,15 +521,51 @@ export function GeneralTab({
             type="checkbox"
             checked={turbopackEnabled}
             onChange={(e) => onTurbopackEnabledChange(e.target.checked)}
-            className="h-4 w-4 rounded border-canopy-border accent-canopy-accent cursor-pointer"
+            className="h-4 w-4 rounded border-daintree-border accent-daintree-accent cursor-pointer"
             aria-label="Auto-inject --turbopack for Next.js 15+ projects"
           />
           <label
             htmlFor="turbopack-enabled"
-            className="text-xs text-canopy-text/60 cursor-pointer select-none"
+            className="text-xs text-daintree-text/60 cursor-pointer select-none"
           >
             Auto-inject <code className="font-mono">--turbopack</code> for Next.js 15+ projects
           </label>
+        </div>
+      </div>
+
+      <div className="mb-6 pb-6 border-b border-daintree-border">
+        <h3 className="text-sm font-semibold text-daintree-text/80 mb-2 flex items-center gap-2">
+          <McpServerIcon className="h-4 w-4" />
+          Agent integrations
+        </h3>
+        <p className="text-xs text-daintree-text/60 mb-4">
+          Choose how much of Daintree the Claude Code agents launched in this project's worktrees
+          can reach. Each tier expands what's available — newly launched agents pick up the change.
+        </p>
+
+        <div className="flex flex-col gap-3">
+          <SettingsChoicebox<DaintreeMcpTier>
+            value={daintreeMcpTier}
+            onChange={onDaintreeMcpTierChange}
+            options={DAINTREE_MCP_TIER_OPTIONS}
+            columns={2}
+            aria-label="Daintree MCP access tier"
+          />
+          {daintreeMcpTier === "system" && (
+            <div
+              className={cn(
+                "flex items-start gap-2 p-3 rounded-[var(--radius-md)]",
+                "bg-overlay-subtle border border-daintree-border"
+              )}
+            >
+              <AlertTriangle className="w-4 h-4 text-status-warning shrink-0 mt-0.5" />
+              <div className="text-xs text-daintree-text/70 leading-relaxed select-text">
+                System tier lets agents commit, push, delete worktrees, and send terminal commands —
+                some of these are irreversible or visible to teammates. Only enable it for projects
+                where you trust the agent to take that kind of action.
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveRequiredCIStatus } from "../prRequiredCIStatus.js";
+import { deriveRequiredCIStatus, normalizeRawState } from "../prRequiredCIStatus.js";
 
 describe("deriveRequiredCIStatus", () => {
   it("returns raw status and no summary when contexts is null", () => {
@@ -206,5 +206,36 @@ describe("deriveRequiredCIStatus", () => {
     );
     expect(r.ciStatus).toBe("FAILURE");
     expect(r.ciSummary).toEqual({ requiredTotal: 2, requiredFailing: 1, requiredPending: 1 });
+  });
+});
+
+describe("normalizeRawState", () => {
+  it("returns SUCCESS FAILURE ERROR PENDING EXPECTED as-is", () => {
+    expect(normalizeRawState("SUCCESS")).toBe("SUCCESS");
+    expect(normalizeRawState("FAILURE")).toBe("FAILURE");
+    expect(normalizeRawState("ERROR")).toBe("ERROR");
+    expect(normalizeRawState("PENDING")).toBe("PENDING");
+    expect(normalizeRawState("EXPECTED")).toBe("EXPECTED");
+  });
+
+  it("uppercases lowercase valid states", () => {
+    expect(normalizeRawState("success")).toBe("SUCCESS");
+    expect(normalizeRawState("failure")).toBe("FAILURE");
+    expect(normalizeRawState("pending")).toBe("PENDING");
+  });
+
+  it("returns undefined for null or undefined input", () => {
+    expect(normalizeRawState(null)).toBeUndefined();
+    expect(normalizeRawState(undefined)).toBeUndefined();
+  });
+
+  it("returns undefined for empty string", () => {
+    expect(normalizeRawState("")).toBeUndefined();
+  });
+
+  it("returns undefined for unrecognized values", () => {
+    expect(normalizeRawState("SKIPPED")).toBeUndefined();
+    expect(normalizeRawState("STALE")).toBeUndefined();
+    expect(normalizeRawState("IN_PROGRESS")).toBeUndefined();
   });
 });

@@ -681,10 +681,12 @@ export type DaintreeEventMap = {
    */
   "terminal:status": {
     id: string;
-    status: "running" | "paused-backpressure" | "paused-user" | "suspended";
+    status: "running" | "paused-backpressure" | "paused-user" | "suspended" | "data-loss";
     bufferUtilization?: number;
     pauseDuration?: number;
     reason?: string;
+    /** Byte count discarded — only set when status is "data-loss". */
+    droppedBytes?: number;
     timestamp: number;
   };
 

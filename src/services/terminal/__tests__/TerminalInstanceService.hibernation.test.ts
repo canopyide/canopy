@@ -29,12 +29,6 @@ vi.mock("@/clients", () => ({
   },
 }));
 
-vi.mock("@xterm/addon-canvas", () => ({
-  CanvasAddon: class {
-    dispose() {}
-  },
-}));
-
 vi.mock("@xterm/addon-webgl", () => ({
   WebglAddon: vi.fn().mockImplementation(() => ({
     dispose: vi.fn(),
@@ -187,10 +181,15 @@ describe("TerminalInstanceService - Hibernation", () => {
     vi.useFakeTimers();
     vi.clearAllMocks();
 
-    // Mock window.electron for title state reporting
+    // Mock window.electron for title state reporting and observed-title updates
     (window as unknown as Record<string, unknown>).electron = {
       terminal: {
         reportTitleState: vi.fn(),
+        updateObservedTitle: vi.fn(),
+      },
+      clipboard: {
+        writeSelection: vi.fn().mockResolvedValue(undefined),
+        readSelection: vi.fn().mockResolvedValue({ text: "" }),
       },
     };
 

@@ -11,7 +11,12 @@
  * All types are serializable (no functions, no circular refs) for IPC transport.
  */
 
-import type { FileChangeDetail, WorktreeChanges } from "./git.js";
+import type {
+  BranchInfo,
+  CreateWorktreeOptions,
+  FileChangeDetail,
+  WorktreeChanges,
+} from "./git.js";
 import type {
   Worktree,
   WorktreeMood,
@@ -27,26 +32,7 @@ import type {
 } from "./ipc.js";
 import type { ProjectPulse, PulseRangeDays } from "./pulse.js";
 
-/** Options for creating a new worktree */
-export interface CreateWorktreeOptions {
-  baseBranch: string;
-  newBranch: string;
-  path: string;
-  fromRemote?: boolean;
-  useExistingBranch?: boolean;
-  /** Opt-in flag to run resource.provision after setup */
-  provisionResource?: boolean;
-  /** Worktree environment mode ("local" or an environment key from resourceEnvironments) */
-  worktreeMode?: string;
-}
-
-/** Branch information from git */
-export interface BranchInfo {
-  name: string;
-  current: boolean;
-  commit: string;
-  remote?: string;
-}
+export type { BranchInfo, CreateWorktreeOptions } from "./git.js";
 
 /** Pull request service status */
 export interface PRServiceStatus {
@@ -111,6 +97,25 @@ export interface WorktreeSnapshot {
 
   /** Number of commits behind the upstream tracking branch */
   behindCount?: number;
+
+  /**
+   * Epoch ms of the last successful background `git fetch` for this worktree's
+   * repo. Mirrored from `RepoFetchCoordinator` so siblings sharing a commondir
+   * see the same timestamp. `null` until the first success lands.
+   */
+  lastFetchedAt?: number | null;
+
+  /** True when this worktree's repo is in an auth-failed fetch state. */
+  fetchAuthFailed?: boolean;
+
+  /** True when the most recent fetch failed for a transient (non-auth) reason. */
+  fetchNetworkFailed?: boolean;
+
+  /** True while a background `git fetch` is in-flight for this worktree's repo. */
+  isFetchInFlight?: boolean;
+
+  /** True when origin's fetch URL points at github.com (HTTPS or SSH form). */
+  isGitHubRemote?: boolean;
 
   /** Resource status from the last manual status check */
   resourceStatus?: WorktreeResourceStatus;
@@ -240,6 +245,8 @@ export type WorkspaceHostRequest =
     }
   // Polling control
   | { type: "set-polling-enabled"; enabled: boolean }
+  // PR polling cadence control (window-focus aware)
+  | { type: "set-pr-poll-cadence"; focused: boolean }
   // WSL-routed git opt-in / banner dismissal (Windows only)
   | {
       type: "set-wsl-opt-in";
@@ -269,6 +276,7 @@ export type WorkspaceHostRequest =
   | {
       type: "copytree:test-config";
       requestId: string;
+      operationId: string;
       rootPath: string;
       options?: CopyTreeOptions;
     }
@@ -312,7 +320,8 @@ export type WorkspaceHostRequest =
       includeDelta?: boolean;
       includeRecentCommits?: boolean;
       forceRefresh?: boolean;
-    };
+    }
+  | { type: "invalidate-pulse-cache"; worktreeId: string };
 
 /**
  * Events sent from Workspace Host → Main.

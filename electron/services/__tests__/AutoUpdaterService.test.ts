@@ -20,16 +20,34 @@ const windowMock = vi.hoisted(() => ({
 
 const broadcastMock = vi.hoisted(() => vi.fn());
 
+const downloadedUpdateHelperMock = vi.hoisted(() => ({
+  clear: vi.fn().mockResolvedValue(undefined),
+}));
+
 const autoUpdaterMock = vi.hoisted(() => ({
   autoDownload: false,
   autoInstallOnAppQuit: false,
   allowDowngrade: false,
+  disableWebInstaller: false,
   on: vi.fn(),
   off: vi.fn(),
   checkForUpdatesAndNotify: vi.fn(),
   checkForUpdates: vi.fn(),
   quitAndInstall: vi.fn(),
   setFeedURL: vi.fn(),
+  // `downloadedUpdateHelper` is `protected` on AppUpdater (lazy-init at first
+  // download); the channel-switch invalidation reaches through with a
+  // structural cast. Make it always-present in tests so we can assert clear()
+  // is called — null path is covered explicitly.
+  downloadedUpdateHelper: downloadedUpdateHelperMock as typeof downloadedUpdateHelperMock | null,
+}));
+
+const TRUSTED_SENDER = { senderFrame: { url: "app://daintree/index.html" } };
+
+const trustedRendererMock = vi.hoisted(() => ({
+  isTrustedRendererUrl: vi.fn((url: string) => url.startsWith("app://daintree")),
+  isRecoveryPageUrl: vi.fn(() => false),
+  getTrustedOrigins: vi.fn(() => ["app://daintree"]),
 }));
 
 const storeMock = vi.hoisted(() => ({
@@ -70,10 +88,14 @@ vi.mock("../../store.js", () => ({
   store: storeMock,
 }));
 
+vi.mock("../../../shared/utils/trustedRenderer.js", () => trustedRendererMock);
+
 import { autoUpdaterService } from "../AutoUpdaterService.js";
 import { CHANNELS } from "../../ipc/channels.js";
 
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
+const STARTUP_JITTER_MAX_MS = 60_000;
+const CHECKING_MENU_DELAY_MS = 400;
 
 describe("AutoUpdaterService", () => {
   const originalPlatform = process.platform;
@@ -96,6 +118,18 @@ describe("AutoUpdaterService", () => {
     fsMock.readFileSync.mockReturnValue("");
     autoUpdaterMock.checkForUpdatesAndNotify.mockResolvedValue(undefined);
     autoUpdaterMock.checkForUpdates.mockResolvedValue(undefined);
+    autoUpdaterMock.downloadedUpdateHelper = downloadedUpdateHelperMock;
+    downloadedUpdateHelperMock.clear.mockReset().mockResolvedValue(undefined);
+    // Reset implementations between tests — `vi.clearAllMocks()` only resets
+    // call history, so a `mockReturnValue("nightly")` set in an earlier test
+    // would otherwise leak into here and trip the same-channel guard.
+    storeMock.get.mockReset().mockImplementation((_key: string) => undefined);
+    storeMock.set.mockReset();
+    storeMock.delete.mockReset();
+    trustedRendererMock.isTrustedRendererUrl.mockReset();
+    trustedRendererMock.isTrustedRendererUrl.mockImplementation((url: string) =>
+      url.startsWith("app://daintree")
+    );
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -121,6 +155,9 @@ describe("AutoUpdaterService", () => {
     });
 
     expect(() => autoUpdaterService.initialize()).not.toThrow();
+    // Initial check is now deferred behind startup jitter — verify the throw
+    // inside the timer callback is also caught.
+    expect(() => vi.advanceTimersByTime(STARTUP_JITTER_MAX_MS)).not.toThrow();
   });
 
   it("does not crash on synchronous throw during periodic checks", () => {
@@ -213,7 +250,7 @@ describe("AutoUpdaterService", () => {
         CHANNELS.NOTIFICATION_SHOW_TOAST,
         expect.objectContaining({
           type: "info",
-          title: "No Updates Available",
+          title: "No updates available",
         })
       );
     });
@@ -235,7 +272,7 @@ describe("AutoUpdaterService", () => {
         CHANNELS.NOTIFICATION_SHOW_TOAST,
         expect.objectContaining({
           type: "error",
-          title: "Update Failed",
+          title: "Update failed",
           action: expect.objectContaining({
             label: "Retry",
             ipcChannel: CHANNELS.UPDATE_CHECK_FOR_UPDATES,
@@ -253,6 +290,20 @@ describe("AutoUpdaterService", () => {
       );
     });
 
+    it("does not schedule background retry for manual-check transient errors", () => {
+      // Manual checks own their own retry button — the background retry path
+      // would shadow it. The wasManual guard must short-circuit even when the
+      // error would otherwise classify as transient (issue #7592).
+      vi.advanceTimersByTime(STARTUP_JITTER_MAX_MS);
+      autoUpdaterMock.checkForUpdatesAndNotify.mockClear();
+
+      autoUpdaterService.checkForUpdatesManually();
+      errorHandler(new Error("net::ERR_INTERNET_DISCONNECTED"));
+      vi.advanceTimersByTime(60_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+    });
+
     it("resets isManualCheck flag when update-available fires", () => {
       autoUpdaterService.checkForUpdatesManually();
       availableHandler({ version: "2.0.0" });
@@ -266,7 +317,7 @@ describe("AutoUpdaterService", () => {
   });
 
   describe("quit-and-install", () => {
-    let quitAndInstallHandler: () => void;
+    let quitAndInstallHandler: (event: unknown) => void;
     let downloadedHandler: (info: { version: string }) => void;
 
     beforeEach(() => {
@@ -284,30 +335,78 @@ describe("AutoUpdaterService", () => {
     it("calls cleanupOnExit before quitAndInstall when update is downloaded", () => {
       downloadedHandler({ version: "2.0.0" });
 
-      quitAndInstallHandler();
+      quitAndInstallHandler(TRUSTED_SENDER);
 
       expect(cleanupOnExitMock).toHaveBeenCalledTimes(1);
-      expect(autoUpdaterMock.quitAndInstall).toHaveBeenCalledTimes(1);
       expect(cleanupOnExitMock.mock.invocationCallOrder[0]).toBeLessThan(
-        autoUpdaterMock.quitAndInstall.mock.invocationCallOrder[0]
+        autoUpdaterMock.quitAndInstall.mock.invocationCallOrder[0] || Infinity
       );
     });
 
+    it("defers quitAndInstall via setImmediate", () => {
+      downloadedHandler({ version: "2.0.0" });
+
+      quitAndInstallHandler(TRUSTED_SENDER);
+
+      expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled();
+      vi.advanceTimersToNextTimer();
+      expect(autoUpdaterMock.quitAndInstall).toHaveBeenCalledTimes(1);
+    });
+
+    it("disarms autoInstallOnAppQuit before quitAndInstall", () => {
+      downloadedHandler({ version: "2.0.0" });
+      autoUpdaterMock.autoInstallOnAppQuit = true;
+
+      quitAndInstallHandler(TRUSTED_SENDER);
+
+      expect(autoUpdaterMock.autoInstallOnAppQuit).toBe(false);
+    });
+
     it("does not call cleanupOnExit or quitAndInstall when no update is downloaded", () => {
-      quitAndInstallHandler();
+      quitAndInstallHandler(TRUSTED_SENDER);
 
       expect(cleanupOnExitMock).not.toHaveBeenCalled();
       expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled();
     });
 
-    it("still calls quitAndInstall when cleanupOnExit throws", () => {
+    it("still schedules quitAndInstall when cleanupOnExit throws", () => {
       downloadedHandler({ version: "2.0.0" });
       cleanupOnExitMock.mockImplementationOnce(() => {
         throw new Error("cleanup failed");
       });
 
-      quitAndInstallHandler();
+      quitAndInstallHandler(TRUSTED_SENDER);
 
+      vi.advanceTimersToNextTimer();
+      expect(autoUpdaterMock.quitAndInstall).toHaveBeenCalledTimes(1);
+    });
+
+    it("rejects untrusted sender frame", () => {
+      downloadedHandler({ version: "2.0.0" });
+
+      quitAndInstallHandler({ senderFrame: { url: "https://evil.example.com/x.html" } });
+
+      expect(cleanupOnExitMock).not.toHaveBeenCalled();
+      expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled();
+    });
+
+    it("rejects missing senderFrame", () => {
+      downloadedHandler({ version: "2.0.0" });
+
+      quitAndInstallHandler({});
+
+      expect(cleanupOnExitMock).not.toHaveBeenCalled();
+      expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled();
+    });
+
+    it("resets updateDownloaded flag to prevent double-IPC", () => {
+      downloadedHandler({ version: "2.0.0" });
+
+      quitAndInstallHandler(TRUSTED_SENDER);
+      quitAndInstallHandler(TRUSTED_SENDER);
+
+      expect(cleanupOnExitMock).toHaveBeenCalledTimes(1);
+      vi.advanceTimersToNextTimer();
       expect(autoUpdaterMock.quitAndInstall).toHaveBeenCalledTimes(1);
     });
   });
@@ -331,6 +430,7 @@ describe("AutoUpdaterService", () => {
       process.env.APPIMAGE = "/path/to/app.AppImage";
 
       autoUpdaterService.initialize();
+      vi.advanceTimersByTime(STARTUP_JITTER_MAX_MS);
 
       expect(autoUpdaterMock.on).toHaveBeenCalled();
       expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
@@ -342,6 +442,7 @@ describe("AutoUpdaterService", () => {
       fsMock.readFileSync.mockReturnValue("deb");
 
       autoUpdaterService.initialize();
+      vi.advanceTimersByTime(STARTUP_JITTER_MAX_MS);
 
       expect(autoUpdaterMock.on).toHaveBeenCalled();
       expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
@@ -407,10 +508,11 @@ describe("AutoUpdaterService", () => {
       expect(fsMock.existsSync).not.toHaveBeenCalled();
     });
 
-    it("does not affect non-Linux platforms", () => {
-      Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+    it("does not affect macOS", () => {
+      Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
 
       autoUpdaterService.initialize();
+      vi.advanceTimersByTime(STARTUP_JITTER_MAX_MS);
 
       expect(autoUpdaterMock.on).toHaveBeenCalled();
       expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
@@ -440,14 +542,14 @@ describe("AutoUpdaterService", () => {
       expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
     });
 
-    it("SET_CHANNEL persists to store but skips setFeedURL", () => {
+    it("SET_CHANNEL persists to store but skips setFeedURL", async () => {
       autoUpdaterService.initialize();
 
       const setChannelHandler = (ipcMainMock.handle as Mock).mock.calls.find(
         (args) => args[0] === CHANNELS.UPDATE_SET_CHANNEL
       )![1];
 
-      const result = setChannelHandler(null, "nightly");
+      const result = await setChannelHandler(null, "nightly");
       expect(result).toBe("nightly");
       expect(storeMock.set).toHaveBeenCalledWith("updateChannel", "nightly");
       expect(autoUpdaterMock.setFeedURL).not.toHaveBeenCalled();
@@ -464,10 +566,9 @@ describe("AutoUpdaterService", () => {
     });
   });
 
-  describe("Windows portable guard", () => {
-    it("registers only channel-preference IPC handlers on Windows portable", () => {
+  describe("Windows Store updater guard", () => {
+    it("registers only channel-preference IPC handlers on Windows", () => {
       Object.defineProperty(process, "platform", { value: "win32", configurable: true });
-      process.env.PORTABLE_EXECUTABLE_FILE = "C:\\portable\\daintree.exe";
 
       autoUpdaterService.initialize();
 
@@ -476,6 +577,17 @@ describe("AutoUpdaterService", () => {
       expect(registeredChannels).toContain(CHANNELS.UPDATE_SET_CHANNEL);
       expect(registeredChannels).not.toContain(CHANNELS.UPDATE_QUIT_AND_INSTALL);
       expect(registeredChannels).not.toContain(CHANNELS.UPDATE_CHECK_FOR_UPDATES);
+      expect(autoUpdaterMock.on).not.toHaveBeenCalled();
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+    });
+
+    it("manual checks are no-ops on Windows", () => {
+      Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+
+      autoUpdaterService.initialize();
+      autoUpdaterService.checkForUpdatesManually();
+
+      expect(autoUpdaterMock.checkForUpdates).not.toHaveBeenCalled();
     });
   });
 
@@ -510,6 +622,7 @@ describe("AutoUpdaterService", () => {
 
     it("calls setFeedURL before initial update check", () => {
       autoUpdaterService.initialize();
+      vi.advanceTimersByTime(STARTUP_JITTER_MAX_MS);
 
       const setFeedOrder = autoUpdaterMock.setFeedURL.mock.invocationCallOrder[0];
       const checkOrder = autoUpdaterMock.checkForUpdatesAndNotify.mock.invocationCallOrder[0];
@@ -527,7 +640,7 @@ describe("AutoUpdaterService", () => {
       expect(getChannelHandler()).toBe("nightly");
     });
 
-    it("IPC UPDATE_SET_CHANNEL persists new channel and reconfigures feed", () => {
+    it("IPC UPDATE_SET_CHANNEL persists new channel and reconfigures feed", async () => {
       autoUpdaterService.initialize();
       autoUpdaterMock.setFeedURL.mockClear();
 
@@ -535,7 +648,7 @@ describe("AutoUpdaterService", () => {
         (args) => args[0] === CHANNELS.UPDATE_SET_CHANNEL
       )![1];
 
-      const result = setChannelHandler(null, "nightly");
+      const result = await setChannelHandler(null, "nightly");
       expect(result).toBe("nightly");
       expect(storeMock.set).toHaveBeenCalledWith("updateChannel", "nightly");
       expect(autoUpdaterMock.setFeedURL).toHaveBeenCalledWith({
@@ -544,18 +657,18 @@ describe("AutoUpdaterService", () => {
       });
     });
 
-    it("IPC UPDATE_SET_CHANNEL coerces unknown value to stable", () => {
+    it("IPC UPDATE_SET_CHANNEL coerces unknown value to stable", async () => {
       autoUpdaterService.initialize();
 
       const setChannelHandler = (ipcMainMock.handle as Mock).mock.calls.find(
         (args) => args[0] === CHANNELS.UPDATE_SET_CHANNEL
       )![1];
 
-      expect(setChannelHandler(null, "bogus")).toBe("stable");
+      expect(await setChannelHandler(null, "bogus")).toBe("stable");
       expect(storeMock.set).toHaveBeenCalledWith("updateChannel", "stable");
     });
 
-    it("UPDATE_SET_CHANNEL clears updateDownloaded flag", () => {
+    it("UPDATE_SET_CHANNEL clears updateDownloaded flag", async () => {
       autoUpdaterService.initialize();
 
       const downloadedHandler = (autoUpdaterMock.on as Mock).mock.calls.find(
@@ -566,12 +679,12 @@ describe("AutoUpdaterService", () => {
       const setChannelHandler = (ipcMainMock.handle as Mock).mock.calls.find(
         (args) => args[0] === CHANNELS.UPDATE_SET_CHANNEL
       )![1];
-      setChannelHandler(null, "nightly");
+      await setChannelHandler(null, "nightly");
 
       const quitHandler = (ipcMainMock.handle as Mock).mock.calls.find(
         (args) => args[0] === CHANNELS.UPDATE_QUIT_AND_INSTALL
       )![1];
-      quitHandler();
+      quitHandler(TRUSTED_SENDER);
 
       expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled();
     });
@@ -710,7 +823,7 @@ describe("AutoUpdaterService", () => {
 
     it("UPDATE_DISMISS_TOAST handler persists version and timestamp", () => {
       const before = Date.now();
-      dismissHandler({}, "1.1.0");
+      dismissHandler(TRUSTED_SENDER, "1.1.0");
       const after = Date.now();
 
       expect(storeState.dismissedUpdateVersion).toBe("1.1.0");
@@ -720,10 +833,10 @@ describe("AutoUpdaterService", () => {
     });
 
     it("UPDATE_DISMISS_TOAST ignores empty, whitespace, or non-string versions", () => {
-      dismissHandler({}, "");
-      dismissHandler({}, "   ");
-      dismissHandler({}, 42);
-      dismissHandler({}, null);
+      dismissHandler(TRUSTED_SENDER, "");
+      dismissHandler(TRUSTED_SENDER, "   ");
+      dismissHandler(TRUSTED_SENDER, 42);
+      dismissHandler(TRUSTED_SENDER, null);
 
       expect(storeState.dismissedUpdateVersion).toBeUndefined();
       expect(storeState.dismissedUpdateAt).toBeUndefined();
@@ -790,6 +903,1186 @@ describe("AutoUpdaterService", () => {
       autoUpdaterService.dispose();
 
       expect(ipcMainMock.removeHandler).toHaveBeenCalledWith(CHANNELS.UPDATE_DISMISS_TOAST);
+    });
+  });
+
+  describe("UPDATE_DISMISS_TOAST hardening", () => {
+    let dismissHandler: (event: unknown, version: unknown) => void;
+    const storeState: Record<string, unknown> = {};
+
+    function primeStore(values: Record<string, unknown>): void {
+      for (const key of Object.keys(storeState)) delete storeState[key];
+      Object.assign(storeState, values);
+    }
+
+    beforeEach(() => {
+      primeStore({});
+      storeMock.get.mockImplementation((key: string) => storeState[key]);
+      storeMock.set.mockImplementation((key: string, value: unknown) => {
+        storeState[key] = value;
+      });
+
+      autoUpdaterService.initialize();
+
+      dismissHandler = (ipcMainMock.handle as Mock).mock.calls.find(
+        (args) => args[0] === CHANNELS.UPDATE_DISMISS_TOAST
+      )![1];
+    });
+
+    it("drops the call when senderFrame is missing", () => {
+      dismissHandler({}, "1.1.0");
+
+      expect(storeState.dismissedUpdateVersion).toBeUndefined();
+      expect(storeState.dismissedUpdateAt).toBeUndefined();
+    });
+
+    it("drops the call when senderFrame.url is undefined", () => {
+      dismissHandler({ senderFrame: {} }, "1.1.0");
+
+      expect(storeState.dismissedUpdateVersion).toBeUndefined();
+    });
+
+    it("drops the call from an untrusted origin", () => {
+      dismissHandler({ senderFrame: { url: "https://evil.example.com/x.html" } }, "1.1.0");
+
+      expect(storeState.dismissedUpdateVersion).toBeUndefined();
+      expect(trustedRendererMock.isTrustedRendererUrl).toHaveBeenCalledWith(
+        "https://evil.example.com/x.html"
+      );
+    });
+
+    it("rejects versions longer than 64 chars", () => {
+      const long = `1.${"9".repeat(70)}.0`;
+      dismissHandler(TRUSTED_SENDER, long);
+
+      expect(storeState.dismissedUpdateVersion).toBeUndefined();
+    });
+
+    it("rejects versions with characters outside the SemVer allowlist", () => {
+      // Semver allowlist is [0-9a-zA-Z._+-]; spaces, slashes, semicolons, etc.
+      // would slip past `semver.coerce` and corrupt the persisted record.
+      dismissHandler(TRUSTED_SENDER, "1.1.0; rm -rf /");
+      dismissHandler(TRUSTED_SENDER, "1.1.0/../../etc");
+      dismissHandler(TRUSTED_SENDER, "1.1.0 1.2.0");
+
+      expect(storeState.dismissedUpdateVersion).toBeUndefined();
+    });
+
+    it("rejects strings that pass the allowlist but are not valid semver", () => {
+      // `semver.coerce` would accept these and pull out a version; `semver.valid`
+      // is the strict gate the issue requires.
+      dismissHandler(TRUSTED_SENDER, "1");
+      dismissHandler(TRUSTED_SENDER, "1.2");
+      dismissHandler(TRUSTED_SENDER, "v1.2.3");
+      dismissHandler(TRUSTED_SENDER, "01.2.3");
+      dismissHandler(TRUSTED_SENDER, "abc");
+
+      expect(storeState.dismissedUpdateVersion).toBeUndefined();
+    });
+
+    it("accepts a strict semver from a trusted sender", () => {
+      dismissHandler(TRUSTED_SENDER, "1.2.3");
+
+      expect(storeState.dismissedUpdateVersion).toBe("1.2.3");
+      expect(typeof storeState.dismissedUpdateAt).toBe("number");
+    });
+
+    it("accepts a nightly pre-release semver", () => {
+      dismissHandler(TRUSTED_SENDER, "0.9.0-nightly.20251231");
+
+      expect(storeState.dismissedUpdateVersion).toBe("0.9.0-nightly.20251231");
+    });
+
+    it("stores the trimmed value, not the raw input", () => {
+      dismissHandler(TRUSTED_SENDER, "  1.2.3  ");
+
+      expect(storeState.dismissedUpdateVersion).toBe("1.2.3");
+    });
+
+    it("validates sender BEFORE inspecting payload (no version-shape leak)", () => {
+      // If senderFrame validation runs after typeof checks, an attacker could
+      // probe the validation order via type errors. Ensure the untrusted-sender
+      // drop is the first gate.
+      const untrusted = { senderFrame: { url: "https://evil.example.com/x.html" } };
+      dismissHandler(untrusted, { malicious: true });
+
+      expect(storeState.dismissedUpdateVersion).toBeUndefined();
+    });
+  });
+
+  describe("startup jitter", () => {
+    it("does not invoke checkForUpdatesAndNotify synchronously during initialize()", () => {
+      autoUpdaterService.initialize();
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+    });
+
+    it("invokes the initial check after the jitter window elapses", () => {
+      autoUpdaterService.initialize();
+      vi.advanceTimersByTime(STARTUP_JITTER_MAX_MS);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+
+    it("never schedules the initial check beyond the 60s ceiling", () => {
+      vi.spyOn(Math, "random").mockReturnValueOnce(0.999_999);
+      autoUpdaterService.initialize();
+      vi.advanceTimersByTime(STARTUP_JITTER_MAX_MS);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+
+    it("dispose() cancels a pending startup jitter so no check fires", () => {
+      autoUpdaterService.initialize();
+      autoUpdaterService.dispose();
+
+      vi.advanceTimersByTime(STARTUP_JITTER_MAX_MS * 2);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+    });
+
+    it("does not block the periodic check from firing later", () => {
+      autoUpdaterService.initialize();
+      // Advance past startup jitter and one full periodic interval.
+      vi.advanceTimersByTime(STARTUP_JITTER_MAX_MS + CHECK_INTERVAL_MS);
+
+      // Initial + first periodic = 2 calls. (Jitter also runs the initial.)
+      expect(autoUpdaterMock.checkForUpdatesAndNotify.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  describe("retry backoff", () => {
+    let errorHandler: (err: unknown) => void;
+    let availableHandler: (info: { version: string }) => void;
+    let notAvailableHandler: (info: object) => void;
+    let downloadedHandler: (info: { version: string }) => void;
+
+    beforeEach(() => {
+      autoUpdaterService.initialize();
+      vi.advanceTimersByTime(STARTUP_JITTER_MAX_MS);
+
+      errorHandler = (autoUpdaterMock.on as Mock).mock.calls.find(
+        (args) => args[0] === "error"
+      )![1];
+      availableHandler = (autoUpdaterMock.on as Mock).mock.calls.find(
+        (args) => args[0] === "update-available"
+      )![1];
+      notAvailableHandler = (autoUpdaterMock.on as Mock).mock.calls.find(
+        (args) => args[0] === "update-not-available"
+      )![1];
+      downloadedHandler = (autoUpdaterMock.on as Mock).mock.calls.find(
+        (args) => args[0] === "update-downloaded"
+      )![1];
+
+      autoUpdaterMock.checkForUpdatesAndNotify.mockClear();
+    });
+
+    it("schedules a retry after a transient ECONNRESET error", () => {
+      errorHandler(Object.assign(new Error("conn reset"), { code: "ECONNRESET" }));
+
+      // First retry base is 30s with ±20% jitter — anywhere in [24s, 36s].
+      // Advance well past the ceiling to guarantee the timer fires.
+      vi.advanceTimersByTime(36_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+
+    it("retries on ETIMEDOUT and ENOTFOUND", () => {
+      errorHandler(Object.assign(new Error("timeout"), { code: "ETIMEDOUT" }));
+      vi.advanceTimersByTime(36_000);
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+
+      autoUpdaterMock.checkForUpdatesAndNotify.mockClear();
+      // After the retry fires, the next error is at retryCount=1; second retry
+      // base is 120s with ±20% — fires by 144s.
+      errorHandler(Object.assign(new Error("dns"), { code: "ENOTFOUND" }));
+      vi.advanceTimersByTime(144_000);
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+
+    it("retries on HTTP 5xx (statusCode = 503)", () => {
+      errorHandler(Object.assign(new Error("service unavailable"), { statusCode: 503 }));
+      vi.advanceTimersByTime(36_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not retry on HTTP 404 (missing latest.yml)", () => {
+      errorHandler(Object.assign(new Error("not found"), { statusCode: 404 }));
+      vi.advanceTimersByTime(CHECK_INTERVAL_MS);
+
+      // Only the periodic interval tick should have fired.
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not retry on cert errors", () => {
+      errorHandler(Object.assign(new Error("expired"), { code: "CERT_HAS_EXPIRED" }));
+      vi.advanceTimersByTime(60_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+    });
+
+    it("does not retry an uncategorized error (fail closed)", () => {
+      errorHandler(new Error("mystery"));
+      vi.advanceTimersByTime(60_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+    });
+
+    it("does not retry a manual check error (user holds the retry button)", () => {
+      autoUpdaterService.checkForUpdatesManually();
+      autoUpdaterMock.checkForUpdatesAndNotify.mockClear();
+
+      errorHandler(Object.assign(new Error("conn reset"), { code: "ECONNRESET" }));
+      vi.advanceTimersByTime(60_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+    });
+
+    it("caps retries at 3 attempts", () => {
+      // First three transient errors should each schedule a retry.
+      errorHandler(Object.assign(new Error("a"), { code: "ECONNRESET" }));
+      vi.advanceTimersByTime(36_000); // ≥ 30s * 1.2
+      errorHandler(Object.assign(new Error("b"), { code: "ECONNRESET" }));
+      vi.advanceTimersByTime(144_000); // ≥ 120s * 1.2
+      errorHandler(Object.assign(new Error("c"), { code: "ECONNRESET" }));
+      vi.advanceTimersByTime(576_000); // ≥ 480s * 1.2
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(3);
+      autoUpdaterMock.checkForUpdatesAndNotify.mockClear();
+
+      // Fourth error: cap reached, no retry.
+      errorHandler(Object.assign(new Error("d"), { code: "ECONNRESET" }));
+      vi.advanceTimersByTime(CHECK_INTERVAL_MS);
+
+      // Only the periodic interval tick.
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+
+    it("update-available resets retry count so a future failure starts fresh", () => {
+      errorHandler(Object.assign(new Error("a"), { code: "ECONNRESET" }));
+      vi.advanceTimersByTime(36_000);
+      errorHandler(Object.assign(new Error("b"), { code: "ECONNRESET" }));
+      vi.advanceTimersByTime(144_000);
+
+      availableHandler({ version: "2.0.0" });
+      autoUpdaterMock.checkForUpdatesAndNotify.mockClear();
+
+      // Next transient error should retry at base 30s, not at the 8m ceiling.
+      errorHandler(Object.assign(new Error("c"), { code: "ECONNRESET" }));
+      vi.advanceTimersByTime(36_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+
+    it("update-not-available resets retry count", () => {
+      errorHandler(Object.assign(new Error("a"), { code: "ECONNRESET" }));
+      vi.advanceTimersByTime(36_000);
+
+      notAvailableHandler({});
+      autoUpdaterMock.checkForUpdatesAndNotify.mockClear();
+
+      errorHandler(Object.assign(new Error("b"), { code: "ECONNRESET" }));
+      vi.advanceTimersByTime(36_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+
+    it("update-downloaded resets retry count", () => {
+      errorHandler(Object.assign(new Error("a"), { code: "ECONNRESET" }));
+      vi.advanceTimersByTime(36_000);
+
+      downloadedHandler({ version: "2.0.0" });
+      autoUpdaterMock.checkForUpdatesAndNotify.mockClear();
+
+      errorHandler(Object.assign(new Error("b"), { code: "ECONNRESET" }));
+      vi.advanceTimersByTime(36_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+
+    it("dispose() cancels a pending retry timer", () => {
+      errorHandler(Object.assign(new Error("a"), { code: "ECONNRESET" }));
+      autoUpdaterService.dispose();
+
+      vi.advanceTimersByTime(60_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+    });
+
+    it("retry uses ±20% jitter (lower bound)", () => {
+      vi.spyOn(Math, "random").mockReturnValueOnce(0); // jitterFactor = 0.8
+      errorHandler(Object.assign(new Error("a"), { code: "ECONNRESET" }));
+
+      // 30000 * 0.8 = 24000ms exactly.
+      vi.advanceTimersByTime(23_999);
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(1);
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+
+    it("retry uses ±20% jitter (upper bound)", () => {
+      vi.spyOn(Math, "random").mockReturnValueOnce(0.999_999_999); // jitterFactor ≈ 1.2
+      errorHandler(Object.assign(new Error("a"), { code: "ECONNRESET" }));
+
+      // 30000 * 1.2 = 36000ms (Math.floor lowers it to 35999).
+      vi.advanceTimersByTime(35_998);
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(2);
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("channel-switch invalidation", () => {
+    let setChannelHandler: (event: unknown, channel: unknown) => Promise<unknown>;
+    let downloadedHandler: (info: { version: string }) => void;
+    let availableHandler: (info: { version: string }) => void;
+
+    beforeEach(() => {
+      autoUpdaterService.initialize();
+      vi.advanceTimersByTime(STARTUP_JITTER_MAX_MS);
+
+      setChannelHandler = (ipcMainMock.handle as Mock).mock.calls.find(
+        (args) => args[0] === CHANNELS.UPDATE_SET_CHANNEL
+      )![1];
+      downloadedHandler = (autoUpdaterMock.on as Mock).mock.calls.find(
+        (args) => args[0] === "update-downloaded"
+      )![1];
+      availableHandler = (autoUpdaterMock.on as Mock).mock.calls.find(
+        (args) => args[0] === "update-available"
+      )![1];
+    });
+
+    it("clears the staged installer cache when channel changes", async () => {
+      downloadedHandler({ version: "2.0.0" });
+
+      await setChannelHandler(null, "nightly");
+
+      expect(downloadedUpdateHelperMock.clear).toHaveBeenCalledTimes(1);
+    });
+
+    it("resets lastBroadcastVersion so a same-version update broadcasts after switch", async () => {
+      availableHandler({ version: "2.0.0" });
+      broadcastMock.mockClear();
+
+      await setChannelHandler(null, "nightly");
+      availableHandler({ version: "2.0.0" });
+
+      // Without the lastBroadcastVersion reset the second `update-available`
+      // would be silently swallowed by the in-session dedup.
+      expect(broadcastMock).toHaveBeenCalledWith(CHANNELS.UPDATE_AVAILABLE, { version: "2.0.0" });
+    });
+
+    it("resets the updateDownloaded flag so quit-and-install no-ops after switch", async () => {
+      downloadedHandler({ version: "2.0.0" });
+
+      await setChannelHandler(null, "nightly");
+
+      const quitHandler = (ipcMainMock.handle as Mock).mock.calls.find(
+        (args) => args[0] === CHANNELS.UPDATE_QUIT_AND_INSTALL
+      )![1];
+      quitHandler(TRUSTED_SENDER);
+
+      expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled();
+    });
+
+    it("cancels any in-flight retry timer on channel switch", async () => {
+      const errorHandler = (autoUpdaterMock.on as Mock).mock.calls.find(
+        (args) => args[0] === "error"
+      )![1];
+      errorHandler(Object.assign(new Error("a"), { code: "ECONNRESET" }));
+      autoUpdaterMock.checkForUpdatesAndNotify.mockClear();
+
+      await setChannelHandler(null, "nightly");
+      vi.advanceTimersByTime(60_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+    });
+
+    it("is a no-op (and does not throw) when downloadedUpdateHelper is null", async () => {
+      autoUpdaterMock.downloadedUpdateHelper = null;
+
+      await expect(setChannelHandler(null, "nightly")).resolves.toBe("nightly");
+      expect(downloadedUpdateHelperMock.clear).not.toHaveBeenCalled();
+    });
+
+    it("still resets in-memory state when clear() rejects", async () => {
+      downloadedHandler({ version: "2.0.0" });
+      downloadedUpdateHelperMock.clear.mockRejectedValueOnce(new Error("EACCES"));
+
+      await expect(setChannelHandler(null, "nightly")).resolves.toBe("nightly");
+
+      const quitHandler = (ipcMainMock.handle as Mock).mock.calls.find(
+        (args) => args[0] === CHANNELS.UPDATE_QUIT_AND_INSTALL
+      )![1];
+      quitHandler(TRUSTED_SENDER);
+
+      expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled();
+    });
+
+    it("still invalidates state when configureFeedForChannel throws", async () => {
+      // Regression: if setFeedURL throws after the user changes channel, the
+      // staged installer for the old channel must still be discarded —
+      // otherwise quit-and-install would run the wrong channel's payload.
+      downloadedHandler({ version: "2.0.0" });
+      autoUpdaterMock.setFeedURL.mockImplementationOnce(() => {
+        throw new Error("setFeedURL boom");
+      });
+
+      // The handler is allowed to throw or resolve; what matters is that the
+      // state cleanup ran first.
+      await setChannelHandler(null, "nightly").catch(() => {});
+
+      expect(downloadedUpdateHelperMock.clear).toHaveBeenCalledTimes(1);
+
+      const quitHandler = (ipcMainMock.handle as Mock).mock.calls.find(
+        (args) => args[0] === CHANNELS.UPDATE_QUIT_AND_INSTALL
+      )![1];
+      quitHandler(TRUSTED_SENDER);
+
+      expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled();
+    });
+
+    it("is a no-op when the channel is unchanged (preserves staged installer)", async () => {
+      // Default channel after init is "stable". Re-saving "stable" should not
+      // discard a validly-staged installer.
+      downloadedHandler({ version: "2.0.0" });
+      downloadedUpdateHelperMock.clear.mockClear();
+      autoUpdaterMock.setFeedURL.mockClear();
+
+      // Make the store reflect the current "stable" preference so the guard
+      // sees previousChannel === validated.
+      storeMock.get.mockImplementation((key: string) =>
+        key === "updateChannel" ? "stable" : undefined
+      );
+
+      const result = await setChannelHandler(null, "stable");
+      expect(result).toBe("stable");
+      expect(downloadedUpdateHelperMock.clear).not.toHaveBeenCalled();
+      expect(autoUpdaterMock.setFeedURL).not.toHaveBeenCalled();
+
+      const quitHandler = (ipcMainMock.handle as Mock).mock.calls.find(
+        (args) => args[0] === CHANNELS.UPDATE_QUIT_AND_INSTALL
+      )![1];
+      quitHandler(TRUSTED_SENDER);
+
+      vi.advanceTimersToNextTimer();
+      expect(autoUpdaterMock.quitAndInstall).toHaveBeenCalledTimes(1);
+    });
+
+    it("treats a missing stored channel as 'stable' so save-stable is a no-op on fresh installs", async () => {
+      // Regression for fresh-install bug: initialize() reads the channel with
+      // a `?? "stable"` fallback, but UPDATE_SET_CHANNEL must mirror that
+      // fallback when computing previousChannel — otherwise saving "stable"
+      // on a fresh install (no stored key) would discard a validly-staged
+      // installer because `"stable" === undefined` is false.
+      downloadedHandler({ version: "2.0.0" });
+      downloadedUpdateHelperMock.clear.mockClear();
+      autoUpdaterMock.setFeedURL.mockClear();
+
+      // Store has no `updateChannel` key — get() returns undefined.
+      storeMock.get.mockImplementation(() => undefined);
+
+      const result = await setChannelHandler(null, "stable");
+      expect(result).toBe("stable");
+      expect(downloadedUpdateHelperMock.clear).not.toHaveBeenCalled();
+      expect(autoUpdaterMock.setFeedURL).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("error classification edge cases", () => {
+    let errorHandler: (err: unknown) => void;
+
+    beforeEach(() => {
+      autoUpdaterService.initialize();
+      vi.advanceTimersByTime(STARTUP_JITTER_MAX_MS);
+
+      errorHandler = (autoUpdaterMock.on as Mock).mock.calls.find(
+        (args) => args[0] === "error"
+      )![1];
+
+      autoUpdaterMock.checkForUpdatesAndNotify.mockClear();
+    });
+
+    it("treats a cert error as permanent even when statusCode is 5xx", () => {
+      // The cert-code check runs before the statusCode check — an error that
+      // tunnels both must NOT be retried (cert wins).
+      errorHandler(
+        Object.assign(new Error("expired"), {
+          code: "CERT_HAS_EXPIRED",
+          statusCode: 503,
+        })
+      );
+
+      vi.advanceTimersByTime(60_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+    });
+
+    it("retries on HTTP 408 (request timeout)", () => {
+      errorHandler(Object.assign(new Error("timeout"), { statusCode: 408 }));
+      vi.advanceTimersByTime(36_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+
+    it("retries on HTTP 429 (rate limited)", () => {
+      errorHandler(Object.assign(new Error("rate limited"), { statusCode: 429 }));
+      vi.advanceTimersByTime(36_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not retry on HTTP 401 (unauthorized)", () => {
+      errorHandler(Object.assign(new Error("unauthorized"), { statusCode: 401 }));
+      vi.advanceTimersByTime(60_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+    });
+
+    it("does not retry on HTTP 403 (forbidden)", () => {
+      errorHandler(Object.assign(new Error("forbidden"), { statusCode: 403 }));
+      vi.advanceTimersByTime(60_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+    });
+
+    it("retries on Electron net::ERR_INTERNET_DISCONNECTED (issue #7592)", () => {
+      // Telemetry shows Electron net errors arrive with the token only in
+      // err.message, no err.code — must be classified as transient.
+      errorHandler(new Error("net::ERR_INTERNET_DISCONNECTED"));
+      vi.advanceTimersByTime(36_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+
+    it("retries on Electron net::ERR_NETWORK_CHANGED", () => {
+      errorHandler(new Error("net::ERR_NETWORK_CHANGED"));
+      vi.advanceTimersByTime(36_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+
+    it("retries on Electron net token nested under err.cause", () => {
+      const cause = new Error("net::ERR_INTERNET_DISCONNECTED");
+      const wrapper = Object.assign(new Error("request failed"), { cause });
+
+      errorHandler(wrapper);
+      vi.advanceTimersByTime(36_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not retry on Electron net::ERR_CERT_AUTHORITY_INVALID", () => {
+      errorHandler(new Error("net::ERR_CERT_AUTHORITY_INVALID"));
+      vi.advanceTimersByTime(60_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+    });
+
+    it("permanent net token in cause wins over transient outer message", () => {
+      const cause = new Error("net::ERR_CERT_AUTHORITY_INVALID");
+      const wrapper = Object.assign(new Error("net::ERR_INTERNET_DISCONNECTED"), { cause });
+
+      errorHandler(wrapper);
+      vi.advanceTimersByTime(60_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+    });
+
+    it("does not retry on unknown Electron net token (fail closed)", () => {
+      errorHandler(new Error("net::ERR_SOME_UNKNOWN_VALUE"));
+      vi.advanceTimersByTime(60_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+    });
+
+    it("retries on Electron net::ERR_CONNECTION_REFUSED", () => {
+      // Symmetry with the Node `ECONNREFUSED` code in TRANSIENT_ERROR_CODES —
+      // a brief firewall block or server restart is recoverable.
+      errorHandler(new Error("net::ERR_CONNECTION_REFUSED"));
+      vi.advanceTimersByTime(36_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+
+    it("permanent net token wins when both tokens appear in same message", () => {
+      // Even if a transient token appears first in the message, a permanent
+      // cert token elsewhere in the same string must short-circuit. Real
+      // Electron messages are single-token, but the invariant must hold.
+      errorHandler(
+        new Error("net::ERR_INTERNET_DISCONNECTED chained with net::ERR_CERT_AUTHORITY_INVALID")
+      );
+      vi.advanceTimersByTime(60_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("menu state lifecycle", () => {
+    let availableHandler: (info: { version: string }) => void;
+    let notAvailableHandler: (info: object) => void;
+    let errorHandler: (err: unknown) => void;
+    let downloadedHandler: (info: { version: string }) => void;
+    let setChannelHandler: (event: unknown, channel: unknown) => Promise<unknown>;
+
+    beforeEach(() => {
+      autoUpdaterService.initialize();
+      vi.advanceTimersByTime(STARTUP_JITTER_MAX_MS);
+
+      availableHandler = (autoUpdaterMock.on as Mock).mock.calls.find(
+        (args) => args[0] === "update-available"
+      )![1];
+      notAvailableHandler = (autoUpdaterMock.on as Mock).mock.calls.find(
+        (args) => args[0] === "update-not-available"
+      )![1];
+      errorHandler = (autoUpdaterMock.on as Mock).mock.calls.find(
+        (args) => args[0] === "error"
+      )![1];
+      downloadedHandler = (autoUpdaterMock.on as Mock).mock.calls.find(
+        (args) => args[0] === "update-downloaded"
+      )![1];
+      setChannelHandler = (ipcMainMock.handle as Mock).mock.calls.find(
+        (args) => args[0] === CHANNELS.UPDATE_SET_CHANNEL
+      )![1];
+
+      autoUpdaterMock.checkForUpdates.mockClear();
+    });
+
+    it("starts in idle state", () => {
+      expect(autoUpdaterService.getMenuState()).toBe("idle");
+    });
+
+    it("a fast manual check (resolves before 400ms) leaves menu state at idle", () => {
+      autoUpdaterService.checkForUpdatesManually();
+
+      // Round-trip resolves at 200ms with update-not-available — well inside
+      // the 400ms Doherty gate.
+      vi.advanceTimersByTime(200);
+      notAvailableHandler({});
+
+      // The 400ms timer would have fired at +400ms, but the check resolved
+      // first and cleared it.
+      vi.advanceTimersByTime(500);
+
+      expect(autoUpdaterService.getMenuState()).toBe("idle");
+    });
+
+    it("a slow manual check (still in flight at 400ms) flips menu state to checking", () => {
+      autoUpdaterService.checkForUpdatesManually();
+
+      vi.advanceTimersByTime(CHECKING_MENU_DELAY_MS);
+
+      expect(autoUpdaterService.getMenuState()).toBe("checking");
+
+      // After the round-trip eventually completes, state goes back to idle.
+      notAvailableHandler({});
+      expect(autoUpdaterService.getMenuState()).toBe("idle");
+    });
+
+    it("background polls do not show the checking state (only manual checks)", () => {
+      // Simulate the periodic checking-for-update event firing without a
+      // prior checkForUpdatesManually() call.
+      vi.advanceTimersByTime(CHECK_INTERVAL_MS + CHECKING_MENU_DELAY_MS * 2);
+
+      expect(autoUpdaterService.getMenuState()).toBe("idle");
+    });
+
+    it("update-available transitions to idle (not ready — only download completion is ready)", () => {
+      autoUpdaterService.checkForUpdatesManually();
+      vi.advanceTimersByTime(CHECKING_MENU_DELAY_MS);
+      expect(autoUpdaterService.getMenuState()).toBe("checking");
+
+      availableHandler({ version: "2.0.0" });
+
+      expect(autoUpdaterService.getMenuState()).toBe("idle");
+    });
+
+    it("update-downloaded transitions to ready", () => {
+      downloadedHandler({ version: "2.0.0" });
+
+      expect(autoUpdaterService.getMenuState()).toBe("ready");
+    });
+
+    it("ready persists past subsequent manual checks (no flicker back to idle)", () => {
+      downloadedHandler({ version: "2.0.0" });
+      expect(autoUpdaterService.getMenuState()).toBe("ready");
+
+      // A second manual check while staged must not unset Ready — the user
+      // can still restart-to-install while a probe is in flight.
+      autoUpdaterService.checkForUpdatesManually();
+      vi.advanceTimersByTime(CHECKING_MENU_DELAY_MS * 2);
+      expect(autoUpdaterService.getMenuState()).toBe("ready");
+
+      notAvailableHandler({});
+      // Even update-not-available shouldn't drop Ready — the staged
+      // installer is still valid for the current channel.
+      expect(autoUpdaterService.getMenuState()).toBe("ready");
+    });
+
+    it("channel switch resets ready state and cancels any pending Doherty flip", async () => {
+      downloadedHandler({ version: "2.0.0" });
+      expect(autoUpdaterService.getMenuState()).toBe("ready");
+
+      await setChannelHandler(null, "nightly");
+
+      expect(autoUpdaterService.getMenuState()).toBe("idle");
+    });
+
+    it("channel switch mid-check cancels the pending checking flip", async () => {
+      autoUpdaterService.checkForUpdatesManually();
+      // Don't advance past 400ms yet — channel switch should cancel.
+      vi.advanceTimersByTime(100);
+
+      await setChannelHandler(null, "nightly");
+
+      // Without the timer cancellation, this advance would flip state to
+      // "checking" against the now-discarded prior-channel feed.
+      vi.advanceTimersByTime(CHECKING_MENU_DELAY_MS * 2);
+      expect(autoUpdaterService.getMenuState()).toBe("idle");
+    });
+
+    it("error event resets menu state to idle", () => {
+      autoUpdaterService.checkForUpdatesManually();
+      vi.advanceTimersByTime(CHECKING_MENU_DELAY_MS);
+      expect(autoUpdaterService.getMenuState()).toBe("checking");
+
+      errorHandler(Object.assign(new Error("conn reset"), { code: "ECONNRESET" }));
+
+      expect(autoUpdaterService.getMenuState()).toBe("idle");
+    });
+
+    it("error event does NOT clobber Ready", () => {
+      downloadedHandler({ version: "2.0.0" });
+      expect(autoUpdaterService.getMenuState()).toBe("ready");
+
+      // A subsequent retry/error must not erase the user's restart-to-install
+      // affordance — the staged installer is still valid.
+      errorHandler(Object.assign(new Error("conn reset"), { code: "ECONNRESET" }));
+
+      expect(autoUpdaterService.getMenuState()).toBe("ready");
+    });
+
+    it("notifies registered listeners on each transition", () => {
+      const listener = vi.fn();
+      autoUpdaterService.onMenuStateChange(listener);
+
+      autoUpdaterService.checkForUpdatesManually();
+      vi.advanceTimersByTime(CHECKING_MENU_DELAY_MS);
+      expect(listener).toHaveBeenCalledWith("checking");
+
+      downloadedHandler({ version: "2.0.0" });
+      expect(listener).toHaveBeenLastCalledWith("ready");
+    });
+
+    it("does not notify listeners when state is unchanged (no-op dedup)", () => {
+      const listener = vi.fn();
+      autoUpdaterService.onMenuStateChange(listener);
+
+      // Already idle — these should not fire the listener.
+      notAvailableHandler({});
+      errorHandler(Object.assign(new Error("conn reset"), { code: "ECONNRESET" }));
+
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it("onMenuStateChange returns an unsubscribe function", () => {
+      const listener = vi.fn();
+      const unsubscribe = autoUpdaterService.onMenuStateChange(listener);
+
+      unsubscribe();
+
+      downloadedHandler({ version: "2.0.0" });
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it("a thrown listener does not block other listeners or state transitions", () => {
+      const throwing = vi.fn(() => {
+        throw new Error("listener boom");
+      });
+      const surviving = vi.fn();
+      autoUpdaterService.onMenuStateChange(throwing);
+      autoUpdaterService.onMenuStateChange(surviving);
+
+      downloadedHandler({ version: "2.0.0" });
+
+      expect(throwing).toHaveBeenCalled();
+      expect(surviving).toHaveBeenCalledWith("ready");
+      expect(autoUpdaterService.getMenuState()).toBe("ready");
+    });
+
+    it("dispose clears menu state and removes listeners", () => {
+      const listener = vi.fn();
+      autoUpdaterService.onMenuStateChange(listener);
+      downloadedHandler({ version: "2.0.0" });
+      listener.mockClear();
+
+      autoUpdaterService.dispose();
+
+      // The listener should have been called once with "idle" as the final
+      // transition before being cleared.
+      expect(listener).toHaveBeenCalledWith("idle");
+      expect(autoUpdaterService.getMenuState()).toBe("idle");
+    });
+  });
+
+  describe("quitAndInstallIfReady", () => {
+    let downloadedHandler: (info: { version: string }) => void;
+
+    beforeEach(() => {
+      autoUpdaterService.initialize();
+
+      downloadedHandler = (autoUpdaterMock.on as Mock).mock.calls.find(
+        (args) => args[0] === "update-downloaded"
+      )![1];
+    });
+
+    it("returns false and does nothing when state is idle", () => {
+      expect(autoUpdaterService.quitAndInstallIfReady()).toBe(false);
+      vi.advanceTimersByTime(0);
+
+      expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled();
+      expect(cleanupOnExitMock).not.toHaveBeenCalled();
+    });
+
+    it("returns false when state is checking (no install staged)", () => {
+      autoUpdaterService.checkForUpdatesManually();
+      vi.advanceTimersByTime(CHECKING_MENU_DELAY_MS);
+
+      expect(autoUpdaterService.quitAndInstallIfReady()).toBe(false);
+      vi.advanceTimersByTime(0);
+      expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled();
+    });
+
+    it("calls cleanupOnExit then quitAndInstall when ready, deferred via setImmediate", () => {
+      downloadedHandler({ version: "2.0.0" });
+
+      const result = autoUpdaterService.quitAndInstallIfReady();
+
+      expect(result).toBe(true);
+      expect(cleanupOnExitMock).toHaveBeenCalledTimes(1);
+      // setImmediate is faked by vi.useFakeTimers — it hasn't fired yet.
+      expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled();
+
+      // advanceTimersToNextTimer fires only the queued setImmediate; using
+      // runAllTimers would also drain the 4h periodic interval and recurse.
+      vi.advanceTimersToNextTimer();
+      expect(autoUpdaterMock.quitAndInstall).toHaveBeenCalledTimes(1);
+    });
+
+    it("still schedules quitAndInstall when cleanupOnExit throws", () => {
+      downloadedHandler({ version: "2.0.0" });
+      cleanupOnExitMock.mockImplementationOnce(() => {
+        throw new Error("cleanup failed");
+      });
+
+      expect(autoUpdaterService.quitAndInstallIfReady()).toBe(true);
+      vi.advanceTimersToNextTimer();
+
+      expect(autoUpdaterMock.quitAndInstall).toHaveBeenCalledTimes(1);
+    });
+
+    it("a rapid double-call only schedules a single quitAndInstall (idempotency)", () => {
+      downloadedHandler({ version: "2.0.0" });
+
+      // Two calls back-to-back — the second must read idle and bail before
+      // queuing a second setImmediate. Otherwise cleanupOnExit + quitAndInstall
+      // would fire twice on a double-click.
+      const first = autoUpdaterService.quitAndInstallIfReady();
+      const second = autoUpdaterService.quitAndInstallIfReady();
+
+      expect(first).toBe(true);
+      expect(second).toBe(false);
+      expect(cleanupOnExitMock).toHaveBeenCalledTimes(1);
+
+      vi.advanceTimersToNextTimer();
+      expect(autoUpdaterMock.quitAndInstall).toHaveBeenCalledTimes(1);
+    });
+
+    it("disarms autoInstallOnAppQuit before calling quitAndInstall", () => {
+      downloadedHandler({ version: "2.0.0" });
+      autoUpdaterMock.autoInstallOnAppQuit = true;
+
+      autoUpdaterService.quitAndInstallIfReady();
+
+      expect(autoUpdaterMock.autoInstallOnAppQuit).toBe(false);
+    });
+  });
+
+  describe("disableWebInstaller", () => {
+    it("sets disableWebInstaller to true during initialization", () => {
+      autoUpdaterService.initialize();
+
+      expect(autoUpdaterMock.disableWebInstaller).toBe(true);
+    });
+  });
+
+  describe("channel-switch autoInstallOnAppQuit disarm", () => {
+    let setChannelHandler: (event: unknown, channel: unknown) => Promise<unknown>;
+    let downloadedHandler: (info: { version: string }) => void;
+    let availableHandler: (info: { version: string }) => void;
+
+    beforeEach(() => {
+      autoUpdaterService.initialize();
+      vi.advanceTimersByTime(STARTUP_JITTER_MAX_MS);
+
+      setChannelHandler = (ipcMainMock.handle as Mock).mock.calls.find(
+        (args) => args[0] === CHANNELS.UPDATE_SET_CHANNEL
+      )![1];
+      downloadedHandler = (autoUpdaterMock.on as Mock).mock.calls.find(
+        (args) => args[0] === "update-downloaded"
+      )![1];
+      availableHandler = (autoUpdaterMock.on as Mock).mock.calls.find(
+        (args) => args[0] === "update-available"
+      )![1];
+    });
+
+    it("disarms autoInstallOnAppQuit on channel change", async () => {
+      autoUpdaterMock.autoInstallOnAppQuit = true;
+
+      await setChannelHandler(null, "nightly");
+
+      expect(autoUpdaterMock.autoInstallOnAppQuit).toBe(false);
+    });
+
+    it("re-arms autoInstallOnAppQuit in update-downloaded handler", async () => {
+      autoUpdaterMock.autoInstallOnAppQuit = true;
+      await setChannelHandler(null, "nightly");
+      expect(autoUpdaterMock.autoInstallOnAppQuit).toBe(false);
+
+      // Fire update-available to sync downloadGeneration with the new channel
+      // before the download completes.
+      availableHandler({ version: "2.0.0-nightly.1" });
+      downloadedHandler({ version: "2.0.0-nightly.1" });
+
+      expect(autoUpdaterMock.autoInstallOnAppQuit).toBe(true);
+    });
+
+    it("does not disarm when channel is unchanged", async () => {
+      autoUpdaterMock.autoInstallOnAppQuit = true;
+      storeMock.get.mockImplementation((key: string) =>
+        key === "updateChannel" ? "stable" : undefined
+      );
+
+      await setChannelHandler(null, "stable");
+
+      expect(autoUpdaterMock.autoInstallOnAppQuit).toBe(true);
+    });
+  });
+
+  describe("channel-switch await race (Critical #1)", () => {
+    let setChannelHandler: (event: unknown, channel: unknown) => Promise<unknown>;
+    let downloadedHandler: (info: { version: string }) => void;
+    let quitAndInstallHandler: (event: unknown) => void;
+    let clearResolve: () => void;
+
+    beforeEach(() => {
+      autoUpdaterService.initialize();
+      vi.advanceTimersByTime(STARTUP_JITTER_MAX_MS);
+
+      setChannelHandler = (ipcMainMock.handle as Mock).mock.calls.find(
+        (args) => args[0] === CHANNELS.UPDATE_SET_CHANNEL
+      )![1];
+      downloadedHandler = (autoUpdaterMock.on as Mock).mock.calls.find(
+        (args) => args[0] === "update-downloaded"
+      )![1];
+      quitAndInstallHandler = (ipcMainMock.handle as Mock).mock.calls.find(
+        (args) => args[0] === CHANNELS.UPDATE_QUIT_AND_INSTALL
+      )![1];
+
+      // Defer clear resolution so the await gap is observable.
+      downloadedUpdateHelperMock.clear.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            clearResolve = resolve as () => void;
+          })
+      );
+
+      downloadedHandler({ version: "2.0.0" });
+    });
+
+    afterEach(() => {
+      downloadedUpdateHelperMock.clear.mockReset().mockResolvedValue(undefined);
+    });
+
+    it("blocks IPC quit-and-install while clear is in-flight", () => {
+      const channelPromise = setChannelHandler(null, "nightly");
+
+      quitAndInstallHandler(TRUSTED_SENDER);
+
+      // IPC handler must reject — updateDownloaded was reset synchronously
+      // before the await.
+      expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled();
+      expect(cleanupOnExitMock).not.toHaveBeenCalled();
+
+      clearResolve();
+      return channelPromise;
+    });
+
+    it("blocks quitAndInstallIfReady while clear is in-flight", () => {
+      const channelPromise = setChannelHandler(null, "nightly");
+
+      // menuState was reset to idle synchronously — the guard reads idle
+      // and returns false.
+      const result = autoUpdaterService.quitAndInstallIfReady();
+
+      expect(result).toBe(false);
+      expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled();
+
+      clearResolve();
+      return channelPromise;
+    });
+  });
+
+  describe("stale download epoch guard (Critical #2)", () => {
+    let setChannelHandler: (event: unknown, channel: unknown) => Promise<unknown>;
+    let downloadedHandler: (info: { version: string }) => void;
+    let availableHandler: (info: { version: string }) => void;
+
+    beforeEach(() => {
+      autoUpdaterService.initialize();
+      vi.advanceTimersByTime(STARTUP_JITTER_MAX_MS);
+
+      setChannelHandler = (ipcMainMock.handle as Mock).mock.calls.find(
+        (args) => args[0] === CHANNELS.UPDATE_SET_CHANNEL
+      )![1];
+      downloadedHandler = (autoUpdaterMock.on as Mock).mock.calls.find(
+        (args) => args[0] === "update-downloaded"
+      )![1];
+      availableHandler = (autoUpdaterMock.on as Mock).mock.calls.find(
+        (args) => args[0] === "update-available"
+      )![1];
+    });
+
+    it("ignores stale update-downloaded event after channel switch", async () => {
+      // Download initiated on stable: update-available captures downloadGeneration=0.
+      availableHandler({ version: "2.0.0" });
+      downloadedHandler({ version: "2.0.0" });
+      expect(autoUpdaterService.getMenuState()).toBe("ready");
+
+      // Channel switch increments channelGeneration to 1.
+      await setChannelHandler(null, "nightly");
+      expect(autoUpdaterService.getMenuState()).toBe("idle");
+      expect(autoUpdaterMock.autoInstallOnAppQuit).toBe(false);
+
+      // Old stable download (downloadGeneration=0) fires late —
+      // channelGeneration(1) !== downloadGeneration(0), must no-op.
+      downloadedHandler({ version: "2.0.0" });
+
+      expect(autoUpdaterMock.autoInstallOnAppQuit).toBe(false);
+      expect(autoUpdaterService.getMenuState()).toBe("idle");
+    });
+  });
+
+  describe("transient error codes (expanded set)", () => {
+    let errorHandler: (err: unknown) => void;
+
+    beforeEach(() => {
+      autoUpdaterService.initialize();
+      vi.advanceTimersByTime(STARTUP_JITTER_MAX_MS);
+
+      errorHandler = (autoUpdaterMock.on as Mock).mock.calls.find(
+        (args) => args[0] === "error"
+      )![1];
+
+      autoUpdaterMock.checkForUpdatesAndNotify.mockClear();
+    });
+
+    it("retries on ENETDOWN", () => {
+      errorHandler(Object.assign(new Error("network down"), { code: "ENETDOWN" }));
+      vi.advanceTimersByTime(36_000);
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+
+    it("retries on EHOSTUNREACH", () => {
+      errorHandler(Object.assign(new Error("host unreachable"), { code: "EHOSTUNREACH" }));
+      vi.advanceTimersByTime(36_000);
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+
+    it("retries on EHOSTDOWN", () => {
+      errorHandler(Object.assign(new Error("host down"), { code: "EHOSTDOWN" }));
+      vi.advanceTimersByTime(36_000);
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+
+    it("retries on ECONNABORTED", () => {
+      errorHandler(Object.assign(new Error("aborted"), { code: "ECONNABORTED" }));
+      vi.advanceTimersByTime(36_000);
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("err.cause unwrap in isTransientUpdateError", () => {
+    let errorHandler: (err: unknown) => void;
+
+    beforeEach(() => {
+      autoUpdaterService.initialize();
+      vi.advanceTimersByTime(STARTUP_JITTER_MAX_MS);
+
+      errorHandler = (autoUpdaterMock.on as Mock).mock.calls.find(
+        (args) => args[0] === "error"
+      )![1];
+
+      autoUpdaterMock.checkForUpdatesAndNotify.mockClear();
+    });
+
+    it("classifies a transient code nested under err.cause", () => {
+      const cause = Object.assign(new Error("timeout"), { code: "ETIMEDOUT" });
+      const wrapper = Object.assign(new Error("request failed"), { cause });
+
+      errorHandler(wrapper);
+      vi.advanceTimersByTime(36_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+
+    it("returns false for a permanent code nested under err.cause", () => {
+      const cause = Object.assign(new Error("not found"), { statusCode: 404 });
+      const wrapper = Object.assign(new Error("request failed"), { cause });
+
+      errorHandler(wrapper);
+      vi.advanceTimersByTime(60_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+    });
+
+    it("cert error at any cause depth immediately returns false", () => {
+      const deepCause = Object.assign(new Error("expired"), { code: "CERT_HAS_EXPIRED" });
+      const middle = Object.assign(new Error("middle"), { code: "ECONNRESET", cause: deepCause });
+      const top = Object.assign(new Error("top"), { cause: middle });
+
+      errorHandler(top);
+      vi.advanceTimersByTime(60_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+    });
+
+    it("deeply nested transient code is still found", () => {
+      const deepCause = Object.assign(new Error("dns"), { code: "ENOTFOUND" });
+      const level3 = Object.assign(new Error("level3"), { cause: deepCause });
+      const level2 = Object.assign(new Error("level2"), { cause: level3 });
+      const top = Object.assign(new Error("top"), { cause: level2 });
+
+      errorHandler(top);
+      vi.advanceTimersByTime(36_000);
+
+      expect(autoUpdaterMock.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("UPDATE_DISMISS_TOAST in dev mode", () => {
+    beforeEach(() => {
+      appMock.isPackaged = false;
+    });
+
+    it("registers UPDATE_DISMISS_TOAST handler even when not packaged", () => {
+      autoUpdaterService.initialize();
+
+      const registeredChannels = (ipcMainMock.handle as Mock).mock.calls.map((args) => args[0]);
+      expect(registeredChannels).toContain(CHANNELS.UPDATE_DISMISS_TOAST);
     });
   });
 });

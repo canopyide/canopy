@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createHash } from "crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -227,5 +227,39 @@ describe("TerminalRegistry projectId inference", () => {
 
     expect(registry.isInTrash("t-1")).toBe(false);
     expect(killedId).toBe(null);
+  });
+
+  it("calls unref on trash timeout so the TTL never pins the event loop", () => {
+    const registry = new TerminalRegistry(120000);
+    const terminal = createMockTerminalProcess({
+      id: "t-1",
+      cwd: "/tmp",
+      projectId: "project-1",
+    });
+    registry.add("t-1", terminal);
+
+    const original = global.setTimeout;
+    const unrefSpies: ReturnType<typeof vi.fn>[] = [];
+    const trackedTimers: NodeJS.Timeout[] = [];
+    const wrapped = ((handler: (...args: unknown[]) => void, ms?: number, ...args: unknown[]) => {
+      const timer = original(handler, ms, ...args);
+      trackedTimers.push(timer);
+      const originalUnref = timer.unref.bind(timer);
+      const unrefSpy = vi.fn(() => originalUnref());
+      (timer as unknown as { unref: () => NodeJS.Timeout }).unref = unrefSpy;
+      unrefSpies.push(unrefSpy);
+      return timer;
+    }) as typeof setTimeout;
+    Object.assign(wrapped, original);
+    global.setTimeout = wrapped;
+
+    try {
+      registry.trash("t-1", () => {});
+      expect(unrefSpies).toHaveLength(1);
+      expect(unrefSpies[0]).toHaveBeenCalledTimes(1);
+    } finally {
+      global.setTimeout = original;
+      for (const t of trackedTimers) clearTimeout(t);
+    }
   });
 });

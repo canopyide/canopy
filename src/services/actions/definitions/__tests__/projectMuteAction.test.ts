@@ -118,7 +118,7 @@ describe("project.muteNotifications", () => {
     getSettingsMock.mockRejectedValue(new Error("read failed"));
 
     const action = muteAction();
-    await action.run({ projectId: "p1" }, {} as never);
+    await expect(action.run({ projectId: "p1" }, {} as never)).rejects.toThrow("read failed");
 
     expect(saveSettingsMock).not.toHaveBeenCalled();
     expect(notifyMock).toHaveBeenCalledTimes(1);
@@ -134,7 +134,7 @@ describe("project.muteNotifications", () => {
     saveSettingsMock.mockRejectedValue(new Error("write failed"));
 
     const action = muteAction();
-    await action.run({ projectId: "p1" }, {} as never);
+    await expect(action.run({ projectId: "p1" }, {} as never)).rejects.toThrow("write failed");
 
     expect(notifyMock).toHaveBeenCalledWith(
       expect.objectContaining({ type: "error", message: "write failed" })

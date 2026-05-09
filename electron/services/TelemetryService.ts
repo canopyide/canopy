@@ -1,12 +1,14 @@
-import os from "os";
 import { randomUUID } from "node:crypto";
 import { app } from "electron";
 import { store } from "../store.js";
 import type { ActionBreadcrumb } from "../../shared/types/ipc/crashRecovery.js";
 import type { SanitizedTelemetryEvent } from "../../shared/types/ipc/telemetryPreview.js";
 import { scrubSecrets } from "../utils/secretScrubber.js";
+import { sanitizePath } from "../utils/pathScrubber.js";
 import { emitTelemetryPreview, isTelemetryPreviewActive } from "./TelemetryPreviewBroadcaster.js";
 import { getWritesSuppressed } from "./diskPressureState.js";
+
+export { sanitizePath };
 
 export interface SentryBreadcrumb {
   message?: string;
@@ -28,7 +30,14 @@ export interface SentryEvent {
     values?: Array<{
       value?: string;
       stacktrace?: {
-        frames?: Array<{ filename?: string; abs_path?: string }>;
+        frames?: Array<{
+          filename?: string;
+          abs_path?: string;
+          context_line?: string;
+          pre_context?: string[];
+          post_context?: string[];
+          vars?: Record<string, unknown>;
+        }>;
       };
     }>;
   };
@@ -37,18 +46,6 @@ export interface SentryEvent {
   breadcrumbs?: SentryBreadcrumb[];
   extra?: Record<string, unknown>;
   [key: string]: unknown;
-}
-
-const HOME_DIR = os.homedir();
-
-export function sanitizePath(str: string): string {
-  const escaped = HOME_DIR.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return str
-    .replace(new RegExp(escaped, "g"), "~")
-    .replace(/\/Users\/[^/]+\//g, "/Users/USER/")
-    .replace(/\/home\/[^/]+\//g, "/home/USER/")
-    .replace(/C:\\Users\\[^\\]+\\/gi, "C:\\Users\\USER\\")
-    .replace(/C:\/Users\/[^/]+\//gi, "C:/Users/USER/");
 }
 
 function sanitizeString(value: string): string {
@@ -84,6 +81,14 @@ export function sanitizeEvent(event: SentryEvent): SentryEvent | null {
   // `beforeSend` must never throw — a throw causes Sentry to drop the event
   // silently. Fail closed on unexpected input rather than leaking unscrubbed
   // data by returning the event as-is.
+  //
+  // Deliberately skips deep-walking event.tags / event.user / event.contexts.
+  // This is safe only while: zero Sentry.setUser() calls exist in the codebase;
+  // the sole setTag() call (setOnboardingCompleteTag) passes fixed "true"/"false"
+  // strings; initial-scope tags are process-controlled (platform, arch, node);
+  // and @sentry/electron's MainContext integration does not capture process.argv
+  // into app_arguments. Adding user-populated data to any of these fields would
+  // silently bypass scrubbing with no warning at the call site.
   try {
     if (Array.isArray(event.exception?.values)) {
       for (const ex of event.exception.values) {
@@ -93,6 +98,23 @@ export function sanitizeEvent(event: SentryEvent): SentryEvent | null {
             if (!frame || typeof frame !== "object") continue;
             if (frame.filename) frame.filename = sanitizeString(frame.filename);
             if (frame.abs_path) frame.abs_path = sanitizeString(frame.abs_path);
+            // contextLinesIntegration and localVariablesIntegration (default
+            // integrations in @sentry/electron) populate these fields with
+            // raw source lines and local variable values before beforeSend
+            // fires. Source lines may contain string literals with user paths;
+            // local variable values may hold paths, tokens, or transcripts.
+            if (typeof frame.context_line === "string") {
+              frame.context_line = sanitizeString(frame.context_line);
+            }
+            if (Array.isArray(frame.pre_context)) {
+              frame.pre_context = sanitizeStringsDeep(frame.pre_context) as string[];
+            }
+            if (Array.isArray(frame.post_context)) {
+              frame.post_context = sanitizeStringsDeep(frame.post_context) as string[];
+            }
+            if (frame.vars && typeof frame.vars === "object") {
+              frame.vars = sanitizeStringsDeep(frame.vars) as Record<string, unknown>;
+            }
           }
         }
         if (ex.value) ex.value = sanitizeString(ex.value);
@@ -194,6 +216,18 @@ export async function initializeTelemetry(): Promise<void> {
         // crash time, and JS-level beforeSend cannot scrub binary data. JS
         // crashes remain captured via globalErrorHandlers.ts / main-crash.log.
         integrations: (defaults) => defaults.filter((i) => i.name !== "SentryMinidump"),
+        // Sentry normalizes events (default depth 3) *before* beforeSend fires,
+        // replacing nested objects/arrays past the cap with the literal strings
+        // "[Object]"/"[Array]". Raise to match MAX_DEEP_SANITIZE_DEPTH so the
+        // deep-walk scrubber inspects real data, not already-flattened stubs.
+        // Freeze normalizeMaxBreadth at its current SDK default to insulate
+        // against a future change silently narrowing the breadth limit.
+        normalizeDepth: MAX_DEEP_SANITIZE_DEPTH,
+        normalizeMaxBreadth: 1000,
+        // Raise the default 100-entry ring so high-frequency action dispatches
+        // (drag bursts, agent-state polls, file-watcher fanouts) don't rotate
+        // the crash-triggering breadcrumb out before flush. See #7575.
+        maxBreadcrumbs: 250,
         // Do not set `sampleRate` — it defaults to 1.0 (100% error capture). If
         // performance tracing is ever added, use `tracesSampleRate` instead.
         // The local `SentryEvent` interface is a narrower projection of the
@@ -240,6 +274,17 @@ export function isTelemetryEnabled(): boolean {
   return getTelemetryLevel() !== "off";
 }
 
+/**
+ * Returns a UUID for correlating main-process errors with renderer error
+ * envelopes. Only emits in packaged builds where Sentry has been initialized
+ * — in dev or when the Sentry module was never loaded, returns `undefined`
+ * so no orphan UUID ends up on the wire.
+ */
+export function getCurrentCorrelationId(): string | undefined {
+  if (!app.isPackaged || sentryModule === null) return undefined;
+  return randomUUID();
+}
+
 export async function setTelemetryLevel(level: TelemetryLevel): Promise<void> {
   store.set("privacy.telemetryLevel", level);
 
@@ -275,6 +320,11 @@ function buildAnalyticsSentryEvent(
     level: "info" as unknown as undefined,
     extra: { ...properties, timestamp },
     tags: { kind: "analytics" },
+    // Pin grouping to the analytics event name so issue-tracking stays stable
+    // across SDK upgrades. Sentry's default fingerprint hash is unstable —
+    // without this, two analytics events with the same name can land in
+    // different groups after a fingerprint-algorithm change.
+    fingerprint: ["analytics", event],
   } as SentryEvent;
 }
 

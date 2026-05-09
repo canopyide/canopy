@@ -1,0 +1,321 @@
+import { describe, it, expect, beforeEach } from "vitest";
+import fs from "fs/promises";
+import path from "path";
+
+const SIDEBAR_CONTENT_PATH = path.resolve(__dirname, "../SidebarContent.tsx");
+const STATIC_ROW_PATH = path.resolve(__dirname, "../StaticWorktreeRow.tsx");
+const SORTABLE_CARD_PATH = path.resolve(__dirname, "../../DragDrop/SortableWorktreeCard.tsx");
+const WORKTREE_CARD_PATH = path.resolve(__dirname, "../../Worktree/WorktreeCard.tsx");
+const WORKTREE_ACTIONS_TOOLBAR_PATH = path.resolve(
+  __dirname,
+  "../../Worktree/WorktreeCard/WorktreeActionsToolbar.tsx"
+);
+const HOOK_PATH = path.resolve(__dirname, "../useWorktreeGridRovingFocus.ts");
+
+describe("Worktree list keyboard grid — issue #6422", () => {
+  describe("SortableWorktreeCard ARIA contract", () => {
+    let source: string;
+    beforeEach(async () => {
+      source = await fs.readFile(SORTABLE_CARD_PATH, "utf-8");
+    });
+
+    it("strips dnd-kit's tabIndex from spread attributes so the row never gets a stray tab stop", () => {
+      // dnd-kit's useSortable returns attributes that include `tabIndex: 0`.
+      // Spreading them onto the row would defeat the single-tab-stop contract.
+      expect(source).toMatch(/tabIndex:\s*_tabIndex/);
+    });
+
+    it('uses role="row" (not listitem) so the wrapper participates in the grid', () => {
+      expect(source).toContain('role="row"');
+      expect(source).not.toContain('role="listitem"');
+    });
+
+    it("exposes data-worktree-row so the roving controller can query rows", () => {
+      expect(source).toContain("data-worktree-row={worktreeId}");
+    });
+
+    it('wraps children in role="gridcell" for valid grid > row > gridcell semantics', () => {
+      expect(source).toContain('role="gridcell"');
+    });
+
+    it("starts with tabIndex={-1}; the controller promotes one row to 0", () => {
+      expect(source).toContain("tabIndex={-1}");
+    });
+  });
+
+  describe("WorktreeCard role conditional", () => {
+    let source: string;
+    beforeEach(async () => {
+      source = await fs.readFile(WORKTREE_CARD_PATH, "utf-8");
+    });
+
+    it('only applies role="group" in the overview grid variant — sidebar rows defer to the row wrapper', () => {
+      expect(source).toContain('role={variant === "grid" ? "group" : undefined}');
+    });
+  });
+
+  describe("WorktreeHeader actions toolbar", () => {
+    let source: string;
+    beforeEach(async () => {
+      source = await fs.readFile(WORKTREE_ACTIONS_TOOLBAR_PATH, "utf-8");
+    });
+
+    it("marks the actions wrapper with data-worktree-row-toolbar so the controller can find it", () => {
+      expect(source).toContain('data-worktree-row-toolbar=""');
+    });
+
+    it('declares role="toolbar" and an accessible label', () => {
+      expect(source).toMatch(/role="toolbar"/);
+      expect(source).toMatch(/aria-label="Worktree actions"/);
+    });
+  });
+
+  describe("WorktreeCard drag handle", () => {
+    const SIDEBAR_CSS_PATH = path.resolve(__dirname, "../../../styles/components/sidebar.css");
+
+    it("marks the drag handle with data-worktree-row-drag-handle so focus CSS can target it", async () => {
+      const cardSource = await fs.readFile(WORKTREE_CARD_PATH, "utf-8");
+      expect(cardSource).toContain('data-worktree-row-drag-handle=""');
+    });
+
+    it("reveals drag handle on keyboard focus via [data-worktree-row-drag-handle] CSS selector", async () => {
+      const cssSource = await fs.readFile(SIDEBAR_CSS_PATH, "utf-8");
+      expect(cssSource).toContain("[data-worktree-row-drag-handle]");
+    });
+
+    it("uses group-hover/card for mouse row-level reveal (not self-scoped hover)", async () => {
+      const cardSource = await fs.readFile(WORKTREE_CARD_PATH, "utf-8");
+      expect(cardSource).toContain("group-hover/card:text-text-primary/30");
+      expect(cardSource).toContain("group-hover/card:bg-overlay-soft");
+    });
+
+    it("keeps motion-reduce:transition-none on the drag handle for WCAG reduced-motion", async () => {
+      const cardSource = await fs.readFile(WORKTREE_CARD_PATH, "utf-8");
+      expect(cardSource).toContain("motion-reduce:transition-none");
+    });
+  });
+
+  describe("SidebarContent grid wiring", () => {
+    let source: string;
+    beforeEach(async () => {
+      source = await fs.readFile(SIDEBAR_CONTENT_PATH, "utf-8");
+    });
+
+    it("imports the roving-focus hook", () => {
+      expect(source).toContain('from "./useWorktreeGridRovingFocus"');
+      expect(source).toContain("useWorktreeGridRovingFocus");
+    });
+
+    it('wires gridRef + handlers from the hook into a role="grid" container', () => {
+      // Hook now takes a scrollContainerRef so PageUp/PageDown can size the page
+      // from the viewport. The destructured return shape is unchanged.
+      expect(source).toMatch(
+        /const \{ gridRef, handleGridKeyDown, handleGridFocusCapture \} =\s*useWorktreeGridRovingFocus\(scrollContainerRef\);/
+      );
+      expect(source).toContain('role="grid"');
+      expect(source).toContain('aria-label="Worktrees"');
+      expect(source).toContain("ref={gridRef}");
+      expect(source).toContain("onKeyDown={handleGridKeyDown}");
+      expect(source).toContain("onFocusCapture={handleGridFocusCapture}");
+    });
+
+    it('wraps StaticWorktreeRow\'s WorktreeCard in role="row" + data-worktree-row + role="gridcell"', async () => {
+      const staticSource = await fs.readFile(STATIC_ROW_PATH, "utf-8");
+      // The static (pinned/grouped) rows don't go through SortableWorktreeCard,
+      // so the row + gridcell roles must be added explicitly here.
+      expect(staticSource).toMatch(/role="row"/);
+      expect(staticSource).toContain("data-worktree-row={worktreeId}");
+      expect(staticSource).toContain("tabIndex={-1}");
+      // Ensure the static path also has a gridcell wrapper
+      const staticRowMatch = staticSource.match(
+        /const StaticWorktreeRow[\s\S]*?<\/div>\s*\)\s*;\s*\}\s*\)\s*;/
+      );
+      expect(staticRowMatch).toBeTruthy();
+      expect(staticRowMatch?.[0]).toContain('role="gridcell"');
+    });
+  });
+
+  describe("useWorktreeGridRovingFocus hook", () => {
+    let source: string;
+    beforeEach(async () => {
+      source = await fs.readFile(HOOK_PATH, "utf-8");
+    });
+
+    it("queries rows via [data-worktree-row]", () => {
+      expect(source).toContain("[data-worktree-row]");
+    });
+
+    it("queries the per-row toolbar via [data-worktree-row-toolbar]", () => {
+      expect(source).toContain("[data-worktree-row-toolbar]");
+    });
+
+    it("syncs tab stops by mutating element.tabIndex directly (not via React state)", () => {
+      // Mirrors Toolbar.tsx's DOM-mutation pattern to avoid re-rendering 50–200
+      // worktree cards on every arrow keypress.
+      expect(source).toMatch(/\.tabIndex\s*=\s*-1/);
+      expect(source).toMatch(/\.tabIndex\s*=\s*0/);
+    });
+
+    it("resets to list mode on window blur (lesson #4591)", () => {
+      expect(source).toContain('window.addEventListener("blur"');
+      expect(source).toMatch(/modeRef\.current\s*=\s*"list"/);
+    });
+
+    it("handles Enter / ArrowRight to enter toolbar mode and Escape to return to list mode", () => {
+      expect(source).toMatch(/"Enter"/);
+      expect(source).toMatch(/"ArrowRight"/);
+      expect(source).toMatch(/"Escape"/);
+    });
+
+    it("handles Space to select the row's primary worktree button", () => {
+      expect(source).toMatch(/aria-label\^='Select worktree'/);
+    });
+
+    it("demotes every native focusable inside each row so the grid is one tab stop", () => {
+      // Without this, the absolute "Select worktree" button, terminal-section
+      // collapse buttons, PR/issue links, etc. all keep their native tab
+      // stops and the keyboard-exhaustion bug is unfixed.
+      expect(source).toMatch(/ROW_DESCENDANT_SELECTOR/);
+      expect(source).toMatch(/demoteRowDescendants/);
+    });
+
+    it("repairs DOM tab stops on window blur (not just modeRef)", () => {
+      // Stale tabIndex=0 on a toolbar item would let the next Tab land back
+      // inside that toolbar instead of on the row. Blur must clear it.
+      const blurEffect = source.match(
+        /useEffect\(\(\)\s*=>\s*\{[\s\S]*?addEventListener\("blur"[\s\S]*?\}\s*,\s*\[[^\]]*\]\)/
+      );
+      expect(blurEffect).toBeTruthy();
+      expect(blurEffect?.[0]).toContain("syncRowTabStops");
+    });
+  });
+
+  describe("issue #7212 — APG grid attributes and keyboard model", () => {
+    describe("aria-rowcount / aria-rowindex threading", () => {
+      it("exposes aria-rowcount on the grid container", async () => {
+        const source = await fs.readFile(SIDEBAR_CONTENT_PATH, "utf-8");
+        expect(source).toContain("aria-rowcount={ariaRowCount}");
+      });
+
+      it("computes ariaRowCount including pinned, group header, and data rows", async () => {
+        const source = await fs.readFile(SIDEBAR_CONTENT_PATH, "utf-8");
+        expect(source).toMatch(/const ariaRowCount =/);
+        // Group header rows must contribute to the count (they carry role="row")
+        expect(source).toMatch(
+          /groupedSections[\s\S]*?\.reduce\([\s\S]*?1 \+ s\.worktrees\.length/
+        );
+      });
+
+      it("StaticWorktreeRow applies aria-rowindex to its role='row' div", async () => {
+        const source = await fs.readFile(STATIC_ROW_PATH, "utf-8");
+        expect(source).toContain("aria-rowindex={ariaRowIndex}");
+      });
+
+      it("SortableWorktreeCard applies aria-rowindex to its role='row' div", async () => {
+        const source = await fs.readFile(SORTABLE_CARD_PATH, "utf-8");
+        expect(source).toContain("aria-rowindex={ariaRowIndex}");
+      });
+
+      it("threads ariaRowIndex through SidebarWorktreeRow → SortableWorktreeCard", async () => {
+        const sidebarRowSource = await fs.readFile(
+          path.resolve(__dirname, "../SidebarWorktreeRow.tsx"),
+          "utf-8"
+        );
+        expect(sidebarRowSource).toMatch(/ariaRowIndex:\s*number/);
+        expect(sidebarRowSource).toContain("ariaRowIndex={ariaRowIndex}");
+      });
+    });
+
+    describe("aria-current on the active row", () => {
+      it("StaticWorktreeRow applies aria-current='true' when the row is active", async () => {
+        const source = await fs.readFile(STATIC_ROW_PATH, "utf-8");
+        expect(source).toContain('aria-current={isActive ? "true" : undefined}');
+      });
+
+      it("SortableWorktreeCard applies aria-current='true' when the row is active", async () => {
+        const source = await fs.readFile(SORTABLE_CARD_PATH, "utf-8");
+        expect(source).toContain('aria-current={isActive ? "true" : undefined}');
+      });
+
+      it("removes the (selected) suffix from WorktreeCard's aria-label", async () => {
+        const source = await fs.readFile(WORKTREE_CARD_PATH, "utf-8");
+        // aria-current on the row wrapper replaces the string-spliced cue.
+        expect(source).not.toContain('" (selected)"');
+      });
+
+      it("WorktreeCard sets aria-current on the grid variant (overview modal has no row wrapper)", async () => {
+        const source = await fs.readFile(WORKTREE_CARD_PATH, "utf-8");
+        // Sidebar rows carry aria-current on the role="row" wrapper; the
+        // overview grid has no wrapper, so the card itself must announce
+        // the active state.
+        expect(source).toContain(
+          'aria-current={variant === "grid" && isActive ? "true" : undefined}'
+        );
+      });
+    });
+
+    describe("grouped-by-type section structure", () => {
+      let source: string;
+      beforeEach(async () => {
+        source = await fs.readFile(SIDEBAR_CONTENT_PATH, "utf-8");
+      });
+
+      it("wraps grouped sections in role='rowgroup'", () => {
+        expect(source).toContain('role="rowgroup"');
+      });
+
+      it("renders each section header as a role='row' with role='rowheader' inside", () => {
+        // Inside the grouped-sections branch
+        const groupedBranch = source.match(/groupedSections \?\s*\([\s\S]*?\) :\s*\(/);
+        expect(groupedBranch).toBeTruthy();
+        expect(groupedBranch?.[0]).toContain('role="row"');
+        expect(groupedBranch?.[0]).toContain('role="rowheader"');
+        expect(groupedBranch?.[0]).toContain("aria-colspan={1}");
+      });
+
+      it("threads aria-rowindex onto group header rows", () => {
+        const groupedBranch = source.match(/groupedSections \?\s*\([\s\S]*?\) :\s*\(/);
+        expect(groupedBranch?.[0]).toContain("aria-rowindex={headerRowIndex}");
+      });
+    });
+
+    describe("keyboard model — PageUp/PageDown and Ctrl+Home/Ctrl+End", () => {
+      let source: string;
+      beforeEach(async () => {
+        source = await fs.readFile(HOOK_PATH, "utf-8");
+      });
+
+      it("accepts a scrollContainerRef parameter so PageUp/PageDown can size the page from viewport height", () => {
+        expect(source).toMatch(/scrollContainerRef\??:\s*React\.RefObject<HTMLDivElement \| null>/);
+      });
+
+      it("handles PageDown and PageUp in the list-mode switch", () => {
+        expect(source).toMatch(/case "PageDown"/);
+        expect(source).toMatch(/case "PageUp"/);
+      });
+
+      it("computes the page step from viewport height divided by row height", () => {
+        expect(source).toMatch(/computeGridPageSize/);
+      });
+
+      it("allows Ctrl+Home and Ctrl+End through the modifier guard", () => {
+        // The old guard bailed on every Ctrl combo; the new guard whitelists
+        // Home/End so APG's mandatory Ctrl+Home/End shortcuts can fire.
+        expect(source).toMatch(/e\.ctrlKey && e\.key !== "Home" && e\.key !== "End"/);
+      });
+
+      it("clamps ArrowUp/ArrowDown at the grid boundary (no wrap)", () => {
+        // Wrapping let users silently jump from the last row to the first;
+        // APG grid row navigation requires boundary-stop.
+        expect(source).not.toMatch(/%\s*rows\.length/);
+      });
+    });
+
+    describe("SidebarContent passes scrollContainerRef into the roving-focus hook", () => {
+      it("calls useWorktreeGridRovingFocus with the scroll container ref", async () => {
+        const source = await fs.readFile(SIDEBAR_CONTENT_PATH, "utf-8");
+        expect(source).toMatch(/useWorktreeGridRovingFocus\(scrollContainerRef\)/);
+      });
+    });
+  });
+});

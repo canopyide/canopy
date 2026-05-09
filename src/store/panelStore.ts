@@ -30,6 +30,8 @@ import { TerminalRefreshTier as TerminalRefreshTierEnum } from "@/types";
 import { terminalRegistryController } from "@/controllers";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { useWorktreeSelectionStore } from "./worktreeStore";
+import { isAssistantFocused } from "./macroFocusStore";
+import { isMcpSpawnFocusSuppressed } from "./mcpSpawnFocusGuard";
 import type { CrashType } from "@shared/types/pty-host";
 import { isRuntimeAgentTerminal } from "@/utils/terminalType";
 import { logInfo, logWarn, logError } from "@/utils/logger";
@@ -45,7 +47,8 @@ const PROJECT_SWITCH_RESIZE_SUPPRESSION_MS = 10_000;
 
 export function getTerminalRefreshTier(
   terminal: TerminalInstance | undefined,
-  isFocused: boolean
+  isFocused: boolean,
+  options: { isFleetArmed?: boolean } = {}
 ): TerminalRefreshTier {
   if (!terminal) {
     return TerminalRefreshTierEnum.VISIBLE;
@@ -58,6 +61,21 @@ export function getTerminalRefreshTier(
 
   if (isFocused) {
     return TerminalRefreshTierEnum.FOCUSED;
+  }
+
+  // Fleet input can target a terminal before runtime agent detection has
+  // caught up. Keep armed live PTYs visible so broadcast responses stream
+  // promptly instead of being parked in the background tier.
+  if (
+    options.isFleetArmed &&
+    terminal.hasPty !== false &&
+    terminal.location !== "trash" &&
+    terminal.location !== "background" &&
+    terminal.location !== "dock" &&
+    terminal.runtimeStatus !== "exited" &&
+    terminal.runtimeStatus !== "error"
+  ) {
+    return TerminalRefreshTierEnum.VISIBLE;
   }
 
   // Active agent terminals stay at VISIBLE minimum to preserve live output.
@@ -151,7 +169,23 @@ export const usePanelStore = create<PanelGridState>()(
       setLastCrashType: (crashType: CrashType | null) => set({ lastCrashType: crashType }),
 
       addPanel: async (options: AddPanelOptions) => {
-        const id = await registrySlice.addPanel(options);
+        // Capture the pre-create focus so we can restore previousFocusedId for the
+        // dock-activation path (#6590). The registry slice atomically advances
+        // focusedId to the new id when activateDockOnCreate is set, so by the
+        // time it returns, we've lost the pre-create focus from the store.
+        const focusedBeforeCreate = get().focusedId;
+        // Read focus-steal gates synchronously, BEFORE the async registry call.
+        // `document.activeElement` and the macro-focus store are mutable in
+        // response to renderer DOM updates that can land during the await
+        // boundary; capturing here pins them to the user's pre-create state
+        // (#6959 — assistant focus theft when MCP launches an agent).
+        const assistantHasFocus = isAssistantFocused();
+        const suppressMcpSpawnFocus = options.spawnedBy === "mcp" || isMcpSpawnFocusSuppressed();
+        const panelOptions =
+          suppressMcpSpawnFocus && options.spawnedBy !== "mcp"
+            ? ({ ...options, spawnedBy: "mcp" } as AddPanelOptions)
+            : options;
+        const id = await registrySlice.addPanel(panelOptions);
         if (id === null) return null;
         // Skip the per-panel focus mutation while a hydration batch is collecting panels:
         // firing `set({ focusedId })` here would schedule one extra render per panel and
@@ -159,11 +193,42 @@ export const usePanelStore = create<PanelGridState>()(
         // focus also isn't meaningful during restore — focus is resolved elsewhere once
         // the active worktree is set.
         if ((!options.location || options.location === "grid") && !isHydrationBatchActive()) {
-          const previousFocusedId = get().focusedId;
-          if (previousFocusedId !== id) {
-            set({ focusedId: id, previousFocusedId });
+          // Suppress focus capture for MCP-initiated spawns or when the
+          // Daintree Assistant currently owns keyboard focus. The new panel
+          // still lands in the grid; the user keeps typing where they were.
+          if (assistantHasFocus || suppressMcpSpawnFocus) {
+            return id;
+          }
+          if (focusedBeforeCreate !== id) {
+            set({ focusedId: id, previousFocusedId: focusedBeforeCreate });
           } else {
             set({ focusedId: id });
+          }
+        } else if (
+          options.activateDockOnCreate &&
+          options.location === "dock" &&
+          !isHydrationBatchActive()
+        ) {
+          // The registry slice atomically advances `focusedId` to the new id
+          // inside its commit for normal dock activations (#6590). When the
+          // assistant currently owns input we issue a corrective set() to roll
+          // keyboard focus back while leaving the dock popover open. MCP spawns
+          // skip both registry focus and dock-popover activation entirely
+          // (handled in `panelRegistry/addPanel.ts`), so no rollback is needed
+          // for the MCP case.
+          if (assistantHasFocus && !suppressMcpSpawnFocus) {
+            set({ focusedId: focusedBeforeCreate });
+          } else if (
+            !suppressMcpSpawnFocus &&
+            focusedBeforeCreate !== null &&
+            focusedBeforeCreate !== id
+          ) {
+            // Best-effort previousFocusedId for the tmux-style alternate-pane toggle.
+            // Updating in a follow-up set() is fine — previousFocusedId is metadata,
+            // not load-bearing for dock visibility (which the watchdog effect cares
+            // about and which is already covered by the registry's atomic commit).
+            // MCP spawns skip this — they never participate in alternate-pane focus.
+            set({ previousFocusedId: focusedBeforeCreate });
           }
         }
         return id;
@@ -522,6 +587,7 @@ export const usePanelStore = create<PanelGridState>()(
         set({
           panelsById: {},
           panelIds: [],
+          panelIdsByWorktreeId: {},
           trashedTerminals: new Map(),
           backgroundedTerminals: new Map(),
           tabGroups: new Map(),
@@ -566,6 +632,7 @@ export const usePanelStore = create<PanelGridState>()(
         set({
           panelsById: {},
           panelIds: [],
+          panelIdsByWorktreeId: {},
           trashedTerminals: new Map(),
           backgroundedTerminals: new Map(),
           tabGroups: new Map(),
@@ -612,6 +679,7 @@ export const usePanelStore = create<PanelGridState>()(
         set({
           panelsById: {},
           panelIds: [],
+          panelIdsByWorktreeId: {},
           trashedTerminals: new Map(),
           backgroundedTerminals: new Map(),
           tabGroups: new Map(),

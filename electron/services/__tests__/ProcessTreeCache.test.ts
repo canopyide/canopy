@@ -1,6 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ProcessTreeCache, type ProcessInfo } from "../ProcessTreeCache.js";
 
+const { mockExec } = vi.hoisted(() => {
+  const mockExec = vi.fn();
+  return { mockExec };
+});
+
+vi.mock("child_process", () => ({
+  exec: mockExec,
+}));
+
 type CpuSnapshot = { kernelTicks: bigint; userTicks: bigint; wallMs: number };
 type CacheInternals = {
   cache: Map<number, ProcessInfo>;
@@ -46,34 +55,6 @@ describe("ProcessTreeCache", () => {
     expect(processTree.getChildPids(1)).toEqual([2, 3]);
   });
 
-  it("does not mutate descendant structure when computing cpu usage", () => {
-    const processTree = createSeededCache();
-
-    expect(processTree.getDescendantsCpuUsage(1)).toBeCloseTo(1.8, 6);
-    expect(processTree.getChildPids(1)).toEqual([2, 3]);
-    expect(processTree.getChildPids(2)).toEqual([4]);
-
-    // Repeat call should be stable and return the same value.
-    expect(processTree.getDescendantsCpuUsage(1)).toBeCloseTo(1.8, 6);
-    expect(processTree.getChildPids(1)).toEqual([2, 3]);
-  });
-
-  it("does not mutate child map when checking active descendants", () => {
-    const processTree = createSeededCache();
-
-    expect(processTree.hasActiveDescendants(1, 1.0)).toBe(true);
-    expect(processTree.getChildPids(1)).toEqual([2, 3]);
-    expect(processTree.getChildPids(2)).toEqual([4]);
-
-    expect(processTree.hasActiveDescendants(1, 1.0)).toBe(true);
-  });
-
-  it("returns false for active descendants when none exceed threshold", () => {
-    const processTree = createSeededCache();
-
-    expect(processTree.hasActiveDescendants(1, 2.0)).toBe(false);
-  });
-
   it("returns descendant pids in post-order (deepest first)", () => {
     const processTree = createSeededCache();
     // Tree: 1 -> [2, 3], 2 -> [4]
@@ -112,6 +93,33 @@ describe("ProcessTreeCache", () => {
     processTree.getDescendantPids(1);
     expect(processTree.getChildPids(1)).toEqual([2, 3]);
     expect(processTree.getChildPids(2)).toEqual([4]);
+  });
+
+  it("does not mutate descendant structure when computing CPU usage", () => {
+    const processTree = createSeededCache();
+
+    expect(processTree.getDescendantsCpuUsage(1)).toBeCloseTo(1.8, 6);
+    expect(processTree.getChildPids(1)).toEqual([2, 3]);
+    expect(processTree.getChildPids(2)).toEqual([4]);
+
+    expect(processTree.getDescendantsCpuUsage(1)).toBeCloseTo(1.8, 6);
+    expect(processTree.getChildPids(1)).toEqual([2, 3]);
+  });
+
+  it("does not mutate child map when checking active descendants", () => {
+    const processTree = createSeededCache();
+
+    expect(processTree.hasActiveDescendants(1, 1.0)).toBe(true);
+    expect(processTree.getChildPids(1)).toEqual([2, 3]);
+    expect(processTree.getChildPids(2)).toEqual([4]);
+
+    expect(processTree.hasActiveDescendants(1, 1.0)).toBe(true);
+  });
+
+  it("returns false for active descendants when none exceed threshold", () => {
+    const processTree = createSeededCache();
+
+    expect(processTree.hasActiveDescendants(1, 2.0)).toBe(false);
   });
 
   it("returns empty array for unknown pid", () => {
@@ -474,5 +482,71 @@ describe("poll scheduling and adaptive backoff", () => {
     await vi.advanceTimersByTimeAsync(0);
     // After first unchanged refresh, should be base * 1.5
     expect(cache.getCurrentIntervalMs()).toBe(Math.ceil(2500 * 1.5));
+  });
+});
+
+describe("ProcessTreeCache command/env construction", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("sets LC_ALL in env on Unix ps exec", async () => {
+    // Pass {stdout, stderr} as the single callback success value so generic
+    // promisify (lost the exec-specific symbol via mocking) resolves to an
+    // object that destructures correctly.
+    mockExec.mockImplementation(
+      (
+        _cmd: string,
+        _opts: unknown,
+        cb: (err: null, result: { stdout: string; stderr: string }) => void
+      ) => {
+        cb(null, {
+          stdout: "  PID  PPID %CPU   RSS COMM COMMAND\n    1    0  0.0  1000 init  init",
+          stderr: "",
+        });
+      }
+    );
+
+    const cache = new ProcessTreeCache(2500);
+    const internals = cache as unknown as {
+      isWindows: boolean;
+      refreshUnix: () => Promise<boolean>;
+    };
+    internals.isWindows = false;
+    await internals.refreshUnix();
+
+    expect(mockExec).toHaveBeenCalledTimes(1);
+    const callOpts = mockExec.mock.calls[0][1] as { env?: Record<string, string> };
+    expect(callOpts.env).toBeDefined();
+    expect(callOpts.env!.LC_ALL).toMatch(/^(en_US\.UTF-8|C\.UTF-8)$/);
+    // LANG is inherited from process.env, not explicitly overridden
+    expect(callOpts.env!.LANG).toBe(process.env.LANG);
+  });
+
+  it("prepends UTF-8 encoding directives to PowerShell command", async () => {
+    mockExec.mockImplementation(
+      (
+        _cmd: string,
+        _opts: unknown,
+        cb: (err: null, result: { stdout: string; stderr: string }) => void
+      ) => {
+        cb(null, { stdout: "[]", stderr: "" });
+      }
+    );
+
+    const cache = new ProcessTreeCache(2500);
+    const internals = cache as unknown as {
+      isWindows: boolean;
+      refreshWindows: () => Promise<boolean>;
+    };
+    internals.isWindows = true;
+    await internals.refreshWindows();
+
+    expect(mockExec).toHaveBeenCalledTimes(1);
+    const psCommand = mockExec.mock.calls[0][0] as string;
+    expect(psCommand).toContain(
+      "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)"
+    );
+    expect(psCommand).toContain("$OutputEncoding = [System.Text.UTF8Encoding]::new($false)");
   });
 });

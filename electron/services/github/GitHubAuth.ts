@@ -55,6 +55,31 @@ export function parseSsoHeader(headerValue: string | null): string | null {
   }
 }
 
+export type SsoHeaderKind = "required" | "partial";
+
+/**
+ * Discriminate the form of an `X-GitHub-SSO` header.
+ *
+ * - `required` — the token must be re-authorized against the targeted org
+ *   before this request can succeed. A companion `url=` is usually present
+ *   and surfaced via {@link parseSsoHeader}.
+ * - `partial-results` — the token is fine globally; one or more named orgs
+ *   refused per-org SSO authorization, so the response carries partial data.
+ *   Treating this as a globally invalid token misclassifies a per-org
+ *   restriction as a token failure.
+ *
+ * Classification only — URL extraction and security validation remain in
+ * {@link parseSsoHeader} so callers that need a clickable URL go through
+ * the same hostname checks.
+ */
+export function parseSsoKind(headerValue: string | null): SsoHeaderKind | null {
+  if (!headerValue) return null;
+  const trimmed = headerValue.trim().toLowerCase();
+  if (trimmed.startsWith("partial-results")) return "partial";
+  if (trimmed.startsWith("required")) return "required";
+  return null;
+}
+
 function parseTokenExpirationHeader(headerValue: string | null): Date | null {
   if (!headerValue) return null;
   const ms = Date.parse(headerValue);
@@ -284,7 +309,7 @@ export class GitHubAuth {
 
     return graphql.defaults({
       headers: {
-        authorization: `token ${token}`,
+        authorization: `Bearer ${token}`,
       },
       request: {
         fetch: rateLimitAwareFetch,
@@ -308,27 +333,64 @@ export class GitHubAuth {
     }
 
     try {
-      const response = await fetch("https://api.github.com/user", {
+      const response = await rateLimitAwareFetch("https://api.github.com/user", {
         headers: {
-          Authorization: `token ${token}`,
+          Authorization: `Bearer ${token}`,
           Accept: "application/vnd.github.v3+json",
+          "User-Agent": "Daintree-Electron",
+          "X-GitHub-Api-Version": "2022-11-28",
         },
         signal: AbortSignal.timeout(GITHUB_AUTH_TIMEOUT_MS),
       });
 
       if (!response.ok) {
         if (response.status === 401) {
-          return { valid: false, scopes: [], error: "Invalid or expired token" };
+          // Confirm a definitive revoked-token signal in the body before
+          // declaring the token bad — a brief auth-service incident can
+          // surface as a 401 with an HTML error page or unrelated JSON,
+          // and we don't want the Settings flow to flip a healthy token
+          // into "invalid" on a transient blip. Mirrors the classifier
+          // rule used by `parseGitHubError`.
+          let bodyText = "";
+          try {
+            bodyText = await response.text();
+          } catch {
+            // ignore — fall through to transient
+          }
+          if (bodyText.includes("Bad credentials")) {
+            return { valid: false, scopes: [], error: "Invalid or expired token" };
+          }
+          return {
+            valid: false,
+            scopes: [],
+            error: "GitHub is temporarily unavailable. Please retry.",
+          };
         }
         if (response.status === 403) {
           return { valid: false, scopes: [], error: "Token lacks required permissions" };
         }
-        return { valid: false, scopes: [], error: `GitHub API error: ${response.statusText}` };
+        if (response.status >= 500 && response.status <= 599) {
+          return {
+            valid: false,
+            scopes: [],
+            error: "GitHub is temporarily unavailable. Please retry.",
+          };
+        }
+        return {
+          valid: false,
+          scopes: [],
+          error: `GitHub API error: ${response.status} ${response.statusText}`.trim(),
+        };
       }
 
       const userData = (await response.json()) as { login?: string; avatar_url?: string };
       const scopesHeader = response.headers.get("x-oauth-scopes");
-      const scopes = scopesHeader ? scopesHeader.split(",").map((s) => s.trim()) : [];
+      const scopes = scopesHeader
+        ? scopesHeader
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [];
 
       return {
         valid: true,
@@ -381,22 +443,28 @@ async function rateLimitAwareFetch(
   input: RequestInfo | URL,
   init?: RequestInit
 ): Promise<Response> {
+  const versionAtStart = GitHubAuth.getTokenVersion();
   const response = await globalThis.fetch(input, init);
+
+  const requestId = response.headers.get("x-github-request-id") ?? undefined;
 
   // Phase 1 — header-only classification runs immediately so the Response
   // can flow back to Octokit without waiting on the body.
   try {
-    gitHubRateLimitService.update(response.headers, response.status);
+    gitHubRateLimitService.update(response.headers, response.status, undefined, requestId);
   } catch {
     // Rate-limit bookkeeping must never break the underlying request.
   }
 
-  // Passive auth-metadata capture: SSO re-authorization URL and token expiry
-  // date. Same fire-and-forget contract as rate-limit bookkeeping.
-  try {
-    captureAuthMetadata(response.headers);
-  } catch {
-    // Metadata capture must never break the underlying request.
+  // Late-arriving response from a previous token: discard so it can't
+  // clobber `lastAuthMetadata` set by the currently-configured token.
+  // Mirrors the same guard in `GitHubTokenHealthService.runCheck()`.
+  if (GitHubAuth.getTokenVersion() === versionAtStart) {
+    try {
+      captureAuthMetadata(response.headers);
+    } catch {
+      // Metadata capture must never break the underlying request.
+    }
   }
 
   // Phase 2 — secondary-limit fallback classification when the 403/429
@@ -408,7 +476,7 @@ async function rateLimitAwareFetch(
       .text()
       .then((bodyText) => {
         try {
-          gitHubRateLimitService.update(response.headers, response.status, bodyText);
+          gitHubRateLimitService.update(response.headers, response.status, bodyText, requestId);
         } catch {
           // Swallow — see Phase 1 comment.
         }

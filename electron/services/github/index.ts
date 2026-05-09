@@ -1,4 +1,9 @@
-export { GitHubAuth, GITHUB_API_TIMEOUT_MS, GITHUB_AUTH_TIMEOUT_MS } from "./GitHubAuth.js";
+export {
+  GitHubAuth,
+  GITHUB_API_TIMEOUT_MS,
+  GITHUB_AUTH_TIMEOUT_MS,
+  captureAuthMetadata,
+} from "./GitHubAuth.js";
 export type { GitHubTokenConfig, GitHubTokenValidation } from "./GitHubAuth.js";
 
 export { gitHubRateLimitService, GitHubRateLimitError } from "./GitHubRateLimitService.js";
@@ -40,3 +45,47 @@ export type {
   ProjectHealth,
   ProjectHealthResult,
 } from "./types.js";
+
+// Token helpers
+export {
+  getGitHubToken,
+  hasGitHubToken,
+  setGitHubToken,
+  clearGitHubToken,
+  getGitHubConfig,
+  getGitHubConfigAsync,
+  validateGitHubToken,
+} from "./GitHubToken.js";
+
+// Repo context
+export {
+  parseGitHubRepoUrl,
+  getRepoContext,
+  getRepoInfo,
+  getRepoUrl,
+  getIssueUrl,
+  withRepoContextRetry,
+} from "./GitHubRepoContext.js";
+
+// Cache management
+export { clearGitHubCaches, clearPRCaches } from "./GitHubCaches.js";
+
+// Stats
+export { getRepoStats, getRepoStatsAndPage } from "./GitHubStats.js";
+export type { RepoStatsAndPageResult } from "./GitHubStats.js";
+
+// Project health
+export { getProjectHealth } from "./GitHubHealth.js";
+
+// PR discovery
+export { batchCheckLinkedPRs } from "./GitHubPRDiscovery.js";
+
+// Error handling
+export { parseGitHubError } from "./GitHubErrors.js";
+
+// PRs
+export { listPullRequests, getPRByNumber, getPRTooltip } from "./GitHubPRs.js";
+
+// Issues
+export { listIssues, getIssueByNumber, getIssueTooltip, assignIssue } from "./GitHubIssues.js";
+export type { AssignIssueResult } from "./GitHubIssues.js";

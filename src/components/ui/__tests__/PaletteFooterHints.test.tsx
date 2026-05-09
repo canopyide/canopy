@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/utils", () => ({
@@ -21,46 +21,47 @@ describe("PaletteFooterHints", () => {
     primaryHint: { keys: ["↵"], label: "to create" },
     hints: [
       { keys: ["↑", "↓"], label: "to navigate" },
-      { keys: ["↵"], label: "to create" },
       { keys: ["Esc"], label: "to close" },
     ],
   };
 
-  it("renders primary hint inline", () => {
+  it("renders the primary hint inline", () => {
     render(<PaletteFooterHints {...defaultProps} />);
     expect(screen.getByText("to create")).toBeTruthy();
     expect(screen.getByText("↵")).toBeTruthy();
   });
 
-  it("renders CircleHelp button with correct aria-label", () => {
+  it("renders all secondary hints ambient — no popover, no help button", () => {
     render(<PaletteFooterHints {...defaultProps} />);
-    const helpButton = screen.getByRole("button", { name: "Keyboard shortcuts" });
-    expect(helpButton).toBeTruthy();
-  });
-
-  it("does not show popover hints initially", () => {
-    render(<PaletteFooterHints {...defaultProps} />);
-    expect(screen.queryByText("to navigate")).toBeNull();
-  });
-
-  it("shows all hints in popover on click", async () => {
-    render(<PaletteFooterHints {...defaultProps} />);
-
-    const helpButton = screen.getByRole("button", { name: "Keyboard shortcuts" });
-    fireEvent.click(helpButton);
-
     expect(screen.getByText("to navigate")).toBeTruthy();
     expect(screen.getByText("to close")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /keyboard shortcuts/i })).toBeNull();
   });
 
-  it("renders multiple keys for a hint", () => {
+  it("renders all keys for a multi-key hint", () => {
     render(
-      <PaletteFooterHints
-        primaryHint={{ keys: ["↑", "↓"], label: "to navigate" }}
-        hints={[{ keys: ["↑", "↓"], label: "to navigate" }]}
-      />
+      <PaletteFooterHints primaryHint={{ keys: ["↑", "↓"], label: "to navigate" }} hints={[]} />
     );
     expect(screen.getByText("↑")).toBeTruthy();
     expect(screen.getByText("↓")).toBeTruthy();
+  });
+
+  it("renders no secondary chips when hints is empty", () => {
+    render(<PaletteFooterHints primaryHint={defaultProps.primaryHint} hints={[]} />);
+    expect(screen.queryByText("to navigate")).toBeNull();
+    expect(screen.queryByText("to close")).toBeNull();
+  });
+
+  it("applies width-priority drop classes — last hint hides earliest", () => {
+    const { container } = render(<PaletteFooterHints {...defaultProps} />);
+    const escChip = screen.getByText("to close").parentElement;
+    const navChip = screen.getByText("to navigate").parentElement;
+    // Esc is rightmost (index 1 of 2) → from-end index 0 → highest breakpoint.
+    expect(escChip?.className).toContain("@max-[380px]/palette-footer:hidden");
+    // ↑↓ is index 0 of 2 → from-end index 1 → lower breakpoint, hides only when narrower.
+    expect(navChip?.className).toContain("@max-[280px]/palette-footer:hidden");
+    // Sanity: container query named container is on the wrapper.
+    const wrapper = container.firstChild as HTMLElement;
+    expect(wrapper.className).toContain("@container/palette-footer");
   });
 });

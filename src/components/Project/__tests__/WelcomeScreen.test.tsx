@@ -257,6 +257,17 @@ function makeGettingStarted(
 describe("WelcomeScreen", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    getDisplayComboMock.mockImplementation((actionId: string) => {
+      const map: Record<string, string> = {
+        "panel.palette": "⌘N",
+        "nav.quickSwitcher": "⌘P",
+        "terminal.new": "⌘⌥T",
+        "action.palette.open": "⌘K",
+        "help.shortcuts": "⌘/",
+        "app.settings": "⌘,",
+      };
+      return map[actionId] ?? "";
+    });
     storeState = {
       projects: mockProjects,
       isLoading: false,
@@ -275,12 +286,20 @@ describe("WelcomeScreen", () => {
     cliAvailabilityState.hasRealData = false;
   });
 
-  it("renders hero section with icon, title, and tagline", () => {
+  it("renders hero section with icon, title, and tagline for first-time users", () => {
+    storeState = { ...storeState, projects: [] };
     render(<WelcomeScreen gettingStarted={makeGettingStarted()} />);
 
     expect(screen.getByTestId("daintree-icon")).toBeTruthy();
     expect(screen.getByText("Welcome to Daintree")).toBeTruthy();
     expect(screen.getByText("A habitat for your AI agents.")).toBeTruthy();
+  });
+
+  it("suppresses hero for returning users with recent projects", () => {
+    render(<WelcomeScreen gettingStarted={makeGettingStarted()} />);
+
+    expect(screen.queryByText("Welcome to Daintree")).toBeNull();
+    expect(screen.queryByText("A habitat for your AI agents.")).toBeNull();
   });
 
   // --- Recent Projects ---
@@ -347,8 +366,8 @@ describe("WelcomeScreen", () => {
   it("shows correct progress ratio with endowed item", () => {
     render(<WelcomeScreen gettingStarted={makeGettingStarted(oneComplete)} />);
 
-    // 1 endowed + 1 completed = 2/4
-    expect(screen.getByText("2/4")).toBeTruthy();
+    // 1 endowed + 1 completed = 2/5
+    expect(screen.getByText("2/5")).toBeTruthy();
   });
 
   it("renders incomplete items as clickable buttons", () => {
@@ -420,6 +439,211 @@ describe("WelcomeScreen", () => {
 
     expect(screen.queryByText("Getting Started")).toBeNull();
     expect(screen.queryByText("Install Daintree")).toBeNull();
+  });
+
+  it("shows 5/5 progress when all items are complete", () => {
+    // The checklist is hidden when all done, so test through NudgeSequencer
+    // by simulating that the checklist would show.
+    agentDiscoveryState.loaded = true;
+    agentDiscoveryState.setupBannerDismissed = true;
+    agentDiscoveryState.welcomeCardDismissed = true;
+    cliAvailabilityState.hasRealData = false;
+
+    render(<WelcomeScreen gettingStarted={makeGettingStarted(allComplete)} />);
+    // All done — checklist is hidden (showChecklist is false when allDone)
+    expect(screen.queryByText("Getting Started")).toBeNull();
+  });
+
+  it("renders progress at 100% width when all items complete", () => {
+    agentDiscoveryState.loaded = true;
+    agentDiscoveryState.setupBannerDismissed = true;
+    agentDiscoveryState.welcomeCardDismissed = true;
+    cliAvailabilityState.hasRealData = false;
+
+    // Use 3 of 4 complete — checklist still shows, progress is 4/5 = 80%
+    const threeComplete: ChecklistState = {
+      dismissed: false,
+      celebrationShown: false,
+      items: {
+        openedProject: true,
+        launchedAgent: true,
+        createdWorktree: true,
+        ranSecondParallelAgent: false,
+      },
+    };
+    render(<WelcomeScreen gettingStarted={makeGettingStarted(threeComplete)} />);
+    expect(screen.getByText("4/5")).toBeTruthy();
+  });
+
+  it("renders progress bar at correct width for 1/5, 2/5, and 4/5", () => {
+    agentDiscoveryState.loaded = true;
+    agentDiscoveryState.setupBannerDismissed = true;
+    agentDiscoveryState.welcomeCardDismissed = true;
+    cliAvailabilityState.hasRealData = false;
+
+    const scenarios = [
+      { state: allIncomplete, expected: "20%" },
+      { state: oneComplete, expected: "40%" },
+    ];
+    for (const { state, expected } of scenarios) {
+      const { unmount } = render(<WelcomeScreen gettingStarted={makeGettingStarted(state)} />);
+      const bar = document.querySelector(".bg-daintree-accent.rounded-full") as HTMLElement;
+      expect(bar?.style.width).toBe(expected);
+      unmount();
+    }
+  });
+
+  it("renders fourth checklist item 'Run two agents in parallel' as a button", () => {
+    agentDiscoveryState.loaded = true;
+    agentDiscoveryState.setupBannerDismissed = true;
+    agentDiscoveryState.welcomeCardDismissed = true;
+    cliAvailabilityState.hasRealData = false;
+
+    render(<WelcomeScreen gettingStarted={makeGettingStarted(allIncomplete)} />);
+
+    const btn = screen.getByRole("button", { name: /run two agents in parallel/i });
+    expect(btn).toBeTruthy();
+    fireEvent.click(btn);
+    expect(dispatchMock).toHaveBeenCalledWith("panel.palette", undefined, { source: "user" });
+  });
+
+  it("assigns aria-current=step to the only remaining incomplete item", () => {
+    agentDiscoveryState.loaded = true;
+    agentDiscoveryState.setupBannerDismissed = true;
+    agentDiscoveryState.welcomeCardDismissed = true;
+    cliAvailabilityState.hasRealData = false;
+
+    const onlyLastIncomplete: ChecklistState = {
+      dismissed: false,
+      celebrationShown: false,
+      items: {
+        openedProject: true,
+        launchedAgent: true,
+        createdWorktree: true,
+        ranSecondParallelAgent: false,
+      },
+    };
+    render(<WelcomeScreen gettingStarted={makeGettingStarted(onlyLastIncomplete)} />);
+
+    const btn = screen.getByRole("button", { name: /run two agents in parallel/i });
+    expect(btn.getAttribute("aria-current")).toBe("step");
+  });
+
+  // --- Cold-start flash (agentSettings hydration) ---
+
+  it("does not render welcome card when agentSettings is null", () => {
+    agentDiscoveryState.loaded = true;
+    agentDiscoveryState.setupBannerDismissed = true;
+    agentDiscoveryState.welcomeCardDismissed = false;
+    cliAvailabilityState.hasRealData = true;
+    cliAvailabilityState.availability = { claude: "ready" };
+    agentSettingsState.settings = null;
+
+    render(<WelcomeScreen gettingStarted={makeGettingStarted()} />);
+
+    expect(screen.queryByText(/Installed agents found/)).toBeNull();
+  });
+
+  it("does not render welcome card when agentSettings is undefined", () => {
+    agentDiscoveryState.loaded = true;
+    agentDiscoveryState.setupBannerDismissed = true;
+    agentDiscoveryState.welcomeCardDismissed = false;
+    cliAvailabilityState.hasRealData = true;
+    cliAvailabilityState.availability = { claude: "ready" };
+    agentSettingsState.settings = undefined as unknown as null;
+
+    render(<WelcomeScreen gettingStarted={makeGettingStarted()} />);
+
+    expect(screen.queryByText(/Installed agents found/)).toBeNull();
+  });
+
+  it("renders welcome card after agentSettings hydrates with no pinned agents", () => {
+    agentDiscoveryState.loaded = true;
+    agentDiscoveryState.setupBannerDismissed = true;
+    agentDiscoveryState.welcomeCardDismissed = false;
+    cliAvailabilityState.hasRealData = true;
+    cliAvailabilityState.availability = { claude: "ready" };
+    agentSettingsState.settings = { agents: {} };
+
+    render(<WelcomeScreen gettingStarted={makeGettingStarted()} />);
+
+    expect(screen.getByText(/Installed agents found/)).toBeTruthy();
+  });
+
+  // --- aria-current ---
+
+  it("adds aria-current=step to the first incomplete checklist button", () => {
+    agentDiscoveryState.loaded = true;
+    agentDiscoveryState.setupBannerDismissed = true;
+    agentDiscoveryState.welcomeCardDismissed = true;
+    cliAvailabilityState.hasRealData = false;
+
+    render(<WelcomeScreen gettingStarted={makeGettingStarted(allIncomplete)} />);
+
+    const buttons = screen.getAllByRole("button", {
+      name: /open your project|ask ai to help with your code|start a parallel task/i,
+    });
+    // First incomplete item ("Open your project") gets aria-current
+    expect(buttons[0]!.getAttribute("aria-current")).toBe("step");
+    // Second incomplete item does not
+    expect(buttons[1]!.getAttribute("aria-current")).toBeNull();
+    // Third incomplete item does not
+    expect(buttons[2]!.getAttribute("aria-current")).toBeNull();
+  });
+
+  it("skips completed items when assigning aria-current=step", () => {
+    agentDiscoveryState.loaded = true;
+    agentDiscoveryState.setupBannerDismissed = true;
+    agentDiscoveryState.welcomeCardDismissed = true;
+    cliAvailabilityState.hasRealData = false;
+
+    render(<WelcomeScreen gettingStarted={makeGettingStarted(oneComplete)} />);
+
+    // openedProject is done — next incomplete is "Ask AI to help with your code"
+    const buttons = screen.getAllByRole("button", {
+      name: /ask ai to help with your code|start a parallel task/i,
+    });
+    expect(buttons[0]!.getAttribute("aria-current")).toBe("step");
+    expect(buttons[1]!.getAttribute("aria-current")).toBeNull();
+  });
+
+  // --- line-through ---
+
+  it("applies line-through to completed checklist label spans", () => {
+    agentDiscoveryState.loaded = true;
+    agentDiscoveryState.setupBannerDismissed = true;
+    agentDiscoveryState.welcomeCardDismissed = true;
+    cliAvailabilityState.hasRealData = false;
+
+    render(<WelcomeScreen gettingStarted={makeGettingStarted(oneComplete)} />);
+
+    // openedProject is done — its label should have line-through
+    const completedLabel = screen.getByText("Open your project");
+    expect(completedLabel.className).toContain("line-through");
+  });
+
+  // --- Keyboard Shortcuts empty state ---
+
+  it("suppresses Keyboard Shortcuts section when all combos are empty", () => {
+    getDisplayComboMock.mockReturnValue("");
+
+    render(<WelcomeScreen gettingStarted={makeGettingStarted()} />);
+
+    expect(screen.queryByText("Keyboard Shortcuts")).toBeNull();
+  });
+
+  it("renders Keyboard Shortcuts section when only one combo is available", () => {
+    getDisplayComboMock.mockImplementation((actionId: string) => {
+      if (actionId === "panel.palette") return "⌘N";
+      return "";
+    });
+
+    render(<WelcomeScreen gettingStarted={makeGettingStarted()} />);
+
+    expect(screen.getByText("Keyboard Shortcuts")).toBeTruthy();
+    const kbdElements = document.querySelectorAll("kbd");
+    expect(kbdElements.length).toBe(1);
+    expect(kbdElements[0]!.textContent).toBe("⌘N");
   });
 
   // --- Quick Actions ---
@@ -524,14 +748,14 @@ describe("WelcomeScreen", () => {
       cliAvailabilityState.hasRealData = false;
       cliAvailabilityState.availability = { claude: "ready" };
       render(<WelcomeScreen gettingStarted={makeGettingStarted()} />);
-      expect(screen.queryByText(/We detected your installed agents/)).toBeNull();
+      expect(screen.queryByText(/Installed agents found/)).toBeNull();
     });
 
     it("does not render when no agents are ready", () => {
       cliAvailabilityState.hasRealData = true;
       cliAvailabilityState.availability = { claude: "missing", codex: "missing" };
       render(<WelcomeScreen gettingStarted={makeGettingStarted()} />);
-      expect(screen.queryByText(/We detected your installed agents/)).toBeNull();
+      expect(screen.queryByText(/Installed agents found/)).toBeNull();
     });
 
     it("does not render when any agent is already pinned", () => {
@@ -539,7 +763,7 @@ describe("WelcomeScreen", () => {
       cliAvailabilityState.availability = { claude: "ready", codex: "ready" };
       agentSettingsState.settings = { agents: { claude: { pinned: true } } };
       render(<WelcomeScreen gettingStarted={makeGettingStarted()} />);
-      expect(screen.queryByText(/We detected your installed agents/)).toBeNull();
+      expect(screen.queryByText(/Installed agents found/)).toBeNull();
     });
 
     it("does not render when the card has been dismissed", () => {
@@ -548,7 +772,7 @@ describe("WelcomeScreen", () => {
       agentSettingsState.settings = { agents: {} };
       agentDiscoveryState.welcomeCardDismissed = true;
       render(<WelcomeScreen gettingStarted={makeGettingStarted()} />);
-      expect(screen.queryByText(/We detected your installed agents/)).toBeNull();
+      expect(screen.queryByText(/Installed agents found/)).toBeNull();
     });
 
     it("renders with ready agent names when conditions are met", () => {
@@ -560,7 +784,7 @@ describe("WelcomeScreen", () => {
       };
       agentSettingsState.settings = { agents: {} };
       render(<WelcomeScreen gettingStarted={makeGettingStarted()} />);
-      expect(screen.getByText(/We detected your installed agents/)).toBeTruthy();
+      expect(screen.getByText(/Installed agents found/)).toBeTruthy();
       expect(screen.getByText("Claude")).toBeTruthy();
       expect(screen.getByText("Codex")).toBeTruthy();
       expect(screen.queryByText("Gemini")).toBeNull();
@@ -685,6 +909,92 @@ describe("WelcomeScreen", () => {
       } finally {
         dispatchSpy.mockRestore();
       }
+    });
+  });
+
+  // --- Nudge sequencing (#6757) ---
+
+  describe("nudge sequencing", () => {
+    it("shows only the setup banner when banner, welcome card, and checklist are all eligible", () => {
+      agentDiscoveryState.loaded = true;
+      agentDiscoveryState.setupBannerDismissed = false;
+      agentDiscoveryState.welcomeCardDismissed = false;
+      cliAvailabilityState.hasRealData = true;
+      cliAvailabilityState.availability = { claude: "ready" };
+      agentSettingsState.settings = { agents: {} };
+
+      render(<WelcomeScreen gettingStarted={makeGettingStarted(allIncomplete)} />);
+
+      expect(screen.getByTestId("agent-setup-banner")).toBeTruthy();
+      expect(screen.queryByText(/Installed agents found/)).toBeNull();
+      expect(screen.queryByText("Getting Started")).toBeNull();
+    });
+
+    it("shows the welcome card and suppresses the checklist once the setup banner is dismissed", () => {
+      agentDiscoveryState.loaded = true;
+      agentDiscoveryState.setupBannerDismissed = true;
+      agentDiscoveryState.welcomeCardDismissed = false;
+      cliAvailabilityState.hasRealData = true;
+      cliAvailabilityState.availability = { claude: "ready" };
+      agentSettingsState.settings = { agents: {} };
+
+      render(<WelcomeScreen gettingStarted={makeGettingStarted(allIncomplete)} />);
+
+      expect(screen.getByText(/Installed agents found/)).toBeTruthy();
+      expect(screen.queryByText("Getting Started")).toBeNull();
+    });
+
+    it("falls through to the checklist when no agents are installed and the banner is dismissed", () => {
+      agentDiscoveryState.loaded = true;
+      agentDiscoveryState.setupBannerDismissed = true;
+      agentDiscoveryState.welcomeCardDismissed = false;
+      cliAvailabilityState.hasRealData = false;
+
+      render(<WelcomeScreen gettingStarted={makeGettingStarted(allIncomplete)} />);
+
+      expect(screen.getByText("Getting Started")).toBeTruthy();
+    });
+
+    it("falls through to the checklist when scan finished but no agents are launchable", () => {
+      agentDiscoveryState.loaded = true;
+      agentDiscoveryState.setupBannerDismissed = true;
+      agentDiscoveryState.welcomeCardDismissed = false;
+      cliAvailabilityState.hasRealData = true;
+      cliAvailabilityState.availability = { claude: "missing", codex: "missing" };
+
+      render(<WelcomeScreen gettingStarted={makeGettingStarted(allIncomplete)} />);
+
+      expect(screen.queryByText(/Installed agents found/)).toBeNull();
+      expect(screen.getByText("Getting Started")).toBeTruthy();
+    });
+
+    it("falls through to the checklist when an agent is already pinned", () => {
+      agentDiscoveryState.loaded = true;
+      agentDiscoveryState.setupBannerDismissed = true;
+      agentDiscoveryState.welcomeCardDismissed = false;
+      cliAvailabilityState.hasRealData = true;
+      cliAvailabilityState.availability = { claude: "ready" };
+      agentSettingsState.settings = { agents: { claude: { pinned: true } } };
+
+      render(<WelcomeScreen gettingStarted={makeGettingStarted(allIncomplete)} />);
+
+      expect(screen.queryByText(/Installed agents found/)).toBeNull();
+      expect(screen.getByText("Getting Started")).toBeTruthy();
+    });
+
+    it("renders nothing while onboarding state is hydrating", () => {
+      agentDiscoveryState.loaded = false;
+      agentDiscoveryState.setupBannerDismissed = false;
+      agentDiscoveryState.welcomeCardDismissed = false;
+      cliAvailabilityState.hasRealData = true;
+      cliAvailabilityState.availability = { claude: "ready" };
+      agentSettingsState.settings = { agents: {} };
+
+      render(<WelcomeScreen gettingStarted={makeGettingStarted(allIncomplete)} />);
+
+      expect(screen.queryByTestId("agent-setup-banner")).toBeNull();
+      expect(screen.queryByText(/Installed agents found/)).toBeNull();
+      expect(screen.queryByText("Getting Started")).toBeNull();
     });
   });
 });

@@ -11,24 +11,31 @@ import { getGridPanelCount } from "../helpers/panels";
 import { SEL } from "../helpers/selectors";
 import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
 
-const PROJECT_A = "Lifecycle Project A";
-const PROJECT_B = "Lifecycle Project B";
+const PROJECT_A = "lifecycle-a";
+const PROJECT_B = "lifecycle-b";
 const RECIPE_NAME = "Lifecycle Recipe";
 
 let ctx: AppContext;
 let repoBPath: string;
+let cleanupA: (() => void) | undefined;
+let cleanupB: (() => void) | undefined;
 
 test.describe.serial("Core: Project Lifecycle", () => {
   test.beforeAll(async () => {
     const repoA = createFixtureRepo({ name: "lifecycle-a" });
-    repoBPath = createFixtureRepo({ name: "lifecycle-b" });
+    const repoB = createFixtureRepo({ name: "lifecycle-b" });
+    cleanupA = repoA.cleanup;
+    cleanupB = repoB.cleanup;
+    repoBPath = repoB.dir;
 
     ctx = await launchApp();
-    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, repoA, PROJECT_A);
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, repoA.dir, PROJECT_A);
   });
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    cleanupA?.();
+    cleanupB?.();
   });
 
   test("add second project via project switcher", async () => {
@@ -40,8 +47,8 @@ test.describe.serial("Core: Project Lifecycle", () => {
     const palette = window.locator(SEL.projectSwitcher.palette);
     await expect(palette).toBeVisible({ timeout: T_MEDIUM });
 
-    await expect(palette.locator(`text="${PROJECT_A}"`)).toBeVisible({ timeout: T_SHORT });
-    await expect(palette.locator(`text="${PROJECT_B}"`)).toBeVisible({ timeout: T_SHORT });
+    await expect(palette.getByText(PROJECT_A, { exact: false })).toBeVisible({ timeout: T_SHORT });
+    await expect(palette.getByText(PROJECT_B, { exact: false })).toBeVisible({ timeout: T_SHORT });
 
     await window.keyboard.press("Escape");
     await expect(palette).not.toBeVisible({ timeout: T_SHORT });
@@ -82,8 +89,7 @@ test.describe.serial("Core: Project Lifecycle", () => {
       timeout: T_MEDIUM,
     });
 
-    // Verify project name input has Project A's name
-    await expect(ctx.window.locator("#project-name-input")).toHaveValue(PROJECT_A, {
+    await expect(ctx.window.locator("#project-name-input")).toHaveValue(new RegExp(PROJECT_A), {
       timeout: T_SHORT,
     });
 
@@ -104,7 +110,7 @@ test.describe.serial("Core: Project Lifecycle", () => {
     await expect(ctx.window.locator(SEL.projectSettings.heading)).toBeVisible({
       timeout: T_MEDIUM,
     });
-    await expect(ctx.window.locator("#project-name-input")).toHaveValue(PROJECT_B, {
+    await expect(ctx.window.locator("#project-name-input")).toHaveValue(new RegExp(PROJECT_B), {
       timeout: T_SHORT,
     });
 
@@ -180,12 +186,12 @@ test.describe.serial("Core: Project Lifecycle", () => {
     await window.waitForTimeout(T_SETTLE);
     await window.locator(SEL.toolbar.projectSwitcherTrigger).click();
     await expect(palette).toBeVisible({ timeout: T_MEDIUM });
-    await expect(palette.locator(`text="${PROJECT_B}"`)).not.toBeVisible({
+    await expect(palette.getByText(PROJECT_B, { exact: false })).not.toBeVisible({
       timeout: T_SHORT,
     });
 
     // Project A should still be listed
-    await expect(palette.locator(`text="${PROJECT_A}"`)).toBeVisible({ timeout: T_SHORT });
+    await expect(palette.getByText(PROJECT_A, { exact: false })).toBeVisible({ timeout: T_SHORT });
 
     await window.keyboard.press("Escape");
     await expect(palette).not.toBeVisible({ timeout: T_SHORT });

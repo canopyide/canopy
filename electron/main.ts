@@ -15,12 +15,11 @@ import { startDevDiagnostics } from "./setup/devDiagnostics.js";
 import path from "path";
 import { fileURLToPath } from "url";
 import { PERF_MARKS } from "../shared/perf/marks.js";
-import { markPerformance } from "./utils/performance.js";
+import { getOsToAppBootMs, markPerformance } from "./utils/performance.js";
 import { enforceIpcSenderValidation, setupPermissionLockdown } from "./setup/security.js";
 import {
   registerAppProtocol,
   registerDaintreeFileProtocol,
-  registerCanopyFileProtocol,
   setupWebviewCSP,
 } from "./setup/protocols.js";
 import { registerAppLifecycleHandlers } from "./lifecycle/appLifecycle.js";
@@ -57,6 +56,7 @@ import {
   setStopAppMetricsMonitor,
   getStopDiskSpaceMonitor,
   setStopDiskSpaceMonitor,
+  getMainProcessWatchdogClientRef,
 } from "./window/windowServices.js";
 import {
   setupPowerMonitor,
@@ -64,6 +64,8 @@ import {
   registerWindowForFocusThrottle,
 } from "./window/powerMonitor.js";
 import { getProjectStatsService } from "./ipc/handlers/projectCrud/index.js";
+import { getIdleTerminalNotificationService } from "./services/IdleTerminalNotificationService.js";
+import { preAgentSnapshotService } from "./services/PreAgentSnapshotService.js";
 import { isSmokeTest } from "./setup/environment.js";
 import { store } from "./store.js";
 import {
@@ -77,6 +79,7 @@ import { registerCommands } from "./services/commands/index.js";
 import { initializeCrashRecoveryService } from "./services/CrashRecoveryService.js";
 import { initializeGpuCrashMonitor } from "./services/GpuCrashMonitorService.js";
 import { initializeTrashedPidCleanup } from "./services/TrashedPidTracker.js";
+import { initializeScratchCleanup } from "./services/ScratchCleanupService.js";
 import { initializeCrashLoopGuard, getCrashLoopGuard } from "./services/CrashLoopGuardService.js";
 import { initializeDatabaseMaintenance } from "./services/DatabaseMaintenanceService.js";
 import { readLastActiveProjectIdSync } from "./services/persistence/readLastProjectId.js";
@@ -84,7 +87,13 @@ import { emergencyLogMainFatal } from "./utils/emergencyLog.js";
 
 // CRITICAL: Run IPC sender validation before any handlers are registered
 enforceIpcSenderValidation();
-markPerformance(PERF_MARKS.APP_BOOT_START);
+{
+  const osToAppBootMs = getOsToAppBootMs();
+  markPerformance(
+    PERF_MARKS.APP_BOOT_START,
+    osToAppBootMs !== null ? { osToAppBootMs } : undefined
+  );
+}
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -99,16 +108,6 @@ protocol.registerSchemesAsPrivileged([
   },
   {
     scheme: "daintree-file",
-    privileges: {
-      secure: true,
-      supportFetchAPI: true,
-    },
-  },
-  // canopy-file remains privileged during the 0.7/0.8 migration window so
-  // both the legacy Canopy build and the new Daintree build can resolve
-  // pre-rebrand links and persisted references.
-  {
-    scheme: "canopy-file",
     privileges: {
       secure: true,
       supportFetchAPI: true,
@@ -172,6 +171,7 @@ if (!gotTheLock) {
   initializeCrashRecoveryService();
   initializeDatabaseMaintenance();
   initializeTrashedPidCleanup();
+  initializeScratchCleanup();
   initializeGpuCrashMonitor();
 
   const windowRegistry = new WindowRegistry();
@@ -224,6 +224,14 @@ if (!gotTheLock) {
         } catch (err) {
           console.error("[main] closePortsForView failed during eviction:", err);
         }
+        // Revoke help-session tokens bound to this evicted WebContents view.
+        // Done synchronously off the eviction hook (lesson #5009) so a
+        // renderer-side cleanup IPC can't go missing on view destruction.
+        import("./services/HelpSessionService.js")
+          .then(({ helpSessionService }) => helpSessionService.revokeByWebContentsId(wcId))
+          .catch((err) => {
+            console.warn("[main] revokeByWebContentsId failed during eviction:", err);
+          });
       },
       onViewCached: (wcId) => {
         // Same producer cleanup as eviction: a cached view becomes
@@ -321,11 +329,14 @@ if (!gotTheLock) {
       setupPowerMonitor({
         getPtyClient,
         getWorkspaceClient: getWorkspaceClientRef,
+        getMainProcessWatchdogClient: getMainProcessWatchdogClientRef,
       });
       setupWindowFocusThrottle({
         getPtyClient,
         getWorkspaceClient: getWorkspaceClientRef,
         getProjectStatsService,
+        getIdleTerminalNotificationService: () => getIdleTerminalNotificationService(),
+        getPreAgentSnapshotService: () => preAgentSnapshotService,
       });
     }
 
@@ -364,7 +375,6 @@ if (!gotTheLock) {
       setupPermissionLockdown();
       registerAppProtocol(distPath);
       registerDaintreeFileProtocol();
-      registerCanopyFileProtocol();
       setupWebviewCSP();
       await createWindow(undefined, lastActiveProjectId ?? undefined);
       getCrashLoopGuard().startStabilityTimer();

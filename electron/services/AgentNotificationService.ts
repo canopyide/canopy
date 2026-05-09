@@ -105,8 +105,15 @@ class AgentNotificationService {
       if (agentKey) {
         this.agentSpawnTimestamps.set(agentKey, Date.now());
       }
-      if (store.get("notificationSettings").uiFeedbackSoundEnabled && !this.isWithinBootGrace()) {
-        soundService.play("agent-spawned");
+      if (
+        store.get("notificationSettings").uiFeedbackSoundEnabled &&
+        !this.isWithinBootGrace() &&
+        !this.isSessionMuted()
+      ) {
+        const quietSettings = projectStore.getEffectiveNotificationSettings();
+        if (!isScheduledQuietNow(quietSettings)) {
+          soundService.play("agent-spawned");
+        }
       }
     });
 
@@ -170,7 +177,7 @@ class AgentNotificationService {
     timestamp: number;
     waitingReason?: string;
   }): void {
-    const { state, previousState, terminalId, agentId, waitingReason } = payload;
+    const { state, previousState, terminalId, agentId } = payload;
     // Backend no longer emits worktreeId on agent events (#5139). Resolve it
     // from persisted renderer state so focus suppression, dedup keying, and
     // notification context still work correctly.
@@ -187,8 +194,7 @@ class AgentNotificationService {
     // All-clear tracking runs regardless of notification settings
     this.checkAllClear(state, previousState);
 
-    // Allow same-state transitions for waitingReason changes (e.g., prompt -> question)
-    if (state === previousState && !(state === "waiting" && waitingReason !== undefined)) return;
+    if (state === previousState) return;
 
     // Prefer terminalId so per-terminal dedup timers don't collide when two
     // runtime-detected terminals share the same agentId value (e.g. both
@@ -726,6 +732,7 @@ class AgentNotificationService {
     this.notificationQueue = [];
     this.hasEverGoneWorking = false;
     this.peakConcurrentWorking = 0;
+    this.sessionMuteUntil = 0;
 
     soundService.cancel();
     soundService.cancelPulse();

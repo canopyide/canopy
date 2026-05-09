@@ -37,6 +37,8 @@ test.describe.serial("Core: Portal Multi-Tab Lifecycle", () => {
     "Windows CI: portal not supported with GPU disabled"
   );
 
+  let fixtureCleanup: (() => void) | undefined;
+
   test.beforeAll(async () => {
     server = createServer(handleRequest);
     await new Promise<void>((resolve) => {
@@ -46,13 +48,15 @@ test.describe.serial("Core: Portal Multi-Tab Lifecycle", () => {
     port = typeof addr === "object" && addr ? addr.port : 0;
 
     const fixture = createFixtureRepo({ name: "portal-test" });
+    fixtureCleanup = fixture.cleanup;
     ctx = await launchApp();
-    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixture, "Portal Test");
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixture.dir, "Portal Test");
   });
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
     server?.close();
+    fixtureCleanup?.();
   });
 
   test.describe.serial("Tab Creation and Switching", () => {

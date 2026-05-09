@@ -5,12 +5,27 @@
  * WAV files through a singleton AudioContext. Sounds are fetched via
  * the daintree-file:// protocol and decoded AudioBuffers are cached
  * for instant replay.
+ *
+ * Polyphony note: the main-process SoundService owns dampening, debounce,
+ * decay, and priority. The renderer just plays what arrives — overlapping
+ * playback is allowed (capped at MAX_VOICES as a safety backstop). Early
+ * stops fade through a per-voice GainNode to avoid DC-offset clicks.
  */
+
+interface ActiveVoice {
+  source: AudioBufferSourceNode;
+  gainNode: GainNode;
+}
+
+const MAX_VOICES = 4;
+const FADE_TIME_CONSTANT = 0.015;
+const FADE_TAIL_SECONDS = 0.1;
 
 let audioContext: AudioContext | null = null;
 let soundsDir: string | null = null;
 const bufferCache = new Map<string, AudioBuffer>();
-let activeSource: AudioBufferSourceNode | null = null;
+const activeVoices: ActiveVoice[] = [];
+let cancelGeneration = 0;
 
 async function ensureContext(): Promise<AudioContext> {
   if (!audioContext) {
@@ -48,37 +63,64 @@ async function getBuffer(ctx: AudioContext, soundFile: string): Promise<AudioBuf
   }
 }
 
+function fadeOutVoice(ctx: AudioContext, voice: ActiveVoice): void {
+  try {
+    voice.gainNode.gain.setTargetAtTime(0, ctx.currentTime, FADE_TIME_CONSTANT);
+    voice.source.stop(ctx.currentTime + FADE_TAIL_SECONDS);
+  } catch {
+    // Already stopped or context closed
+  }
+}
+
 export async function playSound(soundFile: string, detune?: number): Promise<void> {
+  // Captured before any await — if cancelSound() fires during fetch/decode,
+  // the generation advances and we abort before scheduling playback.
+  const startGeneration = cancelGeneration;
   try {
     const ctx = await ensureContext();
     const buffer = await getBuffer(ctx, soundFile);
     if (!buffer) return;
-
-    // Stop any currently playing sound
-    cancelSound();
+    if (startGeneration !== cancelGeneration) return;
 
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     if (detune !== undefined) source.detune.value = detune;
-    source.connect(ctx.destination);
+
+    const gainNode = ctx.createGain();
+    source.connect(gainNode);
+    gainNode.connect(ctx.destination);
+
+    const voice: ActiveVoice = { source, gainNode };
     source.onended = () => {
-      if (activeSource === source) activeSource = null;
+      const idx = activeVoices.indexOf(voice);
+      if (idx !== -1) activeVoices.splice(idx, 1);
     };
-    activeSource = source;
-    source.start(0);
+
+    activeVoices.push(voice);
+    while (activeVoices.length > MAX_VOICES) {
+      const oldest = activeVoices.shift();
+      if (oldest) fadeOutVoice(ctx, oldest);
+    }
+
+    try {
+      source.start(0);
+    } catch {
+      const idx = activeVoices.indexOf(voice);
+      if (idx !== -1) activeVoices.splice(idx, 1);
+    }
   } catch {
     // Non-critical — fail silently
   }
 }
 
 export function cancelSound(): void {
-  if (activeSource) {
-    try {
-      activeSource.stop();
-    } catch {
-      // Already stopped
-    }
-    activeSource = null;
+  cancelGeneration++;
+  if (activeVoices.length === 0) return;
+  const ctx = audioContext;
+  const voices = activeVoices.splice(0);
+  if (!ctx) return;
+  for (const voice of voices) {
+    fadeOutVoice(ctx, voice);
   }
 }
 

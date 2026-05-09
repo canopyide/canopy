@@ -3,8 +3,8 @@ import { Button } from "@/components/ui/button";
 import { SquareTerminal, Globe } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ShortcutRevealChip } from "@/components/ui/ShortcutRevealChip";
-import { createTooltipWithShortcut } from "@/lib/platform";
-import { useKeybindingDisplay, useShortcutHintHover } from "@/hooks";
+import { createTooltipContent } from "@/lib/tooltipShortcut";
+import { useAriaKeyshortcuts, useKeybindingDisplay, useShortcutHintHover } from "@/hooks";
 
 type LauncherType = "terminal" | "browser";
 
@@ -31,7 +31,7 @@ const LAUNCHER_CONFIG: Record<
   },
 };
 
-const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text transition-colors relative";
+const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text relative";
 
 interface ToolbarLauncherButtonProps {
   type: LauncherType;
@@ -46,6 +46,7 @@ export const ToolbarLauncherButton = memo(function ToolbarLauncherButton({
 }: ToolbarLauncherButtonProps) {
   const config = LAUNCHER_CONFIG[type];
   const shortcut = useKeybindingDisplay(config.keybindingAction);
+  const ariaShortcut = useAriaKeyshortcuts(config.keybindingAction);
   const launcherHover = useShortcutHintHover(config.keybindingAction);
 
   const handleClick = useCallback(() => {
@@ -65,13 +66,14 @@ export const ToolbarLauncherButton = memo(function ToolbarLauncherButton({
           onClick={handleClick}
           className={toolbarIconButtonClass}
           aria-label={config.label}
+          aria-keyshortcuts={ariaShortcut}
         >
           <Icon />
           <ShortcutRevealChip actionId={config.keybindingAction} />
         </Button>
       </TooltipTrigger>
       <TooltipContent side="bottom">
-        {createTooltipWithShortcut(config.tooltipLabel, shortcut)}
+        {createTooltipContent(config.tooltipLabel, shortcut)}
       </TooltipContent>
     </Tooltip>
   );

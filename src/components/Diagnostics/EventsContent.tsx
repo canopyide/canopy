@@ -46,11 +46,14 @@ export function EventsContent({ className }: EventsContentProps) {
   );
 
   useEffect(() => {
+    let disposed = false;
+
     eventInspectorClient.subscribe();
 
     eventInspectorClient
       .getEvents()
       .then((existingEvents) => {
+        if (disposed) return;
         setEvents(existingEvents);
       })
       .catch((error) => {
@@ -58,10 +61,12 @@ export function EventsContent({ className }: EventsContentProps) {
       });
 
     const unsubscribe = eventInspectorClient.onEventBatch((events) => {
+      if (disposed) return;
       addEvents(events);
     });
 
     return () => {
+      disposed = true;
       unsubscribe();
       eventInspectorClient.unsubscribe();
     };
@@ -79,11 +84,7 @@ export function EventsContent({ className }: EventsContentProps) {
 
   return (
     <div className={cn("flex flex-col h-full", className)}>
-      <EventFilters
-        events={events}
-        filters={filters}
-        onFiltersChange={(newFilters) => setFilters(newFilters)}
-      />
+      <EventFilters events={events} filters={filters} onFiltersChange={setFilters} />
 
       <div className="flex-1 flex min-h-0">
         <div className="w-1/2 border-r overflow-hidden">

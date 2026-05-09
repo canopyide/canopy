@@ -4,7 +4,7 @@
  * Implements filter-score-select pattern:
  * 1. Filter: Only agents with required capabilities and availability
  * 2. Score: Rank by domain weight + load + availability
- * 3. Select: Top-scored or weighted lottery selection
+ * 3. Select: Top-scored selection
  */
 
 import {
@@ -197,7 +197,7 @@ export class AgentRouter {
 
   /**
    * Select the best agent from scored candidates.
-   * Uses top-scored selection (deterministic for testing).
+   * Uses top-scored selection.
    */
   private selectAgent(scores: AgentScore[]): string | null {
     if (scores.length === 0) {

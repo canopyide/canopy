@@ -1,4 +1,6 @@
-import type { AgentId, WaitingReason } from "../agent.js";
+import type { AgentId, AgentState, AgentStateChangeTrigger, WaitingReason } from "../agent.js";
+
+export type { AgentState, AgentStateChangeTrigger };
 
 /** An artifact extracted from an agent session */
 export interface Artifact {
@@ -15,20 +17,6 @@ export interface Artifact {
   /** Timestamp when extracted */
   extractedAt: number;
 }
-
-/** Agent state change trigger */
-export type AgentStateChangeTrigger =
-  | "input"
-  | "output"
-  | "heuristic"
-  | "ai-classification"
-  | "timeout"
-  | "exit"
-  | "activity"
-  | "title";
-
-/** Agent state */
-export type AgentState = "idle" | "working" | "waiting" | "directing" | "completed" | "exited";
 
 /** Payload for agent state change events */
 export interface AgentStateChangePayload {

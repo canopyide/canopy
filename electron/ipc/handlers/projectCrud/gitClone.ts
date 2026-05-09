@@ -14,6 +14,7 @@ import type {
   CloneRepoProgressEvent,
 } from "../../../../shared/types/ipc/gitClone.js";
 import { formatErrorMessage } from "../../../../shared/utils/errorMessage.js";
+import { validateFolderName } from "../../../../shared/utils/folderName.js";
 import { AppError } from "../../../utils/errorTypes.js";
 
 export function registerGitCloneHandlers(): () => void {
@@ -45,19 +46,15 @@ export function registerGitCloneHandlers(): () => void {
     if (!path.isAbsolute(parentPath)) {
       throw new Error("Parent path must be absolute");
     }
-    if (typeof folderName !== "string" || !folderName.trim()) {
+    if (typeof folderName !== "string") {
       throw new Error("Folder name is required");
     }
 
-    const trimmedFolder = folderName.trim();
-    if (
-      trimmedFolder.includes("/") ||
-      trimmedFolder.includes("\\") ||
-      trimmedFolder === ".." ||
-      trimmedFolder === "."
-    ) {
-      throw new Error("Folder name must not contain path separators or dot segments");
+    const folderNameError = validateFolderName(folderName);
+    if (folderNameError) {
+      throw new Error(folderNameError);
     }
+    const trimmedFolder = folderName.trim();
 
     const targetPath = path.join(parentPath, trimmedFolder);
     const normalizedParent = path.resolve(parentPath);
@@ -131,7 +128,12 @@ export function registerGitCloneHandlers(): () => void {
         .then(() => true)
         .catch(() => false);
       if (partialExists) {
-        await fs.promises.rm(targetPath, { recursive: true, force: true }).catch(() => {});
+        await fs.promises.rm(targetPath, { recursive: true, force: true }).catch((rmErr) => {
+          // Don't escalate — the original clone error is what the user sees.
+          // But surface this in logs so partial-cleanup failures (e.g. Windows
+          // antivirus locks) are diagnosable instead of silently swallowed.
+          console.warn("[gitClone] Failed to clean up partial clone at", targetPath, rmErr);
+        });
       }
 
       if (wasCancelled) {

@@ -1,5 +1,7 @@
-import { describe, it, expectTypeOf } from "vitest";
+import { describe, it, expect, expectTypeOf } from "vitest";
+import { isIpcEnvelope } from "../ipc/errors.js";
 import type { ForbidIpcEnvelopeKeys, IpcHandlerEnvelopeViolation } from "../ipc/errors.js";
+import type { _IpcEventBusMapExcludesHighFrequency } from "../ipc/maps.js";
 
 describe("ForbidIpcEnvelopeKeys", () => {
   it("passes through primitive results unchanged", () => {
@@ -73,5 +75,58 @@ describe("ForbidIpcEnvelopeKeys", () => {
     // so `tsc` surfaces it directly: 'Property "...message..." is missing'.
     type Hint = keyof IpcHandlerEnvelopeViolation;
     expectTypeOf<Hint>().toEqualTypeOf<"IPC handler must throw new AppError(...) instead of returning {ok|success: ...} — see #6020">();
+  });
+});
+
+describe("IpcEventBusMap high-frequency exclusion", () => {
+  it("rejects high-frequency channels (terminal:data, terminal:resource-metrics, logs:batch)", () => {
+    // Compile-time guard — collapses to `never` if any banned key appears in
+    // IpcEventBusMap, breaking this assertion.
+    expectTypeOf<_IpcEventBusMapExcludesHighFrequency>().toEqualTypeOf<true>();
+  });
+});
+
+describe("isIpcEnvelope", () => {
+  it("accepts a well-formed success envelope (data: undefined for void results)", () => {
+    expect(isIpcEnvelope({ __daintreeIpcEnvelope: true, ok: true, data: undefined })).toBe(true);
+    expect(isIpcEnvelope({ __daintreeIpcEnvelope: true, ok: true, data: 42 })).toBe(true);
+  });
+
+  it("accepts a well-formed error envelope", () => {
+    expect(
+      isIpcEnvelope({
+        __daintreeIpcEnvelope: true,
+        ok: false,
+        error: { name: "Error", message: "boom" },
+      })
+    ).toBe(true);
+  });
+
+  it("rejects envelopes missing the boolean ok discriminator", () => {
+    expect(isIpcEnvelope({ __daintreeIpcEnvelope: true, data: 1 })).toBe(false);
+    expect(isIpcEnvelope({ __daintreeIpcEnvelope: true, ok: "true", data: 1 })).toBe(false);
+  });
+
+  it("rejects envelopes missing the matching payload field for the discriminator", () => {
+    expect(isIpcEnvelope({ __daintreeIpcEnvelope: true, ok: true })).toBe(false);
+    expect(isIpcEnvelope({ __daintreeIpcEnvelope: true, ok: false })).toBe(false);
+  });
+
+  it("rejects cross-discriminator envelopes (ok mismatched with payload field)", () => {
+    expect(
+      isIpcEnvelope({
+        __daintreeIpcEnvelope: true,
+        ok: true,
+        error: { name: "Error", message: "boom" },
+      })
+    ).toBe(false);
+    expect(isIpcEnvelope({ __daintreeIpcEnvelope: true, ok: false, data: 1 })).toBe(false);
+  });
+
+  it("rejects non-object inputs", () => {
+    expect(isIpcEnvelope(null)).toBe(false);
+    expect(isIpcEnvelope(undefined)).toBe(false);
+    expect(isIpcEnvelope("envelope")).toBe(false);
+    expect(isIpcEnvelope(42)).toBe(false);
   });
 });

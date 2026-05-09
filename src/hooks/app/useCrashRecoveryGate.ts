@@ -29,7 +29,7 @@ export function useCrashRecoveryGate(): {
           return;
         }
 
-        if (config.autoRestoreOnCrash) {
+        if (config.autoRestoreOnCrash && (pending.crashCount ?? 0) < 2) {
           const allPanelIds = (pending.panels ?? []).map((p) => p.id);
           electron.crashRecovery
             .resolve({ kind: "restore", panelIds: allPanelIds })

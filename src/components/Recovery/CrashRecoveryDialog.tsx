@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronRight,
+  Copy,
   ExternalLink,
   FileText,
   SquareTerminal,
@@ -12,7 +13,11 @@ import {
 import { Plug } from "@/components/icons";
 import { AppDialog } from "../ui/AppDialog";
 import { Button } from "../ui/button";
+import { AnimatedLabel } from "../ui/AnimatedLabel";
 import { logError } from "@/utils/logger";
+import { notify } from "@/lib/notify";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
+import { useCopyWithFeedback } from "@/hooks/useCopyWithFeedback";
 import type {
   PendingCrash,
   PanelSummary,
@@ -50,6 +55,7 @@ export function CrashRecoveryDialog({
 }: CrashRecoveryDialogProps) {
   const panels = useMemo(() => crash.panels ?? [], [crash.panels]);
   const hasPanels = panels.length > 0;
+  const isInCrashLoop = (crash.crashCount ?? 0) >= 2;
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(
     () => new Set(panels.map((p) => p.id))
@@ -57,7 +63,8 @@ export function CrashRecoveryDialog({
   const [resolving, setResolving] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [privacyWarningShown, setPrivacyWarningShown] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyWithFeedback();
+  const { copied: stackCopied, copy: copyStack } = useCopyWithFeedback();
 
   const selectedCount = selectedIds.size;
   const allSelected = selectedCount === panels.length;
@@ -108,25 +115,28 @@ export function CrashRecoveryDialog({
   }, [allSelected, panels]);
 
   const handleOpenLogFile = useCallback(() => {
-    window.electron.system
-      .openPath(crash.logPath)
-      .catch((err) => logError("Failed to open crash log path", err));
+    window.electron.system.openPath(crash.logPath).catch((err) => {
+      logError("Failed to open crash log path", err);
+      notify({
+        type: "error",
+        title: "Couldn't open log file",
+        message: formatErrorMessage(err, "Failed to open log file"),
+        duration: 6000,
+      });
+    });
   }, [crash.logPath]);
 
-  const handleReport = useCallback(() => {
+  const handleReport = useCallback(async () => {
     if (!privacyWarningShown) {
       setPrivacyWarningShown(true);
       return;
     }
-    const text = buildClipboardText(crash);
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
+    const ok = await copy(buildClipboardText(crash));
+    if (!ok) return;
     window.electron.system
       .openExternal(ISSUES_URL)
       .catch((err) => logError("Failed to open issues URL", err));
-  }, [privacyWarningShown, crash]);
+  }, [privacyWarningShown, crash, copy]);
 
   const handleAutoRestore = useCallback(
     async (checked: boolean) => {
@@ -218,7 +228,7 @@ export function CrashRecoveryDialog({
                 disabled={resolving}
                 data-testid="fresh-button"
               >
-                Start fresh
+                Continue without restoring
               </Button>
             </div>
 
@@ -265,7 +275,9 @@ export function CrashRecoveryDialog({
                 <div className="h-2 w-2 rounded-full bg-daintree-text/40" />
               </div>
               <div>
-                <div className="text-sm font-medium text-daintree-text">Start fresh</div>
+                <div className="text-sm font-medium text-daintree-text">
+                  Continue without restoring
+                </div>
                 <div className="text-xs text-daintree-text/60 mt-0.5">
                   Reset to a clean layout — open panels will be cleared
                 </div>
@@ -350,19 +362,37 @@ export function CrashRecoveryDialog({
                   Open log file
                 </Button>
 
+                {crash.entry.errorStack && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-xs h-7"
+                    onClick={() => copyStack(crash.entry.errorStack!)}
+                    data-testid="copy-stack-button"
+                  >
+                    <Copy className="h-3 w-3 mr-1" />
+                    {stackCopied ? "Copied" : "Copy stack"}
+                  </Button>
+                )}
+
                 <Button
                   size="sm"
                   variant="ghost"
                   className="text-xs h-7"
-                  onClick={handleReport}
+                  onClick={() => void handleReport()}
                   data-testid="report-button"
                 >
                   <ExternalLink className="h-3 w-3 mr-1" />
-                  {copied
-                    ? "Copied!"
-                    : privacyWarningShown
-                      ? "Copy & report on GitHub"
-                      : "Report this crash"}
+                  <AnimatedLabel
+                    label={
+                      copied
+                        ? "Copied!"
+                        : privacyWarningShown
+                          ? "Copy & report on GitHub"
+                          : "Report this crash"
+                    }
+                    animateKey={copied ? "copied" : privacyWarningShown ? "warn" : "default"}
+                  />
                 </Button>
               </div>
 
@@ -371,27 +401,38 @@ export function CrashRecoveryDialog({
                   className="text-xs text-status-warning/90 bg-status-warning/10 rounded px-2 py-1.5"
                   data-testid="privacy-warning"
                 >
-                  Crash info may include panel titles, panel kinds, file paths, and stack traces.
-                  Click again to copy to clipboard and open GitHub Issues. You'll need to paste the
-                  info into the form.
+                  Opens GitHub Issues in your browser. The report includes platform info, app
+                  version, panel kinds, file paths, error message, and stack trace — and will be
+                  publicly visible. Review before pasting.
                 </p>
               )}
             </div>
           )}
         </div>
 
-        <label className="flex items-center gap-2 cursor-pointer" data-testid="auto-restore-label">
-          <input
-            type="checkbox"
-            checked={config.autoRestoreOnCrash}
-            onChange={(e) => handleAutoRestore(e.target.checked)}
-            className="accent-daintree-accent h-4 w-4"
-            data-testid="auto-restore-checkbox"
-          />
-          <span className="text-xs text-daintree-text/60">
-            Always restore sessions automatically
-          </span>
-        </label>
+        {isInCrashLoop ? (
+          config.autoRestoreOnCrash && (
+            <p className="text-xs text-daintree-text/60" data-testid="auto-restore-paused">
+              Auto-restore paused — too many consecutive crashes.
+            </p>
+          )
+        ) : (
+          <label
+            className="flex items-center gap-2 cursor-pointer"
+            data-testid="auto-restore-label"
+          >
+            <input
+              type="checkbox"
+              checked={config.autoRestoreOnCrash}
+              onChange={(e) => handleAutoRestore(e.target.checked)}
+              className="accent-daintree-accent h-4 w-4"
+              data-testid="auto-restore-checkbox"
+            />
+            <span className="text-xs text-daintree-text/60">
+              Always restore sessions automatically
+            </span>
+          </label>
+        )}
       </AppDialog.Body>
     </AppDialog>
   );

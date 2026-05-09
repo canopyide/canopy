@@ -1,38 +1,60 @@
 import { describe, expect, it } from "vitest";
-import { shouldEnableEarlyRenderer } from "../earlyRenderer.js";
+import { shouldDeferRendererLoadForE2E, shouldEnableEarlyRenderer } from "../earlyRenderer.js";
 
 describe("shouldEnableEarlyRenderer", () => {
-  it("returns false when DAINTREE_EARLY_RENDERER is unset", () => {
-    expect(shouldEnableEarlyRenderer({ isSmokeTest: false, env: {} })).toBe(false);
+  it("returns true when DAINTREE_EARLY_RENDERER is unset (default on)", () => {
+    expect(shouldEnableEarlyRenderer({ isSmokeTest: false, env: {} })).toBe(true);
   });
 
-  it("returns true when DAINTREE_EARLY_RENDERER=1 and not in smoke test", () => {
+  it("returns false when DAINTREE_EARLY_RENDERER=0 (opt-out)", () => {
     expect(
       shouldEnableEarlyRenderer({
         isSmokeTest: false,
-        env: { DAINTREE_EARLY_RENDERER: "1" },
+        env: { DAINTREE_EARLY_RENDERER: "0" },
       })
-    ).toBe(true);
+    ).toBe(false);
   });
 
-  it("returns false when DAINTREE_EARLY_RENDERER is any value other than '1'", () => {
-    for (const value of ["0", "true", "yes", "on", ""]) {
+  it("returns true for non-zero values", () => {
+    for (const value of ["1", "true", "yes", "on", ""]) {
       expect(
         shouldEnableEarlyRenderer({
           isSmokeTest: false,
           env: { DAINTREE_EARLY_RENDERER: value },
         })
-      ).toBe(false);
+      ).toBe(true);
     }
   });
 
-  it("returns false in smoke-test mode even with DAINTREE_EARLY_RENDERER=1", () => {
+  it("returns false in smoke-test mode regardless of DAINTREE_EARLY_RENDERER", () => {
     // Smoke tests assert deterministic readiness — keep them on the serial path.
+    expect(
+      shouldEnableEarlyRenderer({
+        isSmokeTest: true,
+        env: {},
+      })
+    ).toBe(false);
     expect(
       shouldEnableEarlyRenderer({
         isSmokeTest: true,
         env: { DAINTREE_EARLY_RENDERER: "1" },
       })
     ).toBe(false);
+  });
+});
+
+describe("shouldDeferRendererLoadForE2E", () => {
+  it("returns true only for the explicit Windows E2E deferral flag", () => {
+    expect(shouldDeferRendererLoadForE2E({ env: { DAINTREE_E2E_DEFER_RENDERER_LOAD: "1" } })).toBe(
+      true
+    );
+
+    for (const value of [undefined, "", "0", "true", "yes"]) {
+      expect(
+        shouldDeferRendererLoadForE2E({
+          env: value === undefined ? {} : { DAINTREE_E2E_DEFER_RENDERER_LOAD: value },
+        })
+      ).toBe(false);
+    }
   });
 });

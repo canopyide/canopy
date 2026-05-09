@@ -1,5 +1,6 @@
 export { DaintreeIcon } from "./DaintreeIcon";
 export { McpServerIcon } from "./McpServerIcon";
+export * from "./AgentStateCircles";
 export { BrandMark } from "./BrandMark";
 export * from "./brands";
 

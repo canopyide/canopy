@@ -1,13 +1,17 @@
 import { _electron as electron, type ElectronApplication, type Page } from "@playwright/test";
 import { createRequire } from "module";
-import { mkdtempSync, rmSync, unlinkSync, readdirSync } from "fs";
+import { mkdtempSync, unlinkSync, readdirSync } from "fs";
 import { tmpdir } from "os";
 import { execSync } from "child_process";
 import path from "path";
+import { getDescendantPids } from "./stress";
+import { removePathSync } from "./fixtures";
 
 const require = createRequire(import.meta.url);
 const electronPath = require("electron") as unknown as string;
 const ROOT = path.resolve(import.meta.dirname, "../..");
+
+const fallbackGraceMs = 1_500;
 
 export interface AppContext {
   app: ElectronApplication;
@@ -31,6 +35,17 @@ function cleanupWindowsElectronProcesses(): void {
   }
 }
 
+function cleanupMacElectronE2eProcesses(): void {
+  if (process.platform !== "darwin") return;
+  try {
+    // Kill only e2e-launched Electron processes (matched on `daintree-e2e`
+    // user-data-dir). Production Daintree.app and dev sessions are untouched.
+    execSync('pkill -f "node_modules/electron.*daintree-e2e"', { stdio: "ignore" });
+  } catch {
+    // Ignore "no matching process" errors.
+  }
+}
+
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -41,7 +56,6 @@ async function pollForAppWindow(app: ElectronApplication, timeoutMs: number): Pr
   // separate WebContentsView. Falls back to any app page after a short grace
   // period so first-run launches (no projects) still succeed.
   const deadline = Date.now() + timeoutMs;
-  const fallbackGraceMs = 1_500;
   let fallbackSeenAt = 0;
   while (Date.now() < deadline) {
     let fallback: Page | null = null;
@@ -65,11 +79,25 @@ async function pollForAppWindow(app: ElectronApplication, timeoutMs: number): Pr
 }
 
 export async function launchApp(options: LaunchOptions = {}): Promise<AppContext> {
-  // Windows CI can hang during Playwright's electron.launch handshake even when
-  // the app process is already running. Keep attempts high, but fail fast.
+  // Windows CI can be slow during Playwright's electron.launch handshake even
+  // when the app process is already running. Use fewer, longer attempts so a
+  // slow-but-longer-than-expected first launch is not killed just before it
+  // becomes ready.
+  // macOS local dev: first 1–2 launches per Playwright worker can hang at
+  // electron.launch's CDP handshake even though the app reaches steady-state
+  // (services start, agent connectivity probes complete). Subsequent launches
+  // in the same worker succeed immediately. Allow a single retry so a flaky
+  // first launch doesn't fail the spec.
   const isWindowsCI = process.env.CI && process.platform === "win32";
-  const launchTimeout = isWindowsCI ? 45_000 : 60_000;
-  const maxAttempts = isWindowsCI ? 5 : 1;
+  const isMacOSLocal = process.platform === "darwin" && !process.env.CI;
+  const launchTimeout = isWindowsCI ? 75_000 : 60_000;
+  const maxAttempts = isWindowsCI ? 3 : isMacOSLocal ? 3 : 1;
+  // On macOS local dev, the first 1–2 launches in a Playwright worker can
+  // hang through the full launch window before recovering on retry. Cap each
+  // attempt at 50s — long enough for cold-start CDP handshake, short enough
+  // that all three attempts fit inside the bumped 240s test timeout
+  // (50 + 1 + 50 + 1 + 50 = 152s, leaves ~88s for test work).
+  const attemptTimeout = (_attempt: number) => (isMacOSLocal ? 50_000 : launchTimeout);
   let lastError: unknown = null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -102,6 +130,10 @@ export async function launchApp(options: LaunchOptions = {}): Promise<AppContext
       );
       cleanupWindowsElectronProcesses();
     }
+    // macOS local: reap any leftover e2e Electron processes from prior specs
+    // before each fresh launch. Zombie crashpad helpers from a closed app can
+    // hold Mach ports and contribute to first-launch flakes.
+    if (isMacOSLocal) cleanupMacElectronE2eProcesses();
 
     if (options.extraArgs?.length) {
       args.unshift(...options.extraArgs);
@@ -130,10 +162,25 @@ export async function launchApp(options: LaunchOptions = {}): Promise<AppContext
         executablePath: electronPath,
         args,
         env: launchEnv,
-        timeout: launchTimeout,
+        timeout: attemptTimeout(attempt),
       });
 
       app.on("close", () => console.log("[e2e] Electron app closed"));
+      // DIAGNOSTIC: forward stdout/stderr so we can see main-process logs
+      try {
+        const proc = app.process();
+        proc.stdout?.on("data", (chunk: Buffer) => {
+          process.stderr.write(`[E2E_STDOUT] ${chunk.toString()}`);
+        });
+        proc.stderr?.on("data", (chunk: Buffer) => {
+          process.stderr.write(`[E2E_STDERR] ${chunk.toString()}`);
+        });
+        proc.on("exit", (code: number | null, signal: string | null) => {
+          process.stderr.write(`[E2E_EXIT] code=${code} signal=${signal}\n`);
+        });
+      } catch {
+        /* best-effort diagnostic */
+      }
 
       // After WebContentsView migration, firstWindow() returns the BW sentinel page.
       // Poll for the real app page loaded in the WebContentsView.
@@ -178,7 +225,7 @@ export async function launchApp(options: LaunchOptions = {}): Promise<AppContext
       }
       if (!options.userDataDir) {
         try {
-          rmSync(userDataDir, { recursive: true, force: true });
+          removePathSync(userDataDir);
         } catch {
           // Best-effort cleanup for failed launch attempts.
         }
@@ -186,7 +233,10 @@ export async function launchApp(options: LaunchOptions = {}): Promise<AppContext
       if (attempt < maxAttempts) {
         console.warn(`[e2e] Launch attempt ${attempt}/${maxAttempts} failed, retrying...`);
         if (isWindowsCI) cleanupWindowsElectronProcesses();
-        await wait(2000 * attempt);
+        if (isMacOSLocal) cleanupMacElectronE2eProcesses();
+        // macOS local retry needs to fit inside the 120s test timeout.
+        // Keep the retry-prep wait short so the retry attempt has its full budget.
+        await wait(isMacOSLocal ? 1000 : 2000 * attempt);
       }
     }
   }
@@ -253,7 +303,6 @@ export async function getActiveAppWindow(
   // operation, the project WebContentsView may take a moment to load its
   // URL. Returning the welcome page too early causes tests to grab the
   // wrong renderer.
-  const fallbackGraceMs = 1_500;
   let fallback: Page | null = null;
   let fallbackSeenAt = 0;
   while (Date.now() < deadline) {
@@ -358,23 +407,25 @@ export async function refreshActiveWindow(app: ElectronApplication, oldPage?: Pa
     .locator('[aria-label="Toggle Sidebar"]')
     .waitFor({ state: "visible", timeout: refreshTimeout });
 
+  // <Sidebar> mounts only after currentProject hydrates — best-effort gate
+  // before the worktree poll. Use attached not visible: a gesture-hidden
+  // sidebar is aria-hidden/inert but still in the DOM.
+  await newWindow
+    .locator('aside[aria-label="Sidebar"]')
+    .waitFor({ state: "attached", timeout: refreshTimeout })
+    .catch(() => {});
+
   // Wait for the project's active worktree to finish loading. Without this,
   // shortcuts like Cmd+Alt+T fire with `activeWorktreeId=undefined`, which
   // creates an orphan panel that never renders (worktree-filtered out) — the
   // root cause of the original "Cmd+Alt+T opens a new terminal" flake.
-  // The worktree sidebar heading stops showing "Loading worktrees..." once
-  // the first worktree entry is in the DOM.
   await newWindow
-    .locator('[aria-label="Worktrees"] a, [aria-label="Worktrees"] [role="button"], .worktree-item')
+    .locator(
+      '[data-worktree-branch], [data-worktree-is-main="true"], [aria-label="Worktrees"] a, [aria-label="Worktrees"] [role="button"], .worktree-item'
+    )
     .first()
     .waitFor({ state: "attached", timeout: refreshTimeout })
-    .catch(async () => {
-      // Fallback: just wait for the loading text to disappear.
-      await newWindow
-        .locator("text=Loading worktrees...")
-        .waitFor({ state: "hidden", timeout: refreshTimeout })
-        .catch(() => {});
-    });
+    .catch(() => {});
 
   // After WebContentsView creation, the new view's renderer may not receive
   // keyboard events from Playwright's CDP `Input.dispatchKeyEvent` until the
@@ -436,7 +487,17 @@ export async function refreshActiveWindow(app: ElectronApplication, oldPage?: Pa
 }
 
 export async function closeApp(app: ElectronApplication): Promise<void> {
-  const pid = app.process().pid;
+  // app.process() throws on Playwright >=1.58 if the underlying child process
+  // has already exited (e.g., a launch attempt crashed during startup before
+  // the WebContentsView appeared). Without this guard, closeApp throws inside
+  // launchApp's retry-cleanup path and prevents descendant processes from
+  // being reaped — turning a single launch flake into a zombie-process leak.
+  let pid: number | undefined;
+  try {
+    pid = app.process()?.pid;
+  } catch {
+    pid = undefined;
+  }
 
   // Collect all descendant PIDs BEFORE closing — once the parent dies,
   // children get reparented to PID 1 and we can no longer find them via ppid.
@@ -460,28 +521,6 @@ export async function closeApp(app: ElectronApplication): Promise<void> {
     } catch {
       // Already dead
     }
-  }
-}
-
-function getDescendantPids(pid: number): number[] {
-  if (process.platform === "win32") return [];
-  try {
-    const result = execSync(`pgrep -P ${pid}`, {
-      encoding: "utf8",
-      stdio: ["pipe", "pipe", "ignore"],
-    });
-    const children = result
-      .trim()
-      .split("\n")
-      .map(Number)
-      .filter((n) => n > 0);
-    const all = [...children];
-    for (const child of children) {
-      all.push(...getDescendantPids(child));
-    }
-    return all;
-  } catch {
-    return [];
   }
 }
 

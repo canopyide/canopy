@@ -3,7 +3,7 @@ import type {
   TerminalInstance as TerminalInstanceType,
   AgentState,
   AgentStateChangeTrigger,
-  TerminalFlowStatus,
+  PersistableFlowStatus,
   TerminalRuntimeStatus,
   SpawnError,
   TerminalReconnectError,
@@ -52,6 +52,13 @@ export type HydrationBatchToken = symbol;
 export interface PanelRegistrySlice {
   panelsById: Record<string, TerminalInstance>;
   panelIds: string[];
+  /**
+   * Per-worktree panel id buckets, maintained at write time (add/remove/transfer)
+   * so per-row selectors can scope work to one worktree's panels in O(1) without
+   * scanning all `panelIds` on every per-terminal field tick. Bucket key for
+   * panels with no worktree is the literal "__none__". See issue #7451.
+   */
+  panelIdsByWorktreeId: Record<string, string[]>;
   trashedTerminals: Map<string, TrashedTerminal>;
   backgroundedTerminals: Map<string, BackgroundedTerminal>;
   /** Explicit tab group storage - single source of truth for tab membership and order */
@@ -136,7 +143,7 @@ export interface PanelRegistrySlice {
   updateTerminalCwd: (id: string, cwd: string) => void;
   moveTerminalToWorktree: (id: string, worktreeId: string) => void;
   moveToNewWorktreeAndTransfer: (id: string) => void;
-  updateFlowStatus: (id: string, status: TerminalFlowStatus, timestamp: number) => void;
+  updateFlowStatus: (id: string, status: PersistableFlowStatus, timestamp: number) => void;
   setRuntimeStatus: (id: string, status: TerminalRuntimeStatus) => void;
   setInputLocked: (id: string, locked: boolean) => void;
   toggleInputLocked: (id: string) => void;

@@ -31,8 +31,8 @@ export function SettingsCheckbox({
   const descriptionId = useId();
   const errorId = useId();
 
-  const describedBy = error ? errorId : descriptionId;
   const isError = error !== undefined && error !== "";
+  const describedBy = [isError ? errorId : null, descriptionId].filter(Boolean).join(" ");
 
   const scopeBadge = scope ? (
     <span
@@ -61,7 +61,7 @@ export function SettingsCheckbox({
           }}
           disabled={disabled}
           aria-describedby={describedBy}
-          aria-invalid={isError}
+          aria-invalid={isError || undefined}
           className={cn(
             "relative flex shrink-0 w-4 h-4 mt-0.5 rounded border transition-colors duration-150",
             "bg-daintree-bg border-border-strong",
@@ -90,13 +90,11 @@ export function SettingsCheckbox({
             {label}
           </span>
           {scopeBadge}
-          {!isError && (
-            <p id={descriptionId} className="text-xs text-text-muted mt-0.5 select-text">
-              {description}
-            </p>
-          )}
+          <p id={descriptionId} className="text-xs text-text-muted mt-0.5 select-text">
+            {description}
+          </p>
           {isError && (
-            <p id={errorId} role="alert" className="text-xs text-status-error mt-0.5">
+            <p id={errorId} className="text-xs text-status-error mt-0.5">
               {error}
             </p>
           )}

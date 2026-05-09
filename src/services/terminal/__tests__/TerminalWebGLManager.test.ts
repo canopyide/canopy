@@ -15,10 +15,117 @@ vi.mock("@xterm/addon-webgl", () => ({
   }),
 }));
 
+// Flush microtasks plus a macrotask so the chain
+// `import("@xterm/addon-webgl") → .then(flushPendingEnsures)` fully runs.
+function flushDynamicImport(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+// rAF shim — JSDOM does not implement requestAnimationFrame, and the manager
+// drains its ensure queue one entry per frame. Default mode is "sync" so
+// existing tests retain their synchronous expectations; rAF-pacing tests flip
+// to "queued" and call flushRafFrame() to advance one frame at a time.
+type RafMode = "sync" | "queued";
+let rafMode: RafMode = "sync";
+const rafQueue = new Map<number, FrameRequestCallback>();
+let rafIdCounter = 0;
+
+function installRafShim(): void {
+  rafMode = "sync";
+  rafQueue.clear();
+  rafIdCounter = 0;
+  globalThis.requestAnimationFrame = ((cb: FrameRequestCallback): number => {
+    if (rafMode === "sync") {
+      cb(0);
+      return 0;
+    }
+    rafIdCounter += 1;
+    rafQueue.set(rafIdCounter, cb);
+    return rafIdCounter;
+  }) as typeof globalThis.requestAnimationFrame;
+  globalThis.cancelAnimationFrame = ((id: number): void => {
+    rafQueue.delete(id);
+  }) as typeof globalThis.cancelAnimationFrame;
+}
+
+function flushRafFrame(): boolean {
+  const next = rafQueue.entries().next();
+  if (next.done) return false;
+  const [id, cb] = next.value;
+  rafQueue.delete(id);
+  cb(0);
+  return true;
+}
+
+// Minimal element mock — vitest runs in `node` env without jsdom, so we can't
+// use document.createElement. The mock tracks the `capture` flag separately so
+// tests can verify the manager registers and removes its listener in the
+// capture phase (a regression to a bubble listener would fire after xterm's
+// own canvas-target handler — too late to pre-empt the 3s restore timer).
+type Listener = (event: Event) => void;
+type ListenerOptions = boolean | { capture?: boolean } | undefined;
+interface FakeElement {
+  addEventListener(type: string, listener: Listener, options?: ListenerOptions): void;
+  removeEventListener(type: string, listener: Listener, options?: ListenerOptions): void;
+  dispatchEvent(event: Event): boolean;
+  // Test helper — only fires bubble-phase listeners; lets a test prove the
+  // manager registered in capture phase by showing the listener doesn't run.
+  __dispatchBubbleOnly(event: Event): void;
+  __listenerCount(type: string): number;
+}
+
+function isCapture(options: ListenerOptions): boolean {
+  if (typeof options === "boolean") return options;
+  return options?.capture === true;
+}
+
+function makeFakeElement(): HTMLElement {
+  const captureBucket = new Map<string, Set<Listener>>();
+  const bubbleBucket = new Map<string, Set<Listener>>();
+
+  const el: FakeElement = {
+    addEventListener(type, listener, options) {
+      const target = isCapture(options) ? captureBucket : bubbleBucket;
+      let set = target.get(type);
+      if (!set) {
+        set = new Set();
+        target.set(type, set);
+      }
+      set.add(listener);
+    },
+    removeEventListener(type, listener, options) {
+      const target = isCapture(options) ? captureBucket : bubbleBucket;
+      target.get(type)?.delete(listener);
+    },
+    dispatchEvent(event) {
+      for (const listener of [...(captureBucket.get(event.type) ?? [])]) {
+        listener(event);
+      }
+      for (const listener of [...(bubbleBucket.get(event.type) ?? [])]) {
+        listener(event);
+      }
+      return true;
+    },
+    __dispatchBubbleOnly(event) {
+      for (const listener of [...(bubbleBucket.get(event.type) ?? [])]) {
+        listener(event);
+      }
+    },
+    __listenerCount(type) {
+      return (captureBucket.get(type)?.size ?? 0) + (bubbleBucket.get(type)?.size ?? 0);
+    },
+  };
+  return el as unknown as HTMLElement;
+}
+
 function makeManagedTerminal(overrides: Partial<ManagedTerminal> = {}): ManagedTerminal {
+  const element = makeFakeElement();
   return {
     terminal: {
       loadAddon: vi.fn(),
+      element,
+      rows: 24,
+      refresh: vi.fn(),
     },
     isOpened: true,
     lastActiveTime: Date.now(),
@@ -31,6 +138,8 @@ describe("TerminalWebGLManager", () => {
   let WebglAddonMock: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
+    installRafShim();
+
     mockAddonDispose = vi.fn();
     mockContextLossDispose = vi.fn();
     mockOnContextLoss = vi.fn((_handler: () => void) => ({ dispose: mockContextLossDispose }));
@@ -44,6 +153,11 @@ describe("TerminalWebGLManager", () => {
     });
 
     const mod = await import("../TerminalWebGLManager");
+    // Preload the addon class so ensureContext() executes synchronously in tests.
+    // The lazy loader is exercised separately in the "lazy WebglAddon loading" suite.
+    mod.__testing.setWebglAddonClass(
+      WebglAddonMock as unknown as new () => InstanceType<typeof webglMod.WebglAddon>
+    );
     manager = new mod.TerminalWebGLManager();
   });
 
@@ -216,6 +330,38 @@ describe("TerminalWebGLManager", () => {
     expect(manager.isActive("unknown")).toBe(false);
   });
 
+  describe("setMaxContexts", () => {
+    let originalMax: number;
+
+    beforeEach(async () => {
+      const mod = await import("../TerminalWebGLManager");
+      originalMax = mod.TerminalWebGLManager.MAX_CONTEXTS;
+    });
+
+    afterEach(async () => {
+      const mod = await import("../TerminalWebGLManager");
+      mod.TerminalWebGLManager.setMaxContexts(originalMax);
+    });
+
+    it("clamps zero to 1", async () => {
+      const { TerminalWebGLManager } = await import("../TerminalWebGLManager");
+      TerminalWebGLManager.setMaxContexts(0);
+      expect(TerminalWebGLManager.MAX_CONTEXTS).toBe(1);
+    });
+
+    it("clamps negative values to 1", async () => {
+      const { TerminalWebGLManager } = await import("../TerminalWebGLManager");
+      TerminalWebGLManager.setMaxContexts(-5);
+      expect(TerminalWebGLManager.MAX_CONTEXTS).toBe(1);
+    });
+
+    it("accepts positive values verbatim", async () => {
+      const { TerminalWebGLManager } = await import("../TerminalWebGLManager");
+      TerminalWebGLManager.setMaxContexts(8);
+      expect(TerminalWebGLManager.MAX_CONTEXTS).toBe(8);
+    });
+  });
+
   it("recovers cleanly after failed attach", () => {
     const managed = makeManagedTerminal();
     (managed.terminal.loadAddon as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
@@ -283,6 +429,10 @@ describe("TerminalWebGLManager", () => {
     beforeEach(() => {
       vi.useFakeTimers();
       vi.setSystemTime(0);
+      // vi.useFakeTimers() replaces requestAnimationFrame with its own queue.
+      // Reinstall our sync shim so ensureContext drains inline as the tests
+      // expect — this suite does not exercise rAF pacing.
+      installRafShim();
     });
 
     afterEach(() => {
@@ -516,6 +666,458 @@ describe("TerminalWebGLManager", () => {
       expect(localManager.isActive("t0")).toBe(true);
       expect(localManager.isActive("t1")).toBe(false);
       expect(disposes[1]).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("lazy WebglAddon loading", () => {
+    // These tests exercise the dynamic-import path. They reset loader state in
+    // beforeEach so the queue behavior runs against a real (mocked) import().
+    beforeEach(async () => {
+      const mod = await import("../TerminalWebGLManager");
+      mod.__testing.resetLoaderState();
+    });
+
+    afterEach(async () => {
+      // Restore the preload that the outer suite relies on.
+      const webglMod = await import("@xterm/addon-webgl");
+      const mod = await import("../TerminalWebGLManager");
+      mod.__testing.setWebglAddonClass(
+        webglMod.WebglAddon as unknown as new () => InstanceType<typeof webglMod.WebglAddon>
+      );
+    });
+
+    it("does not construct the addon synchronously when not yet loaded", async () => {
+      const { TerminalWebGLManager: ManagerClass } = await import("../TerminalWebGLManager");
+      const localManager = new ManagerClass();
+      const managed = makeManagedTerminal();
+
+      localManager.ensureContext("t1", managed);
+
+      expect(WebglAddonMock).not.toHaveBeenCalled();
+      expect(localManager.isActive("t1")).toBe(false);
+    });
+
+    it("flushes the queued request after the addon resolves", async () => {
+      const { TerminalWebGLManager: ManagerClass } = await import("../TerminalWebGLManager");
+      const localManager = new ManagerClass();
+      const managed = makeManagedTerminal();
+
+      localManager.ensureContext("t1", managed);
+      // Allow the dynamic import + microtask chain to drain.
+      await flushDynamicImport();
+
+      expect(WebglAddonMock).toHaveBeenCalledTimes(1);
+      expect(localManager.isActive("t1")).toBe(true);
+    });
+
+    it("dedupes repeated ensure calls for the same id while loading", async () => {
+      const { TerminalWebGLManager: ManagerClass } = await import("../TerminalWebGLManager");
+      const localManager = new ManagerClass();
+      const managed1 = makeManagedTerminal();
+      const managed2 = makeManagedTerminal();
+
+      localManager.ensureContext("t1", managed1);
+      localManager.ensureContext("t1", managed2);
+
+      await flushDynamicImport();
+
+      expect(WebglAddonMock).toHaveBeenCalledTimes(1);
+      expect(managed1.terminal.loadAddon).not.toHaveBeenCalled();
+      expect(managed2.terminal.loadAddon).toHaveBeenCalledTimes(1);
+    });
+
+    it("releaseContext discards a queued request before the addon resolves", async () => {
+      const { TerminalWebGLManager: ManagerClass } = await import("../TerminalWebGLManager");
+      const localManager = new ManagerClass();
+      const managed = makeManagedTerminal();
+
+      localManager.ensureContext("t1", managed);
+      localManager.releaseContext("t1");
+
+      await flushDynamicImport();
+
+      expect(WebglAddonMock).not.toHaveBeenCalled();
+      expect(localManager.isActive("t1")).toBe(false);
+    });
+
+    it("onTerminalDestroyed discards a queued request before the addon resolves", async () => {
+      const { TerminalWebGLManager: ManagerClass } = await import("../TerminalWebGLManager");
+      const localManager = new ManagerClass();
+      const managed = makeManagedTerminal();
+
+      localManager.ensureContext("t1", managed);
+      localManager.onTerminalDestroyed("t1");
+
+      await flushDynamicImport();
+
+      expect(WebglAddonMock).not.toHaveBeenCalled();
+    });
+
+    it("dispose clears any queued requests", async () => {
+      const { TerminalWebGLManager: ManagerClass } = await import("../TerminalWebGLManager");
+      const localManager = new ManagerClass();
+      const managed = makeManagedTerminal();
+
+      localManager.ensureContext("t1", managed);
+      localManager.dispose();
+
+      await flushDynamicImport();
+
+      expect(WebglAddonMock).not.toHaveBeenCalled();
+    });
+
+    it("skips queued requests if hardware was marked unavailable while loading", async () => {
+      const { TerminalWebGLManager: ManagerClass } = await import("../TerminalWebGLManager");
+      const localManager = new ManagerClass();
+      const managed = makeManagedTerminal();
+
+      localManager.ensureContext("t1", managed);
+      localManager.setHardwareAvailable(false);
+
+      await flushDynamicImport();
+
+      expect(WebglAddonMock).not.toHaveBeenCalled();
+      expect(localManager.isActive("t1")).toBe(false);
+    });
+
+    it("skips queued requests for terminals that closed while loading", async () => {
+      const { TerminalWebGLManager: ManagerClass } = await import("../TerminalWebGLManager");
+      const localManager = new ManagerClass();
+      const managed = makeManagedTerminal();
+
+      localManager.ensureContext("t1", managed);
+      managed.isOpened = false;
+
+      await flushDynamicImport();
+
+      expect(WebglAddonMock).not.toHaveBeenCalled();
+    });
+
+    it("flushes multiple distinct ids queued during the load window", async () => {
+      const { TerminalWebGLManager: ManagerClass } = await import("../TerminalWebGLManager");
+      const localManager = new ManagerClass();
+      const m1 = makeManagedTerminal();
+      const m2 = makeManagedTerminal();
+
+      localManager.ensureContext("t1", m1);
+      localManager.ensureContext("t2", m2);
+
+      await flushDynamicImport();
+
+      expect(WebglAddonMock).toHaveBeenCalledTimes(2);
+      expect(localManager.isActive("t1")).toBe(true);
+      expect(localManager.isActive("t2")).toBe(true);
+    });
+
+    it("retries the load after a rejection, then attaches the queued terminal", async () => {
+      const { TerminalWebGLManager: ManagerClass, __testing } =
+        await import("../TerminalWebGLManager");
+      const localManager = new ManagerClass();
+      const managed = makeManagedTerminal();
+
+      // Simulate a rejected load: the production loader's catch clears
+      // webglAddonLoadPromise so the next ensureContext call can retry.
+      // Drive that branch by manually clearing loader state once after the
+      // first request queues — mirrors what the catch arm does on rejection.
+      localManager.ensureContext("t1", managed);
+      await flushDynamicImport();
+      // Sanity: with the mock, the first attempt should have succeeded.
+      expect(localManager.isActive("t1")).toBe(true);
+      localManager.releaseContext("t1");
+      __testing.resetLoaderState();
+
+      // After a forced reset, ensureContext should re-load and re-attach.
+      localManager.ensureContext("t1", managed);
+      await flushDynamicImport();
+
+      expect(localManager.isActive("t1")).toBe(true);
+    });
+  });
+
+  describe("rAF drain queue (#7467)", () => {
+    // Ensures bulk attaches are spaced one-per-frame so Chromium's
+    // 16-context-per-renderer cap is not over-subscribed in a single tick.
+
+    it("attaches one queued terminal per animation frame", () => {
+      rafMode = "queued";
+      const m1 = makeManagedTerminal();
+      const m2 = makeManagedTerminal();
+      const m3 = makeManagedTerminal();
+
+      manager.ensureContext("t1", m1);
+      manager.ensureContext("t2", m2);
+      manager.ensureContext("t3", m3);
+
+      expect(WebglAddonMock).not.toHaveBeenCalled();
+
+      flushRafFrame();
+      expect(WebglAddonMock).toHaveBeenCalledTimes(1);
+      expect(manager.isActive("t1")).toBe(true);
+      expect(manager.isActive("t2")).toBe(false);
+
+      flushRafFrame();
+      expect(WebglAddonMock).toHaveBeenCalledTimes(2);
+      expect(manager.isActive("t2")).toBe(true);
+      expect(manager.isActive("t3")).toBe(false);
+
+      flushRafFrame();
+      expect(WebglAddonMock).toHaveBeenCalledTimes(3);
+      expect(manager.isActive("t3")).toBe(true);
+
+      // Queue drained — no further frame should be scheduled.
+      expect(flushRafFrame()).toBe(false);
+    });
+
+    it("dedupes repeat ensure calls for the same id within the queue window", () => {
+      rafMode = "queued";
+      const managed = makeManagedTerminal();
+      manager.ensureContext("t1", managed);
+      manager.ensureContext("t1", managed);
+      manager.ensureContext("t1", managed);
+
+      flushRafFrame();
+      expect(WebglAddonMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("skips queued attach if releaseContext fires before drain", () => {
+      rafMode = "queued";
+      const managed = makeManagedTerminal();
+      manager.ensureContext("t1", managed);
+      manager.releaseContext("t1");
+
+      flushRafFrame();
+      expect(WebglAddonMock).not.toHaveBeenCalled();
+      expect(manager.isActive("t1")).toBe(false);
+    });
+
+    it("skips queued attach if terminal closes before drain", () => {
+      rafMode = "queued";
+      const managed = makeManagedTerminal();
+      manager.ensureContext("t1", managed);
+      managed.isOpened = false;
+
+      flushRafFrame();
+      expect(WebglAddonMock).not.toHaveBeenCalled();
+    });
+
+    it("skips queued attach if pool already holds the id by drain time", () => {
+      rafMode = "queued";
+      const managed = makeManagedTerminal();
+      // First ensure and drain.
+      manager.ensureContext("t1", managed);
+      flushRafFrame();
+      expect(WebglAddonMock).toHaveBeenCalledTimes(1);
+
+      // Second ensure for the same id arrives — no new attach should happen.
+      manager.ensureContext("t1", managed);
+      flushRafFrame();
+      expect(WebglAddonMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("drain clears all pending if hardware becomes unavailable mid-queue", () => {
+      rafMode = "queued";
+      const m1 = makeManagedTerminal();
+      const m2 = makeManagedTerminal();
+      manager.ensureContext("t1", m1);
+      manager.ensureContext("t2", m2);
+
+      manager.setHardwareAvailable(false);
+      flushRafFrame();
+
+      expect(WebglAddonMock).not.toHaveBeenCalled();
+      expect(flushRafFrame()).toBe(false);
+    });
+
+    it("dispose cancels a pending rAF and clears the queue", () => {
+      rafMode = "queued";
+      const m1 = makeManagedTerminal();
+      const m2 = makeManagedTerminal();
+      manager.ensureContext("t1", m1);
+      manager.ensureContext("t2", m2);
+
+      manager.dispose();
+      // After dispose the cancel should have removed the scheduled frame.
+      expect(flushRafFrame()).toBe(false);
+      expect(WebglAddonMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("capture-phase webglcontextlost handler (#7467)", () => {
+    function captureContextLossHandlers(): Array<() => void> {
+      const handlers: Array<() => void> = [];
+      WebglAddonMock.mockImplementation(function () {
+        return {
+          dispose: vi.fn(),
+          onContextLoss: vi.fn((handler: () => void) => {
+            handlers.push(handler);
+            return { dispose: vi.fn() };
+          }),
+        };
+      });
+      return handlers;
+    }
+
+    it("releases the context immediately on capture-phase webglcontextlost", () => {
+      const managed = makeManagedTerminal();
+      manager.ensureContext("t1", managed);
+      expect(manager.isActive("t1")).toBe(true);
+
+      const element = managed.terminal.element as HTMLElement;
+      const event = new Event("webglcontextlost");
+      element.dispatchEvent(event);
+
+      expect(manager.isActive("t1")).toBe(false);
+      expect(managed.terminal.refresh).toHaveBeenCalledWith(0, 23);
+    });
+
+    it("subsequent stale onContextLoss for the same id is a no-op", () => {
+      const handlers = captureContextLossHandlers();
+      const managed = makeManagedTerminal();
+      manager.ensureContext("t1", managed);
+
+      const element = managed.terminal.element as HTMLElement;
+      element.dispatchEvent(new Event("webglcontextlost"));
+      expect(manager.isActive("t1")).toBe(false);
+
+      // The addon's deferred onContextLoss still fires ~3s later — should be inert.
+      expect(() => handlers[0]!()).not.toThrow();
+      expect(manager.isActive("t1")).toBe(false);
+    });
+
+    it("contributes to the circuit breaker after threshold real evictions", () => {
+      const m1 = makeManagedTerminal();
+      const m2 = makeManagedTerminal();
+      const m3 = makeManagedTerminal();
+      manager.ensureContext("t1", m1);
+      manager.ensureContext("t2", m2);
+      manager.ensureContext("t3", m3);
+
+      (m1.terminal.element as HTMLElement).dispatchEvent(new Event("webglcontextlost"));
+      (m2.terminal.element as HTMLElement).dispatchEvent(new Event("webglcontextlost"));
+      (m3.terminal.element as HTMLElement).dispatchEvent(new Event("webglcontextlost"));
+
+      const before = WebglAddonMock.mock.calls.length;
+      const m4 = makeManagedTerminal();
+      manager.ensureContext("t4", m4);
+      expect(WebglAddonMock.mock.calls.length).toBe(before);
+      expect(manager.isActive("t4")).toBe(false);
+    });
+
+    it("does not re-fire after release (handler is removed)", () => {
+      const managed = makeManagedTerminal();
+      manager.ensureContext("t1", managed);
+      manager.releaseContext("t1");
+
+      const element = managed.terminal.element as HTMLElement;
+      element.dispatchEvent(new Event("webglcontextlost"));
+
+      // Handler removed on release → refresh must NOT have fired.
+      expect(managed.terminal.refresh).not.toHaveBeenCalled();
+    });
+
+    it("ignores capture event when terminal lacks an element", () => {
+      const managed = makeManagedTerminal();
+      (managed.terminal as unknown as { element: HTMLElement | undefined }).element = undefined;
+      // Should still attach (just without a capture handler) and not throw.
+      expect(() => manager.ensureContext("t1", managed)).not.toThrow();
+      expect(manager.isActive("t1")).toBe(true);
+    });
+
+    it("registers in the capture phase, not bubble", () => {
+      // Bubble-only dispatch must NOT fire the manager's handler — proves the
+      // listener was registered with { capture: true } so it can pre-empt
+      // xterm's canvas-target listener and its 3s restore timer.
+      const managed = makeManagedTerminal();
+      manager.ensureContext("t1", managed);
+
+      const el = managed.terminal.element as unknown as ReturnType<typeof makeFakeElement> & {
+        __dispatchBubbleOnly(e: Event): void;
+        __listenerCount(t: string): number;
+      };
+      el.__dispatchBubbleOnly(new Event("webglcontextlost"));
+
+      expect(manager.isActive("t1")).toBe(true);
+      expect(managed.terminal.refresh).not.toHaveBeenCalled();
+    });
+
+    it("releaseContext removes the capture listener with matching options", () => {
+      // Verifies addEventListener and removeEventListener used the same
+      // capture flag — a mismatch would leak the listener in production.
+      const managed = makeManagedTerminal();
+      manager.ensureContext("t1", managed);
+
+      const el = managed.terminal.element as unknown as { __listenerCount(t: string): number };
+      expect(el.__listenerCount("webglcontextlost")).toBe(1);
+
+      manager.releaseContext("t1");
+      expect(el.__listenerCount("webglcontextlost")).toBe(0);
+    });
+  });
+
+  describe("doRelease forces synchronous GPU release (#7467)", () => {
+    it("calls WEBGL_lose_context.loseContext on the addon's GL context", () => {
+      const loseContext = vi.fn();
+      const getExtension = vi.fn().mockReturnValue({ loseContext });
+      const fakeGl = { getExtension } as unknown as WebGL2RenderingContext;
+
+      WebglAddonMock.mockImplementation(function () {
+        const addon: Record<string, unknown> = {
+          dispose: vi.fn(),
+          onContextLoss: vi.fn(() => ({ dispose: vi.fn() })),
+        };
+        // Mirror the @xterm/addon-webgl 0.19 internal shape so the
+        // narrow private cast in doRelease can locate the GL context.
+        addon._renderer = { _gl: fakeGl };
+        return addon;
+      });
+
+      const managed = makeManagedTerminal();
+      manager.ensureContext("t1", managed);
+      manager.releaseContext("t1");
+
+      expect(getExtension).toHaveBeenCalledWith("WEBGL_lose_context");
+      expect(loseContext).toHaveBeenCalledTimes(1);
+    });
+
+    it("onTerminalDestroyed also forces synchronous GPU slot release", () => {
+      // Hibernation calls onTerminalDestroyed without addon.dispose() (xterm
+      // tears the addon down via terminal.dispose()). Without the explicit
+      // loseContext, a hibernate-then-bulk-recreate cycle would stall on the
+      // 16-slot Chromium budget the same way #7467 stalled the attach path.
+      const loseContext = vi.fn();
+      const getExtension = vi.fn().mockReturnValue({ loseContext });
+      const fakeGl = { getExtension } as unknown as WebGL2RenderingContext;
+
+      WebglAddonMock.mockImplementation(function () {
+        const addon: Record<string, unknown> = {
+          dispose: vi.fn(),
+          onContextLoss: vi.fn(() => ({ dispose: vi.fn() })),
+        };
+        addon._renderer = { _gl: fakeGl };
+        return addon;
+      });
+
+      const managed = makeManagedTerminal();
+      manager.ensureContext("t1", managed);
+      manager.onTerminalDestroyed("t1");
+
+      expect(loseContext).toHaveBeenCalledTimes(1);
+      expect(manager.isActive("t1")).toBe(false);
+    });
+
+    it("release proceeds cleanly when WEBGL_lose_context is unavailable", () => {
+      WebglAddonMock.mockImplementation(function () {
+        return {
+          dispose: vi.fn(),
+          onContextLoss: vi.fn(() => ({ dispose: vi.fn() })),
+          // No _renderer — narrow cast resolves to undefined; release must still succeed.
+        };
+      });
+
+      const managed = makeManagedTerminal();
+      manager.ensureContext("t1", managed);
+      expect(() => manager.releaseContext("t1")).not.toThrow();
+      expect(manager.isActive("t1")).toBe(false);
     });
   });
 });

@@ -16,9 +16,16 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const ROOT = join(__dirname, "..");
 const BASELINE_FILE = join(ROOT, "eslint-warnings-baseline.json");
+const UPDATE_SHRINKAGE_THRESHOLD = 0.1;
+
+// Test files still get linted (editor + raw `npm run lint`), but their warnings
+// don't count toward the ratchet — test patterns like `as Foo` partial mocks
+// aren't product debt. Errors are still counted for all files below.
+const TEST_FILE_PATTERN = /[/\\](__tests__|e2e)[/\\]|\.(?:test|spec)\.[^.]+$/;
 
 function main() {
   const isUpdate = process.argv.includes("--update");
+  const force = process.argv.includes("--force");
 
   // Run ESLint and capture output
   let lintOutput;
@@ -26,14 +33,14 @@ function main() {
     lintOutput = execSync("npx eslint . --format json", {
       cwd: ROOT,
       encoding: "utf-8",
-      maxBuffer: 10 * 1024 * 1024, // 10MB buffer for large output
+      maxBuffer: 50 * 1024 * 1024, // 50MB buffer for large output
       stdio: ["pipe", "pipe", "pipe"],
     });
   } catch (error) {
     // ESLint exits with code 1 when there are warnings/errors
     // The output is still valid JSON in stdout
     if (error.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
-      console.error("❌ ESLint output exceeded buffer size (10MB)");
+      console.error("❌ ESLint output exceeded buffer size (25MB)");
       console.error("   Try reducing the number of files or increasing maxBuffer");
       process.exit(1);
     }
@@ -61,8 +68,12 @@ function main() {
     process.exit(1);
   }
 
-  // Count warnings and errors
-  const warningCount = results.reduce((sum, file) => {
+  // Warnings: exclude test files. Errors: count every file — the ratchet is
+  // the only ESLint gate in CI (`npm run check` calls `lint:ratchet`), so
+  // test-file errors must still block the build.
+  const productionResults = results.filter((file) => !TEST_FILE_PATTERN.test(file.filePath));
+
+  const warningCount = productionResults.reduce((sum, file) => {
     return sum + file.messages.filter((msg) => msg.severity === 1).length;
   }, 0);
 
@@ -81,6 +92,36 @@ function main() {
 
   // Update mode: save current count as new baseline
   if (isUpdate) {
+    // Shrinkage guard: if the warning count drops by more than the threshold
+    // compared to the prior baseline, refuse to update. This prevents a config
+    // bug (e.g. .eslintignore expansion, file-pattern narrowing) from silently
+    // locking in undercounting as the new baseline.
+    if (existsSync(BASELINE_FILE) && !force) {
+      let priorCount = 0;
+      try {
+        const prior = JSON.parse(readFileSync(BASELINE_FILE, "utf8"));
+        if (prior && typeof prior.count === "number" && Number.isFinite(prior.count)) {
+          priorCount = prior.count;
+        }
+      } catch {
+        // Unparseable prior baseline — let the update proceed; the previous
+        // baseline is unusable anyway.
+      }
+      if (priorCount > 0) {
+        const drop = (priorCount - warningCount) / priorCount;
+        if (drop > UPDATE_SHRINKAGE_THRESHOLD) {
+          console.error(
+            `::error::refusing to update baseline — warning count would drop from ${priorCount} to ${warningCount} (${(drop * 100).toFixed(1)}% shrinkage > ${(UPDATE_SHRINKAGE_THRESHOLD * 100).toFixed(0)}% threshold).`
+          );
+          console.error(
+            "   This usually means ESLint coverage shrank (config change, .eslintignore expansion, or file-pattern narrowing)."
+          );
+          console.error("   If the shrinkage is intentional, re-run with --force.");
+          process.exit(1);
+        }
+      }
+    }
+
     const baseline = { count: warningCount, updatedAt: new Date().toISOString() };
     writeFileSync(BASELINE_FILE, JSON.stringify(baseline, null, 2) + "\n");
     console.log(`✅ Baseline updated: ${warningCount} warnings`);

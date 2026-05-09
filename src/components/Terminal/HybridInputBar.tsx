@@ -1,16 +1,6 @@
-import {
-  forwardRef,
-  useCallback,
-  useEffect,
-  useEffectEvent,
-  useImperativeHandle,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { EditorView, drawSelection } from "@codemirror/view";
-import { EditorSelection, EditorState } from "@codemirror/state";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { EditorView } from "@codemirror/view";
+import { EditorSelection } from "@codemirror/state";
 import type { BuiltInAgentId } from "@shared/config/agentIds";
 import type { AgentState } from "@/types";
 import { logError } from "@/utils/logger";
@@ -22,12 +12,6 @@ import { useSlashCommandList } from "@/hooks/useSlashCommandList";
 import { useTerminalInputStore } from "@/store/terminalInputStore";
 import { AutocompleteMenu, type AutocompleteItem } from "./AutocompleteMenu";
 import {
-  formatAtFileToken,
-  getAtFileContext,
-  getSlashCommandContext,
-  getDiffContext,
-  getTerminalContext,
-  getSelectionContext,
   type AtFileContext,
   type SlashCommandContext,
   type AtDiffContext,
@@ -42,41 +26,16 @@ import { usePanelStore, useVoiceRecordingStore } from "@/store";
 import { useFleetArmingStore } from "@/store/fleetArmingStore";
 import { FleetDraftingPill } from "@/components/Fleet/FleetDraftingPill";
 import { tryFleetBroadcastFromEditor } from "@/components/Fleet/fleetEnterBroadcast";
+
 import { useWorktreeStore } from "@/hooks/useWorktreeStore";
 import { VoiceInputButton } from "./VoiceInputButton";
 import { Archive, Loader2 } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useKeybindingDisplay } from "@/hooks/useKeybinding";
+import { createTooltipContent } from "@/lib/tooltipShortcut";
 import { useVoiceWaitSubmit } from "./hooks/useVoiceWaitSubmit";
 import { registerInputController, unregisterInputController } from "@/store/terminalInputStore";
-import type { CommandContext, CommandResult } from "@shared/types/commands";
-import { isEnterLikeLineBreakInputEvent } from "./hybridInputEvents";
-import {
-  buildInputBarTheme,
-  createContentAttributes,
-  createPlaceholder,
-  createSlashChipField,
-  createSlashTooltip,
-  createFileChipField,
-  createFileChipTooltip,
-  imageChipField,
-  createImageChipTooltip,
-  createImagePasteHandler,
-  addImageChip,
-  fileDropChipField,
-  createFileDropChipTooltip,
-  createFilePasteHandler,
-  addFileDropChip,
-  interimMarkField,
-  pendingAIField,
-  createPlainPasteKeymap,
-  diffChipField,
-  createDiffChipTooltip,
-  terminalChipField,
-  createTerminalChipTooltip,
-  selectionChipField,
-  createSelectionChipTooltip,
-  createAutoSize,
-  createCustomKeymap,
-} from "./inputEditorExtensions";
+import type { CommandResult } from "@shared/types/commands";
 import { AppDialog } from "@/components/ui/AppDialog";
 import {
   useTerminalColorSchemeStore,
@@ -92,6 +51,15 @@ import { useVoiceDecorations } from "./hooks/useVoiceDecorations";
 import { useContextDetection } from "./hooks/useContextDetection";
 import { useTokenResolution } from "./hooks/useTokenResolution";
 import { useEditorKeymap } from "./hooks/useEditorKeymap";
+import { useCompartmentDriver } from "./hooks/useCompartmentDriver";
+import { usePasteExtensions } from "./hooks/usePasteExtensions";
+import { useAutocompleteState } from "./hooks/useAutocompleteState";
+import { useAutocompletePositioning } from "./hooks/useAutocompletePositioning";
+import { useAutocompleteApply } from "./hooks/useAutocompleteApply";
+import { useFleetMirror } from "./hooks/useFleetMirror";
+import { useEditorDomHandlers } from "./hooks/useEditorDomHandlers";
+import { useEditorFactory } from "./hooks/useEditorFactory";
+import { useHostReparent } from "./hooks/useHostReparent";
 
 export interface HybridInputBarHandle {
   focus: () => void;
@@ -177,6 +145,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
       const key = projectId ? `${projectId}:${terminalId}` : terminalId;
       return s.stashedEditorStates.has(key);
     });
+    const popStashShortcut = useKeybindingDisplay("terminal.popStash");
     const [value, setValue] = useState(() => getDraftInput(terminalId, projectId));
     const submitAfterCompositionRef = useRef(false);
     const isComposingRef = useRef(false);
@@ -185,7 +154,6 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
     const [isExpanded, setIsExpanded] = useState(false);
     const modalEditorHostRef = useRef<HTMLDivElement | null>(null);
     const compactEditorHostRef = useRef<HTMLDivElement | null>(null);
-    const isApplyingExternalValueRef = useRef(false);
     const lastEnterKeydownNewlineRef = useRef(false);
     const handledEnterRef = useRef(false);
     const historyPaletteOpenRef = useRef<(() => void) | null>(null);
@@ -198,6 +166,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
     const [diffContext, setDiffContext] = useState<AtDiffContext | null>(null);
     const [terminalContext, setTerminalContext] = useState<AtTerminalContext | null>(null);
     const [selectionContext, setSelectionContext] = useState<AtSelectionContext | null>(null);
+
     const [selectedIndex, setSelectedIndex] = useState(0);
     const lastQueryRef = useRef<string>("");
     const [menuLeftPx, setMenuLeftPx] = useState<number>(0);
@@ -211,9 +180,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
     const voiceStatus = useVoiceRecordingStore((s) => s.status);
     const activeVoicePanelId = useVoiceRecordingStore((s) => s.activeTarget?.panelId ?? null);
     const voiceDraftRevision = useTerminalInputStore((s) => s.voiceDraftRevision);
-    const panelWorktreeId = usePanelStore(
-      useCallback((s) => s.panelsById[terminalId]?.worktreeId, [terminalId])
-    );
+    const panelWorktreeId = usePanelStore((s) => s.panelsById[terminalId]?.worktreeId);
     const panelWorktree = useWorktreeStore((s) =>
       panelWorktreeId ? s.worktrees.get(panelWorktreeId) : undefined
     );
@@ -221,28 +188,23 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
     const isVoiceConnecting = activeVoicePanelId === terminalId && voiceStatus === "connecting";
     const isVoiceFinishing = activeVoicePanelId === terminalId && voiceStatus === "finishing";
     const isVoiceActiveForPanel = isVoiceRecording || isVoiceConnecting || isVoiceFinishing;
-    const isVoiceSubmitting = useTerminalInputStore(
-      useCallback((s) => s.voiceSubmittingPanels.has(terminalId), [terminalId])
-    );
+    const isVoiceSubmitting = useTerminalInputStore((s) => s.voiceSubmittingPanels.has(terminalId));
 
-    const commandContext = useMemo(
-      (): CommandContext => ({ terminalId, cwd, projectId }),
-      [terminalId, cwd, projectId]
-    );
+    const commandContext = { terminalId, cwd, projectId };
 
     const isAgentTerminal = agentId !== undefined;
 
     // --- Terminal color scheme ---
     useAppThemeStore((s) => s.selectedSchemeId);
     const effectiveTheme = useTerminalColorSchemeStore(selectEffectiveTheme);
-    const inputBarColors = useMemo(() => resolveInputBarColors(effectiveTheme), [effectiveTheme]);
+    const inputBarColors = resolveInputBarColors(effectiveTheme);
 
     // --- Extracted hooks ---
 
     const compartments = useEditorCompartments();
     const {
       placeholderCompartmentRef,
-      keymapCompartmentRef,
+
       editableCompartmentRef,
       chipCompartmentRef,
       tooltipCompartmentRef,
@@ -259,59 +221,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
     const { handleDragEnter, handleDragOver, handleDragLeave, handleDrop, isDragOverFiles } =
       useDragDrop(editorViewRef);
 
-    const imagePasteExtension = useMemo(
-      () =>
-        createImagePasteHandler(async (view) => {
-          try {
-            const { filePath, thumbnailDataUrl } = await window.electron.clipboard.saveImage();
-            const cursor = view.state.selection.main.head;
-            view.dispatch({
-              changes: { from: cursor, insert: filePath + " " },
-              effects: addImageChip.of({
-                from: cursor,
-                to: cursor + filePath.length,
-                filePath,
-                thumbnailUrl: thumbnailDataUrl,
-              }),
-              selection: { anchor: cursor + filePath.length + 1 },
-            });
-          } catch {
-            // Empty clipboard, editor destroyed mid-IPC, etc. — nothing to do.
-          }
-        }),
-      []
-    );
-
-    const filePasteExtension = useMemo(
-      () =>
-        createFilePasteHandler((view, files) => {
-          const cursor = view.state.selection.main.head;
-          const effects: ReturnType<typeof addFileDropChip.of>[] = [];
-          let insertText = "";
-          for (const file of files) {
-            const token = formatAtFileToken(file.path);
-            const from = cursor + insertText.length;
-            insertText += token + " ";
-            effects.push(
-              addFileDropChip.of({
-                from,
-                to: from + token.length,
-                filePath: file.path,
-                fileName: file.name,
-                fileSize: file.size,
-              })
-            );
-          }
-          view.dispatch({
-            changes: { from: cursor, insert: insertText },
-            effects,
-            selection: { anchor: cursor + insertText.length },
-          });
-        }),
-      []
-    );
-
-    const plainPasteKeymap = useMemo(() => createPlainPasteKeymap(), []);
+    const { imagePasteExtension, filePasteExtension, plainPasteKeymap } = usePasteExtensions();
 
     useEffect(() => {
       setInitializationState("initializing");
@@ -347,61 +257,29 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
       setDraftInput(terminalId, value, projectId);
     }, [terminalId, value, projectId, setDraftInput]);
 
-    // Fleet hybrid-input mirroring. The focused armed pane (the "primary")
-    // pushes its draft to every other armed pane's draft slot via the
-    // existing terminalInputStore. Followers render that mirrored text in
-    // their own editor and submit it independently on Enter via their own
-    // per-pane lifecycle (token resolution, history, draft cleanup).
-    //
-    // Clicking a follower promotes it to primary (existing onActivate /
-    // setFocused path), so mirror direction reverses naturally with focus.
+    // Fleet hybrid-input mirroring
     const armedIds = useFleetArmingStore((s) => s.armedIds);
     const isArmed = armedIds.has(terminalId);
     const fleetSize = armedIds.size;
     const isFleetPrimary = isFocusedTerminal && isArmed && fleetSize >= 2;
     const isFleetFollower = !isFocusedTerminal && isArmed && fleetSize >= 2;
 
-    // Primary → followers: write our current draft to each other armed
-    // pane's draft slot. All armed panes live in the same project view
-    // (renderer scope), so we reuse our own projectId for the draft key.
-    // Followers' bars receive the update via their own getDraftInput
-    // subscription (effect below).
-    useEffect(() => {
-      if (!isFleetPrimary) return;
-      const setDraft = useTerminalInputStore.getState().setDraftInput;
-      for (const otherId of armedIds) {
-        if (otherId === terminalId) continue;
-        setDraft(otherId, value, projectId);
-      }
-    }, [isFleetPrimary, value, armedIds, terminalId, projectId]);
+    const { isApplyingExternalValueRef } = useFleetMirror({
+      editorViewRef,
+      terminalId,
+      projectId,
+      value,
+      setValue,
+      isFleetPrimary,
+      isFleetFollower,
+      disabled,
+      lastEmittedValueRef,
+    });
 
-    // Follower ← primary: when our own draft slot is updated externally
-    // (because the primary mirrored to us), pull that text into our local
-    // value + editor doc. Guarded against echoing back as a local edit.
-    const externalDraftKey = projectId ? `${projectId}:${terminalId}` : terminalId;
-    const externalDraft = useTerminalInputStore((s) => s.draftInputs.get(externalDraftKey) ?? "");
-    useEffect(() => {
-      if (!isFleetFollower) return;
-      if (externalDraft === value) return;
-      lastEmittedValueRef.current = externalDraft;
-      setValue(externalDraft);
-      const view = editorViewRef.current;
-      // Only set the external-value flag when we actually dispatch a
-      // doc-changing edit. Setting it unconditionally can leave it stuck
-      // `true` (no editor mounted yet, or doc already matches) and the
-      // next real user edit gets misclassified as programmatic.
-      if (view && view.state.doc.toString() !== externalDraft) {
-        isApplyingExternalValueRef.current = true;
-        view.dispatch({
-          changes: { from: 0, to: view.state.doc.length, insert: externalDraft },
-        });
-      }
-    }, [externalDraft, isFleetFollower, value]);
-
-    const placeholder = useMemo(() => {
+    const placeholder = (() => {
       const agentName = agentId ? getAgentConfig(agentId)?.name : null;
-      return agentName ? `Type a command for ${agentName}…` : "Type a command…";
-    }, [agentId]);
+      return agentName ? `Ask ${agentName}` : "Ask anything";
+    })();
 
     const activeMode = slashContext
       ? "command"
@@ -473,141 +351,67 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
       };
     });
 
-    useLayoutEffect(() => {
-      if (!isAutocompleteOpen) return;
-      const view = editorViewRef.current;
-      const shell = inputShellRef.current;
-      if (!view || !shell) return;
-
-      const anchorIndex =
-        activeMode === "terminal"
-          ? terminalContext?.atStart
-          : activeMode === "selection"
-            ? selectionContext?.atStart
-            : activeMode === "diff"
-              ? diffContext?.atStart
-              : activeMode === "file"
-                ? atContext?.atStart
-                : activeMode === "command"
-                  ? (slashContext?.start ?? 0)
-                  : null;
-      if (anchorIndex === null || anchorIndex === undefined) return;
-
-      const compute = () => {
-        const shellRect = shell.getBoundingClientRect();
-        const coords = view.coordsAtPos(anchorIndex);
-        if (!coords) return;
-        const rawLeft = coords.left - shellRect.left;
-        const menuWidth = menuRef.current?.offsetWidth ?? 420;
-        const viewportRight = window.innerWidth;
-        const menuAbsoluteLeft = shellRect.left + rawLeft;
-        const maxAbsoluteLeft = viewportRight - menuWidth;
-        const clampedAbsoluteLeft = Math.max(0, Math.min(menuAbsoluteLeft, maxAbsoluteLeft));
-        const clampedLeft = clampedAbsoluteLeft - shellRect.left;
-        setMenuLeftPx(Math.max(0, clampedLeft));
-      };
-      compute();
-
-      const onResize = () => compute();
-      window.addEventListener("resize", onResize);
-      const ro = new ResizeObserver(() => compute());
-      ro.observe(shell);
-      ro.observe(view.dom);
-      return () => {
-        window.removeEventListener("resize", onResize);
-        ro.disconnect();
-      };
-    }, [
-      activeMode,
-      atContext?.atStart,
-      diffContext?.atStart,
-      terminalContext?.atStart,
-      selectionContext?.atStart,
+    useAutocompletePositioning({
+      editorViewRef,
+      inputShellRef,
+      menuRef,
       isAutocompleteOpen,
-      slashContext?.start,
-    ]);
-
-    useEffect(() => {
-      const activeQuery =
-        activeMode === "terminal"
-          ? `terminal:${terminalContext?.atStart ?? ""}`
-          : activeMode === "selection"
-            ? `selection:${selectionContext?.atStart ?? ""}`
-            : activeMode === "diff"
-              ? `diff:${diffContext?.atStart ?? ""}:${diffContext?.tokenEnd ?? ""}`
-              : activeMode === "file"
-                ? `file:${atContext?.queryForSearch ?? ""}`
-                : activeMode === "command"
-                  ? `command:${slashContext?.query ?? ""}`
-                  : "";
-      if (activeQuery !== lastQueryRef.current) {
-        lastQueryRef.current = activeQuery;
-        setSelectedIndex(0);
-      }
-    }, [
       activeMode,
-      atContext?.queryForSearch,
-      diffContext?.atStart,
-      diffContext?.tokenEnd,
-      terminalContext?.atStart,
-      selectionContext?.atStart,
-      slashContext?.query,
-    ]);
+      atContext,
+      slashContext,
+      diffContext,
+      terminalContext,
+      selectionContext,
+      setMenuLeftPx,
+    });
 
-    useEffect(() => {
-      if (!isAutocompleteOpen) return;
-      const root = rootRef.current;
-      if (!root) return;
-      const onPointerDown = (event: PointerEvent) => {
-        const target = event.target as Node | null;
-        if (!target) return;
-        if (root.contains(target)) return;
-        setAtContext(null);
-        setSlashContext(null);
-        setDiffContext(null);
-        setTerminalContext(null);
-        setSelectionContext(null);
-      };
-      document.addEventListener("pointerdown", onPointerDown, true);
-      return () => document.removeEventListener("pointerdown", onPointerDown, true);
-    }, [isAutocompleteOpen]);
+    useAutocompleteState({
+      isAutocompleteOpen,
+      activeMode,
+      atContext,
+      slashContext,
+      diffContext,
+      terminalContext,
+      selectionContext,
+      autocompleteItemsLength: autocompleteItems.length,
+      rootRef,
+      selectedIndex,
+      setSelectedIndex,
+      lastQueryRef,
+      setAtContext,
+      setSlashContext,
+      setDiffContext,
+      setTerminalContext,
+      setSelectionContext,
+    });
 
-    useEffect(() => {
-      if (!isAutocompleteOpen) return;
-      if (autocompleteItems.length === 0) {
-        setSelectedIndex(0);
+    const applyEditorValue = (
+      nextValue: string,
+      options?: { selection?: EditorSelection; focus?: boolean }
+    ) => {
+      if (lastEmittedValueRef.current !== nextValue) {
+        lastEmittedValueRef.current = nextValue;
+        setValue(nextValue);
+      }
+      const view = editorViewRef.current;
+      if (!view) return;
+      const current = view.state.doc.toString();
+      const shouldChangeDoc = current !== nextValue;
+      const shouldChangeSelection = options?.selection !== undefined;
+      if (!shouldChangeDoc && !shouldChangeSelection) {
+        if (options?.focus) view.focus();
         return;
       }
-      setSelectedIndex((prev) => Math.max(0, Math.min(prev, autocompleteItems.length - 1)));
-    }, [autocompleteItems.length, isAutocompleteOpen]);
-
-    const applyEditorValue = useCallback(
-      (nextValue: string, options?: { selection?: EditorSelection; focus?: boolean }) => {
-        if (lastEmittedValueRef.current !== nextValue) {
-          lastEmittedValueRef.current = nextValue;
-          setValue(nextValue);
-        }
-        const view = editorViewRef.current;
-        if (!view) return;
-        const current = view.state.doc.toString();
-        const shouldChangeDoc = current !== nextValue;
-        const shouldChangeSelection = options?.selection !== undefined;
-        if (!shouldChangeDoc && !shouldChangeSelection) {
-          if (options?.focus) view.focus();
-          return;
-        }
-        if (shouldChangeDoc) isApplyingExternalValueRef.current = true;
-        view.dispatch({
-          ...(shouldChangeDoc
-            ? { changes: { from: 0, to: view.state.doc.length, insert: nextValue } }
-            : {}),
-          ...(shouldChangeSelection ? { selection: options?.selection } : {}),
-          scrollIntoView: true,
-        });
-        if (options?.focus) view.focus();
-      },
-      []
-    );
+      if (shouldChangeDoc) isApplyingExternalValueRef.current = true;
+      view.dispatch({
+        ...(shouldChangeDoc
+          ? { changes: { from: 0, to: view.state.doc.length, insert: nextValue } }
+          : {}),
+        ...(shouldChangeSelection ? { selection: options?.selection } : {}),
+        scrollIntoView: true,
+      });
+      if (options?.focus) view.focus();
+    };
 
     const { sendText } = useTokenResolution({
       latestRef,
@@ -643,32 +447,23 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
 
     useVoiceDecorations({ terminalId, editorViewRef, voiceDraftRevision });
 
-    // Reset the editor's CodeMirror doc to empty after a fleet broadcast
-    // — the persisted draft is wiped via clearDraftInput, but the local
-    // doc is owned by this view and must be cleared explicitly.
-    const resetEditorDoc = useCallback(() => {
+    const resetEditorDoc = () => {
       applyEditorValue("", {
         selection: EditorSelection.create([EditorSelection.cursor(0)]),
       });
-    }, [applyEditorValue]);
+    };
 
-    const sendFromEditor = useCallback(() => {
+    const sendFromEditor = () => {
       const view = editorViewRef.current;
       const latest = latestRef.current;
       const text = view?.state.doc.toString() ?? latest?.value ?? "";
 
-      // Fleet primary: Enter broadcasts to every armed peer instead of doing
-      // a single-pane send. Followers (armed but not focused) stay on the
-      // single-pane path — typing in a follower's input bar is the
-      // deliberate "send only here" escape hatch.
       if (
         isFocusedTerminal &&
         useFleetArmingStore.getState().armedIds.has(terminalId) &&
         useFleetArmingStore.getState().armedIds.size >= 2
       ) {
         const intercepted = tryFleetBroadcastFromEditor(terminalId, text, () => {
-          // Clear local draft + editor on send. The mirror effect propagates
-          // the empty draft to follower bars so they clear in lockstep.
           clearDraftInput(terminalId, projectId);
           resetEditorDoc();
         });
@@ -676,7 +471,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
       }
 
       sendText(text);
-    }, [sendText, isFocusedTerminal, terminalId, projectId, clearDraftInput, resetEditorDoc]);
+    };
 
     const { startVoiceWaitSubmit, cancelVoiceWaitSubmit } = useVoiceWaitSubmit({
       terminalId,
@@ -685,221 +480,76 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
       sendFromEditor,
     });
 
-    const collapseEditor = useCallback(() => setIsExpanded(false), []);
+    const collapseEditor = () => setIsExpanded(false);
 
-    const focusEditor = useCallback(() => {
+    const focusEditor = () => {
       const view = editorViewRef.current;
       if (!view) return;
       view.focus();
       requestAnimationFrame(() => view.focus());
-    }, []);
+    };
 
-    const focusEditorWithCursorAtEnd = useCallback(() => {
+    const handleHistoryNavigation = (direction: "up" | "down"): boolean => {
+      const latest = latestRef.current;
+      if (!latest) return false;
       const view = editorViewRef.current;
-      if (!view) return;
-      requestAnimationFrame(() => {
-        if (editorViewRef.current !== view) return;
-        view.dispatch({
-          selection: EditorSelection.cursor(view.state.doc.length),
-          scrollIntoView: true,
+      const currentValue = view?.state.doc.toString() ?? latest.value;
+      const result = latest.navigateHistory(
+        latest.terminalId,
+        direction,
+        currentValue,
+        latest.projectId
+      );
+      if (result !== null) {
+        applyEditorValue(result, {
+          selection: EditorSelection.create([EditorSelection.cursor(result.length)]),
+          focus: true,
         });
-        view.focus();
-      });
-    }, []);
-
-    const handleHistoryNavigation = useCallback(
-      (direction: "up" | "down"): boolean => {
-        const latest = latestRef.current;
-        if (!latest) return false;
-        const view = editorViewRef.current;
-        const currentValue = view?.state.doc.toString() ?? latest.value;
-        const result = latest.navigateHistory(
-          latest.terminalId,
-          direction,
-          currentValue,
-          latest.projectId
-        );
-        if (result !== null) {
-          applyEditorValue(result, {
-            selection: EditorSelection.create([EditorSelection.cursor(result.length)]),
-            focus: true,
-          });
-          return true;
-        }
-        return false;
-      },
-      [applyEditorValue]
-    );
-
-    const applyAutocompleteItem = useCallback(
-      (item: AutocompleteItem, action: "insert" | "execute") => {
-        const view = editorViewRef.current;
-        if (!view) return;
-        const latest = latestRef.current;
-        if (!latest) return;
-
-        const currentValue = view.state.doc.toString();
-        const caret = view.state.selection.main.head;
-        const slashCtx = getSlashCommandContext(currentValue, caret) ?? latest.slashContext;
-
-        if (latest.activeMode === "terminal") {
-          const ctx = getTerminalContext(currentValue, caret) ?? latest.terminalContext;
-          if (!ctx) return;
-          const token = `${item.value} `;
-          const before = currentValue.slice(0, ctx.atStart);
-          const after = currentValue.slice(ctx.tokenEnd);
-          const nextValue = `${before}${token}${after}`;
-          const nextCaret = before.length + token.length;
-          applyEditorValue(nextValue, {
-            selection: EditorSelection.create([EditorSelection.cursor(nextCaret)]),
-            focus: true,
-          });
-          setTerminalContext(null);
-          setSelectedIndex(0);
-          lastQueryRef.current = "";
-          return;
-        }
-
-        if (latest.activeMode === "selection") {
-          const ctx = getSelectionContext(currentValue, caret) ?? latest.selectionContext;
-          if (!ctx) return;
-          const token = `${item.value} `;
-          const before = currentValue.slice(0, ctx.atStart);
-          const after = currentValue.slice(ctx.tokenEnd);
-          const nextValue = `${before}${token}${after}`;
-          const nextCaret = before.length + token.length;
-          applyEditorValue(nextValue, {
-            selection: EditorSelection.create([EditorSelection.cursor(nextCaret)]),
-            focus: true,
-          });
-          setSelectionContext(null);
-          setSelectedIndex(0);
-          lastQueryRef.current = "";
-          return;
-        }
-
-        if (latest.activeMode === "diff") {
-          const ctx = getDiffContext(currentValue, caret) ?? latest.diffContext;
-          if (!ctx) return;
-          const token = `${item.value} `;
-          const before = currentValue.slice(0, ctx.atStart);
-          const after = currentValue.slice(ctx.tokenEnd);
-          const nextValue = `${before}${token}${after}`;
-          const nextCaret = before.length + token.length;
-          if (action === "execute") {
-            sendText(nextValue);
-            setDiffContext(null);
-            setAtContext(null);
-            setSlashContext(null);
-            setSelectedIndex(0);
-            lastQueryRef.current = "";
-            return;
-          }
-          applyEditorValue(nextValue, {
-            selection: EditorSelection.create([EditorSelection.cursor(nextCaret)]),
-            focus: true,
-          });
-          setDiffContext(null);
-          setAtContext(null);
-          setSlashContext(null);
-          setSelectedIndex(0);
-          lastQueryRef.current = "";
-          return;
-        }
-
-        if (latest.activeMode === "file") {
-          const ctx = getAtFileContext(currentValue, caret);
-          if (!ctx) return;
-          const token = `${formatAtFileToken(item.value)} `;
-          const before = currentValue.slice(0, ctx.atStart);
-          const after = currentValue.slice(ctx.tokenEnd);
-          const nextValue = `${before}${token}${after}`;
-          const nextCaret = before.length + token.length;
-          if (action === "execute") {
-            sendText(nextValue);
-            setAtContext(null);
-            setSlashContext(null);
-            setDiffContext(null);
-            setSelectedIndex(0);
-            lastQueryRef.current = "";
-            return;
-          }
-          applyEditorValue(nextValue, {
-            selection: EditorSelection.create([EditorSelection.cursor(nextCaret)]),
-            focus: true,
-          });
-          setAtContext(null);
-          setSlashContext(null);
-          setDiffContext(null);
-          setSelectedIndex(0);
-          lastQueryRef.current = "";
-          return;
-        }
-
-        if (latest.activeMode === "command" && slashCtx) {
-          const before = currentValue.slice(0, slashCtx.start);
-          const after = currentValue.slice(slashCtx.tokenEnd);
-          const hasLeadingSpace = after.startsWith(" ");
-          const shouldAppendSpace = action === "insert" && !hasLeadingSpace;
-          const token = shouldAppendSpace ? `${item.value} ` : item.value;
-          const nextValue = `${before}${token}${after}`;
-          const nextCaret =
-            before.length + token.length + (action === "insert" && hasLeadingSpace ? 1 : 0);
-          if (action === "execute") {
-            sendText(nextValue);
-            setAtContext(null);
-            setSlashContext(null);
-            setDiffContext(null);
-            setSelectedIndex(0);
-            lastQueryRef.current = "";
-            return;
-          }
-          applyEditorValue(nextValue, {
-            selection: EditorSelection.create([EditorSelection.cursor(nextCaret)]),
-            focus: true,
-          });
-          setAtContext(null);
-          setSlashContext(null);
-          setDiffContext(null);
-          setSelectedIndex(0);
-          lastQueryRef.current = "";
-        }
-      },
-      [applyEditorValue, sendText]
-    );
-
-    const applyAutocompleteSelection = useCallback(
-      (action: "insert" | "execute") => {
-        const latest = latestRef.current;
-        if (!latest) return false;
-        const item = latest.autocompleteItems[latest.selectedIndex];
-        if (!item) return false;
-        applyAutocompleteItem(item, action);
         return true;
-      },
-      [applyAutocompleteItem]
-    );
+      }
+      return false;
+    };
 
-    const handleAutocompleteSelect = useCallback(
-      (item: AutocompleteItem) => applyAutocompleteItem(item, "insert"),
-      [applyAutocompleteItem]
-    );
+    const { applyAutocompleteSelection, handleAutocompleteSelect } = useAutocompleteApply({
+      editorViewRef,
+      latestRef,
+      lastQueryRef,
+      applyEditorValue,
+      sendText,
+      setAtContext,
+      setSlashContext,
+      setDiffContext,
+      setTerminalContext,
+      setSelectionContext,
+      setSelectedIndex,
+    });
 
-    const handleCommandExecuted = useCallback(
-      (_commandId: string, result: CommandResult) => {
-        if (result.success && result.prompt) {
-          sendText(result.prompt);
-        } else if (!result.success && result.error) {
-          logError("[HybridInputBar] Command execution failed", result.error);
-        }
-      },
-      [sendText]
-    );
+    const handleCommandExecuted = (_commandId: string, result: CommandResult) => {
+      if (result.success && result.prompt) {
+        sendText(result.prompt);
+      } else if (!result.success && result.error) {
+        logError("[HybridInputBar] Command execution failed", result.error);
+      }
+    };
 
     useImperativeHandle(
       ref,
-      () => ({ focus: focusEditor, focusWithCursorAtEnd: focusEditorWithCursorAtEnd }),
-      [focusEditor, focusEditorWithCursorAtEnd]
+      () => ({
+        focus: focusEditor,
+        focusWithCursorAtEnd: () => {
+          const view = editorViewRef.current;
+          if (!view) return;
+          requestAnimationFrame(() => {
+            if (editorViewRef.current !== view) return;
+            view.dispatch({
+              selection: EditorSelection.cursor(view.state.doc.length),
+              scrollIntoView: true,
+            });
+            view.focus();
+          });
+        },
+      }),
+      [focusEditor]
     );
 
     const { handleUpdateRef: contextUpdateRef } = useContextDetection({
@@ -949,171 +599,38 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
 
     // --- Editor lifecycle ---
 
-    // Editor is constructed once per terminalId from non-reactive props (compartments
-    // handle live updates). Wrapping in useEffectEvent keeps the construction body
-    // out of the dependency array so the React Compiler can memoize this component.
-    // DOM event handlers are defined inline here so the React Compiler sees their
-    // ref accesses as happening outside render.
-    const createEditor = useEffectEvent((host: HTMLDivElement) => {
-      const domEventHandlers = EditorView.domEventHandlers({
-        beforeinput: (event) => {
-          const latest = latestRef.current;
-          if (!latest) return false;
-          if (latest.disabled) {
-            event.preventDefault();
-            return true;
-          }
-          const nativeEvent = event as InputEvent;
-          if (!isEnterLikeLineBreakInputEvent(nativeEvent)) return false;
-          if (handledEnterRef.current) {
-            handledEnterRef.current = false;
-            event.preventDefault();
-            return true;
-          }
-          if (lastEnterKeydownNewlineRef.current) return false;
-          if (latest.isAutocompleteOpen && latest.autocompleteItems[latest.selectedIndex]) {
-            event.preventDefault();
-            const action = latest.activeMode === "command" ? "execute" : "insert";
-            applyAutocompleteSelection(action);
-            return true;
-          }
-          event.preventDefault();
-          if (nativeEvent.isComposing) {
-            submitAfterCompositionRef.current = true;
-            return true;
-          }
-          if (useTerminalInputStore.getState().isVoiceSubmitting(latest.terminalId)) {
-            event.preventDefault();
-            return true;
-          }
-          const text = editorViewRef.current?.state.doc.toString() ?? latest.value;
-          if (text.trim().length === 0) {
-            if (latest.onSendKey) latest.onSendKey("enter");
-            return true;
-          }
-          sendFromEditor();
-          return true;
-        },
-        compositionstart: () => {
-          isComposingRef.current = true;
-          submitAfterCompositionRef.current = false;
-          lastEnterKeydownNewlineRef.current = false;
-          return false;
-        },
-        compositionend: () => {
-          isComposingRef.current = false;
-          if (!submitAfterCompositionRef.current) return false;
-          submitAfterCompositionRef.current = false;
-          const latest = latestRef.current;
-          if (latest && useTerminalInputStore.getState().isVoiceSubmitting(latest.terminalId)) {
-            return false;
-          }
-          setTimeout(sendFromEditor, 0);
-          return false;
-        },
-        keydown: (event) => {
-          const isEnter =
-            event.key === "Enter" ||
-            event.key === "Return" ||
-            event.code === "Enter" ||
-            event.code === "NumpadEnter";
-          if (isEnter) lastEnterKeydownNewlineRef.current = event.shiftKey || event.altKey;
-          if (event.isComposing) {
-            if (isEnter && !event.shiftKey && !event.altKey) {
-              submitAfterCompositionRef.current = true;
-            }
-            return false;
-          }
-          return false;
-        },
-        blur: (event) => {
-          const nextTarget = event.relatedTarget as HTMLElement | null;
-          const root = rootRef.current;
-          if (root && nextTarget && root.contains(nextTarget)) return false;
-          if (latestRef.current?.isExpanded) return false;
-          setAtContext(null);
-          setSlashContext(null);
-          setDiffContext(null);
-          lastEnterKeydownNewlineRef.current = false;
-          handledEnterRef.current = false;
-          submitAfterCompositionRef.current = false;
-          return false;
-        },
-      });
-
-      const state = EditorState.create({
-        doc: value,
-        extensions: [
-          themeCompartmentRef.current.of(buildInputBarTheme(effectiveTheme)),
-          EditorView.lineWrapping,
-          drawSelection(),
-          createContentAttributes(),
-          autoSizeCompartmentRef.current.of(createAutoSize()),
-          placeholderCompartmentRef.current.of(createPlaceholder(placeholder)),
-          editableCompartmentRef.current.of(EditorView.editable.of(!disabled)),
-          chipCompartmentRef.current.of(createSlashChipField({ commandMap })),
-          tooltipCompartmentRef.current.of(!disabled ? createSlashTooltip(commandMap) : []),
-          createFileChipField(),
-          fileChipTooltipCompartmentRef.current.of(!disabled ? createFileChipTooltip() : []),
-          imageChipField,
-          imageChipTooltipCompartmentRef.current.of(!disabled ? createImageChipTooltip() : []),
-          fileDropChipField,
-          fileDropChipTooltipCompartmentRef.current.of(
-            !disabled ? createFileDropChipTooltip() : []
-          ),
-          diffChipField,
-          diffChipTooltipCompartmentRef.current.of(!disabled ? createDiffChipTooltip() : []),
-          terminalChipField,
-          terminalChipTooltipCompartmentRef.current.of(
-            !disabled ? createTerminalChipTooltip() : []
-          ),
-          selectionChipField,
-          selectionChipTooltipCompartmentRef.current.of(
-            !disabled ? createSelectionChipTooltip() : []
-          ),
-          interimMarkField,
-          pendingAIField,
-          EditorView.updateListener.of((update) => contextUpdateRef.current(update)),
-          keymapCompartmentRef.current.of(
-            createCustomKeymap({
-              onEnter: () => keymapHandlersRef.current?.onEnter() ?? false,
-              onEscape: () => keymapHandlersRef.current?.onEscape() ?? false,
-              onArrowUp: () => keymapHandlersRef.current?.onArrowUp() ?? false,
-              onArrowDown: () => keymapHandlersRef.current?.onArrowDown() ?? false,
-              onArrowLeft: () => keymapHandlersRef.current?.onArrowLeft() ?? false,
-              onArrowRight: () => keymapHandlersRef.current?.onArrowRight() ?? false,
-              onTab: () => keymapHandlersRef.current?.onTab() ?? false,
-              onCtrlC: (hasSelection) => keymapHandlersRef.current?.onCtrlC(hasSelection) ?? false,
-              onStash: () => keymapHandlersRef.current?.onStash() ?? false,
-              onPopStash: () => keymapHandlersRef.current?.onPopStash() ?? false,
-              onExpand: () => keymapHandlersRef.current?.onExpand() ?? false,
-              onHistorySearch: () => keymapHandlersRef.current?.onHistorySearch() ?? false,
-            })
-          ),
-          domEventHandlers,
-          imagePasteExtension,
-          filePasteExtension,
-          plainPasteKeymap,
-        ],
-      });
-
-      const view = new EditorView({ state, parent: host });
-      editorViewRef.current = view;
-      return view;
+    const domEventHandlers = useEditorDomHandlers({
+      latestRef,
+      editorViewRef,
+      isComposingRef,
+      handledEnterRef,
+      lastEnterKeydownNewlineRef,
+      submitAfterCompositionRef,
+      applyAutocompleteSelection,
+      sendFromEditor,
+      rootRef,
+      setAtContext,
+      setSlashContext,
+      setDiffContext,
     });
 
-    useLayoutEffect(() => {
-      const host = editorHostRef.current;
-      if (!host) return;
-      if (editorViewRef.current) return;
-
-      const view = createEditor(host);
-
-      return () => {
-        view.destroy();
-        editorViewRef.current = null;
-      };
-    }, [terminalId]);
+    useEditorFactory({
+      terminalId,
+      editorHostRef,
+      editorViewRef,
+      value,
+      disabled,
+      placeholder,
+      effectiveTheme,
+      commandMap,
+      compartments,
+      contextUpdateRef,
+      keymapHandlersRef,
+      domEventHandlers,
+      imagePasteExtension,
+      filePasteExtension,
+      plainPasteKeymap,
+    });
 
     useEffect(() => {
       registerInputController(terminalId, { stash: handleStash, pop: handlePopStash });
@@ -1122,88 +639,27 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
 
     // --- Compartment reconfigure effects ---
 
-    useEffect(() => {
-      const view = editorViewRef.current;
-      if (!view) return;
-      view.dispatch({
-        effects: themeCompartmentRef.current.reconfigure(buildInputBarTheme(effectiveTheme)),
-      });
-    }, [effectiveTheme, themeCompartmentRef]);
+    useCompartmentDriver({
+      editorViewRef,
+      themeCompartmentRef,
+      effectiveTheme,
+      placeholderCompartmentRef,
+      placeholder,
+      editableCompartmentRef,
+      disabled,
+      chipCompartmentRef,
+      commandMap,
+      tooltipCompartmentRef,
+      fileChipTooltipCompartmentRef,
+      imageChipTooltipCompartmentRef,
+      fileDropChipTooltipCompartmentRef,
+      diffChipTooltipCompartmentRef,
+      terminalChipTooltipCompartmentRef,
+      selectionChipTooltipCompartmentRef,
+      isAutocompleteOpen,
+    });
 
-    useEffect(() => {
-      const view = editorViewRef.current;
-      if (!view) return;
-      view.dispatch({
-        effects: placeholderCompartmentRef.current.reconfigure(createPlaceholder(placeholder)),
-      });
-    }, [placeholder, placeholderCompartmentRef]);
-
-    useEffect(() => {
-      const view = editorViewRef.current;
-      if (!view) return;
-      view.dispatch({
-        effects: editableCompartmentRef.current.reconfigure(EditorView.editable.of(!disabled)),
-      });
-    }, [disabled, editableCompartmentRef]);
-
-    useEffect(() => {
-      const view = editorViewRef.current;
-      if (!view) return;
-      view.dispatch({
-        effects: chipCompartmentRef.current.reconfigure(createSlashChipField({ commandMap })),
-      });
-    }, [commandMap, chipCompartmentRef]);
-
-    useEffect(() => {
-      const view = editorViewRef.current;
-      if (!view) return;
-      view.dispatch({
-        effects: tooltipCompartmentRef.current.reconfigure(
-          !disabled ? createSlashTooltip(commandMap) : []
-        ),
-      });
-    }, [commandMap, disabled, tooltipCompartmentRef]);
-
-    useEffect(() => {
-      const view = editorViewRef.current;
-      if (!view) return;
-      view.dispatch({
-        effects: fileChipTooltipCompartmentRef.current.reconfigure(
-          !disabled ? createFileChipTooltip() : []
-        ),
-      });
-    }, [disabled, fileChipTooltipCompartmentRef]);
-
-    useEffect(() => {
-      const view = editorViewRef.current;
-      if (!view) return;
-      view.dispatch({
-        effects: imageChipTooltipCompartmentRef.current.reconfigure(
-          !disabled ? createImageChipTooltip() : []
-        ),
-      });
-    }, [disabled, imageChipTooltipCompartmentRef]);
-
-    useEffect(() => {
-      const view = editorViewRef.current;
-      if (!view) return;
-      view.dispatch({
-        effects: fileDropChipTooltipCompartmentRef.current.reconfigure(
-          !disabled ? createFileDropChipTooltip() : []
-        ),
-      });
-    }, [disabled, fileDropChipTooltipCompartmentRef]);
-
-    useEffect(() => {
-      const view = editorViewRef.current;
-      if (!view) return;
-      view.dispatch({
-        effects: diffChipTooltipCompartmentRef.current.reconfigure(
-          !disabled ? createDiffChipTooltip() : []
-        ),
-      });
-    }, [disabled, diffChipTooltipCompartmentRef]);
-
+    // Sync external value changes to editor doc
     useEffect(() => {
       const view = editorViewRef.current;
       if (!view) return;
@@ -1213,33 +669,15 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
       view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: value } });
     }, [value]);
 
-    useEffect(() => {
-      const view = editorViewRef.current;
-      if (!view) return;
-      const compactHost = compactEditorHostRef.current;
-      const modalHost = modalEditorHostRef.current;
+    // --- Host reparent (modal vs compact) ---
 
-      if (isExpanded && modalHost) {
-        modalHost.appendChild(view.dom);
-        view.dispatch({ effects: autoSizeCompartmentRef.current.reconfigure([]) });
-        view.dom.style.height = "";
-        view.scrollDOM.style.overflowY = "auto";
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            view.requestMeasure();
-            view.focus();
-          });
-        });
-      } else if (!isExpanded && compactHost) {
-        compactHost.appendChild(view.dom);
-        view.dispatch({ effects: autoSizeCompartmentRef.current.reconfigure(createAutoSize()) });
-        view.dom.style.height = "";
-        requestAnimationFrame(() => {
-          view.requestMeasure();
-          view.focus();
-        });
-      }
-    }, [isExpanded, autoSizeCompartmentRef]);
+    useHostReparent({
+      editorViewRef,
+      compactEditorHostRef,
+      modalEditorHostRef,
+      autoSizeCompartmentRef,
+      isExpanded,
+    });
 
     const shellVars = {
       "--ib-bg": inputBarColors.shellBg,
@@ -1271,10 +709,16 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
 
     const barContent = (
       <div
-        className="group cursor-text px-3.5 pb-2.5 pt-2.5"
+        className="relative group cursor-text px-3.5 pb-2.5 pt-2.5"
         style={{ backgroundColor: inputBarColors.background, ...shellVars }}
       >
-        {isFleetPrimary && <FleetDraftingPill />}
+        {isFleetPrimary && (
+          <div className="pointer-events-none absolute bottom-full right-3.5 mb-1 flex items-center gap-2">
+            <div className="pointer-events-auto">
+              <FleetDraftingPill />
+            </div>
+          </div>
+        )}
         <div className="flex items-end gap-2">
           <div
             ref={inputShellRef}
@@ -1315,6 +759,15 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
                         ? "Diff autocomplete"
                         : "File autocomplete"
               }
+              emptyMessage={
+                activeMode === "command"
+                  ? "No commands match"
+                  : activeMode === "file"
+                    ? "No files match"
+                    : activeMode === "terminal"
+                      ? "No terminals match"
+                      : "No matches"
+              }
             />
             {isDragOverFiles && (
               <div className="absolute inset-0 z-10 flex items-center justify-center rounded-sm bg-daintree-bg/80 pointer-events-none">
@@ -1347,15 +800,21 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
             </div>
             <div className="flex items-center pr-1.5">
               {hasStash && (
-                <button
-                  type="button"
-                  onClick={handlePopStash}
-                  className="flex items-center justify-center h-5 w-5 rounded-sm text-daintree-accent/55 hover:text-daintree-accent/80 hover:bg-tint/[0.06] transition-colors cursor-pointer"
-                  aria-label="Restore stashed input"
-                  title="Restore stashed input (⌘⇧X)"
-                >
-                  <Archive className="h-3.5 w-3.5" />
-                </button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={handlePopStash}
+                      className="flex items-center justify-center h-5 w-5 rounded-sm text-daintree-accent/55 hover:text-daintree-accent/80 hover:bg-tint/[0.06] transition-colors cursor-pointer"
+                      aria-label="Restore stashed input"
+                    >
+                      <Archive className="h-3.5 w-3.5" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    {createTooltipContent("Restore stashed input", popStashShortcut)}
+                  </TooltipContent>
+                </Tooltip>
               )}
               <VoiceInputButton
                 panelId={terminalId}

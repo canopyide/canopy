@@ -9,8 +9,10 @@ import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
 const mod = process.platform === "darwin" ? "Meta" : "Control";
 
 let ctx: AppContext;
-const PRIMARY_NAME = "Primary Advanced";
-const SECONDARY_NAME = "Secondary Remove";
+const PRIMARY_NAME = "primary-advanced";
+const SECONDARY_NAME = "secondary-remove";
+let cleanupPrimary: (() => void) | undefined;
+let cleanupSecondary: (() => void) | undefined;
 
 test.describe.serial("Core: Project Management Advanced", () => {
   test.beforeAll(async () => {
@@ -19,12 +21,19 @@ test.describe.serial("Core: Project Management Advanced", () => {
       withFeatureBranch: true,
     });
     const secondaryRepo = createFixtureRepo({ name: "secondary-remove" });
+    cleanupPrimary = primaryRepo.cleanup;
+    cleanupSecondary = secondaryRepo.cleanup;
 
     ctx = await launchApp();
-    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, primaryRepo, PRIMARY_NAME);
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, primaryRepo.dir, PRIMARY_NAME);
 
     // Add secondary project
-    ctx.window = await addAndSwitchToProject(ctx.app, ctx.window, secondaryRepo, SECONDARY_NAME);
+    ctx.window = await addAndSwitchToProject(
+      ctx.app,
+      ctx.window,
+      secondaryRepo.dir,
+      SECONDARY_NAME
+    );
 
     // Switch back to primary project
     ctx.window = await selectExistingProjectAndRefresh(ctx.app, ctx.window, PRIMARY_NAME);
@@ -37,6 +46,8 @@ test.describe.serial("Core: Project Management Advanced", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    cleanupPrimary?.();
+    cleanupSecondary?.();
   });
 
   // ── Project Removal Confirmation (3 tests) ──────────────
@@ -60,7 +71,7 @@ test.describe.serial("Core: Project Management Advanced", () => {
       // Confirm dialog appears with project name
       const dialog = window.getByRole("dialog", { name: "Remove project from list?" }).last();
       await expect(dialog).toBeVisible({ timeout: T_MEDIUM });
-      await expect(dialog.locator(`text="${SECONDARY_NAME}"`)).toBeVisible();
+      await expect(dialog.getByText(SECONDARY_NAME, { exact: false }).first()).toBeVisible();
 
       // Cancel — project should remain
       await dialog.getByRole("button", { name: "Cancel" }).click();
@@ -69,7 +80,9 @@ test.describe.serial("Core: Project Management Advanced", () => {
       // Reopen palette and verify project is still listed
       await window.locator(SEL.toolbar.projectSwitcherTrigger).click();
       await expect(palette).toBeVisible({ timeout: T_MEDIUM });
-      await expect(palette.locator(`text="${SECONDARY_NAME}"`)).toBeVisible({ timeout: T_SHORT });
+      await expect(palette.getByText(SECONDARY_NAME, { exact: false })).toBeVisible({
+        timeout: T_SHORT,
+      });
 
       // Close palette
       await window.keyboard.press("Escape");
@@ -101,7 +114,7 @@ test.describe.serial("Core: Project Management Advanced", () => {
       await window.waitForTimeout(T_SETTLE);
       await window.locator(SEL.toolbar.projectSwitcherTrigger).click();
       await expect(palette).toBeVisible({ timeout: T_MEDIUM });
-      await expect(palette.locator(`text="${SECONDARY_NAME}"`)).not.toBeVisible({
+      await expect(palette.getByText(SECONDARY_NAME, { exact: false })).not.toBeVisible({
         timeout: T_SHORT,
       });
 

@@ -71,4 +71,63 @@ describe("SystemSleepService", () => {
     expect(service.getTotalSleepTime()).toBe(0);
     expect(service.getMetrics().sleepPeriods).toEqual([]);
   });
+
+  it("preserves accumulated sleep metrics after dispose for post-mortem inspection", () => {
+    const service = new SystemSleepService();
+    service.initialize();
+
+    const suspendHandler = getLatestRegisteredHandler("suspend");
+    suspendHandler();
+
+    vi.setSystemTime(new Date("2026-01-01T00:00:05Z"));
+    const resumeHandler = getLatestRegisteredHandler("resume");
+    resumeHandler();
+
+    service.dispose();
+
+    expect(service.getMetrics().sleepPeriods).toHaveLength(1);
+    expect(service.getTotalSleepTime()).toBe(5000);
+    expect(service.isSleeping()).toBe(false);
+  });
+
+  it("clears accumulated sleep periods and totals after dispose and reinitialize", () => {
+    const service = new SystemSleepService();
+    service.initialize();
+
+    const suspendHandler = getLatestRegisteredHandler("suspend");
+    suspendHandler();
+
+    vi.setSystemTime(new Date("2026-01-01T00:00:05Z"));
+    const resumeHandler = getLatestRegisteredHandler("resume");
+    resumeHandler();
+
+    expect(service.getMetrics().sleepPeriods).toHaveLength(1);
+    expect(service.getTotalSleepTime()).toBe(5000);
+
+    service.dispose();
+    service.initialize();
+
+    expect(service.getMetrics().sleepPeriods).toEqual([]);
+    expect(service.getTotalSleepTime()).toBe(0);
+  });
+
+  it("does not erase live metrics when initialize is called again without dispose", () => {
+    const service = new SystemSleepService();
+    service.initialize();
+
+    const suspendHandler = getLatestRegisteredHandler("suspend");
+    suspendHandler();
+
+    vi.setSystemTime(new Date("2026-01-01T00:00:05Z"));
+    const resumeHandler = getLatestRegisteredHandler("resume");
+    resumeHandler();
+
+    expect(service.getMetrics().sleepPeriods).toHaveLength(1);
+    expect(service.getTotalSleepTime()).toBe(5000);
+
+    service.initialize();
+
+    expect(service.getMetrics().sleepPeriods).toHaveLength(1);
+    expect(service.getTotalSleepTime()).toBe(5000);
+  });
 });

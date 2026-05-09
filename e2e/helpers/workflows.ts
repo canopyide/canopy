@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import type { ElectronApplication, Locator, Page } from "@playwright/test";
 import { mockOpenDialog, refreshActiveWindow } from "./launch";
-import { completeOnboarding } from "./project";
+import { dismissTelemetryConsent } from "./project";
 import { waitForTerminalText } from "./terminal";
 import { getGridPanelCount, openTerminal } from "./panels";
 import { SEL } from "./selectors";
@@ -25,12 +25,12 @@ export async function addAndSwitchToProject(
       const addBtn = window.locator(SEL.projectSwitcher.addButton);
       await expect(addBtn).toBeVisible({ timeout: T_SHORT });
       await addBtn.click({ force: true });
-
-      await completeOnboarding(window, projectName);
     },
     { box: true }
   );
-  return await refreshActiveWindow(app, window);
+  const newWindow = await refreshActiveWindow(app, window);
+  await dismissTelemetryConsent(newWindow);
+  return newWindow;
 }
 
 /**
@@ -45,11 +45,43 @@ export async function selectExistingProject(window: Page, projectName: string): 
   await test.step(
     `Switch to existing project "${projectName}"`,
     async () => {
-      await window.locator(SEL.toolbar.projectSwitcherTrigger).click();
+      // After a prior WebContentsView swap (e.g. addAndSwitchToProject), the
+      // toolbar can still be settling on Windows runners — Playwright's
+      // implicit stability check on `click()` then times out at 30s even
+      // though the trigger is in the DOM. Wait for visibility explicitly,
+      // then `force` past the stability check (mirroring how the in-palette
+      // add button is clicked above).
+      //
+      // Additionally on macOS local dev, the very first click after a
+      // WebContentsView swap can land before the new project view's React
+      // tree has fully wired its handlers — the trigger is in the DOM and
+      // visible but the popover state callback is a no-op until the next
+      // microtask. Retry the click + visibility check up to 3 times so a
+      // single dropped click doesn't fail the spec.
+      const trigger = window.locator(SEL.toolbar.projectSwitcherTrigger);
+      await expect(trigger).toBeVisible({ timeout: T_MEDIUM });
       const palette = window.locator(SEL.projectSwitcher.palette);
-      await expect(palette).toBeVisible({ timeout: T_MEDIUM });
+      let opened = false;
+      for (let attempt = 0; attempt < 3 && !opened; attempt++) {
+        await trigger.click({ force: true });
+        try {
+          await expect(palette).toBeVisible({ timeout: T_SHORT });
+          opened = true;
+        } catch {
+          // Click was likely dropped pre-hydration; settle and retry.
+          await window.waitForTimeout(250);
+        }
+      }
+      if (!opened) {
+        // Final attempt — let it surface the real error if it still fails.
+        await trigger.click({ force: true });
+        await expect(palette).toBeVisible({ timeout: T_MEDIUM });
+      }
 
-      await palette.getByText(projectName, { exact: true }).first().click();
+      // Substring match — createFixtureRepo produces directories like
+      // daintree-e2e-${name}-XXXXXX and projectClient.add() derives the
+      // displayed name from path.basename, so callers pass the stem.
+      await palette.getByText(projectName, { exact: false }).first().click();
       // After WebContentsView migration the palette is rendered in the
       // outgoing project's view, which is hidden (not destroyed) once the
       // switch lands — so the close-after-click assertion can race with the

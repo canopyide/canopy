@@ -1,9 +1,7 @@
 import { getDevServerOrigins, getDevServerWebSocketOrigins } from "./devServer.js";
 
-// Custom protocol schemes the renderer fetches/loads from. Both stay whitelisted
-// through the 0.8 migration window so the app can still load persisted
-// canopy-file:// URLs after a manual reinstall from Canopy.
-const FILE_SCHEMES = "daintree-file: canopy-file:";
+// Custom protocol scheme the renderer fetches/loads from.
+const FILE_SCHEMES = "daintree-file:";
 
 // Localhost origins allowed for embedded <webview> guests in BrowserPane and
 // DevPreviewPane. Without these in frame-src the host page cannot mount its
@@ -12,6 +10,11 @@ const FRAME_LOCALHOST =
   "http://localhost:* http://127.0.0.1:* https://localhost:* https://127.0.0.1:*";
 
 const GITHUB_AVATARS = "https://avatars.githubusercontent.com";
+
+// Named Trusted Types policy backing all DOM HTML-sink writes in the renderer.
+// 'allow-duplicates' is required so Vite HMR can re-evaluate the policy module
+// on hot reload without throwing 'Policy with name "<x>" already exists'.
+export const TRUSTED_TYPES_POLICY_NAME = "daintree-svg";
 
 /**
  * Production CSP for the trusted Daintree renderer (`persist:daintree`).
@@ -27,6 +30,14 @@ const GITHUB_AVATARS = "https://avatars.githubusercontent.com";
  *      at build time by the Vite plugin in vite.config.ts.
  *   2. `Content-Security-Policy` HTTP response header set by the main process
  *      via `webRequest.onHeadersReceived` on the persist:daintree session.
+ *
+ * Per the W3C CSP3 spec, `frame-ancestors`, `report-uri`, and `sandbox` are
+ * not supported when delivered via `<meta http-equiv>` — Chromium 146 drops
+ * them with a DevTools warning. Those directives must appear on the HTTP
+ * response header only (layer 2 above); adding them to the meta layer is a
+ * no-op and gives a false sense of coverage. `report-to` is technically
+ * honored in meta but its endpoint mapping requires the `Reporting-Endpoints`
+ * HTTP response header, so it is also effectively header-only.
  */
 export function getDaintreeAppProdCSP(): string {
   return [
@@ -42,6 +53,8 @@ export function getDaintreeAppProdCSP(): string {
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'none'",
+    "require-trusted-types-for 'script'",
+    `trusted-types ${TRUSTED_TYPES_POLICY_NAME} default 'allow-duplicates'`,
   ].join("; ");
 }
 
@@ -74,6 +87,8 @@ export function getDaintreeAppDevCSP(): string {
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'none'",
+    "require-trusted-types-for 'script'",
+    `trusted-types ${TRUSTED_TYPES_POLICY_NAME} default 'allow-duplicates'`,
   ].join("; ");
 }
 

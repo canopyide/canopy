@@ -253,7 +253,7 @@ describe("terminal pool inspection handlers", () => {
       ) => Promise<unknown[]>;
 
       await expect(handler({}, "invalid")).rejects.toThrow(
-        "Failed to get terminals by state: Invalid state: must be one of idle, working, waiting, completed"
+        "Failed to get terminals by state: Invalid state: must be one of idle, working, waiting, directing, completed, exited"
       );
       expect(ptyClient.getTerminalsByStateAsync).not.toHaveBeenCalled();
     });

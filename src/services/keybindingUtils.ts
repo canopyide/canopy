@@ -1,6 +1,6 @@
 import { isMac } from "@/lib/platform";
 
-export type KeyScope = "global" | "terminal" | "modal" | "worktreeList" | "portal";
+export type KeyScope = "global" | "terminal" | "modal" | "worktreeList" | "portal" | "worktreeGrid";
 
 export interface KeybindingConfig {
   actionId: string;
@@ -11,11 +11,22 @@ export interface KeybindingConfig {
   category?: string; // Category for organization in UI (e.g., "Terminal", "Panels")
 }
 
+// "conflict": same combo as an existing binding in an overlapping scope.
+// "shadowed": chord-prefix collision — registering this combo would make either
+// the new binding or the existing chord unreachable (e.g. "Cmd+K" vs "Cmd+K Cmd+S").
+export interface KeybindingConflict extends KeybindingConfig {
+  kind: "conflict" | "shadowed";
+}
+
 export interface KeybindingResolutionResult {
   match: KeybindingConfig | undefined;
   chordPrefix: boolean;
   shouldConsume: boolean;
 }
+
+// Window for completing a chord (e.g. the gap between "Cmd+K" and "Cmd+S").
+// Shared between the runtime matcher and the recorder UI so they stay in sync.
+export const CHORD_TIMEOUT_MS = 1000;
 
 // Map physical key codes to standard characters
 // Fixes issues where Option/Alt changes the character (e.g., Option+/ becomes ÷ on Mac)

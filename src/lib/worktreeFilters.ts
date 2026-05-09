@@ -72,17 +72,15 @@ export function getWorktreeType(worktree: Worktree | WorktreeState): WorktreeTyp
   return "other";
 }
 
-export function buildSearchableText(worktree: Worktree | WorktreeState): string {
-  const parts = [
-    worktree.name,
-    worktree.branch ?? "",
-    worktree.issueNumber ? `#${worktree.issueNumber}` : "",
-    worktree.prNumber ? `#${worktree.prNumber}` : "",
-    worktree.issueTitle ?? "",
-    worktree.prTitle ?? "",
-  ];
+// Module-scoped collator for natural-numeric, case-insensitive name ordering.
+// `numeric: true` makes "feature-2" sort before "feature-10".
+const WORKTREE_NAME_COLLATOR = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: "base",
+});
 
-  return parts.filter(Boolean).join(" ").toLowerCase();
+export function compareWorktreeNames(a: string, b: string): number {
+  return WORKTREE_NAME_COLLATOR.compare(a, b);
 }
 
 function scoreField(field: string, query: string, startsWith: number, contains: number): number {
@@ -254,22 +252,22 @@ export function sortWorktrees<T extends Worktree | WorktreeState>(
         const aPos = aIdx === -1 ? manualOrder.length : aIdx;
         const bPos = bIdx === -1 ? manualOrder.length : bIdx;
         if (aPos !== bPos) return aPos - bPos;
-        return a.name.localeCompare(b.name);
+        return compareWorktreeNames(a.name, b.name);
       }
       case "recent": {
         const timeA = Math.max(a.lastActivityTimestamp ?? 0, a.createdAt ?? 0);
         const timeB = Math.max(b.lastActivityTimestamp ?? 0, b.createdAt ?? 0);
         if (timeA !== timeB) return timeB - timeA;
-        return a.name.localeCompare(b.name);
+        return compareWorktreeNames(a.name, b.name);
       }
       case "created": {
         const createdA = a.createdAt ?? 0;
         const createdB = b.createdAt ?? 0;
         if (createdA !== createdB) return createdB - createdA;
-        return a.name.localeCompare(b.name);
+        return compareWorktreeNames(a.name, b.name);
       }
       case "alpha":
-        return a.name.localeCompare(b.name);
+        return compareWorktreeNames(a.name, b.name);
       default:
         return 0;
     }
@@ -423,4 +421,100 @@ export function findIntegrationWorktree<T extends Worktree | WorktreeState>(
         (INTEGRATION_BRANCH_NAMES as readonly string[]).includes(w.branch.toLowerCase())
     ) ?? null
   );
+}
+
+export interface ChipCounts {
+  status: Record<StatusFilter, number>;
+  branchType: Record<TypeFilter, number>;
+  github: Record<GitHubFilter, number>;
+  sessions: Record<SessionFilter, number>;
+  activity: Record<ActivityFilter, number>;
+}
+
+const STATUS_KEYS: StatusFilter[] = ["active", "dirty", "stale", "idle"];
+const TYPE_KEYS: TypeFilter[] = [
+  "feature",
+  "bugfix",
+  "refactor",
+  "chore",
+  "docs",
+  "test",
+  "release",
+  "ci",
+  "deps",
+  "perf",
+  "style",
+  "wip",
+  "main",
+  "detached",
+  "other",
+];
+const GITHUB_KEYS: GitHubFilter[] = ["hasIssue", "hasPR", "prOpen", "prMerged", "prClosed"];
+const SESSION_KEYS: SessionFilter[] = ["hasTerminals", "working", "waiting", "completed", "exited"];
+const ACTIVITY_KEYS: ActivityFilter[] = ["last15m", "last1h", "last24h", "last7d"];
+
+const ACTIVITY_WINDOW_MS: Record<ActivityFilter, number> = {
+  last15m: 15 * 60 * 1000,
+  last1h: 60 * 60 * 1000,
+  last24h: 24 * 60 * 60 * 1000,
+  last7d: 7 * 24 * 60 * 60 * 1000,
+};
+
+function emptyRecord<K extends string>(keys: readonly K[]): Record<K, number> {
+  const result = {} as Record<K, number>;
+  for (const key of keys) result[key] = 0;
+  return result;
+}
+
+export function emptyChipCounts(): ChipCounts {
+  return {
+    status: emptyRecord(STATUS_KEYS),
+    branchType: emptyRecord(TYPE_KEYS),
+    github: emptyRecord(GITHUB_KEYS),
+    sessions: emptyRecord(SESSION_KEYS),
+    activity: emptyRecord(ACTIVITY_KEYS),
+  };
+}
+
+export function computeChipCounts(
+  worktrees: readonly (Worktree | WorktreeState)[],
+  derivedMetaMap: Map<string, DerivedWorktreeMeta>,
+  activeWorktreeId: string | null
+): ChipCounts {
+  const counts = emptyChipCounts();
+  const now = Date.now();
+
+  for (const worktree of worktrees) {
+    const isActive = worktree.id === activeWorktreeId;
+    const statuses = computeStatus(worktree, isActive);
+    for (const status of statuses) counts.status[status]++;
+
+    const type = getWorktreeType(worktree);
+    counts.branchType[type]++;
+
+    if (worktree.issueNumber) counts.github.hasIssue++;
+    if (worktree.prNumber) counts.github.hasPR++;
+    if (worktree.prState === "open") counts.github.prOpen++;
+    if (worktree.prState === "merged") counts.github.prMerged++;
+    if (worktree.prState === "closed") counts.github.prClosed++;
+
+    const meta = derivedMetaMap.get(worktree.id);
+    if (meta) {
+      if (meta.terminalCount > 0) counts.sessions.hasTerminals++;
+      if (meta.hasWorkingAgent) counts.sessions.working++;
+      if (meta.hasWaitingAgent) counts.sessions.waiting++;
+      if (meta.hasCompletedAgent) counts.sessions.completed++;
+      if (meta.hasExitedAgent) counts.sessions.exited++;
+    }
+
+    const lastActivity = worktree.lastActivityTimestamp ?? 0;
+    if (lastActivity > 0) {
+      const elapsed = now - lastActivity;
+      for (const key of ACTIVITY_KEYS) {
+        if (elapsed < ACTIVITY_WINDOW_MS[key]) counts.activity[key]++;
+      }
+    }
+  }
+
+  return counts;
 }

@@ -15,7 +15,9 @@ export function registerCrashRecoveryHandlers(): () => void {
       if (getCrashLoopGuard().isSafeMode()) {
         return null;
       }
-      return getCrashRecoveryService().getPendingCrash();
+      const pending = getCrashRecoveryService().getPendingCrash();
+      if (!pending) return null;
+      return { ...pending, crashCount: getCrashLoopGuard().getCrashCount() };
     })
   );
 

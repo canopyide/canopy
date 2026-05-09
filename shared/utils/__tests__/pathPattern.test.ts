@@ -5,6 +5,7 @@ import {
   buildPathPatternVariables,
   generateWorktreePath,
   validatePathPattern,
+  validateBranchName,
   previewPathPattern,
   DEFAULT_WORKTREE_PATH_PATTERN,
 } from "../pathPattern.js";
@@ -218,6 +219,115 @@ describe("DEFAULT_WORKTREE_PATH_PATTERN", () => {
       DEFAULT_WORKTREE_PATH_PATTERN
     );
     expect(result).toBe("/home/user/repos/my-app-worktrees/develop");
+  });
+});
+
+describe("validateBranchName", () => {
+  it("accepts simple valid names", () => {
+    expect(validateBranchName("feature/foo").valid).toBe(true);
+    expect(validateBranchName("bugfix/issue-7033").valid).toBe(true);
+    expect(validateBranchName("release/v1.2.3").valid).toBe(true);
+    expect(validateBranchName("develop").valid).toBe(true);
+  });
+
+  it("rejects empty / blank input", () => {
+    expect(validateBranchName("").valid).toBe(false);
+    expect(validateBranchName("   ").valid).toBe(false);
+  });
+
+  it("rejects 'HEAD' (exact, case-sensitive)", () => {
+    expect(validateBranchName("HEAD").valid).toBe(false);
+    // 'head' is a perfectly valid git branch name.
+    expect(validateBranchName("head").valid).toBe(true);
+  });
+
+  it("rejects '@' alone", () => {
+    expect(validateBranchName("@").valid).toBe(false);
+    // 'foo@bar' is fine — only the bare '@' is reserved.
+    expect(validateBranchName("foo@bar").valid).toBe(true);
+  });
+
+  it("rejects names that start with '-'", () => {
+    expect(validateBranchName("-bad").valid).toBe(false);
+  });
+
+  it("rejects forbidden punctuation: space ~ ^ : ? * [ \\", () => {
+    expect(validateBranchName("feature foo").valid).toBe(false);
+    expect(validateBranchName("feature~foo").valid).toBe(false);
+    expect(validateBranchName("feature^foo").valid).toBe(false);
+    expect(validateBranchName("feature:foo").valid).toBe(false);
+    expect(validateBranchName("feature?foo").valid).toBe(false);
+    expect(validateBranchName("feature*foo").valid).toBe(false);
+    expect(validateBranchName("feature[foo").valid).toBe(false);
+    expect(validateBranchName("feature\\foo").valid).toBe(false);
+  });
+
+  it("rejects '..' and '@{' substrings", () => {
+    expect(validateBranchName("feature..foo").valid).toBe(false);
+    expect(validateBranchName("feature@{foo").valid).toBe(false);
+  });
+
+  it("rejects consecutive slashes and leading/trailing slashes", () => {
+    expect(validateBranchName("feature//foo").valid).toBe(false);
+    expect(validateBranchName("/feature").valid).toBe(false);
+    expect(validateBranchName("feature/").valid).toBe(false);
+  });
+
+  it("rejects components starting with '.' or ending with '.' / '.lock'", () => {
+    expect(validateBranchName("feature/.hidden").valid).toBe(false);
+    expect(validateBranchName(".feature").valid).toBe(false);
+    expect(validateBranchName("feature/foo.").valid).toBe(false);
+    expect(validateBranchName("feature.").valid).toBe(false);
+    expect(validateBranchName("feature/foo.lock").valid).toBe(false);
+    expect(validateBranchName("feature.lock").valid).toBe(false);
+  });
+
+  it("rejects '.lock' on a middle path component", () => {
+    // git check-ref-format rejects component-level .lock anywhere, not just
+    // the final component. The split-by-'/' loop must catch the middle case.
+    expect(validateBranchName("feature/foo.lock/bar").valid).toBe(false);
+  });
+
+  it("rejects ASCII control characters", () => {
+    expect(validateBranchName("feat\x01ure").valid).toBe(false);
+    expect(validateBranchName("feat\x09ure").valid).toBe(false); // tab
+    expect(validateBranchName("feat\x7fure").valid).toBe(false); // DEL
+  });
+
+  it("rejects Windows reserved names in any component, case-insensitively", () => {
+    expect(validateBranchName("CON").valid).toBe(false);
+    expect(validateBranchName("con").valid).toBe(false);
+    expect(validateBranchName("Nul").valid).toBe(false);
+    expect(validateBranchName("PRN").valid).toBe(false);
+    expect(validateBranchName("AUX").valid).toBe(false);
+    expect(validateBranchName("COM0").valid).toBe(false);
+    expect(validateBranchName("COM9").valid).toBe(false);
+    expect(validateBranchName("LPT1").valid).toBe(false);
+    expect(validateBranchName("LPT0").valid).toBe(false);
+    expect(validateBranchName("feature/nul").valid).toBe(false);
+    expect(validateBranchName("nul/feature").valid).toBe(false);
+  });
+
+  it("rejects Windows reserved names with extension suffixes", () => {
+    expect(validateBranchName("NUL.txt").valid).toBe(false);
+    expect(validateBranchName("feature/CON.md").valid).toBe(false);
+    expect(validateBranchName("prn.lock").valid).toBe(false);
+  });
+
+  it("does not reject names that merely contain a reserved substring", () => {
+    expect(validateBranchName("nullable").valid).toBe(true);
+    expect(validateBranchName("connection").valid).toBe(true);
+    expect(validateBranchName("auxiliary").valid).toBe(true);
+  });
+
+  it("returns a descriptive error for the failure cause", () => {
+    const result = validateBranchName("feature@{x");
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("@{");
+
+    const reservedResult = validateBranchName("feature/NUL");
+    expect(reservedResult.valid).toBe(false);
+    expect(reservedResult.error).toMatch(/Windows-reserved/);
   });
 });
 

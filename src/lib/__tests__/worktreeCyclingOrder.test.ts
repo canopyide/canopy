@@ -153,6 +153,7 @@ describe("getVisibleWorktreesForCycling", () => {
           hasPty: true,
           isVisible: true,
           agentState: "working",
+          detectedAgentId: "claude",
         } as unknown as ReturnType<typeof usePanelStore.getState>["panelsById"][string],
       },
       panelIds: ["term-working"],
@@ -275,5 +276,78 @@ describe("getVisibleWorktreesForCycling", () => {
     // Grouped order (feature → bugfix) with pins promoted inside each section:
     // feature section = [feat-2 (pinned), feat-1]; bugfix section = [bug-2 (pinned), bug-1].
     expect(ids).toEqual(["main", "feat-2", "feat-1", "bug-2", "bug-1"]);
+  });
+
+  it("excludes background terminals from quickStateFilter matching", () => {
+    useWorktreeFilterStore.setState({ quickStateFilter: "waiting" });
+    setWorktrees([
+      createSnapshot({ id: "main", name: "main", branch: "main", isMainWorktree: true }),
+      createSnapshot({ id: "wt-bg", name: "bg", branch: "feature/bg" }),
+    ]);
+    usePanelStore.setState({
+      panelsById: {
+        "term-waiting": {
+          id: "term-waiting",
+          kind: "terminal",
+          type: "terminal",
+          worktreeId: "wt-bg",
+          location: "background",
+          agentState: "waiting",
+          detectedAgentId: "claude",
+        },
+      } as unknown as ReturnType<typeof usePanelStore.getState>,
+      panelIds: ["term-waiting"],
+    } as never);
+    const ids = getVisibleWorktreesForCycling().map((w) => w.id);
+    expect(ids).not.toContain("wt-bg");
+  });
+
+  it("excludes ephemeral terminals from quickStateFilter matching", () => {
+    useWorktreeFilterStore.setState({ quickStateFilter: "waiting" });
+    setWorktrees([
+      createSnapshot({ id: "main", name: "main", branch: "main", isMainWorktree: true }),
+      createSnapshot({ id: "wt-eph", name: "eph", branch: "feature/eph" }),
+    ]);
+    usePanelStore.setState({
+      panelsById: {
+        "term-waiting": {
+          id: "term-waiting",
+          kind: "terminal",
+          type: "terminal",
+          worktreeId: "wt-eph",
+          location: "grid",
+          ephemeral: true,
+          agentState: "waiting",
+          detectedAgentId: "claude",
+        },
+      } as unknown as ReturnType<typeof usePanelStore.getState>,
+      panelIds: ["term-waiting"],
+    } as never);
+    const ids = getVisibleWorktreesForCycling().map((w) => w.id);
+    expect(ids).not.toContain("wt-eph");
+  });
+
+  it("excludes non-agent terminals from quickStateFilter matching", () => {
+    useWorktreeFilterStore.setState({ quickStateFilter: "waiting" });
+    setWorktrees([
+      createSnapshot({ id: "main", name: "main", branch: "main", isMainWorktree: true }),
+      createSnapshot({ id: "wt-shell", name: "shell", branch: "feature/shell" }),
+    ]);
+    // Plain shell terminal — no detectedAgentId, launchAgentId, or runtimeIdentity
+    usePanelStore.setState({
+      panelsById: {
+        "term-plain": {
+          id: "term-plain",
+          kind: "terminal",
+          type: "terminal",
+          worktreeId: "wt-shell",
+          location: "grid",
+          agentState: "waiting",
+        },
+      } as unknown as ReturnType<typeof usePanelStore.getState>,
+      panelIds: ["term-plain"],
+    } as never);
+    const ids = getVisibleWorktreesForCycling().map((w) => w.id);
+    expect(ids).not.toContain("wt-shell");
   });
 });

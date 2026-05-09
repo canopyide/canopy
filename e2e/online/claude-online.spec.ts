@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 import {
   launchApp,
   closeApp,
@@ -10,45 +10,75 @@ import { createFixtureRepo } from "../helpers/fixtures";
 import { dismissTelemetryConsent } from "../helpers/project";
 import { getTerminalText } from "../helpers/terminal";
 import { SEL } from "../helpers/selectors";
+import { configureClaudeAuthEnv, hasClaudeApiKey } from "../helpers/claudeAuth";
 
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
+
+async function focusHybridEditor(page: Page, agentPanel: Locator): Promise<void> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const cmEditor = agentPanel.locator(SEL.terminal.cmEditor);
+    try {
+      await expect(cmEditor).toBeVisible({ timeout: 5_000 });
+      await cmEditor.evaluate((node) => {
+        const element = node as HTMLElement;
+        element.scrollIntoView({ block: "center", inline: "center" });
+        element.focus();
+      });
+      await expect
+        .poll(
+          () => cmEditor.evaluate((node) => document.activeElement === node).catch(() => false),
+          {
+            timeout: 2_000,
+            intervals: [100, 250],
+          }
+        )
+        .toBe(true);
+      return;
+    } catch (error) {
+      lastError = error;
+      await page.waitForTimeout(500);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("Failed to focus hybrid editor");
+}
 
 test.describe("Claude Online Flow", () => {
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "claude-online" });
+    const { dir, cleanup } = createFixtureRepo({ name: "claude-online" });
+    fixtureDir = dir;
+    fixtureCleanup = cleanup;
   });
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("full Claude agent interaction", async () => {
+    test.skip(!hasClaudeApiKey(), "ANTHROPIC_API_KEY is required for Claude online flow");
+
     await test.step("launch app", async () => {
       ctx = await launchApp();
     });
 
-    await test.step("open folder and complete onboarding", async () => {
+    await test.step("open folder", async () => {
       const { app, window } = ctx;
 
       await mockOpenDialog(app, fixtureDir);
       await window.getByRole("button", { name: "Open Folder" }).click();
-
-      const heading = window.locator("h2", { hasText: "Set up your project" });
-      await expect(heading).toBeVisible({ timeout: 10_000 });
-
-      const nameInput = window.getByRole("textbox", { name: "Project Name" });
-      await nameInput.fill("Claude Online Test");
-
-      await window.getByRole("button", { name: "Finish", exact: true }).click();
-      await expect(heading).not.toBeVisible({ timeout: 5_000 });
-
-      await dismissTelemetryConsent(window);
     });
 
-    // Re-acquire window after onboarding — ProjectViewManager may have
-    // created a new WebContentsView for the project.
+    // Re-acquire window after open — ProjectViewManager creates a new
+    // WebContentsView for the project — then dismiss the telemetry consent
+    // dialog if it appears.
     ctx.window = await refreshActiveWindow(ctx.app, ctx.window);
+    await dismissTelemetryConsent(ctx.window);
+    await configureClaudeAuthEnv(ctx.window);
 
     await test.step("launch Claude agent", async () => {
       const { window } = ctx;
@@ -66,11 +96,12 @@ test.describe("Claude Online Flow", () => {
     await test.step("handle prompts and wait for Welcome", async () => {
       const { window } = ctx;
       const agentPanel = window.locator(SEL.agent.panel);
-      const cmEditor = agentPanel.locator(SEL.terminal.cmEditor);
 
       // Claude Code may prompt for trust, API key, or skip straight to Welcome
       // depending on prior configuration. Poll and handle whatever appears.
-      const deadline = Date.now() + 90_000;
+      // Windows GitHub runners are dramatically slower at first-run Claude Code
+      // startup (Node spawn + auth check + render) — give them 3x the budget.
+      const deadline = Date.now() + (process.platform === "win32" ? 270_000 : 90_000);
       let reachedWelcome = false;
 
       while (Date.now() < deadline && !reachedWelcome) {
@@ -83,11 +114,11 @@ test.describe("Claude Online Flow", () => {
         if (lower.includes("welcome")) {
           reachedWelcome = true;
         } else if (lower.includes("trust")) {
-          await cmEditor.click();
+          await focusHybridEditor(window, agentPanel);
           await window.keyboard.press("Enter");
           await window.waitForTimeout(2_000);
         } else if (lower.includes("api key")) {
-          await cmEditor.click();
+          await focusHybridEditor(window, agentPanel);
           await window.keyboard.press("ArrowUp");
           await window.keyboard.press("Enter");
           await window.waitForTimeout(2_000);
@@ -103,9 +134,8 @@ test.describe("Claude Online Flow", () => {
       const { window } = ctx;
 
       const agentPanel = window.locator(SEL.agent.panel);
-      const cmEditor = agentPanel.locator(SEL.terminal.cmEditor);
-      await cmEditor.click();
-      await cmEditor.pressSequentially("Please say hello world", { delay: 30 });
+      await focusHybridEditor(window, agentPanel);
+      await window.keyboard.type("Please say hello world", { delay: 30 });
       await window.keyboard.press("Enter");
     });
 

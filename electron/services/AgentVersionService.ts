@@ -85,16 +85,18 @@ export class AgentVersionService {
       };
     }
 
-    const inFlight = this.inFlightChecks.get(agentId);
-    if (inFlight) {
-      return inFlight;
-    }
+    if (!refresh) {
+      const inFlight = this.inFlightChecks.get(agentId);
+      if (inFlight) {
+        return inFlight;
+      }
 
-    const cached = this.cache.get(agentId);
-    if (!refresh && cached) {
-      const age = Date.now() - cached.timestamp;
-      if (age < this.CACHE_TTL_MS) {
-        return cached.info;
+      const cached = this.cache.get(agentId);
+      if (cached) {
+        const age = Date.now() - cached.timestamp;
+        if (age < this.CACHE_TTL_MS) {
+          return cached.info;
+        }
       }
     }
 
@@ -143,23 +145,28 @@ export class AgentVersionService {
       };
     }
 
+    const [installedResult, latestResult] = await Promise.allSettled([
+      this.getInstalledVersion(agentId),
+      this.getLatestVersion(agentId),
+    ]);
+
     let installedVersion: string | null = null;
     let latestVersion: string | null = null;
-    let error: string | undefined;
+    const errors: string[] = [];
 
-    try {
-      installedVersion = await this.getInstalledVersion(agentId);
-    } catch (err: any) {
-      error = `Failed to get installed version: ${err.message}`;
+    if (installedResult.status === "fulfilled") {
+      installedVersion = installedResult.value;
+    } else {
+      errors.push(`Failed to get installed version: ${this.toErrorString(installedResult.reason)}`);
     }
 
-    try {
-      latestVersion = await this.getLatestVersion(agentId);
-    } catch (err: any) {
-      if (!error) {
-        error = `Failed to get latest version: ${err.message}`;
-      }
+    if (latestResult.status === "fulfilled") {
+      latestVersion = latestResult.value;
+    } else {
+      errors.push(`Failed to get latest version: ${this.toErrorString(latestResult.reason)}`);
     }
+
+    const error = errors.length > 0 ? errors.join("; ") : undefined;
 
     const updateAvailable = this.isUpdateAvailable(installedVersion, latestVersion);
 
@@ -283,13 +290,17 @@ export class AgentVersionService {
 
   private async getLatestNpmVersion(packageName: string): Promise<string | null> {
     try {
-      const url = `https://registry.npmjs.org/${packageName}?fields=dist-tags`;
+      const url = `https://registry.npmjs.org/${packageName}`;
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), this.TIMEOUT_MS);
 
       try {
         const response = await fetch(url, {
           signal: controller.signal,
+          headers: {
+            Accept: "application/vnd.npm.install-v1+json",
+            "User-Agent": "Daintree-Electron",
+          },
         });
 
         if (!response.ok) {
@@ -302,7 +313,7 @@ export class AgentVersionService {
         clearTimeout(timeoutId);
       }
     } catch (error: any) {
-      throw new Error(`Failed to fetch npm version: ${error.message}`);
+      throw new Error(`Failed to fetch npm version: ${this.toErrorString(error)}`);
     }
   }
 
@@ -351,7 +362,7 @@ export class AgentVersionService {
         clearTimeout(timeoutId);
       }
     } catch (error: any) {
-      throw new Error(`Failed to fetch GitHub version for ${repo}: ${error.message}`);
+      throw new Error(`Failed to fetch GitHub version for ${repo}: ${this.toErrorString(error)}`);
     }
   }
 
@@ -366,9 +377,9 @@ export class AgentVersionService {
     }
 
     const versionPatterns = [
-      /v?(\d+\.\d+\.\d+(?:-[a-z0-9.]+(?:\+[a-z0-9.]+)?)?)/i,
-      /version[:\s]+v?(\d+\.\d+\.\d+(?:-[a-z0-9.]+)?)/i,
-      /(\d+\.\d+\.\d+(?:-[a-z0-9.]+)?)/,
+      /v?(\d+\.\d+\.\d+(?:-[a-z0-9.-]+(?:\+[a-z0-9.-]+)?)?)/i,
+      /version[:\s]+v?(\d+\.\d+\.\d+(?:-[a-z0-9.-]+)?)/i,
+      /(\d+\.\d+\.\d+(?:-[a-z0-9.-]+)?)/,
     ];
 
     for (const pattern of versionPatterns) {
@@ -381,7 +392,7 @@ export class AgentVersionService {
       }
     }
 
-    const coerced = semver.coerce(versionString);
+    const coerced = semver.coerce(versionString, { includePrerelease: true });
     if (coerced) {
       return coerced.version;
     }
@@ -394,6 +405,10 @@ export class AgentVersionService {
     latestVersion: string | null
   ): boolean {
     if (!installedVersion || !latestVersion) {
+      return false;
+    }
+
+    if (!semver.prerelease(installedVersion) && semver.prerelease(latestVersion)) {
       return false;
     }
 

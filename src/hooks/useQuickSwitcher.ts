@@ -26,10 +26,12 @@ export interface UseQuickSwitcherReturn {
   results: QuickSwitcherItem[];
   totalResults: number;
   selectedIndex: number;
+  isLoading: boolean;
   open: () => void;
   close: () => void;
   toggle: () => void;
   setQuery: (query: string) => void;
+  setSelectedIndex: (index: number) => void;
   selectPrevious: () => void;
   selectNext: () => void;
   selectItem: (item: QuickSwitcherItem) => void;
@@ -50,13 +52,18 @@ const MAX_RESULTS = 20;
 const MRU_BOOST_FACTOR = 0.05;
 
 export function useQuickSwitcher(): UseQuickSwitcherReturn {
-  const panelIds = usePanelStore(useShallow((state) => state.panelIds));
-  const panelsById = usePanelStore(useShallow((state) => state.panelsById));
+  const panelIds = usePanelStore((state) => state.panelIds);
+  const panelsById = usePanelStore((state) => state.panelsById);
   const setFocused = usePanelStore((state) => state.setFocused);
-  const mruList = usePanelStore(useShallow((state) => state.mruList));
+  const mruList = usePanelStore((state) => state.mruList);
   const pruneMru = usePanelStore((state) => state.pruneMru);
 
-  const { worktrees, worktreeMap } = useWorktrees();
+  const {
+    worktrees,
+    worktreeMap,
+    isInitialized: worktreesInitialized,
+    error: worktreeError,
+  } = useWorktrees();
   const { selectWorktree } = useWorktreeSelectionStore(
     useShallow((state) => ({
       selectWorktree: state.selectWorktree,
@@ -71,6 +78,7 @@ export function useQuickSwitcher(): UseQuickSwitcherReturn {
       const t = panelsById[id];
       if (!t) continue;
       if (t.location === "trash") continue;
+      if (t.ephemeral === true) continue;
       if (t.hasPty === false) continue;
       if (!isPtyPanel(t)) continue;
       const worktreeName = t.worktreeId ? worktreeMap.get(t.worktreeId)?.name : undefined;
@@ -153,6 +161,7 @@ export function useQuickSwitcher(): UseQuickSwitcherReturn {
     close,
     toggle,
     setQuery,
+    setSelectedIndex,
     selectPrevious,
     selectNext,
   } = useSearchablePalette<QuickSwitcherItem>({
@@ -204,10 +213,12 @@ export function useQuickSwitcher(): UseQuickSwitcherReturn {
     results,
     totalResults,
     selectedIndex,
+    isLoading: !worktreesInitialized && worktreeError === null,
     open,
     close,
     toggle,
     setQuery,
+    setSelectedIndex,
     selectPrevious,
     selectNext,
     selectItem,

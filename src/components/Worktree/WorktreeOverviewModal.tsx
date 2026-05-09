@@ -15,6 +15,7 @@ import {
   matchesFilters,
   sortWorktrees,
   groupByType,
+  computeChipCounts,
   type DerivedWorktreeMeta,
   type FilterState,
   type GroupedSection,
@@ -22,6 +23,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { isAgentTerminal } from "@/utils/terminalType";
+import { isTerminalVisible } from "@/lib/terminalVisibility";
+import { useWorktreeIds } from "@/hooks/useTerminalSelectors";
 
 interface OverviewWorktreeCardProps {
   worktreeId: string;
@@ -205,8 +208,10 @@ export function WorktreeOverviewModal({
   const hasActiveFilters = useWorktreeFilterStore((state) => state.hasActiveFilters);
 
   // Terminal store for derived metadata
-  const panelsById = usePanelStore(useShallow((state) => state.panelsById));
-  const panelIds = usePanelStore(useShallow((state) => state.panelIds));
+  const panelsById = usePanelStore((state) => state.panelsById);
+  const panelIds = usePanelStore((state) => state.panelIds);
+  const isInTrash = usePanelStore((state) => state.isInTrash);
+  const worktreeIds = useWorktreeIds();
 
   // Error store for derived metadata
   // Filter store: hide main worktree preference
@@ -224,7 +229,8 @@ export function WorktreeOverviewModal({
       let hasExitedAgent = false;
       for (const id of panelIds) {
         const t = panelsById[id];
-        if (!t || t.worktreeId !== worktree.id || t.location === "trash") continue;
+        if (!t || t.worktreeId !== worktree.id || !isTerminalVisible(t, isInTrash, worktreeIds))
+          continue;
         terminalCount++;
         if (!isAgentTerminal(t)) continue;
         if (t.agentState === "working") hasWorkingAgent = true;
@@ -244,7 +250,12 @@ export function WorktreeOverviewModal({
       });
     }
     return map;
-  }, [worktrees, panelsById, panelIds]);
+  }, [worktrees, panelsById, panelIds, isInTrash, worktreeIds]);
+
+  const chipCounts = useMemo(() => {
+    const candidates = hideMainWorktree ? worktrees.filter((w) => !w.isMainWorktree) : worktrees;
+    return computeChipCounts(candidates, derivedMetaMap, activeWorktreeId);
+  }, [worktrees, derivedMetaMap, activeWorktreeId, hideMainWorktree]);
 
   // Compute aggregate statistics from derivedMetaMap
   const aggregateStats = useMemo(() => {
@@ -488,7 +499,7 @@ export function WorktreeOverviewModal({
               </Tooltip>
             )}
             {/* Filter Popover */}
-            <WorktreeFilterPopover />
+            <WorktreeFilterPopover chipCounts={chipCounts} />
             {/* Clear Filters Button - only shown when filters are active */}
             {hasActiveFilters() && (
               <Tooltip>
@@ -580,9 +591,7 @@ export function WorktreeOverviewModal({
                           "border border-divider",
                           "bg-daintree-sidebar/50",
                           "transition duration-150",
-                          "hover:border-daintree-accent/50 hover:shadow-lg hover:shadow-daintree-accent/5",
-                          worktree.id === activeWorktreeId &&
-                            "border-[var(--color-state-active)]/70 shadow-md"
+                          "hover:bg-overlay-subtle hover:shadow-[var(--theme-shadow-ambient)]"
                         )}
                       >
                         <OverviewWorktreeCard
@@ -627,9 +636,7 @@ export function WorktreeOverviewModal({
                     "border border-divider",
                     "bg-daintree-sidebar/50",
                     "transition duration-150",
-                    "hover:border-daintree-accent/50 hover:shadow-lg hover:shadow-daintree-accent/5",
-                    worktree.id === activeWorktreeId &&
-                      "border-[var(--color-state-active)]/70 shadow-md"
+                    "hover:bg-overlay-subtle hover:shadow-[var(--theme-shadow-ambient)]"
                   )}
                 >
                   <OverviewWorktreeCard

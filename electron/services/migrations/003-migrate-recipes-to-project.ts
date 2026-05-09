@@ -35,62 +35,62 @@ export const migration003: Migration = {
       `[Migration 003] Migrating ${appState.recipes.length} recipe(s) to project ${currentProjectId}`
     );
 
-    try {
-      // Load existing project recipes to merge (avoid overwriting)
-      const existingRecipes = await projectStore.getRecipes(currentProjectId);
-      const existingIds = new Set(existingRecipes.map((r) => r.id));
+    // Load existing project recipes to merge (avoid overwriting)
+    const existingRecipes = await projectStore.getRecipes(currentProjectId);
+    const existingIds = new Set(existingRecipes.map((r) => r.id));
 
-      console.log(`[Migration 003] Found ${existingRecipes.length} existing recipe(s) in project`);
+    console.log(`[Migration 003] Found ${existingRecipes.length} existing recipe(s) in project`);
 
-      // Convert legacy recipes to new format with projectId, filtering out duplicates
-      const migratedRecipes: TerminalRecipe[] = appState.recipes
-        .filter((legacyRecipe) => {
-          if (existingIds.has(legacyRecipe.id)) {
-            console.log(`[Migration 003] Skipping duplicate recipe: ${legacyRecipe.id}`);
-            return false;
-          }
-          return true;
-        })
-        .map((legacyRecipe) => {
-          const terminals: RecipeTerminal[] = (legacyRecipe.terminals || []).map((t) => ({
-            type: (t.launchAgentId ?? "terminal") as RecipeTerminal["type"],
-            title: t.title,
-            command: t.command,
-            env: t.env,
-          }));
+    // Convert legacy recipes to new format with projectId, filtering out duplicates
+    const migratedRecipes: TerminalRecipe[] = appState.recipes
+      .filter((legacyRecipe) => {
+        if (existingIds.has(legacyRecipe.id)) {
+          console.log(`[Migration 003] Skipping duplicate recipe: ${legacyRecipe.id}`);
+          return false;
+        }
+        return true;
+      })
+      .map((legacyRecipe) => {
+        const terminals: RecipeTerminal[] = (legacyRecipe.terminals || []).map((t) => ({
+          type: (t.launchAgentId ?? "terminal") as RecipeTerminal["type"],
+          title: t.title,
+          command: t.command,
+          env: t.env,
+        }));
 
-          return {
-            id: legacyRecipe.id,
-            name: legacyRecipe.name,
-            projectId: currentProjectId,
-            worktreeId: legacyRecipe.worktreeId,
-            terminals,
-            createdAt: legacyRecipe.createdAt || Date.now(),
-            showInEmptyState: legacyRecipe.showInEmptyState,
-            lastUsedAt: legacyRecipe.lastUsedAt,
-          };
-        });
+        return {
+          id: legacyRecipe.id,
+          name: legacyRecipe.name,
+          projectId: currentProjectId,
+          worktreeId: legacyRecipe.worktreeId,
+          terminals,
+          createdAt: legacyRecipe.createdAt || Date.now(),
+          showInEmptyState: legacyRecipe.showInEmptyState,
+          lastUsedAt: legacyRecipe.lastUsedAt,
+        };
+      });
 
-      if (migratedRecipes.length === 0) {
-        console.log("[Migration 003] No new recipes to migrate (all already exist)");
-      } else {
-        // Merge with existing recipes
-        const mergedRecipes = [...existingRecipes, ...migratedRecipes];
+    if (migratedRecipes.length === 0) {
+      console.log("[Migration 003] No new recipes to migrate (all already exist)");
+    } else {
+      // Merge with existing recipes
+      const mergedRecipes = [...existingRecipes, ...migratedRecipes];
 
-        // Save merged recipes to project-scoped storage
+      // Rethrow on save failure so MigrationRunner activates the backup-restore
+      // path; legacy recipes stay in `appState` until the retry succeeds.
+      try {
         await projectStore.saveRecipes(currentProjectId, mergedRecipes);
-
-        console.log(
-          `[Migration 003] Successfully migrated ${migratedRecipes.length} new recipe(s), total now ${mergedRecipes.length}`
-        );
+      } catch (error) {
+        console.error(`[Migration 003] saveRecipes failed for project ${currentProjectId}:`, error);
+        throw error;
       }
 
-      // Clear global recipes only after successful migration
-      store.set("appState", { ...appState, recipes: [] });
-    } catch (error) {
-      console.error("[Migration 003] Failed to migrate recipes:", error);
-      // Don't throw and don't clear global recipes - let the app continue
-      // The global recipes will remain and can be manually migrated later
+      console.log(
+        `[Migration 003] Successfully migrated ${migratedRecipes.length} new recipe(s), total now ${mergedRecipes.length}`
+      );
     }
+
+    // Clear global recipes only after successful migration
+    store.set("appState", { ...appState, recipes: [] });
   },
 };

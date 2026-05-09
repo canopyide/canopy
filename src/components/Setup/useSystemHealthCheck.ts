@@ -45,15 +45,22 @@ export function useSystemHealthCheck(): SystemHealthCheckState {
     isCheckingRef.current = true;
     setIsChecking(true);
     setError(null);
-    setSpecs([]);
-    setCheckStates({});
 
     try {
       const resolvedSpecs = await systemClient.getHealthCheckSpecs();
       if (!activeRef.current) return;
 
       setSpecs(resolvedSpecs);
-      setCheckStates(Object.fromEntries(resolvedSpecs.map((s) => [s.tool, "loading" as const])));
+      // Stale-while-revalidate: keep prior results for tools still in the spec
+      // list, drop entries for tools no longer present, mark net-new tools as
+      // loading. Per-card results are then overwritten as runPool completes.
+      setCheckStates((prev) => {
+        const next: Record<string, CheckState> = {};
+        for (const s of resolvedSpecs) {
+          next[s.tool] = prev[s.tool] ?? "loading";
+        }
+        return next;
+      });
 
       await runPool(resolvedSpecs, POOL_CONCURRENCY, async (spec) => {
         try {
@@ -93,6 +100,22 @@ export function useSystemHealthCheck(): SystemHealthCheckState {
     void runCheck();
     return () => {
       activeRef.current = false;
+    };
+  }, [runCheck]);
+
+  // Re-check when the user returns to Daintree — tools installed while the
+  // wizard was backgrounded should appear without a manual "Re-check" click.
+  // The document.hasFocus() guard avoids re-running when switching between
+  // project WebContentsViews inside the same window. isCheckingRef prevents
+  // overlap with an in-flight check (mount or otherwise).
+  useEffect(() => {
+    const handleFocus = () => {
+      if (!document.hasFocus()) return;
+      void runCheck();
+    };
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      window.removeEventListener("focus", handleFocus);
     };
   }, [runCheck]);
 

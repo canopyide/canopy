@@ -1,9 +1,16 @@
+import { memo, useEffect, useRef, useState, type Ref } from "react";
 import { CheckCircle2, XCircle, Info, AlertTriangle, MoreHorizontal, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { NotificationHistoryEntry } from "@/store/slices/notificationHistorySlice";
 import { actionService } from "@/services/ActionService";
+import { EVENT_KIND_LABEL, isNotificationEventKind } from "@/lib/notify";
 import type { ActionId } from "@shared/types/actions";
 import type { NotificationType } from "@/store/notificationStore";
+import { DURATION_250 } from "@/lib/animationUtils";
+import {
+  formatNotificationCountAriaLabel,
+  formatNotificationCountGlyph,
+} from "./notificationCount";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,15 +25,52 @@ const TYPE_CONFIG = {
   warning: { icon: AlertTriangle, className: "text-status-warning" },
 };
 
-function formatRelativeTime(timestamp: number): string {
-  const seconds = Math.floor((Date.now() - timestamp) / 1000);
-  if (seconds < 60) return "just now";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+const yesterdayTimeFormatter = new Intl.DateTimeFormat(undefined, {
+  hour: "2-digit",
+  minute: "2-digit",
+});
+const sameYearFormatter = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+});
+const priorYearFormatter = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
+const absoluteFormatter = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "full",
+  timeStyle: "short",
+});
+
+function formatNotificationTimestamp(timestamp: number): {
+  label: string;
+  absolute: string;
+} {
+  const now = new Date();
+  const date = new Date(timestamp);
+  const absolute = absoluteFormatter.format(date);
+
+  if (date.toDateString() === now.toDateString()) {
+    const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+    if (seconds < 60) return { label: "just now", absolute };
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return { label: `${minutes}m ago`, absolute };
+    const hours = Math.floor(minutes / 60);
+    return { label: `${hours}h ago`, absolute };
+  }
+
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) {
+    return { label: `Yesterday ${yesterdayTimeFormatter.format(date)}`, absolute };
+  }
+
+  if (date.getFullYear() === now.getFullYear()) {
+    return { label: sameYearFormatter.format(date), absolute };
+  }
+
+  return { label: priorYearFormatter.format(date), absolute };
 }
 
 interface NotificationCenterEntryProps {
@@ -35,32 +79,108 @@ interface NotificationCenterEntryProps {
   threadCount?: number;
   isNew?: boolean;
   onDismiss?: () => void;
+  rowRef?: Ref<HTMLDivElement>;
+  tabIndex?: number;
+  role?: string;
+  onFocus?: () => void;
+  onDropdownOpenChange?: (open: boolean) => void;
 }
 
-export function NotificationCenterEntry({
+function NotificationCenterEntryImpl({
   entry,
   displayType,
   threadCount,
   isNew = false,
   onDismiss,
+  rowRef,
+  tabIndex,
+  role,
+  onFocus,
+  onDropdownOpenChange,
 }: NotificationCenterEntryProps) {
   const config = TYPE_CONFIG[displayType ?? entry.type];
   const Icon = config.icon;
 
+  const showChip =
+    typeof threadCount === "number" && Number.isFinite(threadCount) && threadCount > 1;
+  // Leading-edge throttle: bump the chip's React `key` to remount the span and
+  // restart the CSS animation, but suppress re-fires within DURATION_250 so
+  // chatty agent-state churn (#6427) doesn't strobe the chip. The displayed
+  // count still updates immediately — only the animation trigger is gated.
+  const safeCount = threadCount ?? 0;
+  const lastCountRef = useRef(safeCount);
+  const lastBumpTimeRef = useRef(0);
+  const [bumpKey, setBumpKey] = useState(0);
+  useEffect(() => {
+    if (safeCount <= lastCountRef.current) {
+      lastCountRef.current = safeCount;
+      return;
+    }
+    lastCountRef.current = safeCount;
+    const now = Date.now();
+    if (now - lastBumpTimeRef.current < DURATION_250) return;
+    lastBumpTimeRef.current = now;
+    setBumpKey((k) => k + 1);
+  }, [safeCount]);
+
   return (
-    <div className="group flex items-start gap-2.5 px-3 py-2 hover:bg-overlay-medium transition-colors">
+    <div
+      ref={rowRef}
+      tabIndex={tabIndex}
+      role={role}
+      onFocus={onFocus}
+      className={cn(
+        "group flex items-start gap-2.5 px-3 py-2 hover:bg-overlay-medium transition-colors",
+        tabIndex !== undefined &&
+          "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-daintree-accent/50"
+      )}
+    >
+      <span
+        aria-hidden="true"
+        className={cn("w-1.5 shrink-0 self-center", isNew && "h-1.5 rounded-full bg-status-info")}
+      />
       <div className={cn("mt-0.5 shrink-0", config.className)}>
         <Icon className="h-3.5 w-3.5" />
       </div>
       <div className="flex-1 min-w-0">
         {entry.title && (
-          <p className="text-xs font-medium text-daintree-text truncate">{entry.title}</p>
+          <div className="flex items-center gap-1.5">
+            <p
+              className={cn(
+                "text-xs text-daintree-text truncate",
+                isNew ? "font-semibold" : "font-normal"
+              )}
+            >
+              {entry.title}
+            </p>
+            {showChip && (
+              <span
+                key={bumpKey}
+                aria-label={formatNotificationCountAriaLabel(safeCount)}
+                style={{ animationDuration: "150ms" }}
+                className={cn(
+                  "shrink-0 rounded-full bg-tint/15 px-1.5 py-0.5 text-[10px] font-medium leading-none text-daintree-text/60 tabular-nums min-w-[2.5ch] text-center",
+                  bumpKey > 0 && "animate-badge-bump"
+                )}
+              >
+                {formatNotificationCountGlyph(safeCount)}
+              </span>
+            )}
+          </div>
         )}
         <p className="text-xs text-daintree-text/70 leading-snug break-words">{entry.message}</p>
-        {threadCount && threadCount > 1 && (
-          <p className="text-[10px] tabular-nums text-daintree-text/40 mt-0.5">
-            {threadCount} events
-          </p>
+        {showChip && !entry.title && (
+          <span
+            key={bumpKey}
+            aria-label={formatNotificationCountAriaLabel(safeCount)}
+            style={{ animationDuration: "150ms" }}
+            className={cn(
+              "mt-0.5 inline-block rounded-full bg-tint/15 px-1.5 py-0.5 text-[10px] font-medium leading-none text-daintree-text/60 tabular-nums min-w-[2.5ch] text-center",
+              bumpKey > 0 && "animate-badge-bump"
+            )}
+          >
+            {formatNotificationCountGlyph(safeCount)}
+          </span>
         )}
         {entry.actions && entry.actions.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mt-1.5">
@@ -101,37 +221,67 @@ export function NotificationCenterEntry({
         )}
       </div>
       <div className="shrink-0 flex items-center gap-1.5 mt-0.5">
-        <span className="text-[10px] text-daintree-text/40 tabular-nums">
-          {formatRelativeTime(entry.timestamp)}
-        </span>
-        {isNew && (
-          <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-status-info shrink-0" />
-        )}
-        {entry.context?.projectId && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                aria-label="Notification options"
-                onClick={(e) => e.stopPropagation()}
-                className="opacity-0 group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 h-4 w-4 flex items-center justify-center rounded text-daintree-text/40 hover:text-daintree-text/70 transition-opacity"
-              >
-                <MoreHorizontal className="h-3 w-3" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" sideOffset={4}>
-              <DropdownMenuItem
-                onSelect={() => {
-                  const projectId = entry.context?.projectId;
-                  if (!projectId) return;
-                  void actionService.dispatch("project.muteNotifications", { projectId });
-                }}
-              >
-                Mute project notifications
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+        {(() => {
+          const ts = formatNotificationTimestamp(entry.timestamp);
+          return (
+            <span
+              data-testid="notification-timestamp"
+              title={ts.absolute}
+              aria-label={ts.absolute}
+              className="text-[10px] text-daintree-text/40 tabular-nums"
+            >
+              {ts.label}
+            </span>
+          );
+        })()}
+        {(entry.context?.projectId || entry.context?.eventKind) &&
+          (() => {
+            const eventKind = entry.context?.eventKind;
+            return (
+              <DropdownMenu onOpenChange={onDropdownOpenChange}>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Notification options"
+                    onClick={(e) => e.stopPropagation()}
+                    className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 h-4 w-4 flex items-center justify-center rounded text-daintree-text/40 hover:text-daintree-text/70 transition-opacity"
+                  >
+                    <MoreHorizontal className="h-3 w-3" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" sideOffset={4}>
+                  {isNotificationEventKind(eventKind) && (
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        const projectId = entry.context?.projectId;
+                        if (!isNotificationEventKind(eventKind)) return;
+                        void actionService.dispatch("project.silenceNotificationKind", {
+                          kind: eventKind,
+                          projectId,
+                        });
+                      }}
+                    >
+                      Silence {EVENT_KIND_LABEL[eventKind]}
+                      {entry.context?.projectId && eventKind !== "uiFeedback"
+                        ? " from this project"
+                        : ""}
+                    </DropdownMenuItem>
+                  )}
+                  {entry.context?.projectId && (
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        const projectId = entry.context?.projectId;
+                        if (!projectId) return;
+                        void actionService.dispatch("project.muteNotifications", { projectId });
+                      }}
+                    >
+                      Mute project notifications
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            );
+          })()}
         {onDismiss && (
           <button
             type="button"
@@ -140,7 +290,7 @@ export function NotificationCenterEntry({
               e.stopPropagation();
               onDismiss();
             }}
-            className="opacity-0 group-hover:opacity-100 focus:opacity-100 h-4 w-4 flex items-center justify-center rounded text-daintree-text/40 hover:text-daintree-text/70 transition-opacity"
+            className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 h-4 w-4 flex items-center justify-center rounded text-daintree-text/40 hover:text-daintree-text/70 transition-opacity"
           >
             <X className="h-3 w-3" />
           </button>
@@ -149,3 +299,5 @@ export function NotificationCenterEntry({
     </div>
   );
 }
+
+export const NotificationCenterEntry = memo(NotificationCenterEntryImpl);

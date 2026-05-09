@@ -406,6 +406,18 @@
     "Liberation Mono", "Courier New", monospace;
 }
 
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-display: optional;
+  font-weight: 400;
+  src: url(../node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2)
+    format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 /* Motion token scale — single source of truth for durations and easings.
  * Emitted to :root (plain @theme, not inline) so @keyframes rules can use var().
  * Also generates Tailwind utilities (duration-*, ease-*) via the Tailwind v4
@@ -437,6 +449,7 @@
     1.001
   );
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-exit: cubic-bezier(0.2, 0, 0.7, 0);
 }
 
 pre code.hljs {
@@ -599,7 +612,7 @@ code.hljs {
   --dock-item-bg-hover: var(--theme-overlay-medium);
   --dock-item-bg-active: color-mix(in oklab, var(--theme-accent-primary) 12%, transparent);
   --dock-item-border: var(--theme-border-subtle);
-  --dock-item-border-active: rgba(var(--theme-accent-rgb), 0.32);
+  --dock-item-border-active: rgb(from var(--theme-accent-primary) r g b / 0.32);
   --state-chip-bg-opacity: var(--theme-state-chip-bg-opacity, 0.15);
   --state-chip-border-opacity: var(--theme-state-chip-border-opacity, 0.4);
   --label-pill-bg-opacity: var(--theme-label-pill-bg-opacity, 0.1);
@@ -619,7 +632,7 @@ code.hljs {
 
   --animation-duration: 150ms;
   --transition-duration: 150ms;
-  --terminal-animation-duration: 150ms;
+  --terminal-animation-duration: 50ms;
   --focus-transition-duration: 150ms;
   --focus-transition-easing: cubic-bezier(0.4, 0, 0.2, 1);
   --background: var(--theme-surface-canvas);
@@ -1094,6 +1107,76 @@ body,
   will-change: opacity;
 }
 
+/* Stale-dim for surfaces during a deferred refresh or filter pass.
+ * `palette-results-stale` is the original palette-listbox callsite (driven by
+ * `useSearchablePalette`'s `isStale` flag); `surface-stale` is the generic
+ * alias used by larger surfaces (e.g., the Review and Commit modal during a
+ * background `git status` refresh). The 400ms transition-delay matches the
+ * Doherty anti-flicker gate: if the deferred work resolves in under one frame
+ * (typical for ~258 actions on fast hardware), the dim never starts. On a
+ * genuinely overloaded render the surface fades to half opacity as a "still
+ * working" cue.
+ * Keep in sync with UI_DOHERTY_THRESHOLD in src/lib/animationUtils.ts. */
+.palette-results-stale,
+.surface-stale {
+  opacity: 0.5;
+  transition: opacity 150ms ease-out 400ms;
+}
+
+/* Opt-in shimmer sweep for skeleton bones. Layered on top of the opacity pulse;
+ * the ::after pseudo-element rides a translateX so the work stays on the
+ * compositor (transform > background-position for GPU cost — see #4738).
+ * Bundles position: relative + overflow: hidden so callers don't need to add
+ * them separately.
+ */
+@keyframes skeleton-shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.animate-skeleton-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklab, var(--color-daintree-text) 8%, transparent) 50%,
+    transparent 100%
+  );
+  animation: skeleton-shimmer 1.8s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* Companion to long-running skeletons. SkeletonHint renders this class on its
+ * visible row when the hint phase escalates so the new copy crossfades in
+ * rather than snapping. Opacity-only — no spatial motion — so reduced-motion
+ * bypasses just need to skip past the entry frame to opacity: 1.
+ */
+@keyframes hint-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-hint-fade-in {
+  opacity: 0;
+  animation: hint-fade-in 500ms ease-out forwards;
+  will-change: opacity;
+}
+
 /* Agent status working state - pulsing gradient animation */
 @keyframes status-pulse {
   0%,
@@ -1128,6 +1211,25 @@ body,
   will-change: transform;
 }
 
+/* Action-row success bump — tuned 3% peak for row-sized elements
+ * (the 6% in badge-bump reads as aggressive on a wider container). */
+@keyframes action-row-bump {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.03);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.animate-action-row-bump {
+  animation: action-row-bump 200ms cubic-bezier(0.4, 0, 0.2, 1) both;
+  will-change: transform;
+}
+
 /* Diagnostics badge state transition flash - one-shot, no looping */
 @keyframes diagnostics-state-flash {
   0% {
@@ -1142,7 +1244,7 @@ body,
 }
 
 .animate-diagnostics-flash {
-  animation: diagnostics-state-flash 0.4s ease-out 1;
+  animation: diagnostics-state-flash 200ms cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
 /* Activity blip animation - for new activity signals */
@@ -1152,7 +1254,7 @@ body,
     opacity: 0.9;
   }
   35% {
-    transform: scale(1.25);
+    transform: scale(1.06);
     opacity: 1;
   }
   100% {
@@ -1162,8 +1264,7 @@ body,
 }
 
 .animate-activity-blip {
-  animation: activity-blip 260ms cubic-bezier(0.4, 0, 0.2, 1) both;
-  will-change: transform, opacity;
+  animation: activity-blip 200ms cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
 /* Trash pulse animation - for trash icon when panels are added */
@@ -1173,7 +1274,7 @@ body,
     opacity: 1;
   }
   30% {
-    transform: scale(1.15);
+    transform: scale(1.06);
     opacity: 0.85;
   }
   100% {
@@ -1183,8 +1284,7 @@ body,
 }
 
 .animate-trash-pulse {
-  animation: trash-pulse 400ms cubic-bezier(0.4, 0, 0.2, 1) both;
-  will-change: transform, opacity;
+  animation: trash-pulse 200ms cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
 /* All-clear flash: subtle full-screen overlay when all agents complete */
@@ -1202,6 +1302,26 @@ body,
 
 .animate-all-clear-flash {
   animation: all-clear-flash 450ms ease-out forwards;
+  will-change: opacity;
+}
+
+/* Onboarding checklist completion — short opacity flash that replaces the
+ * confetti for users who opt out of motion. Subtler than all-clear because
+ * this is a one-off milestone, not an ambient signal. */
+@keyframes checklist-complete-flash {
+  0% {
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.18;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.animate-checklist-complete-flash {
+  animation: checklist-complete-flash 180ms ease-out forwards;
   will-change: opacity;
 }
 
@@ -1264,6 +1384,29 @@ body,
 
 .animate-border-flash {
   animation: border-flash var(--duration-200) var(--ease-out-expo) 1 both;
+  will-change: opacity;
+}
+
+/* Card input-time receipt — opacity-only sibling overlay that fires the moment
+ * a row-level input lands (before any polled state change). 150ms ease-out
+ * matches the Tier 1 state-change tier so it reads as a precursor to the
+ * border-flash rather than a competing animation. The 10% peak is the MD3
+ * pressed state-layer level; using `currentColor` keeps it theme-neutral.
+ */
+@keyframes input-receipt-flash {
+  0% {
+    opacity: 0;
+  }
+  35% {
+    opacity: 0.1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.animate-input-receipt-flash {
+  animation: input-receipt-flash var(--duration-150) ease-out 1 both;
   will-change: opacity;
 }
 
@@ -1337,6 +1480,43 @@ body,
   z-index: 2;
 }
 
+/* FileChangeList row-recency cue — a transient left-edge gutter bar that
+ * acknowledges rows freshly arrived between renders. The 2000ms duration is a
+ * semantic exception to Tier 1 (150ms): the decay IS the "newness" signal,
+ * same category as ActivityLight 1000ms color fade. Hold the bar at full
+ * opacity for the first ~30% (so the eye can land), then decay to invisible
+ * over the remaining ~70%.
+ */
+@keyframes file-change-row-appear {
+  0% {
+    opacity: 1;
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.file-change-row-new {
+  position: relative;
+}
+
+.file-change-row-new::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background-color: var(--color-status-info);
+  border-radius: 1px;
+  animation: file-change-row-appear 2000ms ease-out 1 both;
+  will-change: opacity;
+  pointer-events: none;
+}
+
 /* Respect user's motion preferences — OS prefers-reduced-motion and the
  * Daintree-level "Reduce UI animations" toggle (body[data-reduce-animations])
  * both remove spatial motion while leaving opacity changes intact.
@@ -1346,11 +1526,15 @@ body,
   .animate-activity-pulse,
   .animate-agent-pulse,
   .animate-breathe,
+  .animate-spin,
   .animate-spin-slow,
   .animate-pulse-delayed,
   .animate-pulse-immediate,
+  .animate-skeleton-shimmer,
+  .animate-hint-fade-in,
   .status-working,
   .animate-badge-bump,
+  .animate-action-row-bump,
   .animate-activity-blip,
   .animate-trash-pulse,
   .animate-all-clear-flash,
@@ -1359,6 +1543,23 @@ body,
     animation: none;
     opacity: 1;
     transform: none;
+    will-change: auto;
+  }
+
+  /* The global `transition: none` rules below would strip the 400ms delay,
+   * letting any sub-frame stale flip flash the surface to half opacity. Keep
+   * stale surfaces at full opacity instead. WCAG 2.3.3. */
+  .palette-results-stale,
+  .surface-stale {
+    opacity: 1 !important;
+    transition: none !important;
+  }
+
+  /* Hide the shimmer sweep entirely — `animation: none` alone leaves a static
+   * gradient stripe visible. WCAG 2.3.3: remove motion, don't freeze it.
+   */
+  .animate-skeleton-shimmer::after {
+    display: none;
     will-change: auto;
   }
 
@@ -1379,6 +1580,35 @@ body,
     will-change: auto;
   }
 
+  /* FileChangeList row-recency — the bar has no static-state purpose, so drop
+   * it entirely under reduced motion. WCAG 2.3.3: remove motion, don't freeze.
+   */
+  .file-change-row-new::before {
+    animation: none;
+    opacity: 0;
+    will-change: auto;
+  }
+
+  /* Card input-time receipt — strip the keyframe and keep the overlay
+   * invisible. Unlike `border-flash`, this overlay has no static-state
+   * meaning, so `opacity: 0` (not `opacity: 1`) is the correct rest state.
+   */
+  .animate-input-receipt-flash {
+    animation: none;
+    opacity: 0;
+    will-change: auto;
+  }
+
+  /* Checklist completion overlay — pure transient flash with no static-state
+   * meaning. Match the input-receipt-flash treatment: drop the keyframe and
+   * keep the overlay invisible so it can't ghost over content.
+   */
+  .animate-checklist-complete-flash {
+    animation: none;
+    opacity: 0;
+    will-change: auto;
+  }
+
   /* Label swap under reduced motion — animation removed entirely. The swap
    * still happens (the new value renders), it just snaps into place rather
    * than crossfading. WCAG 2.3.3: remove motion, don't just speed it up.
@@ -1393,6 +1623,16 @@ body,
 
   .animate-label-swap-out {
     opacity: 0;
+  }
+
+  /* Grid notification bar — keep the opacity fade (state cue) but drop the
+   * height interpolation so the bar appears/disappears without spatial motion.
+   * WCAG 2.3.3: opacity is not motion; height collapse is.
+   */
+  .grid-notification-wrapper {
+    transition-property: opacity;
+    transition-duration: var(--duration-200);
+    transition-timing-function: ease-out;
   }
 
   *:focus-visible {
@@ -1435,11 +1675,15 @@ body[data-reduce-animations="true"]
     .animate-activity-pulse,
     .animate-agent-pulse,
     .animate-breathe,
+    .animate-spin,
     .animate-spin-slow,
     .animate-pulse-delayed,
     .animate-pulse-immediate,
+    .animate-skeleton-shimmer,
+    .animate-hint-fade-in,
     .status-working,
     .animate-badge-bump,
+    .animate-action-row-bump,
     .animate-activity-blip,
     .animate-trash-pulse,
     .animate-all-clear-flash,
@@ -1450,6 +1694,22 @@ body[data-reduce-animations="true"]
   opacity: 1;
   transform: none;
   will-change: auto;
+}
+
+body[data-reduce-animations="true"] .animate-skeleton-shimmer::after {
+  display: none;
+  will-change: auto;
+}
+
+body[data-reduce-animations="true"] .content-fade-in {
+  animation: none;
+  opacity: 1;
+}
+
+body[data-reduce-animations="true"] .palette-results-stale,
+body[data-reduce-animations="true"] .surface-stale {
+  opacity: 1 !important;
+  transition: none !important;
 }
 
 body[data-reduce-animations="true"] .animate-fleet-bar-refocus-pulse::before,
@@ -1464,6 +1724,24 @@ body[data-reduce-animations="true"] .fleet-exit-pulse-overlay {
   will-change: auto;
 }
 
+body[data-reduce-animations="true"] .file-change-row-new::before {
+  animation: none;
+  opacity: 0;
+  will-change: auto;
+}
+
+body[data-reduce-animations="true"] .animate-input-receipt-flash {
+  animation: none;
+  opacity: 0;
+  will-change: auto;
+}
+
+body[data-reduce-animations="true"] .animate-checklist-complete-flash {
+  animation: none;
+  opacity: 0;
+  will-change: auto;
+}
+
 body[data-reduce-animations="true"] :is(.animate-label-swap-out, .animate-label-swap-in) {
   animation: none;
   transform: none !important;
@@ -1473,6 +1751,10 @@ body[data-reduce-animations="true"] :is(.animate-label-swap-out, .animate-label-
 
 body[data-reduce-animations="true"] .animate-label-swap-out {
   opacity: 0;
+}
+
+body[data-reduce-animations="true"] .palette-body-height {
+  transition: none !important;
 }
 
 body[data-reduce-animations="true"] *:focus-visible {
@@ -1518,7 +1800,7 @@ body[data-reduce-animations="true"] [data-state][data-side] {
   --tw-exit-translate-y: 0;
 }
 
-/* Terminal trash/restore animations */
+/* Terminal restore animation. Closing is instant — no trash animation. */
 @keyframes terminal-restore {
   from {
     opacity: 0;
@@ -1530,34 +1812,39 @@ body[data-reduce-animations="true"] [data-state][data-side] {
   }
 }
 
-@keyframes terminal-trash {
-  from {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  to {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-}
-
 .terminal-restoring {
   animation: terminal-restore var(--terminal-animation-duration) ease-out;
 }
 
-.terminal-trashing {
-  animation: terminal-trash var(--terminal-animation-duration) ease-out forwards;
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .terminal-restoring,
-  .terminal-trashing {
+  .terminal-restoring {
     animation: none;
   }
 }
 
-body[data-reduce-animations="true"] :is(.terminal-restoring, .terminal-trashing) {
+body[data-reduce-animations="true"] .terminal-restoring {
   animation: none;
+}
+
+/* Diagnostics dock — 200ms height transition (semantic exception per CLAUDE.md):
+ * height encodes open/close state. Suppressed during active drag and under
+ * reduced-motion to mirror the .terminal-restoring peer pattern. */
+.diagnostics-dock {
+  transition: height 200ms ease-out;
+}
+
+.diagnostics-dock[data-resizing="true"] {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .diagnostics-dock {
+    transition: none;
+  }
+}
+
+body[data-reduce-animations="true"] .diagnostics-dock {
+  transition: none;
 }
 
 /* Terminal Selection State */
@@ -1844,6 +2131,43 @@ body[data-reduce-animations="true"] .terminal-pane {
   will-change: transform;
 }
 
+/* Palette indeterminate loading bar — sits inside AppPaletteDialog.Header */
+@keyframes palette-loading-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+
+.palette-loading-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  overflow: hidden;
+  background: color-mix(in oklab, var(--color-daintree-accent) 18%, transparent);
+  pointer-events: none;
+}
+
+.palette-loading-bar__sweep {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 25%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklab, var(--color-daintree-accent) 85%, transparent),
+    transparent
+  );
+  animation: palette-loading-sweep 1.5s ease-in-out infinite;
+  will-change: transform;
+}
+
 /* Success fade - scale in then fade out */
 @keyframes github-status-success-fade {
   0% {
@@ -1904,6 +2228,12 @@ body[data-reduce-animations="true"] .terminal-pane {
     animation: none;
     opacity: 1;
   }
+
+  .palette-loading-bar__sweep {
+    animation: none;
+    width: 100%;
+    background: color-mix(in oklab, var(--color-daintree-accent) 50%, transparent);
+  }
 }
 
 /* Disable in performance mode */
@@ -1913,6 +2243,12 @@ body[data-performance-mode="true"] .github-status-loading::after {
 
 body[data-performance-mode="true"] .github-status-loading {
   background: color-mix(in oklab, var(--color-daintree-accent) 60%, transparent) !important;
+}
+
+body[data-performance-mode="true"] .palette-loading-bar__sweep {
+  animation: none !important;
+  width: 100% !important;
+  background: color-mix(in oklab, var(--color-daintree-accent) 50%, transparent) !important;
 }
 
 body[data-performance-mode="true"] .github-status-success {
@@ -1970,6 +2306,9 @@ body[data-performance-mode="true"] .github-status-error {
 .diff-viewer .diff {
   background: var(--color-daintree-bg);
   color: var(--color-daintree-text);
+  table-layout: auto;
+  width: max-content;
+  min-width: 100%;
 }
 
 /* Gutter (line numbers) styling */
@@ -1977,6 +2316,9 @@ body[data-performance-mode="true"] .github-status-error {
   background: var(--color-daintree-sidebar);
   color: var(--color-state-idle);
   padding: 0 8px;
+  /* width acts as a hint under table-layout:auto; min-width keeps it from
+     shrinking under content-heavy code columns. */
+  width: 50px;
   min-width: 50px;
   text-align: right;
   user-select: none;
@@ -1988,7 +2330,6 @@ body[data-performance-mode="true"] .github-status-error {
   background: var(--color-daintree-bg);
   padding: 0 12px;
   white-space: pre;
-  overflow-x: auto;
 }
 
 /* Added lines - Tokyo Night green */
@@ -2131,9 +2472,31 @@ body[data-performance-mode="true"] .github-status-error {
 
 /* Ensure proper table layout */
 .diff-viewer table.diff {
-  width: 100%;
   border-collapse: collapse;
-  table-layout: fixed;
+}
+
+/* Per-file horizontal scroll wrapper — gives each file its own scrollbar
+   so all rows scroll together instead of each <td> scrolling independently. */
+.diff-viewer .diff-file-scroll {
+  overflow-x: auto;
+}
+
+.diff-viewer .diff-file-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.diff-viewer .diff-file-scroll::-webkit-scrollbar-track {
+  background: var(--color-daintree-bg);
+}
+
+.diff-viewer .diff-file-scroll::-webkit-scrollbar-thumb {
+  background: var(--color-state-idle);
+  border-radius: var(--radius-sm);
+}
+
+.diff-viewer .diff-file-scroll::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklab, var(--color-state-idle) 70%, var(--color-text-primary));
 }
 
 .diff-viewer table.diff td {
@@ -2152,8 +2515,24 @@ body[data-performance-mode="true"] *::after {
 
 /* Ensure delayed skeletons don't stay invisible when animations are disabled */
 body[data-performance-mode="true"] .animate-pulse-delayed,
-body[data-performance-mode="true"] .animate-pulse-immediate {
+body[data-performance-mode="true"] .animate-pulse-immediate,
+body[data-performance-mode="true"] .animate-hint-fade-in {
   opacity: 1 !important;
+}
+
+/* The global wildcard above strips the 400ms transition-delay; without an
+ * explicit opacity reset stale surfaces would stay at 0.5 if they were
+ * mid-stale when performance mode kicked in. */
+body[data-performance-mode="true"] .palette-results-stale,
+body[data-performance-mode="true"] .surface-stale {
+  opacity: 1 !important;
+}
+
+/* The global wildcard above kills the shimmer animation but the ::after
+ * pseudo-element still paints its static gradient stripe — hide it.
+ */
+body[data-performance-mode="true"] .animate-skeleton-shimmer::after {
+  display: none !important;
 }
 
 /* Disable backdrop effects in performance mode */

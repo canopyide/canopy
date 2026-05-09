@@ -6,7 +6,16 @@ import { logError } from "@/utils/logger";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { TerminalInfoPayload } from "@/types/electron";
 import { actionService } from "@/services/ActionService";
+import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
+import { usePanelStore } from "@/store/panelStore";
+
+const SYNC_MODE_POLL_MS = 250;
+
+function formatSyncMode(value: boolean | null): string {
+  if (value === null) return "Unavailable";
+  return value ? "On" : "Off";
+}
 
 interface TerminalInfoDialogProps {
   isOpen: boolean;
@@ -121,12 +130,15 @@ export function TerminalInfoDialog({ isOpen, onClose, terminalId }: TerminalInfo
   const [info, setInfo] = useState<TerminalInfoPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [syncMode, setSyncMode] = useState<boolean | null>(null);
+  const panel = usePanelStore((state) => state.panelsById[terminalId]);
 
   useEffect(() => {
     if (!isOpen) {
       setInfo(null);
       setError(null);
       setLoading(false);
+      setSyncMode(null);
       return;
     }
 
@@ -166,18 +178,51 @@ export function TerminalInfoDialog({ isOpen, onClose, terminalId }: TerminalInfo
     };
   }, [isOpen, terminalId]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    // xterm 6 mutates terminal.modes asynchronously as the parser consumes
+    // BSU/ESU sequences, and there is no change event. Poll at the same
+    // cadence as REFLOW_THROTTLE_MS (250ms) — enough resolution to catch
+    // most BSU blocks while the dialog is open.
+    setSyncMode(terminalInstanceService.getSynchronizedOutputMode(terminalId));
+    const intervalId = window.setInterval(() => {
+      setSyncMode(terminalInstanceService.getSynchronizedOutputMode(terminalId));
+    }, SYNC_MODE_POLL_MS);
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [isOpen, terminalId]);
+
+  const launchAgentId = panel?.launchAgentId ?? info?.launchAgentId;
+  const command = panel?.command ?? info?.command;
+  const worktreeId = panel?.worktreeId ?? info?.worktreeId;
+  const titleMode = panel?.titleMode ?? info?.titleMode;
+  const spawnSource = panel?.spawnedBy;
+  const startedViaMcp = spawnSource === "mcp" ? "Yes" : spawnSource ? "No" : "Unknown";
+  const uiStartedAt = panel?.startedAt;
+  const spawnStatus = panel?.spawnStatus;
+  const location = panel?.location;
+  const agentPresetId = panel?.agentPresetId ?? info?.agentPresetId;
+  const agentPresetColor = panel?.agentPresetColor ?? info?.agentPresetColor;
+  const originalPresetId = panel?.originalPresetId ?? info?.originalAgentPresetId;
+  const agentSessionId = panel?.agentSessionId ?? info?.agentSessionId;
+
   // "Launch Context" reflects how the panel was configured at spawn time.
-  const showAgentLaunchSection = (info: TerminalInfoPayload): boolean =>
-    !!(
-      info.agentId ||
-      (info.agentLaunchFlags && info.agentLaunchFlags.length > 0) ||
-      info.agentModelId
-    );
-  // "Live State" reflects what's running right now. Shown for agent panels,
+  const showAgentLaunchSection = !!(
+    launchAgentId ||
+    (info?.agentLaunchFlags && info.agentLaunchFlags.length > 0) ||
+    info?.agentModelId ||
+    agentPresetId ||
+    originalPresetId
+  );
+  // "Live State" reflects what's running right now. Shown for agent launches,
   // while a runtime agent is detected, or once an agent has ever been detected
   // in this session (so plain terminals that ran `claude` still show the exit).
-  const showAgentLiveSection = (info: TerminalInfoPayload): boolean =>
-    !!(info.isAgentTerminal || info.detectedAgentId || info.everDetectedAgent);
+  const showAgentLiveSection = !!(
+    launchAgentId ||
+    info?.detectedAgentId ||
+    info?.everDetectedAgent
+  );
 
   const formatArgsForClipboard = (args: string[] | undefined): string => {
     if (args === undefined) return "N/A";
@@ -188,21 +233,26 @@ export function TerminalInfoDialog({ isOpen, onClose, terminalId }: TerminalInfo
   const copyToClipboard = async () => {
     if (!info) return;
 
-    const launchSection = showAgentLaunchSection(info)
+    const launchSection = showAgentLaunchSection
       ? `
 
 Agent — Launch Context:
-  Agent ID: ${info.agentId ?? "N/A"}
+  Launch Agent: ${launchAgentId ?? "N/A"}
+  Command: ${command ?? "N/A"}
   Launch Flags: ${formatArgsForClipboard(info.agentLaunchFlags)}
-  Model: ${info.agentModelId ?? "N/A"}`
+  Model: ${info.agentModelId ?? "N/A"}
+  Preset: ${agentPresetId ?? "N/A"}
+  Preset Color: ${agentPresetColor ?? "N/A"}
+  Original Preset: ${originalPresetId ?? "N/A"}`
       : "";
 
-    const liveSection = showAgentLiveSection(info)
+    const liveSection = showAgentLiveSection
       ? `
 
 Agent — Live State:
-  Detected Agent ID: ${info.detectedAgentId ?? "None — agent has exited"}
-  Detected Agent Type: ${info.detectedAgentType ?? "N/A"}`
+  Detected Agent ID: ${info.detectedAgentId ?? (info.everDetectedAgent ? "None — agent has exited" : "Not detected yet")}
+  Agent State: ${info.agentState ?? "N/A"}
+  Session ID: ${agentSessionId ?? "N/A"}`
       : "";
 
     const agentSection = launchSection + liveSection;
@@ -213,18 +263,24 @@ Agent — Live State:
 Session Metadata:
   ID: ${info.id}
   Kind: ${info.kind || "terminal"}
-  Type: ${info.type || "N/A"}
   Title: ${info.title || "N/A"}
+  Title Mode: ${titleMode ?? "default"}
   Project ID: ${info.projectId || "N/A"}
-  Worktree ID: ${info.worktreeId || "N/A"}
+  Worktree ID: ${worktreeId || "N/A"}
   CWD: ${info.cwd}
+  Location: ${location ?? "N/A"}
+  Spawn Source: ${spawnSource ?? "N/A"}
+  Started via MCP: ${startedViaMcp}
+  Spawn Status: ${spawnStatus ?? "N/A"}
+  UI Created At: ${uiStartedAt != null ? formatTimestamp(uiStartedAt) : "N/A"}
 
 Spawn Command:
   Shell: ${info.shell || "N/A"}
+  Command: ${command ?? "N/A"}
   Args: ${formatArgsForClipboard(info.spawnArgs)}${agentSection}
 
 Terminal Classification:
-  Agent Terminal: ${info.isAgentTerminal ? "Yes" : "No"}
+  Agent Launch Hint: ${launchAgentId ? "Yes" : "No"}
   PTY Active: ${info.hasPty ? "Yes" : "No"}
   Analysis Enabled: ${info.analysisEnabled ? "Yes" : "No"}
   Resize Strategy: ${info.resizeStrategy || "default"}
@@ -251,6 +307,7 @@ Activity Metrics:
 Performance & Diagnostics:
   Output Buffer Size: ${info.outputBufferSize} lines
   Semantic Buffer: ${info.semanticBufferLines} lines
+  Synchronized Output (DEC 2026): ${formatSyncMode(syncMode)}
 `;
 
     try {
@@ -289,37 +346,54 @@ Performance & Diagnostics:
             <InfoSection title="Session Metadata">
               <InfoRow label="Terminal ID" value={info.id} mono />
               <InfoRow label="Kind" value={info.kind || "terminal"} />
-              <InfoRow label="Type" value={info.type || "terminal"} />
               <InfoRow label="Title" value={info.title} />
+              <InfoRow label="Title Mode" value={titleMode ?? "default"} />
               <InfoRow label="Project ID" value={info.projectId} mono />
-              <InfoRow label="Worktree ID" value={info.worktreeId} mono />
+              <InfoRow label="Worktree ID" value={worktreeId} mono />
               <InfoRow label="Current Directory" value={info.cwd} mono />
+              <InfoRow label="Location" value={location} />
+              <InfoRow label="Spawn Source" value={spawnSource} />
+              <InfoRow label="Started via MCP" value={startedViaMcp} />
+              <InfoRow label="Spawn Status" value={spawnStatus} />
+              {uiStartedAt != null && (
+                <InfoRow label="UI Created At" value={formatTimestamp(uiStartedAt)} />
+              )}
             </InfoSection>
 
             <InfoSection title="Spawn Command">
               <InfoRow label="Shell" value={info.shell} mono />
+              {command && <InfoRow label="Command" value={command} mono />}
               <InfoListRow label="Args" items={info.spawnArgs} />
             </InfoSection>
 
-            {showAgentLaunchSection(info) && (
+            {showAgentLaunchSection && (
               <InfoSection title="Agent — Launch Context">
-                {info.agentId && <InfoRow label="Agent ID" value={info.agentId} />}
+                {launchAgentId && <InfoRow label="Launch Agent" value={launchAgentId} />}
                 <InfoListRow label="Launch Flags" items={info.agentLaunchFlags} />
                 {info.agentModelId && <InfoRow label="Model" value={info.agentModelId} mono />}
+                {agentPresetId && <InfoRow label="Preset" value={agentPresetId} mono />}
+                {agentPresetColor && <InfoRow label="Preset Color" value={agentPresetColor} mono />}
+                {originalPresetId && (
+                  <InfoRow label="Original Preset" value={originalPresetId} mono />
+                )}
               </InfoSection>
             )}
 
-            {showAgentLiveSection(info) && (
+            {showAgentLiveSection && (
               <InfoSection title="Agent — Live State">
                 <InfoRow
                   label="Detected Agent"
-                  value={info.detectedAgentId ?? "None — agent has exited"}
+                  value={
+                    info.detectedAgentId ??
+                    (info.everDetectedAgent ? "None — agent has exited" : "Not detected yet")
+                  }
                 />
+                {agentSessionId && <InfoRow label="Session ID" value={agentSessionId} mono />}
               </InfoSection>
             )}
 
             <InfoSection title="Terminal Classification">
-              <InfoRow label="Agent Terminal" value={info.isAgentTerminal ? "Yes" : "No"} />
+              <InfoRow label="Agent Launch Hint" value={launchAgentId ? "Yes" : "No"} />
               <InfoRow label="PTY Active" value={info.hasPty ? "Yes" : "No"} />
               <InfoRow label="Analysis Enabled" value={info.analysisEnabled ? "Yes" : "No"} />
               <InfoRow label="Resize Strategy" value={info.resizeStrategy || "default"} />
@@ -365,6 +439,7 @@ Performance & Diagnostics:
             <InfoSection title="Performance & Diagnostics">
               <InfoRow label="Output Buffer Size" value={`${info.outputBufferSize} lines`} />
               <InfoRow label="Semantic Buffer" value={`${info.semanticBufferLines} lines`} />
+              <InfoRow label="Synchronized Output (DEC 2026)" value={formatSyncMode(syncMode)} />
             </InfoSection>
           </div>
         )}

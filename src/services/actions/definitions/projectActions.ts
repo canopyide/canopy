@@ -1,19 +1,22 @@
 import type { ActionCallbacks, ActionRegistry } from "../actionTypes";
+import type { ActionContext } from "@shared/types/actions";
 import { z } from "zod";
 import { projectClient } from "@/clients";
 import { useProjectStore } from "@/store/projectStore";
+import { useProjectSettingsStore } from "@/store/projectSettingsStore";
 import { getMruProjects } from "@/lib/projectMru";
-import { notify } from "@/lib/notify";
+import { notify, EVENT_KIND_TO_SETTING_KEY, EVENT_KIND_LABEL } from "@/lib/notify";
+import type { NotificationEventKind } from "@/lib/notify";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 
-async function runMruFallbackSwitch(direction: "older" | "newer"): Promise<void> {
+async function runMruFallbackSwitch(): Promise<void> {
   const state = useProjectStore.getState();
   const currentId = state.currentProject?.id ?? null;
   const sorted = getMruProjects(state.projects);
   const otherProjects = sorted.filter((p) => p.id !== currentId);
   if (otherProjects.length === 0) return;
 
-  const target = direction === "older" ? otherProjects[0] : otherProjects[otherProjects.length - 1];
+  const target = otherProjects[0];
   if (!target) return;
 
   try {
@@ -32,7 +35,7 @@ async function runMruFallbackSwitch(direction: "older" | "newer"): Promise<void>
           label: "Try again",
           variant: "primary",
           onClick: () => {
-            void runMruFallbackSwitch(direction);
+            void runMruFallbackSwitch();
           },
         },
       ],
@@ -57,24 +60,24 @@ export function registerProjectActions(actions: ActionRegistry, callbacks: Actio
 
   actions.set("project.mruCycleOlder", () => ({
     id: "project.mruCycleOlder",
-    title: "Switch to Previous Project (Older)",
-    description: "Switch to the most recent other project; hold to scrub older",
+    title: "Switch Down Project List",
+    description: "Switch to the next project; hold to scrub down the MRU list",
     category: "project",
     kind: "command",
     danger: "safe",
     scope: "renderer",
-    run: () => runMruFallbackSwitch("older"),
+    run: () => runMruFallbackSwitch(),
   }));
 
   actions.set("project.mruCycleNewer", () => ({
     id: "project.mruCycleNewer",
-    title: "Switch to Oldest Project (Newer)",
-    description: "Switch to the oldest other project; hold to scrub newer",
+    title: "Switch Up Project List",
+    description: "Switch to the next project; hold to scrub up the MRU list",
     category: "project",
     kind: "command",
     danger: "safe",
     scope: "renderer",
-    run: () => runMruFallbackSwitch("newer"),
+    run: () => runMruFallbackSwitch(),
   }));
 
   actions.set("project.add", () => ({
@@ -121,7 +124,7 @@ export function registerProjectActions(actions: ActionRegistry, callbacks: Actio
     description: "Switch to another project",
     category: "project",
     kind: "command",
-    danger: "confirm",
+    danger: "safe",
     scope: "renderer",
     argsSchema: z.object({ projectId: z.string() }),
     run: async (args: unknown) => {
@@ -136,15 +139,23 @@ export function registerProjectActions(actions: ActionRegistry, callbacks: Actio
     description: "Update project metadata",
     category: "project",
     kind: "command",
-    danger: "confirm",
+    danger: "safe",
     scope: "renderer",
-    argsSchema: z.object({ projectId: z.string(), updates: z.record(z.string(), z.unknown()) }),
+    argsSchema: z.object({
+      projectId: z.string(),
+      updates: z.object({
+        name: z.string().optional(),
+        emoji: z.string().optional(),
+        color: z.string().optional(),
+        pinned: z.boolean().optional(),
+      }),
+    }),
     run: async (args: unknown) => {
       const { projectId, updates } = args as {
         projectId: string;
-        updates: Record<string, unknown>;
+        updates: { name?: string; emoji?: string; color?: string; pinned?: boolean };
       };
-      await useProjectStore.getState().updateProject(projectId, updates as any);
+      await useProjectStore.getState().updateProject(projectId, updates);
     },
   }));
 
@@ -154,7 +165,7 @@ export function registerProjectActions(actions: ActionRegistry, callbacks: Actio
     description: "Remove a project from the list",
     category: "project",
     kind: "command",
-    danger: "confirm",
+    danger: "safe",
     scope: "renderer",
     argsSchema: z.object({ projectId: z.string() }),
     run: async (args: unknown) => {
@@ -169,7 +180,7 @@ export function registerProjectActions(actions: ActionRegistry, callbacks: Actio
     description: "Close a project and kill its processes",
     category: "project",
     kind: "command",
-    danger: "confirm",
+    danger: "safe",
     scope: "renderer",
     argsSchema: z.object({ projectId: z.string() }),
     run: async (args: unknown) => {
@@ -189,7 +200,7 @@ export function registerProjectActions(actions: ActionRegistry, callbacks: Actio
     description: "Close the currently active project and return to the welcome screen",
     category: "project",
     kind: "command",
-    danger: "confirm",
+    danger: "safe",
     scope: "renderer",
     run: async () => {
       const projectId = useProjectStore.getState().currentProject?.id;
@@ -232,10 +243,12 @@ export function registerProjectActions(actions: ActionRegistry, callbacks: Actio
     kind: "query",
     danger: "safe",
     scope: "renderer",
-    argsSchema: z.object({ projectId: z.string() }),
-    run: async (args: unknown) => {
-      const { projectId } = args as { projectId: string };
-      return await projectClient.getSettings(projectId);
+    argsSchema: z.object({ projectId: z.string().optional() }).optional(),
+    run: async (args: unknown, ctx: ActionContext) => {
+      const { projectId } = (args ?? {}) as { projectId?: string };
+      const resolvedProjectId = projectId ?? ctx.projectId;
+      if (!resolvedProjectId) throw new Error("No active project");
+      return await projectClient.getSettings(resolvedProjectId);
     },
   }));
 
@@ -245,7 +258,7 @@ export function registerProjectActions(actions: ActionRegistry, callbacks: Actio
     description: "Save a project's settings",
     category: "project",
     kind: "command",
-    danger: "confirm",
+    danger: "safe",
     scope: "renderer",
     argsSchema: z.object({ projectId: z.string(), settings: z.record(z.string(), z.unknown()) }),
     run: async (args: unknown) => {
@@ -253,7 +266,16 @@ export function registerProjectActions(actions: ActionRegistry, callbacks: Actio
         projectId: string;
         settings: Record<string, unknown>;
       };
-      await projectClient.saveSettings(projectId, settings as any);
+      // Merge over current settings rather than full-replace so dispatchers
+      // (notably MCP callers) cannot wipe unrelated fields by sending a
+      // partial object. Strip privilege-escalation keys before merging —
+      // the MCP-tier knob lives in ProjectSettings and must not be
+      // self-mutable by an agent.
+      const current = await projectClient.getSettings(projectId);
+      const sanitized: Record<string, unknown> = { ...settings };
+      delete sanitized.daintreeMcpTier;
+      delete sanitized.exposeDaintreeMcpToAgents;
+      await projectClient.saveSettings(projectId, { ...current, ...sanitized } as any);
     },
   }));
 
@@ -270,18 +292,47 @@ export function registerProjectActions(actions: ActionRegistry, callbacks: Actio
       const { projectId } = args as { projectId: string };
       try {
         const current = await projectClient.getSettings(projectId);
-        await projectClient.saveSettings(projectId, {
+        const priorOverrides = { ...current.notificationOverrides };
+        const updated = {
           ...current,
           notificationOverrides: {
             ...current.notificationOverrides,
             completedEnabled: false,
             waitingEnabled: false,
           },
-        });
+        };
+        await projectClient.saveSettings(projectId, updated);
+        const settingsState = useProjectSettingsStore.getState();
+        if (settingsState.projectId === projectId) {
+          settingsState.setSettings(updated);
+        }
+        if (updated.notificationOverrides) {
+          useProjectSettingsStore.setState((s) => ({
+            notificationOverridesByProjectId: {
+              ...s.notificationOverridesByProjectId,
+              [projectId]: updated.notificationOverrides!,
+            },
+          }));
+        }
         notify({
           type: "success",
           message: "Project notifications muted",
-          priority: "low",
+          priority: "high",
+          duration: 5000,
+          action: {
+            label: "Undo",
+            onClick: async () => {
+              try {
+                const currentNow = await projectClient.getSettings(projectId);
+                await projectClient.saveSettings(projectId, {
+                  ...currentNow,
+                  notificationOverrides: priorOverrides,
+                });
+              } catch {
+                // Undo failed silently — settings can be restored manually
+              }
+            },
+          },
         });
       } catch (error) {
         notify({
@@ -290,6 +341,106 @@ export function registerProjectActions(actions: ActionRegistry, callbacks: Actio
           message: formatErrorMessage(error, "Failed to mute project notifications"),
           duration: 5000,
         });
+        throw error;
+      }
+    },
+  }));
+
+  actions.set("project.silenceNotificationKind", () => ({
+    id: "project.silenceNotificationKind",
+    title: "Silence Notification Kind",
+    description: "Suppress a specific category of notifications",
+    category: "project",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    argsSchema: z.object({
+      kind: z.enum(["completed", "waiting", "workingPulse", "uiFeedback"]),
+      projectId: z.string().min(1).optional(),
+    }),
+    run: async (args: unknown) => {
+      const { kind, projectId } = args as { kind: NotificationEventKind; projectId?: string };
+      const label = EVENT_KIND_LABEL[kind] ?? kind;
+      const settingKey = EVENT_KIND_TO_SETTING_KEY[kind];
+
+      try {
+        const isGlobalOnly = kind === "uiFeedback";
+        let priorValue: boolean | undefined;
+        let priorGlobalSnapshot: Partial<Record<string, boolean>> | undefined;
+
+        if (projectId && !isGlobalOnly) {
+          const current = await projectClient.getSettings(projectId);
+          priorValue = (current.notificationOverrides as Record<string, unknown> | undefined)?.[
+            settingKey
+          ] as boolean | undefined;
+          await projectClient.saveSettings(projectId, {
+            ...current,
+            notificationOverrides: {
+              ...current.notificationOverrides,
+              [settingKey]: false,
+            },
+          });
+        } else {
+          const current = await window.electron?.notification?.getSettings();
+          if (current) {
+            priorValue = (current as unknown as Record<string, unknown>)[settingKey] as
+              | boolean
+              | undefined;
+            priorGlobalSnapshot = {
+              [settingKey]: (current as unknown as Record<string, unknown>)[settingKey] as
+                | boolean
+                | undefined,
+            };
+            await window.electron.notification.setSettings({ [settingKey]: false });
+          }
+        }
+
+        const scopeSuffix = isGlobalOnly
+          ? " for all projects"
+          : projectId
+            ? " for this project"
+            : "";
+
+        notify({
+          type: "success",
+          message: `Silenced ${label}${scopeSuffix}`,
+          priority: "high",
+          duration: 5000,
+          action: {
+            label: "Undo",
+            onClick: async () => {
+              try {
+                if (projectId && !isGlobalOnly) {
+                  const currentNow = await projectClient.getSettings(projectId);
+                  const overrides = {
+                    ...(currentNow.notificationOverrides as Record<string, unknown>),
+                  };
+                  if (priorValue === undefined) {
+                    delete overrides[settingKey];
+                  } else {
+                    overrides[settingKey] = priorValue;
+                  }
+                  await projectClient.saveSettings(projectId, {
+                    ...currentNow,
+                    notificationOverrides: overrides,
+                  });
+                } else if (priorGlobalSnapshot) {
+                  await window.electron?.notification?.setSettings(priorGlobalSnapshot);
+                }
+              } catch {
+                // Undo failed silently — settings can be restored manually
+              }
+            },
+          },
+        });
+      } catch (error) {
+        notify({
+          type: "error",
+          title: "Failed to silence notifications",
+          message: formatErrorMessage(error, `Failed to silence ${label}`),
+          duration: 5000,
+        });
+        throw error;
       }
     },
   }));
@@ -302,10 +453,12 @@ export function registerProjectActions(actions: ActionRegistry, callbacks: Actio
     kind: "query",
     danger: "safe",
     scope: "renderer",
-    argsSchema: z.object({ projectId: z.string() }),
-    run: async (args: unknown) => {
-      const { projectId } = args as { projectId: string };
-      return await projectClient.detectRunners(projectId);
+    argsSchema: z.object({ projectId: z.string().optional() }).optional(),
+    run: async (args: unknown, ctx: ActionContext) => {
+      const { projectId } = (args ?? {}) as { projectId?: string };
+      const resolvedProjectId = projectId ?? ctx.projectId;
+      if (!resolvedProjectId) throw new Error("No active project");
+      return await projectClient.detectRunners(resolvedProjectId);
     },
   }));
 
@@ -317,10 +470,12 @@ export function registerProjectActions(actions: ActionRegistry, callbacks: Actio
     kind: "query",
     danger: "safe",
     scope: "renderer",
-    argsSchema: z.object({ projectId: z.string() }),
-    run: async (args: unknown) => {
-      const { projectId } = args as { projectId: string };
-      return await projectClient.getStats(projectId);
+    argsSchema: z.object({ projectId: z.string().optional() }).optional(),
+    run: async (args: unknown, ctx: ActionContext) => {
+      const { projectId } = (args ?? {}) as { projectId?: string };
+      const resolvedProjectId = projectId ?? ctx.projectId;
+      if (!resolvedProjectId) throw new Error("No active project");
+      return await projectClient.getStats(resolvedProjectId);
     },
   }));
 

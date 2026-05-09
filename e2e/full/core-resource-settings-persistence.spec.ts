@@ -22,28 +22,62 @@ import { ensureWindowFocused } from "../helpers/focus";
 
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 
 const mod = process.platform === "darwin" ? "Meta" : "Control";
+
+function commandArg(value: string): string {
+  return `"${value.replace(/"/g, '\\"')}"`;
+}
+
+function nodeScriptCommand(scriptPath: string, args: string[] = []): string {
+  return ["node", commandArg(scriptPath), ...args].join(" ");
+}
+
+function writeResourceHelper(daintreeDir: string, stateFile: string): string {
+  const scriptPath = path.join(daintreeDir, "resource-action.cjs");
+  fs.writeFileSync(
+    scriptPath,
+    [
+      "const fs = require('fs');",
+      `const stateFile = ${JSON.stringify(stateFile)};`,
+      "const action = process.argv[2];",
+      "if (action === 'provision') {",
+      "  fs.writeFileSync(stateFile, JSON.stringify({ status: 'ready' }));",
+      "} else if (action === 'teardown') {",
+      "  fs.rmSync(stateFile, { force: true });",
+      "} else if (action === 'status') {",
+      "  try { process.stdout.write(fs.readFileSync(stateFile, 'utf8')); }",
+      "  catch { process.stdout.write(JSON.stringify({ status: 'unknown' })); }",
+      "} else if (action === 'connect') {",
+      "  console.log('RESOURCE_CONNECTED');",
+      "  setInterval(() => {}, 1000);",
+      "} else {",
+      "  console.error('Unknown resource action: ' + action);",
+      "  process.exit(1);",
+      "}",
+      "",
+    ].join("\n")
+  );
+  return scriptPath;
+}
 
 function writeResourceConfig(repoDir: string) {
   const daintreeDir = path.join(repoDir, ".daintree");
   fs.mkdirSync(daintreeDir, { recursive: true });
 
   const stateFile = path.join(daintreeDir, "resource-state.json");
+  const helperScript = writeResourceHelper(daintreeDir, stateFile);
 
   const config = {
     setup: [],
     teardown: [],
     resources: {
       "e2e-docker": {
-        provision: [
-          `printf '{"status":"provisioning"}' > "${stateFile}"`,
-          `sleep 0.1`,
-          `printf '{"status":"ready"}' > "${stateFile}"`,
-        ],
-        teardown: [`rm -f "${stateFile}"`],
-        status: `cat "${stateFile}" 2>/dev/null || printf '{"status":"unknown"}'`,
-        connect: "bash --norc --noprofile",
+        provision: [nodeScriptCommand(helperScript, [commandArg("provision")])],
+        teardown: [nodeScriptCommand(helperScript, [commandArg("teardown")])],
+        status: nodeScriptCommand(helperScript, [commandArg("status")]),
+        connect: nodeScriptCommand(helperScript, [commandArg("connect")]),
       },
     },
   };
@@ -95,7 +129,9 @@ async function addEnvironmentViaGUI(
 
 test.describe.serial("Full: Resource Settings Persistence", () => {
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "resource-settings" });
+    ({ dir: fixtureDir, cleanup: fixtureCleanup } = createFixtureRepo({
+      name: "resource-settings",
+    }));
     writeResourceConfig(fixtureDir);
 
     ctx = await launchApp();
@@ -107,6 +143,7 @@ test.describe.serial("Full: Resource Settings Persistence", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   // ---- Test 1: Settings persistence round-trip ----

@@ -75,7 +75,7 @@ export {
 
 export { useCliAvailabilityStore, cleanupCliAvailabilityStore } from "./cliAvailabilityStore";
 
-export { usePulseStore } from "./pulseStore";
+export { usePulseStore, PULSE_MAX_RETRIES } from "./pulseStore";
 
 export { usePreferencesStore } from "./preferencesStore";
 

@@ -1,4 +1,3 @@
-import { existsSync } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
 import { resilientAtomicWriteFile } from "../../utils/fs.js";
 import { homedir } from "node:os";
@@ -38,26 +37,25 @@ export class GeminiConfigService {
 
   async readConfig(): Promise<GeminiConfig | null> {
     try {
-      if (!existsSync(this.configPath)) {
-        return null;
-      }
       const content = await readFile(this.configPath, "utf8");
       return JSON.parse(content) as GeminiConfig;
     } catch (error) {
+      if (error instanceof Error && (error as NodeJS.ErrnoException).code === "ENOENT") {
+        return null;
+      }
+      if (error instanceof SyntaxError) {
+        throw error;
+      }
       const message = formatErrorMessage(error, "Failed to read Gemini config");
-      throw new Error(`Failed to read Gemini config: ${message}`);
+      throw new Error(`Failed to read Gemini config: ${message}`, { cause: error });
     }
   }
 
   async getStatus(): Promise<GeminiConfigStatus> {
-    if (!existsSync(this.configPath)) {
-      return { exists: false, alternateBufferEnabled: false };
-    }
-
     try {
       const config = await this.readConfig();
       if (!config) {
-        return { exists: true, alternateBufferEnabled: false };
+        return { exists: false, alternateBufferEnabled: false };
       }
       return {
         exists: true,
@@ -87,12 +85,9 @@ export class GeminiConfigService {
         existingConfig = config;
       }
     } catch (error) {
-      if (error instanceof Error && error.message.includes("ENOENT")) {
-        // File doesn't exist - will create new
-      } else if (error instanceof SyntaxError) {
+      if (error instanceof SyntaxError) {
         // JSON parse error - will repair by creating new config
       } else {
-        // Other errors (permissions, I/O) should surface
         throw error;
       }
     }
@@ -115,7 +110,7 @@ export class GeminiConfigService {
       await resilientAtomicWriteFile(this.configPath, content, "utf8");
     } catch (error) {
       const message = formatErrorMessage(error, "Failed to write Gemini config");
-      throw new Error(`Failed to write Gemini config: ${message}`);
+      throw new Error(`Failed to write Gemini config: ${message}`, { cause: error });
     }
   }
 }

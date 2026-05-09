@@ -1,4 +1,5 @@
 import type { ActionCallbacks, ActionRegistry } from "../actionTypes";
+import type { ActionContext } from "@shared/types/actions";
 import { defineAction } from "../defineAction";
 import { CopyTreeOptionsSchema, FileSearchPayloadSchema, BuiltInAgentIdSchema } from "./schemas";
 import { z } from "zod";
@@ -120,14 +121,16 @@ export function registerSystemActions(actions: ActionRegistry, _callbacks: Actio
       id: "files.search",
       title: "Search Files",
       description:
-        "Search for files by name in a directory. Requires cwd (use project.getCurrent to get the project path).",
+        "Search for files by name in a directory. Defaults to the active worktree path when cwd is omitted.",
       category: "files",
       kind: "query",
       danger: "safe",
       scope: "renderer",
       argsSchema: FileSearchPayloadSchema,
-      run: async (payload) => {
-        return await filesClient.search(payload);
+      run: async (payload, ctx: ActionContext) => {
+        const resolvedCwd = payload.cwd ?? ctx.activeWorktreePath;
+        if (!resolvedCwd) throw new Error("No active worktree");
+        return await filesClient.search({ ...payload, cwd: resolvedCwd });
       },
     })
   );
@@ -136,14 +139,23 @@ export function registerSystemActions(actions: ActionRegistry, _callbacks: Actio
     defineAction({
       id: "slashCommands.list",
       title: "List Slash Commands",
-      description: "List available slash commands for an agent",
+      description:
+        "List available slash commands for an agent. Defaults to 'claude' when agentId is omitted.",
       category: "agent",
       kind: "query",
       danger: "safe",
       scope: "renderer",
-      argsSchema: z.object({ agentId: BuiltInAgentIdSchema, projectPath: z.string().optional() }),
+      argsSchema: z
+        .object({
+          agentId: BuiltInAgentIdSchema.optional().describe(
+            "Agent ID. Defaults to 'claude' when omitted."
+          ),
+          projectPath: z.string().optional(),
+        })
+        .optional(),
       run: async (payload) => {
-        return await slashCommandsClient.list(payload);
+        const agentId = payload?.agentId ?? "claude";
+        return await slashCommandsClient.list({ agentId, projectPath: payload?.projectPath });
       },
     })
   );
@@ -155,7 +167,7 @@ export function registerSystemActions(actions: ActionRegistry, _callbacks: Actio
       description: "Save content to a file via save dialog",
       category: "artifacts",
       kind: "command",
-      danger: "confirm",
+      danger: "safe",
       scope: "renderer",
       argsSchema: z.object({
         content: z.string(),
@@ -175,7 +187,7 @@ export function registerSystemActions(actions: ActionRegistry, _callbacks: Actio
       description: "Apply a unified diff patch to the filesystem",
       category: "artifacts",
       kind: "command",
-      danger: "confirm",
+      danger: "safe",
       scope: "renderer",
       argsSchema: z.object({
         patchContent: z.string(),
@@ -207,12 +219,22 @@ export function registerSystemActions(actions: ActionRegistry, _callbacks: Actio
       description: "Generate worktree context (returns content)",
       category: "copyTree",
       kind: "query",
-      danger: "confirm",
+      danger: "safe",
       scope: "renderer",
       keywords: ["context", "dump", "snapshot", "tree"],
-      argsSchema: z.object({ worktreeId: z.string(), options: CopyTreeOptionsSchema.optional() }),
-      run: async ({ worktreeId, options }) => {
-        return await copyTreeClient.generate(worktreeId, options);
+      argsSchema: z
+        .object({
+          worktreeId: z
+            .string()
+            .optional()
+            .describe("Worktree ID. Defaults to the active worktree."),
+          options: CopyTreeOptionsSchema.optional(),
+        })
+        .optional(),
+      run: async (args, ctx: ActionContext) => {
+        const worktreeId = args?.worktreeId ?? ctx.activeWorktreeId;
+        if (!worktreeId) throw new Error("No active worktree");
+        return await copyTreeClient.generate(worktreeId, args?.options);
       },
     })
   );
@@ -224,11 +246,21 @@ export function registerSystemActions(actions: ActionRegistry, _callbacks: Actio
       description: "Generate worktree context and copy to clipboard",
       category: "copyTree",
       kind: "command",
-      danger: "confirm",
+      danger: "safe",
       scope: "renderer",
-      argsSchema: z.object({ worktreeId: z.string(), options: CopyTreeOptionsSchema.optional() }),
-      run: async ({ worktreeId, options }) => {
-        return await copyTreeClient.generateAndCopyFile(worktreeId, options);
+      argsSchema: z
+        .object({
+          worktreeId: z
+            .string()
+            .optional()
+            .describe("Worktree ID. Defaults to the active worktree."),
+          options: CopyTreeOptionsSchema.optional(),
+        })
+        .optional(),
+      run: async (args, ctx: ActionContext) => {
+        const worktreeId = args?.worktreeId ?? ctx.activeWorktreeId;
+        if (!worktreeId) throw new Error("No active worktree");
+        return await copyTreeClient.generateAndCopyFile(worktreeId, args?.options);
       },
     })
   );
@@ -240,16 +272,18 @@ export function registerSystemActions(actions: ActionRegistry, _callbacks: Actio
       description: "Inject worktree context into a terminal",
       category: "copyTree",
       kind: "command",
-      danger: "confirm",
+      danger: "safe",
       scope: "renderer",
       keywords: ["context", "inject", "dump"],
       argsSchema: z.object({
         terminalId: z.string(),
-        worktreeId: z.string(),
+        worktreeId: z.string().optional().describe("Worktree ID. Defaults to the active worktree."),
         options: CopyTreeOptionsSchema.optional(),
       }),
-      run: async ({ terminalId, worktreeId, options }) => {
-        return await copyTreeClient.injectToTerminal(terminalId, worktreeId, options);
+      run: async ({ terminalId, worktreeId, options }, ctx: ActionContext) => {
+        const resolvedWorktreeId = worktreeId ?? ctx.activeWorktreeId;
+        if (!resolvedWorktreeId) throw new Error("No active worktree");
+        return await copyTreeClient.injectToTerminal(terminalId, resolvedWorktreeId, options);
       },
     })
   );

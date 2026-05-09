@@ -9,7 +9,7 @@ import {
 } from "../../../schemas/ipc.js";
 import { getCrashRecoveryService } from "../../../services/CrashRecoveryService.js";
 
-import { isWebGLHardwareAccelerated } from "../../../utils/gpuDetection.js";
+import { getGpuFeatureStatus, isWebGLHardwareAccelerated } from "../../../utils/gpuDetection.js";
 import { isGpuDisabledByFlag } from "../../../services/GpuCrashMonitorService.js";
 import { getCrashLoopGuard } from "../../../services/CrashLoopGuardService.js";
 import { closeTelemetry } from "../../../services/TelemetryService.js";
@@ -26,6 +26,11 @@ export function registerAppStateHandlers(): () => void {
     const currentProject = projectStore.getCurrentProject();
     const globalAppState = store.get("appState");
     const projectId = currentProject?.id;
+    const panelFilter = getCrashRecoveryService().consumePanelFilter();
+    const hasCrashRestoreTerminals =
+      panelFilter !== null &&
+      Array.isArray(globalAppState.terminals) &&
+      globalAppState.terminals.length > 0;
 
     // First, try to get terminals from per-project state (new model)
     // Fall back to global appState.terminals for migration
@@ -44,7 +49,7 @@ export function registerAppStateHandlers(): () => void {
         await projectStore.getProjectStateWithRecovery(projectId);
       projectStateQuarantinedPath = quarantinedPath;
       // Per-project state exists (even if empty) - use it as authoritative
-      if (projectState?.terminals !== undefined) {
+      if (!hasCrashRestoreTerminals && projectState?.terminals !== undefined) {
         // Use per-project terminals, excluding trashed and normalizing location
         const validatedTerminals = filterValidTerminalEntries(
           projectState.terminals,
@@ -210,7 +215,6 @@ export function registerAppStateHandlers(): () => void {
 
     // Apply one-shot crash recovery panel filter if set
     // Empty array means "no specific selection" (legacy/no-panels case) — skip filtering
-    const panelFilter = getCrashRecoveryService().consumePanelFilter();
     if (panelFilter !== null && panelFilter.length > 0) {
       const filterSet = new Set(panelFilter);
       terminalsToUse = terminalsToUse.filter((t) => filterSet.has(t.id));
@@ -236,7 +240,7 @@ export function registerAppStateHandlers(): () => void {
       `[AppHydrate] Project: ${currentProject?.name ?? "none"} - terminals from ${terminalsSource} (${terminalsToUse.length} valid), focusMode: ${focusModeToUse}`
     );
 
-    const gpuStatus = app.getGPUFeatureStatus();
+    const gpuStatus = getGpuFeatureStatus();
     const gpuWebGLHardware = isWebGLHardwareAccelerated(gpuStatus.webgl2);
     if (!gpuWebGLHardware) {
       console.warn(

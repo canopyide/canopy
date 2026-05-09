@@ -48,6 +48,9 @@ export const PERF_MARKS = {
 
   IPC_REQUEST_START: "ipc_request_start",
   IPC_REQUEST_END: "ipc_request_end",
+
+  RENDERER_CLS_SAMPLE: "renderer_cls_sample",
+  RENDERER_CLS_FINAL: "renderer_cls_final",
 } as const;
 
 export type PerfMarkName = (typeof PERF_MARKS)[keyof typeof PERF_MARKS];

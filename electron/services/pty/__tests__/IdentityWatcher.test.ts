@@ -161,6 +161,87 @@ describe("IdentityWatcher", () => {
       watcher.captureInput("first\r");
       expect(watcher.captureInput("second\r")).toBe("second");
     });
+
+    // CSI sequences end on a final byte in the 0x40–0x7E range. The previous
+    // 2-state machine treated `[` (0x5B) as a final byte, dropping arrow-key
+    // payloads like the `A` in `\x1b[A` straight into the buffer.
+    it("does not pollute the buffer with CSI cursor-key payloads", () => {
+      const { delegate } = createFakeDelegate();
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.captureInput("\x1b[A\x1b[B\x1b[C\x1b[Dclaude");
+      expect(watcher.captureInput("\r")).toBe("claude");
+    });
+
+    it("does not pollute the buffer with CSI function-key sequences (\\x1b[5~)", () => {
+      const { delegate } = createFakeDelegate();
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.captureInput("\x1b[5~\x1b[6~claude");
+      expect(watcher.captureInput("\r")).toBe("claude");
+    });
+
+    it("does not pollute the buffer with OSC title sequences (\\x1b]0;…\\x07)", () => {
+      const { delegate } = createFakeDelegate();
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.captureInput("\x1b]0;window-title\x07pnpm dev");
+      expect(watcher.captureInput("\r")).toBe("pnpm dev");
+    });
+
+    it("returns undefined and ignores input after dispose", () => {
+      const { delegate } = createFakeDelegate();
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.captureInput("partial");
+      watcher.dispose();
+      expect(watcher.captureInput("more\r")).toBeUndefined();
+    });
+
+    // PTY data isn't guaranteed to deliver a full VT sequence in a single
+    // `onData` event — node-pty splits at arbitrary byte boundaries. The ESC
+    // parser state must persist across captureInput calls so a sequence
+    // straddling two writes (`\x1b` then `[Aclaude\r`) still parses cleanly.
+    it("does not leak bytes when a CSI sequence is split across two captureInput calls", () => {
+      const { delegate } = createFakeDelegate();
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.captureInput("\x1b");
+      expect(watcher.captureInput("[Aclaude\r")).toBe("claude");
+    });
+
+    it("does not leak bytes when an OSC sequence is split across two captureInput calls", () => {
+      const { delegate } = createFakeDelegate();
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.captureInput("\x1b]0;win");
+      expect(watcher.captureInput("dow\x07pnpm dev\r")).toBe("pnpm dev");
+    });
+
+    // The state-3 comment claims ST (`ESC \`) recovers via the embedded-ESC
+    // restart path. This is the test that pins that contract.
+    it("terminates an OSC sequence on ST (\\x1b\\\\) without polluting the buffer", () => {
+      const { delegate } = createFakeDelegate();
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.captureInput("\x1b]0;window-title\x1b\\pnpm dev");
+      expect(watcher.captureInput("\r")).toBe("pnpm dev");
+    });
+
+    it("rolls the buffer when input exceeds SHELL_INPUT_BUFFER_MAX (drops oldest, keeps tail)", async () => {
+      const { delegate } = createFakeDelegate();
+      const watcher = new IdentityWatcher(delegate);
+      const { SHELL_INPUT_BUFFER_MAX } = await import("../IdentityWatcher.js");
+
+      // Fill exactly to capacity, then append one more printable char. The
+      // buggy implementation would drop the new char; the fixed one drops the
+      // oldest so the live tail (`!`) is preserved.
+      watcher.captureInput("a".repeat(SHELL_INPUT_BUFFER_MAX));
+      const submitted = watcher.captureInput("!\r");
+      expect(submitted).toBeDefined();
+      expect(submitted).toHaveLength(SHELL_INPUT_BUFFER_MAX);
+      expect(submitted!.endsWith("a!")).toBe(true);
+    });
   });
 
   describe("onShellSubmit gating", () => {
@@ -238,19 +319,67 @@ describe("IdentityWatcher", () => {
       watcher.onShellSubmit("claude");
 
       expect(watcher.pendingFallbackIdentity).toBeNull();
+      // Belt-and-suspenders: confirm no timer was armed by the late submit.
+      expect(vi.getTimerCount()).toBe(0);
       vi.advanceTimersByTime(5_000);
       expect(state.detectionCalls).toHaveLength(0);
+    });
+
+    // Past lesson #4851: containers that hold timer disposables must call
+    // `.dispose()` on teardown, not just `.clear()` — otherwise leaked timer
+    // handles surface as `vi.getTimerCount() > 0` after the test ends.
+    it("leaves no live timers after dispose on an armed watcher", () => {
+      const { delegate } = createFakeDelegate({
+        cursorLine: "user@host:~$ ",
+        visibleLines: ["user@host:~$ "],
+      });
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.onShellSubmit("claude");
+      expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+      watcher.dispose();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("clears injected shell evidence on dispose", () => {
+      const inject = vi.fn();
+      const clear = vi.fn();
+      const fakeDetector = {
+        injectShellCommandEvidence: inject,
+        clearShellCommandEvidence: clear,
+      } as unknown as ProcessDetector;
+      const { delegate } = createFakeDelegate({ processDetector: fakeDetector });
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.onShellSubmit("claude");
+      clear.mockClear();
+      watcher.dispose();
+
+      // Default ("manual") reason — respects the sole-support gate so
+      // process-tree-corroborated agents aren't force-demoted on teardown.
+      expect(clear).toHaveBeenCalledTimes(1);
+      expect(clear).toHaveBeenCalledWith();
     });
   });
 
   describe("seed", () => {
-    it("no-ops when no processDetector is attached", () => {
+    it("falls back to direct detection when no processDetector is attached", async () => {
       const { delegate, state } = createFakeDelegate({ processDetector: null });
       const watcher = new IdentityWatcher(delegate);
 
       watcher.seed("claude --version");
-      expect(state.detectionCalls).toHaveLength(0);
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      expect(state.detectionCalls).toEqual([
+        {
+          agentType: "claude",
+          processIconId: "claude",
+          isBusy: true,
+        },
+      ]);
       expect(watcher.seededCommandText).toBeUndefined();
+      watcher.dispose();
     });
 
     it("injects shell-command evidence when a processDetector is attached", () => {
@@ -274,6 +403,23 @@ describe("IdentityWatcher", () => {
       const watcher = new IdentityWatcher(delegate);
 
       watcher.seed("claude");
+      expect(watcher.seededCommandText).toBeUndefined();
+    });
+
+    it("does not inject evidence when seeded after dispose", () => {
+      const inject = vi.fn();
+      const fakeDetector = {
+        injectShellCommandEvidence: inject,
+        clearShellCommandEvidence: vi.fn(),
+      } as unknown as ProcessDetector;
+      const { delegate } = createFakeDelegate({ processDetector: fakeDetector });
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.dispose();
+      inject.mockClear();
+      watcher.seed("claude --version");
+
+      expect(inject).not.toHaveBeenCalled();
       expect(watcher.seededCommandText).toBeUndefined();
     });
   });
@@ -306,6 +452,52 @@ describe("IdentityWatcher", () => {
       expect(watcher.isFallbackCommitted).toBe(true);
     });
 
+    it("does not stop icon fallback when a prompt-looking line is visible but a child is still running", async () => {
+      const inject = vi.fn();
+      const clear = vi.fn();
+      const fakeDetector = {
+        injectShellCommandEvidence: inject,
+        clearShellCommandEvidence: clear,
+      } as unknown as ProcessDetector;
+      const { delegate } = createFakeDelegate({
+        processDetector: fakeDetector,
+        visibleLines: ['PS C:\\repo> node -e "setTimeout(()=>{}, 8000)"', "PS C:\\repo> "],
+        cursorLine: "PS C:\\repo> ",
+        ptyDescendantCount: 1,
+      });
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.onShellSubmit('node -e "setTimeout(()=>{}, 8000)"');
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      expect(inject).toHaveBeenCalledTimes(1);
+      const [identity, commandText] = inject.mock.calls[0];
+      expect(identity).toMatchObject({ processIconId: "node" });
+      expect(commandText).toBe('node -e "setTimeout(()=>{}, 8000)"');
+    });
+
+    it("does not stop icon fallback when descendant count is unavailable", async () => {
+      const { delegate, state } = createFakeDelegate({
+        processDetector: null,
+        visibleLines: ['PS C:\\repo> node -e "setTimeout(()=>{}, 8000)"', "PS C:\\repo> "],
+        cursorLine: "PS C:\\repo> ",
+        ptyDescendantCount: undefined,
+      });
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.onShellSubmit('node -e "setTimeout(()=>{}, 8000)"');
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      expect(state.detectionCalls).toEqual([
+        {
+          agentType: undefined,
+          processIconId: "node",
+          isBusy: true,
+        },
+      ]);
+      watcher.dispose();
+    });
+
     it("calls processDetector.clearShellCommandEvidence('prompt-return') on demotion", async () => {
       const inject = vi.fn();
       const clear = vi.fn();
@@ -326,13 +518,163 @@ describe("IdentityWatcher", () => {
       await vi.advanceTimersByTimeAsync(2_000);
       expect(watcher.isFallbackCommitted).toBe(true);
 
-      state.visibleLines = ["user@host canopy % "];
-      state.cursorLine = "user@host canopy % ";
+      state.visibleLines = ["user@host daintree % "];
+      state.cursorLine = "user@host daintree % ";
       state.ptyDescendantCount = 0;
       await vi.advanceTimersByTimeAsync(600);
 
       expect(clear).toHaveBeenCalledWith("prompt-return");
       // handleAgentDetection is the legacy fallback; not used when detector is present.
+      expect(state.detectionCalls).toHaveLength(0);
+    });
+
+    it("calls processDetector.clearShellCommandEvidence('prompt-return') after a PowerShell prompt returns", async () => {
+      const inject = vi.fn();
+      const clear = vi.fn();
+      const fakeDetector = {
+        injectShellCommandEvidence: inject,
+        clearShellCommandEvidence: clear,
+      } as unknown as ProcessDetector;
+      const { delegate, state } = createFakeDelegate({
+        processDetector: fakeDetector,
+        visibleLines: ["& 'C:\\npm\\prefix\\claude.cmd'", "FAKE_CLAUDE_READY"],
+        cursorLine: "FAKE_CLAUDE_READY",
+        ptyDescendantCount: 1,
+      });
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.onShellSubmit("& 'C:\\npm\\prefix\\claude.cmd'");
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(watcher.isFallbackCommitted).toBe(true);
+
+      const powerShellPrompt = "PS C:\\Users\\runneradmin\\AppData\\Local\\Temp\\project>";
+      state.visibleLines = ["FAKE_CLAUDE_EXIT", powerShellPrompt];
+      state.cursorLine = powerShellPrompt;
+      state.ptyDescendantCount = 0;
+      await vi.advanceTimersByTimeAsync(600);
+
+      expect(clear).toHaveBeenCalledWith("prompt-return");
+      expect(state.detectionCalls).toHaveLength(0);
+    });
+
+    it("holds agent demotion when a Windows-style prompt is visible but a child process remains active", async () => {
+      const inject = vi.fn();
+      const clear = vi.fn();
+      const fakeDetector = {
+        injectShellCommandEvidence: inject,
+        clearShellCommandEvidence: clear,
+      } as unknown as ProcessDetector;
+      const { delegate, state } = createFakeDelegate({
+        processDetector: fakeDetector,
+        visibleLines: ["& 'C:\\npm\\prefix\\claude.cmd'", "FAKE_CLAUDE_READY"],
+        cursorLine: "FAKE_CLAUDE_READY",
+        ptyDescendantCount: 1,
+        foreground: null,
+      });
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.onShellSubmit("& 'C:\\npm\\prefix\\claude.cmd'");
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(watcher.isFallbackCommitted).toBe(true);
+
+      state.visibleLines = ["FAKE_CLAUDE_READY", "> "];
+      state.cursorLine = "> ";
+      state.ptyDescendantCount = 1;
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(clear).not.toHaveBeenCalledWith("prompt-return");
+      expect(state.detectionCalls).toHaveLength(0);
+    });
+
+    it("holds agent demotion when a stale PowerShell prompt is visible while a child process remains active", async () => {
+      const inject = vi.fn();
+      const clear = vi.fn();
+      const fakeDetector = {
+        injectShellCommandEvidence: inject,
+        clearShellCommandEvidence: clear,
+      } as unknown as ProcessDetector;
+      const powerShellPrompt = "PS C:\\Users\\runneradmin\\AppData\\Local\\Temp\\project>";
+      const { delegate, state } = createFakeDelegate({
+        processDetector: fakeDetector,
+        visibleLines: ["& 'C:\\npm\\prefix\\claude.cmd'", powerShellPrompt],
+        cursorLine: powerShellPrompt,
+        ptyDescendantCount: 1,
+        foreground: null,
+      });
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.onShellSubmit("& 'C:\\npm\\prefix\\claude.cmd'");
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(watcher.isFallbackCommitted).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(clear).not.toHaveBeenCalledWith("prompt-return");
+      expect(state.detectionCalls).toHaveLength(0);
+    });
+
+    // Inverse of the OR→AND test below: fallback is icon-only (no agentType),
+    // live icon disagrees. A correct AND check must let the commit proceed
+    // rather than pre-empting on the (absent) agentType match.
+    it("does not pre-empt commit when an icon-only fallback identity disagrees with live icon", async () => {
+      const inject = vi.fn();
+      const clear = vi.fn();
+      const fakeDetector = {
+        injectShellCommandEvidence: inject,
+        clearShellCommandEvidence: clear,
+      } as unknown as ProcessDetector;
+      const { delegate } = createFakeDelegate({
+        processDetector: fakeDetector,
+        // Fallback identity will be `{ processIconId: "pnpm" }` (no agentType
+        // because pnpm isn't in AGENT_CLI_NAMES). Live icon disagrees.
+        lastDetectedProcessIconId: "npm",
+        visibleLines: ["pnpm dev\r\n", "> dev output"],
+        cursorLine: "> dev output",
+        ptyDescendantCount: 1,
+      });
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.onShellSubmit("pnpm dev");
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      expect(inject).toHaveBeenCalledTimes(1);
+      const [identity] = inject.mock.calls[0];
+      expect(identity).toMatchObject({ processIconId: "pnpm" });
+    });
+
+    // Bug 2: liveIdentityMatchesFallback used OR. A stale process icon (from a
+    // prior `claude` run whose icon hadn't been demoted yet) could short-
+    // circuit the commit even when the live agent type disagreed — and vice
+    // versa. The AND form requires every populated identity field to agree.
+    it("does not pre-empt commit when only one identity field agrees with live state", async () => {
+      const inject = vi.fn();
+      const clear = vi.fn();
+      const fakeDetector = {
+        injectShellCommandEvidence: inject,
+        clearShellCommandEvidence: clear,
+      } as unknown as ProcessDetector;
+      const { delegate, state } = createFakeDelegate({
+        processDetector: fakeDetector,
+        // detectedAgentId matches identity.agentType ("claude") — but the
+        // process icon disagrees (live is `pnpm`, fallback identity is
+        // `claude`). A correct AND check rejects the live state and lets the
+        // fallback commit fresh evidence.
+        detectedAgentId: "claude",
+        lastDetectedProcessIconId: "pnpm",
+        // allowWhenAgentDetected is required because detectedAgentId is set.
+        visibleLines: ["claude\r\n", "Starting Claude Code..."],
+        cursorLine: "Starting Claude Code...",
+        ptyDescendantCount: 1,
+      });
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.onShellSubmit("claude", { allowWhenAgentDetected: true });
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      // With OR: commit short-circuited (no inject call). With AND: commit
+      // proceeds because processIconId disagrees, so injectShellCommandEvidence
+      // fires with the watcher's identity.
+      expect(inject).toHaveBeenCalledTimes(1);
       expect(state.detectionCalls).toHaveLength(0);
     });
 
@@ -388,8 +730,8 @@ describe("IdentityWatcher", () => {
       expect(watcher.isFallbackCommitted).toBe(true);
 
       // Now show a shell prompt — two consecutive polls should trigger demotion.
-      state.visibleLines = ["user@host canopy % "];
-      state.cursorLine = "user@host canopy % ";
+      state.visibleLines = ["user@host daintree % "];
+      state.cursorLine = "user@host daintree % ";
       state.ptyDescendantCount = 0;
       await vi.advanceTimersByTimeAsync(600);
 
@@ -484,8 +826,8 @@ describe("IdentityWatcher", () => {
 
         // Now show a shell prompt with the localized failure phrase, while
         // foreground stays busy. Without the regex bypass, branch 1 holds.
-        state.visibleLines = ["user@host canopy % ", phrase, "user@host canopy % "];
-        state.cursorLine = "user@host canopy % ";
+        state.visibleLines = ["user@host daintree % ", phrase, "user@host daintree % "];
+        state.cursorLine = "user@host daintree % ";
         state.ptyDescendantCount = 0;
         state.foreground = { shellPgid: 123, foregroundPgid: 456 };
         await vi.advanceTimersByTimeAsync(600);
@@ -513,8 +855,8 @@ describe("IdentityWatcher", () => {
       expect(watcher.isFallbackCommitted).toBe(true);
 
       // Prompt visible, no failure phrase, foreground still busy — hold.
-      state.visibleLines = ["user@host canopy % ", "(no failure here)", "user@host canopy % "];
-      state.cursorLine = "user@host canopy % ";
+      state.visibleLines = ["user@host daintree % ", "(no failure here)", "user@host daintree % "];
+      state.cursorLine = "user@host daintree % ";
       state.ptyDescendantCount = 0;
       state.foreground = { shellPgid: 123, foregroundPgid: 456 };
       await vi.advanceTimersByTimeAsync(600);
@@ -536,14 +878,59 @@ describe("IdentityWatcher", () => {
       expect(watcher.hasAgentUiPromptFalsePositive()).toBe(true);
     });
 
+    it("returns true for Windows Claude trust-prompt text with ASCII selector", () => {
+      const { delegate } = createFakeDelegate({
+        visibleLines: [
+          "Accessing workspace:",
+          "Quick safety check: Is this a project you created or one you trust?",
+          "> 1. Yes, I trust this folder",
+          "Enter to confirm · Esc to cancel",
+        ],
+        cursorLine: "",
+      });
+      const watcher = new IdentityWatcher(delegate);
+
+      expect(watcher.hasAgentUiPromptFalsePositive()).toBe(true);
+    });
+
     it("returns false for a normal shell prompt line", () => {
       const { delegate } = createFakeDelegate({
-        visibleLines: ["", "user@host canopy % "],
-        cursorLine: "user@host canopy % ",
+        visibleLines: ["", "user@host daintree % "],
+        cursorLine: "user@host daintree % ",
       });
       const watcher = new IdentityWatcher(delegate);
 
       expect(watcher.hasAgentUiPromptFalsePositive()).toBe(false);
+    });
+
+    it("returns true for Claude Code's idle input prompt", () => {
+      const { delegate } = createFakeDelegate({
+        visibleLines: [
+          "────────────────────────────────────────────────────────────────────────",
+          "> ",
+          "────────────────────────────────────────────────────────────────────────",
+          "? for shortcuts",
+        ],
+        cursorLine: "> ",
+      });
+      const watcher = new IdentityWatcher(delegate);
+
+      expect(watcher.hasAgentUiPromptFalsePositive()).toBe(true);
+    });
+
+    it("returns true for Claude Code's Windows welcome prompt when the input marker scrolled out", () => {
+      const { delegate } = createFakeDelegate({
+        visibleLines: [
+          "Claude Code v2.1.136",
+          "Welcome back!",
+          "Tips for getting started",
+          "? for shortcuts",
+        ],
+        cursorLine: "",
+      });
+      const watcher = new IdentityWatcher(delegate);
+
+      expect(watcher.hasAgentUiPromptFalsePositive()).toBe(true);
     });
   });
 });

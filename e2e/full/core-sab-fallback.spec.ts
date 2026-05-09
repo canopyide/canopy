@@ -10,10 +10,11 @@ import { T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
 
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Core: SAB Fallback (IPC-only terminal output)", () => {
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "sab-fallback" });
+    ({ dir: fixtureDir, cleanup: fixtureCleanup } = createFixtureRepo({ name: "sab-fallback" }));
     ctx = await launchApp({
       extraArgs: ["--disable-features=SharedArrayBuffer"],
     });
@@ -22,6 +23,7 @@ test.describe.serial("Core: SAB Fallback (IPC-only terminal output)", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("opens a terminal with SAB disabled", async () => {

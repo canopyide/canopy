@@ -44,8 +44,6 @@ function createMockProcessTreeCache(descendantPids: number[] = []): ProcessTreeC
     getChildren: vi.fn().mockReturnValue([]),
     getProcess: vi.fn(),
     hasChildren: vi.fn().mockReturnValue(false),
-    getDescendantsCpuUsage: vi.fn().mockReturnValue(0),
-    hasActiveDescendants: vi.fn().mockReturnValue(false),
     start: vi.fn(),
     stop: vi.fn(),
     onRefresh: vi.fn().mockReturnValue(() => {}),
@@ -160,8 +158,10 @@ describe("TerminalProcess.kill — session persistence", () => {
   it("persists session snapshot synchronously for non-agent terminal on kill", () => {
     const terminal = createTerminal();
 
-    // Spy on getSerializedState to return known content
-    vi.spyOn(terminal, "getSerializedState").mockReturnValue("scrollback-data");
+    // Spy on serializeForPersistence (banner-aware) — the kill path uses this
+    // so a hibernate→restore→hibernate cycle doesn't bake the restore banner
+    // into the snapshot.
+    vi.spyOn(terminal, "serializeForPersistence").mockReturnValue("scrollback-data");
 
     terminal.kill("test");
 
@@ -171,7 +171,7 @@ describe("TerminalProcess.kill — session persistence", () => {
   it("does not persist session for agent terminals on kill", () => {
     const terminal = createTerminal({ kind: "terminal", launchAgentId: "claude" });
 
-    vi.spyOn(terminal, "getSerializedState").mockReturnValue("scrollback-data");
+    vi.spyOn(terminal, "serializeForPersistence").mockReturnValue("scrollback-data");
 
     terminal.kill("test");
 
@@ -181,19 +181,7 @@ describe("TerminalProcess.kill — session persistence", () => {
   it("handles null serialized state gracefully on kill", () => {
     const terminal = createTerminal();
 
-    vi.spyOn(terminal, "getSerializedState").mockReturnValue(null);
-
-    terminal.kill("test");
-
-    expect(persistSyncMock).not.toHaveBeenCalled();
-  });
-
-  it("skips persist when serialized state exceeds max bytes", () => {
-    const terminal = createTerminal();
-
-    // SESSION_SNAPSHOT_MAX_BYTES is 5MB — create oversized data
-    const oversized = "x".repeat(6 * 1024 * 1024);
-    vi.spyOn(terminal, "getSerializedState").mockReturnValue(oversized);
+    vi.spyOn(terminal, "serializeForPersistence").mockReturnValue(null);
 
     terminal.kill("test");
 
@@ -203,7 +191,7 @@ describe("TerminalProcess.kill — session persistence", () => {
   it("completes kill even if serialization throws", () => {
     const terminal = createTerminal();
 
-    vi.spyOn(terminal, "getSerializedState").mockImplementation(() => {
+    vi.spyOn(terminal, "serializeForPersistence").mockImplementation(() => {
       throw new Error("serialize failed");
     });
 

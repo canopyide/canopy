@@ -2,6 +2,7 @@ import type { TerminalInstance } from "@/store";
 import type { PanelComponentProps } from "@/registry";
 import type { ActivityState } from "@/components/Terminal/TerminalPane";
 import { deriveTerminalChrome } from "@/utils/terminalChrome";
+import { clampZoom } from "@/components/Browser/browserUtils";
 
 const activityCache = new Map<string, ActivityState>();
 
@@ -41,14 +42,12 @@ function getStableActivity(
 export interface BuildPanelPropsConfig {
   terminal: TerminalInstance;
   isFocused: boolean;
-  isTrashing: boolean;
   overrides: Partial<PanelComponentProps>;
 }
 
 export function buildPanelProps({
   terminal,
   isFocused,
-  isTrashing,
   overrides,
 }: BuildPanelPropsConfig): PanelComponentProps {
   return {
@@ -57,7 +56,6 @@ export function buildPanelProps({
     worktreeId: terminal.worktreeId,
 
     isFocused,
-    isTrashing,
 
     // Required by PanelComponentProps — overridden by caller
     onFocus: overrides.onFocus!,
@@ -105,6 +103,8 @@ export function buildPanelProps({
 
     // Browser-specific
     initialUrl: terminal.browserUrl || "http://localhost:3000",
+    initialHistory: terminal.browserHistory,
+    initialZoom: clampZoom(terminal.browserZoom ?? 1.0),
 
     ...overrides,
   };

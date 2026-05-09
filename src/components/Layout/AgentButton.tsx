@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ShortcutRevealChip } from "@/components/ui/ShortcutRevealChip";
@@ -16,7 +17,8 @@ import { cn } from "@/lib/utils";
 import { getBrandColorHex } from "@/lib/colorUtils";
 import { BrandMark } from "@/components/icons";
 import { getAgentConfig, getMergedPresets } from "@/config/agents";
-import { useKeybindingDisplay } from "@/hooks";
+import { useAriaKeyshortcuts, useKeybindingDisplay } from "@/hooks";
+import { createTooltipContent } from "@/lib/tooltipShortcut";
 import { useWorktrees } from "@/hooks/useWorktrees";
 import { actionService } from "@/services/ActionService";
 import {
@@ -45,7 +47,7 @@ import { useCcrPresetsStore } from "@/store/ccrPresetsStore";
 import { useProjectPresetsStore } from "@/store/projectPresetsStore";
 import { usePanelStore } from "@/store/panelStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
-import { useShallow } from "zustand/react/shallow";
+
 import { resolveEffectivePresetId } from "@shared/types";
 import {
   getDominantAgentState,
@@ -149,12 +151,11 @@ export function AgentButton({
 }: AgentButtonProps) {
   const { worktrees } = useWorktrees();
   const displayCombo = useKeybindingDisplay(`agent.${type}`);
+  const ariaShortcut = useAriaKeyshortcuts(`agent.${type}`);
   const agentSettings = useAgentSettingsStore((s) => s.settings);
   const ccrPresets = useCcrPresetsStore((s) => s.ccrPresetsByAgent[type]);
   const projectPresets = useProjectPresetsStore((s) => s.presetsByAgent[type]);
 
-  const panelsById = usePanelStore(useShallow((s) => s.panelsById));
-  const panelIds = usePanelStore(useShallow((s) => s.panelIds));
   const activeWorktreeId = useWorktreeSelectionStore((s) => s.activeWorktreeId);
 
   // Radix Tooltip reopens on focus restoration. When the chevron's
@@ -191,26 +192,29 @@ export function AgentButton({
     isRestoringFocusRef.current = false;
   };
 
-  const activeSession = useMemo(() => {
-    const states: (AgentState | undefined)[] = [];
-    let firstId: string | null = null;
-    for (const pid of panelIds) {
-      const p = panelsById[pid];
-      if (
-        !p ||
-        getRuntimeOrBootAgentId(p) !== type ||
-        p.location === "trash" ||
-        p.location === "background"
-      )
-        continue;
-      if (activeWorktreeId && p.worktreeId !== activeWorktreeId) continue;
-      if (!ACTIVE_AGENT_STATES.has(p.agentState)) continue;
-      if (!firstId) firstId = pid;
-      states.push(p.agentState);
-    }
-    if (!firstId) return null;
-    return { id: firstId, dominantState: getDominantAgentState(states) };
-  }, [panelsById, panelIds, activeWorktreeId, type]);
+  // Single useShallow selector — scoped to the active worktree's pre-computed
+  // bucket so per-terminal ticks in unrelated worktrees do not re-evaluate this
+  // selector body. When `activeWorktreeId` is null, fall back to scanning all
+  // panel ids (rare, only during project switch hydration). See issue #7451.
+  const activeSession = usePanelStore(
+    useShallow((state) => {
+      const ids = activeWorktreeId ? state.panelIdsByWorktreeId[activeWorktreeId] : state.panelIds;
+      if (!ids || ids.length === 0) return null;
+      const states: (AgentState | undefined)[] = [];
+      let firstId: string | null = null;
+      for (const pid of ids) {
+        const p = state.panelsById[pid];
+        if (!p) continue;
+        if (getRuntimeOrBootAgentId(p) !== type) continue;
+        if (p.location === "trash" || p.location === "background") continue;
+        if (!ACTIVE_AGENT_STATES.has(p.agentState)) continue;
+        if (!firstId) firstId = pid;
+        states.push(p.agentState);
+      }
+      if (!firstId) return null;
+      return { id: firstId, dominantState: getDominantAgentState(states) };
+    })
+  );
 
   const config = getAgentConfig(type);
   if (!config) return null;
@@ -252,7 +256,6 @@ export function AgentButton({
   const hasMultiplePresetGroups = presetGroupCount > 1;
 
   const tooltipDetails = config.tooltip ? ` — ${config.tooltip}` : "";
-  const shortcut = displayCombo ? ` (${displayCombo})` : "";
   const isLoading = availability === undefined;
   const isLaunchable = isAgentLaunchable(availability);
   // `installed` now only fires for WSL-capped binaries (launch not wired
@@ -266,15 +269,16 @@ export function AgentButton({
   const signInUnconfirmed = isAgentUnauthenticated(availability);
 
   const presetSegment = activePresetName ? ` · ${activePresetName}` : "";
-  const tooltip = isLoading
+  const tooltipLabel = isLoading
     ? `Checking ${config.name} CLI availability...`
     : isLaunchable
       ? signInUnconfirmed
-        ? `Start ${config.name}${presetSegment} — sign-in not detected${shortcut}`
-        : `Start ${config.name}${presetSegment}${tooltipDetails}${shortcut}`
+        ? `Start ${config.name}${presetSegment} — sign-in not detected`
+        : `Start ${config.name}${presetSegment}${tooltipDetails}`
       : needsSetup
         ? `${config.name} needs setup. Click to configure.`
         : `${config.name} CLI not found. Click to install.`;
+  const tooltipShortcut = isLaunchable ? displayCombo : undefined;
   const chevronTooltip = `Set ${config.name} preset`;
 
   const ariaLabel = isLoading
@@ -352,17 +356,20 @@ export function AgentButton({
                   data-toolbar-item={dataToolbarItem}
                   onPointerEnter={clearFocusRestoreSuppression}
                   className={cn(
-                    "toolbar-agent-button text-daintree-text transition-colors relative",
+                    "toolbar-agent-button text-daintree-text relative",
                     needsSetup && "opacity-70"
                   )}
                   aria-label={ariaLabel}
+                  aria-keyshortcuts={ariaShortcut}
                 >
                   {iconElement}
                   <ShortcutRevealChip actionId={`agent.${type}`} />
                 </Button>
               </span>
             </TooltipTrigger>
-            <TooltipContent side="bottom">{tooltip}</TooltipContent>
+            <TooltipContent side="bottom">
+              {createTooltipContent(tooltipLabel, tooltipShortcut)}
+            </TooltipContent>
           </Tooltip>
         </ContextMenuTrigger>
         <ContextMenuContent className="max-h-[var(--radix-context-menu-content-available-height)] overflow-y-auto">
@@ -446,16 +453,19 @@ export function AgentButton({
                 data-toolbar-item={dataToolbarItem}
                 onPointerEnter={clearFocusRestoreSuppression}
                 className={cn(
-                  "toolbar-agent-button text-daintree-text transition-colors rounded-r-none border-r border-transparent relative",
+                  "toolbar-agent-button text-daintree-text rounded-r-none border-r border-transparent relative",
                   needsSetup && "opacity-70"
                 )}
                 aria-label={ariaLabel}
+                aria-keyshortcuts={ariaShortcut}
               >
                 {iconElement}
                 <ShortcutRevealChip actionId={`agent.${type}`} />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">{tooltip}</TooltipContent>
+            <TooltipContent side="bottom">
+              {createTooltipContent(tooltipLabel, tooltipShortcut)}
+            </TooltipContent>
           </Tooltip>
           <DropdownMenu
             onOpenChange={(open) => {
@@ -474,7 +484,7 @@ export function AgentButton({
                     data-toolbar-item={dataToolbarItem}
                     onPointerEnter={clearFocusRestoreSuppression}
                     className={cn(
-                      "toolbar-agent-button text-daintree-text transition-colors rounded-l-none",
+                      "toolbar-agent-button text-daintree-text rounded-l-none",
                       "h-8 w-6 p-0 flex items-center justify-center",
                       !isLaunchable && !isLoading && "opacity-60"
                     )}
@@ -505,6 +515,9 @@ export function AgentButton({
                 <DropdownMenuRadioItem
                   value=""
                   onSelect={() => {
+                    void useAgentSettingsStore.getState().updateAgent(type, {
+                      presetId: undefined,
+                    });
                     persistWorktreePick(undefined);
                   }}
                 >
@@ -638,6 +651,9 @@ export function AgentButton({
                 <ContextMenuRadioItem
                   value=""
                   onSelect={() => {
+                    void useAgentSettingsStore.getState().updateAgent(type, {
+                      presetId: undefined,
+                    });
                     persistWorktreePick(undefined);
                     void actionService.dispatch(
                       "agent.launch",

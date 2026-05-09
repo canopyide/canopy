@@ -56,7 +56,7 @@ export const usePreferencesStore = create<PreferencesState>()(
     {
       name: "daintree-preferences",
       storage: createSafeJSONStorage(),
-      version: 4,
+      version: 6,
       migrate: (persisted, version) => {
         if (version === 0 || version === undefined) {
           if (persisted && typeof persisted === "object") {
@@ -84,6 +84,15 @@ export const usePreferencesStore = create<PreferencesState>()(
           if (persisted && typeof persisted === "object") {
             const state = persisted as Record<string, unknown>;
             state.reduceAnimations ??= false;
+          }
+        }
+        if (version < 6) {
+          // skipWorkingCloseConfirm was retired with the close-confirm dialog
+          // (issue #6920). Drop the field so persisted state matches the
+          // current schema.
+          if (persisted && typeof persisted === "object") {
+            const state = persisted as Record<string, unknown>;
+            delete state.skipWorkingCloseConfirm;
           }
         }
         return persisted as PreferencesState;

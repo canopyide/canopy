@@ -20,6 +20,7 @@ vi.mock("../../utils/fs.js", () => ({
 vi.mock("../../utils/hardenedGit.js", () => ({
   createHardenedGit: vi.fn(() => mockSimpleGit),
   validateCwd: vi.fn(),
+  validateBranchName: vi.fn(),
 }));
 
 vi.mock("../../utils/git.js", () => ({
@@ -200,5 +201,12 @@ describe("WorkspaceService.getFileDiff", () => {
         error: "Absolute paths are not allowed",
       })
     );
+  });
+
+  it("passes --no-textconv on the modified-file diff to defeat textconv drivers", async () => {
+    mockSimpleGit.diff.mockResolvedValueOnce("diff --git a/foo.ts b/foo.ts\n+change");
+    await service.getFileDiff("req-6", "/test/repo", "foo.ts", "modified");
+
+    expect(mockSimpleGit.diff).toHaveBeenCalledWith(expect.arrayContaining(["--no-textconv"]));
   });
 });

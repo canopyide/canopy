@@ -9,10 +9,13 @@ import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
 
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Core: Terminal Scroll Indicator", () => {
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "scroll-indicator" });
+    ({ dir: fixtureDir, cleanup: fixtureCleanup } = createFixtureRepo({
+      name: "scroll-indicator",
+    }));
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(
       ctx.app,
@@ -24,6 +27,7 @@ test.describe.serial("Core: Terminal Scroll Indicator", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("open terminal via toolbar", async () => {

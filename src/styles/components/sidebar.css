@@ -5,18 +5,75 @@
 }
 
 .sidebar-worktree-card[data-active="true"] {
-  background: var(--sidebar-active-bg, rgba(255, 255, 255, 0.03));
+  background: var(--sidebar-active-bg, rgba(255, 255, 255, 0.05));
   box-shadow: inset 2px 0 0 var(--theme-overlay-selected);
 }
 
 .sidebar-root:not(:focus-within) .sidebar-worktree-card[data-active="true"] {
-  background: var(--sidebar-hover-bg, rgba(255, 255, 255, 0.015));
+  background: var(--sidebar-hover-bg, rgba(255, 255, 255, 0.03));
   box-shadow: none;
 }
 
 .sidebar-worktree-card[data-hoverable="true"]:hover,
 .sidebar-worktree-card[data-hovered="true"] {
-  background: var(--sidebar-hover-bg, rgba(255, 255, 255, 0.015));
+  background: var(--sidebar-hover-bg, rgba(255, 255, 255, 0.03));
+}
+
+html[data-dragging="true"] .sidebar-worktree-card[data-hoverable="true"]:hover,
+html[data-dragging="true"] .sidebar-worktree-card[data-hovered="true"] {
+  background: transparent;
+}
+
+.sidebar-worktree-card:has(> button:focus-visible) {
+  box-shadow: inset 0 0 0 2px var(--sidebar-ring);
+}
+
+.sidebar-worktree-card[data-active="true"]:has(> button:focus-visible) {
+  box-shadow:
+    inset 2px 0 0 var(--theme-overlay-selected),
+    inset 0 0 0 2px var(--sidebar-ring);
+}
+
+/* Roving-tabindex grid: when the row wrapper itself is keyboard-focused,
+   surface the same focus ring on the embedded card so the user can see
+   which row owns the tab stop. */
+[data-worktree-row]:focus-visible {
+  outline: none;
+}
+
+[data-worktree-row]:focus-visible .sidebar-worktree-card {
+  box-shadow: inset 0 0 0 2px var(--sidebar-ring);
+}
+
+[data-worktree-row]:focus-visible .sidebar-worktree-card[data-active="true"] {
+  box-shadow:
+    inset 2px 0 0 var(--theme-overlay-selected),
+    inset 0 0 0 2px var(--sidebar-ring);
+}
+
+/* Reveal the per-row action toolbar whenever the row is focused (or any
+   descendant has focus). The card-internal `group-focus-within/card`
+   reveal only fires when focus lands inside the card; this rule handles
+   focus on the row wrapper itself. */
+[data-worktree-row]:focus [data-worktree-row-toolbar],
+[data-worktree-row]:focus-within [data-worktree-row-toolbar] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Reveal the drag handle whenever the row has keyboard focus, matching the
+   toolbar reveal pattern above. */
+[data-worktree-row]:focus [data-worktree-row-drag-handle],
+[data-worktree-row]:focus-within [data-worktree-row-drag-handle] {
+  color: color-mix(in srgb, var(--theme-text-primary) 30%, transparent);
+  background-color: var(--theme-overlay-soft);
+}
+
+@media (forced-colors: active) {
+  [data-worktree-row]:focus-visible .sidebar-worktree-card {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
 }
 
 .sidebar-action-button:hover {
@@ -35,4 +92,11 @@
 
 body[data-reduce-animations="true"] .sidebar-worktree-card {
   transition: none;
+}
+
+@media (forced-colors: active) {
+  .sidebar-worktree-card:has(> button:focus-visible) {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
 }

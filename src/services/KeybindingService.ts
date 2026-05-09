@@ -1,5 +1,10 @@
-import type { KeyScope, KeybindingConfig, KeybindingResolutionResult } from "./keybindingUtils";
-import { normalizeKeyForBinding, parseCombo } from "./keybindingUtils";
+import type {
+  KeyScope,
+  KeybindingConfig,
+  KeybindingConflict,
+  KeybindingResolutionResult,
+} from "./keybindingUtils";
+import { CHORD_TIMEOUT_MS, normalizeKeyForBinding, parseCombo } from "./keybindingUtils";
 import { DEFAULT_KEYBINDINGS } from "./defaultKeybindings";
 import { isMac } from "@/lib/platform";
 
@@ -10,18 +15,35 @@ function scopesConflict(a: KeyScope, b: KeyScope): boolean {
   return a === b || a === "global" || b === "global";
 }
 
+function combosFieldsEqual(a: string, b: string): boolean {
+  const pa = parseCombo(a);
+  const pb = parseCombo(b);
+  return (
+    pa.cmd === pb.cmd &&
+    pa.ctrl === pb.ctrl &&
+    pa.shift === pb.shift &&
+    pa.alt === pb.alt &&
+    pa.key.toLowerCase() === pb.key.toLowerCase()
+  );
+}
+
 class KeybindingService {
-  private bindings: Map<string, KeybindingConfig> = new Map();
+  private bindings: Map<string, KeybindingConfig[]> = new Map();
   private overrides: Map<string, string[]> = new Map();
+  private scopeStack: KeyScope[] = ["global"];
   private currentScope: KeyScope = "global";
   private pendingChord: string | null = null;
   private chordTimeout: NodeJS.Timeout | null = null;
-  private readonly CHORD_TIMEOUT_MS = 1000;
-  private listeners: Array<() => void> = [];
+  private listeners = new Set<() => void>();
 
   constructor() {
     DEFAULT_KEYBINDINGS.forEach((binding) => {
-      this.bindings.set(binding.actionId, binding);
+      const existing = this.bindings.get(binding.actionId);
+      if (existing) {
+        existing.push(binding);
+      } else {
+        this.bindings.set(binding.actionId, [binding]);
+      }
     });
   }
 
@@ -41,6 +63,9 @@ class KeybindingService {
   }
 
   async setOverride(actionId: string, combo: string[]): Promise<void> {
+    // A pending chord captured under the old binding may now reference a stale
+    // combo. Drop it before the rebind so the next keypress starts fresh.
+    this.clearPendingChord();
     if (typeof window !== "undefined" && window.electron?.keybinding) {
       await window.electron.keybinding.setOverride(actionId, combo);
       this.overrides.set(actionId, combo);
@@ -49,6 +74,7 @@ class KeybindingService {
   }
 
   async removeOverride(actionId: string): Promise<void> {
+    this.clearPendingChord();
     if (typeof window !== "undefined" && window.electron?.keybinding) {
       await window.electron.keybinding.removeOverride(actionId);
       this.overrides.delete(actionId);
@@ -57,6 +83,7 @@ class KeybindingService {
   }
 
   async resetAllOverrides(): Promise<void> {
+    this.clearPendingChord();
     if (typeof window !== "undefined" && window.electron?.keybinding) {
       await window.electron.keybinding.resetAll();
       this.overrides.clear();
@@ -85,30 +112,62 @@ class KeybindingService {
       }
       return undefined;
     }
-    return this.bindings.get(actionId)?.combo;
+    return this.getBinding(actionId)?.combo;
   }
 
-  findConflicts(combo: string, excludeActionId?: string): KeybindingConfig[] {
-    const conflicts: KeybindingConfig[] = [];
+  // Detects clashes for a candidate `combo` against currently registered bindings.
+  // Two clash kinds:
+  //   "conflict" — same combo string in an overlapping scope.
+  //   "shadowed" — chord-prefix collision (either the candidate is a prefix of an
+  //     existing chord, or an existing combo is a prefix of the candidate chord).
+  // The optional `scope` defaults to "global" so callers that don't yet thread a
+  // target scope still get correct conservative results: a global candidate
+  // collides with both global and scoped bindings, mirroring `scopesConflict`.
+  findConflicts(
+    combo: string,
+    excludeActionId?: string,
+    scope: KeyScope = "global"
+  ): KeybindingConflict[] {
+    const conflicts: KeybindingConflict[] = [];
     const normalizedCombo = combo.trim().toLowerCase();
+    if (!normalizedCombo) return conflicts;
+    const candidateParts = normalizedCombo.split(" ");
 
-    for (const binding of this.bindings.values()) {
-      if (excludeActionId && binding.actionId === excludeActionId) continue;
+    for (const arr of this.bindings.values()) {
+      for (const binding of arr) {
+        if (excludeActionId && binding.actionId === excludeActionId) continue;
+        if (!scopesConflict(binding.scope, scope)) continue;
 
-      const hasOverride = this.overrides.has(binding.actionId);
-      const overrideCombos = this.overrides.get(binding.actionId) || [];
-      const allCombos = [...overrideCombos];
+        const hasOverride = this.overrides.has(binding.actionId);
+        const overrideCombos = this.overrides.get(binding.actionId) || [];
+        const effectiveCombos = hasOverride ? overrideCombos : binding.combo ? [binding.combo] : [];
 
-      if (!hasOverride) {
-        if (binding.combo) {
-          allCombos.push(binding.combo);
+        let matched: "conflict" | "shadowed" | null = null;
+        for (const existingCombo of effectiveCombos) {
+          const normalizedExisting = existingCombo.trim().toLowerCase();
+          if (!normalizedExisting) continue;
+
+          if (normalizedExisting === normalizedCombo) {
+            matched = "conflict";
+            break;
+          }
+
+          const existingParts = normalizedExisting.split(" ");
+          const candidateIsPrefix =
+            candidateParts.length < existingParts.length &&
+            candidateParts.every((p, i) => p === existingParts[i]);
+          const existingIsPrefix =
+            existingParts.length < candidateParts.length &&
+            existingParts.every((p, i) => p === candidateParts[i]);
+          if (candidateIsPrefix || existingIsPrefix) {
+            matched = "shadowed";
+            // Don't break: a later combo on the same binding might be an exact
+            // conflict, which outranks "shadowed".
+          }
         }
-      }
 
-      for (const existingCombo of allCombos) {
-        if (existingCombo.trim().toLowerCase() === normalizedCombo) {
-          conflicts.push(binding);
-          break;
+        if (matched) {
+          conflicts.push({ ...binding, kind: matched });
         }
       }
     }
@@ -116,19 +175,44 @@ class KeybindingService {
   }
 
   subscribe(listener: () => void): () => void {
-    this.listeners.push(listener);
+    this.listeners.add(listener);
     return () => {
-      this.listeners = this.listeners.filter((l) => l !== listener);
+      this.listeners.delete(listener);
     };
   }
 
   private notifyListeners(): void {
-    this.listeners.forEach((listener) => listener());
+    const snapshot = Array.from(this.listeners);
+    for (const listener of snapshot) {
+      try {
+        listener();
+      } catch (error) {
+        console.warn("[KeybindingService] listener threw", error);
+      }
+    }
   }
 
   setScope(scope: KeyScope): void {
-    this.currentScope = scope;
-    this.clearPendingChord();
+    // The stack stores duplicates intentionally — concurrent component instances
+    // pushing the same scope are valid, and restoreScope pops by lastIndexOf so
+    // counts stay correct. Only the active-scope transition is observable, so
+    // skip the chord clear when the new scope is already on top.
+    this.scopeStack.push(scope);
+    if (this.currentScope !== scope) {
+      this.currentScope = scope;
+      this.clearPendingChord();
+    }
+  }
+
+  restoreScope(scope: KeyScope): void {
+    const idx = this.scopeStack.lastIndexOf(scope);
+    if (idx > 0) {
+      this.scopeStack.splice(idx, 1);
+    }
+    this.currentScope = this.scopeStack[this.scopeStack.length - 1] ?? "global";
+    if (this.currentScope !== scope) {
+      this.clearPendingChord();
+    }
   }
 
   getScope(): KeyScope {
@@ -136,11 +220,14 @@ class KeybindingService {
   }
 
   getBinding(actionId: string): KeybindingConfig | undefined {
-    return this.bindings.get(actionId);
+    const arr = this.bindings.get(actionId);
+    if (!arr || arr.length === 0) return undefined;
+    const scopeMatch = arr.find((b) => b.scope === this.currentScope);
+    return scopeMatch ?? arr[0];
   }
 
   getAllBindings(): KeybindingConfig[] {
-    return Array.from(this.bindings.values());
+    return Array.from(this.bindings.values()).flat();
   }
 
   matchesEvent(event: KeyboardEvent, combo: string): boolean {
@@ -166,7 +253,7 @@ class KeybindingService {
 
     // Check that we don't have extra modifiers
     // (unless the combo expects them)
-    if (!parsed.cmd && hasCmd) return false;
+    if (!parsed.cmd && !parsed.ctrl && hasCmd) return false;
     if (!parsed.shift && event.shiftKey) return false;
     if (!parsed.alt && event.altKey) return false;
     // Ctrl check is more nuanced due to Cmd/Ctrl swap
@@ -184,14 +271,9 @@ class KeybindingService {
   }
 
   canExecute(actionId: string): boolean {
-    const binding = this.bindings.get(actionId);
-    if (!binding) return false;
-
-    // Global shortcuts always work
-    if (binding.scope === "global") return true;
-
-    // Scope-specific shortcuts only work in their scope
-    return binding.scope === this.currentScope;
+    const arr = this.bindings.get(actionId);
+    if (!arr || arr.length === 0) return false;
+    return arr.some((b) => b.scope === "global" || b.scope === this.currentScope);
   }
 
   private clearChordTimeout(): void {
@@ -209,7 +291,7 @@ class KeybindingService {
       this.pendingChord = null;
       this.chordTimeout = null;
       this.notifyListeners();
-    }, this.CHORD_TIMEOUT_MS);
+    }, CHORD_TIMEOUT_MS);
   }
 
   getPendingChord(): string | null {
@@ -223,6 +305,10 @@ class KeybindingService {
     if (hadChord) {
       this.notifyListeners();
     }
+  }
+
+  popPendingChord(): void {
+    this.clearPendingChord();
   }
 
   normalizeKeyForBinding(event: KeyboardEvent): string {
@@ -249,46 +335,52 @@ class KeybindingService {
     let foundChordPrefix = false;
 
     const currentCombo = this.eventToCombo(event);
-    const normalizedCurrentCombo = currentCombo.trim().toLowerCase();
 
     // When a chord is pending, prioritize chord completion over standalone shortcuts
     let chordCompletionMatch: KeybindingConfig | undefined;
     let chordCompletionPriority = -Infinity;
 
-    for (const binding of this.bindings.values()) {
-      if (!this.canExecute(binding.actionId)) continue;
+    for (const arr of this.bindings.values()) {
+      for (const binding of arr) {
+        if (!this.scopeAllows(binding.scope)) continue;
 
-      const effectiveCombo = this.getEffectiveCombo(binding.actionId);
-      if (!effectiveCombo) continue;
-      const normalizedEffectiveCombo = effectiveCombo.trim().toLowerCase();
+        const hasOverride = this.overrides.has(binding.actionId);
+        const effectiveCombo = hasOverride
+          ? this.overrides.get(binding.actionId)?.[0]
+          : binding.combo;
+        if (!effectiveCombo) continue;
 
-      // Check if this is a chord binding
-      const chordParts = effectiveCombo.split(" ");
-      const isChord = chordParts.length > 1;
+        // Check if this is a chord binding
+        const chordParts = effectiveCombo.split(" ");
+        const isChord = chordParts.length > 1;
 
-      if (isChord) {
-        // If we have a pending chord, check if this completes it
-        if (this.pendingChord) {
-          const normalizedPending = this.pendingChord.trim().toLowerCase();
-          const fullChord = `${normalizedPending} ${normalizedCurrentCombo}`;
-          if (fullChord === normalizedEffectiveCombo) {
-            if (binding.priority > chordCompletionPriority) {
-              chordCompletionMatch = binding;
-              chordCompletionPriority = binding.priority;
+        if (isChord) {
+          // Match chord parts via parseCombo field equality so user-stored overrides
+          // with non-canonical modifier order (e.g. "Alt+Cmd+T") match the canonical
+          // order produced by eventToCombo. matchesEvent uses parseCombo internally.
+          if (this.pendingChord) {
+            if (
+              combosFieldsEqual(this.pendingChord, chordParts[0]!) &&
+              this.matchesEvent(event, chordParts[1]!)
+            ) {
+              if (binding.priority > chordCompletionPriority) {
+                chordCompletionMatch = binding;
+                chordCompletionPriority = binding.priority;
+              }
+            }
+          } else {
+            // Check if this is the start of a chord
+            if (this.matchesEvent(event, chordParts[0]!)) {
+              foundChordPrefix = true;
             }
           }
         } else {
-          // Check if this is the start of a chord
-          if (normalizedCurrentCombo === chordParts[0]!.trim().toLowerCase()) {
-            foundChordPrefix = true;
-          }
-        }
-      } else {
-        // Regular non-chord binding - only consider if no chord is pending
-        if (!this.pendingChord && this.matchesEvent(event, effectiveCombo)) {
-          if (binding.priority > bestPriority) {
-            bestMatch = binding;
-            bestPriority = binding.priority;
+          // Regular non-chord binding - only consider if no chord is pending
+          if (!this.pendingChord && this.matchesEvent(event, effectiveCombo)) {
+            if (binding.priority > bestPriority) {
+              bestMatch = binding;
+              bestPriority = binding.priority;
+            }
           }
         }
       }
@@ -321,6 +413,10 @@ class KeybindingService {
     };
   }
 
+  private scopeAllows(scope: KeyScope): boolean {
+    return scope === "global" || scope === this.currentScope;
+  }
+
   findMatchingAction(event: KeyboardEvent): KeybindingConfig | undefined {
     const result = this.resolveKeybinding(event);
     return result.match;
@@ -329,18 +425,33 @@ class KeybindingService {
   registerBinding(config: KeybindingConfig): void {
     if (config.combo) {
       const normalized = config.combo.trim().toLowerCase();
-      for (const existing of this.bindings.values()) {
-        if (existing.actionId === config.actionId) continue;
-        if (!existing.combo) continue;
-        if (existing.combo.trim().toLowerCase() !== normalized) continue;
-        if (!scopesConflict(existing.scope, config.scope)) continue;
-        console.warn(
-          `[KeybindingService] Skipping binding for "${config.actionId}" (${config.combo}, scope=${config.scope}) — combo already registered to "${existing.actionId}" (scope=${existing.scope}). Use setOverride() to rebind.`
-        );
-        return;
+      for (const arr of this.bindings.values()) {
+        for (const existing of arr) {
+          if (existing.actionId === config.actionId) continue;
+          if (!existing.combo) continue;
+          if (existing.combo.trim().toLowerCase() !== normalized) continue;
+          if (!scopesConflict(existing.scope, config.scope)) continue;
+          console.warn(
+            `[KeybindingService] Skipping binding for "${config.actionId}" (${config.combo}, scope=${config.scope}) — combo already registered to "${existing.actionId}" (scope=${existing.scope}). Use setOverride() to rebind.`
+          );
+          return;
+        }
       }
     }
-    this.bindings.set(config.actionId, config);
+    const arr = this.bindings.get(config.actionId);
+    if (arr) {
+      // Replace a same-actionId entry with the same combo (self-update), otherwise push.
+      const existingIdx = arr.findIndex(
+        (b) => b.combo?.trim().toLowerCase() === config.combo?.trim().toLowerCase()
+      );
+      if (existingIdx !== -1) {
+        arr[existingIdx] = config;
+      } else {
+        arr.push(config);
+      }
+    } else {
+      this.bindings.set(config.actionId, [config]);
+    }
   }
 
   removeBinding(actionId: string): void {
@@ -359,10 +470,10 @@ class KeybindingService {
 
     let display = combo;
     if (mac) {
-      display = display.replace(/Cmd\+/gi, "⌘");
-      display = display.replace(/Ctrl\+/gi, "⌃");
-      display = display.replace(/Shift\+/gi, "⇧");
-      display = display.replace(/Alt\+/gi, "⌥");
+      display = display.replace(/Cmd\+/gi, "⌘+");
+      display = display.replace(/Ctrl\+/gi, "⌃+");
+      display = display.replace(/Shift\+/gi, "⇧+");
+      display = display.replace(/Alt\+/gi, "⌥+");
     } else {
       display = display.replace(/Cmd\+/gi, "Ctrl+");
     }
@@ -371,20 +482,24 @@ class KeybindingService {
   }
 
   getAllBindingsWithEffectiveCombos(): Array<KeybindingConfig & { effectiveCombo: string }> {
-    return Array.from(this.bindings.values()).map((binding) => {
-      const effectiveCombo = this.getEffectiveCombo(binding.actionId);
-      return {
-        ...binding,
-        effectiveCombo: effectiveCombo ?? "",
-      };
-    });
+    return Array.from(this.bindings.values())
+      .flat()
+      .map((binding) => {
+        const effectiveCombo = this.getEffectiveCombo(binding.actionId);
+        return {
+          ...binding,
+          effectiveCombo: effectiveCombo ?? "",
+        };
+      });
   }
 
   getCategories(): string[] {
     const categories = new Set<string>();
-    for (const binding of this.bindings.values()) {
-      if (binding.category) {
-        categories.add(binding.category);
+    for (const arr of this.bindings.values()) {
+      for (const binding of arr) {
+        if (binding.category) {
+          categories.add(binding.category);
+        }
       }
     }
     return Array.from(categories).sort();

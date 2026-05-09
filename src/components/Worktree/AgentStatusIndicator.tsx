@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { cn } from "../../lib/utils";
 import type { AgentState } from "@/types";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { STATE_PRIORITY } from "./terminalStateConfig";
 
 interface AgentStatusIndicatorProps {
   state: AgentState | null | undefined;
@@ -115,34 +116,19 @@ export function AgentStatusIndicator({ state, className }: AgentStatusIndicatorP
   );
 }
 
-const STATE_PRIORITY: Record<AgentState, number> = {
-  working: 7,
-  directing: 6,
-  completed: 4,
-  waiting: 3,
-  exited: 2,
-  idle: 1,
-};
-
 export function getDominantAgentState(states: (AgentState | undefined)[]): AgentState | null {
-  const validStates = states.filter((s): s is AgentState => s !== undefined);
-
-  if (validStates.length === 0) {
-    return null;
+  const present = new Set<AgentState>();
+  for (const state of states) {
+    if (state !== undefined) present.add(state);
   }
+  if (present.size === 0) return null;
 
-  let dominant: AgentState = "idle";
-  let highestPriority = 0;
-
-  for (const state of validStates) {
-    const priority = STATE_PRIORITY[state] ?? 0;
-    if (priority > highestPriority) {
-      highestPriority = priority;
-      dominant = state;
+  for (const state of STATE_PRIORITY) {
+    if (present.has(state)) {
+      return state === "idle" ? null : state;
     }
   }
-
-  return dominant === "idle" ? null : dominant;
+  return null;
 }
 
 // Returns null for passive states (working, completed, exited, idle) so the

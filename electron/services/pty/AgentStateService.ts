@@ -9,7 +9,46 @@ import {
 } from "../../schemas/agent.js";
 import type { TerminalInfo } from "./types.js";
 import { ActivityHeadlineGenerator } from "../ActivityHeadlineGenerator.js";
-import type { WaitingReason } from "../../../shared/types/agent.js";
+import type { AgentState, WaitingReason } from "../../../shared/types/agent.js";
+
+// Hysteresis tunables. Window is conservative — long enough to absorb
+// sub-second flip races (timeout/heuristic firing right after input/output)
+// without masking real direction changes (LLM output gaps run 1–5s).
+const HIGH_CONFIDENCE_THRESHOLD = 0.85;
+const HYSTERESIS_WINDOW_MS = 500;
+
+// Direction grouping for hysteresis. "active" = agent is producing work;
+// "passive" = agent is paused/done. A low-confidence cross between groups
+// inside the window is what we suppress. Note this is intentionally distinct
+// from `ACTIVE_AGENT_STATES` in shared/types/agent.ts, which classifies
+// states by "agent still present" (used for close-confirmation/eviction).
+function getStateGroup(state: AgentState): "active" | "passive" {
+  switch (state) {
+    case "working":
+    case "directing":
+      return "active";
+    case "idle":
+    case "waiting":
+    case "completed":
+    case "exited":
+      return "passive";
+    default: {
+      const _exhaustive: never = state;
+      return _exhaustive;
+    }
+  }
+}
+
+function isOppositeDirectionTransition(from: AgentState, to: AgentState): boolean {
+  return getStateGroup(from) !== getStateGroup(to);
+}
+
+// Lifecycle events bypass hysteresis entirely — exit/kill/respawn are
+// authoritative signals, not confidence estimates. Suppressing one could
+// strand the UI on "working" after the agent has already terminated.
+function isLifecycleEvent(event: AgentEvent): boolean {
+  return event.type === "exit" || event.type === "kill" || event.type === "respawn";
+}
 
 // Backend-side identity used when routing agent-state events (who is this
 // event about?). Detection wins; during the boot window the launch hint is
@@ -59,8 +98,10 @@ export class AgentStateService {
         return "activity";
       case "watchdog-timeout":
         return "timeout";
-      default:
-        return "output";
+      default: {
+        const _exhaustive: never = event;
+        return _exhaustive;
+      }
     }
   }
 
@@ -121,60 +162,15 @@ export class AgentStateService {
     sessionTokens?: number
   ): boolean {
     // Detection wins; fall back to the launch hint during the boot window.
+    // May be undefined for runtime-detected-only flows; consumers fall back to
+    // terminalId for routing.
     const effectiveAgentId = terminal.detectedAgentId ?? terminal.launchAgentId;
-    if (!effectiveAgentId) {
-      return false;
-    }
 
     const previousState = terminal.agentState || "idle";
     const newState = nextAgentState(previousState, event);
 
     if (newState === previousState) {
-      // Allow waitingReason updates within the same "waiting" state
-      if (
-        newState === "waiting" &&
-        waitingReason !== undefined &&
-        waitingReason !== terminal.waitingReason
-      ) {
-        terminal.waitingReason = waitingReason;
-
-        const inferredTrigger = trigger ?? this.inferTrigger(event);
-        const inferredConfidence = this.normalizeConfidence(
-          confidence ?? this.inferConfidence(event, inferredTrigger)
-        );
-
-        const stateChangePayload = {
-          agentId: effectiveAgentId,
-          state: newState,
-          previousState,
-          timestamp: getStateChangeTimestamp(),
-          traceId: terminal.traceId,
-          terminalId: terminal.id,
-          cwd: terminal.cwd,
-          trigger: inferredTrigger,
-          confidence: inferredConfidence,
-          waitingReason,
-        };
-
-        const validated = AgentStateChangedSchema.safeParse(stateChangePayload);
-        if (validated.success) {
-          events.emit("agent:state-changed", validated.data);
-        }
-
-        this.emitTerminalActivity(terminal);
-        return true;
-      }
       return false;
-    }
-
-    terminal.agentState = newState;
-    terminal.lastStateChange = getStateChangeTimestamp();
-
-    // Store/clear waitingReason on terminal
-    if (newState === "waiting") {
-      terminal.waitingReason = waitingReason;
-    } else {
-      terminal.waitingReason = undefined;
     }
 
     const inferredTrigger = trigger ?? this.inferTrigger(event);
@@ -182,12 +178,34 @@ export class AgentStateService {
       confidence ?? this.inferConfidence(event, inferredTrigger)
     );
 
-    // Build and validate state change payload
+    // Hysteresis guard: drop opposite-direction low-confidence transitions
+    // that arrive shortly after a high-confidence transition settled the
+    // state. Lifecycle events (exit/kill/respawn) and high-confidence events
+    // always pass through.
+    if (
+      terminal.hysteresisLockedUntil !== undefined &&
+      performance.now() < terminal.hysteresisLockedUntil &&
+      !isLifecycleEvent(event) &&
+      inferredConfidence < HIGH_CONFIDENCE_THRESHOLD &&
+      isOppositeDirectionTransition(previousState, newState)
+    ) {
+      if (process.env.DAINTREE_VERBOSE) {
+        console.log(
+          `[AgentStateService] Suppressed low-confidence ${inferredTrigger} ` +
+            `(${inferredConfidence}) ${previousState} → ${newState} for ${terminal.id} ` +
+            `within hysteresis window`
+        );
+      }
+      return false;
+    }
+
+    // Build and validate state change payload BEFORE mutating terminal state.
+    const timestamp = getStateChangeTimestamp();
     const stateChangePayload = {
       agentId: effectiveAgentId,
       state: newState,
       previousState,
-      timestamp: terminal.lastStateChange,
+      timestamp,
       traceId: terminal.traceId,
       terminalId: terminal.id,
       cwd: terminal.cwd,
@@ -203,16 +221,37 @@ export class AgentStateService {
     };
 
     const validatedStateChange = AgentStateChangedSchema.safeParse(stateChangePayload);
-    if (validatedStateChange.success) {
-      events.emit("agent:state-changed", validatedStateChange.data);
-    } else {
+    if (!validatedStateChange.success) {
       console.error(
         "[AgentStateService] Invalid agent:state-changed payload:",
         validatedStateChange.error.format()
       );
+      return false;
     }
 
-    // Emit terminal activity event for UI headline updates
+    // Commit all mutations atomically.
+    terminal.agentState = newState;
+    terminal.lastStateChange = timestamp;
+
+    // Refresh the hysteresis lock only when a high-confidence transition
+    // actually crosses the active/passive boundary. Lifecycle events clear
+    // the lock to prevent cross-session leakage.
+    if (isLifecycleEvent(event)) {
+      terminal.hysteresisLockedUntil = undefined;
+    } else if (
+      inferredConfidence >= HIGH_CONFIDENCE_THRESHOLD &&
+      isOppositeDirectionTransition(previousState, newState)
+    ) {
+      terminal.hysteresisLockedUntil = performance.now() + HYSTERESIS_WINDOW_MS;
+    }
+
+    if (newState === "waiting") {
+      terminal.waitingReason = waitingReason;
+    } else {
+      terminal.waitingReason = undefined;
+    }
+
+    events.emit("agent:state-changed", validatedStateChange.data);
     this.emitTerminalActivity(terminal);
 
     return true;
@@ -311,10 +350,6 @@ export class AgentStateService {
       sessionTokens?: number;
     }
   ): void {
-    if (!terminal.detectedAgentId && !terminal.launchAgentId) {
-      return;
-    }
-
     const event: AgentEvent =
       activity === "busy"
         ? metadata?.trigger === "input"

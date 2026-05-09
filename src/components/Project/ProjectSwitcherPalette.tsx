@@ -1,21 +1,27 @@
-import { useMemo, useEffect, useLayoutEffect, useRef, useCallback, memo } from "react";
+import { useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback, memo } from "react";
 import { createPortal } from "react-dom";
 import {
+  BellOff,
+  ChevronDown,
+  ChevronRight,
   Clipboard,
   Download,
+  FileText,
   FolderOpen,
   FolderPlus,
+  FolderUp,
   Pin,
   PinOff,
   Plus,
   Settings2,
   Square,
+  Trash2,
   X,
   AppWindow,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getProjectGradient } from "@/lib/colorUtils";
-import { AppPaletteDialog } from "@/components/ui/AppPaletteDialog";
+import { AppPaletteDialog, KBD_CLASS } from "@/components/ui/AppPaletteDialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   ContextMenu,
@@ -26,12 +32,24 @@ import {
 } from "@/components/ui/context-menu";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { formatTimeAgo } from "@/utils/timeAgo";
-import { useKeybindingDisplay } from "@/hooks/useKeybinding";
+import { useEffectiveCombo } from "@/hooks/useKeybinding";
 import { useModifierKeys } from "@/hooks/useModifierKeys";
 import { useOverlayClaim } from "@/hooks";
 import { usePaletteStore } from "@/store/paletteStore";
-import type { ProjectSwitcherMode, SearchableProject } from "@/hooks/useProjectSwitcherPalette";
+import type {
+  ProjectSwitcherMode,
+  SearchableProject,
+  SearchableScratch,
+} from "@/hooks/useProjectSwitcherPalette";
 import { useUIStore } from "@/store/uiStore";
+import {
+  useProjectSettingsStore,
+  areProjectNotificationsMuted,
+} from "@/store/projectSettingsStore";
+import {
+  SCRATCH_CLEANUP_TTL_MS,
+  SCRATCH_CLEANUP_COUNTDOWN_VISIBLE_DAYS,
+} from "@shared/config/scratchCleanup";
 
 export interface ProjectSwitcherPaletteProps {
   isOpen: boolean;
@@ -61,6 +79,27 @@ export interface ProjectSwitcherPaletteProps {
   onRemoveConfirmClose?: () => void;
   onConfirmRemove?: () => void;
   isRemovingProject?: boolean;
+  /** Scratch (one-off agent workspace) results — rendered in their own collapsible section. */
+  scratchResults?: SearchableScratch[];
+  /** Callback to create and switch to a new scratch. */
+  onCreateScratch?: () => void;
+  /** Callback to switch to an existing scratch. */
+  onSelectScratch?: (scratch: SearchableScratch) => void;
+  /** Callback to remove a scratch. */
+  onRemoveScratch?: (scratchId: string) => void;
+  /** Callback to save a scratch as a regular project (copy + register). */
+  onSaveAsProject?: (scratchId: string) => void;
+  /**
+   * "Delete original?" follow-up after a successful Save-as-Project copy.
+   * Surfaced as a top-level ConfirmDialog above the palette.
+   */
+  saveAsProjectConfirm?: {
+    scratch: SearchableScratch;
+    project: { name: string; path: string };
+  } | null;
+  onDismissSaveAsProjectConfirm?: () => void;
+  onConfirmDeleteOriginalScratch?: () => void;
+  isDeletingOriginalScratch?: boolean;
 }
 
 interface ProjectListItemProps {
@@ -125,6 +164,11 @@ const ProjectListItem = memo(function ProjectListItem({
 }: ProjectListItemProps) {
   const showStop = project.processCount > 0 && !project.isMissing;
 
+  const notificationOverrides = useProjectSettingsStore(
+    (state) => state.notificationOverridesByProjectId[project.id]
+  );
+  const isProjectNotificationsMuted = areProjectNotificationsMuted(notificationOverrides);
+
   const { secondaryText, secondaryClass } = (() => {
     if (project.isMissing)
       return { secondaryText: "Directory not found", secondaryClass: "text-status-warning/70" };
@@ -187,6 +231,12 @@ const ProjectListItem = memo(function ProjectListItem({
           >
             {project.name}
           </span>
+          {isProjectNotificationsMuted && (
+            <BellOff
+              className="w-3.5 h-3.5 text-daintree-text/40 shrink-0 ml-1"
+              aria-label="Notifications muted for this project"
+            />
+          )}
         </div>
 
         <div className="flex items-center min-w-0 mt-0.5">
@@ -429,8 +479,171 @@ function ProjectListContent({
   );
 }
 
-const KBD_CLASS =
-  "px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-daintree-border text-daintree-text/60";
+/**
+ * Returns the cleanup-countdown microcopy when a scratch is within the
+ * visibility window, otherwise null. Strings are hardcoded English (sentence
+ * case, no period) per the project microcopy convention. The TTL constant is
+ * imported from `shared/config/scratchCleanup` so the user-visible countdown
+ * never drifts from the actual deletion threshold in `ScratchCleanupService`.
+ */
+export function formatScratchCleanupCountdown(lastOpened: number, now: number): string | null {
+  if (!lastOpened) return null;
+  const expiresAt = lastOpened + SCRATCH_CLEANUP_TTL_MS;
+  const daysLeft = Math.ceil((expiresAt - now) / (24 * 60 * 60 * 1000));
+  if (daysLeft > SCRATCH_CLEANUP_COUNTDOWN_VISIBLE_DAYS) return null;
+  if (daysLeft <= 0) return "Auto-cleanup today";
+  if (daysLeft === 1) return "Auto-cleanup tomorrow";
+  return `Auto-cleanup in ${daysLeft} days`;
+}
+
+interface ScratchSectionProps {
+  scratches: SearchableScratch[];
+  onCreate?: () => void;
+  onSelect?: (scratch: SearchableScratch) => void;
+  onRemove?: (scratchId: string) => void;
+  onSaveAsProject?: (scratchId: string) => void;
+}
+
+/**
+ * Collapsible "Scratch" section. Defaults to collapsed when there are no
+ * scratches yet — discoverable but quiet. Once the user has scratches,
+ * defaults to expanded.
+ *
+ * Sort order is purely by `lastOpened` desc (the hook already does this).
+ * Scratches deliberately do NOT participate in the project frecency ranking.
+ */
+function ScratchSection({
+  scratches,
+  onCreate,
+  onSelect,
+  onRemove,
+  onSaveAsProject,
+}: ScratchSectionProps) {
+  const [collapsed, setCollapsed] = useState<boolean>(scratches.length === 0);
+  const previousScratchCountRef = useRef(scratches.length);
+  // `now` is captured per-render so the countdown updates whenever the
+  // surrounding component re-renders. Refresh is naturally driven by store
+  // updates (loadScratches on palette open, scratch:updated push events) —
+  // an interval here would be wasteful given the daily granularity.
+  const now = Date.now();
+
+  // If a scratch was just created from the empty state, expand the section
+  // so the new entry is visible.
+  useEffect(() => {
+    const previousScratchCount = previousScratchCountRef.current;
+    previousScratchCountRef.current = scratches.length;
+
+    if (previousScratchCount === 0 && scratches.length > 0) {
+      setCollapsed(false);
+    }
+  }, [scratches.length]);
+
+  return (
+    <div className="px-2 py-1.5">
+      <button
+        type="button"
+        onClick={() => setCollapsed((v) => !v)}
+        className="w-full flex items-center justify-between px-3 py-1 text-[10px] font-medium tracking-wider uppercase text-daintree-text/40 select-none hover:text-daintree-text/60 transition-colors"
+        aria-expanded={!collapsed}
+        aria-controls="scratch-section-list"
+      >
+        <span className="flex items-center gap-1.5">
+          {collapsed ? (
+            <ChevronRight className="w-3 h-3" aria-hidden="true" />
+          ) : (
+            <ChevronDown className="w-3 h-3" aria-hidden="true" />
+          )}
+          Scratch
+        </span>
+        {scratches.length > 0 && (
+          <span className="text-[10px] tabular-nums">{scratches.length}</span>
+        )}
+      </button>
+      {!collapsed && (
+        <div id="scratch-section-list" className="mt-1">
+          {scratches.length === 0 ? (
+            <div className="px-3 py-2 text-xs text-daintree-text/40">
+              No scratch workspaces yet. Create one for a quick one-off task.
+            </div>
+          ) : (
+            <div role="listbox" aria-label="Scratch workspaces">
+              {scratches.map((scratch) => {
+                const countdown = formatScratchCleanupCountdown(scratch.lastOpened, now);
+                const hasContextActions = Boolean(onRemove || onSaveAsProject);
+                return (
+                  <ContextMenu key={scratch.id}>
+                    <ContextMenuTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={() => onSelect?.(scratch)}
+                        className={cn(
+                          "w-full flex items-center gap-3 px-3 py-2 rounded-[var(--radius-md)] text-left transition-colors",
+                          scratch.isActive ? "bg-overlay-subtle" : "hover:bg-overlay-subtle"
+                        )}
+                        role="option"
+                        aria-selected={scratch.isActive}
+                      >
+                        <div className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-lg)] bg-tint/[0.04] text-muted-foreground shrink-0">
+                          <FileText className="h-4 w-4" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium truncate">{scratch.name}</div>
+                          <div className="text-xs text-daintree-text/40 truncate">
+                            {formatTimeAgo(scratch.lastOpened)}
+                          </div>
+                          {countdown && (
+                            <div
+                              className="text-[11px] leading-none text-daintree-text/40 mt-0.5 truncate"
+                              data-testid="scratch-cleanup-countdown"
+                            >
+                              {countdown}
+                            </div>
+                          )}
+                        </div>
+                      </button>
+                    </ContextMenuTrigger>
+                    {hasContextActions && (
+                      <ContextMenuContent>
+                        {onSaveAsProject && (
+                          <ContextMenuItem onClick={() => onSaveAsProject(scratch.id)}>
+                            <FolderUp className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
+                            Save as project...
+                          </ContextMenuItem>
+                        )}
+                        {onSaveAsProject && onRemove && <ContextMenuSeparator />}
+                        {onRemove && (
+                          <ContextMenuItem destructive onClick={() => onRemove(scratch.id)}>
+                            <Trash2 className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
+                            Delete scratch
+                          </ContextMenuItem>
+                        )}
+                      </ContextMenuContent>
+                    )}
+                  </ContextMenu>
+                );
+              })}
+            </div>
+          )}
+          {onCreate && (
+            <button
+              type="button"
+              onClick={onCreate}
+              className="w-full flex items-center gap-3 px-3 py-2 mt-1 rounded-[var(--radius-md)] text-left transition-colors hover:bg-overlay-subtle"
+              data-testid="scratch-create-button"
+            >
+              <div className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-lg)] border border-dashed border-muted-foreground/30 bg-muted/20 text-muted-foreground">
+                <Plus className="h-4 w-4" />
+              </div>
+              <span className="font-medium text-sm text-muted-foreground">
+                New scratch workspace
+              </span>
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function ProjectSwitcherFooter({ mode }: { mode?: ProjectSwitcherMode }) {
   const modifiers = useModifierKeys();
@@ -490,6 +703,11 @@ interface ProjectPaletteInnerProps {
   onLocateProject?: (projectId: string) => void;
   onTogglePinProject?: (projectId: string) => void;
   onCopyPath?: (path: string) => void;
+  scratchResults?: SearchableScratch[];
+  onCreateScratch?: () => void;
+  onSelectScratch?: (scratch: SearchableScratch) => void;
+  onRemoveScratch?: (scratchId: string) => void;
+  onSaveAsProject?: (scratchId: string) => void;
 }
 
 function ProjectPaletteInner({
@@ -515,8 +733,13 @@ function ProjectPaletteInner({
   onLocateProject,
   onTogglePinProject,
   onCopyPath,
+  scratchResults,
+  onCreateScratch,
+  onSelectScratch,
+  onRemoveScratch,
+  onSaveAsProject,
 }: ProjectPaletteInnerProps) {
-  const projectSwitcherShortcut = useKeybindingDisplay("project.switcherPalette");
+  const projectSwitcherShortcut = useEffectiveCombo("project.switcherPalette");
 
   useEffect(() => {
     if (listRef.current && selectedIndex >= 0 && selectedIndex < results.length) {
@@ -600,7 +823,7 @@ function ProjectPaletteInner({
     <>
       <AppPaletteDialog.Header
         label="Switch Project"
-        keyHint={projectSwitcherShortcut}
+        shortcut={projectSwitcherShortcut}
         className="pb-2"
       >
         <AppPaletteDialog.Input
@@ -633,6 +856,18 @@ function ProjectPaletteInner({
           onCopyPath={onCopyPath}
           onSelectNewWindow={onSelectNewWindow}
         />
+        {(onCreateScratch || (scratchResults && scratchResults.length > 0)) && (
+          <>
+            <div className="h-[3px] bg-tint/[0.08]" />
+            <ScratchSection
+              scratches={scratchResults ?? []}
+              onCreate={onCreateScratch}
+              onSelect={onSelectScratch}
+              onRemove={onRemoveScratch}
+              onSaveAsProject={onSaveAsProject}
+            />
+          </>
+        )}
       </AppPaletteDialog.Body>
 
       {(onOpenProjectSettings || onAddProject || onCloneRepo || onCreateFolder) && (
@@ -808,6 +1043,11 @@ function ModalContent({
           onCopyPath={innerProps.onCopyPath}
           onSelectBackground={innerProps.onSelectBackground}
           onSelectNewWindow={innerProps.onSelectNewWindow}
+          scratchResults={innerProps.scratchResults}
+          onCreateScratch={innerProps.onCreateScratch}
+          onSelectScratch={innerProps.onSelectScratch}
+          onRemoveScratch={innerProps.onRemoveScratch}
+          onSaveAsProject={innerProps.onSaveAsProject}
         />
       </div>
     </div>,
@@ -886,6 +1126,11 @@ function DropdownContent({
           onCopyPath={innerProps.onCopyPath}
           onSelectBackground={innerProps.onSelectBackground}
           onSelectNewWindow={innerProps.onSelectNewWindow}
+          scratchResults={innerProps.scratchResults}
+          onCreateScratch={innerProps.onCreateScratch}
+          onSelectScratch={innerProps.onSelectScratch}
+          onRemoveScratch={innerProps.onRemoveScratch}
+          onSaveAsProject={innerProps.onSaveAsProject}
         />
       </PopoverContent>
     </Popover>
@@ -920,6 +1165,15 @@ export function ProjectSwitcherPalette({
   onRemoveConfirmClose,
   onConfirmRemove,
   isRemovingProject = false,
+  scratchResults,
+  onCreateScratch,
+  onSelectScratch,
+  onRemoveScratch,
+  onSaveAsProject,
+  saveAsProjectConfirm,
+  onDismissSaveAsProjectConfirm,
+  onConfirmDeleteOriginalScratch,
+  isDeletingOriginalScratch = false,
 }: ProjectSwitcherPaletteProps) {
   const hasRunningProcesses = removeConfirmProject
     ? removeConfirmProject.processCount > 0 ||
@@ -952,6 +1206,11 @@ export function ProjectSwitcherPalette({
         onSelectNewWindow={onSelectNewWindow}
         onOpenProjectSettings={onOpenProjectSettings}
         dropdownAlign={dropdownAlign}
+        scratchResults={scratchResults}
+        onCreateScratch={onCreateScratch}
+        onSelectScratch={onSelectScratch}
+        onRemoveScratch={onRemoveScratch}
+        onSaveAsProject={onSaveAsProject}
       >
         {children}
       </DropdownContent>
@@ -978,6 +1237,11 @@ export function ProjectSwitcherPalette({
         onSelectBackground={onSelectBackground}
         onSelectNewWindow={onSelectNewWindow}
         onOpenProjectSettings={onOpenProjectSettings}
+        scratchResults={scratchResults}
+        onCreateScratch={onCreateScratch}
+        onSelectScratch={onSelectScratch}
+        onRemoveScratch={onRemoveScratch}
+        onSaveAsProject={onSaveAsProject}
       />
     );
 
@@ -1042,6 +1306,29 @@ export function ProjectSwitcherPalette({
               {removeConfirmProject.isActive
                 ? "The project will remain in your list and can be reopened at any time."
                 : "This project will be removed from your list. You can add it back later, but any running terminals or processes will need to be restarted."}
+            </div>
+          </div>
+        </ConfirmDialog>
+      )}
+      {saveAsProjectConfirm && onDismissSaveAsProjectConfirm && onConfirmDeleteOriginalScratch && (
+        <ConfirmDialog
+          isOpen={true}
+          onClose={isDeletingOriginalScratch ? undefined : onDismissSaveAsProjectConfirm}
+          title={`Delete '${saveAsProjectConfirm.scratch.name}'?`}
+          zIndex="nested"
+          confirmLabel="Delete scratch"
+          cancelLabel="Keep scratch"
+          onConfirm={onConfirmDeleteOriginalScratch}
+          isConfirmLoading={isDeletingOriginalScratch}
+          variant="destructive"
+        >
+          <div className="space-y-3">
+            <div className="text-sm">
+              Saved as <span className="font-medium">{saveAsProjectConfirm.project.name}</span>. The
+              original scratch folder is no longer needed.
+            </div>
+            <div className="text-xs text-daintree-text/50 font-mono break-all">
+              {saveAsProjectConfirm.scratch.path}
             </div>
           </div>
         </ConfirmDialog>

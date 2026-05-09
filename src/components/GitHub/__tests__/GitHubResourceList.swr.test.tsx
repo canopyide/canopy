@@ -3,7 +3,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, waitFor, act } from "@testing-library/react";
-import { Activity, type ReactNode } from "react";
+import React, { Activity, type ReactNode } from "react";
 import type { GitHubIssue, GitHubListResponse, GitHubListOptions } from "@shared/types/github";
 import { setCache, buildCacheKey, _resetForTests } from "@/lib/githubResourceCache";
 import { useGitHubFilterStore } from "@/store/githubFilterStore";
@@ -58,10 +58,14 @@ vi.mock("@/services/ActionService", () => ({
   actionService: { dispatch: (...args: unknown[]) => dispatchMock(...args) },
 }));
 
+let mockIsSelectionActive = false;
+
 vi.mock("@/hooks/useIssueSelection", () => ({
   useIssueSelection: () => ({
     selectedIds: new Set<number>(),
-    isSelectionActive: false,
+    get isSelectionActive() {
+      return mockIsSelectionActive;
+    },
     toggle: vi.fn(),
     toggleRange: vi.fn(),
     selectAll: vi.fn(),
@@ -100,9 +104,31 @@ vi.mock("../BulkActionBar", () => ({
   BulkActionBar: () => null,
 }));
 
+const mockAnimate = vi.fn();
+
+vi.mock("framer-motion", () => {
+  const MotionDiv = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+    ({ children, ...props }, ref) => (
+      <div ref={ref} {...props}>
+        {children}
+      </div>
+    )
+  );
+  return {
+    AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    LazyMotion: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    domAnimation: {},
+    domMax: {},
+    m: { div: MotionDiv },
+    motion: { div: MotionDiv },
+    useAnimate: () => [{ current: null } as unknown as React.RefObject<HTMLElement>, mockAnimate],
+    useReducedMotion: () => false,
+  };
+});
+
 vi.mock("../GitHubDropdownSkeletons", () => ({
   GitHubResourceRowsSkeleton: () => <div data-testid="skeleton">Loading...</div>,
-  MAX_SKELETON_ITEMS: 5,
+  MAX_SKELETON_ITEMS: 6,
   RESOURCE_ITEM_HEIGHT_PX: 68,
 }));
 
@@ -130,12 +156,16 @@ vi.mock("react-virtuoso", () => ({
   },
 }));
 
-const { formatTimeAgoMock } = vi.hoisted(() => ({
-  formatTimeAgoMock: vi.fn<(value: number | string) => string>(() => "1m ago"),
-}));
+const { LiveTimeAgoMock } = vi.hoisted(() => {
+  const LiveTimeAgoMock = vi.fn();
+  return { LiveTimeAgoMock };
+});
 
-vi.mock("@/utils/timeAgo", () => ({
-  formatTimeAgo: formatTimeAgoMock,
+vi.mock("@/components/Worktree/LiveTimeAgo", () => ({
+  LiveTimeAgo: (props: any) => {
+    LiveTimeAgoMock(props);
+    return <span>1m</span>;
+  },
 }));
 
 import { GitHubResourceList } from "../GitHubResourceList";
@@ -162,10 +192,10 @@ beforeEach(() => {
   mockListPRs.mockReset();
   mockGetIssueByNumber.mockReset();
   mockGetPRByNumber.mockReset();
-  formatTimeAgoMock.mockClear();
-  formatTimeAgoMock.mockImplementation(() => "1m ago");
+  LiveTimeAgoMock.mockClear();
   dispatchMock.mockReset();
   initializeMock.mockClear();
+  mockIsSelectionActive = false;
   mockGitHubConfig = { hasToken: true };
   mockGitHubConfigInitialized = true;
   const filterStore = useGitHubFilterStore.getState();
@@ -259,9 +289,11 @@ describe("GitHubResourceList SWR behavior", () => {
       expect(screen.getByText(/Network error/)).toBeTruthy();
     });
     expect(screen.getByTestId("item-20")).toBeTruthy();
-    expect(screen.getByText(/Updated 1m ago/)).toBeTruthy();
+    expect(screen.getByText("1m")).toBeTruthy();
     // The label must reflect the cached timestamp, not Date.now() of the failure.
-    expect(formatTimeAgoMock).toHaveBeenCalledWith(seededTimestamp);
+    expect(LiveTimeAgoMock).toHaveBeenCalledWith(
+      expect.objectContaining({ timestamp: expect.any(Number) })
+    );
   });
 
   it("clears error banner and refreshes timestamp after successful retry", async () => {
@@ -292,7 +324,8 @@ describe("GitHubResourceList SWR behavior", () => {
       expect(screen.getByTestId("item-31")).toBeTruthy();
     });
     expect(screen.queryByText(/Network blip/)).toBeNull();
-    expect(screen.queryByText(/Updated/)).toBeNull();
+    // The success-path freshness sub-row continues to surface lastUpdatedAt.
+    expect(screen.getByText(/^Updated/)).toBeTruthy();
   });
 
   it("does not bleed stale timestamp across filter changes", async () => {
@@ -314,7 +347,7 @@ describe("GitHubResourceList SWR behavior", () => {
     await waitFor(() => {
       expect(screen.getByText(/Initial fail/)).toBeTruthy();
     });
-    expect(screen.getByText(/Updated 1m ago/)).toBeTruthy();
+    expect(screen.getByText("1m")).toBeTruthy();
 
     useGitHubFilterStore.getState().setIssueFilter("closed");
 
@@ -359,6 +392,72 @@ describe("GitHubResourceList SWR behavior", () => {
     render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
 
     expect(screen.queryByRole("button", { name: /load more/i })).toBeNull();
+  });
+
+  it("calls onFreshFetch after a successful background revalidation", async () => {
+    const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    setCache(cacheKey, {
+      items: [makeIssue(10)],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now(),
+    });
+
+    mockListIssues.mockResolvedValue(makeResponse([makeIssue(10), makeIssue(11)]));
+    const onFreshFetch = vi.fn();
+
+    render(
+      <GitHubResourceList type="issue" projectPath="/test/proj" onFreshFetch={onFreshFetch} />
+    );
+
+    // After revalidation lands, onFreshFetch fires once. The revalidation is
+    // the bypassCache:true path that triggers updateRepoStatsCount in main.
+    await waitFor(() => {
+      expect(onFreshFetch).toHaveBeenCalledTimes(1);
+    });
+    // Verify the listIssues call was made with bypassCache:true so we know
+    // we're on the path that updates main-process repoStatsCache.
+    expect(mockListIssues).toHaveBeenCalled();
+    expect(mockListIssues.mock.calls[0]?.[0]?.bypassCache).toBe(true);
+  });
+
+  it("does not call onFreshFetch on a cold-mount cache-miss fetch", async () => {
+    // No cache entry — cold mount uses bypassCache:false.
+    mockListIssues.mockResolvedValue(makeResponse([makeIssue(1)]));
+    const onFreshFetch = vi.fn();
+
+    render(
+      <GitHubResourceList type="issue" projectPath="/test/proj" onFreshFetch={onFreshFetch} />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("item-1")).toBeTruthy();
+    });
+    expect(onFreshFetch).not.toHaveBeenCalled();
+    expect(mockListIssues.mock.calls[0]?.[0]?.bypassCache).toBe(false);
+  });
+
+  it("does not call onFreshFetch when the revalidation fails", async () => {
+    const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    setCache(cacheKey, {
+      items: [makeIssue(20)],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now() - 5_000,
+    });
+
+    mockListIssues.mockRejectedValue(new Error("Network error"));
+    const onFreshFetch = vi.fn();
+
+    render(
+      <GitHubResourceList type="issue" projectPath="/test/proj" onFreshFetch={onFreshFetch} />
+    );
+
+    // Wait for the error to surface so we know the fetch resolved.
+    await waitFor(() => {
+      expect(screen.getByText(/Network error/)).toBeTruthy();
+    });
+    expect(onFreshFetch).not.toHaveBeenCalled();
   });
 
   it("different project paths use separate cache entries", async () => {
@@ -657,6 +756,120 @@ describe("GitHubResourceList no-token empty state", () => {
   });
 });
 
+describe("GitHubResourceList empty state branching", () => {
+  it("renders zero-data variant (no Clear filters button) when no filters are active and the list is empty", async () => {
+    mockListIssues.mockResolvedValue(makeResponse([]));
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("No issues found")).toBeTruthy();
+    });
+    expect(screen.queryByRole("button", { name: /clear filters/i })).toBeNull();
+  });
+
+  it("renders filtered-empty with a Clear filters action when a search query is active", async () => {
+    mockListIssues.mockResolvedValue(makeResponse([]));
+    useGitHubFilterStore.getState().setIssueSearchQuery("nonexistent");
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/No issues match "nonexistent"/)).toBeTruthy();
+    });
+    const clearButton = screen.getByRole("button", { name: /clear filters/i });
+    expect(clearButton).toBeTruthy();
+    // CLAUDE.md popover/palette empty-state rule: never render primary-weight
+    // buttons. The Clear filters CTA must use the ghost variant — locking the
+    // class signature catches a regression to outline (ring-border-strong) or
+    // any other heavier variant.
+    expect(clearButton.className).toContain("text-text-secondary");
+    expect(clearButton.className).not.toContain("ring-border-strong");
+  });
+
+  it("renders filtered-empty when a non-default state filter is active", async () => {
+    mockListIssues.mockResolvedValue(makeResponse([]));
+    useGitHubFilterStore.getState().setIssueFilter("closed");
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("No issues in this view")).toBeTruthy();
+    });
+    expect(screen.getByRole("button", { name: /clear filters/i })).toBeTruthy();
+  });
+
+  it("Clear filters action resets search and state filter to defaults", async () => {
+    mockListIssues.mockResolvedValue(makeResponse([]));
+    useGitHubFilterStore.getState().setIssueSearchQuery("foo");
+    useGitHubFilterStore.getState().setIssueFilter("closed");
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    const clearButton = await screen.findByRole("button", { name: /clear filters/i });
+    act(() => {
+      clearButton.click();
+    });
+
+    const filterStore = useGitHubFilterStore.getState();
+    expect(filterStore.issueSearchQuery).toBe("");
+    expect(filterStore.issueFilter).toBe("open");
+  });
+
+  it("renders filtered-empty for an exact number not found", async () => {
+    mockGetIssueByNumber.mockResolvedValue(null);
+    useGitHubFilterStore.getState().setIssueSearchQuery("#999");
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/No issue #999 in this view/)).toBeTruthy();
+    });
+    expect(screen.getByRole("button", { name: /clear filters/i })).toBeTruthy();
+  });
+
+  it("renders filtered-empty for PRs with the right resource label", async () => {
+    mockListPRs.mockResolvedValue(makeResponse([]));
+    useGitHubFilterStore.getState().setPrSearchQuery("nonexistent");
+
+    render(<GitHubResourceList type="pr" projectPath="/test/proj" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/No pull requests match "nonexistent"/)).toBeTruthy();
+    });
+  });
+
+  it("renders zero-data for PRs when no filters are active and the list is empty", async () => {
+    mockListPRs.mockResolvedValue(makeResponse([]));
+
+    render(<GitHubResourceList type="pr" projectPath="/test/proj" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("No pull requests found")).toBeTruthy();
+    });
+    expect(screen.queryByRole("button", { name: /clear filters/i })).toBeNull();
+  });
+
+  it("Clear filters action on PR view resets PR-specific store slice, not issue slice", async () => {
+    mockListPRs.mockResolvedValue(makeResponse([]));
+    useGitHubFilterStore.getState().setPrSearchQuery("foo");
+    useGitHubFilterStore.getState().setPrFilter("merged");
+    useGitHubFilterStore.getState().setIssueSearchQuery("untouched-issue-query");
+
+    render(<GitHubResourceList type="pr" projectPath="/test/proj" />);
+
+    const clearButton = await screen.findByRole("button", { name: /clear filters/i });
+    act(() => {
+      clearButton.click();
+    });
+
+    const filterStore = useGitHubFilterStore.getState();
+    expect(filterStore.prSearchQuery).toBe("");
+    expect(filterStore.prFilter).toBe("open");
+    expect(filterStore.issueSearchQuery).toBe("untouched-issue-query");
+  });
+});
+
 describe("GitHubResourceList retry behavior", () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -830,8 +1043,11 @@ describe("GitHubResourceList retry behavior", () => {
 
     expect(screen.getByTestId("item-20")).toBeTruthy();
 
+    // The stale-while-error banner uses the friendlier rewrite for transient
+    // network errors; only this surface is rewritten — the cold-error path still
+    // surfaces the raw message.
     await waitFor(() => {
-      expect(screen.getByText(/Cannot reach GitHub/)).toBeTruthy();
+      expect(screen.getByText(/Couldn't reach GitHub\. Showing last known results\./)).toBeTruthy();
     });
 
     expect(mockListIssues).toHaveBeenCalledTimes(1);
@@ -978,6 +1194,165 @@ describe("GitHubResourceList Activity reveal vs filter change — PR #6288", () 
     });
   });
 
+  it("hydrates from warm cache without flashing the skeleton on filter switch", async () => {
+    const openKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    const closedKey = buildCacheKey("/test/proj", "issue", "closed", "created");
+    setCache(openKey, {
+      items: [makeIssue(60)],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now(),
+    });
+    setCache(closedKey, {
+      items: [makeIssue(61), makeIssue(62)],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now(),
+    });
+
+    // Mount-time revalidate for "open", then closed-filter revalidate after switch.
+    mockListIssues
+      .mockResolvedValueOnce(makeResponse([makeIssue(60)]))
+      .mockResolvedValueOnce(makeResponse([makeIssue(61), makeIssue(62)]));
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    expect(screen.getByTestId("item-60")).toBeTruthy();
+    await waitFor(() => {
+      expect(mockListIssues).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      useGitHubFilterStore.getState().setIssueFilter("closed");
+    });
+
+    // Warm closed cache → rows swap synchronously, no skeleton flash.
+    expect(screen.queryByTestId("skeleton")).toBeNull();
+    expect(screen.getByTestId("item-61")).toBeTruthy();
+    expect(screen.getByTestId("item-62")).toBeTruthy();
+    expect(screen.queryByTestId("item-60")).toBeNull();
+
+    // Background revalidate for the closed slot uses the bypass-cache path.
+    await waitFor(() => {
+      expect(mockListIssues).toHaveBeenCalledTimes(2);
+    });
+    expect(mockListIssues.mock.calls[1]?.[0]).toMatchObject({
+      state: "closed",
+      bypassCache: true,
+    });
+  });
+
+  it("survives Open → Closed → Open round-trip with no skeleton on the second Open", async () => {
+    const openKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    const closedKey = buildCacheKey("/test/proj", "issue", "closed", "created");
+    setCache(openKey, {
+      items: [makeIssue(70)],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now(),
+    });
+    setCache(closedKey, {
+      items: [makeIssue(71)],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now(),
+    });
+
+    mockListIssues.mockImplementation(
+      ({ state }: { state: "open" | "closed" | "merged" | "all" }) => {
+        if (state === "closed") return Promise.resolve(makeResponse([makeIssue(71)]));
+        return Promise.resolve(makeResponse([makeIssue(70)]));
+      }
+    );
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    expect(screen.getByTestId("item-70")).toBeTruthy();
+    expect(screen.queryByTestId("skeleton")).toBeNull();
+
+    act(() => {
+      useGitHubFilterStore.getState().setIssueFilter("closed");
+    });
+    expect(screen.queryByTestId("skeleton")).toBeNull();
+    expect(screen.getByTestId("item-71")).toBeTruthy();
+
+    act(() => {
+      useGitHubFilterStore.getState().setIssueFilter("open");
+    });
+    // Warm Open cache still present — second Open shows item-70 with no flash.
+    expect(screen.queryByTestId("skeleton")).toBeNull();
+    expect(screen.getByTestId("item-70")).toBeTruthy();
+  });
+
+  it("does not flash unsearched cached rows when a search query becomes active", async () => {
+    const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    setCache(cacheKey, {
+      items: [makeIssue(81), makeIssue(82), makeIssue(83)],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now(),
+    });
+
+    // Mount-time revalidate resolves quickly; the searched fetch hangs so the
+    // transitional UI (post-debounce) is observable.
+    mockListIssues
+      .mockResolvedValueOnce(makeResponse([makeIssue(81), makeIssue(82), makeIssue(83)]))
+      .mockImplementation(() => new Promise(() => {}));
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    expect(screen.getByTestId("item-81")).toBeTruthy();
+    await waitFor(() => {
+      expect(mockListIssues).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      useGitHubFilterStore.getState().setIssueSearchQuery("foo");
+    });
+
+    // After the 300ms debounce fires, the effect re-runs. The cacheKey
+    // doesn't include the search, so naively reading the warm slot would
+    // re-show the unfiltered list. Verify the cold path runs instead.
+    await waitFor(() => {
+      expect(screen.queryByTestId("item-81")).toBeNull();
+    });
+    expect(screen.getByTestId("skeleton")).toBeTruthy();
+  });
+
+  it("clears stranded loading state when switching from a cold pending filter to a warm empty slot", async () => {
+    const closedKey = buildCacheKey("/test/proj", "issue", "closed", "created");
+    setCache(closedKey, {
+      items: [],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now(),
+    });
+
+    // Initial open-filter fetch hangs so loading sticks at true; the closed
+    // revalidate resolves to the cached empty page.
+    mockListIssues.mockImplementation(
+      ({ state }: { state: "open" | "closed" | "merged" | "all" }) => {
+        if (state === "closed") return Promise.resolve(makeResponse([]));
+        return new Promise(() => {});
+      }
+    );
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    expect(screen.getByTestId("skeleton")).toBeTruthy();
+
+    act(() => {
+      useGitHubFilterStore.getState().setIssueFilter("closed");
+    });
+
+    // Warm closed cache is empty — the skeleton must clear (loading reset),
+    // exposing the empty state instead.
+    await waitFor(() => {
+      expect(screen.queryByTestId("skeleton")).toBeNull();
+    });
+    expect(screen.getByText("No issues in this view")).toBeTruthy();
+  });
+
   it("clears rows and shows the skeleton when the filter changes while keepMounted", async () => {
     const openKey = buildCacheKey("/test/proj", "issue", "open", "created");
     setCache(openKey, {
@@ -1014,5 +1389,525 @@ describe("GitHubResourceList Activity reveal vs filter change — PR #6288", () 
     expect(mockListIssues.mock.calls[mockListIssues.mock.calls.length - 1]?.[0]).toMatchObject({
       state: "closed",
     });
+  });
+});
+
+describe("GitHubResourceList aria-busy placement (#6867)", () => {
+  it("sets aria-busy on the listbox during background revalidation, not on the refresh button", async () => {
+    const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    setCache(cacheKey, {
+      items: [makeIssue(1)],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now(),
+    });
+    // Hang the revalidation so refreshing stays true.
+    mockListIssues.mockImplementation(() => new Promise(() => {}));
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    const listbox = screen.getByRole("listbox");
+    await waitFor(() => {
+      expect(listbox.getAttribute("aria-busy")).toBe("true");
+    });
+
+    const refreshButton = screen.getByRole("button", { name: /^refresh/i });
+    expect(refreshButton.hasAttribute("aria-busy")).toBe(false);
+  });
+});
+
+describe("GitHubResourceList success-path freshness (#6867)", () => {
+  it("renders 'Updated …' below the header when data is fresh and no search is active", async () => {
+    const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    setCache(cacheKey, {
+      items: [makeIssue(1)],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now(),
+    });
+    mockListIssues.mockResolvedValue(makeResponse([makeIssue(1)]));
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/^Updated/)).toBeTruthy();
+    });
+  });
+
+  it("hides the freshness row while a number-query chip is active", async () => {
+    const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    setCache(cacheKey, {
+      items: [makeIssue(42)],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now(),
+    });
+    mockGetIssueByNumber.mockResolvedValue(makeIssue(42));
+    useGitHubFilterStore.getState().setIssueSearchQuery("#42");
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Showing issue #42")).toBeTruthy();
+    });
+    // The chip provides context — the freshness row stays hidden during searches.
+    expect(screen.queryByText(/^Updated/)).toBeNull();
+  });
+
+  it("does not render the freshness row when an error is active", async () => {
+    const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    setCache(cacheKey, {
+      items: [makeIssue(1)],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now(),
+    });
+    mockListIssues.mockRejectedValue(new Error("Boom"));
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Boom/)).toBeTruthy();
+    });
+    // The freshness row is suppressed; only the banner-side timestamp remains.
+    expect(screen.queryByText(/^Updated/)).toBeNull();
+  });
+});
+
+describe("GitHubResourceList stale-while-error banner copy (#6867)", () => {
+  it("rewrites transient network errors to friendlier copy in the stale banner", async () => {
+    const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    setCache(cacheKey, {
+      items: [makeIssue(20)],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now(),
+    });
+    mockListIssues.mockRejectedValue(
+      new Error("Cannot reach GitHub. Check your internet connection.")
+    );
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Couldn't reach GitHub\. Showing last known results\./)).toBeTruthy();
+    });
+    expect(screen.queryByText(/Check your internet connection/)).toBeNull();
+  });
+
+  it("keeps the sanitized raw message for non-transient errors", async () => {
+    const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    setCache(cacheKey, {
+      items: [makeIssue(20)],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now(),
+    });
+    mockListIssues.mockRejectedValue(new Error("Repository not found or token lacks access."));
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Repository not found/)).toBeTruthy();
+    });
+    expect(screen.queryByText(/Couldn't reach GitHub/)).toBeNull();
+  });
+});
+
+describe("GitHubResourceList number-query chip (#6867)", () => {
+  it("shows 'Showing issue #N' for a single-number query", async () => {
+    mockGetIssueByNumber.mockResolvedValue(makeIssue(42));
+    useGitHubFilterStore.getState().setIssueSearchQuery("#42");
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Showing issue #42")).toBeTruthy();
+    });
+  });
+
+  it("shows 'Showing PR #N' for the PR variant", async () => {
+    mockGetPRByNumber.mockResolvedValue({
+      ...makeIssue(7),
+      isDraft: false,
+      ciStatus: "SUCCESS" as const,
+    });
+    useGitHubFilterStore.getState().setPrSearchQuery("#7");
+
+    render(<GitHubResourceList type="pr" projectPath="/test/proj" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Showing PR #7")).toBeTruthy();
+    });
+  });
+
+  it("shows comma-separated numbers for a multi query and truncates after three", async () => {
+    mockGetIssueByNumber.mockImplementation((_cwd: string, n: number) =>
+      Promise.resolve(makeIssue(n))
+    );
+    useGitHubFilterStore.getState().setIssueSearchQuery("#1, #2, #3, #4, #5");
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Showing #1, #2, #3 + 2 more")).toBeTruthy();
+    });
+  });
+
+  it("shows 'Showing range #from..#to' for a small range", async () => {
+    mockGetIssueByNumber.mockImplementation((_cwd: string, n: number) =>
+      Promise.resolve(makeIssue(n))
+    );
+    useGitHubFilterStore.getState().setIssueSearchQuery("#1..5");
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Showing range #1..#5")).toBeTruthy();
+    });
+  });
+
+  it("shows '(capped)' marker for a range that exceeds the multi-fetch cap", async () => {
+    mockGetIssueByNumber.mockImplementation((_cwd: string, n: number) =>
+      Promise.resolve(makeIssue(n))
+    );
+    useGitHubFilterStore.getState().setIssueSearchQuery("#1..100");
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Showing first 20 of range #1\.\.#20 \(capped\)/)).toBeTruthy();
+    });
+  });
+
+  it("shows 'Showing #N and above' for an open-ended query", async () => {
+    mockListIssues.mockResolvedValue(makeResponse([makeIssue(130)]));
+    useGitHubFilterStore.getState().setIssueSearchQuery("#130+");
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Showing #130 and above")).toBeTruthy();
+    });
+  });
+
+  it("hides the chip when the lookup yields exact-number-not-found", async () => {
+    mockGetIssueByNumber.mockResolvedValue(null);
+    useGitHubFilterStore.getState().setIssueSearchQuery("#999");
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/No issue #999 in this view/)).toBeTruthy();
+    });
+    // The chip would contradict the empty state — it must not render alongside.
+    expect(screen.queryByText("Showing issue #999")).toBeNull();
+  });
+
+  it("hides the chip while the numeric fetch is in flight", async () => {
+    mockGetIssueByNumber.mockImplementation(() => new Promise(() => {}));
+    useGitHubFilterStore.getState().setIssueSearchQuery("#42");
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    // Skeleton is up while the numeric lookup hangs.
+    await waitFor(() => {
+      expect(screen.getByTestId("skeleton")).toBeTruthy();
+    });
+    expect(screen.queryByText("Showing issue #42")).toBeNull();
+  });
+});
+
+describe("GitHubResourceList spinner gate (#6867)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // Windows CI runners are slow enough that the wall-clock time between
+  // render and the post-advance assertion can cross the 400ms gate even
+  // with `shouldAdvanceTime: true` driving the fake timers, producing a
+  // race-flake here. The matching positive case below still runs everywhere.
+  it.skipIf(process.platform === "win32")(
+    "does not show the spinner before the 400ms Doherty threshold elapses",
+    async () => {
+      const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+      setCache(cacheKey, {
+        items: [makeIssue(1)],
+        endCursor: null,
+        hasNextPage: false,
+        timestamp: Date.now(),
+      });
+      // Hang revalidation so refreshing stays true.
+      mockListIssues.mockImplementation(() => new Promise(() => {}));
+
+      render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+      await vi.advanceTimersByTimeAsync(399);
+
+      const refreshIcon = screen.getByRole("button", { name: /^refresh/i }).querySelector("svg");
+      expect(refreshIcon?.classList.contains("animate-spin")).toBe(false);
+    }
+  );
+
+  it("shows the spinner once the 400ms gate elapses on a long background revalidation", async () => {
+    const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    setCache(cacheKey, {
+      items: [makeIssue(1)],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now(),
+    });
+    mockListIssues.mockImplementation(() => new Promise(() => {}));
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    await vi.advanceTimersByTimeAsync(450);
+
+    const refreshIcon = screen.getByRole("button", { name: /^refresh/i }).querySelector("svg");
+    expect(refreshIcon?.classList.contains("animate-spin")).toBe(true);
+  });
+
+  it("never flashes the spinner when a background refresh completes faster than the gate", async () => {
+    const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    setCache(cacheKey, {
+      items: [makeIssue(1)],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now(),
+    });
+    mockListIssues.mockResolvedValue(makeResponse([makeIssue(1)]));
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    // Let the fetch settle well within the 400ms gate.
+    await vi.advanceTimersByTimeAsync(50);
+
+    const refreshIcon = screen.getByRole("button", { name: /^refresh/i }).querySelector("svg");
+    expect(refreshIcon?.classList.contains("animate-spin")).toBe(false);
+  });
+
+  it("uses the shorter 250ms gate when the user clicks refresh", async () => {
+    const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    setCache(cacheKey, {
+      items: [makeIssue(1)],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now(),
+    });
+    // Mount-time revalidate succeeds so loading clears before the click.
+    mockListIssues.mockResolvedValueOnce(makeResponse([makeIssue(1)]));
+    // Manual click hangs so we can observe the spinner gate.
+    mockListIssues.mockImplementation(() => new Promise(() => {}));
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    await waitFor(() => {
+      expect(mockListIssues).toHaveBeenCalledTimes(1);
+    });
+
+    // Let the mount-time revalidate fully settle so any pending spinner timer
+    // is cleared before the click.
+    await vi.advanceTimersByTimeAsync(500);
+
+    const refreshButton = screen.getByRole("button", { name: /^refresh/i });
+    act(() => {
+      refreshButton.click();
+    });
+    await waitFor(() => {
+      expect(mockListIssues).toHaveBeenCalledTimes(2);
+    });
+
+    await vi.advanceTimersByTimeAsync(200);
+    const refreshIconBefore = refreshButton.querySelector("svg");
+    expect(refreshIconBefore?.classList.contains("animate-spin")).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(150);
+    await waitFor(() => {
+      const icon = refreshButton.querySelector("svg");
+      expect(icon?.classList.contains("animate-spin")).toBe(true);
+    });
+  });
+
+  it("dwells the spinner ≥500ms once visible to avoid a quick flash", async () => {
+    const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    setCache(cacheKey, {
+      items: [makeIssue(1)],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now(),
+    });
+    let resolveFetch: (v: GitHubListResponse<GitHubIssue>) => void = () => {};
+    mockListIssues.mockImplementationOnce(
+      () =>
+        new Promise<GitHubListResponse<GitHubIssue>>((resolve) => {
+          resolveFetch = resolve;
+        })
+    );
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    // Cross the 400ms gate so the spinner becomes visible.
+    await vi.advanceTimersByTimeAsync(450);
+    const refreshIcon = screen.getByRole("button", { name: /^refresh/i }).querySelector("svg");
+    expect(refreshIcon?.classList.contains("animate-spin")).toBe(true);
+
+    // Resolve immediately — dwell timer kicks in for the remaining 500ms.
+    resolveFetch(makeResponse([makeIssue(1)]));
+    await vi.advanceTimersByTimeAsync(0);
+    const stillSpinning = screen.getByRole("button", { name: /^refresh/i }).querySelector("svg");
+    expect(stillSpinning?.classList.contains("animate-spin")).toBe(true);
+
+    // After the full 500ms minimum dwell elapses, the spinner clears.
+    await vi.advanceTimersByTimeAsync(550);
+    const finalIcon = screen.getByRole("button", { name: /^refresh/i }).querySelector("svg");
+    expect(finalIcon?.classList.contains("animate-spin")).toBe(false);
+  });
+});
+
+describe("GitHubResourceList polish (#7202)", () => {
+  it("state filter renders as a radiogroup with aria-checked + roving tabindex", async () => {
+    mockListIssues.mockResolvedValue(makeResponse([makeIssue(1)]));
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    const group = await screen.findByRole("radiogroup", { name: /filter by state/i });
+    const radios = group.querySelectorAll<HTMLButtonElement>('[role="radio"]');
+    expect(radios.length).toBe(2); // Open, Closed for issues
+
+    const openRadio = radios[0]!;
+    const closedRadio = radios[1]!;
+    expect(openRadio.getAttribute("aria-checked")).toBe("true");
+    expect(openRadio.tabIndex).toBe(0);
+    expect(closedRadio.getAttribute("aria-checked")).toBe("false");
+    expect(closedRadio.tabIndex).toBe(-1);
+
+    // ArrowRight on the active radio moves checked state, tabindex, and focus to the next.
+    act(() => {
+      openRadio.focus();
+      openRadio.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    });
+
+    await waitFor(() => {
+      const updated = group.querySelectorAll<HTMLButtonElement>('[role="radio"]');
+      expect(updated[1]!.getAttribute("aria-checked")).toBe("true");
+      expect(updated[0]!.getAttribute("aria-checked")).toBe("false");
+      expect(updated[1]!.tabIndex).toBe(0);
+      expect(updated[0]!.tabIndex).toBe(-1);
+      expect(document.activeElement).toBe(updated[1]);
+    });
+  });
+
+  it("sort popover ArrowDown moves checked + focus to the next radio", async () => {
+    mockListIssues.mockResolvedValue(makeResponse([makeIssue(1)]));
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    const sortButton = await screen.findByRole("button", { name: /^sort/i });
+    act(() => {
+      sortButton.click();
+    });
+
+    const newest = await screen.findByRole("radio", { name: /newest/i });
+    expect(newest.getAttribute("aria-checked")).toBe("true");
+
+    act(() => {
+      newest.focus();
+      newest.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    });
+
+    await waitFor(() => {
+      const recent = screen.getByRole("radio", { name: /recently updated/i });
+      expect(recent.getAttribute("aria-checked")).toBe("true");
+      expect(document.activeElement).toBe(recent);
+    });
+  });
+
+  it("sort trigger has no accent dot on the default sort", async () => {
+    mockListIssues.mockResolvedValue(makeResponse([makeIssue(1)]));
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    const sortButton = await screen.findByRole("button", { name: /^sort/i });
+    expect(sortButton.querySelector("span.bg-status-info")).toBeNull();
+  });
+
+  it("sort popover trigger reflects open state via aria-expanded", async () => {
+    mockListIssues.mockResolvedValue(makeResponse([makeIssue(1)]));
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    const sortButton = await screen.findByRole("button", { name: /^sort/i });
+    expect(sortButton.getAttribute("aria-expanded")).toBe("false");
+
+    act(() => {
+      sortButton.click();
+    });
+
+    await waitFor(() => {
+      expect(sortButton.getAttribute("aria-expanded")).toBe("true");
+    });
+  });
+
+  it("sort trigger drops the accent tint when sort is non-default; only the dot remains", async () => {
+    mockListIssues.mockResolvedValue(makeResponse([makeIssue(1)]));
+    useGitHubFilterStore.getState().setIssueSortOrder("updated");
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    const sortButton = await screen.findByRole("button", { name: /^sort/i });
+    expect(sortButton.classList.contains("text-status-info")).toBe(false);
+
+    // The dot is the sole signal — find the absolutely-positioned status-info span inside the button.
+    const dot = sortButton.querySelector("span.bg-status-info");
+    expect(dot).not.toBeNull();
+  });
+
+  it("listbox aria-multiselectable tracks selection.isSelectionActive", async () => {
+    mockListIssues.mockResolvedValue(makeResponse([makeIssue(1)]));
+    mockIsSelectionActive = false;
+
+    const { unmount } = render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    const listbox = await screen.findByRole("listbox");
+    expect(listbox.getAttribute("aria-multiselectable")).toBe("false");
+
+    unmount();
+
+    mockIsSelectionActive = true;
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+    const activeListbox = await screen.findByRole("listbox");
+    expect(activeListbox.getAttribute("aria-multiselectable")).toBe("true");
+  });
+
+  it("refresh button aria-label flips to 'Refreshing…' once the spinner fires", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+      setCache(cacheKey, {
+        items: [makeIssue(1)],
+        endCursor: null,
+        hasNextPage: false,
+        timestamp: Date.now(),
+      });
+      mockListIssues.mockImplementation(() => new Promise(() => {}));
+
+      render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+      // Before the gate elapses, label is "Refresh issues".
+      await vi.advanceTimersByTimeAsync(50);
+      expect(screen.getByRole("button", { name: /refresh issues/i })).toBeTruthy();
+
+      // After the 400ms gate, the label should reflect the active spinner.
+      await vi.advanceTimersByTimeAsync(450);
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: /refreshing/i })).toBeTruthy();
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

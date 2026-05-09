@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { RotateCcw, X, Layers, ChevronDown, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { usePanelStore, type TerminalInstance } from "@/store";
@@ -7,6 +7,12 @@ import type { TrashedTerminal, TrashedTerminalGroupMetadata } from "@/store/slic
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import { deriveTerminalChrome } from "@/utils/terminalChrome";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useGlobalSecondTicker } from "@/hooks/useGlobalSecondTicker";
+import { isUselessTitle } from "@shared/utils/isUselessTitle";
+import { getEffectiveAgentConfig } from "@shared/config/agentRegistry";
+import { cn } from "@/lib/utils";
+
+const COUNTDOWN_CRITICAL_SECONDS = 5;
 
 interface TrashGroupItemProps {
   groupRestoreId: string;
@@ -36,23 +42,9 @@ export function TrashGroupItem({
   const isOrphan = !!groupMetadata.worktreeId && !worktreeName;
   const canRestore = !isOrphan || !!activeWorktreeId;
 
-  const [timeRemaining, setTimeRemaining] = useState(() => {
-    return Math.max(0, earliestExpiry - Date.now());
-  });
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const remaining = Math.max(0, earliestExpiry - Date.now());
-      setTimeRemaining(remaining);
-
-      if (remaining <= 0) {
-        clearInterval(interval);
-      }
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [earliestExpiry]);
-
+  const tick = useGlobalSecondTicker();
+  void tick;
+  const timeRemaining = Math.max(0, earliestExpiry - Date.now());
   const seconds = Math.ceil(timeRemaining / 1000);
 
   const handleRestoreGroup = useCallback(() => {
@@ -70,7 +62,33 @@ export function TrashGroupItem({
   }, [removePanel, terminals]);
 
   const tabCount = terminals.length;
-  const groupName = `Tab Group (${tabCount} ${tabCount === 1 ? "tab" : "tabs"})`;
+
+  // Only resolve the headline title when the active id still points at a real
+  // terminal in the group — if individual deletes have left the id stale, the
+  // (active) marker won't render either, so falling back to the count-only
+  // label keeps the header and expanded list consistent.
+  const activeEntry = terminals.find(({ terminal }) => terminal.id === groupMetadata.activeTabId);
+
+  const resolvedActiveTitle = (() => {
+    if (!activeEntry) return null;
+    const { terminal } = activeEntry;
+    const observed = terminal.lastObservedTitle;
+    if (observed && !isUselessTitle(observed)) return observed;
+    if (terminal.launchAgentId) {
+      if (terminal.title && !isUselessTitle(terminal.title)) return terminal.title;
+      const agentConfig = getEffectiveAgentConfig(terminal.launchAgentId);
+      return agentConfig?.name ?? terminal.launchAgentId;
+    }
+    if (terminal.title && !isUselessTitle(terminal.title)) return terminal.title;
+    return null;
+  })();
+
+  const fallbackName = `Tab Group (${tabCount} ${tabCount === 1 ? "tab" : "tabs"})`;
+  const groupName = resolvedActiveTitle
+    ? tabCount > 1
+      ? `${resolvedActiveTitle} +${tabCount - 1} more`
+      : resolvedActiveTitle
+    : fallbackName;
 
   return (
     <div className="rounded-[var(--radius-sm)] bg-transparent hover:bg-tint/5 transition-colors">
@@ -106,7 +124,15 @@ export function TrashGroupItem({
               </span>
             ) : null}
           </div>
-          <div className="text-[11px] text-daintree-text/40" aria-live="off">
+          <div
+            className={cn(
+              "text-[11px] tabular-nums transition-opacity",
+              seconds <= COUNTDOWN_CRITICAL_SECONDS
+                ? "opacity-100 text-status-warning/70"
+                : "text-daintree-text/40 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+            )}
+            aria-hidden="true"
+          >
             {seconds}s remaining
           </div>
         </div>

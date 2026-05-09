@@ -30,6 +30,26 @@ vi.mock("../ProjectStore.js", () => ({
   projectStore: mockProjectStore,
 }));
 
+// Mock DiskSpaceMonitor so MigrationRunner's pre-flight guard is controllable.
+// Defaults to a normal-status return; individual tests override per-case.
+const { mockGetCurrentDiskSpaceStatus } = vi.hoisted(() => {
+  type DiskSpaceStatusResult = {
+    status: "normal" | "warning" | "critical";
+    availableMb: number;
+    writesSuppressed: boolean;
+  };
+  return {
+    mockGetCurrentDiskSpaceStatus: vi.fn<() => DiskSpaceStatusResult>(() => ({
+      status: "normal" as const,
+      availableMb: 4096,
+      writesSuppressed: false,
+    })),
+  };
+});
+vi.mock("../DiskSpaceMonitor.js", () => ({
+  getCurrentDiskSpaceStatus: () => mockGetCurrentDiskSpaceStatus(),
+}));
+
 import type { Migration } from "../StoreMigrations.js";
 import {
   LATEST_SCHEMA_VERSION,
@@ -95,6 +115,11 @@ describe("MigrationRunner", () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "daintree-migrations-"));
     storePath = path.join(tempDir, "config.json");
     fs.writeFileSync(storePath, JSON.stringify({ ok: true }), "utf8");
+    mockGetCurrentDiskSpaceStatus.mockReturnValue({
+      status: "normal",
+      availableMb: 4096,
+      writesSuppressed: false,
+    });
   });
 
   afterEach(() => {
@@ -212,6 +237,25 @@ describe("MigrationRunner", () => {
     const backupFiles = files.filter((file) => file.startsWith("config.json.backup-v3-"));
     expect(backupFiles).toHaveLength(1);
   });
+
+  it.skipIf(process.platform === "win32")(
+    "writes the pre-migration backup with 0o600 even when the live store was 0o644",
+    async () => {
+      fs.writeFileSync(storePath, JSON.stringify({ _schemaVersion: 3 }), "utf8");
+      fs.chmodSync(storePath, 0o644);
+
+      const store = createMockStore(storePath, { _schemaVersion: 3 });
+      const runner = new MigrationRunner(store as never);
+
+      await runner.runMigrations([{ version: 4, description: "noop", up: () => {} }]);
+
+      const files = fs.readdirSync(tempDir);
+      const backupFile = files.find((file) => file.startsWith("config.json.backup-v3-"));
+      expect(backupFile).toBeDefined();
+      const mode = fs.statSync(path.join(tempDir, backupFile!)).mode & 0o777;
+      expect(mode).toBe(0o600);
+    }
+  );
 
   describe("auto-restore on migration failure", () => {
     it("atomically restores the pre-migration store file when a migration throws", async () => {
@@ -403,6 +447,182 @@ describe("MigrationRunner", () => {
       ).rejects.toThrow(/Post-migration sanity check failed/);
 
       expect(fs.readFileSync(storePath, "utf8")).toBe(originalBytes);
+    });
+  });
+
+  describe("disk-space pre-flight guard", () => {
+    it("runMigrations throws before any backup or migration when disk is critical", async () => {
+      const upSpy = vi.fn();
+      const store = createMockStore(storePath, { _schemaVersion: 0 });
+      const runner = new MigrationRunner(store as never);
+      mockGetCurrentDiskSpaceStatus.mockReturnValue({
+        status: "critical" as const,
+        availableMb: 50,
+        writesSuppressed: true,
+      });
+
+      await expect(
+        runner.runMigrations([{ version: 1, description: "v1", up: upSpy }])
+      ).rejects.toThrow(/disk space is critical/);
+
+      expect(upSpy).not.toHaveBeenCalled();
+      // No backup file should have been created — the guard fires before
+      // backupStore is reached.
+      const backups = fs.readdirSync(tempDir).filter((f) => f.startsWith("config.json.backup-"));
+      expect(backups).toHaveLength(0);
+      // Schema version untouched
+      expect(store.data._schemaVersion).toBe(0);
+    });
+
+    it("runMigrations throws on critical disk even on the floorVersion reset path", async () => {
+      const store = createMockStore(storePath, { _schemaVersion: 1, sentinel: "keep" });
+      const runner = new MigrationRunner(store as never, { floorVersion: 5 });
+      mockGetCurrentDiskSpaceStatus.mockReturnValue({
+        status: "critical" as const,
+        availableMb: 50,
+        writesSuppressed: true,
+      });
+
+      await expect(
+        runner.runMigrations([{ version: 5, description: "v5", up: () => {} }])
+      ).rejects.toThrow(/disk space is critical/);
+
+      // Floor-reset should not have run — store keys preserved.
+      expect(store.data._schemaVersion).toBe(1);
+      expect(store.data.sentinel).toBe("keep");
+      const backups = fs.readdirSync(tempDir).filter((f) => f.startsWith("config.json.backup-"));
+      expect(backups).toHaveLength(0);
+    });
+
+    it("runMigrations does not block at warning tier (only critical bails)", async () => {
+      const upSpy = vi.fn();
+      const store = createMockStore(storePath, { _schemaVersion: 0 });
+      const runner = new MigrationRunner(store as never);
+      mockGetCurrentDiskSpaceStatus.mockReturnValue({
+        status: "warning" as const,
+        availableMb: 1024,
+        writesSuppressed: false,
+      });
+
+      await runner.runMigrations([{ version: 1, description: "v1", up: upSpy }]);
+
+      expect(upSpy).toHaveBeenCalledTimes(1);
+      expect(store.data._schemaVersion).toBe(1);
+    });
+
+    it("runMigrations throws on critical disk before _schemaVersion normalization", async () => {
+      // Guard must fire before getCurrentVersion() runs, so an invalid stored
+      // _schemaVersion (e.g. a string) must not be normalized to 0 on a
+      // critical-pressure volume.
+      const store = createMockStore(storePath, { _schemaVersion: "3" });
+      const runner = new MigrationRunner(store as never);
+      mockGetCurrentDiskSpaceStatus.mockReturnValue({
+        status: "critical" as const,
+        availableMb: 50,
+        writesSuppressed: true,
+      });
+
+      await expect(
+        runner.runMigrations([{ version: 1, description: "v1", up: () => {} }])
+      ).rejects.toThrow(/disk space is critical/);
+
+      expect(store.data._schemaVersion).toBe("3");
+    });
+
+    it("runMigrations throws on critical disk even when no migrations are pending", async () => {
+      // Guard fires unconditionally — having nothing to do is not a reason to
+      // skip the disk check, since callers may still rely on the throw to
+      // surface the condition.
+      const store = createMockStore(storePath, { _schemaVersion: 2 });
+      const runner = new MigrationRunner(store as never);
+      mockGetCurrentDiskSpaceStatus.mockReturnValue({
+        status: "critical" as const,
+        availableMb: 50,
+        writesSuppressed: true,
+      });
+
+      await expect(
+        runner.runMigrations([
+          { version: 1, description: "v1", up: () => {} },
+          { version: 2, description: "v2", up: () => {} },
+        ])
+      ).rejects.toThrow(/disk space is critical/);
+    });
+
+    it("runMigrations throws on critical disk even when current version is ahead (downgrade compat mode)", async () => {
+      // Guard fires before the compatibility-mode early-return, so a critical
+      // disk surfaces an error rather than silently logging the downgrade
+      // warning and returning success.
+      const store = createMockStore(storePath, { _schemaVersion: 99 });
+      const runner = new MigrationRunner(store as never);
+      mockGetCurrentDiskSpaceStatus.mockReturnValue({
+        status: "critical" as const,
+        availableMb: 50,
+        writesSuppressed: true,
+      });
+
+      await expect(
+        runner.runMigrations([{ version: 5, description: "v5", up: () => {} }])
+      ).rejects.toThrow(/disk space is critical/);
+    });
+
+    it("runMigrations throws when disk transitions to critical between guard and backupStore", async () => {
+      // Mid-flight TOCTOU: the top-of-method guard sees normal, the volume
+      // fills before backupStore is reached, backupStore correctly skips the
+      // copy, and the post-backup re-check then surfaces the condition. Without
+      // the re-check, migrations would mutate the live store with no backup.
+      const upSpy = vi.fn();
+      const store = createMockStore(storePath, { _schemaVersion: 0 });
+      const runner = new MigrationRunner(store as never);
+      mockGetCurrentDiskSpaceStatus
+        .mockReturnValueOnce({
+          status: "normal" as const,
+          availableMb: 4096,
+          writesSuppressed: false,
+        })
+        .mockReturnValue({
+          status: "critical" as const,
+          availableMb: 50,
+          writesSuppressed: true,
+        });
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      await expect(
+        runner.runMigrations([{ version: 1, description: "v1", up: upSpy }])
+      ).rejects.toThrow(/disk space is critical/);
+
+      expect(upSpy).not.toHaveBeenCalled();
+      expect(store.data._schemaVersion).toBe(0);
+      const backups = fs.readdirSync(tempDir).filter((f) => f.startsWith("config.json.backup-"));
+      expect(backups).toHaveLength(0);
+
+      warnSpy.mockRestore();
+    });
+
+    it("backupStore returns null without writing a file when disk is critical", () => {
+      // Defense-in-depth check: if a future caller invokes backupStore directly
+      // (bypassing runMigrations' guard), it must still skip the copy.
+      const store = createMockStore(storePath, { _schemaVersion: 3 });
+      const runner = new MigrationRunner(store as never);
+      mockGetCurrentDiskSpaceStatus.mockReturnValue({
+        status: "critical" as const,
+        availableMb: 50,
+        writesSuppressed: true,
+      });
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const result = (
+        runner as unknown as { backupStore: (v: number) => string | null }
+      ).backupStore(3);
+
+      expect(result).toBeNull();
+      const backups = fs.readdirSync(tempDir).filter((f) => f.startsWith("config.json.backup-"));
+      expect(backups).toHaveLength(0);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Skipping pre-migration backup")
+      );
+
+      warnSpy.mockRestore();
     });
   });
 
@@ -875,24 +1095,24 @@ describe("MigrationRunner", () => {
       expect((store.data.appState as Record<string, unknown>).recipes).toEqual([]);
     });
 
-    it("swallows errors from saveRecipes and preserves legacy recipes", async () => {
+    it("rethrows saveRecipes failures so MigrationRunner can restore the backup", async () => {
       const recipes = [{ id: "r1", name: "Recipe", terminals: [] }];
       const store = createMockStore(storePath, { appState: { recipes } });
       mockProjectStore.getCurrentProjectId.mockReturnValue("proj-1");
       mockProjectStore.getProjectById.mockReturnValue({ id: "proj-1" });
       mockProjectStore.getRecipes.mockResolvedValue([]);
       mockProjectStore.saveRecipes.mockRejectedValue(new Error("disk full"));
-      await expect(migration003.up(store as never)).resolves.toBeUndefined();
+      await expect(migration003.up(store as never)).rejects.toThrow("disk full");
       expect((store.data.appState as Record<string, unknown>).recipes).toEqual(recipes);
     });
 
-    it("swallows errors from getRecipes and preserves legacy recipes without saving", async () => {
+    it("rethrows getRecipes failures and never reaches saveRecipes", async () => {
       const recipes = [{ id: "r1", name: "Recipe", terminals: [] }];
       const store = createMockStore(storePath, { appState: { recipes } });
       mockProjectStore.getCurrentProjectId.mockReturnValue("proj-1");
       mockProjectStore.getProjectById.mockReturnValue({ id: "proj-1" });
       mockProjectStore.getRecipes.mockRejectedValue(new Error("sqlite locked"));
-      await expect(migration003.up(store as never)).resolves.toBeUndefined();
+      await expect(migration003.up(store as never)).rejects.toThrow("sqlite locked");
       expect(mockProjectStore.saveRecipes).not.toHaveBeenCalled();
       expect((store.data.appState as Record<string, unknown>).recipes).toEqual(recipes);
     });
@@ -1306,7 +1526,7 @@ describe("MigrationRunner", () => {
           correctionCustomInstructions: "",
           paragraphingStrategy: "spoken-command",
         },
-        mcpServer: { enabled: false, port: 45454, apiKey: "" },
+        mcpServer: { enabled: false, port: 45454 },
         pendingErrors: [],
         gpu: { hardwareAccelerationDisabled: false },
         crashRecovery: { autoRestoreOnCrash: false },

@@ -11,7 +11,9 @@ import type {
 import { coerceAgentState } from "../../shared/types/agent.js";
 import { store, windowStatesStore } from "../store.js";
 import { isGpuDisabledByFlag } from "./GpuCrashMonitorService.js";
+import { getSystemSleepService } from "./SystemSleepService.js";
 import { getActionBreadcrumbService } from "./ActionBreadcrumbService.js";
+import { resilientAtomicWriteFileSync } from "../utils/fs.js";
 
 const MAX_CRASH_LOGS = 10;
 const MARKER_FILENAME = "running.lock";
@@ -31,6 +33,8 @@ export class CrashRecoveryService {
   private pendingCrash: PendingCrash | null = null;
   private backupTimer: ReturnType<typeof setInterval> | null = null;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private removeSuspendListener: (() => void) | null = null;
+  private removeWakeListener: (() => void) | null = null;
   private crashRecorded = false;
   private pendingPanelFilter: string[] | null = null;
   private cachedBackupSnapshot: SessionSnapshot | null = null;
@@ -82,7 +86,7 @@ export class CrashRecoveryService {
 
       const entry = this.buildCrashEntry(error);
       const logPath = path.join(this.crashesDir, `crash-${entry.id}.json`);
-      this.atomicWrite(logPath, JSON.stringify(entry, null, 2));
+      resilientAtomicWriteFileSync(logPath, JSON.stringify(entry, null, 2), "utf-8");
       this.writeMarker(entry);
       this.pruneOldLogs();
       console.log("[CrashRecovery] Crash recorded:", logPath);
@@ -97,6 +101,7 @@ export class CrashRecoveryService {
     this.backupTimer = setInterval(() => {
       this.takeBackup();
     }, BACKUP_INTERVAL_MS);
+    this.registerSleepListeners();
   }
 
   stopBackupTimer(): void {
@@ -107,6 +112,39 @@ export class CrashRecoveryService {
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
       this.debounceTimer = null;
+    }
+    this.unregisterSleepListeners();
+  }
+
+  private registerSleepListeners(): void {
+    this.unregisterSleepListeners();
+    try {
+      this.removeSuspendListener = getSystemSleepService().onSuspend(() => {
+        if (this.backupTimer) {
+          clearInterval(this.backupTimer);
+          this.backupTimer = null;
+        }
+        if (this.debounceTimer) {
+          clearTimeout(this.debounceTimer);
+          this.debounceTimer = null;
+        }
+      });
+      this.removeWakeListener = getSystemSleepService().onWake(() => {
+        this.startBackupTimer();
+      });
+    } catch {
+      // SystemSleepService may not be initialized yet at early startup.
+    }
+  }
+
+  private unregisterSleepListeners(): void {
+    if (this.removeSuspendListener) {
+      this.removeSuspendListener();
+      this.removeSuspendListener = null;
+    }
+    if (this.removeWakeListener) {
+      this.removeWakeListener();
+      this.removeWakeListener = null;
     }
   }
 
@@ -126,7 +164,7 @@ export class CrashRecoveryService {
       fs.mkdirSync(backupDir, { recursive: true });
 
       const snapshot = this.captureSessionSnapshot();
-      this.atomicWrite(this.backupPath, JSON.stringify(snapshot, null, 2));
+      resilientAtomicWriteFileSync(this.backupPath, JSON.stringify(snapshot, null, 2), "utf-8");
     } catch (err) {
       console.error("[CrashRecovery] Failed to take backup:", err);
     }
@@ -146,13 +184,19 @@ export class CrashRecoveryService {
       }
 
       if (panelIds !== undefined && panelIds.length > 0 && snapshot.appState) {
-        const appState = snapshot.appState as Record<string, unknown>;
+        // Filter onto a shallow copy so we don't mutate cachedBackupSnapshot.
+        // If applySessionSnapshot below throws and the user retries the
+        // restore (with or without a different filter), the cache must
+        // still hold the full pre-crash terminal list — mutating it in
+        // place permanently drops panels from any retry path.
+        const appState = { ...(snapshot.appState as Record<string, unknown>) };
         if (Array.isArray(appState.terminals)) {
           const idSet = new Set(panelIds);
           appState.terminals = (appState.terminals as Array<{ id: string }>).filter((t) =>
             idSet.has(t.id)
           );
         }
+        snapshot = { ...snapshot, appState };
       }
 
       if (!hasRestorableSnapshotContent(snapshot)) {
@@ -263,9 +307,19 @@ export class CrashRecoveryService {
 
   private extractPanelSummaries(crashTimestamp: number): PanelSummary[] {
     try {
-      if (!fs.existsSync(this.backupPath)) return [];
-      const raw = fs.readFileSync(this.backupPath, "utf8");
-      const snapshot = JSON.parse(raw) as SessionSnapshot;
+      // Prefer the snapshot cached by consumeMarker — startBackupTimer can
+      // overwrite this.backupPath on disk between marker consumption and
+      // here, which would silently swap pre-crash panels for an empty
+      // post-crash session. Fall back to disk only when the cache failed
+      // to populate (read or parse error in consumeMarker's try block).
+      let snapshot: SessionSnapshot;
+      if (this.cachedBackupSnapshot) {
+        snapshot = this.cachedBackupSnapshot;
+      } else {
+        if (!fs.existsSync(this.backupPath)) return [];
+        const raw = fs.readFileSync(this.backupPath, "utf8");
+        snapshot = JSON.parse(raw) as SessionSnapshot;
+      }
       if (!snapshot.appState) return [];
 
       const appState = snapshot.appState as Record<string, unknown>;
@@ -302,7 +356,7 @@ export class CrashRecoveryService {
           ? path.join(this.crashesDir, `crash-${crashEntry.id}.json`)
           : undefined,
       };
-      this.atomicWrite(this.markerPath, JSON.stringify(marker));
+      resilientAtomicWriteFileSync(this.markerPath, JSON.stringify(marker), "utf-8");
     } catch (err) {
       console.error("[CrashRecovery] Failed to write marker:", err);
     }
@@ -359,7 +413,6 @@ export class CrashRecoveryService {
     this.enrichWithEnvironmentMetadata(entry);
     const backupAppState = this.cachedBackupSnapshot?.appState;
     this.enrichWithPanelData(entry, backupAppState);
-    this.enrichWithRecentActions(entry);
 
     return entry;
   }
@@ -505,23 +558,6 @@ export class CrashRecoveryService {
       }
     } catch (err) {
       console.error("[CrashRecovery] Failed to prune logs:", err);
-    }
-  }
-
-  private atomicWrite(targetPath: string, data: string): void {
-    const tmpPath = `${targetPath}.${Date.now()}.tmp`;
-    try {
-      fs.writeFileSync(tmpPath, data, { encoding: "utf8", flush: true } as Parameters<
-        typeof fs.writeFileSync
-      >[2]);
-      fs.renameSync(tmpPath, targetPath);
-    } catch (err) {
-      try {
-        fs.unlinkSync(tmpPath);
-      } catch {
-        // ignore
-      }
-      throw err;
     }
   }
 }

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getUserRegistry } from "../../../shared/config/agentRegistry";
 
 const { getMock, addMock, updateMock, removeMock } = vi.hoisted(() => ({
   getMock: vi.fn(),
@@ -48,6 +49,45 @@ describe("userAgentRegistryStore", () => {
     expect(afterRetry.isInitialized).toBe(true);
     expect(afterRetry.error).toBeNull();
     expect(afterRetry.registry).toEqual({ myAgent: { id: "myAgent", name: "My Agent" } });
+  });
+
+  it("syncs the userRegistry singleton on initialize", async () => {
+    getMock.mockResolvedValue({ myAgent: { id: "myAgent", name: "My Agent" } });
+
+    await useUserAgentRegistryStore.getState().initialize();
+
+    const singleton = getUserRegistry();
+    expect(singleton).toEqual({ myAgent: { id: "myAgent", name: "My Agent" } });
+  });
+
+  it("syncs the userRegistry singleton on addAgent", async () => {
+    getMock
+      .mockResolvedValueOnce({ myAgent: { id: "myAgent", name: "My Agent" } })
+      .mockResolvedValueOnce({
+        myAgent: { id: "myAgent", name: "My Agent" },
+        newAgent: { id: "newAgent", name: "New" },
+      });
+    addMock.mockResolvedValue({ success: true });
+
+    await useUserAgentRegistryStore.getState().initialize();
+    await useUserAgentRegistryStore.getState().addAgent({ id: "newAgent", name: "New" } as never);
+
+    const singleton = getUserRegistry();
+    expect(singleton).toHaveProperty("myAgent");
+    expect(singleton).toHaveProperty("newAgent");
+  });
+
+  it("clears the userRegistry singleton on cleanup", () => {
+    useUserAgentRegistryStore.setState({
+      registry: { test: { id: "test", name: "Test Agent" } as never },
+      isLoading: false,
+      error: null,
+      isInitialized: true,
+    });
+
+    cleanupUserAgentRegistryStore();
+
+    expect(getUserRegistry()).toEqual({});
   });
 
   it("cleanup resets the store to pre-initialized state", () => {

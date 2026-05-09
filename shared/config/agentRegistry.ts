@@ -256,6 +256,53 @@ export type AgentResume =
       shutdownKeySequence?: string;
     };
 
+/**
+ * Capability shape describing how an agent participates in the Daintree
+ * assistant overlay. Each field captures a distinct wiring concern; the older
+ * `supportsAssistant: boolean` collapsed all of them into one bit and
+ * couldn't represent partial wiring.
+ */
+export interface AssistantSupports {
+  /**
+   * How MCP servers are injected into the agent's session.
+   * - `"project-config"`: written to per-session config files (e.g. Claude's
+   *   `.mcp.json` plus `.claude/settings.json` overlay).
+   * - `"cli-flags"`: passed as `-c key=value` flags at spawn time (e.g. Codex).
+   */
+  mcpInjection: "project-config" | "cli-flags";
+  /**
+   * Whether the agent reads a session-dir settings overlay that bakes in
+   * permissions / project-MCP trust (e.g. Claude's `.claude/settings.json`
+   * with `enableAllProjectMcpServers: true`).
+   */
+  settingsOverlay: boolean;
+  /**
+   * Whether this agent exposes a `--dangerously-skip-*` CLI flag that the
+   * system tier appends to the spawn command. Corresponds to entries in
+   * `DEFAULT_DANGEROUS_ARGS`.
+   */
+  permissionBypass: boolean;
+  /**
+   * Whether the agent's workspace-trust dialog is fully handled by the
+   * session-dir overlay (so the user is never re-prompted inside the agent
+   * after Daintree has launched it).
+   */
+  trustDialog: boolean;
+  /**
+   * Whether version-probe data is wired up for this agent's CLI.
+   */
+  versionProbe: boolean;
+  /**
+   * Visibility tier in the assistant settings dropdown.
+   * - `"stable"`: shown to users; this is the path the old `true` boolean
+   *   took. Maintained and supported.
+   * - `"experimental"`: structurally enabled but hidden from the picker
+   *   until promoted. Use for partial wiring that hasn't been validated end
+   *   to end yet.
+   */
+  tier: "stable" | "experimental";
+}
+
 export interface AgentConfig {
   id: string;
   name: string;
@@ -267,6 +314,32 @@ export interface AgentConfig {
   /** Available models for per-panel model selection at launch time */
   models?: AgentModelConfig[];
   supportsContextInjection: boolean;
+  /**
+   * Per-concern wiring shape for the Daintree assistant overlay. Replaces the
+   * older `supportsAssistant?: boolean`, which collapsed several distinct
+   * concerns (MCP injection mechanism, settings overlay, permission bypass,
+   * trust dialog, version probe) into a single yes/no and prevented
+   * representing partial wiring.
+   *
+   * Use `false` for agents that are structurally ineligible (e.g. an MCP
+   * server rather than a client) — leave a comment explaining why. Use
+   * `undefined` for agents that simply aren't wired yet.
+   *
+   * `tier` controls visibility in the assistant dropdown: `"stable"` is
+   * shown (this is the path the old `true` boolean took); `"experimental"`
+   * is structurally enabled but hidden from the picker until promoted.
+   */
+  supports?: AssistantSupports | false;
+  /**
+   * Minimum installed CLI semver required for the Daintree Assistant launch
+   * path. Compared against the live `AgentVersionService.getVersion()` probe
+   * before `provisionHelpSession` runs — when the installed version is
+   * definitively below this floor, `HelpPanel` surfaces an inline upgrade
+   * prompt instead of minting a session token. A `null` probe result (CLI
+   * missing or version unparseable) passes through so existing missing-CLI
+   * surfaces handle it. Omit when no minimum applies.
+   */
+  assistantMinVersion?: string;
   shortcut?: string | null;
   tooltip?: string;
   usageUrl?: string;
@@ -287,6 +360,16 @@ export interface AgentConfig {
     ignoredInputSequences?: string[];
     /** Delay in ms before sending Enter key after body write (default: 200) */
     submitEnterDelayMs?: number;
+    /**
+     * How the graceful-shutdown path submits the quit command to the agent
+     * PTY. Ink-based TUIs (Claude) treat any gap between the command body
+     * and Enter as deliberate slow typing and never submit the slash
+     * command, so they require a single combined write. Ratatui-based TUIs
+     * (Codex) read the PTY buffer atomically and conflate a combined write
+     * as a paste, so they require the body and Enter as separate writes.
+     * Default: split-write — safe for Codex and readline-based CLIs.
+     */
+    quitSubmitMode?: "single-write" | "split-write";
   };
   /**
    * Configuration for pattern-based working state detection.
@@ -541,14 +624,38 @@ export function getAgentModelConfig(
 }
 
 /**
- * Default fast/cost-efficient model IDs for the assistant (HelpPanel) use case.
- * Used as fallback when no user-configured assistantModelId is stored.
+ * IDs of built-in agents whose assistant wiring is at the `"stable"` tier.
+ * Used by the HelpPanel agent picker to filter the visible options and by
+ * the `helpPanelStore` rehydration guard to drop stale persisted preferences
+ * for agents that aren't (yet) wired for the assistant overlay.
+ *
+ * Excludes agents marked `supports: false` (structurally ineligible),
+ * `supports: undefined` (not yet wired), and `tier: "experimental"`.
  */
-export const ASSISTANT_FAST_MODELS: Record<string, string> = {
-  claude: "claude-sonnet-4-6",
-  gemini: "gemini-2.5-flash",
-  codex: "gpt-5.3-codex-spark",
-};
+export function getAssistantSupportedAgentIds(): string[] {
+  return BUILT_IN_AGENT_IDS.filter((id) => {
+    const supports = AGENT_REGISTRY[id]?.supports;
+    return supports !== false && supports?.tier === "stable";
+  });
+}
+
+/**
+ * IDs of built-in agents whose assistant wiring is structurally complete at
+ * any tier (`"stable"` or `"experimental"`). Used by `HelpSessionService`'s
+ * provision validator and `lifecycle.ts`'s help-launch detector — both must
+ * accept experimental agents so a help session can spawn under them, even
+ * though the picker (driven by `getAssistantSupportedAgentIds`) keeps them
+ * hidden until promoted.
+ *
+ * Excludes only `supports: false` (structurally ineligible) and
+ * `supports: undefined` (not yet wired).
+ */
+export function getAssistantWiredAgentIds(): string[] {
+  return BUILT_IN_AGENT_IDS.filter((id) => {
+    const supports = AGENT_REGISTRY[id]?.supports;
+    return supports !== false && supports !== undefined;
+  });
+}
 
 export function getAgentDisplayTitle(agentId: string, modelId?: string): string {
   const config = getEffectiveAgentConfig(agentId);

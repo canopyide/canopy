@@ -3,7 +3,7 @@ import { isMac } from "@/lib/platform";
 import type React from "react";
 import { type PanelLocation } from "@/types";
 import { usePanelStore } from "@/store";
-import { useShallow } from "zustand/react/shallow";
+
 import { useWorktrees } from "@/hooks/useWorktrees";
 import { useFleetArmingStore, isFleetArmEligible } from "@/store/fleetArmingStore";
 import { isValidBrowserUrl } from "@/components/Browser/browserUtils";
@@ -19,6 +19,7 @@ import {
   CopyPlus,
   ExternalLink,
   Globe,
+  Info,
   Link,
   Lock,
   Maximize2,
@@ -66,7 +67,7 @@ export function TerminalContextMenu({
   children,
   forceLocation,
 }: TerminalContextMenuProps) {
-  const terminal = usePanelStore(useShallow((state) => state.panelsById[terminalId]));
+  const terminal = usePanelStore((state) => state.panelsById[terminalId]);
   const maximizeTarget = usePanelStore((s) => s.maximizeTarget);
   const getPanelGroup = usePanelStore((s) => s.getPanelGroup);
 
@@ -233,6 +234,13 @@ export function TerminalContextMenu({
         case "rename":
           void actionService.dispatch(
             "terminal.rename",
+            { terminalId },
+            { source: "context-menu" }
+          );
+          break;
+        case "view-info":
+          void actionService.dispatch(
+            "terminal.viewInfo",
             { terminalId },
             { source: "context-menu" }
           );
@@ -569,6 +577,10 @@ export function TerminalContextMenu({
         <ContextMenuItem onSelect={() => handleAction("rename")}>
           <Pencil className={ICON_CLASS} aria-hidden="true" />
           Rename Terminal
+        </ContextMenuItem>
+        <ContextMenuItem onSelect={() => handleAction("view-info")}>
+          <Info className={ICON_CLASS} aria-hidden="true" />
+          View Terminal Info
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem onSelect={() => handleAction("background")}>

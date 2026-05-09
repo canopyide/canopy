@@ -173,4 +173,71 @@ describe("CopyTreeService adversarial", () => {
 
     expect(copyTreeService.cancel("op-err")).toBe(false);
   });
+
+  it("cancelling a testConfig op leaves a concurrent generate untouched", async () => {
+    const pending: Array<{
+      options: CapturedOptions;
+      resolve: (value: unknown) => void;
+    }> = [];
+
+    copyMock.mockImplementation((_root: string, options: CapturedOptions) => {
+      return new Promise((resolve, reject) => {
+        options.signal.addEventListener("abort", () => {
+          const e = new Error("aborted");
+          e.name = "AbortError";
+          reject(e);
+        });
+        pending.push({ options, resolve });
+      });
+    });
+
+    const generation = copyTreeService.generate(tempDir, {}, undefined, "gen-op");
+    const probe = copyTreeService.testConfig(tempDir, {}, "probe-op");
+
+    await vi.waitFor(() => {
+      expect(pending.length).toBe(2);
+    });
+
+    copyTreeService.cancel("probe-op");
+
+    const aborted = pending.filter((op) => op.options.signal.aborted);
+    const surviving = pending.filter((op) => !op.options.signal.aborted);
+    expect(aborted).toHaveLength(1);
+    expect(surviving).toHaveLength(1);
+
+    surviving[0].resolve({
+      output: "<ok/>",
+      stats: { totalFiles: 3, totalSize: 30, duration: 5 },
+    });
+
+    const [genResult, probeResult] = await Promise.all([generation, probe]);
+    expect(probeResult.error).toBe("Context generation cancelled");
+    expect(genResult.error).toBeUndefined();
+    expect(genResult.fileCount).toBe(3);
+  });
+
+  it("double-cancelling a testConfig op is idempotent", async () => {
+    copyMock.mockImplementation((_root: string, options: CapturedOptions) => {
+      return new Promise((_resolve, reject) => {
+        options.signal.addEventListener("abort", () => {
+          const e = new Error("aborted");
+          e.name = "AbortError";
+          reject(e);
+        });
+      });
+    });
+
+    const pending = copyTreeService.testConfig(tempDir, {}, "dup-op");
+
+    await vi.waitFor(() => {
+      expect(copyMock).toHaveBeenCalledTimes(1);
+    });
+
+    expect(copyTreeService.cancel("dup-op")).toBe(true);
+    expect(copyTreeService.cancel("dup-op")).toBe(false);
+
+    await expect(pending).resolves.toEqual(
+      expect.objectContaining({ error: "Context generation cancelled" })
+    );
+  });
 });

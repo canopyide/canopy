@@ -1,6 +1,5 @@
-import { readFile } from "fs/promises";
+import { readFile, access } from "fs/promises";
 import { join as pathJoin } from "path";
-import { existsSync } from "fs";
 import { createHardenedGit, createWslHardenedGit } from "../utils/hardenedGit.js";
 import type { WslGitInvocation } from "../utils/hardenedGit.js";
 import type PQueue from "p-queue";
@@ -19,24 +18,22 @@ import { categorizeWorktree } from "../services/worktree/mood.js";
 import { AdaptivePollingStrategy, NoteFileReader } from "../services/worktree/index.js";
 import { ensureSerializable } from "../../shared/utils/serialization.js";
 import { extractIssueNumberSync, extractIssueNumber } from "../services/issueExtractor.js";
-import { GitFileWatcher } from "../utils/gitFileWatcher.js";
-import { MutableDisposable, toDisposable, type IDisposable } from "../utils/lifecycle.js";
-import { Cache } from "../utils/cache.js";
+import { FetchScheduler, type FetchSchedulerHost } from "./FetchScheduler.js";
+import { ResourcePollTimer, type ResourcePollTimerHost } from "./ResourcePollTimer.js";
+import { WatcherController, type WatcherControllerHost } from "./WatcherController.js";
 
-const GIT_WATCH_SELF_TRIGGER_COOLDOWN_MS = 1000;
-const WATCHER_FALLBACK_POLL_INTERVAL_MS = 30_000;
-const NO_UPSTREAM_CACHE_TTL_MS = 5 * 60 * 1000;
-const UPSTREAM_NOT_FOUND_CACHE_TTL_MS = 2 * 60 * 1000;
-const WATCHER_RETRY_INTERVAL_MS = 30_000;
-const WATCHER_MAX_RETRIES = 5;
-const WATCHER_WORKTREE_MIN_DEBOUNCE_MS = 150;
-const WATCHER_WORKTREE_MAX_DEBOUNCE_MS = 800;
-const WATCHER_WORKTREE_MAX_WAIT_MS = 1500;
 const PLAN_FILE_CANDIDATES = ["TODO.md", "PLAN.md", "plan.md", "TASKS.md"] as const;
 const RESOURCE_POLL_DEFAULT_ACTIVE_MS = 30_000;
-const RESOURCE_POLL_DEFAULT_BACKGROUND_MS = 120_000;
+const RESOURCE_POLL_DEFAULT_BACKGROUND_MS = 300_000;
 const HEARTBEAT_GAP_MULTIPLIER = 3;
 const HEARTBEAT_GAP_FLOOR_MS = 30_000;
+// Cap on the heartbeat-gap stale threshold. Keeps suspend/wake detection
+// bounded as the base poll interval grows: with the 300s watcher-fallback
+// cadence the raw 3x threshold would balloon to 900s. The ceiling must sit
+// above the largest base interval (300s) so a normal heartbeat fire on a
+// quiet repo doesn't false-positive — 360s leaves ~60s of headroom for
+// timer drift past the expected fire time.
+const HEARTBEAT_GAP_CEILING_MS = 360_000;
 
 export interface WorktreeMonitorConfig {
   basePollingInterval: number;
@@ -56,6 +53,17 @@ export interface WorktreeMonitorCallbacks {
   onResourceStatusPoll?: (worktreeId: string) => Promise<unknown> | void;
   onInotifyLimitReached?: (worktreeId: string) => void;
   onEmfileLimitReached?: (worktreeId: string) => void;
+  /**
+   * Schedule a background `git fetch` for this worktree's repo. Routed through
+   * `WorkspaceService` so per-repo serialization and failure-cache state are
+   * shared across sibling monitors. Resolves regardless of fetch outcome.
+   * `force` bypasses the per-repo failure cache (manual user-triggered refresh).
+   */
+  onScheduleFetch?: (
+    worktreeId: string,
+    isCurrent: boolean,
+    force: boolean
+  ) => Promise<void> | void;
 }
 
 export class WorktreeMonitor {
@@ -88,7 +96,6 @@ export class WorktreeMonitor {
   // Upstream tracking state
   private aheadCount: number | undefined;
   private behindCount: number | undefined;
-  private upstreamFailureCache = new Cache<string, string>();
 
   // Issue/PR state
   private _issueNumber: number | undefined;
@@ -106,16 +113,13 @@ export class WorktreeMonitor {
   private pollingEnabled: boolean = true;
   private _hasInitialStatus: boolean = false;
 
-  // File watcher state — MutableDisposable auto-disposes the previous watcher
-  // on reassignment, eliminating the manual stop-old-start-new dance.
-  private gitWatcher = new MutableDisposable<IDisposable>();
-  private gitWatchDebounceTimer: NodeJS.Timeout | null = null;
-  private gitWatchRefreshPending: boolean = false;
+  // File watcher state — owned by `watcherController`. The remaining fields
+  // here are inputs to the controller's host interface (read by the watcher
+  // but written by the monitor or its callers).
+  private readonly watcherController: WatcherController;
   private gitWatchEnabled: boolean;
   private gitWatchDebounceMs: number;
   private lastGitStatusCompletedAt: number = 0;
-  private watcherRetryTimer: NodeJS.Timeout | null = null;
-  private watcherRetryCount: number = 0;
 
   // Extra state
   private _createdAt: number | undefined;
@@ -136,9 +140,30 @@ export class WorktreeMonitor {
   private _worktreeMode: string = "local";
   private _worktreeEnvironmentLabel: string | undefined;
 
-  // Resource status auto-polling
-  private resourcePollTimer: NodeJS.Timeout | null = null;
+  // Resource status auto-polling — owned by `resourcePollTimer`.
+  private readonly resourcePollTimer: ResourcePollTimer;
   private resourcePollIntervalMs: number = 0; // 0 = disabled
+  // True when a recipe / config supplied an explicit `statusInterval`. Guards
+  // the focus-flip auto-adapt in the `isCurrent` setter so user values aren't
+  // silently overwritten when they happen to equal a default constant.
+  private resourcePollIntervalExplicit: boolean = false;
+
+  // Background fetch scheduler — separate from the local-status poll so a
+  // stuck remote can't poison local-status updates. Cadence flips based on
+  // `_isCurrent`; rescheduling happens in the `isCurrent` setter.
+  private readonly fetchScheduler: FetchScheduler;
+
+  // Fetch freshness state — surfaced to the renderer via the snapshot so the
+  // worktree card can show "Last fetched X ago", an in-flight pulse, and a
+  // GitHub auth-failure affordance. `_lastFetchedAt` and `_fetchAuthFailed`
+  // are pushed in via `setFetchState` from `WorkspaceService` (which receives
+  // them on every coordinator round-trip and fans them out to siblings sharing
+  // the commondir). `_isGitHubRemote` is set once at monitor start when the
+  // origin URL is probed.
+  private _lastFetchedAt: number | null = null;
+  private _fetchAuthFailed: boolean = false;
+  private _fetchNetworkFailed: boolean = false;
+  private _isGitHubRemote: boolean = false;
 
   // Poll queue concurrency
   private _pendingPollPromise: Promise<void> | null = null;
@@ -185,6 +210,93 @@ export class WorktreeMonitor {
     );
 
     this.noteReader = new NoteFileReader(worktree.path);
+
+    // Each controller's host is a thin live-getter view onto monitor state.
+    // Aliasing `this` keeps the getter syntax compact (object-literal
+    // getters can't be arrow functions, and we need a fresh read on each
+    // access).
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const monitor = this;
+    const fetchHost: FetchSchedulerHost = {
+      get isRunning() {
+        return monitor._isRunning;
+      },
+      get isCurrent() {
+        return monitor._isCurrent;
+      },
+      get hasInitialStatus() {
+        return monitor._hasInitialStatus;
+      },
+      get hasFetchCallback() {
+        return Boolean(monitor.callbacks.onScheduleFetch);
+      },
+      onExecuteFetch: (force: boolean) => {
+        const cb = monitor.callbacks.onScheduleFetch;
+        if (!cb) return;
+        return cb(monitor.id, monitor._isCurrent, force);
+      },
+      onUpdate: () => monitor.emitUpdate(),
+    };
+    this.fetchScheduler = new FetchScheduler(fetchHost);
+
+    const resourceHost: ResourcePollTimerHost = {
+      get isRunning() {
+        return monitor._isRunning;
+      },
+      get hasResourceConfig() {
+        return monitor._hasResourceConfig;
+      },
+      get hasStatusCommand() {
+        return monitor._hasStatusCommand;
+      },
+      get resourcePollIntervalMs() {
+        return monitor.resourcePollIntervalMs;
+      },
+      get worktreeId() {
+        return monitor.id;
+      },
+      onResourceStatusPoll: (worktreeId: string) =>
+        monitor.callbacks.onResourceStatusPoll?.(worktreeId),
+    };
+    this.resourcePollTimer = new ResourcePollTimer(resourceHost);
+
+    const watcherHost: WatcherControllerHost = {
+      get isRunning() {
+        return monitor._isRunning;
+      },
+      get isCurrent() {
+        return monitor._isCurrent;
+      },
+      get gitWatchEnabled() {
+        return monitor.gitWatchEnabled;
+      },
+      get gitWatchDebounceMs() {
+        return monitor.gitWatchDebounceMs;
+      },
+      get worktreeId() {
+        return monitor.id;
+      },
+      get worktreePath() {
+        return monitor.path;
+      },
+      get branch() {
+        return monitor._branch;
+      },
+      get isUpdating() {
+        return monitor._isUpdating;
+      },
+      get lastGitStatusCompletedAt() {
+        return monitor.lastGitStatusCompletedAt;
+      },
+      onTriggerUpdate: () => {
+        void monitor.updateGitStatus(true);
+      },
+      onInotifyLimitReached: (worktreeId: string) =>
+        monitor.callbacks.onInotifyLimitReached?.(worktreeId),
+      onEmfileLimitReached: (worktreeId: string) =>
+        monitor.callbacks.onEmfileLimitReached?.(worktreeId),
+    };
+    this.watcherController = new WatcherController(watcherHost);
 
     this._isWslPath = Boolean(worktree.isWslPath);
     this._wslDistro = worktree.wslDistro;
@@ -235,6 +347,61 @@ export class WorktreeMonitor {
     }
   }
 
+  /**
+   * Push the latest fetch outcome from `WorkspaceService` (sourced from the
+   * coordinator's per-commondir state). `null` for `lastFetchedAt` means no
+   * successful fetch has landed yet for this repo. Re-emits a snapshot when
+   * either field actually changes so the renderer's tooltip/auth affordance
+   * stay in sync without waiting for the next status poll.
+   */
+  setFetchState(
+    lastFetchedAt: number | null,
+    authFailed: boolean,
+    networkFailed: boolean = false
+  ): void {
+    // Guard against ghost emits after stop(): the coordinator's fan-out call
+    // may resolve after the monitor has been torn down (project switch,
+    // worktree removal). Without this check, an emit would re-add a removed
+    // worktree to the renderer's store via worktree-update.
+    if (!this._isRunning) return;
+    let changed = false;
+    if (this._lastFetchedAt !== lastFetchedAt) {
+      this._lastFetchedAt = lastFetchedAt;
+      changed = true;
+    }
+    if (this._fetchAuthFailed !== authFailed) {
+      this._fetchAuthFailed = authFailed;
+      changed = true;
+    }
+    if (this._fetchNetworkFailed !== networkFailed) {
+      this._fetchNetworkFailed = networkFailed;
+      changed = true;
+    }
+    if (changed && this._hasInitialStatus) {
+      this.emitUpdate();
+    }
+  }
+
+  /**
+   * Set once at monitor start when `WorkspaceService` resolves the origin URL.
+   * Gates the "Sign in to refresh" affordance — non-GitHub remotes silently
+   * hide the affordance even when an auth failure is recorded.
+   *
+   * Guarded against post-stop emits: `probeGitHubRemoteAsync` is a fire-and-
+   * forget async call that may resolve after the monitor is torn down (e.g.
+   * worktree removal, project switch). Without this check the late resolution
+   * would emit a `worktree-update` after `worktree-removed`, re-adding a
+   * ghost card to the renderer.
+   */
+  setIsGitHubRemote(value: boolean): void {
+    if (!this._isRunning) return;
+    if (this._isGitHubRemote === value) return;
+    this._isGitHubRemote = value;
+    if (this._hasInitialStatus) {
+      this.emitUpdate();
+    }
+  }
+
   get name(): string {
     return this._name;
   }
@@ -248,9 +415,6 @@ export class WorktreeMonitor {
   }
 
   set branch(value: string | undefined) {
-    if (value !== this._branch && this._branch) {
-      this.upstreamFailureCache.invalidate(`${this.path}:${this._branch}`);
-    }
     this._branch = value;
   }
 
@@ -262,17 +426,37 @@ export class WorktreeMonitor {
     const changed = this._isCurrent !== value;
     this._isCurrent = value;
     if (changed && this._hasResourceConfig && this._hasStatusCommand && this._isRunning) {
-      // Only adapt if no explicit statusInterval was configured (i.e., using defaults)
-      const isUsingDefaultInterval =
-        this.resourcePollIntervalMs === RESOURCE_POLL_DEFAULT_ACTIVE_MS ||
-        this.resourcePollIntervalMs === RESOURCE_POLL_DEFAULT_BACKGROUND_MS;
-      if (isUsingDefaultInterval) {
+      // Only adapt if no explicit statusInterval was configured. Pre-PR this
+      // was a value-equality check against the default constants; that
+      // collided with explicit user values that happened to match a default
+      // (e.g. `statusInterval: 300` matching the new 300s background default).
+      if (!this.resourcePollIntervalExplicit) {
         this.resourcePollIntervalMs = value
           ? RESOURCE_POLL_DEFAULT_ACTIVE_MS
           : RESOURCE_POLL_DEFAULT_BACKGROUND_MS;
         this.clearResourcePollTimer();
         this.scheduleResourcePoll();
       }
+    }
+    // Re-tier the watcher granularity on focus change. Upgrades fire
+    // immediately so the focused worktree gets the recursive watcher right
+    // away; downgrades settle behind a short delay inside the controller to
+    // absorb rapid focus toggles. Only re-derive poll cadence when the
+    // controller actually rotated synchronously.
+    if (changed && this._isRunning && this.gitWatchEnabled) {
+      const rotatedImmediately = this.watcherController.handleFocusChange(value);
+      if (rotatedImmediately && this.pollingTimer) {
+        clearTimeout(this.pollingTimer);
+        this.pollingTimer = null;
+        this.scheduleNextPoll();
+      }
+    }
+    // Fetch cadence flips between focused (~30-45s) and background (5-10min)
+    // based on `isCurrent`. Reschedule from the new tier the moment focus
+    // changes so the user sees fresh counts shortly after switching to a
+    // worktree that hadn't been actively fetched.
+    if (changed && this._isRunning) {
+      this.fetchScheduler.reschedule(true);
     }
   }
 
@@ -305,7 +489,7 @@ export class WorktreeMonitor {
   }
 
   get hasWatcher(): boolean {
-    return this.gitWatcher.value !== undefined;
+    return this.watcherController.hasWatcher;
   }
 
   setIssueNumber(issueNumber: number | undefined): void {
@@ -385,9 +569,7 @@ export class WorktreeMonitor {
     this._hasResourceConfig = has;
     if (has && this._hasStatusCommand && this._isRunning) {
       if (this.resourcePollIntervalMs === 0) {
-        this.resourcePollIntervalMs = this._isCurrent
-          ? RESOURCE_POLL_DEFAULT_ACTIVE_MS
-          : RESOURCE_POLL_DEFAULT_BACKGROUND_MS;
+        this.applyDefaultResourcePollInterval();
       }
       this.scheduleResourcePoll();
     } else if (!has) {
@@ -436,9 +618,7 @@ export class WorktreeMonitor {
     if (has && this._hasResourceConfig && this._isRunning) {
       // If no explicit interval was set, apply default based on isCurrent
       if (this.resourcePollIntervalMs === 0) {
-        this.resourcePollIntervalMs = this._isCurrent
-          ? RESOURCE_POLL_DEFAULT_ACTIVE_MS
-          : RESOURCE_POLL_DEFAULT_BACKGROUND_MS;
+        this.applyDefaultResourcePollInterval();
       }
       this.scheduleResourcePoll();
     } else if (!has) {
@@ -452,41 +632,27 @@ export class WorktreeMonitor {
    */
   setResourcePollInterval(ms: number): void {
     this.resourcePollIntervalMs = ms;
+    this.resourcePollIntervalExplicit = true;
     this.clearResourcePollTimer();
     if (ms > 0 && this._hasResourceConfig && this._isRunning) {
       this.scheduleResourcePoll();
     }
   }
 
-  private scheduleResourcePoll(): void {
-    if (this.resourcePollTimer) return;
-    if (this.resourcePollIntervalMs <= 0 || !this._hasResourceConfig || !this._hasStatusCommand)
-      return;
+  private applyDefaultResourcePollInterval(): void {
+    if (this.resourcePollIntervalMs === 0) {
+      this.resourcePollIntervalMs = this._isCurrent
+        ? RESOURCE_POLL_DEFAULT_ACTIVE_MS
+        : RESOURCE_POLL_DEFAULT_BACKGROUND_MS;
+    }
+  }
 
-    this.resourcePollTimer = setTimeout(async () => {
-      this.resourcePollTimer = null;
-      if (
-        this._isRunning &&
-        this._hasResourceConfig &&
-        this._hasStatusCommand &&
-        this.resourcePollIntervalMs > 0
-      ) {
-        try {
-          await this.callbacks.onResourceStatusPoll?.(this.id);
-        } catch {
-          // Poll callback failure — swallowed intentionally
-        }
-        if (!this._isRunning) return;
-        this.scheduleResourcePoll();
-      }
-    }, this.resourcePollIntervalMs);
+  private scheduleResourcePoll(): void {
+    this.resourcePollTimer.schedule();
   }
 
   private clearResourcePollTimer(): void {
-    if (this.resourcePollTimer) {
-      clearTimeout(this.resourcePollTimer);
-      this.resourcePollTimer = null;
-    }
+    this.resourcePollTimer.clear();
   }
 
   get worktreeMode(): string {
@@ -541,13 +707,14 @@ export class WorktreeMonitor {
     this._pollAbortController = new AbortController();
 
     if (this.gitWatchEnabled) {
-      this.startWatcher();
+      this.watcherController.start();
     }
 
     await this.updateGitStatus(true);
 
     if (this._isRunning && this.pollingEnabled) {
       this.scheduleNextPoll();
+      this.fetchScheduler.schedule(true);
     }
   }
 
@@ -561,7 +728,7 @@ export class WorktreeMonitor {
     this._pollAbortController = new AbortController();
 
     if (this.gitWatchEnabled) {
-      this.startWatcher();
+      this.watcherController.start();
     }
 
     // Skipping the initial git status scan is a perf optimization — freshly
@@ -577,15 +744,24 @@ export class WorktreeMonitor {
 
     if (this._isRunning && this.pollingEnabled) {
       this.scheduleNextPoll();
+      this.fetchScheduler.schedule(true);
     }
   }
 
   stop(): void {
     this._isRunning = false;
     this._pollAbortController.abort();
-    this._pollAbortController = new AbortController();
     this.clearTimers();
-    this.stopWatcher();
+    this.watcherController.stop();
+  }
+
+  /**
+   * Trigger an immediate background fetch, bypassing the per-repo failure
+   * cache. Used by wake handlers and explicit user refresh paths. The
+   * coordinator still serializes against any in-flight fetch on the same repo.
+   */
+  triggerFetchNow(): Promise<void> {
+    return this.fetchScheduler.triggerNow();
   }
 
   async refresh(): Promise<void> {
@@ -617,6 +793,7 @@ export class WorktreeMonitor {
     }
 
     this.scheduleResourcePoll();
+    this.fetchScheduler.schedule(true);
   }
 
   getSnapshot(): WorktreeSnapshot {
@@ -667,6 +844,14 @@ export class WorktreeMonitor {
       planFilePath: this.planFilePath,
       aheadCount: this.aheadCount,
       behindCount: this.behindCount,
+      lastFetchedAt: this._lastFetchedAt ?? undefined,
+      fetchAuthFailed: this._fetchAuthFailed || undefined,
+      fetchNetworkFailed: this._fetchNetworkFailed || undefined,
+      // Read in-flight state authoritatively at snapshot time (lesson #1700)
+      // so a snapshot emitted between fetch-start and fetch-end always
+      // serializes the correct value, never a stale cached copy.
+      isFetchInFlight: this.fetchScheduler.isFetchInFlight || undefined,
+      isGitHubRemote: this._isGitHubRemote || undefined,
       isWslPath: this._isWslPath || undefined,
       wslDistro: this._wslDistro,
       wslGitEligible: this._wslGitEligible || undefined,
@@ -692,7 +877,7 @@ export class WorktreeMonitor {
   triggerRefreshIfUpdating(): void {
     invalidateGitStatusCache(this.path);
     if (this._isUpdating) {
-      this.gitWatchRefreshPending = true;
+      this.watcherController.markPending();
     } else {
       void this.updateGitStatus(true);
     }
@@ -714,132 +899,11 @@ export class WorktreeMonitor {
   }
 
   ensureWatcherState(): void {
-    if (!this.gitWatchEnabled && this.gitWatcher.value) {
-      this.stopWatcher();
-    } else if (this.gitWatchEnabled && this._isRunning && !this.gitWatcher.value) {
-      this.startWatcher();
-    }
+    this.watcherController.ensureState();
   }
 
   restartWatcherIfRunning(): void {
-    if (this.gitWatcher.value) {
-      this.updateWatcher();
-    }
-  }
-
-  // --- File watcher management ---
-
-  private startWatcher(): void {
-    if (!this._isRunning || !this.gitWatchEnabled || this.gitWatcher.value) {
-      return;
-    }
-
-    const watcher = new GitFileWatcher({
-      worktreePath: this.path,
-      branch: this._branch,
-      debounceMs: this.gitWatchDebounceMs,
-      onChange: () => this.handleGitFileChange(),
-      watchWorktree: true,
-      worktreeMinDebounceMs: WATCHER_WORKTREE_MIN_DEBOUNCE_MS,
-      worktreeMaxDebounceMs: WATCHER_WORKTREE_MAX_DEBOUNCE_MS,
-      worktreeMaxWaitMs: WATCHER_WORKTREE_MAX_WAIT_MS,
-      onWatcherFailed: () => this.handleWatcherFailed(),
-      onInotifyLimitReached: () => this.callbacks.onInotifyLimitReached?.(this.id),
-      onEmfileLimitReached: () => this.callbacks.onEmfileLimitReached?.(this.id),
-    });
-
-    const started = watcher.start();
-    if (started) {
-      this.gitWatcher.value = toDisposable(() => watcher.dispose());
-      this.watcherRetryCount = 0;
-    } else {
-      watcher.dispose();
-      this.scheduleWatcherRetry();
-    }
-  }
-
-  private stopWatcher(): void {
-    this.gitWatcher.clear();
-    if (this.gitWatchDebounceTimer) {
-      clearTimeout(this.gitWatchDebounceTimer);
-      this.gitWatchDebounceTimer = null;
-    }
-    if (this.watcherRetryTimer) {
-      clearTimeout(this.watcherRetryTimer);
-      this.watcherRetryTimer = null;
-    }
-    this.watcherRetryCount = 0;
-    this.gitWatchRefreshPending = false;
-  }
-
-  private updateWatcher(): void {
-    this.stopWatcher();
-    if (this._isRunning && this.gitWatchEnabled) {
-      this.startWatcher();
-    }
-  }
-
-  private handleWatcherFailed(): void {
-    this.gitWatcher.clear();
-    this.scheduleWatcherRetry();
-  }
-
-  private scheduleWatcherRetry(): void {
-    if (!this._isRunning || !this.gitWatchEnabled || this.watcherRetryTimer) {
-      return;
-    }
-
-    this.watcherRetryCount++;
-    if (this.watcherRetryCount > WATCHER_MAX_RETRIES) {
-      return;
-    }
-
-    this.watcherRetryTimer = setTimeout(() => {
-      this.watcherRetryTimer = null;
-      if (this._isRunning && this.gitWatchEnabled && !this.gitWatcher.value) {
-        this.startWatcher();
-      }
-    }, WATCHER_RETRY_INTERVAL_MS);
-  }
-
-  private handleGitFileChange(): void {
-    if (!this._isRunning) {
-      return;
-    }
-
-    if (!this._isUpdating) {
-      const msSinceLastStatus = Date.now() - this.lastGitStatusCompletedAt;
-      if (msSinceLastStatus < GIT_WATCH_SELF_TRIGGER_COOLDOWN_MS) {
-        this.gitWatchRefreshPending = true;
-        return;
-      }
-    }
-
-    this.gitWatchRefreshPending = true;
-    invalidateGitStatusCache(this.path);
-
-    if (this._isUpdating) {
-      if (this.gitWatchDebounceTimer) {
-        clearTimeout(this.gitWatchDebounceTimer);
-      }
-      this.gitWatchDebounceTimer = setTimeout(() => {
-        this.gitWatchDebounceTimer = null;
-        this.flushPendingGitWatchRefresh();
-      }, this.gitWatchDebounceMs);
-      return;
-    }
-
-    this.flushPendingGitWatchRefresh();
-  }
-
-  private flushPendingGitWatchRefresh(): void {
-    if (!this._isRunning || this._isUpdating || !this.gitWatchRefreshPending) {
-      return;
-    }
-
-    this.gitWatchRefreshPending = false;
-    invalidateGitStatusCache(this.path);
-    void this.updateGitStatus(true);
+    this.watcherController.restartIfRunning();
   }
 
   // --- Timers ---
@@ -853,11 +917,9 @@ export class WorktreeMonitor {
       clearTimeout(this.resumeTimer);
       this.resumeTimer = null;
     }
-    if (this.watcherRetryTimer) {
-      clearTimeout(this.watcherRetryTimer);
-      this.watcherRetryTimer = null;
-    }
+    this.watcherController.clearRetryTimer();
     this.clearResourcePollTimer();
+    this.fetchScheduler.clearTimer();
   }
 
   private scheduleCircuitBreakerRetry(): void {
@@ -901,9 +963,9 @@ export class WorktreeMonitor {
       return;
     }
 
-    const baseInterval = this.gitWatcher.value
-      ? WATCHER_FALLBACK_POLL_INTERVAL_MS
-      : this.pollingStrategy.calculateNextInterval();
+    const baseInterval = this.watcherController.pollIntervalMs(() =>
+      this.pollingStrategy.calculateNextInterval()
+    );
     const jitterRange = Math.min(2000, Math.floor(baseInterval * 0.2));
     const jitter = jitterRange > 0 ? Math.floor(Math.random() * jitterRange) : 0;
     const delayMs = baseInterval + jitter;
@@ -922,7 +984,10 @@ export class WorktreeMonitor {
       // longer than the floor (e.g., a slow git on a frozen filesystem).
       if (!this._isUpdating && this.lastGitStatusCompletedAt > 0) {
         const elapsedMs = Date.now() - this.lastGitStatusCompletedAt;
-        const threshold = Math.max(delayMs * HEARTBEAT_GAP_MULTIPLIER, HEARTBEAT_GAP_FLOOR_MS);
+        const threshold = Math.min(
+          Math.max(delayMs * HEARTBEAT_GAP_MULTIPLIER, HEARTBEAT_GAP_FLOOR_MS),
+          HEARTBEAT_GAP_CEILING_MS
+        );
         if (elapsedMs > threshold) {
           this.mood = "stale";
           this.emitUpdate();
@@ -932,7 +997,7 @@ export class WorktreeMonitor {
       }
 
       void this.poll();
-    }, delayMs);
+    }, delayMs).unref();
   }
 
   private async forceRefreshAfterGap(): Promise<void> {
@@ -963,7 +1028,9 @@ export class WorktreeMonitor {
     if (!this._isRunning) return;
 
     if (!force && this.pollingStrategy.isCircuitBreakerTripped()) {
-      if (!existsSync(this.path)) {
+      try {
+        await access(this.path);
+      } catch {
         this.callbacks.onExternalRemoval?.(this.id);
       }
       return;
@@ -977,7 +1044,10 @@ export class WorktreeMonitor {
       const queueDelayMs = Math.max(0, startTime - queuedAt);
 
       try {
-        const forceRefresh = this._isCurrent && !this.gitWatcher.value;
+        // Force a status refresh when the active worktree lacks recursive
+        // coverage — both no-watcher and git-only modes can miss mid-edit
+        // changes that haven't reached .git/ yet.
+        const forceRefresh = this._isCurrent && this.watcherController.currentMode !== "recursive";
         await this.updateGitStatus(forceRefresh);
         this.pollingStrategy.recordSuccess(Date.now() - startTime, queueDelayMs);
       } catch (_error) {
@@ -1071,15 +1141,11 @@ export class WorktreeMonitor {
       const currentBranch = await this.readCurrentBranch();
       const branchChanged = currentBranch !== undefined && currentBranch !== this._branch;
       if (branchChanged) {
-        const oldCacheKey = this._branch ? `${this.path}:${this._branch}` : undefined;
         this._branch = currentBranch;
-        const newCacheKey = `${this.path}:${this._branch}`;
-        if (oldCacheKey) this.upstreamFailureCache.invalidate(oldCacheKey);
-        this.upstreamFailureCache.invalidate(newCacheKey);
-        const hadPendingRefresh = this.gitWatchRefreshPending;
-        this.updateWatcher();
+        const hadPendingRefresh = this.watcherController.takePending();
+        this.watcherController.update();
         if (hadPendingRefresh) {
-          this.gitWatchRefreshPending = true;
+          this.watcherController.markPending();
         }
         const syncIssueNumber = extractIssueNumberSync(currentBranch, this._name);
         if (syncIssueNumber) {
@@ -1094,10 +1160,15 @@ export class WorktreeMonitor {
 
       const noteData = await this.noteReader.read();
 
-      const upstreamCounts = await this.fetchUpstreamCounts(forceRefresh);
+      const hasUpstream = !!newChanges.tracking;
+      const nextAheadCount = hasUpstream ? (newChanges.ahead ?? 0) : undefined;
+      const nextBehindCount = hasUpstream ? (newChanges.behind ?? 0) : undefined;
 
-      const detectedPlanFile = PLAN_FILE_CANDIDATES.find((candidate) =>
-        existsSync(pathJoin(this.path, candidate))
+      const planResults = await Promise.allSettled(
+        PLAN_FILE_CANDIDATES.map((candidate) => access(pathJoin(this.path, candidate)))
+      );
+      const detectedPlanFile = PLAN_FILE_CANDIDATES.find(
+        (_, i) => planResults[i].status === "fulfilled"
       );
       const nextHasPlanFile = detectedPlanFile !== undefined;
       const nextPlanFilePath = detectedPlanFile;
@@ -1109,7 +1180,7 @@ export class WorktreeMonitor {
       const planChanged =
         nextHasPlanFile !== this.hasPlanFile || nextPlanFilePath !== this.planFilePath;
       const upstreamChanged =
-        upstreamCounts.ahead !== this.aheadCount || upstreamCounts.behind !== this.behindCount;
+        nextAheadCount !== this.aheadCount || nextBehindCount !== this.behindCount;
 
       if (
         !stateChanged &&
@@ -1170,8 +1241,8 @@ export class WorktreeMonitor {
       this.aiNoteTimestamp = noteData?.timestamp;
       this.hasPlanFile = nextHasPlanFile;
       this.planFilePath = nextPlanFilePath;
-      this.aheadCount = upstreamCounts.ahead;
-      this.behindCount = upstreamCounts.behind;
+      this.aheadCount = nextAheadCount;
+      this.behindCount = nextBehindCount;
       this._hasInitialStatus = true;
 
       this.emitUpdate();
@@ -1184,13 +1255,8 @@ export class WorktreeMonitor {
 
       const errorMessage = (error as Error).message || "";
       if (errorMessage.includes("index.lock")) {
-        this.gitWatchRefreshPending = true;
-        if (!this.gitWatchDebounceTimer) {
-          this.gitWatchDebounceTimer = setTimeout(() => {
-            this.gitWatchDebounceTimer = null;
-            this.flushPendingGitWatchRefresh();
-          }, this.gitWatchDebounceMs);
-        }
+        this.watcherController.markPending();
+        this.watcherController.scheduleDelayedFlush();
         return;
       }
 
@@ -1200,9 +1266,7 @@ export class WorktreeMonitor {
     } finally {
       this._isUpdating = false;
       this.lastGitStatusCompletedAt = Date.now();
-      if (this.gitWatchRefreshPending && !this.gitWatchDebounceTimer) {
-        this.flushPendingGitWatchRefresh();
-      }
+      this.watcherController.flushPendingIfReady(true);
     }
   }
 
@@ -1235,62 +1299,6 @@ export class WorktreeMonitor {
     } catch {
       // Silently ignore extraction errors
     }
-  }
-
-  private async fetchUpstreamCounts(force: boolean = false): Promise<{
-    ahead: number | undefined;
-    behind: number | undefined;
-  }> {
-    if (!this._branch) {
-      return { ahead: undefined, behind: undefined };
-    }
-
-    const cacheKey = `${this.path}:${this._branch}`;
-    if (!force && this.upstreamFailureCache.get(cacheKey)) {
-      return { ahead: undefined, behind: undefined };
-    }
-
-    try {
-      const wsl = this.wslInvocation;
-      const git = wsl
-        ? createWslHardenedGit(wsl, this._pollAbortController.signal)
-        : createHardenedGit(this.path, this._pollAbortController.signal);
-      const output = await git.raw(["rev-list", "--left-right", "--count", "HEAD...@{u}"]);
-      const [aheadStr, behindStr] = output.trim().split(/\s+/);
-
-      this.upstreamFailureCache.invalidate(cacheKey);
-
-      return {
-        ahead: parseInt(aheadStr, 10) || 0,
-        behind: parseInt(behindStr, 10) || 0,
-      };
-    } catch (error) {
-      const classification = this.classifyUpstreamError(error);
-      if (classification) {
-        const ttl =
-          classification === "no-upstream"
-            ? NO_UPSTREAM_CACHE_TTL_MS
-            : UPSTREAM_NOT_FOUND_CACHE_TTL_MS;
-        this.upstreamFailureCache.set(cacheKey, classification, ttl);
-      }
-      return { ahead: undefined, behind: undefined };
-    }
-  }
-
-  private classifyUpstreamError(error: unknown): string | undefined {
-    if (!(error instanceof Error)) return undefined;
-    const msg = error.message;
-    if (
-      msg.includes("no upstream configured") ||
-      msg.includes("bad revision '@{u}'") ||
-      msg.includes("ambiguous argument '@{u}'")
-    ) {
-      return "no-upstream";
-    }
-    if (msg.includes("upstream branch") && msg.includes("not found")) {
-      return "upstream-not-found";
-    }
-    return undefined;
   }
 
   private calculateStateHash(changes: WorktreeChanges): string {

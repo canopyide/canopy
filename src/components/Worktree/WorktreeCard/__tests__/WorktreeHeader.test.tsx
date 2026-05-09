@@ -96,15 +96,15 @@ function getWrapper() {
 }
 
 describe("WorktreeHeader menu button", () => {
-  it("has pointer-events-none and hover/focus reveal classes when inactive", () => {
+  it("starts dimmed and reveals on hover, focus, or open menu when inactive", () => {
     renderHeader({ isActive: false });
     const wrapper = getWrapper();
-    expect(wrapper.className).toContain("pointer-events-none");
-    expect(wrapper.className).toContain("opacity-0");
-    expect(wrapper.className).toContain("group-hover/card:pointer-events-auto");
+    expect(wrapper.className).not.toContain("pointer-events-none");
+    expect(wrapper.className).not.toContain("opacity-0");
+    expect(wrapper.className).toContain("opacity-50");
     expect(wrapper.className).toContain("group-hover/card:opacity-100");
-    expect(wrapper.className).toContain("group-focus-within/card:pointer-events-auto");
     expect(wrapper.className).toContain("group-focus-within/card:opacity-100");
+    expect(wrapper.className).toContain("group-has-[[data-state=open]]/card:opacity-100");
   });
 
   it("does not have pointer-events-none when active", () => {
@@ -750,7 +750,7 @@ describe("WorktreeHeader collapsed session indicators", () => {
       sessionStates: { ...allZeroStates, idle: 2, working: 1 },
     });
     const container = screen.getByTestId("collapsed-session-indicators");
-    const badges = container.querySelectorAll("[aria-hidden='true']");
+    const badges = container.querySelectorAll(":scope > span[aria-hidden='true']");
     expect(badges.length).toBe(1);
     expect(container.getAttribute("aria-label")).toBe("3 sessions: 1 working");
   });
@@ -772,7 +772,7 @@ describe("WorktreeHeader collapsed session indicators", () => {
       sessionStates: { ...allZeroStates, waiting: 1, working: 2 },
     });
     const indicators = screen.getByTestId("collapsed-session-indicators");
-    const badges = indicators.querySelectorAll("[aria-hidden='true']");
+    const badges = indicators.querySelectorAll(":scope > span[aria-hidden='true']");
     expect(badges.length).toBe(2);
     // First badge should be working (text-state-working), second waiting (text-state-waiting)
     expect(badges[0]!.className).toContain("text-state-working");
@@ -839,15 +839,17 @@ describe("WorktreeHeader cleanup button", () => {
     expect(wrapper.contains(button)).toBe(true);
   });
 
-  it("hides the cleanup button alongside other actions on inactive, non-collapsed cards", () => {
+  it("dims the cleanup button alongside other actions on inactive, non-collapsed cards", () => {
     renderHeader({ onCleanupWorktree: vi.fn(), isActive: false, isCollapsed: false });
     const button = screen.getByTestId("worktree-cleanup-button");
     const wrapper = screen.getByTestId("worktree-actions-wrapper");
-    // The hover-gated wrapper hides on inactive cards and reveals on group hover/focus.
-    expect(wrapper.className).toContain("opacity-0");
-    expect(wrapper.className).toContain("pointer-events-none");
+    // The wrapper persists at reduced opacity so keyboard and touch users can reach it,
+    // and reveals fully on group hover/focus or when a contained menu opens.
+    expect(wrapper.className).toContain("opacity-50");
+    expect(wrapper.className).not.toContain("pointer-events-none");
     expect(wrapper.className).toContain("group-hover/card:opacity-100");
     expect(wrapper.className).toContain("group-focus-within/card:opacity-100");
+    expect(wrapper.className).toContain("group-has-[[data-state=open]]/card:opacity-100");
     // The cleanup button inherits visibility through the wrapper, not its own classes.
     expect(wrapper.contains(button)).toBe(true);
   });
@@ -1037,5 +1039,115 @@ describe("WorktreeHeader token-missing badge behavior", () => {
     });
     fireEvent.click(issueButton);
     expect(actionService.dispatch).not.toHaveBeenCalled();
+  });
+});
+
+describe("WorktreeHeader upstream sync indicator", () => {
+  beforeEach(() => {
+    mockMissingToken = false;
+    vi.clearAllMocks();
+  });
+
+  it("shows ahead/behind counts and renders the indicator", () => {
+    renderHeader({
+      worktree: { ...baseWorktree, aheadCount: 3, behindCount: 1 },
+    });
+    const indicator = screen.getByTestId("upstream-sync-indicator");
+    expect(indicator).toBeDefined();
+    expect(indicator.textContent).toContain("↑3");
+    expect(indicator.textContent).toContain("↓1");
+  });
+
+  it("applies animate-pulse-immediate while a fetch is in-flight", () => {
+    renderHeader({
+      worktree: {
+        ...baseWorktree,
+        aheadCount: 2,
+        behindCount: 0,
+        isFetchInFlight: true,
+      },
+    });
+    const indicator = screen.getByTestId("upstream-sync-indicator");
+    expect(indicator.className).toContain("animate-pulse-immediate");
+    expect(indicator.getAttribute("data-fetch-in-flight")).toBe("true");
+  });
+
+  it("does not pulse when no fetch is in-flight", () => {
+    renderHeader({
+      worktree: { ...baseWorktree, aheadCount: 2, behindCount: 0 },
+    });
+    const indicator = screen.getByTestId("upstream-sync-indicator");
+    expect(indicator.className).not.toContain("animate-pulse-immediate");
+  });
+
+  it("renders 'Sign in to refresh' affordance only when auth-failed AND github remote", () => {
+    renderHeader({
+      worktree: {
+        ...baseWorktree,
+        aheadCount: 1,
+        fetchAuthFailed: true,
+        isGitHubRemote: true,
+      },
+    });
+    const cta = screen.getByTestId("upstream-sync-auth-cta");
+    expect(cta).toBeDefined();
+    expect(cta.textContent).toBe("Sign in to refresh");
+    // The count indicator is replaced by the CTA — both shouldn't render.
+    expect(screen.queryByTestId("upstream-sync-indicator")).toBeNull();
+  });
+
+  it("hides 'Sign in to refresh' affordance for non-GitHub auth failures", () => {
+    renderHeader({
+      worktree: {
+        ...baseWorktree,
+        aheadCount: 1,
+        fetchAuthFailed: true,
+        isGitHubRemote: false,
+      },
+    });
+    expect(screen.queryByTestId("upstream-sync-auth-cta")).toBeNull();
+    // Falls through to the regular count display.
+    expect(screen.getByTestId("upstream-sync-indicator")).toBeDefined();
+  });
+
+  it("hides the indicator entirely when there are no counts and no auth-fail CTA", () => {
+    renderHeader({
+      worktree: { ...baseWorktree, aheadCount: 0, behindCount: 0 },
+    });
+    expect(screen.queryByTestId("upstream-sync-indicator")).toBeNull();
+    expect(screen.queryByTestId("upstream-sync-auth-cta")).toBeNull();
+  });
+
+  it("dispatches openTab → github settings on Sign in CTA click", () => {
+    renderHeader({
+      worktree: {
+        ...baseWorktree,
+        aheadCount: 1,
+        fetchAuthFailed: true,
+        isGitHubRemote: true,
+      },
+    });
+    const cta = screen.getByTestId("upstream-sync-auth-cta");
+    fireEvent.click(cta);
+    expect(actionService.dispatch).toHaveBeenCalledWith(
+      "app.settings.openTab",
+      { tab: "github", sectionId: "github-token" },
+      { source: "user" }
+    );
+  });
+
+  it("renders the count display (no auth CTA) when only fetchNetworkFailed is set", () => {
+    renderHeader({
+      worktree: {
+        ...baseWorktree,
+        aheadCount: 1,
+        fetchNetworkFailed: true,
+      },
+    });
+    // The badge still renders the count display (transient failure doesn't
+    // replace the indicator with a CTA — only auth+github does).
+    expect(screen.getByTestId("upstream-sync-indicator")).toBeDefined();
+    // No auth CTA for transient failures.
+    expect(screen.queryByTestId("upstream-sync-auth-cta")).toBeNull();
   });
 });

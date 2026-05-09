@@ -1,13 +1,13 @@
 import { memo } from "react";
 import { Button } from "@/components/ui/button";
-import { PanelRightOpen, PanelRightClose } from "lucide-react";
+import { MessageSquareMore } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ShortcutRevealChip } from "@/components/ui/ShortcutRevealChip";
-import { createTooltipWithShortcut } from "@/lib/platform";
-import { useKeybindingDisplay, useShortcutHintHover } from "@/hooks";
+import { createTooltipContent } from "@/lib/tooltipShortcut";
+import { useAriaKeyshortcuts, useKeybindingDisplay, useShortcutHintHover } from "@/hooks";
 import { usePortalStore } from "@/store";
 
-const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text transition-colors relative";
+const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text relative";
 
 export const ToolbarPortalButton = memo(function ToolbarPortalButton({
   "data-toolbar-item": dataToolbarItem,
@@ -17,6 +17,7 @@ export const ToolbarPortalButton = memo(function ToolbarPortalButton({
   const portalOpen = usePortalStore((state) => state.isOpen);
   const togglePortal = usePortalStore((state) => state.toggle);
   const portalShortcut = useKeybindingDisplay("panel.togglePortal");
+  const portalAriaShortcut = useAriaKeyshortcuts("panel.togglePortal");
   const portalHintHover = useShortcutHintHover("panel.togglePortal");
 
   return (
@@ -29,20 +30,17 @@ export const ToolbarPortalButton = memo(function ToolbarPortalButton({
           data-toolbar-item={dataToolbarItem}
           onClick={togglePortal}
           className={toolbarIconButtonClass}
-          aria-label={portalOpen ? "Close context portal" : "Open context portal"}
+          aria-label={portalOpen ? "Close web chat" : "Open web chat"}
           aria-pressed={portalOpen}
+          aria-keyshortcuts={portalAriaShortcut}
         >
-          {portalOpen ? (
-            <PanelRightClose aria-hidden="true" />
-          ) : (
-            <PanelRightOpen aria-hidden="true" />
-          )}
+          <MessageSquareMore aria-hidden="true" />
           <ShortcutRevealChip actionId="panel.togglePortal" />
         </Button>
       </TooltipTrigger>
       <TooltipContent side="bottom">
-        {createTooltipWithShortcut(
-          portalOpen ? "Close Context Portal" : "Open Context Portal",
+        {createTooltipContent(
+          portalOpen ? "Close web chat" : "Web chat: Claude, ChatGPT, Gemini",
           portalShortcut
         )}
       </TooltipContent>

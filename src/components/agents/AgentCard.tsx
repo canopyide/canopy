@@ -134,7 +134,7 @@ function ManagementCard({
             <Icon size={24} brandColor={color} />
           </BrandMark>
           <div>
-            <h4 className="text-sm font-medium text-daintree-text">{name} Settings</h4>
+            <h4 className="text-sm font-medium text-daintree-text">{name} settings</h4>
             <p className="text-xs text-daintree-text/50 select-text">
               Configure how {name.toLowerCase()} runs in terminals
             </p>
@@ -248,7 +248,7 @@ export function AgentInstallSection({
   const headerDescription = blocked
     ? `${agentName} CLI was found but couldn't run — check your security software or file permissions`
     : showWslNotice
-      ? `${agentName} CLI was detected in WSL, but Daintree can't launch WSL binaries directly yet — install a native Windows binary if available`
+      ? `${agentName} CLI was detected in WSL, but WSL binaries can't be launched directly yet — install a native Windows binary if available`
       : showAuthNudge
         ? `${agentName} CLI found but not signed in — launching will prompt for login`
         : `${agentName} CLI not found`;
@@ -354,7 +354,7 @@ export function AgentInstallSection({
             }}
           >
             <ExternalLink size={14} />
-            Open Install Docs
+            Open install docs
           </Button>
         </div>
       ) : (
@@ -380,7 +380,7 @@ export function AgentInstallSection({
           className="w-full text-daintree-text/50 hover:text-daintree-text"
         >
           <ExternalLink size={14} />
-          View Official Documentation
+          View official documentation
         </Button>
       )}
     </div>

@@ -1,9 +1,9 @@
 import { useCallback, useMemo } from "react";
-import { useShallow } from "zustand/react/shallow";
+
 import { actionService } from "@/services/ActionService";
 import { keybindingService } from "@/services/KeybindingService";
 import { notify } from "@/lib/notify";
-import type { ActionManifestEntry } from "@shared/types/actions";
+import type { ActionDanger, ActionManifestEntry } from "@shared/types/actions";
 import { usePaletteStore } from "@/store/paletteStore";
 import { useActionMruStore } from "@/store/actionMruStore";
 import { extractAcronym, rankActionMatches } from "@/lib/actionPaletteSearch";
@@ -16,6 +16,7 @@ export interface ActionPaletteItem {
   description: string;
   category: string;
   enabled: boolean;
+  danger: ActionDanger;
   disabledReason?: string;
   keybinding?: string;
   kind: string;
@@ -32,10 +33,13 @@ export interface UseActionPaletteReturn {
   results: ActionPaletteItem[];
   totalResults: number;
   selectedIndex: number;
+  isShowingRecentlyUsed: boolean;
+  isStale: boolean;
   open: () => void;
   close: () => void;
   toggle: () => void;
   setQuery: (query: string) => void;
+  setSelectedIndex: (index: number) => void;
   selectPrevious: () => void;
   selectNext: () => void;
   executeAction: (item: ActionPaletteItem) => void;
@@ -43,6 +47,7 @@ export interface UseActionPaletteReturn {
 }
 
 const MAX_RESULTS = 20;
+const MAX_MRU_RESULTS = 10;
 
 function toActionPaletteItem(entry: ActionManifestEntry): ActionPaletteItem {
   const title =
@@ -63,6 +68,7 @@ function toActionPaletteItem(entry: ActionManifestEntry): ActionPaletteItem {
     description,
     category,
     enabled: entry.enabled,
+    danger: entry.danger,
     disabledReason,
     keybinding: keybindingService.getDisplayCombo(entry.id),
     kind: entry.kind,
@@ -76,9 +82,7 @@ function toActionPaletteItem(entry: ActionManifestEntry): ActionPaletteItem {
 
 export function useActionPalette(): UseActionPaletteReturn {
   const isActionOpen = usePaletteStore((state) => state.activePaletteId === "action");
-  const getSortedActionMruList = useActionMruStore(
-    useShallow((state) => state.getSortedActionMruList)
-  );
+  const getSortedActionMruList = useActionMruStore((state) => state.getSortedActionMruList);
 
   const allActions = useMemo<ActionPaletteItem[]>(() => {
     if (!isActionOpen) return [];
@@ -88,18 +92,29 @@ export function useActionPalette(): UseActionPaletteReturn {
 
   const filterFn = useCallback(
     (items: ActionPaletteItem[], query: string): ActionPaletteItem[] => {
-      const actionMruList = getSortedActionMruList().map(({ id }) => id);
+      // Strip confirm-danger ids from the MRU list so destructive actions
+      // persisted from a pre-fix session don't keep surfacing in the
+      // "Recently used" rail or get a search-rank bonus (issue #7481).
+      const confirmDangerIds = new Set(
+        items.filter((item) => item.danger === "confirm").map((item) => item.id)
+      );
+      const actionMruList = getSortedActionMruList()
+        .map(({ id }) => id)
+        .filter((id) => !confirmDangerIds.has(id));
 
       if (!query.trim()) {
-        const mruIndexMap = new Map<string, number>();
-        actionMruList.forEach((id, index) => mruIndexMap.set(id, index));
-        return [...items].sort((a, b) => {
-          if (a.enabled !== b.enabled) return a.enabled ? -1 : 1;
-          const aIndex = mruIndexMap.get(a.id) ?? Infinity;
-          const bIndex = mruIndexMap.get(b.id) ?? Infinity;
-          if (aIndex !== bIndex) return aIndex - bIndex;
-          return a.title.localeCompare(b.title, "en", { sensitivity: "base" });
-        });
+        if (actionMruList.length === 0) return [];
+
+        const itemById = new Map(items.map((item) => [item.id, item]));
+        const enabled: ActionPaletteItem[] = [];
+        const disabled: ActionPaletteItem[] = [];
+        for (const id of actionMruList) {
+          const item = itemById.get(id);
+          if (!item) continue;
+          if (item.enabled) enabled.push(item);
+          else disabled.push(item);
+        }
+        return [...enabled, ...disabled].slice(0, MAX_MRU_RESULTS);
       }
 
       const context = actionService.getContext();
@@ -118,10 +133,12 @@ export function useActionPalette(): UseActionPaletteReturn {
     results,
     totalResults,
     selectedIndex,
+    isStale,
     open,
     close,
     toggle,
     setQuery,
+    setSelectedIndex,
     selectPrevious,
     selectNext,
   } = useSearchablePalette<ActionPaletteItem>({
@@ -136,7 +153,9 @@ export function useActionPalette(): UseActionPaletteReturn {
       // Only record frecency for enabled items so disabled actions don't get
       // promoted to the top from repeated attempts. Dispatch still runs for
       // disabled items so ActionService can surface the disabled-reason toast.
-      if (item.enabled) {
+      // Also skip confirm-danger actions (e.g. "Delete worktree") so destructive
+      // actions don't land in the "Recently used" rail (issue #7481).
+      if (item.enabled && item.danger !== "confirm") {
         useActionMruStore.getState().recordActionMru(item.id);
       }
       close();
@@ -152,7 +171,7 @@ export function useActionPalette(): UseActionPaletteReturn {
           if (!result.ok && result.error.code !== "DISABLED") {
             notify({
               type: "error",
-              title: "Action failed",
+              title: `Couldn't run '${item.title}'`,
               message: formatErrorMessage(result.error, "Action failed."),
             });
           }
@@ -160,7 +179,7 @@ export function useActionPalette(): UseActionPaletteReturn {
         .catch(() => {
           notify({
             type: "error",
-            title: "Action failed",
+            title: `Couldn't run '${item.title}'`,
             message: "An unexpected error occurred.",
           });
         });
@@ -169,10 +188,17 @@ export function useActionPalette(): UseActionPaletteReturn {
   );
 
   const confirmSelection = useCallback(() => {
+    // While the deferred filter is catching up, `results` reflects the previous
+    // query — firing on Enter would dispatch an action that doesn't match the
+    // text in the input. Wait for the next render; the user's repeat Enter
+    // (typically <32ms later) will land on the up-to-date selection.
+    if (isStale) return;
     if (results.length > 0 && selectedIndex >= 0 && selectedIndex < results.length) {
       executeAction(results[selectedIndex]!);
     }
-  }, [results, selectedIndex, executeAction]);
+  }, [isStale, results, selectedIndex, executeAction]);
+
+  const isShowingRecentlyUsed = query.trim() === "" && results.length > 0;
 
   return {
     isOpen,
@@ -180,10 +206,13 @@ export function useActionPalette(): UseActionPaletteReturn {
     results,
     totalResults,
     selectedIndex,
+    isShowingRecentlyUsed,
+    isStale,
     open,
     close,
     toggle,
     setQuery,
+    setSelectedIndex,
     selectPrevious,
     selectNext,
     executeAction,

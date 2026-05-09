@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef, type KeyboardEvent } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
-import { useDebounce } from "@/hooks/useDebounce";
 import {
   Search,
   ExternalLink,
@@ -12,19 +11,18 @@ import {
   Filter,
   Github,
 } from "lucide-react";
-import {
-  buildCacheKey,
-  getCache,
-  setCache,
-  nextGeneration,
-  getGeneration,
-} from "@/lib/githubResourceCache";
 import { isTokenRelatedError, isTransientNetworkError } from "@/lib/githubErrors";
 import { Button } from "@/components/ui/button";
+import { AnimatePresence, m } from "framer-motion";
 import { EmptyState } from "@/components/ui/EmptyState";
+import {
+  UI_ENTER_DURATION,
+  UI_EXIT_DURATION,
+  UI_ENTER_EASING_FM,
+  UI_EXIT_EASING_FM,
+} from "@/lib/animationUtils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { githubClient } from "@/clients/githubClient";
 import { actionService } from "@/services/ActionService";
 import { GitHubListItem } from "./GitHubListItem";
 import { BulkActionBar } from "./BulkActionBar";
@@ -38,37 +36,16 @@ import {
 } from "@/store/githubFilterStore";
 import { useGitHubConfigStore } from "@/store/githubConfigStore";
 import type { GitHubIssue, GitHubPR, GitHubSortOrder } from "@shared/types/github";
-import { parseNumberQuery, MULTI_FETCH_CAP } from "@/lib/parseNumberQuery";
+import { MULTI_FETCH_CAP } from "@/lib/parseNumberQuery";
 import {
   GitHubResourceRowsSkeleton,
   MAX_SKELETON_ITEMS,
   RESOURCE_ITEM_HEIGHT_PX,
 } from "./GitHubDropdownSkeletons";
-import { formatErrorMessage } from "@shared/utils/errorMessage";
-import { formatTimeAgo } from "@/utils/timeAgo";
+import { LiveTimeAgo } from "@/components/Worktree/LiveTimeAgo";
+import { useGitHubResourceListSWR } from "./useGitHubResourceListSWR";
 
 type StateFilter = IssueStateFilter | PRStateFilter;
-
-const FETCH_MAX_ATTEMPTS = 3;
-const FETCH_RETRY_DELAYS_MS = [500, 1500];
-
-function abortableDelay(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(signal.reason);
-      return;
-    }
-    const id = setTimeout(() => {
-      signal?.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    const onAbort = () => {
-      clearTimeout(id);
-      reject(signal?.reason);
-    };
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
-}
 
 function sanitizeIpcError(message: string): string {
   const cleaned = message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "").trim();
@@ -144,6 +121,13 @@ interface GitHubResourceListProps {
   projectPath: string;
   onClose?: () => void;
   initialCount?: number | null;
+  /**
+   * Called after a successful background revalidation lands fresh first-page
+   * data. The toolbar count badge wires this to a stats refresh so the
+   * dropdown's just-updated count converges into the badge without waiting
+   * for the next 30s stats poll.
+   */
+  onFreshFetch?: () => void;
 }
 
 export function GitHubResourceList({
@@ -151,6 +135,7 @@ export function GitHubResourceList({
   projectPath,
   onClose,
   initialCount,
+  onFreshFetch,
 }: GitHubResourceListProps) {
   const searchQuery = useGitHubFilterStore((s) =>
     type === "issue" ? s.issueSearchQuery : s.prSearchQuery
@@ -179,65 +164,132 @@ export function GitHubResourceList({
   useEffect(() => {
     void useGitHubConfigStore.getState().initialize();
   }, []);
-  const cacheKey = useMemo(
-    () => buildCacheKey(projectPath, type, filterState as string, sortOrder),
-    [projectPath, type, filterState, sortOrder]
-  );
-  const cachedEntry = useMemo(() => getCache(cacheKey), [cacheKey]);
 
-  const [data, setData] = useState<(GitHubIssue | GitHubPR)[]>(() => cachedEntry?.items ?? []);
-  const [cursor, setCursor] = useState<string | null>(() => cachedEntry?.endCursor ?? null);
-  const [hasMore, setHasMore] = useState(() => cachedEntry?.hasNextPage ?? false);
-  const [loading, setLoading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  // Tracks any in-flight background revalidate (manual refresh button,
-  // mount-time SWR revalidate, focus-revalidate). Distinct from `loading`
-  // because revalidates do NOT clear data or show the row skeleton — they
-  // surface only via the spinning refresh icon in the dropdown header so
-  // the user has visual feedback that a background refresh is in progress.
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
-  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(
-    () => cachedEntry?.timestamp ?? null
-  );
-  const [, setTick] = useState(0);
-  const [exactNumberNotFound, setExactNumberNotFound] = useState<number | null>(null);
+  const {
+    data,
+    debouncedSearch,
+    numberQuery,
+    hasMore,
+    loading,
+    loadingMore,
+    refreshing,
+    error,
+    loadMoreError,
+    lastUpdatedAt,
+    exactNumberNotFound,
+    isTokenError,
+    handleLoadMore,
+    handleRetry,
+    handleManualRefresh,
+  } = useGitHubResourceListSWR({
+    type,
+    projectPath,
+    searchQuery,
+    filterState,
+    sortOrder,
+    githubConfig,
+    onFreshFetch,
+  });
+
   const [activeIndex, setActiveIndex] = useState(-1);
   const [sortPopoverOpen, setSortPopoverOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
-  const mountedRef = useRef(false);
-  // Tracks the last set of inputs the load effect handled. When the body is
-  // hidden via React 19.2 `<Activity>` and re-revealed, effects unmount +
-  // remount but state (and `mountedRef`) is preserved. Without this we'd
-  // treat the reveal as a "filter/sort change while mounted" and clear the
-  // data + show a skeleton — defeating the entire reason we keepMounted in
-  // the first place. The key includes `debouncedSearch` because search isn't
-  // part of `cacheKey`, so otherwise a search-query change would be
-  // indistinguishable from an Activity reveal.
-  const lastLoadedEffectKeyRef = useRef<string | null>(null);
+
+  // Doherty Threshold gate for the refresh spinner. Sub-400ms background
+  // revalidations stay invisible (250ms for explicit clicks); once visible the
+  // spinner dwells ≥500ms so it never flashes on fast networks.
+  const [showSpinner, setShowSpinner] = useState(false);
+  const showSpinnerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const spinnerDwellTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const spinnerVisibleSinceRef = useRef<number | null>(null);
+  const isManualRefreshRef = useRef(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (showSpinnerTimerRef.current) clearTimeout(showSpinnerTimerRef.current);
+      if (spinnerDwellTimerRef.current) clearTimeout(spinnerDwellTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    const isActive = loading || refreshing;
+    if (isActive) {
+      if (spinnerDwellTimerRef.current) {
+        clearTimeout(spinnerDwellTimerRef.current);
+        spinnerDwellTimerRef.current = null;
+      }
+      if (spinnerVisibleSinceRef.current !== null) return;
+      if (showSpinnerTimerRef.current !== null) return;
+      const delay = isManualRefreshRef.current ? 250 : 400;
+      isManualRefreshRef.current = false;
+      showSpinnerTimerRef.current = setTimeout(() => {
+        if (!mountedRef.current) return;
+        spinnerVisibleSinceRef.current = Date.now();
+        setShowSpinner(true);
+        showSpinnerTimerRef.current = null;
+      }, delay);
+      return;
+    }
+    if (showSpinnerTimerRef.current) {
+      clearTimeout(showSpinnerTimerRef.current);
+      showSpinnerTimerRef.current = null;
+    }
+    if (spinnerVisibleSinceRef.current !== null) {
+      const elapsed = Date.now() - spinnerVisibleSinceRef.current;
+      const remaining = Math.max(0, 500 - elapsed);
+      if (remaining === 0) {
+        setShowSpinner(false);
+        spinnerVisibleSinceRef.current = null;
+      } else {
+        spinnerDwellTimerRef.current = setTimeout(() => {
+          if (!mountedRef.current) return;
+          setShowSpinner(false);
+          spinnerVisibleSinceRef.current = null;
+          spinnerDwellTimerRef.current = null;
+        }, remaining);
+      }
+    }
+  }, [loading, refreshing]);
+
+  const handleManualRefreshClick = useCallback(() => {
+    isManualRefreshRef.current = true;
+    handleManualRefresh();
+  }, [handleManualRefresh]);
 
   const selection = useIssueSelection();
-  const issueCacheRef = useRef<Map<number, GitHubIssue>>(new Map());
-  const prCacheRef = useRef<Map<number, GitHubPR>>(new Map());
+  const [issueCache, setIssueCache] = useState<Map<number, GitHubIssue>>(() => new Map());
+  const [prCache, setPrCache] = useState<Map<number, GitHubPR>>(() => new Map());
 
   // Accumulate item objects into the session cache whenever data changes
   useEffect(() => {
+    const newIssues: GitHubIssue[] = [];
+    const newPRs: GitHubPR[] = [];
     for (const item of data) {
       if ("isDraft" in item) {
-        prCacheRef.current.set(item.number, item as GitHubPR);
+        newPRs.push(item as GitHubPR);
       } else {
-        issueCacheRef.current.set(item.number, item as GitHubIssue);
+        newIssues.push(item as GitHubIssue);
       }
     }
+    if (newIssues.length > 0) {
+      setIssueCache((prev) => {
+        const next = new Map(prev);
+        for (const issue of newIssues) next.set(issue.number, issue);
+        return next;
+      });
+    }
+    if (newPRs.length > 0) {
+      setPrCache((prev) => {
+        const next = new Map(prev);
+        for (const pr of newPRs) next.set(pr.number, pr);
+        return next;
+      });
+    }
   }, [data]);
-
-  const debouncedSearch = useDebounce(searchQuery, 300);
-
-  const numberQuery = useMemo(() => parseNumberQuery(searchQuery), [searchQuery]);
-  const exactNumberAbortRef = useRef<AbortController | null>(null);
-  const [retryKey, setRetryKey] = useState(0);
 
   const stateTabs = useMemo(() => {
     if (type === "pr") {
@@ -253,439 +305,10 @@ export function GitHubResourceList({
     ];
   }, [type]);
 
-  // Note: currentCursor is passed as a parameter (not read from state) to avoid
-  // dependency cycle where updating cursor would recreate this callback
-  const loadMoreAbortRef = useRef<AbortController | null>(null);
-  // Tracks the last time fetchData started a non-append fetch — used by the
-  // visibility/focus revalidation effect to throttle repeat refreshes.
-  const lastFetchAttemptRef = useRef<number>(0);
-
-  // `githubConfig` flips from `null` → object when the config store finishes
-  // its async `initialize()` call shortly after mount. Reading it directly in
-  // `fetchData`'s `useCallback` deps would re-create the callback on that
-  // flip, re-firing the cache-key-driven mount effect with `isFirstMount =
-  // false` and triggering the cache-miss skeleton flash on every dropdown
-  // open. Routing the read through a ref keeps `fetchData` stable while
-  // still observing the latest config at call time.
-  const githubConfigRef = useRef(githubConfig);
-  useEffect(() => {
-    githubConfigRef.current = githubConfig;
-  }, [githubConfig]);
-
-  const fetchData = useCallback(
-    async (
-      currentCursor: string | null | undefined,
-      append: boolean = false,
-      abortSignal?: AbortSignal,
-      options?: { revalidating?: boolean; generation?: number; cacheKey?: string }
-    ) => {
-      if (!projectPath) return;
-      // Skip the fetch entirely when no token is configured. The render path
-      // shows a dedicated empty state; firing fetches here would just produce
-      // a token-error toast for users who haven't set up GitHub yet.
-      const cfg = githubConfigRef.current;
-      if (cfg && !cfg.hasToken) return;
-
-      const isRevalidate = options?.revalidating ?? false;
-
-      if (append) {
-        loadMoreAbortRef.current?.abort();
-        const abortController = new AbortController();
-        loadMoreAbortRef.current = abortController;
-        abortSignal = abortController.signal;
-
-        setLoadingMore(true);
-        setLoadMoreError(null);
-      } else if (!isRevalidate) {
-        setLoading(true);
-        setError(null);
-        setLoadMoreError(null);
-      } else {
-        // Background revalidate — don't clear rows or show the skeleton,
-        // but DO surface activity via the header refresh icon spin.
-        setRefreshing(true);
-      }
-
-      if (!append) {
-        lastFetchAttemptRef.current = Date.now();
-      }
-
-      // Retry only the primary fetch path. Load-more has its own Retry button,
-      // and background revalidation already shows stale data.
-      const canRetry = !append && !isRevalidate;
-      const maxAttempts = canRetry ? FETCH_MAX_ATTEMPTS : 1;
-      let lastError: unknown = null;
-
-      try {
-        const searchOverride =
-          numberQuery?.kind === "open-ended" ? `number:>=${numberQuery.from}` : undefined;
-        const fetchOptions = {
-          cwd: projectPath,
-          search: searchOverride || debouncedSearch || undefined,
-          state: filterState as "open" | "closed" | "merged" | "all",
-          cursor: currentCursor || undefined,
-          // Append (load-more) always wants the next page from network.
-          // SWR revalidates also bypass cache — that's the whole point of
-          // a revalidate. Cold-mount fetches (no cache, no revalidating
-          // flag) honor the backend's 60s in-memory cache instead of
-          // bypassing — same data either way, but the cached path returns
-          // synchronously and avoids the click-time round-trip the user
-          // sees as "reload".
-          bypassCache: append ? false : isRevalidate ? true : false,
-          sortOrder,
-        };
-
-        for (let attempt = 0; attempt < maxAttempts; attempt++) {
-          try {
-            const result =
-              type === "issue"
-                ? await githubClient.listIssues(
-                    fetchOptions as Parameters<typeof githubClient.listIssues>[0]
-                  )
-                : await githubClient.listPullRequests(
-                    fetchOptions as Parameters<typeof githubClient.listPullRequests>[0]
-                  );
-
-            // Check if aborted before updating state
-            if (abortSignal?.aborted) return;
-
-            // Generation guard: discard stale responses
-            if (options?.generation != null && options.cacheKey != null) {
-              if (getGeneration(options.cacheKey) !== options.generation) return;
-            }
-
-            if (append) {
-              setData((prev) => [...prev, ...result.items]);
-            } else {
-              setData(result.items);
-            }
-            setCursor(result.pageInfo.endCursor);
-            setHasMore(result.pageInfo.hasNextPage);
-
-            // Write first-page results to cache (skip search-filtered results)
-            if (!append && options?.cacheKey && !debouncedSearch) {
-              const now = Date.now();
-              setCache(options.cacheKey, {
-                items: result.items,
-                endCursor: result.pageInfo.endCursor,
-                hasNextPage: result.pageInfo.hasNextPage,
-                timestamp: now,
-              });
-              setLastUpdatedAt(now);
-            }
-            lastError = null;
-            return;
-          } catch (err) {
-            if (abortSignal?.aborted) return;
-            lastError = err;
-            const message = formatErrorMessage(err, "Failed to fetch data");
-            const retryable =
-              canRetry &&
-              attempt < maxAttempts - 1 &&
-              isTransientNetworkError(message) &&
-              !isTokenRelatedError(message);
-            if (!retryable) break;
-            try {
-              await abortableDelay(FETCH_RETRY_DELAYS_MS[attempt]!, abortSignal);
-            } catch {
-              return;
-            }
-            if (abortSignal?.aborted) return;
-          }
-        }
-
-        if (lastError != null) {
-          // Same generation guard as the success path: a stale background
-          // fetch finishing after the user switched filter/sort must not
-          // surface its error or wipe the freshly-loaded view.
-          if (options?.generation != null && options.cacheKey != null) {
-            if (getGeneration(options.cacheKey) !== options.generation) return;
-          }
-          const message = formatErrorMessage(lastError, "Failed to fetch data");
-          if (append) {
-            setLoadMoreError(message);
-          } else {
-            setError(message);
-          }
-        }
-      } finally {
-        if (!abortSignal?.aborted) {
-          setLoading(false);
-          setRefreshing(false);
-          setLoadingMore(false);
-        }
-      }
-    },
-    [projectPath, debouncedSearch, filterState, type, sortOrder, numberQuery]
-  );
-
-  useEffect(() => {
-    if (numberQuery !== null) {
-      return;
-    }
-
-    const abortController = new AbortController();
-    loadMoreAbortRef.current?.abort();
-    const gen = nextGeneration(cacheKey);
-    const isFirstMount = !mountedRef.current;
-    // The cacheKey doesn't include `debouncedSearch` (search results aren't
-    // cached). Combine them so a search-query change isn't mistaken for an
-    // Activity reveal of the same key.
-    const effectKey = `${cacheKey}|${debouncedSearch}`;
-    // Activity reveal of identical inputs: effects re-fired but state (and
-    // mountedRef) survived. Treat as a fresh-mount revalidate path so we
-    // don't clear the rows that are already on screen.
-    const isActivityRevealOfSameInputs =
-      !isFirstMount && lastLoadedEffectKeyRef.current === effectKey;
-
-    if (isFirstMount || isActivityRevealOfSameInputs) {
-      mountedRef.current = true;
-      // Re-check cache on the effect tick — the useState initializer at
-      // mount-render time may have missed a write that lands between render
-      // and the first passive effect (poll push, hover prefetch, etc.).
-      // When that happens, hydrate state from cache here so the SWR path
-      // runs silently instead of the cache-miss path showing a skeleton
-      // flash for data that's already available.
-      const cached = getCache(cacheKey);
-      if (cached) {
-        // Apply unconditionally — when the broadcast writes a legitimate
-        // empty page (the repo currently has zero matches for this filter),
-        // the previously-shown rows must clear on Activity reveal instead
-        // of lingering until the revalidate resolves.
-        setData(cached.items);
-        setCursor(cached.endCursor);
-        setHasMore(cached.hasNextPage);
-        setLastUpdatedAt(cached.timestamp);
-        setError(null);
-        fetchData(null, false, abortController.signal, {
-          revalidating: true,
-          generation: gen,
-          cacheKey,
-        });
-        lastLoadedEffectKeyRef.current = effectKey;
-        return () => abortController.abort();
-      }
-      // Cache miss on Activity reveal: rows are stale but visible — keep them
-      // up while the network fetch lands, no skeleton flash.
-      if (isActivityRevealOfSameInputs) {
-        setError(null);
-        fetchData(null, false, abortController.signal, {
-          revalidating: true,
-          generation: gen,
-          cacheKey,
-        });
-        lastLoadedEffectKeyRef.current = effectKey;
-        return () => abortController.abort();
-      }
-    }
-
-    // Filter/sort changed while mounted (or projectPath changed via the
-    // keepMounted body): clear and refetch with skeleton. First-mount cache
-    // miss skips the explicit clear (data is already [] from the useState
-    // initializer) so no spurious setState/render churn.
-    if (!isFirstMount) {
-      setCursor(null);
-      setHasMore(false);
-      setExactNumberNotFound(null);
-      setData([]);
-      setLastUpdatedAt(null);
-    }
-    fetchData(null, false, abortController.signal, {
-      generation: gen,
-      cacheKey,
-    });
-    lastLoadedEffectKeyRef.current = effectKey;
-
-    return () => abortController.abort();
-  }, [debouncedSearch, filterState, projectPath, type, fetchData, numberQuery, cacheKey]);
-
-  // Background revalidation when the window regains focus or the tab becomes
-  // visible. CI status flips on every push, so a user returning from another
-  // app expects the list to refresh — without this, stale green ticks can
-  // linger for the full backend cache window.
-  useEffect(() => {
-    if (numberQuery !== null) {
-      return;
-    }
-
-    const REVALIDATE_THROTTLE_MS = 30_000;
-    const abortController = new AbortController();
-
-    const maybeRevalidate = () => {
-      if (typeof document !== "undefined" && document.visibilityState !== "visible") {
-        return;
-      }
-      if (Date.now() - lastFetchAttemptRef.current < REVALIDATE_THROTTLE_MS) {
-        return;
-      }
-      const gen = nextGeneration(cacheKey);
-      void fetchData(null, false, abortController.signal, {
-        revalidating: true,
-        generation: gen,
-        cacheKey,
-      });
-    };
-
-    document.addEventListener("visibilitychange", maybeRevalidate);
-    window.addEventListener("focus", maybeRevalidate);
-
-    return () => {
-      document.removeEventListener("visibilitychange", maybeRevalidate);
-      window.removeEventListener("focus", maybeRevalidate);
-      abortController.abort();
-    };
-  }, [fetchData, cacheKey, numberQuery]);
-
-  useEffect(() => {
-    if (numberQuery === null) {
-      return;
-    }
-    // Skip numeric fetches when no token is configured — the empty state
-    // takes over the UI and any leftover store search would otherwise
-    // produce a token error.
-    if (githubConfig && !githubConfig.hasToken) {
-      return;
-    }
-
-    exactNumberAbortRef.current?.abort();
-    loadMoreAbortRef.current?.abort();
-    const abortController = new AbortController();
-    exactNumberAbortRef.current = abortController;
-
-    setLoading(true);
-    setError(null);
-    setLoadMoreError(null);
-    setLoadingMore(false);
-    setExactNumberNotFound(null);
-    setData([]);
-    setCursor(null);
-    setHasMore(false);
-
-    const getByNumber = (num: number) =>
-      type === "issue"
-        ? githubClient.getIssueByNumber(projectPath, num)
-        : githubClient.getPRByNumber(projectPath, num);
-
-    const matchesFilter = (item: GitHubIssue | GitHubPR) =>
-      filterState === "all" || item.state.toLowerCase() === filterState;
-
-    const runNumericAttempt = async () => {
-      switch (numberQuery.kind) {
-        case "single": {
-          const result = await getByNumber(numberQuery.number);
-          if (abortController.signal.aborted) return;
-          if (result && matchesFilter(result)) {
-            setData([result]);
-          } else {
-            setData([]);
-            setExactNumberNotFound(numberQuery.number);
-          }
-          break;
-        }
-
-        case "multi": {
-          const results = await Promise.all(numberQuery.numbers.map(getByNumber));
-          if (abortController.signal.aborted) return;
-          const filtered = results.filter(
-            (r): r is NonNullable<typeof r> => r !== null && matchesFilter(r)
-          );
-          setData(filtered);
-          break;
-        }
-
-        case "range": {
-          const numbers: number[] = [];
-          for (let n = numberQuery.from; n <= numberQuery.to; n++) {
-            numbers.push(n);
-          }
-          const results = await Promise.all(numbers.map(getByNumber));
-          if (abortController.signal.aborted) return;
-          const filtered = results.filter(
-            (r): r is NonNullable<typeof r> => r !== null && matchesFilter(r)
-          );
-          setData(filtered);
-          break;
-        }
-
-        case "open-ended": {
-          const options = {
-            cwd: projectPath,
-            search: `number:>=${numberQuery.from}`,
-            state: filterState as "open" | "closed" | "merged" | "all",
-            bypassCache: true,
-            sortOrder: "created" as const,
-          };
-          const result =
-            type === "issue"
-              ? await githubClient.listIssues(
-                  options as Parameters<typeof githubClient.listIssues>[0]
-                )
-              : await githubClient.listPullRequests(
-                  options as Parameters<typeof githubClient.listPullRequests>[0]
-                );
-          if (abortController.signal.aborted) return;
-          setData(result.items);
-          setCursor(result.pageInfo.endCursor);
-          setHasMore(result.pageInfo.hasNextPage);
-          break;
-        }
-      }
-    };
-
-    const fetchNumeric = async () => {
-      let lastError: unknown = null;
-      try {
-        for (let attempt = 0; attempt < FETCH_MAX_ATTEMPTS; attempt++) {
-          try {
-            await runNumericAttempt();
-            if (abortController.signal.aborted) return;
-            lastError = null;
-            return;
-          } catch (err) {
-            if (abortController.signal.aborted) return;
-            lastError = err;
-            const message = formatErrorMessage(err, "Failed to fetch data");
-            const retryable =
-              attempt < FETCH_MAX_ATTEMPTS - 1 &&
-              isTransientNetworkError(message) &&
-              !isTokenRelatedError(message);
-            if (!retryable) break;
-            try {
-              await abortableDelay(FETCH_RETRY_DELAYS_MS[attempt]!, abortController.signal);
-            } catch {
-              return;
-            }
-            if (abortController.signal.aborted) return;
-          }
-        }
-        if (lastError != null) {
-          const message = formatErrorMessage(lastError, "Failed to fetch data");
-          setError(message);
-        }
-      } finally {
-        if (!abortController.signal.aborted) {
-          setLoading(false);
-        }
-      }
-    };
-
-    void fetchNumeric();
-
-    return () => {
-      abortController.abort();
-    };
-  }, [numberQuery, projectPath, type, filterState, retryKey, githubConfig]);
-
-  const handleLoadMore = useCallback(() => {
-    if (!loadingMore && hasMore) {
-      fetchData(cursor, true, undefined);
-    }
-  }, [loadingMore, hasMore, fetchData, cursor]);
-
   const handleClose = useCallback(() => {
     selection.clear();
-    issueCacheRef.current.clear();
-    prCacheRef.current.clear();
+    setIssueCache(new Map());
+    setPrCache(new Map());
     onClose?.();
   }, [onClose, selection]);
 
@@ -743,33 +366,6 @@ export function GitHubResourceList({
     inputRef.current?.focus();
   }, [setSearchQuery]);
 
-  const handleRetry = () => {
-    if (numberQuery !== null) {
-      setRetryKey((k) => k + 1);
-    } else {
-      setCursor(null);
-      const gen = nextGeneration(cacheKey);
-      fetchData(null, false, undefined, { generation: gen, cacheKey });
-    }
-  };
-
-  // Manual refresh — fires a force-bypass fetch and shows the loading
-  // indicator in the refresh button. Doesn't clear current rows; the SWR
-  // revalidate path keeps them visible while fresh data arrives.
-  const handleManualRefresh = useCallback(() => {
-    if (numberQuery !== null) {
-      setRetryKey((k) => k + 1);
-      return;
-    }
-    setError(null);
-    const gen = nextGeneration(cacheKey);
-    void fetchData(null, false, undefined, {
-      revalidating: true,
-      generation: gen,
-      cacheKey,
-    });
-  }, [numberQuery, cacheKey, fetchData]);
-
   const listId = `github-${type}-list`;
   const maxIndex = data.length - 1 + (hasMore ? 1 : 0);
   const activeItem = activeIndex >= 0 && activeIndex < data.length ? data[activeIndex] : null;
@@ -779,13 +375,6 @@ export function GitHubResourceList({
   useEffect(() => {
     setActiveIndex(-1);
   }, [data]);
-
-  // Re-render the "Updated Xm ago" label every 60s while a stale-data banner is visible.
-  useEffect(() => {
-    if (lastUpdatedAt == null || error == null) return;
-    const id = setInterval(() => setTick((t) => t + 1), 60_000);
-    return () => clearInterval(id);
-  }, [lastUpdatedAt, error]);
 
   useEffect(() => {
     if (activeIndex < 0) return;
@@ -875,8 +464,6 @@ export function GitHubResourceList({
     ]
   );
 
-  const isTokenError = isTokenRelatedError(error);
-
   const handleOpenGitHubSettings = useCallback(() => {
     void actionService.dispatch(
       "app.settings.openTab",
@@ -908,23 +495,49 @@ export function GitHubResourceList({
   );
 
   const renderEmpty = () => {
-    if (exactNumberNotFound !== null) {
+    const trimmedSearch = debouncedSearch.trim();
+    const isFilterActive =
+      exactNumberNotFound !== null ||
+      numberQuery !== null ||
+      trimmedSearch.length > 0 ||
+      filterState !== "open";
+    const resourceLabel = type === "issue" ? "issues" : "pull requests";
+
+    if (isFilterActive) {
+      const title =
+        exactNumberNotFound !== null
+          ? `No ${type === "issue" ? "issue" : "PR"} #${exactNumberNotFound} in this view`
+          : trimmedSearch.length > 0
+            ? `No ${resourceLabel} match "${trimmedSearch}"`
+            : `No ${resourceLabel} in this view`;
+
       return (
-        <div className="p-8 text-center text-muted-foreground">
-          <p className="text-sm">
-            {type === "issue" ? "Issue" : "PR"} #{exactNumberNotFound} not found
-          </p>
-        </div>
+        <EmptyState
+          variant="filtered-empty"
+          title={title}
+          action={
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setSearchQuery("");
+                setFilterState("open" as StateFilter);
+              }}
+            >
+              Clear filters
+            </Button>
+          }
+          className="flex-1 justify-center"
+        />
       );
     }
 
     return (
-      <div className="p-8 text-center text-muted-foreground">
-        <p className="text-sm">
-          No {type === "issue" ? "issues" : "pull requests"} found
-          {debouncedSearch && ` for "${debouncedSearch}"`}
-        </p>
-      </div>
+      <EmptyState
+        variant="zero-data"
+        title={`No ${resourceLabel} found`}
+        className="flex-1 justify-center"
+      />
     );
   };
 
@@ -993,12 +606,15 @@ export function GitHubResourceList({
           </div>
           <button
             type="button"
-            onClick={handleManualRefresh}
+            onClick={handleManualRefreshClick}
             disabled={loading || refreshing}
-            aria-label={`Refresh ${type === "issue" ? "issues" : "pull requests"}`}
-            aria-busy={loading || refreshing}
+            aria-label={
+              showSpinner
+                ? "Refreshing…"
+                : `Refresh ${type === "issue" ? "issues" : "pull requests"}`
+            }
             title={
-              refreshing || loading
+              showSpinner
                 ? "Refreshing…"
                 : `Refresh ${type === "issue" ? "issues" : "pull requests"}`
             }
@@ -1006,22 +622,26 @@ export function GitHubResourceList({
               "flex items-center justify-center w-7 h-7 rounded shrink-0",
               "text-daintree-text/60 hover:text-daintree-text hover:bg-tint/[0.06]",
               "transition-colors disabled:cursor-default",
-              (loading || refreshing) && "text-status-info"
+              showSpinner && "text-status-info"
             )}
           >
-            <RefreshCw className={cn("w-3.5 h-3.5", (loading || refreshing) && "animate-spin")} />
+            <RefreshCw className={cn("w-3.5 h-3.5", showSpinner && "animate-spin")} />
           </button>
           <Popover open={sortPopoverOpen} onOpenChange={setSortPopoverOpen}>
             <PopoverTrigger asChild>
               <button
                 type="button"
-                aria-label={`Sort ${type === "issue" ? "issues" : "pull requests"}`}
+                aria-label={
+                  sortOrder === "created"
+                    ? `Sort ${type === "issue" ? "issues" : "pull requests"}`
+                    : `Sort ${type === "issue" ? "issues" : "pull requests"}, sorted by recently updated`
+                }
                 aria-haspopup="dialog"
+                aria-expanded={sortPopoverOpen}
                 className={cn(
                   "relative flex items-center justify-center w-7 h-7 rounded shrink-0",
                   "text-daintree-text/60 hover:text-daintree-text hover:bg-tint/[0.06]",
-                  "transition-colors",
-                  sortOrder !== "created" && "text-status-info"
+                  "transition-colors"
                 )}
               >
                 <Filter className="w-3.5 h-3.5" />
@@ -1047,42 +667,61 @@ export function GitHubResourceList({
                 Sort by
               </div>
               <div className="flex flex-col gap-1" role="radiogroup" aria-label="Sort order">
-                {(
-                  [
+                {(() => {
+                  const sortOptions = [
                     { value: "created", label: "Newest" },
                     { value: "updated", label: "Recently updated" },
-                  ] as const
-                ).map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setSortOrder(option.value)}
-                    role="radio"
-                    aria-checked={sortOrder === option.value}
-                    className={cn(
-                      "flex items-center gap-2 px-2 py-1 text-xs rounded",
-                      sortOrder === option.value
-                        ? "bg-overlay-soft text-daintree-text"
-                        : "text-daintree-text/70 hover:bg-overlay-medium"
-                    )}
-                  >
-                    <div
+                  ] as const;
+                  return sortOptions.map((option, idx) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setSortOrder(option.value)}
+                      role="radio"
+                      aria-checked={sortOrder === option.value}
+                      tabIndex={sortOrder === option.value ? 0 : -1}
+                      onKeyDown={(e) => {
+                        const isNext = e.key === "ArrowDown" || e.key === "ArrowRight";
+                        const isPrev = e.key === "ArrowUp" || e.key === "ArrowLeft";
+                        if (!isNext && !isPrev) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const delta = isNext ? 1 : -1;
+                        const nextIdx = (idx + delta + sortOptions.length) % sortOptions.length;
+                        const nextValue = sortOptions[nextIdx]!.value;
+                        setSortOrder(nextValue);
+                        const group = e.currentTarget.parentElement;
+                        requestAnimationFrame(() => {
+                          const radios =
+                            group?.querySelectorAll<HTMLButtonElement>('[role="radio"]');
+                          radios?.[nextIdx]?.focus();
+                        });
+                      }}
                       className={cn(
-                        "w-3 h-3 rounded-full border",
+                        "flex items-center gap-2 px-2 py-1 text-xs rounded",
                         sortOrder === option.value
-                          ? "border-daintree-text bg-daintree-text"
-                          : "border-daintree-border"
+                          ? "bg-overlay-soft text-daintree-text"
+                          : "text-daintree-text/70 hover:bg-overlay-medium"
                       )}
                     >
-                      {sortOrder === option.value && (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <div className="w-1.5 h-1.5 bg-text-inverse rounded-full" />
-                        </div>
-                      )}
-                    </div>
-                    {option.label}
-                  </button>
-                ))}
+                      <div
+                        className={cn(
+                          "w-3 h-3 rounded-full border",
+                          sortOrder === option.value
+                            ? "border-daintree-text bg-daintree-text"
+                            : "border-daintree-border"
+                        )}
+                      >
+                        {sortOrder === option.value && (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <div className="w-1.5 h-1.5 bg-text-inverse rounded-full" />
+                          </div>
+                        )}
+                      </div>
+                      {option.label}
+                    </button>
+                  ));
+                })()}
               </div>
             </PopoverContent>
           </Popover>
@@ -1133,17 +772,35 @@ export function GitHubResourceList({
 
         <div
           className="flex p-0.5 bg-overlay-soft border border-[var(--border-divider)] rounded-[var(--radius-md)]"
-          role="group"
+          role="radiogroup"
           aria-label="Filter by state"
         >
-          {stateTabs.map((tab) => {
+          {stateTabs.map((tab, idx) => {
             const isActive = filterState === tab.id;
             return (
               <button
                 key={tab.id}
                 type="button"
                 onClick={() => setFilterState(tab.id as StateFilter)}
-                aria-pressed={isActive}
+                role="radio"
+                aria-checked={isActive}
+                tabIndex={isActive ? 0 : -1}
+                onKeyDown={(e) => {
+                  const isNext = e.key === "ArrowRight" || e.key === "ArrowDown";
+                  const isPrev = e.key === "ArrowLeft" || e.key === "ArrowUp";
+                  if (!isNext && !isPrev) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const delta = isNext ? 1 : -1;
+                  const nextIdx = (idx + delta + stateTabs.length) % stateTabs.length;
+                  const nextTab = stateTabs[nextIdx]!;
+                  setFilterState(nextTab.id as StateFilter);
+                  const group = e.currentTarget.parentElement;
+                  requestAnimationFrame(() => {
+                    const radios = group?.querySelectorAll<HTMLButtonElement>('[role="radio"]');
+                    radios?.[nextIdx]?.focus();
+                  });
+                }}
                 className={cn(
                   "flex-1 px-3 py-1 text-xs font-medium rounded transition-colors",
                   isActive
@@ -1157,90 +814,143 @@ export function GitHubResourceList({
           })}
         </div>
 
-        {numberQuery?.kind === "range" && numberQuery.truncated && (
-          <p className="text-xs text-muted-foreground">
-            Showing first {MULTI_FETCH_CAP} of range (capped)
-          </p>
-        )}
+        {numberQuery !== null &&
+          !loading &&
+          exactNumberNotFound === null &&
+          (() => {
+            const resourceLabel = type === "issue" ? "issue" : "PR";
+            let label: string;
+            if (numberQuery.kind === "single") {
+              label = `Showing ${resourceLabel} #${numberQuery.number}`;
+            } else if (numberQuery.kind === "multi") {
+              const nums = numberQuery.numbers;
+              const shown = nums
+                .slice(0, 3)
+                .map((n) => `#${n}`)
+                .join(", ");
+              label =
+                nums.length > 3 ? `Showing ${shown} + ${nums.length - 3} more` : `Showing ${shown}`;
+            } else if (numberQuery.kind === "range") {
+              label = numberQuery.truncated
+                ? `Showing first ${MULTI_FETCH_CAP} of range #${numberQuery.from}..#${numberQuery.to} (capped)`
+                : `Showing range #${numberQuery.from}..#${numberQuery.to}`;
+            } else {
+              label = `Showing #${numberQuery.from} and above`;
+            }
+            return (
+              <p className="bg-overlay-soft border border-[var(--border-divider)] rounded px-2 py-1 text-xs text-muted-foreground">
+                {label}
+              </p>
+            );
+          })()}
       </div>
 
-      <div className="flex-1 min-h-0 flex flex-col">
-        {loading && !data.length ? (
-          <div className="overflow-y-auto flex-1 min-h-0">
-            <GitHubResourceRowsSkeleton
-              count={initialCount && initialCount > 0 ? initialCount : MAX_SKELETON_ITEMS}
-            />
-          </div>
-        ) : data.length > 0 ? (
-          <>
-            {error && (
-              <div className="px-3 py-2 border-b border-[var(--border-divider)] flex items-center gap-2 text-muted-foreground bg-overlay-soft shrink-0">
-                <WifiOff className="h-3.5 w-3.5 shrink-0" />
-                <span className="text-xs truncate">{sanitizeIpcError(error)}</span>
-                {lastUpdatedAt != null && !debouncedSearch && (
-                  <span className="text-xs text-muted-foreground/70 shrink-0 whitespace-nowrap">
-                    · Updated {formatTimeAgo(lastUpdatedAt)}
-                  </span>
-                )}
-                {isTokenError ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleOpenGitHubSettings}
-                    className="ml-auto h-6 text-xs text-muted-foreground hover:text-daintree-text shrink-0"
-                  >
-                    <Settings className="h-3 w-3" />
-                    Settings
-                  </Button>
-                ) : (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleRetry}
-                    className="ml-auto h-6 text-xs text-muted-foreground hover:text-daintree-text shrink-0"
-                  >
-                    <RefreshCw className="h-3 w-3" />
-                    Retry
-                  </Button>
-                )}
-              </div>
-            )}
-            <div id={listId} role="listbox" aria-multiselectable={true} className="flex-1 min-h-0">
-              <Virtuoso
-                ref={virtuosoRef}
-                data={data}
-                context={footerContext}
-                style={{ height: "100%" }}
-                fixedItemHeight={RESOURCE_ITEM_HEIGHT_PX}
-                computeItemKey={(_, item) => item.number}
-                increaseViewportBy={{ top: 0, bottom: 200 }}
-                endReached={() => {
-                  if (!loadingMore && !loading && hasMore) handleLoadMore();
-                }}
-                components={{ Footer: LoadMoreFooter }}
-                itemContent={(index, item) => (
-                  <GitHubListItem
-                    item={item}
-                    type={type}
-                    onCreateWorktree={handleCreateWorktree}
-                    onSwitchToWorktree={handleSwitchToWorktree}
-                    optionId={`github-${type}-option-${item.number}`}
-                    isActive={activeIndex === index}
-                    isSelected={selection.selectedIds.has(item.number)}
-                    isSelectionActive={selection.isSelectionActive}
-                    onToggleSelect={(e: React.MouseEvent) => {
-                      if (e.shiftKey) {
-                        selection.toggleRange(index, (i) => data[i]!.number);
-                      } else {
-                        selection.toggle(item.number, index);
-                      }
-                    }}
-                  />
-                )}
+      <div className="flex-1 min-h-0 flex flex-col relative">
+        <AnimatePresence mode="popLayout">
+          {loading && !data.length ? (
+            <m.div
+              key="github-skeleton"
+              initial={false}
+              exit={{ opacity: 0 }}
+              transition={{ duration: UI_EXIT_DURATION / 1000, ease: UI_EXIT_EASING_FM }}
+              className="overflow-y-auto flex-1 min-h-0"
+            >
+              <GitHubResourceRowsSkeleton
+                count={initialCount && initialCount > 0 ? initialCount : MAX_SKELETON_ITEMS}
               />
-            </div>
-          </>
-        ) : error ? (
+            </m.div>
+          ) : data.length > 0 ? (
+            <m.div
+              key="github-content"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{
+                opacity: 0,
+                transition: { duration: UI_EXIT_DURATION / 1000, ease: UI_EXIT_EASING_FM },
+              }}
+              transition={{ duration: UI_ENTER_DURATION / 1000, ease: UI_ENTER_EASING_FM }}
+              className="flex-1 min-h-0 flex flex-col"
+            >
+              {error && (
+                <div className="px-3 py-2 border-b border-[var(--border-divider)] flex items-center gap-2 text-muted-foreground bg-overlay-soft shrink-0">
+                  <WifiOff className="h-3.5 w-3.5 shrink-0" />
+                  <span className="text-xs truncate">
+                    {isTransientNetworkError(error)
+                      ? "Couldn't reach GitHub. Showing last known results."
+                      : sanitizeIpcError(error)}
+                  </span>
+                  {lastUpdatedAt != null && !debouncedSearch && (
+                    <span className="text-xs text-muted-foreground/70 shrink-0 whitespace-nowrap">
+                      · Updated <LiveTimeAgo timestamp={lastUpdatedAt} />
+                    </span>
+                  )}
+                  {isTokenError ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleOpenGitHubSettings}
+                      className="ml-auto h-6 text-xs text-muted-foreground hover:text-daintree-text shrink-0"
+                    >
+                      <Settings className="h-3 w-3" />
+                      Settings
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleRetry}
+                      className="ml-auto h-6 text-xs text-muted-foreground hover:text-daintree-text shrink-0"
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                      Retry
+                    </Button>
+                  )}
+                </div>
+              )}
+              <div
+                id={listId}
+                role="listbox"
+                aria-multiselectable={selection.isSelectionActive}
+                aria-busy={loading || refreshing}
+                className="flex-1 min-h-0"
+              >
+                <Virtuoso
+                  ref={virtuosoRef}
+                  data={data}
+                  context={footerContext}
+                  style={{ height: "100%" }}
+                  fixedItemHeight={RESOURCE_ITEM_HEIGHT_PX}
+                  computeItemKey={(_, item) => item.number}
+                  increaseViewportBy={{ top: 0, bottom: 200 }}
+                  endReached={() => {
+                    if (!loadingMore && !loading && hasMore) handleLoadMore();
+                  }}
+                  components={{ Footer: LoadMoreFooter }}
+                  itemContent={(index, item) => (
+                    <GitHubListItem
+                      item={item}
+                      type={type}
+                      onCreateWorktree={handleCreateWorktree}
+                      onSwitchToWorktree={handleSwitchToWorktree}
+                      optionId={`github-${type}-option-${item.number}`}
+                      isActive={activeIndex === index}
+                      isSelected={selection.selectedIds.has(item.number)}
+                      isSelectionActive={selection.isSelectionActive}
+                      onToggleSelect={(e: React.MouseEvent) => {
+                        if (e.shiftKey) {
+                          selection.toggleRange(index, (i) => data[i]!.number);
+                        } else {
+                          selection.toggle(item.number, index);
+                        }
+                      }}
+                    />
+                  )}
+                />
+              </div>
+            </m.div>
+          ) : null}
+        </AnimatePresence>
+        {!loading && !data.length && error && (
           <div className="p-8 text-center text-muted-foreground">
             <WifiOff className="h-5 w-5 mx-auto mb-2 opacity-50" />
             <p className="text-sm">{sanitizeIpcError(error)}</p>
@@ -1266,26 +976,32 @@ export function GitHubResourceList({
               </Button>
             )}
           </div>
-        ) : (
-          renderEmpty()
         )}
+        {!loading && !error && !data.length && renderEmpty()}
       </div>
 
-      <div className="p-3 border-t border-[var(--border-divider)] flex items-center justify-between shrink-0">
+      <div className="p-3 border-t border-[var(--border-divider)] grid grid-cols-[1fr_auto_1fr] items-center shrink-0">
         <Button
           variant="ghost"
           size="sm"
           onClick={handleOpenInGitHub}
-          className="text-muted-foreground hover:text-daintree-text gap-1.5"
+          className="text-muted-foreground hover:text-daintree-text gap-1.5 justify-self-start"
         >
           <ExternalLink className="h-3.5 w-3.5" />
-          View on GitHub
+          GitHub
         </Button>
+        {!error && !loading && lastUpdatedAt != null && !debouncedSearch ? (
+          <p className="text-[10px] text-muted-foreground/60 whitespace-nowrap text-center">
+            Updated <LiveTimeAgo timestamp={lastUpdatedAt} />
+          </p>
+        ) : (
+          <span aria-hidden="true" />
+        )}
         <Button
           variant="ghost"
           size="sm"
           onClick={handleCreateNew}
-          className="text-muted-foreground hover:text-daintree-text gap-1.5"
+          className="text-muted-foreground hover:text-daintree-text gap-1.5 justify-self-end"
         >
           <Plus className="h-3.5 w-3.5" />
           New
@@ -1297,14 +1013,14 @@ export function GitHubResourceList({
         selectedIssues={
           type === "issue"
             ? Array.from(selection.selectedIds)
-                .map((id) => issueCacheRef.current.get(id))
+                .map((id) => issueCache.get(id))
                 .filter((issue): issue is GitHubIssue => issue !== undefined)
             : []
         }
         selectedPRs={
           type === "pr"
             ? Array.from(selection.selectedIds)
-                .map((id) => prCacheRef.current.get(id))
+                .map((id) => prCache.get(id))
                 .filter((pr): pr is GitHubPR => pr !== undefined)
             : []
         }

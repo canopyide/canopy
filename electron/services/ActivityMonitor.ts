@@ -10,6 +10,21 @@ import { OutputVolumeDetector } from "./pty/OutputVolumeDetector.js";
 import { HighOutputDetector } from "./pty/HighOutputDetector.js";
 import { WorkingSignalDebouncer } from "./pty/WorkingSignalDebouncer.js";
 import { LineRewriteDetector, isStatusLineRewrite } from "./pty/LineRewriteDetector.js";
+import { stripIdleTerminalSequences } from "./pty/IdleSequenceFilter.js";
+import {
+  SynchronizedFrameAnalyzer,
+  type FrameSnapshot,
+  type StructuralSignal,
+} from "./pty/SynchronizedFrameAnalyzer.js";
+import {
+  createVisibleContentSnapshot,
+  type VisibleContentSnapshot,
+} from "./pty/SustainedChangeTracker.js";
+import {
+  AGENT_OUTPUT_ACTIVITY_LINE_COUNT,
+  AgentActivityTemperature,
+  type AgentActivityObservationResult,
+} from "./pty/AgentActivityTemperature.js";
 import {
   detectPrompt,
   detectPromptLexeme,
@@ -20,11 +35,23 @@ import { detectCompletion } from "./pty/CompletionDetector.js";
 import { CompletionTimer } from "./pty/CompletionTimer.js";
 import { BootDetector } from "./pty/BootDetector.js";
 import { classifyWaitingReason } from "./pty/WaitingReasonClassifier.js";
+import { CpuHighStateTracker } from "./pty/CpuHighStateTracker.js";
+import { WaitingWatchdog } from "./pty/WaitingWatchdog.js";
 import type { WaitingReason } from "../../shared/types/agent.js";
+
+const PROMPT_DEBOUNCE_MS = 500;
+const PROMPT_QUIET_MS = 200;
+const PROMPT_HISTORY_FALLBACK_MS = 3000;
+const WORKING_HOLD_MS = 1500;
+const SPINNER_ACTIVE_MS = 1500;
+const COMPLETION_HOLD_MS = 500;
+const WORKING_INDICATOR_TTL_MS = 5000;
+const CPU_HIGH_THRESHOLD = 10;
+const CPU_LOW_THRESHOLD = 3;
 
 export interface ProcessStateValidator {
   hasActiveChildren(): boolean;
-  getDescendantsCpuUsage(): number;
+  getDescendantsCpuUsage?(): number;
 }
 
 export interface PatternDetector {
@@ -36,9 +63,9 @@ export interface ActivityMonitorOptions {
   processStateValidator?: ProcessStateValidator;
   outputActivityDetection?: {
     enabled?: boolean;
-    windowMs?: number;
-    minFrames?: number;
-    minBytes?: number;
+    leakRatePerMs?: number;
+    activationThreshold?: number;
+    maxBytesPerFrame?: number;
   };
   highOutputThreshold?: {
     enabled?: boolean;
@@ -52,6 +79,7 @@ export interface ActivityMonitorOptions {
   bootCompletePatterns?: RegExp[];
   patternBufferSize?: number;
   getVisibleLines?: (n: number) => string[];
+  getVisibleContentSnapshot?: (n: number) => VisibleContentSnapshot | undefined;
   getCursorLine?: () => string | null;
   initialState?: "busy" | "idle";
   skipInitialStateEmit?: boolean;
@@ -72,11 +100,30 @@ export interface ActivityMonitorOptions {
   };
   pollingIntervalMs?: number;
   workingRecoveryDelayMs?: number;
+  // Background polling tier override — applied automatically by setPollingInterval()
+  // when intervalMs > 50. When unset, fall back to the active value so behavior
+  // matches today's defaults until the call site opts in.
+  backgroundWorkingRecoveryDelayMs?: number;
   pollingMaxBootMs?: number;
   maxWorkingSilenceMs?: number;
   maxCpuHighEscapeMs?: number;
   maxWaitingSilenceMs?: number;
+  simpleOutputState?: boolean;
+  // Consecutive watchdog ticks that must all observe a dead-looking probe
+  // result before onWaitingTimeout fires. Defaults to 3 (≈15s of sustained
+  // consensus at the 5s watchdog cadence) to ride through transient false
+  // negatives during LLM API waits. Clamped to >= 1 to keep the fire path
+  // reachable.
+  waitingWatchdogFailThreshold?: number;
   onWaitingTimeout?: (id: string, spawnedAt: number) => void;
+  /**
+   * Fires once per boot cycle the first time `BootDetector.check()` returns
+   * true (or `markExited()` is invoked indirectly). The timestamp is the
+   * wall-clock `Date.now()` at the moment boot completion is observed. Used
+   * by `TerminalProcess` to record `bootCompleteAt` and emit the
+   * `[AgentStartup]` structured log entry.
+   */
+  onBootComplete?: (bootCompleteAt: number) => void;
 }
 
 export interface ActivityStateMetadata {
@@ -93,22 +140,9 @@ export class ActivityMonitor {
   private debounceTimer: NodeJS.Timeout | null = null;
   private readonly IDLE_DEBOUNCE_MS: number;
   private readonly PROMPT_FAST_PATH_MIN_QUIET_MS: number;
-  private readonly PROMPT_DEBOUNCE_MS = 500;
-  private readonly PROMPT_QUIET_MS = 200;
-  private readonly PROMPT_HISTORY_FALLBACK_MS = 3000;
-  private readonly WORKING_HOLD_MS = 1500;
-  private readonly SPINNER_ACTIVE_MS = 1500;
-  private readonly COMPLETION_HOLD_MS = 500;
-  private readonly WORKING_INDICATOR_TTL_MS = 5000;
   private readonly MAX_WORKING_SILENCE_MS: number;
   private readonly MAX_WAITING_SILENCE_MS: number;
-  private readonly MAX_CPU_HIGH_ESCAPE_MS: number;
-  private readonly CPU_HIGH_THRESHOLD = 10;
-  private readonly CPU_LOW_THRESHOLD = 3;
-  private isCpuHigh = false;
-  private cpuHighSince = 0;
   private idleSince = 0;
-  private waitingWatchdogFired = false;
   private lastPatternResultAt = 0;
   private workingHoldUntil = 0;
 
@@ -118,27 +152,46 @@ export class ActivityMonitor {
   private readonly outputVolumeDetector: OutputVolumeDetector;
   private readonly highOutputDetector: HighOutputDetector;
   private readonly workingSignalDebouncer: WorkingSignalDebouncer;
+  // Dedicated debouncer for the idle-state cosmetic-redraw recovery path
+  // (#6641). Cannot share workingSignalDebouncer because runPollingCycle's
+  // "no working signal" branch resets sustainedSince every poll, which would
+  // erase accumulated spinner-tick signal between sparse cosmetic frames.
+  private readonly cosmeticRecoveryDebouncer: WorkingSignalDebouncer;
+  // Structural tier (#6668) cannot share workingSignalDebouncer because
+  // runPollingCycle's "no working signal this tick" branch calls
+  // shouldTriggerRecovery(now, false), which would zero the structural
+  // sustainedSince between sparse frame-close events (one every 80-100ms is
+  // typical, vs. the polling cycle's 50ms cadence).
+  private readonly structuralRecoveryDebouncer: WorkingSignalDebouncer;
   private readonly lineRewriteDetector: LineRewriteDetector;
   private readonly completionTimer: CompletionTimer;
   private readonly bootDetector: BootDetector;
+  // Structural-signal tier (#6668). Sits above the regex-based pattern tier:
+  // classifies DEC mode 2026 frame snapshots as cosmetic-only, spinner, or
+  // time-counter. Driven by SynchronizedFrameDetector in TerminalProcess via
+  // onSynchronizedFrame().
+  private readonly synchronizedFrameAnalyzer: SynchronizedFrameAnalyzer;
+  private readonly cpuTracker: CpuHighStateTracker;
+  private readonly waitingWatchdog: WaitingWatchdog;
 
   // Resize suppression
   private resizeSuppressUntil = 0;
 
   private readonly onWaitingTimeout?: (id: string, spawnedAt: number) => void;
+  private readonly onBootComplete?: (bootCompleteAt: number) => void;
+  private bootCompleteCallbackFired = false;
   private readonly processStateValidator?: ProcessStateValidator;
   private lastActivityTimestamp = Date.now();
   private lastDataTimestamp = Date.now();
   private lastOutputActivityAt = 0;
   private lastWorkingIndicatorTimestamp = 0;
   private promptStableSince = 0;
-  private readonly SLEEP_DETECTION_THRESHOLD_MS = 5000;
-  private pendingStateRevalidation = false;
 
   // Pattern-based detection
   private patternDetector?: AgentPatternDetector;
   private lastPatternResult?: PatternDetectionResult;
   private readonly getVisibleLines?: (n: number) => string[];
+  private readonly getVisibleContentSnapshot?: (n: number) => VisibleContentSnapshot | undefined;
   private readonly getCursorLine?: () => string | null;
   private pollingInterval?: ReturnType<typeof setInterval>;
   private watchdogInterval?: ReturnType<typeof setInterval>;
@@ -153,9 +206,20 @@ export class ActivityMonitor {
 
   // State preservation for project switch
   private readonly skipInitialStateEmit: boolean;
+  private readonly simpleOutputState: boolean;
+  private readonly simpleOutputTemperature = new AgentActivityTemperature();
 
   // Polling interval configuration
   private POLLING_INTERVAL_MS: number;
+
+  // Tier-aware recovery thresholds (#6641). The output volume detector is now
+  // sample-cadence invariant (#6666), so only the working-signal debouncer
+  // needs tier-specific tuning. Active values must match the pre-fix hardcoded
+  // behavior so the 50ms tier is unchanged. Background shortens the debouncer
+  // delay so backgrounded agents can escape "waiting" when output resumes.
+  private _tier: "active" | "background" = "active";
+  private readonly activeWorkingRecoveryDelayMs: number;
+  private readonly backgroundWorkingRecoveryDelayMs: number;
 
   constructor(
     private terminalId: string,
@@ -168,17 +232,21 @@ export class ActivityMonitor {
     ) => void,
     options?: ActivityMonitorOptions
   ) {
-    this.IDLE_DEBOUNCE_MS = options?.idleDebounceMs ?? 4000;
+    const simpleOutputState = options?.simpleOutputState ?? options?.agentId !== undefined;
+    this.IDLE_DEBOUNCE_MS = options?.idleDebounceMs ?? (simpleOutputState ? 8000 : 4000);
     this.PROMPT_FAST_PATH_MIN_QUIET_MS = options?.promptFastPathMinQuietMs ?? 3000;
     this.POLLING_MAX_BOOT_MS = options?.pollingMaxBootMs ?? 15000;
     this.MAX_WORKING_SILENCE_MS = options?.maxWorkingSilenceMs ?? 180000;
-    this.MAX_CPU_HIGH_ESCAPE_MS = options?.maxCpuHighEscapeMs ?? 60000;
+    const maxCpuHighEscapeMs = options?.maxCpuHighEscapeMs ?? 60000;
     this.MAX_WAITING_SILENCE_MS = options?.maxWaitingSilenceMs ?? 600000;
+    const rawThreshold = options?.waitingWatchdogFailThreshold ?? 3;
+    const watchdogFailThreshold = Number.isFinite(rawThreshold) ? Math.max(1, rawThreshold) : 3;
 
     this.idleSince = Date.now();
 
     this.processStateValidator = options?.processStateValidator;
     this.onWaitingTimeout = options?.onWaitingTimeout;
+    this.onBootComplete = options?.onBootComplete;
 
     // Initialize subsystems
     this.inputTracker = new InputTracker({
@@ -195,8 +263,24 @@ export class ActivityMonitor {
     this.workingSignalDebouncer = new WorkingSignalDebouncer(
       options?.workingRecoveryDelayMs ?? 1500
     );
+    this.cosmeticRecoveryDebouncer = new WorkingSignalDebouncer(
+      options?.workingRecoveryDelayMs ?? 1500
+    );
+    this.structuralRecoveryDebouncer = new WorkingSignalDebouncer(
+      options?.workingRecoveryDelayMs ?? 1500
+    );
+
+    // Snapshot tier-aware recovery thresholds. Active value defaults to the
+    // debouncer-instantiation value so the active-tier path is identical to
+    // pre-fix behavior. Background defaults to the active value when the
+    // caller doesn't opt in, preserving compatibility for non-agent terminals.
+    this.activeWorkingRecoveryDelayMs = this.workingSignalDebouncer.delayMs;
+    this.backgroundWorkingRecoveryDelayMs =
+      options?.backgroundWorkingRecoveryDelayMs ?? this.activeWorkingRecoveryDelayMs;
 
     this.lineRewriteDetector = new LineRewriteDetector(options?.lineRewriteDetection);
+
+    this.synchronizedFrameAnalyzer = new SynchronizedFrameAnalyzer();
 
     this.completionTimer = new CompletionTimer();
 
@@ -207,6 +291,7 @@ export class ActivityMonitor {
       this.patternDetector = new AgentPatternDetector(options.agentId, options.patternConfig);
     }
     this.getVisibleLines = options?.getVisibleLines;
+    this.getVisibleContentSnapshot = options?.getVisibleContentSnapshot;
     this.getCursorLine = options?.getCursorLine;
 
     // Prompt config
@@ -228,14 +313,78 @@ export class ActivityMonitor {
     // State preservation
     this.state = options?.initialState ?? "idle";
     this.skipInitialStateEmit = options?.skipInitialStateEmit ?? false;
+    this.simpleOutputState = simpleOutputState;
 
     // Polling interval
     this.POLLING_INTERVAL_MS = options?.pollingIntervalMs ?? 50;
 
+    this.cpuTracker = new CpuHighStateTracker(this.processStateValidator, {
+      cpuHighThreshold: CPU_HIGH_THRESHOLD,
+      cpuLowThreshold: CPU_LOW_THRESHOLD,
+      maxCpuHighEscapeMs,
+    });
+
+    this.waitingWatchdog = new WaitingWatchdog({
+      failThreshold: watchdogFailThreshold,
+      maxWaitingSilenceMs: this.MAX_WAITING_SILENCE_MS,
+      workingIndicatorTtlMs: WORKING_INDICATOR_TTL_MS,
+      cpuTracker: this.cpuTracker,
+      processStateValidator: this.processStateValidator,
+      onFire: (id, spawnedAt) => {
+        this.onWaitingTimeout?.(id, spawnedAt);
+      },
+    });
+
+    // Apply initial tier so a monitor constructed with a background polling
+    // interval (e.g. project starts hidden) gets the right thresholds before
+    // any output arrives.
+    this.applyTier(this.tierForInterval(this.POLLING_INTERVAL_MS));
+
     // Lightweight watchdog interval: runs the waiting watchdog check periodically
     // even when there's no output/activity. 5s keeps overhead negligible while
     // ensuring hung waiting states are caught within a reasonable window.
-    this.watchdogInterval = setInterval(() => this.checkWaitingWatchdog(Date.now()), 5000);
+    this.watchdogInterval = setInterval(() => this.runWaitingWatchdogCheck(Date.now()), 5000);
+    this.watchdogInterval.unref();
+  }
+
+  private tierForInterval(intervalMs: number): "active" | "background" {
+    return intervalMs <= 50 ? "active" : "background";
+  }
+
+  private applyTier(tier: "active" | "background"): void {
+    if (this._tier === tier) return;
+    this._tier = tier;
+    const delay =
+      tier === "background"
+        ? this.backgroundWorkingRecoveryDelayMs
+        : this.activeWorkingRecoveryDelayMs;
+    this.workingSignalDebouncer.setDelay(delay);
+    this.cosmeticRecoveryDebouncer.setDelay(delay);
+    this.structuralRecoveryDebouncer.setDelay(delay);
+  }
+
+  /**
+   * Fires the configured `onBootComplete` callback at most once per boot
+   * cycle. Reset by `startPolling()` when boot detection re-enters from
+   * `hasExitedBootState=false`. Both `BootDetector.check()` call sites (data
+   * path and polling cycle) must funnel through this guard.
+   */
+  private fireBootComplete(timestamp: number): void {
+    if (this.bootCompleteCallbackFired) return;
+    this.bootCompleteCallbackFired = true;
+    if (!this.onBootComplete) return;
+    try {
+      this.onBootComplete(timestamp);
+    } catch {
+      // Callback failure must not destabilize the activity monitor.
+    }
+  }
+
+  private isEscInterruptFallback(input: string): boolean {
+    return (
+      input.toLowerCase().includes("esc to interrupt") ||
+      input.toLowerCase().includes("esc to cancel")
+    );
   }
 
   onInput(data: string): void {
@@ -266,25 +415,30 @@ export class ActivityMonitor {
   onData(data?: string): void {
     if (this.isDisposed) return;
     const now = Date.now();
-    const timeSinceLastData = now - this.lastDataTimestamp;
 
-    if (timeSinceLastData > this.SLEEP_DETECTION_THRESHOLD_MS) {
-      this.pendingStateRevalidation = true;
+    if (this.simpleOutputState) {
+      if (!data) {
+        return;
+      }
+      this.lastDataTimestamp = now;
+      // Boot detection runs in the simple-output path too so onBootComplete
+      // (#7616) fires for real agent terminals — `simpleOutputState` is true
+      // for every agent monitor built via `buildActivityMonitorOptions`.
+      if (!this.bootDetector.hasExitedBootState) {
+        if (this.bootDetector.check(stripAnsi(data), false, 0, Infinity)) {
+          this.fireBootComplete(now);
+        }
+      }
+      if (!this.getVisibleLines) {
+        this.noteSimpleOutputSnapshot(createVisibleContentSnapshot(stripAnsi(data)), now);
+      }
+      return;
     }
-
-    this.lastDataTimestamp = now;
 
     const isLikelyUserEcho = data ? this.inputTracker.isLikelyUserEcho(data, now) : false;
     const isCosmeticRedraw = data ? isStatusLineRewrite(data) : false;
 
-    if (data && !isLikelyUserEcho && !isCosmeticRedraw) {
-      this.lastActivityTimestamp = now;
-    }
-
-    if (this.pendingStateRevalidation && this.state === "busy") {
-      this.pendingStateRevalidation = false;
-      this.revalidateStateAfterWake();
-    }
+    this.lastDataTimestamp = now;
 
     if (data && !isLikelyUserEcho && isCosmeticRedraw) {
       // Spinner/status-line rewrite — latch lastSpinnerDetectedAt for polling's isSpinnerActive()
@@ -303,6 +457,7 @@ export class ActivityMonitor {
       if (!this.bootDetector.hasExitedBootState) {
         if (this.bootDetector.check(bufferText, false, 0, Infinity)) {
           // Boot detected via pattern in rolling buffer
+          this.fireBootComplete(now);
         }
       }
 
@@ -316,7 +471,7 @@ export class ActivityMonitor {
       }
       const isWorking = patternResult
         ? patternResult.isWorking
-        : lowerBuffer.includes("esc to interrupt") || lowerBuffer.includes("esc to cancel");
+        : this.isEscInterruptFallback(lowerBuffer);
 
       if (
         isWorking &&
@@ -345,12 +500,68 @@ export class ActivityMonitor {
       return;
     }
 
-    if (isCosmeticRedraw) {
+    // Filter idle-only protocol sequences (DECSET toggles, OSC metadata, CPR
+    // responses, DSR queries, bracketed-paste markers) before byte-volume gates
+    // see them — these carry no work-progress information and would otherwise
+    // spuriously escalate idle→busy at low minBytes thresholds. Computed up
+    // front because the debounce-reset path also gates on it: pure protocol
+    // noise must not keep a busy monitor alive forever.
+    const filteredLength = Buffer.byteLength(stripIdleTerminalSequences(data), "utf8");
+    const hasOutputActivity = isCosmeticRedraw || filteredLength > 0;
+
+    if (hasOutputActivity) {
+      this.lastActivityTimestamp = now;
+    }
+
+    // Agent terminals should recover from waiting on the first visible PTY
+    // output byte. Pattern, volume, and structural detectors can still refine
+    // prompts/completion, but they must not make `waiting` sticky while output
+    // is arriving.
+    if (
+      this.getVisibleLines &&
+      this.state === "idle" &&
+      hasOutputActivity &&
+      !this.isResizeSuppressed(now) &&
+      !this.inputTracker.isRecentUserInput(now) &&
+      this.bootDetector.hasExitedBootState
+    ) {
+      this.becomeBusy({ trigger: "output" }, now);
       return;
     }
 
-    if (this.state === "busy") {
+    // Spinner frames and other cosmetic redraws ARE evidence the agent is alive —
+    // long-running model thinking can emit only spinner ticks for tens of seconds.
+    // Reset the debounce timer before short-circuiting on cosmetic redraws so
+    // already-busy agents don't flip to idle mid-thought (issue #6365). Pure
+    // idle-protocol noise (filteredLength === 0 and not a spinner frame) is
+    // NOT liveness evidence and is excluded from this guard.
+    if (this.state === "busy" && (isCosmeticRedraw || filteredLength > 0)) {
       this.resetDebounceTimer();
+    }
+
+    if (isCosmeticRedraw) {
+      if (this.getVisibleLines && !this.isResizeSuppressed(now)) {
+        this.lastActivityTimestamp = now;
+      }
+
+      // Recovery path for idle (waiting) agent terminals (#6641): if a sustained
+      // spinner reappears after the agent went quiet, transition back to busy
+      // through a dedicated debouncer. Gated on getVisibleLines so this only
+      // applies to agent terminals, and on isResizeSuppressed so window-resize
+      // redraws don't false-positive recovery.
+      if (
+        this.getVisibleLines &&
+        this.state === "idle" &&
+        !this.isResizeSuppressed(now) &&
+        !this.inputTracker.isRecentUserInput(now) &&
+        this.bootDetector.hasExitedBootState
+      ) {
+        if (this.cosmeticRecoveryDebouncer.shouldTriggerRecovery(now, true)) {
+          this.cosmeticRecoveryDebouncer.reset();
+          this.becomeBusy({ trigger: "output" }, now);
+        }
+      }
+      return;
     }
 
     // Update pattern buffer and check for working patterns (non-polling terminals only)
@@ -369,14 +580,16 @@ export class ActivityMonitor {
       }
     }
 
-    const dataLength = Buffer.byteLength(data, "utf8");
-
     if (this.isResizeSuppressed(now)) {
       return;
     }
 
+    if (filteredLength === 0) {
+      return;
+    }
+
     // Track high output activity
-    this.highOutputDetector.update(dataLength, now);
+    this.highOutputDetector.update(filteredLength, now);
 
     // High output recovery
     if (this.state === "idle" && this.highOutputDetector.shouldTriggerRecovery(now)) {
@@ -389,8 +602,125 @@ export class ActivityMonitor {
       return;
     }
 
-    if (this.outputVolumeDetector.update(dataLength, now)) {
+    if (this.outputVolumeDetector.update(filteredLength, now)) {
       this.becomeBusyFromOutput(now);
+    }
+  }
+
+  // Structural-signal tier entry point (#6668). Called by
+  // SynchronizedFrameDetector once per DEC mode 2026 frame-close. Runs three
+  // classifiers (cosmetic-only, time-counter, spinner) over the snapshot and
+  // applies the result:
+  //
+  //   * cosmetic-only → low-confidence visible-output signal
+  //   * spinner / time-counter → higher-confidence visible-output signal
+  //
+  // Frames are dropped when resize-suppressed, before boot-complete, or when
+  // there's no visible-lines accessor (non-agent terminals).
+  onSynchronizedFrame(snapshot: FrameSnapshot): void {
+    if (this.isDisposed) return;
+    if (!this.getVisibleLines) return;
+
+    const now = Date.now();
+    if (this.simpleOutputState) {
+      // Simple output mode uses the full visible-line fingerprint from the
+      // polling cycle. Mixing per-frame bottom-row hashes with full-screen
+      // hashes makes unchanged frames look like changes.
+      return;
+    }
+    if (this.isResizeSuppressed(now)) return;
+    // Pre-boot frames are part of the agent's startup chrome — let the boot
+    // detector handle them via the regular onData path.
+    if (!this.bootDetector.hasExitedBootState) return;
+
+    const result = this.synchronizedFrameAnalyzer.classify(snapshot);
+    this.applyStructuralSignal(result.signal, result.confidence, now);
+  }
+
+  private applyStructuralSignal(signal: StructuralSignal, confidence: number, now: number): void {
+    if (signal === "cosmetic-only") {
+      // A cosmetic-only 2026 frame is still visible output. The regression we
+      // are fixing here was caused by treating this signal as a veto, which let
+      // agents visibly redraw forever while remaining in `waiting`.
+      this.noteStructuralWorkingSignal(now, Math.max(confidence, 0.7));
+      return;
+    }
+
+    if (signal === "spinner" || signal === "time-counter") {
+      this.noteStructuralWorkingSignal(now, confidence);
+    }
+  }
+
+  private noteStructuralWorkingSignal(now: number, confidence: number): void {
+    this.lastActivityTimestamp = now;
+    if (this.inputTracker.isRecentUserInput(now)) {
+      // The user just typed; require sustained signal across user input
+      // before recovering (matches the regex tier's behavior).
+      this.structuralRecoveryDebouncer.shouldTriggerRecovery(now, false);
+      return;
+    }
+
+    // For an already-busy monitor, structural confirmation is a heartbeat:
+    // refresh workingHoldUntil so the idle debounce timer doesn't fire mid-
+    // thought (#6365 lesson).
+    if (this.state === "busy") {
+      this.recordWorkingSignal(now);
+      this.resetDebounceTimer();
+      return;
+    }
+
+    // Idle → busy recovery: a single blip is not enough; signal must persist
+    // across the structural-tier debounce window.
+    if (this.structuralRecoveryDebouncer.shouldTriggerRecovery(now, true)) {
+      this.structuralRecoveryDebouncer.reset();
+      this.becomeBusy({ trigger: "pattern", patternConfidence: confidence }, now);
+    }
+  }
+
+  private captureSimpleOutputSnapshot(): VisibleContentSnapshot | undefined {
+    const cellSnapshot = this.getVisibleContentSnapshot?.(AGENT_OUTPUT_ACTIVITY_LINE_COUNT);
+    if (cellSnapshot !== undefined) {
+      return cellSnapshot;
+    }
+
+    if (!this.getVisibleLines) {
+      return undefined;
+    }
+    return createVisibleContentSnapshot(this.getVisibleLines(AGENT_OUTPUT_ACTIVITY_LINE_COUNT));
+  }
+
+  private noteSimpleOutputSnapshot(snapshot: VisibleContentSnapshot, now: number): void {
+    this.applySimpleOutputTemperature(
+      this.simpleOutputTemperature.observeSnapshot(now, snapshot),
+      now
+    );
+  }
+
+  private applySimpleOutputTemperature(result: AgentActivityObservationResult, now: number): void {
+    if (result.suppressed || result.seeded) {
+      return;
+    }
+
+    if (result.changed) {
+      this.lastActivityTimestamp = now;
+      this.lastDataTimestamp = now;
+    }
+
+    if (this.state === "busy" && result.changed) {
+      this.resetDebounceTimer();
+      return;
+    }
+
+    if (this.state !== "busy" && result.stateHint === "busy") {
+      this.becomeBusy({ trigger: "output" }, now);
+      return;
+    }
+
+    if (this.state === "busy" && result.stateHint === "idle" && now >= this.workingHoldUntil) {
+      this.state = "idle";
+      this.idleSince = now;
+      this.patternBuf.clear();
+      this.onStateChange(this.terminalId, this.spawnedAt, "idle", { trigger: "timeout" });
     }
   }
 
@@ -411,7 +741,7 @@ export class ActivityMonitor {
         // Callback failure must not prevent cleanup
       }
     }
-    this.waitingWatchdogFired = false;
+    this.waitingWatchdog.reset();
     this.idleSince = 0;
     if (this.watchdogInterval) {
       clearInterval(this.watchdogInterval);
@@ -427,14 +757,17 @@ export class ActivityMonitor {
     this.outputVolumeDetector.reset();
     this.highOutputDetector.reset();
     this.workingSignalDebouncer.reset();
+    this.cosmeticRecoveryDebouncer.reset();
+    this.structuralRecoveryDebouncer.reset();
+    this.simpleOutputTemperature.reset();
     this.lineRewriteDetector.reset();
+    this.synchronizedFrameAnalyzer.reset();
     this.patternBuf.reset();
     this.bootDetector.reset();
     this.resizeSuppressUntil = 0;
     this.lastPatternResult = undefined;
     this.lastPatternResultAt = 0;
-    this.isCpuHigh = false;
-    this.cpuHighSince = 0;
+    this.cpuTracker.reset();
     this.workingHoldUntil = 0;
     this.lastDataTimestamp = 0;
     this.lastOutputActivityAt = 0;
@@ -455,13 +788,18 @@ export class ActivityMonitor {
     // Old buffer contents and TTL-gated pattern results belong to the previous
     // detector — leaving any of them would let stale matches hold working state
     // through the debounce callback's WORKING_INDICATOR_TTL_MS window. Timing
-    // fields (lastActivityTimestamp, promptStableSince, CPU hysteresis,
-    // workingHoldUntil, debounceTimer) are preserved so busy/idle classification
-    // stays coherent across the swap.
+    // fields (lastActivityTimestamp, promptStableSince, workingHoldUntil,
+    // debounceTimer) are preserved so busy/idle classification stays coherent
+    // across the swap.
     this.patternBuf.reset();
     this.lastPatternResult = undefined;
     this.lastPatternResultAt = 0;
     this.lastWorkingIndicatorTimestamp = 0;
+    // Structural tier holds per-cell ring-buffer history that is implicitly
+    // tied to the current agent's rendering. Swapping detectors is a strong
+    // signal that the agent identity changed — discard accumulated state.
+    this.synchronizedFrameAnalyzer.reset();
+    this.simpleOutputTemperature.reset();
   }
 
   notifySubmission(): void {
@@ -469,9 +807,17 @@ export class ActivityMonitor {
     this.becomeBusy({ trigger: "input" });
   }
 
-  notifyResize(suppressionMs = 1000): void {
+  notifyResize(suppressionMs = 500): void {
     this.resizeSuppressUntil = Date.now() + suppressionMs;
     this.highOutputDetector.resetWindow();
+    this.workingSignalDebouncer.reset();
+    this.cosmeticRecoveryDebouncer.reset();
+    this.structuralRecoveryDebouncer.reset();
+    // Structural tier keys cell ring buffers by viewport-bottom-relative
+    // (rowOffset, col); a resize invalidates that mapping. Reset so the
+    // first post-resize frame doesn't compare against pre-resize cells.
+    this.synchronizedFrameAnalyzer.reset();
+    this.simpleOutputTemperature.noteResize(Date.now(), suppressionMs);
   }
 
   private isResizeSuppressed(now: number): boolean {
@@ -495,13 +841,27 @@ export class ActivityMonitor {
       }
     } else {
       this.bootDetector.hasExitedBootState = false;
+      // Re-arm the one-shot boot-complete callback for restart paths so the
+      // next observed boot completion fires telemetry again.
+      this.bootCompleteCallbackFired = false;
 
       this.state = "busy";
       this.onStateChange(this.terminalId, this.spawnedAt, "busy", { trigger: "pattern" });
       this.recordWorkingSignal(this.bootDetector.pollingStartTime);
     }
 
+    if (this.simpleOutputState) {
+      const snapshot = this.captureSimpleOutputSnapshot();
+      if (snapshot !== undefined) {
+        this.simpleOutputTemperature.seedSnapshot(snapshot, this.bootDetector.pollingStartTime);
+      }
+      if (this.state === "busy") {
+        this.resetDebounceTimer();
+      }
+    }
+
     this.pollingInterval = setInterval(() => this.runPollingCycle(), this.POLLING_INTERVAL_MS);
+    this.pollingInterval.unref();
   }
 
   private runPollingCycle(): void {
@@ -509,6 +869,37 @@ export class ActivityMonitor {
     if (!this.getVisibleLines) return;
 
     const now = Date.now();
+
+    if (this.simpleOutputState) {
+      // Boot detection in the simple-output polling path so the timeout
+      // fallback (`timeSinceBoot >= POLLING_MAX_BOOT_MS`) still fires
+      // onBootComplete (#7616) when agents emit no recognizable boot pattern.
+      if (!this.bootDetector.hasExitedBootState && this.getVisibleLines) {
+        const lines = this.getVisibleLines(50);
+        const strippedText = stripAnsi(lines.join(" "));
+        const timeSinceBoot = now - this.bootDetector.pollingStartTime;
+        if (this.bootDetector.check(strippedText, false, timeSinceBoot, this.POLLING_MAX_BOOT_MS)) {
+          this.fireBootComplete(now);
+        }
+      }
+
+      const snapshot = this.captureSimpleOutputSnapshot();
+      if (snapshot !== undefined) {
+        this.noteSimpleOutputSnapshot(snapshot, now);
+      }
+
+      if (
+        this.state === "busy" &&
+        now - this.lastActivityTimestamp >= this.IDLE_DEBOUNCE_MS &&
+        now >= this.workingHoldUntil
+      ) {
+        this.state = "idle";
+        this.idleSince = now;
+        this.patternBuf.clear();
+        this.onStateChange(this.terminalId, this.spawnedAt, "idle", { trigger: "timeout" });
+      }
+      return;
+    }
 
     const scanCount = !this.bootDetector.hasExitedBootState
       ? Math.max(this.promptDetectorConfig.promptScanLineCount, 50)
@@ -532,9 +923,9 @@ export class ActivityMonitor {
       ? patternResult.isWorking
       : this.skipInitialStateEmit
         ? false
-        : text.includes("esc to interrupt") || text.includes("esc to cancel");
+        : this.isEscInterruptFallback(text);
 
-    const allowHistoryScan = quietForMs >= this.PROMPT_HISTORY_FALLBACK_MS;
+    const allowHistoryScan = quietForMs >= PROMPT_HISTORY_FALLBACK_MS;
     const promptResult = detectPrompt(lines, this.promptDetectorConfig, cursorLine, {
       allowHistoryScan,
     });
@@ -562,13 +953,13 @@ export class ActivityMonitor {
         this.bootDetector.check(strippedText, isPrompt, timeSinceBoot, this.POLLING_MAX_BOOT_MS)
       ) {
         // Boot complete, continue to normal detection
+        this.fireBootComplete(now);
       } else {
         return; // Still booting, stay busy
       }
     }
 
-    // Update CPU hysteresis state once per polling cycle
-    this.updateCpuHighState(now);
+    this.cpuTracker.update(now);
 
     // Safety timeout: if no PTY output for MAX_WORKING_SILENCE_MS, force idle
     if (this.isWorkingSilenceTimeout(now)) {
@@ -579,14 +970,17 @@ export class ActivityMonitor {
       return;
     }
 
-    // Waiting watchdog: if idle (waiting) > MAX_WAITING_SILENCE_MS and agent process is dead
-    this.checkWaitingWatchdog(now);
+    // Waiting watchdog runs solely on the dedicated 5s interval (set in the
+    // constructor). Calling it from the polling cycle too would collapse
+    // WATCHDOG_FAIL_THRESHOLD's confirmation window to one polling cadence
+    // (~150ms at the 50ms default) for agent terminals, defeating the
+    // consensus protection.
 
     const hasRecentOutputActivity =
       this.lastOutputActivityAt > 0 &&
-      now - this.lastOutputActivityAt <= this.outputVolumeDetector.windowMs;
-    const isSpinnerActive = this.lineRewriteDetector.isSpinnerActive(now, this.SPINNER_ACTIVE_MS);
-    const isOutputQuiet = quietForMs >= this.PROMPT_QUIET_MS;
+      now - this.lastOutputActivityAt <= this.outputVolumeDetector.recencyWindowMs;
+    const isSpinnerActive = this.lineRewriteDetector.isSpinnerActive(now, SPINNER_ACTIVE_MS);
+    const isOutputQuiet = quietForMs >= PROMPT_QUIET_MS;
     const promptStableForMs = this.promptStableSince === 0 ? 0 : now - this.promptStableSince;
 
     const hasHighOutputActivity = this.highOutputDetector.isHighOutput(now);
@@ -598,7 +992,7 @@ export class ActivityMonitor {
       !hasRecentOutputActivity &&
       !hasHighOutputActivity;
     const shouldPreferPrompt =
-      shouldAllowPromptStability && promptStableForMs >= this.PROMPT_DEBOUNCE_MS;
+      shouldAllowPromptStability && promptStableForMs >= PROMPT_DEBOUNCE_MS;
 
     if (effectiveWorkingPattern && !shouldAllowPromptStability && !isQuietForIdle) {
       this.recordWorkingSignal(now);
@@ -713,7 +1107,7 @@ export class ActivityMonitor {
       shouldPreferPrompt &&
       quietForMs >= this.PROMPT_FAST_PATH_MIN_QUIET_MS &&
       now >= this.workingHoldUntil &&
-      !this.isCpuHighAndNotDeadlined(now) &&
+      !this.cpuTracker.isHighAndNotDeadlined(now) &&
       !(this.inputTracker.pendingInputUntil > 0 && now < this.inputTracker.pendingInputUntil)
     ) {
       this.state = "idle";
@@ -731,7 +1125,7 @@ export class ActivityMonitor {
     // contains a prompt lexeme (?, [y/N], keyword+colon, "press enter"), detect
     // as a prompt with medium confidence. This catches interactive prompts that
     // don't match any configured promptPattern or promptHintPattern.
-    const LEXEME_STALL_MIN_QUIET_MS = 3000;
+    const LEXEME_STALL_MIN_QUIET_MS = Math.max(3000, this.IDLE_DEBOUNCE_MS);
     if (
       this.state === "busy" &&
       !this.completionTimer.emitted &&
@@ -742,7 +1136,7 @@ export class ActivityMonitor {
       !hasHighOutputActivity &&
       quietForMs >= LEXEME_STALL_MIN_QUIET_MS &&
       now >= this.workingHoldUntil &&
-      !this.isCpuHighAndNotDeadlined(now) &&
+      !this.cpuTracker.isHighAndNotDeadlined(now) &&
       !(this.inputTracker.pendingInputUntil > 0 && now < this.inputTracker.pendingInputUntil)
     ) {
       const candidateLine =
@@ -770,7 +1164,7 @@ export class ActivityMonitor {
       isQuietForIdle &&
       now >= this.workingHoldUntil &&
       !hasHighOutputActivity &&
-      !this.isCpuHighAndNotDeadlined(now) &&
+      !this.cpuTracker.isHighAndNotDeadlined(now) &&
       !(this.inputTracker.pendingInputUntil > 0 && now < this.inputTracker.pendingInputUntil)
     ) {
       this.state = "idle";
@@ -804,11 +1198,18 @@ export class ActivityMonitor {
     if (wasPolling && this.pollingInterval) {
       clearInterval(this.pollingInterval);
       this.pollingInterval = setInterval(() => this.runPollingCycle(), this.POLLING_INTERVAL_MS);
+      this.pollingInterval.unref();
     }
+
+    // The working-signal debouncer needs to track polling cadence, otherwise
+    // the 1500ms delay becomes impossible to satisfy at 500ms polling (#6641).
+    // The output volume detector is sample-cadence invariant (#6666) and
+    // needs no tier handling here.
+    this.applyTier(this.tierForInterval(intervalMs));
   }
 
   private recordWorkingSignal(now: number): void {
-    this.workingHoldUntil = Math.max(this.workingHoldUntil, now + this.WORKING_HOLD_MS);
+    this.workingHoldUntil = Math.max(this.workingHoldUntil, now + WORKING_HOLD_MS);
   }
 
   private transitionToCompleted(
@@ -830,7 +1231,7 @@ export class ActivityMonitor {
         trigger: "pattern",
         patternConfidence: 0.85,
       });
-    }, this.COMPLETION_HOLD_MS);
+    }, COMPLETION_HOLD_MS);
 
     this.onStateChange(this.terminalId, this.spawnedAt, "completed", {
       trigger: "pattern",
@@ -844,40 +1245,6 @@ export class ActivityMonitor {
     this.becomeBusy({ trigger: "pattern", patternConfidence: confidence }, now);
   }
 
-  private revalidateStateAfterWake(): void {
-    const actuallyBusy = this.hasActiveChildrenSafe();
-    if (actuallyBusy === null) {
-      return;
-    }
-    if (!actuallyBusy && this.state === "busy") {
-      let waitingReason: WaitingReason | undefined;
-      if (this.getVisibleLines) {
-        const lines = this.getVisibleLines(
-          Math.max(this.promptDetectorConfig.promptScanLineCount, 15)
-        );
-        const cursorLine = this.getCursorLine?.() ?? null;
-        const promptResult = detectPrompt(lines, this.promptDetectorConfig, cursorLine, {
-          allowHistoryScan: true,
-        });
-        if (!promptResult.isPrompt) {
-          return;
-        }
-        waitingReason = classifyWaitingReason(lines, promptResult.isPrompt);
-      }
-      if (this.debounceTimer) {
-        clearTimeout(this.debounceTimer);
-        this.debounceTimer = null;
-      }
-      this.state = "idle";
-      this.idleSince = Date.now();
-      this.patternBuf.clear();
-      this.onStateChange(this.terminalId, this.spawnedAt, "idle", {
-        trigger: "timeout",
-        waitingReason,
-      });
-    }
-  }
-
   private becomeBusy(metadata: ActivityStateMetadata, now: number = Date.now()): void {
     if (this.isDisposed) return;
     this.inputTracker.clearPendingInput();
@@ -887,7 +1254,12 @@ export class ActivityMonitor {
     this.lastDataTimestamp = now;
     this.recordWorkingSignal(now);
     this.resetDebounceTimer();
-    this.waitingWatchdogFired = false;
+    this.waitingWatchdog.reset();
+    // Clear any in-flight cosmetic-redraw accumulator so the next idle cycle
+    // starts fresh — otherwise a single spinner tick after busy→idle would
+    // immediately re-trigger recovery without sustained signal.
+    this.cosmeticRecoveryDebouncer.reset();
+    this.structuralRecoveryDebouncer.reset();
 
     // Reset completion state for the new work cycle
     this.completionTimer.reset();
@@ -908,11 +1280,6 @@ export class ActivityMonitor {
       return;
     }
 
-    const actuallyBusy = this.hasActiveChildrenSafe();
-    if (actuallyBusy === false) {
-      return;
-    }
-
     this.lastOutputActivityAt = now;
     this.becomeBusy({ trigger: "output" }, now);
   }
@@ -922,6 +1289,29 @@ export class ActivityMonitor {
 
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
+    }
+
+    if (this.simpleOutputState) {
+      this.debounceTimer = setTimeout(() => {
+        if (this.isDisposed) {
+          this.debounceTimer = null;
+          return;
+        }
+
+        const now = Date.now();
+        if (
+          this.state === "busy" &&
+          now - this.lastActivityTimestamp >= this.IDLE_DEBOUNCE_MS &&
+          now >= this.workingHoldUntil
+        ) {
+          this.state = "idle";
+          this.idleSince = now;
+          this.patternBuf.clear();
+          this.onStateChange(this.terminalId, this.spawnedAt, "idle", { trigger: "timeout" });
+        }
+        this.debounceTimer = null;
+      }, this.IDLE_DEBOUNCE_MS);
+      return;
     }
 
     this.debounceTimer = setTimeout(() => {
@@ -945,35 +1335,12 @@ export class ActivityMonitor {
         return;
       }
 
-      // Check process liveness first — if the terminal is dead, don't reschedule
-      // based on stale pattern state
-      const actuallyBusy = this.hasActiveChildrenSafe();
-      if (actuallyBusy === false) {
-        this.state = "idle";
-        this.idleSince = Date.now();
-        this.patternBuf.clear();
-        this.onStateChange(this.terminalId, this.spawnedAt, "idle");
-        this.debounceTimer = null;
-        return;
-      }
-
-      if (actuallyBusy) {
-        this.resetDebounceTimer();
-        return;
-      }
-
-      // actuallyBusy === null (no validator) — fall through to pattern/TTL checks
-      // CPU high prevents idle transition even without a definitive hasActiveChildren answer
       const now = Date.now();
-      if (this.isCpuHighAndNotDeadlined(now)) {
-        this.resetDebounceTimer();
-        return;
-      }
 
       // Stale pattern results are expired via the same TTL as working indicators
       if (
         this.lastPatternResult?.isWorking &&
-        now - this.lastPatternResultAt < this.WORKING_INDICATOR_TTL_MS
+        now - this.lastPatternResultAt < WORKING_INDICATOR_TTL_MS
       ) {
         this.resetDebounceTimer();
         return;
@@ -981,13 +1348,18 @@ export class ActivityMonitor {
 
       if (
         this.lastWorkingIndicatorTimestamp > 0 &&
-        Date.now() - this.lastWorkingIndicatorTimestamp < this.WORKING_INDICATOR_TTL_MS
+        Date.now() - this.lastWorkingIndicatorTimestamp < WORKING_INDICATOR_TTL_MS
       ) {
         this.resetDebounceTimer();
         return;
       }
 
       if (this.isHighOutputActivity()) {
+        this.resetDebounceTimer();
+        return;
+      }
+
+      if (this.cpuTracker.isHighAndNotDeadlined(now)) {
         this.resetDebounceTimer();
         return;
       }
@@ -1005,71 +1377,22 @@ export class ActivityMonitor {
     if (now - this.lastDataTimestamp < this.MAX_WORKING_SILENCE_MS) return false;
     // Non-polling terminals have no boot phase; polling terminals must exit boot first
     if (this.getVisibleLines && !this.bootDetector.hasExitedBootState) return false;
-    // High CPU prevents premature silence timeout — but only up to the escape deadline
-    if (this.isCpuHighAndNotDeadlined(now)) return false;
+    // High CPU prevents premature silence timeout, but only up to the escape deadline.
+    if (this.cpuTracker.isHighAndNotDeadlined(now)) return false;
     return true;
   }
 
-  private checkWaitingWatchdog(now: number): void {
-    if (this.state !== "idle") return;
-    if (this.waitingWatchdogFired) return;
-    if (now - this.idleSince < this.MAX_WAITING_SILENCE_MS) return;
+  private runWaitingWatchdogCheck(now: number): void {
     if (!this.onWaitingTimeout) return;
-
-    const hasChildren = this.hasActiveChildrenSafe();
-    if (hasChildren !== false) return;
-
-    this.waitingWatchdogFired = true;
-    this.onWaitingTimeout(this.terminalId, this.spawnedAt);
-  }
-
-  private hasActiveChildrenSafe(): boolean | null {
-    if (!this.processStateValidator) {
-      return null;
-    }
-    try {
-      return this.processStateValidator.hasActiveChildren();
-    } catch (error) {
-      if (process.env.DAINTREE_VERBOSE) {
-        console.warn("[ActivityMonitor] Process state validation failed:", error);
-      }
-      return true;
-    }
-  }
-
-  private getCpuUsageSafe(): number | null {
-    if (!this.processStateValidator) {
-      return null;
-    }
-    try {
-      return this.processStateValidator.getDescendantsCpuUsage();
-    } catch (error) {
-      if (process.env.DAINTREE_VERBOSE) {
-        console.warn("[ActivityMonitor] CPU usage query failed:", error);
-      }
-      return null;
-    }
-  }
-
-  private updateCpuHighState(now: number): void {
-    const cpu = this.getCpuUsageSafe();
-    if (cpu === null) return;
-    if (this.isCpuHigh) {
-      if (cpu < this.CPU_LOW_THRESHOLD) {
-        this.isCpuHigh = false;
-        this.cpuHighSince = 0;
-      }
-    } else {
-      if (cpu >= this.CPU_HIGH_THRESHOLD) {
-        this.isCpuHigh = true;
-        this.cpuHighSince = now;
-      }
-    }
-  }
-
-  private isCpuHighAndNotDeadlined(now: number): boolean {
-    this.updateCpuHighState(now);
-    if (!this.isCpuHigh) return false;
-    return now - this.cpuHighSince < this.MAX_CPU_HIGH_ESCAPE_MS;
+    this.waitingWatchdog.check(now, {
+      state: this.state,
+      idleSince: this.idleSince,
+      isSpinnerActive: this.lineRewriteDetector.isSpinnerActive(now, SPINNER_ACTIVE_MS),
+      lastPatternResult: this.lastPatternResult,
+      lastPatternResultAt: this.lastPatternResultAt,
+      lastDataTimestamp: this.lastDataTimestamp,
+      terminalId: this.terminalId,
+      spawnedAt: this.spawnedAt,
+    });
   }
 }

@@ -7,15 +7,18 @@ import { T_SHORT, T_MEDIUM } from "../helpers/timeouts";
 
 test.describe.serial("Core: Toolbar Overflow", () => {
   let ctx: AppContext;
+  let fixtureCleanup: (() => void) | undefined;
 
   test.beforeAll(async () => {
     ctx = await launchApp();
-    const dir = createFixtureRepo({ name: "toolbar-overflow" });
+    const { dir, cleanup } = createFixtureRepo({ name: "toolbar-overflow" });
+    fixtureCleanup = cleanup;
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, dir, "Overflow Test");
   });
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("at 1920x1080 all toolbar buttons are visible without overflow menu", async () => {
@@ -35,11 +38,11 @@ test.describe.serial("Core: Toolbar Overflow", () => {
     const { window, app } = ctx;
 
     // Close sidebar to maximize toolbar space usage
-    const resizer = window.locator('[role="separator"][aria-label="Resize sidebar"]');
-    const valueNow = await resizer.getAttribute("aria-valuenow");
-    if (valueNow !== "0") {
+    const aside = window.locator('aside[aria-label="Sidebar"]');
+    const ariaHidden = await aside.getAttribute("aria-hidden");
+    if (ariaHidden !== "true") {
       await window.locator(SEL.toolbar.toggleSidebar).click();
-      await expect(resizer).toHaveAttribute("aria-valuenow", "0", { timeout: T_SHORT });
+      await expect(aside).toHaveAttribute("aria-hidden", "true", { timeout: T_SHORT });
     }
 
     // Shrink the window as small as Electron allows

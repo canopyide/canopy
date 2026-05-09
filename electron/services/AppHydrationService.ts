@@ -2,7 +2,7 @@ import { app } from "electron";
 import { store } from "../store.js";
 import { projectStore } from "./ProjectStore.js";
 import { TerminalSnapshotSchema, filterValidTerminalEntries } from "../schemas/ipc.js";
-import { isWebGLHardwareAccelerated } from "../utils/gpuDetection.js";
+import { getGpuFeatureStatus, isWebGLHardwareAccelerated } from "../utils/gpuDetection.js";
 import { isGpuDisabledByFlag } from "./GpuCrashMonitorService.js";
 import { getCrashLoopGuard } from "./CrashLoopGuardService.js";
 import type { HydrateResult } from "../../shared/types/ipc/app.js";
@@ -74,7 +74,7 @@ export async function buildSwitchHydrateResult(projectId: string): Promise<Hydra
     focusPanelState: focusPanelStateToUse,
   };
 
-  const gpuStatus = app.getGPUFeatureStatus();
+  const gpuStatus = getGpuFeatureStatus();
   const gpuWebGLHardware = isWebGLHardwareAccelerated(gpuStatus.webgl2);
 
   return {

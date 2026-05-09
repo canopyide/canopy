@@ -4,10 +4,19 @@ import { createFixtureRepo } from "../helpers/fixtures";
 import { openAndOnboardProject } from "../helpers/project";
 import { SEL } from "../helpers/selectors";
 import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
-import { openSettings, openTerminal, getFirstGridPanel } from "../helpers/panels";
+import { openSettings, openTerminal } from "../helpers/panels";
 import { runTerminalCommand, waitForTerminalText } from "../helpers/terminal";
 
 let ctx: AppContext;
+let fixtureDir: string | undefined;
+let fixtureCleanup: (() => void) | undefined;
+
+function echoGlobalEnvCommand(): string {
+  if (process.platform === "win32") {
+    return 'Write-Output ("ENVCHECK_" + $env:TEST_GLOBAL_KEY + "_ENVCHECK")';
+  }
+  return "echo ENVCHECK_${TEST_GLOBAL_KEY}_ENVCHECK";
+}
 
 test.describe.serial("Full: Global Environment Variable Inheritance", () => {
   test.beforeAll(async () => {
@@ -16,6 +25,7 @@ test.describe.serial("Full: Global Environment Variable Inheritance", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("Global Environment tab works without a project", async () => {
@@ -77,13 +87,10 @@ test.describe.serial("Full: Global Environment Variable Inheritance", () => {
 
   test("Global vars appear in project Variables tab", async () => {
     // Open a fixture project
-    const fixtureDir = createFixtureRepo({ name: "env-inheritance" });
-    ctx.window = await openAndOnboardProject(
-      ctx.app,
-      ctx.window,
-      fixtureDir,
-      "Env Inheritance Test"
-    );
+    const { dir, cleanup } = createFixtureRepo({ name: "env-inheritance" });
+    fixtureDir = dir;
+    fixtureCleanup = cleanup;
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, dir, "Env Inheritance Test");
     const { window } = ctx;
 
     await openSettings(window);
@@ -135,18 +142,31 @@ test.describe.serial("Full: Global Environment Variable Inheritance", () => {
   });
 
   test("Terminal inherits environment variables with project override", async () => {
-    const { window } = ctx;
+    let { window } = ctx;
+
+    if ((await window.locator("[data-worktree-branch]").count()) === 0) {
+      expect(fixtureDir).toBeTruthy();
+      ctx.window = await openAndOnboardProject(
+        ctx.app,
+        window,
+        fixtureDir!,
+        "Env Inheritance Test"
+      );
+      window = ctx.window;
+    }
+
+    await expect(window.locator("[data-worktree-branch]").first()).toBeVisible({
+      timeout: T_LONG,
+    });
 
     // Open a terminal
     await openTerminal(window);
-    const panel = getFirstGridPanel(window);
+    const panel = window.locator(SEL.panel.gridPanel).last();
     await expect(panel).toBeVisible({ timeout: T_LONG });
-
-    // Wait for the shell to be ready (look for fixture dir name in prompt)
-    await waitForTerminalText(panel, "env-inheritance", T_LONG);
+    await expect(panel.locator(SEL.terminal.xtermRows)).toBeVisible({ timeout: T_LONG });
 
     // Run echo command to check the env var value
-    await runTerminalCommand(window, panel, "echo ENVCHECK_${TEST_GLOBAL_KEY}_ENVCHECK");
+    await runTerminalCommand(window, panel, echoGlobalEnvCommand());
     // Project override should win over global
     await waitForTerminalText(panel, "ENVCHECK_project_override_ENVCHECK", T_LONG);
   });

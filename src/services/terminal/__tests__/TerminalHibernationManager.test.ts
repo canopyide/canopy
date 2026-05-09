@@ -62,6 +62,7 @@ vi.mock("../TerminalScrollbackController", () => ({
 
 vi.mock("@/utils/logger", () => ({
   logDebug: vi.fn(),
+  logWarn: vi.fn(),
   logError: vi.fn(),
 }));
 
@@ -159,9 +160,16 @@ function makeMockDeps(managed?: ManagedTerminal): HibernationManagerDeps {
     clearUnseen: vi.fn(),
     updateScrollState: vi.fn(),
     setCachedSelection: vi.fn(),
+    deleteCachedSelection: vi.fn(),
+    getCachedSelection: vi.fn(() => undefined),
+    getBracketedPasteMode: vi.fn(() => false),
+    isDisposed: vi.fn(() => false),
+    isInputLocked: vi.fn(() => false),
+    notifyUserInput: vi.fn(),
     clearDirectingState: vi.fn(),
     onUserInput: vi.fn(),
     onEnterPressed: vi.fn(),
+    updateLastObservedTitle: vi.fn(),
   };
 }
 
@@ -425,6 +433,104 @@ describe("TerminalHibernationManager", () => {
 
       manager.unhibernate("t1");
       expect(managed.listeners.length).toBe(afterFirst);
+    });
+  });
+
+  describe("isHibernationEligible()", () => {
+    it("rejects non-BACKGROUND tiers regardless of agent state", () => {
+      managed.runtimeAgentId = undefined;
+      expect(manager.isHibernationEligible(TerminalRefreshTier.FOCUSED, managed)).toBe(false);
+      expect(manager.isHibernationEligible(TerminalRefreshTier.BURST, managed)).toBe(false);
+      expect(manager.isHibernationEligible(TerminalRefreshTier.VISIBLE, managed)).toBe(false);
+    });
+
+    it("accepts BACKGROUND for non-agent terminals", () => {
+      managed.runtimeAgentId = undefined;
+      expect(manager.isHibernationEligible(TerminalRefreshTier.BACKGROUND, managed)).toBe(true);
+    });
+
+    it("rejects BACKGROUND while an agent is still working/waiting", () => {
+      managed.runtimeAgentId = "claude";
+      managed.canonicalAgentState = "working";
+      expect(manager.isHibernationEligible(TerminalRefreshTier.BACKGROUND, managed)).toBe(false);
+
+      managed.canonicalAgentState = "waiting";
+      expect(manager.isHibernationEligible(TerminalRefreshTier.BACKGROUND, managed)).toBe(false);
+    });
+
+    it("accepts BACKGROUND once an agent has completed or exited", () => {
+      managed.runtimeAgentId = "claude";
+      managed.canonicalAgentState = "completed";
+      expect(manager.isHibernationEligible(TerminalRefreshTier.BACKGROUND, managed)).toBe(true);
+
+      managed.canonicalAgentState = "exited";
+      expect(manager.isHibernationEligible(TerminalRefreshTier.BACKGROUND, managed)).toBe(true);
+    });
+  });
+
+  describe("scheduleHibernation() / cancelHibernation()", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    it("arms a timer that hibernates after HIBERNATION_DELAY_MS", () => {
+      managed.runtimeAgentId = undefined;
+      managed.isVisible = false;
+      managed.isHibernated = false;
+
+      manager.scheduleHibernation("t1", managed);
+      expect(managed.hibernationTimer).toBeDefined();
+
+      vi.advanceTimersByTime(30_000);
+      expect(managed.isHibernated).toBe(true);
+      expect(managed.hibernationTimer).toBeUndefined();
+    });
+
+    it("is idempotent — second schedule while a timer is pending is a no-op", () => {
+      managed.runtimeAgentId = undefined;
+      managed.isVisible = false;
+
+      manager.scheduleHibernation("t1", managed);
+      const firstTimer = managed.hibernationTimer;
+      manager.scheduleHibernation("t1", managed);
+      expect(managed.hibernationTimer).toBe(firstTimer);
+    });
+
+    it("does not arm when already hibernated", () => {
+      managed.isHibernated = true;
+      manager.scheduleHibernation("t1", managed);
+      expect(managed.hibernationTimer).toBeUndefined();
+    });
+
+    it("aborts the fire path if the terminal became visible before the timer fired", () => {
+      managed.runtimeAgentId = undefined;
+      managed.isVisible = false;
+
+      manager.scheduleHibernation("t1", managed);
+      // User reveals the terminal between schedule and fire.
+      managed.isVisible = true;
+
+      vi.advanceTimersByTime(30_000);
+      expect(managed.isHibernated).toBe(false);
+    });
+
+    it("cancelHibernation clears a pending timer", () => {
+      managed.runtimeAgentId = undefined;
+      managed.isVisible = false;
+
+      manager.scheduleHibernation("t1", managed);
+      expect(managed.hibernationTimer).toBeDefined();
+
+      manager.cancelHibernation(managed);
+      expect(managed.hibernationTimer).toBeUndefined();
+
+      vi.advanceTimersByTime(30_000);
+      expect(managed.isHibernated).toBe(false);
+    });
+
+    it("cancelHibernation is safe when no timer is armed", () => {
+      managed.hibernationTimer = undefined;
+      expect(() => manager.cancelHibernation(managed)).not.toThrow();
     });
   });
 

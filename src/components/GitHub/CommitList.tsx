@@ -2,7 +2,14 @@ import { useState, useEffect, useCallback, useRef, type KeyboardEvent } from "re
 import { useDebounce } from "@/hooks/useDebounce";
 import { Search, RefreshCw, AlertCircle, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AnimatePresence, m } from "framer-motion";
 import { cn } from "@/lib/utils";
+import {
+  UI_ENTER_DURATION,
+  UI_EXIT_DURATION,
+  UI_ENTER_EASING_FM,
+  UI_EXIT_EASING_FM,
+} from "@/lib/animationUtils";
 import { CommitListItem } from "./CommitListItem";
 import type { GitCommit, GitCommitListResponse } from "@shared/types/github";
 import { actionService } from "@/services/ActionService";
@@ -229,70 +236,86 @@ export function CommitList({ projectPath, branch, onClose, initialCount }: Commi
         </div>
       </div>
 
-      <div className="overflow-y-auto flex-1 min-h-0">
-        {loading && !data.length ? (
-          initialCount === 0 ? (
-            renderEmpty()
-          ) : (
-            <CommitListSkeleton count={initialCount} />
-          )
-        ) : data.length > 0 ? (
-          <>
-            {error && renderError()}
-            <div
-              ref={listRef}
-              id={listId}
-              role="listbox"
-              className="divide-y divide-[var(--border-divider)]"
+      <div className="overflow-y-auto flex-1 min-h-0 relative">
+        {loading && !data.length && initialCount === 0 && renderEmpty()}
+        <AnimatePresence mode="popLayout">
+          {loading && !data.length && initialCount !== 0 ? (
+            <m.div
+              key="commit-skeleton"
+              initial={false}
+              exit={{ opacity: 0 }}
+              transition={{ duration: UI_EXIT_DURATION / 1000, ease: UI_EXIT_EASING_FM }}
             >
-              {data.map((commit, index) => (
-                <CommitListItem
-                  key={commit.hash}
-                  commit={commit}
-                  optionId={`commit-option-${commit.hash}`}
-                  isActive={cursorIndex === index}
-                />
-              ))}
-            </div>
-
-            {hasMore && (
-              <div className="p-3 space-y-2">
-                {loadMoreError && (
-                  <div className="p-2 rounded-[var(--radius-md)] bg-status-error/10 border border-status-error/20">
-                    <p className="text-xs text-status-error">{loadMoreError}</p>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleLoadMore}
-                      className="mt-1 text-status-error hover:text-status-error/70 h-6 text-xs"
-                    >
-                      Retry
-                    </Button>
-                  </div>
-                )}
-                <Button
-                  id="commit-load-more"
-                  variant="ghost"
-                  onClick={handleLoadMore}
-                  disabled={loadingMore}
-                  className={cn(
-                    "w-full text-muted-foreground hover:text-daintree-text",
-                    isLoadMoreActive && "ring-1 ring-daintree-accent text-daintree-text"
-                  )}
-                >
-                  {loadingMore ? (
-                    <>
-                      <RefreshCw className="animate-spin" />
-                      Loading...
-                    </>
-                  ) : (
-                    "Load More"
-                  )}
-                </Button>
+              <CommitListSkeleton count={initialCount} />
+            </m.div>
+          ) : data.length > 0 ? (
+            <m.div
+              key="commit-content"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{
+                opacity: 0,
+                transition: { duration: UI_EXIT_DURATION / 1000, ease: UI_EXIT_EASING_FM },
+              }}
+              transition={{ duration: UI_ENTER_DURATION / 1000, ease: UI_ENTER_EASING_FM }}
+            >
+              {error && renderError()}
+              <div
+                ref={listRef}
+                id={listId}
+                role="listbox"
+                className="divide-y divide-[var(--border-divider)]"
+              >
+                {data.map((commit, index) => (
+                  <CommitListItem
+                    key={commit.hash}
+                    commit={commit}
+                    optionId={`commit-option-${commit.hash}`}
+                    isActive={cursorIndex === index}
+                  />
+                ))}
               </div>
-            )}
-          </>
-        ) : error ? (
+
+              {hasMore && (
+                <div className="p-3 space-y-2">
+                  {loadMoreError && (
+                    <div className="p-2 rounded-[var(--radius-md)] bg-status-error/10 border border-status-error/20">
+                      <p className="text-xs text-status-error">{loadMoreError}</p>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleLoadMore}
+                        className="mt-1 text-status-error hover:text-status-error/70 h-6 text-xs"
+                      >
+                        Retry
+                      </Button>
+                    </div>
+                  )}
+                  <Button
+                    id="commit-load-more"
+                    variant="ghost"
+                    onClick={handleLoadMore}
+                    disabled={loadingMore}
+                    className={cn(
+                      "w-full text-muted-foreground hover:text-daintree-text",
+                      isLoadMoreActive && "ring-1 ring-daintree-accent text-daintree-text"
+                    )}
+                  >
+                    {loadingMore ? (
+                      <>
+                        <RefreshCw className="animate-spin" />
+                        Loading...
+                      </>
+                    ) : (
+                      "Load More"
+                    )}
+                  </Button>
+                </div>
+              )}
+            </m.div>
+          ) : null}
+        </AnimatePresence>
+        {!loading && !data.length && error && (
           <div className="p-8 text-center text-muted-foreground">
             <AlertCircle className="h-5 w-5 mx-auto mb-2 opacity-50" />
             <p className="text-sm">{error}</p>
@@ -306,9 +329,8 @@ export function CommitList({ projectPath, branch, onClose, initialCount }: Commi
               Retry
             </Button>
           </div>
-        ) : (
-          renderEmpty()
         )}
+        {!loading && !error && !data.length && renderEmpty()}
       </div>
 
       <div className="p-3 border-t border-[var(--border-divider)] flex items-center justify-between shrink-0">

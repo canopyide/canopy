@@ -3,26 +3,9 @@ import type { TerminalInstance } from "./panelRegistrySlice";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { panelKindHasPty } from "@shared/config/panelKindRegistry";
 import { isRuntimeAgentTerminal } from "@/utils/terminalType";
+import { isTerminalVisible } from "@/lib/terminalVisibility";
 
 export type NavigationDirection = "up" | "down" | "left" | "right";
-
-function isTerminalOrphaned(terminal: TerminalInstance, worktreeIds: Set<string>): boolean {
-  const worktreeId = typeof terminal.worktreeId === "string" ? terminal.worktreeId.trim() : "";
-  if (!worktreeId) return false;
-  return !worktreeIds.has(worktreeId);
-}
-
-function isTerminalVisible(
-  terminal: TerminalInstance,
-  isInTrash: (id: string) => boolean,
-  worktreeIds: Set<string>
-): boolean {
-  if (isInTrash(terminal.id)) return false;
-  if (terminal.location === "trash") return false;
-  if (terminal.location === "background") return false;
-  if (isTerminalOrphaned(terminal, worktreeIds)) return false;
-  return true;
-}
 
 // Walk the visible terminal list from the currently focused position, advancing
 // in `direction` and returning the first terminal that satisfies `predicate`.
@@ -86,6 +69,14 @@ export interface TerminalFocusSlice {
   maximizeTarget: MaximizeTarget;
   activeDockTerminalId: string | null;
   pingedId: string | null;
+  /**
+   * Monotonically increases on every `pingTerminal` call. Lets consumers
+   * distinguish back-to-back pings of the same terminal — a Zustand `set` with
+   * the same `pingedId` value is `Object.is`-equal and emits no update, so
+   * `pingedId` alone can't drive a one-shot animation when the same row is
+   * tapped twice within the 1.6s clear window.
+   */
+  pingSeq: number;
   preMaximizeLayout: PreMaximizeLayoutSnapshot | null;
   setFocused: (id: string | null, shouldPing?: boolean) => void;
   pingTerminal: (id: string) => void;
@@ -161,6 +152,7 @@ export const createTerminalFocusSlice =
       maximizeTarget: null,
       activeDockTerminalId: null,
       pingedId: null,
+      pingSeq: 0,
       preMaximizeLayout: null,
       setFocused: (id, shouldPing = false) => {
         if (id) {
@@ -197,7 +189,7 @@ export const createTerminalFocusSlice =
 
       pingTerminal: (id) => {
         if (pingTimeout) clearTimeout(pingTimeout);
-        set({ pingedId: id });
+        set((state) => ({ pingedId: id, pingSeq: state.pingSeq + 1 }));
         pingTimeout = setTimeout(() => {
           if (get().pingedId === id) {
             set({ pingedId: null });
@@ -542,6 +534,7 @@ export const createTerminalFocusSlice =
         const dockTerminals = terminals.filter(
           (t) =>
             t.location === "dock" &&
+            t.ephemeral !== true &&
             (t.worktreeId ?? undefined) === (activeWorktreeId ?? undefined) &&
             t.agentState === "waiting"
         );

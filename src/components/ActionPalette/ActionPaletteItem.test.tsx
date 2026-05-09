@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ActionPaletteItem } from "./ActionPaletteItem";
 import type { ActionPaletteItem as ActionPaletteItemType } from "@/hooks/useActionPalette";
@@ -22,6 +22,7 @@ function makeItem(overrides: Partial<ActionPaletteItemType> = {}): ActionPalette
     description: "Test description",
     category: "terminal",
     enabled: true,
+    danger: "safe",
     kind: "command",
     titleLower: "test action",
     categoryLower: "terminal",
@@ -39,6 +40,7 @@ describe("ActionPaletteItem", () => {
     render(
       <ActionPaletteItem
         item={makeItem({ enabled: true })}
+        index={0}
         isSelected={false}
         onSelect={onSelect}
       />
@@ -53,6 +55,7 @@ describe("ActionPaletteItem", () => {
     render(
       <ActionPaletteItem
         item={makeItem({ enabled: false, disabledReason: "No focused terminal" })}
+        index={0}
         isSelected={false}
         onSelect={onSelect}
       />
@@ -70,6 +73,7 @@ describe("ActionPaletteItem", () => {
     const { container } = render(
       <ActionPaletteItem
         item={makeItem({ enabled: false })}
+        index={0}
         isSelected={false}
         onSelect={onSelect}
       />
@@ -84,6 +88,7 @@ describe("ActionPaletteItem", () => {
     const { container } = render(
       <ActionPaletteItem
         item={makeItem({ enabled: true, disabledReason: "Should not show" })}
+        index={0}
         isSelected={false}
         onSelect={onSelect}
       />
@@ -98,6 +103,7 @@ describe("ActionPaletteItem", () => {
     render(
       <ActionPaletteItem
         item={makeItem({ keybinding: "⌘K" })}
+        index={0}
         isSelected={false}
         onSelect={onSelect}
       />
@@ -108,12 +114,86 @@ describe("ActionPaletteItem", () => {
 
   it("applies selected styling with aria-selected and accent indicator", () => {
     const { container } = render(
-      <ActionPaletteItem item={makeItem()} isSelected={true} onSelect={onSelect} />
+      <ActionPaletteItem item={makeItem()} index={0} isSelected={true} onSelect={onSelect} />
     );
 
     const button = container.querySelector("button");
     expect(button).toBeTruthy();
     expect(button?.getAttribute("aria-selected")).toBe("true");
-    expect(button?.className).toContain("bg-overlay-soft");
+    // Selected state is now CSS-driven via aria-selected: variants.
+    expect(button?.className).toContain("aria-selected:bg-overlay-soft");
+    expect(button?.className).toContain("aria-selected:before:bg-daintree-accent");
+    expect(button?.className).toContain("aria-selected:before:content-['']");
+  });
+
+  it("does not branch styling on isSelected — selection is purely aria-driven", () => {
+    const { container: selectedContainer } = render(
+      <ActionPaletteItem item={makeItem()} index={0} isSelected={true} onSelect={onSelect} />
+    );
+    const { container: unselectedContainer } = render(
+      <ActionPaletteItem item={makeItem()} index={0} isSelected={false} onSelect={onSelect} />
+    );
+
+    const selectedClass = selectedContainer.querySelector("button")?.className;
+    const unselectedClass = unselectedContainer.querySelector("button")?.className;
+    // Class lists must be identical — only aria-selected attribute differs.
+    expect(selectedClass).toBe(unselectedClass);
+  });
+
+  it("lifts keybinding glyph contrast on selection via group-aria-selected", () => {
+    const { container } = render(
+      <ActionPaletteItem
+        item={makeItem({ keybinding: "⌘K" })}
+        index={0}
+        isSelected={true}
+        onSelect={onSelect}
+      />
+    );
+
+    const kbd = screen.getByText("⌘K");
+    expect(kbd.className).toContain("text-daintree-text/40");
+    expect(kbd.className).toContain("group-aria-selected:text-daintree-text/60");
+    expect(container.querySelector("button")?.className).toContain("group");
+  });
+
+  it("calls onHoverIndex with index when pointer moves over the item", () => {
+    const onHoverIndex = vi.fn();
+    const { container } = render(
+      <ActionPaletteItem
+        item={makeItem()}
+        index={3}
+        isSelected={false}
+        onSelect={onSelect}
+        onHoverIndex={onHoverIndex}
+      />
+    );
+
+    const button = container.querySelector("button");
+    expect(button).toBeTruthy();
+    fireEvent.pointerMove(button!);
+    expect(onHoverIndex).toHaveBeenCalledTimes(1);
+    expect(onHoverIndex).toHaveBeenCalledWith(3);
+  });
+
+  it("does not throw when onHoverIndex is omitted", () => {
+    const { container } = render(
+      <ActionPaletteItem item={makeItem()} index={0} isSelected={false} onSelect={onSelect} />
+    );
+
+    const button = container.querySelector("button");
+    expect(() => fireEvent.pointerMove(button!)).not.toThrow();
+  });
+
+  it("calls onSelect when an enabled item is clicked", () => {
+    const item = makeItem({ enabled: true });
+    const { container } = render(
+      <ActionPaletteItem item={item} index={0} isSelected={false} onSelect={onSelect} />
+    );
+
+    const button = container.querySelector("button");
+    expect(button).toBeTruthy();
+    fireEvent.click(button!);
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith(item);
   });
 });

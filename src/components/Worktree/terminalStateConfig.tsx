@@ -1,14 +1,6 @@
 import { Circle, CheckCircle2 } from "lucide-react";
 import type { AgentState } from "@/types";
-import type { WaitingReason } from "@shared/types/agent";
-import {
-  SpinnerCircle,
-  HollowCircle,
-  InteractingCircle,
-  ExitedCircle,
-  PromptCircle,
-  QuestionCircle,
-} from "@/components/icons/AgentStateCircles";
+import { SpinnerCircle, HollowCircle, InteractingCircle, ExitedCircle } from "@/components/icons";
 
 export const STATE_ICONS: Record<AgentState, React.ComponentType<{ className?: string }>> = {
   working: SpinnerCircle,
@@ -46,43 +38,16 @@ export const STATE_PRIORITY: AgentState[] = [
   "idle",
 ];
 
-export const STATE_SORT_PRIORITY: Record<AgentState, number> = {
-  working: 0,
-  directing: 1,
-  waiting: 2,
-  idle: 3,
-  completed: 4,
-  exited: 5,
-};
-
 export function getEffectiveStateIcon(
-  agentState: AgentState,
-  waitingReason?: WaitingReason
+  agentState: AgentState
 ): React.ComponentType<{ className?: string }> {
-  if (agentState === "waiting" && waitingReason) {
-    if (waitingReason === "prompt") return PromptCircle;
-    if (waitingReason === "question") return QuestionCircle;
-  }
   return STATE_ICONS[agentState];
 }
 
-export function getEffectiveStateColor(
-  agentState: AgentState,
-  waitingReason?: WaitingReason
-): string {
-  if (agentState === "waiting" && waitingReason === "prompt") {
-    return "text-status-warning";
-  }
+export function getEffectiveStateColor(agentState: AgentState): string {
   return STATE_COLORS[agentState];
 }
 
-export function getEffectiveStateLabel(
-  agentState: AgentState,
-  waitingReason?: WaitingReason
-): string {
-  if (agentState === "waiting") {
-    if (waitingReason === "prompt") return "waiting for input";
-    if (waitingReason === "question") return "waiting (question)";
-  }
+export function getEffectiveStateLabel(agentState: AgentState): string {
   return STATE_LABELS[agentState];
 }

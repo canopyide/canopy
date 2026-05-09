@@ -7,6 +7,7 @@ const NL_CONFIDENCE_THRESHOLD = 0.67;
 const MIN_MATCHING_TOKENS = 2;
 const AI_RERANK_TIMEOUT_MS = 4000;
 const AI_RERANK_MODEL = "gpt-5-nano";
+const AI_RERANK_CACHE_PREFIX = "voice-file-rerank-v1";
 
 const AI_RERANK_SCHEMA = {
   type: "object",
@@ -22,6 +23,7 @@ export class VoiceFileLinkResolver {
     cwd: string;
     description: string;
     apiKey: string;
+    signal?: AbortSignal;
   }): Promise<string | null> {
     const { cwd, description, apiKey } = payload;
     if (!cwd || !description.trim()) return null;
@@ -49,8 +51,9 @@ export class VoiceFileLinkResolver {
         return candidates[0];
       }
 
-      return await this.aiRerank(description, candidates, apiKey);
+      return await this.aiRerank(description, candidates, apiKey, payload.signal);
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return null;
       const msg = formatErrorMessage(error, "Voice file link resolution failed");
       logWarn(`${P} Resolution failed`, { error: msg });
       return null;
@@ -76,7 +79,14 @@ export class VoiceFileLinkResolver {
     return description
       .toLowerCase()
       .split(/\s+/)
-      .filter((t) => t.length > 0 && !stopWords.has(t));
+      .filter((t) => t.length > 0 && !stopWords.has(t))
+      .flatMap((t) =>
+        t
+          .replace(/([a-z])([0-9])/g, "$1 $2")
+          .replace(/([0-9])([a-z])/g, "$1 $2")
+          .split(/[\s_\-./]+/)
+          .filter(Boolean)
+      );
   }
 
   private computeScore(description: string, file: string): number | null {
@@ -89,13 +99,21 @@ export class VoiceFileLinkResolver {
     const words = nameWithoutExt
       .replace(/([a-z])([A-Z])/g, "$1 $2")
       .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+      .replace(/([a-zA-Z])([0-9])/g, "$1 $2")
+      .replace(/([0-9])([a-zA-Z])/g, "$1 $2")
       .split(/[\s_\-./]+/)
       .filter(Boolean)
       .map((w) => w.toLowerCase());
 
     let matched = 0;
     for (const token of tokens) {
-      if (words.some((w) => w === token || w.startsWith(token) || token.startsWith(w))) {
+      if (
+        words.some(
+          (w) =>
+            w === token ||
+            (token.length >= 3 && w.length >= 3 && (w.startsWith(token) || token.startsWith(w)))
+        )
+      ) {
         matched++;
       }
     }
@@ -106,7 +124,8 @@ export class VoiceFileLinkResolver {
   private async aiRerank(
     description: string,
     candidates: string[],
-    apiKey: string
+    apiKey: string,
+    signal?: AbortSignal
   ): Promise<string | null> {
     logDebug(`${P} AI reranking ${candidates.length} candidates for "${description}"`);
 
@@ -117,12 +136,15 @@ export class VoiceFileLinkResolver {
           "Content-Type": "application/json",
           Authorization: `Bearer ${apiKey}`,
         },
-        signal: AbortSignal.timeout(AI_RERANK_TIMEOUT_MS),
+        signal: signal
+          ? AbortSignal.any([signal, AbortSignal.timeout(AI_RERANK_TIMEOUT_MS)])
+          : AbortSignal.timeout(AI_RERANK_TIMEOUT_MS),
         body: JSON.stringify({
           model: AI_RERANK_MODEL,
           instructions:
             "Given a natural language description and a list of file paths from a project, return the path that best matches the description. If no path is a good match, return null.",
           input: `Description: ${description}\n\nCandidates:\n${candidates.map((c, i) => `${i + 1}. ${c}`).join("\n")}`,
+          prompt_cache_key: AI_RERANK_CACHE_PREFIX,
           service_tier: "auto",
           reasoning: { effort: "minimal" },
           text: {
@@ -139,7 +161,7 @@ export class VoiceFileLinkResolver {
 
       if (!response.ok) {
         logWarn(`${P} AI rerank API error: ${response.status}`);
-        return candidates[0];
+        return null;
       }
 
       const data = (await response.json()) as {
@@ -152,19 +174,24 @@ export class VoiceFileLinkResolver {
           ? data.output_text
           : data.output?.flatMap((item) => item.content ?? []).find((item) => item.text)?.text;
 
-      if (!text) return candidates[0];
+      if (!text) {
+        logWarn(`${P} AI rerank returned empty text`);
+        return null;
+      }
 
       const parsed = JSON.parse(text) as { matched_file: string | null };
-      if (parsed.matched_file && candidates.includes(parsed.matched_file)) {
-        logDebug(`${P} AI reranked: ${parsed.matched_file}`);
-        return parsed.matched_file;
+      const matched = parsed.matched_file?.trim();
+      if (matched && candidates.includes(matched)) {
+        logDebug(`${P} AI reranked: ${matched}`);
+        return matched;
       }
 
       return null;
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return null;
       const msg = formatErrorMessage(error, "Voice AI rerank failed");
-      logWarn(`${P} AI rerank failed, using top candidate`, { error: msg });
-      return candidates[0];
+      logWarn(`${P} AI rerank failed`, { error: msg });
+      return null;
     }
   }
 }

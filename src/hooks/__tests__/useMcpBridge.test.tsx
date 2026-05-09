@@ -2,20 +2,54 @@
 import { renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ActionManifestEntry } from "@shared/types/actions";
+import { __resetMcpConfirmStoreForTesting, useMcpConfirmStore } from "@/store/mcpConfirmStore";
+import { isMcpSpawnFocusSuppressed } from "@/store/mcpSpawnFocusGuard";
 
 const mocks = vi.hoisted(() => ({
   list: vi.fn(() => [] as ActionManifestEntry[]),
+  get: vi.fn((_id: string): ActionManifestEntry | null => null),
   dispatch: vi.fn(),
 }));
 
 vi.mock("@/services/ActionService", () => ({
   actionService: {
     list: mocks.list,
+    get: mocks.get,
     dispatch: mocks.dispatch,
   },
 }));
 
 import { useMcpBridge } from "../useMcpBridge";
+
+function safeManifestEntry(overrides: Partial<ActionManifestEntry> = {}): ActionManifestEntry {
+  return {
+    id: "actions.list",
+    name: "actions.list",
+    title: "List Actions",
+    description: "Read actions",
+    category: "test",
+    kind: "query",
+    danger: "safe",
+    enabled: true,
+    requiresArgs: false,
+    ...overrides,
+  };
+}
+
+function confirmManifestEntry(overrides: Partial<ActionManifestEntry> = {}): ActionManifestEntry {
+  return {
+    id: "worktree.delete",
+    name: "worktree.delete",
+    title: "Delete Worktree",
+    description: "Permanently delete a worktree from disk.",
+    category: "worktree",
+    kind: "command",
+    danger: "confirm",
+    enabled: true,
+    requiresArgs: true,
+    ...overrides,
+  };
+}
 
 describe("useMcpBridge", () => {
   let manifestHandler: ((requestId: string) => void) | undefined;
@@ -35,6 +69,7 @@ describe("useMcpBridge", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    __resetMcpConfirmStoreForTesting();
     manifestHandler = undefined;
     dispatchHandler = undefined;
     cleanupManifest = vi.fn();
@@ -72,22 +107,11 @@ describe("useMcpBridge", () => {
 
   afterEach(() => {
     consoleErrorSpy.mockRestore();
+    __resetMcpConfirmStoreForTesting();
   });
 
   it("returns the current action manifest and falls back to an empty manifest on failure", () => {
-    mocks.list.mockReturnValueOnce([
-      {
-        id: "actions.list",
-        name: "actions.list",
-        title: "List Actions",
-        description: "Read actions",
-        category: "test",
-        kind: "query",
-        danger: "safe",
-        enabled: true,
-        requiresArgs: false,
-      },
-    ]);
+    mocks.list.mockReturnValueOnce([safeManifestEntry()]);
 
     renderHook(() => useMcpBridge());
 
@@ -104,38 +128,176 @@ describe("useMcpBridge", () => {
     expect(sendGetManifestResponse).toHaveBeenCalledWith("req-2", []);
   });
 
-  it("passes explicit confirmation through instead of auto-confirming every MCP action", async () => {
+  it("dispatches safe actions immediately without surfacing a confirmation modal", async () => {
+    mocks.get.mockReturnValue(safeManifestEntry());
     mocks.dispatch.mockResolvedValue({ ok: true, result: { ok: true } });
 
     renderHook(() => useMcpBridge());
 
     await dispatchHandler?.({
-      requestId: "req-unconfirmed",
-      actionId: "worktree.delete",
-      args: { worktreeId: "wt-1" },
-    });
-    await dispatchHandler?.({
-      requestId: "req-confirmed",
-      actionId: "worktree.delete",
-      args: { worktreeId: "wt-1" },
-      confirmed: true,
+      requestId: "req-safe",
+      actionId: "actions.list",
+      args: { limit: 10 },
     });
 
-    expect(mocks.dispatch).toHaveBeenNthCalledWith(
-      1,
-      "worktree.delete",
-      { worktreeId: "wt-1" },
+    expect(useMcpConfirmStore.getState().current).toBeNull();
+    expect(mocks.dispatch).toHaveBeenCalledWith(
+      "actions.list",
+      { limit: 10 },
       { source: "agent", confirmed: undefined }
     );
-    expect(mocks.dispatch).toHaveBeenNthCalledWith(
-      2,
+    expect(sendDispatchActionResponse).toHaveBeenCalledWith({
+      requestId: "req-safe",
+      result: { ok: true, result: { ok: true } },
+      confirmationDecision: undefined,
+    });
+  });
+
+  it("suppresses create-time panel focus while an MCP action dispatch is in flight", async () => {
+    mocks.get.mockReturnValue(safeManifestEntry());
+    mocks.dispatch.mockImplementation(async () => {
+      expect(isMcpSpawnFocusSuppressed()).toBe(true);
+      return { ok: true, result: { ok: true } };
+    });
+
+    renderHook(() => useMcpBridge());
+
+    await dispatchHandler?.({
+      requestId: "req-focus-scope",
+      actionId: "actions.list",
+      args: { limit: 5 },
+    });
+
+    expect(isMcpSpawnFocusSuppressed()).toBe(false);
+    expect(sendDispatchActionResponse).toHaveBeenCalledWith({
+      requestId: "req-focus-scope",
+      result: { ok: true, result: { ok: true } },
+      confirmationDecision: undefined,
+    });
+  });
+
+  it("queues a confirm-class dispatch and only forwards it after user approval", async () => {
+    mocks.get.mockReturnValue(confirmManifestEntry());
+    mocks.dispatch.mockResolvedValue({ ok: true, result: { ok: true } });
+
+    renderHook(() => useMcpBridge());
+
+    const dispatched = dispatchHandler?.({
+      requestId: "req-confirm",
+      actionId: "worktree.delete",
+      args: { worktreeId: "wt-1" },
+    });
+
+    await Promise.resolve();
+    const pending = useMcpConfirmStore.getState().current;
+    expect(pending).not.toBeNull();
+    expect(pending?.actionTitle).toBe("Delete Worktree");
+    expect(pending?.argsSummary).toContain("wt-1");
+    expect(mocks.dispatch).not.toHaveBeenCalled();
+
+    useMcpConfirmStore.getState().resolveCurrent("approved");
+    await dispatched;
+
+    expect(mocks.dispatch).toHaveBeenCalledWith(
       "worktree.delete",
       { worktreeId: "wt-1" },
       { source: "agent", confirmed: true }
     );
+    expect(sendDispatchActionResponse).toHaveBeenCalledWith({
+      requestId: "req-confirm",
+      result: { ok: true, result: { ok: true } },
+      confirmationDecision: "approved",
+    });
+  });
+
+  it("returns USER_REJECTED without ever calling actionService.dispatch when the user cancels", async () => {
+    mocks.get.mockReturnValue(confirmManifestEntry());
+    mocks.dispatch.mockResolvedValue({ ok: true, result: { ok: true } });
+
+    renderHook(() => useMcpBridge());
+
+    const dispatched = dispatchHandler?.({
+      requestId: "req-reject",
+      actionId: "worktree.delete",
+      args: { worktreeId: "wt-2" },
+    });
+
+    await Promise.resolve();
+    useMcpConfirmStore.getState().resolveCurrent("rejected");
+    await dispatched;
+
+    expect(mocks.dispatch).not.toHaveBeenCalled();
+    expect(sendDispatchActionResponse).toHaveBeenCalledWith({
+      requestId: "req-reject",
+      result: {
+        ok: false,
+        error: {
+          code: "USER_REJECTED",
+          message: expect.stringContaining("rejected"),
+        },
+      },
+      confirmationDecision: "rejected",
+    });
+  });
+
+  it("returns CONFIRMATION_TIMEOUT when the modal ages out without a decision", async () => {
+    mocks.get.mockReturnValue(confirmManifestEntry());
+    mocks.dispatch.mockResolvedValue({ ok: true, result: { ok: true } });
+
+    renderHook(() => useMcpBridge());
+
+    const dispatched = dispatchHandler?.({
+      requestId: "req-timeout",
+      actionId: "worktree.delete",
+      args: { worktreeId: "wt-3" },
+    });
+
+    await Promise.resolve();
+    useMcpConfirmStore.getState().resolveCurrent("timeout");
+    await dispatched;
+
+    expect(mocks.dispatch).not.toHaveBeenCalled();
+    expect(sendDispatchActionResponse).toHaveBeenCalledWith({
+      requestId: "req-timeout",
+      result: {
+        ok: false,
+        error: {
+          code: "CONFIRMATION_TIMEOUT",
+          message: expect.stringContaining("timed out"),
+        },
+      },
+      confirmationDecision: "timeout",
+    });
+  });
+
+  it("skips the modal when the agent already supplied confirmed=true", async () => {
+    mocks.get.mockReturnValue(confirmManifestEntry());
+    mocks.dispatch.mockResolvedValue({ ok: true, result: { ok: true } });
+
+    renderHook(() => useMcpBridge());
+
+    await dispatchHandler?.({
+      requestId: "req-pre-confirmed",
+      actionId: "worktree.delete",
+      args: { worktreeId: "wt-4" },
+      confirmed: true,
+    });
+
+    expect(useMcpConfirmStore.getState().current).toBeNull();
+    expect(mocks.dispatch).toHaveBeenCalledWith(
+      "worktree.delete",
+      { worktreeId: "wt-4" },
+      { source: "agent", confirmed: true }
+    );
+    expect(sendDispatchActionResponse).toHaveBeenCalledWith({
+      requestId: "req-pre-confirmed",
+      result: { ok: true, result: { ok: true } },
+      confirmationDecision: undefined,
+    });
   });
 
   it("wraps bridge dispatch failures as execution errors", async () => {
+    mocks.get.mockReturnValue(safeManifestEntry());
     mocks.dispatch.mockRejectedValueOnce(new Error("dispatch exploded"));
 
     renderHook(() => useMcpBridge());
@@ -155,6 +317,7 @@ describe("useMcpBridge", () => {
           message: "dispatch exploded",
         },
       },
+      confirmationDecision: undefined,
     });
   });
 
@@ -165,5 +328,162 @@ describe("useMcpBridge", () => {
 
     expect(cleanupManifest).toHaveBeenCalledTimes(1);
     expect(cleanupDispatch).toHaveBeenCalledTimes(1);
+  });
+
+  describe("MCP spawn source tagging (#6959)", () => {
+    it("stamps spawnedBy: 'mcp' onto agent.launch dispatches and preserves caller args", async () => {
+      mocks.get.mockReturnValue(safeManifestEntry({ id: "agent.launch", danger: "safe" }));
+      mocks.dispatch.mockResolvedValue({ ok: true, result: { terminalId: "t-1" } });
+
+      renderHook(() => useMcpBridge());
+
+      await dispatchHandler?.({
+        requestId: "req-launch",
+        actionId: "agent.launch",
+        args: { agentId: "claude", location: "grid" },
+      });
+
+      expect(mocks.dispatch).toHaveBeenCalledWith(
+        "agent.launch",
+        { agentId: "claude", location: "grid", spawnedBy: "mcp" },
+        { source: "agent", confirmed: undefined }
+      );
+    });
+
+    it("stamps panel-spawning workflow actions so indirect agent launches do not steal focus", async () => {
+      mocks.get.mockReturnValue(
+        safeManifestEntry({ id: "workflow.startWorkOnIssue", danger: "safe" })
+      );
+      mocks.dispatch.mockResolvedValue({ ok: true, result: { terminalId: "t-workflow" } });
+
+      renderHook(() => useMcpBridge());
+
+      await dispatchHandler?.({
+        requestId: "req-workflow",
+        actionId: "workflow.startWorkOnIssue",
+        args: { issueNumber: 6959, agentId: "claude" },
+      });
+
+      expect(mocks.dispatch).toHaveBeenCalledWith(
+        "workflow.startWorkOnIssue",
+        { issueNumber: 6959, agentId: "claude", spawnedBy: "mcp" },
+        { source: "agent", confirmed: undefined }
+      );
+    });
+
+    it("stamps recipe and terminal creation actions that can create panels from MCP", async () => {
+      mocks.get.mockReturnValue(safeManifestEntry({ danger: "safe" }));
+      mocks.dispatch.mockResolvedValue({ ok: true, result: { terminalId: "t-spawn" } });
+
+      renderHook(() => useMcpBridge());
+
+      await dispatchHandler?.({
+        requestId: "req-recipe",
+        actionId: "recipe.run",
+        args: { recipeId: "recipe-1" },
+      });
+      await dispatchHandler?.({
+        requestId: "req-terminal-new",
+        actionId: "terminal.new",
+      });
+
+      expect(mocks.dispatch).toHaveBeenNthCalledWith(
+        1,
+        "recipe.run",
+        { recipeId: "recipe-1", spawnedBy: "mcp" },
+        { source: "agent", confirmed: undefined }
+      );
+      expect(mocks.dispatch).toHaveBeenNthCalledWith(
+        2,
+        "terminal.new",
+        { spawnedBy: "mcp" },
+        { source: "agent", confirmed: undefined }
+      );
+    });
+
+    it("overrides any caller-supplied spawnedBy on agent.* dispatches", async () => {
+      mocks.get.mockReturnValue(safeManifestEntry({ id: "agent.claude", danger: "safe" }));
+      mocks.dispatch.mockResolvedValue({ ok: true, result: { terminalId: "t-2" } });
+
+      renderHook(() => useMcpBridge());
+
+      // An MCP client might try to claim a different origin — ignore it.
+      await dispatchHandler?.({
+        requestId: "req-claude",
+        actionId: "agent.claude",
+        args: { spawnedBy: "quickrun" },
+      });
+
+      expect(mocks.dispatch).toHaveBeenCalledWith(
+        "agent.claude",
+        { spawnedBy: "mcp" },
+        { source: "agent", confirmed: undefined }
+      );
+    });
+
+    it("synthesizes args object when none provided for agent.* dispatches", async () => {
+      mocks.get.mockReturnValue(safeManifestEntry({ id: "agent.terminal", danger: "safe" }));
+      mocks.dispatch.mockResolvedValue({ ok: true, result: { terminalId: "t-3" } });
+
+      renderHook(() => useMcpBridge());
+
+      await dispatchHandler?.({
+        requestId: "req-terminal",
+        actionId: "agent.terminal",
+      });
+
+      expect(mocks.dispatch).toHaveBeenCalledWith(
+        "agent.terminal",
+        { spawnedBy: "mcp" },
+        { source: "agent", confirmed: undefined }
+      );
+    });
+
+    it("does not tag non-agent actions", async () => {
+      mocks.get.mockReturnValue(safeManifestEntry({ id: "actions.list", danger: "safe" }));
+      mocks.dispatch.mockResolvedValue({ ok: true, result: { ok: true } });
+
+      renderHook(() => useMcpBridge());
+
+      await dispatchHandler?.({
+        requestId: "req-list",
+        actionId: "actions.list",
+        args: { limit: 5 },
+      });
+
+      expect(mocks.dispatch).toHaveBeenCalledWith(
+        "actions.list",
+        { limit: 5 },
+        { source: "agent", confirmed: undefined }
+      );
+    });
+  });
+
+  it("drops in-flight confirmations from the store on unmount and never sends a late response", async () => {
+    mocks.get.mockReturnValue(confirmManifestEntry());
+
+    const { unmount } = renderHook(() => useMcpBridge());
+
+    void dispatchHandler?.({
+      requestId: "req-late",
+      actionId: "worktree.delete",
+      args: { worktreeId: "wt-late" },
+    });
+
+    await Promise.resolve();
+    expect(useMcpConfirmStore.getState().current?.requestId).toBe("req-late");
+
+    unmount();
+    expect(useMcpConfirmStore.getState().current).toBeNull();
+    expect(useMcpConfirmStore.getState().queue).toHaveLength(0);
+
+    // resolveCurrent is now a no-op (nothing visible) and the resolver was
+    // dropped, so no response is ever sent — main's 30s dispatch timer
+    // handles the orphaned pending entry.
+    useMcpConfirmStore.getState().resolveCurrent("approved");
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(sendDispatchActionResponse).not.toHaveBeenCalled();
   });
 });

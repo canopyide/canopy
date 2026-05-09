@@ -10,6 +10,36 @@ describe("SharedRingBuffer", () => {
     buffer = new SharedRingBuffer(sab);
   });
 
+  describe("constructor validation", () => {
+    it("rejects capacity below the 64-byte minimum", () => {
+      const sab = SharedRingBuffer.create(16);
+      expect(() => new SharedRingBuffer(sab)).toThrow(/must be >= 64 bytes/);
+    });
+
+    it("accepts the 64-byte minimum", () => {
+      const sab = SharedRingBuffer.create(64);
+      expect(() => new SharedRingBuffer(sab)).not.toThrow();
+    });
+
+    it("rejects non-power-of-two capacities", () => {
+      const sab = SharedRingBuffer.create(96);
+      expect(() => new SharedRingBuffer(sab)).toThrow(/power of two/);
+    });
+
+    it("exposes the signal index via getSignalIndex()", () => {
+      expect(SharedRingBuffer.getSignalIndex()).toBe(SharedRingBuffer.SIGNAL_IDX);
+      expect(SharedRingBuffer.getSignalIndex()).toBe(2);
+    });
+
+    it("notifyConsumer increments the slot at getSignalIndex()", () => {
+      const before = buffer.getSignalValue();
+      buffer.notifyConsumer();
+      const view = buffer.getSignalView();
+      expect(view[SharedRingBuffer.getSignalIndex()]).toBe(before + 1);
+      expect(buffer.getSignalValue()).toBe(before + 1);
+    });
+  });
+
   describe("basic operations", () => {
     it("creates buffer with correct capacity", () => {
       expect(buffer.getCapacity()).toBe(bufferSize);

@@ -8,7 +8,7 @@
  */
 
 import { events } from "./events.js";
-import type { AgentState } from "../../shared/types/agent.js";
+import type { AgentState, WaitingReason } from "../../shared/types/agent.js";
 
 export interface AgentAvailabilityInfo {
   agentId: string;
@@ -28,6 +28,7 @@ function isAvailableState(state: AgentState): boolean {
 
 export class AgentAvailabilityStore {
   private agentStates: Map<string, AgentState> = new Map();
+  private waitingReasons: Map<string, WaitingReason> = new Map();
   private concurrentTasks: Map<string, number> = new Map();
   private lastStateChange: Map<string, number> = new Map();
   private taskToAgent: Map<string, string> = new Map();
@@ -123,11 +124,17 @@ export class AgentAvailabilityStore {
     agentId?: string;
     state: AgentState;
     timestamp: number;
+    waitingReason?: WaitingReason;
   }): void {
     if (!payload.agentId) return;
 
     this.agentStates.set(payload.agentId, payload.state);
     this.lastStateChange.set(payload.agentId, payload.timestamp);
+    if (payload.state === "waiting" && payload.waitingReason) {
+      this.waitingReasons.set(payload.agentId, payload.waitingReason);
+    } else {
+      this.waitingReasons.delete(payload.agentId);
+    }
   }
 
   private incrementConcurrentTasks(agentId: string): void {
@@ -154,6 +161,33 @@ export class AgentAvailabilityStore {
    */
   getState(agentId: string): AgentState | undefined {
     return this.agentStates.get(agentId);
+  }
+
+  /**
+   * Get the most recent waitingReason for an agent, if it is currently waiting.
+   * Returns undefined if the agent is not in waiting state or has no classified reason.
+   * Note: keyed by agentId; for terminals that share an agentId (e.g. two "claude"
+   * panels) this reflects whichever waiting agent emitted last — same limitation as
+   * agentToTerminal mapping.
+   */
+  getWaitingReason(agentId: string): WaitingReason | undefined {
+    return this.waitingReasons.get(agentId);
+  }
+
+  /**
+   * Resolve the agentId associated with a terminal, if any.
+   * Returns undefined for terminals that have never spawned an agent (e.g. plain shells).
+   */
+  getAgentIdForTerminal(terminalId: string): string | undefined {
+    return this.terminalToAgent.get(terminalId);
+  }
+
+  /**
+   * Timestamp (ms) of the most recent state transition for an agent, sourced from the
+   * canonical event payload rather than wall-clock time.
+   */
+  getLastStateChange(agentId: string): number | undefined {
+    return this.lastStateChange.get(agentId);
   }
 
   /**
@@ -238,6 +272,7 @@ export class AgentAvailabilityStore {
    */
   unregisterAgent(agentId: string): void {
     this.agentStates.delete(agentId);
+    this.waitingReasons.delete(agentId);
     this.concurrentTasks.delete(agentId);
     this.lastStateChange.delete(agentId);
     const terminalId = this.agentToTerminal.get(agentId);
@@ -256,6 +291,7 @@ export class AgentAvailabilityStore {
    */
   clear(): void {
     this.agentStates.clear();
+    this.waitingReasons.clear();
     this.concurrentTasks.clear();
     this.lastStateChange.clear();
     this.taskToAgent.clear();

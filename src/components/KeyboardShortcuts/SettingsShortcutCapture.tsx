@@ -1,12 +1,15 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { AlertTriangle, X } from "lucide-react";
 import { isMac } from "@/lib/platform";
-import { keybindingService, normalizeKeyForBinding } from "@/services/KeybindingService";
+import {
+  CHORD_TIMEOUT_MS,
+  keybindingService,
+  normalizeKeyForBinding,
+  type KeyScope,
+} from "@/services/KeybindingService";
 import { actionService } from "@/services/ActionService";
 import { notify } from "@/lib/notify";
 import { logError, logWarn } from "@/utils/logger";
-
-const CHORD_TIMEOUT_MS = 1000;
 
 export interface SettingsShortcutCaptureProps {
   /** Called when user saves the captured key combination */
@@ -15,12 +18,19 @@ export interface SettingsShortcutCaptureProps {
   onCancel: () => void;
   /** Action ID to exclude from conflict detection */
   excludeActionId: string;
+  /**
+   * Scope of the binding being edited. Used to filter conflict detection so
+   * scope-disjoint bindings (e.g. Escape in modal vs terminal) don't false-flag.
+   * Defaults to "global" (the conservative behavior — flags any overlap).
+   */
+  scope?: KeyScope;
 }
 
 export function SettingsShortcutCapture({
   onCapture,
   onCancel,
   excludeActionId,
+  scope = "global",
 }: SettingsShortcutCaptureProps) {
   const [recording, setRecording] = useState(false);
   const [capturedCombos, setCapturedCombos] = useState<string[]>([]);
@@ -34,8 +44,8 @@ export function SettingsShortcutCapture({
 
   const conflicts = useMemo(() => {
     if (!capturedCombo) return [];
-    return keybindingService.findConflicts(capturedCombo, excludeActionId);
-  }, [capturedCombo, excludeActionId]);
+    return keybindingService.findConflicts(capturedCombo, excludeActionId, scope);
+  }, [capturedCombo, excludeActionId, scope]);
 
   const clearChordTimeout = useCallback(() => {
     if (chordTimeoutRef.current) {
@@ -59,6 +69,13 @@ export function SettingsShortcutCapture({
 
     const handler = (e: KeyboardEvent) => {
       if (e.repeat) return;
+
+      // During IME composition, let the browser/IME own the event lifecycle.
+      // keyCode 229 is Chromium's "Process" key signal during active composition
+      // where isComposing may not yet be set on the first keydown. Must come
+      // before preventDefault/stopPropagation so the IME candidate window keeps
+      // working.
+      if (e.isComposing || e.keyCode === 229) return;
 
       e.preventDefault();
       e.stopPropagation();
@@ -258,7 +275,7 @@ export function SettingsShortcutCapture({
 
   return (
     <div className="bg-daintree-bg/50 border border-daintree-border rounded-[var(--radius-lg)] p-4 space-y-3">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2" role="status" aria-live="polite" aria-atomic="true">
         {recording ? (
           <div className="flex-1 px-4 py-2 border border-daintree-accent rounded bg-daintree-accent/10 text-daintree-accent animate-pulse text-center">
             {chordStep === "first" ? (
@@ -302,14 +319,27 @@ export function SettingsShortcutCapture({
                 <span className="text-daintree-text/80">
                   {conflict.description || conflict.actionId}
                 </span>
-                <button
-                  onClick={() => handleUnbindConflict(conflict)}
-                  disabled={isUnbinding}
-                  className="flex items-center gap-1 px-2 py-0.5 text-xs text-daintree-text/60 hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
-                >
-                  <X className="w-3 h-3" />
-                  <span>Unbind</span>
-                </button>
+                {conflict.kind === "shadowed" ? (
+                  // Shadowed = chord-prefix overlap. Auto-unbind can't resolve it
+                  // (the conflicting binding's combo doesn't equal the captured one),
+                  // so surface the relationship and leave resolution to the user.
+                  // Direction by chord length: shorter prefix shadows the longer chord.
+                  <span className="text-xs text-daintree-text/50">
+                    {(conflict.combo?.split(" ").length ?? 0) >
+                    (capturedCombo?.split(" ").length ?? 0)
+                      ? "is shadowed by this chord"
+                      : "shadows this chord"}
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => handleUnbindConflict(conflict)}
+                    disabled={isUnbinding}
+                    className="flex items-center gap-1 px-2 py-0.5 text-xs text-daintree-text/60 hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                  >
+                    <X className="w-3 h-3" />
+                    <span>Unbind</span>
+                  </button>
+                )}
               </div>
             ))}
           </div>

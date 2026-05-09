@@ -4,10 +4,12 @@ import { AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ShortcutRevealChip } from "@/components/ui/ShortcutRevealChip";
-import { createTooltipWithShortcut } from "@/lib/platform";
-import { useKeybindingDisplay, useShortcutHintHover } from "@/hooks";
+import { createTooltipContent } from "@/lib/tooltipShortcut";
+import { useAriaKeyshortcuts, useKeybindingDisplay, useShortcutHintHover } from "@/hooks";
+import { useDiagnosticsStore } from "@/store/diagnosticsStore";
+import { DIAGNOSTICS_DOCK_REGION_ID } from "@/components/Diagnostics/DiagnosticsDock";
 
-const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text transition-colors";
+const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text";
 
 interface ToolbarProblemsButtonProps {
   errorCount: number;
@@ -21,7 +23,9 @@ export const ToolbarProblemsButton = memo(function ToolbarProblemsButton({
   "data-toolbar-item": dataToolbarItem,
 }: ToolbarProblemsButtonProps) {
   const diagnosticsShortcut = useKeybindingDisplay("panel.toggleDiagnostics");
+  const diagnosticsAriaShortcut = useAriaKeyshortcuts("panel.toggleDiagnostics");
   const diagnosticsHover = useShortcutHintHover("panel.toggleDiagnostics");
+  const isDockOpen = useDiagnosticsStore((state) => state.isOpen);
 
   return (
     <Tooltip>
@@ -32,18 +36,22 @@ export const ToolbarProblemsButton = memo(function ToolbarProblemsButton({
           size="icon"
           data-toolbar-item={dataToolbarItem}
           onClick={onToggleProblems}
-          className={cn(toolbarIconButtonClass, "relative", errorCount > 0 && "text-status-error")}
+          className={cn(toolbarIconButtonClass, "relative")}
           aria-label={`Problems: ${errorCount} error${errorCount !== 1 ? "s" : ""}`}
+          aria-keyshortcuts={diagnosticsAriaShortcut}
+          aria-expanded={isDockOpen}
+          aria-controls={DIAGNOSTICS_DOCK_REGION_ID}
         >
           <AlertCircle />
-          {errorCount > 0 && (
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-status-error rounded-full" />
-          )}
+          <span
+            data-visible={errorCount > 0}
+            className="toolbar-problems-badge toolbar-badge absolute top-1.5 right-1.5 w-2 h-2 rounded-full"
+          />
           <ShortcutRevealChip actionId="panel.toggleDiagnostics" />
         </Button>
       </TooltipTrigger>
       <TooltipContent side="bottom">
-        {createTooltipWithShortcut("Show Problems Panel", diagnosticsShortcut)}
+        {createTooltipContent("Show Problems Panel", diagnosticsShortcut)}
       </TooltipContent>
     </Tooltip>
   );

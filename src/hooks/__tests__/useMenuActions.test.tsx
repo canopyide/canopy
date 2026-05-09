@@ -142,6 +142,41 @@ describe("useMenuActions", () => {
     expect(dispatchMock).toHaveBeenCalledWith("project.cloneRepo", undefined, { source: "menu" });
   });
 
+  it("dispatches terminal focus actions from main-process key fallbacks", async () => {
+    let handler: ((action: string) => Promise<void>) | undefined;
+    Object.defineProperty(window, "electron", {
+      value: {
+        app: {
+          onMenuAction: (cb: (action: string) => Promise<void>) => {
+            handler = cb;
+            return () => {};
+          },
+        },
+      },
+      configurable: true,
+      writable: true,
+    });
+
+    renderHook(() =>
+      useMenuActions({
+        onOpenSettings: vi.fn(),
+        onToggleSidebar: vi.fn(),
+        onLaunchAgent: vi.fn(),
+        defaultCwd: "/tmp",
+      })
+    );
+
+    await handler?.("focus-next-terminal");
+    await handler?.("focus-previous-terminal");
+
+    expect(dispatchMock).toHaveBeenNthCalledWith(1, "terminal.focusNext", undefined, {
+      source: "menu",
+    });
+    expect(dispatchMock).toHaveBeenNthCalledWith(2, "terminal.focusPrevious", undefined, {
+      source: "menu",
+    });
+  });
+
   it("does not leak unhandled rejection when action dispatch throws", async () => {
     let handler: ((action: string) => Promise<void>) | undefined;
     Object.defineProperty(window, "electron", {

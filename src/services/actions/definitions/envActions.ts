@@ -1,7 +1,7 @@
 import type { ActionCallbacks, ActionRegistry } from "../actionTypes";
 import type { ProjectSettings } from "@shared/types";
 import { z } from "zod";
-import { projectClient } from "@/clients";
+import { projectClient, globalEnvClient } from "@/clients";
 
 const resourceEnvSchema = z.object({
   provision: z.array(z.string()).optional(),
@@ -23,7 +23,7 @@ export function registerEnvActions(actions: ActionRegistry, _callbacks: ActionCa
     danger: "safe",
     scope: "renderer",
     run: async () => {
-      return await window.electron.globalEnv.get();
+      return await globalEnvClient.get();
     },
   }));
 
@@ -33,12 +33,15 @@ export function registerEnvActions(actions: ActionRegistry, _callbacks: ActionCa
     description: "Replace the global environment variables map",
     category: "settings",
     kind: "command",
-    danger: "confirm",
+    danger: "safe",
     scope: "renderer",
     argsSchema: z.object({ variables: z.record(z.string(), z.string()) }),
     run: async (args: unknown) => {
       const { variables } = args as { variables: Record<string, string> };
-      await window.electron.globalEnv.set(variables);
+      // globalEnvClient.set invalidates the renderer cache before writing,
+      // so subsequent spawns read the freshly-set values rather than
+      // pre-write stale data.
+      await globalEnvClient.set(variables);
     },
   }));
 
@@ -64,7 +67,7 @@ export function registerEnvActions(actions: ActionRegistry, _callbacks: ActionCa
     description: "Merge variables into a project's environment variables",
     category: "settings",
     kind: "command",
-    danger: "confirm",
+    danger: "safe",
     scope: "renderer",
     argsSchema: z.object({
       projectId: z.string(),
@@ -110,7 +113,7 @@ export function registerEnvActions(actions: ActionRegistry, _callbacks: ActionCa
     description: "Replace a project's resource environments configuration",
     category: "worktree",
     kind: "command",
-    danger: "confirm",
+    danger: "safe",
     scope: "renderer",
     argsSchema: z.object({
       projectId: z.string(),

@@ -3,7 +3,6 @@ import { cn } from "@/lib/utils";
 import { ProjectResourceBadge, QuickRun } from "@/components/Project";
 import { useProjectStore } from "@/store/projectStore";
 import { useMacroFocusStore } from "@/store/macroFocusStore";
-import { usePreferencesStore } from "@/store";
 import { DEFAULT_SIDEBAR_WIDTH } from "./AppLayout";
 import { actionService } from "@/services/ActionService";
 import {
@@ -25,6 +24,7 @@ import {
 interface SidebarProps {
   width: number;
   onResize: (width: number) => void;
+  isVisible?: boolean;
   children?: ReactNode;
   className?: string;
 }
@@ -33,13 +33,11 @@ const RESIZE_STEP = 10;
 
 const ICON_CLASS = "w-3.5 h-3.5 mr-2 shrink-0";
 
-export function Sidebar({ width, onResize, children, className }: SidebarProps) {
+export function Sidebar({ width, onResize, isVisible = true, children, className }: SidebarProps) {
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLElement>(null);
   const currentProject = useProjectStore((state) => state.currentProject);
   const isMacroFocused = useMacroFocusStore((state) => state.focusedRegion === "sidebar");
-  const reduceAnimations = usePreferencesStore((s) => s.reduceAnimations);
-  const animateWidth = !isResizing && !reduceAnimations;
 
   useEffect(() => {
     useMacroFocusStore.getState().setRegionRef("sidebar", sidebarRef.current);
@@ -105,19 +103,20 @@ export function Sidebar({ width, onResize, children, className }: SidebarProps) 
           ref={sidebarRef}
           tabIndex={-1}
           aria-label="Sidebar"
+          aria-hidden={!isVisible}
+          // `inert` removes descendant buttons from the focus / a11y tree while
+          // the sidebar is slid out — `aria-hidden` alone leaves them
+          // focusable, which axe flags as `aria-hidden-focus` (WCAG 2.2 AA).
+          inert={!isVisible || undefined}
           data-macro-focus={isMacroFocused ? "true" : undefined}
           className={cn(
             "sidebar-root",
-            "relative shrink-0 flex flex-col outline-hidden overflow-hidden",
+            "relative w-full h-full flex flex-col outline-hidden overflow-hidden",
             "surface-chrome",
             "border-r border-divider",
             "data-[macro-focus=true]:ring-2 data-[macro-focus=true]:ring-daintree-accent/60 data-[macro-focus=true]:ring-inset",
-            animateWidth &&
-              "transition-[width] duration-[var(--duration-250)] ease-[var(--ease-out-expo)] motion-reduce:transition-none",
-            width === 0 && "pointer-events-none",
             className
           )}
-          style={{ width }}
         >
           <div className="flex-1 min-h-0 overflow-hidden">{children}</div>
 
@@ -132,8 +131,8 @@ export function Sidebar({ width, onResize, children, className }: SidebarProps) 
             aria-valuenow={width}
             aria-valuemin={200}
             aria-valuemax={600}
-            tabIndex={width === 0 ? -1 : 0}
-            aria-hidden={width === 0 ? "true" : undefined}
+            tabIndex={isVisible ? 0 : -1}
+            aria-hidden={!isVisible ? "true" : undefined}
             className={cn(
               "group absolute top-0 -right-1.5 w-3 h-full cursor-col-resize flex items-center justify-center z-50",
               "hover:bg-overlay-soft transition-colors focus-visible:outline-hidden focus-visible:bg-overlay-medium focus-visible:ring-1 focus-visible:ring-daintree-accent/50",

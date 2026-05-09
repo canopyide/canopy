@@ -1,8 +1,8 @@
 import { create } from "zustand";
 
-export type MacroRegion = "grid" | "dock" | "sidebar" | "portal";
+export type MacroRegion = "grid" | "dock" | "sidebar" | "portal" | "assistant";
 
-const REGION_ORDER: MacroRegion[] = ["grid", "dock", "sidebar", "portal"];
+const REGION_ORDER: MacroRegion[] = ["grid", "dock", "sidebar", "portal", "assistant"];
 
 interface MacroFocusState {
   focusedRegion: MacroRegion | null;
@@ -21,7 +21,7 @@ function getVisibleRegions(visibility: Record<MacroRegion, boolean>): MacroRegio
 
 export const useMacroFocusStore = create<MacroFocusState>((set, get) => ({
   focusedRegion: null,
-  visibility: { grid: true, dock: false, sidebar: true, portal: false },
+  visibility: { grid: true, dock: false, sidebar: true, portal: false, assistant: false },
   refs: new Map(),
 
   setRegionRef: (region, el) => {
@@ -82,3 +82,20 @@ export const useMacroFocusStore = create<MacroFocusState>((set, get) => ({
     }
   },
 }));
+
+/**
+ * Returns true when the Daintree Assistant region currently owns keyboard
+ * focus — either via explicit macro-region cycling (`focusedRegion` set), or
+ * because the document's active element lives inside the registered assistant
+ * panel root. Synchronous and safe to call before an `await` (#6959 — guards
+ * against panel-creation flows reading stale focus state after a microtask
+ * boundary).
+ */
+export function isAssistantFocused(): boolean {
+  const state = useMacroFocusStore.getState();
+  if (state.focusedRegion === "assistant") return true;
+  if (typeof document === "undefined") return false;
+  const ref = state.refs.get("assistant");
+  if (!ref) return false;
+  return ref.contains(document.activeElement);
+}

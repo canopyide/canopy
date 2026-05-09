@@ -45,6 +45,7 @@ export type {
   TerminalRestartError,
   TerminalReconnectError,
   TerminalRuntimeStatus,
+  PersistableFlowStatus,
   TerminalSpawnSource,
   TerminalInstance,
   PtySpawnOptions,
@@ -56,7 +57,7 @@ export type {
 } from "./panel.js";
 
 // Panel type guards and enums (value exports)
-export { isBuiltInPanelKind, isPtyPanelKind, TerminalRefreshTier } from "./panel.js";
+export { isBuiltInPanelKind, TerminalRefreshTier } from "./panel.js";
 
 // Panel creation options (discriminated union)
 export type {
@@ -86,7 +87,13 @@ export type {
   ProjectSettings,
   ProjectTerminalSettings,
   CopyTreeSettings,
+  FleetSavedScope,
+  SnapshotFleetSavedScope,
+  PredicateFleetSavedScope,
 } from "./project.js";
+
+// Scratch types
+export type { Scratch } from "./scratch.js";
 
 // IPC types - communication payloads
 export type {
@@ -100,6 +107,7 @@ export type {
   TerminalErrorPayload,
   BackendTerminalInfo,
   TerminalReconnectResult,
+  TerminalInfoPayload,
   SemanticSearchMatch,
   // CopyTree IPC types
   CopyTreeOptions,
@@ -161,6 +169,8 @@ export type {
   GitHubTokenValidation,
   GitHubRateLimitPayload,
   GitHubRateLimitKind,
+  GitHubRateLimitBucket,
+  GitHubRateLimitDetails,
   GitHubTokenHealthPayload,
   GitHubTokenHealthStatus,
   // Per-service connectivity types
@@ -227,6 +237,9 @@ export type {
   VoiceTranscriptionModel,
   VoiceCorrectionModel,
   VoiceParagraphingStrategy,
+  HelpAssistantSettings,
+  HelpAssistantAuditRetention,
+  HelpAssistantIdleHibernateMinutes,
   MicPermissionStatus,
   BranchInfo,
   CreateWorktreeOptions,
@@ -297,10 +310,28 @@ export {
 
 // User agent registry types - user-defined agent configuration
 export type { UserAgentConfig, UserAgentRegistry } from "./userAgentRegistry.js";
-export { UserAgentConfigSchema, UserAgentRegistrySchema } from "./userAgentRegistry.js";
+export {
+  UserAgentConfigSchema,
+  UserAgentRegistrySchema,
+  SAFE_AGENT_ID_PATTERN,
+} from "./userAgentRegistry.js";
 
 // Per-service connectivity helpers
 export { CONNECTIVITY_SERVICE_KEYS } from "./ipc/connectivity.js";
+
+// MCP server audit log + runtime state
+export type {
+  McpAuditRecord,
+  McpAuditResult,
+  McpAuditStats,
+  McpRuntimeSnapshot,
+  McpRuntimeState,
+} from "./ipc/mcpServer.js";
+export {
+  MCP_AUDIT_MIN_RECORDS,
+  MCP_AUDIT_MAX_RECORDS,
+  MCP_AUDIT_DEFAULT_MAX_RECORDS,
+} from "./ipc/mcpServer.js";
 
 // Event types - event context for correlation
 export type { EventContext } from "./events.js";
@@ -468,6 +499,7 @@ export type {
   ChecklistState,
   ChecklistItems,
   ChecklistItemId,
+  HelpAssistantTier,
 } from "./ipc/maps.js";
 
 // Task Queue types - DAG-based task management

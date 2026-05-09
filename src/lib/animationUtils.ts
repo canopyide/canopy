@@ -9,12 +9,14 @@ export const DURATION_200 = 200;
 export const DURATION_250 = 250;
 export const DURATION_300 = 300;
 
+export const CHORD_SHOW_DELAY_MS = DURATION_200;
+
 export const EASE_SNAPPY = "cubic-bezier(0.2, 0, 0, 1)";
 export const EASE_SPRING_CRITICAL =
   "linear(0, 0.007, 0.029 2.2%, 0.118 4.7%, 0.625 14.4%, 0.826 19%, 0.902 24%, 0.962 29.8%, 0.984 33.3%, 1.004 37.8%, 1.01 42.4%, 1.011 52.2%, 1.001)";
 export const EASE_OUT_EXPO = "cubic-bezier(0.16, 1, 0.3, 1)";
 
-export const TERMINAL_ANIMATION_DURATION = DURATION_150;
+export const TERMINAL_ANIMATION_DURATION = 0;
 export const UI_ANIMATION_DURATION = DURATION_150;
 
 export function getTerminalAnimationDuration(): number {
@@ -40,8 +42,37 @@ export const UI_EXIT_DURATION = 120;
 export const UI_PALETTE_ENTER_DURATION = DURATION_150;
 export const UI_PALETTE_EXIT_DURATION = DURATION_100;
 
+// Tooltip hover/skip delays consumed by the Radix `TooltipProvider` at the app
+// root. These are wait times before a tooltip opens, not animation durations.
+/** UX anti-flicker gate: sub-400ms work should show nothing (Doherty threshold).
+ *  Used by palette loading bar and stale-result dimming to prevent flashes on
+ *  fast renders. Not an animation token — a perceptual floor.
+ *  Keep in sync with .palette-results-stale transition-delay in src/index.css. */
+export const UI_DOHERTY_THRESHOLD = 400;
+
+/** How long an action success-label swap dwells visible before the toast
+ *  auto-dismisses. Covers saccade (~200ms), lexical recognition (~300ms), and
+ *  a comprehension buffer so sighted and screen-reader users can process the
+ *  label change before the toast disappears. */
+export const UI_ACTION_SUCCESS_DWELL_MS = 2000;
+
+/** How long a transient discovery hint stays visible after the event that
+ *  triggered it (e.g. the "Moved to trash" tooltip above the trash icon after
+ *  a panel is closed). One second is enough to draw the eye without dwelling
+ *  — discovery cue, not an undo affordance. */
+export const UI_TRANSIENT_HINT_DWELL_MS = 1_000;
+
+export const UI_TOOLTIP_DELAY_DURATION = 500;
+export const UI_TOOLTIP_SKIP_DELAY_DURATION = DURATION_150;
+
 export const UI_ENTER_EASING = EASE_SPRING_CRITICAL;
 export const UI_EXIT_EASING = "cubic-bezier(0.2, 0, 0.7, 0)";
+
+/** Framer-motion-compatible easing tuples. framer-motion 12.x tightened
+ *  Transition.ease to its own Easing type and rejects CSS string easings. */
+export const UI_ENTER_EASING_FM: [number, number, number, number] = [0.2, 0, 0, 1];
+export const UI_EXIT_EASING_FM: [number, number, number, number] = [0.2, 0, 0.7, 0];
+export const EASE_OUT_EXPO_FM: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
 export function getUiTransitionDuration(direction: "enter" | "exit"): number {
   if (typeof window === "undefined" || typeof document === "undefined") {
@@ -54,8 +85,27 @@ export function getUiTransitionDuration(direction: "enter" | "exit"): number {
   return direction === "enter" ? UI_ENTER_DURATION : UI_EXIT_DURATION;
 }
 
+export function getUiPaletteTransitionDuration(direction: "enter" | "exit"): number {
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return direction === "enter" ? UI_PALETTE_ENTER_DURATION : UI_PALETTE_EXIT_DURATION;
+  }
+
+  const performanceMode = document.body.dataset.performanceMode === "true";
+  if (performanceMode) return 0;
+
+  return direction === "enter" ? UI_PALETTE_ENTER_DURATION : UI_PALETTE_EXIT_DURATION;
+}
+
 export const PANEL_MINIMIZE_DURATION = 120;
 export const PANEL_RESTORE_DURATION = DURATION_200;
+
+export const BANNER_ENTER_DURATION = DURATION_250;
+export const BANNER_EXIT_DURATION = DURATION_200;
+
+export const DRAG_GHOST_OPACITY = 0.4;
+export const DRAG_GHOST_EASING = "easeOut";
+export const DRAG_OVERLAY_ENTRY_SCALE = 0.95;
+export const DRAG_OVERLAY_ENTRY_OPACITY = 0.8;
 
 export const PANEL_MINIMIZE_EASING = "cubic-bezier(0.3, 0, 0.8, 0.15)";
 export const PANEL_RESTORE_EASING = EASE_OUT_EXPO;

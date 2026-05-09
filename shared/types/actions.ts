@@ -9,12 +9,30 @@ export type ActionDanger = "safe" | "confirm" | "restricted";
 
 export type ActionScope = "renderer";
 
+/**
+ * Explicit MCP tool annotation overrides. Only the hints that can be
+ * meaningfully decoupled from `kind`/`danger` are exposed here — `title` is
+ * always sourced from the action title and `openWorldHint` is derived from the
+ * action category. Provide an override only when the heuristic from `kind` and
+ * `danger` doesn't reflect the action's true semantics for an MCP client (for
+ * example, a query that requires UX confirmation, or a status command that is
+ * read-only). Defined inline (no `@modelcontextprotocol/sdk` import) so this
+ * type stays usable from the renderer.
+ */
+export interface ActionMcpAnnotations {
+  readOnlyHint?: boolean;
+  destructiveHint?: boolean;
+  idempotentHint?: boolean;
+}
+
 export type BuiltInActionId =
   | BuiltInKeyAction
   // Query actions for App Agent
   | "terminal.list"
   | "terminal.getOutput"
+  | "terminal.getStatus"
   | "terminal.sendCommand"
+  | "terminal.waitUntilIdle"
   | "panel.list"
   | "worktree.list"
   | "worktree.getCurrent"
@@ -96,6 +114,7 @@ export type BuiltInActionId =
   | "github.getRepoStats"
   | "github.listIssues"
   | "github.listPullRequests"
+  | "github.getIssueByNumber"
   | "github.checkCli"
   | "github.getConfig"
   | "github.setToken"
@@ -113,6 +132,7 @@ export type BuiltInActionId =
   | "project.getSettings"
   | "project.saveSettings"
   | "project.muteNotifications"
+  | "project.silenceNotificationKind"
   | "project.detectRunners"
   | "project.getStats"
   | "project.settings.open"
@@ -159,6 +179,9 @@ export type BuiltInActionId =
   | "worktree.inject"
   | "worktree.getAvailableBranch"
   | "worktree.createWithRecipe"
+  | "workflow.startWorkOnIssue"
+  | "workflow.prepBranchForReview"
+  | "workflow.focusNextAttention"
   | "worktree.sessions.minimizeAll"
   | "worktree.sessions.maximizeAll"
   | "worktree.sessions.restartAll"
@@ -177,6 +200,7 @@ export type BuiltInActionId =
   | "panel.palette"
   | "worktree.switchIndex"
   | "agent.launch"
+  | "agent.getState"
   | "app.settings.openTab"
   | "worktree.quickCreate"
   | "worktree.createDialog.open"
@@ -201,8 +225,11 @@ export type BuiltInActionId =
   | "terminal.toggleInputLock"
   | "terminal.duplicate"
   | "terminal.rename"
+  | "terminal.close"
   | "terminal.trash"
   | "terminal.kill"
+  | "terminal.closeAll"
+  | "terminal.killAll"
   | "terminal.moveToWorktree"
   | "terminal.moveToNewWorktree"
   | "terminal.watch"
@@ -297,10 +324,15 @@ export type BuiltInActionId =
   | "fleet.restart"
   | "fleet.kill"
   | "fleet.trash"
+  | "fleet.armAll"
+  | "fleet.armFocused"
   | "fleet.scope.enter"
   | "fleet.scope.exit"
   | "fleet.armMatchingFilter"
-  | "fleet.retryFailures";
+  | "fleet.retryFailures"
+  | "fleet.saveNamedFleet"
+  | "fleet.recallNamedFleet"
+  | "fleet.deleteNamedFleet";
 
 export type ActionId = BuiltInActionId | (string & {});
 
@@ -357,6 +389,11 @@ export interface ActionDefinition<
   nonRepeatable?: boolean;
   /** Synonyms and alternative mental-model terms for palette search. */
   keywords?: string[];
+  /**
+   * Per-action MCP tool annotation overrides. Use sparingly — only when the
+   * defaults derived from `kind` and `danger` would mislead an MCP client.
+   */
+  mcpAnnotations?: ActionMcpAnnotations;
 }
 
 export interface ActionManifestEntry {
@@ -377,6 +414,8 @@ export interface ActionManifestEntry {
   disabledReason?: string;
   requiresArgs: boolean;
   keywords?: string[];
+  /** Per-action MCP tool annotation overrides. */
+  mcpAnnotations?: ActionMcpAnnotations;
   /** Set when this action was registered by a plugin (not a built-in). */
   pluginId?: string;
 }
@@ -401,7 +440,10 @@ export type ActionErrorCode =
   | "DISABLED"
   | "RESTRICTED"
   | "CONFIRMATION_REQUIRED"
-  | "EXECUTION_ERROR";
+  | "EXECUTION_ERROR"
+  | "USER_REJECTED"
+  | "CONFIRMATION_TIMEOUT"
+  | "ELICITATION_FAILED";
 
 export interface ActionError {
   code: ActionErrorCode;

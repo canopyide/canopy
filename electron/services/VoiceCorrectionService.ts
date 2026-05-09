@@ -16,11 +16,20 @@ const CORRECTION_TIMEOUT_MS = 7000;
 const MICRO_CORRECTION_TIMEOUT_MS = 3000;
 const MAX_OUTPUT_TOKENS = 1024;
 const MICRO_MAX_OUTPUT_TOKENS = 128;
+const FILE_LINK_MAX_OUTPUT_TOKENS = 256;
 const PROMPT_CACHE_PREFIX = "voice-correction-v5";
 const MICRO_PROMPT_CACHE_PREFIX = "voice-micro-correction-v1";
 const MICRO_CORRECTION_MODEL = "gpt-5-nano";
 const FILE_LINK_DETECTION_TIMEOUT_MS = 4000;
 const FILE_LINK_CACHE_PREFIX = "voice-file-link-v1";
+
+// Permissive pre-filter — biased toward false positives so legitimate file references
+// always reach the LLM. False positives cost a skipped LLM call; false negatives silently
+// drop the user's intent. The "at X file/component" branch allows up to 5 words between
+// "at" and the trigger noun (with hyphens) to cover natural phrasings like
+// "at the input bar component" and "at sign-in component".
+const FILE_LINK_TRIGGER_RE =
+  /\b(?:link\s+to|at\s+file|reference|add\s+file|insert\s+file|open|at\s+(?:[\w-]+\s+){1,5}(?:file|component))\b/i;
 
 const FILE_LINK_DETECTION_SCHEMA = {
   type: "object",
@@ -101,6 +110,12 @@ export interface WordCorrectionRequest {
 }
 
 export class VoiceCorrectionService {
+  private sessionSignal: AbortSignal | null = null;
+
+  setSessionSignal(signal: AbortSignal | null): void {
+    this.sessionSignal = signal;
+  }
+
   async correct(
     request: VoiceCorrectionRequest,
     settings: VoiceCorrectionSettings
@@ -161,6 +176,14 @@ export class VoiceCorrectionService {
         confirmedText,
       };
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return {
+          action: "no_change",
+          correctedText: request.rawText,
+          confidence: "low",
+          confirmedText: request.rawText,
+        };
+      }
       const msg = formatErrorMessage(error, "Voice correction failed");
       logWarn(`${P} Correction failed, using raw text`, { error: msg });
       return {
@@ -273,6 +296,14 @@ export class VoiceCorrectionService {
 
       return { ...result, confirmedText };
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return {
+          action: "no_change",
+          correctedText: request.rawSpan,
+          confidence: "low",
+          confirmedText: request.rawSpan,
+        };
+      }
       const msg = formatErrorMessage(error, "Voice micro-correction failed");
       logWarn(`${P} Micro-correction failed, using raw text`, { error: msg });
       return {
@@ -290,6 +321,7 @@ export class VoiceCorrectionService {
   ): Promise<Array<{ description: string }>> {
     const trimmed = utterance.trim();
     if (!trimmed) return [];
+    if (!FILE_LINK_TRIGGER_RE.test(trimmed)) return [];
 
     try {
       const response = await fetch("https://api.openai.com/v1/responses", {
@@ -298,7 +330,7 @@ export class VoiceCorrectionService {
           "Content-Type": "application/json",
           Authorization: `Bearer ${settings.apiKey}`,
         },
-        signal: AbortSignal.timeout(FILE_LINK_DETECTION_TIMEOUT_MS),
+        signal: this.buildFetchSignal(FILE_LINK_DETECTION_TIMEOUT_MS),
         body: JSON.stringify({
           model: MICRO_CORRECTION_MODEL,
           instructions: FILE_LINK_DETECTION_PROMPT,
@@ -314,7 +346,7 @@ export class VoiceCorrectionService {
               schema: FILE_LINK_DETECTION_SCHEMA,
             },
           },
-          max_output_tokens: MICRO_MAX_OUTPUT_TOKENS,
+          max_output_tokens: FILE_LINK_MAX_OUTPUT_TOKENS,
         }),
       });
 
@@ -326,13 +358,38 @@ export class VoiceCorrectionService {
       const data = (await response.json()) as {
         output_text?: string;
         output?: Array<{ content?: Array<{ text?: string }> }>;
+        status?: string;
+        incomplete_details?: { reason?: string };
+        usage?: {
+          input_tokens?: number;
+          output_tokens?: number;
+          input_tokens_details?: { cached_tokens?: number };
+        };
       };
+
+      if (data.status === "incomplete") {
+        logWarn(`${P} File link detection truncated`, {
+          reason: data.incomplete_details?.reason ?? "unknown",
+          maxOutputTokens: FILE_LINK_MAX_OUTPUT_TOKENS,
+          utteranceLen: trimmed.length,
+        });
+        return [];
+      }
+
       const parsed = JSON.parse(this.extractResponseText(data)) as {
         file_references: Array<{ description: string }>;
       };
 
+      logDebug(`${P} File link detection success`, {
+        count: parsed.file_references.length,
+        cachedTokens: data.usage?.input_tokens_details?.cached_tokens ?? 0,
+        inputTokens: data.usage?.input_tokens,
+        outputTokens: data.usage?.output_tokens,
+      });
+
       return parsed.file_references.filter((r) => r.description.trim().length > 0);
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return [];
       const msg = formatErrorMessage(error, "Voice file link detection failed");
       logWarn(`${P} File link detection failed`, { error: msg });
       return [];
@@ -366,6 +423,13 @@ export class VoiceCorrectionService {
     return `${MICRO_PROMPT_CACHE_PREFIX}:${MICRO_CORRECTION_MODEL}:${projectKey}:${dictionaryKey}`;
   }
 
+  private buildFetchSignal(timeoutMs: number): AbortSignal {
+    if (this.sessionSignal) {
+      return AbortSignal.any([this.sessionSignal, AbortSignal.timeout(timeoutMs)]);
+    }
+    return AbortSignal.timeout(timeoutMs);
+  }
+
   private async callMicroApi(
     request: WordCorrectionRequest,
     settings: VoiceCorrectionSettings
@@ -389,7 +453,7 @@ export class VoiceCorrectionService {
         "Content-Type": "application/json",
         Authorization: `Bearer ${settings.apiKey}`,
       },
-      signal: AbortSignal.timeout(MICRO_CORRECTION_TIMEOUT_MS),
+      signal: this.buildFetchSignal(MICRO_CORRECTION_TIMEOUT_MS),
       body: JSON.stringify({
         model: MICRO_CORRECTION_MODEL,
         instructions: systemPrompt,
@@ -416,8 +480,19 @@ export class VoiceCorrectionService {
     const data = (await response.json()) as {
       output_text?: string;
       output?: Array<{ content?: Array<{ text?: string }> }>;
+      usage?: {
+        input_tokens?: number;
+        output_tokens?: number;
+        input_tokens_details?: { cached_tokens?: number };
+      };
     };
     const parsed = JSON.parse(this.extractResponseText(data)) as CorrectionApiResult;
+
+    logDebug(`${P} Micro-correction API usage`, {
+      cachedTokens: data.usage?.input_tokens_details?.cached_tokens ?? 0,
+      inputTokens: data.usage?.input_tokens,
+      outputTokens: data.usage?.output_tokens,
+    });
 
     return {
       action: parsed.action,
@@ -454,7 +529,7 @@ export class VoiceCorrectionService {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
       },
-      signal: AbortSignal.timeout(CORRECTION_TIMEOUT_MS),
+      signal: this.buildFetchSignal(CORRECTION_TIMEOUT_MS),
       body: JSON.stringify({
         model,
         instructions: systemPrompt,
@@ -480,8 +555,19 @@ export class VoiceCorrectionService {
     const data = (await response.json()) as {
       output_text?: string;
       output?: Array<{ content?: Array<{ text?: string }> }>;
+      usage?: {
+        input_tokens?: number;
+        output_tokens?: number;
+        input_tokens_details?: { cached_tokens?: number };
+      };
     };
     const parsed = JSON.parse(this.extractResponseText(data)) as CorrectionApiResult;
+
+    logDebug(`${P} Correction API usage`, {
+      cachedTokens: data.usage?.input_tokens_details?.cached_tokens ?? 0,
+      inputTokens: data.usage?.input_tokens,
+      outputTokens: data.usage?.output_tokens,
+    });
 
     return {
       action: parsed.action,

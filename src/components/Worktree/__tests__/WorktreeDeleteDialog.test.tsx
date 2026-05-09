@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, waitFor, act } from "@testing-library/react";
 import type { WorktreeState } from "@/types";
 import type { WorktreeChanges, GitStatus } from "shared/types/git";
 
@@ -15,18 +15,19 @@ vi.stubGlobal(
   }
 );
 
+const { dispatchMock, terminalCountsMock } = vi.hoisted(() => ({
+  dispatchMock: vi.fn().mockResolvedValue({ ok: true }),
+  terminalCountsMock: { total: 0 },
+}));
+
 vi.mock("@/services/ActionService", () => ({
   actionService: {
-    dispatch: vi.fn().mockResolvedValue({ ok: true }),
+    dispatch: dispatchMock,
   },
 }));
 
 vi.mock("@/hooks/useWorktreeTerminals", () => ({
-  useWorktreeTerminals: () => ({ counts: { total: 0 } }),
-}));
-
-vi.mock("@/store", () => ({
-  usePanelStore: () => vi.fn(),
+  useWorktreeTerminals: () => ({ counts: terminalCountsMock }),
 }));
 
 vi.mock("@/components/ui/AppDialog", () => {
@@ -62,8 +63,11 @@ vi.mock("@/components/ui/button", () => ({
 
 import { WorktreeDeleteDialog } from "../WorktreeDeleteDialog";
 
-function makeWorktree(worktreeChanges: WorktreeChanges | null = null): WorktreeState {
-  return {
+function makeWorktree(
+  worktreeChanges: WorktreeChanges | null = null,
+  overrides: Partial<WorktreeState> = {}
+): WorktreeState {
+  const base = {
     id: "wt-1",
     path: "/test/worktree",
     name: "feature/test",
@@ -80,6 +84,7 @@ function makeWorktree(worktreeChanges: WorktreeChanges | null = null): WorktreeS
     mood: "stable",
     moodLabel: null,
   } as unknown as WorktreeState;
+  return { ...base, ...overrides };
 }
 
 function makeChanges(files: Array<{ path: string; status: GitStatus }>): WorktreeChanges {
@@ -99,6 +104,8 @@ function makeChanges(files: Array<{ path: string; status: GitStatus }>): Worktre
 describe("WorktreeDeleteDialog — warning messages", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    dispatchMock.mockResolvedValue({ ok: true });
+    terminalCountsMock.total = 0;
   });
 
   afterEach(() => {
@@ -112,7 +119,7 @@ describe("WorktreeDeleteDialog — warning messages", () => {
     expect(screen.queryByText(/Standard deletion will fail/)).toBeNull();
   });
 
-  it('shows "untracked files" warning when only untracked files exist', () => {
+  it("shows untracked-file count when only untracked files exist", () => {
     const worktree = makeWorktree(
       makeChanges([
         { path: "new.txt", status: "untracked" },
@@ -122,11 +129,11 @@ describe("WorktreeDeleteDialog — warning messages", () => {
     render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
 
     const warning = screen.getByText(/Standard deletion will fail/);
-    expect(warning.textContent).toContain("untracked files");
-    expect(warning.textContent).not.toContain("uncommitted changes");
+    expect(warning.textContent).toContain("2 untracked files");
+    expect(warning.textContent).not.toContain("uncommitted file");
   });
 
-  it('shows "uncommitted changes" warning when only tracked changes exist', () => {
+  it("shows uncommitted-file count when only tracked changes exist", () => {
     const worktree = makeWorktree(
       makeChanges([
         { path: "src/app.ts", status: "modified" },
@@ -136,21 +143,53 @@ describe("WorktreeDeleteDialog — warning messages", () => {
     render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
 
     const warning = screen.getByText(/Standard deletion will fail/);
-    expect(warning.textContent).toContain("uncommitted changes");
-    expect(warning.textContent).not.toContain("untracked files");
+    expect(warning.textContent).toContain("2 uncommitted files");
+    expect(warning.textContent).not.toContain("untracked file");
   });
 
-  it('shows "uncommitted changes and untracked files" when both exist', () => {
+  it("shows both counts when tracked and untracked files exist", () => {
     const worktree = makeWorktree(
       makeChanges([
         { path: "src/app.ts", status: "modified" },
+        { path: "src/index.ts", status: "modified" },
         { path: "new.txt", status: "untracked" },
       ])
     );
     render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
 
     const warning = screen.getByText(/Standard deletion will fail/);
-    expect(warning.textContent).toContain("uncommitted changes and untracked files");
+    expect(warning.textContent).toContain("2 uncommitted files and 1 untracked file");
+  });
+
+  it("uses singular form for a single tracked change", () => {
+    const worktree = makeWorktree(makeChanges([{ path: "src/app.ts", status: "modified" }]));
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    const warning = screen.getByText(/Standard deletion will fail/);
+    expect(warning.textContent).toContain("1 uncommitted file.");
+    expect(warning.textContent).not.toContain("1 uncommitted files");
+  });
+
+  it("uses singular form for a single untracked file", () => {
+    const worktree = makeWorktree(makeChanges([{ path: "new.txt", status: "untracked" }]));
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    const warning = screen.getByText(/Standard deletion will fail/);
+    expect(warning.textContent).toContain("1 untracked file.");
+    expect(warning.textContent).not.toContain("1 untracked files");
+  });
+
+  it("excludes ignored files from the uncommitted count", () => {
+    const worktree = makeWorktree(
+      makeChanges([
+        { path: "src/app.ts", status: "modified" },
+        { path: "node_modules/foo", status: "ignored" },
+      ])
+    );
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    const warning = screen.getByText(/Standard deletion will fail/);
+    expect(warning.textContent).toContain("1 uncommitted file.");
   });
 
   it("hides warning when force is checked", () => {
@@ -191,5 +230,429 @@ describe("WorktreeDeleteDialog — warning messages", () => {
     expect(
       screen.getByText(/Force delete \(lose uncommitted changes and untracked files\)/)
     ).toBeDefined();
+  });
+});
+
+describe("WorktreeDeleteDialog — body copy", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    dispatchMock.mockResolvedValue({ ok: true });
+    terminalCountsMock.total = 0;
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("ends body copy with 'This cannot be undone.' in medium tier", () => {
+    const worktree = makeWorktree(makeChanges([]));
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    const body = screen.getByText(/This will permanently delete the worktree directory/);
+    expect(body.textContent).toMatch(/This cannot be undone\.$/);
+  });
+
+  it("ends body copy with 'This cannot be undone.' in high tier", () => {
+    const worktree = makeWorktree(makeChanges([]), { branch: "main" });
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    const forceCheckbox = screen.getByRole("checkbox", { name: /force delete/i });
+    fireEvent.click(forceCheckbox);
+
+    const body = screen.getByText(/This will permanently delete the worktree directory/);
+    expect(body.textContent).toMatch(/This cannot be undone\.$/);
+  });
+
+  it("uses singular 'terminal' when one terminal is associated", () => {
+    terminalCountsMock.total = 1;
+    const worktree = makeWorktree(makeChanges([]));
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    const body = screen.getByText(/This will permanently delete the worktree directory/);
+    expect(body.textContent).toContain("1 terminal will be closed.");
+    expect(body.textContent).not.toContain("1 terminals");
+  });
+
+  it("uses plural 'terminals' when multiple terminals are associated", () => {
+    terminalCountsMock.total = 3;
+    const worktree = makeWorktree(makeChanges([]));
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    const body = screen.getByText(/This will permanently delete the worktree directory/);
+    expect(body.textContent).toContain("3 terminals will be closed.");
+  });
+
+  it("omits the terminal sentence when no terminals are associated", () => {
+    terminalCountsMock.total = 0;
+    const worktree = makeWorktree(makeChanges([]));
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    const body = screen.getByText(/This will permanently delete the worktree directory/);
+    expect(body.textContent).not.toMatch(/terminals? will be closed/);
+  });
+
+  it("omits the terminal sentence when closeTerminals is unchecked", () => {
+    terminalCountsMock.total = 2;
+    const worktree = makeWorktree(makeChanges([]));
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    const closeTerminalsCheckbox = screen.getByRole("checkbox", {
+      name: /close all terminals/i,
+    });
+    fireEvent.click(closeTerminalsCheckbox);
+
+    const body = screen.getByText(/This will permanently delete the worktree directory/);
+    expect(body.textContent).not.toMatch(/terminals? will be closed/);
+  });
+
+  it("states 'Uncommitted changes will be lost.' without the git-restore hint", () => {
+    const worktree = makeWorktree(makeChanges([{ path: "src/app.ts", status: "modified" }]));
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    const body = screen.getByText(/This will permanently delete the worktree directory/);
+    expect(body.textContent).toContain("Uncommitted changes will be lost.");
+    expect(body.textContent).not.toContain("restored from git");
+  });
+});
+
+describe("WorktreeDeleteDialog — medium tier (no name confirmation)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    dispatchMock.mockResolvedValue({ ok: true });
+    terminalCountsMock.total = 0;
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("non-protected branch + force does not require name confirmation", () => {
+    const worktree = makeWorktree(makeChanges([{ path: "src/app.ts", status: "modified" }]));
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    const forceCheckbox = screen.getByRole("checkbox", { name: /force delete/i });
+    fireEvent.click(forceCheckbox);
+
+    expect(screen.queryByTestId("delete-worktree-confirm-input")).toBeNull();
+    const button = screen.getByTestId("delete-worktree-confirm") as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    expect(button.textContent).toBe("Delete worktree");
+  });
+
+  it("dispatches delete on click without typing", async () => {
+    const onClose = vi.fn();
+    const worktree = makeWorktree(makeChanges([]));
+    render(<WorktreeDeleteDialog isOpen={true} onClose={onClose} worktree={worktree} />);
+
+    const button = screen.getByTestId("delete-worktree-confirm");
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(dispatchMock).toHaveBeenCalledTimes(1);
+    });
+    expect(dispatchMock).toHaveBeenCalledWith(
+      "worktree.delete",
+      { worktreeId: "wt-1", force: false, deleteBranch: false },
+      { source: "user" }
+    );
+  });
+
+  it("asks the delete action to close associated terminals before deleting", async () => {
+    terminalCountsMock.total = 2;
+    const worktree = makeWorktree(makeChanges([]));
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    fireEvent.click(screen.getByTestId("delete-worktree-confirm"));
+
+    await waitFor(() => {
+      expect(dispatchMock).toHaveBeenCalledTimes(1);
+    });
+    expect(dispatchMock).toHaveBeenCalledWith(
+      "worktree.delete",
+      { worktreeId: "wt-1", force: false, deleteBranch: false, closeTerminals: true },
+      { source: "user" }
+    );
+  });
+});
+
+describe("WorktreeDeleteDialog — high tier (name confirmation)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    dispatchMock.mockResolvedValue({ ok: true });
+    terminalCountsMock.total = 0;
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("renders type-to-confirm input when force-deleting a protected branch", () => {
+    const worktree = makeWorktree(makeChanges([]), { branch: "main", name: "main" });
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    expect(screen.queryByTestId("delete-worktree-confirm-input")).toBeNull();
+
+    const forceCheckbox = screen.getByRole("checkbox", { name: /force delete/i });
+    fireEvent.click(forceCheckbox);
+
+    expect(screen.getByTestId("delete-worktree-confirm-input")).toBeDefined();
+    const button = screen.getByTestId("delete-worktree-confirm") as HTMLButtonElement;
+    expect(button.textContent).toBe("Delete worktree");
+    expect(button.disabled).toBe(true);
+  });
+
+  it("renders type-to-confirm input when force-deleting the main worktree", () => {
+    const worktree = makeWorktree(makeChanges([]), {
+      branch: "feature/x",
+      name: "feature/x",
+      isMainWorktree: true,
+    });
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    const forceCheckbox = screen.getByRole("checkbox", { name: /force delete/i });
+    fireEvent.click(forceCheckbox);
+
+    expect(screen.getByTestId("delete-worktree-confirm-input")).toBeDefined();
+    const button = screen.getByTestId("delete-worktree-confirm") as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+  });
+
+  it("enables the destructive button only when the typed name matches exactly", () => {
+    const worktree = makeWorktree(makeChanges([]), { branch: "main", name: "main" });
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /force delete/i }));
+
+    const input = screen.getByTestId("delete-worktree-confirm-input") as HTMLInputElement;
+    const button = screen.getByTestId("delete-worktree-confirm") as HTMLButtonElement;
+
+    fireEvent.change(input, { target: { value: "mai" } });
+    expect(button.disabled).toBe(true);
+
+    fireEvent.change(input, { target: { value: "Main" } });
+    expect(button.disabled).toBe(true);
+
+    fireEvent.change(input, { target: { value: "main" } });
+    expect(button.disabled).toBe(false);
+  });
+
+  it("falls back to worktree.name when branch is the empty string", () => {
+    const worktree = makeWorktree(makeChanges([]), {
+      branch: "",
+      name: "abc1234",
+      isMainWorktree: true,
+    });
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /force delete/i }));
+
+    const button = screen.getByTestId("delete-worktree-confirm") as HTMLButtonElement;
+    expect(button.textContent).toBe("Delete worktree");
+    expect(button.disabled).toBe(true);
+
+    const input = screen.getByTestId("delete-worktree-confirm-input") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "abc1234" } });
+    expect(button.disabled).toBe(false);
+  });
+
+  it("uses worktree.name as the confirmation target for detached HEAD", () => {
+    const worktree = makeWorktree(makeChanges([]), {
+      branch: undefined,
+      name: "abc1234",
+      isMainWorktree: true,
+    });
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /force delete/i }));
+
+    const button = screen.getByTestId("delete-worktree-confirm") as HTMLButtonElement;
+    expect(button.textContent).toBe("Delete worktree");
+
+    const input = screen.getByTestId("delete-worktree-confirm-input") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "abc1234" } });
+    expect(button.disabled).toBe(false);
+  });
+
+  it("clears typed name and reverts to medium tier when force is unchecked", () => {
+    const worktree = makeWorktree(makeChanges([]), { branch: "main", name: "main" });
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    const forceCheckbox = screen.getByRole("checkbox", { name: /force delete/i });
+    fireEvent.click(forceCheckbox);
+
+    const input = screen.getByTestId("delete-worktree-confirm-input") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "main" } });
+    expect(input.value).toBe("main");
+
+    fireEvent.click(forceCheckbox);
+
+    expect(screen.queryByTestId("delete-worktree-confirm-input")).toBeNull();
+    const button = screen.getByTestId("delete-worktree-confirm") as HTMLButtonElement;
+    expect(button.textContent).toBe("Delete worktree");
+    expect(button.disabled).toBe(false);
+  });
+
+  it("submits on Enter when name is matched", async () => {
+    const onClose = vi.fn();
+    const worktree = makeWorktree(makeChanges([]), { branch: "main", name: "main" });
+    render(<WorktreeDeleteDialog isOpen={true} onClose={onClose} worktree={worktree} />);
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /force delete/i }));
+    const input = screen.getByTestId("delete-worktree-confirm-input") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "main" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(dispatchMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("does not submit on Enter when name is unmatched", () => {
+    const worktree = makeWorktree(makeChanges([]), { branch: "main", name: "main" });
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /force delete/i }));
+    const input = screen.getByTestId("delete-worktree-confirm-input") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "mai" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(dispatchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("WorktreeDeleteDialog — in-flight skeleton", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    terminalCountsMock.total = 0;
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("renders the skeleton and hides body copy while delete is in flight", async () => {
+    let resolveDispatch: (value: { ok: true }) => void = () => {};
+    dispatchMock.mockImplementationOnce(
+      () =>
+        new Promise<{ ok: true }>((resolve) => {
+          resolveDispatch = resolve;
+        })
+    );
+    const worktree = makeWorktree(makeChanges([]));
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    fireEvent.click(screen.getByTestId("delete-worktree-confirm"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("delete-worktree-skeleton")).toBeDefined();
+    });
+    expect(screen.queryByText(/This will permanently delete the worktree directory/)).toBeNull();
+
+    const button = screen.getByTestId("delete-worktree-confirm") as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(button.textContent).toBe("Deleting…");
+
+    await act(async () => {
+      resolveDispatch({ ok: true });
+    });
+  });
+});
+
+describe("WorktreeDeleteDialog — state reset", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    dispatchMock.mockResolvedValue({ ok: true });
+    terminalCountsMock.total = 0;
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("resets closeTerminals to true when the dialog re-opens", () => {
+    const worktree = makeWorktree(makeChanges([]));
+    const { rerender } = render(
+      <WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />
+    );
+
+    const closeTerminalsCheckbox = screen.getByRole("checkbox", {
+      name: /close all terminals/i,
+    }) as HTMLInputElement;
+    expect(closeTerminalsCheckbox.checked).toBe(true);
+    fireEvent.click(closeTerminalsCheckbox);
+    expect(closeTerminalsCheckbox.checked).toBe(false);
+
+    rerender(<WorktreeDeleteDialog isOpen={false} onClose={vi.fn()} worktree={worktree} />);
+    rerender(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    const reopened = screen.getByRole("checkbox", {
+      name: /close all terminals/i,
+    }) as HTMLInputElement;
+    expect(reopened.checked).toBe(true);
+  });
+});
+
+describe("WorktreeDeleteDialog — error handling", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    terminalCountsMock.total = 0;
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("renders error message and re-enables controls when dispatch fails", async () => {
+    dispatchMock.mockResolvedValueOnce({ ok: false, error: { message: "git error" } });
+    const onClose = vi.fn();
+    const worktree = makeWorktree(makeChanges([]));
+    render(<WorktreeDeleteDialog isOpen={true} onClose={onClose} worktree={worktree} />);
+
+    fireEvent.click(screen.getByTestId("delete-worktree-confirm"));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toContain("git error");
+    });
+    expect(screen.queryByTestId("delete-worktree-skeleton")).toBeNull();
+    const button = screen.getByTestId("delete-worktree-confirm") as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+});
+
+describe("WorktreeDeleteDialog — reentrancy", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    terminalCountsMock.total = 0;
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("dispatches at most once when the destructive button is clicked rapidly", async () => {
+    let resolveDispatch: (value: { ok: true }) => void = () => {};
+    dispatchMock.mockImplementationOnce(
+      () =>
+        new Promise<{ ok: true }>((resolve) => {
+          resolveDispatch = resolve;
+        })
+    );
+    const worktree = makeWorktree(makeChanges([]));
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    const button = screen.getByTestId("delete-worktree-confirm");
+    fireEvent.click(button);
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("delete-worktree-skeleton")).toBeDefined();
+    });
+    expect(dispatchMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveDispatch({ ok: true });
+    });
   });
 });

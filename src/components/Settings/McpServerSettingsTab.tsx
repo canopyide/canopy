@@ -1,14 +1,33 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Copy, Check, AlertCircle, Key, Hash, Shield, Eye, EyeOff, RefreshCw } from "lucide-react";
+import {
+  Copy,
+  Check,
+  AlertCircle,
+  Key,
+  Hash,
+  Shield,
+  Eye,
+  EyeOff,
+  RefreshCw,
+  ScrollText,
+} from "lucide-react";
 import { McpServerIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SettingsSection } from "@/components/Settings/SettingsSection";
 import { SettingsSwitchCard } from "@/components/Settings/SettingsSwitchCard";
+import { useSettingsTabValidation } from "@/components/Settings/SettingsValidationRegistry";
+import { McpAuditLogViewer } from "@/components/Settings/McpAuditLogViewer";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
-import { notify } from "@/lib/notify";
 import { logError } from "@/utils/logger";
+import {
+  type McpAuditRecord,
+  MCP_AUDIT_DEFAULT_MAX_RECORDS,
+  MCP_AUDIT_MAX_RECORDS,
+  MCP_AUDIT_MIN_RECORDS,
+} from "@shared/types";
 
 interface McpServerStatus {
   enabled: boolean;
@@ -16,6 +35,10 @@ interface McpServerStatus {
   configuredPort: number | null;
   apiKey: string;
 }
+
+const COPY_FEEDBACK_MS = 2000;
+
+const MASKED_KEY = "•".repeat(24);
 
 export function McpServerSettingsTab() {
   const [status, setStatus] = useState<McpServerStatus>({
@@ -28,52 +51,95 @@ export function McpServerSettingsTab() {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [portInput, setPortInput] = useState("");
+  const portDirtyRef = useRef(false);
   const [showApiKey, setShowApiKey] = useState(false);
   const [copiedKey, setCopiedKey] = useState(false);
-  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [copiedAudit, setCopiedAudit] = useState(false);
+  const configCopyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const apiKeyCopyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const auditCopyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [auditRecords, setAuditRecords] = useState<McpAuditRecord[]>([]);
+  const [auditEnabled, setAuditEnabled] = useState(true);
+  const [auditMaxRecords, setAuditMaxRecords] = useState(MCP_AUDIT_DEFAULT_MAX_RECORDS);
+  const [maxRecordsInput, setMaxRecordsInput] = useState(MCP_AUDIT_DEFAULT_MAX_RECORDS.toString());
+  const [auditLoading, setAuditLoading] = useState(true);
+
+  const [showRotateConfirm, setShowRotateConfirm] = useState(false);
+  const [isRotating, setIsRotating] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
+
+  useSettingsTabValidation("mcp", Boolean(error));
+
+  const refreshAuditRecords = useCallback(async (): Promise<void> => {
+    try {
+      const records = await window.electron.mcpServer.getAuditRecords();
+      setAuditRecords(records);
+    } catch (err) {
+      logError("Failed to load MCP audit log", err);
+    }
+  }, []);
 
   useEffect(() => {
     let settled = false;
     const timer = setTimeout(() => {
       settled = true;
-      setError("Settings load timed out");
+      setError("Couldn't load MCP server settings. Restart Daintree and try again.");
       setLoading(false);
-      notify({
-        type: "error",
-        title: "MCP status failed",
-        message: "Loading MCP server status timed out. The settings panel may be out of date.",
-        priority: "low",
-      });
       logError("MCP status load timed out");
     }, 10_000);
-    window.electron.mcpServer
-      .getStatus()
-      .then((s) => {
+
+    Promise.all([
+      window.electron.mcpServer.getStatus(),
+      window.electron.mcpServer.getAuditConfig(),
+      window.electron.mcpServer.getAuditRecords(),
+    ])
+      .then(([s, auditCfg, records]) => {
         if (settled) return;
         setStatus(s);
         setPortInput(s.configuredPort?.toString() ?? "");
+        portDirtyRef.current = false;
+        setAuditEnabled(auditCfg.enabled);
+        setAuditMaxRecords(auditCfg.maxRecords);
+        setMaxRecordsInput(auditCfg.maxRecords.toString());
+        setAuditRecords(records);
         setError(null);
       })
       .catch((err) => {
         if (settled) return;
         setError(formatErrorMessage(err, "Failed to load MCP status"));
-        notify({
-          type: "error",
-          title: "MCP status failed",
-          message: "Couldn't load MCP server status. The settings panel may be out of date.",
-          priority: "low",
-        });
         logError("Failed to load MCP status", err);
       })
       .finally(() => {
         settled = true;
         clearTimeout(timer);
         setLoading(false);
+        setAuditLoading(false);
       });
+
+    const unsub = window.electron.mcpServer.onRuntimeStateChanged(() => {
+      if (!settled) return;
+      window.electron.mcpServer
+        .getStatus()
+        .then((s) => {
+          setStatus(s);
+          if (!portDirtyRef.current) {
+            setPortInput(s.configuredPort?.toString() ?? "");
+          }
+          setError(null);
+        })
+        .catch((err) => {
+          logError("Failed to refresh MCP status on runtime change", err);
+        });
+    });
 
     return () => {
       clearTimeout(timer);
-      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+      unsub();
+      if (configCopyTimeoutRef.current) clearTimeout(configCopyTimeoutRef.current);
+      if (apiKeyCopyTimeoutRef.current) clearTimeout(apiKeyCopyTimeoutRef.current);
+      if (auditCopyTimeoutRef.current) clearTimeout(auditCopyTimeoutRef.current);
     };
   }, []);
 
@@ -84,12 +150,6 @@ export function McpServerSettingsTab() {
       setStatus(newStatus);
     } catch (err) {
       setError(formatErrorMessage(err, "Failed to update MCP server"));
-      notify({
-        type: "error",
-        title: "MCP server update failed",
-        message: "Couldn't update the MCP server state. Try again.",
-        priority: "low",
-      });
       logError("Failed to update MCP server", err);
     }
   }, [status.enabled]);
@@ -99,15 +159,15 @@ export function McpServerSettingsTab() {
       const snippet = await window.electron.mcpServer.getConfigSnippet();
       await navigator.clipboard.writeText(snippet);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      if (configCopyTimeoutRef.current) clearTimeout(configCopyTimeoutRef.current);
+      configCopyTimeoutRef.current = setTimeout(() => setCopied(false), COPY_FEEDBACK_MS);
     } catch (err) {
+      setCopied(false);
+      if (configCopyTimeoutRef.current) {
+        clearTimeout(configCopyTimeoutRef.current);
+        configCopyTimeoutRef.current = null;
+      }
       setError(formatErrorMessage(err, "Failed to copy config"));
-      notify({
-        type: "error",
-        title: "Config copy failed",
-        message: "Couldn't copy the MCP config. The server may not be running.",
-        priority: "low",
-      });
       logError("Failed to copy MCP config", err);
     }
   }, []);
@@ -124,65 +184,130 @@ export function McpServerSettingsTab() {
       const newStatus = await window.electron.mcpServer.setPort(port);
       setStatus(newStatus);
       setPortInput(newStatus.configuredPort?.toString() ?? "");
+      portDirtyRef.current = false;
     } catch (err) {
       setError(formatErrorMessage(err, "Failed to update port"));
-      notify({
-        type: "error",
-        title: "Port update failed",
-        message: "Couldn't save the port setting. Check the value and try again.",
-        priority: "low",
-      });
       logError("Failed to update MCP port", err);
     }
   }, [portInput]);
 
-  const handleGenerateApiKey = useCallback(async () => {
+  const confirmRotateApiKey = useCallback(async () => {
+    if (isRotating) return;
+    setIsRotating(true);
     try {
       setError(null);
-      const key = await window.electron.mcpServer.generateApiKey();
+      const key = await window.electron.mcpServer.rotateApiKey();
       setStatus((prev) => ({ ...prev, apiKey: key }));
-      setShowApiKey(true);
       setCopiedKey(false);
+      setShowApiKey(false);
+      setShowRotateConfirm(false);
     } catch (err) {
-      setError(formatErrorMessage(err, "Failed to generate API key"));
-      notify({
-        type: "error",
-        title: "API key generation failed",
-        message: "Couldn't generate a new API key. Try again.",
-        priority: "low",
-      });
-      logError("Failed to generate MCP API key", err);
+      setError(formatErrorMessage(err, "Failed to rotate API key"));
+      logError("Failed to rotate MCP API key", err);
+    } finally {
+      setIsRotating(false);
     }
-  }, []);
+  }, [isRotating]);
 
-  const handleClearApiKey = useCallback(async () => {
-    try {
-      setError(null);
-      const newStatus = await window.electron.mcpServer.setApiKey("");
-      setStatus(newStatus);
-      setCopiedKey(false);
-    } catch (err) {
-      setError(formatErrorMessage(err, "Failed to clear API key"));
-      notify({
-        type: "error",
-        title: "API key removal failed",
-        message: "Couldn't remove the API key. Try again.",
-        priority: "low",
-      });
-      logError("Failed to clear MCP API key", err);
-    }
-  }, []);
+  const handleCancelRotate = useCallback(() => {
+    if (isRotating) return;
+    setShowRotateConfirm(false);
+    setShowApiKey(false);
+  }, [isRotating]);
 
   const handleCopyApiKey = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(status.apiKey);
       setCopiedKey(true);
-      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
-      copyTimeoutRef.current = setTimeout(() => setCopiedKey(false), 2000);
-    } catch {
-      // clipboard write failed — silently ignore
+      if (apiKeyCopyTimeoutRef.current) clearTimeout(apiKeyCopyTimeoutRef.current);
+      apiKeyCopyTimeoutRef.current = setTimeout(() => setCopiedKey(false), COPY_FEEDBACK_MS);
+    } catch (err) {
+      setCopiedKey(false);
+      if (apiKeyCopyTimeoutRef.current) {
+        clearTimeout(apiKeyCopyTimeoutRef.current);
+        apiKeyCopyTimeoutRef.current = null;
+      }
+      setError(formatErrorMessage(err, "Failed to copy API key"));
+      logError("Failed to copy MCP API key", err);
     }
   }, [status.apiKey]);
+
+  const handleAuditEnabledToggle = useCallback(async () => {
+    try {
+      setError(null);
+      const next = !auditEnabled;
+      const cfg = await window.electron.mcpServer.setAuditEnabled(next);
+      setAuditEnabled(cfg.enabled);
+      setAuditMaxRecords(cfg.maxRecords);
+      setMaxRecordsInput(cfg.maxRecords.toString());
+    } catch (err) {
+      setError(formatErrorMessage(err, "Failed to update audit logging"));
+      logError("Failed to toggle MCP audit log", err);
+    }
+  }, [auditEnabled]);
+
+  const handleMaxRecordsSave = useCallback(async () => {
+    const trimmed = maxRecordsInput.trim();
+    const parsed = Number.parseInt(trimmed, 10);
+    if (
+      !Number.isFinite(parsed) ||
+      parsed < MCP_AUDIT_MIN_RECORDS ||
+      parsed > MCP_AUDIT_MAX_RECORDS
+    ) {
+      setError(`Enter a number between ${MCP_AUDIT_MIN_RECORDS} and ${MCP_AUDIT_MAX_RECORDS}.`);
+      return;
+    }
+    try {
+      setError(null);
+      const cfg = await window.electron.mcpServer.setAuditMaxRecords(parsed);
+      setAuditEnabled(cfg.enabled);
+      setAuditMaxRecords(cfg.maxRecords);
+      setMaxRecordsInput(cfg.maxRecords.toString());
+      await refreshAuditRecords();
+    } catch (err) {
+      setError(formatErrorMessage(err, "Failed to update audit cap"));
+      logError("Failed to update audit cap", err);
+    }
+  }, [maxRecordsInput, refreshAuditRecords]);
+
+  const confirmClearAuditLog = useCallback(async () => {
+    if (isClearing) return;
+    setIsClearing(true);
+    try {
+      setError(null);
+      await window.electron.mcpServer.clearAuditLog();
+      setAuditRecords([]);
+      setShowClearConfirm(false);
+    } catch (err) {
+      setError(formatErrorMessage(err, "Failed to clear audit log"));
+      logError("Failed to clear MCP audit log", err);
+    } finally {
+      setIsClearing(false);
+    }
+  }, [isClearing]);
+
+  const handleCancelClear = useCallback(() => {
+    if (isClearing) return;
+    setShowClearConfirm(false);
+  }, [isClearing]);
+
+  const handleCopyAuditAsJson = useCallback(async (records: McpAuditRecord[]) => {
+    try {
+      setError(null);
+      await navigator.clipboard.writeText(JSON.stringify(records, null, 2));
+      setCopiedAudit(true);
+      if (auditCopyTimeoutRef.current) clearTimeout(auditCopyTimeoutRef.current);
+      auditCopyTimeoutRef.current = setTimeout(() => setCopiedAudit(false), COPY_FEEDBACK_MS);
+    } catch (err) {
+      setCopiedAudit(false);
+      if (auditCopyTimeoutRef.current) {
+        clearTimeout(auditCopyTimeoutRef.current);
+        auditCopyTimeoutRef.current = null;
+      }
+      setError(formatErrorMessage(err, "Failed to copy audit log"));
+      logError("Failed to copy MCP audit log", err);
+    }
+  }, []);
 
   const sseUrl = status.port ? `http://127.0.0.1:${status.port}/sse` : null;
 
@@ -252,8 +377,7 @@ export function McpServerSettingsTab() {
                 </button>
 
                 <p className="text-xs text-daintree-text/50 leading-relaxed select-text">
-                  Paste the copied config into your MCP client (e.g. Claude Code, Cursor,{" "}
-                  <code className="text-daintree-text/70">~/.daintree/mcp.json</code>).
+                  Paste the copied config into your MCP client (e.g. Claude Code, Cursor).
                   {status.apiKey && " The config includes the authorization header."}
                 </p>
               </div>
@@ -274,20 +398,25 @@ export function McpServerSettingsTab() {
                 inputMode="numeric"
                 pattern="[0-9]*"
                 value={portInput}
-                onChange={(e) => setPortInput(e.target.value.replace(/\D/g, ""))}
+                onChange={(e) => {
+                  setPortInput(e.target.value.replace(/\D/g, ""));
+                  portDirtyRef.current = true;
+                }}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") handlePortSave();
+                  if (e.key === "Enter") void handlePortSave();
                 }}
                 placeholder="45454"
-                className="w-40 bg-daintree-bg border border-border-strong rounded-[var(--radius-md)] px-3 py-2 text-sm text-daintree-text placeholder:text-daintree-text/40 font-mono focus:outline-hidden focus:ring-1 focus:ring-daintree-accent"
+                aria-label="MCP server port"
+                className="w-40 bg-daintree-bg border border-border-strong rounded-[var(--radius-md)] px-3 py-2 text-sm text-daintree-text placeholder:text-daintree-text/40 font-mono focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
               />
               <button
                 onClick={handlePortSave}
-                disabled={portInput === (status.configuredPort?.toString() ?? "")}
+                disabled={portInput.trim() === (status.configuredPort?.toString() ?? "")}
+                aria-label="Apply port"
                 className={cn(
                   "px-3 py-2 text-xs font-medium rounded-[var(--radius-md)] transition-colors",
                   "border border-daintree-border",
-                  portInput === (status.configuredPort?.toString() ?? "")
+                  portInput.trim() === (status.configuredPort?.toString() ?? "")
                     ? "text-daintree-text/30 cursor-not-allowed"
                     : "text-daintree-text/70 hover:text-daintree-text hover:bg-overlay-soft"
                 )}
@@ -306,7 +435,7 @@ export function McpServerSettingsTab() {
           <SettingsSection
             icon={Shield}
             title="Authentication"
-            description="Optionally require a bearer token for MCP connections. Recommended if other users share this machine. Not needed for typical local-only use."
+            description="Every MCP connection must present this bearer token. The key persists across restarts. Rotate it if you suspect it has leaked — external clients holding the old key in their config will need to re-paste."
           >
             {status.apiKey ? (
               <div className="contents">
@@ -318,7 +447,7 @@ export function McpServerSettingsTab() {
                 <div className="flex items-center gap-2">
                   <div className="flex-1 flex items-center gap-2 rounded-[var(--radius-md)] bg-surface-disabled border border-daintree-border px-3 py-2 font-mono text-xs text-daintree-text/80 select-all">
                     <span className="flex-1 truncate">
-                      {showApiKey ? status.apiKey : "•".repeat(status.apiKey.length)}
+                      {showApiKey ? status.apiKey : MASKED_KEY}
                     </span>
                     <button
                       type="button"
@@ -353,18 +482,12 @@ export function McpServerSettingsTab() {
                     {copiedKey ? "Copied!" : "Copy"}
                   </button>
                   <button
-                    onClick={handleGenerateApiKey}
+                    onClick={() => setShowRotateConfirm(true)}
                     className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-[var(--radius-md)] border border-daintree-border text-daintree-text/70 hover:text-daintree-text hover:bg-overlay-soft transition-colors"
-                    title="Regenerate API key"
+                    title="Rotate API key"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
-                    Regenerate
-                  </button>
-                  <button
-                    onClick={handleClearApiKey}
-                    className="px-3 py-2 text-xs font-medium rounded-[var(--radius-md)] border border-daintree-border text-status-danger hover:text-status-danger hover:bg-status-danger/10 hover:border-status-danger/20 transition-colors"
-                  >
-                    Remove
+                    Rotate API key
                   </button>
                 </div>
               </div>
@@ -373,34 +496,83 @@ export function McpServerSettingsTab() {
                 <div className="flex items-center gap-2 p-3 rounded-[var(--radius-md)] bg-daintree-bg border border-daintree-border">
                   <div className="w-2 h-2 rounded-full bg-daintree-text/30" />
                   <span className="text-xs text-daintree-text/60">
-                    No authentication — any local process can connect
+                    Key will be generated when the server starts.
                   </span>
                 </div>
-                <button
-                  onClick={handleGenerateApiKey}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-md)] text-xs font-medium border border-daintree-border text-daintree-text/70 hover:text-daintree-text hover:bg-overlay-soft transition-colors"
-                >
-                  <Key className="w-3.5 h-3.5" />
-                  Generate API Key
-                </button>
               </div>
             )}
           </SettingsSection>
+
+          {/* Audit Log */}
+          <SettingsSection
+            icon={ScrollText}
+            title="Audit log"
+            description="Every tool dispatched over MCP is recorded with a redacted argument summary. Use this to investigate what an agent did during a session — argument values are never stored verbatim."
+          >
+            <div className="contents">
+              <SettingsSwitchCard
+                variant="compact"
+                title="Capture audit log"
+                subtitle={
+                  auditEnabled
+                    ? "Recording every dispatch."
+                    : "New dispatches will not be recorded."
+                }
+                isEnabled={auditEnabled}
+                onChange={handleAuditEnabledToggle}
+                ariaLabel="Capture audit log"
+              />
+
+              <div className="flex flex-wrap items-center gap-2">
+                <label htmlFor="mcp-audit-max-records" className="text-xs text-daintree-text/60">
+                  Max records
+                </label>
+                <input
+                  id="mcp-audit-max-records"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={maxRecordsInput}
+                  onChange={(e) => setMaxRecordsInput(e.target.value.replace(/\D/g, ""))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void handleMaxRecordsSave();
+                  }}
+                  placeholder={MCP_AUDIT_DEFAULT_MAX_RECORDS.toString()}
+                  className="w-24 bg-daintree-bg border border-border-strong rounded-[var(--radius-md)] px-2 py-1 text-xs text-daintree-text placeholder:text-daintree-text/40 font-mono focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleMaxRecordsSave()}
+                  disabled={maxRecordsInput === auditMaxRecords.toString()}
+                  aria-label="Apply max records"
+                  className={cn(
+                    "px-3 py-1 text-xs font-medium rounded-[var(--radius-md)] transition-colors",
+                    "border border-daintree-border",
+                    maxRecordsInput === auditMaxRecords.toString()
+                      ? "text-daintree-text/30 cursor-not-allowed"
+                      : "text-daintree-text/70 hover:text-daintree-text hover:bg-overlay-soft"
+                  )}
+                >
+                  Apply
+                </button>
+                <span className="text-xs text-daintree-text/40">
+                  Range {MCP_AUDIT_MIN_RECORDS}–{MCP_AUDIT_MAX_RECORDS}
+                </span>
+              </div>
+
+              <McpAuditLogViewer
+                records={auditRecords}
+                loading={auditLoading}
+                onRefresh={refreshAuditRecords}
+                onCopy={handleCopyAuditAsJson}
+                onClear={() => setShowClearConfirm(true)}
+                copyFlashActive={copiedAudit}
+                maxRecords={auditMaxRecords}
+              />
+            </div>
+          </SettingsSection>
         </>
       )}
-
-      {/* Auto-Discovery — always visible */}
-      <SettingsSection
-        icon={McpServerIcon}
-        title="Auto-Discovery"
-        description={
-          status.enabled
-            ? "The server address is written to ~/.daintree/mcp.json while Daintree is running. Agents started from Daintree terminals can read this file to connect automatically. The file is removed when Daintree quits."
-            : "When enabled, the server address is written to ~/.daintree/mcp.json for automatic discovery by agents."
-        }
-      >
-        <></>
-      </SettingsSection>
 
       {error && (
         <div className="flex items-start gap-2 p-3 rounded-[var(--radius-md)] bg-status-danger/10 border border-status-danger/20">
@@ -408,6 +580,32 @@ export function McpServerSettingsTab() {
           <p className="text-xs text-status-danger">{error}</p>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={showRotateConfirm}
+        onClose={isRotating ? undefined : handleCancelRotate}
+        title="Rotate API key?"
+        description="The current key will be invalidated immediately. External clients using this key will need to update their configuration."
+        confirmLabel="Rotate key"
+        cancelLabel="Cancel"
+        onConfirm={confirmRotateApiKey}
+        isConfirmLoading={isRotating}
+        variant="destructive"
+        zIndex="nested"
+      />
+
+      <ConfirmDialog
+        isOpen={showClearConfirm}
+        onClose={isClearing ? undefined : handleCancelClear}
+        title="Clear audit log?"
+        description="All recorded tool dispatches will be permanently deleted."
+        confirmLabel="Clear log"
+        cancelLabel="Cancel"
+        onConfirm={confirmClearAuditLog}
+        isConfirmLoading={isClearing}
+        variant="destructive"
+        zIndex="nested"
+      />
     </div>
   );
 }

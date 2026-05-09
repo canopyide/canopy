@@ -4,6 +4,12 @@ import { stripAnsiCodes } from "@shared/utils/artifactParser";
 import { panelKindHasPty } from "@shared/config/panelKindRegistry";
 import { terminalClient } from "@/clients";
 import { usePanelStore, type TerminalInstance } from "@/store/panelStore";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
+import {
+  MAX_WAIT_UNTIL_IDLE_TIMEOUT_MS,
+  WAIT_UNTIL_IDLE_DESCRIPTION,
+  WAIT_UNTIL_IDLE_OUTPUT_SCHEMA,
+} from "@shared/types/terminalWaitUntilIdle";
 export function registerTerminalQueryActions(
   actions: ActionRegistry,
   _callbacks: ActionCallbacks
@@ -29,9 +35,13 @@ export function registerTerminalQueryActions(
         location?: "grid" | "dock" | "trash" | "background";
       };
       const state = usePanelStore.getState();
+      // Ephemeral panels (e.g. the Daintree Assistant's own dock terminal)
+      // are tooling-internal and must not appear in the MCP-visible list,
+      // or the assistant ends up enumerating itself and acting on its own
+      // process during bulk operations.
       let terminals = state.panelIds
         .map((id) => state.panelsById[id])
-        .filter((t): t is TerminalInstance => t !== undefined);
+        .filter((t): t is TerminalInstance => t !== undefined && t.ephemeral !== true);
 
       // Filter by worktree if specified
       if (worktreeId) {
@@ -54,9 +64,10 @@ export function registerTerminalQueryActions(
         worktreeId: t.worktreeId ?? null,
         title: t.title ?? null,
         location: t.location ?? "grid",
-        agentId: t.launchAgentId ?? null,
+        agentId: t.detectedAgentId ?? t.launchAgentId ?? null,
         agentState: t.agentState ?? null,
         isInputLocked: t.isInputLocked ?? false,
+        isFocused: t.id === state.focusedId,
       }));
     },
   }));
@@ -131,13 +142,235 @@ export function registerTerminalQueryActions(
     },
   }));
 
+  actions.set("terminal.getStatus", () => ({
+    id: "terminal.getStatus",
+    title: "Get Terminal Status",
+    description:
+      "Batched fleet status — agentState, waitingReason, lastTransitionAt, plus optional recent-output tails.",
+    category: "terminal",
+    kind: "query",
+    danger: "safe",
+    scope: "renderer",
+    argsSchema: z
+      .object({
+        terminalIds: z
+          .array(z.string())
+          .min(1)
+          .max(256)
+          .optional()
+          .describe(
+            "Explicit terminal IDs to query (1-256). When set, `worktreeId`/`location` filters are ignored. Unknown IDs return per-entry `error` rather than aborting the call."
+          ),
+        worktreeId: z
+          .string()
+          .optional()
+          .describe("Filter by worktree (ignored when `terminalIds` is provided)."),
+        location: z
+          .enum(["grid", "dock", "trash", "background"])
+          .optional()
+          .describe(
+            "Filter by panel location (ignored when `terminalIds` is provided). Defaults to all locations except trash and background."
+          ),
+        includeOutput: z
+          .object({
+            lines: z
+              .number()
+              .int()
+              .min(1)
+              .max(50)
+              .default(20)
+              .describe(
+                "Number of trailing scrollback lines to include per terminal (max 50, default 20)."
+              ),
+            stripAnsi: z
+              .boolean()
+              .default(true)
+              .describe("Remove ANSI escape codes from `recentOutput` (default: true)."),
+          })
+          .optional()
+          .describe(
+            "Opt-in. When set, each entry includes `recentOutput` with the last N lines of scrollback. Off by default to keep responses small."
+          ),
+      })
+      .optional(),
+    run: async (args: unknown) => {
+      const { terminalIds, worktreeId, location, includeOutput } = (args ?? {}) as {
+        terminalIds?: string[];
+        worktreeId?: string;
+        location?: "grid" | "dock" | "trash" | "background";
+        includeOutput?: { lines?: number; stripAnsi?: boolean };
+      };
+
+      const state = usePanelStore.getState();
+      const panelsById = state.panelsById;
+
+      type StatusEntry = {
+        terminalId: string;
+        agentId: string | null;
+        agentState: TerminalInstance["agentState"] | null;
+        waitingReason?: TerminalInstance["waitingReason"];
+        lastTransitionAt?: number;
+        recentOutput?: string | null;
+        error?: string;
+      };
+
+      const resolved: Array<{ id: string; terminal: TerminalInstance | undefined }> = [];
+
+      // An explicitly passed `terminalIds` (even empty) selects the targeted
+      // path — never silently fall back to the fleet path, which would surprise
+      // a caller asking for a specific subset.
+      if (terminalIds !== undefined) {
+        for (const id of terminalIds) {
+          const t = panelsById[id];
+          // Treat ephemeral panels as not found — they're tooling-internal and
+          // must never expose state to MCP callers (mirrors terminal.list).
+          if (!t || t.ephemeral === true) {
+            resolved.push({ id, terminal: undefined });
+          } else {
+            resolved.push({ id, terminal: t });
+          }
+        }
+      } else {
+        let terminals = state.panelIds
+          .map((id) => panelsById[id])
+          .filter((t): t is TerminalInstance => t !== undefined && t.ephemeral !== true);
+
+        if (worktreeId) {
+          terminals = terminals.filter((t) => t.worktreeId === worktreeId);
+        }
+        if (location) {
+          terminals = terminals.filter((t) => t.location === location);
+        } else {
+          terminals = terminals.filter(
+            (t) => t.location !== "trash" && t.location !== "background"
+          );
+        }
+
+        for (const t of terminals) {
+          resolved.push({ id: t.id, terminal: t });
+        }
+      }
+
+      // Optional output fetch — single batched IPC for all terminals at once.
+      const linesArg = includeOutput?.lines;
+      const effectiveLines =
+        typeof linesArg === "number" ? Math.min(Math.max(Math.floor(linesArg), 1), 50) : 20;
+      const stripAnsi = includeOutput?.stripAnsi ?? true;
+
+      let outputs: Record<string, string | null> | null = null;
+      let outputError: string | undefined;
+      if (includeOutput) {
+        const idsToFetch = resolved.filter((r) => r.terminal !== undefined).map((r) => r.id);
+        if (idsToFetch.length > 0) {
+          try {
+            outputs = await window.electron.terminal.getSerializedStates(idsToFetch);
+          } catch (err) {
+            outputError = formatErrorMessage(err, "Failed to fetch terminal output");
+          }
+        } else {
+          outputs = {};
+        }
+      }
+
+      const entries: StatusEntry[] = resolved.map(({ id, terminal }) => {
+        if (!terminal) {
+          return {
+            terminalId: id,
+            agentId: null,
+            agentState: null,
+            error: "Terminal not found",
+          };
+        }
+
+        const entry: StatusEntry = {
+          terminalId: terminal.id,
+          agentId: terminal.detectedAgentId ?? terminal.launchAgentId ?? null,
+          agentState: terminal.agentState ?? null,
+          lastTransitionAt: terminal.lastStateChange,
+        };
+
+        if (terminal.agentState === "waiting" && terminal.waitingReason !== undefined) {
+          entry.waitingReason = terminal.waitingReason;
+        }
+
+        if (includeOutput) {
+          if (outputError !== undefined) {
+            // The IPC failed for the whole batch (transport-level failure),
+            // so every successfully-resolved entry gets the same error.
+            // Status fields are kept intact so the caller still has something
+            // useful to act on — recentOutput is the only thing we lost.
+            entry.error = outputError;
+            entry.recentOutput = null;
+          } else if (outputs !== null) {
+            const serialized = outputs[terminal.id] ?? null;
+            if (serialized === null) {
+              entry.recentOutput = null;
+            } else {
+              const lines = serialized.split("\n").slice(-effectiveLines);
+              let content = lines.join("\n");
+              if (stripAnsi) content = stripAnsiCodes(content);
+              entry.recentOutput = content;
+            }
+          }
+        }
+
+        return entry;
+      });
+
+      return { terminals: entries };
+    },
+  }));
+
+  // terminal.waitUntilIdle is registered here purely for manifest registration —
+  // schema, description, tier, and audit metadata. Execution is handled inline
+  // in the MCP CallTool handler (electron/services/mcp-server/sessionServer.ts)
+  // because the request must stay in the main process: the renderer-dispatch
+  // path has a 30s timeout (waitUntilIdle defaults to 30 minutes) and cannot
+  // serialize the AbortSignal that powers MCP request cancellation. `run()`
+  // throws if the renderer ever invokes it directly.
+  actions.set("terminal.waitUntilIdle", () => ({
+    id: "terminal.waitUntilIdle",
+    title: "Wait until terminal idle",
+    description: WAIT_UNTIL_IDLE_DESCRIPTION,
+    category: "terminal",
+    kind: "query",
+    danger: "safe",
+    scope: "renderer",
+    argsSchema: z.object({
+      terminalId: z
+        .string()
+        .min(1)
+        .describe("Panel UUID returned by `terminal.list` (the `id` field)."),
+      timeoutMs: z
+        .number()
+        .int()
+        .min(0)
+        .max(MAX_WAIT_UNTIL_IDLE_TIMEOUT_MS)
+        .optional()
+        .describe(
+          "Pass 0 for an immediate non-blocking snapshot. Otherwise, the maximum time to block in milliseconds; defaults to 30 minutes and clamped to 2 hours."
+        ),
+    }),
+    rawOutputSchema: WAIT_UNTIL_IDLE_OUTPUT_SCHEMA,
+    mcpAnnotations: {
+      readOnlyHint: true,
+      idempotentHint: false,
+      destructiveHint: false,
+    },
+    run: async () => {
+      throw new Error(
+        "terminal.waitUntilIdle must be invoked through the MCP main-process path, not renderer dispatch."
+      );
+    },
+  }));
+
   actions.set("terminal.sendCommand", () => ({
     id: "terminal.sendCommand",
     title: "Send Command to Terminal",
     description: "Send a shell command to a terminal for execution",
     category: "terminal",
     kind: "command",
-    danger: "confirm", // Commands can have side effects
+    danger: "safe",
     scope: "renderer",
     argsSchema: z.object({
       terminalId: z.string().min(1).describe("Terminal instance ID from terminal.list"),

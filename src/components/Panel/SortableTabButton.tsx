@@ -1,6 +1,7 @@
 import React, { useCallback } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { m } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { TabButton, type TabButtonProps } from "./TabButton";
 
@@ -51,17 +52,33 @@ function SortableTabButtonComponent({
     [onClose]
   );
 
+  const performanceMode = document.body.dataset.performanceMode === "true";
+
   return (
     <div ref={setNodeRef} style={style} className={cn(isDragging && "opacity-50")}>
-      <TabButton
-        ref={setActivatorNodeRef}
-        id={id}
-        onClick={handleClick}
-        onClose={handleClose}
-        sortableListeners={listeners}
-        sortableAttributes={attributes}
-        {...tabButtonProps}
-      />
+      {performanceMode ? (
+        <TabButton
+          ref={setActivatorNodeRef}
+          id={id}
+          onClick={handleClick}
+          onClose={handleClose}
+          sortableListeners={listeners}
+          sortableAttributes={attributes}
+          {...tabButtonProps}
+        />
+      ) : (
+        <m.div layout="position">
+          <TabButton
+            ref={setActivatorNodeRef}
+            id={id}
+            onClick={handleClick}
+            onClose={handleClose}
+            sortableListeners={listeners}
+            sortableAttributes={attributes}
+            {...tabButtonProps}
+          />
+        </m.div>
+      )}
     </div>
   );
 }

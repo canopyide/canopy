@@ -31,6 +31,11 @@ vi.mock("../../utils/git.js", () => ({
   invalidateGitStatusCache: (...args: unknown[]) => mockInvalidateGitStatusCache(...args),
 }));
 
+vi.mock("fs/promises", () => ({
+  access: vi.fn().mockRejectedValue(new Error("ENOENT")),
+  readFile: vi.fn().mockRejectedValue(new Error("ENOENT")),
+}));
+
 vi.mock("simple-git", () => ({
   simpleGit: vi.fn(() => ({ raw: vi.fn(), log: vi.fn().mockResolvedValue({ latest: null }) })),
 }));
@@ -66,38 +71,54 @@ vi.mock("../../utils/gitRepoOperationState.js", () => ({
 }));
 
 let mockWatcherStartResult = false;
+/** Optional per-mode override. When set, takes precedence over `mockWatcherStartResult`
+ *  for that mode, so a test can model "recursive fails, git-only succeeds". */
+let mockRecursiveStartResult: boolean | undefined;
+let mockGitOnlyStartResult: boolean | undefined;
 /** When true, the stub's `start()` synchronously invokes `onWatcherFailed`
- *  before returning — mirroring the real startup-ENOSPC catch path. */
+ *  before returning — mirroring the real startup-ENOSPC catch path. Only
+ *  fires for recursive (`watchWorktree: true`) starts, matching the real
+ *  watcher's behaviour where per-file `.git/` watchers never trigger the
+ *  failure callback. */
 let mockWatcherStartFiresFailure = false;
 let capturedOnWatcherFailed: (() => void) | undefined;
 let capturedOnInotifyLimitReached: (() => void) | undefined;
 let capturedOnEmfileLimitReached: (() => void) | undefined;
 let capturedWatcherOptions: Record<string, unknown> | undefined;
+const capturedWatcherOptionsHistory: Record<string, unknown>[] = [];
 let watcherStartCallCount = 0;
 
 vi.mock("../../utils/gitFileWatcher.js", () => {
   return {
     GitFileWatcher: class {
       private readonly onWatcherFailed?: () => void;
+      private readonly watchWorktree: boolean;
       constructor(
         opts: {
           onWatcherFailed?: () => void;
           onInotifyLimitReached?: () => void;
           onEmfileLimitReached?: () => void;
+          watchWorktree?: boolean;
         } & Record<string, unknown>
       ) {
         this.onWatcherFailed = opts.onWatcherFailed;
+        this.watchWorktree = opts.watchWorktree === true;
         capturedOnWatcherFailed = opts.onWatcherFailed;
         capturedOnInotifyLimitReached = opts.onInotifyLimitReached;
         capturedOnEmfileLimitReached = opts.onEmfileLimitReached;
         capturedWatcherOptions = opts;
+        capturedWatcherOptionsHistory.push(opts);
       }
       start() {
         watcherStartCallCount++;
-        if (mockWatcherStartFiresFailure && !mockWatcherStartResult) {
+        const result = this.watchWorktree
+          ? (mockRecursiveStartResult ?? mockWatcherStartResult)
+          : (mockGitOnlyStartResult ?? mockWatcherStartResult);
+        // Only the recursive arm reports failures via `onWatcherFailed`.
+        if (this.watchWorktree && mockWatcherStartFiresFailure && !result) {
           this.onWatcherFailed?.();
         }
-        return mockWatcherStartResult;
+        return result;
       }
       dispose() {}
     },
@@ -157,21 +178,26 @@ function makeCallbacks(overrides?: Partial<WorktreeMonitorCallbacks>): WorktreeM
 describe("WorktreeMonitor", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0);
     vi.clearAllMocks();
     mockCategorizeWorktree.mockReturnValue("stable");
     mockWatcherStartResult = false;
+    mockRecursiveStartResult = undefined;
+    mockGitOnlyStartResult = undefined;
     mockWatcherStartFiresFailure = false;
     watcherStartCallCount = 0;
     capturedOnWatcherFailed = undefined;
     capturedOnInotifyLimitReached = undefined;
     capturedOnEmfileLimitReached = undefined;
     capturedWatcherOptions = undefined;
+    capturedWatcherOptionsHistory.length = 0;
     mockIsRepoOperationInProgress.mockReturnValue(false);
     vi.mocked(getGitDir).mockReturnValue(null);
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it("calls onRemoved and stops polling when WorktreeRemovedError is thrown", async () => {
@@ -307,17 +333,23 @@ describe("WorktreeMonitor", () => {
   });
 
   describe("ahead/behind upstream tracking", () => {
-    const CLEAN_CHANGES = {
+    const cleanChangesWith = (overrides: {
+      ahead?: number;
+      behind?: number;
+      tracking?: string | null;
+    }) => ({
       worktreeId: "/test/worktree",
       rootPath: "/test",
       changes: [],
       changedFileCount: 0,
       lastUpdated: Date.now(),
-    };
+      ...overrides,
+    });
 
     it("includes aheadCount and behindCount in snapshot when upstream is configured", async () => {
-      mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
-      mockGitRaw.mockResolvedValue("3\t1\n");
+      mockGetWorktreeChangesWithStats.mockResolvedValue(
+        cleanChangesWith({ tracking: "origin/main", ahead: 3, behind: 1 })
+      );
 
       const callbacks = makeCallbacks();
       const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
@@ -331,10 +363,7 @@ describe("WorktreeMonitor", () => {
     });
 
     it("leaves counts undefined when no upstream is configured", async () => {
-      mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
-      mockGitRaw.mockRejectedValue(
-        new Error("fatal: no upstream configured for branch 'test-branch'")
-      );
+      mockGetWorktreeChangesWithStats.mockResolvedValue(cleanChangesWith({ tracking: null }));
 
       const callbacks = makeCallbacks();
       const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
@@ -347,30 +376,25 @@ describe("WorktreeMonitor", () => {
       monitor.stop();
     });
 
-    it("leaves counts undefined on detached HEAD (no branch)", async () => {
-      mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
-      mockGitRaw.mockResolvedValue("0\t0\n");
-
-      const detachedWorktree: Worktree = {
-        ...TEST_WORKTREE,
-        branch: undefined,
-      };
+    it("never spawns rev-list — counts come from the existing git status call", async () => {
+      mockGetWorktreeChangesWithStats.mockResolvedValue(
+        cleanChangesWith({ tracking: "origin/main", ahead: 2, behind: 0 })
+      );
 
       const callbacks = makeCallbacks();
-      const monitor = new WorktreeMonitor(detachedWorktree, TEST_CONFIG, callbacks, "main");
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
       await monitor.start();
+      await monitor.updateGitStatus(false);
 
-      const snapshot = monitor.getSnapshot();
-      expect(snapshot.aheadCount).toBeUndefined();
-      expect(snapshot.behindCount).toBeUndefined();
       expect(mockGitRaw).not.toHaveBeenCalledWith(expect.arrayContaining(["rev-list"]));
 
       monitor.stop();
     });
 
     it("reports zero counts when branch is in sync with upstream", async () => {
-      mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
-      mockGitRaw.mockResolvedValue("0\t0\n");
+      mockGetWorktreeChangesWithStats.mockResolvedValue(
+        cleanChangesWith({ tracking: "origin/main", ahead: 0, behind: 0 })
+      );
 
       const callbacks = makeCallbacks();
       const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
@@ -383,213 +407,29 @@ describe("WorktreeMonitor", () => {
       monitor.stop();
     });
 
-    it("caches 'no upstream' verdict and skips repeat git spawns", async () => {
-      mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
-      mockGitRaw.mockRejectedValue(
-        new Error("fatal: no upstream configured for branch 'test-branch'")
+    it("clears stale counts when upstream is removed between polls", async () => {
+      mockGetWorktreeChangesWithStats.mockResolvedValueOnce(
+        cleanChangesWith({ tracking: "origin/main", ahead: 2, behind: 1 })
       );
+      mockGetWorktreeChangesWithStats.mockResolvedValueOnce(cleanChangesWith({ tracking: null }));
 
       const callbacks = makeCallbacks();
       const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
       await monitor.start();
-
-      expect(mockGitRaw).toHaveBeenCalledTimes(1);
-      expect(mockGitRaw).toHaveBeenCalledWith(expect.arrayContaining(["rev-list"]));
-
-      const snapshot1 = monitor.getSnapshot();
-      expect(snapshot1.aheadCount).toBeUndefined();
-      expect(snapshot1.behindCount).toBeUndefined();
-
-      // Second poll without forceRefresh — should hit the cache, no new git spawn
-      await monitor.updateGitStatus(false);
-
-      expect(mockGitRaw).toHaveBeenCalledTimes(1);
-
-      const snapshot2 = monitor.getSnapshot();
-      expect(snapshot2.aheadCount).toBeUndefined();
-      expect(snapshot2.behindCount).toBeUndefined();
-
-      monitor.stop();
-    });
-
-    it("retries rev-list after 'no upstream' cache TTL expires", async () => {
-      mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
-      mockGitRaw.mockRejectedValue(
-        new Error("fatal: no upstream configured for branch 'test-branch'")
-      );
-
-      const callbacks = makeCallbacks();
-      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
-      await monitor.start();
-
-      const callsAfterStart = mockGitRaw.mock.calls.filter(
-        (c: unknown[]) => Array.isArray(c[0]) && (c[0] as string[]).includes("rev-list")
-      ).length;
-      expect(callsAfterStart).toBe(1);
-
-      // Pause polling so scheduled polls don't interfere with time advance
-      monitor.pausePolling();
-
-      // Advance just under TTL — cache still valid
-      await vi.advanceTimersByTimeAsync(4 * 60 * 1000);
-      await monitor.updateGitStatus(false);
-      const callsWithinTTL = mockGitRaw.mock.calls.filter(
-        (c: unknown[]) => Array.isArray(c[0]) && (c[0] as string[]).includes("rev-list")
-      ).length;
-      expect(callsWithinTTL).toBe(1);
-
-      // Advance past TTL — cache expired
-      await vi.advanceTimersByTimeAsync(2 * 60 * 1000);
-      await monitor.updateGitStatus(false);
-      const callsAfterTTL = mockGitRaw.mock.calls.filter(
-        (c: unknown[]) => Array.isArray(c[0]) && (c[0] as string[]).includes("rev-list")
-      ).length;
-      expect(callsAfterTTL).toBe(2);
-
-      monitor.stop();
-    });
-
-    it("uses shorter TTL for 'upstream branch not found'", async () => {
-      mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
-      mockGitRaw.mockRejectedValue(
-        new Error("fatal: upstream branch 'origin/test-branch' not found")
-      );
-
-      const callbacks = makeCallbacks();
-      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
-      await monitor.start();
-
-      const callsAfterStart = mockGitRaw.mock.calls.filter(
-        (c: unknown[]) => Array.isArray(c[0]) && (c[0] as string[]).includes("rev-list")
-      ).length;
-      expect(callsAfterStart).toBe(1);
-
-      monitor.pausePolling();
-
-      // Within short TTL — cached
-      await vi.advanceTimersByTimeAsync(60 * 1000);
-      await monitor.updateGitStatus(false);
-      const callsWithinShortTTL = mockGitRaw.mock.calls.filter(
-        (c: unknown[]) => Array.isArray(c[0]) && (c[0] as string[]).includes("rev-list")
-      ).length;
-      expect(callsWithinShortTTL).toBe(1);
-
-      // Past 2-min TTL — retries
-      await vi.advanceTimersByTimeAsync(2 * 60 * 1000);
-      await monitor.updateGitStatus(false);
-      const callsAfterTTL = mockGitRaw.mock.calls.filter(
-        (c: unknown[]) => Array.isArray(c[0]) && (c[0] as string[]).includes("rev-list")
-      ).length;
-      expect(callsAfterTTL).toBe(2);
-
-      monitor.stop();
-    });
-
-    it("invalidates failure cache when upstream becomes available", async () => {
-      mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
-
-      // First call: no upstream
-      mockGitRaw.mockRejectedValueOnce(
-        new Error("fatal: no upstream configured for branch 'test-branch'")
-      );
-      // Second call (after TTL): upstream is now configured
-      mockGitRaw.mockResolvedValueOnce("2\t1\n");
-
-      const callbacks = makeCallbacks();
-      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
-      await monitor.start();
-
-      const revListCallsAfterStart = mockGitRaw.mock.calls.filter(
-        (c: unknown[]) => Array.isArray(c[0]) && (c[0] as string[]).includes("rev-list")
-      ).length;
-      expect(revListCallsAfterStart).toBe(1);
-      expect(monitor.getSnapshot().aheadCount).toBeUndefined();
-
-      // Pause polling so scheduled polls don't fire during time advance
-      monitor.pausePolling();
-      await vi.advanceTimersByTimeAsync(6 * 60 * 1000);
-
-      // Cache expired — refresh should call git and succeed
-      await monitor.refresh();
-
-      const revListCallsAfterRefresh = mockGitRaw.mock.calls.filter(
-        (c: unknown[]) => Array.isArray(c[0]) && (c[0] as string[]).includes("rev-list")
-      ).length;
-      expect(revListCallsAfterRefresh).toBe(2);
       expect(monitor.getSnapshot().aheadCount).toBe(2);
       expect(monitor.getSnapshot().behindCount).toBe(1);
 
-      // Success should have invalidated cache — next call also hits git
-      mockGitRaw.mockResolvedValueOnce("3\t2\n");
       await monitor.refresh();
 
-      const revListCallsFinal = mockGitRaw.mock.calls.filter(
-        (c: unknown[]) => Array.isArray(c[0]) && (c[0] as string[]).includes("rev-list")
-      ).length;
-      expect(revListCallsFinal).toBe(3);
-      expect(monitor.getSnapshot().aheadCount).toBe(3);
+      expect(monitor.getSnapshot().aheadCount).toBeUndefined();
+      expect(monitor.getSnapshot().behindCount).toBeUndefined();
 
       monitor.stop();
     });
 
-    it("does not cache unclassified git failures", async () => {
-      mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
-      mockGitRaw.mockRejectedValue(new Error("fatal: ambiguous argument 'HEAD'"));
-
-      const callbacks = makeCallbacks();
-      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
-      await monitor.start();
-
-      expect(mockGitRaw).toHaveBeenCalledTimes(1);
-
-      await monitor.refresh();
-      // Unclassified errors should retry every poll
-      expect(mockGitRaw).toHaveBeenCalledTimes(2);
-
-      monitor.stop();
-    });
-
-    it("force-refresh bypasses the negative cache", async () => {
-      mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
-      mockGitRaw.mockRejectedValue(
-        new Error("fatal: no upstream configured for branch 'test-branch'")
-      );
-
-      const callbacks = makeCallbacks();
-      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
-      await monitor.start();
-
-      // Cache should be populated — first call from start
-      const callsAfterStart = mockGitRaw.mock.calls.filter(
-        (c: unknown[]) => Array.isArray(c[0]) && (c[0] as string[]).includes("rev-list")
-      ).length;
-      expect(callsAfterStart).toBe(1);
-
-      monitor.pausePolling();
-
-      // Non-force call within TTL — cache hit
-      await monitor.updateGitStatus(false);
-      const callsAfterNonForce = mockGitRaw.mock.calls.filter(
-        (c: unknown[]) => Array.isArray(c[0]) && (c[0] as string[]).includes("rev-list")
-      ).length;
-      expect(callsAfterNonForce).toBe(1);
-
-      // Force-refresh bypasses cache
-      await monitor.refresh();
-      const callsAfterForce = mockGitRaw.mock.calls.filter(
-        (c: unknown[]) => Array.isArray(c[0]) && (c[0] as string[]).includes("rev-list")
-      ).length;
-      expect(callsAfterForce).toBe(2);
-
-      monitor.stop();
-    });
-
-    it("classifies ambiguous argument @{u} as no-upstream", async () => {
-      mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
-      mockGitRaw.mockRejectedValue(
-        new Error(
-          "fatal: ambiguous argument '@{u}': unknown revision or path not in the working tree."
-        )
+    it("treats empty-string tracking as no upstream", async () => {
+      mockGetWorktreeChangesWithStats.mockResolvedValue(
+        cleanChangesWith({ tracking: "", ahead: 0, behind: 0 })
       );
 
       const callbacks = makeCallbacks();
@@ -600,14 +440,6 @@ describe("WorktreeMonitor", () => {
       expect(snapshot.aheadCount).toBeUndefined();
       expect(snapshot.behindCount).toBeUndefined();
 
-      // Should be cached, so second call doesn't spawn git
-      monitor.pausePolling();
-      await monitor.updateGitStatus(false);
-      const revListCalls = mockGitRaw.mock.calls.filter(
-        (c: unknown[]) => Array.isArray(c[0]) && (c[0] as string[]).includes("rev-list")
-      ).length;
-      expect(revListCalls).toBe(1);
-
       monitor.stop();
     });
   });
@@ -617,6 +449,9 @@ describe("WorktreeMonitor", () => {
       ...TEST_CONFIG,
       gitWatchEnabled: true,
     };
+
+    // Active worktree — gets the recursive watcher under the focus-tier rules.
+    const ACTIVE_WORKTREE: Worktree = { ...TEST_WORKTREE, isCurrent: true };
 
     it("watcher start success reports hasWatcher true", async () => {
       mockWatcherStartResult = true;
@@ -629,7 +464,7 @@ describe("WorktreeMonitor", () => {
       });
 
       const callbacks = makeCallbacks();
-      const monitor = new WorktreeMonitor(TEST_WORKTREE, WATCH_CONFIG, callbacks, "main");
+      const monitor = new WorktreeMonitor(ACTIVE_WORKTREE, WATCH_CONFIG, callbacks, "main");
       await monitor.start();
 
       expect(monitor.hasWatcher).toBe(true);
@@ -647,13 +482,13 @@ describe("WorktreeMonitor", () => {
       });
 
       const callbacks = makeCallbacks();
-      const monitor = new WorktreeMonitor(TEST_WORKTREE, WATCH_CONFIG, callbacks, "main");
+      const monitor = new WorktreeMonitor(ACTIVE_WORKTREE, WATCH_CONFIG, callbacks, "main");
       await monitor.start();
 
       expect(capturedWatcherOptions).toBeDefined();
       expect(capturedWatcherOptions).toMatchObject({
         watchWorktree: true,
-        worktreeMinDebounceMs: 150,
+        worktreeMinDebounceMs: 250,
         worktreeMaxDebounceMs: 800,
         worktreeMaxWaitMs: 1500,
       });
@@ -662,8 +497,8 @@ describe("WorktreeMonitor", () => {
       monitor.stop();
     });
 
-    it("watcher start failure schedules retry", async () => {
-      mockWatcherStartResult = false;
+    it("background worktree starts with watchWorktree: false (focus-tier)", async () => {
+      mockWatcherStartResult = true;
       mockGetWorktreeChangesWithStats.mockResolvedValue({
         worktreeId: "/test/worktree",
         rootPath: "/test",
@@ -676,12 +511,148 @@ describe("WorktreeMonitor", () => {
       const monitor = new WorktreeMonitor(TEST_WORKTREE, WATCH_CONFIG, callbacks, "main");
       await monitor.start();
 
+      expect(capturedWatcherOptions).toMatchObject({ watchWorktree: false });
+      expect(monitor.hasWatcher).toBe(true);
+
+      monitor.stop();
+    });
+
+    it("isCurrent flip false→true upgrades watcher to recursive immediately", async () => {
+      mockWatcherStartResult = true;
+      mockGetWorktreeChangesWithStats.mockResolvedValue({
+        worktreeId: "/test/worktree",
+        rootPath: "/test",
+        changes: [],
+        changedFileCount: 0,
+        lastUpdated: Date.now(),
+      });
+
+      const callbacks = makeCallbacks();
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, WATCH_CONFIG, callbacks, "main");
+      await monitor.start();
+
+      expect(capturedWatcherOptions).toMatchObject({ watchWorktree: false });
+      const startsBeforeFlip = capturedWatcherOptionsHistory.length;
+
+      monitor.isCurrent = true;
+
+      // The setter rebuilt the watcher; latest call is the recursive arm.
+      expect(capturedWatcherOptionsHistory.length).toBe(startsBeforeFlip + 1);
+      expect(capturedWatcherOptionsHistory.at(-1)).toMatchObject({ watchWorktree: true });
+
+      monitor.stop();
+    });
+
+    it("isCurrent flip true→false defers downgrade by the settle delay", async () => {
+      mockWatcherStartResult = true;
+      mockGetWorktreeChangesWithStats.mockResolvedValue({
+        worktreeId: "/test/worktree",
+        rootPath: "/test",
+        changes: [],
+        changedFileCount: 0,
+        lastUpdated: Date.now(),
+      });
+
+      const callbacks = makeCallbacks();
+      const monitor = new WorktreeMonitor(ACTIVE_WORKTREE, WATCH_CONFIG, callbacks, "main");
+      await monitor.start();
+
+      expect(capturedWatcherOptions).toMatchObject({ watchWorktree: true });
+      const startsBeforeFlip = capturedWatcherOptionsHistory.length;
+
+      monitor.isCurrent = false;
+
+      // No synchronous downgrade — the recursive watcher is preserved while
+      // the settle timer runs.
+      expect(capturedWatcherOptionsHistory.length).toBe(startsBeforeFlip);
+
+      // After the 3s settle delay the controller rebuilds in git-only mode.
+      await vi.advanceTimersByTimeAsync(3_000);
+      expect(capturedWatcherOptionsHistory.length).toBe(startsBeforeFlip + 1);
+      expect(capturedWatcherOptionsHistory.at(-1)).toMatchObject({ watchWorktree: false });
+
+      monitor.stop();
+    });
+
+    it("rapid isCurrent toggle cancels the deferred downgrade", async () => {
+      mockWatcherStartResult = true;
+      mockGetWorktreeChangesWithStats.mockResolvedValue({
+        worktreeId: "/test/worktree",
+        rootPath: "/test",
+        changes: [],
+        changedFileCount: 0,
+        lastUpdated: Date.now(),
+      });
+
+      const callbacks = makeCallbacks();
+      const monitor = new WorktreeMonitor(ACTIVE_WORKTREE, WATCH_CONFIG, callbacks, "main");
+      await monitor.start();
+
+      const startsBeforeFlip = capturedWatcherOptionsHistory.length;
+
+      monitor.isCurrent = false;
+      // Re-focus before the settle timer fires.
+      await vi.advanceTimersByTimeAsync(1_000);
+      monitor.isCurrent = true;
+
+      // Let the original settle window elapse — no rebuild happened.
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(capturedWatcherOptionsHistory.length).toBe(startsBeforeFlip);
+      expect(capturedWatcherOptionsHistory.at(-1)).toMatchObject({ watchWorktree: true });
+
+      monitor.stop();
+    });
+
+    it("watcher start failure schedules retry on active worktree", async () => {
+      mockWatcherStartResult = false;
+      mockGetWorktreeChangesWithStats.mockResolvedValue({
+        worktreeId: "/test/worktree",
+        rootPath: "/test",
+        changes: [],
+        changedFileCount: 0,
+        lastUpdated: Date.now(),
+      });
+
+      const callbacks = makeCallbacks();
+      const monitor = new WorktreeMonitor(ACTIVE_WORKTREE, WATCH_CONFIG, callbacks, "main");
+      await monitor.start();
+
       expect(monitor.hasWatcher).toBe(false);
 
       // After retry interval, watcher should attempt again
       mockWatcherStartResult = true;
       await vi.advanceTimersByTimeAsync(30_000);
       expect(monitor.hasWatcher).toBe(true);
+
+      monitor.stop();
+    });
+
+    it("background worktree does not retry recursive arm — focus flip re-arms instead", async () => {
+      // Background worktrees skip the recursive watcher entirely. The retry
+      // loop is reserved for active worktrees so a sea of background tabs
+      // can't keep poking inotify after ENOSPC.
+      mockRecursiveStartResult = false;
+      mockGitOnlyStartResult = true;
+      mockGetWorktreeChangesWithStats.mockResolvedValue({
+        worktreeId: "/test/worktree",
+        rootPath: "/test",
+        changes: [],
+        changedFileCount: 0,
+        lastUpdated: Date.now(),
+      });
+
+      const callbacks = makeCallbacks();
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, WATCH_CONFIG, callbacks, "main");
+      await monitor.start();
+
+      // Background → git-only mode; no recursive attempt.
+      expect(monitor.hasWatcher).toBe(true);
+      const startsAfterBackgroundStart = watcherStartCallCount;
+
+      mockRecursiveStartResult = true;
+      await vi.advanceTimersByTimeAsync(30_000);
+      // No retry queued for background — start count is unchanged.
+      expect(watcherStartCallCount).toBe(startsAfterBackgroundStart);
 
       monitor.stop();
     });
@@ -697,7 +668,7 @@ describe("WorktreeMonitor", () => {
       });
 
       const callbacks = makeCallbacks();
-      const monitor = new WorktreeMonitor(TEST_WORKTREE, WATCH_CONFIG, callbacks, "main");
+      const monitor = new WorktreeMonitor(ACTIVE_WORKTREE, WATCH_CONFIG, callbacks, "main");
       await monitor.start();
 
       monitor.stop();
@@ -719,7 +690,7 @@ describe("WorktreeMonitor", () => {
       });
 
       const callbacks = makeCallbacks();
-      const monitor = new WorktreeMonitor(TEST_WORKTREE, WATCH_CONFIG, callbacks, "main");
+      const monitor = new WorktreeMonitor(ACTIVE_WORKTREE, WATCH_CONFIG, callbacks, "main");
       await monitor.start();
 
       // Exhaust all 5 retries
@@ -737,8 +708,11 @@ describe("WorktreeMonitor", () => {
       monitor.stop();
     });
 
-    it("runtime watcher failure triggers retry", async () => {
-      mockWatcherStartResult = true;
+    it("runtime watcher failure preserves .git/ watchers via git-only fallback", async () => {
+      // The recursive watcher fails at runtime — the per-file .git/
+      // watchers must survive as a degraded watcher rather than going dark.
+      mockRecursiveStartResult = true;
+      mockGitOnlyStartResult = true;
       mockGetWorktreeChangesWithStats.mockResolvedValue({
         worktreeId: "/test/worktree",
         rootPath: "/test",
@@ -748,17 +722,25 @@ describe("WorktreeMonitor", () => {
       });
 
       const callbacks = makeCallbacks();
-      const monitor = new WorktreeMonitor(TEST_WORKTREE, WATCH_CONFIG, callbacks, "main");
+      const monitor = new WorktreeMonitor(ACTIVE_WORKTREE, WATCH_CONFIG, callbacks, "main");
       await monitor.start();
 
       expect(monitor.hasWatcher).toBe(true);
+      expect(capturedWatcherOptionsHistory.at(-1)).toMatchObject({ watchWorktree: true });
+      const startsAfterInitialStart = watcherStartCallCount;
 
       // Simulate runtime watcher failure
       capturedOnWatcherFailed?.();
-      expect(monitor.hasWatcher).toBe(false);
 
-      // After retry interval, watcher should restart
+      // Watcher remains — git-only is now active. Last constructor call set
+      // watchWorktree:false.
+      expect(monitor.hasWatcher).toBe(true);
+      expect(capturedWatcherOptionsHistory.at(-1)).toMatchObject({ watchWorktree: false });
+      expect(watcherStartCallCount).toBe(startsAfterInitialStart + 1);
+
+      // After retry interval, the recursive watcher attempts to re-arm.
       await vi.advanceTimersByTimeAsync(30_000);
+      expect(capturedWatcherOptionsHistory.at(-1)).toMatchObject({ watchWorktree: true });
       expect(monitor.hasWatcher).toBe(true);
 
       monitor.stop();
@@ -776,12 +758,12 @@ describe("WorktreeMonitor", () => {
 
       const onInotifyLimitReached = vi.fn();
       const callbacks = makeCallbacks({ onInotifyLimitReached });
-      const monitor = new WorktreeMonitor(TEST_WORKTREE, WATCH_CONFIG, callbacks, "main");
+      const monitor = new WorktreeMonitor(ACTIVE_WORKTREE, WATCH_CONFIG, callbacks, "main");
       await monitor.start();
 
       expect(capturedOnInotifyLimitReached).toBeDefined();
       capturedOnInotifyLimitReached?.();
-      expect(onInotifyLimitReached).toHaveBeenCalledWith(TEST_WORKTREE.id);
+      expect(onInotifyLimitReached).toHaveBeenCalledWith(ACTIVE_WORKTREE.id);
       expect(onInotifyLimitReached).toHaveBeenCalledTimes(1);
 
       monitor.stop();
@@ -799,31 +781,26 @@ describe("WorktreeMonitor", () => {
 
       const onEmfileLimitReached = vi.fn();
       const callbacks = makeCallbacks({ onEmfileLimitReached });
-      const monitor = new WorktreeMonitor(TEST_WORKTREE, WATCH_CONFIG, callbacks, "main");
+      const monitor = new WorktreeMonitor(ACTIVE_WORKTREE, WATCH_CONFIG, callbacks, "main");
       await monitor.start();
 
       expect(capturedOnEmfileLimitReached).toBeDefined();
       capturedOnEmfileLimitReached?.();
-      expect(onEmfileLimitReached).toHaveBeenCalledWith(TEST_WORKTREE.id);
+      expect(onEmfileLimitReached).toHaveBeenCalledWith(ACTIVE_WORKTREE.id);
       expect(onEmfileLimitReached).toHaveBeenCalledTimes(1);
 
       monitor.stop();
     });
 
-    it("startup ENOSPC that fires onWatcherFailed AND returns false schedules exactly one retry", async () => {
-      // Regression guard for the startup-ENOSPC retry fix. Before the fix,
-      // GitFileWatcher.start() returned undefined (coerced to true), so
-      // WorktreeMonitor assigned gitWatcher and reset watcherRetryCount = 0,
-      // neutralizing the retry scheduled from inside the synchronous
-      // onWatcherFailed callback.
-      //
-      // Now start() returns false AND onWatcherFailed fires inside it, so
-      // WorktreeMonitor's handleWatcherFailed runs scheduleWatcherRetry
-      // first, then the else branch of startWatcher() runs it again. This
-      // test proves the two calls collapse onto a single retry via the
-      // `watcherRetryTimer` guard — regressing that guard would fire the
-      // retry twice (watcherStartCallCount would reach 3, not 2).
-      mockWatcherStartResult = false;
+    it("startup ENOSPC degrades to git-only and schedules a single retry", async () => {
+      // Regression guard for the startup-ENOSPC retry fix combined with the
+      // git-only preservation behaviour. The recursive arm fires
+      // onWatcherFailed synchronously and returns false. WorktreeMonitor's
+      // handleWatcherFailed installs git-only inline, then the else branch of
+      // startWatcher must NOT install a duplicate git-only or schedule a
+      // duplicate retry.
+      mockRecursiveStartResult = false;
+      mockGitOnlyStartResult = true;
       mockWatcherStartFiresFailure = true;
       mockGetWorktreeChangesWithStats.mockResolvedValue({
         worktreeId: "/test/worktree",
@@ -834,22 +811,70 @@ describe("WorktreeMonitor", () => {
       });
 
       const callbacks = makeCallbacks();
-      const monitor = new WorktreeMonitor(TEST_WORKTREE, WATCH_CONFIG, callbacks, "main");
+      const monitor = new WorktreeMonitor(ACTIVE_WORKTREE, WATCH_CONFIG, callbacks, "main");
       await monitor.start();
 
-      // Initial start failed → no active watcher, exactly one start attempt.
-      expect(monitor.hasWatcher).toBe(false);
-      expect(watcherStartCallCount).toBe(1);
+      // Initial recursive start failed → exactly one git-only fallback was
+      // installed (not two), and a watcher is active.
+      expect(monitor.hasWatcher).toBe(true);
+      expect(capturedWatcherOptionsHistory.length).toBe(2);
+      expect(capturedWatcherOptionsHistory[0]).toMatchObject({ watchWorktree: true });
+      expect(capturedWatcherOptionsHistory[1]).toMatchObject({ watchWorktree: false });
+      expect(watcherStartCallCount).toBe(2);
 
       // Flip to success for the retry attempt.
       mockWatcherStartFiresFailure = false;
-      mockWatcherStartResult = true;
+      mockRecursiveStartResult = true;
       await vi.advanceTimersByTimeAsync(30_000);
 
-      // Only ONE retry fires — 2 total start() calls, not 3. A regression
-      // that removed the watcherRetryTimer guard would produce 3.
-      expect(watcherStartCallCount).toBe(2);
+      // One retry, not two: recursive re-armed, git-only swapped out.
+      expect(watcherStartCallCount).toBe(3);
+      expect(capturedWatcherOptionsHistory.at(-1)).toMatchObject({ watchWorktree: true });
       expect(monitor.hasWatcher).toBe(true);
+
+      monitor.stop();
+    });
+
+    it("ensureWatcherState during recursive backoff preserves retry budget", async () => {
+      // Regression guard: ensureWatcherState() / focus rotation must not
+      // reset the recursive-retry counter while a retry is already pending.
+      // Otherwise an external workspace refresh during ENOSPC backoff grants
+      // the failing recursive arm a fresh 5-attempt budget on the same
+      // constrained kernel, hammering inotify.
+      mockRecursiveStartResult = false;
+      mockGitOnlyStartResult = true;
+      mockGetWorktreeChangesWithStats.mockResolvedValue({
+        worktreeId: "/test/worktree",
+        rootPath: "/test",
+        changes: [],
+        changedFileCount: 0,
+        lastUpdated: Date.now(),
+      });
+
+      const callbacks = makeCallbacks();
+      const monitor = new WorktreeMonitor(ACTIVE_WORKTREE, WATCH_CONFIG, callbacks, "main");
+      await monitor.start();
+
+      // Recursive failed, git-only fallback installed, retry timer pending.
+      expect(monitor.hasWatcher).toBe(true);
+      expect(capturedWatcherOptionsHistory.at(-1)).toMatchObject({ watchWorktree: false });
+
+      // External refresh — must not reset the retry budget.
+      monitor.ensureWatcherState();
+
+      // Burn through the budget. With a preserved counter, only the
+      // remaining retries fire; reset would extend the loop.
+      for (let i = 0; i < 5; i++) {
+        await vi.advanceTimersByTimeAsync(30_000);
+      }
+
+      expect(monitor.hasWatcher).toBe(true);
+      expect(capturedWatcherOptionsHistory.at(-1)).toMatchObject({ watchWorktree: false });
+
+      // One more interval — budget exhausted, no further retry.
+      const startsBeforeIdle = watcherStartCallCount;
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(watcherStartCallCount).toBe(startsBeforeIdle);
 
       monitor.stop();
     });
@@ -1040,7 +1065,7 @@ describe("WorktreeMonitor", () => {
       monitor.stop();
     });
 
-    it("defaults to 120s polling for background worktree", async () => {
+    it("defaults to 300s polling for background worktree", async () => {
       const backgroundWorktree: Worktree = { ...TEST_WORKTREE, isCurrent: false };
       const callbacks = makeCallbacks({ onResourceStatusPoll: vi.fn() });
       const monitor = new WorktreeMonitor(backgroundWorktree, TEST_CONFIG, callbacks, "main");
@@ -1049,17 +1074,17 @@ describe("WorktreeMonitor", () => {
       monitor.setHasResourceConfig(true);
       monitor.setHasStatusCommand(true);
 
-      await vi.advanceTimersByTimeAsync(30_000);
+      await vi.advanceTimersByTimeAsync(270_000);
       expect(callbacks.onResourceStatusPoll).not.toHaveBeenCalled();
 
-      await vi.advanceTimersByTimeAsync(90_000);
+      await vi.advanceTimersByTimeAsync(30_000);
       expect(callbacks.onResourceStatusPoll).toHaveBeenCalledWith("/test/worktree");
       expect(callbacks.onResourceStatusPoll).toHaveBeenCalledTimes(1);
 
       monitor.stop();
     });
 
-    it("switches from 120s to 30s when isCurrent becomes true", async () => {
+    it("switches from 300s to 30s when isCurrent becomes true", async () => {
       const backgroundWorktree: Worktree = { ...TEST_WORKTREE, isCurrent: false };
       const callbacks = makeCallbacks({ onResourceStatusPoll: vi.fn() });
       const monitor = new WorktreeMonitor(backgroundWorktree, TEST_CONFIG, callbacks, "main");
@@ -1146,6 +1171,37 @@ describe("WorktreeMonitor", () => {
       monitor.isCurrent = true;
 
       await vi.advanceTimersByTimeAsync(60_000);
+      expect(callbacks.onResourceStatusPoll).toHaveBeenCalledWith("/test/worktree");
+      expect(callbacks.onResourceStatusPoll).toHaveBeenCalledTimes(1);
+
+      monitor.stop();
+    });
+
+    it("explicit interval matching a default constant survives focus flip", async () => {
+      // Regression: the focus-flip auto-adapt previously checked whether the
+      // current interval equaled either default, which collided with explicit
+      // user values that happened to match. After the new background default
+      // landed at 300s, `statusInterval: 300` was a plausible production
+      // value that would silently flip to 30s on focus change.
+      const backgroundWorktree: Worktree = { ...TEST_WORKTREE, isCurrent: false };
+      const callbacks = makeCallbacks({ onResourceStatusPoll: vi.fn() });
+      const monitor = new WorktreeMonitor(backgroundWorktree, TEST_CONFIG, callbacks, "main");
+
+      monitor.startWithoutGitStatus();
+      monitor.setHasResourceConfig(true);
+      monitor.setHasStatusCommand(true);
+      // Explicit value that exactly matches RESOURCE_POLL_DEFAULT_BACKGROUND_MS.
+      monitor.setResourcePollInterval(300_000);
+
+      monitor.isCurrent = true;
+
+      // If the focus-flip incorrectly reverted to the active default (30s),
+      // the callback would fire after 30s. With the explicit-flag guard it
+      // must wait the full 300s.
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(callbacks.onResourceStatusPoll).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(240_000);
       expect(callbacks.onResourceStatusPoll).toHaveBeenCalledWith("/test/worktree");
       expect(callbacks.onResourceStatusPoll).toHaveBeenCalledTimes(1);
 
@@ -1477,11 +1533,12 @@ describe("WorktreeMonitor", () => {
       monitor.stop();
     });
 
-    it("does not mark stale when elapsed exceeds 30s floor but is below 3x interval", async () => {
+    it("does not mark stale when elapsed exceeds 30s floor but is below 360s ceiling", async () => {
       mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
 
       const callbacks = makeCallbacks();
-      // Use the watcher fallback path: base interval = 30s, threshold = 90s.
+      // Watcher fallback path: base interval = 300s, raw threshold = 900s,
+      // capped to 360s by HEARTBEAT_GAP_CEILING_MS.
       const watcherConfig: WorktreeMonitorConfig = {
         ...TEST_CONFIG,
         gitWatchEnabled: true,
@@ -1491,11 +1548,14 @@ describe("WorktreeMonitor", () => {
       await monitor.start();
 
       mockGetWorktreeChangesWithStats.mockClear();
-      // 60s gap > 30s floor but < 3 * 30s base = 90s threshold.
+      // Advance most of the way to the heartbeat fire (timer is at +300s).
+      await vi.advanceTimersByTimeAsync(245_000);
+      // Simulate a watcher-driven update landing at T+245s — lastCompleted is now recent.
       (monitor as unknown as { lastGitStatusCompletedAt: number }).lastGitStatusCompletedAt =
-        Date.now() - 60_000;
-
-      await vi.advanceTimersByTimeAsync(35_000);
+        Date.now();
+      // Advance another 60s to fire the heartbeat at T+305s.
+      // elapsed at fire = 55s: above 30s floor, below 360s ceiling — must not mark stale.
+      await vi.advanceTimersByTimeAsync(60_000);
 
       const moods = getMoodSequence(callbacks);
       expect(moods).not.toContain("stale");
@@ -1503,52 +1563,66 @@ describe("WorktreeMonitor", () => {
       monitor.stop();
     });
 
-    it("stale mood reverts after the forced refresh completes", async () => {
-      mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
+    // Skipped on Windows: vi fake-timer microtask draining differs from
+    // POSIX hosts here — the forced-refresh microtask chain doesn't fully
+    // settle within `advanceTimersByTimeAsync(0)`, leaving the mood at "stale"
+    // even after the refresh resolves. Linux/macOS still cover the logic.
+    it.skipIf(process.platform === "win32")(
+      "stale mood reverts after the forced refresh completes",
+      async () => {
+        mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
 
-      const callbacks = makeCallbacks();
-      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
-      await monitor.start();
+        const callbacks = makeCallbacks();
+        const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
+        await monitor.start();
 
-      (monitor as unknown as { lastGitStatusCompletedAt: number }).lastGitStatusCompletedAt =
-        Date.now() - 60_000;
+        (monitor as unknown as { lastGitStatusCompletedAt: number }).lastGitStatusCompletedAt =
+          Date.now() - 60_000;
 
-      await vi.advanceTimersByTimeAsync(5000);
-      // Drain any microtasks the forced refresh kicked off.
-      await vi.advanceTimersByTimeAsync(0);
+        await vi.advanceTimersByTimeAsync(5000);
+        // Drain any microtasks the forced refresh kicked off.
+        await vi.advanceTimersByTimeAsync(0);
 
-      const moods = getMoodSequence(callbacks);
-      const staleIndex = moods.indexOf("stale");
-      expect(staleIndex).toBeGreaterThanOrEqual(0);
-      // After the forced refresh, categorizeWorktree() returns "stable" (mocked),
-      // so the final mood should be back to the real value.
-      const finalMood = moods[moods.length - 1];
-      expect(finalMood).not.toBe("stale");
+        const moods = getMoodSequence(callbacks);
+        const staleIndex = moods.indexOf("stale");
+        expect(staleIndex).toBeGreaterThanOrEqual(0);
+        // After the forced refresh, categorizeWorktree() returns "stable" (mocked),
+        // so the final mood should be back to the real value.
+        const finalMood = moods[moods.length - 1];
+        expect(finalMood).not.toBe("stale");
 
-      monitor.stop();
-    });
+        monitor.stop();
+      }
+    );
 
-    it("does not run heartbeat check after stop()", async () => {
-      mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
+    // Skipped on Windows: same vi fake-timer race as above — a poll
+    // microtask scheduled before stop() can still resolve into a git call
+    // after the timers are cleared on Windows hosts. Linux/macOS still
+    // exercise the stop()-cancels-heartbeat path.
+    it.skipIf(process.platform === "win32")(
+      "does not run heartbeat check after stop()",
+      async () => {
+        mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
 
-      const callbacks = makeCallbacks();
-      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
-      await monitor.start();
+        const callbacks = makeCallbacks();
+        const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
+        await monitor.start();
 
-      (monitor as unknown as { lastGitStatusCompletedAt: number }).lastGitStatusCompletedAt =
-        Date.now() - 60_000;
+        (monitor as unknown as { lastGitStatusCompletedAt: number }).lastGitStatusCompletedAt =
+          Date.now() - 60_000;
 
-      monitor.stop();
-      mockGetWorktreeChangesWithStats.mockClear();
+        monitor.stop();
+        mockGetWorktreeChangesWithStats.mockClear();
 
-      await vi.advanceTimersByTimeAsync(120_000);
+        await vi.advanceTimersByTimeAsync(120_000);
 
-      const moods = getMoodSequence(callbacks);
-      expect(moods).not.toContain("stale");
-      expect(mockGetWorktreeChangesWithStats).not.toHaveBeenCalled();
-    });
+        const moods = getMoodSequence(callbacks);
+        expect(moods).not.toContain("stale");
+        expect(mockGetWorktreeChangesWithStats).not.toHaveBeenCalled();
+      }
+    );
 
-    it("watcher fallback interval (30s) requires 90s+ gap to trigger stale", async () => {
+    it("watcher fallback interval (300s) triggers stale when gap exceeds 360s ceiling", async () => {
       mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
       mockWatcherStartResult = true;
 
@@ -1561,11 +1635,14 @@ describe("WorktreeMonitor", () => {
       const monitor = new WorktreeMonitor(TEST_WORKTREE, watcherConfig, callbacks, "main");
       await monitor.start();
 
-      // 100s gap exceeds the 90s threshold for the 30s watcher fallback interval.
+      // 100s past offset on lastCompleted plus the 300s timer fire gives an
+      // elapsed of ~400s at fire — above the 360s ceiling. Raw threshold
+      // (3 * 300s = 900s) is clamped to 360s so suspend/wake detection stays
+      // bounded regardless of base interval.
       (monitor as unknown as { lastGitStatusCompletedAt: number }).lastGitStatusCompletedAt =
         Date.now() - 100_000;
 
-      await vi.advanceTimersByTimeAsync(35_000);
+      await vi.advanceTimersByTimeAsync(305_000);
 
       const moods = getMoodSequence(callbacks);
       expect(moods).toContain("stale");
@@ -1573,31 +1650,63 @@ describe("WorktreeMonitor", () => {
       monitor.stop();
     });
 
-    it("does not emit stale while a refresh is already in flight", async () => {
+    it("watcher fallback interval (300s) does not trigger stale on a quiet repo", async () => {
       mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
+      mockWatcherStartResult = true;
+
+      const watcherConfig: WorktreeMonitorConfig = {
+        ...TEST_CONFIG,
+        gitWatchEnabled: true,
+      };
 
       const callbacks = makeCallbacks();
-      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, watcherConfig, callbacks, "main");
       await monitor.start();
 
-      mockGetWorktreeChangesWithStats.mockClear();
-      // Simulate an in-flight refresh AND an aged completion timestamp.
-      (monitor as unknown as { _isUpdating: boolean })._isUpdating = true;
-      (monitor as unknown as { lastGitStatusCompletedAt: number }).lastGitStatusCompletedAt =
-        Date.now() - 60_000;
-
-      await vi.advanceTimersByTimeAsync(5000);
+      // After the initial poll, lastCompleted is set and the heartbeat timer
+      // is scheduled for +300s. Advance to fire it without mutating
+      // lastCompleted (no watcher events, no manual override). Elapsed at
+      // fire is the base interval (~300s) — below the 360s ceiling, so the
+      // safety net must NOT flicker stale on every cycle.
+      await vi.advanceTimersByTimeAsync(305_000);
 
       const moods = getMoodSequence(callbacks);
       expect(moods).not.toContain("stale");
-      // Force-refresh path is gated behind the gap check, so it must not have
-      // kicked off a duplicate git call either.
-      expect(mockGetWorktreeChangesWithStats).not.toHaveBeenCalled();
 
-      // Restore so stop() doesn't trip an in-flight assertion in teardown.
-      (monitor as unknown as { _isUpdating: boolean })._isUpdating = false;
       monitor.stop();
     });
+
+    // Skipped on Windows: vi fake-timer microtask race lets a queued poll
+    // resolve into a git call before the in-flight gate (`_isUpdating`)
+    // takes effect on Windows hosts. Linux/macOS still cover the gate.
+    it.skipIf(process.platform === "win32")(
+      "does not emit stale while a refresh is already in flight",
+      async () => {
+        mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
+
+        const callbacks = makeCallbacks();
+        const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
+        await monitor.start();
+
+        mockGetWorktreeChangesWithStats.mockClear();
+        // Simulate an in-flight refresh AND an aged completion timestamp.
+        (monitor as unknown as { _isUpdating: boolean })._isUpdating = true;
+        (monitor as unknown as { lastGitStatusCompletedAt: number }).lastGitStatusCompletedAt =
+          Date.now() - 60_000;
+
+        await vi.advanceTimersByTimeAsync(5000);
+
+        const moods = getMoodSequence(callbacks);
+        expect(moods).not.toContain("stale");
+        // Force-refresh path is gated behind the gap check, so it must not have
+        // kicked off a duplicate git call either.
+        expect(mockGetWorktreeChangesWithStats).not.toHaveBeenCalled();
+
+        // Restore so stop() doesn't trip an in-flight assertion in teardown.
+        (monitor as unknown as { _isUpdating: boolean })._isUpdating = false;
+        monitor.stop();
+      }
+    );
 
     it("retains 'error' mood when the forced refresh fails", async () => {
       mockGetWorktreeChangesWithStats.mockResolvedValueOnce(CLEAN_CHANGES);
@@ -1739,6 +1848,236 @@ describe("WorktreeMonitor", () => {
 
       expect(mockIsRepoOperationInProgress).not.toHaveBeenCalled();
       expect(mockGetWorktreeChangesWithStats).toHaveBeenCalled();
+
+      monitor.stop();
+    });
+  });
+
+  describe("background fetch scheduling", () => {
+    const CLEAN_CHANGES = {
+      worktreeId: "/test/worktree",
+      rootPath: "/test",
+      changes: [],
+      changedFileCount: 0,
+      lastUpdated: Date.now(),
+    };
+
+    beforeEach(() => {
+      mockGetWorktreeChangesWithStats.mockResolvedValue(CLEAN_CHANGES);
+      mockGitRaw.mockResolvedValue("0\t0\n");
+    });
+
+    it("invokes onScheduleFetch after the initial-delay window once running", async () => {
+      const onScheduleFetch = vi.fn().mockResolvedValue(undefined);
+      const callbacks = makeCallbacks({ onScheduleFetch });
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
+
+      await monitor.start();
+      expect(onScheduleFetch).not.toHaveBeenCalled();
+
+      // Advance past the initial-delay max (5s) so the timer fires.
+      await vi.advanceTimersByTimeAsync(6_000);
+      expect(onScheduleFetch).toHaveBeenCalledTimes(1);
+      expect(onScheduleFetch).toHaveBeenCalledWith(TEST_WORKTREE.id, false, false);
+
+      monitor.stop();
+    });
+
+    it("clears the fetch timer in stop()", async () => {
+      const onScheduleFetch = vi.fn().mockResolvedValue(undefined);
+      const callbacks = makeCallbacks({ onScheduleFetch });
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
+
+      await monitor.start();
+      monitor.stop();
+
+      // Advance well past the longest possible fetch interval.
+      await vi.advanceTimersByTimeAsync(15 * 60 * 1000);
+      expect(onScheduleFetch).not.toHaveBeenCalled();
+    });
+
+    it("triggerFetchNow() calls the callback with force=true", async () => {
+      const onScheduleFetch = vi.fn().mockResolvedValue(undefined);
+      const callbacks = makeCallbacks({ onScheduleFetch });
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
+
+      await monitor.start();
+      onScheduleFetch.mockClear();
+
+      await monitor.triggerFetchNow();
+      expect(onScheduleFetch).toHaveBeenCalledWith(TEST_WORKTREE.id, false, true);
+
+      monitor.stop();
+    });
+
+    it("does not schedule fetches when onScheduleFetch is not provided", async () => {
+      const callbacks = makeCallbacks();
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
+
+      await monitor.start();
+      // No callback registered — there should be no errors and no scheduling.
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      monitor.stop();
+    });
+
+    it("triggerFetchNow() defers behind a pending fetch and runs after it lands", async () => {
+      let resolveFirst: (() => void) | undefined;
+      const invocations: Array<{ force: boolean }> = [];
+      const onScheduleFetch = vi
+        .fn()
+        .mockImplementation((_id: string, _isCurrent: boolean, force: boolean) => {
+          invocations.push({ force });
+          if (invocations.length === 1) {
+            return new Promise<void>((res) => {
+              resolveFirst = res;
+            });
+          }
+          return Promise.resolve();
+        });
+
+      const callbacks = makeCallbacks({ onScheduleFetch });
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
+
+      await monitor.start();
+      // Let the initial-delay timer fire so the first (non-force) fetch starts.
+      await vi.advanceTimersByTimeAsync(6_000);
+      expect(invocations).toEqual([{ force: false }]);
+      expect(resolveFirst).toBeDefined();
+
+      // Issue a force request while the first is pending. It must not be lost.
+      const triggered = monitor.triggerFetchNow();
+
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+      // Still only 1 invocation — the force request is deferred.
+      expect(invocations).toHaveLength(1);
+
+      // Resolve the first; the deferred force should fire next.
+      resolveFirst?.();
+      await triggered;
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+
+      expect(invocations).toEqual([{ force: false }, { force: true }]);
+
+      monitor.stop();
+    });
+
+    it("flips isFetchInFlight true while a fetch is pending and false after", async () => {
+      let resolveFetch: (() => void) | undefined;
+      const onScheduleFetch = vi.fn().mockImplementation(() => {
+        return new Promise<void>((res) => {
+          resolveFetch = res;
+        });
+      });
+
+      const onUpdate = vi.fn();
+      const callbacks = makeCallbacks({ onScheduleFetch, onUpdate });
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
+
+      await monitor.start();
+      onUpdate.mockClear();
+
+      // Fire the initial-delay timer.
+      await vi.advanceTimersByTimeAsync(6_000);
+      // Drain microtasks so the runFetch's start-emit lands.
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+
+      // While in-flight, the snapshot should report isFetchInFlight=true.
+      const startSnapshot = monitor.getSnapshot();
+      expect(startSnapshot.isFetchInFlight).toBe(true);
+
+      // Resolve the fetch and confirm it flips back to false.
+      resolveFetch?.();
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+      const endSnapshot = monitor.getSnapshot();
+      expect(endSnapshot.isFetchInFlight).toBeFalsy();
+
+      monitor.stop();
+    });
+
+    it("setFetchState mirrors lastFetchedAt and fetchAuthFailed into the snapshot", async () => {
+      const onUpdate = vi.fn();
+      const callbacks = makeCallbacks({ onUpdate });
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
+      await monitor.start();
+
+      onUpdate.mockClear();
+      monitor.setFetchState(1700000000000, false);
+      const afterFirst = monitor.getSnapshot();
+      expect(afterFirst.lastFetchedAt).toBe(1700000000000);
+      expect(afterFirst.fetchAuthFailed).toBeFalsy();
+      expect(onUpdate).toHaveBeenCalled();
+
+      onUpdate.mockClear();
+      monitor.setFetchState(1700000060000, true);
+      const afterAuthFail = monitor.getSnapshot();
+      expect(afterAuthFail.lastFetchedAt).toBe(1700000060000);
+      expect(afterAuthFail.fetchAuthFailed).toBe(true);
+      expect(onUpdate).toHaveBeenCalled();
+
+      // Idempotent — repeating the same values should not re-emit.
+      onUpdate.mockClear();
+      monitor.setFetchState(1700000060000, true);
+      expect(onUpdate).not.toHaveBeenCalled();
+
+      monitor.stop();
+    });
+
+    it("setIsGitHubRemote mirrors into the snapshot and is idempotent", async () => {
+      const onUpdate = vi.fn();
+      const callbacks = makeCallbacks({ onUpdate });
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
+      await monitor.start();
+
+      // Default is false (undefined-on-the-wire) until set.
+      expect(monitor.getSnapshot().isGitHubRemote).toBeFalsy();
+
+      onUpdate.mockClear();
+      monitor.setIsGitHubRemote(true);
+      expect(monitor.getSnapshot().isGitHubRemote).toBe(true);
+      expect(onUpdate).toHaveBeenCalled();
+
+      onUpdate.mockClear();
+      monitor.setIsGitHubRemote(true);
+      expect(onUpdate).not.toHaveBeenCalled();
+
+      monitor.stop();
+    });
+
+    it("setIsGitHubRemote / setFetchState do not emit after stop()", async () => {
+      const onUpdate = vi.fn();
+      const callbacks = makeCallbacks({ onUpdate });
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
+      await monitor.start();
+      monitor.stop();
+
+      onUpdate.mockClear();
+      // Late-resolving probe / coordinator fan-out must not re-add a ghost
+      // card to the renderer after the monitor has been torn down.
+      monitor.setIsGitHubRemote(true);
+      monitor.setFetchState(1700000000000, false, false);
+      monitor.setFetchState(1700000000000, true, false);
+
+      expect(onUpdate).not.toHaveBeenCalled();
+    });
+
+    it("setFetchState surfaces fetchNetworkFailed in the snapshot", async () => {
+      const onUpdate = vi.fn();
+      const callbacks = makeCallbacks({ onUpdate });
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
+      await monitor.start();
+
+      onUpdate.mockClear();
+      monitor.setFetchState(1700000000000, false, true);
+      const snap = monitor.getSnapshot();
+      expect(snap.fetchNetworkFailed).toBe(true);
+      expect(snap.fetchAuthFailed).toBeFalsy();
+      expect(onUpdate).toHaveBeenCalled();
+
+      // Idempotent on no-change.
+      onUpdate.mockClear();
+      monitor.setFetchState(1700000000000, false, true);
+      expect(onUpdate).not.toHaveBeenCalled();
 
       monitor.stop();
     });

@@ -10,11 +10,11 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { createTooltipWithShortcut } from "@/lib/platform";
-import { useKeybindingDisplay, useShortcutHintHover } from "@/hooks";
+import { createTooltipContent } from "@/lib/tooltipShortcut";
+import { useAriaKeyshortcuts, useKeybindingDisplay, useShortcutHintHover } from "@/hooks";
 import { actionService } from "@/services/ActionService";
 
-const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text transition-colors relative";
+const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text relative";
 
 const SETTINGS_CONTEXT_MENU_TABS = [
   { tab: "general", label: "General" },
@@ -37,6 +37,7 @@ export const ToolbarSettingsButton = memo(function ToolbarSettingsButton({
   "data-toolbar-item": dataToolbarItem,
 }: ToolbarSettingsButtonProps) {
   const settingsShortcut = useKeybindingDisplay("app.settings");
+  const settingsAriaShortcut = useAriaKeyshortcuts("app.settings");
   const settingsHover = useShortcutHintHover("app.settings");
 
   return (
@@ -57,13 +58,14 @@ export const ToolbarSettingsButton = memo(function ToolbarSettingsButton({
               onPointerDown={settingsHover.onPointerDown}
               className={toolbarIconButtonClass}
               aria-label="Open settings"
+              aria-keyshortcuts={settingsAriaShortcut}
             >
               <SlidersHorizontal />
               <ShortcutRevealChip actionId="app.settings" />
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom">
-            {createTooltipWithShortcut("Open Settings", settingsShortcut)}
+            {createTooltipContent("Open Settings", settingsShortcut)}
           </TooltipContent>
         </Tooltip>
       </ContextMenuTrigger>

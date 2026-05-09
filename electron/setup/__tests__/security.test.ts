@@ -76,13 +76,23 @@ vi.mock("../../../shared/utils/trustedRenderer.js", () => ({
   isTrustedRendererUrl: vi.fn(() => true),
 }));
 
+vi.mock("../../services/TelemetryService.js", () => ({
+  getCurrentCorrelationId: vi.fn(() => "test-correlation-id"),
+}));
+
 import {
   setupPermissionLockdown,
   enforceIpcSenderValidation,
   sanitizeErrorForRenderer,
+  validateIpcInvokeEnvelope,
+  containsBinary,
+  MAX_IPC_ARG_COUNT,
+  PAYLOAD_BUDGETS,
+  DEFAULT_PAYLOAD_BUDGET,
   _resetPermissionLockdownForTesting,
 } from "../security.js";
 import { assertIpcSecurityReady, _resetIpcGuardForTesting } from "../../ipc/ipcGuard.js";
+import { AppError } from "../../utils/errorTypes.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockWebContents = {} as any;
@@ -333,25 +343,79 @@ describe("setupPermissionLockdown", () => {
       expect(dynamicDaintreeSession.setPermissionCheckHandler).not.toHaveBeenCalled();
     });
 
-    it("handles sessions with missing partition property", () => {
+    it("default-locks sessions with missing partition property", () => {
       setupPermissionLockdown();
       const noPartitionSession = createMockSession();
 
       sessionCreatedListeners[0](noPartitionSession);
 
-      expect(noPartitionSession.setPermissionRequestHandler).not.toHaveBeenCalled();
-      expect(noPartitionSession.setPermissionCheckHandler).not.toHaveBeenCalled();
+      expect(noPartitionSession.setPermissionRequestHandler).toHaveBeenCalledTimes(1);
+      expect(noPartitionSession.setPermissionCheckHandler).toHaveBeenCalledTimes(1);
     });
 
-    it("does not lock down unknown partitions", () => {
+    it("default-locks spied [SECURITY] log for missing partition", () => {
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      setupPermissionLockdown();
+      const noPartitionSession = createMockSession();
+      sessionCreatedListeners[0](noPartitionSession);
+
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining("[SECURITY] Default-locked new session partition: (none)")
+      );
+      logSpy.mockRestore();
+    });
+
+    it("default-locks unknown partitions", () => {
       setupPermissionLockdown();
       const unknownSession = createMockSession();
       Object.defineProperty(unknownSession, "partition", { value: "persist:custom" });
 
       sessionCreatedListeners[0](unknownSession);
 
-      expect(unknownSession.setPermissionRequestHandler).not.toHaveBeenCalled();
-      expect(unknownSession.setPermissionCheckHandler).not.toHaveBeenCalled();
+      expect(unknownSession.setPermissionRequestHandler).toHaveBeenCalledTimes(1);
+      expect(unknownSession.setPermissionCheckHandler).toHaveBeenCalledTimes(1);
+    });
+
+    it("logs [SECURITY] for default-locked unknown partitions", () => {
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      setupPermissionLockdown();
+      const unknownSession = createMockSession();
+      Object.defineProperty(unknownSession, "partition", { value: "persist:plugin-foo" });
+
+      sessionCreatedListeners[0](unknownSession);
+
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "[SECURITY] Default-locked new session partition: persist:plugin-foo"
+        )
+      );
+      logSpy.mockRestore();
+    });
+
+    it("skips project partitions in session-created", () => {
+      setupPermissionLockdown();
+      const projectSession = createMockSession();
+      Object.defineProperty(projectSession, "partition", {
+        value: "persist:project-myfeature",
+      });
+
+      sessionCreatedListeners[0](projectSession);
+
+      expect(projectSession.setPermissionRequestHandler).not.toHaveBeenCalled();
+      expect(projectSession.setPermissionCheckHandler).not.toHaveBeenCalled();
+    });
+
+    it("skips portal partition in session-created", () => {
+      setupPermissionLockdown();
+      const portalSession = createMockSession();
+      Object.defineProperty(portalSession, "partition", {
+        value: "persist:portal",
+      });
+
+      sessionCreatedListeners[0](portalSession);
+
+      expect(portalSession.setPermissionRequestHandler).not.toHaveBeenCalled();
+      expect(portalSession.setPermissionCheckHandler).not.toHaveBeenCalled();
     });
   });
 
@@ -514,6 +578,148 @@ describe("enforceIpcSenderValidation", () => {
     errSpy.mockRestore();
   });
 
+  it("injects correlationId into packaged-build handle error envelope", async () => {
+    appMock.isPackaged = true;
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const originalHandle = ipcMainMock.handle;
+    enforceIpcSenderValidation();
+
+    const failingHandler = () => {
+      throw new Error("oops");
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ipcMainMock.handle("test:channel", failingHandler as any);
+
+    const lastCall = originalHandle.mock.calls[originalHandle.mock.calls.length - 1];
+    const wrappedListener = lastCall[1] as (event: unknown, ...args: unknown[]) => Promise<unknown>;
+    const fakeEvent = { senderFrame: { url: "http://localhost:3000" } };
+    const envelope = (await wrappedListener(fakeEvent)) as {
+      ok: false;
+      error: { message: string; correlationId?: string };
+    };
+
+    expect(envelope.ok).toBe(false);
+    expect(envelope.error.correlationId).toBe("test-correlation-id");
+
+    logSpy.mockRestore();
+    errSpy.mockRestore();
+  });
+
+  it("injects correlationId into packaged-build handleOnce error envelope", async () => {
+    appMock.isPackaged = true;
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const originalHandleOnce = ipcMainMock.handleOnce;
+    enforceIpcSenderValidation();
+
+    const failingHandler = () => {
+      throw new Error("one-shot error");
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ipcMainMock.handleOnce("test:once-channel", failingHandler as any);
+
+    const lastCall = originalHandleOnce.mock.calls[originalHandleOnce.mock.calls.length - 1];
+    const wrappedListener = lastCall[1] as (event: unknown, ...args: unknown[]) => Promise<unknown>;
+    const fakeEvent = { senderFrame: { url: "http://localhost:3000" } };
+    const envelope = (await wrappedListener(fakeEvent)) as {
+      ok: false;
+      error: { message: string; correlationId?: string };
+    };
+
+    expect(envelope.ok).toBe(false);
+    expect(envelope.error.correlationId).toBe("test-correlation-id");
+
+    logSpy.mockRestore();
+    errSpy.mockRestore();
+  });
+
+  it("omits correlationId when getCurrentCorrelationId returns undefined", async () => {
+    appMock.isPackaged = true;
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    // Arrange: simulate dev / unconfigured — getCurrentCorrelationId returns undefined
+    const { getCurrentCorrelationId } = await import("../../services/TelemetryService.js");
+    (getCurrentCorrelationId as ReturnType<typeof vi.fn>).mockReturnValueOnce(undefined);
+
+    const originalHandle = ipcMainMock.handle;
+    enforceIpcSenderValidation();
+
+    const failingHandler = () => {
+      throw new Error("oops");
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ipcMainMock.handle("test:channel", failingHandler as any);
+
+    const lastCall = originalHandle.mock.calls[originalHandle.mock.calls.length - 1];
+    const wrappedListener = lastCall[1] as (event: unknown, ...args: unknown[]) => Promise<unknown>;
+    const fakeEvent = { senderFrame: { url: "http://localhost:3000" } };
+    const envelope = (await wrappedListener(fakeEvent)) as {
+      ok: false;
+      error: { message: string; correlationId?: string };
+    };
+
+    expect(envelope.ok).toBe(false);
+    expect(envelope.error.correlationId).toBeUndefined();
+
+    logSpy.mockRestore();
+    errSpy.mockRestore();
+  });
+
+  it("strips sensitive fields while preserving correlationId in packaged builds", async () => {
+    appMock.isPackaged = true;
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const originalHandle = ipcMainMock.handle;
+    enforceIpcSenderValidation();
+
+    const failingHandler = () => {
+      const err = Object.assign(new Error("sensitive"), {
+        path: "/Users/alice/secrets/keys.env",
+        context: { secret: "value" },
+        cause: new Error("nested secret"),
+        stack: "Error: sensitive\n    at sensitive.ts:1:1",
+        customProperty: "should be stripped",
+      });
+      throw err;
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ipcMainMock.handle("test:channel", failingHandler as any);
+
+    const lastCall = originalHandle.mock.calls[originalHandle.mock.calls.length - 1];
+    const wrappedListener = lastCall[1] as (event: unknown, ...args: unknown[]) => Promise<unknown>;
+    const fakeEvent = { senderFrame: { url: "http://localhost:3000" } };
+    const envelope = (await wrappedListener(fakeEvent)) as {
+      ok: false;
+      error: {
+        message: string;
+        correlationId?: string;
+        stack?: string;
+        path?: string;
+        context?: Record<string, unknown>;
+        cause?: unknown;
+        properties?: Record<string, unknown>;
+      };
+    };
+
+    expect(envelope.ok).toBe(false);
+    // correlationId survives
+    expect(envelope.error.correlationId).toBe("test-correlation-id");
+    // sensitive fields stripped
+    expect(envelope.error.stack).toBeUndefined();
+    expect(envelope.error.path).toBeUndefined();
+    expect(envelope.error.context).toBeUndefined();
+    expect(envelope.error.cause).toBeUndefined();
+    expect(envelope.error.properties).toBeUndefined();
+
+    logSpy.mockRestore();
+    errSpy.mockRestore();
+  });
+
   it("preserves a clean serialized.userMessage in packaged builds", async () => {
     appMock.isPackaged = true;
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -541,6 +747,270 @@ describe("enforceIpcSenderValidation", () => {
 
     logSpy.mockRestore();
     errSpy.mockRestore();
+  });
+});
+
+describe("validateIpcInvokeEnvelope", () => {
+  it("throws ARG_COUNT_EXCEEDED when args exceed MAX_IPC_ARG_COUNT", () => {
+    const tooMany = Array.from({ length: MAX_IPC_ARG_COUNT + 1 }, (_, i) => i);
+    let caught: unknown;
+    try {
+      validateIpcInvokeEnvelope("any:channel", tooMany);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(AppError);
+    expect((caught as AppError).code).toBe("ARG_COUNT_EXCEEDED");
+    expect((caught as AppError).context).toMatchObject({
+      channel: "any:channel",
+      argCount: MAX_IPC_ARG_COUNT + 1,
+      maxArgCount: MAX_IPC_ARG_COUNT,
+    });
+  });
+
+  it("accepts arg counts at the cap", () => {
+    const atCap = Array.from({ length: MAX_IPC_ARG_COUNT }, (_, i) => i);
+    expect(() => validateIpcInvokeEnvelope("any:channel", atCap)).not.toThrow();
+  });
+
+  it("throws PAYLOAD_TOO_LARGE on uncategorized channel above DEFAULT_PAYLOAD_BUDGET", () => {
+    const oversize = "x".repeat(DEFAULT_PAYLOAD_BUDGET + 1024);
+    let caught: unknown;
+    try {
+      validateIpcInvokeEnvelope("uncategorized:channel", [oversize]);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(AppError);
+    expect((caught as AppError).code).toBe("PAYLOAD_TOO_LARGE");
+    const ctx = (caught as AppError).context as { category: string | null; budget: number };
+    expect(ctx.category).toBeNull();
+    expect(ctx.budget).toBe(DEFAULT_PAYLOAD_BUDGET);
+  });
+
+  it("applies tighter budget on terminalSpawn category", () => {
+    const oversize = "x".repeat(PAYLOAD_BUDGETS.terminalSpawn + 1024);
+    let caught: unknown;
+    try {
+      validateIpcInvokeEnvelope("terminal:spawn", [oversize]);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(AppError);
+    expect((caught as AppError).code).toBe("PAYLOAD_TOO_LARGE");
+    const ctx = (caught as AppError).context as { category: string; budget: number };
+    expect(ctx.category).toBe("terminalSpawn");
+    expect(ctx.budget).toBe(PAYLOAD_BUDGETS.terminalSpawn);
+  });
+
+  it("allows large payloads on fileOps category up to the 4 MB budget", () => {
+    const justUnderFileOpsBudget = "x".repeat(PAYLOAD_BUDGETS.fileOps - 1024);
+    expect(() =>
+      validateIpcInvokeEnvelope("copytree:get-file-tree", [justUnderFileOpsBudget])
+    ).not.toThrow();
+  });
+
+  it("falls through silently when JSON.stringify cannot serialize args", () => {
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    expect(() => validateIpcInvokeEnvelope("any:channel", [circular])).not.toThrow();
+  });
+
+  it("falls through silently for non-JSON-serializable payloads (typed arrays)", () => {
+    const buf = new Uint8Array(DEFAULT_PAYLOAD_BUDGET + 1024);
+    expect(() => validateIpcInvokeEnvelope("any:channel", [buf])).not.toThrow();
+  });
+
+  it("falls through silently when a typed array is nested inside a plain object", () => {
+    const buf = new Uint8Array(DEFAULT_PAYLOAD_BUDGET + 1024);
+    expect(() => validateIpcInvokeEnvelope("any:channel", [{ blob: buf }])).not.toThrow();
+  });
+
+  it("falls through silently when payload contains a Map or Set", () => {
+    expect(() => validateIpcInvokeEnvelope("any:channel", [new Map()])).not.toThrow();
+    expect(() => validateIpcInvokeEnvelope("any:channel", [new Set([1, 2, 3])])).not.toThrow();
+  });
+
+  it("does not let BigInt silently bypass the byte budget", () => {
+    const oversize = "x".repeat(DEFAULT_PAYLOAD_BUDGET + 1024);
+    let caught: unknown;
+    try {
+      validateIpcInvokeEnvelope("any:channel", [{ data: oversize, n: 1n }]);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(AppError);
+    expect((caught as AppError).code).toBe("PAYLOAD_TOO_LARGE");
+  });
+
+  it("rejects oversize payloads on artifact:apply-patch above the artifactOps budget", () => {
+    const oversize = "x".repeat(PAYLOAD_BUDGETS.artifactOps + 1024);
+    let caught: unknown;
+    try {
+      validateIpcInvokeEnvelope("artifact:apply-patch", [oversize]);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(AppError);
+    expect((caught as AppError).code).toBe("PAYLOAD_TOO_LARGE");
+    expect((caught as AppError).context).toMatchObject({ category: "artifactOps" });
+  });
+
+  it("accepts artifact:apply-patch payloads under the artifactOps budget", () => {
+    const justUnder = "x".repeat(PAYLOAD_BUDGETS.artifactOps - 4096);
+    expect(() => validateIpcInvokeEnvelope("artifact:apply-patch", [justUnder])).not.toThrow();
+  });
+
+  it("accepts an empty arg list", () => {
+    expect(() => validateIpcInvokeEnvelope("any:channel", [])).not.toThrow();
+  });
+});
+
+describe("containsBinary", () => {
+  it("returns false for primitives", () => {
+    expect(containsBinary(null)).toBe(false);
+    expect(containsBinary(undefined)).toBe(false);
+    expect(containsBinary("string")).toBe(false);
+    expect(containsBinary(42)).toBe(false);
+    expect(containsBinary(true)).toBe(false);
+  });
+
+  it("detects ArrayBuffer and typed arrays at the top level", () => {
+    expect(containsBinary(new Uint8Array(8))).toBe(true);
+    expect(containsBinary(new ArrayBuffer(8))).toBe(true);
+    expect(containsBinary(new Int32Array(2))).toBe(true);
+  });
+
+  it("detects binary nested inside arrays", () => {
+    expect(containsBinary([1, 2, new Uint8Array(8)])).toBe(true);
+  });
+
+  it("detects binary nested inside plain objects", () => {
+    expect(containsBinary({ blob: new Uint8Array(8) })).toBe(true);
+    expect(containsBinary({ a: { b: { c: new Uint8Array(8) } } })).toBe(true);
+  });
+
+  it("treats Map and Set as binary-like (size unknowable via JSON)", () => {
+    expect(containsBinary(new Map())).toBe(true);
+    expect(containsBinary(new Set())).toBe(true);
+  });
+
+  it("returns false for plain object trees with no binary or Map/Set", () => {
+    expect(containsBinary({ a: 1, b: { c: "x", d: [1, 2, 3] } })).toBe(false);
+  });
+});
+
+describe("enforceIpcSenderValidation envelope guards", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetIpcGuardForTesting();
+    appMock.isPackaged = false;
+    ipcMainMock.handle = vi.fn();
+    ipcMainMock.handleOnce = vi.fn();
+    ipcMainMock.on = vi.fn();
+    ipcMainMock.removeListener = vi.fn();
+    ipcMainMock.removeAllListeners = vi.fn();
+    ipcMainMock.off = vi.fn();
+  });
+
+  async function invokeWrappedHandle(
+    register: "handle" | "handleOnce",
+    channel: string,
+    listener: (...args: unknown[]) => unknown,
+    invokeArgs: unknown[]
+  ): Promise<{ ok: boolean; error?: { code?: string } }> {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const original = register === "handle" ? ipcMainMock.handle : ipcMainMock.handleOnce;
+      enforceIpcSenderValidation();
+      const wrapper = register === "handle" ? ipcMainMock.handle : ipcMainMock.handleOnce;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      wrapper(channel, listener as any);
+      const lastCall = original.mock.calls[original.mock.calls.length - 1];
+      const wrappedListener = lastCall[1] as (
+        event: unknown,
+        ...args: unknown[]
+      ) => Promise<unknown>;
+      const fakeEvent = { senderFrame: { url: "http://localhost:3000" } };
+      return (await wrappedListener(fakeEvent, ...invokeArgs)) as {
+        ok: boolean;
+        error?: { code?: string };
+      };
+    } finally {
+      logSpy.mockRestore();
+    }
+  }
+
+  it("rejects ipcMain.handle calls that exceed the arg-count cap", async () => {
+    const handler = vi.fn();
+    const tooMany = Array.from({ length: MAX_IPC_ARG_COUNT + 1 }, (_, i) => i);
+    const envelope = await invokeWrappedHandle("handle", "test:channel", handler, tooMany);
+    expect(envelope.ok).toBe(false);
+    expect(envelope.error?.code).toBe("ARG_COUNT_EXCEEDED");
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("rejects oversized payloads on uncategorized channels", async () => {
+    const handler = vi.fn();
+    const oversize = "x".repeat(DEFAULT_PAYLOAD_BUDGET + 1024);
+    const envelope = await invokeWrappedHandle("handle", "uncategorized:channel", handler, [
+      oversize,
+    ]);
+    expect(envelope.ok).toBe(false);
+    expect(envelope.error?.code).toBe("PAYLOAD_TOO_LARGE");
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("invokes the listener for valid envelopes", async () => {
+    const handler = vi.fn().mockReturnValue("ok");
+    const envelope = await invokeWrappedHandle("handle", "test:channel", handler, [{ a: 1 }]);
+    expect(envelope.ok).toBe(true);
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it("applies the same guards to ipcMain.handleOnce", async () => {
+    const handler = vi.fn();
+    const tooMany = Array.from({ length: MAX_IPC_ARG_COUNT + 1 }, (_, i) => i);
+    const envelope = await invokeWrappedHandle("handleOnce", "once:channel", handler, tooMany);
+    expect(envelope.ok).toBe(false);
+    expect(envelope.error?.code).toBe("ARG_COUNT_EXCEEDED");
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("preserves the rejection code through the packaged-build prod-strip path", async () => {
+    appMock.isPackaged = true;
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const handler = vi.fn();
+    const tooMany = Array.from({ length: MAX_IPC_ARG_COUNT + 1 }, (_, i) => i);
+    const envelope = await invokeWrappedHandle("handle", "test:channel", handler, tooMany);
+    expect(envelope.ok).toBe(false);
+    expect(envelope.error?.code).toBe("ARG_COUNT_EXCEEDED");
+    errSpy.mockRestore();
+  });
+
+  it("preserves PAYLOAD_TOO_LARGE through the packaged-build prod-strip path", async () => {
+    appMock.isPackaged = true;
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const handler = vi.fn();
+    const oversize = "x".repeat(DEFAULT_PAYLOAD_BUDGET + 1024);
+    const envelope = (await invokeWrappedHandle("handle", "test:channel", handler, [oversize])) as {
+      ok: boolean;
+      error?: { code?: string; context?: unknown };
+    };
+    expect(envelope.ok).toBe(false);
+    expect(envelope.error?.code).toBe("PAYLOAD_TOO_LARGE");
+    // context is stripped in packaged builds — must not leak budget/bytes
+    expect(envelope.error?.context).toBeUndefined();
+    errSpy.mockRestore();
+  });
+
+  it("rejects oversized payloads on ipcMain.handleOnce", async () => {
+    const handler = vi.fn();
+    const oversize = "x".repeat(DEFAULT_PAYLOAD_BUDGET + 1024);
+    const envelope = await invokeWrappedHandle("handleOnce", "once:channel", handler, [oversize]);
+    expect(envelope.ok).toBe(false);
+    expect(envelope.error?.code).toBe("PAYLOAD_TOO_LARGE");
+    expect(handler).not.toHaveBeenCalled();
   });
 });
 

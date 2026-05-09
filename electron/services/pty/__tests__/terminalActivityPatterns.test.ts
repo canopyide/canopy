@@ -11,15 +11,16 @@ import {
 
 function createMockProcessTreeCache(
   childrenByPid: Map<number, ProcessInfo[]>,
-  activeDescendants: boolean = false
+  activeDescendants = false,
+  descendantsCpuUsage = 0
 ): ProcessTreeCache {
   return {
     getChildren: (ppid: number) => childrenByPid.get(ppid) ?? [],
     getChildPids: (ppid: number) => (childrenByPid.get(ppid) ?? []).map((c) => c.pid),
     hasActiveDescendants: vi.fn(() => activeDescendants),
+    getDescendantsCpuUsage: vi.fn(() => descendantsCpuUsage),
     getProcess: () => undefined,
     hasChildren: (ppid: number) => (childrenByPid.get(ppid) ?? []).length > 0,
-    getDescendantsCpuUsage: () => 0,
     getLastRefreshTime: () => Date.now(),
     getLastError: () => null,
     getCacheSize: () => 0,
@@ -36,14 +37,23 @@ describe("createProcessStateValidator", () => {
     expect(createProcessStateValidator(1, null)).toBeUndefined();
   });
 
-  it("returns true when hasActiveDescendants reports activity", () => {
+  it("returns true when descendant CPU activity is present", () => {
     const cache = createMockProcessTreeCache(new Map(), true);
     const validator = createProcessStateValidator(42, cache)!;
+
     expect(validator.hasActiveChildren()).toBe(true);
     expect(cache.hasActiveDescendants).toHaveBeenCalledWith(42, 0.5);
   });
 
-  it("returns false when no children exist and no CPU activity", () => {
+  it("reports descendant CPU usage", () => {
+    const cache = createMockProcessTreeCache(new Map(), false, 12.5);
+    const validator = createProcessStateValidator(42, cache)!;
+
+    expect(validator.getDescendantsCpuUsage?.()).toBe(12.5);
+    expect(cache.getDescendantsCpuUsage).toHaveBeenCalledWith(42);
+  });
+
+  it("returns false when no children exist", () => {
     const cache = createMockProcessTreeCache(new Map([[1, []]]));
     const validator = createProcessStateValidator(1, cache)!;
     expect(validator.hasActiveChildren()).toBe(false);
@@ -179,8 +189,7 @@ describe("buildActivityMonitorOptions", () => {
 
   it("sets idle debounce for agent terminals", () => {
     const result = buildActivityMonitorOptions("claude", {});
-    expect(result.idleDebounceMs).toBeDefined();
-    expect(typeof result.idleDebounceMs).toBe("number");
+    expect(result.idleDebounceMs).toBe(8000);
   });
 
   it("includes universal approval hint patterns for agent terminals", () => {
@@ -199,14 +208,14 @@ describe("buildActivityMonitorOptions", () => {
     expect(result.promptHintPatterns).toBeUndefined();
   });
 
-  it("sets promptFastPathMinQuietMs for cursor agent", () => {
+  it("sets promptFastPathMinQuietMs to the 8s waiting quiet floor for cursor agent", () => {
     const result = buildActivityMonitorOptions("cursor", {});
-    expect(result.promptFastPathMinQuietMs).toBe(700);
+    expect(result.promptFastPathMinQuietMs).toBe(8000);
   });
 
-  it("leaves promptFastPathMinQuietMs undefined for claude agent", () => {
+  it("sets promptFastPathMinQuietMs to the 8s waiting quiet floor for claude agent", () => {
     const result = buildActivityMonitorOptions("claude", {});
-    expect(result.promptFastPathMinQuietMs).toBeUndefined();
+    expect(result.promptFastPathMinQuietMs).toBe(8000);
   });
 
   it("leaves promptFastPathMinQuietMs undefined for non-agent terminals", () => {
@@ -218,11 +227,20 @@ describe("buildActivityMonitorOptions", () => {
     const result = buildActivityMonitorOptions("claude", {});
     expect(result.outputActivityDetection).toEqual({
       enabled: true,
-      windowMs: 1000,
-      minFrames: 2,
-      minBytes: 32,
+      leakRatePerMs: 0.032,
+      activationThreshold: 32,
+      maxBytesPerFrame: 64,
     });
     expect(result.patternConfig).toBeDefined();
     expect(result.bootCompletePatterns).toBeDefined();
+  });
+
+  it("sets background-tier recovery threshold (#6641)", () => {
+    // Background polling (500ms) shortens the recovery debouncer so
+    // backgrounded agents can escape "waiting" when output resumes. The
+    // volume detector is sample-cadence invariant (#6666), so no tier-
+    // specific window widening is needed.
+    const result = buildActivityMonitorOptions("claude", {});
+    expect(result.backgroundWorkingRecoveryDelayMs).toBe(600);
   });
 });

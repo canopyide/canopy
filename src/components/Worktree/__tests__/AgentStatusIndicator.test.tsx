@@ -8,6 +8,7 @@ import {
   agentStateDotColor,
   getDominantAgentState,
 } from "../AgentStatusIndicator";
+import { STATE_PRIORITY } from "../terminalStateConfig";
 import type { AgentState } from "@/types";
 
 vi.mock("@/components/ui/tooltip", () => ({
@@ -126,13 +127,46 @@ describe("getDominantAgentState", () => {
 
   // Documents the accepted trade-off: when a worktree has both a passive
   // working session and an actionable waiting session, the dominant state
-  // resolves to working (priority 7 > 3), so agentStateDotColor returns null
-  // and the toolbar dot is suppressed. WorktreeCard's border-flash animation
-  // depends on working outranking waiting; the tray dot rides on the same
-  // priority table. If this priority is ever inverted, this assertion fails
-  // first as a guard.
+  // resolves to working (earlier in STATE_PRIORITY than waiting), so
+  // agentStateDotColor returns null and the toolbar dot is suppressed.
+  // WorktreeCard's border-flash animation depends on working outranking
+  // waiting; the tray dot rides on the same priority array. If this priority
+  // is ever inverted, this assertion fails first as a guard.
   it("returns working when a worktree mixes working and waiting (suppresses tray dot)", () => {
     expect(getDominantAgentState(["working", "waiting"])).toBe("working");
+  });
+
+  // Pins the #6661 fix: waiting (actionable) must outrank completed (passive)
+  // so the tray dot, AgentButton, and the WorktreeCard collapsed-row indicator
+  // all agree on a single winner. Both input orders are asserted because the
+  // implementation is order-independent and a future inline-iteration rewrite
+  // could quietly reintroduce order sensitivity.
+  it("returns waiting when a worktree mixes completed and waiting (waiting outranks completed)", () => {
+    expect(getDominantAgentState(["completed", "waiting"])).toBe("waiting");
+    expect(getDominantAgentState(["waiting", "completed"])).toBe("waiting");
+  });
+});
+
+// STATE_PRIORITY is consumed directly by WorktreeHeader, WorktreeTerminalSection,
+// and (via getDominantAgentState) every tray/button surface — a silent reorder
+// or omission here would drift behavior across all of them at once. These
+// invariants pin the array shape so the function-level tests above can't be
+// the only thing standing between the source of truth and the UI.
+describe("STATE_PRIORITY contract", () => {
+  it("includes every AgentState exactly once", () => {
+    const all: AgentState[] = ["working", "directing", "waiting", "completed", "exited", "idle"];
+    expect([...STATE_PRIORITY].sort()).toEqual([...all].sort());
+    expect(STATE_PRIORITY.length).toBe(new Set(STATE_PRIORITY).size);
+  });
+
+  it.each([
+    ["working", "directing"],
+    ["directing", "waiting"],
+    ["waiting", "completed"],
+    ["completed", "exited"],
+    ["exited", "idle"],
+  ] as const)("ranks %s above %s", (higher, lower) => {
+    expect(STATE_PRIORITY.indexOf(higher)).toBeLessThan(STATE_PRIORITY.indexOf(lower));
   });
 });
 

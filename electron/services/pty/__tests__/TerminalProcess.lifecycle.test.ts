@@ -3,6 +3,8 @@ import type { IPty } from "node-pty";
 import { TerminalProcess } from "../TerminalProcess.js";
 import type { SpawnContext } from "../terminalSpawn.js";
 import { events } from "../../events.js";
+import { AGENT_OUTPUT_ACTIVITY_LINE_COUNT } from "../AgentActivityTemperature.js";
+import { measureVisibleContentDelta } from "../SustainedChangeTracker.js";
 
 vi.mock("node-pty", () => {
   return { spawn: vi.fn() };
@@ -56,6 +58,14 @@ function createControllablePty(): IPty & {
     },
   };
   return pty as IPty & { emitData: (d: string) => void; emitExit: (c: number, s?: number) => void };
+}
+
+async function emitDataAndFlush(
+  pty: ReturnType<typeof createControllablePty>,
+  data: string
+): Promise<void> {
+  pty.emitData(data);
+  await vi.advanceTimersByTimeAsync(0);
 }
 
 function defaultSpawnContext(): SpawnContext {
@@ -201,6 +211,375 @@ describe("TerminalProcess — terminal:exited event", () => {
 });
 
 describe("TerminalProcess — observer-driven exit handlers", () => {
+  it("samples only the visible tail for fallback output recovery without a monitor", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const pty = createControllablePty();
+    const terminal = createTerminal(pty, { kind: "terminal", launchAgentId: "claude" });
+
+    try {
+      terminal.stopActivityMonitor();
+      terminal.getInfo().agentState = "waiting";
+      const getVisibleActivitySnapshot = vi.spyOn(terminal, "getVisibleActivitySnapshot");
+
+      await emitDataAndFlush(pty, "waiting");
+
+      expect(getVisibleActivitySnapshot).toHaveBeenCalledWith(AGENT_OUTPUT_ACTIVITY_LINE_COUNT);
+    } finally {
+      terminal.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not recover a waiting live agent on unchanged redraw output without a monitor", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const pty = createControllablePty();
+    const handleActivityState = vi.fn();
+    const terminal = createTerminal(
+      pty,
+      { kind: "terminal", launchAgentId: "claude" },
+      {
+        agentStateService: {
+          handleActivityState,
+          updateAgentState: () => {},
+          emitAgentKilled: () => {},
+          emitAgentCompleted: () => {},
+        } as unknown as TerminalProcessDeps["agentStateService"],
+      },
+      "t-output-recovery"
+    );
+
+    try {
+      terminal.stopActivityMonitor();
+      terminal.getInfo().agentState = "waiting";
+
+      await emitDataAndFlush(pty, "waiting");
+      vi.advanceTimersByTime(1300);
+      handleActivityState.mockClear();
+
+      await emitDataAndFlush(pty, "\rwaiting");
+      vi.advanceTimersByTime(500);
+      await emitDataAndFlush(pty, "\rwaiting");
+      vi.advanceTimersByTime(600);
+      await emitDataAndFlush(pty, "\rwaiting");
+
+      expect(handleActivityState).not.toHaveBeenCalled();
+    } finally {
+      terminal.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not recover a waiting live agent when repeated separator width changes without a monitor", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const pty = createControllablePty();
+    const handleActivityState = vi.fn();
+    const terminal = createTerminal(
+      pty,
+      { kind: "terminal", launchAgentId: "claude" },
+      {
+        agentStateService: {
+          handleActivityState,
+          updateAgentState: () => {},
+          emitAgentKilled: () => {},
+          emitAgentCompleted: () => {},
+        } as unknown as TerminalProcessDeps["agentStateService"],
+      },
+      "t-output-separator-resize"
+    );
+
+    try {
+      terminal.stopActivityMonitor();
+      terminal.getInfo().agentState = "waiting";
+
+      await emitDataAndFlush(pty, "-----");
+      vi.advanceTimersByTime(1300);
+      handleActivityState.mockClear();
+
+      for (const length of [10, 20, 40, 60]) {
+        await emitDataAndFlush(pty, `\r${"-".repeat(length)}`);
+        vi.advanceTimersByTime(700);
+      }
+
+      expect(handleActivityState).not.toHaveBeenCalled();
+    } finally {
+      terminal.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the visible activity snapshot stable across wrap-only viewport changes", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const pty = createControllablePty();
+    const terminal = createTerminal(
+      pty,
+      { cols: 90, rows: 24, kind: "terminal", launchAgentId: "claude" },
+      undefined,
+      "t-output-wrap-stable"
+    );
+
+    try {
+      terminal.stopActivityMonitor();
+      terminal.getInfo().agentState = "waiting";
+
+      await emitDataAndFlush(
+        pty,
+        [
+          "Bash(gh issue view 6951 --json title,labels,url --jq '.')",
+          "Issue created",
+          "URL: https://github.com/daintreehq/daintree/issues/6951",
+          "Type: Bug",
+          "Title: + New session button leaves stray terminal in dock",
+          "Captures the regression in fcbb3f765 closing #6948, plus the race window between addPanel resolving and setTerminal(newId) firing where the dock has no helpTerminalId to filter against. Labelled bug + ui.",
+          "* Cogitated for 3m 1s",
+          "* recap: Filed issue #6951 capturing the + New session dock regression from #6948 - the + button uses a different panel-creation path than the original launch and races the dock filter. Next: hand it to /work when ready.",
+          "/exit",
+          "Catch you later!",
+          "/exit",
+          "See ya!",
+          "/exit",
+          "Goodbye!",
+          'Try "create a util logging.py that..."',
+          "bypass permissions on (shift+tab to cycle)",
+        ].join("\r\n")
+      );
+
+      const before = terminal.getVisibleActivitySnapshot(AGENT_OUTPUT_ACTIVITY_LINE_COUNT);
+      terminal.resize(140, 24);
+      const after = terminal.getVisibleActivitySnapshot(AGENT_OUTPUT_ACTIVITY_LINE_COUNT);
+
+      expect(after).toBeDefined();
+      expect(measureVisibleContentDelta(before, after!)).toEqual({
+        changed: false,
+        changedChars: 0,
+      });
+    } finally {
+      terminal.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("treats viewport height changes as prefix-only activity", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const pty = createControllablePty();
+    const mutablePtyDimensions = pty as unknown as { cols: number; rows: number };
+    mutablePtyDimensions.cols = 90;
+    mutablePtyDimensions.rows = 18;
+    const terminal = createTerminal(
+      pty,
+      { cols: 90, rows: 18, kind: "terminal", launchAgentId: "claude" },
+      undefined,
+      "t-output-height-stable"
+    );
+
+    try {
+      terminal.stopActivityMonitor();
+      terminal.getInfo().agentState = "waiting";
+
+      await emitDataAndFlush(
+        pty,
+        Array.from({ length: 26 }, (_, index) => `historical line ${index + 1}`)
+          .concat([
+            "/exit",
+            "See ya!",
+            "/exit",
+            "Goodbye!",
+            'Try "create a util logging.py that..."',
+          ])
+          .join("\r\n")
+      );
+
+      const before = terminal.getVisibleActivitySnapshot(AGENT_OUTPUT_ACTIVITY_LINE_COUNT);
+      terminal.resize(90, 24);
+      const after = terminal.getVisibleActivitySnapshot(AGENT_OUTPUT_ACTIVITY_LINE_COUNT);
+
+      expect(before).toBeDefined();
+      expect(after).toBeDefined();
+      expect(measureVisibleContentDelta(before, after!)).toEqual({
+        changed: false,
+        changedChars: 0,
+      });
+    } finally {
+      terminal.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("samples activity lines through the viewport bottom instead of stopping at the cursor", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const pty = createControllablePty();
+    const terminal = createTerminal(
+      pty,
+      { cols: 80, rows: 10, kind: "terminal", launchAgentId: "claude" },
+      undefined,
+      "t-output-after-cursor"
+    );
+
+    try {
+      terminal.stopActivityMonitor();
+
+      await emitDataAndFlush(pty, "above\r\nmiddle\r\nbelow-cursor\x1b[2A");
+
+      expect(terminal.getVisibleActivityLines(10)).toContain("below-cursor");
+    } finally {
+      terminal.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("recovers a waiting live agent to working on sustained PTY content changes without a monitor", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const pty = createControllablePty();
+    const handleActivityState = vi.fn();
+    const terminal = createTerminal(
+      pty,
+      { kind: "terminal", launchAgentId: "claude" },
+      {
+        agentStateService: {
+          handleActivityState,
+          updateAgentState: () => {},
+          emitAgentKilled: () => {},
+          emitAgentCompleted: () => {},
+        } as unknown as TerminalProcessDeps["agentStateService"],
+      },
+      "t-output-recovery"
+    );
+
+    try {
+      terminal.stopActivityMonitor();
+      terminal.getInfo().agentState = "waiting";
+
+      await emitDataAndFlush(pty, "waiting");
+      vi.advanceTimersByTime(1300);
+      handleActivityState.mockClear();
+
+      await emitDataAndFlush(pty, "\rworking 1");
+      expect(handleActivityState).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(700);
+      await emitDataAndFlush(pty, "\rworking 2");
+      expect(handleActivityState).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(700);
+      await emitDataAndFlush(pty, "\rworking 3");
+      expect(handleActivityState).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(700);
+      await emitDataAndFlush(pty, "\rworking 4");
+
+      expect(handleActivityState).toHaveBeenCalledWith(terminal.getInfo(), "busy", {
+        trigger: "output",
+      });
+    } finally {
+      terminal.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("recovers a waiting live agent to working on sustained color-only changes without a monitor", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const pty = createControllablePty();
+    const handleActivityState = vi.fn();
+    const terminal = createTerminal(
+      pty,
+      { kind: "terminal", launchAgentId: "claude" },
+      {
+        agentStateService: {
+          handleActivityState,
+          updateAgentState: () => {},
+          emitAgentKilled: () => {},
+          emitAgentCompleted: () => {},
+        } as unknown as TerminalProcessDeps["agentStateService"],
+      },
+      "t-output-color-recovery"
+    );
+
+    try {
+      terminal.stopActivityMonitor();
+      terminal.getInfo().agentState = "waiting";
+
+      await emitDataAndFlush(pty, "\x1b[31mloading\x1b[0m");
+      vi.advanceTimersByTime(1300);
+      handleActivityState.mockClear();
+
+      await emitDataAndFlush(pty, "\r\x1b[32mloading\x1b[0m");
+      expect(handleActivityState).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(700);
+      await emitDataAndFlush(pty, "\r\x1b[33mloading\x1b[0m");
+      expect(handleActivityState).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(700);
+      await emitDataAndFlush(pty, "\r\x1b[34mloading\x1b[0m");
+      expect(handleActivityState).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(700);
+      await emitDataAndFlush(pty, "\r\x1b[35mloading\x1b[0m");
+
+      expect(handleActivityState).toHaveBeenCalledWith(terminal.getInfo(), "busy", {
+        trigger: "output",
+      });
+    } finally {
+      terminal.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not carry output-recovery heat across a resize without a monitor", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const pty = createControllablePty();
+    const handleActivityState = vi.fn();
+    const terminal = createTerminal(
+      pty,
+      { kind: "terminal", launchAgentId: "claude" },
+      {
+        agentStateService: {
+          handleActivityState,
+          updateAgentState: () => {},
+          emitAgentKilled: () => {},
+          emitAgentCompleted: () => {},
+        } as unknown as TerminalProcessDeps["agentStateService"],
+      },
+      "t-output-resize"
+    );
+
+    try {
+      terminal.stopActivityMonitor();
+      terminal.getInfo().agentState = "waiting";
+
+      await emitDataAndFlush(pty, "waiting");
+      vi.advanceTimersByTime(1300);
+      handleActivityState.mockClear();
+
+      await emitDataAndFlush(pty, "\rworking 1");
+      vi.advanceTimersByTime(700);
+      await emitDataAndFlush(pty, "\rworking 2");
+      expect(handleActivityState).not.toHaveBeenCalled();
+
+      terminal.resize(40, 24);
+
+      vi.advanceTimersByTime(700);
+      await emitDataAndFlush(pty, "\rworking 3");
+      vi.advanceTimersByTime(700);
+      await emitDataAndFlush(pty, "\rworking 4");
+      vi.advanceTimersByTime(700);
+      await emitDataAndFlush(pty, "\rworking 5");
+
+      expect(handleActivityState).not.toHaveBeenCalled();
+    } finally {
+      terminal.dispose();
+      vi.useRealTimers();
+    }
+  });
+
   it("fires fallback classifier on natural agent exit with connection error tail", () => {
     const pty = createControllablePty();
     const fallbackListener = vi.fn();
@@ -380,6 +759,95 @@ describe("TerminalProcess — observer-driven exit handlers", () => {
   });
 });
 
+describe("TerminalProcess — plain-terminal snapshot gate (#7004)", () => {
+  it("does not capture a visible-cell snapshot on PTY data for plain terminals", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const pty = createControllablePty();
+    const terminal = createTerminal(pty, { kind: "terminal" }, undefined, "t-plain-no-snapshot");
+
+    try {
+      const getVisibleActivitySnapshot = vi.spyOn(terminal, "getVisibleActivitySnapshot");
+
+      await emitDataAndFlush(pty, "build watcher: 12 files compiled\n");
+      await emitDataAndFlush(pty, "[hmr] update applied\n");
+
+      expect(getVisibleActivitySnapshot).not.toHaveBeenCalled();
+    } finally {
+      terminal.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not transition agent state on the warm-up tick after plain→agent-live promotion", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const pty = createControllablePty();
+    const handleActivityState = vi.fn();
+    const terminal = createTerminal(
+      pty,
+      { kind: "terminal" },
+      {
+        agentStateService: {
+          handleActivityState,
+          updateAgentState: () => {},
+          emitAgentKilled: () => {},
+          emitAgentCompleted: () => {},
+        } as unknown as TerminalProcessDeps["agentStateService"],
+      },
+      "t-promotion-warmup"
+    );
+
+    try {
+      terminal.stopActivityMonitor();
+
+      // Promote a plain terminal to agent-live (mirrors TerminalAgentDetection
+      // setting detectedAgentId mid-session). agentState seeds to "idle" on
+      // detection, which is one of the states noteAgentOutputActivity acts on.
+      const info = terminal.getInfo();
+      info.detectedAgentId = "claude";
+      info.agentState = "idle";
+
+      // First live tick — isAgentLive is now true so beforeContentSnapshot IS
+      // captured, but agentOutputContentSnapshot is still undefined (never set
+      // while plain). hadFallbackBaseline is false at L1382, so the warm-up
+      // path fires observeDelta({changedChars: 0}) and returns without
+      // promoting the agent to "busy".
+      await expect(emitDataAndFlush(pty, "claude > thinking…\n")).resolves.not.toThrow();
+
+      expect(handleActivityState).not.toHaveBeenCalled();
+    } finally {
+      terminal.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("still captures a visible-cell snapshot on PTY data for active launch-agent terminals", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const pty = createControllablePty();
+    const terminal = createTerminal(
+      pty,
+      { kind: "terminal", launchAgentId: "claude" },
+      undefined,
+      "t-launch-agent-still-scans"
+    );
+
+    try {
+      terminal.stopActivityMonitor();
+      terminal.getInfo().agentState = "idle";
+      const getVisibleActivitySnapshot = vi.spyOn(terminal, "getVisibleActivitySnapshot");
+
+      await emitDataAndFlush(pty, "claude > working…\n");
+
+      expect(getVisibleActivitySnapshot).toHaveBeenCalled();
+    } finally {
+      terminal.dispose();
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("TerminalProcess — getPublicState lifecycle derivation", () => {
   it("reflects hasPty=false after dispose() even without prior kill", () => {
     const pty = createControllablePty();
@@ -404,5 +872,170 @@ describe("TerminalProcess — getPublicState lifecycle derivation", () => {
     expect(state.hasPty).toBe(false);
     expect(state.isExited).toBe(true);
     expect(state.exitCode).toBe(0);
+  });
+});
+
+describe("TerminalProcess — agent startup instrumentation (Issue #7616)", () => {
+  it("leaves firstByteAt and bootCompleteAt undefined before any data arrives", () => {
+    const pty = createControllablePty();
+    const terminal = createTerminal(pty);
+
+    const state = terminal.getPublicState();
+    expect(state.firstByteAt).toBeUndefined();
+    expect(state.bootCompleteAt).toBeUndefined();
+    terminal.dispose();
+  });
+
+  it("captures firstByteAt on the first data event and does not overwrite it on subsequent data", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(2000);
+    const pty = createControllablePty();
+    const terminal = createTerminal(pty);
+
+    try {
+      await emitDataAndFlush(pty, "first");
+      const initial = terminal.getPublicState().firstByteAt;
+      expect(initial).toBe(2000);
+
+      vi.setSystemTime(2500);
+      await emitDataAndFlush(pty, "second");
+      expect(terminal.getPublicState().firstByteAt).toBe(initial);
+    } finally {
+      terminal.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("emits a single [AgentStartup] log line keyed on (agentId, cwdHash) for agent terminals", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(5000);
+    const pty = createControllablePty();
+    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+    const terminal = createTerminal(pty, {
+      kind: "terminal",
+      launchAgentId: "claude",
+      cwd: "/repo/agent",
+    });
+
+    try {
+      // Drive ActivityMonitor's onData path to surface the boot-complete callback.
+      terminal.getInfo().firstByteAt = 5050;
+      terminal.getInfo().bootCompleteAt = undefined;
+      // Invoke recordBootComplete via the public path: simulate boot at 5100ms.
+      // We expose this by reading through getPublicState after manually firing.
+      // (We bypass ActivityMonitor here because the production wiring is
+      // covered by ActivityMonitor.test.ts; this test asserts the log shape.)
+      const recordBootComplete = (
+        terminal as unknown as { recordBootComplete: (ts: number) => void }
+      ).recordBootComplete.bind(terminal);
+      recordBootComplete(5100);
+
+      const startupLogs = consoleLog.mock.calls
+        .map((c) => String(c[0] ?? ""))
+        .filter((line) => line.startsWith("[AgentStartup] "));
+      expect(startupLogs).toHaveLength(1);
+
+      const json = JSON.parse(startupLogs[0]!.replace(/^\[AgentStartup\] /, ""));
+      expect(json).toMatchObject({
+        agentId: "claude",
+        terminalId: expect.any(String),
+        spawnedAt: expect.any(Number),
+        firstByteAt: 5050,
+        bootCompleteAt: 5100,
+        bootDurationMs: expect.any(Number),
+        timeToFirstByteMs: expect.any(Number),
+      });
+      // 8-char md5 hex slice
+      expect(typeof json.cwdHash).toBe("string");
+      expect(json.cwdHash).toMatch(/^[0-9a-f]{8}$/);
+
+      const state = terminal.getPublicState();
+      expect(state.bootCompleteAt).toBe(5100);
+    } finally {
+      consoleLog.mockRestore();
+      terminal.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not emit [AgentStartup] for plain terminals without a launch hint", () => {
+    const pty = createControllablePty();
+    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+    const terminal = createTerminal(pty);
+
+    try {
+      const recordBootComplete = (
+        terminal as unknown as { recordBootComplete: (ts: number) => void }
+      ).recordBootComplete.bind(terminal);
+      recordBootComplete(Date.now());
+
+      const startupLogs = consoleLog.mock.calls
+        .map((c) => String(c[0] ?? ""))
+        .filter((line) => line.startsWith("[AgentStartup] "));
+      expect(startupLogs).toHaveLength(0);
+    } finally {
+      consoleLog.mockRestore();
+      terminal.dispose();
+    }
+  });
+
+  it("emits the [AgentStartup] log only on the first recordBootComplete call (idempotency)", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(7000);
+    const pty = createControllablePty();
+    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+    const terminal = createTerminal(pty, {
+      kind: "terminal",
+      launchAgentId: "claude",
+    });
+
+    try {
+      const recordBootComplete = (
+        terminal as unknown as { recordBootComplete: (ts: number) => void }
+      ).recordBootComplete.bind(terminal);
+
+      recordBootComplete(7100);
+      recordBootComplete(7200);
+      recordBootComplete(7300);
+
+      const startupLogs = consoleLog.mock.calls
+        .map((c) => String(c[0] ?? ""))
+        .filter((line) => line.startsWith("[AgentStartup] "));
+      expect(startupLogs).toHaveLength(1);
+      // The first timestamp wins; later calls do not mutate or re-emit.
+      expect(terminal.getPublicState().bootCompleteAt).toBe(7100);
+    } finally {
+      consoleLog.mockRestore();
+      terminal.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("omits firstByteAt/timeToFirstByteMs from the log when no data was observed before boot completes", () => {
+    const pty = createControllablePty();
+    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+    const terminal = createTerminal(pty, {
+      kind: "terminal",
+      launchAgentId: "codex",
+    });
+
+    try {
+      const recordBootComplete = (
+        terminal as unknown as { recordBootComplete: (ts: number) => void }
+      ).recordBootComplete.bind(terminal);
+      recordBootComplete(Date.now());
+
+      const line = consoleLog.mock.calls
+        .map((c) => String(c[0] ?? ""))
+        .find((l) => l.startsWith("[AgentStartup] "));
+      expect(line).toBeDefined();
+      const json = JSON.parse(line!.replace(/^\[AgentStartup\] /, ""));
+      expect(json.firstByteAt).toBeUndefined();
+      expect(json.timeToFirstByteMs).toBeUndefined();
+      expect(json.bootDurationMs).toEqual(expect.any(Number));
+    } finally {
+      consoleLog.mockRestore();
+      terminal.dispose();
+    }
   });
 });

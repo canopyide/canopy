@@ -28,6 +28,14 @@ describe("safeRecipeFilename", () => {
     const filename = safeRecipeFilename(longName);
     expect(filename).toBe("a".repeat(200) + ".json");
   });
+
+  it("strips a trailing hyphen exposed by truncation", () => {
+    // 199 chars + a space → space becomes hyphen at position 199; slice cuts
+    // exactly at position 200, so the trailing hyphen must be stripped after.
+    const filename = safeRecipeFilename("a".repeat(199) + " more text here");
+    expect(filename).toBe("a".repeat(199) + ".json");
+    expect(filename).not.toContain("-.");
+  });
 });
 
 describe("stableInRepoId", () => {

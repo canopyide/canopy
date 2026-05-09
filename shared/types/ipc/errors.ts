@@ -1,3 +1,5 @@
+import type { ActionId } from "../actions.js";
+
 /** Serialized error that survives Electron's structured clone algorithm */
 export interface SerializedError {
   name: string;
@@ -16,11 +18,26 @@ export interface SerializedError {
    * recovery UI without relying on substring-matching the message.
    */
   gitReason?: GitOperationReason;
+  /**
+   * Correlation ID linking this error across main-process logs, Sentry, and
+   * the renderer error envelope. Set post-hoc in `security.ts` after
+   * serialization so the field survives the packaged-build strip.
+   */
+  correlationId?: string;
   errno?: number;
   syscall?: string;
   path?: string;
+  /**
+   * Free-form diagnostic context. Values must be structured-clone-safe —
+   * primitives, plain objects, arrays, or `null`. Map, Set, Date, and class
+   * instances are not preserved across the IPC boundary.
+   */
   context?: Record<string, unknown>;
   cause?: SerializedError;
+  /**
+   * Additional error fields copied from the original Error subclass. Same
+   * structured-clone-safe constraint as {@link SerializedError.context}.
+   */
   properties?: Record<string, unknown>;
 }
 
@@ -39,11 +56,14 @@ export interface IpcErrorEnvelope {
 export type IpcEnvelope<T = unknown> = IpcSuccessEnvelope<T> | IpcErrorEnvelope;
 
 export function isIpcEnvelope(value: unknown): value is IpcEnvelope {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    (value as Record<string, unknown>).__daintreeIpcEnvelope === true
-  );
+  if (value === null || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  if (candidate.__daintreeIpcEnvelope !== true || typeof candidate.ok !== "boolean") {
+    return false;
+  }
+  return candidate.ok ? "data" in candidate : "error" in candidate;
 }
 
 /**
@@ -123,7 +143,7 @@ export type GitOperationReason =
  */
 export interface RecoveryAction {
   label: string;
-  actionId: string;
+  actionId: ActionId;
   args?: Record<string, unknown>;
 }
 

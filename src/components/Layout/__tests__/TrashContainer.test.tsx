@@ -6,6 +6,21 @@ import { useAnnouncerStore } from "@/store/accessibilityAnnouncerStore";
 import type { TerminalInstance } from "@/store";
 import type { TrashedTerminal } from "@/store/slices";
 
+// jsdom does not ship AnimationEvent.
+if (typeof AnimationEvent === "undefined") {
+  (globalThis as Record<string, unknown>).AnimationEvent = class AnimationEvent extends Event {
+    constructor(type: string, init?: EventInit) {
+      super(type, init);
+    }
+  };
+}
+
+const dndMocks = vi.hoisted(() => ({
+  isDragging: false,
+  isWorktreeSortDragging: false,
+  isOver: false,
+}));
+
 vi.mock("@/hooks/useWorktrees", () => ({
   useWorktrees: () => ({ worktreeMap: new Map() }),
 }));
@@ -32,6 +47,16 @@ vi.mock("@/components/ui/tooltip", () => ({
   TooltipTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
+vi.mock("@dnd-kit/core", () => ({
+  useDroppable: () => ({ setNodeRef: () => {}, isOver: dndMocks.isOver }),
+}));
+
+vi.mock("@/components/DragDrop", () => ({
+  useIsDragging: () => dndMocks.isDragging,
+  useIsWorktreeSortDragging: () => dndMocks.isWorktreeSortDragging,
+  TRASH_DROPPABLE_ID: "__trash-droppable__",
+}));
+
 function makeTrashedItem(id: string): {
   terminal: TerminalInstance;
   trashedInfo: TrashedTerminal;
@@ -50,13 +75,61 @@ describe("TrashContainer", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     useAnnouncerStore.setState({ polite: null, assertive: null });
+    dndMocks.isDragging = false;
+    dndMocks.isWorktreeSortDragging = false;
+    dndMocks.isOver = false;
   });
 
   afterEach(() => {
     vi.useRealTimers();
   });
 
-  it("does not render when trashedTerminals is empty", () => {
+  it("does not render when trashedTerminals is empty and not dragging", () => {
+    const { container } = render(<TrashContainer trashedTerminals={[]} />);
+    expect(container.innerHTML).toBe("");
+  });
+
+  it("renders ghosted drop pill when empty and a drag is active", () => {
+    dndMocks.isDragging = true;
+    const { getByTestId } = render(<TrashContainer trashedTerminals={[]} />);
+    const ghost = getByTestId("trash-container-ghost");
+    expect(ghost).not.toBeNull();
+    expect(ghost.textContent).toContain("Trash (drop to delete)");
+    expect(ghost.getAttribute("aria-hidden")).toBe("true");
+    expect(ghost.getAttribute("tabindex")).toBe("-1");
+  });
+
+  it("does not render ghost pill in compact mode label, but still mounts the icon", () => {
+    dndMocks.isDragging = true;
+    const { getByTestId } = render(<TrashContainer trashedTerminals={[]} compact />);
+    const ghost = getByTestId("trash-container-ghost");
+    expect(ghost).not.toBeNull();
+    expect(ghost.textContent).not.toContain("Trash (drop to delete)");
+  });
+
+  it("applies armed isOver classes on ghost pill, not accent", () => {
+    dndMocks.isDragging = true;
+    dndMocks.isOver = true;
+    const { getByTestId } = render(<TrashContainer trashedTerminals={[]} />);
+    const ghost = getByTestId("trash-container-ghost");
+    expect(ghost.className).toContain("bg-overlay-soft");
+    expect(ghost.className).toContain("ring-border-default");
+    expect(ghost.className).not.toContain("daintree-accent");
+  });
+
+  it("applies armed isOver classes on the real pill when dragged onto", () => {
+    dndMocks.isDragging = true;
+    dndMocks.isOver = true;
+    const { getByTestId } = render(<TrashContainer trashedTerminals={[makeTrashedItem("1")]} />);
+    const pill = getByTestId("trash-container");
+    expect(pill.className).toContain("bg-overlay-soft");
+    expect(pill.className).toContain("ring-border-default");
+    expect(pill.className).not.toContain("daintree-accent");
+  });
+
+  it("does not render ghost pill during worktree-sort drags", () => {
+    dndMocks.isDragging = true;
+    dndMocks.isWorktreeSortDragging = true;
     const { container } = render(<TrashContainer trashedTerminals={[]} />);
     expect(container.innerHTML).toBe("");
   });
@@ -76,15 +149,18 @@ describe("TrashContainer", () => {
     expect(container.querySelector(".animate-trash-pulse")).not.toBeNull();
   });
 
-  it("removes pulse class after timeout", () => {
+  it("removes pulse class via safety timeout after the animation completes", () => {
     const items = [makeTrashedItem("1")];
     const { container, rerender } = render(<TrashContainer trashedTerminals={items} />);
 
     rerender(<TrashContainer trashedTerminals={[...items, makeTrashedItem("2")]} />);
     expect(container.querySelector(".animate-trash-pulse")).not.toBeNull();
 
+    // Advance past the 250ms safety timeout (DURATION_200 + 50). In jsdom
+    // `animationend` doesn't fire via dispatchEvent, so the safety timeout
+    // is the testable cleanup path — same as AgentStatusIndicator.
     act(() => {
-      vi.advanceTimersByTime(500);
+      vi.advanceTimersByTime(300);
     });
     expect(container.querySelector(".animate-trash-pulse")).toBeNull();
   });
@@ -140,15 +216,15 @@ describe("TrashContainer", () => {
     rerender(<TrashContainer trashedTerminals={[...items, makeTrashedItem("2")]} />);
     expect(container.querySelector(".animate-trash-pulse")).not.toBeNull();
 
-    // Second increase before timeout — should still be pulsing
+    // Second increase before timeout — class already present, stays alive.
     rerender(
       <TrashContainer trashedTerminals={[...items, makeTrashedItem("2"), makeTrashedItem("3")]} />
     );
     expect(container.querySelector(".animate-trash-pulse")).not.toBeNull();
 
-    // Timer from second increase should clear the pulse
+    // Safety timeout from the second trigger clears the pulse.
     act(() => {
-      vi.advanceTimersByTime(500);
+      vi.advanceTimersByTime(300);
     });
     expect(container.querySelector(".animate-trash-pulse")).toBeNull();
   });

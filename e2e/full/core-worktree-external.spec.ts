@@ -14,12 +14,16 @@ const EXTERNAL_BRANCH = "feature/external-added";
 
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 let featureWorktreePath: string;
 let externalWorktreePath: string;
 
 test.describe.serial("Core: External Worktree Detection", () => {
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "worktree-external", withFeatureBranch: true });
+    ({ dir: fixtureDir, cleanup: fixtureCleanup } = createFixtureRepo({
+      name: "worktree-external",
+      withFeatureBranch: true,
+    }));
 
     const worktreesDir = path.join(
       path.dirname(fixtureDir),
@@ -47,6 +51,8 @@ test.describe.serial("Core: External Worktree Detection", () => {
     } catch {
       // ignore cleanup errors
     }
+
+    fixtureCleanup?.();
   });
 
   test("initial state shows main and feature worktree cards", async () => {
@@ -72,8 +78,12 @@ test.describe.serial("Core: External Worktree Detection", () => {
     // Switch to the feature worktree so it's active
     await switchWorktree(window, FEATURE_BRANCH);
 
-    // Wait for monitor's self-trigger cooldown to expire
-    await window.waitForTimeout(2000);
+    // Wait for monitor's self-trigger cooldown (GIT_WATCH_SELF_TRIGGER_COOLDOWN_MS = 1000ms)
+    // to expire. The cooldown is measured from `lastGitStatusCompletedAt`, not from the
+    // start of this wait — keep a generous buffer so loaded CI scheduling can't compress
+    // timing into the cooldown window. There is no observable signal for cooldown expiry,
+    // so a fixed wait is required.
+    await window.waitForTimeout(1500);
 
     // Remove the worktree externally via git CLI
     execSync("git worktree remove --force " + JSON.stringify(featureWorktreePath), {
@@ -103,8 +113,12 @@ test.describe.serial("Core: External Worktree Detection", () => {
   test("detects external worktree addition after refresh", async () => {
     const { window } = ctx;
 
-    // Wait for monitor's self-trigger cooldown to expire
-    await window.waitForTimeout(2000);
+    // Wait for monitor's self-trigger cooldown (GIT_WATCH_SELF_TRIGGER_COOLDOWN_MS = 1000ms)
+    // to expire. The cooldown is measured from `lastGitStatusCompletedAt`, not from the
+    // start of this wait — keep a generous buffer so loaded CI scheduling can't compress
+    // timing into the cooldown window. There is no observable signal for cooldown expiry,
+    // so a fixed wait is required.
+    await window.waitForTimeout(1500);
 
     // Add a new worktree externally via git CLI
     execSync(

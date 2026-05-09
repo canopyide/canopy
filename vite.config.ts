@@ -2,6 +2,7 @@ import { defineConfig, type Plugin } from "vite";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import babel from "@rolldown/plugin-babel";
 import tailwindcss from "@tailwindcss/vite";
+import { visualizer } from "rollup-plugin-visualizer";
 import path from "path";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
@@ -9,8 +10,6 @@ import { getDevServerConfig } from "./shared/config/devServer";
 import { getDaintreeAppDevCSP, getDaintreeAppProdCSP } from "./shared/config/csp";
 
 const devServerConfig = getDevServerConfig();
-
-const IS_LEGACY_BUILD = process.env.BUILD_VARIANT === "canopy";
 
 // CSP definitions for development and production. Single source of truth lives
 // in shared/config/csp.ts so the meta tag injected here and the HTTP header set
@@ -23,37 +22,68 @@ const PROD_CSP = getDaintreeAppProdCSP();
 // build completes. Counts come from babel-plugin-react-compiler's logger:
 // CompileSuccess, CompileSkip, CompileError, PipelineError. Other event kinds
 // (Timing, CompileDiagnostic, AutoDeps*) are ignored — they aren't regression
-// signals. The accumulator Map and the logger object MUST be created in the
-// same factory call so they share state via closure; threading either through
-// module scope would silently produce an empty report.
-type CompilerBailoutCounts = {
+// signals. Diagnostic arrays (errorBailouts, skipReasons, pipelineErrors)
+// preserve the human-readable reason and ErrorCategory for each bailout so
+// CI failures point at the actual cause without rebuilding locally. The
+// accumulator Map and the logger object MUST be created in the same factory
+// call so they share state via closure; threading either through module scope
+// would silently produce an empty report.
+type CompilerBailoutEntry = {
   success: number;
   skip: number;
   error: number;
   pipeline: number;
+  // Source type is `ErrorCategory` from babel-plugin-react-compiler — kept as
+  // string at this boundary to avoid cross-package type coupling that would
+  // break silently on a plugin upgrade.
+  errorBailouts: Array<{ category: string; reason: string }>;
+  skipReasons: string[];
+  pipelineErrors: string[];
 };
 
-type CompilerLoggerEvent = { kind: string };
+type CompilerLoggerEvent =
+  | { kind: "CompileSuccess" }
+  | { kind: "CompileSkip"; reason?: unknown }
+  | { kind: "CompileError"; detail?: unknown }
+  | { kind: "PipelineError"; data?: unknown }
+  | { kind: string };
 
 type CompilerLogger = {
   logEvent: (filename: string | null, event: CompilerLoggerEvent) => void;
 };
 
+// PipelineError.data is a serialized stack trace. Keep only the first line
+// (the error message) and cap length so a pathological single-line error
+// can't bloat the report.
+function summarizePipelineError(data: unknown): string {
+  return String(data ?? "")
+    .split(/\r?\n/)[0]
+    .slice(0, 200);
+}
+
 function reactCompilerReportPlugin(command: "build" | "serve"): {
   plugin: Plugin;
   logger: CompilerLogger;
 } {
-  const counts = new Map<string, CompilerBailoutCounts>();
+  const counts = new Map<string, CompilerBailoutEntry>();
   const cwd = process.cwd();
   const reportPath = path.join(cwd, "dist", "compiler-bailout-report.json");
 
-  function bump(filename: string, key: keyof CompilerBailoutCounts) {
+  function getOrInit(filename: string): CompilerBailoutEntry {
     let entry = counts.get(filename);
     if (!entry) {
-      entry = { success: 0, skip: 0, error: 0, pipeline: 0 };
+      entry = {
+        success: 0,
+        skip: 0,
+        error: 0,
+        pipeline: 0,
+        errorBailouts: [],
+        skipReasons: [],
+        pipelineErrors: [],
+      };
       counts.set(filename, entry);
     }
-    entry[key]++;
+    return entry;
   }
 
   const logger: CompilerLogger = {
@@ -66,19 +96,40 @@ function reactCompilerReportPlugin(command: "build" | "serve"): {
       // operating systems and don't leak absolute filesystem paths.
       const rel = path.relative(cwd, filename).split(path.sep).join("/");
       if (!rel || rel.startsWith("..")) return;
+      const entry = getOrInit(rel);
       switch (event.kind) {
         case "CompileSuccess":
-          bump(rel, "success");
+          entry.success++;
           break;
-        case "CompileSkip":
-          bump(rel, "skip");
+        case "CompileSkip": {
+          entry.skip++;
+          const reason = (event as { reason?: unknown }).reason;
+          if (typeof reason === "string" && reason.length > 0) {
+            entry.skipReasons.push(reason);
+          }
           break;
-        case "CompileError":
-          bump(rel, "error");
+        }
+        case "CompileError": {
+          entry.error++;
+          // detail is CompilerErrorDetail | CompilerDiagnostic — both expose
+          // .category (ErrorCategory enum) and .reason (string) via getters
+          // backed by required Zod-validated options. Cast is safe.
+          const detail = (event as { detail?: { category?: unknown; reason?: unknown } }).detail;
+          if (detail && typeof detail === "object") {
+            entry.errorBailouts.push({
+              category: String(detail.category ?? ""),
+              reason:
+                typeof detail.reason === "string" ? detail.reason : String(detail.reason ?? ""),
+            });
+          }
           break;
-        case "PipelineError":
-          bump(rel, "pipeline");
+        }
+        case "PipelineError": {
+          entry.pipeline++;
+          const summary = summarizePipelineError((event as { data?: unknown }).data);
+          if (summary.length > 0) entry.pipelineErrors.push(summary);
           break;
+        }
         default:
           // Timing, CompileDiagnostic, AutoDepsDecorations, AutoDepsEligible —
           // not regression signals.
@@ -112,7 +163,7 @@ function reactCompilerReportPlugin(command: "build" | "serve"): {
         // Plain lexicographic sort matches the check script's default Array#sort
         // so the freshly built report and the checked-in baseline diff cleanly.
         const sorted = [...counts.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-        const out: Record<string, CompilerBailoutCounts> = {};
+        const out: Record<string, CompilerBailoutEntry> = {};
         for (const [file, entry] of sorted) out[file] = entry;
         mkdirSync(path.dirname(reportPath), { recursive: true });
         writeFileSync(reportPath, JSON.stringify(out, null, 2) + "\n");
@@ -139,6 +190,28 @@ function cspTransformPlugin(): Plugin {
         cspRegex,
         `<meta http-equiv="Content-Security-Policy" content="${csp}" />`
       );
+    },
+  };
+}
+
+// Build-time invariant guard: esbuild.minifyIdentifiers must stay false.
+// xterm 6.0 ships pre-minified code with a closure in `requestMode` that
+// captures a mangled parameter name. If esbuild re-minifies the bundle, it
+// renames the parameter but not the closure reference, producing
+// `ReferenceError: i is not defined` and crashing the parser silently.
+// This guard fails the build if the config is accidentally changed.
+function xtermMinifyIdentifiersGuardPlugin(): Plugin {
+  return {
+    name: "xterm-minify-identifiers-guard",
+    apply: "build",
+    configResolved(config) {
+      const esbuildConfig = config.esbuild;
+      if (!esbuildConfig || esbuildConfig.minifyIdentifiers !== false) {
+        throw new Error(
+          "esbuild.minifyIdentifiers must be false to prevent xterm 6.0 parser crash. " +
+            "See https://github.com/daintreehq/daintree/blob/develop/vite.config.ts#L215-L221"
+        );
+      }
     },
   };
 }
@@ -214,9 +287,6 @@ export default defineConfig(({ command, mode }) => {
     reactCompilerReportPlugin(command);
   return {
     envPrefix: ["VITE_", "DAINTREE_"],
-    define: {
-      IS_LEGACY_BUILD: JSON.stringify(IS_LEGACY_BUILD),
-    },
     // xterm 6.0 ships a bundled InputHandler that references an unminified
     // identifier in `requestMode`; Vite's default identifier mangling produces
     // `ReferenceError: i is not defined` at runtime. Disable identifier
@@ -243,15 +313,28 @@ export default defineConfig(({ command, mode }) => {
       cspTransformPlugin(),
       compilerReportPlugin,
       rendererBundleSizePlugin(),
+      xtermMinifyIdentifiersGuardPlugin(),
+      ...(process.env.ANALYZE === "true"
+        ? [visualizer({ filename: "stats.html", gzipSize: true, brotliSize: true }) as Plugin]
+        : []),
     ],
     base: "./",
     build: {
-      target: "chrome144",
+      target: "chrome146",
       modulePreload: { polyfill: false },
       outDir: "dist",
       emptyOutDir: true,
       sourcemap: false,
+      // Emits dist/.vite/manifest.json with chunk graph metadata (imports[]
+      // for sync deps, dynamicImports[] for React.lazy / dynamic import()).
+      // Consumed by scripts/check-first-render-chunk-budget.mjs to bound the
+      // gzip closure of chunks reachable from the first-render path.
+      manifest: true,
       rolldownOptions: {
+        onLog(level, log, defaultHandler) {
+          if (log.code === "INEFFECTIVE_DYNAMIC_IMPORT" || log.code === "PLUGIN_TIMINGS") return;
+          defaultHandler(level, log);
+        },
         ...(mode === "production" && {
           treeshake: {
             manualPureFunctions: ["console.log", "console.info", "console.warn", "console.debug"],
@@ -263,10 +346,15 @@ export default defineConfig(({ command, mode }) => {
         output: {
           codeSplitting: {
             groups: [
+              {
+                name: "vendor-xterm-webgl",
+                test: /node_modules[\\/]@xterm[\\/]addon-webgl[\\/]/,
+                priority: 75,
+              },
               { name: "vendor-xterm", test: /node_modules[\\/]@xterm[\\/]/, priority: 70 },
               {
                 name: "vendor-editor",
-                test: /node_modules[\\/](@codemirror[\\/]|@uiw[\\/]|refractor[\\/])/,
+                test: /node_modules[\\/](@codemirror[\\/]|@uiw[\\/]|refractor[\\/](?!lang[\\/]))/,
                 priority: 60,
               },
               {
@@ -289,7 +377,21 @@ export default defineConfig(({ command, mode }) => {
                 test: /node_modules[\\/](zod[\\/]|zod-to-json-schema[\\/])/,
                 priority: 20,
               },
-              { name: "vendor", test: /node_modules[\\/]/, priority: 10 },
+              {
+                name: "vendor-react",
+                test: /node_modules[\\/](react|react-dom|scheduler|use-sync-external-store)[\\/]/,
+                priority: 15,
+              },
+              {
+                name: "vendor-radix",
+                test: /node_modules[\\/]@radix-ui[\\/]/,
+                priority: 12,
+              },
+              {
+                name: "vendor",
+                test: /node_modules[\\/](?!refractor[\\/]lang[\\/])/,
+                priority: 10,
+              },
             ],
           },
         },

@@ -21,11 +21,20 @@ vi.mock("@/hooks", async (importOriginal) => {
   };
 });
 
+let mockPrevOpen = false;
+
 vi.mock("@/hooks/useAnimatedPresence", () => ({
-  useAnimatedPresence: ({ isOpen }: { isOpen: boolean }) => ({
-    isVisible: isOpen,
-    shouldRender: isOpen,
-  }),
+  useAnimatedPresence: ({
+    isOpen,
+    onAnimateOut,
+  }: {
+    isOpen: boolean;
+    onAnimateOut?: () => void;
+  }) => {
+    if (mockPrevOpen && !isOpen) onAnimateOut?.();
+    mockPrevOpen = isOpen;
+    return { isVisible: isOpen, shouldRender: isOpen };
+  },
 }));
 
 vi.stubGlobal(
@@ -86,6 +95,7 @@ function pressEscape() {
 
 describe("AppDialog focus trapping", () => {
   beforeEach(() => {
+    mockPrevOpen = false;
     _resetForTests();
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: false }));
@@ -115,6 +125,30 @@ describe("AppDialog focus trapping", () => {
     pressTab();
 
     const firstButton = buttons[0];
+    expect(document.activeElement).toBe(firstButton);
+  });
+
+  it("wraps focus from the last visible element when hidden tabbables follow it", async () => {
+    renderDialog({
+      children: (
+        <AppDialog.Body>
+          <button type="button">First</button>
+          <button type="button">Last visible</button>
+          <button type="button" hidden>
+            Hidden
+          </button>
+        </AppDialog.Body>
+      ),
+    });
+    await act(() => vi.runAllTimersAsync());
+
+    const firstButton = screen.getByRole("button", { name: "First" });
+    const lastVisibleButton = screen.getByRole("button", { name: "Last visible" });
+    lastVisibleButton.focus();
+    expect(document.activeElement).toBe(lastVisibleButton);
+
+    pressTab();
+
     expect(document.activeElement).toBe(firstButton);
   });
 
@@ -192,6 +226,164 @@ describe("AppDialog focus trapping", () => {
 
     expect(document.activeElement).toBe(outerButton);
     document.body.removeChild(outerButton);
+  });
+
+  it("falls back via cleanup effect when the dialog host unmounts while open", async () => {
+    const root = document.createElement("div");
+    root.id = "root";
+    const fallbackButton = document.createElement("button");
+    fallbackButton.textContent = "Fallback";
+    root.appendChild(fallbackButton);
+    document.body.appendChild(root);
+
+    const trigger = document.createElement("button");
+    trigger.textContent = "Trigger";
+    document.body.appendChild(trigger);
+    trigger.focus();
+
+    const { unmount } = render(
+      <>
+        <Dispatcher />
+        <AppDialog isOpen={true} onClose={() => {}} data-testid="test-dialog">
+          <AppDialog.Body>
+            <button type="button">Inner</button>
+          </AppDialog.Body>
+        </AppDialog>
+      </>
+    );
+    await act(() => vi.runAllTimersAsync());
+
+    document.body.removeChild(trigger);
+    unmount();
+
+    expect(document.activeElement).toBe(fallbackButton);
+    expect(document.activeElement).not.toBe(document.body);
+    document.body.removeChild(root);
+  });
+
+  it("falls back to first tabbable in #root when trigger was unmounted before close", async () => {
+    const root = document.createElement("div");
+    root.id = "root";
+    const fallbackButton = document.createElement("button");
+    fallbackButton.textContent = "Fallback";
+    root.appendChild(fallbackButton);
+    document.body.appendChild(root);
+
+    const trigger = document.createElement("button");
+    trigger.textContent = "Trigger";
+    document.body.appendChild(trigger);
+    trigger.focus();
+    expect(document.activeElement).toBe(trigger);
+
+    const { rerender } = render(
+      <>
+        <Dispatcher />
+        <AppDialog isOpen={true} onClose={() => {}} data-testid="test-dialog">
+          <AppDialog.Body>
+            <button type="button">Inner</button>
+          </AppDialog.Body>
+        </AppDialog>
+      </>
+    );
+    await act(() => vi.runAllTimersAsync());
+
+    // Trigger gets unmounted by the action that ran inside the dialog
+    // (e.g., the row containing it was deleted).
+    document.body.removeChild(trigger);
+
+    rerender(
+      <>
+        <Dispatcher />
+        <AppDialog isOpen={false} onClose={() => {}} data-testid="test-dialog">
+          <AppDialog.Body>
+            <button type="button">Inner</button>
+          </AppDialog.Body>
+        </AppDialog>
+      </>
+    );
+
+    expect(document.activeElement).toBe(fallbackButton);
+    expect(document.activeElement).not.toBe(document.body);
+    document.body.removeChild(root);
+  });
+
+  describe("AppDialog Footer a11y", () => {
+    it("sets aria-busy on primary button when loading", async () => {
+      render(
+        <>
+          <Dispatcher />
+          <AppDialog isOpen={true} onClose={() => {}} data-testid="test-dialog">
+            <AppDialog.Body>
+              <p>Content</p>
+            </AppDialog.Body>
+            <AppDialog.Footer
+              primaryAction={{
+                label: "Save",
+                onClick: () => {},
+                loading: true,
+              }}
+            />
+          </AppDialog>
+        </>
+      );
+      await act(() => vi.runAllTimersAsync());
+
+      const primary = screen.getByRole("button", { name: "Save" });
+      expect(primary.getAttribute("aria-busy")).toBe("true");
+    });
+
+    it("omits aria-busy on primary button when not loading", async () => {
+      render(
+        <>
+          <Dispatcher />
+          <AppDialog isOpen={true} onClose={() => {}} data-testid="test-dialog">
+            <AppDialog.Body>
+              <p>Content</p>
+            </AppDialog.Body>
+            <AppDialog.Footer
+              primaryAction={{
+                label: "Save",
+                onClick: () => {},
+              }}
+            />
+          </AppDialog>
+        </>
+      );
+      await act(() => vi.runAllTimersAsync());
+
+      const primary = screen.getByRole("button", { name: "Save" });
+      expect(primary.hasAttribute("aria-busy")).toBe(false);
+    });
+
+    it("secondary button ignores loading prop", async () => {
+      render(
+        <>
+          <Dispatcher />
+          <AppDialog isOpen={true} onClose={() => {}} data-testid="test-dialog">
+            <AppDialog.Body>
+              <p>Content</p>
+            </AppDialog.Body>
+            <AppDialog.Footer
+              primaryAction={{
+                label: "OK",
+                onClick: () => {},
+              }}
+              secondaryAction={{
+                label: "Cancel",
+                onClick: () => {},
+                loading: true,
+              }}
+            />
+          </AppDialog>
+        </>
+      );
+      await act(() => vi.runAllTimersAsync());
+
+      const secondary = screen.getByRole("button", { name: "Cancel" });
+      expect(secondary.hasAttribute("aria-busy")).toBe(false);
+      // Not disabled by the unused loading flag
+      expect((secondary as HTMLButtonElement).disabled).toBe(false);
+    });
   });
 
   it("does not interfere with focus in portaled popovers outside dialogRef", async () => {

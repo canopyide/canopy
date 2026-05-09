@@ -49,7 +49,7 @@ describe("deriveHighestPriorityCluster", () => {
       expect(derive([])).toBeNull();
     });
 
-    it("returns null when only one waiting-prompt agent", () => {
+    it("returns null when only one waiting agent", () => {
       expect(
         derive([
           makeAgent("a", { agentState: "waiting", waitingReason: "prompt", lastStateChange: NOW }),
@@ -58,8 +58,8 @@ describe("deriveHighestPriorityCluster", () => {
     });
   });
 
-  describe("prompt cluster", () => {
-    it("detects a 2-member prompt cluster", () => {
+  describe("waiting cluster", () => {
+    it("detects a 2-member waiting cluster", () => {
       const cluster = derive([
         makeAgent("a", {
           agentState: "waiting",
@@ -73,27 +73,29 @@ describe("deriveHighestPriorityCluster", () => {
         }),
       ]);
       expect(cluster).not.toBeNull();
-      expect(cluster!.type).toBe("prompt");
+      expect(cluster!.type).toBe("waiting");
       expect(cluster!.count).toBe(2);
       expect(cluster!.memberIds).toEqual(["a", "b"]);
       expect(cluster!.latestStateChange).toBe(NOW - 1);
       expect(cluster!.headline).toBe("2 agents need input");
     });
 
-    it("excludes waiting agents with waitingReason='question'", () => {
+    it("includes waiting agents with waitingReason='question'", () => {
       const cluster = derive([
         makeAgent("a", { agentState: "waiting", waitingReason: "prompt", lastStateChange: NOW }),
         makeAgent("b", { agentState: "waiting", waitingReason: "question", lastStateChange: NOW }),
       ]);
-      expect(cluster).toBeNull();
+      expect(cluster?.type).toBe("waiting");
+      expect(cluster?.count).toBe(2);
     });
 
-    it("excludes waiting agents with no waitingReason", () => {
+    it("includes waiting agents with no waitingReason", () => {
       const cluster = derive([
         makeAgent("a", { agentState: "waiting", waitingReason: "prompt", lastStateChange: NOW }),
         makeAgent("b", { agentState: "waiting", lastStateChange: NOW }),
       ]);
-      expect(cluster).toBeNull();
+      expect(cluster?.type).toBe("waiting");
+      expect(cluster?.count).toBe(2);
     });
   });
 
@@ -164,7 +166,7 @@ describe("deriveHighestPriorityCluster", () => {
   });
 
   describe("priority order", () => {
-    it("prompt beats error and completion when all three are active", () => {
+    it("waiting beats error and completion when all three are active", () => {
       const cluster = derive([
         makeAgent("p1", { agentState: "waiting", waitingReason: "prompt", lastStateChange: NOW }),
         makeAgent("p2", { agentState: "waiting", waitingReason: "prompt", lastStateChange: NOW }),
@@ -173,10 +175,10 @@ describe("deriveHighestPriorityCluster", () => {
         makeAgent("c1", { agentState: "completed", lastStateChange: NOW }),
         makeAgent("c2", { agentState: "completed", lastStateChange: NOW }),
       ]);
-      expect(cluster?.type).toBe("prompt");
+      expect(cluster?.type).toBe("waiting");
     });
 
-    it("error beats completion when prompt is absent", () => {
+    it("error beats completion when waiting is absent", () => {
       const cluster = derive([
         makeAgent("e1", { agentState: "exited", exitCode: 1, lastStateChange: NOW }),
         makeAgent("e2", { agentState: "exited", exitCode: 2, lastStateChange: NOW }),
@@ -248,6 +250,92 @@ describe("deriveHighestPriorityCluster", () => {
         makeAgent("b", { agentState: "waiting", waitingReason: "prompt", lastStateChange: NOW }),
       ]);
       expect(cluster).toBeNull();
+    });
+
+    it("excludes waiting/completion clusters whose runtimeStatus is exited or error", () => {
+      // For waiting and completion buckets the downstream fleet actions assume
+      // a live PTY, so the eligibility guard still rejects post-exit terminals.
+      const exited = derive([
+        makeAgent("a", {
+          agentState: "waiting",
+          waitingReason: "prompt",
+          lastStateChange: NOW,
+          runtimeStatus: "exited",
+        }),
+        makeAgent("b", { agentState: "waiting", waitingReason: "prompt", lastStateChange: NOW }),
+      ]);
+      expect(exited).toBeNull();
+
+      const errored = derive([
+        makeAgent("a", {
+          agentState: "waiting",
+          waitingReason: "prompt",
+          lastStateChange: NOW,
+          runtimeStatus: "error",
+        }),
+        makeAgent("b", { agentState: "waiting", waitingReason: "prompt", lastStateChange: NOW }),
+      ]);
+      expect(errored).toBeNull();
+    });
+
+    it("includes error-cluster terminals whose runtimeStatus is exited (the whole point)", () => {
+      // The PTY exit handler stamps `exitCode` and `runtimeStatus: "exited"`
+      // together, so production error-bucket members ALWAYS have post-exit
+      // runtime status. Filtering them out would make the error cluster
+      // unreachable in real use.
+      const cluster = derive([
+        makeAgent("a", {
+          agentState: "exited",
+          exitCode: 1,
+          lastStateChange: NOW - 10,
+          runtimeStatus: "exited",
+        }),
+        makeAgent("b", {
+          agentState: "exited",
+          exitCode: 137,
+          lastStateChange: NOW,
+          runtimeStatus: "exited",
+        }),
+      ]);
+      expect(cluster).not.toBeNull();
+      expect(cluster!.type).toBe("error");
+      expect(cluster!.count).toBe(2);
+    });
+
+    it("error-cluster eligibility still excludes trashed/background/dock and hasPty=false", () => {
+      const trashed = derive([
+        makeAgent("a", {
+          agentState: "exited",
+          exitCode: 1,
+          lastStateChange: NOW,
+          runtimeStatus: "exited",
+          location: "trash",
+        }),
+        makeAgent("b", {
+          agentState: "exited",
+          exitCode: 1,
+          lastStateChange: NOW,
+          runtimeStatus: "exited",
+        }),
+      ]);
+      expect(trashed).toBeNull();
+
+      const noPty = derive([
+        makeAgent("a", {
+          agentState: "exited",
+          exitCode: 1,
+          lastStateChange: NOW,
+          runtimeStatus: "exited",
+          hasPty: false,
+        }),
+        makeAgent("b", {
+          agentState: "exited",
+          exitCode: 1,
+          lastStateChange: NOW,
+          runtimeStatus: "exited",
+        }),
+      ]);
+      expect(noPty).toBeNull();
     });
 
     it("respects the isInTrash predicate", () => {

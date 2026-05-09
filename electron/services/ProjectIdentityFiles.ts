@@ -94,7 +94,7 @@ export class ProjectIdentityFiles {
       if (ensureDir) {
         await fs.mkdir(daintreeDir, { recursive: true });
       }
-      await resilientAtomicWriteFile(filePath, JSON.stringify(payload, null, 2), "utf-8");
+      await resilientAtomicWriteFile(filePath, JSON.stringify(payload, null, 2) + "\n", "utf-8");
     };
 
     try {
@@ -172,7 +172,7 @@ export class ProjectIdentityFiles {
       if (ensureDir) {
         await fs.mkdir(daintreeDir, { recursive: true });
       }
-      await resilientAtomicWriteFile(filePath, JSON.stringify(payload, null, 2), "utf-8");
+      await resilientAtomicWriteFile(filePath, JSON.stringify(payload, null, 2) + "\n", "utf-8");
     };
 
     try {
@@ -231,7 +231,7 @@ export class ProjectIdentityFiles {
       if (ensureDir) {
         await fs.mkdir(recipesDir, { recursive: true });
       }
-      await resilientAtomicWriteFile(filePath, JSON.stringify(payload, null, 2), "utf-8");
+      await resilientAtomicWriteFile(filePath, JSON.stringify(payload, null, 2) + "\n", "utf-8");
     };
 
     try {
@@ -262,11 +262,12 @@ export class ProjectIdentityFiles {
         if (typeof parsed !== "object" || parsed === null) {
           continue;
         }
-        if (!parsed.id) {
+        if (typeof parsed.id !== "string" || !parsed.id) {
           parsed.id = `inrepo-${entry.name.replace(/\.json$/, "")}`;
         }
         if (typeof parsed.createdAt !== "number") {
-          parsed.createdAt = 0;
+          const ts = typeof parsed.createdAt === "string" ? Date.parse(parsed.createdAt) : NaN;
+          parsed.createdAt = Number.isFinite(ts) ? ts : 0;
         }
         const result = TerminalRecipeSchema.safeParse(parsed);
         if (!result.success) {
@@ -277,8 +278,8 @@ export class ProjectIdentityFiles {
           continue;
         }
         recipes.push(result.data);
-      } catch {
-        console.warn(`[ProjectIdentityFiles] Skipping malformed recipe file: ${entry.name}`);
+      } catch (error) {
+        console.warn(`[ProjectIdentityFiles] Skipping malformed recipe file: ${entry.name}`, error);
       }
     }
     return recipes;
@@ -332,8 +333,19 @@ export class ProjectIdentityFiles {
             !parsed.id ||
             !parsed.name
           ) {
+            // Don't log `parsed` directly: presets can carry an `env` map
+            // with secret values. Summarize structurally so contributors
+            // can diagnose without leaking secrets to logs.
+            const summary =
+              parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+                ? { id: parsed.id, name: parsed.name, keys: Object.keys(parsed) }
+                : {
+                    type:
+                      parsed === null ? "null" : Array.isArray(parsed) ? "array" : typeof parsed,
+                  };
             console.warn(
-              `[ProjectIdentityFiles] Skipping invalid preset: ${agentId}/${entry.name}`
+              `[ProjectIdentityFiles] Skipping invalid preset: ${agentId}/${entry.name}`,
+              summary
             );
             continue;
           }
@@ -349,8 +361,11 @@ export class ProjectIdentityFiles {
           }
           seenIds.add(parsed.id);
           presets.push(parsed as AgentPreset);
-        } catch {
-          console.warn(`[ProjectIdentityFiles] Skipping malformed preset file: ${entry.name}`);
+        } catch (error) {
+          console.warn(
+            `[ProjectIdentityFiles] Skipping malformed preset file: ${agentId}/${entry.name}`,
+            error
+          );
         }
       }
 

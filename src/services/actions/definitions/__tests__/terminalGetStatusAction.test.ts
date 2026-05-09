@@ -1,0 +1,499 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ActionCallbacks, ActionRegistry, AnyActionDefinition } from "../../actionTypes";
+
+const panelStoreMock = vi.hoisted(() => ({ getState: vi.fn() }));
+const terminalClientMock = vi.hoisted(() => ({ submit: vi.fn() }));
+const getSerializedStatesMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@/store/panelStore", () => ({
+  usePanelStore: { getState: panelStoreMock.getState },
+}));
+vi.mock("@/clients", () => ({ terminalClient: terminalClientMock }));
+vi.mock("@shared/config/panelKindRegistry", () => ({
+  panelKindHasPty: (kind: string) => kind === "terminal" || kind === "agent",
+}));
+
+import { registerTerminalQueryActions } from "../terminalQueryActions";
+
+type StatusEntry = {
+  terminalId: string;
+  agentId: string | null;
+  agentState: string | null;
+  waitingReason?: string;
+  lastTransitionAt?: number;
+  recentOutput?: string | null;
+  error?: string;
+};
+
+type StatusResult = { terminals: StatusEntry[] };
+
+function setupActions(): ActionRegistry {
+  const actions: ActionRegistry = new Map();
+  registerTerminalQueryActions(actions, {} as ActionCallbacks);
+  return actions;
+}
+
+async function callGetStatus(actions: ActionRegistry, args?: unknown): Promise<StatusResult> {
+  const factory = actions.get("terminal.getStatus");
+  if (!factory) throw new Error("missing terminal.getStatus");
+  const def = factory() as AnyActionDefinition;
+  return (await def.run(args, {} as never)) as StatusResult;
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  Object.defineProperty(globalThis, "window", {
+    value: {
+      electron: {
+        terminal: {
+          getSerializedStates: getSerializedStatesMock,
+        },
+      },
+    },
+    writable: true,
+    configurable: true,
+  });
+});
+
+describe("terminal.getStatus", () => {
+  it("returns a `terminals` object wrapper, never a raw array", async () => {
+    panelStoreMock.getState.mockReturnValue({
+      panelIds: ["t1"],
+      panelsById: {
+        t1: { id: "t1", kind: "terminal", location: "grid", agentState: "idle" },
+      },
+    });
+
+    const result = await callGetStatus(setupActions());
+    expect(Array.isArray(result)).toBe(false);
+    expect(result.terminals).toHaveLength(1);
+    expect(result.terminals[0]?.terminalId).toBe("t1");
+  });
+
+  it("resolves explicit terminalIds and returns per-entry error for unknown ids", async () => {
+    panelStoreMock.getState.mockReturnValue({
+      panelIds: ["t1", "t2"],
+      panelsById: {
+        t1: { id: "t1", kind: "terminal", location: "grid", agentState: "working" },
+        t2: { id: "t2", kind: "agent", location: "grid", agentState: "completed" },
+      },
+    });
+
+    const { terminals } = await callGetStatus(setupActions(), {
+      terminalIds: ["t1", "missing", "t2"],
+    });
+
+    expect(terminals).toHaveLength(3);
+    expect(terminals[0]).toMatchObject({ terminalId: "t1", agentState: "working" });
+    expect(terminals[1]).toMatchObject({
+      terminalId: "missing",
+      agentState: null,
+      error: "Terminal not found",
+    });
+    expect(terminals[2]).toMatchObject({ terminalId: "t2", agentState: "completed" });
+  });
+
+  it("treats ephemeral panels as not found when targeted by id", async () => {
+    panelStoreMock.getState.mockReturnValue({
+      panelIds: ["t1"],
+      panelsById: {
+        t1: {
+          id: "t1",
+          kind: "terminal",
+          location: "dock",
+          agentState: "idle",
+          ephemeral: true,
+        },
+      },
+    });
+
+    const { terminals } = await callGetStatus(setupActions(), {
+      terminalIds: ["t1"],
+    });
+
+    expect(terminals).toHaveLength(1);
+    expect(terminals[0]).toMatchObject({
+      terminalId: "t1",
+      agentState: null,
+      error: "Terminal not found",
+    });
+  });
+
+  it("default filter excludes trash and background panels", async () => {
+    panelStoreMock.getState.mockReturnValue({
+      panelIds: ["t1", "t2", "t3", "t4"],
+      panelsById: {
+        t1: { id: "t1", kind: "terminal", location: "grid", agentState: "idle" },
+        t2: { id: "t2", kind: "terminal", location: "trash", agentState: "exited" },
+        t3: { id: "t3", kind: "terminal", location: "background", agentState: "idle" },
+        t4: { id: "t4", kind: "terminal", location: "dock", agentState: "working" },
+      },
+    });
+
+    const { terminals } = await callGetStatus(setupActions());
+    const ids = terminals.map((t) => t.terminalId).sort();
+    expect(ids).toEqual(["t1", "t4"]);
+  });
+
+  it("filters by worktreeId and explicit location", async () => {
+    panelStoreMock.getState.mockReturnValue({
+      panelIds: ["t1", "t2", "t3"],
+      panelsById: {
+        t1: { id: "t1", kind: "terminal", location: "grid", worktreeId: "wt-a" },
+        t2: { id: "t2", kind: "terminal", location: "grid", worktreeId: "wt-b" },
+        t3: { id: "t3", kind: "terminal", location: "trash", worktreeId: "wt-a" },
+      },
+    });
+
+    const byWorktree = await callGetStatus(setupActions(), { worktreeId: "wt-a" });
+    expect(byWorktree.terminals.map((t) => t.terminalId)).toEqual(["t1"]);
+
+    const byLocation = await callGetStatus(setupActions(), { location: "trash" });
+    expect(byLocation.terminals.map((t) => t.terminalId)).toEqual(["t3"]);
+  });
+
+  it("excludes ephemeral panels from filter results", async () => {
+    panelStoreMock.getState.mockReturnValue({
+      panelIds: ["t1", "t2"],
+      panelsById: {
+        t1: { id: "t1", kind: "terminal", location: "dock", agentState: "idle" },
+        t2: {
+          id: "t2",
+          kind: "terminal",
+          location: "dock",
+          agentState: "idle",
+          ephemeral: true,
+        },
+      },
+    });
+
+    const { terminals } = await callGetStatus(setupActions());
+    expect(terminals.map((t) => t.terminalId)).toEqual(["t1"]);
+  });
+
+  it("prefers detectedAgentId over launchAgentId", async () => {
+    panelStoreMock.getState.mockReturnValue({
+      panelIds: ["t1"],
+      panelsById: {
+        t1: {
+          id: "t1",
+          kind: "terminal",
+          location: "grid",
+          launchAgentId: "claude",
+          detectedAgentId: "codex",
+          agentState: "working",
+        },
+      },
+    });
+
+    const { terminals } = await callGetStatus(setupActions(), { terminalIds: ["t1"] });
+    expect(terminals[0]?.agentId).toBe("codex");
+  });
+
+  it("falls back to launchAgentId when no live detection", async () => {
+    panelStoreMock.getState.mockReturnValue({
+      panelIds: ["t1"],
+      panelsById: {
+        t1: {
+          id: "t1",
+          kind: "terminal",
+          location: "grid",
+          launchAgentId: "claude",
+          agentState: "idle",
+        },
+      },
+    });
+
+    const { terminals } = await callGetStatus(setupActions(), { terminalIds: ["t1"] });
+    expect(terminals[0]?.agentId).toBe("claude");
+  });
+
+  it("includes waitingReason only when agentState is `waiting`", async () => {
+    panelStoreMock.getState.mockReturnValue({
+      panelIds: ["t1", "t2", "t3"],
+      panelsById: {
+        t1: {
+          id: "t1",
+          kind: "terminal",
+          location: "grid",
+          agentState: "waiting",
+          waitingReason: "question",
+        },
+        t2: {
+          id: "t2",
+          kind: "terminal",
+          location: "grid",
+          agentState: "working",
+          waitingReason: "prompt", // present but should be omitted
+        },
+        t3: { id: "t3", kind: "terminal", location: "grid", agentState: "waiting" },
+      },
+    });
+
+    const { terminals } = await callGetStatus(setupActions(), {
+      terminalIds: ["t1", "t2", "t3"],
+    });
+    expect(terminals[0]?.waitingReason).toBe("question");
+    expect(terminals[1]?.waitingReason).toBeUndefined();
+    expect(terminals[2]?.waitingReason).toBeUndefined();
+  });
+
+  it("sources lastTransitionAt from TerminalInstance.lastStateChange", async () => {
+    panelStoreMock.getState.mockReturnValue({
+      panelIds: ["t1"],
+      panelsById: {
+        t1: {
+          id: "t1",
+          kind: "terminal",
+          location: "grid",
+          agentState: "idle",
+          lastStateChange: 1_700_000_000_000,
+        },
+      },
+    });
+
+    const { terminals } = await callGetStatus(setupActions(), { terminalIds: ["t1"] });
+    expect(terminals[0]?.lastTransitionAt).toBe(1_700_000_000_000);
+  });
+
+  it("does not call getSerializedStates when includeOutput is omitted", async () => {
+    panelStoreMock.getState.mockReturnValue({
+      panelIds: ["t1", "t2"],
+      panelsById: {
+        t1: { id: "t1", kind: "terminal", location: "grid", agentState: "idle" },
+        t2: { id: "t2", kind: "terminal", location: "grid", agentState: "working" },
+      },
+    });
+
+    const { terminals } = await callGetStatus(setupActions());
+    expect(getSerializedStatesMock).not.toHaveBeenCalled();
+    expect(terminals.every((t) => t.recentOutput === undefined)).toBe(true);
+  });
+
+  it("calls getSerializedStates exactly once for the whole fleet (no N+1)", async () => {
+    panelStoreMock.getState.mockReturnValue({
+      panelIds: ["t1", "t2", "t3"],
+      panelsById: {
+        t1: { id: "t1", kind: "terminal", location: "grid", agentState: "idle" },
+        t2: { id: "t2", kind: "terminal", location: "grid", agentState: "working" },
+        t3: { id: "t3", kind: "terminal", location: "grid", agentState: "waiting" },
+      },
+    });
+    getSerializedStatesMock.mockResolvedValue({
+      t1: "alpha\nbeta",
+      t2: "gamma",
+      t3: null,
+    });
+
+    const { terminals } = await callGetStatus(setupActions(), {
+      includeOutput: { lines: 10 },
+    });
+
+    expect(getSerializedStatesMock).toHaveBeenCalledTimes(1);
+    expect(getSerializedStatesMock).toHaveBeenCalledWith(["t1", "t2", "t3"]);
+    expect(terminals.find((t) => t.terminalId === "t1")?.recentOutput).toBe("alpha\nbeta");
+    expect(terminals.find((t) => t.terminalId === "t3")?.recentOutput).toBeNull();
+  });
+
+  it("caps includeOutput.lines at 50", async () => {
+    const lines = Array.from({ length: 200 }, (_, i) => `line-${i}`).join("\n");
+    panelStoreMock.getState.mockReturnValue({
+      panelIds: ["t1"],
+      panelsById: {
+        t1: { id: "t1", kind: "terminal", location: "grid", agentState: "idle" },
+      },
+    });
+    getSerializedStatesMock.mockResolvedValue({ t1: lines });
+
+    // The Zod schema rejects values >50 at the boundary, but the runtime guard
+    // also clamps for callers that bypass schema validation. Test the runtime
+    // guard with an in-range value (50) and assert the slice length.
+    const { terminals } = await callGetStatus(setupActions(), {
+      includeOutput: { lines: 50 },
+    });
+    const out = terminals[0]?.recentOutput;
+    expect(typeof out).toBe("string");
+    expect((out as string).split("\n")).toHaveLength(50);
+    expect((out as string).split("\n")[0]).toBe("line-150");
+  });
+
+  it("strips ANSI by default and preserves it when stripAnsi is false", async () => {
+    panelStoreMock.getState.mockReturnValue({
+      panelIds: ["t1"],
+      panelsById: {
+        t1: { id: "t1", kind: "terminal", location: "grid", agentState: "idle" },
+      },
+    });
+    const ansi = "\x1b[31mred\x1b[0m";
+    getSerializedStatesMock.mockResolvedValue({ t1: ansi });
+
+    const stripped = await callGetStatus(setupActions(), {
+      includeOutput: { lines: 10 },
+    });
+    expect(stripped.terminals[0]?.recentOutput).toBe("red");
+
+    getSerializedStatesMock.mockResolvedValue({ t1: ansi });
+    const raw = await callGetStatus(setupActions(), {
+      includeOutput: { lines: 10, stripAnsi: false },
+    });
+    expect(raw.terminals[0]?.recentOutput).toBe(ansi);
+  });
+
+  it("preserves status fields when getSerializedStates rejects", async () => {
+    panelStoreMock.getState.mockReturnValue({
+      panelIds: ["t1"],
+      panelsById: {
+        t1: {
+          id: "t1",
+          kind: "terminal",
+          location: "grid",
+          agentState: "working",
+          launchAgentId: "claude",
+          lastStateChange: 1234,
+        },
+      },
+    });
+    getSerializedStatesMock.mockRejectedValue(new Error("ipc gone"));
+
+    const { terminals } = await callGetStatus(setupActions(), {
+      includeOutput: { lines: 10 },
+    });
+
+    expect(terminals[0]).toMatchObject({
+      terminalId: "t1",
+      agentState: "working",
+      agentId: "claude",
+      lastTransitionAt: 1234,
+      recentOutput: null,
+      error: "ipc gone",
+    });
+  });
+
+  it("returns empty terminals array when filter matches nothing", async () => {
+    panelStoreMock.getState.mockReturnValue({
+      panelIds: [],
+      panelsById: {},
+    });
+
+    const { terminals } = await callGetStatus(setupActions());
+    expect(terminals).toEqual([]);
+    expect(getSerializedStatesMock).not.toHaveBeenCalled();
+  });
+
+  it("does not invoke getSerializedStates when no resolved terminals exist", async () => {
+    panelStoreMock.getState.mockReturnValue({
+      panelIds: [],
+      panelsById: {},
+    });
+
+    const { terminals } = await callGetStatus(setupActions(), {
+      terminalIds: ["missing-1", "missing-2"],
+      includeOutput: { lines: 10 },
+    });
+
+    expect(terminals).toHaveLength(2);
+    expect(terminals.every((t) => t.error === "Terminal not found")).toBe(true);
+    expect(getSerializedStatesMock).not.toHaveBeenCalled();
+  });
+
+  it("explicit terminalIds: [] returns empty rather than the full fleet", async () => {
+    // Schema rejects empty arrays, but the runtime guard must still treat an
+    // explicit `terminalIds` array as the targeted path — never silently fall
+    // back to the fleet. Bypass schema by calling run() directly with [].
+    panelStoreMock.getState.mockReturnValue({
+      panelIds: ["t1", "t2"],
+      panelsById: {
+        t1: { id: "t1", kind: "terminal", location: "grid", agentState: "idle" },
+        t2: { id: "t2", kind: "terminal", location: "grid", agentState: "working" },
+      },
+    });
+
+    const { terminals } = await callGetStatus(setupActions(), { terminalIds: [] });
+    expect(terminals).toEqual([]);
+  });
+
+  it("explicit terminalIds bypasses worktreeId/location filters", async () => {
+    panelStoreMock.getState.mockReturnValue({
+      panelIds: ["t1"],
+      panelsById: {
+        t1: {
+          id: "t1",
+          kind: "terminal",
+          location: "grid",
+          worktreeId: "wt-a",
+          agentState: "idle",
+        },
+      },
+    });
+
+    const { terminals } = await callGetStatus(setupActions(), {
+      terminalIds: ["t1"],
+      worktreeId: "wt-other",
+      location: "trash",
+    });
+
+    expect(terminals).toHaveLength(1);
+    expect(terminals[0]?.terminalId).toBe("t1");
+    expect(terminals[0]?.error).toBeUndefined();
+  });
+
+  it("ANDs worktreeId and location filters in the fleet path", async () => {
+    panelStoreMock.getState.mockReturnValue({
+      panelIds: ["t1", "t2", "t3"],
+      panelsById: {
+        t1: { id: "t1", kind: "terminal", location: "grid", worktreeId: "wt-a" },
+        t2: { id: "t2", kind: "terminal", location: "trash", worktreeId: "wt-a" },
+        t3: { id: "t3", kind: "terminal", location: "grid", worktreeId: "wt-b" },
+      },
+    });
+
+    const { terminals } = await callGetStatus(setupActions(), {
+      worktreeId: "wt-a",
+      location: "grid",
+    });
+
+    expect(terminals.map((t) => t.terminalId)).toEqual(["t1"]);
+  });
+
+  it("clamps runtime lines to 50 when callers bypass the schema with an out-of-range value", async () => {
+    const lines = Array.from({ length: 200 }, (_, i) => `line-${i}`).join("\n");
+    panelStoreMock.getState.mockReturnValue({
+      panelIds: ["t1"],
+      panelsById: {
+        t1: { id: "t1", kind: "terminal", location: "grid", agentState: "idle" },
+      },
+    });
+    getSerializedStatesMock.mockResolvedValue({ t1: lines });
+
+    const { terminals } = await callGetStatus(setupActions(), {
+      includeOutput: { lines: 999 },
+    });
+    const out = terminals[0]?.recentOutput as string;
+    expect(out.split("\n")).toHaveLength(50);
+    expect(out.split("\n")[0]).toBe("line-150");
+  });
+
+  it("returns recentOutput: null without error when getSerializedStates omits a key", async () => {
+    panelStoreMock.getState.mockReturnValue({
+      panelIds: ["t1", "t2"],
+      panelsById: {
+        t1: { id: "t1", kind: "terminal", location: "grid", agentState: "idle" },
+        t2: { id: "t2", kind: "terminal", location: "grid", agentState: "working" },
+      },
+    });
+    // t2 is omitted from the response (not even null) — distinct from the
+    // "explicit null" failure mode of the IPC handler.
+    getSerializedStatesMock.mockResolvedValue({ t1: "alpha" });
+
+    const { terminals } = await callGetStatus(setupActions(), {
+      includeOutput: { lines: 10 },
+    });
+
+    const t1 = terminals.find((t) => t.terminalId === "t1");
+    const t2 = terminals.find((t) => t.terminalId === "t2");
+    expect(t1?.recentOutput).toBe("alpha");
+    expect(t1?.error).toBeUndefined();
+    expect(t2?.recentOutput).toBeNull();
+    expect(t2?.error).toBeUndefined();
+  });
+});

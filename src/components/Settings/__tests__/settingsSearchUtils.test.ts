@@ -127,7 +127,7 @@ describe("countMatchesPerTab", () => {
   it("aggregates counts — total equals result count", () => {
     const results = filterSettings(SETTINGS_SEARCH_INDEX, "default");
     const counts = countMatchesPerTab(results);
-    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    const total = Object.values(counts).reduce((a, b) => (a ?? 0) + (b ?? 0), 0);
     expect(total).toBe(results.length);
   });
 
@@ -146,20 +146,21 @@ describe("countMatchesPerTab", () => {
 describe("HighlightText", () => {
   it("renders plain text when query is empty", () => {
     const html = renderToStaticMarkup(HighlightText({ text: "Hello World", query: "" }));
-    expect(html).not.toContain("<mark");
+    expect(html).not.toContain("text-search-highlight-text");
     expect(html).toContain("Hello World");
   });
 
-  it("wraps matching text in a mark element", () => {
+  it("wraps matching text in a highlight span", () => {
     const html = renderToStaticMarkup(HighlightText({ text: "Font size setting", query: "font" }));
-    expect(html).toContain("<mark");
-    // The matched portion should be inside a mark
+    expect(html).toContain("text-search-highlight-text");
+    expect(html).toContain("font-semibold");
+    // The matched portion should be inside the highlight span
     expect(html.toLowerCase()).toContain(">font<");
   });
 
   it("is case-insensitive in highlighting", () => {
     const html = renderToStaticMarkup(HighlightText({ text: "GitHub Token", query: "github" }));
-    expect(html).toContain("<mark");
+    expect(html).toContain("text-search-highlight-text");
     // Original casing preserved
     expect(html).toContain("GitHub");
   });
@@ -168,8 +169,8 @@ describe("HighlightText", () => {
     const html = renderToStaticMarkup(
       HighlightText({ text: "font family font size", query: "font" })
     );
-    const markCount = (html.match(/<mark/g) ?? []).length;
-    expect(markCount).toBeGreaterThanOrEqual(2);
+    const highlightCount = (html.match(/text-search-highlight-text/g) ?? []).length;
+    expect(highlightCount).toBeGreaterThanOrEqual(2);
   });
 
   it("preserves full text content after highlighting", () => {
@@ -197,7 +198,7 @@ describe("subtab-aware search", () => {
         id: "test-entry",
         tab: "agents" as const,
         scope: "global" as const,
-        tabLabel: "CLI Agents",
+        tabLabel: "CLI agents",
         section: "Settings",
         title: "Some Setting",
         description: "Some description",
@@ -216,7 +217,7 @@ describe("subtab-aware search", () => {
         id: "sub-entry",
         tab: "agents" as const,
         scope: "global" as const,
-        tabLabel: "CLI Agents",
+        tabLabel: "CLI agents",
         section: "Runtime",
         title: "Enable Agent",
         description: "Toggle agent on/off",
@@ -253,7 +254,7 @@ describe("subtab-aware search", () => {
         id: "a",
         tab: "agents" as const,
         scope: "global" as const,
-        tabLabel: "CLI Agents",
+        tabLabel: "CLI agents",
         section: "S",
         title: "Enable",
         description: "d",
@@ -263,7 +264,7 @@ describe("subtab-aware search", () => {
         id: "b",
         tab: "agents" as const,
         scope: "global" as const,
-        tabLabel: "CLI Agents",
+        tabLabel: "CLI agents",
         section: "S",
         title: "Enable Gemini",
         description: "d",
@@ -338,13 +339,14 @@ describe("SETTINGS_SEARCH_INDEX", () => {
       terminal: "Panel Grid",
       terminalAppearance: "Appearance",
       worktree: "Worktree Paths",
-      agents: "CLI Agents",
+      agents: "CLI agents",
       github: "GitHub Integration",
       portal: "Portal Links",
       toolbar: "Toolbar Customization",
       notifications: "Notifications",
       integrations: "Integrations",
       voice: "Voice Input",
+      assistant: "Daintree Assistant",
 
       mcp: "MCP Server",
       environment: "Environment Variables",
@@ -374,13 +376,14 @@ describe("SETTINGS_SEARCH_INDEX", () => {
       terminal: "Panel Grid",
       terminalAppearance: "Appearance",
       worktree: "Worktree Paths",
-      agents: "CLI Agents",
+      agents: "CLI agents",
       github: "GitHub Integration",
       portal: "Portal Links",
       toolbar: "Toolbar Customization",
       notifications: "Notifications",
       integrations: "Integrations",
       voice: "Voice Input",
+      assistant: "Daintree Assistant",
 
       mcp: "MCP Server",
       environment: "Environment Variables",

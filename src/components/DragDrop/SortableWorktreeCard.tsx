@@ -1,7 +1,8 @@
 import React from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { cn } from "@/lib/utils";
+import { m } from "framer-motion";
+import { UI_ANIMATION_DURATION, DRAG_GHOST_OPACITY, DRAG_GHOST_EASING } from "@/lib/animationUtils";
 import type { SyntheticListenerMap } from "@dnd-kit/core/dist/hooks/utilities";
 
 export interface WorktreeSortDragData {
@@ -34,6 +35,8 @@ interface SortableWorktreeCardProps {
   worktreeId: string;
   dragStartOrder: string[];
   disabled?: boolean;
+  ariaRowIndex: number;
+  isActive: boolean;
   children: (props: {
     isDraggingSort: boolean;
     dragHandleListeners: SyntheticListenerMap | undefined;
@@ -48,6 +51,8 @@ function sortableWorktreeCardPropsAreEqual(
   if (
     prev.worktreeId !== next.worktreeId ||
     prev.disabled !== next.disabled ||
+    prev.ariaRowIndex !== next.ariaRowIndex ||
+    prev.isActive !== next.isActive ||
     prev.children !== next.children
   ) {
     return false;
@@ -64,6 +69,8 @@ export const SortableWorktreeCard = React.memo(function SortableWorktreeCard({
   worktreeId,
   dragStartOrder,
   disabled,
+  ariaRowIndex,
+  isActive,
   children,
 }: SortableWorktreeCardProps) {
   const dragData: WorktreeSortDragData = {
@@ -84,33 +91,55 @@ export const SortableWorktreeCard = React.memo(function SortableWorktreeCard({
     id: getWorktreeSortDragId(worktreeId),
     data: dragData,
     disabled,
+    animateLayoutChanges: () => false,
   });
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
+    isolation: isDragging ? "auto" : "isolate",
     ...(!isDragging && {
       contentVisibility: "auto",
       containIntrinsicSize: "auto 180px",
     }),
   };
 
-  const { role: _role, "aria-roledescription": _ariaRoleDesc, ...filteredAttributes } = attributes;
+  const {
+    role: _role,
+    "aria-roledescription": _ariaRoleDesc,
+    tabIndex: _tabIndex,
+    ...filteredAttributes
+  } = attributes;
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={cn(isDragging && "opacity-40")}
-      role="listitem"
-      aria-roledescription="sortable worktree"
-      {...filteredAttributes}
-    >
-      {children({
-        isDraggingSort: isDragging,
-        dragHandleListeners: listeners,
-        dragHandleActivatorRef: setActivatorNodeRef,
-      })}
-    </div>
+    <m.div layout="position" {...filteredAttributes}>
+      <div
+        ref={setNodeRef}
+        style={style}
+        role="row"
+        aria-roledescription="sortable worktree"
+        aria-rowindex={ariaRowIndex}
+        aria-current={isActive ? "true" : undefined}
+        data-worktree-row={worktreeId}
+        tabIndex={-1}
+      >
+        <div role="gridcell">
+          <m.div
+            className="h-full"
+            animate={{ opacity: isDragging ? DRAG_GHOST_OPACITY : 1 }}
+            transition={{
+              duration: isDragging ? UI_ANIMATION_DURATION / 1000 : 0,
+              ease: DRAG_GHOST_EASING,
+            }}
+          >
+            {children({
+              isDraggingSort: isDragging,
+              dragHandleListeners: listeners,
+              dragHandleActivatorRef: setActivatorNodeRef,
+            })}
+          </m.div>
+        </div>
+      </div>
+    </m.div>
   );
 }, sortableWorktreeCardPropsAreEqual);

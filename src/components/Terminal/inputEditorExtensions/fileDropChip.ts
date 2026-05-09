@@ -2,6 +2,8 @@ import { EditorView, Decoration, WidgetType, hoverTooltip } from "@codemirror/vi
 import type { Extension } from "@codemirror/state";
 import { StateField, StateEffect } from "@codemirror/state";
 import { formatFileSize, removeChipRange } from "./base";
+import { chipPendingDeleteField, isChipSelected } from "./chipBackspace";
+import { createTrustedHTML, setTrustedInnerHTML } from "@/lib/trustedTypesPolicy";
 
 interface FileDropChipEntry {
   from: number;
@@ -17,23 +19,30 @@ class FileDropChipWidget extends WidgetType {
   constructor(
     readonly filePath: string,
     readonly fileName: string,
-    readonly fileSize?: number
+    readonly fileSize: number | undefined,
+    readonly isSelected: boolean
   ) {
     super();
   }
 
   eq(other: FileDropChipWidget) {
-    return this.filePath === other.filePath && this.fileSize === other.fileSize;
+    return (
+      this.filePath === other.filePath &&
+      this.fileSize === other.fileSize &&
+      this.isSelected === other.isSelected
+    );
   }
 
   toDOM(view: EditorView) {
     const span = document.createElement("span");
-    span.className = "cm-file-drop-chip";
+    span.className = this.isSelected
+      ? "cm-file-drop-chip cm-chip-pending-delete"
+      : "cm-file-drop-chip";
     span.setAttribute("role", "img");
     span.setAttribute("aria-label", `File: ${this.filePath}`);
 
     const icon = document.createElement("span");
-    icon.innerHTML = FILE_ICON_SVG;
+    setTrustedInnerHTML(icon, createTrustedHTML(FILE_ICON_SVG));
     icon.style.display = "inline-flex";
     icon.style.alignItems = "center";
     span.appendChild(icon);
@@ -95,13 +104,16 @@ export const fileDropChipField = StateField.define<FileDropChipEntry[]>({
     return entries;
   },
   provide: (f) => [
-    EditorView.decorations.from(f, (entries) => {
-      if (entries.length === 0) return Decoration.none;
-      const ranges = entries.map((e) =>
-        Decoration.replace({
-          widget: new FileDropChipWidget(e.filePath, e.fileName, e.fileSize),
-        }).range(e.from, e.to)
-      );
+    EditorView.decorations.of((view) => {
+      const entries = view.state.field(f, false);
+      if (!entries || entries.length === 0) return Decoration.none;
+      const pending = view.state.field(chipPendingDeleteField, false) ?? null;
+      const ranges = entries.map((e) => {
+        const selected = isChipSelected(pending, e.from, e.to);
+        return Decoration.replace({
+          widget: new FileDropChipWidget(e.filePath, e.fileName, e.fileSize, selected),
+        }).range(e.from, e.to);
+      });
       return Decoration.set(ranges, true);
     }),
     EditorView.atomicRanges.of((view) => {

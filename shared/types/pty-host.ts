@@ -11,7 +11,7 @@ import type { AgentState, AgentId, WaitingReason } from "./agent.js";
 import type { PanelKind, TerminalFlowStatus, PanelTitleMode } from "./panel.js";
 import type { ResourceProfile } from "./resourceProfile.js";
 import type { BuiltInAgentId } from "../config/agentIds.js";
-import type { SemanticSearchMatch } from "./ipc/terminal.js";
+import type { SemanticSearchMatch, TerminalInfoPayload } from "./ipc/terminal.js";
 
 export type { TerminalFlowStatus };
 
@@ -237,7 +237,7 @@ export type PtyHostEvent =
   | { type: "terminal-info"; requestId: string; terminal: PtyHostTerminalInfo | null }
   | { type: "replay-history-result"; requestId: string; replayed: number }
   | { type: "serialized-state"; requestId: string; id: string; state: string | null }
-  | { type: "terminal-diagnostic-info"; requestId: string; info: any }
+  | { type: "terminal-diagnostic-info"; requestId: string; info: TerminalInfoPayload | null }
   | { type: "available-terminals"; requestId: string; terminals: PtyHostTerminalInfo[] }
   | { type: "terminals-by-state"; requestId: string; terminals: PtyHostTerminalInfo[] }
   | { type: "all-terminals"; requestId: string; terminals: PtyHostTerminalInfo[] }
@@ -254,6 +254,8 @@ export type PtyHostEvent =
       bufferUtilization?: number;
       pauseDuration?: number;
       reason?: string;
+      /** Byte count discarded — only set when status is "data-loss". */
+      droppedBytes?: number;
       timestamp: number;
     }
   | {
@@ -261,6 +263,7 @@ export type PtyHostEvent =
       isThrottled: boolean;
       reason?: string;
       duration?: number;
+      forced?: boolean;
       timestamp: number;
     }
   | {
@@ -296,6 +299,29 @@ export type PtyHostEvent =
       type: "broadcast-write-result";
       results: BroadcastWriteTargetResult[];
     };
+
+export interface FdLeakWarningPayload {
+  fdCount: number;
+  activeTerminals: number;
+  estimatedLeaked: number;
+  orphanedPids: number[];
+  ptmxLimit: number | null;
+  timestamp: number;
+}
+
+/**
+ * Sub-union of host-to-main events that carry a `requestId` field — i.e. broker
+ * responses correlated with a `register()` call on the main side. Use this with
+ * `isPtyHostResponseEvent()` to safely call `broker.resolve(event.requestId, …)`
+ * without `as any` casts: the discriminant union of `PtyHostEvent` already types
+ * `requestId` on every response member, but a switch case can't reach it without
+ * narrowing first.
+ */
+export type PtyHostResponseEvent = Extract<PtyHostEvent, { requestId: string }>;
+
+export function isPtyHostResponseEvent(event: PtyHostEvent): event is PtyHostResponseEvent {
+  return "requestId" in event && typeof (event as { requestId?: unknown }).requestId === "string";
+}
 
 /** Terminal info sent from Host → Main for getTerminal queries */
 export interface PtyHostTerminalInfo {
@@ -395,6 +421,11 @@ export type SpawnErrorCode =
   | "EACCES" // Permission denied
   | "ENOTDIR" // Working directory does not exist (or path component is not a directory)
   | "EIO" // I/O error (e.g., PTY allocation failure)
+  | "EMFILE" // Per-process file descriptor limit reached
+  | "EAGAIN" // Process limit reached (fork failed)
+  | "ENOMEM" // Out of memory at spawn time
+  | "ENXIO" // PTY pool exhausted on macOS
+  | "EBUSY" // Terminal device busy
   | "DISCONNECTED" // Terminal process no longer exists in backend (e.g., after project switch)
   | "PENDING_SPAWNS_CAPPED" // PtyClient.pendingSpawns admission cap hit (restart-storm guard)
   | "UNKNOWN"; // Unknown error
@@ -430,6 +461,8 @@ export interface TerminalStatusPayload {
   bufferUtilization?: number;
   pauseDuration?: number;
   reason?: string;
+  /** Byte count discarded — only set when status is "data-loss". */
+  droppedBytes?: number;
   timestamp: number;
 }
 
@@ -463,6 +496,7 @@ export interface HostThrottlePayload {
   isThrottled: boolean;
   reason?: string;
   duration?: number;
+  forced?: boolean;
   timestamp: number;
 }
 

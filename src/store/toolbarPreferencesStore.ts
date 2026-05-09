@@ -38,7 +38,7 @@ const DEFAULT_PREFERENCES: ToolbarPreferences = {
   },
 };
 
-const FIXED_BUTTON_IDS: ToolbarButtonId[] = ["sidebar-toggle", "portal-toggle"];
+const FIXED_BUTTON_IDS: ToolbarButtonId[] = ["sidebar-toggle", "assistant-toggle", "portal-toggle"];
 
 function sanitizeButtonList(buttons: AnyToolbarButtonId[]): AnyToolbarButtonId[] {
   return buttons.filter((id) => !FIXED_BUTTON_IDS.includes(id as ToolbarButtonId));
@@ -152,7 +152,7 @@ export const useToolbarPreferencesStore = create<ToolbarPreferencesState>()(
     }),
     {
       name: "daintree-toolbar-preferences",
-      version: 6,
+      version: 7,
       storage: createSafeJSONStorage(),
       migrate: (persisted, version) => {
         const state = persisted as Record<string, unknown>;
@@ -224,6 +224,20 @@ export const useToolbarPreferencesStore = create<ToolbarPreferencesState>()(
             | undefined;
           if (layout) {
             const drop = (buttons?: string[]) => buttons?.filter((id) => id !== "notes");
+            layout.leftButtons = drop(layout.leftButtons);
+            layout.rightButtons = drop(layout.rightButtons);
+            layout.hiddenButtons = drop(layout.hiddenButtons);
+          }
+        }
+        if (version < 7) {
+          // "assistant-toggle" became a fixed pinned button alongside
+          // "portal-toggle" (#6748). Strip any stray persisted entries so
+          // mid-rollout users don't end up with a ghost in a variable list.
+          const layout = state.layout as
+            | { leftButtons?: string[]; rightButtons?: string[]; hiddenButtons?: string[] }
+            | undefined;
+          if (layout) {
+            const drop = (buttons?: string[]) => buttons?.filter((id) => id !== "assistant-toggle");
             layout.leftButtons = drop(layout.leftButtons);
             layout.rightButtons = drop(layout.rightButtons);
             layout.hiddenButtons = drop(layout.hiddenButtons);

@@ -1,6 +1,12 @@
 import type { PanelLocation } from "@/types";
 import type { PanelRegistryStoreApi, PanelRegistrySlice } from "./types";
-import { terminalClient, agentSettingsClient, projectClient, systemClient } from "@/clients";
+import {
+  terminalClient,
+  agentSettingsClient,
+  projectClient,
+  systemClient,
+  globalEnvClient,
+} from "@/clients";
 import {
   generateAgentCommand,
   buildAgentLaunchFlags,
@@ -21,6 +27,7 @@ import { useLayoutConfigStore } from "@/store/layoutConfigStore";
 import { saveNormalized } from "./persistence";
 import { optimizeForDock } from "./layout";
 import { deriveRuntimeStatus } from "./helpers";
+import { cancelReconnectErrorDebounce } from "./browser";
 import { logDebug, logWarn, logError } from "@/utils/logger";
 import {
   buildAgentLaunchFlagsForRuntimeSettings,
@@ -29,6 +36,7 @@ import {
   type AgentRuntimeSettingsResolution,
 } from "@/utils/agentRuntimeSettings";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
+import { transferBetweenWorktreeIndex } from "./worktreeIndex";
 
 // Lazy accessor to break circular dependency: restart -> projectStore -> panelPersistence -> core.
 let _cachedProjectStore: typeof import("@/store/projectStore").useProjectStore | null = null;
@@ -64,10 +72,7 @@ function mergeSpawnEnv(
 }
 
 async function fetchGlobalEnv(): Promise<Record<string, string>> {
-  if (typeof window === "undefined" || !window.electron?.globalEnv?.get) {
-    return {};
-  }
-  return window.electron.globalEnv.get().catch((error: unknown) => {
+  return globalEnvClient.get().catch((error: unknown) => {
     logWarn("[TerminalStore] Failed to fetch global environment variables", { error });
     return {} as Record<string, string>;
   });
@@ -176,6 +181,10 @@ export const createRestartActions = (
     // Mark as restarting SYNCHRONOUSLY first to prevent exit event race condition.
     // This is checked in the onExit handler before the store state.
     markTerminalRestarting(id);
+
+    // Drop any pending reconnect-error debounce so a stale write can't fire
+    // after we've cleared the error inline below.
+    cancelReconnectErrorDebounce(id);
 
     // Also set the store flag for UI and other consumers
     set((state) =>
@@ -631,8 +640,14 @@ export const createRestartActions = (
           runtimeStatus: deriveRuntimeStatus(newLocation === "grid", t.flowStatus, t.runtimeStatus),
         },
       };
+      const newIndex = transferBetweenWorktreeIndex(
+        state.panelIdsByWorktreeId,
+        t.worktreeId,
+        worktreeId,
+        id
+      );
       saveNormalized(newById, state.panelIds);
-      return { panelsById: newById };
+      return { panelsById: newById, panelIdsByWorktreeId: newIndex };
     });
 
     if (!movedToLocation) return;
@@ -670,15 +685,27 @@ export const createRestartActions = (
 
               // Update cwd, worktreeId, and clear agentSessionId so restartTerminal
               // spawns fresh instead of attempting a broken session resume
-              set((state) =>
-                updateTerminal(state, id, (t) => ({
-                  ...t,
-                  cwd: newCwd,
+              set((state) => {
+                const t = state.panelsById[id];
+                if (!t) return state;
+                const newById = {
+                  ...state.panelsById,
+                  [id]: {
+                    ...t,
+                    cwd: newCwd,
+                    worktreeId,
+                    agentSessionId: undefined,
+                    restartError: undefined,
+                  },
+                };
+                const newIndex = transferBetweenWorktreeIndex(
+                  state.panelIdsByWorktreeId,
+                  t.worktreeId,
                   worktreeId,
-                  agentSessionId: undefined,
-                  restartError: undefined,
-                }))
-              );
+                  id
+                );
+                return { panelsById: newById, panelIdsByWorktreeId: newIndex };
+              });
 
               await get().restartTerminal(id);
 

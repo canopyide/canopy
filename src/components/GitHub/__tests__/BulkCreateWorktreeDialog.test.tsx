@@ -5,6 +5,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, act } from "@testing-library/react";
 import type { GitHubIssue, GitHubPR } from "@shared/types/github";
 
+vi.stubGlobal(
+  "ResizeObserver",
+  class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+);
+
 const mockWorktreeCreate = vi.fn();
 const mockGetAvailableBranch = vi.fn();
 const mockGetDefaultPath = vi.fn();
@@ -73,10 +82,13 @@ vi.mock("@/lib/notify", () => ({
   notify: vi.fn(),
 }));
 
+const prefsHolder: { assignWorktreeToSelf: boolean } = { assignWorktreeToSelf: false };
+const githubConfigHolder: { config: { username?: string } | null } = { config: null };
+
 vi.mock("@/store/preferencesStore", () => ({
   usePreferencesStore: (selector: (s: Record<string, unknown>) => unknown) =>
     selector({
-      assignWorktreeToSelf: false,
+      assignWorktreeToSelf: prefsHolder.assignWorktreeToSelf,
       setAssignWorktreeToSelf: vi.fn(),
       lastSelectedWorktreeRecipeIdByProject: {},
       setLastSelectedWorktreeRecipeIdByProject: vi.fn(),
@@ -87,12 +99,12 @@ vi.mock("@/store/githubConfigStore", () => ({
   useGitHubConfigStore: Object.assign(
     (selector: (s: Record<string, unknown>) => unknown) =>
       selector({
-        config: null,
+        config: githubConfigHolder.config,
         initialize: vi.fn(),
       }),
     {
       getState: () => ({
-        config: null,
+        config: githubConfigHolder.config,
       }),
     }
   ),
@@ -126,12 +138,16 @@ vi.mock("@/hooks/useWorktreeStore", () => ({
 
 const mockSetPendingWorktree = vi.fn();
 const mockSelectWorktree = vi.fn();
+const mockBulkCreateDialog: { onComplete: (() => void) | undefined } = {
+  onComplete: undefined,
+};
 vi.mock("@/store/worktreeStore", () => ({
   useWorktreeSelectionStore: {
     getState: () => ({
       activeWorktreeId: "source-wt",
       setPendingWorktree: mockSetPendingWorktree,
       selectWorktree: mockSelectWorktree,
+      bulkCreateDialog: mockBulkCreateDialog,
     }),
   },
 }));
@@ -262,12 +278,15 @@ beforeEach(() => {
   setupWorktreeCreateMocks();
   mockTerminals = [];
   mockSelectedRecipeId = null;
+  mockBulkCreateDialog.onComplete = undefined;
   mockAddPanel.mockResolvedValue("clone-terminal-id");
   mockAgentSettingsGet.mockResolvedValue({ agents: {} });
   mockSystemGetTmpDir.mockResolvedValue("/tmp");
   mockGetAgentConfig.mockReturnValue({ command: "claude" });
   mockGenerateAgentCommand.mockReturnValue("claude --fresh");
   mockGenerateRecipeFromActiveTerminals.mockReturnValue([]);
+  prefsHolder.assignWorktreeToSelf = false;
+  githubConfigHolder.config = null;
 });
 
 afterEach(() => {
@@ -1272,6 +1291,54 @@ describe("BulkCreateWorktreeDialog", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it("invokes stored bulkCreateDialog.onComplete when Done is clicked", async () => {
+    const storedOnComplete = vi.fn();
+    mockBulkCreateDialog.onComplete = storedOnComplete;
+    // Simulate the real closeBulkCreateDialog behavior: prop onComplete/onClose
+    // zero out the stored callback. This catches the ordering bug where the
+    // stored callback would be read after being cleared.
+    const propOnComplete = vi.fn(() => {
+      mockBulkCreateDialog.onComplete = undefined;
+    });
+    const propOnClose = vi.fn(() => {
+      mockBulkCreateDialog.onComplete = undefined;
+    });
+
+    render(
+      <BulkCreateWorktreeDialog
+        {...defaultProps}
+        onComplete={propOnComplete}
+        onClose={propOnClose}
+      />
+    );
+
+    await act(async () => {
+      screen.getByTestId("bulk-create-confirm-button").click();
+    });
+    await advanceTimersGradually(5000);
+    expect(screen.getByText(/3 of 3 created/)).toBeTruthy();
+
+    await act(async () => {
+      screen.getByTestId("bulk-create-done-button").click();
+    });
+
+    expect(storedOnComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not invoke stored bulkCreateDialog.onComplete when dialog is cancelled", async () => {
+    const storedOnComplete = vi.fn();
+    mockBulkCreateDialog.onComplete = storedOnComplete;
+
+    render(<BulkCreateWorktreeDialog {...defaultProps} />);
+
+    // Cancel from idle state via Cancel button (handleClose path)
+    await act(async () => {
+      screen.getByText("Cancel").click();
+    });
+
+    expect(storedOnComplete).not.toHaveBeenCalled();
+  });
+
   it("clone layout generates command for agent panels and preserves plain terminal commands", async () => {
     mockSelectedRecipeId = "__clone_layout__";
     mockGenerateRecipeFromActiveTerminals.mockReturnValue([
@@ -1527,6 +1594,147 @@ describe("BulkCreateWorktreeDialog", () => {
   });
 });
 
+describe("BulkCreateWorktreeDialog — issue assignment retry", () => {
+  const assignProps = {
+    isOpen: true,
+    onClose: vi.fn(),
+    mode: "issue" as const,
+    selectedIssues: [makeIssue(1)],
+    selectedPRs: [] as GitHubPR[],
+    onComplete: vi.fn(),
+  };
+
+  it("retries transient assignment failure with backoff then succeeds", async () => {
+    prefsHolder.assignWorktreeToSelf = true;
+    githubConfigHolder.config = { username: "me" };
+
+    let assignCallCount = 0;
+    mockAssignIssue.mockImplementation(() => {
+      assignCallCount++;
+      if (assignCallCount === 1) {
+        return Promise.reject(new Error("GitHub is temporarily unavailable. Please retry."));
+      }
+      return Promise.resolve();
+    });
+
+    render(<BulkCreateWorktreeDialog {...assignProps} />);
+
+    await act(async () => {
+      screen.getByTestId("bulk-create-confirm-button").click();
+    });
+
+    await advanceTimersGradually(35000);
+
+    expect(assignCallCount).toBe(2);
+    expect(mockAssignIssue).toHaveBeenCalledWith("/test/root", 1, "me");
+    expect(screen.getByText(/1 of 1 created/)).toBeTruthy();
+    expect(screen.queryByText(/failed/)).toBeNull();
+  });
+
+  it("succeeds when assignment recovers on the final permitted attempt", async () => {
+    prefsHolder.assignWorktreeToSelf = true;
+    githubConfigHolder.config = { username: "me" };
+
+    let assignCallCount = 0;
+    mockAssignIssue.mockImplementation(() => {
+      assignCallCount++;
+      if (assignCallCount <= 2) {
+        return Promise.reject(new Error("GitHub is temporarily unavailable. Please retry."));
+      }
+      return Promise.resolve();
+    });
+
+    render(<BulkCreateWorktreeDialog {...assignProps} />);
+
+    await act(async () => {
+      screen.getByTestId("bulk-create-confirm-button").click();
+    });
+
+    await advanceTimersGradually(70000);
+
+    // Loop bound is `<= MAX_AUTO_RETRIES + 1`, so the third attempt must run
+    // and a success there must short-circuit out of the loop.
+    expect(assignCallCount).toBe(3);
+    expect(screen.getByText(/1 of 1 created/)).toBeTruthy();
+    expect(screen.queryByText(/failed/)).toBeNull();
+  });
+
+  it("does not retry non-transient assignment failures", async () => {
+    prefsHolder.assignWorktreeToSelf = true;
+    githubConfigHolder.config = { username: "me" };
+
+    mockAssignIssue.mockRejectedValue(new Error("Forbidden"));
+
+    render(<BulkCreateWorktreeDialog {...assignProps} />);
+
+    await act(async () => {
+      screen.getByTestId("bulk-create-confirm-button").click();
+    });
+
+    await advanceTimersGradually(5000);
+
+    expect(mockAssignIssue).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(/1 of 1 created/)).toBeTruthy();
+    expect(screen.queryByText(/failed/)).toBeNull();
+  });
+
+  it("swallows exhausted transient assignment retries (best-effort)", async () => {
+    prefsHolder.assignWorktreeToSelf = true;
+    githubConfigHolder.config = { username: "me" };
+
+    mockAssignIssue.mockRejectedValue(
+      new Error("GitHub is temporarily unavailable. Please retry.")
+    );
+
+    render(<BulkCreateWorktreeDialog {...assignProps} />);
+
+    await act(async () => {
+      screen.getByTestId("bulk-create-confirm-button").click();
+    });
+
+    await advanceTimersGradually(70000);
+
+    // MAX_AUTO_RETRIES = 2 → 3 total attempts before giving up silently.
+    expect(mockAssignIssue).toHaveBeenCalledTimes(3);
+    expect(screen.getByText(/1 of 1 created/)).toBeTruthy();
+    expect(screen.queryByText(/failed/)).toBeNull();
+  });
+
+  it("stops assignment retries when the run is cancelled mid-backoff", async () => {
+    prefsHolder.assignWorktreeToSelf = true;
+    githubConfigHolder.config = { username: "me" };
+
+    mockAssignIssue.mockRejectedValue(
+      new Error("GitHub is temporarily unavailable. Please retry.")
+    );
+
+    render(<BulkCreateWorktreeDialog {...assignProps} />);
+
+    await act(async () => {
+      screen.getByTestId("bulk-create-confirm-button").click();
+    });
+
+    // Let the worktree finish and the first assignIssue call fail; the loop
+    // is now suspended on `await delay(assignBackoff)`.
+    await advanceTimersGradually(100);
+    expect(mockAssignIssue).toHaveBeenCalledTimes(1);
+
+    // Cancel before backoff expires.
+    await act(async () => {
+      const buttons = screen.getAllByRole("button");
+      const cancelBtn = buttons.find((b) => b.textContent === "Cancel");
+      cancelBtn?.click();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    // Drain remaining backoff window — the stale-run guard must short-circuit
+    // the loop before another IPC call goes out.
+    await advanceTimersGradually(35000);
+
+    expect(mockAssignIssue).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("BulkCreateWorktreeDialog — PR mode", () => {
   const prProps = {
     isOpen: true,
@@ -1576,6 +1784,30 @@ describe("BulkCreateWorktreeDialog — PR mode", () => {
     expect(createCalls[0]![0].fromRemote).toBe(true);
     expect(createCalls[0]![0].baseBranch).toBe("origin/feature/pr-10");
     expect(createCalls[0]![0].newBranch).toBe("feature/pr-10");
+  });
+
+  it("invokes stored bulkCreateDialog.onComplete when Done is clicked in PR mode", async () => {
+    mockListBranches.mockResolvedValue([
+      { name: "origin/feature/pr-10", current: false, remote: true },
+      { name: "origin/feature/pr-20", current: false, remote: true },
+      { name: "origin/feature/pr-30", current: false, remote: true },
+    ]);
+    const storedOnComplete = vi.fn();
+    mockBulkCreateDialog.onComplete = storedOnComplete;
+
+    render(<BulkCreateWorktreeDialog {...prProps} />);
+
+    await act(async () => {
+      screen.getByTestId("bulk-create-confirm-button").click();
+    });
+    await advanceTimersGradually(5000);
+    expect(screen.getByText(/3 of 3 created/)).toBeTruthy();
+
+    await act(async () => {
+      screen.getByTestId("bulk-create-done-button").click();
+    });
+
+    expect(storedOnComplete).toHaveBeenCalledTimes(1);
   });
 
   it("includes fork PRs in plan", () => {

@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * Tests for trashPanel auto-removing panels from tab groups
  * Issue #1848: trashPanel should auto-remove panel from tab group at store level
@@ -12,7 +13,7 @@ vi.mock("@/clients", () => ({
     spawn: vi.fn(),
     write: vi.fn(),
     resize: vi.fn(),
-    kill: vi.fn(),
+    kill: vi.fn().mockResolvedValue(undefined),
     trash: vi.fn().mockResolvedValue(undefined),
     restore: vi.fn().mockResolvedValue(undefined),
     onData: vi.fn(),
@@ -34,6 +35,7 @@ vi.mock("@/clients", () => ({
 vi.mock("@/services/TerminalInstanceService", () => ({
   terminalInstanceService: {
     cleanup: vi.fn(),
+    destroy: vi.fn(),
     applyRendererPolicy: vi.fn(),
   },
 }));
@@ -376,5 +378,296 @@ describe("trashPanel group cleanup", () => {
     // Both should be updated atomically
     expect(state.panelsById["term-1"]?.location).toBe("trash");
     expect(state.tabGroups.has("group-1")).toBe(false);
+  });
+});
+
+describe("trash expiry visibility sweep", () => {
+  let originalVisibilityState: PropertyDescriptor | undefined;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    const { reset } = usePanelStore.getState();
+    reset();
+
+    // Save the original descriptor from the prototype (not instance).
+    originalVisibilityState = Object.getOwnPropertyDescriptor(
+      Document.prototype,
+      "visibilityState"
+    );
+
+    usePanelStore.setState({
+      panelsById: {},
+      panelIds: [],
+      tabGroups: new Map(),
+      trashedTerminals: new Map(),
+      backgroundedTerminals: new Map(),
+      focusedId: null,
+      maximizedId: null,
+      commandQueue: [],
+    });
+  });
+
+  afterEach(() => {
+    if (originalVisibilityState) {
+      Object.defineProperty(document, "visibilityState", originalVisibilityState);
+    } else {
+      delete (document as unknown as Record<string, unknown>).visibilityState;
+    }
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  function setVisibilityState(state: string) {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => state,
+    });
+  }
+
+  function dispatchVisibilityChange(state: string) {
+    setVisibilityState(state);
+    document.dispatchEvent(new Event("visibilitychange"));
+  }
+
+  it("should sweep expired trashed terminals on visibility restore", () => {
+    setTerminals([
+      {
+        id: "term-1",
+        title: "Term 1",
+        cwd: "/test",
+        cols: 80,
+        rows: 24,
+        location: "grid",
+      },
+    ]);
+
+    const { trashPanel } = usePanelStore.getState();
+    trashPanel("term-1");
+
+    // Verify trashed
+    let state = usePanelStore.getState();
+    expect(state.trashedTerminals.has("term-1")).toBe(true);
+    expect(state.panelsById["term-1"]?.location).toBe("trash");
+
+    // Set expiresAt to 1ms in the past
+    const trashedInfo = state.trashedTerminals.get("term-1")!;
+    usePanelStore.setState({
+      trashedTerminals: new Map([["term-1", { ...trashedInfo, expiresAt: Date.now() - 1 }]]),
+    });
+
+    // Make document hidden, then visible
+    dispatchVisibilityChange("hidden");
+    dispatchVisibilityChange("visible");
+
+    state = usePanelStore.getState();
+    expect(state.trashedTerminals.has("term-1")).toBe(false);
+    expect(state.panelsById["term-1"]).toBeUndefined();
+  });
+
+  it("should not sweep non-expired trashed terminals on visibility restore", () => {
+    setTerminals([
+      {
+        id: "term-1",
+        title: "Term 1",
+        cwd: "/test",
+        cols: 80,
+        rows: 24,
+        location: "grid",
+      },
+    ]);
+
+    const { trashPanel } = usePanelStore.getState();
+    trashPanel("term-1");
+
+    // Set expiresAt far in the future
+    const state = usePanelStore.getState();
+    const trashedInfo = state.trashedTerminals.get("term-1")!;
+    usePanelStore.setState({
+      trashedTerminals: new Map([["term-1", { ...trashedInfo, expiresAt: Date.now() + 60_000 }]]),
+    });
+
+    dispatchVisibilityChange("visible");
+
+    const afterState = usePanelStore.getState();
+    expect(afterState.trashedTerminals.has("term-1")).toBe(true);
+    expect(afterState.panelsById["term-1"]?.location).toBe("trash");
+  });
+
+  it("should handle empty trashedTerminals map safely", () => {
+    dispatchVisibilityChange("hidden");
+    dispatchVisibilityChange("visible");
+    // Should not throw
+    expect(usePanelStore.getState().trashedTerminals.size).toBe(0);
+  });
+
+  it("should clean up multiple expired entries", () => {
+    setTerminals([
+      { id: "term-1", title: "T1", cwd: "/t", cols: 80, rows: 24, location: "grid" },
+      { id: "term-2", title: "T2", cwd: "/t", cols: 80, rows: 24, location: "grid" },
+      { id: "term-3", title: "T3", cwd: "/t", cols: 80, rows: 24, location: "grid" },
+    ]);
+
+    const { trashPanel } = usePanelStore.getState();
+    trashPanel("term-1");
+    trashPanel("term-2");
+    trashPanel("term-3");
+
+    // All expired
+    const state = usePanelStore.getState();
+    const now = Date.now();
+    const newTrashed = new Map(state.trashedTerminals);
+    for (const [id, info] of newTrashed) {
+      newTrashed.set(id, { ...info, expiresAt: now - 1 });
+    }
+    usePanelStore.setState({ trashedTerminals: newTrashed });
+
+    dispatchVisibilityChange("visible");
+
+    const afterState = usePanelStore.getState();
+    expect(afterState.trashedTerminals.size).toBe(0);
+    expect(afterState.panelIds).toEqual([]);
+  });
+
+  it("should handle visibility restore race with setTimeout safely", () => {
+    setTerminals([
+      {
+        id: "term-1",
+        title: "Term 1",
+        cwd: "/test",
+        cols: 80,
+        rows: 24,
+        location: "grid",
+      },
+    ]);
+
+    const { trashPanel } = usePanelStore.getState();
+    trashPanel("term-1");
+
+    // Make it expired, sweep via visibility
+    const state = usePanelStore.getState();
+    const trashedInfo = state.trashedTerminals.get("term-1")!;
+    usePanelStore.setState({
+      trashedTerminals: new Map([["term-1", { ...trashedInfo, expiresAt: Date.now() - 1 }]]),
+    });
+
+    dispatchVisibilityChange("visible");
+
+    // Terminal should be removed by sweep
+    const afterSweep = usePanelStore.getState();
+    expect(afterSweep.trashedTerminals.has("term-1")).toBe(false);
+
+    // Now advance fake timers past TTL — the stale callback should be safe
+    vi.advanceTimersByTime(30_000);
+
+    // No crash, no-op
+    expect(usePanelStore.getState().panelsById["term-1"]).toBeUndefined();
+  });
+
+  it("should skip sweep when visibilityState is not visible", () => {
+    setTerminals([
+      {
+        id: "term-1",
+        title: "Term 1",
+        cwd: "/test",
+        cols: 80,
+        rows: 24,
+        location: "grid",
+      },
+    ]);
+
+    const { trashPanel } = usePanelStore.getState();
+    trashPanel("term-1");
+
+    const state = usePanelStore.getState();
+    const trashedInfo = state.trashedTerminals.get("term-1")!;
+    usePanelStore.setState({
+      trashedTerminals: new Map([["term-1", { ...trashedInfo, expiresAt: Date.now() - 1 }]]),
+    });
+
+    // Dispatch hidden — sweep should not run
+    dispatchVisibilityChange("hidden");
+
+    const afterState = usePanelStore.getState();
+    expect(afterState.trashedTerminals.has("term-1")).toBe(true);
+  });
+
+  it("should not remove active terminal with stale trash metadata", () => {
+    setTerminals([
+      {
+        id: "term-1",
+        title: "Term 1",
+        cwd: "/test",
+        cols: 80,
+        rows: 24,
+        location: "grid",
+      },
+    ]);
+
+    // Seed stale trash metadata for an active (grid-located) terminal.
+    // This simulates corrupted state where trashedTerminals is out of sync
+    // with the panel's actual location.
+    usePanelStore.setState({
+      trashedTerminals: new Map([
+        ["term-1", { id: "term-1", expiresAt: Date.now() - 1, originalLocation: "grid" as const }],
+      ]),
+    });
+
+    dispatchVisibilityChange("visible");
+
+    const afterState = usePanelStore.getState();
+    // The active terminal must survive — the sweep must not remove it.
+    expect(afterState.panelsById["term-1"]).toBeDefined();
+    expect(afterState.panelsById["term-1"]?.location).toBe("grid");
+    // The stale trash metadata should be cleaned up.
+    expect(afterState.trashedTerminals.has("term-1")).toBe(false);
+  });
+
+  it("should clean up expired trash metadata for missing panel safely", () => {
+    // Seed a trash entry with no corresponding panelsById entry.
+    usePanelStore.setState({
+      trashedTerminals: new Map([
+        [
+          "orphan-1",
+          { id: "orphan-1", expiresAt: Date.now() - 1, originalLocation: "grid" as const },
+        ],
+      ]),
+    });
+
+    dispatchVisibilityChange("visible");
+
+    const afterState = usePanelStore.getState();
+    // Metadata should be cleaned up without any side effects.
+    expect(afterState.trashedTerminals.has("orphan-1")).toBe(false);
+  });
+
+  it("sweeps only expired entries leaving non-expired intact", () => {
+    setTerminals([
+      { id: "term-1", title: "T1", cwd: "/t", cols: 80, rows: 24, location: "grid" },
+      { id: "term-2", title: "T2", cwd: "/t", cols: 80, rows: 24, location: "grid" },
+      { id: "term-3", title: "T3", cwd: "/t", cols: 80, rows: 24, location: "grid" },
+    ]);
+
+    const { trashPanel } = usePanelStore.getState();
+    trashPanel("term-1");
+    trashPanel("term-2");
+    trashPanel("term-3");
+
+    const state = usePanelStore.getState();
+    const now = Date.now();
+    const mixed = new Map(state.trashedTerminals);
+    // term-1 expired, term-2 expired, term-3 still valid
+    const info1 = mixed.get("term-1")!;
+    const info2 = mixed.get("term-2")!;
+    mixed.set("term-1", { ...info1, expiresAt: now - 1 });
+    mixed.set("term-2", { ...info2, expiresAt: now - 1 });
+    usePanelStore.setState({ trashedTerminals: mixed });
+
+    dispatchVisibilityChange("visible");
+
+    const afterState = usePanelStore.getState();
+    expect(afterState.trashedTerminals.has("term-1")).toBe(false);
+    expect(afterState.trashedTerminals.has("term-2")).toBe(false);
+    expect(afterState.trashedTerminals.has("term-3")).toBe(true);
+    expect(afterState.panelsById["term-3"]?.location).toBe("trash");
   });
 });

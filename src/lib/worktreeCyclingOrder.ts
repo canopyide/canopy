@@ -5,6 +5,7 @@ import { useWorktreeFilterStore } from "@/store/worktreeFilterStore";
 import { computeChipState } from "@/components/Worktree/utils/computeChipState";
 import type { WorktreeLifecycleStage } from "@/components/Worktree/WorktreeCard/hooks/useWorktreeStatus";
 import {
+  compareWorktreeNames,
   findIntegrationWorktree,
   groupByType,
   matchesFilters,
@@ -16,6 +17,8 @@ import {
   type FilterState,
 } from "@/lib/worktreeFilters";
 import { parseExactNumber } from "@/lib/parseExactNumber";
+import { isTerminalVisible } from "@/lib/terminalVisibility";
+import { isAgentTerminal } from "@/utils/terminalType";
 
 function normalizeSnapshot(snap: WorktreeSnapshot): WorktreeState {
   return {
@@ -28,7 +31,9 @@ function normalizeSnapshot(snap: WorktreeSnapshot): WorktreeState {
 function buildDerivedMeta(
   worktree: WorktreeState,
   panelsById: ReturnType<typeof usePanelStore.getState>["panelsById"],
-  panelIds: ReturnType<typeof usePanelStore.getState>["panelIds"]
+  panelIds: ReturnType<typeof usePanelStore.getState>["panelIds"],
+  isInTrash: (id: string) => boolean,
+  worktreeIds: Set<string>
 ): DerivedWorktreeMeta {
   let terminalCount = 0;
   let waitingTerminalCount = 0;
@@ -39,8 +44,10 @@ function buildDerivedMeta(
 
   for (const id of panelIds) {
     const t = panelsById[id];
-    if (!t || t.worktreeId !== worktree.id || t.location === "trash") continue;
+    if (!t || t.worktreeId !== worktree.id || !isTerminalVisible(t, isInTrash, worktreeIds))
+      continue;
     terminalCount++;
+    if (!isAgentTerminal(t)) continue;
     if (t.agentState === "working") hasWorkingAgent = true;
     if (t.agentState === "waiting") {
       hasWaitingAgent = true;
@@ -135,16 +142,27 @@ export function getVisibleWorktreesForCycling(
       const timeA = a.lastActivityTimestamp ?? 0;
       const timeB = b.lastActivityTimestamp ?? 0;
       if (timeA !== timeB) return timeB - timeA;
-      return a.name.localeCompare(b.name);
+      return compareWorktreeNames(a.name, b.name);
     });
   if (rawWorktrees.length === 0) return [];
 
   const panelState = usePanelStore.getState();
+  const validWorktreeIds = new Set<string>();
+  for (const wt of rawWorktrees) {
+    validWorktreeIds.add(wt.id);
+    if (wt.worktreeId) validWorktreeIds.add(wt.worktreeId);
+  }
   const derivedMetaMap = new Map<string, DerivedWorktreeMeta>();
   for (const worktree of rawWorktrees) {
     derivedMetaMap.set(
       worktree.id,
-      buildDerivedMeta(worktree, panelState.panelsById, panelState.panelIds)
+      buildDerivedMeta(
+        worktree,
+        panelState.panelsById,
+        panelState.panelIds,
+        panelState.isInTrash,
+        validWorktreeIds
+      )
     );
   }
 

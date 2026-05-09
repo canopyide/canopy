@@ -26,6 +26,29 @@ const METRICS_FILE = process.env.DAINTREE_PERF_METRICS_FILE
   : null;
 const CAPTURE_ENABLED = SHOULD_CAPTURE && Boolean(METRICS_FILE);
 
+// `os_to_app_boot_ms` measures the wall-clock gap between the spawning
+// process (e.g. Playwright in the cold-start harness) calling `electron.launch`
+// and the main process module load that captures `APP_BOOT_T0`. This window
+// hides Gatekeeper / Defender / notarization scans that `APP_BOOT_START`
+// cannot see. The spawning process injects a `Date.now()` snapshot via env
+// because `performance.now()` clocks are per-process and cannot be subtracted.
+const SPAWN_WALL_MS_RAW = Number(process.env.DAINTREE_PERF_SPAWN_WALL_MS ?? "0");
+const SPAWN_WALL_MS =
+  Number.isFinite(SPAWN_WALL_MS_RAW) && SPAWN_WALL_MS_RAW > 0 ? SPAWN_WALL_MS_RAW : null;
+
+/**
+ * OS-to-app-boot wall-clock gap (ms), or `null` when no spawn anchor was
+ * injected (production launches, project-switch restores, manual `electron .`).
+ * Computed once at module load: `(mainTimeOrigin + APP_BOOT_T0) - spawnWallMs`.
+ * The result is a Unix-epoch delta so cross-process subtraction is valid.
+ */
+export const osToAppBootMs: number | null =
+  SPAWN_WALL_MS !== null ? mainTimeOrigin + APP_BOOT_T0 - SPAWN_WALL_MS : null;
+
+export function getOsToAppBootMs(): number | null {
+  return osToAppBootMs;
+}
+
 function appendPayload(payload: MarkPayload): void {
   if (!CAPTURE_ENABLED || !METRICS_FILE) return;
 

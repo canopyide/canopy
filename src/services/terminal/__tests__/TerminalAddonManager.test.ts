@@ -1,14 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { mockImageAddon, mockSearchAddon } = vi.hoisted(() => ({
+const { mockImageAddon, mockSearchAddon, mockUnicode11Addon } = vi.hoisted(() => ({
   mockImageAddon: vi.fn(),
   mockSearchAddon: vi.fn(),
+  mockUnicode11Addon: vi.fn(),
 }));
 
 vi.mock("@xterm/addon-image", () => ({ ImageAddon: mockImageAddon }));
 vi.mock("@xterm/addon-fit", () => ({ FitAddon: vi.fn() }));
 vi.mock("@xterm/addon-serialize", () => ({ SerializeAddon: vi.fn() }));
 vi.mock("@xterm/addon-search", () => ({ SearchAddon: mockSearchAddon }));
+vi.mock("@xterm/addon-unicode11", () => ({ Unicode11Addon: mockUnicode11Addon }));
 vi.mock("@xterm/addon-web-links", () => ({ WebLinksAddon: vi.fn() }));
 vi.mock("../FileLinksAddon", () => ({
   FileLinksAddon: vi.fn(),
@@ -29,6 +31,7 @@ function createMockTerminal() {
   return {
     loadAddon: vi.fn(),
     registerLinkProvider: vi.fn(() => ({ dispose: vi.fn() })),
+    unicode: { activeVersion: "6" as string },
   } as unknown as Terminal;
 }
 
@@ -55,6 +58,15 @@ describe("TerminalAddonManager", () => {
       expect(mockSearchAddon).toHaveBeenCalledWith({
         highlightLimit: SEARCH_HIGHLIGHT_LIMIT,
       });
+    });
+
+    it("activates Unicode 11 widths so modern emoji and CJK glyphs render at 2 cells (issue #7205)", () => {
+      const terminal = createMockTerminal();
+      setupTerminalAddons(terminal, () => "/tmp");
+
+      expect(mockUnicode11Addon).toHaveBeenCalledTimes(1);
+      expect(terminal.loadAddon).toHaveBeenCalledWith(expect.any(mockUnicode11Addon));
+      expect(terminal.unicode.activeVersion).toBe("11");
     });
   });
 

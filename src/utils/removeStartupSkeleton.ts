@@ -1,9 +1,28 @@
+import { UI_EXIT_DURATION } from "../lib/animationUtils";
+import { prefersReducedMotion } from "../lib/appThemeViewTransition";
+import { flushFinalCls } from "./layoutShiftMonitor";
+import { flushPendingPerfMarks } from "./performance";
+
 const SKELETON_ID = "startup-skeleton";
-const FADE_DURATION_MS = 250;
+
+type ViewTransitionDocument = Document & {
+  startViewTransition?: (callback: () => void) => {
+    ready: Promise<void>;
+    finished: Promise<void>;
+  };
+};
 
 let firstInteractiveNotified = false;
 
 function notifyFirstInteractive(): void {
+  // Snapshot cumulative CLS at the renderer-side first-interactive boundary
+  // before the IPC roundtrip — this is the regression-relevant window. The
+  // follow-up `flushPendingPerfMarks` is required because the only other
+  // flush point (HYDRATE_COMPLETE in stateHydration/index.ts) clears the
+  // buffer; without this drain `renderer_cls_final` and any post-hydration
+  // marks would never reach the NDJSON. Both calls are idempotent.
+  flushFinalCls();
+  flushPendingPerfMarks();
   if (firstInteractiveNotified) return;
   firstInteractiveNotified = true;
   try {
@@ -19,7 +38,10 @@ function notifyFirstInteractive(): void {
  * Fade out and remove the startup skeleton overlay, and signal the main
  * process that the renderer is interactive so it can drain its deferred
  * service queue. Uses requestAnimationFrame to ensure React has painted
- * real content before both the fade and the signal fire.
+ * real content before both the fade and the signal fire, then prefers
+ * the View Transitions API for a GPU-snapshot crossfade — falling back
+ * to a plain CSS opacity transition under reduced-motion / performance
+ * mode / older runtimes.
  */
 export function removeStartupSkeleton(): void {
   const el = document.getElementById(SKELETON_ID);
@@ -31,13 +53,45 @@ export function removeStartupSkeleton(): void {
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       notifyFirstInteractive();
-
       el.setAttribute("aria-busy", "false");
-      el.classList.add("fade-out");
 
+      const doc = document as ViewTransitionDocument;
+      const canViewTransition =
+        typeof doc.startViewTransition === "function" &&
+        doc.visibilityState === "visible" &&
+        !prefersReducedMotion();
+
+      if (canViewTransition) {
+        const transition = doc.startViewTransition!(() => {
+          el.remove();
+        });
+        // The shared `::view-transition-old(root)` / `::view-transition-new(root)`
+        // rules in src/index.css set `animation: none` so the theme-reveal can
+        // drive its own clip-path animation via WAAPI. We follow the same
+        // pattern: fade the old root snapshot out over UI_EXIT_DURATION.
+        transition.ready
+          .then(() => {
+            document.documentElement.animate(
+              { opacity: [1, 0] },
+              {
+                duration: UI_EXIT_DURATION,
+                easing: "ease-out",
+                pseudoElement: "::view-transition-old(root)",
+                fill: "forwards",
+              }
+            );
+          })
+          .catch(() => {
+            // Transition aborted (e.g. another startViewTransition started)
+            // — the callback already removed the skeleton, nothing else to do.
+          });
+        return;
+      }
+
+      el.classList.add("fade-out");
       setTimeout(() => {
         el.remove();
-      }, FADE_DURATION_MS);
+      }, UI_EXIT_DURATION);
     });
   });
 }

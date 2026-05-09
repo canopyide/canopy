@@ -1,6 +1,8 @@
 import { clipboard } from "electron";
 import crypto from "crypto";
+import os from "os";
 import path from "path";
+import { chmod, mkdir, writeFile } from "fs/promises";
 import { pathToFileURL } from "url";
 import { CHANNELS } from "../channels.js";
 import { formatErrorMessage } from "../../../shared/utils/errorMessage.js";
@@ -30,6 +32,7 @@ const FORMAT_TO_EXTENSION: Record<CopyTreeFormat, string> = {
   markdown: "md",
   tree: "txt",
   ndjson: "ndjson",
+  sarif: "sarif",
   xml: "xml",
 };
 
@@ -37,6 +40,32 @@ const getExtensionForFormat = (format: CopyTreeFormat | undefined): string => {
   if (!format) return "xml";
   return FORMAT_TO_EXTENSION[format] ?? "xml";
 };
+
+export function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+/**
+ * Compute the end index of the next PTY chunk so that a UTF-16 surrogate pair
+ * is never split across chunks. Returns an index in `(start, content.length]`
+ * — the boundary is guaranteed to advance, so callers can use `i = end`
+ * without risking an infinite loop even when `chunkSize` is 1.
+ */
+export function nextChunkBoundary(content: string, start: number, chunkSize: number): number {
+  let end = Math.min(start + chunkSize, content.length);
+  if (end < content.length) {
+    const lastUnit = content.charCodeAt(end - 1);
+    if (lastUnit >= 0xd800 && lastUnit <= 0xdbff && end - 1 > start) {
+      end -= 1;
+    }
+  }
+  return end;
+}
 
 export function buildRemoteComputeBlock(worktree: {
   resourceStatus?: { provider?: string; lastStatus?: string; endpoint?: string };
@@ -67,6 +96,7 @@ import {
   CopyTreeInjectPayloadSchema,
   CopyTreeGetFileTreePayloadSchema,
   CopyTreeCancelPayloadSchema,
+  CopyTreeTestConfigPayloadSchema,
 } from "../../schemas/ipc.js";
 import type { CopyTreeCancelPayload, ProjectSettings } from "../../types/index.js";
 import { projectStore } from "../../services/ProjectStore.js";
@@ -308,12 +338,19 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
     }
 
     try {
-      const fs = await import("fs/promises");
-      const os = await import("os");
-      const path = await import("path");
-
       const tempDir = path.join(os.tmpdir(), "daintree-context");
-      await fs.mkdir(tempDir, { recursive: true });
+      await mkdir(tempDir, { recursive: true, mode: 0o700 });
+      // mkdir({ mode }) is ignored when the directory already exists, so
+      // chmod the directory explicitly each run to evict any stale, more
+      // permissive mode left behind by a previous build or another process.
+      // chmod is a no-op for permission bits on Windows.
+      if (process.platform !== "win32") {
+        try {
+          await chmod(tempDir, 0o700);
+        } catch {
+          // best effort — file mode below still protects the contents
+        }
+      }
 
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       const projectName =
@@ -334,14 +371,21 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
       const filename = `${projectName}-${safeBranch}-${timestamp}.${extension}`;
       const filePath = path.join(tempDir, filename);
 
-      await fs.writeFile(filePath, result.content, "utf-8");
+      await writeFile(filePath, result.content, { encoding: "utf8", mode: 0o600 });
 
       if (process.platform === "darwin") {
+        // Electron's `clipboard.writeBuffer` maps to Chromium's
+        // `WritePortableAndPlatformRepresentations`, which calls
+        // `[NSPasteboard clearContents]` on each invocation, so sequential
+        // `writeBuffer` calls cannot install multiple custom UTIs in one
+        // pasteboard session. Keep the legacy `NSFilenamesPboardType` plist
+        // (Finder reads it natively) with the path XML-escaped so a
+        // hostile `TMPDIR` cannot break out of the <string> element.
         const plist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <array>
-    <string>${filePath}</string>
+    <string>${escapeXml(filePath)}</string>
 </array>
 </plist>`;
         clipboard.writeBuffer("NSFilenamesPboardType", Buffer.from(plist, "utf8"));
@@ -464,7 +508,7 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
       const contentToInject = result.content + remoteComputeBlock;
       const CHUNK_SIZE = 4096;
 
-      for (let i = 0; i < contentToInject.length; i += CHUNK_SIZE) {
+      for (let i = 0; i < contentToInject.length; ) {
         if (contextInjectionTracker.isCancelled(injectionId)) {
           console.log(`[${traceId}] CopyTree inject cancelled by user`);
           return {
@@ -482,10 +526,12 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
           };
         }
 
-        const chunk = contentToInject.slice(i, i + CHUNK_SIZE);
+        const end = nextChunkBoundary(contentToInject, i, CHUNK_SIZE);
+        const chunk = contentToInject.slice(i, end);
         deps.ptyClient!.write(validated.terminalId, chunk, traceId);
-        if (i + CHUNK_SIZE < contentToInject.length) {
-          await new Promise((resolve) => setTimeout(resolve, 1));
+        i = end;
+        if (i < contentToInject.length) {
+          await new Promise((resolve) => setImmediate(resolve));
         }
       }
 
@@ -509,7 +555,7 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
       return;
     }
 
-    const validated = parseResult.success ? parseResult.data : {};
+    const validated = parseResult.data;
 
     if (validated.injectionId) {
       const wasActive = contextInjectionTracker.markCancelled(validated.injectionId);
@@ -574,7 +620,6 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
     const requestedWorktreeId = getStringField(payload, "worktreeId") ?? "unknown";
     console.log(`[${traceId}] CopyTree test-config started for worktree ${requestedWorktreeId}`);
 
-    const { CopyTreeTestConfigPayloadSchema } = await import("../../schemas/ipc.js");
     const parseResult = CopyTreeTestConfigPayloadSchema.safeParse(payload);
     if (!parseResult.success) {
       console.error(

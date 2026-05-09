@@ -10,9 +10,26 @@ import { logInfo, logWarn, logDebug } from "../utils/logger.js";
 import type { WorktreeSnapshot as WorktreeState } from "../../shared/types/workspace-host.js";
 import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 
-const DEFAULT_POLL_INTERVAL_MS = 60 * 1000;
+// Focus-aware polling cadence: faster when any Daintree window is focused so
+// users see PR transitions promptly, slower when fully blurred to conserve the
+// GitHub API quota during background sessions.
+const FOCUSED_POLL_INTERVAL_MS = 30 * 1000;
+const BLURRED_POLL_INTERVAL_MS = 2 * 60 * 1000;
+// Minimum gap between blur→focus catch-up polls. Matches SWR's 5s
+// `focusThrottleInterval` convention so rapid alt-tabbing doesn't burst the API.
+const FOCUS_CATCHUP_THROTTLE_MS = 5 * 1000;
 
-const ERROR_BACKOFF_INTERVALS = [1 * 60 * 1000, 2 * 60 * 1000, 5 * 60 * 1000];
+// AWS full-jitter backoff: sleep = random_between(floor, min(cap, base * 2^attempt))
+// See https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/
+const BACKOFF_BASE_MS = 30_000;
+const BACKOFF_CAP_MS = 5 * 60_000;
+const BACKOFF_FLOOR_MS = 1_000;
+
+function computeBackoff(consecutiveErrors: number): number {
+  const attempt = Math.max(0, consecutiveErrors - 1);
+  const cap = Math.min(BACKOFF_CAP_MS, BACKOFF_BASE_MS * 2 ** attempt);
+  return BACKOFF_FLOOR_MS + Math.random() * (cap - BACKOFF_FLOOR_MS);
+}
 
 const MAX_CONSECUTIVE_ERRORS = 3;
 const UPDATE_DEBOUNCE_MS = 100;
@@ -46,11 +63,12 @@ function isCandidateBranch(branchName: string | undefined): boolean {
 class PullRequestService {
   private pollTimer: NodeJS.Timeout | null = null;
   private revalidationTimer: NodeJS.Timeout | null = null;
-  private pollIntervalMs: number = DEFAULT_POLL_INTERVAL_MS;
+  private pollIntervalMs: number = FOCUSED_POLL_INTERVAL_MS;
   private cwd: string = "";
   private isPolling: boolean = false;
   private consecutiveErrors: number = 0;
   private nextRetryAt: number = 0;
+  private lastFocusCatchupAt: number = Number.NEGATIVE_INFINITY;
 
   get isEnabled(): boolean {
     return this.nextRetryAt === 0 || Date.now() >= this.nextRetryAt;
@@ -177,15 +195,7 @@ class PullRequestService {
     }
 
     if (intervalMs) {
-      if (intervalMs < DEFAULT_POLL_INTERVAL_MS) {
-        logWarn("PR polling interval too short - clamping to minimum 60s", {
-          requested: intervalMs,
-          clamped: DEFAULT_POLL_INTERVAL_MS,
-        });
-        this.pollIntervalMs = DEFAULT_POLL_INTERVAL_MS;
-      } else {
-        this.pollIntervalMs = intervalMs;
-      }
+      this.pollIntervalMs = intervalMs;
     }
 
     this.isPolling = true;
@@ -242,6 +252,73 @@ class PullRequestService {
     this.detectedPRs.clear();
     this.consecutiveErrors = 0;
     this.nextRetryAt = 0;
+    this.lastFocusCatchupAt = Number.NEGATIVE_INFINITY;
+  }
+
+  /**
+   * Switch poll cadence based on global window-focus state. Focused = ~30s
+   * (snappy enough that PR transitions surface promptly), blurred = ~120s
+   * (conserves GitHub API quota during long background sessions). Called
+   * from main via the workspace-host IPC pipe; powerMonitor.ts is the focus
+   * aggregator and idempotency guard, so this method is only invoked on a
+   * real focus-state transition.
+   *
+   * On focus regain, also fires an immediate catch-up poll throttled to
+   * FOCUS_CATCHUP_THROTTLE_MS (5s) — protects against rapid alt-tabbing
+   * causing API bursts. The throttle is co-located with the rate-limited
+   * resource (this service) rather than the IPC layer to avoid a second
+   * round-trip just to decide whether to skip.
+   */
+  public setFocusCadence(focused: boolean): void {
+    const targetInterval = focused ? FOCUSED_POLL_INTERVAL_MS : BLURRED_POLL_INTERVAL_MS;
+    this.updatePollInterval(targetInterval);
+
+    if (!focused || !this.isPolling) {
+      return;
+    }
+
+    const now = Date.now();
+    if (now - this.lastFocusCatchupAt < FOCUS_CATCHUP_THROTTLE_MS) {
+      logDebug("Skipping PR focus catch-up — within throttle window", {
+        sinceLastMs: now - this.lastFocusCatchupAt,
+      });
+      return;
+    }
+
+    if (!this.hasUnresolvedCandidates() || !this.isEnabled) {
+      return;
+    }
+
+    this.lastFocusCatchupAt = now;
+
+    // Cancel the scheduled poll and run an immediate check; the .finally
+    // re-arms the timer at the new (focused) cadence. Avoids waiting up to
+    // 30s after focus regain for the next normal tick.
+    if (this.pollTimer) {
+      clearTimeout(this.pollTimer);
+      this.pollTimer = null;
+    }
+
+    void this.checkForPRs()
+      .catch((err) => this.handleError(formatErrorMessage(err, "PR focus catch-up failed")))
+      .finally(() => this.scheduleNextPoll());
+  }
+
+  private updatePollInterval(ms: number): void {
+    if (this.pollIntervalMs === ms) {
+      return;
+    }
+    this.pollIntervalMs = ms;
+    logDebug("PR poll cadence updated", { intervalMs: ms });
+
+    if (!this.isPolling) {
+      return;
+    }
+    if (this.pollTimer) {
+      clearTimeout(this.pollTimer);
+      this.pollTimer = null;
+    }
+    this.scheduleNextPoll();
   }
 
   public destroy(): void {
@@ -255,6 +332,15 @@ class PullRequestService {
   private scheduleNextPoll(): void {
     if (!this.isPolling) {
       return;
+    }
+
+    // Defensive clear: setFocusCadence and updatePollInterval can interleave
+    // such that a `pollTimer` is already armed when the catch-up's `.finally`
+    // re-enters this method. Without this clear we'd orphan the prior timer
+    // and double the polling rate until `stop()`.
+    if (this.pollTimer) {
+      clearTimeout(this.pollTimer);
+      this.pollTimer = null;
     }
 
     if (!this.isEnabled) {
@@ -282,8 +368,7 @@ class PullRequestService {
 
     let interval = this.pollIntervalMs;
     if (this.consecutiveErrors > 0) {
-      const backoffIndex = Math.min(this.consecutiveErrors - 1, ERROR_BACKOFF_INTERVALS.length - 1);
-      interval = ERROR_BACKOFF_INTERVALS[backoffIndex];
+      interval = computeBackoff(this.consecutiveErrors);
       logDebug("Using backoff interval", { errors: this.consecutiveErrors, intervalMs: interval });
     }
 
@@ -558,8 +643,7 @@ class PullRequestService {
     logWarn("PR check failed", { error: errorMsg, consecutiveErrors: this.consecutiveErrors });
 
     if (this.consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-      const backoffIndex = Math.min(this.consecutiveErrors - 1, ERROR_BACKOFF_INTERVALS.length - 1);
-      const backoffMs = ERROR_BACKOFF_INTERVALS[backoffIndex];
+      const backoffMs = computeBackoff(this.consecutiveErrors);
       this.nextRetryAt = Date.now() + backoffMs;
       logWarn("Too many consecutive errors - pausing PR polling", { retryInMs: backoffMs });
       events.emit("ui:notify", {

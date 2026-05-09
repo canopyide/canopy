@@ -7,6 +7,11 @@ export const config: AgentConfig = {
   color: "#111111",
   iconId: "interpreter",
   supportsContextInjection: true,
+  // Open Interpreter is a code-execution host, not an MCP client — it runs
+  // Python/shell/JS on behalf of an outer agent rather than consuming
+  // external MCP servers. The Daintree assistant overlay has nothing to
+  // inject into it, so it is structurally ineligible.
+  supports: false,
   tooltip: "general code execution — runs Python, shell, and JS on the host",
   usageUrl: "https://docs.openinterpreter.com/",
   packages: {
@@ -95,7 +100,7 @@ export const config: AgentConfig = {
     primaryConfidence: 0.95,
     fallbackConfidence: 0.7,
     promptConfidence: 0.85,
-    debounceMs: 4000,
+    debounceMs: 6000,
   },
   routing: {
     capabilities: ["python", "shell", "javascript", "code-execution", "general-purpose"],

@@ -2,9 +2,16 @@ import { useEffect, useRef, useCallback, useId, createContext, useContext } from
 import { createPortal } from "react-dom";
 import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
+import { getVisibleTabbableElements } from "@/lib/accessibility";
 import { logError } from "@/utils/logger";
 import { ScrollShadow } from "@/components/ui/ScrollShadow";
 import { useOverlayState, useEscapeStack } from "@/hooks";
+import {
+  registerDialogEscapeBackstop,
+  isTopmostDialogBackstop,
+  radixLayerWasOpenWhenEscapePressed,
+  markBackstopConsumedEscape,
+} from "@/lib/dialogEscapeBackstop";
 import { usePortalStore } from "@/store";
 import { useAnimatedPresence } from "@/hooks/useAnimatedPresence";
 import {
@@ -47,9 +54,6 @@ export interface AppDialogProps {
 
 export type { DialogSize, DialogVariant, DialogZIndex };
 
-const TABBABLE_SELECTOR =
-  'a[href], area[href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), audio[controls], video[controls], [contenteditable]:not([contenteditable="false"]), [tabindex]:not([tabindex^="-"])';
-
 const sizeClasses: Record<DialogSize, string> = {
   sm: "max-w-md",
   md: "max-w-xl",
@@ -86,10 +90,20 @@ export function AppDialog({
   const portalOffset = portalOpen ? portalWidth : 0;
 
   const restoreFocus = useCallback(() => {
-    if (previousActiveElement.current) {
-      previousActiveElement.current.focus();
-      previousActiveElement.current = null;
+    const el = previousActiveElement.current;
+    previousActiveElement.current = null;
+    if (!el) return;
+    if (document.contains(el)) {
+      el.focus();
+      return;
     }
+    // Trigger was unmounted before close (e.g., the row that opened
+    // a destructive confirm dialog was removed by the action itself).
+    // Hand focus to the first tabbable child of the app shell rather
+    // than letting it silently fall to <body>.
+    const root = document.getElementById("root");
+    const fallback = root ? getVisibleTabbableElements(root)[0] : undefined;
+    fallback?.focus();
   }, []);
 
   const { isVisible, shouldRender } = useAnimatedPresence({
@@ -104,15 +118,13 @@ export function AppDialog({
     if (isOpen) {
       previousActiveElement.current = document.activeElement as HTMLElement;
       requestAnimationFrame(() => {
-        const first = dialogRef.current?.querySelector<HTMLElement>(TABBABLE_SELECTOR);
+        const first = dialogRef.current ? getVisibleTabbableElements(dialogRef.current)[0] : null;
         if (first) {
           first.focus();
         } else {
           dialogRef.current?.focus();
         }
       });
-    } else {
-      restoreFocus();
     }
   }, [isOpen, restoreFocus]);
 
@@ -142,6 +154,67 @@ export function AppDialog({
 
   useEscapeStack(isOpen, handleClose);
 
+  // Backstop Escape handler on document bubble.
+  //
+  // The bubble-phase escape stack dispatcher (`useGlobalEscapeDispatcher`)
+  // bails when `defaultPrevented` is true. Radix DismissableLayers
+  // (tooltips, popovers) register Escape handling on document with
+  // capture and call `preventDefault()` when they're the highest
+  // layer — including while they're mid-exit (data-state="closed" but
+  // still mounted by Presence). That preempts the dispatcher and
+  // leaves the dialog stuck open.
+  //
+  // This handler runs on document bubble (after target handlers like
+  // a search input clearing its query) and ignores defaultPrevented,
+  // so the dialog still closes. Inner handlers can opt out by calling
+  // `e.stopPropagation()` — which the settings search input already
+  // does when clearing a non-empty query.
+  // Backstop registration must NOT churn on every handleClose-identity change
+  // (re-registering pushes the entry to the top of the stack and breaks LIFO
+  // when this dialog is rendered underneath another). Hold the latest closer
+  // in a ref and only register once per `isOpen && dismissible` cycle.
+  const handleCloseRef = useRef(handleClose);
+  useEffect(() => {
+    handleCloseRef.current = handleClose;
+  }, [handleClose]);
+
+  useEffect(() => {
+    if (!isOpen || !dismissible) return;
+    const closeThis = () => {
+      void handleCloseRef.current();
+    };
+    const unregister = registerDialogEscapeBackstop(closeThis);
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.isComposing || e.repeat) return;
+      // Only fire for the topmost dialog so layered overlays close one
+      // at a time (LIFO), matching the escape-stack semantics.
+      if (!isTopmostDialogBackstop(closeThis)) return;
+      // If a Radix popover / select / dropdown was OPEN when Escape entered
+      // the event chain, it is the one handling this keypress — bail so the
+      // dialog underneath stays open. The backstop exists only for the
+      // mid-exit case where Radix's stale `preventDefault` would otherwise
+      // leave the dialog stuck.
+      if (radixLayerWasOpenWhenEscapePressed()) return;
+      // We deliberately do NOT bail on `e.defaultPrevented`: Radix Select /
+      // Combobox triggers call `preventDefault` on Escape even when their
+      // popup is closed, which would leave the dialog stuck open if we
+      // honored that flag. The capture-time radix-open snapshot above is
+      // the correct gate.
+      //
+      // Mark the event consumed so the window-level escape-stack
+      // dispatcher (`useGlobalEscapeDispatcher`) bails — otherwise, after
+      // `closeThis` synchronously unregisters the top entry, the dispatcher
+      // walks one layer deeper and closes the dialog underneath.
+      markBackstopConsumedEscape();
+      closeThis();
+    };
+    document.addEventListener("keydown", handler);
+    return () => {
+      document.removeEventListener("keydown", handler);
+      unregister();
+    };
+  }, [isOpen, dismissible]);
+
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (e.key === "Tab" && dialogRef.current) {
       // Don't interfere if another modal (e.g., a nested dialog portal) has focus
@@ -151,9 +224,7 @@ export function AppDialog({
         if (closestModal && !closestModal.contains(dialogRef.current)) return;
       }
 
-      const focusable = Array.from(
-        dialogRef.current.querySelectorAll<HTMLElement>(TABBABLE_SELECTOR)
-      );
+      const focusable = getVisibleTabbableElements(dialogRef.current);
 
       if (focusable.length === 0) {
         e.preventDefault();
@@ -346,7 +417,7 @@ export interface DialogAction {
   onClick: () => void;
   disabled?: boolean;
   loading?: boolean;
-  intent?: "default" | "destructive" | "primary";
+  intent?: "default" | "destructive";
 }
 
 interface AppDialogFooterProps {
@@ -392,10 +463,9 @@ AppDialog.Footer = function AppDialogFooter({
             <Button
               variant="ghost"
               onClick={secondaryAction.onClick}
-              disabled={secondaryAction.disabled || secondaryAction.loading}
+              disabled={secondaryAction.disabled}
               className="text-daintree-text/70 hover:text-daintree-text"
             >
-              {secondaryAction.loading && <Spinner />}
               {secondaryAction.label}
             </Button>
           )}
@@ -404,6 +474,7 @@ AppDialog.Footer = function AppDialogFooter({
               variant={getPrimaryVariant()}
               onClick={primaryAction.onClick}
               disabled={primaryAction.disabled || primaryAction.loading}
+              aria-busy={primaryAction.loading || undefined}
             >
               {primaryAction.loading && <Spinner />}
               {primaryAction.label}

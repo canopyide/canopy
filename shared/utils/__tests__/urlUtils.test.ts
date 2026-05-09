@@ -154,6 +154,49 @@ describe("urlUtils", () => {
     it("returns plain text unchanged", () => {
       expect(stripAnsiAndOscCodes("hello world")).toBe("hello world");
     });
+
+    it("strips OSC 8 hyperlinks with non-empty params (BEL terminator)", () => {
+      expect(stripAnsiAndOscCodes("\x1b]8;id=vte-123;http://example.com\x07text\x1b]8;;\x07")).toBe(
+        "text"
+      );
+    });
+
+    it("strips OSC 8 hyperlinks with non-empty params (ST terminator)", () => {
+      expect(
+        stripAnsiAndOscCodes("\x1b]8;id=gcc-456;http://example.com\x1b\\text\x1b]8;;\x1b\\")
+      ).toBe("text");
+    });
+
+    it("strips DCS string sequences", () => {
+      expect(stripAnsiAndOscCodes("before \x1bP@k=30;payload\x1b\\ after")).toBe("before  after");
+    });
+
+    it("strips SOS string sequences", () => {
+      expect(stripAnsiAndOscCodes("before \x1bXpayload\x1b\\ after")).toBe("before  after");
+    });
+
+    it("strips PM string sequences", () => {
+      expect(stripAnsiAndOscCodes("before \x1b^payload\x1b\\ after")).toBe("before  after");
+    });
+
+    it("strips APC string sequences", () => {
+      expect(stripAnsiAndOscCodes("before \x1b_payload\x1b\\ after")).toBe("before  after");
+    });
+
+    it("strips 8-bit DCS equivalent (0x90)", () => {
+      expect(stripAnsiAndOscCodes("before \x90payload\x9c after")).toBe("before  after");
+    });
+
+    it("strips Kitty graphics APC sequence", () => {
+      expect(
+        stripAnsiAndOscCodes("before \x1b_Gi=1,aW1hZ2U6Ly9sb2NhbGhvc3Q6OTk5OQ==\x1b\\ after")
+      ).toBe("before  after");
+    });
+
+    it("does not strip adjacent text when OSC 8 has non-empty params", () => {
+      const input = "url: \x1b]8;id=vte-1;http://example.com\x07link\x1b]8;;\x07 here";
+      expect(stripAnsiAndOscCodes(input)).toBe("url: link here");
+    });
   });
 
   describe("normalizeBrowserUrl", () => {

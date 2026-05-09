@@ -9,24 +9,28 @@ import {
   addCustomPreset,
   removeCcrConfig,
   writeCcrConfig,
+  waitForCcrPresets,
   countPresetOptions,
   getPresetOptionLabels,
   getPresetRowByName,
 } from "../helpers/presets";
 
 let ctx: AppContext;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Presets: Custom Duplicate (35–44)", () => {
   test.beforeAll(async () => {
     removeCcrConfig();
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "preset-dup" });
+    const { dir: fixtureDir, cleanup } = createFixtureRepo({ name: "preset-dup" });
+    fixtureCleanup = cleanup;
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Preset Dup Test");
   });
 
   test.afterAll(async () => {
     removeCcrConfig();
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   const goToClaudeSettings = async () => {
@@ -68,7 +72,7 @@ test.describe.serial("Presets: Custom Duplicate (35–44)", () => {
     writeCcrConfig([
       { id: "ccr-dup", name: "CCR Dup Test", model: "dup-model", baseUrl: "https://dup.local" },
     ]);
-    await ctx.window.waitForTimeout(35_000);
+    await waitForCcrPresets(ctx.window, ["CCR Dup Test"]);
     await goToClaudeSettings();
 
     const labels = await getPresetOptionLabels(ctx.window);
@@ -99,12 +103,12 @@ test.describe.serial("Presets: Custom Duplicate (35–44)", () => {
   });
 
   test("40. Duplicate button appears on CCR presets", async () => {
-    writeCcrConfig([{ id: "ccr-dupvis", model: "dupvis-model" }]);
-    await ctx.window.waitForTimeout(35_000);
+    writeCcrConfig([{ id: "ccr-dupvis", name: "Dup Visible", model: "dupvis-model" }]);
+    await waitForCcrPresets(ctx.window, ["Dup Visible"]);
     await goToClaudeSettings();
 
     const labels = await getPresetOptionLabels(ctx.window);
-    const ccrLabel = labels.find((l) => l.includes("ccr-dupvis"));
+    const ccrLabel = labels.find((l) => l.includes("Dup Visible"));
     if (ccrLabel) {
       const detail = await getPresetRowByName(ctx.window, ccrLabel.replace("CCR", "").trim());
       const dupBtn = detail.locator(SEL.preset.duplicateButton);

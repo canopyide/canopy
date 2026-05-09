@@ -1,4 +1,4 @@
-export type WorkerInboundMessage =
+export type TerminalOutputWorkerInboundMessage =
   | {
       type: "INIT_BUFFER";
       buffers: SharedArrayBuffer[];
@@ -8,7 +8,7 @@ export type WorkerInboundMessage =
   | { type: "RESET_TERMINAL"; id: string }
   | { type: "STOP" };
 
-export type WorkerOutboundMessage = {
+export type TerminalOutputWorkerOutboundMessage = {
   type: "OUTPUT_BATCH";
   batches: Array<{ id: string; data: string | Uint8Array }>;
 };

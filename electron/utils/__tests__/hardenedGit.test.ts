@@ -18,6 +18,7 @@ import {
   validateCwd,
   createHardenedGit,
   createAuthenticatedGit,
+  createBackgroundFetchGit,
   createWslHardenedGit,
   getGitLocaleEnv,
   HARDENED_GIT_CONFIG,
@@ -116,7 +117,11 @@ describe("createHardenedGit", () => {
 
     const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(options.unsafe).toEqual({
+      allowUnsafeAskPass: true,
+      allowUnsafeCredentialHelper: true,
       allowUnsafeProtocolOverride: true,
+      allowUnsafeFsMonitor: true,
+      allowUnsafePager: true,
       allowUnsafeSshCommand: true,
       allowUnsafeGitProxy: true,
       allowUnsafeHooksPath: true,
@@ -161,13 +166,14 @@ describe("createHardenedGit", () => {
     expect(options).not.toHaveProperty("abort");
   });
 
-  it("sets LC_MESSAGES=C and LANGUAGE empty via .env()", () => {
+  it("sets LC_MESSAGES=C, LANGUAGE empty, and GIT_OPTIONAL_LOCKS=0 via .env()", () => {
     createHardenedGit("/test/repo");
 
     expect(mockGitInstance.env).toHaveBeenCalledWith(
       expect.objectContaining({
         LC_MESSAGES: "C",
         LANGUAGE: "",
+        GIT_OPTIONAL_LOCKS: "0",
       })
     );
   });
@@ -220,6 +226,40 @@ describe("createHardenedGit", () => {
     }
   });
 
+  it("strips inherited git execution env before applying hardened overrides", () => {
+    const envKeys = [
+      "EDITOR",
+      "GIT_CONFIG_COUNT",
+      "GIT_CONFIG_KEY_0",
+      "GIT_CONFIG_VALUE_0",
+      "GIT_PAGER",
+      "GIT_SSH",
+      "GIT_SSH_COMMAND",
+      "PAGER",
+      "PREFIX",
+      "SSH_ASKPASS",
+    ];
+    const originals = new Map(envKeys.map((key) => [key, process.env[key]]));
+    for (const key of envKeys) {
+      process.env[key] = "inherited-unsafe-value";
+    }
+    try {
+      createHardenedGit("/test/repo", undefined, "linux");
+
+      const envArg = mockGitInstance.env.mock.calls[0][0];
+      for (const key of envKeys) {
+        expect(envArg[key]).toBeUndefined();
+      }
+      expect(envArg.GIT_ASKPASS).toBe("true");
+      expect(envArg.GIT_TERMINAL_PROMPT).toBe("0");
+    } finally {
+      for (const [key, value] of originals) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+
   it("locale env values override conflicting process.env entries", () => {
     const origMessages = process.env.LC_MESSAGES;
     const origLanguage = process.env.LANGUAGE;
@@ -236,6 +276,54 @@ describe("createHardenedGit", () => {
       else process.env.LC_MESSAGES = origMessages;
       if (origLanguage === undefined) delete process.env.LANGUAGE;
       else process.env.LANGUAGE = origLanguage;
+    }
+  });
+
+  it("suppresses optional .git/index.lock writes via GIT_OPTIONAL_LOCKS=0", () => {
+    createHardenedGit("/test/repo");
+
+    const envArg = mockGitInstance.env.mock.calls[0][0];
+    expect(envArg.GIT_OPTIONAL_LOCKS).toBe("0");
+  });
+
+  it("blocks interactive credential prompts via GIT_TERMINAL_PROMPT=0", () => {
+    createHardenedGit("/test/repo");
+
+    const envArg = mockGitInstance.env.mock.calls[0][0];
+    expect(envArg.GIT_TERMINAL_PROMPT).toBe("0");
+  });
+
+  it("disables Windows GCM interactive dialogs via GCM_INTERACTIVE=Never", () => {
+    createHardenedGit("/test/repo");
+
+    const envArg = mockGitInstance.env.mock.calls[0][0];
+    expect(envArg.GCM_INTERACTIVE).toBe("Never");
+  });
+
+  it("sets GIT_ASKPASS=true on POSIX so credential helpers fail fast", () => {
+    createHardenedGit("/test/repo", undefined, "darwin");
+
+    const envArg = mockGitInstance.env.mock.calls[0][0];
+    expect(envArg.GIT_ASKPASS).toBe("true");
+  });
+
+  it("sets GIT_ASKPASS=true on linux", () => {
+    createHardenedGit("/test/repo", undefined, "linux");
+
+    const envArg = mockGitInstance.env.mock.calls[0][0];
+    expect(envArg.GIT_ASKPASS).toBe("true");
+  });
+
+  it("does not set GIT_ASKPASS on Windows (no `true` binary on PATH)", () => {
+    const origAskpass = process.env.GIT_ASKPASS;
+    delete process.env.GIT_ASKPASS;
+    try {
+      createHardenedGit("/test/repo", undefined, "win32");
+
+      const envArg = mockGitInstance.env.mock.calls[0][0];
+      expect(envArg.GIT_ASKPASS).toBeUndefined();
+    } finally {
+      if (origAskpass !== undefined) process.env.GIT_ASKPASS = origAskpass;
     }
   });
 });
@@ -278,7 +366,7 @@ describe("createAuthenticatedGit", () => {
     expect(options.config).toContain("core.precomposeunicode=true");
   });
 
-  it("sets GIT_TERMINAL_PROMPT and hardened GIT_SSH_COMMAND via .env()", () => {
+  it("sets GIT_TERMINAL_PROMPT, hardened GIT_SSH_COMMAND, and GIT_OPTIONAL_LOCKS=0 via .env()", () => {
     createAuthenticatedGit("/test/repo");
 
     expect(mockGitInstance.env).toHaveBeenCalledWith(
@@ -286,17 +374,46 @@ describe("createAuthenticatedGit", () => {
         GIT_TERMINAL_PROMPT: "0",
         GIT_SSH_COMMAND:
           "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=15",
+        GIT_OPTIONAL_LOCKS: "0",
       })
     );
   });
 
-  it("sets LC_MESSAGES=C and LANGUAGE empty via .env()", () => {
+  it("sets GIT_OPTIONAL_LOCKS=0 to suppress incidental lock writes", () => {
+    createAuthenticatedGit("/test/repo");
+
+    const envArg = mockGitInstance.env.mock.calls[0][0];
+    expect(envArg.GIT_OPTIONAL_LOCKS).toBe("0");
+  });
+
+  it("sets GCM_INTERACTIVE=Never to prevent Windows GCM dialogs", () => {
+    createAuthenticatedGit("/test/repo");
+
+    const envArg = mockGitInstance.env.mock.calls[0][0];
+    expect(envArg.GCM_INTERACTIVE).toBe("Never");
+  });
+
+  it("does NOT set GIT_ASKPASS so legitimate credential helpers can resolve", () => {
+    const origAskpass = process.env.GIT_ASKPASS;
+    delete process.env.GIT_ASKPASS;
+    try {
+      createAuthenticatedGit("/test/repo");
+
+      const envArg = mockGitInstance.env.mock.calls[0][0];
+      expect(envArg.GIT_ASKPASS).toBeUndefined();
+    } finally {
+      if (origAskpass !== undefined) process.env.GIT_ASKPASS = origAskpass;
+    }
+  });
+
+  it("sets LC_MESSAGES=C, LANGUAGE empty, and GIT_OPTIONAL_LOCKS=0 via .env()", () => {
     createAuthenticatedGit("/test/repo");
 
     expect(mockGitInstance.env).toHaveBeenCalledWith(
       expect.objectContaining({
         LC_MESSAGES: "C",
         LANGUAGE: "",
+        GIT_OPTIONAL_LOCKS: "0",
       })
     );
   });
@@ -340,10 +457,12 @@ describe("createAuthenticatedGit", () => {
   it("forced env values override conflicting process.env entries", () => {
     const origPrompt = process.env.GIT_TERMINAL_PROMPT;
     const origSsh = process.env.GIT_SSH_COMMAND;
+    const origPager = process.env.GIT_PAGER;
     const origMessages = process.env.LC_MESSAGES;
     const origLanguage = process.env.LANGUAGE;
     process.env.GIT_TERMINAL_PROMPT = "1";
     process.env.GIT_SSH_COMMAND = "ssh -i /custom/key";
+    process.env.GIT_PAGER = "dangerous-pager";
     process.env.LC_MESSAGES = "fr_FR.UTF-8";
     process.env.LANGUAGE = "fr_FR";
     try {
@@ -354,6 +473,7 @@ describe("createAuthenticatedGit", () => {
       expect(envArg.GIT_SSH_COMMAND).toBe(
         "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=15"
       );
+      expect(envArg.GIT_PAGER).toBeUndefined();
       expect(envArg.LC_MESSAGES).toBe("C");
       expect(envArg.LANGUAGE).toBe("");
     } finally {
@@ -361,6 +481,8 @@ describe("createAuthenticatedGit", () => {
       else process.env.GIT_TERMINAL_PROMPT = origPrompt;
       if (origSsh === undefined) delete process.env.GIT_SSH_COMMAND;
       else process.env.GIT_SSH_COMMAND = origSsh;
+      if (origPager === undefined) delete process.env.GIT_PAGER;
+      else process.env.GIT_PAGER = origPager;
       if (origMessages === undefined) delete process.env.LC_MESSAGES;
       else process.env.LC_MESSAGES = origMessages;
       if (origLanguage === undefined) delete process.env.LANGUAGE;
@@ -380,7 +502,11 @@ describe("createAuthenticatedGit", () => {
 
     const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(options.unsafe).toEqual({
+      allowUnsafeAskPass: true,
+      allowUnsafeCredentialHelper: true,
       allowUnsafeProtocolOverride: true,
+      allowUnsafeFsMonitor: true,
+      allowUnsafePager: true,
       allowUnsafeSshCommand: true,
       allowUnsafeGitProxy: true,
       allowUnsafeHooksPath: true,
@@ -424,6 +550,96 @@ describe("createAuthenticatedGit", () => {
 
     const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(options.config).toContain("transfer.bundleURI=false");
+  });
+});
+
+describe("createBackgroundFetchGit", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("layers background-fetch config on top of authenticated config", () => {
+    const controller = new AbortController();
+    createBackgroundFetchGit("/test/repo", { signal: controller.signal });
+
+    const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(options.config).toContain("core.packedRefsTimeout=5000");
+    expect(options.config).toContain("http.lowSpeedLimit=1000");
+    expect(options.config).toContain("http.lowSpeedTime=30");
+    expect(options.config).toContain("gc.auto=0");
+    // Inherits authenticated base — no credential-blocking entries.
+    expect(options.config).not.toContain("credential.helper=");
+    expect(options.config).not.toContain("core.askpass=");
+  });
+
+  it("forwards the abort signal to simple-git", () => {
+    const controller = new AbortController();
+    createBackgroundFetchGit("/test/repo", { signal: controller.signal });
+
+    const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(options.abort).toBe(controller.signal);
+  });
+
+  it("sets GIT_ASKPASS=true on POSIX so credential helpers fail fast", () => {
+    const controller = new AbortController();
+    createBackgroundFetchGit("/test/repo", {
+      signal: controller.signal,
+      platform: "darwin",
+    });
+
+    // Last env() call wins — the POSIX askpass override is applied second.
+    const lastEnv = mockGitInstance.env.mock.calls[mockGitInstance.env.mock.calls.length - 1][0];
+    expect(lastEnv.GIT_ASKPASS).toBe("true");
+    expect(lastEnv.GIT_TERMINAL_PROMPT).toBe("0");
+    expect(lastEnv.GIT_OPTIONAL_LOCKS).toBe("0");
+  });
+
+  it("re-states GIT_OPTIONAL_LOCKS and GCM_INTERACTIVE in the POSIX second .env() call", () => {
+    const controller = new AbortController();
+    createBackgroundFetchGit("/test/repo", {
+      signal: controller.signal,
+      platform: "darwin",
+    });
+
+    // The second .env() replaces (not merges) the first call's env, so the
+    // hardening flags from createAuthenticatedGit must be re-asserted here.
+    const lastEnv = mockGitInstance.env.mock.calls[mockGitInstance.env.mock.calls.length - 1][0];
+    expect(lastEnv.GIT_OPTIONAL_LOCKS).toBe("0");
+    expect(lastEnv.GCM_INTERACTIVE).toBe("Never");
+  });
+
+  it("does not set GIT_ASKPASS on Windows (no `true` binary on PATH)", () => {
+    const controller = new AbortController();
+    createBackgroundFetchGit("/test/repo", {
+      signal: controller.signal,
+      platform: "win32",
+    });
+
+    // The base authenticated env() call doesn't set GIT_ASKPASS, and the
+    // POSIX-only override is skipped. Only one env() call should happen.
+    expect(mockGitInstance.env.mock.calls).toHaveLength(1);
+    const env = mockGitInstance.env.mock.calls[0][0];
+    expect(env.GIT_ASKPASS).toBeUndefined();
+  });
+
+  it("appends caller-supplied extraConfig after background-fetch config", () => {
+    const controller = new AbortController();
+    createBackgroundFetchGit("/test/repo", {
+      signal: controller.signal,
+      extraConfig: ["transfer.bundleURI=false"],
+    });
+
+    const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(options.config).toContain("transfer.bundleURI=false");
+    expect(options.config).toContain("core.packedRefsTimeout=5000");
+  });
+
+  it("inherits block timeout 0 from authenticated profile", () => {
+    const controller = new AbortController();
+    createBackgroundFetchGit("/test/repo", { signal: controller.signal });
+
+    const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(options.timeout).toEqual({ block: 0 });
   });
 });
 
@@ -525,7 +741,7 @@ describe("createWslHardenedGit", () => {
     expect(options.config).toHaveLength(HARDENED_GIT_CONFIG.length);
   });
 
-  it("sets WSL_DISTRO_NAME in env for diagnostics", () => {
+  it("sets WSL_DISTRO_NAME, GIT_OPTIONAL_LOCKS=0, and locale in env for diagnostics", () => {
     createWslHardenedGit({
       distro: "Ubuntu",
       uncPath: "\\\\wsl$\\Ubuntu\\home\\user\\proj",
@@ -534,8 +750,25 @@ describe("createWslHardenedGit", () => {
 
     const envArg = mockGitInstance.env.mock.calls[0][0];
     expect(envArg.WSL_DISTRO_NAME).toBe("Ubuntu");
+    expect(envArg.LC_CTYPE).toBe("C.UTF-8");
+    expect(envArg.LC_ALL).toBe("");
     expect(envArg.LC_MESSAGES).toBe("C");
     expect(envArg.LANGUAGE).toBe("");
+    expect(envArg.GIT_OPTIONAL_LOCKS).toBe("0");
+  });
+
+  it("applies the same env hardening as createHardenedGit (Linux git inside WSL)", () => {
+    createWslHardenedGit({
+      distro: "Ubuntu",
+      uncPath: "\\\\wsl$\\Ubuntu\\home\\user\\proj",
+      posixPath: "/home/user/proj",
+    });
+
+    const envArg = mockGitInstance.env.mock.calls[0][0];
+    expect(envArg.GIT_OPTIONAL_LOCKS).toBe("0");
+    expect(envArg.GIT_TERMINAL_PROMPT).toBe("0");
+    expect(envArg.GIT_ASKPASS).toBe("true");
+    expect(envArg.GCM_INTERACTIVE).toBe("Never");
   });
 
   it("forwards abort signal when provided", () => {
@@ -562,7 +795,11 @@ describe("createWslHardenedGit", () => {
 
     const options = (simpleGit as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(options.unsafe).toEqual({
+      allowUnsafeAskPass: true,
+      allowUnsafeCredentialHelper: true,
       allowUnsafeProtocolOverride: true,
+      allowUnsafeFsMonitor: true,
+      allowUnsafePager: true,
       allowUnsafeSshCommand: true,
       allowUnsafeGitProxy: true,
       allowUnsafeHooksPath: true,
@@ -571,22 +808,25 @@ describe("createWslHardenedGit", () => {
 });
 
 describe("getGitLocaleEnv", () => {
-  it("returns LC_CTYPE=C.UTF-8 and LANG=C.UTF-8 on win32", () => {
+  it("returns LC_CTYPE=C.UTF-8, LANG=C.UTF-8, and GIT_OPTIONAL_LOCKS=0 on win32", () => {
     expect(getGitLocaleEnv("win32")).toEqual({
       LC_CTYPE: "C.UTF-8",
       LANG: "C.UTF-8",
+      GIT_OPTIONAL_LOCKS: "0",
     });
   });
 
-  it("returns LC_CTYPE=en_US.UTF-8 on darwin (macOS lacks C.UTF-8)", () => {
+  it("returns LC_CTYPE=en_US.UTF-8 and GIT_OPTIONAL_LOCKS=0 on darwin (macOS lacks C.UTF-8)", () => {
     expect(getGitLocaleEnv("darwin")).toEqual({
       LC_CTYPE: "en_US.UTF-8",
+      GIT_OPTIONAL_LOCKS: "0",
     });
   });
 
-  it("returns LC_CTYPE=C.UTF-8 on linux", () => {
+  it("returns LC_CTYPE=C.UTF-8 and GIT_OPTIONAL_LOCKS=0 on linux", () => {
     expect(getGitLocaleEnv("linux")).toEqual({
       LC_CTYPE: "C.UTF-8",
+      GIT_OPTIONAL_LOCKS: "0",
     });
   });
 

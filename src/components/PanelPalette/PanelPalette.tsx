@@ -2,12 +2,13 @@ import { useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { AppPaletteDialog, PaletteFooterHints } from "@/components/ui/AppPaletteDialog";
 import { PaletteOverflowNotice } from "@/components/ui/PaletteOverflowNotice";
+import { HighlightedText, findMatchIndices } from "@/components/ui/HighlightedText";
 import type { PanelKindOption } from "@/hooks/usePanelPalette";
 import type { FuseResultMatch } from "@/hooks/useSearchablePalette";
 import { PanelKindIcon } from "./PanelKindIcon";
 import { usePanelStore } from "@/store/panelStore";
 import { usePanelLimitStore } from "@/store/panelLimitStore";
-import { useKeybindingDisplay } from "@/hooks/useKeybinding";
+import { useEffectiveCombo } from "@/hooks/useKeybinding";
 
 interface PanelPaletteProps {
   isOpen: boolean;
@@ -22,30 +23,6 @@ interface PanelPaletteProps {
   onSelect: (kind: PanelKindOption) => void;
   onConfirm: () => void;
   onClose: () => void;
-}
-
-function HighlightText({
-  text,
-  indices,
-}: {
-  text: string;
-  indices: readonly [number, number][] | undefined;
-}) {
-  if (!indices?.length) return <>{text}</>;
-  const sorted = [...indices].sort((a, b) => a[0] - b[0]);
-  const parts: React.ReactNode[] = [];
-  let lastIndex = 0;
-  sorted.forEach(([start, end], i) => {
-    if (start > lastIndex) parts.push(text.substring(lastIndex, start));
-    parts.push(
-      <mark key={i} className="bg-daintree-accent/25 text-inherit rounded-sm">
-        {text.substring(start, end + 1)}
-      </mark>
-    );
-    lastIndex = end + 1;
-  });
-  if (lastIndex < text.length) parts.push(text.substring(lastIndex));
-  return <>{parts}</>;
 }
 
 const SECTION_LABELS: Record<"agent" | "tool" | "resume", string> = {
@@ -125,10 +102,12 @@ export function PanelPalette({
     return count;
   });
   const hardLimit = usePanelLimitStore((state) => state.hardLimit);
-  const keyHint = useKeybindingDisplay("panel.palette");
+  const panelPaletteShortcut = useEffectiveCombo("panel.palette");
   const showCounter = hardLimit > 0 && panelCount / hardLimit >= 0.75;
 
   const isSearching = query.trim().length > 0;
+  const selectedKind =
+    selectedIndex >= 0 && selectedIndex < results.length ? results[selectedIndex] : null;
 
   const renderOption = (kind: PanelKindOption, index: number) => {
     const isUnavailable = kind.installed === false;
@@ -158,15 +137,10 @@ export function PanelPalette({
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-sm font-medium text-daintree-text">
-            {(() => {
-              const kindMatches = matchesById.get(kind.id);
-              const nameMatch = kindMatches?.find((m) => m.key === "name");
-              return nameMatch ? (
-                <HighlightText text={kind.name} indices={nameMatch.indices} />
-              ) : (
-                kind.name
-              );
-            })()}
+            <HighlightedText
+              text={kind.name}
+              indices={findMatchIndices(matchesById.get(kind.id), "name")}
+            />
           </div>
           {kind.description && (
             <div className="text-xs text-daintree-text/50 truncate">{kind.description}</div>
@@ -215,7 +189,7 @@ export function PanelPalette({
     <AppPaletteDialog isOpen={isOpen} onClose={onClose} ariaLabel="Panel palette">
       <AppPaletteDialog.Header
         label={showCounter ? `New Panel (${panelCount} / ${hardLimit})` : "New Panel"}
-        keyHint={keyHint || undefined}
+        shortcut={panelPaletteShortcut}
       >
         <AppPaletteDialog.Input
           inputRef={inputRef}
@@ -237,15 +211,19 @@ export function PanelPalette({
       </AppPaletteDialog.Header>
 
       <AppPaletteDialog.Body>
-        <div id="panel-list" role="listbox" aria-label="Panel types">
-          {results.length === 0 ? (
-            <div className="px-3 py-8 text-center text-daintree-text/50 text-sm">{`No panel types match "${query}"`}</div>
-          ) : isSearching ? (
-            results.map((kind, index) => renderOption(kind, index))
-          ) : (
-            renderSectionedList()
-          )}
-        </div>
+        {results.length === 0 ? (
+          <AppPaletteDialog.Empty
+            query={query}
+            emptyMessage="No panel types available"
+            noMatchMessage={`No panel types match "${query.length > 40 ? query.slice(0, 40) + "…" : query}"`}
+          />
+        ) : (
+          <div id="panel-list" role="listbox" aria-label="Panel types">
+            {isSearching
+              ? results.map((kind, index) => renderOption(kind, index))
+              : renderSectionedList()}
+          </div>
+        )}
         {totalResults != null && (
           <PaletteOverflowNotice shown={results.length} total={totalResults} />
         )}
@@ -253,10 +231,12 @@ export function PanelPalette({
 
       <AppPaletteDialog.Footer>
         <PaletteFooterHints
-          primaryHint={{ keys: ["↵"], label: "to create" }}
+          primaryHint={{
+            keys: ["↵"],
+            label: selectedKind ? `to create ${selectedKind.name.toLowerCase()}` : "to create",
+          }}
           hints={[
             { keys: ["↑", "↓"], label: "to navigate" },
-            { keys: ["↵"], label: "to create" },
             { keys: ["Esc"], label: "to close" },
           ]}
         />

@@ -70,7 +70,7 @@ describe.skipIf(shouldSkip)("PtyClient IPC contract (real worker_threads boundar
       await client.waitForReady();
       // Child wired to our fakeChild — proves the mock substitution worked
       // and the real handshake message traversed the worker port.
-      expect((client as any).child).toBe(handle.fakeChild);
+      expect((client as any).lifecycle.child).toBe(handle.fakeChild);
     } finally {
       client.dispose();
     }

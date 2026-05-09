@@ -3,6 +3,7 @@ import { TerminalRefreshTier } from "../../../../shared/types/panel";
 import type { ManagedTerminal } from "../types";
 import { TIER_DOWNGRADE_HYSTERESIS_MS } from "../types";
 import type { RendererPolicyDeps } from "../TerminalRendererPolicy";
+import { preloadMockWebglAddon } from "./_preloadWebglAddon";
 
 vi.mock("@/clients", () => ({
   terminalClient: {
@@ -27,6 +28,7 @@ describe("WebGL lease through tier transitions", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    await preloadMockWebglAddon();
 
     (globalThis as unknown as { window: Window & typeof globalThis }).window = {
       ...(globalThis as unknown as { window?: Window & typeof globalThis }).window,
@@ -208,16 +210,17 @@ describe("onTierApplied handler — WebGL manager integration", () => {
   let managed: ManagedTerminal;
 
   function makeManagedTerminal(agentId?: string | null): ManagedTerminal {
-    // After the #5777 kind collapse, agent identity lives on `agentId`, not
-    // `kind`. WebGL reservation gates on `managed.agentId`. Tests that want
-    // a plain (non-agent) terminal pass `null` (or omit — but `null` is more
-    // explicit and avoids the default-param trap when callers pass `undefined`).
+    // Agent identity lives on `runtimeAgentId`. WebGL reservation gates on it.
+    // Tests that want a plain (non-agent) terminal pass `null` (or omit — but
+    // `null` is more explicit and avoids the default-param trap when callers
+    // pass `undefined`).
     return {
       terminal: { loadAddon: vi.fn(), refresh: vi.fn(), rows: 24 },
       isOpened: true,
+      isVisible: true,
       lastActiveTime: Date.now(),
       kind: "terminal",
-      agentId: agentId === null ? undefined : (agentId ?? "claude"),
+      runtimeAgentId: agentId === null ? undefined : (agentId ?? "claude"),
     } as unknown as ManagedTerminal;
   }
 
@@ -228,10 +231,11 @@ describe("onTierApplied handler — WebGL manager integration", () => {
     const { TerminalWebGLManager } = await import("../TerminalWebGLManager");
     webGLManager = new TerminalWebGLManager();
     managed = makeManagedTerminal();
+    await preloadMockWebglAddon();
   });
 
   function simulateOnTierApplied(id: string, tier: TerminalRefreshTier, m: ManagedTerminal) {
-    if (!(m as unknown as { agentId?: string }).agentId) return;
+    if (!m.runtimeAgentId) return;
 
     if (
       tier === TerminalRefreshTier.FOCUSED ||
@@ -239,7 +243,7 @@ describe("onTierApplied handler — WebGL manager integration", () => {
       tier === TerminalRefreshTier.VISIBLE
     ) {
       webGLManager.ensureContext(id, m);
-    } else {
+    } else if (!m.isVisible) {
       const hadWebGL = webGLManager.isActive(id);
       webGLManager.releaseContext(id);
       if (hadWebGL && m.terminal.rows > 0) {
@@ -274,11 +278,24 @@ describe("onTierApplied handler — WebGL manager integration", () => {
     expect(webGLManager.isActive("t2")).toBe(true);
   });
 
-  it("BACKGROUND releases context for that terminal only", () => {
+  it("BACKGROUND retains context while terminal is visible", () => {
     const managed2 = makeManagedTerminal();
     simulateOnTierApplied("t1", TerminalRefreshTier.FOCUSED, managed);
     simulateOnTierApplied("t2", TerminalRefreshTier.VISIBLE, managed2);
 
+    // Visible agent terminal: tier alone must not release WebGL — that would
+    // cause a one-frame flicker on click while the terminal stays on screen.
+    simulateOnTierApplied("t1", TerminalRefreshTier.BACKGROUND, managed);
+    expect(webGLManager.isActive("t1")).toBe(true);
+    expect(webGLManager.isActive("t2")).toBe(true);
+  });
+
+  it("BACKGROUND releases context when terminal is hidden", () => {
+    const managed2 = makeManagedTerminal();
+    simulateOnTierApplied("t1", TerminalRefreshTier.FOCUSED, managed);
+    simulateOnTierApplied("t2", TerminalRefreshTier.VISIBLE, managed2);
+
+    managed.isVisible = false;
     simulateOnTierApplied("t1", TerminalRefreshTier.BACKGROUND, managed);
     expect(webGLManager.isActive("t1")).toBe(false);
     expect(webGLManager.isActive("t2")).toBe(true);
@@ -357,13 +374,15 @@ describe("onTierApplied handler — WebGL manager integration", () => {
     simulateOnTierApplied("t1", TerminalRefreshTier.FOCUSED, managed);
     expect(webGLManager.isActive("t1")).toBe(true);
 
+    managed.isVisible = false;
     simulateOnTierApplied("t1", TerminalRefreshTier.BACKGROUND, managed);
     expect(webGLManager.isActive("t1")).toBe(false);
     expect(managed.terminal.refresh).toHaveBeenCalledWith(0, 23);
   });
 
   it("agent terminal refresh is NOT called when no WebGL was active", () => {
-    // Never acquired WebGL, go to BACKGROUND
+    // Never acquired WebGL, go to BACKGROUND while hidden
+    managed.isVisible = false;
     simulateOnTierApplied("t1", TerminalRefreshTier.BACKGROUND, managed);
     expect(managed.terminal.refresh).not.toHaveBeenCalled();
   });

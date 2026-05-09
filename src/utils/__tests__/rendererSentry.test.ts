@@ -5,6 +5,7 @@ type SentryInit = {
   integrations?: unknown;
   beforeSend?: (event: unknown) => unknown;
   beforeBreadcrumb?: (breadcrumb: unknown) => unknown;
+  maxBreadcrumbs?: number;
 };
 
 const sentryInit = vi.fn<(opts: SentryInit) => void>();
@@ -64,6 +65,16 @@ describe("rendererSentry", () => {
     expect(result).not.toContain("GlobalHandlers");
     expect(result).toContain("BrowserApiErrors");
     expect(result).toContain("Dedupe");
+  });
+
+  // #7575 — the renderer keeps its own breadcrumb ring buffer, so the bump must
+  // be applied here too or renderer breadcrumbs stay capped at the SDK default 100.
+  it("passes maxBreadcrumbs: 250 to Sentry.init", async () => {
+    const mod = await import("../rendererSentry");
+    await mod.initRendererSentry();
+
+    const opts = sentryInit.mock.calls[0]![0];
+    expect(opts.maxBreadcrumbs).toBe(250);
   });
 
   it.each([
@@ -141,6 +152,38 @@ describe("rendererSentry", () => {
     // The live broadcast must have won; beforeSend must still drop events.
     expect(opts.beforeSend!({ message: "x" })).toBeNull();
     expect(mod.getRendererSentryConsent()).toEqual({ level: "off", hasSeenPrompt: true });
+  });
+
+  it("captureRendererException returns the Sentry event ID when capture succeeds", async () => {
+    const sentry = await import("@sentry/electron/renderer");
+    vi.mocked(sentry.captureException).mockReturnValueOnce("evt-deadbeef");
+
+    const mod = await import("../rendererSentry");
+    const eventId = mod.captureRendererException(new Error("boom"));
+    expect(eventId).toBe("evt-deadbeef");
+  });
+
+  it("captureRendererException returns null when Sentry returns an empty string", async () => {
+    const sentry = await import("@sentry/electron/renderer");
+    vi.mocked(sentry.captureException).mockReturnValueOnce("");
+
+    const mod = await import("../rendererSentry");
+    const eventId = mod.captureRendererException(new Error("boom"));
+    expect(eventId).toBeNull();
+  });
+
+  it("captureRendererException returns null and logs when Sentry throws", async () => {
+    const sentry = await import("@sentry/electron/renderer");
+    vi.mocked(sentry.captureException).mockImplementationOnce(() => {
+      throw new Error("Sentry transport down");
+    });
+    const consoleErr = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const mod = await import("../rendererSentry");
+    const eventId = mod.captureRendererException(new Error("boom"));
+    expect(eventId).toBeNull();
+    expect(consoleErr).toHaveBeenCalled();
+    consoleErr.mockRestore();
   });
 
   it("updateRendererSentryConsent also flips the gate", async () => {

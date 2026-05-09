@@ -12,7 +12,7 @@ import fs from "fs/promises";
 import { existsSync } from "fs";
 import { app } from "electron";
 import { GitService } from "./GitService.js";
-import { isDaintreeError } from "../utils/errorTypes.js";
+import { AppError, isDaintreeError } from "../utils/errorTypes.js";
 import { logError } from "../utils/logger.js";
 import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 import { store } from "../store.js";
@@ -29,7 +29,11 @@ import { ProjectStateManager, type ProjectStateReadResult } from "./ProjectState
 import { ProjectFileStore } from "./ProjectFileStore.js";
 import { GlobalFileStore } from "./GlobalFileStore.js";
 import { ProjectIdentityFiles } from "./ProjectIdentityFiles.js";
-import { cleanupQuarantinedProjectFiles } from "./projectQuarantineCleanup.js";
+import {
+  cleanupQuarantinedProjectFiles,
+  cleanupGlobalQuarantineFiles,
+  cleanupUserDataRootQuarantineFiles,
+} from "./projectQuarantineCleanup.js";
 import { safeRecipeFilename } from "../utils/recipeFilename.js";
 
 import { computeFrecencyScore, FRECENCY_COLD_START } from "./frecency.js";
@@ -60,6 +64,8 @@ function rowToProject(row: ProjectRow): Project {
 
 export class ProjectStore {
   private projectsConfigDir: string;
+  private globalConfigDir: string;
+  private userDataDir: string;
   private settingsManager: ProjectSettingsManager;
   private stateManager: ProjectStateManager;
   private fileStore: ProjectFileStore;
@@ -67,12 +73,13 @@ export class ProjectStore {
   private identityFiles: ProjectIdentityFiles;
 
   constructor() {
-    this.projectsConfigDir = path.join(app.getPath("userData"), "projects");
-    const globalConfigDir = path.join(app.getPath("userData"), "global");
+    this.userDataDir = app.getPath("userData");
+    this.projectsConfigDir = path.join(this.userDataDir, "projects");
+    this.globalConfigDir = path.join(this.userDataDir, "global");
     this.settingsManager = new ProjectSettingsManager(this.projectsConfigDir, store);
     this.stateManager = new ProjectStateManager(this.projectsConfigDir);
     this.fileStore = new ProjectFileStore(this.projectsConfigDir);
-    this.globalFileStore = new GlobalFileStore(globalConfigDir);
+    this.globalFileStore = new GlobalFileStore(this.globalConfigDir);
     this.identityFiles = new ProjectIdentityFiles();
   }
 
@@ -82,6 +89,12 @@ export class ProjectStore {
     }
     void cleanupQuarantinedProjectFiles(this.projectsConfigDir).catch((err) =>
       logError("[ProjectStore] Quarantine cleanup failed", err)
+    );
+    void cleanupGlobalQuarantineFiles(this.globalConfigDir).catch((err) =>
+      logError("[GlobalFileStore] Quarantine cleanup failed", err)
+    );
+    void cleanupUserDataRootQuarantineFiles(this.userDataDir).catch((err) =>
+      logError("[Store] Quarantine cleanup failed", err)
     );
   }
 
@@ -154,13 +167,20 @@ export class ProjectStore {
       }
 
       if (lower.includes("not a git repository")) {
-        throw new Error(`Not a git repository: ${projectPath}`);
+        throw new AppError({
+          code: "NOT_A_GIT_REPO",
+          message: `Not a git repository: ${projectPath}`,
+        });
       }
 
       throw new Error(combined || "Failed to open project");
     }
 
-    const normalizedPath = path.normalize(gitRoot);
+    // NFC-normalize for dedup so a Finder-dragged NFD path and a typed NFC
+    // path map to the same project row on macOS. `path.normalize` only
+    // handles separator/segment normalization; Unicode normalization is
+    // independent.
+    const normalizedPath = path.normalize(gitRoot).normalize("NFC");
 
     const existing = await this.getProjectByPath(normalizedPath);
     if (existing) {
@@ -301,34 +321,44 @@ export class ProjectStore {
     const validStatuses: ProjectStatus[] = ["active", "background", "closed", "missing"];
     const currentProjectId = this.getCurrentProjectId();
 
-    for (const row of rows) {
-      if (row.id === currentProjectId) {
-        if (row.status !== "active") {
-          db.update(projectsTable)
-            .set({ status: "active" })
-            .where(eq(projectsTable.id, row.id))
-            .run();
-          row.status = "active";
+    db.transaction(
+      (tx) => {
+        for (const row of rows) {
+          if (row.id === currentProjectId) {
+            if (row.status !== "active") {
+              tx.update(projectsTable)
+                .set({ status: "active" })
+                .where(eq(projectsTable.id, row.id))
+                .run();
+              row.status = "active";
+            }
+          } else {
+            if (row.status === "active") {
+              if (process.env.DAINTREE_VERBOSE) {
+                console.warn(
+                  `[ProjectStore] Demoting incorrectly active project ${row.id} to background`
+                );
+              }
+              tx.update(projectsTable)
+                .set({ status: "background" })
+                .where(eq(projectsTable.id, row.id))
+                .run();
+              row.status = "background";
+            } else if (
+              row.status !== null &&
+              !validStatuses.includes(row.status as ProjectStatus)
+            ) {
+              tx.update(projectsTable)
+                .set({ status: "closed" })
+                .where(eq(projectsTable.id, row.id))
+                .run();
+              row.status = "closed";
+            }
+          }
         }
-      } else {
-        if (row.status === "active") {
-          console.warn(
-            `[ProjectStore] Demoting incorrectly active project ${row.id} to background`
-          );
-          db.update(projectsTable)
-            .set({ status: "background" })
-            .where(eq(projectsTable.id, row.id))
-            .run();
-          row.status = "background";
-        } else if (row.status !== null && !validStatuses.includes(row.status as ProjectStatus)) {
-          db.update(projectsTable)
-            .set({ status: "closed" })
-            .where(eq(projectsTable.id, row.id))
-            .run();
-          row.status = "closed";
-        }
-      }
-    }
+      },
+      { behavior: "immediate" }
+    );
 
     if (process.env.DAINTREE_VERBOSE) {
       console.log(
@@ -341,7 +371,7 @@ export class ProjectStore {
   }
 
   async getProjectByPath(projectPath: string): Promise<Project | null> {
-    const normalizedPath = path.normalize(projectPath);
+    const normalizedPath = path.normalize(projectPath).normalize("NFC");
     const db = getSharedDb();
     const row = db.select().from(projectsTable).where(eq(projectsTable.path, normalizedPath)).get();
     return row ? rowToProject(row) : null;
@@ -523,31 +553,34 @@ export class ProjectStore {
           now
         );
 
-    db.transaction((tx) => {
-      if (previousProjectId && previousProjectId !== projectId) {
-        console.log(`[ProjectStore] Marking previous project ${previousProjectId} as background`);
-        tx.update(projectsTable)
-          .set({ status: "background" })
-          .where(eq(projectsTable.id, previousProjectId))
+    db.transaction(
+      (tx) => {
+        if (previousProjectId && previousProjectId !== projectId) {
+          console.log(`[ProjectStore] Marking previous project ${previousProjectId} as background`);
+          tx.update(projectsTable)
+            .set({ status: "background" })
+            .where(eq(projectsTable.id, previousProjectId))
+            .run();
+        }
+        tx.insert(appStateTable)
+          .values({ key: "currentProjectId", value: projectId })
+          .onConflictDoUpdate({ target: appStateTable.key, set: { value: projectId } })
           .run();
-      }
-      tx.insert(appStateTable)
-        .values({ key: "currentProjectId", value: projectId })
-        .onConflictDoUpdate({ target: appStateTable.key, set: { value: projectId } })
-        .run();
-      const activeUpdate: {
-        status: "active";
-        lastOpened?: number;
-        frecencyScore?: number;
-        lastAccessedAt?: number;
-      } = { status: "active" };
-      if (!writesSuppressed && newScore !== null) {
-        activeUpdate.lastOpened = now;
-        activeUpdate.frecencyScore = newScore;
-        activeUpdate.lastAccessedAt = now;
-      }
-      tx.update(projectsTable).set(activeUpdate).where(eq(projectsTable.id, projectId)).run();
-    });
+        const activeUpdate: {
+          status: "active";
+          lastOpened?: number;
+          frecencyScore?: number;
+          lastAccessedAt?: number;
+        } = { status: "active" };
+        if (!writesSuppressed && newScore !== null) {
+          activeUpdate.lastOpened = now;
+          activeUpdate.frecencyScore = newScore;
+          activeUpdate.lastAccessedAt = now;
+        }
+        tx.update(projectsTable).set(activeUpdate).where(eq(projectsTable.id, projectId)).run();
+      },
+      { behavior: "immediate" }
+    );
 
     if (process.env.DAINTREE_VERBOSE) {
       const updatedPrevious = previousProjectId ? this.getProjectById(previousProjectId) : null;
@@ -587,6 +620,12 @@ export class ProjectStore {
 
   async getProjectSettings(projectId: string): Promise<ProjectSettings> {
     return this.settingsManager.getProjectSettings(projectId);
+  }
+
+  async getProjectNotificationOverrides(
+    projectIds: string[]
+  ): Promise<Record<string, Partial<NotificationSettings>>> {
+    return this.settingsManager.getProjectNotificationOverrides(projectIds);
   }
 
   async saveProjectSettings(projectId: string, settings: ProjectSettings): Promise<void> {

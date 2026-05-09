@@ -23,6 +23,7 @@ vi.mock("../../utils/hardenedGit.js", () => ({
   createHardenedGit: vi.fn(),
   createAuthenticatedGit: vi.fn(),
   validateCwd: vi.fn(),
+  validateBranchName: vi.fn(),
   getGitLocaleEnv: vi.fn(() => ({ LC_CTYPE: "C.UTF-8" })),
 }));
 vi.mock("../../services/events.js", () => ({ events: { on: vi.fn(), off: vi.fn() } }));

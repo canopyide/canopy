@@ -28,6 +28,15 @@ describe("pty-host emergencyLog", () => {
     it("returns path under DAINTREE_USER_DATA/logs", () => {
       expect(getEmergencyLogPath()).toBe(path.join(tmpDir, "logs", "pty-host.log"));
     });
+
+    it("returns path under cwd/logs when DAINTREE_USER_DATA is unset", () => {
+      delete process.env.DAINTREE_USER_DATA;
+      try {
+        expect(getEmergencyLogPath()).toBe(path.join(process.cwd(), "logs", "pty-host.log"));
+      } finally {
+        process.env.DAINTREE_USER_DATA = tmpDir;
+      }
+    });
   });
 
   describe("appendEmergencyLog", () => {
@@ -42,6 +51,41 @@ describe("pty-host emergencyLog", () => {
       appendEmergencyLog("b\n");
       const content = fs.readFileSync(getEmergencyLogPath(), "utf8");
       expect(content).toBe("a\nb\n");
+    });
+
+    it("appends when file is under the size limit", () => {
+      const logFile = getEmergencyLogPath();
+      const padding = "x".repeat(1024 * 1024 - 200);
+      fs.mkdirSync(path.dirname(logFile), { recursive: true });
+      fs.writeFileSync(logFile, padding, "utf8");
+      const statBefore = fs.statSync(logFile);
+      expect(statBefore.size).toBe(1024 * 1024 - 200);
+
+      appendEmergencyLog("new entry\n");
+      const content = fs.readFileSync(logFile, "utf8");
+      expect(content).toBe(padding + "new entry\n");
+    });
+
+    it("truncates and replaces when file is over the size limit", () => {
+      const logFile = getEmergencyLogPath();
+      const padding = "y".repeat(1024 * 1024 + 100);
+      fs.mkdirSync(path.dirname(logFile), { recursive: true });
+      fs.writeFileSync(logFile, padding, "utf8");
+
+      appendEmergencyLog("fresh start\n");
+      const content = fs.readFileSync(logFile, "utf8");
+      expect(content).toBe("fresh start\n");
+    });
+
+    it("appends when file is exactly at the size limit", () => {
+      const logFile = getEmergencyLogPath();
+      const padding = "z".repeat(1024 * 1024);
+      fs.mkdirSync(path.dirname(logFile), { recursive: true });
+      fs.writeFileSync(logFile, padding, "utf8");
+
+      appendEmergencyLog("boundary append\n");
+      const content = fs.readFileSync(logFile, "utf8");
+      expect(content).toBe(padding + "boundary append\n");
     });
 
     it("does not throw when fs operations fail", () => {
@@ -60,6 +104,7 @@ describe("pty-host emergencyLog", () => {
       expect(content).toContain("[UNCAUGHT_EXCEPTION]");
       expect(content).toContain('"name":"TestError"');
       expect(content).toContain('"message":"test error"');
+      expect(content).toContain('"stack":"TestError: test error');
     });
 
     it("scrubs known secret sigils from error.message and stack", () => {

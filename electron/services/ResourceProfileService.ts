@@ -1,12 +1,20 @@
 import os from "os";
 import { app, powerMonitor } from "electron";
+import {
+  monitorEventLoopDelay,
+  performance,
+  type EventLoopUtilization,
+  type IntervalHistogram,
+} from "node:perf_hooks";
 import { broadcastToRenderer } from "../ipc/utils.js";
 import { CHANNELS } from "../ipc/channels.js";
 import { logInfo } from "../utils/logger.js";
+import { setAlignedInterval } from "../utils/setAlignedInterval.js";
 import type { PtyClient } from "./PtyClient.js";
 import type { WorkspaceClient } from "./WorkspaceClient.js";
 import type { HibernationService } from "./HibernationService.js";
 import type { ProjectViewManager } from "../window/ProjectViewManager.js";
+import type { ProjectStatsService } from "./ProjectStatsService.js";
 import {
   RESOURCE_PROFILE_CONFIGS,
   type ResourceProfile,
@@ -15,8 +23,31 @@ import {
 
 const EVAL_INTERVAL_MS = 30_000;
 const DOWNGRADE_HOLD_MS = 30_000;
-const UPGRADE_HOLD_MS = 60_000;
+const UPGRADE_HOLD_MS = 90_000;
 const WARMUP_TICKS = 2;
+
+// Active event-loop-lag mitigation. The diagnostics handler reads a separate
+// lifetime histogram for IPC; this service owns its own histogram and resets
+// it after each tumbling window so percentile() reflects only the recent slice.
+// p99 is biased low by monitorEventLoopDelay (a long block records as a single
+// large sample, not many) — thresholds are conservative to compensate.
+// AND-gating with eventLoopUtilization rejects three classes of false positive:
+// (1) isolated GC stalls — high p99 from a single long pause, but ELU averages
+// down across the window; (2) bursty IPC reply storms — p99 climbs from
+// queueing but the loop reaches idle between bursts; (3) synchronous native UI
+// work (file dialogs, window-drag, plugin loads that block libuv) — ELU pegs
+// near 1.0 while V8 sits idle waiting on the OS run loop, so p99 stays low.
+// A genuine sustained-saturation event has both high tail latency AND high
+// loop occupancy. ELU alone doesn't catch periodic long sync work; p99 alone
+// trips on the cases above.
+const LAG_SAMPLE_INTERVAL_MS = 5_000;
+const LAG_HISTOGRAM_RESOLUTION_MS = 10;
+const LAG_ENTRY_P99_MS = 250;
+const LAG_ENTRY_ELU = 0.7;
+const LAG_ESCALATE_P99_MS = 500;
+const LAG_EXIT_P99_MS = 150;
+const LAG_ENTER_TICKS_REQUIRED = 2; // 10s sustained
+const LAG_EXIT_TICKS_REQUIRED = 9; // 45s clean
 
 // Memory-pressure thresholds scale with device RAM so machines with very
 // different physical memory behave sensibly. On an 8 GB machine these
@@ -32,6 +63,7 @@ export interface ResourceProfileDeps {
   getWorkspaceClient: () => WorkspaceClient | null;
   getHibernationService: () => HibernationService | null;
   getProjectViewManager: () => ProjectViewManager | null;
+  getProjectStatsService: () => ProjectStatsService | null;
   getUserCachedViewLimit: () => number;
 }
 
@@ -39,14 +71,22 @@ export class ResourceProfileService {
   private currentProfile: ResourceProfile = "balanced";
   private candidateProfile: ResourceProfile | null = null;
   private candidateFirstSeenAt: number | null = null;
-  private interval: NodeJS.Timeout | null = null;
+  private evalCleanup: (() => void) | null = null;
   private tickCount = 0;
   private disposed = false;
   private cachedWorktreeCount = 0;
   private thermalState: "unknown" | "nominal" | "fair" | "serious" | "critical" = "unknown";
   private speedLimit = 100;
+  private isOnBattery = false;
   private readonly memoryThresholdHighMb: number;
   private readonly memoryThresholdLowMb: number;
+  private lagInterval: NodeJS.Timeout | null = null;
+  private lagHistogram: IntervalHistogram | null = null;
+  private lagPreviousElu: EventLoopUtilization | null = null;
+  private lagPressureActive = false;
+  private lagEscalatedActive = false;
+  private lagEnterTicks = 0;
+  private lagExitTicks = 0;
 
   constructor(private deps: ResourceProfileDeps) {
     const totalRamMb = os.totalmem() / 1024 / 1024;
@@ -74,6 +114,32 @@ export class ResourceProfileService {
     }
   };
 
+  private primeThermalState(): void {
+    if (process.platform !== "darwin") return;
+    try {
+      const state = powerMonitor.getCurrentThermalState();
+      if (
+        state === "unknown" ||
+        state === "nominal" ||
+        state === "fair" ||
+        state === "serious" ||
+        state === "critical"
+      ) {
+        this.thermalState = state;
+      }
+    } catch {
+      this.thermalState = "unknown";
+    }
+  }
+
+  private onBatteryPower = (): void => {
+    this.isOnBattery = true;
+  };
+
+  private onAcPower = (): void => {
+    this.isOnBattery = false;
+  };
+
   setWorktreeCount(count: number): void {
     this.cachedWorktreeCount = count;
   }
@@ -83,8 +149,11 @@ export class ResourceProfileService {
   }
 
   start(): void {
-    if (this.interval) return;
+    if (this.evalCleanup) return;
     this.disposed = false;
+    this.tickCount = 0;
+    this.candidateProfile = null;
+    this.candidateFirstSeenAt = null;
 
     logInfo("resource-profile-service-started", { profile: this.currentProfile });
 
@@ -93,15 +162,144 @@ export class ResourceProfileService {
     powerMonitor.on("thermal-state-change", this.onThermalStateChange);
     powerMonitor.on("speed-limit-change", this.onSpeedLimitChange);
 
-    this.interval = setInterval(() => {
+    this.primeThermalState();
+    try {
+      this.isOnBattery = powerMonitor.isOnBatteryPower();
+    } catch {
+      this.isOnBattery = false;
+    }
+    powerMonitor.on("on-battery", this.onBatteryPower);
+    powerMonitor.on("on-ac", this.onAcPower);
+
+    this.evalCleanup = setAlignedInterval(() => {
       this.refreshWorktreeCount();
       this.evaluate();
     }, EVAL_INTERVAL_MS);
-    this.interval.unref();
+
+    this.startLagMonitor();
+  }
+
+  private startLagMonitor(): void {
+    if (this.lagInterval) return;
+    try {
+      this.lagHistogram = monitorEventLoopDelay({
+        resolution: LAG_HISTOGRAM_RESOLUTION_MS,
+      });
+      this.lagHistogram.enable();
+    } catch {
+      // perf_hooks may be unavailable in some embedded contexts; skip silently
+      this.lagHistogram = null;
+      this.lagPreviousElu = null;
+      return;
+    }
+    try {
+      this.lagPreviousElu = performance.eventLoopUtilization();
+    } catch {
+      // ELU unavailable: tear the histogram down so it isn't orphaned in the
+      // native layer accumulating samples no one will ever read.
+      try {
+        this.lagHistogram.disable();
+      } catch {
+        // non-critical
+      }
+      this.lagHistogram = null;
+      this.lagPreviousElu = null;
+      return;
+    }
+    this.lagInterval = setInterval(() => {
+      this.sampleLag();
+    }, LAG_SAMPLE_INTERVAL_MS);
+    this.lagInterval.unref();
+  }
+
+  private sampleLag(): void {
+    if (this.disposed || !this.lagHistogram) return;
+
+    let p99Ms = 0;
+    let maxMs = 0;
+    try {
+      const rawP99 = this.lagHistogram.percentile(99) / 1_000_000;
+      if (Number.isFinite(rawP99)) p99Ms = rawP99;
+      // max is diagnostic-only — never gates entry/exit. Pairs with p99 in logs
+      // so a single long block (which barely moves p99) is still visible.
+      const rawMax = this.lagHistogram.max / 1_000_000;
+      if (Number.isFinite(rawMax)) maxMs = rawMax;
+    } catch {
+      // Read failure: histogram still needs reset below so the window stays bounded.
+    }
+    try {
+      this.lagHistogram.reset();
+    } catch {
+      // non-critical
+    }
+
+    let utilization = 0;
+    try {
+      const current = performance.eventLoopUtilization();
+      const delta = this.lagPreviousElu
+        ? performance.eventLoopUtilization(current, this.lagPreviousElu)
+        : current;
+      this.lagPreviousElu = current;
+      if (Number.isFinite(delta.utilization)) utilization = delta.utilization;
+    } catch {
+      utilization = 0;
+    }
+
+    // Exit path runs first: a window that drops below 150ms while degraded
+    // counts toward recovery even if it would also satisfy the entry condition
+    // on a separate cycle.
+    if (this.lagPressureActive) {
+      if (p99Ms < LAG_EXIT_P99_MS) {
+        this.lagExitTicks += 1;
+        if (this.lagExitTicks >= LAG_EXIT_TICKS_REQUIRED) {
+          this.lagPressureActive = false;
+          this.lagEscalatedActive = false;
+          this.lagEnterTicks = 0;
+          this.lagExitTicks = 0;
+          logInfo("event-loop-lag-cleared", {
+            p99Ms: Math.round(p99Ms),
+            maxMs: Math.round(maxMs),
+          });
+        }
+        return;
+      }
+      this.lagExitTicks = 0;
+
+      if (p99Ms > LAG_ESCALATE_P99_MS && !this.lagEscalatedActive) {
+        this.lagEscalatedActive = true;
+        logInfo("event-loop-lag-escalated", {
+          p99Ms: Math.round(p99Ms),
+          maxMs: Math.round(maxMs),
+          utilization: Math.round(utilization * 100) / 100,
+        });
+      }
+      return;
+    }
+
+    if (p99Ms > LAG_ENTRY_P99_MS && utilization > LAG_ENTRY_ELU) {
+      this.lagEnterTicks += 1;
+      if (this.lagEnterTicks >= LAG_ENTER_TICKS_REQUIRED) {
+        this.lagPressureActive = true;
+        this.lagEnterTicks = 0;
+        logInfo("event-loop-lag-detected", {
+          p99Ms: Math.round(p99Ms),
+          maxMs: Math.round(maxMs),
+          utilization: Math.round(utilization * 100) / 100,
+        });
+        if (this.currentProfile !== "efficiency") {
+          this.applyProfile("efficiency");
+        }
+      }
+    } else {
+      this.lagEnterTicks = 0;
+    }
   }
 
   private refreshWorktreeCount(): void {
     if (this.disposed) return;
+    // Under sustained event-loop saturation, skip the only optional async work
+    // in this service. Cached count is used until pressure clears.
+    if (this.lagEscalatedActive) return;
     const workspaceClient = this.deps.getWorkspaceClient();
     if (!workspaceClient) return;
     workspaceClient
@@ -118,11 +316,33 @@ export class ResourceProfileService {
   stop(): void {
     powerMonitor.removeListener("thermal-state-change", this.onThermalStateChange);
     powerMonitor.removeListener("speed-limit-change", this.onSpeedLimitChange);
+    powerMonitor.removeListener("on-battery", this.onBatteryPower);
+    powerMonitor.removeListener("on-ac", this.onAcPower);
 
-    if (this.interval) {
-      clearInterval(this.interval);
-      this.interval = null;
+    if (this.evalCleanup) {
+      this.evalCleanup();
+      this.evalCleanup = null;
     }
+    if (this.lagInterval) {
+      clearInterval(this.lagInterval);
+      this.lagInterval = null;
+    }
+    if (this.lagHistogram) {
+      try {
+        this.lagHistogram.disable();
+      } catch {
+        // non-critical
+      }
+      this.lagHistogram = null;
+    }
+    this.lagPreviousElu = null;
+    this.lagPressureActive = false;
+    this.lagEscalatedActive = false;
+    this.lagEnterTicks = 0;
+    this.lagExitTicks = 0;
+    this.thermalState = "unknown";
+    this.isOnBattery = false;
+    this.speedLimit = 100;
     this.disposed = true;
     logInfo("resource-profile-service-stopped");
   }
@@ -131,6 +351,15 @@ export class ResourceProfileService {
     this.tickCount++;
 
     if (this.tickCount <= WARMUP_TICKS) return;
+
+    // While the lag monitor holds the floor at efficiency, don't let memory or
+    // worktree-count signals upgrade out of it. Recovery is gated by the lag
+    // exit path which clears the flag and re-enables normal scoring.
+    if (this.lagPressureActive && this.currentProfile === "efficiency") {
+      this.candidateProfile = null;
+      this.candidateFirstSeenAt = null;
+      return;
+    }
 
     const target = this.computeTargetProfile();
 
@@ -170,13 +399,9 @@ export class ResourceProfileService {
       // Skip memory signal on error
     }
 
-    // Battery signal
-    try {
-      if (powerMonitor.isOnBatteryPower()) {
-        pressureScore += 1;
-      }
-    } catch {
-      // Skip battery signal (may throw in utility process context)
+    // Battery signal (cached from startup + transition events)
+    if (this.isOnBattery) {
+      pressureScore += 1;
     }
 
     // Thermal signal (macOS only)
@@ -243,6 +468,16 @@ export class ResourceProfileService {
     if (ptyClient) {
       try {
         ptyClient.setResourceProfile(profile);
+      } catch {
+        // non-critical
+      }
+    }
+
+    // Update project stats polling cadence
+    const statsService = this.deps.getProjectStatsService();
+    if (statsService) {
+      try {
+        statsService.updatePollInterval(config.projectStatsPollInterval);
       } catch {
         // non-critical
       }

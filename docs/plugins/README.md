@@ -23,16 +23,16 @@ Plugins are **sandboxed by convention, not by runtime enforcement.** They run wi
 
 ## Documentation
 
-| Doc                                             | What it covers                                                    |
-| ----------------------------------------------- | ----------------------------------------------------------------- |
-| [Getting started](./getting-started.md)         | Scaffold and run your first plugin in 5 minutes                   |
-| [Manifest reference](./manifest.md)             | Full `plugin.json` schema                                         |
-| [Contribution points](./contribution-points.md) | Every contribution type with examples and current status          |
-| [Host API](./host-api.md)                       | The runtime API your plugin code consumes                         |
-| [Agent extensions](./agent-extensions.md)       | MCP servers and Skills — how plugins extend Daintree's agent loop |
-| [Distribution](./distribution.md)               | Packaging, sharing, installing from file or URL                   |
-| [Development loop](./dev-loop.md)               | The `daintree-plugin` CLI, hot reload, debugging                  |
-| [Architecture](./architecture.md)               | How the plugin system works under the hood                        |
+| Doc | What it covers |
+| --- | --- |
+| [Getting started](./getting-started.md) | Scaffold and run your first plugin in 5 minutes |
+| [Manifest reference](./manifest.md) | Full `plugin.json` schema |
+| [Contribution points](./contribution-points.md) | Every contribution type with examples and current status |
+| [Host API](./host-api.md) | The runtime API your plugin code consumes |
+| [Agent extensions](./agent-extensions.md) | MCP servers and Skills — how plugins extend Daintree's agent loop |
+| [Distribution](./distribution.md) | Packaging, sharing, installing from file or URL |
+| [Development loop](./dev-loop.md) | The `daintree-plugin` CLI, hot reload, debugging |
+| [Architecture](./architecture.md) | How the plugin system works under the hood |
 
 ## Status
 

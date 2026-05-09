@@ -65,8 +65,14 @@ export class ProcessTreeKiller {
     for (const pid of descendants) {
       try {
         process.kill(pid, "SIGTERM");
-      } catch {
-        // ESRCH: process already exited
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        // ESRCH: process already exited — silent. Anything else (e.g. EPERM
+        // on an elevated subprocess) means the survivor stays alive and the
+        // operator needs to know.
+        if (code !== "ESRCH") {
+          console.warn(`[ProcessTreeKiller] SIGTERM pid=${pid}: ${(err as Error).message}`);
+        }
       }
     }
 
@@ -107,8 +113,11 @@ export class ProcessTreeKiller {
     for (const pid of allPids) {
       try {
         process.kill(pid, "SIGKILL");
-      } catch {
-        // ESRCH: process already exited
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code !== "ESRCH") {
+          console.warn(`[ProcessTreeKiller] SIGKILL pid=${pid}: ${(err as Error).message}`);
+        }
       }
     }
   }

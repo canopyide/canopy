@@ -82,7 +82,10 @@ const notifyDismissMock = vi.fn().mockResolvedValue(undefined);
 let toastCounter = 0;
 
 describe("useUpdateListener", () => {
+  const originalPlatformDescriptor = Object.getOwnPropertyDescriptor(process, "platform");
+
   beforeEach(() => {
+    Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
     capturedAvailable = null;
     capturedProgress = null;
     capturedDownloaded = null;
@@ -142,6 +145,9 @@ describe("useUpdateListener", () => {
   afterEach(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     delete (window as any).electron;
+    if (originalPlatformDescriptor) {
+      Object.defineProperty(process, "platform", originalPlatformDescriptor);
+    }
   });
 
   it("subscribes to all three update events and cleans up on unmount", () => {
@@ -155,6 +161,16 @@ describe("useUpdateListener", () => {
     expect(cleanupAvailable).toHaveBeenCalledTimes(1);
     expect(cleanupProgress).toHaveBeenCalledTimes(1);
     expect(cleanupDownloaded).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not subscribe to update events on Windows Store builds", () => {
+    Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+
+    renderHook(() => useUpdateListener());
+
+    expect(window.electron.update.onUpdateAvailable).not.toHaveBeenCalled();
+    expect(window.electron.update.onDownloadProgress).not.toHaveBeenCalled();
+    expect(window.electron.update.onUpdateDownloaded).not.toHaveBeenCalled();
   });
 
   it("calls notify with persistent toast on update-available", () => {

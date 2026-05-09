@@ -32,6 +32,8 @@ function handleRequest(_req: IncomingMessage, res: ServerResponse) {
 }
 
 test.describe.serial("Core: Browser Panel", () => {
+  let fixtureCleanup: (() => void) | undefined;
+
   test.beforeAll(async () => {
     server = createServer(handleRequest);
     await new Promise<void>((resolve) => {
@@ -40,7 +42,8 @@ test.describe.serial("Core: Browser Panel", () => {
     const addr = server.address();
     port = typeof addr === "object" && addr ? addr.port : 0;
 
-    const fixture = createFixtureRepo({ name: "browser-panel-test" });
+    const { dir: fixture, cleanup } = createFixtureRepo({ name: "browser-panel-test" });
+    fixtureCleanup = cleanup;
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixture, "Browser Panel Test");
   });
@@ -48,6 +51,7 @@ test.describe.serial("Core: Browser Panel", () => {
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
     server?.close();
+    fixtureCleanup?.();
   });
 
   test.describe.serial("Navigation and History", () => {
@@ -297,7 +301,14 @@ test.describe.serial("Core: Browser Panel", () => {
       await expect(addressBar).toHaveValue(/console-test/, { timeout: T_LONG });
 
       await browserPanel.locator(SEL.browser.consoleToggle).click();
-      await expect(browserPanel.getByText("No console output")).toBeVisible({ timeout: T_MEDIUM });
+      // The drawer's empty-state copy ("No console output") only renders when
+      // there are zero captured messages — but a freshly-loaded page logs CSP
+      // / favicon warnings before the drawer opens, so empty state is racy.
+      // Assert the drawer is visible by checking for the persistent header
+      // label instead.
+      await expect(browserPanel.getByText("Console", { exact: true })).toBeVisible({
+        timeout: T_MEDIUM,
+      });
     });
 
     test("console displays captured log message", async () => {

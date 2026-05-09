@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { launchApp, closeApp, waitForProcessExit, type AppContext } from "../helpers/launch";
-import { createFixtureRepo } from "../helpers/fixtures";
+import { createFixtureRepo, removePathSync } from "../helpers/fixtures";
 import { openAndOnboardProject } from "../helpers/project";
 import {
   addAndSwitchToProject,
@@ -11,7 +11,7 @@ import { getGridPanelCount, getDockPanelCount, openTerminal } from "../helpers/p
 import { getPtyPid, waitForProcessDeath } from "../helpers/stress";
 import { SEL } from "../helpers/selectors";
 import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
-import { mkdtempSync, rmSync } from "fs";
+import { mkdtempSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 
@@ -74,7 +74,11 @@ async function stopActiveProjectViaSwitcher(
         await window.keyboard.press("Escape");
         return false;
       },
-      { timeout: T_LONG, intervals: [250, 500, 1000] }
+      // Allow up to 2× T_LONG (≈20s locally). The processCount aligned-interval
+      // poll runs every 5s and terminal spawns don't trigger an event-driven
+      // broadcast (only agent-state changes do), so under load the race window
+      // can swallow the first 10s.
+      { timeout: T_LONG * 2, intervals: [250, 500, 1000] }
     )
     .toBe(true);
 
@@ -86,11 +90,12 @@ async function stopActiveProjectViaSwitcher(
 test.describe.serial("Deletion Cleanup: Active project close clears UI", () => {
   let ctx: AppContext;
   let fixtureDir: string;
-  const PROJECT_NAME = "Active Close Test";
+  let fixtureCleanup: (() => void) | undefined;
+  const PROJECT_NAME = "active-close";
   let ptyPids: number[] = [];
 
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "active-close" });
+    ({ dir: fixtureDir, cleanup: fixtureCleanup } = createFixtureRepo({ name: "active-close" }));
     ctx = await launchApp();
 
     // Disable two-pane split mode: spawning exactly 2 terminals triggers a
@@ -127,7 +132,7 @@ test.describe.serial("Deletion Cleanup: Active project close clears UI", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
-    rmSync(fixtureDir, { recursive: true, force: true });
+    fixtureCleanup?.();
   });
 
   test("active project removal shows Close Project dialog", async () => {
@@ -200,7 +205,9 @@ test.describe.serial("Deletion Cleanup: Active project close clears UI", () => {
     await expect(palette).toBeVisible({ timeout: T_MEDIUM });
 
     // Active close does NOT remove from the list — project should still be there
-    await expect(palette.locator(`text="${PROJECT_NAME}"`)).toBeVisible({ timeout: T_SHORT });
+    await expect(palette.getByText(PROJECT_NAME, { exact: false })).toBeVisible({
+      timeout: T_SHORT,
+    });
 
     await window.keyboard.press("Escape");
     await expect(palette).not.toBeVisible({ timeout: T_SHORT });
@@ -213,13 +220,15 @@ test.describe.serial("Deletion Cleanup: Background project removal isolation", (
   let ctx: AppContext;
   let fixtureA: string;
   let fixtureB: string;
-  const PROJECT_A = "Background Active";
-  const PROJECT_B = "Background Remove";
+  let cleanupA: (() => void) | undefined;
+  let cleanupB: (() => void) | undefined;
+  const PROJECT_A = "bg-active";
+  const PROJECT_B = "bg-remove";
   let ptyPidB: number | null = null;
 
   test.beforeAll(async () => {
-    fixtureA = createFixtureRepo({ name: "bg-active" });
-    fixtureB = createFixtureRepo({ name: "bg-remove" });
+    ({ dir: fixtureA, cleanup: cleanupA } = createFixtureRepo({ name: "bg-active" }));
+    ({ dir: fixtureB, cleanup: cleanupB } = createFixtureRepo({ name: "bg-remove" }));
 
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureA, PROJECT_A);
@@ -250,8 +259,8 @@ test.describe.serial("Deletion Cleanup: Background project removal isolation", (
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
-    rmSync(fixtureA, { recursive: true, force: true });
-    rmSync(fixtureB, { recursive: true, force: true });
+    cleanupA?.();
+    cleanupB?.();
   });
 
   test("background removal shows Remove Project dialog", async () => {
@@ -306,7 +315,9 @@ test.describe.serial("Deletion Cleanup: Background project removal isolation", (
     await window.locator(SEL.toolbar.projectSwitcherTrigger).click();
     const palette = window.locator(SEL.projectSwitcher.palette);
     await expect(palette).toBeVisible({ timeout: T_MEDIUM });
-    await expect(palette.locator(`text="${PROJECT_B}"`)).not.toBeVisible({ timeout: T_SHORT });
+    await expect(palette.getByText(PROJECT_B, { exact: false })).not.toBeVisible({
+      timeout: T_SHORT,
+    });
 
     await window.keyboard.press("Escape");
     await expect(palette).not.toBeVisible({ timeout: T_SHORT });
@@ -326,14 +337,16 @@ test.describe.serial("Deletion Cleanup: Background removal persists across resta
   let userDataDir: string;
   let fixtureA: string;
   let fixtureB: string;
+  let cleanupA: (() => void) | undefined;
+  let cleanupB: (() => void) | undefined;
   let ctx: AppContext | null = null;
-  const PROJECT_A = "Persist Active";
-  const PROJECT_B = "Persist Remove";
+  const PROJECT_A = "persist-active";
+  const PROJECT_B = "persist-remove";
 
   test.beforeAll(async () => {
     userDataDir = mkdtempSync(path.join(tmpdir(), "daintree-e2e-deletion-persist-"));
-    fixtureA = createFixtureRepo({ name: "persist-active" });
-    fixtureB = createFixtureRepo({ name: "persist-remove" });
+    ({ dir: fixtureA, cleanup: cleanupA } = createFixtureRepo({ name: "persist-active" }));
+    ({ dir: fixtureB, cleanup: cleanupB } = createFixtureRepo({ name: "persist-remove" }));
   });
 
   test.afterAll(async () => {
@@ -343,9 +356,9 @@ test.describe.serial("Deletion Cleanup: Background removal persists across resta
       if (pid) await waitForProcessExit(pid).catch(() => {});
       ctx = null;
     }
-    rmSync(userDataDir, { recursive: true, force: true });
-    rmSync(fixtureA, { recursive: true, force: true });
-    rmSync(fixtureB, { recursive: true, force: true });
+    removePathSync(userDataDir);
+    cleanupA?.();
+    cleanupB?.();
   });
 
   test("removed project stays gone after app restart", async () => {
@@ -372,7 +385,9 @@ test.describe.serial("Deletion Cleanup: Background removal persists across resta
     await ctx.window.locator(SEL.toolbar.projectSwitcherTrigger).click();
     const palette1 = ctx.window.locator(SEL.projectSwitcher.palette);
     await expect(palette1).toBeVisible({ timeout: T_MEDIUM });
-    await expect(palette1.locator(`text="${PROJECT_B}"`)).not.toBeVisible({ timeout: T_SHORT });
+    await expect(palette1.getByText(PROJECT_B, { exact: false })).not.toBeVisible({
+      timeout: T_SHORT,
+    });
     await ctx.window.keyboard.press("Escape");
 
     // Graceful close
@@ -394,7 +409,9 @@ test.describe.serial("Deletion Cleanup: Background removal persists across resta
     await w2.locator(SEL.toolbar.projectSwitcherTrigger).click();
     const palette2 = w2.locator(SEL.projectSwitcher.palette);
     await expect(palette2).toBeVisible({ timeout: T_MEDIUM });
-    await expect(palette2.locator(`text="${PROJECT_B}"`)).not.toBeVisible({ timeout: T_SHORT });
+    await expect(palette2.getByText(PROJECT_B, { exact: false })).not.toBeVisible({
+      timeout: T_SHORT,
+    });
 
     await w2.keyboard.press("Escape");
   });

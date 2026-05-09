@@ -193,7 +193,7 @@ export class GitHubStatsCache {
         mkdirSync(dir, { recursive: true });
       }
 
-      resilientAtomicWriteFileSync(this.cacheFilePath, JSON.stringify(cache, null, 2), "utf8");
+      resilientAtomicWriteFileSync(this.cacheFilePath, JSON.stringify(cache), "utf8");
     } catch (error) {
       console.error("[GitHubStatsCache] Failed to save cache:", error);
     }
@@ -208,6 +208,28 @@ export class GitHubStatsCache {
 
     const age = Date.now() - normalized.lastUpdated;
     if (age > MAX_CACHE_AGE_MS || age < 0) {
+      return null;
+    }
+
+    return normalized;
+  }
+
+  /**
+   * Bootstrap read with a relaxed TTL. Same disk path as `get()` but rejects
+   * entries older than `maxAgeMs` (default 60 minutes) instead of the strict
+   * 10-minute `MAX_CACHE_AGE_MS`. Used by the cold-start hydration path so the
+   * toolbar pill shows cached counts immediately — "old number marked stale"
+   * beats an em-dash.
+   */
+  getForBootstrap(repoKey: string, maxAgeMs = 60 * 60 * 1000): CachedStats | null {
+    const cache = this.load();
+    const normalized = normalizeCachedStats((cache.projects as Record<string, unknown>)[repoKey]);
+    if (!normalized) {
+      return null;
+    }
+
+    const age = Date.now() - normalized.lastUpdated;
+    if (age > maxAgeMs || age < 0) {
       return null;
     }
 

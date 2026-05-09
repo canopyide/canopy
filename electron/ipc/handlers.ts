@@ -44,6 +44,7 @@ import { registerMilestonesHandlers } from "./handlers/milestones.js";
 import { registerShortcutHintsHandlers } from "./handlers/shortcutHints.js";
 import { registerVoiceInputHandlers } from "./handlers/voiceInput.js";
 import { registerMcpServerHandlers } from "./handlers/mcpServer.js";
+import { registerHelpAssistantHandlers } from "./handlers/helpAssistant.js";
 import { registerWebviewHandlers } from "./handlers/webview.js";
 import { registerDiagnosticsHandlers } from "./handlers/diagnostics.js";
 import { registerPerfHandlers } from "./handlers/perf.js";
@@ -53,6 +54,7 @@ import { registerDemoHandlers } from "./handlers/demo.js";
 import { registerRecoveryHandlers } from "./handlers/recovery.js";
 import { registerPluginHandlers } from "./handlers/plugin.js";
 import { registerConnectivityHandlers } from "./handlers/connectivity.js";
+import { registerScratchHandlers } from "./handlers/scratch/index.js";
 import { events } from "../services/events.js";
 import {
   typedHandle,
@@ -141,6 +143,7 @@ export function registerIpcHandlers(deps: HandlerDependencies): () => void {
     register(() => registerShortcutHintsHandlers());
     register(() => registerVoiceInputHandlers(deps));
     register(() => registerMcpServerHandlers());
+    register(() => registerHelpAssistantHandlers());
     register(() => registerWebviewHandlers(deps));
     register(() => registerDiagnosticsHandlers(deps));
 
@@ -150,6 +153,7 @@ export function registerIpcHandlers(deps: HandlerDependencies): () => void {
     register(() => registerPluginHandlers());
     register(() => registerPerfHandlers());
     register(() => registerConnectivityHandlers());
+    register(() => registerScratchHandlers(deps));
   } catch (error) {
     runCleanups(cleanupFunctions);
     throw error;

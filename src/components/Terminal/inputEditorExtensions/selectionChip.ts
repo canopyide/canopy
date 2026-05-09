@@ -2,39 +2,36 @@ import { EditorView, Decoration, WidgetType, hoverTooltip } from "@codemirror/vi
 import { StateField } from "@codemirror/state";
 import { getAllAtSelectionTokens, type AtSelectionToken } from "../hybridInputParsing";
 import { TERMINAL_ICON_SVG } from "./base";
+import { chipPendingDeleteField, isChipSelected } from "./chipBackspace";
+import { createTrustedHTML, setTrustedInnerHTML } from "@/lib/trustedTypesPolicy";
 
 interface SelectionChipState {
-  decorations: ReturnType<typeof Decoration.set>;
   tokens: AtSelectionToken[];
 }
 
 function buildSelectionChipState(text: string): SelectionChipState {
-  const tokens = getAllAtSelectionTokens(text);
-  if (tokens.length === 0) {
-    return { decorations: Decoration.none, tokens: [] };
-  }
-
-  const decorations = tokens.map((token) =>
-    Decoration.replace({
-      widget: new SelectionChipWidget(),
-    }).range(token.start, token.end)
-  );
-  return { decorations: Decoration.set(decorations), tokens };
+  return { tokens: getAllAtSelectionTokens(text) };
 }
 
 class SelectionChipWidget extends WidgetType {
-  eq() {
-    return true;
+  constructor(readonly isSelected: boolean) {
+    super();
+  }
+
+  eq(other: SelectionChipWidget) {
+    return this.isSelected === other.isSelected;
   }
 
   toDOM() {
     const span = document.createElement("span");
-    span.className = "cm-selection-chip";
+    span.className = this.isSelected
+      ? "cm-selection-chip cm-chip-pending-delete"
+      : "cm-selection-chip";
     span.setAttribute("role", "img");
     span.setAttribute("aria-label", "Terminal selection");
 
     const icon = document.createElement("span");
-    icon.innerHTML = TERMINAL_ICON_SVG;
+    setTrustedInnerHTML(icon, createTrustedHTML(TERMINAL_ICON_SVG));
     icon.style.display = "inline-flex";
     icon.style.alignItems = "center";
     span.appendChild(icon);
@@ -61,7 +58,18 @@ export const selectionChipField = StateField.define<SelectionChipState>({
     return buildSelectionChipState(tr.state.doc.toString());
   },
   provide: (f) => [
-    EditorView.decorations.from(f, (state) => state.decorations),
+    EditorView.decorations.of((view) => {
+      const chipState = view.state.field(f, false);
+      if (!chipState || chipState.tokens.length === 0) return Decoration.none;
+      const pending = view.state.field(chipPendingDeleteField, false) ?? null;
+      const ranges = chipState.tokens.map((token) => {
+        const selected = isChipSelected(pending, token.start, token.end);
+        return Decoration.replace({
+          widget: new SelectionChipWidget(selected),
+        }).range(token.start, token.end);
+      });
+      return Decoration.set(ranges, true);
+    }),
     EditorView.atomicRanges.of((view) => {
       const chipState = view.state.field(f, false);
       if (!chipState || chipState.tokens.length === 0) return Decoration.none;

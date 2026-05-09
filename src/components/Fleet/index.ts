@@ -1,5 +1,5 @@
 export { FleetArmingRibbon } from "./FleetArmingRibbon";
-export { FleetArmingDialog } from "./FleetArmingDialog";
+export { FleetPickerPalette } from "./FleetPickerPalette";
 export {
   buildFleetTargetPreviews,
   executeFleetBroadcast,

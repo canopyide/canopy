@@ -20,13 +20,14 @@ import { T_SHORT, T_MEDIUM, T_LONG } from "../helpers/timeouts";
 test.describe.serial("Core: Review Hub Staging Edge Cases", () => {
   let ctx: AppContext;
   let fixtureDir: string;
+  let fixtureCleanup: (() => void) | undefined;
 
   test.describe.serial("Selective staging and unstaging", () => {
     test.beforeAll(async () => {
-      fixtureDir = createFixtureRepo({
+      ({ dir: fixtureDir, cleanup: fixtureCleanup } = createFixtureRepo({
         name: "review-hub-staging",
         withUncommittedChanges: true,
-      });
+      }));
       writeFileSync(path.join(fixtureDir, "extra-a.txt"), "Extra file A\n");
       writeFileSync(path.join(fixtureDir, "extra-b.txt"), "Extra file B\n");
 
@@ -44,6 +45,7 @@ test.describe.serial("Core: Review Hub Staging Edge Cases", () => {
 
     test.afterAll(async () => {
       if (ctx?.app) await closeApp(ctx.app);
+      fixtureCleanup?.();
     });
 
     test("shows 3 files in Changes section", async () => {
@@ -191,11 +193,13 @@ test.describe.serial("Core: Review Hub Staging Edge Cases", () => {
   });
 
   test.describe.serial("Commit validation and post-commit state", () => {
+    let cleanupCommit: (() => void) | undefined;
+
     test.beforeAll(async () => {
-      fixtureDir = createFixtureRepo({
+      ({ dir: fixtureDir, cleanup: cleanupCommit } = createFixtureRepo({
         name: "review-hub-commit",
         withUncommittedChanges: true,
-      });
+      }));
       writeFileSync(path.join(fixtureDir, "extra-a.txt"), "Extra file A\n");
       writeFileSync(path.join(fixtureDir, "extra-b.txt"), "Extra file B\n");
 
@@ -213,6 +217,7 @@ test.describe.serial("Core: Review Hub Staging Edge Cases", () => {
 
     test.afterAll(async () => {
       if (ctx?.app) await closeApp(ctx.app);
+      cleanupCommit?.();
     });
 
     test("commit button disabled with empty message", async () => {

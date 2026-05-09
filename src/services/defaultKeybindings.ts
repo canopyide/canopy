@@ -146,14 +146,6 @@ export const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     category: "Terminal",
   },
   {
-    actionId: "terminal.focusDock",
-    combo: "Cmd+Alt+D",
-    scope: "global",
-    priority: 0,
-    description: "Focus active dock terminal",
-    category: "Terminal",
-  },
-  {
     actionId: "terminal.toggleDockAll",
     combo: "Cmd+Alt+Shift+M",
     scope: "global",
@@ -415,6 +407,22 @@ export const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     scope: "global",
     priority: 0,
     description: "Toggle arm focused pane (Join the fleet)",
+    category: "Fleet",
+  },
+  {
+    actionId: "fleet.armFocused",
+    combo: "X",
+    scope: "worktreeGrid",
+    priority: 5,
+    description: "Toggle arm focused pane (no modifier, grid only)",
+    category: "Fleet",
+  },
+  {
+    actionId: "fleet.armAll",
+    combo: "Cmd+Alt+A",
+    scope: "global",
+    priority: 0,
+    description: "Arm all eligible terminals in current worktree",
     category: "Fleet",
   },
   {
@@ -756,6 +764,14 @@ export const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     category: "Worktrees",
   },
   {
+    actionId: "worktree.createDialog.open",
+    combo: "Cmd+K N",
+    scope: "global",
+    priority: 0,
+    description: "Create a new worktree",
+    category: "Worktrees",
+  },
+  {
     actionId: "worktree.overview",
     combo: "Cmd+Shift+O",
     scope: "global",
@@ -773,18 +789,18 @@ export const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "project.mruCycleOlder",
-    combo: "Cmd+Alt+-",
+    combo: "Cmd+Alt+=",
     scope: "global",
     priority: 10,
-    description: "Switch to previous project (hold to scrub older)",
+    description: "Switch project (hold to scrub down)",
     category: "Project",
   },
   {
     actionId: "project.mruCycleNewer",
-    combo: "Cmd+Alt+=",
+    combo: "Cmd+Alt+-",
     scope: "global",
     priority: 10,
-    description: "Switch to previous project (hold to scrub newer)",
+    description: "Switch project (hold to scrub up)",
     category: "Project",
   },
   {
@@ -854,6 +870,16 @@ export const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   {
     actionId: "window.zoomIn",
     combo: "Cmd+=",
+    scope: "global",
+    priority: 0,
+    description: "Zoom in",
+    category: "View",
+  },
+  {
+    // Discoverability alias — many users press Cmd+Shift+= for zoom-in even
+    // though the physical-key matcher already accepts it via Cmd+=.
+    actionId: "window.zoomIn",
+    combo: "Cmd+Shift+=",
     scope: "global",
     priority: 0,
     description: "Zoom in",

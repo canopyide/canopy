@@ -12,12 +12,13 @@ on:
           - macos
           - linux
           - windows
+          - non-windows
       test_file:
-        description: "Single test file to run (e.g. e2e/core/core-terminal-panels.spec.ts). Leave empty to run all."
+        description: "Single test file to run (e.g. e2e/core/core-worktree-lifecycle.spec.ts). Leave empty to run all."
         type: string
         default: ""
       project:
-        description: "Playwright project to run (core = 13 stable tests, full = all 72 tests)"
+        description: "Playwright project to run (core stable subset or full exhaustive suite)"
         type: choice
         default: "core"
         options:
@@ -42,7 +43,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: e2e-core-${{ github.ref }}
+  group: e2e-${{ inputs.project || 'core' }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -78,8 +79,8 @@ jobs:
       matrix: ${{ fromJSON(needs.matrix-setup.outputs.matrix) }}
 
     runs-on: ${{ matrix.os }}
-    name: Core (${{ matrix.name }})
-    timeout-minutes: 120
+    name: ${{ inputs.project == 'full' && 'Full' || 'Core' }} (${{ matrix.name }})
+    timeout-minutes: 180
 
     steps:
       - name: Harden Windows for Electron E2E
@@ -111,6 +112,17 @@ jobs:
 
       - name: Check out repository
         uses: actions/checkout@v6
+
+      - name: Cache Playwright browsers
+        id: cache-playwright
+        continue-on-error: true
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cache/ms-playwright
+            ~/Library/Caches/ms-playwright
+            ~/AppData/Local/ms-playwright
+          key: ${{ runner.os }}-${{ runner.arch }}-playwright-${{ hashFiles('package-lock.json') }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -150,7 +162,7 @@ jobs:
       - name: Cache fontconfig
         id: cache-fontconfig
         if: runner.os == 'Linux'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/fontconfig
           key: fontconfig-${{ runner.os }}-${{ runner.arch }}-${{ steps.fontconfig-cache-key.outputs.ubuntu }}-${{ steps.fontconfig-cache-key.outputs.fc_version }}-${{ steps.fontconfig-cache-key.outputs.font_pkg_hash }}
@@ -194,11 +206,11 @@ jobs:
             echo "args=--project=$PROJECT" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Run core e2e tests (macOS)
+      - name: Run ${{ inputs.project || 'core' }} e2e tests (macOS)
         if: runner.os == 'macOS'
         run: npx playwright test ${{ steps.test-cmd.outputs.args }}
 
-      - name: Run core e2e tests (Linux)
+      - name: Run ${{ inputs.project || 'core' }} e2e tests (Linux)
         if: runner.os == 'Linux'
         run: xvfb-run --auto-servernum npx playwright test ${{ steps.test-cmd.outputs.args }}
 
@@ -208,7 +220,7 @@ jobs:
         run: |
           node -e "try { require('node-pty'); console.log('node-pty: OK') } catch(e) { console.error('node-pty FAILED:', e.message); process.exit(1) }"
 
-      - name: Run core e2e tests (Windows)
+      - name: Run ${{ inputs.project || 'core' }} e2e tests (Windows)
         if: runner.os == 'Windows'
         env:
           ELECTRON_ENABLE_LOGGING: "1"
@@ -218,7 +230,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: e2e-core-results-${{ matrix.name }}-${{ github.sha }}
+          name: e2e-${{ inputs.project || 'core' }}-results-${{ matrix.name }}-${{ github.sha }}
           path: |
             test-results/
             playwright-report/

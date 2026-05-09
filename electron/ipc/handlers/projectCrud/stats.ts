@@ -3,6 +3,7 @@ import { checkRateLimit, typedHandle } from "../../utils.js";
 import type { HandlerDependencies } from "../../types.js";
 import type { BulkProjectStats } from "../../../../shared/types/ipc/project.js";
 import { ProjectStatsService } from "../../../services/ProjectStatsService.js";
+import { registerDeferredTask } from "../../../window/deferredInitQueue.js";
 
 let projectStatsServiceInstance: ProjectStatsService | null = null;
 
@@ -16,6 +17,15 @@ export function registerProjectStatsHandlers(deps: HandlerDependencies): () => v
   const projectStatsService = new ProjectStatsService(deps.ptyClient);
   projectStatsServiceInstance = projectStatsService;
   projectStatsService.start();
+  // Defer the initial compute off the first-interactive critical path. The
+  // 5s aligned poll and agent-state debounce armed in start() continue to
+  // fire normally; this just keeps cold-start work off first paint.
+  registerDeferredTask({
+    name: "project-stats-initial-compute",
+    run: () => {
+      if (projectStatsService.isStarted) projectStatsService.refresh();
+    },
+  });
   handlers.push(() => {
     projectStatsService.stop();
     projectStatsServiceInstance = null;

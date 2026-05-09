@@ -9,15 +9,18 @@ import { openSettings } from "../helpers/panels";
 
 test.describe.serial("Core: Settings Tabs Coverage", () => {
   let ctx: AppContext;
+  let fixtureCleanup: (() => void) | undefined;
 
   test.beforeAll(async () => {
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "settings-tabs" });
+    const { dir: fixtureDir, cleanup } = createFixtureRepo({ name: "settings-tabs" });
+    fixtureCleanup = cleanup;
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Settings Tabs Test");
   });
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   // ── Appearance Tab: App Theme ──────────────────────────────

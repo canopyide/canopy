@@ -13,11 +13,13 @@ const mod = process.platform === "darwin" ? "Meta" : "Control";
 
 test.describe.serial("Core: Keyboard Terminal Navigation", () => {
   let ctx: AppContext;
+  let fixtureCleanup: (() => void) | undefined;
 
   test.beforeAll(async () => {
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "kbd-nav-terminal" });
-    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Kbd Nav Terminal");
+    const { dir, cleanup } = createFixtureRepo({ name: "kbd-nav-terminal" });
+    fixtureCleanup = cleanup;
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, dir, "Kbd Nav Terminal");
 
     // Wait for worktree detection to complete
     await ctx.window
@@ -44,6 +46,7 @@ test.describe.serial("Core: Keyboard Terminal Navigation", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("Ctrl+Tab cycles forward through terminals", async () => {
@@ -152,12 +155,14 @@ const FEATURE_BRANCH = "feature/test-branch";
 test.describe.serial("Core: Keyboard Worktree Navigation", () => {
   let ctx: AppContext;
   let mainBranch: string;
+  let fixtureCleanup: (() => void) | undefined;
 
   test.beforeAll(async () => {
-    const fixtureDir = createFixtureRepo({
+    const { dir: fixtureDir, cleanup } = createFixtureRepo({
       name: "kbd-nav-worktree",
       withFeatureBranch: true,
     });
+    fixtureCleanup = cleanup;
 
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Kbd Nav Worktree");
@@ -174,6 +179,7 @@ test.describe.serial("Core: Keyboard Worktree Navigation", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("Cmd+Alt+] cycles to next worktree", async () => {

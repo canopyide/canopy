@@ -11,7 +11,6 @@ export interface BuiltInThemeSource {
   extensions?: Record<string, string>;
   location?: string;
   heroImage?: string;
-  heroVideo?: string;
 }
 
 export { BUILT_IN_THEME_SOURCES } from "./builtInThemes/index.js";

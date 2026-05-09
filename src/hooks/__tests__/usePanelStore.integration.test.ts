@@ -519,11 +519,12 @@ describe("Terminal Store Integration", () => {
           location: "grid",
           worktreeId: "worktree-1",
           agentState: "working",
+          launchAgentId: "claude",
         },
       ]);
 
       const terminal = usePanelStore.getState().panelsById["term-1"]!;
-      expect(undefined).toBe("claude");
+      expect(terminal.launchAgentId).toBe("claude");
       expect(terminal.title).toBe("Claude Agent");
       expect(terminal.worktreeId).toBe("worktree-1");
       expect(terminal.agentState).toBe("working");

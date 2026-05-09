@@ -17,7 +17,7 @@ import { getInstallBlocksForCurrentOS, isBlockExecutable } from "@/lib/agentInst
 import { systemClient } from "@/clients";
 import { useAgentSettingsStore } from "@/store";
 import { DEFAULT_DANGEROUS_ARGS } from "@shared/types/agentSettings";
-import { CopyableCommand } from "./InstallBlock";
+import { CopyableCommand } from "./CopyableCommand";
 import { AGENT_DESCRIPTIONS } from "@/config/agents";
 import type { CliAvailability } from "@shared/types";
 import { isAgentInstalled } from "@shared/utils/agentAvailability";
@@ -250,19 +250,14 @@ export function AgentCliStep({ availability, selections, onInstallComplete }: Ag
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   {config.install?.docsUrl && (
-                    <span
-                      role="link"
-                      tabIndex={0}
+                    <button
+                      type="button"
                       className="text-daintree-text/30 hover:text-daintree-text transition-colors p-0.5 cursor-pointer"
                       onClick={() => systemClient.openExternal(config.install!.docsUrl!)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ")
-                          systemClient.openExternal(config.install!.docsUrl!);
-                      }}
                       title="View documentation"
                     >
                       <ExternalLink className="w-3 h-3" />
-                    </span>
+                    </button>
                   )}
                   {isInstalled ? (
                     <span className="inline-flex items-center gap-1 text-[11px] text-status-success font-medium">
@@ -325,8 +320,8 @@ export function AgentCliStep({ availability, selections, onInstallComplete }: Ag
                   <div className="text-[11px] text-daintree-text/40 mb-1">
                     Run this command in your terminal. It will be detected automatically.
                   </div>
-                  {currentBlock.commands.map((cmd, i) => (
-                    <CopyableCommand key={i} command={cmd} />
+                  {currentBlock.commands.map((cmd) => (
+                    <CopyableCommand key={cmd} command={cmd} />
                   ))}
                 </div>
               )}
@@ -334,29 +329,35 @@ export function AgentCliStep({ availability, selections, onInstallComplete }: Ag
               {isError && (
                 <div className="pl-14 pt-1.5 pb-1 space-y-1">
                   {errorLog && (
-                    <button
-                      type="button"
-                      onClick={() => toggleErrorExpanded(agentId)}
-                      className="inline-flex items-center gap-1 text-[11px] text-daintree-text/50 hover:text-daintree-text/80 transition-colors"
-                    >
-                      {isErrorExpanded ? (
-                        <ChevronDown className="w-3 h-3" />
-                      ) : (
-                        <ChevronRight className="w-3 h-3" />
-                      )}
-                      Show error log
-                    </button>
-                  )}
-                  {isErrorExpanded && errorLog && (
-                    <pre className="text-[10px] text-status-error/80 bg-daintree-bg border border-daintree-border rounded-[var(--radius-sm)] p-2 max-h-[120px] overflow-y-auto whitespace-pre-wrap font-mono">
-                      {errorLog}
-                    </pre>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => toggleErrorExpanded(agentId)}
+                        aria-expanded={isErrorExpanded ?? false}
+                        aria-controls={`error-log-${agentId}`}
+                        className="inline-flex items-center gap-1 text-[11px] text-daintree-text/50 hover:text-daintree-text/80 transition-colors"
+                      >
+                        {isErrorExpanded ? (
+                          <ChevronDown className="w-3 h-3" />
+                        ) : (
+                          <ChevronRight className="w-3 h-3" />
+                        )}
+                        Show error log
+                      </button>
+                      <pre
+                        id={`error-log-${agentId}`}
+                        hidden={!isErrorExpanded}
+                        className="text-[10px] text-status-error/80 bg-daintree-bg border border-daintree-border rounded-[var(--radius-sm)] p-2 max-h-[120px] overflow-y-auto whitespace-pre-wrap font-mono"
+                      >
+                        {errorLog}
+                      </pre>
+                    </>
                   )}
                   {currentBlock?.commands && (
                     <div className="space-y-1">
                       <div className="text-[11px] text-daintree-text/40">Or install manually:</div>
-                      {currentBlock.commands.map((cmd, i) => (
-                        <CopyableCommand key={i} command={cmd} />
+                      {currentBlock.commands.map((cmd) => (
+                        <CopyableCommand key={cmd} command={cmd} />
                       ))}
                     </div>
                   )}
@@ -382,7 +383,7 @@ export function AgentCliStep({ availability, selections, onInstallComplete }: Ag
           ) : (
             <>
               <Download className="w-4 h-4" />
-              Install All
+              Install all
             </>
           )}
         </button>
@@ -390,7 +391,7 @@ export function AgentCliStep({ availability, selections, onInstallComplete }: Ag
 
       {agentsWithDangerousToggle.length > 0 && (
         <div className="border-t border-daintree-border pt-3 space-y-2">
-          <div className="text-xs font-medium text-daintree-text/60">Skip Permissions</div>
+          <div className="text-xs font-medium text-daintree-text/60">Skip permissions</div>
           <div className="space-y-1.5">
             {agentsWithDangerousToggle.map((agentId) => {
               const config = AGENT_REGISTRY[agentId];

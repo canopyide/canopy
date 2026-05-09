@@ -41,6 +41,7 @@ vi.mock("node:net", () => {
   const makeServer = () => {
     type Cb = () => void;
     const srv = {
+      unref: vi.fn(() => srv),
       once: vi.fn((_event: string, _cb: Cb) => srv),
       listen: vi.fn((_port: number, _host: string, cb: Cb) => {
         cb();
@@ -190,6 +191,7 @@ describe("DevPreviewSessionService — real-life robustness invariants (adversar
     vi.mocked(net.createServer).mockImplementationOnce(() => {
       type Cb = () => void;
       const srv = {
+        unref: vi.fn(() => srv),
         once: vi.fn((_event: string, _cb: Cb) => srv),
         listen: vi.fn((_port: number, _host: string, cb: Cb) => {
           probeGate.then(() => cb());

@@ -1,16 +1,16 @@
 import type { AgentState, AgentStateChangeTrigger, AgentId, WaitingReason } from "./agent.js";
 import type { BuiltInAgentId } from "../config/agentIds.js";
 import type { BrowserHistory } from "./browser.js";
+import { BUILT_IN_PANEL_KINDS, type BuiltInPanelKind } from "../config/panelKindRegistry.js";
 
-/** Built-in panel kinds */
-export type BuiltInPanelKind = "terminal" | "browser" | "dev-preview";
+export type { BuiltInPanelKind };
 
 /**
  * Panel kind: distinguishes between terminals, browser panels, and
  * extension-provided panel types. Agent-ness is a dynamic state of a terminal,
  * NOT a distinct panel kind — see `docs/architecture/terminal-identity.md`.
  *
- * Built-in kinds: "terminal" | "browser" | "dev-preview"
+ * Built-in kinds are listed in `BUILT_IN_PANEL_KINDS`.
  * Extensions can register additional kinds as strings.
  */
 export type PanelKind = BuiltInPanelKind | (string & {});
@@ -60,19 +60,7 @@ export interface DockRenderState {
 
 /** Type guard to check if a panel kind is a built-in kind */
 export function isBuiltInPanelKind(kind: PanelKind): kind is BuiltInPanelKind {
-  return kind === "terminal" || kind === "browser" || kind === "dev-preview";
-}
-
-/**
- * Check if a built-in panel kind requires PTY.
- * For extension kinds, use `panelKindHasPty()` from panelKindRegistry
- * which consults the runtime registry configuration.
- * Note: dev-preview panels manage their own ephemeral PTYs via useDevServer hook,
- * so they are not considered registry-owned PTY panels.
- */
-export function isPtyPanelKind(kind: PanelKind): boolean {
-  // Built-in kinds - for extension kinds, use panelKindHasPty() from registry
-  return kind === "terminal";
+  return (BUILT_IN_PANEL_KINDS as readonly string[]).includes(kind);
 }
 
 /**
@@ -90,14 +78,28 @@ export enum TerminalRefreshTier {
   BACKGROUND = 1000, // 1fps
 }
 
-/** Flow-control states emitted by the PTY host */
-export type TerminalFlowStatus = "running" | "paused-backpressure" | "paused-user" | "suspended";
+/** Flow-control states emitted by the PTY host. `data-loss` is a transient
+ *  pulse fired when the IPC fallback queue discards bytes — it is not a
+ *  durable state, must not be persisted as `flowStatus`, and is consumed
+ *  by the renderer to inject a discontinuity marker into the xterm buffer. */
+export type TerminalFlowStatus =
+  | "running"
+  | "paused-backpressure"
+  | "paused-user"
+  | "suspended"
+  | "data-loss";
 
-/** Runtime lifecycle status for terminals (visibility + flow + exit/error) */
-export type TerminalRuntimeStatus = TerminalFlowStatus | "background" | "exited" | "error";
+/** Subset of `TerminalFlowStatus` that is safe to persist as the durable
+ *  flow state of a terminal. `data-loss` is excluded because it is a pulse,
+ *  not a state — persisting it would freeze the runtime status indefinitely. */
+export type PersistableFlowStatus = Exclude<TerminalFlowStatus, "data-loss">;
+
+/** Runtime lifecycle status for terminals (visibility + flow + exit/error).
+ *  Derived from a `PersistableFlowStatus`, so `data-loss` never appears here. */
+export type TerminalRuntimeStatus = PersistableFlowStatus | "background" | "exited" | "error";
 
 /** Origin that spawned a terminal */
-export type TerminalSpawnSource = "quickrun" | "recipe" | "agent" | "palette";
+export type TerminalSpawnSource = "quickrun" | "recipe" | "agent" | "palette" | "mcp";
 
 /**
  * Live process identity detected inside a PTY. This is transient runtime state,
@@ -249,8 +251,9 @@ export interface PtyPanelData extends BasePanelData {
   restartError?: TerminalRestartError;
   /** Reconnection failure error - set when reconnection fails during project switch */
   reconnectError?: TerminalReconnectError;
-  /** Flow control status - indicates if terminal is paused/suspended due to backpressure or safety policy */
-  flowStatus?: TerminalFlowStatus;
+  /** Flow control status - indicates if terminal is paused/suspended due to backpressure or safety policy.
+   *  Excludes `data-loss` (transient pulse only — never persisted as state). */
+  flowStatus?: PersistableFlowStatus;
   /** Combined lifecycle status for UI + diagnostics */
   runtimeStatus?: TerminalRuntimeStatus;
   /** Timestamp when flow status last changed */
@@ -313,6 +316,11 @@ export interface PtyPanelData extends BasePanelData {
   agentPresetColor?: string;
   /** Origin that spawned this terminal */
   spawnedBy?: TerminalSpawnSource;
+  /**
+   * When true, this panel is excluded from persisted layout snapshots and is
+   * never rehydrated on app restart (e.g. Daintree assistant dock terminals).
+   */
+  ephemeral?: boolean;
   /** Timestamp when this terminal was created */
   startedAt?: number;
   /** Exit code from the last process exit */
@@ -341,7 +349,7 @@ export interface BrowserPanelData extends BasePanelData {
 }
 
 /** Viewport preset IDs for dev-preview responsive emulation */
-export type ViewportPresetId = "iphone" | "pixel" | "ipad";
+export type ViewportPresetId = "iphone" | "pixel" | "ipad" | "galaxy";
 
 export interface DevPreviewPanelData extends BasePanelData {
   kind: "dev-preview";
@@ -444,7 +452,7 @@ export interface TerminalInstance {
   reconnectError?: TerminalReconnectError;
   /** Error that occurred when spawning the PTY process */
   spawnError?: import("./pty-host.js").SpawnError;
-  flowStatus?: TerminalFlowStatus;
+  flowStatus?: PersistableFlowStatus;
   runtimeStatus?: TerminalRuntimeStatus;
   flowStatusTimestamp?: number;
   isInputLocked?: boolean;
@@ -501,6 +509,11 @@ export interface TerminalInstance {
   agentPresetColor?: string;
   /** Origin that spawned this terminal */
   spawnedBy?: TerminalSpawnSource;
+  /**
+   * When true, this panel is excluded from persisted layout snapshots and is
+   * never rehydrated on app restart (e.g. Daintree assistant dock terminals).
+   */
+  ephemeral?: boolean;
   /** Timestamp when this terminal was created */
   startedAt?: number;
   /** Exit code from the last process exit */

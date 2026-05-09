@@ -215,7 +215,7 @@ export function TerminalAppearanceTab({
                 </span>
               </div>
               {fontSizeError && (
-                <p id={fontSizeErrorId} role="alert" className="text-xs text-status-error">
+                <p id={fontSizeErrorId} className="text-xs text-status-error">
                   {fontSizeError}
                 </p>
               )}

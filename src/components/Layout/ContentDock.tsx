@@ -1,5 +1,5 @@
 import { useMemo, useRef, useCallback } from "react";
-import { useShallow } from "zustand/react/shallow";
+
 import { SortableContext, horizontalListSortingStrategy } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -16,7 +16,6 @@ import { DockedTabGroup } from "./DockedTabGroup";
 import { TrashContainer } from "./TrashContainer";
 import { WaitingContainer } from "./WaitingContainer";
 import { BackgroundContainer } from "./BackgroundContainer";
-import { HelpAgentDockButton } from "./HelpAgentDockButton";
 import { DockLaunchButton } from "./DockLaunchButton";
 import {
   DockLaunchMenuItems,
@@ -27,6 +26,8 @@ import {
   SortableDockItem,
   SortableDockPlaceholder,
   DOCK_PLACEHOLDER_ID,
+  useIsDragging,
+  useIsWorktreeSortDragging,
 } from "@/components/DragDrop";
 import { useWorktrees } from "@/hooks/useWorktrees";
 import { useHorizontalScrollControls } from "@/hooks";
@@ -65,12 +66,11 @@ interface ContentDockProps {
 export function ContentDock({ density = "normal" }: ContentDockProps) {
   const activeWorktreeId = useWorktreeSelectionStore((state) => state.activeWorktreeId);
 
-  const trashedTerminals = usePanelStore(useShallow((state) => state.trashedTerminals));
-  const panelsById = usePanelStore(useShallow((state) => state.panelsById));
-  const storeTerminalIds = usePanelStore(useShallow((state) => state.panelIds));
+  const trashedTerminals = usePanelStore((state) => state.trashedTerminals);
+  const panelsById = usePanelStore((state) => state.panelsById);
+  const storeTerminalIds = usePanelStore((state) => state.panelIds);
   const getTabGroups = usePanelStore((state) => state.getTabGroups);
   const getTabGroupPanels = usePanelStore((state) => state.getTabGroupPanels);
-  const openDockTerminal = usePanelStore((state) => state.openDockTerminal);
   const currentProject = useProjectStore((s) => s.currentProject);
   const helpTerminalId = useHelpPanelStore((s) => s.terminalId);
   const agentSettings = useAgentSettingsStore((s) => s.settings);
@@ -150,6 +150,14 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
     data: { container: "dock" },
   });
 
+  // Mirror TrashContainer's ghost-scrim ladder: show a subtle in-flight cue for
+  // any panel drag, then a stronger armed cue when actually over the dock.
+  // Worktree-card sort drags also flip isDragging but cannot drop here, so a
+  // phantom drop target would be misleading — exclude them.
+  const isDragging = useIsDragging();
+  const isWorktreeSortDragging = useIsWorktreeSortDragging();
+  const isPanelDragging = isDragging && !isWorktreeSortDragging;
+
   // Sync droppable ref with scroll container ref using stable callback
   // This prevents ResizeObserver thrashing that causes infinite update loops
   const combinedRef = useCallback(
@@ -162,22 +170,24 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
 
   const handleAddTerminal = useCallback(
     async (agentId: string, source: ActionSource = "menu") => {
-      const result = await actionService.dispatch<{ terminalId: string | null }>(
+      // `activateDockOnCreate` folds the dock activation into the same `set()`
+      // that commits the new panel to the store. Without it, the watchdog
+      // effect in `DockPanelOffscreenContainer` can fire `closeDockTerminal()`
+      // in the render gap between the panel commit and a follow-up
+      // `openDockTerminal` call. See #6590.
+      await actionService.dispatch<{ terminalId: string | null }>(
         "agent.launch",
         {
           agentId,
           location: "dock",
           cwd,
           worktreeId: activeWorktreeId || undefined,
+          activateDockOnCreate: true,
         },
         { source }
       );
-
-      if (result.ok && result.result?.terminalId) {
-        openDockTerminal(result.result.terminalId);
-      }
     },
-    [activeWorktreeId, cwd, openDockTerminal]
+    [activeWorktreeId, cwd]
   );
 
   const trashedItems = Array.from(trashedTerminals.values())
@@ -263,9 +273,10 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
             <div
               ref={combinedRef}
               className={cn(
-                "flex items-center gap-[var(--dock-gap)] overflow-x-auto overscroll-x-none flex-1 min-h-[var(--dock-item-height)] no-scrollbar scroll-smooth px-1",
+                "flex items-center gap-[var(--dock-gap)] overflow-x-auto overscroll-x-none flex-1 min-h-[var(--dock-item-height)] no-scrollbar scroll-smooth px-1 transition-colors",
+                isPanelDragging && "bg-overlay-subtle",
                 isOver &&
-                  "bg-overlay-soft ring-2 ring-daintree-accent/30 ring-inset rounded-[var(--radius-md)]"
+                  "bg-overlay-soft ring-2 ring-border-default ring-inset rounded-[var(--radius-md)]"
               )}
             >
               <SortableContext
@@ -341,11 +352,6 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
             <BackgroundContainer compact={isCompact} />
             <WaitingContainer compact={isCompact} />
             <TrashContainer trashedTerminals={trashedItems} compact={isCompact} />
-          </div>
-
-          {/* Right-aligned cluster: help */}
-          <div className="ml-auto shrink-0 flex items-center gap-2">
-            <HelpAgentDockButton />
           </div>
         </div>
       </ContextMenuTrigger>

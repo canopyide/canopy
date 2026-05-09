@@ -108,12 +108,12 @@ export const WslGitBanner = React.memo(function WslGitBanner({
       )}
     >
       <div className="flex-1">
-        <div className="font-medium text-text-primary">WSL worktree (non-default distro)</div>
+        <div className="font-medium text-text-primary">Git runs via Windows</div>
         <div className="mt-0.5 text-text-secondary">
           This worktree is in{" "}
           <code className="rounded bg-overlay-subtle px-1 py-0.5">{wslDistro ?? "WSL"}</code>, which
-          isn't the default WSL distro. Daintree can't yet route git through this distro
-          automatically — git will run from Windows and may be slower than usual.
+          isn't the default WSL distro. Git can't be routed through this distro automatically — it
+          will run from Windows and may be slower than usual.
         </div>
       </div>
       <button

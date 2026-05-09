@@ -21,6 +21,8 @@ import {
   useWaitingTerminals,
   useBackgroundedTerminals,
   useWaitingTerminalIds,
+  isTerminalVisible,
+  isTerminalOrphaned,
   _resetWorktreeIdCacheForTests,
 } from "../useTerminalSelectors";
 
@@ -629,5 +631,39 @@ describe("buildWorktreeIds memoization", () => {
     const { result: r2 } = renderHook(() => useWaitingTerminals());
     expect(r2.current).toHaveLength(1);
     expect(r2.current[0]!.id).toBe("t1");
+  });
+
+  it("isTerminalVisible re-export matches shared utility behavior", () => {
+    const isInTrash = () => false;
+    const worktreeIds = new Set(["wt-1"]);
+    const visible = {
+      id: "t1",
+      location: "grid" as const,
+      ephemeral: false,
+      worktreeId: "wt-1",
+    } as const;
+    expect(
+      isTerminalVisible(visible as Parameters<typeof isTerminalVisible>[0], isInTrash, worktreeIds)
+    ).toBe(true);
+    expect(
+      isTerminalVisible(
+        { ...visible, location: "background" } as Parameters<typeof isTerminalVisible>[0],
+        isInTrash,
+        worktreeIds
+      )
+    ).toBe(false);
+  });
+
+  it("isTerminalOrphaned re-export matches shared utility behavior", () => {
+    const ids = new Set(["wt-1"]);
+    expect(
+      isTerminalOrphaned({ worktreeId: "wt-1" } as Parameters<typeof isTerminalOrphaned>[0], ids)
+    ).toBe(false);
+    expect(
+      isTerminalOrphaned(
+        { worktreeId: "wt-unknown" } as Parameters<typeof isTerminalOrphaned>[0],
+        ids
+      )
+    ).toBe(true);
   });
 });

@@ -8,12 +8,14 @@ import {
   writeCcrConfig,
   removeCcrConfig,
   navigateToAgentSettings,
+  waitForCcrPresets,
   getPresetOptionLabels,
   getPresetRowByName,
   type CcrModelEntry,
 } from "../helpers/presets";
 
 let ctx: AppContext;
+let fixtureCleanup: (() => void) | undefined;
 
 const T_CCR = 60_000;
 
@@ -29,13 +31,15 @@ test.describe.serial("Presets: CCR Discovery & Auto-Config (1–12)", () => {
       { id: "gpt5", name: "GPT-5", model: "gpt-5.4" },
     ]);
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "preset-ccr" });
+    const { dir: fixtureDir, cleanup } = createFixtureRepo({ name: "preset-ccr" });
+    fixtureCleanup = cleanup;
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Preset CCR Test");
   });
 
   test.afterAll(async () => {
     removeCcrConfig();
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("1. CCR config with models shows presets in toolbar split-button", async () => {
@@ -112,8 +116,7 @@ test.describe.serial("Presets: CCR Discovery & Auto-Config (1–12)", () => {
       { name: "Bad Entry" } as CcrModelEntry,
       { id: "valid", name: "Valid", model: "valid-model" },
     ]);
-    // CCR service polls every 30s; give it time to pick up the new config.
-    await ctx.window.waitForTimeout(35_000);
+    await waitForCcrPresets(ctx.window, ["Valid"]);
 
     await navigateToAgentSettings(ctx.window, "claude");
     await expect(ctx.window.locator(SEL.preset.section)).toBeVisible({ timeout: T_CCR });
@@ -169,8 +172,7 @@ test.describe.serial("Presets: CCR Discovery & Auto-Config (1–12)", () => {
     // NOTE: This test is limited by test environment - CCR service doesn't auto-reload config files
     // In production, file watching would detect changes and update presets automatically
     writeCcrConfig([{ id: "initial", name: "Initial", model: "init-model" }]);
-    // CCR service polls every 30s; wait for it to pick up the new config.
-    await ctx.window.waitForTimeout(35_000);
+    await waitForCcrPresets(ctx.window, ["Initial"]);
     await navigateToAgentSettings(ctx.window, "claude");
     await expect(ctx.window.locator(SEL.preset.section)).toBeVisible({ timeout: T_CCR });
     const labels = await getPresetOptionLabels(ctx.window);
@@ -183,8 +185,7 @@ test.describe.serial("Presets: CCR Discovery & Auto-Config (1–12)", () => {
     // NOTE: This test is limited by test environment - CCR service doesn't auto-reload config files
     // In production, file watching would detect changes and update presets automatically
     writeCcrConfig([{ id: "to-remove", name: "To Remove", model: "remove-model" }]);
-    // CCR service polls every 30s; wait for it to pick up the new config.
-    await ctx.window.waitForTimeout(35_000);
+    await waitForCcrPresets(ctx.window, ["To Remove"]);
     await navigateToAgentSettings(ctx.window, "claude");
     await expect(ctx.window.locator(SEL.preset.section)).toBeVisible({ timeout: T_CCR });
     const labels = await getPresetOptionLabels(ctx.window);
@@ -199,8 +200,7 @@ test.describe.serial("Presets: CCR Discovery & Auto-Config (1–12)", () => {
       { id: "beta", name: "Beta", model: "beta-model" },
       { id: "gamma", name: "Gamma", model: "gamma-model" },
     ]);
-    // CCR service polls every 30s; wait for it to pick up the new config.
-    await ctx.window.waitForTimeout(35_000);
+    await waitForCcrPresets(ctx.window, ["Alpha", "Beta", "Gamma"]);
     await navigateToAgentSettings(ctx.window, "claude");
     await expect(ctx.window.locator(SEL.preset.section)).toBeVisible({ timeout: T_CCR });
 

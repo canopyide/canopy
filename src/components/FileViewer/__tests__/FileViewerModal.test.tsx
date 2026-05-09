@@ -2,6 +2,19 @@
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { forwardRef, type ReactNode } from "react";
+// jsdom does not implement Trusted Types. Mock the renderer policy module
+// with pass-through spies so the modal renders sanitized SVG inline AND we
+// can assert the policy is exercised on the SVG path. See #6392.
+const { mockCreateTrustedHTML } = vi.hoisted(() => ({
+  mockCreateTrustedHTML: vi.fn((s: string) => s),
+}));
+vi.mock("@/lib/trustedTypesPolicy", () => ({
+  createTrustedHTML: mockCreateTrustedHTML,
+  setTrustedInnerHTML: (el: Element, html: string) => {
+    el.innerHTML = html;
+  },
+}));
+
 import { FileViewerModal } from "../FileViewerModal";
 
 vi.mock("@/components/ui/AppDialog", () => {
@@ -123,12 +136,13 @@ describe("FileViewerModal", () => {
     }
   );
 
-  it("renders sanitized SVG inline", async () => {
-    mockRead.mockResolvedValue({
-      content: '<svg xmlns="http://www.w3.org/2000/svg"><circle r="10"/></svg>',
-    });
+  it("renders sanitized SVG inline through the trusted types policy", async () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg"><circle r="10"/></svg>';
+    mockRead.mockResolvedValue({ content: svg });
 
-    render(<FileViewerModal {...defaultProps} filePath="/project/icon.svg" />);
+    const { container } = render(
+      <FileViewerModal {...defaultProps} filePath="/project/icon.svg" />
+    );
 
     await waitFor(() => {
       expect(mockRead).toHaveBeenCalledWith({
@@ -137,6 +151,11 @@ describe("FileViewerModal", () => {
       });
     });
 
+    await waitFor(() => {
+      expect(container.querySelector("svg")).toBeTruthy();
+    });
+    expect(container.innerHTML).toContain('<circle r="10">');
+    expect(mockCreateTrustedHTML).toHaveBeenCalledWith(svg);
     expect(screen.getByText("Open in Image Viewer")).toBeTruthy();
     expect(screen.queryByText("Open in Editor")).toBeNull();
   });

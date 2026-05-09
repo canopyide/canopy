@@ -1,4 +1,4 @@
-import { useCallback, useRef, useEffect, useState, useMemo } from "react";
+import { useCallback, useRef, useEffect, useLayoutEffect, useState, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { SortableContext, horizontalListSortingStrategy } from "@dnd-kit/sortable";
 import { cn } from "@/lib/utils";
@@ -10,6 +10,7 @@ import { GridPanel } from "./GridPanel";
 import { TwoPaneSplitDivider, DIVIDER_WIDTH_PX } from "./TwoPaneSplitDivider";
 import { MIN_TERMINAL_WIDTH_PX } from "@/lib/terminalLayout";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
+import { useResizeObserverRaf } from "@/hooks/useResizeObserverRaf";
 
 interface TwoPaneSplitLayoutProps {
   terminals: [TerminalInstance, TerminalInstance];
@@ -29,7 +30,11 @@ export function TwoPaneSplitLayout({
   onAddTabRight,
 }: TwoPaneSplitLayoutProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [containerEl, setContainerEl] = useState<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState<number>(0);
+  useLayoutEffect(() => {
+    setContainerEl(containerRef.current);
+  }, []);
   const [localRatio, setLocalRatio] = useState<number | null>(null);
   const [isDraggingDivider, setIsDraggingDivider] = useState(false);
 
@@ -102,23 +107,15 @@ export function TwoPaneSplitLayout({
     return computeDefaultRatio();
   }, [localRatio, effectiveStoredRatio, computeDefaultRatio]);
 
+  useResizeObserverRaf(containerEl, (entry) => {
+    setContainerWidth(entry.contentRect.width);
+  });
+
   useEffect(() => {
     const container = containerRef.current;
-    if (!container) return;
-
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (entry) {
-        setContainerWidth(entry.contentRect.width);
-      }
-    });
-
-    observer.observe(container);
-    setContainerWidth(container.clientWidth);
-
-    return () => {
-      observer.disconnect();
-    };
+    if (container) {
+      setContainerWidth(container.clientWidth);
+    }
   }, []);
 
   const handleRatioChange = useCallback((newRatio: number) => {

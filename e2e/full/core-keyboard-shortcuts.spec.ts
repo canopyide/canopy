@@ -7,6 +7,7 @@ import { SEL } from "../helpers/selectors";
 import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
 
 let ctx: AppContext;
+let fixtureCleanup: (() => void) | undefined;
 const mod = process.platform === "darwin" ? "Meta" : "Control";
 
 async function pressChord(page: Page, first: string, second: string) {
@@ -18,17 +19,14 @@ async function pressChord(page: Page, first: string, second: string) {
 test.describe.serial("Core: Keyboard Shortcuts", () => {
   test.beforeAll(async () => {
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "keyboard-shortcuts" });
-    ctx.window = await openAndOnboardProject(
-      ctx.app,
-      ctx.window,
-      fixtureDir,
-      "Keyboard Shortcuts Test"
-    );
+    const { dir, cleanup } = createFixtureRepo({ name: "keyboard-shortcuts" });
+    fixtureCleanup = cleanup;
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, dir, "Keyboard Shortcuts Test");
   });
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   // ── Single-Key Shortcuts ───────────────────────────────────
@@ -73,14 +71,14 @@ test.describe.serial("Core: Keyboard Shortcuts", () => {
 
     test("Cmd+B toggles sidebar off and on", async () => {
       const { window } = ctx;
-      const resizer = window.locator('[role="separator"][aria-label="Resize sidebar"]');
-      await expect(resizer).not.toHaveAttribute("aria-valuenow", "0", { timeout: T_SHORT });
+      const aside = window.locator('aside[aria-label="Sidebar"]');
+      await expect(aside).toHaveAttribute("aria-hidden", "false", { timeout: T_SHORT });
 
       await window.keyboard.press(`${mod}+b`);
-      await expect(resizer).toHaveAttribute("aria-valuenow", "0", { timeout: T_SHORT });
+      await expect(aside).toHaveAttribute("aria-hidden", "true", { timeout: T_SHORT });
 
       await window.keyboard.press(`${mod}+b`);
-      await expect(resizer).not.toHaveAttribute("aria-valuenow", "0", { timeout: T_SHORT });
+      await expect(aside).toHaveAttribute("aria-hidden", "false", { timeout: T_SHORT });
     });
 
     test("Cmd+W closes focused panel", async () => {

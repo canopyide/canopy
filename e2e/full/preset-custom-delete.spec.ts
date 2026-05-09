@@ -9,21 +9,26 @@ import {
   addCustomPreset,
   removeCcrConfig,
   writeCcrConfig,
+  waitForCcrPresets,
+  waitForCcrPresetsRemoved,
 } from "../helpers/presets";
 
 let ctx: AppContext;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Presets: Custom Delete (45–52)", () => {
   test.beforeAll(async () => {
     removeCcrConfig();
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "preset-del" });
+    const { dir: fixtureDir, cleanup } = createFixtureRepo({ name: "preset-del" });
+    fixtureCleanup = cleanup;
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Preset Del Test");
   });
 
   test.afterAll(async () => {
     removeCcrConfig();
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   const goToClaudeSettings = async () => {
@@ -78,11 +83,11 @@ test.describe.serial("Presets: Custom Delete (45–52)", () => {
   });
 
   test("48. Delete button not shown for CCR presets", async () => {
-    writeCcrConfig([{ id: "ccr-nodel", model: "nodel-model" }]);
-    await ctx.window.waitForTimeout(35_000);
+    writeCcrConfig([{ id: "ccr-nodel", name: "No Delete", model: "nodel-model" }]);
+    await waitForCcrPresets(ctx.window, ["No Delete"]);
     await goToClaudeSettings();
     const ccrRow = ctx.window.locator(SEL.preset.section).locator("div.flex.items-center.border", {
-      hasText: "ccr-nodel",
+      hasText: "No Delete",
     });
     if (await ccrRow.isVisible().catch(() => false)) {
       await expect(ccrRow.locator(SEL.preset.deleteButton)).toHaveCount(0);
@@ -111,9 +116,7 @@ test.describe.serial("Presets: Custom Delete (45–52)", () => {
 
   test("50. Deleting all custom presets hides section if no CCR", async () => {
     removeCcrConfig();
-    // Let the CCR 30s poll clear previously-seeded CCR presets before we
-    // try to verify a single-Default state.
-    await ctx.window.waitForTimeout(35_000);
+    await waitForCcrPresetsRemoved(ctx.window, ["No Delete"]);
     await goToClaudeSettings();
     // New Popover UI only shows one Delete button at a time (the selected
     // preset's), so iterate until no more delete buttons render.

@@ -5,6 +5,7 @@ import { FLEET_LARGE_PASTE_BATCH_SIZE } from "../fleetBroadcast";
 import { terminalClient } from "@/clients";
 import { useFleetArmingStore } from "@/store/fleetArmingStore";
 import { usePanelStore } from "@/store/panelStore";
+import { useFleetBroadcastProgressStore } from "@/store/fleetBroadcastProgressStore";
 import type { TerminalInstance } from "@shared/types";
 
 const submitMock = vi.fn<(id: string, text: string) => Promise<void>>();
@@ -231,5 +232,172 @@ describe("executeFleetBroadcast", () => {
     // batching should still engage because the gate reads resolved bytes.
     await executeFleetBroadcast("small", ids, { t3: "x".repeat(150_000) });
     expect(maxInFlight).toBeLessThanOrEqual(FLEET_LARGE_PASTE_BATCH_SIZE);
+  });
+
+  describe("progress instrumentation", () => {
+    beforeEach(() => {
+      useFleetBroadcastProgressStore.setState({
+        completed: 0,
+        total: 0,
+        failed: 0,
+        isActive: false,
+        cancelled: false,
+      });
+      reset();
+    });
+
+    it("sets total to target count and calls finish (isActive becomes false)", async () => {
+      seedPanels([makeAgent("a"), makeAgent("b"), makeAgent("c")]);
+      await executeFleetBroadcast("hello", ["a", "b", "c"]);
+      const s = useFleetBroadcastProgressStore.getState();
+      expect(s.total).toBe(3);
+      expect(s.completed).toBe(3);
+      expect(s.isActive).toBe(false);
+    });
+
+    it("accumulates completed across batches and lands at total", async () => {
+      const ids = Array.from({ length: 12 }, (_, i) => `t${i}`);
+      seedPanels(ids.map((id) => makeAgent(id)));
+      await executeFleetBroadcast("x".repeat(120_000), ids);
+      const s = useFleetBroadcastProgressStore.getState();
+      expect(s.total).toBe(12);
+      expect(s.completed).toBe(12);
+      expect(s.failed).toBe(0);
+      expect(s.isActive).toBe(false);
+    });
+
+    it("tracks per-batch failures through advance calls", async () => {
+      // Advance tracks failures correctly when checked via the real store.
+      // Verified by directly calling advance with batch failures.
+      useFleetBroadcastProgressStore.getState().init(12);
+      useFleetBroadcastProgressStore.getState().advance(5, 1); // batch 1: t3 failed
+      useFleetBroadcastProgressStore.getState().advance(5, 1); // batch 2: t8 failed
+      useFleetBroadcastProgressStore.getState().advance(2, 0); // batch 3: clean
+      const s = useFleetBroadcastProgressStore.getState();
+      expect(s.failed).toBe(2);
+      expect(s.completed).toBe(12);
+    });
+
+    it("calls finish even when all submissions reject (isActive becomes false)", async () => {
+      submitMock.mockReset();
+      submitMock.mockRejectedValue(new Error("boom"));
+      seedPanels([makeAgent("a"), makeAgent("b")]);
+      await executeFleetBroadcast("hello", ["a", "b"]);
+      expect(useFleetBroadcastProgressStore.getState().isActive).toBe(false);
+    });
+
+    it("calls finish even with empty targets (isActive becomes false)", async () => {
+      await executeFleetBroadcast("hello", []);
+      expect(useFleetBroadcastProgressStore.getState().isActive).toBe(false);
+    });
+
+    it("existing post-hoc result shape is unchanged by progress tracking", async () => {
+      seedPanels([makeAgent("a"), makeAgent("b"), makeAgent("c")]);
+      const result = await executeFleetBroadcast("hello", ["a", "b", "c"]);
+      expect(result.total).toBe(3);
+      expect(result.successCount).toBe(3);
+      expect(result.failureCount).toBe(0);
+      expect(result.failedIds).toEqual([]);
+      expect(result.perTarget.length).toBe(3);
+    });
+  });
+
+  describe("cancellation via AbortSignal", () => {
+    beforeEach(() => {
+      // Earlier tests in this file use vi.spyOn(terminalClient, "submit")
+      // without restoring; restore here so our submitMock wrapper is the
+      // active implementation again.
+      vi.restoreAllMocks();
+      useFleetBroadcastProgressStore.setState({
+        completed: 0,
+        total: 0,
+        failed: 0,
+        isActive: false,
+        cancelled: false,
+      });
+      reset();
+    });
+
+    it("returns cancelled result without firing any IPC when signal is pre-aborted", async () => {
+      seedPanels([makeAgent("a"), makeAgent("b"), makeAgent("c")]);
+      const controller = new AbortController();
+      controller.abort();
+      const result = await executeFleetBroadcast(
+        "hello",
+        ["a", "b", "c"],
+        undefined,
+        controller.signal
+      );
+      expect(submitMock).not.toHaveBeenCalled();
+      expect(result.cancelled).toBe(true);
+      expect(result.successCount).toBe(0);
+      expect(result.skippedCount).toBe(3);
+      const s = useFleetBroadcastProgressStore.getState();
+      expect(s.isActive).toBe(false);
+      expect(s.cancelled).toBe(true);
+    });
+
+    it("aborts mid-batch run: completed batch fires, remaining batches skipped", async () => {
+      const ids = Array.from({ length: 12 }, (_, i) => `t${i}`);
+      seedPanels(ids.map((id) => makeAgent(id)));
+      const controller = new AbortController();
+      let completedBatches = 0;
+      submitMock.mockReset();
+      submitMock.mockImplementation(async () => {
+        // Trigger abort after the first batch (5 calls) settles.
+        await Promise.resolve();
+      });
+      // Trigger abort after the first batch settles by hooking advance.
+      const origAdvance = useFleetBroadcastProgressStore.getState().advance;
+      useFleetBroadcastProgressStore.setState({
+        advance: (b, f) => {
+          completedBatches += 1;
+          origAdvance(b, f);
+          if (completedBatches === 1) controller.abort();
+        },
+      });
+      try {
+        const result = await executeFleetBroadcast(
+          "x".repeat(120_000),
+          ids,
+          undefined,
+          controller.signal
+        );
+        expect(result.cancelled).toBe(true);
+        // First batch fired (FLEET_LARGE_PASTE_BATCH_SIZE = 5), remaining 7 skipped.
+        expect(submitMock).toHaveBeenCalledTimes(FLEET_LARGE_PASTE_BATCH_SIZE);
+        expect(result.successCount).toBe(FLEET_LARGE_PASTE_BATCH_SIZE);
+        expect(result.skippedCount).toBe(ids.length - FLEET_LARGE_PASTE_BATCH_SIZE);
+      } finally {
+        useFleetBroadcastProgressStore.setState({ advance: origAdvance });
+      }
+      const s = useFleetBroadcastProgressStore.getState();
+      expect(s.isActive).toBe(false);
+      expect(s.cancelled).toBe(true);
+    });
+
+    it("non-batched path: abort during in-flight allSettled marks cancelled but reports actual fan-out", async () => {
+      seedPanels([makeAgent("a"), makeAgent("b")]);
+      const controller = new AbortController();
+      submitMock.mockReset();
+      submitMock.mockImplementation(async () => {
+        controller.abort();
+      });
+      const result = await executeFleetBroadcast("small", ["a", "b"], undefined, controller.signal);
+      expect(submitMock).toHaveBeenCalledTimes(2);
+      expect(result.cancelled).toBe(true);
+      // Non-batched path is atomic — both writes already fired.
+      expect(result.successCount).toBe(2);
+      expect(result.skippedCount).toBe(0);
+      // Still finalizes — ribbon must not be stuck in "sending".
+      expect(useFleetBroadcastProgressStore.getState().isActive).toBe(false);
+    });
+
+    it("non-aborted broadcast reports cancelled: false and skippedCount: 0", async () => {
+      seedPanels([makeAgent("a"), makeAgent("b")]);
+      const result = await executeFleetBroadcast("hi", ["a", "b"]);
+      expect(result.cancelled).toBe(false);
+      expect(result.skippedCount).toBe(0);
+    });
   });
 });

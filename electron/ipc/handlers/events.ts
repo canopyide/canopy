@@ -37,6 +37,7 @@ const EVENT_BUS_BRIDGED_MANIFEST = {
   "window:destroy-hidden-webviews": "external",
   "window:disk-space-status": "external",
   "window:sample-blink-memory": "external",
+  "window:sample-renderer-elu": "external",
   "system:wake": "external",
   "app-agent:dispatch-action-request": "external",
   "app-agent:confirmation-request": "external",
@@ -51,6 +52,7 @@ const EVENT_BUS_BRIDGED_MANIFEST = {
   "resource:profile-changed": "external",
   "sound:cancel": "external",
   "plugin:actions-changed": "external",
+  "plugin:panel-kinds-changed": "external",
   "terminal:exit": "external",
   "terminal:spawn-result": "external",
 } as const satisfies Record<keyof IpcEventBusMap, "bus" | "external">;

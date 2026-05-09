@@ -117,6 +117,33 @@ logInfo("ServiceName", "message", { data });
 - Type errors in electron/: `npm run build:main`
 - Stale cache: `rm -rf node_modules/.vite && npm run dev`
 
+## Agent startup profiling
+
+Two pieces of dev-only instrumentation help diagnose slow agent CLI launches.
+
+### Structured startup metrics
+
+Every agent terminal logs a single `[AgentStartup]` line to the pty-host console as soon as boot completion is detected. The line is JSON keyed on `(agentId, cwdHash)` so traces from different launches in the same project can be compared:
+
+```text
+[AgentStartup] {"agentId":"claude","cwdHash":"a1b2c3d4","terminalId":"...","spawnedAt":1700000000000,"firstByteAt":1700000000180,"bootCompleteAt":1700000000420,"bootDurationMs":420,"timeToFirstByteMs":180}
+```
+
+`firstByteAt` and `timeToFirstByteMs` are omitted when boot completion fires before any PTY output (timeout-only path). The fields `firstByteAt` and `bootCompleteAt` are also surfaced on the terminal's `getPublicState()` payload for tooling that needs to read them programmatically.
+
+### CPU profiling
+
+For deeper investigations, the agent CLI can be CPU-profiled by Node's built-in profiler.
+
+1. Set `DAINTREE_PROFILE_AGENT_STARTUP=1` in the shell that launches the dev build (`npm run dev`).
+2. Spawn an agent terminal as usual.
+3. Find the resulting `*.cpuprofile` file under `<userData>/agent-profiles/` (`~/Library/Application Support/Daintree/agent-profiles/` on macOS).
+4. Open Chrome DevTools → Performance → Load profile, or use the same workflow in VS Code.
+
+The flag is gated on `app.isPackaged === false` (forwarded to the pty host as `DAINTREE_IS_PACKAGED=0`). Packaged builds never honour the flag.
+
+`NODE_OPTIONS=--cpu-prof --cpu-prof-dir=...` is inherited by every Node.js subprocess the agent spawns (npm, tsc, MCP servers). The output directory will accumulate profiles for those subprocesses too — filter by filename or PID when analysing.
+
 ## CI
 
 GitHub Actions on push/PR to main:

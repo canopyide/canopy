@@ -1,12 +1,12 @@
+import type { SVGProps } from "react";
 import { cn } from "@/lib/utils";
 
-interface GooseIconProps {
-  className?: string;
+type GooseIconProps = SVGProps<SVGSVGElement> & {
   size?: number;
   brandColor?: string;
-}
+};
 
-export function GooseIcon({ className, size = 16, brandColor }: GooseIconProps) {
+export function GooseIcon({ className, size = 16, brandColor, ...props }: GooseIconProps) {
   // Stylized goose silhouette: head + curved neck + body, evoking the
   // "__( O)>" boot banner ASCII glyph upstream uses for Block's Goose CLI.
   return (
@@ -14,10 +14,9 @@ export function GooseIcon({ className, size = 16, brandColor }: GooseIconProps) 
       width={size}
       height={size}
       viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
       className={cn(className)}
       aria-hidden="true"
+      {...props}
     >
       <path
         fill={brandColor || "currentColor"}

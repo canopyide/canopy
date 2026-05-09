@@ -1,8 +1,17 @@
 import type { PanelRegistryStoreApi, PanelRegistrySlice } from "./types";
+import type { TerminalReconnectError } from "@/types";
 import { panelKindUsesTerminalUi } from "@shared/config/panelKindRegistry";
 import { saveNormalized } from "./persistence";
+import { debounce } from "@/utils/debounce";
 
 type Set = PanelRegistryStoreApi["setState"];
+
+// Anti-flap gate (Doherty Threshold) for reconnect error writes during hydration —
+// rapid reconnect attempts can otherwise mount and dismount the banner faster
+// than the eye can track. Cancelled by clearReconnectError before re-spawning
+// the panel so a pending write can't resurrect a stale error.
+const RECONNECT_ERROR_DEBOUNCE_MS = 400;
+type DebouncedSetter = ReturnType<typeof debounce<[TerminalReconnectError]>>;
 
 export const createBrowserActions = (
   set: Set
@@ -179,20 +188,31 @@ export const createBrowserActions = (
   },
 
   setReconnectError: (id, error) => {
-    set((state) => {
-      const terminal = state.panelsById[id];
-      if (!terminal) return state;
+    let debouncedSetter = reconnectErrorDebouncers.get(id);
+    if (!debouncedSetter) {
+      debouncedSetter = debounce<[TerminalReconnectError]>((nextError) => {
+        // Self-evict so long-lived sessions with many reconnect events don't
+        // accumulate stale debouncer closures keyed by panel id.
+        reconnectErrorDebouncers.delete(id);
+        set((state) => {
+          const terminal = state.panelsById[id];
+          if (!terminal) return state;
 
-      return {
-        panelsById: {
-          ...state.panelsById,
-          [id]: { ...terminal, reconnectError: error, runtimeStatus: "error" as const },
-        },
-      };
-    });
+          return {
+            panelsById: {
+              ...state.panelsById,
+              [id]: { ...terminal, reconnectError: nextError, runtimeStatus: "error" as const },
+            },
+          };
+        });
+      }, RECONNECT_ERROR_DEBOUNCE_MS);
+      reconnectErrorDebouncers.set(id, debouncedSetter);
+    }
+    debouncedSetter(error);
   },
 
   clearReconnectError: (id) => {
+    cancelReconnectErrorDebounce(id);
     set((state) => {
       const terminal = state.panelsById[id];
       if (!terminal) return state;
@@ -206,3 +226,29 @@ export const createBrowserActions = (
     });
   },
 });
+
+const reconnectErrorDebouncers = new Map<string, DebouncedSetter>();
+
+export function cancelReconnectErrorDebounce(id: string): void {
+  const debounced = reconnectErrorDebouncers.get(id);
+  if (debounced) {
+    debounced.cancel();
+    reconnectErrorDebouncers.delete(id);
+  }
+}
+
+// Test-only escape hatch — vitest fake timers can't observe setTimeout calls
+// scheduled on the real timer queue, so tests that simulate hydration races
+// need a way to drop module-level state between cases.
+export function __resetReconnectErrorDebouncersForTesting(): void {
+  for (const debounced of reconnectErrorDebouncers.values()) {
+    debounced.cancel();
+  }
+  reconnectErrorDebouncers.clear();
+}
+
+// Test-only — exposes the map size so the closure-leak guard in
+// setReconnectError stays regression-protected.
+export function __getReconnectErrorDebouncerCountForTesting(): number {
+  return reconnectErrorDebouncers.size;
+}

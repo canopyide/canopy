@@ -145,6 +145,52 @@ describe("ActionService", () => {
       expect(service.get("acme.plugin.maybe" as ActionId)!.requiresArgs).toBe(false);
     });
 
+    it("propagates rawOutputSchema onto ActionManifestEntry when no Zod resultSchema is set", () => {
+      const rawOutput = {
+        type: "object",
+        properties: { ok: { type: "boolean" } },
+        required: ["ok"],
+      };
+      const action = {
+        id: "acme.plugin.report" as ActionId,
+        title: "Report",
+        description: "Returns a payload with a raw output schema",
+        category: "plugin",
+        kind: "query",
+        danger: "safe",
+        scope: "renderer",
+        rawOutputSchema: rawOutput,
+        run: vi.fn().mockResolvedValue({ ok: true }),
+      };
+      service.register(action as unknown as ActionDefinition);
+      expect(service.get("acme.plugin.report" as ActionId)!.outputSchema).toEqual(rawOutput);
+    });
+
+    it("prefers Zod resultSchema over rawOutputSchema when both are provided", async () => {
+      const { z } = await import("zod");
+      const rawOutput = { type: "object", properties: { fallback: { type: "string" } } };
+      const action = {
+        id: "acme.plugin.both" as ActionId,
+        title: "Both Schemas",
+        description: "Has both result and raw output",
+        category: "plugin",
+        kind: "query",
+        danger: "safe",
+        scope: "renderer",
+        resultSchema: z.object({ canonical: z.string() }),
+        rawOutputSchema: rawOutput,
+        run: vi.fn().mockResolvedValue({ canonical: "x" }),
+      };
+      service.register(action as unknown as ActionDefinition);
+      const entry = service.get("acme.plugin.both" as ActionId)!;
+      expect(entry.outputSchema).toBeDefined();
+      // resultSchema (Zod) wins — produced schema must mention the canonical
+      // property, not the raw schema's `fallback`.
+      const props = (entry.outputSchema as { properties: Record<string, unknown> }).properties;
+      expect(props.canonical).toBeDefined();
+      expect(props.fallback).toBeUndefined();
+    });
+
     it("should throw when registering duplicate action and preserve the original registration", async () => {
       const originalRun = vi.fn().mockResolvedValue("original");
       const original: ActionDefinition = {
@@ -290,7 +336,7 @@ describe("ActionService", () => {
       expect(notifyMock).toHaveBeenCalledTimes(1);
       expect(notifyMock).toHaveBeenCalledWith({
         type: "warning",
-        title: "Action disabled",
+        title: "'Test Action' disabled",
         message: "No focused terminal",
       });
     });
@@ -315,7 +361,7 @@ describe("ActionService", () => {
       expect(notifyMock).not.toHaveBeenCalled();
     });
 
-    it("should show toast for disabled action from any source", async () => {
+    it("should show toast for disabled action from non-agent sources", async () => {
       const action: ActionDefinition = {
         id: "actions.list" as ActionId,
         title: "Test Action",
@@ -331,16 +377,43 @@ describe("ActionService", () => {
 
       service.register(action);
 
-      for (const source of ["keybinding", "menu", "context-menu", "user", "agent"] as const) {
+      for (const source of ["keybinding", "menu", "context-menu", "user"] as const) {
         notifyMock.mockClear();
         const result = await service.dispatch("actions.list", undefined, { source });
         expect(result.ok).toBe(false);
         expect(notifyMock).toHaveBeenCalledWith({
           type: "warning",
-          title: "Action disabled",
+          title: "'Test Action' disabled",
           message: "Disabled for test",
         });
       }
+    });
+
+    it("should suppress disabled-action toast for agent source but still return DISABLED", async () => {
+      const action: ActionDefinition = {
+        id: "actions.list" as ActionId,
+        title: "Test Action",
+        description: "A test action",
+        category: "test",
+        kind: "command",
+        danger: "safe",
+        scope: "renderer",
+        isEnabled: () => false,
+        disabledReason: () => "Disabled for test",
+        run: vi.fn(),
+      };
+
+      service.register(action);
+      notifyMock.mockClear();
+
+      const result = await service.dispatch("actions.list", undefined, { source: "agent" });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe("DISABLED");
+        expect(result.error.message).toBe("Disabled for test");
+      }
+      expect(notifyMock).not.toHaveBeenCalled();
     });
 
     it("should NOT show toast for enabled actions", async () => {
@@ -520,6 +593,71 @@ describe("ActionService", () => {
       const manifest = service.list();
 
       expect(manifest[0]!.keywords).toBeUndefined();
+    });
+
+    it("should propagate mcpAnnotations to manifest entries", () => {
+      const action: ActionDefinition = {
+        id: "actions.annotated" as ActionId,
+        title: "Annotated Action",
+        description: "An action with explicit MCP overrides",
+        category: "test",
+        kind: "query",
+        danger: "confirm",
+        scope: "renderer",
+        mcpAnnotations: { destructiveHint: false, readOnlyHint: true, idempotentHint: false },
+        run: vi.fn().mockResolvedValue(undefined),
+      };
+
+      service.register(action);
+      const manifest = service.list();
+
+      expect(manifest[0]!.mcpAnnotations).toEqual({
+        destructiveHint: false,
+        readOnlyHint: true,
+        idempotentHint: false,
+      });
+    });
+
+    it("should omit mcpAnnotations when not defined", () => {
+      const action: ActionDefinition = {
+        id: "actions.unannotated" as ActionId,
+        title: "Unannotated Action",
+        description: "An action without explicit MCP overrides",
+        category: "test",
+        kind: "command",
+        danger: "safe",
+        scope: "renderer",
+        run: vi.fn().mockResolvedValue(undefined),
+      };
+
+      service.register(action);
+      const manifest = service.list();
+
+      expect(manifest[0]!.mcpAnnotations).toBeUndefined();
+    });
+
+    it("should isolate mcpAnnotations from caller mutations", () => {
+      // Returned manifest entries must not share references with the
+      // registered definition, so a caller that mutates entry.mcpAnnotations
+      // can't poison subsequent list() reads.
+      const action: ActionDefinition = {
+        id: "actions.isolated" as ActionId,
+        title: "Isolated Action",
+        description: "Mutation-isolation guard",
+        category: "test",
+        kind: "command",
+        danger: "safe",
+        scope: "renderer",
+        mcpAnnotations: { destructiveHint: false },
+        run: vi.fn().mockResolvedValue(undefined),
+      };
+
+      service.register(action);
+      const first = service.list()[0]!;
+      first.mcpAnnotations!.destructiveHint = true;
+
+      const second = service.list()[0]!;
+      expect(second.mcpAnnotations).toEqual({ destructiveHint: false });
     });
 
     it("normalizes undefined title/description to empty strings on manifest entries", () => {
@@ -1315,6 +1453,356 @@ describe("ActionService", () => {
       warnSpy.mockClear();
       expect(() => service.register(action)).toThrow(/already registered/);
       expect(warnSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("manifest partial cache (issue #7284)", () => {
+    it("returns deeply-equal inputSchema across list() calls", () => {
+      const argsSchema = z.object({ count: z.number() });
+      service.register({
+        id: "actions.list" as ActionId,
+        title: "Test",
+        description: "Test",
+        category: "test",
+        kind: "command",
+        danger: "safe",
+        scope: "renderer",
+        argsSchema,
+        run: vi.fn().mockResolvedValue(undefined),
+      });
+
+      const first = service.list()[0]!.inputSchema;
+      const second = service.list()[0]!.inputSchema;
+      expect(first).toEqual(second);
+    });
+
+    it("isolates inputSchema from caller mutations", () => {
+      const argsSchema = z.object({ count: z.number() });
+      service.register({
+        id: "actions.list" as ActionId,
+        title: "Test",
+        description: "Test",
+        category: "test",
+        kind: "command",
+        danger: "safe",
+        scope: "renderer",
+        argsSchema,
+        run: vi.fn().mockResolvedValue(undefined),
+      });
+
+      const first = service.list()[0]!.inputSchema as Record<string, unknown>;
+      first.poisoned = "x";
+      const second = service.list()[0]!.inputSchema as Record<string, unknown>;
+      expect(second.poisoned).toBeUndefined();
+    });
+
+    it("evicts cache entry on unregister so re-register picks up new schema", () => {
+      const schemaA = z.object({ a: z.string() });
+      service.register({
+        id: "actions.list" as ActionId,
+        title: "T",
+        description: "T",
+        category: "test",
+        kind: "command",
+        danger: "safe",
+        scope: "renderer",
+        argsSchema: schemaA,
+        run: vi.fn().mockResolvedValue(undefined),
+      });
+
+      const before = service.list()[0]!.inputSchema as { properties?: Record<string, unknown> };
+      expect(before.properties).toHaveProperty("a");
+
+      service.unregister("actions.list" as ActionId);
+
+      const schemaB = z.object({ b: z.number() });
+      service.register({
+        id: "actions.list" as ActionId,
+        title: "T",
+        description: "T",
+        category: "test",
+        kind: "command",
+        danger: "safe",
+        scope: "renderer",
+        argsSchema: schemaB,
+        run: vi.fn().mockResolvedValue(undefined),
+      });
+
+      const after = service.list()[0]!.inputSchema as { properties?: Record<string, unknown> };
+      expect(after.properties).toHaveProperty("b");
+      expect(after.properties).not.toHaveProperty("a");
+    });
+
+    it("populates requiresArgs from cache (no per-call safeParse)", () => {
+      const safeParseSpy = vi.fn();
+      const requiredSchema = z.object({ name: z.string() });
+      const proxy = new Proxy(requiredSchema, {
+        get(target, prop, receiver) {
+          if (prop === "safeParse") {
+            return (...args: unknown[]) => {
+              safeParseSpy(...args);
+              return (target.safeParse as (...a: unknown[]) => unknown).apply(target, args);
+            };
+          }
+          return Reflect.get(target, prop, receiver);
+        },
+      });
+
+      service.register({
+        id: "actions.list" as ActionId,
+        title: "T",
+        description: "T",
+        category: "test",
+        kind: "command",
+        danger: "safe",
+        scope: "renderer",
+        argsSchema: proxy as unknown as typeof requiredSchema,
+        run: vi.fn().mockResolvedValue(undefined),
+      });
+      const callsAfterRegister = safeParseSpy.mock.calls.length;
+
+      service.list();
+      service.list();
+      service.list();
+
+      // No additional safeParse calls beyond the two performed at register-time
+      expect(safeParseSpy.mock.calls.length).toBe(callsAfterRegister);
+      expect(service.list()[0]!.requiresArgs).toBe(true);
+    });
+  });
+
+  describe("dispatch error boundaries (issue #7284)", () => {
+    let warnSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    });
+
+    afterAll(() => {
+      warnSpy?.mockRestore();
+    });
+
+    it("returns DISABLED when isEnabled throws, does not crash dispatch", async () => {
+      const run = vi.fn().mockResolvedValue("never");
+      const action: ActionDefinition = {
+        id: "actions.list" as ActionId,
+        title: "Test",
+        description: "T",
+        category: "test",
+        kind: "command",
+        danger: "safe",
+        scope: "renderer",
+        isEnabled: () => {
+          throw new Error("predicate broken");
+        },
+        run,
+      };
+
+      service.register(action);
+      const result = await service.dispatch("actions.list" as ActionId);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe("DISABLED");
+        expect(result.error.message).toBe("Action is currently disabled");
+      }
+      expect(run).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Action isEnabled threw during dispatch"),
+        expect.objectContaining({ actionId: "actions.list" })
+      );
+    });
+
+    it("returns DISABLED when disabledReason throws, falls back to default message", async () => {
+      const action: ActionDefinition = {
+        id: "actions.list" as ActionId,
+        title: "Test",
+        description: "T",
+        category: "test",
+        kind: "command",
+        danger: "safe",
+        scope: "renderer",
+        isEnabled: () => false,
+        disabledReason: () => {
+          throw new Error("reason broken");
+        },
+        run: vi.fn().mockResolvedValue(undefined),
+      };
+
+      service.register(action);
+      const result = await service.dispatch("actions.list" as ActionId);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe("DISABLED");
+        expect(result.error.message).toBe("Action is currently disabled");
+      }
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Action disabledReason threw during dispatch"),
+        expect.objectContaining({ actionId: "actions.list" })
+      );
+    });
+
+    it("includes actionId in error context when events.emit rejects", async () => {
+      const originalWindow = (globalThis as { window?: unknown }).window;
+      const existing = (globalThis as unknown as { window?: Record<string, unknown> }).window;
+      Object.defineProperty(globalThis, "window", {
+        value: {
+          ...existing,
+          electron: { events: { emit: vi.fn().mockRejectedValue(new Error("emit failed")) } },
+        },
+        writable: true,
+        configurable: true,
+      });
+      try {
+        service.register({
+          id: "actions.list" as ActionId,
+          title: "T",
+          description: "T",
+          category: "test",
+          kind: "command",
+          danger: "safe",
+          scope: "renderer",
+          run: vi.fn().mockResolvedValue(undefined),
+        });
+
+        await service.dispatch("actions.list" as ActionId);
+        // Flush microtasks so the awaited rejection inside emitActionDispatchedEvent settles
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringContaining("Failed to emit action:dispatched event"),
+          expect.objectContaining({ actionId: "actions.list" })
+        );
+      } finally {
+        Object.defineProperty(globalThis, "window", {
+          value: originalWindow,
+          writable: true,
+          configurable: true,
+        });
+      }
+    });
+  });
+
+  describe("redaction substring matching (issue #7284)", () => {
+    function installEmit(emit: (channel: string, payload: unknown) => Promise<void>) {
+      const originalWindow = (globalThis as { window?: unknown }).window;
+      const existing = (globalThis as unknown as { window?: Record<string, unknown> }).window;
+      Object.defineProperty(globalThis, "window", {
+        value: { ...existing, electron: { events: { emit } } },
+        writable: true,
+        configurable: true,
+      });
+      return () => {
+        Object.defineProperty(globalThis, "window", {
+          value: originalWindow,
+          writable: true,
+          configurable: true,
+        });
+      };
+    }
+
+    it("redacts substring matches at any nesting depth", async () => {
+      const emit = vi.fn().mockResolvedValue(undefined);
+      const restore = installEmit(emit);
+      try {
+        service.register({
+          id: "actions.list" as ActionId,
+          title: "T",
+          description: "T",
+          category: "test",
+          kind: "command",
+          danger: "safe",
+          scope: "renderer",
+          run: vi.fn().mockResolvedValue(undefined),
+        });
+        await service.dispatch("actions.list" as ActionId, {
+          apiKey: "k1",
+          nested: { authHeader: "h1", refreshToken: "t1" },
+          deep: { deeper: { credentialPath: "/secret" } },
+          plainValue: "ok",
+        });
+        await Promise.resolve();
+
+        const payload = emit.mock.calls[0]![1] as { args: Record<string, unknown> };
+        const nested = payload.args.nested as Record<string, unknown>;
+        const deep = (payload.args.deep as Record<string, unknown>).deeper as Record<
+          string,
+          unknown
+        >;
+        expect(payload.args.apiKey).toBe("[REDACTED]");
+        expect(nested.authHeader).toBe("[REDACTED]");
+        expect(nested.refreshToken).toBe("[REDACTED]");
+        expect(deep.credentialPath).toBe("[REDACTED]");
+        expect(payload.args.plainValue).toBe("ok");
+      } finally {
+        restore();
+      }
+    });
+
+    it("matches case-insensitively (UPPERCASE field names)", async () => {
+      const emit = vi.fn().mockResolvedValue(undefined);
+      const restore = installEmit(emit);
+      try {
+        service.register({
+          id: "actions.list" as ActionId,
+          title: "T",
+          description: "T",
+          category: "test",
+          kind: "command",
+          danger: "safe",
+          scope: "renderer",
+          run: vi.fn().mockResolvedValue(undefined),
+        });
+        await service.dispatch("actions.list" as ActionId, {
+          API_KEY: "k1",
+          AuthHeader: "h1",
+        });
+        await Promise.resolve();
+
+        const payload = emit.mock.calls[0]![1] as { args: Record<string, unknown> };
+        expect(payload.args.API_KEY).toBe("[REDACTED]");
+        expect(payload.args.AuthHeader).toBe("[REDACTED]");
+      } finally {
+        restore();
+      }
+    });
+  });
+
+  describe("cloneArgsForReplay fallback (issue #7284)", () => {
+    const makeAction = (id: string): ActionDefinition => ({
+      id: id as ActionId,
+      title: "T",
+      description: "T",
+      category: "test",
+      kind: "command",
+      danger: "safe",
+      scope: "renderer",
+      run: vi.fn().mockResolvedValue(undefined),
+    });
+
+    it("falls through JSON path when structuredClone fails (function arg dropped)", async () => {
+      service.register(makeAction("test.fnArg"));
+      // structuredClone throws DataCloneError on functions; JSON.stringify silently drops them.
+      const args = { fn: () => "secret", x: 5 };
+      await service.dispatch("test.fnArg" as ActionId, args, { source: "user" });
+
+      const captured = service.getLastAction();
+      expect(captured?.args).not.toBe(args);
+      expect(captured?.args).toEqual({ x: 5 });
+    });
+
+    it("returns undefined (not the live reference) when both clone strategies fail", async () => {
+      service.register(makeAction("test.bothFail"));
+      // structuredClone fails on the function; JSON.stringify fails on BigInt.
+      const args = { fn: () => "x", b: 1n };
+      await service.dispatch("test.bothFail" as ActionId, args, { source: "user" });
+
+      const captured = service.getLastAction();
+      expect(captured?.actionId).toBe("test.bothFail");
+      // Must NOT be the live reference — that would silently defeat replay isolation.
+      expect(captured?.args).not.toBe(args);
+      expect(captured?.args).toBeUndefined();
     });
   });
 });

@@ -18,6 +18,7 @@ import { TerminalContextMenu } from "@/components/Terminal/TerminalContextMenu";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import { getTerminalFocusTarget } from "@/components/Terminal/terminalFocus";
 import { deriveTerminalChrome } from "@/utils/terminalChrome";
+import { getTerminalAgentDisplayState } from "@/utils/terminalAgentDisplayState";
 import {
   getEffectiveStateIcon,
   getEffectiveStateColor,
@@ -46,14 +47,12 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
   // Derive isOpen from store state
   const isOpen = activeDockTerminalId === terminal.id;
 
-  // Track when popover was just programmatically opened to ignore immediate close events
-  const wasJustOpenedRef = useRef(false);
-  const prevIsOpenRef = useRef(isOpen);
+  // Track when popover was just programmatically opened to ignore immediate close events.
+  // Initialized to `isOpen` so a component that mounts already-open is armed before Radix's
+  // DismissableLayer can fire a spurious mount-time onOpenChange(false).
+  const wasJustOpenedRef = useRef(isOpen);
 
   useEffect(() => {
-    prevIsOpenRef.current = isOpen;
-
-    // Detect programmatic open (isOpen changed from false to true externally)
     if (!isOpen) return;
 
     wasJustOpenedRef.current = true;
@@ -68,17 +67,21 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
     useShallow((s) => ({ isOpen: s.isOpen, width: s.width }))
   );
 
-  const isFocusMode = useFocusStore((s) => s.isFocusMode);
+  // Tracks whether the worktree sidebar is hidden by the chrome gesture, so
+  // popover collision padding can extend left when there's no sidebar there.
+  // The assistant lives on the right, so its gesture state doesn't affect
+  // left-side padding.
+  const sidebarHidden = useFocusStore((s) => s.gestureSidebarHidden);
 
   const collisionPadding = useMemo(() => {
     const basePadding = 32;
     return {
       top: basePadding,
-      left: isFocusMode ? 8 : basePadding,
+      left: sidebarHidden ? 8 : basePadding,
       bottom: basePadding,
       right: portalOpen ? portalWidth + basePadding : basePadding,
     };
-  }, [isFocusMode, portalOpen, portalWidth]);
+  }, [sidebarHidden, portalOpen, portalWidth]);
 
   // Toggle buffering based on popover open state
   useEffect(() => {
@@ -261,7 +264,7 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
     ]
   );
 
-  const agentState = chrome.isAgent ? getDockDisplayAgentState(terminal) : undefined;
+  const agentState = getDockDisplayAgentState(terminal);
   const isWorking = agentState === "working";
   const isWaiting = agentState === "waiting";
   const isActive = isWorking || isWaiting;
@@ -270,12 +273,10 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
   const showDockAgentHighlights = usePreferencesStore((s) => s.showDockAgentHighlights);
   // Use shortened title without command summary for dock items
   const displayTitle = getBaseTitle(terminal.title);
-  // Only show icon for non-idle, non-completed states (reduce noise)
-  const showStateIcon =
-    agentState && agentState !== "idle" && agentState !== "completed" && agentState !== "exited";
-  const StateIcon = showStateIcon
-    ? getEffectiveStateIcon(agentState, terminal.waitingReason)
-    : null;
+  // Indicator stays visible for the lifetime of the agent chrome — idle/missing
+  // state coerces to waiting so it never disappears mid-flight.
+  const displayAgentState = getTerminalAgentDisplayState(chrome, agentState);
+  const StateIcon = displayAgentState ? getEffectiveStateIcon(displayAgentState) : null;
   const isDeprioritized =
     !isOpen &&
     (!agentState || agentState === "idle" || agentState === "completed" || agentState === "exited");
@@ -339,26 +340,26 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
             )}
 
             {/* State icon (compact spacing from title) */}
-            {showStateIcon && StateIcon && (
+            {displayAgentState && StateIcon && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <div
                     className={cn(
                       "flex items-center shrink-0",
-                      getEffectiveStateColor(agentState, terminal.waitingReason)
+                      getEffectiveStateColor(displayAgentState)
                     )}
                   >
                     <StateIcon
                       className={cn(
                         "w-3.5 h-3.5",
-                        agentState === "working" && "animate-spin-slow",
+                        displayAgentState === "working" && "animate-spin-slow",
                         "motion-reduce:animate-none"
                       )}
                       aria-hidden="true"
                     />
                   </div>
                 </TooltipTrigger>
-                <TooltipContent side="bottom">{`Agent ${agentState}`}</TooltipContent>
+                <TooltipContent side="bottom">{`Agent ${displayAgentState}`}</TooltipContent>
               </Tooltip>
             )}
           </button>
@@ -366,7 +367,7 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
       </TerminalContextMenu>
 
       <PopoverContent
-        className="w-[700px] max-w-[90vw] h-[500px] max-h-[80vh] p-0 bg-daintree-bg/95 backdrop-blur-sm border border-[var(--border-dock-popup)] shadow-[var(--shadow-dock-panel-popover)] rounded-[var(--radius-lg)] overflow-hidden"
+        className="w-[700px] max-w-[90vw] h-[500px] max-h-[80vh] p-0 bg-daintree-bg/95 backdrop-blur-sm border border-[var(--border-dock-popup)] shadow-[var(--shadow-dock-panel-popover)] rounded-[var(--radius-lg)] overflow-hidden data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:duration-200 data-[state=closed]:duration-[120ms] data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2"
         side="top"
         align="start"
         sideOffset={10}
@@ -375,6 +376,9 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
         onEscapeKeyDown={(e) => handleDockEscapeKeyDown(e, portalContainer)}
         onOpenAutoFocus={(event) => {
           event.preventDefault();
+          if (terminal.spawnedBy === "mcp") {
+            return;
+          }
           const focusTarget = getTerminalFocusTarget({
             hasHybridInputSurface: chrome.isAgent,
             isInputDisabled: backendStatus === "disconnected" || backendStatus === "recovering",

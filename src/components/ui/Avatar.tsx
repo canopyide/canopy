@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -13,10 +13,15 @@ interface AvatarProps {
 export function Avatar({ src, alt, title, className }: AvatarProps) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
+  const imgRef = useRef<HTMLImageElement>(null);
 
   useEffect(() => {
     setLoaded(false);
     setError(false);
+    const img = imgRef.current;
+    if (img?.complete && img.naturalWidth > 0) {
+      setLoaded(true);
+    }
   }, [src]);
 
   const avatarContent = (
@@ -31,7 +36,7 @@ export function Avatar({ src, alt, title, className }: AvatarProps) {
             "absolute inset-0 rounded-full flex items-center justify-center",
             error
               ? "bg-muted-foreground/30 ring-2 ring-inset ring-muted-foreground/50"
-              : "bg-muted animate-pulse"
+              : "bg-muted-foreground/20 animate-pulse-delayed"
           )}
         >
           {error && (
@@ -41,11 +46,12 @@ export function Avatar({ src, alt, title, className }: AvatarProps) {
       )}
       {!error && (
         <img
+          ref={imgRef}
           src={src}
           alt={alt}
           onLoad={() => setLoaded(true)}
           onError={() => setError(true)}
-          className="rounded-full transition-opacity duration-200 w-full h-full"
+          className="rounded-full transition-opacity duration-150 ease-out w-full h-full"
           style={{ opacity: loaded ? 1 : 0 }}
         />
       )}

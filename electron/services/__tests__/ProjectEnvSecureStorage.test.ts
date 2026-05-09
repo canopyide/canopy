@@ -40,6 +40,13 @@ describe("ProjectEnvSecureStorage", () => {
     expect(service.get("project-1", "MISSING")).toBeUndefined();
   });
 
+  it("preserves intentionally-blank stored values instead of coercing to undefined", async () => {
+    const service = await getService();
+    service.set("project-1", "OPTIONAL_TOKEN", "");
+
+    expect(service.get("project-1", "OPTIONAL_TOKEN")).toBe("");
+  });
+
   it("set handles malformed projectEnv store value by normalizing", async () => {
     storeState.data.projectEnv = "corrupted";
     const service = await getService();

@@ -19,6 +19,7 @@ async function getRunCommandDetector(): Promise<
   return cachedRunCommandDetector;
 }
 import { typedHandle } from "../../utils.js";
+import { validateFolderName } from "../../../../shared/utils/folderName.js";
 import type { ProjectSettings } from "../../../types/index.js";
 
 export function registerProjectSettingsHandlers(): () => void {
@@ -76,6 +77,22 @@ export function registerProjectSettingsHandlers(): () => void {
   };
   handlers.push(typedHandle(CHANNELS.PROJECT_DETECT_RUNNERS, handleProjectDetectRunners));
 
+  const handleProjectGetNotificationOverrides = async (
+    projectIds: string[]
+  ): Promise<
+    Record<string, Partial<import("../../../../shared/types/ipc/api.js").NotificationSettings>>
+  > => {
+    if (!Array.isArray(projectIds)) {
+      throw new Error("Invalid project IDs");
+    }
+    const valid = projectIds.filter((id): id is string => typeof id === "string" && id.length > 0);
+    const unique = [...new Set(valid)];
+    return projectStore.getProjectNotificationOverrides(unique);
+  };
+  handlers.push(
+    typedHandle(CHANNELS.PROJECT_GET_NOTIFICATION_OVERRIDES, handleProjectGetNotificationOverrides)
+  );
+
   const handleProjectCreateFolder = async (payload: {
     parentPath: string;
     folderName: string;
@@ -87,18 +104,18 @@ export function registerProjectSettingsHandlers(): () => void {
     if (typeof parentPath !== "string" || !parentPath.trim()) {
       throw new Error("Invalid parent path");
     }
-    if (typeof folderName !== "string" || !folderName.trim()) {
+    if (typeof folderName !== "string") {
       throw new Error("Folder name is required");
     }
     if (!path.isAbsolute(parentPath)) {
       throw new Error("Parent path must be absolute");
     }
 
-    const trimmed = folderName.trim();
-
-    if (trimmed.includes("/") || trimmed.includes("\\") || trimmed === ".." || trimmed === ".") {
-      throw new Error("Folder name must not contain path separators or dot segments");
+    const folderNameError = validateFolderName(folderName);
+    if (folderNameError) {
+      throw new Error(folderNameError);
     }
+    const trimmed = folderName.trim();
 
     const fs = await import("fs");
 

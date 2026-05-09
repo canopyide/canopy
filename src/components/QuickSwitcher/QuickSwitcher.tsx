@@ -1,11 +1,23 @@
-import { useCallback } from "react";
+import { useCallback, useId } from "react";
 import { SearchablePalette } from "@/components/ui/SearchablePalette";
+import { KBD_CLASS, PaletteFooterHints } from "@/components/ui/AppPaletteDialog";
 import { QuickSwitcherItem } from "./QuickSwitcherItem";
-import { useKeybindingDisplay } from "@/hooks/useKeybinding";
+import { useKeybindingDisplay, useEffectiveCombo } from "@/hooks/useKeybinding";
 import type {
   QuickSwitcherItem as QuickSwitcherItemData,
   UseQuickSwitcherReturn,
 } from "@/hooks/useQuickSwitcher";
+
+function getQuickSwitcherActionLabel(item: QuickSwitcherItemData): string {
+  switch (item.type) {
+    case "terminal":
+      return "to switch terminal";
+    case "worktree":
+      return "to switch worktree";
+  }
+  const _exhaustive: never = item.type;
+  return _exhaustive;
+}
 
 type QuickSwitcherProps = Pick<
   UseQuickSwitcherReturn,
@@ -14,8 +26,10 @@ type QuickSwitcherProps = Pick<
   | "results"
   | "totalResults"
   | "selectedIndex"
+  | "isLoading"
   | "close"
   | "setQuery"
+  | "setSelectedIndex"
   | "selectPrevious"
   | "selectNext"
   | "selectItem"
@@ -28,8 +42,10 @@ export function QuickSwitcher({
   results,
   totalResults,
   selectedIndex,
+  isLoading,
   close,
   setQuery,
+  setSelectedIndex,
   selectPrevious,
   selectNext,
   selectItem,
@@ -42,7 +58,29 @@ export function QuickSwitcher({
     [selectItem]
   );
 
+  const footerHintId = useId();
+
+  const getFooter = useCallback(
+    (item: QuickSwitcherItemData | null): React.ReactNode => {
+      if (!item) return undefined;
+      const label = getQuickSwitcherActionLabel(item);
+      return (
+        <div id={footerHintId} className="w-full">
+          <PaletteFooterHints
+            primaryHint={{ keys: ["↵"], label }}
+            hints={[
+              { keys: ["↑", "↓"], label: "to navigate" },
+              { keys: ["Esc"], label: "to close" },
+            ]}
+          />
+        </div>
+      );
+    },
+    [footerHintId]
+  );
+
   const newTerminalShortcut = useKeybindingDisplay("terminal.new");
+  const quickSwitcherShortcut = useEffectiveCombo("nav.quickSwitcher");
 
   return (
     <SearchablePalette<QuickSwitcherItemData>
@@ -55,34 +93,34 @@ export function QuickSwitcher({
       onSelectNext={selectNext}
       onConfirm={confirmSelection}
       onClose={close}
+      onHoverIndex={setSelectedIndex}
       getItemId={(item) => item.id}
-      renderItem={(item, _index, isSelected) => (
+      renderItem={(item, index, isSelected, onHoverIndex) => (
         <QuickSwitcherItem
           key={item.id}
           item={item}
           isSelected={isSelected}
           onSelect={handleSelect}
+          onHover={() => onHoverIndex(index)}
+          ariaDescribedBy={footerHintId}
         />
       )}
+      getFooter={getFooter}
       label="Quick switch"
-      keyHint="⌘P"
+      shortcut={quickSwitcherShortcut}
       ariaLabel="Quick switcher"
-      searchPlaceholder="Search terminals, agents, worktrees..."
+      isLoading={isLoading}
+      searchPlaceholder="Find panels, agents, or worktrees"
       searchAriaLabel="Search terminals, agents, and worktrees"
       listId="quick-switcher-list"
       itemIdPrefix="qs-option"
       emptyMessage="No panels open"
-      noMatchMessage={`No items match "${query}"`}
       totalResults={totalResults}
       emptyContent={
         <p className="mt-2 text-xs text-daintree-text/40">
           {newTerminalShortcut ? (
             <>
-              Press{" "}
-              <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-daintree-border text-daintree-text/60">
-                {newTerminalShortcut}
-              </kbd>{" "}
-              to create a terminal.
+              Press <kbd className={KBD_CLASS}>{newTerminalShortcut}</kbd> to create a terminal.
             </>
           ) : (
             "Create a terminal to get started."

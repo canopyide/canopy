@@ -1,10 +1,19 @@
 import { useCallback } from "react";
 import { SearchablePalette } from "@/components/ui/SearchablePalette";
+import { useEffectiveCombo } from "@/hooks/useKeybinding";
 import { ActionPaletteItem } from "./ActionPaletteItem";
 import type {
   ActionPaletteItem as ActionPaletteItemType,
   UseActionPaletteReturn,
 } from "@/hooks/useActionPalette";
+
+// Module-level so SearchablePalette receives a stable reference and skips
+// re-renders driven only by a freshly-created callback identity.
+const getActionItemId = (item: ActionPaletteItemType): string => item.id;
+
+// Verb-noun derived from the highlighted action's title — empty selection
+// falls back to a generic "run action" so the chip never goes blank.
+const getActionLabel = (item: ActionPaletteItemType | null): string => item?.title ?? "Run action";
 
 type ActionPaletteProps = Pick<
   UseActionPaletteReturn,
@@ -13,8 +22,11 @@ type ActionPaletteProps = Pick<
   | "results"
   | "totalResults"
   | "selectedIndex"
+  | "isShowingRecentlyUsed"
+  | "isStale"
   | "close"
   | "setQuery"
+  | "setSelectedIndex"
   | "selectPrevious"
   | "selectNext"
   | "executeAction"
@@ -27,8 +39,11 @@ export function ActionPalette({
   results,
   totalResults,
   selectedIndex,
+  isShowingRecentlyUsed,
+  isStale,
   close,
   setQuery,
+  setSelectedIndex,
   selectPrevious,
   selectNext,
   executeAction,
@@ -41,6 +56,8 @@ export function ActionPalette({
     [executeAction]
   );
 
+  const actionPaletteShortcut = useEffectiveCombo("action.palette.open");
+
   return (
     <SearchablePalette<ActionPaletteItemType>
       isOpen={isOpen}
@@ -52,29 +69,33 @@ export function ActionPalette({
       onSelectNext={selectNext}
       onConfirm={confirmSelection}
       onClose={close}
-      getItemId={(item) => item.id}
-      renderItem={(item, _index, isSelected) => (
+      onHoverIndex={setSelectedIndex}
+      getItemId={getActionItemId}
+      getActionLabel={getActionLabel}
+      isFiltering={isStale}
+      renderItem={(item, index, isSelected, onHoverIndex) => (
         <ActionPaletteItem
           key={item.id}
           item={item}
+          index={index}
           isSelected={isSelected}
           onSelect={handleSelect}
+          onHoverIndex={onHoverIndex}
         />
       )}
       label="Actions"
-      keyHint="⇧⇧"
+      shortcut={actionPaletteShortcut}
       ariaLabel="Action palette"
-      searchPlaceholder="Search actions..."
+      searchPlaceholder="Find an action"
       searchAriaLabel="Search actions"
       listId="action-palette-list"
       itemIdPrefix="action-option"
-      emptyMessage="No actions available"
-      noMatchMessage={`No actions match "${query}"`}
+      emptyMessage="Type to search actions"
       totalResults={totalResults}
-      emptyContent={
-        <p className="mt-2 text-xs text-daintree-text/40">
-          Actions depend on the focused panel and current context.
-        </p>
+      beforeList={
+        isShowingRecentlyUsed ? (
+          <div className="px-3 pt-2 pb-1 text-xs text-daintree-text/40">Recently used</div>
+        ) : null
       }
     />
   );

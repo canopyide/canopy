@@ -6,6 +6,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import {
   DndContext,
@@ -15,6 +16,7 @@ import {
   useSensor,
   MouseSensor,
   TouchSensor,
+  KeyboardSensor,
   closestCenter,
   rectIntersection,
   pointerWithin,
@@ -26,27 +28,55 @@ import {
   type Modifier,
   type Announcements,
   type MeasuringConfiguration,
+  type MouseSensorOptions,
+  type ScreenReaderInstructions,
 } from "@dnd-kit/core";
+import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import {
   usePanelStore,
   useLayoutConfigStore,
   useWorktreeSelectionStore,
   type TerminalInstance,
 } from "@/store";
-import { useShallow } from "zustand/react/shallow";
+
 import { TerminalDragPreview } from "./TerminalDragPreview";
 import { WorktreeDragPreview } from "./WorktreeDragPreview";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
-import { arrayMove } from "@dnd-kit/sortable";
 import { parseAccordionDragId } from "./SortableWorktreeTerminal";
 import { isWorktreeSortDragData, parseWorktreeSortDragId } from "./SortableWorktreeCard";
 import { useWorktreeFilterStore } from "@/store/worktreeFilterStore";
 import { getCurrentViewStore } from "@/store/createWorktreeStore";
 import { useLayoutUndoStore } from "@/store/layoutUndoStore";
+import { applyManualWorktreeReorder } from "@/lib/worktreeReorder";
 import type { WorktreeSnapshot } from "@shared/types";
+import { m, useReducedMotion } from "framer-motion";
+import {
+  resolveContainerId,
+  filterTerminalsByContainer,
+  detectTargetContainer,
+  resolveTargetIndex,
+  isGridFull,
+  resolveGroupPlacementIndex,
+  findGroupIndex,
+  type OverDropData,
+} from "./dropResolution";
+import {
+  UI_ANIMATION_DURATION,
+  DURATION_100,
+  DURATION_300,
+  EASE_SNAPPY,
+  PANEL_RESTORE_DURATION,
+  EASE_OUT_EXPO,
+  DRAG_OVERLAY_ENTRY_SCALE,
+  DRAG_OVERLAY_ENTRY_OPACITY,
+  getUiAnimationDuration,
+} from "@/lib/animationUtils";
 
 // Placeholder ID used when dragging from dock to grid
 export const GRID_PLACEHOLDER_ID = "__grid-placeholder__";
+
+// Droppable ID for the trash pill — drop a panel here to trash it
+export const TRASH_DROPPABLE_ID = "__trash-droppable__";
 
 // Context to share placeholder state with ContentGrid
 interface DndPlaceholderContextValue {
@@ -87,11 +117,46 @@ export function useIsWorktreeSortDragging() {
 // This allows clicks to work for popovers without triggering drag
 const DRAG_ACTIVATION_DISTANCE = 8;
 
+// Right-click button index for MouseEvent.button (matches dnd-kit upstream).
+const MOUSE_RIGHT_CLICK = 2;
+
+// Returns true when the event target sits inside an opt-out subtree marked
+// with [data-no-dnd]. Used by NoDndMouseSensor to short-circuit drag activation
+// for inline interactive elements (popover triggers, dropdown menus, badges,
+// etc.) that share a sortable's drag surface. Pattern from
+// https://github.com/clauderic/dnd-kit/issues/477.
+export function isNoDndTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest("[data-no-dnd]") !== null;
+}
+
+// MouseSensor variant that refuses to activate when the mousedown originates
+// inside a [data-no-dnd] subtree. Mirrors the upstream MouseSensor.activators
+// shape exactly so options like activationConstraint flow through unchanged.
+export class NoDndMouseSensor extends MouseSensor {
+  static activators: {
+    eventName: "onMouseDown";
+    handler: (event: ReactMouseEvent, options: MouseSensorOptions) => boolean;
+  }[] = [
+    {
+      eventName: "onMouseDown",
+      handler: ({ nativeEvent: event }, { onActivation }) => {
+        if (event.button === MOUSE_RIGHT_CLICK) return false;
+        if (isNoDndTarget(event.target)) return false;
+        onActivation?.({ event });
+        return true;
+      },
+    },
+  ];
+}
+
 // Cursor offset from top of preview (positions cursor in title bar area)
 const TITLE_BAR_CURSOR_OFFSET = 12;
 
 // Horizontal offset from cursor to left edge of worktree drag preview
 const WORKTREE_CURSOR_LEFT_OFFSET = 8;
+
+const DND_RETRY_INTERVAL_MS = 16;
+const DND_RETRY_MAX_ATTEMPTS = 10;
 
 interface DndProviderProps {
   children: React.ReactNode;
@@ -112,8 +177,37 @@ export interface WorktreeDragData extends DragData {
   origin: "accordion";
 }
 
-function getDragLabel(data: DragData | WorktreeDragData | undefined): string {
-  return data?.terminal?.title ?? "panel";
+/**
+ * Resolve the human-readable label used by drag announcements for a worktree
+ * snapshot. Falls back through `issueTitle` → `branch` → `name` so the
+ * announcement reflects whatever the user actually sees on the card.
+ */
+function resolveWorktreeLabel(worktreeId: string): string {
+  const wt = getCurrentViewStore().getState().worktrees.get(worktreeId);
+  return wt?.issueTitle ?? wt?.branch ?? wt?.name ?? "worktree";
+}
+
+function getDragLabel(data: unknown): string {
+  if (isWorktreeSortDragData(data as Record<string, unknown> | undefined)) {
+    const worktreeId = (data as { worktreeId?: string }).worktreeId;
+    return worktreeId ? resolveWorktreeLabel(worktreeId) : "worktree";
+  }
+  const dragData = data as DragData | WorktreeDragData | undefined;
+  return dragData?.terminal?.title ?? "panel";
+}
+
+/**
+ * Resolve the announcement label for a droppable. Worktree-sort uses
+ * `worktree-sort-{id}` for the sortable handle and `worktree-drop-{id}` for
+ * the row's drop target — both should announce the same human-readable label.
+ */
+function getOverDragLabel(over: { id: string | number; data: { current: unknown } }): string {
+  const sortDragId = parseWorktreeSortDragId(over.id);
+  if (sortDragId) return resolveWorktreeLabel(sortDragId);
+  if (typeof over.id === "string" && over.id.startsWith("worktree-drop-")) {
+    return resolveWorktreeLabel(over.id.slice("worktree-drop-".length));
+  }
+  return getDragLabel(over.data.current);
 }
 
 const MEASURING_CONFIG: MeasuringConfiguration = {
@@ -123,27 +217,37 @@ const MEASURING_CONFIG: MeasuringConfiguration = {
   },
 };
 
+// Static instructions read by screen readers when a draggable element receives
+// focus. dnd-kit attaches this string via aria-describedby on the focused
+// activator node, distinct from the lifecycle live-region announcements below
+// — there's no double-speak risk because the two surfaces target different
+// ARIA mechanisms (describedby vs aria-live).
+const dragScreenReaderInstructions: ScreenReaderInstructions = {
+  draggable:
+    "To pick up a draggable item, press Space or Enter. While dragging, use the arrow keys to move. Press Space or Enter again to drop, or Escape to cancel.",
+};
+
 const dragAnnouncements: Announcements = {
   onDragStart({ active }) {
-    return `Picked up ${getDragLabel(active.data.current as DragData | undefined)}`;
+    return `Picked up ${getDragLabel(active.data.current)}`;
   },
   onDragOver({ active, over }) {
-    const label = getDragLabel(active.data.current as DragData | undefined);
+    const label = getDragLabel(active.data.current);
     if (over) {
-      const overLabel = getDragLabel(over.data.current as DragData | undefined);
+      const overLabel = getOverDragLabel(over);
       return `${label} is over ${overLabel}`;
     }
     return `${label} is no longer over a droppable area`;
   },
   onDragEnd({ active, over }) {
-    const label = getDragLabel(active.data.current as DragData | undefined);
+    const label = getDragLabel(active.data.current);
     if (over) {
       return `Dropped ${label}`;
     }
     return `${label} returned to its original position`;
   },
   onDragCancel({ active }) {
-    const label = getDragLabel(active.data.current as DragData | undefined);
+    const label = getDragLabel(active.data.current);
     return `Drag cancelled. ${label} returned to its original position`;
   },
 };
@@ -156,8 +260,14 @@ function isWorktreeDragData(
   );
 }
 
-// Helper to get coordinates from pointer or touch event
-function getEventCoordinates(event: Event): { x: number; y: number } {
+// Helper to get coordinates from pointer or touch event. Returns null for
+// keyboard-initiated drags — KeyboardEvent has no client coordinates and
+// reading them yields undefined, which propagates as NaN through the cursor
+// modifiers and renders the DragOverlay at an invalid position. The cursor
+// modifiers below short-circuit when the ref is null and let the overlay
+// fall back to dnd-kit's default rect-centered positioning.
+function getEventCoordinates(event: Event): { x: number; y: number } | null {
+  if (typeof KeyboardEvent !== "undefined" && event instanceof KeyboardEvent) return null;
   if ("touches" in event && (event as TouchEvent).touches.length) {
     const touch = (event as TouchEvent).touches[0]!;
     return { x: touch.clientX, y: touch.clientY };
@@ -171,13 +281,16 @@ function DragOverlayWithCursorTracking({
   activeTerminal,
   activeWorktree,
   groupTabCount,
+  isCancelDrop,
 }: {
   activeTerminal: TerminalInstance | null;
   activeWorktree: WorktreeSnapshot | null;
   groupTabCount?: number;
+  isCancelDrop: boolean;
 }) {
   const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
   const pointerPositionRef = useRef<{ x: number; y: number } | null>(null);
+  const prefersReducedMotion = useReducedMotion();
 
   useDndMonitor({
     onDragStart({ activatorEvent }) {
@@ -241,8 +354,29 @@ function DragOverlayWithCursorTracking({
   );
 
   return (
-    <DragOverlay dropAnimation={null} modifiers={activeModifiers}>
-      {overlayContent}
+    <DragOverlay
+      dropAnimation={
+        isCancelDrop
+          ? { duration: PANEL_RESTORE_DURATION, easing: EASE_OUT_EXPO, sideEffects: null }
+          : { duration: getUiAnimationDuration(), easing: EASE_SNAPPY, sideEffects: null }
+      }
+      modifiers={activeModifiers}
+    >
+      {overlayContent ? (
+        <m.div
+          key={activeTerminal?.id ?? activeWorktree?.id ?? "drag-overlay"}
+          initial={
+            prefersReducedMotion
+              ? false
+              : { scale: DRAG_OVERLAY_ENTRY_SCALE, opacity: DRAG_OVERLAY_ENTRY_OPACITY }
+          }
+          animate={{ scale: 1, opacity: 1 }}
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-type-assertion -- framer-motion v12 Easing type doesn't include CSS cubic-bezier strings
+          transition={{ duration: UI_ANIMATION_DURATION / 1000, ease: EASE_SNAPPY } as any}
+        >
+          {overlayContent}
+        </m.div>
+      ) : null}
     </DragOverlay>
   );
 }
@@ -271,17 +405,26 @@ export function DndProvider({ children }: DndProviderProps) {
   const stabilizationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dockRetryTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
 
-  // Configure sensors with activation constraint so clicks work for popovers
+  const [isCancelDrop, setIsCancelDrop] = useState(false);
+
+  // Configure sensors with activation constraint so clicks work for popovers.
+  // KeyboardSensor uses sortableKeyboardCoordinates so arrow-key moves resolve
+  // against the sortable layout instead of pixel-stepping; the [data-no-dnd]
+  // opt-out doesn't apply here because keyboard activation is explicit
+  // (Space/Enter on a focused activator node, not bubbling pointer input).
   const sensors = useSensors(
-    useSensor(MouseSensor, {
+    useSensor(NoDndMouseSensor, {
       activationConstraint: { distance: DRAG_ACTIVATION_DISTANCE },
     }),
     useSensor(TouchSensor, {
       activationConstraint: { delay: 150, tolerance: 5 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
     })
   );
 
-  const panelsById = usePanelStore(useShallow((state) => state.panelsById));
+  const panelsById = usePanelStore((state) => state.panelsById);
   const reorderTerminals = usePanelStore((s) => s.reorderTerminals);
   const reorderTabGroups = usePanelStore((s) => s.reorderTabGroups);
   const moveTerminalToPosition = usePanelStore((s) => s.moveTerminalToPosition);
@@ -300,6 +443,8 @@ export function DndProvider({ children }: DndProviderProps) {
   }, [activeId, activeData, panelsById]);
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
+    setIsCancelDrop(false);
+
     const { active } = event;
     const dragId = active.id as string;
 
@@ -360,13 +505,8 @@ export function DndProvider({ children }: DndProviderProps) {
     if (overData?.container) {
       detectedContainer = overData.container;
     } else if (overData?.sortable?.containerId) {
-      const containerId = overData.sortable.containerId;
-      if (containerId === "grid-container") {
-        detectedContainer = "grid";
-      } else if (containerId === "dock-container") {
-        detectedContainer = "dock";
-      }
-      // Accordion containers (worktree-*-accordion) are ignored for grid/dock detection
+      const resolved = resolveContainerId(overData.sortable.containerId);
+      if (resolved) detectedContainer = resolved;
     } else {
       const overId = over.id as string;
       // Skip accordion drop targets for non-accordion drags
@@ -451,31 +591,14 @@ export function DndProvider({ children }: DndProviderProps) {
           (overId.startsWith("worktree-drop-") ? overId.slice("worktree-drop-".length) : null);
         if (!activeWorktreeId || !overWorktreeId || activeWorktreeId === overWorktreeId) return;
 
-        const dragOrder = activeRawData.dragStartOrder as string[];
+        const dragOrder = activeRawData.dragStartOrder;
+        if (!Array.isArray(dragOrder)) return;
         const oldIndex = dragOrder.indexOf(activeWorktreeId);
         const newIndex = dragOrder.indexOf(overWorktreeId);
         if (oldIndex === -1 || newIndex === -1) return;
 
-        const reorderedSubset = arrayMove(dragOrder, oldIndex, newIndex);
-
-        // Merge reordered subset back into full persisted order
-        // so that worktrees hidden by filters don't lose position
         const fullOrder = useWorktreeFilterStore.getState().manualOrder;
-        const subsetSet = new Set(reorderedSubset);
-        const merged: string[] = [];
-        let subsetIdx = 0;
-        // Walk through the full order, replacing subset items in their new order
-        for (const id of fullOrder) {
-          if (subsetSet.has(id)) {
-            merged.push(reorderedSubset[subsetIdx++]!);
-          } else {
-            merged.push(id);
-          }
-        }
-        // Append any subset items not in the full order (first drag or new items)
-        while (subsetIdx < reorderedSubset.length) {
-          merged.push(reorderedSubset[subsetIdx++]!);
-        }
+        const merged = applyManualWorktreeReorder(fullOrder, dragOrder, oldIndex, newIndex);
 
         useWorktreeFilterStore.getState().setManualOrder(merged);
         useWorktreeFilterStore.getState().setOrderBy("manual");
@@ -503,15 +626,25 @@ export function DndProvider({ children }: DndProviderProps) {
       // ALWAYS unlock resize regardless of drop target - fixes stuck resize locks
       // when dropping outside droppable areas (over === null)
       if (draggedId) {
-        setTimeout(() => terminalInstanceService.lockResize(draggedId, false), 100);
+        setTimeout(() => terminalInstanceService.lockResize(draggedId, false), DURATION_100);
       }
 
+      // Defensive: cancelDrop should convert rejected drops to onDragCancel.
+      // If we reach this point, the drop was validated.
       if (!over || !activeData || !draggedId) return;
 
       // Capture layout state before any mutations for undo support
       useLayoutUndoStore.getState().pushLayoutSnapshot();
 
       const overId = over.id as string;
+
+      // Drag-to-trash: drop on the trash pill trashes the panel — or its whole tab
+      // group, matching the X-button path — and skips reorder logic. trashPanelGroup
+      // falls back to trashPanel when the dragged panel has no group.
+      if (overId === TRASH_DROPPABLE_ID) {
+        usePanelStore.getState().trashPanelGroup(draggedId);
+        return;
+      }
 
       const overData = over.data.current as
         | {
@@ -560,15 +693,11 @@ export function DndProvider({ children }: DndProviderProps) {
       // Track if this is a worktree drop (skip reorder logic, but still run stabilization)
       const isWorktreeDrop = overData?.type === "worktree" && !!overData.worktreeId;
       if (isWorktreeDrop) {
-        // Block worktree drops for multi-panel groups (would split the group)
-        if (isGroupDrag) {
-          // Cancel the drop - fall through to stabilization only
-        } else {
-          const currentTerminal = freshTerminalsById[draggedId];
-          if (currentTerminal && currentTerminal.worktreeId !== overData.worktreeId) {
-            moveTerminalToWorktree(draggedId, overData.worktreeId!);
-            setFocused(null);
-          }
+        if (isGroupDrag) return; // Defensive: cancelDrop should catch this
+        const currentTerminal = freshTerminalsById[draggedId];
+        if (currentTerminal && currentTerminal.worktreeId !== overData.worktreeId) {
+          moveTerminalToWorktree(draggedId, overData.worktreeId!);
+          setFocused(null);
         }
         // Don't return - fall through to stabilization
       }
@@ -578,100 +707,42 @@ export function DndProvider({ children }: DndProviderProps) {
 
       // Only process grid/dock reorder logic if this is NOT a worktree drop
       if (!isWorktreeDrop) {
-        // Priority 1: Check if dropped on a container directly
-        if (overData?.container) {
-          targetContainer = overData.container;
-        }
-        // Priority 2: Check sortable containerId
-        else if (overData?.sortable?.containerId) {
-          const containerId = overData.sortable.containerId;
-          if (containerId === "grid-container") {
-            targetContainer = "grid";
-          } else if (containerId === "dock-container") {
-            targetContainer = "dock";
-          }
-        }
-        // Priority 3: Use tracked overContainer state
-        else if (dropContainer) {
-          targetContainer = dropContainer;
-        }
-        // Priority 4: Determine from terminal location (skip accordion targets)
-        else {
-          // Skip accordion drop targets for grid/dock drags
-          const isAccordionTarget = parseAccordionDragId(overId) !== null;
-          if (!isAccordionTarget) {
-            const overTerminal = freshTerminalsById[overId];
-            if (overTerminal) {
-              targetContainer = overTerminal.location === "dock" ? "dock" : "grid";
-            }
-          }
-        }
+        const isAccordionTarget = parseAccordionDragId(overId) !== null;
+        targetContainer =
+          detectTargetContainer(
+            overData as OverDropData | undefined,
+            dropContainer,
+            overId,
+            freshTerminalsById,
+            isAccordionTarget
+          ) ??
+          sourceLocation ??
+          "grid";
 
-        // Get target index
-        let targetIndex = 0;
-        const containerTerminals: TerminalInstance[] = [];
-        for (const tid of freshTerminalIds) {
-          const t = freshTerminalsById[tid];
-          if (!t || (t.worktreeId ?? undefined) !== (activeWorktreeId ?? undefined)) continue;
-          if (targetContainer === "dock") {
-            if (t.location === "dock") containerTerminals.push(t);
-          } else {
-            if (t.location === "grid" || t.location === undefined) containerTerminals.push(t);
-          }
-        }
-
-        // Find index of item we're dropping on (skip accordion IDs)
         const isAccordionOver = parseAccordionDragId(overId) !== null;
-        const overTerminalIndex = isAccordionOver
-          ? -1
-          : containerTerminals.findIndex((t) => t.id === overId);
-        if (overTerminalIndex !== -1) {
-          targetIndex = overTerminalIndex;
-        } else if (overData?.sortable?.index !== undefined) {
-          targetIndex = overData.sortable.index;
-        } else {
-          // Dropping on empty container - append to end
-          targetIndex = containerTerminals.length;
-        }
+        const targetIndex = resolveTargetIndex(
+          freshTerminalsById,
+          freshTerminalIds,
+          activeWorktreeId,
+          targetContainer,
+          overId,
+          overData?.sortable?.index,
+          isAccordionOver
+        );
 
         // Block cross-container move from dock to grid if grid is full
-        // Count unique groups (each tab group = 1 slot)
-        const gridTerminals: TerminalInstance[] = [];
-        for (const tid of freshTerminalIds) {
-          const t = freshTerminalsById[tid];
-          if (
-            t &&
-            (t.location === "grid" || t.location === undefined) &&
-            (t.worktreeId ?? undefined) === (activeWorktreeId ?? undefined)
-          ) {
-            gridTerminals.push(t);
-          }
-        }
-        // Count groups using TabGroup data from store
-        const tabGroups = usePanelStore.getState().tabGroups;
-        const panelsInGroups = new Set<string>();
-        let explicitGroupCount = 0;
-        for (const group of tabGroups.values()) {
-          if (
-            group.location === "grid" &&
-            (group.worktreeId ?? undefined) === (activeWorktreeId ?? undefined)
-          ) {
-            explicitGroupCount++;
-            group.panelIds.forEach((pid) => panelsInGroups.add(pid));
-          }
-        }
-        // Count ungrouped panels (each is its own virtual group)
-        let ungroupedCount = 0;
-        for (const t of gridTerminals) {
-          if (!panelsInGroups.has(t.id)) {
-            ungroupedCount++;
-          }
-        }
-        const isGridFull = explicitGroupCount + ungroupedCount >= getMaxGridCapacity();
+        const gridIsFull = isGridFull(
+          freshTerminalsById,
+          freshTerminalIds,
+          activeWorktreeId,
+          usePanelStore.getState().tabGroups,
+          getMaxGridCapacity()
+        );
 
-        if (sourceLocation === "dock" && targetContainer === "grid" && isGridFull) {
-          // Grid is full, cancel the drop - still run stabilization below
-        } else if (isGroupDrag) {
+        if (sourceLocation === "dock" && targetContainer === "grid" && gridIsFull) {
+          return; // Defensive: cancelDrop should catch this
+        }
+        if (isGroupDrag) {
           // Group-aware drag: move the entire tab group
           if (sourceLocation === targetContainer) {
             // Same container: reorder groups
@@ -679,36 +750,18 @@ export function DndProvider({ children }: DndProviderProps) {
               .getState()
               .getTabGroups(targetContainer, activeWorktreeId ?? undefined);
 
-            // Derive fromGroupIndex from live tabGroups by finding the group containing
-            // the dragged terminal. activeData.sourceIndex is the panel index among all
-            // individual panels, not the group index, so it cannot be used here.
-            // Prefer groupId match (explicit groups); fall back to panel membership.
-            let fromGroupIndex = tabGroupsAtLocation.findIndex((g) => g.id === activeData.groupId);
-            if (fromGroupIndex === -1) {
-              fromGroupIndex = tabGroupsAtLocation.findIndex((g) =>
-                g.panelIds.includes(activeData.terminal.id)
-              );
-            }
+            const fromGroupIndex = findGroupIndex(
+              tabGroupsAtLocation,
+              activeData.groupId,
+              activeData.terminal.id
+            );
 
             if (fromGroupIndex !== -1) {
-              // Find target group index: match by group ID or panel membership, then
-              // fall back to sortable.index when overId is a synthetic placeholder.
-              let toGroupIndex = -1;
-              for (let i = 0; i < tabGroupsAtLocation.length; i++) {
-                if (
-                  tabGroupsAtLocation[i]!.id === overId ||
-                  tabGroupsAtLocation[i]!.panelIds.includes(overId)
-                ) {
-                  toGroupIndex = i;
-                  break;
-                }
-              }
-              if (toGroupIndex === -1) {
-                toGroupIndex =
-                  overData?.sortable?.index !== undefined
-                    ? Math.min(Math.max(0, overData.sortable.index), tabGroupsAtLocation.length - 1)
-                    : tabGroupsAtLocation.length - 1;
-              }
+              const toGroupIndex = resolveGroupPlacementIndex(
+                tabGroupsAtLocation,
+                overId,
+                overData?.sortable?.index
+              );
 
               if (fromGroupIndex !== toGroupIndex) {
                 reorderTabGroups(fromGroupIndex, toGroupIndex, targetContainer, activeWorktreeId);
@@ -731,29 +784,12 @@ export function DndProvider({ children }: DndProviderProps) {
               );
 
               if (movedGroupIndex !== -1) {
-                // Find target group index: match by group ID or panel membership, then
-                // fall back to sortable.index when overId is a synthetic placeholder.
-                let toGroupIndex = -1;
-                for (let i = 0; i < tabGroupsAtLocation.length; i++) {
-                  if (
-                    tabGroupsAtLocation[i]!.id === overId ||
-                    tabGroupsAtLocation[i]!.panelIds.includes(overId)
-                  ) {
-                    toGroupIndex = i;
-                    break;
-                  }
-                }
-                if (toGroupIndex === -1) {
-                  toGroupIndex =
-                    overData?.sortable?.index !== undefined
-                      ? Math.min(
-                          Math.max(0, overData.sortable.index),
-                          tabGroupsAtLocation.length - 1
-                        )
-                      : tabGroupsAtLocation.length - 1;
-                }
+                const toGroupIndex = resolveGroupPlacementIndex(
+                  tabGroupsAtLocation,
+                  overId,
+                  overData?.sortable?.index
+                );
 
-                // If we're not already at the target position, reorder
                 if (movedGroupIndex !== toGroupIndex) {
                   reorderTabGroups(
                     movedGroupIndex,
@@ -777,6 +813,12 @@ export function DndProvider({ children }: DndProviderProps) {
           // Same container reorder
           if (sourceLocation === targetContainer) {
             if (draggedId !== overId) {
+              const containerTerminals = filterTerminalsByContainer(
+                freshTerminalsById,
+                freshTerminalIds,
+                targetContainer,
+                activeWorktreeId
+              );
               const oldIndex = containerTerminals.findIndex((t) => t.id === draggedId);
 
               if (oldIndex !== -1 && targetIndex !== -1 && oldIndex !== targetIndex) {
@@ -883,8 +925,6 @@ export function DndProvider({ children }: DndProviderProps) {
           } else {
             // Terminal may not be mounted yet (popover timing), retry with bounded attempts
             let attempts = 0;
-            const maxAttempts = 10;
-            const retryInterval = 16;
 
             const retryFit = () => {
               attempts++;
@@ -893,18 +933,18 @@ export function DndProvider({ children }: DndProviderProps) {
                 refreshDockTerminal();
                 return;
               }
-              if (attempts < maxAttempts) {
-                const timerId = setTimeout(retryFit, retryInterval);
+              if (attempts < DND_RETRY_MAX_ATTEMPTS) {
+                const timerId = setTimeout(retryFit, DND_RETRY_INTERVAL_MS);
                 dockRetryTimersRef.current.add(timerId);
               }
             };
 
             // Start retry loop
-            const initialTimerId = setTimeout(retryFit, retryInterval);
+            const initialTimerId = setTimeout(retryFit, DND_RETRY_INTERVAL_MS);
             dockRetryTimersRef.current.add(initialTimerId);
           }
         }
-      }, 300);
+      }, DURATION_300);
     },
     [
       activeData,
@@ -918,6 +958,74 @@ export function DndProvider({ children }: DndProviderProps) {
       activeWorktreeId,
       getMaxGridCapacity,
     ]
+  );
+
+  const cancelDrop = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+
+      if (!over) {
+        setIsCancelDrop(true);
+        return true;
+      }
+
+      if (isWorktreeSortDragData(active.data.current as Record<string, unknown> | undefined)) {
+        return false;
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- dnd-kit data.current is loosely typed
+      const activeDataRaw = active.data.current as DragData | undefined;
+      const draggedId = activeDataRaw?.terminal?.id ?? (active?.id ? String(active.id) : null);
+
+      if (!activeDataRaw || !draggedId) {
+        setIsCancelDrop(true);
+        return true;
+      }
+
+      const overData = over.data.current as OverDropData | undefined;
+
+      const isGroupDrag =
+        activeDataRaw.groupId &&
+        activeDataRaw.groupPanelIds &&
+        activeDataRaw.groupPanelIds.length > 1;
+      const isWorktreeDrop = overData?.type === "worktree" && !!overData.worktreeId;
+      if (isWorktreeDrop && isGroupDrag) {
+        setIsCancelDrop(true);
+        return true;
+      }
+
+      if (activeDataRaw.sourceLocation === "dock") {
+        const overId = String(over.id);
+        if (overId !== TRASH_DROPPABLE_ID) {
+          const store = usePanelStore.getState();
+          const targetContainer = detectTargetContainer(
+            overData,
+            overContainer,
+            overId,
+            store.panelsById,
+            parseAccordionDragId(overId) !== null
+          );
+
+          if (targetContainer === "grid") {
+            const gridIsFull = isGridFull(
+              store.panelsById,
+              store.panelIds,
+              useWorktreeSelectionStore.getState().activeWorktreeId,
+              store.tabGroups,
+              getMaxGridCapacity()
+            );
+
+            if (gridIsFull) {
+              setIsCancelDrop(true);
+              return true;
+            }
+          }
+        }
+      }
+
+      return false;
+    },
+    [overContainer, getMaxGridCapacity]
   );
 
   const handleDragCancel = useCallback(() => {
@@ -1024,9 +1132,13 @@ export function DndProvider({ children }: DndProviderProps) {
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
+      cancelDrop={cancelDrop}
       collisionDetection={collisionDetection}
       measuring={MEASURING_CONFIG}
-      accessibility={{ announcements: dragAnnouncements }}
+      accessibility={{
+        announcements: dragAnnouncements,
+        screenReaderInstructions: dragScreenReaderInstructions,
+      }}
     >
       <DndPlaceholderContext.Provider value={placeholderContextValue}>
         {children}
@@ -1035,6 +1147,7 @@ export function DndProvider({ children }: DndProviderProps) {
         activeTerminal={activeTerminal}
         activeWorktree={activeSortWorktree}
         groupTabCount={activeData?.groupPanelIds?.length}
+        isCancelDrop={isCancelDrop}
       />
     </DndContext>
   );

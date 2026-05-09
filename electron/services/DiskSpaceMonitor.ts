@@ -1,7 +1,9 @@
 import { promises as fs } from "node:fs";
 import { app } from "electron";
 import { logDebug, logInfo, logWarn } from "../utils/logger.js";
+import { setAlignedInterval } from "../utils/setAlignedInterval.js";
 import { setWritesSuppressed } from "./diskPressureState.js";
+import { getSystemSleepService } from "./SystemSleepService.js";
 
 export type DiskSpaceStatus = "normal" | "warning" | "critical";
 
@@ -19,7 +21,9 @@ export interface DiskSpaceMonitorActions {
 }
 
 const WARNING_MB = 2000;
+const WARNING_EXIT_MB = WARNING_MB + 50;
 const CRITICAL_MB = 500;
+const CRITICAL_EXIT_MB = CRITICAL_MB + 50;
 const POLL_INTERVAL_MS = 5 * 60 * 1000;
 const NOTIFICATION_COOLDOWN_MS = 30 * 60 * 1000;
 
@@ -33,25 +37,47 @@ export function getCurrentDiskSpaceStatus(): DiskSpacePayload {
   return currentStatus;
 }
 
+let currentDiskSpacePollIntervalMs = POLL_INTERVAL_MS;
+let rearmDiskSpaceTimer: (() => void) | null = null;
+let diskSpacePollFn: (() => Promise<void>) | null = null;
+
+export function setDiskSpaceMonitorPollInterval(ms: number): void {
+  if (ms === currentDiskSpacePollIntervalMs) return;
+  currentDiskSpacePollIntervalMs = ms;
+  rearmDiskSpaceTimer?.();
+}
+
+export function refreshDiskSpaceMonitor(): void {
+  diskSpacePollFn?.();
+}
+
 export function startDiskSpaceMonitor(actions: DiskSpaceMonitorActions): () => void {
   let lastStatus: DiskSpaceStatus = "normal";
   let lastNotificationAt = 0;
   let disposed = false;
+  let polling = false;
+  let removeSuspendListener: (() => void) | null = null;
+  let removeWakeListener: (() => void) | null = null;
 
   async function poll(): Promise<void> {
-    if (disposed) return;
+    if (disposed || polling) return;
+    polling = true;
 
     let availableMb: number;
     try {
       const userDataPath = app.getPath("userData");
-      const stats = await fs.statfs(userDataPath);
-      availableMb = (stats.bavail * stats.bsize) / (1024 * 1024);
+      const stats = await fs.statfs(userDataPath, { bigint: true });
+      availableMb = Number((stats.bavail * stats.bsize) / (1024n * 1024n));
     } catch (err) {
       logWarn("disk-space-poll-failed", { error: String(err) });
+      polling = false;
       return;
     }
 
-    if (disposed) return;
+    if (disposed) {
+      polling = false;
+      return;
+    }
 
     let status: DiskSpaceStatus;
     if (availableMb < CRITICAL_MB) {
@@ -60,6 +86,17 @@ export function startDiskSpaceMonitor(actions: DiskSpaceMonitorActions): () => v
       status = "warning";
     } else {
       status = "normal";
+    }
+
+    // Schmitt trigger: latch prevents premature upward recovery.
+    // Escalation always uses enter thresholds; recovery requires exit thresholds.
+    if (lastStatus === "critical" && availableMb <= CRITICAL_EXIT_MB) {
+      status = "critical";
+    } else if (lastStatus === "warning" && status === "normal" && availableMb <= WARNING_EXIT_MB) {
+      status = "warning";
+    } else if (lastStatus === "critical" && status === "normal" && availableMb <= WARNING_EXIT_MB) {
+      // Post-critical exit: don't skip the warning band.
+      status = "warning";
     }
 
     const writesSuppressed = status === "critical";
@@ -108,17 +145,45 @@ export function startDiskSpaceMonitor(actions: DiskSpaceMonitorActions): () => v
 
       lastStatus = status;
     }
+
+    polling = false;
   }
 
-  void poll();
+  diskSpacePollFn = poll;
 
-  const timer = setInterval(() => {
-    void poll();
-  }, POLL_INTERVAL_MS);
-  timer.unref();
+  let clearAlignedInterval: (() => void) | null = null;
+  const armTimer = () => {
+    clearAlignedInterval?.();
+    clearAlignedInterval = setAlignedInterval(() => {
+      void poll();
+    }, currentDiskSpacePollIntervalMs);
+  };
+  rearmDiskSpaceTimer = armTimer;
+
+  void poll();
+  armTimer();
+
+  try {
+    removeSuspendListener = getSystemSleepService().onSuspend(() => {
+      clearAlignedInterval?.();
+      clearAlignedInterval = null;
+    });
+    removeWakeListener = getSystemSleepService().onWake(() => {
+      if (disposed || clearAlignedInterval !== null) return;
+      void poll();
+      armTimer();
+    });
+  } catch {
+    // SystemSleepService may not be initialized yet at early startup.
+  }
 
   return () => {
     disposed = true;
-    clearInterval(timer);
+    clearAlignedInterval?.();
+    clearAlignedInterval = null;
+    diskSpacePollFn = null;
+    rearmDiskSpaceTimer = null;
+    removeSuspendListener?.();
+    removeWakeListener?.();
   };
 }

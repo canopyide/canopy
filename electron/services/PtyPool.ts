@@ -3,28 +3,51 @@ import type { IDisposable } from "node-pty";
 import os from "os";
 import { getDefaultShell, getDefaultShellArgs } from "./pty/terminalShell.js";
 import { filterEnvironment, ensureUtf8Locale } from "./pty/EnvironmentFilter.js";
+import { POOL_ENV_EMPTY_HASH } from "./pty/ptyPoolEnvHash.js";
 
 export interface PtyPoolConfig {
   poolSize?: number;
   defaultCwd?: string;
+  /**
+   * Hard cap on total pool entries across all (cwd, envHash) keys. LRU
+   * eviction kicks in when warming would exceed this. Each node-pty process
+   * is roughly 50-80 MB; the default cap (8) bounds overhead at ~640 MB
+   * across the 2-4 active pool keys we expect at steady state.
+   */
+  maxEntries?: number;
 }
 
 interface PooledPty {
   process: pty.IPty;
   cwd: string;
+  envHash: string;
+  poolKey: string;
+  env: Record<string, string>;
   createdAt: number;
   dataDisposable: IDisposable;
 }
 
 const DEFAULT_POOL_SIZE = 2;
+const DEFAULT_MAX_ENTRIES = 8;
+
+function makePoolKey(cwd: string, envHash: string): string {
+  return `${cwd}\0${envHash}`;
+}
 
 export class PtyPool {
   private pool: Map<string, PooledPty> = new Map();
   private readonly poolSize: number;
+  private readonly maxEntries: number;
   private readonly defaultShell: string;
   private defaultCwd: string;
   private isDisposed = false;
   private refillInProgress = false;
+  /**
+   * Set of pool keys currently being warmed via warmForKey. Prevents stampede
+   * when concurrent acquire-misses for the same (cwd, envHash) all attempt to
+   * warm a fresh slot.
+   */
+  private readonly warmsInFlight: Set<string> = new Set();
   /**
    * Generation counter incremented on each drainAndRefill() call.
    * Captured in createPoolEntry closures so async spawns from a prior
@@ -34,6 +57,7 @@ export class PtyPool {
 
   constructor(config: PtyPoolConfig = {}) {
     this.poolSize = this.resolvePoolSize(config.poolSize);
+    this.maxEntries = this.resolveMaxEntries(config.maxEntries);
     this.defaultCwd = this.resolveCwd(config.defaultCwd, os.homedir());
     this.defaultShell = getDefaultShell();
   }
@@ -54,10 +78,11 @@ export class PtyPool {
     }
 
     const promises: Promise<void>[] = [];
-    const needed = this.poolSize - this.pool.size;
+    const existing = this.countEntriesForKey(this.defaultCwd, POOL_ENV_EMPTY_HASH);
+    const needed = this.poolSize - existing;
 
     for (let i = 0; i < needed; i++) {
-      promises.push(this.createPoolEntry(this.defaultCwd));
+      promises.push(this.createPoolEntry(this.defaultCwd, undefined, POOL_ENV_EMPTY_HASH));
     }
 
     await Promise.all(promises);
@@ -69,23 +94,34 @@ export class PtyPool {
     }
   }
 
-  private async createPoolEntry(cwd: string): Promise<void> {
+  private async createPoolEntry(
+    cwd: string,
+    callerEnv: Record<string, string> | undefined,
+    envHash: string
+  ): Promise<void> {
     if (this.isDisposed) return;
 
     // Capture the current drain epoch. If it changes before we finish
     // registering this entry, a drainAndRefill() happened and this spawn
     // is stale — kill it instead of registering at the wrong cwd.
     const epoch = this.drainEpoch;
+    const poolKey = makePoolKey(cwd, envHash);
+
+    // Evict an idle entry if we're at the global cap. We evict from a
+    // *different* key when possible so the warm we're about to perform
+    // actually grows this key's slot count.
+    this.evictIfAtCapacity(poolKey);
 
     try {
       const id = `pool-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      const env = this.buildSpawnEnv(callerEnv);
 
       const ptyProcess = pty.spawn(this.defaultShell, getDefaultShellArgs(this.defaultShell), {
         name: "xterm-256color",
         cols: 80,
         rows: 24,
         cwd,
-        env: this.getFilteredEnv(),
+        env,
       });
 
       const dataDisposable = ptyProcess.onData(() => {});
@@ -95,10 +131,13 @@ export class PtyPool {
           console.log(`[PtyPool] Pooled PTY ${id} exited with code ${exitCode}`);
         }
         const entry = this.pool.get(id);
-        if (entry) {
-          entry.dataDisposable.dispose();
-          this.pool.delete(id);
+        if (!entry) {
+          // Entry was already removed (drain, evict, or acquire path). Those
+          // paths handle their own followup; refilling here would race them.
+          return;
         }
+        entry.dataDisposable.dispose();
+        this.pool.delete(id);
         // Skip refill if this entry belonged to a prior drain cycle — a
         // newer drainAndRefill() already initiated its own refill.
         if (!this.isDisposed && this.drainEpoch === epoch) {
@@ -119,32 +158,59 @@ export class PtyPool {
       this.pool.set(id, {
         process: ptyProcess,
         cwd,
+        envHash,
+        poolKey,
+        env,
         createdAt: Date.now(),
         dataDisposable,
       });
 
       if (process.env.DAINTREE_VERBOSE) {
-        console.log(`[PtyPool] Created pooled PTY ${id}, pool size: ${this.pool.size}`);
+        console.log(
+          `[PtyPool] Created pooled PTY ${id} for key ${poolKey}, pool size: ${this.pool.size}`
+        );
       }
     } catch (error) {
       console.error("[PtyPool] Failed to create pool entry:", error);
     }
   }
 
+  /**
+   * Backward-compatible zero-arg acquire — used only by tests and legacy
+   * callers. Internally targets the env-empty key at the pool's default cwd.
+   */
   acquire(): pty.IPty | null {
+    return this.acquireByKey(this.defaultCwd, POOL_ENV_EMPTY_HASH);
+  }
+
+  /**
+   * Acquire a pre-warmed PTY for a specific (cwd, envHash) key. Returns null
+   * if no matching entry exists. Triggers a background refill of the same key
+   * so the next acquire is also instant.
+   */
+  acquireByKey(cwd: string, envHash: string): pty.IPty | null {
     if (this.isDisposed) {
       console.warn("[PtyPool] Cannot acquire - pool disposed");
       return null;
     }
 
-    if (this.pool.size === 0) {
+    const wantedKey = makePoolKey(cwd, envHash);
+    let matched: { id: string; entry: PooledPty } | null = null;
+    for (const [id, entry] of this.pool) {
+      if (entry.poolKey === wantedKey) {
+        matched = { id, entry };
+        break;
+      }
+    }
+
+    if (!matched) {
       if (process.env.DAINTREE_VERBOSE) {
-        console.log("[PtyPool] Pool empty, returning null");
+        console.log(`[PtyPool] Miss on key ${wantedKey}; pool size: ${this.pool.size}`);
       }
       return null;
     }
 
-    const [id, entry] = this.pool.entries().next().value as [string, PooledPty];
+    const { id, entry } = matched;
     this.pool.delete(id);
 
     try {
@@ -152,25 +218,53 @@ export class PtyPool {
       if (pid === undefined) {
         console.warn(`[PtyPool] Pooled PTY ${id} has no PID (already dead), discarding`);
         entry.dataDisposable.dispose();
-        this.refillPool();
+        this.warmForKey(cwd, entry.env, envHash);
         return null;
       }
     } catch (error) {
       console.warn(`[PtyPool] Pooled PTY ${id} health check failed:`, error);
       entry.dataDisposable.dispose();
-      this.refillPool();
+      this.warmForKey(cwd, entry.env, envHash);
       return null;
     }
 
     entry.dataDisposable.dispose();
 
     if (process.env.DAINTREE_VERBOSE) {
-      console.log(`[PtyPool] Acquired PTY ${id}, ${this.pool.size} remaining`);
+      console.log(`[PtyPool] Acquired PTY ${id} for key ${wantedKey}, ${this.pool.size} remaining`);
     }
 
-    this.refillPool();
+    // Refill the same key so the next acquire is also instant. Fire-and-
+    // forget — the spawn races shell init with the user typing, and either
+    // way is fine.
+    this.warmForKey(cwd, entry.env, envHash);
 
     return entry.process;
+  }
+
+  /**
+   * Fire-and-forget warm of a single (cwd, envHash) slot. Idempotent under
+   * concurrent calls for the same key — the `warmsInFlight` guard prevents
+   * stampede when many acquires miss simultaneously.
+   *
+   * `callerEnv` is the raw `options.env` from the spawn request (pre-filter,
+   * pre-DAINTREE-metadata). `buildSpawnEnv` filters and finalises it.
+   */
+  warmForKey(cwd: string, callerEnv: Record<string, string> | undefined, envHash: string): void {
+    if (this.isDisposed) return;
+
+    const key = makePoolKey(cwd, envHash);
+    if (this.warmsInFlight.has(key)) return;
+    if (this.countEntriesForKey(cwd, envHash) >= this.poolSize) return;
+
+    this.warmsInFlight.add(key);
+    this.createPoolEntry(cwd, callerEnv, envHash)
+      .catch((err) => {
+        console.error(`[PtyPool] Failed to warm key ${key}:`, err);
+      })
+      .finally(() => {
+        this.warmsInFlight.delete(key);
+      });
   }
 
   refillPool(): void {
@@ -178,7 +272,8 @@ export class PtyPool {
       return;
     }
 
-    const needed = this.poolSize - this.pool.size;
+    const existing = this.countEntriesForKey(this.defaultCwd, POOL_ENV_EMPTY_HASH);
+    const needed = this.poolSize - existing;
     if (needed <= 0) {
       return;
     }
@@ -187,7 +282,7 @@ export class PtyPool {
 
     const promises: Promise<void>[] = [];
     for (let i = 0; i < needed; i++) {
-      promises.push(this.createPoolEntry(this.defaultCwd));
+      promises.push(this.createPoolEntry(this.defaultCwd, undefined, POOL_ENV_EMPTY_HASH));
     }
 
     Promise.all(promises)
@@ -235,8 +330,13 @@ export class PtyPool {
       return;
     }
 
-    if (nextCwd === this.defaultCwd && this.pool.size === this.poolSize) {
-      // Already at the requested cwd and fully warmed — nothing to do.
+    if (
+      nextCwd === this.defaultCwd &&
+      this.countEntriesForKey(nextCwd, POOL_ENV_EMPTY_HASH) >= this.poolSize
+    ) {
+      // Already at the requested cwd and the env-empty key is fully warmed —
+      // nothing to do. (Other env-keyed entries from prior agent launches may
+      // exist and stay; they'll be evicted naturally by LRU as needed.)
       return;
     }
 
@@ -280,6 +380,20 @@ export class PtyPool {
     return this.poolSize;
   }
 
+  getMaxEntries(): number {
+    return this.maxEntries;
+  }
+
+  /** Number of entries currently held for a specific (cwd, envHash) key. */
+  countEntriesForKey(cwd: string, envHash: string): number {
+    const key = makePoolKey(cwd, envHash);
+    let count = 0;
+    for (const entry of this.pool.values()) {
+      if (entry.poolKey === key) count++;
+    }
+    return count;
+  }
+
   dispose(): void {
     if (this.isDisposed) return;
 
@@ -301,11 +415,77 @@ export class PtyPool {
     console.log("[PtyPool] Disposed");
   }
 
-  private getFilteredEnv(): Record<string, string> {
+  /**
+   * If the pool is at the global cap, evict the oldest entry whose key does
+   * NOT match `incomingKey` (so the warm we're about to do actually grows
+   * that key's count). If only same-key entries exist, fall back to evicting
+   * the oldest of those — the slot count for that key stays equal post-warm.
+   */
+  private evictIfAtCapacity(incomingKey: string): void {
+    if (this.pool.size < this.maxEntries) return;
+
+    let victim: { id: string; entry: PooledPty } | null = null;
+    let fallbackVictim: { id: string; entry: PooledPty } | null = null;
+    for (const [id, entry] of this.pool) {
+      if (entry.poolKey !== incomingKey) {
+        if (!victim || entry.createdAt < victim.entry.createdAt) {
+          victim = { id, entry };
+        }
+      } else if (!fallbackVictim || entry.createdAt < fallbackVictim.entry.createdAt) {
+        fallbackVictim = { id, entry };
+      }
+    }
+
+    const chosen = victim ?? fallbackVictim;
+    if (!chosen) return;
+
+    this.pool.delete(chosen.id);
+    try {
+      chosen.entry.dataDisposable.dispose();
+    } catch {
+      // ignore
+    }
+    try {
+      chosen.entry.process.kill();
+    } catch {
+      // already dead
+    }
+
+    if (process.env.DAINTREE_VERBOSE) {
+      console.log(
+        `[PtyPool] Evicted ${chosen.id} (key ${chosen.entry.poolKey}) to make room for ${incomingKey}`
+      );
+    }
+  }
+
+  /**
+   * Build the env that's actually written into the spawned shell.
+   *
+   * Critically, callerEnv is run through `filterEnvironment` here even though
+   * the fresh-spawn path (`buildTerminalEnv` in terminalSpawn.ts) merges it
+   * raw. The pool entry outlives a single acquire — a shell warmed with one
+   * caller's secrets can be handed to a future caller whose hash matches
+   * (because the hash is also computed post-filter). Filtering at warm time
+   * guarantees no secret persists in an idle pool process.
+   *
+   * DAINTREE_* metadata is NOT injected here — pool entries don't have
+   * a paneId until acquire time, and the metadata is meaningful only for
+   * the assigned terminal. (Terminals acquired from the pool inherit
+   * whatever the pool warmed; if you need fresh metadata, fall back to
+   * direct spawn.)
+   */
+  private buildSpawnEnv(callerEnv: Record<string, string> | undefined): Record<string, string> {
     const filtered = filterEnvironment(process.env as Record<string, string | undefined>);
 
-    // TUI reliability: ensure rich terminal capabilities for Claude/Gemini CLIs
+    if (callerEnv) {
+      Object.assign(filtered, filterEnvironment(callerEnv));
+    }
+
+    // TUI reliability: ensure rich terminal capabilities for Claude/Gemini CLIs.
+    // Mirrors `buildTerminalEnv` so agent CLIs get the same color-rendering
+    // hints whether they spawn fresh or come out of the pool.
     filtered.TERM = "xterm-256color";
+    filtered.FORCE_COLOR = filtered.FORCE_COLOR ?? "3";
     filtered.COLORTERM = "truecolor";
 
     // Avoid tools treating the environment as CI/non-interactive
@@ -324,6 +504,18 @@ export class PtyPool {
       return poolSize;
     }
     return DEFAULT_POOL_SIZE;
+  }
+
+  private resolveMaxEntries(maxEntries: number | undefined): number {
+    if (
+      typeof maxEntries === "number" &&
+      Number.isInteger(maxEntries) &&
+      Number.isFinite(maxEntries) &&
+      maxEntries > 0
+    ) {
+      return Math.max(maxEntries, this.poolSize);
+    }
+    return Math.max(DEFAULT_MAX_ENTRIES, this.poolSize);
   }
 
   private resolveCwd(cwd: string | undefined, fallback: string): string {

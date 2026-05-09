@@ -76,6 +76,48 @@ describe("Toolbar responsive design — issue #4133", () => {
     });
   });
 
+  describe("overflow trigger surfaces hidden state — issue #6416", () => {
+    it("calls useOverflowBadgeSeverity for both left and right overflow", () => {
+      expect(source).toContain("useOverflowBadgeSeverity(leftOverflow");
+      expect(source).toContain("useOverflowBadgeSeverity(rightOverflow");
+    });
+
+    it("passes left and right severities into renderOverflowMenu independently", () => {
+      expect(source).toContain("leftOverflowSeverity");
+      expect(source).toContain("rightOverflowSeverity");
+    });
+
+    it("maps severity to a CSS custom property via data-severity selectors", () => {
+      // data-severity attribute is on the JSX element in Toolbar.tsx
+      expect(source).toContain("data-severity={severity}");
+      // The CSS custom property and severity mappings live in toolbar.css
+      expect(css).toContain("--overflow-badge-color");
+      expect(css).toContain('data-severity="critical"');
+      expect(css).toContain('data-severity="warning"');
+      expect(css).toContain('data-severity="info"');
+      expect(css).toContain("var(--color-status-error)");
+      expect(css).toContain("var(--color-state-waiting)");
+    });
+
+    it("renders a dot inside the overflow Button when severity is set", () => {
+      expect(source).toContain("toolbar-overflow-badge");
+      expect(source).toMatch(/data-severity=\{severity\}/);
+    });
+
+    it("builds a dynamic tooltip listing the hidden buttons", () => {
+      expect(source).toContain("itemLabels");
+      expect(source).toMatch(/\$\{overflowIds\.length\} more — /);
+    });
+
+    it("supplies a fallback label for voice-recording so the count and named list stay aligned", () => {
+      // voice-recording is absent from OVERFLOW_MENU_META on purpose — it
+      // has no dropdown rendering — so the tooltip must look it up
+      // separately or the spoken count would exceed the list.
+      expect(source).toContain('id === "voice-recording"');
+      expect(source).toContain('"Voice recording"');
+    });
+  });
+
   describe("overflow menu focus ring after pointer dismissal — issue #6119", () => {
     it("declares the overflowMenuPointerCloseRef", () => {
       expect(source).toContain("overflowMenuPointerCloseRef");

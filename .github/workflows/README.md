@@ -21,12 +21,12 @@ Automated build and publish workflow for Daintree releases to Cloudflare R2.
 
 Add these secrets in **Settings → Secrets and variables → Actions**:
 
-| Secret                 | Value                     | Example                                         |
-| ---------------------- | ------------------------- | ----------------------------------------------- |
-| `R2_ENDPOINT`          | R2 S3-compatible endpoint | `https://<account-id>.r2.cloudflarestorage.com` |
-| `R2_BUCKET`            | Bucket name               | `daintree-updates`                              |
-| `R2_ACCESS_KEY_ID`     | R2 API token access key   | (from step 2)                                   |
-| `R2_SECRET_ACCESS_KEY` | R2 API token secret       | (from step 2)                                   |
+| Secret | Value | Example |
+| --- | --- | --- |
+| `R2_ENDPOINT` | R2 S3-compatible endpoint | `https://<account-id>.r2.cloudflarestorage.com` |
+| `R2_BUCKET` | Bucket name | `daintree-updates` |
+| `R2_ACCESS_KEY_ID` | R2 API token access key | (from step 2) |
+| `R2_SECRET_ACCESS_KEY` | R2 API token secret | (from step 2) |
 
 ### 4. Update package.json
 
@@ -50,6 +50,7 @@ Ensure the `publish` URL matches your R2 public URL:
 
 The workflow will:
 
+- Run release checks, unit tests, and core/full/online e2e gates before packaging
 - Build for macOS, Windows, and Linux in parallel
 - Validate update metadata files are present
 - Upload binaries to R2 with long cache headers
@@ -112,16 +113,20 @@ All GitHub-hosted runners have AWS CLI pre-installed. If you see AWS CLI errors:
 
 ## Architecture
 
-### Two-Stage Build
+### Release Stages
 
-The workflow uses a two-stage approach to prevent partial releases:
+The workflow gates release packaging before any artifacts are produced:
 
-1. **Build stage** (parallel matrix):
+1. **Quality gate stage**:
+   - Checks and unit tests run on Linux
+   - Core, full, and online e2e gates run on non-Windows runners
+
+2. **Build stage** (parallel matrix):
    - macOS, Windows, Linux build in parallel
    - Each validates its update metadata
    - Uploads to GitHub Actions artifacts
 
-2. **Publish stage** (single job):
+3. **Publish stage** (single job):
    - Runs only after all builds succeed
    - Downloads all artifacts
    - Uploads binaries first (with long cache)

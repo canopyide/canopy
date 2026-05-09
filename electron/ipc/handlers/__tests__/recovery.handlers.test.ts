@@ -67,6 +67,16 @@ vi.mock("../../../utils/logger.js", () => ({
   getLogFilePath: vi.fn(() => "/tmp/daintree/logs/main.log"),
 }));
 
+vi.mock("../../../../shared/config/devServer.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../../shared/config/devServer.js")>(
+    "../../../../shared/config/devServer.js"
+  );
+  return {
+    ...actual,
+    getDevServerUrl: vi.fn(() => "http://localhost:5173"),
+  };
+});
+
 import { registerRecoveryHandlers } from "../recovery.js";
 import type { HandlerDependencies } from "../../types.js";
 
@@ -102,8 +112,13 @@ describe("registerRecoveryHandlers", () => {
     collectDiagnosticsMock.mockResolvedValue({ version: "test", platform: "darwin" });
   });
 
-  it("registers export-diagnostics and open-logs via typedHandleWithContext", () => {
+  it("registers all four recovery channels via typedHandleWithContext", () => {
     registerRecoveryHandlers(deps);
+    expect(ipcMainMock.handle).toHaveBeenCalledWith("recovery:reload-app", expect.any(Function));
+    expect(ipcMainMock.handle).toHaveBeenCalledWith(
+      "recovery:reset-and-reload",
+      expect.any(Function)
+    );
     expect(ipcMainMock.handle).toHaveBeenCalledWith(
       "recovery:export-diagnostics",
       expect.any(Function)
@@ -114,8 +129,196 @@ describe("registerRecoveryHandlers", () => {
   it("cleanup removes the handlers", () => {
     const cleanup = registerRecoveryHandlers(deps);
     cleanup();
+    expect(ipcMainMock.removeHandler).toHaveBeenCalledWith("recovery:reload-app");
+    expect(ipcMainMock.removeHandler).toHaveBeenCalledWith("recovery:reset-and-reload");
     expect(ipcMainMock.removeHandler).toHaveBeenCalledWith("recovery:export-diagnostics");
     expect(ipcMainMock.removeHandler).toHaveBeenCalledWith("recovery:open-logs");
+  });
+
+  describe("recovery:reload-app", () => {
+    function buildWindow() {
+      return {
+        isDestroyed: vi.fn(() => false),
+        loadURL: vi.fn(),
+      } as unknown as { isDestroyed: () => boolean; loadURL: ReturnType<typeof vi.fn> };
+    }
+
+    it("rejects untrusted sender and does not call loadURL", async () => {
+      const win = buildWindow();
+      const localDeps = { mainWindow: win } as unknown as HandlerDependencies;
+      registerRecoveryHandlers(localDeps);
+      const handler = getHandlerFn("recovery:reload-app");
+
+      await expect(handler(buildEvent(UNTRUSTED_URL))).rejects.toThrow(
+        "recovery:reload-app rejected: untrusted sender"
+      );
+      expect(win.loadURL).not.toHaveBeenCalled();
+    });
+
+    it("rejects the main renderer URL (not the recovery page)", async () => {
+      const win = buildWindow();
+      const localDeps = { mainWindow: win } as unknown as HandlerDependencies;
+      registerRecoveryHandlers(localDeps);
+      const handler = getHandlerFn("recovery:reload-app");
+
+      await expect(handler(buildEvent(MAIN_RENDERER_URL))).rejects.toThrow(
+        "recovery:reload-app rejected: untrusted sender"
+      );
+      expect(win.loadURL).not.toHaveBeenCalled();
+    });
+
+    it("rejects missing senderFrame", async () => {
+      const win = buildWindow();
+      const localDeps = { mainWindow: win } as unknown as HandlerDependencies;
+      registerRecoveryHandlers(localDeps);
+      const handler = getHandlerFn("recovery:reload-app");
+
+      await expect(handler(buildEvent(null))).rejects.toThrow(
+        "recovery:reload-app rejected: untrusted sender"
+      );
+      expect(win.loadURL).not.toHaveBeenCalled();
+    });
+
+    it("calls loadURL on the primary window when sender is the recovery page", async () => {
+      const win = buildWindow();
+      const localDeps = { mainWindow: win } as unknown as HandlerDependencies;
+      registerRecoveryHandlers(localDeps);
+      const handler = getHandlerFn("recovery:reload-app");
+
+      await handler(buildEvent(TRUSTED_RECOVERY_URL));
+
+      expect(win.loadURL).toHaveBeenCalledTimes(1);
+      expect(win.loadURL).toHaveBeenCalledWith("http://localhost:5173");
+    });
+
+    it("is a no-op when the window is destroyed", async () => {
+      const win = buildWindow();
+      win.isDestroyed = vi.fn(() => true);
+      const localDeps = { mainWindow: win } as unknown as HandlerDependencies;
+      registerRecoveryHandlers(localDeps);
+      const handler = getHandlerFn("recovery:reload-app");
+
+      await expect(handler(buildEvent(TRUSTED_RECOVERY_URL))).resolves.toBeUndefined();
+      expect(win.loadURL).not.toHaveBeenCalled();
+    });
+
+    it("is a no-op when no window is available", async () => {
+      registerRecoveryHandlers(deps);
+      const handler = getHandlerFn("recovery:reload-app");
+
+      await expect(handler(buildEvent(TRUSTED_RECOVERY_URL))).resolves.toBeUndefined();
+    });
+  });
+
+  describe("recovery:reset-and-reload", () => {
+    function buildWindow() {
+      return {
+        isDestroyed: vi.fn(() => false),
+        loadURL: vi.fn(),
+      } as unknown as { isDestroyed: () => boolean; loadURL: ReturnType<typeof vi.fn> };
+    }
+
+    it("rejects untrusted sender and does not reset state or reload", async () => {
+      const { getCrashRecoveryService: getCrash } =
+        await import("../../../services/CrashRecoveryService.js");
+      const resetMock = vi.fn();
+      vi.mocked(getCrash).mockReturnValue({
+        resetToFresh: resetMock,
+      } as unknown as ReturnType<typeof getCrash>);
+
+      const win = buildWindow();
+      const localDeps = { mainWindow: win } as unknown as HandlerDependencies;
+      registerRecoveryHandlers(localDeps);
+      const handler = getHandlerFn("recovery:reset-and-reload");
+
+      await expect(handler(buildEvent(UNTRUSTED_URL))).rejects.toThrow(
+        "recovery:reset-and-reload rejected: untrusted sender"
+      );
+      expect(resetMock).not.toHaveBeenCalled();
+      expect(win.loadURL).not.toHaveBeenCalled();
+    });
+
+    it("rejects the main renderer URL (not the recovery page)", async () => {
+      const { getCrashRecoveryService: getCrash } =
+        await import("../../../services/CrashRecoveryService.js");
+      const resetMock = vi.fn();
+      vi.mocked(getCrash).mockReturnValue({
+        resetToFresh: resetMock,
+      } as unknown as ReturnType<typeof getCrash>);
+
+      const win = buildWindow();
+      const localDeps = { mainWindow: win } as unknown as HandlerDependencies;
+      registerRecoveryHandlers(localDeps);
+      const handler = getHandlerFn("recovery:reset-and-reload");
+
+      await expect(handler(buildEvent(MAIN_RENDERER_URL))).rejects.toThrow(
+        "recovery:reset-and-reload rejected: untrusted sender"
+      );
+      expect(resetMock).not.toHaveBeenCalled();
+      expect(win.loadURL).not.toHaveBeenCalled();
+    });
+
+    it("rejects missing senderFrame", async () => {
+      const { getCrashRecoveryService: getCrash } =
+        await import("../../../services/CrashRecoveryService.js");
+      const resetMock = vi.fn();
+      vi.mocked(getCrash).mockReturnValue({
+        resetToFresh: resetMock,
+      } as unknown as ReturnType<typeof getCrash>);
+
+      const win = buildWindow();
+      const localDeps = { mainWindow: win } as unknown as HandlerDependencies;
+      registerRecoveryHandlers(localDeps);
+      const handler = getHandlerFn("recovery:reset-and-reload");
+
+      await expect(handler(buildEvent(null))).rejects.toThrow(
+        "recovery:reset-and-reload rejected: untrusted sender"
+      );
+      expect(resetMock).not.toHaveBeenCalled();
+      expect(win.loadURL).not.toHaveBeenCalled();
+    });
+
+    it("resets state then reloads the app when sender is the recovery page", async () => {
+      const { getCrashRecoveryService: getCrash } =
+        await import("../../../services/CrashRecoveryService.js");
+      const resetMock = vi.fn();
+      vi.mocked(getCrash).mockReturnValue({
+        resetToFresh: resetMock,
+      } as unknown as ReturnType<typeof getCrash>);
+
+      const win = buildWindow();
+      const localDeps = { mainWindow: win } as unknown as HandlerDependencies;
+      registerRecoveryHandlers(localDeps);
+      const handler = getHandlerFn("recovery:reset-and-reload");
+
+      await handler(buildEvent(TRUSTED_RECOVERY_URL));
+
+      expect(resetMock).toHaveBeenCalledTimes(1);
+      expect(win.loadURL).toHaveBeenCalledTimes(1);
+      expect(win.loadURL).toHaveBeenCalledWith("http://localhost:5173");
+      expect(resetMock.mock.invocationCallOrder[0]).toBeLessThan(
+        win.loadURL.mock.invocationCallOrder[0]
+      );
+    });
+
+    it("is a no-op when the window is destroyed", async () => {
+      const { getCrashRecoveryService: getCrash } =
+        await import("../../../services/CrashRecoveryService.js");
+      const resetMock = vi.fn();
+      vi.mocked(getCrash).mockReturnValue({
+        resetToFresh: resetMock,
+      } as unknown as ReturnType<typeof getCrash>);
+
+      const win = buildWindow();
+      win.isDestroyed = vi.fn(() => true);
+      const localDeps = { mainWindow: win } as unknown as HandlerDependencies;
+      registerRecoveryHandlers(localDeps);
+      const handler = getHandlerFn("recovery:reset-and-reload");
+
+      await expect(handler(buildEvent(TRUSTED_RECOVERY_URL))).resolves.toBeUndefined();
+      expect(resetMock).not.toHaveBeenCalled();
+      expect(win.loadURL).not.toHaveBeenCalled();
+    });
   });
 
   describe("recovery:export-diagnostics", () => {

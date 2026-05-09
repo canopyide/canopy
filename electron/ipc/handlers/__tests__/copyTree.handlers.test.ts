@@ -33,6 +33,8 @@ import {
   registerCopyTreeHandlers,
   mergeCopyTreeOptions,
   buildRemoteComputeBlock,
+  escapeXml,
+  nextChunkBoundary,
 } from "../copyTree.js";
 
 function getInvokeHandler(channel: string): (...args: unknown[]) => Promise<unknown> {
@@ -102,6 +104,21 @@ describe("copyTree handlers", () => {
     await expect(handler(mockEvent, null as never)).resolves.toEqual(
       expect.objectContaining({
         error: expect.stringContaining("Invalid payload"),
+      })
+    );
+  });
+
+  it("accepts sarif format in generate payload", async () => {
+    const handler = getInvokeHandler(CHANNELS.COPYTREE_GENERATE);
+
+    await expect(
+      handler(mockEvent, {
+        worktreeId: "wt-1",
+        options: { format: "sarif" },
+      })
+    ).resolves.toEqual(
+      expect.objectContaining({
+        error: expect.not.stringContaining("Invalid payload"),
       })
     );
   });
@@ -231,5 +248,137 @@ describe("buildRemoteComputeBlock", () => {
     };
     const block = buildRemoteComputeBlock(worktree);
     expect(block).toContain("Provider: unknown");
+  });
+});
+
+describe("escapeXml", () => {
+  it("escapes ampersands first to avoid double-encoding", () => {
+    expect(escapeXml("a & b")).toBe("a &amp; b");
+    expect(escapeXml("&lt;")).toBe("&amp;lt;");
+  });
+
+  it("escapes the five XML special characters", () => {
+    expect(escapeXml(`<a href="x">'y'</a>`)).toBe(
+      "&lt;a href=&quot;x&quot;&gt;&apos;y&apos;&lt;/a&gt;"
+    );
+  });
+
+  it("returns the input unchanged when nothing needs escaping", () => {
+    expect(escapeXml("/Users/me/projects/foo/bar.txt")).toBe("/Users/me/projects/foo/bar.txt");
+  });
+
+  it("makes adversarial TMPDIR-style paths safe to embed in a plist string", () => {
+    const malicious = `/tmp/evil&</string><array><string>/etc/passwd</string></array>`;
+    const escaped = escapeXml(malicious);
+    expect(escaped).not.toContain("</string>");
+    expect(escaped).not.toContain("<array>");
+    expect(escaped).toContain("&amp;");
+    expect(escaped).toContain("&lt;/string&gt;");
+  });
+});
+
+describe("nextChunkBoundary", () => {
+  const CHUNK = 4096;
+
+  it("returns start + chunkSize when content is well past the chunk boundary", () => {
+    const content = "a".repeat(CHUNK * 3);
+    expect(nextChunkBoundary(content, 0, CHUNK)).toBe(CHUNK);
+    expect(nextChunkBoundary(content, CHUNK, CHUNK)).toBe(CHUNK * 2);
+  });
+
+  it("returns content.length when the remaining content is shorter than chunkSize", () => {
+    const content = "a".repeat(100);
+    expect(nextChunkBoundary(content, 0, CHUNK)).toBe(100);
+  });
+
+  it("backs off by one code unit when a high surrogate sits at the boundary", () => {
+    // Build a string where position CHUNK-1 is the high surrogate of "𝄞" (U+1D11E).
+    // Pad with `CHUNK - 1` ASCII chars, then place the supplementary char at the boundary.
+    const padding = "a".repeat(CHUNK - 1);
+    const surrogatePair = "𝄞"; // U+1D11E MUSICAL SYMBOL G CLEF
+    const content = padding + surrogatePair + "tail";
+    // Without the backoff: end = CHUNK, slice(0, CHUNK) ends with a lone high surrogate.
+    // With the backoff: end = CHUNK - 1, slice(0, CHUNK - 1) ends with the last `a`.
+    const end = nextChunkBoundary(content, 0, CHUNK);
+    expect(end).toBe(CHUNK - 1);
+    const chunk = content.slice(0, end);
+    expect(chunk.charCodeAt(chunk.length - 1)).toBe("a".charCodeAt(0));
+
+    // Next iteration starts at the high surrogate and pulls the full pair plus tail.
+    const nextEnd = nextChunkBoundary(content, end, CHUNK);
+    expect(nextEnd).toBe(content.length);
+    const nextChunk = content.slice(end, nextEnd);
+    expect(nextChunk).toBe(surrogatePair + "tail");
+  });
+
+  it("does not back off when the boundary lands on a low surrogate (pair already complete in previous chunk)", () => {
+    // Previous chunk ended with the high surrogate; this one starts with the low surrogate.
+    // We only back off when the LAST unit is a high surrogate, never on low surrogates.
+    const surrogatePair = "𝄞";
+    const content = surrogatePair + "x".repeat(CHUNK);
+    // Slice that ends right after the low surrogate (position 2): no backoff.
+    expect(nextChunkBoundary(content, 0, 2)).toBe(2);
+  });
+
+  it("does not back off at the very end of content", () => {
+    const surrogatePair = "𝄞";
+    const content = "a" + surrogatePair;
+    // End == content.length, no need to back off because the pair is fully inside.
+    expect(nextChunkBoundary(content, 0, CHUNK)).toBe(content.length);
+  });
+
+  it("never backs off below start, so the loop always advances even with chunkSize 1", () => {
+    // Pathological: chunkSize 1 starting on a high surrogate. Backing off
+    // would return start, infinite-looping the caller. The guard must keep
+    // end > start by including the lone code unit instead.
+    const surrogatePair = "𝄞";
+    const content = surrogatePair + "tail";
+    const end = nextChunkBoundary(content, 0, 1);
+    expect(end).toBeGreaterThan(0);
+
+    // Walk the entire string with chunkSize 1 and assert we terminate.
+    let i = 0;
+    let iterations = 0;
+    while (i < content.length) {
+      const next = nextChunkBoundary(content, i, 1);
+      expect(next).toBeGreaterThan(i);
+      i = next;
+      iterations++;
+      if (iterations > content.length * 2) {
+        throw new Error("nextChunkBoundary failed to advance with chunkSize 1");
+      }
+    }
+    expect(i).toBe(content.length);
+  });
+
+  it("makes consecutive calls walk a string of all-surrogate-pair characters without splitting any pair", () => {
+    // 1000 supplementary-plane characters → 2000 UTF-16 code units.
+    const supplementary = "𝄞";
+    const content = supplementary.repeat(1000);
+
+    let i = 0;
+    let totalChunks = 0;
+    while (i < content.length) {
+      const end = nextChunkBoundary(content, i, 17); // odd chunk size to force boundary backoffs
+      const chunk = content.slice(i, end);
+      // Every chunk must contain whole code points only.
+      // High surrogates (0xD800-0xDBFF) must be followed by a low surrogate within the chunk.
+      for (let j = 0; j < chunk.length; j++) {
+        const u = chunk.charCodeAt(j);
+        if (u >= 0xd800 && u <= 0xdbff) {
+          expect(j + 1).toBeLessThan(chunk.length);
+          const next = chunk.charCodeAt(j + 1);
+          expect(next).toBeGreaterThanOrEqual(0xdc00);
+          expect(next).toBeLessThanOrEqual(0xdfff);
+          j++;
+        }
+      }
+      i = end;
+      totalChunks++;
+      if (totalChunks > content.length) {
+        throw new Error("Loop did not advance — possible infinite loop in nextChunkBoundary");
+      }
+    }
+    expect(i).toBe(content.length);
   });
 });

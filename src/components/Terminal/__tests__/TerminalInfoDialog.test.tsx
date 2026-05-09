@@ -14,11 +14,17 @@ vi.stubGlobal(
 );
 
 const dispatchMock = vi.fn();
+let mockPanelsById: Record<string, unknown> = {};
 
 vi.mock("@/services/ActionService", () => ({
   actionService: {
     dispatch: (...args: unknown[]) => dispatchMock(...args),
   },
+}));
+
+vi.mock("@/store/panelStore", () => ({
+  usePanelStore: (selector: (s: { panelsById: Record<string, unknown> }) => unknown) =>
+    selector({ panelsById: mockPanelsById }),
 }));
 
 vi.mock("@/lib/utils", () => ({
@@ -60,10 +66,8 @@ function makePayload(overrides?: Partial<TerminalInfoPayload>): TerminalInfoPayl
     semanticBufferLines: 10,
     restartCount: 0,
     hasPty: true,
-    isAgentTerminal: false,
     analysisEnabled: true,
     kind: "terminal",
-    type: "terminal",
     shell: "/bin/zsh",
     ptyCols: 80,
     ptyRows: 24,
@@ -77,6 +81,7 @@ function makePayload(overrides?: Partial<TerminalInfoPayload>): TerminalInfoPayl
 describe("TerminalInfoDialog", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockPanelsById = {};
   });
 
   it("renders PTY Diagnostics section with all fields", async () => {
@@ -217,13 +222,83 @@ describe("TerminalInfoDialog", () => {
     expect(screen.queryByText("Args:")).toBeNull();
   });
 
+  it("renders startup metadata attached to the panel for MCP-spawned terminals", async () => {
+    mockPanelsById = {
+      "test-id": {
+        id: "test-id",
+        spawnedBy: "mcp",
+        location: "dock",
+        command: "claude --model claude-sonnet-4-5",
+        startedAt: new Date("2026-03-19T09:46:00Z").getTime(),
+        spawnStatus: "spawning",
+        launchAgentId: "claude",
+        titleMode: "manual",
+        worktreeId: "wt-1",
+        agentPresetId: "preset-review",
+        agentPresetColor: "#123456",
+        originalPresetId: "preset-original",
+        agentSessionId: "agent-session-1",
+      },
+    };
+    const payload = makePayload({
+      launchAgentId: undefined,
+      command: undefined,
+      worktreeId: undefined,
+      titleMode: undefined,
+      agentPresetId: undefined,
+      agentPresetColor: undefined,
+      originalAgentPresetId: undefined,
+      agentSessionId: undefined,
+    });
+    dispatchMock.mockResolvedValue({ ok: true, result: payload });
+    const writeTextMock = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText: writeTextMock } });
+
+    render(<TerminalInfoDialog isOpen={true} onClose={vi.fn()} terminalId="test-id" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Session Metadata")).toBeTruthy();
+    });
+
+    expect(screen.getByText("Title Mode:")).toBeTruthy();
+    expect(screen.getByText("manual")).toBeTruthy();
+    expect(screen.getByText("Worktree ID:")).toBeTruthy();
+    expect(screen.getByText("wt-1")).toBeTruthy();
+    expect(screen.getByText("Location:")).toBeTruthy();
+    expect(screen.getByText("dock")).toBeTruthy();
+    expect(screen.getByText("Spawn Source:")).toBeTruthy();
+    expect(screen.getByText("mcp")).toBeTruthy();
+    expect(screen.getByText("Started via MCP:")).toBeTruthy();
+    expect(screen.getAllByText("Yes").length).toBeGreaterThan(0);
+    expect(screen.getByText("Spawn Status:")).toBeTruthy();
+    expect(screen.getByText("spawning")).toBeTruthy();
+    expect(screen.getByText("UI Created At:")).toBeTruthy();
+    expect(screen.getByText("Command:")).toBeTruthy();
+    expect(screen.getByText("claude --model claude-sonnet-4-5")).toBeTruthy();
+    expect(screen.getByText("Agent — Launch Context")).toBeTruthy();
+    expect(screen.getByText("Launch Agent:")).toBeTruthy();
+    expect(screen.getByText("preset-review")).toBeTruthy();
+    expect(screen.getByText("#123456")).toBeTruthy();
+    expect(screen.getByText("preset-original")).toBeTruthy();
+    expect(screen.getByText("Agent — Live State")).toBeTruthy();
+    expect(screen.getByText("agent-session-1")).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Copy to Clipboard"));
+    const clipboardText = writeTextMock.mock.calls[0]![0] as string;
+    expect(clipboardText).toContain("Location: dock");
+    expect(clipboardText).toContain("Spawn Source: mcp");
+    expect(clipboardText).toContain("Started via MCP: Yes");
+    expect(clipboardText).toContain("Spawn Status: spawning");
+    expect(clipboardText).toContain("Command: claude --model claude-sonnet-4-5");
+    expect(clipboardText).toContain("Launch Agent: claude");
+    expect(clipboardText).toContain("Preset Color: #123456");
+    expect(clipboardText).toContain("Session ID: agent-session-1");
+  });
+
   it("renders Launch Context and Live State sections for agent terminals", async () => {
     const payload = makePayload({
-      isAgentTerminal: true,
       kind: "terminal",
-      type: "claude",
-      agentId: "agent-1",
-      detectedAgentType: "claude",
+      launchAgentId: "claude",
       detectedAgentId: "claude",
       agentLaunchFlags: ["--dangerously-skip-permissions", "--verbose"],
       agentModelId: "claude-opus-4-7",
@@ -236,8 +311,8 @@ describe("TerminalInfoDialog", () => {
       expect(screen.getByText("Agent — Launch Context")).toBeTruthy();
     });
 
-    expect(screen.getByText("Agent ID:")).toBeTruthy();
-    expect(screen.getByText("agent-1")).toBeTruthy();
+    expect(screen.getByText("Launch Agent:")).toBeTruthy();
+    expect(screen.getAllByText("claude").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("Launch Flags:")).toBeTruthy();
     expect(screen.getByText("--dangerously-skip-permissions")).toBeTruthy();
     expect(screen.getByText("--verbose")).toBeTruthy();
@@ -247,17 +322,16 @@ describe("TerminalInfoDialog", () => {
     // Live State section shows the detected agent identity
     expect(screen.getByText("Agent — Live State")).toBeTruthy();
     expect(screen.getByText("Detected Agent:")).toBeTruthy();
-    // "claude" appears for the type row and the detected-agent row; at least two matches is enough
-    expect(screen.getAllByText("claude").length).toBeGreaterThanOrEqual(1);
+    // "claude" appears for both launch hint and detected-agent rows.
+    expect(screen.getAllByText("claude").length).toBeGreaterThanOrEqual(2);
   });
 
   it("shows 'None — agent has exited' in Live State when agent panel has no detectedAgentId", async () => {
     const payload = makePayload({
-      isAgentTerminal: true,
       kind: "terminal",
-      type: "claude",
-      agentId: "agent-1",
+      launchAgentId: "claude",
       detectedAgentId: undefined,
+      everDetectedAgent: true,
       agentLaunchFlags: ["--verbose"],
       agentModelId: "claude-opus-4-7",
     });
@@ -274,9 +348,7 @@ describe("TerminalInfoDialog", () => {
 
   it("omits Agent sections entirely for plain terminals with no agent metadata", async () => {
     const payload = makePayload({
-      isAgentTerminal: false,
-      agentId: undefined,
-      detectedAgentType: undefined,
+      launchAgentId: undefined,
       detectedAgentId: undefined,
       agentLaunchFlags: undefined,
       agentModelId: undefined,
@@ -289,7 +361,7 @@ describe("TerminalInfoDialog", () => {
       expect(screen.getByText("Spawn Command")).toBeTruthy();
     });
 
-    expect(screen.queryByText("Agent ID:")).toBeNull();
+    expect(screen.queryByText("Launch Agent:")).toBeNull();
     expect(screen.queryByText("Launch Flags:")).toBeNull();
     expect(screen.queryByText("Model:")).toBeNull();
     expect(screen.queryByRole("heading", { name: "Agent — Launch Context" })).toBeNull();
@@ -298,13 +370,11 @@ describe("TerminalInfoDialog", () => {
 
   it("includes Spawn Command and both Agent sections in clipboard export", async () => {
     const payload = makePayload({
-      isAgentTerminal: true,
       kind: "terminal",
-      type: "claude",
-      agentId: "agent-1",
-      detectedAgentType: "claude",
+      launchAgentId: "claude",
       detectedAgentId: "claude",
       shell: "/usr/local/bin/claude",
+      command: "claude --model claude-opus-4-7",
       spawnArgs: ["--model", "claude-opus-4-7"],
       agentLaunchFlags: ["--dangerously-skip-permissions"],
       agentModelId: "claude-opus-4-7",
@@ -327,18 +397,17 @@ describe("TerminalInfoDialog", () => {
     expect(clipboardText).toContain("Shell: /usr/local/bin/claude");
     expect(clipboardText).toContain("Args: --model claude-opus-4-7");
     expect(clipboardText).toContain("Agent — Launch Context:");
-    expect(clipboardText).toContain("Agent ID: agent-1");
+    expect(clipboardText).toContain("Launch Agent: claude");
+    expect(clipboardText).toContain("Command: claude --model claude-opus-4-7");
     expect(clipboardText).toContain("Launch Flags: --dangerously-skip-permissions");
     expect(clipboardText).toContain("Model: claude-opus-4-7");
     expect(clipboardText).toContain("Agent — Live State:");
     expect(clipboardText).toContain("Detected Agent ID: claude");
-    expect(clipboardText).toContain("Detected Agent Type: claude");
   });
 
   it("includes Live State but not Launch Context when only a runtime agent is detected", async () => {
     const payload = makePayload({
-      isAgentTerminal: false,
-      detectedAgentType: "claude",
+      launchAgentId: undefined,
       detectedAgentId: "claude",
     });
     dispatchMock.mockResolvedValue({ ok: true, result: payload });
@@ -383,7 +452,7 @@ describe("TerminalInfoDialog", () => {
   });
 
   it("omits Agent sections from clipboard for non-agent terminals", async () => {
-    const payload = makePayload({ isAgentTerminal: false, spawnArgs: ["-l"] });
+    const payload = makePayload({ launchAgentId: undefined, spawnArgs: ["-l"] });
     dispatchMock.mockResolvedValue({ ok: true, result: payload });
     const writeTextMock = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText: writeTextMock } });

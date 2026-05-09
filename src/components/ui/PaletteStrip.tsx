@@ -14,11 +14,11 @@ export function PaletteStrip({ scheme }: { scheme: AppColorScheme }) {
     APP_THEME_PREVIEW_KEYS.sidebar,
   ] as const;
   return (
-    <div className="flex gap-0.5">
+    <div className="flex gap-0.5" aria-hidden="true">
       {keys.map((key) => (
         <div
           key={key}
-          className="w-3 h-3 rounded-sm shrink-0"
+          className="w-3 h-3 rounded-sm shrink-0 ring-1 ring-inset ring-daintree-border/30"
           style={{ backgroundColor: t[key] }}
         />
       ))}

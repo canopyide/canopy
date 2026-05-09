@@ -1,25 +1,27 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { usePanelStore, type AddPanelOptions, type TerminalInstance } from "@/store/panelStore";
 import { useProjectStore } from "@/store/projectStore";
+import { useScratchStore } from "@/store/scratchStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
+import { isMcpSpawnFocusSuppressed } from "@/store/mcpSpawnFocusGuard";
 import { useCliAvailabilityStore } from "@/store/cliAvailabilityStore";
 import { useWorktrees } from "./useWorktrees";
 import { isElectronAvailable } from "./useElectron";
 
-import { agentSettingsClient, systemClient } from "@/clients";
+import { systemClient } from "@/clients";
 import { useHomeDir } from "@/hooks/app/useHomeDir";
 import { logError, logWarn } from "@/utils/logger";
 import { useCcrPresetsStore } from "@/store/ccrPresetsStore";
 import { useProjectPresetsStore } from "@/store/projectPresetsStore";
 import { useAgentSettingsStore } from "@/store/agentSettingsStore";
-import type { AgentSettings, CliAvailability } from "@shared/types";
+import type { AgentSettings, CliAvailability, TerminalSpawnSource } from "@shared/types";
 import {
   generateAgentCommand,
   buildAgentLaunchFlags,
   resolveEffectivePresetId,
 } from "@shared/types";
 import { isAgentLaunchable } from "@shared/utils/agentAvailability";
-import { escapeShellArgOptional } from "@shared/utils/shellEscape";
+import { escapeShellArgOptional, isWindows } from "@shared/utils/shellEscape";
 import {
   getAgentConfig,
   isRegisteredAgent,
@@ -31,6 +33,10 @@ import type { AgentCliDetail } from "@shared/types/ipc";
 
 const CLIPBOARD_DIR_NAME = "daintree-clipboard";
 
+function escapePowerShellSingleQuoted(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
 export interface LaunchAgentOptions {
   location?: AddPanelOptions["location"];
   cwd?: string;
@@ -41,6 +47,37 @@ export interface LaunchAgentOptions {
   presetId?: string | null;
   /** Bypass the availability gate and always attempt to spawn. */
   force?: boolean;
+  /**
+   * When `location === "dock"`, atomically activate the new panel as the open
+   * dock panel in the same `set()` that commits it. See #6590.
+   */
+  activateDockOnCreate?: boolean;
+  /**
+   * Extra environment variables to merge into the spawned PTY process.
+   * Layered after preset/global env so callers can inject secrets that the
+   * agent must read at startup (e.g. `DAINTREE_MCP_TOKEN` for help sessions).
+   */
+  env?: Record<string, string>;
+  /**
+   * When true, the spawned panel is excluded from persisted layout snapshots
+   * and is never rehydrated on app restart. Used by the help panel so the
+   * Daintree assistant terminal doesn't reappear in the dock after quit.
+   */
+  ephemeral?: boolean;
+  /**
+   * Extra launch flags appended after the resolved settings/preset flags.
+   * Used by the help panel to inject user-provided customArgs (e.g. `--model
+   * sonnet`) for a single assistant session without changing global agent
+   * settings.
+   */
+  agentLaunchFlags?: string[];
+  /**
+   * Origin tag stamped onto the resulting panel's `spawnedBy` field. The
+   * panel store uses this to gate focus capture — `"mcp"` spawns never steal
+   * focus from the user, even if the assistant isn't currently focused
+   * (#6959).
+   */
+  spawnedBy?: TerminalSpawnSource;
 }
 
 export interface UseAgentLauncherReturn {
@@ -53,7 +90,8 @@ export interface UseAgentLauncherReturn {
 
 export function resolveAgentLaunchBaseCommand(
   registryCommand: string,
-  detail: AgentCliDetail | undefined
+  detail: AgentCliDetail | undefined,
+  platform?: "posix" | "windows"
 ): string {
   const resolvedPath =
     detail &&
@@ -62,7 +100,14 @@ export function resolveAgentLaunchBaseCommand(
     detail.state !== "installed"
       ? detail.resolvedPath?.trim()
       : undefined;
-  return resolvedPath ? escapeShellArgOptional(resolvedPath) : registryCommand;
+  if (!resolvedPath) return registryCommand;
+
+  const useWindows = platform ? platform === "windows" : isWindows();
+  if (useWindows) {
+    return `& ${escapePowerShellSingleQuoted(resolvedPath)}`;
+  }
+
+  return escapeShellArgOptional(resolvedPath, "posix");
 }
 
 async function getCurrentLaunchCliDetail(agentId: string): Promise<AgentCliDetail | undefined> {
@@ -89,6 +134,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
   const { worktreeMap, isInitialized } = useWorktrees();
   const activeWorktreeId = useWorktreeSelectionStore((state) => state.activeWorktreeId);
   const currentProject = useProjectStore((state) => state.currentProject);
+  const currentScratch = useScratchStore((state) => state.currentScratch);
   const { homeDir } = useHomeDir();
   const availability = useCliAvailabilityStore((state) => state.availability);
   const isLoading = useCliAvailabilityStore((state) => state.isLoading);
@@ -96,7 +142,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
   const initializeCliAvailability = useCliAvailabilityStore((state) => state.initialize);
   const refreshCliAvailability = useCliAvailabilityStore((state) => state.refresh);
 
-  const [agentSettings, setAgentSettings] = useState<AgentSettings | null>(null);
+  const agentSettings = useAgentSettingsStore((state) => state.settings);
 
   const isMounted = useRef(true);
   const launchingAgentsRef = useRef<Set<string>>(new Set());
@@ -106,14 +152,10 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
       return;
     }
 
-    const [, settingsResult] = await Promise.allSettled([
+    await Promise.allSettled([
       refreshCliAvailability(),
-      agentSettingsClient.get(),
+      useAgentSettingsStore.getState().refresh(),
     ]);
-
-    if (isMounted.current && settingsResult.status === "fulfilled" && settingsResult.value) {
-      setAgentSettings(settingsResult.value);
-    }
   }, [refreshCliAvailability]);
 
   useEffect(() => {
@@ -121,18 +163,10 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
 
     Promise.allSettled([
       initializeCliAvailability(),
-      agentSettingsClient.get(),
       useAgentSettingsStore.getState().initialize(),
-    ])
-      .then(([, settingsResult]) => {
-        if (!isMounted.current) return;
-        if (settingsResult.status === "fulfilled" && settingsResult.value) {
-          setAgentSettings(settingsResult.value);
-        }
-      })
-      .catch((error) => {
-        logError("Failed to load agent settings", error);
-      });
+    ]).catch((error) => {
+      logError("Failed to load agent settings", error);
+    });
 
     // Re-check availability when the window regains focus so that agents
     // installed or authenticated in the background (e.g. via a terminal
@@ -187,7 +221,12 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
         }
 
         const cwd =
-          launchOptions?.cwd ?? targetWorktree?.path ?? currentProject?.path ?? homeDir ?? "";
+          launchOptions?.cwd ??
+          targetWorktree?.path ??
+          currentScratch?.path ??
+          currentProject?.path ??
+          homeDir ??
+          "";
 
         // Handle browser pane specially
         if (agentId === "browser") {
@@ -197,6 +236,8 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
               cwd,
               worktreeId: targetWorktreeId || undefined,
               location: launchOptions?.location,
+              activateDockOnCreate: launchOptions?.activateDockOnCreate,
+              spawnedBy: launchOptions?.spawnedBy,
             });
             return terminalId;
           } catch (error) {
@@ -214,6 +255,8 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
               cwd,
               worktreeId: targetWorktreeId || undefined,
               location: launchOptions?.location,
+              activateDockOnCreate: launchOptions?.activateDockOnCreate,
+              spawnedBy: launchOptions?.spawnedBy,
             });
             return terminalId;
           } catch (error) {
@@ -230,8 +273,21 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
         let launchFlags: string[] | undefined;
         let presetEnv: Record<string, string> | undefined;
         let preset: import("../../shared/config/agentRegistry").AgentPreset | undefined;
+        // Hoisted so the soft-launch gate below reuses the result of the
+        // single fetch inside the agentConfig block — avoids a second call
+        // (and its potential `refresh(true)` fan-out across all CLIs) on
+        // every launch. Background `refreshCliAvailability` (focus / wake
+        // handlers) can still race against awaits between this fetch and
+        // the gate, but that race is benign and pre-existing: at worst a
+        // launch sees a slightly stale `state` and creates the diagnostic
+        // panel, which the user can retry.
+        let cachedLaunchCliDetail: AgentCliDetail | undefined;
         if (agentConfig) {
-          const entry = agentSettings?.agents?.[agentId] ?? {};
+          if (!useAgentSettingsStore.getState().isInitialized) {
+            await useAgentSettingsStore.getState().initialize();
+          }
+          const launchSettings = useAgentSettingsStore.getState().settings ?? agentSettings;
+          const entry = launchSettings?.agents?.[agentId] ?? {};
           // null = explicitly default — skip preset lookup entirely
           // undefined = use saved preset for this worktree (or agent-level
           //   default, or nothing). Worktree-scoped override wins over the
@@ -299,11 +355,14 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
             }
           }
 
-          // Merge: global env (base) overridden by preset env (preset wins on conflicts)
+          // Merge: global env (base) overridden by preset env (preset wins on conflicts).
+          // Caller-supplied launchOptions.env layers on top of both — used for
+          // session-bound secrets like DAINTREE_MCP_TOKEN.
           const sanitizedGlobal = sanitizeAgentEnv(entry.globalEnv as Record<string, unknown>);
           const sanitizedPreset = preset?.env;
-          if (sanitizedGlobal || sanitizedPreset) {
-            presetEnv = { ...sanitizedGlobal, ...sanitizedPreset };
+          const callerEnv = launchOptions?.env;
+          if (sanitizedGlobal || sanitizedPreset || callerEnv) {
+            presetEnv = { ...sanitizedGlobal, ...sanitizedPreset, ...callerEnv };
           }
 
           // Merge per-preset behavioral overrides on top of agent-level settings
@@ -329,8 +388,11 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
             }
           }
 
-          const launchCliDetail = await getCurrentLaunchCliDetail(agentId);
-          const baseCommand = resolveAgentLaunchBaseCommand(agentConfig.command, launchCliDetail);
+          cachedLaunchCliDetail = await getCurrentLaunchCliDetail(agentId);
+          const baseCommand = resolveAgentLaunchBaseCommand(
+            agentConfig.command,
+            cachedLaunchCliDetail
+          );
           command = generateAgentCommand(baseCommand, effectiveEntry, agentId, {
             initialPrompt: launchOptions?.prompt,
             interactive: launchOptions?.interactive ?? true,
@@ -346,6 +408,26 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
               presetArgs: preset?.args,
             });
           }
+
+          // Append caller-supplied launch flags last so they override
+          // earlier flag values (argv parsers typically take the last
+          // occurrence, e.g. `--model sonnet` after a preset's `--model`).
+          // Mirrored into both the spawn command string and the persisted
+          // `launchFlags` array so resume reproduces the same configuration.
+          const extraFlags = launchOptions?.agentLaunchFlags;
+          if (extraFlags?.length) {
+            const appendedTokens: string[] = [];
+            for (const flag of extraFlags) {
+              if (!flag) continue;
+              appendedTokens.push(flag.startsWith("-") ? flag : escapeShellArgOptional(flag));
+            }
+            if (appendedTokens.length) {
+              command = `${command} ${appendedTokens.join(" ")}`;
+            }
+            if (isAgent) {
+              launchFlags = [...(launchFlags ?? []), ...extraFlags.filter(Boolean)];
+            }
+          }
         }
 
         const title =
@@ -359,6 +441,8 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
         }
 
         const presetTitle = isAgent && preset ? preset.name : title;
+        const spawnedBy =
+          launchOptions?.spawnedBy ?? (isMcpSpawnFocusSuppressed() ? "mcp" : undefined);
 
         const options: AddPanelOptions = isAgent
           ? {
@@ -374,6 +458,9 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
               agentPresetId: preset?.id,
               agentPresetColor: preset?.color,
               env: presetEnv,
+              activateDockOnCreate: launchOptions?.activateDockOnCreate,
+              ephemeral: launchOptions?.ephemeral,
+              spawnedBy,
             }
           : {
               kind: "terminal",
@@ -382,6 +469,9 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
               worktreeId: targetWorktreeId || undefined,
               command,
               location: launchOptions?.location,
+              activateDockOnCreate: launchOptions?.activateDockOnCreate,
+              ephemeral: launchOptions?.ephemeral,
+              spawnedBy,
             };
 
         // Soft launch gate: intercept when the CLI is not launchable (missing,
@@ -389,7 +479,11 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
         // diagnostic panel instead of a failed PTY spawn. `unauthenticated` is
         // launchable — the CLI handles first-run auth itself.
         if (isAgent && !launchOptions?.force) {
-          const launchCliDetail = await getCurrentLaunchCliDetail(agentId);
+          // Reuse the detail captured during command construction above.
+          // Falls through to a fresh fetch only when there was no agentConfig
+          // (defensive — `isAgent` implies `agentConfig` in practice).
+          const launchCliDetail =
+            cachedLaunchCliDetail ?? (await getCurrentLaunchCliDetail(agentId));
           if (launchCliDetail && !isAgentLaunchable(launchCliDetail.state)) {
             const gateId = `terminal-${crypto.randomUUID()}`;
             const gatePanel: TerminalInstance = {
@@ -409,11 +503,32 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
               startedAt: Date.now(),
               isVisible: true,
               extensionState: presetEnv ? { presetEnv } : undefined,
+              ephemeral: launchOptions?.ephemeral,
+              spawnedBy,
             };
-            usePanelStore.setState((state) => ({
-              panelsById: { ...state.panelsById, [gateId]: gatePanel },
-              panelIds: [...state.panelIds, gateId],
-            }));
+            usePanelStore.setState((state) => {
+              const next: Partial<typeof state> = {
+                panelsById: { ...state.panelsById, [gateId]: gatePanel },
+                panelIds: [...state.panelIds, gateId],
+              };
+              // Atomic dock activation — same race fix as `addPanel`. The gate
+              // panel bypasses `addPanel`, so the activation must be folded
+              // into this `set()` directly. See #6590.
+              if (launchOptions?.activateDockOnCreate && launchOptions?.location === "dock") {
+                const prevFocusedId = state.focusedId ?? null;
+                const focusActuallyChanged = gateId !== prevFocusedId;
+                next.activeDockTerminalId = gateId;
+                // MCP-initiated launches still expose the gate panel in the
+                // dock but never claim keyboard focus. See #6959.
+                if (spawnedBy !== "mcp") {
+                  next.focusedId = gateId;
+                  if (focusActuallyChanged) {
+                    next.previousFocusedId = prevFocusedId;
+                  }
+                }
+              }
+              return next;
+            });
             return gateId;
           }
         }
@@ -429,7 +544,16 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
         launchingAgentsRef.current.delete(agentId);
       }
     },
-    [activeWorktreeId, worktreeMap, isInitialized, addPanel, currentProject, agentSettings, homeDir]
+    [
+      activeWorktreeId,
+      worktreeMap,
+      isInitialized,
+      addPanel,
+      currentProject,
+      currentScratch,
+      agentSettings,
+      homeDir,
+    ]
   );
 
   return {

@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { ErrorFallback } from "../ErrorFallback";
+import { actionService } from "@/services/ActionService";
+import { useAnnouncerStore } from "@/store/accessibilityAnnouncerStore";
 
 vi.mock("@/services/ActionService", () => ({
   actionService: {
@@ -12,6 +14,15 @@ vi.mock("@/services/ActionService", () => ({
 vi.mock("@/lib/utils", () => ({
   cn: (...args: unknown[]) => args.filter(Boolean).join(" "),
 }));
+
+function installClipboardMock(): { writeText: ReturnType<typeof vi.fn> } {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText },
+  });
+  return { writeText };
+}
 
 describe("ErrorFallback", () => {
   const baseProps = {
@@ -27,6 +38,8 @@ describe("ErrorFallback", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    installClipboardMock();
+    useAnnouncerStore.setState({ polite: null, assertive: null });
   });
 
   afterEach(() => {
@@ -50,14 +63,16 @@ describe("ErrorFallback", () => {
       ).toBeTruthy();
     });
 
-    it("displays full incident ID", () => {
+    it("displays full incident ID inside a copy button", () => {
       render(<ErrorFallback {...baseProps} variant="section" />);
-      expect(screen.getByText("Error ID: error-1710000000000-a3f7b2x")).toBeTruthy();
+      const copyButton = screen.getByTestId("error-fallback-copy-id");
+      expect(copyButton.textContent).toBe("error-1710000000000-a3f7b2x");
+      expect(copyButton.getAttribute("aria-label")).toBe("Copy error ID");
     });
 
     it("does not render technical details", () => {
       render(<ErrorFallback {...baseProps} variant="section" />);
-      expect(screen.queryByText("Technical Details")).toBeNull();
+      expect(screen.queryByText("Technical details")).toBeNull();
     });
 
     it("does not render stack trace", () => {
@@ -83,7 +98,7 @@ describe("ErrorFallback", () => {
 
     it("renders technical details block for section variant", () => {
       render(<ErrorFallback {...baseProps} variant="section" />);
-      expect(screen.getByText("Technical Details")).toBeTruthy();
+      expect(screen.getByText("Technical details")).toBeTruthy();
     });
 
     it("renders stack trace in details", () => {
@@ -96,7 +111,7 @@ describe("ErrorFallback", () => {
     it("does not show technical details regardless of env", () => {
       vi.stubEnv("DEV", true);
       render(<ErrorFallback {...baseProps} variant="component" />);
-      expect(screen.queryByText("Technical Details")).toBeNull();
+      expect(screen.queryByText("Technical details")).toBeNull();
     });
 
     it("does not show incident ID in production", () => {
@@ -114,26 +129,155 @@ describe("ErrorFallback", () => {
       expect(baseProps.resetError).toHaveBeenCalledOnce();
     });
 
-    it("shows Report Issue button for section variant with onReport", () => {
+    it("shows Report issue button for section variant with onReport", () => {
       vi.stubEnv("DEV", false);
       const onReport = vi.fn();
       render(<ErrorFallback {...baseProps} variant="section" onReport={onReport} />);
-      const btn = screen.getByText("Report Issue");
+      const btn = screen.getByText("Report issue");
       fireEvent.click(btn);
       expect(onReport).toHaveBeenCalledOnce();
     });
 
-    it("does not show Report Issue for component variant", () => {
+    it("does not show Report issue for component variant", () => {
       vi.stubEnv("DEV", false);
       const onReport = vi.fn();
       render(<ErrorFallback {...baseProps} variant="component" onReport={onReport} />);
-      expect(screen.queryByText("Report Issue")).toBeNull();
+      expect(screen.queryByText("Report issue")).toBeNull();
     });
 
-    it("shows Reload window text for fullscreen variant", () => {
+    it("does not show View logs for component variant", () => {
+      vi.stubEnv("DEV", false);
+      render(<ErrorFallback {...baseProps} variant="component" />);
+      expect(screen.queryByText("View logs")).toBeNull();
+    });
+
+    it("shows View logs for section variant", () => {
+      vi.stubEnv("DEV", false);
+      render(<ErrorFallback {...baseProps} variant="section" />);
+      expect(screen.getByText("View logs")).toBeTruthy();
+    });
+
+    it("shows View logs for fullscreen variant", () => {
       vi.stubEnv("DEV", false);
       render(<ErrorFallback {...baseProps} variant="fullscreen" />);
-      expect(screen.getByText("Reload window")).toBeTruthy();
+      expect(screen.getByText("View logs")).toBeTruthy();
+    });
+
+    it("dispatches logs.openFile when View logs is clicked", () => {
+      vi.stubEnv("DEV", false);
+      render(<ErrorFallback {...baseProps} variant="section" />);
+      fireEvent.click(screen.getByText("View logs"));
+      expect(actionService.dispatch).toHaveBeenCalledWith("logs.openFile", undefined, {
+        source: "user",
+      });
+    });
+
+    it("shows Try again text for fullscreen variant", () => {
+      vi.stubEnv("DEV", false);
+      render(<ErrorFallback {...baseProps} variant="fullscreen" />);
+      const restart = screen.getByTestId("error-fallback-restart");
+      expect(restart.textContent).toBe("Try again");
+    });
+
+    it("disables Report issue button while reportInFlight is true", () => {
+      vi.stubEnv("DEV", false);
+      const onReport = vi.fn();
+      render(
+        <ErrorFallback {...baseProps} variant="section" onReport={onReport} reportInFlight={true} />
+      );
+      const button = screen.getByTestId("error-fallback-report") as HTMLButtonElement;
+      expect(button.disabled).toBe(true);
+    });
+
+    it("enables Report issue button when reportInFlight is false", () => {
+      vi.stubEnv("DEV", false);
+      const onReport = vi.fn();
+      render(
+        <ErrorFallback
+          {...baseProps}
+          variant="section"
+          onReport={onReport}
+          reportInFlight={false}
+        />
+      );
+      const button = screen.getByTestId("error-fallback-report") as HTMLButtonElement;
+      expect(button.disabled).toBe(false);
+    });
+  });
+
+  describe("fullscreen accessibility", () => {
+    beforeEach(() => {
+      vi.stubEnv("DEV", false);
+    });
+
+    it("renders alertdialog role and aria-modal on the fullscreen container", () => {
+      render(<ErrorFallback {...baseProps} variant="fullscreen" />);
+      const container = screen.getByTestId("error-fallback");
+      expect(container.getAttribute("role")).toBe("alertdialog");
+      expect(container.getAttribute("aria-modal")).toBe("true");
+      expect(container.getAttribute("aria-labelledby")).toBe("error-fallback-title");
+      const title = screen.getByTestId("error-fallback-title");
+      expect(title.id).toBe("error-fallback-title");
+    });
+
+    it("does not apply alertdialog role to section variant", () => {
+      render(<ErrorFallback {...baseProps} variant="section" />);
+      const container = screen.getByTestId("error-fallback");
+      expect(container.getAttribute("role")).toBeNull();
+      expect(container.getAttribute("aria-modal")).toBeNull();
+      expect(container.getAttribute("aria-labelledby")).toBeNull();
+    });
+
+    it("does not apply alertdialog role to component variant", () => {
+      render(<ErrorFallback {...baseProps} variant="component" />);
+      const container = screen.getByTestId("error-fallback");
+      expect(container.getAttribute("role")).toBeNull();
+    });
+
+    it("does not assign id to the title for section variant (avoids duplicate IDs)", () => {
+      render(<ErrorFallback {...baseProps} variant="section" />);
+      const title = screen.getByTestId("error-fallback-title");
+      expect(title.id).toBe("");
+    });
+
+    it("auto-focuses the primary action button on fullscreen variant", () => {
+      render(<ErrorFallback {...baseProps} variant="fullscreen" />);
+      expect(document.activeElement).toBe(screen.getByTestId("error-fallback-restart"));
+    });
+  });
+
+  describe("copy error ID button", () => {
+    beforeEach(() => {
+      vi.stubEnv("DEV", false);
+    });
+
+    it("writes the incident ID to the clipboard on click", async () => {
+      const { writeText } = installClipboardMock();
+      render(<ErrorFallback {...baseProps} variant="section" />);
+      fireEvent.click(screen.getByTestId("error-fallback-copy-id"));
+      await waitFor(() => {
+        expect(writeText).toHaveBeenCalledWith("error-1710000000000-a3f7b2x");
+      });
+    });
+
+    it("flips the visible label to 'Copied' after a successful copy", async () => {
+      render(<ErrorFallback {...baseProps} variant="section" />);
+      const button = screen.getByTestId("error-fallback-copy-id");
+      fireEvent.click(button);
+      await waitFor(() => {
+        expect(button.textContent).toBe("Copied");
+      });
+    });
+
+    it("keeps aria-label constant on the copy button (avoids double-announce)", async () => {
+      render(<ErrorFallback {...baseProps} variant="section" />);
+      const button = screen.getByTestId("error-fallback-copy-id");
+      expect(button.getAttribute("aria-label")).toBe("Copy error ID");
+      fireEvent.click(button);
+      await waitFor(() => {
+        expect(button.textContent).toBe("Copied");
+      });
+      expect(button.getAttribute("aria-label")).toBe("Copy error ID");
     });
   });
 

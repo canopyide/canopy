@@ -17,16 +17,20 @@ import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
 
 let ctx: AppContext;
 let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Core: Panel Drag & Drop", () => {
   test.beforeAll(async () => {
-    fixtureDir = createFixtureRepo({ name: "drag-drop" });
+    const { dir, cleanup } = createFixtureRepo({ name: "drag-drop" });
+    fixtureDir = dir;
+    fixtureCleanup = cleanup;
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Drag Drop Test");
   });
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   // ── Setup: Open 3 terminals ──────────────────────────────
@@ -99,7 +103,7 @@ test.describe.serial("Core: Panel Drag & Drop", () => {
 
   // ── Dock to Grid ─────────────────────────────────────────
 
-  test("drag a dock panel back to the grid", async () => {
+  test("restore a dock panel back to the grid via double-click", async () => {
     const { window } = ctx;
 
     const dockIdsBefore = await getDockPanelIds(window);
@@ -107,14 +111,14 @@ test.describe.serial("Core: Panel Drag & Drop", () => {
 
     const panelToRestore = dockIdsBefore[0];
 
-    // Dock items have listeners on the entire SortableDockItem wrapper (role="listitem")
+    // The dock chip's aria-label documents the canonical restore gesture as
+    // double-click ("Click to preview, double-click to move to grid, drag to
+    // reorder"). Drag-from-dock is for reordering within the dock, not for
+    // crossing back to the grid — the chip's own onDoubleClick handler calls
+    // moveTerminalToGrid + closeDockTerminal directly.
     const dockItem = window.locator(`${SEL.dock.container} [role="listitem"]`).first();
     await expect(dockItem).toBeVisible({ timeout: T_SHORT });
-
-    const gridTarget = window.locator("[data-grid-container]");
-    await expect(gridTarget).toBeVisible({ timeout: T_SHORT });
-
-    await dragElementTo(window, dockItem, gridTarget);
+    await dockItem.dblclick();
     await window.waitForTimeout(T_SETTLE);
 
     await expect

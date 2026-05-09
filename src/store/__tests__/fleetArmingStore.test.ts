@@ -141,6 +141,90 @@ describe("fleetArmingStore", () => {
     });
   });
 
+  describe("addToFleet (batch append)", () => {
+    beforeEach(() => {
+      seedPanels([
+        makeAgentTerminal("t1"),
+        makeAgentTerminal("t2"),
+        makeAgentTerminal("t3"),
+        makeAgentTerminal("t4"),
+      ]);
+    });
+
+    it("appends new ids to the existing armOrder, preserving order", () => {
+      useFleetArmingStore.getState().armIds(["t1", "t2"]);
+      useFleetArmingStore.getState().addToFleet(["t3", "t4"]);
+      const s = useFleetArmingStore.getState();
+      expect(s.armOrder).toEqual(["t1", "t2", "t3", "t4"]);
+      expect(s.armOrderById).toEqual({ t1: 1, t2: 2, t3: 3, t4: 4 });
+      expect(s.lastArmedId).toBe("t4");
+    });
+
+    it("dedupes ids already in the fleet without disturbing existing order", () => {
+      useFleetArmingStore.getState().armIds(["t1", "t2"]);
+      useFleetArmingStore.getState().addToFleet(["t2", "t3"]);
+      const s = useFleetArmingStore.getState();
+      expect(s.armOrder).toEqual(["t1", "t2", "t3"]);
+      expect(s.lastArmedId).toBe("t3");
+    });
+
+    it("dedupes within a single batch", () => {
+      useFleetArmingStore.getState().addToFleet(["t1", "t1", "t2", "t1"]);
+      const s = useFleetArmingStore.getState();
+      expect(s.armOrder).toEqual(["t1", "t2"]);
+      expect(s.lastArmedId).toBe("t2");
+    });
+
+    it("is a no-op (preserves lastArmedId) when every id is already armed", () => {
+      useFleetArmingStore.getState().armIds(["t1", "t2"]);
+      const before = useFleetArmingStore.getState().lastArmedId;
+      useFleetArmingStore.getState().addToFleet(["t1", "t2"]);
+      const s = useFleetArmingStore.getState();
+      expect(s.armOrder).toEqual(["t1", "t2"]);
+      expect(s.lastArmedId).toBe(before);
+    });
+
+    it("is a no-op (preserves lastArmedId) when called with an empty batch", () => {
+      useFleetArmingStore.getState().armIds(["t1"]);
+      const before = useFleetArmingStore.getState().lastArmedId;
+      useFleetArmingStore.getState().addToFleet([]);
+      expect(useFleetArmingStore.getState().lastArmedId).toBe(before);
+    });
+
+    it("filters out ineligible ids silently", () => {
+      seedPanels([
+        makeAgentTerminal("t1"),
+        makeAgentTerminal("t2", { location: "trash" }),
+        makeAgentTerminal("t3", { hasPty: false }),
+      ]);
+      useFleetArmingStore.getState().addToFleet(["t1", "t2", "t3", "unknown"]);
+      const s = useFleetArmingStore.getState();
+      expect(s.armOrder).toEqual(["t1"]);
+      expect(s.lastArmedId).toBe("t1");
+    });
+
+    it("seeds an empty fleet when armedIds is initially empty", () => {
+      useFleetArmingStore.getState().addToFleet(["t2", "t3"]);
+      const s = useFleetArmingStore.getState();
+      expect(s.armOrder).toEqual(["t2", "t3"]);
+      expect(s.armedIds.has("t2")).toBe(true);
+      expect(s.armedIds.has("t3")).toBe(true);
+      expect(s.lastArmedId).toBe("t3");
+    });
+
+    it("preserves caller order when caller passes ids in non-panel order", () => {
+      // Locks the contract: addToFleet preserves the order the caller
+      // provides, NOT the panelIds order. This matters because the picker
+      // commits its `confirmedIds` (built from a Set seeded by user toggle
+      // order), so users see new entries appear in the order they checked
+      // them — not the order panels happen to live in the sidebar.
+      useFleetArmingStore.getState().addToFleet(["t4", "t1", "t3"]);
+      const s = useFleetArmingStore.getState();
+      expect(s.armOrder).toEqual(["t4", "t1", "t3"]);
+      expect(s.lastArmedId).toBe("t3");
+    });
+  });
+
   describe("armByState", () => {
     beforeEach(() => {
       seedPanels([
@@ -336,14 +420,63 @@ describe("fleetArmingStore", () => {
       expect(useFleetArmingStore.getState().armedIds.size).toBe(0);
     });
 
-    it("replaces the existing armed set rather than merging", () => {
+    it("replaces the existing armed set when armed set is empty", () => {
+      seedPanels([
+        makeAgentTerminal("a1", { worktreeId: "wt-1" }),
+        makeAgentTerminal("a2", { worktreeId: "wt-2" }),
+      ]);
+      // Armed set starts empty — armMatchingFilter replaces it with matches
+      useFleetArmingStore.getState().armMatchingFilter(["wt-1"]);
+      expect([...useFleetArmingStore.getState().armedIds]).toEqual(["a1"]);
+    });
+
+    it("unions with existing armed set when non-empty", () => {
       seedPanels([
         makeAgentTerminal("a1", { worktreeId: "wt-1" }),
         makeAgentTerminal("a2", { worktreeId: "wt-2" }),
       ]);
       useFleetArmingStore.getState().armIds(["a2"]);
+      // Non-empty armed set → armMatchingFilter adds matches without removing existing
       useFleetArmingStore.getState().armMatchingFilter(["wt-1"]);
-      expect([...useFleetArmingStore.getState().armedIds]).toEqual(["a1"]);
+      const s = useFleetArmingStore.getState();
+      expect([...s.armedIds].sort()).toEqual(["a1", "a2"]);
+      // Existing armed entries keep their position; new ones are appended
+      expect(s.armOrder).toEqual(["a2", "a1"]);
+    });
+
+    it("preserves existing armOrder and appends new matches in panel order", () => {
+      seedPanels([
+        makeAgentTerminal("a1", { worktreeId: "wt-1" }),
+        makeAgentTerminal("a2", { worktreeId: "wt-2" }),
+        makeAgentTerminal("a3", { worktreeId: "wt-1" }),
+      ]);
+      useFleetArmingStore.getState().armIds(["a2"]);
+      // a2 already armed. a1 and a3 match the filter — both are new.
+      // a1 appears before a3 in panel order, so a2,a1,a3 is the expected result.
+      useFleetArmingStore.getState().armMatchingFilter(["wt-1"]);
+      const s = useFleetArmingStore.getState();
+      expect(s.armOrder).toEqual(["a2", "a1", "a3"]);
+      expect(s.armOrderById).toEqual({ a2: 1, a1: 2, a3: 3 });
+      expect(s.lastArmedId).toBe("a3");
+    });
+
+    it("no-op when all filter matches are already armed (additive path)", () => {
+      seedPanels([
+        makeAgentTerminal("a1", { worktreeId: "wt-1" }),
+        makeAgentTerminal("a2", { worktreeId: "wt-1" }),
+        makeAgentTerminal("a3", { worktreeId: "wt-2" }),
+      ]);
+      useFleetArmingStore.getState().armMatchingFilter(["wt-1"]);
+      // Add a3 from wt-2 — additive since a1,a2 are already armed
+      useFleetArmingStore.getState().armMatchingFilter(["wt-2"]);
+      // Now a1,a2,a3 are all armed. Call armMatchingFilter with wt-1 — a1 and a2
+      // are already armed, so the additive path should be a no-op.
+      const preState = useFleetArmingStore.getState();
+      useFleetArmingStore.getState().armMatchingFilter(["wt-1"]);
+      const postState = useFleetArmingStore.getState();
+      expect(postState.armOrder).toEqual(preState.armOrder);
+      expect(postState.armOrderById).toEqual(preState.armOrderById);
+      expect(postState.lastArmedId).toBe(preState.lastArmedId);
     });
 
     it("preserves panel iteration order, not worktreeIds input order", () => {

@@ -23,6 +23,7 @@ import { SettingsSection } from "./SettingsSection";
 import { SettingsSwitchCard } from "./SettingsSwitchCard";
 import { SettingsSelect } from "./SettingsSelect";
 import { SettingsTextarea } from "./SettingsTextarea";
+import { useSettingsTabValidation } from "./SettingsValidationRegistry";
 import { dispatchVoiceInputSettingsChanged } from "@/lib/voiceInputSettingsEvents";
 import { logWarn } from "@/utils/logger";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
@@ -187,6 +188,8 @@ export function VoiceInputSettingsTab() {
   const removeDictionaryWord = (word: string) => {
     update({ customDictionary: settings.customDictionary.filter((w) => w !== word) });
   };
+
+  useSettingsTabValidation("voice", loadState === "error");
 
   if (loadState === "loading") {
     return (

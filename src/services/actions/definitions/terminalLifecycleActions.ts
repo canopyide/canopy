@@ -17,6 +17,7 @@ export function registerTerminalLifecycleActions(
     kind: "command",
     danger: "safe",
     scope: "renderer",
+    keywords: ["trash", "hide", "dismiss", "remove"],
     argsSchema: z.object({ terminalId: z.string().optional() }).optional(),
     run: async (args: unknown) => {
       const { terminalId } = (args as { terminalId?: string } | undefined) ?? {};
@@ -25,8 +26,11 @@ export function registerTerminalLifecycleActions(
         terminalId ??
         state.focusedId ??
         state.panelIds.find((id) => state.panelsById[id]?.location !== "trash");
-      if (targetId) {
-        state.trashPanel(targetId);
+      if (!targetId) return;
+      state.trashPanel(targetId);
+      const nextId = usePanelStore.getState().focusedId;
+      if (nextId) {
+        terminalInstanceService.focus(nextId);
       }
     },
   }));
@@ -58,6 +62,7 @@ export function registerTerminalLifecycleActions(
     kind: "command",
     danger: "safe",
     scope: "renderer",
+    keywords: ["hide", "minimize", "stash", "park"],
     argsSchema: z.object({ terminalId: z.string().optional() }).optional(),
     run: async (args: unknown) => {
       const { terminalId } = (args as { terminalId?: string } | undefined) ?? {};
@@ -80,8 +85,9 @@ export function registerTerminalLifecycleActions(
     description: "Permanently kill and remove terminal",
     category: "terminal",
     kind: "command",
-    danger: "confirm",
+    danger: "safe",
     scope: "renderer",
+    keywords: ["terminate", "stop", "remove", "delete"],
     argsSchema: z.object({ terminalId: z.string().optional() }),
     run: async (args: unknown) => {
       const { terminalId } = args as { terminalId?: string };
@@ -99,8 +105,9 @@ export function registerTerminalLifecycleActions(
     description: "Restart the terminal process",
     category: "terminal",
     kind: "command",
-    danger: "confirm",
+    danger: "safe",
     scope: "renderer",
+    keywords: ["relaunch", "reset", "rerun", "process"],
     argsSchema: z.object({ terminalId: z.string().optional() }),
     run: async (args: unknown) => {
       const { terminalId } = args as { terminalId?: string };
@@ -120,6 +127,7 @@ export function registerTerminalLifecycleActions(
     kind: "command",
     danger: "safe",
     scope: "renderer",
+    keywords: ["refresh", "render", "repair", "display"],
     argsSchema: z.object({ terminalId: z.string().optional() }).optional(),
     run: async (args: unknown) => {
       const { terminalId } = (args as { terminalId?: string } | undefined) ?? {};
@@ -140,6 +148,7 @@ export function registerTerminalLifecycleActions(
     kind: "command",
     danger: "safe",
     scope: "renderer",
+    keywords: ["title", "label", "name", "edit"],
     argsSchema: z.object({
       terminalId: z.string().optional(),
       name: z
@@ -170,6 +179,7 @@ export function registerTerminalLifecycleActions(
     kind: "command",
     danger: "safe",
     scope: "renderer",
+    keywords: ["details", "metadata", "inspect", "status"],
     argsSchema: z.object({ terminalId: z.string().optional() }),
     run: async (args: unknown) => {
       const { terminalId } = args as { terminalId?: string };
@@ -190,6 +200,7 @@ export function registerTerminalLifecycleActions(
     kind: "command",
     danger: "safe",
     scope: "renderer",
+    keywords: ["details", "metadata", "inspect", "status"],
     argsSchema: z.object({ terminalId: z.string().optional() }),
     run: async (args: unknown) => {
       const { terminalId } = args as { terminalId?: string };
@@ -229,6 +240,7 @@ export function registerTerminalLifecycleActions(
     kind: "command",
     danger: "safe",
     scope: "renderer",
+    keywords: ["readonly", "typing", "disable", "keyboard"],
     argsSchema: z.object({ terminalId: z.string().optional() }),
     run: async (args: unknown) => {
       const { terminalId } = args as { terminalId?: string };
@@ -248,6 +260,7 @@ export function registerTerminalLifecycleActions(
     kind: "command",
     danger: "safe",
     scope: "renderer",
+    keywords: ["wake", "unstick", "unpause", "stuck"],
     argsSchema: z.object({ terminalId: z.string().optional() }),
     run: async (args: unknown) => {
       const { terminalId } = args as { terminalId?: string };
@@ -264,15 +277,19 @@ export function registerTerminalLifecycleActions(
     description: "Move all terminals in the active worktree to trash",
     category: "terminal",
     kind: "command",
-    danger: "confirm",
+    danger: "safe",
     scope: "renderer",
+    keywords: ["trash", "hide", "clear", "cleanup"],
     run: async () => {
       const state = usePanelStore.getState();
       const activeWorktreeId = callbacks.getActiveWorktreeId();
+      // Skip ephemeral panels — the Daintree Assistant's own dock terminal
+      // shouldn't get swept up by a "close all" command.
       const idsToClose = state.panelIds.filter((id) => {
         const t = state.panelsById[id];
         return (
           t &&
+          t.ephemeral !== true &&
           t.location !== "trash" &&
           (t.worktreeId ?? undefined) === (activeWorktreeId ?? undefined)
         );
@@ -287,10 +304,19 @@ export function registerTerminalLifecycleActions(
     description: "Permanently remove all terminals (cannot be undone)",
     category: "terminal",
     kind: "command",
-    danger: "confirm",
+    danger: "safe",
     scope: "renderer",
+    keywords: ["terminate", "stop", "remove", "delete"],
     run: async () => {
-      usePanelStore.getState().bulkCloseAll();
+      // Don't reuse bulkCloseAll() — it indiscriminately removes every panel,
+      // including the ephemeral assistant terminal. Filter ephemerals out
+      // before issuing per-panel removes.
+      const state = usePanelStore.getState();
+      const idsToKill = state.panelIds.filter((id) => {
+        const t = state.panelsById[id];
+        return t && t.ephemeral !== true;
+      });
+      idsToKill.forEach((id) => state.removePanel(id));
     },
   }));
 
@@ -302,6 +328,7 @@ export function registerTerminalLifecycleActions(
     kind: "command",
     danger: "safe",
     scope: "renderer",
+    keywords: ["relaunch", "reset", "rerun", "processes"],
     run: async () => {
       usePanelStore.getState().bulkRestartAll();
     },
@@ -315,7 +342,14 @@ export function registerTerminalLifecycleActions(
     kind: "command",
     danger: "safe",
     scope: "renderer",
+    keywords: ["pty", "backend", "recover", "host"],
     isEnabled: () => usePanelStore.getState().backendStatus === "disconnected",
+    disabledReason: () => {
+      if (usePanelStore.getState().backendStatus !== "disconnected") {
+        return "Terminal backend is connected";
+      }
+      return undefined;
+    },
     run: async () => {
       await terminalClient.restartService();
     },
@@ -333,6 +367,12 @@ export function registerTerminalLifecycleActions(
     keywords: ["monitor", "observe", "notify", "alert"],
     argsSchema: z.object({ terminalId: z.string().optional() }).optional(),
     isEnabled: (ctx) => !!ctx.focusedTerminalId,
+    disabledReason: (ctx) => {
+      if (!ctx.focusedTerminalId) {
+        return "No focused terminal to watch";
+      }
+      return undefined;
+    },
     run: async (args: unknown, ctx) => {
       const { terminalId } = (args as { terminalId?: string } | undefined) ?? {};
       const state = usePanelStore.getState();

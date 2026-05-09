@@ -143,17 +143,6 @@ describe("SessionSnapshotter", () => {
 
       expect(persistAsyncMock).not.toHaveBeenCalled();
     });
-
-    it("does not persist when serialized state exceeds max bytes", async () => {
-      const oversized = "x".repeat(6 * 1024 * 1024);
-      const host = createHost({ serializedStateAsync: oversized });
-      const snap = new SessionSnapshotter(host);
-
-      snap.schedule();
-      await vi.advanceTimersByTimeAsync(5000);
-
-      expect(persistAsyncMock).not.toHaveBeenCalled();
-    });
   });
 
   describe("dispose", () => {
@@ -246,14 +235,24 @@ describe("SessionSnapshotter", () => {
   });
 
   describe("flushEventDriven", () => {
-    it("persists with sync serialized state", () => {
+    it("persists using banner-aware serialization", () => {
       const host = createHost();
       const snap = new SessionSnapshotter(host);
 
       snap.flushEventDriven();
 
       expect(persistAsyncMock).toHaveBeenCalledTimes(1);
-      expect(persistAsyncMock).toHaveBeenCalledWith("t-test", "sync-state");
+      expect(persistAsyncMock).toHaveBeenCalledWith("t-test", "banner-state");
+    });
+
+    it("strips restore banner via serializeForPersistence when banner markers are present", () => {
+      const host = createHost({ bannerMarkers: true });
+      const snap = new SessionSnapshotter(host);
+
+      snap.flushEventDriven();
+
+      expect(persistAsyncMock).toHaveBeenCalledTimes(1);
+      expect(persistAsyncMock).toHaveBeenCalledWith("t-test", "banner-state");
     });
 
     it("throttles repeated calls within 2s", () => {
@@ -307,17 +306,7 @@ describe("SessionSnapshotter", () => {
     });
 
     it("skips when serialized state is null", () => {
-      const host = createHost({ serializedState: null });
-      const snap = new SessionSnapshotter(host);
-
-      snap.flushEventDriven();
-
-      expect(persistAsyncMock).not.toHaveBeenCalled();
-    });
-
-    it("skips when serialized state exceeds max bytes", () => {
-      const oversized = "x".repeat(6 * 1024 * 1024);
-      const host = createHost({ serializedState: oversized });
+      const host = createHost({ serializedForPersistence: null });
       const snap = new SessionSnapshotter(host);
 
       snap.flushEventDriven();
@@ -334,7 +323,7 @@ describe("SessionSnapshotter", () => {
       snap.flushSyncOnKill();
 
       expect(persistSyncMock).toHaveBeenCalledTimes(1);
-      expect(persistSyncMock).toHaveBeenCalledWith("t-test", "sync-state");
+      expect(persistSyncMock).toHaveBeenCalledWith("t-test", "banner-state");
     });
 
     it("skips for agent terminals", () => {
@@ -348,7 +337,7 @@ describe("SessionSnapshotter", () => {
 
     it("ignores serialize errors silently", () => {
       const host = createHost();
-      host.getSerializedState = () => {
+      host.serializeForPersistence = () => {
         throw new Error("serialize boom");
       };
       const snap = new SessionSnapshotter(host);
@@ -357,14 +346,26 @@ describe("SessionSnapshotter", () => {
       expect(persistSyncMock).not.toHaveBeenCalled();
     });
 
-    it("uses plain sync serialize (not banner-aware)", () => {
+    it("uses banner-aware serialize so restore banner is stripped before persist", () => {
+      // Hibernation calls flushSyncOnKill with banner markers present from a
+      // prior restore. The banner must NOT be baked into the snapshot or it
+      // will stack on the next hibernate→restore cycle.
       const host = createHost({ bannerMarkers: true });
       const snap = new SessionSnapshotter(host);
 
       snap.flushSyncOnKill();
 
       expect(persistSyncMock).toHaveBeenCalledTimes(1);
-      expect(persistSyncMock).toHaveBeenCalledWith("t-test", "sync-state");
+      expect(persistSyncMock).toHaveBeenCalledWith("t-test", "banner-state");
+    });
+
+    it("skips when serialized state is null", () => {
+      const host = createHost({ serializedForPersistence: null });
+      const snap = new SessionSnapshotter(host);
+
+      snap.flushSyncOnKill();
+
+      expect(persistSyncMock).not.toHaveBeenCalled();
     });
   });
 

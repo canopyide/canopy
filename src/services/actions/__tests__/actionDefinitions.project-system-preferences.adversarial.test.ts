@@ -332,6 +332,7 @@ describe("project action hardening", () => {
       "project.getSettings",
       "project.saveSettings",
       "project.muteNotifications",
+      "project.silenceNotificationKind",
       "project.detectRunners",
       "project.getStats",
       "project.cloneRepo",
@@ -424,7 +425,7 @@ describe("project action hardening", () => {
     expect(onConfirmCloseActiveProject).not.toHaveBeenCalled();
   });
 
-  it("rejects unconfirmed agent project switches before mutating store state", async () => {
+  it("allows agent-driven project switches (danger:safe — agents are trusted to drive Daintree)", async () => {
     const { service } = buildService(registerProjectActions);
     const state = useProjectStore.getState();
 
@@ -434,11 +435,8 @@ describe("project action hardening", () => {
       { source: "agent" }
     );
 
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error.code).toBe("CONFIRMATION_REQUIRED");
-    }
-    expect(state.switchProject).not.toHaveBeenCalled();
+    expect(result.ok).toBe(true);
+    expect(state.switchProject).toHaveBeenCalledWith("project-1");
   });
 
   it("wraps project store failures as execution errors", async () => {
@@ -477,6 +475,99 @@ describe("project action hardening", () => {
     expect(dispatchEvent).toHaveBeenCalledWith(expect.any(CustomEvent));
     expect(dispatchEvent.mock.calls.at(-1)?.[0].type).toBe("daintree:open-settings-tab");
   });
+
+  it("project.saveSettings merges partial input over current settings", async () => {
+    mocks.projectClient.getSettings.mockResolvedValueOnce({
+      runCommands: [{ id: "r1", label: "dev", command: "npm run dev" }],
+      devServerCommand: "npm run dev",
+    });
+    mocks.projectClient.saveSettings.mockResolvedValueOnce(undefined);
+    const { service } = buildService(registerProjectActions);
+
+    const result = await service.dispatch(
+      "project.saveSettings",
+      { projectId: "project-1", settings: { devServerCommand: "vite" } },
+      { source: "user" }
+    );
+
+    expect(result).toEqual({ ok: true, result: undefined });
+    expect(mocks.projectClient.saveSettings).toHaveBeenCalledWith("project-1", {
+      runCommands: [{ id: "r1", label: "dev", command: "npm run dev" }],
+      devServerCommand: "vite",
+    });
+  });
+
+  it("project.saveSettings strips daintreeMcpTier and exposeDaintreeMcpToAgents to block self-elevation", async () => {
+    mocks.projectClient.getSettings.mockResolvedValueOnce({
+      runCommands: [],
+      daintreeMcpTier: "workbench",
+    });
+    mocks.projectClient.saveSettings.mockResolvedValueOnce(undefined);
+    const { service } = buildService(registerProjectActions);
+
+    const result = await service.dispatch(
+      "project.saveSettings",
+      {
+        projectId: "project-1",
+        settings: {
+          devServerCommand: "vite",
+          daintreeMcpTier: "system",
+          exposeDaintreeMcpToAgents: true,
+        },
+      },
+      { source: "user" }
+    );
+
+    expect(result).toEqual({ ok: true, result: undefined });
+    const saved = mocks.projectClient.saveSettings.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(saved.daintreeMcpTier).toBe("workbench");
+    expect(saved.exposeDaintreeMcpToAgents).toBeUndefined();
+    expect(saved.devServerCommand).toBe("vite");
+  });
+
+  it("project.muteNotifications surfaces saveSettings failures as { ok: false }", async () => {
+    mocks.projectClient.getSettings.mockResolvedValueOnce({
+      runCommands: [],
+      notificationOverrides: { completedEnabled: true },
+    });
+    mocks.projectClient.saveSettings.mockRejectedValueOnce(new Error("disk full"));
+    const { service } = buildService(registerProjectActions);
+
+    const result = await service.dispatch(
+      "project.muteNotifications",
+      { projectId: "project-1" },
+      { source: "user" }
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("EXECUTION_ERROR");
+      expect(result.error.message).toBe("disk full");
+    }
+  });
+
+  it("project.update strips fields outside the allowlist before reaching the store", async () => {
+    const updateProject = vi.fn().mockResolvedValue(undefined);
+    useProjectStore.setState({ updateProject });
+    const { service } = buildService(registerProjectActions);
+
+    const result = await service.dispatch(
+      "project.update",
+      {
+        projectId: "project-1",
+        updates: {
+          name: "Renamed",
+          status: "missing",
+          inRepoSettings: true,
+          frecencyScore: 9999,
+        } as never,
+      },
+      { source: "user" }
+    );
+
+    expect(result).toEqual({ ok: true, result: undefined });
+    expect(updateProject).toHaveBeenCalledWith("project-1", { name: "Renamed" });
+  });
 });
 
 describe("system action hardening", () => {
@@ -504,7 +595,7 @@ describe("system action hardening", () => {
     ]);
 
     const filesSearch = actions.get("files.search")!();
-    expect(filesSearch.description).toContain("project.getCurrent");
+    expect(filesSearch.description).toContain("active worktree");
     expect(filesSearch.description).not.toContain("project_getCurrent");
   });
 
@@ -545,7 +636,8 @@ describe("system action hardening", () => {
     ).resolves.toEqual({ ok: true, result: [{ path: "src", type: "directory" }] });
   });
 
-  it("keeps confirmation gates on destructive system actions for agent sources", async () => {
+  it("allows agent-driven artifact patches (danger:safe — patches are an IDE primitive)", async () => {
+    mocks.artifactClient.applyPatch.mockResolvedValueOnce({ ok: true });
     const { service } = buildService(registerSystemActions);
 
     const result = await service.dispatch(
@@ -554,11 +646,11 @@ describe("system action hardening", () => {
       { source: "agent" }
     );
 
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error.code).toBe("CONFIRMATION_REQUIRED");
-    }
-    expect(mocks.artifactClient.applyPatch).not.toHaveBeenCalled();
+    expect(result.ok).toBe(true);
+    expect(mocks.artifactClient.applyPatch).toHaveBeenCalledWith({
+      patchContent: "--- a\n+++ b",
+      cwd: "/repo",
+    });
   });
 
   it("propagates downstream copyTree errors through ActionService", async () => {
@@ -880,7 +972,7 @@ describe("preferences action hardening", () => {
     }
   });
 
-  it("calls Electron window actions directly and keeps quit actions confirmation-gated for agents", async () => {
+  it("calls Electron window actions directly and allows agent-driven quit (danger:safe)", async () => {
     resetEscapeStack();
     const escapeHandler = vi.fn();
     registerEscape(escapeHandler);
@@ -896,10 +988,7 @@ describe("preferences action hardening", () => {
     expect(escapeHandler).toHaveBeenCalledTimes(1);
 
     const quitResult = await service.dispatch("app.quit", undefined, { source: "agent" });
-    expect(quitResult.ok).toBe(false);
-    if (!quitResult.ok) {
-      expect(quitResult.error.code).toBe("CONFIRMATION_REQUIRED");
-    }
-    expect(mocks.appClient.quit).not.toHaveBeenCalled();
+    expect(quitResult.ok).toBe(true);
+    expect(mocks.appClient.quit).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,5 +1,6 @@
 import type { StagingStatus } from "../git.js";
-import type { AgentId } from "../agent.js";
+import type { AgentId, AgentState } from "../agent.js";
+import type { VoiceInputStatus } from "../voice.js";
 import type { TabGroup } from "../panel.js";
 import type { WorktreeState } from "../worktree.js";
 import type {
@@ -14,7 +15,13 @@ import type { AgentSettings } from "../agentSettings.js";
 import type { AgentPreset } from "../../config/agentRegistry.js";
 import type { UserAgentRegistry, UserAgentConfig } from "../userAgentRegistry.js";
 import type { KeyAction } from "../keymap.js";
-import type { KeybindingImportResult, MicPermissionStatus, VoiceInputSettings } from "./api.js";
+import type {
+  HelpAssistantSettings,
+  KeybindingImportResult,
+  MicPermissionStatus,
+  NotificationSettings,
+  VoiceInputSettings,
+} from "./api.js";
 
 import type {
   WorktreeSetActivePayload,
@@ -101,6 +108,7 @@ import type {
   GitHubTokenConfig,
   GitHubTokenValidation,
   GitHubRateLimitPayload,
+  GitHubRateLimitDetails,
   GitHubTokenHealthPayload,
   RepoStatsAndPagePayload,
   GitHubFirstPageCachePayload,
@@ -149,6 +157,7 @@ import type {
   TerminalStatusPayload,
   TerminalResourceBatchPayload,
   BroadcastWriteResultPayload,
+  FdLeakWarningPayload,
 } from "../pty-host.js";
 import type { HibernationConfig, HibernationProjectHibernatedPayload } from "./hibernation.js";
 import type { IdleTerminalNotifyConfig, IdleTerminalNotifyPayload } from "./idleTerminals.js";
@@ -175,6 +184,8 @@ import type {
   DemoWaitForIdlePayload,
 } from "./demo.js";
 import type { BulkProjectStats } from "./project.js";
+import type { Scratch } from "../scratch.js";
+import type { ScratchSwitchPayload, ScratchSaveAsProjectResult } from "./scratch.js";
 import type {
   PrerequisiteSpec,
   PrerequisiteCheckResult,
@@ -225,6 +236,12 @@ export interface OnboardingState {
   setupBannerDismissed: boolean;
   checklist: ChecklistState;
 }
+
+/**
+ * Tier classifications for the help-panel agent session. Maps to the
+ * action danger boundaries from the help-assistant settings (#6517).
+ */
+export type HelpAssistantTier = "workbench" | "action" | "system";
 
 /** Serializable toast payload sent from main process to renderer via IPC. */
 export interface MainProcessToastPayload {
@@ -513,6 +530,10 @@ export interface IpcInvokeMap {
     args: [];
     result: AgentVersionInfo[];
   };
+  "system:get-agent-version": {
+    args: [agentId: string, refresh?: boolean];
+    result: AgentVersionInfo;
+  };
   "system:refresh-agent-versions": {
     args: [];
     result: AgentVersionInfo[];
@@ -522,11 +543,11 @@ export interface IpcInvokeMap {
     result: AgentUpdateSettings;
   };
   "system:set-agent-update-settings": {
-    args: [AgentUpdateSettings];
+    args: [settings: AgentUpdateSettings];
     result: void;
   };
   "system:start-agent-update": {
-    args: [StartAgentUpdatePayload];
+    args: [payload: StartAgentUpdatePayload];
     result: StartAgentUpdateResult;
   };
   "setup:agent-install": {
@@ -547,7 +568,7 @@ export interface IpcInvokeMap {
     result: DiagnosticsReviewPayload;
   };
   "system:save-diagnostics-bundle": {
-    args: [DiagnosticsBundleSavePayload];
+    args: [payload: DiagnosticsBundleSavePayload];
     result: boolean;
   };
   "system:get-app-metrics": {
@@ -582,6 +603,21 @@ export interface IpcInvokeMap {
         marked?: number;
         total?: number;
         partitionAlloc?: number;
+      },
+    ];
+    result: void;
+  };
+  // Renderer reports event-loop utilization (LoAF blockingDuration accumulated
+  // since the prior sample) to ProcessMemoryMonitor. The webContents id is
+  // taken from event.sender on the handler side. `blockingDurationMs` is
+  // sub-window blocking time (>=50ms LoAF events only); main derives the
+  // ratio against `sampleWindowMs`.
+  "system:report-renderer-elu": {
+    args: [
+      payload: {
+        requestId: string;
+        blockingDurationMs: number;
+        sampleWindowMs: number;
       },
     ];
     result: void;
@@ -897,10 +933,6 @@ export interface IpcInvokeMap {
   "project:disable-in-repo-settings": {
     args: [projectId: string];
     result: Project;
-  };
-  "project:detect-context-files": {
-    args: [projectId: string];
-    result: string[];
   };
   "project:check-missing": {
     args: [];
@@ -1357,6 +1389,10 @@ export interface IpcInvokeMap {
     args: [pluginId: string, actionId: string];
     result: void;
   };
+  "plugin:panel-kinds-get": {
+    args: [];
+    result: import("../../config/panelKindRegistry.js").PanelKindConfig[];
+  };
 
   // Dev Preview channels
   "dev-preview:ensure": {
@@ -1400,6 +1436,10 @@ export interface IpcInvokeMap {
   "update:set-channel": {
     args: [channel: "stable" | "nightly"];
     result: "stable" | "nightly";
+  };
+  "update:get-last-check": {
+    args: [];
+    result: number | null;
   };
 
   // Agent Capabilities channels
@@ -1465,40 +1505,18 @@ export interface IpcInvokeMap {
   // Notification settings channels
   "notification:settings-get": {
     args: [];
-    result: {
-      completedEnabled: boolean;
-      waitingEnabled: boolean;
-      soundEnabled: boolean;
-      completedSoundFile: string;
-      waitingSoundFile: string;
-      escalationSoundFile: string;
-      waitingEscalationEnabled: boolean;
-      waitingEscalationDelayMs: number;
-      uiFeedbackSoundEnabled: boolean;
-    };
+    result: NotificationSettings;
   };
   "notification:settings-set": {
-    args: [
-      Partial<{
-        completedEnabled: boolean;
-        waitingEnabled: boolean;
-        soundEnabled: boolean;
-        completedSoundFile: string;
-        waitingSoundFile: string;
-        escalationSoundFile: string;
-        waitingEscalationEnabled: boolean;
-        waitingEscalationDelayMs: number;
-        uiFeedbackSoundEnabled: boolean;
-      }>,
-    ];
+    args: [settings: Partial<NotificationSettings>];
     result: void;
   };
   "notification:play-sound": {
-    args: [string];
+    args: [soundFile: string];
     result: void;
   };
   "sound:play-ui-event": {
-    args: [string];
+    args: [eventId: string];
     result: void;
   };
 
@@ -1703,6 +1721,16 @@ export interface IpcInvokeMap {
     args: [patch: Partial<VoiceInputSettings>];
     result: void;
   };
+
+  // Help assistant
+  "help-assistant:get-settings": {
+    args: [];
+    result: HelpAssistantSettings;
+  };
+  "help-assistant:set-settings": {
+    args: [patch: Partial<HelpAssistantSettings>];
+    result: void;
+  };
   "voice-input:start": {
     args: [];
     result: { ok: true } | { ok: false; error: string };
@@ -1757,47 +1785,55 @@ export interface IpcInvokeMap {
   // MCP Server channels
   "mcp-server:get-status": {
     args: [];
-    result: {
-      enabled: boolean;
-      port: number | null;
-      configuredPort: number | null;
-      apiKey: string;
-    };
+    result: import("./mcpServer.js").McpServerStatusSnapshot;
   };
   "mcp-server:set-enabled": {
     args: [enabled: boolean];
-    result: {
-      enabled: boolean;
-      port: number | null;
-      configuredPort: number | null;
-      apiKey: string;
-    };
+    result: import("./mcpServer.js").McpServerStatusSnapshot;
   };
   "mcp-server:set-port": {
     args: [port: number | null];
-    result: {
-      enabled: boolean;
-      port: number | null;
-      configuredPort: number | null;
-      apiKey: string;
-    };
+    result: import("./mcpServer.js").McpServerStatusSnapshot;
   };
-  "mcp-server:set-api-key": {
-    args: [apiKey: string];
-    result: {
-      enabled: boolean;
-      port: number | null;
-      configuredPort: number | null;
-      apiKey: string;
-    };
-  };
-  "mcp-server:generate-api-key": {
+  "mcp-server:rotate-api-key": {
     args: [];
     result: string;
   };
   "mcp-server:get-config-snippet": {
     args: [];
     result: string;
+  };
+  "mcp-server:get-audit-records": {
+    args: [];
+    result: import("./mcpServer.js").McpAuditRecord[];
+  };
+  "mcp-server:get-audit-config": {
+    args: [];
+    result: { enabled: boolean; maxRecords: number };
+  };
+  "mcp-server:get-audit-stats": {
+    args: [];
+    result: import("./mcpServer.js").McpAuditStats;
+  };
+  "mcp-server:clear-audit-log": {
+    args: [];
+    result: void;
+  };
+  "mcp-server:set-audit-enabled": {
+    args: [enabled: boolean];
+    result: { enabled: boolean; maxRecords: number };
+  };
+  "mcp-server:set-audit-max-records": {
+    args: [max: number];
+    result: { enabled: boolean; maxRecords: number };
+  };
+  "mcp-server:get-runtime-state": {
+    args: [];
+    result: import("./mcpServer.js").McpRuntimeSnapshot;
+  };
+  "mcp-server:set-session-tier": {
+    args: [payload: { sessionId: string; tier: "workbench" | "action" | "system" }];
+    result: { sessionId: string; tier: "workbench" | "action" | "system" };
   };
 
   // Webview console capture
@@ -1985,11 +2021,45 @@ export interface IpcInvokeMap {
     args: [];
     result: GitHubTokenHealthPayload;
   };
+  "github:get-rate-limit-details": {
+    args: [];
+    result: GitHubRateLimitDetails | null;
+  };
 
   // Per-service connectivity channels
   "connectivity:get-state": {
     args: [];
     result: ServiceConnectivitySnapshot;
+  };
+
+  // Scratch (throwaway one-off agent workspace) channels
+  "scratch:get-all": {
+    args: [];
+    result: Scratch[];
+  };
+  "scratch:get-current": {
+    args: [];
+    result: Scratch | null;
+  };
+  "scratch:create": {
+    args: [name?: string];
+    result: Scratch;
+  };
+  "scratch:update": {
+    args: [scratchId: string, updates: { name?: string; lastOpened?: number }];
+    result: Scratch;
+  };
+  "scratch:remove": {
+    args: [scratchId: string];
+    result: void;
+  };
+  "scratch:switch": {
+    args: [scratchId: string];
+    result: Scratch;
+  };
+  "scratch:save-as-project": {
+    args: [scratchId: string];
+    result: ScratchSaveAsProjectResult;
   };
 
   // Global env channels
@@ -2038,6 +2108,21 @@ export interface IpcInvokeMap {
     args: [terminalId: string];
     result: void;
   };
+  "help:provision-session": {
+    args: [input: { projectId: string; projectPath: string; agentId: string }];
+    result: {
+      sessionId: string;
+      sessionPath: string;
+      token: string;
+      tier: HelpAssistantTier;
+      mcpUrl: string | null;
+      windowId: number;
+    } | null;
+  };
+  "help:revoke-session": {
+    args: [sessionId: string];
+    result: void;
+  };
 
   // Project clone channels
   "project:clone-repo": {
@@ -2053,6 +2138,10 @@ export interface IpcInvokeMap {
   "project:get-bulk-stats": {
     args: [projectIds: string[]];
     result: BulkProjectStats;
+  };
+  "project:get-notification-overrides": {
+    args: [projectIds: string[]];
+    result: Record<string, Partial<NotificationSettings>>;
   };
 
   // Draft inputs
@@ -2157,7 +2246,7 @@ export interface IpcInvokeMap {
     result: BackendTerminalInfo[];
   };
   "terminal:get-by-state": {
-    args: [state: string];
+    args: [state: AgentState];
     result: BackendTerminalInfo[];
   };
   "terminal:graceful-kill": {
@@ -2217,6 +2306,7 @@ export interface IpcEventMap {
   "terminal:restored": { id: string };
   "terminal:status": TerminalStatusPayload;
   "terminal:reliability-metric": TerminalReliabilityMetricPayload;
+  "terminal:fd-leak-warning": FdLeakWarningPayload;
   "terminal:resource-metrics": { metrics: TerminalResourceBatchPayload; timestamp: number };
   "terminal:broadcast-write-result": BroadcastWriteResultPayload;
   "terminal:send-key": [id: string, key: string];
@@ -2272,6 +2362,29 @@ export interface IpcEventMap {
   // Per-service connectivity state push
   "connectivity:service-changed": ServiceConnectivityPayload;
 
+  /**
+   * MCP server runtime-state transition. Distinct from
+   * `connectivity:service-changed` because the renderer needs the derived
+   * `disabled|starting|ready|failed` state plus `lastError`, not just
+   * binary reachability.
+   */
+  "mcp-server:runtime-state-changed": import("./mcpServer.js").McpRuntimeSnapshot;
+
+  /**
+   * Targeted push: a help-session tool call was denied because its tier
+   * doesn't permit the tool. Sent to the pinned WebContents so the renderer
+   * can surface an inline approval banner. Tier is `string` (not `McpTier`)
+   * because the type is main-process only — see `McpAuditRecord.tier`
+   * precedent. `targetTier` is the minimum tier that permits the tool, or
+   * `null` if the tool isn't recognized at any tier.
+   */
+  "mcp-server:tier-not-permitted": {
+    sessionId: string;
+    toolId: string;
+    tier: string;
+    targetTier: "workbench" | "action" | "system" | null;
+  };
+
   // Error events
   "error:notify": ErrorRecord;
   "error:retry-progress": RetryProgressPayload;
@@ -2288,6 +2401,11 @@ export interface IpcEventMap {
   "project:stats-updated": ProjectStatusMap;
   "project:updated": Project;
   "project:removed": string;
+
+  // Scratch events
+  "scratch:on-switch": ScratchSwitchPayload;
+  "scratch:updated": Scratch;
+  "scratch:removed": string;
 
   // Agent install progress events
   "setup:agent-install-progress": AgentInstallProgressEvent;
@@ -2317,6 +2435,10 @@ export interface IpcEventMap {
   // ProcessMemoryMonitor can see the Blink (DOM/CSS/inter-frame) memory tier
   // that V8 heap stats miss. Renderer replies via SYSTEM_REPORT_BLINK_MEMORY.
   "window:sample-blink-memory": { requestId: string };
+  // Main asks active renderers to report accumulated long-animation-frame
+  // blocking time so ProcessMemoryMonitor can see sustained event-loop
+  // saturation. Renderer replies via SYSTEM_REPORT_RENDERER_ELU.
+  "window:sample-renderer-elu": { requestId: string };
   "window:disk-space-status": {
     status: "normal" | "warning" | "critical";
     availableMb: number;
@@ -2383,7 +2505,7 @@ export interface IpcEventMap {
     resolved: boolean;
   };
   "voice-input:error": string;
-  "voice-input:status": "idle" | "connecting" | "recording" | "error";
+  "voice-input:status": VoiceInputStatus;
 
   // Demo mode events (main → renderer command forwarding)
   "demo:exec-move-to": DemoMoveToPayload;
@@ -2429,6 +2551,11 @@ export interface IpcEventMap {
   // Plugin action registry events
   "plugin:actions-changed": {
     actions: import("../plugin.js").PluginActionDescriptor[];
+  };
+
+  // Plugin panel kind registry events (main → renderer)
+  "plugin:panel-kinds-changed": {
+    kinds: import("../../config/panelKindRegistry.js").PanelKindConfig[];
   };
 
   // Resource profile change (main → renderer)
@@ -2489,6 +2616,7 @@ export type IpcEventBusMap = Pick<
   | "window:destroy-hidden-webviews"
   | "window:disk-space-status"
   | "window:sample-blink-memory"
+  | "window:sample-renderer-elu"
   // System wake (per-webContents)
   | "system:wake"
   // Resource profile (global broadcast)
@@ -2500,6 +2628,8 @@ export type IpcEventBusMap = Pick<
   | "app-agent:confirmation-request"
   // Plugin action registry (global broadcast)
   | "plugin:actions-changed"
+  // Plugin panel kind registry (global broadcast)
+  | "plugin:panel-kinds-changed"
   // Terminal lifecycle (non-data) — exit, spawn-result, backend crash/ready
   | "terminal:exit"
   | "terminal:backend-crashed"
@@ -2509,6 +2639,21 @@ export type IpcEventBusMap = Pick<
   | "terminal:reliability-metric"
   | "terminal:status"
 >;
+
+/**
+ * Compile-time guard: high-frequency / binary-payload channels documented above
+ * as excluded by design must never end up in {@link IpcEventBusMap}. Resolves
+ * to `true` when the exclusion holds; flips to `never` (and breaks the
+ * dependent test in `__tests__/ipcEnvelopeConstraint.test.ts`) the moment one
+ * of the banned keys is added to the `Pick<>` list above.
+ */
+export type _IpcEventBusMapExcludesHighFrequency =
+  Extract<
+    keyof IpcEventBusMap,
+    "terminal:data" | "terminal:resource-metrics" | "logs:batch"
+  > extends never
+    ? true
+    : never;
 
 /**
  * Envelope carried on CHANNELS.EVENTS_PUSH. Discriminated by `name` so the

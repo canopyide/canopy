@@ -276,6 +276,26 @@ describe("TaskPersistence", () => {
     });
   });
 
+  describe("transaction mode", () => {
+    it("runs saveSync in IMMEDIATE transaction", async () => {
+      const spy = vi.spyOn(db, "transaction");
+      await persistence.save(testProjectId, [createTestTask()]);
+      expect(spy).toHaveBeenCalledWith(expect.any(Function), { behavior: "immediate" });
+      spy.mockRestore();
+    });
+
+    it("runs flush in IMMEDIATE transaction when pending save exists", async () => {
+      const slowPersistence = new TaskPersistence(db, 5000);
+      const tasks = [createTestTask()];
+      slowPersistence.save(testProjectId, tasks);
+
+      const spy = vi.spyOn(db, "transaction");
+      await slowPersistence.flush(testProjectId);
+      expect(spy).toHaveBeenCalledWith(expect.any(Function), { behavior: "immediate" });
+      spy.mockRestore();
+    });
+  });
+
   describe("debounce coalescing", () => {
     it("last-write wins when multiple saves are queued for same project", async () => {
       const slowPersistence = new TaskPersistence(db, 5000);

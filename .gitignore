@@ -9,6 +9,7 @@ dist-typecheck/
 out/
 release/
 *.asar
+stats.html
 
 # Build resources - keep icons but ignore iconset
 build/icon.iconset/
@@ -74,6 +75,7 @@ coverage/
 .nyc_output/
 test-results/
 playwright-report/
+blob-report/
 
 # Temp files
 tmp/
@@ -89,6 +91,10 @@ reports/
 *.deb
 *.rpm
 .daintree/daintree-remote
+
+# Native addon build outputs (electron-rebuild + node-gyp)
+electron/native/*/build/
+electron/native/*/bin/
 
 # Planning docs (private)
 planning/

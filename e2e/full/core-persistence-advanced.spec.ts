@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { launchApp, closeApp, waitForProcessExit, type AppContext } from "../helpers/launch";
-import { createFixtureRepo } from "../helpers/fixtures";
+import { createFixtureRepo, removePathSync } from "../helpers/fixtures";
 import { openAndOnboardProject } from "../helpers/project";
 import { SEL } from "../helpers/selectors";
 import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
@@ -10,18 +10,19 @@ import {
   openTerminal,
   openSettings,
 } from "../helpers/panels";
-import { mkdtempSync, rmSync } from "fs";
+import { mkdtempSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 
 test.describe.serial("Persistence: Layout & Window across restart", () => {
   let userDataDir: string;
   let fixtureDir: string;
+  let fixtureCleanup: () => void;
   let ctx: AppContext | null = null;
 
   test.beforeAll(async () => {
     userDataDir = mkdtempSync(path.join(tmpdir(), "daintree-e2e-persist-layout-"));
-    fixtureDir = createFixtureRepo({ name: "persist-layout" });
+    ({ dir: fixtureDir, cleanup: fixtureCleanup } = createFixtureRepo({ name: "persist-layout" }));
   });
 
   test.afterAll(async () => {
@@ -31,8 +32,8 @@ test.describe.serial("Persistence: Layout & Window across restart", () => {
       if (pid) await waitForProcessExit(pid).catch(() => {});
       ctx = null;
     }
-    rmSync(userDataDir, { recursive: true, force: true });
-    rmSync(fixtureDir, { recursive: true, force: true });
+    removePathSync(userDataDir);
+    fixtureCleanup?.();
   });
 
   test("terminal layout, window size, and sidebar state survive restart", async () => {
@@ -63,10 +64,10 @@ test.describe.serial("Persistence: Layout & Window across restart", () => {
     });
     await w1.waitForTimeout(T_SETTLE);
 
-    // Toggle focus mode (collapses sidebar — width animates to 0)
+    // Toggle focus mode (collapses sidebar — aside flips to aria-hidden="true")
     await w1.locator(SEL.toolbar.toggleSidebar).click();
-    const resizer = w1.locator('[role="separator"][aria-label="Resize sidebar"]');
-    await expect(resizer).toHaveAttribute("aria-valuenow", "0", { timeout: T_SHORT });
+    const aside = w1.locator('aside[aria-label="Sidebar"]');
+    await expect(aside).toHaveAttribute("aria-hidden", "true", { timeout: T_SHORT });
     await w1.waitForTimeout(T_SETTLE);
 
     const pid1 = app1.process().pid!;
@@ -79,7 +80,7 @@ test.describe.serial("Persistence: Layout & Window across restart", () => {
     const { window: w2, app: app2 } = ctx;
 
     // Wait for project to restore
-    await expect(w2.locator(SEL.toolbar.projectSwitcherTrigger)).toContainText("Persist Layout", {
+    await expect(w2.locator(SEL.toolbar.projectSwitcherTrigger)).toContainText("persist-layout", {
       timeout: T_MEDIUM,
     });
 
@@ -88,9 +89,9 @@ test.describe.serial("Persistence: Layout & Window across restart", () => {
     await expect.poll(() => getDockPanelCount(w2), { timeout: T_LONG }).toBeGreaterThanOrEqual(1);
 
     // Verify sidebar is still hidden (focus mode persisted) — collapsed
-    // sidebar keeps the <aside> attached but with aria-valuenow="0".
-    const resizer2 = w2.locator('[role="separator"][aria-label="Resize sidebar"]');
-    await expect(resizer2).toHaveAttribute("aria-valuenow", "0", { timeout: T_SHORT });
+    // sidebar keeps the <aside> attached but with aria-hidden="true".
+    const aside2 = w2.locator('aside[aria-label="Sidebar"]');
+    await expect(aside2).toHaveAttribute("aria-hidden", "true", { timeout: T_SHORT });
 
     // Verify window dimensions within tolerance
     const bounds = await app2.evaluate(({ BrowserWindow }) => {
@@ -119,7 +120,7 @@ test.describe.serial("Persistence: Theme, Notifications & Keybindings across res
       if (pid) await waitForProcessExit(pid).catch(() => {});
       ctx = null;
     }
-    rmSync(userDataDir, { recursive: true, force: true });
+    removePathSync(userDataDir);
   });
 
   test("theme, notification toggle, and keybinding override survive restart", async () => {
@@ -166,10 +167,8 @@ test.describe.serial("Persistence: Theme, Notifications & Keybindings across res
     await searchInput.fill("Open settings");
     await w1.waitForTimeout(T_SETTLE);
 
-    const row = w1
-      .locator(".group")
-      .filter({ has: w1.locator("button", { hasText: "Edit" }) })
-      .first();
+    const row = w1.locator('[class*="group/row"]').filter({ hasText: "Open settings" }).first();
+    await expect(row).toBeVisible({ timeout: T_MEDIUM });
     await row.scrollIntoViewIfNeeded();
     await row.hover();
 
@@ -235,10 +234,8 @@ test.describe.serial("Persistence: Theme, Notifications & Keybindings across res
     await searchInput2.fill("Open settings");
     await w2.waitForTimeout(T_SETTLE);
 
-    const row2 = w2
-      .locator(".group")
-      .filter({ has: w2.locator("button", { hasText: "Edit" }) })
-      .first();
+    const row2 = w2.locator('[class*="group/row"]').filter({ hasText: "Open settings" }).first();
+    await expect(row2).toBeVisible({ timeout: T_MEDIUM });
     await row2.scrollIntoViewIfNeeded();
     await row2.hover();
 

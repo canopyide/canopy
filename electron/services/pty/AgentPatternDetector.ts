@@ -79,7 +79,6 @@ export function stripAnsi(text: string): string {
     .replace(/\x1b[=>]/g, "") // Keypad mode
     .replace(/\x1b[78]/g, "") // Save/restore cursor
     .replace(/\x1b[DME]/g, "") // Line control
-    .replace(/\x1b\[[\d;]*m/g, "") // SGR (colors/styles) - catch-all
     .replace(/\x1b[@-Z\\-_]/g, ""); // 7-bit C1 escapes
   /* eslint-enable no-control-regex */
 }
@@ -110,15 +109,15 @@ export const AGENT_PATTERN_CONFIGS: Record<string, PatternDetectionConfig> = {
   gemini: {
     primaryPatterns: [
       // ASCII spinner + text + cancel hint (short descriptions)
-      /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\s+[^()\n]{2,80}\s*\(esc to cancel/i,
+      /[⠀-⣿]\s+[^()\n]{2,80}\s*\(esc to cancel/i,
       // Simple: just "esc to cancel" at end of line (handles long/wrapped text)
       /esc to cancel[^)\n]*\)?$/im,
       // Time + escape hint structure: (14s, esc to cancel)
       /\(\d+s,?\s*esc to cancel/i,
     ],
     fallbackPatterns: [
-      // Just the spinner (Braille dots used by Gemini)
-      /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\s+\w/,
+      // Just the spinner (Braille dots used by Gemini — full U+2800–U+28FF block)
+      /[⠀-⣿]\s+\w/,
     ],
     scanLineCount: 10,
     primaryConfidence: 0.95,
@@ -151,9 +150,9 @@ export const AGENT_PATTERN_CONFIGS: Record<string, PatternDetectionConfig> = {
 export const UNIVERSAL_PATTERN_CONFIG: PatternDetectionConfig = {
   primaryPatterns: [
     // Full format patterns (superset: v2.1.79 Claude chars + legacy + Gemini + Codex)
-    /[·*✢✳✶✻✽●✼✾⟡◇◆○•⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\s+[^()\n]{2,80}\s*\(esc to interrupt/i,
-    /[·*✢✳✶✻✽●✼✾⟡◇◆○•⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\s+[^()\n]{2,80}\s*\(esc to cancel/i,
-    /[·*✢✳✶✻✽●✼✾⟡◇◆○•⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\s+[^()\n]{2,80}\s*\(escape to interrupt/i,
+    /[·*✢✳✶✻✽●✼✾⟡◇◆○•⠀-⣿]\s+[^()\n]{2,80}\s*\(esc to interrupt/i,
+    /[·*✢✳✶✻✽●✼✾⟡◇◆○•⠀-⣿]\s+[^()\n]{2,80}\s*\(esc to cancel/i,
+    /[·*✢✳✶✻✽●✼✾⟡◇◆○•⠀-⣿]\s+[^()\n]{2,80}\s*\(escape to interrupt/i,
     // Simple: escape hints at end of line (handles long/wrapped text)
     /esc to interrupt[^)\n]*\)?$/im,
     /esc to cancel[^)\n]*\)?$/im,
@@ -164,7 +163,7 @@ export const UNIVERSAL_PATTERN_CONFIG: PatternDetectionConfig = {
   ],
   fallbackPatterns: [
     // Common spinner characters followed by activity
-    /[✢✳✶✻✽●•⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\s+(thinking|working|loading|processing|running)/i,
+    /[✢✳✶✻✽●•⠀-⣿]\s+(thinking|working|loading|processing|running)/i,
   ],
   scanLineCount: 10,
   primaryConfidence: 0.9,

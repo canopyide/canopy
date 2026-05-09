@@ -13,6 +13,7 @@ import { T_LONG, T_MEDIUM } from "../helpers/timeouts";
 let ctx: AppContext;
 let fixtureDir: string;
 let fakeBinDir: string;
+let fixtureCleanup: (() => void) | undefined;
 
 const AGENT_STATE_VALUES = new Set([
   "idle",
@@ -25,6 +26,8 @@ const AGENT_STATE_VALUES = new Set([
 
 const T_IDENTITY = 60_000;
 const T_AGENT_STICKY_REGRESSION = 45_000;
+const FAKE_CLAUDE_STOP = "__DAINTREE_FAKE_CLAUDE_STOP__";
+const FAKE_NPM_STOP = "__DAINTREE_FAKE_NPM_STOP__";
 
 function panelHeaderIcon(panel: Locator): Locator {
   return panel.locator("[data-pane-chrome] [data-terminal-icon-id]").first();
@@ -32,6 +35,17 @@ function panelHeaderIcon(panel: Locator): Locator {
 
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function powershellQuote(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+function prependPathCommand(dir: string): string {
+  if (process.platform === "win32") {
+    return `$env:PATH = ${powershellQuote(`${dir}${path.delimiter}`)} + $env:PATH`;
+  }
+  return `export PATH=${shellQuote(dir)}:$PATH`;
 }
 
 async function expectPanelHeaderIcon(panel: Locator, iconId: string): Promise<void> {
@@ -128,6 +142,16 @@ async function ptyWrite(page: Page, terminalId: string, data: string): Promise<v
   if (!result.ok) throw new Error(`ptyWrite failed: ${result.reason}`);
 }
 
+async function stopFakeClaude(page: Page, panel: Locator, terminalId: string): Promise<void> {
+  await ptyWrite(page, terminalId, `${FAKE_CLAUDE_STOP}\r`);
+  await waitForTerminalText(panel, "FAKE_CLAUDE_EXIT", T_LONG);
+}
+
+async function stopFakeNpm(page: Page, panel: Locator, terminalId: string): Promise<void> {
+  await ptyWrite(page, terminalId, `${FAKE_NPM_STOP}\r`);
+  await waitForTerminalText(panel, "NPM_EXIT", T_LONG);
+}
+
 async function expectWorktreeTracksAgent(
   page: Page,
   terminalId: string,
@@ -199,17 +223,28 @@ async function newestPanelId(page: Page, previousIds: Set<string>): Promise<stri
 }
 
 function prepareFixture(): void {
-  fixtureDir = createFixtureRepo({ name: "terminal-agent-promotion" });
+  const { dir, cleanup } = createFixtureRepo({ name: "terminal-agent-promotion" });
+  fixtureDir = dir;
+  fixtureCleanup = cleanup;
   // Keep a space in the fake CLI path so toolbar launches exercise the same
   // quoted absolute executable form that real resolved paths can use.
   fakeBinDir = path.join(fixtureDir, ".e2e bin");
   mkdirSync(fakeBinDir, { recursive: true });
 
   const fakeClaude = path.join(fakeBinDir, "claude");
+  const fakeNpmBuild = [
+    "console.log('NPM_READY');",
+    "process.stdin.resume();",
+    "process.stdin.setEncoding('utf8');",
+    `process.stdin.on('data', (chunk) => { if (String(chunk).includes('${FAKE_NPM_STOP}')) { console.log('NPM_EXIT'); process.exit(0); } });`,
+    "setTimeout(() => {}, 10000);",
+  ].join(" ");
+
   writeFileSync(
     fakeClaude,
     [
       "#!/usr/bin/env node",
+      `const stopToken = ${JSON.stringify(FAKE_CLAUDE_STOP)};`,
       "console.log('Accessing workspace:');",
       "console.log('');",
       "console.log(' ' + process.cwd());",
@@ -230,9 +265,14 @@ function prepareFixture(): void {
       "  process.exit(0);",
       "};",
       "process.stdin.on('data', (chunk) => {",
-      "  if (!trusted && /[\\r\\n]/.test(String(chunk))) {",
+      "  const input = String(chunk);",
+      "  if (!trusted && /[\\r\\n]/.test(input)) {",
       "    trusted = true;",
       "    console.log('FAKE_CLAUDE_READY');",
+      "    return;",
+      "  }",
+      "  if (trusted && input.includes(stopToken)) {",
+      "    shutdown();",
       "  }",
       "});",
       "process.on('SIGINT', shutdown);",
@@ -242,6 +282,13 @@ function prepareFixture(): void {
   );
   chmodSync(fakeClaude, 0o755);
 
+  if (process.platform === "win32") {
+    writeFileSync(
+      path.join(fakeBinDir, "claude.cmd"),
+      ["@echo off", 'node "%~dp0claude" %*', ""].join("\r\n")
+    );
+  }
+
   writeFileSync(
     path.join(fixtureDir, "package.json"),
     JSON.stringify(
@@ -250,7 +297,7 @@ function prepareFixture(): void {
         version: "1.0.0",
         private: true,
         scripts: {
-          build: "node -e \"console.log('NPM_READY'); setTimeout(() => {}, 10000)\"",
+          build: `node -e ${JSON.stringify(fakeNpmBuild)}`,
         },
       },
       null,
@@ -280,6 +327,7 @@ test.describe.serial("Core: terminal runtime agent promotion", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   test("toolbar Claude launch and plain-terminal Claude command both activate agent chrome/state", async () => {
@@ -308,7 +356,12 @@ test.describe.serial("Core: terminal runtime agent promotion", () => {
       await expectPanelHeaderIcon(panel, "claude");
       await expectPanelHasAgentState(panel);
       await expectWorktreeTracksAgent(window, toolbarPanelId, "claude");
-      expect(await getTerminalText(panel)).not.toContain(".e2e bin");
+      // PowerShell echoes the resolved shim path when launching a .cmd agent on
+      // Windows; the Unix guard still protects against leaking the helper path
+      // into the agent's own visible output.
+      if (process.platform !== "win32") {
+        expect(await getTerminalText(panel)).not.toContain(".e2e bin");
+      }
 
       // Regression guard: shell-command evidence has a 30s expiry. A live
       // agent must not demote to plain terminal when that timer elapses.
@@ -319,8 +372,7 @@ test.describe.serial("Core: terminal runtime agent promotion", () => {
       await expectPanelHeaderIcon(panel, "claude");
       await expectPanelHasAgentState(panel);
 
-      await ptyWrite(window, toolbarPanelId, "\x03");
-      await waitForTerminalText(panel, "FAKE_CLAUDE_EXIT", T_LONG);
+      await stopFakeClaude(window, panel, toolbarPanelId);
 
       await expect
         .poll(() => panel.getAttribute("data-detected-agent-id"), {
@@ -351,7 +403,7 @@ test.describe.serial("Core: terminal runtime agent promotion", () => {
       await expectPanelHeaderIcon(panel, "terminal");
       await expectPanelHasNoAgentState(panel);
 
-      await runTerminalCommand(window, panel, `export PATH=${shellQuote(fakeBinDir)}:$PATH`);
+      await runTerminalCommand(window, panel, prependPathCommand(fakeBinDir));
       await runTerminalCommand(window, panel, "npm run build");
       await waitForTerminalText(panel, "NPM_READY", T_LONG);
       await expect
@@ -365,7 +417,7 @@ test.describe.serial("Core: terminal runtime agent promotion", () => {
       await expectPanelHasNoAgentState(panel);
       await expectWorktreeTracksPlainTerminal(window, plainPanelId);
 
-      await ptyWrite(window, plainPanelId, "\x03");
+      await stopFakeNpm(window, panel, plainPanelId);
 
       // Do not wait for the npm badge to clear before starting Claude. This
       // exercises the stale process → fresh agent promotion path that regressed.
@@ -398,8 +450,7 @@ test.describe.serial("Core: terminal runtime agent promotion", () => {
       await expectPanelHeaderIcon(panel, "claude");
       await expectPanelHasAgentState(panel);
 
-      await ptyWrite(window, plainPanelId, "\x03");
-      await waitForTerminalText(panel, "FAKE_CLAUDE_EXIT", T_LONG);
+      await stopFakeClaude(window, panel, plainPanelId);
       await expect
         .poll(() => panel.getAttribute("data-detected-agent-id"), {
           timeout: T_IDENTITY,

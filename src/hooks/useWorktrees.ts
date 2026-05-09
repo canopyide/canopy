@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from "react";
 import type { WorktreeSnapshot, WorktreeState } from "@shared/types";
+import { compareWorktreeNames } from "@/lib/worktreeFilters";
 import { useWorktreeStore } from "./useWorktreeStore";
 
 export interface UseWorktreesReturn {
@@ -56,7 +57,7 @@ export function useWorktrees(): UseWorktreesReturn {
         return timeB - timeA;
       }
 
-      return a.name.localeCompare(b.name);
+      return compareWorktreeNames(a.name, b.name);
     });
   }, [normalizedMap]);
 

@@ -36,9 +36,8 @@ export function SettingsInput({
   const showReset = isModified && onReset && !disabled;
 
   const describedBy =
-    [description && !error ? descriptionId : null, error ? errorId : null]
-      .filter(Boolean)
-      .join(" ") || undefined;
+    [error ? errorId : null, description ? descriptionId : null].filter(Boolean).join(" ") ||
+    undefined;
 
   const scopeBadge = scope ? (
     <span
@@ -89,13 +88,13 @@ export function SettingsInput({
         className={cn(INPUT_CLASSES, error && "border-status-error", className)}
         {...props}
       />
-      {description && !error && (
+      {description && (
         <p id={descriptionId} className="text-xs text-text-muted select-text">
           {description}
         </p>
       )}
       {error && (
-        <p id={errorId} role="alert" className="text-xs text-status-error">
+        <p id={errorId} className="text-xs text-status-error">
           {error}
         </p>
       )}

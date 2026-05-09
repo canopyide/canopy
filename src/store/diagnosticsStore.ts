@@ -6,6 +6,7 @@ interface DiagnosticsState {
   isOpen: boolean;
   activeTab: DiagnosticsTab;
   height: number;
+  maxHeight: number;
 
   toggleDock: () => void;
   openDock: (tab?: DiagnosticsTab) => void;
@@ -13,6 +14,7 @@ interface DiagnosticsState {
   setActiveTab: (tab: DiagnosticsTab) => void;
   setOpen: (open: boolean) => void;
   setHeight: (height: number) => void;
+  setMaxHeight: (max: number) => void;
   reset: () => void;
 }
 
@@ -20,10 +22,16 @@ const DEFAULT_HEIGHT = 256;
 const MIN_HEIGHT = 128;
 const MAX_HEIGHT_RATIO = 0.5; // 50% of viewport
 
+const initialMaxHeight =
+  typeof window !== "undefined"
+    ? Math.max(window.innerHeight * MAX_HEIGHT_RATIO, MIN_HEIGHT)
+    : DEFAULT_HEIGHT;
+
 const createDiagnosticsStore: StateCreator<DiagnosticsState> = (set) => ({
   isOpen: false,
   activeTab: "problems",
   height: DEFAULT_HEIGHT,
+  maxHeight: initialMaxHeight,
 
   toggleDock: () =>
     set((state) => ({
@@ -51,18 +59,31 @@ const createDiagnosticsStore: StateCreator<DiagnosticsState> = (set) => ({
       isOpen,
     }),
 
-  setHeight: (height) => {
-    const maxHeight =
-      typeof window !== "undefined" ? window.innerHeight * MAX_HEIGHT_RATIO : height;
-    const clampedHeight = Math.min(Math.max(height, MIN_HEIGHT), maxHeight);
-    set({ height: clampedHeight });
-  },
+  setHeight: (height) =>
+    set((state) => {
+      const clampedHeight = Math.min(Math.max(height, MIN_HEIGHT), state.maxHeight);
+      return { height: clampedHeight };
+    }),
+
+  setMaxHeight: (max) =>
+    set((state) => {
+      const nextMax = Math.max(max, MIN_HEIGHT);
+      const clampedHeight = Math.min(state.height, nextMax);
+      // Returning the existing state reference makes Zustand 5 skip the
+      // subscriber notification — important because ResizeObserver can
+      // fire the same parent height repeatedly during layout churn.
+      if (clampedHeight === state.height && nextMax === state.maxHeight) {
+        return state;
+      }
+      return { maxHeight: nextMax, height: clampedHeight };
+    }),
 
   reset: () =>
     set({
       isOpen: false,
       activeTab: "problems",
       height: DEFAULT_HEIGHT,
+      maxHeight: initialMaxHeight,
     }),
 });
 

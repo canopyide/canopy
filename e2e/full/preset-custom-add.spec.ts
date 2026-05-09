@@ -4,21 +4,29 @@ import { createFixtureRepo } from "../helpers/fixtures";
 import { openAndOnboardProject } from "../helpers/project";
 import { SEL } from "../helpers/selectors";
 import { T_SHORT, T_MEDIUM, T_SETTLE } from "../helpers/timeouts";
-import { navigateToAgentSettings, addCustomPreset, removeCcrConfig } from "../helpers/presets";
+import {
+  navigateToAgentSettings,
+  addCustomPreset,
+  removeCcrConfig,
+  waitForCcrPresets,
+} from "../helpers/presets";
 
 let ctx: AppContext;
+let fixtureCleanup: (() => void) | undefined;
 
 test.describe.serial("Presets: Custom Add (13–24)", () => {
   test.beforeAll(async () => {
     removeCcrConfig();
     ctx = await launchApp();
-    const fixtureDir = createFixtureRepo({ name: "preset-add" });
+    const { dir: fixtureDir, cleanup } = createFixtureRepo({ name: "preset-add" });
+    fixtureCleanup = cleanup;
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Preset Add Test");
   });
 
   test.afterAll(async () => {
     removeCcrConfig();
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   const goToClaudeSettings = async () => {
@@ -171,7 +179,7 @@ test.describe.serial("Presets: Custom Add (13–24)", () => {
   test("22. Add button visible alongside CCR presets", async () => {
     const { writeCcrConfig } = await import("../helpers/presets");
     writeCcrConfig([{ id: "ccr-adj", name: "CCR Adj", model: "adj-model" }]);
-    await ctx.window.waitForTimeout(35_000);
+    await waitForCcrPresets(ctx.window, ["CCR Adj"]);
     await goToClaudeSettings();
     await expect(ctx.window.locator(SEL.preset.section).locator(SEL.preset.addButton)).toBeVisible({
       timeout: T_MEDIUM,

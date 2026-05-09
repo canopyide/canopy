@@ -11,6 +11,7 @@ import { getActiveElementInfo, elementKey, escapeTerminalFocus } from "../helper
 
 let ctx: AppContext;
 const mod = process.platform === "darwin" ? "Meta" : "Control";
+let fixtureCleanup: (() => void) | undefined;
 
 function buildAxeScanner(page: import("@playwright/test").Page) {
   return (
@@ -48,6 +49,7 @@ test.describe.serial("Core: Accessibility", () => {
 
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
   });
 
   // -- Axe WCAG 2.2 AA Audits --
@@ -66,7 +68,8 @@ test.describe.serial("Core: Accessibility", () => {
 
     test.describe.serial("With Project", () => {
       test.beforeAll(async () => {
-        const fixtureDir = createFixtureRepo({ name: "accessibility" });
+        const { dir: fixtureDir, cleanup } = createFixtureRepo({ name: "accessibility" });
+        fixtureCleanup = cleanup;
         ctx.window = await openAndOnboardProject(
           ctx.app,
           ctx.window,
@@ -198,7 +201,9 @@ test.describe.serial("Core: Accessibility", () => {
         test("toolbar supports arrow-key navigation", async () => {
           const { window } = ctx;
 
-          const toolbar = window.locator('[role="toolbar"]');
+          // The page has multiple `role="toolbar"` elements (main toolbar +
+          // per-worktree action toolbars). Scope to the main toolbar.
+          const toolbar = window.getByRole("toolbar", { name: "Main toolbar" });
           await expect(toolbar).toBeVisible({ timeout: T_SHORT });
 
           const firstItem = toolbar.locator("[data-toolbar-item]:not(:disabled)").first();

@@ -9,9 +9,11 @@ import {
   getEffectiveAgentIds,
   isEffectivelyRegisteredAgent,
   getAgentDisplayTitle,
+  getAssistantSupportedAgentIds,
 } from "../../shared/config/agentRegistry";
+import { hasShellMetachar } from "../../shared/utils/shellEscape";
 
-export { getAgentDisplayTitle };
+export { getAgentDisplayTitle, getAssistantSupportedAgentIds };
 export type { AgentPreset, AgentProviderTemplate };
 import { resolveAgentIcon } from "./agentIcons";
 
@@ -115,16 +117,7 @@ export function getMergedPresets(
     const sanitizeArgs = (args?: string[]): string[] | undefined => {
       if (!Array.isArray(args)) return undefined;
       const safe = args.filter(
-        (a) =>
-          typeof a === "string" &&
-          a.length > 0 &&
-          a.length <= 10000 &&
-          !a.includes(";") &&
-          !a.includes("|") &&
-          !a.includes("$(") &&
-          !a.includes("`") &&
-          !a.includes("&") &&
-          !a.includes(">")
+        (a) => typeof a === "string" && a.length > 0 && a.length <= 10000 && !hasShellMetachar(a)
       );
       return safe.length > 0 ? safe : undefined;
     };
@@ -155,11 +148,7 @@ export function getMergedPresets(
       dangerousEnabled:
         typeof preset.dangerousEnabled === "boolean" ? preset.dangerousEnabled : undefined,
       customFlags:
-        typeof preset.customFlags === "string" &&
-        !preset.customFlags.includes(";") &&
-        !preset.customFlags.includes("|") &&
-        !preset.customFlags.includes("$(") &&
-        !preset.customFlags.includes("`")
+        typeof preset.customFlags === "string" && !hasShellMetachar(preset.customFlags)
           ? preset.customFlags.slice(0, 10000)
           : undefined,
       inlineMode: typeof preset.inlineMode === "boolean" ? preset.inlineMode : undefined,

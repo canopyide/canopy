@@ -105,6 +105,110 @@ describe("TerminalScrollbackController", () => {
       expect(managed.terminal.options.scrollback).toBe(500);
       expect(getWrittenData(managed)).toHaveLength(0);
     });
+
+    describe("cooldown gate", () => {
+      it("stamps lastScrollbackReduceAt on successful reduce", () => {
+        const managed = makeMockManaged();
+        const before = Date.now();
+        reduceScrollback(managed, 500);
+        const after = Date.now();
+
+        expect(managed.terminal.options.scrollback).toBe(500);
+        expect(managed.lastScrollbackReduceAt).toBeGreaterThanOrEqual(before);
+        expect(managed.lastScrollbackReduceAt).toBeLessThanOrEqual(after);
+      });
+
+      it("skips a second reduce within the 2000ms cooldown window", () => {
+        const nowSpy = vi.spyOn(Date, "now");
+        try {
+          nowSpy.mockReturnValue(10_000);
+          const managed = makeMockManaged();
+          reduceScrollback(managed, 500);
+          expect(managed.terminal.options.scrollback).toBe(500);
+
+          // Restore to 5000 to simulate a tier upgrade clearing the buffer
+          // size, then re-trigger reduce inside cooldown — should be skipped.
+          managed.terminal.options.scrollback = 5000;
+          nowSpy.mockReturnValue(11_000); // 1000ms later, still inside 2000ms cooldown
+          reduceScrollback(managed, 500);
+
+          expect(managed.terminal.options.scrollback).toBe(5000);
+        } finally {
+          nowSpy.mockRestore();
+        }
+      });
+
+      it("allows a second reduce after the 2000ms cooldown elapses", () => {
+        const nowSpy = vi.spyOn(Date, "now");
+        try {
+          nowSpy.mockReturnValue(10_000);
+          const managed = makeMockManaged();
+          reduceScrollback(managed, 500);
+          expect(managed.terminal.options.scrollback).toBe(500);
+
+          managed.terminal.options.scrollback = 5000;
+          nowSpy.mockReturnValue(12_001); // 2001ms later
+          reduceScrollback(managed, 500);
+
+          expect(managed.terminal.options.scrollback).toBe(500);
+        } finally {
+          nowSpy.mockRestore();
+        }
+      });
+
+      it("force option bypasses the cooldown", () => {
+        const nowSpy = vi.spyOn(Date, "now");
+        try {
+          nowSpy.mockReturnValue(10_000);
+          const managed = makeMockManaged();
+          reduceScrollback(managed, 500);
+
+          managed.terminal.options.scrollback = 5000;
+          nowSpy.mockReturnValue(10_500); // 500ms later, deep inside cooldown
+          reduceScrollback(managed, 500, { force: true });
+
+          expect(managed.terminal.options.scrollback).toBe(500);
+        } finally {
+          nowSpy.mockRestore();
+        }
+      });
+
+      it("does not stamp the timestamp when an earlier guard short-circuits", () => {
+        const managed = makeMockManaged({ isFocused: true });
+        reduceScrollback(managed, 500);
+        expect(managed.lastScrollbackReduceAt).toBeUndefined();
+      });
+
+      it("does not stamp the timestamp when scrollback is already at or below target", () => {
+        const managed = makeMockManaged();
+        managed.terminal.options.scrollback = 300;
+        reduceScrollback(managed, 500);
+        expect(managed.lastScrollbackReduceAt).toBeUndefined();
+      });
+
+      it("cooldown fencepost: blocks at 1999ms, allows at 2000ms", () => {
+        const nowSpy = vi.spyOn(Date, "now");
+        try {
+          nowSpy.mockReturnValue(0);
+          const managed = makeMockManaged();
+          reduceScrollback(managed, 500);
+          expect(managed.lastScrollbackReduceAt).toBe(0);
+
+          // T = 1999ms → still inside cooldown (Date.now() - last = 1999 < 2000)
+          managed.terminal.options.scrollback = 5000;
+          nowSpy.mockReturnValue(1999);
+          reduceScrollback(managed, 500);
+          expect(managed.terminal.options.scrollback).toBe(5000);
+
+          // T = 2000ms → cooldown expires (2000 < 2000 is false)
+          nowSpy.mockReturnValue(2000);
+          reduceScrollback(managed, 500);
+          expect(managed.terminal.options.scrollback).toBe(500);
+        } finally {
+          nowSpy.mockRestore();
+        }
+      });
+    });
   });
 
   describe("restoreScrollback", () => {
