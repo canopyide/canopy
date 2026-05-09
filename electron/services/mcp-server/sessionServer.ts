@@ -45,6 +45,7 @@ import {
   MCP_DEDUP_MAX_ENTRIES_PER_SESSION,
   minimumPermittingTier,
   EXECUTION_ERROR_CODE,
+  buildToolError,
   buildMcpErrorPayload,
 } from "./shared.js";
 import { buildDedupKey, readDedupCache, type CallToolResultLike } from "./sessionDedup.js";
@@ -179,15 +180,10 @@ export function createSessionServer(sessionId: string, deps: SessionServerDeps):
           console.error("[MCP] Failed to notify tier-mismatch:", err);
         }
       }
-      const tierDenyMessage = `action '${actionId}' is not permitted for the '${tier}' tier.`;
-      throw new McpError(
-        ErrorCode.InternalError,
-        tierDenyMessage,
-        buildMcpErrorPayload({
-          code: TIER_NOT_PERMITTED_CODE,
-          message: tierDenyMessage,
-        })
-      );
+      return buildToolError({
+        code: TIER_NOT_PERMITTED_CODE,
+        message: `action '${actionId}' is not permitted for the '${tier}' tier.`,
+      });
     }
 
     // Idempotency dedup for the creation-tool allowlist. Same-moment duplicates
@@ -270,15 +266,10 @@ export function createSessionServer(sessionId: string, deps: SessionServerDeps):
             if (err instanceof McpError) {
               throw err;
             }
-            const waitIdleErrorMessage = formatErrorMessage(err, "waitUntilIdle failed");
-            throw new McpError(
-              ErrorCode.InternalError,
-              waitIdleErrorMessage,
-              buildMcpErrorPayload({
-                code: EXECUTION_ERROR_CODE,
-                message: waitIdleErrorMessage,
-              })
-            );
+            return buildToolError({
+              code: EXECUTION_ERROR_CODE,
+              message: formatErrorMessage(err, "waitUntilIdle failed"),
+            });
           }
         }
 
@@ -300,26 +291,18 @@ export function createSessionServer(sessionId: string, deps: SessionServerDeps):
                 },
               };
               outcome = { kind: "result", value };
-              throw new McpError(
-                ErrorCode.InternalError,
-                failureMessage,
-                buildMcpErrorPayload({
-                  code: ELICITATION_FAILED_CODE,
-                  message: failureMessage,
-                })
-              );
+              return buildToolError({
+                code: ELICITATION_FAILED_CODE,
+                message: failureMessage,
+              });
             }
             if (elicitationOutcome.kind === "rejected") {
               outcome = { kind: "result", value: elicitationOutcome.value };
-              throw new McpError(
-                ErrorCode.InternalError,
-                elicitationOutcome.value.error.message,
-                buildMcpErrorPayload({
-                  code: elicitationOutcome.value.error.code,
-                  message: elicitationOutcome.value.error.message,
-                  details: elicitationOutcome.value.error.details,
-                })
-              );
+              return buildToolError({
+                code: elicitationOutcome.value.error.code,
+                message: elicitationOutcome.value.error.message,
+                details: elicitationOutcome.value.error.details,
+              });
             }
             dispatchConfirmed = true;
             confirmationDecision = "approved";
@@ -332,15 +315,10 @@ export function createSessionServer(sessionId: string, deps: SessionServerDeps):
           confirmationDecision = confirmationDecision ?? envelope.confirmationDecision;
         } catch (err) {
           outcome = { kind: "throw", error: err };
-          const dispatchErrorMessage = formatErrorMessage(err, "Action dispatch failed");
-          throw new McpError(
-            ErrorCode.InternalError,
-            dispatchErrorMessage,
-            buildMcpErrorPayload({
-              code: EXECUTION_ERROR_CODE,
-              message: dispatchErrorMessage,
-            })
-          );
+          return buildToolError({
+            code: EXECUTION_ERROR_CODE,
+            message: formatErrorMessage(err, "Action dispatch failed"),
+          });
         }
 
         if (outcome.value.ok) {
@@ -359,15 +337,11 @@ export function createSessionServer(sessionId: string, deps: SessionServerDeps):
           };
         }
 
-        throw new McpError(
-          ErrorCode.InternalError,
-          outcome.value.error.message,
-          buildMcpErrorPayload({
-            code: outcome.value.error.code,
-            message: outcome.value.error.message,
-            details: outcome.value.error.details,
-          })
-        );
+        return buildToolError({
+          code: outcome.value.error.code,
+          message: outcome.value.error.message,
+          details: outcome.value.error.details,
+        });
       } finally {
         try {
           appendAuditRecord({
