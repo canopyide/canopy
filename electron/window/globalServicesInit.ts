@@ -615,6 +615,31 @@ export async function initGlobalServices(
         }
       },
     });
+
+    // Wire HelpSessionService -> PtyClient so the single-backend invariant
+    // (#7509) can fire-and-forget kill a displaced or revoked help PTY. Done
+    // as a deferred task so we run after `perWindowInit` has set the global
+    // ptyClient ref. If the ref is somehow still null when we drain (early
+    // shutdown, fork crash), the displacement still revokes the bearer in
+    // memory — the orphan's MCP calls 401 even without the kill landing.
+    registerDeferredTask({
+      name: "help-session-pty",
+      run: async () => {
+        try {
+          const ptyClient = getPtyClient();
+          if (!ptyClient) {
+            console.warn(
+              "[MAIN] PtyClient not available when wiring HelpSessionService — displacement will only revoke bearers"
+            );
+            return;
+          }
+          const { helpSessionService } = await import("../services/HelpSessionService.js");
+          helpSessionService.setPtyClient(ptyClient);
+        } catch (err) {
+          console.warn("[MAIN] Failed to wire HelpSessionService PtyClient:", err);
+        }
+      },
+    });
   }
 
   registerDeferredTask({

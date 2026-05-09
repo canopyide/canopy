@@ -221,11 +221,22 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
     // (skipPermissions), append the dangerous flag.
     const helpToken = spawnEnv?.DAINTREE_MCP_TOKEN ?? "";
     const helpTier = helpToken ? helpSessionService.validateToken(helpToken) : false;
-    const isHelpLaunch =
-      helpTier !== false &&
-      typeof launchAgentId === "string" &&
-      getAssistantSupportedAgentIds().includes(launchAgentId) &&
-      safeCommand.length > 0;
+    const isAssistantAgent =
+      typeof launchAgentId === "string" && getAssistantSupportedAgentIds().includes(launchAgentId);
+    const isHelpLaunch = helpTier !== false && isAssistantAgent && safeCommand.length > 0;
+
+    // If a help-session token was supplied but is invalid (revoked between
+    // provision and spawn — typically because a sibling provision displaced
+    // the session under the single-backend invariant), refuse to silently
+    // fall back to a normal Claude launch with per-pane MCP injection. The
+    // renderer must always provision a fresh session before spawning the
+    // assistant; falling through would resurrect the orphan-backend failure
+    // mode (#7509) by spawning an unmanaged Claude in the assistant slot.
+    if (!isHelpLaunch && helpToken && isAssistantAgent && safeCommand.length > 0) {
+      throw new Error(
+        "Daintree Assistant session token is invalid or already displaced; refusing to spawn"
+      );
+    }
 
     if (isHelpLaunch && launchAgentId) {
       const dangerous = DEFAULT_DANGEROUS_ARGS[launchAgentId];
@@ -260,6 +271,20 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
         if (codexArgs && codexArgs.length > 0) {
           safeCommand = `${safeCommand} ${codexArgs.map(shellQuote).join(" ")}`;
         }
+      }
+
+      // Bind this terminalId to the help session so HelpSessionService can
+      // kill the PTY when the session is displaced or revoked (#7509). Owns
+      // the binding from main-process spawn time, so it doesn't depend on
+      // the renderer-issued `help.markTerminal` round-trip landing first.
+      // A false return means the token was revoked between provision and
+      // spawn (e.g. a stale resume against a session a sibling provision
+      // already displaced) — refuse to launch as a help session rather
+      // than silently degrading to a non-help Claude.
+      if (!helpSessionService.markTerminalForToken(helpToken, id)) {
+        throw new Error(
+          "Daintree Assistant session token is invalid or already displaced; refusing to spawn"
+        );
       }
     } else if (launchAgentId === "claude" && safeCommand.length > 0 && projectId) {
       // Daintree MCP injection for normal Claude Code agent launches.
@@ -349,6 +374,11 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
       mcpPaneConfigService.revokePaneConfig(id).catch(() => {
         // best-effort cleanup
       });
+      // If we bound this terminalId to a help session above, unbind now so a
+      // future provision doesn't try to kill a PTY that never spawned.
+      if (isHelpLaunch) {
+        helpSessionService.unbindTerminal(id);
+      }
       const errorMessage = formatErrorMessage(error, "Failed to spawn terminal");
       throw new Error(`Failed to spawn terminal: ${errorMessage}`);
     }
