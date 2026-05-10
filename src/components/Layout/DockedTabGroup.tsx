@@ -76,7 +76,7 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
   const trashPanel = usePanelStore((s) => s.trashPanel);
   const updateTitle = usePanelStore((s) => s.updateTitle);
   const hybridInputEnabled = useTerminalInputStore((s) => s.hybridInputEnabled);
-  const hybridInputAutoFocus = useTerminalInputStore((s) => s.hybridInputAutoFocus);
+  const preferredTerminalFocusTarget = usePanelStore((s) => s.preferredTerminalFocusTarget);
   const reorderPanelsInGroup = usePanelStore((s) => s.reorderPanelsInGroup);
   const addPanel = usePanelStore((s) => s.addPanel);
   const addPanelToGroup = usePanelStore((s) => s.addPanelToGroup);
@@ -512,10 +512,10 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
             return;
           }
           const focusTarget = getTerminalFocusTarget({
+            preferredTarget: preferredTerminalFocusTarget,
             hasHybridInputSurface: activeChrome.isAgent,
             isInputDisabled: backendStatus === "disconnected" || backendStatus === "recovering",
             hybridInputEnabled,
-            hybridInputAutoFocus,
           });
 
           if (focusTarget === "hybridInput") {

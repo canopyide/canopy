@@ -189,6 +189,7 @@ function makeMockDeps(managed?: ManagedTerminal): HibernationManagerDeps {
     onUserInput: vi.fn(),
     onEnterPressed: vi.fn(),
     updateLastObservedTitle: vi.fn(),
+    notifyXtermFocused: vi.fn(),
   };
 }
 

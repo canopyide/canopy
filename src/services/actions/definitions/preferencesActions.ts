@@ -550,8 +550,9 @@ export function registerPreferencesActions(
 
   actions.set("terminalConfig.setHybridInputAutoFocus", () => ({
     id: "terminalConfig.setHybridInputAutoFocus",
-    title: "Set Hybrid Input Auto Focus",
-    description: "Enable or disable auto-focus for the hybrid input bar",
+    title: "Set Default Focus Target",
+    description:
+      "Choose whether agent panes start with the hybrid input or the terminal focused — runtime clicks still win",
     category: "settings",
     kind: "command",
     danger: "safe",

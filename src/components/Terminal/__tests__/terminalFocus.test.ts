@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { getTerminalFocusTarget, shouldShowHybridInputBar } from "../terminalFocus";
+import {
+  getTerminalFocusTarget,
+  shouldShowHybridInputBar,
+  shouldSuppressUnfocusedClick,
+} from "../terminalFocus";
 
 describe("shouldShowHybridInputBar", () => {
   it("shows for agent terminals when enabled", () => {
@@ -45,69 +49,100 @@ describe("shouldShowHybridInputBar", () => {
 });
 
 describe("getTerminalFocusTarget", () => {
-  it("focuses hybrid input for enabled agent terminals", () => {
+  it("honors a hybridInput preference when the surface is available", () => {
     expect(
       getTerminalFocusTarget({
+        preferredTarget: "hybridInput",
         hasHybridInputSurface: true,
         isInputDisabled: false,
         hybridInputEnabled: true,
-        hybridInputAutoFocus: true,
       })
     ).toBe("hybridInput");
   });
 
-  it("falls back to xterm when input is disabled", () => {
+  it("honors an xterm preference even when the surface exists", () => {
     expect(
       getTerminalFocusTarget({
+        preferredTarget: "xterm",
+        hasHybridInputSurface: true,
+        isInputDisabled: false,
+        hybridInputEnabled: true,
+      })
+    ).toBe("xterm");
+  });
+
+  it("falls back to xterm when input is disabled despite preferring hybridInput", () => {
+    expect(
+      getTerminalFocusTarget({
+        preferredTarget: "hybridInput",
         hasHybridInputSurface: true,
         isInputDisabled: true,
         hybridInputEnabled: true,
-        hybridInputAutoFocus: true,
       })
     ).toBe("xterm");
   });
 
-  it("focuses xterm when no hybrid input surface is mounted", () => {
+  it("falls back to xterm when no hybrid input surface is mounted", () => {
     expect(
       getTerminalFocusTarget({
+        preferredTarget: "hybridInput",
         hasHybridInputSurface: false,
         isInputDisabled: false,
         hybridInputEnabled: true,
-        hybridInputAutoFocus: true,
       })
     ).toBe("xterm");
   });
 
-  it("focuses hybrid input for normal terminals when Fleet mounts the bar", () => {
+  it("falls back to xterm when hybrid input is disabled globally", () => {
     expect(
       getTerminalFocusTarget({
-        hasHybridInputSurface: true,
-        isInputDisabled: false,
-        hybridInputEnabled: true,
-        hybridInputAutoFocus: true,
-      })
-    ).toBe("hybridInput");
-  });
-
-  it("focuses xterm when hybrid input is disabled", () => {
-    expect(
-      getTerminalFocusTarget({
+        preferredTarget: "hybridInput",
         hasHybridInputSurface: true,
         isInputDisabled: false,
         hybridInputEnabled: false,
-        hybridInputAutoFocus: true,
       })
     ).toBe("xterm");
   });
+});
 
-  it("focuses xterm when hybrid input auto-focus is disabled", () => {
+describe("shouldSuppressUnfocusedClick", () => {
+  it("suppresses an unfocused grid click on a non-pointer cell", () => {
     expect(
-      getTerminalFocusTarget({
-        hasHybridInputSurface: true,
-        isInputDisabled: false,
-        hybridInputEnabled: true,
-        hybridInputAutoFocus: false,
+      shouldSuppressUnfocusedClick({
+        location: "grid",
+        isFocused: false,
+        isCursorPointer: false,
       })
-    ).toBe("xterm");
+    ).toBe(true);
+  });
+
+  it("does not suppress when the pane is already focused — the click should pass through to xterm", () => {
+    expect(
+      shouldSuppressUnfocusedClick({
+        location: "grid",
+        isFocused: true,
+        isCursorPointer: false,
+      })
+    ).toBe(false);
+  });
+
+  it("does not suppress on link/cursor-pointer cells so the link click registers", () => {
+    expect(
+      shouldSuppressUnfocusedClick({
+        location: "grid",
+        isFocused: false,
+        isCursorPointer: true,
+      })
+    ).toBe(false);
+  });
+
+  it("does not suppress in dock — popovers handle focus differently", () => {
+    expect(
+      shouldSuppressUnfocusedClick({
+        location: "dock",
+        isFocused: false,
+        isCursorPointer: false,
+      })
+    ).toBe(false);
   });
 });
