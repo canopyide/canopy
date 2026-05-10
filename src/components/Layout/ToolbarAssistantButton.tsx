@@ -118,29 +118,31 @@ export const ToolbarAssistantButton = memo(function ToolbarAssistantButton({
           aria-pressed={isOpen}
           aria-keyshortcuts={ariaShortcut}
         >
-          <DaintreeIcon />
-          {pip ? (
-            <span
-              aria-hidden="true"
-              className={cn(
-                "absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full ring-1 ring-daintree-bg",
-                pip.className,
-                pip.delayed && "animate-pulse-delayed"
-              )}
-            />
-          ) : (
-            showAgentPip && (
+          <div className="relative">
+            <DaintreeIcon />
+            {pip ? (
               <span
                 aria-hidden="true"
-                data-testid="assistant-working-pip"
-                data-agent-state={agentState ?? ""}
                 className={cn(
-                  "absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full ring-1 ring-daintree-bg",
-                  agentPip!.className
+                  "absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full ring-1 ring-daintree-sidebar",
+                  pip.className,
+                  pip.delayed && "animate-pulse-delayed"
                 )}
               />
-            )
-          )}
+            ) : (
+              showAgentPip && (
+                <span
+                  aria-hidden="true"
+                  data-testid="assistant-working-pip"
+                  data-agent-state={agentState ?? ""}
+                  className={cn(
+                    "absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full ring-1 ring-daintree-sidebar",
+                    agentPip!.className
+                  )}
+                />
+              )
+            )}
+          </div>
           <ShortcutRevealChip actionId="help.togglePanel" />
         </Button>
       </TooltipTrigger>
