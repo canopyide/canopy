@@ -3,6 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 
 const APP_LAYOUT_PATH = path.resolve(__dirname, "../AppLayout.tsx");
+const SIDEBAR_PATH = path.resolve(__dirname, "../Sidebar.tsx");
 
 describe("AppLayout sidebar visibility — issue #5023 hide on welcome screen", () => {
   let source: string;
@@ -216,6 +217,39 @@ describe("AppLayout drag-resize transition gating — issue #7627", () => {
     // an unrelated window. Drag-resize must not invoke them.
     expect(source).not.toMatch(/handleSidebarResizeStart[\s\S]{0,200}suppressSidebarResizes/);
     expect(source).not.toMatch(/handleAssistantResizeStart[\s\S]{0,200}suppressSidebarResizes/);
+  });
+});
+
+describe("Sidebar unmount-mid-drag safety net — issue #7627", () => {
+  let source: string;
+
+  beforeEach(async () => {
+    source = await fs.readFile(SIDEBAR_PATH, "utf-8");
+  });
+
+  it("mirrors isResizing through a ref so unmount cleanup can read latest state", () => {
+    // The state-flag closure captured by the listener-attaching effect's
+    // cleanup closes over the OLD value of isResizing (true) on every run,
+    // so it can't tell graceful end from teardown. A ref updated inside
+    // startResizing/stopResizing gives the unmount cleanup a synchronous
+    // signal of the live drag state.
+    expect(source).toMatch(/const isResizingRef = useRef\(false\)/);
+    expect(source).toMatch(/isResizingRef\.current = true/);
+    expect(source).toMatch(/isResizingRef\.current = false/);
+  });
+
+  it("calls onResizeEnd on unmount if a drag is still in progress", () => {
+    // Without this, project switching while the user is mid-drag (which
+    // unmounts Sidebar via AppLayout's `currentProject != null` guard)
+    // would leave AppLayout's `isSidebarResizing` flag stuck true forever,
+    // silently disabling the collapse/expand animation for the rest of
+    // the session.
+    // The prop is mirrored through a ref so the unmount-only effect's
+    // deps can stay empty without disabling exhaustive-deps.
+    expect(source).toMatch(/const onResizeEndRef = useRef\(onResizeEnd\)/);
+    expect(source).toMatch(
+      /if \(isResizingRef\.current\)[\s\S]{0,120}onResizeEndRef\.current\?\.\(\)/
+    );
   });
 });
 
