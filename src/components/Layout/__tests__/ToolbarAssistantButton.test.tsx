@@ -215,6 +215,82 @@ describe("ToolbarAssistantButton — agent state pip", () => {
     expect(container.querySelector(".bg-status-warning")).not.toBeNull();
   });
 
+  it("acknowledges the current state on open; pip stays hidden after close if state has not changed", () => {
+    setHelpPanel({ isOpen: false, terminalId: "t-ack" });
+    setPanel("t-ack", "working");
+
+    const { queryByTestId } = render(<ToolbarAssistantButton />);
+    expect(queryByTestId("assistant-working-pip")).not.toBeNull();
+
+    // Opening the panel marks the current state as read.
+    act(() => {
+      useHelpPanelStore.setState({ isOpen: true });
+    });
+    expect(queryByTestId("assistant-working-pip")).toBeNull();
+
+    // Closing without a state change leaves the pip suppressed.
+    act(() => {
+      useHelpPanelStore.setState({ isOpen: false });
+    });
+    expect(queryByTestId("assistant-working-pip")).toBeNull();
+  });
+
+  it("re-shows the pip after acknowledgement when the agent state changes again", () => {
+    setHelpPanel({ isOpen: false, terminalId: "t-ack2" });
+    setPanel("t-ack2", "working");
+
+    const { queryByTestId } = render(<ToolbarAssistantButton />);
+    act(() => useHelpPanelStore.setState({ isOpen: true }));
+    act(() => useHelpPanelStore.setState({ isOpen: false }));
+    expect(queryByTestId("assistant-working-pip")).toBeNull();
+
+    act(() => {
+      setPanel("t-ack2", "waiting");
+    });
+    const pip = queryByTestId("assistant-working-pip");
+    expect(pip).not.toBeNull();
+    expect(pip!.className).toMatch(/bg-state-waiting/);
+  });
+
+  it("treats a re-spawned assistant terminal as unread even if the new state matches the previously-seen value", () => {
+    setHelpPanel({ isOpen: false, terminalId: "t-old" });
+    setPanel("t-old", "waiting");
+
+    const { queryByTestId } = render(<ToolbarAssistantButton />);
+    // Acknowledge "waiting" on the old terminal.
+    act(() => useHelpPanelStore.setState({ isOpen: true }));
+    act(() => useHelpPanelStore.setState({ isOpen: false }));
+    expect(queryByTestId("assistant-working-pip")).toBeNull();
+
+    // Respawn: a brand-new assistant terminal lands on the same state value.
+    // The user has not seen *this* session, so the pip should fire.
+    act(() => {
+      setPanel("t-new", "waiting");
+      useHelpPanelStore.setState({ terminalId: "t-new" });
+    });
+    const pip = queryByTestId("assistant-working-pip");
+    expect(pip).not.toBeNull();
+    expect(pip!.className).toMatch(/bg-state-waiting/);
+  });
+
+  it("tracks state changes that happen while the panel is open as already seen", () => {
+    setHelpPanel({ isOpen: true, terminalId: "t-ack3" });
+    setPanel("t-ack3", "working");
+
+    const { queryByTestId } = render(<ToolbarAssistantButton />);
+    expect(queryByTestId("assistant-working-pip")).toBeNull();
+
+    // State changes while panel is open — user can already see it via the
+    // panel header, so closing afterwards must not flash the pip.
+    act(() => {
+      setPanel("t-ack3", "waiting");
+    });
+    act(() => {
+      useHelpPanelStore.setState({ isOpen: false });
+    });
+    expect(queryByTestId("assistant-working-pip")).toBeNull();
+  });
+
   it("re-renders when agentState transitions through working → waiting → idle", () => {
     setHelpPanel({ isOpen: false, terminalId: "t-5" });
     setPanel("t-5", "working");

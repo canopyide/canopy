@@ -1,4 +1,4 @@
-import { memo, useCallback } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ShortcutRevealChip } from "@/components/ui/ShortcutRevealChip";
@@ -84,6 +84,24 @@ export const ToolbarAssistantButton = memo(function ToolbarAssistantButton({
   const ariaShortcut = useAriaKeyshortcuts("help.togglePanel");
   const hintHover = useShortcutHintHover("help.togglePanel");
 
+  // "Mark as read" semantics for the agent pip: track the (terminalId, state)
+  // tuple the user last saw while the panel was open so the pip only surfaces
+  // unread *changes* while the panel is closed. Scoping to terminalId means a
+  // respawned assistant landing on the same state value still reads as unread
+  // — a fresh session is always a new event. While the panel is open we keep
+  // the marker in lockstep with the live state, so closing freezes it at
+  // whatever the user just saw and closing without further change leaves the
+  // pip hidden.
+  const [lastSeenMarker, setLastSeenMarker] = useState<{
+    terminalId: string | null;
+    state: AgentState | null;
+  } | null>(null);
+  useEffect(() => {
+    if (isOpen) {
+      setLastSeenMarker({ terminalId: assistantTerminalId, state: agentState });
+    }
+  }, [isOpen, assistantTerminalId, agentState]);
+
   const handleClick = useCallback(() => {
     suppressSidebarResizes();
     useFocusStore.getState().clearAssistantGesture();
@@ -94,8 +112,14 @@ export const ToolbarAssistantButton = memo(function ToolbarAssistantButton({
   const agentPip = describeAgentPip(agentState);
   // The MCP-health pip takes precedence — when it's showing, the agent pip
   // would compete for the same corner. The agent pip is suppressed while the
-  // panel is open since the in-panel header indicator already conveys state.
-  const showAgentPip = !pip && agentPip !== null && !isOpen;
+  // panel is open (the in-panel header indicator already conveys state) and
+  // also when the live state matches what the user last saw — once read, it
+  // stays quiet until a real state change.
+  const isAcknowledged =
+    lastSeenMarker !== null &&
+    lastSeenMarker.terminalId === assistantTerminalId &&
+    lastSeenMarker.state === agentState;
+  const showAgentPip = !pip && agentPip !== null && !isOpen && !isAcknowledged;
   const baseTooltip = isOpen ? "Close Daintree Assistant" : "Open Daintree Assistant";
   const ariaLabel = pip
     ? `Daintree Assistant — ${pip.tooltip}`
