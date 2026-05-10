@@ -1323,7 +1323,7 @@ describe("HelpPanel — empty state hero (Daintree-relevant entry points)", () =
     );
   });
 
-  it("does not provision a session or auto-launch an agent when the empty-state links are clicked", async () => {
+  it("dispatches navigation actions (not agent.launch) when the empty-state links are clicked", async () => {
     helpPanelState.preferredAgentId = null;
     cliAvailabilityState.availability = { claude: "missing", codex: "missing" };
     mockGetAssistantSupportedAgentIds.mockReturnValue(["claude", "codex"]);
@@ -1337,6 +1337,16 @@ describe("HelpPanel — empty state hero (Daintree-relevant entry points)", () =
     fireEvent.click(docs);
 
     expect(mockProvisionSession).not.toHaveBeenCalled();
+    expect(mockDispatch).toHaveBeenCalledWith(
+      "app.settings.openTab",
+      { tab: "assistant" },
+      { source: "user" }
+    );
+    expect(mockDispatch).toHaveBeenCalledWith(
+      "system.openExternal",
+      { url: "https://daintree.org/assistant" },
+      { source: "user" }
+    );
     expect(mockDispatch).not.toHaveBeenCalledWith(
       "agent.launch",
       expect.anything(),
@@ -1373,17 +1383,28 @@ describe("HelpPanel — empty state hero (Daintree-relevant entry points)", () =
     expect(queryByRole("button", { name: "Open assistant docs" })).not.toBeNull();
   });
 
-  it("does not render a bottom 'Assistant settings' footer in either terminal state", () => {
+  it("does not render a duplicate 'Assistant settings' footer link (empty state)", () => {
     helpPanelState.preferredAgentId = null;
     cliAvailabilityState.availability = { claude: "ready", codex: "ready" };
     mockGetAssistantSupportedAgentIds.mockReturnValue(["claude", "codex"]);
 
     const { queryAllByRole } = render(<HelpPanel width={380} />);
 
-    // The empty state contains exactly one "Assistant settings" button; the
-    // duplicate `!showTerminal` footer link is removed.
     const matches = queryAllByRole("button", { name: "Assistant settings" });
     expect(matches.length).toBe(1);
+  });
+
+  it("does not render any 'Assistant settings' button when a terminal session is active", () => {
+    helpPanelState.terminalId = "term-1";
+    helpPanelState.agentId = "claude";
+    panelStoreState.panelsById = {
+      "term-1": { id: "term-1", kind: "terminal", spawnStatus: "ready", cwd: "/help" },
+    };
+
+    const { queryAllByRole } = render(<HelpPanel width={380} />);
+
+    const matches = queryAllByRole("button", { name: "Assistant settings" });
+    expect(matches.length).toBe(0);
   });
 });
 
