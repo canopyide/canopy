@@ -24,6 +24,16 @@ import {
 interface SidebarProps {
   width: number;
   onResize: (width: number) => void;
+  /**
+   * Fires at the start of a pointer drag-resize so the parent can suppress
+   * its `transition-[width]` while the user drags. Issue #7627.
+   */
+  onResizeStart?: () => void;
+  /**
+   * Fires at the end of a pointer drag-resize. Restores the parent transition
+   * for non-drag width changes (collapse/expand toggle, double-click reset).
+   */
+  onResizeEnd?: () => void;
   isVisible?: boolean;
   children?: ReactNode;
   className?: string;
@@ -33,8 +43,19 @@ const RESIZE_STEP = 10;
 
 const ICON_CLASS = "w-3.5 h-3.5 mr-2 shrink-0";
 
-export function Sidebar({ width, onResize, isVisible = true, children, className }: SidebarProps) {
+export function Sidebar({
+  width,
+  onResize,
+  onResizeStart,
+  onResizeEnd,
+  isVisible = true,
+  children,
+  className,
+}: SidebarProps) {
   const [isResizing, setIsResizing] = useState(false);
+  // Mirrors `isResizing` synchronously so the unmount-only effect below can
+  // detect a mid-drag teardown without relying on stale closure state.
+  const isResizingRef = useRef(false);
   const sidebarRef = useRef<HTMLElement>(null);
   const currentProject = useProjectStore((state) => state.currentProject);
   const isMacroFocused = useMacroFocusStore((state) => state.focusedRegion === "sidebar");
@@ -44,13 +65,41 @@ export function Sidebar({ width, onResize, isVisible = true, children, className
     return () => useMacroFocusStore.getState().setRegionRef("sidebar", null);
   }, []);
 
-  const startResizing = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsResizing(true);
-  }, []);
+  const startResizing = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      isResizingRef.current = true;
+      onResizeStart?.();
+      setIsResizing(true);
+    },
+    [onResizeStart]
+  );
 
   const stopResizing = useCallback(() => {
+    isResizingRef.current = false;
     setIsResizing(false);
+    onResizeEnd?.();
+  }, [onResizeEnd]);
+
+  // If the sidebar unmounts mid-drag (e.g. `currentProject` becomes null
+  // because the user switched or closed the project), the listener-attaching
+  // effect below tears down its document listeners but stopResizing never
+  // fires — leaving AppLayout's `isSidebarResizing` flag stuck true and
+  // silently disabling the collapse/expand animation for the rest of the
+  // session. Surface onResizeEnd here so the parent transition is restored.
+  // The prop is mirrored through a ref so this unmount-only effect's deps
+  // can stay empty without disabling exhaustive-deps.
+  const onResizeEndRef = useRef(onResizeEnd);
+  useEffect(() => {
+    onResizeEndRef.current = onResizeEnd;
+  });
+  useEffect(() => {
+    return () => {
+      if (isResizingRef.current) {
+        isResizingRef.current = false;
+        onResizeEndRef.current?.();
+      }
+    };
   }, []);
 
   const handleKeyDown = useCallback(
