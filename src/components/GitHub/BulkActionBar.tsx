@@ -10,6 +10,7 @@ interface BulkActionBarProps {
   mode: "issue" | "pr";
   selectedIssues: GitHubIssue[];
   selectedPRs: GitHubPR[];
+  selectedCount: number;
   onClear: () => void;
   onCloseDropdown?: () => void;
 }
@@ -18,13 +19,14 @@ export function BulkActionBar({
   mode,
   selectedIssues,
   selectedPRs,
+  selectedCount,
   onClear,
   onCloseDropdown,
 }: BulkActionBarProps) {
   const openBulkCreateDialog = useWorktreeSelectionStore((s) => s.openBulkCreateDialog);
   const openBulkCreateDialogForPRs = useWorktreeSelectionStore((s) => s.openBulkCreateDialogForPRs);
 
-  const count = mode === "pr" ? selectedPRs.length : selectedIssues.length;
+  const count = selectedCount;
 
   const handleOpenDialog = useCallback(() => {
     if (mode === "pr") {

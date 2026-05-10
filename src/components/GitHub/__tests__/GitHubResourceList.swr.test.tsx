@@ -59,6 +59,7 @@ vi.mock("@/services/ActionService", () => ({
 }));
 
 let mockIsSelectionActive = false;
+const mockSelectionClear = vi.fn();
 
 vi.mock("@/hooks/useIssueSelection", () => ({
   useIssueSelection: () => ({
@@ -69,7 +70,7 @@ vi.mock("@/hooks/useIssueSelection", () => ({
     toggle: vi.fn(),
     toggleRange: vi.fn(),
     selectAll: vi.fn(),
-    clear: vi.fn(),
+    clear: mockSelectionClear,
   }),
 }));
 
@@ -195,6 +196,7 @@ beforeEach(() => {
   LiveTimeAgoMock.mockClear();
   dispatchMock.mockReset();
   initializeMock.mockClear();
+  mockSelectionClear.mockReset();
   mockIsSelectionActive = false;
   mockGitHubConfig = { hasToken: true };
   mockGitHubConfigInitialized = true;
@@ -1909,5 +1911,88 @@ describe("GitHubResourceList polish (#7202)", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("GitHubResourceList dismissal cleanup (#7644)", () => {
+  it("clears selection when isOpen transitions true → false", () => {
+    mockListIssues.mockResolvedValue(makeResponse([makeIssue(1)]));
+
+    const { rerender } = render(
+      <GitHubResourceList type="issue" projectPath="/test/proj" isOpen={true} />
+    );
+    expect(mockSelectionClear).not.toHaveBeenCalled();
+
+    rerender(<GitHubResourceList type="issue" projectPath="/test/proj" isOpen={false} />);
+
+    expect(mockSelectionClear).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not clear selection on initial mount with isOpen=false", () => {
+    mockListIssues.mockResolvedValue(makeResponse([makeIssue(1)]));
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" isOpen={false} />);
+
+    expect(mockSelectionClear).not.toHaveBeenCalled();
+  });
+
+  it("does not clear selection when isOpen prop is omitted (no parent control)", () => {
+    mockListIssues.mockResolvedValue(makeResponse([makeIssue(1)]));
+
+    const { rerender } = render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+    rerender(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    expect(mockSelectionClear).not.toHaveBeenCalled();
+  });
+
+  it("clears selection when the no-token settings link is clicked", () => {
+    mockGitHubConfig = { hasToken: false };
+    mockGitHubConfigInitialized = true;
+    const onClose = vi.fn();
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" onClose={onClose} />);
+
+    screen.getByRole("button", { name: /add github token/i }).click();
+
+    expect(mockSelectionClear).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not double-clear when click-path also flips isOpen=false", () => {
+    // Click-initiated close (handleClose) calls onClose; the parent reacts by
+    // setting isOpen=false, which would otherwise re-fire cleanup via the
+    // useEffect. The cleanedUpRef guard must absorb the second call.
+    mockGitHubConfig = { hasToken: false };
+    mockGitHubConfigInitialized = true;
+    const onClose = vi.fn();
+
+    const { rerender } = render(
+      <GitHubResourceList type="issue" projectPath="/test/proj" isOpen={true} onClose={onClose} />
+    );
+
+    screen.getByRole("button", { name: /add github token/i }).click();
+
+    rerender(
+      <GitHubResourceList type="issue" projectPath="/test/proj" isOpen={false} onClose={onClose} />
+    );
+
+    expect(mockSelectionClear).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-arms cleanup on each open cycle", () => {
+    mockListIssues.mockResolvedValue(makeResponse([makeIssue(1)]));
+
+    const { rerender } = render(
+      <GitHubResourceList type="issue" projectPath="/test/proj" isOpen={true} />
+    );
+    rerender(<GitHubResourceList type="issue" projectPath="/test/proj" isOpen={false} />);
+    expect(mockSelectionClear).toHaveBeenCalledTimes(1);
+
+    // Reopen and close again — cleanup must run a second time.
+    rerender(<GitHubResourceList type="issue" projectPath="/test/proj" isOpen={true} />);
+    rerender(<GitHubResourceList type="issue" projectPath="/test/proj" isOpen={false} />);
+
+    expect(mockSelectionClear).toHaveBeenCalledTimes(2);
   });
 });
