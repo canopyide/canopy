@@ -388,17 +388,21 @@ describe("PortQueueManager", () => {
     });
   });
 
-  describe("constants alignment with renderer precedent", () => {
-    it("max queue is 512KB to match 4× renderer high watermark (128KB)", () => {
-      expect(IPC_MAX_QUEUE_BYTES).toBe(512 * 1024);
+  describe("constants alignment — Claude burst headroom", () => {
+    it("max queue is 3MB to absorb low-single-digit-MB bursts", () => {
+      expect(IPC_MAX_QUEUE_BYTES).toBe(3 * 1024 * 1024);
     });
 
-    it("high watermark sits at 384KB (75% of cap)", () => {
-      expect((IPC_MAX_QUEUE_BYTES * IPC_HIGH_WATERMARK_PERCENT) / 100).toBe(384 * 1024);
+    it("high watermark sits near 2MB (67% of cap)", () => {
+      const high = (IPC_MAX_QUEUE_BYTES * IPC_HIGH_WATERMARK_PERCENT) / 100;
+      expect(high).toBeGreaterThanOrEqual(2 * 1024 * 1024);
+      expect(high).toBeLessThan(2.1 * 1024 * 1024);
     });
 
-    it("low watermark sits at 128KB (25% of cap, equals one renderer drain cycle)", () => {
-      expect((IPC_MAX_QUEUE_BYTES * IPC_LOW_WATERMARK_PERCENT) / 100).toBe(128 * 1024);
+    it("low watermark sits near 1MB (33% of cap, ~1MB drain window)", () => {
+      const low = (IPC_MAX_QUEUE_BYTES * IPC_LOW_WATERMARK_PERCENT) / 100;
+      expect(low).toBeGreaterThan(1000 * 1024);
+      expect(low).toBeLessThanOrEqual(1024 * 1024);
     });
   });
 });
