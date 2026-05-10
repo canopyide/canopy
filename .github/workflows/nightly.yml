@@ -378,6 +378,34 @@ jobs:
       - name: Run integration tests
         run: npm run test:integration
 
+  # Static dead-code report. Moved off per-push CI (where it ran ~10min on
+  # every commit without ever gating a merge) into nightly. Runs Linux-only
+  # because the analysis is OS-agnostic.
+  knip:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libarchive-tools
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Knip (static dead-code report)
+        run: npm run knip
+
   # Nightly runs the full cross-platform safety net: core, all six full-* domain
   # buckets, online, and the memory-leak nightly project — across macOS, Linux,
   # AND Windows. Release gating is non-windows-only, so nightly is the place
@@ -551,7 +579,18 @@ jobs:
   notify:
     if: failure() && github.event_name == 'schedule'
     needs:
-      [check, test, build, integration-test, e2e-core, e2e-full, e2e-online, e2e-nightly, publish]
+      [
+        check,
+        test,
+        build,
+        integration-test,
+        knip,
+        e2e-core,
+        e2e-full,
+        e2e-online,
+        e2e-nightly,
+        publish,
+      ]
     runs-on: ubuntu-22.04
     permissions:
       issues: write

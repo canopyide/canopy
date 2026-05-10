@@ -18,9 +18,14 @@ env:
   NODE_VERSION: "22"
 
 jobs:
+  # Combined typecheck + lint + format + unit-test job. Previously these were
+  # two separate jobs (check + test) running in parallel; folding them into
+  # one amortises the per-job setup cost (checkout, Node, npm ci) at the cost
+  # of slightly higher wall-clock per run. At this commit volume that's the
+  # right trade — we run a lot of pushes and pay setup once instead of twice.
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - name: Check out repository
@@ -43,58 +48,8 @@ jobs:
       - name: Check (typecheck + lint + format)
         run: npm run check
 
-  test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-
-      - name: Install Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libarchive-tools
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Test
+      - name: Test (vitest unit)
         run: npm run test
-
-  # Non-blocking static-analysis report. Deliberately NOT in ci-ok.needs —
-  # this surfaces dead-code findings without gating merges while the baseline
-  # stabilises. Promote to required once the report is clean.
-  knip:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-
-      - name: Install Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libarchive-tools
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Knip (static dead-code report)
-        run: npm run knip
 
   build:
     runs-on: ubuntu-latest
@@ -155,7 +110,7 @@ jobs:
   # Insulates against matrix/job name changes breaking required checks.
   ci-ok:
     if: always()
-    needs: [check, test, build]
+    needs: [check, build]
     runs-on: ubuntu-latest
     timeout-minutes: 2
 
