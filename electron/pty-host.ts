@@ -382,55 +382,72 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
             );
             break;
           }
-          bpCoordinator.pause("backpressure");
 
-          // Track when we started pausing for timeout safety
-          const pauseStartTime = Date.now();
-          backpressureManager.setPauseStartTime(id, pauseStartTime);
+          let safetyTimeout: ReturnType<typeof setTimeout> | undefined;
+          let committed = false;
+          try {
+            bpCoordinator.pause("backpressure");
 
-          // Emit status event for UI
-          backpressureManager.emitTerminalStatus(id, "paused-backpressure", utilization);
+            // Track when we started pausing for timeout safety
+            const pauseStartTime = Date.now();
+            backpressureManager.setPauseStartTime(id, pauseStartTime);
 
-          // Emit metrics for pause-start
-          backpressureManager.emitReliabilityMetric({
-            terminalId: id,
-            metricType: "pause-start",
-            timestamp: pauseStartTime,
-            bufferUtilization: utilization,
-            shardIndex,
-          });
+            // Emit status event for UI
+            backpressureManager.emitTerminalStatus(id, "paused-backpressure", utilization);
 
-          // Safety timeout: if ack-driven resume doesn't clear backpressure in time,
-          // suspend the stream and rely on wake to restore state.
-          const safetyTimeout = setTimeout(() => {
-            backpressureManager.deletePausedInterval(id);
-            backpressureManager.deletePauseStartTime(id);
+            // Emit metrics for pause-start
+            backpressureManager.emitReliabilityMetric({
+              terminalId: id,
+              metricType: "pause-start",
+              timestamp: pauseStartTime,
+              bufferUtilization: utilization,
+              shardIndex,
+            });
 
-            const si = visualBuffers.length > 0 ? selectShard(id, visualBuffers.length) : 0;
-            const s = visualBuffers[si];
-            const util = s ? s.getUtilization() : 0;
-            const dur = Date.now() - pauseStartTime;
+            // Safety timeout: if ack-driven resume doesn't clear backpressure in time,
+            // suspend the stream and rely on wake to restore state.
+            safetyTimeout = setTimeout(() => {
+              backpressureManager.deletePausedInterval(id);
+              backpressureManager.deletePauseStartTime(id);
 
-            if (backpressureManager.hasPendingSegments(id)) {
-              backpressureManager.suspendVisualStream(id, `${dur}ms ack timeout`, util, dur, si);
-            } else {
-              // No pending segments — just resume via coordinator
-              const timeoutCoord = getPauseCoordinator(id);
-              timeoutCoord?.resume("backpressure");
-              if (!timeoutCoord?.isPaused) {
-                backpressureManager.emitTerminalStatus(id, "running", util, dur);
+              const si = visualBuffers.length > 0 ? selectShard(id, visualBuffers.length) : 0;
+              const s = visualBuffers[si];
+              const util = s ? s.getUtilization() : 0;
+              const dur = Date.now() - pauseStartTime;
+
+              if (backpressureManager.hasPendingSegments(id)) {
+                backpressureManager.suspendVisualStream(id, `${dur}ms ack timeout`, util, dur, si);
+              } else {
+                // No pending segments — just resume via coordinator
+                const timeoutCoord = getPauseCoordinator(id);
+                timeoutCoord?.resume("backpressure");
+                if (!timeoutCoord?.isPaused) {
+                  backpressureManager.emitTerminalStatus(id, "running", util, dur);
+                }
+                backpressureManager.emitReliabilityMetric({
+                  terminalId: id,
+                  metricType: "pause-end",
+                  timestamp: Date.now(),
+                  durationMs: dur,
+                  bufferUtilization: util,
+                });
               }
-              backpressureManager.emitReliabilityMetric({
-                terminalId: id,
-                metricType: "pause-end",
-                timestamp: Date.now(),
-                durationMs: dur,
-                bufferUtilization: util,
-              });
-            }
-          }, BACKPRESSURE_SAFETY_TIMEOUT_MS);
+            }, BACKPRESSURE_SAFETY_TIMEOUT_MS);
 
-          backpressureManager.setPausedInterval(id, safetyTimeout);
+            backpressureManager.setPausedInterval(id, safetyTimeout);
+            committed = true;
+          } catch (error) {
+            console.error(`[PtyHost] Failed to pause SAB PTY ${id}:`, error);
+          } finally {
+            // If we threw between bpCoordinator.pause() and the final
+            // setPausedInterval, release the token and any orphaned bookkeeping
+            // so the PTY is not permanently held with no recovery path. See #7641.
+            if (!committed) {
+              if (safetyTimeout !== undefined) clearTimeout(safetyTimeout);
+              backpressureManager.deletePauseStartTime(id);
+              bpCoordinator.resume("backpressure");
+            }
+          }
         }
         break; // Stop writing packets
       }

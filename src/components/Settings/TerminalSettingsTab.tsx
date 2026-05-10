@@ -587,11 +587,11 @@ export function TerminalSettingsTab({ activeSubtab, onSubtabChange }: TerminalSe
           <div className="ml-4 border-l-2 border-daintree-border pl-4">
             <SettingsSwitchCard
               icon={MousePointerClick}
-              title="Auto-Focus Input"
-              subtitle="Selecting a pane focuses the input bar instead of the terminal"
+              title="Default focus target"
+              subtitle="Sets which sub-element starts focused on agent panes — clicking xterm or the input still wins, and Cmd-Opt-Arrow follows whichever you're currently using"
               isEnabled={hybridInputAutoFocus}
               onChange={handleHybridInputAutoFocusToggle}
-              ariaLabel="Hybrid Input Auto Focus Toggle"
+              ariaLabel="Default focus target toggle"
               isModified={!hybridInputAutoFocus}
               onReset={() =>
                 void actionService.dispatch(

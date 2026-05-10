@@ -847,6 +847,72 @@ describe("HelpPanel — idle hibernation timer", () => {
   });
 });
 
+describe("HelpPanel — assistant header state indicator", () => {
+  function setupTerminalWithState(state: string) {
+    helpPanelState.terminalId = "live-term";
+    helpPanelState.agentId = "claude";
+    projectStoreState.currentProject = { id: "proj-1", path: "/tmp/proj-1" };
+    panelStoreState.panelsById = {
+      "live-term": {
+        id: "live-term",
+        kind: "terminal",
+        spawnStatus: "ready",
+        cwd: "/tmp/help/proj-1",
+        title: "Claude",
+        command: "claude",
+        location: "dock",
+        agentState: state,
+      },
+    };
+  }
+
+  it("renders the working indicator when the assistant terminal is working", () => {
+    setupTerminalWithState("working");
+
+    const { getByTestId } = render(<HelpPanel width={380} />);
+    const indicator = getByTestId("assistant-header-state-indicator");
+    expect(indicator.getAttribute("data-agent-state")).toBe("working");
+    expect(indicator.getAttribute("aria-label")).toBe("Assistant is working");
+  });
+
+  it("renders the waiting indicator when the assistant terminal is waiting", () => {
+    setupTerminalWithState("waiting");
+
+    const { getByTestId } = render(<HelpPanel width={380} />);
+    const indicator = getByTestId("assistant-header-state-indicator");
+    expect(indicator.getAttribute("data-agent-state")).toBe("waiting");
+    expect(indicator.getAttribute("aria-label")).toBe("Assistant is waiting");
+  });
+
+  it("renders the directing indicator when the assistant terminal is directing", () => {
+    setupTerminalWithState("directing");
+
+    const { getByTestId } = render(<HelpPanel width={380} />);
+    const indicator = getByTestId("assistant-header-state-indicator");
+    expect(indicator.getAttribute("data-agent-state")).toBe("directing");
+    expect(indicator.getAttribute("aria-label")).toBe("Assistant is directing");
+  });
+
+  it("does not render an indicator for idle, completed, or exited states", () => {
+    for (const state of ["idle", "completed", "exited"]) {
+      setupTerminalWithState(state);
+      const { queryByTestId, unmount } = render(<HelpPanel width={380} />);
+      expect(queryByTestId("assistant-header-state-indicator")).toBeNull();
+      unmount();
+    }
+  });
+
+  it("does not render an indicator before any assistant terminal exists", () => {
+    helpPanelState.terminalId = null;
+    helpPanelState.agentId = null;
+    projectStoreState.currentProject = { id: "proj-1", path: "/tmp/proj-1" };
+    panelStoreState.panelsById = {};
+
+    const { queryByTestId } = render(<HelpPanel width={380} />);
+    expect(queryByTestId("assistant-header-state-indicator")).toBeNull();
+  });
+});
+
 describe("HelpPanel — + New session clears hibernated entry", () => {
   it("clearHibernateSession is called for the current project when starting a new session", async () => {
     helpPanelState.terminalId = "live-term";

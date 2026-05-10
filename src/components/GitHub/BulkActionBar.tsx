@@ -10,6 +10,7 @@ interface BulkActionBarProps {
   mode: "issue" | "pr";
   selectedIssues: GitHubIssue[];
   selectedPRs: GitHubPR[];
+  selectedCount: number;
   onClear: () => void;
   onCloseDropdown?: () => void;
 }
@@ -18,13 +19,14 @@ export function BulkActionBar({
   mode,
   selectedIssues,
   selectedPRs,
+  selectedCount,
   onClear,
   onCloseDropdown,
 }: BulkActionBarProps) {
   const openBulkCreateDialog = useWorktreeSelectionStore((s) => s.openBulkCreateDialog);
   const openBulkCreateDialogForPRs = useWorktreeSelectionStore((s) => s.openBulkCreateDialogForPRs);
 
-  const count = mode === "pr" ? selectedPRs.length : selectedIssues.length;
+  const count = selectedCount;
 
   const handleOpenDialog = useCallback(() => {
     if (mode === "pr") {
@@ -52,7 +54,7 @@ export function BulkActionBar({
           aria-label="Bulk actions"
           initial={{ y: "100%", opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
-          exit={{ y: "100%", opacity: 0 }}
+          exit={{ y: "100%", opacity: 0, pointerEvents: "none" }}
           transition={{ type: "spring", damping: 25, stiffness: 200 }}
           className="mx-2 mb-2 rounded-xl shadow-[var(--theme-shadow-floating)] bg-surface-panel ring-1 ring-border-default inset-shadow-[0_1px_0_var(--color-overlay-soft)] flex items-center gap-3 px-4 py-3"
         >

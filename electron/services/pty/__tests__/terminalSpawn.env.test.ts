@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { buildTerminalEnv } from "../terminalSpawn.js";
@@ -40,7 +42,9 @@ describe("buildTerminalEnv NODE_COMPILE_CACHE injection", () => {
       "pane-1",
       "/bin/bash"
     );
-    expect(env.NODE_COMPILE_CACHE).toBe("/tmp/test-userdata/agent-compile-cache/claude");
+    expect(env.NODE_COMPILE_CACHE).toBe(
+      path.join("/tmp/test-userdata", "agent-compile-cache", "claude")
+    );
   });
 
   it("injects NODE_COMPILE_CACHE for a Gemini agent spawn", () => {
@@ -50,7 +54,9 @@ describe("buildTerminalEnv NODE_COMPILE_CACHE injection", () => {
       "pane-1",
       "/bin/bash"
     );
-    expect(env.NODE_COMPILE_CACHE).toBe("/tmp/test-userdata/agent-compile-cache/gemini");
+    expect(env.NODE_COMPILE_CACHE).toBe(
+      path.join("/tmp/test-userdata", "agent-compile-cache", "gemini")
+    );
   });
 
   it("does NOT inject NODE_COMPILE_CACHE for Codex (Rust binary)", () => {

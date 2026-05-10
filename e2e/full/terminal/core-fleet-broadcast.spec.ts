@@ -113,14 +113,45 @@ async function typeDirectlyIntoTerminal(
   command: string
 ): Promise<void> {
   const xterm = panel.locator(SEL.terminal.xtermRows);
-  await dismissBlockingPalette(page);
-  await xterm.click();
-  await expect
-    .poll(() => getFocusedPanelId(page), { timeout: T_MEDIUM, intervals: [100, 250] })
-    .toBe(terminalId);
-  await page.waitForTimeout(100);
-  await page.keyboard.type(command);
-  await page.keyboard.press("Enter");
+  const helperTextarea = panel.locator(SEL.terminal.xtermHelperTextarea).first();
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await dismissBlockingPalette(page);
+    await expect(xterm).toBeVisible({ timeout: T_MEDIUM });
+    await xterm.click({ force: true });
+    await expect
+      .poll(() => getFocusedPanelId(page), { timeout: T_MEDIUM, intervals: [100, 250] })
+      .toBe(terminalId);
+
+    await expect(helperTextarea).toBeAttached({ timeout: T_MEDIUM });
+    await helperTextarea.evaluate((el) => {
+      if (el instanceof HTMLElement) el.focus();
+    });
+    await expect
+      .poll(
+        () =>
+          page.evaluate((id) => {
+            const active = document.activeElement;
+            if (!(active instanceof HTMLElement)) return false;
+            return Array.from(document.querySelectorAll("[data-panel-id]")).some(
+              (panelEl) => panelEl.getAttribute("data-panel-id") === id && panelEl.contains(active)
+            );
+          }, terminalId),
+        { timeout: T_MEDIUM, intervals: [100, 250] }
+      )
+      .toBe(true);
+
+    await page.waitForTimeout(100);
+    await page.keyboard.type(command, { delay: process.platform === "darwin" ? 8 : 0 });
+    await page.keyboard.press("Enter");
+
+    if (attempt === 1) return;
+
+    const responded = await waitForTerminalText(panel, `text=${command}`, 5_000)
+      .then(() => true)
+      .catch(() => false);
+    if (responded) return;
+  }
 }
 
 function prepareFixture(): void {

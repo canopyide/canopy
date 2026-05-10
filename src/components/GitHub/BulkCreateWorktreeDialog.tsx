@@ -790,6 +790,9 @@ export function BulkCreateWorktreeDialog({
   }, [progress.items, planned, runBatch]);
 
   const handleClose = useCallback(() => {
+    // Cancel/Escape/backdrop dismissal preserves bulk selection so the user
+    // can reopen the dropdown and finish picking. Selection only clears via
+    // handleDone after worktrees are actually created.
     if (isExecuting) {
       runIdRef.current++;
       queueRef.current?.clear();

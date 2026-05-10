@@ -243,13 +243,17 @@ export const GRACEFUL_SHUTDOWN_BUFFER_SIZE = 8 * 1024;
 export const GRACEFUL_SHUTDOWN_CLEAR_DELAY_MS = 100;
 
 // IPC Flow Control Configuration
-// Sized to match the renderer-side TerminalOutputIngestService watermarks (128KB high / 32KB low).
-// 512KB ceiling = 4× renderer high watermark, holds ~8 saturated 64KB pipe-buffer events.
-// 75%/25% gives a 3:1 hysteresis where resume threshold (128KB) equals one renderer drain cycle.
-export const IPC_MAX_QUEUE_BYTES = 512 * 1024; // 512KB max per terminal
-export const IPC_HIGH_WATERMARK_PERCENT = 75; // Pause PTY at 75% full (384KB)
-export const IPC_LOW_WATERMARK_PERCENT = 25; // Resume PTY when drops to 25% (128KB)
-export const IPC_MAX_PAUSE_MS = 5000; // Force resume after 5 seconds to prevent indefinite pause
+// 3MB ceiling gives Claude Code completions, diffs, and tool outputs comfortable
+// headroom — real bursts land in the low-single-digit MB range, and a tighter cap
+// triggers backpressure during normal renderer micro-stalls and produces visible
+// output freezes. 67/33 hysteresis makes the drain window ~1MB (vs ~1.5MB at 75/25),
+// so the PTY resumes faster after a burst. Renderer watermarks (128KB high / 32KB
+// low in TerminalOutputIngestService) are a separate layer and unchanged — the IPC
+// queue is the burst absorber, the renderer watermarks throttle xterm consumption.
+export const IPC_MAX_QUEUE_BYTES = 3 * 1024 * 1024; // 3MB max per terminal
+export const IPC_HIGH_WATERMARK_PERCENT = 67; // Pause PTY at 67% full (~2MB)
+export const IPC_LOW_WATERMARK_PERCENT = 33; // Resume PTY when drops to 33% (~1MB)
+export const IPC_MAX_PAUSE_MS = 10000; // Force resume after 10s — accommodates degraded background-tab parse rates
 
 // MessagePort adaptive batching configuration
 export const PORT_BATCH_THRESHOLD_BYTES = 64 * 1024; // 64KB — sync-flush when buffered data exceeds this

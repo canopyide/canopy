@@ -4,6 +4,7 @@ import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { panelKindHasPty } from "@shared/config/panelKindRegistry";
 import { isRuntimeAgentTerminal } from "@/utils/terminalType";
 import { isTerminalVisible } from "@/lib/terminalVisibility";
+import type { TerminalFocusTarget } from "@/components/Terminal/terminalFocus";
 
 export type NavigationDirection = "up" | "down" | "left" | "right";
 
@@ -64,6 +65,16 @@ export interface TerminalFocusSlice {
    * referenced panel is removed or when focus state is reset.
    */
   previousFocusedId: string | null;
+  /**
+   * Session-wide preference for which sub-element of an agent pane should
+   * receive focus on panel activation. Updated by clicks and focus events on
+   * xterm vs the hybrid input. Cmd-Opt-Arrow navigation reads this so the user
+   * stays in the same "mode" as they move between panes. Treat as preference,
+   * not DOM truth — disabled inputs, missing hybrid bars, and hibernated
+   * xterms still resolve to xterm via the availability resolver.
+   */
+  preferredTerminalFocusTarget: TerminalFocusTarget;
+  setPreferredTerminalFocusTarget: (target: TerminalFocusTarget) => void;
   maximizedId: string | null;
   /** Tracks whether maximize is for a single panel or a tab group */
   maximizeTarget: MaximizeTarget;
@@ -148,6 +159,14 @@ export const createTerminalFocusSlice =
     return {
       focusedId: null,
       previousFocusedId: null,
+      preferredTerminalFocusTarget: "hybridInput",
+      setPreferredTerminalFocusTarget: (target) => {
+        // Idempotent: skip the set when the value is unchanged so DOM focus
+        // listeners don't cause notification storms or feedback loops with the
+        // TerminalPane focus useEffect.
+        if (get().preferredTerminalFocusTarget === target) return;
+        set({ preferredTerminalFocusTarget: target });
+      },
       maximizedId: null,
       maximizeTarget: null,
       activeDockTerminalId: null,

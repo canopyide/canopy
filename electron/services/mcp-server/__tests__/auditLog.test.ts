@@ -56,10 +56,10 @@ describe("AuditService.appendRecord", () => {
     expect(actionTierRecord!.result).toBe("unauthorized");
     expect(actionTierRecord!.tierHint).toBe("action");
 
-    // `agent.launch` is gated by the system tier; even an action-tier
+    // `git.commit` is gated by the system tier; even an action-tier
     // session needs to be elevated to system.
     service.appendRecord({
-      toolId: "agent.launch",
+      toolId: "git.commit",
       sessionId: "sess-1",
       tier: "action",
       args: {},

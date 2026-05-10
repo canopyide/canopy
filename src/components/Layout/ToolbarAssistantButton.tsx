@@ -1,4 +1,4 @@
-import { memo, useCallback } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ShortcutRevealChip } from "@/components/ui/ShortcutRevealChip";
@@ -12,6 +12,7 @@ import { usePanelStore } from "@/store";
 import { suppressSidebarResizes } from "@/lib/sidebarToggle";
 import { useMcpReadiness } from "@/hooks/useMcpReadiness";
 import type { McpRuntimeSnapshot } from "@shared/types";
+import type { AgentState } from "@/types";
 
 const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text relative";
 
@@ -42,6 +43,28 @@ function describePip(snapshot: McpRuntimeSnapshot): PipDescriptor | null {
   }
 }
 
+interface AgentPipDescriptor {
+  className: string;
+  tooltip: string;
+}
+
+// Local mapping that includes "working" — broader than the shared
+// agentStateDotColor() in AgentStatusIndicator, which deliberately omits
+// passive states for the worktree tray. Here the toolbar button is the only
+// chrome surfacing assistant state when the panel is closed, so working and
+// directing both earn the green pip alongside the yellow waiting pip.
+function describeAgentPip(state: AgentState | null | undefined): AgentPipDescriptor | null {
+  switch (state) {
+    case "working":
+    case "directing":
+      return { className: "bg-state-working", tooltip: "Assistant is working" };
+    case "waiting":
+      return { className: "bg-state-waiting", tooltip: "Assistant is waiting" };
+    default:
+      return null;
+  }
+}
+
 export const ToolbarAssistantButton = memo(function ToolbarAssistantButton({
   "data-toolbar-item": dataToolbarItem,
 }: {
@@ -50,16 +73,34 @@ export const ToolbarAssistantButton = memo(function ToolbarAssistantButton({
   const isOpen = useHelpPanelStore((s) => s.isOpen);
   const toggle = useHelpPanelStore((s) => s.toggle);
   // Two-step primitive selectors so the button only re-renders when the
-  // assistant terminal id changes, then when its agentState transitions in or
-  // out of "working". Returning a primitive avoids needing useShallow.
+  // assistant terminal id changes, then when its agentState transitions.
+  // Returning a primitive avoids needing useShallow.
   const assistantTerminalId = useHelpPanelStore((s) => s.terminalId);
-  const isWorking = usePanelStore((s) =>
-    assistantTerminalId ? s.panelsById[assistantTerminalId]?.agentState === "working" : false
+  const agentState = usePanelStore((s) =>
+    assistantTerminalId ? (s.panelsById[assistantTerminalId]?.agentState ?? null) : null
   );
   const mcp = useMcpReadiness();
   const shortcut = useKeybindingDisplay("help.togglePanel");
   const ariaShortcut = useAriaKeyshortcuts("help.togglePanel");
   const hintHover = useShortcutHintHover("help.togglePanel");
+
+  // "Mark as read" semantics for the agent pip: track the (terminalId, state)
+  // tuple the user last saw while the panel was open so the pip only surfaces
+  // unread *changes* while the panel is closed. Scoping to terminalId means a
+  // respawned assistant landing on the same state value still reads as unread
+  // — a fresh session is always a new event. While the panel is open we keep
+  // the marker in lockstep with the live state, so closing freezes it at
+  // whatever the user just saw and closing without further change leaves the
+  // pip hidden.
+  const [lastSeenMarker, setLastSeenMarker] = useState<{
+    terminalId: string | null;
+    state: AgentState | null;
+  } | null>(null);
+  useEffect(() => {
+    if (isOpen) {
+      setLastSeenMarker({ terminalId: assistantTerminalId, state: agentState });
+    }
+  }, [isOpen, assistantTerminalId, agentState]);
 
   const handleClick = useCallback(() => {
     suppressSidebarResizes();
@@ -68,17 +109,22 @@ export const ToolbarAssistantButton = memo(function ToolbarAssistantButton({
   }, [toggle]);
 
   const pip = describePip(mcp);
-  // The MCP-health pip takes precedence — when it's showing, the working pip
-  // would compete for the same corner. The neutral working dot is intentionally
-  // non-pulsing and non-accent (per CLAUDE.md accent-color restraint) so it
-  // reads as ambient state rather than a call to action.
-  const showWorkingPip = !pip && isWorking && !isOpen;
+  const agentPip = describeAgentPip(agentState);
+  // The MCP-health pip takes precedence — when it's showing, the agent pip
+  // would compete for the same corner. The agent pip is suppressed while the
+  // panel is open (the in-panel header indicator already conveys state) and
+  // also when the live state matches what the user last saw — once read, it
+  // stays quiet until a real state change.
+  const isAcknowledged =
+    lastSeenMarker !== null &&
+    lastSeenMarker.terminalId === assistantTerminalId &&
+    lastSeenMarker.state === agentState;
+  const showAgentPip = !pip && agentPip !== null && !isOpen && !isAcknowledged;
   const baseTooltip = isOpen ? "Close Daintree Assistant" : "Open Daintree Assistant";
-  const workingTooltip = "Assistant is working";
   const ariaLabel = pip
     ? `Daintree Assistant — ${pip.tooltip}`
-    : showWorkingPip
-      ? `Daintree Assistant — ${workingTooltip}`
+    : showAgentPip
+      ? `Daintree Assistant — ${agentPip!.tooltip}`
       : "Daintree Assistant";
 
   return (
@@ -96,28 +142,31 @@ export const ToolbarAssistantButton = memo(function ToolbarAssistantButton({
           aria-pressed={isOpen}
           aria-keyshortcuts={ariaShortcut}
         >
-          <DaintreeIcon />
-          {pip ? (
-            <span
-              aria-hidden="true"
-              className={cn(
-                "absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full ring-2 ring-daintree-bg",
-                pip.className,
-                pip.delayed && "animate-pulse-delayed"
-              )}
-            />
-          ) : (
-            showWorkingPip && (
+          <div className="relative">
+            <DaintreeIcon />
+            {pip ? (
               <span
                 aria-hidden="true"
-                data-testid="assistant-working-pip"
                 className={cn(
-                  "absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full ring-2 ring-daintree-bg",
-                  "bg-daintree-text/30"
+                  "absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full ring-1 ring-daintree-sidebar",
+                  pip.className,
+                  pip.delayed && "animate-pulse-delayed"
                 )}
               />
-            )
-          )}
+            ) : (
+              showAgentPip && (
+                <span
+                  aria-hidden="true"
+                  data-testid="assistant-working-pip"
+                  data-agent-state={agentState ?? ""}
+                  className={cn(
+                    "absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full ring-1 ring-daintree-sidebar",
+                    agentPip!.className
+                  )}
+                />
+              )
+            )}
+          </div>
           <ShortcutRevealChip actionId="help.togglePanel" />
         </Button>
       </TooltipTrigger>
@@ -125,8 +174,8 @@ export const ToolbarAssistantButton = memo(function ToolbarAssistantButton({
         {createTooltipContent(
           pip
             ? `${baseTooltip} — ${pip.tooltip}`
-            : showWorkingPip
-              ? `${baseTooltip} — ${workingTooltip}`
+            : showAgentPip
+              ? `${baseTooltip} — ${agentPip!.tooltip}`
               : baseTooltip,
           shortcut
         )}

@@ -221,7 +221,10 @@ export const GridTabGroup = React.memo(function GridTabGroup({
   // reflects blocked/working state even when the blocking tab is not active.
   const groupAmbientState = useMemo(() => getGroupAmbientAgentState(panels), [panels]);
 
-  // Restore focus to the hybrid input bar when switching tabs within a focused group.
+  // Restore focus to the destination tab when switching tabs within a focused
+  // group. The registry handler routes to either xterm or the hybrid input
+  // depending on the user's current `preferredTerminalFocusTarget`, so tab
+  // switching no longer forces input focus when the user has chosen xterm.
   // The existing TerminalPane focus effect uses double-rAF which races with
   // HybridInputBar's CodeMirror editor reinitialization on terminalId change.
   const prevActiveTabIdRef = useRef(activeTabId);

@@ -42,7 +42,7 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
   const moveTerminalToGrid = usePanelStore((s) => s.moveTerminalToGrid);
   const backendStatus = usePanelStore((s) => s.backendStatus);
   const hybridInputEnabled = useTerminalInputStore((s) => s.hybridInputEnabled);
-  const hybridInputAutoFocus = useTerminalInputStore((s) => s.hybridInputAutoFocus);
+  const preferredTerminalFocusTarget = usePanelStore((s) => s.preferredTerminalFocusTarget);
 
   // Derive isOpen from store state
   const isOpen = activeDockTerminalId === terminal.id;
@@ -380,10 +380,10 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
             return;
           }
           const focusTarget = getTerminalFocusTarget({
+            preferredTarget: preferredTerminalFocusTarget,
             hasHybridInputSurface: chrome.isAgent,
             isInputDisabled: backendStatus === "disconnected" || backendStatus === "recovering",
             hybridInputEnabled,
-            hybridInputAutoFocus,
           });
 
           if (focusTarget === "hybridInput") {

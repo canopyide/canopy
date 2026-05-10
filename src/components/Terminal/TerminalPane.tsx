@@ -14,6 +14,7 @@ import { ArtifactOverlay } from "./ArtifactOverlay";
 
 import { TerminalSearchBar } from "./TerminalSearchBar";
 import { TerminalScrollIndicator } from "./TerminalScrollIndicator";
+import { FleetDraftingPill } from "@/components/Fleet/FleetDraftingPill";
 import { TerminalRestartStatusBanner } from "./TerminalRestartStatusBanner";
 import { getRestartBannerVariant } from "./restartStatus";
 import { TerminalErrorBanner } from "./TerminalErrorBanner";
@@ -246,6 +247,7 @@ function TerminalPaneComponent({
   // is suppressed on a single-armed seed selection because nothing fans out
   // until a second pane joins.
   const isFleetFollower = isArmed && !isFocused && armedIds.size >= 2;
+  const isFleetPrimary = isArmed && isFocused && armedIds.size >= 2;
 
   // Consolidate terminal state selectors to avoid multiple scans and ensure consistent snapshots
   const terminalState = usePanelStore(
@@ -279,7 +281,10 @@ function TerminalPaneComponent({
   const isBackendRecovering = backendStatus === "recovering";
 
   const hybridInputEnabled = useTerminalInputStore((state) => state.hybridInputEnabled);
-  const hybridInputAutoFocus = useTerminalInputStore((state) => state.hybridInputAutoFocus);
+  const preferredTerminalFocusTarget = usePanelStore((state) => state.preferredTerminalFocusTarget);
+  const setPreferredTerminalFocusTarget = usePanelStore(
+    (state) => state.setPreferredTerminalFocusTarget
+  );
   // Panel kind is always "terminal" for PTY panels; live identity is runtime chrome.
   const kind = "terminal" as const;
   const queueCount = usePanelStore((state) => state.commandQueueCountById[id] ?? 0);
@@ -599,33 +604,29 @@ function TerminalPaneComponent({
     const xtermElement = target?.closest(".xterm");
     if (!xtermElement) return;
 
-    const focusTarget = getTerminalFocusTarget({
-      hasHybridInputSurface: showHybridInputBar,
-      isInputDisabled: isBackendDisconnected || isBackendRecovering || isInputLocked,
-      hybridInputEnabled,
-      hybridInputAutoFocus,
-    });
+    // Clicking xterm is an explicit "I want the terminal" gesture — record it
+    // so subsequent Cmd-Opt-Arrow navigation stays on xterm across panes.
+    setPreferredTerminalFocusTarget("xterm");
 
-    const suppressTarget = shouldSuppressUnfocusedClick({
+    const shouldSuppress = shouldSuppressUnfocusedClick({
       location,
       isFocused,
       isCursorPointer: xtermElement.classList.contains("xterm-cursor-pointer"),
-      focusTarget,
     });
 
-    if (!suppressTarget) return;
+    if (!shouldSuppress) {
+      // Already-focused panes: let the click through so xterm selection,
+      // cursor positioning, and mouse reporting work natively. The xterm
+      // focus listener (TerminalInstanceService) records the focus event.
+      return;
+    }
 
     e.preventDefault();
     e.stopPropagation();
 
     setFocused(id);
     terminalInstanceService.boostRefreshRate(id);
-
-    if (suppressTarget === "hybridInput") {
-      requestAnimationFrame(() => inputBarRef.current?.focusWithCursorAtEnd());
-    } else {
-      requestAnimationFrame(() => terminalInstanceService.focus(id));
-    }
+    requestAnimationFrame(() => terminalInstanceService.focus(id));
   };
 
   const handleRestart = () => {
@@ -651,15 +652,19 @@ function TerminalPaneComponent({
     if (!isFocused) return;
 
     const focusTarget = getTerminalFocusTarget({
+      preferredTarget: preferredTerminalFocusTarget,
       hasHybridInputSurface: showHybridInputBar,
       isInputDisabled: isBackendDisconnected || isBackendRecovering || isInputLocked,
       hybridInputEnabled,
-      hybridInputAutoFocus,
     });
 
     if (focusTarget === "hybridInput") {
-      const rafId = requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
+      let cancelled = false;
+      let innerRafId: number | undefined;
+      const outerRafId = requestAnimationFrame(() => {
+        if (cancelled) return;
+        innerRafId = requestAnimationFrame(() => {
+          if (cancelled) return;
           // xterm v6 clears selection on blur. Don't steal focus from
           // xterm when the user has an active text selection.
           const managed = terminalInstanceService.get(id);
@@ -667,7 +672,11 @@ function TerminalPaneComponent({
           inputBarRef.current?.focusWithCursorAtEnd();
         });
       });
-      return () => cancelAnimationFrame(rafId);
+      return () => {
+        cancelled = true;
+        cancelAnimationFrame(outerRafId);
+        if (innerRafId !== undefined) cancelAnimationFrame(innerRafId);
+      };
     }
 
     const rafId = requestAnimationFrame(() => terminalInstanceService.focus(id));
@@ -677,23 +686,30 @@ function TerminalPaneComponent({
     isFocused,
     showHybridInputBar,
     hybridInputEnabled,
-    hybridInputAutoFocus,
+    preferredTerminalFocusTarget,
     isBackendDisconnected,
     isBackendRecovering,
     isInputLocked,
   ]);
 
   useEffect(() => {
-    if (!showHybridInputBar) return;
+    // The registry is invoked on tab switches inside a focused tab group —
+    // the destination tab needs focus routed to whichever sub-target the
+    // user is currently using. Honor the preference rather than always
+    // forcing the input; that's what the old model did, and tab switching
+    // would otherwise yank focus out of xterm against the user's intent.
     return registerPanelFocusHandler(id, () => {
       const focusTarget = getTerminalFocusTarget({
+        preferredTarget: usePanelStore.getState().preferredTerminalFocusTarget,
         hasHybridInputSurface: showHybridInputBar,
         isInputDisabled: isBackendDisconnected || isBackendRecovering || isInputLocked,
         hybridInputEnabled,
-        hybridInputAutoFocus,
       });
-      if (focusTarget !== "hybridInput") return;
-      inputBarRef.current?.focusWithCursorAtEnd();
+      if (focusTarget === "hybridInput") {
+        inputBarRef.current?.focusWithCursorAtEnd();
+      } else {
+        terminalInstanceService.focus(id);
+      }
     });
   }, [
     id,
@@ -702,7 +718,6 @@ function TerminalPaneComponent({
     isBackendRecovering,
     isInputLocked,
     hybridInputEnabled,
-    hybridInputAutoFocus,
   ]);
 
   // Sync agent state to terminal service for scroll management
@@ -908,13 +923,38 @@ function TerminalPaneComponent({
                     terminalId={id}
                     onClose={() => {
                       setIsSearchOpen(false);
-                      requestAnimationFrame(() => terminalInstanceService.focus(id));
+                      // Restore focus to whichever sub-target the user is
+                      // currently using — read at RAF time (not from the
+                      // render closure) so a same-frame preference flip
+                      // between onClose and the focus call is honored.
+                      requestAnimationFrame(() => {
+                        const focusTarget = getTerminalFocusTarget({
+                          preferredTarget: usePanelStore.getState().preferredTerminalFocusTarget,
+                          hasHybridInputSurface: showHybridInputBar,
+                          isInputDisabled:
+                            isBackendDisconnected || isBackendRecovering || isInputLocked,
+                          hybridInputEnabled,
+                        });
+                        if (focusTarget === "hybridInput") {
+                          inputBarRef.current?.focusWithCursorAtEnd();
+                        } else {
+                          terminalInstanceService.focus(id);
+                        }
+                      });
                     }}
                   />
                 )}
               </div>
 
               <TerminalScrollIndicator terminalId={id} />
+
+              {isFleetPrimary && (
+                <div className="absolute inset-0 z-30 pointer-events-none flex items-end justify-start pb-4 pl-[14px]">
+                  <div className="pointer-events-auto">
+                    <FleetDraftingPill />
+                  </div>
+                </div>
+              )}
 
               {(isBackendDisconnected || isBackendRecovering) && (
                 <div

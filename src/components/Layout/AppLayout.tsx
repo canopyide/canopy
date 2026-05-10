@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef, type ReactNode } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { cn } from "@/lib/utils";
 import { Toolbar } from "./Toolbar";
 import { Sidebar } from "./Sidebar";
@@ -71,6 +71,15 @@ export function AppLayout({
   useCcrPresetsSubscription();
   useProjectPresetsSubscription();
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
+  // Issue #7627: track active drag-resize per panel so AppLayout can suppress
+  // the 250ms ease-out-expo width transition during the drag (the transition
+  // restarts on every mousemove, which makes the rendered edge lag the cursor).
+  // Toggling these flags via flushSync at drag start guarantees the class
+  // gate disappears synchronously before the first mousemove frame; the
+  // transition is restored on drag end so collapse/expand and double-click
+  // reset still animate.
+  const [isSidebarResizing, setIsSidebarResizing] = useState(false);
+  const [isAssistantResizing, setIsAssistantResizing] = useState(false);
   const currentProject = useProjectStore((state) => state.currentProject);
   const layout = useLayoutState();
   const overlayClaims = useUIStore((s) => s.overlayClaims);
@@ -361,6 +370,25 @@ export function AppLayout({
     setSidebarWidth(clampedWidth);
   }, []);
 
+  // flushSync on the start setter so the gating class is removed from the DOM
+  // before the first mousemove fires — without it, React 19's batching can
+  // leave one eased frame at the start of the drag.
+  const handleSidebarResizeStart = useCallback(() => {
+    flushSync(() => setIsSidebarResizing(true));
+  }, []);
+
+  const handleSidebarResizeEnd = useCallback(() => {
+    setIsSidebarResizing(false);
+  }, []);
+
+  const handleAssistantResizeStart = useCallback(() => {
+    flushSync(() => setIsAssistantResizing(true));
+  }, []);
+
+  const handleAssistantResizeEnd = useCallback(() => {
+    setIsAssistantResizing(false);
+  }, []);
+
   const handleLaunchAgent = useCallback(
     (type: string) => {
       onLaunchAgent?.(type);
@@ -439,6 +467,7 @@ export function AppLayout({
             className={cn(
               "relative h-full shrink-0 overflow-clip",
               !reduceAnimations &&
+                !isSidebarResizing &&
                 "transition-[width] duration-[var(--duration-250)] ease-[var(--ease-out-expo)] motion-reduce:transition-none",
               !showSidebar && "pointer-events-none"
             )}
@@ -450,6 +479,8 @@ export function AppLayout({
                   <Sidebar
                     width={sidebarWidth}
                     onResize={handleSidebarResize}
+                    onResizeStart={handleSidebarResizeStart}
+                    onResizeEnd={handleSidebarResizeEnd}
                     isVisible={showSidebar}
                   >
                     {sidebarContent}
@@ -480,6 +511,7 @@ export function AppLayout({
               className={cn(
                 "relative h-full shrink-0 overflow-hidden",
                 !reduceAnimations &&
+                  !isAssistantResizing &&
                   "transition-[width] duration-[var(--duration-250)] ease-[var(--ease-out-expo)] motion-reduce:transition-none",
                 !showAssistant && "pointer-events-none"
               )}
@@ -493,6 +525,8 @@ export function AppLayout({
                   width={layout.helpPanelWidth}
                   isVisible={showAssistant}
                   isReadyToLaunch={isHydrated}
+                  onResizeStart={handleAssistantResizeStart}
+                  onResizeEnd={handleAssistantResizeEnd}
                 />
               </div>
             </div>

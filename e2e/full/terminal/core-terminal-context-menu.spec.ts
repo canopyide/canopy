@@ -8,6 +8,7 @@ import {
   runTerminalCommand,
   selectAllTerminalText,
   openTerminalContextMenu,
+  clickTerminalContextMenuItem,
 } from "../../helpers/terminal";
 import { getFirstGridPanel, getGridPanelCount, openTerminal } from "../../helpers/panels";
 import { SEL } from "../../helpers/selectors";
@@ -73,8 +74,7 @@ test.describe.serial("Core: Terminal Context Menu", () => {
     });
 
     test("worktree dashboard appears", async () => {
-      const worktreeCards = ctx.window.locator("[data-worktree-branch]");
-      await expect(worktreeCards.first()).toBeVisible({ timeout: T_LONG });
+      await ensureProjectIsOpen();
     });
   });
 
@@ -82,6 +82,7 @@ test.describe.serial("Core: Terminal Context Menu", () => {
 
   test.describe.serial("Context Menu", () => {
     test("open terminal and produce output", async () => {
+      await ensureProjectIsOpen();
       const { window } = ctx;
       await openTerminal(window);
       const panel = getFirstGridPanel(window);
@@ -92,8 +93,8 @@ test.describe.serial("Core: Terminal Context Menu", () => {
     });
 
     test("right-click opens context menu with expected items", async () => {
+      const panel = await ensureTerminalPanel();
       const { window } = ctx;
-      const panel = getFirstGridPanel(window);
 
       await openTerminalContextMenu(panel);
 
@@ -116,8 +117,8 @@ test.describe.serial("Core: Terminal Context Menu", () => {
     });
 
     test("Copy is disabled when no text is selected", async () => {
+      const panel = await ensureTerminalPanel();
       const { window } = ctx;
-      const panel = getFirstGridPanel(window);
 
       await openTerminalContextMenu(panel);
 
@@ -129,8 +130,8 @@ test.describe.serial("Core: Terminal Context Menu", () => {
     });
 
     test("Copy is enabled after selecting text", async () => {
+      const panel = await ensureTerminalPanel();
       const { window } = ctx;
-      const panel = getFirstGridPanel(window);
 
       await selectAllTerminalText(panel);
       await openTerminalContextMenu(panel);
@@ -147,9 +148,7 @@ test.describe.serial("Core: Terminal Context Menu", () => {
       const { window } = ctx;
 
       await openTerminalContextMenu(panel);
-
-      const renameItem = window.getByRole("menuitem", { name: "Rename Terminal" });
-      await renameItem.click();
+      await clickTerminalContextMenuItem(panel, "Rename Terminal");
 
       const menu = window.locator(SEL.contextMenu.content);
       await expect(menu).not.toBeVisible({ timeout: T_SHORT });
@@ -171,8 +170,8 @@ test.describe.serial("Core: Terminal Context Menu", () => {
     });
 
     test("context menu closes on Escape", async () => {
+      const panel = await ensureTerminalPanel();
       const { window } = ctx;
-      const panel = getFirstGridPanel(window);
 
       await openTerminalContextMenu(panel);
 
@@ -184,15 +183,13 @@ test.describe.serial("Core: Terminal Context Menu", () => {
     });
 
     test("selecting menu item closes menu and performs action", async () => {
+      const panel = await ensureTerminalPanel();
       const { window } = ctx;
-      const panel = getFirstGridPanel(window);
 
       await openTerminalContextMenu(panel);
 
       const menu = window.locator(SEL.contextMenu.content);
-      const lockItem = window.getByRole("menuitem", { name: "Lock Input" });
-      await expect(lockItem).toBeVisible({ timeout: T_SHORT });
-      await lockItem.click();
+      await clickTerminalContextMenuItem(panel, "Lock Input");
 
       await expect(menu).not.toBeVisible({ timeout: T_SHORT });
 
@@ -203,12 +200,12 @@ test.describe.serial("Core: Terminal Context Menu", () => {
       });
 
       // Toggle back
-      await window.getByRole("menuitem", { name: "Unlock Input" }).click();
+      await clickTerminalContextMenuItem(panel, "Unlock Input");
     });
 
     test("close terminal", async () => {
+      const panel = await ensureTerminalPanel();
       const { window } = ctx;
-      const panel = getFirstGridPanel(window);
       await panel.locator(SEL.panel.close).first().click();
       await expect.poll(() => getGridPanelCount(window), { timeout: T_MEDIUM }).toBe(0);
     });

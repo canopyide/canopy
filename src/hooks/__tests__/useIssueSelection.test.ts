@@ -92,4 +92,19 @@ describe("useIssueSelection", () => {
     expect(result.current.selectedIds.has(30)).toBe(true);
     expect(result.current.selectedIds.size).toBe(1);
   });
+
+  it("clear is idempotent when selection is already empty", () => {
+    const { result } = renderHook(() => useIssueSelection());
+
+    const initialIds = result.current.selectedIds;
+    expect(initialIds.size).toBe(0);
+
+    act(() => result.current.clear());
+    expect(result.current.selectedIds.size).toBe(0);
+    expect(result.current.selectedIds).toBe(initialIds);
+
+    act(() => result.current.clear());
+    expect(result.current.selectedIds.size).toBe(0);
+    expect(result.current.selectedIds).toBe(initialIds);
+  });
 });

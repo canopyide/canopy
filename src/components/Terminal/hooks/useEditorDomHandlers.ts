@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { EditorView as EditorViewFacet } from "@codemirror/view";
 import type { EditorView } from "@codemirror/view";
 import { useTerminalInputStore } from "@/store/terminalInputStore";
+import { usePanelStore } from "@/store/panelStore";
 import { isEnterLikeLineBreakInputEvent } from "../hybridInputEvents";
 
 interface LatestRefShape {
@@ -59,6 +60,14 @@ export function useEditorDomHandlers({
   const domEventHandlers = useMemo(
     () =>
       EditorViewFacet.domEventHandlers({
+        focus: () => {
+          // Record the session-wide focus preference so Cmd-Opt-Arrow keeps
+          // landing on the hybrid input across panes. Idempotent: the slice
+          // setter no-ops when the value is already "hybridInput", so a burst
+          // of focus events from re-renders does not churn subscribers.
+          usePanelStore.getState().setPreferredTerminalFocusTarget("hybridInput");
+          return false;
+        },
         beforeinput: (event) => {
           const latest = latestRef.current;
           if (!latest) return false;

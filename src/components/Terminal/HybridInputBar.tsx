@@ -24,7 +24,6 @@ import { useCommandStore } from "@/store/commandStore";
 import { useProjectStore } from "@/store/projectStore";
 import { usePanelStore, useVoiceRecordingStore } from "@/store";
 import { useFleetArmingStore } from "@/store/fleetArmingStore";
-import { FleetDraftingPill } from "@/components/Fleet/FleetDraftingPill";
 import { tryFleetBroadcastFromEditor } from "@/components/Fleet/fleetEnterBroadcast";
 
 import { useWorktreeStore } from "@/hooks/useWorktreeStore";
@@ -712,13 +711,6 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
         className="relative group cursor-text px-3.5 pb-2.5 pt-2.5"
         style={{ backgroundColor: inputBarColors.background, ...shellVars }}
       >
-        {isFleetPrimary && (
-          <div className="pointer-events-none absolute bottom-full right-3.5 mb-1 flex items-center gap-2">
-            <div className="pointer-events-auto">
-              <FleetDraftingPill />
-            </div>
-          </div>
-        )}
         <div className="flex items-end gap-2">
           <div
             ref={inputShellRef}

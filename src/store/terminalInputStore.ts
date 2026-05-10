@@ -160,7 +160,16 @@ export const useTerminalInputStore = create<TerminalInputState>()((set, get) => 
   isVoiceSubmitting: (panelId) => get().voiceSubmittingPanels.has(panelId),
 
   setHybridInputEnabled: (enabled) => set({ hybridInputEnabled: enabled }),
-  setHybridInputAutoFocus: (enabled) => set({ hybridInputAutoFocus: enabled }),
+  setHybridInputAutoFocus: (enabled) => {
+    set({ hybridInputAutoFocus: enabled });
+    // Re-seed the session-wide focus preference whenever the user (or
+    // hydration) flips this setting. Dynamic import dodges the import cycle
+    // with panelStore, which already imports this store dynamically the other
+    // way around.
+    void import("./panelStore").then(({ usePanelStore }) => {
+      usePanelStore.getState().setPreferredTerminalFocusTarget(enabled ? "hybridInput" : "xterm");
+    });
+  },
   getDraftInput: (terminalId, projectId) => {
     const key = makeDraftKey(terminalId, projectId);
     return get().draftInputs.get(key) ?? "";

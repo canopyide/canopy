@@ -130,6 +130,59 @@ describe("TerminalFocusSlice - Layout Snapshot", () => {
   });
 });
 
+describe("TerminalFocusSlice - preferredTerminalFocusTarget", () => {
+  let state: TerminalFocusSlice;
+  let setState: any;
+  let getState: any;
+  const getTerminals = vi.fn(() => [] as TerminalInstance[]);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setState = vi.fn((updater) => {
+      const currentState = getState();
+      const updates = typeof updater === "function" ? updater(currentState) : updater;
+      state = { ...currentState, ...updates };
+    });
+    getState = vi.fn(() => state);
+    state = createTerminalFocusSlice(getTerminals, mockGetActiveWorktreeId)(
+      setState,
+      getState,
+      {} as never
+    );
+  });
+
+  it("defaults to hybridInput on slice creation", () => {
+    expect(state.preferredTerminalFocusTarget).toBe("hybridInput");
+  });
+
+  it("flips to xterm via the setter", () => {
+    state.setPreferredTerminalFocusTarget("xterm");
+    expect(state.preferredTerminalFocusTarget).toBe("xterm");
+  });
+
+  it("flips back to hybridInput via the setter", () => {
+    state.setPreferredTerminalFocusTarget("xterm");
+    setState.mockClear();
+    state.setPreferredTerminalFocusTarget("hybridInput");
+    expect(state.preferredTerminalFocusTarget).toBe("hybridInput");
+    expect(setState).toHaveBeenCalledTimes(1);
+  });
+
+  it("is idempotent — repeat sets to the same value do not call set()", () => {
+    state.setPreferredTerminalFocusTarget("hybridInput"); // already the default
+    expect(setState).not.toHaveBeenCalled();
+
+    state.setPreferredTerminalFocusTarget("xterm");
+    expect(setState).toHaveBeenCalledTimes(1);
+    setState.mockClear();
+
+    // Setting xterm again is a no-op — store stays quiet so DOM focus
+    // listeners don't drive notification storms.
+    state.setPreferredTerminalFocusTarget("xterm");
+    expect(setState).not.toHaveBeenCalled();
+  });
+});
+
 describe("TerminalFocusSlice - Tab Group Maximize", () => {
   const mockTerminals: TerminalInstance[] = [
     {

@@ -261,8 +261,22 @@ export function GitHubResourceList({
   }, [handleManualRefresh]);
 
   const selection = useIssueSelection();
+  const selectionClear = selection.clear;
   const [issueCache, setIssueCache] = useState<Map<number, GitHubIssue>>(() => new Map());
   const [prCache, setPrCache] = useState<Map<number, GitHubPR>>(() => new Map());
+
+  // The toolbar reuses one keepMounted GitHubResourceList per type across
+  // every project — switching projects only updates `projectPath`, it doesn't
+  // remount. Reset bulk selection + the issue/PR cache so a selection from
+  // project A can't follow the user into project B's dropdown.
+  const prevProjectPathRef = useRef(projectPath);
+  useEffect(() => {
+    if (prevProjectPathRef.current === projectPath) return;
+    prevProjectPathRef.current = projectPath;
+    selectionClear();
+    setIssueCache(new Map());
+    setPrCache(new Map());
+  }, [projectPath, selectionClear]);
 
   // Accumulate item objects into the session cache whenever data changes
   useEffect(() => {
@@ -306,11 +320,8 @@ export function GitHubResourceList({
   }, [type]);
 
   const handleClose = useCallback(() => {
-    selection.clear();
-    setIssueCache(new Map());
-    setPrCache(new Map());
     onClose?.();
-  }, [onClose, selection]);
+  }, [onClose]);
 
   const handleOpenInGitHub = () => {
     const query = searchQuery.trim() || undefined;
@@ -470,8 +481,8 @@ export function GitHubResourceList({
       { tab: "github", sectionId: "github-token" },
       { source: "user" }
     );
-    onClose?.();
-  }, [onClose]);
+    handleClose();
+  }, [handleClose]);
 
   const footerContext = useMemo<LoadMoreFooterContext>(
     () => ({
@@ -1024,6 +1035,7 @@ export function GitHubResourceList({
                 .filter((pr): pr is GitHubPR => pr !== undefined)
             : []
         }
+        selectedCount={selection.selectedIds.size}
         onClear={selection.clear}
         onCloseDropdown={onClose}
       />

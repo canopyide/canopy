@@ -11,6 +11,11 @@ on:
         required: false
         type: boolean
         default: false
+      dry_run:
+        description: "Dry run — exercise the full pipeline (gates + build + sign + notarize) without publishing to R2, Microsoft Store, or the website"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -200,12 +205,17 @@ jobs:
           npm_config_build_from_source: "true"
         run: |
           npm run build
+          PUBLISH_FLAG="always"
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "::warning::Dry run — skipping publish to electron-builder targets"
+            PUBLISH_FLAG="never"
+          fi
           EXTRA_ARGS=""
           if [ "${{ inputs.skip_notarization }}" = "true" ]; then
             echo "::warning::Skipping macOS notarization (manually disabled)"
             EXTRA_ARGS="-c.mac.notarize=false"
           fi
-          npx electron-builder --config electron-builder.config.cjs --publish always -c.buildDependenciesFromSource=true $EXTRA_ARGS
+          npx electron-builder --config electron-builder.config.cjs --publish "$PUBLISH_FLAG" -c.buildDependenciesFromSource=true $EXTRA_ARGS
 
       - name: Verify macOS notarization staple
         if: startsWith(matrix.os, 'macos') && inputs.skip_notarization != 'true'
@@ -240,11 +250,14 @@ jobs:
           DEBUG: electron-builder,electron-notarize*,electron-osx-sign*
         run: |
           npm run build
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            npx electron-builder --config electron-builder.config.cjs --publish never
-          else
-            npx electron-builder --config electron-builder.config.cjs --publish always
+          PUBLISH_FLAG="always"
+          if [ "${{ matrix.os }}" = "windows-latest" ] || [ "${{ inputs.dry_run }}" = "true" ]; then
+            if [ "${{ inputs.dry_run }}" = "true" ] && [ "${{ matrix.os }}" != "windows-latest" ]; then
+              echo "::warning::Dry run — skipping publish to electron-builder targets"
+            fi
+            PUBLISH_FLAG="never"
           fi
+          npx electron-builder --config electron-builder.config.cjs --publish "$PUBLISH_FLAG"
 
       - name: Verify Windows Store package was built
         if: matrix.os == 'windows-latest'
@@ -286,7 +299,7 @@ jobs:
 
       - name: Check Microsoft Store secrets (Windows)
         id: store-secrets
-        if: matrix.os == 'windows-latest'
+        if: matrix.os == 'windows-latest' && inputs.dry_run != true
         shell: pwsh
         env:
           PARTNER_CENTER_TENANT_ID: ${{ secrets.PARTNER_CENTER_TENANT_ID }}
@@ -307,11 +320,11 @@ jobs:
           }
 
       - name: Install Microsoft Store CLI (Windows)
-        if: matrix.os == 'windows-latest' && steps.store-secrets.outputs.configured == 'true'
+        if: matrix.os == 'windows-latest' && inputs.dry_run != true && steps.store-secrets.outputs.configured == 'true'
         uses: microsoft/microsoft-store-apppublisher@v1.3
 
       - name: Submit to Microsoft Store (Windows)
-        if: matrix.os == 'windows-latest' && steps.store-secrets.outputs.configured == 'true'
+        if: matrix.os == 'windows-latest' && inputs.dry_run != true && steps.store-secrets.outputs.configured == 'true'
         shell: pwsh
         env:
           PARTNER_CENTER_TENANT_ID: ${{ secrets.PARTNER_CENTER_TENANT_ID }}
@@ -382,7 +395,7 @@ jobs:
           if-no-files-found: error
 
   publish-daintree:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') && inputs.dry_run != true
     needs: [build-daintree]
     runs-on: ubuntu-22.04
     timeout-minutes: 15

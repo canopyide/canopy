@@ -1326,17 +1326,23 @@ describe("BulkCreateWorktreeDialog", () => {
   });
 
   it("does not invoke stored bulkCreateDialog.onComplete when dialog is cancelled", async () => {
+    // Cancel/Escape/backdrop must preserve bulk selection so the user can
+    // reopen the dropdown and finish picking. Selection is only cleared via
+    // handleDone, after worktrees are actually created.
     const storedOnComplete = vi.fn();
     mockBulkCreateDialog.onComplete = storedOnComplete;
+    const propOnClose = vi.fn(() => {
+      mockBulkCreateDialog.onComplete = undefined;
+    });
 
-    render(<BulkCreateWorktreeDialog {...defaultProps} />);
+    render(<BulkCreateWorktreeDialog {...defaultProps} onClose={propOnClose} />);
 
-    // Cancel from idle state via Cancel button (handleClose path)
     await act(async () => {
       screen.getByText("Cancel").click();
     });
 
     expect(storedOnComplete).not.toHaveBeenCalled();
+    expect(propOnClose).toHaveBeenCalledTimes(1);
   });
 
   it("clone layout generates command for agent panels and preserves plain terminal commands", async () => {

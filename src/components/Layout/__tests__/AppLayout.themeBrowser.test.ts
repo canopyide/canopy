@@ -42,7 +42,7 @@ describe("AppLayout theme browser overlay structure — issue #5791", () => {
   it("portals the ThemeBrowser out of the inert subtree", () => {
     // Bug 1: rendering inside the inert main-content wrapper made the picker
     // itself unclickable. Portaling to document.body escapes the inert ancestor.
-    expect(source).toContain('import { createPortal } from "react-dom"');
+    expect(source).toMatch(/import \{ createPortal(?:, flushSync)? \} from "react-dom"/);
     expect(source).toMatch(/createPortal\([\s\S]*?<ThemeBrowser \/>[\s\S]*?document\.body/);
   });
 

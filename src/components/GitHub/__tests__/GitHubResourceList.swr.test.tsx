@@ -59,6 +59,7 @@ vi.mock("@/services/ActionService", () => ({
 }));
 
 let mockIsSelectionActive = false;
+const mockSelectionClear = vi.fn();
 
 vi.mock("@/hooks/useIssueSelection", () => ({
   useIssueSelection: () => ({
@@ -69,7 +70,7 @@ vi.mock("@/hooks/useIssueSelection", () => ({
     toggle: vi.fn(),
     toggleRange: vi.fn(),
     selectAll: vi.fn(),
-    clear: vi.fn(),
+    clear: mockSelectionClear,
   }),
 }));
 
@@ -195,6 +196,7 @@ beforeEach(() => {
   LiveTimeAgoMock.mockClear();
   dispatchMock.mockReset();
   initializeMock.mockClear();
+  mockSelectionClear.mockReset();
   mockIsSelectionActive = false;
   mockGitHubConfig = { hasToken: true };
   mockGitHubConfigInitialized = true;
@@ -1909,5 +1911,47 @@ describe("GitHubResourceList polish (#7202)", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("GitHubResourceList dismissal preserves bulk selection", () => {
+  it("does not clear selection when the dropdown is dismissed via outside click", () => {
+    // Dropdown unmount/dismissal must preserve selection so the user can
+    // reopen and finish picking. Selection only clears when worktrees are
+    // actually created (Done in BulkCreateWorktreeDialog).
+    mockListIssues.mockResolvedValue(makeResponse([makeIssue(1)]));
+
+    const { unmount } = render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+    unmount();
+
+    expect(mockSelectionClear).not.toHaveBeenCalled();
+  });
+
+  it("does not clear selection when the no-token settings link is clicked", () => {
+    mockGitHubConfig = { hasToken: false };
+    mockGitHubConfigInitialized = true;
+    const onClose = vi.fn();
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" onClose={onClose} />);
+
+    screen.getByRole("button", { name: /add github token/i }).click();
+
+    expect(mockSelectionClear).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears selection when projectPath changes (project switch)", () => {
+    // The toolbar keeps one GitHubResourceList per type mounted across every
+    // project, so a project switch only updates projectPath without remounting.
+    // Without an explicit reset, project A's selection + cached items would
+    // leak into project B's dropdown.
+    mockListIssues.mockResolvedValue(makeResponse([makeIssue(1)]));
+
+    const { rerender } = render(<GitHubResourceList type="issue" projectPath="/test/proj-a" />);
+    expect(mockSelectionClear).not.toHaveBeenCalled();
+
+    rerender(<GitHubResourceList type="issue" projectPath="/test/proj-b" />);
+
+    expect(mockSelectionClear).toHaveBeenCalledTimes(1);
   });
 });

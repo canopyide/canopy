@@ -1,8 +1,18 @@
 import { Suspense, useCallback, useEffect, useRef, useState, useMemo } from "react";
-import { Settings2, ChevronRight, Plus, X, ShieldAlert, History } from "lucide-react";
+import {
+  Settings2,
+  ChevronRight,
+  Plus,
+  X,
+  ShieldAlert,
+  History,
+  CircleHelp,
+  ExternalLink,
+} from "lucide-react";
 import * as semver from "semver";
 import { cn } from "@/lib/utils";
 import { DaintreeIcon } from "@/components/icons/DaintreeIcon";
+import { SpinnerCircle, HollowCircle, InteractingCircle } from "@/components/icons";
 import { XtermAdapter } from "@/components/Terminal/XtermAdapter";
 import { MissingCliGate } from "@/components/Terminal/MissingCliGate";
 import { HelpIntroBanner } from "./HelpIntroBanner";
@@ -25,6 +35,7 @@ import { actionService } from "@/services/ActionService";
 import { useEscapeStack } from "@/hooks/useEscapeStack";
 import { suppressSidebarResizes } from "@/lib/sidebarToggle";
 import { TerminalRefreshTier } from "@/types";
+import type { AgentState } from "@/types";
 import { logError } from "@/utils/logger";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { notify } from "@/lib/notify";
@@ -41,12 +52,7 @@ const RESIZE_STEP = 10;
 const RESIZE_PAGE_STEP = 50;
 
 const DAINTREE_HOME_URL = "https://daintree.org";
-
-const SEED_PROMPTS = [
-  "Explain this codebase to me",
-  "Review my recent changes",
-  "Help me debug an issue",
-] as const;
+const ASSISTANT_DOCS_URL = "https://daintree.org/assistant";
 
 const HIBERNATE_VALID_MINUTES: readonly number[] = [0, 15, 30, 60, 120];
 const DEFAULT_HIBERNATE_MINUTES = 30;
@@ -244,6 +250,57 @@ function revokeHelpSession(sessionId: string | null): void {
   });
 }
 
+// Tier-1 ambient indicator (per CLAUDE.md Runtime Signals): surfaces the
+// in-flight assistant state next to the header title so the user can read it
+// without watching the terminal. Only the actionable triad — working,
+// directing, waiting — earns a marker; idle/completed/exited stay quiet.
+function AssistantHeaderStateIndicator({
+  agentState,
+}: {
+  agentState: AgentState | null | undefined;
+}) {
+  if (agentState === "working") {
+    return (
+      <span
+        data-testid="assistant-header-state-indicator"
+        data-agent-state="working"
+        aria-label="Assistant is working"
+        role="status"
+        className="ml-1.5 inline-flex shrink-0"
+      >
+        <SpinnerCircle className="w-3.5 h-3.5 text-state-working animate-spin-slow motion-reduce:animate-none" />
+      </span>
+    );
+  }
+  if (agentState === "directing") {
+    return (
+      <span
+        data-testid="assistant-header-state-indicator"
+        data-agent-state="directing"
+        aria-label="Assistant is directing"
+        role="status"
+        className="ml-1.5 inline-flex shrink-0"
+      >
+        <InteractingCircle className="w-3.5 h-3.5 text-category-blue" />
+      </span>
+    );
+  }
+  if (agentState === "waiting") {
+    return (
+      <span
+        data-testid="assistant-header-state-indicator"
+        data-agent-state="waiting"
+        aria-label="Assistant is waiting"
+        role="status"
+        className="ml-1.5 inline-flex shrink-0"
+      >
+        <HollowCircle className="w-3.5 h-3.5 text-state-waiting" />
+      </span>
+    );
+  }
+  return null;
+}
+
 interface HelpPanelProps {
   /**
    * Configured panel width in pixels (the stable stored size, never 0).
@@ -264,12 +321,24 @@ interface HelpPanelProps {
    * readiness and writes the session-scoped .mcp.json.
    */
   isReadyToLaunch?: boolean;
+  /**
+   * Fires at the start of a pointer drag-resize so AppLayout can suppress
+   * its `transition-[width]` while the user drags. Issue #7627.
+   */
+  onResizeStart?: () => void;
+  /**
+   * Fires at the end of a pointer drag-resize. Restores the parent transition
+   * for non-drag width changes (collapse/expand toggle).
+   */
+  onResizeEnd?: () => void;
 }
 
 export function HelpPanel({
   width: effectiveWidth,
   isVisible: isVisibleProp,
   isReadyToLaunch = true,
+  onResizeStart,
+  onResizeEnd,
 }: HelpPanelProps) {
   const panelRef = useRef<HTMLElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -973,6 +1042,7 @@ export function HelpPanel({
   const handleResizeStart = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
+      onResizeStart?.();
       setIsResizing(true);
       const startX = e.clientX;
       const startWidth = width;
@@ -988,6 +1058,7 @@ export function HelpPanel({
 
       const onMouseUp = () => {
         setIsResizing(false);
+        onResizeEnd?.();
         document.removeEventListener("mousemove", onMouseMove);
         document.removeEventListener("mouseup", onMouseUp);
       };
@@ -995,7 +1066,7 @@ export function HelpPanel({
       document.addEventListener("mousemove", onMouseMove);
       document.addEventListener("mouseup", onMouseUp);
     },
-    [width, setWidth]
+    [width, setWidth, onResizeStart, onResizeEnd]
   );
 
   // Resize via keyboard. ArrowLeft/PageUp grow the panel (it expands leftward
@@ -1366,26 +1437,13 @@ export function HelpPanel({
     void actionService.dispatch("app.settings.openTab", { tab: "assistant" }, { source: "user" });
   }, []);
 
-  // Picks the agent to launch when a seed-prompt chip is clicked. Falls back to
-  // the single installed assistant-supported agent when the user hasn't picked
-  // a preference yet — matches the auto-launch effect's resolution rule. Returns
-  // null only when zero supported agents are installed; in that state the chips
-  // are inert and the user is steered to the bottom settings link.
-  const seedAgentToLaunch = preferredAgentId
-    ? preferredAgentId
-    : supportedInstalledAgentIds.length === 1
-      ? (supportedInstalledAgentIds[0] ?? null)
-      : null;
-
-  const handleSeedPromptClick = useCallback(
-    (prompt: string) => {
-      if (!seedAgentToLaunch) return;
-      safeFireAndForget(handleSelectAgent(seedAgentToLaunch, prompt), {
-        context: "HelpPanel: seed-prompt chip launch",
-      });
-    },
-    [seedAgentToLaunch, handleSelectAgent]
-  );
+  const handleOpenAssistantDocs = useCallback(() => {
+    void actionService.dispatch(
+      "system.openExternal",
+      { url: ASSISTANT_DOCS_URL },
+      { source: "user" }
+    );
+  }, []);
 
   const dismissTierMismatch = useCallback(() => {
     setTierMismatch(null);
@@ -1646,7 +1704,16 @@ export function HelpPanel({
           <span className="ml-1.5 text-xs font-medium text-daintree-text/70 truncate">
             Daintree Assistant
           </span>
+          <AssistantHeaderStateIndicator agentState={terminal?.agentState} />
         </div>
+        <button
+          type="button"
+          onClick={handleOpenAssistantDocs}
+          className="p-1 rounded-[var(--radius-sm)] text-daintree-text/50 hover:text-daintree-text hover:bg-tint/8 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
+          aria-label="Open assistant docs"
+        >
+          <CircleHelp className="w-3.5 h-3.5" />
+        </button>
         {terminalId && agentId && (
           <button
             type="button"
@@ -1851,26 +1918,25 @@ export function HelpPanel({
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center gap-6 p-8 text-center">
             <p className="text-sm text-daintree-text/70 max-w-[30ch]">
-              Ask the assistant to explain code, review changes, or debug issues.
+              Use Daintree Assistant to configure and navigate Daintree.
             </p>
-            <div className="flex flex-col gap-2 w-full max-w-[28ch]">
-              {SEED_PROMPTS.map((prompt) => (
-                <button
-                  key={prompt}
-                  type="button"
-                  onClick={() => handleSeedPromptClick(prompt)}
-                  disabled={!seedAgentToLaunch}
-                  className={cn(
-                    "w-full px-3 py-1.5 rounded-[var(--radius-md)] text-xs text-left",
-                    "border border-daintree-border text-daintree-text/80",
-                    "hover:bg-overlay-soft hover:text-daintree-text transition-colors",
-                    "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2",
-                    "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-daintree-text/80"
-                  )}
-                >
-                  {prompt}
-                </button>
-              ))}
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={handleOpenSettings}
+                className="flex items-center gap-1 text-[11px] text-daintree-text/40 hover:text-daintree-text/60 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
+              >
+                <Settings2 className="w-3.5 h-3.5" />
+                Assistant settings
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenAssistantDocs}
+                className="flex items-center gap-1 text-[11px] text-daintree-text/40 hover:text-daintree-text/60 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                Daintree Assistant guide
+              </button>
             </div>
           </div>
         )}
@@ -1900,19 +1966,6 @@ export function HelpPanel({
           </button>
         </div>
       )}
-      {!showTerminal && (
-        <div className="flex items-center justify-end px-3 py-1.5 border-t border-daintree-border shrink-0 text-[11px] text-daintree-text/40">
-          <button
-            type="button"
-            onClick={handleOpenSettings}
-            className="flex items-center gap-1 hover:text-daintree-text/60 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
-          >
-            <Settings2 className="w-3.5 h-3.5" />
-            Assistant settings
-          </button>
-        </div>
-      )}
-
       <ConfirmDialog
         isOpen={showNewSessionConfirm}
         title="Start a new session?"

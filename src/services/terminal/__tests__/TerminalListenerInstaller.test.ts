@@ -162,6 +162,7 @@ function makeDeps(
     onUserInput: vi.fn(),
     onEnterPressed: vi.fn(),
     updateLastObservedTitle: vi.fn(),
+    notifyXtermFocused: vi.fn(),
     ...overrides,
   };
 }
@@ -464,6 +465,60 @@ describe("installTerminalBoundListeners", () => {
     (terminal.getSelection as ReturnType<typeof vi.fn>).mockReturnValue("");
     captured.onSelectionChange!();
     expect(deps.deleteCachedSelection).toHaveBeenCalledWith("t1");
+  });
+
+  it("invokes notifyXtermFocused when a descendant of the host element receives focus", () => {
+    const captured: CapturedCallbacks = { onTitleChangeHandlers: [] };
+    const terminal = makeMockTerminal(captured);
+    const managed = makeMockManaged();
+    const deps = makeDeps();
+
+    managed.terminal = terminal as unknown as ManagedTerminal["terminal"];
+    document.body.appendChild(managed.hostElement);
+    installTerminalBoundListeners(
+      terminal as unknown as Parameters<typeof installTerminalBoundListeners>[0],
+      managed,
+      "t1",
+      deps
+    );
+
+    // Simulate xterm's helper textarea being created during terminal.open() —
+    // a focus event on that descendant must bubble up and trigger the listener.
+    const helperTextarea = document.createElement("textarea");
+    managed.hostElement.appendChild(helperTextarea);
+    helperTextarea.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+
+    expect(deps.notifyXtermFocused).toHaveBeenCalledTimes(1);
+
+    document.body.removeChild(managed.hostElement);
+  });
+
+  it("removes the focusin listener via the cleanup function", () => {
+    const captured: CapturedCallbacks = { onTitleChangeHandlers: [] };
+    const terminal = makeMockTerminal(captured);
+    const managed = makeMockManaged();
+    const deps = makeDeps();
+
+    managed.terminal = terminal as unknown as ManagedTerminal["terminal"];
+    document.body.appendChild(managed.hostElement);
+    installTerminalBoundListeners(
+      terminal as unknown as Parameters<typeof installTerminalBoundListeners>[0],
+      managed,
+      "t1",
+      deps
+    );
+
+    // Run all cleanups (the installer pushes the focusin removal lambda into
+    // managed.listeners alongside everything else).
+    for (const cleanup of managed.listeners) cleanup();
+
+    const helperTextarea = document.createElement("textarea");
+    managed.hostElement.appendChild(helperTextarea);
+    helperTextarea.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+
+    expect(deps.notifyXtermFocused).not.toHaveBeenCalled();
+
+    document.body.removeChild(managed.hostElement);
   });
 
   it("registers the same listener count on every call (idempotent shape)", () => {
