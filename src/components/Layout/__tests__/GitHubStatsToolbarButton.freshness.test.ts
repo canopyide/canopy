@@ -69,6 +69,13 @@ describe("GitHubStatsToolbarButton freshness wiring", () => {
     expect(pillSource).not.toMatch(/\btransition-all\b/);
   });
 
+  it("GitHub stats pills use stable equal-width hit boxes for titlebar no-drag regions", async () => {
+    const pillSource = await fs.readFile(path.resolve(__dirname, "../GitHubStatPill.tsx"), "utf-8");
+    expect(pillSource).toContain("h-full flex-1 justify-center");
+    expect(pillSource).toContain("min-w-[2ch] text-center");
+    expect(source).toContain("w-[13rem] shrink-0");
+  });
+
   it("parent className props do not introduce transition-all", () => {
     expect(source).not.toMatch(/transition-all/);
   });

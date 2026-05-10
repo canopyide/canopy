@@ -2274,9 +2274,14 @@ body[data-performance-mode="true"] .github-status-error {
   cursor: default; /* Forces arrow cursor instead of text beam */
 }
 
-/* Non-draggable interactive elements (Buttons, Inputs) */
-.app-no-drag {
+/* Non-draggable interactive elements (Buttons, Inputs).
+   Descendants opt out too — nested wrappers inside an interactive control
+   would otherwise inherit `drag` from the toolbar parent and re-introduce
+   dead-click zones over the children. */
+.app-no-drag,
+.app-no-drag * {
   -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 /* Safety strip for resizing on Windows frameless windows.

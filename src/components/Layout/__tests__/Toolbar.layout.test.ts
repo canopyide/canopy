@@ -123,8 +123,8 @@ describe("Toolbar layout — issue #2584 project switcher collision", () => {
     });
 
     it("project name span has truncate class", () => {
-      expect(source).toContain("min-w-0 truncate text-xs font-semibold tracking-wide");
-      expect(source).toContain("tracking-wide truncate min-w-0");
+      expect(source).toContain("min-w-0 truncate text-xs tracking-wide text-daintree-text");
+      expect(source).toContain('currentProject ? "font-semibold" : "font-medium"');
     });
 
     it("emoji span has shrink-0 so it is not squeezed before name truncates", () => {
@@ -151,6 +151,38 @@ describe("Toolbar layout — issue #2584 project switcher collision", () => {
 
     it("empty-state button has conditional aria-label for accessibility", () => {
       expect(source).toContain('aria-label={currentProject ? undefined : "Open project"}');
+    });
+  });
+
+  describe("Titlebar drag regions — secondary window project hydration", () => {
+    it("keeps project-scoped toolbar controls in the first-paint button set", () => {
+      expect(source).toContain("PROJECT_SCOPED_TOOLBAR_IDS");
+      expect(source).toContain('"dev-server", "github-stats"');
+      expect(source).not.toContain("isAvailable: !!currentProject");
+    });
+
+    it("renders inert placeholders before a project is available", () => {
+      expect(source).toContain("GitHubStatsPlaceholder");
+      expect(source).toContain("DevServerPlaceholder");
+      expect(source).toContain("data-toolbar-placeholder");
+      expect(source).toContain("!currentProject && PROJECT_SCOPED_TOOLBAR_IDS.has(id)");
+      expect(source).toContain("opacity-0 pointer-events-none");
+    });
+
+    it("reserves the loaded GitHub stats width before counts arrive", () => {
+      expect(source).toContain("w-[13rem] shrink-0");
+      expect(source).toContain('<div className="h-8 flex-1" />');
+    });
+
+    it("marks the whole project switcher grid cell as no-drag", () => {
+      expect(source).toContain(
+        "app-no-drag flex items-center justify-center min-w-0 max-w-full pointer-events-none justify-self-center"
+      );
+    });
+
+    it("does not depend on renderer or main-process drag-region recompute hooks", () => {
+      expect(source).not.toContain("recomputeDragRegions");
+      expect(source).not.toContain("onRecomputeDragRegions");
     });
   });
 });

@@ -77,6 +77,28 @@ const AGENT_TOOLBAR_IDS = new Set<ToolbarButtonId>([
 type OverflowMenuMeta = { label: string; icon: React.ComponentType<{ className?: string }> };
 
 const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text relative";
+// These controls are project-only visually, but their no-drag rectangles must
+// exist on first paint so secondary windows don't cache them as titlebar drag.
+const PROJECT_SCOPED_TOOLBAR_IDS = new Set<AnyToolbarButtonId>(["dev-server", "github-stats"]);
+
+function GitHubStatsPlaceholder() {
+  return (
+    <div className="toolbar-stats app-no-drag relative mr-2 flex h-8 w-[13rem] shrink-0 items-center overflow-hidden rounded-[var(--toolbar-pill-radius,0.5rem)] border divide-x divide-[var(--toolbar-stats-divider,var(--theme-border-subtle))] opacity-0 pointer-events-none">
+      <div className="h-8 flex-1" />
+      <div className="h-8 flex-1" />
+      <div className="h-8 flex-1" />
+    </div>
+  );
+}
+
+function DevServerPlaceholder() {
+  return (
+    <div
+      className={cn(toolbarIconButtonClass, "h-9 w-9 opacity-0 pointer-events-none")}
+      aria-hidden="true"
+    />
+  );
+}
 
 export function PluginToolbarButton({
   pluginId,
@@ -459,44 +481,50 @@ export function Toolbar({
         isAvailable: true,
       },
       "dev-server": {
-        render: () => (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                {...devServerHintHover}
-                variant="ghost"
-                size="icon"
-                data-toolbar-item=""
-                onClick={() =>
-                  actionService.dispatch("devServer.start", undefined, { source: "user" })
-                }
-                className={toolbarIconButtonClass}
-                aria-label="Open Dev Preview"
-              >
-                <MonitorPlay />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {createTooltipContent("Open Dev Preview", devServerShortcut)}
-            </TooltipContent>
-          </Tooltip>
-        ),
-        isAvailable: !!currentProject,
+        render: () =>
+          currentProject ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  {...devServerHintHover}
+                  variant="ghost"
+                  size="icon"
+                  data-toolbar-item=""
+                  onClick={() =>
+                    actionService.dispatch("devServer.start", undefined, { source: "user" })
+                  }
+                  className={toolbarIconButtonClass}
+                  aria-label="Open Dev Preview"
+                >
+                  <MonitorPlay />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {createTooltipContent("Open Dev Preview", devServerShortcut)}
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            <DevServerPlaceholder />
+          ),
+        isAvailable: true,
       },
       "voice-recording": {
         render: () => <VoiceRecordingToolbarButton key="voice-recording" data-toolbar-item="" />,
         isAvailable: hasActiveVoiceRecording,
       },
       "github-stats": {
-        render: () => (
-          <GitHubStatsToolbarButton
-            key="github-stats"
-            ref={githubStatsRef}
-            currentProject={currentProject}
-            data-toolbar-item=""
-          />
-        ),
-        isAvailable: !!currentProject,
+        render: () =>
+          currentProject ? (
+            <GitHubStatsToolbarButton
+              key="github-stats"
+              ref={githubStatsRef}
+              currentProject={currentProject}
+              data-toolbar-item=""
+            />
+          ) : (
+            <GitHubStatsPlaceholder />
+          ),
+        isAvailable: true,
       },
       "notification-center": {
         render: () => (
@@ -641,12 +669,18 @@ export function Toolbar({
   }, [toolbarLayout.rightButtons, pluginButtonIds, hiddenSet]);
 
   const availableLeftIds = useMemo(
-    () => effectiveLeftButtons.filter((id) => buttonRegistry[id]?.isAvailable),
+    () =>
+      effectiveLeftButtons.filter(
+        (id) => buttonRegistry[id]?.isAvailable || PROJECT_SCOPED_TOOLBAR_IDS.has(id)
+      ),
     [effectiveLeftButtons, buttonRegistry]
   );
 
   const availableRightIds = useMemo(
-    () => effectiveRightButtons.filter((id) => buttonRegistry[id]?.isAvailable),
+    () =>
+      effectiveRightButtons.filter(
+        (id) => buttonRegistry[id]?.isAvailable || PROJECT_SCOPED_TOOLBAR_IDS.has(id)
+      ),
     [effectiveRightButtons, buttonRegistry]
   );
 
@@ -686,6 +720,9 @@ export function Toolbar({
             !visibleSet.has(id) && "invisible absolute pointer-events-none"
           )}
           aria-hidden={visibleSet.has(id) ? undefined : true}
+          data-toolbar-placeholder={
+            !currentProject && PROJECT_SCOPED_TOOLBAR_IDS.has(id) ? "true" : undefined
+          }
         >
           {buttonRegistry[id]!.render()}
         </div>
@@ -709,6 +746,9 @@ export function Toolbar({
           data-toolbar-button-id={id}
           className={cn("app-no-drag", !isVisible && "invisible absolute pointer-events-none")}
           aria-hidden={isVisible ? undefined : true}
+          data-toolbar-placeholder={
+            !currentProject && PROJECT_SCOPED_TOOLBAR_IDS.has(id) ? "true" : undefined
+          }
         >
           {buttonRegistry[id]!.render()}
         </div>
@@ -953,7 +993,7 @@ export function Toolbar({
         <div
           role="group"
           aria-label="Project"
-          className="flex items-center justify-center min-w-0 max-w-full pointer-events-none justify-self-center"
+          className="app-no-drag flex items-center justify-center min-w-0 max-w-full pointer-events-none justify-self-center"
         >
           <ProjectSwitcherPalette
             mode="dropdown"
@@ -997,33 +1037,33 @@ export function Toolbar({
               aria-label={currentProject ? undefined : "Open project"}
               onClick={() => projectSwitcher.open("dropdown")}
             >
-              {currentProject ? (
-                <>
-                  <span className="text-base leading-none shrink-0" aria-label="Project emoji">
-                    {currentProject.emoji}
-                  </span>
-                  <span className="min-w-0 truncate text-xs font-semibold tracking-wide text-daintree-text">
-                    {currentProject.name}
-                  </span>
-                  {branchName && (
-                    <span
-                      className="toolbar-project-chip shrink-0 inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 font-mono tabular-nums"
-                      aria-label={`Current branch ${branchName}`}
-                    >
-                      <GitBranch className="toolbar-project-chip-icon h-3 w-3 shrink-0" />
-                      <span className="toolbar-project-chip-label">{branchName}</span>
-                    </span>
-                  )}
-                  <ChevronsUpDown className="toolbar-project-meta ml-0.5 h-3 w-3 shrink-0" />
-                </>
-              ) : (
-                <>
-                  <span className="text-xs font-medium text-daintree-text tracking-wide truncate min-w-0">
-                    Open project
-                  </span>
-                  <ChevronsUpDown className="toolbar-project-meta ml-0.5 h-3 w-3 shrink-0" />
-                </>
-              )}
+              <span
+                className={cn("text-base leading-none shrink-0", !currentProject && "opacity-0")}
+                aria-label={currentProject ? "Project emoji" : undefined}
+                aria-hidden={currentProject ? undefined : true}
+              >
+                {currentProject?.emoji ?? "•"}
+              </span>
+              <span
+                className={cn(
+                  "min-w-0 truncate text-xs tracking-wide text-daintree-text",
+                  currentProject ? "font-semibold" : "font-medium"
+                )}
+              >
+                {currentProject?.name ?? "Open project"}
+              </span>
+              <span
+                className={cn(
+                  "toolbar-project-chip shrink-0 inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 font-mono tabular-nums",
+                  !branchName && "opacity-0"
+                )}
+                aria-label={branchName ? `Current branch ${branchName}` : undefined}
+                aria-hidden={branchName ? undefined : true}
+              >
+                <GitBranch className="toolbar-project-chip-icon h-3 w-3 shrink-0" />
+                <span className="toolbar-project-chip-label">{branchName ?? "main"}</span>
+              </span>
+              <ChevronsUpDown className="toolbar-project-meta ml-0.5 h-3 w-3 shrink-0" />
             </button>
           </ProjectSwitcherPalette>
         </div>
