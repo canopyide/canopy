@@ -4,7 +4,17 @@ import { existsSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const VALID_PROJECTS = new Set(["core", "full", "online", "nightly"]);
+const VALID_PROJECTS = new Set([
+  "core",
+  "full-terminal",
+  "full-worktree",
+  "full-presets",
+  "full-platform",
+  "full-panels",
+  "full-resilience",
+  "online",
+  "nightly",
+]);
 const MAX_WORKERS = 8;
 const MAX_RETRIES = 5;
 
@@ -71,7 +81,11 @@ if (!VALID_PROJECTS.has(project)) {
 }
 
 const testFiles = normalizeSpecPaths(process.env.E2E_TEST_FILE);
-const expectedPrefix = `e2e/${project}/`;
+// `full-<bucket>` projects live in e2e/full/<bucket>/ subdirectories; everything
+// else lives in a top-level e2e/<project>/ directory.
+const expectedPrefix = project.startsWith("full-")
+  ? `e2e/full/${project.slice("full-".length)}/`
+  : `e2e/${project}/`;
 for (const testFile of testFiles) {
   if (!testFile.startsWith(expectedPrefix)) {
     fail(`Project '${project}' can only run specs under ${expectedPrefix}`);

@@ -36,11 +36,19 @@ npm run rebuild      # Rebuild native modules
 ### CI Testing Strategy
 
 - **PRs / pushes:** Typecheck, lint, format, unit tests, and build on **Ubuntu only** (smoke on push only; no E2E, no budgets). `ci-ok` gate job is the sole required status check.
-- **Nightly (2 AM UTC):** Full cross-platform CI on all 3 OSes: check + test + build + smoke + E2E full + E2E online + E2E nightly. Auto-creates GitHub issue on failure (`nightly-failure` label).
-- **Releases:** E2E core and E2E online gate the release publish on macOS + Linux. Windows E2E is nightly-only.
-- **E2E tiers:** `e2e/core/` (13 tests — gates releases), `e2e/full/` (61 tests — nightly), `e2e/online/` (2 agent integration tests — gates releases), `e2e/nightly/` (memory leak detection).
-- **Single-file E2E:** `gh workflow run "E2E Core Tests" --ref develop -f platform=linux -f test_file=e2e/core/core-foo.spec.ts` — use this when fixing a specific flaky test instead of re-running the full suite.
-- **Local E2E before push:** When adding a new E2E test or modifying a feature that has an existing E2E test, run that specific test locally and confirm it passes before pushing. Use `npx playwright test e2e/core/core-foo.spec.ts` to run a single test file.
+- **Nightly (2 AM UTC):** Full cross-platform CI on all 3 OSes (macOS + Linux + **Windows**): check + test + build + smoke + E2E core + every `full-*` bucket + E2E online + E2E nightly. Auto-creates GitHub issue on failure (`nightly-failure` label).
+- **Releases:** E2E core, all six `full-*` buckets (in parallel), and E2E online gate the release publish on **macOS + Linux only**. Windows E2E is nightly-only.
+- **E2E tiers:** `e2e/core/` smoke gates releases. The `full` tier is split into six domain buckets, each its own Playwright project: `full-terminal`, `full-worktree`, `full-presets`, `full-platform`, `full-panels`, `full-resilience`. Specs live in `e2e/full/<bucket>/*.spec.ts`. `e2e/online/` runs 3 agent-integration tests against real model APIs (gates releases). `e2e/nightly/` runs memory-leak detection (nightly only).
+- **Bucket boundaries:**
+  - `full-terminal` — PTY mechanics, scrollback, search, layout, recipes, output flood, context injection, fleet broadcast.
+  - `full-worktree` — worktree lifecycle, project switching, git detection, cross-project flows.
+  - `full-presets` — agent presets, recipes, onboarding, CCR.
+  - `full-platform` — settings, persistence, a11y, keyboard, OS-shell surfaces, oauth, security.
+  - `full-panels` — browser, dev-preview, portal, review hub, file viewer, drag-drop, action palette, toolbar chrome.
+  - `full-resilience` — errors, IPC, crashes, races, perf budgets, diagnostics.
+- **Unified E2E runner:** `.github/workflows/e2e.yml` is the single workflow that runs every suite. It accepts `suite` (the chosen Playwright project) and `test_file` (optional single-spec path). Valid `suite` values: `full` (meta — all six buckets sequentially on one runner; the workflow_dispatch default), `core`, `full-terminal`, `full-worktree`, `full-presets`, `full-platform`, `full-panels`, `full-resilience`, `online`, `nightly`.
+- **Single-file E2E:** `gh workflow run "E2E Tests" --ref develop -f platform=linux -f suite=full-terminal -f test_file=e2e/full/terminal/core-terminal-search.spec.ts` — use this when fixing a specific flaky test. Pass the bucket whose `testDir` contains the file as `suite`, and the spec path as `test_file`.
+- **Local E2E before push:** When adding a new E2E test or modifying a feature that has an existing E2E test, run that specific test (or its bucket) locally before pushing. Use `npx playwright test e2e/full/terminal/core-terminal-search.spec.ts` for a single file, or `npm run test:e2e:full-terminal` for the bucket.
 
 ## Architecture
 
