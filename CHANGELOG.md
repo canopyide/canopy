@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.9.1] - 2026-05-10
+
+Same-day follow-up to 0.9.0. Polish on the Daintree Assistant pip and help panel, GitHub bulk-selection cleanup, and several PTY/terminal robustness fixes.
+
+### Features
+
+- **Assistant working/waiting state** — Toolbar pip and panel header now reflect live agent state (working / waiting), not just connected/idle (#7630)
+- **Help-panel first-launch links** — Replaced seed-prompt chips with assistant-settings and docs links; added title-bar help icon (#7628)
+- **Mark-as-read on assistant pip** — Pip dims after the assistant button is opened, no longer nags after the agent has been seen
+- **Promoted assistant action surface** — Terminal and agent operations are now first-class actions in the help-prompt restructure
+
+### Bug Fixes
+
+**Daintree Assistant / Toolbar**
+
+- Fixed assistant pip positioning (icon now wrapped in a relative container)
+- Reduced assistant button pip size and ring weight to stop it dominating the toolbar
+
+**GitHub bulk selection** (#7644, #7645)
+
+- Clear selection on dropdown/dialog dismissal; preserve across re-open within the same project; clear on project switch
+- Disabled pointer events on the bulk-action bar's exit animation so the X button no longer feels dead
+- Guarded `isOpen`-effect cleanup against double-fire
+
+**Layout / drag** (#7627)
+
+- Suppressed width transition during sidebar/assistant drag; restored parent transition if the sidebar unmounts mid-drag
+
+**PTY / Terminal**
+
+- Released pause token if the commit-side throws, preventing a backpressure leak (#7641)
+- Raised IPC queue cap from 512 KB to 3 MB for agent bursts (Claude in particular) (#7640)
+- Unified broadcast and scroll pills so they no longer overlap (#7636)
+- Flipped fleet drafting-pill popover alignment to `start` for bottom-left anchors
+
+### Other Changes
+
+- CI: Manual workflow dispatch now supports Windows
+- Refactor: replaced `hybridInputAutoFocus` with a session-wide focus preference
+- E2E: stabilized full-terminal suite against palette overlay races
+
+---
+
 ## [0.9.0] - 2026-05-09
 
 ### Features
