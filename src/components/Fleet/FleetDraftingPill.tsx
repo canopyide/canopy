@@ -58,7 +58,7 @@ export function FleetDraftingPill(): ReactElement | null {
         </PopoverTrigger>
         <PopoverContent
           side="bottom"
-          align="end"
+          align="start"
           sideOffset={4}
           data-testid="fleet-resolution-popover"
           className="max-h-[320px] w-[360px] overflow-y-auto p-1"
