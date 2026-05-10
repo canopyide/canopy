@@ -123,7 +123,7 @@ export const ToolbarAssistantButton = memo(function ToolbarAssistantButton({
             <span
               aria-hidden="true"
               className={cn(
-                "absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full ring-2 ring-daintree-bg",
+                "absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full ring-1 ring-daintree-bg",
                 pip.className,
                 pip.delayed && "animate-pulse-delayed"
               )}
@@ -135,7 +135,7 @@ export const ToolbarAssistantButton = memo(function ToolbarAssistantButton({
                 data-testid="assistant-working-pip"
                 data-agent-state={agentState ?? ""}
                 className={cn(
-                  "absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full ring-2 ring-daintree-bg",
+                  "absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full ring-1 ring-daintree-bg",
                   agentPip!.className
                 )}
               />
