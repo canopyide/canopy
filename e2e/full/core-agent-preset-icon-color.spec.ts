@@ -146,11 +146,6 @@ function fakeAgentCommand(agentId: "claude" | "codex"): string {
 }
 
 function manualFakeAgentCommand(agentId: "claude" | "codex"): string {
-  if (process.platform === "win32") {
-    return `& ${powershellQuote(process.execPath)} ${powershellQuote(
-      path.join(fakeBinDir, agentId)
-    )} --manual`;
-  }
   return `${fakeAgentCommand(agentId)} --manual`;
 }
 
