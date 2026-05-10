@@ -128,6 +128,13 @@ interface GitHubResourceListProps {
    * for the next 30s stats poll.
    */
   onFreshFetch?: () => void;
+  /**
+   * Tracks the parent popover's open state. The list is `keepMounted`, so
+   * outside-click / Escape / toolbar-toggle dismissals never trigger a
+   * close handler inside this tree — watching this prop transition true→false
+   * lets the list run its dismissal cleanup (clear bulk selection).
+   */
+  isOpen?: boolean;
 }
 
 export function GitHubResourceList({
@@ -136,6 +143,7 @@ export function GitHubResourceList({
   onClose,
   initialCount,
   onFreshFetch,
+  isOpen,
 }: GitHubResourceListProps) {
   const searchQuery = useGitHubFilterStore((s) =>
     type === "issue" ? s.issueSearchQuery : s.prSearchQuery
@@ -312,6 +320,17 @@ export function GitHubResourceList({
     onClose?.();
   }, [onClose, selection]);
 
+  const prevIsOpenRef = useRef<boolean | undefined>(undefined);
+  useEffect(() => {
+    // Popover is keepMounted, so outside-click / Escape / toolbar-toggle never
+    // call onClose. Watch the parent's open state and run dismissal cleanup
+    // (selection clear, cache reset) on a true→false transition.
+    if (prevIsOpenRef.current === true && isOpen === false) {
+      handleClose();
+    }
+    prevIsOpenRef.current = isOpen;
+  }, [isOpen, handleClose]);
+
   const handleOpenInGitHub = () => {
     const query = searchQuery.trim() || undefined;
     const state = filterState as string;
@@ -470,8 +489,8 @@ export function GitHubResourceList({
       { tab: "github", sectionId: "github-token" },
       { source: "user" }
     );
-    onClose?.();
-  }, [onClose]);
+    handleClose();
+  }, [handleClose]);
 
   const footerContext = useMemo<LoadMoreFooterContext>(
     () => ({
@@ -1024,6 +1043,7 @@ export function GitHubResourceList({
                 .filter((pr): pr is GitHubPR => pr !== undefined)
             : []
         }
+        selectedCount={selection.selectedIds.size}
         onClear={selection.clear}
         onCloseDropdown={onClose}
       />

@@ -1325,18 +1325,25 @@ describe("BulkCreateWorktreeDialog", () => {
     expect(storedOnComplete).toHaveBeenCalledTimes(1);
   });
 
-  it("does not invoke stored bulkCreateDialog.onComplete when dialog is cancelled", async () => {
+  it("invokes stored bulkCreateDialog.onComplete when dialog is cancelled (issue #7644)", async () => {
     const storedOnComplete = vi.fn();
     mockBulkCreateDialog.onComplete = storedOnComplete;
+    // Mirrors closeBulkCreateDialog: onClose zeroes the stored callback as part
+    // of its reset. handleClose must capture the stored callback BEFORE calling
+    // onClose, otherwise the dismissal path leaks selection state across opens.
+    const propOnClose = vi.fn(() => {
+      mockBulkCreateDialog.onComplete = undefined;
+    });
 
-    render(<BulkCreateWorktreeDialog {...defaultProps} />);
+    render(<BulkCreateWorktreeDialog {...defaultProps} onClose={propOnClose} />);
 
-    // Cancel from idle state via Cancel button (handleClose path)
+    // Cancel from idle state via Cancel button (handleClose path).
     await act(async () => {
       screen.getByText("Cancel").click();
     });
 
-    expect(storedOnComplete).not.toHaveBeenCalled();
+    expect(storedOnComplete).toHaveBeenCalledTimes(1);
+    expect(propOnClose).toHaveBeenCalledTimes(1);
   });
 
   it("clone layout generates command for agent panels and preserves plain terminal commands", async () => {
