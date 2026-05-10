@@ -361,6 +361,26 @@ describe("PortQueueManager", () => {
     expect(coordinator.resume).toHaveBeenCalledWith("port-queue-7");
   });
 
+  it("custom pauseToken is released when emitReliabilityMetric throws (#7641)", () => {
+    // Cover the second post-pause throw site too, so a future cleanup-path
+    // change that hardcoded "port-queue" would be caught regardless of which
+    // dep threw.
+    const deps = createMockDeps();
+    vi.mocked(deps.emitReliabilityMetric).mockImplementationOnce(() => {
+      throw new Error("DataCloneError");
+    });
+    const mgr = new PortQueueManager({ ...deps, pauseToken: "port-queue-12" });
+    const coordinator = deps.getPauseCoordinator("t1")!;
+
+    const highWatermark = (IPC_MAX_QUEUE_BYTES * IPC_HIGH_WATERMARK_PERCENT) / 100;
+    mgr.addBytes("t1", highWatermark + 1);
+
+    mgr.applyBackpressure("t1", mgr.getUtilization("t1"));
+
+    expect(coordinator.pause).toHaveBeenCalledWith("port-queue-12");
+    expect(coordinator.resume).toHaveBeenCalledWith("port-queue-12");
+  });
+
   describe("aggregate byte tracking", () => {
     it("tracks total queued bytes across multiple terminals", () => {
       const deps = createMockDeps();
