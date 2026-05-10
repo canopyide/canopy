@@ -553,7 +553,7 @@ export async function handleDirectoryOpen(
     // Use ProjectViewManager for multi-view switching when available
     const pvm = getProjectViewManager();
     if (pvm) {
-      const { view } = await pvm.switchTo(project.id, project.path);
+      const { view, isNew } = await pvm.switchTo(project.id, project.path);
       await projectStore.setCurrentProject(project.id);
 
       // Re-attach producer ports for cached-view reactivation. The IPC switch
@@ -584,7 +584,7 @@ export async function handleDirectoryOpen(
           ptyClient.onProjectSwitch(targetWindow.id, project.id, project.path);
         }
         const ctx = getWindowRegistry()?.getByWindowId(targetWindow.id);
-        if (ctx) {
+        if (!isNew && ctx) {
           distributePortsToView(targetWindow, ctx, view.webContents, ptyClient ?? null);
         }
       }

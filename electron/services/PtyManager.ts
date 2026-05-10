@@ -239,7 +239,7 @@ export class PtyManager extends EventEmitter {
         );
       }
     );
-    const { ptyProcess, prelude } = acquired;
+    const { ptyProcess, prelude, dataHandoff } = acquired;
 
     let terminalProcess: TerminalProcess;
     try {
@@ -267,10 +267,16 @@ export class PtyManager extends EventEmitter {
         },
         spawnContext,
         ptyProcess,
-        prelude
+        prelude,
+        dataHandoff
       );
     } catch (error) {
       logError(`TerminalProcess constructor failed for ${id}, killing orphaned PTY`, error);
+      try {
+        dataHandoff?.dispose();
+      } catch {
+        // Ignore disposal errors
+      }
       try {
         ptyProcess.kill();
       } catch {

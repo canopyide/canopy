@@ -227,9 +227,13 @@ async function activateProjectView(
       deps.ptyClient.onProjectSwitch(windowId, projectId, project.path);
     }
 
-    // Distribute PTY MessagePort to the switched-to view
+    // Cold-started views receive their first PTY MessagePort from
+    // ProjectViewManager.onViewReady during did-finish-load. Replacing that
+    // port again here can race with the first terminal prompt after the view
+    // becomes interactive. Cached reactivations do not reload, so they still
+    // need a fresh port here.
     const win = senderWindow ?? deps.mainWindow;
-    if (win && deps.windowRegistry && !view.webContents.isDestroyed()) {
+    if (!isNew && win && deps.windowRegistry && !view.webContents.isDestroyed()) {
       const ctx = deps.windowRegistry.getByWindowId(win.id);
       if (ctx) {
         distributePortsToView(win, ctx, view.webContents, deps.ptyClient ?? null);

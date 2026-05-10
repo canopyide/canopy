@@ -134,6 +134,12 @@ if (typeof window !== "undefined") {
       logDebug("[TerminalClient] MessagePort acquired via postMessage");
     }
   });
+
+  try {
+    window.postMessage({ type: "terminal-port-ready" }, window.location.origin);
+  } catch {
+    // Non-fatal: IPC/SAB fallbacks still work if the ready handshake cannot be posted.
+  }
 }
 
 export const terminalClient = {

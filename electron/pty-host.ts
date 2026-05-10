@@ -226,7 +226,14 @@ function disconnectWindow(windowId: number, reason: string): void {
   }
 
   rendererConnections.delete(windowId);
-  windowProjectMap.delete(windowId);
+  // Keep the active project mapping across transient renderer-port failures.
+  // Without it, a multi-view window whose MessagePort just failed falls back
+  // to the single-consumer SAB path and another cached view can consume/drop
+  // the active terminal's bytes. Explicit window teardown is the only case
+  // that should forget the project context.
+  if (reason === "explicit-disconnect") {
+    windowProjectMap.delete(windowId);
+  }
   recomputeActivityTiers();
   console.log(`[PtyHost] Window ${windowId} disconnected (${reason})`);
 }
@@ -317,7 +324,17 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
   // PRIORITY 2: SHARED ARRAY BUFFER (Zero-Copy Fallback)
   // Used when no MessagePort renderer connections are available (e.g., during startup before
   // port handshake completes). SAB is single-consumer — safe only when one view is reading.
-  if (!visualWritten && !isSuspended && !isBackgrounded && visualBuffers.length > 0) {
+  // SAB has one shared read pointer, so it is only safe before the app enters
+  // project-view routing. Once a window has an active project context, an
+  // unavailable MessagePort must fall through to IPC rather than the SAB.
+  const sabFallbackSafe = windowProjectMap.size === 0;
+  if (
+    !visualWritten &&
+    !isSuspended &&
+    !isBackgrounded &&
+    visualBuffers.length > 0 &&
+    sabFallbackSafe
+  ) {
     const shardIndex = selectShard(id, visualBuffers.length);
     const shard = visualBuffers[shardIndex];
 

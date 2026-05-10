@@ -3,11 +3,39 @@ import { expect } from "@playwright/test";
 import { SEL } from "./selectors";
 import { T_SHORT } from "./timeouts";
 
+type TerminalBridge = {
+  getInfo?: (terminalId: string) => Promise<{ hasPty?: boolean } | null | undefined>;
+  setActivityTier?: (terminalId: string, tier: "active" | "background") => void;
+  wake?: (terminalId: string) => Promise<{ state: string | null; warnings?: string[] }>;
+  write?: (terminalId: string, data: string) => void;
+  submit?: (terminalId: string, text: string) => Promise<void>;
+};
+
+const WINDOWS_COMMAND_ECHO_TIMEOUT_MS = 7_500;
+const WINDOWS_COMMAND_ECHO_RETRIES = 2;
+const WINDOWS_COMMAND_ECHO_MAX_CHARS = 80;
+const WINDOWS_COMMAND_SUBMIT_SETTLE_MS = 1_000;
+
 async function getPanelId(panelLocator: Locator): Promise<string> {
   return panelLocator.evaluate((el) => {
     const panel = el.closest("[data-panel-id]");
     return panel?.getAttribute("data-panel-id") ?? "";
   });
+}
+
+function compactTerminalText(text: string): string {
+  return text.replace(/\r?\n/g, "");
+}
+
+function splitCommandForSubmit(command: string): { body: string; enterSuffix: string } {
+  let body = command.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  let enterCount = 0;
+  while (body.endsWith("\n")) {
+    body = body.slice(0, -1);
+    enterCount++;
+  }
+  if (enterCount === 0) enterCount = 1;
+  return { body, enterSuffix: "\r".repeat(enterCount) };
 }
 
 export async function getTerminalText(panelLocator: Locator): Promise<string> {
@@ -39,25 +67,187 @@ export async function waitForTerminalText(
     .toContain(text);
 }
 
+export async function waitForTerminalPty(
+  page: Page,
+  panelLocator: Locator,
+  timeout = 10_000
+): Promise<void> {
+  const panelId = await getPanelId(panelLocator);
+  if (!panelId) throw new Error("Could not resolve panel ID for terminal PTY");
+
+  await expect
+    .poll(
+      () =>
+        page.evaluate(async (id) => {
+          const api = (
+            window as unknown as {
+              electron?: { terminal?: TerminalBridge };
+            }
+          ).electron?.terminal;
+          if (typeof api?.getInfo !== "function") return false;
+          try {
+            const info = await api.getInfo(id);
+            return info?.hasPty === true;
+          } catch {
+            return false;
+          }
+        }, panelId),
+      { timeout, intervals: [100, 250, 500] }
+    )
+    .toBe(true);
+}
+
+export async function waitForTerminalReady(
+  page: Page,
+  panelLocator: Locator,
+  timeout = 10_000
+): Promise<void> {
+  await waitForTerminalPty(page, panelLocator, timeout);
+
+  await expect
+    .poll(
+      async () => {
+        const text = await getTerminalText(panelLocator);
+        return text.trim().length > 0;
+      },
+      { timeout, intervals: [100, 250, 500] }
+    )
+    .toBe(true);
+}
+
+async function activateTerminal(page: Page, panelId: string): Promise<void> {
+  await page.evaluate(async (id) => {
+    const api = (
+      window as unknown as {
+        electron?: { terminal?: TerminalBridge };
+      }
+    ).electron?.terminal;
+
+    if (typeof api?.wake === "function") {
+      await api.wake(id);
+      return;
+    }
+
+    api?.setActivityTier?.(id, "active");
+  }, panelId);
+}
+
+export async function writeTerminalInput(
+  page: Page,
+  panelLocator: Locator,
+  data: string
+): Promise<void> {
+  const panelId = await getPanelId(panelLocator);
+  if (!panelId) throw new Error("Could not resolve panel ID for terminal input");
+
+  await waitForTerminalPty(page, panelLocator);
+  await activateTerminal(page, panelId);
+
+  const wrote = await page.evaluate(
+    ({ id, input }) => {
+      const api = (
+        window as unknown as {
+          electron?: { terminal?: TerminalBridge };
+        }
+      ).electron?.terminal;
+      if (typeof api?.write !== "function") return false;
+      api.write(id, input);
+      return true;
+    },
+    { id: panelId, input: data }
+  );
+
+  if (!wrote) throw new Error(`terminal.write bridge unavailable for panel ${panelId}`);
+}
+
+async function runWindowsEchoGuardedCommand(
+  page: Page,
+  panelLocator: Locator,
+  command: string
+): Promise<boolean> {
+  if (process.platform !== "win32") return false;
+
+  const { body, enterSuffix } = splitCommandForSubmit(command);
+  if (
+    body.length === 0 ||
+    body.length > WINDOWS_COMMAND_ECHO_MAX_CHARS ||
+    body.includes("\n") ||
+    body.startsWith("/")
+  ) {
+    return false;
+  }
+
+  for (let attempt = 1; attempt <= WINDOWS_COMMAND_ECHO_RETRIES; attempt++) {
+    await writeTerminalInput(page, panelLocator, body);
+
+    try {
+      await expect
+        .poll(
+          async () => {
+            const text = await getTerminalText(panelLocator);
+            return compactTerminalText(text);
+          },
+          {
+            timeout: WINDOWS_COMMAND_ECHO_TIMEOUT_MS,
+            intervals: [100, 250, 500],
+          }
+        )
+        .toContain(compactTerminalText(body));
+
+      await writeTerminalInput(page, panelLocator, enterSuffix);
+      await page.waitForTimeout(WINDOWS_COMMAND_SUBMIT_SETTLE_MS);
+      return true;
+    } catch {
+      if (attempt < WINDOWS_COMMAND_ECHO_RETRIES) {
+        await writeTerminalInput(page, panelLocator, "\u0003");
+        await page.waitForTimeout(250);
+      }
+    }
+  }
+
+  await writeTerminalInput(page, panelLocator, "\u0003");
+  await page.waitForTimeout(250);
+  return false;
+}
+
 export async function runTerminalCommand(
   page: Page,
   panelLocator: Locator,
   command: string
 ): Promise<void> {
-  const xterm = panelLocator.locator(SEL.terminal.xtermRows);
-  await xterm.click();
-  // Wait for xterm's helper textarea to receive focus before typing —
-  // typing too early can drop the leading characters of the command.
-  await expect(panelLocator.locator(SEL.terminal.xtermHelperTextarea)).toBeFocused({
-    timeout: 5_000,
-  });
-  // Small settle delay so xterm's internal data handler is wired before we
-  // type. Without this, the renderer can swallow leading characters on the
-  // first click into a freshly opened terminal.
-  await page.waitForTimeout(150);
-  // Type with a small per-key delay; PTY can drop bursts on cold-start.
-  await page.keyboard.type(command, { delay: 15 });
-  await page.keyboard.press("Enter");
+  await expect(panelLocator).toBeVisible({ timeout: 5_000 });
+  const panelId = await getPanelId(panelLocator);
+  if (!panelId) throw new Error("Could not resolve panel ID for terminal command");
+
+  await waitForTerminalReady(page, panelLocator);
+  await activateTerminal(page, panelId);
+
+  if (await runWindowsEchoGuardedCommand(page, panelLocator, command)) {
+    return;
+  }
+
+  const payload = command.endsWith("\n") ? command : `${command}\n`;
+  const submitted = await page.evaluate(
+    async ({ id, input }) => {
+      const api = (
+        window as unknown as {
+          electron?: { terminal?: TerminalBridge };
+        }
+      ).electron?.terminal;
+      if (typeof api?.submit !== "function") return false;
+      await api.submit(id, input);
+      return true;
+    },
+    { id: panelId, input: payload }
+  );
+
+  if (!submitted) {
+    await writeTerminalInput(page, panelLocator, `${command}\r`);
+  }
+
+  if (process.platform === "win32") {
+    await page.waitForTimeout(WINDOWS_COMMAND_SUBMIT_SETTLE_MS);
+  }
 }
 
 export async function getTerminalBufferLength(panelLocator: Locator): Promise<number> {

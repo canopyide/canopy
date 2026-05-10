@@ -8,6 +8,7 @@ import { runTerminalCommand, waitForTerminalText } from "../helpers/terminal";
 import { SEL } from "../helpers/selectors";
 import { T_SHORT, T_MEDIUM, T_LONG } from "../helpers/timeouts";
 import { ensureWindowFocused } from "../helpers/focus";
+import { dismissBlockingPalette } from "../helpers/overlays";
 
 let ctx: AppContext;
 let mainBranch: string;
@@ -47,6 +48,7 @@ test.describe.serial("Core: Worktree Lifecycle", () => {
     const { window } = ctx;
 
     await test.step("Open create-worktree dialog and fill branch name", async () => {
+      await dismissBlockingPalette(window);
       const newBtn = window.locator('button[aria-label="Create new worktree"]');
       await newBtn.click();
 
@@ -73,6 +75,7 @@ test.describe.serial("Core: Worktree Lifecycle", () => {
     });
 
     await test.step("Submit create form and verify the new worktree card appears", async () => {
+      await dismissBlockingPalette(window);
       const createBtn = window.locator(SEL.worktree.createButton);
       await createBtn.click();
 

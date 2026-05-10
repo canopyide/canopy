@@ -1,11 +1,45 @@
 import { test, expect } from "@playwright/test";
 import type { ElectronApplication, Locator, Page } from "@playwright/test";
-import { mockOpenDialog, refreshActiveWindow } from "./launch";
+import path from "path";
+import { mockOpenDialog, refreshActiveWindow, waitForActiveProject } from "./launch";
 import { dismissTelemetryConsent } from "./project";
-import { waitForTerminalText } from "./terminal";
+import { waitForTerminalReady, waitForTerminalText } from "./terminal";
 import { getGridPanelCount, openTerminal } from "./panels";
 import { SEL } from "./selectors";
 import { T_SHORT, T_MEDIUM, T_LONG } from "./timeouts";
+
+export async function openProjectSwitcherPalette(window: Page): Promise<Locator> {
+  const trigger = window.locator(SEL.toolbar.projectSwitcherTrigger);
+  await expect(trigger).toBeVisible({ timeout: T_MEDIUM });
+  const palette = window.locator(SEL.projectSwitcher.palette);
+
+  let opened = false;
+  for (let attempt = 0; attempt < 3 && !opened; attempt++) {
+    await trigger.click({ force: true });
+    try {
+      await expect(palette).toBeVisible({ timeout: T_SHORT });
+      opened = true;
+    } catch {
+      await window.waitForTimeout(250);
+    }
+  }
+  if (!opened) {
+    await trigger.click({ force: true });
+    await expect(palette).toBeVisible({ timeout: T_MEDIUM });
+  }
+
+  return palette;
+}
+
+async function dismissProjectSwitcherPalette(window: Page): Promise<void> {
+  const palette = window.locator(SEL.projectSwitcher.palette);
+  if (!(await palette.isVisible({ timeout: 500 }).catch(() => false))) return;
+
+  await window.keyboard.press("Escape").catch(() => undefined);
+  await expect(palette)
+    .not.toBeVisible({ timeout: 1_000 })
+    .catch(() => undefined);
+}
 
 export async function addAndSwitchToProject(
   app: ElectronApplication,
@@ -18,9 +52,7 @@ export async function addAndSwitchToProject(
     async () => {
       await mockOpenDialog(app, projectPath);
 
-      await window.locator(SEL.toolbar.projectSwitcherTrigger).click();
-      const palette = window.locator(SEL.projectSwitcher.palette);
-      await expect(palette).toBeVisible({ timeout: T_MEDIUM });
+      await openProjectSwitcherPalette(window);
 
       const addBtn = window.locator(SEL.projectSwitcher.addButton);
       await expect(addBtn).toBeVisible({ timeout: T_SHORT });
@@ -28,7 +60,12 @@ export async function addAndSwitchToProject(
     },
     { box: true }
   );
-  const newWindow = await refreshActiveWindow(app, window);
+  const newWindow = await waitForActiveProject(
+    app,
+    await refreshActiveWindow(app, window),
+    path.basename(projectPath)
+  );
+  await dismissProjectSwitcherPalette(newWindow);
   await dismissTelemetryConsent(newWindow);
   return newWindow;
 }
@@ -58,37 +95,39 @@ export async function selectExistingProject(window: Page, projectName: string): 
       // visible but the popover state callback is a no-op until the next
       // microtask. Retry the click + visibility check up to 3 times so a
       // single dropped click doesn't fail the spec.
-      const trigger = window.locator(SEL.toolbar.projectSwitcherTrigger);
-      await expect(trigger).toBeVisible({ timeout: T_MEDIUM });
-      const palette = window.locator(SEL.projectSwitcher.palette);
-      let opened = false;
-      for (let attempt = 0; attempt < 3 && !opened; attempt++) {
-        await trigger.click({ force: true });
-        try {
-          await expect(palette).toBeVisible({ timeout: T_SHORT });
-          opened = true;
-        } catch {
-          // Click was likely dropped pre-hydration; settle and retry.
-          await window.waitForTimeout(250);
-        }
-      }
-      if (!opened) {
-        // Final attempt — let it surface the real error if it still fails.
-        await trigger.click({ force: true });
-        await expect(palette).toBeVisible({ timeout: T_MEDIUM });
-      }
+      const palette = await openProjectSwitcherPalette(window);
 
       // Substring match — createFixtureRepo produces directories like
       // daintree-e2e-${name}-XXXXXX and projectClient.add() derives the
-      // displayed name from path.basename, so callers pass the stem.
-      await palette.getByText(projectName, { exact: false }).first().click();
+      // displayed name from path.basename, so callers pass the stem. The
+      // options can re-render while the active view swaps, so use the option
+      // row and retry a forced click if the first target detaches mid-action.
+      let selected = false;
+      for (let attempt = 0; attempt < 3 && !selected; attempt++) {
+        const option = palette.getByRole("option").filter({ hasText: projectName }).first();
+        await expect(option).toBeVisible({ timeout: T_MEDIUM });
+        try {
+          await option.click({ force: true, noWaitAfter: true, timeout: T_SHORT });
+          selected = true;
+        } catch {
+          if (!(await palette.isVisible().catch(() => false))) {
+            selected = true;
+            break;
+          }
+          await window.waitForTimeout(250);
+        }
+      }
+      if (!selected) {
+        const option = palette.getByRole("option").filter({ hasText: projectName }).first();
+        await option.click({ force: true, noWaitAfter: true, timeout: T_MEDIUM });
+      }
       // After WebContentsView migration the palette is rendered in the
       // outgoing project's view, which is hidden (not destroyed) once the
       // switch lands — so the close-after-click assertion can race with the
       // view swap. Best-effort wait, but don't fail if the prior view never
       // gets a chance to close the palette in its own React tree.
       await expect(palette)
-        .not.toBeVisible({ timeout: T_MEDIUM })
+        .not.toBeVisible({ timeout: 1_000 })
         .catch(() => undefined);
     },
     { box: true }
@@ -107,8 +146,22 @@ export async function selectExistingProjectAndRefresh(
   window: Page,
   projectName: string
 ): Promise<Page> {
-  await selectExistingProject(window, projectName);
-  return await refreshActiveWindow(app, window);
+  let current = window;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await selectExistingProject(current, projectName);
+    const refreshed = await refreshActiveWindow(app, current);
+    try {
+      const target = await waitForActiveProject(app, refreshed, projectName, 2_000);
+      await dismissProjectSwitcherPalette(target);
+      return target;
+    } catch {
+      current = refreshed;
+      await current.waitForTimeout(250);
+    }
+  }
+  const target = await waitForActiveProject(app, current, projectName, T_LONG);
+  await dismissProjectSwitcherPalette(target);
+  return target;
 }
 
 export async function spawnTerminalAndVerify(
@@ -125,6 +178,7 @@ export async function spawnTerminalAndVerify(
 
       const panel = window.locator(SEL.panel.gridPanel).last();
       await expect(panel).toBeVisible({ timeout: T_MEDIUM });
+      await waitForTerminalReady(window, panel, T_LONG);
 
       if (expectedText) {
         await waitForTerminalText(panel, expectedText);

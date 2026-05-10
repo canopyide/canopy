@@ -5,6 +5,12 @@ export interface ShellArgsOptions {
   nonInteractive?: boolean;
 }
 
+const MACOS_INTERACTIVE_SHELL_STARTUP_DELAY_SECONDS = "0.05";
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
 export function findWindowsShell(): string {
   for (const shell of ["pwsh.exe", "powershell.exe"]) {
     try {
@@ -45,6 +51,12 @@ export function getDefaultShellArgs(shell: string, _options?: ShellArgsOptions):
 
   if (process.platform !== "win32") {
     if (shellName.includes("zsh") || shellName.includes("bash")) {
+      if (process.platform === "darwin") {
+        return [
+          "-c",
+          `sleep ${MACOS_INTERACTIVE_SHELL_STARTUP_DELAY_SECONDS}\nexec ${shellQuote(shell)} -l`,
+        ];
+      }
       return ["-l"];
     }
   }

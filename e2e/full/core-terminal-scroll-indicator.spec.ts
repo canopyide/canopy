@@ -6,6 +6,7 @@ import { waitForTerminalText, runTerminalCommand } from "../helpers/terminal";
 import { getFirstGridPanel, openTerminal } from "../helpers/panels";
 import { SEL } from "../helpers/selectors";
 import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
+import { dismissBlockingPalette } from "../helpers/overlays";
 
 let ctx: AppContext;
 let fixtureDir: string;
@@ -55,6 +56,7 @@ test.describe.serial("Core: Terminal Scroll Indicator", () => {
     await waitForTerminalText(panel, "SCRL_A_FILL_200", T_LONG);
 
     // Scroll up using keyboard (proven pattern from core-terminal-search.spec.ts)
+    await dismissBlockingPalette(window);
     await panel.locator(SEL.terminal.xtermRows).click();
     await window.waitForTimeout(T_SETTLE);
     for (let i = 0; i < 15; i++) {

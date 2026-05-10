@@ -5,10 +5,16 @@ import path from "path";
 import { launchApp, closeApp, type AppContext } from "../helpers/launch";
 import { createFixtureRepo } from "../helpers/fixtures";
 import { openAndOnboardProject } from "../helpers/project";
-import { getTerminalText, runTerminalCommand, waitForTerminalText } from "../helpers/terminal";
+import {
+  getTerminalText,
+  runTerminalCommand,
+  waitForTerminalText,
+  writeTerminalInput,
+} from "../helpers/terminal";
 import { getGridPanelIds, openTerminal } from "../helpers/panels";
 import { SEL } from "../helpers/selectors";
 import { T_LONG, T_MEDIUM } from "../helpers/timeouts";
+import { dismissBlockingPalette } from "../helpers/overlays";
 
 let ctx: AppContext;
 let fixtureDir: string;
@@ -71,8 +77,7 @@ async function confirmClaudeWorkspaceTrustIfPrompted(page: Page, panel: Locator)
       lower.includes("yes, i trust this folder") ||
       lower.includes("enter to confirm")
     ) {
-      await panel.locator(SEL.terminal.xtermRows).click();
-      await page.keyboard.press("Enter");
+      await writeTerminalInput(page, panel, "\r");
       return;
     }
 
@@ -337,6 +342,7 @@ test.describe.serial("Core: terminal runtime agent promotion", () => {
 
     await test.step("toolbar-launched Claude promotes through live detection", async () => {
       const beforeIds = new Set(await getGridPanelIds(window));
+      await dismissBlockingPalette(window);
       await window.locator(SEL.agent.trayButton).click();
       await window.getByRole("menuitem", { name: "Claude" }).click();
 

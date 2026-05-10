@@ -69,6 +69,7 @@ describe("terminalClient MessagePort data routing", () => {
       top: null as unknown,
       electron: { terminal: mockElectronTerminal },
       location: { origin: "http://localhost", protocol: "http:" },
+      postMessage: vi.fn(),
       addEventListener: vi.fn((type: string, handler: (e: MessageEvent) => void) => {
         if (type === "message") windowMessageListeners.push(handler);
       }),
@@ -110,6 +111,16 @@ describe("terminalClient MessagePort data routing", () => {
       listener(event);
     }
   }
+
+  it("announces readiness after installing the MessagePort listener", () => {
+    const windowMock = typedGlobal.window as { postMessage: ReturnType<typeof vi.fn> };
+
+    expect(windowMock.postMessage).toHaveBeenCalledWith(
+      { type: "terminal-port-ready" },
+      "http://localhost"
+    );
+    expect(windowMessageListeners).toHaveLength(1);
+  });
 
   it("dispatches MessagePort data to onData callbacks", () => {
     const port = acquirePort();

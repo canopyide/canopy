@@ -204,7 +204,7 @@ describe("PortBatcher", () => {
     expect(deps.postMessage).not.toHaveBeenCalled();
   });
 
-  it("postMessage error calls onError and stops flushing remaining terminals", () => {
+  it("postMessage error calls onError with failed payloads", () => {
     const deps = createDeps();
     (deps.postMessage as ReturnType<typeof vi.fn>).mockImplementation(() => {
       throw new Error("port closed");
@@ -215,7 +215,26 @@ describe("PortBatcher", () => {
     vi.runAllTimers();
 
     expect(deps.onError).toHaveBeenCalledOnce();
-    expect(deps.onError).toHaveBeenCalledWith(expect.any(Error));
+    expect(deps.onError).toHaveBeenCalledWith(expect.any(Error), [
+      { id: "t1", data: bytes("data"), bytes: 4 },
+    ]);
+  });
+
+  it("postMessage error reports remaining buffered terminals for fallback delivery", () => {
+    const deps = createDeps();
+    (deps.postMessage as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      throw new Error("port closed");
+    });
+    const batcher = new PortBatcher(deps);
+
+    batcher.write("t1", bytes("one"), 3);
+    batcher.write("t2", bytes("two"), 3);
+    vi.runAllTimers();
+
+    expect(deps.onError).toHaveBeenCalledWith(expect.any(Error), [
+      { id: "t1", data: bytes("one"), bytes: 3 },
+      { id: "t2", data: bytes("two"), bytes: 3 },
+    ]);
   });
 
   it("flush on empty buffer is a no-op", () => {
@@ -349,7 +368,9 @@ describe("PortBatcher", () => {
     vi.runAllTimers();
 
     expect(deps.onError).toHaveBeenCalledOnce();
-    expect(deps.onError).toHaveBeenCalledWith(expect.any(Error));
+    expect(deps.onError).toHaveBeenCalledWith(expect.any(Error), [
+      { id: "t1", data: new Uint8Array(0), bytes: 4 },
+    ]);
   });
 
   it("flush concatenates multiple chunks into a single contiguous Uint8Array", () => {

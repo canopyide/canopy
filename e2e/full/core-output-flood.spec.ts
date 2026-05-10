@@ -6,6 +6,7 @@ import {
   waitForTerminalText,
   runTerminalCommand,
   getTerminalBufferLength,
+  waitForTerminalReady,
 } from "../helpers/terminal";
 import { getFirstGridPanel, openTerminal } from "../helpers/panels";
 import { T_LONG } from "../helpers/timeouts";
@@ -39,8 +40,8 @@ test.describe.serial("Core: Output Flood Memory Bounds", () => {
     panel = getFirstGridPanel(window);
     await expect(panel).toBeVisible({ timeout: T_LONG });
 
-    // Wait for shell prompt to be ready (fixture name appears in cwd prompt)
-    await waitForTerminalText(panel, "output-flood", T_LONG);
+    // Prompt text is shell-dependent on CI; the flood only needs a live PTY.
+    await waitForTerminalReady(window, panel, T_LONG);
 
     const memBefore = await measureMainMemory(app, { forceGc: true });
 

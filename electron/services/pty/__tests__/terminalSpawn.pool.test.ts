@@ -15,11 +15,51 @@ interface FakePooledPty {
   kill: ReturnType<typeof vi.fn>;
 }
 
+interface FakeDataHandoff {
+  takeOver: ReturnType<typeof vi.fn>;
+  dispose: ReturnType<typeof vi.fn>;
+}
+
+interface FakeSpawnedPty extends FakePooledPty {
+  onData: ReturnType<typeof vi.fn>;
+  emitData: (chunk: string) => void;
+  getDataHandlerCount: () => number;
+}
+
 function createFakePooledPty(): FakePooledPty {
   return {
     write: vi.fn(),
     resize: vi.fn(),
     kill: vi.fn(),
+  };
+}
+
+function createFakeSpawnedPty(options: { emitDuringOnData?: string[] } = {}): FakeSpawnedPty {
+  const dataHandlers = new Set<(chunk: string) => void>();
+  return {
+    ...createFakePooledPty(),
+    onData: vi.fn((callback: (chunk: string) => void) => {
+      dataHandlers.add(callback);
+      for (const chunk of options.emitDuringOnData ?? []) {
+        callback(chunk);
+      }
+      return {
+        dispose: vi.fn(() => {
+          dataHandlers.delete(callback);
+        }),
+      };
+    }),
+    emitData: (chunk: string) => {
+      for (const handler of dataHandlers) handler(chunk);
+    },
+    getDataHandlerCount: () => dataHandlers.size,
+  };
+}
+
+function createFakeDataHandoff(): FakeDataHandoff {
+  return {
+    takeOver: vi.fn(),
+    dispose: vi.fn(),
   };
 }
 
@@ -54,9 +94,17 @@ describe("acquirePtyProcess pool handling", () => {
 
   it("acquires a pooled PTY when an env-keyed slot is available for the request cwd", () => {
     const pooled = createFakePooledPty();
+    const dataHandoff = createFakeDataHandoff();
     const acquireByKey = vi.fn<
-      (cwd: string, envHash: string) => { process: FakePooledPty; prelude: string }
-    >(() => ({ process: pooled, prelude: "" }));
+      (
+        cwd: string,
+        envHash: string
+      ) => {
+        process: FakePooledPty;
+        prelude: string;
+        dataHandoff: FakeDataHandoff;
+      }
+    >(() => ({ process: pooled, prelude: "", dataHandoff }));
     const pool = createFakePool({
       defaultCwd: "/repo",
       acquireByKey,
@@ -69,6 +117,7 @@ describe("acquirePtyProcess pool handling", () => {
     expect(typeof acquireByKey.mock.calls[0]?.[1]).toBe("string");
     expect(result.ptyProcess).toBe(pooled);
     expect(result.prelude).toBe("");
+    expect(result.dataHandoff).toBe(dataHandoff);
     expect(spawnMock).not.toHaveBeenCalled();
   });
 
@@ -105,6 +154,28 @@ describe("acquirePtyProcess pool handling", () => {
     expect(result.prelude).toBe(prelude);
   });
 
+  it("disposes the pool data handoff before falling back when pooled resize fails", () => {
+    const pooled = createFakePooledPty();
+    pooled.resize.mockImplementation(() => {
+      throw new Error("resize failed");
+    });
+    const dataHandoff = createFakeDataHandoff();
+    const spawnedPty = createFakeSpawnedPty();
+    spawnMock.mockReturnValue(spawnedPty);
+    const pool = createFakePool({
+      defaultCwd: "/repo",
+      acquireByKey: vi.fn(() => ({ process: pooled, prelude: "", dataHandoff })),
+    });
+
+    const result = acquirePtyProcess("t1", baseOptions, {}, "/bin/bash", [], pool, () => {});
+
+    expect(dataHandoff.dispose).toHaveBeenCalledTimes(1);
+    expect(pooled.kill).toHaveBeenCalledTimes(1);
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+    expect(result.ptyProcess).toBe(spawnedPty);
+    expect(result.dataHandoff).toBeDefined();
+  });
+
   it("falls back to direct spawn when the pool has no entry for the (cwd, envHash) key", () => {
     const acquireByKey = vi.fn<(cwd: string, envHash: string) => null>(() => null);
     const warmForKey =
@@ -114,7 +185,7 @@ describe("acquirePtyProcess pool handling", () => {
       acquireByKey,
       warmForKey,
     });
-    const spawnedPty = { fake: "pty" };
+    const spawnedPty = createFakeSpawnedPty();
     spawnMock.mockReturnValue(spawnedPty);
 
     const result = acquirePtyProcess(
@@ -145,7 +216,7 @@ describe("acquirePtyProcess pool handling", () => {
       defaultCwd: "/repo",
       acquireByKey,
     });
-    spawnMock.mockReturnValue({ fake: "pty" });
+    spawnMock.mockReturnValue(createFakeSpawnedPty());
 
     acquirePtyProcess(
       "a",
@@ -179,7 +250,7 @@ describe("acquirePtyProcess pool handling", () => {
       defaultCwd: "/repo",
       acquireByKey,
     });
-    spawnMock.mockReturnValue({ fake: "pty" });
+    spawnMock.mockReturnValue(createFakeSpawnedPty());
 
     const env1 = { FOO: "1", BAR: "2" };
     const env2 = { BAR: "2", FOO: "1" }; // same content, different key order
@@ -198,7 +269,7 @@ describe("acquirePtyProcess pool handling", () => {
       acquireByKey,
       warmForKey,
     });
-    spawnMock.mockReturnValue({ fake: "pty" });
+    spawnMock.mockReturnValue(createFakeSpawnedPty());
 
     const callerEnv = { FOO: "1", BAR: "2" };
     acquirePtyProcess("p", { ...baseOptions, env: callerEnv }, {}, "/bin/bash", [], pool, () => {});
@@ -212,7 +283,7 @@ describe("acquirePtyProcess pool handling", () => {
   });
 
   it("falls back to direct spawn when pool is null", () => {
-    const spawnedPty = { fake: "pty" };
+    const spawnedPty = createFakeSpawnedPty();
     spawnMock.mockReturnValue(spawnedPty);
 
     const result = acquirePtyProcess("t3", baseOptions, {}, "/bin/bash", ["-i"], null, () => {});
@@ -220,6 +291,25 @@ describe("acquirePtyProcess pool handling", () => {
     expect(spawnMock).toHaveBeenCalledTimes(1);
     expect(result.ptyProcess).toBe(spawnedPty);
     expect(result.prelude).toBe("");
+    expect(result.dataHandoff).toBeDefined();
+  });
+
+  it("buffers fresh-spawn output until TerminalProcess takes over the data listener", () => {
+    const spawnedPty = createFakeSpawnedPty({ emitDuringOnData: ["early prompt"] });
+    spawnMock.mockReturnValue(spawnedPty);
+
+    const result = acquirePtyProcess("t4", baseOptions, {}, "/bin/bash", ["-i"], null, () => {});
+
+    spawnedPty.emitData("\r\nready");
+    const received: string[] = [];
+    const disposable = result.dataHandoff?.takeOver((chunk) => received.push(chunk));
+
+    expect(received).toEqual(["early prompt", "\r\nready"]);
+    spawnedPty.emitData(" live");
+    expect(received).toEqual(["early prompt", "\r\nready", " live"]);
+
+    disposable?.dispose();
+    expect(spawnedPty.getDataHandlerCount()).toBe(0);
   });
 
   it("skips the pool entirely for dev-preview panes", () => {
@@ -228,7 +318,7 @@ describe("acquirePtyProcess pool handling", () => {
       defaultCwd: "/repo",
       acquireByKey,
     });
-    spawnMock.mockReturnValue({ fake: "pty" });
+    spawnMock.mockReturnValue(createFakeSpawnedPty());
 
     acquirePtyProcess(
       "dp1",
@@ -250,7 +340,7 @@ describe("acquirePtyProcess pool handling", () => {
       defaultCwd: "/repo",
       acquireByKey,
     });
-    spawnMock.mockReturnValue({ fake: "pty" });
+    spawnMock.mockReturnValue(createFakeSpawnedPty());
 
     acquirePtyProcess(
       "x1",

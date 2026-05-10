@@ -53,6 +53,22 @@ export { probeGitLfsAvailable } from "./worktreeUtils.js";
 // Configuration
 const DEFAULT_ACTIVE_WORKTREE_INTERVAL_MS = 2000;
 const DEFAULT_BACKGROUND_WORKTREE_INTERVAL_MS = 10000;
+const WORKTREE_REMOVE_LOCK_RETRY_DELAYS_MS = [250, 500, 1000, 2000, 3000, 5000, 8000];
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isTransientWorktreeRemoveLockError(error: unknown): boolean {
+  const err = error as NodeJS.ErrnoException;
+  const code = err.code;
+  if (code === "EPERM" || code === "EACCES" || code === "EBUSY") return true;
+
+  const message = err.message ?? "";
+  return /permission denied|eperm|eacces|ebusy|being used by another process|resource busy/i.test(
+    message
+  );
+}
 
 export class WorkspaceService {
   private monitors = new Map<string, WorktreeMonitor>();
@@ -1590,24 +1606,14 @@ export class WorkspaceService {
           // `--end-of-options` so a leading-dash worktree path is treated as
           // positional rather than parsed as a flag.
           args.push("--end-of-options", monitor.path);
-          try {
-            await this.git.raw(args);
-          } catch (removeError) {
-            // Race: the directory disappeared between our access check and
-            // the remove call, or git's metadata is already inconsistent.
-            // Both surface as `fatal: '<path>' is not a working tree`. Fall
-            // back to prune so the UI cleanup path still runs.
-            const message = (removeError as Error).message || "";
-            if (message.includes("is not a working tree")) {
-              try {
-                await this.git.raw(["worktree", "prune"]);
-              } catch (pruneError) {
-                console.warn(
-                  `[WorkspaceHost] worktree prune failed after stale remove for ${monitor.path}: ${(pruneError as Error).message}`
-                );
-              }
-            } else {
-              throw removeError;
+          const removeResult = await this.removeGitWorktreeWithRetry(this.git, args, monitor.path);
+          if (removeResult === "stale") {
+            try {
+              await this.git.raw(["worktree", "prune"]);
+            } catch (pruneError) {
+              console.warn(
+                `[WorkspaceHost] worktree prune failed after stale remove for ${monitor.path}: ${(pruneError as Error).message}`
+              );
             }
           }
         }
@@ -1662,6 +1668,35 @@ export class WorkspaceService {
         success: false,
         error: (error as Error).message,
       });
+    }
+  }
+
+  private async removeGitWorktreeWithRetry(
+    git: SimpleGit,
+    args: string[],
+    worktreePath: string
+  ): Promise<"removed" | "stale"> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await git.raw(args);
+        return "removed";
+      } catch (removeError) {
+        const message = (removeError as Error).message || "";
+        if (message.includes("is not a working tree")) {
+          return "stale";
+        }
+
+        const delayMs = WORKTREE_REMOVE_LOCK_RETRY_DELAYS_MS[attempt];
+        if (delayMs !== undefined && isTransientWorktreeRemoveLockError(removeError)) {
+          console.warn(
+            `[WorkspaceHost] worktree remove hit a transient filesystem lock for ${worktreePath}; retrying in ${delayMs}ms`
+          );
+          await sleep(delayMs);
+          continue;
+        }
+
+        throw removeError;
+      }
     }
   }
 

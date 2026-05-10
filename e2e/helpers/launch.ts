@@ -269,6 +269,11 @@ export interface GetActiveAppWindowOptions {
   requireProject?: boolean;
 }
 
+function getRefreshTimeout(): number {
+  const isWindowsCI = process.env.CI && process.platform === "win32";
+  return isWindowsCI ? 60_000 : process.env.CI ? 30_000 : 20_000;
+}
+
 export async function getActiveAppWindow(
   app: ElectronApplication,
   timeoutMsOrOptions: number | GetActiveAppWindowOptions = 10_000,
@@ -337,7 +342,7 @@ export async function getActiveAppWindow(
       }
     }
 
-    if (projectFallback) return projectFallback;
+    if (projectFallback && !requireProject) return projectFallback;
 
     if (fallback) {
       if (!requireProject) {
@@ -349,12 +354,80 @@ export async function getActiveAppWindow(
     }
     await wait(200);
   }
-  if (fallback) return fallback;
+  if (fallback && !requireProject) return fallback;
   const urls = app.windows().map((w) => w.url());
   throw new Error(`No active app window found. Available pages: ${urls.join(", ")}`);
 }
 
 const registeredPages = new WeakSet<Page>();
+
+async function getCurrentProjectName(page: Page): Promise<string | null> {
+  return await page
+    .evaluate(async () => {
+      const electronApi = (
+        window as unknown as {
+          electron?: {
+            project?: {
+              getCurrent?: () => Promise<{ name?: unknown } | null>;
+            };
+          };
+        }
+      ).electron;
+      const project = await electronApi?.project?.getCurrent?.();
+      return typeof project?.name === "string" ? project.name : null;
+    })
+    .catch(() => null);
+}
+
+async function getProjectSwitcherLabel(page: Page): Promise<string | null> {
+  return await page
+    .locator('[data-testid="project-switcher-trigger"]')
+    .textContent({ timeout: 500 })
+    .catch(() => null);
+}
+
+export async function waitForActiveProject(
+  app: ElectronApplication,
+  page: Page,
+  projectName: string,
+  timeoutMs = getRefreshTimeout()
+): Promise<Page> {
+  const deadline = Date.now() + timeoutMs;
+  let current = page;
+  let lastName: string | null = null;
+  let lastLabel: string | null = null;
+  let lastUrl = current.url();
+
+  while (Date.now() < deadline) {
+    const remaining = Math.max(1_000, Math.min(2_000, deadline - Date.now()));
+    const candidate = await getActiveAppWindow(app, remaining, { requireProject: true }).catch(
+      () => null
+    );
+    if (candidate) {
+      current = candidate;
+      lastUrl = current.url();
+      lastName = await getCurrentProjectName(current);
+      lastLabel = await getProjectSwitcherLabel(current);
+      if (lastName?.includes(projectName) && lastLabel?.includes(projectName)) {
+        const ready = await refreshActiveWindow(app);
+        const readyName = await getCurrentProjectName(ready);
+        const readyLabel = await getProjectSwitcherLabel(ready);
+        if (readyName?.includes(projectName) && readyLabel?.includes(projectName)) return ready;
+        current = ready;
+        lastName = readyName;
+        lastLabel = readyLabel;
+        lastUrl = ready.url();
+      }
+    }
+    await wait(250);
+  }
+
+  throw new Error(
+    `Timed out waiting for active project "${projectName}". Last active project: ${
+      lastName ?? "unknown"
+    }; last toolbar label: ${lastLabel ?? "unknown"}; last URL: ${lastUrl}`
+  );
+}
 
 /**
  * Re-acquire the active app window and wait for it to be ready.
@@ -371,8 +444,7 @@ export async function refreshActiveWindow(app: ElectronApplication, oldPage?: Pa
   // WebContents differs from oldPage's URL — otherwise we may snapshot the
   // attached view *before* the main process has finished swapping it out and
   // return the still-active outgoing view.
-  const isWindowsCI = process.env.CI && process.platform === "win32";
-  const refreshTimeout = isWindowsCI ? 60_000 : process.env.CI ? 30_000 : 20_000;
+  const refreshTimeout = getRefreshTimeout();
 
   const oldUrl = oldPage?.url() ?? null;
   if (oldUrl && oldUrl.includes("projectId=")) {

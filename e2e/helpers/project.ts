@@ -1,6 +1,8 @@
 import type { ElectronApplication, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
-import { mockOpenDialog, refreshActiveWindow } from "./launch";
+import path from "path";
+import { mockOpenDialog, refreshActiveWindow, waitForActiveProject } from "./launch";
+import { dismissBlockingPalette } from "./overlays";
 
 export async function openProject(
   app: ElectronApplication,
@@ -29,7 +31,13 @@ export async function openAndOnboardProject(
   _name?: string
 ): Promise<Page> {
   await openProject(app, window, projectPath);
-  const newWindow = await refreshActiveWindow(app, window);
+  const projectBasename = path.basename(projectPath);
+  const newWindow = await waitForActiveProject(
+    app,
+    await refreshActiveWindow(app, window),
+    projectBasename
+  );
+  await dismissBlockingPalette(newWindow);
   await dismissTelemetryConsent(newWindow);
   return newWindow;
 }

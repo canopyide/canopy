@@ -1,7 +1,11 @@
 import type { MessagePort } from "node:worker_threads";
 import { SharedRingBuffer } from "../../../shared/utils/SharedRingBuffer.js";
-import { PortBatcher } from "../index.js";
+import { PortBatcher, type PortBatcherFailedBatch } from "../index.js";
 import type { HandlerMap, HostContext } from "./types.js";
+
+function batchDataToString(data: Uint8Array): string {
+  return Buffer.from(data).toString("utf8");
+}
 
 export function createConnectionHandlers(ctx: HostContext): HandlerMap {
   const {
@@ -11,6 +15,7 @@ export function createConnectionHandlers(ctx: HostContext): HandlerMap {
     disconnectWindow,
     recomputeActivityTiers,
     createPortQueueManager,
+    sendEvent,
   } = ctx;
 
   return {
@@ -56,7 +61,11 @@ export function createConnectionHandlers(ctx: HostContext): HandlerMap {
           // flush, so it is safe to detach here.
           receivedPort.postMessage({ type: "data", id, data, bytes }, [data.buffer as ArrayBuffer]);
         },
-        onError: () => {
+        onError: (_error: unknown, failedBatches: PortBatcherFailedBatch[]) => {
+          for (const batch of failedBatches) {
+            if (batch.bytes <= 0) continue;
+            sendEvent({ type: "data", id: batch.id, data: batchDataToString(batch.data) });
+          }
           disconnectWindow(windowId, "postMessage-error");
         },
       });
