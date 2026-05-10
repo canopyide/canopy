@@ -1,5 +1,7 @@
 name: E2E Single Test
 
+run-name: single · ${{ inputs.suite }} · ${{ inputs.platform }} · ${{ inputs.test_file }}
+
 on:
   workflow_dispatch:
     inputs:
