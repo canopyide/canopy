@@ -74,6 +74,7 @@ describe("BulkActionBar", () => {
         mode="issue"
         selectedIssues={[makeIssue(1), makeIssue(2)]}
         selectedPRs={[]}
+        selectedCount={2}
         onClear={vi.fn()}
       />
     );
@@ -83,7 +84,15 @@ describe("BulkActionBar", () => {
   });
 
   it("does not render when selection is empty", () => {
-    render(<BulkActionBar mode="issue" selectedIssues={[]} selectedPRs={[]} onClear={vi.fn()} />);
+    render(
+      <BulkActionBar
+        mode="issue"
+        selectedIssues={[]}
+        selectedPRs={[]}
+        selectedCount={0}
+        onClear={vi.fn()}
+      />
+    );
 
     expect(screen.queryByRole("toolbar", { name: /bulk actions/i })).toBeNull();
   });
@@ -94,6 +103,7 @@ describe("BulkActionBar", () => {
         mode="issue"
         selectedIssues={[makeIssue(1)]}
         selectedPRs={[]}
+        selectedCount={1}
         onClear={vi.fn()}
       />
     );
@@ -112,6 +122,7 @@ describe("BulkActionBar", () => {
         mode="issue"
         selectedIssues={[makeIssue(1)]}
         selectedPRs={[]}
+        selectedCount={1}
         onClear={onClear}
       />
     );
@@ -124,7 +135,13 @@ describe("BulkActionBar", () => {
     const onClear = vi.fn();
     const issues = [makeIssue(1), makeIssue(2)];
     render(
-      <BulkActionBar mode="issue" selectedIssues={issues} selectedPRs={[]} onClear={onClear} />
+      <BulkActionBar
+        mode="issue"
+        selectedIssues={issues}
+        selectedPRs={[]}
+        selectedCount={2}
+        onClear={onClear}
+      />
     );
 
     fireEvent.click(screen.getByRole("button", { name: /create worktrees/i }));
@@ -140,6 +157,7 @@ describe("BulkActionBar", () => {
         mode="pr"
         selectedIssues={[makeIssue(99)]}
         selectedPRs={prs}
+        selectedCount={3}
         onClear={onClear}
       />
     );
@@ -158,6 +176,7 @@ describe("BulkActionBar", () => {
         mode="issue"
         selectedIssues={[makeIssue(1)]}
         selectedPRs={[]}
+        selectedCount={1}
         onClear={vi.fn()}
         onCloseDropdown={onCloseDropdown}
       />
