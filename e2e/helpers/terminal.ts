@@ -320,7 +320,10 @@ async function dispatchXtermContextMenu(xterm: Locator): Promise<boolean> {
   });
 }
 
-export async function openTerminalContextMenu(panelLocator: Locator): Promise<void> {
+export async function openTerminalContextMenu(
+  panelLocator: Locator,
+  { preserveSelection = false }: { preserveSelection?: boolean } = {}
+): Promise<void> {
   const page = panelLocator.page();
   const menu = page.locator(SEL.contextMenu.content);
   const xterm = panelLocator.locator(SEL.terminal.xtermRows);
@@ -328,7 +331,12 @@ export async function openTerminalContextMenu(panelLocator: Locator): Promise<vo
 
   for (let attempt = 0; attempt < 3; attempt++) {
     await dismissBlockingPalette(page);
-    await page.keyboard.press("Escape").catch(() => undefined);
+    // Skip Escape when preserveSelection is true: xterm.js calls clearSelection()
+    // synchronously in _keyDown for non-browser-handled keys (including Escape),
+    // so sending Escape while xterm has focus destroys any prior selectAll() call.
+    if (!preserveSelection) {
+      await page.keyboard.press("Escape").catch(() => undefined);
+    }
 
     if (attempt === 0) {
       await xterm.click({ button: "right", timeout: 5_000 }).catch(() => undefined);

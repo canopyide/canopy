@@ -137,6 +137,11 @@ export class ResourceActionExecutor {
         console.log(
           `[WorktreeLifecycle] Provision no-op for worktree ${worktreeId}: already ${currentStatus}`
         );
+        // applyResourceConfigToMonitor already ran above and may have updated
+        // resourceConnectCommand (e.g. when the config file changed on disk since
+        // the last provision). Emit an update so the renderer's store reflects the
+        // new command before returning early.
+        this.ctx.emitUpdate(monitor);
         this.ctx.sendEvent({
           type: "resource-action-result",
           requestId,
