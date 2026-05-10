@@ -88,7 +88,7 @@ function setPanel(id: string, agentState: string | undefined): void {
   }));
 }
 
-describe("ToolbarAssistantButton — working pip", () => {
+describe("ToolbarAssistantButton — agent state pip", () => {
   beforeEach(() => {
     mcpReadinessMock.mockReturnValue({ enabled: true, state: "ready", port: 0, lastError: null });
     useHelpPanelStore.setState({
@@ -100,7 +100,7 @@ describe("ToolbarAssistantButton — working pip", () => {
     usePanelStore.setState({ panelsById: {}, panelIds: [] } as never);
   });
 
-  it("does not render the working pip when the assistant is idle", () => {
+  it("does not render the pip when the assistant is idle", () => {
     setHelpPanel({ isOpen: false, terminalId: "t-1" });
     setPanel("t-1", "idle");
 
@@ -108,21 +108,64 @@ describe("ToolbarAssistantButton — working pip", () => {
     expect(queryByTestId("assistant-working-pip")).toBeNull();
   });
 
-  it("renders the working pip when the assistant terminal's agentState is working", () => {
+  it("renders a green pip when the assistant terminal's agentState is working", () => {
     setHelpPanel({ isOpen: false, terminalId: "t-2" });
     setPanel("t-2", "working");
 
     const { queryByTestId } = render(<ToolbarAssistantButton />);
     const pip = queryByTestId("assistant-working-pip");
     expect(pip).not.toBeNull();
-    // The pip uses neutral color, not accent or status colors.
-    expect(pip!.className).toMatch(/bg-daintree-text\/30/);
+    expect(pip!.className).toMatch(/bg-state-working/);
     expect(pip!.className).not.toMatch(/animate-pulse/);
     expect(pip!.className).not.toMatch(/accent/);
     expect(pip!.className).not.toMatch(/bg-status-/);
+    expect(pip!.getAttribute("data-agent-state")).toBe("working");
   });
 
-  it("hides the working pip when the panel is open (the user can already see the activity)", () => {
+  it("renders a green pip when the assistant terminal's agentState is directing", () => {
+    setHelpPanel({ isOpen: false, terminalId: "t-2d" });
+    setPanel("t-2d", "directing");
+
+    const { queryByTestId } = render(<ToolbarAssistantButton />);
+    const pip = queryByTestId("assistant-working-pip");
+    expect(pip).not.toBeNull();
+    expect(pip!.className).toMatch(/bg-state-working/);
+    expect(pip!.getAttribute("data-agent-state")).toBe("directing");
+  });
+
+  it("renders a yellow pip when the assistant terminal's agentState is waiting", () => {
+    setHelpPanel({ isOpen: false, terminalId: "t-w" });
+    setPanel("t-w", "waiting");
+
+    const { queryByTestId } = render(<ToolbarAssistantButton />);
+    const pip = queryByTestId("assistant-working-pip");
+    expect(pip).not.toBeNull();
+    expect(pip!.className).toMatch(/bg-state-waiting/);
+    expect(pip!.className).not.toMatch(/animate-pulse/);
+    expect(pip!.getAttribute("data-agent-state")).toBe("waiting");
+  });
+
+  it("does not render the pip for completed or exited states", () => {
+    setHelpPanel({ isOpen: false, terminalId: "t-c" });
+    setPanel("t-c", "completed");
+    const { queryByTestId, rerender } = render(<ToolbarAssistantButton />);
+    expect(queryByTestId("assistant-working-pip")).toBeNull();
+
+    act(() => {
+      setPanel("t-c", "exited");
+    });
+    rerender(<ToolbarAssistantButton />);
+    expect(queryByTestId("assistant-working-pip")).toBeNull();
+  });
+
+  it("does not render the pip when there is no assistant terminal", () => {
+    setHelpPanel({ isOpen: false, terminalId: null });
+
+    const { queryByTestId } = render(<ToolbarAssistantButton />);
+    expect(queryByTestId("assistant-working-pip")).toBeNull();
+  });
+
+  it("hides the pip when the panel is open (the user can already see the state)", () => {
     setHelpPanel({ isOpen: true, terminalId: "t-3" });
     setPanel("t-3", "working");
 
@@ -130,7 +173,15 @@ describe("ToolbarAssistantButton — working pip", () => {
     expect(queryByTestId("assistant-working-pip")).toBeNull();
   });
 
-  it("MCP-health pip takes precedence over the working pip when both would apply", () => {
+  it("hides the pip when the panel is open even for waiting state", () => {
+    setHelpPanel({ isOpen: true, terminalId: "t-3w" });
+    setPanel("t-3w", "waiting");
+
+    const { queryByTestId } = render(<ToolbarAssistantButton />);
+    expect(queryByTestId("assistant-working-pip")).toBeNull();
+  });
+
+  it("MCP-health failed pip takes precedence over the agent pip when both would apply", () => {
     mcpReadinessMock.mockReturnValue({
       state: "failed",
       port: 0,
@@ -141,16 +192,39 @@ describe("ToolbarAssistantButton — working pip", () => {
 
     const { container, queryByTestId } = render(<ToolbarAssistantButton />);
     expect(queryByTestId("assistant-working-pip")).toBeNull();
-    // The MCP health pip uses bg-status-danger.
     expect(container.querySelector(".bg-status-danger")).not.toBeNull();
   });
 
-  it("re-renders when agentState transitions from working to idle", () => {
+  it("MCP-health starting pip takes precedence over a waiting agent pip", () => {
+    mcpReadinessMock.mockReturnValue({
+      state: "starting",
+      port: 0,
+      lastError: null,
+    });
+    setHelpPanel({ isOpen: false, terminalId: "t-4w" });
+    setPanel("t-4w", "waiting");
+
+    const { container, queryByTestId } = render(<ToolbarAssistantButton />);
+    expect(queryByTestId("assistant-working-pip")).toBeNull();
+    expect(container.querySelector(".bg-status-warning")).not.toBeNull();
+  });
+
+  it("re-renders when agentState transitions through working → waiting → idle", () => {
     setHelpPanel({ isOpen: false, terminalId: "t-5" });
     setPanel("t-5", "working");
 
     const { queryByTestId } = render(<ToolbarAssistantButton />);
-    expect(queryByTestId("assistant-working-pip")).not.toBeNull();
+    let pip = queryByTestId("assistant-working-pip");
+    expect(pip).not.toBeNull();
+    expect(pip!.className).toMatch(/bg-state-working/);
+
+    act(() => {
+      setPanel("t-5", "waiting");
+    });
+
+    pip = queryByTestId("assistant-working-pip");
+    expect(pip).not.toBeNull();
+    expect(pip!.className).toMatch(/bg-state-waiting/);
 
     act(() => {
       setPanel("t-5", "idle");
