@@ -111,6 +111,8 @@ export class PortQueueManager {
       return false;
     }
 
+    let safetyTimeout: ReturnType<typeof setTimeout> | undefined;
+    let committed = false;
     try {
       coordinator.pause(this.pauseToken);
       console.warn(
@@ -128,7 +130,7 @@ export class PortQueueManager {
         bufferUtilization: utilization,
       });
 
-      const safetyTimeout = setTimeout(() => {
+      safetyTimeout = setTimeout(() => {
         // Capture utilization BEFORE clearing queuedBytes so the reliability
         // metric reports the at-resume queue depth, not the post-clear 0%.
         const currentUtilization = this.getUtilization(id);
@@ -163,10 +165,20 @@ export class PortQueueManager {
       }, IPC_MAX_PAUSE_MS);
 
       this.pausedTerminals.set(id, safetyTimeout);
+      committed = true;
       return true;
     } catch (error) {
       console.error(`[PtyHost] Failed to pause port PTY ${id}:`, error);
       return false;
+    } finally {
+      // If we threw between coordinator.pause() and the final pausedTerminals.set,
+      // release the token and any orphaned safety timeout so the PTY is not
+      // permanently held with no recovery path. See #7641.
+      if (!committed) {
+        if (safetyTimeout !== undefined) clearTimeout(safetyTimeout);
+        this.pauseStartTimes.delete(id);
+        coordinator.resume(this.pauseToken);
+      }
     }
   }
 
