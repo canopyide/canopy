@@ -6,6 +6,15 @@ on:
   pull_request:
     branches: [main, develop]
   workflow_dispatch:
+    inputs:
+      os:
+        description: "OS to run check on (manual dispatch only — push/PR always runs ubuntu)"
+        type: choice
+        options:
+          - ubuntu
+          - windows
+          - both
+        default: ubuntu
 
 permissions:
   contents: read
@@ -24,8 +33,14 @@ jobs:
   # of slightly higher wall-clock per run. At this commit volume that's the
   # right trade — we run a lot of pushes and pay setup once instead of twice.
   check:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Push/PR runs ubuntu only. Manual dispatch can opt into windows or both
+    # via `gh workflow run CI --ref <branch> -f os=windows` (or `os=both`).
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON((inputs.os || 'ubuntu') == 'both' && '["ubuntu-latest","windows-latest"]' || (inputs.os || 'ubuntu') == 'windows' && '["windows-latest"]' || '["ubuntu-latest"]') }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
 
     steps:
       - name: Check out repository
@@ -38,6 +53,7 @@ jobs:
           cache: npm
 
       - name: Install Linux dependencies
+        if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
           sudo apt-get install -y libarchive-tools

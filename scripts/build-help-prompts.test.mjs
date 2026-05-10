@@ -177,7 +177,7 @@ describe("build-help-prompts script integration", () => {
     writeFileSync(stale, readFileSync(stale, "utf8") + "DRIFT_MARKER\n");
     const check = runScript(["--check"]);
     expect(check.status).toBe(1);
-    expect(check.stderr).toContain("help/CLAUDE.md");
+    expect(check.stderr).toContain(path.join("help", "CLAUDE.md"));
     expect(check.stderr).toContain("out of sync");
   });
 
