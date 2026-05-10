@@ -27,7 +27,7 @@ export function FleetDraftingPill(): ReactElement | null {
   };
 
   return (
-    <div data-testid="fleet-drafting-pill" className="flex items-center text-[11px]">
+    <div data-testid="fleet-drafting-pill" className="flex items-center">
       <Popover open={open} onOpenChange={handleOpenChange}>
         <PopoverTrigger asChild>
           <button
@@ -35,18 +35,22 @@ export function FleetDraftingPill(): ReactElement | null {
             aria-label={`Drafting for ${fleetSize} agents`}
             data-testid="fleet-drafting-pill-trigger"
             className={cn(
-              "inline-flex items-center gap-1 rounded-full px-2 py-0.5 transition-colors",
-              "bg-category-amber-subtle text-category-amber-text",
+              "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full",
+              "bg-category-amber-subtle border border-category-amber-border text-category-amber-text shadow-[var(--theme-shadow-floating)]",
+              "text-xs font-medium transition-colors",
               hasVariables && "cursor-pointer hover:bg-category-amber-subtle/80"
             )}
           >
-            <RadioTower className="h-3 w-3" aria-hidden="true" />
+            <RadioTower className="h-3.5 w-3.5" aria-hidden="true" />
             <span>
               Mirroring to {peerCount} {peerCount === 1 ? "peer" : "peers"}
             </span>
             {hasVariables && (
               <ChevronDown
-                className={cn("h-3 w-3 transition-transform duration-150", open && "rotate-180")}
+                className={cn(
+                  "h-3.5 w-3.5 transition-transform duration-150",
+                  open && "rotate-180"
+                )}
                 aria-hidden="true"
               />
             )}
@@ -54,7 +58,7 @@ export function FleetDraftingPill(): ReactElement | null {
         </PopoverTrigger>
         <PopoverContent
           side="bottom"
-          align="end"
+          align="start"
           sideOffset={4}
           data-testid="fleet-resolution-popover"
           className="max-h-[320px] w-[360px] overflow-y-auto p-1"

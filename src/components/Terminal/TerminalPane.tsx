@@ -14,6 +14,7 @@ import { ArtifactOverlay } from "./ArtifactOverlay";
 
 import { TerminalSearchBar } from "./TerminalSearchBar";
 import { TerminalScrollIndicator } from "./TerminalScrollIndicator";
+import { FleetDraftingPill } from "@/components/Fleet/FleetDraftingPill";
 import { TerminalRestartStatusBanner } from "./TerminalRestartStatusBanner";
 import { getRestartBannerVariant } from "./restartStatus";
 import { TerminalErrorBanner } from "./TerminalErrorBanner";
@@ -246,6 +247,7 @@ function TerminalPaneComponent({
   // is suppressed on a single-armed seed selection because nothing fans out
   // until a second pane joins.
   const isFleetFollower = isArmed && !isFocused && armedIds.size >= 2;
+  const isFleetPrimary = isArmed && isFocused && armedIds.size >= 2;
 
   // Consolidate terminal state selectors to avoid multiple scans and ensure consistent snapshots
   const terminalState = usePanelStore(
@@ -915,6 +917,14 @@ function TerminalPaneComponent({
               </div>
 
               <TerminalScrollIndicator terminalId={id} />
+
+              {isFleetPrimary && (
+                <div className="absolute inset-0 z-30 pointer-events-none flex items-end justify-start pb-4 pl-[14px]">
+                  <div className="pointer-events-auto">
+                    <FleetDraftingPill />
+                  </div>
+                </div>
+              )}
 
               {(isBackendDisconnected || isBackendRecovering) && (
                 <div
