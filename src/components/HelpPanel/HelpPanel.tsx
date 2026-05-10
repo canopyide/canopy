@@ -321,12 +321,24 @@ interface HelpPanelProps {
    * readiness and writes the session-scoped .mcp.json.
    */
   isReadyToLaunch?: boolean;
+  /**
+   * Fires at the start of a pointer drag-resize so AppLayout can suppress
+   * its `transition-[width]` while the user drags. Issue #7627.
+   */
+  onResizeStart?: () => void;
+  /**
+   * Fires at the end of a pointer drag-resize. Restores the parent transition
+   * for non-drag width changes (collapse/expand toggle).
+   */
+  onResizeEnd?: () => void;
 }
 
 export function HelpPanel({
   width: effectiveWidth,
   isVisible: isVisibleProp,
   isReadyToLaunch = true,
+  onResizeStart,
+  onResizeEnd,
 }: HelpPanelProps) {
   const panelRef = useRef<HTMLElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -1030,6 +1042,7 @@ export function HelpPanel({
   const handleResizeStart = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
+      onResizeStart?.();
       setIsResizing(true);
       const startX = e.clientX;
       const startWidth = width;
@@ -1045,6 +1058,7 @@ export function HelpPanel({
 
       const onMouseUp = () => {
         setIsResizing(false);
+        onResizeEnd?.();
         document.removeEventListener("mousemove", onMouseMove);
         document.removeEventListener("mouseup", onMouseUp);
       };
@@ -1052,7 +1066,7 @@ export function HelpPanel({
       document.addEventListener("mousemove", onMouseMove);
       document.addEventListener("mouseup", onMouseUp);
     },
-    [width, setWidth]
+    [width, setWidth, onResizeStart, onResizeEnd]
   );
 
   // Resize via keyboard. ArrowLeft/PageUp grow the panel (it expands leftward

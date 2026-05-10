@@ -24,6 +24,16 @@ import {
 interface SidebarProps {
   width: number;
   onResize: (width: number) => void;
+  /**
+   * Fires at the start of a pointer drag-resize so the parent can suppress
+   * its `transition-[width]` while the user drags. Issue #7627.
+   */
+  onResizeStart?: () => void;
+  /**
+   * Fires at the end of a pointer drag-resize. Restores the parent transition
+   * for non-drag width changes (collapse/expand toggle, double-click reset).
+   */
+  onResizeEnd?: () => void;
   isVisible?: boolean;
   children?: ReactNode;
   className?: string;
@@ -33,7 +43,15 @@ const RESIZE_STEP = 10;
 
 const ICON_CLASS = "w-3.5 h-3.5 mr-2 shrink-0";
 
-export function Sidebar({ width, onResize, isVisible = true, children, className }: SidebarProps) {
+export function Sidebar({
+  width,
+  onResize,
+  onResizeStart,
+  onResizeEnd,
+  isVisible = true,
+  children,
+  className,
+}: SidebarProps) {
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLElement>(null);
   const currentProject = useProjectStore((state) => state.currentProject);
@@ -44,14 +62,19 @@ export function Sidebar({ width, onResize, isVisible = true, children, className
     return () => useMacroFocusStore.getState().setRegionRef("sidebar", null);
   }, []);
 
-  const startResizing = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsResizing(true);
-  }, []);
+  const startResizing = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      onResizeStart?.();
+      setIsResizing(true);
+    },
+    [onResizeStart]
+  );
 
   const stopResizing = useCallback(() => {
     setIsResizing(false);
-  }, []);
+    onResizeEnd?.();
+  }, [onResizeEnd]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {

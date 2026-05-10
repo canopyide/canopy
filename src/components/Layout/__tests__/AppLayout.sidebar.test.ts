@@ -162,6 +162,63 @@ describe("AppLayout independent sidebar gestures — issue #6659", () => {
   });
 });
 
+describe("AppLayout drag-resize transition gating — issue #7627", () => {
+  let source: string;
+
+  beforeEach(async () => {
+    source = await fs.readFile(APP_LAYOUT_PATH, "utf-8");
+  });
+
+  it("imports flushSync so the gating class is removed before the first mousemove", () => {
+    // React 19 batches state updates. Without flushSync, setIsSidebarResizing
+    // doesn't reach the DOM until the next render, which can leave one eased
+    // frame at the start of the drag. flushSync forces the class strip to
+    // happen synchronously inside the mousedown handler.
+    expect(source).toContain('import { createPortal, flushSync } from "react-dom"');
+  });
+
+  it("tracks per-panel drag-resize state in AppLayout", () => {
+    expect(source).toContain("const [isSidebarResizing, setIsSidebarResizing] = useState(false)");
+    expect(source).toContain(
+      "const [isAssistantResizing, setIsAssistantResizing] = useState(false)"
+    );
+  });
+
+  it("flushes the resize-start setter so the transition class disappears before mousemove", () => {
+    expect(source).toMatch(/flushSync\(\(\)\s*=>\s*setIsSidebarResizing\(true\)\)/);
+    expect(source).toMatch(/flushSync\(\(\)\s*=>\s*setIsAssistantResizing\(true\)\)/);
+  });
+
+  it("gates both width transitions on the resize state, preserving them otherwise", () => {
+    // The 250ms ease-out-expo transition is kept (it animates collapse/expand
+    // and double-click reset) but suppressed during active drag-resize so the
+    // edge tracks the cursor without the per-mousemove ease.
+    expect(source).toMatch(/!reduceAnimations\s*&&\s*!isSidebarResizing\s*&&/);
+    expect(source).toMatch(/!reduceAnimations\s*&&\s*!isAssistantResizing\s*&&/);
+    // The transition string must remain specific to width — never widened to
+    // bare `transition` or `transition-all`. Past lesson #4738.
+    expect(source).toContain("transition-[width]");
+    expect(source).not.toMatch(/"\s*transition\s+/);
+    expect(source).not.toContain("transition-all");
+  });
+
+  it("wires resize-lifecycle callbacks into Sidebar and HelpPanel", () => {
+    expect(source).toMatch(/<Sidebar[\s\S]*?onResizeStart=\{handleSidebarResizeStart\}/);
+    expect(source).toMatch(/<Sidebar[\s\S]*?onResizeEnd=\{handleSidebarResizeEnd\}/);
+    expect(source).toMatch(/<HelpPanel[\s\S]*?onResizeStart=\{handleAssistantResizeStart\}/);
+    expect(source).toMatch(/<HelpPanel[\s\S]*?onResizeEnd=\{handleAssistantResizeEnd\}/);
+  });
+
+  it("does not call the toggle-only suppression machinery on drag-resize", () => {
+    // Past lesson #4170: suppressSidebarResizes / lockSidebarLayoutTransition
+    // are timed for the fixed 250ms toggle animation. Calling them on drag
+    // would prevent the final PTY dimension flush and lock the transition for
+    // an unrelated window. Drag-resize must not invoke them.
+    expect(source).not.toMatch(/handleSidebarResizeStart[\s\S]{0,200}suppressSidebarResizes/);
+    expect(source).not.toMatch(/handleAssistantResizeStart[\s\S]{0,200}suppressSidebarResizes/);
+  });
+});
+
 describe("AppLayout portal viewport coverage — issue #6629", () => {
   let source: string;
 
