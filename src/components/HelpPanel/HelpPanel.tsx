@@ -12,6 +12,7 @@ import {
 import * as semver from "semver";
 import { cn } from "@/lib/utils";
 import { DaintreeIcon } from "@/components/icons/DaintreeIcon";
+import { SpinnerCircle, HollowCircle, InteractingCircle } from "@/components/icons";
 import { XtermAdapter } from "@/components/Terminal/XtermAdapter";
 import { MissingCliGate } from "@/components/Terminal/MissingCliGate";
 import { HelpIntroBanner } from "./HelpIntroBanner";
@@ -34,6 +35,7 @@ import { actionService } from "@/services/ActionService";
 import { useEscapeStack } from "@/hooks/useEscapeStack";
 import { suppressSidebarResizes } from "@/lib/sidebarToggle";
 import { TerminalRefreshTier } from "@/types";
+import type { AgentState } from "@/types";
 import { logError } from "@/utils/logger";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { notify } from "@/lib/notify";
@@ -246,6 +248,57 @@ function revokeHelpSession(sessionId: string | null): void {
   window.electron.help.revokeSession(sessionId).catch((err) => {
     logError("Failed to revoke help session", err);
   });
+}
+
+// Tier-1 ambient indicator (per CLAUDE.md Runtime Signals): surfaces the
+// in-flight assistant state next to the header title so the user can read it
+// without watching the terminal. Only the actionable triad — working,
+// directing, waiting — earns a marker; idle/completed/exited stay quiet.
+function AssistantHeaderStateIndicator({
+  agentState,
+}: {
+  agentState: AgentState | null | undefined;
+}) {
+  if (agentState === "working") {
+    return (
+      <span
+        data-testid="assistant-header-state-indicator"
+        data-agent-state="working"
+        aria-label="Assistant is working"
+        role="status"
+        className="ml-1.5 inline-flex shrink-0"
+      >
+        <SpinnerCircle className="w-3.5 h-3.5 text-state-working animate-spin-slow motion-reduce:animate-none" />
+      </span>
+    );
+  }
+  if (agentState === "directing") {
+    return (
+      <span
+        data-testid="assistant-header-state-indicator"
+        data-agent-state="directing"
+        aria-label="Assistant is directing"
+        role="status"
+        className="ml-1.5 inline-flex shrink-0"
+      >
+        <InteractingCircle className="w-3.5 h-3.5 text-category-blue" />
+      </span>
+    );
+  }
+  if (agentState === "waiting") {
+    return (
+      <span
+        data-testid="assistant-header-state-indicator"
+        data-agent-state="waiting"
+        aria-label="Assistant is waiting"
+        role="status"
+        className="ml-1.5 inline-flex shrink-0"
+      >
+        <HollowCircle className="w-3.5 h-3.5 text-state-waiting" />
+      </span>
+    );
+  }
+  return null;
 }
 
 interface HelpPanelProps {
@@ -1637,6 +1690,7 @@ export function HelpPanel({
           <span className="ml-1.5 text-xs font-medium text-daintree-text/70 truncate">
             Daintree Assistant
           </span>
+          <AssistantHeaderStateIndicator agentState={terminal?.agentState} />
         </div>
         <button
           type="button"
