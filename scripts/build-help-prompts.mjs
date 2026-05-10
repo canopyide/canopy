@@ -17,7 +17,13 @@ const SHARED = path.join(SRC_DIR, "SHARED.md");
 const TARGETS = [
   {
     out: path.join(HELP_DIR, "CLAUDE.md"),
-    parts: [path.join(SRC_DIR, "CLAUDE.head.md"), SHARED, path.join(SRC_DIR, "CLAUDE.tail.md")],
+    parts: [
+      path.join(SRC_DIR, "CLAUDE.head.md"),
+      path.join(SRC_DIR, "CLAUDE.tasks.md"),
+      path.join(SRC_DIR, "CLAUDE.tier.md"),
+      SHARED,
+      path.join(SRC_DIR, "CLAUDE.tail.md"),
+    ],
   },
   {
     out: path.join(HELP_DIR, "GEMINI.md"),

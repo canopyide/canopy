@@ -2168,12 +2168,12 @@ describe("McpServerService", () => {
       expect(denied.content[0].text).toContain("workbench");
       expect(dispatchMock).not.toHaveBeenCalled();
 
-      // Destructive denied
-      const destructiveDenied = getTextResult(
+      // Action-tier mutation denied at workbench
+      const actionTierDenied = getTextResult(
         await client.callTool({ name: "terminal.sendCommand", arguments: { id: "t", text: "x" } })
       );
-      expect(destructiveDenied.isError).toBe(true);
-      expect(destructiveDenied.content[0].text).toContain("TIER_NOT_PERMITTED");
+      expect(actionTierDenied.isError).toBe(true);
+      expect(actionTierDenied.content[0].text).toContain("TIER_NOT_PERMITTED");
       expect(dispatchMock).not.toHaveBeenCalled();
     });
 
@@ -2218,8 +2218,9 @@ describe("McpServerService", () => {
       transports.push(transport);
 
       // External tier inherits the legacy MCP_TOOL_ALLOWLIST — destructive
-      // actions in that list (e.g. terminal.sendCommand, worktree.delete)
-      // remain callable so existing user-facing clients keep working.
+      // actions in that list (e.g. worktree.delete, git.commit) and broader
+      // in-app mutations (terminal.sendCommand, agent.launch) remain callable
+      // so existing user-facing clients keep working.
       const ids = (await client.listTools()).tools.map((t) => t.name);
       expect(ids).toContain("worktree.createWithRecipe");
       expect(ids).not.toContain("worktree.create");
@@ -2520,17 +2521,24 @@ describe("McpServerService", () => {
       }),
     ];
 
-    // Spawning terminals via `terminal.new`, driving running agents via
-    // `agent.terminal`, and the workflow macro stay action-tier — see
-    // ACTION_TIER_ADDONS in shared.ts. System tier owns raw command sending,
-    // closing/killing terminals, launching new agents from scratch, OS
-    // clipboard writes, and other destructive or externally-visible ops.
+    // Action tier owns full in-app orchestration: spawn agents, send prompts,
+    // close terminals, the workflow macro, theme/focus shortcuts. System tier
+    // is reserved for filesystem-destructive operations (worktree.delete),
+    // git mutations (commit/push/stage/snapshot), externally-visible writes
+    // (OS clipboard, GitHub issue/PR creation). See ACTION_TIER_ADDONS and
+    // SYSTEM_TIER_ADDONS in shared/config/helpAssistantTierAllowlists.ts.
     const ACTION_TIER_TOOLS = [
+      "agent.launch",
       "agent.terminal",
       "agent.focusNextWaiting",
       "agent.focusNextWorking",
       "agent.focusNextAgent",
       "agent.focusPreviousAgent",
+      "terminal.sendCommand",
+      "terminal.close",
+      "terminal.closeAll",
+      "terminal.kill",
+      "terminal.killAll",
       "workflow.startWorkOnIssue",
       "workflow.focusNextAttention",
       "app.theme.pick",
@@ -2551,12 +2559,6 @@ describe("McpServerService", () => {
       "git.commit",
       "git.push",
       "worktree.delete",
-      "terminal.sendCommand",
-      "terminal.close",
-      "terminal.closeAll",
-      "terminal.kill",
-      "terminal.killAll",
-      "agent.launch",
       "copyTree.generateAndCopyFile",
     ] as const;
 
@@ -2612,7 +2614,7 @@ describe("McpServerService", () => {
       }
     });
 
-    it("action tier adds non-destructive in-app mutations, but excludes raw terminal sends, terminal closes, agent launches, and clipboard writes", async () => {
+    it("action tier adds full in-app orchestration, but excludes filesystem-destructive, git, and externally-visible writes", async () => {
       paneTokenTiers.set("token-action", "action");
       const { window } = createMockWindow({ getManifest: tierManifest });
 
@@ -2687,7 +2689,7 @@ describe("McpServerService", () => {
       expect(dispatchMock).not.toHaveBeenCalled();
     });
 
-    it("rejects raw command, terminal close, agent launch, and clipboard writes at the action tier", async () => {
+    it("rejects clipboard writes, git mutations, and worktree deletes at the action tier", async () => {
       paneTokenTiers.set("token-action", "action");
       const dispatchMock = vi.fn(
         (): ActionDispatchResult => ({ ok: true, result: "should-not-run" })
@@ -2704,11 +2706,10 @@ describe("McpServerService", () => {
       transports.push(transport);
 
       const calls: Array<{ name: string; arguments: Record<string, unknown> }> = [
-        { name: "terminal.sendCommand", arguments: { id: "t", text: "x" } },
-        { name: "terminal.close", arguments: { id: "t" } },
-        { name: "terminal.closeAll", arguments: {} },
-        { name: "agent.launch", arguments: { agentId: "claude" } },
         { name: "copyTree.generateAndCopyFile", arguments: {} },
+        { name: "git.commit", arguments: { message: "x" } },
+        { name: "git.push", arguments: {} },
+        { name: "worktree.delete", arguments: {} },
       ];
 
       for (const call of calls) {

@@ -1012,7 +1012,7 @@ describe("CallTool error envelope (integration through sessionServer)", () => {
     await server.connect(makeMockTransport());
 
     const result = (await callTool(server, {
-      name: "terminal.killAll",
+      name: "git.push",
       arguments: {},
     })) as { isError: boolean; content: { type: string; text: string }[] };
 

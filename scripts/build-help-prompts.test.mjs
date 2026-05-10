@@ -56,11 +56,43 @@ describe("help prompt outputs", () => {
       expect(CLAUDE).toContain("ScheduleWakeup");
     });
 
-    it("GEMINI.md and AGENTS.md omit the Tier Model and getStatus recipe", () => {
+    it("CLAUDE.md contains the worked-example task recipes", () => {
+      expect(CLAUDE).toContain("## Common Tasks");
+      expect(CLAUDE).toContain("### Read what one agent is doing");
+      expect(CLAUDE).toContain("### Snapshot multiple terminals at once");
+      expect(CLAUDE).toContain("### Send a prompt to one running agent");
+      expect(CLAUDE).toContain("### Broadcast a command to multiple terminals");
+      expect(CLAUDE).toContain("### Spawn an agent on a task");
+      expect(CLAUDE).toContain("### Close terminals");
+      expect(CLAUDE).toContain("## When to Use Which");
+      expect(CLAUDE).toContain("agent.launch");
+      expect(CLAUDE).toContain("terminal.sendCommand");
+    });
+
+    it("CLAUDE.md places Common Tasks before Tier Model", () => {
+      const tasksIdx = CLAUDE.indexOf("## Common Tasks");
+      const tierIdx = CLAUDE.indexOf("## Tier Model");
+      expect(tasksIdx).toBeGreaterThan(-1);
+      expect(tierIdx).toBeGreaterThan(-1);
+      expect(tasksIdx).toBeLessThan(tierIdx);
+    });
+
+    it("GEMINI.md and AGENTS.md omit the Tier Model, task recipes, and getStatus recipe", () => {
       for (const body of [GEMINI, AGENTS]) {
         expect(body).not.toContain("## Tier Model");
+        expect(body).not.toContain("## Common Tasks");
+        expect(body).not.toContain("## When to Use Which");
         expect(body).not.toContain("## Watching Multiple Agent Terminals");
         expect(body).not.toContain("terminal.getStatus");
+      }
+    });
+
+    it("GEMINI.md and AGENTS.md acknowledge they cannot control terminals", () => {
+      for (const body of [GEMINI, AGENTS]) {
+        expect(body).toMatch(
+          /cannot inspect, spawn, close, or send commands to live Daintree terminals/
+        );
+        expect(body).toMatch(/Claude help session/);
       }
     });
   });

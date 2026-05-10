@@ -59,16 +59,16 @@ const DEFAULT_SETTINGS: HelpAssistantSettings = {
 const TIER_OPTIONS = [
   { value: "workbench", label: "Workbench — read-only" },
   { value: "action", label: "Action — read + write (default)" },
-  { value: "system", label: "System — destructive actions" },
+  { value: "system", label: "System — destructive and external writes" },
 ];
 
 const TIER_DESCRIPTIONS: Record<HelpAssistantTier, string> = {
   workbench:
     "The assistant can read project state but can't change it. Best when you're handing off observation tasks.",
   action:
-    "The assistant can edit files, run terminals, and trigger workflows. Most assistance tasks need this.",
+    "The assistant can spawn agents, send prompts, read terminal state, and close terminals — full in-app orchestration. Most assistance tasks need this.",
   system:
-    "Includes destructive actions: delete worktrees, kill terminals, push commits. Reserve for trusted automation.",
+    "Adds operations that touch disk or external services: delete worktrees, commit/push git, write the system clipboard, open GitHub issues/PRs. Reserve for trusted automation.",
 };
 
 function groupToolsByNamespace(tools: readonly string[]): Array<[string, string[]]> {

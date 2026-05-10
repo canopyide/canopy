@@ -62,6 +62,11 @@ export const ACTION_TIER_ADDONS: readonly string[] = [
 
   "terminal.inject",
   "terminal.new",
+  "terminal.sendCommand",
+  "terminal.close",
+  "terminal.closeAll",
+  "terminal.kill",
+  "terminal.killAll",
   TERMINAL_WAIT_UNTIL_IDLE_TOOL,
 
   "recipe.list",
@@ -71,6 +76,7 @@ export const ACTION_TIER_ADDONS: readonly string[] = [
 
   "file.openInEditor",
 
+  "agent.launch",
   "agent.terminal",
   "agent.focusNextWaiting",
   "agent.focusNextWorking",
@@ -92,15 +98,7 @@ export const ACTION_TIER_ADDONS: readonly string[] = [
 export const SYSTEM_TIER_ADDONS: readonly string[] = [
   "worktree.delete",
 
-  "terminal.sendCommand",
-  "terminal.close",
-  "terminal.closeAll",
-  "terminal.kill",
-  "terminal.killAll",
-
   "copyTree.generateAndCopyFile",
-
-  "agent.launch",
 
   "git.stageFile",
   "git.unstageFile",
@@ -141,6 +139,6 @@ export const HELP_TIER_CUMULATIVE: Record<HelpAssistantTier, readonly string[]> 
  */
 export const SYSTEM_TIER_HIGH_BLAST_RADIUS: readonly string[] = [
   "git.push",
-  "terminal.killAll",
+  "git.commit",
   "worktree.delete",
 ];

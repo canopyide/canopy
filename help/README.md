@@ -79,6 +79,7 @@ All three share:
 scripts/help-src/
 ├── SHARED.md           # canonical body (How to Answer, Topics, GitHub, MCP docs, IDK pattern)
 ├── CLAUDE.head.md      # Claude title + What You Can Do + Tier Model
+├── CLAUDE.tasks.md     # Claude-only worked-example task recipes (read/spawn/send/close)
 ├── CLAUDE.tail.md      # Claude-only terminal.getStatus recipe
 ├── GEMINI.head.md      # Gemini title + Scope (docs-only)
 └── AGENTS.head.md      # Codex Role Override + Scope (docs-only)
@@ -98,11 +99,13 @@ Claude help sessions run at one of three authorization tiers, selected by user s
 
 | Tier | Trigger | Capabilities (categories) |
 | --- | --- | --- |
-| `workbench` | (not exposed to help sessions today) | Read-only introspection: list projects, worktrees, terminals; read git status, diffs, commits; view GitHub issues/PRs. |
-| `action` | Default for help sessions | Adds non-destructive mutations: create worktrees, inject context, run recipes, open files, focus agents. |
-| `system` | Help-session skip-permissions setting | Adds destructive operations: delete worktrees, send raw terminal commands, stage/commit/push git, open issues/PRs, launch agents. |
+| `workbench` | User selects "Workbench — read-only" in Settings → Assistant | Read-only introspection: list projects, worktrees, terminals; read git status, diffs, commits, agent state, terminal output; view GitHub issues/PRs. |
+| `action` | Default for help sessions | Adds in-app orchestration: spawn agents (`agent.launch`), send prompts to running agents (`terminal.sendCommand`), close terminals (`terminal.close`/`terminal.kill`), create worktrees, inject context, run recipes, open files. |
+| `system` | User selects "System — destructive and external writes" in Settings → Assistant | Adds filesystem-destructive and externally-visible operations: delete worktrees, stage/commit/push git, write the OS clipboard, open GitHub issues/PRs from the local app. |
 
-The authoritative tier definitions live in `electron/services/McpServerService.ts` (`WORKBENCH_TOOLS`, `ACTION_TIER_ADDONS`, `SYSTEM_TIER_ADDONS`). When local MCP is disabled in settings, the `daintree` server is omitted from the per-session `.mcp.json` entirely — Claude falls back to docs-only behavior.
+Tier and `bypassPermissions` (skip Claude's per-tool prompt) are independent settings — both are configured under Settings → Assistant → Daintree Assistant.
+
+The authoritative tier definitions live in `shared/config/helpAssistantTierAllowlists.ts` (`WORKBENCH_TIER_TOOLS`, `ACTION_TIER_ADDONS`, `SYSTEM_TIER_ADDONS`); `electron/services/mcp-server/shared.ts` re-exports them as Sets for dispatch-time lookup. When local MCP is disabled in settings, the `daintree` server is omitted from the per-session `.mcp.json` entirely — Claude falls back to docs-only behavior.
 
 ## Permission Lockdown
 

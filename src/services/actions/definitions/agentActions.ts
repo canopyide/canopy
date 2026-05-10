@@ -11,7 +11,8 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
   actions.set("agent.launch", () => ({
     id: "agent.launch",
     title: "Launch Agent",
-    description: "Launch an AI agent in a new terminal",
+    description:
+      "Launch an AI agent in a new terminal. When launching multiple agents for the user, do them sequentially (one per turn) — never fan out parallel calls.",
     category: "agent",
     kind: "command",
     danger: "safe",
