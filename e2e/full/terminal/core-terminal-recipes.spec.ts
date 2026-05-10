@@ -4,6 +4,7 @@ import { createFixtureRepo } from "../../helpers/fixtures";
 import { openAndOnboardProject } from "../../helpers/project";
 import { SEL } from "../../helpers/selectors";
 import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../../helpers/timeouts";
+import { dismissBlockingPalette } from "../../helpers/overlays";
 
 let ctx: AppContext;
 let fixtureCleanup: (() => void) | undefined;
@@ -28,6 +29,7 @@ test.describe.serial("Core: Terminal Recipes", () => {
 
     async function openRecipesTab() {
       const { window } = ctx;
+      await dismissBlockingPalette(window);
       await window.locator(SEL.toolbar.projectSwitcherTrigger).click();
       const palette = window.locator(SEL.projectSwitcher.palette);
       await expect(palette).toBeVisible({ timeout: T_MEDIUM });

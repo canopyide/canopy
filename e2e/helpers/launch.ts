@@ -559,8 +559,9 @@ export async function refreshActiveWindow(app: ElectronApplication, oldPage?: Pa
     // `Input.dispatchKeyEvent` to a freshly-created WebContentsView can be
     // silently dropped on macOS even when the document has focus. Pressing
     // and releasing a harmless modifier here ensures the input channel is
-    // primed before tests send their real shortcut presses.
-    await newWindow.keyboard.press("Shift").catch(() => {});
+    // primed before tests send their real shortcut presses. Avoid bare Shift:
+    // the app intentionally treats double-Shift as the Action Palette toggle.
+    await newWindow.keyboard.press("Control").catch(() => {});
   } catch {
     // Best-effort focus; tests can still proceed.
   }

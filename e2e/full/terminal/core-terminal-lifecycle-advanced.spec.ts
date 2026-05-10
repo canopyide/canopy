@@ -10,6 +10,7 @@ import {
 } from "../../helpers/panels";
 import { SEL } from "../../helpers/selectors";
 import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../../helpers/timeouts";
+import { dismissBlockingPalette } from "../../helpers/overlays";
 import { TRASH_TTL_MS } from "../../../shared/config/trash";
 
 const mod = process.platform === "darwin" ? "Meta" : "Control";
@@ -31,6 +32,7 @@ async function openTerminal(window: AppContext["window"]): Promise<void> {
 async function closeFirstPanel(window: AppContext["window"]): Promise<void> {
   const before = await getGridPanelCount(window);
   const panel = getFirstGridPanel(window);
+  await dismissBlockingPalette(window);
   await panel.locator(SEL.panel.close).first().click();
   await expect.poll(() => getGridPanelCount(window), { timeout: T_MEDIUM }).toBe(before - 1);
 }

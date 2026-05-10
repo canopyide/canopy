@@ -7,6 +7,7 @@ import { getFirstGridPanel, getGridPanelCount, openTerminal } from "../../helper
 import { SEL } from "../../helpers/selectors";
 import { T_LONG, T_MEDIUM } from "../../helpers/timeouts";
 import { getPtyPid, isPidAlive, measureMainMemory } from "../../helpers/stress";
+import { dismissBlockingPalette } from "../../helpers/overlays";
 
 // Keep within the terminal spawn rate limit (10 per 30s window)
 const CYCLE_COUNT = 8;
@@ -49,6 +50,7 @@ async function forceCloseFirstPanel(window: AppContext["window"]): Promise<void>
   const countBefore = await getGridPanelCount(window);
   const panel = getFirstGridPanel(window);
   const closeBtn = panel.locator(SEL.panel.close);
+  await dismissBlockingPalette(window);
   await closeBtn.click({ modifiers: ["Alt"] });
   await expect.poll(() => getGridPanelCount(window), { timeout: T_MEDIUM }).toBe(countBefore - 1);
 }

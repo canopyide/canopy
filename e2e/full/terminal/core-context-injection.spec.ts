@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 import { launchApp, closeApp, type AppContext } from "../../helpers/launch";
 import { createFixtureRepo } from "../../helpers/fixtures";
 import { openAndOnboardProject } from "../../helpers/project";
-import { getFirstGridPanel, getGridPanelCount } from "../../helpers/panels";
+import { getFirstGridPanel, getGridPanelCount, openTerminal } from "../../helpers/panels";
 import { waitForTerminalText } from "../../helpers/terminal";
 import { T_MEDIUM, T_LONG } from "../../helpers/timeouts";
 
@@ -110,7 +110,7 @@ test.describe.serial("Core: Context Injection", () => {
 
     // Open a terminal panel via toolbar and wait for it to appear
     const countBefore = await getGridPanelCount(window);
-    await window.locator('[aria-label="Open Terminal"]').click();
+    await openTerminal(window);
     await expect
       .poll(() => getGridPanelCount(window), { timeout: T_LONG })
       .toBeGreaterThan(countBefore);

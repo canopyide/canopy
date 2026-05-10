@@ -13,6 +13,7 @@ import {
 import { runTerminalCommand, waitForTerminalText } from "../../helpers/terminal";
 import { SEL } from "../../helpers/selectors";
 import { T_LONG, T_MEDIUM } from "../../helpers/timeouts";
+import { dismissBlockingPalette } from "../../helpers/overlays";
 
 interface ActionResult<T = unknown> {
   ok?: boolean;
@@ -112,6 +113,7 @@ async function typeDirectlyIntoTerminal(
   command: string
 ): Promise<void> {
   const xterm = panel.locator(SEL.terminal.xtermRows);
+  await dismissBlockingPalette(page);
   await xterm.click();
   await expect
     .poll(() => getFocusedPanelId(page), { timeout: T_MEDIUM, intervals: [100, 250] })
@@ -277,6 +279,7 @@ test.describe.serial("Core: Fleet terminal broadcast", () => {
 
     await test.step("Click first fleet panel to anchor focus", async () => {
       firstId = fleetIds[0]!;
+      await dismissBlockingPalette(window);
       await getPanelById(window, firstId).click();
       await expect
         .poll(() => getFocusedPanelId(window), { timeout: T_MEDIUM, intervals: [100, 250] })

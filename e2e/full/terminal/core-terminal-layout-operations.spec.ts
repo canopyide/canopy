@@ -12,6 +12,7 @@ import {
 import { SEL } from "../../helpers/selectors";
 import { T_SHORT, T_MEDIUM, T_SETTLE } from "../../helpers/timeouts";
 import { spawnTerminalAndVerify } from "../../helpers/workflows";
+import { dismissBlockingPalette } from "../../helpers/overlays";
 
 let ctx: AppContext;
 let fixtureDir: string;
@@ -34,6 +35,7 @@ async function dispatchAction(
 async function focusPanel(page: Page, panelId: string): Promise<void> {
   const panel = page.locator(`[data-panel-id="${panelId}"]`);
   const xtermArea = panel.locator(SEL.terminal.xtermRows).first();
+  await dismissBlockingPalette(page);
   await xtermArea.click();
   await page.waitForTimeout(T_SETTLE);
 }
