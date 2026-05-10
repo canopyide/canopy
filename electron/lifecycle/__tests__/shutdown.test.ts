@@ -157,6 +157,7 @@ describe("registerShutdownHandler", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.resetModules();
+    delete process.env.DAINTREE_E2E_MODE;
     isSmokeTestMock.value = false;
     signalShutdownMock.isSignalShutdown.mockReturnValue(false);
     quitWarningMock.getActiveAgentCount.mockReturnValue(0);
@@ -204,6 +205,28 @@ describe("registerShutdownHandler", () => {
     quitWarningMock.getActiveAgentCount.mockReturnValue(3);
 
     const mainWindow = { isMinimized: vi.fn() } as unknown as Electron.BrowserWindow;
+    const { beforeQuitCb } = await setup({
+      windowRegistry: {
+        getPrimary: () => ({ browserWindow: mainWindow }),
+      } as unknown as ShutdownDeps["windowRegistry"],
+    });
+    const event = makeEvent();
+    await beforeQuitCb(event);
+
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(quitWarningMock.showQuitWarning).not.toHaveBeenCalled();
+
+    await vi.waitFor(() => {
+      expect(appMock.exit).toHaveBeenCalledWith(0);
+    });
+    expect(crashRecoveryMock.cleanupOnExit).toHaveBeenCalled();
+  });
+
+  it("skips dialog in e2e mode even when active agents exist", async () => {
+    process.env.DAINTREE_E2E_MODE = "1";
+    quitWarningMock.getActiveAgentCount.mockReturnValue(2);
+
+    const mainWindow = {} as Electron.BrowserWindow;
     const { beforeQuitCb } = await setup({
       windowRegistry: {
         getPrimary: () => ({ browserWindow: mainWindow }),

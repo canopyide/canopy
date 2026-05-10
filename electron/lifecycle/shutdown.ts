@@ -55,7 +55,9 @@ export function registerShutdownHandler(deps: ShutdownDeps): void {
     }
 
     const canShowDialog =
-      !isSignalShutdown() && deps.windowRegistry?.getPrimary()?.browserWindow != null;
+      process.env.DAINTREE_E2E_MODE !== "1" &&
+      !isSignalShutdown() &&
+      deps.windowRegistry?.getPrimary()?.browserWindow != null;
 
     if (isConfirmingQuit) {
       event.preventDefault();

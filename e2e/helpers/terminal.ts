@@ -289,10 +289,99 @@ export async function triggerTerminalLink(panelLocator: Locator, url: string): P
   );
 }
 
+async function isContextMenuVisible(page: Page, timeout = 750): Promise<boolean> {
+  return page
+    .locator(SEL.contextMenu.content)
+    .isVisible({ timeout })
+    .catch(() => false);
+}
+
+async function dispatchXtermContextMenu(xterm: Locator): Promise<boolean> {
+  return xterm.evaluate((el) => {
+    if (!(el instanceof HTMLElement)) return false;
+    const rect = el.getBoundingClientRect();
+    const clientX = rect.left + (rect.width > 2 ? Math.min(24, rect.width / 2) : 1);
+    const clientY = rect.top + (rect.height > 2 ? Math.min(24, rect.height / 2) : 1);
+
+    el.dispatchEvent(
+      new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        view: window,
+        button: 2,
+        buttons: 2,
+        clientX,
+        clientY,
+      })
+    );
+
+    return true;
+  });
+}
+
 export async function openTerminalContextMenu(panelLocator: Locator): Promise<void> {
   const page = panelLocator.page();
-  await dismissBlockingPalette(page);
+  const menu = page.locator(SEL.contextMenu.content);
   const xterm = panelLocator.locator(SEL.terminal.xtermRows);
-  await xterm.click({ button: "right" });
-  await expect(page.locator(SEL.contextMenu.content)).toBeVisible({ timeout: T_SHORT });
+  await expect(xterm).toBeVisible({ timeout: T_SHORT });
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await dismissBlockingPalette(page);
+    await page.keyboard.press("Escape").catch(() => undefined);
+
+    if (attempt === 0) {
+      await xterm.click({ button: "right", timeout: 5_000 }).catch(() => undefined);
+    } else if (attempt === 1) {
+      const box = await xterm.boundingBox();
+      if (box) {
+        await page.mouse.click(
+          box.x + (box.width > 2 ? Math.min(24, box.width / 2) : 1),
+          box.y + (box.height > 2 ? Math.min(24, box.height / 2) : 1),
+          { button: "right" }
+        );
+      }
+    } else {
+      await dispatchXtermContextMenu(xterm).catch(() => false);
+    }
+
+    if (await isContextMenuVisible(page, 1_500)) {
+      return;
+    }
+  }
+
+  await expect(menu).toBeVisible({ timeout: T_SHORT });
+}
+
+export async function clickTerminalContextMenuItem(
+  panelLocator: Locator,
+  name: string
+): Promise<void> {
+  const page = panelLocator.page();
+  const menu = page.locator(SEL.contextMenu.content);
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (!(await isContextMenuVisible(page, 500))) {
+      await openTerminalContextMenu(panelLocator);
+    }
+
+    const item = page.getByRole("menuitem", { name });
+    await expect(item).toBeVisible({ timeout: T_SHORT });
+
+    try {
+      await item.click({ force: true, timeout: 3_000 });
+      return;
+    } catch (error) {
+      lastError = error;
+      await page.keyboard.press("Escape").catch(() => undefined);
+      await expect(menu)
+        .not.toBeVisible({ timeout: T_SHORT })
+        .catch(() => undefined);
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(`Failed to click terminal context menu item "${name}"`);
 }
