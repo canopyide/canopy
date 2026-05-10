@@ -1325,24 +1325,23 @@ describe("BulkCreateWorktreeDialog", () => {
     expect(storedOnComplete).toHaveBeenCalledTimes(1);
   });
 
-  it("invokes stored bulkCreateDialog.onComplete when dialog is cancelled (issue #7644)", async () => {
+  it("does not invoke stored bulkCreateDialog.onComplete when dialog is cancelled", async () => {
+    // Cancel/Escape/backdrop must preserve bulk selection so the user can
+    // reopen the dropdown and finish picking. Selection is only cleared via
+    // handleDone, after worktrees are actually created.
     const storedOnComplete = vi.fn();
     mockBulkCreateDialog.onComplete = storedOnComplete;
-    // Mirrors closeBulkCreateDialog: onClose zeroes the stored callback as part
-    // of its reset. handleClose must capture the stored callback BEFORE calling
-    // onClose, otherwise the dismissal path leaks selection state across opens.
     const propOnClose = vi.fn(() => {
       mockBulkCreateDialog.onComplete = undefined;
     });
 
     render(<BulkCreateWorktreeDialog {...defaultProps} onClose={propOnClose} />);
 
-    // Cancel from idle state via Cancel button (handleClose path).
     await act(async () => {
       screen.getByText("Cancel").click();
     });
 
-    expect(storedOnComplete).toHaveBeenCalledTimes(1);
+    expect(storedOnComplete).not.toHaveBeenCalled();
     expect(propOnClose).toHaveBeenCalledTimes(1);
   });
 

@@ -128,13 +128,6 @@ interface GitHubResourceListProps {
    * for the next 30s stats poll.
    */
   onFreshFetch?: () => void;
-  /**
-   * Tracks the parent popover's open state. The list is `keepMounted`, so
-   * outside-click / Escape / toolbar-toggle dismissals never trigger a
-   * close handler inside this tree — watching this prop transition true→false
-   * lets the list run its dismissal cleanup (clear bulk selection).
-   */
-  isOpen?: boolean;
 }
 
 export function GitHubResourceList({
@@ -143,7 +136,6 @@ export function GitHubResourceList({
   onClose,
   initialCount,
   onFreshFetch,
-  isOpen,
 }: GitHubResourceListProps) {
   const searchQuery = useGitHubFilterStore((s) =>
     type === "issue" ? s.issueSearchQuery : s.prSearchQuery
@@ -269,8 +261,22 @@ export function GitHubResourceList({
   }, [handleManualRefresh]);
 
   const selection = useIssueSelection();
+  const selectionClear = selection.clear;
   const [issueCache, setIssueCache] = useState<Map<number, GitHubIssue>>(() => new Map());
   const [prCache, setPrCache] = useState<Map<number, GitHubPR>>(() => new Map());
+
+  // The toolbar reuses one keepMounted GitHubResourceList per type across
+  // every project — switching projects only updates `projectPath`, it doesn't
+  // remount. Reset bulk selection + the issue/PR cache so a selection from
+  // project A can't follow the user into project B's dropdown.
+  const prevProjectPathRef = useRef(projectPath);
+  useEffect(() => {
+    if (prevProjectPathRef.current === projectPath) return;
+    prevProjectPathRef.current = projectPath;
+    selectionClear();
+    setIssueCache(new Map());
+    setPrCache(new Map());
+  }, [projectPath, selectionClear]);
 
   // Accumulate item objects into the session cache whenever data changes
   useEffect(() => {
@@ -313,39 +319,9 @@ export function GitHubResourceList({
     ];
   }, [type]);
 
-  // Idempotency guard: dismissal cleanup runs at most once per open-cycle.
-  // A click-initiated close (e.g. settings link) calls handleClose AND causes
-  // the parent to flip isOpen=false, which would otherwise re-fire cleanup
-  // through the isOpen effect below.
-  const cleanedUpRef = useRef(false);
-
-  const runDismissalCleanup = useCallback(() => {
-    if (cleanedUpRef.current) return;
-    cleanedUpRef.current = true;
-    selection.clear();
-    setIssueCache(new Map());
-    setPrCache(new Map());
-  }, [selection]);
-
   const handleClose = useCallback(() => {
-    runDismissalCleanup();
     onClose?.();
-  }, [onClose, runDismissalCleanup]);
-
-  const prevIsOpenRef = useRef<boolean | undefined>(undefined);
-  useEffect(() => {
-    // Popover is keepMounted, so outside-click / Escape / toolbar-toggle never
-    // call onClose. Watch the parent's open state and run dismissal cleanup on
-    // a true→false transition. Reset the cleanup flag on each (re)open so the
-    // next dismissal can run.
-    if (isOpen === true) {
-      cleanedUpRef.current = false;
-    }
-    if (prevIsOpenRef.current === true && isOpen === false) {
-      runDismissalCleanup();
-    }
-    prevIsOpenRef.current = isOpen;
-  }, [isOpen, runDismissalCleanup]);
+  }, [onClose]);
 
   const handleOpenInGitHub = () => {
     const query = searchQuery.trim() || undefined;
@@ -1061,9 +1037,6 @@ export function GitHubResourceList({
         }
         selectedCount={selection.selectedIds.size}
         onClear={selection.clear}
-        // Pass the raw onClose (not handleClose) — opening the bulk dialog
-        // hands selected items off by value, and selection cleanup is then
-        // driven by the dialog's stored onComplete (or the isOpen effect).
         onCloseDropdown={onClose}
       />
     </div>

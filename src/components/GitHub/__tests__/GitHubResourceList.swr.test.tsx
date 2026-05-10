@@ -1914,38 +1914,20 @@ describe("GitHubResourceList polish (#7202)", () => {
   });
 });
 
-describe("GitHubResourceList dismissal cleanup (#7644)", () => {
-  it("clears selection when isOpen transitions true → false", () => {
+describe("GitHubResourceList dismissal preserves bulk selection", () => {
+  it("does not clear selection when the dropdown is dismissed via outside click", () => {
+    // Dropdown unmount/dismissal must preserve selection so the user can
+    // reopen and finish picking. Selection only clears when worktrees are
+    // actually created (Done in BulkCreateWorktreeDialog).
     mockListIssues.mockResolvedValue(makeResponse([makeIssue(1)]));
 
-    const { rerender } = render(
-      <GitHubResourceList type="issue" projectPath="/test/proj" isOpen={true} />
-    );
-    expect(mockSelectionClear).not.toHaveBeenCalled();
-
-    rerender(<GitHubResourceList type="issue" projectPath="/test/proj" isOpen={false} />);
-
-    expect(mockSelectionClear).toHaveBeenCalledTimes(1);
-  });
-
-  it("does not clear selection on initial mount with isOpen=false", () => {
-    mockListIssues.mockResolvedValue(makeResponse([makeIssue(1)]));
-
-    render(<GitHubResourceList type="issue" projectPath="/test/proj" isOpen={false} />);
+    const { unmount } = render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+    unmount();
 
     expect(mockSelectionClear).not.toHaveBeenCalled();
   });
 
-  it("does not clear selection when isOpen prop is omitted (no parent control)", () => {
-    mockListIssues.mockResolvedValue(makeResponse([makeIssue(1)]));
-
-    const { rerender } = render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
-    rerender(<GitHubResourceList type="issue" projectPath="/test/proj" />);
-
-    expect(mockSelectionClear).not.toHaveBeenCalled();
-  });
-
-  it("clears selection when the no-token settings link is clicked", () => {
+  it("does not clear selection when the no-token settings link is clicked", () => {
     mockGitHubConfig = { hasToken: false };
     mockGitHubConfigInitialized = true;
     const onClose = vi.fn();
@@ -1954,45 +1936,22 @@ describe("GitHubResourceList dismissal cleanup (#7644)", () => {
 
     screen.getByRole("button", { name: /add github token/i }).click();
 
-    expect(mockSelectionClear).toHaveBeenCalledTimes(1);
+    expect(mockSelectionClear).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("does not double-clear when click-path also flips isOpen=false", () => {
-    // Click-initiated close (handleClose) calls onClose; the parent reacts by
-    // setting isOpen=false, which would otherwise re-fire cleanup via the
-    // useEffect. The cleanedUpRef guard must absorb the second call.
-    mockGitHubConfig = { hasToken: false };
-    mockGitHubConfigInitialized = true;
-    const onClose = vi.fn();
-
-    const { rerender } = render(
-      <GitHubResourceList type="issue" projectPath="/test/proj" isOpen={true} onClose={onClose} />
-    );
-
-    screen.getByRole("button", { name: /add github token/i }).click();
-
-    rerender(
-      <GitHubResourceList type="issue" projectPath="/test/proj" isOpen={false} onClose={onClose} />
-    );
-
-    expect(mockSelectionClear).toHaveBeenCalledTimes(1);
-    expect(onClose).toHaveBeenCalledTimes(1);
-  });
-
-  it("re-arms cleanup on each open cycle", () => {
+  it("clears selection when projectPath changes (project switch)", () => {
+    // The toolbar keeps one GitHubResourceList per type mounted across every
+    // project, so a project switch only updates projectPath without remounting.
+    // Without an explicit reset, project A's selection + cached items would
+    // leak into project B's dropdown.
     mockListIssues.mockResolvedValue(makeResponse([makeIssue(1)]));
 
-    const { rerender } = render(
-      <GitHubResourceList type="issue" projectPath="/test/proj" isOpen={true} />
-    );
-    rerender(<GitHubResourceList type="issue" projectPath="/test/proj" isOpen={false} />);
+    const { rerender } = render(<GitHubResourceList type="issue" projectPath="/test/proj-a" />);
+    expect(mockSelectionClear).not.toHaveBeenCalled();
+
+    rerender(<GitHubResourceList type="issue" projectPath="/test/proj-b" />);
+
     expect(mockSelectionClear).toHaveBeenCalledTimes(1);
-
-    // Reopen and close again — cleanup must run a second time.
-    rerender(<GitHubResourceList type="issue" projectPath="/test/proj" isOpen={true} />);
-    rerender(<GitHubResourceList type="issue" projectPath="/test/proj" isOpen={false} />);
-
-    expect(mockSelectionClear).toHaveBeenCalledTimes(2);
   });
 });

@@ -644,7 +644,6 @@ export const GitHubStatsToolbarButton = memo(
                 }}
                 initialCount={stats?.issueCount}
                 onFreshFetch={handleListFreshFetch}
-                isOpen={issuesOpen}
               />
             ) : (
               <Suspense
@@ -662,7 +661,6 @@ export const GitHubStatsToolbarButton = memo(
                   }}
                   initialCount={stats?.issueCount}
                   onFreshFetch={handleListFreshFetch}
-                  isOpen={issuesOpen}
                 />
               </Suspense>
             )
@@ -752,7 +750,6 @@ export const GitHubStatsToolbarButton = memo(
                 }}
                 initialCount={stats?.prCount}
                 onFreshFetch={handleListFreshFetch}
-                isOpen={prsOpen}
               />
             ) : (
               <Suspense
@@ -768,7 +765,6 @@ export const GitHubStatsToolbarButton = memo(
                   }}
                   initialCount={stats?.prCount}
                   onFreshFetch={handleListFreshFetch}
-                  isOpen={prsOpen}
                 />
               </Suspense>
             )
