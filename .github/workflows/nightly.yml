@@ -378,25 +378,59 @@ jobs:
       - name: Run integration tests
         run: npm run test:integration
 
-  # Nightly runs lightweight core plus online e2e. Full and soak e2e suites are
-  # reserved for release gating or targeted manual dispatches.
+  # Nightly runs the full cross-platform safety net: core, all six full-* domain
+  # buckets, online, and the memory-leak nightly project — across macOS, Linux,
+  # AND Windows. Release gating is non-windows-only, so nightly is the place
+  # where Windows regressions surface. Every job is a call into the unified
+  # e2e.yml runner, parameterised by `project`.
   e2e-core:
     needs: [check, test]
-    uses: ./.github/workflows/e2e-core.yml
+    uses: ./.github/workflows/e2e.yml
     with:
-      project: core
+      suite: core
+      platform: ${{ inputs.platform || 'all' }}
+
+  # Six domain buckets, each a reusable-workflow call expanded across the OS
+  # matrix inside e2e.yml. With platform=all that's 6 buckets × 3 OSes =
+  # 18 independent jobs running in parallel.
+  e2e-full:
+    needs: [check, test]
+    strategy:
+      fail-fast: false
+      matrix:
+        suite:
+          - full-terminal
+          - full-worktree
+          - full-presets
+          - full-platform
+          - full-panels
+          - full-resilience
+    uses: ./.github/workflows/e2e.yml
+    with:
+      suite: ${{ matrix.suite }}
       platform: ${{ inputs.platform || 'all' }}
 
   e2e-online:
     needs: [check, test]
-    uses: ./.github/workflows/e2e-online.yml
+    uses: ./.github/workflows/e2e.yml
     with:
+      suite: online
       platform: ${{ inputs.platform || 'all' }}
     secrets: inherit
 
+  # Memory-leak detection — runs the `nightly` E2E suite. e2e.yml forces
+  # --workers=1 for this suite (the leak heuristic depends on serialized
+  # launches). Nightly-only by design; not part of release gating.
+  e2e-nightly:
+    needs: [check, test]
+    uses: ./.github/workflows/e2e.yml
+    with:
+      suite: nightly
+      platform: ${{ inputs.platform || 'all' }}
+
   publish:
     if: inputs.platform == '' || inputs.platform == 'all'
-    needs: [build, e2e-core, e2e-online]
+    needs: [build, e2e-core, e2e-full, e2e-online, e2e-nightly]
     runs-on: ubuntu-22.04
     timeout-minutes: 15
 
@@ -516,7 +550,8 @@ jobs:
 
   notify:
     if: failure() && github.event_name == 'schedule'
-    needs: [check, test, build, integration-test, e2e-core, e2e-online, publish]
+    needs:
+      [check, test, build, integration-test, e2e-core, e2e-full, e2e-online, e2e-nightly, publish]
     runs-on: ubuntu-22.04
     permissions:
       issues: write

@@ -250,7 +250,7 @@ export async function floodTerminal(
   await waitForTerminalText(panelLocator, sentinel, 60_000);
 }
 
-// ── Frame-Time Responsiveness Probe ──────────────────────
+// ── Renderer Responsiveness Probe ────────────────────────
 
 export async function startFrameProbe(page: Page): Promise<void> {
   await page.evaluate(() => {
@@ -259,12 +259,27 @@ export async function startFrameProbe(page: Page): Promise<void> {
     const loop = () => {
       if (!running) return;
       timestamps.push(performance.now());
-      requestAnimationFrame(loop);
+      // rAF can stop sampling in throttled CI windows; a short timer still
+      // catches renderer stalls without requiring visible-frame cadence.
+      window.setTimeout(loop, 16);
     };
-    requestAnimationFrame(loop);
+    window.setTimeout(loop, 16);
     const w = window as unknown as Record<string, unknown>;
     w.__daintreeFrameProbe = { timestamps, stop: () => (running = false) };
   });
+
+  const deadline = Date.now() + 2_000;
+  while (Date.now() < deadline) {
+    const sampleCount = await page
+      .evaluate(() => {
+        const w = window as unknown as Record<string, unknown>;
+        const probe = w.__daintreeFrameProbe as { timestamps: number[] } | undefined;
+        return probe?.timestamps.length ?? 0;
+      })
+      .catch(() => 0);
+    if (sampleCount > 0) return;
+    await page.waitForTimeout(50);
+  }
 }
 
 export async function stopFrameProbe(page: Page): Promise<FrameProbeResult> {

@@ -50,7 +50,7 @@ Ensure the `publish` URL matches your R2 public URL:
 
 The workflow will:
 
-- Run release checks, unit tests, and core/full/online e2e gates before packaging
+- Run release checks, unit tests, the `core` smoke gate, all six `full-*` domain buckets in parallel (terminal, worktree, presets, platform, panels, resilience), and the `online` agent-integration gate before packaging
 - Build for macOS, Windows, and Linux in parallel
 - Validate update metadata files are present
 - Upload binaries to R2 with long cache headers
@@ -119,7 +119,7 @@ The workflow gates release packaging before any artifacts are produced:
 
 1. **Quality gate stage**:
    - Checks and unit tests run on Linux
-   - Core, full, and online e2e gates run on non-Windows runners
+   - `core` smoke, six `full-*` domain buckets (terminal, worktree, presets, platform, panels, resilience) fanned out as a matrix, and the `online` gate all run on non-Windows runners (Linux + macOS). Windows E2E is nightly-only.
 
 2. **Build stage** (parallel matrix):
    - macOS, Windows, Linux build in parallel

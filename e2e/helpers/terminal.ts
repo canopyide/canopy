@@ -1,5 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
+import { dismissBlockingPalette } from "./overlays";
 import { SEL } from "./selectors";
 import { T_SHORT } from "./timeouts";
 
@@ -290,6 +291,7 @@ export async function triggerTerminalLink(panelLocator: Locator, url: string): P
 
 export async function openTerminalContextMenu(panelLocator: Locator): Promise<void> {
   const page = panelLocator.page();
+  await dismissBlockingPalette(page);
   const xterm = panelLocator.locator(SEL.terminal.xtermRows);
   await xterm.click({ button: "right" });
   await expect(page.locator(SEL.contextMenu.content)).toBeVisible({ timeout: T_SHORT });

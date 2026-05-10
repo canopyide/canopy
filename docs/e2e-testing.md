@@ -9,33 +9,47 @@ Playwright is installed as a dev dependency (`@playwright/test`). No browser dow
 ## Running Tests
 
 ```bash
-npm run test:e2e              # Run all Playwright projects
-npm run test:e2e:core         # Run lightweight release-gating core tests
-npm run test:e2e:full         # Run broad deterministic full tests
-npm run test:e2e:online       # Run Claude/OpenCode-dependent online tests
-npm run test:e2e:nightly      # Run soak/leak nightly tests
-npx playwright test --project=core -g "Worktree Lifecycle"  # Run a specific suite
-PWDEBUG=1 npx playwright test --project=core       # Debug mode
+npm run test:e2e                   # Run every Playwright project
+npm run test:e2e:core              # Lightweight release-gating smoke
+npm run test:e2e:full              # Run all six full-* buckets
+npm run test:e2e:full-terminal     # Run a single bucket — substitute any of:
+                                   #   full-terminal full-worktree full-presets
+                                   #   full-platform full-panels full-resilience
+npm run test:e2e:online            # Claude/OpenCode-dependent online tests
+npm run test:e2e:nightly           # Soak / memory-leak nightly tests
+npx playwright test e2e/full/terminal/core-terminal-search.spec.ts  # Single file
+PWDEBUG=1 npx playwright test --project=core                         # Debug mode
 ```
 
 ## Test Suites
 
-Tests are split into four projects:
+Tests are split into nine Playwright projects:
 
-- **core** — Lightweight deterministic release gate for essential app/project/terminal/persistence/agent coverage.
-- **full** — Broad deterministic regression suite. This is intentionally heavy and is not run by nightly.
-- **online** — Tests that interact with real agent CLIs (requires `ANTHROPIC_API_KEY` for Claude).
-- **nightly** — Long-running soak/leak tests.
+- **core** — Lightweight deterministic release-gate smoke (5 specs).
+- **full-terminal** — PTY mechanics, scrollback, search, layout, recipes, output flood, context injection, fleet broadcast.
+- **full-worktree** — Worktree lifecycle, project switching, git detection, cross-project flows.
+- **full-presets** — Agent presets, recipes, onboarding, CCR.
+- **full-platform** — Settings, persistence, a11y, keyboard, OS-shell surfaces, oauth, security.
+- **full-panels** — Browser, dev-preview, portal, review hub, file viewer, drag-drop, action palette, toolbar chrome.
+- **full-resilience** — Errors, IPC, crashes, races, perf budgets, diagnostics.
+- **online** — Tests that interact with real agent CLIs (requires `ANTHROPIC_API_KEY`).
+- **nightly** — Long-running memory-leak detection (workers=1, no retries).
 
 ## Configuration
 
-`playwright.config.ts` at the project root defines the projects:
+`playwright.config.ts` at the project root defines the projects. All `full-*` buckets share `coreTimeout` and `retries: 2 (CI)`. `core` and `online` keep their own timeouts; `nightly` runs at workers=1 with no retries.
 
-| Property     | Core         | Full         | Online         | Nightly         |
-| ------------ | ------------ | ------------ | -------------- | --------------- |
-| testDir      | `./e2e/core` | `./e2e/full` | `./e2e/online` | `./e2e/nightly` |
-| retries (CI) | 2            | 2            | 1              | 0               |
-| workers      | 1-2          | 1-2          | 1-2            | 1               |
+| Project         | testDir                 | retries (CI) | workers |
+| --------------- | ----------------------- | ------------ | ------- |
+| core            | `./e2e/core`            | 2            | 1-2     |
+| full-terminal   | `./e2e/full/terminal`   | 2            | 1-2     |
+| full-worktree   | `./e2e/full/worktree`   | 2            | 1-2     |
+| full-presets    | `./e2e/full/presets`    | 2            | 1-2     |
+| full-platform   | `./e2e/full/platform`   | 2            | 1-2     |
+| full-panels     | `./e2e/full/panels`     | 2            | 1-2     |
+| full-resilience | `./e2e/full/resilience` | 2            | 1-2     |
+| online          | `./e2e/online`          | 1            | 1-2     |
+| nightly         | `./e2e/nightly`         | 0            | 1       |
 
 ## Directory Structure
 
@@ -48,18 +62,19 @@ e2e/
 │   ├── project.ts       # openProject(), completeOnboarding(), openAndOnboardProject()
 │   ├── terminal.ts      # getTerminalText(), waitForTerminalText(), runTerminalCommand()
 │   └── panels.ts        # getFirstGridPanel(), getGridPanelCount(), getDockPanelCount()
-├── core/
-│   ├── core-first-run-onboarding.spec.ts
-│   ├── core-persistence.spec.ts
-│   ├── core-process-badge.spec.ts
-│   ├── core-terminal-agent-promotion.spec.ts
-│   └── core-worktree-lifecycle.spec.ts
+├── core/                # 5 smoke specs (release gate)
+│   └── core-*.spec.ts
 ├── full/
-│   └── *.spec.ts                        # Broad deterministic UI, settings, layout, recovery, stress coverage
-└── online/
-    ├── claude-online.spec.ts
-    ├── opencode-online.spec.ts
-    └── terminal-identity-transitions.spec.ts
+│   ├── terminal/        # 15 specs — PTY mechanics
+│   ├── worktree/        # 11 specs — worktree, project, git
+│   ├── presets/         # 17 specs — agent presets, recipes
+│   ├── platform/        # 17 specs — settings, persistence, a11y, oauth
+│   ├── panels/          # 16 specs — browser, dev-preview, portal, review hub
+│   └── resilience/      # 18 specs — errors, IPC, crashes, races, perf
+├── online/              # 3 agent-integration specs (release gate)
+│   └── *-online.spec.ts
+└── nightly/             # 2 memory-leak specs (nightly only)
+    └── nightly-*.spec.ts
 ```
 
 ## Shared Helpers
@@ -125,21 +140,26 @@ Components have `data-testid` and `data-worktree-branch` attributes for reliable
 
 ## CI Workflows
 
-### `e2e-core.yml`
+### `e2e.yml` (unified runner)
+
+A single reusable workflow runs every E2E suite. Pick one via the `suite` input: `full` (meta — all six buckets sequentially on one runner; workflow_dispatch default), `core`, any of the six `full-*` buckets (`full-terminal`, `full-worktree`, `full-presets`, `full-platform`, `full-panels`, `full-resilience`), `online`, or `nightly`.
 
 - **Triggers:** workflow_dispatch, workflow_call
-- **Matrix:** macOS-14, ubuntu-22.04, windows-latest
-- **No secrets needed**
+- **Matrix:** macOS-14, ubuntu-22.04, windows-latest (selectable via `platform`)
+- **Single-file runs:** pass `test_file: e2e/full/<bucket>/foo.spec.ts` and set `suite` to the bucket that owns that path (workflow_dispatch).
+- **Conditional behaviour by suite:**
+  - `full` — expands to six `--project=full-*` flags on a single runner. Use this for ad-hoc validation; release and nightly fan the buckets out across separate runners instead.
+  - `online` — extra `npm install -g opencode-ai`. Caller MUST use `secrets: inherit` so `ANTHROPIC_API_KEY` is reachable.
+  - `nightly` — Playwright is invoked with `--workers=1` (the memory-leak heuristic depends on serialized launches).
+  - All others — no extra steps.
 
-### `e2e-online.yml`
+### `e2e-single.yml` (debugging helper)
 
-- **Triggers:** workflow_dispatch, workflow_call
-- **Requires:** `ANTHROPIC_API_KEY` secret
-- **Nightly failure notification:** Creates/updates a GitHub issue labeled `e2e-nightly-failure`
+A separate workflow for fine-grained ad-hoc runs of a single test file with configurable `workers`, `retries`, and an optional `--grep` pattern. Routes through `scripts/ci/run-single-e2e.mjs`, which validates that the spec path matches the chosen project. Use this when iterating on a flaky test in CI.
 
 ### Release Gating
 
-`release.yml` runs checks, unit tests, and all three e2e gates (`core`, `full`, `online`) before platform packaging starts. Release e2e gates run on non-Windows runners; Windows release confidence comes from the platform build/package smoke plus the lightweight Windows nightly core gate. Nightly runs core and online e2e only.
+`release.yml` runs checks, unit tests, and the e2e gates (`core` + the six `full-*` buckets fanned out as a matrix + `online`) before platform packaging starts. Release e2e gates run on non-Windows runners; Windows release confidence comes from the platform build/package smoke plus full Windows nightly coverage. Nightly runs every E2E project — core, all six `full-*` buckets, online, and the memory-leak `nightly` project — across all three operating systems.
 
 ### Cross-Platform Matrix
 

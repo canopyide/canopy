@@ -72,22 +72,36 @@ jobs:
 
   e2e-core-gate:
     needs: [checks, unit-tests]
-    uses: ./.github/workflows/e2e-core.yml
+    uses: ./.github/workflows/e2e.yml
     with:
-      project: core
+      suite: core
       platform: non-windows
 
+  # Fan out the six full-* domain buckets as a matrix of reusable-workflow
+  # calls. GitHub Actions waits on every matrix entry before unblocking
+  # `build-daintree`, so a single `needs: [..., e2e-full-gate]` is enough.
   e2e-full-gate:
     needs: [checks, unit-tests]
-    uses: ./.github/workflows/e2e-core.yml
+    strategy:
+      fail-fast: false
+      matrix:
+        suite:
+          - full-terminal
+          - full-worktree
+          - full-presets
+          - full-platform
+          - full-panels
+          - full-resilience
+    uses: ./.github/workflows/e2e.yml
     with:
-      project: full
+      suite: ${{ matrix.suite }}
       platform: non-windows
 
   e2e-online-gate:
     needs: [checks, unit-tests]
-    uses: ./.github/workflows/e2e-online.yml
+    uses: ./.github/workflows/e2e.yml
     with:
+      suite: online
       platform: non-windows
     secrets: inherit
 

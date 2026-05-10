@@ -1,4 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
+import { dismissBlockingPalette } from "./overlays";
 import { SEL } from "./selectors";
 
 const mod = process.platform === "darwin" ? "Meta" : "Control";
@@ -55,6 +56,8 @@ export async function clickToolbarButton(
   selector: string,
   timeout = 5000
 ): Promise<void> {
+  await dismissBlockingPalette(page);
+
   const toolbar = page.getByRole("toolbar", { name: "Main toolbar" });
   const label = extractExactAriaLabel(selector);
 
