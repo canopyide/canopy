@@ -313,23 +313,39 @@ export function GitHubResourceList({
     ];
   }, [type]);
 
-  const handleClose = useCallback(() => {
+  // Idempotency guard: dismissal cleanup runs at most once per open-cycle.
+  // A click-initiated close (e.g. settings link) calls handleClose AND causes
+  // the parent to flip isOpen=false, which would otherwise re-fire cleanup
+  // through the isOpen effect below.
+  const cleanedUpRef = useRef(false);
+
+  const runDismissalCleanup = useCallback(() => {
+    if (cleanedUpRef.current) return;
+    cleanedUpRef.current = true;
     selection.clear();
     setIssueCache(new Map());
     setPrCache(new Map());
+  }, [selection]);
+
+  const handleClose = useCallback(() => {
+    runDismissalCleanup();
     onClose?.();
-  }, [onClose, selection]);
+  }, [onClose, runDismissalCleanup]);
 
   const prevIsOpenRef = useRef<boolean | undefined>(undefined);
   useEffect(() => {
     // Popover is keepMounted, so outside-click / Escape / toolbar-toggle never
-    // call onClose. Watch the parent's open state and run dismissal cleanup
-    // (selection clear, cache reset) on a true→false transition.
+    // call onClose. Watch the parent's open state and run dismissal cleanup on
+    // a true→false transition. Reset the cleanup flag on each (re)open so the
+    // next dismissal can run.
+    if (isOpen === true) {
+      cleanedUpRef.current = false;
+    }
     if (prevIsOpenRef.current === true && isOpen === false) {
-      handleClose();
+      runDismissalCleanup();
     }
     prevIsOpenRef.current = isOpen;
-  }, [isOpen, handleClose]);
+  }, [isOpen, runDismissalCleanup]);
 
   const handleOpenInGitHub = () => {
     const query = searchQuery.trim() || undefined;
@@ -1045,6 +1061,9 @@ export function GitHubResourceList({
         }
         selectedCount={selection.selectedIds.size}
         onClear={selection.clear}
+        // Pass the raw onClose (not handleClose) — opening the bulk dialog
+        // hands selected items off by value, and selection cleanup is then
+        // driven by the dialog's stored onComplete (or the isOpen effect).
         onCloseDropdown={onClose}
       />
     </div>
