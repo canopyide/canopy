@@ -126,11 +126,17 @@ describe("ToolbarAssistantButton — agent state pip", () => {
     setHelpPanel({ isOpen: false, terminalId: "t-2d" });
     setPanel("t-2d", "directing");
 
-    const { queryByTestId } = render(<ToolbarAssistantButton />);
+    const { queryByTestId, container } = render(<ToolbarAssistantButton />);
     const pip = queryByTestId("assistant-working-pip");
     expect(pip).not.toBeNull();
     expect(pip!.className).toMatch(/bg-state-working/);
     expect(pip!.getAttribute("data-agent-state")).toBe("directing");
+    // Coarse-signal design: directing intentionally surfaces as "working" in
+    // the toolbar tooltip — both signal "something is in flight" without
+    // proliferating tooltip variants.
+    expect(container.querySelector("button")?.getAttribute("aria-label")).toBe(
+      "Daintree Assistant — Assistant is working"
+    );
   });
 
   it("renders a yellow pip when the assistant terminal's agentState is waiting", () => {

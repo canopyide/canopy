@@ -35,6 +35,7 @@ import { actionService } from "@/services/ActionService";
 import { useEscapeStack } from "@/hooks/useEscapeStack";
 import { suppressSidebarResizes } from "@/lib/sidebarToggle";
 import { TerminalRefreshTier } from "@/types";
+import type { AgentState } from "@/types";
 import { logError } from "@/utils/logger";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { notify } from "@/lib/notify";
@@ -253,7 +254,11 @@ function revokeHelpSession(sessionId: string | null): void {
 // in-flight assistant state next to the header title so the user can read it
 // without watching the terminal. Only the actionable triad — working,
 // directing, waiting — earns a marker; idle/completed/exited stay quiet.
-function AssistantHeaderStateIndicator({ agentState }: { agentState: string | null | undefined }) {
+function AssistantHeaderStateIndicator({
+  agentState,
+}: {
+  agentState: AgentState | null | undefined;
+}) {
   if (agentState === "working") {
     return (
       <span
