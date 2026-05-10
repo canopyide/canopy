@@ -1275,35 +1275,21 @@ describe("HelpPanel — single-supported-agent auto-skip (issue #6612)", () => {
   });
 });
 
-describe("HelpPanel — empty state hero (intent-first replacement)", () => {
-  it("renders the value-prop sentence and three seed-prompt chips when no preferred agent and multiple supported agents installed", async () => {
+describe("HelpPanel — empty state hero (Daintree-relevant entry points)", () => {
+  it("renders the value-prop sentence and the two navigation links when no preferred agent and multiple supported agents installed", async () => {
     helpPanelState.preferredAgentId = null;
     cliAvailabilityState.availability = { claude: "ready", codex: "ready" };
     mockGetAssistantSupportedAgentIds.mockReturnValue(["claude", "codex"]);
 
     const { findByRole, getByText } = render(<HelpPanel width={380} />);
 
-    expect(
-      getByText(/Ask the assistant to explain code, review changes, or debug issues/i)
-    ).toBeTruthy();
-    expect(await findByRole("button", { name: "Explain this codebase to me" })).toBeTruthy();
-    expect(await findByRole("button", { name: "Review my recent changes" })).toBeTruthy();
-    expect(await findByRole("button", { name: "Help me debug an issue" })).toBeTruthy();
+    expect(getByText(/Use Daintree Assistant to configure and navigate Daintree/i)).toBeTruthy();
+    expect(await findByRole("button", { name: "Assistant settings" })).toBeTruthy();
+    expect(await findByRole("button", { name: "Daintree Assistant guide" })).toBeTruthy();
     expect(mockDispatch).not.toHaveBeenCalled();
   });
 
-  it("renders the demoted 'Assistant settings' link in the bottom info bar (no center button)", async () => {
-    helpPanelState.preferredAgentId = null;
-    cliAvailabilityState.availability = { claude: "ready", codex: "ready" };
-    mockGetAssistantSupportedAgentIds.mockReturnValue(["claude", "codex"]);
-
-    const { findByRole } = render(<HelpPanel width={380} />);
-
-    const button = await findByRole("button", { name: "Assistant settings" });
-    expect(button).toBeTruthy();
-  });
-
-  it("dispatches app.settings.openTab with tab='assistant' when the bottom settings link is clicked", async () => {
+  it("dispatches app.settings.openTab with tab='assistant' when the empty-state settings link is clicked", async () => {
     helpPanelState.preferredAgentId = null;
     cliAvailabilityState.availability = { claude: "ready", codex: "ready" };
     mockGetAssistantSupportedAgentIds.mockReturnValue(["claude", "codex"]);
@@ -1320,94 +1306,62 @@ describe("HelpPanel — empty state hero (intent-first replacement)", () => {
     );
   });
 
-  it("disables the seed-prompt chips when no preferred agent and zero supported agents installed", async () => {
+  it("dispatches system.openExternal with the assistant docs URL when the empty-state guide link is clicked", async () => {
+    helpPanelState.preferredAgentId = null;
+    cliAvailabilityState.availability = { claude: "ready", codex: "ready" };
+    mockGetAssistantSupportedAgentIds.mockReturnValue(["claude", "codex"]);
+
+    const { findByRole } = render(<HelpPanel width={380} />);
+
+    const button = await findByRole("button", { name: "Daintree Assistant guide" });
+    fireEvent.click(button);
+
+    expect(mockDispatch).toHaveBeenCalledWith(
+      "system.openExternal",
+      { url: "https://daintree.org/assistant" },
+      { source: "user" }
+    );
+  });
+
+  it("does not provision a session or auto-launch an agent when the empty-state links are clicked", async () => {
     helpPanelState.preferredAgentId = null;
     cliAvailabilityState.availability = { claude: "missing", codex: "missing" };
     mockGetAssistantSupportedAgentIds.mockReturnValue(["claude", "codex"]);
 
     const { findByRole } = render(<HelpPanel width={380} />);
 
-    const chip = (await findByRole("button", {
-      name: "Explain this codebase to me",
-    })) as HTMLButtonElement;
-    expect(chip.disabled).toBe(true);
+    const settings = await findByRole("button", { name: "Assistant settings" });
+    const docs = await findByRole("button", { name: "Daintree Assistant guide" });
 
-    fireEvent.click(chip);
+    fireEvent.click(settings);
+    fireEvent.click(docs);
+
     expect(mockProvisionSession).not.toHaveBeenCalled();
-    expect(mockDispatch).not.toHaveBeenCalled();
+    expect(mockDispatch).not.toHaveBeenCalledWith(
+      "agent.launch",
+      expect.anything(),
+      expect.anything()
+    );
   });
 
-  it("dispatches agent.launch with the chip text as prompt when a chip is clicked (preferredAgentId path)", async () => {
-    helpPanelState.preferredAgentId = "claude";
+  it("renders the title-bar help button that dispatches system.openExternal with the assistant docs URL", async () => {
+    helpPanelState.preferredAgentId = null;
     cliAvailabilityState.availability = { claude: "ready", codex: "ready" };
     mockGetAssistantSupportedAgentIds.mockReturnValue(["claude", "codex"]);
-    mockGetFolderPath.mockResolvedValue("/help");
-    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "seeded-term" } });
 
     const { findByRole } = render(<HelpPanel width={380} />);
 
-    // The auto-launch effect for preferredAgentId fires on mount. Clear the
-    // initial mock dispatch so we can isolate the chip-click dispatch below.
-    await act(async () => {
-      // Yield to flush the in-flight auto-launch.
-    });
-    mockDispatch.mockClear();
-    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "seeded-term-2" } });
-    helpPanelState.terminalId = null; // reset so re-launch is allowed
-
-    const chip = await findByRole("button", { name: "Review my recent changes" });
-    await act(async () => {
-      fireEvent.click(chip);
-    });
+    const help = await findByRole("button", { name: "Open assistant docs" });
+    fireEvent.click(help);
 
     expect(mockDispatch).toHaveBeenCalledWith(
-      "agent.launch",
-      expect.objectContaining({
-        agentId: "claude",
-        prompt: "Review my recent changes",
-      }),
+      "system.openExternal",
+      { url: "https://daintree.org/assistant" },
       { source: "user" }
     );
   });
 
-  it("skips hibernate resume when a seed prompt is provided (regression: prompt must reach agent.launch)", async () => {
-    helpPanelState.preferredAgentId = "claude";
-    helpPanelState.hibernateSessions = {
-      "proj-default": { sessionId: "h-sess", cwd: "/help", agentId: "claude" },
-    };
-    cliAvailabilityState.availability = { claude: "ready", codex: "ready" };
-    mockGetAssistantSupportedAgentIds.mockReturnValue(["claude", "codex"]);
-    mockGetFolderPath.mockResolvedValue("/help");
-    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "fresh-term" } });
-
-    const { findByRole } = render(<HelpPanel width={380} />);
-
-    // The auto-launch effect for preferredAgentId fires on mount and would
-    // hit the resume path (no seedPrompt). Wait, then clear so we can
-    // isolate the chip-click dispatch.
-    await act(async () => {
-      // flush
-    });
-    mockDispatch.mockClear();
-    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "fresh-term-2" } });
-    helpPanelState.terminalId = null;
-
-    const chip = await findByRole("button", { name: "Help me debug an issue" });
-    await act(async () => {
-      fireEvent.click(chip);
-    });
-
-    expect(mockDispatch).toHaveBeenCalledWith(
-      "agent.launch",
-      expect.objectContaining({
-        agentId: "claude",
-        prompt: "Help me debug an issue",
-      }),
-      { source: "user" }
-    );
-  });
-
-  it("does not render the bottom 'Assistant settings' link when a terminal is active", () => {
+  it("renders the title-bar help button even when a terminal session is active", () => {
     helpPanelState.terminalId = "term-1";
     helpPanelState.agentId = "claude";
     panelStoreState.panelsById = {
@@ -1416,41 +1370,20 @@ describe("HelpPanel — empty state hero (intent-first replacement)", () => {
 
     const { queryByRole } = render(<HelpPanel width={380} />);
 
-    expect(queryByRole("button", { name: "Assistant settings" })).toBeNull();
+    expect(queryByRole("button", { name: "Open assistant docs" })).not.toBeNull();
   });
 
-  it("falls back to the single installed supported agent when no preferred agent is set", async () => {
+  it("does not render a bottom 'Assistant settings' footer in either terminal state", () => {
     helpPanelState.preferredAgentId = null;
-    cliAvailabilityState.availability = { claude: "missing", codex: "ready" };
+    cliAvailabilityState.availability = { claude: "ready", codex: "ready" };
     mockGetAssistantSupportedAgentIds.mockReturnValue(["claude", "codex"]);
-    mockGetFolderPath.mockResolvedValue("/help");
-    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "fallback-term" } });
 
-    const { findByRole } = render(<HelpPanel width={380} />);
+    const { queryAllByRole } = render(<HelpPanel width={380} />);
 
-    // The single-agent auto-skip effect ALSO fires here (only "codex" is
-    // installed). Wait for that, then click the chip; the fallback resolves
-    // codex via supportedInstalledAgentIds[0].
-    await act(async () => {
-      // flush
-    });
-    mockDispatch.mockClear();
-    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "fallback-term-2" } });
-    helpPanelState.terminalId = null;
-
-    const chip = await findByRole("button", { name: "Help me debug an issue" });
-    await act(async () => {
-      fireEvent.click(chip);
-    });
-
-    expect(mockDispatch).toHaveBeenCalledWith(
-      "agent.launch",
-      expect.objectContaining({
-        agentId: "codex",
-        prompt: "Help me debug an issue",
-      }),
-      { source: "user" }
-    );
+    // The empty state contains exactly one "Assistant settings" button; the
+    // duplicate `!showTerminal` footer link is removed.
+    const matches = queryAllByRole("button", { name: "Assistant settings" });
+    expect(matches.length).toBe(1);
   });
 });
 
