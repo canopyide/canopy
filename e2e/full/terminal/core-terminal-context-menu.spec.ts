@@ -17,6 +17,38 @@ let ctx: AppContext;
 let fixtureDir: string;
 let fixtureCleanup: (() => void) | undefined;
 
+async function ensureProjectIsOpen(): Promise<void> {
+  const worktreeCard = ctx.window.locator("[data-worktree-branch]").first();
+  if (await worktreeCard.isVisible({ timeout: 1000 }).catch(() => false)) {
+    return;
+  }
+
+  await openProject(ctx.app, ctx.window, fixtureDir);
+  ctx.window = await refreshActiveWindow(ctx.app, ctx.window);
+  await dismissTelemetryConsent(ctx.window);
+  await expect(ctx.window.locator("[data-worktree-branch]").first()).toBeVisible({
+    timeout: T_LONG,
+  });
+}
+
+async function ensureTerminalPanel() {
+  await ensureProjectIsOpen();
+  let panel = getFirstGridPanel(ctx.window);
+  const hasTerminal = await panel
+    .locator(SEL.terminal.xtermRows)
+    .isVisible({ timeout: 1000 })
+    .catch(() => false);
+
+  if (!hasTerminal) {
+    await openTerminal(ctx.window);
+    panel = getFirstGridPanel(ctx.window);
+    await expect(panel).toBeVisible({ timeout: T_LONG });
+    await expect(panel.locator(SEL.terminal.xtermRows)).toBeVisible({ timeout: T_LONG });
+  }
+
+  return panel;
+}
+
 test.describe.serial("Core: Terminal Context Menu", () => {
   test.beforeAll(async () => {
     ({ dir: fixtureDir, cleanup: fixtureCleanup } = createFixtureRepo({
@@ -111,8 +143,8 @@ test.describe.serial("Core: Terminal Context Menu", () => {
     });
 
     test("clicking Rename Terminal dispatches action and closes menu", async () => {
+      const panel = await ensureTerminalPanel();
       const { window } = ctx;
-      const panel = getFirstGridPanel(window);
 
       await openTerminalContextMenu(panel);
 

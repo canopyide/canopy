@@ -131,3 +131,51 @@ describe("terminal.close DOM focus handoff", () => {
     expect(terminalInstanceServiceMock.focus).not.toHaveBeenCalled();
   });
 });
+
+describe("terminal.rename DOM handoff", () => {
+  it("opens the inline rename input from a timer", async () => {
+    vi.useFakeTimers();
+    class TestCustomEvent<T = unknown> extends Event {
+      readonly detail: T;
+
+      constructor(type: string, eventInitDict?: CustomEventInit<T>) {
+        super(type);
+        this.detail = eventInitDict?.detail as T;
+      }
+    }
+    const eventTarget = new EventTarget();
+    const testWindow = {
+      addEventListener: eventTarget.addEventListener.bind(eventTarget),
+      removeEventListener: eventTarget.removeEventListener.bind(eventTarget),
+      dispatchEvent: eventTarget.dispatchEvent.bind(eventTarget),
+      setTimeout: globalThis.setTimeout.bind(globalThis),
+    } as unknown as Window;
+    vi.stubGlobal("window", testWindow);
+    vi.stubGlobal("CustomEvent", TestCustomEvent);
+
+    const renameEvents: CustomEvent[] = [];
+    const handleRename = (event: Event) => {
+      renameEvents.push(event as CustomEvent);
+    };
+    window.addEventListener("daintree:rename-terminal", handleRename);
+
+    try {
+      setPanelState({
+        focusedId: "p1",
+        panels: [{ id: "p1", location: "grid" }],
+      });
+      const run = setupActions();
+
+      await run("terminal.rename", { terminalId: "p1" });
+
+      expect(renameEvents).toHaveLength(0);
+      await vi.runOnlyPendingTimersAsync();
+      expect(renameEvents).toHaveLength(1);
+      expect(renameEvents[0]?.detail).toEqual({ id: "p1" });
+    } finally {
+      window.removeEventListener("daintree:rename-terminal", handleRename);
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
+  });
+});

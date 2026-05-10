@@ -164,19 +164,14 @@ export function registerTerminalLifecycleActions(
       if (name !== undefined) {
         usePanelStore.getState().updateTitle(targetId, name);
       } else {
-        // Defer to next frame so Radix `ContextMenu`'s `onCloseAutoFocus`
-        // restoration runs first. On Linux Chromium 146 the focus restore is
-        // synchronous and faster than macOS — firing the rename dispatch
-        // synchronously inside `onSelect` lets the restored focus arrive on
-        // the not-yet-mounted title input, blurring it the moment it appears
-        // and cancelling the edit. RAF lets the menu finish closing (and the
-        // 200ms select() timer in ContentPanel get armed) before mounting
-        // begins.
-        requestAnimationFrame(() => {
+        // Defer to a macrotask so menu/dropdown close handlers run before the
+        // title input mounts. Do not use requestAnimationFrame here: CI Linux
+        // windows can throttle rAF enough that the rename event never fires.
+        window.setTimeout(() => {
           window.dispatchEvent(
             new CustomEvent("daintree:rename-terminal", { detail: { id: targetId } })
           );
-        });
+        }, 0);
       }
     },
   }));
