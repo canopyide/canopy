@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { isMac } from "@/lib/platform";
 import type React from "react";
 import { type PanelLocation } from "@/types";
@@ -96,6 +96,7 @@ export function TerminalContextMenu({
 
   const [hasSelection, setHasSelection] = useState(false);
   const [hoveredUrl, setHoveredUrl] = useState<string | null>(null);
+  const suppressNextCloseAutoFocusRef = useRef(false);
 
   const handleContextMenu = useCallback(
     (_e: React.MouseEvent) => {
@@ -232,6 +233,7 @@ export function TerminalContextMenu({
           );
           break;
         case "rename":
+          suppressNextCloseAutoFocusRef.current = true;
           void actionService.dispatch(
             "terminal.rename",
             { terminalId },
@@ -283,6 +285,12 @@ export function TerminalContextMenu({
     },
     [terminal, terminalId]
   );
+
+  const handleCloseAutoFocus = useCallback((event: Event) => {
+    if (!suppressNextCloseAutoFocusRef.current) return;
+    suppressNextCloseAutoFocusRef.current = false;
+    event.preventDefault();
+  }, []);
 
   if (!terminal) {
     return <div className="contents">{children}</div>;
@@ -366,7 +374,7 @@ export function TerminalContextMenu({
             {children}
           </div>
         </ContextMenuTrigger>
-        <ContextMenuContent>
+        <ContextMenuContent onCloseAutoFocus={handleCloseAutoFocus}>
           {layoutSection}
           <ContextMenuSeparator />
           <ContextMenuItem onSelect={() => handleAction("reload-browser")}>
@@ -417,7 +425,7 @@ export function TerminalContextMenu({
             {children}
           </div>
         </ContextMenuTrigger>
-        <ContextMenuContent>
+        <ContextMenuContent onCloseAutoFocus={handleCloseAutoFocus}>
           {layoutSection}
           <ContextMenuSeparator />
           <ContextMenuItem onSelect={() => handleAction("reload-browser")}>
@@ -470,7 +478,7 @@ export function TerminalContextMenu({
           {children}
         </div>
       </ContextMenuTrigger>
-      <ContextMenuContent>
+      <ContextMenuContent onCloseAutoFocus={handleCloseAutoFocus}>
         {hasPty && (
           <>
             <ContextMenuItem disabled={!hasSelection} onSelect={() => handleAction("copy")}>
