@@ -275,7 +275,7 @@ describe("getGitRecoveryAction", () => {
       actionId: "github.auth",
     });
     expect(getGitRecoveryAction("push-rejected-outdated")).toEqual({
-      label: "Pull latest",
+      label: "Pull and rebase",
       actionId: "git.pull",
     });
     expect(getGitRecoveryAction("conflict-unresolved")).toEqual({

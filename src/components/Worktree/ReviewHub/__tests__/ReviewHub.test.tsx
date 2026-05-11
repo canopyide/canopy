@@ -1083,10 +1083,11 @@ describe("ReviewHub", () => {
 
       const banner = await screen.findByTestId("review-hub-push-error");
       expect(banner.getAttribute("data-reason")).toBe("auth-failed");
-      expect(banner.textContent).toMatch(/Authentication failed/i);
-      expect(banner.textContent).toMatch(/Committed locally/i);
+      expect(banner.textContent).toMatch(/Push failed/i);
+      expect(banner.textContent).toMatch(/credentials or SSH key/i);
       expect(banner.textContent).not.toContain(rawError);
       expect(screen.queryByTestId("review-hub-push-error-details")).toBeNull();
+      expect(screen.queryByTestId("review-hub-push-error-toggle")).toBeNull();
 
       const cta = screen.getByTestId("review-hub-push-error-cta");
       expect(cta.textContent).toMatch(/Open GitHub settings/i);
@@ -1111,12 +1112,13 @@ describe("ReviewHub", () => {
 
       const banner = await screen.findByTestId("review-hub-push-error");
       expect(banner.getAttribute("data-reason")).toBe("push-rejected-outdated");
-      expect(banner.textContent).toMatch(/remote has new commits/i);
+      expect(banner.textContent).toMatch(/pull and rebase/i);
       expect(screen.queryByTestId("review-hub-push-error-cta")).toBeNull();
       expect(screen.queryByTestId("review-hub-push-error-details")).toBeNull();
+      expect(screen.queryByTestId("review-hub-push-error-toggle")).toBeNull();
     });
 
-    it("shows push-rejected-policy banner with raw stderr and no CTA", async () => {
+    it("shows push-rejected-policy banner with collapsed raw stderr and GH code", async () => {
       const rawError = "GH006: Protected branch update failed for refs/heads/main.";
       pushMock.mockRejectedValue(
         Object.assign(new Error(rawError), {
@@ -1129,12 +1131,21 @@ describe("ReviewHub", () => {
 
       const banner = await screen.findByTestId("review-hub-push-error");
       expect(banner.getAttribute("data-reason")).toBe("push-rejected-policy");
-      expect(banner.textContent).toMatch(/protected branch or repository rule/i);
-      expect(screen.getByTestId("review-hub-push-error-details").textContent).toBe(rawError);
+      expect(banner.textContent).toMatch(/protected branch/i);
       expect(screen.queryByTestId("review-hub-push-error-cta")).toBeNull();
+      expect(screen.getByTestId("review-hub-push-error-code").textContent).toBe("GH006");
+      expect(screen.queryByTestId("review-hub-push-error-details")).toBeNull();
+
+      const toggle = screen.getByTestId("review-hub-push-error-toggle");
+      expect(toggle.textContent).toMatch(/Show details/i);
+      expect(toggle.getAttribute("aria-expanded")).toBe("false");
+      fireEvent.click(toggle);
+      expect(screen.getByTestId("review-hub-push-error-details").textContent).toBe(rawError);
+      expect(toggle.textContent).toMatch(/Hide details/i);
+      expect(toggle.getAttribute("aria-expanded")).toBe("true");
     });
 
-    it("shows hook-rejected banner with raw stderr", async () => {
+    it("shows hook-rejected banner with collapsed raw stderr", async () => {
       const rawError = "[remote rejected] main -> main (pre-receive hook declined)";
       pushMock.mockRejectedValue(
         Object.assign(new Error(rawError), {
@@ -1148,10 +1159,12 @@ describe("ReviewHub", () => {
       const banner = await screen.findByTestId("review-hub-push-error");
       expect(banner.getAttribute("data-reason")).toBe("hook-rejected");
       expect(banner.textContent).toMatch(/server-side hook rejected/i);
+      expect(screen.queryByTestId("review-hub-push-error-details")).toBeNull();
+      fireEvent.click(screen.getByTestId("review-hub-push-error-toggle"));
       expect(screen.getByTestId("review-hub-push-error-details").textContent).toBe(rawError);
     });
 
-    it("shows network-unavailable banner with Retry push button that re-pushes without re-committing", async () => {
+    it("shows network-unavailable banner with Retry button that re-pushes without re-committing", async () => {
       const rawError = "Could not resolve host: github.com";
       pushMock.mockRejectedValueOnce(
         Object.assign(new Error(rawError), {
@@ -1164,15 +1177,16 @@ describe("ReviewHub", () => {
 
       const banner = await screen.findByTestId("review-hub-push-error");
       expect(banner.getAttribute("data-reason")).toBe("network-unavailable");
-      expect(banner.textContent).toMatch(/Could not reach the remote/i);
+      expect(banner.textContent).toMatch(/internet connection/i);
       expect(banner.textContent).not.toContain(rawError);
+      expect(screen.queryByTestId("review-hub-push-error-toggle")).toBeNull();
       expect(commitMock).toHaveBeenCalledTimes(1);
       expect(pushMock).toHaveBeenCalledTimes(1);
 
       pushMock.mockResolvedValueOnce(undefined);
 
       const retryBtn = screen.getByTestId("review-hub-push-error-cta");
-      expect(retryBtn.textContent).toMatch(/Retry push/i);
+      expect(retryBtn.textContent?.trim()).toBe("Retry");
       await act(async () => {
         fireEvent.click(retryBtn);
         await Promise.resolve();
@@ -1190,7 +1204,9 @@ describe("ReviewHub", () => {
 
       const banner = await screen.findByTestId("review-hub-push-error");
       expect(banner.getAttribute("data-reason")).toBe("unknown");
-      expect(banner.textContent).toMatch(/Push failed\. See details below\./i);
+      expect(banner.textContent).toMatch(/Push failed/i);
+      expect(screen.queryByTestId("review-hub-push-error-details")).toBeNull();
+      fireEvent.click(screen.getByTestId("review-hub-push-error-toggle"));
       expect(screen.getByTestId("review-hub-push-error-details").textContent).toBe(
         "Could not resolve host: github.com"
       );
@@ -1278,7 +1294,7 @@ describe("ReviewHub", () => {
       await waitFor(() => screen.getByText("nothing to commit"));
     });
 
-    it("falls back to generic copy + raw stderr for an unclassified failure", async () => {
+    it("falls back to generic copy + collapsed raw stderr for an unclassified failure", async () => {
       const rawError = "unexpected: something weird happened";
       pushMock.mockRejectedValue(new Error(rawError));
 
@@ -1286,9 +1302,11 @@ describe("ReviewHub", () => {
 
       const banner = await screen.findByTestId("review-hub-push-error");
       expect(banner.getAttribute("data-reason")).toBe("unknown");
-      expect(banner.textContent).toMatch(/Push failed\. See details below\./i);
-      expect(screen.getByTestId("review-hub-push-error-details").textContent).toBe(rawError);
+      expect(banner.textContent).toMatch(/Push failed/i);
+      expect(screen.queryByTestId("review-hub-push-error-details")).toBeNull();
       expect(screen.queryByTestId("review-hub-push-error-cta")).toBeNull();
+      fireEvent.click(screen.getByTestId("review-hub-push-error-toggle"));
+      expect(screen.getByTestId("review-hub-push-error-details").textContent).toBe(rawError);
     });
 
     it("shows a rate-limit message when push throws AppError(RATE_LIMITED)", async () => {
@@ -1303,8 +1321,11 @@ describe("ReviewHub", () => {
 
       const banner = await screen.findByTestId("review-hub-push-error");
       expect(banner.getAttribute("data-reason")).toBe("unknown");
-      const details = screen.queryByTestId("review-hub-push-error-details");
-      expect(details?.textContent ?? "").toMatch(/Too many push attempts/i);
+      expect(screen.queryByTestId("review-hub-push-error-details")).toBeNull();
+      fireEvent.click(screen.getByTestId("review-hub-push-error-toggle"));
+      expect(screen.getByTestId("review-hub-push-error-details").textContent).toMatch(
+        /Too many push attempts/i
+      );
     });
 
     it("does not render the banner on successful push", async () => {
@@ -1314,6 +1335,107 @@ describe("ReviewHub", () => {
 
       await waitFor(() => expect(pushMock).toHaveBeenCalled());
       expect(screen.queryByTestId("review-hub-push-error")).toBeNull();
+    });
+
+    it("shows the 'Push failed' title across reasons", async () => {
+      pushMock.mockRejectedValue(
+        Object.assign(new Error("Authentication failed"), {
+          name: "GitOperationError",
+          gitReason: "auth-failed",
+        })
+      );
+
+      await triggerCommitAndPush();
+
+      const banner = await screen.findByTestId("review-hub-push-error");
+      expect(banner.textContent).toMatch(/Push failed/i);
+    });
+
+    it("extracts and displays a GH code when present in the raw message", async () => {
+      pushMock.mockRejectedValue(
+        Object.assign(new Error("GH013: Repository rule violations found."), {
+          name: "GitOperationError",
+          gitReason: "push-rejected-policy",
+        })
+      );
+
+      await triggerCommitAndPush();
+
+      await screen.findByTestId("review-hub-push-error");
+      expect(screen.getByTestId("review-hub-push-error-code").textContent).toBe("GH013");
+      // Code stays visible without expanding the toggle.
+      expect(screen.queryByTestId("review-hub-push-error-details")).toBeNull();
+    });
+
+    it("does not render a GH code element when none is present", async () => {
+      pushMock.mockRejectedValue(
+        Object.assign(new Error("[remote rejected] main -> main (pre-receive hook declined)"), {
+          name: "GitOperationError",
+          gitReason: "hook-rejected",
+        })
+      );
+
+      await triggerCommitAndPush();
+
+      await screen.findByTestId("review-hub-push-error");
+      expect(screen.queryByTestId("review-hub-push-error-code")).toBeNull();
+    });
+
+    it("hides raw output entirely for hide-policy reasons (no toggle)", async () => {
+      pushMock.mockRejectedValue(
+        Object.assign(new Error("fatal: Authentication failed for 'https://github.com/'"), {
+          name: "GitOperationError",
+          gitReason: "auth-failed",
+        })
+      );
+
+      await triggerCommitAndPush();
+
+      await screen.findByTestId("review-hub-push-error");
+      expect(screen.queryByTestId("review-hub-push-error-toggle")).toBeNull();
+      expect(screen.queryByTestId("review-hub-push-error-details")).toBeNull();
+    });
+
+    it("resets the details toggle when a retry surfaces a new push error", async () => {
+      // First failure: network-unavailable has a Retry CTA but no toggle.
+      pushMock.mockRejectedValueOnce(
+        Object.assign(new Error("Could not resolve host: github.com"), {
+          name: "GitOperationError",
+          gitReason: "network-unavailable",
+        })
+      );
+
+      await triggerCommitAndPush();
+
+      await screen.findByTestId("review-hub-push-error");
+      expect(screen.queryByTestId("review-hub-push-error-toggle")).toBeNull();
+
+      // Retry rejects with a collapse-policy reason; the new banner must start collapsed
+      // (i.e. the toggle state from any prior banner doesn't leak in).
+      const retryError = "[remote rejected] main -> main (pre-receive hook declined)";
+      pushMock.mockRejectedValueOnce(
+        Object.assign(new Error(retryError), {
+          name: "GitOperationError",
+          gitReason: "hook-rejected",
+        })
+      );
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("review-hub-push-error-cta"));
+        await Promise.resolve();
+      });
+
+      await waitFor(() =>
+        expect(screen.getByTestId("review-hub-push-error").getAttribute("data-reason")).toBe(
+          "hook-rejected"
+        )
+      );
+      expect(screen.queryByTestId("review-hub-push-error-details")).toBeNull();
+      const toggle = screen.getByTestId("review-hub-push-error-toggle");
+      expect(toggle.textContent).toMatch(/Show details/i);
+      expect(toggle.getAttribute("aria-expanded")).toBe("false");
+      fireEvent.click(toggle);
+      expect(screen.getByTestId("review-hub-push-error-details").textContent).toBe(retryError);
     });
   });
 });

@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import type { StagingStatus, GitStatus } from "@shared/types";
 import type { CrossWorktreeFile } from "@shared/types/ipc/git";
 import type { GitOperationReason } from "@shared/types/ipc/errors";
+import { getGitRecoveryHint } from "@shared/utils/gitOperationErrors";
 import { isClientAppError } from "@/utils/clientAppError";
 import { cn } from "@/lib/utils";
 import { useOverlayState } from "@/hooks";
@@ -67,44 +68,125 @@ interface PushErrorState {
 
 type PushBannerCta = { kind: "settings-github"; label: string } | { kind: "retry"; label: string };
 
+/**
+ * "hide" — raw stderr is suppressed entirely (auth/network/transient — raw
+ * output is jargon-y and not actionable to the user).
+ * "collapse" — raw stderr lives behind a "Show details" toggle (policy/hook/
+ * unknown — the server-side text often contains the only actionable signal).
+ */
+type PushDetailPolicy = "hide" | "collapse";
+
 interface PushBannerConfig {
   message: string;
-  showRaw: boolean;
+  detailPolicy: PushDetailPolicy;
   cta?: PushBannerCta;
 }
 
+/**
+ * Map each `GitOperationReason` to a banner config. Hint copy comes from the
+ * shared `getGitRecoveryHint` (so it stays consistent with notification-store
+ * and other surfaces); only the `unknown` fallback inlines its own copy.
+ *
+ * CTAs are limited to actions the renderer can actually dispatch:
+ *  - `app.settings.openTab` (real BuiltInActionId) for `auth-failed`
+ *  - inline `handleRetryPush` for `network-unavailable` / `system-io-error`
+ * `RECOVERY_ACTIONS` in `shared/utils/gitOperationErrors.ts` references several
+ * actionIds that aren't registered (`git.pull`, `github.auth`,
+ * `git.resolveConflicts`, `git.trustRepository`) — wiring those would surface
+ * broken buttons. A clear hint with no CTA is better than a broken CTA.
+ */
+const PUSH_BANNER_CONFIGS: Record<GitOperationReason, PushBannerConfig> = {
+  "auth-failed": {
+    message: getGitRecoveryHint("auth-failed") ?? "Authentication failed.",
+    detailPolicy: "hide",
+    cta: { kind: "settings-github", label: "Open GitHub settings" },
+  },
+  "network-unavailable": {
+    message: getGitRecoveryHint("network-unavailable") ?? "Could not reach the remote.",
+    detailPolicy: "hide",
+    cta: { kind: "retry", label: "Retry" },
+  },
+  "system-io-error": {
+    message: getGitRecoveryHint("system-io-error") ?? "A filesystem error blocked the push.",
+    detailPolicy: "hide",
+    cta: { kind: "retry", label: "Retry" },
+  },
+  "push-rejected-outdated": {
+    message:
+      getGitRecoveryHint("push-rejected-outdated") ??
+      "The remote has new commits. Pull and rebase before pushing.",
+    detailPolicy: "hide",
+  },
+  "push-rejected-policy": {
+    message:
+      getGitRecoveryHint("push-rejected-policy") ??
+      "The remote rejected this push (protected branch or repository rule).",
+    detailPolicy: "collapse",
+  },
+  "hook-rejected": {
+    message: getGitRecoveryHint("hook-rejected") ?? "A server-side hook rejected the push.",
+    detailPolicy: "collapse",
+  },
+  "repository-not-found": {
+    message: getGitRecoveryHint("repository-not-found") ?? "The remote repository is unreachable.",
+    detailPolicy: "hide",
+  },
+  "not-a-repository": {
+    message: getGitRecoveryHint("not-a-repository") ?? "This folder is not a git repository.",
+    detailPolicy: "hide",
+  },
+  "dubious-ownership": {
+    message:
+      getGitRecoveryHint("dubious-ownership") ?? "Git refuses to operate on this repository.",
+    detailPolicy: "collapse",
+  },
+  "config-missing": {
+    message:
+      getGitRecoveryHint("config-missing") ?? "The current branch is missing upstream config.",
+    detailPolicy: "hide",
+  },
+  "worktree-dirty": {
+    message:
+      getGitRecoveryHint("worktree-dirty") ?? "You have local changes that would be overwritten.",
+    detailPolicy: "collapse",
+  },
+  "conflict-unresolved": {
+    message:
+      getGitRecoveryHint("conflict-unresolved") ?? "Resolve merge conflicts before continuing.",
+    detailPolicy: "collapse",
+  },
+  "pathspec-invalid": {
+    message: getGitRecoveryHint("pathspec-invalid") ?? "The specified ref or path does not exist.",
+    detailPolicy: "collapse",
+  },
+  "lfs-missing": {
+    message: getGitRecoveryHint("lfs-missing") ?? "Git LFS objects are missing.",
+    detailPolicy: "collapse",
+  },
+  "lfs-quota-exceeded": {
+    message:
+      getGitRecoveryHint("lfs-quota-exceeded") ?? "This repository exceeded its Git LFS quota.",
+    detailPolicy: "hide",
+  },
+  unknown: {
+    message: "Push failed. See details for more.",
+    detailPolicy: "collapse",
+  },
+};
+
 function getPushBannerConfig(reason: GitOperationReason): PushBannerConfig {
-  switch (reason) {
-    case "auth-failed":
-      return {
-        message: "Authentication failed — check your credentials or SSH key.",
-        showRaw: false,
-        cta: { kind: "settings-github", label: "Open GitHub settings" },
-      };
-    case "push-rejected-outdated":
-      return {
-        message: "The remote has new commits. Pull or rebase before pushing.",
-        showRaw: false,
-      };
-    case "push-rejected-policy":
-      return {
-        message: "The remote rejected this push (protected branch or repository rule).",
-        showRaw: true,
-      };
-    case "hook-rejected":
-      return {
-        message: "A server-side hook rejected the push.",
-        showRaw: true,
-      };
-    case "network-unavailable":
-      return {
-        message: "Could not reach the remote. Check your internet connection.",
-        showRaw: false,
-        cta: { kind: "retry", label: "Retry push" },
-      };
-    default:
-      return { message: "Push failed. See details below.", showRaw: true };
-  }
+  return PUSH_BANNER_CONFIGS[reason];
+}
+
+/**
+ * Extracts a `GH###` code (e.g. `GH006`, `GH013`) from raw stderr — these are
+ * GitHub's stable, googleable identifiers for protected-branch and ruleset
+ * rejections. Surfacing them above the collapsed details gives users a search
+ * key without making them open the raw output.
+ */
+function extractGitHubErrorCode(rawMessage: string): string | undefined {
+  const match = /\bGH\d{3,}\b/.exec(rawMessage);
+  return match ? match[0] : undefined;
 }
 
 function statusLabel(status: string): { label: string; className: string } {
@@ -196,6 +278,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [pushError, setPushError] = useState<PushErrorState | null>(null);
+  const [showPushDetails, setShowPushDetails] = useState(false);
   const [commitMessage, setCommitMessage] = useState("");
   const [selectedFile, setSelectedFile] = useState<{
     path: string;
@@ -315,6 +398,10 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
       if (baseBranchRequestRef.current === requestId) setBaseBranchLoading(false);
     }
   }, [worktreePath, mainBranch, status?.currentBranch]);
+
+  useEffect(() => {
+    setShowPushDetails(false);
+  }, [pushError]);
 
   useEffect(() => {
     if (isOpen) {
@@ -809,6 +896,9 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
           {pushError &&
             (() => {
               const config = getPushBannerConfig(pushError.reason);
+              const ghCode = extractGitHubErrorCode(pushError.rawMessage);
+              const canCollapse =
+                config.detailPolicy === "collapse" && pushError.rawMessage.length > 0;
               const onCtaClick = () => {
                 if (!config.cta) return;
                 if (config.cta.kind === "settings-github") {
@@ -831,11 +921,39 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                   <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                   <div className="flex-1 min-w-0">
                     <div>
-                      <span className="font-medium">Committed locally.</span>{" "}
+                      <span className="font-medium">Push failed.</span>{" "}
                       <span>{config.message}</span>
                     </div>
-                    {config.showRaw && pushError.rawMessage && (
+                    {ghCode && (
+                      <div
+                        data-testid="review-hub-push-error-code"
+                        className="mt-1 text-[10px] font-mono opacity-80"
+                      >
+                        {ghCode}
+                      </div>
+                    )}
+                    {canCollapse && (
+                      <div className="mt-1.5 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowPushDetails((prev) => !prev)}
+                          data-testid="review-hub-push-error-toggle"
+                          aria-expanded={showPushDetails}
+                          aria-controls="review-hub-push-error-details"
+                          className={cn(
+                            "inline-flex items-center px-1.5 py-0.5 rounded",
+                            "text-status-warning/80 hover:text-status-warning",
+                            "text-[10px] font-medium underline-offset-2 hover:underline transition-colors",
+                            "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-status-warning"
+                          )}
+                        >
+                          {showPushDetails ? "Hide details" : "Show details"}
+                        </button>
+                      </div>
+                    )}
+                    {canCollapse && showPushDetails && (
                       <pre
+                        id="review-hub-push-error-details"
                         data-testid="review-hub-push-error-details"
                         className="mt-1 text-[10px] font-mono whitespace-pre-wrap break-all opacity-70"
                       >
