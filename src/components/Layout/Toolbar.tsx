@@ -72,12 +72,17 @@ type OverflowMenuMeta = { label: string; icon: React.ComponentType<{ className?:
 // voice-recording has no actionable overflow item — it's a persistent
 // indicator that only appears while recording is already active. Surface the
 // label via tooltip text only; suppress from the dropdown list itself.
-const OVERFLOW_DROPDOWN_SKIP = new Set<AnyToolbarButtonId>(["voice-recording"]);
+const OVERFLOW_DROPDOWN_SKIP: ReadonlySet<string> = new Set(["voice-recording"]);
 
 const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text relative";
 // These controls are project-only visually, but their no-drag rectangles must
 // exist on first paint so secondary windows don't cache them as titlebar drag.
 const PROJECT_SCOPED_TOOLBAR_IDS = new Set<AnyToolbarButtonId>(["dev-server", "github-stats"]);
+
+// How long the copy-tree button shows the green "context copied" feedback
+// before reverting to its idle state. Long enough to register the success,
+// short enough that re-clicks don't feel stuck.
+const COPY_TREE_FEEDBACK_RESET_MS = 2000;
 
 function GitHubStatsPlaceholder() {
   return (
@@ -138,12 +143,13 @@ export function PluginToolbarButton({
 // Adapter view over the unified `TOOLBAR_BUTTON_METADATA` registry. Skips
 // entries that should never render as overflow menu items (see
 // `OVERFLOW_DROPDOWN_SKIP`) — those are still surfaced in tooltip text.
+const overflowMenuMetaInit: Record<string, OverflowMenuMeta> = {};
+for (const [id, meta] of Object.entries(TOOLBAR_BUTTON_METADATA)) {
+  if (!meta || OVERFLOW_DROPDOWN_SKIP.has(id)) continue;
+  overflowMenuMetaInit[id] = { label: meta.label, icon: meta.icon };
+}
 export const OVERFLOW_MENU_META: Partial<Record<AnyToolbarButtonId, OverflowMenuMeta>> =
-  Object.fromEntries(
-    Object.entries(TOOLBAR_BUTTON_METADATA)
-      .filter(([id]) => !OVERFLOW_DROPDOWN_SKIP.has(id as AnyToolbarButtonId))
-      .map(([id, meta]) => [id, { label: meta!.label, icon: meta!.icon }])
-  ) as Partial<Record<AnyToolbarButtonId, OverflowMenuMeta>>;
+  overflowMenuMetaInit;
 
 interface ToolbarProps {
   onLaunchAgent: (type: string) => void;
@@ -308,7 +314,7 @@ export function Toolbar({
           setTreeCopied(false);
           setCopyFeedback("");
           treeCopyTimeoutRef.current = null;
-        }, 2000);
+        }, COPY_TREE_FEEDBACK_RESET_MS);
       }
     } finally {
       setIsCopyingTree(false);
