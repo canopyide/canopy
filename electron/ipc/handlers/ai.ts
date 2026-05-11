@@ -82,7 +82,12 @@ export function registerAiHandlers(deps: HandlerDependencies): () => void {
       ...(currentSettings.agents?.[safeAgentType] ?? {}),
       ...settings,
     };
-    // Strip retired legacy keys — never persist them back
+    // Strip retired legacy keys — never persist them back. Object spread of
+    // `{ pinned: undefined }` keeps the key on `merged`, but electron-store
+    // serializes via JSON.stringify which drops `undefined` values, so the
+    // field is removed from the persisted record. This is the mechanism the
+    // renderer migration relies on to clear eagerly-seeded pin values
+    // (see #7673 + migrateAgentSettings in src/store/agentSettingsStore.ts).
     const { selected: _s, enabled: _e, ...safeEntry } = merged as Record<string, unknown>;
     const updatedAgents = {
       ...currentSettings.agents,
@@ -93,6 +98,12 @@ export function registerAiHandlers(deps: HandlerDependencies): () => void {
     // address per-agent leaves via dot-path because user-defined agent IDs may
     // contain dots, which dot-prop would interpret as nested keys.
     store.set("agentSettings.agents", updatedAgents);
+    // Stamp the schema version on the first write after a pre-#7673 store is
+    // loaded, so subsequent cold starts skip the one-shot pin migration.
+    if (currentSettings.root.settingsVersion === undefined) {
+      store.set("agentSettings.settingsVersion", 1);
+      currentSettings.root.settingsVersion = 1;
+    }
     return {
       ...currentSettings.root,
       agents: updatedAgents,

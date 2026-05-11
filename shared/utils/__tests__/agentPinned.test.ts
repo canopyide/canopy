@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isAgentPinned, isAgentPinnedById } from "../agentPinned.js";
+import { isAgentPinned, isAgentPinnedById, isAgentToolbarVisible } from "../agentPinned.js";
 
 describe("isAgentPinned — opt-in semantics", () => {
   it("returns false for undefined entry", () => {
@@ -51,5 +51,45 @@ describe("isAgentPinnedById", () => {
 
   it("returns false when the agent entry is explicitly unpinned", () => {
     expect(isAgentPinnedById({ agents: { claude: { pinned: false } } }, "claude")).toBe(false);
+  });
+});
+
+describe("isAgentToolbarVisible — tri-state with availability fallback", () => {
+  it("returns true when pinned is explicitly true regardless of availability", () => {
+    expect(isAgentToolbarVisible({ pinned: true }, "ready")).toBe(true);
+    expect(isAgentToolbarVisible({ pinned: true }, "installed")).toBe(true);
+    expect(isAgentToolbarVisible({ pinned: true }, "missing")).toBe(true);
+    expect(isAgentToolbarVisible({ pinned: true }, undefined)).toBe(true);
+  });
+
+  it("returns false when pinned is explicitly false regardless of availability", () => {
+    expect(isAgentToolbarVisible({ pinned: false }, "ready")).toBe(false);
+    expect(isAgentToolbarVisible({ pinned: false }, "installed")).toBe(false);
+    expect(isAgentToolbarVisible({ pinned: false }, "missing")).toBe(false);
+    expect(isAgentToolbarVisible({ pinned: false }, undefined)).toBe(false);
+  });
+
+  it("follows availability when pinned is undefined (installed/ready/blocked/unauthenticated → visible)", () => {
+    expect(isAgentToolbarVisible({ pinned: undefined }, "ready")).toBe(true);
+    expect(isAgentToolbarVisible({ pinned: undefined }, "installed")).toBe(true);
+    expect(isAgentToolbarVisible({ pinned: undefined }, "blocked")).toBe(true);
+    expect(isAgentToolbarVisible({ pinned: undefined }, "unauthenticated")).toBe(true);
+  });
+
+  it("follows availability when pinned is undefined (missing/undefined → hidden)", () => {
+    expect(isAgentToolbarVisible({ pinned: undefined }, "missing")).toBe(false);
+    expect(isAgentToolbarVisible({ pinned: undefined }, undefined)).toBe(false);
+  });
+
+  it("treats null/undefined entry as follows-availability (tri-state default)", () => {
+    expect(isAgentToolbarVisible(undefined, "ready")).toBe(true);
+    expect(isAgentToolbarVisible(undefined, "missing")).toBe(false);
+    expect(isAgentToolbarVisible(null, "ready")).toBe(true);
+    expect(isAgentToolbarVisible(null, undefined)).toBe(false);
+  });
+
+  it("treats empty entry as follows-availability", () => {
+    expect(isAgentToolbarVisible({}, "ready")).toBe(true);
+    expect(isAgentToolbarVisible({}, "missing")).toBe(false);
   });
 });

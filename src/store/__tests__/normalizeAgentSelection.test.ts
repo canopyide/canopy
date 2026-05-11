@@ -33,33 +33,27 @@ describe("normalizeAgentSelection", () => {
     expect(result.agents.gemini!.pinned).toBe(true);
   });
 
-  it("synthesizes pinned:true for installed agents with an existing entry (upgrader path)", () => {
-    // Upgrader: entry exists from prior sessions but was persisted without
-    // a `pinned` field. Preserve the implicit pin so their toolbar doesn't
-    // collapse on upgrade.
+  it("leaves pinned: undefined entries untouched (tri-state — visibility derives at read time)", () => {
+    // #7673: the normalizer no longer materializes a concrete `pinned` for
+    // upgraders. The tri-state read-time selector (isAgentToolbarVisible)
+    // handles the install/uninstall flip without freezing state here.
     const settings = makeSettings({ claude: {} });
     const availability = availabilityFor({ claude: "installed" });
     const result = normalizeAgentSelection(settings, availability, true);
-    expect(result.agents.claude!.pinned).toBe(true);
+    expect(result.agents.claude!.pinned).toBeUndefined();
   });
 
-  it("synthesizes pinned:true for ready agents with an existing entry (upgrader path)", () => {
-    const settings = makeSettings({ claude: {} });
-    const availability = availabilityFor({ claude: "ready" });
-    const result = normalizeAgentSelection(settings, availability, true);
-    expect(result.agents.claude!.pinned).toBe(true);
-  });
-
-  it("synthesizes pinned:false for missing agents with an existing entry (issue #5158)", () => {
+  it("leaves pinned: undefined entries untouched even when availability says missing", () => {
     const settings = makeSettings({ claude: {} });
     const availability = availabilityFor({ claude: "missing" });
     const result = normalizeAgentSelection(settings, availability, true);
-    expect(result.agents.claude!.pinned).toBe(false);
+    expect(result.agents.claude!.pinned).toBeUndefined();
   });
 
-  it("creates pinned:false entries for every agent when store is empty (fresh-install opt-in)", () => {
-    // Fresh install: no entries in the persisted store. Opt-in model means
-    // nothing is pinned until the user acts (welcome card, tray, etc).
+  it("seeds empty entries (no pinned) for missing registered agents when hasRealData is true", () => {
+    // Fresh install: no entries in the persisted store. Seed empty records
+    // so the tri-state selector can follow availability — no eager
+    // synthesis here, the renderer derives at read time.
     const settings: AgentSettings = { agents: {} };
     const allIds = getEffectiveAgentIds();
     const [firstInstalled] = allIds;
@@ -67,11 +61,11 @@ describe("normalizeAgentSelection", () => {
     const result = normalizeAgentSelection(settings, availability, true);
 
     for (const id of allIds) {
-      expect(result.agents[id]).toEqual({ pinned: false });
+      expect(result.agents[id]).toEqual({});
     }
   });
 
-  it("leaves pinned absent when hasRealData is false (pre-probe race)", () => {
+  it("leaves entries absent when hasRealData is false (pre-probe race)", () => {
     const settings: AgentSettings = { agents: {} };
     const result = normalizeAgentSelection(settings, availabilityFor(), false);
     // Pre-probe: don't phantom-synthesize anything — the orchestrator will
@@ -98,16 +92,16 @@ describe("normalizeAgentSelection", () => {
     expect(result).toBe(settings);
   });
 
-  it("treats undefined availability as fully missing when hasRealData is true", () => {
+  it("ignores availability entirely — only seeds empty records for missing agents", () => {
     const settings = makeSettings({ claude: {} });
     const result = normalizeAgentSelection(settings, undefined, true);
-    expect(result.agents.claude!.pinned).toBe(false);
+    expect(result.agents.claude!.pinned).toBeUndefined();
   });
 
   it("defaults to the pre-probe branch when called with only settings (back-compat)", () => {
     const settings: AgentSettings = { agents: {} };
     // No availability args passed — hasRealData defaults to false, so no
-    // phantom synthesis occurs. Mirrors what happens during boot before
+    // seeding occurs. Mirrors what happens during boot before
     // `cliAvailabilityStore.initialize()` has hydrated any real data.
     const result = normalizeAgentSelection(settings);
     expect(result.agents).toEqual({});

@@ -70,12 +70,13 @@ export const DEFAULT_ROUTING_CONFIG: AgentRoutingConfig = {
 
 export interface AgentSettingsEntry {
   /**
-   * Pin state for the toolbar. Opt-in semantics: `undefined` means unpinned,
-   * and only explicit `true` pins the agent. The renderer normalizer
-   * synthesizes `pinned: true` for registered agents whose CLI is installed,
-   * so uninstalled agents stay off the toolbar until the user pins them
-   * explicitly. Use `isAgentPinned()` from `shared/utils/agentPinned.ts`
-   * rather than reading this field directly so the default stays consistent.
+   * Tri-state pin for the toolbar: `true` (explicit pin), `false` (explicit
+   * unpin), or `undefined` (no explicit intent — follow live CLI availability).
+   * Use `isAgentToolbarVisible(entry, availability)` from
+   * `shared/utils/agentPinned.ts` for toolbar visibility so installing or
+   * uninstalling a CLI flips the button without ever needing to write a
+   * concrete value here. `isAgentPinned()` is reserved for routing paths that
+   * need to know whether a user has deliberately pinned an agent (see #7673).
    */
   pinned?: boolean;
   customFlags?: string;
@@ -126,6 +127,14 @@ export interface AgentSettingsEntry {
 
 export interface AgentSettings {
   agents: Record<string, AgentSettingsEntry>;
+  /**
+   * Schema version for the persisted store. Absent on stores written by
+   * versions before the tri-state pin fix (#7673); presence of `1` signals
+   * that the one-shot migration has cleared eagerly-seeded `pinned` values
+   * so toolbar visibility can follow live CLI availability. Stamped by the
+   * main-process IPC handler on the first write after migration.
+   */
+  settingsVersion?: number;
 }
 
 export const DEFAULT_DANGEROUS_ARGS: Record<string, string> = {

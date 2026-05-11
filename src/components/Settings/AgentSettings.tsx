@@ -14,7 +14,7 @@ import {
   DEFAULT_DANGEROUS_ARGS,
   type AgentCliDetails,
 } from "@shared/types";
-import { isAgentPinned } from "../../../shared/utils/agentPinned";
+import { isAgentToolbarVisible } from "../../../shared/utils/agentPinned";
 import { RotateCcw, ExternalLink } from "lucide-react";
 import { Plug } from "@/components/icons";
 import { AgentSelectorDropdown } from "./AgentSelectorDropdown";
@@ -202,13 +202,13 @@ export function AgentSettings({
             color: config.color,
             Icon: config.icon,
             usageUrl: config.usageUrl,
-            selected: isAgentPinned(entry),
+            selected: isAgentToolbarVisible(entry, cliAvailability?.[id]),
             dangerousEnabled: entry.dangerousEnabled ?? false,
             hasCustomFlags: Boolean(entry.customFlags?.trim()),
           };
         })
         .filter((a): a is NonNullable<typeof a> => a !== null),
-    [agentIds, effectiveSettings]
+    [agentIds, effectiveSettings, cliAvailability]
   );
 
   const activeAgent = activeAgentId ? agentOptions.find((a) => a.id === activeAgentId) : null;
@@ -378,9 +378,15 @@ export function AgentSettings({
                 variant="compact"
                 title="Pin to toolbar"
                 subtitle="When pinned, this agent appears in the toolbar for quick access"
-                isEnabled={isAgentPinned(activeEntry)}
+                isEnabled={isAgentToolbarVisible(activeEntry, cliAvailability?.[activeAgent.id])}
                 onChange={() => {
-                  const current = isAgentPinned(activeEntry);
+                  // Tri-state toggle (#7673): flip the *currently visible* state so
+                  // an undefined-pinned installed agent gets `pinned: false` (hide)
+                  // and an undefined-pinned missing agent gets `pinned: true` (show).
+                  const current = isAgentToolbarVisible(
+                    activeEntry,
+                    cliAvailability?.[activeAgent.id]
+                  );
                   void (async () => {
                     await setAgentPinned(activeAgent.id, !current);
                     onSettingsChange?.();

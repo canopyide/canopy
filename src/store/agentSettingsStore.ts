@@ -4,32 +4,31 @@ import { agentSettingsClient } from "@/clients";
 import { DEFAULT_AGENT_SETTINGS } from "@shared/types";
 import { getEffectiveAgentIds } from "../../shared/config/agentRegistry";
 import { isAgentPinned } from "../../shared/utils/agentPinned";
-import { isAgentInstalled } from "../../shared/utils/agentAvailability";
 import { useCliAvailabilityStore } from "./cliAvailabilityStore";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 
+/** Bump when a future migration needs to run on existing persisted stores. */
+const CURRENT_SETTINGS_VERSION = 1;
+
 /**
- * In-memory normalization with two distinct paths:
+ * In-memory normalization with tri-state pin semantics. `entry.pinned` is
+ * authoritative and never derived from CLI availability here — the renderer
+ * computes effective toolbar visibility at read time via
+ * `isAgentToolbarVisible(entry, availability)` (see #7673). The two paths:
  *
- *  - No entry at all for a registered agent → seed `pinned: false` (opt-in
- *    default — see #5109 and the welcome card in #5111). Fresh installs
- *    show an empty toolbar until the user pins via the welcome card or
- *    the tray.
- *  - Entry exists but `pinned` is undefined → synthesize from current
- *    availability (installed/ready → true, missing → false). This
- *    preserves the implicit pin for 0.7.x upgraders who already have
- *    agent-settings entries from prior sessions — otherwise their
- *    toolbar would collapse and the AgentSetupWizard would auto-open on
- *    every launch (see #5158 and review on #5111).
+ *  - No entry at all for a registered agent + `hasRealData` → seed an empty
+ *    record (no `pinned` field) so the agent participates in tri-state and
+ *    follows live availability until the user toggles it explicitly. Before
+ *    real data (`hasRealData === false`) nothing is seeded so the orchestrator
+ *    can re-run normalization once the first probe completes.
+ *  - Entry exists → preserved verbatim. Explicit `pinned: true`/`false`
+ *    values stand; `pinned: undefined` stays undefined.
  *
- * Before real data (`hasRealData === false`) the flag stays absent so
- * the renderer can re-run normalization once the first probe completes.
- * Explicit `pinned: true` / `pinned: false` values from the persisted
- * store are always preserved. Does NOT persist.
+ * Does NOT persist.
  */
 export function normalizeAgentSelection(
   settings: AgentSettings,
-  availability?: CliAvailability | null,
+  _availability?: CliAvailability | null,
   hasRealData: boolean = false
 ): AgentSettings {
   const registeredIds = getEffectiveAgentIds();
@@ -37,23 +36,66 @@ export function normalizeAgentSelection(
   const agents = { ...settings.agents };
 
   for (const id of registeredIds) {
-    const entry = agents[id];
-
-    if (!entry) {
-      if (hasRealData) {
-        agents[id] = { pinned: false };
-        changed = true;
-      }
-      continue;
-    }
-
-    if (entry.pinned === undefined && hasRealData) {
-      agents[id] = { ...entry, pinned: isAgentInstalled(availability?.[id]) };
+    if (!agents[id] && hasRealData) {
+      agents[id] = {};
       changed = true;
     }
   }
 
   return changed ? { ...settings, agents } : settings;
+}
+
+/**
+ * One-shot migration for pre-`settingsVersion` persisted stores. Versions
+ * before the #7673 fix eagerly seeded `pinned: true/false` from a single
+ * availability snapshot, freezing toolbar visibility forever. This pass
+ * clears every concrete `pinned` value on legacy stores so the tri-state
+ * read-time selector can take over. Once the IPC handler stamps
+ * `settingsVersion: 1` on the next write, this migration becomes a no-op.
+ *
+ * Pure function — no IPC, no async, no `useCliAvailabilityStore` access.
+ * Callers issue fire-and-forget write-backs for `agentsToClear` so the
+ * cleared values land in electron-store.
+ */
+export function migrateAgentSettings(raw: AgentSettings): {
+  migrated: AgentSettings;
+  agentsToClear: string[];
+} {
+  if (raw.settingsVersion !== undefined) {
+    return { migrated: raw, agentsToClear: [] };
+  }
+
+  const agentsToClear: string[] = [];
+  const agents: Record<string, AgentSettingsEntry> = {};
+  for (const [id, entry] of Object.entries(raw.agents ?? {})) {
+    if (entry && entry.pinned !== undefined) {
+      const { pinned: _pinned, ...rest } = entry;
+      agents[id] = rest;
+      agentsToClear.push(id);
+    } else {
+      agents[id] = entry;
+    }
+  }
+
+  return {
+    migrated: { ...raw, agents, settingsVersion: CURRENT_SETTINGS_VERSION },
+    agentsToClear,
+  };
+}
+
+function scheduleMigrationWriteBacks(agentIds: readonly string[]): void {
+  for (const id of agentIds) {
+    // Fire-and-forget: the IPC handler stamps `settingsVersion: 1` on first
+    // write so subsequent cold starts skip migration entirely. The epoch
+    // guard already prevents stale results from clobbering newer state;
+    // we don't await or surface errors because the in-memory migration
+    // re-runs harmlessly on the next launch if persistence fails.
+    void agentSettingsClient
+      .set(id, { pinned: undefined } as Partial<AgentSettingsEntry>)
+      .catch(() => {
+        // Swallow — migration is idempotent at the renderer layer.
+      });
+  }
 }
 
 function readAvailabilitySnapshot(): {
@@ -128,9 +170,13 @@ export const useAgentSettingsStore = create<AgentSettingsStore>()((set, get) => 
           set({ isLoading: false, isInitialized: true });
           return;
         }
+        const { migrated, agentsToClear } = migrateAgentSettings(raw);
         const { availability, hasRealData } = readAvailabilitySnapshot();
-        const settings = normalizeAgentSelection(raw, availability, hasRealData);
+        const settings = normalizeAgentSelection(migrated, availability, hasRealData);
         set({ settings, isLoading: false, isInitialized: true });
+        if (agentsToClear.length > 0) {
+          scheduleMigrationWriteBacks(agentsToClear);
+        }
       } catch (e) {
         if (myEpoch !== normalizeEpoch) {
           set({ isLoading: false, isInitialized: true });
@@ -159,9 +205,13 @@ export const useAgentSettingsStore = create<AgentSettingsStore>()((set, get) => 
     try {
       const raw = (await agentSettingsClient.get()) ?? DEFAULT_AGENT_SETTINGS;
       if (myEpoch !== normalizeEpoch) return;
+      const { migrated, agentsToClear } = migrateAgentSettings(raw);
       const { availability, hasRealData } = readAvailabilitySnapshot();
-      const settings = normalizeAgentSelection(raw, availability, hasRealData);
+      const settings = normalizeAgentSelection(migrated, availability, hasRealData);
       set({ settings });
+      if (agentsToClear.length > 0) {
+        scheduleMigrationWriteBacks(agentsToClear);
+      }
     } catch (e) {
       // Stale failures yield silently — whichever newer op bumped the epoch
       // owns the error surface now, and fire-and-forget callers should not
