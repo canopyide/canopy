@@ -176,6 +176,20 @@ export class ResourceProfileService {
       this.evaluate();
     }, EVAL_INTERVAL_MS);
 
+    // Push the initial profile's low-memory floor so the feature is armed on
+    // launch even when the service stays on its default profile (`balanced`)
+    // and applyProfile() never runs.
+    const pvm = this.deps.getProjectViewManager();
+    if (pvm) {
+      try {
+        pvm.setLowMemoryFreeThresholdMb(
+          RESOURCE_PROFILE_CONFIGS[this.currentProfile].lowMemoryFreeThresholdMb
+        );
+      } catch {
+        // non-critical
+      }
+    }
+
     this.startLagMonitor();
   }
 

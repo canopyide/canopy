@@ -436,6 +436,21 @@ describe("ResourceProfileService", () => {
     service.stop();
   });
 
+  it("pushes the balanced profile's threshold on start() even without a transition", () => {
+    const deps = createDeps();
+    const service = new ResourceProfileService(deps);
+    const pvm = deps.getProjectViewManager() as unknown as MockProjectViewManager;
+
+    service.start();
+
+    expect(pvm.setLowMemoryFreeThresholdMb).toHaveBeenCalledWith(
+      RESOURCE_PROFILE_CONFIGS.balanced.lowMemoryFreeThresholdMb
+    );
+    expect(pvm.setLowMemoryFreeThresholdMb).toHaveBeenCalledTimes(1);
+
+    service.stop();
+  });
+
   it("pushes the efficiency profile's lowMemoryFreeThresholdMb on transition", () => {
     const deps = createDeps();
     const service = new ResourceProfileService(deps);

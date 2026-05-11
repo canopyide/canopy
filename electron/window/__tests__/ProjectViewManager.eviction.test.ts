@@ -1344,6 +1344,30 @@ describe("ProjectViewManager — low-memory eviction", () => {
     expect(wcA.close).not.toHaveBeenCalled();
   });
 
+  it("performs normal LRU eviction when API is missing but cache is over the user cap", async () => {
+    stubSystemMemoryInfo("missing");
+    const managerWithLimit = new ProjectViewManager(win as never, {
+      dirname: "/test",
+      cachedProjectViews: 2,
+    });
+    managerWithLimit.setLowMemoryFreeThresholdMb(768);
+
+    const wcA = createMockWebContents();
+    const viewA = { webContents: wcA, setBounds: vi.fn() };
+    managerWithLimit.registerInitialView(viewA as never, "proj-a", "/path/a");
+
+    await managerWithLimit.switchTo("proj-b", "/path/b");
+    await managerWithLimit.switchTo("proj-c", "/path/c");
+
+    // 3 views, cap 2, API missing → normal LRU evicts proj-a with reason "lru".
+    expect(managerWithLimit.getAllViews().length).toBe(2);
+    expect(wcA.close).toHaveBeenCalled();
+    expect(vi.mocked(logInfo)).toHaveBeenCalledWith(
+      "projectview.eviction",
+      expect.objectContaining({ projectId: "proj-a", reason: "lru" })
+    );
+  });
+
   it("falls back to normal LRU behavior when getSystemMemoryInfo throws", async () => {
     stubSystemMemoryInfo("throw");
     manager.setLowMemoryFreeThresholdMb(768);
@@ -1357,6 +1381,79 @@ describe("ProjectViewManager — low-memory eviction", () => {
 
     expect(manager.getAllViews().length).toBe(3);
     expect(wcA.close).not.toHaveBeenCalled();
+  });
+
+  it("treats availableMb === threshold as NOT under pressure (strict <)", async () => {
+    // Exactly 768 MB available, threshold 768 → no override.
+    stubSystemMemoryInfo({ free: 768 * 1024, purgeable: 0, total: 8 * 1024 * 1024 });
+    manager.setLowMemoryFreeThresholdMb(768);
+
+    const wcA = createMockWebContents();
+    const viewA = { webContents: wcA, setBounds: vi.fn() };
+    manager.registerInitialView(viewA as never, "proj-a", "/path/a");
+
+    await manager.switchTo("proj-b", "/path/b");
+    await manager.switchTo("proj-c", "/path/c");
+
+    expect(manager.getAllViews().length).toBe(3);
+    expect(wcA.close).not.toHaveBeenCalled();
+  });
+
+  it("treats availableMb just below threshold as under pressure", async () => {
+    // 767.x MB available — barely below the 768 threshold → override active.
+    // 786431 KB / 1024 = 767.999 MB, which is < 768.
+    stubSystemMemoryInfo({ free: 786_431, purgeable: 0, total: 8 * 1024 * 1024 });
+    manager.setLowMemoryFreeThresholdMb(768);
+
+    const wcA = createMockWebContents();
+    const viewA = { webContents: wcA, setBounds: vi.fn() };
+    manager.registerInitialView(viewA as never, "proj-a", "/path/a");
+
+    await manager.switchTo("proj-b", "/path/b");
+    await manager.switchTo("proj-c", "/path/c");
+
+    expect(manager.getAllViews().length).toBe(1);
+    expect(wcA.close).toHaveBeenCalled();
+  });
+
+  it("never evicts the active view under pressure", async () => {
+    stubSystemMemoryInfo({ free: 64 * 1024, purgeable: 0, total: 8 * 1024 * 1024 });
+    manager.setLowMemoryFreeThresholdMb(768);
+
+    const wcA = createMockWebContents();
+    const viewA = { webContents: wcA, setBounds: vi.fn() };
+    manager.registerInitialView(viewA as never, "proj-a", "/path/a");
+
+    await manager.switchTo("proj-b", "/path/b");
+    await manager.switchTo("proj-c", "/path/c");
+
+    // Active view (proj-c) survives even under severe pressure.
+    const remaining = manager.getAllViews().map((v) => v.projectId);
+    expect(remaining).toEqual(["proj-c"]);
+    expect(manager.getActiveProjectId()).toBe("proj-c");
+  });
+
+  it("invokes onViewEvicted for every view evicted under pressure", async () => {
+    const onViewEvicted = vi.fn<(id: number) => void>();
+    const pressureManager = new ProjectViewManager(win as never, {
+      dirname: "/test",
+      cachedProjectViews: 4,
+      onViewEvicted,
+    });
+    stubSystemMemoryInfo({ free: 64 * 1024, purgeable: 0, total: 8 * 1024 * 1024 });
+    pressureManager.setLowMemoryFreeThresholdMb(768);
+
+    const wcA = createMockWebContents();
+    const viewA = { webContents: wcA, setBounds: vi.fn() };
+    pressureManager.registerInitialView(viewA as never, "proj-a", "/path/a");
+
+    await pressureManager.switchTo("proj-b", "/path/b");
+    await pressureManager.switchTo("proj-c", "/path/c");
+    await pressureManager.switchTo("proj-d", "/path/d");
+
+    // 4 views, override clamps to 1 → 3 evictions, callback fires for each.
+    expect(pressureManager.getAllViews().length).toBe(1);
+    expect(onViewEvicted).toHaveBeenCalledTimes(3);
   });
 
   it("setLowMemoryFreeThresholdMb(null) clears a previously set threshold", async () => {
