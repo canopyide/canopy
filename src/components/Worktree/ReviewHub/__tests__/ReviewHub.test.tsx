@@ -3167,6 +3167,61 @@ describe("ReviewHub", () => {
       });
     });
 
+    it("reseats the anchor onto a surviving path when the original anchor is evicted by a refresh", async () => {
+      await renderHub();
+      // Anchor on src/a.ts, extend to b.ts — selection = {a, b}, anchor = a.
+      fireEvent.click(screen.getByTestId("file-stage-row-src/a.ts"), { metaKey: true });
+      fireEvent.click(screen.getByTestId("file-stage-row-src/b.ts"), { metaKey: true });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("review-hub-unstage-section-button").textContent).toMatch(
+          /Unstage selection \(2\)/i
+        );
+      });
+
+      // Background refresh drops src/a.ts (the anchor); b.ts and c.ts remain.
+      getStagingStatusMock.mockResolvedValue(
+        makeStatus({
+          staged: [
+            { path: "src/b.ts", status: "modified", insertions: 1, deletions: 0 },
+            { path: "src/c.ts", status: "modified", insertions: 1, deletions: 0 },
+          ],
+          unstaged: [
+            { path: "src/x.ts", status: "modified", insertions: 1, deletions: 0 },
+            { path: "src/y.ts", status: "modified", insertions: 1, deletions: 0 },
+            { path: "src/z.ts", status: "modified", insertions: 1, deletions: 0 },
+          ],
+        })
+      );
+
+      await act(async () => {
+        capturedUpdateCallback!(makeWorktreeState());
+        await Promise.resolve();
+      });
+
+      await waitFor(() => {
+        expect(screen.queryByTestId("file-stage-row-src/a.ts")).toBeNull();
+        expect(screen.getByTestId("review-hub-unstage-section-button").textContent).toMatch(
+          /Unstage selection \(1\)/i
+        );
+      });
+
+      // Shift-click from b (the surviving anchor) to c — selection should extend.
+      fireEvent.click(screen.getByTestId("file-stage-row-src/c.ts"), { shiftKey: true });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("review-hub-unstage-section-button").textContent).toMatch(
+          /Unstage selection \(2\)/i
+        );
+      });
+      expect(screen.getByTestId("file-stage-row-src/b.ts").getAttribute("aria-selected")).toBe(
+        "true"
+      );
+      expect(screen.getByTestId("file-stage-row-src/c.ts").getAttribute("aria-selected")).toBe(
+        "true"
+      );
+    });
+
     it("stage toggle button on a row does not start a selection", async () => {
       await renderHub();
       const row = screen.getByTestId("file-stage-row-src/x.ts");

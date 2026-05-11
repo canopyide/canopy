@@ -802,6 +802,14 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
       if (next.size === 0) {
         setSelectionSection(null);
         selectionAnchorRef.current = null;
+      } else if (
+        selectionAnchorRef.current !== null &&
+        !validPaths.has(selectionAnchorRef.current)
+      ) {
+        // Anchor evicted but selection survives — reseat anchor on a remaining
+        // path so the next shift-click extends from it rather than falling
+        // through to plain-click (which would wipe the selection).
+        selectionAnchorRef.current = next.values().next().value ?? null;
       }
       return next;
     });
