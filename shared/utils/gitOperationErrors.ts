@@ -128,7 +128,7 @@ const RECOVERY_HINTS: Record<GitOperationReason, string | undefined> = {
     "You have local changes that would be overwritten — commit or stash them first.",
   "conflict-unresolved": "Resolve the merge conflicts and commit before continuing.",
   "push-rejected-outdated":
-    "The remote has commits you don't have locally — pull or rebase before pushing.",
+    "The remote has commits you don't have locally — pull and rebase before pushing.",
   "push-rejected-policy":
     "The remote rejected this push (protected branch, hook, or size limit). Contact the repo admin.",
   "pathspec-invalid": "The specified ref or path does not exist.",
@@ -146,7 +146,7 @@ export function getGitRecoveryHint(reason: GitOperationReason): string | undefin
 
 const RECOVERY_ACTIONS: Partial<Record<GitOperationReason, RecoveryAction>> = {
   "auth-failed": { label: "Sign in with GitHub", actionId: "github.auth" },
-  "push-rejected-outdated": { label: "Pull latest", actionId: "git.pull" },
+  "push-rejected-outdated": { label: "Pull and rebase", actionId: "git.pull" },
   "conflict-unresolved": { label: "Resolve conflicts", actionId: "git.resolveConflicts" },
   "dubious-ownership": { label: "Trust this repo", actionId: "git.trustRepository" },
 };
