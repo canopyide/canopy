@@ -1017,6 +1017,29 @@ describe("WorkspaceService.runResourceAction", () => {
       expect(runCommandsSpy).toHaveBeenCalledTimes(0);
     });
 
+    it("no-op provision broadcasts updated resourceConnectCommand to renderer", async () => {
+      const monitor = createAndRegisterMonitor({ branch: "feature/remote" });
+      await setupConfig({
+        resource: {
+          provision: ["terraform apply"],
+          connect: "ssh root@{{branch}}.dev.example.com",
+        },
+      });
+      monitor.setResourceStatus({ lastStatus: "ready", lastCheckedAt: Date.now() });
+
+      await service.runResourceAction("req-prov-noop-emit", "/test/worktree", "provision");
+
+      expect(monitor.resourceConnectCommand).toBe("ssh root@'feature/remote'.dev.example.com");
+      expect(mockSendEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "worktree-update",
+          worktree: expect.objectContaining({
+            resourceConnectCommand: "ssh root@'feature/remote'.dev.example.com",
+          }),
+        })
+      );
+    });
+
     it("provision routes to resume when status is `paused`", async () => {
       const monitor = createAndRegisterMonitor();
       await setupConfig({
