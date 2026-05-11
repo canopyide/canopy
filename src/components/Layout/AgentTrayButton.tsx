@@ -48,7 +48,7 @@ import { BUILT_IN_AGENT_IDS, type BuiltInAgentId } from "@shared/config/agentIds
 import type { CliAvailability, AgentState } from "@shared/types";
 import { resolveEffectivePresetId } from "@shared/types";
 import { isAgentLaunchable, isAgentInstalled } from "../../../shared/utils/agentAvailability";
-import { isAgentToolbarVisible } from "../../../shared/utils/agentPinned";
+import { isAgentPinned } from "../../../shared/utils/agentPinned";
 import {
   getDominantAgentState,
   agentStateDotColor,
@@ -379,13 +379,8 @@ export function AgentTrayButton({
 
   const hasNoPinnedAgents = useMemo(() => {
     if (!agentSettings?.agents) return true;
-    // Mirror the toolbar's tri-state selector so an upgrader whose installed
-    // agents have `pinned: undefined` (post-#7673 migration) doesn't see the
-    // "Pin agents" hint while the same agents are visible in the toolbar.
-    return !BUILT_IN_AGENT_IDS.some((id) =>
-      isAgentToolbarVisible(agentSettings.agents?.[id], agentAvailability?.[id])
-    );
-  }, [agentSettings, agentAvailability]);
+    return !BUILT_IN_AGENT_IDS.some((id) => isAgentPinned(agentSettings.agents?.[id]));
+  }, [agentSettings]);
 
   // While the first-run welcome card is actually being rendered, suppress
   // the tray discovery badge so the card and badge don't both fire for the
@@ -417,12 +412,7 @@ export function AgentTrayButton({
     const fallbackSetup: AgentRow[] = [];
 
     for (const id of BUILT_IN_AGENT_IDS) {
-      // `pinned` here drives the tray pin-icon state and the toggle direction.
-      // Use the same tri-state selector as the toolbar so installed agents
-      // with `pinned: undefined` display as "pinned" in the tray UI and the
-      // toggle correctly flips to explicit `pinned: false` (hide) on click
-      // (#7673).
-      const pinned = isAgentToolbarVisible(agentSettings?.agents?.[id], agentAvailability?.[id]);
+      const pinned = isAgentPinned(agentSettings?.agents?.[id]);
       const dominant = agentDominantStates.get(id) ?? null;
       const entry = agentSettings?.agents?.[id];
       const customPresets = entry?.customPresets;

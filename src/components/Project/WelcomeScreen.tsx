@@ -30,7 +30,7 @@ import { safeFireAndForget } from "@/utils/safeFireAndForget";
 import { getAgentConfig } from "@/config/agents";
 import { BUILT_IN_AGENT_IDS, type BuiltInAgentId } from "@shared/config/agentIds";
 import { isAgentLaunchable } from "../../../shared/utils/agentAvailability";
-import { isAgentPinned, isAgentToolbarVisible } from "../../../shared/utils/agentPinned";
+import { isAgentPinned } from "../../../shared/utils/agentPinned";
 import type { GettingStartedChecklistState } from "@/hooks/app/useGettingStartedChecklist";
 
 interface WelcomeScreenProps {
@@ -200,14 +200,8 @@ function NudgeSequencer({
     if (!hasRealData || welcomeCardDismissed) return false;
     const hasReady = BUILT_IN_AGENT_IDS.some((id) => isAgentLaunchable(availability?.[id]));
     if (!hasReady) return false;
-    // After #7673, an installed agent with `pinned: undefined` is visible in
-    // the toolbar via tri-state derivation. Suppress the welcome/pin-all
-    // card in that case — its job is to prompt users who don't have any
-    // agents visible.
-    const hasVisible = BUILT_IN_AGENT_IDS.some((id) =>
-      isAgentToolbarVisible(agentSettings?.agents?.[id], availability?.[id])
-    );
-    return !hasVisible;
+    const hasPinned = BUILT_IN_AGENT_IDS.some((id) => isAgentPinned(agentSettings?.agents?.[id]));
+    return !hasPinned;
   }, [hasRealData, welcomeCardDismissed, availability, agentSettings]);
 
   // Wait for hydration so we don't briefly render setup banner before its
@@ -365,13 +359,8 @@ function AgentWelcomeCard() {
 
   const hasNoPinnedAgents = useMemo(() => {
     if (!agentSettings?.agents) return true;
-    // Tri-state-aware visibility (#7673): if any installed agent is visible
-    // in the toolbar via the derived selector, the user already has agents
-    // pinned in the toolbar — don't show the pin-all CTA.
-    return !BUILT_IN_AGENT_IDS.some((id) =>
-      isAgentToolbarVisible(agentSettings.agents?.[id], availability?.[id])
-    );
-  }, [agentSettings, availability]);
+    return !BUILT_IN_AGENT_IDS.some((id) => isAgentPinned(agentSettings.agents[id]));
+  }, [agentSettings]);
 
   if (!hasRealData || !loaded) return null;
   if (welcomeCardDismissed) return null;
