@@ -27,7 +27,7 @@ describe("AppLayout theme browser mount gate — issue #5738", () => {
     // The overlay claim is the correct signal for inert because it fires after
     // ThemeBrowser has mounted — intended PR #5721 behavior. inert on the
     // toolbar + main-content wrappers prevents interaction with blocked UI.
-    expect(source).toContain('const isThemeBrowserOpen = overlayClaims.has("theme-browser")');
+    expect(source).toContain('const isThemeBrowserOpen = useOverlayOpen("theme-browser")');
     expect(source).toContain("isThemeBrowserOpen ? { inert: true } : {}");
   });
 });

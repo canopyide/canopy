@@ -1089,8 +1089,8 @@ function DropdownContent({
 }: ProjectSwitcherPaletteProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const overlayClaimsSize = useUIStore((state) => state.overlayClaims.size);
-  const prevOverlayClaimsSizeRef = useRef<number>(overlayClaimsSize);
+  const overlayStackLength = useUIStore((state) => state.overlayStack.length);
+  const prevOverlayStackLengthRef = useRef<number>(overlayStackLength);
   const focusRafRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -1108,11 +1108,15 @@ function DropdownContent({
   }, [isOpen]);
 
   useEffect(() => {
-    if (isOpen && overlayClaimsSize > prevOverlayClaimsSizeRef.current && overlayClaimsSize > 0) {
+    if (
+      isOpen &&
+      overlayStackLength > prevOverlayStackLengthRef.current &&
+      overlayStackLength > 0
+    ) {
       onClose();
     }
-    prevOverlayClaimsSizeRef.current = overlayClaimsSize;
-  }, [isOpen, overlayClaimsSize, onClose]);
+    prevOverlayStackLengthRef.current = overlayStackLength;
+  }, [isOpen, overlayStackLength, onClose]);
 
   return (
     <Popover open={isOpen} onOpenChange={(open) => !open && onClose()}>

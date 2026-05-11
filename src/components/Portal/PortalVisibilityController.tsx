@@ -17,8 +17,8 @@ export function PortalVisibilityController(): null {
   const tabs = usePortalStore((state) => state.tabs);
   const createdTabs = usePortalStore((state) => state.createdTabs);
   const markTabCreated = usePortalStore((state) => state.markTabCreated);
-  const overlayClaimsSize = useUIStore((state) => state.overlayClaims.size);
-  const hasOverlays = overlayClaimsSize > 0;
+  const overlayStackLength = useUIStore((state) => state.overlayStack.length);
+  const hasOverlays = overlayStackLength > 0;
   const isRestoringRef = useRef(false);
   const pendingRestoreRef = useRef<{ tabId: string; tabUrl: string } | null>(null);
   const isMountedRef = useRef(true);
@@ -80,7 +80,7 @@ export function PortalVisibilityController(): null {
           isRestoringRef.current = false;
           return;
         }
-        if (uiState.overlayClaims.size > 0) {
+        if (uiState.overlayStack.length > 0) {
           isRestoringRef.current = false;
           return;
         }
