@@ -832,5 +832,27 @@ describe("WorktreeLifecycleService", () => {
       // spawn must NOT have been called (no setup commands)
       expect(mockSpawn).not.toHaveBeenCalled();
     });
+
+    it("returns shouldProvision=true when provisionResource=true and provision commands exist even without setup commands", async () => {
+      // Config has no `setup` array but has `resource.provision` — the early-return
+      // path must still flag for auto-provision so the host can kick off the
+      // provision action immediately after creation.
+      const config = {
+        resource: { provision: ["terraform apply"], connect: "ssh host" },
+      };
+
+      mockAccess.mockImplementation(async (p: unknown) => {
+        if (n(p as string).endsWith("/root/.daintree/config.json")) return undefined;
+        throw new Error("ENOENT");
+      });
+      mockReadFile.mockResolvedValue(JSON.stringify(config) as never);
+
+      const monitor = makeFakeMonitor();
+      const result = await service.runLifecycleSetup("wt-1", "/wt", makeCtx(monitor), true);
+
+      expect(result).toEqual({ shouldProvision: true });
+      // No spawn should fire — no setup commands to run before provisioning
+      expect(mockSpawn).not.toHaveBeenCalled();
+    });
   });
 });
