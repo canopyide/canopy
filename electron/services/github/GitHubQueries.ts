@@ -392,6 +392,31 @@ export const GET_ISSUE_QUERY = `
   }
 `;
 
+export const GET_PR_REVIEW_THREADS_QUERY = `
+  query GetPRReviewThreads($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $number) {
+        reviewThreads(first: 100, after: $cursor) {
+          nodes {
+            path
+            isResolved
+            isOutdated
+          }
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+        }
+      }
+    }
+    rateLimit {
+      cost
+      remaining
+      resetAt
+    }
+  }
+`;
+
 export const GET_PR_QUERY = `
   query GetPR($owner: String!, $repo: String!, $number: Int!) {
     repository(owner: $owner, name: $repo) {

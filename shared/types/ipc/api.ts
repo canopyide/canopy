@@ -708,6 +708,7 @@ export interface ElectronAPI {
       issueNumber: number
     ): Promise<import("../github.js").GitHubIssue | null>;
     getPRByNumber(cwd: string, prNumber: number): Promise<import("../github.js").GitHubPR | null>;
+    getPRReviewThreads(cwd: string, prNumber: number): Promise<Record<string, number>>;
     listRemotes(cwd: string): Promise<import("./github.js").RemoteInfo[]>;
     onPRDetected(callback: (data: PRDetectedPayload) => void): () => void;
     onPRCleared(callback: (data: PRClearedPayload) => void): () => void;

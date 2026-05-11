@@ -106,9 +106,16 @@ function statusLabel(status: string): { label: string; className: string } {
 interface BaseBranchFileRowProps {
   file: CrossWorktreeFile;
   onClick: () => void;
+  unresolvedCount?: number;
+  onBadgeClick?: () => void;
 }
 
-function BaseBranchFileRow({ file, onClick }: BaseBranchFileRowProps) {
+function BaseBranchFileRow({
+  file,
+  onClick,
+  unresolvedCount,
+  onBadgeClick,
+}: BaseBranchFileRowProps) {
   const { label, className: statusClass } = statusLabel(file.status);
   const filename = file.path.split(/[/\\]/).filter(Boolean).pop() || file.path;
   const dirPath = /[/\\]/.test(file.path)
@@ -117,24 +124,46 @@ function BaseBranchFileRow({ file, onClick }: BaseBranchFileRowProps) {
 
   return (
     <TruncatedTooltip content={file.path}>
-      <button
-        type="button"
-        onClick={onClick}
+      <div
         className={cn(
           "w-full flex items-center gap-2 px-2 py-1.5 rounded text-left text-xs",
-          "hover:bg-tint/[0.05] transition-colors",
-          "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-daintree-accent"
+          "hover:bg-tint/[0.05] transition-colors"
         )}
       >
-        <span className={cn("font-mono font-bold shrink-0 w-3 text-center", statusClass)}>
-          {label}
-        </span>
-        <FileIcon className="w-3 h-3 shrink-0 text-daintree-text/40" />
-        <span className="text-daintree-text/80 truncate min-w-0">{filename}</span>
-        <span className="text-daintree-text/30 truncate min-w-0 text-[10px] ml-auto pl-2">
-          {dirPath}
-        </span>
-      </button>
+        <button
+          type="button"
+          onClick={onClick}
+          className={cn(
+            "flex items-center gap-2 min-w-0 flex-1",
+            "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-daintree-accent rounded"
+          )}
+        >
+          <span className={cn("font-mono font-bold shrink-0 w-3 text-center", statusClass)}>
+            {label}
+          </span>
+          <FileIcon className="w-3 h-3 shrink-0 text-daintree-text/40" />
+          <span className="text-daintree-text/80 truncate min-w-0">{filename}</span>
+          <span className="text-daintree-text/30 truncate min-w-0 text-[10px] ml-auto">
+            {dirPath}
+          </span>
+        </button>
+        {unresolvedCount !== undefined && unresolvedCount > 0 && (
+          <button
+            type="button"
+            onClick={onBadgeClick}
+            aria-label={`${unresolvedCount} unresolved review comment${unresolvedCount !== 1 ? "s" : ""} on ${file.path}`}
+            className={cn(
+              "shrink-0 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full",
+              "text-[10px] font-semibold tabular-nums",
+              "bg-status-warning/15 text-status-warning",
+              "hover:bg-status-warning/25 transition-colors cursor-pointer",
+              "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-status-warning"
+            )}
+          >
+            {unresolvedCount}
+          </button>
+        )}
+      </div>
     </TruncatedTooltip>
   );
 }
@@ -158,6 +187,8 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
   const [selectedBaseBranchFile, setSelectedBaseBranchFile] = useState<CrossWorktreeFile | null>(
     null
   );
+  const [reviewThreadCounts, setReviewThreadCounts] = useState<Record<string, number> | null>(null);
+  const reviewThreadsRequestRef = useRef(0);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const refreshIdRef = useRef(0);
   const bgRefreshIdRef = useRef(0);
@@ -279,6 +310,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
       setBaseBranchFiles(null);
       setBaseBranchError(null);
       setSelectedBaseBranchFile(null);
+      setReviewThreadCounts(null);
     }
   }, [isOpen, refresh]);
 
@@ -289,8 +321,33 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
       setBaseBranchFiles(null);
       setBaseBranchError(null);
       setSelectedBaseBranchFile(null);
+      setReviewThreadCounts(null);
     }
   }, [status?.currentBranch, mainBranch, diffMode]);
+
+  useEffect(() => {
+    if (!isOpen || diffMode !== "base-branch" || !worktreePR?.prNumber || !worktreePath) {
+      if (diffMode !== "base-branch") {
+        setReviewThreadCounts(null);
+      }
+      return;
+    }
+
+    const requestId = ++reviewThreadsRequestRef.current;
+
+    void (async () => {
+      try {
+        const counts = await githubClient.getPRReviewThreads(worktreePath, worktreePR.prNumber!);
+        if (reviewThreadsRequestRef.current === requestId) {
+          setReviewThreadCounts(counts);
+        }
+      } catch {
+        if (reviewThreadsRequestRef.current === requestId) {
+          setReviewThreadCounts(null);
+        }
+      }
+    })();
+  }, [isOpen, diffMode, worktreePR?.prNumber, worktreePath]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -805,6 +862,15 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                         key={`${file.status}:${file.path}`}
                         file={file}
                         onClick={() => setSelectedBaseBranchFile(file)}
+                        unresolvedCount={reviewThreadCounts?.[file.path]}
+                        onBadgeClick={
+                          worktreePR?.prUrl
+                            ? () =>
+                                void githubClient.openPR(
+                                  `${worktreePR.prUrl}/files?file=${encodeURIComponent(file.path)}`
+                                )
+                            : undefined
+                        }
                       />
                     ))}
                   </div>

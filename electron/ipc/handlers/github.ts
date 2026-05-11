@@ -758,6 +758,30 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
   };
   handlers.push(typedHandle(CHANNELS.GITHUB_GET_PR_BY_NUMBER, handleGitHubGetPRByNumber));
 
+  const handleGitHubGetPRReviewThreads = async (payload: { cwd: string; prNumber: number }) => {
+    checkRateLimit(CHANNELS.GITHUB_GET_PR_REVIEW_THREADS, 10, 10_000);
+    if (!payload || typeof payload !== "object") {
+      return {};
+    }
+    if (typeof payload.cwd !== "string" || !payload.cwd.trim()) {
+      return {};
+    }
+    if (!path.isAbsolute(payload.cwd)) {
+      return {};
+    }
+    if (
+      typeof payload.prNumber !== "number" ||
+      !Number.isInteger(payload.prNumber) ||
+      payload.prNumber <= 0
+    ) {
+      return {};
+    }
+
+    const { getPRReviewThreads } = await import("../../services/GitHubService.js");
+    return getPRReviewThreads(payload.cwd.trim(), payload.prNumber);
+  };
+  handlers.push(typedHandle(CHANNELS.GITHUB_GET_PR_REVIEW_THREADS, handleGitHubGetPRReviewThreads));
+
   const handleGitHubListRemotes = async (
     cwd: string
   ): Promise<

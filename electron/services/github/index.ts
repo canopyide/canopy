@@ -26,6 +26,7 @@ export {
   SEARCH_QUERY,
   GET_ISSUE_QUERY,
   GET_PR_QUERY,
+  GET_PR_REVIEW_THREADS_QUERY,
   buildBatchPRQuery,
   buildBatchRequiredChecksQuery,
 } from "./GitHubQueries.js";
@@ -84,7 +85,7 @@ export { batchCheckLinkedPRs } from "./GitHubPRDiscovery.js";
 export { parseGitHubError } from "./GitHubErrors.js";
 
 // PRs
-export { listPullRequests, getPRByNumber, getPRTooltip } from "./GitHubPRs.js";
+export { listPullRequests, getPRByNumber, getPRTooltip, getPRReviewThreads } from "./GitHubPRs.js";
 
 // Issues
 export { listIssues, getIssueByNumber, getIssueTooltip, assignIssue } from "./GitHubIssues.js";
