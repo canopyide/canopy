@@ -39,6 +39,21 @@ describe("parseRebaseTodoLine", () => {
     });
   });
 
+  it("strips git's '# ' separator between SHA and subject", () => {
+    // Real git format from `git rebase -i` / `git rebase --merge`:
+    //   `pick <sha> # <subject>`
+    expect(parseRebaseTodoLine("pick abc1234 # add new feature")).toEqual({
+      action: "pick",
+      sha: "abc1234",
+      subject: "add new feature",
+    });
+    expect(parseRebaseTodoLine("fixup -C deadbee # amend message")).toEqual({
+      action: "fixup",
+      sha: "deadbee",
+      subject: "amend message",
+    });
+  });
+
   it("handles single-letter aliases (p/r/e/s/f/d)", () => {
     expect(parseRebaseTodoLine("p abc1234 first")).toMatchObject({ action: "pick" });
     expect(parseRebaseTodoLine("r abc1234 second")).toMatchObject({ action: "reword" });
@@ -157,7 +172,7 @@ describe("readRebaseSequence", () => {
     expect(await readRebaseSequence(gitDir)).toBeNull();
   });
 
-  it("treats missing done as zero completed entries", async () => {
+  it("treats missing done as zero completed entries and anchors the first todo as current", async () => {
     mockFiles({
       [donePath]: null,
       [todoPath]: "pick aaa1111 first\npick bbb2222 second\n",
@@ -171,7 +186,11 @@ describe("readRebaseSequence", () => {
     ]);
   });
 
-  it("orders entries as done → current → pending", async () => {
+  it("marks the last entry of `done` as current (git moves to done before pick)", async () => {
+    // Empirical git behavior: when rebase halts on commit N, `done` contains
+    // every command up to and including N (it's written before pick is attempted),
+    // and `git-rebase-todo` contains only future commands. Verified with
+    // git 2.54.0 (and earlier) — see issue #7795.
     mockFiles({
       [donePath]: "pick aaa1111 first\npick bbb2222 second\n",
       [todoPath]: "pick ccc3333 third\nfixup ddd4444 fourth\npick eee5555 fifth\n",
@@ -179,17 +198,33 @@ describe("readRebaseSequence", () => {
     const seq = await readRebaseSequence(gitDir);
     expect(seq!.entries.map((e) => [e.sha, e.state])).toEqual([
       ["aaa1111", "done"],
-      ["bbb2222", "done"],
-      ["ccc3333", "current"],
+      ["bbb2222", "current"],
+      ["ccc3333", "pending"],
       ["ddd4444", "pending"],
       ["eee5555", "pending"],
     ]);
   });
 
+  it("handles conflict on the final commit (empty git-rebase-todo)", async () => {
+    // When the last commit conflicts, git-rebase-todo is a 0-byte file.
+    // `readFile` returns `""` (not null), so the parser sees an empty todo.
+    // The last entry of `done` must still be marked `current` — otherwise the
+    // rail renders as fully completed while the user resolves the conflict.
+    mockFiles({
+      [donePath]: "pick aaa1111 first\npick bbb2222 second\n",
+      [todoPath]: "",
+    });
+    const seq = await readRebaseSequence(gitDir);
+    expect(seq!.entries).toEqual([
+      { action: "pick", sha: "aaa1111", subject: "first", state: "done" },
+      { action: "pick", sha: "bbb2222", subject: "second", state: "current" },
+    ]);
+  });
+
   it("ignores comments in done and todo when computing the current step", async () => {
     mockFiles({
-      [donePath]: "# header\npick aaa1111 first\n",
-      [todoPath]: "# rebase onto X\npick bbb2222 second\npick ccc3333 third\n",
+      [donePath]: "# header\npick aaa1111 first\npick bbb2222 second\n",
+      [todoPath]: "# rebase onto X\npick ccc3333 third\n",
     });
     const seq = await readRebaseSequence(gitDir);
     expect(seq!.entries).toEqual([
@@ -204,10 +239,10 @@ describe("readRebaseSequence", () => {
     expect(await readRebaseSequence(gitDir)).toBeNull();
   });
 
-  it("captures fixup -C and exec lines in the sequence", async () => {
+  it("captures fixup -C and exec lines in the sequence (real git format with #)", async () => {
     mockFiles({
-      [donePath]: "pick aaa1111 first\n",
-      [todoPath]: "fixup -C bbb2222 amend first\nexec npm test\npick ccc3333 third\n",
+      [donePath]: "pick aaa1111 # first\nfixup -C bbb2222 # amend first\n",
+      [todoPath]: "exec npm test\npick ccc3333 # third\n",
     });
     const seq = await readRebaseSequence(gitDir);
     expect(seq!.entries).toEqual([
