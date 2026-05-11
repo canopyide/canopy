@@ -26,6 +26,7 @@ import { getAgentSettingsEntry } from "@/types";
 import type { UseAgentLauncherReturn } from "@/hooks/useAgentLauncher";
 import { isAgentLaunchable } from "../../../shared/utils/agentAvailability";
 import { isAgentPinned } from "../../../shared/utils/agentPinned";
+import { FocusedSubLine } from "./WorktreeCard/FocusedSubLine";
 import { WorktreeDetailsSection } from "./WorktreeCard/WorktreeDetailsSection";
 import { WorktreeDialogs } from "./WorktreeCard/WorktreeDialogs";
 import { WorktreeHeader } from "./WorktreeCard/WorktreeHeader";
@@ -776,6 +777,13 @@ export function WorktreeCard({
                   onResourceStatus: hasStatusCommand ? handleResourceStatus : undefined,
                   onResourceTeardown: hasTeardownCommand ? handleResourceTeardown : undefined,
                 }}
+              />
+
+              <FocusedSubLine
+                open={!isMainWorktree && effectiveIsCollapsed && (isActive || isFocused)}
+                changedFileCount={worktree.worktreeChanges?.changedFileCount}
+                lastActivityTimestamp={worktree.lastActivityTimestamp}
+                statusLabel={lifecycleLabel ?? resourceStatusLabel ?? null}
               />
 
               {!effectiveIsCollapsed && (
