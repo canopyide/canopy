@@ -283,6 +283,38 @@ describe("urlUtils", () => {
       expect(isImplicitlyAllowedHost("[fe80::1]")).toBe(true);
     });
 
+    it("allows IPv4-mapped IPv6 loopback as implicitly allowed", () => {
+      expect(isImplicitlyAllowedHost("::ffff:127.0.0.1")).toBe(true);
+    });
+
+    it("allows IPv4-mapped IPv6 loopback in WHATWG-normalized hex form", () => {
+      expect(isImplicitlyAllowedHost("::ffff:7f00:1")).toBe(true);
+    });
+
+    it("allows IPv4-mapped IPv6 RFC-1918 private address", () => {
+      expect(isImplicitlyAllowedHost("::ffff:192.168.1.1")).toBe(true);
+    });
+
+    it("allows IPv4-mapped IPv6 10/8 private address", () => {
+      expect(isImplicitlyAllowedHost("::ffff:10.0.0.5")).toBe(true);
+    });
+
+    it("allows bracketed IPv4-mapped IPv6 loopback", () => {
+      expect(isImplicitlyAllowedHost("[::ffff:127.0.0.1]")).toBe(true);
+    });
+
+    it("rejects IPv4-mapped IPv6 public address", () => {
+      expect(isImplicitlyAllowedHost("::ffff:8.8.8.8")).toBe(false);
+    });
+
+    it("rejects IPv4 CGNAT address (deferred to follow-up)", () => {
+      expect(isImplicitlyAllowedHost("100.64.0.1")).toBe(false);
+    });
+
+    it("rejects IPv4-mapped IPv6 CGNAT address (deferred to follow-up)", () => {
+      expect(isImplicitlyAllowedHost("::ffff:100.64.0.1")).toBe(false);
+    });
+
     it("returns false for empty input", () => {
       expect(isImplicitlyAllowedHost("")).toBe(false);
     });
