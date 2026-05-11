@@ -232,7 +232,7 @@ describe("registerWebviewHandlers", () => {
     const handler = getHandler("webview:set-lifecycle-state");
     await expect(handler(null, 42, true)).resolves.toBeUndefined();
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("[webview]"),
+      expect.stringContaining("[webContentsLifecycle]"),
       expect.stringContaining("Unexpected internal error")
     );
     warnSpy.mockRestore();
