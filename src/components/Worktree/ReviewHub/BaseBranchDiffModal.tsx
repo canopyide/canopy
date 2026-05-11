@@ -41,11 +41,11 @@ export function BaseBranchDiffModal({
       if (typeof result === "string") {
         setDiff(result || "NO_CHANGES");
       } else {
-        setDiff("NO_CHANGES");
+        setDiff("ERROR");
       }
     } catch {
       if (requestRef.current !== requestId) return;
-      setDiff("NO_CHANGES");
+      setDiff("ERROR");
     }
   }, [worktreePath, mainBranch, currentBranch, filePath]);
 
@@ -66,6 +66,7 @@ export function BaseBranchDiffModal({
       branch={branch}
       diff={diff}
       defaultMode="diff"
+      onRetryDiff={fetchDiff}
       onClose={onClose}
     />
   );

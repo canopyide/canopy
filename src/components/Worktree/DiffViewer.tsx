@@ -12,7 +12,7 @@ import markdown from "refractor/markdown";
 import tsx from "refractor/tsx";
 import typescript from "refractor/typescript";
 import "react-diff-view/style/index.css";
-import { ExternalLink } from "lucide-react";
+import { AlertCircle, ExternalLink } from "lucide-react";
 import path from "path-browserify";
 import { getLanguageForFile } from "@/components/FileViewer/languageUtils";
 import { actionService } from "@/services/ActionService";
@@ -79,6 +79,7 @@ export interface DiffViewerProps {
   viewType?: ViewType;
   /** Absolute path to the worktree root, used to resolve per-file open-in-editor paths */
   rootPath?: string;
+  onRetry?: () => void;
 }
 
 function useTokens(
@@ -130,7 +131,13 @@ function useTokens(
   return { tokens, langLoadFailed };
 }
 
-export function DiffViewer({ diff, filePath, viewType = "split", rootPath }: DiffViewerProps) {
+export function DiffViewer({
+  diff,
+  filePath,
+  viewType = "split",
+  rootPath,
+  onRetry,
+}: DiffViewerProps) {
   const files = useMemo(() => {
     try {
       return parseDiff(diff);
@@ -159,6 +166,26 @@ export function DiffViewer({ diff, filePath, viewType = "split", rootPath }: Dif
     return (
       <div className="flex items-center justify-center p-8 text-text-muted">
         File too large to display diff ({">"} 1MB)
+      </div>
+    );
+  }
+
+  if (diff === "ERROR") {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 p-8">
+        <div className="flex items-center gap-2 text-status-error text-sm">
+          <AlertCircle className="w-4 h-4" />
+          Failed to load diff
+        </div>
+        {onRetry && (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="px-3 py-1.5 text-xs font-medium rounded bg-daintree-border hover:bg-daintree-border/80 text-daintree-text transition-colors"
+          >
+            Retry
+          </button>
+        )}
       </div>
     );
   }

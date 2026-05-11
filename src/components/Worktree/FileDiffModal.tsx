@@ -37,14 +37,14 @@ export function FileDiffModal({
       );
       if (requestRef.current !== requestId) return;
       if (!result.ok) {
-        setDiff("NO_CHANGES");
+        setDiff("ERROR");
         return;
       }
       const diffResult = result.result as string;
       setDiff(diffResult || "NO_CHANGES");
     } catch {
       if (requestRef.current !== requestId) return;
-      setDiff("NO_CHANGES");
+      setDiff("ERROR");
     }
   }, [worktreePath, filePath, status]);
 
@@ -66,6 +66,7 @@ export function FileDiffModal({
       branch={branch}
       diff={diff}
       defaultMode="diff"
+      onRetryDiff={fetchDiff}
       onClose={onClose}
     />
   );

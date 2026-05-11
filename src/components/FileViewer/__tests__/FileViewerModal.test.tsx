@@ -53,7 +53,9 @@ vi.mock("@/components/ui/tooltip", () => ({
 }));
 
 vi.mock("@/components/Worktree/DiffViewer", () => ({
-  DiffViewer: () => <div data-testid="diff-viewer" />,
+  DiffViewer: ({ onRetry }: { onRetry?: () => void }) => (
+    <div data-testid="diff-viewer" data-has-retry={onRetry ? "true" : "false"} />
+  ),
 }));
 
 vi.mock("../CodeViewer", () => ({
@@ -298,9 +300,9 @@ describe("FileViewerModal", () => {
       <FileViewerModal {...defaultProps} diff={undefined} defaultMode="diff" />
     );
 
-    // Initially shows loading diff spinner (mode is "diff" but no diff content yet)
+    // Initially shows loading diff skeleton (mode is "diff" but no diff content yet)
     await waitFor(() => {
-      expect(screen.getByText("Loading diff...")).toBeTruthy();
+      expect(screen.getByRole("status", { name: "Loading diff" })).toBeTruthy();
     });
 
     rerender(
@@ -345,7 +347,7 @@ describe("FileViewerModal", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("Loading diff...")).toBeTruthy();
+      expect(screen.getByRole("status", { name: "Loading diff" })).toBeTruthy();
     });
 
     // Diff for file B arrives — should auto-switch to diff mode
@@ -361,5 +363,53 @@ describe("FileViewerModal", () => {
     await waitFor(() => {
       expect(screen.getByTestId("diff-viewer")).toBeTruthy();
     });
+  });
+
+  it("does not show view/diff toggle when diff is ERROR sentinel", async () => {
+    render(<FileViewerModal {...defaultProps} diff="ERROR" defaultMode="diff" />);
+
+    // DiffViewer renders with the ERROR sentinel (diff is truthy and mode is "diff")
+    await waitFor(() => {
+      expect(screen.getByTestId("diff-viewer")).toBeTruthy();
+    });
+
+    // Toggle buttons should not appear when diff is ERROR
+    expect(screen.queryByRole("button", { name: "View" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Diff" })).toBeNull();
+  });
+
+  it("forwards onRetryDiff to DiffViewer", async () => {
+    const onRetry = vi.fn();
+
+    render(
+      <FileViewerModal
+        {...defaultProps}
+        diff={"diff --git a/file b/file\n--- a/file\n+++ b/file\n@@ -1 +1 @@\n-old\n+new"}
+        defaultMode="diff"
+        onRetryDiff={onRetry}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("diff-viewer")).toBeTruthy();
+    });
+
+    expect(screen.getByTestId("diff-viewer").getAttribute("data-has-retry")).toBe("true");
+  });
+
+  it("does not forward retry to DiffViewer when onRetryDiff is omitted", async () => {
+    render(
+      <FileViewerModal
+        {...defaultProps}
+        diff={"diff --git a/file b/file\n--- a/file\n+++ b/file\n@@ -1 +1 @@\n-old\n+new"}
+        defaultMode="diff"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("diff-viewer")).toBeTruthy();
+    });
+
+    expect(screen.getByTestId("diff-viewer").getAttribute("data-has-retry")).toBe("false");
   });
 });
