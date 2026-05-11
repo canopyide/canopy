@@ -86,16 +86,13 @@ vi.mock("@/store/panelStore", () => ({
   },
 }));
 
-import {
-  useWorktreeSelectionStore,
-  setFleetArmedIdsGetter,
-  setFleetLastArmedIdGetter,
-} from "../worktreeStore";
+import { useWorktreeSelectionStore } from "../worktreeStore";
+import { setFleetArmedIdsAccessor, setFleetLastArmedIdAccessor } from "../storeAccessors";
 
 let armedIdsForFleet = new Set<string>();
-setFleetArmedIdsGetter(() => armedIdsForFleet);
+setFleetArmedIdsAccessor(() => armedIdsForFleet);
 let lastArmedIdForFleet: string | null = null;
-setFleetLastArmedIdGetter(() => lastArmedIdForFleet);
+setFleetLastArmedIdAccessor(() => lastArmedIdForFleet);
 
 describe("worktreeStore", () => {
   beforeEach(() => {

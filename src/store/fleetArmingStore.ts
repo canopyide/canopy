@@ -1,11 +1,6 @@
 import { create } from "zustand";
 import { usePanelStore } from "@/store/panelStore";
-import {
-  useWorktreeSelectionStore,
-  setFleetArmedIdsGetter,
-  setFleetLastArmedIdGetter,
-} from "@/store/worktreeStore";
-import { setFleetArmingClear } from "@/store/projectStore";
+import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import type { TerminalInstance } from "@shared/types";
 import type { AgentState } from "@/types";
 import { isAgentFleetActionEligible, isTerminalFleetEligible } from "./fleetEligibility";
@@ -354,79 +349,52 @@ function getActiveWorktreeId(): string | null {
   return useWorktreeSelectionStore.getState().activeWorktreeId ?? null;
 }
 
-// Register the clear callback so projectStore.switchProject() can drop armed
-// selections synchronously on project switch.
-setFleetArmingClear(() => {
-  useFleetArmingStore.getState().clear();
-});
-
-// Expose the armed-id set to worktreeStore so its terminal-streaming policy
-// can keep armed cross-worktree terminals at VISIBLE during fleet scope.
-// Using a getter-injection pattern (identical to `setFleetArmingClear`)
-// avoids an otherwise cyclic module import.
-setFleetArmedIdsGetter(() => useFleetArmingStore.getState().armedIds);
-setFleetLastArmedIdGetter(() => useFleetArmingStore.getState().lastArmedId);
-
 /**
- * Module-scope subscription: when panels are removed, relocated to trash/background,
- * or become ineligible, prune them from the armed set.
+ * Panel-removal pruning subscription. Wires `usePanelStore` changes into the
+ * fleet-arming store so removed/trashed/backgrounded/ineligible panels drop
+ * out of the armed set automatically. Registered by `initStoreOrchestrator()`
+ * so the subscription is scoped to the renderer lifecycle (HMR-safe via the
+ * orchestrator's `DisposableStore`) rather than module evaluation.
  *
- * HMR and test re-imports would otherwise stack subscribers on every module
- * reload. We store registration state on `globalThis` so a subsequent module
- * instance reuses the existing subscription but drives the *current* store —
- * mirroring the pattern in `projectStore.ts`.
+ * Runs an initial reconciliation pass before subscribing so any armed ids
+ * that became ineligible while the subscription was torn down (test
+ * destroy → mutate panels → re-init) get pruned on re-registration.
  */
-interface FleetArmingSubscriptionState {
-  registered: boolean;
-  lastSnapshot: { ids: string[]; panelsById: Record<string, TerminalInstance> } | null;
-}
+export function subscribeFleetArmingPanelPruning(): () => void {
+  function reconcileAgainst(
+    currentIds: readonly string[],
+    currentById: Record<string, TerminalInstance>
+  ): void {
+    const armed = useFleetArmingStore.getState().armedIds;
+    if (armed.size === 0) return;
 
-const FLEET_ARMING_SUBSCRIPTION_KEY = "__daintreeFleetArmingSubscription";
+    const validIds = new Set<string>();
+    for (const id of currentIds) {
+      const t = currentById[id];
+      if (isFleetArmEligible(t)) validIds.add(id);
+    }
 
-function getFleetArmingSubscriptionState(): FleetArmingSubscriptionState {
-  const target = globalThis as typeof globalThis & {
-    [FLEET_ARMING_SUBSCRIPTION_KEY]?: FleetArmingSubscriptionState;
-  };
-  const existing = target[FLEET_ARMING_SUBSCRIPTION_KEY];
-  if (existing) return existing;
-  const created: FleetArmingSubscriptionState = { registered: false, lastSnapshot: null };
-  target[FLEET_ARMING_SUBSCRIPTION_KEY] = created;
-  return created;
-}
-
-if (typeof usePanelStore.subscribe === "function") {
-  const subState = getFleetArmingSubscriptionState();
-  if (!subState.registered) {
-    subState.registered = true;
-    subState.lastSnapshot = {
-      ids: usePanelStore.getState().panelIds,
-      panelsById: usePanelStore.getState().panelsById,
-    };
-
-    usePanelStore.subscribe((state) => {
-      const prev = subState.lastSnapshot;
-      const currentIds = state.panelIds;
-      const currentById = state.panelsById;
-
-      if (prev && currentIds === prev.ids && currentById === prev.panelsById) return;
-
-      subState.lastSnapshot = { ids: currentIds, panelsById: currentById };
-
-      const armed = useFleetArmingStore.getState().armedIds;
-      if (armed.size === 0) return;
-
-      const validIds = new Set<string>();
-      for (const id of currentIds) {
-        const t = currentById[id];
-        if (isFleetArmEligible(t)) validIds.add(id);
+    for (const id of armed) {
+      if (!validIds.has(id)) {
+        useFleetArmingStore.getState().prune(validIds);
+        return;
       }
-
-      for (const id of armed) {
-        if (!validIds.has(id)) {
-          useFleetArmingStore.getState().prune(validIds);
-          return;
-        }
-      }
-    });
+    }
   }
+
+  let lastIds = usePanelStore.getState().panelIds;
+  let lastPanelsById = usePanelStore.getState().panelsById;
+  reconcileAgainst(lastIds, lastPanelsById);
+
+  return usePanelStore.subscribe((state) => {
+    const currentIds = state.panelIds;
+    const currentById = state.panelsById;
+
+    if (currentIds === lastIds && currentById === lastPanelsById) return;
+
+    lastIds = currentIds;
+    lastPanelsById = currentById;
+
+    reconcileAgainst(currentIds, currentById);
+  });
 }

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   useFleetArmingStore,
   computeArmByStateIds,
@@ -8,6 +8,7 @@ import {
   isFleetRestartAgentEligible,
   isFleetWaitingAgentEligible,
   resolveFleetAgentCapabilityId,
+  subscribeFleetArmingPanelPruning,
 } from "../fleetArmingStore";
 import { usePanelStore } from "../panelStore";
 import { useWorktreeSelectionStore } from "../worktreeStore";
@@ -797,6 +798,17 @@ describe("fleetArmingStore", () => {
   });
 
   describe("panel prune subscription", () => {
+    let unsubscribe: (() => void) | null = null;
+
+    beforeEach(() => {
+      unsubscribe = subscribeFleetArmingPanelPruning();
+    });
+
+    afterEach(() => {
+      unsubscribe?.();
+      unsubscribe = null;
+    });
+
     it("drops armed ids when a panel is removed from panelStore", () => {
       seedPanels([makeAgentTerminal("a"), makeAgentTerminal("b"), makeAgentTerminal("c")]);
       useFleetArmingStore.getState().armIds(["a", "b", "c"]);

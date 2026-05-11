@@ -5,6 +5,7 @@ import {
   isMruRecordingSuppressed,
   persistMruList,
 } from "./worktreeStore";
+import { useFleetArmingStore, subscribeFleetArmingPanelPruning } from "./fleetArmingStore";
 import { useTerminalInputStore, unregisterInputController } from "./terminalInputStore";
 import { semanticAnalysisService } from "@/services/SemanticAnalysisService";
 import { useConsoleCaptureStore } from "./consoleCaptureStore";
@@ -12,6 +13,14 @@ import { useVoiceRecordingStore } from "./voiceRecordingStore";
 import { useLayoutUndoStore } from "./layoutUndoStore";
 import { useCliAvailabilityStore } from "./cliAvailabilityStore";
 import { useAgentSettingsStore } from "./agentSettingsStore";
+import {
+  setPanelStoreAccessor,
+  setWorktreeSelectionAccessor,
+  setFleetArmingClearAccessor,
+  setFleetArmedIdsAccessor,
+  setFleetLastArmedIdAccessor,
+  resetStoreAccessorsForTesting,
+} from "./storeAccessors";
 import { setActiveContextAccessors } from "@/lib/notify";
 import { debounce } from "@/utils/debounce";
 import { DisposableStore, toDisposable } from "@/utils/disposable";
@@ -21,6 +30,23 @@ const debouncedPersistMruList = debounce(persistMruList, 150);
 let cleanupFn: (() => void) | null = null;
 
 export function initStoreOrchestrator(): () => void {
+  // Cross-store accessors are registered up-front, BEFORE the idempotency
+  // guard, so tests that `destroyStoreOrchestrator()` + re-init reconnect
+  // their accessor closures to the current store singletons. The closures
+  // resolve `getState()` lazily on each call (no stale-snapshot capture).
+  setPanelStoreAccessor(() => {
+    const s = usePanelStore.getState();
+    return { panelsById: s.panelsById, panelIds: s.panelIds, tabGroups: s.tabGroups };
+  });
+  setWorktreeSelectionAccessor(() => ({
+    activeWorktreeId: useWorktreeSelectionStore.getState().activeWorktreeId,
+  }));
+  setFleetArmingClearAccessor(() => {
+    useFleetArmingStore.getState().clear();
+  });
+  setFleetArmedIdsAccessor(() => useFleetArmingStore.getState().armedIds);
+  setFleetLastArmedIdAccessor(() => useFleetArmingStore.getState().lastArmedId);
+
   if (cleanupFn) return cleanupFn;
 
   // Register accessors so notify() can suppress toasts whose origin surface
@@ -181,6 +207,13 @@ export function initStoreOrchestrator(): () => void {
     )
   );
 
+  // 5a. Fleet-arming panel pruning: drop armed ids when their panels are
+  //     removed, trashed, backgrounded, or otherwise become fleet-ineligible.
+  //     Lives in the orchestrator so HMR/test teardown cleans the subscription
+  //     deterministically (previously this was a module-scope subscription in
+  //     `fleetArmingStore.ts`).
+  disposables.add(toDisposable(subscribeFleetArmingPanelPruning()));
+
   // 5. Availability → agent-settings re-normalization: installed/missing state
   //    is the input to `normalizeAgentSelection`, so re-run normalization any
   //    time a fresh availability snapshot lands (see issue #5158). Fires on
@@ -222,4 +255,9 @@ export function destroyStoreOrchestrator(): void {
   // matching pre-refactor behavior.
   debouncedPersistMruList.cancel();
   cleanupFn?.();
+  // Clear cross-store accessor slots so any code path that consumes them
+  // between destroy and a subsequent init sees null (the documented
+  // unset-fallback behavior) rather than stale closures bound to a torn-down
+  // subscription set.
+  resetStoreAccessorsForTesting();
 }

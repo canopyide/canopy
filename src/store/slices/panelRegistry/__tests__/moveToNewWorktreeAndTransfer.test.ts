@@ -73,7 +73,6 @@ vi.mock("@/store/restartExitSuppression", () => ({
 }));
 
 vi.mock("@/store/projectStore", () => ({
-  setPanelStoreGetter: vi.fn(),
   useProjectStore: {
     getState: () => ({ currentProject: { id: "proj-1" } }),
   },

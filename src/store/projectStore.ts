@@ -14,8 +14,13 @@ import { useTerminalInputStore } from "./terminalInputStore";
 import { isSmokeTestTerminalId } from "@shared/utils/smokeTestTerminals";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { isClientAppError } from "@/utils/clientAppError";
+import {
+  clearFleetArmingThroughAccessor,
+  getPanelStoreSnapshot,
+  getWorktreeSelectionSnapshot,
+} from "./storeAccessors";
 import type { ProjectSwitchOutgoingState } from "@shared/types/ipc/project";
-import type { TerminalInstance, TabGroup } from "@shared/types";
+import type { TerminalInstance } from "@shared/types";
 
 function shouldPersistTerminal(t: TerminalInstance): boolean {
   return (
@@ -27,56 +32,15 @@ function shouldPersistTerminal(t: TerminalInstance): boolean {
   );
 }
 
-// Lazy reference to usePanelStore to break circular dependency.
-// Injected at module-init time from panelStore.ts (same pattern as
-// panelPersistence.setProjectIdGetter).
-let _getPanelStoreState:
-  | (() => {
-      panelsById: Record<string, TerminalInstance>;
-      panelIds: string[];
-      tabGroups: Map<string, TabGroup>;
-    })
-  | null = null;
-
-export function setPanelStoreGetter(
-  getter: () => {
-    panelsById: Record<string, TerminalInstance>;
-    panelIds: string[];
-    tabGroups: Map<string, TabGroup>;
-  }
-): void {
-  _getPanelStoreState = getter;
-}
-
-// Lazy reference to useWorktreeSelectionStore to break circular dependency.
-// worktreeStore → terminalInstanceService → terminalStore → setPanelStoreGetter
-// would create a TDZ error if imported statically.
-let _getWorktreeSelectionState: (() => { activeWorktreeId: string | null }) | null = null;
-
-export function setWorktreeSelectionStoreGetter(
-  getter: () => { activeWorktreeId: string | null }
-): void {
-  _getWorktreeSelectionState = getter;
-}
-
-// Lazy reference to the fleet-arming store's clear() so a project switch can
-// drop armed selections synchronously before the WebContentsView gets detached.
-// Registered from fleetArmingStore at module init.
-let _clearFleetArming: (() => void) | null = null;
-
-export function setFleetArmingClear(callback: () => void): void {
-  _clearFleetArming = callback;
-}
-
 function buildOutgoingState(projectId: string): ProjectSwitchOutgoingState {
   const draftInputs = useTerminalInputStore.getState().getProjectDraftInputs(projectId);
-  const activeWorktreeId = _getWorktreeSelectionState?.()?.activeWorktreeId ?? undefined;
+  const activeWorktreeId = getWorktreeSelectionSnapshot()?.activeWorktreeId ?? undefined;
 
   // Synchronously snapshot terminal state from the Zustand store before the
   // renderer gets detached.  This captures browser/dev-preview panel state
   // that would otherwise be lost because the debounced persistence hasn't
   // flushed yet.  Uses the same filter as PanelPersistence.save().
-  const terminalState = _getPanelStoreState?.();
+  const terminalState = getPanelStoreSnapshot();
   if (!terminalState) {
     return { draftInputs, activeWorktreeId };
   }
@@ -437,7 +401,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
     // Drop fleet arming selections synchronously — the outgoing view's armed
     // set is project-scoped and must not leak if the view is later restored
     // from the LRU cache.
-    _clearFleetArming?.();
+    clearFleetArmingThroughAccessor();
 
     // Capture outgoing state before the renderer gets detached
     const currentProjectId = get().currentProject?.id;
