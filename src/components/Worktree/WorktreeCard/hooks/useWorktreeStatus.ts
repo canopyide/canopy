@@ -15,6 +15,8 @@ export interface ComputedSubtitle {
   tone: ComputedSubtitleTone;
 }
 
+export type WorktreeReviewState = "conflicted" | "unpushed-clean" | "has-changes" | null;
+
 export type ResourceStatusColor = "green" | "yellow" | "red" | "neutral";
 
 export interface UseWorktreeStatusResult {
@@ -26,6 +28,7 @@ export interface UseWorktreeStatusResult {
   effectiveNote?: string;
   effectiveSummary?: string | null;
   computedSubtitle: ComputedSubtitle;
+  reviewState: WorktreeReviewState;
   spineState: SpineState;
   isLifecycleRunning: boolean;
   lifecycleLabel?: string;
@@ -142,6 +145,15 @@ export function useWorktreeStatus({
     return "idle";
   }, [hasChanges, worktree.isCurrent, worktree.mood]);
 
+  const reviewState: WorktreeReviewState = useMemo(() => {
+    const changes = worktree.worktreeChanges;
+    if (!changes) return null;
+    if (changes.changes?.some((c) => c.status === "conflicted")) return "conflicted";
+    if ((changes.changedFileCount ?? 0) > 0) return "has-changes";
+    if ((changes.ahead ?? 0) > 0) return "unpushed-clean";
+    return null;
+  }, [worktree.worktreeChanges]);
+
   const isComplete =
     !!worktree.issueNumber &&
     !!worktree.prNumber &&
@@ -238,6 +250,7 @@ export function useWorktreeStatus({
     effectiveNote,
     effectiveSummary,
     computedSubtitle,
+    reviewState,
     spineState,
     isLifecycleRunning,
     lifecycleLabel,

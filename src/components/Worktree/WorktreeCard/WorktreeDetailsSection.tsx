@@ -10,16 +10,18 @@ import { ActivityLight } from "../ActivityLight";
 import { LiveTimeAgo } from "../LiveTimeAgo";
 import { WorktreeDetails } from "../WorktreeDetails";
 import {
+  Activity,
+  AlertTriangle,
   ChevronRight,
   GitCommitHorizontal,
-  Play,
-  Square,
   Plug,
-  Activity,
+  Play,
+  Send,
+  Square,
   Trash2,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
-import type { ComputedSubtitle } from "./hooks/useWorktreeStatus";
+import type { ComputedSubtitle, WorktreeReviewState } from "./hooks/useWorktreeStatus";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   ContextMenu,
@@ -35,6 +37,7 @@ export interface WorktreeDetailsSectionProps {
   isExpanded: boolean;
   hasChanges: boolean;
   computedSubtitle: ComputedSubtitle;
+  reviewState?: WorktreeReviewState;
   effectiveNote?: string;
   effectiveSummary?: string | null;
   worktreeErrors: ErrorRecord[];
@@ -44,6 +47,11 @@ export interface WorktreeDetailsSectionProps {
   onDismissError: (id: string) => void;
   onRetryError: (id: string, action: RetryAction, args?: Record<string, unknown>) => Promise<void>;
   onOpenReviewHub?: () => void;
+  onCommitAndPush?: () => void;
+  isCommitting?: boolean;
+  commitError?: string | null;
+  clearCommitError?: () => void;
+  hasCommitMessageSource?: boolean;
   isLifecycleRunning?: boolean;
   lifecycleLabel?: string;
 
@@ -73,6 +81,12 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
     onDismissError,
     onRetryError,
     onOpenReviewHub,
+    onCommitAndPush,
+    isCommitting,
+    commitError,
+    clearCommitError,
+    hasCommitMessageSource,
+    reviewState,
     isLifecycleRunning,
     lifecycleLabel,
 
@@ -117,6 +131,12 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
       { duration: DURATION_200 / 1000, ease: [0.4, 0, 0.2, 1] }
     );
   }, [changedFileCount, prefersReducedMotion, animate, countScope]);
+
+  const isConflicted = reviewState === "conflicted";
+  const showCommitAndPushButton =
+    !!onCommitAndPush && !!hasCommitMessageSource && reviewState === "has-changes" && !isCommitting;
+  const showReviewHubButton = !!onOpenReviewHub && hasChanges;
+  const rightButtonGroupShown = showReviewHubButton || showCommitAndPushButton || !!isCommitting;
 
   const rsLower = resourceStatus?.toLowerCase();
   const showResourceResume =
@@ -176,9 +196,7 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
             onClick={onToggleExpand}
             className={cn(
               "worktree-section-button relative flex min-w-0 flex-1 items-center justify-between px-3 py-2.5 text-left transition-colors",
-              onOpenReviewHub && hasChanges
-                ? "rounded-l-[var(--radius-lg)]"
-                : "rounded-[var(--radius-lg)]"
+              rightButtonGroupShown ? "rounded-l-[var(--radius-lg)]" : "rounded-[var(--radius-lg)]"
             )}
           >
             <button
@@ -189,7 +207,7 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
               aria-label="Show details"
               className={cn(
                 "absolute inset-0",
-                onOpenReviewHub && hasChanges
+                rightButtonGroupShown
                   ? "rounded-l-[var(--radius-lg)]"
                   : "rounded-[var(--radius-lg)]",
                 "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-[-2px]"
@@ -205,6 +223,11 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
                 !isLifecycleRunning &&
                 worktree.lifecycleStatus?.state !== "success" ? (
                 <span className="text-status-error">{lifecycleLabel}</span>
+              ) : isConflicted ? (
+                <span className="flex items-center gap-1.5 text-status-error">
+                  <AlertTriangle className="w-3 h-3 shrink-0" aria-hidden="true" />
+                  <span className="truncate">Conflicts need review</span>
+                </span>
               ) : hasChanges && worktree.worktreeChanges ? (
                 <span className="flex items-center gap-1.5 text-text-secondary">
                   <span ref={countScope} className="inline-block">
@@ -370,7 +393,7 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
             </Tooltip>
           </div>
 
-          {onOpenReviewHub && hasChanges && (
+          {showReviewHubButton && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
@@ -378,7 +401,7 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
                   className={cn(
                     "shrink-0 border-l border-border-default px-2 py-1 transition-colors",
                     "text-[var(--color-state-active)]/70 hover:bg-[var(--color-state-active)]/10 hover:text-[var(--color-state-active)]",
-                    "rounded-r-[var(--radius-lg)]",
+                    !showCommitAndPushButton && !isCommitting && "rounded-r-[var(--radius-lg)]",
                     "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-daintree-accent"
                   )}
                   aria-label="Open Review & Commit"
@@ -389,6 +412,72 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
               <TooltipContent side="bottom">Review & Commit</TooltipContent>
             </Tooltip>
           )}
+
+          {showCommitAndPushButton && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={onCommitAndPush}
+                  className={cn(
+                    "shrink-0 border-l border-border-default px-2 py-1 transition-colors",
+                    "text-status-success/70 hover:bg-status-success/10 hover:text-status-success",
+                    "rounded-r-[var(--radius-lg)]",
+                    "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-daintree-accent"
+                  )}
+                  aria-label="Commit and push"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Commit & push</TooltipContent>
+            </Tooltip>
+          )}
+
+          {isCommitting && (
+            <div
+              role="status"
+              aria-label="Committing and pushing"
+              className={cn(
+                "shrink-0 border-l border-border-default px-2 py-1",
+                "text-status-success",
+                "rounded-r-[var(--radius-lg)]",
+                "flex items-center"
+              )}
+            >
+              <Spinner size="xs" />
+            </div>
+          )}
+        </div>
+      )}
+
+      {!isExpanded && commitError && (
+        <div className="-mx-3 -mb-3 mt-3 flex items-start gap-2 rounded-b-[var(--radius-lg)] border-t border-border-default bg-surface-inset px-3 py-2 text-xs text-status-error">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" aria-hidden="true" />
+          <span className="flex-1 break-words">{commitError}</span>
+          <div className="flex shrink-0 items-center gap-2">
+            {onOpenReviewHub && (
+              <button
+                type="button"
+                onClick={() => {
+                  clearCommitError?.();
+                  onOpenReviewHub?.();
+                }}
+                className="text-status-error underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-daintree-accent rounded"
+              >
+                Open review hub
+              </button>
+            )}
+            {clearCommitError && (
+              <button
+                type="button"
+                onClick={clearCommitError}
+                aria-label="Dismiss error"
+                className="text-text-muted hover:text-text-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-daintree-accent rounded"
+              >
+                Dismiss
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>

@@ -40,6 +40,7 @@ import {
 import { useInputReceiptKey } from "./WorktreeCard/hooks/useInputReceiptKey";
 import { useWorktreeActions } from "./WorktreeCard/hooks/useWorktreeActions";
 import { copyContextWithFeedback } from "@/hooks/useWorktreeActions";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { useCopyWithFeedback } from "@/hooks/useCopyWithFeedback";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { CONTEXT_COMPONENTS, WorktreeMenuItems } from "./WorktreeMenuItems";
@@ -293,6 +294,7 @@ export function WorktreeCard({
     effectiveNote,
     effectiveSummary,
     computedSubtitle,
+    reviewState,
     spineState,
     isLifecycleRunning,
     lifecycleLabel,
@@ -433,6 +435,9 @@ export function WorktreeCard({
   const [showIssuePicker, setShowIssuePicker] = useState(false);
   const [showReviewHub, setShowReviewHub] = useState(false);
   const [showPlanViewer, setShowPlanViewer] = useState(false);
+  const [isCommittingAndPushing, setIsCommittingAndPushing] = useState(false);
+  const [commitAndPushError, setCommitAndPushError] = useState<string | null>(null);
+  const commitAndPushInFlightRef = useRef(false);
 
   const onCloseReviewHub = () => setShowReviewHub(false);
   const onClosePlanViewer = () => setShowPlanViewer(false);
@@ -465,6 +470,46 @@ export function WorktreeCard({
     window.addEventListener("daintree:open-review-hub", handler);
     return () => window.removeEventListener("daintree:open-review-hub", handler);
   }, [worktree.id]);
+
+  const aiNoteFirstLine = worktree.aiNote?.trim().split("\n")[0]?.trim() ?? "";
+  const lastCommitFirstLine =
+    worktree.worktreeChanges?.lastCommitMessage?.trim().split("\n")[0]?.trim() ?? "";
+  const commitMessageDefault = aiNoteFirstLine || lastCommitFirstLine;
+  const hasCommitMessageSource = commitMessageDefault.length > 0;
+
+  const clearCommitAndPushError = () => setCommitAndPushError(null);
+
+  const handleCommitAndPush = async () => {
+    if (commitAndPushInFlightRef.current) return;
+    if (!commitMessageDefault) return;
+    commitAndPushInFlightRef.current = true;
+    setIsCommittingAndPushing(true);
+    setCommitAndPushError(null);
+    try {
+      try {
+        await window.electron.git.stageAll(worktree.path);
+      } catch (err) {
+        setCommitAndPushError(formatErrorMessage(err, "Couldn't stage changes"));
+        return;
+      }
+      try {
+        await window.electron.git.commit(worktree.path, commitMessageDefault);
+      } catch (err) {
+        setCommitAndPushError(formatErrorMessage(err, "Couldn't commit changes"));
+        return;
+      }
+      try {
+        await window.electron.git.push(worktree.path);
+      } catch (err) {
+        setCommitAndPushError(formatErrorMessage(err, "Couldn't push to remote"));
+        return;
+      }
+    } finally {
+      setIsCommittingAndPushing(false);
+      commitAndPushInFlightRef.current = false;
+    }
+  };
+
 
   const handleAttachIssue = async (issue: GitHubIssue) => {
     await worktreeClient.attachIssue({
@@ -837,6 +882,7 @@ export function WorktreeCard({
                     isExpanded={isExpanded}
                     hasChanges={hasChanges}
                     computedSubtitle={computedSubtitle}
+                    reviewState={reviewState}
                     effectiveNote={effectiveNote}
                     effectiveSummary={effectiveSummary}
                     worktreeErrors={worktreeErrors}
@@ -846,6 +892,11 @@ export function WorktreeCard({
                     onDismissError={dismissError}
                     onRetryError={handleErrorRetry}
                     onOpenReviewHub={openReviewHubForThisWorktree}
+                    onCommitAndPush={() => void handleCommitAndPush()}
+                    isCommitting={isCommittingAndPushing}
+                    commitError={commitAndPushError}
+                    clearCommitError={clearCommitAndPushError}
+                    hasCommitMessageSource={hasCommitMessageSource}
                     isLifecycleRunning={isLifecycleRunning}
                     lifecycleLabel={lifecycleLabel}
                     hasResourceConfig={hasResourceConfig}
