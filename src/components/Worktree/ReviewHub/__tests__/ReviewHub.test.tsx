@@ -707,6 +707,7 @@ describe("ReviewHub", () => {
       prNumber: number;
       prUrl: string;
       prState: "open" | "merged" | "closed";
+      prCiStatus?: "SUCCESS" | "FAILURE" | "ERROR" | "PENDING" | "EXPECTED";
     }) {
       const existing = worktreeStoreData.current.get("main-wt")!;
       worktreeStoreData.current.set("main-wt", { ...existing, ...prData });
@@ -800,6 +801,39 @@ describe("ReviewHub", () => {
         screen.getByText("#99");
         screen.getByText("merged");
       });
+    });
+
+    it("shows CI status when prCiStatus is set", async () => {
+      setWorktreePR({
+        prNumber: 42,
+        prUrl: "https://github.com/test/repo/pull/42",
+        prState: "open",
+        prCiStatus: "FAILURE",
+      });
+      getStagingStatusMock.mockResolvedValue(makeStatus({ hasRemote: true }));
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => {
+        screen.getByText("failing");
+        screen.getByRole("button", { name: /ci failing/i });
+      });
+    });
+
+    it("omits CI status when prCiStatus is undefined", async () => {
+      setWorktreePR({
+        prNumber: 42,
+        prUrl: "https://github.com/test/repo/pull/42",
+        prState: "open",
+      });
+      getStagingStatusMock.mockResolvedValue(makeStatus({ hasRemote: true }));
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByText("#42"));
+      expect(screen.queryByText("passing")).toBeNull();
+      expect(screen.queryByText("failing")).toBeNull();
+      expect(screen.queryByText("pending")).toBeNull();
     });
   });
 

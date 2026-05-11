@@ -147,6 +147,25 @@ describe("buildBatchPRQuery — no comments field", () => {
   });
 });
 
+describe("buildBatchPRQuery — statusCheckRollup", () => {
+  it("requests statusCheckRollup for branch-path PR nodes", () => {
+    const query = buildBatchPRQuery("owner", "repo", [
+      { worktreeId: "wt-1", branchName: "feature/x" },
+    ]);
+    expect(query).toContain("statusCheckRollup { state }");
+  });
+
+  it("requests statusCheckRollup on issue-timeline PR fragments", () => {
+    const query = buildBatchPRQuery("owner", "repo", [{ worktreeId: "wt-1", issueNumber: 42 }]);
+    // Both CrossReferencedEvent.source and ConnectedEvent.subject inline
+    // fragments should request rollup state, so the badge can render CI
+    // status for issue-linked PRs without an extra round-trip.
+    const matches = query.match(/statusCheckRollup \{ state \}/g);
+    expect(matches).not.toBeNull();
+    expect(matches!.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
 describe("buildBatchPRQuery", () => {
   it("escapes owner, repo, and branch values in generated GraphQL query", () => {
     const query = buildBatchPRQuery('my"owner', "repo\\name", [

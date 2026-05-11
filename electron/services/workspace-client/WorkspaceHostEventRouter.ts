@@ -70,6 +70,7 @@ export class WorkspaceHostEventRouter {
           prNumber: event.prNumber,
           prUrl: event.prUrl,
           prState: event.prState,
+          prCiStatus: event.prCiStatus,
           prTitle: event.prTitle,
           issueNumber: event.issueNumber,
           issueTitle: event.issueTitle,

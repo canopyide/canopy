@@ -555,6 +555,7 @@ export function buildBatchPRQuery(
                       author { login avatarUrl }
                       assignees(first: 10) { nodes { login avatarUrl } }
                       labels(first: 10) { nodes { name color } }
+                      commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
                     }
                   }
                 }
@@ -572,6 +573,7 @@ export function buildBatchPRQuery(
                       author { login avatarUrl }
                       assignees(first: 10) { nodes { login avatarUrl } }
                       labels(first: 10) { nodes { name color } }
+                      commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
                     }
                   }
                 }
@@ -601,6 +603,7 @@ export function buildBatchPRQuery(
               author { login avatarUrl }
               assignees(first: 10) { nodes { login avatarUrl } }
               labels(first: 10) { nodes { name color } }
+              commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
             }
           }
         }
