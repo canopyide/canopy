@@ -24,7 +24,7 @@ vi.mock("../../../services/PreAgentSnapshotService.js", () => ({
   },
 }));
 
-import { parsePorcelainV2Conflicts } from "../git-write.js";
+import { parsePorcelainV2Conflicts } from "../../../services/git/porcelainConflicts.js";
 
 describe("parsePorcelainV2Conflicts", () => {
   it("returns an empty list for empty input", () => {

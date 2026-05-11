@@ -16,11 +16,19 @@ import type {
   StagingStatus,
 } from "../../../shared/types/git.js";
 import { validateCwd, createHardenedGit, createAuthenticatedGit } from "../../utils/hardenedGit.js";
-import { readRebaseSequence } from "../../utils/parseRebaseTodo.js";
 import { getPerFileDiffStats, invalidateStagingDiffStatCache } from "../../utils/git.js";
 import { store } from "../../store.js";
 import { getSoundService } from "../../services/getSoundService.js";
 import type * as SoundServiceModule from "../../services/SoundService.js";
+import {
+  detectRepoOperationState,
+  resolveGitDir,
+} from "../../services/git/repoOperationState.js";
+import { parsePorcelainV2Conflicts } from "../../services/git/porcelainConflicts.js";
+import {
+  STAGED_FILE_SIZE_CAP,
+  scanStagedFilesForConflictMarkers,
+} from "../../services/git/conflictMarkerScan.js";
 
 type SoundId = keyof typeof SoundServiceModule.SOUND_FILES;
 
@@ -48,216 +56,6 @@ interface StagingFileEntry {
   status: GitStatus;
   insertions: number | null;
   deletions: number | null;
-}
-
-const CONFLICT_LABELS: Record<string, string> = {
-  UU: "both modified",
-  AA: "both added",
-  DD: "both deleted",
-  AU: "added by us",
-  UA: "added by them",
-  DU: "deleted by us",
-  UD: "deleted by them",
-};
-
-// Cap text scans at 1 MB per staged file — above this, assume the file is
-// effectively machine-generated and skip. Matches the cap already used in
-// projectInRepoSettings.ts:81 for in-process file reads.
-const STAGED_FILE_SIZE_CAP = 1_000_000;
-
-// Line-anchored 7-char conflict markers (standard + diff3 ancestor). The
-// `<<<<<<<` and `>>>>>>>` anchors are definitive; `=======` and `|||||||` are
-// flagged as well to match VS Code's own marker detection. No `g` flag so
-// `.test()` stays stateless across sequential calls on different blobs.
-const CONFLICT_MARKER_RE = /^(?:<{7}|\|{7}|={7}|>{7})[ \t\r]?/m;
-
-async function pathExists(p: string): Promise<boolean> {
-  return fs.promises
-    .access(p)
-    .then(() => true)
-    .catch(() => false);
-}
-
-async function readTextOrNull(p: string): Promise<string | null> {
-  return fs.promises.readFile(p, "utf8").catch(() => null);
-}
-
-async function resolveGitDir(git: SimpleGit, cwd: string): Promise<string> {
-  const raw = (await git.revparse(["--git-dir"])).trim();
-  return path.isAbsolute(raw) ? raw : path.resolve(cwd, raw);
-}
-
-interface RepoOperationState {
-  state: RepoState;
-  rebaseStep: number | null;
-  rebaseTotalSteps: number | null;
-  rebaseSequence: RebaseSequence | null;
-}
-
-async function detectRepoOperationState(
-  gitDir: string,
-  hasUnmerged: boolean
-): Promise<RepoOperationState> {
-  const [hasMergeHead, hasRebaseMerge, hasRebaseApply, hasCherryPickHead, hasRevertHead] =
-    await Promise.all([
-      pathExists(path.join(gitDir, "MERGE_HEAD")),
-      pathExists(path.join(gitDir, "rebase-merge")),
-      pathExists(path.join(gitDir, "rebase-apply")),
-      pathExists(path.join(gitDir, "CHERRY_PICK_HEAD")),
-      pathExists(path.join(gitDir, "REVERT_HEAD")),
-    ]);
-
-  // REBASING takes precedence: during rebase conflict, MERGE_HEAD may also appear.
-  if (hasRebaseMerge || hasRebaseApply) {
-    const backend: "merge" | "apply" = hasRebaseMerge ? "merge" : "apply";
-    const [{ step, total }, sequence] = await Promise.all([
-      readRebaseProgress(gitDir, backend),
-      // Only the merge backend stores per-commit todo/done; apply uses numbered
-      // patches with no subject metadata. Null degrades the renderer cleanly.
-      backend === "merge" ? readRebaseSequence(gitDir).catch(() => null) : Promise.resolve(null),
-    ]);
-    return {
-      state: "REBASING",
-      rebaseStep: step,
-      rebaseTotalSteps: total,
-      rebaseSequence: sequence,
-    };
-  }
-  if (hasCherryPickHead) {
-    return {
-      state: "CHERRY_PICKING",
-      rebaseStep: null,
-      rebaseTotalSteps: null,
-      rebaseSequence: null,
-    };
-  }
-  if (hasRevertHead) {
-    return { state: "REVERTING", rebaseStep: null, rebaseTotalSteps: null, rebaseSequence: null };
-  }
-  if (hasMergeHead) {
-    return { state: "MERGING", rebaseStep: null, rebaseTotalSteps: null, rebaseSequence: null };
-  }
-  return {
-    state: hasUnmerged ? "DIRTY" : "CLEAN",
-    rebaseStep: null,
-    rebaseTotalSteps: null,
-    rebaseSequence: null,
-  };
-}
-
-async function readRebaseProgress(
-  gitDir: string,
-  backend: "merge" | "apply"
-): Promise<{ step: number | null; total: number | null }> {
-  const dir = path.join(gitDir, backend === "merge" ? "rebase-merge" : "rebase-apply");
-  const [stepRaw, totalRaw] = await Promise.all([
-    readTextOrNull(path.join(dir, backend === "merge" ? "msgnum" : "next")),
-    readTextOrNull(path.join(dir, backend === "merge" ? "end" : "last")),
-  ]);
-  const toInt = (raw: string | null): number | null => {
-    if (raw == null) return null;
-    const n = Number.parseInt(raw.trim(), 10);
-    return Number.isFinite(n) ? n : null;
-  };
-  return { step: toInt(stepRaw), total: toInt(totalRaw) };
-}
-
-/**
- * Parse `u` lines from `git status --porcelain=v2` (no `-z`) into conflict
- * entries. Each u-line has the form:
- *   `u <XY> <sub> <m1> <m2> <m3> <mW> <h1> <h2> <h3> <path>`
- */
-export function parsePorcelainV2Conflicts(raw: string): ConflictedFileEntry[] {
-  const entries: ConflictedFileEntry[] = [];
-  for (const line of raw.split("\n")) {
-    if (!line.startsWith("u ")) continue;
-    // Ten whitespace-separated fields before the path; the path itself may
-    // contain spaces, so split with a small limit and rejoin the tail.
-    const parts = line.split(" ");
-    if (parts.length < 11) continue;
-    const xy = parts[1] ?? "";
-    const filePath = parts.slice(10).join(" ");
-    if (!filePath) continue;
-    entries.push({
-      path: filePath,
-      xy,
-      label: CONFLICT_LABELS[xy] ?? xy,
-    });
-  }
-  return entries;
-}
-
-/**
- * Parse `git diff --cached --numstat` output into the set of staged paths that
- * git reports as binary (added/deleted counts rendered as `-`). Binary blobs
- * are skipped by the conflict-marker scan because regex matching on non-text
- * bytes is meaningless and may produce false positives.
- */
-function parseBinaryPathsFromNumstat(raw: string): Set<string> {
-  const binary = new Set<string>();
-  for (const line of raw.split("\n")) {
-    // Numstat format: "<added>\t<deleted>\t<path>". Binary → "-\t-\t<path>".
-    // Rename diffs may emit "{old => new}" in the path column; we key the set
-    // on whatever text appears after the second tab and compare using `has`
-    // on the post-rename path reported by status(), so renamed binary files
-    // may miss this set. That's tolerated: a binary will still fail the
-    // marker regex harmlessly on the subsequent `git.show`.
-    const tabIdx1 = line.indexOf("\t");
-    if (tabIdx1 === -1) continue;
-    const tabIdx2 = line.indexOf("\t", tabIdx1 + 1);
-    if (tabIdx2 === -1) continue;
-    if (line.slice(0, tabIdx2) !== "-\t-") continue;
-    const filePath = line.slice(tabIdx2 + 1);
-    if (filePath) binary.add(filePath);
-  }
-  return binary;
-}
-
-/**
- * Block commits that would include unresolved merge conflict markers. Reads
- * the staged (index) blob for each non-binary, non-deleted file via
- * `git cat-file blob :<path>`, which works on both normal and unborn branches
- * and bypasses smudge/textconv filter machinery (`git show` would still apply
- * smudge filters depending on git version). Throws a descriptive `Error`
- * naming the first offending file; the IPC layer surfaces `.message` directly.
- */
-export async function scanStagedFilesForConflictMarkers(git: SimpleGit): Promise<void> {
-  const status = await git.status();
-  const candidates: string[] = [];
-  for (const file of status.files) {
-    const indexStatus = file.index;
-    if (!indexStatus || indexStatus === " " || indexStatus === "?" || indexStatus === "D") {
-      continue;
-    }
-    candidates.push(file.path);
-  }
-  if (candidates.length === 0) return;
-
-  // `--no-ext-diff` is mandatory: without it, a user-configured `diff.external`
-  // tool can break the numstat call (lesson #4221). `--no-textconv` blocks
-  // user-defined diff drivers that would execute arbitrary binaries via
-  // `.gitattributes` textconv mappings.
-  const numstatRaw = await git.diff(["--no-ext-diff", "--no-textconv", "--cached", "--numstat"]);
-  const binaryPaths = parseBinaryPathsFromNumstat(numstatRaw);
-
-  for (const filePath of candidates) {
-    if (binaryPaths.has(filePath)) continue;
-    // `--end-of-options` so a leading-dash path inside the index reference
-    // (e.g. `:-foo.txt`) cannot be parsed as a flag.
-    const content = await git.raw(["cat-file", "blob", "--end-of-options", `:${filePath}`]);
-    if (typeof content !== "string") continue;
-    // Compare against the UTF-8 byte length so a multibyte file isn't
-    // misclassified against a character-count cap.
-    if (Buffer.byteLength(content, "utf8") > STAGED_FILE_SIZE_CAP) continue;
-    // A leading UTF-8 BOM pushes a first-line `<<<<<<<` past the `^` anchor;
-    // strip it before testing so marker-on-line-1 files still block.
-    const probe = content.charCodeAt(0) === 0xfeff ? content.slice(1) : content;
-    if (CONFLICT_MARKER_RE.test(probe)) {
-      throw new Error(
-        `Unresolved conflict markers found in ${filePath}. Resolve all conflicts before committing.`
-      );
-    }
-  }
 }
 
 export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void {

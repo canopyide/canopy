@@ -32,7 +32,8 @@ vi.mock("../../../utils/hardenedGit.js", () => ({
   createAuthenticatedGit: vi.fn(),
 }));
 
-import { registerGitWriteHandlers, scanStagedFilesForConflictMarkers } from "../git-write.js";
+import { registerGitWriteHandlers } from "../git-write.js";
+import { scanStagedFilesForConflictMarkers } from "../../../services/git/conflictMarkerScan.js";
 import { _resetRateLimitQueuesForTest } from "../../utils.js";
 
 type FakeStatusFile = { path: string; index: string; working_dir: string };
