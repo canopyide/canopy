@@ -1,7 +1,6 @@
 import type { File } from "gitdiff-parser";
 
 export const DIFF_SOFT_COLLAPSE_BYTES = 256 * 1024;
-export const DIFF_HARD_REFUSAL_BYTES = 1024 * 1024;
 
 // Basename exact matches for lockfiles.
 const LOCKFILE_BASENAMES = new Set([

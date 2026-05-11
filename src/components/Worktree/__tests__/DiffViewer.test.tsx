@@ -215,4 +215,18 @@ describe("DiffViewer collapse behavior", () => {
     expect(screen.queryByText("Show diff")).toBeNull();
     expect(screen.queryByText("Generated file collapsed")).toBeNull();
   });
+
+  it("toggles collapse state — expand then collapse again", () => {
+    render(wrap(<DiffViewer diff={LOCKFILE_DIFF} filePath="package-lock.json" />));
+
+    expect(screen.queryByTestId("diff-element")).toBeNull();
+
+    fireEvent.click(screen.getByText("Show diff"));
+    expect(screen.getByTestId("diff-element")).toBeTruthy();
+    expect(screen.getByText("Hide diff")).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Hide diff"));
+    expect(screen.queryByTestId("diff-element")).toBeNull();
+    expect(screen.getByText("Show diff")).toBeTruthy();
+  });
 });

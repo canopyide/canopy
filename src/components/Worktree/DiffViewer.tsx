@@ -232,7 +232,15 @@ function FileDiff({ file, viewType, rootPath }: FileDiffProps) {
   const collapseDecision = useMemo(() => shouldCollapseByDefault(file), [file]);
   const [isCollapsed, setIsCollapsed] = useState(collapseDecision.collapse);
 
-  const diffRegionId = `diff-region-${file.newRevision || file.oldRevision || "unknown"}`;
+  useEffect(() => {
+    setIsCollapsed(collapseDecision.collapse);
+  }, [collapseDecision.collapse]);
+
+  const diffRegionId = useMemo(
+    () =>
+      `diff-region-${file.oldPath || "dst"}-${file.newPath || "src"}-${file.newRevision || file.oldRevision || "unknown"}`,
+    [file.newPath, file.oldPath, file.newRevision, file.oldRevision]
+  );
 
   const { additions, deletions } = useMemo(() => {
     let adds = 0;
@@ -304,7 +312,7 @@ function FileDiff({ file, viewType, rootPath }: FileDiffProps) {
         <button
           onClick={handleToggleCollapse}
           aria-expanded={!isCollapsed}
-          aria-controls={diffRegionId}
+          {...(!isCollapsed ? { "aria-controls": diffRegionId } : {})}
           className="flex w-full items-center gap-2 px-3 py-2 text-xs text-text-muted hover:bg-tint/5 transition-colors"
         >
           <ChevronRight

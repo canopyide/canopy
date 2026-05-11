@@ -248,4 +248,86 @@ describe("shouldCollapseByDefault", () => {
     expect(result.collapse).toBe(true);
     expect(result.reason).toBe("generated");
   });
+
+  it("does not collapse file exactly at threshold", () => {
+    const content = "x".repeat(DIFF_SOFT_COLLAPSE_BYTES);
+    const file = makeFile({
+      newPath: "src/at-limit.ts",
+      hunks: [
+        {
+          content: "",
+          oldStart: 1,
+          newStart: 1,
+          oldLines: 1,
+          newLines: 1,
+          changes: [
+            {
+              type: "normal" as const,
+              content,
+              isNormal: true,
+              oldLineNumber: 1,
+              newLineNumber: 1,
+            },
+          ],
+        },
+      ],
+    });
+    const result = shouldCollapseByDefault(file);
+    expect(result.collapse).toBe(false);
+  });
+
+  it("collapses file one byte over threshold", () => {
+    const content = "x".repeat(DIFF_SOFT_COLLAPSE_BYTES + 1);
+    const file = makeFile({
+      newPath: "src/over-limit.ts",
+      hunks: [
+        {
+          content: "",
+          oldStart: 1,
+          newStart: 1,
+          oldLines: 1,
+          newLines: 1,
+          changes: [
+            {
+              type: "normal" as const,
+              content,
+              isNormal: true,
+              oldLineNumber: 1,
+              newLineNumber: 1,
+            },
+          ],
+        },
+      ],
+    });
+    const result = shouldCollapseByDefault(file);
+    expect(result.collapse).toBe(true);
+    expect(result.reason).toBe("large");
+  });
+
+  it("estimates exact byte count for known content", () => {
+    const file = makeFile({
+      newPath: "src/exact.ts",
+      hunks: [
+        {
+          content: "@@ -1,1 +1,1 @@\n",
+          oldStart: 1,
+          newStart: 1,
+          oldLines: 1,
+          newLines: 1,
+          changes: [
+            {
+              type: "normal" as const,
+              content: "hello\n",
+              isNormal: true,
+              oldLineNumber: 1,
+              newLineNumber: 1,
+            },
+          ],
+        },
+      ],
+    });
+    const hdrLen = "@@ -1,1 +1,1 @@\n".length;
+    const changeLen = "hello\n".length;
+    expect(estimateFileDiffBytes(file)).toBe(hdrLen + changeLen);
+  });
 });
