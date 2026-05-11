@@ -91,16 +91,17 @@ export function EnvironmentPopover({
     <Popover>
       <PopoverTrigger asChild>
         <button
+          type="button"
           data-no-dnd
           className="shrink-0 rounded focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-daintree-accent"
-          aria-label={`${worktreeMode} environment status`}
+          aria-label={`${worktreeMode ?? "Remote"} environment status`}
         >
           <EnvironmentIcon className={cn(iconClass, className)} />
         </button>
       </PopoverTrigger>
       <PopoverContent side="top" align="start" className="w-72 p-3 text-xs">
         <div className="flex items-center justify-between gap-2 mb-2">
-          <span className="font-semibold text-text-primary">{worktreeMode}</span>
+          <span className="font-semibold text-text-primary">{worktreeMode ?? "Remote"}</span>
           {resourceStatusLabel && (
             <span
               className={cn(
@@ -140,6 +141,7 @@ export function EnvironmentPopover({
           )}
           {onCheckResourceStatus && (
             <button
+              type="button"
               onClick={onCheckResourceStatus}
               className="flex items-center gap-1 text-text-muted hover:text-text-primary transition-colors"
             >
