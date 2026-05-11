@@ -6,26 +6,8 @@ import { useFocusStore } from "@/store/focusStore";
 import { logErrorWithContext } from "@/utils/errorContext";
 import { PERF_MARKS } from "@shared/perf/marks";
 import { markRendererPerformance } from "@/utils/performance";
-import { setWorktreeSelectionStoreGetter } from "./projectStore";
+import { getFleetArmedIds, getFleetLastArmedId } from "./storeAccessors";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
-
-// Getter injected by fleetArmingStore at module init to break the import
-// cycle (fleetArmingStore imports worktreeStore). Returns the current armed
-// terminal id set so `applyWorktreeTerminalPolicy` can keep armed
-// cross-worktree terminals at VISIBLE while fleet scope is active.
-let _getArmedIds: (() => Set<string>) | null = null;
-export function setFleetArmedIdsGetter(getter: () => Set<string>): void {
-  _getArmedIds = getter;
-}
-
-// Getter for the most-recently-armed terminal id ("primary") — injected by
-// fleetArmingStore for the same cyclic-import reason as `_getArmedIds`.
-// Consumed by `exitFleetScope` to restore keyboard focus to the primary
-// terminal after the fleet grid collapses.
-let _getLastArmedId: (() => string | null) | null = null;
-export function setFleetLastArmedIdGetter(getter: () => string | null): void {
-  _getLastArmedId = getter;
-}
 
 interface CreateDialogState {
   isOpen: boolean;
@@ -645,7 +627,7 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
     const generation = get()._policyGeneration + 1;
     // Snapshot the primary (most-recently-armed) terminal BEFORE `set()` so
     // it's stable across the async focus-restore microtask below.
-    const primaryTerminalId = _getLastArmedId ? _getLastArmedId() : null;
+    const primaryTerminalId = getFleetLastArmedId();
     set({
       isFleetScopeActive: false,
       _previousActiveWorktreeId: null,
@@ -736,9 +718,6 @@ export const useWorktreeSelectionStore = create<WorktreeSelectionState>()(
   createWorktreeSelectionStore
 );
 
-// Inject lazy reference into projectStore to break circular dependency.
-setWorktreeSelectionStoreGetter(() => useWorktreeSelectionStore.getState());
-
 function applyWorktreeTerminalPolicy(
   get: () => WorktreeSelectionState,
   _set: (partial: Partial<WorktreeSelectionState>) => void,
@@ -764,9 +743,9 @@ function applyWorktreeTerminalPolicy(
       // live output across worktrees. Without this, cross-worktree armed
       // terminals would get demoted to BACKGROUND and show stale/frozen
       // content even though they are mounted in the fleet grid. We fetch the
-      // armed set through an injected getter to avoid a cyclic import.
+      // armed set through the shared accessor module to avoid a cyclic import.
       const fleetActive = get().isFleetScopeActive;
-      const armedIds = fleetActive && _getArmedIds ? _getArmedIds() : null;
+      const armedIds = fleetActive ? getFleetArmedIds() : null;
 
       for (const id of panelIds) {
         const terminal = panelsById[id];
