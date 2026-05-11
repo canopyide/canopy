@@ -15,6 +15,8 @@ const {
   openPRMock,
   abortRepositoryOperationMock,
   continueRepositoryOperationMock,
+  scanConflictMarkersMock,
+  checkoutOursTheirsMock,
   openInEditorMock,
   stageFileMock,
   commitMock,
@@ -29,6 +31,8 @@ const {
   openPRMock: vi.fn().mockResolvedValue(undefined),
   abortRepositoryOperationMock: vi.fn().mockResolvedValue(undefined),
   continueRepositoryOperationMock: vi.fn().mockResolvedValue(undefined),
+  scanConflictMarkersMock: vi.fn().mockResolvedValue([]),
+  checkoutOursTheirsMock: vi.fn().mockResolvedValue(undefined),
   openInEditorMock: vi.fn().mockResolvedValue(undefined),
   stageFileMock: vi.fn().mockResolvedValue(undefined),
   commitMock: vi.fn(),
@@ -290,6 +294,8 @@ describe("ReviewHub", () => {
 
     abortRepositoryOperationMock.mockReset().mockResolvedValue(undefined);
     continueRepositoryOperationMock.mockReset().mockResolvedValue(undefined);
+    scanConflictMarkersMock.mockReset().mockResolvedValue([]);
+    checkoutOursTheirsMock.mockReset().mockResolvedValue(undefined);
     openInEditorMock.mockReset().mockResolvedValue(undefined);
     stageFileMock.mockReset().mockResolvedValue(undefined);
     commitMock.mockReset().mockResolvedValue({ hash: "abc123", summary: "commit" });
@@ -309,6 +315,8 @@ describe("ReviewHub", () => {
           compareWorktrees: compareWorktreesMock,
           abortRepositoryOperation: abortRepositoryOperationMock,
           continueRepositoryOperation: continueRepositoryOperationMock,
+          scanConflictMarkers: scanConflictMarkersMock,
+          checkoutOursTheirs: checkoutOursTheirsMock,
         },
         system: { openInEditor: openInEditorMock },
         worktree: { onUpdate: onUpdateMock },
@@ -1151,6 +1159,127 @@ describe("ReviewHub", () => {
           path: `${WORKTREE_PATH}/src/app.ts`,
         });
       });
+    });
+
+    it("forwards the first-marker line to the external editor when the scan finds one", async () => {
+      getStagingStatusMock.mockResolvedValue(makeMergingStatus());
+      scanConflictMarkersMock.mockResolvedValue([
+        { path: "src/app.ts", hunkCount: 2, firstMarkerLine: 17 },
+      ]);
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByTestId("conflict-panel"));
+      await waitFor(() =>
+        expect(scanConflictMarkersMock).toHaveBeenCalledWith(WORKTREE_PATH, ["src/app.ts"])
+      );
+
+      const openBtn = await screen.findByRole("button", {
+        name: /Open src\/app\.ts in external editor/i,
+      });
+      fireEvent.click(openBtn);
+
+      await waitFor(() => {
+        expect(openInEditorMock).toHaveBeenCalledWith({
+          path: `${WORKTREE_PATH}/src/app.ts`,
+          line: 17,
+        });
+      });
+    });
+
+    it("checks out ours when Take ours is clicked", async () => {
+      getStagingStatusMock.mockResolvedValue(makeMergingStatus());
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByTestId("conflict-panel"));
+      const takeOurs = screen.getByRole("button", { name: /Take ours for src\/app\.ts/i });
+      fireEvent.click(takeOurs);
+
+      await waitFor(() => {
+        expect(checkoutOursTheirsMock).toHaveBeenCalledWith(WORKTREE_PATH, "src/app.ts", "ours");
+      });
+    });
+
+    it("checks out theirs when Take theirs is clicked", async () => {
+      getStagingStatusMock.mockResolvedValue(makeMergingStatus());
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByTestId("conflict-panel"));
+      const takeTheirs = screen.getByRole("button", { name: /Take theirs for src\/app\.ts/i });
+      fireEvent.click(takeTheirs);
+
+      await waitFor(() => {
+        expect(checkoutOursTheirsMock).toHaveBeenCalledWith(WORKTREE_PATH, "src/app.ts", "theirs");
+      });
+    });
+
+    it("renders the Abort action inside the operation chrome, not the footer", async () => {
+      getStagingStatusMock.mockResolvedValue(makeMergingStatus());
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByTestId("conflict-panel"));
+      // The Abort control is now sized `xs` (text-[10px]); Continue is the
+      // only `sm` primary in the footer region. Verify both exist and that
+      // there is exactly one Continue and exactly one Abort.
+      expect(screen.getAllByRole("button", { name: /^Continue /i })).toHaveLength(1);
+      expect(screen.getAllByRole("button", { name: /^Abort /i })).toHaveLength(1);
+    });
+
+    it("keeps the Resolved section collapsed by default and expands on click", async () => {
+      getStagingStatusMock.mockResolvedValue(
+        makeMergingStatus({
+          staged: [{ path: "src/done.ts", status: "modified", insertions: 1, deletions: 0 }],
+        })
+      );
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByTestId("conflict-panel"));
+      expect(screen.queryByTestId("conflict-resolved-list")).toBeNull();
+
+      fireEvent.click(screen.getByTestId("conflict-resolved-toggle"));
+      await waitFor(() => screen.getByTestId("conflict-resolved-list"));
+      screen.getByText("done.ts");
+    });
+
+    it("builds dynamic abort copy with staged count and rebase progress", async () => {
+      getStagingStatusMock.mockResolvedValue(
+        makeMergingStatus({
+          repoState: "REBASING",
+          rebaseStep: 4,
+          rebaseTotalSteps: 7,
+          staged: [
+            { path: "a.ts", status: "modified", insertions: 1, deletions: 0 },
+            { path: "b.ts", status: "modified", insertions: 1, deletions: 0 },
+          ],
+        })
+      );
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByRole("button", { name: /^Abort /i }));
+      fireEvent.click(screen.getByRole("button", { name: /^Abort /i }));
+
+      const dialog = await screen.findByRole("alertdialog");
+      // 2 staged + replayed = rebaseStep - 1 = 3 of 7
+      expect(dialog.textContent).toMatch(/Discards 2 staged resolutions/);
+      expect(dialog.textContent).toMatch(/reverts 3 of 7 replayed commits/);
+    });
+
+    it("renders a hunk-count badge once the scan resolves", async () => {
+      getStagingStatusMock.mockResolvedValue(makeMergingStatus());
+      scanConflictMarkersMock.mockResolvedValue([
+        { path: "src/app.ts", hunkCount: 3, firstMarkerLine: 12 },
+      ]);
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByTestId("conflict-panel"));
+      const badge = await screen.findByTestId("conflict-hunk-count-src/app.ts");
+      expect(badge.textContent).toBe("3");
     });
 
     it("opens confirm dialog before aborting and calls abort on confirm", async () => {

@@ -1661,6 +1661,12 @@ const api: ElectronAPI = {
     continueRepositoryOperation: (cwd: string) =>
       _unwrappingInvoke(CHANNELS.GIT_CONTINUE_REPOSITORY_OPERATION, cwd),
 
+    scanConflictMarkers: (cwd: string, filePaths: string[]) =>
+      _unwrappingInvoke(CHANNELS.GIT_SCAN_CONFLICT_MARKERS, { cwd, filePaths }),
+
+    checkoutOursTheirs: (cwd: string, filePath: string, side: "ours" | "theirs") =>
+      _unwrappingInvoke(CHANNELS.GIT_CHECKOUT_OURS_THEIRS, { cwd, filePath, side }),
+
     compareWorktrees: (
       cwd: string,
       branch1: string,

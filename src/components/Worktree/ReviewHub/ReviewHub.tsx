@@ -573,17 +573,40 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
   }, [worktreePath, refresh]);
 
   const handleOpenInEditor = useCallback(
-    async (filePath: string) => {
+    async (args: string | { path: string; line?: number }) => {
       setActionError(null);
+      const filePath = typeof args === "string" ? args : args.path;
+      const line = typeof args === "string" ? undefined : args.line;
       try {
         const base = worktreePath.replace(/\\/g, "/").replace(/\/+$/, "");
         const tail = filePath.replace(/\\/g, "/").replace(/^\/+/, "");
-        await window.electron.system.openInEditor({ path: `${base}/${tail}` });
+        const payload: { path: string; line?: number } = { path: `${base}/${tail}` };
+        if (typeof line === "number" && Number.isFinite(line) && line > 0) {
+          payload.line = line;
+        }
+        await window.electron.system.openInEditor(payload);
       } catch (err) {
         setActionError(formatErrorMessage(err, "Failed to open file in editor"));
       }
     },
     [worktreePath]
+  );
+
+  const handleCheckoutOursTheirs = useCallback(
+    async (filePath: string, side: "ours" | "theirs") => {
+      setActionError(null);
+      debouncedBgRefreshRef.current?.cancel();
+      try {
+        await window.electron.git.checkoutOursTheirs(worktreePath, filePath, side);
+        await refresh();
+      } catch (err) {
+        setActionError(
+          formatErrorMessage(err, side === "ours" ? "Failed to take ours" : "Failed to take theirs")
+        );
+        throw err;
+      }
+    },
+    [worktreePath, refresh]
   );
 
   const runPush = useCallback(async () => {
@@ -1068,8 +1091,10 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                 ) : status && isOperationState ? (
                   <ConflictPanel
                     status={status}
+                    worktreePath={worktreePath}
                     onMarkResolved={handleStageFile}
                     onOpenInEditor={handleOpenInEditor}
+                    onCheckoutOursTheirs={handleCheckoutOursTheirs}
                     onAbort={handleAbortOperation}
                     onContinue={handleContinueOperation}
                   />

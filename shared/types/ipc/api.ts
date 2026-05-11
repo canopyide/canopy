@@ -760,6 +760,11 @@ export interface ElectronAPI {
     getStagingStatus(cwd: string): Promise<StagingStatus>;
     abortRepositoryOperation(cwd: string): Promise<void>;
     continueRepositoryOperation(cwd: string): Promise<void>;
+    scanConflictMarkers(
+      cwd: string,
+      filePaths: string[]
+    ): Promise<import("./git.js").ConflictMarkerScanEntry[]>;
+    checkoutOursTheirs(cwd: string, filePath: string, side: "ours" | "theirs"): Promise<void>;
     compareWorktrees(
       cwd: string,
       branch1: string,

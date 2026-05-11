@@ -1147,6 +1147,14 @@ export interface IpcInvokeMap extends GeneratedIpcInvokeMap {
     args: [cwd: string];
     result: void;
   };
+  "git:scan-conflict-markers": {
+    args: [payload: import("./git.js").GitScanConflictMarkersPayload];
+    result: import("./git.js").ConflictMarkerScanEntry[];
+  };
+  "git:checkout-ours-theirs": {
+    args: [payload: import("./git.js").GitCheckoutOursTheirsPayload];
+    result: void;
+  };
   "git:compare-worktrees": {
     args: [payload: GitCompareWorktreesPayload];
     result: CrossWorktreeDiffResult | string;
