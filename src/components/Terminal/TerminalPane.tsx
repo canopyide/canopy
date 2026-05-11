@@ -534,11 +534,15 @@ function TerminalPaneComponent({
   };
 
   const handleClick = (e?: React.MouseEvent) => {
+    const target = e?.target as HTMLElement | null;
+    const isBufferClick = !!target?.closest(".xterm");
     const managed = terminalInstanceService.get(id);
-    if (managed?.terminal.hasSelection()) {
+    if (isBufferClick && managed?.terminal.hasSelection()) {
       // Prevent ContentPanel from calling onFocus() which triggers parent
       // re-renders. Don't call setFocused() either — it triggers a
       // wake+restore cycle that calls terminal.reset(), clearing selection.
+      // Scoped to buffer clicks: a click on pane chrome (e.g. the title)
+      // must not be swallowed just because xterm has a leftover selection.
       e?.preventDefault();
       return;
     }
@@ -548,12 +552,14 @@ function TerminalPaneComponent({
     // interactive child of the chrome (overflow menu, close, restore,
     // title input, etc). Without the interactive guard, clicking the
     // overflow trigger of a pane while a fleet is armed would clear
-    // the fleet before the menu opens.
-    const target = e?.target as HTMLElement | null;
+    // the fleet before the menu opens. The passthrough whitelist lets
+    // specific chrome elements (title span carries role="button" for
+    // a11y) participate in fleet gestures without losing their a11y role.
     const isChromeClick = !!target?.closest("[data-pane-chrome]");
-    const isInteractiveChild = !!target?.closest(
-      "button, input, textarea, select, a, [role='button'], [role='menuitem']"
-    );
+    const isPassthrough = !!target?.closest("[data-fleet-gesture-passthrough]");
+    const isInteractiveChild =
+      !isPassthrough &&
+      !!target?.closest("button, input, textarea, select, a, [role='button'], [role='menuitem']");
 
     if (e && isChromeClick && !isInteractiveChild) {
       const terminal = getTerminal(id);

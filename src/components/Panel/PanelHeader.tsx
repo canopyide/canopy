@@ -685,6 +685,7 @@ function PanelHeaderComponent({
                     tabIndex={onTitleChange ? 0 : undefined}
                     role={onTitleChange ? "button" : undefined}
                     aria-label={onTitleChange ? getTitleAriaLabel() : undefined}
+                    data-fleet-gesture-passthrough=""
                   >
                     {displayTitle}
                   </span>
