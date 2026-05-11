@@ -15,6 +15,7 @@ import { isIpcEnvelope } from "../shared/types/ipc/errors.js";
 import { deserializeError } from "../shared/utils/ipcErrorSerialization.js";
 import type { AppErrorCode } from "../shared/types/appError.js";
 import type { McpRuntimeSnapshot } from "../shared/types/ipc/mcpServer.js";
+import type { PushProgressEvent } from "../shared/types/ipc/gitPush.js";
 import type { HelpAssistantTier } from "../shared/types/ipc/maps.js";
 import { CHANNELS } from "./ipc/channels.js";
 import { buildClipboardPreloadBindings } from "./ipc/handlers/clipboard.preload.js";
@@ -1660,6 +1661,9 @@ const api: ElectronAPI = {
 
     listRemoteCommits: (cwd: string, branchName: string, limit?: number) =>
       _unwrappingInvoke(CHANNELS.GIT_LIST_REMOTE_COMMITS, { cwd, branchName, limit }),
+
+    onPushProgress: (callback: (event: PushProgressEvent) => void) =>
+      _typedOn(CHANNELS.GIT_PUSH_PROGRESS, callback),
 
     getStagingStatus: (cwd: string) => _unwrappingInvoke(CHANNELS.GIT_GET_STAGING_STATUS, cwd),
 

@@ -227,6 +227,7 @@ export type {
   ApplyPatchResult,
   // Git types
   GitGetFileDiffPayload,
+  PushProgressEvent,
   // File search types
   FileSearchPayload,
   FileSearchResult,

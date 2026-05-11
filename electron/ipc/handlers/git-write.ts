@@ -5,8 +5,9 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type { SimpleGit } from "simple-git";
 import { CHANNELS } from "../channels.js";
-import { checkRateLimit, typedHandle } from "../utils.js";
-import type { HandlerDependencies } from "../types.js";
+import { checkRateLimit, typedHandle, typedHandleWithContext, sendToRenderer } from "../utils.js";
+import type { HandlerDependencies, IpcContext } from "../types.js";
+import type { PushProgressEvent } from "../../../shared/types/ipc/gitPush.js";
 import type {
   ConflictedFileEntry,
   GitStatus,
@@ -355,28 +356,69 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
   };
   handlers.push(typedHandle(CHANNELS.GIT_COMMIT, handleCommit));
 
-  const handlePush = async (payload: { cwd: string; setUpstream?: boolean }): Promise<void> => {
+  let isPushing = false;
+
+  const handlePush = async (
+    ctx: IpcContext,
+    payload: { cwd: string; setUpstream?: boolean }
+  ): Promise<void> => {
+    if (isPushing) return;
+    isPushing = true;
+
     checkRateLimit(CHANNELS.GIT_PUSH, 5, 10_000);
     validateCwd(payload?.cwd);
 
     const git = createAuthenticatedGit(payload.cwd);
     let branchName: string | undefined;
+    const senderWindow = ctx.senderWindow;
+
+    const sendProgress = (event: PushProgressEvent) => {
+      if (senderWindow && !senderWindow.isDestroyed()) {
+        sendToRenderer(senderWindow, CHANNELS.GIT_PUSH_PROGRESS, event);
+      }
+    };
 
     try {
       const branch = await git.revparse(["--abbrev-ref", "HEAD"]);
       branchName = branch.trim();
 
+      let targetBranch: string | null = null;
+      try {
+        targetBranch = (await git.revparse(["--abbrev-ref", "@{upstream}"])).trim();
+      } catch {
+        targetBranch = payload.setUpstream ? `origin/${branchName}` : null;
+      }
+
+      sendProgress({
+        cwd: payload.cwd,
+        stage: "target",
+        progress: null,
+        processed: null,
+        total: null,
+        targetBranch: targetBranch ?? undefined,
+      });
+
+      const authGit = createAuthenticatedGit(payload.cwd, {
+        progress: (data) => {
+          sendProgress({
+            cwd: payload.cwd,
+            stage: data.stage,
+            progress: data.progress,
+            processed: data.processed,
+            total: data.total,
+          });
+        },
+      });
+
       if (payload.setUpstream) {
-        await git.push(["--set-upstream", "origin", branchName]);
+        await authGit.push(["--set-upstream", "origin", branchName]);
       } else {
         try {
-          await git.push();
+          await authGit.push();
         } catch (pushErr) {
-          // Keep the narrow upstream-missing auto-retry via substring match —
-          // classifier's `config-missing` also covers unrelated config errors.
           const msg = formatErrorMessage(pushErr, "git push failed");
           if (msg.includes("no upstream branch") || msg.includes("has no upstream")) {
-            await git.push(["--set-upstream", "origin", branchName]);
+            await authGit.push(["--set-upstream", "origin", branchName]);
           } else {
             throw pushErr;
           }
@@ -413,9 +455,11 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
         leaseSha,
         branchName,
       });
+    } finally {
+      isPushing = false;
     }
   };
-  handlers.push(typedHandle(CHANNELS.GIT_PUSH, handlePush));
+  handlers.push(typedHandleWithContext(CHANNELS.GIT_PUSH, handlePush));
 
   const handlePullRebase = async (payload: { cwd: string }): Promise<void> => {
     checkRateLimit(CHANNELS.GIT_PULL_REBASE, 3, 10_000);

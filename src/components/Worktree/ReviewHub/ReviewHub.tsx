@@ -10,6 +10,7 @@ import {
 import { createPortal } from "react-dom";
 import type { StagingStatus, GitStatus, StagingFileEntry } from "@shared/types";
 import type { CrossWorktreeFile } from "@shared/types/ipc/git";
+import type { PushProgressEvent } from "@shared/types/ipc/gitPush";
 import type { GitOperationReason } from "@shared/types/ipc/errors";
 import { getGitRecoveryHint } from "@shared/utils/gitOperationErrors";
 import { isClientAppError } from "@/utils/clientAppError";
@@ -481,6 +482,9 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
   const [actionError, setActionError] = useState<string | null>(null);
   const [pushError, setPushError] = useState<PushErrorState | null>(null);
   const [showPushDetails, setShowPushDetails] = useState(false);
+  const [pushProgress, setPushProgress] = useState<Map<string, PushProgressEvent>>(new Map());
+  const [pushTargetBranch, setPushTargetBranch] = useState<string | null>(null);
+  const [isPushing, setIsPushing] = useState(false);
   const [commitMessage, setCommitMessage] = useState("");
   const [selectedFile, setSelectedFile] = useState<{
     path: string;
@@ -933,7 +937,29 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
     [worktreePath, refresh]
   );
 
+  const isPushingRef = useRef(false);
+
   const runPush = useCallback(async () => {
+    if (isPushingRef.current) return;
+    isPushingRef.current = true;
+    setIsPushing(true);
+    setPushError(null);
+    setPushProgress(new Map());
+    setPushTargetBranch(null);
+
+    const cleanup = window.electron.git.onPushProgress((event) => {
+      if (event.cwd !== worktreePath) return;
+      if (event.stage === "target") {
+        setPushTargetBranch(event.targetBranch ?? null);
+        return;
+      }
+      setPushProgress((prev) => {
+        const next = new Map(prev);
+        next.set(event.stage, event);
+        return next;
+      });
+    });
+
     try {
       await window.electron.git.push(worktreePath);
       setPushError(null);
@@ -953,6 +979,10 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
         leaseSha: errFields.leaseSha,
         branchName: errFields.branchName,
       });
+    } finally {
+      cleanup();
+      setIsPushing(false);
+      isPushingRef.current = false;
     }
   }, [worktreePath]);
 
@@ -1894,6 +1924,9 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                 onCommit={handleCommit}
                 onCommitAndPush={handleCommitAndPush}
                 onFocusBlocker={handleFocusBlocker}
+                isPushing={isPushing}
+                pushProgress={pushProgress}
+                pushTargetBranch={pushTargetBranch}
               />
             )}
         </div>

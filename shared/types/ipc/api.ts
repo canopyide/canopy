@@ -1,3 +1,4 @@
+import type { PushProgressEvent } from "./gitPush.js";
 import type { GitStatus, StagingStatus } from "../git.js";
 import type { SnapshotInfo, SnapshotRevertResult } from "./git.js";
 import type { AgentId } from "../agent.js";
@@ -764,6 +765,7 @@ export interface ElectronAPI {
       branchName: string,
       limit?: number
     ): Promise<Array<{ hash: string; date: string; message: string; author: string }>>;
+    onPushProgress(callback: (event: PushProgressEvent) => void): () => void;
     getStagingStatus(cwd: string): Promise<StagingStatus>;
     abortRepositoryOperation(cwd: string): Promise<void>;
     continueRepositoryOperation(cwd: string): Promise<void>;

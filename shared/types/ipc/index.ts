@@ -14,6 +14,7 @@ export * from "./errors.js";
 export * from "./agent.js";
 export * from "./agentCapabilities.js";
 export * from "./git.js";
+export * from "./gitPush.js";
 export * from "./files.js";
 export * from "./config.js";
 export * from "./devPreview.js";

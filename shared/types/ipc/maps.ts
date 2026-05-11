@@ -11,6 +11,7 @@ import type {
   TerminalSnapshot,
 } from "../project.js";
 import type { GitInitOptions, GitInitProgressEvent, GitInitResult } from "./gitInit.js";
+import type { PushProgressEvent } from "./gitPush.js";
 import type { AgentSettings } from "../agentSettings.js";
 import type { AgentPreset } from "../../config/agentRegistry.js";
 import type { UserAgentRegistry, UserAgentConfig } from "../userAgentRegistry.js";
@@ -2052,6 +2053,9 @@ export interface IpcEventMap {
 
   // CopyTree events
   "copytree:progress": CopyTreeProgress;
+
+  // Git push progress events
+  "git:push-progress": PushProgressEvent;
 
   // Git init events
   "project:init-git-progress": GitInitProgressEvent;
