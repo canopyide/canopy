@@ -143,4 +143,8 @@ export const githubClient = {
   ): Promise<import("@shared/types/github").GitHubPR | null> => {
     return window.electron.github.getPRByNumber(cwd, prNumber);
   },
+
+  getPRReviewThreads: (cwd: string, prNumber: number): Promise<Record<string, number>> => {
+    return window.electron.github.getPRReviewThreads(cwd, prNumber);
+  },
 } as const;

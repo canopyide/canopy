@@ -4,6 +4,7 @@ import {
   LIST_PRS_QUERY,
   SEARCH_QUERY,
   GET_PR_QUERY,
+  GET_PR_REVIEW_THREADS_QUERY,
   buildBatchRequiredChecksQuery,
 } from "./GitHubQueries.js";
 import { gitHubRateLimitService } from "./GitHubRateLimitService.js";
@@ -14,6 +15,7 @@ import {
   prListCache,
   prTooltipCache,
   prTooltipWrittenAt,
+  reviewThreadsCache,
   prRequiredStatusCache,
   truncateBody,
   type PRRequiredStatusEntry,
@@ -458,5 +460,73 @@ export async function getPRByNumber(cwd: string, prNumber: number): Promise<GitH
       return null;
     }
     throw new Error(parseGitHubError(error));
+  }
+}
+
+export async function getPRReviewThreads(
+  cwd: string,
+  prNumber: number
+): Promise<Record<string, number>> {
+  const client = GitHubAuth.createClient();
+  if (!client) {
+    return {};
+  }
+
+  try {
+    return await withRepoContextRetry(cwd, async (context) => {
+      const cacheKey = `${context.owner}/${context.repo}:${prNumber}`;
+      const cached = reviewThreadsCache.get(cacheKey);
+      if (cached) {
+        return cached;
+      }
+
+      const allThreads: Array<{ path: string; isResolved: boolean; isOutdated: boolean }> = [];
+      let cursor: string | null = null;
+      let hasNextPage = true;
+
+      while (hasNextPage) {
+        const response = (await client(GET_PR_REVIEW_THREADS_QUERY, {
+          owner: context.owner,
+          repo: context.repo,
+          number: prNumber,
+          cursor,
+          request: { signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS) },
+        })) as GraphQlQueryResponseData;
+
+        gitHubRateLimitService.updateFromGraphQL(response);
+
+        const threads = response?.repository?.pullRequest?.reviewThreads;
+        const nodes = (threads?.nodes ?? []) as Array<{
+          path?: string;
+          isResolved?: boolean;
+          isOutdated?: boolean;
+        }>;
+
+        for (const node of nodes) {
+          if (typeof node.path === "string") {
+            allThreads.push({
+              path: node.path,
+              isResolved: node.isResolved ?? false,
+              isOutdated: node.isOutdated ?? false,
+            });
+          }
+        }
+
+        hasNextPage = threads?.pageInfo?.hasNextPage ?? false;
+        cursor = threads?.pageInfo?.endCursor ?? null;
+      }
+
+      const counts: Record<string, number> = {};
+      for (const thread of allThreads) {
+        if (!thread.isResolved && !thread.isOutdated) {
+          counts[thread.path] = (counts[thread.path] ?? 0) + 1;
+        }
+      }
+
+      reviewThreadsCache.set(cacheKey, counts);
+      return counts;
+    });
+  } catch {
+    return {};
   }
 }

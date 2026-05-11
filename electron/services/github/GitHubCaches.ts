@@ -51,6 +51,10 @@ export interface PRRequiredStatusEntry {
   ciStatus: GitHubPRCIStatus | undefined;
   ciSummary: GitHubPRCISummary | undefined;
 }
+export const reviewThreadsCache = new Cache<string, Record<string, number>>({
+  defaultTTL: 300000,
+});
+
 export const prRequiredStatusCache = new Cache<string, PRRequiredStatusEntry>({
   defaultTTL: 60000,
 });
@@ -67,6 +71,7 @@ export function clearGitHubCaches(): void {
   prTooltipWrittenAt.clear();
   prETagCache.clear();
   branchListETagCache.clear();
+  reviewThreadsCache.clear();
   prRequiredStatusCache.clear();
   GitHubFirstPageCache.getInstance().clear();
   GitHubStatsCache.getInstance().clear();
@@ -86,5 +91,6 @@ export function clearPRCaches(): void {
   prTooltipWrittenAt.clear();
   prETagCache.clear();
   branchListETagCache.clear();
+  reviewThreadsCache.clear();
   prRequiredStatusCache.clear();
 }

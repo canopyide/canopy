@@ -1568,6 +1568,9 @@ const api: ElectronAPI = {
     getPRByNumber: (cwd: string, prNumber: number) =>
       _unwrappingInvoke(CHANNELS.GITHUB_GET_PR_BY_NUMBER, { cwd, prNumber }),
 
+    getPRReviewThreads: (cwd: string, prNumber: number) =>
+      _unwrappingInvoke(CHANNELS.GITHUB_GET_PR_REVIEW_THREADS, { cwd, prNumber }),
+
     listRemotes: (cwd: string) => _unwrappingInvoke(CHANNELS.GITHUB_LIST_REMOTES, cwd),
 
     onPRDetected: (callback: (data: PRDetectedPayload) => void) =>
