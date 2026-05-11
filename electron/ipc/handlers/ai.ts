@@ -115,7 +115,7 @@ export function registerAiHandlers(deps: HandlerDependencies): () => void {
       throw new Error("Invalid settingsVersion");
     }
     const currentRaw = store.get("agentSettings", DEFAULT_AGENT_SETTINGS);
-    const current = isPlainRecord(currentRaw) ? currentRaw : {};
+    const current = (isPlainRecord(currentRaw) ? currentRaw : {}) as Record<string, unknown>;
     const currentVersion = current.settingsVersion;
     if (typeof currentVersion === "number" && currentVersion >= version) {
       return current;

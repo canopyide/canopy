@@ -1043,6 +1043,10 @@ export interface IpcInvokeMap {
     args: [agentType?: AgentId];
     result: AgentSettings;
   };
+  "agent-settings:stamp-version": {
+    args: [version: number];
+    result: Record<string, unknown>;
+  };
 
   // User agent registry channels
   "user-agent-registry:get": {
