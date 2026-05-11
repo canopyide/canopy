@@ -644,4 +644,193 @@ describe("WorktreeLifecycleService", () => {
       });
     });
   });
+
+  describe("runLifecycleSetup — return value contract", () => {
+    function makeFakeMonitor(opts: { worktreeMode?: string } = {}) {
+      const status = {
+        lifecycleStatus: undefined as unknown,
+        hasResourceConfig: false,
+      };
+      return {
+        name: "wt-1",
+        branch: "feature/x",
+        path: "/wt",
+        worktreeMode: opts.worktreeMode ?? "local",
+        get hasResourceConfig() {
+          return status.hasResourceConfig;
+        },
+        get lifecycleStatus() {
+          return status.lifecycleStatus;
+        },
+        resourceStatus: undefined,
+        setLifecycleStatus(s: unknown) {
+          status.lifecycleStatus = s;
+        },
+        setHasResourceConfig(b: boolean) {
+          status.hasResourceConfig = b;
+        },
+        setHasStatusCommand: vi.fn(),
+        setHasPauseCommand: vi.fn(),
+        setHasResumeCommand: vi.fn(),
+        setHasTeardownCommand: vi.fn(),
+        setHasProvisionCommand: vi.fn(),
+        setResourceProvider: vi.fn(),
+        setResourceConnectCommand: vi.fn(),
+        setResourcePollInterval: vi.fn(),
+      };
+    }
+
+    function makeCtx(monitor: ReturnType<typeof makeFakeMonitor> | null) {
+      return {
+        projectRootPath: "/root",
+        projectEnvVars: {},
+        getMonitor: () => (monitor as unknown) ?? undefined,
+        emitUpdate: vi.fn(),
+      } as unknown as import("../WorktreeLifecycleService.js").WorkspaceHostContext;
+    }
+
+    function makeSpawnChild(exitCode: number) {
+      return () => {
+        const listeners: Record<string, ((...args: unknown[]) => void)[]> = {};
+        const child = {
+          pid: 1234,
+          stdout: { on: vi.fn() },
+          stderr: { on: vi.fn() },
+          on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
+            listeners[event] ??= [];
+            listeners[event].push(cb);
+            if (event === "close") setTimeout(() => cb(exitCode), 0);
+          }),
+          kill: vi.fn(),
+        };
+        return child as never;
+      };
+    }
+
+    it("returns shouldProvision=true when provisionResource is requested and setup succeeds with provision commands", async () => {
+      const config = {
+        setup: ["npm install"],
+        resource: { provision: ["terraform apply"], connect: "ssh host" },
+      };
+
+      mockAccess.mockImplementation(async (p: unknown) => {
+        if (n(p as string).endsWith("/root/.daintree/config.json")) return undefined;
+        throw new Error("ENOENT");
+      });
+      mockReadFile.mockResolvedValue(JSON.stringify(config) as never);
+      mockSpawn.mockImplementation(makeSpawnChild(0));
+
+      const monitor = makeFakeMonitor();
+      const ctx = makeCtx(monitor);
+      const result = await service.runLifecycleSetup("wt-1", "/wt", ctx, true);
+
+      expect(result).toEqual({ shouldProvision: true });
+    });
+
+    it("returns shouldProvision=false when provisionResource is not requested", async () => {
+      const config = {
+        setup: ["npm install"],
+        resource: { provision: ["terraform apply"] },
+      };
+
+      mockAccess.mockImplementation(async (p: unknown) => {
+        if (n(p as string).endsWith("/root/.daintree/config.json")) return undefined;
+        throw new Error("ENOENT");
+      });
+      mockReadFile.mockResolvedValue(JSON.stringify(config) as never);
+      mockSpawn.mockImplementation(makeSpawnChild(0));
+
+      const monitor = makeFakeMonitor();
+      const result = await service.runLifecycleSetup("wt-1", "/wt", makeCtx(monitor), false);
+
+      expect(result).toEqual({ shouldProvision: false });
+    });
+
+    it("returns shouldProvision=false when there are no provision commands in the resolved resource", async () => {
+      const config = {
+        setup: ["npm install"],
+        resource: { connect: "ssh host" },
+      };
+
+      mockAccess.mockImplementation(async (p: unknown) => {
+        if (n(p as string).endsWith("/root/.daintree/config.json")) return undefined;
+        throw new Error("ENOENT");
+      });
+      mockReadFile.mockResolvedValue(JSON.stringify(config) as never);
+      mockSpawn.mockImplementation(makeSpawnChild(0));
+
+      const monitor = makeFakeMonitor();
+      const result = await service.runLifecycleSetup("wt-1", "/wt", makeCtx(monitor), true);
+
+      expect(result).toEqual({ shouldProvision: false });
+    });
+
+    it("returns shouldProvision=false when setup commands fail", async () => {
+      const config = {
+        setup: ["npm install"],
+        resource: { provision: ["terraform apply"] },
+      };
+
+      mockAccess.mockImplementation(async (p: unknown) => {
+        if (n(p as string).endsWith("/root/.daintree/config.json")) return undefined;
+        throw new Error("ENOENT");
+      });
+      mockReadFile.mockResolvedValue(JSON.stringify(config) as never);
+      mockSpawn.mockImplementation(makeSpawnChild(1));
+
+      const monitor = makeFakeMonitor();
+      const result = await service.runLifecycleSetup("wt-1", "/wt", makeCtx(monitor), true);
+
+      expect(result).toEqual({ shouldProvision: false });
+    });
+
+    it("returns shouldProvision=false when no config exists", async () => {
+      mockAccess.mockRejectedValue(new Error("ENOENT"));
+
+      const monitor = makeFakeMonitor();
+      const result = await service.runLifecycleSetup("wt-1", "/wt", makeCtx(monitor), true);
+
+      expect(result).toEqual({ shouldProvision: false });
+    });
+
+    it("returns shouldProvision=false when the monitor disappears mid-run (early-exit guard)", async () => {
+      const config = {
+        setup: ["npm install"],
+        resource: { provision: ["terraform apply"] },
+      };
+
+      mockAccess.mockImplementation(async (p: unknown) => {
+        if (n(p as string).endsWith("/root/.daintree/config.json")) return undefined;
+        throw new Error("ENOENT");
+      });
+      mockReadFile.mockResolvedValue(JSON.stringify(config) as never);
+      mockSpawn.mockImplementation(makeSpawnChild(0));
+
+      const result = await service.runLifecycleSetup("wt-1", "/wt", makeCtx(null), true);
+
+      expect(result).toEqual({ shouldProvision: false });
+    });
+
+    it("caches resource config on the monitor when there are no setup commands", async () => {
+      const config = {
+        resource: { provision: ["terraform apply"], connect: "ssh host" },
+      };
+
+      mockAccess.mockImplementation(async (p: unknown) => {
+        if (n(p as string).endsWith("/root/.daintree/config.json")) return undefined;
+        throw new Error("ENOENT");
+      });
+      mockReadFile.mockResolvedValue(JSON.stringify(config) as never);
+
+      const monitor = makeFakeMonitor();
+      const result = await service.runLifecycleSetup("wt-1", "/wt", makeCtx(monitor), false);
+
+      expect(result).toEqual({ shouldProvision: false });
+      // Resource config IS cached even when setup is empty (no-setup early-return path)
+      expect(monitor.hasResourceConfig).toBe(true);
+      expect(monitor.setResourceConnectCommand).toHaveBeenCalled();
+      // spawn must NOT have been called (no setup commands)
+      expect(mockSpawn).not.toHaveBeenCalled();
+    });
+  });
 });
