@@ -4,10 +4,11 @@ import {
   useFleetBroadcastConfirmStore,
   requestFleetBroadcastConfirmation,
   resolveFleetBroadcastConfirmation,
+  __resetFleetBroadcastConfirmStoreForTesting,
 } from "../fleetBroadcastConfirmStore";
 
 beforeEach(() => {
-  useFleetBroadcastConfirmStore.setState({ pending: null });
+  __resetFleetBroadcastConfirmStoreForTesting();
 });
 
 describe("fleetBroadcastConfirmStore", () => {
@@ -37,6 +38,8 @@ describe("fleetBroadcastConfirmStore", () => {
       expect(parsed.requestId).toBeTypeOf("string");
       expect(parsed.text).toBe("rm -rf /");
       expect(parsed.warningReasons).toEqual(["destructive"]);
+      // Guard against regression: onConfirm must not exist on pending
+      expect(Object.keys(parsed).sort()).toEqual(["requestId", "text", "warningReasons"].sort());
     });
   });
 
@@ -81,7 +84,7 @@ describe("fleetBroadcastConfirmStore", () => {
   });
 
   describe("clear (cancel)", () => {
-    it("deletes the resolver so the promise never resolves", () => {
+    it("deletes the resolver so the promise never resolves", async () => {
       let resolved = false;
       requestFleetBroadcastConfirmation({
         text: "hello",
@@ -95,6 +98,8 @@ describe("fleetBroadcastConfirmStore", () => {
 
       // resolve should be a no-op after clear
       resolveFleetBroadcastConfirmation();
+      // Flush microtasks to catch any accidental resolution
+      await Promise.resolve();
       expect(resolved).toBe(false);
     });
 

@@ -81,3 +81,9 @@ export function resolveFleetBroadcastConfirmation(): void {
   useFleetBroadcastConfirmStore.setState({ pending: null });
   resolve?.();
 }
+
+/** Test-only escape hatch — resets store and clears the resolver map. */
+export function __resetFleetBroadcastConfirmStoreForTesting(): void {
+  resolvers.clear();
+  useFleetBroadcastConfirmStore.setState({ pending: null });
+}
