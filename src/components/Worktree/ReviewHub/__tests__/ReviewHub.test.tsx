@@ -853,6 +853,7 @@ describe("ReviewHub", () => {
       const onClose = vi.fn();
       render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={onClose} />);
       await waitFor(() => screen.getByPlaceholderText("Commit message…"));
+      await act(async () => {});
 
       const textarea = screen.getByPlaceholderText("Commit message…") as HTMLTextAreaElement;
       act(() => textarea.focus());
