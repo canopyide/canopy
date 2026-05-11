@@ -1630,30 +1630,31 @@ describe("GitHubResourceList spinner gate (#6867)", () => {
   });
 
   // Windows CI runners are slow enough that the wall-clock time between
-  // render and the post-advance assertion can cross the 400ms gate even
-  // with `shouldAdvanceTime: true` driving the fake timers, producing a
-  // race-flake here. The matching positive case below still runs everywhere.
-  it.skipIf(process.platform === "win32")(
-    "does not show the spinner before the 400ms Doherty threshold elapses",
-    async () => {
-      const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
-      setCache(cacheKey, {
-        items: [makeIssue(1)],
-        endCursor: null,
-        hasNextPage: false,
-        timestamp: Date.now(),
-      });
-      // Hang revalidation so refreshing stays true.
-      mockListIssues.mockImplementation(() => new Promise(() => {}));
+  // `shouldAdvanceTime: true` (from the parent beforeEach) can chain through
+  // cascading timers during render and leap past 400ms before
+  // `advanceTimersByTimeAsync` runs, making any sub-400ms assertion flaky.
+  // Switch to manual-advance timers for this test so the gate is deterministic.
+  it("does not show the spinner before the 400ms Doherty threshold elapses", async () => {
+    vi.useRealTimers();
+    vi.useFakeTimers({ shouldAdvanceTime: false });
 
-      render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+    const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    setCache(cacheKey, {
+      items: [makeIssue(1)],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now(),
+    });
+    // Hang revalidation so refreshing stays true.
+    mockListIssues.mockImplementation(() => new Promise(() => {}));
 
-      await vi.advanceTimersByTimeAsync(399);
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
 
-      const refreshIcon = screen.getByRole("button", { name: /^refresh/i }).querySelector("svg");
-      expect(refreshIcon?.classList.contains("animate-spin")).toBe(false);
-    }
-  );
+    await vi.advanceTimersByTimeAsync(390);
+
+    const refreshIcon = screen.getByRole("button", { name: /^refresh/i }).querySelector("svg");
+    expect(refreshIcon?.classList.contains("animate-spin")).toBe(false);
+  });
 
   it("shows the spinner once the 400ms gate elapses on a long background revalidation", async () => {
     const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
