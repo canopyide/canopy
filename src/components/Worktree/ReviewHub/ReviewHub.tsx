@@ -6,6 +6,7 @@ import type { GitOperationReason } from "@shared/types/ipc/errors";
 import { getGitRecoveryHint } from "@shared/utils/gitOperationErrors";
 import { isClientAppError } from "@/utils/clientAppError";
 import { cn } from "@/lib/utils";
+import { getVisibleTabbableElements } from "@/lib/accessibility";
 import { useOverlayState } from "@/hooks";
 import { TruncatedTooltip } from "@/components/ui/TruncatedTooltip";
 import {
@@ -357,7 +358,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
   );
   const [reviewThreadCounts, setReviewThreadCounts] = useState<Record<string, number> | null>(null);
   const reviewThreadsRequestRef = useRef(0);
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const refreshIdRef = useRef(0);
   const bgRefreshIdRef = useRef(0);
   const baseBranchRequestRef = useRef(0);
@@ -841,8 +842,14 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
 
   useEffect(() => {
     if (!isOpen) return;
-    const timeoutId = setTimeout(() => closeButtonRef.current?.focus(), 50);
-    return () => clearTimeout(timeoutId);
+    requestAnimationFrame(() => {
+      const first = dialogRef.current ? getVisibleTabbableElements(dialogRef.current)[0] : null;
+      if (first) {
+        first.focus();
+      } else {
+        dialogRef.current?.focus();
+      }
+    });
   }, [isOpen]);
 
   useEffect(() => {
@@ -887,14 +894,17 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
         data-testid="review-hub"
       >
         <div
+          ref={dialogRef}
           className={cn(
             "relative flex flex-col",
             "w-[min(720px,calc(100vw-80px))] max-h-[calc(100vh-80px)] min-h-[320px]",
             "bg-daintree-bg rounded-xl",
             "border border-divider",
             "shadow-[var(--theme-shadow-dialog)]",
-            "motion-safe:animate-in motion-safe:zoom-in-95 motion-safe:duration-200"
+            "motion-safe:animate-in motion-safe:zoom-in-95 motion-safe:duration-200",
+            "outline-hidden"
           )}
+          tabIndex={-1}
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
@@ -1044,7 +1054,6 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                 </button>
               )}
               <button
-                ref={closeButtonRef}
                 onClick={onClose}
                 className={cn(
                   "p-1.5 rounded transition-colors",

@@ -854,9 +854,6 @@ describe("ReviewHub", () => {
       render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={onClose} />);
       await waitFor(() => screen.getByPlaceholderText("Commit message…"));
 
-      // Wait for the initial 50ms close-button autofocus to settle
-      await new Promise((r) => setTimeout(r, 100));
-
       const textarea = screen.getByPlaceholderText("Commit message…") as HTMLTextAreaElement;
       act(() => textarea.focus());
       expect(document.activeElement).toBe(textarea);
@@ -868,9 +865,6 @@ describe("ReviewHub", () => {
         await Promise.resolve();
       });
       await waitFor(() => expect(getStagingStatusMock).toHaveBeenCalledTimes(2));
-
-      // Wait past the 50ms window — the focus effect should NOT re-run
-      await new Promise((r) => setTimeout(r, 100));
 
       expect(document.activeElement).toBe(textarea);
     });
