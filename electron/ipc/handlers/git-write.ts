@@ -301,6 +301,53 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
   };
   handlers.push(typedHandle(CHANNELS.GIT_UNSTAGE_FILE, handleUnstageFile));
 
+  const validateFilePaths = (filePaths: unknown): string[] => {
+    if (!Array.isArray(filePaths) || filePaths.length === 0) {
+      throw new Error("filePaths must be a non-empty array");
+    }
+    for (const p of filePaths) {
+      if (typeof p !== "string" || !p) {
+        throw new Error("Invalid file path in filePaths");
+      }
+    }
+    return filePaths as string[];
+  };
+
+  const handleStageFiles = async (payload: { cwd: string; filePaths: string[] }): Promise<void> => {
+    checkRateLimit(CHANNELS.GIT_STAGE_FILES, 10, 10_000);
+    validateCwd(payload?.cwd);
+    const paths = validateFilePaths(payload?.filePaths);
+
+    const git = createHardenedGit(payload.cwd);
+    await git.add(["--", ...paths]);
+  };
+  handlers.push(typedHandle(CHANNELS.GIT_STAGE_FILES, handleStageFiles));
+
+  const handleUnstageFiles = async (payload: {
+    cwd: string;
+    filePaths: string[];
+  }): Promise<void> => {
+    checkRateLimit(CHANNELS.GIT_UNSTAGE_FILES, 10, 10_000);
+    validateCwd(payload?.cwd);
+    const paths = validateFilePaths(payload?.filePaths);
+
+    const git = createHardenedGit(payload.cwd);
+
+    let hasHead = true;
+    try {
+      await git.revparse(["HEAD"]);
+    } catch {
+      hasHead = false;
+    }
+
+    if (hasHead) {
+      await git.reset(["HEAD", "--", ...paths]);
+    } else {
+      await git.raw(["rm", "--cached", "--", ...paths]);
+    }
+  };
+  handlers.push(typedHandle(CHANNELS.GIT_UNSTAGE_FILES, handleUnstageFiles));
+
   const handleStageAll = async (cwd: string): Promise<void> => {
     checkRateLimit(CHANNELS.GIT_STAGE_ALL, 10, 10_000);
     validateCwd(cwd);

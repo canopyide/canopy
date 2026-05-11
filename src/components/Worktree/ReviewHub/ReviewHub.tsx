@@ -38,7 +38,7 @@ import {
 } from "lucide-react";
 import type { GitHubPRCIStatus } from "@shared/types/github";
 import { Spinner } from "@/components/ui/Spinner";
-import { FileStageRow } from "./FileStageRow";
+import { FileStageRow, type FileStageRowSection } from "./FileStageRow";
 import { CommitPanel } from "./CommitPanel";
 import { ConflictPanel } from "./ConflictPanel";
 import { FileDiffModal } from "../FileDiffModal";
@@ -508,6 +508,8 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
   const [reviewThreadCounts, setReviewThreadCounts] = useState<Record<string, number> | null>(null);
   const reviewThreadsRequestRef = useRef(0);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(() => new Set());
+  const [selectionSection, setSelectionSection] = useState<FileStageRowSection | null>(null);
   const refreshIdRef = useRef(0);
   const bgRefreshIdRef = useRef(0);
   const baseBranchRequestRef = useRef(0);
@@ -516,6 +518,8 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
   const debouncedBgRefreshRef = useRef<ReturnType<typeof debounce> | null>(null);
   const conflictSectionRef = useRef<HTMLDivElement>(null);
   const unstagedSectionRef = useRef<HTMLDivElement>(null);
+  const selectionAnchorRef = useRef<string | null>(null);
+  const isBulkStagingRef = useRef(false);
 
   const [stagedView, setStagedView] = useState<SectionViewState>(DEFAULT_SECTION_STATE);
   const [changesView, setChangesView] = useState<SectionViewState>(DEFAULT_SECTION_STATE);
@@ -741,6 +745,9 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
       setPullRebasing(false);
       isPullRebasingRef.current = false;
       setViewedFiles(new Set());
+      setSelectedPaths(new Set());
+      setSelectionSection(null);
+      selectionAnchorRef.current = null;
     }
   }, [isOpen, refresh]);
 
@@ -778,6 +785,27 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
       }
     })();
   }, [isOpen, diffMode, worktreePR?.prNumber, worktreePath]);
+
+  useEffect(() => {
+    if (!status || !selectionSection) return;
+    const sectionFiles = selectionSection === "staged" ? status.staged : status.unstaged;
+    const validPaths = new Set(sectionFiles.map((f) => f.path));
+    setSelectedPaths((prev) => {
+      if (prev.size === 0) return prev;
+      let mutated = false;
+      const next = new Set<string>();
+      for (const p of prev) {
+        if (validPaths.has(p)) next.add(p);
+        else mutated = true;
+      }
+      if (!mutated) return prev;
+      if (next.size === 0) {
+        setSelectionSection(null);
+        selectionAnchorRef.current = null;
+      }
+      return next;
+    });
+  }, [status, selectionSection]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -847,6 +875,46 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
       setActionError(formatErrorMessage(err, "Failed to unstage all files"));
     }
   }, [worktreePath, refresh]);
+
+  const handleStageSelection = useCallback(async () => {
+    if (isBulkStagingRef.current) return;
+    if (selectionSection !== "unstaged" || selectedPaths.size === 0) return;
+    isBulkStagingRef.current = true;
+    const paths = Array.from(selectedPaths);
+    setActionError(null);
+    debouncedBgRefreshRef.current?.cancel();
+    try {
+      await window.electron.git.stageFiles(worktreePath, paths);
+      setSelectedPaths(new Set());
+      setSelectionSection(null);
+      selectionAnchorRef.current = null;
+      await refresh();
+    } catch (err) {
+      setActionError(formatErrorMessage(err, "Failed to stage selected files"));
+    } finally {
+      isBulkStagingRef.current = false;
+    }
+  }, [worktreePath, refresh, selectedPaths, selectionSection]);
+
+  const handleUnstageSelection = useCallback(async () => {
+    if (isBulkStagingRef.current) return;
+    if (selectionSection !== "staged" || selectedPaths.size === 0) return;
+    isBulkStagingRef.current = true;
+    const paths = Array.from(selectedPaths);
+    setActionError(null);
+    debouncedBgRefreshRef.current?.cancel();
+    try {
+      await window.electron.git.unstageFiles(worktreePath, paths);
+      setSelectedPaths(new Set());
+      setSelectionSection(null);
+      selectionAnchorRef.current = null;
+      await refresh();
+    } catch (err) {
+      setActionError(formatErrorMessage(err, "Failed to unstage selected files"));
+    } finally {
+      isBulkStagingRef.current = false;
+    }
+  }, [worktreePath, refresh, selectedPaths, selectionSection]);
 
   const handleCommit = useCallback(
     async (message: string) => {
@@ -1076,9 +1144,73 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
     savedScrollTop.current = e.currentTarget.scrollTop;
   }, []);
 
-  const handleFileClick = useCallback((filePath: string, fileStatus: GitStatus) => {
-    setSelectedFile({ path: filePath, status: fileStatus });
-  }, []);
+  const handleToggleStaged = useCallback(
+    (filePath: string) => {
+      void handleUnstageFile(filePath);
+    },
+    [handleUnstageFile]
+  );
+
+  const handleToggleUnstaged = useCallback(
+    (filePath: string) => {
+      void handleStageFile(filePath);
+    },
+    [handleStageFile]
+  );
+
+  const handleRowClick = useCallback(
+    (
+      section: FileStageRowSection,
+      filePath: string,
+      fileStatus: GitStatus,
+      e: React.MouseEvent
+    ) => {
+      const files = section === "staged" ? status?.staged : status?.unstaged;
+      if (e.shiftKey && files && selectionSection === section && selectionAnchorRef.current) {
+        const anchorIdx = files.findIndex((f) => f.path === selectionAnchorRef.current);
+        const clickIdx = files.findIndex((f) => f.path === filePath);
+        if (anchorIdx !== -1 && clickIdx !== -1) {
+          const start = Math.min(anchorIdx, clickIdx);
+          const end = Math.max(anchorIdx, clickIdx);
+          const range = new Set<string>();
+          for (let i = start; i <= end; i++) {
+            const entry = files[i];
+            if (entry) range.add(entry.path);
+          }
+          setSelectedPaths(range);
+          setSelectionSection(section);
+          return;
+        }
+      }
+
+      if (e.metaKey || e.ctrlKey) {
+        setSelectedPaths((prev) => {
+          const next = selectionSection === section ? new Set(prev) : new Set<string>();
+          if (next.has(filePath)) {
+            next.delete(filePath);
+          } else {
+            next.add(filePath);
+          }
+          if (next.size === 0) {
+            setSelectionSection(null);
+            selectionAnchorRef.current = null;
+          } else {
+            setSelectionSection(section);
+            selectionAnchorRef.current = filePath;
+          }
+          return next;
+        });
+        return;
+      }
+
+      // Plain click: clear any selection, open diff.
+      setSelectedPaths((prev) => (prev.size === 0 ? prev : new Set()));
+      setSelectionSection((prev) => (prev === null ? prev : null));
+      selectionAnchorRef.current = filePath;
+      setSelectedFile({ path: filePath, status: fileStatus });
+    },
+    [status, selectionSection]
+  );
 
   const handleViewedChange = useCallback((viewedKey: string, viewed: boolean) => {
     setViewedFiles((prev) => {
@@ -1107,6 +1239,10 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
         setSelectedFile(null);
       } else if (selectedBaseBranchFile) {
         setSelectedBaseBranchFile(null);
+      } else if (selectedPaths.size > 0) {
+        setSelectedPaths(new Set());
+        setSelectionSection(null);
+        selectionAnchorRef.current = null;
       } else {
         onClose();
       }
@@ -1142,6 +1278,8 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
     (status?.unstaged.length ?? 0) +
     (status?.conflicted.length ?? 0);
   const hasConflicts = (status?.conflicted.length ?? 0) > 0;
+  const hasStagedSelection = selectionSection === "staged" && selectedPaths.size > 0;
+  const hasUnstagedSelection = selectionSection === "unstaged" && selectedPaths.size > 0;
   const repoState = status?.repoState ?? "CLEAN";
   const isOperationState =
     repoState === "MERGING" ||
@@ -1695,17 +1833,21 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                               variant="ghost"
                               size="sm"
                               onClick={() =>
-                                stagedView.filterQuery || !stagedView.showGenerated
-                                  ? void handleUnstageFiltered()
-                                  : void handleUnstageAll()
+                                void (hasStagedSelection
+                                  ? handleUnstageSelection()
+                                  : stagedView.filterQuery || !stagedView.showGenerated
+                                    ? handleUnstageFiltered()
+                                    : handleUnstageAll())
                               }
                               className="h-5 px-1.5 text-[10px] shrink-0"
-                              data-testid="review-hub-unstage-all"
+                              data-testid="review-hub-unstage-section-button"
                             >
                               <Square className="w-3 h-3 mr-1" />
-                              {stagedView.filterQuery
-                                ? `Unstage shown (${derivedStaged.length})`
-                                : `Unstage all (${derivedStaged.length})`}
+                              {hasStagedSelection
+                                ? `Unstage selection (${selectedPaths.size})`
+                                : stagedView.filterQuery
+                                  ? `Unstage shown (${derivedStaged.length})`
+                                  : `Unstage all (${derivedStaged.length})`}
                             </Button>
                           )}
                         </div>
@@ -1723,9 +1865,13 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                               <FileStageRow
                                 key={`staged-${file.path}`}
                                 file={file}
+                                section="staged"
                                 isStaged={true}
-                                onToggle={(path) => void handleUnstageFile(path)}
-                                onFileClick={handleFileClick}
+                                isSelected={
+                                  selectionSection === "staged" && selectedPaths.has(file.path)
+                                }
+                                onToggle={handleToggleStaged}
+                                onRowClick={handleRowClick}
                                 density={stagedView.density}
                                 viewed={viewedFiles.has(viewedKey)}
                                 onViewedChange={(v) => handleViewedChange(viewedKey, v)}
@@ -1869,17 +2015,21 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                               variant="ghost"
                               size="sm"
                               onClick={() =>
-                                changesView.filterQuery || !changesView.showGenerated
-                                  ? void handleStageFiltered()
-                                  : void handleStageAll()
+                                void (hasUnstagedSelection
+                                  ? handleStageSelection()
+                                  : changesView.filterQuery || !changesView.showGenerated
+                                    ? handleStageFiltered()
+                                    : handleStageAll())
                               }
                               className="h-5 px-1.5 text-[10px] shrink-0"
-                              data-testid="review-hub-stage-all"
+                              data-testid="review-hub-stage-section-button"
                             >
                               <CheckSquare className="w-3 h-3 mr-1" />
-                              {changesView.filterQuery
-                                ? `Stage shown (${derivedUnstaged.length})`
-                                : `Stage all (${derivedUnstaged.length})`}
+                              {hasUnstagedSelection
+                                ? `Stage selection (${selectedPaths.size})`
+                                : changesView.filterQuery
+                                  ? `Stage shown (${derivedUnstaged.length})`
+                                  : `Stage all (${derivedUnstaged.length})`}
                             </Button>
                           )}
                         </div>
@@ -1897,9 +2047,13 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                               <FileStageRow
                                 key={`unstaged-${file.path}`}
                                 file={file}
+                                section="unstaged"
                                 isStaged={false}
-                                onToggle={(path) => void handleStageFile(path)}
-                                onFileClick={handleFileClick}
+                                isSelected={
+                                  selectionSection === "unstaged" && selectedPaths.has(file.path)
+                                }
+                                onToggle={handleToggleUnstaged}
+                                onRowClick={handleRowClick}
                                 density={changesView.density}
                                 viewed={viewedFiles.has(viewedKey)}
                                 onViewedChange={(v) => handleViewedChange(viewedKey, v)}

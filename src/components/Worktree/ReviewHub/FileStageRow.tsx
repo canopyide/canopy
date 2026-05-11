@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { memo, useCallback } from "react";
 import type React from "react";
 import type { StagingFileEntry } from "@shared/types";
 import type { GitStatus } from "@shared/types";
@@ -51,11 +51,20 @@ const STATUS_CONFIG: Record<GitStatus, { label: string; bg: string; text: string
   },
 };
 
+export type FileStageRowSection = "staged" | "unstaged";
+
 interface FileStageRowProps {
   file: StagingFileEntry;
+  section: FileStageRowSection;
   isStaged: boolean;
+  isSelected: boolean;
   onToggle: (filePath: string) => void;
-  onFileClick: (filePath: string, status: GitStatus) => void;
+  onRowClick: (
+    section: FileStageRowSection,
+    filePath: string,
+    status: GitStatus,
+    e: React.MouseEvent
+  ) => void;
   density?: "comfortable" | "compact";
   viewed?: boolean;
   onViewedChange?: (viewed: boolean) => void;
@@ -68,11 +77,13 @@ function splitPath(filePath: string): { dir: string; base: string } {
   return { dir: normalized.slice(0, lastSlash), base: normalized.slice(lastSlash + 1) };
 }
 
-export function FileStageRow({
+function FileStageRowComponent({
   file,
+  section,
   isStaged,
+  isSelected,
   onToggle,
-  onFileClick,
+  onRowClick,
   density = "comfortable",
   viewed = false,
   onViewedChange,
@@ -92,9 +103,12 @@ export function FileStageRow({
     [onToggle, file.path]
   );
 
-  const handleClick = useCallback(() => {
-    onFileClick(file.path, file.status);
-  }, [onFileClick, file.path, file.status]);
+  const handleClick = useCallback(
+    (e: React.MouseEvent) => {
+      onRowClick(section, file.path, file.status, e);
+    },
+    [onRowClick, section, file.path, file.status]
+  );
 
   const handleViewedChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -110,20 +124,30 @@ export function FileStageRow({
 
   return (
     <div
+      onClick={handleClick}
+      data-testid={`file-stage-row-${file.path}`}
+      data-selected={isSelected || undefined}
+      aria-selected={isSelected}
       className={cn(
-        "group/stagerow flex items-center text-xs rounded px-1.5 transition-colors",
+        "relative group/stagerow flex items-center text-xs rounded px-1.5 transition-colors",
         density === "compact" ? "py-0.5" : "py-1.5",
         isStaged ? "bg-status-success/[0.06] hover:bg-status-success/[0.10]" : "hover:bg-tint/5",
         viewed && "opacity-60"
       )}
     >
+      {isSelected && (
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 rounded bg-overlay-subtle pointer-events-none"
+        />
+      )}
       <TruncatedTooltip content={file.path}>
         <button
           type="button"
           onClick={handleClick}
           aria-label={`View diff: ${file.path}`}
           className={cn(
-            "flex min-w-0 flex-1 items-baseline rounded text-left",
+            "relative flex min-w-0 flex-1 items-baseline rounded text-left",
             "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-daintree-accent"
           )}
         >
@@ -235,3 +259,5 @@ export function FileStageRow({
     </div>
   );
 }
+
+export const FileStageRow = memo(FileStageRowComponent);
