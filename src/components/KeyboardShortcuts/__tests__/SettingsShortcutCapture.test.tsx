@@ -801,6 +801,69 @@ describe("SettingsShortcutCapture", () => {
       expect(screen.queryByText(/press second key or wait to finish/)).toBeNull();
       expect(screen.getByText("Click to record shortcut")).toBeTruthy();
     });
+
+    it("invokes onCancel on window blur so parent capture coordination clears", () => {
+      render(
+        <SettingsShortcutCapture
+          onCapture={mockOnCapture}
+          onCancel={mockOnCancel}
+          excludeActionId="test.action"
+        />
+      );
+
+      fireEvent.click(screen.getByText("Click to record shortcut"));
+
+      act(() => {
+        window.dispatchEvent(new Event("blur"));
+      });
+
+      expect(mockOnCancel).toHaveBeenCalled();
+    });
+  });
+
+  describe("conflict suppression while validation error is active", () => {
+    it("hides the conflicts section when validateCombo returns an error", async () => {
+      const { keybindingService } = await import("@/services/KeybindingService");
+      vi.mocked(keybindingService.findConflicts).mockReturnValue([
+        {
+          actionId: "conflict.action",
+          description: "Conflicting Action",
+          combo: "Cmd+A",
+          scope: "global",
+          priority: 0,
+          kind: "conflict",
+        },
+      ]);
+
+      render(
+        <SettingsShortcutCapture
+          onCapture={mockOnCapture}
+          onCancel={mockOnCancel}
+          excludeActionId="test.action"
+          validateCombo={() => "Use a different shape"}
+        />
+      );
+
+      fireEvent.click(screen.getByText("Click to record shortcut"));
+
+      const keyEvent = new KeyboardEvent("keydown", {
+        key: "k",
+        code: "KeyK",
+        ctrlKey: true,
+        bubbles: true,
+      });
+
+      act(() => {
+        window.dispatchEvent(keyEvent);
+        vi.advanceTimersByTime(1100);
+      });
+
+      // Validation error is shown.
+      expect(screen.getByTestId("shortcut-capture-validation-error")).toBeTruthy();
+      // Conflict section suppressed — no Unbind button to accidentally fire.
+      expect(screen.queryByText("Conflicts with:")).toBeNull();
+      expect(screen.queryByText("Unbind")).toBeNull();
+    });
   });
 
   describe("conflict remediation", () => {

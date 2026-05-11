@@ -47,6 +47,7 @@ import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { useKeybindingDisplay } from "@/hooks";
 import { useAgentDiscoveryOnboarding } from "@/hooks/app/useAgentDiscoveryOnboarding";
 import { AgentShortcutCapture } from "@/components/KeyboardShortcuts";
+import { notify } from "@/lib/notify";
 import { BUILT_IN_AGENT_IDS, type BuiltInAgentId } from "@shared/config/agentIds";
 import type { CliAvailability, AgentState } from "@shared/types";
 import { resolveEffectivePresetId } from "@shared/types";
@@ -798,8 +799,14 @@ function LaunchRow({
         { source: "user" }
       );
       if (!result.ok) {
-        // Stay open on failure so the user can retry — the capture widget
-        // will surface a follow-up error via existing notify() paths.
+        // Stay open on failure so the user can retry; surface the failure
+        // explicitly since the user otherwise has no visible signal.
+        notify({
+          type: "error",
+          message: "Couldn't save shortcut. Try again.",
+          duration: 3000,
+          priority: "high",
+        });
         return;
       }
       setCapturingId(null);

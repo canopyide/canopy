@@ -27,6 +27,7 @@ import { AgentHelpOutput } from "./AgentHelpOutput";
 import { AgentCard, AgentInstallSection } from "@/components/agents/AgentCard";
 import { AgentShortcutCapture } from "@/components/KeyboardShortcuts";
 import { keybindingService } from "@/services/KeybindingService";
+import { notify } from "@/lib/notify";
 import type { DefaultAgentId } from "@/store/agentPreferencesStore";
 
 const GENERAL_SUBTAB_ID = "general";
@@ -54,6 +55,15 @@ function AgentShortcutRow({ agentId, agentName }: { agentId: BuiltInAgentId; age
         logError("[AgentSettings] Failed to save agent shortcut", undefined, {
           error: result.error,
         });
+        // Stay in capture mode so the user can retry — closing silently after
+        // a failed IPC would discard the captured combo with no recovery path.
+        notify({
+          type: "error",
+          message: "Couldn't save shortcut. Try again.",
+          duration: 3000,
+          priority: "high",
+        });
+        return;
       }
       setIsEditing(false);
     },
@@ -69,6 +79,12 @@ function AgentShortcutRow({ agentId, agentName }: { agentId: BuiltInAgentId; age
     if (!result.ok) {
       logError("[AgentSettings] Failed to reset agent shortcut", undefined, {
         error: result.error,
+      });
+      notify({
+        type: "error",
+        message: "Couldn't reset shortcut. Try again.",
+        duration: 3000,
+        priority: "high",
       });
     }
   }, [actionId]);
