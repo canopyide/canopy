@@ -3,7 +3,7 @@
  */
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import type { WorktreeState } from "@/types";
 import type { WorktreeChanges } from "@shared/types/git";
@@ -288,6 +288,139 @@ describe("WorktreeDetailsSection count pill bump", () => {
 
     expect(mockAnimate).not.toHaveBeenCalled();
     expect(screen.getByText(/5 files/)).toBeDefined();
+  });
+});
+
+describe("WorktreeDetailsSection — reviewState surfaces", () => {
+  it('replaces churn subtitle with conflict callout when reviewState is "conflicted"', () => {
+    renderSection({
+      reviewState: "conflicted",
+      worktree: withChanges({
+        changedFileCount: 4,
+        changes: [{ path: "a.ts", status: "conflicted", insertions: null, deletions: null }],
+      }),
+    });
+    expect(screen.getByText("Conflicts need review")).toBeDefined();
+    expect(screen.queryByText(/files/)).toBeNull();
+  });
+
+  it("renders the Commit & push button when gated", () => {
+    const onCommitAndPush = vi.fn();
+    renderSection({
+      reviewState: "has-changes",
+      hasCommitMessageSource: true,
+      onCommitAndPush,
+    });
+    const button = screen.getByLabelText("Commit and push");
+    expect(button).toBeDefined();
+    fireEvent.click(button);
+    expect(onCommitAndPush).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides the Commit & push button when there is no commit message source", () => {
+    renderSection({
+      reviewState: "has-changes",
+      hasCommitMessageSource: false,
+      onCommitAndPush: vi.fn(),
+    });
+    expect(screen.queryByLabelText("Commit and push")).toBeNull();
+  });
+
+  it('hides the Commit & push button when reviewState is "conflicted"', () => {
+    renderSection({
+      reviewState: "conflicted",
+      hasCommitMessageSource: true,
+      onCommitAndPush: vi.fn(),
+      worktree: withChanges({
+        changedFileCount: 2,
+        changes: [{ path: "a.ts", status: "conflicted", insertions: null, deletions: null }],
+      }),
+    });
+    expect(screen.queryByLabelText("Commit and push")).toBeNull();
+  });
+
+  it("swaps the button for a spinner while committing", () => {
+    renderSection({
+      reviewState: "has-changes",
+      hasCommitMessageSource: true,
+      onCommitAndPush: vi.fn(),
+      isCommitting: true,
+    });
+    expect(screen.queryByLabelText("Commit and push")).toBeNull();
+    expect(screen.getByLabelText("Committing and pushing")).toBeDefined();
+  });
+
+  it("renders an inline error banner with commitError", () => {
+    renderSection({
+      reviewState: "has-changes",
+      hasCommitMessageSource: true,
+      onCommitAndPush: vi.fn(),
+      commitError: "Couldn't push to remote",
+      clearCommitError: vi.fn(),
+      onOpenReviewHub: vi.fn(),
+    });
+    expect(screen.getByText("Couldn't push to remote")).toBeDefined();
+    expect(screen.getByText("Open review hub")).toBeDefined();
+  });
+
+  it("invokes clearCommitError and onOpenReviewHub from the banner CTA", () => {
+    const clearCommitError = vi.fn();
+    const onOpenReviewHub = vi.fn();
+    renderSection({
+      reviewState: "has-changes",
+      hasCommitMessageSource: true,
+      onCommitAndPush: vi.fn(),
+      commitError: "Couldn't push to remote",
+      clearCommitError,
+      onOpenReviewHub,
+    });
+    fireEvent.click(screen.getByText("Open review hub"));
+    expect(clearCommitError).toHaveBeenCalledTimes(1);
+    expect(onOpenReviewHub).toHaveBeenCalledTimes(1);
+  });
+
+  it("dismisses the banner via the Dismiss button", () => {
+    const clearCommitError = vi.fn();
+    renderSection({
+      reviewState: "has-changes",
+      hasCommitMessageSource: true,
+      commitError: "Couldn't push to remote",
+      clearCommitError,
+    });
+    fireEvent.click(screen.getByLabelText("Dismiss error"));
+    expect(clearCommitError).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not render Commit & push or conflict callout when reviewState is "unpushed-clean"', () => {
+    renderSection({
+      reviewState: "unpushed-clean",
+      hasChanges: false,
+      hasCommitMessageSource: true,
+      onCommitAndPush: vi.fn(),
+      computedSubtitle: { text: "fix: stuff", tone: "muted" },
+      worktree: {
+        ...baseWorktree,
+        worktreeChanges: {
+          ...baseWorktree.worktreeChanges,
+          changedFileCount: 0,
+          ahead: 2,
+        } as WorktreeChanges,
+      },
+    });
+    expect(screen.queryByLabelText("Commit and push")).toBeNull();
+    expect(screen.queryByText("Conflicts need review")).toBeNull();
+    expect(screen.getByText("fix: stuff")).toBeDefined();
+  });
+
+  it("hides the error banner when expanded", () => {
+    renderSection({
+      isExpanded: true,
+      reviewState: "has-changes",
+      hasCommitMessageSource: true,
+      commitError: "Couldn't push to remote",
+      clearCommitError: vi.fn(),
+    });
+    expect(screen.queryByText("Couldn't push to remote")).toBeNull();
   });
 });
 
