@@ -226,7 +226,7 @@ export class ProjectViewManager {
 
     // Snapshot previous state for rollback
     const previousProjectId = this.activeProjectId;
-    const previousEntry = previousProjectId ? this.views.get(previousProjectId) : null;
+    const previousEntry = previousProjectId ? (this.views.get(previousProjectId) ?? null) : null;
 
     // Try to activate cached view (fast path — already painted, no skeleton gate needed)
     const cached = this.views.get(projectId);
