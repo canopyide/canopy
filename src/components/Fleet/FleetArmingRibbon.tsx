@@ -23,7 +23,10 @@ import {
   type FleetArmScope,
 } from "@/store/fleetArmingStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
-import { useFleetBroadcastConfirmStore } from "@/store/fleetBroadcastConfirmStore";
+import {
+  useFleetBroadcastConfirmStore,
+  resolveFleetBroadcastConfirmation,
+} from "@/store/fleetBroadcastConfirmStore";
 import { useFleetBroadcastProgressStore } from "@/store/fleetBroadcastProgressStore";
 import { useFleetPendingActionStore } from "@/store/fleetPendingActionStore";
 import { useAnnouncerStore } from "@/store/accessibilityAnnouncerStore";
@@ -57,7 +60,6 @@ export function FleetArmingRibbon(): ReactElement | null {
   const progressActive = useFleetBroadcastProgressStore((s) => s.isActive);
 
   const [popoverOpen, setPopoverOpen] = useState(false);
-  const [isSendingBroadcast, setIsSendingBroadcast] = useState(false);
   const pasteCancelRef = useRef<HTMLButtonElement | null>(null);
   const ribbonRef = useRef<HTMLDivElement | null>(null);
   const reduceMotion = useReducedMotion();
@@ -192,18 +194,10 @@ export function FleetArmingRibbon(): ReactElement | null {
     clearPendingBroadcast();
   }, [clearPendingBroadcast]);
 
-  const confirmPendingBroadcast = useCallback(async () => {
-    if (pendingBroadcast == null || isSendingBroadcast) return;
-    const { onConfirm } = pendingBroadcast;
-    setIsSendingBroadcast(true);
-    try {
-      await onConfirm();
-      // Success/failure dots (per-pane red dots) carry the result; no toast.
-    } finally {
-      setIsSendingBroadcast(false);
-      clearPendingBroadcast();
-    }
-  }, [pendingBroadcast, isSendingBroadcast, clearPendingBroadcast]);
+  const confirmPendingBroadcast = useCallback(() => {
+    if (pendingBroadcast == null) return;
+    resolveFleetBroadcastConfirmation();
+  }, [pendingBroadcast]);
 
   const setPreviewArmedIds = useFleetArmingStore((s) => s.setPreviewArmedIds);
   const clearPreviewArmedIds = useFleetArmingStore((s) => s.clearPreviewArmedIds);
@@ -509,8 +503,7 @@ export function FleetArmingRibbon(): ReactElement | null {
               </button>
               <button
                 type="button"
-                disabled={isSendingBroadcast}
-                onClick={() => void confirmPendingBroadcast()}
+                onClick={() => confirmPendingBroadcast()}
                 data-testid="fleet-paste-confirm-send"
                 className="rounded bg-category-amber-subtle border border-category-amber-border px-2 py-0.5 text-category-amber-text transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:pointer-events-none"
               >
