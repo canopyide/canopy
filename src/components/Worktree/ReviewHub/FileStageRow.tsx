@@ -58,7 +58,7 @@ interface FileStageRowProps {
   onFileClick: (filePath: string, status: GitStatus) => void;
   density?: "comfortable" | "compact";
   viewed?: boolean;
-  onViewedChange?: (filePath: string, viewed: boolean) => void;
+  onViewedChange?: (viewed: boolean) => void;
 }
 
 function splitPath(filePath: string): { dir: string; base: string } {
@@ -98,9 +98,9 @@ export function FileStageRow({
 
   const handleViewedChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      onViewedChange?.(file.path, e.target.checked);
+      onViewedChange?.(e.target.checked);
     },
-    [onViewedChange, file.path]
+    [onViewedChange]
   );
 
   const handleViewedClick = useCallback((e: React.MouseEvent) => {

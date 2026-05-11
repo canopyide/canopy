@@ -367,6 +367,26 @@ describe("preferencesStore migration", () => {
       expect(store.getState().diffViewType).toBe("unified");
     });
 
+    it("normalises a corrupt persisted diffViewType to 'split'", async () => {
+      setStoredState(
+        {
+          diffViewType: "side-by-side",
+          showProjectPulse: true,
+          showDeveloperTools: false,
+          showGridAgentHighlights: false,
+          showDockAgentHighlights: false,
+          dockDensity: "normal",
+          assignWorktreeToSelf: false,
+          reduceAnimations: false,
+          lastSelectedWorktreeRecipeIdByProject: {},
+        },
+        6
+      );
+
+      const store = await loadStore();
+      expect(store.getState().diffViewType).toBe("split");
+    });
+
     it("migrates cumulatively from v3 through v7, dropping skipWorkingCloseConfirm and defaulting diffViewType", async () => {
       setStoredState(
         {

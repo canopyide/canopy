@@ -2802,6 +2802,36 @@ describe("ReviewHub", () => {
       expect(fileDiffModalOpenHistory.value.some((o) => o === true)).toBe(false);
     });
 
+    it("tracks Viewed state independently for staged and unstaged copies of the same path", async () => {
+      // Partial-staging scenario: the same file is both staged and unstaged
+      // (e.g. user staged some hunks, left others unstaged).
+      getStagingStatusMock.mockResolvedValue(
+        makeStatus({
+          staged: [{ path: "src/dual.ts", status: "modified", insertions: 1, deletions: 0 }],
+          unstaged: [{ path: "src/dual.ts", status: "modified", insertions: 2, deletions: 0 }],
+        })
+      );
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getAllByText("dual.ts"));
+
+      const checkboxes = screen.getAllByRole("checkbox", {
+        name: "Mark src/dual.ts as viewed",
+      }) as HTMLInputElement[];
+      // One in the staged section, one in the unstaged section.
+      expect(checkboxes).toHaveLength(2);
+
+      fireEvent.click(checkboxes[0]);
+
+      // Only the clicked row flips to "viewed"; the sibling row stays unchecked.
+      const checkedAfter = screen.getAllByRole("checkbox", {
+        name: /Mark src\/dual\.ts as (not viewed|viewed)/,
+      }) as HTMLInputElement[];
+      const viewedCount = checkedAfter.filter((cb) => cb.checked).length;
+      expect(viewedCount).toBe(1);
+    });
+
     it("resets Viewed state when the modal closes and reopens", async () => {
       const { rerender } = render(
         <ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />

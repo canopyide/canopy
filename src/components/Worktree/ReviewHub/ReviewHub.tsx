@@ -490,9 +490,10 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
     path: string;
     status: GitStatus;
   } | null>(null);
-  // Session-scoped per-file Viewed indicator (paths in this set are marked
-  // viewed). Resets on close and on ReviewHub unmount — intentional, this is
-  // not persisted, so a fresh review session starts with nothing checked.
+  // Session-scoped per-file Viewed indicator. Keys are `staged:{path}` or
+  // `unstaged:{path}` so that the same path appearing in both sections (valid
+  // during partial staging) tracks Viewed independently. Resets on close and
+  // on ReviewHub unmount — intentional, this is not persisted.
   const [viewedFiles, setViewedFiles] = useState<Set<string>>(() => new Set());
   const [diffMode, setDiffMode] = useState<DiffMode>("working-tree");
   const [forcePushDialogOpen, setForcePushDialogOpen] = useState(false);
@@ -1079,11 +1080,11 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
     setSelectedFile({ path: filePath, status: fileStatus });
   }, []);
 
-  const handleViewedChange = useCallback((filePath: string, viewed: boolean) => {
+  const handleViewedChange = useCallback((viewedKey: string, viewed: boolean) => {
     setViewedFiles((prev) => {
       const next = new Set(prev);
-      if (viewed) next.add(filePath);
-      else next.delete(filePath);
+      if (viewed) next.add(viewedKey);
+      else next.delete(viewedKey);
       return next;
     });
   }, []);
@@ -1716,18 +1717,21 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                             stagedView.density === "compact" ? "gap-0" : "gap-0.5"
                           )}
                         >
-                          {derivedStaged.map((file) => (
-                            <FileStageRow
-                              key={`staged-${file.path}`}
-                              file={file}
-                              isStaged={true}
-                              onToggle={(path) => void handleUnstageFile(path)}
-                              onFileClick={handleFileClick}
-                              density={stagedView.density}
-                              viewed={viewedFiles.has(file.path)}
-                              onViewedChange={handleViewedChange}
-                            />
-                          ))}
+                          {derivedStaged.map((file) => {
+                            const viewedKey = `staged:${file.path}`;
+                            return (
+                              <FileStageRow
+                                key={`staged-${file.path}`}
+                                file={file}
+                                isStaged={true}
+                                onToggle={(path) => void handleUnstageFile(path)}
+                                onFileClick={handleFileClick}
+                                density={stagedView.density}
+                                viewed={viewedFiles.has(viewedKey)}
+                                onViewedChange={(v) => handleViewedChange(viewedKey, v)}
+                              />
+                            );
+                          })}
                         </div>
                       ) : stagedView.filterQuery ? (
                         <EmptyState
@@ -1887,18 +1891,21 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                             changesView.density === "compact" ? "gap-0" : "gap-0.5"
                           )}
                         >
-                          {derivedUnstaged.map((file) => (
-                            <FileStageRow
-                              key={`unstaged-${file.path}`}
-                              file={file}
-                              isStaged={false}
-                              onToggle={(path) => void handleStageFile(path)}
-                              onFileClick={handleFileClick}
-                              density={changesView.density}
-                              viewed={viewedFiles.has(file.path)}
-                              onViewedChange={handleViewedChange}
-                            />
-                          ))}
+                          {derivedUnstaged.map((file) => {
+                            const viewedKey = `unstaged:${file.path}`;
+                            return (
+                              <FileStageRow
+                                key={`unstaged-${file.path}`}
+                                file={file}
+                                isStaged={false}
+                                onToggle={(path) => void handleStageFile(path)}
+                                onFileClick={handleFileClick}
+                                density={changesView.density}
+                                viewed={viewedFiles.has(viewedKey)}
+                                onViewedChange={(v) => handleViewedChange(viewedKey, v)}
+                              />
+                            );
+                          })}
                         </div>
                       ) : changesView.filterQuery ? (
                         <EmptyState

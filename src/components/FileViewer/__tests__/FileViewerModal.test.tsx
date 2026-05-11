@@ -490,6 +490,37 @@ describe("FileViewerModal", () => {
       expect(scrollIntoViewCalls).toHaveLength(0);
     });
 
+    it("resets the hunk index when the diff prop changes for the same file", async () => {
+      const diffA = "diff --git a/file b/file\n--- a/file\n+++ b/file\n@@ -1 +1 @@\n-old\n+new";
+      const diffB = "diff --git a/file b/file\n--- a/file\n+++ b/file\n@@ -1 +1 @@\n-foo\n+bar";
+
+      const { rerender } = render(
+        <FileViewerModal {...defaultProps} diff={diffA} defaultMode="diff" />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId("diff-viewer")).toBeTruthy();
+      });
+
+      // Walk past the first hunk.
+      fireEvent.keyDown(window, { key: "n" });
+      fireEvent.keyDown(window, { key: "n" });
+
+      // Swap diff content; the hunk index must reset so the next `n` lands on
+      // the first hunk of the new diff again.
+      rerender(<FileViewerModal {...defaultProps} diff={diffB} defaultMode="diff" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("diff-viewer")).toBeTruthy();
+      });
+
+      scrollIntoViewCalls.length = 0;
+      const hunk0 = screen.getByTestId("hunk-0");
+      fireEvent.keyDown(window, { key: "n" });
+
+      expect(scrollIntoViewCalls.at(-1)).toBe(hunk0);
+    });
+
     it("ignores `n`/`p` when focus is in an input", async () => {
       render(
         <>

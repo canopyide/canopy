@@ -106,7 +106,11 @@ export const usePreferencesStore = create<PreferencesState>()(
         if (version < 7) {
           if (persisted && typeof persisted === "object") {
             const state = persisted as Record<string, unknown>;
-            state.diffViewType ??= "split";
+            // Validate against the closed set rather than `??=` so a corrupt
+            // value (e.g. hand-edited `"side-by-side"`) is normalised.
+            if (state.diffViewType !== "split" && state.diffViewType !== "unified") {
+              state.diffViewType = "split";
+            }
           }
         }
         return persisted as PreferencesState;

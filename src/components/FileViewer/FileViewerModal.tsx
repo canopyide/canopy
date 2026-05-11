@@ -262,6 +262,12 @@ export function FileViewerModal({
     };
   }, [isOpen, isImageMode, mode]);
 
+  // Reset hunk index whenever the diff content changes — covers refresh-after-
+  // commit and any other in-place diff swap that leaves filePath unchanged.
+  useEffect(() => {
+    currentHunkIndexRef.current = -1;
+  }, [diff]);
+
   // Hunk navigation in diff mode: `n` → next hunk, `p` → previous hunk.
   // react-diff-view renders each hunk as <tbody class="diff-hunk">; scroll the
   // hunk into view with native scrollIntoView (CSS scroll-margin-top keeps the
