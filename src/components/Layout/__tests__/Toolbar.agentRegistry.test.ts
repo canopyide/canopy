@@ -1,9 +1,11 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import fs from "fs/promises";
 import path from "path";
+import { Plug } from "lucide-react";
 import { BUILT_IN_AGENT_IDS } from "@shared/config/agentIds";
 import { TOOLBAR_BUTTON_PRIORITIES } from "@shared/types/toolbar";
 import { OVERFLOW_MENU_META } from "../Toolbar";
+import { TOOLBAR_BUTTON_METADATA } from "../toolbarButtonMetadata";
 
 const TOOLBAR_PATH = path.resolve(__dirname, "../Toolbar.tsx");
 
@@ -65,6 +67,14 @@ describe("Toolbar — agent registry zero-touch guarantee (issue #5070)", () => 
     it("has an OVERFLOW_MENU_META entry", () => {
       expect(OVERFLOW_MENU_META["agent-tray"]).toBeDefined();
       expect(OVERFLOW_MENU_META["agent-tray"]?.label).toBeTruthy();
+    });
+
+    it("uses the canonical Plug icon (matches the settings tab — issue #7666)", () => {
+      // Both surfaces resolve through TOOLBAR_BUTTON_METADATA, so a drift
+      // between the overflow menu and the settings tab is structurally
+      // impossible. Locking the icon to Plug guards the canonical choice.
+      expect(TOOLBAR_BUTTON_METADATA["agent-tray"]?.icon).toBe(Plug);
+      expect(OVERFLOW_MENU_META["agent-tray"]?.icon).toBe(Plug);
     });
   });
 

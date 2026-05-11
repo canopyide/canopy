@@ -3,15 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent } from "@testing-library/react";
 import type { AgentSettings } from "@shared/types";
 
-const setLeftButtonsMock = vi.fn();
-const setRightButtonsMock = vi.fn();
-const toggleButtonVisibilityMock = vi.fn();
-const setAlwaysShowDevServerMock = vi.fn();
-const setDefaultSelectionMock = vi.fn();
-const resetMock = vi.fn();
-const setAgentPinnedMock = vi.fn().mockResolvedValue(undefined);
-
-interface ToolbarState {
+interface ToolbarStateShape {
   layout: {
     leftButtons: string[];
     rightButtons: string[];
@@ -21,39 +13,90 @@ interface ToolbarState {
     alwaysShowDevServer: boolean;
     defaultSelection?: string;
   };
-  setLeftButtons: typeof setLeftButtonsMock;
-  setRightButtons: typeof setRightButtonsMock;
-  toggleButtonVisibility: typeof toggleButtonVisibilityMock;
-  setAlwaysShowDevServer: typeof setAlwaysShowDevServerMock;
-  setDefaultSelection: typeof setDefaultSelectionMock;
-  reset: typeof resetMock;
+  setLeftButtons: ReturnType<typeof vi.fn>;
+  setRightButtons: ReturnType<typeof vi.fn>;
+  toggleButtonVisibility: ReturnType<typeof vi.fn>;
+  setAlwaysShowDevServer: ReturnType<typeof vi.fn>;
+  setDefaultSelection: ReturnType<typeof vi.fn>;
+  reset: ReturnType<typeof vi.fn>;
 }
 
-let mockToolbarState: ToolbarState = {
-  layout: { leftButtons: [], rightButtons: [], hiddenButtons: [] },
-  launcher: { alwaysShowDevServer: false, defaultSelection: undefined },
-  setLeftButtons: setLeftButtonsMock,
-  setRightButtons: setRightButtonsMock,
-  toggleButtonVisibility: toggleButtonVisibilityMock,
-  setAlwaysShowDevServer: setAlwaysShowDevServerMock,
-  setDefaultSelection: setDefaultSelectionMock,
-  reset: resetMock,
-};
+const hoisted = vi.hoisted(() => {
+  const setLeftButtonsMock = vi.fn();
+  const setRightButtonsMock = vi.fn();
+  const toggleButtonVisibilityMock = vi.fn();
+  const setAlwaysShowDevServerMock = vi.fn();
+  const setDefaultSelectionMock = vi.fn();
+  const resetMock = vi.fn();
+  const setAgentPinnedMock = vi.fn().mockResolvedValue(undefined);
 
-let mockAgentSettings: AgentSettings | null = null;
+  const toolbarState = {
+    layout: {
+      leftButtons: [] as string[],
+      rightButtons: [] as string[],
+      hiddenButtons: [] as string[],
+    },
+    launcher: { alwaysShowDevServer: false, defaultSelection: undefined as string | undefined },
+    setLeftButtons: setLeftButtonsMock,
+    setRightButtons: setRightButtonsMock,
+    toggleButtonVisibility: toggleButtonVisibilityMock,
+    setAlwaysShowDevServer: setAlwaysShowDevServerMock,
+    setDefaultSelection: setDefaultSelectionMock,
+    reset: resetMock,
+  };
+
+  const agentSlice = {
+    settings: null as AgentSettings | null,
+    setAgentPinned: setAgentPinnedMock,
+  };
+
+  type ToolbarHook = ((selector: (s: typeof toolbarState) => unknown) => unknown) & {
+    getState: () => typeof toolbarState;
+  };
+  const toolbarHook = ((selector: (s: typeof toolbarState) => unknown) =>
+    selector(toolbarState)) as ToolbarHook;
+  toolbarHook.getState = () => toolbarState;
+
+  type AgentHook = ((selector: (s: typeof agentSlice) => unknown) => unknown) & {
+    getState: () => typeof agentSlice;
+  };
+  const agentHook = ((selector: (s: typeof agentSlice) => unknown) =>
+    selector(agentSlice)) as AgentHook;
+  agentHook.getState = () => agentSlice;
+
+  return {
+    toolbarState,
+    agentSlice,
+    toolbarHook,
+    agentHook,
+    setLeftButtonsMock,
+    setRightButtonsMock,
+    toggleButtonVisibilityMock,
+    setAlwaysShowDevServerMock,
+    setDefaultSelectionMock,
+    resetMock,
+    setAgentPinnedMock,
+  };
+});
+
+const {
+  toolbarState,
+  agentSlice,
+  setLeftButtonsMock,
+  setRightButtonsMock,
+  toggleButtonVisibilityMock,
+  setAlwaysShowDevServerMock,
+  setDefaultSelectionMock,
+  resetMock,
+  setAgentPinnedMock,
+} = hoisted;
 
 vi.mock("@/store", () => ({
-  useToolbarPreferencesStore: (selector: (s: ToolbarState) => unknown) =>
-    selector(mockToolbarState),
+  useToolbarPreferencesStore: hoisted.toolbarHook,
 }));
 
 vi.mock("@/store/agentSettingsStore", () => ({
-  useAgentSettingsStore: (
-    selector: (s: {
-      settings: AgentSettings | null;
-      setAgentPinned: typeof setAgentPinnedMock;
-    }) => unknown
-  ) => selector({ settings: mockAgentSettings, setAgentPinned: setAgentPinnedMock }),
+  useAgentSettingsStore: hoisted.agentHook,
 }));
 
 vi.mock("@shared/config/agentIds", () => ({
@@ -128,6 +171,14 @@ function agentSettings(overrides: Record<string, { pinned?: boolean }>): AgentSe
   return { agents: overrides } as unknown as AgentSettings;
 }
 
+function setLayout(layout: ToolbarStateShape["layout"]) {
+  toolbarState.layout = layout;
+}
+
+function setAgentSettings(s: AgentSettings | null) {
+  agentSlice.settings = s;
+}
+
 describe("ToolbarSettingsTab — agent visibility routing", () => {
   beforeEach(() => {
     setLeftButtonsMock.mockClear();
@@ -138,29 +189,23 @@ describe("ToolbarSettingsTab — agent visibility routing", () => {
     resetMock.mockClear();
     setAgentPinnedMock.mockClear();
 
-    mockToolbarState = {
-      layout: {
-        // Mix of agent IDs and non-agent IDs so we can test both branches.
-        leftButtons: ["agent-tray", "claude", "gemini", "terminal"],
-        rightButtons: ["copy-tree", "settings"],
-        hiddenButtons: [],
-      },
-      launcher: { alwaysShowDevServer: false, defaultSelection: undefined },
-      setLeftButtons: setLeftButtonsMock,
-      setRightButtons: setRightButtonsMock,
-      toggleButtonVisibility: toggleButtonVisibilityMock,
-      setAlwaysShowDevServer: setAlwaysShowDevServerMock,
-      setDefaultSelection: setDefaultSelectionMock,
-      reset: resetMock,
-    };
-    mockAgentSettings = null;
+    setLayout({
+      // Mix of agent IDs and non-agent IDs so we can test both branches.
+      leftButtons: ["agent-tray", "claude", "gemini", "terminal"],
+      rightButtons: ["copy-tree", "settings"],
+      hiddenButtons: [],
+    });
+    toolbarState.launcher = { alwaysShowDevServer: false, defaultSelection: undefined };
+    setAgentSettings(null);
   });
 
   it("shows agent rows as checked when pinned in agentSettingsStore", () => {
-    mockAgentSettings = agentSettings({
-      claude: { pinned: true },
-      gemini: { pinned: false },
-    });
+    setAgentSettings(
+      agentSettings({
+        claude: { pinned: true },
+        gemini: { pinned: false },
+      })
+    );
 
     const { getByLabelText } = render(<ToolbarSettingsTab />);
 
@@ -174,10 +219,8 @@ describe("ToolbarSettingsTab — agent visibility routing", () => {
     // Stale entry from pre-migration persisted state — the UI must still
     // derive the agent's visibility from `agentSettingsStore`, not from
     // `hiddenButtons`.
-    mockToolbarState.layout.hiddenButtons = ["claude"];
-    mockAgentSettings = agentSettings({
-      claude: { pinned: true },
-    });
+    toolbarState.layout.hiddenButtons = ["claude"];
+    setAgentSettings(agentSettings({ claude: { pinned: true } }));
 
     const { getByLabelText } = render(<ToolbarSettingsTab />);
     const claudeCheckbox = getByLabelText("Toggle Claude Agent visibility") as HTMLInputElement;
@@ -185,9 +228,7 @@ describe("ToolbarSettingsTab — agent visibility routing", () => {
   });
 
   it("routes agent checkbox toggle to setAgentPinned (not toggleButtonVisibility)", () => {
-    mockAgentSettings = agentSettings({
-      claude: { pinned: true },
-    });
+    setAgentSettings(agentSettings({ claude: { pinned: true } }));
 
     const { getByLabelText } = render(<ToolbarSettingsTab />);
     fireEvent.click(getByLabelText("Toggle Claude Agent visibility"));
@@ -198,9 +239,7 @@ describe("ToolbarSettingsTab — agent visibility routing", () => {
   });
 
   it("routes agent checkbox toggle upward (unpinned → pinned) via setAgentPinned", () => {
-    mockAgentSettings = agentSettings({
-      gemini: { pinned: false },
-    });
+    setAgentSettings(agentSettings({ gemini: { pinned: false } }));
 
     const { getByLabelText } = render(<ToolbarSettingsTab />);
     fireEvent.click(getByLabelText("Toggle Gemini Agent visibility"));
@@ -219,10 +258,12 @@ describe("ToolbarSettingsTab — agent visibility routing", () => {
   });
 
   it("reflects pinned agents in the section visible-count summary", () => {
-    mockAgentSettings = agentSettings({
-      claude: { pinned: true },
-      gemini: { pinned: false },
-    });
+    setAgentSettings(
+      agentSettings({
+        claude: { pinned: true },
+        gemini: { pinned: false },
+      })
+    );
 
     const { getByTestId } = render(<ToolbarSettingsTab />);
     // Left side: agent-tray (visible), claude (pinned, visible),
@@ -232,7 +273,7 @@ describe("ToolbarSettingsTab — agent visibility routing", () => {
   });
 
   it("treats null agentSettings as all-unpinned without crashing", () => {
-    mockAgentSettings = null;
+    setAgentSettings(null);
 
     const { getByLabelText } = render(<ToolbarSettingsTab />);
     const claudeCheckbox = getByLabelText("Toggle Claude Agent visibility") as HTMLInputElement;
@@ -241,14 +282,12 @@ describe("ToolbarSettingsTab — agent visibility routing", () => {
 
   it("handles a right-side agent correctly (routes through setAgentPinned)", () => {
     // Relocate codex to the right side — an unlikely but possible layout.
-    mockToolbarState.layout = {
+    setLayout({
       leftButtons: ["agent-tray", "terminal"],
       rightButtons: ["codex", "settings"],
       hiddenButtons: [],
-    };
-    mockAgentSettings = agentSettings({
-      codex: { pinned: true },
     });
+    setAgentSettings(agentSettings({ codex: { pinned: true } }));
 
     const { getByLabelText } = render(<ToolbarSettingsTab />);
     fireEvent.click(getByLabelText("Toggle Codex Agent visibility"));

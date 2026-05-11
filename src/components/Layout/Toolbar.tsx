@@ -2,9 +2,6 @@ import { useRef, useState, useEffect, useLayoutEffect, useMemo, useCallback } fr
 import type React from "react";
 import { Button } from "@/components/ui/button";
 import {
-  SlidersHorizontal,
-  SquareTerminal,
-  AlertCircle,
   GitCommit,
   GitPullRequest,
   CircleDot,
@@ -12,12 +9,9 @@ import {
   PanelLeftClose,
   Check,
   ChevronsUpDown,
-  Globe,
   MonitorPlay,
-  Bell,
   Ellipsis,
   GitBranch,
-  Plug,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
 import { Folders, McpServerIcon } from "@/components/icons";
@@ -68,6 +62,7 @@ import { useOverflowBadgeSeverity, type OverflowBadgeSeverity } from "./useOverf
 
 import { BUILT_IN_AGENT_IDS, type BuiltInAgentId } from "@shared/config/agentIds";
 import { getAgentConfig } from "@/config/agents";
+import { TOOLBAR_BUTTON_METADATA } from "./toolbarButtonMetadata";
 
 const AGENT_TOOLBAR_IDS = new Set<ToolbarButtonId>([
   "agent-tray",
@@ -137,23 +132,20 @@ export function PluginToolbarButton({
   );
 }
 
-export const OVERFLOW_MENU_META: Partial<Record<AnyToolbarButtonId, OverflowMenuMeta>> = {
-  ...(Object.fromEntries(
-    BUILT_IN_AGENT_IDS.map((id) => [
-      id,
-      { label: getAgentConfig(id)?.name ?? id, icon: SquareTerminal },
-    ])
-  ) as unknown as Record<BuiltInAgentId, OverflowMenuMeta>),
-  "agent-tray": { label: "Agent Tray", icon: Plug },
-  terminal: { label: "Terminal", icon: SquareTerminal },
-  browser: { label: "Browser", icon: Globe },
-  "dev-server": { label: "Dev Preview", icon: MonitorPlay },
-  "github-stats": { label: "GitHub Stats", icon: GitPullRequest },
-  "notification-center": { label: "Notifications", icon: Bell },
-  "copy-tree": { label: "Copy Context", icon: Folders },
-  settings: { label: "Settings", icon: SlidersHorizontal },
-  problems: { label: "Problems", icon: AlertCircle },
-};
+export const OVERFLOW_MENU_META: Partial<Record<AnyToolbarButtonId, OverflowMenuMeta>> =
+  Object.fromEntries(
+    Object.entries(TOOLBAR_BUTTON_METADATA)
+      .filter(([id]) => id !== "voice-recording")
+      .map(([id, meta]) => {
+        if ((BUILT_IN_AGENT_IDS as readonly string[]).includes(id)) {
+          return [
+            id,
+            { label: getAgentConfig(id as BuiltInAgentId)?.name ?? id, icon: meta!.icon },
+          ];
+        }
+        return [id, { label: meta!.label, icon: meta!.icon }];
+      })
+  );
 
 interface ToolbarProps {
   onLaunchAgent: (type: string) => void;
