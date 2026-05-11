@@ -5,6 +5,7 @@ const clientMock = vi.hoisted(() => ({
   get: vi.fn(),
   set: vi.fn(),
   reset: vi.fn(),
+  stampVersion: vi.fn(),
 }));
 
 const registryMock = vi.hoisted(() => ({
@@ -140,9 +141,10 @@ describe("agentSettingsStore adversarial", () => {
 
   it("reset(agentId) forwards the id argument and stores the returned settings", async () => {
     // Pre-populate every registered agent so normalizeAgentSelection has no
-    // missing entries to seed — that way the store ends up with the exact
-    // reference the client returned.
+    // missing entries to seed — and stamp the migration version so
+    // migrateAgentSettings doesn't clone the response.
     const returned = {
+      settingsVersion: 1,
       agents: {
         claude: { pinned: false, enabled: true, flags: {} },
         codex: { pinned: true, enabled: true, flags: {} },
@@ -469,6 +471,19 @@ describe("agentSettingsStore adversarial", () => {
       expect(agentsToClear).toEqual([]);
     });
 
+    it("runs migration when settingsVersion is 0 (covers manual edits and version rollback)", () => {
+      const raw = {
+        settingsVersion: 0,
+        agents: { claude: { pinned: true } },
+      } as never;
+
+      const { migrated, agentsToClear } = migrateAgentSettings(raw);
+
+      expect(migrated.settingsVersion).toBe(1);
+      expect(migrated.agents.claude!.pinned).toBeUndefined();
+      expect(agentsToClear).toEqual(["claude"]);
+    });
+
     it("preserves all other entry fields when clearing pinned", () => {
       const raw = {
         agents: {
@@ -500,7 +515,7 @@ describe("agentSettingsStore adversarial", () => {
     });
   });
 
-  it("initialize fires fire-and-forget pin clear write-backs for legacy stores", async () => {
+  it("initialize fires migration pin clear write-backs and stamps version after all succeed", async () => {
     registryMock.getEffectiveAgentIds.mockReturnValue(["claude", "codex"]);
     setAvailability({ claude: "ready", codex: "missing" }, true);
     // Legacy persisted shape: no settingsVersion, both agents have eagerly-seeded concrete pinned.
@@ -510,7 +525,8 @@ describe("agentSettingsStore adversarial", () => {
         codex: { pinned: false, customFlags: "" },
       },
     });
-    clientMock.set.mockResolvedValue({ settingsVersion: 1, agents: {} });
+    clientMock.set.mockResolvedValue({ agents: {} });
+    clientMock.stampVersion.mockResolvedValue({ settingsVersion: 1, agents: {} });
 
     await useAgentSettingsStore.getState().initialize();
 
@@ -518,9 +534,42 @@ describe("agentSettingsStore adversarial", () => {
     const state = useAgentSettingsStore.getState();
     expect(state.settings?.agents.claude?.pinned).toBeUndefined();
     expect(state.settings?.agents.codex?.pinned).toBeUndefined();
+
     // Write-backs were scheduled with pinned: undefined to clear the persisted keys.
+    // Drain the microtask queue so the fire-and-forget scheduleMigrationWriteBacks
+    // settles before assertions.
+    await Promise.resolve();
+    await Promise.resolve();
     expect(clientMock.set).toHaveBeenCalledWith("claude", { pinned: undefined });
     expect(clientMock.set).toHaveBeenCalledWith("codex", { pinned: undefined });
+    expect(clientMock.stampVersion).toHaveBeenCalledWith(1);
+  });
+
+  it("initialize does NOT stamp version when a migration write-back fails", async () => {
+    registryMock.getEffectiveAgentIds.mockReturnValue(["claude", "codex"]);
+    setAvailability({ claude: "ready", codex: "missing" }, true);
+    clientMock.get.mockResolvedValue({
+      agents: {
+        claude: { pinned: true, customFlags: "" },
+        codex: { pinned: false, customFlags: "" },
+      },
+    });
+    // First write-back succeeds; second fails.
+    clientMock.set
+      .mockResolvedValueOnce({ agents: {} })
+      .mockRejectedValueOnce(new Error("IPC dropped"));
+
+    await useAgentSettingsStore.getState().initialize();
+    // Drain the microtask queue.
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Both per-agent writes fired, but the version stamp must NOT have happened —
+    // next cold start re-runs migration to retry the failed clear.
+    expect(clientMock.set).toHaveBeenCalledWith("claude", { pinned: undefined });
+    expect(clientMock.set).toHaveBeenCalledWith("codex", { pinned: undefined });
+    expect(clientMock.stampVersion).not.toHaveBeenCalled();
   });
 
   it("initialize does NOT run migration when settingsVersion is already 1", async () => {
@@ -541,6 +590,32 @@ describe("agentSettingsStore adversarial", () => {
     expect(state.settings?.agents.claude?.pinned).toBe(true);
     expect(state.settings?.agents.codex?.pinned).toBe(false);
     expect(clientMock.set).not.toHaveBeenCalled();
+    expect(clientMock.stampVersion).not.toHaveBeenCalled();
+  });
+
+  it("updateAgent migrates the IPC response — covers race where updateAgent is the first interaction with a legacy store", async () => {
+    registryMock.getEffectiveAgentIds.mockReturnValue(["claude", "codex"]);
+    setAvailability({ claude: "ready", codex: "ready" }, true);
+    useAgentSettingsStore.setState({
+      settings: null,
+      isInitialized: false,
+      isLoading: false,
+    });
+    // Legacy-shaped IPC response (no settingsVersion, codex has stale pin).
+    clientMock.set.mockResolvedValue({
+      agents: {
+        claude: { pinned: true, customFlags: "--verbose" },
+        codex: { pinned: false, customFlags: "" },
+      },
+    });
+    clientMock.stampVersion.mockResolvedValue({ settingsVersion: 1, agents: {} });
+
+    await useAgentSettingsStore.getState().updateAgent("claude", { customFlags: "--verbose" });
+
+    // After updateAgent, codex's stale pin should be cleared in-memory.
+    const state = useAgentSettingsStore.getState();
+    expect(state.settings?.agents.codex?.pinned).toBeUndefined();
+    expect(state.settings?.agents.claude?.pinned).toBeUndefined();
   });
 
   it("initialize after a concurrent refresh flips isInitialized even when the result is stale", async () => {

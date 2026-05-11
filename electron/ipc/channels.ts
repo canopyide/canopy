@@ -262,6 +262,7 @@ export const CHANNELS = {
   AGENT_SETTINGS_GET: "agent-settings:get",
   AGENT_SETTINGS_SET: "agent-settings:set",
   AGENT_SETTINGS_RESET: "agent-settings:reset",
+  AGENT_SETTINGS_STAMP_VERSION: "agent-settings:stamp-version",
 
   AGENT_HELP_GET: "agent-help:get",
 

@@ -50,18 +50,18 @@ export function normalizeAgentSelection(
  * before the #7673 fix eagerly seeded `pinned: true/false` from a single
  * availability snapshot, freezing toolbar visibility forever. This pass
  * clears every concrete `pinned` value on legacy stores so the tri-state
- * read-time selector can take over. Once the IPC handler stamps
- * `settingsVersion: 1` on the next write, this migration becomes a no-op.
+ * read-time selector can take over.
  *
  * Pure function — no IPC, no async, no `useCliAvailabilityStore` access.
- * Callers issue fire-and-forget write-backs for `agentsToClear` so the
- * cleared values land in electron-store.
+ * Callers issue fire-and-forget write-backs for `agentsToClear` and only
+ * stamp `settingsVersion` once every clear has succeeded (see
+ * `scheduleMigrationWriteBacks`).
  */
 export function migrateAgentSettings(raw: AgentSettings): {
   migrated: AgentSettings;
   agentsToClear: string[];
 } {
-  if (raw.settingsVersion !== undefined) {
+  if ((raw.settingsVersion ?? 0) >= CURRENT_SETTINGS_VERSION) {
     return { migrated: raw, agentsToClear: [] };
   }
 
@@ -83,18 +83,32 @@ export function migrateAgentSettings(raw: AgentSettings): {
   };
 }
 
-function scheduleMigrationWriteBacks(agentIds: readonly string[]): void {
-  for (const id of agentIds) {
-    // Fire-and-forget: the IPC handler stamps `settingsVersion: 1` on first
-    // write so subsequent cold starts skip migration entirely. The epoch
-    // guard already prevents stale results from clobbering newer state;
-    // we don't await or surface errors because the in-memory migration
-    // re-runs harmlessly on the next launch if persistence fails.
-    void agentSettingsClient
-      .set(id, { pinned: undefined } as Partial<AgentSettingsEntry>)
-      .catch(() => {
-        // Swallow — migration is idempotent at the renderer layer.
-      });
+/**
+ * Clears stale `pinned` values from the persisted store and only stamps
+ * `settingsVersion` when every per-agent write has succeeded. If any clear
+ * fails the version stays unstamped so the next cold start re-runs
+ * migration — preserves the "freeze" fix while never prematurely marking
+ * the store migrated (#7673 review feedback).
+ *
+ * Called fire-and-forget by the renderer hydration paths so initialize()
+ * never blocks on IPC round-trips.
+ */
+async function scheduleMigrationWriteBacks(agentIds: readonly string[]): Promise<void> {
+  if (agentIds.length === 0) return;
+
+  const results = await Promise.allSettled(
+    agentIds.map((id) =>
+      agentSettingsClient.set(id, { pinned: undefined } as Partial<AgentSettingsEntry>)
+    )
+  );
+  const allOk = results.every((r) => r.status === "fulfilled");
+  if (!allOk) return;
+
+  try {
+    await agentSettingsClient.stampVersion(CURRENT_SETTINGS_VERSION);
+  } catch {
+    // Leave version unstamped — next cold start retries the (now no-op)
+    // per-agent clears and re-attempts the version stamp.
   }
 }
 
@@ -175,7 +189,7 @@ export const useAgentSettingsStore = create<AgentSettingsStore>()((set, get) => 
         const settings = normalizeAgentSelection(migrated, availability, hasRealData);
         set({ settings, isLoading: false, isInitialized: true });
         if (agentsToClear.length > 0) {
-          scheduleMigrationWriteBacks(agentsToClear);
+          void scheduleMigrationWriteBacks(agentsToClear);
         }
       } catch (e) {
         if (myEpoch !== normalizeEpoch) {
@@ -210,7 +224,7 @@ export const useAgentSettingsStore = create<AgentSettingsStore>()((set, get) => 
       const settings = normalizeAgentSelection(migrated, availability, hasRealData);
       set({ settings });
       if (agentsToClear.length > 0) {
-        scheduleMigrationWriteBacks(agentsToClear);
+        void scheduleMigrationWriteBacks(agentsToClear);
       }
     } catch (e) {
       // Stale failures yield silently — whichever newer op bumped the epoch
@@ -240,9 +254,17 @@ export const useAgentSettingsStore = create<AgentSettingsStore>()((set, get) => 
     try {
       const raw = await agentSettingsClient.set(agentId, updates);
       if (myEpoch !== normalizeEpoch) return;
+      // Run migration against the response too — covers the edge case where
+      // `updateAgent` is the first interaction with a legacy store (before
+      // initialize() has hydrated) and the IPC response still carries stale
+      // concrete pin values for other agents (#7673 review).
+      const { migrated, agentsToClear } = migrateAgentSettings(raw);
       const { availability, hasRealData } = readAvailabilitySnapshot();
-      const settings = normalizeAgentSelection(raw, availability, hasRealData);
+      const settings = normalizeAgentSelection(migrated, availability, hasRealData);
       set({ settings });
+      if (agentsToClear.length > 0) {
+        void scheduleMigrationWriteBacks(agentsToClear);
+      }
     } catch (e) {
       if (myEpoch !== normalizeEpoch) return;
       if (previous) set({ settings: previous });
@@ -278,9 +300,16 @@ export const useAgentSettingsStore = create<AgentSettingsStore>()((set, get) => 
     try {
       const raw = await agentSettingsClient.reset(agentId);
       if (myEpoch !== normalizeEpoch) return;
+      // Reset response may still represent a legacy store (per-agent reset
+      // doesn't bump version); run migration to keep tri-state semantics
+      // intact (#7673 review).
+      const { migrated, agentsToClear } = migrateAgentSettings(raw);
       const { availability, hasRealData } = readAvailabilitySnapshot();
-      const settings = normalizeAgentSelection(raw, availability, hasRealData);
+      const settings = normalizeAgentSelection(migrated, availability, hasRealData);
       set({ settings });
+      if (agentsToClear.length > 0) {
+        void scheduleMigrationWriteBacks(agentsToClear);
+      }
     } catch (e) {
       if (myEpoch !== normalizeEpoch) return;
       set({ error: formatErrorMessage(e, "Failed to reset agent settings") });

@@ -1502,6 +1502,9 @@ const api: ElectronAPI = {
       _unwrappingInvoke(CHANNELS.AGENT_SETTINGS_SET, { agentType: agentId, settings }),
 
     reset: (agentType?: string) => _unwrappingInvoke(CHANNELS.AGENT_SETTINGS_RESET, agentType),
+
+    stampVersion: (version: number) =>
+      _unwrappingInvoke(CHANNELS.AGENT_SETTINGS_STAMP_VERSION, version),
   },
 
   userAgentRegistry: {

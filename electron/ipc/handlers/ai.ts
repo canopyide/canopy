@@ -98,18 +98,34 @@ export function registerAiHandlers(deps: HandlerDependencies): () => void {
     // address per-agent leaves via dot-path because user-defined agent IDs may
     // contain dots, which dot-prop would interpret as nested keys.
     store.set("agentSettings.agents", updatedAgents);
-    // Stamp the schema version on the first write after a pre-#7673 store is
-    // loaded, so subsequent cold starts skip the one-shot pin migration.
-    if (currentSettings.root.settingsVersion === undefined) {
-      store.set("agentSettings.settingsVersion", 1);
-      currentSettings.root.settingsVersion = 1;
-    }
     return {
       ...currentSettings.root,
       agents: updatedAgents,
     };
   };
   handlers.push(typedHandle(CHANNELS.AGENT_SETTINGS_SET, handleAgentSettingsSet));
+
+  // Stamps `settingsVersion` on the persisted store. The renderer migration
+  // (see migrateAgentSettings in agentSettingsStore.ts, #7673) calls this only
+  // after every per-agent pin clear has succeeded — stamping inside the
+  // generic AGENT_SETTINGS_SET handler would race with concurrent user pin
+  // toggles, prematurely marking the store migrated while stale pins remained.
+  const handleAgentSettingsStampVersion = async (version: unknown) => {
+    if (typeof version !== "number" || !Number.isInteger(version) || version < 1) {
+      throw new Error("Invalid settingsVersion");
+    }
+    const currentRaw = store.get("agentSettings", DEFAULT_AGENT_SETTINGS);
+    const current = isPlainRecord(currentRaw) ? currentRaw : {};
+    const currentVersion = current.settingsVersion;
+    if (typeof currentVersion === "number" && currentVersion >= version) {
+      return current;
+    }
+    store.set("agentSettings.settingsVersion", version);
+    return { ...current, settingsVersion: version };
+  };
+  handlers.push(
+    typedHandle(CHANNELS.AGENT_SETTINGS_STAMP_VERSION, handleAgentSettingsStampVersion)
+  );
 
   const handleAgentSettingsReset = async (agentType?: unknown) => {
     if (agentType !== undefined) {
