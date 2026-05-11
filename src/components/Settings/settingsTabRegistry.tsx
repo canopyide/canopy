@@ -1,6 +1,9 @@
 import { lazy, type ReactNode } from "react";
 import {
   Blocks,
+  Command,
+  FileCode,
+  GitBranch,
   Github,
   LayoutGrid,
   Mic,
@@ -14,7 +17,7 @@ import {
   KeyRound,
   Shield,
 } from "lucide-react";
-import { DaintreeIcon, FolderGit2, Plug, McpServerIcon } from "@/components/icons";
+import { DaintreeIcon, FolderGit2, Plug, McpServerIcon, Workflow } from "@/components/icons";
 import { BUILT_IN_AGENT_IDS } from "@shared/config/agentIds";
 import { AGENT_REGISTRY } from "@shared/config/agentRegistry";
 import { GeneralTab } from "./GeneralTab";
@@ -59,6 +62,8 @@ export interface LazySettingsTabEntry extends SettingsTabEntry {
   readonly needsSubtabs?: boolean;
   readonly needsOnClose?: boolean;
   readonly needsOnSettingsChange?: boolean;
+  readonly needsProjectForm?: boolean;
+  readonly needsOnNavigateToTab?: boolean;
 }
 
 export interface EagerSettingsTabEntry extends SettingsTabEntry {
@@ -93,6 +98,14 @@ const importMcpServerSettingsTab = () => import("./McpServerSettingsTab");
 const importDaintreeAssistantSettingsTab = () => import("./DaintreeAssistantSettingsTab");
 const importEnvironmentSettingsTab = () => import("./EnvironmentSettingsTab");
 const importPrivacyDataTab = () => import("./PrivacyDataTab");
+const importProjectGeneralTab = () => import("@/components/Project/GeneralTab");
+const importProjectContextTab = () => import("@/components/Project/ContextTab");
+const importProjectVariablesTab = () => import("@/components/Project/EnvironmentVariablesEditor");
+const importProjectAutomationTab = () => import("@/components/Project/AutomationTab");
+const importProjectRecipesTab = () => import("@/components/Project/RecipesTab");
+const importProjectCommandsTab = () => import("./CommandOverridesTab");
+const importProjectNotificationsTab = () => import("@/components/Project/ProjectNotificationsTab");
+const importProjectGitHubTab = () => import("@/components/Project/GitHubTab");
 
 // ── Lazy components (module-level — React requires stable lazy() refs) ──
 
@@ -143,6 +156,30 @@ const LazyEnvironmentSettingsTab = lazy(() =>
 );
 const LazyPrivacyDataTab = lazy(() =>
   importPrivacyDataTab().then((m) => ({ default: m.PrivacyDataTab }))
+);
+const LazyProjectGeneralTab = lazy(() =>
+  importProjectGeneralTab().then((m) => ({ default: m.GeneralTab }))
+);
+const LazyProjectContextTab = lazy(() =>
+  importProjectContextTab().then((m) => ({ default: m.ContextTab }))
+);
+const LazyProjectVariablesTab = lazy(() =>
+  importProjectVariablesTab().then((m) => ({ default: m.EnvironmentVariablesEditor }))
+);
+const LazyProjectAutomationTab = lazy(() =>
+  importProjectAutomationTab().then((m) => ({ default: m.AutomationTab }))
+);
+const LazyProjectRecipesTab = lazy(() =>
+  importProjectRecipesTab().then((m) => ({ default: m.RecipesTab }))
+);
+const LazyProjectCommandsTab = lazy(() =>
+  importProjectCommandsTab().then((m) => ({ default: m.CommandOverridesTab }))
+);
+const LazyProjectNotificationsTab = lazy(() =>
+  importProjectNotificationsTab().then((m) => ({ default: m.ProjectNotificationsTab }))
+);
+const LazyProjectGitHubTab = lazy(() =>
+  importProjectGitHubTab().then((m) => ({ default: m.GitHubTab }))
 );
 
 // ── Voice requiresEnabled gates (referenced repeatedly) ─────────────────
@@ -1348,23 +1385,113 @@ export const SETTINGS_REGISTRY = [
       },
     ],
   } satisfies LazySettingsTabEntry,
+
+  // ═══ Project — Project ═══
+  {
+    id: "project:general",
+    scope: "project",
+    group: "Project",
+    label: "General",
+    icon: <SettingsIcon className="w-4 h-4" />,
+    importKind: "lazy",
+    importer: importProjectGeneralTab,
+    LazyComponent: LazyProjectGeneralTab,
+    needsProjectForm: true,
+  } satisfies LazySettingsTabEntry,
+
+  {
+    id: "project:context",
+    scope: "project",
+    group: "Project",
+    label: "Context",
+    icon: <FileCode className="w-4 h-4" />,
+    importKind: "lazy",
+    importer: importProjectContextTab,
+    LazyComponent: LazyProjectContextTab,
+    needsProjectForm: true,
+  } satisfies LazySettingsTabEntry,
+
+  {
+    id: "project:variables",
+    scope: "project",
+    group: "Project",
+    label: "Variables",
+    icon: <KeyRound className="w-4 h-4" />,
+    importKind: "lazy",
+    importer: importProjectVariablesTab,
+    LazyComponent: LazyProjectVariablesTab,
+    needsProjectForm: true,
+  } satisfies LazySettingsTabEntry,
+
+  {
+    id: "project:automation",
+    scope: "project",
+    group: "Project",
+    label: "Worktree Setup",
+    icon: <GitBranch className="w-4 h-4" />,
+    importKind: "lazy",
+    importer: importProjectAutomationTab,
+    LazyComponent: LazyProjectAutomationTab,
+    needsProjectForm: true,
+    needsOnNavigateToTab: true,
+  } satisfies LazySettingsTabEntry,
+
+  {
+    id: "project:recipes",
+    scope: "project",
+    group: "Project",
+    label: "Recipes",
+    icon: <Workflow className="w-4 h-4" />,
+    importKind: "lazy",
+    importer: importProjectRecipesTab,
+    LazyComponent: LazyProjectRecipesTab,
+    needsProjectForm: true,
+  } satisfies LazySettingsTabEntry,
+
+  {
+    id: "project:commands",
+    scope: "project",
+    group: "Project",
+    label: "Commands",
+    icon: <Command className="w-4 h-4" />,
+    importKind: "lazy",
+    importer: importProjectCommandsTab,
+    LazyComponent: LazyProjectCommandsTab,
+    needsProjectForm: true,
+  } satisfies LazySettingsTabEntry,
+
+  {
+    id: "project:notifications",
+    scope: "project",
+    group: "Project",
+    label: "Notifications",
+    icon: <Bell className="w-4 h-4" />,
+    importKind: "lazy",
+    importer: importProjectNotificationsTab,
+    LazyComponent: LazyProjectNotificationsTab,
+    needsProjectForm: true,
+  } satisfies LazySettingsTabEntry,
+
+  {
+    id: "project:github",
+    scope: "project",
+    group: "Project",
+    label: "GitHub",
+    icon: <Github className="w-4 h-4" />,
+    importKind: "lazy",
+    importer: importProjectGitHubTab,
+    LazyComponent: LazyProjectGitHubTab,
+    needsProjectForm: true,
+  } satisfies LazySettingsTabEntry,
 ] as const satisfies readonly AnySettingsTabEntry[];
 
-// ── Project tab IDs (not in registry — rendered with unique prop patterns) ─
+// ── Tab id types (derived from registry by scope) ───────────────────────
 
-export const PROJECT_TAB_IDS = [
-  "project:general",
-  "project:context",
-  "project:variables",
-  "project:automation",
-  "project:recipes",
-  "project:commands",
-  "project:notifications",
-  "project:github",
-] as const;
+type ProjectScopedEntry = Extract<(typeof SETTINGS_REGISTRY)[number], { scope: "project" }>;
+type GlobalScopedEntry = Extract<(typeof SETTINGS_REGISTRY)[number], { scope: "global" }>;
 
-export type ProjectSettingsTab = (typeof PROJECT_TAB_IDS)[number];
-export type GlobalSettingsTab = (typeof SETTINGS_REGISTRY)[number]["id"];
+export type ProjectSettingsTab = ProjectScopedEntry["id"];
+export type GlobalSettingsTab = GlobalScopedEntry["id"];
 export type SettingsTab = GlobalSettingsTab | ProjectSettingsTab;
 export type SettingsScope = "global" | "project";
 
@@ -1523,6 +1650,10 @@ export const PROJECT_SETTINGS_SECTIONS: Readonly<
   },
 };
 
+export const PROJECT_TAB_IDS: readonly ProjectSettingsTab[] = SETTINGS_REGISTRY.filter(
+  (e): e is ProjectScopedEntry => e.scope === "project"
+).map((e) => e.id);
+
 // ── Derived maps ────────────────────────────────────────────────────────
 
 const _entryMap = new Map(SETTINGS_REGISTRY.map((e) => [e.id, e]));
@@ -1532,7 +1663,9 @@ export function getSettingsTabEntry(id: string): AnySettingsTabEntry | undefined
 }
 
 export const globalTabTitles = Object.fromEntries(
-  SETTINGS_REGISTRY.map((e: AnySettingsTabEntry) => [e.id, e.headerTitle ?? e.label])
+  (SETTINGS_REGISTRY as readonly AnySettingsTabEntry[])
+    .filter((e) => e.scope === "global")
+    .map((e) => [e.id, e.headerTitle ?? e.label])
 ) as Record<GlobalSettingsTab, string>;
 
 export const globalTabIcons: Record<GlobalSettingsTab, ReactNode> = {
@@ -1555,12 +1688,29 @@ export const globalTabIcons: Record<GlobalSettingsTab, ReactNode> = {
   troubleshooting: <LifeBuoy className="w-5 h-5 text-text-secondary" />,
 };
 
+export const projectTabTitles = Object.fromEntries(
+  (SETTINGS_REGISTRY as readonly AnySettingsTabEntry[])
+    .filter((e) => e.scope === "project")
+    .map((e) => [e.id, e.headerTitle ?? e.label])
+) as Record<ProjectSettingsTab, string>;
+
+export const projectTabIcons: Record<ProjectSettingsTab, ReactNode> = {
+  "project:general": <SettingsIcon className="w-5 h-5 text-text-secondary" />,
+  "project:context": <FileCode className="w-5 h-5 text-text-secondary" />,
+  "project:variables": <KeyRound className="w-5 h-5 text-text-secondary" />,
+  "project:automation": <GitBranch className="w-5 h-5 text-text-secondary" />,
+  "project:recipes": <Workflow className="w-5 h-5 text-text-secondary" />,
+  "project:commands": <Command className="w-5 h-5 text-text-secondary" />,
+  "project:notifications": <Bell className="w-5 h-5 text-text-secondary" />,
+  "project:github": <Github className="w-5 h-5 text-text-secondary" />,
+};
+
 export function scopeForTab(tab: SettingsTab): SettingsScope {
   return tab.startsWith("project:") ? "project" : "global";
 }
 
 export function isSettingsTab(value: string): value is SettingsTab {
-  return _entryMap.has(value) || (PROJECT_TAB_IDS as readonly string[]).includes(value);
+  return _entryMap.has(value);
 }
 
 export function preloadAllSettingsTabs(): void {
@@ -1584,17 +1734,17 @@ const GLOBAL_GROUP_ORDER = ["General", "Terminal", "Assistant", "Integrations", 
 const _globalGroups: SettingsNavGroup[] = GLOBAL_GROUP_ORDER.map((label) => ({
   label,
   scope: "global" as const,
-  entries: SETTINGS_REGISTRY.filter((e) => e.group === label),
+  entries: SETTINGS_REGISTRY.filter((e) => e.scope === "global" && e.group === label),
 })).filter((g) => g.entries.length > 0);
 
-export function getSettingsNavGroups(scope: SettingsScope): SettingsNavGroup[] {
-  if (scope === "global") return _globalGroups;
+const _projectGroups: SettingsNavGroup[] = [
+  {
+    label: "Project",
+    scope: "project" as const,
+    entries: SETTINGS_REGISTRY.filter((e) => e.scope === "project"),
+  },
+].filter((g) => g.entries.length > 0);
 
-  return [
-    {
-      label: "Project",
-      scope: "project",
-      entries: [], // project tabs are not in the registry; rendered separately
-    },
-  ];
+export function getSettingsNavGroups(scope: SettingsScope): SettingsNavGroup[] {
+  return scope === "global" ? _globalGroups : _projectGroups;
 }

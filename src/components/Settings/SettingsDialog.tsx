@@ -23,20 +23,7 @@ import {
   usePreferencesStore,
   useSettingsStore,
 } from "@/store";
-import {
-  X,
-  Github,
-  Settings as SettingsIcon,
-  Bell,
-  Search,
-  ChevronRight,
-  KeyRound,
-  FileCode,
-  GitBranch,
-  Command,
-  AlertTriangle,
-} from "lucide-react";
-import { Workflow } from "@/components/icons";
+import { X, Search, ChevronRight, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollShadow } from "@/components/ui/ScrollShadow";
 import {
@@ -53,6 +40,8 @@ import {
   SETTINGS_REGISTRY,
   globalTabTitles,
   globalTabIcons,
+  projectTabTitles,
+  projectTabIcons,
   getSettingsNavGroups,
   preloadAllSettingsTabs,
   scopeForTab,
@@ -68,16 +57,11 @@ import {
   parseQuery,
 } from "./settingsSearchUtils";
 import { SCROLLBACK_DEFAULT } from "@shared/config/scrollback";
-import { useProjectSettingsForm } from "@/hooks/useProjectSettingsForm";
+import {
+  useProjectSettingsForm,
+  type ProjectSettingsFormContext,
+} from "@/hooks/useProjectSettingsForm";
 import { useFlushOnHide } from "@/hooks/useFlushOnHide";
-import { GeneralTab as ProjectGeneralTab } from "@/components/Project/GeneralTab";
-import { ContextTab as ProjectContextTab } from "@/components/Project/ContextTab";
-import { EnvironmentVariablesEditor } from "@/components/Project/EnvironmentVariablesEditor";
-import { AutomationTab as ProjectAutomationTab } from "@/components/Project/AutomationTab";
-import { RecipesTab as ProjectRecipesTab } from "@/components/Project/RecipesTab";
-import { CommandOverridesTab } from "./CommandOverridesTab";
-import { ProjectNotificationsTab } from "@/components/Project/ProjectNotificationsTab";
-import { GitHubTab as ProjectGitHubTab } from "@/components/Project/GitHubTab";
 import {
   SettingsValidationProvider,
   SettingsValidationContext,
@@ -519,27 +503,13 @@ function SettingsDialogInner({
 
   const tabTitles: Record<SettingsTab, string> = {
     ...globalTabTitles,
-    "project:general": "General",
-    "project:context": "Context",
-    "project:variables": "Variables",
-    "project:automation": "Worktree Setup",
-    "project:recipes": "Recipes",
-    "project:commands": "Commands",
-    "project:notifications": "Notifications",
-    "project:github": "GitHub",
-  } as Record<SettingsTab, string>;
+    ...projectTabTitles,
+  };
 
   const tabIcons: Record<SettingsTab, React.ReactNode> = {
     ...globalTabIcons,
-    "project:general": <SettingsIcon className="w-5 h-5 text-text-secondary" />,
-    "project:context": <FileCode className="w-5 h-5 text-text-secondary" />,
-    "project:variables": <KeyRound className="w-5 h-5 text-text-secondary" />,
-    "project:automation": <GitBranch className="w-5 h-5 text-text-secondary" />,
-    "project:recipes": <Workflow className="w-5 h-5 text-text-secondary" />,
-    "project:commands": <Command className="w-5 h-5 text-text-secondary" />,
-    "project:notifications": <Bell className="w-5 h-5 text-text-secondary" />,
-    "project:github": <Github className="w-5 h-5 text-text-secondary" />,
-  } as Record<SettingsTab, React.ReactNode>;
+    ...projectTabIcons,
+  };
 
   return (
     <AppDialog
@@ -626,114 +596,27 @@ function SettingsDialogInner({
             aria-label="Settings sections"
             onKeyDown={handleTablistKeyDown}
           >
-            {activeScope === "global" ? (
-              <>
-                {getSettingsNavGroups("global").map((group) => (
-                  <NavGroup key={group.label} label={group.label}>
-                    {group.entries.map((entry) => {
-                      const tabId = entry.id as SettingsTab;
-                      return (
-                        <NavItem
-                          key={entry.id}
-                          tab={tabId}
-                          icon={entry.icon}
-                          label={entry.label}
-                          activeTab={activeTab}
-                          isSearching={isSearching}
-                          matchCount={matchCounts[tabId]}
-                          modified={modifiedTabs.has(tabId)}
-                          hasError={tabsWithErrors.has(tabId)}
-                          onSelect={handleNavSelect}
-                        />
-                      );
-                    })}
-                  </NavGroup>
-                ))}
-              </>
-            ) : (
-              <NavGroup label="Project">
-                <NavItem
-                  tab="project:general"
-                  icon={<SettingsIcon className="w-4 h-4" />}
-                  label="General"
-                  activeTab={activeTab}
-                  isSearching={isSearching}
-                  matchCount={matchCounts["project:general"]}
-                  hasError={tabsWithErrors.has("project:general")}
-                  onSelect={handleNavSelect}
-                />
-                <NavItem
-                  tab="project:context"
-                  icon={<FileCode className="w-4 h-4" />}
-                  label="Context"
-                  activeTab={activeTab}
-                  isSearching={isSearching}
-                  matchCount={matchCounts["project:context"]}
-                  hasError={tabsWithErrors.has("project:context")}
-                  onSelect={handleNavSelect}
-                />
-                <NavItem
-                  tab="project:variables"
-                  icon={<KeyRound className="w-4 h-4" />}
-                  label="Variables"
-                  activeTab={activeTab}
-                  isSearching={isSearching}
-                  matchCount={matchCounts["project:variables"]}
-                  hasError={tabsWithErrors.has("project:variables")}
-                  onSelect={handleNavSelect}
-                />
-                <NavItem
-                  tab="project:automation"
-                  icon={<GitBranch className="w-4 h-4" />}
-                  label="Worktree Setup"
-                  activeTab={activeTab}
-                  isSearching={isSearching}
-                  matchCount={matchCounts["project:automation"]}
-                  hasError={tabsWithErrors.has("project:automation")}
-                  onSelect={handleNavSelect}
-                />
-                <NavItem
-                  tab="project:recipes"
-                  icon={<Workflow className="w-4 h-4" />}
-                  label="Recipes"
-                  activeTab={activeTab}
-                  isSearching={isSearching}
-                  matchCount={matchCounts["project:recipes"]}
-                  hasError={tabsWithErrors.has("project:recipes")}
-                  onSelect={handleNavSelect}
-                />
-                <NavItem
-                  tab="project:commands"
-                  icon={<Command className="w-4 h-4" />}
-                  label="Commands"
-                  activeTab={activeTab}
-                  isSearching={isSearching}
-                  matchCount={matchCounts["project:commands"]}
-                  hasError={tabsWithErrors.has("project:commands")}
-                  onSelect={handleNavSelect}
-                />
-                <NavItem
-                  tab="project:notifications"
-                  icon={<Bell className="w-4 h-4" />}
-                  label="Notifications"
-                  activeTab={activeTab}
-                  isSearching={isSearching}
-                  matchCount={matchCounts["project:notifications"]}
-                  hasError={tabsWithErrors.has("project:notifications")}
-                  onSelect={handleNavSelect}
-                />
-                <NavItem
-                  tab="project:github"
-                  icon={<Github className="w-4 h-4" />}
-                  label="GitHub"
-                  activeTab={activeTab}
-                  isSearching={isSearching}
-                  matchCount={matchCounts["project:github"]}
-                  hasError={tabsWithErrors.has("project:github")}
-                  onSelect={handleNavSelect}
-                />
+            {getSettingsNavGroups(activeScope).map((group) => (
+              <NavGroup key={group.label} label={group.label}>
+                {group.entries.map((entry) => {
+                  const tabId = entry.id as SettingsTab;
+                  return (
+                    <NavItem
+                      key={entry.id}
+                      tab={tabId}
+                      icon={entry.icon}
+                      label={entry.label}
+                      activeTab={activeTab}
+                      isSearching={isSearching}
+                      matchCount={matchCounts[tabId]}
+                      modified={modifiedTabs.has(tabId)}
+                      hasError={tabsWithErrors.has(tabId)}
+                      onSelect={handleNavSelect}
+                    />
+                  );
+                })}
               </NavGroup>
-            )}
+            ))}
           </ScrollShadow>
 
           <div className="pt-2 mt-2 border-t border-daintree-border px-2">
@@ -819,7 +702,7 @@ function SettingsDialogInner({
                     </button>
                   </div>
                 )}
-                {SETTINGS_REGISTRY.map((entry) => {
+                {SETTINGS_REGISTRY.filter((e) => e.scope === "global").map((entry) => {
                   const tabId = entry.id as SettingsTab;
                   const isActive = activeTab === tabId;
                   return (
@@ -896,256 +779,39 @@ function SettingsDialogInner({
                         {projectForm.projectAutoSaveError}
                       </div>
                     )}
-                    {!projectForm.projectIsLoading && !projectForm.projectError && (
-                      <>
-                        <div
-                          role="tabpanel"
-                          id="settings-panel-project:general"
-                          aria-labelledby="settings-tab-project:general"
-                          tabIndex={0}
-                          className={activeTab === "project:general" ? "" : "hidden"}
-                        >
-                          {visitedTabs.has("project:general") && (
-                            <>
-                              <ProjectGeneralTab
-                                currentProject={projectForm.currentProject}
-                                name={projectForm.projectName}
-                                onNameChange={projectForm.setProjectName}
-                                emoji={projectForm.projectEmoji}
-                                onEmojiChange={projectForm.setProjectEmoji}
-                                color={projectForm.projectColor}
-                                onColorChange={projectForm.setProjectColor}
-                                devServerCommand={projectForm.devServerCommand}
-                                onDevServerCommandChange={projectForm.setDevServerCommand}
-                                devServerLoadTimeout={projectForm.devServerLoadTimeout}
-                                onDevServerLoadTimeoutChange={projectForm.setDevServerLoadTimeout}
-                                turbopackEnabled={projectForm.turbopackEnabled}
-                                onTurbopackEnabledChange={projectForm.setTurbopackEnabled}
-                                daintreeMcpTier={projectForm.daintreeMcpTier}
-                                onDaintreeMcpTierChange={projectForm.setDaintreeMcpTier}
-                                projectIconSvg={projectForm.projectIconSvg}
-                                onProjectIconSvgChange={projectForm.setProjectIconSvg}
-                                enableInRepoSettings={projectForm.enableInRepoSettings}
-                                disableInRepoSettings={projectForm.disableInRepoSettings}
-                                projectId={projectId}
-                                isOpen={isOpen}
-                              />
-                              <SettingsTabScrollEffect
-                                isActive={activeTab === "project:general" && !isSearching}
-                                scrollToSectionId={scrollToSection}
-                                onScrollToSectionHandled={handleScrollToSectionHandled}
-                              />
-                            </>
-                          )}
-                        </div>
-
-                        <div
-                          role="tabpanel"
-                          id="settings-panel-project:context"
-                          aria-labelledby="settings-tab-project:context"
-                          tabIndex={0}
-                          className={activeTab === "project:context" ? "" : "hidden"}
-                        >
-                          {visitedTabs.has("project:context") && (
-                            <>
-                              <ProjectContextTab
-                                excludedPaths={projectForm.excludedPaths}
-                                onExcludedPathsChange={projectForm.setExcludedPaths}
-                                copyTreeSettings={projectForm.copyTreeSettings}
-                                onCopyTreeSettingsChange={projectForm.setCopyTreeSettings}
-                                worktrees={projectForm.worktrees}
-                                isOpen={isOpen}
-                              />
-                              <SettingsTabScrollEffect
-                                isActive={activeTab === "project:context" && !isSearching}
-                                scrollToSectionId={scrollToSection}
-                                onScrollToSectionHandled={handleScrollToSectionHandled}
-                              />
-                            </>
-                          )}
-                        </div>
-
-                        <div
-                          role="tabpanel"
-                          id="settings-panel-project:variables"
-                          aria-labelledby="settings-tab-project:variables"
-                          tabIndex={0}
-                          className={activeTab === "project:variables" ? "" : "hidden"}
-                        >
-                          {visitedTabs.has("project:variables") && (
-                            <>
-                              <EnvironmentVariablesEditor
-                                environmentVariables={projectForm.environmentVariables}
-                                onEnvironmentVariablesChange={projectForm.setEnvironmentVariables}
-                                settings={projectForm.projectSettings}
-                                isOpen={isOpen}
-                                onFlush={projectForm.flush}
-                                projectLabel={projectLabel}
-                                globalEnvironmentVariables={globalEnvVars}
-                              />
-                              <SettingsTabScrollEffect
-                                isActive={activeTab === "project:variables" && !isSearching}
-                                scrollToSectionId={scrollToSection}
-                                onScrollToSectionHandled={handleScrollToSectionHandled}
-                              />
-                            </>
-                          )}
-                        </div>
-
-                        <div
-                          role="tabpanel"
-                          id="settings-panel-project:automation"
-                          aria-labelledby="settings-tab-project:automation"
-                          tabIndex={0}
-                          className={activeTab === "project:automation" ? "" : "hidden"}
-                        >
-                          {visitedTabs.has("project:automation") && (
-                            <>
-                              <ProjectAutomationTab
-                                currentProject={projectForm.currentProject}
-                                runCommands={projectForm.runCommands}
-                                onRunCommandsChange={projectForm.setRunCommands}
-                                defaultWorktreeRecipeId={projectForm.defaultWorktreeRecipeId}
-                                onDefaultWorktreeRecipeIdChange={
-                                  projectForm.setDefaultWorktreeRecipeId
-                                }
-                                branchPrefixMode={projectForm.branchPrefixMode}
-                                onBranchPrefixModeChange={projectForm.setBranchPrefixMode}
-                                branchPrefixCustom={projectForm.branchPrefixCustom}
-                                onBranchPrefixCustomChange={projectForm.setBranchPrefixCustom}
-                                worktreePathPattern={projectForm.worktreePathPattern}
-                                onWorktreePathPatternChange={projectForm.setWorktreePathPattern}
-                                terminalShell={projectForm.terminalShell}
-                                onTerminalShellChange={projectForm.setTerminalShell}
-                                terminalShellArgs={projectForm.terminalShellArgs}
-                                onTerminalShellArgsChange={projectForm.setTerminalShellArgs}
-                                terminalDefaultCwd={projectForm.terminalDefaultCwd}
-                                onTerminalDefaultCwdChange={projectForm.setTerminalDefaultCwd}
-                                terminalScrollback={projectForm.terminalScrollback}
-                                onTerminalScrollbackChange={projectForm.setTerminalScrollback}
-                                recipes={projectForm.recipes}
-                                recipesLoading={projectForm.recipesLoading}
-                                onNavigateToRecipes={() => {
-                                  markTabVisited("project:recipes");
-                                  startTransition(() => setActiveTab("project:recipes"));
-                                }}
-                                resourceEnvironments={projectForm.resourceEnvironments}
-                                onResourceEnvironmentsChange={projectForm.setResourceEnvironments}
-                                activeResourceEnvironment={projectForm.activeResourceEnvironment}
-                                onActiveResourceEnvironmentChange={
-                                  projectForm.setActiveResourceEnvironment
-                                }
-                                defaultWorktreeMode={projectForm.defaultWorktreeMode}
-                                onDefaultWorktreeModeChange={projectForm.setDefaultWorktreeMode}
-                                isOpen={isOpen}
-                              />
-                              <SettingsTabScrollEffect
-                                isActive={activeTab === "project:automation" && !isSearching}
-                                scrollToSectionId={scrollToSection}
-                                onScrollToSectionHandled={handleScrollToSectionHandled}
-                              />
-                            </>
-                          )}
-                        </div>
-
-                        <div
-                          role="tabpanel"
-                          id="settings-panel-project:recipes"
-                          aria-labelledby="settings-tab-project:recipes"
-                          tabIndex={0}
-                          className={activeTab === "project:recipes" ? "" : "hidden"}
-                        >
-                          {visitedTabs.has("project:recipes") && (
-                            <>
-                              <ProjectRecipesTab
-                                projectId={projectId}
-                                defaultWorktreeRecipeId={projectForm.defaultWorktreeRecipeId}
-                                onDefaultWorktreeRecipeIdChange={
-                                  projectForm.setDefaultWorktreeRecipeId
-                                }
-                                worktreeMap={projectForm.worktreeMap}
-                                isOpen={isOpen}
-                              />
-                              <SettingsTabScrollEffect
-                                isActive={activeTab === "project:recipes" && !isSearching}
-                                scrollToSectionId={scrollToSection}
-                                onScrollToSectionHandled={handleScrollToSectionHandled}
-                              />
-                            </>
-                          )}
-                        </div>
-
-                        <div
-                          role="tabpanel"
-                          id="settings-panel-project:commands"
-                          aria-labelledby="settings-tab-project:commands"
-                          tabIndex={0}
-                          className={activeTab === "project:commands" ? "" : "hidden"}
-                        >
-                          {visitedTabs.has("project:commands") && (
-                            <>
-                              <CommandOverridesTab
-                                projectId={projectId}
-                                overrides={projectForm.commandOverrides}
-                                onChange={projectForm.setCommandOverrides}
-                              />
-                              <SettingsTabScrollEffect
-                                isActive={activeTab === "project:commands" && !isSearching}
-                                scrollToSectionId={scrollToSection}
-                                onScrollToSectionHandled={handleScrollToSectionHandled}
-                              />
-                            </>
-                          )}
-                        </div>
-
-                        <div
-                          role="tabpanel"
-                          id="settings-panel-project:notifications"
-                          aria-labelledby="settings-tab-project:notifications"
-                          tabIndex={0}
-                          className={activeTab === "project:notifications" ? "" : "hidden"}
-                        >
-                          {visitedTabs.has("project:notifications") && (
-                            <>
-                              <ProjectNotificationsTab
-                                overrides={projectForm.notificationOverrides}
-                                onChange={projectForm.setNotificationOverrides}
-                              />
-                              <SettingsTabScrollEffect
-                                isActive={activeTab === "project:notifications" && !isSearching}
-                                scrollToSectionId={scrollToSection}
-                                onScrollToSectionHandled={handleScrollToSectionHandled}
-                              />
-                            </>
-                          )}
-                        </div>
-
-                        <div
-                          role="tabpanel"
-                          id="settings-panel-project:github"
-                          aria-labelledby="settings-tab-project:github"
-                          tabIndex={0}
-                          className={activeTab === "project:github" ? "" : "hidden"}
-                        >
-                          {visitedTabs.has("project:github") && (
-                            <>
-                              {projectForm.currentProject && (
-                                <ProjectGitHubTab
-                                  githubRemote={projectForm.githubRemote}
-                                  onGithubRemoteChange={projectForm.setGithubRemote}
-                                  projectPath={projectForm.currentProject.path}
+                    {!projectForm.projectIsLoading &&
+                      !projectForm.projectError &&
+                      SETTINGS_REGISTRY.filter((e) => e.scope === "project").map((entry) => {
+                        const tabId = entry.id as SettingsTab;
+                        const isActive = activeTab === tabId;
+                        return (
+                          <div
+                            key={entry.id}
+                            role="tabpanel"
+                            id={`settings-panel-${entry.id}`}
+                            aria-labelledby={`settings-tab-${entry.id}`}
+                            tabIndex={0}
+                            className={isActive ? "" : "hidden"}
+                          >
+                            {visitedTabs.has(tabId) && (
+                              <Suspense fallback={null}>
+                                <ProjectFormTabContent
+                                  entry={entry as LazySettingsTabEntry}
+                                  projectForm={projectForm}
+                                  projectId={projectId}
+                                  isOpen={isOpen}
+                                  globalEnvVars={globalEnvVars}
+                                  projectLabel={projectLabel}
+                                  onNavigateToTab={handleNavSelect}
+                                  isActive={isActive && !isSearching}
+                                  scrollToSectionId={scrollToSection}
+                                  onScrollToSectionHandled={handleScrollToSectionHandled}
                                 />
-                              )}
-                              <SettingsTabScrollEffect
-                                isActive={activeTab === "project:github" && !isSearching}
-                                scrollToSectionId={scrollToSection}
-                                onScrollToSectionHandled={handleScrollToSectionHandled}
-                              />
-                            </>
-                          )}
-                        </div>
-                      </>
-                    )}
+                              </Suspense>
+                            )}
+                          </div>
+                        );
+                      })}
                   </>
                 )}
               </>
@@ -1201,6 +867,163 @@ function LazyTabContent({
 
   const LazyComp = entry.LazyComponent;
   return <LazyComp {...props} />;
+}
+
+function ProjectFormTabContent({
+  entry,
+  projectForm,
+  projectId,
+  isOpen,
+  globalEnvVars,
+  projectLabel,
+  onNavigateToTab,
+  isActive,
+  scrollToSectionId,
+  onScrollToSectionHandled,
+}: {
+  entry: LazySettingsTabEntry;
+  projectForm: ProjectSettingsFormContext;
+  projectId: string;
+  isOpen: boolean;
+  globalEnvVars: Record<string, string>;
+  projectLabel: string;
+  onNavigateToTab: (tab: SettingsTab) => void;
+  isActive: boolean;
+  scrollToSectionId: string | null;
+  onScrollToSectionHandled: (id: string) => void;
+}) {
+  useSettingsScrollToSection(isActive, scrollToSectionId, onScrollToSectionHandled);
+
+  const LazyComp = entry.LazyComponent;
+
+  switch (entry.id) {
+    case "project:general":
+      return (
+        <LazyComp
+          currentProject={projectForm.currentProject}
+          name={projectForm.projectName}
+          onNameChange={projectForm.setProjectName}
+          emoji={projectForm.projectEmoji}
+          onEmojiChange={projectForm.setProjectEmoji}
+          color={projectForm.projectColor}
+          onColorChange={projectForm.setProjectColor}
+          devServerCommand={projectForm.devServerCommand}
+          onDevServerCommandChange={projectForm.setDevServerCommand}
+          devServerLoadTimeout={projectForm.devServerLoadTimeout}
+          onDevServerLoadTimeoutChange={projectForm.setDevServerLoadTimeout}
+          turbopackEnabled={projectForm.turbopackEnabled}
+          onTurbopackEnabledChange={projectForm.setTurbopackEnabled}
+          daintreeMcpTier={projectForm.daintreeMcpTier}
+          onDaintreeMcpTierChange={projectForm.setDaintreeMcpTier}
+          projectIconSvg={projectForm.projectIconSvg}
+          onProjectIconSvgChange={projectForm.setProjectIconSvg}
+          enableInRepoSettings={projectForm.enableInRepoSettings}
+          disableInRepoSettings={projectForm.disableInRepoSettings}
+          projectId={projectId}
+          isOpen={isOpen}
+        />
+      );
+
+    case "project:context":
+      return (
+        <LazyComp
+          excludedPaths={projectForm.excludedPaths}
+          onExcludedPathsChange={projectForm.setExcludedPaths}
+          copyTreeSettings={projectForm.copyTreeSettings}
+          onCopyTreeSettingsChange={projectForm.setCopyTreeSettings}
+          worktrees={projectForm.worktrees}
+          isOpen={isOpen}
+        />
+      );
+
+    case "project:variables":
+      return (
+        <LazyComp
+          environmentVariables={projectForm.environmentVariables}
+          onEnvironmentVariablesChange={projectForm.setEnvironmentVariables}
+          settings={projectForm.projectSettings}
+          isOpen={isOpen}
+          onFlush={projectForm.flush}
+          projectLabel={projectLabel}
+          globalEnvironmentVariables={globalEnvVars}
+        />
+      );
+
+    case "project:automation":
+      return (
+        <LazyComp
+          currentProject={projectForm.currentProject}
+          runCommands={projectForm.runCommands}
+          onRunCommandsChange={projectForm.setRunCommands}
+          defaultWorktreeRecipeId={projectForm.defaultWorktreeRecipeId}
+          onDefaultWorktreeRecipeIdChange={projectForm.setDefaultWorktreeRecipeId}
+          branchPrefixMode={projectForm.branchPrefixMode}
+          onBranchPrefixModeChange={projectForm.setBranchPrefixMode}
+          branchPrefixCustom={projectForm.branchPrefixCustom}
+          onBranchPrefixCustomChange={projectForm.setBranchPrefixCustom}
+          worktreePathPattern={projectForm.worktreePathPattern}
+          onWorktreePathPatternChange={projectForm.setWorktreePathPattern}
+          terminalShell={projectForm.terminalShell}
+          onTerminalShellChange={projectForm.setTerminalShell}
+          terminalShellArgs={projectForm.terminalShellArgs}
+          onTerminalShellArgsChange={projectForm.setTerminalShellArgs}
+          terminalDefaultCwd={projectForm.terminalDefaultCwd}
+          onTerminalDefaultCwdChange={projectForm.setTerminalDefaultCwd}
+          terminalScrollback={projectForm.terminalScrollback}
+          onTerminalScrollbackChange={projectForm.setTerminalScrollback}
+          recipes={projectForm.recipes}
+          recipesLoading={projectForm.recipesLoading}
+          onNavigateToRecipes={() => onNavigateToTab("project:recipes")}
+          resourceEnvironments={projectForm.resourceEnvironments}
+          onResourceEnvironmentsChange={projectForm.setResourceEnvironments}
+          activeResourceEnvironment={projectForm.activeResourceEnvironment}
+          onActiveResourceEnvironmentChange={projectForm.setActiveResourceEnvironment}
+          defaultWorktreeMode={projectForm.defaultWorktreeMode}
+          onDefaultWorktreeModeChange={projectForm.setDefaultWorktreeMode}
+          isOpen={isOpen}
+        />
+      );
+
+    case "project:recipes":
+      return (
+        <LazyComp
+          projectId={projectId}
+          defaultWorktreeRecipeId={projectForm.defaultWorktreeRecipeId}
+          onDefaultWorktreeRecipeIdChange={projectForm.setDefaultWorktreeRecipeId}
+          worktreeMap={projectForm.worktreeMap}
+          isOpen={isOpen}
+        />
+      );
+
+    case "project:commands":
+      return (
+        <LazyComp
+          projectId={projectId}
+          overrides={projectForm.commandOverrides}
+          onChange={projectForm.setCommandOverrides}
+        />
+      );
+
+    case "project:notifications":
+      return (
+        <LazyComp
+          overrides={projectForm.notificationOverrides}
+          onChange={projectForm.setNotificationOverrides}
+        />
+      );
+
+    case "project:github":
+      return (
+        <LazyComp
+          githubRemote={projectForm.githubRemote}
+          onGithubRemoteChange={projectForm.setGithubRemote}
+          projectPath={projectForm.currentProject?.path}
+        />
+      );
+
+    default:
+      return null;
+  }
 }
 
 // Scrolls to the section with the given DOM id, focuses the first input
