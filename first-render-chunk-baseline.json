@@ -1,0 +1,792 @@
+{
+  "entryKey": "index.html",
+  "seeds": {
+    "resolved": [
+      "src/components/Browser/BrowserPane.tsx",
+      "src/components/DevPreview/DevPreviewPane.tsx"
+    ],
+    "missing": []
+  },
+  "chunkCount": 155,
+  "chunks": {
+    "_ActionService-CbV-wWCz.js": {
+      "file": "assets/ActionService-CbV-wWCz.js",
+      "raw": 32679,
+      "gzip": 7934
+    },
+    "_AgentCard-BoAVVl1w.js": {
+      "file": "assets/AgentCard-BoAVVl1w.js",
+      "raw": 12382,
+      "gzip": 4550
+    },
+    "_AppPaletteDialog-DZgCcsEo.js": {
+      "file": "assets/AppPaletteDialog-DZgCcsEo.js",
+      "raw": 7367,
+      "gzip": 3195
+    },
+    "_CloneRepoDialog-BAOrg_xy.js": {
+      "file": "assets/CloneRepoDialog-BAOrg_xy.js",
+      "raw": 6914,
+      "gzip": 2456
+    },
+    "_ConfirmDialog-OhEW41F9.js": {
+      "file": "assets/ConfirmDialog-OhEW41F9.js",
+      "raw": 3605,
+      "gzip": 1836
+    },
+    "_DiffViewer-Cc8O6sDb.js": {
+      "file": "assets/DiffViewer-Cc8O6sDb.js",
+      "raw": 28563,
+      "gzip": 10516
+    },
+    "_EmptyState-B3SRrR_w.js": {
+      "file": "assets/EmptyState-B3SRrR_w.js",
+      "raw": 1527,
+      "gzip": 811
+    },
+    "_FileViewerModal-CqhokkG4.js": {
+      "file": "assets/FileViewerModal-CqhokkG4.js",
+      "raw": 17685,
+      "gzip": 6496
+    },
+    "_GitHubDropdownSkeletons-jLJGHvus.js": {
+      "file": "assets/GitHubDropdownSkeletons-jLJGHvus.js",
+      "raw": 7398,
+      "gzip": 2362
+    },
+    "_GitInitDialog-CptvTCwZ.js": {
+      "file": "assets/GitInitDialog-CptvTCwZ.js",
+      "raw": 6368,
+      "gzip": 2245
+    },
+    "_LiveTimeAgo-DB-OP-gM.js": {
+      "file": "assets/LiveTimeAgo-DB-OP-gM.js",
+      "raw": 2374,
+      "gzip": 1189
+    },
+    "_McpAuditLogViewer-Dds7rxeH.js": {
+      "file": "assets/McpAuditLogViewer-Dds7rxeH.js",
+      "raw": 8224,
+      "gzip": 2982
+    },
+    "_PaletteOverflowNotice-DpoaG7iL.js": {
+      "file": "assets/PaletteOverflowNotice-DpoaG7iL.js",
+      "raw": 481,
+      "gzip": 353
+    },
+    "_PaletteStrip-yZB3eLoH.js": {
+      "file": "assets/PaletteStrip-yZB3eLoH.js",
+      "raw": 632,
+      "gzip": 428
+    },
+    "_ProjectSwitcherPalette-Bgsv6C1z.js": {
+      "file": "assets/ProjectSwitcherPalette-Bgsv6C1z.js",
+      "raw": 36070,
+      "gzip": 10845
+    },
+    "_QuickCreatePalette-CyLpK063.js": {
+      "file": "assets/QuickCreatePalette-CyLpK063.js",
+      "raw": 6671,
+      "gzip": 2662
+    },
+    "_RecipeEditor-4wlx5Ruf.js": {
+      "file": "assets/RecipeEditor-4wlx5Ruf.js",
+      "raw": 43256,
+      "gzip": 10830
+    },
+    "_SearchablePalette-925XNf3S.js": {
+      "file": "assets/SearchablePalette-925XNf3S.js",
+      "raw": 5097,
+      "gzip": 2597
+    },
+    "_SettingsCheckbox-BrfbJK5t.js": {
+      "file": "assets/SettingsCheckbox-BrfbJK5t.js",
+      "raw": 3301,
+      "gzip": 1557
+    },
+    "_SettingsChoicebox-BJ40zo-M.js": {
+      "file": "assets/SettingsChoicebox-BJ40zo-M.js",
+      "raw": 4118,
+      "gzip": 1605
+    },
+    "_SettingsFlushRegistry-D9fHjWtK.js": {
+      "file": "assets/SettingsFlushRegistry-D9fHjWtK.js",
+      "raw": 1314,
+      "gzip": 709
+    },
+    "_SettingsInput-DZX9d2tK.js": {
+      "file": "assets/SettingsInput-DZX9d2tK.js",
+      "raw": 2101,
+      "gzip": 957
+    },
+    "_SettingsSection-CGlOaJLA.js": {
+      "file": "assets/SettingsSection-CGlOaJLA.js",
+      "raw": 1485,
+      "gzip": 835
+    },
+    "_SettingsSelect-DSAtpUjA.js": {
+      "file": "assets/SettingsSelect-DSAtpUjA.js",
+      "raw": 2157,
+      "gzip": 992
+    },
+    "_SettingsSubtabBar-QhCbQOaO.js": {
+      "file": "assets/SettingsSubtabBar-QhCbQOaO.js",
+      "raw": 1815,
+      "gzip": 961
+    },
+    "_SettingsSwitch-C3JIDq98.js": {
+      "file": "assets/SettingsSwitch-C3JIDq98.js",
+      "raw": 1959,
+      "gzip": 841
+    },
+    "_SettingsSwitchCard-BJAHHaas.js": {
+      "file": "assets/SettingsSwitchCard-BJAHHaas.js",
+      "raw": 4134,
+      "gzip": 1960
+    },
+    "_SettingsValidationRegistry-BIqPiojE.js": {
+      "file": "assets/SettingsValidationRegistry-BIqPiojE.js",
+      "raw": 1239,
+      "gzip": 690
+    },
+    "_ShortcutReferenceDialog-BQCUkU2I.js": {
+      "file": "assets/ShortcutReferenceDialog-BQCUkU2I.js",
+      "raw": 4682,
+      "gzip": 2087
+    },
+    "_Spinner-BAIpGLPe.js": {
+      "file": "assets/Spinner-BAIpGLPe.js",
+      "raw": 580,
+      "gzip": 398
+    },
+    "_TerminalInstanceService-XqwvbfY5.js": {
+      "file": "assets/TerminalInstanceService-XqwvbfY5.js",
+      "raw": 210990,
+      "gzip": 56659
+    },
+    "_TruncatedTooltip-Cd6kG1g0.js": {
+      "file": "assets/TruncatedTooltip-Cd6kG1g0.js",
+      "raw": 1324,
+      "gzip": 809
+    },
+    "_WorktreeOverviewModal-OsDWUn8E.js": {
+      "file": "assets/WorktreeOverviewModal-OsDWUn8E.js",
+      "raw": 205735,
+      "gzip": 59455
+    },
+    "_WorktreePalette-Cs7po0XZ.js": {
+      "file": "assets/WorktreePalette-Cs7po0XZ.js",
+      "raw": 4022,
+      "gzip": 1843
+    },
+    "_YarnIcon-D-2LcJCr.js": {
+      "file": "assets/YarnIcon-D-2LcJCr.js",
+      "raw": 50371,
+      "gzip": 15757
+    },
+    "_agentRegistry-BqeiyqFT.js": {
+      "file": "assets/agentRegistry-BqeiyqFT.js",
+      "raw": 43555,
+      "gzip": 9337
+    },
+    "_agentSettingsStore-NMWDjwBq.js": {
+      "file": "assets/agentSettingsStore-NMWDjwBq.js",
+      "raw": 5241,
+      "gzip": 1818
+    },
+    "_agents-fdrEKExu.js": {
+      "file": "assets/agents-fdrEKExu.js",
+      "raw": 5687,
+      "gzip": 2327
+    },
+    "_appClient-Cj2qup3O.js": {
+      "file": "assets/appClient-Cj2qup3O.js",
+      "raw": 364,
+      "gzip": 197
+    },
+    "_appThemeStore-BEH7zaBp.js": {
+      "file": "assets/appThemeStore-BEH7zaBp.js",
+      "raw": 4144,
+      "gzip": 1397
+    },
+    "_appThemeViewTransition-B08NrEa4.js": {
+      "file": "assets/appThemeViewTransition-B08NrEa4.js",
+      "raw": 735,
+      "gzip": 438
+    },
+    "_categoryColors-CltTATwy.js": {
+      "file": "assets/categoryColors-CltTATwy.js",
+      "raw": 1464,
+      "gzip": 509
+    },
+    "_checklistItems-CLtuzalR.js": {
+      "file": "assets/checklistItems-CLtuzalR.js",
+      "raw": 827,
+      "gzip": 473
+    },
+    "_clients-DUWKS-oa.js": {
+      "file": "assets/clients-DUWKS-oa.js",
+      "raw": 20965,
+      "gzip": 5221
+    },
+    "_clike-DNIAnB4I.js": {
+      "file": "assets/clike-DNIAnB4I.js",
+      "raw": 768,
+      "gzip": 483
+    },
+    "_createWorktreeStore-cZG3nPjO.js": {
+      "file": "assets/createWorktreeStore-cZG3nPjO.js",
+      "raw": 4492,
+      "gzip": 1616
+    },
+    "_css-D9MVRXif.js": {
+      "file": "assets/css-D9MVRXif.js",
+      "raw": 1295,
+      "gzip": 646
+    },
+    "_devServerDetection-CA3r-znu.js": {
+      "file": "assets/devServerDetection-CA3r-znu.js",
+      "raw": 432,
+      "gzip": 296
+    },
+    "_envVars-Can6CjaS.js": {
+      "file": "assets/envVars-Can6CjaS.js",
+      "raw": 129,
+      "gzip": 133
+    },
+    "_errorMessage-_KvqSup-.js": {
+      "file": "assets/errorMessage-_KvqSup-.js",
+      "raw": 5867,
+      "gzip": 2329
+    },
+    "_fleetEnterBroadcast-CY2wnRLq.js": {
+      "file": "assets/fleetEnterBroadcast-CY2wnRLq.js",
+      "raw": 18796,
+      "gzip": 5867
+    },
+    "_folderName-COtPiJ8I.js": {
+      "file": "assets/folderName-COtPiJ8I.js",
+      "raw": 803,
+      "gzip": 427
+    },
+    "_githubConfigStore-hq1vwtBU.js": {
+      "file": "assets/githubConfigStore-hq1vwtBU.js",
+      "raw": 3886,
+      "gzip": 1370
+    },
+    "_githubResourceCache-Bf8r5eUx.js": {
+      "file": "assets/githubResourceCache-Bf8r5eUx.js",
+      "raw": 1133,
+      "gzip": 556
+    },
+    "_globalEnvClient-D2_zEWE5.js": {
+      "file": "assets/globalEnvClient-D2_zEWE5.js",
+      "raw": 436,
+      "gzip": 274
+    },
+    "_logger-xZBuZXm4.js": {
+      "file": "assets/logger-xZBuZXm4.js",
+      "raw": 597,
+      "gzip": 305
+    },
+    "_markup-DaEkHs8M.js": {
+      "file": "assets/markup-DaEkHs8M.js",
+      "raw": 2941,
+      "gzip": 1178
+    },
+    "_mcpConfirmStore-YxJKzknk.js": {
+      "file": "assets/mcpConfirmStore-YxJKzknk.js",
+      "raw": 805,
+      "gzip": 431
+    },
+    "_memoryLeakConfigStore-CHvk22Cr.js": {
+      "file": "assets/memoryLeakConfigStore-CHvk22Cr.js",
+      "raw": 303,
+      "gzip": 198
+    },
+    "_notificationSettingsStore-EIk7Ggn5.js": {
+      "file": "assets/notificationSettingsStore-EIk7Ggn5.js",
+      "raw": 1950,
+      "gzip": 599
+    },
+    "_notify-BUtK5gzC.js": {
+      "file": "assets/notify-BUtK5gzC.js",
+      "raw": 9899,
+      "gzip": 3403
+    },
+    "_panelSpawning-Bh-hK8V4.js": {
+      "file": "assets/panelSpawning-Bh-hK8V4.js",
+      "raw": 11606,
+      "gzip": 4428
+    },
+    "_persistedStoreRegistry-eGuKWGVg.js": {
+      "file": "assets/persistedStoreRegistry-eGuKWGVg.js",
+      "raw": 547,
+      "gzip": 300
+    },
+    "_portalStore-X70Fipn8.js": {
+      "file": "assets/portalStore-X70Fipn8.js",
+      "raw": 6175,
+      "gzip": 2192
+    },
+    "_projectStore-CUhdC8sJ.js": {
+      "file": "assets/projectStore-CUhdC8sJ.js",
+      "raw": 22332,
+      "gzip": 6886
+    },
+    "_radix-loader-BAknra6E.js": {
+      "file": "assets/radix-loader-BAknra6E.js",
+      "raw": 976,
+      "gzip": 541
+    },
+    "_rolldown-runtime-BYbx6iT9.js": {
+      "file": "assets/rolldown-runtime-BYbx6iT9.js",
+      "raw": 826,
+      "gzip": 473
+    },
+    "_safeStorage-CnF-K-wk.js": {
+      "file": "assets/safeStorage-CnF-K-wk.js",
+      "raw": 6103,
+      "gzip": 2367
+    },
+    "_select-BkuzIHkE.js": {
+      "file": "assets/select-BkuzIHkE.js",
+      "raw": 9523,
+      "gzip": 3357
+    },
+    "_store-lgSmupwd.js": {
+      "file": "assets/store-lgSmupwd.js",
+      "raw": 28075,
+      "gzip": 8228
+    },
+    "_svgSanitizer-m1Djujuw.js": {
+      "file": "assets/svgSanitizer-m1Djujuw.js",
+      "raw": 1966,
+      "gzip": 999
+    },
+    "_terminalInputStore-lU901Pug.js": {
+      "file": "assets/terminalInputStore-lU901Pug.js",
+      "raw": 7008,
+      "gzip": 2342
+    },
+    "_theme-BVVxqBVg.js": {
+      "file": "assets/theme-BVVxqBVg.js",
+      "raw": 80252,
+      "gzip": 18049
+    },
+    "_ttlCache-D6kSTNqN.js": {
+      "file": "assets/ttlCache-D6kSTNqN.js",
+      "raw": 571,
+      "gzip": 301
+    },
+    "_types-CjNj4Obf.js": {
+      "file": "assets/types-CjNj4Obf.js",
+      "raw": 10865,
+      "gzip": 3562
+    },
+    "_useAgentDiscoveryOnboarding-B6Ls3oPe.js": {
+      "file": "assets/useAgentDiscoveryOnboarding-B6Ls3oPe.js",
+      "raw": 2059,
+      "gzip": 812
+    },
+    "_useBranchForPath-CfypfySU.js": {
+      "file": "assets/useBranchForPath-CfypfySU.js",
+      "raw": 431,
+      "gzip": 298
+    },
+    "_useFindInPage-CZbAD3QK.js": {
+      "file": "assets/useFindInPage-CZbAD3QK.js",
+      "raw": 28532,
+      "gzip": 9446
+    },
+    "_usePluginToolbarButtons-CrzzfShc.js": {
+      "file": "assets/usePluginToolbarButtons-CrzzfShc.js",
+      "raw": 889,
+      "gzip": 562
+    },
+    "_utils-B0rSPM4_.js": {
+      "file": "assets/utils-B0rSPM4_.js",
+      "raw": 217,
+      "gzip": 194
+    },
+    "_vendor-D4SQMtVl.js": {
+      "file": "assets/vendor-D4SQMtVl.js",
+      "raw": 381964,
+      "gzip": 124173
+    },
+    "_vendor-editor-kOLqB-Bw.js": {
+      "file": "assets/vendor-editor-kOLqB-Bw.js",
+      "raw": 1681933,
+      "gzip": 574045
+    },
+    "_vendor-icons-CBgb_l55.js": {
+      "file": "assets/vendor-icons-CBgb_l55.js",
+      "raw": 46920,
+      "gzip": 14226
+    },
+    "_vendor-motion-Dp1Ooe4v.js": {
+      "file": "assets/vendor-motion-Dp1Ooe4v.js",
+      "raw": 132493,
+      "gzip": 42917
+    },
+    "_vendor-radix-B3Lc2UGm.js": {
+      "file": "assets/vendor-radix-B3Lc2UGm.js",
+      "raw": 5051,
+      "gzip": 1918
+    },
+    "_vendor-radix-overlay-rScLfm_l.js": {
+      "file": "assets/vendor-radix-overlay-rScLfm_l.js",
+      "raw": 105042,
+      "gzip": 31880
+    },
+    "_vendor-radix-utils-_9fdRwKO.js": {
+      "file": "assets/vendor-radix-utils-_9fdRwKO.js",
+      "raw": 14400,
+      "gzip": 3243
+    },
+    "_vendor-react-CSdVl0cc.js": {
+      "file": "assets/vendor-react-CSdVl0cc.js",
+      "raw": 181960,
+      "gzip": 56451
+    },
+    "_vendor-xterm-BYLkEf-P.js": {
+      "file": "assets/vendor-xterm-BYLkEf-P.js",
+      "raw": 483783,
+      "gzip": 127757
+    },
+    "_vendor-xterm-webgl-BWKUkz0x.js": {
+      "file": "assets/vendor-xterm-webgl-BWKUkz0x.js",
+      "raw": 120961,
+      "gzip": 33517
+    },
+    "_vendor-zod-CoaUrxvt.js": {
+      "file": "assets/vendor-zod-CoaUrxvt.js",
+      "raw": 73735,
+      "gzip": 19421
+    },
+    "_voiceInputSettingsEvents-Bt8AqOdM.js": {
+      "file": "assets/voiceInputSettingsEvents-Bt8AqOdM.js",
+      "raw": 134,
+      "gzip": 130
+    },
+    "index.html": {
+      "file": "assets/index-DlfOrcXe.js",
+      "raw": 464510,
+      "gzip": 145229
+    },
+    "node_modules/refractor/lang/c.js": {
+      "file": "assets/c-_T6E_aFq.js",
+      "raw": 1973,
+      "gzip": 1027
+    },
+    "node_modules/refractor/lang/cpp.js": {
+      "file": "assets/cpp-EBUJzy2u.js",
+      "raw": 2711,
+      "gzip": 1276
+    },
+    "node_modules/refractor/lang/csharp.js": {
+      "file": "assets/csharp-BcSgLAhb.js",
+      "raw": 6491,
+      "gzip": 2544
+    },
+    "node_modules/refractor/lang/docker.js": {
+      "file": "assets/docker-COHjz2Q1.js",
+      "raw": 1629,
+      "gzip": 757
+    },
+    "node_modules/refractor/lang/go.js": {
+      "file": "assets/go-BXu8Df1t.js",
+      "raw": 1075,
+      "gzip": 681
+    },
+    "node_modules/refractor/lang/graphql.js": {
+      "file": "assets/graphql-BXokt2Hk.js",
+      "raw": 2592,
+      "gzip": 1183
+    },
+    "node_modules/refractor/lang/java.js": {
+      "file": "assets/java-2AllTMla.js",
+      "raw": 2888,
+      "gzip": 1296
+    },
+    "node_modules/refractor/lang/kotlin.js": {
+      "file": "assets/kotlin-C00Erxg3.js",
+      "raw": 2053,
+      "gzip": 1018
+    },
+    "node_modules/refractor/lang/less.js": {
+      "file": "assets/less-CPIWbjJj.js",
+      "raw": 793,
+      "gzip": 445
+    },
+    "node_modules/refractor/lang/makefile.js": {
+      "file": "assets/makefile-C4NnfmMs.js",
+      "raw": 1008,
+      "gzip": 596
+    },
+    "node_modules/refractor/lang/php.js": {
+      "file": "assets/php-QKMW49Rq.js",
+      "raw": 7581,
+      "gzip": 2528
+    },
+    "node_modules/refractor/lang/python.js": {
+      "file": "assets/python-BjrzksOA.js",
+      "raw": 2168,
+      "gzip": 1125
+    },
+    "node_modules/refractor/lang/ruby.js": {
+      "file": "assets/ruby-DTEUbcqj.js",
+      "raw": 3686,
+      "gzip": 1542
+    },
+    "node_modules/refractor/lang/rust.js": {
+      "file": "assets/rust-Bnjm8ade.js",
+      "raw": 2542,
+      "gzip": 1213
+    },
+    "node_modules/refractor/lang/sass.js": {
+      "file": "assets/sass-DC4V7KQf.js",
+      "raw": 1203,
+      "gzip": 537
+    },
+    "node_modules/refractor/lang/scss.js": {
+      "file": "assets/scss-BO7-qcpW.js",
+      "raw": 1429,
+      "gzip": 696
+    },
+    "node_modules/refractor/lang/sql.js": {
+      "file": "assets/sql-DR7-m67L.js",
+      "raw": 3325,
+      "gzip": 1871
+    },
+    "node_modules/refractor/lang/swift.js": {
+      "file": "assets/swift-C58hqDkw.js",
+      "raw": 3005,
+      "gzip": 1330
+    },
+    "node_modules/refractor/lang/toml.js": {
+      "file": "assets/toml-BhacOpG5.js",
+      "raw": 1031,
+      "gzip": 541
+    },
+    "node_modules/refractor/lang/yaml.js": {
+      "file": "assets/yaml-BToElibd.js",
+      "raw": 2049,
+      "gzip": 905
+    },
+    "src/App.tsx": {
+      "file": "assets/App-D3NBdxgE.js",
+      "raw": 1000261,
+      "gzip": 274237
+    },
+    "src/components/ActionPalette/ActionPalette.tsx": {
+      "file": "assets/ActionPalette-Cvi37kWH.js",
+      "raw": 4395,
+      "gzip": 1980
+    },
+    "src/components/Browser/BrowserPane.tsx": {
+      "file": "assets/BrowserPane-CK3yb8Cs.js",
+      "raw": 22465,
+      "gzip": 7844
+    },
+    "src/components/DevPreview/DevPreviewPane.tsx": {
+      "file": "assets/DevPreviewPane-C0XnuOli.js",
+      "raw": 30302,
+      "gzip": 9412
+    },
+    "src/components/FileViewer/FileViewerModalHost.tsx": {
+      "file": "assets/FileViewerModalHost-DlQFJDZJ.js",
+      "raw": 3344,
+      "gzip": 1737
+    },
+    "src/components/GitHub/CommitList.tsx": {
+      "file": "assets/CommitList-B352lv6I.js",
+      "raw": 11138,
+      "gzip": 4231
+    },
+    "src/components/GitHub/GitHubResourceList.tsx": {
+      "file": "assets/GitHubResourceList-W9vzZDyC.js",
+      "raw": 48268,
+      "gzip": 16173
+    },
+    "src/components/LogLevelPalette/LogLevelPalette.tsx": {
+      "file": "assets/LogLevelPalette-p4dsfeLu.js",
+      "raw": 5364,
+      "gzip": 2276
+    },
+    "src/components/McpConfirmDialog.tsx": {
+      "file": "assets/McpConfirmDialog-CddQeDFn.js",
+      "raw": 1793,
+      "gzip": 963
+    },
+    "src/components/Onboarding/CelebrationConfetti.tsx": {
+      "file": "assets/CelebrationConfetti-DgNEkwaf.js",
+      "raw": 2922,
+      "gzip": 1476
+    },
+    "src/components/Onboarding/GettingStartedChecklist.tsx": {
+      "file": "assets/GettingStartedChecklist-JK6SlrMF.js",
+      "raw": 7778,
+      "gzip": 3357
+    },
+    "src/components/Onboarding/OnboardingFlow.tsx": {
+      "file": "assets/OnboardingFlow-BBPZJW4H.js",
+      "raw": 48357,
+      "gzip": 15196
+    },
+    "src/components/PanelPalette/PanelPalette.tsx": {
+      "file": "assets/PanelPalette-BsZVChvP.js",
+      "raw": 7636,
+      "gzip": 3643
+    },
+    "src/components/Project/CreateProjectFolderDialog.tsx": {
+      "file": "assets/CreateProjectFolderDialog-DgTwwlcp.js",
+      "raw": 3581,
+      "gzip": 1519
+    },
+    "src/components/Project/ProjectMruSwitcherOverlay.tsx": {
+      "file": "assets/ProjectMruSwitcherOverlay-BTJj-B3p.js",
+      "raw": 2428,
+      "gzip": 1278
+    },
+    "src/components/QuickSwitcher/QuickSwitcher.tsx": {
+      "file": "assets/QuickSwitcher-BFdtzsU4.js",
+      "raw": 5220,
+      "gzip": 2342
+    },
+    "src/components/Settings/AgentSettings.tsx": {
+      "file": "assets/AgentSettings-DlVTguZe.js",
+      "raw": 86981,
+      "gzip": 25769
+    },
+    "src/components/Settings/DaintreeAssistantSettingsTab.tsx": {
+      "file": "assets/DaintreeAssistantSettingsTab-54J8j3YQ.js",
+      "raw": 22125,
+      "gzip": 7513
+    },
+    "src/components/Settings/EnvironmentSettingsTab.tsx": {
+      "file": "assets/EnvironmentSettingsTab-DW4J5GM8.js",
+      "raw": 6696,
+      "gzip": 2620
+    },
+    "src/components/Settings/GitHubSettingsTab.tsx": {
+      "file": "assets/GitHubSettingsTab-DFXLLEVR.js",
+      "raw": 7083,
+      "gzip": 2213
+    },
+    "src/components/Settings/IntegrationsTab.tsx": {
+      "file": "assets/IntegrationsTab-C8010Akj.js",
+      "raw": 10879,
+      "gzip": 3099
+    },
+    "src/components/Settings/KeyboardShortcutsTab.tsx": {
+      "file": "assets/KeyboardShortcutsTab-DfdS4ccg.js",
+      "raw": 14577,
+      "gzip": 4594
+    },
+    "src/components/Settings/McpServerSettingsTab.tsx": {
+      "file": "assets/McpServerSettingsTab-BBQh6qxA.js",
+      "raw": 13929,
+      "gzip": 4223
+    },
+    "src/components/Settings/NotificationSettingsTab.tsx": {
+      "file": "assets/NotificationSettingsTab-CcvW7n2K.js",
+      "raw": 15665,
+      "gzip": 4965
+    },
+    "src/components/Settings/PortalSettingsTab.tsx": {
+      "file": "assets/PortalSettingsTab-BDWrG4yd.js",
+      "raw": 13925,
+      "gzip": 4805
+    },
+    "src/components/Settings/PrivacyDataTab.tsx": {
+      "file": "assets/PrivacyDataTab-BPrtyDh3.js",
+      "raw": 11985,
+      "gzip": 3639
+    },
+    "src/components/Settings/SettingsDialog.tsx": {
+      "file": "assets/SettingsDialog-BF-Ghv4r.js",
+      "raw": 184178,
+      "gzip": 46437
+    },
+    "src/components/Settings/TerminalAppearanceTab.tsx": {
+      "file": "assets/TerminalAppearanceTab-oUvSn3_m.js",
+      "raw": 24756,
+      "gzip": 8342
+    },
+    "src/components/Settings/TerminalSettingsTab.tsx": {
+      "file": "assets/TerminalSettingsTab-NGiPBH4T.js",
+      "raw": 19908,
+      "gzip": 5677
+    },
+    "src/components/Settings/ToolbarSettingsTab.tsx": {
+      "file": "assets/ToolbarSettingsTab-B-NPkKG_.js",
+      "raw": 12025,
+      "gzip": 4570
+    },
+    "src/components/Settings/TroubleshootingTab.tsx": {
+      "file": "assets/TroubleshootingTab-D0oGWFPa.js",
+      "raw": 18464,
+      "gzip": 6225
+    },
+    "src/components/Settings/VoiceInputSettingsTab.tsx": {
+      "file": "assets/VoiceInputSettingsTab-BHBaGkHC.js",
+      "raw": 22526,
+      "gzip": 7736
+    },
+    "src/components/Settings/WorktreeSettingsTab.tsx": {
+      "file": "assets/WorktreeSettingsTab-Ck5bu1k4.js",
+      "raw": 8244,
+      "gzip": 2383
+    },
+    "src/components/Terminal/HybridInputBar.tsx": {
+      "file": "assets/HybridInputBar-gVizfSK4.js",
+      "raw": 126131,
+      "gzip": 37975
+    },
+    "src/components/Terminal/PanelLimitConfirmDialog.tsx": {
+      "file": "assets/PanelLimitConfirmDialog-Z-Xtnllx.js",
+      "raw": 1314,
+      "gzip": 794
+    },
+    "src/components/Terminal/SendToAgentPalette.tsx": {
+      "file": "assets/SendToAgentPalette-iVtRaJqw.js",
+      "raw": 4021,
+      "gzip": 1857
+    },
+    "src/components/TerminalPalette/NewTerminalPalette.tsx": {
+      "file": "assets/NewTerminalPalette-BdTzAk1M.js",
+      "raw": 4342,
+      "gzip": 2173
+    },
+    "src/components/ThemePalette/ThemePalette.tsx": {
+      "file": "assets/ThemePalette-BW3ctfrS.js",
+      "raw": 5260,
+      "gzip": 2522
+    },
+    "src/components/Worktree/CrossWorktreeDiff.tsx": {
+      "file": "assets/CrossWorktreeDiff-DYCMtQpv.js",
+      "raw": 8104,
+      "gzip": 3081
+    },
+    "src/components/Worktree/NewWorktreeDialog.tsx": {
+      "file": "assets/NewWorktreeDialog-4nAJygum.js",
+      "raw": 53905,
+      "gzip": 15911
+    },
+    "src/components/ui/radix-deferred.ts": {
+      "file": "assets/radix-deferred-mfRhqd_2.js",
+      "raw": 199,
+      "gzip": 151
+    },
+    "src/lib/motionFeatures.ts": {
+      "file": "assets/motionFeatures-DC85bSfr.js",
+      "raw": 69,
+      "gzip": 84
+    }
+  },
+  "totals": {
+    "raw": 6731748,
+    "gzip": 2084607
+  }
+}

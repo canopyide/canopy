@@ -2,236 +2,240 @@
   "entryChunk": "index",
   "chunks": {
     "ActionPalette": {
-      "raw": 5368,
-      "gzip": 2434
+      "raw": 4395,
+      "gzip": 1980
     },
     "ActionService": {
-      "raw": 32567,
-      "gzip": 7892
+      "raw": 32679,
+      "gzip": 7934
     },
     "AgentCard": {
-      "raw": 12373,
-      "gzip": 4541
+      "raw": 12382,
+      "gzip": 4550
     },
     "AgentSettings": {
-      "raw": 87521,
-      "gzip": 26011
+      "raw": 86981,
+      "gzip": 25769
     },
     "App": {
-      "raw": 964867,
-      "gzip": 262629
+      "raw": 1000261,
+      "gzip": 274237
     },
     "AppPaletteDialog": {
-      "raw": 7997,
-      "gzip": 3411
+      "raw": 7367,
+      "gzip": 3195
     },
     "BrowserPane": {
-      "raw": 32331,
-      "gzip": 10098
+      "raw": 22465,
+      "gzip": 7844
     },
     "CelebrationConfetti": {
       "raw": 2922,
-      "gzip": 1478
+      "gzip": 1476
     },
     "CloneRepoDialog": {
-      "raw": 1022,
-      "gzip": 499
+      "raw": 6914,
+      "gzip": 2456
     },
     "CommitList": {
-      "raw": 11280,
-      "gzip": 4289
+      "raw": 11138,
+      "gzip": 4231
     },
     "ConfirmDialog": {
-      "raw": 1504,
-      "gzip": 831
+      "raw": 3605,
+      "gzip": 1836
     },
     "CreateProjectFolderDialog": {
-      "raw": 4360,
-      "gzip": 1864
+      "raw": 3581,
+      "gzip": 1519
     },
     "CrossWorktreeDiff": {
-      "raw": 8911,
-      "gzip": 3440
+      "raw": 8104,
+      "gzip": 3081
     },
     "DaintreeAssistantSettingsTab": {
-      "raw": 11262,
-      "gzip": 4095
+      "raw": 22125,
+      "gzip": 7513
     },
     "DevPreviewPane": {
-      "raw": 30946,
-      "gzip": 9690
+      "raw": 30302,
+      "gzip": 9412
     },
     "DiffViewer": {
-      "raw": 28560,
-      "gzip": 10514
+      "raw": 28563,
+      "gzip": 10516
     },
     "EmptyState": {
       "raw": 1527,
       "gzip": 811
     },
     "EnvironmentSettingsTab": {
-      "raw": 6789,
-      "gzip": 2654
+      "raw": 6696,
+      "gzip": 2620
     },
     "FileViewerModal": {
-      "raw": 17641,
-      "gzip": 6468
+      "raw": 17685,
+      "gzip": 6496
     },
     "FileViewerModalHost": {
-      "raw": 4001,
-      "gzip": 1818
+      "raw": 3344,
+      "gzip": 1737
     },
     "GettingStartedChecklist": {
-      "raw": 5814,
-      "gzip": 2497
+      "raw": 7778,
+      "gzip": 3357
     },
     "GitHubDropdownSkeletons": {
       "raw": 7398,
-      "gzip": 2367
+      "gzip": 2362
     },
     "GitHubResourceList": {
-      "raw": 48504,
-      "gzip": 16302
+      "raw": 48268,
+      "gzip": 16173
     },
     "GitHubSettingsTab": {
-      "raw": 7820,
-      "gzip": 2517
+      "raw": 7083,
+      "gzip": 2213
     },
     "GitInitDialog": {
-      "raw": 1018,
-      "gzip": 497
+      "raw": 6368,
+      "gzip": 2245
     },
     "HybridInputBar": {
-      "raw": 132534,
-      "gzip": 39874
+      "raw": 126131,
+      "gzip": 37975
     },
     "IntegrationsTab": {
-      "raw": 11559,
-      "gzip": 3369
+      "raw": 10879,
+      "gzip": 3099
     },
     "KeyboardShortcutsTab": {
-      "raw": 15166,
-      "gzip": 4836
+      "raw": 14577,
+      "gzip": 4594
     },
     "LiveTimeAgo": {
       "raw": 2374,
       "gzip": 1189
     },
     "LogLevelPalette": {
-      "raw": 6283,
-      "gzip": 2681
+      "raw": 5364,
+      "gzip": 2276
+    },
+    "McpAuditLogViewer": {
+      "raw": 8224,
+      "gzip": 2982
     },
     "McpConfirmDialog": {
-      "raw": 2665,
-      "gzip": 1348
+      "raw": 1793,
+      "gzip": 963
     },
     "McpServerSettingsTab": {
-      "raw": 19546,
-      "gzip": 5520
+      "raw": 13929,
+      "gzip": 4223
     },
     "NewTerminalPalette": {
-      "raw": 4976,
-      "gzip": 2436
+      "raw": 4342,
+      "gzip": 2173
     },
     "NewWorktreeDialog": {
-      "raw": 54436,
-      "gzip": 16138
+      "raw": 53905,
+      "gzip": 15911
     },
     "NotificationSettingsTab": {
-      "raw": 15761,
-      "gzip": 5010
+      "raw": 15665,
+      "gzip": 4965
     },
     "OnboardingFlow": {
-      "raw": 48773,
-      "gzip": 15347
+      "raw": 48357,
+      "gzip": 15196
     },
     "PaletteOverflowNotice": {
       "raw": 481,
-      "gzip": 356
+      "gzip": 353
     },
     "PaletteStrip": {
       "raw": 632,
-      "gzip": 433
+      "gzip": 428
     },
     "PanelLimitConfirmDialog": {
-      "raw": 2140,
-      "gzip": 1154
+      "raw": 1314,
+      "gzip": 794
     },
     "PanelPalette": {
-      "raw": 8219,
-      "gzip": 3885
+      "raw": 7636,
+      "gzip": 3643
     },
     "PortalSettingsTab": {
-      "raw": 14318,
-      "gzip": 4975
+      "raw": 13925,
+      "gzip": 4805
     },
     "PrivacyDataTab": {
-      "raw": 12167,
-      "gzip": 3706
+      "raw": 11985,
+      "gzip": 3639
     },
     "ProjectMruSwitcherOverlay": {
-      "raw": 2553,
-      "gzip": 1345
+      "raw": 2428,
+      "gzip": 1278
     },
     "ProjectSwitcherPalette": {
-      "raw": 1211,
-      "gzip": 586
+      "raw": 36070,
+      "gzip": 10845
     },
     "QuickCreatePalette": {
-      "raw": 6875,
-      "gzip": 2607
+      "raw": 6671,
+      "gzip": 2662
     },
     "QuickSwitcher": {
-      "raw": 6232,
-      "gzip": 2794
+      "raw": 5220,
+      "gzip": 2342
     },
     "RecipeEditor": {
-      "raw": 43033,
-      "gzip": 10704
+      "raw": 43256,
+      "gzip": 10830
     },
     "SearchablePalette": {
-      "raw": 5337,
-      "gzip": 2690
+      "raw": 5097,
+      "gzip": 2597
     },
     "SendToAgentPalette": {
-      "raw": 4962,
-      "gzip": 2271
+      "raw": 4021,
+      "gzip": 1857
     },
     "SettingsCheckbox": {
       "raw": 3301,
-      "gzip": 1560
+      "gzip": 1557
     },
     "SettingsChoicebox": {
       "raw": 4118,
-      "gzip": 1604
+      "gzip": 1605
     },
     "SettingsDialog": {
-      "raw": 184892,
-      "gzip": 46734
+      "raw": 184178,
+      "gzip": 46437
     },
     "SettingsFlushRegistry": {
       "raw": 1314,
-      "gzip": 711
+      "gzip": 709
     },
     "SettingsInput": {
       "raw": 2101,
-      "gzip": 956
+      "gzip": 957
     },
     "SettingsSection": {
       "raw": 1485,
-      "gzip": 836
+      "gzip": 835
     },
     "SettingsSelect": {
       "raw": 2157,
-      "gzip": 989
+      "gzip": 992
     },
     "SettingsSubtabBar": {
       "raw": 1815,
-      "gzip": 960
+      "gzip": 961
     },
     "SettingsSwitch": {
       "raw": 1959,
-      "gzip": 845
+      "gzip": 841
     },
     "SettingsSwitchCard": {
       "raw": 4134,
@@ -242,79 +246,79 @@
       "gzip": 690
     },
     "ShortcutReferenceDialog": {
-      "raw": 4634,
-      "gzip": 2066
+      "raw": 4682,
+      "gzip": 2087
     },
     "Spinner": {
       "raw": 580,
-      "gzip": 401
+      "gzip": 398
     },
     "TerminalAppearanceTab": {
-      "raw": 25395,
-      "gzip": 8612
+      "raw": 24756,
+      "gzip": 8342
     },
     "TerminalInstanceService": {
-      "raw": 205863,
-      "gzip": 55399
+      "raw": 210990,
+      "gzip": 56659
     },
     "TerminalSettingsTab": {
-      "raw": 20442,
-      "gzip": 5871
+      "raw": 19908,
+      "gzip": 5677
     },
     "ThemePalette": {
-      "raw": 6119,
-      "gzip": 2901
+      "raw": 5260,
+      "gzip": 2522
     },
     "ToolbarSettingsTab": {
-      "raw": 12705,
-      "gzip": 4869
+      "raw": 12025,
+      "gzip": 4570
     },
     "TroubleshootingTab": {
-      "raw": 19207,
-      "gzip": 6542
+      "raw": 18464,
+      "gzip": 6225
     },
     "TruncatedTooltip": {
       "raw": 1324,
-      "gzip": 808
+      "gzip": 809
     },
     "VoiceInputSettingsTab": {
-      "raw": 22656,
-      "gzip": 7787
+      "raw": 22526,
+      "gzip": 7736
     },
     "WorktreeOverviewModal": {
-      "raw": 1318,
-      "gzip": 631
+      "raw": 205735,
+      "gzip": 59455
     },
     "WorktreePalette": {
-      "raw": 3898,
-      "gzip": 1785
+      "raw": 4022,
+      "gzip": 1843
     },
     "WorktreeSettingsTab": {
-      "raw": 8515,
-      "gzip": 2497
+      "raw": 8244,
+      "gzip": 2383
     },
     "YarnIcon": {
       "raw": 50371,
-      "gzip": 15760
+      "gzip": 15757
     },
     "agentRegistry": {
-      "raw": 43141,
-      "gzip": 9209
+      "raw": 43555,
+      "gzip": 9337
     },
     "agentSettingsStore": {
-      "raw": 439,
-      "gzip": 260
+      "raw": 5241,
+      "gzip": 1818
     },
     "agents": {
       "raw": 5687,
-      "gzip": 2328
+      "gzip": 2327
     },
     "appClient": {
       "raw": 364,
-      "gzip": 195
+      "gzip": 197
     },
     "appThemeStore": {
-      "raw": 4145,
+      "raw": 4144,
       "gzip": 1397
     },
     "appThemeViewTransition": {
@@ -323,19 +327,19 @@
     },
     "c": {
       "raw": 1973,
-      "gzip": 1028
+      "gzip": 1027
     },
     "categoryColors": {
       "raw": 1464,
       "gzip": 509
     },
     "checklistItems": {
-      "raw": 799,
-      "gzip": 456
+      "raw": 827,
+      "gzip": 473
     },
     "clients": {
-      "raw": 20344,
-      "gzip": 5028
+      "raw": 20965,
+      "gzip": 5221
     },
     "clike": {
       "raw": 768,
@@ -343,15 +347,15 @@
     },
     "cpp": {
       "raw": 2711,
-      "gzip": 1278
+      "gzip": 1276
     },
     "createWorktreeStore": {
-      "raw": 4294,
-      "gzip": 1538
+      "raw": 4492,
+      "gzip": 1616
     },
     "csharp": {
       "raw": 6491,
-      "gzip": 2540
+      "gzip": 2544
     },
     "css": {
       "raw": 1295,
@@ -374,52 +378,48 @@
       "gzip": 2329
     },
     "fleetEnterBroadcast": {
-      "raw": 22943,
-      "gzip": 7336
+      "raw": 18796,
+      "gzip": 5867
     },
     "folderName": {
       "raw": 803,
-      "gzip": 428
+      "gzip": 427
     },
     "githubConfigStore": {
-      "raw": 3887,
-      "gzip": 1372
+      "raw": 3886,
+      "gzip": 1370
     },
     "githubResourceCache": {
-      "raw": 1134,
-      "gzip": 557
+      "raw": 1133,
+      "gzip": 556
+    },
+    "globalEnvClient": {
+      "raw": 436,
+      "gzip": 274
     },
     "go": {
       "raw": 1075,
-      "gzip": 679
+      "gzip": 681
     },
     "graphql": {
       "raw": 2592,
       "gzip": 1183
     },
     "index": {
-      "raw": 441391,
-      "gzip": 138169
+      "raw": 464510,
+      "gzip": 145229
     },
     "java": {
       "raw": 2888,
-      "gzip": 1292
+      "gzip": 1296
     },
     "kotlin": {
       "raw": 2053,
-      "gzip": 1016
-    },
-    "latin-500": {
-      "raw": 29,
-      "gzip": 49
-    },
-    "latin-600": {
-      "raw": 29,
-      "gzip": 49
+      "gzip": 1018
     },
     "less": {
       "raw": 793,
-      "gzip": 444
+      "gzip": 445
     },
     "logger": {
       "raw": 597,
@@ -434,32 +434,28 @@
       "gzip": 1178
     },
     "mcpConfirmStore": {
-      "raw": 806,
-      "gzip": 432
+      "raw": 805,
+      "gzip": 431
     },
     "memoryLeakConfigStore": {
-      "raw": 304,
-      "gzip": 200
+      "raw": 303,
+      "gzip": 198
     },
     "motionFeatures": {
-      "raw": 105,
-      "gzip": 104
+      "raw": 69,
+      "gzip": 84
     },
     "notificationSettingsStore": {
-      "raw": 1951,
-      "gzip": 601
+      "raw": 1950,
+      "gzip": 599
     },
     "notify": {
-      "raw": 9666,
-      "gzip": 3369
+      "raw": 9899,
+      "gzip": 3403
     },
     "panelSpawning": {
-      "raw": 11638,
-      "gzip": 4439
-    },
-    "panelStore": {
-      "raw": 879,
-      "gzip": 453
+      "raw": 11606,
+      "gzip": 4428
     },
     "persistedStoreRegistry": {
       "raw": 547,
@@ -467,31 +463,31 @@
     },
     "php": {
       "raw": 7581,
-      "gzip": 2527
-    },
-    "popover": {
-      "raw": 2120,
-      "gzip": 1152
+      "gzip": 2528
     },
     "portalStore": {
-      "raw": 6177,
-      "gzip": 2194
+      "raw": 6175,
+      "gzip": 2192
     },
     "projectStore": {
-      "raw": 22150,
-      "gzip": 6802
+      "raw": 22332,
+      "gzip": 6886
     },
     "python": {
       "raw": 2168,
       "gzip": 1125
     },
-    "renderer": {
-      "raw": 72,
-      "gzip": 87
+    "radix-deferred": {
+      "raw": 199,
+      "gzip": 151
+    },
+    "radix-loader": {
+      "raw": 976,
+      "gzip": 541
     },
     "rolldown-runtime": {
-      "raw": 817,
-      "gzip": 469
+      "raw": 826,
+      "gzip": 473
     },
     "ruby": {
       "raw": 3686,
@@ -502,28 +498,28 @@
       "gzip": 1213
     },
     "safeStorage": {
-      "raw": 5813,
-      "gzip": 2283
+      "raw": 6103,
+      "gzip": 2367
     },
     "sass": {
       "raw": 1203,
-      "gzip": 536
+      "gzip": 537
     },
     "scss": {
       "raw": 1429,
-      "gzip": 695
+      "gzip": 696
     },
     "select": {
-      "raw": 6317,
-      "gzip": 2253
+      "raw": 9523,
+      "gzip": 3357
     },
     "sql": {
       "raw": 3325,
       "gzip": 1871
     },
     "store": {
-      "raw": 27703,
-      "gzip": 8073
+      "raw": 28075,
+      "gzip": 8228
     },
     "svgSanitizer": {
       "raw": 1966,
@@ -534,12 +530,12 @@
       "gzip": 1330
     },
     "terminalInputStore": {
-      "raw": 153,
-      "gzip": 125
+      "raw": 7008,
+      "gzip": 2342
     },
     "theme": {
-      "raw": 77765,
-      "gzip": 17430
+      "raw": 80252,
+      "gzip": 18049
     },
     "toml": {
       "raw": 1031,
@@ -551,71 +547,75 @@
     },
     "types": {
       "raw": 10865,
-      "gzip": 3569
+      "gzip": 3562
     },
     "useAgentDiscoveryOnboarding": {
-      "raw": 2060,
-      "gzip": 813
+      "raw": 2059,
+      "gzip": 812
     },
     "useBranchForPath": {
       "raw": 431,
-      "gzip": 301
+      "gzip": 298
     },
     "useFindInPage": {
-      "raw": 28496,
-      "gzip": 9436
+      "raw": 28532,
+      "gzip": 9446
     },
     "usePluginToolbarButtons": {
       "raw": 889,
-      "gzip": 563
+      "gzip": 562
     },
     "utils": {
-      "raw": 218,
-      "gzip": 195
+      "raw": 217,
+      "gzip": 194
     },
     "vendor": {
-      "raw": 349513,
-      "gzip": 114473
+      "raw": 381964,
+      "gzip": 124173
     },
     "vendor-editor": {
-      "raw": 1680507,
-      "gzip": 573377
+      "raw": 1681933,
+      "gzip": 574045
     },
     "vendor-icons": {
-      "raw": 46393,
-      "gzip": 14079
+      "raw": 46920,
+      "gzip": 14226
     },
     "vendor-motion": {
-      "raw": 131974,
-      "gzip": 42809
+      "raw": 132493,
+      "gzip": 42917
     },
     "vendor-radix": {
-      "raw": 121747,
-      "gzip": 36489
+      "raw": 5051,
+      "gzip": 1918
+    },
+    "vendor-radix-overlay": {
+      "raw": 105042,
+      "gzip": 31880
+    },
+    "vendor-radix-utils": {
+      "raw": 14400,
+      "gzip": 3243
     },
     "vendor-react": {
       "raw": 181960,
       "gzip": 56451
     },
     "vendor-xterm": {
-      "raw": 483814,
-      "gzip": 127762
+      "raw": 483783,
+      "gzip": 127757
     },
     "vendor-xterm-webgl": {
       "raw": 120961,
-      "gzip": 33516
+      "gzip": 33517
     },
     "vendor-zod": {
-      "raw": 70718,
-      "gzip": 18856
+      "raw": 73735,
+      "gzip": 19421
     },
     "voiceInputSettingsEvents": {
       "raw": 134,
       "gzip": 130
-    },
-    "worktreeStore": {
-      "raw": 749,
-      "gzip": 392
     },
     "yaml": {
       "raw": 2049,
@@ -624,12 +624,12 @@
   },
   "totals": {
     "js": {
-      "raw": 6654431,
-      "gzip": 2063432
+      "raw": 6731748,
+      "gzip": 2084607
     },
     "css": {
-      "raw": 275127,
-      "gzip": 36379
+      "raw": 276858,
+      "gzip": 36529
     }
   }
 }
