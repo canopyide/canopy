@@ -953,7 +953,6 @@ describe("HelpPanel — handleRunAnyway", () => {
 
     // Hold dispatch resolution until after we've inspected store state.
     let resolveDispatch: (value: unknown) => void = () => {};
-    let capturedRequestedId: string | undefined;
     mockDispatch.mockImplementation(() => {
       return new Promise((r) => {
         resolveDispatch = r;
@@ -967,8 +966,9 @@ describe("HelpPanel — handleRunAnyway", () => {
     });
 
     // Capture the requestedId from the dispatch call.
-    capturedRequestedId = (mockDispatch.mock.calls[0]?.[1] as { requestedId?: string } | undefined)
-      ?.requestedId;
+    const capturedRequestedId = (
+      mockDispatch.mock.calls[0]?.[1] as { requestedId?: string } | undefined
+    )?.requestedId;
 
     // setTerminal fired with the pre-generated id while dispatch is still pending.
     expect(capturedRequestedId).toMatch(/^terminal-/);
