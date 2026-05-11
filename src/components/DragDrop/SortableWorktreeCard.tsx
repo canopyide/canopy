@@ -112,7 +112,13 @@ export const SortableWorktreeCard = React.memo(function SortableWorktreeCard({
   } = attributes;
 
   return (
-    <m.div layout="position" {...filteredAttributes}>
+    <m.div
+      layout="position"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      {...filteredAttributes}
+    >
       <div
         ref={setNodeRef}
         style={style}
