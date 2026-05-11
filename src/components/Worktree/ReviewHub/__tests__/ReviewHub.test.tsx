@@ -1269,6 +1269,78 @@ describe("ReviewHub", () => {
       expect(dialog.textContent).toMatch(/reverts 3 of 7 replayed commits/);
     });
 
+    it("rolls back optimistic resolution and keeps Continue disabled when mark-resolved fails", async () => {
+      getStagingStatusMock.mockResolvedValue(makeMergingStatus());
+      stageFileMock.mockRejectedValueOnce(new Error("permission denied"));
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByTestId("conflict-panel"));
+      const resolveBtn = screen.getByRole("button", {
+        name: /Mark src\/app\.ts as resolved/i,
+      });
+      fireEvent.click(resolveBtn);
+
+      // After the rejection the row must reappear (rollback) and Continue must
+      // remain disabled — the unresolved conflict is still present.
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: /Mark src\/app\.ts as resolved/i })).toBeTruthy();
+      });
+      expect(screen.getByRole("button", { name: /^Continue /i }).hasAttribute("disabled")).toBe(
+        true
+      );
+    });
+
+    it("rolls back optimistic resolution when Take ours fails", async () => {
+      getStagingStatusMock.mockResolvedValue(makeMergingStatus());
+      checkoutOursTheirsMock.mockRejectedValueOnce(new Error("checkout failed"));
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByTestId("conflict-panel"));
+      const takeOurs = screen.getByRole("button", { name: /Take ours for src\/app\.ts/i });
+      fireEvent.click(takeOurs);
+
+      await waitFor(() => {
+        // The row reappears after rollback — the Take ours button is still rendered.
+        expect(screen.getByRole("button", { name: /Take ours for src\/app\.ts/i })).toBeTruthy();
+      });
+    });
+
+    it("disables Continue while a checkout IPC call is still in flight", async () => {
+      getStagingStatusMock.mockResolvedValue(
+        makeMergingStatus({
+          conflictedFiles: [
+            { path: "src/app.ts", xy: "UU", label: "both modified" },
+            { path: "src/other.ts", xy: "UU", label: "both modified" },
+          ],
+          conflicted: ["src/app.ts", "src/other.ts"],
+        })
+      );
+      // Pending promise — the IPC call never resolves during the test.
+      let resolveCheckout: (() => void) | null = null;
+      checkoutOursTheirsMock.mockImplementationOnce(
+        () => new Promise<void>((resolve) => (resolveCheckout = () => resolve()))
+      );
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByTestId("conflict-panel"));
+      const takeOurs = screen.getByRole("button", { name: /Take ours for src\/app\.ts/i });
+      fireEvent.click(takeOurs);
+
+      // After the click, the optimistic row disappears for `src/app.ts` —
+      // only `src/other.ts` remains conflicted. Continue must still be
+      // disabled because the checkout IPC is pending.
+      await waitFor(() => {
+        const continueBtn = screen.getByRole("button", { name: /^Continue /i });
+        expect(continueBtn.hasAttribute("disabled")).toBe(true);
+      });
+
+      // Cleanup so the pending promise doesn't leak across tests.
+      resolveCheckout?.();
+    });
+
     it("renders a hunk-count badge once the scan resolves", async () => {
       getStagingStatusMock.mockResolvedValue(makeMergingStatus());
       scanConflictMarkersMock.mockResolvedValue([

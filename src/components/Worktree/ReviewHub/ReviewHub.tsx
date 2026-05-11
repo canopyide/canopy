@@ -609,6 +609,25 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
     [worktreePath, refresh]
   );
 
+  // Same body as handleStageFile but rethrows so ConflictPanel can roll back
+  // optimistic resolution on failure. The general handleStageFile is called
+  // via `void handleStageFile(...)` from FileStageRow and shouldn't change its
+  // swallow-and-banner semantics for that path.
+  const handleMarkResolved = useCallback(
+    async (filePath: string) => {
+      setActionError(null);
+      debouncedBgRefreshRef.current?.cancel();
+      try {
+        await window.electron.git.stageFile(worktreePath, filePath);
+        await refresh();
+      } catch (err) {
+        setActionError(formatErrorMessage(err, "Failed to mark file resolved"));
+        throw err;
+      }
+    },
+    [worktreePath, refresh]
+  );
+
   const runPush = useCallback(async () => {
     try {
       await window.electron.git.push(worktreePath);
@@ -1092,7 +1111,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                   <ConflictPanel
                     status={status}
                     worktreePath={worktreePath}
-                    onMarkResolved={handleStageFile}
+                    onMarkResolved={handleMarkResolved}
                     onOpenInEditor={handleOpenInEditor}
                     onCheckoutOursTheirs={handleCheckoutOursTheirs}
                     onAbort={handleAbortOperation}

@@ -295,13 +295,17 @@ export function ConflictPanel({
   );
 
   useEffect(() => {
+    // Encode worktreePath so two worktrees with identically-named conflicted
+    // files (e.g. both have `src/app.ts`) don't share stale scan results when
+    // the panel is re-rendered with a different worktree.
+    const scopedKey = `${worktreePath}\0${scanKey}`;
     if (!worktreePath || scanKey === "") {
       if (scanResults.size > 0) setScanResults(new Map());
-      scanKeyRef.current = scanKey;
+      scanKeyRef.current = scopedKey;
       return;
     }
-    if (scanKeyRef.current === scanKey) return;
-    scanKeyRef.current = scanKey;
+    if (scanKeyRef.current === scopedKey) return;
+    scanKeyRef.current = scopedKey;
 
     let cancelled = false;
     const paths = status.conflictedFiles.map((f) => f.path);
@@ -523,7 +527,9 @@ export function ConflictPanel({
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => void handleCheckoutSide(file.path, "ours")}
+                      onClick={() => {
+                        handleCheckoutSide(file.path, "ours").catch(() => {});
+                      }}
                       disabled={isBusy}
                       className="h-5 px-1.5 text-[10px]"
                       aria-label={`Take ours for ${file.path}`}
@@ -534,7 +540,9 @@ export function ConflictPanel({
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => void handleCheckoutSide(file.path, "theirs")}
+                      onClick={() => {
+                        handleCheckoutSide(file.path, "theirs").catch(() => {});
+                      }}
                       disabled={isBusy}
                       className="h-5 px-1.5 text-[10px]"
                       aria-label={`Take theirs for ${file.path}`}
@@ -556,7 +564,9 @@ export function ConflictPanel({
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => void handleMarkResolvedClick(file.path)}
+                      onClick={() => {
+                        handleMarkResolvedClick(file.path).catch(() => {});
+                      }}
                       disabled={isBusy}
                       className="h-5 px-1.5 text-[10px]"
                       aria-label={`Mark ${file.path} as resolved`}
@@ -639,7 +649,7 @@ export function ConflictPanel({
           variant="default"
           size="sm"
           onClick={() => void handleContinue()}
-          disabled={!canContinue || isAborting || isContinuing}
+          disabled={!canContinue || isAborting || isContinuing || busyFile !== null}
           className="w-full"
           data-testid="conflict-continue"
         >

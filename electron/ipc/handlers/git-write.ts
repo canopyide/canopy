@@ -683,10 +683,10 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
   };
   handlers.push(typedHandle(CHANNELS.GIT_GET_WORKING_DIFF, handleGetWorkingDiff));
 
-  // Rejects path traversal and absolute paths. Resolves the file under `cwd`
-  // and confirms the resolved path stays inside the worktree boundary, with the
-  // `cwd + path.sep` guard preventing sibling-directory matches (e.g. `/foo`
-  // matching `/foobar/...`).
+  // Rejects path traversal, absolute paths, and the worktree root itself
+  // (`.`, `./`). Resolves the file under `cwd` and confirms the resolved path
+  // stays strictly inside the worktree boundary — the `cwd + path.sep` guard
+  // also blocks sibling-directory matches (e.g. `/foo` matching `/foobar/...`).
   const validateFilePathUnderCwd = (cwd: string, filePath: string): void => {
     if (typeof filePath !== "string" || !filePath) {
       throw new Error("Invalid file path");
@@ -697,8 +697,11 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
     const resolvedCwd = path.resolve(cwd);
     const resolved = path.resolve(resolvedCwd, filePath);
     const boundary = resolvedCwd.endsWith(path.sep) ? resolvedCwd : resolvedCwd + path.sep;
-    if (resolved !== resolvedCwd && !resolved.startsWith(boundary)) {
-      throw new Error("Invalid file path: escapes worktree");
+    // Strict prefix match — `resolved === resolvedCwd` (i.e. `.`/`./`) is
+    // rejected so the renderer can't accidentally invoke a worktree-wide
+    // `git checkout --ours -- .` resolving every conflict at once.
+    if (!resolved.startsWith(boundary)) {
+      throw new Error("Invalid file path: must point at a file inside the worktree");
     }
   };
 
