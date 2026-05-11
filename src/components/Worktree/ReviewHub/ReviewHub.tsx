@@ -573,17 +573,59 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
   }, [worktreePath, refresh]);
 
   const handleOpenInEditor = useCallback(
-    async (filePath: string) => {
+    async (args: string | { path: string; line?: number }) => {
       setActionError(null);
+      const filePath = typeof args === "string" ? args : args.path;
+      const line = typeof args === "string" ? undefined : args.line;
       try {
         const base = worktreePath.replace(/\\/g, "/").replace(/\/+$/, "");
         const tail = filePath.replace(/\\/g, "/").replace(/^\/+/, "");
-        await window.electron.system.openInEditor({ path: `${base}/${tail}` });
+        const payload: { path: string; line?: number } = { path: `${base}/${tail}` };
+        if (typeof line === "number" && Number.isFinite(line) && line > 0) {
+          payload.line = line;
+        }
+        await window.electron.system.openInEditor(payload);
       } catch (err) {
         setActionError(formatErrorMessage(err, "Failed to open file in editor"));
       }
     },
     [worktreePath]
+  );
+
+  const handleCheckoutOursTheirs = useCallback(
+    async (filePath: string, side: "ours" | "theirs") => {
+      setActionError(null);
+      debouncedBgRefreshRef.current?.cancel();
+      try {
+        await window.electron.git.checkoutOursTheirs(worktreePath, filePath, side);
+        await refresh();
+      } catch (err) {
+        setActionError(
+          formatErrorMessage(err, side === "ours" ? "Failed to take ours" : "Failed to take theirs")
+        );
+        throw err;
+      }
+    },
+    [worktreePath, refresh]
+  );
+
+  // Same body as handleStageFile but rethrows so ConflictPanel can roll back
+  // optimistic resolution on failure. The general handleStageFile is called
+  // via `void handleStageFile(...)` from FileStageRow and shouldn't change its
+  // swallow-and-banner semantics for that path.
+  const handleMarkResolved = useCallback(
+    async (filePath: string) => {
+      setActionError(null);
+      debouncedBgRefreshRef.current?.cancel();
+      try {
+        await window.electron.git.stageFile(worktreePath, filePath);
+        await refresh();
+      } catch (err) {
+        setActionError(formatErrorMessage(err, "Failed to mark file resolved"));
+        throw err;
+      }
+    },
+    [worktreePath, refresh]
   );
 
   const runPush = useCallback(async () => {
@@ -1068,8 +1110,10 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                 ) : status && isOperationState ? (
                   <ConflictPanel
                     status={status}
-                    onMarkResolved={handleStageFile}
+                    worktreePath={worktreePath}
+                    onMarkResolved={handleMarkResolved}
                     onOpenInEditor={handleOpenInEditor}
+                    onCheckoutOursTheirs={handleCheckoutOursTheirs}
                     onAbort={handleAbortOperation}
                     onContinue={handleContinueOperation}
                   />

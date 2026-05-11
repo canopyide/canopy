@@ -45,6 +45,34 @@ export interface CrossWorktreeDiffResult {
   files: CrossWorktreeFile[];
 }
 
+/** Scan results for a single conflicted file */
+export interface ConflictMarkerScanEntry {
+  /** Path relative to the worktree root (matches the request path verbatim) */
+  path: string;
+  /** Count of `<<<<<<<` opening markers — one per hunk. `null` when the scan failed or the file was skipped (binary/oversized/unreadable). */
+  hunkCount: number | null;
+  /** 1-based line number of the first `<<<<<<<` marker, or `null` when unavailable. */
+  firstMarkerLine: number | null;
+}
+
+/** Payload for scanning conflict markers across a batch of files */
+export interface GitScanConflictMarkersPayload {
+  /** Worktree path */
+  cwd: string;
+  /** Paths relative to the worktree root */
+  filePaths: string[];
+}
+
+/** Payload for whole-file conflict resolution via `git checkout --ours/--theirs` */
+export interface GitCheckoutOursTheirsPayload {
+  /** Worktree path */
+  cwd: string;
+  /** Path relative to the worktree root */
+  filePath: string;
+  /** Which side of the conflict to take. */
+  side: "ours" | "theirs";
+}
+
 /** Payload to compare two branches */
 export interface GitCompareWorktreesPayload {
   /** Any worktree path (used as git cwd — all worktrees share the same .git store) */

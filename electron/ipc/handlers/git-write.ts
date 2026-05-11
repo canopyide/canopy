@@ -29,7 +29,13 @@ function playSoundFireAndForget(id: SoundId): void {
     .catch((err) => console.error("[git-write] sound play failed:", err));
 }
 import { preAgentSnapshotService } from "../../services/PreAgentSnapshotService.js";
-import type { SnapshotInfo, SnapshotRevertResult } from "../../../shared/types/ipc/git.js";
+import type {
+  SnapshotInfo,
+  SnapshotRevertResult,
+  ConflictMarkerScanEntry,
+  GitScanConflictMarkersPayload,
+  GitCheckoutOursTheirsPayload,
+} from "../../../shared/types/ipc/git.js";
 import { classifyGitError } from "../../../shared/utils/gitOperationErrors.js";
 import { formatErrorMessage } from "../../../shared/utils/errorMessage.js";
 import { GitOperationError } from "../../utils/errorTypes.js";
@@ -676,6 +682,99 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
     return raw;
   };
   handlers.push(typedHandle(CHANNELS.GIT_GET_WORKING_DIFF, handleGetWorkingDiff));
+
+  // Rejects path traversal, absolute paths, and the worktree root itself
+  // (`.`, `./`). Resolves the file under `cwd` and confirms the resolved path
+  // stays strictly inside the worktree boundary — the `cwd + path.sep` guard
+  // also blocks sibling-directory matches (e.g. `/foo` matching `/foobar/...`).
+  const validateFilePathUnderCwd = (cwd: string, filePath: string): void => {
+    if (typeof filePath !== "string" || !filePath) {
+      throw new Error("Invalid file path");
+    }
+    if (path.isAbsolute(filePath)) {
+      throw new Error("Invalid file path: must be relative to the worktree");
+    }
+    const resolvedCwd = path.resolve(cwd);
+    const resolved = path.resolve(resolvedCwd, filePath);
+    const boundary = resolvedCwd.endsWith(path.sep) ? resolvedCwd : resolvedCwd + path.sep;
+    // Strict prefix match — `resolved === resolvedCwd` (i.e. `.`/`./`) is
+    // rejected so the renderer can't accidentally invoke a worktree-wide
+    // `git checkout --ours -- .` resolving every conflict at once.
+    if (!resolved.startsWith(boundary)) {
+      throw new Error("Invalid file path: must point at a file inside the worktree");
+    }
+  };
+
+  const handleScanConflictMarkers = async (
+    payload: GitScanConflictMarkersPayload
+  ): Promise<ConflictMarkerScanEntry[]> => {
+    checkRateLimit(CHANNELS.GIT_SCAN_CONFLICT_MARKERS, 30, 10_000);
+    validateCwd(payload?.cwd);
+    if (!Array.isArray(payload?.filePaths)) {
+      throw new Error("Invalid file paths: must be an array");
+    }
+    if (payload.filePaths.length === 0) return [];
+
+    // `g` flag is required for `matchAll`/`exec` iteration; the regex is local
+    // to this call so the shared `CONFLICT_MARKER_RE` (single-match, `/m`) is
+    // untouched. Counts only opening `<<<<<<<` markers — one per hunk.
+    const HUNK_OPEN_RE = /^<{7}/gm;
+
+    const scanOne = async (filePath: string): Promise<ConflictMarkerScanEntry> => {
+      try {
+        validateFilePathUnderCwd(payload.cwd, filePath);
+        const absolute = path.resolve(payload.cwd, filePath);
+        const stat = await fs.promises.stat(absolute);
+        if (!stat.isFile() || stat.size > STAGED_FILE_SIZE_CAP) {
+          return { path: filePath, hunkCount: null, firstMarkerLine: null };
+        }
+        const content = await fs.promises.readFile(absolute, "utf8");
+        // BOM-strip so a marker on line 1 isn't shifted past the `^` anchor.
+        const probe = content.charCodeAt(0) === 0xfeff ? content.slice(1) : content;
+        let hunkCount = 0;
+        let firstMarkerLine: number | null = null;
+        let match: RegExpExecArray | null;
+        HUNK_OPEN_RE.lastIndex = 0;
+        while ((match = HUNK_OPEN_RE.exec(probe)) !== null) {
+          hunkCount++;
+          if (firstMarkerLine === null) {
+            // Compute 1-based line number from byte offset within the probed string.
+            let line = 1;
+            for (let i = 0; i < match.index; i++) {
+              if (probe.charCodeAt(i) === 0x0a) line++;
+            }
+            firstMarkerLine = line;
+          }
+        }
+        return { path: filePath, hunkCount, firstMarkerLine };
+      } catch {
+        // Treat any per-file error as a degraded scan result — the UI hides
+        // the badge rather than blocking the worklist on a single bad path.
+        return { path: filePath, hunkCount: null, firstMarkerLine: null };
+      }
+    };
+
+    return Promise.all(payload.filePaths.map(scanOne));
+  };
+  handlers.push(typedHandle(CHANNELS.GIT_SCAN_CONFLICT_MARKERS, handleScanConflictMarkers));
+
+  const handleCheckoutOursTheirs = async (payload: GitCheckoutOursTheirsPayload): Promise<void> => {
+    checkRateLimit(CHANNELS.GIT_CHECKOUT_OURS_THEIRS, 30, 10_000);
+    validateCwd(payload?.cwd);
+    validateFilePathUnderCwd(payload.cwd, payload?.filePath);
+    if (payload.side !== "ours" && payload.side !== "theirs") {
+      throw new Error("Invalid side: must be 'ours' or 'theirs'");
+    }
+
+    const git = createHardenedGit(payload.cwd);
+    const flag = payload.side === "ours" ? "--ours" : "--theirs";
+    // `checkout --ours/--theirs` leaves the file unstaged — the conflict markers
+    // are still in the index. Follow with `git add` so the resolution lands in
+    // the staged tree and the file falls off the conflicted list.
+    await git.raw(["checkout", flag, "--", payload.filePath]);
+    await git.add(["--", payload.filePath]);
+  };
+  handlers.push(typedHandle(CHANNELS.GIT_CHECKOUT_OURS_THEIRS, handleCheckoutOursTheirs));
 
   // Snapshot handlers
   const handleSnapshotGet = async (worktreeId: string): Promise<SnapshotInfo | null> => {
