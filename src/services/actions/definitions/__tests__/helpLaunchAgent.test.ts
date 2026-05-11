@@ -51,7 +51,7 @@ vi.mock("@/lib/sidebarToggle", () => ({
   suppressSidebarResizes: vi.fn(),
 }));
 
-import { registerPreferencesActions } from "../preferencesActions";
+import { registerHelpActions } from "../helpActions";
 import type { ActionCallbacks, ActionRegistry } from "../../actionTypes";
 import type { ActionContext } from "@shared/types/actions";
 import type { AnyActionDefinition } from "../../actionTypes";
@@ -71,7 +71,7 @@ function allAvailability(override?: Partial<CliAvailability>): CliAvailability {
 function extractHelpLaunchAgent(): AnyActionDefinition {
   const registry = new Map<string, () => AnyActionDefinition>();
   const callbacks = { onOpenShortcuts: vi.fn() } as unknown as ActionCallbacks;
-  registerPreferencesActions(registry as unknown as ActionRegistry, callbacks);
+  registerHelpActions(registry as unknown as ActionRegistry, callbacks);
   const factory = registry.get("help.launchAgent");
   if (!factory) throw new Error("help.launchAgent not registered");
   return factory();
