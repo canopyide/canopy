@@ -1,8 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { readFileSync, watch, type FSWatcher } from "fs";
 import { join as pathJoin } from "path";
+import parcelWatcher from "@parcel/watcher";
 import { getGitDir } from "../gitUtils.js";
 import { GitFileWatcher } from "../gitFileWatcher.js";
+
+const { subscribeMock } = vi.hoisted(() => ({ subscribeMock: vi.fn() }));
+
+vi.mock("@parcel/watcher", () => ({
+  default: { subscribe: subscribeMock },
+}));
 
 vi.mock("fs", () => ({
   watch: vi.fn(),
@@ -24,6 +31,71 @@ function createMockWatcher() {
   } as unknown as FSWatcher;
 }
 
+function createMockSubscription(): { unsubscribe: () => Promise<void> } {
+  return { unsubscribe: vi.fn().mockResolvedValue(undefined) };
+}
+
+/**
+ * Configures the subscribe mock to capture the callback and options
+ * for test-driven event injection. Returns helpers to resolve/reject the
+ * subscribe promise and access the captured callback.
+ */
+function setupSubscribeMock() {
+  let capturedCallback: ((err: Error | null, events: Array<{ type: string }>) => void) | undefined;
+  let capturedOptions: Record<string, unknown> | undefined;
+  let resolvePromise: ((sub: { unsubscribe: () => Promise<void> }) => void) | undefined;
+  let rejectPromise: ((err: Error) => void) | undefined;
+
+  subscribeMock.mockImplementation(((
+    _dir: string,
+    cb: (err: Error | null, events: Array<{ type: string }>) => void,
+    opts?: Record<string, unknown>
+  ) => {
+    capturedCallback = cb;
+    capturedOptions = opts;
+    return new Promise<{ unsubscribe: () => Promise<void> }>((resolve, reject) => {
+      resolvePromise = resolve;
+      rejectPromise = reject;
+    });
+  }) as unknown as typeof parcelWatcher.subscribe);
+
+  return {
+    getCallback: () => capturedCallback,
+    getOptions: () => capturedOptions,
+    resolve: (sub?: { unsubscribe: () => Promise<void> }) => {
+      if (resolvePromise) {
+        resolvePromise(sub ?? createMockSubscription());
+      }
+    },
+    reject: (err: Error) => {
+      if (rejectPromise) {
+        rejectPromise(err);
+      }
+    },
+    resolveSub: (sub?: { unsubscribe: () => Promise<void> }) => {
+      const s = sub ?? createMockSubscription();
+      if (resolvePromise) resolvePromise(s);
+      return s;
+    },
+  };
+}
+
+/** Fire synthetic events through the captured parcel file watcher callback. */
+function fireEvents(
+  cb: ((err: Error | null, events: Array<{ type: string }>) => void) | undefined,
+  events: Array<{ type: string }>
+) {
+  cb?.(null, events);
+}
+
+/** Fire a synthetic error through the captured parcel file watcher callback. */
+function fireError(
+  cb: ((err: Error | null, events: Array<{ type: string }>) => void) | undefined,
+  err: Error
+) {
+  cb?.(err, []);
+}
+
 describe("GitFileWatcher", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -34,11 +106,15 @@ describe("GitFileWatcher", () => {
       throw new Error("commondir missing");
     });
     vi.mocked(watch).mockImplementation(() => createMockWatcher());
+    // Default subscribe: resolve immediately so non-worktree tests don't hang
+    subscribeMock.mockResolvedValue(createMockSubscription());
   });
 
   afterEach(() => {
     vi.useRealTimers();
   });
+
+  // ---- Per-file .git/ arm tests (unchanged semantics) ----
 
   it("watches correct directories and de-duplicates shared paths", () => {
     const gitDir = pathJoin("/repo", ".git");
@@ -83,13 +159,11 @@ describe("GitFileWatcher", () => {
       | undefined;
     expect(dotGitCallback).toBeDefined();
 
-    // index and index.lock should NOT trigger onChange (not tracked)
     dotGitCallback?.("rename", "index");
     dotGitCallback?.("rename", "index.lock");
     await vi.advanceTimersByTimeAsync(250);
     expect(onChange).not.toHaveBeenCalled();
 
-    // HEAD should still trigger (tracked in .git directory)
     dotGitCallback?.("rename", "HEAD");
     await vi.advanceTimersByTimeAsync(200);
     expect(onChange).toHaveBeenCalledTimes(1);
@@ -116,19 +190,16 @@ describe("GitFileWatcher", () => {
       | undefined;
     expect(dotGitCallback).toBeDefined();
 
-    // Unrelated file in .git directory should not trigger
     dotGitCallback?.("rename", "description");
     await vi.advanceTimersByTimeAsync(250);
     expect(onChange).not.toHaveBeenCalled();
 
-    // HEAD change triggers after debounce
     dotGitCallback?.("rename", "HEAD");
     await vi.advanceTimersByTimeAsync(199);
     expect(onChange).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     expect(onChange).toHaveBeenCalledTimes(1);
 
-    // Multiple events within debounce window coalesce
     dotGitCallback?.("rename", "HEAD");
     dotGitCallback?.("rename", "packed-refs");
     await vi.advanceTimersByTimeAsync(200);
@@ -183,30 +254,17 @@ describe("GitFileWatcher", () => {
       | undefined;
     expect(logsCallback).toBeDefined();
 
-    // Reflog (HEAD) update fires onChange
     logsCallback?.("rename", "HEAD");
     await vi.advanceTimersByTimeAsync(150);
     expect(onChange).toHaveBeenCalledTimes(1);
   });
 
+  // ---- Worktree debounce tests ----
+
   it("worktree events debounce normally for short bursts", async () => {
     const onChange = vi.fn();
-    let worktreeCallback: ((eventType: string, filename: string | null) => void) | undefined;
+    const mock = setupSubscribeMock();
 
-    vi.mocked(watch).mockImplementation(((
-      _path: string,
-      opts: Record<string, unknown>,
-      cb?: (eventType: string, filename: string | null) => void
-    ) => {
-      const w = createMockWatcher();
-      if (opts?.recursive) {
-        worktreeCallback = cb;
-      }
-      return w;
-    }) as unknown as typeof watch);
-
-    // Fixed debounce (min === max) — keeps this test's timing assertion stable
-    // while the adaptive ramp is covered by its own dedicated tests.
     const gitWatcher = new GitFileWatcher({
       worktreePath: "/repo",
       branch: "main",
@@ -219,12 +277,12 @@ describe("GitFileWatcher", () => {
     });
 
     expect(gitWatcher.start()).toBe(true);
-    expect(worktreeCallback).toBeDefined();
 
-    // Fire 3 events within debounce window
-    worktreeCallback?.("change", "src/a.ts");
-    worktreeCallback?.("change", "src/b.ts");
-    worktreeCallback?.("change", "src/c.ts");
+    mock.resolve();
+    const cb = mock.getCallback();
+    expect(cb).toBeDefined();
+
+    fireEvents(cb, [{ type: "update" }, { type: "update" }, { type: "update" }]);
 
     await vi.advanceTimersByTimeAsync(500);
     expect(onChange).toHaveBeenCalledTimes(1);
@@ -232,19 +290,7 @@ describe("GitFileWatcher", () => {
 
   it("sustained burst fires onChange at max-wait ceiling", async () => {
     const onChange = vi.fn();
-    let worktreeCallback: ((eventType: string, filename: string | null) => void) | undefined;
-
-    vi.mocked(watch).mockImplementation(((
-      _path: string,
-      opts: Record<string, unknown>,
-      cb?: (eventType: string, filename: string | null) => void
-    ) => {
-      const w = createMockWatcher();
-      if (opts?.recursive) {
-        worktreeCallback = cb;
-      }
-      return w;
-    }) as unknown as typeof watch);
+    const mock = setupSubscribeMock();
 
     const gitWatcher = new GitFileWatcher({
       worktreePath: "/repo",
@@ -258,39 +304,25 @@ describe("GitFileWatcher", () => {
     });
 
     expect(gitWatcher.start()).toBe(true);
-    expect(worktreeCallback).toBeDefined();
+    mock.resolve();
+    const cb = mock.getCallback();
+    expect(cb).toBeDefined();
 
-    // Fire first event to start both debounce and max-wait timers
-    worktreeCallback?.("change", "src/file0.ts");
+    fireEvents(cb, [{ type: "update" }]);
 
-    // Keep firing events every 200ms — debounce (500ms) keeps resetting
-    // At 1800ms total, no call should have fired yet (max-wait is 2000ms)
-    for (let i = 1; i <= 9; i++) {
+    for (let i = 0; i < 9; i++) {
       await vi.advanceTimersByTimeAsync(200);
-      worktreeCallback?.("change", `src/file${i}.ts`);
+      fireEvents(cb, [{ type: "update" }]);
     }
     expect(onChange).not.toHaveBeenCalled();
 
-    // Advance to the 2000ms mark — max-wait ceiling fires
     await vi.advanceTimersByTimeAsync(200);
     expect(onChange).toHaveBeenCalledTimes(1);
   });
 
   it("max-wait timer is cleared when trailing debounce fires", async () => {
     const onChange = vi.fn();
-    let worktreeCallback: ((eventType: string, filename: string | null) => void) | undefined;
-
-    vi.mocked(watch).mockImplementation(((
-      _path: string,
-      opts: Record<string, unknown>,
-      cb?: (eventType: string, filename: string | null) => void
-    ) => {
-      const w = createMockWatcher();
-      if (opts?.recursive) {
-        worktreeCallback = cb;
-      }
-      return w;
-    }) as unknown as typeof watch);
+    const mock = setupSubscribeMock();
 
     const gitWatcher = new GitFileWatcher({
       worktreePath: "/repo",
@@ -304,15 +336,13 @@ describe("GitFileWatcher", () => {
     });
 
     expect(gitWatcher.start()).toBe(true);
+    mock.resolve();
+    const cb = mock.getCallback();
 
-    // Fire 2 events, let trailing debounce fire at 500ms
-    worktreeCallback?.("change", "src/a.ts");
-    worktreeCallback?.("change", "src/b.ts");
-
+    fireEvents(cb, [{ type: "update" }, { type: "update" }]);
     await vi.advanceTimersByTimeAsync(500);
     expect(onChange).toHaveBeenCalledTimes(1);
 
-    // Wait past the max-wait ceiling — should NOT fire duplicate
     await vi.advanceTimersByTimeAsync(2000);
     expect(onChange).toHaveBeenCalledTimes(1);
   });
@@ -348,19 +378,7 @@ describe("GitFileWatcher", () => {
 
   it("single worktree event flushes at minimum debounce", async () => {
     const onChange = vi.fn();
-    let worktreeCallback: ((eventType: string, filename: string | null) => void) | undefined;
-
-    vi.mocked(watch).mockImplementation(((
-      _path: string,
-      opts: Record<string, unknown>,
-      cb?: (eventType: string, filename: string | null) => void
-    ) => {
-      const w = createMockWatcher();
-      if (opts?.recursive) {
-        worktreeCallback = cb;
-      }
-      return w;
-    }) as unknown as typeof watch);
+    const mock = setupSubscribeMock();
 
     const gitWatcher = new GitFileWatcher({
       worktreePath: "/repo",
@@ -374,8 +392,10 @@ describe("GitFileWatcher", () => {
     });
 
     expect(gitWatcher.start()).toBe(true);
+    mock.resolve();
+    const cb = mock.getCallback();
 
-    worktreeCallback?.("change", "src/a.ts");
+    fireEvents(cb, [{ type: "update" }]);
 
     await vi.advanceTimersByTimeAsync(149);
     expect(onChange).not.toHaveBeenCalled();
@@ -386,19 +406,7 @@ describe("GitFileWatcher", () => {
 
   it("burst ramps debounce delay proportional to event count", async () => {
     const onChange = vi.fn();
-    let worktreeCallback: ((eventType: string, filename: string | null) => void) | undefined;
-
-    vi.mocked(watch).mockImplementation(((
-      _path: string,
-      opts: Record<string, unknown>,
-      cb?: (eventType: string, filename: string | null) => void
-    ) => {
-      const w = createMockWatcher();
-      if (opts?.recursive) {
-        worktreeCallback = cb;
-      }
-      return w;
-    }) as unknown as typeof watch);
+    const mock = setupSubscribeMock();
 
     const gitWatcher = new GitFileWatcher({
       worktreePath: "/repo",
@@ -412,11 +420,17 @@ describe("GitFileWatcher", () => {
     });
 
     expect(gitWatcher.start()).toBe(true);
+    mock.resolve();
+    const cb = mock.getCallback();
 
-    // Emit 5 synchronous events — delay = 150 + (5-1)*10 = 190ms
-    for (let i = 0; i < 5; i++) {
-      worktreeCallback?.("change", `src/file${i}.ts`);
-    }
+    // Emit 5 events — delay = 150 + (5-1)*10 = 190ms
+    fireEvents(cb, [
+      { type: "update" },
+      { type: "update" },
+      { type: "update" },
+      { type: "update" },
+      { type: "update" },
+    ]);
 
     await vi.advanceTimersByTimeAsync(189);
     expect(onChange).not.toHaveBeenCalled();
@@ -427,19 +441,7 @@ describe("GitFileWatcher", () => {
 
   it("ramp saturates at worktreeMaxDebounceMs ceiling", async () => {
     const onChange = vi.fn();
-    let worktreeCallback: ((eventType: string, filename: string | null) => void) | undefined;
-
-    vi.mocked(watch).mockImplementation(((
-      _path: string,
-      opts: Record<string, unknown>,
-      cb?: (eventType: string, filename: string | null) => void
-    ) => {
-      const w = createMockWatcher();
-      if (opts?.recursive) {
-        worktreeCallback = cb;
-      }
-      return w;
-    }) as unknown as typeof watch);
+    const mock = setupSubscribeMock();
 
     const gitWatcher = new GitFileWatcher({
       worktreePath: "/repo",
@@ -449,15 +451,14 @@ describe("GitFileWatcher", () => {
       watchWorktree: true,
       worktreeMinDebounceMs: 150,
       worktreeMaxDebounceMs: 800,
-      // No max-wait — isolate ramp saturation from ceiling flush
     });
 
     expect(gitWatcher.start()).toBe(true);
+    mock.resolve();
+    const cb = mock.getCallback();
 
-    // 200 synchronous events far exceed the ramp window (65 events saturate at 800ms)
-    for (let i = 0; i < 200; i++) {
-      worktreeCallback?.("change", `src/file${i}.ts`);
-    }
+    const events = Array.from({ length: 200 }, () => ({ type: "update" }));
+    fireEvents(cb, events);
 
     await vi.advanceTimersByTimeAsync(799);
     expect(onChange).not.toHaveBeenCalled();
@@ -468,19 +469,7 @@ describe("GitFileWatcher", () => {
 
   it("burst count resets after flush so next session starts at min debounce", async () => {
     const onChange = vi.fn();
-    let worktreeCallback: ((eventType: string, filename: string | null) => void) | undefined;
-
-    vi.mocked(watch).mockImplementation(((
-      _path: string,
-      opts: Record<string, unknown>,
-      cb?: (eventType: string, filename: string | null) => void
-    ) => {
-      const w = createMockWatcher();
-      if (opts?.recursive) {
-        worktreeCallback = cb;
-      }
-      return w;
-    }) as unknown as typeof watch);
+    const mock = setupSubscribeMock();
 
     const gitWatcher = new GitFileWatcher({
       worktreePath: "/repo",
@@ -494,20 +483,20 @@ describe("GitFileWatcher", () => {
     });
 
     expect(gitWatcher.start()).toBe(true);
+    mock.resolve();
+    const cb = mock.getCallback();
 
-    // Burst of 10 events → delay = 150 + 9*10 = 240ms
-    for (let i = 0; i < 10; i++) {
-      worktreeCallback?.("change", `src/a${i}.ts`);
-    }
+    fireEvents(
+      cb,
+      Array.from({ length: 10 }, () => ({ type: "update" }))
+    );
     await vi.advanceTimersByTimeAsync(240);
     expect(onChange).toHaveBeenCalledTimes(1);
 
-    // Long quiet period to confirm no stale timers and no stale count
     await vi.advanceTimersByTimeAsync(5000);
     expect(onChange).toHaveBeenCalledTimes(1);
 
-    // New single-event session must fire at minDelay (150ms), not stale ramp (240ms)
-    worktreeCallback?.("change", "src/new.ts");
+    fireEvents(cb, [{ type: "update" }]);
     await vi.advanceTimersByTimeAsync(149);
     expect(onChange).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(1);
@@ -516,19 +505,7 @@ describe("GitFileWatcher", () => {
 
   it("leaves no pending timers after trailing debounce flush", async () => {
     const onChange = vi.fn();
-    let worktreeCallback: ((eventType: string, filename: string | null) => void) | undefined;
-
-    vi.mocked(watch).mockImplementation(((
-      _path: string,
-      opts: Record<string, unknown>,
-      cb?: (eventType: string, filename: string | null) => void
-    ) => {
-      const w = createMockWatcher();
-      if (opts?.recursive) {
-        worktreeCallback = cb;
-      }
-      return w;
-    }) as unknown as typeof watch);
+    const mock = setupSubscribeMock();
 
     const gitWatcher = new GitFileWatcher({
       worktreePath: "/repo",
@@ -542,9 +519,10 @@ describe("GitFileWatcher", () => {
     });
 
     expect(gitWatcher.start()).toBe(true);
+    mock.resolve();
+    const cb = mock.getCallback();
 
-    worktreeCallback?.("change", "src/a.ts");
-    worktreeCallback?.("change", "src/b.ts");
+    fireEvents(cb, [{ type: "update" }, { type: "update" }]);
     await vi.advanceTimersByTimeAsync(200);
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(vi.getTimerCount()).toBe(0);
@@ -552,19 +530,7 @@ describe("GitFileWatcher", () => {
 
   it("leaves no pending timers after max-wait flush", async () => {
     const onChange = vi.fn();
-    let worktreeCallback: ((eventType: string, filename: string | null) => void) | undefined;
-
-    vi.mocked(watch).mockImplementation(((
-      _path: string,
-      opts: Record<string, unknown>,
-      cb?: (eventType: string, filename: string | null) => void
-    ) => {
-      const w = createMockWatcher();
-      if (opts?.recursive) {
-        worktreeCallback = cb;
-      }
-      return w;
-    }) as unknown as typeof watch);
+    const mock = setupSubscribeMock();
 
     const gitWatcher = new GitFileWatcher({
       worktreePath: "/repo",
@@ -578,14 +544,14 @@ describe("GitFileWatcher", () => {
     });
 
     expect(gitWatcher.start()).toBe(true);
+    mock.resolve();
+    const cb = mock.getCallback();
 
-    // Sustained burst that never lets trailing debounce fire — forces max-wait flush
-    worktreeCallback?.("change", "src/file0.ts");
-    for (let i = 1; i <= 9; i++) {
+    fireEvents(cb, [{ type: "update" }]);
+    for (let i = 0; i < 9; i++) {
       await vi.advanceTimersByTimeAsync(150);
-      worktreeCallback?.("change", `src/file${i}.ts`);
+      fireEvents(cb, [{ type: "update" }]);
     }
-    // Advance past max-wait (1500ms total from first event)
     await vi.advanceTimersByTimeAsync(200);
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(vi.getTimerCount()).toBe(0);
@@ -593,19 +559,7 @@ describe("GitFileWatcher", () => {
 
   it("dispose during active burst prevents callback and clears timers", async () => {
     const onChange = vi.fn();
-    let worktreeCallback: ((eventType: string, filename: string | null) => void) | undefined;
-
-    vi.mocked(watch).mockImplementation(((
-      _path: string,
-      opts: Record<string, unknown>,
-      cb?: (eventType: string, filename: string | null) => void
-    ) => {
-      const w = createMockWatcher();
-      if (opts?.recursive) {
-        worktreeCallback = cb;
-      }
-      return w;
-    }) as unknown as typeof watch);
+    const mock = setupSubscribeMock();
 
     const gitWatcher = new GitFileWatcher({
       worktreePath: "/repo",
@@ -619,9 +573,10 @@ describe("GitFileWatcher", () => {
     });
 
     expect(gitWatcher.start()).toBe(true);
+    mock.resolve();
+    const cb = mock.getCallback();
 
-    worktreeCallback?.("change", "src/a.ts");
-    worktreeCallback?.("change", "src/b.ts");
+    fireEvents(cb, [{ type: "update" }, { type: "update" }]);
     gitWatcher.dispose();
 
     await vi.advanceTimersByTimeAsync(2000);
@@ -629,424 +584,472 @@ describe("GitFileWatcher", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("onWatcherFailed is called when recursive watcher emits error on Linux ENOSPC", () => {
-    const onChange = vi.fn();
-    const onWatcherFailed = vi.fn();
-    let errorHandler: ((error: NodeJS.ErrnoException) => void) | undefined;
+  // ---- Error handling tests (adapted to async Promise rejection) ----
 
-    const origPlatform = process.platform;
-    Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+  describe("startup error handling", () => {
+    it("onWatcherFailed is called when subscribe rejects on Linux ENOSPC", async () => {
+      const onChange = vi.fn();
+      const onWatcherFailed = vi.fn();
+      const mock = setupSubscribeMock();
 
-    vi.mocked(watch).mockImplementation(((
-      _path: string,
-      opts: Record<string, unknown>,
-      _cb?: unknown
-    ) => {
-      const w = createMockWatcher();
-      if (opts?.recursive) {
-        vi.mocked(w.on).mockImplementation(((event: string, handler: unknown) => {
-          if (event === "error") {
-            errorHandler = handler as (error: NodeJS.ErrnoException) => void;
-          }
-          return w;
-        }) as unknown as typeof w.on);
+      const origPlatform = process.platform;
+      Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+
+      try {
+        const gitWatcher = new GitFileWatcher({
+          worktreePath: "/repo",
+          branch: "main",
+          debounceMs: 300,
+          onChange,
+          watchWorktree: true,
+          onWatcherFailed,
+        });
+
+        gitWatcher.start();
+
+        const enospcError = new Error("ENOSPC") as NodeJS.ErrnoException;
+        enospcError.code = "ENOSPC";
+        mock.reject(enospcError);
+
+        await Promise.resolve();
+        await vi.runAllTicks();
+
+        expect(onWatcherFailed).toHaveBeenCalledTimes(1);
+      } finally {
+        Object.defineProperty(process, "platform", { value: origPlatform, configurable: true });
       }
-      return w;
-    }) as unknown as typeof watch);
-
-    const gitWatcher = new GitFileWatcher({
-      worktreePath: "/repo",
-      branch: "main",
-      debounceMs: 300,
-      onChange,
-      watchWorktree: true,
-      onWatcherFailed,
     });
 
-    gitWatcher.start();
-    expect(errorHandler).toBeDefined();
+    it("onInotifyLimitReached fires alongside onWatcherFailed on Linux ENOSPC rejection", async () => {
+      const onChange = vi.fn();
+      const onWatcherFailed = vi.fn();
+      const onInotifyLimitReached = vi.fn();
+      const mock = setupSubscribeMock();
 
-    const enospcError = new Error("ENOSPC") as NodeJS.ErrnoException;
-    enospcError.code = "ENOSPC";
-    errorHandler?.(enospcError);
+      const origPlatform = process.platform;
+      Object.defineProperty(process, "platform", { value: "linux", configurable: true });
 
-    expect(onWatcherFailed).toHaveBeenCalledTimes(1);
+      try {
+        const gitWatcher = new GitFileWatcher({
+          worktreePath: "/repo",
+          branch: "main",
+          debounceMs: 300,
+          onChange,
+          watchWorktree: true,
+          onWatcherFailed,
+          onInotifyLimitReached,
+        });
 
-    Object.defineProperty(process, "platform", { value: origPlatform, configurable: true });
-  });
+        gitWatcher.start();
 
-  it("onInotifyLimitReached fires alongside onWatcherFailed on Linux ENOSPC at runtime", () => {
-    const onChange = vi.fn();
-    const onWatcherFailed = vi.fn();
-    const onInotifyLimitReached = vi.fn();
-    let errorHandler: ((error: NodeJS.ErrnoException) => void) | undefined;
+        const enospcError = new Error("ENOSPC") as NodeJS.ErrnoException;
+        enospcError.code = "ENOSPC";
+        mock.reject(enospcError);
 
-    const origPlatform = process.platform;
-    Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+        await Promise.resolve();
+        await vi.runAllTicks();
 
-    vi.mocked(watch).mockImplementation(((
-      _path: string,
-      opts: Record<string, unknown>,
-      _cb?: unknown
-    ) => {
-      const w = createMockWatcher();
-      if (opts?.recursive) {
-        vi.mocked(w.on).mockImplementation(((event: string, handler: unknown) => {
-          if (event === "error") {
-            errorHandler = handler as (error: NodeJS.ErrnoException) => void;
-          }
-          return w;
-        }) as unknown as typeof w.on);
+        expect(onInotifyLimitReached).toHaveBeenCalledTimes(1);
+        expect(onWatcherFailed).toHaveBeenCalledTimes(1);
+      } finally {
+        Object.defineProperty(process, "platform", { value: origPlatform, configurable: true });
       }
-      return w;
-    }) as unknown as typeof watch);
-
-    const gitWatcher = new GitFileWatcher({
-      worktreePath: "/repo",
-      branch: "main",
-      debounceMs: 300,
-      onChange,
-      watchWorktree: true,
-      onWatcherFailed,
-      onInotifyLimitReached,
     });
 
-    gitWatcher.start();
-    const enospcError = new Error("ENOSPC") as NodeJS.ErrnoException;
-    enospcError.code = "ENOSPC";
-    errorHandler?.(enospcError);
+    it("does not call onInotifyLimitReached for unknown rejection on Linux", async () => {
+      const onChange = vi.fn();
+      const onWatcherFailed = vi.fn();
+      const onInotifyLimitReached = vi.fn();
+      const mock = setupSubscribeMock();
 
-    expect(onInotifyLimitReached).toHaveBeenCalledTimes(1);
-    expect(onWatcherFailed).toHaveBeenCalledTimes(1);
+      const origPlatform = process.platform;
+      Object.defineProperty(process, "platform", { value: "linux", configurable: true });
 
-    Object.defineProperty(process, "platform", { value: origPlatform, configurable: true });
-  });
+      try {
+        const gitWatcher = new GitFileWatcher({
+          worktreePath: "/repo",
+          branch: "main",
+          debounceMs: 300,
+          onChange,
+          watchWorktree: true,
+          onWatcherFailed,
+          onInotifyLimitReached,
+        });
 
-  it("does not call onInotifyLimitReached for non-ENOSPC runtime errors on Linux", () => {
-    const onChange = vi.fn();
-    const onWatcherFailed = vi.fn();
-    const onInotifyLimitReached = vi.fn();
-    let errorHandler: ((error: NodeJS.ErrnoException) => void) | undefined;
+        gitWatcher.start();
 
-    const origPlatform = process.platform;
-    Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+        const otherError = new Error("permission denied") as NodeJS.ErrnoException;
+        otherError.code = "EACCES";
+        mock.reject(otherError);
 
-    vi.mocked(watch).mockImplementation(((
-      _path: string,
-      opts: Record<string, unknown>,
-      _cb?: unknown
-    ) => {
-      const w = createMockWatcher();
-      if (opts?.recursive) {
-        vi.mocked(w.on).mockImplementation(((event: string, handler: unknown) => {
-          if (event === "error") {
-            errorHandler = handler as (error: NodeJS.ErrnoException) => void;
-          }
-          return w;
-        }) as unknown as typeof w.on);
+        await Promise.resolve();
+        await vi.runAllTicks();
+
+        expect(onInotifyLimitReached).not.toHaveBeenCalled();
+        expect(onWatcherFailed).toHaveBeenCalledTimes(1);
+      } finally {
+        Object.defineProperty(process, "platform", { value: origPlatform, configurable: true });
       }
-      return w;
-    }) as unknown as typeof watch);
-
-    const gitWatcher = new GitFileWatcher({
-      worktreePath: "/repo",
-      branch: "main",
-      debounceMs: 300,
-      onChange,
-      watchWorktree: true,
-      onWatcherFailed,
-      onInotifyLimitReached,
     });
 
-    gitWatcher.start();
-    const otherError = new Error("permission denied") as NodeJS.ErrnoException;
-    otherError.code = "EACCES";
-    errorHandler?.(otherError);
+    it("startup ENOSPC on Linux no longer returns false — callbacks fire async", async () => {
+      const onChange = vi.fn();
+      const onWatcherFailed = vi.fn();
+      const onInotifyLimitReached = vi.fn();
+      const mock = setupSubscribeMock();
 
-    expect(onInotifyLimitReached).not.toHaveBeenCalled();
-    expect(onWatcherFailed).not.toHaveBeenCalled();
+      const origPlatform = process.platform;
+      Object.defineProperty(process, "platform", { value: "linux", configurable: true });
 
-    Object.defineProperty(process, "platform", { value: origPlatform, configurable: true });
-  });
+      try {
+        const gitWatcher = new GitFileWatcher({
+          worktreePath: "/repo",
+          branch: "main",
+          debounceMs: 300,
+          onChange,
+          watchWorktree: true,
+          onWatcherFailed,
+          onInotifyLimitReached,
+        });
 
-  it("startup ENOSPC on Linux calls both onInotifyLimitReached and onWatcherFailed", () => {
-    const onChange = vi.fn();
-    const onWatcherFailed = vi.fn();
-    const onInotifyLimitReached = vi.fn();
+        expect(gitWatcher.start()).toBe(true);
 
-    const origPlatform = process.platform;
-    Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+        const enospcError = new Error("ENOSPC") as NodeJS.ErrnoException;
+        enospcError.code = "ENOSPC";
+        mock.reject(enospcError);
 
-    // Only the recursive watcher throws on construction; the non-recursive
-    // git-internal watchers constructed earlier in start() succeed.
-    vi.mocked(watch).mockImplementation(((
-      _path: string,
-      opts: Record<string, unknown>,
-      _cb?: unknown
-    ) => {
-      if (opts?.recursive) {
-        const err = new Error("ENOSPC") as NodeJS.ErrnoException;
-        err.code = "ENOSPC";
-        throw err;
+        expect(onInotifyLimitReached).not.toHaveBeenCalled();
+        expect(onWatcherFailed).not.toHaveBeenCalled();
+
+        await Promise.resolve();
+        await vi.runAllTicks();
+
+        expect(onInotifyLimitReached).toHaveBeenCalledTimes(1);
+        expect(onWatcherFailed).toHaveBeenCalledTimes(1);
+      } finally {
+        Object.defineProperty(process, "platform", { value: origPlatform, configurable: true });
       }
-      return createMockWatcher();
-    }) as unknown as typeof watch);
-
-    const gitWatcher = new GitFileWatcher({
-      worktreePath: "/repo",
-      branch: "main",
-      debounceMs: 300,
-      onChange,
-      watchWorktree: true,
-      onWatcherFailed,
-      onInotifyLimitReached,
     });
 
-    // start() reports the recursive watcher failure via `false` so the
-    // monitor takes its retry branch (instead of treating the watcher as
-    // healthy and resetting the retry counter). Callbacks still fire exactly
-    // once so the toast dedup remains correct.
-    expect(gitWatcher.start()).toBe(false);
-    expect(onInotifyLimitReached).toHaveBeenCalledTimes(1);
-    expect(onWatcherFailed).toHaveBeenCalledTimes(1);
+    it("onEmfileLimitReached fires alongside onWatcherFailed on macOS EMFILE rejection", async () => {
+      const onChange = vi.fn();
+      const onWatcherFailed = vi.fn();
+      const onEmfileLimitReached = vi.fn();
+      const mock = setupSubscribeMock();
 
-    Object.defineProperty(process, "platform", { value: origPlatform, configurable: true });
-  });
+      const origPlatform = process.platform;
+      Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
 
-  it("onEmfileLimitReached fires alongside onWatcherFailed on macOS EMFILE at runtime", () => {
-    const onChange = vi.fn();
-    const onWatcherFailed = vi.fn();
-    const onEmfileLimitReached = vi.fn();
-    let errorHandler: ((error: NodeJS.ErrnoException) => void) | undefined;
-    let recursiveWatcher: FSWatcher | undefined;
+      try {
+        const gitWatcher = new GitFileWatcher({
+          worktreePath: "/repo",
+          branch: "main",
+          debounceMs: 300,
+          onChange,
+          watchWorktree: true,
+          onWatcherFailed,
+          onEmfileLimitReached,
+        });
 
-    const origPlatform = process.platform;
-    Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
+        gitWatcher.start();
 
-    vi.mocked(watch).mockImplementation(((
-      _path: string,
-      opts: Record<string, unknown>,
-      _cb?: unknown
-    ) => {
-      const w = createMockWatcher();
-      if (opts?.recursive) {
-        recursiveWatcher = w;
-        vi.mocked(w.on).mockImplementation(((event: string, handler: unknown) => {
-          if (event === "error") {
-            errorHandler = handler as (error: NodeJS.ErrnoException) => void;
-          }
-          return w;
-        }) as unknown as typeof w.on);
+        const emfileError = new Error("EMFILE") as NodeJS.ErrnoException;
+        emfileError.code = "EMFILE";
+        mock.reject(emfileError);
+
+        await Promise.resolve();
+        await vi.runAllTicks();
+
+        expect(onEmfileLimitReached).toHaveBeenCalledTimes(1);
+        expect(onWatcherFailed).toHaveBeenCalledTimes(1);
+      } finally {
+        Object.defineProperty(process, "platform", { value: origPlatform, configurable: true });
       }
-      return w;
-    }) as unknown as typeof watch);
-
-    const gitWatcher = new GitFileWatcher({
-      worktreePath: "/repo",
-      branch: "main",
-      debounceMs: 300,
-      onChange,
-      watchWorktree: true,
-      onWatcherFailed,
-      onEmfileLimitReached,
     });
 
-    gitWatcher.start();
-    const emfileError = new Error("EMFILE") as NodeJS.ErrnoException;
-    emfileError.code = "EMFILE";
-    errorHandler?.(emfileError);
+    it("onEmfileLimitReached fires on macOS from message matching when .code is missing", async () => {
+      const onChange = vi.fn();
+      const onWatcherFailed = vi.fn();
+      const onEmfileLimitReached = vi.fn();
+      const mock = setupSubscribeMock();
 
-    expect(onEmfileLimitReached).toHaveBeenCalledTimes(1);
-    expect(onWatcherFailed).toHaveBeenCalledTimes(1);
-    // The broken watcher must be closed and removed from internal state so a
-    // subsequent dispose() doesn't double-close (and so it stops receiving
-    // OS events that could fire duplicate EMFILE callbacks).
-    expect(recursiveWatcher).toBeDefined();
-    expect(recursiveWatcher?.close).toHaveBeenCalledTimes(1);
-    gitWatcher.dispose();
-    expect(recursiveWatcher?.close).toHaveBeenCalledTimes(1);
+      const origPlatform = process.platform;
+      Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
 
-    Object.defineProperty(process, "platform", { value: origPlatform, configurable: true });
-  });
+      try {
+        const gitWatcher = new GitFileWatcher({
+          worktreePath: "/repo",
+          branch: "main",
+          debounceMs: 300,
+          onChange,
+          watchWorktree: true,
+          onWatcherFailed,
+          onEmfileLimitReached,
+        });
 
-  it("does not call onEmfileLimitReached for non-EMFILE runtime errors on macOS", () => {
-    const onChange = vi.fn();
-    const onWatcherFailed = vi.fn();
-    const onEmfileLimitReached = vi.fn();
-    let errorHandler: ((error: NodeJS.ErrnoException) => void) | undefined;
+        gitWatcher.start();
 
-    const origPlatform = process.platform;
-    Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
+        const fseventError = new Error("file descriptor limit reached") as NodeJS.ErrnoException;
+        mock.reject(fseventError);
 
-    vi.mocked(watch).mockImplementation(((
-      _path: string,
-      opts: Record<string, unknown>,
-      _cb?: unknown
-    ) => {
-      const w = createMockWatcher();
-      if (opts?.recursive) {
-        vi.mocked(w.on).mockImplementation(((event: string, handler: unknown) => {
-          if (event === "error") {
-            errorHandler = handler as (error: NodeJS.ErrnoException) => void;
-          }
-          return w;
-        }) as unknown as typeof w.on);
+        await Promise.resolve();
+        await vi.runAllTicks();
+
+        expect(onEmfileLimitReached).toHaveBeenCalledTimes(1);
+        expect(onWatcherFailed).toHaveBeenCalledTimes(1);
+      } finally {
+        Object.defineProperty(process, "platform", { value: origPlatform, configurable: true });
       }
-      return w;
-    }) as unknown as typeof watch);
-
-    const gitWatcher = new GitFileWatcher({
-      worktreePath: "/repo",
-      branch: "main",
-      debounceMs: 300,
-      onChange,
-      watchWorktree: true,
-      onWatcherFailed,
-      onEmfileLimitReached,
     });
 
-    gitWatcher.start();
-    const otherError = new Error("permission denied") as NodeJS.ErrnoException;
-    otherError.code = "EACCES";
-    errorHandler?.(otherError);
+    it("does not call onEmfileLimitReached for unknown rejection on macOS", async () => {
+      const onChange = vi.fn();
+      const onWatcherFailed = vi.fn();
+      const onEmfileLimitReached = vi.fn();
+      const mock = setupSubscribeMock();
 
-    expect(onEmfileLimitReached).not.toHaveBeenCalled();
-    expect(onWatcherFailed).not.toHaveBeenCalled();
+      const origPlatform = process.platform;
+      Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
 
-    Object.defineProperty(process, "platform", { value: origPlatform, configurable: true });
-  });
+      try {
+        const gitWatcher = new GitFileWatcher({
+          worktreePath: "/repo",
+          branch: "main",
+          debounceMs: 300,
+          onChange,
+          watchWorktree: true,
+          onWatcherFailed,
+          onEmfileLimitReached,
+        });
 
-  it("startup EMFILE on macOS calls both onEmfileLimitReached and onWatcherFailed", () => {
-    const onChange = vi.fn();
-    const onWatcherFailed = vi.fn();
-    const onEmfileLimitReached = vi.fn();
+        gitWatcher.start();
 
-    const origPlatform = process.platform;
-    Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
+        const otherError = new Error("permission denied") as NodeJS.ErrnoException;
+        otherError.code = "EACCES";
+        mock.reject(otherError);
 
-    // Only the recursive watcher throws on construction; the non-recursive
-    // git-internal watchers constructed earlier in start() succeed.
-    vi.mocked(watch).mockImplementation(((
-      _path: string,
-      opts: Record<string, unknown>,
-      _cb?: unknown
-    ) => {
-      if (opts?.recursive) {
-        const err = new Error("EMFILE") as NodeJS.ErrnoException;
-        err.code = "EMFILE";
-        throw err;
+        await Promise.resolve();
+        await vi.runAllTicks();
+
+        expect(onEmfileLimitReached).not.toHaveBeenCalled();
+        expect(onWatcherFailed).toHaveBeenCalledTimes(1);
+      } finally {
+        Object.defineProperty(process, "platform", { value: origPlatform, configurable: true });
       }
-      return createMockWatcher();
-    }) as unknown as typeof watch);
-
-    const gitWatcher = new GitFileWatcher({
-      worktreePath: "/repo",
-      branch: "main",
-      debounceMs: 300,
-      onChange,
-      watchWorktree: true,
-      onWatcherFailed,
-      onEmfileLimitReached,
     });
 
-    expect(gitWatcher.start()).toBe(false);
-    expect(onEmfileLimitReached).toHaveBeenCalledTimes(1);
-    expect(onWatcherFailed).toHaveBeenCalledTimes(1);
+    it("startup EMFILE on macOS no longer returns false — callbacks fire async", async () => {
+      const onChange = vi.fn();
+      const onWatcherFailed = vi.fn();
+      const onEmfileLimitReached = vi.fn();
+      const mock = setupSubscribeMock();
 
-    Object.defineProperty(process, "platform", { value: origPlatform, configurable: true });
+      const origPlatform = process.platform;
+      Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
+
+      try {
+        const gitWatcher = new GitFileWatcher({
+          worktreePath: "/repo",
+          branch: "main",
+          debounceMs: 300,
+          onChange,
+          watchWorktree: true,
+          onWatcherFailed,
+          onEmfileLimitReached,
+        });
+
+        expect(gitWatcher.start()).toBe(true);
+
+        const emfileError = new Error("EMFILE") as NodeJS.ErrnoException;
+        emfileError.code = "EMFILE";
+        mock.reject(emfileError);
+
+        expect(onEmfileLimitReached).not.toHaveBeenCalled();
+        expect(onWatcherFailed).not.toHaveBeenCalled();
+
+        await Promise.resolve();
+        await vi.runAllTicks();
+
+        expect(onEmfileLimitReached).toHaveBeenCalledTimes(1);
+        expect(onWatcherFailed).toHaveBeenCalledTimes(1);
+      } finally {
+        Object.defineProperty(process, "platform", { value: origPlatform, configurable: true });
+      }
+    });
   });
 
-  it("does not signal emfile-limit on non-Darwin platforms for EMFILE", () => {
-    const onChange = vi.fn();
-    const onWatcherFailed = vi.fn();
-    const onEmfileLimitReached = vi.fn();
-    let errorHandler: ((error: NodeJS.ErrnoException) => void) | undefined;
+  describe("runtime error handling", () => {
+    it("runtime error on Linux ENOSPC fires callbacks", async () => {
+      const onChange = vi.fn();
+      const onWatcherFailed = vi.fn();
+      const onInotifyLimitReached = vi.fn();
+      const mock = setupSubscribeMock();
 
-    const origPlatform = process.platform;
-    Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+      const origPlatform = process.platform;
+      Object.defineProperty(process, "platform", { value: "linux", configurable: true });
 
-    vi.mocked(watch).mockImplementation(((
-      _path: string,
-      opts: Record<string, unknown>,
-      _cb?: unknown
-    ) => {
-      const w = createMockWatcher();
-      if (opts?.recursive) {
-        vi.mocked(w.on).mockImplementation(((event: string, handler: unknown) => {
-          if (event === "error") {
-            errorHandler = handler as (error: NodeJS.ErrnoException) => void;
-          }
-          return w;
-        }) as unknown as typeof w.on);
+      try {
+        const gitWatcher = new GitFileWatcher({
+          worktreePath: "/repo",
+          branch: "main",
+          debounceMs: 300,
+          onChange,
+          watchWorktree: true,
+          onWatcherFailed,
+          onInotifyLimitReached,
+        });
+
+        expect(gitWatcher.start()).toBe(true);
+        mock.resolve();
+        const cb = mock.getCallback();
+
+        const enospcError = new Error("ENOSPC") as NodeJS.ErrnoException;
+        enospcError.code = "ENOSPC";
+        fireError(cb, enospcError);
+
+        expect(onInotifyLimitReached).toHaveBeenCalledTimes(1);
+        expect(onWatcherFailed).toHaveBeenCalledTimes(1);
+      } finally {
+        Object.defineProperty(process, "platform", { value: origPlatform, configurable: true });
       }
-      return w;
-    }) as unknown as typeof watch);
-
-    const gitWatcher = new GitFileWatcher({
-      worktreePath: "/repo",
-      branch: "main",
-      debounceMs: 300,
-      onChange,
-      watchWorktree: true,
-      onWatcherFailed,
-      onEmfileLimitReached,
     });
 
-    gitWatcher.start();
-    const emfileError = new Error("EMFILE") as NodeJS.ErrnoException;
-    emfileError.code = "EMFILE";
-    errorHandler?.(emfileError);
+    it("runtime error on macOS EMFILE fires callbacks", async () => {
+      const onChange = vi.fn();
+      const onWatcherFailed = vi.fn();
+      const onEmfileLimitReached = vi.fn();
+      const mock = setupSubscribeMock();
 
-    expect(onEmfileLimitReached).not.toHaveBeenCalled();
+      const origPlatform = process.platform;
+      Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
 
-    Object.defineProperty(process, "platform", { value: origPlatform, configurable: true });
-  });
+      try {
+        const gitWatcher = new GitFileWatcher({
+          worktreePath: "/repo",
+          branch: "main",
+          debounceMs: 300,
+          onChange,
+          watchWorktree: true,
+          onWatcherFailed,
+          onEmfileLimitReached,
+        });
 
-  it("does not signal inotify-limit on non-Linux platforms for ENOSPC", () => {
-    const onChange = vi.fn();
-    const onWatcherFailed = vi.fn();
-    const onInotifyLimitReached = vi.fn();
-    let errorHandler: ((error: NodeJS.ErrnoException) => void) | undefined;
+        expect(gitWatcher.start()).toBe(true);
+        mock.resolve();
+        const cb = mock.getCallback();
 
-    const origPlatform = process.platform;
-    Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
+        const emfileError = new Error("EMFILE") as NodeJS.ErrnoException;
+        emfileError.code = "EMFILE";
+        fireError(cb, emfileError);
 
-    vi.mocked(watch).mockImplementation(((
-      _path: string,
-      opts: Record<string, unknown>,
-      _cb?: unknown
-    ) => {
-      const w = createMockWatcher();
-      if (opts?.recursive) {
-        vi.mocked(w.on).mockImplementation(((event: string, handler: unknown) => {
-          if (event === "error") {
-            errorHandler = handler as (error: NodeJS.ErrnoException) => void;
-          }
-          return w;
-        }) as unknown as typeof w.on);
+        expect(onEmfileLimitReached).toHaveBeenCalledTimes(1);
+        expect(onWatcherFailed).toHaveBeenCalledTimes(1);
+      } finally {
+        Object.defineProperty(process, "platform", { value: origPlatform, configurable: true });
       }
-      return w;
-    }) as unknown as typeof watch);
-
-    const gitWatcher = new GitFileWatcher({
-      worktreePath: "/repo",
-      branch: "main",
-      debounceMs: 300,
-      onChange,
-      watchWorktree: true,
-      onWatcherFailed,
-      onInotifyLimitReached,
     });
 
-    gitWatcher.start();
-    const enospcError = new Error("ENOSPC") as NodeJS.ErrnoException;
-    enospcError.code = "ENOSPC";
-    errorHandler?.(enospcError);
+    it("does not signal emfile-limit on non-Darwin platforms for EMFILE runtime error", () => {
+      const onChange = vi.fn();
+      const onWatcherFailed = vi.fn();
+      const onEmfileLimitReached = vi.fn();
+      const mock = setupSubscribeMock();
 
-    expect(onInotifyLimitReached).not.toHaveBeenCalled();
+      const origPlatform = process.platform;
+      Object.defineProperty(process, "platform", { value: "linux", configurable: true });
 
-    Object.defineProperty(process, "platform", { value: origPlatform, configurable: true });
+      try {
+        const gitWatcher = new GitFileWatcher({
+          worktreePath: "/repo",
+          branch: "main",
+          debounceMs: 300,
+          onChange,
+          watchWorktree: true,
+          onWatcherFailed,
+          onEmfileLimitReached,
+        });
+
+        expect(gitWatcher.start()).toBe(true);
+        mock.resolve();
+        const cb = mock.getCallback();
+
+        const emfileError = new Error("EMFILE") as NodeJS.ErrnoException;
+        emfileError.code = "EMFILE";
+        fireError(cb, emfileError);
+
+        expect(onEmfileLimitReached).not.toHaveBeenCalled();
+      } finally {
+        Object.defineProperty(process, "platform", { value: origPlatform, configurable: true });
+      }
+    });
+
+    it("does not signal inotify-limit on non-Linux platforms for ENOSPC runtime error", () => {
+      const onChange = vi.fn();
+      const onWatcherFailed = vi.fn();
+      const onInotifyLimitReached = vi.fn();
+      const mock = setupSubscribeMock();
+
+      const origPlatform = process.platform;
+      Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
+
+      try {
+        const gitWatcher = new GitFileWatcher({
+          worktreePath: "/repo",
+          branch: "main",
+          debounceMs: 300,
+          onChange,
+          watchWorktree: true,
+          onWatcherFailed,
+          onInotifyLimitReached,
+        });
+
+        expect(gitWatcher.start()).toBe(true);
+        mock.resolve();
+        const cb = mock.getCallback();
+
+        const enospcError = new Error("ENOSPC") as NodeJS.ErrnoException;
+        enospcError.code = "ENOSPC";
+        fireError(cb, enospcError);
+
+        expect(onInotifyLimitReached).not.toHaveBeenCalled();
+      } finally {
+        Object.defineProperty(process, "platform", { value: origPlatform, configurable: true });
+      }
+    });
+
+    it("unknown runtime errors do not fire platform-specific callbacks", () => {
+      const onChange = vi.fn();
+      const onWatcherFailed = vi.fn();
+      const onInotifyLimitReached = vi.fn();
+      const onEmfileLimitReached = vi.fn();
+      const mock = setupSubscribeMock();
+
+      const gitWatcher = new GitFileWatcher({
+        worktreePath: "/repo",
+        branch: "main",
+        debounceMs: 300,
+        onChange,
+        watchWorktree: true,
+        onWatcherFailed,
+        onInotifyLimitReached,
+        onEmfileLimitReached,
+      });
+
+      expect(gitWatcher.start()).toBe(true);
+      mock.resolve();
+      const cb = mock.getCallback();
+
+      const otherError = new Error("permission denied") as NodeJS.ErrnoException;
+      otherError.code = "EACCES";
+      fireError(cb, otherError);
+
+      expect(onInotifyLimitReached).not.toHaveBeenCalled();
+      expect(onEmfileLimitReached).not.toHaveBeenCalled();
+      expect(onWatcherFailed).not.toHaveBeenCalled();
+    });
   });
+
+  // ---- Sentinels & branch ref tests (unchanged, use per-file .git/ arm) ----
 
   it("fires onChange when an operation sentinel appears or disappears", async () => {
     const gitDir = pathJoin("/repo", ".git");
@@ -1060,7 +1063,6 @@ describe("GitFileWatcher", () => {
 
     expect(gitWatcher.start()).toBe(true);
 
-    // The .git dir watcher is reused for sentinels — no extra fs.watch is opened.
     const dotGitCalls = vi
       .mocked(watch)
       .mock.calls.filter(([path]) => path === gitDir) as unknown as Array<
@@ -1109,218 +1111,39 @@ describe("GitFileWatcher", () => {
       | undefined;
     expect(refsCallback).toBeDefined();
 
-    // Branch ref update fires onChange
     refsCallback?.("rename", "main");
     await vi.advanceTimersByTimeAsync(150);
     expect(onChange).toHaveBeenCalledTimes(1);
 
-    // Lock file for branch ref also fires onChange
     refsCallback?.("rename", "main.lock");
     await vi.advanceTimersByTimeAsync(150);
     expect(onChange).toHaveBeenCalledTimes(2);
   });
 
+  // ---- Ignore filter tests ----
+
   describe("worktree ignore filter", () => {
-    function captureWorktreeCallback() {
-      let worktreeCallback: ((eventType: string, filename: string | null) => void) | undefined;
+    it("passes WORKTREE_IGNORE_GLOBS to subscribe as native ignore option", () => {
+      const mock = setupSubscribeMock();
 
-      vi.mocked(watch).mockImplementation(((
-        _path: string,
-        opts: Record<string, unknown>,
-        cb?: (eventType: string, filename: string | null) => void
-      ) => {
-        const w = createMockWatcher();
-        if (opts?.recursive) {
-          worktreeCallback = cb;
-        }
-        return w;
-      }) as unknown as typeof watch);
+      const gitWatcher = new GitFileWatcher({
+        worktreePath: "/repo",
+        branch: "main",
+        debounceMs: 300,
+        onChange: vi.fn(),
+        watchWorktree: true,
+        worktreeMinDebounceMs: 100,
+        worktreeMaxDebounceMs: 100,
+      });
 
-      return {
-        getCallback: () => worktreeCallback,
-        createWatcher: (onChange = vi.fn()) => {
-          const gitWatcher = new GitFileWatcher({
-            worktreePath: "/repo",
-            branch: "main",
-            debounceMs: 300,
-            onChange,
-            watchWorktree: true,
-            worktreeMinDebounceMs: 100,
-            worktreeMaxDebounceMs: 100,
-          });
-          return gitWatcher;
-        },
-      };
-    }
+      gitWatcher.start();
 
-    it("ignores root-level ignored directories", async () => {
-      const { getCallback, createWatcher } = captureWorktreeCallback();
-      const onChange = vi.fn();
+      const options = mock.getOptions();
+      expect(options).toBeDefined();
+      expect(options?.ignore).toBeDefined();
 
-      const watcher = createWatcher(onChange);
-      expect(watcher.start()).toBe(true);
-      const cb = getCallback();
-      expect(cb).toBeDefined();
-
-      cb?.("change", "node_modules/react/index.js");
-      cb?.("change", "dist/app.js");
-      cb?.("change", ".venv/bin/python");
-
-      await vi.advanceTimersByTimeAsync(150);
-      expect(onChange).not.toHaveBeenCalled();
-    });
-
-    it("ignores nested ignored directories at any depth", async () => {
-      const { getCallback, createWatcher } = captureWorktreeCallback();
-      const onChange = vi.fn();
-
-      const watcher = createWatcher(onChange);
-      expect(watcher.start()).toBe(true);
-      const cb = getCallback();
-      expect(cb).toBeDefined();
-
-      cb?.("change", "packages/web/node_modules/react/index.js");
-      cb?.("change", "apps/site/.next/cache/file");
-      cb?.("change", "services/api/target/debug/file");
-      cb?.("change", "pkg/__pycache__/module.pyc");
-
-      await vi.advanceTimersByTimeAsync(150);
-      expect(onChange).not.toHaveBeenCalled();
-    });
-
-    it("handles Windows backslash separators in ignore filter", async () => {
-      const { getCallback, createWatcher } = captureWorktreeCallback();
-      const onChange = vi.fn();
-
-      const watcher = createWatcher(onChange);
-      expect(watcher.start()).toBe(true);
-      const cb = getCallback();
-      expect(cb).toBeDefined();
-
-      cb?.("change", "packages\\web\\node_modules\\react\\index.js");
-      cb?.("change", "apps\\site\\.next\\cache\\file");
-
-      await vi.advanceTimersByTimeAsync(150);
-      expect(onChange).not.toHaveBeenCalled();
-    });
-
-    it("does not ignore substring matches (false positive guard)", async () => {
-      const { getCallback, createWatcher } = captureWorktreeCallback();
-      const onChange = vi.fn();
-
-      const watcher = createWatcher(onChange);
-      expect(watcher.start()).toBe(true);
-      const cb = getCallback();
-      expect(cb).toBeDefined();
-
-      cb?.("change", "src/build-tools/config.ts");
-      await vi.advanceTimersByTimeAsync(100);
-      expect(onChange).toHaveBeenCalledTimes(1);
-      onChange.mockClear();
-
-      cb?.("change", "packages/mydist/file.ts");
-      await vi.advanceTimersByTimeAsync(100);
-      expect(onChange).toHaveBeenCalledTimes(1);
-    });
-
-    it("ignores exact directory name match (a file named after the dir itself)", async () => {
-      const { getCallback, createWatcher } = captureWorktreeCallback();
-      const onChange = vi.fn();
-
-      const watcher = createWatcher(onChange);
-      expect(watcher.start()).toBe(true);
-      const cb = getCallback();
-      expect(cb).toBeDefined();
-
-      cb?.("change", "node_modules");
-      cb?.("change", "dist");
-
-      await vi.advanceTimersByTimeAsync(150);
-      expect(onChange).not.toHaveBeenCalled();
-    });
-
-    it("still fires for non-ignored paths after ignored events", async () => {
-      const { getCallback, createWatcher } = captureWorktreeCallback();
-      const onChange = vi.fn();
-
-      const watcher = createWatcher(onChange);
-      expect(watcher.start()).toBe(true);
-      const cb = getCallback();
-      expect(cb).toBeDefined();
-
-      // Ignored — should be filtered
-      cb?.("change", "node_modules/react/index.js");
-      cb?.("change", "dist/bundle.js");
-
-      // Non-ignored — should fire
-      cb?.("change", "src/index.ts");
-
-      await vi.advanceTimersByTimeAsync(100);
-      expect(onChange).toHaveBeenCalledTimes(1);
-    });
-
-    it("ignores .git directory events (existing behavior preserved)", async () => {
-      const { getCallback, createWatcher } = captureWorktreeCallback();
-      const onChange = vi.fn();
-
-      const watcher = createWatcher(onChange);
-      expect(watcher.start()).toBe(true);
-      const cb = getCallback();
-      expect(cb).toBeDefined();
-
-      cb?.("change", ".git/config");
-      cb?.("change", ".git/HEAD");
-
-      await vi.advanceTimersByTimeAsync(150);
-      expect(onChange).not.toHaveBeenCalled();
-    });
-
-    it("ignores nested exact directory events (tail-position match)", async () => {
-      const { getCallback, createWatcher } = captureWorktreeCallback();
-      const onChange = vi.fn();
-
-      const watcher = createWatcher(onChange);
-      expect(watcher.start()).toBe(true);
-      const cb = getCallback();
-      expect(cb).toBeDefined();
-
-      // Directory creation/deletion reported as bare name without trailing child
-      cb?.("change", "packages/web/node_modules");
-      cb?.("change", "apps/site/.next");
-      cb?.("change", "pkg/__pycache__");
-
-      await vi.advanceTimersByTimeAsync(150);
-      expect(onChange).not.toHaveBeenCalled();
-    });
-
-    it("null filename bypasses ignore filter (global dirty mitigation)", async () => {
-      const { getCallback, createWatcher } = captureWorktreeCallback();
-      const onChange = vi.fn();
-
-      const watcher = createWatcher(onChange);
-      expect(watcher.start()).toBe(true);
-      const cb = getCallback();
-      expect(cb).toBeDefined();
-
-      // Fire several ignored events, then null — should still fire onChange
-      cb?.("change", "node_modules/react/index.js");
-      cb?.("change", "dist/bundle.js");
-      cb?.("change", null);
-
-      await vi.advanceTimersByTimeAsync(100);
-      expect(onChange).toHaveBeenCalledTimes(1);
-    });
-
-    it("ignores all 11 registered directory names at any depth", async () => {
-      const { getCallback, createWatcher } = captureWorktreeCallback();
-      const onChange = vi.fn();
-
-      const watcher = createWatcher(onChange);
-      expect(watcher.start()).toBe(true);
-      const cb = getCallback();
-      expect(cb).toBeDefined();
-
-      const dirs = [
+      const ignore = options?.ignore as string[];
+      const expectedDirs = [
         "node_modules",
         "dist",
         "build",
@@ -1333,13 +1156,300 @@ describe("GitFileWatcher", () => {
         "__pycache__",
         ".venv",
       ];
-
-      for (const dir of dirs) {
-        cb?.("change", `subdir/${dir}/file.ts`);
+      for (const dir of expectedDirs) {
+        expect(ignore).toContain(`**/${dir}/**`);
       }
+      expect(ignore).toContain("**/.git");
+      expect(ignore).toContain("**/.git/**");
+      expect(ignore).toHaveLength(13);
+    });
 
+    it("events from non-ignored paths still fire onChange", async () => {
+      const onChange = vi.fn();
+      const mock = setupSubscribeMock();
+
+      const gitWatcher = new GitFileWatcher({
+        worktreePath: "/repo",
+        branch: "main",
+        debounceMs: 300,
+        onChange,
+        watchWorktree: true,
+        worktreeMinDebounceMs: 100,
+        worktreeMaxDebounceMs: 100,
+      });
+
+      expect(gitWatcher.start()).toBe(true);
+      mock.resolve();
+      const cb = mock.getCallback();
+
+      fireEvents(cb, [{ type: "update" }]);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(onChange).toHaveBeenCalledTimes(1);
+    });
+
+    it("multiple events in a batch each increment burstCount", async () => {
+      const onChange = vi.fn();
+      const mock = setupSubscribeMock();
+
+      const gitWatcher = new GitFileWatcher({
+        worktreePath: "/repo",
+        branch: "main",
+        debounceMs: 300,
+        onChange,
+        watchWorktree: true,
+        worktreeMinDebounceMs: 150,
+        worktreeMaxDebounceMs: 800,
+      });
+
+      expect(gitWatcher.start()).toBe(true);
+      mock.resolve();
+      const cb = mock.getCallback();
+
+      fireEvents(
+        cb,
+        Array.from({ length: 10 }, () => ({ type: "update" }))
+      );
+
+      await vi.advanceTimersByTimeAsync(239);
+      expect(onChange).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(onChange).toHaveBeenCalledTimes(1);
+    });
+
+    it("empty events array does not trigger onChange", async () => {
+      const onChange = vi.fn();
+      const mock = setupSubscribeMock();
+
+      const gitWatcher = new GitFileWatcher({
+        worktreePath: "/repo",
+        branch: "main",
+        debounceMs: 300,
+        onChange,
+        watchWorktree: true,
+        worktreeMinDebounceMs: 100,
+        worktreeMaxDebounceMs: 100,
+      });
+
+      expect(gitWatcher.start()).toBe(true);
+      mock.resolve();
+      const cb = mock.getCallback();
+
+      fireEvents(cb, []);
       await vi.advanceTimersByTimeAsync(150);
       expect(onChange).not.toHaveBeenCalled();
     });
+  });
+
+  // ---- Disposal & lifecycle tests ----
+
+  it("dispose after subscribe resolves calls unsubscribe", async () => {
+    const onChange = vi.fn();
+    const mock = setupSubscribeMock();
+
+    const gitWatcher = new GitFileWatcher({
+      worktreePath: "/repo",
+      branch: "main",
+      debounceMs: 300,
+      onChange,
+      watchWorktree: true,
+    });
+
+    gitWatcher.start();
+
+    const sub = mock.resolveSub();
+    // Flush microtasks so the .then() callback stores worktreeSubscription
+    await vi.runAllTicks();
+    gitWatcher.dispose();
+
+    expect(sub.unsubscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it("dispose before subscribe resolves: unsubscribes when promise settles", async () => {
+    const onChange = vi.fn();
+    const mock = setupSubscribeMock();
+
+    const gitWatcher = new GitFileWatcher({
+      worktreePath: "/repo",
+      branch: "main",
+      debounceMs: 300,
+      onChange,
+      watchWorktree: true,
+    });
+
+    gitWatcher.start();
+    gitWatcher.dispose();
+
+    const sub = createMockSubscription();
+    mock.resolve(sub);
+
+    await Promise.resolve();
+    await vi.runAllTicks();
+
+    expect(sub.unsubscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it("events after dispose are ignored", async () => {
+    const onChange = vi.fn();
+    const mock = setupSubscribeMock();
+
+    const gitWatcher = new GitFileWatcher({
+      worktreePath: "/repo",
+      branch: "main",
+      debounceMs: 300,
+      onChange,
+      watchWorktree: true,
+      worktreeMinDebounceMs: 100,
+      worktreeMaxDebounceMs: 100,
+    });
+
+    expect(gitWatcher.start()).toBe(true);
+    mock.resolve();
+    const cb = mock.getCallback();
+
+    gitWatcher.dispose();
+
+    fireEvents(cb, [{ type: "update" }]);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("dispose before subscribe rejection prevents callbacks", async () => {
+    const onWatcherFailed = vi.fn();
+    const onInotifyLimitReached = vi.fn();
+    const mock = setupSubscribeMock();
+
+    const origPlatform = process.platform;
+    Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+
+    try {
+      const gitWatcher = new GitFileWatcher({
+        worktreePath: "/repo",
+        branch: "main",
+        debounceMs: 300,
+        onChange: vi.fn(),
+        watchWorktree: true,
+        onWatcherFailed,
+        onInotifyLimitReached,
+      });
+
+      gitWatcher.start();
+      gitWatcher.dispose();
+
+      const enospcError = new Error("ENOSPC") as NodeJS.ErrnoException;
+      enospcError.code = "ENOSPC";
+      mock.reject(enospcError);
+
+      await Promise.resolve();
+      await vi.runAllTicks();
+
+      expect(onWatcherFailed).not.toHaveBeenCalled();
+      expect(onInotifyLimitReached).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(process, "platform", {
+        value: origPlatform,
+        configurable: true,
+      });
+    }
+  });
+
+  it("runtime error after dispose is ignored", async () => {
+    const onWatcherFailed = vi.fn();
+    const onInotifyLimitReached = vi.fn();
+    const mock = setupSubscribeMock();
+
+    const origPlatform = process.platform;
+    Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+
+    try {
+      const gitWatcher = new GitFileWatcher({
+        worktreePath: "/repo",
+        branch: "main",
+        debounceMs: 300,
+        onChange: vi.fn(),
+        watchWorktree: true,
+        onWatcherFailed,
+        onInotifyLimitReached,
+      });
+
+      expect(gitWatcher.start()).toBe(true);
+      mock.resolve();
+      const cb = mock.getCallback();
+
+      gitWatcher.dispose();
+
+      const enospcError = new Error("ENOSPC") as NodeJS.ErrnoException;
+      enospcError.code = "ENOSPC";
+      fireError(cb, enospcError);
+
+      expect(onWatcherFailed).not.toHaveBeenCalled();
+      expect(onInotifyLimitReached).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(process, "platform", {
+        value: origPlatform,
+        configurable: true,
+      });
+    }
+  });
+
+  it("macOS non-EMFILE message does not fire onEmfileLimitReached", async () => {
+    const onWatcherFailed = vi.fn();
+    const onEmfileLimitReached = vi.fn();
+    const mock = setupSubscribeMock();
+
+    const origPlatform = process.platform;
+    Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
+
+    try {
+      const gitWatcher = new GitFileWatcher({
+        worktreePath: "/repo",
+        branch: "main",
+        debounceMs: 300,
+        onChange: vi.fn(),
+        watchWorktree: true,
+        onWatcherFailed,
+        onEmfileLimitReached,
+      });
+
+      gitWatcher.start();
+
+      const enoentError = new Error("file not found") as NodeJS.ErrnoException;
+      enoentError.code = "ENOENT";
+      mock.reject(enoentError);
+
+      await Promise.resolve();
+      await vi.runAllTicks();
+
+      expect(onEmfileLimitReached).not.toHaveBeenCalled();
+      expect(onWatcherFailed).toHaveBeenCalledTimes(1);
+    } finally {
+      Object.defineProperty(process, "platform", {
+        value: origPlatform,
+        configurable: true,
+      });
+    }
+  });
+
+  it("unsubscribe rejection does not produce unhandled promise rejection", async () => {
+    const mock = setupSubscribeMock();
+
+    const gitWatcher = new GitFileWatcher({
+      worktreePath: "/repo",
+      branch: "main",
+      debounceMs: 300,
+      onChange: vi.fn(),
+      watchWorktree: true,
+    });
+
+    gitWatcher.start();
+
+    const sub = {
+      unsubscribe: vi.fn().mockRejectedValue(new Error("native teardown failed")),
+    };
+    mock.resolve(sub);
+
+    await vi.runAllTicks();
+
+    // dispose() calls unsubscribe().catch(() => {}) — should not throw
+    expect(() => gitWatcher.dispose()).not.toThrow();
   });
 });

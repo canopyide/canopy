@@ -120,9 +120,12 @@ export class WatcherController {
     if (started) {
       this.gitWatcher.value = toDisposable(() => watcher.dispose());
       this.gitWatcherMode = mode;
-      // Only a successful recursive arm clears the retry budget. Installing
-      // git-only is a degradation, not a recovery.
-      if (mode === "recursive") {
+      // Installing git-only is a degradation, not a recovery. For recursive
+      // mode, the retry count is no longer cleared here because the async
+      // parcel watcher subscribe may still fail after start() returns true.
+      // Instead, the retry budget is cleared on disposal (stop) or
+      // successful downgrade, and increments on each async onWatcherFailed.
+      if (mode === "git-only") {
         this.watcherRetryCount = 0;
       }
     } else {
