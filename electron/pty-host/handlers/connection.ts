@@ -134,6 +134,10 @@ export function createConnectionHandlers(ctx: HostContext): HandlerMap {
       disconnectWindow(msg.windowId, "explicit-disconnect");
     },
 
+    // FUTURE_SAB: This handler is unreachable in production — the only caller
+    // is the adversarial test suite. SharedArrayBuffer is unsupported in
+    // Electron UtilityProcess, so PtyClient.getSharedBuffers() returns empty
+    // arrays and the init-buffers message is never sent outside tests.
     "init-buffers": (msg) => {
       const visualOk =
         Array.isArray(msg.visualBuffers) &&

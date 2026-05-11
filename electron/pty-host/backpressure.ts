@@ -7,14 +7,19 @@ import type {
 import type { PtyPauseCoordinator } from "./PtyPauseCoordinator.js";
 
 export const MAX_PACKET_PAYLOAD = 65535;
-// Caps are in bytes, not chars: they bound the memory consumed by in-flight
+// FUTURE_SAB: These caps are in bytes and bound the memory consumed by in-flight
 // Uint8Array payloads queued for the SharedArrayBuffer ring buffer path.
+// Currently unreachable in production — the SAB transport path is disabled
+// (SharedArrayBuffer is not supported in Electron UtilityProcess). The caps
+// are preserved as a skeleton for a potential Worker-thread migration that
+// could revive the SAB zero-copy data path.
+//
 // The Uint8Array byte length closely approximates the actual memory footprint
 // of these payloads. VS Code uses char-based flow control because its IPC
 // routes through string-based JSON-RPC; copying that approach here would
 // misrepresent the resource being protected.
-export const MAX_PENDING_BYTES_PER_TERMINAL = 4 * 1024 * 1024;
-export const MAX_TOTAL_PENDING_BYTES = 16 * 1024 * 1024;
+export const FUTURE_SAB_MAX_PENDING_BYTES_PER_TERMINAL = 4 * 1024 * 1024;
+export const FUTURE_SAB_MAX_TOTAL_PENDING_BYTES = 16 * 1024 * 1024;
 export const BACKPRESSURE_SAFETY_TIMEOUT_MS = 10000;
 
 export type PendingVisualSegment = {
@@ -143,20 +148,10 @@ export class BackpressureManager {
     const nextTerminal = current + remaining;
     const nextTotal = this.totalPendingVisualBytes + remaining;
 
-    if (nextTerminal > MAX_PENDING_BYTES_PER_TERMINAL || nextTotal > MAX_TOTAL_PENDING_BYTES) {
-      const capType = nextTerminal > MAX_PENDING_BYTES_PER_TERMINAL ? "per-terminal" : "total";
-      this.emitReliabilityMetric(
-        {
-          terminalId: id,
-          metricType: "pending-byte-cap-hit",
-          timestamp: Date.now(),
-          capType,
-          attemptedBytes: remaining,
-          currentPendingBytes: current,
-          totalPendingBytes: this.totalPendingVisualBytes,
-        },
-        true
-      );
+    if (
+      nextTerminal > FUTURE_SAB_MAX_PENDING_BYTES_PER_TERMINAL ||
+      nextTotal > FUTURE_SAB_MAX_TOTAL_PENDING_BYTES
+    ) {
       return false;
     }
 

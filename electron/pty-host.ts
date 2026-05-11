@@ -322,11 +322,19 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
   }
 
   // PRIORITY 2: SHARED ARRAY BUFFER (Zero-Copy Fallback)
-  // Used when no MessagePort renderer connections are available (e.g., during startup before
-  // port handshake completes). SAB is single-consumer — safe only when one view is reading.
-  // SAB has one shared read pointer, so it is only safe before the app enters
-  // project-view routing. Once a window has an active project context, an
-  // unavailable MessagePort must fall through to IPC rather than the SAB.
+  // FUTURE_SAB: This entire branch is unreachable in production. SharedArrayBuffer
+  // is not supported in Electron UtilityProcess (PtyClient.getSharedBuffers()
+  // returns empty arrays, isSharedBufferEnabled() returns false). The init-buffers
+  // message that populates visualBuffers is only sent from adversarial tests.
+  // Production always routes through the MessagePort path (Priority 1).
+  //
+  // The skeleton is preserved for a potential Worker-thread migration that could
+  // revive the SAB zero-copy data path with per-consumer isolation.
+  //
+  // Original design intent: Used when no MessagePort renderer connections are
+  // available (e.g., during startup before port handshake completes). SAB is
+  // single-consumer — safe only when one view is reading. SAB has one shared
+  // read pointer, so it is only safe before the app enters project-view routing.
   const sabFallbackSafe = windowProjectMap.size === 0;
   if (
     !visualWritten &&
