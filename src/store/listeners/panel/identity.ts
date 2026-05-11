@@ -131,12 +131,7 @@ export function setupIdentityListeners(): DisposableStore {
           // without a `working` event has no "started" timestamp to compare
           // against, so pre-existing dirty files would otherwise look like
           // new agent work.
-          if (
-            worktreeId &&
-            current !== null &&
-            baseline !== undefined &&
-            current > baseline
-          ) {
+          if (worktreeId && current !== null && baseline !== undefined && current > baseline) {
             const lastAt = _lastReviewInboxAt.get(worktreeId) ?? 0;
             if (timestamp - lastAt >= REVIEW_INBOX_COALESCE_MS) {
               _lastReviewInboxAt.set(worktreeId, timestamp);
