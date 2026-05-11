@@ -9,6 +9,7 @@ import { useFleetBroadcastProgressStore } from "@/store/fleetBroadcastProgressSt
 import type { TerminalInstance } from "@shared/types";
 
 const submitMock = vi.fn<(id: string, text: string) => Promise<void>>();
+const notifyUserInputMock = vi.hoisted(() => vi.fn<(id: string, data?: string) => void>());
 const notifyEnterPressedMock = vi.hoisted(() => vi.fn<(id: string) => void>());
 const clearDirectingStateMock = vi.hoisted(() => vi.fn<(id: string) => void>());
 
@@ -25,6 +26,7 @@ vi.mock("@/clients", async (importOriginal) => {
 
 vi.mock("@/services/TerminalInstanceService", () => ({
   terminalInstanceService: {
+    notifyUserInput: notifyUserInputMock,
     notifyEnterPressed: notifyEnterPressedMock,
     clearDirectingState: clearDirectingStateMock,
   },
@@ -66,6 +68,7 @@ function armTwo() {
 function reset() {
   submitMock.mockReset();
   submitMock.mockResolvedValue(undefined);
+  notifyUserInputMock.mockReset();
   notifyEnterPressedMock.mockReset();
   clearDirectingStateMock.mockReset();
   useFleetArmingStore.setState({
@@ -417,17 +420,42 @@ describe("executeFleetBroadcast", () => {
       reset();
     });
 
-    it("calls notifyEnterPressed for every target on the non-batched path", async () => {
+    it("enters directing on every target before submit dispatches (non-batched)", async () => {
+      // Track call order to assert notifyUserInput precedes submit so the
+      // blue directing indicator renders fleet-wide before PTY echo flips
+      // the canonical state machine to working.
+      seedPanels([makeAgent("a"), makeAgent("b"), makeAgent("c")]);
+      const order: string[] = [];
+      notifyUserInputMock.mockImplementation((id: string) => order.push(`notify:${id}`));
+      submitMock.mockReset();
+      submitMock.mockImplementation(async (id: string) => {
+        order.push(`submit:${id}`);
+      });
+
+      await executeFleetBroadcast("hello", ["a", "b", "c"]);
+
+      expect(notifyUserInputMock).toHaveBeenCalledTimes(3);
+      expect(notifyUserInputMock.mock.calls.map(([id]) => id).sort()).toEqual(["a", "b", "c"]);
+      // Real payload is passed (not "") so Phase 2 escalation engages for
+      // large pastes — see #3565.
+      expect(notifyUserInputMock.mock.calls.every(([, data]) => data === "hello")).toBe(true);
+      // Every notify lands before the first submit dispatches.
+      const lastNotify = order.lastIndexOf("notify:c");
+      const firstSubmit = order.findIndex((e) => e.startsWith("submit:"));
+      expect(lastNotify).toBeLessThan(firstSubmit);
+    });
+
+    it("transitions directing → working via notifyEnterPressed for fulfilled targets", async () => {
       seedPanels([makeAgent("a"), makeAgent("b"), makeAgent("c")]);
       await executeFleetBroadcast("hello", ["a", "b", "c"]);
+
       expect(notifyEnterPressedMock).toHaveBeenCalledTimes(3);
-      const notifiedIds = notifyEnterPressedMock.mock.calls.map(([id]) => id).sort();
-      expect(notifiedIds).toEqual(["a", "b", "c"]);
-      // No rejections → no rollback.
+      expect(notifyEnterPressedMock.mock.calls.map(([id]) => id).sort()).toEqual(["a", "b", "c"]);
+      // No rejections → no rollback path.
       expect(clearDirectingStateMock).not.toHaveBeenCalled();
     });
 
-    it("calls clearDirectingState only for rejected targets (non-batched)", async () => {
+    it("rolls back directing via clearDirectingState only for rejected targets (non-batched)", async () => {
       submitMock.mockReset();
       submitMock.mockImplementation(async (id: string) => {
         if (id === "dead") throw new Error("EPIPE");
@@ -435,28 +463,27 @@ describe("executeFleetBroadcast", () => {
       seedPanels([makeAgent("a"), makeAgent("dead"), makeAgent("b")]);
       await executeFleetBroadcast("hello", ["a", "dead", "b"]);
 
-      // All three are pre-notified before allSettled.
-      expect(notifyEnterPressedMock.mock.calls.map(([id]) => id).sort()).toEqual([
-        "a",
-        "b",
-        "dead",
-      ]);
-      // Only the rejected target gets rolled back.
+      // All three enter directing pre-allSettled.
+      expect(notifyUserInputMock.mock.calls.map(([id]) => id).sort()).toEqual(["a", "b", "dead"]);
+      // Only the fulfilled targets advance to working.
+      expect(notifyEnterPressedMock.mock.calls.map(([id]) => id).sort()).toEqual(["a", "b"]);
+      // Only the rejected target is rolled back from directing.
       expect(clearDirectingStateMock).toHaveBeenCalledTimes(1);
       expect(clearDirectingStateMock).toHaveBeenCalledWith("dead");
     });
 
-    it("calls notifyEnterPressed for each target across batches when batching", async () => {
+    it("enters directing on every target across batches (batched path)", async () => {
       const ids = Array.from({ length: 12 }, (_, i) => `t${i}`);
       seedPanels(ids.map((id) => makeAgent(id)));
       await executeFleetBroadcast("x".repeat(120_000), ids);
+
+      expect(notifyUserInputMock).toHaveBeenCalledTimes(12);
+      expect(notifyUserInputMock.mock.calls.map(([id]) => id).sort()).toEqual([...ids].sort());
       expect(notifyEnterPressedMock).toHaveBeenCalledTimes(12);
-      const notifiedIds = notifyEnterPressedMock.mock.calls.map(([id]) => id).sort();
-      expect(notifiedIds).toEqual([...ids].sort());
       expect(clearDirectingStateMock).not.toHaveBeenCalled();
     });
 
-    it("rolls back directing state per-batch for rejections (batched path)", async () => {
+    it("rolls back directing per-batch for rejected targets (batched path)", async () => {
       const ids = Array.from({ length: 12 }, (_, i) => `t${i}`);
       seedPanels(ids.map((id) => makeAgent(id)));
       submitMock.mockReset();
@@ -467,32 +494,9 @@ describe("executeFleetBroadcast", () => {
       await executeFleetBroadcast("x".repeat(120_000), ids);
 
       expect(clearDirectingStateMock).toHaveBeenCalledTimes(2);
-      const cleared = clearDirectingStateMock.mock.calls.map(([id]) => id).sort();
-      expect(cleared).toEqual(["t10", "t2"]);
-    });
-
-    it("notifies before allSettled resolves so directing precedes any PTY echo", async () => {
-      // Capture the call order: every notifyEnterPressed must land before
-      // any submit promise resolves, otherwise PTY output could flip the
-      // terminal to `working` before the directing transition fires.
-      seedPanels([makeAgent("a"), makeAgent("b")]);
-      const callOrder: string[] = [];
-      notifyEnterPressedMock.mockImplementation((id: string) => {
-        callOrder.push(`notify:${id}`);
-      });
-      submitMock.mockReset();
-      submitMock.mockImplementation(async (id: string) => {
-        callOrder.push(`submit:${id}`);
-      });
-      await executeFleetBroadcast("hi", ["a", "b"]);
-
-      const firstNotify = callOrder.findIndex((e) => e.startsWith("notify:"));
-      const firstSubmit = callOrder.findIndex((e) => e.startsWith("submit:"));
-      const lastNotify = callOrder.lastIndexOf("notify:b");
-      expect(firstNotify).toBeGreaterThanOrEqual(0);
-      expect(firstSubmit).toBeGreaterThanOrEqual(0);
-      // Every notify lands before the first submit dispatches.
-      expect(lastNotify).toBeLessThan(firstSubmit);
+      expect(clearDirectingStateMock.mock.calls.map(([id]) => id).sort()).toEqual(["t10", "t2"]);
+      // The 10 fulfilled targets all moved through to working.
+      expect(notifyEnterPressedMock).toHaveBeenCalledTimes(10);
     });
 
     it("does not notify when the executor returns early on pre-aborted signal", async () => {
@@ -500,6 +504,7 @@ describe("executeFleetBroadcast", () => {
       const controller = new AbortController();
       controller.abort();
       await executeFleetBroadcast("hi", ["a", "b"], undefined, controller.signal);
+      expect(notifyUserInputMock).not.toHaveBeenCalled();
       expect(notifyEnterPressedMock).not.toHaveBeenCalled();
       expect(clearDirectingStateMock).not.toHaveBeenCalled();
     });

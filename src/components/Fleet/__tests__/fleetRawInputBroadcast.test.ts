@@ -8,6 +8,7 @@ import type { TerminalInstance } from "@shared/types";
 
 const broadcastMock = vi.hoisted(() => vi.fn<(ids: string[], data: string) => void>());
 const notifyUserInputMock = vi.hoisted(() => vi.fn<(id: string, data?: string) => void>());
+const clearDirectingStateMock = vi.hoisted(() => vi.fn<(id: string) => void>());
 
 vi.mock("@/clients", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/clients")>();
@@ -23,6 +24,7 @@ vi.mock("@/clients", async (importOriginal) => {
 vi.mock("@/services/TerminalInstanceService", () => ({
   terminalInstanceService: {
     notifyUserInput: notifyUserInputMock,
+    clearDirectingState: clearDirectingStateMock,
   },
 }));
 
@@ -52,6 +54,7 @@ function seedPanels(terminals: TerminalInstance[]): void {
 function resetStores(): void {
   broadcastMock.mockReset();
   notifyUserInputMock.mockReset();
+  clearDirectingStateMock.mockReset();
   useFleetArmingStore.setState({
     armedIds: new Set<string>(),
     armOrder: [],
@@ -212,6 +215,11 @@ describe("applyFleetBroadcastResult", () => {
     // The fleetFailureStore subscription auto-clears records for unarmed
     // targets, so a dead-pipe target should not surface a chip.
     expect(useFleetFailureStore.getState().failedIds.size).toBe(0);
+
+    // The synthetic directing state set by notifyUserInput needs to be
+    // cleared for permanently-failed targets so the blue indicator doesn't
+    // linger for the full 1.5s debounce window on a dead pipe.
+    expect(clearDirectingStateMock).toHaveBeenCalledWith("t2");
   });
 
   it("records non-permanent failures without disarming the target", () => {

@@ -220,23 +220,31 @@ export async function executeFleetBroadcast(
         }
         const batch = resolved.slice(i, i + FLEET_LARGE_PASTE_BATCH_SIZE);
         dispatchedCount += batch.length;
-        // Drive each target into `directing → working` before its submit
-        // dispatches. Calling before allSettled is load-bearing: the PTY can
-        // echo output and flip the terminal back to `working` via the
-        // canonical state machine before submit resolves, so the directing
-        // transition must register first.
-        for (const r of batch) terminalInstanceService.notifyEnterPressed(r.terminalId);
+        // Enter `directing` on every target BEFORE submit dispatches —
+        // mirrors what xterm onData → onUserInput does for the origin.
+        // `notifyEnterPressed` alone would skip `directing` (it only fires
+        // the `directing → working` transition when the target is already
+        // `directing`), so the user-input call is the load-bearing step
+        // that makes the blue indicator render fleet-wide. Real payload
+        // (not "") preserves Phase 2 escalation for large pastes — see #3565.
+        for (const r of batch) terminalInstanceService.notifyUserInput(r.terminalId, r.payload);
         const batchResults = await Promise.allSettled(
           batch.map((r) => terminalClient.submit(r.terminalId, r.payload))
         );
         for (let j = 0; j < batchResults.length; j += 1) {
           const r = batchResults[j]!;
           results.push(r);
-          // Rollback for rejected submits — the PTY never received bytes,
-          // so the directing state would otherwise hang until the debounce
-          // timer fires.
-          if (r.status === "rejected") {
-            terminalInstanceService.clearDirectingState(batch[j]!.terminalId);
+          const terminalId = batch[j]!.terminalId;
+          if (r.status === "fulfilled") {
+            // Submit landed — close out directing and flip to working.
+            // `onEnterPressed` is a no-op if the canonical state machine has
+            // already transitioned the terminal to working from PTY echo.
+            terminalInstanceService.notifyEnterPressed(terminalId);
+          } else {
+            // Submit rejected — the PTY never received bytes, so revert
+            // the synthetic `directing` we set above rather than leaving
+            // it to age out on the 1.5s debounce timer.
+            terminalInstanceService.clearDirectingState(terminalId);
           }
         }
 
@@ -249,17 +257,19 @@ export async function executeFleetBroadcast(
       }
     } else {
       dispatchedCount = resolved.length;
-      // Same ordering rule as the batched path: notify before allSettled so
-      // the directing transition lands ahead of any PTY echo.
-      for (const r of resolved) terminalInstanceService.notifyEnterPressed(r.terminalId);
+      // Same ordering rule as the batched path — see comment above.
+      for (const r of resolved) terminalInstanceService.notifyUserInput(r.terminalId, r.payload);
       const all = await Promise.allSettled(
         resolved.map((r) => terminalClient.submit(r.terminalId, r.payload))
       );
       for (let j = 0; j < all.length; j += 1) {
         const r = all[j]!;
         results.push(r);
-        if (r.status === "rejected") {
-          terminalInstanceService.clearDirectingState(resolved[j]!.terminalId);
+        const terminalId = resolved[j]!.terminalId;
+        if (r.status === "fulfilled") {
+          terminalInstanceService.notifyEnterPressed(terminalId);
+        } else {
+          terminalInstanceService.clearDirectingState(terminalId);
         }
       }
       const nonBatchedFailures = all.filter((r) => r.status === "rejected").length;

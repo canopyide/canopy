@@ -118,6 +118,10 @@ export function applyFleetBroadcastResult(payload: BroadcastWriteResultPayload):
       // disarmId is a no-op for non-armed ids per fleetArmingStore semantics,
       // so a stale result for a manually-disarmed target is harmless.
       arming.disarmId(id);
+      // Clear the synthetic `directing` set when we mirrored the broadcast
+      // through notifyUserInput, so a dead-pipe target doesn't show the
+      // blue indicator for the full 1.5s debounce window.
+      terminalInstanceService.clearDirectingState(id);
     }
   }
 }
