@@ -562,3 +562,100 @@ describe("WorktreeTerminalSection row state icon", () => {
     expect(stateRelated.length).toBe(0);
   });
 });
+
+describe("WorktreeTerminalSection collapsed pill state indicators", () => {
+  it("renders multi-state indicators when collapsed with mixed agent states", () => {
+    renderSection({
+      isExpanded: false,
+      counts: {
+        total: 5,
+        byState: { idle: 0, working: 2, waiting: 2, directing: 0, completed: 1, exited: 0 },
+      },
+    });
+    const indicators = screen.getByTestId("collapsed-session-indicators");
+    expect(indicators).toBeDefined();
+    const countSpans = indicators.querySelectorAll(".font-mono.tabular-nums");
+    expect(countSpans.length).toBe(3);
+  });
+
+  it("renders single state indicator when only one non-idle state has count", () => {
+    renderSection({
+      isExpanded: false,
+      counts: {
+        total: 3,
+        byState: { idle: 0, working: 3, waiting: 0, directing: 0, completed: 0, exited: 0 },
+      },
+    });
+    const indicators = screen.getByTestId("collapsed-session-indicators");
+    expect(indicators).toBeDefined();
+    const countSpans = indicators.querySelectorAll(".font-mono.tabular-nums");
+    expect(countSpans.length).toBe(1);
+  });
+
+  it("sets aria-label with full state breakdown on the role=img container", () => {
+    renderSection({
+      isExpanded: false,
+      counts: {
+        total: 5,
+        byState: { idle: 3, working: 2, waiting: 2, directing: 0, completed: 1, exited: 0 },
+      },
+    });
+    const indicators = screen.getByTestId("collapsed-session-indicators");
+    expect(indicators.getAttribute("role")).toBe("img");
+    expect(indicators.getAttribute("aria-label")).toBe("5 sessions: 2 working, 2 waiting, 1 done");
+  });
+
+  it("does not render indicators when section is expanded", () => {
+    renderSection({
+      isExpanded: true,
+      counts: {
+        total: 3,
+        byState: { idle: 0, working: 2, waiting: 1, directing: 0, completed: 0, exited: 0 },
+      },
+    });
+    expect(screen.queryByTestId("collapsed-session-indicators")).toBeNull();
+  });
+
+  it("renders nothing when all terminals are idle", () => {
+    renderSection({
+      isExpanded: false,
+      counts: {
+        total: 2,
+        byState: { idle: 2, working: 0, waiting: 0, directing: 0, completed: 0, exited: 0 },
+      },
+    });
+    expect(screen.queryByTestId("collapsed-session-indicators")).toBeNull();
+  });
+
+  it("renders nothing when all non-idle states have zero count", () => {
+    renderSection({
+      isExpanded: false,
+      counts: {
+        total: 0,
+        byState: { idle: 0, working: 0, waiting: 0, directing: 0, completed: 0, exited: 0 },
+      },
+    });
+    expect(screen.queryByTestId("collapsed-session-indicators")).toBeNull();
+  });
+});
+
+describe("WorktreeTerminalSection drag handle visibility", () => {
+  it("has opacity-0 at rest and group-hover/termrow:opacity-100 on hover", () => {
+    renderSection({ isExpanded: true });
+    const handles = screen.getAllByRole("button", { name: "Drag to move terminal" });
+    expect(handles.length).toBeGreaterThanOrEqual(1);
+    for (const handle of handles) {
+      expect(handle.className).toContain("opacity-0");
+      expect(handle.className).toContain("group-hover/termrow:opacity-100");
+    }
+  });
+
+  it("has focus-visible:opacity-100 for keyboard users", () => {
+    renderSection({ isExpanded: true });
+    const handles = screen.getAllByRole("button", { name: "Drag to move terminal" });
+    expect(handles.length).toBeGreaterThanOrEqual(1);
+    for (const handle of handles) {
+      expect(handle.className).toContain("focus-visible:opacity-100");
+    }
+  });
+});
