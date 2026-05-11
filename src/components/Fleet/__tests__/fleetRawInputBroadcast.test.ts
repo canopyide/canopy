@@ -7,6 +7,7 @@ import { usePanelStore } from "@/store/panelStore";
 import type { TerminalInstance } from "@shared/types";
 
 const broadcastMock = vi.hoisted(() => vi.fn<(ids: string[], data: string) => void>());
+const notifyUserInputMock = vi.hoisted(() => vi.fn<(id: string, data?: string) => void>());
 
 vi.mock("@/clients", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/clients")>();
@@ -18,6 +19,12 @@ vi.mock("@/clients", async (importOriginal) => {
     },
   };
 });
+
+vi.mock("@/services/TerminalInstanceService", () => ({
+  terminalInstanceService: {
+    notifyUserInput: notifyUserInputMock,
+  },
+}));
 
 function makeTerminal(id: string, overrides: Partial<TerminalInstance> = {}): TerminalInstance {
   return {
@@ -44,6 +51,7 @@ function seedPanels(terminals: TerminalInstance[]): void {
 
 function resetStores(): void {
   broadcastMock.mockReset();
+  notifyUserInputMock.mockReset();
   useFleetArmingStore.setState({
     armedIds: new Set<string>(),
     armOrder: [],
@@ -150,6 +158,31 @@ describe("broadcastFleetRawInput", () => {
 
     broadcastFleetRawInput("t1", "");
     expect(useFleetArmingStore.getState().broadcastSignal).toBe(0);
+  });
+
+  it("fires notifyUserInput on every non-origin target so directing shows fleet-wide (#7799)", () => {
+    seedPanels([makeTerminal("t1"), makeTerminal("t2"), makeTerminal("t3")]);
+    useFleetArmingStore.getState().armIds(["t1", "t2", "t3"]);
+
+    expect(broadcastFleetRawInput("t1", "abc")).toBe(true);
+
+    // Origin (t1) already gets directing from its own xterm onData listener,
+    // so it must NOT be notified here or it would double-fire.
+    const calls = notifyUserInputMock.mock.calls;
+    const notifiedIds = calls.map(([id]) => id);
+    expect(notifiedIds).not.toContain("t1");
+    expect(notifiedIds.sort()).toEqual(["t2", "t3"]);
+    // Raw payload is passed through (not "") so Phase 2 escalation still
+    // engages for large pastes — see #3565.
+    expect(calls.every(([, data]) => data === "abc")).toBe(true);
+  });
+
+  it("does not call notifyUserInput when the broadcast is rejected", () => {
+    seedPanels([makeTerminal("t1"), makeTerminal("t2")]);
+    useFleetArmingStore.getState().armIds(["t2"]);
+
+    expect(broadcastFleetRawInput("t1", "rejected")).toBe(false);
+    expect(notifyUserInputMock).not.toHaveBeenCalled();
   });
 });
 

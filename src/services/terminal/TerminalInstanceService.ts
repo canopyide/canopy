@@ -264,6 +264,10 @@ class TerminalInstanceService {
     this.onUserInput(id, data);
   }
 
+  notifyEnterPressed(id: string): void {
+    this.onEnterPressed(id);
+  }
+
   /**
    * Builds the deps surface consumed by `installTerminalBoundListeners`. Both
    * the create path (`getOrCreate`) and the wake path (via

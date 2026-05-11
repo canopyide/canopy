@@ -2,6 +2,7 @@ import { useFleetArmingStore } from "@/store/fleetArmingStore";
 import { usePanelStore } from "@/store/panelStore";
 import { useFleetBroadcastProgressStore } from "@/store/fleetBroadcastProgressStore";
 import { terminalClient } from "@/clients";
+import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { isTerminalFleetEligible } from "@/store/fleetEligibility";
 import { replaceRecipeVariables, type RecipeContext } from "@/utils/recipeVariables";
 import type { TerminalInstance } from "@shared/types";
@@ -219,10 +220,25 @@ export async function executeFleetBroadcast(
         }
         const batch = resolved.slice(i, i + FLEET_LARGE_PASTE_BATCH_SIZE);
         dispatchedCount += batch.length;
+        // Drive each target into `directing → working` before its submit
+        // dispatches. Calling before allSettled is load-bearing: the PTY can
+        // echo output and flip the terminal back to `working` via the
+        // canonical state machine before submit resolves, so the directing
+        // transition must register first.
+        for (const r of batch) terminalInstanceService.notifyEnterPressed(r.terminalId);
         const batchResults = await Promise.allSettled(
           batch.map((r) => terminalClient.submit(r.terminalId, r.payload))
         );
-        for (const r of batchResults) results.push(r);
+        for (let j = 0; j < batchResults.length; j += 1) {
+          const r = batchResults[j]!;
+          results.push(r);
+          // Rollback for rejected submits — the PTY never received bytes,
+          // so the directing state would otherwise hang until the debounce
+          // timer fires.
+          if (r.status === "rejected") {
+            terminalInstanceService.clearDirectingState(batch[j]!.terminalId);
+          }
+        }
 
         const batchFailures = batchResults.filter((r) => r.status === "rejected").length;
         useFleetBroadcastProgressStore.getState().advance(batch.length, batchFailures);
@@ -233,10 +249,19 @@ export async function executeFleetBroadcast(
       }
     } else {
       dispatchedCount = resolved.length;
+      // Same ordering rule as the batched path: notify before allSettled so
+      // the directing transition lands ahead of any PTY echo.
+      for (const r of resolved) terminalInstanceService.notifyEnterPressed(r.terminalId);
       const all = await Promise.allSettled(
         resolved.map((r) => terminalClient.submit(r.terminalId, r.payload))
       );
-      for (const r of all) results.push(r);
+      for (let j = 0; j < all.length; j += 1) {
+        const r = all[j]!;
+        results.push(r);
+        if (r.status === "rejected") {
+          terminalInstanceService.clearDirectingState(resolved[j]!.terminalId);
+        }
+      }
       const nonBatchedFailures = all.filter((r) => r.status === "rejected").length;
       useFleetBroadcastProgressStore.getState().advance(resolved.length, nonBatchedFailures);
     }
