@@ -77,7 +77,7 @@ export function WorktreeCard({
   isActive,
   isFocused,
   isSingleWorktree: _isSingleWorktree,
-  aggregateCounts,
+  aggregateCounts: _aggregateCounts,
   onSelect,
   onCopyTree,
   onOpenEditor,
