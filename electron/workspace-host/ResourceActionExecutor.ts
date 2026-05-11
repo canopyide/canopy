@@ -56,6 +56,8 @@ export class ResourceActionExecutor {
     environmentId: string | undefined,
     signal: AbortSignal
   ): Promise<{ success: boolean; error?: string; output?: string }> {
+    if (this.disposed) return { success: false, error: "Aborted" };
+
     const monitor = this.ctx.getMonitor(worktreeId);
     const projectRootPath = this.ctx.getProjectRootPath();
     if (!monitor || !projectRootPath) {
@@ -218,7 +220,7 @@ export class ResourceActionExecutor {
       try {
         const parsed = JSON.parse(result.output);
         statusMonitor.setResourceStatus({
-          lastStatus: parsed.status ?? "unhealthy",
+          lastStatus: typeof parsed.status === "string" ? parsed.status : "unhealthy",
           lastOutput: result.output,
           lastCheckedAt: Date.now(),
           endpoint: typeof parsed.endpoint === "string" ? parsed.endpoint : undefined,

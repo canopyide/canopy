@@ -1698,6 +1698,9 @@ ${lines.map((l) => "+" + l).join("\n")}`;
   async onProjectSwitch(requestId: string): Promise<void> {
     this.prService.cleanup();
 
+    for (const id of this.monitors.keys()) {
+      this.resourceActionExecutor.cleanupResourceActionState(id);
+    }
     for (const monitor of this.monitors.values()) {
       monitor.stop();
     }
