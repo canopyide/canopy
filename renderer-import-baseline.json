@@ -1,6 +1,6 @@
 {
   "entryName": "index",
-  "eagerChunkCount": 40,
+  "eagerChunkCount": 41,
   "eagerChunks": [
     "ActionService",
     "Spinner",
@@ -24,6 +24,7 @@
     "notify",
     "persistedStoreRegistry",
     "portalStore",
+    "preload-helper",
     "projectSettingsStore",
     "projectStore",
     "radix-loader",
