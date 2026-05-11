@@ -9,13 +9,19 @@ const __dirname = path.dirname(__filename);
 const FIXTURES_DIR = path.join(__dirname, "fixtures");
 const FIXTURE_TSCONFIG = path.join(FIXTURES_DIR, "tsconfig.json");
 
-function runFixture(extraFilter?: (filePath: string) => boolean): Promise<string> {
+function runFixture(handlerFile: string = "handlers.ts"): Promise<string> {
   return generateIpcMap({
     tsConfigFilePath: FIXTURE_TSCONFIG,
-    filter: (fp: string) =>
-      fp.startsWith(FIXTURES_DIR) &&
-      fp.endsWith("handlers.ts") &&
-      (extraFilter ? extraFilter(fp) : true),
+    filter: (fp: string) => fp === path.join(FIXTURES_DIR, handlerFile).replace(/\\/g, "/"),
+    outputDir: FIXTURES_DIR,
+  });
+}
+
+function runFixtureMulti(files: string[]): Promise<string> {
+  const allowed = new Set(files.map((f) => path.join(FIXTURES_DIR, f).replace(/\\/g, "/")));
+  return generateIpcMap({
+    tsConfigFilePath: FIXTURE_TSCONFIG,
+    filter: (fp: string) => allowed.has(fp),
     outputDir: FIXTURES_DIR,
   });
 }
@@ -94,5 +100,15 @@ describe("ipc-map codegen", () => {
     expect(output).toContain("export interface GeneratedIpcInvokeMap {");
     expect(output).toContain("AUTO-GENERATED");
     expect(output).toContain("do not edit by hand");
+  });
+
+  it("rejects duplicate channel registrations across files", async () => {
+    await expect(runFixture("broken-duplicate.ts")).rejects.toThrow(/duplicate channel/i);
+  });
+
+  it("rejects opValidated handlers with a second parameter past the payload", async () => {
+    await expect(runFixture("broken-validated-multiarg.ts")).rejects.toThrow(
+      /opValidated.*parameters|only the validated payload/i
+    );
   });
 });

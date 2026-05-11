@@ -27,16 +27,19 @@ const REPO_ROOT = path.resolve(here, "..", "..");
 const TSCONFIG_PATH = path.join(REPO_ROOT, "electron", "tsconfig.json");
 const OUTPUT_PATH = path.join(REPO_ROOT, "shared", "types", "ipc", "generated.ts");
 
+// ts-morph normalizes file paths to forward slashes on every platform (it
+// goes through the TypeScript compiler API which always emits POSIX-style
+// separators), so the directory checks below use literal "/" rather than
+// path.sep. Using path.sep would silently match nothing on Windows CI.
 function isExcludedHandlerFile(filePath) {
   if (filePath.endsWith(".preload.ts")) return true;
   if (filePath.endsWith(".d.ts")) return true;
-  if (filePath.includes(`${path.sep}__tests__${path.sep}`)) return true;
+  if (filePath.includes("/__tests__/")) return true;
   return false;
 }
 
 const defaultHandlerFilter = (filePath) =>
-  filePath.includes(`${path.sep}electron${path.sep}ipc${path.sep}handlers${path.sep}`) &&
-  !isExcludedHandlerFile(filePath);
+  filePath.includes("/electron/ipc/handlers/") && !isExcludedHandlerFile(filePath);
 
 const defaultRenderOptions = { outputDir: path.dirname(OUTPUT_PATH) };
 
@@ -53,11 +56,19 @@ export async function generateIpcMap({
   const handlerFiles = project.getSourceFiles().filter((sf) => filter(sf.getFilePath()));
 
   const entries = [];
+  const seen = new Map();
   for (const sourceFile of handlerFiles) {
     const calls = collectDefineIpcNamespaceCalls(sourceFile);
     for (const call of calls) {
       const namespaceEntries = extractNamespaceEntries(call, sourceFile, { outputDir });
       for (const entry of namespaceEntries) {
+        const prior = seen.get(entry.channel);
+        if (prior) {
+          throw new Error(
+            `[ipc-map codegen] duplicate channel "${entry.channel}" registered in ${prior} and ${entry.sourceFile}`
+          );
+        }
+        seen.set(entry.channel, entry.sourceFile);
         entries.push(entry);
       }
     }
@@ -258,11 +269,16 @@ function buildArgsTypeText({
   options,
 }) {
   const trimmed = withContext ? params.slice(1) : params;
-  // opValidated handlers only accept one payload parameter — others are unsupported.
-  const sliced = isValidated ? trimmed.slice(0, 1) : trimmed;
-  if (sliced.length === 0) return "[]";
+  if (isValidated && trimmed.length > 1) {
+    throw codegenError(
+      `opValidated handler for ${channel} declares ${trimmed.length} parameters — only the validated payload is supported`,
+      sourceFile.getFilePath(),
+      callerNode.getStartLineNumber()
+    );
+  }
+  if (trimmed.length === 0) return "[]";
 
-  const pieces = sliced.map((param) => {
+  const pieces = trimmed.map((param) => {
     const decl = param.getDeclarations()[0];
     if (!decl) {
       throw codegenError(
@@ -282,6 +298,17 @@ function buildArgsTypeText({
 }
 
 function formatReturnType(returnType, callerNode, channel, sourceFile, options) {
+  const guard = (text) => {
+    if (text === "any" || text === "unknown") {
+      throw codegenError(
+        `Handler return type for ${channel} resolves to '${text}' — give the handler an explicit return type`,
+        sourceFile.getFilePath(),
+        callerNode.getStartLineNumber()
+      );
+    }
+    return text;
+  };
+
   let unwrapped = returnType;
   if (isPromiseType(unwrapped)) {
     unwrapped = unwrapped.getTypeArguments()[0];
@@ -303,19 +330,12 @@ function formatReturnType(returnType, callerNode, channel, sourceFile, options) 
       if (deduped.length === 1) {
         unwrapped = deduped[0];
       } else {
-        return deduped.map((t) => formatType(t, options)).join(" | ");
+        const parts = deduped.map((t) => guard(formatType(t, options)));
+        return parts.join(" | ");
       }
     }
   }
-  const text = formatType(unwrapped, options);
-  if (text === "any" || text === "unknown") {
-    throw codegenError(
-      `Handler return type for ${channel} resolves to '${text}' — give the handler an explicit return type`,
-      sourceFile.getFilePath(),
-      callerNode.getStartLineNumber()
-    );
-  }
-  return text;
+  return guard(formatType(unwrapped, options));
 }
 
 function isPromiseType(t) {
@@ -334,8 +354,10 @@ function rewriteInlineImports(text, options) {
   const outputDir = options?.outputDir ?? path.dirname(OUTPUT_PATH);
   return text.replace(/import\(("([^"]+)"|'([^']+)')\)/g, (_match, _g1, dq, sq) => {
     const absPath = dq ?? sq;
-    if (!absPath.startsWith("/") && !/^[A-Za-z]:\\/.test(absPath)) {
-      // Already relative — leave it alone.
+    // path.isAbsolute correctly handles both POSIX (`/foo`) and Windows
+    // (`C:/foo` or `C:\foo`) shapes; ts-morph uses POSIX-style on every
+    // platform but path.isAbsolute is the safer guard.
+    if (!path.isAbsolute(absPath)) {
       return `import("${absPath}")`;
     }
     let rel = path.relative(outputDir, absPath);
