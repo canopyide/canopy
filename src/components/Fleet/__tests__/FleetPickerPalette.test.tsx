@@ -119,7 +119,9 @@ describe("FleetPickerPalette", () => {
     seedTerminals([makeTerminal("t1")]);
     renderPalette([makeWorktreeSnap("wt-1", "main")]);
     await act(async () => {});
-    expect(screen.getByText("Select terminals to arm")).toBeTruthy();
+    // "Select terminals to arm" appears in both the h2 header and the footer
+    // status span (which is now a persistent prompt), so scope to the heading.
+    expect(screen.getByRole("heading", { name: "Select terminals to arm" })).toBeTruthy();
     expect(screen.getByTestId("fleet-picker-cold-start-root")).toBeTruthy();
   });
 
@@ -272,5 +274,283 @@ describe("FleetPickerPalette", () => {
     );
     const confirm = screen.getByTestId("fleet-picker-cold-start-confirm") as HTMLButtonElement;
     expect(confirm.disabled).toBe(true);
+  });
+
+  describe("Select all / Select agents footer buttons", () => {
+    it("renders 'Select all' and selects all visible terminals on click", async () => {
+      // No active worktree → no preselection, so the Arm button starts at 0
+      // and clicking "Select all" must populate the selection.
+      useWorktreeSelectionStore.setState({ activeWorktreeId: null });
+      seedTerminals([makeTerminal("t1"), makeTerminal("t2"), makeTerminal("t3")]);
+      renderPalette([makeWorktreeSnap("wt-1", "main")]);
+      await act(async () => {});
+
+      const selectAll = screen.getByTestId(
+        "fleet-picker-cold-start-select-all"
+      ) as HTMLButtonElement;
+      expect(selectAll.textContent).toContain("Select all");
+      expect(selectAll.disabled).toBe(false);
+
+      await act(async () => {
+        fireEvent.click(selectAll);
+      });
+
+      const confirm = screen.getByTestId("fleet-picker-cold-start-confirm") as HTMLButtonElement;
+      expect(confirm.textContent).toContain("Arm 3 selected");
+    });
+
+    it("label becomes 'Select all visible' when a search query narrows the list", async () => {
+      useWorktreeSelectionStore.setState({ activeWorktreeId: null });
+      seedTerminals([makeTerminal("alpha"), makeTerminal("beta"), makeTerminal("gamma")]);
+      renderPalette([makeWorktreeSnap("wt-1", "main")]);
+      await act(async () => {});
+
+      const search = screen.getByTestId("fleet-picker-cold-start-search") as HTMLInputElement;
+      await act(async () => {
+        fireEvent.change(search, { target: { value: "alp" } });
+      });
+      await act(async () => {});
+
+      const selectAll = screen.getByTestId(
+        "fleet-picker-cold-start-select-all"
+      ) as HTMLButtonElement;
+      expect(selectAll.textContent).toContain("Select all visible");
+
+      await act(async () => {
+        fireEvent.click(selectAll);
+      });
+
+      const confirm = screen.getByTestId("fleet-picker-cold-start-confirm") as HTMLButtonElement;
+      // Only "alpha" matches the query, so exactly one terminal is armed.
+      expect(confirm.textContent).toContain("Arm 1 selected");
+    });
+
+    it("toggles to 'Deselect all' once every visible terminal is selected", async () => {
+      useWorktreeSelectionStore.setState({ activeWorktreeId: null });
+      seedTerminals([makeTerminal("t1"), makeTerminal("t2")]);
+      renderPalette([makeWorktreeSnap("wt-1", "main")]);
+      await act(async () => {});
+
+      const selectAll = screen.getByTestId(
+        "fleet-picker-cold-start-select-all"
+      ) as HTMLButtonElement;
+      await act(async () => {
+        fireEvent.click(selectAll);
+      });
+      expect(selectAll.textContent).toContain("Deselect all");
+
+      await act(async () => {
+        fireEvent.click(selectAll);
+      });
+      const confirm = screen.getByTestId("fleet-picker-cold-start-confirm") as HTMLButtonElement;
+      expect(confirm.disabled).toBe(true);
+      expect(selectAll.textContent).toContain("Select all");
+    });
+
+    it("'Deselect visible' only removes the filtered subset and keeps other picks", async () => {
+      // Cold-start preselects active-worktree eligibles, so all three start
+      // selected. Filtering to "alpha" and clicking the button should drop
+      // alpha but keep beta and gamma selected.
+      seedTerminals([
+        makeTerminal("alpha", { worktreeId: "wt-1" }),
+        makeTerminal("beta", { worktreeId: "wt-1" }),
+        makeTerminal("gamma", { worktreeId: "wt-1" }),
+      ]);
+      renderPalette([makeWorktreeSnap("wt-1", "main")]);
+      await act(async () => {});
+
+      const search = screen.getByTestId("fleet-picker-cold-start-search") as HTMLInputElement;
+      await act(async () => {
+        fireEvent.change(search, { target: { value: "alp" } });
+      });
+      await act(async () => {});
+
+      const selectAll = screen.getByTestId(
+        "fleet-picker-cold-start-select-all"
+      ) as HTMLButtonElement;
+      expect(selectAll.textContent).toContain("Deselect visible");
+
+      await act(async () => {
+        fireEvent.click(selectAll);
+      });
+
+      // Clear the query — confirm should now show beta + gamma still selected.
+      await act(async () => {
+        fireEvent.change(search, { target: { value: "" } });
+      });
+      await act(async () => {});
+
+      const confirm = screen.getByTestId("fleet-picker-cold-start-confirm") as HTMLButtonElement;
+      expect(confirm.textContent).toContain("Arm 2 selected");
+    });
+
+    it("'Select agents' adds only working/waiting/directing terminals additively", async () => {
+      useWorktreeSelectionStore.setState({ activeWorktreeId: null });
+      seedTerminals([
+        makeTerminal("t-working", { agentState: "working" }),
+        makeTerminal("t-waiting", { agentState: "waiting" }),
+        makeTerminal("t-directing", { agentState: "directing" }),
+        makeTerminal("t-idle", { agentState: "idle" }),
+        makeTerminal("t-completed", { agentState: "completed" }),
+        makeTerminal("t-exited", { agentState: "exited" }),
+      ]);
+      renderPalette([makeWorktreeSnap("wt-1", "main")]);
+      await act(async () => {});
+
+      const selectAgents = screen.getByTestId(
+        "fleet-picker-cold-start-select-agents"
+      ) as HTMLButtonElement;
+      expect(selectAgents.disabled).toBe(false);
+
+      await act(async () => {
+        fireEvent.click(selectAgents);
+      });
+
+      const confirm = screen.getByTestId("fleet-picker-cold-start-confirm") as HTMLButtonElement;
+      // Exactly 3: working + waiting + directing. idle/completed/exited skipped.
+      expect(confirm.textContent).toContain("Arm 3 selected");
+    });
+
+    it("'Select agents' is disabled when no visible terminals are in an active agent state", async () => {
+      useWorktreeSelectionStore.setState({ activeWorktreeId: null });
+      seedTerminals([
+        makeTerminal("t1", { agentState: "idle" }),
+        makeTerminal("t2", { agentState: "completed" }),
+      ]);
+      renderPalette([makeWorktreeSnap("wt-1", "main")]);
+      await act(async () => {});
+
+      const selectAgents = screen.getByTestId(
+        "fleet-picker-cold-start-select-agents"
+      ) as HTMLButtonElement;
+      expect(selectAgents.disabled).toBe(true);
+    });
+
+    it("'Select agents' is truly additive — adds the agent without dropping a manually-picked non-agent", async () => {
+      // No preselection (null active worktree). Filter to the idle terminal,
+      // select it via "Select all visible", clear the query, then click
+      // "Select agents" — the agent must be added on top of the idle pick.
+      useWorktreeSelectionStore.setState({ activeWorktreeId: null });
+      seedTerminals([
+        makeTerminal("alpha-idle", { agentState: "idle" }),
+        makeTerminal("beta-working", { agentState: "working" }),
+      ]);
+      const onClose = vi.fn();
+      renderPalette([makeWorktreeSnap("wt-1", "main")], true, onClose);
+      await act(async () => {});
+
+      const search = screen.getByTestId("fleet-picker-cold-start-search") as HTMLInputElement;
+      await act(async () => {
+        fireEvent.change(search, { target: { value: "alpha" } });
+      });
+      await act(async () => {});
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("fleet-picker-cold-start-select-all"));
+      });
+
+      await act(async () => {
+        fireEvent.change(search, { target: { value: "" } });
+      });
+      await act(async () => {});
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("fleet-picker-cold-start-select-agents"));
+      });
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("fleet-picker-cold-start-confirm"));
+      });
+
+      const s = useFleetArmingStore.getState();
+      expect(s.armOrder.sort()).toEqual(["alpha-idle", "beta-working"]);
+    });
+
+    it("'Select all visible' replaces a prior cross-filter selection", async () => {
+      // Cold-start preselects wt-1 terminals. Filter to a wt-2 terminal,
+      // hit "Select all visible" — replace semantics drop the wt-1 pick and
+      // leave only the wt-2 visible id in the armed set.
+      seedTerminals([
+        makeTerminal("a-wt1", { worktreeId: "wt-1" }),
+        makeTerminal("b-wt2", { worktreeId: "wt-2" }),
+      ]);
+      const onClose = vi.fn();
+      renderPalette(
+        [makeWorktreeSnap("wt-1", "main"), makeWorktreeSnap("wt-2", "feature")],
+        true,
+        onClose
+      );
+      await act(async () => {});
+
+      const search = screen.getByTestId("fleet-picker-cold-start-search") as HTMLInputElement;
+      await act(async () => {
+        fireEvent.change(search, { target: { value: "b-wt2" } });
+      });
+      await act(async () => {});
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("fleet-picker-cold-start-select-all"));
+      });
+
+      await act(async () => {
+        fireEvent.change(search, { target: { value: "" } });
+      });
+      await act(async () => {});
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("fleet-picker-cold-start-confirm"));
+      });
+
+      expect(useFleetArmingStore.getState().armOrder).toEqual(["b-wt2"]);
+    });
+
+    it("'Deselect all' (no query) fully clears selection — drifted ids do not survive", async () => {
+      // Cold-start preselects two wt-1 terminals. Simulate drift by removing
+      // one from the panel store while the picker is open. Click the toggle
+      // (label is now "Deselect all", since visible == selected). With the
+      // unfiltered path doing a full clear, when the drifted terminal
+      // re-enters the panel store its id is no longer in selectedIds, so the
+      // confirm-eligible count stays at 0.
+      seedTerminals([
+        makeTerminal("t1", { worktreeId: "wt-1" }),
+        makeTerminal("t2", { worktreeId: "wt-1" }),
+      ]);
+      renderPalette([makeWorktreeSnap("wt-1", "main")]);
+      await act(async () => {});
+
+      let confirm = screen.getByTestId("fleet-picker-cold-start-confirm") as HTMLButtonElement;
+      expect(confirm.textContent).toContain("Arm 2 selected");
+
+      // Drift t2 out of the panel store. visibleIds shrinks to [t1] and
+      // allVisibleSelected stays true (t1 is selected).
+      seedTerminals([makeTerminal("t1", { worktreeId: "wt-1" })]);
+      await act(async () => {});
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("fleet-picker-cold-start-select-all"));
+      });
+
+      // Re-introduce t2 — confirm should still be empty if "Deselect all"
+      // really cleared everything.
+      seedTerminals([
+        makeTerminal("t1", { worktreeId: "wt-1" }),
+        makeTerminal("t2", { worktreeId: "wt-1" }),
+      ]);
+      await act(async () => {});
+
+      confirm = screen.getByTestId("fleet-picker-cold-start-confirm") as HTMLButtonElement;
+      expect(confirm.disabled).toBe(true);
+      expect(confirm.textContent).toContain("Arm selected");
+    });
+
+    it("footer status reads as a persistent prompt with role='status'", async () => {
+      seedTerminals([makeTerminal("t1")]);
+      renderPalette([makeWorktreeSnap("wt-1", "main")]);
+      await act(async () => {});
+
+      const status = screen.getByTestId("fleet-picker-cold-start-status");
+      expect(status.getAttribute("role")).toBe("status");
+      expect(status.textContent).toBe("Select terminals to arm");
+    });
   });
 });
