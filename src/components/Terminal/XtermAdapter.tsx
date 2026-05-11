@@ -1,12 +1,4 @@
-import {
-  use,
-  useCallback,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useEffect,
-  useState,
-} from "react";
+import { use, useCallback, useLayoutEffect, useMemo, useRef, useEffect, useState } from "react";
 import "@xterm/xterm/css/xterm.css";
 import { cn } from "@/lib/utils";
 import { TerminalRefreshTier } from "@/types";
