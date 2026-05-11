@@ -6,8 +6,41 @@ import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { logWarn } from "@/utils/logger";
 import { DisposableStore, toDisposable } from "@/utils/disposable";
 import { usePanelStore } from "@/store/panelStore";
+import { getCurrentViewStoreOrNull } from "@/store/createWorktreeStore";
+import { actionService } from "@/services/ActionService";
+import { notify } from "@/lib/notify";
 import { reduceAgentDetected, reduceAgentExited } from "./identityReducer";
 import { logIdentityDebugDev, recordIdentityEventDev } from "./identityDiagnostics";
+
+// Per-terminal baseline of `changedFileCount` captured the first time an
+// agent enters "working" in a session. Compared against the count at
+// "completed" to gate the review-inbox notification — no notification fires
+// when the working tree did not change. Module-level (not on PtyPanelData):
+// the snapshot is ephemeral, must not persist across restarts, and is only
+// read by this listener.
+const _changedFileBaseline = new Map<string, number>();
+
+// Per-worktree last-notified timestamp for the completed-with-changes inbox
+// entry. `notify()`'s built-in `coalesce` only applies to toasts, so for
+// `priority: "low"` (inbox-only) it has no effect — we dedupe at the call
+// site instead so six parallel agents finishing on the same worktree
+// collapse to a single inbox entry.
+const _lastReviewInboxAt = new Map<string, number>();
+
+const REVIEW_INBOX_COALESCE_MS = 5000;
+
+export function _resetChangedFileBaseline(): void {
+  _changedFileBaseline.clear();
+  _lastReviewInboxAt.clear();
+}
+
+function readChangedFileCount(worktreeId: string | undefined): number | null {
+  if (!worktreeId) return null;
+  const store = getCurrentViewStoreOrNull();
+  if (!store) return null;
+  const snapshot = store.getState().worktrees.get(worktreeId);
+  return snapshot?.worktreeChanges?.changedFileCount ?? 0;
+}
 
 export function setupIdentityListeners(): DisposableStore {
   const d = new DisposableStore();
@@ -18,6 +51,7 @@ export function setupIdentityListeners(): DisposableStore {
         const {
           terminalId,
           state,
+          previousState,
           timestamp,
           trigger,
           confidence,
@@ -74,6 +108,58 @@ export function setupIdentityListeners(): DisposableStore {
 
         if (state === "waiting" || state === "idle") {
           usePanelStore.getState().processQueue(terminalId);
+        }
+
+        // Snapshot baseline `changedFileCount` the first time an agent enters
+        // "working" in a session. Subsequent working↔waiting cycles keep the
+        // initial baseline so the comparison at completion reflects the full
+        // session, not just the latest stretch.
+        if (state === "working" && !_changedFileBaseline.has(terminalId) && isPtyPanel(terminal)) {
+          const baseline = readChangedFileCount(terminal.worktreeId);
+          if (baseline !== null) {
+            _changedFileBaseline.set(terminalId, baseline);
+          }
+        }
+
+        if (state === "completed" && previousState !== "completed" && isPtyPanel(terminal)) {
+          const worktreeId = terminal.worktreeId;
+          const current = readChangedFileCount(worktreeId);
+          const baseline = _changedFileBaseline.get(terminalId);
+          _changedFileBaseline.delete(terminalId);
+
+          // Require a captured baseline. An agent that jumps idle → completed
+          // without a `working` event has no "started" timestamp to compare
+          // against, so pre-existing dirty files would otherwise look like
+          // new agent work.
+          if (worktreeId && current !== null && baseline !== undefined && current > baseline) {
+            const lastAt = _lastReviewInboxAt.get(worktreeId) ?? 0;
+            if (timestamp - lastAt >= REVIEW_INBOX_COALESCE_MS) {
+              _lastReviewInboxAt.set(worktreeId, timestamp);
+              notify({
+                type: "info",
+                priority: "low",
+                title: "Agent finished with changes",
+                message: "Open the review hub to see what changed.",
+                context: { worktreeId, eventKind: "completed" },
+                action: {
+                  label: "Open review hub",
+                  actionId: "worktree.openReviewHub",
+                  actionArgs: { worktreeId },
+                  onClick: () => {
+                    void actionService.dispatch(
+                      "worktree.openReviewHub",
+                      { worktreeId },
+                      { source: "user" }
+                    );
+                  },
+                },
+              });
+            }
+          }
+        }
+
+        if (state === "exited") {
+          _changedFileBaseline.delete(terminalId);
         }
       })
     )

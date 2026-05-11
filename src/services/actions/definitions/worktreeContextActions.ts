@@ -6,6 +6,7 @@ import { copyTreeClient, systemClient } from "@/clients";
 import { actionService } from "@/services/ActionService";
 import { getCurrentViewStore } from "@/store/createWorktreeStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
+import { useUIStore } from "@/store/uiStore";
 import { DEFAULT_COPYTREE_FORMAT } from "@/lib/copyTreeFormat";
 
 export function registerWorktreeContextActions(
@@ -144,6 +145,26 @@ export function registerWorktreeContextActions(
         if (!worktree) return;
 
         await systemClient.openPath(worktree.path);
+      },
+    })
+  );
+
+  actions.set("worktree.openReviewHub", () =>
+    defineAction({
+      id: "worktree.openReviewHub",
+      title: "Open Review Hub",
+      description: "Open the Review Hub for a worktree to review uncommitted changes",
+      category: "worktree",
+      kind: "command",
+      danger: "safe",
+      scope: "renderer",
+      argsSchema: z.object({ worktreeId: z.string().optional() }).optional(),
+      run: async (args, ctx: ActionContext) => {
+        const worktreeId = args?.worktreeId;
+        const targetWorktreeId = worktreeId ?? ctx.focusedWorktreeId ?? ctx.activeWorktreeId;
+        if (!targetWorktreeId) return;
+        useWorktreeSelectionStore.getState().setActiveWorktree(targetWorktreeId);
+        useUIStore.getState().setPendingReviewHubWorktreeId(targetWorktreeId);
       },
     })
   );

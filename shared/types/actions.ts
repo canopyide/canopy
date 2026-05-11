@@ -207,6 +207,7 @@ export type BuiltInActionId =
   | "worktree.select"
   | "worktree.copyTree"
   | "worktree.openEditor"
+  | "worktree.openReviewHub"
   | "worktree.overview.open"
   | "worktree.overview.close"
   | "action.palette.open"
