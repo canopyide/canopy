@@ -91,9 +91,7 @@ export class WorkspaceService {
   private prService: PRIntegrationService;
   private fetchCoordinator: RepoFetchCoordinator;
   private _shutdownController = new AbortController();
-  private resourceActionQueues = new Map<string, PQueue>();
-  private resourceActionAbortControllers = new Map<string, AbortController>();
-  private readonly resourceActionExecutor: ResourceActionExecutor;
+  readonly resourceActionExecutor: ResourceActionExecutor;
   /** Session-scoped guard so we notify the user about Linux inotify limits
    *  only once, even if many worktrees hit ENOSPC concurrently. */
   private inotifyLimitNotified = false;
@@ -325,7 +323,7 @@ export class WorkspaceService {
           this.activeWorktreeId = null;
         }
 
-        this.cleanupResourceActionState(id);
+        this.resourceActionExecutor.cleanupResourceActionState(id);
         monitor.stop();
         this.monitors.delete(id);
         clearGitDirCache(monitor.path);
@@ -751,7 +749,7 @@ export class WorkspaceService {
       this.activeWorktreeId = null;
     }
 
-    this.cleanupResourceActionState(worktreeId);
+    this.resourceActionExecutor.cleanupResourceActionState(worktreeId);
     monitor.stop();
     this.monitors.delete(worktreeId);
 
@@ -1318,7 +1316,7 @@ export class WorkspaceService {
       // Clean up the monitor immediately after worktree removal succeeds,
       // before attempting branch deletion — so the monitor doesn't linger
       // if branch deletion fails.
-      this.cleanupResourceActionState(worktreeId);
+      this.resourceActionExecutor.cleanupResourceActionState(worktreeId);
       monitor.stop();
       this.monitors.delete(worktreeId);
 
@@ -1700,6 +1698,9 @@ ${lines.map((l) => "+" + l).join("\n")}`;
   async onProjectSwitch(requestId: string): Promise<void> {
     this.prService.cleanup();
 
+    for (const id of this.monitors.keys()) {
+      this.resourceActionExecutor.cleanupResourceActionState(id);
+    }
     for (const monitor of this.monitors.values()) {
       monitor.stop();
     }
@@ -1763,37 +1764,6 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     });
   }
 
-  private getResourceActionQueue(worktreeId: string): PQueue {
-    let queue = this.resourceActionQueues.get(worktreeId);
-    if (!queue) {
-      queue = new PQueue({ concurrency: 1 });
-      this.resourceActionQueues.set(worktreeId, queue);
-    }
-    return queue;
-  }
-
-  private getResourceActionAbortController(worktreeId: string): AbortController {
-    let controller = this.resourceActionAbortControllers.get(worktreeId);
-    if (!controller) {
-      controller = new AbortController();
-      this.resourceActionAbortControllers.set(worktreeId, controller);
-    }
-    return controller;
-  }
-
-  private cleanupResourceActionState(worktreeId: string): void {
-    const controller = this.resourceActionAbortControllers.get(worktreeId);
-    if (controller) {
-      controller.abort();
-      this.resourceActionAbortControllers.delete(worktreeId);
-    }
-    const queue = this.resourceActionQueues.get(worktreeId);
-    if (queue) {
-      queue.clear();
-      this.resourceActionQueues.delete(worktreeId);
-    }
-  }
-
   async runResourceAction(
     requestId: string,
     worktreeId: string,
@@ -1801,66 +1771,12 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     environmentId?: string,
     options?: { origin?: "auto-poll" }
   ): Promise<{ success: boolean; error?: string; output?: string }> {
-    const monitor = this.monitors.get(worktreeId);
-    if (!monitor) {
-      this.sendEvent({
-        type: "resource-action-result",
-        requestId,
-        success: false,
-        error: "Worktree not found",
-      });
-      return { success: false, error: "Worktree not found" };
-    }
-
-    if (!this.projectRootPath) {
-      this.sendEvent({
-        type: "resource-action-result",
-        requestId,
-        success: false,
-        error: "No project root path",
-      });
-      return { success: false, error: "No project root path" };
-    }
-
-    const queue = this.getResourceActionQueue(worktreeId);
-
-    // Auto-poll: skip if any resource action is already in-flight or queued
-    if (options?.origin === "auto-poll" && (queue.pending > 0 || queue.size > 0)) {
-      return { success: true };
-    }
-
-    const controller = this.getResourceActionAbortController(worktreeId);
-
-    const queued = await queue
-      .add(
-        () =>
-          this._executeResourceAction(
-            requestId,
-            worktreeId,
-            action,
-            environmentId,
-            controller.signal
-          ),
-        { signal: controller.signal }
-      )
-      .catch(() => undefined);
-
-    return queued ?? { success: false, error: "Aborted" };
-  }
-
-  private _executeResourceAction(
-    requestId: string,
-    worktreeId: string,
-    action: "provision" | "teardown" | "resume" | "pause" | "status",
-    environmentId: string | undefined,
-    signal: AbortSignal
-  ): Promise<{ success: boolean; error?: string; output?: string }> {
-    return this.resourceActionExecutor.execute(
+    return this.resourceActionExecutor.runResourceAction(
       requestId,
       worktreeId,
       action,
       environmentId,
-      signal
+      options
     );
   }
 
@@ -1900,9 +1816,7 @@ ${lines.map((l) => "+" + l).join("\n")}`;
   dispose(): void {
     this._shutdownController.abort();
     this.prService.cleanup();
-    for (const id of this.monitors.keys()) {
-      this.cleanupResourceActionState(id);
-    }
+    this.resourceActionExecutor.dispose();
     for (const monitor of this.monitors.values()) {
       monitor.stop();
     }

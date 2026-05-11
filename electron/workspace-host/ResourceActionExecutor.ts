@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "fs/promises";
 import { join as pathJoin } from "path";
+import PQueue from "p-queue";
 import type { WorkspaceHostEvent } from "../../shared/types/workspace-host.js";
 import type { WorktreeResourceStatus } from "../../shared/types/worktree.js";
 import { WorktreeMonitor } from "./WorktreeMonitor.js";
@@ -36,14 +37,16 @@ export interface ResourceActionContext {
 }
 
 /**
- * Encapsulates resource-action execution (`provision` / `teardown` /
- * `resume` / `pause` / `status`).
- *
- * The owning `WorkspaceService` retains the per-worktree `PQueue` and
- * `AbortController` Maps (an existing test inspects them via bracket
- * notation) and only delegates the execution body to this class.
+ * Encapsulates resource-action coordination and execution (`provision` /
+ * `teardown` / `resume` / `pause` / `status`). Owns the per-worktree
+ * `PQueue` and `AbortController` Maps so queue lifecycle is co-located
+ * with the execution body.
  */
 export class ResourceActionExecutor {
+  private resourceActionQueues = new Map<string, PQueue>();
+  private resourceActionAbortControllers = new Map<string, AbortController>();
+  private disposed = false;
+
   constructor(private readonly ctx: ResourceActionContext) {}
 
   async execute(
@@ -53,6 +56,8 @@ export class ResourceActionExecutor {
     environmentId: string | undefined,
     signal: AbortSignal
   ): Promise<{ success: boolean; error?: string; output?: string }> {
+    if (this.disposed) return { success: false, error: "Aborted" };
+
     const monitor = this.ctx.getMonitor(worktreeId);
     const projectRootPath = this.ctx.getProjectRootPath();
     if (!monitor || !projectRootPath) {
@@ -215,7 +220,7 @@ export class ResourceActionExecutor {
       try {
         const parsed = JSON.parse(result.output);
         statusMonitor.setResourceStatus({
-          lastStatus: parsed.status ?? "unhealthy",
+          lastStatus: typeof parsed.status === "string" ? parsed.status : "unhealthy",
           lastOutput: result.output,
           lastCheckedAt: Date.now(),
           endpoint: typeof parsed.endpoint === "string" ? parsed.endpoint : undefined,
@@ -373,6 +378,98 @@ export class ResourceActionExecutor {
       error: result.error,
     });
     return { success: result.success, output: result.output, error: result.error };
+  }
+
+  private getResourceActionQueue(worktreeId: string): PQueue {
+    let queue = this.resourceActionQueues.get(worktreeId);
+    if (!queue) {
+      queue = new PQueue({ concurrency: 1 });
+      this.resourceActionQueues.set(worktreeId, queue);
+    }
+    return queue;
+  }
+
+  private getResourceActionAbortController(worktreeId: string): AbortController {
+    let controller = this.resourceActionAbortControllers.get(worktreeId);
+    if (!controller) {
+      controller = new AbortController();
+      this.resourceActionAbortControllers.set(worktreeId, controller);
+    }
+    return controller;
+  }
+
+  cleanupResourceActionState(worktreeId: string): void {
+    const controller = this.resourceActionAbortControllers.get(worktreeId);
+    if (controller) {
+      controller.abort();
+      this.resourceActionAbortControllers.delete(worktreeId);
+    }
+    const queue = this.resourceActionQueues.get(worktreeId);
+    if (queue) {
+      queue.clear();
+      this.resourceActionQueues.delete(worktreeId);
+    }
+  }
+
+  async runResourceAction(
+    requestId: string,
+    worktreeId: string,
+    action: "provision" | "teardown" | "resume" | "pause" | "status",
+    environmentId?: string,
+    options?: { origin?: "auto-poll" }
+  ): Promise<{ success: boolean; error?: string; output?: string }> {
+    if (this.disposed) {
+      return { success: false, error: "Aborted" };
+    }
+
+    const monitor = this.ctx.getMonitor(worktreeId);
+    if (!monitor) {
+      this.ctx.sendEvent({
+        type: "resource-action-result",
+        requestId,
+        success: false,
+        error: "Worktree not found",
+      });
+      return { success: false, error: "Worktree not found" };
+    }
+
+    if (!this.ctx.getProjectRootPath()) {
+      this.ctx.sendEvent({
+        type: "resource-action-result",
+        requestId,
+        success: false,
+        error: "No project root path",
+      });
+      return { success: false, error: "No project root path" };
+    }
+
+    const queue = this.getResourceActionQueue(worktreeId);
+
+    if (options?.origin === "auto-poll" && (queue.pending > 0 || queue.size > 0)) {
+      return { success: true };
+    }
+
+    const controller = this.getResourceActionAbortController(worktreeId);
+
+    const queued = await queue
+      .add(() => this.execute(requestId, worktreeId, action, environmentId, controller.signal), {
+        signal: controller.signal,
+      })
+      .catch(() => undefined);
+
+    return queued ?? { success: false, error: "Aborted" };
+  }
+
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    const keys = new Set([
+      ...this.resourceActionAbortControllers.keys(),
+      ...this.resourceActionQueues.keys(),
+    ]);
+    for (const key of keys) {
+      this.cleanupResourceActionState(key);
+    }
   }
 }
 
