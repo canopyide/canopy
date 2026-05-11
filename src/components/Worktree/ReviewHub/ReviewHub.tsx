@@ -1086,7 +1086,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                       <div
                         ref={conflictSectionRef}
                         tabIndex={-1}
-                        className="px-4 py-2.5 bg-status-error/10 border-b border-divider flex items-start gap-2 outline-none focus:ring-2 focus:ring-daintree-accent"
+                        className="px-4 py-2.5 bg-status-error/10 border-b border-divider flex items-start gap-2 outline-hidden focus:ring-2 focus:ring-daintree-accent"
                       >
                         <AlertTriangle className="w-3.5 h-3.5 text-status-error mt-0.5 shrink-0" />
                         <div className="text-xs text-status-error">

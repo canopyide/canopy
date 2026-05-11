@@ -168,7 +168,7 @@ export function CommitPanel({
         <div
           ref={detachedHeadRef}
           tabIndex={-1}
-          className="text-xs text-status-warning bg-status-warning/10 rounded px-2 py-1.5 outline-none focus:ring-2 focus:ring-daintree-accent"
+          className="text-xs text-status-warning bg-status-warning/10 rounded px-2 py-1.5 outline-hidden focus:ring-2 focus:ring-daintree-accent"
         >
           Detached HEAD — commits are not allowed in this state.
         </div>
