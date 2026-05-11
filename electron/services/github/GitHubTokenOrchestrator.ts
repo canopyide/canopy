@@ -29,7 +29,7 @@ export async function setTokenAndSync(token: string): Promise<GitHubTokenValidat
     }
 
     gitHubTokenHealthService.resetState();
-    void gitHubTokenHealthService.refresh({ force: true });
+    void gitHubTokenHealthService.refresh({ force: true }).catch(() => {});
   }
 
   return validation;

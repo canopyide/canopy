@@ -89,7 +89,7 @@ export {
 export type { RepoStatsAndPageResult, RepoStatsCompleteResult } from "./GitHubStats.js";
 
 // Project health
-export { getProjectHealth } from "./GitHubHealth.js";
+export { getProjectHealth, buildEmptyProjectHealthData } from "./GitHubHealth.js";
 
 // PR discovery
 export { batchCheckLinkedPRs } from "./GitHubPRDiscovery.js";

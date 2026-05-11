@@ -27,6 +27,22 @@ export async function fetchRateLimitDetails(): Promise<GitHubRateLimitDetails | 
     const resources = body.resources;
     if (!resources?.core || !resources.graphql || !resources.search) return null;
 
+    const isValidBucket = (
+      b: unknown
+    ): b is { limit: number; used: number; remaining: number; reset: number } => {
+      if (!b || typeof b !== "object") return false;
+      const r = b as Record<string, unknown>;
+      return [r.limit, r.used, r.remaining, r.reset].every(
+        (v) => typeof v === "number" && Number.isFinite(v)
+      );
+    };
+    if (
+      !isValidBucket(resources.core) ||
+      !isValidBucket(resources.graphql) ||
+      !isValidBucket(resources.search)
+    )
+      return null;
+
     const toBucket = (b: { limit: number; used: number; remaining: number; reset: number }) => ({
       limit: b.limit,
       used: b.used,

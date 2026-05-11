@@ -104,24 +104,14 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
       throw new Error("Working directory must be an absolute path");
     }
 
-    const { getProjectHealth } = await import("../../services/github/index.js");
+    const { getProjectHealth, buildEmptyProjectHealthData } =
+      await import("../../services/github/index.js");
 
     try {
       const resolved = path.resolve(cwd);
       const stat = await fs.stat(resolved);
       if (!stat.isDirectory()) {
-        return {
-          ciStatus: "none",
-          issueCount: 0,
-          prCount: 0,
-          latestRelease: null,
-          securityAlerts: { visible: false, count: 0 },
-          mergeVelocity: { mergedCounts: { 60: 0, 120: 0, 180: 0 } },
-          repoUrl: "",
-          hasRemote: false,
-          loading: false,
-          error: "Path is not a directory",
-        };
+        return buildEmptyProjectHealthData({ error: "Path is not a directory" });
       }
 
       const result = await getProjectHealth(resolved, bypassCache);
@@ -130,32 +120,13 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
         return { ...result.health, hasRemote: true, loading: false, error: result.error };
       }
 
-      return {
-        ciStatus: "none",
-        issueCount: 0,
-        prCount: 0,
-        latestRelease: null,
-        securityAlerts: { visible: false, count: 0 },
-        mergeVelocity: { mergedCounts: { 60: 0, 120: 0, 180: 0 } },
-        repoUrl: "",
-        hasRemote: result.error !== "Not a GitHub repository",
-        loading: false,
+      return buildEmptyProjectHealthData({
         error: result.error,
-      };
+        hasRemote: result.error !== "Not a GitHub repository",
+      });
     } catch (err) {
       const message = formatErrorMessage(err, "Failed to fetch GitHub project health");
-      return {
-        ciStatus: "none",
-        issueCount: 0,
-        prCount: 0,
-        latestRelease: null,
-        securityAlerts: { visible: false, count: 0 },
-        mergeVelocity: { mergedCounts: { 60: 0, 120: 0, 180: 0 } },
-        repoUrl: "",
-        hasRemote: false,
-        loading: false,
-        error: message,
-      };
+      return buildEmptyProjectHealthData({ error: message });
     }
   };
   handlers.push(typedHandle(CHANNELS.GITHUB_GET_PROJECT_HEALTH, handleGitHubGetProjectHealth));
