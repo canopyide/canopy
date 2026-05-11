@@ -1318,7 +1318,7 @@ describe("ReviewHub", () => {
         })
       );
       // Pending promise — the IPC call never resolves during the test.
-      let resolveCheckout: (() => void) | null = null;
+      let resolveCheckout: (() => void) | undefined;
       checkoutOursTheirsMock.mockImplementationOnce(
         () => new Promise<void>((resolve) => (resolveCheckout = () => resolve()))
       );
