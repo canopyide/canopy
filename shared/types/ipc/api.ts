@@ -452,6 +452,13 @@ export interface ElectronAPI {
     remove(projectId: string): Promise<void>;
     update(projectId: string, updates: Partial<Project>): Promise<Project>;
     switch(projectId: string, outgoingState?: ProjectSwitchOutgoingState): Promise<Project>;
+    /**
+     * Hover-prefetch trigger for the project switcher palette. Fire-and-forget:
+     * the main process builds the `HydrateResult` for the given project and
+     * caches it so the next `app:hydrate` call from the new project view
+     * resolves as a cache hit. Errors are swallowed in the cache layer.
+     */
+    prefetchHydrate(projectId: string): Promise<void>;
     openDialog(): Promise<string | null>;
     onSwitch(
       callback: (payload: {

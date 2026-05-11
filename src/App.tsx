@@ -895,6 +895,8 @@ function App() {
                   onSelectPrevious={projectSwitcherPalette.selectPrevious}
                   onSelectNext={projectSwitcherPalette.selectNext}
                   onSelect={projectSwitcherPalette.selectProject}
+                  onHoverProject={projectSwitcherPalette.onHoverProject}
+                  onHoverProjectEnd={projectSwitcherPalette.onHoverProjectEnd}
                   onClose={projectSwitcherPalette.close}
                   onStopProject={(projectId) => void projectSwitcherPalette.stopProject(projectId)}
                   onCloseProject={(projectId) =>

@@ -809,6 +809,10 @@ export interface IpcInvokeMap {
     args: [projectId: string, outgoingState?: ProjectSwitchOutgoingState];
     result: Project;
   };
+  "project:prefetch-hydrate": {
+    args: [projectId: string];
+    result: void;
+  };
   "project:open-dialog": {
     args: [];
     result: string | null;

@@ -205,6 +205,7 @@ export const CHANNELS = {
   PROJECT_UPDATED: "project:updated",
   PROJECT_REMOVED: "project:removed",
   PROJECT_SWITCH: "project:switch",
+  PROJECT_PREFETCH_HYDRATE: "project:prefetch-hydrate",
   PROJECT_OPEN_DIALOG: "project:open-dialog",
   PROJECT_ON_SWITCH: "project:on-switch",
   PROJECT_GET_SETTINGS: "project:get-settings",

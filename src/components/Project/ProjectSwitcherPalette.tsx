@@ -72,6 +72,10 @@ export interface ProjectSwitcherPaletteProps {
   onCopyPath?: (path: string) => void;
   onSelectBackground?: (project: SearchableProject) => void;
   onSelectNewWindow?: (project: SearchableProject) => void;
+  /** Pointer-enter callback used to schedule a hover prefetch of the project's hydrate payload. */
+  onHoverProject?: (projectId: string, pointerType: string) => void;
+  /** Pointer-leave callback used to cancel a pending hover prefetch. */
+  onHoverProjectEnd?: (pointerType: string) => void;
   onOpenProjectSettings?: () => void;
   dropdownAlign?: "start" | "center" | "end";
   children?: React.ReactNode;
@@ -112,6 +116,8 @@ interface ProjectListItemProps {
   onTogglePinProject?: (projectId: string) => void;
   onCopyPath?: (path: string) => void;
   onSelectNewWindow?: (project: SearchableProject) => void;
+  onHoverProject?: (projectId: string, pointerType: string) => void;
+  onHoverProjectEnd?: (pointerType: string) => void;
 }
 
 const StatusDot = memo(function StatusDot({ project }: { project: SearchableProject }) {
@@ -161,6 +167,8 @@ const ProjectListItem = memo(function ProjectListItem({
   onTogglePinProject,
   onCopyPath,
   onSelectNewWindow,
+  onHoverProject,
+  onHoverProjectEnd,
 }: ProjectListItemProps) {
   const showStop = project.processCount > 0 && !project.isMissing;
 
@@ -204,6 +212,8 @@ const ProjectListItem = memo(function ProjectListItem({
               : "text-daintree-text/70 hover:bg-overlay-soft hover:text-daintree-text cursor-pointer"
       )}
       onClick={() => !project.isActive && !project.isMissing && onSelect(project)}
+      onPointerEnter={onHoverProject ? (e) => onHoverProject(project.id, e.pointerType) : undefined}
+      onPointerLeave={onHoverProjectEnd ? (e) => onHoverProjectEnd(e.pointerType) : undefined}
     >
       <StatusDot project={project} />
 
@@ -343,6 +353,8 @@ interface ProjectListContentProps {
   onTogglePinProject?: (projectId: string) => void;
   onCopyPath?: (path: string) => void;
   onSelectNewWindow?: (project: SearchableProject) => void;
+  onHoverProject?: (projectId: string, pointerType: string) => void;
+  onHoverProjectEnd?: (pointerType: string) => void;
 }
 
 function ProjectListContent({
@@ -358,6 +370,8 @@ function ProjectListContent({
   onTogglePinProject,
   onCopyPath,
   onSelectNewWindow,
+  onHoverProject,
+  onHoverProjectEnd,
 }: ProjectListContentProps) {
   const isSearching = query.trim().length > 0;
 
@@ -425,6 +439,8 @@ function ProjectListContent({
           onTogglePinProject={onTogglePinProject}
           onCopyPath={onCopyPath}
           onSelectNewWindow={onSelectNewWindow}
+          onHoverProject={onHoverProject}
+          onHoverProjectEnd={onHoverProjectEnd}
         />
       </div>
     );
@@ -703,6 +719,8 @@ interface ProjectPaletteInnerProps {
   onLocateProject?: (projectId: string) => void;
   onTogglePinProject?: (projectId: string) => void;
   onCopyPath?: (path: string) => void;
+  onHoverProject?: (projectId: string, pointerType: string) => void;
+  onHoverProjectEnd?: (pointerType: string) => void;
   scratchResults?: SearchableScratch[];
   onCreateScratch?: () => void;
   onSelectScratch?: (scratch: SearchableScratch) => void;
@@ -733,6 +751,8 @@ function ProjectPaletteInner({
   onLocateProject,
   onTogglePinProject,
   onCopyPath,
+  onHoverProject,
+  onHoverProjectEnd,
   scratchResults,
   onCreateScratch,
   onSelectScratch,
@@ -855,6 +875,8 @@ function ProjectPaletteInner({
           onTogglePinProject={onTogglePinProject}
           onCopyPath={onCopyPath}
           onSelectNewWindow={onSelectNewWindow}
+          onHoverProject={onHoverProject}
+          onHoverProjectEnd={onHoverProjectEnd}
         />
         {(onCreateScratch || (scratchResults && scratchResults.length > 0)) && (
           <>
@@ -1043,6 +1065,8 @@ function ModalContent({
           onCopyPath={innerProps.onCopyPath}
           onSelectBackground={innerProps.onSelectBackground}
           onSelectNewWindow={innerProps.onSelectNewWindow}
+          onHoverProject={innerProps.onHoverProject}
+          onHoverProjectEnd={innerProps.onHoverProjectEnd}
           scratchResults={innerProps.scratchResults}
           onCreateScratch={innerProps.onCreateScratch}
           onSelectScratch={innerProps.onSelectScratch}
@@ -1126,6 +1150,8 @@ function DropdownContent({
           onCopyPath={innerProps.onCopyPath}
           onSelectBackground={innerProps.onSelectBackground}
           onSelectNewWindow={innerProps.onSelectNewWindow}
+          onHoverProject={innerProps.onHoverProject}
+          onHoverProjectEnd={innerProps.onHoverProjectEnd}
           scratchResults={innerProps.scratchResults}
           onCreateScratch={innerProps.onCreateScratch}
           onSelectScratch={innerProps.onSelectScratch}
@@ -1158,6 +1184,8 @@ export function ProjectSwitcherPalette({
   onCopyPath,
   onSelectBackground,
   onSelectNewWindow,
+  onHoverProject,
+  onHoverProjectEnd,
   onOpenProjectSettings,
   dropdownAlign,
   children,
@@ -1204,6 +1232,8 @@ export function ProjectSwitcherPalette({
         onCopyPath={onCopyPath}
         onSelectBackground={onSelectBackground}
         onSelectNewWindow={onSelectNewWindow}
+        onHoverProject={onHoverProject}
+        onHoverProjectEnd={onHoverProjectEnd}
         onOpenProjectSettings={onOpenProjectSettings}
         dropdownAlign={dropdownAlign}
         scratchResults={scratchResults}
@@ -1236,6 +1266,8 @@ export function ProjectSwitcherPalette({
         onCopyPath={onCopyPath}
         onSelectBackground={onSelectBackground}
         onSelectNewWindow={onSelectNewWindow}
+        onHoverProject={onHoverProject}
+        onHoverProjectEnd={onHoverProjectEnd}
         onOpenProjectSettings={onOpenProjectSettings}
         scratchResults={scratchResults}
         onCreateScratch={onCreateScratch}
