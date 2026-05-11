@@ -5,6 +5,15 @@ const RESERVED_KEYS = ["__proto__", "constructor", "prototype"];
 
 export const SAFE_AGENT_ID_PATTERN = /^[a-zA-Z0-9._-]+$/;
 
+export const AssistantSupportsSchema = z.object({
+  mcpInjection: z.enum(["project-config", "cli-flags"]),
+  settingsOverlay: z.boolean(),
+  permissionBypass: z.boolean(),
+  trustDialog: z.boolean(),
+  versionProbe: z.boolean(),
+  tier: z.enum(["stable", "experimental"]),
+});
+
 export const UserAgentConfigSchema = z
   .object({
     id: z.string().min(1),
@@ -32,6 +41,7 @@ export const UserAgentConfigSchema = z
     tooltip: z.string().optional(),
     usageUrl: z.string().url().optional(),
     routing: AgentRoutingConfigSchema.optional(),
+    supports: z.union([z.literal(false), AssistantSupportsSchema]).optional(),
   })
   .refine((data) => !RESERVED_KEYS.includes(data.id), {
     message: "Agent ID cannot be a reserved key (__proto__, constructor, prototype)",

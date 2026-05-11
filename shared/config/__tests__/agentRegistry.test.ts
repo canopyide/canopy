@@ -22,6 +22,7 @@ import {
   AgentDomainWeightsSchema,
   DEFAULT_ROUTING_CONFIG,
 } from "../../types/agentSettings.js";
+import { UserAgentConfigSchema } from "../../types/userAgentRegistry.js";
 
 describe("agentRegistry", () => {
   beforeEach(() => {
@@ -503,6 +504,46 @@ describe("agentRegistry", () => {
       const ids = getAssistantSupportedAgentIds();
       expect(ids).toEqual(expect.arrayContaining(["claude", "codex"]));
       expect(ids).toHaveLength(2);
+    });
+
+    it("supported list returns built-ins in BUILT_IN_AGENT_IDS order then user-defined", () => {
+      const userAgent1: AgentConfig = {
+        ...userDefinedWithStable,
+        id: "zzz-last-agent",
+        name: "ZZZ Agent",
+        command: "zzz",
+      };
+      const userAgent2: AgentConfig = {
+        ...userDefinedWithStable,
+        id: "aaa-first-agent",
+        name: "AAA Agent",
+        command: "aaa",
+      };
+      setUserRegistry({ "zzz-last-agent": userAgent1, "aaa-first-agent": userAgent2 });
+      try {
+        const ids = getAssistantSupportedAgentIds();
+        // Built-ins first: claude, codex (in BUILT_IN_AGENT_IDS order)
+        expect(ids[0]).toBe("claude");
+        expect(ids[1]).toBe("codex");
+        // Then user-defined agents in registration order
+        const userDefinedIds = ids.slice(2);
+        expect(userDefinedIds[0]).toBe("zzz-last-agent");
+        expect(userDefinedIds[1]).toBe("aaa-first-agent");
+      } finally {
+        setUserRegistry({});
+      }
+    });
+
+    it("user-defined shadow with supports:false does not remove built-in", () => {
+      setUserRegistry({
+        claude: { ...userDefinedStructurallyIneligible, id: "claude", supports: false },
+      });
+      try {
+        const ids = getAssistantSupportedAgentIds();
+        expect(ids).toContain("claude");
+      } finally {
+        setUserRegistry({});
+      }
     });
   });
 });
@@ -1778,5 +1819,81 @@ describe("aider detection patterns", () => {
     expect(patterns.some((p) => p.test("> "))).toBe(true);
     expect(patterns.some((p) => p.test("architect> "))).toBe(true);
     expect(patterns.some((p) => p.test("ask> "))).toBe(true);
+  });
+});
+
+describe("UserAgentConfigSchema supports field", () => {
+  it("preserves supports:false through validation", () => {
+    const result = UserAgentConfigSchema.safeParse({
+      id: "test-agent",
+      name: "Test Agent",
+      command: "test",
+      color: "#FF0000",
+      iconId: "test",
+      supportsContextInjection: true,
+      supports: false,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.supports).toBe(false);
+    }
+  });
+
+  it("preserves structured supports through validation", () => {
+    const result = UserAgentConfigSchema.safeParse({
+      id: "test-agent",
+      name: "Test Agent",
+      command: "test",
+      color: "#FF0000",
+      iconId: "test",
+      supportsContextInjection: true,
+      supports: {
+        mcpInjection: "cli-flags",
+        settingsOverlay: false,
+        permissionBypass: true,
+        trustDialog: false,
+        versionProbe: true,
+        tier: "stable",
+      },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.supports).toMatchObject({ tier: "stable", mcpInjection: "cli-flags" });
+    }
+  });
+
+  it("rejects invalid supports tier", () => {
+    const result = UserAgentConfigSchema.safeParse({
+      id: "test-agent",
+      name: "Test Agent",
+      command: "test",
+      color: "#FF0000",
+      iconId: "test",
+      supportsContextInjection: true,
+      supports: {
+        mcpInjection: "cli-flags",
+        settingsOverlay: false,
+        permissionBypass: true,
+        trustDialog: false,
+        versionProbe: true,
+        tier: "bogus",
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("omitting supports is valid (optional field)", () => {
+    const result = UserAgentConfigSchema.safeParse({
+      id: "test-agent",
+      name: "Test Agent",
+      command: "test",
+      color: "#FF0000",
+      iconId: "test",
+      supportsContextInjection: true,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.supports).toBeUndefined();
+    }
   });
 });

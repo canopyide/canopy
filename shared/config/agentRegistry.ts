@@ -592,7 +592,7 @@ export function getEffectiveAgentConfig(agentId: string): AgentConfig | undefine
 }
 
 export function isEffectivelyRegisteredAgent(agentId: string): boolean {
-  return agentId in getEffectiveRegistry();
+  return Object.prototype.hasOwnProperty.call(getEffectiveRegistry(), agentId);
 }
 
 export function isBuiltInAgent(agentId: string): boolean {
