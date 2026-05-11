@@ -15,9 +15,26 @@ import {
   Shield,
 } from "lucide-react";
 import { DaintreeIcon, FolderGit2, Plug, McpServerIcon } from "@/components/icons";
+import { BUILT_IN_AGENT_IDS } from "@shared/config/agentIds";
+import { AGENT_REGISTRY } from "@shared/config/agentRegistry";
 import { GeneralTab } from "./GeneralTab";
 
 // ── Entry types ─────────────────────────────────────────────────────────
+
+export interface SettingsSectionMeta {
+  /** DOM-anchor id when present; otherwise a stable virtual id for search/cache. */
+  readonly id: string;
+  readonly section: string;
+  readonly title: string;
+  readonly description: string;
+  readonly keywords?: readonly string[];
+  readonly subtab?: string;
+  readonly subtabLabel?: string;
+  readonly requiresEnabled?: {
+    readonly settingId: string;
+    readonly label: string;
+  };
+}
 
 export interface SettingsTabEntry {
   readonly id: string;
@@ -27,6 +44,9 @@ export interface SettingsTabEntry {
   readonly headerTitle?: string;
   readonly icon: ReactNode;
   readonly importKind: "eager" | "lazy";
+  readonly searchNavDescription?: string;
+  readonly searchNavKeywords?: readonly string[];
+  readonly sections?: readonly SettingsSectionMeta[];
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- heterogeneous component storage
@@ -47,6 +67,13 @@ export interface EagerSettingsTabEntry extends SettingsTabEntry {
 }
 
 export type AnySettingsTabEntry = LazySettingsTabEntry | EagerSettingsTabEntry;
+
+export interface ProjectSettingsTabSearchMeta {
+  readonly tabLabel: string;
+  readonly searchNavDescription: string;
+  readonly searchNavKeywords: readonly string[];
+  readonly sections?: readonly SettingsSectionMeta[];
+}
 
 // ── Lazy import thunks (module-level for referential stability) ─────────
 
@@ -118,6 +145,23 @@ const LazyPrivacyDataTab = lazy(() =>
   importPrivacyDataTab().then((m) => ({ default: m.PrivacyDataTab }))
 );
 
+// ── Voice requiresEnabled gates (referenced repeatedly) ─────────────────
+
+const VOICE_REQUIRES_ENABLED = {
+  settingId: "voice-enable",
+  label: "Voice Input",
+} as const;
+
+const VOICE_AI_REQUIRES_ENABLED = {
+  settingId: "voice-ai-correction-enable",
+  label: "AI Text Correction",
+} as const;
+
+const MCP_REQUIRES_ENABLED = {
+  settingId: "mcp-server-enable",
+  label: "MCP Server",
+} as const;
+
 // ── Registry (module-level const — stable identity for Fuse.js WeakMap) ─
 
 export const SETTINGS_REGISTRY = [
@@ -130,6 +174,111 @@ export const SETTINGS_REGISTRY = [
     icon: <Settings2 className="w-4 h-4" />,
     importKind: "eager",
     Component: GeneralTab,
+    searchNavDescription: "About, system status, hibernation, and display settings",
+    searchNavKeywords: ["general", "settings", "about", "status"],
+    sections: [
+      {
+        id: "general-about",
+        subtab: "overview",
+        subtabLabel: "Overview",
+        section: "About",
+        title: "About Daintree",
+        description: "App version and description",
+        keywords: ["version", "about", "info", "beta"],
+      },
+      {
+        id: "general-system-status",
+        subtab: "overview",
+        subtabLabel: "Overview",
+        section: "System Status",
+        title: "System Status",
+        description: "Installed agents and their operational status",
+        keywords: ["agents", "cli", "available", "status", "check", "ready"],
+      },
+      {
+        id: "general-update-channel",
+        subtab: "overview",
+        subtabLabel: "Overview",
+        section: "Update Channel",
+        title: "Update Channel",
+        description: "Switch between stable and nightly update channels",
+        keywords: ["update", "channel", "stable", "nightly", "releases"],
+      },
+      {
+        id: "general-hibernation",
+        subtab: "hibernation",
+        subtabLabel: "Hibernation",
+        section: "Auto-Hibernation",
+        title: "Auto-Hibernation",
+        description:
+          "Automatically stop terminals and servers for inactive projects. Reduces system resource usage.",
+        keywords: ["hibernate", "sleep", "inactive", "stop", "resources", "idle", "auto"],
+      },
+      {
+        id: "general-hibernation-threshold",
+        subtab: "hibernation",
+        subtabLabel: "Hibernation",
+        section: "Auto-Hibernation",
+        title: "Inactivity Threshold",
+        description: "How long before a project is hibernated: 12h, 24h, 48h, or 72h",
+        keywords: ["hibernate", "threshold", "hours", "timeout", "inactivity"],
+      },
+      {
+        id: "general-idle-terminal-notify",
+        subtab: "hibernation",
+        subtabLabel: "Hibernation",
+        section: "Idle Terminal Notifications",
+        title: "Idle Terminal Notifications",
+        description:
+          "Notify when background project terminals have been idle past a threshold. Includes Close Them / Mute project actions.",
+        keywords: ["idle", "notify", "terminal", "background", "reminder", "inactive", "close"],
+      },
+      {
+        id: "general-idle-terminal-threshold",
+        subtab: "hibernation",
+        subtabLabel: "Hibernation",
+        section: "Idle Terminal Notifications",
+        title: "Idle Threshold",
+        description: "Minutes of inactivity before notifying: 30m, 1h, 2h, or 4h",
+        keywords: ["idle", "threshold", "minutes", "notify", "inactivity", "background"],
+      },
+      {
+        id: "general-project-pulse",
+        subtab: "display",
+        subtabLabel: "Display",
+        section: "Display",
+        title: "Project Pulse",
+        description: "Show activity heatmap on the empty panel grid",
+        keywords: ["heatmap", "activity", "pulse", "display", "visualization"],
+      },
+      {
+        id: "general-developer-tools",
+        subtab: "display",
+        subtabLabel: "Display",
+        section: "Display",
+        title: "Developer Tools",
+        description: "Show problems panel button in the toolbar",
+        keywords: ["developer", "debug", "problems", "panel", "toolbar"],
+      },
+      {
+        id: "general-grid-agent-highlights",
+        subtab: "display",
+        subtabLabel: "Display",
+        section: "Display",
+        title: "Grid Panel Agent Highlights",
+        description: "Show waiting and working state borders on grid panels",
+        keywords: ["agent", "highlight", "border", "waiting", "working", "grid", "panel", "state"],
+      },
+      {
+        id: "general-dock-agent-highlights",
+        subtab: "display",
+        subtabLabel: "Display",
+        section: "Display",
+        title: "Dock Item Agent Highlights",
+        description: "Show waiting state borders on dock items",
+        keywords: ["agent", "highlight", "border", "waiting", "dock", "item", "state"],
+      },
+    ],
   } satisfies EagerSettingsTabEntry,
 
   {
@@ -143,6 +292,74 @@ export const SETTINGS_REGISTRY = [
     LazyComponent: LazyTerminalAppearanceTab,
     needsSubtabs: true,
     needsOnClose: true,
+    searchNavDescription: "Theme, terminal colors, font size, and font family",
+    searchNavKeywords: ["general", "appearance", "theme", "colors", "font"],
+    sections: [
+      {
+        id: "appearance-theme",
+        subtab: "app",
+        subtabLabel: "App",
+        section: "App Theme",
+        title: "App Theme",
+        description: "Choose the application color theme",
+        keywords: ["theme", "dark", "light", "color", "scheme", "appearance", "mode"],
+      },
+      {
+        id: "appearance-color-vision",
+        subtab: "app",
+        subtabLabel: "App",
+        section: "Color Vision",
+        title: "Color Vision",
+        description: "Adjust colors for color vision deficiency (colorblind mode)",
+        keywords: [
+          "colorblind",
+          "color vision",
+          "deuteranopia",
+          "protanopia",
+          "tritanopia",
+          "accessibility",
+          "CVD",
+          "red-green",
+          "blue-yellow",
+        ],
+      },
+      {
+        id: "appearance-dock-density",
+        subtab: "app",
+        subtabLabel: "App",
+        section: "Dock Density",
+        title: "Dock Density",
+        description: "Control dock bar height: compact, normal, or comfortable",
+        keywords: ["dock", "density", "compact", "comfortable", "height", "size", "spacing"],
+      },
+      {
+        id: "appearance-color-scheme",
+        subtab: "terminal",
+        subtabLabel: "Terminal",
+        section: "Terminal Color Scheme",
+        title: "Terminal Color Scheme",
+        description: "Choose the terminal color scheme and palette",
+        keywords: ["color", "scheme", "terminal", "colors", "palette", "theme"],
+      },
+      {
+        id: "appearance-font-size",
+        subtab: "terminal",
+        subtabLabel: "Terminal",
+        section: "Font Size",
+        title: "Font Size",
+        description: "Set terminal font size from 8px to 24px",
+        keywords: ["font", "size", "text", "px", "terminal", "larger", "smaller"],
+      },
+      {
+        id: "appearance-font-family",
+        subtab: "terminal",
+        subtabLabel: "Terminal",
+        section: "Font Family",
+        title: "Font Family",
+        description: "Choose terminal font: JetBrains Mono or system monospace",
+        keywords: ["font", "family", "mono", "JetBrains", "monospace", "typeface"],
+      },
+    ],
   } satisfies LazySettingsTabEntry,
 
   {
@@ -155,6 +372,32 @@ export const SETTINGS_REGISTRY = [
     importKind: "lazy",
     importer: importKeyboardShortcutsTab,
     LazyComponent: LazyKeyboardShortcutsTab,
+    searchNavDescription: "View and customize keyboard shortcut bindings",
+    searchNavKeywords: ["general", "keyboard", "keybindings", "hotkeys", "shortcuts"],
+    sections: [
+      {
+        id: "keyboard-shortcuts",
+        section: "Keyboard Shortcuts",
+        title: "Keyboard Shortcuts",
+        description:
+          "View and customize keyboard bindings for all actions. Search and override shortcuts.",
+        keywords: ["keybindings", "shortcuts", "hotkeys", "bindings", "key", "remap"],
+      },
+      {
+        id: "keyboard-profiles",
+        section: "Keyboard Shortcuts",
+        title: "Shortcut Profiles",
+        description: "Import and export shortcut profile configurations",
+        keywords: ["profile", "import", "export", "backup", "keybindings"],
+      },
+      {
+        id: "keyboard-reset",
+        section: "Keyboard Shortcuts",
+        title: "Reset All Shortcuts",
+        description: "Reset all keyboard shortcuts to their default bindings",
+        keywords: ["reset", "default", "shortcuts", "restore", "keybindings"],
+      },
+    ],
   } satisfies LazySettingsTabEntry,
 
   {
@@ -166,6 +409,32 @@ export const SETTINGS_REGISTRY = [
     importKind: "lazy",
     importer: importNotificationSettingsTab,
     LazyComponent: LazyNotificationSettingsTab,
+    searchNavDescription: "Agent notification alerts and sound settings",
+    searchNavKeywords: ["general", "notifications", "alerts", "sounds"],
+    sections: [
+      {
+        id: "notifications-completed",
+        section: "Agent Notifications",
+        title: "Agent Completed Notification",
+        description: "Show a notification when an agent finishes its task",
+        keywords: ["notification", "alert", "complete", "done", "agent", "finish"],
+      },
+      {
+        id: "notifications-waiting",
+        section: "Agent Notifications",
+        title: "Agent Waiting for Input",
+        description: "Show a notification when an agent needs input",
+        keywords: ["notification", "waiting", "input", "agent", "prompt", "pause"],
+      },
+      {
+        id: "notifications-sound",
+        section: "Sound",
+        title: "Notification Sound",
+        description:
+          "Play a sound when notifications fire. Choose from chime, ping, complete, waiting, or error sounds.",
+        keywords: ["sound", "audio", "chime", "ping", "notification", "alert", "volume"],
+      },
+    ],
   } satisfies LazySettingsTabEntry,
 
   {
@@ -178,6 +447,73 @@ export const SETTINGS_REGISTRY = [
     importer: importPrivacyDataTab,
     LazyComponent: LazyPrivacyDataTab,
     needsSubtabs: true,
+    searchNavDescription: "Telemetry level, log retention, data folder, cache, and factory reset",
+    searchNavKeywords: ["privacy", "data", "telemetry", "reset", "cache", "logs"],
+    sections: [
+      {
+        id: "privacy-telemetry-level",
+        subtab: "telemetry",
+        subtabLabel: "Telemetry",
+        section: "Telemetry & Diagnostics",
+        title: "Telemetry Level",
+        description: "Control what data is collected: Off, Errors Only, or Full Usage analytics",
+        keywords: [
+          "telemetry",
+          "crash",
+          "reporting",
+          "analytics",
+          "privacy",
+          "sentry",
+          "diagnostics",
+        ],
+      },
+      {
+        id: "privacy-log-retention",
+        subtab: "storage",
+        subtabLabel: "Data & Storage",
+        section: "Log Retention",
+        title: "Log Retention",
+        description: "Auto-prune log files older than 7, 30, or 90 days on startup",
+        keywords: ["log", "retention", "prune", "cleanup", "days", "storage"],
+      },
+      {
+        id: "privacy-data-folder",
+        subtab: "storage",
+        subtabLabel: "Data & Storage",
+        section: "Data Folder",
+        title: "Data Folder",
+        description: "View and open the app data folder in your file manager",
+        keywords: ["data", "folder", "path", "storage", "finder", "explorer"],
+      },
+      {
+        id: "privacy-clear-cache",
+        subtab: "storage",
+        subtabLabel: "Data & Storage",
+        section: "Clear Cache",
+        title: "Clear Cache",
+        description: "Clear HTTP disk cache and code caches without affecting settings",
+        keywords: ["cache", "clear", "disk", "http", "cleanup"],
+      },
+      {
+        id: "privacy-reset-data",
+        subtab: "storage",
+        subtabLabel: "Data & Storage",
+        section: "Reset All App Data",
+        title: "Reset All App Data",
+        description:
+          "Permanently delete all settings, API keys, session data, and logs. Factory reset.",
+        keywords: ["reset", "wipe", "factory", "delete", "all", "data", "fresh"],
+      },
+      {
+        id: "troubleshooting-crash",
+        subtab: "telemetry",
+        subtabLabel: "Telemetry",
+        section: "Telemetry & Diagnostics",
+        title: "Crash Reporting",
+        description: "Configure crash reporting and telemetry level in Privacy & Data settings",
+        keywords: ["crash", "reporting", "telemetry", "error", "stack trace", "sentry"],
+      },
+    ],
   } satisfies LazySettingsTabEntry,
 
   // ═══ Global — Terminal ═══
@@ -191,6 +527,144 @@ export const SETTINGS_REGISTRY = [
     importer: importTerminalSettingsTab,
     LazyComponent: LazyTerminalSettingsTab,
     needsSubtabs: true,
+    searchNavDescription: "Panel grid layout, scrollback, split pane, and performance settings",
+    searchNavKeywords: ["terminal", "panel", "grid", "layout", "panes"],
+    sections: [
+      {
+        id: "terminal-performance-mode",
+        subtab: "performance",
+        subtabLabel: "Performance",
+        section: "Performance Mode",
+        title: "Performance Mode",
+        description:
+          "Reduces scrollback and disables animations for maximum performance on low-end hardware",
+        keywords: ["performance", "speed", "low-end", "memory", "animation", "disable"],
+      },
+      {
+        id: "terminal-panel-limits",
+        subtab: "performance",
+        subtabLabel: "Performance",
+        section: "Panel Limits",
+        title: "Panel Limits",
+        description:
+          "Hardware-aware panel limits with soft warning, confirmation, and hard limit thresholds",
+        keywords: [
+          "panel",
+          "limit",
+          "warning",
+          "hardware",
+          "RAM",
+          "memory",
+          "disable",
+          "threshold",
+          "confirm",
+        ],
+      },
+      {
+        id: "terminal-panel-warnings-toggle",
+        subtab: "performance",
+        subtabLabel: "Performance",
+        section: "Panel Limits",
+        title: "Panel Warnings",
+        description:
+          "Turn off soft warning banner and confirmation dialog while keeping the hard limit",
+        keywords: ["disable", "warning", "panel", "nag", "dismiss", "suppress"],
+      },
+      {
+        id: "terminal-hybrid-input",
+        subtab: "input",
+        subtabLabel: "Input",
+        section: "Hybrid Input Bar",
+        title: "Hybrid Input Bar",
+        description: "Show the multi-line input bar on agent terminals",
+        keywords: ["input", "hybrid", "bar", "multi-line", "agent", "textarea"],
+      },
+      {
+        id: "terminal-hybrid-autofocus",
+        subtab: "input",
+        subtabLabel: "Input",
+        section: "Hybrid Input Bar",
+        title: "Auto-Focus Input",
+        description: "Selecting a pane focuses the input bar or the terminal (xterm)",
+        keywords: ["focus", "autofocus", "input", "pane", "select"],
+      },
+      {
+        id: "terminal-two-pane-split",
+        subtab: "layout",
+        subtabLabel: "Layout",
+        section: "Two-Pane Split Layout",
+        title: "Two-Pane Split Layout",
+        description: "When exactly two panels are open, display them with a resizable divider",
+        keywords: ["split", "two pane", "layout", "divider", "resize", "ratio"],
+      },
+      {
+        id: "terminal-scrollback",
+        subtab: "scrollback",
+        subtabLabel: "Scrollback",
+        section: "Scrollback History",
+        title: "Scrollback History",
+        description:
+          "Set base scrollback lines for terminal history: 500, 1,000, 2,500, or 5,000 lines",
+        keywords: ["scrollback", "history", "lines", "buffer", "memory", "terminal"],
+      },
+      {
+        id: "terminal-grid-layout",
+        subtab: "layout",
+        subtabLabel: "Layout",
+        section: "Grid Layout Strategy",
+        title: "Grid Layout Strategy",
+        description:
+          "Control how panels arrange in the grid: automatic, fixed columns, or fixed rows",
+        keywords: ["grid", "layout", "columns", "rows", "panels", "arrangement", "strategy"],
+      },
+      {
+        id: "terminal-screen-reader",
+        subtab: "accessibility",
+        subtabLabel: "Accessibility",
+        section: "Screen Reader Mode",
+        title: "Screen Reader Mode",
+        description:
+          "Enable screen reader support for terminal output. Auto mode follows OS accessibility state.",
+        keywords: [
+          "screen reader",
+          "accessibility",
+          "a11y",
+          "voiceover",
+          "jaws",
+          "nvda",
+          "screenReaderMode",
+          "assistive",
+        ],
+      },
+      {
+        id: "terminal-preview-layout",
+        subtab: "layout",
+        subtabLabel: "Layout",
+        section: "Two-Pane Split Layout",
+        title: "Preview-Focused Layout",
+        description:
+          "Give more space to browser or dev-preview panels (65/35 split) vs balanced layout (50/50)",
+        keywords: ["preview", "browser", "focused", "ratio", "split", "layout", "two pane"],
+      },
+      {
+        id: "terminal-default-ratio",
+        subtab: "layout",
+        subtabLabel: "Layout",
+        section: "Two-Pane Split Layout",
+        title: "Default Split Ratio",
+        description: "Set the default left/right split ratio for two-pane layout",
+        keywords: ["ratio", "split", "default", "percentage", "slider", "two pane"],
+      },
+      {
+        id: "terminal-reset-ratios",
+        subtab: "layout",
+        subtabLabel: "Layout",
+        section: "Two-Pane Split Layout",
+        title: "Reset All Worktree Split Ratios",
+        description: "Clear all per-worktree split ratio overrides and return to the default ratio",
+        keywords: ["reset", "worktree", "ratio", "split", "default", "clear"],
+      },
+    ],
   } satisfies LazySettingsTabEntry,
 
   {
@@ -203,6 +677,27 @@ export const SETTINGS_REGISTRY = [
     importKind: "lazy",
     importer: importWorktreeSettingsTab,
     LazyComponent: LazyWorktreeSettingsTab,
+    searchNavDescription: "Configure where git worktrees are created",
+    searchNavKeywords: ["terminal", "worktree", "paths", "git", "directory"],
+    sections: [
+      {
+        id: "worktree-path-pattern",
+        section: "Worktree Path Pattern",
+        title: "Worktree Path Pattern",
+        description:
+          "Customize where worktrees are created using variables: {base-folder}, {branch-slug}, {repo-name}, {parent-dir}",
+        keywords: [
+          "worktree",
+          "path",
+          "pattern",
+          "branch",
+          "folder",
+          "directory",
+          "location",
+          "git",
+        ],
+      },
+    ],
   } satisfies LazySettingsTabEntry,
 
   {
@@ -215,6 +710,39 @@ export const SETTINGS_REGISTRY = [
     importKind: "lazy",
     importer: importToolbarSettingsTab,
     LazyComponent: LazyToolbarSettingsTab,
+    searchNavDescription: "Reorder, show, and hide toolbar buttons and launcher settings",
+    searchNavKeywords: ["terminal", "toolbar", "buttons", "customize"],
+    sections: [
+      {
+        id: "toolbar-left-buttons",
+        section: "Left Side Buttons",
+        title: "Left Toolbar Buttons",
+        description: "Drag to reorder, uncheck to hide left toolbar buttons",
+        keywords: ["toolbar", "buttons", "left", "reorder", "customize", "hide"],
+      },
+      {
+        id: "toolbar-right-buttons",
+        section: "Right Side Buttons",
+        title: "Right Toolbar Buttons",
+        description: "Drag to reorder, uncheck to hide right toolbar buttons",
+        keywords: ["toolbar", "buttons", "right", "reorder", "customize", "hide"],
+      },
+      {
+        id: "toolbar-launcher",
+        section: "Launcher Palette",
+        title: "Launcher Palette Settings",
+        description:
+          "Configure the default panel type highlighted when opening the launcher. Always show dev server option.",
+        keywords: ["launcher", "palette", "default", "panel", "dev server", "open", "selection"],
+      },
+      {
+        id: "toolbar-reset",
+        section: "Toolbar Customization",
+        title: "Reset Toolbar to Defaults",
+        description: "Reset all toolbar button positions and visibility to defaults",
+        keywords: ["reset", "default", "toolbar", "restore"],
+      },
+    ],
   } satisfies LazySettingsTabEntry,
 
   {
@@ -227,6 +755,40 @@ export const SETTINGS_REGISTRY = [
     importKind: "lazy",
     importer: importEnvironmentSettingsTab,
     LazyComponent: LazyEnvironmentSettingsTab,
+    searchNavDescription: "Per-project environment variables injected into all terminals",
+    searchNavKeywords: [
+      "terminal",
+      "environment",
+      "variables",
+      "env",
+      "project",
+      "inject",
+      "secrets",
+    ],
+    sections: [
+      {
+        id: "environment-variables",
+        section: "Environment Variables",
+        title: "Project Environment Variables",
+        description:
+          "Add, edit, and delete key/value environment variables for the current project. Injected into new terminals at spawn time.",
+        keywords: [
+          "env",
+          "environment",
+          "variables",
+          "project",
+          "api key",
+          "secret",
+          "token",
+          "password",
+          "PATH",
+          "inject",
+          "terminal",
+          "encryption",
+          "dotenv",
+        ],
+      },
+    ],
   } satisfies LazySettingsTabEntry,
 
   // ═══ Global — Assistant ═══
@@ -239,6 +801,83 @@ export const SETTINGS_REGISTRY = [
     importKind: "lazy",
     importer: importDaintreeAssistantSettingsTab,
     LazyComponent: LazyDaintreeAssistantSettingsTab,
+    searchNavDescription: "Tools, security, and audit logging for the help assistant",
+    searchNavKeywords: [
+      "assistant",
+      "daintree",
+      "help",
+      "claude",
+      "audit",
+      "permissions",
+      "doc search",
+      "mcp",
+    ],
+    sections: [
+      {
+        id: "assistant-doc-search",
+        section: "Behavior",
+        title: "Search documentation",
+        description:
+          "Let the assistant search Daintree documentation and changelog while answering",
+        keywords: ["assistant", "docs", "documentation", "search", "help", "behavior"],
+      },
+      {
+        id: "assistant-daintree-control",
+        section: "Behavior",
+        title: "Daintree control",
+        description: "Let the assistant call Daintree actions through the local MCP server",
+        keywords: ["assistant", "control", "mcp", "actions", "tools", "behavior"],
+      },
+      {
+        id: "assistant-skip-permissions",
+        section: "Security",
+        title: "Skip permission prompts",
+        description: "Bypass Claude Code's confirmation gate for help sessions",
+        keywords: [
+          "assistant",
+          "permissions",
+          "skip",
+          "dangerously",
+          "confirm",
+          "security",
+          "bypass",
+        ],
+      },
+      {
+        id: "assistant-audit-retention",
+        section: "Privacy",
+        title: "Audit log retention",
+        description: "How long help-session logs are kept on this machine",
+        keywords: [
+          "assistant",
+          "audit",
+          "log",
+          "retention",
+          "privacy",
+          "history",
+          "logging",
+          "days",
+        ],
+      },
+      {
+        id: "assistant-mcp-status",
+        section: "Connection",
+        title: "MCP connection",
+        description:
+          "Status of the local MCP server, copy the config snippet, and regenerate the API key",
+        keywords: [
+          "assistant",
+          "mcp",
+          "connection",
+          "regenerate",
+          "key",
+          "snippet",
+          "config",
+          "external",
+          "client",
+        ],
+      },
+    ],
   } satisfies LazySettingsTabEntry,
 
   // ═══ Global — Integrations ═══
@@ -253,6 +892,100 @@ export const SETTINGS_REGISTRY = [
     LazyComponent: LazyAgentSettings,
     needsSubtabs: true,
     needsOnSettingsChange: true,
+    searchNavDescription: "Configure CLI agent settings",
+    searchNavKeywords: [
+      "integrations",
+      "agents",
+      ...BUILT_IN_AGENT_IDS.flatMap((id) =>
+        [id, AGENT_REGISTRY[id]?.name?.toLowerCase()].filter((s): s is string => Boolean(s))
+      ),
+    ],
+    sections: [
+      {
+        id: "agents-default-agent",
+        subtab: "general",
+        subtabLabel: "General",
+        section: "Global agent settings",
+        title: "Default agent",
+        description:
+          'Agent used for the help dock button (⌘⇧H) and automated workflows ("What\'s Next?", onboarding, project explanations). Distinct from the Portal "Default New Tab Agent".',
+        keywords: [
+          "default",
+          "agent",
+          "workflow",
+          "automated",
+          "whats next",
+          "onboarding",
+          "help",
+          "dock",
+          "launch",
+          "keyboard shortcut",
+          ...BUILT_IN_AGENT_IDS,
+        ],
+      },
+      {
+        id: "agents-enable",
+        subtab: "claude",
+        subtabLabel: "Claude",
+        section: "Agent runtime settings",
+        title: "Enable / disable agent",
+        description: "Enable or disable individual CLI agents",
+        keywords: ["agent", "enable", "disable", ...BUILT_IN_AGENT_IDS, "select"],
+      },
+      {
+        id: "agents-skip-permissions",
+        subtab: "claude",
+        subtabLabel: "Claude",
+        section: "Agent runtime settings",
+        title: "Skip permissions",
+        description: "Auto-approve all agent actions without confirmation prompts",
+        keywords: [
+          "permissions",
+          "auto-approve",
+          "confirm",
+          "prompts",
+          "dangerous",
+          "allow",
+          "bypass",
+        ],
+      },
+      {
+        id: "agents-inline-mode",
+        subtab: "claude",
+        subtabLabel: "Claude",
+        section: "Agent runtime settings",
+        title: "Inline mode",
+        description: "Disable fullscreen TUI for better resize handling and scrollback",
+        keywords: ["inline", "mode", "tui", "fullscreen", "resize", "tty"],
+      },
+      {
+        id: "agents-clipboard",
+        subtab: "gemini",
+        subtabLabel: "Gemini",
+        section: "Agent runtime settings",
+        title: "Share clipboard directory",
+        description: "Allow Gemini to read pasted clipboard images",
+        keywords: ["clipboard", "images", "share", "gemini", "paste", "screenshot"],
+      },
+      {
+        id: "agents-custom-args",
+        subtab: "claude",
+        subtabLabel: "Claude",
+        section: "Agent runtime settings",
+        title: "Custom arguments",
+        description: "Extra CLI flags appended when launching agents",
+        keywords: ["args", "arguments", "flags", "cli", "custom", "launch", "options"],
+      },
+      {
+        id: "agents-installation",
+        subtab: "claude",
+        subtabLabel: "Claude",
+        section: "Installation",
+        title: "Agent installation",
+        description: "Install and set up CLI agents. Run setup wizard to install.",
+        keywords: ["install", "setup", "wizard", "cli", "download", "npm", "brew"],
+      },
+    ],
   } satisfies LazySettingsTabEntry,
 
   {
@@ -265,6 +998,17 @@ export const SETTINGS_REGISTRY = [
     importKind: "lazy",
     importer: importGitHubSettingsTab,
     LazyComponent: LazyGitHubSettingsTab,
+    searchNavDescription: "GitHub personal access token and authentication",
+    searchNavKeywords: ["integrations", "github", "token", "authentication"],
+    sections: [
+      {
+        id: "github-token",
+        section: "Personal Access Token",
+        title: "GitHub Personal Access Token",
+        description: "Configure GitHub authentication token. Required scopes: repo, read:org",
+        keywords: ["github", "token", "authentication", "auth", "PAT", "access", "scopes", "API"],
+      },
+    ],
   } satisfies LazySettingsTabEntry,
 
   {
@@ -276,6 +1020,60 @@ export const SETTINGS_REGISTRY = [
     importKind: "lazy",
     importer: importIntegrationsTab,
     LazyComponent: LazyIntegrationsTab,
+    searchNavDescription: "External editor, image viewer, and other tool integrations",
+    searchNavKeywords: [
+      "integrations",
+      "editor",
+      "vscode",
+      "cursor",
+      "ide",
+      "image",
+      "viewer",
+      "photo",
+    ],
+    sections: [
+      {
+        id: "editor-external",
+        section: "External Editor",
+        title: "External Editor",
+        description:
+          "Configure external editor: VS Code, Cursor, Windsurf, Zed, Neovim, WebStorm, Sublime Text, or custom",
+        keywords: [
+          "editor",
+          "vscode",
+          "cursor",
+          "zed",
+          "neovim",
+          "webstorm",
+          "sublime",
+          "external",
+          "open",
+          "ide",
+          "windsurf",
+        ],
+      },
+      {
+        id: "image-viewer",
+        section: "Image Viewer",
+        title: "Image Viewer",
+        description:
+          "Configure image viewer: use OS default (Preview, Photos) or a custom command (Photoshop, GIMP)",
+        keywords: [
+          "image",
+          "viewer",
+          "photo",
+          "picture",
+          "preview",
+          "png",
+          "jpg",
+          "svg",
+          "gif",
+          "open",
+          "photoshop",
+          "gimp",
+        ],
+      },
+    ],
   } satisfies LazySettingsTabEntry,
 
   {
@@ -287,6 +1085,97 @@ export const SETTINGS_REGISTRY = [
     importKind: "lazy",
     importer: importVoiceInputSettingsTab,
     LazyComponent: LazyVoiceInputSettingsTab,
+    searchNavDescription: "Speech-to-text transcription and AI text correction settings",
+    searchNavKeywords: [
+      "voice",
+      "microphone",
+      "speech",
+      "dictation",
+      "deepgram",
+      "openai",
+      "transcription",
+    ],
+    sections: [
+      {
+        id: "voice-enable",
+        section: "Speech-to-Text",
+        title: "Voice Input Enable",
+        description: "Enable or disable voice input for speech-to-text transcription",
+        keywords: ["voice", "microphone", "dictate", "speech", "recording", "enable", "mic"],
+      },
+      {
+        id: "voice-deepgram-key",
+        section: "Speech-to-Text",
+        title: "Deepgram API Key",
+        description: "Configure your Deepgram API key for speech recognition",
+        keywords: ["deepgram", "api", "key", "speech-to-text", "stt", "nova"],
+        requiresEnabled: VOICE_REQUIRES_ENABLED,
+      },
+      {
+        id: "voice-language",
+        section: "Speech-to-Text",
+        title: "Transcription Language",
+        description: "Select the language for speech transcription",
+        keywords: ["language", "locale", "english", "multilingual", "transcription"],
+        requiresEnabled: VOICE_REQUIRES_ENABLED,
+      },
+      {
+        id: "voice-transcription-model",
+        section: "Speech-to-Text",
+        title: "Transcription Model",
+        description: "Choose the Deepgram model for transcription accuracy",
+        keywords: ["nova-3", "nova-2", "model", "deepgram", "accuracy", "transcription"],
+        requiresEnabled: VOICE_REQUIRES_ENABLED,
+      },
+      {
+        id: "voice-paragraph-breaks",
+        section: "Speech-to-Text",
+        title: "Paragraph Breaks",
+        description: "Insert paragraph breaks via spoken commands",
+        keywords: ["paragraph", "break", "enter", "formatting", "spoken"],
+        requiresEnabled: VOICE_REQUIRES_ENABLED,
+      },
+      {
+        id: "voice-custom-dictionary",
+        section: "Speech-to-Text",
+        title: "Custom Dictionary",
+        description: "Add domain-specific terms to improve recognition accuracy",
+        keywords: ["dictionary", "terms", "domain", "vocabulary", "recognition", "custom"],
+        requiresEnabled: VOICE_REQUIRES_ENABLED,
+      },
+      {
+        id: "voice-ai-correction-enable",
+        section: "AI Text Correction",
+        title: "AI Text Correction",
+        description: "Enable AI-powered post-processing to clean up transcribed text",
+        keywords: ["correction", "ai", "cleanup", "post-process", "filler"],
+        requiresEnabled: VOICE_REQUIRES_ENABLED,
+      },
+      {
+        id: "voice-openai-key",
+        section: "AI Text Correction",
+        title: "OpenAI API Key",
+        description: "Configure your OpenAI API key for AI text correction",
+        keywords: ["openai", "api", "key", "correction", "gpt"],
+        requiresEnabled: VOICE_AI_REQUIRES_ENABLED,
+      },
+      {
+        id: "voice-correction-model",
+        section: "AI Text Correction",
+        title: "Correction Model",
+        description: "Choose the OpenAI model used for text correction",
+        keywords: ["gpt", "model", "correction", "openai"],
+        requiresEnabled: VOICE_AI_REQUIRES_ENABLED,
+      },
+      {
+        id: "voice-custom-instructions",
+        section: "AI Text Correction",
+        title: "Custom Instructions",
+        description: "Add project-specific rules for AI text correction",
+        keywords: ["instructions", "prompt", "rules", "custom", "project-specific"],
+        requiresEnabled: VOICE_AI_REQUIRES_ENABLED,
+      },
+    ],
   } satisfies LazySettingsTabEntry,
 
   {
@@ -299,6 +1188,31 @@ export const SETTINGS_REGISTRY = [
     importKind: "lazy",
     importer: importPortalSettingsTab,
     LazyComponent: LazyPortalSettingsTab,
+    searchNavDescription: "Default and custom links for the portal browser panel",
+    searchNavKeywords: ["integrations", "portal", "links", "browser", "bookmarks"],
+    sections: [
+      {
+        id: "portal-default-agent",
+        section: "Default New Tab Agent",
+        title: "Default New Tab Agent",
+        description: "Choose which agent opens when you click the + button in the portal",
+        keywords: ["portal", "agent", "default", "new tab", "browser"],
+      },
+      {
+        id: "portal-default-links",
+        section: "Default Links",
+        title: "Default Links",
+        description: "System-provided links shown in the portal panel",
+        keywords: ["portal", "links", "default", "browser", "bookmarks"],
+      },
+      {
+        id: "portal-custom-links",
+        section: "Custom Links",
+        title: "Custom Links",
+        description: "Add custom URLs and links to the portal panel",
+        keywords: ["portal", "custom", "links", "url", "add", "bookmark"],
+      },
+    ],
   } satisfies LazySettingsTabEntry,
 
   {
@@ -310,6 +1224,45 @@ export const SETTINGS_REGISTRY = [
     importKind: "lazy",
     importer: importMcpServerSettingsTab,
     LazyComponent: LazyMcpServerSettingsTab,
+    searchNavDescription: "Local MCP server for AI agent automation",
+    searchNavKeywords: ["integrations", "mcp", "server", "automation", "api"],
+    sections: [
+      {
+        id: "mcp-server-enable",
+        section: "MCP Server",
+        title: "Enable MCP Server",
+        description:
+          "Start a local MCP server so AI agents can invoke Daintree actions (open terminals, inject context, switch worktrees, etc.)",
+        keywords: ["mcp", "server", "agent", "local", "tools", "automation", "api", "enable"],
+      },
+      {
+        id: "mcp-server-config",
+        section: "Connection",
+        title: "Copy MCP Config",
+        description:
+          "Copy the MCP server config snippet (JSON) to paste into your MCP client configuration",
+        keywords: ["mcp", "config", "copy", "snippet", "json", "client", "cursor", "claude"],
+        requiresEnabled: MCP_REQUIRES_ENABLED,
+      },
+      {
+        id: "mcp-server-port",
+        section: "Port",
+        title: "Server Port",
+        description:
+          "Set a fixed port for the MCP server or leave empty for automatic ephemeral port assignment",
+        keywords: ["mcp", "port", "fixed", "ephemeral", "network", "bind"],
+        requiresEnabled: MCP_REQUIRES_ENABLED,
+      },
+      {
+        id: "mcp-server-auth",
+        section: "Authentication",
+        title: "API Key Authentication",
+        description:
+          "Generate a bearer token to secure MCP connections. Clients must include the token in the Authorization header.",
+        keywords: ["mcp", "api", "key", "auth", "token", "bearer", "security", "password"],
+        requiresEnabled: MCP_REQUIRES_ENABLED,
+      },
+    ],
   } satisfies LazySettingsTabEntry,
 
   // ═══ Global — Support ═══
@@ -322,6 +1275,78 @@ export const SETTINGS_REGISTRY = [
     importKind: "lazy",
     importer: importTroubleshootingTab,
     LazyComponent: LazyTroubleshootingTab,
+    searchNavDescription: "System health, logs, diagnostics, and developer mode",
+    searchNavKeywords: ["support", "troubleshooting", "debug", "logs", "health"],
+    sections: [
+      {
+        id: "troubleshooting-gpu-acceleration",
+        section: "Hardware Acceleration",
+        title: "Hardware Acceleration",
+        description:
+          "Disable GPU hardware acceleration if you experience blank panels or rendering issues",
+        keywords: [
+          "gpu",
+          "hardware",
+          "acceleration",
+          "blank",
+          "white",
+          "crash",
+          "rendering",
+          "graphics",
+        ],
+      },
+      {
+        id: "troubleshooting-health",
+        section: "System Health Check",
+        title: "System Health Check",
+        description: "Verify Git, Node.js, npm installation and system dependencies",
+        keywords: ["health", "check", "git", "node", "npm", "system", "verify", "diagnosis"],
+      },
+      {
+        id: "troubleshooting-logs",
+        section: "Application Logs",
+        title: "Application Logs",
+        description: "Open log file and clear application logs",
+        keywords: ["logs", "debug", "log file", "clear", "application", "output"],
+      },
+      {
+        id: "troubleshooting-devmode",
+        section: "Developer Mode",
+        title: "Developer Mode",
+        description:
+          "Enable developer mode, auto-open diagnostics, verbose logging, persistent verbose logging",
+        keywords: [
+          "developer",
+          "debug",
+          "verbose",
+          "logging",
+          "diagnostics",
+          "devtools",
+          "DAINTREE_DEBUG",
+        ],
+      },
+      {
+        id: "troubleshooting-auto-diagnostics",
+        section: "Developer Mode",
+        title: "Auto-Open Diagnostics Dock",
+        description: "Automatically open the diagnostics panel on app startup",
+        keywords: ["diagnostics", "dock", "auto", "startup", "open", "developer"],
+      },
+      {
+        id: "troubleshooting-focus-events",
+        section: "Developer Mode",
+        title: "Focus Events Tab",
+        description: "Default to the Events tab when the diagnostics panel opens",
+        keywords: ["events", "focus", "diagnostics", "tab", "developer"],
+      },
+      {
+        id: "troubleshooting-verbose-logging",
+        section: "Developer Mode",
+        title: "Verbose Logging",
+        description: "Enable verbose logging for this session only. Resets on app restart.",
+        keywords: ["verbose", "logging", "debug", "log level", "session"],
+      },
+    ],
   } satisfies LazySettingsTabEntry,
 ] as const satisfies readonly AnySettingsTabEntry[];
 
@@ -342,6 +1367,161 @@ export type ProjectSettingsTab = (typeof PROJECT_TAB_IDS)[number];
 export type GlobalSettingsTab = (typeof SETTINGS_REGISTRY)[number]["id"];
 export type SettingsTab = GlobalSettingsTab | ProjectSettingsTab;
 export type SettingsScope = "global" | "project";
+
+// ── Project tab search metadata (parallel to SETTINGS_REGISTRY entries) ──
+
+export const PROJECT_SETTINGS_SECTIONS: Readonly<
+  Record<ProjectSettingsTab, ProjectSettingsTabSearchMeta>
+> = {
+  "project:general": {
+    tabLabel: "General",
+    searchNavDescription: "Project name, emoji, color, icon, and dev server configuration",
+    searchNavKeywords: ["project", "name", "emoji", "color", "icon", "dev server"],
+    sections: [
+      {
+        id: "project-name",
+        section: "Project Identity",
+        title: "Project Name",
+        description: "Display name for the project",
+        keywords: ["name", "title", "label"],
+      },
+      {
+        id: "project-dev-server",
+        section: "Dev Server",
+        title: "Dev Server Command",
+        description: "Command to start the development server for live preview",
+        keywords: ["dev", "server", "preview", "start", "command"],
+      },
+      {
+        id: "project-in-repo-settings",
+        section: "In-Repo Settings",
+        title: "In-Repo Settings",
+        description: "Store project settings in the repository for team sharing",
+        keywords: ["repo", "repository", "shared", "team", "daintree.json"],
+      },
+    ],
+  },
+  "project:context": {
+    tabLabel: "Context",
+    searchNavDescription: "Excluded paths and copy tree settings",
+    searchNavKeywords: ["project", "context", "exclude", "paths", "copy tree"],
+    sections: [
+      {
+        id: "project-excluded-paths",
+        section: "Excluded Paths",
+        title: "Excluded Paths",
+        description: "Paths to exclude from context tree and file operations",
+        keywords: ["exclude", "ignore", "paths", "gitignore", "filter"],
+      },
+      {
+        id: "project-copy-tree",
+        section: "Copy Tree",
+        title: "Copy Tree Settings",
+        description:
+          "Configure context size limits, file size limits, and include/exclude patterns",
+        keywords: ["copy", "tree", "context", "size", "limit", "include", "exclude"],
+      },
+    ],
+  },
+  "project:variables": {
+    tabLabel: "Variables",
+    searchNavDescription: "Project environment variables injected into terminals",
+    searchNavKeywords: ["project", "variables", "environment", "env", "secrets", "inject"],
+    sections: [
+      {
+        id: "project-env-vars",
+        section: "Environment Variables",
+        title: "Environment Variables",
+        description: "Project-specific environment variables injected into terminals",
+        keywords: ["env", "environment", "variables", "secrets", "inject"],
+      },
+    ],
+  },
+  "project:automation": {
+    tabLabel: "Worktree Setup",
+    searchNavDescription:
+      "Configure worktree paths, run commands, branch prefix, and terminal defaults",
+    searchNavKeywords: [
+      "project",
+      "automation",
+      "run",
+      "commands",
+      "worktree",
+      "terminal",
+      "branch",
+    ],
+    sections: [
+      {
+        id: "project-run-commands",
+        section: "Run Commands",
+        title: "Run Commands",
+        description: "Named commands to run in worktree terminals on creation",
+        keywords: ["run", "commands", "startup", "init", "worktree"],
+      },
+      {
+        id: "project-branch-prefix",
+        section: "Branch Prefix",
+        title: "Branch Prefix",
+        description: "Automatic prefix for new branch names (none, username, or custom)",
+        keywords: ["branch", "prefix", "username", "git", "naming"],
+      },
+      {
+        id: "project-terminal-settings",
+        section: "Terminal Settings",
+        title: "Terminal Settings",
+        description: "Project-specific shell, shell args, working directory, and scrollback",
+        keywords: ["terminal", "shell", "bash", "zsh", "scrollback", "cwd"],
+      },
+      {
+        // Historical id retained (kept as `tab-nav-project:environments` for
+        // backward-compatible deep links); the entry is a regular section
+        // surfaced inside the Worktree Setup tab, not a separate project tab.
+        id: "tab-nav-project:environments",
+        section: "Resource Environments",
+        title: "Resources",
+        description: "Remote resource definitions and default worktree mode",
+        keywords: ["project", "resources", "environments", "remote", "docker", "akash", "worktree"],
+      },
+    ],
+  },
+  "project:recipes": {
+    tabLabel: "Recipes",
+    searchNavDescription: "Manage terminal recipes for the project",
+    searchNavKeywords: ["project", "recipes", "template", "terminal"],
+  },
+  "project:commands": {
+    tabLabel: "Commands",
+    searchNavDescription: "Project-specific command overrides",
+    searchNavKeywords: ["project", "commands", "overrides", "alias"],
+  },
+  "project:notifications": {
+    tabLabel: "Notifications",
+    searchNavDescription: "Project-specific notification overrides",
+    searchNavKeywords: ["project", "notifications", "alerts", "sounds", "overrides"],
+  },
+  "project:github": {
+    tabLabel: "GitHub",
+    searchNavDescription: "Per-project GitHub remote configuration for issues, PRs, and pulse data",
+    searchNavKeywords: [
+      "project",
+      "github",
+      "remote",
+      "origin",
+      "repository",
+      "pull requests",
+      "issues",
+    ],
+    sections: [
+      {
+        id: "project-github-remote",
+        section: "GitHub Remote",
+        title: "GitHub Remote",
+        description: "Select which git remote to use for GitHub integration",
+        keywords: ["github", "remote", "origin", "git", "repository", "fetch", "push"],
+      },
+    ],
+  },
+};
 
 // ── Derived maps ────────────────────────────────────────────────────────
 
