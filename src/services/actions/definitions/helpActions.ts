@@ -1,0 +1,178 @@
+import type { ActionCallbacks, ActionRegistry } from "../actionTypes";
+import { AgentIdSchema } from "./schemas";
+import { z } from "zod";
+import { suppressSidebarResizes } from "@/lib/sidebarToggle";
+import { notify } from "@/lib/notify";
+import { actionService } from "@/services/ActionService";
+import { useAgentPreferencesStore } from "@/store/agentPreferencesStore";
+import { useCliAvailabilityStore } from "@/store/cliAvailabilityStore";
+import { useFocusStore } from "@/store/focusStore";
+import { useHelpPanelStore } from "@/store/helpPanelStore";
+import { useProjectStore } from "@/store/projectStore";
+import { logError } from "@/utils/logger";
+import { getDefaultAgentId } from "@/lib/resolveAgentId";
+
+export function registerHelpActions(actions: ActionRegistry, callbacks: ActionCallbacks): void {
+  actions.set("help.shortcuts", () => ({
+    id: "help.shortcuts",
+    title: "Keyboard Shortcuts",
+    description: "Show keyboard shortcuts reference",
+    category: "help",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    keywords: ["hotkeys", "keys", "reference", "bindings"],
+    run: async () => {
+      callbacks.onOpenShortcuts();
+    },
+  }));
+
+  actions.set("help.shortcutsAlt", () => ({
+    id: "help.shortcutsAlt",
+    title: "Keyboard Shortcuts (Alt)",
+    description: "Show keyboard shortcuts reference",
+    category: "help",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    keywords: ["hotkeys", "keys", "reference", "bindings"],
+    run: async () => {
+      callbacks.onOpenShortcuts();
+    },
+  }));
+
+  actions.set("help.launchAgent", () => ({
+    id: "help.launchAgent",
+    title: "Launch Help Agent",
+    description: "Open an AI agent in the help workspace folder",
+    category: "help",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    keywords: ["assistant", "support", "docs", "guide"],
+    argsSchema: z.object({ agentId: AgentIdSchema.optional() }).optional(),
+    run: async (args?: unknown) => {
+      const folderPath = await window.electron.help.getFolderPath();
+      if (!folderPath) {
+        notify({
+          type: "error",
+          title: "Help Agent",
+          message: "Help folder not available. Please ensure the help workspace is configured.",
+        });
+        return;
+      }
+
+      const parsed = args as { agentId?: string } | undefined;
+      let agentId: string;
+      if (parsed?.agentId) {
+        agentId = parsed.agentId;
+      } else {
+        const { defaultAgent } = useAgentPreferencesStore.getState();
+        const { availability, isInitialized } = useCliAvailabilityStore.getState();
+        const resolved = isInitialized
+          ? getDefaultAgentId(defaultAgent, undefined, availability)
+          : null;
+        agentId = resolved ?? "claude";
+      }
+
+      const helpPrompt =
+        "I need help with Daintree, an Electron-based IDE for orchestrating AI coding agents. Please briefly tell me how you can help.";
+
+      const project = useProjectStore.getState().currentProject;
+      let session: Awaited<ReturnType<typeof window.electron.help.provisionSession>> | null = null;
+      if (!project) {
+        notify({
+          type: "error",
+          title: "Daintree Assistant",
+          message: "Project state is still loading. Try again.",
+        });
+        return;
+      }
+
+      try {
+        session = await window.electron.help.provisionSession({
+          projectId: project.id,
+          projectPath: project.path,
+          agentId,
+        });
+      } catch (err) {
+        logError("Failed to provision help session", err);
+        const code =
+          err && typeof err === "object" && "code" in err
+            ? (err as Record<string, unknown>).code
+            : undefined;
+        notify({
+          type: "error",
+          title: code === "MCP_NOT_READY" ? "Start MCP failed" : "Assistant launch failed",
+          message:
+            code === "MCP_NOT_READY"
+              ? "Daintree Assistant needs MCP, but the server didn't start."
+              : "Couldn't provision the Daintree Assistant session.",
+        });
+        return;
+      }
+
+      if (!session) {
+        notify({
+          type: "error",
+          title: "Assistant launch failed",
+          message: "Couldn't provision the Daintree Assistant session.",
+        });
+        return;
+      }
+
+      const cwd = session.sessionPath;
+      const env: Record<string, string> = {
+        DAINTREE_MCP_TOKEN: session.token,
+        DAINTREE_WINDOW_ID: String(session.windowId),
+        ...(session.mcpUrl ? { DAINTREE_MCP_URL: session.mcpUrl } : {}),
+        DAINTREE_PROJECT_ID: project.id,
+      };
+
+      const result = await actionService.dispatch<{ terminalId: string | null }>(
+        "agent.launch",
+        {
+          agentId,
+          cwd,
+          location: "dock",
+          prompt: helpPrompt,
+          ephemeral: true,
+          ...(env && { env }),
+        },
+        { source: "user" }
+      );
+
+      if (result.ok && result.result?.terminalId) {
+        useHelpPanelStore
+          .getState()
+          .setTerminal(result.result.terminalId, agentId, session?.sessionId ?? null);
+        useFocusStore.getState().clearAssistantGesture();
+        if (!useHelpPanelStore.getState().isOpen) {
+          suppressSidebarResizes();
+          useHelpPanelStore.getState().setOpen(true);
+        }
+        window.electron.help.markTerminal(result.result.terminalId).catch(() => {});
+      } else if (session) {
+        window.electron.help.revokeSession(session.sessionId).catch((err) => {
+          logError("Failed to revoke help session after failed launch", err);
+        });
+      }
+    },
+  }));
+
+  actions.set("help.togglePanel", () => ({
+    id: "help.togglePanel",
+    title: "Toggle Help Panel",
+    description: "Show or hide the help panel",
+    category: "help",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    keywords: ["docs", "support", "guide", "assistant"],
+    run: async () => {
+      suppressSidebarResizes();
+      useFocusStore.getState().clearAssistantGesture();
+      useHelpPanelStore.getState().toggle();
+    },
+  }));
+}
