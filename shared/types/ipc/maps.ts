@@ -93,7 +93,7 @@ import type {
 import type { AppState, HydrateResult } from "./app.js";
 import type { LogEntry, LogFilterOptions } from "./logs.js";
 import type { RetryAction, ErrorRecord, RetryProgressPayload } from "./errors.js";
-import type { EventRecord, EventFilterOptions } from "./events.js";
+import type { EventRecord } from "./events.js";
 import type {
   ProjectCloseResult,
   ProjectStats,
@@ -133,15 +133,7 @@ import type {
   FileReadPayload,
   FileReadResult,
 } from "./files.js";
-import type { SlashCommand, SlashCommandListRequest } from "../slashCommands.js";
-import type {
-  DevPreviewEnsureRequest,
-  DevPreviewSessionRequest,
-  DevPreviewStopByPanelRequest,
-  DevPreviewSessionState,
-  DevPreviewStateChangedPayload,
-  DevPreviewGetByWorktreeRequest,
-} from "./devPreview.js";
+import type { DevPreviewStateChangedPayload } from "./devPreview.js";
 import type { ServiceConnectivityPayload, ServiceConnectivitySnapshot } from "./connectivity.js";
 import type { SanitizedTelemetryEvent, TelemetryPreviewState } from "./telemetryPreview.js";
 import type { ProjectPulse, PulseRangeDays } from "../pulse.js";
@@ -169,23 +161,10 @@ import type {
   DemoTypePayload,
   DemoWaitForSelectorPayload,
   DemoSleepPayload,
-  DemoScreenshotResult,
-  DemoStartCapturePayload,
-  DemoStartCaptureResult,
-  DemoStopCaptureResult,
-  DemoCaptureStatus,
-  DemoAnnotatePayload,
-  DemoAnnotateResult,
-  DemoDismissAnnotationPayload,
-  DemoDragPayload,
-  DemoPressKeyPayload,
-  DemoScrollPayload,
-  DemoSpotlightPayload,
-  DemoWaitForIdlePayload,
 } from "./demo.js";
 import type { BulkProjectStats } from "./project.js";
 import type { Scratch } from "../scratch.js";
-import type { ScratchSwitchPayload, ScratchSaveAsProjectResult } from "./scratch.js";
+import type { ScratchSwitchPayload } from "./scratch.js";
 import type {
   PrerequisiteSpec,
   PrerequisiteCheckResult,
@@ -195,14 +174,7 @@ import type {
 import type { CloneRepoOptions, CloneRepoResult } from "./gitClone.js";
 import type { AppAgentConfig } from "../appAgent.js";
 import type { AgentSessionRecord } from "./agentSessionHistory.js";
-import type {
-  BuilderStep,
-  CommandContext,
-  CommandExecutePayload,
-  CommandGetPayload,
-  CommandManifestEntry,
-  CommandResult,
-} from "../commands.js";
+import type { GeneratedIpcInvokeMap } from "./generated.js";
 
 export type ChecklistItemId =
   | "openedProject"
@@ -261,7 +233,7 @@ export interface MainProcessToastPayload {
 // IPC Contract Maps
 
 /** Maps IPC channels to their args/result types for type-safe invoke/handle */
-export interface IpcInvokeMap {
+export interface IpcInvokeMap extends GeneratedIpcInvokeMap {
   // Worktree channels
   "worktree:get-all": {
     args: [];
@@ -420,11 +392,6 @@ export interface IpcInvokeMap {
   };
 
   // Slash command discovery
-  "slash-commands:list": {
-    args: [payload: SlashCommandListRequest];
-    result: SlashCommand[];
-  };
-
   // Agent channels
   "agent-help:get": {
     args: [request: AgentHelpRequest];
@@ -770,19 +737,6 @@ export interface IpcInvokeMap {
   };
 
   // Event inspector channels
-  "event-inspector:get-events": {
-    args: [];
-    result: EventRecord[];
-  };
-  "event-inspector:get-filtered": {
-    args: [filters: EventFilterOptions];
-    result: EventRecord[];
-  };
-  "event-inspector:clear": {
-    args: [];
-    result: void;
-  };
-
   "events:emit": {
     args: [eventType: string, payload: unknown];
     result: void;
@@ -1132,11 +1086,6 @@ export interface IpcInvokeMap {
   };
 
   // Accessibility channels
-  "accessibility:get-enabled": {
-    args: [];
-    result: boolean;
-  };
-
   // Git channels
   "git:get-file-diff": {
     args: [payload: GitGetFileDiffPayload];
@@ -1232,47 +1181,6 @@ export interface IpcInvokeMap {
   };
 
   // Portal channels
-  "portal:create": {
-    args: [payload: import("../portal.js").PortalCreatePayload];
-    result: void;
-  };
-  "portal:show": {
-    args: [payload: import("../portal.js").PortalShowPayload];
-    result: void;
-  };
-  "portal:hide": {
-    args: [];
-    result: void;
-  };
-  "portal:resize": {
-    args: [bounds: import("../portal.js").PortalBounds];
-    result: void;
-  };
-  "portal:close-tab": {
-    args: [payload: import("../portal.js").PortalCloseTabPayload];
-    result: void;
-  };
-  "portal:navigate": {
-    args: [payload: import("../portal.js").PortalNavigatePayload];
-    result: void;
-  };
-  "portal:go-back": {
-    args: [tabId: string];
-    result: boolean;
-  };
-  "portal:go-forward": {
-    args: [tabId: string];
-    result: boolean;
-  };
-  "portal:reload": {
-    args: [tabId: string];
-    result: void;
-  };
-  "portal:show-new-tab-menu": {
-    args: [payload: import("../portal.js").PortalShowNewTabMenuPayload];
-    result: void;
-  };
-
   // System Sleep channels
   "system-sleep:get-metrics": {
     args: [];
@@ -1370,68 +1278,7 @@ export interface IpcInvokeMap {
   };
 
   // Plugin channels
-  "plugin:list": {
-    args: [];
-    result: import("../plugin.js").LoadedPluginInfo[];
-  };
-  "plugin:toolbar-buttons": {
-    args: [];
-    result: import("../../config/toolbarButtonRegistry.js").ToolbarButtonConfig[];
-  };
-  "plugin:menu-items": {
-    args: [];
-    result: Array<{
-      pluginId: string;
-      item: import("../plugin.js").MenuItemContribution;
-    }>;
-  };
-  "plugin:validate-action-ids": {
-    args: [actionIds: string[]];
-    result: void;
-  };
-  "plugin:actions-get": {
-    args: [];
-    result: import("../plugin.js").PluginActionDescriptor[];
-  };
-  "plugin:actions-register": {
-    args: [pluginId: string, contribution: import("../plugin.js").PluginActionContribution];
-    result: void;
-  };
-  "plugin:actions-unregister": {
-    args: [pluginId: string, actionId: string];
-    result: void;
-  };
-  "plugin:panel-kinds-get": {
-    args: [];
-    result: import("../../config/panelKindRegistry.js").PanelKindConfig[];
-  };
-
   // Dev Preview channels
-  "dev-preview:ensure": {
-    args: [request: DevPreviewEnsureRequest];
-    result: DevPreviewSessionState;
-  };
-  "dev-preview:restart": {
-    args: [request: DevPreviewSessionRequest];
-    result: DevPreviewSessionState;
-  };
-  "dev-preview:stop": {
-    args: [request: DevPreviewSessionRequest];
-    result: DevPreviewSessionState;
-  };
-  "dev-preview:stop-by-panel": {
-    args: [request: DevPreviewStopByPanelRequest];
-    result: void;
-  };
-  "dev-preview:get-state": {
-    args: [request: DevPreviewSessionRequest];
-    result: DevPreviewSessionState;
-  };
-  "dev-preview:get-by-worktree": {
-    args: [request: DevPreviewGetByWorktreeRequest];
-    result: DevPreviewSessionState | null;
-  };
-
   // Auto-update channels
   "update:quit-and-install": {
     args: [];
@@ -1489,31 +1336,6 @@ export interface IpcInvokeMap {
   // Clipboard channels — handlers throw `AppError` on failure (CLIPBOARD_EMPTY,
   // CLIPBOARD_INVALID, UNSUPPORTED, VALIDATION). Renderer consumers use
   // try/catch + isClientAppError(e) to branch on e.code.
-  "clipboard:save-image": {
-    args: [];
-    result: { filePath: string; thumbnailDataUrl: string };
-  };
-  "clipboard:thumbnail-from-path": {
-    args: [filePath: string];
-    result: { filePath: string; thumbnailDataUrl: string };
-  };
-  "clipboard:write-image": {
-    args: [pngData: Uint8Array];
-    result: void;
-  };
-  "clipboard:write-text": {
-    args: [text: string];
-    result: void;
-  };
-  "clipboard:write-selection": {
-    args: [text: string];
-    result: void;
-  };
-  "clipboard:read-selection": {
-    args: [];
-    result: { text: string };
-  };
-
   // Notification settings channels
   "notification:settings-get": {
     args: [];
@@ -1871,87 +1693,6 @@ export interface IpcInvokeMap {
   };
 
   // Demo mode channels (dev-only, gated by --demo-mode flag)
-  "demo:move-to": {
-    args: [payload: DemoMoveToPayload];
-    result: void;
-  };
-  "demo:move-to-selector": {
-    args: [payload: DemoMoveToSelectorPayload];
-    result: void;
-  };
-  "demo:click": {
-    args: [];
-    result: void;
-  };
-  "demo:type": {
-    args: [payload: DemoTypePayload];
-    result: void;
-  };
-  "demo:screenshot": {
-    args: [];
-    result: DemoScreenshotResult;
-  };
-  "demo:wait-for-selector": {
-    args: [payload: DemoWaitForSelectorPayload];
-    result: void;
-  };
-  "demo:pause": {
-    args: [];
-    result: void;
-  };
-  "demo:resume": {
-    args: [];
-    result: void;
-  };
-  "demo:sleep": {
-    args: [payload: DemoSleepPayload];
-    result: void;
-  };
-  "demo:start-capture": {
-    args: [payload: DemoStartCapturePayload];
-    result: DemoStartCaptureResult;
-  };
-  "demo:stop-capture": {
-    args: [];
-    result: DemoStopCaptureResult;
-  };
-  "demo:get-capture-status": {
-    args: [];
-    result: DemoCaptureStatus;
-  };
-  "demo:scroll": {
-    args: [payload: DemoScrollPayload];
-    result: void;
-  };
-  "demo:drag": {
-    args: [payload: DemoDragPayload];
-    result: void;
-  };
-  "demo:press-key": {
-    args: [payload: DemoPressKeyPayload];
-    result: void;
-  };
-  "demo:spotlight": {
-    args: [payload: DemoSpotlightPayload];
-    result: void;
-  };
-  "demo:dismiss-spotlight": {
-    args: [];
-    result: void;
-  };
-  "demo:annotate": {
-    args: [payload: DemoAnnotatePayload];
-    result: DemoAnnotateResult;
-  };
-  "demo:dismiss-annotation": {
-    args: [payload: DemoDismissAnnotationPayload];
-    result: void;
-  };
-  "demo:wait-for-idle": {
-    args: [payload: DemoWaitForIdlePayload];
-    result: void;
-  };
-
   // Agent session history channels
   "agent-session:list": {
     args: [payload: { worktreeId?: string }];
@@ -1995,23 +1736,6 @@ export interface IpcInvokeMap {
   };
 
   // Command system channels
-  "commands:list": {
-    args: [context?: CommandContext];
-    result: CommandManifestEntry[];
-  };
-  "commands:get": {
-    args: [payload: CommandGetPayload];
-    result: CommandManifestEntry | null;
-  };
-  "commands:execute": {
-    args: [payload: CommandExecutePayload];
-    result: CommandResult;
-  };
-  "commands:get-builder": {
-    args: [commandId: string];
-    result: { steps: BuilderStep[] } | null;
-  };
-
   // Additional GitHub channels
   "github:get-issue-by-number": {
     args: [payload: { cwd: string; issueNumber: number }];
@@ -2049,45 +1773,7 @@ export interface IpcInvokeMap {
   };
 
   // Scratch (throwaway one-off agent workspace) channels
-  "scratch:get-all": {
-    args: [];
-    result: Scratch[];
-  };
-  "scratch:get-current": {
-    args: [];
-    result: Scratch | null;
-  };
-  "scratch:create": {
-    args: [name?: string];
-    result: Scratch;
-  };
-  "scratch:update": {
-    args: [scratchId: string, updates: { name?: string; lastOpened?: number }];
-    result: Scratch;
-  };
-  "scratch:remove": {
-    args: [scratchId: string];
-    result: void;
-  };
-  "scratch:switch": {
-    args: [scratchId: string];
-    result: Scratch;
-  };
-  "scratch:save-as-project": {
-    args: [scratchId: string];
-    result: ScratchSaveAsProjectResult;
-  };
-
   // Global env channels
-  "global-env:get": {
-    args: [];
-    result: Record<string, string>;
-  };
-  "global-env:set": {
-    args: [payload: { variables: Record<string, string> }];
-    result: void;
-  };
-
   // Global recipe channels
   "global:get-recipes": {
     args: [];
@@ -2112,34 +1798,6 @@ export interface IpcInvokeMap {
   };
 
   // Help channels
-  "help:get-folder-path": {
-    args: [];
-    result: string | null;
-  };
-  "help:mark-terminal": {
-    args: [terminalId: string];
-    result: void;
-  };
-  "help:unmark-terminal": {
-    args: [terminalId: string];
-    result: void;
-  };
-  "help:provision-session": {
-    args: [input: { projectId: string; projectPath: string; agentId: string }];
-    result: {
-      sessionId: string;
-      sessionPath: string;
-      token: string;
-      tier: HelpAssistantTier;
-      mcpUrl: string | null;
-      windowId: number;
-    } | null;
-  };
-  "help:revoke-session": {
-    args: [sessionId: string];
-    result: void;
-  };
-
   // Project clone channels
   "project:clone-repo": {
     args: [options: CloneRepoOptions];
