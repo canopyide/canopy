@@ -126,6 +126,20 @@ describe("webContentsLifecycle", () => {
       expect(warnSpy).not.toHaveBeenCalled();
     });
 
+    it("swallows Page.enable rejection without calling setWebLifecycleState", async () => {
+      const wc = createMockWc();
+      wc.debugger.sendCommand.mockImplementation(async (method: string) => {
+        if (method === "Page.enable") throw new Error("Target closed");
+        return undefined;
+      });
+      await expect(
+        freezeWebContents(wc as unknown as Electron.WebContents)
+      ).resolves.toBeUndefined();
+      const methods = wc.debugger.sendCommand.mock.calls.map((c: unknown[]) => c[0]);
+      expect(methods).toEqual(["Page.enable"]);
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
     it("never throws when wc.debugger is missing entirely", async () => {
       // A teardown race can leave wc with no debugger getter — confirm the
       // utility absorbs the synchronous TypeError without rejecting.

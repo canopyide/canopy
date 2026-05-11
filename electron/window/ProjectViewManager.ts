@@ -490,6 +490,11 @@ export class ProjectViewManager {
     // transitions and view activations are async, so an activating view may
     // still be frozen even if we've left efficiency in the meantime. Chromium
     // does not auto-resume on focus or re-attach — explicit "active" required.
+    // Fire-and-forget: there is a sub-millisecond window between addChildView
+    // making the view visible and Chromium processing the "active" CDP command.
+    // Awaiting would force activateView to be async and ripple through all
+    // call sites (performSwitch, rollback path) for a window that has not
+    // been observable in testing.
     if (!entry.view.webContents.isDestroyed()) {
       void unfreezeWebContents(entry.view.webContents);
     }

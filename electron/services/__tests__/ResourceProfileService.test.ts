@@ -367,6 +367,38 @@ describe("ResourceProfileService", () => {
     service.stop();
   });
 
+  it("still unfreezes when setCachedViewLimit throws on the exit path", () => {
+    const deps = createDeps({ getUserCachedViewLimit: () => 2 });
+    const pvm = deps.getProjectViewManager() as unknown as MockProjectViewManager;
+    const service = new ResourceProfileService(deps);
+    mockIsOnBatteryPower.mockReturnValue(true);
+    service.start();
+
+    const onAcHandler = mockPowerMonitorOn.mock.calls.find(
+      (call: string[]) => call[0] === "on-ac"
+    )?.[1] as (() => void) | undefined;
+
+    // Drive into efficiency.
+    mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 1300)]);
+    vi.advanceTimersByTime(60_000 + 30_000 + 30_000);
+    expect(service.getProfile()).toBe("efficiency");
+    expect(pvm.setEfficiencyFreeze).toHaveBeenLastCalledWith(true);
+
+    // Make the restore call fail — setEfficiencyFreeze(false) must still run.
+    pvm.setCachedViewLimit.mockImplementationOnce(() => {
+      throw new Error("simulated eviction failure");
+    });
+
+    mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 200)]);
+    onAcHandler!();
+    vi.advanceTimersByTime(30_000 * 4);
+
+    expect(service.getProfile()).not.toBe("efficiency");
+    expect(pvm.setEfficiencyFreeze).toHaveBeenLastCalledWith(false);
+
+    service.stop();
+  });
+
   it("does not call setEfficiencyFreeze on a balanced → performance transition", () => {
     const deps = createDeps();
     const service = new ResourceProfileService(deps);

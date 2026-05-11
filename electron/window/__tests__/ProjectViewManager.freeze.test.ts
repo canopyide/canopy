@@ -230,6 +230,32 @@ describe("ProjectViewManager — efficiency freeze", () => {
     expect(vi.mocked(freezeWebContents)).not.toHaveBeenCalled();
   });
 
+  it("inline deactivation freeze fires immediately without waiting for the batch debounce", async () => {
+    // Enter efficiency but do NOT advance timers — still inside the 500ms debounce.
+    manager.setEfficiencyFreeze(true);
+
+    await manager.switchTo("proj-b", "/path/b");
+
+    // The deactivated view (proj-a) must be frozen inline at deactivation time —
+    // the debounce only gates the batch sweep of pre-existing cached views.
+    expect(vi.mocked(freezeWebContents)).toHaveBeenCalledWith(initialWc);
+  });
+
+  it("rapid setEfficiencyFreeze(true) re-arms the debounce window", async () => {
+    await manager.switchTo("proj-b", "/path/b");
+
+    manager.setEfficiencyFreeze(true);
+    vi.advanceTimersByTime(400);
+    manager.setEfficiencyFreeze(true);
+    vi.advanceTimersByTime(400);
+    // 800ms elapsed from the first call, but only 400ms from the second —
+    // batch freeze must not have fired yet.
+    expect(vi.mocked(freezeWebContents)).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(100);
+    expect(vi.mocked(freezeWebContents)).toHaveBeenCalledTimes(1);
+  });
+
   it("dispose() clears a pending freeze timer", async () => {
     await manager.switchTo("proj-b", "/path/b");
     manager.setEfficiencyFreeze(true);
