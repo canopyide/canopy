@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Pause, Lock } from "lucide-react";
 import type {
   AgentState,
@@ -71,7 +71,7 @@ function getResourceSeverity(cpuPercent: number, memoryKb: number): ResourceSeve
 // prevents flicker at threshold boundaries (CPU 50/80, mem 1G/2G).
 const SEVERITY_HYSTERESIS_POLLS = 3;
 
-function TerminalHeaderContentComponent({
+export function TerminalHeaderContent({
   id,
   kind,
   agentState,
@@ -439,5 +439,3 @@ function TerminalHeaderContentComponent({
     </>
   );
 }
-
-export const TerminalHeaderContent = React.memo(TerminalHeaderContentComponent);

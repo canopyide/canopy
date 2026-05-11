@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Copy, Check, ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -75,7 +75,7 @@ function buildCopyPayload(entry: LogEntryType, meta?: LogEntryCopyMeta): string 
   return `${header}~~~log\n${body.join("\n")}\n~~~`;
 }
 
-function LogEntryComponent({ entry, isExpanded, onToggle, count = 1, copyMeta }: LogEntryProps) {
+export function LogEntry({ entry, isExpanded, onToggle, count = 1, copyMeta }: LogEntryProps) {
   const colors = LEVEL_COLORS[entry.level];
   const hasContext = entry.context && Object.keys(entry.context).length > 0;
   const contextPanelId = hasContext ? `context-${entry.id}` : undefined;
@@ -224,5 +224,3 @@ function LogEntryComponent({ entry, isExpanded, onToggle, count = 1, copyMeta }:
     </div>
   );
 }
-
-export const LogEntry = memo(LogEntryComponent);

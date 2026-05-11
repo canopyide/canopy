@@ -1,4 +1,3 @@
-import { memo } from "react";
 import { createPortal } from "react-dom";
 
 import { cn } from "@/lib/utils";
@@ -13,7 +12,7 @@ export interface ProjectMruSwitcherOverlayProps {
 
 const MAX_VISIBLE_ROWS = 9;
 
-function ProjectMruSwitcherOverlayInner({
+export function ProjectMruSwitcherOverlay({
   isVisible,
   projects,
   selectedIndex,
@@ -76,5 +75,3 @@ function ProjectMruSwitcherOverlayInner({
 
   return createPortal(content, document.body);
 }
-
-export const ProjectMruSwitcherOverlay = memo(ProjectMruSwitcherOverlayInner);

@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, type ReactElement } from "react";
+import { useCallback, useMemo, type ReactElement } from "react";
 import * as Checkbox from "@radix-ui/react-checkbox";
 import { CheckIcon, MinusIcon, Search } from "lucide-react";
 import { Kbd } from "@/components/ui/Kbd";
@@ -399,7 +399,7 @@ interface TerminalRowProps {
   testIdPrefix: string;
 }
 
-const TerminalRow = memo(function TerminalRow({
+function TerminalRow({
   terminal,
   checked,
   snippet,
@@ -447,7 +447,7 @@ const TerminalRow = memo(function TerminalRow({
       </label>
     </li>
   );
-});
+}
 
 function SnippetLine({
   snippet,

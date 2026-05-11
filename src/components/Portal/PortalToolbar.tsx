@@ -1,4 +1,3 @@
-import { memo } from "react";
 import { ArrowLeft, ArrowRight, RotateCw, X, Plus, ExternalLink, Link2 } from "lucide-react";
 import {
   DndContext,
@@ -34,7 +33,7 @@ import {
 
 const noopTabAction = (_tabId: string) => {};
 
-const SortableTab = memo(function SortableTab({
+function SortableTab({
   tab,
   isActive,
   onClick,
@@ -159,7 +158,7 @@ const SortableTab = memo(function SortableTab({
       </ContextMenuContent>
     </ContextMenu>
   );
-});
+}
 
 interface PortalToolbarProps {
   tabs: PortalTab[];

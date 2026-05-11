@@ -1,4 +1,3 @@
-import { memo } from "react";
 import { Button } from "@/components/ui/button";
 import { SlidersHorizontal } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -31,7 +30,7 @@ interface ToolbarSettingsButtonProps {
   "data-toolbar-item"?: string;
 }
 
-export const ToolbarSettingsButton = memo(function ToolbarSettingsButton({
+export function ToolbarSettingsButton({
   onSettings,
   onPreloadSettings,
   "data-toolbar-item": dataToolbarItem,
@@ -110,4 +109,4 @@ export const ToolbarSettingsButton = memo(function ToolbarSettingsButton({
       </ContextMenuContent>
     </ContextMenu>
   );
-});
+}

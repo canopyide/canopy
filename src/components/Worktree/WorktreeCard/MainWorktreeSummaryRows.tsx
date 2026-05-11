@@ -1,4 +1,3 @@
-import { memo } from "react";
 import type { ProjectHealthData } from "@shared/types";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip";
 import { CheckCircle2, XCircle, Clock, CircleMinus, GitPullRequest, CircleDot } from "lucide-react";
@@ -45,7 +44,7 @@ function ciStatusLabel(status: ProjectHealthData["ciStatus"]): string {
   }
 }
 
-export const MainWorktreeSummaryRows = memo(function MainWorktreeSummaryRows({
+export function MainWorktreeSummaryRows({
   health,
 }: MainWorktreeSummaryRowsProps) {
   if (!health) return null;
@@ -80,4 +79,4 @@ export const MainWorktreeSummaryRows = memo(function MainWorktreeSummaryRows({
       </Tooltip>
     </div>
   );
-});
+}

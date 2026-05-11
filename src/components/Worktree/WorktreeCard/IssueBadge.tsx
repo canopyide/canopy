@@ -1,4 +1,4 @@
-import { memo, useMemo } from "react";
+import { useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { CircleDot } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip";
@@ -19,7 +19,7 @@ interface IssueBadgeProps {
   rowLastUpdatedAt?: number;
 }
 
-export const IssueBadge = memo(function IssueBadge({
+export function IssueBadge({
   issueNumber,
   issueTitle,
   worktreePath,
@@ -122,4 +122,4 @@ export const IssueBadge = memo(function IssueBadge({
       </TooltipContent>
     </Tooltip>
   );
-});
+}

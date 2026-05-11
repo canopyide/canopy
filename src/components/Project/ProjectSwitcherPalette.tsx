@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback, memo } from "react";
+import { useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import {
   BellOff,
@@ -120,7 +120,7 @@ interface ProjectListItemProps {
   onHoverProjectEnd?: (pointerType: string) => void;
 }
 
-const StatusDot = memo(function StatusDot({ project }: { project: SearchableProject }) {
+function StatusDot({ project }: { project: SearchableProject }) {
   const hasActive = project.activeAgentCount > 0;
   const hasWaiting = project.waitingAgentCount > 0;
   const hasProcesses = project.processCount > 0;
@@ -155,9 +155,9 @@ const StatusDot = memo(function StatusDot({ project }: { project: SearchableProj
       aria-label="Idle"
     />
   );
-});
+}
 
-const ProjectListItem = memo(function ProjectListItem({
+function ProjectListItem({
   project,
   isSelected,
   onSelect,
@@ -326,7 +326,7 @@ const ProjectListItem = memo(function ProjectListItem({
       </ContextMenuContent>
     </ContextMenu>
   );
-});
+}
 
 interface TemporalSection {
   key: string;

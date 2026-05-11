@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ShortcutRevealChip } from "@/components/ui/ShortcutRevealChip";
@@ -67,7 +67,7 @@ function describeAgentPip(state: AgentState | null | undefined): AgentPipDescrip
   return (AGENT_PIP_BY_STATE as Partial<Record<AgentState, AgentPipDescriptor>>)[state] ?? null;
 }
 
-export const ToolbarAssistantButton = memo(function ToolbarAssistantButton({
+export function ToolbarAssistantButton({
   "data-toolbar-item": dataToolbarItem,
 }: {
   "data-toolbar-item"?: string;
@@ -200,4 +200,4 @@ export const ToolbarAssistantButton = memo(function ToolbarAssistantButton({
       </TooltipContent>
     </Tooltip>
   );
-});
+}

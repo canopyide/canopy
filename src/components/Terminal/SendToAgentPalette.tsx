@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import { useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { SearchablePalette } from "@/components/ui/SearchablePalette";
 import { KBD_CLASS } from "@/components/ui/AppPaletteDialog";
@@ -23,7 +23,7 @@ export interface SendToAgentPaletteProps {
   confirmSelection: () => void;
 }
 
-const SendToAgentItemRow = React.memo(function SendToAgentItemRow({
+function SendToAgentItemRow({
   item,
   isSelected,
   onSelect,
@@ -70,7 +70,7 @@ const SendToAgentItemRow = React.memo(function SendToAgentItemRow({
       )}
     </button>
   );
-});
+}
 
 export function SendToAgentPalette({
   isOpen,

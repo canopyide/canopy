@@ -1,4 +1,4 @@
-import { type ReactElement, memo } from "react";
+import { type ReactElement } from "react";
 import { RadioTower, ChevronDown, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useFleetArmingStore } from "@/store/fleetArmingStore";
@@ -82,9 +82,7 @@ interface FleetResolutionRowProps {
   preview: FleetTargetPreview;
 }
 
-const FleetResolutionRow = memo(function FleetResolutionRow({
-  preview,
-}: FleetResolutionRowProps): ReactElement {
+function FleetResolutionRow({ preview }: FleetResolutionRowProps): ReactElement {
   const { title, resolvedPayload, unresolvedVars, excluded, exclusionReason } = preview;
   const draft = useFleetResolutionPreviewStore((s) => s.draft);
   const parts = splitByRecipeVariables(draft);
@@ -150,4 +148,4 @@ const FleetResolutionRow = memo(function FleetResolutionRow({
       )}
     </li>
   );
-});
+}

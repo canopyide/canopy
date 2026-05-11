@@ -43,7 +43,7 @@ interface OverviewWorktreeCardProps {
   onClose: () => void;
 }
 
-const OverviewWorktreeCard = React.memo(function OverviewWorktreeCard({
+function OverviewWorktreeCard({
   worktreeId,
   activeWorktreeId,
   focusedWorktreeId,
@@ -114,7 +114,7 @@ const OverviewWorktreeCard = React.memo(function OverviewWorktreeCard({
       onAfterTerminalSelect={onClose}
     />
   );
-});
+}
 
 export interface WorktreeOverviewModalProps {
   isOpen: boolean;
