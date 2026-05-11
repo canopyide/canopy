@@ -1919,6 +1919,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                 isDetachedHead={status.isDetachedHead}
                 hasConflicts={hasConflicts}
                 hasRemote={status.hasRemote}
+                worktreePath={worktreePath}
                 commitMessage={commitMessage}
                 onCommitMessageChange={setCommitMessage}
                 onCommit={handleCommit}

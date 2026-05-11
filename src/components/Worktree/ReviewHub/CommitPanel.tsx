@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import type { PushProgressEvent } from "@shared/types/ipc/gitPush";
 import { cn } from "@/lib/utils";
 import { GitCommit, ArrowUpFromLine, Check, CircleX } from "lucide-react";
@@ -14,6 +14,7 @@ interface CommitPanelProps {
   isDetachedHead: boolean;
   hasConflicts: boolean;
   hasRemote: boolean;
+  worktreePath: string;
   commitMessage: string;
   onCommitMessageChange: (message: string) => void;
   onCommit: (message: string) => Promise<void>;
@@ -29,6 +30,7 @@ export function CommitPanel({
   isDetachedHead,
   hasConflicts,
   hasRemote,
+  worktreePath,
   commitMessage,
   onCommitMessageChange,
   onCommit,
@@ -45,7 +47,7 @@ export function CommitPanel({
   const detachedHeadRef = useRef<HTMLDivElement>(null);
 
   const subjectLine = commitMessage.split("\n")[0] || "";
-  const isOverLimit = subjectLine.length > MAX_SUBJECT_LENGTH;
+  const hasLineOverflow = /.{73,}/.test(commitMessage);
   const isBusy = isCommitting || isPushing;
   const canCommit =
     stagedCount > 0 && commitMessage.trim().length > 0 && !isDetachedHead && !hasConflicts;
@@ -81,6 +83,43 @@ export function CommitPanel({
         break;
     }
   }, [primaryBlocker, onFocusBlocker]);
+
+  const historyMessagesRef = useRef<string[] | null>(null);
+  const historyIndexRef = useRef(-1);
+  const isFetchingHistoryRef = useRef(false);
+  const draftBeforeHistoryRef = useRef("");
+  const pendingFirstApplyRef = useRef(false);
+
+  useEffect(() => {
+    historyMessagesRef.current = null;
+    historyIndexRef.current = -1;
+    isFetchingHistoryRef.current = false;
+    draftBeforeHistoryRef.current = "";
+    pendingFirstApplyRef.current = false;
+  }, [worktreePath]);
+
+  const fetchHistoryMessages = useCallback(async (): Promise<string[]> => {
+    if (historyMessagesRef.current !== null) return historyMessagesRef.current;
+    if (isFetchingHistoryRef.current) {
+      while (isFetchingHistoryRef.current) {
+        await new Promise((r) => setTimeout(r, 10));
+      }
+      return historyMessagesRef.current ?? [];
+    }
+    isFetchingHistoryRef.current = true;
+    try {
+      const result = await window.electron.git.listCommits({ cwd: worktreePath, limit: 8 });
+      historyMessagesRef.current = result.items
+        .map((c) => (c.body?.trim() ? `${c.message}\n\n${c.body.trim()}` : c.message))
+        .filter((m) => m.length > 0);
+      return historyMessagesRef.current;
+    } catch {
+      historyMessagesRef.current = [];
+      return [];
+    } finally {
+      isFetchingHistoryRef.current = false;
+    }
+  }, [worktreePath]);
 
   const handleCommit = useCallback(async () => {
     if (!canCommit || isBusy) return;
@@ -129,6 +168,71 @@ export function CommitPanel({
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (
+        (e.key === "ArrowUp" || e.key === "ArrowDown") &&
+        !e.altKey &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        e.currentTarget.selectionStart === 0 &&
+        e.currentTarget.selectionEnd === 0
+      ) {
+        e.preventDefault();
+
+        if (e.key === "ArrowUp") {
+          if (historyIndexRef.current < 0) {
+            draftBeforeHistoryRef.current = commitMessage;
+            pendingFirstApplyRef.current = true;
+          }
+
+          const messages = historyMessagesRef.current;
+          if (messages !== null) {
+            if (messages.length === 0) return;
+
+            if (pendingFirstApplyRef.current) {
+              pendingFirstApplyRef.current = false;
+              historyIndexRef.current = 0;
+              onCommitMessageChange(messages[0]);
+            } else if (historyIndexRef.current < messages.length - 1) {
+              historyIndexRef.current++;
+              onCommitMessageChange(messages[historyIndexRef.current]!);
+            }
+
+            requestAnimationFrame(() => {
+              textareaRef.current?.setSelectionRange(0, 0);
+            });
+          } else {
+            void fetchHistoryMessages().then((msgs) => {
+              if (msgs.length === 0) return;
+
+              if (pendingFirstApplyRef.current) {
+                pendingFirstApplyRef.current = false;
+                historyIndexRef.current = 0;
+                onCommitMessageChange(msgs[0]);
+              }
+
+              requestAnimationFrame(() => {
+                textareaRef.current?.setSelectionRange(0, 0);
+              });
+            });
+          }
+        } else {
+          if (historyIndexRef.current < 0) return;
+          historyIndexRef.current--;
+          if (historyIndexRef.current < 0) {
+            pendingFirstApplyRef.current = false;
+            onCommitMessageChange(draftBeforeHistoryRef.current);
+          } else {
+            const messages = historyMessagesRef.current!;
+            onCommitMessageChange(messages[historyIndexRef.current]!);
+          }
+
+          requestAnimationFrame(() => {
+            textareaRef.current?.setSelectionRange(0, 0);
+          });
+        }
+        return;
+      }
+
       if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         if (isBlocked) {
@@ -142,7 +246,16 @@ export function CommitPanel({
         }
       }
     },
-    [handlePrimaryClick, handleCommit, hasRemote, isBlocked, focusBlocker]
+    [
+      handlePrimaryClick,
+      handleCommit,
+      hasRemote,
+      isBlocked,
+      focusBlocker,
+      commitMessage,
+      fetchHistoryMessages,
+      onCommitMessageChange,
+    ]
   );
 
   const blockerTooltip = (
@@ -185,28 +298,41 @@ export function CommitPanel({
         <textarea
           ref={textareaRef}
           value={commitMessage}
-          onChange={(e) => onCommitMessageChange(e.target.value)}
+          onChange={(e) => {
+            historyIndexRef.current = -1;
+            pendingFirstApplyRef.current = false;
+            onCommitMessageChange(e.target.value);
+          }}
           onKeyDown={handleKeyDown}
           placeholder="Commit message…"
           rows={4}
           disabled={isBusy || isDetachedHead}
+          style={
+            {
+              backgroundImage: `linear-gradient(to right, transparent 72ch, rgba(128,128,128,0.14) 72ch)`,
+              backgroundOrigin: "content-box",
+              backgroundClip: "content-box",
+              backgroundAttachment: "local",
+            } as React.CSSProperties
+          }
           className={cn(
             "w-full resize-none rounded-md border bg-daintree-bg px-3 py-2 text-xs font-mono",
             "placeholder:text-daintree-text/30 text-daintree-text",
             "focus:outline-hidden focus:ring-2 focus:ring-daintree-accent focus:border-transparent",
             "disabled:opacity-50 disabled:cursor-not-allowed",
-            isOverLimit ? "border-status-warning" : "border-divider"
+            hasLineOverflow ? "border-status-warning" : "border-divider"
           )}
         />
         <div
           className={cn(
-            "absolute bottom-1.5 right-2 text-[10px]",
-            isOverLimit ? "text-status-warning" : "text-daintree-text/30"
+            "absolute bottom-1.5 right-2 text-[10px] flex items-center gap-1.5",
+            hasLineOverflow ? "text-status-warning" : "text-daintree-text/30"
           )}
         >
           <span className="tabular-nums">
             {subjectLine.length}/{MAX_SUBJECT_LENGTH}
           </span>
+          {hasLineOverflow && <span>Line over 72 chars</span>}
         </div>
       </div>
 
