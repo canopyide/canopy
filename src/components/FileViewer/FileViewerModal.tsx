@@ -7,7 +7,7 @@ import type { CodeViewerHandle } from "./CodeViewer";
 import { filesClient } from "@/clients/filesClient";
 import { actionService } from "@/services/ActionService";
 import { ExternalLink, Copy, Check, Image as ImageIcon } from "lucide-react";
-import { Spinner } from "@/components/ui/Spinner";
+import { Skeleton, SkeletonBone, SkeletonText } from "@/components/ui/Skeleton";
 import { cn } from "@/lib/utils";
 import { formatBytes } from "@/lib/formatBytes";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -26,6 +26,7 @@ export interface FileViewerModalProps {
   initialCol?: number;
   diff?: string;
   defaultMode?: "view" | "diff";
+  onRetryDiff?: () => void;
   onClose: () => void;
 }
 
@@ -67,6 +68,7 @@ export function FileViewerModal({
   initialCol,
   diff,
   defaultMode,
+  onRetryDiff,
   onClose,
 }: FileViewerModalProps) {
   // If the file is outside the project root, use its parent directory as the
@@ -78,7 +80,7 @@ export function FileViewerModal({
     ? rootPath
     : filePath.substring(0, Math.max(filePath.lastIndexOf("/"), filePath.lastIndexOf("\\"))) || "/";
 
-  const hasDiff = Boolean(diff && diff.trim() && diff !== "NO_CHANGES");
+  const hasDiff = Boolean(diff && diff.trim() && diff !== "NO_CHANGES" && diff !== "ERROR");
   const [mode, setMode] = useState<ViewMode>(() => {
     if (isImageFile(filePath)) return "view";
     if (defaultMode) return defaultMode;
@@ -116,7 +118,7 @@ export function FileViewerModal({
       setErrorCode(null);
       setDiffCopied(false);
       setSanitizedSvg(null);
-      requestRef.current = 0;
+      requestRef.current++;
       hasSwitchedToDiffRef.current = false;
       const nextMode = defaultMode ?? (hasDiff && !initialLine ? "diff" : "view");
       setMode(nextMode);
@@ -411,11 +413,11 @@ export function FileViewerModal({
         {!isImageMode && mode === "view" && (
           <>
             {loadState === "loading" && (
-              <div className="flex items-center justify-center h-64">
-                <div className="flex items-center gap-3 text-muted-foreground">
-                  <Spinner size="lg" />
-                  <span>Loading file...</span>
-                </div>
+              <div className="p-4 space-y-3">
+                <Skeleton label="Loading file">
+                  <SkeletonBone className="h-5 w-1/3" />
+                  <SkeletonText lines={15} />
+                </Skeleton>
               </div>
             )}
 
@@ -467,15 +469,21 @@ export function FileViewerModal({
         )}
 
         {!isImageMode && mode === "diff" && diff && (
-          <DiffViewer diff={diff} filePath={filePath} viewType={viewType} rootPath={rootPath} />
+          <DiffViewer
+            diff={diff}
+            filePath={filePath}
+            viewType={viewType}
+            rootPath={rootPath}
+            onRetry={onRetryDiff}
+          />
         )}
 
         {!isImageMode && mode === "diff" && !diff && (
-          <div className="flex items-center justify-center h-64">
-            <div className="flex items-center gap-3 text-muted-foreground">
-              <Spinner size="lg" />
-              <span>Loading diff...</span>
-            </div>
+          <div className="p-4 space-y-3">
+            <Skeleton label="Loading diff">
+              <SkeletonBone className="h-7 w-3/4" />
+              <SkeletonText lines={8} />
+            </Skeleton>
           </div>
         )}
       </AppDialog.BodyScroll>
