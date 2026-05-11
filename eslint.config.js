@@ -467,6 +467,7 @@ export default tseslint.config(
   {
     files: [
       "src/components/FileViewer/CodeViewer.tsx",
+      "src/components/FileViewer/codeMirrorLanguages.ts",
       "src/components/FileViewer/editorSearchTheme.ts",
       "src/components/Demo/DemoCursor.tsx",
     ],

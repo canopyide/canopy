@@ -24,6 +24,7 @@
     "notify",
     "persistedStoreRegistry",
     "portalStore",
+    "preload-helper",
     "projectSettingsStore",
     "projectStore",
     "radix-loader",

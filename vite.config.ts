@@ -357,8 +357,11 @@ export default defineConfig(({ command, mode }) => {
               },
               { name: "vendor-xterm", test: /node_modules[\\/]@xterm[\\/]/, priority: 70 },
               {
+                // Excludes @codemirror/lang-* and @codemirror/legacy-modes so
+                // those per-language parsers split into their own async chunks
+                // instead of being forced into the eager vendor-editor closure.
                 name: "vendor-editor",
-                test: /node_modules[\\/](@codemirror[\\/]|@uiw[\\/]|refractor[\\/](?!lang[\\/]))/,
+                test: /node_modules[\\/](@codemirror[\\/](?!lang-|legacy-modes)|@uiw[\\/]|refractor[\\/](?!lang[\\/]))/,
                 priority: 60,
               },
               {
@@ -412,8 +415,16 @@ export default defineConfig(({ command, mode }) => {
                 priority: 12,
               },
               {
+                // Exclude `refractor/lang/*`, `@codemirror/lang-*`,
+                // `@codemirror/legacy-modes`, and the per-grammar `@lezer/*`
+                // parser packages so each per-language parser (and its
+                // grammar dependency) stays in its own async chunk instead
+                // of being swept into this catch-all (which is part of the
+                // eager closure). `@lezer/common`, `@lezer/lr`, and
+                // `@lezer/highlight` stay in this `vendor` group because
+                // `@codemirror/language` depends on them eagerly.
                 name: "vendor",
-                test: /node_modules[\\/](?!refractor[\\/]lang[\\/])/,
+                test: /node_modules[\\/](?!(refractor[\\/]lang[\\/]|@codemirror[\\/](lang-|legacy-modes)|@lezer[\\/](?!(common|lr|highlight)[\\/])))/,
                 priority: 10,
               },
             ],

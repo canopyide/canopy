@@ -8,13 +8,13 @@ import {
   forwardRef,
 } from "react";
 import CodeMirror from "@uiw/react-codemirror";
-import { languages } from "@codemirror/language-data";
 import { EditorView, Decoration, type DecorationSet, keymap } from "@codemirror/view";
 import { type Extension, StateEffect, StateField } from "@codemirror/state";
 import { LanguageDescription } from "@codemirror/language";
 import { search, openSearchPanel, gotoLine } from "@codemirror/search";
 import { daintreeTheme } from "./editorTheme";
 import { editorSearchHighlightTheme } from "./editorSearchTheme";
+import { CODEMIRROR_LANGUAGES } from "./codeMirrorLanguages";
 import { cn } from "@/lib/utils";
 
 export interface CodeViewerHandle {
@@ -140,11 +140,11 @@ export const CodeViewer = forwardRef<CodeViewerHandle, CodeViewerProps>(function
 
   useEffect(() => {
     const basename = filePath.split(/[/\\]/).filter(Boolean).pop() ?? filePath;
-    const desc = LanguageDescription.matchFilename(languages, basename);
-    if (!desc) {
-      setLangExtension(null);
-      return;
-    }
+    const desc = LanguageDescription.matchFilename(CODEMIRROR_LANGUAGES, basename);
+    // Clear any previously-loaded extension so a failed lazy chunk fetch
+    // doesn't leave the prior file's syntax highlighting on this file.
+    setLangExtension(null);
+    if (!desc) return;
     let cancelled = false;
     desc
       .load()
@@ -180,7 +180,7 @@ export const CodeViewer = forwardRef<CodeViewerHandle, CodeViewerProps>(function
           const lineEl =
             node instanceof Element
               ? node.closest(".cm-line")
-              : (node as ChildNode).parentElement?.closest(".cm-line");
+              : (node.parentElement as Element | null)?.closest(".cm-line");
           lineEl?.scrollIntoView({ block: "center" });
         } catch {
           // Ignore scroll errors (view may not be fully rendered)
