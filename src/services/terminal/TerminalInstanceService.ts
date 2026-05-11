@@ -522,6 +522,17 @@ class TerminalInstanceService {
           return;
         }
 
+        // Reconcile xterm's grid with dimensions captured while background
+        // before the renderer policy runs its refresh. The bulk-output
+        // garbling in #7741 manifests when xterm.cols/rows still reflect the
+        // previous active geometry but the PTY (and incoming output) have
+        // already advanced — refreshing into the old grid paints stale glyphs.
+        // Order matters: must precede the lastWidth/lastHeight rect update so
+        // that if cellDims were unavailable during background and latestCols/
+        // latestRows are stale, the rect-update doesn't dedup-poison the next
+        // ResizeObserver tick.
+        this.resizeController.applyDeferredResize(id);
+
         const rect = managed.hostElement.getBoundingClientRect();
         if (rect.width > 0 && rect.height > 0) {
           const widthChanged = Math.abs(managed.lastWidth - rect.width) >= 1;
@@ -532,13 +543,6 @@ class TerminalInstanceService {
             managed.lastHeight = rect.height;
           }
         }
-
-        // Reconcile xterm's grid with dimensions captured while background
-        // before the renderer policy runs its refresh. The bulk-output
-        // garbling in #7741 manifests when xterm.cols/rows still reflect the
-        // previous active geometry but the PTY (and incoming output) have
-        // already advanced — refreshing into the old grid paints stale glyphs.
-        this.resizeController.applyDeferredResize(id);
 
         const tier = managed.getRefreshTier
           ? managed.getRefreshTier()

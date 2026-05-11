@@ -307,6 +307,105 @@ describe("TerminalResizeController", () => {
     expect(resizeMock).not.toHaveBeenCalled();
   });
 
+  it("applyDeferredResize is a no-op when xterm dims already match latest", () => {
+    const managed = createManagedTerminal();
+    managed.terminal.cols = 120;
+    managed.terminal.rows = 40;
+    managed.latestCols = 120;
+    managed.latestRows = 40;
+
+    const controller = new TerminalResizeController({
+      getInstance: vi.fn(() => managed),
+      dataBuffer: {
+        flushForTerminal: vi.fn(),
+        resetForTerminal: vi.fn(),
+      } as any,
+    });
+
+    controller.applyDeferredResize("term-1");
+
+    expect(managed.terminal.resize).not.toHaveBeenCalled();
+    expect(resizeMock).not.toHaveBeenCalled();
+  });
+
+  it("applyDeferredResize syncs xterm and PTY atomically for settled-strategy agents", () => {
+    const managed = createManagedTerminal();
+    managed.terminal.cols = 80;
+    managed.terminal.rows = 24;
+    managed.latestCols = 160;
+    managed.latestRows = 40;
+    managed.launchAgentId = "codex";
+    managed.runtimeAgentId = "codex";
+
+    getEffectiveAgentConfigMock.mockReturnValue({
+      capabilities: { resizeStrategy: "settled" },
+    });
+
+    const controller = new TerminalResizeController({
+      getInstance: vi.fn(() => managed),
+      dataBuffer: {
+        flushForTerminal: vi.fn(),
+        resetForTerminal: vi.fn(),
+      } as any,
+    });
+
+    controller.applyDeferredResize("term-1");
+
+    // Wake-path resync must NOT split xterm and PTY across the 500ms settled
+    // window — both must fire synchronously so refresh paints a coherent grid.
+    expect(managed.terminal.resize).toHaveBeenCalledTimes(1);
+    expect(managed.terminal.resize).toHaveBeenCalledWith(160, 40);
+    expect(resizeMock).toHaveBeenCalledTimes(1);
+    expect(resizeMock).toHaveBeenCalledWith("term-1", 160, 40);
+
+    // Advancing past the settled delay must not produce a spurious second resize.
+    vi.advanceTimersByTime(500);
+    expect(managed.terminal.resize).toHaveBeenCalledTimes(1);
+    expect(resizeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("applyDeferredResize cancels a pending settled timer before atomic resync", () => {
+    const managed = createManagedTerminal();
+    managed.terminal.cols = 80;
+    managed.terminal.rows = 24;
+    managed.launchAgentId = "codex";
+    managed.runtimeAgentId = "codex";
+    Object.assign(managed.terminal, {
+      _core: { _renderService: { dimensions: { css: { cell: { width: 10, height: 20 } } } } },
+    });
+
+    getEffectiveAgentConfigMock.mockReturnValue({
+      capabilities: { resizeStrategy: "settled" },
+    });
+
+    const controller = new TerminalResizeController({
+      getInstance: vi.fn(() => managed),
+      dataBuffer: {
+        flushForTerminal: vi.fn(),
+        resetForTerminal: vi.fn(),
+      } as any,
+    });
+
+    // Background resize arms the settled timer with dims 120x35.
+    managed.lastAppliedTier = TerminalRefreshTier.BACKGROUND;
+    managed.isFocused = false;
+    controller.resize("term-1", 1200, 700);
+    expect(resizeMock).not.toHaveBeenCalled();
+
+    // Wake fires applyDeferredResize before the timer would have run.
+    managed.lastAppliedTier = TerminalRefreshTier.FOCUSED;
+    managed.isFocused = true;
+    controller.applyDeferredResize("term-1");
+
+    expect(managed.terminal.resize).toHaveBeenCalledTimes(1);
+    expect(resizeMock).toHaveBeenCalledTimes(1);
+
+    // Pending settled timer must have been cancelled — no second fire.
+    vi.advanceTimersByTime(500);
+    expect(managed.terminal.resize).toHaveBeenCalledTimes(1);
+    expect(resizeMock).toHaveBeenCalledTimes(1);
+  });
+
   it("does not run fit while resize lock is active", () => {
     const managed = createManagedTerminal();
     const controller = new TerminalResizeController({

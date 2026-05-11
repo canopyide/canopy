@@ -267,10 +267,19 @@ export class TerminalResizeController {
     const targetCols = managed.latestCols;
     const targetRows = managed.latestRows;
 
-    if (currentCols !== targetCols || currentRows !== targetRows) {
-      managed.terminal.resize(targetCols, targetRows);
-      this.sendPtyResize(id, targetCols, targetRows);
+    if (currentCols === targetCols && currentRows === targetRows) {
+      return;
     }
+
+    // Wake-time atomic resync: bypass the settled-strategy 500ms debounce so
+    // xterm and the PTY agree on geometry before the next refresh paints. The
+    // settled debounce coalesces rapid drag-resize bursts — wake is a single
+    // one-shot correction, splitting it across 500ms would leave xterm sized
+    // for the new container while the PTY (and any in-flight agent output)
+    // still wraps at the pre-background geometry.
+    this.clearSettledTimer(id);
+    this.resizeTerminal(managed, targetCols, targetRows);
+    terminalClient.resize(id, targetCols, targetRows);
   }
 
   applyResize(id: string, cols: number, rows: number): void {
