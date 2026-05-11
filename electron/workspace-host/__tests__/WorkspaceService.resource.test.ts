@@ -1311,6 +1311,42 @@ describe("WorkspaceService.runLifecycleSetup — resource config caching", () =>
     expect(monitor.hasResourceConfig).toBe(true);
     expect(monitor.resourceConnectCommand).toBe("ssh user@host");
   });
+
+  it("invokes runResourceAction with the auto-provision request when lifecycle setup reports shouldProvision=true", async () => {
+    createAndRegisterMonitor();
+
+    const lifecycleSetupSpy = vi
+      .spyOn(service["lifecycleService"], "runLifecycleSetup")
+      .mockResolvedValue({ shouldProvision: true });
+    const runResourceActionSpy = vi
+      .spyOn(service, "runResourceAction")
+      .mockResolvedValue({ success: true });
+
+    await service["runLifecycleSetup"]("/test/worktree", "/test/worktree", "/test/root", true);
+
+    expect(lifecycleSetupSpy).toHaveBeenCalledTimes(1);
+    expect(runResourceActionSpy).toHaveBeenCalledTimes(1);
+    expect(runResourceActionSpy).toHaveBeenCalledWith(
+      "auto-provision-/test/worktree",
+      "/test/worktree",
+      "provision"
+    );
+  });
+
+  it("does not invoke runResourceAction when lifecycle setup reports shouldProvision=false", async () => {
+    createAndRegisterMonitor();
+
+    vi.spyOn(service["lifecycleService"], "runLifecycleSetup").mockResolvedValue({
+      shouldProvision: false,
+    });
+    const runResourceActionSpy = vi
+      .spyOn(service, "runResourceAction")
+      .mockResolvedValue({ success: true });
+
+    await service["runLifecycleSetup"]("/test/worktree", "/test/worktree", "/test/root", true);
+
+    expect(runResourceActionSpy).not.toHaveBeenCalled();
+  });
 });
 
 describe("WorkspaceService.runResourceAction — concurrency", () => {
