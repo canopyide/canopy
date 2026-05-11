@@ -1,0 +1,183 @@
+import { useEffect, useRef, useState } from "react";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
+import { Spinner } from "@/components/ui/Spinner";
+import { AlertTriangle } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { safeFireAndForget } from "@/utils/safeFireAndForget";
+
+interface RemoteCommit {
+  hash: string;
+  date: string;
+  message: string;
+  author: string;
+}
+
+interface ForcePushConfirmDialogProps {
+  isOpen: boolean;
+  cwd: string;
+  branchName: string;
+  leaseSha: string;
+  behindCount?: number;
+  onClose: () => void;
+  onSuccess: () => void;
+  onError: (err: unknown) => void;
+}
+
+const COMMIT_LIMIT = 20;
+const SHORT_HASH_LEN = 7;
+
+export function ForcePushConfirmDialog({
+  isOpen,
+  cwd,
+  branchName,
+  leaseSha,
+  behindCount,
+  onClose,
+  onSuccess,
+  onError,
+}: ForcePushConfirmDialogProps) {
+  const [commits, setCommits] = useState<RemoteCommit[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isPushing, setIsPushing] = useState(false);
+  const isExecutingRef = useRef(false);
+  const requestIdRef = useRef(0);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setCommits(null);
+      setLoadError(null);
+      setIsLoading(false);
+      return;
+    }
+    const requestId = ++requestIdRef.current;
+    setIsLoading(true);
+    setLoadError(null);
+    setCommits(null);
+
+    safeFireAndForget(
+      window.electron.git
+        .listRemoteCommits(cwd, branchName, COMMIT_LIMIT)
+        .then((result) => {
+          if (requestIdRef.current !== requestId) return;
+          setCommits(result);
+        })
+        .catch((err: unknown) => {
+          if (requestIdRef.current !== requestId) return;
+          setLoadError(formatErrorMessage(err, "Failed to load remote commits"));
+        })
+        .finally(() => {
+          if (requestIdRef.current !== requestId) return;
+          setIsLoading(false);
+        }),
+      { context: "ForcePushConfirmDialog: load remote commits" }
+    );
+  }, [isOpen, cwd, branchName]);
+
+  const handleConfirm = async () => {
+    if (isExecutingRef.current) return;
+    if (isLoading) return;
+    isExecutingRef.current = true;
+    setIsPushing(true);
+    try {
+      await window.electron.git.forcePushWithLease(cwd, branchName, leaseSha);
+      onSuccess();
+    } catch (err) {
+      onError(err);
+    } finally {
+      isExecutingRef.current = false;
+      setIsPushing(false);
+    }
+  };
+
+  const totalRemote =
+    behindCount !== undefined && behindCount > 0 ? behindCount : (commits?.length ?? 0);
+  const hiddenCount =
+    commits !== null && totalRemote > commits.length ? totalRemote - commits.length : 0;
+
+  return (
+    <ConfirmDialog
+      isOpen={isOpen}
+      title={`Force push ${branchName}?`}
+      onClose={isPushing ? undefined : onClose}
+      onConfirm={() => void handleConfirm()}
+      confirmLabel="Force push"
+      cancelLabel="Cancel"
+      variant="destructive"
+      isConfirmLoading={isPushing}
+    >
+      <div className="space-y-3 text-xs text-daintree-text/80">
+        <p>
+          This rewrites the remote branch <span className="font-mono">{branchName}</span> to match
+          your local branch. Any commits on the remote that aren&apos;t in your local history will
+          be discarded.
+        </p>
+
+        <div className="rounded border border-tint/[0.08] bg-tint/[0.04]">
+          <div className="px-3 py-2 border-b border-tint/[0.08] flex items-center justify-between">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-daintree-text/60">
+              Remote commits to discard
+              {totalRemote > 0 && (
+                <span className="ml-1.5 tabular-nums bg-tint/10 rounded px-1 py-0.5 text-[10px] font-medium normal-case tracking-normal">
+                  {totalRemote}
+                </span>
+              )}
+            </span>
+          </div>
+
+          {isLoading && (
+            <div
+              className="flex items-center justify-center py-6"
+              data-testid="force-push-commits-loading"
+            >
+              <Spinner size="sm" className="text-daintree-text/40" />
+            </div>
+          )}
+
+          {!isLoading && loadError && (
+            <div className="px-3 py-3 text-status-error flex items-start gap-2">
+              <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              <span>{loadError}</span>
+            </div>
+          )}
+
+          {!isLoading && !loadError && commits && commits.length === 0 && (
+            <div className="px-3 py-3 text-daintree-text/50">
+              No remote commits to discard. The remote may already match your local branch.
+            </div>
+          )}
+
+          {!isLoading && !loadError && commits && commits.length > 0 && (
+            <ul className="px-3 py-2 space-y-1.5 max-h-[180px] overflow-y-auto">
+              {commits.map((commit) => (
+                <li
+                  key={commit.hash}
+                  className="flex items-baseline gap-2"
+                  data-testid="force-push-commit-row"
+                >
+                  <span
+                    className={cn(
+                      "font-mono text-[10px] text-daintree-text/40 shrink-0 tabular-nums"
+                    )}
+                  >
+                    {commit.hash.slice(0, SHORT_HASH_LEN)}
+                  </span>
+                  <span className="text-daintree-text/80 truncate min-w-0">{commit.message}</span>
+                  <span className="text-[10px] text-daintree-text/40 shrink-0 ml-auto">
+                    {commit.author}
+                  </span>
+                </li>
+              ))}
+              {hiddenCount > 0 && (
+                <li className="text-[10px] text-daintree-text/40 italic pt-1">
+                  …and {hiddenCount} more
+                </li>
+              )}
+            </ul>
+          )}
+        </div>
+      </div>
+    </ConfirmDialog>
+  );
+}

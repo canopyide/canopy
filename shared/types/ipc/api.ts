@@ -757,6 +757,13 @@ export interface ElectronAPI {
     unstageAll(cwd: string): Promise<void>;
     commit(cwd: string, message: string): Promise<{ hash: string; summary: string }>;
     push(cwd: string, setUpstream?: boolean): Promise<void>;
+    pullRebase(cwd: string): Promise<void>;
+    forcePushWithLease(cwd: string, branchName: string, leaseSha: string): Promise<void>;
+    listRemoteCommits(
+      cwd: string,
+      branchName: string,
+      limit?: number
+    ): Promise<Array<{ hash: string; date: string; message: string; author: string }>>;
     getStagingStatus(cwd: string): Promise<StagingStatus>;
     abortRepositoryOperation(cwd: string): Promise<void>;
     continueRepositoryOperation(cwd: string): Promise<void>;

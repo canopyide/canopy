@@ -21,6 +21,9 @@ const {
   stageFileMock,
   commitMock,
   pushMock,
+  pullRebaseMock,
+  forcePushWithLeaseMock,
+  listRemoteCommitsMock,
   actionDispatchMock,
   worktreeStoreData,
 } = vi.hoisted(() => ({
@@ -37,6 +40,9 @@ const {
   stageFileMock: vi.fn().mockResolvedValue(undefined),
   commitMock: vi.fn(),
   pushMock: vi.fn(),
+  pullRebaseMock: vi.fn(),
+  forcePushWithLeaseMock: vi.fn(),
+  listRemoteCommitsMock: vi.fn(),
   actionDispatchMock: vi.fn().mockResolvedValue({ ok: true }),
   worktreeStoreData: {
     current: new Map<string, Partial<WorktreeState>>([
@@ -190,6 +196,7 @@ vi.mock("@/components/ui/ConfirmDialog", () => ({
     isOpen,
     title,
     description,
+    children,
     onConfirm,
     onClose,
     confirmLabel,
@@ -198,6 +205,7 @@ vi.mock("@/components/ui/ConfirmDialog", () => ({
     isOpen: boolean;
     title: ReactNode;
     description?: ReactNode;
+    children?: ReactNode;
     onConfirm: () => void;
     onClose?: () => void;
     confirmLabel: string;
@@ -209,6 +217,7 @@ vi.mock("@/components/ui/ConfirmDialog", () => ({
       <div role="alertdialog" aria-label={typeof title === "string" ? title : "confirm"}>
         <div>{title}</div>
         {description && <div>{description}</div>}
+        {children && <div>{children}</div>}
         <button type="button" onClick={onConfirm}>
           {confirmLabel}
         </button>
@@ -300,6 +309,9 @@ describe("ReviewHub", () => {
     stageFileMock.mockReset().mockResolvedValue(undefined);
     commitMock.mockReset().mockResolvedValue({ hash: "abc123", summary: "commit" });
     pushMock.mockReset().mockResolvedValue(undefined);
+    pullRebaseMock.mockReset().mockResolvedValue(undefined);
+    forcePushWithLeaseMock.mockReset().mockResolvedValue(undefined);
+    listRemoteCommitsMock.mockReset().mockResolvedValue([]);
     actionDispatchMock.mockReset().mockResolvedValue({ ok: true });
 
     Object.defineProperty(window, "electron", {
@@ -312,6 +324,9 @@ describe("ReviewHub", () => {
           unstageAll: vi.fn().mockResolvedValue(undefined),
           commit: commitMock,
           push: pushMock,
+          pullRebase: pullRebaseMock,
+          forcePushWithLease: forcePushWithLeaseMock,
+          listRemoteCommits: listRemoteCommitsMock,
           compareWorktrees: compareWorktreesMock,
           abortRepositoryOperation: abortRepositoryOperationMock,
           continueRepositoryOperation: continueRepositoryOperationMock,
@@ -1581,7 +1596,7 @@ describe("ReviewHub", () => {
       );
     });
 
-    it("shows push-rejected-outdated banner without a CTA", async () => {
+    it("shows push-rejected-outdated banner with Pull-and-rebase primary CTA only when leaseSha is missing", async () => {
       pushMock.mockRejectedValue(
         Object.assign(new Error("! [rejected] main -> main (non-fast-forward)"), {
           name: "GitOperationError",
@@ -1593,10 +1608,151 @@ describe("ReviewHub", () => {
 
       const banner = await screen.findByTestId("review-hub-push-error");
       expect(banner.getAttribute("data-reason")).toBe("push-rejected-outdated");
-      expect(banner.textContent).toMatch(/pull and rebase/i);
-      expect(screen.queryByTestId("review-hub-push-error-cta")).toBeNull();
+      expect(banner.textContent).toMatch(/Pull and rebase, or force push to overwrite/i);
+      // Primary CTA renders even without leaseSha — it just doesn't get the
+      // force-push secondary CTA (would silently degrade to plain --force).
+      const primary = screen.getByTestId("review-hub-push-error-cta");
+      expect(primary.textContent).toMatch(/Pull and rebase/i);
+      expect(screen.queryByTestId("review-hub-push-error-secondary-cta")).toBeNull();
       expect(screen.queryByTestId("review-hub-push-error-details")).toBeNull();
       expect(screen.queryByTestId("review-hub-push-error-toggle")).toBeNull();
+    });
+
+    it("shows both Pull-and-rebase primary and Force-push secondary CTAs when leaseSha is present", async () => {
+      pushMock.mockRejectedValue(
+        Object.assign(new Error("! [rejected] feature/x -> feature/x (non-fast-forward)"), {
+          name: "GitOperationError",
+          gitReason: "push-rejected-outdated",
+          leaseSha: "abc1234567890abc1234567890abc1234567890a",
+          branchName: "feature/x",
+        })
+      );
+
+      await triggerCommitAndPush();
+
+      const banner = await screen.findByTestId("review-hub-push-error");
+      expect(banner.getAttribute("data-reason")).toBe("push-rejected-outdated");
+      const primary = screen.getByTestId("review-hub-push-error-cta");
+      expect(primary.textContent).toMatch(/Pull and rebase/i);
+      const secondary = screen.getByTestId("review-hub-push-error-secondary-cta");
+      expect(secondary.textContent).toMatch(/Force push/i);
+    });
+
+    it("Pull-and-rebase CTA invokes pullRebase, refreshes status, and clears the banner on success", async () => {
+      pushMock.mockRejectedValue(
+        Object.assign(new Error("! [rejected]"), {
+          name: "GitOperationError",
+          gitReason: "push-rejected-outdated",
+          leaseSha: "abc123",
+          branchName: "feature/x",
+        })
+      );
+
+      await triggerCommitAndPush();
+      await screen.findByTestId("review-hub-push-error");
+
+      pullRebaseMock.mockResolvedValueOnce(undefined);
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("review-hub-push-error-cta"));
+        await Promise.resolve();
+      });
+
+      await waitFor(() => expect(pullRebaseMock).toHaveBeenCalledWith(WORKTREE_PATH));
+      await waitFor(() => expect(screen.queryByTestId("review-hub-push-error")).toBeNull());
+      // refresh() called: once on initial load + once after commit (in
+      // handleCommitAndPush) + once after pull-rebase success.
+      expect(getStagingStatusMock).toHaveBeenCalledTimes(3);
+    });
+
+    it("Pull-and-rebase failure surfaces conflict-unresolved through the banner", async () => {
+      pushMock.mockRejectedValue(
+        Object.assign(new Error("! [rejected]"), {
+          name: "GitOperationError",
+          gitReason: "push-rejected-outdated",
+          leaseSha: "abc123",
+          branchName: "feature/x",
+        })
+      );
+
+      await triggerCommitAndPush();
+      await screen.findByTestId("review-hub-push-error");
+
+      pullRebaseMock.mockRejectedValueOnce(
+        Object.assign(new Error("CONFLICT (content): Merge conflict in foo.ts"), {
+          name: "GitOperationError",
+          gitReason: "conflict-unresolved",
+        })
+      );
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("review-hub-push-error-cta"));
+        await Promise.resolve();
+      });
+
+      await waitFor(() =>
+        expect(screen.getByTestId("review-hub-push-error").getAttribute("data-reason")).toBe(
+          "conflict-unresolved"
+        )
+      );
+    });
+
+    it("Force-push CTA opens the confirmation dialog with loaded remote commits and confirm calls forcePushWithLease", async () => {
+      pushMock.mockRejectedValue(
+        Object.assign(new Error("! [rejected]"), {
+          name: "GitOperationError",
+          gitReason: "push-rejected-outdated",
+          leaseSha: "deadbeef",
+          branchName: "feature/x",
+        })
+      );
+      listRemoteCommitsMock.mockResolvedValueOnce([
+        { hash: "abcd1234567", date: "2026-01-01", message: "first remote commit", author: "Bob" },
+        { hash: "efgh1234567", date: "2026-01-02", message: "second remote commit", author: "Bob" },
+      ]);
+
+      await triggerCommitAndPush();
+      await screen.findByTestId("review-hub-push-error");
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("review-hub-push-error-secondary-cta"));
+        await Promise.resolve();
+      });
+
+      // Dialog opens; commit list loads.
+      await waitFor(() =>
+        expect(listRemoteCommitsMock).toHaveBeenCalledWith(WORKTREE_PATH, "feature/x", 20)
+      );
+      await waitFor(() => screen.getByText("first remote commit"));
+
+      const dialog = screen.getByRole("alertdialog");
+      const confirmBtn = within(dialog).getByRole("button", { name: /Force push/i });
+
+      await act(async () => {
+        fireEvent.click(confirmBtn);
+        await Promise.resolve();
+      });
+
+      await waitFor(() =>
+        expect(forcePushWithLeaseMock).toHaveBeenCalledWith(WORKTREE_PATH, "feature/x", "deadbeef")
+      );
+      await waitFor(() => expect(screen.queryByTestId("review-hub-push-error")).toBeNull());
+    });
+
+    it("Force-push CTA is suppressed when leaseSha is absent", async () => {
+      pushMock.mockRejectedValue(
+        Object.assign(new Error("! [rejected]"), {
+          name: "GitOperationError",
+          gitReason: "push-rejected-outdated",
+          // no leaseSha
+          branchName: "feature/x",
+        })
+      );
+
+      await triggerCommitAndPush();
+      await screen.findByTestId("review-hub-push-error");
+
+      expect(screen.queryByTestId("review-hub-push-error-secondary-cta")).toBeNull();
     });
 
     it("shows push-rejected-policy banner with collapsed raw stderr and GH code", async () => {

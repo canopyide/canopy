@@ -1653,6 +1653,14 @@ const api: ElectronAPI = {
     push: (cwd: string, setUpstream?: boolean) =>
       _unwrappingInvoke(CHANNELS.GIT_PUSH, { cwd, setUpstream }),
 
+    pullRebase: (cwd: string) => _unwrappingInvoke(CHANNELS.GIT_PULL_REBASE, { cwd }),
+
+    forcePushWithLease: (cwd: string, branchName: string, leaseSha: string) =>
+      _unwrappingInvoke(CHANNELS.GIT_FORCE_PUSH_WITH_LEASE, { cwd, branchName, leaseSha }),
+
+    listRemoteCommits: (cwd: string, branchName: string, limit?: number) =>
+      _unwrappingInvoke(CHANNELS.GIT_LIST_REMOTE_COMMITS, { cwd, branchName, limit }),
+
     getStagingStatus: (cwd: string) => _unwrappingInvoke(CHANNELS.GIT_GET_STAGING_STATUS, cwd),
 
     abortRepositoryOperation: (cwd: string) =>

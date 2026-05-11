@@ -28,6 +28,7 @@ import { CommitPanel } from "./CommitPanel";
 import { ConflictPanel } from "./ConflictPanel";
 import { FileDiffModal } from "../FileDiffModal";
 import { BaseBranchDiffModal } from "./BaseBranchDiffModal";
+import { ForcePushConfirmDialog } from "./ForcePushConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { debounce } from "@/utils/debounce";
 import { useWorktreeStore } from "@/hooks/useWorktreeStore";
@@ -64,9 +65,17 @@ function prCIStatusVisual(
 interface PushErrorState {
   reason: GitOperationReason;
   rawMessage: string;
+  /** Captured `refs/remotes/origin/<branch>` SHA at push-rejection time. */
+  leaseSha?: string;
+  /** Local branch name resolved at push-rejection time. */
+  branchName?: string;
 }
 
-type PushBannerCta = { kind: "settings-github"; label: string } | { kind: "retry"; label: string };
+type PushBannerCta =
+  | { kind: "settings-github"; label: string }
+  | { kind: "retry"; label: string }
+  | { kind: "pull-rebase"; label: string }
+  | { kind: "force-push"; label: string };
 
 /**
  * "hide" — raw stderr is suppressed entirely (auth/network/transient — raw
@@ -80,6 +89,8 @@ interface PushBannerConfig {
   message: string;
   detailPolicy: PushDetailPolicy;
   cta?: PushBannerCta;
+  /** Optional secondary CTA rendered alongside the primary. */
+  secondaryCta?: PushBannerCta;
 }
 
 /**
@@ -90,6 +101,7 @@ interface PushBannerConfig {
  * CTAs are limited to actions the renderer can actually dispatch:
  *  - `app.settings.openTab` (real BuiltInActionId) for `auth-failed`
  *  - inline `handleRetryPush` for `network-unavailable` / `system-io-error`
+ *  - inline `handlePullRebase` / force-push dialog for `push-rejected-outdated`
  * `RECOVERY_ACTIONS` in `shared/utils/gitOperationErrors.ts` references several
  * actionIds that aren't registered (`git.pull`, `github.auth`,
  * `git.resolveConflicts`, `git.trustRepository`) — wiring those would surface
@@ -116,6 +128,7 @@ const PUSH_BANNER_CONFIGS: Record<GitOperationReason, PushBannerConfig> = {
       getGitRecoveryHint("push-rejected-outdated") ??
       "The remote has new commits. Pull and rebase before pushing.",
     detailPolicy: "hide",
+    cta: { kind: "pull-rebase", label: "Pull and rebase" },
   },
   "push-rejected-policy": {
     message:
@@ -174,8 +187,30 @@ const PUSH_BANNER_CONFIGS: Record<GitOperationReason, PushBannerConfig> = {
   },
 };
 
-function getPushBannerConfig(reason: GitOperationReason): PushBannerConfig {
-  return PUSH_BANNER_CONFIGS[reason];
+function getPushBannerConfig(state: PushErrorState, behindCount?: number): PushBannerConfig {
+  const base = PUSH_BANNER_CONFIGS[state.reason];
+  // `push-rejected-outdated` is the only reason whose copy and CTAs depend on
+  // runtime state (behindCount + whether we captured a lease SHA). Override the
+  // table entry with a dynamic message and an optional force-push secondary
+  // CTA — the latter only when we have a captured `refs/remotes/origin/<branch>`
+  // SHA. Without that lease, `--force-with-lease` would silently degrade to
+  // `--force` if a background fetch advanced the local remote-tracking ref
+  // between rejection and click.
+  if (state.reason === "push-rejected-outdated") {
+    const remoteCount = behindCount && behindCount > 0 ? behindCount : null;
+    const message = remoteCount
+      ? `Remote has ${remoteCount} new commit${remoteCount === 1 ? "" : "s"}. Pull and rebase, or force push to overwrite.`
+      : "The remote has new commits. Pull and rebase, or force push to overwrite.";
+    return {
+      ...base,
+      message,
+      secondaryCta:
+        state.leaseSha && state.branchName
+          ? { kind: "force-push", label: "Force push" }
+          : undefined,
+    };
+  }
+  return base;
 }
 
 /**
@@ -285,6 +320,9 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
     status: GitStatus;
   } | null>(null);
   const [diffMode, setDiffMode] = useState<DiffMode>("working-tree");
+  const [forcePushDialogOpen, setForcePushDialogOpen] = useState(false);
+  const [pullRebasing, setPullRebasing] = useState(false);
+  const isPullRebasingRef = useRef(false);
   const [baseBranchFiles, setBaseBranchFiles] = useState<CrossWorktreeFile[] | null>(null);
   const [baseBranchLoading, setBaseBranchLoading] = useState(false);
   const [baseBranchError, setBaseBranchError] = useState<string | null>(null);
@@ -325,6 +363,15 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
       return null;
     })
   );
+
+  const behindCount = useWorktreeStore((state) => {
+    for (const wt of state.worktrees.values()) {
+      if (wt.path === worktreePath) {
+        return wt.behindCount;
+      }
+    }
+    return undefined;
+  });
 
   useOverlayState(isOpen);
 
@@ -426,6 +473,9 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
       setBaseBranchError(null);
       setSelectedBaseBranchFile(null);
       setReviewThreadCounts(null);
+      setForcePushDialogOpen(false);
+      setPullRebasing(false);
+      isPullRebasingRef.current = false;
     }
   }, [isOpen, refresh]);
 
@@ -637,7 +687,12 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
       // AppError carries `code` from a different union (RATE_LIMITED, etc.) — fall
       // back to "unknown" so getPushBannerConfig surfaces the raw message rather
       // than rendering an unmapped reason.
-      const gitReason = (err as { gitReason?: GitOperationReason }).gitReason;
+      const errFields = err as {
+        gitReason?: GitOperationReason;
+        leaseSha?: string;
+        branchName?: string;
+      };
+      const gitReason = errFields.gitReason;
       const isRateLimited =
         isClientAppError(err) && (err as { code?: string }).code === "RATE_LIMITED";
       setPushError({
@@ -645,6 +700,8 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
         rawMessage: isRateLimited
           ? "Too many push attempts in a short window — wait a moment and try again."
           : formatErrorMessage(err, "Failed to push"),
+        leaseSha: errFields.leaseSha,
+        branchName: errFields.branchName,
       });
     }
   }, [worktreePath]);
@@ -679,6 +736,48 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
       const stageAllBtn = unstagedSectionRef.current?.querySelector("button");
       stageAllBtn?.focus();
     }
+  }, []);
+
+  const handlePullRebase = useCallback(async () => {
+    if (isPullRebasingRef.current) return;
+    isPullRebasingRef.current = true;
+    setPullRebasing(true);
+    debouncedBgRefreshRef.current?.cancel();
+    try {
+      await window.electron.git.pullRebase(worktreePath);
+      // Successful rebase may have changed the working tree; refresh staging
+      // status before clearing the banner so the user sees the new state.
+      await refresh();
+      setPushError(null);
+    } catch (err) {
+      // A rebase that halts on conflicts surfaces as `conflict-unresolved`;
+      // surface it through the same banner so the user sees the next step.
+      const errFields = err as { gitReason?: GitOperationReason };
+      setPushError({
+        reason: errFields.gitReason ?? "unknown",
+        rawMessage: formatErrorMessage(err, "Failed to pull and rebase"),
+      });
+      // Refresh in case the rebase started and left files in conflict.
+      await refresh();
+    } finally {
+      isPullRebasingRef.current = false;
+      setPullRebasing(false);
+    }
+  }, [worktreePath, refresh]);
+
+  const handleForcePushSuccess = useCallback(() => {
+    setForcePushDialogOpen(false);
+    setPushError(null);
+    void refresh();
+  }, [refresh]);
+
+  const handleForcePushError = useCallback((err: unknown) => {
+    setForcePushDialogOpen(false);
+    const errFields = err as { gitReason?: GitOperationReason };
+    setPushError({
+      reason: errFields.gitReason ?? "unknown",
+      rawMessage: formatErrorMessage(err, "Failed to force push"),
+    });
   }, []);
 
   useLayoutEffect(() => {
@@ -948,22 +1047,57 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
           )}
           {pushError &&
             (() => {
-              const config = getPushBannerConfig(pushError.reason);
+              const config = getPushBannerConfig(pushError, behindCount);
               const ghCode = extractGitHubErrorCode(pushError.rawMessage);
               const canCollapse =
                 config.detailPolicy === "collapse" && pushError.rawMessage.length > 0;
-              const onCtaClick = () => {
-                if (!config.cta) return;
-                if (config.cta.kind === "settings-github") {
-                  void actionService.dispatch(
-                    "app.settings.openTab",
-                    { tab: "github" },
-                    { source: "user" }
-                  );
-                } else {
-                  void handleRetryPush();
+              const dispatchCta = (cta: PushBannerCta) => {
+                switch (cta.kind) {
+                  case "settings-github":
+                    void actionService.dispatch(
+                      "app.settings.openTab",
+                      { tab: "github" },
+                      { source: "user" }
+                    );
+                    return;
+                  case "retry":
+                    void handleRetryPush();
+                    return;
+                  case "pull-rebase":
+                    void handlePullRebase();
+                    return;
+                  case "force-push":
+                    setForcePushDialogOpen(true);
+                    return;
                 }
               };
+              const renderCta = (
+                cta: PushBannerCta,
+                isPrimary: boolean,
+                key: string,
+                isLoading: boolean
+              ) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => dispatchCta(cta)}
+                  disabled={isLoading}
+                  data-testid={
+                    isPrimary ? "review-hub-push-error-cta" : "review-hub-push-error-secondary-cta"
+                  }
+                  data-cta-kind={cta.kind}
+                  className={cn(
+                    "inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium transition-colors",
+                    "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-status-warning",
+                    "disabled:opacity-50 disabled:cursor-not-allowed",
+                    isPrimary
+                      ? "bg-status-warning/20 hover:bg-status-warning/30 text-status-warning"
+                      : "bg-tint/[0.08] hover:bg-tint/[0.14] text-daintree-text/80"
+                  )}
+                >
+                  {isLoading && cta.kind === "pull-rebase" ? "Pulling…" : cta.label}
+                </button>
+              );
               return (
                 <div
                   role="alert"
@@ -1011,21 +1145,11 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                         {pushError.rawMessage}
                       </pre>
                     )}
-                    {config.cta && (
-                      <div className="mt-1.5">
-                        <button
-                          type="button"
-                          onClick={onCtaClick}
-                          data-testid="review-hub-push-error-cta"
-                          className={cn(
-                            "inline-flex items-center gap-1 px-2 py-0.5 rounded",
-                            "bg-status-warning/20 hover:bg-status-warning/30",
-                            "text-status-warning text-[11px] font-medium transition-colors",
-                            "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-status-warning"
-                          )}
-                        >
-                          {config.cta.label}
-                        </button>
+                    {(config.cta || config.secondaryCta) && (
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                        {config.cta && renderCta(config.cta, true, "primary", pullRebasing)}
+                        {config.secondaryCta &&
+                          renderCta(config.secondaryCta, false, "secondary", pullRebasing)}
                       </div>
                     )}
                   </div>
@@ -1269,6 +1393,19 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
         currentBranch={status?.currentBranch ?? "HEAD"}
         onClose={() => setSelectedBaseBranchFile(null)}
       />
+
+      {pushError?.leaseSha && pushError.branchName && (
+        <ForcePushConfirmDialog
+          isOpen={forcePushDialogOpen}
+          cwd={worktreePath}
+          branchName={pushError.branchName}
+          leaseSha={pushError.leaseSha}
+          behindCount={behindCount}
+          onClose={() => setForcePushDialogOpen(false)}
+          onSuccess={handleForcePushSuccess}
+          onError={handleForcePushError}
+        />
+      )}
     </>,
     document.body
   );
