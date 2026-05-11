@@ -367,7 +367,7 @@ test.describe.serial("Core: Fleet terminal broadcast", () => {
       await expect(window.locator('[data-testid="fleet-arming-ribbon"]')).toBeVisible({
         timeout: T_MEDIUM,
       });
-      await expect(window.locator('[data-testid="fleet-armed-count-chip"]')).toContainText("2", {
+      await expect(window.locator('[data-testid="fleet-armed-count-chip"]')).toHaveText(/^2$/, {
         timeout: T_MEDIUM,
       });
     });
@@ -387,7 +387,7 @@ test.describe.serial("Core: Fleet terminal broadcast", () => {
     const gridIds = await getGridPanelIds(window);
     expect(gridIds.length).toBeGreaterThanOrEqual(2);
 
-    await test.step("Focus first panel, then seed an xterm buffer selection", async () => {
+    await test.step("Focus first panel as anchor, then seed selection on the panel we will click", async () => {
       await dismissBlockingPalette(window);
       const firstPanel = getPanelById(window, gridIds[0]!);
       await firstPanel.click();
@@ -395,9 +395,10 @@ test.describe.serial("Core: Fleet terminal broadcast", () => {
         .poll(() => getFocusedPanelId(window), { timeout: T_MEDIUM, intervals: [100, 250] })
         .toBe(gridIds[0]!);
 
-      // selectAll() leaves hasSelection() === true. Pre-fix, this caused
-      // handleClick to early-return for any subsequent click on the pane,
-      // including chrome clicks on the title bar.
+      // selectAll() leaves hasSelection() === true on the second panel.
+      // handleClick queries the clicked pane's own terminal, so the selection
+      // must live on the same panel whose title we shift-click — otherwise
+      // the pre-fix early-return path is never exercised.
       const selected = await window.evaluate(
         (panelId) =>
           (
@@ -405,12 +406,12 @@ test.describe.serial("Core: Fleet terminal broadcast", () => {
               __daintreeSelectTerminalAll?: (id: string) => boolean;
             }
           ).__daintreeSelectTerminalAll?.(panelId) ?? false,
-        gridIds[0]!
+        gridIds[1]!
       );
       expect(selected).toBe(true);
     });
 
-    await test.step("Shift-click the second panel's title — fleet should arm despite selection", async () => {
+    await test.step("Shift-click the selected panel's title — fleet should arm despite its own selection", async () => {
       const secondPanel = getPanelById(window, gridIds[1]!);
       const titleButton = secondPanel.locator(SEL.terminal.titleButton).first();
       await expect(titleButton).toBeVisible({ timeout: T_MEDIUM });
@@ -419,7 +420,7 @@ test.describe.serial("Core: Fleet terminal broadcast", () => {
       await expect(window.locator('[data-testid="fleet-arming-ribbon"]')).toBeVisible({
         timeout: T_MEDIUM,
       });
-      await expect(window.locator('[data-testid="fleet-armed-count-chip"]')).toContainText("2", {
+      await expect(window.locator('[data-testid="fleet-armed-count-chip"]')).toHaveText(/^2$/, {
         timeout: T_MEDIUM,
       });
     });
