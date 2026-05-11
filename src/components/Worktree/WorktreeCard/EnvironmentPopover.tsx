@@ -38,6 +38,7 @@ interface EnvironmentPopoverProps {
   resourceEndpoint: string | undefined;
   resourceLastCheckedAt: number | undefined;
   onCheckResourceStatus: (() => void) | undefined;
+  className?: string;
 }
 
 export function EnvironmentPopover({
@@ -50,6 +51,7 @@ export function EnvironmentPopover({
   resourceEndpoint,
   resourceLastCheckedAt,
   onCheckResourceStatus,
+  className,
 }: EnvironmentPopoverProps) {
   const EnvironmentIcon = (environmentIcon && ENVIRONMENT_ICONS[environmentIcon]) || Cloud;
 
@@ -76,7 +78,7 @@ export function EnvironmentPopover({
       <Tooltip>
         <TooltipTrigger asChild>
           <EnvironmentIcon
-            className={cn(iconClass, "pointer-events-none")}
+            className={cn(iconClass, className, "pointer-events-none")}
             aria-label={`${worktreeMode} environment`}
           />
         </TooltipTrigger>
@@ -93,7 +95,7 @@ export function EnvironmentPopover({
           className="shrink-0 rounded focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-daintree-accent"
           aria-label={`${worktreeMode} environment status`}
         >
-          <EnvironmentIcon className={iconClass} />
+          <EnvironmentIcon className={cn(iconClass, className)} />
         </button>
       </PopoverTrigger>
       <PopoverContent side="top" align="start" className="w-72 p-3 text-xs">
