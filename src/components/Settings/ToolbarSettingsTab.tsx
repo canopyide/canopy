@@ -33,10 +33,11 @@ import {
 import { Folders } from "@/components/icons";
 import { useToolbarPreferencesStore } from "@/store";
 import { useAgentSettingsStore } from "@/store/agentSettingsStore";
+import { useCliAvailabilityStore } from "@/store/cliAvailabilityStore";
 import type { AnyToolbarButtonId } from "@/../../shared/types/toolbar";
-import type { AgentSettings } from "@shared/types";
+import type { AgentSettings, CliAvailability } from "@shared/types";
 import { BUILT_IN_AGENT_IDS } from "@shared/config/agentIds";
-import { isAgentPinnedById } from "../../../shared/utils/agentPinned";
+import { isAgentToolbarVisible } from "../../../shared/utils/agentPinned";
 import { getAgentConfig } from "@/config/agents";
 import { usePluginToolbarButtons } from "@/hooks/usePluginToolbarButtons";
 import { McpServerIcon } from "@/components/icons";
@@ -56,9 +57,12 @@ const AGENT_ID_SET = new Set<string>(BUILT_IN_AGENT_IDS);
 function isEffectivelyVisible(
   buttonId: AnyToolbarButtonId,
   hiddenButtons: string[],
-  agentSettings: AgentSettings | null
+  agentSettings: AgentSettings | null,
+  agentAvailability: CliAvailability | null | undefined
 ): boolean {
-  if (AGENT_ID_SET.has(buttonId)) return isAgentPinnedById(agentSettings, buttonId);
+  if (AGENT_ID_SET.has(buttonId)) {
+    return isAgentToolbarVisible(agentSettings?.agents?.[buttonId], agentAvailability?.[buttonId]);
+  }
   return !hiddenButtons.includes(buttonId);
 }
 
@@ -201,6 +205,7 @@ export function ToolbarSettingsTab() {
 
   const agentSettings = useAgentSettingsStore((s) => s.settings);
   const setAgentPinned = useAgentSettingsStore((s) => s.setAgentPinned);
+  const agentAvailability = useCliAvailabilityStore((s) => s.availability);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -267,23 +272,34 @@ export function ToolbarSettingsTab() {
   const handleToggleLeft = useCallback(
     (buttonId: AnyToolbarButtonId) => {
       if (AGENT_ID_SET.has(buttonId)) {
-        void setAgentPinned(buttonId, !isAgentPinnedById(agentSettings, buttonId));
+        // Toggle the *currently visible* state so undefined-pinned agents
+        // resolve to the opposite of the derived state (installed→hide,
+        // missing→show) — see #7673 tri-state semantics.
+        const nextPinned = !isAgentToolbarVisible(
+          agentSettings?.agents?.[buttonId],
+          agentAvailability?.[buttonId]
+        );
+        void setAgentPinned(buttonId, nextPinned);
         return;
       }
       toggleButtonVisibility(buttonId, "left");
     },
-    [agentSettings, setAgentPinned, toggleButtonVisibility]
+    [agentSettings, agentAvailability, setAgentPinned, toggleButtonVisibility]
   );
 
   const handleToggleRight = useCallback(
     (buttonId: AnyToolbarButtonId) => {
       if (AGENT_ID_SET.has(buttonId)) {
-        void setAgentPinned(buttonId, !isAgentPinnedById(agentSettings, buttonId));
+        const nextPinned = !isAgentToolbarVisible(
+          agentSettings?.agents?.[buttonId],
+          agentAvailability?.[buttonId]
+        );
+        void setAgentPinned(buttonId, nextPinned);
         return;
       }
       toggleButtonVisibility(buttonId, "right");
     },
-    [agentSettings, setAgentPinned, toggleButtonVisibility]
+    [agentSettings, agentAvailability, setAgentPinned, toggleButtonVisibility]
   );
 
   return (
@@ -291,7 +307,7 @@ export function ToolbarSettingsTab() {
       <SettingsSection
         icon={LayoutGrid}
         title="Left Side Buttons"
-        description={`Drag to reorder, uncheck to hide. ${layout.leftButtons.filter((id) => isEffectivelyVisible(id, layout.hiddenButtons, agentSettings)).length} of ${layout.leftButtons.length} visible.`}
+        description={`Drag to reorder, uncheck to hide. ${layout.leftButtons.filter((id) => isEffectivelyVisible(id, layout.hiddenButtons, agentSettings, agentAvailability)).length} of ${layout.leftButtons.length} visible.`}
       >
         <DndContext
           sensors={sensors}
@@ -304,7 +320,12 @@ export function ToolbarSettingsTab() {
                 <SortableButtonItem
                   key={buttonId}
                   buttonId={buttonId}
-                  isVisible={isEffectivelyVisible(buttonId, layout.hiddenButtons, agentSettings)}
+                  isVisible={isEffectivelyVisible(
+                    buttonId,
+                    layout.hiddenButtons,
+                    agentSettings,
+                    agentAvailability
+                  )}
                   onToggle={handleToggleLeft}
                   allMetadata={allMetadata}
                 />
@@ -317,7 +338,7 @@ export function ToolbarSettingsTab() {
       <SettingsSection
         icon={LayoutGrid}
         title="Right Side Buttons"
-        description={`Drag to reorder, uncheck to hide. ${layout.rightButtons.filter((id) => isEffectivelyVisible(id, layout.hiddenButtons, agentSettings)).length} of ${layout.rightButtons.length} visible.`}
+        description={`Drag to reorder, uncheck to hide. ${layout.rightButtons.filter((id) => isEffectivelyVisible(id, layout.hiddenButtons, agentSettings, agentAvailability)).length} of ${layout.rightButtons.length} visible.`}
       >
         <DndContext
           sensors={sensors}
@@ -330,7 +351,12 @@ export function ToolbarSettingsTab() {
                 <SortableButtonItem
                   key={buttonId}
                   buttonId={buttonId}
-                  isVisible={isEffectivelyVisible(buttonId, layout.hiddenButtons, agentSettings)}
+                  isVisible={isEffectivelyVisible(
+                    buttonId,
+                    layout.hiddenButtons,
+                    agentSettings,
+                    agentAvailability
+                  )}
                   onToggle={handleToggleRight}
                   allMetadata={allMetadata}
                 />

@@ -56,6 +56,11 @@ vi.mock("@/store/agentSettingsStore", () => ({
   ) => selector({ settings: mockAgentSettings, setAgentPinned: setAgentPinnedMock }),
 }));
 
+vi.mock("@/store/cliAvailabilityStore", () => ({
+  useCliAvailabilityStore: (selector: (s: { availability: undefined }) => unknown) =>
+    selector({ availability: undefined }),
+}));
+
 vi.mock("@shared/config/agentIds", () => ({
   BUILT_IN_AGENT_IDS: ["claude", "gemini", "codex"] as const,
 }));

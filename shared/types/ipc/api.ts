@@ -640,6 +640,13 @@ export interface ElectronAPI {
     get(): Promise<AgentSettings>;
     set(agentId: AgentId, settings: Partial<AgentSettingsEntry>): Promise<AgentSettings>;
     reset(agentId?: AgentId): Promise<AgentSettings>;
+    /**
+     * Mark the persisted store with the given schema version. Only called by
+     * the renderer migration after every per-agent pin clear has succeeded
+     * (#7673). Idempotent: a no-op when the stored version is already ≥
+     * the requested value.
+     */
+    stampVersion(version: number): Promise<AgentSettings>;
   };
   userAgentRegistry: {
     get(): Promise<import("../userAgentRegistry.js").UserAgentRegistry>;
