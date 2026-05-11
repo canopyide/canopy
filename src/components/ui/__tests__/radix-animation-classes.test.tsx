@@ -1,12 +1,17 @@
 // @vitest-environment jsdom
 import { cleanup, render } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { PopoverContent } from "../popover";
 import { DropdownMenuContent, DropdownMenuSubContent } from "../dropdown-menu";
+import { primeRadix } from "../radix-loader";
+
+beforeAll(async () => {
+  await primeRadix();
+});
 
 afterEach(cleanup);
 
