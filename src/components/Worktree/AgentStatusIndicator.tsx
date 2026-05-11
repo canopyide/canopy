@@ -77,9 +77,6 @@ export function AgentStatusIndicator({ state, className }: AgentStatusIndicatorP
   }
 
   const config = STATE_CONFIG[state];
-  if (!config) {
-    return null;
-  }
 
   return (
     <Tooltip>
