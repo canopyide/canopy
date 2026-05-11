@@ -6,6 +6,57 @@ Releases are built by the `.github/workflows/release.yml` workflow, triggered by
 
 Use the `/release` command to execute a full gitflow release.
 
+## Release Notes Format
+
+Two surfaces, slightly different conventions. The `/release` command treats this section as the source of truth.
+
+### `CHANGELOG.md`
+
+`CHANGELOG.md` is the chronological record. Every release prepends a new section anchored by version and date:
+
+```markdown
+## [X.Y.Z] - YYYY-MM-DD
+
+[1-2 sentence summary of the release theme.]
+
+### Features
+
+- Entry (#issue)
+
+### Bug Fixes
+
+- Entry (#issue)
+```
+
+- The `## [X.Y.Z] - YYYY-MM-DD` heading is required — it's the chronological anchor.
+- Section headings (`### Features`, `### Bug Fixes`, `### Performance`, `### Breaking Changes`, `### Other Changes`) are all `###`.
+- For releases with many entries, group within a section using a bold paragraph: `**Daintree Assistant**`, `**MCP Server**`, etc.
+- Issue references as `#NNN` — they auto-link on GitHub.
+- Omit `### Other Changes` entirely if there's nothing user-relevant.
+
+### GitHub Release notes
+
+GitHub's release UI already renders the version and date as the page header, so the release body skips both:
+
+```markdown
+[1-2 sentence summary of the release theme.]
+
+### Features
+
+- Entry (#issue)
+
+### Bug Fixes
+
+- Entry (#issue)
+```
+
+- **No version or date heading** at the top — GitHub shows that already.
+- **A 1-2 sentence intro paragraph is required on every release.** State the theme: what landed, what the focus was, or — for patch releases — what was wrong with the previous version. Match the existing 0.9.1 / 0.9.0 / 0.8.0 entries: fragment-style, technical, no marketing tone.
+- Section headings (`###`), bold-paragraph grouping, and issue references match the changelog.
+- No trailing `---` or manual "Full Changelog" link — GitHub provides the compare link in the release header automatically.
+
+The `/release` command produces the GitHub release body from the `CHANGELOG.md` section by stripping the `## [X.Y.Z] - YYYY-MM-DD` line. Everything else (summary, sections, entries) is identical between the two surfaces.
+
 ## macOS Code Signing
 
 macOS builds are signed with a Developer ID Application certificate. The signing identity and certificate are stored as GitHub secrets.
