@@ -57,6 +57,8 @@ interface FileStageRowProps {
   onToggle: (filePath: string) => void;
   onFileClick: (filePath: string, status: GitStatus) => void;
   density?: "comfortable" | "compact";
+  viewed?: boolean;
+  onViewedChange?: (viewed: boolean) => void;
 }
 
 function splitPath(filePath: string): { dir: string; base: string } {
@@ -72,6 +74,8 @@ export function FileStageRow({
   onToggle,
   onFileClick,
   density = "comfortable",
+  viewed = false,
+  onViewedChange,
 }: FileStageRowProps) {
   const config = STATUS_CONFIG[file.status] || STATUS_CONFIG.untracked;
   const { dir, base } = splitPath(file.path);
@@ -92,12 +96,25 @@ export function FileStageRow({
     onFileClick(file.path, file.status);
   }, [onFileClick, file.path, file.status]);
 
+  const handleViewedChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      onViewedChange?.(e.target.checked);
+    },
+    [onViewedChange]
+  );
+
+  const handleViewedClick = useCallback((e: React.MouseEvent) => {
+    // Don't bubble into the row's onClick (which opens the diff modal).
+    e.stopPropagation();
+  }, []);
+
   return (
     <div
       className={cn(
         "group/stagerow flex items-center text-xs rounded px-1.5 transition-colors",
         density === "compact" ? "py-0.5" : "py-1.5",
-        isStaged ? "bg-status-success/[0.06] hover:bg-status-success/[0.10]" : "hover:bg-tint/5"
+        isStaged ? "bg-status-success/[0.06] hover:bg-status-success/[0.10]" : "hover:bg-tint/5",
+        viewed && "opacity-60"
       )}
     >
       <TruncatedTooltip content={file.path}>
@@ -159,6 +176,40 @@ export function FileStageRow({
           {insertions > 0 && <span className="text-status-success/80">+{insertions}</span>}
           {deletions > 0 && <span className="text-status-error/80">-{deletions}</span>}
         </div>
+      )}
+
+      {onViewedChange && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <label
+              onClick={handleViewedClick}
+              className={cn(
+                "flex items-center gap-1 ml-2 shrink-0 cursor-pointer select-none rounded px-1.5 py-0.5",
+                "text-[10px] font-medium uppercase tracking-wider transition-colors",
+                viewed
+                  ? "text-daintree-text/60"
+                  : "text-daintree-text/30 hover:text-daintree-text/60"
+              )}
+            >
+              <input
+                type="checkbox"
+                checked={viewed}
+                onChange={handleViewedChange}
+                aria-label={
+                  viewed ? `Mark ${file.path} as not viewed` : `Mark ${file.path} as viewed`
+                }
+                className={cn(
+                  "w-3 h-3 rounded cursor-pointer accent-status-success",
+                  "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent"
+                )}
+              />
+              <span>Viewed</span>
+            </label>
+          </TooltipTrigger>
+          <TooltipContent side="left">
+            {viewed ? "Mark as not viewed" : "Mark as viewed"}
+          </TooltipContent>
+        </Tooltip>
       )}
 
       <Tooltip>

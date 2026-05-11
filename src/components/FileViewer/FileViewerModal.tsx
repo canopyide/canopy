@@ -1,5 +1,4 @@
 import { useEffect, useEffectEvent, useCallback, useState, useRef, useMemo } from "react";
-import type { ViewType } from "react-diff-view";
 import { AppDialog } from "@/components/ui/AppDialog";
 import { DiffViewer } from "@/components/Worktree/DiffViewer";
 import { CodeViewer } from "./CodeViewer";
@@ -16,6 +15,7 @@ import { isClientAppError } from "@/utils/clientAppError";
 import { sanitizeSvg } from "@shared/utils/svgSanitizer";
 import { createTrustedHTML } from "@/lib/trustedTypesPolicy";
 import { logError } from "@/utils/logger";
+import { usePreferencesStore } from "@/store/preferencesStore";
 
 export interface FileViewerModalProps {
   isOpen: boolean;
@@ -89,7 +89,8 @@ export function FileViewerModal({
   const [content, setContent] = useState<string | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [errorCode, setErrorCode] = useState<FileReadErrorCode | null>(null);
-  const [viewType, setViewType] = useState<ViewType>("split");
+  const diffViewType = usePreferencesStore((s) => s.diffViewType);
+  const setDiffViewType = usePreferencesStore((s) => s.setDiffViewType);
   const [diffCopied, setDiffCopied] = useState(false);
   const [sanitizedSvg, setSanitizedSvg] = useState<string | null>(null);
   const requestRef = useRef(0);
@@ -97,6 +98,9 @@ export function FileViewerModal({
   const isMountedRef = useRef(true);
   const codeViewerRef = useRef<CodeViewerHandle>(null);
   const hasSwitchedToDiffRef = useRef(false);
+  const diffViewerRef = useRef<HTMLDivElement>(null);
+  // -1 sentinel: "no hunk navigated to yet". First `n` or `p` jumps to hunk 0.
+  const currentHunkIndexRef = useRef<number>(-1);
 
   const imageFile = isImageFile(filePath);
   const svgFile = isSvgFile(filePath);
@@ -120,6 +124,7 @@ export function FileViewerModal({
       setSanitizedSvg(null);
       requestRef.current++;
       hasSwitchedToDiffRef.current = false;
+      currentHunkIndexRef.current = -1;
       const nextMode = defaultMode ?? (hasDiff && !initialLine ? "diff" : "view");
       setMode(nextMode);
       return;
@@ -129,6 +134,7 @@ export function FileViewerModal({
     setLoadState("loading");
     setErrorCode(null);
     hasSwitchedToDiffRef.current = false;
+    currentHunkIndexRef.current = -1;
 
     if (imageFile && !svgFile) {
       setLoadState("image");
@@ -256,6 +262,60 @@ export function FileViewerModal({
     };
   }, [isOpen, isImageMode, mode]);
 
+  // Reset hunk index whenever the diff content changes — covers refresh-after-
+  // commit and any other in-place diff swap that leaves filePath unchanged.
+  useEffect(() => {
+    currentHunkIndexRef.current = -1;
+  }, [diff]);
+
+  // Hunk navigation in diff mode: `n` → next hunk, `p` → previous hunk.
+  // react-diff-view renders each hunk as <tbody class="diff-hunk">; scroll the
+  // hunk into view with native scrollIntoView (CSS scroll-margin-top keeps the
+  // hunk header clear of the sticky dialog chrome). Hunk index lives in a ref
+  // so navigation does not re-render the heavy diff tree on every keystroke.
+  useEffect(() => {
+    if (!isOpen || mode !== "diff") return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "n" && e.key !== "p") return;
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      if (
+        e.target instanceof HTMLElement &&
+        (e.target.tagName === "INPUT" ||
+          e.target.tagName === "TEXTAREA" ||
+          e.target.tagName === "SELECT" ||
+          e.target.isContentEditable)
+      ) {
+        return;
+      }
+
+      const container = diffViewerRef.current;
+      if (!container) return;
+      const hunks = container.querySelectorAll<HTMLElement>("tbody.diff-hunk");
+      if (hunks.length === 0) return;
+
+      e.preventDefault();
+
+      const lastIndex = hunks.length - 1;
+      const current = currentHunkIndexRef.current;
+      let next: number;
+      if (e.key === "n") {
+        next = current < 0 ? 0 : Math.min(current + 1, lastIndex);
+      } else {
+        // `p` from the initial sentinel (-1) lands on the first hunk so the
+        // user gets feedback either way before they've started navigating.
+        next = current < 0 ? 0 : Math.max(current - 1, 0);
+      }
+      currentHunkIndexRef.current = next;
+      hunks[next]?.scrollIntoView({ block: "start", behavior: "smooth" });
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen, mode]);
+
   return (
     <AppDialog
       isOpen={isOpen}
@@ -319,10 +379,10 @@ export function FileViewerModal({
             <div className="flex bg-daintree-sidebar rounded p-0.5">
               <button
                 type="button"
-                onClick={() => setViewType("split")}
+                onClick={() => setDiffViewType("split")}
                 className={cn(
                   "px-2.5 py-1 text-xs font-medium rounded transition-colors",
-                  viewType === "split"
+                  diffViewType === "split"
                     ? "bg-daintree-border text-daintree-text"
                     : "text-muted-foreground hover:text-daintree-text"
                 )}
@@ -331,10 +391,10 @@ export function FileViewerModal({
               </button>
               <button
                 type="button"
-                onClick={() => setViewType("unified")}
+                onClick={() => setDiffViewType("unified")}
                 className={cn(
                   "px-2.5 py-1 text-xs font-medium rounded transition-colors",
-                  viewType === "unified"
+                  diffViewType === "unified"
                     ? "bg-daintree-border text-daintree-text"
                     : "text-muted-foreground hover:text-daintree-text"
                 )}
@@ -470,9 +530,10 @@ export function FileViewerModal({
 
         {!isImageMode && mode === "diff" && diff && (
           <DiffViewer
+            ref={diffViewerRef}
             diff={diff}
             filePath={filePath}
-            viewType={viewType}
+            viewType={diffViewType}
             rootPath={rootPath}
             onRetry={onRetryDiff}
           />

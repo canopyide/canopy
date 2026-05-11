@@ -53,9 +53,28 @@ vi.mock("@/components/ui/tooltip", () => ({
 }));
 
 vi.mock("@/components/Worktree/DiffViewer", () => ({
-  DiffViewer: ({ onRetry }: { onRetry?: () => void }) => (
-    <div data-testid="diff-viewer" data-has-retry={onRetry ? "true" : "false"} />
-  ),
+  DiffViewer: forwardRef<HTMLDivElement, { onRetry?: () => void }>(({ onRetry }, ref) => (
+    <div ref={ref} data-testid="diff-viewer" data-has-retry={onRetry ? "true" : "false"}>
+      {/* Two stub hunk rows so hunk-nav tests have predictable targets. */}
+      <table>
+        <tbody className="diff-hunk" data-testid="hunk-0" />
+        <tbody className="diff-hunk" data-testid="hunk-1" />
+      </table>
+    </div>
+  )),
+}));
+
+const setDiffViewTypeMock = vi.fn();
+const usePreferencesStoreMock = vi.fn((selector?: (s: Record<string, unknown>) => unknown) => {
+  const state = {
+    diffViewType: "split" as const,
+    setDiffViewType: setDiffViewTypeMock,
+  };
+  return selector ? selector(state) : state;
+});
+vi.mock("@/store/preferencesStore", () => ({
+  usePreferencesStore: (selector?: (s: Record<string, unknown>) => unknown) =>
+    usePreferencesStoreMock(selector),
 }));
 
 vi.mock("../CodeViewer", () => ({
@@ -86,9 +105,26 @@ vi.mock("@shared/utils/svgSanitizer", () => ({
   }),
 }));
 
+const scrollIntoViewCalls: HTMLElement[] = [];
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockRead.mockResolvedValue({ content: "file content" });
+  setDiffViewTypeMock.mockReset();
+  usePreferencesStoreMock.mockImplementation(
+    (selector?: (s: Record<string, unknown>) => unknown) => {
+      const state = {
+        diffViewType: "split" as const,
+        setDiffViewType: setDiffViewTypeMock,
+      };
+      return selector ? selector(state) : state;
+    }
+  );
+  // jsdom does not implement scrollIntoView; record the receiver for hunk-nav.
+  scrollIntoViewCalls.length = 0;
+  Element.prototype.scrollIntoView = vi.fn(function (this: HTMLElement) {
+    scrollIntoViewCalls.push(this);
+  });
 });
 
 describe("FileViewerModal", () => {
@@ -315,6 +351,194 @@ describe("FileViewerModal", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("diff-viewer")).toBeTruthy();
+    });
+  });
+
+  describe("diff view type persistence", () => {
+    const diff = "diff --git a/file b/file\n--- a/file\n+++ b/file\n@@ -1 +1 @@\n-old\n+new";
+
+    it("calls setDiffViewType('unified') when Unified is clicked", async () => {
+      render(<FileViewerModal {...defaultProps} diff={diff} defaultMode="diff" />);
+
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: "Unified" })).toBeTruthy();
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "Unified" }));
+      expect(setDiffViewTypeMock).toHaveBeenCalledWith("unified");
+    });
+
+    it("calls setDiffViewType('split') when Split is clicked", async () => {
+      // Start with persisted 'unified' so clicking Split is a real transition.
+      usePreferencesStoreMock.mockImplementation(
+        (selector?: (s: Record<string, unknown>) => unknown) => {
+          const state = { diffViewType: "unified" as const, setDiffViewType: setDiffViewTypeMock };
+          return selector ? selector(state) : state;
+        }
+      );
+
+      render(<FileViewerModal {...defaultProps} diff={diff} defaultMode="diff" />);
+
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: "Split" })).toBeTruthy();
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "Split" }));
+      expect(setDiffViewTypeMock).toHaveBeenCalledWith("split");
+    });
+  });
+
+  describe("keyboard hunk navigation in diff mode", () => {
+    const diff = "diff --git a/file b/file\n--- a/file\n+++ b/file\n@@ -1 +1 @@\n-old\n+new";
+
+    it("scrolls to the first hunk on initial `n`", async () => {
+      render(<FileViewerModal {...defaultProps} diff={diff} defaultMode="diff" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("diff-viewer")).toBeTruthy();
+      });
+
+      const hunk0 = screen.getByTestId("hunk-0");
+      scrollIntoViewCalls.length = 0;
+      fireEvent.keyDown(window, { key: "n" });
+
+      expect(scrollIntoViewCalls.at(-1)).toBe(hunk0);
+      expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
+        block: "start",
+        behavior: "smooth",
+      });
+    });
+
+    it("advances to the next hunk on subsequent `n`", async () => {
+      render(<FileViewerModal {...defaultProps} diff={diff} defaultMode="diff" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("diff-viewer")).toBeTruthy();
+      });
+
+      const hunk1 = screen.getByTestId("hunk-1");
+      scrollIntoViewCalls.length = 0;
+      fireEvent.keyDown(window, { key: "n" }); // hunk 0
+      fireEvent.keyDown(window, { key: "n" }); // hunk 1
+
+      expect(scrollIntoViewCalls.at(-1)).toBe(hunk1);
+    });
+
+    it("does not wrap past the last hunk when `n` is pressed at the end", async () => {
+      render(<FileViewerModal {...defaultProps} diff={diff} defaultMode="diff" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("diff-viewer")).toBeTruthy();
+      });
+
+      const hunk1 = screen.getByTestId("hunk-1");
+
+      // Walk forward to the last hunk, then press past the end.
+      fireEvent.keyDown(window, { key: "n" }); // hunk 0
+      fireEvent.keyDown(window, { key: "n" }); // hunk 1 (last)
+      scrollIntoViewCalls.length = 0;
+      fireEvent.keyDown(window, { key: "n" });
+      fireEvent.keyDown(window, { key: "n" });
+
+      // Clamping past the end must keep landing on hunk 1, never wrap to hunk 0.
+      expect(scrollIntoViewCalls.length).toBeGreaterThan(0);
+      for (const target of scrollIntoViewCalls) {
+        expect(target).toBe(hunk1);
+      }
+    });
+
+    it("scrolls to the previous hunk on `p`", async () => {
+      render(<FileViewerModal {...defaultProps} diff={diff} defaultMode="diff" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("diff-viewer")).toBeTruthy();
+      });
+
+      const hunk0 = screen.getByTestId("hunk-0");
+      fireEvent.keyDown(window, { key: "n" });
+      fireEvent.keyDown(window, { key: "n" }); // now on hunk 1
+      scrollIntoViewCalls.length = 0;
+      fireEvent.keyDown(window, { key: "p" });
+
+      expect(scrollIntoViewCalls.at(-1)).toBe(hunk0);
+    });
+
+    it("ignores `n`/`p` while in view mode", async () => {
+      render(<FileViewerModal {...defaultProps} diff={diff} defaultMode="view" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("code-viewer")).toBeTruthy();
+      });
+
+      scrollIntoViewCalls.length = 0;
+      expect(() => fireEvent.keyDown(window, { key: "n" })).not.toThrow();
+      expect(scrollIntoViewCalls).toHaveLength(0);
+    });
+
+    it("ignores `n`/`p` when a modifier key is held", async () => {
+      render(<FileViewerModal {...defaultProps} diff={diff} defaultMode="diff" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("diff-viewer")).toBeTruthy();
+      });
+
+      scrollIntoViewCalls.length = 0;
+      fireEvent.keyDown(window, { key: "n", metaKey: true });
+      fireEvent.keyDown(window, { key: "n", ctrlKey: true });
+      fireEvent.keyDown(window, { key: "n", altKey: true });
+
+      expect(scrollIntoViewCalls).toHaveLength(0);
+    });
+
+    it("resets the hunk index when the diff prop changes for the same file", async () => {
+      const diffA = "diff --git a/file b/file\n--- a/file\n+++ b/file\n@@ -1 +1 @@\n-old\n+new";
+      const diffB = "diff --git a/file b/file\n--- a/file\n+++ b/file\n@@ -1 +1 @@\n-foo\n+bar";
+
+      const { rerender } = render(
+        <FileViewerModal {...defaultProps} diff={diffA} defaultMode="diff" />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId("diff-viewer")).toBeTruthy();
+      });
+
+      // Walk past the first hunk.
+      fireEvent.keyDown(window, { key: "n" });
+      fireEvent.keyDown(window, { key: "n" });
+
+      // Swap diff content; the hunk index must reset so the next `n` lands on
+      // the first hunk of the new diff again.
+      rerender(<FileViewerModal {...defaultProps} diff={diffB} defaultMode="diff" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("diff-viewer")).toBeTruthy();
+      });
+
+      scrollIntoViewCalls.length = 0;
+      const hunk0 = screen.getByTestId("hunk-0");
+      fireEvent.keyDown(window, { key: "n" });
+
+      expect(scrollIntoViewCalls.at(-1)).toBe(hunk0);
+    });
+
+    it("ignores `n`/`p` when focus is in an input", async () => {
+      render(
+        <>
+          <input data-testid="other-input" />
+          <FileViewerModal {...defaultProps} diff={diff} defaultMode="diff" />
+        </>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId("diff-viewer")).toBeTruthy();
+      });
+
+      const input = screen.getByTestId("other-input") as HTMLInputElement;
+      input.focus();
+      scrollIntoViewCalls.length = 0;
+      fireEvent.keyDown(input, { key: "n" });
+
+      expect(scrollIntoViewCalls).toHaveLength(0);
     });
   });
 

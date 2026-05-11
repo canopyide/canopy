@@ -85,7 +85,15 @@ vi.mock("@/hooks", () => ({
   useTruncationDetection: vi.fn(() => ({ ref: vi.fn(), isTruncated: false })),
 }));
 
-vi.mock("../../FileDiffModal", () => ({ FileDiffModal: () => null }));
+const { fileDiffModalOpenHistory } = vi.hoisted(() => ({
+  fileDiffModalOpenHistory: { value: [] as boolean[] },
+}));
+vi.mock("../../FileDiffModal", () => ({
+  FileDiffModal: ({ isOpen }: { isOpen: boolean }) => {
+    fileDiffModalOpenHistory.value.push(isOpen);
+    return null;
+  },
+}));
 vi.mock("../BaseBranchDiffModal", () => ({ BaseBranchDiffModal: () => null }));
 
 vi.mock("@/hooks/useWorktreeStore", () => ({
@@ -2740,6 +2748,109 @@ describe("ReviewHub", () => {
       expect(styleAttr).toContain("rgba");
       expect(styleAttr).toContain("background-origin: content-box");
       expect(styleAttr).toContain("background-attachment: local");
+    });
+  });
+
+  describe("per-file Viewed checkbox", () => {
+    it("renders an unchecked Viewed checkbox next to each file row", async () => {
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByText("index.ts"));
+
+      const viewedCheckboxes = screen.getAllByRole("checkbox", { name: /Mark .* as viewed/ });
+      // One per file (1 staged + 1 unstaged from makeStatus).
+      expect(viewedCheckboxes).toHaveLength(2);
+      for (const cb of viewedCheckboxes) {
+        expect((cb as HTMLInputElement).checked).toBe(false);
+      }
+    });
+
+    it("toggles a file's Viewed state when its checkbox is clicked", async () => {
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByText("index.ts"));
+
+      const indexCheckbox = screen.getByRole("checkbox", {
+        name: "Mark src/index.ts as viewed",
+      }) as HTMLInputElement;
+      expect(indexCheckbox.checked).toBe(false);
+
+      fireEvent.click(indexCheckbox);
+
+      // After being checked, the aria-label flips so we now look for the inverse.
+      const stillThere = screen.getByRole("checkbox", {
+        name: "Mark src/index.ts as not viewed",
+      }) as HTMLInputElement;
+      expect(stillThere.checked).toBe(true);
+    });
+
+    it("does not open the diff modal when the Viewed checkbox is clicked", async () => {
+      fileDiffModalOpenHistory.value = [];
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByText("index.ts"));
+
+      const indexCheckbox = screen.getByRole("checkbox", {
+        name: "Mark src/index.ts as viewed",
+      });
+      fileDiffModalOpenHistory.value = [];
+
+      fireEvent.click(indexCheckbox);
+
+      // FileDiffModal is rendered with isOpen=true only when selectedFile is set.
+      // After the checkbox click, none of its renders should have isOpen=true.
+      expect(fileDiffModalOpenHistory.value.some((o) => o === true)).toBe(false);
+    });
+
+    it("tracks Viewed state independently for staged and unstaged copies of the same path", async () => {
+      // Partial-staging scenario: the same file is both staged and unstaged
+      // (e.g. user staged some hunks, left others unstaged).
+      getStagingStatusMock.mockResolvedValue(
+        makeStatus({
+          staged: [{ path: "src/dual.ts", status: "modified", insertions: 1, deletions: 0 }],
+          unstaged: [{ path: "src/dual.ts", status: "modified", insertions: 2, deletions: 0 }],
+        })
+      );
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getAllByText("dual.ts"));
+
+      const checkboxes = screen.getAllByRole("checkbox", {
+        name: "Mark src/dual.ts as viewed",
+      }) as HTMLInputElement[];
+      // One in the staged section, one in the unstaged section.
+      expect(checkboxes).toHaveLength(2);
+      const firstCheckbox = checkboxes[0]!;
+
+      fireEvent.click(firstCheckbox);
+
+      // Only the clicked row flips to "viewed"; the sibling row stays unchecked.
+      const checkedAfter = screen.getAllByRole("checkbox", {
+        name: /Mark src\/dual\.ts as (not viewed|viewed)/,
+      }) as HTMLInputElement[];
+      const viewedCount = checkedAfter.filter((cb) => cb.checked).length;
+      expect(viewedCount).toBe(1);
+    });
+
+    it("resets Viewed state when the modal closes and reopens", async () => {
+      const { rerender } = render(
+        <ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />
+      );
+
+      await waitFor(() => screen.getByText("index.ts"));
+
+      fireEvent.click(screen.getByRole("checkbox", { name: "Mark src/index.ts as viewed" }));
+
+      rerender(<ReviewHub isOpen={false} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+      rerender(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByText("index.ts"));
+
+      const reopened = screen.getByRole("checkbox", {
+        name: "Mark src/index.ts as viewed",
+      }) as HTMLInputElement;
+      expect(reopened.checked).toBe(false);
     });
   });
 });
