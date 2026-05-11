@@ -88,7 +88,7 @@ export function FleetPickerPalette({ isOpen, onClose }: FleetPickerPaletteProps)
     } else {
       picker.setSelectedIds(new Set());
     }
-  }, [allVisibleSelected, hasQuery, picker.setSelectedIds, picker.visibleIds]);
+  }, [allVisibleSelected, hasQuery, picker]);
 
   // Additive — preserves existing picks (including non-agent terminals).
   const handleSelectAgents = useCallback(() => {
@@ -98,7 +98,7 @@ export function FleetPickerPalette({ isOpen, onClose }: FleetPickerPaletteProps)
       for (const id of agentVisibleIds) next.add(id);
       return next;
     });
-  }, [agentVisibleIds, picker.setSelectedIds]);
+  }, [agentVisibleIds, picker]);
 
   return (
     <AppPaletteDialog isOpen={isOpen} onClose={onClose} ariaLabel="Select terminals to arm">
