@@ -35,13 +35,10 @@ function isLoopbackHost(hostname: string): boolean {
   return LOOPBACK_HOSTS.includes(hostname);
 }
 
-const PRIVATE_IP_RANGES = new Set([
-  "loopback",
-  "private",
-  "linkLocal",
-  "uniqueLocal",
-  "ipv4Mapped",
-]);
+// ipaddr.process() normalizes IPv4-mapped IPv6 to IPv4 before classification,
+// so ::ffff:127.0.0.1 → loopback, ::ffff:8.8.8.8 → unicast (denied).
+// No explicit "ipv4Mapped" entry needed — process() handles it implicitly.
+const PRIVATE_IP_RANGES = new Set(["loopback", "private", "linkLocal", "uniqueLocal"]);
 
 function isPrivateIp(hostname: string): boolean {
   try {
