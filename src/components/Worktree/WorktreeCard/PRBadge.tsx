@@ -70,8 +70,7 @@ export const PRBadge = memo(function PRBadge({
           data-no-dnd
           className={cn(
             "flex items-center gap-1 text-xs text-left cursor-pointer transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent min-w-0",
-            freshnessOpacityClass(freshnessLevel),
-            missingToken && "opacity-60"
+            freshnessOpacityClass(freshnessLevel)
           )}
           aria-disabled={!isActive || undefined}
           aria-label={
@@ -81,10 +80,25 @@ export const PRBadge = memo(function PRBadge({
           }
         >
           {isSubordinate && (
-            <CornerDownRight className="w-3 h-3 text-text-muted shrink-0" aria-hidden="true" />
+            <CornerDownRight
+              className={cn(
+                "w-3 h-3 shrink-0",
+                missingToken ? "grayscale opacity-50" : "text-text-muted"
+              )}
+              aria-hidden="true"
+            />
           )}
-          <GitPullRequest className={cn("w-3 h-3 shrink-0", prStateColor)} aria-hidden="true" />
-          <span className={cn("font-mono", underlineOnHover && "hover:underline", prStateColor)}>
+          <GitPullRequest
+            className={cn("w-3 h-3 shrink-0", missingToken ? "grayscale opacity-50" : prStateColor)}
+            aria-hidden="true"
+          />
+          <span
+            className={cn(
+              "font-mono",
+              underlineOnHover && "hover:underline",
+              missingToken ? "text-text-muted" : prStateColor
+            )}
+          >
             #{prNumber}
           </span>
         </button>

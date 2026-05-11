@@ -58,14 +58,24 @@ export function UpstreamSyncBadge({
             type="button"
             onClick={handleSignInClick}
             data-no-dnd
-            className="flex items-center text-[10px] text-status-warning/80 hover:text-status-warning transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent rounded-sm cursor-pointer"
-            data-testid="upstream-sync-auth-cta"
+            className={cn(
+              "flex items-center text-[10px] font-mono tabular-nums cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent",
+              containerGapClass
+            )}
+            data-testid="upstream-sync-indicator"
+            data-fetch-auth-failed="true"
+            aria-label="GitHub authentication failed — click to reconnect"
           >
-            Sign in to refresh
+            <span className="flex items-center gap-1.5 grayscale opacity-50 text-text-primary/50">
+              {hasAhead && <span>↑{aheadCount}</span>}
+              {hasBehind && <span>↓{behindCount}</span>}
+              {!hasAhead && !hasBehind && <span>—</span>}
+            </span>
           </button>
         </TooltipTrigger>
         <TooltipContent side="right" className="text-xs">
-          <div>Couldn't reach origin — GitHub credentials failed</div>
+          <div>GitHub authentication failed</div>
+          <div className="text-daintree-text/70 mt-0.5">Click to reconnect GitHub</div>
           {lastFetchedAt != null && (
             <div className="text-text-muted">Last fetched {formatLastFetched(lastFetchedAt)}</div>
           )}

@@ -951,7 +951,11 @@ describe("WorktreeHeader token-missing badge behavior", () => {
       name: /Configure GitHub token to see issue details/,
     });
     expect(issueButton).toBeDefined();
-    expect(issueButton.className).toContain("opacity-60");
+    // Button stays full-opacity for focus-ring contrast; icon is dimmed.
+    expect(issueButton.className).not.toContain("opacity-60");
+    const issueIcon = issueButton.querySelector("svg");
+    expect(issueIcon?.className.baseVal).toContain("grayscale");
+    expect(issueIcon?.className.baseVal).toContain("opacity-50");
   });
 
   it("issue badge dispatches settings action on click when no token configured", () => {
@@ -987,7 +991,10 @@ describe("WorktreeHeader token-missing badge behavior", () => {
       name: /Configure GitHub token to see PR details/,
     });
     expect(prButton).toBeDefined();
-    expect(prButton.className).toContain("opacity-60");
+    expect(prButton.className).not.toContain("opacity-60");
+    const prIcon = prButton.querySelector("svg");
+    expect(prIcon?.className.baseVal).toContain("grayscale");
+    expect(prIcon?.className.baseVal).toContain("opacity-50");
   });
 
   it("PR badge dispatches settings action on click when no token configured", () => {
@@ -1082,23 +1089,44 @@ describe("WorktreeHeader upstream sync indicator", () => {
     expect(indicator.className).not.toContain("animate-pulse-immediate");
   });
 
-  it("renders 'Sign in to refresh' affordance only when auth-failed AND github remote", () => {
+  it("renders dimmed chip when auth-failed and github remote", () => {
     renderHeader({
       worktree: {
         ...baseWorktree,
         aheadCount: 1,
+        behindCount: 2,
         fetchAuthFailed: true,
         isGitHubRemote: true,
       },
     });
-    const cta = screen.getByTestId("upstream-sync-auth-cta");
-    expect(cta).toBeDefined();
-    expect(cta.textContent).toBe("Sign in to refresh");
-    // The count indicator is replaced by the CTA — both shouldn't render.
-    expect(screen.queryByTestId("upstream-sync-indicator")).toBeNull();
+    const indicator = screen.getByTestId("upstream-sync-indicator");
+    expect(indicator).toBeDefined();
+    expect(indicator.getAttribute("data-fetch-auth-failed")).toBe("true");
+    // Chip shows counts in dimmed form, not a colored "Sign in" CTA.
+    expect(indicator.textContent).toContain("↑1");
+    expect(indicator.textContent).toContain("↓2");
+    expect(indicator.textContent).not.toContain("Sign in");
+    // No animate-pulse-immediate in auth-failed state.
+    expect(indicator.className).not.toContain("animate-pulse-immediate");
   });
 
-  it("hides 'Sign in to refresh' affordance for non-GitHub auth failures", () => {
+  it("renders dimmed placeholder when auth-failed and no counts", () => {
+    renderHeader({
+      worktree: {
+        ...baseWorktree,
+        aheadCount: 0,
+        behindCount: 0,
+        fetchAuthFailed: true,
+        isGitHubRemote: true,
+      },
+    });
+    const indicator = screen.getByTestId("upstream-sync-indicator");
+    expect(indicator).toBeDefined();
+    expect(indicator.getAttribute("data-fetch-auth-failed")).toBe("true");
+    expect(indicator.textContent).toContain("—");
+  });
+
+  it("falls through to regular count display for non-GitHub auth failures", () => {
     renderHeader({
       worktree: {
         ...baseWorktree,
@@ -1107,20 +1135,20 @@ describe("WorktreeHeader upstream sync indicator", () => {
         isGitHubRemote: false,
       },
     });
-    expect(screen.queryByTestId("upstream-sync-auth-cta")).toBeNull();
-    // Falls through to the regular count display.
-    expect(screen.getByTestId("upstream-sync-indicator")).toBeDefined();
+    const indicator = screen.getByTestId("upstream-sync-indicator");
+    expect(indicator).toBeDefined();
+    expect(indicator.getAttribute("data-fetch-auth-failed")).toBeNull();
+    expect(indicator.getAttribute("data-fetch-in-flight")).toBeNull();
   });
 
-  it("hides the indicator entirely when there are no counts and no auth-fail CTA", () => {
+  it("hides the indicator entirely when there are no counts and no auth failure", () => {
     renderHeader({
       worktree: { ...baseWorktree, aheadCount: 0, behindCount: 0 },
     });
     expect(screen.queryByTestId("upstream-sync-indicator")).toBeNull();
-    expect(screen.queryByTestId("upstream-sync-auth-cta")).toBeNull();
   });
 
-  it("dispatches openTab → github settings on Sign in CTA click", () => {
+  it("dispatches openTab → github settings on auth-failed chip click", () => {
     renderHeader({
       worktree: {
         ...baseWorktree,
@@ -1129,8 +1157,8 @@ describe("WorktreeHeader upstream sync indicator", () => {
         isGitHubRemote: true,
       },
     });
-    const cta = screen.getByTestId("upstream-sync-auth-cta");
-    fireEvent.click(cta);
+    const indicator = screen.getByTestId("upstream-sync-indicator");
+    fireEvent.click(indicator);
     expect(actionService.dispatch).toHaveBeenCalledWith(
       "app.settings.openTab",
       { tab: "github", sectionId: "github-token" },
@@ -1138,7 +1166,7 @@ describe("WorktreeHeader upstream sync indicator", () => {
     );
   });
 
-  it("renders the count display (no auth CTA) when only fetchNetworkFailed is set", () => {
+  it("renders the count display when only fetchNetworkFailed is set", () => {
     renderHeader({
       worktree: {
         ...baseWorktree,
@@ -1147,9 +1175,7 @@ describe("WorktreeHeader upstream sync indicator", () => {
       },
     });
     // The badge still renders the count display (transient failure doesn't
-    // replace the indicator with a CTA — only auth+github does).
+    // replace the indicator — only auth+github gets dimmed).
     expect(screen.getByTestId("upstream-sync-indicator")).toBeDefined();
-    // No auth CTA for transient failures.
-    expect(screen.queryByTestId("upstream-sync-auth-cta")).toBeNull();
   });
 });
