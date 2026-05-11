@@ -1014,7 +1014,7 @@ describe("ReviewHub", () => {
 
       await waitFor(() => {
         screen.getByText("failing");
-        screen.getByText(/ci failing/i);
+        screen.getByLabelText(/ci failing/i);
       });
     });
 
