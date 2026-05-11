@@ -20,8 +20,18 @@ import { logIdentityDebugDev, recordIdentityEventDev } from "./identityDiagnosti
 // read by this listener.
 const _changedFileBaseline = new Map<string, number>();
 
+// Per-worktree last-notified timestamp for the completed-with-changes inbox
+// entry. `notify()`'s built-in `coalesce` only applies to toasts, so for
+// `priority: "low"` (inbox-only) it has no effect — we dedupe at the call
+// site instead so six parallel agents finishing on the same worktree
+// collapse to a single inbox entry.
+const _lastReviewInboxAt = new Map<string, number>();
+
+const REVIEW_INBOX_COALESCE_MS = 5000;
+
 export function _resetChangedFileBaseline(): void {
   _changedFileBaseline.clear();
+  _lastReviewInboxAt.clear();
 }
 
 function readChangedFileCount(worktreeId: string | undefined): number | null {
@@ -117,26 +127,39 @@ export function setupIdentityListeners(): DisposableStore {
           const baseline = _changedFileBaseline.get(terminalId);
           _changedFileBaseline.delete(terminalId);
 
-          if (worktreeId && current !== null && current > (baseline ?? 0)) {
-            notify({
-              type: "info",
-              priority: "low",
-              title: "Agent finished with changes",
-              message: "Open the review hub to see what changed.",
-              context: { worktreeId, eventKind: "completed" },
-              action: {
-                label: "Open review hub",
-                actionId: "worktree.openReviewHub",
-                actionArgs: { worktreeId },
-                onClick: () => {
-                  void actionService.dispatch(
-                    "worktree.openReviewHub",
-                    { worktreeId },
-                    { source: "user" }
-                  );
+          // Require a captured baseline. An agent that jumps idle → completed
+          // without a `working` event has no "started" timestamp to compare
+          // against, so pre-existing dirty files would otherwise look like
+          // new agent work.
+          if (
+            worktreeId &&
+            current !== null &&
+            baseline !== undefined &&
+            current > baseline
+          ) {
+            const lastAt = _lastReviewInboxAt.get(worktreeId) ?? 0;
+            if (timestamp - lastAt >= REVIEW_INBOX_COALESCE_MS) {
+              _lastReviewInboxAt.set(worktreeId, timestamp);
+              notify({
+                type: "info",
+                priority: "low",
+                title: "Agent finished with changes",
+                message: "Open the review hub to see what changed.",
+                context: { worktreeId, eventKind: "completed" },
+                action: {
+                  label: "Open review hub",
+                  actionId: "worktree.openReviewHub",
+                  actionArgs: { worktreeId },
+                  onClick: () => {
+                    void actionService.dispatch(
+                      "worktree.openReviewHub",
+                      { worktreeId },
+                      { source: "user" }
+                    );
+                  },
                 },
-              },
-            });
+              });
+            }
           }
         }
 

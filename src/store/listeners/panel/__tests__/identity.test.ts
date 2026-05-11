@@ -180,24 +180,14 @@ describe("identity listener — completed-with-changes notification", () => {
     d.dispose();
   });
 
-  it("fires when there was no working state before completed but current count > 0", () => {
+  it("does not fire when no working state was captured (no baseline)", () => {
     setupPanel();
     const d = setupIdentityListeners();
 
-    // No baseline captured — agent jumps straight to completed.
-    mockChangedFileCount = 1;
-    transition("completed", "idle");
-
-    expect(notify).toHaveBeenCalledTimes(1);
-
-    d.dispose();
-  });
-
-  it("does not fire when there was no working state and current count is 0", () => {
-    setupPanel();
-    const d = setupIdentityListeners();
-
-    mockChangedFileCount = 0;
+    // No baseline captured — agent jumps straight to completed. Without a
+    // "started" anchor, pre-existing dirty files cannot be distinguished
+    // from agent-produced changes, so we suppress the notification.
+    mockChangedFileCount = 5;
     transition("completed", "idle");
 
     expect(notify).not.toHaveBeenCalled();
@@ -286,6 +276,49 @@ describe("identity listener — completed-with-changes notification", () => {
     transition("completed", "working");
 
     expect(notify).not.toHaveBeenCalled();
+
+    d.dispose();
+  });
+
+  it("coalesces parallel completions on the same worktree into one inbox entry", () => {
+    // Two panels on the same worktree both complete inside the coalesce
+    // window — the spec wants one rolled-up entry per worktree.
+    usePanelStore.setState({
+      panelsById: {
+        "term-1": {
+          id: "term-1",
+          kind: "terminal",
+          title: "Terminal 1",
+          cwd: "/tmp/wt-1",
+          cols: 80,
+          rows: 24,
+          location: "grid" as const,
+          worktreeId: "wt-1",
+        } as unknown as ReturnType<typeof usePanelStore.getState>["panelsById"][string],
+        "term-2": {
+          id: "term-2",
+          kind: "terminal",
+          title: "Terminal 2",
+          cwd: "/tmp/wt-1",
+          cols: 80,
+          rows: 24,
+          location: "grid" as const,
+          worktreeId: "wt-1",
+        } as unknown as ReturnType<typeof usePanelStore.getState>["panelsById"][string],
+      },
+      panelIds: ["term-1", "term-2"],
+    });
+    const d = setupIdentityListeners();
+
+    mockChangedFileCount = 0;
+    transition("working", "idle", "term-1");
+    transition("working", "idle", "term-2");
+
+    mockChangedFileCount = 3;
+    transition("completed", "working", "term-1");
+    transition("completed", "working", "term-2");
+
+    expect(notify).toHaveBeenCalledTimes(1);
 
     d.dispose();
   });
