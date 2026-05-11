@@ -787,12 +787,7 @@ export function WorktreeCard({
                       wslGitEligible={worktree.wslGitEligible}
                     />
                   )}
-                  {isMainWorktree && (
-                    <MainWorktreeSummaryRows
-                      aggregateCounts={aggregateCounts}
-                      health={projectHealth ?? null}
-                    />
-                  )}
+                  {isMainWorktree && <MainWorktreeSummaryRows health={projectHealth ?? null} />}
 
                   <WorktreeDetailsSection
                     worktree={worktree}
