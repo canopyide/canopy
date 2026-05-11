@@ -85,6 +85,42 @@ export interface ConflictedFileEntry {
   label: string;
 }
 
+/**
+ * Normalized rebase-todo action. Aliases (`p`/`pick`, `s`/`squash`, etc.) collapse
+ * onto the long form. Structural lines (`exec`, `break`, `label`, `reset`, `merge`,
+ * `update-ref`) fold into `other` so the renderer can de-emphasize them uniformly.
+ */
+export type RebaseAction =
+  | "pick"
+  | "reword"
+  | "edit"
+  | "squash"
+  | "fixup"
+  | "drop"
+  | "exec"
+  | "other";
+
+/** Per-entry progress within an in-flight rebase. */
+export type RebaseEntryState = "done" | "current" | "pending";
+
+export interface RebaseEntry {
+  /** Normalized action keyword. */
+  action: RebaseAction;
+  /** Abbreviated SHA from the todo line, or `null` for actions without a commit (`exec`, `other`). */
+  sha: string | null;
+  /** Commit subject or, for `exec`, the command string. May be empty. */
+  subject: string;
+  /** Progress state derived from the done/todo file split. */
+  state: RebaseEntryState;
+}
+
+export interface RebaseSequence {
+  /** Ordered: done entries first, then the current one, then pending. */
+  entries: RebaseEntry[];
+  /** Only `merge` carries full entry data; `apply` falls back to step counters. */
+  backend: "merge" | "apply";
+}
+
 export interface StagingStatus {
   staged: StagingFileEntry[];
   unstaged: StagingFileEntry[];
@@ -101,6 +137,12 @@ export interface StagingStatus {
   rebaseStep: number | null;
   /** When `repoState === "REBASING"`, the total step count. Null otherwise. */
   rebaseTotalSteps: number | null;
+  /**
+   * When `repoState === "REBASING"` and the merge backend is in use, the full sequence
+   * parsed from `.git/rebase-merge/done` + `git-rebase-todo`. Null for the apply backend,
+   * non-rebase states, and read failures — consumers must degrade gracefully.
+   */
+  rebaseSequence: RebaseSequence | null;
 }
 
 /** Branch information from git */

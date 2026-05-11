@@ -177,6 +177,7 @@ const makeStatus = (overrides?: Partial<StagingStatus>): StagingStatus => ({
   repoState: "DIRTY",
   rebaseStep: null,
   rebaseTotalSteps: null,
+  rebaseSequence: null,
   ...overrides,
 });
 
@@ -872,6 +873,48 @@ describe("ReviewHub", () => {
 
       await waitFor(() => screen.getByTestId("conflict-rebase-progress"));
       expect(screen.getByTestId("conflict-rebase-progress").textContent).toMatch(/Step 3 of 8/);
+    });
+
+    it("renders the rebase sequence rail when rebaseSequence is populated", async () => {
+      getStagingStatusMock.mockResolvedValue(
+        makeMergingStatus({
+          repoState: "REBASING",
+          rebaseStep: 2,
+          rebaseTotalSteps: 4,
+          rebaseSequence: {
+            backend: "merge",
+            entries: [
+              { action: "pick", sha: "aaa1111", subject: "first", state: "done" },
+              { action: "pick", sha: "bbb2222", subject: "second", state: "current" },
+              { action: "fixup", sha: "ccc3333", subject: "third", state: "pending" },
+              { action: "pick", sha: "ddd4444", subject: "fourth", state: "pending" },
+            ],
+          },
+        })
+      );
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      const rail = await screen.findByTestId("conflict-rebase-sequence");
+      expect(within(rail).getAllByTestId(/^rebase-entry-/)).toHaveLength(4);
+      expect(within(rail).getByTestId("rebase-entry-current").textContent).toContain("bbb2222");
+      expect(within(rail).getByTestId("rebase-entry-current").textContent).toContain("second");
+    });
+
+    it("does not render the rebase sequence rail when rebaseSequence is null (apply backend)", async () => {
+      getStagingStatusMock.mockResolvedValue(
+        makeMergingStatus({
+          repoState: "REBASING",
+          rebaseStep: 1,
+          rebaseTotalSteps: 3,
+          rebaseSequence: null,
+        })
+      );
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByTestId("conflict-rebase-progress"));
+      expect(screen.queryByTestId("conflict-rebase-sequence")).toBeNull();
     });
 
     it("disables Continue when conflicted files remain", async () => {

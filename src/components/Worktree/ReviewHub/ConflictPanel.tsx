@@ -1,13 +1,18 @@
 import { useCallback, useMemo, useState } from "react";
-import type { RepoState, StagingStatus } from "@shared/types";
+import type { RebaseAction, RebaseEntry, RepoState, StagingStatus } from "@shared/types";
 import { cn } from "@/lib/utils";
 import {
   AlertTriangle,
   Check,
+  ChevronRight,
+  CircleDashed,
+  CircleSlash,
   ExternalLink,
   FileIcon,
+  GitCommit,
   GitMerge,
   Play,
+  Terminal,
   XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -32,12 +37,140 @@ const ABORT_DESCRIPTION: Record<Exclude<RepoState, "CLEAN" | "DIRTY">, string> =
     "Discards the in-progress revert and restores the working tree to the state before the operation started.",
 };
 
+const REBASE_ACTION_LABEL: Record<RebaseAction, string> = {
+  pick: "pick",
+  reword: "reword",
+  edit: "edit",
+  squash: "squash",
+  fixup: "fixup",
+  drop: "drop",
+  exec: "exec",
+  other: "step",
+};
+
+interface RebaseDisplayEntry extends RebaseEntry {
+  /** Indented under a preceding pick/reword/edit to show grouping. */
+  indented: boolean;
+}
+
 interface ConflictPanelProps {
   status: StagingStatus;
   onMarkResolved: (filePath: string) => Promise<void> | void;
   onOpenInEditor: (filePath: string) => Promise<void> | void;
   onAbort: () => Promise<void>;
   onContinue: () => Promise<void>;
+}
+
+/**
+ * Vertical commit-sequence rail for an in-progress rebase. The current step
+ * carries the sole accent treatment in the conflict view per the accent-as-
+ * scarce-resource rule — every other state uses neutral surfaces.
+ */
+function RebaseSequenceRail({ entries }: { entries: RebaseEntry[] }) {
+  const display = useMemo<RebaseDisplayEntry[]>(() => {
+    const out: RebaseDisplayEntry[] = [];
+    let lastParentWasCommit = false;
+    for (const entry of entries) {
+      // fixup/squash visually nest under the preceding pick/reword/edit so the
+      // operator can see which commit they amend without collapsing the rows.
+      const indented =
+        lastParentWasCommit && (entry.action === "fixup" || entry.action === "squash");
+      out.push({ ...entry, indented });
+      if (entry.action === "pick" || entry.action === "reword" || entry.action === "edit") {
+        lastParentWasCommit = true;
+      } else if (entry.action !== "fixup" && entry.action !== "squash") {
+        lastParentWasCommit = false;
+      }
+    }
+    return out;
+  }, [entries]);
+
+  if (display.length === 0) return null;
+
+  return (
+    <div className="border-b border-divider" data-testid="conflict-rebase-sequence">
+      <div className="px-4 py-2 bg-overlay-subtle flex items-center">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-daintree-text/60">
+          Rebase sequence
+          <span className="ml-1.5 tabular-nums bg-tint/10 rounded px-1 py-0.5 text-[10px] font-medium normal-case tracking-normal">
+            {display.length}
+          </span>
+        </span>
+      </div>
+      <ul
+        className="px-2 py-1 flex flex-col gap-0.5 max-h-48 overflow-y-auto"
+        role="list"
+        aria-label="Rebase commit sequence"
+      >
+        {display.map((entry, idx) => (
+          <RebaseSequenceRow key={`rebase-entry-${idx}`} entry={entry} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function RebaseSequenceRow({ entry }: { entry: RebaseDisplayEntry }) {
+  const isDropped = entry.action === "drop";
+  const isCurrent = entry.state === "current";
+  const isDone = entry.state === "done";
+  const isExec = entry.action === "exec";
+
+  // State drives row tone; action drives the icon.
+  const rowTone = isCurrent
+    ? "text-accent-primary font-medium"
+    : isDone
+      ? "text-daintree-text/45"
+      : "text-daintree-text/75";
+
+  const StateIcon = isCurrent
+    ? ChevronRight
+    : isDone
+      ? Check
+      : isDropped
+        ? CircleSlash
+        : CircleDashed;
+
+  const ActionIcon = isExec ? Terminal : GitCommit;
+
+  return (
+    <li
+      className={cn(
+        "flex items-center gap-2 px-2 py-1 text-xs transition-colors",
+        entry.indented && "ml-4",
+        rowTone
+      )}
+      data-testid={`rebase-entry-${entry.state}`}
+      data-action={entry.action}
+    >
+      <StateIcon className="w-3 h-3 shrink-0" aria-hidden />
+      <span
+        className={cn(
+          "text-[10px] uppercase tracking-wider font-mono w-12 shrink-0 text-daintree-text/55",
+          isCurrent && "text-accent-primary/80"
+        )}
+      >
+        {REBASE_ACTION_LABEL[entry.action]}
+      </span>
+      {entry.sha != null && entry.sha.length > 0 ? (
+        <span className="font-mono text-[11px] tabular-nums text-daintree-text/55 shrink-0">
+          {entry.sha.slice(0, 7)}
+        </span>
+      ) : (
+        <span className="font-mono text-[11px] text-daintree-text/30 shrink-0">—</span>
+      )}
+      <TruncatedTooltip content={entry.subject || REBASE_ACTION_LABEL[entry.action]}>
+        <span
+          className={cn(
+            "flex-1 min-w-0 truncate font-mono text-[11px]",
+            isDropped && "line-through"
+          )}
+        >
+          {entry.subject}
+        </span>
+      </TruncatedTooltip>
+    </li>
+  );
 }
 
 function splitPath(filePath: string): { dir: string; base: string } {
@@ -137,6 +270,11 @@ export function ConflictPanel({
           </p>
         </div>
       </div>
+
+      {/* Rebase commit sequence (merge backend only) */}
+      {operationState === "REBASING" && status.rebaseSequence != null && (
+        <RebaseSequenceRail entries={status.rebaseSequence.entries} />
+      )}
 
       {/* Conflicted files */}
       <div className="border-b border-divider">

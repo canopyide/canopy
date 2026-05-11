@@ -128,6 +128,7 @@ const makeStatus = (overrides?: Partial<StagingStatus>): StagingStatus => ({
   repoState: "DIRTY",
   rebaseStep: null,
   rebaseTotalSteps: null,
+  rebaseSequence: null,
   ...overrides,
 });
 

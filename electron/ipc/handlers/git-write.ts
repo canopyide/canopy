@@ -10,10 +10,12 @@ import type { HandlerDependencies } from "../types.js";
 import type {
   ConflictedFileEntry,
   GitStatus,
+  RebaseSequence,
   RepoState,
   StagingStatus,
 } from "../../../shared/types/git.js";
 import { validateCwd, createHardenedGit, createAuthenticatedGit } from "../../utils/hardenedGit.js";
+import { readRebaseSequence } from "../../utils/parseRebaseTodo.js";
 import { store } from "../../store.js";
 import { getSoundService } from "../../services/getSoundService.js";
 import type * as SoundServiceModule from "../../services/SoundService.js";
@@ -81,6 +83,7 @@ interface RepoOperationState {
   state: RepoState;
   rebaseStep: number | null;
   rebaseTotalSteps: number | null;
+  rebaseSequence: RebaseSequence | null;
 }
 
 async function detectRepoOperationState(
@@ -98,22 +101,39 @@ async function detectRepoOperationState(
 
   // REBASING takes precedence: during rebase conflict, MERGE_HEAD may also appear.
   if (hasRebaseMerge || hasRebaseApply) {
-    const { step, total } = await readRebaseProgress(gitDir, hasRebaseMerge ? "merge" : "apply");
-    return { state: "REBASING", rebaseStep: step, rebaseTotalSteps: total };
+    const backend: "merge" | "apply" = hasRebaseMerge ? "merge" : "apply";
+    const [{ step, total }, sequence] = await Promise.all([
+      readRebaseProgress(gitDir, backend),
+      // Only the merge backend stores per-commit todo/done; apply uses numbered
+      // patches with no subject metadata. Null degrades the renderer cleanly.
+      backend === "merge" ? readRebaseSequence(gitDir).catch(() => null) : Promise.resolve(null),
+    ]);
+    return {
+      state: "REBASING",
+      rebaseStep: step,
+      rebaseTotalSteps: total,
+      rebaseSequence: sequence,
+    };
   }
   if (hasCherryPickHead) {
-    return { state: "CHERRY_PICKING", rebaseStep: null, rebaseTotalSteps: null };
+    return {
+      state: "CHERRY_PICKING",
+      rebaseStep: null,
+      rebaseTotalSteps: null,
+      rebaseSequence: null,
+    };
   }
   if (hasRevertHead) {
-    return { state: "REVERTING", rebaseStep: null, rebaseTotalSteps: null };
+    return { state: "REVERTING", rebaseStep: null, rebaseTotalSteps: null, rebaseSequence: null };
   }
   if (hasMergeHead) {
-    return { state: "MERGING", rebaseStep: null, rebaseTotalSteps: null };
+    return { state: "MERGING", rebaseStep: null, rebaseTotalSteps: null, rebaseSequence: null };
   }
   return {
     state: hasUnmerged ? "DIRTY" : "CLEAN",
     rebaseStep: null,
     rebaseTotalSteps: null,
+    rebaseSequence: null,
   };
 }
 
@@ -475,12 +495,14 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
     let repoState: RepoState = conflicted.length > 0 ? "DIRTY" : "CLEAN";
     let rebaseStep: number | null = null;
     let rebaseTotalSteps: number | null = null;
+    let rebaseSequence: RebaseSequence | null = null;
     try {
       const gitDir = await resolveGitDir(git, cwd);
       const detected = await detectRepoOperationState(gitDir, conflicted.length > 0);
       repoState = detected.state;
       rebaseStep = detected.rebaseStep;
       rebaseTotalSteps = detected.rebaseTotalSteps;
+      rebaseSequence = detected.rebaseSequence;
     } catch {
       // If git-dir resolution fails, fall back to CLEAN/DIRTY from index alone.
     }
@@ -496,6 +518,7 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
       repoState,
       rebaseStep,
       rebaseTotalSteps,
+      rebaseSequence,
     };
   };
   handlers.push(typedHandle(CHANNELS.GIT_GET_STAGING_STATUS, handleGetStagingStatus));
