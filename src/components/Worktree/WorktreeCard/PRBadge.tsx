@@ -1,9 +1,11 @@
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { CornerDownRight, GitPullRequest } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip";
 import { usePRTooltip } from "@/hooks/useGitHubTooltip";
 import { useGitHubBadgeTooltip } from "./hooks/useGitHubBadgeTooltip";
+import { useGitHubBadgeFreshness } from "./hooks/useGitHubBadgeFreshness";
+import { freshnessOpacityClass, freshnessSuffix } from "@/components/Layout/FreshnessUtils";
 import { PRTooltipContent, TooltipLoading, TokenMissingTooltip } from "./GitHubTooltipContent";
 
 interface PRBadgeProps {
@@ -14,6 +16,7 @@ interface PRBadgeProps {
   onOpen?: () => void;
   isActive?: boolean;
   underlineOnHover?: boolean;
+  rowLastUpdatedAt?: number;
 }
 
 export const PRBadge = memo(function PRBadge({
@@ -24,6 +27,7 @@ export const PRBadge = memo(function PRBadge({
   onOpen,
   isActive,
   underlineOnHover,
+  rowLastUpdatedAt,
 }: PRBadgeProps) {
   const { data, loading, error, missingToken, fetchTooltip, reset } = usePRTooltip(
     worktreePath,
@@ -38,6 +42,11 @@ export const PRBadge = memo(function PRBadge({
     onOpen,
   });
 
+  const { freshnessLevel, cacheLastUpdatedAt, now } = useGitHubBadgeFreshness(
+    "pr",
+    rowLastUpdatedAt
+  );
+
   const prStateColor =
     prState === "merged"
       ? "text-github-merged"
@@ -47,8 +56,12 @@ export const PRBadge = memo(function PRBadge({
 
   const prStateLabel = prState === "merged" ? "merged" : prState === "closed" ? "closed" : "open";
 
+  const freshnessSuffixStr = useMemo(
+    () => freshnessSuffix(freshnessLevel, cacheLastUpdatedAt, now),
+    [freshnessLevel, cacheLastUpdatedAt, now]
+  );
+
   return (
-    // 300ms matches GitHub's hovercard entry latency — keeps perceived delay consistent with github.com
     <Tooltip open={isOpen} onOpenChange={handleOpenChange} delayDuration={300}>
       <TooltipTrigger asChild>
         <button
@@ -57,6 +70,7 @@ export const PRBadge = memo(function PRBadge({
           data-no-dnd
           className={cn(
             "flex items-center gap-1 text-xs text-left cursor-pointer transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent min-w-0",
+            freshnessOpacityClass(freshnessLevel),
             missingToken && "opacity-60"
           )}
           aria-disabled={!isActive || undefined}
@@ -86,6 +100,9 @@ export const PRBadge = memo(function PRBadge({
           <span className="text-xs text-text-secondary">Failed to load PR details</span>
         ) : (
           <span className="text-xs text-text-secondary">PR #{prNumber}</span>
+        )}
+        {freshnessSuffixStr && (
+          <span className="block text-[11px] text-text-muted mt-1">{freshnessSuffixStr}</span>
         )}
       </TooltipContent>
     </Tooltip>

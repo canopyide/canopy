@@ -78,6 +78,8 @@ export interface WorktreeSnapshot {
   prState?: "open" | "merged" | "closed";
   prTitle?: string;
   issueTitle?: string;
+  prLastUpdatedAt?: number;
+  issueLastUpdatedAt?: number;
   worktreeChanges?: WorktreeChanges | null;
   worktreeId: string;
   timestamp?: number;
@@ -398,6 +400,8 @@ export type WorkspaceHostEvent =
       prTitle?: string;
       issueNumber?: number;
       issueTitle?: string;
+      prLastUpdatedAt?: number;
+      issueLastUpdatedAt?: number;
     }
   | { type: "pr-cleared"; worktreeId: string }
   // Issue events
@@ -406,6 +410,7 @@ export type WorkspaceHostEvent =
       worktreeId: string;
       issueNumber: number;
       issueTitle: string;
+      issueLastUpdatedAt?: number;
     }
   | {
       type: "issue-not-found";

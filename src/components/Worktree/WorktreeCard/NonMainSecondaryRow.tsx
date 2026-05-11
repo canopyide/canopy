@@ -44,6 +44,7 @@ export function NonMainSecondaryRow({
           onOpen={badges.onOpenIssue}
           isActive={isActive}
           underlineOnHover={underlineOnHover}
+          rowLastUpdatedAt={worktree.issueLastUpdatedAt}
         />
       )}
       {worktree.prNumber && worktree.prState !== "closed" && (
@@ -55,6 +56,7 @@ export function NonMainSecondaryRow({
           onOpen={badges.onOpenPR}
           isActive={isActive}
           underlineOnHover={underlineOnHover}
+          rowLastUpdatedAt={worktree.prLastUpdatedAt}
         />
       )}
       {(hasUpstreamDelta || hasAuthFailedSignIn) && (
