@@ -516,7 +516,6 @@ export function WorktreeCard({
     }
   };
 
-
   const handleAttachIssue = async (issue: GitHubIssue) => {
     await worktreeClient.attachIssue({
       worktreeId: worktree.id,

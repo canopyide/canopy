@@ -20,10 +20,7 @@ import { getPerFileDiffStats, invalidateStagingDiffStatCache } from "../../utils
 import { store } from "../../store.js";
 import { getSoundService } from "../../services/getSoundService.js";
 import type * as SoundServiceModule from "../../services/SoundService.js";
-import {
-  detectRepoOperationState,
-  resolveGitDir,
-} from "../../services/git/repoOperationState.js";
+import { detectRepoOperationState, resolveGitDir } from "../../services/git/repoOperationState.js";
 import { parsePorcelainV2Conflicts } from "../../services/git/porcelainConflicts.js";
 import {
   STAGED_FILE_SIZE_CAP,
