@@ -349,11 +349,17 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
             <Tooltip>
               <TooltipTrigger asChild>
                 <div className="relative z-10 ml-3 flex shrink-0 items-center gap-1.5 text-xs text-text-muted">
-                  <ActivityLight
-                    lastActivityTimestamp={worktree.lastActivityTimestamp}
-                    className="w-1.5 h-1.5"
-                  />
-                  <LiveTimeAgo timestamp={worktree.lastActivityTimestamp} />
+                  {worktree.lastActivityTimestamp != null ? (
+                    <>
+                      <ActivityLight
+                        lastActivityTimestamp={worktree.lastActivityTimestamp}
+                        className="w-1.5 h-1.5"
+                      />
+                      <LiveTimeAgo timestamp={worktree.lastActivityTimestamp} />
+                    </>
+                  ) : (
+                    <span>No activity</span>
+                  )}
                 </div>
               </TooltipTrigger>
               <TooltipContent side="bottom">

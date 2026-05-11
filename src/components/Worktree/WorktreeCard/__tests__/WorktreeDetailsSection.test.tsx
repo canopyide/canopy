@@ -290,3 +290,57 @@ describe("WorktreeDetailsSection count pill bump", () => {
     expect(screen.getByText(/5 files/)).toBeDefined();
   });
 });
+
+describe("WorktreeDetailsSection activity indicator", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-06-15T12:00:00Z").getTime());
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("renders 'No activity' placeholder when lastActivityTimestamp is null", () => {
+    const worktree: WorktreeState = { ...baseWorktree, lastActivityTimestamp: null };
+    renderSection({ worktree, hasChanges: false });
+    expect(screen.getByText("No activity")).toBeDefined();
+  });
+
+  it("renders the activity dot and time ago when timestamp is present", () => {
+    const worktree: WorktreeState = {
+      ...baseWorktree,
+      lastActivityTimestamp: Date.now(),
+    };
+    renderSection({ worktree, hasChanges: false });
+    expect(screen.queryByText("No activity")).toBeNull();
+    // LiveTimeAgo renders "now" for a just-now timestamp
+    expect(screen.getByText("now")).toBeDefined();
+  });
+
+  it("renders hollow ring and time label for decayed timestamp", () => {
+    const worktree: WorktreeState = {
+      ...baseWorktree,
+      lastActivityTimestamp: Date.now() - 120_000, // 2 minutes ago — past DECAY_DURATION (90s)
+    };
+    renderSection({ worktree, hasChanges: false });
+    expect(screen.queryByText("No activity")).toBeNull();
+    // LiveTimeAgo renders a time label like "2m"
+    expect(screen.getByText("2m")).toBeDefined();
+  });
+
+  it("collapsed view shows 'No activity' when expanded view shows worktree details without activity section", () => {
+    // The expanded view (WorktreeDetails) already gates the activity section
+    // on showTime && lastActivityTimestamp (line 81). Verify the collapsed
+    // view handles the null case distinctly.
+    const worktree: WorktreeState = { ...baseWorktree, lastActivityTimestamp: null };
+    renderSection({ worktree, hasChanges: false });
+    expect(screen.getByText("No activity")).toBeDefined();
+  });
+
+  it("null timestamp worktree does not render an ActivityLight dot", () => {
+    const worktree: WorktreeState = { ...baseWorktree, lastActivityTimestamp: null };
+    const { container } = renderSection({ worktree, hasChanges: false });
+    expect(container.querySelector('[aria-hidden="true"]')).toBeNull();
+  });
+});

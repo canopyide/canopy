@@ -89,17 +89,14 @@ describe("ActivityLight", () => {
     expect(dot.style.borderColor).not.toBe("");
   });
 
-  it("renders hollow ring when timestamp is null", () => {
+  it("renders nothing when timestamp is null (never recorded)", () => {
     const { container } = render(<ActivityLight lastActivityTimestamp={null} />);
-    const dot = getDot(container);
-    expect(dot.className).toMatch(/\bborder\b/);
-    expect(dot.className).toMatch(/bg-transparent/);
+    expect(container.firstChild).toBeNull();
   });
 
-  it("renders hollow ring when timestamp is undefined", () => {
+  it("renders nothing when timestamp is undefined (never recorded)", () => {
     const { container } = render(<ActivityLight />);
-    const dot = getDot(container);
-    expect(dot.className).toMatch(/\bborder\b/);
+    expect(container.firstChild).toBeNull();
   });
 
   it("applies the className prop", () => {
