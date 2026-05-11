@@ -227,6 +227,8 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
             prUrl: undefined,
             prState: undefined,
             prTitle: undefined,
+            prLastUpdatedAt: undefined,
+            issueLastUpdatedAt: undefined,
           },
           store.getState().nextVersion()
         );
@@ -263,6 +265,7 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
             ...existing,
             issueNumber: undefined,
             issueTitle: undefined,
+            issueLastUpdatedAt: undefined,
           },
           store.getState().nextVersion()
         );
