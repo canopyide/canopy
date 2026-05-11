@@ -453,6 +453,202 @@ describe("ResourceGovernor", () => {
     });
   });
 
+  describe("throughput rate gauge", () => {
+    it("emits throughput-rate with exact rates on second tick (first tick seeds baselines)", () => {
+      vi.mocked(metricsEnabled).mockReturnValue(true);
+
+      let call = 0;
+      const deps = createMockDeps({
+        getThroughputSnapshot: vi.fn().mockImplementation(() => {
+          call++;
+          return {
+            timestamp: call * 2000,
+            totalBytes: 2048,
+            totalPackets: 4,
+            perTerminal: [{ terminalId: "t1", byteCount: 2048, packetCount: 4 }],
+            pauseCount: call * 2,
+          };
+        }),
+      });
+
+      const governor = new ResourceGovernor(deps);
+      governor.start();
+
+      // First tick: seeds baselines, no emission
+      vi.advanceTimersByTime(2000);
+
+      // Second tick: emits with computed rates (2048 bytes / 2s = 1024 B/s)
+      vi.advanceTimersByTime(2000);
+
+      expect(deps.sendEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "terminal-reliability-metric",
+          payload: expect.objectContaining({
+            terminalId: "resource-governor",
+            metricType: "throughput-rate",
+            totalBytesPerSecond: 1024,
+            pauseCountDelta: 2,
+            perTerminalThroughput: [
+              {
+                terminalId: "t1",
+                bytesPerSecond: 1024,
+                avgPacketSizeBytes: 512,
+              },
+            ],
+          }),
+        })
+      );
+
+      governor.dispose();
+    });
+
+    it("does not emit gauge when metrics are disabled", () => {
+      vi.mocked(metricsEnabled).mockReturnValue(false);
+
+      const deps = createMockDeps({
+        getThroughputSnapshot: vi.fn().mockReturnValue({
+          timestamp: 2000,
+          totalBytes: 2048,
+          totalPackets: 4,
+          perTerminal: [{ terminalId: "t1", byteCount: 2048, packetCount: 4 }],
+          pauseCount: 2,
+        }),
+      });
+
+      const governor = new ResourceGovernor(deps);
+      governor.start();
+
+      vi.advanceTimersByTime(2000);
+
+      const calls = (deps.sendEvent as ReturnType<typeof vi.fn>).mock.calls;
+      const gaugeCalls = calls.filter(
+        (c: unknown[]) =>
+          (c[0] as Record<string, unknown>)?.type === "terminal-reliability-metric" &&
+          ((c[0] as Record<string, unknown>)?.payload as Record<string, unknown>)?.metricType ===
+            "throughput-rate"
+      );
+      expect(gaugeCalls).toHaveLength(0);
+
+      governor.dispose();
+    });
+
+    it("does not emit gauge when snapshot is null (no bytes accumulated)", () => {
+      vi.mocked(metricsEnabled).mockReturnValue(true);
+
+      const deps = createMockDeps({
+        getThroughputSnapshot: vi.fn().mockReturnValue(null),
+      });
+
+      const governor = new ResourceGovernor(deps);
+      governor.start();
+
+      vi.advanceTimersByTime(2000);
+
+      const calls = (deps.sendEvent as ReturnType<typeof vi.fn>).mock.calls;
+      const gaugeCalls = calls.filter(
+        (c: unknown[]) =>
+          (c[0] as Record<string, unknown>)?.type === "terminal-reliability-metric" &&
+          ((c[0] as Record<string, unknown>)?.payload as Record<string, unknown>)?.metricType ===
+            "throughput-rate"
+      );
+      expect(gaugeCalls).toHaveLength(0);
+
+      governor.dispose();
+    });
+
+    it("does not emit gauge when totalBytes is zero", () => {
+      vi.mocked(metricsEnabled).mockReturnValue(true);
+
+      const deps = createMockDeps({
+        getThroughputSnapshot: vi.fn().mockReturnValue({
+          timestamp: 2000,
+          totalBytes: 0,
+          totalPackets: 0,
+          perTerminal: [],
+          pauseCount: 0,
+        }),
+      });
+
+      const governor = new ResourceGovernor(deps);
+      governor.start();
+
+      vi.advanceTimersByTime(2000);
+
+      const calls = (deps.sendEvent as ReturnType<typeof vi.fn>).mock.calls;
+      const gaugeCalls = calls.filter(
+        (c: unknown[]) =>
+          (c[0] as Record<string, unknown>)?.type === "terminal-reliability-metric" &&
+          ((c[0] as Record<string, unknown>)?.payload as Record<string, unknown>)?.metricType ===
+            "throughput-rate"
+      );
+      expect(gaugeCalls).toHaveLength(0);
+
+      governor.dispose();
+    });
+
+    it("gracefully handles missing getThroughputSnapshot dep", () => {
+      const deps = createMockDeps();
+      const governor = new ResourceGovernor(deps);
+      governor.start();
+
+      // Should not throw
+      expect(() => vi.advanceTimersByTime(2000)).not.toThrow();
+
+      governor.dispose();
+    });
+
+    it("computes pauseCountDelta from consecutive snapshots", () => {
+      vi.mocked(metricsEnabled).mockReturnValue(true);
+
+      let callCount = 0;
+      const deps = createMockDeps({
+        getThroughputSnapshot: vi.fn().mockImplementation(() => {
+          callCount++;
+          return {
+            timestamp: callCount * 2000,
+            totalBytes: 1024,
+            totalPackets: 2,
+            perTerminal: [{ terminalId: "t1", byteCount: 1024, packetCount: 2 }],
+            pauseCount: callCount * 3,
+          };
+        }),
+      });
+
+      const governor = new ResourceGovernor(deps);
+      governor.start();
+
+      // First tick: seeds baselines (no emission)
+      vi.advanceTimersByTime(2000);
+      // Second tick: emits with delta from seeded baseline
+      vi.advanceTimersByTime(2000);
+      // Third tick: emits delta since last update
+      vi.advanceTimersByTime(2000);
+
+      const calls = (deps.sendEvent as ReturnType<typeof vi.fn>).mock.calls;
+      const gaugeCalls = calls.filter(
+        (c: unknown[]) =>
+          (c[0] as Record<string, unknown>)?.type === "terminal-reliability-metric" &&
+          ((c[0] as Record<string, unknown>)?.payload as Record<string, unknown>)?.metricType ===
+            "throughput-rate"
+      );
+
+      // Two emissions (ticks 2 and 3)
+      expect(gaugeCalls).toHaveLength(2);
+
+      // First emission: pauseCount seeded at 3, current = 6, delta = 3
+      expect((gaugeCalls[0][0] as Record<string, unknown>).payload).toMatchObject({
+        pauseCountDelta: 3,
+      });
+
+      // Second emission: prev = 6, current = 9, delta = 3
+      expect((gaugeCalls[1][0] as Record<string, unknown>).payload).toMatchObject({
+        pauseCountDelta: 3,
+      });
+
+      governor.dispose();
+    });
+  });
+
   describe("trackKilledPid", () => {
     it("tracks killed PIDs and passes them to FdMonitor after grace period", () => {
       const deps = createMockDeps();
