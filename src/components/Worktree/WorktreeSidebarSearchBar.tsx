@@ -22,7 +22,7 @@ export function WorktreeSidebarSearchBar({ inputRef, chipCounts }: WorktreeSideb
   const query = useWorktreeFilterStore((state) => state.query);
   const setQuery = useWorktreeFilterStore((state) => state.setQuery);
   const clearAll = useWorktreeFilterStore((state) => state.clearAll);
-  const hasActiveFilters = useWorktreeFilterStore((state) => state.hasActiveFilters);
+  const hasActiveFilters = useWorktreeFilterStore((state) => state.hasActiveFilters());
 
   const [localQuery, setLocalQuery] = useState("");
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -70,14 +70,14 @@ export function WorktreeSidebarSearchBar({ inputRef, chipCounts }: WorktreeSideb
     (e: React.KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
-        if (localQuery || hasActiveFilters()) {
+        if (localQuery || useWorktreeFilterStore.getState().hasActiveFilters()) {
           handleClear();
         } else {
           internalRef.current?.blur();
         }
       }
     },
-    [localQuery, hasActiveFilters, handleClear]
+    [localQuery, handleClear]
   );
 
   const setRefs = useCallback(
@@ -88,7 +88,7 @@ export function WorktreeSidebarSearchBar({ inputRef, chipCounts }: WorktreeSideb
     [inputRef]
   );
 
-  const showClear = localQuery || hasActiveFilters();
+  const showClear = localQuery || hasActiveFilters;
 
   return (
     <div className="px-3 py-2 border-b border-divider shrink-0">

@@ -45,6 +45,18 @@ describe("worktreeFilterStore", () => {
     expect(useWorktreeFilterStore.getState().hasActiveFilters()).toBe(true);
   });
 
+  it("hasActiveFilters returns true when only a facet filter is active (no query)", () => {
+    useWorktreeFilterStore.getState().toggleStatusFilter("active");
+
+    expect(useWorktreeFilterStore.getState().hasActiveFilters()).toBe(true);
+    expect(useWorktreeFilterStore.getState().getActiveFilterCount()).toBe(1);
+
+    useWorktreeFilterStore.getState().clearAll();
+
+    expect(useWorktreeFilterStore.getState().hasActiveFilters()).toBe(false);
+    expect(useWorktreeFilterStore.getState().getActiveFilterCount()).toBe(0);
+  });
+
   it("treats whitespace-only query as inactive", () => {
     useWorktreeFilterStore.getState().setQuery("   ");
 
