@@ -363,11 +363,11 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
     payload: { cwd: string; setUpstream?: boolean }
   ): Promise<void> => {
     if (isPushing) return;
-    isPushing = true;
 
     checkRateLimit(CHANNELS.GIT_PUSH, 5, 10_000);
     validateCwd(payload?.cwd);
 
+    isPushing = true;
     const git = createAuthenticatedGit(payload.cwd);
     let branchName: string | undefined;
     const senderWindow = ctx.senderWindow;
@@ -419,6 +419,14 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
           const msg = formatErrorMessage(pushErr, "git push failed");
           if (msg.includes("no upstream branch") || msg.includes("has no upstream")) {
             await authGit.push(["--set-upstream", "origin", branchName]);
+            sendProgress({
+              cwd: payload.cwd,
+              stage: "target",
+              progress: null,
+              processed: null,
+              total: null,
+              targetBranch: `origin/${branchName}`,
+            });
           } else {
             throw pushErr;
           }

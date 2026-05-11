@@ -396,6 +396,7 @@ describe("ReviewHub", () => {
           continueRepositoryOperation: continueRepositoryOperationMock,
           scanConflictMarkers: scanConflictMarkersMock,
           checkoutOursTheirs: checkoutOursTheirsMock,
+          onPushProgress: vi.fn().mockReturnValue(vi.fn()),
         },
         system: { openInEditor: openInEditorMock },
         worktree: { onUpdate: onUpdateMock },
