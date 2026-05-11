@@ -548,6 +548,117 @@ describe("ReviewHub", () => {
     });
   });
 
+  describe("file row chrome (issue #7783)", () => {
+    it("separates stage and inspect click targets — toggling stage does not open the diff", async () => {
+      // Render via ReviewHub so the row is wired into the real component.
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+      await waitFor(() => screen.getByText("app.ts"));
+
+      // The stage toggle is `aria-label="Stage src/app.ts"`. Clicking it must
+      // call the stage IPC and must NOT advance to the diff view.
+      const stageBtn = screen.getByRole("button", { name: /^Stage src\/app\.ts/i });
+      fireEvent.click(stageBtn);
+
+      await waitFor(() => expect(stageFileMock).toHaveBeenCalledWith(WORKTREE_PATH, "src/app.ts"));
+
+      // The inspect button has aria-label "View diff: src/app.ts". It must be
+      // a separate, independently-clickable element.
+      const inspectBtn = screen.getByRole("button", { name: /^View diff: src\/app\.ts/i });
+      expect(inspectBtn).not.toBe(stageBtn);
+      expect(inspectBtn.contains(stageBtn)).toBe(false);
+      expect(stageBtn.contains(inspectBtn)).toBe(false);
+      // Inspect button captures the row's interactive surface.
+      expect(inspectBtn.className).toMatch(/flex-1/);
+    });
+
+    it("renders +N/-M churn from staging entries", async () => {
+      getStagingStatusMock.mockResolvedValue(
+        makeStatus({
+          staged: [{ path: "src/big.ts", status: "modified", insertions: 42, deletions: 7 }],
+          unstaged: [],
+        })
+      );
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+      await waitFor(() => screen.getByText("big.ts"));
+
+      const churn = screen.getByTestId("file-stage-row-churn");
+      expect(churn.textContent).toContain("+42");
+      expect(churn.textContent).toContain("-7");
+    });
+
+    it("omits the deletions span when the value is zero", async () => {
+      getStagingStatusMock.mockResolvedValue(
+        makeStatus({
+          staged: [{ path: "new.ts", status: "added", insertions: 10, deletions: 0 }],
+          unstaged: [],
+        })
+      );
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+      await waitFor(() => screen.getByText("new.ts"));
+
+      const churn = screen.getByTestId("file-stage-row-churn");
+      expect(churn.textContent).toContain("+10");
+      expect(churn.textContent).not.toContain("-0");
+    });
+
+    it("hides churn entirely when both insertions and deletions are null", async () => {
+      getStagingStatusMock.mockResolvedValue(
+        makeStatus({
+          staged: [],
+          unstaged: [
+            { path: "untracked.ts", status: "untracked", insertions: null, deletions: null },
+          ],
+        })
+      );
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+      await waitFor(() => screen.getByText("untracked.ts"));
+
+      expect(screen.queryByTestId("file-stage-row-churn")).toBeNull();
+    });
+
+    it("dims the filename text on generated/lockfile rows but keeps the stage toggle full-opacity", async () => {
+      getStagingStatusMock.mockResolvedValue(
+        makeStatus({
+          staged: [],
+          unstaged: [
+            { path: "package-lock.json", status: "modified", insertions: 1, deletions: 1 },
+          ],
+        })
+      );
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+      await waitFor(() => screen.getByText("package-lock.json"));
+
+      const baseSpan = screen.getByTestId("file-stage-row-base");
+      // Dimming applied to the base name span.
+      expect(baseSpan.className).toMatch(/text-daintree-text\/40/);
+
+      // Stage toggle stays at full opacity — no /40 dimming applied to it.
+      const stageBtn = screen.getByRole("button", { name: /^Stage package-lock\.json/i });
+      expect(stageBtn.className).not.toMatch(/text-daintree-text\/40/);
+    });
+
+    it("does not dim hand-written source files", async () => {
+      getStagingStatusMock.mockResolvedValue(
+        makeStatus({
+          staged: [],
+          unstaged: [
+            { path: "src/component.tsx", status: "modified", insertions: 3, deletions: 2 },
+          ],
+        })
+      );
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+      await waitFor(() => screen.getByText("component.tsx"));
+
+      const baseSpan = screen.getByTestId("file-stage-row-base");
+      expect(baseSpan.className).not.toMatch(/text-daintree-text\/40/);
+    });
+  });
+
   describe("base-branch diff mode", () => {
     it("defaults to working-tree mode showing staged and unstaged sections", async () => {
       render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
