@@ -76,6 +76,7 @@ interface WorktreeFilterActions {
   clearAll: () => void;
   getActiveFilterCount: () => number;
   hasActiveFilters: () => boolean;
+  hasFacetFilters: () => boolean;
 }
 
 type WorktreeFilterStore = WorktreeFilterState & WorktreeFilterActions;
@@ -509,6 +510,16 @@ const _actions: WorktreeFilterActions = {
       p.sessionFilters.size > 0 ||
       p.activityFilters.size > 0 ||
       p.quickStateFilter !== "all"
+    );
+  },
+  hasFacetFilters: () => {
+    const p = _projectStore.getState();
+    return (
+      p.statusFilters.size > 0 ||
+      p.typeFilters.size > 0 ||
+      p.githubFilters.size > 0 ||
+      p.sessionFilters.size > 0 ||
+      p.activityFilters.size > 0
     );
   },
 };
