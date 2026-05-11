@@ -15,6 +15,10 @@ export type {
   RepoState,
   ConflictXYCode,
   ConflictedFileEntry,
+  RebaseAction,
+  RebaseEntryState,
+  RebaseEntry,
+  RebaseSequence,
 } from "./git.js";
 
 // Worktree types
