@@ -200,6 +200,23 @@ describe("compareReport", () => {
     expect(result.error).toContain("eagerChunkCount");
   });
 
+  it("returns error when baseline.eagerChunks is not an array (no raw TypeError)", () => {
+    const report = { eagerChunkCount: 3, eagerChunks: ["a", "b", "c"] };
+    // A hand-edited baseline that swaps the array for an object should be
+    // reported via the structured error path, not thrown as a TypeError from
+    // the Set constructor.
+    expect(() => compareReport(report, { eagerChunkCount: 3, eagerChunks: {} })).not.toThrow();
+    const result = compareReport(report, { eagerChunkCount: 3, eagerChunks: {} });
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("eagerChunks");
+  });
+
+  it("treats baseline.eagerChunks === null/undefined as empty (no validation error)", () => {
+    const report = { eagerChunkCount: 0, eagerChunks: [] };
+    expect(compareReport(report, { eagerChunkCount: 0 }).ok).toBe(true);
+    expect(compareReport(report, { eagerChunkCount: 0, eagerChunks: null }).ok).toBe(true);
+  });
+
   it("reports both added and removed when the closure churns at equal count", () => {
     const report = { eagerChunkCount: 3, eagerChunks: ["a", "b", "Z"] };
     const baseline = { eagerChunkCount: 3, eagerChunks: ["a", "b", "Y"] };

@@ -331,31 +331,15 @@ export default tseslint.config(
     },
   },
 
-  // Prevent UI components from importing main-process types
-  {
-    files: ["src/components/**/*.{ts,tsx}"],
-    rules: {
-      "no-restricted-imports": [
-        "warn",
-        {
-          patterns: [
-            {
-              group: ["electron/**", "**/electron/**"],
-              message: "UI components should not import from electron main process modules.",
-            },
-          ],
-        },
-      ],
-    },
-  },
-
-  // Heavy-package bans for the renderer eager graph. These packages each add
-  // measurable weight (kb-gzip) to the first-render bundle; static imports
-  // should be the exception, lazy boundaries the default. The per-file
-  // override blocks below allowlist the small set of files where the static
-  // import is genuinely required today. ESLint 9 flat config is last-write-
-  // wins per rule (no array merging), so each override block disables the rule
-  // entirely for its file scope.
+  // Renderer import discipline — bans heavy bundle-cost packages from being
+  // statically imported into the eager graph, plus the long-standing
+  // electron-module ban (previously scoped to src/components/**, broadened
+  // here to src/** since flat config is last-write-wins per rule and merging
+  // the two restrictions avoids silently clobbering the electron guard). The
+  // per-file override blocks below allowlist the small set of files where the
+  // static import is genuinely required today; those overrides disable the
+  // rule entirely for the scoped files, which is the only flat-config
+  // mechanism since arrays don't merge.
   //
   // Pair with the renderer-import budget gate (scripts/check-renderer-import-budget.mjs)
   // which catches new chunks slipping into the eager closure even when the
@@ -392,6 +376,10 @@ export default tseslint.config(
               group: ["@codemirror/*"],
               message:
                 "Heavy package — codemirror modules should sit behind a lazy boundary (terminal input editor and file viewer are the canonical eager call sites; add new files to the allowlist if a static import is genuinely required). See #7659.",
+            },
+            {
+              group: ["electron/**", "**/electron/**"],
+              message: "Renderer code should not import from electron main process modules.",
             },
           ],
         },

@@ -19,7 +19,7 @@
 //   node scripts/check-renderer-import-budget.mjs --update --force   # bypass 10% shrink guard
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -171,12 +171,23 @@ export function compareReport(report, baseline) {
     };
   }
 
+  // Guard against hand-edited or corrupted baselines that swap the array for
+  // some other shape (e.g. `{}` or `null`) — without this, `new Set(nonArray)`
+  // raises a raw TypeError that escapes the structured error reporting.
+  const baselineChunks = baseline?.eagerChunks;
+  if (baselineChunks != null && !Array.isArray(baselineChunks)) {
+    return {
+      ok: false,
+      error: "baseline.eagerChunks must be an array of chunk names",
+    };
+  }
+
   const currentCount = report.eagerChunkCount;
-  const baselineKeys = new Set(baseline?.eagerChunks ?? []);
+  const baselineKeys = new Set(baselineChunks ?? []);
   const currentKeys = new Set(report.eagerChunks);
 
   const added = report.eagerChunks.filter((k) => !baselineKeys.has(k));
-  const removed = (baseline?.eagerChunks ?? []).filter((k) => !currentKeys.has(k));
+  const removed = (baselineChunks ?? []).filter((k) => !currentKeys.has(k));
 
   if (currentCount > baselineCount) {
     return {
@@ -262,6 +273,10 @@ function main() {
 }
 
 // Only run main when invoked directly (not when imported by tests).
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Uses pathToFileURL to percent-encode paths that contain spaces or other
+// non-URL characters — `file://${process.argv[1]}` would silently mismatch
+// import.meta.url (which is already percent-encoded) on such paths, causing
+// the script to no-op without running the check.
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   main();
 }
