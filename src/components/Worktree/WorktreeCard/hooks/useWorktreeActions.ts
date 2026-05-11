@@ -36,6 +36,8 @@ export interface UseWorktreeActionsResult {
   handleSelectAllAgents: () => void;
   handleSelectWaitingAgents: () => void;
   handleSelectWorkingAgents: () => void;
+  handleCloseAll: () => void;
+  handleTerminateAll: () => void;
 }
 
 export function useWorktreeActions({
@@ -117,6 +119,34 @@ export function useWorktreeActions({
     useFleetArmingStore.getState().armByState("working", "current", false);
   }, [worktree.id]);
 
+  const handleCloseAll = useCallback(() => {
+    void actionService.dispatch(
+      "worktree.sessions.trashAll",
+      { worktreeId: worktree.id },
+      { source: "user" }
+    );
+  }, [worktree.id]);
+
+  const handleTerminateAll = useCallback(() => {
+    const label = worktree.issueTitle ?? worktree.branch;
+    setConfirmDialog({
+      isOpen: true,
+      title: `Terminate all sessions for '${label}'?`,
+      description:
+        "This permanently closes every session in this worktree. Active agents, running processes, and unsaved output will be lost.",
+      confirmLabel: "Terminate all",
+      variant: "destructive",
+      onConfirm: () => {
+        void actionService.dispatch(
+          "worktree.sessions.endAll",
+          { worktreeId: worktree.id },
+          { source: "user" }
+        );
+        setConfirmDialog({ isOpen: false });
+      },
+    });
+  }, [worktree.id, worktree.issueTitle, worktree.branch]);
+
   const handleCopyTree = useCallback(async () => {
     await onCopyTree();
   }, [onCopyTree]);
@@ -132,6 +162,8 @@ export function useWorktreeActions({
     handleRunRecipe,
     handleDockAll,
     handleMaximizeAll,
+    handleCloseAll,
+    handleTerminateAll,
     handleSelectAllAgents,
     handleSelectWaitingAgents,
     handleSelectWorkingAgents,

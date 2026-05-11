@@ -71,6 +71,8 @@ interface WorktreeActionsToolbarProps {
     canMoveDown?: boolean;
     onDockAll: () => void;
     onMaximizeAll: () => void;
+    onCloseAll: () => void;
+    onTerminateAll: () => void;
     onResetRenderers: () => void;
     onSelectAllAgents: () => void;
     onSelectWaitingAgents: () => void;
@@ -224,6 +226,8 @@ export function WorktreeActionsToolbar({
             isCollapsed={menu.isCollapsed}
             onDockAll={menu.onDockAll}
             onMaximizeAll={menu.onMaximizeAll}
+            onCloseAll={menu.onCloseAll}
+            onTerminateAll={menu.onTerminateAll}
             onResetRenderers={menu.onResetRenderers}
             onSelectAllAgents={menu.onSelectAllAgents}
             onSelectWaitingAgents={menu.onSelectWaitingAgents}

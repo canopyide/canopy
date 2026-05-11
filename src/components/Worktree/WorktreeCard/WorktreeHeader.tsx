@@ -79,6 +79,8 @@ export interface WorktreeHeaderProps {
     canMoveDown?: boolean;
     onDockAll: () => void;
     onMaximizeAll: () => void;
+    onCloseAll: () => void;
+    onTerminateAll: () => void;
     onResetRenderers: () => void;
     onSelectAllAgents: () => void;
     onSelectWaitingAgents: () => void;
