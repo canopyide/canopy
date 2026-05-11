@@ -8,7 +8,7 @@ import { useWorktrees } from "@/hooks/useWorktrees";
 import { useFleetArmingStore, isFleetArmEligible } from "@/store/fleetArmingStore";
 import { isValidBrowserUrl } from "@/components/Browser/browserUtils";
 import { actionService } from "@/services/ActionService";
-import { panelKindHasPty } from "@shared/config/panelKindRegistry";
+import { isBrowserPanel, isDevPreviewPanel, isPtyPanel } from "@shared/types/panel";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import {
   ArrowDownFromLine,
@@ -296,9 +296,9 @@ export function TerminalContextMenu({
     return <div className="contents">{children}</div>;
   }
 
-  const isBrowser = terminal.kind === "browser";
-  const isDevPreview = terminal.kind === "dev-preview";
-  const hasPty = terminal.kind ? panelKindHasPty(terminal.kind) : true;
+  const isBrowser = isBrowserPanel(terminal);
+  const isDevPreview = isDevPreviewPanel(terminal);
+  const hasPty = isPtyPanel(terminal);
 
   const layoutSection = (
     <>
