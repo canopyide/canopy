@@ -219,12 +219,12 @@ export function CommitPanel({
               {
                 label: `Commit (${stagedCount})`,
                 icon: isCommitting ? <Spinner size="sm" /> : <GitCommit className="w-3.5 h-3.5" />,
-                shortcut: "⇧⌘",
+                shortcut: "⇧⌘↵",
                 onClick: () => void handleCommit(),
               },
             ]}
             ariaDisabled={!canCommit || isBusy}
-            disabledReason={blockerTooltip}
+            disabledReason={isBlocked ? blockerTooltip : undefined}
             isBusy={isBusy}
             variant="default"
             size="sm"
@@ -251,7 +251,7 @@ export function CommitPanel({
                 Commit ({stagedCount})
               </Button>
             </TooltipTrigger>
-            {(!canCommit || isBusy) && (
+            {isBlocked && (
               <TooltipContent side="top" align="center" className="p-3 max-w-[260px]">
                 {blockerTooltip}
               </TooltipContent>

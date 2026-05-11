@@ -48,9 +48,8 @@ export function SplitButton({
   const blocked = ariaDisabled || isBusy;
 
   const handlePrimaryClick = useCallback(() => {
-    if (blocked) return;
     onPrimaryClick();
-  }, [blocked, onPrimaryClick]);
+  }, [onPrimaryClick]);
 
   const handleOpenChange = useCallback(
     (next: boolean) => {
