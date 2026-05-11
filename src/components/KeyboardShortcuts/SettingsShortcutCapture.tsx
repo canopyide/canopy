@@ -62,6 +62,7 @@ export function SettingsShortcutCapture({
     // conflictRefreshKey forces the memo to re-evaluate after a successful
     // Unbind so the dismissed conflict row disappears immediately. Without it,
     // the memoized result persists against the unchanged capturedCombo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [capturedCombo, excludeActionId, scope, conflictRefreshKey]);
 
   const clearChordTimeout = useCallback(() => {

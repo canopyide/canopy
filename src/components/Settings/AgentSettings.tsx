@@ -178,7 +178,7 @@ export function AgentSettings({
   const [loadTimedOut, setLoadTimedOut] = useState(false);
 
   useEffect(() => {
-    initialize();
+    void initialize();
     setLoadTimedOut(false);
     const timer = setTimeout(() => setLoadTimedOut(true), 10_000);
     return () => clearTimeout(timer);
