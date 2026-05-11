@@ -113,8 +113,10 @@ export class WorkspaceService {
   private topologyReconcilePending = false;
   private topologyWatchSuppressUntil = 0;
   private topologyWatchCooldownUntil = 0;
+  private topologyWatchCooldownDirty = false;
   private topologyDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private topologyWatcherEnabled = true;
+  private topologyWatcherGeneration = 0;
 
   constructor(private readonly sendEvent: (event: WorkspaceHostEvent) => void) {
     this.fetchCoordinator = new RepoFetchCoordinator({
@@ -756,6 +758,7 @@ export class WorkspaceService {
     if (!metadataDir) return;
     if (!existsSync(metadataDir)) return;
 
+    const generation = ++this.topologyWatcherGeneration;
     const schedule = () => this.scheduleTopologyReconcile();
 
     parcelWatcher
@@ -766,8 +769,12 @@ export class WorkspaceService {
         this.topologyDebounceTimer = setTimeout(schedule, 300);
       })
       .then((subscription) => {
+        if (generation !== this.topologyWatcherGeneration) {
+          // stopTopologyWatcher incremented the generation — discard.
+          subscription.unsubscribe();
+          return;
+        }
         if (this.topologyWatcherSubscription.value) {
-          // Race: another call already set the subscription.
           subscription.unsubscribe();
           return;
         }
@@ -783,28 +790,43 @@ export class WorkspaceService {
   }
 
   private stopTopologyWatcher(): void {
+    this.topologyWatcherGeneration++;
     this.topologyWatcherSubscription.value = undefined;
     if (this.topologyDebounceTimer) {
       clearTimeout(this.topologyDebounceTimer);
       this.topologyDebounceTimer = null;
     }
     this.topologyReconcilePending = false;
+    this.topologyWatchCooldownDirty = false;
   }
 
   private scheduleTopologyReconcile(): void {
     if (!this.topologyWatcherEnabled) return;
     if (!this.pollingEnabled) return;
     if (Date.now() < this.topologyWatchSuppressUntil) return;
-    if (Date.now() < this.topologyWatchCooldownUntil) return;
-    if (this.topologyReconcilePending) return;
+    if (Date.now() < this.topologyWatchCooldownUntil) {
+      this.topologyWatchCooldownDirty = true;
+      return;
+    }
+    if (this.topologyReconcilePending) {
+      this.topologyWatchCooldownDirty = true;
+      return;
+    }
 
     this.topologyReconcilePending = true;
     this.topologyReconcileQueue.add(async () => {
       try {
         await this.runTopologyReconcile();
+      } catch (err) {
+        console.warn(`[WorkspaceHost] topology reconciliation failed: ${(err as Error).message}`);
       } finally {
         this.topologyReconcilePending = false;
         this.topologyWatchCooldownUntil = Date.now() + 2000;
+        if (this.topologyWatchCooldownDirty) {
+          this.topologyWatchCooldownDirty = false;
+          const remaining = this.topologyWatchCooldownUntil - Date.now();
+          setTimeout(() => this.scheduleTopologyReconcile(), Math.max(remaining, 0));
+        }
       }
     });
   }
@@ -813,7 +835,15 @@ export class WorkspaceService {
     const previousActiveId = this.activeWorktreeId;
     await this.discoverAndSyncWorktrees();
 
-    if (previousActiveId && !this.monitors.has(previousActiveId)) {
+    // Auto-switch to main if the previously-active worktree was removed.
+    // syncMonitors nulls activeWorktreeId when pruning the active monitor,
+    // so we check: was there a previous active, is it gone from monitors,
+    // and has the user NOT already switched to a *different* worktree.
+    if (
+      previousActiveId &&
+      !this.monitors.has(previousActiveId) &&
+      (this.activeWorktreeId === null || this.activeWorktreeId === previousActiveId)
+    ) {
       let mainId: string | null = null;
       for (const [id, m] of this.monitors) {
         if (m.isMainWorktree) {
@@ -1725,6 +1755,7 @@ ${lines.map((l) => "+" + l).join("\n")}`;
         monitor.resumePolling();
       }
       this.startTopologyWatcher();
+      this.scheduleTopologyReconcile();
     }
   }
 
@@ -1820,6 +1851,8 @@ ${lines.map((l) => "+" + l).join("\n")}`;
   }
 
   async onProjectSwitch(requestId: string): Promise<void> {
+    this.stopTopologyWatcher();
+    this.topologyReconcileQueue.clear();
     this.prService.cleanup();
 
     for (const id of this.monitors.keys()) {
