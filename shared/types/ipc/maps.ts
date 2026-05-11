@@ -2021,6 +2021,10 @@ export interface IpcInvokeMap {
     args: [payload: { cwd: string; prNumber: number }];
     result: import("../github.js").GitHubPR | null;
   };
+  "github:get-pr-review-threads": {
+    args: [payload: { cwd: string; prNumber: number }];
+    result: Record<string, number>;
+  };
   "github:list-remotes": {
     args: [cwd: string];
     result: Array<{

@@ -122,41 +122,35 @@ function BaseBranchFileRow({
     ? file.path.substring(0, Math.max(file.path.lastIndexOf("/"), file.path.lastIndexOf("\\")))
     : "";
 
-  const handleBadgeClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onBadgeClick?.();
-  };
-
-  const handleBadgeKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      e.stopPropagation();
-      onBadgeClick?.();
-    }
-  };
-
   return (
     <TruncatedTooltip content={file.path}>
-      <button
-        type="button"
-        onClick={onClick}
+      <div
         className={cn(
           "w-full flex items-center gap-2 px-2 py-1.5 rounded text-left text-xs",
-          "hover:bg-tint/[0.05] transition-colors",
-          "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-daintree-accent"
+          "hover:bg-tint/[0.05] transition-colors"
         )}
       >
-        <span className={cn("font-mono font-bold shrink-0 w-3 text-center", statusClass)}>
-          {label}
-        </span>
-        <FileIcon className="w-3 h-3 shrink-0 text-daintree-text/40" />
-        <span className="text-daintree-text/80 truncate min-w-0">{filename}</span>
+        <button
+          type="button"
+          onClick={onClick}
+          className={cn(
+            "flex items-center gap-2 min-w-0 flex-1",
+            "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-daintree-accent rounded"
+          )}
+        >
+          <span className={cn("font-mono font-bold shrink-0 w-3 text-center", statusClass)}>
+            {label}
+          </span>
+          <FileIcon className="w-3 h-3 shrink-0 text-daintree-text/40" />
+          <span className="text-daintree-text/80 truncate min-w-0">{filename}</span>
+          <span className="text-daintree-text/30 truncate min-w-0 text-[10px] ml-auto">
+            {dirPath}
+          </span>
+        </button>
         {unresolvedCount !== undefined && unresolvedCount > 0 && (
-          <span
-            onClick={handleBadgeClick}
-            role="button"
-            tabIndex={0}
-            onKeyDown={handleBadgeKeyDown}
+          <button
+            type="button"
+            onClick={onBadgeClick}
             aria-label={`${unresolvedCount} unresolved review comment${unresolvedCount !== 1 ? "s" : ""} on ${file.path}`}
             className={cn(
               "shrink-0 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full",
@@ -167,12 +161,9 @@ function BaseBranchFileRow({
             )}
           >
             {unresolvedCount}
-          </span>
+          </button>
         )}
-        <span className="text-daintree-text/30 truncate min-w-0 text-[10px] ml-auto pl-2">
-          {dirPath}
-        </span>
-      </button>
+      </div>
     </TruncatedTooltip>
   );
 }

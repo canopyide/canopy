@@ -526,7 +526,8 @@ export async function getPRReviewThreads(
       reviewThreadsCache.set(cacheKey, counts);
       return counts;
     });
-  } catch {
+  } catch (err) {
+    console.warn("Failed to fetch PR review threads", err);
     return {};
   }
 }

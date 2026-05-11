@@ -401,9 +401,6 @@ export const GET_PR_REVIEW_THREADS_QUERY = `
             path
             isResolved
             isOutdated
-            comments(first: 1) {
-              totalCount
-            }
           }
           pageInfo {
             hasNextPage
