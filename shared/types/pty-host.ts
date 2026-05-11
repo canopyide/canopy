@@ -503,7 +503,14 @@ export interface HostThrottlePayload {
 /** Payload for terminal reliability metrics (backpressure/suspend/wake) */
 export interface TerminalReliabilityMetricPayload {
   terminalId: string;
-  metricType: "pause-start" | "pause-end" | "suspend" | "wake-latency" | "pending-bytes-gauge";
+  metricType:
+    | "pause-start"
+    | "pause-end"
+    | "suspend"
+    | "wake-latency"
+    | "pending-byte-cap-hit"
+    | "pending-bytes-gauge"
+    | "throughput-rate";
   timestamp: number;
   durationMs?: number;
   bufferUtilization?: number;
@@ -512,6 +519,13 @@ export interface TerminalReliabilityMetricPayload {
   wakeLatencyMs?: number;
   totalPendingBytes?: number;
   perTerminal?: Array<{ terminalId: string; pendingBytes: number }>;
+  totalBytesPerSecond?: number;
+  pauseCountDelta?: number;
+  perTerminalThroughput?: Array<{
+    terminalId: string;
+    bytesPerSecond: number;
+    avgPacketSizeBytes: number;
+  }>;
 }
 
 /**

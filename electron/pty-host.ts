@@ -124,6 +124,11 @@ let analysisBuffer: SharedRingBuffer | null = null;
 const packetFramer = new PacketFramer();
 const textDecoder = new TextDecoder();
 
+// Throughput-rate gauge: accumulates per-terminal raw PTY byte/packet counts
+// between ResourceGovernor ticks. Double-buffer swap at tick boundary avoids
+// iterator invalidation during Map iteration.
+let throughputAccumulator = new Map<string, { totalBytes: number; packetCount: number }>();
+
 // Terminals that need IPC data mirroring (e.g., dev-preview sessions that
 // need main-process URL detection even when SharedArrayBuffer is active)
 const ipcDataMirrorTerminals = new Set<string>();
@@ -265,6 +270,31 @@ const resourceGovernor = new ResourceGovernor({
     }
     return { totalPendingBytes, perTerminal };
   },
+  getThroughputSnapshot: () => {
+    if (!metricsEnabled()) return null;
+    const acc = throughputAccumulator;
+    let totalBytes = 0;
+    let totalPackets = 0;
+    if (acc.size === 0) return null;
+    throughputAccumulator = new Map();
+    const perTerminal: Array<{ terminalId: string; byteCount: number; packetCount: number }> = [];
+    for (const [terminalId, entry] of acc) {
+      totalBytes += entry.totalBytes;
+      totalPackets += entry.packetCount;
+      perTerminal.push({
+        terminalId,
+        byteCount: entry.totalBytes,
+        packetCount: entry.packetCount,
+      });
+    }
+    return {
+      timestamp: Date.now(),
+      totalBytes,
+      totalPackets,
+      perTerminal,
+      pauseCount: backpressureManager.stats.pauseCount,
+    };
+  },
 });
 
 // Helper to convert data to string for IPC fallback (IPC events expect string)
@@ -298,6 +328,21 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
     rendererConnections.size > 0 &&
     !isSmokeTestTerminalId(id)
   ) {
+    // Throughput-rate gauge accumulation — raw PTY byte/packet counts before
+    // any path routing or chunk wrapping. Gated so the hot path is untouched
+    // when metrics are disabled (the default).
+    if (metricsEnabled()) {
+      const rawByteCount =
+        typeof data === "string" ? Buffer.byteLength(data, "utf8") : data.byteLength;
+      let acc = throughputAccumulator.get(id);
+      if (!acc) {
+        acc = { totalBytes: 0, packetCount: 0 };
+        throughputAccumulator.set(id, acc);
+      }
+      acc.totalBytes += rawByteCount;
+      acc.packetCount += 1;
+    }
+
     // Carry raw bytes on the hot MessagePort path so the renderer receives a
     // transferred ArrayBuffer instead of a structured-cloned UTF-8 string.
     // Wrap with `new Uint8Array(...)` to escape node-pty's Buffer pool slab —
