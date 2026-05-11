@@ -13,7 +13,7 @@ vi.mock("electron", () => ({
   },
 }));
 
-import { buildGitHubSearchQuery } from "../github.js";
+import { buildGitHubSearchQuery } from "../../../services/github/GitHubQueries.js";
 
 describe("buildGitHubSearchQuery", () => {
   // Issues
