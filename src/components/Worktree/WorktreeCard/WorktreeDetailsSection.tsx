@@ -363,7 +363,7 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
                 </div>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                {worktree.lastActivityTimestamp
+                {worktree.lastActivityTimestamp != null
                   ? `Last activity: ${new Date(worktree.lastActivityTimestamp).toLocaleString()}`
                   : "No recent activity recorded"}
               </TooltipContent>
