@@ -176,22 +176,21 @@ describe("PortBatcher", () => {
     expect(deps.postMessage).toHaveBeenCalledWith("t2", bytes("bbb"), 3);
   });
 
-  it("flushTerminal resets mode when buffer empties — next write gets latency mode", () => {
+  it("flushTerminal: subsequent write to a fresh terminal starts in latency mode", () => {
     const deps = createDeps();
     const batcher = new PortBatcher(deps);
 
     batcher.write("t1", bytes("aaa"), 3);
-    batcher.write("t1", bytes("bbb"), 3); // upgrade to throughput
+    batcher.write("t1", bytes("bbb"), 3); // t1 upgrades to throughput
 
-    // Flush t1 — buffer is now empty, mode should reset to idle
     batcher.flushTerminal("t1");
     expect(deps.postMessage).toHaveBeenCalledWith("t1", bytes("aaabbb"), 6);
 
-    // Next write should use latency mode (setImmediate), not stale throughput (setTimeout 16)
+    // Next write to a fresh terminal starts with its own idle entry → latency (setImmediate),
+    // not stale throughput inherited from t1.
     (deps.postMessage as ReturnType<typeof vi.fn>).mockClear();
     batcher.write("t2", bytes("ccc"), 3);
 
-    // setImmediate fires immediately via runAllTimers, not delayed by 16ms
     vi.advanceTimersByTime(2);
     expect(deps.postMessage).toHaveBeenCalledWith("t2", bytes("ccc"), 3);
   });
@@ -389,5 +388,95 @@ describe("PortBatcher", () => {
     expect(emitted.byteLength).toBe(9);
     expect(emitted.buffer.byteLength).toBe(9);
     expect(Buffer.from(emitted).toString("utf8")).toBe("foobarbaz");
+  });
+
+  describe("per-terminal isolation", () => {
+    it("quiet terminal is not stalled by a busy sibling's throughput cadence", () => {
+      // Regression for #7652: previously a single class-level mode meant t1 entering
+      // throughput would force t2's first write to inherit the 16ms cadence. With per-
+      // terminal state, t2 schedules its own setImmediate and flushes before 16ms.
+      const deps = createDeps();
+      const batcher = new PortBatcher(deps);
+
+      // t1 enters throughput mode (setTimeout 16ms)
+      batcher.write("t1", bytes("a1"), 2);
+      batcher.write("t1", bytes("a2"), 2);
+
+      // t2's first write should schedule its own setImmediate (latency), not inherit
+      // t1's throughput cadence.
+      batcher.write("t2", bytes("b1"), 2);
+
+      // Two pending timers: t1's setTimeout(16) + t2's setImmediate
+      expect(vi.getTimerCount()).toBe(2);
+      expect(deps.postMessage).not.toHaveBeenCalled();
+
+      // Advance 0ms drains pending setImmediate handles without advancing the 16ms
+      // setTimeout — Vitest treats setImmediate as a 0-delay timer. (Use this rather
+      // than runAllTimers so the test fails if t2 was scheduled with setTimeout(16)
+      // instead of setImmediate.) t2's setImmediate fires → global flush drains both.
+      vi.advanceTimersByTime(0);
+
+      expect(deps.postMessage).toHaveBeenCalledTimes(2);
+      expect(deps.postMessage).toHaveBeenCalledWith("t2", bytes("b1"), 2);
+      expect(deps.postMessage).toHaveBeenCalledWith("t1", bytes("a1a2"), 4);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("each terminal upgrades to throughput independently", () => {
+      const deps = createDeps();
+      const batcher = new PortBatcher(deps);
+
+      batcher.write("t1", bytes("a1"), 2); // t1: setImmediate
+      batcher.write("t1", bytes("a2"), 2); // t1: setTimeout(16)
+      batcher.write("t2", bytes("b1"), 2); // t2: setImmediate
+      batcher.write("t2", bytes("b2"), 2); // t2: setTimeout(16)
+
+      // Each terminal owns its own setTimeout(16)
+      expect(vi.getTimerCount()).toBe(2);
+      expect(deps.postMessage).not.toHaveBeenCalled();
+
+      // First timer to fire (16ms) calls global flush(), draining both
+      vi.advanceTimersByTime(16);
+      expect(deps.postMessage).toHaveBeenCalledTimes(2);
+      expect(deps.postMessage).toHaveBeenCalledWith("t1", bytes("a1a2"), 4);
+      expect(deps.postMessage).toHaveBeenCalledWith("t2", bytes("b1b2"), 4);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("dispose cancels per-terminal timers across all entries", () => {
+      const deps = createDeps();
+      const batcher = new PortBatcher(deps);
+
+      batcher.write("t1", bytes("a"), 1); // t1: setImmediate
+      batcher.write("t2", bytes("b1"), 2); // t2: setImmediate
+      batcher.write("t2", bytes("b2"), 2); // t2: setTimeout(16)
+
+      // t1 setImmediate + t2 setTimeout
+      expect(vi.getTimerCount()).toBe(2);
+
+      batcher.dispose();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("flushTerminal cancels only the target's timer, leaving siblings pending", () => {
+      const deps = createDeps();
+      const batcher = new PortBatcher(deps);
+
+      batcher.write("t1", bytes("a1"), 2); // t1: setImmediate
+      batcher.write("t1", bytes("a2"), 2); // t1: setTimeout(16)
+      batcher.write("t2", bytes("b"), 1); // t2: setImmediate
+
+      // t1's setTimeout(16) + t2's setImmediate
+      expect(vi.getTimerCount()).toBe(2);
+
+      batcher.flushTerminal("t1");
+      expect(deps.postMessage).toHaveBeenCalledWith("t1", bytes("a1a2"), 4);
+      // t2's setImmediate is still pending
+      expect(vi.getTimerCount()).toBe(1);
+
+      vi.advanceTimersByTime(0);
+      expect(deps.postMessage).toHaveBeenCalledWith("t2", bytes("b"), 1);
+      expect(vi.getTimerCount()).toBe(0);
+    });
   });
 });

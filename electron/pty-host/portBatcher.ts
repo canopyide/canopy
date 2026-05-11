@@ -13,6 +13,9 @@ export interface PortBatcherDeps {
 interface PendingTerminal {
   chunks: Uint8Array[];
   bytes: number;
+  mode: FlushMode;
+  immediateHandle: ReturnType<typeof setImmediate> | null;
+  timeoutHandle: ReturnType<typeof setTimeout> | null;
 }
 
 export interface PortBatcherFailedBatch {
@@ -26,9 +29,6 @@ type FlushMode = "idle" | "latency" | "throughput";
 export class PortBatcher {
   private pendingChunks = new Map<string, PendingTerminal>();
   private totalPendingBytes = 0;
-  private immediateHandle: ReturnType<typeof setImmediate> | null = null;
-  private timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-  private mode: FlushMode = "idle";
   private disposed = false;
 
   constructor(private readonly deps: PortBatcherDeps) {}
@@ -48,7 +48,13 @@ export class PortBatcher {
 
     let entry = this.pendingChunks.get(id);
     if (!entry) {
-      entry = { chunks: [], bytes: 0 };
+      entry = {
+        chunks: [],
+        bytes: 0,
+        mode: "idle",
+        immediateHandle: null,
+        timeoutHandle: null,
+      };
       this.pendingChunks.set(id, entry);
     }
     entry.chunks.push(data);
@@ -60,16 +66,18 @@ export class PortBatcher {
       return true;
     }
 
-    if (this.mode === "idle") {
-      this.immediateHandle = setImmediate(() => this.flush());
-      this.mode = "latency";
-    } else if (this.mode === "latency") {
-      if (this.immediateHandle !== null) {
-        clearImmediate(this.immediateHandle);
-        this.immediateHandle = null;
+    // Per-terminal flush cadence: each terminal owns its own (mode, immediate, timeout)
+    // so a quiet terminal's first write isn't stalled by a busy sibling's throughput timer.
+    if (entry.mode === "idle") {
+      entry.immediateHandle = setImmediate(() => this.flush());
+      entry.mode = "latency";
+    } else if (entry.mode === "latency") {
+      if (entry.immediateHandle !== null) {
+        clearImmediate(entry.immediateHandle);
+        entry.immediateHandle = null;
       }
-      this.timeoutHandle = setTimeout(() => this.flush(), PORT_BATCH_THROUGHPUT_DELAY_MS);
-      this.mode = "throughput";
+      entry.timeoutHandle = setTimeout(() => this.flush(), PORT_BATCH_THROUGHPUT_DELAY_MS);
+      entry.mode = "throughput";
     }
     // throughput mode: timer already scheduled, nothing to do
 
@@ -80,8 +88,12 @@ export class PortBatcher {
     const snapshot = this.pendingChunks;
     this.pendingChunks = new Map();
     this.totalPendingBytes = 0;
-    this.cancelTimers();
-    this.mode = "idle";
+
+    // Cancel each entry's per-terminal handles before processing so callbacks
+    // already-queued can't fire after the snapshot is drained.
+    for (const entry of snapshot.values()) {
+      this.cancelEntryTimers(entry);
+    }
 
     const entries = Array.from(snapshot.entries());
     for (let i = 0; i < entries.length; i++) {
@@ -114,14 +126,9 @@ export class PortBatcher {
     const entry = this.pendingChunks.get(id);
     if (!entry) return;
 
+    this.cancelEntryTimers(entry);
     this.pendingChunks.delete(id);
     this.totalPendingBytes -= entry.bytes;
-
-    // If buffer is now empty, reset mode and cancel stale timers
-    if (this.pendingChunks.size === 0) {
-      this.cancelTimers();
-      this.mode = "idle";
-    }
 
     let data: Uint8Array = new Uint8Array(0);
     try {
@@ -138,21 +145,22 @@ export class PortBatcher {
   }
 
   dispose(): void {
-    this.cancelTimers();
+    for (const entry of this.pendingChunks.values()) {
+      this.cancelEntryTimers(entry);
+    }
     this.pendingChunks.clear();
     this.totalPendingBytes = 0;
-    this.mode = "idle";
     this.disposed = true;
   }
 
-  private cancelTimers(): void {
-    if (this.immediateHandle !== null) {
-      clearImmediate(this.immediateHandle);
-      this.immediateHandle = null;
+  private cancelEntryTimers(entry: PendingTerminal): void {
+    if (entry.immediateHandle !== null) {
+      clearImmediate(entry.immediateHandle);
+      entry.immediateHandle = null;
     }
-    if (this.timeoutHandle !== null) {
-      clearTimeout(this.timeoutHandle);
-      this.timeoutHandle = null;
+    if (entry.timeoutHandle !== null) {
+      clearTimeout(entry.timeoutHandle);
+      entry.timeoutHandle = null;
     }
   }
 }
