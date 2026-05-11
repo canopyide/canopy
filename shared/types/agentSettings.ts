@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { AGENT_REGISTRY, getEffectiveAgentConfig } from "../config/agentRegistry.js";
+import type { BuiltInAgentId } from "../config/agentIds.js";
 import { escapeShellArg, escapeShellArgOptional } from "../utils/shellEscape.js";
 
 /**
@@ -139,7 +140,7 @@ export const DEFAULT_DANGEROUS_ARGS: Record<string, string> = {
 
 export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   agents: Object.fromEntries(
-    Object.keys(AGENT_REGISTRY).map((id) => [
+    (Object.keys(AGENT_REGISTRY) as BuiltInAgentId[]).map((id) => [
       id,
       {
         customFlags: "",

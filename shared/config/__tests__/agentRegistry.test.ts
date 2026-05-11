@@ -2,13 +2,11 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   getAgentIds,
   getAgentConfig,
-  isRegisteredAgent,
   setUserRegistry,
   getEffectiveAgentIds,
   getEffectiveAgentConfig,
   isEffectivelyRegisteredAgent,
   isBuiltInAgent,
-  isUserDefinedAgent,
   getAgentModelConfig,
   getAgentDisplayTitle,
   getAgentPreset,
@@ -84,9 +82,9 @@ describe("agentRegistry", () => {
       expect(getAgentConfig("nonexistent")).toBeUndefined();
     });
 
-    it("correctly identifies registered agents", () => {
-      expect(isRegisteredAgent("claude")).toBe(true);
-      expect(isRegisteredAgent("nonexistent")).toBe(false);
+    it("correctly identifies built-in agents", () => {
+      expect(isBuiltInAgent("claude")).toBe(true);
+      expect(isBuiltInAgent("nonexistent")).toBe(false);
     });
   });
 
@@ -230,12 +228,17 @@ describe("agentRegistry", () => {
       setUserRegistry({ "custom-agent": customAgent });
 
       expect(isBuiltInAgent("custom-agent")).toBe(false);
-      expect(isUserDefinedAgent("custom-agent")).toBe(true);
+      expect(isEffectivelyRegisteredAgent("custom-agent")).toBe(true);
     });
 
     it("built-in agents are not user-defined", () => {
+      setUserRegistry({});
+
       expect(isBuiltInAgent("claude")).toBe(true);
-      expect(isUserDefinedAgent("claude")).toBe(false);
+      // user-defined check: a key in userRegistry but NOT in AGENT_REGISTRY
+      const effectiveKeys = getEffectiveAgentIds();
+      const onlyUserDefined = effectiveKeys.filter((id) => !isBuiltInAgent(id));
+      expect(onlyUserDefined).not.toContain("claude");
     });
 
     it("user-defined agents can have custom routing config", () => {
@@ -370,6 +373,136 @@ describe("agentRegistry", () => {
       } finally {
         AGENT_REGISTRY.codex = original;
       }
+    });
+  });
+
+  describe("user-defined agents in assistant lists", () => {
+    const stableSupports: AssistantSupports = {
+      mcpInjection: "cli-flags",
+      settingsOverlay: false,
+      permissionBypass: true,
+      trustDialog: false,
+      versionProbe: true,
+      tier: "stable",
+    };
+
+    const experimentalSupports: AssistantSupports = {
+      ...stableSupports,
+      tier: "experimental",
+    };
+
+    const userDefinedWithStable: AgentConfig = {
+      id: "my-cli-agent",
+      name: "My CLI Agent",
+      command: "mycli",
+      color: "#FF8800",
+      iconId: "custom",
+      supportsContextInjection: true,
+      supports: stableSupports,
+      routing: { capabilities: ["custom"], maxConcurrent: 2, enabled: true },
+    };
+
+    const userDefinedWithExperimental: AgentConfig = {
+      id: "exp-agent",
+      name: "Experimental Agent",
+      command: "exp",
+      color: "#0088FF",
+      iconId: "custom",
+      supportsContextInjection: true,
+      supports: experimentalSupports,
+      routing: { capabilities: ["experimental"], maxConcurrent: 1, enabled: true },
+    };
+
+    const userDefinedWithoutSupports: AgentConfig = {
+      id: "no-support-agent",
+      name: "No Support Agent",
+      command: "nosup",
+      color: "#888888",
+      iconId: "custom",
+      supportsContextInjection: true,
+      routing: { capabilities: ["basic"], maxConcurrent: 1, enabled: true },
+    };
+
+    const userDefinedStructurallyIneligible: AgentConfig = {
+      id: "ineligible-agent",
+      name: "Ineligible Agent",
+      command: "noassist",
+      color: "#444444",
+      iconId: "custom",
+      supportsContextInjection: false,
+      supports: false,
+      routing: { capabilities: ["ineligible"], maxConcurrent: 1, enabled: true },
+    };
+
+    it("user-defined agent with stable-tier supports appears in supported list", () => {
+      setUserRegistry({ "my-cli-agent": userDefinedWithStable });
+      try {
+        const ids = getAssistantSupportedAgentIds();
+        expect(ids).toContain("my-cli-agent");
+      } finally {
+        setUserRegistry({});
+      }
+    });
+
+    it("user-defined agent without supports is excluded from supported list", () => {
+      setUserRegistry({ "no-support-agent": userDefinedWithoutSupports });
+      try {
+        const ids = getAssistantSupportedAgentIds();
+        expect(ids).not.toContain("no-support-agent");
+      } finally {
+        setUserRegistry({});
+      }
+    });
+
+    it("experimental user-defined agent appears in wired but not supported list", () => {
+      setUserRegistry({ "exp-agent": userDefinedWithExperimental });
+      try {
+        const supported = getAssistantSupportedAgentIds();
+        const wired = getAssistantWiredAgentIds();
+        expect(supported).not.toContain("exp-agent");
+        expect(wired).toContain("exp-agent");
+      } finally {
+        setUserRegistry({});
+      }
+    });
+
+    it("user-defined agent structurally ineligible excluded from both lists", () => {
+      setUserRegistry({ "ineligible-agent": userDefinedStructurallyIneligible });
+      try {
+        const supported = getAssistantSupportedAgentIds();
+        const wired = getAssistantWiredAgentIds();
+        expect(supported).not.toContain("ineligible-agent");
+        expect(wired).not.toContain("ineligible-agent");
+      } finally {
+        setUserRegistry({});
+      }
+    });
+
+    it("built-in still shadows user-defined entry with same ID in assistant lists", () => {
+      const fakeClaudeAgent: AgentConfig = {
+        ...userDefinedWithStable,
+        id: "claude",
+        name: "Fake Claude",
+        command: "fake-claude",
+      };
+      setUserRegistry({ claude: fakeClaudeAgent });
+      try {
+        const ids = getAssistantSupportedAgentIds();
+        expect(ids).toContain("claude");
+        // The effective config must be the REAL Claude, not the fake one
+        const effective = getEffectiveAgentConfig("claude");
+        expect(effective?.name).toBe("Claude");
+        expect(effective?.command).toBe("claude");
+      } finally {
+        setUserRegistry({});
+      }
+    });
+
+    it("empty user registry produces same supported list as before", () => {
+      setUserRegistry({});
+      const ids = getAssistantSupportedAgentIds();
+      expect(ids).toEqual(expect.arrayContaining(["claude", "codex"]));
+      expect(ids).toHaveLength(2);
     });
   });
 });
