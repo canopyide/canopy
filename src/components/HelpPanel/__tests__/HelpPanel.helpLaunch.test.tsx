@@ -865,7 +865,7 @@ describe("HelpPanel — handleRunAnyway", () => {
     cliAvailabilityState.details = {
       claude: { state: "missing", resolvedPath: null, via: null },
     };
-    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "restarted-term" } });
+    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "terminal-restarted" } });
 
     const { getByTestId } = render(<HelpPanel width={380} />);
 
@@ -887,11 +887,11 @@ describe("HelpPanel — handleRunAnyway", () => {
       { source: "user" }
     );
     expect(helpPanelState.setTerminal).toHaveBeenCalledWith(
-      expect.stringMatching(/^terminal-/),
+      "terminal-restarted",
       "claude",
-      null
+      "sess-default"
     );
-    expect(mockMarkTerminal).toHaveBeenCalledWith(expect.stringMatching(/^terminal-/));
+    expect(mockMarkTerminal).toHaveBeenCalledWith("terminal-restarted");
   });
 
   it("notifies and reverts the reserved help-terminal id on addPanel rejection", async () => {
@@ -1048,6 +1048,50 @@ describe("HelpPanel — handleRunAnyway", () => {
     });
 
     expect(mockRevokeSession).toHaveBeenCalledWith("leaked-sess");
+  });
+
+  it("forwards fresh customArgs from settings to agent.launch dispatch", async () => {
+    projectStoreState.currentProject = { id: "proj-1", path: "/repo" };
+    helpPanelState.terminalId = "gate-1";
+    helpPanelState.agentId = "claude";
+    panelStoreState.panelsById = {
+      "gate-1": {
+        id: "gate-1",
+        kind: "terminal",
+        spawnStatus: "missing-cli",
+        cwd: "/help",
+        title: "Claude",
+        command: "claude",
+        location: "dock",
+      },
+    };
+    cliAvailabilityState.details = {
+      claude: { state: "missing", resolvedPath: null, via: null },
+    };
+    mockGetHelpAssistantSettings.mockResolvedValue({
+      docSearch: true,
+      daintreeControl: true,
+      tier: "action" as const,
+      bypassPermissions: false,
+      auditRetention: 7,
+      customArgs: "--model sonnet",
+    });
+    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "restarted-term" } });
+
+    const { getByTestId } = render(<HelpPanel width={380} />);
+
+    await act(async () => {
+      fireEvent.click(getByTestId("run-anyway"));
+    });
+
+    expect(mockDispatch).toHaveBeenCalledWith(
+      "agent.launch",
+      expect.objectContaining({
+        agentLaunchFlags: ["--model", "sonnet"],
+        force: true,
+      }),
+      { source: "user" }
+    );
   });
 });
 
@@ -1681,7 +1725,7 @@ describe("HelpPanel — + New session destructive reset", () => {
 
   it("resets immediately without a confirm when the agent is idle and conversation is untouched", async () => {
     setupBoundTerminal({ agentState: "idle", conversationTouched: false });
-    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "fresh-term" } });
+    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "terminal-fresh" } });
     mockProvisionSession.mockResolvedValue({
       sessionId: "sess-fresh",
       sessionPath: "/sessions/fresh",
@@ -1711,7 +1755,7 @@ describe("HelpPanel — + New session destructive reset", () => {
       { source: "user" }
     );
     expect(helpPanelState.setTerminal).toHaveBeenCalledWith(
-      expect.stringMatching(/^terminal-/),
+      "terminal-fresh",
       "claude",
       "sess-fresh"
     );
@@ -1757,7 +1801,7 @@ describe("HelpPanel — + New session destructive reset", () => {
 
   it("runs the destructive teardown and relaunches when the user confirms", async () => {
     setupBoundTerminal({ agentState: "working", conversationTouched: true });
-    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "fresh-term" } });
+    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "terminal-fresh" } });
     mockProvisionSession.mockResolvedValue({
       sessionId: "sess-fresh",
       sessionPath: "/sessions/fresh",
@@ -1777,7 +1821,7 @@ describe("HelpPanel — + New session destructive reset", () => {
     expect(mockRevokeSession).toHaveBeenCalledWith("sess-bound");
     expect(helpPanelState.clearTerminal).toHaveBeenCalled();
     expect(helpPanelState.setTerminal).toHaveBeenCalledWith(
-      expect.stringMatching(/^terminal-/),
+      "terminal-fresh",
       "claude",
       "sess-fresh"
     );
@@ -1944,6 +1988,40 @@ describe("HelpPanel — + New session destructive reset", () => {
     await act(async () => {
       resolveProvision?.(null);
     });
+  });
+
+  it("forwards fresh customArgs from settings to agent.launch dispatch", async () => {
+    setupBoundTerminal({ agentState: "idle", conversationTouched: false });
+    mockGetHelpAssistantSettings.mockResolvedValue({
+      docSearch: true,
+      daintreeControl: true,
+      tier: "action" as const,
+      bypassPermissions: false,
+      auditRetention: 7,
+      customArgs: "--model sonnet",
+    });
+    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "fresh-term" } });
+    mockProvisionSession.mockResolvedValue({
+      sessionId: "sess-fresh",
+      sessionPath: "/sessions/fresh",
+      token: "tok-fresh",
+      tier: "action",
+      mcpUrl: null,
+      windowId: 1,
+    });
+
+    const { container } = render(<HelpPanel width={380} />);
+    await act(async () => {
+      fireEvent.click(container.querySelector('button[aria-label="Start new session"]')!);
+    });
+
+    expect(mockDispatch).toHaveBeenCalledWith(
+      "agent.launch",
+      expect.objectContaining({
+        agentLaunchFlags: ["--model", "sonnet"],
+      }),
+      { source: "user" }
+    );
   });
 });
 

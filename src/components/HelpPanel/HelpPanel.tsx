@@ -1380,11 +1380,12 @@ export function HelpPanel({
             return;
           }
 
+          const finalTerminalId = result.result.terminalId;
           pendingNewTerminalIdRef.current = null;
           useHelpPanelStore
             .getState()
-            .setTerminal(newId, launchAgentId, session?.sessionId ?? null);
-          window.electron.help.markTerminal(newId).catch((err) => {
+            .setTerminal(finalTerminalId, launchAgentId, session?.sessionId ?? null);
+          window.electron.help.markTerminal(finalTerminalId).catch((err) => {
             logError("Failed to mark help terminal", err);
           });
         } catch (error) {
@@ -1620,11 +1621,12 @@ export function HelpPanel({
             return;
           }
 
+          const finalTerminalId = result.result.terminalId;
           pendingNewTerminalIdRef.current = null;
           useHelpPanelStore
             .getState()
-            .setTerminal(newId, launchAgentId, session?.sessionId ?? null);
-          window.electron.help.markTerminal(newId).catch((err) => {
+            .setTerminal(finalTerminalId, launchAgentId, session?.sessionId ?? null);
+          window.electron.help.markTerminal(finalTerminalId).catch((err) => {
             logError("Failed to mark help terminal", err);
           });
         } catch (error) {
