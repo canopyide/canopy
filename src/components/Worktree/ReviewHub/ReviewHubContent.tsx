@@ -989,10 +989,13 @@ export function ReviewHubContent({
 
   useEffect(() => {
     if (!isOpen) return;
-    const scope: Document | HTMLElement = keyboardScope ?? document;
-    const listener = (e: Event) => handleKeyDown(e as KeyboardEvent);
-    scope.addEventListener("keydown", listener, { capture: true });
-    return () => scope.removeEventListener("keydown", listener, { capture: true });
+    const scope = keyboardScope ?? document;
+    if (scope instanceof Document) {
+      scope.addEventListener("keydown", handleKeyDown, { capture: true });
+      return () => scope.removeEventListener("keydown", handleKeyDown, { capture: true });
+    }
+    scope.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => scope.removeEventListener("keydown", handleKeyDown, { capture: true });
   }, [isOpen, keyboardScope]);
 
   if (!isOpen) return null;
