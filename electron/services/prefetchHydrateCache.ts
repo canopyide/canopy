@@ -98,7 +98,12 @@ export function consumePrefetchedHydrateResult(projectId: string): HydrateResult
 export function invalidatePrefetchCache(projectId?: string): void {
   if (projectId === undefined) {
     cache.clear();
-    for (const key of invalidationVersions.keys()) {
+    // Bump every known projectId — including any with an in-flight build that
+    // has not yet recorded a version (the project's first-ever prefetch).
+    // Without iterating `inflight` here, that first build would resolve with
+    // versionAtStart === currentVersion === 0 and commit a stale result.
+    const seen = new Set<string>([...invalidationVersions.keys(), ...inflight.keys()]);
+    for (const key of seen) {
       nextVersion(key);
     }
     return;

@@ -351,6 +351,12 @@ export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
     if (lastAt > 0 && Date.now() - lastAt < PROJECT_PREFETCH_FRESHNESS_MS) return;
 
     prefetchInFlightRef.current.add(projectId);
+    // projectClient.prefetchHydrate swallows errors (fire-and-forget), so this
+    // .then() runs whether the main-process build succeeded or failed. We mark
+    // the freshness ref either way: a hover-induced retry-storm against a
+    // genuinely failing build is worse than a 15s window where the user gets
+    // the normal (uncached) hydrate. The click-time hydrate falls through to
+    // the full read path on a cache miss with no user-visible difference.
     void projectClient
       .prefetchHydrate(projectId)
       .then(() => {

@@ -143,6 +143,29 @@ describe("prefetchHydrateCache", () => {
     expect(second?.project?.id).toBe("p1");
   });
 
+  it("drops the result of an in-flight first-ever prefetch when globally invalidated", async () => {
+    // Regression: invalidatePrefetchCache() (no arg) must bump version counters
+    // for projects whose first-ever build is still in flight — otherwise that
+    // build resolves with versionAtStart === currentVersion === 0 and commits
+    // a stale payload even though every other consumer thinks the cache is
+    // cleared.
+    let resolve: ((v: HydrateResult) => void) | null = null;
+    const build = vi.fn().mockImplementationOnce(
+      () =>
+        new Promise<HydrateResult>((r) => {
+          resolve = r;
+        })
+    );
+
+    const pending = prefetchHydrateResult("p1", build);
+    invalidatePrefetchCache();
+    resolve!(makeHydrate("p1"));
+    const result = await pending;
+
+    expect(result).toBeNull();
+    expect(consumePrefetchedHydrateResult("p1")).toBeUndefined();
+  });
+
   it("caches different projects independently", async () => {
     await prefetchHydrateResult("p1", () => Promise.resolve(makeHydrate("p1")));
     await prefetchHydrateResult("p2", () => Promise.resolve(makeHydrate("p2")));
