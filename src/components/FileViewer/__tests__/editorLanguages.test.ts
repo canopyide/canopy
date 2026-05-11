@@ -81,4 +81,15 @@ describe("CURATED_LANGUAGES — issue #7657 (curated @codemirror/language-data)"
       expect(typeof desc.load).toBe("function");
     }
   });
+
+  // Resolves every dynamic import so a typo in a path or a wrong export name
+  // (e.g., `m.dockerfile` vs `m.dockerFile`) fails the test rather than the
+  // production runtime.
+  it("every load() resolves to a LanguageSupport with an extension", async () => {
+    const supports = await Promise.all(CURATED_LANGUAGES.map((d) => d.load()));
+    for (const support of supports) {
+      expect(support).toBeDefined();
+      expect(support.extension).toBeDefined();
+    }
+  });
 });
