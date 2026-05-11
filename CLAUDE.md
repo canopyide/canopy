@@ -170,7 +170,7 @@ Custom Daintree-specific icons live in `src/components/icons/custom/`. Lucide-st
 
 **Adding a new action:**
 
-1. Add action ID to `shared/types/actions.ts` (`ActionId` union)
+1. Add action ID to `BUILT_IN_ACTION_IDS` in `shared/config/actionIds.ts`
 2. Create definition in appropriate `src/services/actions/definitions/*.ts` file
 3. Action is automatically registered via `useActionRegistry` hook
 
