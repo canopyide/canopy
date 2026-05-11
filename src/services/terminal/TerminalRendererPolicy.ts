@@ -8,6 +8,7 @@ export interface RendererPolicyDeps {
   wakeAndRestore: (id: string) => Promise<boolean>;
   onPostWake?: (id: string) => void;
   onTierApplied?: (id: string, tier: TerminalRefreshTier, managed: ManagedTerminal) => void;
+  applyDeferredResize?: (id: string) => void;
 }
 
 export class TerminalRendererPolicy {
@@ -116,6 +117,11 @@ export class TerminalRendererPolicy {
             if (!current || current !== wakeTarget) return;
             current.needsWake = ok ? false : true;
 
+            // Sync xterm's grid to dims captured while background BEFORE
+            // refresh, otherwise refresh paints into a buffer sized for the
+            // previous (foreground) geometry and the user sees garbled output
+            // for one frame.
+            this.deps.applyDeferredResize?.(id);
             current.terminal.refresh(0, current.terminal.rows - 1);
 
             if (ok) {
@@ -131,11 +137,13 @@ export class TerminalRendererPolicy {
             // Force a refresh on failure as a recovery mechanism.
             // Even if wakeAndRestore fails, this ensures the terminal attempts to render
             // whatever content it has, preventing stuck display states.
+            this.deps.applyDeferredResize?.(id);
             current.terminal.refresh(0, current.terminal.rows - 1);
           });
       } else {
         // needsWake is false, but we're transitioning to active tier.
         // Force a refresh to ensure the terminal renderer is in sync.
+        this.deps.applyDeferredResize?.(id);
         managed.terminal.refresh(0, managed.terminal.rows - 1);
       }
     }

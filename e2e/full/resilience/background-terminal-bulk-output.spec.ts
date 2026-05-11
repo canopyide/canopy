@@ -1,0 +1,181 @@
+import { test, expect, type Locator, type Page } from "@playwright/test";
+import { launchApp, closeApp, type AppContext } from "../../helpers/launch";
+import { createFixtureRepo } from "../../helpers/fixtures";
+import { openAndOnboardProject } from "../../helpers/project";
+import { getFirstGridPanel, openTerminal } from "../../helpers/panels";
+import {
+  getTerminalDimensions,
+  runTerminalCommand,
+  waitForTerminalText,
+} from "../../helpers/terminal";
+import { T_LONG, T_SETTLE } from "../../helpers/timeouts";
+
+test.skip(process.platform === "win32", "Bulk-output regression uses Unix shell loop");
+
+let ctx: AppContext;
+let fixtureDir: string;
+let fixtureCleanup: (() => void) | undefined;
+let terminalPanel: Locator;
+
+async function applyTier(page: Page, panelId: string, tier: string): Promise<boolean> {
+  return page.evaluate(
+    ({ id, name }) => {
+      const fn = (
+        window as unknown as {
+          __daintreeApplyTerminalTier?: (panelId: string, tierName: string) => boolean;
+        }
+      ).__daintreeApplyTerminalTier;
+      return typeof fn === "function" ? fn(id, name) : false;
+    },
+    { id: panelId, name: tier }
+  );
+}
+
+async function simulateResize(
+  page: Page,
+  panelId: string,
+  width: number,
+  height: number
+): Promise<{ cols: number; rows: number } | null> {
+  return page.evaluate(
+    ({ id, w, h }) => {
+      const fn = (
+        window as unknown as {
+          __daintreeSimulateTerminalResize?: (
+            panelId: string,
+            width: number,
+            height: number
+          ) => { cols: number; rows: number } | null;
+        }
+      ).__daintreeSimulateTerminalResize;
+      return typeof fn === "function" ? fn(id, w, h) : null;
+    },
+    { id: panelId, w: width, h: height }
+  );
+}
+
+async function getPanelId(panelLocator: Locator): Promise<string> {
+  const id = await panelLocator.evaluate((el) => {
+    const panel = el.closest("[data-panel-id]");
+    return panel?.getAttribute("data-panel-id") ?? "";
+  });
+  if (!id) throw new Error("Could not resolve panel ID");
+  return id;
+}
+
+test.describe
+  .serial("Resilience: background terminal preserves grid coherence across visibility", () => {
+  test.beforeAll(async () => {
+    const { dir, cleanup } = createFixtureRepo({ name: "bg-bulk-output" });
+    fixtureDir = dir;
+    fixtureCleanup = cleanup;
+    ctx = await launchApp();
+    ctx.window = await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Bg Bulk Output");
+
+    await openTerminal(ctx.window);
+    terminalPanel = getFirstGridPanel(ctx.window);
+    await expect(terminalPanel).toBeVisible({ timeout: T_LONG });
+    await ctx.window.waitForTimeout(T_SETTLE);
+  });
+
+  test.afterAll(async () => {
+    if (ctx?.app) await closeApp(ctx.app);
+    fixtureCleanup?.();
+  });
+
+  test("resize observed while BACKGROUND propagates to xterm on restore", async () => {
+    test.setTimeout(60_000);
+    const { window } = ctx;
+
+    // Ensure the shell is ready so xterm's cell metrics are populated; the
+    // background-tier resize path bails out when getXtermCellDimensions()
+    // returns null, which would mask the bug we're regressing against.
+    await waitForTerminalText(terminalPanel, "bg-bulk-output", T_LONG);
+
+    const panelId = await getPanelId(terminalPanel);
+
+    const initial = await getTerminalDimensions(terminalPanel);
+    expect(initial).not.toBeNull();
+    expect(initial!.cols).toBeGreaterThan(20);
+    expect(initial!.rows).toBeGreaterThan(5);
+
+    // Move the terminal to BACKGROUND tier without touching panel location —
+    // this is what a hidden tab or off-screen panel-group produces.
+    expect(await applyTier(window, panelId, "BACKGROUND")).toBe(true);
+    await window.waitForTimeout(T_SETTLE);
+
+    // Simulate a ResizeObserver firing for a substantially smaller container
+    // (e.g. window or split divider shrunk while the panel is in the hidden
+    // tab). Pre-fix, this call was silently dropped by the BACKGROUND guard
+    // in TerminalResizeController.resize() and the dims would never reach
+    // xterm or the PTY.
+    const targetWidth = 400;
+    const targetHeight = 240;
+    const observed = await simulateResize(window, panelId, targetWidth, targetHeight);
+    expect(observed).not.toBeNull();
+    expect(observed!.cols).toBeGreaterThan(2);
+    expect(observed!.cols).toBeLessThan(initial!.cols);
+
+    // While still BACKGROUND, xterm's internal grid intentionally stays at
+    // the old geometry — paint is paused and reflow is deferred until wake.
+    // The captured latestCols/latestRows is what matters on the wake path.
+    const beforeRestore = await getTerminalDimensions(terminalPanel);
+    expect(beforeRestore).not.toBeNull();
+
+    // Restore to FOCUSED. applyDeferredResize on the wake path must reconcile
+    // xterm's grid with the dims captured during background, before refresh
+    // repaints into the buffer.
+    expect(await applyTier(window, panelId, "FOCUSED")).toBe(true);
+    await window.waitForTimeout(T_SETTLE);
+
+    const afterRestore = await getTerminalDimensions(terminalPanel);
+    expect(afterRestore).not.toBeNull();
+    expect(afterRestore!.cols).toBe(observed!.cols);
+    expect(afterRestore!.rows).toBe(observed!.rows);
+    expect(afterRestore!.cols).toBeLessThan(initial!.cols);
+  });
+
+  test("bulk output during BACKGROUND survives restore without garbling", async () => {
+    test.setTimeout(60_000);
+    const { window } = ctx;
+
+    const panelId = await getPanelId(terminalPanel);
+
+    // Bring back to FOCUSED for a clean starting point.
+    await applyTier(window, panelId, "FOCUSED");
+    await window.waitForTimeout(T_SETTLE);
+
+    // Start a bounded stream so PTY output continues across the visibility
+    // cycle without leaving a runaway process behind.
+    await runTerminalCommand(
+      window,
+      terminalPanel,
+      "for i in $(seq 1 200); do echo BG_LINE_${i}; done; echo BG_DONE"
+    );
+    await waitForTerminalText(terminalPanel, "BG_LINE_1", T_LONG);
+
+    // Switch to BACKGROUND tier while output is mid-flight.
+    await applyTier(window, panelId, "BACKGROUND");
+    await window.waitForTimeout(200);
+
+    // Capture a slightly narrower geometry while the container is hidden.
+    const dims = await getTerminalDimensions(terminalPanel);
+    expect(dims).not.toBeNull();
+    const narrower = Math.max(200, Math.floor(dims!.cols * 8 * 0.7));
+    await simulateResize(window, panelId, narrower, 240);
+
+    // Restore visibility — the wake path runs applyDeferredResize before
+    // refresh, so the final repaint targets the narrower grid.
+    await applyTier(window, panelId, "FOCUSED");
+    await window.waitForTimeout(T_SETTLE);
+
+    // Output must finish and the DONE sentinel must be present in the buffer —
+    // proves the visibility transition didn't drop or corrupt PTY data.
+    await waitForTerminalText(terminalPanel, "BG_DONE", T_LONG);
+
+    const finalDims = await getTerminalDimensions(terminalPanel);
+    expect(finalDims).not.toBeNull();
+    expect(finalDims!.cols).toBeGreaterThan(2);
+    expect(finalDims!.rows).toBeGreaterThan(1);
+  });
+});

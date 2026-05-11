@@ -144,6 +144,7 @@ class TerminalInstanceService {
         return this.wakeManager.wakeAndRestore(id);
       },
       onPostWake: (id) => this.handlePostWake(id),
+      applyDeferredResize: (id) => this.resizeController.applyDeferredResize(id),
       onTierApplied: (id, tier, managed) => {
         if (this.isHibernationEligible(tier, managed) && !managed.isVisible) {
           this.scheduleHibernation(id, managed);
@@ -153,6 +154,16 @@ class TerminalInstanceService {
 
         if (tier === TerminalRefreshTier.BACKGROUND) {
           reduceScrollback(managed, SCROLLBACK_BACKGROUND);
+
+          // Clear the resize dedup cache so the first ResizeObserver
+          // observation after the terminal returns to an active tier is
+          // processed, even if the pixel width/height match the values
+          // recorded before the background transition. Without this reset,
+          // a container that resized while hidden (e.g. window resize during
+          // bulk worktree activity) can dedup-suppress the corrective resize
+          // that re-syncs xterm and the PTY on wake (issue #7741).
+          managed.lastWidth = 0;
+          managed.lastHeight = 0;
 
           if (managed.imageAddon) {
             try {
@@ -510,6 +521,17 @@ class TerminalInstanceService {
         if (managed.isAttaching) {
           return;
         }
+
+        // Reconcile xterm's grid with dimensions captured while background
+        // before the renderer policy runs its refresh. The bulk-output
+        // garbling in #7741 manifests when xterm.cols/rows still reflect the
+        // previous active geometry but the PTY (and incoming output) have
+        // already advanced — refreshing into the old grid paints stale glyphs.
+        // Order matters: must precede the lastWidth/lastHeight rect update so
+        // that if cellDims were unavailable during background and latestCols/
+        // latestRows are stale, the rect-update doesn't dedup-poison the next
+        // ResizeObserver tick.
+        this.resizeController.applyDeferredResize(id);
 
         const rect = managed.hostElement.getBoundingClientRect();
         if (rect.width > 0 && rect.height > 0) {
@@ -1947,6 +1969,42 @@ if (typeof window !== "undefined") {
     const managed = terminalInstanceService.getInstanceForE2E(panelId);
     if (!managed) return 0;
     return managed.terminal.buffer.active.length;
+  };
+
+  (window as unknown as Record<string, unknown>).__daintreeGetTerminalDimensions = (
+    panelId: string
+  ): { cols: number; rows: number } | null => {
+    const managed = terminalInstanceService.getInstanceForE2E(panelId);
+    if (!managed) return null;
+    return { cols: managed.terminal.cols, rows: managed.terminal.rows };
+  };
+
+  // Test-only: drive the frontend tier directly so E2E specs can reproduce
+  // the BACKGROUND→active transition without depending on full panel-location
+  // moves. Accepts the canonical tier names ("FOCUSED", "BURST", "VISIBLE",
+  // "AMBIENT", "BACKGROUND").
+  (window as unknown as Record<string, unknown>).__daintreeApplyTerminalTier = (
+    panelId: string,
+    tierName: string
+  ): boolean => {
+    const tier = (TerminalRefreshTier as unknown as Record<string, TerminalRefreshTier>)[tierName];
+    if (typeof tier !== "number") return false;
+    if (!terminalInstanceService.getInstanceForE2E(panelId)) return false;
+    terminalInstanceService.applyRendererPolicy(panelId, tier);
+    return true;
+  };
+
+  // Test-only: invoke TerminalResizeController.resize() directly so E2E specs
+  // can simulate a ResizeObserver firing on a backgrounded terminal without
+  // having to actually mutate window or container geometry (which would also
+  // disturb every other panel).
+  (window as unknown as Record<string, unknown>).__daintreeSimulateTerminalResize = (
+    panelId: string,
+    width: number,
+    height: number
+  ): { cols: number; rows: number } | null => {
+    if (!terminalInstanceService.getInstanceForE2E(panelId)) return null;
+    return terminalInstanceService.resize(panelId, width, height);
   };
 
   (window as unknown as Record<string, unknown>).__daintreeTriggerTerminalLink = (
