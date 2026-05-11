@@ -12,11 +12,13 @@ import markdown from "refractor/markdown";
 import tsx from "refractor/tsx";
 import typescript from "refractor/typescript";
 import "react-diff-view/style/index.css";
-import { AlertCircle, ExternalLink } from "lucide-react";
+import { AlertCircle, ChevronRight, ExternalLink } from "lucide-react";
 import path from "path-browserify";
 import { getLanguageForFile } from "@/components/FileViewer/languageUtils";
 import { actionService } from "@/services/ActionService";
 import { TruncatedTooltip } from "@/components/ui/TruncatedTooltip";
+import { getFilePath, shouldCollapseByDefault, estimateFileDiffBytes } from "./diffCollapseUtils";
+import { formatBytes } from "@/lib/formatBytes";
 
 for (const lang of [bash, css, javascript, jsx, json, markdown, tsx, typescript]) {
   refractor.register(lang);
@@ -198,8 +200,6 @@ export function DiffViewer({
     );
   }
 
-  const language = getLanguageForFile(filePath);
-
   return (
     <div className="diff-viewer overflow-auto">
       {files.map((file, index) => (
@@ -207,7 +207,6 @@ export function DiffViewer({
           key={file.newRevision || file.oldRevision || index}
           file={file}
           viewType={viewType}
-          language={language}
           rootPath={rootPath}
         />
       ))}
@@ -218,13 +217,22 @@ export function DiffViewer({
 interface FileDiffProps {
   file: ReturnType<typeof parseDiff>[0];
   viewType: ViewType;
-  language: string;
   rootPath?: string;
 }
 
-function FileDiff({ file, viewType, language, rootPath }: FileDiffProps) {
+function FileDiff({ file, viewType, rootPath }: FileDiffProps) {
+  const relPath = getFilePath(file);
+  const language = useMemo(() => {
+    const derived = getLanguageForFile(relPath);
+    return FAILED_LANGS.has(derived) ? "plaintext" : derived;
+  }, [relPath]);
   const { tokens, langLoadFailed } = useTokens(file.hunks ?? [], language);
   const diffType: DiffType = file.type as DiffType;
+
+  const collapseDecision = useMemo(() => shouldCollapseByDefault(file), [file]);
+  const [isCollapsed, setIsCollapsed] = useState(collapseDecision.collapse);
+
+  const diffRegionId = `diff-region-${file.newRevision || file.oldRevision || "unknown"}`;
 
   const { additions, deletions } = useMemo(() => {
     let adds = 0;
@@ -238,19 +246,6 @@ function FileDiff({ file, viewType, language, rootPath }: FileDiffProps) {
     return { additions: adds, deletions: dels };
   }, [file.hunks]);
 
-  const fileTyped = file as ReturnType<typeof parseDiff>[0] & {
-    newPath?: string;
-    oldPath?: string;
-  };
-  // Prefer newPath (the post-change path); fall back to oldPath for deletions.
-  // Filter out /dev/null which git uses as a sentinel for added/deleted files.
-  const rawPath =
-    fileTyped.newPath && fileTyped.newPath !== "/dev/null"
-      ? fileTyped.newPath
-      : fileTyped.oldPath && fileTyped.oldPath !== "/dev/null"
-        ? fileTyped.oldPath
-        : undefined;
-  const relPath = rawPath;
   const absolutePath =
     rootPath && relPath && !relPath.startsWith("/")
       ? path.join(rootPath, relPath)
@@ -266,6 +261,8 @@ function FileDiff({ file, viewType, language, rootPath }: FileDiffProps) {
       { source: "user" }
     );
   };
+
+  const handleToggleCollapse = () => setIsCollapsed((prev) => !prev);
 
   return (
     <div className="mb-2">
@@ -303,18 +300,40 @@ function FileDiff({ file, viewType, language, rootPath }: FileDiffProps) {
           </div>
         </div>
       )}
-      <div className="diff-file-scroll">
-        <Diff
-          viewType={viewType}
-          diffType={diffType}
-          hunks={file.hunks ?? []}
-          tokens={tokens ?? undefined}
+      {collapseDecision.collapse && (
+        <button
+          onClick={handleToggleCollapse}
+          aria-expanded={!isCollapsed}
+          aria-controls={diffRegionId}
+          className="flex w-full items-center gap-2 px-3 py-2 text-xs text-text-muted hover:bg-tint/5 transition-colors"
         >
-          {(hunks: HunkData[]) =>
-            hunks.map((hunk) => <Hunk key={`${hunk.oldStart}-${hunk.newStart}`} hunk={hunk} />)
-          }
-        </Diff>
-      </div>
+          <ChevronRight
+            className={`h-3 w-3 shrink-0 transition-transform duration-150 ${isCollapsed ? "" : "rotate-90"}`}
+          />
+          <span className="text-left">
+            {collapseDecision.reason === "generated"
+              ? "Generated file collapsed"
+              : `Large diff (${formatBytes(estimateFileDiffBytes(file))})`}
+          </span>
+          <span className="ml-auto text-daintree-text/50 font-mono text-xs">
+            {isCollapsed ? "Show diff" : "Hide diff"}
+          </span>
+        </button>
+      )}
+      {!isCollapsed && (
+        <div id={diffRegionId} className="diff-file-scroll">
+          <Diff
+            viewType={viewType}
+            diffType={diffType}
+            hunks={file.hunks ?? []}
+            tokens={tokens ?? undefined}
+          >
+            {(hunks: HunkData[]) =>
+              hunks.map((hunk) => <Hunk key={`${hunk.oldStart}-${hunk.newStart}`} hunk={hunk} />)
+            }
+          </Diff>
+        </div>
+      )}
     </div>
   );
 }

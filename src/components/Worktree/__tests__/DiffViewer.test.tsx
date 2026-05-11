@@ -8,6 +8,27 @@ vi.mock("refractor/rust", () => {
   throw new Error("Failed to fetch dynamically imported module");
 });
 
+vi.mock("react-diff-view", async () => {
+  const actual = await vi.importActual<typeof import("react-diff-view")>("react-diff-view");
+  return {
+    ...actual,
+    Diff: ({
+      children,
+      hunks,
+    }: {
+      children: (hunks: unknown[]) => React.ReactNode;
+      hunks: unknown[];
+    }) => <div data-testid="diff-element">{children(hunks)}</div>,
+    Hunk: ({ hunk }: { hunk: { oldStart: number; newStart: number } }) => (
+      <div data-testid="hunk">
+        {hunk.oldStart}-{hunk.newStart}
+      </div>
+    ),
+    tokenize: vi.fn(),
+    markEdits: vi.fn(() => vi.fn()),
+  };
+});
+
 vi.mock("@/services/ActionService", () => ({
   actionService: {
     dispatch: vi.fn().mockResolvedValue({ ok: true }),
@@ -33,6 +54,26 @@ index 123abc..456def 100644
 @@ -1,1 +1,1 @@
 -console.log("old");
 +console.log("new");`;
+
+const SMALL_DIFF = `diff --git a/src/a.ts b/src/a.ts
+index 0123456..abcdefg 100644
+--- a/src/a.ts
++++ b/src/a.ts
+@@ -1,3 +1,4 @@
+ line1
++added
+ line2
+-line3`;
+
+const LOCKFILE_DIFF = `diff --git a/package-lock.json b/package-lock.json
+index 0123456..abcdefg 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1,3 +1,4 @@
+ line1
++added
+ line2
+-line3`;
 
 function wrap(ui: React.ReactElement) {
   return <TooltipProvider>{ui}</TooltipProvider>;
@@ -127,5 +168,51 @@ index 000..111 100644
   it("renders parse failure when diff is unparseable", () => {
     render(wrap(<DiffViewer diff="not a real diff" filePath="src/index.ts" />));
     expect(screen.getByText("Unable to parse diff")).toBeTruthy();
+  });
+});
+
+describe("DiffViewer sentinel messages", () => {
+  beforeEach(() => {
+    _resetLangStateForTests();
+  });
+
+  it("shows NO_CHANGES message", () => {
+    render(wrap(<DiffViewer diff="NO_CHANGES" filePath="a.ts" />));
+    expect(screen.getByText("No changes detected")).toBeTruthy();
+  });
+
+  it("shows BINARY_FILE message", () => {
+    render(wrap(<DiffViewer diff="BINARY_FILE" filePath="icon.png" />));
+    expect(screen.getByText("Binary file - cannot display diff")).toBeTruthy();
+  });
+
+  it("shows FILE_TOO_LARGE message with 1MB threshold", () => {
+    render(wrap(<DiffViewer diff="FILE_TOO_LARGE" filePath="big.ts" />));
+    expect(screen.getByText(/File too large/)).toBeTruthy();
+    expect(screen.getByText(/1MB/)).toBeTruthy();
+  });
+});
+
+describe("DiffViewer collapse behavior", () => {
+  beforeEach(() => {
+    _resetLangStateForTests();
+  });
+
+  it("collapses lockfile diff by default with toggle", () => {
+    render(wrap(<DiffViewer diff={LOCKFILE_DIFF} filePath="package-lock.json" />));
+
+    expect(screen.getByText("Generated file collapsed")).toBeTruthy();
+    expect(screen.getByText("Show diff")).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Show diff"));
+
+    expect(screen.getByText("Hide diff")).toBeTruthy();
+  });
+
+  it("renders small normal file without collapse", () => {
+    render(wrap(<DiffViewer diff={SMALL_DIFF} filePath="src/a.ts" />));
+
+    expect(screen.queryByText("Show diff")).toBeNull();
+    expect(screen.queryByText("Generated file collapsed")).toBeNull();
   });
 });
