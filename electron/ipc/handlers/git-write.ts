@@ -356,18 +356,18 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
   };
   handlers.push(typedHandle(CHANNELS.GIT_COMMIT, handleCommit));
 
-  let isPushing = false;
+  const pushingCwds = new Set<string>();
 
   const handlePush = async (
     ctx: IpcContext,
     payload: { cwd: string; setUpstream?: boolean }
   ): Promise<void> => {
-    if (isPushing) return;
+    if (pushingCwds.has(payload.cwd)) return;
 
     checkRateLimit(CHANNELS.GIT_PUSH, 5, 10_000);
     validateCwd(payload?.cwd);
 
-    isPushing = true;
+    pushingCwds.add(payload.cwd);
     const git = createAuthenticatedGit(payload.cwd);
     let branchName: string | undefined;
     const senderWindow = ctx.senderWindow;
@@ -464,7 +464,7 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
         branchName,
       });
     } finally {
-      isPushing = false;
+      pushingCwds.delete(payload.cwd);
     }
   };
   handlers.push(typedHandleWithContext(CHANNELS.GIT_PUSH, handlePush));
