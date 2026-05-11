@@ -293,6 +293,14 @@ export const PATTERNS: readonly SecretPattern[] = [
     replacement: REDACTED,
   },
   {
+    name: "heroku-api-key-v2",
+    // MUST precede `heroku-oauth-token` so the broader `HRKU-` prefix doesn't
+    // greedily consume `HRKU-AA` and leave the body visible.
+    // No trailing `\b`: body charset includes `-` and `_` (non-word).
+    regex: /\bHRKU-AA[0-9a-zA-Z_-]{58}/g,
+    replacement: REDACTED,
+  },
+  {
     name: "heroku-oauth-token",
     // No trailing `\b`: body charset includes `-` and `_` (non-word) so tokens
     // ending in either would silently miss the boundary check.
@@ -315,6 +323,82 @@ export const PATTERNS: readonly SecretPattern[] = [
     // `["']?` may be a non-word char (mirrors `aws-secret-access-key`).
     regex:
       /\b(?:DD_API_KEY|DD_APP_KEY|datadog_api_key|datadog_app_key)["']?\s{0,8}[:=]\s{0,8}["']?[a-f0-9]{32,40}["']?/gi,
+    replacement: REDACTED,
+  },
+  {
+    name: "pulumi-api-token",
+    regex: /\bpul-[a-f0-9]{40}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "rubygems-api-token",
+    regex: /\brubygems_[a-f0-9]{48}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "readme-api-token",
+    regex: /\brdme_[a-z0-9]{70}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "huggingface-org-api-token",
+    // Organization-level tokens use `api_org_` prefix, distinct from user-level
+    // `hf_` tokens already covered above.
+    regex: /\bapi_org_[A-Za-z]{34}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "age-secret-key",
+    // Base58-encoded (Crockford alphabet) body. Fixed 58-char secret.
+    regex: /\bAGE-SECRET-KEY-1[QPZRY9X8GF2TVDW0S3JN54KHCE6MUA7L]{58}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "infracost-api-token",
+    regex: /\bico-[A-Za-z0-9]{32}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "artifactory-api-key",
+    regex: /\bAKCp[A-Za-z0-9]{69}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "artifactory-reference-token",
+    regex: /\bcmVmd[A-Za-z0-9]{59}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "grafana-service-account-token",
+    // Format: glsa_<32 alnum>_<8 hex>. Trailing `\b` safe because body ends in hex.
+    regex: /\bglsa_[A-Za-z0-9]{32}_[A-Fa-f0-9]{8}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "easypost-api-token",
+    regex: /\bEZAK[A-Za-z0-9]{54}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "easypost-test-api-token",
+    regex: /\bEZTK[A-Za-z0-9]{54}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "maxmind-license-key",
+    // Format: <6 alnum>_<29 alnum>_mmk. Trailing `\b` safe because body ends in `k`.
+    regex: /\b[A-Za-z0-9]{6}_[A-Za-z0-9]{29}_mmk\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "doppler-api-token",
+    regex: /\bdp\.pt\.[A-Za-z0-9]{43}\b/g,
+    replacement: REDACTED,
+  },
+  {
+    name: "scalingo-api-token",
+    // No trailing `\b`: body charset includes `-` and `_` (non-word).
+    regex: /\btk-us-[A-Za-z0-9_-]{48}/g,
     replacement: REDACTED,
   },
   {
