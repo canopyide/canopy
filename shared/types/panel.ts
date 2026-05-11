@@ -385,11 +385,13 @@ export type PanelInstance = PtyPanelData | BrowserPanelData | DevPreviewPanelDat
 
 export function isPtyPanel(panel: PanelInstance | TerminalInstance): panel is PtyPanelData {
   const kind = panel.kind ?? "terminal";
+  // eslint-disable-next-line no-restricted-syntax -- sanctioned panel-kind type guard
   return kind === "terminal";
 }
 
 export function isBrowserPanel(panel: PanelInstance | TerminalInstance): panel is BrowserPanelData {
   const kind = panel.kind ?? "terminal";
+  // eslint-disable-next-line no-restricted-syntax -- sanctioned panel-kind type guard
   return kind === "browser";
 }
 
@@ -397,6 +399,7 @@ export function isDevPreviewPanel(
   panel: PanelInstance | TerminalInstance
 ): panel is DevPreviewPanelData {
   const kind = panel.kind ?? "terminal";
+  // eslint-disable-next-line no-restricted-syntax -- sanctioned panel-kind type guard
   return kind === "dev-preview";
 }
 
