@@ -7,6 +7,8 @@ export interface AgentShortcutCaptureProps {
   agentId: BuiltInAgentId;
   onCapture: (combo: string) => void;
   onCancel: () => void;
+  /** Compact rendering for inline contexts like the agent tray dropdown. */
+  compact?: boolean;
 }
 
 const AGENT_COMBO_PATTERN_MAC = /^Cmd\+Alt\+[A-Za-z]$/;
@@ -20,7 +22,12 @@ const AGENT_COMBO_PATTERN_WIN_LINUX = /^Cmd\+Alt\+[A-Za-z]$/;
  * canonical internal format, not the display form, so the validator stays
  * consistent with stored bindings in defaultKeybindings.ts.
  */
-export function AgentShortcutCapture({ agentId, onCapture, onCancel }: AgentShortcutCaptureProps) {
+export function AgentShortcutCapture({
+  agentId,
+  onCapture,
+  onCancel,
+  compact = false,
+}: AgentShortcutCaptureProps) {
   const actionId = `agent.${agentId}`;
   const mac = isMac();
 
@@ -45,6 +52,7 @@ export function AgentShortcutCapture({ agentId, onCapture, onCancel }: AgentShor
       onCancel={onCancel}
       excludeActionId={actionId}
       validateCombo={validateCombo}
+      compact={compact}
     />
   );
 }

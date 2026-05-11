@@ -10,6 +10,7 @@ import {
 import { actionService } from "@/services/ActionService";
 import { notify } from "@/lib/notify";
 import { logError, logWarn } from "@/utils/logger";
+import { cn } from "@/lib/utils";
 
 export interface SettingsShortcutCaptureProps {
   /** Called when user saves the captured key combination */
@@ -32,6 +33,13 @@ export interface SettingsShortcutCaptureProps {
    * must use Cmd+Alt+letter" without baking domain copy into this widget.
    */
   validateCombo?: (combo: string) => string | null;
+  /**
+   * Compact rendering for inline contexts like dropdowns. Drops the outer
+   * card chrome, tightens spacing, shrinks action buttons, and auto-starts
+   * recording on mount (since the user has already expressed intent by
+   * opening the capture). The Settings-page default keeps the full card.
+   */
+  compact?: boolean;
 }
 
 export function SettingsShortcutCapture({
@@ -40,8 +48,12 @@ export function SettingsShortcutCapture({
   excludeActionId,
   scope = "global",
   validateCombo,
+  compact = false,
 }: SettingsShortcutCaptureProps) {
-  const [recording, setRecording] = useState(false);
+  // Compact (inline) consumers reach this widget by an explicit click, so
+  // there's no reason to require a second "Click to record" press. Defaulting
+  // `recording` to `compact` arms capture on mount without an effect.
+  const [recording, setRecording] = useState(compact);
   const [capturedCombos, setCapturedCombos] = useState<string[]>([]);
   const [chordStep, setChordStep] = useState<"first" | "waiting" | "complete">("first");
   const chordTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -307,11 +319,23 @@ export function SettingsShortcutCapture({
 
   const isChord = capturedCombos.length > 1;
 
+  const containerClass = compact
+    ? "space-y-2"
+    : "bg-daintree-bg/50 border border-daintree-border rounded-[var(--radius-lg)] p-4 space-y-3";
+  const captureClass = compact
+    ? "flex-1 px-2 py-1 text-sm border rounded text-center transition-colors"
+    : "flex-1 px-4 py-2 border rounded text-center transition-colors";
+
   return (
-    <div className="bg-daintree-bg/50 border border-daintree-border rounded-[var(--radius-lg)] p-4 space-y-3">
+    <div className={containerClass}>
       <div className="flex items-center gap-2" role="status" aria-live="polite" aria-atomic="true">
         {recording ? (
-          <div className="flex-1 px-4 py-2 border border-daintree-accent rounded bg-daintree-accent/10 text-daintree-accent animate-pulse text-center">
+          <div
+            className={cn(
+              captureClass,
+              "border-daintree-accent bg-daintree-accent/10 text-daintree-accent animate-pulse"
+            )}
+          >
             {chordStep === "first" ? (
               "Press key combination..."
             ) : chordStep === "waiting" ? (
@@ -327,14 +351,22 @@ export function SettingsShortcutCapture({
             ) : null}
           </div>
         ) : capturedCombo ? (
-          <div className="flex-1 px-4 py-2 border border-daintree-border rounded bg-daintree-bg text-daintree-text text-center font-mono">
+          <div
+            className={cn(
+              captureClass,
+              "border-daintree-border bg-daintree-bg text-daintree-text font-mono"
+            )}
+          >
             <span>{keybindingService.formatComboForDisplay(capturedCombo)}</span>
             {isChord && <span className="ml-2 text-xs text-daintree-text/50">(chord)</span>}
           </div>
         ) : (
           <button
             onClick={handleStartRecording}
-            className="flex-1 px-4 py-2 border border-daintree-border rounded bg-daintree-bg text-daintree-text/60 hover:text-daintree-text hover:border-daintree-accent transition-colors"
+            className={cn(
+              captureClass,
+              "border-daintree-border bg-daintree-bg text-daintree-text/60 hover:text-daintree-text hover:border-daintree-accent"
+            )}
           >
             Click to record shortcut
           </button>
@@ -391,16 +423,22 @@ export function SettingsShortcutCapture({
         </div>
       )}
 
-      <div className="flex gap-2 justify-end">
+      <div className={cn("flex justify-end", compact ? "gap-3" : "gap-2")}>
         <button
           onClick={handleCancel}
-          className="px-3 py-1.5 text-sm text-daintree-text/60 hover:text-daintree-text transition-colors"
+          className={cn(
+            "text-daintree-text/60 hover:text-daintree-text transition-colors",
+            compact ? "text-xs" : "px-3 py-1.5 text-sm"
+          )}
         >
           Cancel
         </button>
         <button
           onClick={handleClear}
-          className="px-3 py-1.5 text-sm text-daintree-text/60 hover:text-daintree-text transition-colors"
+          className={cn(
+            "text-daintree-text/60 hover:text-daintree-text transition-colors",
+            compact ? "text-xs" : "px-3 py-1.5 text-sm"
+          )}
         >
           Clear
         </button>
@@ -408,7 +446,10 @@ export function SettingsShortcutCapture({
           <button
             onClick={handleSave}
             disabled={Boolean(validationError)}
-            className="px-3 py-1.5 text-sm bg-daintree-accent text-daintree-bg rounded hover:bg-daintree-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className={cn(
+              "bg-daintree-accent text-daintree-bg rounded hover:bg-daintree-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
+              compact ? "px-2 py-0.5 text-xs" : "px-3 py-1.5 text-sm"
+            )}
           >
             Save
           </button>
