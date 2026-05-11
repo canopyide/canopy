@@ -88,10 +88,11 @@ export interface ReviewHubContentProps {
   worktreePath: string;
   onClose: () => void;
   /**
-   * The container element keydown listeners attach to. Defaults to `document`
-   * so the modal shell continues to capture Escape globally. When rendered
-   * inside a non-modal panel, callers can pass a scoped element so Escape
-   * only fires when the panel has focus.
+   * Where to attach the Escape-key listener. Defaults to `document` so the
+   * modal shell continues to capture Escape globally. Non-modal callers can
+   * pass a scoped element to confine Escape to their panel. `undefined`/`null`
+   * both fall back to `document`; if you intend a scoped element but the ref
+   * isn't attached yet, gate the prop yourself rather than passing `null`.
    */
   keyboardScope?: Document | HTMLElement | null;
 }
@@ -445,6 +446,7 @@ export function ReviewHubContent({
       refreshIdRef.current++;
       bgRefreshIdRef.current++;
       baseBranchRequestRef.current++;
+      reviewThreadsRequestRef.current++;
       setStatus(null);
       setLoadError(null);
       setActionError(null);
@@ -464,12 +466,24 @@ export function ReviewHubContent({
       setSelectedPaths(new Set());
       setSelectionSection(null);
       selectionAnchorRef.current = null;
+      // Filter state lives in `stagedView`/`changesView` rather than refs, so the
+      // modal-shell path (which unmounts on close) never noticed leftover
+      // filters. Once mounted as a non-modal panel, the same component instance
+      // survives close→reopen — reset the filter, sort, density, and the
+      // pending debounced writes so the next open starts from defaults.
+      stagedDebounceRef.current?.cancel();
+      changesDebounceRef.current?.cancel();
+      if (stagedInputRef.current) stagedInputRef.current.value = "";
+      if (changesInputRef.current) changesInputRef.current.value = "";
+      setStagedView(DEFAULT_SECTION_STATE);
+      setChangesView(DEFAULT_SECTION_STATE);
     }
   }, [isOpen, refresh]);
 
   useEffect(() => {
     if (diffMode === "base-branch" && status?.currentBranch === mainBranch) {
       baseBranchRequestRef.current++;
+      reviewThreadsRequestRef.current++;
       setDiffMode("working-tree");
       setBaseBranchFiles(null);
       setBaseBranchError(null);
