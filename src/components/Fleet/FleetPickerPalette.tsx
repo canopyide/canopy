@@ -47,6 +47,11 @@ export function FleetPickerPalette({ isOpen, onClose }: FleetPickerPaletteProps)
     [picker.visibleIds, picker.selectedIds]
   );
 
+  // Scope is `agentState`-only — terminals are picked by their reported
+  // agent state (working/waiting/directing). No capability-id gate, so a
+  // terminal whose `agentState` is set but whose registered agent has gone
+  // away is still eligible to be armed (arming broadcasts keystrokes, not
+  // agent commands — the surface is acceptable).
   const agentVisibleIds = useMemo(
     () =>
       picker.visibleTerminals
@@ -65,19 +70,25 @@ export function FleetPickerPalette({ isOpen, onClose }: FleetPickerPaletteProps)
       : "Select all";
 
   // Select → replace visible (matches Cmd+A in useFleetPicker).
-  // Deselect → scoped remove of visible ids only, so picks for terminals
-  // filtered out by the current query survive.
+  // Deselect when filtered → scoped removal so picks for filtered-out
+  // terminals survive. Deselect when unfiltered → full clear, otherwise
+  // drifted (transiently-ineligible) ids would sneak back into the
+  // selection after re-eligibility, contradicting the "Deselect all" label.
   const handleToggleAllVisible = useCallback(() => {
-    if (allVisibleSelected) {
+    if (!allVisibleSelected) {
+      picker.setSelectedIds(new Set(picker.visibleIds));
+      return;
+    }
+    if (hasQuery) {
       picker.setSelectedIds((prev) => {
         const next = new Set(prev);
         for (const id of picker.visibleIds) next.delete(id);
         return next;
       });
     } else {
-      picker.setSelectedIds(new Set(picker.visibleIds));
+      picker.setSelectedIds(new Set());
     }
-  }, [allVisibleSelected, picker.setSelectedIds, picker.visibleIds]);
+  }, [allVisibleSelected, hasQuery, picker.setSelectedIds, picker.visibleIds]);
 
   // Additive — preserves existing picks (including non-agent terminals).
   const handleSelectAgents = useCallback(() => {
