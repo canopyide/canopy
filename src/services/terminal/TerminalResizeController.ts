@@ -146,9 +146,8 @@ export class TerminalResizeController {
 
     const currentTier =
       managed.lastAppliedTier ?? managed.getRefreshTier?.() ?? TerminalRefreshTier.FOCUSED;
-    if (currentTier === TerminalRefreshTier.BACKGROUND && !managed.isFocused) {
-      return null;
-    }
+    const isBackgroundUnfocused =
+      currentTier === TerminalRefreshTier.BACKGROUND && !managed.isFocused;
 
     if (Math.abs(managed.lastWidth - width) < 1 && Math.abs(managed.lastHeight - height) < 1) {
       return null;
@@ -156,6 +155,35 @@ export class TerminalResizeController {
 
     const buffer = managed.terminal.buffer.active;
     const wasAtBottom = buffer.viewportY >= buffer.baseY;
+
+    if (isBackgroundUnfocused) {
+      // Background-tier path: a ResizeObserver fired while the host element
+      // is inside a content-visibility:hidden container. fitAddon.fit() would
+      // read 0x0 from the DOM, so we compute cols/rows from cached cell
+      // metrics instead. We deliberately skip terminal.resize() here — paint
+      // is paused, deferring the buffer reflow to wake time avoids work the
+      // user never sees. sendPtyResize() keeps the PTY in lockstep with the
+      // visible container size so agent output is wrapped correctly when the
+      // pane is revealed, and the settled-strategy timer is preserved.
+      const cellDims = getXtermCellDimensions(managed.terminal);
+      if (!cellDims) {
+        return null;
+      }
+      const cols = Math.max(2, Math.floor(width / cellDims.width));
+      const rows = Math.max(1, Math.floor(height / cellDims.height));
+      if (managed.latestCols === cols && managed.latestRows === rows) {
+        managed.lastWidth = width;
+        managed.lastHeight = height;
+        return null;
+      }
+      managed.lastWidth = width;
+      managed.lastHeight = height;
+      managed.latestCols = cols;
+      managed.latestRows = rows;
+      managed.latestWasAtBottom = wasAtBottom;
+      this.sendPtyResize(id, cols, rows);
+      return { cols, rows };
+    }
 
     try {
       // Calculate cols/rows directly from the passed dimensions and cell metrics.

@@ -263,6 +263,20 @@ export async function getTerminalBufferLength(panelLocator: Locator): Promise<nu
   }, panelId);
 }
 
+export async function getTerminalDimensions(
+  panelLocator: Locator
+): Promise<{ cols: number; rows: number } | null> {
+  const page = panelLocator.page();
+  const panelId = await getPanelId(panelLocator);
+  if (!panelId) return null;
+
+  return page.evaluate((id) => {
+    const fn = (window as unknown as Record<string, unknown>).__daintreeGetTerminalDimensions;
+    if (typeof fn === "function") return fn(id) as { cols: number; rows: number } | null;
+    return null;
+  }, panelId);
+}
+
 export async function selectAllTerminalText(panelLocator: Locator): Promise<void> {
   const page = panelLocator.page();
   const panelId = await getPanelId(panelLocator);

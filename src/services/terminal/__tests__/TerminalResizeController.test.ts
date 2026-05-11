@@ -122,10 +122,13 @@ describe("TerminalResizeController", () => {
     await new Promise<void>((resolve) => queueMicrotask(resolve));
   };
 
-  it("skips resize in background tier when terminal is unfocused", () => {
+  it("background-tier resize captures dims and notifies PTY without calling fitAddon.fit()", () => {
     const managed = createManagedTerminal();
     managed.lastAppliedTier = TerminalRefreshTier.BACKGROUND;
     managed.isFocused = false;
+    Object.assign(managed.terminal, {
+      _core: { _renderService: { dimensions: { css: { cell: { width: 10, height: 20 } } } } },
+    });
 
     const controller = new TerminalResizeController({
       getInstance: vi.fn(() => managed),
@@ -135,9 +138,96 @@ describe("TerminalResizeController", () => {
       } as any,
     });
 
-    const result = controller.resize("term-1", 1200, 900);
+    const result = controller.resize("term-1", 1600, 800);
+    expect(result).toEqual({ cols: 160, rows: 40 });
+    expect(managed.fitAddon.fit).not.toHaveBeenCalled();
+    // Buffer reflow is deferred to wake — xterm.resize() must NOT fire while paint is paused.
+    expect(managed.terminal.resize).not.toHaveBeenCalled();
+    expect(resizeMock).toHaveBeenCalledWith("term-1", 160, 40);
+    expect(managed.latestCols).toBe(160);
+    expect(managed.latestRows).toBe(40);
+    expect(managed.lastWidth).toBe(1600);
+    expect(managed.lastHeight).toBe(800);
+  });
+
+  it("background-tier resize returns null when cell dims are unavailable", () => {
+    const managed = createManagedTerminal();
+    managed.lastAppliedTier = TerminalRefreshTier.BACKGROUND;
+    managed.isFocused = false;
+    // No _core attached — cellDims will be null.
+
+    const controller = new TerminalResizeController({
+      getInstance: vi.fn(() => managed),
+      dataBuffer: {
+        flushForTerminal: vi.fn(),
+        resetForTerminal: vi.fn(),
+      } as any,
+    });
+
+    const result = controller.resize("term-1", 1600, 800);
     expect(result).toBeNull();
+    expect(managed.fitAddon.fit).not.toHaveBeenCalled();
     expect(resizeMock).not.toHaveBeenCalled();
+    // Dedup cache must not be touched on a no-op early return.
+    expect(managed.lastWidth).toBe(800);
+    expect(managed.lastHeight).toBe(600);
+  });
+
+  it("background-tier resize dedups identical follow-up call without re-notifying PTY", () => {
+    const managed = createManagedTerminal();
+    managed.lastAppliedTier = TerminalRefreshTier.BACKGROUND;
+    managed.isFocused = false;
+    Object.assign(managed.terminal, {
+      _core: { _renderService: { dimensions: { css: { cell: { width: 10, height: 20 } } } } },
+    });
+
+    const controller = new TerminalResizeController({
+      getInstance: vi.fn(() => managed),
+      dataBuffer: {
+        flushForTerminal: vi.fn(),
+        resetForTerminal: vi.fn(),
+      } as any,
+    });
+
+    controller.resize("term-1", 1600, 800);
+    expect(resizeMock).toHaveBeenCalledTimes(1);
+
+    // Same pixel dims → dedup guard returns null before any side effects.
+    const second = controller.resize("term-1", 1600, 800);
+    expect(second).toBeNull();
+    expect(resizeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("background-tier settled agents batch the deferred PTY resize", () => {
+    const managed = createManagedTerminal();
+    managed.lastAppliedTier = TerminalRefreshTier.BACKGROUND;
+    managed.isFocused = false;
+    managed.launchAgentId = "codex";
+    managed.runtimeAgentId = "codex";
+    Object.assign(managed.terminal, {
+      _core: { _renderService: { dimensions: { css: { cell: { width: 10, height: 20 } } } } },
+    });
+
+    getEffectiveAgentConfigMock.mockReturnValue({
+      capabilities: { resizeStrategy: "settled" },
+    });
+
+    const controller = new TerminalResizeController({
+      getInstance: vi.fn(() => managed),
+      dataBuffer: {
+        flushForTerminal: vi.fn(),
+        resetForTerminal: vi.fn(),
+      } as any,
+    });
+
+    controller.resize("term-1", 1600, 800);
+    controller.resize("term-1", 1700, 800);
+    // PTY should not fire synchronously — settled 500ms guard owns the resize.
+    expect(resizeMock).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(500);
+    expect(resizeMock).toHaveBeenCalledTimes(1);
+    expect(resizeMock).toHaveBeenCalledWith("term-1", 170, 40);
   });
 
   it("flushes and resets ingest buffers before applying resize", () => {

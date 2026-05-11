@@ -227,6 +227,99 @@ describe("TerminalRendererPolicy", () => {
     });
   });
 
+  describe("applyDeferredResize callback", () => {
+    it("calls applyDeferredResize before terminal.refresh on the synchronous wake path", async () => {
+      const callOrder: string[] = [];
+      const applyDeferredResize = vi.fn(() => {
+        callOrder.push("applyDeferredResize");
+      });
+      mockDeps.applyDeferredResize = applyDeferredResize;
+
+      const terminal = mockManagedTerminal.terminal as unknown as {
+        refresh: ReturnType<typeof vi.fn>;
+      };
+      terminal.refresh = vi.fn(() => {
+        callOrder.push("refresh");
+      });
+
+      // needsWake=false → synchronous refresh path inside applyRendererPolicyImmediate.
+      mockManagedTerminal.needsWake = false;
+      mockManagedTerminal.lastAppliedTier = TerminalRefreshTier.BACKGROUND;
+
+      const { TerminalRendererPolicy } = await import("../TerminalRendererPolicy");
+      policy = new TerminalRendererPolicy(mockDeps);
+
+      policy.initializeBackendTier("test-id", "background");
+      // Initialize sets needsWake=true; reset before the upgrade so we hit the sync branch.
+      mockManagedTerminal.needsWake = false;
+      policy.applyRendererPolicy("test-id", TerminalRefreshTier.FOCUSED);
+
+      expect(applyDeferredResize).toHaveBeenCalledWith("test-id");
+      expect(callOrder).toEqual(["applyDeferredResize", "refresh"]);
+    });
+
+    it("calls applyDeferredResize before terminal.refresh after a successful async wake", async () => {
+      const callOrder: string[] = [];
+      const applyDeferredResize = vi.fn(() => {
+        callOrder.push("applyDeferredResize");
+      });
+      mockDeps.applyDeferredResize = applyDeferredResize;
+
+      const terminal = mockManagedTerminal.terminal as unknown as {
+        refresh: ReturnType<typeof vi.fn>;
+      };
+      terminal.refresh = vi.fn(() => {
+        callOrder.push("refresh");
+      });
+
+      mockManagedTerminal.needsWake = true;
+      mockManagedTerminal.lastAppliedTier = TerminalRefreshTier.BACKGROUND;
+
+      const { TerminalRendererPolicy } = await import("../TerminalRendererPolicy");
+      policy = new TerminalRendererPolicy(mockDeps);
+
+      policy.initializeBackendTier("test-id", "background");
+      policy.applyRendererPolicy("test-id", TerminalRefreshTier.FOCUSED);
+
+      await vi.waitFor(() => {
+        expect(applyDeferredResize).toHaveBeenCalledWith("test-id");
+      });
+
+      expect(callOrder).toEqual(["applyDeferredResize", "refresh"]);
+    });
+
+    it("calls applyDeferredResize before terminal.refresh on the wake-failure recovery path", async () => {
+      const callOrder: string[] = [];
+      const applyDeferredResize = vi.fn(() => {
+        callOrder.push("applyDeferredResize");
+      });
+      mockDeps.applyDeferredResize = applyDeferredResize;
+      mockDeps.wakeAndRestore = vi.fn(() => Promise.reject(new Error("boom")));
+
+      const terminal = mockManagedTerminal.terminal as unknown as {
+        refresh: ReturnType<typeof vi.fn>;
+      };
+      terminal.refresh = vi.fn(() => {
+        callOrder.push("refresh");
+      });
+
+      mockManagedTerminal.needsWake = true;
+      mockManagedTerminal.lastAppliedTier = TerminalRefreshTier.BACKGROUND;
+
+      const { TerminalRendererPolicy } = await import("../TerminalRendererPolicy");
+      policy = new TerminalRendererPolicy(mockDeps);
+
+      policy.initializeBackendTier("test-id", "background");
+      policy.applyRendererPolicy("test-id", TerminalRefreshTier.FOCUSED);
+
+      await vi.waitFor(() => {
+        expect(applyDeferredResize).toHaveBeenCalledWith("test-id");
+      });
+
+      expect(callOrder).toEqual(["applyDeferredResize", "refresh"]);
+    });
+  });
+
   describe("onTierApplied callback", () => {
     it("fires immediately on upgrade to FOCUSED", async () => {
       const onTierApplied = vi.fn();
