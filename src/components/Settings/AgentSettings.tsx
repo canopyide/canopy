@@ -15,6 +15,7 @@ import {
   type AgentCliDetails,
 } from "@shared/types";
 import { isAgentToolbarVisible } from "../../../shared/utils/agentPinned";
+import { isBuiltInAgentId, type BuiltInAgentId } from "@shared/config/agentIds";
 import { RotateCcw, ExternalLink } from "lucide-react";
 import { Plug } from "@/components/icons";
 import { AgentSelectorDropdown } from "./AgentSelectorDropdown";
@@ -24,9 +25,127 @@ import { AgentScopeEditor } from "./AgentScopeEditor";
 import { actionService } from "@/services/ActionService";
 import { AgentHelpOutput } from "./AgentHelpOutput";
 import { AgentCard, AgentInstallSection } from "@/components/agents/AgentCard";
+import { AgentShortcutCapture } from "@/components/KeyboardShortcuts";
+import { keybindingService } from "@/services/KeybindingService";
+import { notify } from "@/lib/notify";
 import type { DefaultAgentId } from "@/store/agentPreferencesStore";
 
 const GENERAL_SUBTAB_ID = "general";
+
+function AgentShortcutRow({ agentId, agentName }: { agentId: BuiltInAgentId; agentName: string }) {
+  const actionId = `agent.${agentId}`;
+  const displayCombo = useKeybindingDisplay(actionId);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isOverridden, setIsOverridden] = useState(() => keybindingService.hasOverride(actionId));
+
+  useEffect(() => {
+    const update = () => setIsOverridden(keybindingService.hasOverride(actionId));
+    update();
+    return keybindingService.subscribe(update);
+  }, [actionId]);
+
+  const handleSave = useCallback(
+    async (combo: string) => {
+      const result = await actionService.dispatch(
+        "keybinding.setOverride",
+        { actionId, combo: combo === "" ? [] : [combo] },
+        { source: "user" }
+      );
+      if (!result.ok) {
+        logError("[AgentSettings] Failed to save agent shortcut", undefined, {
+          error: result.error,
+        });
+        // Stay in capture mode so the user can retry — closing silently after
+        // a failed IPC would discard the captured combo with no recovery path.
+        notify({
+          type: "error",
+          message: "Couldn't save shortcut. Try again.",
+          duration: 3000,
+          priority: "high",
+        });
+        return;
+      }
+      setIsEditing(false);
+    },
+    [actionId]
+  );
+
+  const handleReset = useCallback(async () => {
+    const result = await actionService.dispatch(
+      "keybinding.removeOverride",
+      { actionId },
+      { source: "user" }
+    );
+    if (!result.ok) {
+      logError("[AgentSettings] Failed to reset agent shortcut", undefined, {
+        error: result.error,
+      });
+      notify({
+        type: "error",
+        message: "Couldn't reset shortcut. Try again.",
+        duration: 3000,
+        priority: "high",
+      });
+    }
+  }, [actionId]);
+
+  return (
+    <div
+      id={`agents-shortcut-${agentId}`}
+      data-testid={`agent-shortcut-row-${agentId}`}
+      className="rounded-[var(--radius-lg)] border border-daintree-border bg-surface p-3 space-y-3"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-sm font-medium text-daintree-text">Keyboard shortcut</div>
+          <div className="text-xs text-daintree-text/50 mt-0.5 select-text">
+            Launch {agentName} from anywhere with a key combination
+          </div>
+        </div>
+        {!isEditing && (
+          <div className="flex items-center gap-2 shrink-0">
+            {displayCombo ? (
+              <span
+                data-testid={`agent-shortcut-pill-${agentId}`}
+                className="px-2 py-0.5 text-xs font-mono rounded bg-daintree-border text-daintree-text"
+              >
+                {displayCombo}
+              </span>
+            ) : (
+              <span className="text-xs text-daintree-text/60 italic">Unbound</span>
+            )}
+            <button
+              type="button"
+              onClick={() => setIsEditing(true)}
+              data-testid={`agent-shortcut-edit-${agentId}`}
+              className="px-2 py-0.5 text-xs text-daintree-text/60 hover:text-daintree-text transition-colors"
+            >
+              {displayCombo ? "Change" : "Assign"}
+            </button>
+            {isOverridden && (
+              <button
+                type="button"
+                onClick={() => void handleReset()}
+                aria-label={`Reset ${agentName} shortcut to default`}
+                data-testid={`agent-shortcut-reset-${agentId}`}
+                className="p-0.5 text-daintree-text/60 hover:text-daintree-text transition-colors"
+              >
+                <RotateCcw className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+      {isEditing && (
+        <AgentShortcutCapture
+          agentId={agentId}
+          onCapture={(combo) => void handleSave(combo)}
+          onCancel={() => setIsEditing(false)}
+        />
+      )}
+    </div>
+  );
+}
 
 interface AgentSettingsProps {
   activeSubtab: string | null;
@@ -59,7 +178,7 @@ export function AgentSettings({
   const [loadTimedOut, setLoadTimedOut] = useState(false);
 
   useEffect(() => {
-    initialize();
+    void initialize();
     setLoadTimedOut(false);
     const timer = setTimeout(() => setLoadTimedOut(true), 10_000);
     return () => clearTimeout(timer);
@@ -395,6 +514,12 @@ export function AgentSettings({
                 ariaLabel={`Pin ${activeAgent.name} to toolbar`}
               />
             </div>
+
+            {/* Keyboard shortcut — built-in agents only; user-defined agents
+                don't participate in the keybinding registry. */}
+            {isBuiltInAgentId(activeAgent.id) && (
+              <AgentShortcutRow agentId={activeAgent.id} agentName={activeAgent.name} />
+            )}
 
             {/* Unified scope editor — one set of controls for Default or any
                 preset. Delegates to AgentScopeEditor (useAgentScope hook + six

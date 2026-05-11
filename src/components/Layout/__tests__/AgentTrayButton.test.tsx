@@ -107,9 +107,35 @@ vi.mock("@/store/worktreeStore", () => ({
     selector({ activeWorktreeId: mockActiveWorktreeId }),
 }));
 
+let mockKeybindingDisplay: Record<string, string | null> = {};
+
 vi.mock("@/hooks", () => ({
-  useKeybindingDisplay: () => null,
+  useKeybindingDisplay: (actionId: string) => mockKeybindingDisplay[actionId] ?? null,
   useAriaKeyshortcuts: () => undefined,
+}));
+
+vi.mock("@/components/KeyboardShortcuts", () => ({
+  AgentShortcutCapture: ({
+    agentId,
+    onCapture,
+    onCancel,
+  }: {
+    agentId: string;
+    onCapture: (combo: string) => void;
+    onCancel: () => void;
+  }) => (
+    <div data-testid={`mock-agent-shortcut-capture-${agentId}`}>
+      <button
+        data-testid={`mock-agent-shortcut-save-${agentId}`}
+        onClick={() => onCapture("Cmd+Alt+K")}
+      >
+        Save Mock
+      </button>
+      <button data-testid={`mock-agent-shortcut-cancel-${agentId}`} onClick={() => onCancel()}>
+        Cancel Mock
+      </button>
+    </div>
+  ),
 }));
 
 let mockCcrPresetsByAgent: Record<string, Array<{ id: string; name: string }>> = {};
@@ -308,6 +334,7 @@ vi.mock("lucide-react", () => ({
   Plus: () => <span data-testid="plus-icon" />,
   Settings2: () => <span data-testid="settings2-icon" />,
   ChevronRight: () => <span data-testid="chevron-right-icon" />,
+  Keyboard: () => <span data-testid="keyboard-icon" />,
 }));
 
 import { AgentTrayButton } from "../AgentTrayButton";
@@ -357,6 +384,7 @@ describe("AgentTrayButton", () => {
     mockOnboardingLoaded = true;
     mockCcrPresetsByAgent = {};
     mockMergedPresetsFn = () => [];
+    mockKeybindingDisplay = {};
   });
 
   afterEach(() => {
@@ -1358,6 +1386,110 @@ describe("AgentTrayButton", () => {
       const { getAllByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
       const groups = getAllByTestId("preset-radio-group");
       expect(groups[0]!.getAttribute("data-value")).toBe("");
+    });
+  });
+
+  describe("inline keyboard shortcut assignment (issue #7703)", () => {
+    const availability = {
+      claude: "ready",
+      gemini: "ready",
+      codex: "ready",
+    } as unknown as CliAvailability;
+
+    it("renders the shortcut pill when a binding is set and the edit affordance is always present", () => {
+      mockKeybindingDisplay = { "agent.claude": "⌘⌥C" };
+      mockSettings = settingsWith({ claude: { pinned: false } });
+
+      const { getByTestId, getAllByTestId } = render(
+        <AgentTrayButton agentAvailability={availability} />
+      );
+
+      const shortcutNodes = getAllByTestId("menu-shortcut").map((el) => el.textContent);
+      expect(shortcutNodes).toContain("⌘⌥C");
+      expect(getByTestId("agent-tray-shortcut-edit-claude")).toBeTruthy();
+    });
+
+    it("renders the edit affordance without a pill when the agent is unbound", () => {
+      mockKeybindingDisplay = {};
+      mockSettings = settingsWith({ claude: { pinned: false } });
+
+      const { getByTestId, queryAllByTestId } = render(
+        <AgentTrayButton agentAvailability={availability} />
+      );
+
+      expect(getByTestId("agent-tray-shortcut-edit-claude")).toBeTruthy();
+      const claudeRow = getByTestId("agent-tray-row-claude");
+      // No menu-shortcut node inside the row when unbound.
+      const shortcutsInRow = Array.from(
+        claudeRow.querySelectorAll('[data-testid="menu-shortcut"]')
+      );
+      expect(shortcutsInRow).toHaveLength(0);
+      // Other agents' edit affordances are independent.
+      expect(queryAllByTestId(/agent-tray-shortcut-edit-/).length).toBeGreaterThan(1);
+    });
+
+    it("clicking the edit affordance opens the inline capture and does not launch the agent", () => {
+      mockSettings = settingsWith({ claude: { pinned: false } });
+
+      const { getByTestId, queryByTestId } = render(
+        <AgentTrayButton agentAvailability={availability} />
+      );
+
+      const editButton = getByTestId("agent-tray-shortcut-edit-claude");
+      fireEvent.click(editButton);
+
+      expect(getByTestId("agent-tray-capture-claude")).toBeTruthy();
+      expect(getByTestId("mock-agent-shortcut-capture-claude")).toBeTruthy();
+      // The launch row for claude is replaced by the capture surface, so the
+      // launch onSelect path can't fire from this row.
+      expect(queryByTestId("agent-tray-row-claude")).toBeNull();
+      // No agent.launch dispatch was triggered by entering capture.
+      const launchDispatches = dispatchMock.mock.calls.filter((call) => call[0] === "agent.launch");
+      expect(launchDispatches).toHaveLength(0);
+    });
+
+    it("dispatches keybinding.setOverride and exits capture mode on save", async () => {
+      dispatchMock.mockResolvedValue({ ok: true });
+      mockSettings = settingsWith({ claude: { pinned: false } });
+
+      const { getByTestId, queryByTestId } = render(
+        <AgentTrayButton agentAvailability={availability} />
+      );
+
+      fireEvent.click(getByTestId("agent-tray-shortcut-edit-claude"));
+      expect(getByTestId("agent-tray-capture-claude")).toBeTruthy();
+
+      await act(async () => {
+        fireEvent.click(getByTestId("mock-agent-shortcut-save-claude"));
+      });
+
+      expect(dispatchMock).toHaveBeenCalledWith(
+        "keybinding.setOverride",
+        { actionId: "agent.claude", combo: ["Cmd+Alt+K"] },
+        { source: "user" }
+      );
+      expect(queryByTestId("agent-tray-capture-claude")).toBeNull();
+      expect(getByTestId("agent-tray-row-claude")).toBeTruthy();
+    });
+
+    it("Cancel from capture restores the row without dispatching anything", () => {
+      mockSettings = settingsWith({ claude: { pinned: false } });
+
+      const { getByTestId, queryByTestId } = render(
+        <AgentTrayButton agentAvailability={availability} />
+      );
+
+      fireEvent.click(getByTestId("agent-tray-shortcut-edit-claude"));
+      expect(getByTestId("agent-tray-capture-claude")).toBeTruthy();
+
+      fireEvent.click(getByTestId("mock-agent-shortcut-cancel-claude"));
+
+      expect(queryByTestId("agent-tray-capture-claude")).toBeNull();
+      expect(getByTestId("agent-tray-row-claude")).toBeTruthy();
+      const dispatchCalls = dispatchMock.mock.calls.filter(
+        (call) => call[0] === "keybinding.setOverride"
+      );
+      expect(dispatchCalls).toHaveLength(0);
     });
   });
 });
