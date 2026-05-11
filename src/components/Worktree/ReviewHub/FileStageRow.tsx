@@ -56,6 +56,7 @@ interface FileStageRowProps {
   isStaged: boolean;
   onToggle: (filePath: string) => void;
   onFileClick: (filePath: string, status: GitStatus) => void;
+  density?: "comfortable" | "compact";
 }
 
 function splitPath(filePath: string): { dir: string; base: string } {
@@ -65,7 +66,13 @@ function splitPath(filePath: string): { dir: string; base: string } {
   return { dir: normalized.slice(0, lastSlash), base: normalized.slice(lastSlash + 1) };
 }
 
-export function FileStageRow({ file, isStaged, onToggle, onFileClick }: FileStageRowProps) {
+export function FileStageRow({
+  file,
+  isStaged,
+  onToggle,
+  onFileClick,
+  density = "comfortable",
+}: FileStageRowProps) {
   const config = STATUS_CONFIG[file.status] || STATUS_CONFIG.untracked;
   const { dir, base } = splitPath(file.path);
   const generated = isGeneratedFile(file.path);
@@ -88,7 +95,8 @@ export function FileStageRow({ file, isStaged, onToggle, onFileClick }: FileStag
   return (
     <div
       className={cn(
-        "group/stagerow flex items-center text-xs rounded px-1.5 py-1.5 transition-colors",
+        "group/stagerow flex items-center text-xs rounded px-1.5 transition-colors",
+        density === "compact" ? "py-0.5" : "py-1.5",
         isStaged ? "bg-status-success/[0.06] hover:bg-status-success/[0.10]" : "hover:bg-tint/5"
       )}
     >

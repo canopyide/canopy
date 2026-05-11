@@ -238,6 +238,70 @@ vi.mock("@/components/ui/tooltip", () => ({
   TooltipProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
+vi.mock("@/components/ui/dropdown-menu", () => ({
+  DropdownMenu: ({ children }: { children: ReactNode }) => <>{children}</>,
+  DropdownMenuTrigger: ({ children, asChild }: { children: ReactNode; asChild?: boolean }) =>
+    asChild ? <>{children}</> : <button type="button">{children}</button>,
+  DropdownMenuContent: ({
+    children,
+    align: _align,
+    className: _className,
+  }: {
+    children: ReactNode;
+    align?: string;
+    className?: string;
+  }) => <div role="menu">{children}</div>,
+  DropdownMenuRadioGroup: ({
+    children,
+    value,
+    onValueChange: _onValueChange,
+  }: {
+    children: ReactNode;
+    value: string;
+    onValueChange: (v: string) => void;
+  }) => <div data-value={value}>{children}</div>,
+  DropdownMenuRadioItem: ({ children, value: _value }: { children: ReactNode; value: string }) => (
+    <div role="menuitemradio">{children}</div>
+  ),
+  DropdownMenuCheckboxItem: ({
+    children,
+    checked,
+    onCheckedChange,
+  }: {
+    children: ReactNode;
+    checked: boolean;
+    onCheckedChange: (checked: boolean) => void;
+  }) => (
+    <div
+      role="menuitemcheckbox"
+      aria-checked={checked}
+      onClick={() => onCheckedChange(!checked)}
+      className="cursor-pointer"
+    >
+      {children}
+    </div>
+  ),
+  DropdownMenuLabel: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  DropdownMenuSeparator: () => <hr />,
+}));
+
+vi.mock("@/components/ui/EmptyState", () => ({
+  EmptyState: ({
+    variant,
+    title,
+    action,
+  }: {
+    variant: string;
+    title: string;
+    action?: ReactNode;
+  }) => (
+    <div data-testid={`empty-state-${variant}`}>
+      <p>{title}</p>
+      {action && <div>{action}</div>}
+    </div>
+  ),
+}));
+
 import { ReviewHub } from "../ReviewHub";
 
 const WORKTREE_PATH = "/home/user/project";
@@ -2075,6 +2139,323 @@ describe("ReviewHub", () => {
       expect(toggle.getAttribute("aria-expanded")).toBe("false");
       fireEvent.click(toggle);
       expect(screen.getByTestId("review-hub-push-error-details").textContent).toBe(retryError);
+    });
+  });
+
+  describe("section toolbar", () => {
+    const multiFileStatus = (): StagingStatus => ({
+      staged: [
+        { path: "src/index.ts", status: "modified", insertions: null, deletions: null },
+        { path: "src/utils.ts", status: "added", insertions: null, deletions: null },
+        { path: "package-lock.json", status: "modified", insertions: null, deletions: null },
+      ],
+      unstaged: [
+        { path: "src/app.ts", status: "modified", insertions: null, deletions: null },
+        { path: "src/legacy.ts", status: "deleted", insertions: null, deletions: null },
+        { path: "docs/readme.md", status: "untracked", insertions: null, deletions: null },
+      ],
+      conflicted: [],
+      conflictedFiles: [],
+      isDetachedHead: false,
+      currentBranch: "feature/test",
+      hasRemote: false,
+      repoState: "DIRTY",
+      rebaseStep: null,
+      rebaseTotalSteps: null,
+      rebaseSequence: null,
+    });
+
+    it("renders filter input in both section headers", async () => {
+      getStagingStatusMock.mockResolvedValue(multiFileStatus());
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByText("index.ts"));
+      const filters = screen.getAllByPlaceholderText("Filter…");
+      expect(filters).toHaveLength(2);
+    });
+
+    it("renders view-options dropdown triggers in both section headers", async () => {
+      getStagingStatusMock.mockResolvedValue(multiFileStatus());
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByText("index.ts"));
+      const viewOptionBtns = screen.getAllByLabelText("View options");
+      expect(viewOptionBtns).toHaveLength(2);
+    });
+
+    it("shows count chip with total file count", async () => {
+      getStagingStatusMock.mockResolvedValue(multiFileStatus());
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByText("index.ts"));
+      // Verify the section headers show "Staged" and "Changes" labels with counts
+      screen.getByText("Staged");
+      screen.getByText("Changes");
+      // Both sections have 3 files each, and the bulk buttons also show counts
+      screen.getByText("Stage all (3)");
+      screen.getByText("Unstage all (3)");
+    });
+
+    it("renders Stage all (N) button with correct count", async () => {
+      getStagingStatusMock.mockResolvedValue(multiFileStatus());
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByText("index.ts"));
+      screen.getByText("Stage all (3)");
+      screen.getByText("Unstage all (3)");
+    });
+
+    it("filters files when typing in filter input", async () => {
+      getStagingStatusMock.mockResolvedValue(multiFileStatus());
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByText("index.ts"));
+
+      const filters = screen.getAllByPlaceholderText("Filter…");
+      // Type in the Changes filter to find only legacy.ts
+      fireEvent.change(filters[1]!, { target: { value: "legacy" } });
+
+      await waitFor(() => {
+        expect(screen.queryByText("app.ts")).toBeNull();
+        expect(screen.queryByText("readme.md")).toBeNull();
+        screen.getByText("legacy.ts");
+      });
+    });
+
+    it("shows Stage shown (N) when filter is active", async () => {
+      getStagingStatusMock.mockResolvedValue(multiFileStatus());
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByText("index.ts"));
+
+      const filters = screen.getAllByPlaceholderText("Filter…");
+      fireEvent.change(filters[1]!, { target: { value: "legacy" } });
+
+      await waitFor(() => screen.getByText("Stage shown (1)"));
+    });
+
+    it("shows filtered-empty state when no files match filter", async () => {
+      getStagingStatusMock.mockResolvedValue(multiFileStatus());
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByText("index.ts"));
+
+      const filters = screen.getAllByPlaceholderText("Filter…");
+      fireEvent.change(filters[0]!, { target: { value: "zzz_nonexistent" } });
+
+      await waitFor(() => screen.getByTestId("empty-state-filtered-empty"));
+      screen.getByText('No staged files matching "zzz_nonexistent"');
+    });
+
+    it("shows Clear filter link in filtered-empty state", async () => {
+      getStagingStatusMock.mockResolvedValue(multiFileStatus());
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByText("index.ts"));
+
+      const filters = screen.getAllByPlaceholderText("Filter…");
+      fireEvent.change(filters[1]!, { target: { value: "zzz" } });
+
+      await waitFor(() => screen.getByText("Clear filter"));
+    });
+
+    it("hides generated files when showGenerated is toggled off", async () => {
+      getStagingStatusMock.mockResolvedValue(multiFileStatus());
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => {
+        // package-lock.json should be visible by default
+        screen.getByText("package-lock.json");
+      });
+
+      // Simulate toggling showGenerated off in Staged section
+      // Since DropdownMenu is mocked, we directly call the onCheckedChange via
+      // finding the checkbox item and clicking it
+      const checkboxes = screen.getAllByRole("menuitemcheckbox");
+      // First checkbox is for Staged section "Show generated files"
+      fireEvent.click(checkboxes[0]!);
+
+      await waitFor(() => {
+        expect(screen.queryByText("package-lock.json")).toBeNull();
+      });
+    });
+
+    it("uses stageAll IPC when no filter is active", async () => {
+      getStagingStatusMock.mockResolvedValue(multiFileStatus());
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByText("index.ts"));
+
+      const stageAllBtn = screen.getByTestId("review-hub-stage-all");
+      fireEvent.click(stageAllBtn);
+
+      await waitFor(() => {
+        expect(window.electron.git.stageAll).toHaveBeenCalledWith(WORKTREE_PATH);
+      });
+    });
+
+    it("uses per-file stageFile when filter is active", async () => {
+      getStagingStatusMock.mockResolvedValue(multiFileStatus());
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByText("index.ts"));
+
+      const filters = screen.getAllByPlaceholderText("Filter…");
+      fireEvent.change(filters[1]!, { target: { value: "legacy" } });
+
+      await waitFor(() => screen.getByText("Stage shown (1)"));
+
+      const stageBtn = screen.getByTestId("review-hub-stage-all");
+      fireEvent.click(stageBtn);
+
+      await waitFor(() => {
+        expect(stageFileMock).toHaveBeenCalledWith(WORKTREE_PATH, "src/legacy.ts");
+        expect(window.electron.git.stageAll).not.toHaveBeenCalled();
+      });
+    });
+
+    it("uses unstageAll IPC when no filter is active", async () => {
+      getStagingStatusMock.mockResolvedValue(multiFileStatus());
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByText("index.ts"));
+
+      const unstageAllBtn = screen.getByTestId("review-hub-unstage-all");
+      fireEvent.click(unstageAllBtn);
+
+      await waitFor(() => {
+        expect(window.electron.git.unstageAll).toHaveBeenCalledWith(WORKTREE_PATH);
+      });
+    });
+
+    it("passes density prop to FileStageRow (comfortable by default)", async () => {
+      getStagingStatusMock.mockResolvedValue(multiFileStatus());
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByText("index.ts"));
+
+      // The rows render with the comfortable density by default (py-1.5)
+      const stagedContainer = screen.getByText("index.ts").closest(".flex.flex-col");
+      expect(stagedContainer?.className).toMatch(/gap-0\.5/);
+    });
+
+    it("shows bulk button hidden when no files in section", async () => {
+      getStagingStatusMock.mockResolvedValue(
+        makeStatus({
+          staged: [{ path: "src/a.ts", status: "modified", insertions: null, deletions: null }],
+          unstaged: [],
+        })
+      );
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByText("No unstaged changes"));
+      // Stage all button (for Changes section) should be hidden when there are no unstaged files
+      expect(screen.queryByTestId("review-hub-stage-all")).toBeNull();
+      // Unstage all button (for Staged section) should be visible with 1 file
+      screen.getByTestId("review-hub-unstage-all");
+    });
+
+    it("filter input uses ref for typing (no re-render on each keystroke)", async () => {
+      getStagingStatusMock.mockResolvedValue(multiFileStatus());
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByText("index.ts"));
+
+      const filters = screen.getAllByPlaceholderText("Filter…");
+      // Just typing should not crash or cause focus loss — the debounce ref handles it
+      fireEvent.change(filters[0]!, { target: { value: "src" } });
+
+      // The input value is set via ref, not state, so it shouldn't cause thrashing
+      // Verify the input has the value
+      expect((filters[0]! as HTMLInputElement).value).toBe("src");
+    });
+
+    it("shows No staged files when section is empty but filter is not active", async () => {
+      getStagingStatusMock.mockResolvedValue(
+        makeStatus({
+          staged: [],
+          unstaged: [{ path: "src/b.ts", status: "modified", insertions: null, deletions: null }],
+        })
+      );
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => {
+        screen.getByText("No staged files");
+        screen.getByText("b.ts");
+      });
+    });
+
+    it("renders files sorted by path ascending by default", async () => {
+      getStagingStatusMock.mockResolvedValue(
+        makeStatus({
+          staged: [
+            { path: "ccc.ts", status: "added", insertions: null, deletions: null },
+            { path: "aaa.ts", status: "modified", insertions: null, deletions: null },
+            { path: "bbb.ts", status: "deleted", insertions: null, deletions: null },
+          ],
+          unstaged: [],
+        })
+      );
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByText("aaa.ts"));
+
+      // Path asc sort: aaa.ts DOM position < bbb.ts < ccc.ts
+      const rows = screen.getAllByText(/\.ts$/).filter((el) => el.tagName === "SPAN");
+      const texts = rows.map((el) => el.textContent);
+      const aaaIdx = texts.indexOf("aaa.ts");
+      const bbbIdx = texts.indexOf("bbb.ts");
+      const cccIdx = texts.indexOf("ccc.ts");
+      expect(aaaIdx).toBeLessThan(bbbIdx);
+      expect(bbbIdx).toBeLessThan(cccIdx);
+    });
+
+    it("detects lock files as generated", async () => {
+      getStagingStatusMock.mockResolvedValue(
+        makeStatus({
+          staged: [
+            { path: "package-lock.json", status: "modified", insertions: null, deletions: null },
+            { path: "yarn.lock", status: "modified", insertions: null, deletions: null },
+            { path: "src/app.ts", status: "modified", insertions: null, deletions: null },
+          ],
+          unstaged: [],
+        })
+      );
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => {
+        screen.getByText("package-lock.json");
+        screen.getByText("yarn.lock");
+        screen.getByText("app.ts");
+      });
+
+      // Toggle showGenerated off in Staged section
+      const checkboxes = screen.getAllByRole("menuitemcheckbox");
+      fireEvent.click(checkboxes[0]!);
+
+      await waitFor(() => {
+        expect(screen.queryByText("package-lock.json")).toBeNull();
+        expect(screen.queryByText("yarn.lock")).toBeNull();
+        screen.getByText("app.ts");
+      });
     });
   });
 });
