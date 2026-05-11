@@ -9,10 +9,8 @@ import {
   CircleSlash,
   ExternalLink,
   FileIcon,
-  GitCommit,
   GitMerge,
   Play,
-  Terminal,
   XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -114,9 +112,8 @@ function RebaseSequenceRow({ entry }: { entry: RebaseDisplayEntry }) {
   const isDropped = entry.action === "drop";
   const isCurrent = entry.state === "current";
   const isDone = entry.state === "done";
-  const isExec = entry.action === "exec";
 
-  // State drives row tone; action drives the icon.
+  // State drives the row tone; the action keyword sits in its own column.
   const rowTone = isCurrent
     ? "text-accent-primary font-medium"
     : isDone
@@ -130,8 +127,6 @@ function RebaseSequenceRow({ entry }: { entry: RebaseDisplayEntry }) {
       : isDropped
         ? CircleSlash
         : CircleDashed;
-
-  const ActionIcon = isExec ? Terminal : GitCommit;
 
   return (
     <li
