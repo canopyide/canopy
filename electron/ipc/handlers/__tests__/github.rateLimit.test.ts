@@ -97,6 +97,30 @@ vi.mock("../../../services/github/index.js", () => ({
     resetState: vi.fn(),
     refresh: vi.fn().mockResolvedValue(undefined),
   },
+  fetchRateLimitDetails: vi.fn().mockResolvedValue(null),
+  setTokenAndSync: vi
+    .fn()
+    .mockResolvedValue({ valid: true, scopes: [], username: "user", avatarUrl: null }),
+  clearTokenAndSync: vi.fn().mockResolvedValue(undefined),
+  getRepoUrl: gitHubServiceMock.getRepoUrl,
+  buildGitHubSearchQuery: vi.fn().mockReturnValue("is:open bug"),
+  listIssues: gitHubServiceMock.listIssues,
+  listPullRequests: gitHubServiceMock.listPullRequests,
+  validateGitHubToken: gitHubServiceMock.validateGitHubToken,
+  assignIssue: gitHubServiceMock.assignIssue,
+  getIssueUrl: gitHubServiceMock.getIssueUrl,
+  getIssueTooltip: gitHubServiceMock.getIssueTooltip,
+  getPRTooltip: gitHubServiceMock.getPRTooltip,
+  getIssueByNumber: gitHubServiceMock.getIssueByNumber,
+  getPRByNumber: gitHubServiceMock.getPRByNumber,
+  hasGitHubToken: gitHubServiceMock.hasGitHubToken,
+  getGitHubConfigAsync: gitHubServiceMock.getGitHubConfigAsync,
+  getProjectHealth: gitHubServiceMock.getProjectHealth,
+  getFirstPageCache: vi.fn().mockResolvedValue(null),
+  getRepoStatsComplete: vi.fn().mockResolvedValue({
+    stats: { commitCount: 0, issueCount: null, prCount: null, loading: false },
+  }),
+  listGitHubRemotes: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("../../../services/GitService.js", () => ({

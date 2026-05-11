@@ -6,7 +6,11 @@ export {
 } from "./GitHubAuth.js";
 export type { GitHubTokenConfig, GitHubTokenValidation } from "./GitHubAuth.js";
 
-export { gitHubRateLimitService, GitHubRateLimitError } from "./GitHubRateLimitService.js";
+export {
+  gitHubRateLimitService,
+  GitHubRateLimitError,
+  PRIMARY_RESET_BUFFER_MS,
+} from "./GitHubRateLimitService.js";
 export type { ShouldBlockResult } from "./GitHubRateLimitService.js";
 
 export {
@@ -29,6 +33,7 @@ export {
   GET_PR_REVIEW_THREADS_QUERY,
   buildBatchPRQuery,
   buildBatchRequiredChecksQuery,
+  buildGitHubSearchQuery,
 } from "./GitHubQueries.js";
 
 export { deriveRequiredCIStatus } from "./prRequiredCIStatus.js";
@@ -58,6 +63,9 @@ export {
   validateGitHubToken,
 } from "./GitHubToken.js";
 
+// Token orchestration
+export { setTokenAndSync, clearTokenAndSync } from "./GitHubTokenOrchestrator.js";
+
 // Repo context
 export {
   parseGitHubRepoUrl,
@@ -72,8 +80,13 @@ export {
 export { clearGitHubCaches, clearPRCaches } from "./GitHubCaches.js";
 
 // Stats
-export { getRepoStats, getRepoStatsAndPage } from "./GitHubStats.js";
-export type { RepoStatsAndPageResult } from "./GitHubStats.js";
+export {
+  getRepoStats,
+  getRepoStatsAndPage,
+  getFirstPageCache,
+  getRepoStatsComplete,
+} from "./GitHubStats.js";
+export type { RepoStatsAndPageResult, RepoStatsCompleteResult } from "./GitHubStats.js";
 
 // Project health
 export { getProjectHealth } from "./GitHubHealth.js";
@@ -90,3 +103,9 @@ export { listPullRequests, getPRByNumber, getPRTooltip, getPRReviewThreads } fro
 // Issues
 export { listIssues, getIssueByNumber, getIssueTooltip, assignIssue } from "./GitHubIssues.js";
 export type { AssignIssueResult } from "./GitHubIssues.js";
+
+// Rate limit API
+export { fetchRateLimitDetails } from "./GitHubRateLimitApi.js";
+
+// Remotes
+export { listGitHubRemotes } from "./GitHubRemotes.js";

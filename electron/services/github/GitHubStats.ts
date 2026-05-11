@@ -1,3 +1,5 @@
+import fs from "fs/promises";
+import path from "path";
 import type { GraphQlQueryResponseData } from "@octokit/graphql";
 import { GitHubAuth, GITHUB_API_TIMEOUT_MS } from "./GitHubAuth.js";
 import { REPO_STATS_QUERY, REPO_STATS_AND_PAGE_QUERY } from "./GitHubQueries.js";
@@ -12,6 +14,7 @@ import type { RepoStats, RepoStatsResult } from "./types.js";
 import type { GitHubIssue, GitHubPR } from "../../../shared/types/github.js";
 import { parseIssueNode } from "./GitHubIssues.js";
 import { parsePRNode, buildListCacheKey } from "./GitHubPRs.js";
+import type { RepositoryStats, GitHubFirstPageCachePayload } from "../../types/index.js";
 
 export async function getRepoStats(
   cwd: string,
@@ -388,5 +391,124 @@ export async function getRepoStatsAndPage(
       };
     }
     return { stats: null, issues: null, prs: null, error: parseGitHubError(error) };
+  }
+}
+
+export async function getFirstPageCache(cwd: string): Promise<GitHubFirstPageCachePayload | null> {
+  if (!path.isAbsolute(cwd)) return null;
+
+  try {
+    const resolved = path.resolve(cwd);
+    const stat = await fs.stat(resolved);
+    if (!stat.isDirectory()) return null;
+
+    const context = await getRepoContext(resolved);
+    if (!context) return null;
+
+    const repoKey = `${context.owner}/${context.repo}`;
+    const entry = GitHubFirstPageCache.getInstance().get(repoKey);
+    const cachedStats = GitHubStatsCache.getInstance().getForBootstrap(repoKey);
+
+    if (!entry && !cachedStats) return null;
+
+    if (entry) {
+      const payload: GitHubFirstPageCachePayload = {
+        projectPath: resolved,
+        issues: entry.issues,
+        prs: entry.prs,
+        lastUpdated: entry.lastUpdated,
+      };
+      if (cachedStats) {
+        payload.stats = {
+          issueCount: cachedStats.issueCount,
+          prCount: cachedStats.prCount,
+          lastUpdated: cachedStats.lastUpdated,
+        };
+      }
+      return payload;
+    }
+
+    if (!cachedStats) return null;
+    return {
+      projectPath: resolved,
+      issues: { items: [], endCursor: null, hasNextPage: false },
+      prs: { items: [], endCursor: null, hasNextPage: false },
+      lastUpdated: cachedStats.lastUpdated,
+      stats: {
+        issueCount: cachedStats.issueCount,
+        prCount: cachedStats.prCount,
+        lastUpdated: cachedStats.lastUpdated,
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
+export interface RepoStatsCompleteResult {
+  stats: RepositoryStats;
+  source?: "network" | "memory-cache";
+  issues?: RepoStatsAndPageResult["issues"];
+  prs?: RepoStatsAndPageResult["prs"];
+  stale?: boolean;
+}
+
+export async function getRepoStatsComplete(
+  cwd: string,
+  bypassCache = false
+): Promise<RepoStatsCompleteResult> {
+  const { getCommitCount } = await import("../../utils/git.js");
+
+  try {
+    const resolved = path.resolve(cwd);
+    const stat = await fs.stat(resolved);
+    if (!stat.isDirectory()) {
+      return {
+        stats: {
+          commitCount: 0,
+          issueCount: null,
+          prCount: null,
+          loading: false,
+          ghError: "Path is not a directory",
+        },
+      };
+    }
+
+    const statsResult = await getRepoStatsAndPage(resolved, bypassCache);
+    const commitCount = await getCommitCount(resolved).catch(() => 0);
+    const rateLimitState = gitHubRateLimitService.getState();
+
+    const repositoryStats: RepositoryStats = {
+      commitCount,
+      issueCount: statsResult.stats?.issueCount ?? null,
+      prCount: statsResult.stats?.prCount ?? null,
+      loading: false,
+      ghError: statsResult.error,
+      stale: statsResult.stats?.stale,
+      lastUpdated: statsResult.stats?.lastUpdated,
+      rateLimitResetAt:
+        rateLimitState.blocked && rateLimitState.resetAt ? rateLimitState.resetAt : undefined,
+      rateLimitKind: rateLimitState.blocked ? (rateLimitState.kind ?? undefined) : undefined,
+    };
+
+    return {
+      stats: repositoryStats,
+      source: statsResult.source,
+      issues: statsResult.issues,
+      prs: statsResult.prs,
+      stale: statsResult.stats?.stale,
+    };
+  } catch (err) {
+    const { formatErrorMessage } = await import("../../../shared/utils/errorMessage.js");
+    const message = formatErrorMessage(err, "Failed to fetch GitHub repo stats");
+    return {
+      stats: {
+        commitCount: 0,
+        issueCount: null,
+        prCount: null,
+        loading: false,
+        ghError: message,
+      },
+    };
   }
 }

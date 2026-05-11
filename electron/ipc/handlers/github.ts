@@ -15,120 +15,37 @@ import type {
   GitHubRateLimitDetails,
 } from "../../types/index.js";
 import {
-  GitHubAuth,
-  GITHUB_API_TIMEOUT_MS,
-  captureAuthMetadata,
   gitHubRateLimitService,
   gitHubTokenHealthService,
+  fetchRateLimitDetails,
+  setTokenAndSync,
+  clearTokenAndSync,
 } from "../../services/github/index.js";
-import { getWorkspaceClient } from "../../services/WorkspaceClient.js";
 import { formatErrorMessage } from "../../../shared/utils/errorMessage.js";
-
-export function buildGitHubSearchQuery(
-  searchText: string | undefined,
-  state: string | undefined,
-  resourceType: "issue" | "pr"
-): string {
-  const parts: string[] = [];
-
-  const defaultState = "open";
-  const effectiveState = state || defaultState;
-
-  if (effectiveState !== "open") {
-    if (resourceType === "pr" && effectiveState === "merged") {
-      parts.push("is:merged");
-    } else if (effectiveState === "closed") {
-      parts.push("is:closed");
-    } else if (effectiveState === "all") {
-      // No state qualifier for "all"
-    }
-  }
-
-  if (searchText?.trim()) {
-    parts.push(searchText.trim());
-  }
-
-  // If state is "open" and no search text, return empty to preserve bare URL
-  if (effectiveState === "open" && !searchText?.trim()) {
-    return "";
-  }
-
-  // If we have search text but state is open, add is:open so GitHub doesn't default differently
-  if (effectiveState === "open" && searchText?.trim()) {
-    parts.unshift("is:open");
-  }
-
-  return parts.join(" ");
-}
 
 export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
   const handlers: Array<() => void> = [];
 
-  // Main-process transport: every time the main-process rate-limit singleton
-  // changes state (either from a local fetch observation or a forwarded
-  // utility-process observation via WorkspaceClient.routeHostEvent), push
-  // the new state to every renderer window.
+  // Main-process transport: push rate-limit state changes to every renderer.
   const unsubscribeRateLimit = gitHubRateLimitService.onStateChange((state) => {
     broadcastToRenderer(CHANNELS.GITHUB_RATE_LIMIT_CHANGED, state);
   });
   handlers.push(unsubscribeRateLimit);
 
-  // Main-process transport: push token-health state changes to every
-  // renderer so a "Reconnect to GitHub" banner can surface when the
-  // background probe detects a dead token.
+  // Main-process transport: push token-health state changes to every renderer.
   const unsubscribeTokenHealth = gitHubTokenHealthService.onStateChange((state) => {
     broadcastToRenderer(CHANNELS.GITHUB_TOKEN_HEALTH_CHANGED, state);
   });
   handlers.push(unsubscribeTokenHealth);
 
-  // Invoke handler: renderer subscribers call this on mount to replay the
-  // current state — guarantees a second window, or a window that mounts
-  // after the initial probe completed, can surface the banner without
-  // waiting for the next state transition (which might never come while
-  // the token stays unhealthy).
+  // Replay current token-health state on mount so a second window can surface
+  // the banner without waiting for the next probe.
   const handleGetTokenHealth = async () => gitHubTokenHealthService.getState();
   handlers.push(typedHandle(CHANNELS.GITHUB_GET_TOKEN_HEALTH, handleGetTokenHealth));
 
-  // GitHub's `/rate_limit` endpoint is itself quota-free, so the renderer
-  // can call this on demand (e.g. opening the rate-limit tooltip) without
-  // worrying about feedback loops with the very limit it's reporting on.
   const handleGetRateLimitDetails = async (): Promise<GitHubRateLimitDetails | null> => {
     checkRateLimit(CHANNELS.GITHUB_GET_RATE_LIMIT_DETAILS, 30, 60_000);
-    const token = GitHubAuth.getToken();
-    if (!token) return null;
-    try {
-      const response = await fetch("https://api.github.com/rate_limit", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/vnd.github.v3+json",
-        },
-        signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS),
-      });
-      if (!response.ok) return null;
-      captureAuthMetadata(response.headers);
-      const body = (await response.json()) as {
-        resources?: Record<
-          string,
-          { limit: number; used: number; remaining: number; reset: number } | undefined
-        >;
-      };
-      const resources = body.resources;
-      if (!resources?.core || !resources.graphql || !resources.search) return null;
-      const toBucket = (b: { limit: number; used: number; remaining: number; reset: number }) => ({
-        limit: b.limit,
-        used: b.used,
-        remaining: b.remaining,
-        resetAt: b.reset * 1000,
-      });
-      return {
-        core: toBucket(resources.core),
-        graphql: toBucket(resources.graphql),
-        search: toBucket(resources.search),
-        fetchedAt: Date.now(),
-      };
-    } catch {
-      return null;
-    }
+    return fetchRateLimitDetails();
   };
   handlers.push(typedHandle(CHANNELS.GITHUB_GET_RATE_LIMIT_DETAILS, handleGetRateLimitDetails));
 
@@ -144,153 +61,34 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
       throw new Error("Working directory must be an absolute path");
     }
 
-    const { getRepoStatsAndPage } = await import("../../services/GitHubService.js");
-    const { getCommitCount } = await import("../../utils/git.js");
+    const { getRepoStatsComplete } = await import("../../services/github/index.js");
+    const result = await getRepoStatsComplete(cwd, bypassCache);
 
-    try {
+    if (result.issues && result.prs && result.source === "network" && !result.stale) {
       const resolved = path.resolve(cwd);
-      const stat = await fs.stat(resolved);
-      if (!stat.isDirectory()) {
-        return {
-          commitCount: 0,
-          issueCount: null,
-          prCount: null,
-          loading: false,
-          ghError: "Path is not a directory",
-        };
-      }
-
-      // Combined query: counts + first page of open issues + open PRs in one
-      // round-trip. The first-page payload is broadcast to renderers below so
-      // their `githubResourceCache` gets primed for the (open, created)
-      // default-filter cache key — meaning the dropdown opens against hot
-      // cache with no spinner.
-      const statsResult = await getRepoStatsAndPage(resolved, bypassCache);
-
-      const commitCount = await getCommitCount(resolved).catch(() => 0);
-
-      const rateLimitState = gitHubRateLimitService.getState();
-
-      const repositoryStats: RepositoryStats = {
-        commitCount,
-        issueCount: statsResult.stats?.issueCount ?? null,
-        prCount: statsResult.stats?.prCount ?? null,
-        loading: false,
-        ghError: statsResult.error,
-        stale: statsResult.stats?.stale,
-        lastUpdated: statsResult.stats?.lastUpdated,
-        rateLimitResetAt:
-          rateLimitState.blocked && rateLimitState.resetAt ? rateLimitState.resetAt : undefined,
-        rateLimitKind: rateLimitState.blocked ? (rateLimitState.kind ?? undefined) : undefined,
+      const payload: RepoStatsAndPagePayload = {
+        projectPath: resolved,
+        stats: result.stats,
+        issues: result.issues,
+        prs: result.prs,
+        fetchedAt: Date.now(),
       };
-
-      // Broadcast only after a real network fetch (`source === "network"`).
-      // Skipping the in-memory short-circuit prevents extending the renderer
-      // cache TTL with a fresh wall-clock timestamp on data the backend
-      // already considered cached — the renderer's TtlCache.set() resets
-      // expiry from write time, so a re-broadcast of cache-extended data
-      // would mask staleness.
-      if (
-        statsResult.issues &&
-        statsResult.prs &&
-        statsResult.source === "network" &&
-        !statsResult.stats?.stale
-      ) {
-        const payload: RepoStatsAndPagePayload = {
-          projectPath: resolved,
-          stats: repositoryStats,
-          issues: statsResult.issues,
-          prs: statsResult.prs,
-          fetchedAt: Date.now(),
-        };
-        broadcastToRenderer(CHANNELS.GITHUB_REPO_STATS_AND_PAGE_UPDATED, payload);
-      }
-
-      return repositoryStats;
-    } catch (err) {
-      const message = formatErrorMessage(err, "Failed to fetch GitHub repo stats");
-      return {
-        commitCount: 0,
-        issueCount: null,
-        prCount: null,
-        loading: false,
-        ghError: message,
-      };
+      broadcastToRenderer(CHANNELS.GITHUB_REPO_STATS_AND_PAGE_UPDATED, payload);
     }
+
+    return result.stats;
   };
   handlers.push(typedHandle(CHANNELS.GITHUB_GET_REPO_STATS, handleGitHubGetRepoStats));
 
-  // Cold-start hydration: returns the disk-persisted first page for a project
-  // (open issues + open PRs in the default-created sort) so the renderer can
-  // seed `githubResourceCache` BEFORE the first poll completes. Combined with
-  // the broadcast push, this makes the very first dropdown click after app
-  // launch resolve against real data instead of a skeleton.
   const handleGitHubGetFirstPageCache = async (
     cwd: string
   ): Promise<GitHubFirstPageCachePayload | null> => {
-    // Rate-limit at the same shape as `getRepoStats` — the renderer only
-    // calls this once per hook mount, but that includes every project view
-    // and we want a hard ceiling against accidental call-loops.
     checkRateLimit(CHANNELS.GITHUB_GET_FIRST_PAGE_CACHE, 10, 10_000);
     if (typeof cwd !== "string" || !cwd) return null;
     if (!path.isAbsolute(cwd)) return null;
 
-    try {
-      const resolved = path.resolve(cwd);
-      const stat = await fs.stat(resolved);
-      if (!stat.isDirectory()) return null;
-
-      const { GitHubFirstPageCache } = await import("../../services/GitHubFirstPageCache.js");
-      const { GitHubStatsCache } = await import("../../services/GitHubStatsCache.js");
-      const { getRepoContext } = await import("../../services/GitHubService.js");
-      const context = await getRepoContext(resolved);
-      if (!context) return null;
-      const repoKey = `${context.owner}/${context.repo}`;
-      const entry = GitHubFirstPageCache.getInstance().get(repoKey);
-      const cachedStats = GitHubStatsCache.getInstance().getForBootstrap(repoKey);
-
-      // Neither cache has data — let the network poll populate everything.
-      if (!entry && !cachedStats) return null;
-
-      // First-page items present: attach bootstrap stats if available.
-      if (entry) {
-        const payload: GitHubFirstPageCachePayload = {
-          projectPath: resolved,
-          issues: entry.issues,
-          prs: entry.prs,
-          lastUpdated: entry.lastUpdated,
-        };
-        if (cachedStats) {
-          payload.stats = {
-            issueCount: cachedStats.issueCount,
-            prCount: cachedStats.prCount,
-            lastUpdated: cachedStats.lastUpdated,
-          };
-        }
-        return payload;
-      }
-
-      // Stats-only payload: first-page cache expired but stats are still within
-      // the 60-minute bootstrap TTL. Return empty pages so the hydration effect
-      // can seed toolbar counts without damaging the renderer items cache.
-      if (!cachedStats) return null;
-      return {
-        projectPath: resolved,
-        issues: { items: [], endCursor: null, hasNextPage: false },
-        prs: { items: [], endCursor: null, hasNextPage: false },
-        lastUpdated: cachedStats.lastUpdated,
-        stats: {
-          issueCount: cachedStats.issueCount,
-          prCount: cachedStats.prCount,
-          lastUpdated: cachedStats.lastUpdated,
-        },
-      };
-    } catch {
-      // Disk-cache reads are best-effort: a missing cache file, malformed
-      // JSON, or a transient repo-context lookup failure should not surface
-      // as a renderer error — the network poll fallback will populate the UI.
-      return null;
-    }
+    const { getFirstPageCache } = await import("../../services/github/index.js");
+    return getFirstPageCache(cwd);
   };
   handlers.push(typedHandle(CHANNELS.GITHUB_GET_FIRST_PAGE_CACHE, handleGitHubGetFirstPageCache));
 
@@ -306,7 +104,7 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
       throw new Error("Working directory must be an absolute path");
     }
 
-    const { getProjectHealth } = await import("../../services/GitHubService.js");
+    const { getProjectHealth } = await import("../../services/github/index.js");
 
     try {
       const resolved = path.resolve(cwd);
@@ -329,12 +127,7 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
       const result = await getProjectHealth(resolved, bypassCache);
 
       if (result.health) {
-        return {
-          ...result.health,
-          hasRemote: true,
-          loading: false,
-          error: result.error,
-        };
+        return { ...result.health, hasRemote: true, loading: false, error: result.error };
       }
 
       return {
@@ -375,7 +168,7 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
     if (!path.isAbsolute(cwd)) {
       throw new Error("Working directory must be an absolute path");
     }
-    const { getRepoUrl } = await import("../../services/GitHubService.js");
+    const { getRepoUrl, buildGitHubSearchQuery } = await import("../../services/github/index.js");
     const repoUrl = await getRepoUrl(cwd);
     if (!repoUrl) {
       throw new Error("Not a GitHub repository");
@@ -394,7 +187,7 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
     if (!path.isAbsolute(cwd)) {
       throw new Error("Working directory must be an absolute path");
     }
-    const { getRepoUrl } = await import("../../services/GitHubService.js");
+    const { getRepoUrl, buildGitHubSearchQuery } = await import("../../services/github/index.js");
     const repoUrl = await getRepoUrl(cwd);
     if (!repoUrl) {
       throw new Error("Not a GitHub repository");
@@ -416,7 +209,7 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
     if (branch !== undefined && (typeof branch !== "string" || !branch.trim())) {
       throw new Error("Invalid branch name");
     }
-    const { getRepoUrl } = await import("../../services/GitHubService.js");
+    const { getRepoUrl } = await import("../../services/github/index.js");
     const repoUrl = await getRepoUrl(cwd);
     if (!repoUrl) {
       throw new Error("Not a GitHub repository");
@@ -444,7 +237,7 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
     ) {
       throw new Error("Invalid issue number");
     }
-    const { getIssueUrl } = await import("../../services/GitHubService.js");
+    const { getIssueUrl } = await import("../../services/github/index.js");
     const issueUrl = await getIssueUrl(payload.cwd, payload.issueNumber);
     if (!issueUrl) {
       throw new Error("Not a GitHub repository");
@@ -476,7 +269,7 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
 
   const handleGitHubCheckCli = async (): Promise<GitHubCliStatus> => {
     checkRateLimit(CHANNELS.GITHUB_CHECK_CLI, 10, 10_000);
-    const { hasGitHubToken } = await import("../../services/GitHubService.js");
+    const { hasGitHubToken } = await import("../../services/github/index.js");
     if (hasGitHubToken()) {
       return { available: true };
     }
@@ -486,7 +279,7 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
 
   const handleGitHubGetConfig = async (): Promise<GitHubTokenConfig> => {
     checkRateLimit(CHANNELS.GITHUB_GET_CONFIG, 10, 10_000);
-    const { getGitHubConfigAsync } = await import("../../services/GitHubService.js");
+    const { getGitHubConfigAsync } = await import("../../services/github/index.js");
     return getGitHubConfigAsync();
   };
   handlers.push(typedHandle(CHANNELS.GITHUB_GET_CONFIG, handleGitHubGetConfig));
@@ -496,57 +289,13 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
     if (typeof token !== "string" || !token.trim()) {
       return { valid: false, scopes: [], error: "Token is required" };
     }
-    const trimmed = token.trim();
-
-    const { validateGitHubToken, setGitHubToken } = await import("../../services/GitHubService.js");
-    const { GitHubAuth } = await import("../../services/github/index.js");
-
-    const validation = await validateGitHubToken(trimmed);
-
-    if (validation.valid) {
-      setGitHubToken(trimmed);
-      const versionAfterSet = GitHubAuth.getTokenVersion();
-
-      if (validation.username) {
-        GitHubAuth.setValidatedUserInfo(
-          validation.username,
-          validation.avatarUrl,
-          validation.scopes,
-          versionAfterSet
-        );
-      }
-
-      try {
-        const workspaceClient = getWorkspaceClient();
-        workspaceClient.updateGitHubToken(trimmed);
-      } catch {
-        // WorkspaceClient may not be initialized yet
-      }
-
-      // Reset any lingering health state so a previously-surfaced
-      // "Reconnect" banner is cleared before the next probe runs.
-      gitHubTokenHealthService.resetState();
-      void gitHubTokenHealthService.refresh({ force: true });
-    }
-
-    return validation;
+    return setTokenAndSync(token);
   };
   handlers.push(typedHandle(CHANNELS.GITHUB_SET_TOKEN, handleGitHubSetToken));
 
   const handleGitHubClearToken = async (): Promise<void> => {
     checkRateLimit(CHANNELS.GITHUB_CLEAR_TOKEN, 5, 10_000);
-    const { clearGitHubToken } = await import("../../services/GitHubService.js");
-    clearGitHubToken();
-
-    try {
-      const workspaceClient = getWorkspaceClient();
-      workspaceClient.updateGitHubToken(null);
-    } catch {
-      // WorkspaceClient may not be initialized yet
-    }
-
-    // Token removed: drop any lingering health state and banner.
-    gitHubTokenHealthService.resetState();
+    await clearTokenAndSync();
   };
   handlers.push(typedHandle(CHANNELS.GITHUB_CLEAR_TOKEN, handleGitHubClearToken));
 
@@ -555,8 +304,7 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
     if (typeof token !== "string" || !token.trim()) {
       return { valid: false, scopes: [], error: "Token is required" };
     }
-
-    const { validateGitHubToken } = await import("../../services/GitHubService.js");
+    const { validateGitHubToken } = await import("../../services/github/index.js");
     return validateGitHubToken(token.trim());
   };
   handlers.push(typedHandle(CHANNELS.GITHUB_VALIDATE_TOKEN, handleGitHubValidateToken));
@@ -576,8 +324,7 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
     if (!path.isAbsolute(options.cwd)) {
       throw new Error("Working directory must be an absolute path");
     }
-
-    const { listIssues } = await import("../../services/GitHubService.js");
+    const { listIssues } = await import("../../services/github/index.js");
     return listIssues(options);
   };
   handlers.push(typedHandle(CHANNELS.GITHUB_LIST_ISSUES, handleGitHubListIssues));
@@ -597,8 +344,7 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
     if (!path.isAbsolute(options.cwd)) {
       throw new Error("Working directory must be an absolute path");
     }
-
-    const { listPullRequests } = await import("../../services/GitHubService.js");
+    const { listPullRequests } = await import("../../services/github/index.js");
     return listPullRequests(options);
   };
   handlers.push(typedHandle(CHANNELS.GITHUB_LIST_PRS, handleGitHubListPRs));
@@ -629,56 +375,39 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
     if (typeof payload.username !== "string" || !trimmedUsername) {
       throw new Error("Invalid username");
     }
-
-    const { assignIssue } = await import("../../services/GitHubService.js");
+    const { assignIssue } = await import("../../services/github/index.js");
     await assignIssue(payload.cwd.trim(), payload.issueNumber, trimmedUsername);
   };
   handlers.push(typedHandle(CHANNELS.GITHUB_ASSIGN_ISSUE, handleGitHubAssignIssue));
 
   const handleGitHubGetIssueTooltip = async (payload: { cwd: string; issueNumber: number }) => {
     checkRateLimit(CHANNELS.GITHUB_GET_ISSUE_TOOLTIP, 20, 10_000);
-    if (!payload || typeof payload !== "object") {
-      return null;
-    }
-    if (typeof payload.cwd !== "string" || !payload.cwd.trim()) {
-      return null;
-    }
-    if (!path.isAbsolute(payload.cwd)) {
-      return null;
-    }
+    if (!payload || typeof payload !== "object") return null;
+    if (typeof payload.cwd !== "string" || !payload.cwd.trim()) return null;
+    if (!path.isAbsolute(payload.cwd)) return null;
     if (
       typeof payload.issueNumber !== "number" ||
       !Number.isInteger(payload.issueNumber) ||
       payload.issueNumber <= 0
-    ) {
+    )
       return null;
-    }
-
-    const { getIssueTooltip } = await import("../../services/GitHubService.js");
+    const { getIssueTooltip } = await import("../../services/github/index.js");
     return getIssueTooltip(payload.cwd.trim(), payload.issueNumber);
   };
   handlers.push(typedHandle(CHANNELS.GITHUB_GET_ISSUE_TOOLTIP, handleGitHubGetIssueTooltip));
 
   const handleGitHubGetPRTooltip = async (payload: { cwd: string; prNumber: number }) => {
     checkRateLimit(CHANNELS.GITHUB_GET_PR_TOOLTIP, 20, 10_000);
-    if (!payload || typeof payload !== "object") {
-      return null;
-    }
-    if (typeof payload.cwd !== "string" || !payload.cwd.trim()) {
-      return null;
-    }
-    if (!path.isAbsolute(payload.cwd)) {
-      return null;
-    }
+    if (!payload || typeof payload !== "object") return null;
+    if (typeof payload.cwd !== "string" || !payload.cwd.trim()) return null;
+    if (!path.isAbsolute(payload.cwd)) return null;
     if (
       typeof payload.prNumber !== "number" ||
       !Number.isInteger(payload.prNumber) ||
       payload.prNumber <= 0
-    ) {
+    )
       return null;
-    }
-
-    const { getPRTooltip } = await import("../../services/GitHubService.js");
+    const { getPRTooltip } = await import("../../services/github/index.js");
     return getPRTooltip(payload.cwd.trim(), payload.prNumber);
   };
   handlers.push(typedHandle(CHANNELS.GITHUB_GET_PR_TOOLTIP, handleGitHubGetPRTooltip));
@@ -688,72 +417,48 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
     issueNumber: number;
   }): Promise<string | null> => {
     checkRateLimit(CHANNELS.GITHUB_GET_ISSUE_URL, 10, 10_000);
-    if (!payload || typeof payload !== "object") {
-      return null;
-    }
-    if (typeof payload.cwd !== "string" || !payload.cwd.trim()) {
-      return null;
-    }
-    if (!path.isAbsolute(payload.cwd)) {
-      return null;
-    }
+    if (!payload || typeof payload !== "object") return null;
+    if (typeof payload.cwd !== "string" || !payload.cwd.trim()) return null;
+    if (!path.isAbsolute(payload.cwd)) return null;
     if (
       typeof payload.issueNumber !== "number" ||
       !Number.isInteger(payload.issueNumber) ||
       payload.issueNumber <= 0
-    ) {
+    )
       return null;
-    }
-
-    const { getIssueUrl } = await import("../../services/GitHubService.js");
+    const { getIssueUrl } = await import("../../services/github/index.js");
     return getIssueUrl(payload.cwd.trim(), payload.issueNumber);
   };
   handlers.push(typedHandle(CHANNELS.GITHUB_GET_ISSUE_URL, handleGitHubGetIssueUrl));
 
   const handleGitHubGetIssueByNumber = async (payload: { cwd: string; issueNumber: number }) => {
     checkRateLimit(CHANNELS.GITHUB_GET_ISSUE_BY_NUMBER, 25, 10_000);
-    if (!payload || typeof payload !== "object") {
-      return null;
-    }
-    if (typeof payload.cwd !== "string" || !payload.cwd.trim()) {
-      return null;
-    }
-    if (!path.isAbsolute(payload.cwd)) {
-      return null;
-    }
+    if (!payload || typeof payload !== "object") return null;
+    if (typeof payload.cwd !== "string" || !payload.cwd.trim()) return null;
+    if (!path.isAbsolute(payload.cwd)) return null;
     if (
       typeof payload.issueNumber !== "number" ||
       !Number.isInteger(payload.issueNumber) ||
       payload.issueNumber <= 0
-    ) {
+    )
       return null;
-    }
-
-    const { getIssueByNumber } = await import("../../services/GitHubService.js");
+    const { getIssueByNumber } = await import("../../services/github/index.js");
     return getIssueByNumber(payload.cwd.trim(), payload.issueNumber);
   };
   handlers.push(typedHandle(CHANNELS.GITHUB_GET_ISSUE_BY_NUMBER, handleGitHubGetIssueByNumber));
 
   const handleGitHubGetPRByNumber = async (payload: { cwd: string; prNumber: number }) => {
     checkRateLimit(CHANNELS.GITHUB_GET_PR_BY_NUMBER, 25, 10_000);
-    if (!payload || typeof payload !== "object") {
-      return null;
-    }
-    if (typeof payload.cwd !== "string" || !payload.cwd.trim()) {
-      return null;
-    }
-    if (!path.isAbsolute(payload.cwd)) {
-      return null;
-    }
+    if (!payload || typeof payload !== "object") return null;
+    if (typeof payload.cwd !== "string" || !payload.cwd.trim()) return null;
+    if (!path.isAbsolute(payload.cwd)) return null;
     if (
       typeof payload.prNumber !== "number" ||
       !Number.isInteger(payload.prNumber) ||
       payload.prNumber <= 0
-    ) {
+    )
       return null;
-    }
-
-    const { getPRByNumber } = await import("../../services/GitHubService.js");
+    const { getPRByNumber } = await import("../../services/github/index.js");
     return getPRByNumber(payload.cwd.trim(), payload.prNumber);
   };
   handlers.push(typedHandle(CHANNELS.GITHUB_GET_PR_BY_NUMBER, handleGitHubGetPRByNumber));
@@ -794,25 +499,8 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
     if (!path.isAbsolute(cwd)) {
       throw new Error("Working directory must be an absolute path");
     }
-
-    const { GitService } = await import("../../services/GitService.js");
-    const { parseGitHubRepoUrl } = await import("../../services/GitHubService.js");
-    const gitService = new GitService(cwd);
-    const remotes = await gitService.listRemotes(cwd);
-
-    const result = remotes.map((r) => ({
-      name: r.name,
-      fetchUrl: r.fetchUrl,
-      parsedRepo: parseGitHubRepoUrl(r.fetchUrl),
-    }));
-
-    result.sort((a, b) => {
-      if (a.name === "origin") return -1;
-      if (b.name === "origin") return 1;
-      return a.name.localeCompare(b.name);
-    });
-
-    return result;
+    const { listGitHubRemotes } = await import("../../services/github/index.js");
+    return listGitHubRemotes(cwd);
   };
   handlers.push(typedHandle(CHANNELS.GITHUB_LIST_REMOTES, handleGitHubListRemotes));
 

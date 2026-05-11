@@ -8,7 +8,7 @@ import { formatErrorMessage } from "../../../shared/utils/errorMessage.js";
 // Buffer applied to GitHub's `x-ratelimit-reset` to absorb clock skew between
 // the local host and api.github.com, and to avoid a poll slipping in a tick
 // before the server clears the quota. Aligns with lesson #4629 guidance.
-const PRIMARY_RESET_BUFFER_MS = 7_000;
+export const PRIMARY_RESET_BUFFER_MS = 7_000;
 
 // Fallback pause when a 403/429 response carries no `retry-after` header and
 // no primary-quota signal, matching GitHub's documented minimum.

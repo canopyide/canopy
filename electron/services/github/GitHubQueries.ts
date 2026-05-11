@@ -469,6 +469,41 @@ export const GET_PR_QUERY = `
   }
 `;
 
+export function buildGitHubSearchQuery(
+  searchText: string | undefined,
+  state: string | undefined,
+  resourceType: "issue" | "pr"
+): string {
+  const parts: string[] = [];
+
+  const defaultState = "open";
+  const effectiveState = state || defaultState;
+
+  if (effectiveState !== "open") {
+    if (resourceType === "pr" && effectiveState === "merged") {
+      parts.push("is:merged");
+    } else if (effectiveState === "closed") {
+      parts.push("is:closed");
+    } else if (effectiveState === "all") {
+      // No state qualifier for "all"
+    }
+  }
+
+  if (searchText?.trim()) {
+    parts.push(searchText.trim());
+  }
+
+  if (effectiveState === "open" && !searchText?.trim()) {
+    return "";
+  }
+
+  if (effectiveState === "open" && searchText?.trim()) {
+    parts.unshift("is:open");
+  }
+
+  return parts.join(" ");
+}
+
 function escapeGraphQLString(value: string): string {
   return JSON.stringify(value).slice(1, -1);
 }
