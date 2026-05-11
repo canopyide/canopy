@@ -125,7 +125,7 @@ export function registerWorktreeSessionActions(
     description: "Permanently end all sessions for a worktree",
     category: "worktree",
     kind: "command",
-    danger: "safe",
+    danger: "confirm",
     scope: "renderer",
     argsSchema: z.object({ worktreeId: z.string().optional() }),
     run: async (args: unknown, ctx: ActionContext) => {

@@ -27,6 +27,7 @@ import {
   Layers,
   Link,
   MonitorPlay,
+  OctagonX,
   CheckSquare,
   Maximize2,
   PanelTopClose,
@@ -122,6 +123,8 @@ export interface WorktreeMenuItemsProps {
   onSelectAllAgents: () => void;
   onSelectWaitingAgents: () => void;
   onSelectWorkingAgents: () => void;
+  onCloseAll: () => void;
+  onTerminateAll: () => void;
   onOpenPanelPalette?: () => void;
   onDeleteWorktree?: () => void;
   onRevertAgentChanges?: () => void;
@@ -176,6 +179,8 @@ export function WorktreeMenuItems({
   onSelectAllAgents,
   onSelectWaitingAgents,
   onSelectWorkingAgents,
+  onCloseAll,
+  onTerminateAll,
   onOpenPanelPalette,
   onDeleteWorktree,
   onRevertAgentChanges,
@@ -278,6 +283,16 @@ export function WorktreeMenuItems({
             <Maximize2 className="w-3.5 h-3.5 mr-2" />
             Maximize All
             <C.Shortcut>({counts.dock})</C.Shortcut>
+          </C.Item>
+          <C.Item onSelect={onCloseAll} disabled={counts.active === 0}>
+            <Trash2 className="w-3.5 h-3.5 mr-2" />
+            Close All
+            <C.Shortcut>({counts.active})</C.Shortcut>
+          </C.Item>
+          <C.Item onSelect={onTerminateAll} disabled={counts.active === 0}>
+            <OctagonX className="w-3.5 h-3.5 mr-2" />
+            Terminate All
+            <C.Shortcut>({counts.active})</C.Shortcut>
           </C.Item>
           <C.Item onSelect={onResetRenderers} disabled={counts.active === 0}>
             <RefreshCw className="w-3.5 h-3.5 mr-2" />

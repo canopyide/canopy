@@ -319,6 +319,8 @@ export function WorktreeCard({
     handleSelectAllAgents,
     handleSelectWaitingAgents,
     handleSelectWorkingAgents,
+    handleCloseAll,
+    handleTerminateAll,
   } = useWorktreeActions({
     worktree,
     onCopyTree,
@@ -756,6 +758,8 @@ export function WorktreeCard({
                   },
                   onDockAll: handleDockAll,
                   onMaximizeAll: handleMaximizeAll,
+                  onCloseAll: handleCloseAll,
+                  onTerminateAll: handleTerminateAll,
                   onResetRenderers: handleResetRenderers,
                   onSelectAllAgents: handleSelectAllAgents,
                   onSelectWaitingAgents: handleSelectWaitingAgents,
@@ -900,6 +904,8 @@ export function WorktreeCard({
           isCollapsed={effectiveIsCollapsed}
           onDockAll={handleDockAll}
           onMaximizeAll={handleMaximizeAll}
+          onCloseAll={handleCloseAll}
+          onTerminateAll={handleTerminateAll}
           onResetRenderers={handleResetRenderers}
           onSelectAllAgents={handleSelectAllAgents}
           onSelectWaitingAgents={handleSelectWaitingAgents}
