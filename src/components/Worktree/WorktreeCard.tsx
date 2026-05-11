@@ -77,7 +77,7 @@ export function WorktreeCard({
   isActive,
   isFocused,
   isSingleWorktree: _isSingleWorktree,
-  aggregateCounts,
+  aggregateCounts: _aggregateCounts,
   onSelect,
   onCopyTree,
   onOpenEditor,
@@ -787,12 +787,7 @@ export function WorktreeCard({
                       wslGitEligible={worktree.wslGitEligible}
                     />
                   )}
-                  {isMainWorktree && (
-                    <MainWorktreeSummaryRows
-                      aggregateCounts={aggregateCounts}
-                      health={projectHealth ?? null}
-                    />
-                  )}
+                  {isMainWorktree && <MainWorktreeSummaryRows health={projectHealth ?? null} />}
 
                   <WorktreeDetailsSection
                     worktree={worktree}
