@@ -187,6 +187,32 @@ const PUSH_BANNER_CONFIGS: Record<GitOperationReason, PushBannerConfig> = {
   },
 };
 
+/**
+ * Pulls the divergence-recovery fields off a thrown value. `GitOperationError`
+ * promotes `gitReason`/`leaseSha`/`branchName` to top-level fields on the
+ * serialized error envelope (`SerializedError`), and the preload's
+ * `_unwrappingInvoke` reattaches them onto the reconstructed Error before it
+ * reaches the renderer. Each field is runtime-checked before use.
+ */
+function readGitErrorFields(err: unknown): {
+  gitReason?: GitOperationReason;
+  leaseSha?: string;
+  branchName?: string;
+} {
+  if (typeof err !== "object" || err === null) return {};
+  const gitReason = Reflect.get(err, "gitReason");
+  const leaseSha = Reflect.get(err, "leaseSha");
+  const branchName = Reflect.get(err, "branchName");
+  return {
+    // GitOperationReason is a closed string union — runtime-validated via the
+    // typeof string check; the cast narrows the union for downstream consumers.
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    gitReason: typeof gitReason === "string" ? (gitReason as GitOperationReason) : undefined,
+    leaseSha: typeof leaseSha === "string" ? leaseSha : undefined,
+    branchName: typeof branchName === "string" ? branchName : undefined,
+  };
+}
+
 function getPushBannerConfig(state: PushErrorState, behindCount?: number): PushBannerConfig {
   const base = PUSH_BANNER_CONFIGS[state.reason];
   // `push-rejected-outdated` is the only reason whose copy and CTAs depend on
@@ -687,16 +713,11 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
       // AppError carries `code` from a different union (RATE_LIMITED, etc.) — fall
       // back to "unknown" so getPushBannerConfig surfaces the raw message rather
       // than rendering an unmapped reason.
-      const errFields = err as {
-        gitReason?: GitOperationReason;
-        leaseSha?: string;
-        branchName?: string;
-      };
-      const gitReason = errFields.gitReason;
+      const errFields = readGitErrorFields(err);
       const isRateLimited =
         isClientAppError(err) && (err as { code?: string }).code === "RATE_LIMITED";
       setPushError({
-        reason: gitReason ?? "unknown",
+        reason: errFields.gitReason ?? "unknown",
         rawMessage: isRateLimited
           ? "Too many push attempts in a short window — wait a moment and try again."
           : formatErrorMessage(err, "Failed to push"),
@@ -752,7 +773,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
     } catch (err) {
       // A rebase that halts on conflicts surfaces as `conflict-unresolved`;
       // surface it through the same banner so the user sees the next step.
-      const errFields = err as { gitReason?: GitOperationReason };
+      const errFields = readGitErrorFields(err);
       setPushError({
         reason: errFields.gitReason ?? "unknown",
         rawMessage: formatErrorMessage(err, "Failed to pull and rebase"),
@@ -773,7 +794,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
 
   const handleForcePushError = useCallback((err: unknown) => {
     setForcePushDialogOpen(false);
-    const errFields = err as { gitReason?: GitOperationReason };
+    const errFields = readGitErrorFields(err);
     setPushError({
       reason: errFields.gitReason ?? "unknown",
       rawMessage: formatErrorMessage(err, "Failed to force push"),
