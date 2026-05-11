@@ -1612,14 +1612,18 @@ describe("WorkspaceService.runResourceAction — concurrency", () => {
     await new Promise((r) => setTimeout(r, 20));
 
     // Simulate worktree removal — triggers cleanupResourceActionState
-    service["cleanupResourceActionState"]("/test/worktree");
+    service.resourceActionExecutor["cleanupResourceActionState"]("/test/worktree");
 
     deferred.resolveChild();
     await actionPromise;
 
     // Queue and controller should be cleaned up
-    expect(service["resourceActionQueues"].has("/test/worktree")).toBe(false);
-    expect(service["resourceActionAbortControllers"].has("/test/worktree")).toBe(false);
+    expect(service.resourceActionExecutor["resourceActionQueues"].has("/test/worktree")).toBe(
+      false
+    );
+    expect(
+      service.resourceActionExecutor["resourceActionAbortControllers"].has("/test/worktree")
+    ).toBe(false);
   });
 });
 
