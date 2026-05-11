@@ -232,7 +232,7 @@ describe("leaf preload namespace bindings", () => {
       const invoke = vi.fn().mockResolvedValue([]);
       const bindings = buildEventInspectorPreloadBindings(invoke);
 
-      const filters = { type: "user-action" } as const;
+      const filters = { types: ["user-action"] };
       await bindings.getFiltered(filters);
 
       expect(invoke).toHaveBeenCalledTimes(1);
@@ -307,7 +307,7 @@ describe("leaf preload namespace bindings", () => {
         projectId: "p1",
         panelId: "panel1",
         cwd: "/tmp/p",
-        commandLine: "npm run dev",
+        devCommand: "npm run dev",
       };
       await bindings.ensure(request);
 
@@ -331,7 +331,14 @@ describe("leaf preload namespace bindings", () => {
       const invoke = vi.fn().mockResolvedValue(undefined);
       const bindings = buildPluginPreloadBindings(invoke);
 
-      const contribution = { id: "act-1", name: "Do thing" } as const;
+      const contribution = {
+        id: "act-1",
+        title: "Do thing",
+        description: "Does the thing",
+        category: "general",
+        kind: "command" as const,
+        danger: "safe" as const,
+      };
       await bindings.registerAction("plug-1", contribution);
 
       expect(invoke).toHaveBeenCalledTimes(1);

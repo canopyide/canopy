@@ -7,12 +7,12 @@ import { defineIpcNamespace, op } from "../define.js";
 import { COMMANDS_METHOD_CHANNELS } from "./commands.preload.js";
 import { commandService } from "../../services/CommandService.js";
 import type {
+  BuilderStep,
   CommandContext,
   CommandExecutePayload,
   CommandGetPayload,
   CommandManifestEntry,
   CommandResult,
-  DaintreeCommand,
 } from "../../../shared/types/commands.js";
 import { AppError } from "../../utils/errorTypes.js";
 
@@ -61,7 +61,7 @@ async function handleCommandsExecute(payload: CommandExecutePayload): Promise<Co
 
 async function handleCommandsGetBuilder(
   commandId: string
-): Promise<DaintreeCommand["builder"] | null> {
+): Promise<{ steps: BuilderStep[] } | null> {
   if (typeof commandId !== "string") {
     return null;
   }
