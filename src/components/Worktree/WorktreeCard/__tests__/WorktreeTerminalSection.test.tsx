@@ -592,6 +592,30 @@ describe("WorktreeTerminalSection collapsed pill state indicators", () => {
     expect(countSpans.length).toBe(1);
   });
 
+  it("sets aria-label with full state breakdown on the role=img container", () => {
+    renderSection({
+      isExpanded: false,
+      counts: {
+        total: 5,
+        byState: { idle: 3, working: 2, waiting: 2, directing: 0, completed: 1, exited: 0 },
+      },
+    });
+    const indicators = screen.getByTestId("collapsed-session-indicators");
+    expect(indicators.getAttribute("role")).toBe("img");
+    expect(indicators.getAttribute("aria-label")).toBe("5 sessions: 2 working, 2 waiting, 1 done");
+  });
+
+  it("does not render indicators when section is expanded", () => {
+    renderSection({
+      isExpanded: true,
+      counts: {
+        total: 3,
+        byState: { idle: 0, working: 2, waiting: 1, directing: 0, completed: 0, exited: 0 },
+      },
+    });
+    expect(screen.queryByTestId("collapsed-session-indicators")).toBeNull();
+  });
+
   it("renders nothing when all terminals are idle", () => {
     renderSection({
       isExpanded: false,
