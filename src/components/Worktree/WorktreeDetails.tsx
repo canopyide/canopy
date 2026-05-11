@@ -147,7 +147,7 @@ export function WorktreeDetails({
           {/* Placeholder when no AI summary or note exists */}
           {!effectiveNote && !effectiveSummary && !rawLastCommitMsg && (
             <div className="rounded bg-overlay-subtle px-2 py-2 text-xs italic text-text-muted">
-              No AI summary yet. Run an agent task or use Copy Context to generate one.
+              No AI summary yet
             </div>
           )}
 
