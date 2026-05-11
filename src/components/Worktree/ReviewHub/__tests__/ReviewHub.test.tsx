@@ -2482,7 +2482,7 @@ describe("ReviewHub", () => {
       expect(textarea.className).toContain("border-status-warning");
     });
 
-    it("does not show warning when subject exceeds 72 but body line is clean", async () => {
+    it("shows warning when subject line alone exceeds 72 characters", async () => {
       render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
       await waitFor(() => screen.getByPlaceholderText("Commit message…"));
 
