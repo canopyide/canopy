@@ -76,27 +76,27 @@ describe("toolbarPreferencesStore", () => {
   });
 
   describe("toggleButtonVisibility", () => {
-    it("adds button to hiddenButtons without removing from ordering array", async () => {
+    it("hides button via pinnedButtons map without removing from ordering array", async () => {
       const store = await loadStore();
       const { layout } = store.getState();
       expect(layout.rightButtons).toContain("copy-tree");
-      expect(layout.hiddenButtons).not.toContain("copy-tree");
+      expect(layout.pinnedButtons["copy-tree"]).toBeUndefined();
 
       store.getState().toggleButtonVisibility("copy-tree", "right");
 
       const updated = store.getState();
-      expect(updated.layout.hiddenButtons).toContain("copy-tree");
+      expect(updated.layout.pinnedButtons["copy-tree"]).toBe(false);
       expect(updated.layout.rightButtons).toContain("copy-tree");
     });
 
-    it("removes button from hiddenButtons when toggled again", async () => {
+    it("removes button from pinnedButtons when toggled again", async () => {
       const store = await loadStore();
 
       store.getState().toggleButtonVisibility("copy-tree", "right");
-      expect(store.getState().layout.hiddenButtons).toContain("copy-tree");
+      expect(store.getState().layout.pinnedButtons["copy-tree"]).toBe(false);
 
       store.getState().toggleButtonVisibility("copy-tree", "right");
-      expect(store.getState().layout.hiddenButtons).not.toContain("copy-tree");
+      expect(store.getState().layout.pinnedButtons["copy-tree"]).toBeUndefined();
     });
 
     it("does not modify leftButtons or rightButtons arrays", async () => {
@@ -112,33 +112,59 @@ describe("toolbarPreferencesStore", () => {
       expect(after.leftButtons).toEqual(before.left);
       expect(after.rightButtons).toEqual(before.right);
     });
-  });
 
-  describe("moveButton preserves hiddenButtons", () => {
-    it("does not lose hiddenButtons when reordering", async () => {
+    it("round-trips a pre-seeded `pinnedButtons[id] = true` through false → undefined", async () => {
+      // Seeds the forward-compat case where a downgrade-then-upgrade or a
+      // future explicit-pin write leaves `true` in the map — the toggle must
+      // still flip cleanly to `false` and then to omission.
+      setStoredState(
+        {
+          layout: {
+            leftButtons: ["terminal"],
+            rightButtons: ["settings"],
+            pinnedButtons: { terminal: true },
+          },
+          launcher: { alwaysShowDevServer: false },
+        },
+        8
+      );
+
       const store = await loadStore();
-      store.getState().toggleButtonVisibility("copy-tree", "right");
-      expect(store.getState().layout.hiddenButtons).toContain("copy-tree");
+      expect(store.getState().layout.pinnedButtons["terminal"]).toBe(true);
 
-      store.getState().moveButton("settings", "right", "right", 0);
-      expect(store.getState().layout.hiddenButtons).toContain("copy-tree");
+      store.getState().toggleButtonVisibility("terminal", "left");
+      expect(store.getState().layout.pinnedButtons["terminal"]).toBe(false);
+
+      store.getState().toggleButtonVisibility("terminal", "left");
+      expect(store.getState().layout.pinnedButtons["terminal"]).toBeUndefined();
     });
   });
 
-  describe("setLeftButtons/setRightButtons preserves hiddenButtons", () => {
-    it("preserves hiddenButtons when setting new button order", async () => {
+  describe("moveButton preserves pinnedButtons", () => {
+    it("does not lose pinnedButtons when reordering", async () => {
+      const store = await loadStore();
+      store.getState().toggleButtonVisibility("copy-tree", "right");
+      expect(store.getState().layout.pinnedButtons["copy-tree"]).toBe(false);
+
+      store.getState().moveButton("settings", "right", "right", 0);
+      expect(store.getState().layout.pinnedButtons["copy-tree"]).toBe(false);
+    });
+  });
+
+  describe("setLeftButtons/setRightButtons preserves pinnedButtons", () => {
+    it("preserves pinnedButtons when setting new button order", async () => {
       const store = await loadStore();
       store.getState().toggleButtonVisibility("terminal", "left");
 
       const reordered = [...store.getState().layout.leftButtons].reverse();
       store.getState().setLeftButtons(reordered);
 
-      expect(store.getState().layout.hiddenButtons).toContain("terminal");
+      expect(store.getState().layout.pinnedButtons["terminal"]).toBe(false);
     });
   });
 
   describe("reset", () => {
-    it("clears hiddenButtons and restores default ordering", async () => {
+    it("clears pinnedButtons and restores default ordering", async () => {
       const store = await loadStore();
       const defaults = { ...store.getState().layout };
 
@@ -147,14 +173,14 @@ describe("toolbarPreferencesStore", () => {
       store.getState().setLeftButtons([...store.getState().layout.leftButtons].reverse());
 
       store.getState().reset();
-      expect(store.getState().layout.hiddenButtons).toEqual([]);
+      expect(store.getState().layout.pinnedButtons).toEqual({});
       expect(store.getState().layout.leftButtons).toEqual(defaults.leftButtons);
       expect(store.getState().layout.rightButtons).toEqual(defaults.rightButtons);
     });
   });
 
   describe("persistence", () => {
-    it("persists hiddenButtons to localStorage", async () => {
+    it("persists pinnedButtons to localStorage", async () => {
       const store = await loadStore();
       store.getState().toggleButtonVisibility("copy-tree", "right");
 
@@ -163,11 +189,11 @@ describe("toolbarPreferencesStore", () => {
         const raw = storageMock.getItem(STORAGE_KEY);
         expect(raw).toBeTruthy();
         const parsed = JSON.parse(raw!);
-        expect(parsed.state.layout.hiddenButtons).toContain("copy-tree");
+        expect(parsed.state.layout.pinnedButtons["copy-tree"]).toBe(false);
       });
     });
 
-    it("restores hiddenButtons from persisted state on rehydration", async () => {
+    it("restores hiddenButtons from persisted v6 state on rehydration", async () => {
       setStoredState(
         {
           layout: {
@@ -181,7 +207,8 @@ describe("toolbarPreferencesStore", () => {
       );
 
       const store = await loadStore();
-      expect(store.getState().layout.hiddenButtons).toContain("copy-tree");
+      // v7→v8 converts hiddenButtons to pinnedButtons.
+      expect(store.getState().layout.pinnedButtons["copy-tree"]).toBe(false);
       expect(store.getState().layout.rightButtons).toContain("copy-tree");
     });
 
@@ -199,11 +226,11 @@ describe("toolbarPreferencesStore", () => {
       );
 
       const store = await loadStore();
-      expect(store.getState().layout.hiddenButtons).toEqual([
-        "terminal",
-        "github-stats",
-        "copy-tree",
-      ]);
+      expect(store.getState().layout.pinnedButtons).toEqual({
+        terminal: false,
+        "github-stats": false,
+        "copy-tree": false,
+      });
     });
 
     it("merges new default buttons without re-inserting hidden ones", async () => {
@@ -221,15 +248,16 @@ describe("toolbarPreferencesStore", () => {
 
       const store = await loadStore();
       // "browser" was hidden — it should be re-added to leftButtons by mergeButtonList
-      // (since it was missing from the persisted leftButtons) but remain in hiddenButtons
-      expect(store.getState().layout.hiddenButtons).toContain("browser");
+      // (since it was missing from the persisted leftButtons) but its hide-state
+      // is preserved as `pinnedButtons.browser === false`.
+      expect(store.getState().layout.pinnedButtons["browser"]).toBe(false);
       // mergeButtonList will add browser back to leftButtons since it's a default
       expect(store.getState().layout.leftButtons).toContain("browser");
     });
   });
 
   describe("migration", () => {
-    it("migrates v1 state to add hiddenButtons field", async () => {
+    it("migrates v1 state through the v7→v8 conversion to pinnedButtons", async () => {
       storageMock.setItem(
         STORAGE_KEY,
         JSON.stringify({
@@ -245,7 +273,7 @@ describe("toolbarPreferencesStore", () => {
       );
 
       const store = await loadStore();
-      expect(store.getState().layout.hiddenButtons).toEqual([]);
+      expect(store.getState().layout.pinnedButtons).toEqual({});
     });
 
     it("includes dev-server in default left buttons", async () => {
@@ -287,8 +315,10 @@ describe("toolbarPreferencesStore", () => {
       const { layout } = store.getState();
       expect(layout.leftButtons).toContain("agent-tray");
       expect(layout.leftButtons).not.toContain("agent-setup");
-      expect(layout.hiddenButtons).toContain("agent-tray");
-      expect(layout.hiddenButtons).not.toContain("agent-setup");
+      // The v3 rename moved agent-setup → agent-tray inside hiddenButtons; the
+      // v8 migration then translates that to a pinnedButtons entry.
+      expect(layout.pinnedButtons["agent-tray"]).toBe(false);
+      expect((layout.pinnedButtons as Record<string, boolean>)["agent-setup"]).toBeUndefined();
       // Position preserved (first) — agent-tray should be at index 0.
       expect(layout.leftButtons[0]).toBe("agent-tray");
     });
@@ -352,7 +382,9 @@ describe("toolbarPreferencesStore", () => {
       const { layout } = store.getState();
       expect(layout.leftButtons).not.toContain("panel-palette");
       expect(layout.rightButtons).not.toContain("panel-palette");
-      expect(layout.hiddenButtons).not.toContain("panel-palette");
+      // panel-palette gets stripped before v8 reads hiddenButtons, so no
+      // pinnedButtons entry should be created for it.
+      expect((layout.pinnedButtons as Record<string, boolean>)["panel-palette"]).toBeUndefined();
       // Order of remaining items preserved
       expect(layout.leftButtons).toContain("agent-tray");
       expect(layout.leftButtons).toContain("terminal");
@@ -374,7 +406,7 @@ describe("toolbarPreferencesStore", () => {
       expect(store.getState().layout.leftButtons).toBeDefined();
     });
 
-    it("v4→v5 strips built-in agent IDs from hiddenButtons", async () => {
+    it("v4→v5 strips built-in agent IDs from hiddenButtons before v8 conversion", async () => {
       storageMock.setItem(
         STORAGE_KEY,
         JSON.stringify({
@@ -392,8 +424,8 @@ describe("toolbarPreferencesStore", () => {
 
       const store = await loadStore();
       const { layout } = store.getState();
-      // Agent IDs stripped; non-agent entries preserved.
-      expect(layout.hiddenButtons).toEqual(["copy-tree"]);
+      // Agent IDs stripped at v5, then v8 converts the remainder to a map.
+      expect(layout.pinnedButtons).toEqual({ "copy-tree": false });
       // Ordering arrays untouched.
       expect(layout.leftButtons).toContain("claude");
       expect(layout.leftButtons).toContain("gemini");
@@ -427,11 +459,11 @@ describe("toolbarPreferencesStore", () => {
       );
 
       const store = await loadStore();
-      // All built-in agent IDs stripped; non-agent entries preserved.
-      expect(store.getState().layout.hiddenButtons).toEqual(["copy-tree"]);
+      // All built-in agent IDs stripped; non-agent entry survives into pinnedButtons.
+      expect(store.getState().layout.pinnedButtons).toEqual({ "copy-tree": false });
     });
 
-    it("v4→v5 leaves hiddenButtons untouched when no agent IDs are present", async () => {
+    it("v4→v5 leaves non-agent hidden entries untouched into pinnedButtons", async () => {
       storageMock.setItem(
         STORAGE_KEY,
         JSON.stringify({
@@ -448,14 +480,17 @@ describe("toolbarPreferencesStore", () => {
       );
 
       const store = await loadStore();
-      expect(store.getState().layout.hiddenButtons).toEqual(["github-stats", "copy-tree"]);
+      expect(store.getState().layout.pinnedButtons).toEqual({
+        "github-stats": false,
+        "copy-tree": false,
+      });
     });
 
     it("v4→v5 is a no-op on already-v5 state (idempotency guard)", async () => {
       // Rehydrating a store that's already at v5 must not re-apply the v4→v5
       // agent-stripping migration — agent IDs legitimately absent from
-      // hiddenButtons should stay absent. The v5→v6 migration still runs and
-      // strips any lingering "notes" entry.
+      // hiddenButtons should stay absent. The v5→v6 strips notes; v7→v8
+      // converts the remainder to pinnedButtons.
       storageMock.setItem(
         STORAGE_KEY,
         JSON.stringify({
@@ -472,7 +507,7 @@ describe("toolbarPreferencesStore", () => {
       );
 
       const store = await loadStore();
-      expect(store.getState().layout.hiddenButtons).toEqual(["copy-tree"]);
+      expect(store.getState().layout.pinnedButtons).toEqual({ "copy-tree": false });
       // Ordering arrays untouched.
       expect(store.getState().layout.leftButtons).toContain("claude");
     });
@@ -497,7 +532,8 @@ describe("toolbarPreferencesStore", () => {
       const { layout } = store.getState();
       expect(layout.leftButtons).not.toContain("notes");
       expect(layout.rightButtons).not.toContain("notes");
-      expect(layout.hiddenButtons).not.toContain("notes");
+      // v6 removes notes before v8 reads it — no pinnedButtons entry created.
+      expect((layout.pinnedButtons as Record<string, boolean>)["notes"]).toBeUndefined();
     });
 
     it("v6→v7 strips 'assistant-toggle' from all button arrays", async () => {
@@ -520,7 +556,8 @@ describe("toolbarPreferencesStore", () => {
       const { layout } = store.getState();
       expect(layout.leftButtons).not.toContain("assistant-toggle");
       expect(layout.rightButtons).not.toContain("assistant-toggle");
-      expect(layout.hiddenButtons).not.toContain("assistant-toggle");
+      // v7 removes assistant-toggle before v8 reads it — no pinnedButtons entry.
+      expect(layout.pinnedButtons["assistant-toggle"]).toBeUndefined();
     });
 
     it("v6→v7 is idempotent on state already lacking assistant-toggle", async () => {
@@ -544,7 +581,7 @@ describe("toolbarPreferencesStore", () => {
       expect(layout.leftButtons).toContain("terminal");
       expect(layout.leftButtons).toContain("browser");
       expect(layout.rightButtons).toContain("settings");
-      expect(layout.hiddenButtons).toEqual([]);
+      expect(layout.pinnedButtons).toEqual({});
     });
 
     it("sanitizeButtonList strips assistant-toggle when set via setRightButtons", async () => {
@@ -596,8 +633,122 @@ describe("toolbarPreferencesStore", () => {
       expect(store.getState().layout.leftButtons).toContain("dev-server");
       // v0→v1: resets defaultSelection that was "dev-server"
       expect(store.getState().launcher.defaultSelection).toBeUndefined();
-      // v1→v2: adds hiddenButtons
-      expect(store.getState().layout.hiddenButtons).toEqual([]);
+      // v7→v8: replaces the hiddenButtons array with the pinnedButtons map.
+      expect(store.getState().layout.pinnedButtons).toEqual({});
+    });
+
+    describe("v7→v8 hiddenButtons → pinnedButtons", () => {
+      it("converts a v7 hiddenButtons array to a pinnedButtons map of false entries", async () => {
+        storageMock.setItem(
+          STORAGE_KEY,
+          JSON.stringify({
+            state: {
+              layout: {
+                leftButtons: ["agent-tray", "terminal", "browser"],
+                rightButtons: ["copy-tree", "settings"],
+                hiddenButtons: ["terminal", "copy-tree"],
+              },
+              launcher: { alwaysShowDevServer: false },
+            },
+            version: 7,
+          })
+        );
+
+        const store = await loadStore();
+        const { layout } = store.getState();
+        expect(layout.pinnedButtons).toEqual({
+          terminal: false,
+          "copy-tree": false,
+        });
+        // The hidden array is dropped from the canonical shape.
+        expect((layout as unknown as { hiddenButtons?: unknown }).hiddenButtons).toBeUndefined();
+        // Ordering arrays untouched.
+        expect(layout.leftButtons).toContain("terminal");
+        expect(layout.rightButtons).toContain("copy-tree");
+      });
+
+      it("yields an empty pinnedButtons map when v7 had no hiddenButtons entries", async () => {
+        storageMock.setItem(
+          STORAGE_KEY,
+          JSON.stringify({
+            state: {
+              layout: {
+                leftButtons: ["terminal"],
+                rightButtons: ["settings"],
+                hiddenButtons: [],
+              },
+              launcher: { alwaysShowDevServer: false },
+            },
+            version: 7,
+          })
+        );
+
+        const store = await loadStore();
+        expect(store.getState().layout.pinnedButtons).toEqual({});
+      });
+
+      it("synthesizes a v8 layout shape when v7 state lacks the layout block", async () => {
+        storageMock.setItem(
+          STORAGE_KEY,
+          JSON.stringify({
+            state: { launcher: { alwaysShowDevServer: false } },
+            version: 7,
+          })
+        );
+
+        const store = await loadStore();
+        // merge() should fall back to defaults rather than crash; pinnedButtons
+        // must still be the canonical empty map.
+        expect(store.getState().layout.pinnedButtons).toEqual({});
+        expect(store.getState().layout.leftButtons).toBeDefined();
+      });
+
+      it("preserves an existing pinnedButtons map and merges v7 hiddenButtons on top", async () => {
+        // Forward-compat: a payload that's nominally v7 but already carries a
+        // pinnedButtons map (e.g. a downgrade-then-upgrade path) shouldn't lose
+        // explicit entries.
+        storageMock.setItem(
+          STORAGE_KEY,
+          JSON.stringify({
+            state: {
+              layout: {
+                leftButtons: ["terminal"],
+                rightButtons: ["settings", "copy-tree"],
+                hiddenButtons: ["copy-tree"],
+                pinnedButtons: { terminal: true },
+              },
+              launcher: { alwaysShowDevServer: false },
+            },
+            version: 7,
+          })
+        );
+
+        const store = await loadStore();
+        expect(store.getState().layout.pinnedButtons).toEqual({
+          terminal: true,
+          "copy-tree": false,
+        });
+      });
+
+      it("is idempotent on v8 state without re-applying conversion", async () => {
+        storageMock.setItem(
+          STORAGE_KEY,
+          JSON.stringify({
+            state: {
+              layout: {
+                leftButtons: ["terminal", "browser"],
+                rightButtons: ["copy-tree", "settings"],
+                pinnedButtons: { "copy-tree": false },
+              },
+              launcher: { alwaysShowDevServer: false },
+            },
+            version: 8,
+          })
+        );
+
+        const store = await loadStore();
+        expect(store.getState().layout.pinnedButtons).toEqual({ "copy-tree": false });
+      });
     });
   });
 });
