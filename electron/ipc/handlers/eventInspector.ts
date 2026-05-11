@@ -1,9 +1,10 @@
 import { ipcMain, type WebContents } from "electron";
 import { CHANNELS } from "../channels.js";
+import { defineIpcNamespace, op } from "../define.js";
+import { EVENT_INSPECTOR_METHOD_CHANNELS } from "./eventInspector.preload.js";
 import type { HandlerDependencies } from "../types.js";
 import type { FilterOptions } from "../../services/EventBuffer.js";
 import type { EventFilterOptions, EventRecord } from "../../../shared/types/index.js";
-import { typedHandle } from "../utils.js";
 
 const subscribedWebContents = new Map<WebContents, () => void>();
 let eventBufferUnsubscribe: (() => void) | null = null;
@@ -13,34 +14,35 @@ const BATCH_WINDOW_MS = 50;
 const MAX_BATCH_SIZE = 200;
 
 export function registerEventInspectorHandlers(deps: HandlerDependencies): () => void {
-  const handlers: Array<() => void> = [];
+  const namespace = defineIpcNamespace({
+    name: "eventInspector",
+    ops: {
+      getEvents: op(EVENT_INSPECTOR_METHOD_CHANNELS.getEvents, async () => {
+        if (!deps.eventBuffer) {
+          return [];
+        }
+        return deps.eventBuffer.getAll();
+      }),
+      getFiltered: op(
+        EVENT_INSPECTOR_METHOD_CHANNELS.getFiltered,
+        async (filters: EventFilterOptions) => {
+          if (!deps.eventBuffer) {
+            return [];
+          }
+          // Handler accepts the broader shared type; EventBuffer enforces stricter typing internally.
+          return deps.eventBuffer.getFiltered(filters as FilterOptions);
+        }
+      ),
+      clear: op(EVENT_INSPECTOR_METHOD_CHANNELS.clear, async () => {
+        if (!deps.eventBuffer) {
+          return;
+        }
+        deps.eventBuffer.clear();
+      }),
+    },
+  });
 
-  const handleEventInspectorGetEvents = async () => {
-    if (!deps.eventBuffer) {
-      return [];
-    }
-    return deps.eventBuffer.getAll();
-  };
-  handlers.push(typedHandle(CHANNELS.EVENT_INSPECTOR_GET_EVENTS, handleEventInspectorGetEvents));
-
-  const handleEventInspectorGetFiltered = async (filters: EventFilterOptions) => {
-    if (!deps.eventBuffer) {
-      return [];
-    }
-    // Handler accepts the broader shared type; EventBuffer enforces stricter typing internally.
-    return deps.eventBuffer.getFiltered(filters as FilterOptions);
-  };
-  handlers.push(
-    typedHandle(CHANNELS.EVENT_INSPECTOR_GET_FILTERED, handleEventInspectorGetFiltered)
-  );
-
-  const handleEventInspectorClear = async () => {
-    if (!deps.eventBuffer) {
-      return;
-    }
-    deps.eventBuffer.clear();
-  };
-  handlers.push(typedHandle(CHANNELS.EVENT_INSPECTOR_CLEAR, handleEventInspectorClear));
+  const cleanups: Array<() => void> = [namespace.register()];
 
   const flushBatch = () => {
     if (batchTimeout) {
@@ -109,7 +111,7 @@ export function registerEventInspectorHandlers(deps: HandlerDependencies): () =>
     }
   };
   ipcMain.on(CHANNELS.EVENT_INSPECTOR_SUBSCRIBE, handleSubscribe);
-  handlers.push(() => ipcMain.removeListener(CHANNELS.EVENT_INSPECTOR_SUBSCRIBE, handleSubscribe));
+  cleanups.push(() => ipcMain.removeListener(CHANNELS.EVENT_INSPECTOR_SUBSCRIBE, handleSubscribe));
 
   const handleUnsubscribe = (event: Electron.IpcMainEvent) => {
     const sender = event.sender;
@@ -126,12 +128,12 @@ export function registerEventInspectorHandlers(deps: HandlerDependencies): () =>
     }
   };
   ipcMain.on(CHANNELS.EVENT_INSPECTOR_UNSUBSCRIBE, handleUnsubscribe);
-  handlers.push(() =>
+  cleanups.push(() =>
     ipcMain.removeListener(CHANNELS.EVENT_INSPECTOR_UNSUBSCRIBE, handleUnsubscribe)
   );
 
   return () => {
-    handlers.forEach((cleanup) => cleanup());
+    cleanups.forEach((cleanup) => cleanup());
 
     flushBatch();
 

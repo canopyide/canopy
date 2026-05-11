@@ -196,12 +196,12 @@ import type { CloneRepoOptions, CloneRepoResult } from "./gitClone.js";
 import type { AppAgentConfig } from "../appAgent.js";
 import type { AgentSessionRecord } from "./agentSessionHistory.js";
 import type {
+  BuilderStep,
   CommandContext,
   CommandExecutePayload,
   CommandGetPayload,
   CommandManifestEntry,
   CommandResult,
-  DaintreeCommand,
 } from "../commands.js";
 
 export type ChecklistItemId =
@@ -2001,7 +2001,7 @@ export interface IpcInvokeMap {
   };
   "commands:get-builder": {
     args: [commandId: string];
-    result: DaintreeCommand["builder"] | null;
+    result: { steps: BuilderStep[] } | null;
   };
 
   // Additional GitHub channels

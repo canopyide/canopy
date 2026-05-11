@@ -1,0 +1,36 @@
+import type { IpcInvokeMap } from "../../types/index.js";
+
+// `plugin:invoke` is intentionally NOT in this map. Its variadic
+// `(pluginId, channel, ...args)` signature and senderFrame trust check
+// can't be expressed through `IpcInvokeMap` without widening types to
+// `unknown[]`, so the raw `ipcMain.handle` route in `plugin.ts` is kept
+// (allowlisted in `ipcHandleCoverage.test.ts`).
+export const PLUGIN_METHOD_CHANNELS = {
+  list: "plugin:list",
+  toolbarButtons: "plugin:toolbar-buttons",
+  menuItems: "plugin:menu-items",
+  validateActionIds: "plugin:validate-action-ids",
+  getActions: "plugin:actions-get",
+  registerAction: "plugin:actions-register",
+  unregisterAction: "plugin:actions-unregister",
+  getPanelKinds: "plugin:panel-kinds-get",
+} as const satisfies Record<string, keyof IpcInvokeMap>;
+
+type Methods = typeof PLUGIN_METHOD_CHANNELS;
+
+export type PluginPreloadBindings = {
+  [M in keyof Methods]: (
+    ...args: IpcInvokeMap[Methods[M]]["args"]
+  ) => Promise<IpcInvokeMap[Methods[M]]["result"]>;
+};
+
+type Invoker = (channel: string, ...args: unknown[]) => Promise<unknown>;
+
+export function buildPluginPreloadBindings(invoke: Invoker): PluginPreloadBindings {
+  const out: Record<string, (...args: unknown[]) => Promise<unknown>> = {};
+  for (const method of Object.keys(PLUGIN_METHOD_CHANNELS) as Array<keyof Methods>) {
+    const channel = PLUGIN_METHOD_CHANNELS[method];
+    out[method as string] = (...args) => invoke(channel, ...args);
+  }
+  return out as unknown as PluginPreloadBindings;
+}
