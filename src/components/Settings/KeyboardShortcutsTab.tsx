@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { Search, X, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { keybindingService, KeybindingConfig } from "@/services/KeybindingService";
@@ -101,7 +101,7 @@ export function KeyboardShortcutsTab() {
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
 
-  const loadBindings = () => {
+  const loadBindings = useCallback(() => {
     const allBindings = keybindingService.getAllBindingsWithEffectiveCombos();
     setBindings(
       allBindings.map((b) => ({
@@ -109,7 +109,7 @@ export function KeyboardShortcutsTab() {
         isOverridden: keybindingService.hasOverride(b.actionId),
       }))
     );
-  };
+  }, []);
 
   useEffect(() => {
     keybindingService.loadOverrides().then(loadBindings);
