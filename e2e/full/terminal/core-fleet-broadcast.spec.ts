@@ -261,6 +261,14 @@ test.describe.serial("Core: Fleet terminal broadcast", () => {
       await armFleet(window, terminalIds);
     });
 
+    await test.step("Verify armed broadcast indicator appears on each panel header", async () => {
+      for (const { panel } of agents) {
+        await expect(panel.getByTestId("panel-armed-broadcast-indicator")).toBeVisible({
+          timeout: T_MEDIUM,
+        });
+      }
+    });
+
     const command = `fleet-direct-${Date.now()}`;
     await test.step("Type directly into the first armed terminal and verify all three respond", async () => {
       await typeDirectlyIntoTerminal(window, agents[0]!.panel, agents[0]!.id, command);
@@ -277,6 +285,21 @@ test.describe.serial("Core: Fleet terminal broadcast", () => {
         timeout: T_MEDIUM,
       });
       await expect(agents[0]!.panel.locator(SEL.terminal.cmEditor)).toHaveCount(0);
+    });
+
+    await test.step("Disarm and verify broadcast indicator disappears", async () => {
+      for (const agent of agents) {
+        const disarm = await dispatchAction(
+          window,
+          "terminal.disarm",
+          { terminalId: agent.id },
+          { source: "user" }
+        );
+        expect(disarm.ok, disarm.error?.message).toBe(true);
+        await expect(agent.panel.getByTestId("panel-armed-broadcast-indicator")).not.toBeVisible({
+          timeout: T_MEDIUM,
+        });
+      }
     });
   });
 
