@@ -490,6 +490,10 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
     path: string;
     status: GitStatus;
   } | null>(null);
+  // Session-scoped per-file Viewed indicator (paths in this set are marked
+  // viewed). Resets on close and on ReviewHub unmount — intentional, this is
+  // not persisted, so a fresh review session starts with nothing checked.
+  const [viewedFiles, setViewedFiles] = useState<Set<string>>(() => new Set());
   const [diffMode, setDiffMode] = useState<DiffMode>("working-tree");
   const [forcePushDialogOpen, setForcePushDialogOpen] = useState(false);
   const [pullRebasing, setPullRebasing] = useState(false);
@@ -735,6 +739,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
       setForcePushDialogOpen(false);
       setPullRebasing(false);
       isPullRebasingRef.current = false;
+      setViewedFiles(new Set());
     }
   }, [isOpen, refresh]);
 
@@ -1072,6 +1077,15 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
 
   const handleFileClick = useCallback((filePath: string, fileStatus: GitStatus) => {
     setSelectedFile({ path: filePath, status: fileStatus });
+  }, []);
+
+  const handleViewedChange = useCallback((filePath: string, viewed: boolean) => {
+    setViewedFiles((prev) => {
+      const next = new Set(prev);
+      if (viewed) next.add(filePath);
+      else next.delete(filePath);
+      return next;
+    });
   }, []);
 
   const handleDiffModeChange = useCallback(
@@ -1710,6 +1724,8 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                               onToggle={(path) => void handleUnstageFile(path)}
                               onFileClick={handleFileClick}
                               density={stagedView.density}
+                              viewed={viewedFiles.has(file.path)}
+                              onViewedChange={handleViewedChange}
                             />
                           ))}
                         </div>
@@ -1879,6 +1895,8 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                               onToggle={(path) => void handleStageFile(path)}
                               onFileClick={handleFileClick}
                               density={changesView.density}
+                              viewed={viewedFiles.has(file.path)}
+                              onViewedChange={handleViewedChange}
                             />
                           ))}
                         </div>

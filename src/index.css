@@ -2378,6 +2378,12 @@ body[data-performance-mode="true"] .github-status-error {
   border-bottom: 1px solid var(--color-daintree-border);
 }
 
+/* Keyboard hunk nav target: keep the hunk header clear of the sticky dialog
+   header when scrollIntoView lands a hunk at block: "start". */
+.diff-viewer tbody.diff-hunk {
+  scroll-margin-top: 56px;
+}
+
 .diff-viewer .diff-hunk-header-gutter {
   background: var(--color-surface);
 }

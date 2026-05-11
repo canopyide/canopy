@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { forwardRef, useEffect, useMemo, useState } from "react";
 import { parseDiff, Diff, Hunk, tokenize, markEdits, DiffType, ViewType } from "react-diff-view";
 import type { HunkData, HunkTokens, TokenizeOptions } from "react-diff-view";
 import { refractor } from "refractor/core";
@@ -133,7 +133,10 @@ function useTokens(
   return { tokens, langLoadFailed };
 }
 
-export function DiffViewer({ diff, viewType = "split", rootPath, onRetry }: DiffViewerProps) {
+export const DiffViewer = forwardRef<HTMLDivElement, DiffViewerProps>(function DiffViewer(
+  { diff, filePath, viewType = "split", rootPath, onRetry },
+  ref
+) {
   const files = useMemo(() => {
     try {
       return parseDiff(diff);
@@ -195,7 +198,7 @@ export function DiffViewer({ diff, viewType = "split", rootPath, onRetry }: Diff
   }
 
   return (
-    <div className="diff-viewer overflow-auto">
+    <div ref={ref} className="diff-viewer overflow-auto">
       {files.map((file, index) => (
         <FileDiff
           key={file.newRevision || file.oldRevision || index}
@@ -206,7 +209,7 @@ export function DiffViewer({ diff, viewType = "split", rootPath, onRetry }: Diff
       ))}
     </div>
   );
-}
+});
 
 interface FileDiffProps {
   file: ReturnType<typeof parseDiff>[0];

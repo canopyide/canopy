@@ -5,6 +5,10 @@ import { registerPersistedStore } from "./persistence/persistedStoreRegistry";
 
 export type DockDensity = "compact" | "normal" | "comfortable";
 
+// Mirrors react-diff-view's ViewType so the persistence layer stays decoupled
+// from the UI library.
+export type DiffViewType = "split" | "unified";
+
 interface PreferencesState {
   showProjectPulse: boolean;
   setShowProjectPulse: (show: boolean) => void;
@@ -20,6 +24,8 @@ interface PreferencesState {
   setAssignWorktreeToSelf: (value: boolean) => void;
   reduceAnimations: boolean;
   setReduceAnimations: (value: boolean) => void;
+  diffViewType: DiffViewType;
+  setDiffViewType: (value: DiffViewType) => void;
   lastSelectedWorktreeRecipeIdByProject: Record<string, string | null | undefined>;
   setLastSelectedWorktreeRecipeIdByProject: (
     projectId: string,
@@ -44,6 +50,8 @@ export const usePreferencesStore = create<PreferencesState>()(
       setAssignWorktreeToSelf: (value) => set({ assignWorktreeToSelf: value }),
       reduceAnimations: false,
       setReduceAnimations: (value) => set({ reduceAnimations: value }),
+      diffViewType: "split",
+      setDiffViewType: (value) => set({ diffViewType: value }),
       lastSelectedWorktreeRecipeIdByProject: {},
       setLastSelectedWorktreeRecipeIdByProject: (projectId, id) =>
         set((state) => ({
@@ -56,7 +64,7 @@ export const usePreferencesStore = create<PreferencesState>()(
     {
       name: "daintree-preferences",
       storage: createSafeJSONStorage(),
-      version: 6,
+      version: 7,
       migrate: (persisted, version) => {
         if (version === 0 || version === undefined) {
           if (persisted && typeof persisted === "object") {
@@ -95,6 +103,12 @@ export const usePreferencesStore = create<PreferencesState>()(
             delete state.skipWorkingCloseConfirm;
           }
         }
+        if (version < 7) {
+          if (persisted && typeof persisted === "object") {
+            const state = persisted as Record<string, unknown>;
+            state.diffViewType ??= "split";
+          }
+        }
         return persisted as PreferencesState;
       },
     }
@@ -105,5 +119,5 @@ registerPersistedStore({
   storeId: "preferencesStore",
   store: usePreferencesStore,
   persistedStateType:
-    "{ showProjectPulse: boolean; showDeveloperTools: boolean; showGridAgentHighlights: boolean; showDockAgentHighlights: boolean; dockDensity: DockDensity; assignWorktreeToSelf: boolean; reduceAnimations: boolean; lastSelectedWorktreeRecipeIdByProject: Record<string, string | null | undefined> }",
+    "{ showProjectPulse: boolean; showDeveloperTools: boolean; showGridAgentHighlights: boolean; showDockAgentHighlights: boolean; dockDensity: DockDensity; assignWorktreeToSelf: boolean; reduceAnimations: boolean; diffViewType: DiffViewType; lastSelectedWorktreeRecipeIdByProject: Record<string, string | null | undefined> }",
 });

@@ -302,4 +302,91 @@ describe("preferencesStore migration", () => {
       expect(state.setSkipWorkingCloseConfirm).toBeUndefined();
     });
   });
+
+  describe("diffViewType (v7 migration)", () => {
+    it("defaults to 'split' on a fresh install", async () => {
+      const store = await loadStore();
+      expect(store.getState().diffViewType).toBe("split");
+    });
+
+    it("setDiffViewType updates the value", async () => {
+      const store = await loadStore();
+      store.getState().setDiffViewType("unified");
+      expect(store.getState().diffViewType).toBe("unified");
+      store.getState().setDiffViewType("split");
+      expect(store.getState().diffViewType).toBe("split");
+    });
+
+    it("persists diffViewType to localStorage", async () => {
+      const store = await loadStore();
+      store.getState().setDiffViewType("unified");
+      await vi.waitFor(() => {
+        const persisted = storageMock.getItem(STORAGE_KEY);
+        expect(persisted).not.toBeNull();
+        const parsed = JSON.parse(persisted!);
+        expect(parsed.state.diffViewType).toBe("unified");
+      });
+    });
+
+    it("migrates v6 state (pre-diffViewType) to v7 with default 'split'", async () => {
+      setStoredState(
+        {
+          showProjectPulse: true,
+          showDeveloperTools: false,
+          showGridAgentHighlights: false,
+          showDockAgentHighlights: false,
+          dockDensity: "normal",
+          assignWorktreeToSelf: false,
+          reduceAnimations: false,
+          lastSelectedWorktreeRecipeIdByProject: {},
+        },
+        6
+      );
+
+      const store = await loadStore();
+      expect(store.getState().diffViewType).toBe("split");
+    });
+
+    it("preserves an explicitly persisted 'unified' value across v7 migration", async () => {
+      setStoredState(
+        {
+          diffViewType: "unified",
+          showProjectPulse: true,
+          showDeveloperTools: false,
+          showGridAgentHighlights: false,
+          showDockAgentHighlights: false,
+          dockDensity: "normal",
+          assignWorktreeToSelf: false,
+          reduceAnimations: false,
+          lastSelectedWorktreeRecipeIdByProject: {},
+        },
+        6
+      );
+
+      const store = await loadStore();
+      expect(store.getState().diffViewType).toBe("unified");
+    });
+
+    it("migrates cumulatively from v3 through v7, dropping skipWorkingCloseConfirm and defaulting diffViewType", async () => {
+      setStoredState(
+        {
+          skipWorkingCloseConfirm: true,
+          showProjectPulse: true,
+          showDeveloperTools: false,
+          showGridAgentHighlights: false,
+          showDockAgentHighlights: false,
+          dockDensity: "normal",
+          assignWorktreeToSelf: false,
+          lastSelectedWorktreeRecipeIdByProject: {},
+        },
+        3
+      );
+
+      const store = await loadStore();
+      const state = store.getState() as unknown as Record<string, unknown>;
+      expect(state.skipWorkingCloseConfirm).toBeUndefined();
+      expect(state.reduceAnimations).toBe(false);
+      expect(state.diffViewType).toBe("split");
+    });
+  });
 });
