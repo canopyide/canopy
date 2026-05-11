@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, act } from "@testing-library/react";
+import { render, act, fireEvent } from "@testing-library/react";
 import { ToolbarAssistantButton } from "../ToolbarAssistantButton";
 import { useHelpPanelStore } from "@/store/helpPanelStore";
 import { usePanelStore } from "@/store";
@@ -58,8 +58,22 @@ vi.mock("@/hooks/useMcpReadiness", () => ({
   useMcpReadiness: () => mcpReadiness(),
 }));
 
+let mockGestureAssistantHidden = false;
+const clearAssistantGestureMock = vi.fn(() => {
+  mockGestureAssistantHidden = false;
+});
+
 vi.mock("@/store/focusStore", () => ({
-  useFocusStore: { getState: () => ({ clearAssistantGesture: vi.fn() }) },
+  useFocusStore: Object.assign(
+    (selector: (s: { gestureAssistantHidden: boolean }) => unknown) =>
+      selector({ gestureAssistantHidden: mockGestureAssistantHidden }),
+    {
+      getState: () => ({
+        gestureAssistantHidden: mockGestureAssistantHidden,
+        clearAssistantGesture: clearAssistantGestureMock,
+      }),
+    }
+  ),
 }));
 
 function setHelpPanel(state: { isOpen: boolean; terminalId: string | null }) {
@@ -98,6 +112,8 @@ describe("ToolbarAssistantButton — agent state pip", () => {
       sessionId: null,
     });
     usePanelStore.setState({ panelsById: {}, panelIds: [] } as never);
+    mockGestureAssistantHidden = false;
+    clearAssistantGestureMock.mockClear();
   });
 
   it("does not render the pip when the assistant is idle", () => {
@@ -289,6 +305,102 @@ describe("ToolbarAssistantButton — agent state pip", () => {
       useHelpPanelStore.setState({ isOpen: false });
     });
     expect(queryByTestId("assistant-working-pip")).toBeNull();
+  });
+
+  describe("gesture-hidden desync", () => {
+    // The toolbar button's highlighted state must mirror the panel's *actual*
+    // visibility — `!gestureAssistantHidden && helpPanelOpen` — not just
+    // `helpPanelStore.isOpen`. The focus-mode gesture can collapse the panel
+    // without flipping isOpen, and the button must stop reading as pressed
+    // and resume showing the pip in that case.
+
+    it("renders aria-pressed=false when the panel is open but gesture-hidden", () => {
+      mockGestureAssistantHidden = true;
+      setHelpPanel({ isOpen: true, terminalId: "t-gh-1" });
+      setPanel("t-gh-1", "idle");
+
+      const { container } = render(<ToolbarAssistantButton />);
+      expect(container.querySelector("button")?.getAttribute("aria-pressed")).toBe("false");
+    });
+
+    it("renders aria-pressed=true when isOpen and the gesture is not hiding the panel", () => {
+      mockGestureAssistantHidden = false;
+      setHelpPanel({ isOpen: true, terminalId: "t-gh-2" });
+      setPanel("t-gh-2", "idle");
+
+      const { container } = render(<ToolbarAssistantButton />);
+      expect(container.querySelector("button")?.getAttribute("aria-pressed")).toBe("true");
+    });
+
+    it("renders aria-pressed=false when isOpen=false regardless of gesture", () => {
+      mockGestureAssistantHidden = true;
+      setHelpPanel({ isOpen: false, terminalId: null });
+
+      const { container } = render(<ToolbarAssistantButton />);
+      expect(container.querySelector("button")?.getAttribute("aria-pressed")).toBe("false");
+    });
+
+    it("shows the agent pip when the panel is gesture-hidden even if isOpen=true", () => {
+      // The lastSeenMarker effect is gated on isVisible (not isOpen) for the
+      // same reason: while the panel is gesture-hidden the user can't see
+      // the assistant header, so state transitions during that window must
+      // remain unread. Because isVisible=false here the effect does not
+      // advance the marker, isAcknowledged stays false, and the pip surfaces
+      // through every state change while the gesture holds.
+      mockGestureAssistantHidden = true;
+      setHelpPanel({ isOpen: true, terminalId: "t-gh-3" });
+      setPanel("t-gh-3", "working");
+
+      const { queryByTestId } = render(<ToolbarAssistantButton />);
+      const pip = queryByTestId("assistant-working-pip");
+      expect(pip).not.toBeNull();
+      expect(pip!.className).toMatch(/bg-state-working/);
+
+      // Agent transitions while gesture-hidden — pip tracks the new state
+      // because the marker was never advanced.
+      act(() => {
+        setPanel("t-gh-3", "waiting");
+      });
+      const pip2 = queryByTestId("assistant-working-pip");
+      expect(pip2).not.toBeNull();
+      expect(pip2!.className).toMatch(/bg-state-waiting/);
+    });
+
+    it("click reveals the panel without toggling isOpen when gesture-hidden", () => {
+      // Button labelled "Open" must actually open. Clearing the gesture
+      // already restores visibility; calling toggle() on top would flip
+      // isOpen to false and re-hide what the user just asked to reveal.
+      mockGestureAssistantHidden = true;
+      setHelpPanel({ isOpen: true, terminalId: "t-gh-click-1" });
+
+      const { container } = render(<ToolbarAssistantButton />);
+      fireEvent.click(container.querySelector("button")!);
+
+      expect(clearAssistantGestureMock).toHaveBeenCalledTimes(1);
+      expect(useHelpPanelStore.getState().isOpen).toBe(true);
+      expect(mockGestureAssistantHidden).toBe(false);
+    });
+
+    it("click toggles isOpen when the panel is visible (no gesture)", () => {
+      mockGestureAssistantHidden = false;
+      setHelpPanel({ isOpen: true, terminalId: "t-gh-click-2" });
+
+      const { container } = render(<ToolbarAssistantButton />);
+      fireEvent.click(container.querySelector("button")!);
+
+      expect(clearAssistantGestureMock).toHaveBeenCalledTimes(1);
+      expect(useHelpPanelStore.getState().isOpen).toBe(false);
+    });
+
+    it("click opens the panel when isOpen=false regardless of gesture flag", () => {
+      mockGestureAssistantHidden = false;
+      setHelpPanel({ isOpen: false, terminalId: null });
+
+      const { container } = render(<ToolbarAssistantButton />);
+      fireEvent.click(container.querySelector("button")!);
+
+      expect(useHelpPanelStore.getState().isOpen).toBe(true);
+    });
   });
 
   it("re-renders when agentState transitions through working → waiting → idle", () => {

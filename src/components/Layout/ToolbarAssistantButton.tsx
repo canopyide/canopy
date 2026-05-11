@@ -72,6 +72,14 @@ export const ToolbarAssistantButton = memo(function ToolbarAssistantButton({
 }) {
   const isOpen = useHelpPanelStore((s) => s.isOpen);
   const toggle = useHelpPanelStore((s) => s.toggle);
+  // The panel's actual visibility in AppLayout is `!gestureAssistantHidden &&
+  // helpPanelOpen` — two independent stores. Reading only `isOpen` here would
+  // leave the button highlighted (aria-pressed, "Close" tooltip, suppressed
+  // pip) while the focus-mode gesture hides the panel. Mirror the same
+  // compound predicate so the visual state can't drift from what the user
+  // actually sees.
+  const gestureAssistantHidden = useFocusStore((s) => s.gestureAssistantHidden);
+  const isVisible = !gestureAssistantHidden && isOpen;
   // Two-step primitive selectors so the button only re-renders when the
   // assistant terminal id changes, then when its agentState transitions.
   // Returning a primitive avoids needing useShallow.
@@ -97,16 +105,24 @@ export const ToolbarAssistantButton = memo(function ToolbarAssistantButton({
     state: AgentState | null;
   } | null>(null);
   useEffect(() => {
-    if (isOpen) {
+    if (isVisible) {
       setLastSeenMarker({ terminalId: assistantTerminalId, state: agentState });
     }
-  }, [isOpen, assistantTerminalId, agentState]);
+  }, [isVisible, assistantTerminalId, agentState]);
 
   const handleClick = useCallback(() => {
     suppressSidebarResizes();
+    // When the gesture hides a logically-open panel the button reads as
+    // "Open"; clearing the gesture alone reveals it. Calling toggle() on
+    // top would flip isOpen to false and re-hide what the user just asked
+    // to reveal. Only toggle when clearing the gesture wouldn't already
+    // restore visibility.
+    const wasGestureHidden = useFocusStore.getState().gestureAssistantHidden;
     useFocusStore.getState().clearAssistantGesture();
-    toggle();
-  }, [toggle]);
+    if (!wasGestureHidden || !isOpen) {
+      toggle();
+    }
+  }, [toggle, isOpen]);
 
   const pip = describePip(mcp);
   const agentPip = describeAgentPip(agentState);
@@ -119,8 +135,8 @@ export const ToolbarAssistantButton = memo(function ToolbarAssistantButton({
     lastSeenMarker !== null &&
     lastSeenMarker.terminalId === assistantTerminalId &&
     lastSeenMarker.state === agentState;
-  const showAgentPip = !pip && agentPip !== null && !isOpen && !isAcknowledged;
-  const baseTooltip = isOpen ? "Close Daintree Assistant" : "Open Daintree Assistant";
+  const showAgentPip = !pip && agentPip !== null && !isVisible && !isAcknowledged;
+  const baseTooltip = isVisible ? "Close Daintree Assistant" : "Open Daintree Assistant";
   const ariaLabel = pip
     ? `Daintree Assistant — ${pip.tooltip}`
     : showAgentPip
@@ -139,7 +155,7 @@ export const ToolbarAssistantButton = memo(function ToolbarAssistantButton({
           onClick={handleClick}
           className={toolbarIconButtonClass}
           aria-label={ariaLabel}
-          aria-pressed={isOpen}
+          aria-pressed={isVisible}
           aria-keyshortcuts={ariaShortcut}
         >
           <div className="relative">
