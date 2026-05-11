@@ -76,20 +76,16 @@ const STATIC_METADATA: Partial<Record<AnyToolbarButtonId, ToolbarButtonMetadata>
   },
 };
 
-const AGENT_METADATA = Object.fromEntries(
-  BUILT_IN_AGENT_IDS.map((id) => {
-    const cfg = getAgentConfig(id);
-    const name = cfg?.name ?? id;
-    return [
-      id,
-      {
-        label: `${name} Agent`,
-        icon: (cfg?.icon as ToolbarButtonIcon | undefined) ?? SquareTerminal,
-        description: `Launch ${name} AI agent`,
-      },
-    ];
-  })
-) as Record<BuiltInAgentId, ToolbarButtonMetadata>;
+const AGENT_METADATA: Partial<Record<BuiltInAgentId, ToolbarButtonMetadata>> = {};
+for (const id of BUILT_IN_AGENT_IDS) {
+  const cfg = getAgentConfig(id);
+  const name = cfg?.name ?? id;
+  AGENT_METADATA[id] = {
+    label: `${name} Agent`,
+    icon: (cfg?.icon as ToolbarButtonIcon | undefined) ?? SquareTerminal,
+    description: `Launch ${name} AI agent`,
+  };
+}
 
 export const TOOLBAR_BUTTON_METADATA: Partial<Record<AnyToolbarButtonId, ToolbarButtonMetadata>> = {
   ...AGENT_METADATA,
