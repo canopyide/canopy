@@ -51,6 +51,7 @@
     "check:help": "node scripts/build-help-prompts.mjs --check",
     "compiler-budget:build": "vite build",
     "compiler-budget:check": "node scripts/check-compiler-budget.mjs",
+    "compiler-budget:critical": "node scripts/find-critical-compiler-errors.mjs",
     "compiler-budget:update": "vite build && node scripts/check-compiler-budget.mjs --update",
     "import-budget:build": "node scripts/build-import-budget.mjs",
     "import-budget:check": "node scripts/check-import-budget.mjs",

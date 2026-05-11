@@ -6,8 +6,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import globPkg from "glob";
-const globSync = globPkg.globSync ?? globPkg.sync;
+import { globSync } from "glob";
 import * as babel from "@babel/core";
 import reactCompilerPkg from "babel-plugin-react-compiler";
 const reactCompilerPlugin = reactCompilerPkg.default ?? reactCompilerPkg;
@@ -33,19 +32,21 @@ for (const rel of files) {
     logEvent(filename, event) {
       if (event.kind !== "CompileError") return;
       const detail = event.detail;
-      // Severity lives on the detail object for CompilerErrorDetail and on
-      // each detail entry for CompilerDiagnostic. Accept either shape.
-      const severity = detail?.severity ?? detail?.details?.[0]?.severity;
-      if (severity !== "Error") return;
-      // Prefer the specific error loc if present; fall back to fnLoc.
-      const detailLoc =
-        detail?.loc ?? detail?.details?.find((d) => d.kind === "error" && d.loc)?.loc;
-      const loc = detailLoc ?? event.fnLoc;
-      const line = loc?.start?.line ?? "?";
-      const reason = detail?.reason ?? detail?.description ?? "(unknown)";
-      const entry = errorsByFile.get(rel) ?? [];
-      entry.push({ line, reason });
-      errorsByFile.set(rel, entry);
+      if (!detail) return;
+      // Normalize to an array of detail entries: CompilerErrorDetail is a
+      // single object (severity on .severity directly), CompilerDiagnostic
+      // wraps multiple entries in .details (severity on each entry).
+      const details = Array.isArray(detail.details) ? detail.details : [detail];
+      for (const d of details) {
+        if (!d || d.severity !== "Error") continue;
+        const loc = d.loc ?? event.fnLoc;
+        const line = loc?.start?.line ?? "?";
+        const reason =
+          d.reason ?? d.description ?? detail.reason ?? detail.description ?? "(unknown)";
+        const entry = errorsByFile.get(rel) ?? [];
+        entry.push({ line, reason });
+        errorsByFile.set(rel, entry);
+      }
     },
   };
 

@@ -153,6 +153,20 @@ GitHub Actions on push/PR to main:
 
 Windows requires `GYP_MSVS_VERSION=2022` for node-pty compilation.
 
+## Compiler bailout tooling
+
+React Compiler bailouts are tracked with two complementary tools:
+
+```bash
+npm run compiler-budget:check     # Gate: diffs build report against baseline (catches ALL regressions)
+npm run compiler-budget:critical  # Triage: re-runs compiler with severity:"Error" filter (surfaces real bailouts only)
+npm run compiler-budget:update    # Accept: refreshes baseline after intentional regressions
+```
+
+The **budget gate** (`compiler-budget:check`) records every `CompileError` event in `compiler-bailout-baseline.json` — cosmetic `Todo` diagnostics and load-bearing `Error` diagnostics alike — so no bailout can sneak past code review. The **critical-errors script** (`compiler-budget:critical`) re-runs the React Compiler directly on `src/` and filters to `severity: "Error"`, isolating the small subset of diagnostics that actually affect optimization. Run it when the budget gate fires to determine whether the new bailout is cosmetic noise or needs attention.
+
+Both tools use `panicThreshold: "none"` — the signal lives in the report and the triage script, never in build crashes.
+
 ## Code Patterns
 
 **Service → IPC → Store → UI**: All features follow this flow. Services don't import from renderer. Stores don't call services directly.

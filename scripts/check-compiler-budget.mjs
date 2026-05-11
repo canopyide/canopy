@@ -1,10 +1,24 @@
 #!/usr/bin/env node
 
-// Compares dist/compiler-bailout-report.json (emitted by the
-// reactCompilerReportPlugin in vite.config.ts) against the checked-in
-// compiler-bailout-baseline.json. Fails if any file gains a new skip / error /
-// pipeline-error event compared to the baseline, so silent React Compiler
-// bailouts can't sneak past code review.
+// Compiler bailout two-tier signal flow
+// ──────────────────────────────────────
+// Tier 1 — Budget gate (this script): diffs dist/compiler-bailout-report.json
+//   against compiler-bailout-baseline.json and fails on any per-file regression.
+//   The baseline records ALL CompileError events (cosmetic + critical) so
+//   nothing slips past code review. Most entries are cosmetic "Todo" noise
+//   (e.g. `Todo: (BuildHIR::lowerExpression) Handle Import expressions` on
+//   anonymous arrows inside `React.lazy(() => import(...))`).
+//
+// Tier 2 — Critical-errors triage: `npm run compiler-budget:critical` runs
+//   scripts/find-critical-compiler-errors.mjs, which re-runs the React Compiler
+//   across src/ with a severity: "Error" filter. It surfaces only the
+//   load-bearing bailouts (the 2 out of ~196 that actually matter). Use it
+//   when the budget gate fires to triage whether the new bailout is cosmetic
+//   or needs attention.
+//
+// Update the baseline when the regression is intentional (genuine new code
+// that can't be optimized, or the React Compiler adds new categories):
+//   npm run compiler-budget:update
 //
 // Usage:
 //   node scripts/check-compiler-budget.mjs                    # check mode (CI)
@@ -274,6 +288,7 @@ function main() {
   const total = regressions.length + disappeared.length;
   console.error(
     `\n[check-compiler-budget] FAILED — ${total} issue(s): ${regressions.length} regression(s), ${disappeared.length} missing baseline entrie(s). ` +
+      `For investigation, run \`npm run compiler-budget:critical\` to list only critical (Error-severity) compiler diagnostics. ` +
       `If the change is intentional (e.g. files were genuinely deleted), run \`npm run compiler-budget:update\` to refresh the baseline.`
   );
   process.exit(1);
