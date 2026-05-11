@@ -2821,8 +2821,9 @@ describe("ReviewHub", () => {
       }) as HTMLInputElement[];
       // One in the staged section, one in the unstaged section.
       expect(checkboxes).toHaveLength(2);
+      const firstCheckbox = checkboxes[0]!;
 
-      fireEvent.click(checkboxes[0]);
+      fireEvent.click(firstCheckbox);
 
       // Only the clicked row flips to "viewed"; the sibling row stays unchecked.
       const checkedAfter = screen.getAllByRole("checkbox", {

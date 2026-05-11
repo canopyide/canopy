@@ -134,7 +134,7 @@ function useTokens(
 }
 
 export const DiffViewer = forwardRef<HTMLDivElement, DiffViewerProps>(function DiffViewer(
-  { diff, filePath, viewType = "split", rootPath, onRetry },
+  { diff, viewType = "split", rootPath, onRetry },
   ref
 ) {
   const files = useMemo(() => {
