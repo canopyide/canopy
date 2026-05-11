@@ -1,0 +1,109 @@
+import { ChevronRight, CircleHelp, Plus } from "lucide-react";
+import { SpinnerCircle, HollowCircle, InteractingCircle } from "@/components/icons";
+import { DaintreeIcon } from "@/components/icons/DaintreeIcon";
+import type { AgentState } from "@/types";
+
+// Tier-1 ambient indicator (per CLAUDE.md Runtime Signals): surfaces the
+// in-flight assistant state next to the header title so the user can read it
+// without watching the terminal. Only the actionable triad — working,
+// directing, waiting — earns a marker; idle/completed/exited stay quiet.
+function AssistantHeaderStateIndicator({
+  agentState,
+}: {
+  agentState: AgentState | null | undefined;
+}) {
+  if (agentState === "working") {
+    return (
+      <span
+        data-testid="assistant-header-state-indicator"
+        data-agent-state="working"
+        aria-label="Assistant is working"
+        role="status"
+        className="ml-1.5 inline-flex shrink-0"
+      >
+        <SpinnerCircle className="w-3.5 h-3.5 text-state-working animate-spin-slow motion-reduce:animate-none" />
+      </span>
+    );
+  }
+  if (agentState === "directing") {
+    return (
+      <span
+        data-testid="assistant-header-state-indicator"
+        data-agent-state="directing"
+        aria-label="Assistant is directing"
+        role="status"
+        className="ml-1.5 inline-flex shrink-0"
+      >
+        <InteractingCircle className="w-3.5 h-3.5 text-category-blue" />
+      </span>
+    );
+  }
+  if (agentState === "waiting") {
+    return (
+      <span
+        data-testid="assistant-header-state-indicator"
+        data-agent-state="waiting"
+        aria-label="Assistant is waiting"
+        role="status"
+        className="ml-1.5 inline-flex shrink-0"
+      >
+        <HollowCircle className="w-3.5 h-3.5 text-state-waiting" />
+      </span>
+    );
+  }
+  return null;
+}
+
+interface HelpPanelHeaderProps {
+  agentState: AgentState | null | undefined;
+  canStartNewSession: boolean;
+  onNewSession: () => void;
+  onOpenDocs: () => void;
+  onClose: () => void;
+}
+
+export function HelpPanelHeader({
+  agentState,
+  canStartNewSession,
+  onNewSession,
+  onOpenDocs,
+  onClose,
+}: HelpPanelHeaderProps) {
+  return (
+    <div className="flex items-center gap-1 px-3 py-2 border-b border-daintree-border shrink-0">
+      <div className="flex items-center min-w-0 flex-1">
+        <DaintreeIcon className="w-4 h-4 text-daintree-text/50 shrink-0" />
+        <span className="ml-1.5 text-xs font-medium text-daintree-text/70 truncate">
+          Daintree Assistant
+        </span>
+        <AssistantHeaderStateIndicator agentState={agentState} />
+      </div>
+      <button
+        type="button"
+        onClick={onOpenDocs}
+        className="p-1 rounded-[var(--radius-sm)] text-daintree-text/50 hover:text-daintree-text hover:bg-tint/8 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
+        aria-label="Open assistant docs"
+      >
+        <CircleHelp className="w-3.5 h-3.5" />
+      </button>
+      {canStartNewSession && (
+        <button
+          type="button"
+          onClick={onNewSession}
+          className="p-1 rounded-[var(--radius-sm)] text-daintree-text/50 hover:text-daintree-text hover:bg-tint/8 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
+          aria-label="Start new session"
+        >
+          <Plus className="w-3.5 h-3.5" />
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={onClose}
+        className="p-1 rounded-[var(--radius-sm)] text-daintree-text/50 hover:text-daintree-text hover:bg-tint/8 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
+        aria-label="Hide Daintree Assistant"
+      >
+        <ChevronRight className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  );
+}
