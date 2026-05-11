@@ -31,6 +31,8 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
       ephemeral: z.boolean().optional(),
       agentLaunchFlags: z.array(z.string()).optional(),
       spawnedBy: TerminalSpawnSourceSchema.optional(),
+      requestedId: z.string().optional(),
+      force: z.boolean().optional(),
     }),
     run: async (args: unknown) => {
       const {
@@ -47,6 +49,8 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
         ephemeral,
         agentLaunchFlags,
         spawnedBy,
+        requestedId,
+        force,
       } = args as {
         agentId: string;
         location?: "grid" | "dock";
@@ -61,6 +65,8 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
         ephemeral?: boolean;
         agentLaunchFlags?: string[];
         spawnedBy?: TerminalSpawnSource;
+        requestedId?: string;
+        force?: boolean;
       };
       const terminalId = await callbacks.onLaunchAgent(agentId, {
         location,
@@ -75,6 +81,8 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
         ephemeral,
         agentLaunchFlags,
         spawnedBy,
+        requestedId,
+        force,
       });
       return { terminalId };
     },

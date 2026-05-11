@@ -865,11 +865,7 @@ describe("HelpPanel — handleRunAnyway", () => {
     cliAvailabilityState.details = {
       claude: { state: "missing", resolvedPath: null, via: null },
     };
-    panelStoreState.addPanel = vi
-      .fn()
-      .mockImplementation((opts: { requestedId?: string }) =>
-        Promise.resolve(opts.requestedId ?? "restarted-term")
-      );
+    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "restarted-term" } });
 
     const { getByTestId } = render(<HelpPanel width={380} />);
 
@@ -878,14 +874,17 @@ describe("HelpPanel — handleRunAnyway", () => {
     });
 
     expect(panelStoreState.removePanel).toHaveBeenCalledWith("gate-1");
-    expect(panelStoreState.addPanel).toHaveBeenCalledWith(
+    expect(mockDispatch).toHaveBeenCalledWith(
+      "agent.launch",
       expect.objectContaining({
-        kind: "terminal",
-        launchAgentId: "claude",
+        agentId: "claude",
         cwd: "/help",
         requestedId: expect.stringMatching(/^terminal-/),
         activateDockOnCreate: true,
-      })
+        ephemeral: true,
+        force: true,
+      }),
+      { source: "user" }
     );
     expect(helpPanelState.setTerminal).toHaveBeenCalledWith(
       expect.stringMatching(/^terminal-/),
@@ -912,7 +911,7 @@ describe("HelpPanel — handleRunAnyway", () => {
     cliAvailabilityState.details = {
       claude: { state: "missing", resolvedPath: null, via: null },
     };
-    panelStoreState.addPanel = vi.fn().mockRejectedValue(new Error("spawn failed"));
+    mockDispatch.mockResolvedValue({ ok: false });
 
     const { getByTestId } = render(<HelpPanel width={380} />);
 
@@ -921,7 +920,7 @@ describe("HelpPanel — handleRunAnyway", () => {
     });
 
     // The pre-set fired once (reserving the slot), then clearTerminal reverted it
-    // when addPanel rejected — so no second setTerminal call carrying a session id.
+    // when dispatch returned !ok — so no second setTerminal call carrying a session id.
     expect(helpPanelState.setTerminal).toHaveBeenCalledTimes(1);
     expect(helpPanelState.setTerminal).toHaveBeenCalledWith(
       expect.stringMatching(/^terminal-/),
@@ -934,7 +933,7 @@ describe("HelpPanel — handleRunAnyway", () => {
     );
   });
 
-  it("reserves the new help-terminal id BEFORE addPanel resolves (race fix for #6951)", async () => {
+  it("reserves the new help-terminal id BEFORE dispatch resolves (race fix for #6951)", async () => {
     helpPanelState.terminalId = "gate-1";
     helpPanelState.agentId = "claude";
     panelStoreState.panelsById = {
@@ -952,13 +951,12 @@ describe("HelpPanel — handleRunAnyway", () => {
       claude: { state: "missing", resolvedPath: null, via: null },
     };
 
-    // Hold addPanel resolution until after we've inspected store state.
-    let resolveAdd: (value: string) => void = () => {};
+    // Hold dispatch resolution until after we've inspected store state.
+    let resolveDispatch: (value: unknown) => void = () => {};
     let capturedRequestedId: string | undefined;
-    panelStoreState.addPanel = vi.fn().mockImplementation((opts: { requestedId?: string }) => {
-      capturedRequestedId = opts.requestedId;
-      return new Promise<string>((r) => {
-        resolveAdd = r;
+    mockDispatch.mockImplementation(() => {
+      return new Promise((r) => {
+        resolveDispatch = r;
       });
     });
 
@@ -968,12 +966,16 @@ describe("HelpPanel — handleRunAnyway", () => {
       fireEvent.click(getByTestId("run-anyway"));
     });
 
-    // setTerminal fired with the pre-generated id while addPanel is still pending.
+    // Capture the requestedId from the dispatch call.
+    capturedRequestedId = (mockDispatch.mock.calls[0]?.[1] as { requestedId?: string } | undefined)
+      ?.requestedId;
+
+    // setTerminal fired with the pre-generated id while dispatch is still pending.
     expect(capturedRequestedId).toMatch(/^terminal-/);
     expect(helpPanelState.setTerminal).toHaveBeenCalledWith(capturedRequestedId, "claude", null);
 
     await act(async () => {
-      resolveAdd(capturedRequestedId!);
+      resolveDispatch({ ok: true, result: { terminalId: capturedRequestedId! } });
     });
   });
 
@@ -1037,7 +1039,7 @@ describe("HelpPanel — handleRunAnyway", () => {
       mcpUrl: null,
       windowId: 1,
     });
-    panelStoreState.addPanel = vi.fn().mockRejectedValue(new Error("spawn failed"));
+    mockDispatch.mockResolvedValue({ ok: false });
 
     const { getByTestId } = render(<HelpPanel width={380} />);
 
@@ -1679,11 +1681,7 @@ describe("HelpPanel — + New session destructive reset", () => {
 
   it("resets immediately without a confirm when the agent is idle and conversation is untouched", async () => {
     setupBoundTerminal({ agentState: "idle", conversationTouched: false });
-    panelStoreState.addPanel = vi
-      .fn()
-      .mockImplementation((opts: { requestedId?: string }) =>
-        Promise.resolve(opts.requestedId ?? "fresh-term")
-      );
+    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "fresh-term" } });
     mockProvisionSession.mockResolvedValue({
       sessionId: "sess-fresh",
       sessionPath: "/sessions/fresh",
@@ -1702,13 +1700,15 @@ describe("HelpPanel — + New session destructive reset", () => {
     expect(panelStoreState.removePanel).toHaveBeenCalledWith("term-1");
     expect(mockRevokeSession).toHaveBeenCalledWith("sess-bound");
     expect(helpPanelState.clearTerminal).toHaveBeenCalled();
-    expect(panelStoreState.addPanel).toHaveBeenCalledWith(
+    expect(mockDispatch).toHaveBeenCalledWith(
+      "agent.launch",
       expect.objectContaining({
-        kind: "terminal",
-        launchAgentId: "claude",
+        agentId: "claude",
         requestedId: expect.stringMatching(/^terminal-/),
         activateDockOnCreate: true,
-      })
+        ephemeral: true,
+      }),
+      { source: "user" }
     );
     expect(helpPanelState.setTerminal).toHaveBeenCalledWith(
       expect.stringMatching(/^terminal-/),
@@ -1757,11 +1757,7 @@ describe("HelpPanel — + New session destructive reset", () => {
 
   it("runs the destructive teardown and relaunches when the user confirms", async () => {
     setupBoundTerminal({ agentState: "working", conversationTouched: true });
-    panelStoreState.addPanel = vi
-      .fn()
-      .mockImplementation((opts: { requestedId?: string }) =>
-        Promise.resolve(opts.requestedId ?? "fresh-term")
-      );
+    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "fresh-term" } });
     mockProvisionSession.mockResolvedValue({
       sessionId: "sess-fresh",
       sessionPath: "/sessions/fresh",
@@ -1787,7 +1783,7 @@ describe("HelpPanel — + New session destructive reset", () => {
     );
   });
 
-  it("reserves the new help-terminal id BEFORE addPanel resolves (race fix for #6951)", async () => {
+  it("reserves the new help-terminal id BEFORE dispatch resolves (race fix for #6951)", async () => {
     setupBoundTerminal({ agentState: "idle", conversationTouched: false });
     mockProvisionSession.mockResolvedValue({
       sessionId: "sess-fresh",
@@ -1798,12 +1794,10 @@ describe("HelpPanel — + New session destructive reset", () => {
       windowId: 1,
     });
 
-    let resolveAdd: (value: string) => void = () => {};
-    let capturedRequestedId: string | undefined;
-    panelStoreState.addPanel = vi.fn().mockImplementation((opts: { requestedId?: string }) => {
-      capturedRequestedId = opts.requestedId;
-      return new Promise<string>((r) => {
-        resolveAdd = r;
+    let resolveDispatch: (value: unknown) => void = () => {};
+    mockDispatch.mockImplementation(() => {
+      return new Promise((r) => {
+        resolveDispatch = r;
       });
     });
 
@@ -1813,21 +1807,20 @@ describe("HelpPanel — + New session destructive reset", () => {
     });
 
     // Pre-set already fired with the same id we passed as requestedId.
+    const capturedRequestedId = (
+      mockDispatch.mock.calls[0]?.[1] as { requestedId?: string } | undefined
+    )?.requestedId;
     expect(capturedRequestedId).toMatch(/^terminal-/);
     expect(helpPanelState.setTerminal).toHaveBeenCalledWith(capturedRequestedId, "claude", null);
 
     await act(async () => {
-      resolveAdd(capturedRequestedId!);
+      resolveDispatch({ ok: true, result: { terminalId: capturedRequestedId! } });
     });
   });
 
-  it("forwards requestedId and activateDockOnCreate to addPanel", async () => {
+  it("forwards requestedId and activateDockOnCreate to agent.launch dispatch", async () => {
     setupBoundTerminal({ agentState: "idle", conversationTouched: false });
-    panelStoreState.addPanel = vi
-      .fn()
-      .mockImplementation((opts: { requestedId?: string }) =>
-        Promise.resolve(opts.requestedId ?? "fresh")
-      );
+    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "fresh" } });
     mockProvisionSession.mockResolvedValue({
       sessionId: "sess-fresh",
       sessionPath: "/sessions/fresh",
@@ -1842,15 +1835,17 @@ describe("HelpPanel — + New session destructive reset", () => {
       fireEvent.click(container.querySelector('button[aria-label="Start new session"]')!);
     });
 
-    expect(panelStoreState.addPanel).toHaveBeenCalledWith(
+    expect(mockDispatch).toHaveBeenCalledWith(
+      "agent.launch",
       expect.objectContaining({
         requestedId: expect.stringMatching(/^terminal-/),
         activateDockOnCreate: true,
-      })
+      }),
+      { source: "user" }
     );
   });
 
-  it("reverts the reserved id when addPanel rejects (no ghost helpTerminalId)", async () => {
+  it("reverts the reserved id when agent.launch dispatch fails (no ghost helpTerminalId)", async () => {
     setupBoundTerminal({ agentState: "idle", conversationTouched: false });
     mockProvisionSession.mockResolvedValue({
       sessionId: "sess-fresh",
@@ -1860,14 +1855,14 @@ describe("HelpPanel — + New session destructive reset", () => {
       mcpUrl: null,
       windowId: 1,
     });
-    panelStoreState.addPanel = vi.fn().mockRejectedValue(new Error("spawn failed"));
+    mockDispatch.mockResolvedValue({ ok: false });
 
     const { container } = render(<HelpPanel width={380} />);
     await act(async () => {
       fireEvent.click(container.querySelector('button[aria-label="Start new session"]')!);
     });
 
-    // setTerminal called once (pre-set), then clearTerminal reverted it on catch.
+    // setTerminal called once (pre-set), then clearTerminal reverted it on !ok.
     // setTerminal must NOT be called again with a session id.
     const setCalls = (helpPanelState.setTerminal as ReturnType<typeof vi.fn>).mock.calls;
     expect(setCalls.length).toBe(1);
@@ -1926,12 +1921,6 @@ describe("HelpPanel — + New session destructive reset", () => {
           resolveProvision = r;
         })
     );
-
-    panelStoreState.addPanel = vi
-      .fn()
-      .mockImplementation((opts: { requestedId?: string }) =>
-        Promise.resolve(opts.requestedId ?? "fresh")
-      );
 
     const { container, rerender } = render(<HelpPanel width={380} />);
 
