@@ -51,6 +51,7 @@ export function NonMainSecondaryRow({
         <PRBadge
           prNumber={worktree.prNumber}
           prState={worktree.prState}
+          prCiStatus={worktree.prCiStatus}
           isSubordinate={!!worktree.issueNumber}
           worktreePath={worktree.path}
           onOpen={badges.onOpenPR}

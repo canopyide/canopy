@@ -1,4 +1,4 @@
-import type { PRTooltipData } from "../../../shared/types/github.js";
+import type { GitHubPRCIStatus, PRTooltipData } from "../../../shared/types/github.js";
 
 export interface RepoContext {
   owner: string;
@@ -23,6 +23,12 @@ export interface LinkedPR {
   state: "open" | "merged" | "closed";
   isDraft: boolean;
   title: string;
+  /**
+   * Roll-up CI state for the PR head commit, sourced from
+   * `commits(last: 1).commit.statusCheckRollup.state` in the batch GraphQL
+   * query. Absent when the PR has no checks or the field was not returned.
+   */
+  ciStatus?: GitHubPRCIStatus;
 }
 
 export interface PRCheckResult {

@@ -300,6 +300,49 @@ describe("WorktreeMonitor", () => {
     expect(snapshot.prTitle).toBeUndefined();
   });
 
+  it("setPRInfo carries prCiStatus into the snapshot", () => {
+    const callbacks = makeCallbacks();
+    const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
+    monitor.setPRInfo({
+      prNumber: 42,
+      prUrl: "https://github.com/test/pr/42",
+      prState: "open",
+      prCiStatus: "SUCCESS",
+    });
+
+    const snapshot = monitor.getSnapshot();
+    expect(snapshot.prCiStatus).toBe("SUCCESS");
+  });
+
+  it("setPRInfo with no prCiStatus clears any prior CI value (full-replace semantics)", () => {
+    const callbacks = makeCallbacks();
+    const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
+    monitor.setPRInfo({
+      prNumber: 42,
+      prUrl: "url",
+      prState: "open",
+      prCiStatus: "FAILURE",
+    });
+    expect(monitor.getSnapshot().prCiStatus).toBe("FAILURE");
+
+    monitor.setPRInfo({ prNumber: 42, prUrl: "url", prState: "open" });
+    expect(monitor.getSnapshot().prCiStatus).toBeUndefined();
+  });
+
+  it("clearPRInfo also clears prCiStatus", () => {
+    const callbacks = makeCallbacks();
+    const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
+    monitor.setPRInfo({
+      prNumber: 42,
+      prUrl: "url",
+      prState: "open",
+      prCiStatus: "PENDING",
+    });
+    monitor.clearPRInfo();
+
+    expect(monitor.getSnapshot().prCiStatus).toBeUndefined();
+  });
+
   it("hasInitialStatus is false before start", () => {
     const callbacks = makeCallbacks();
     const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");

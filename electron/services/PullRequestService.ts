@@ -238,6 +238,12 @@ class PullRequestService {
     this.nextRetryAt = 0;
     this.consecutiveErrors = 0;
     clearPRCaches();
+    // Force a full re-detect cycle so already-resolved worktrees re-query
+    // dynamic PR fields (state, CI status). Without this, checkForPRs() skips
+    // resolved worktrees and only the 90s revalidation timer would refresh
+    // their CI status — which contradicts the "I want fresh data now"
+    // semantics of a manual refresh.
+    this.resolvedWorktrees.clear();
     await this.checkForPRs();
 
     if (this.isPolling && this.hasUnresolvedCandidates()) {
@@ -481,13 +487,14 @@ class PullRequestService {
           continue;
         }
 
-        // Check if PR metadata changed (state, number, title, or url)
+        // Check if PR metadata changed (state, number, title, url, or CI status)
         const prChanged =
           existingPR &&
           (existingPR.state !== newPR.state ||
             existingPR.number !== newPR.number ||
             existingPR.title !== newPR.title ||
-            existingPR.url !== newPR.url);
+            existingPR.url !== newPR.url ||
+            existingPR.ciStatus !== newPR.ciStatus);
 
         if (prChanged) {
           logInfo("PR metadata changed during revalidation", {
@@ -504,6 +511,10 @@ class PullRequestService {
                   : undefined,
               title: existingPR.title !== newPR.title ? true : undefined,
               url: existingPR.url !== newPR.url ? true : undefined,
+              ciStatus:
+                existingPR.ciStatus !== newPR.ciStatus
+                  ? `${existingPR.ciStatus ?? "none"} → ${newPR.ciStatus ?? "none"}`
+                  : undefined,
             },
           });
 
@@ -516,6 +527,7 @@ class PullRequestService {
             prNumber: newPR.number,
             prUrl: newPR.url,
             prState: newPR.state,
+            prCiStatus: newPR.ciStatus,
             prTitle: newPR.title,
             issueNumber,
             issueTitle: checkResult.issueTitle,
@@ -608,6 +620,7 @@ class PullRequestService {
             prNumber: checkResult.pr.number,
             prUrl: checkResult.pr.url,
             prState: checkResult.pr.state,
+            prCiStatus: checkResult.pr.ciStatus,
             prTitle: checkResult.pr.title,
             issueNumber,
             issueTitle: checkResult.issueTitle,

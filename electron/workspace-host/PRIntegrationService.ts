@@ -1,4 +1,5 @@
 import type { TypedEventBus } from "../services/events.js";
+import type { GitHubPRCIStatus } from "../../shared/types/github.js";
 import type { WorktreeSnapshot } from "../../shared/types/workspace-host.js";
 
 interface PullRequestServiceLike {
@@ -21,6 +22,7 @@ export interface PRIntegrationCallbacks {
       prNumber: number;
       prUrl: string;
       prState: "open" | "closed" | "merged";
+      prCiStatus?: GitHubPRCIStatus;
       prTitle?: string;
       issueNumber?: number;
       issueTitle?: string;
@@ -78,6 +80,7 @@ export class PRIntegrationService {
           prNumber: data.prNumber,
           prUrl: data.prUrl,
           prState: data.prState,
+          prCiStatus: data.prCiStatus,
           prTitle: data.prTitle,
           issueNumber: data.issueNumber,
           issueTitle: data.issueTitle,

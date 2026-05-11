@@ -200,6 +200,7 @@ function snapshotsEqual(a: WorktreeSnapshot, b: WorktreeSnapshot): boolean {
     a.prNumber === b.prNumber &&
     a.prUrl === b.prUrl &&
     a.prState === b.prState &&
+    a.prCiStatus === b.prCiStatus &&
     a.prTitle === b.prTitle &&
     a.issueNumber === b.issueNumber &&
     a.issueTitle === b.issueTitle &&
