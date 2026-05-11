@@ -133,13 +133,7 @@ function useTokens(
   return { tokens, langLoadFailed };
 }
 
-export function DiffViewer({
-  diff,
-  filePath,
-  viewType = "split",
-  rootPath,
-  onRetry,
-}: DiffViewerProps) {
+export function DiffViewer({ diff, viewType = "split", rootPath, onRetry }: DiffViewerProps) {
   const files = useMemo(() => {
     try {
       return parseDiff(diff);
