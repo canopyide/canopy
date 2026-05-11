@@ -85,6 +85,12 @@ export interface ContentPanelProps extends BasePanelProps {
   lastCommand?: string;
   queueCount?: number;
   flowStatus?: PersistableFlowStatus;
+  /**
+   * True when the agent transitioned to `completed` and the pre-agent snapshot
+   * confirms no file changes were made. Drives the "Finished, no changes" pill
+   * in the auto-constructed TerminalHeaderContent.
+   */
+  completedWithNoChanges?: boolean;
   onRestart?: () => void;
   isPinged?: boolean;
   wasJustSelected?: boolean;
@@ -160,6 +166,7 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
     lastCommand,
     queueCount = 0,
     flowStatus,
+    completedWithNoChanges = false,
     onRestart,
     isPinged,
     wasJustSelected,
@@ -291,6 +298,7 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
           exitCode={exitCode}
           queueCount={queueCount}
           flowStatus={flowStatus}
+          completedWithNoChanges={completedWithNoChanges}
         />
       );
     }
@@ -307,6 +315,7 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
     exitCode,
     queueCount,
     flowStatus,
+    completedWithNoChanges,
   ]);
 
   const handleTitleDoubleClick = useCallback(
