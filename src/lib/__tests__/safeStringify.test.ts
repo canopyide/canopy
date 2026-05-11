@@ -159,4 +159,28 @@ describe("safeStringify", () => {
     expect(parsed.user).toBe("alice");
     expect(result).toContain("\n");
   });
+
+  it("invokes replacer when space is omitted", () => {
+    const obj = { fn: function foo() {} };
+    const result = safeStringify(obj);
+    expect(result).toBe('{"fn":"[Function: foo]"}');
+  });
+
+  it("produces deterministic key order", () => {
+    const obj = { b: 1, a: 2, c: 3 };
+    expect(safeStringify(obj)).toBe('{"a":2,"b":1,"c":3}');
+  });
+
+  it("handles top-level BigInt", () => {
+    expect(safeStringify(BigInt("9007199254740993123456789"))).toBe('"9007199254740993123456789"');
+  });
+
+  it("handles circular reference containing BigInt", () => {
+    const obj: Record<string, unknown> = {
+      id: BigInt("999999999999999999999"),
+    };
+    obj.self = obj;
+    const result = safeStringify(obj);
+    expect(result).toBe('{"id":"999999999999999999999","self":"[Circular]"}');
+  });
 });
