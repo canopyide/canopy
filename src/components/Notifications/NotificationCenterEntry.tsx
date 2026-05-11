@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState, type Ref } from "react";
+import { useEffect, useRef, useState, type Ref } from "react";
 import { CheckCircle2, XCircle, Info, AlertTriangle, MoreHorizontal, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { NotificationHistoryEntry } from "@/store/slices/notificationHistorySlice";
@@ -86,7 +86,7 @@ interface NotificationCenterEntryProps {
   onDropdownOpenChange?: (open: boolean) => void;
 }
 
-function NotificationCenterEntryImpl({
+export function NotificationCenterEntry({
   entry,
   displayType,
   threadCount,
@@ -299,5 +299,3 @@ function NotificationCenterEntryImpl({
     </div>
   );
 }
-
-export const NotificationCenterEntry = memo(NotificationCenterEntryImpl);

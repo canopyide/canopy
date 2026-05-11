@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import { useCallback } from "react";
 import { cn } from "@/lib/utils";
 import type { ActionPaletteItem as ActionPaletteItemType } from "@/hooks/useActionPalette";
 import { ACTION_CATEGORY_COLORS, ACTION_CATEGORY_DEFAULT_COLOR } from "@/config/categoryColors";
@@ -11,7 +11,7 @@ interface ActionPaletteItemProps {
   onHoverIndex?: (index: number) => void;
 }
 
-export const ActionPaletteItem = React.memo(function ActionPaletteItem({
+export function ActionPaletteItem({
   item,
   isSelected,
   onSelect,
@@ -73,4 +73,4 @@ export const ActionPaletteItem = React.memo(function ActionPaletteItem({
       )}
     </button>
   );
-});
+}

@@ -1,4 +1,4 @@
-import { memo, useMemo } from "react";
+import { useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { CornerDownRight, GitPullRequest } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip";
@@ -19,7 +19,7 @@ interface PRBadgeProps {
   rowLastUpdatedAt?: number;
 }
 
-export const PRBadge = memo(function PRBadge({
+export function PRBadge({
   prNumber,
   prState,
   isSubordinate,
@@ -121,4 +121,4 @@ export const PRBadge = memo(function PRBadge({
       </TooltipContent>
     </Tooltip>
   );
-});
+}

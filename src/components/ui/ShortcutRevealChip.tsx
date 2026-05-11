@@ -1,13 +1,10 @@
-import { memo } from "react";
 import { useKeybindingDisplay } from "@/hooks";
 
 interface ShortcutRevealChipProps {
   actionId: string;
 }
 
-export const ShortcutRevealChip = memo(function ShortcutRevealChip({
-  actionId,
-}: ShortcutRevealChipProps) {
+export function ShortcutRevealChip({ actionId }: ShortcutRevealChipProps) {
   const display = useKeybindingDisplay(actionId);
   if (!display) return null;
   return (
@@ -15,4 +12,4 @@ export const ShortcutRevealChip = memo(function ShortcutRevealChip({
       {display}
     </span>
   );
-});
+}

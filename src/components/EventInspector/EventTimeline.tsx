@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { cn } from "@/lib/utils";
 import type { EventRecord, EventCategory } from "@/store/eventStore";
@@ -61,7 +61,7 @@ interface EventRowProps {
   onSelect: (id: string) => void;
 }
 
-const EventRow = memo(function EventRow({ event, isSelected, onSelect }: EventRowProps) {
+function EventRow({ event, isSelected, onSelect }: EventRowProps) {
   const categoryStyle = getCategoryStyle(event.category);
   const summary = getPayloadSummary(event);
   const handleClick = useCallback(() => onSelect(event.id), [onSelect, event.id]);
@@ -101,7 +101,7 @@ const EventRow = memo(function EventRow({ event, isSelected, onSelect }: EventRo
       </div>
     </button>
   );
-});
+}
 
 export function EventTimeline({
   events,

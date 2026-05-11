@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
 import type { HeatCell, PulseRangeDays } from "@shared/types";
 import { cn } from "@/lib/utils";
@@ -91,7 +91,7 @@ function getTooltipText(cell: RenderCell): string {
   return `${cell.count} commit${cell.count !== 1 ? "s" : ""}`;
 }
 
-const PulseHeatmapCell = memo(function PulseHeatmapCell({
+function PulseHeatmapCell({
   cell,
   cellSize,
   isActive,
@@ -149,7 +149,7 @@ const PulseHeatmapCell = memo(function PulseHeatmapCell({
       </TooltipContent>
     </Tooltip>
   );
-});
+}
 
 export function PulseHeatmap({ cells, rangeDays, compact = false }: PulseHeatmapProps) {
   const rows = useMemo(() => {

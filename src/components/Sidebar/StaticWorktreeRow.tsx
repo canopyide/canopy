@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { WorktreeCard, type WorktreeCardProps } from "@/components/Worktree";
 import { WorktreeCardErrorFallback } from "@/components/Worktree/WorktreeCardErrorFallback";
@@ -21,7 +21,7 @@ interface StaticWorktreeRowProps {
   ariaRowIndex: number;
 }
 
-const StaticWorktreeRow = React.memo(function StaticWorktreeRow({
+function StaticWorktreeRow({
   worktreeId,
   activeWorktreeId,
   focusedWorktreeId,
@@ -104,7 +104,7 @@ const StaticWorktreeRow = React.memo(function StaticWorktreeRow({
       </div>
     </div>
   );
-});
+}
 
 export { StaticWorktreeRow };
 export type { StaticWorktreeRowProps };

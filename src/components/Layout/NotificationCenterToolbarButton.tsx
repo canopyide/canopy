@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, memo, useCallback } from "react";
+import { useRef, useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { FixedDropdown } from "@/components/ui/fixed-dropdown";
 import { Bell, BellOff } from "lucide-react";
@@ -18,7 +18,7 @@ const timeFormatter = new Intl.DateTimeFormat(undefined, {
   minute: "2-digit",
 });
 
-export const NotificationCenterToolbarButton = memo(function NotificationCenterToolbarButton({
+export function NotificationCenterToolbarButton({
   "data-toolbar-item": dataToolbarItem,
 }: {
   "data-toolbar-item"?: string;
@@ -217,4 +217,4 @@ export const NotificationCenterToolbarButton = memo(function NotificationCenterT
       </FixedDropdown>
     </div>
   );
-});
+}

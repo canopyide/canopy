@@ -1,4 +1,3 @@
-import React from "react";
 import { AlertTriangle, RotateCcw } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
 import { InlineStatusBanner } from "./InlineStatusBanner";
@@ -10,7 +9,7 @@ export interface TerminalRestartStatusBannerProps {
   onDismiss: () => void;
 }
 
-function TerminalRestartStatusBannerComponent({
+export function TerminalRestartStatusBanner({
   variant,
   onRestart,
   onDismiss,
@@ -55,5 +54,3 @@ function TerminalRestartStatusBannerComponent({
       );
   }
 }
-
-export const TerminalRestartStatusBanner = React.memo(TerminalRestartStatusBannerComponent);

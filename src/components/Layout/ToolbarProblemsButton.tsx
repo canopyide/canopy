@@ -1,4 +1,3 @@
-import { memo } from "react";
 import { Button } from "@/components/ui/button";
 import { AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -17,7 +16,7 @@ interface ToolbarProblemsButtonProps {
   "data-toolbar-item"?: string;
 }
 
-export const ToolbarProblemsButton = memo(function ToolbarProblemsButton({
+export function ToolbarProblemsButton({
   errorCount,
   onToggleProblems,
   "data-toolbar-item": dataToolbarItem,
@@ -55,4 +54,4 @@ export const ToolbarProblemsButton = memo(function ToolbarProblemsButton({
       </TooltipContent>
     </Tooltip>
   );
-});
+}

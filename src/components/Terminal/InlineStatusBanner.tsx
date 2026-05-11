@@ -69,7 +69,7 @@ function getButtonStyle(variant: ButtonVariant, colorVar: string): React.CSSProp
   return undefined;
 }
 
-function InlineStatusBannerComponent({
+export function InlineStatusBanner({
   icon: IconComponent,
   title,
   description,
@@ -224,5 +224,3 @@ function InlineStatusBannerComponent({
     </div>
   );
 }
-
-export const InlineStatusBanner = React.memo(InlineStatusBannerComponent);

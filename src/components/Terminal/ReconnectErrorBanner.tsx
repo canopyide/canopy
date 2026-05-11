@@ -1,4 +1,3 @@
-import React from "react";
 import { Clock, RotateCcw, AlertTriangle } from "lucide-react";
 import { InlineStatusBanner } from "./InlineStatusBanner";
 import { boundedErrorText } from "@/utils/errorText";
@@ -45,7 +44,7 @@ function getErrorIcon(type: TerminalReconnectError["type"]) {
   }
 }
 
-function ReconnectErrorBannerComponent({
+export function ReconnectErrorBanner({
   terminalId,
   error,
   onDismiss,
@@ -76,5 +75,3 @@ function ReconnectErrorBannerComponent({
     />
   );
 }
-
-export const ReconnectErrorBanner = React.memo(ReconnectErrorBannerComponent);

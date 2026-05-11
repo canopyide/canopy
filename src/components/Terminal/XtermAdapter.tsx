@@ -1,4 +1,4 @@
-import React, {
+import {
   use,
   useCallback,
   useLayoutEffect,
@@ -41,7 +41,7 @@ export interface XtermAdapterProps {
 
 const MIN_CONTAINER_SIZE = 50;
 
-function XtermAdapterComponent({
+export function XtermAdapter({
   terminalId,
   launchAgentId,
   detectedAgentId,
@@ -598,5 +598,3 @@ function XtermAdapterComponent({
     </div>
   );
 }
-
-export const XtermAdapter = React.memo(XtermAdapterComponent);
