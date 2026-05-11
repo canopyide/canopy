@@ -169,7 +169,7 @@ const PUSH_BANNER_CONFIGS: Record<GitOperationReason, PushBannerConfig> = {
     detailPolicy: "hide",
   },
   unknown: {
-    message: "Push failed. See details for more.",
+    message: "See details for more.",
     detailPolicy: "collapse",
   },
 };
@@ -939,7 +939,6 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                           onClick={() => setShowPushDetails((prev) => !prev)}
                           data-testid="review-hub-push-error-toggle"
                           aria-expanded={showPushDetails}
-                          aria-controls="review-hub-push-error-details"
                           className={cn(
                             "inline-flex items-center px-1.5 py-0.5 rounded",
                             "text-status-warning/80 hover:text-status-warning",
@@ -953,7 +952,6 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                     )}
                     {canCollapse && showPushDetails && (
                       <pre
-                        id="review-hub-push-error-details"
                         data-testid="review-hub-push-error-details"
                         className="mt-1 text-[10px] font-mono whitespace-pre-wrap break-all opacity-70"
                       >
