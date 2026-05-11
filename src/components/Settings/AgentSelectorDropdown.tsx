@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, type ComponentType } from "react";
+import { useState, useEffect, useRef, type ComponentType } from "react";
 import { cn } from "@/lib/utils";
 import { Settings2, ChevronDown, Search } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -61,35 +61,29 @@ export function AgentSelectorDropdown({
     }
   }, [open]);
 
-  const handleSelect = useCallback(
-    (id: string) => {
-      onSubtabChange(id);
-      setOpen(false);
-    },
-    [onSubtabChange]
-  );
+  const handleSelect = (id: string) => {
+    onSubtabChange(id);
+    setOpen(false);
+  };
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      switch (e.key) {
-        case "ArrowDown":
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        setActiveIndex((prev) => Math.min(prev + 1, items.length - 1));
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        setActiveIndex((prev) => Math.max(prev - 1, 0));
+        break;
+      case "Enter":
+        if (activeIndex >= 0 && activeIndex < items.length) {
           e.preventDefault();
-          setActiveIndex((prev) => Math.min(prev + 1, items.length - 1));
-          break;
-        case "ArrowUp":
-          e.preventDefault();
-          setActiveIndex((prev) => Math.max(prev - 1, 0));
-          break;
-        case "Enter":
-          if (activeIndex >= 0 && activeIndex < items.length) {
-            e.preventDefault();
-            handleSelect(items[activeIndex]!.id);
-          }
-          break;
-      }
-    },
-    [items, activeIndex, handleSelect]
-  );
+          handleSelect(items[activeIndex]!.id);
+        }
+        break;
+    }
+  };
 
   const selectedAgent =
     activeSubtab !== GENERAL_ID ? agentOptions.find((a) => a.id === activeSubtab) : null;

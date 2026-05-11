@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Plus,
   X,
@@ -248,21 +248,18 @@ export function ResourceEnvironmentsSection({
     [resourceEnvironments, currentEnvName]
   );
 
-  const updateEnv = useCallback(
-    (patch: Partial<ResourceEnvironment>) => {
-      const envs = { ...(resourceEnvironments ?? {}) };
-      envs[currentEnvName] = { ...env, ...patch };
-      onResourceEnvironmentsChange(envs);
-    },
-    [env, currentEnvName, resourceEnvironments, onResourceEnvironmentsChange]
-  );
+  const updateEnv = (patch: Partial<ResourceEnvironment>) => {
+    const envs = { ...(resourceEnvironments ?? {}) };
+    envs[currentEnvName] = { ...env, ...patch };
+    onResourceEnvironmentsChange(envs);
+  };
 
   const handleSelectEnv = (name: string) => {
     setSelectedEnvName(name);
     onActiveResourceEnvironmentChange(name);
   };
 
-  const handleAddEnv = useCallback(() => {
+  const handleAddEnv = () => {
     const trimmed = newEnvironmentName.trim();
     if (!trimmed) {
       setAddEnvironmentError("Enter an environment name.");
@@ -280,33 +277,20 @@ export function ResourceEnvironmentsSection({
     setIsAddingEnvironment(false);
     setNewEnvironmentName("");
     setAddEnvironmentError(null);
-  }, [
-    newEnvironmentName,
-    onActiveResourceEnvironmentChange,
-    onResourceEnvironmentsChange,
-    resourceEnvironments,
-  ]);
+  };
 
-  const handleRemoveEnv = useCallback(
-    (name: string) => {
-      const envs = { ...(resourceEnvironments ?? {}) };
-      delete envs[name];
-      onResourceEnvironmentsChange(envs);
-      const remaining = Object.keys(envs);
-      if (remaining.length > 0) {
-        const next = remaining[0]!;
-        setSelectedEnvName(next);
-        onActiveResourceEnvironmentChange(next);
-      }
-      setPendingDeleteEnvironment(null);
-    },
-    [
-      envKeys.length,
-      onActiveResourceEnvironmentChange,
-      onResourceEnvironmentsChange,
-      resourceEnvironments,
-    ]
-  );
+  const handleRemoveEnv = (name: string) => {
+    const envs = { ...(resourceEnvironments ?? {}) };
+    delete envs[name];
+    onResourceEnvironmentsChange(envs);
+    const remaining = Object.keys(envs);
+    if (remaining.length > 0) {
+      const next = remaining[0]!;
+      setSelectedEnvName(next);
+      onActiveResourceEnvironmentChange(next);
+    }
+    setPendingDeleteEnvironment(null);
+  };
 
   return (
     <div className="space-y-6 p-1">

@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useMemo } from "react";
 import {
   DndContext,
   closestCenter,
@@ -231,76 +231,64 @@ export function ToolbarSettingsTab() {
     return { ...BUTTON_METADATA, ...pluginMeta };
   }, [pluginButtonIds, pluginConfigs]);
 
-  const handleLeftDragEnd = useCallback(
-    (event: DragEndEvent) => {
-      const { active, over } = event;
-      if (!over || active.id === over.id) return;
+  const handleLeftDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
 
-      const oldIndex = layout.leftButtons.indexOf(active.id as AnyToolbarButtonId);
-      const newIndex = layout.leftButtons.indexOf(over.id as AnyToolbarButtonId);
+    const oldIndex = layout.leftButtons.indexOf(active.id as AnyToolbarButtonId);
+    const newIndex = layout.leftButtons.indexOf(over.id as AnyToolbarButtonId);
 
-      if (oldIndex === -1 || newIndex === -1) return;
+    if (oldIndex === -1 || newIndex === -1) return;
 
-      const newButtons = [...layout.leftButtons];
-      newButtons.splice(oldIndex, 1);
-      newButtons.splice(newIndex, 0, active.id as AnyToolbarButtonId);
+    const newButtons = [...layout.leftButtons];
+    newButtons.splice(oldIndex, 1);
+    newButtons.splice(newIndex, 0, active.id as AnyToolbarButtonId);
 
-      setLeftButtons(newButtons);
-    },
-    [layout.leftButtons, setLeftButtons]
-  );
+    setLeftButtons(newButtons);
+  };
 
-  const handleRightDragEnd = useCallback(
-    (event: DragEndEvent) => {
-      const { active, over } = event;
-      if (!over || active.id === over.id) return;
+  const handleRightDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
 
-      const oldIndex = layout.rightButtons.indexOf(active.id as AnyToolbarButtonId);
-      const newIndex = layout.rightButtons.indexOf(over.id as AnyToolbarButtonId);
+    const oldIndex = layout.rightButtons.indexOf(active.id as AnyToolbarButtonId);
+    const newIndex = layout.rightButtons.indexOf(over.id as AnyToolbarButtonId);
 
-      if (oldIndex === -1 || newIndex === -1) return;
+    if (oldIndex === -1 || newIndex === -1) return;
 
-      const newButtons = [...layout.rightButtons];
-      newButtons.splice(oldIndex, 1);
-      newButtons.splice(newIndex, 0, active.id as AnyToolbarButtonId);
+    const newButtons = [...layout.rightButtons];
+    newButtons.splice(oldIndex, 1);
+    newButtons.splice(newIndex, 0, active.id as AnyToolbarButtonId);
 
-      setRightButtons(newButtons);
-    },
-    [layout.rightButtons, setRightButtons]
-  );
+    setRightButtons(newButtons);
+  };
 
-  const handleToggleLeft = useCallback(
-    (buttonId: AnyToolbarButtonId) => {
-      if (AGENT_ID_SET.has(buttonId)) {
-        // Toggle the *currently visible* state so undefined-pinned agents
-        // resolve to the opposite of the derived state (installed→hide,
-        // missing→show) — see #7673 tri-state semantics.
-        const nextPinned = !isAgentToolbarVisible(
-          agentSettings?.agents?.[buttonId],
-          agentAvailability?.[buttonId]
-        );
-        void setAgentPinned(buttonId, nextPinned);
-        return;
-      }
-      toggleButtonVisibility(buttonId, "left");
-    },
-    [agentSettings, agentAvailability, setAgentPinned, toggleButtonVisibility]
-  );
+  const handleToggleLeft = (buttonId: AnyToolbarButtonId) => {
+    if (AGENT_ID_SET.has(buttonId)) {
+      // Toggle the *currently visible* state so undefined-pinned agents
+      // resolve to the opposite of the derived state (installed→hide,
+      // missing→show) — see #7673 tri-state semantics.
+      const nextPinned = !isAgentToolbarVisible(
+        agentSettings?.agents?.[buttonId],
+        agentAvailability?.[buttonId]
+      );
+      void setAgentPinned(buttonId, nextPinned);
+      return;
+    }
+    toggleButtonVisibility(buttonId, "left");
+  };
 
-  const handleToggleRight = useCallback(
-    (buttonId: AnyToolbarButtonId) => {
-      if (AGENT_ID_SET.has(buttonId)) {
-        const nextPinned = !isAgentToolbarVisible(
-          agentSettings?.agents?.[buttonId],
-          agentAvailability?.[buttonId]
-        );
-        void setAgentPinned(buttonId, nextPinned);
-        return;
-      }
-      toggleButtonVisibility(buttonId, "right");
-    },
-    [agentSettings, agentAvailability, setAgentPinned, toggleButtonVisibility]
-  );
+  const handleToggleRight = (buttonId: AnyToolbarButtonId) => {
+    if (AGENT_ID_SET.has(buttonId)) {
+      const nextPinned = !isAgentToolbarVisible(
+        agentSettings?.agents?.[buttonId],
+        agentAvailability?.[buttonId]
+      );
+      void setAgentPinned(buttonId, nextPinned);
+      return;
+    }
+    toggleButtonVisibility(buttonId, "right");
+  };
 
   return (
     <div className="space-y-6">

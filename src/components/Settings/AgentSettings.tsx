@@ -208,7 +208,7 @@ export function AgentSettings({
     }
   }, [isCliLoading, fetchCliDetails]);
 
-  const handleRefreshCliAvailability = useCallback(async () => {
+  const handleRefreshCliAvailability = async () => {
     if (isRefreshingCli) return;
     try {
       // Explicit user gesture — bypass the 30s throttle that exists for
@@ -218,7 +218,7 @@ export function AgentSettings({
     } catch (error) {
       logError("[AgentSettings] Failed to refresh CLI availability", error);
     }
-  }, [isRefreshingCli, refreshCliAvailability, fetchCliDetails]);
+  };
 
   const defaultAgent = useAgentPreferencesStore((state) => state.defaultAgent);
   const setDefaultAgent = useAgentPreferencesStore((state) => state.setDefaultAgent);

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { ChevronRight, RotateCcw, Power, PowerOff, AlertCircle, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { commandsClient } from "@/clients/commandsClient";
@@ -64,12 +64,9 @@ export function CommandOverridesTab({ projectId, overrides, onChange }: CommandO
     setOverrideModes(newModes);
   }, [overrides]);
 
-  const getOverride = useCallback(
-    (commandId: string): CommandOverride | undefined => {
-      return overrides.find((o) => o.commandId === commandId);
-    },
-    [overrides]
-  );
+  const getOverride = (commandId: string): CommandOverride | undefined => {
+    return overrides.find((o) => o.commandId === commandId);
+  };
 
   const updateOverride = (commandId: string, updates: Partial<CommandOverride>) => {
     const existing = getOverride(commandId);
@@ -166,18 +163,15 @@ export function CommandOverridesTab({ projectId, overrides, onChange }: CommandO
     });
   };
 
-  const hasOverride = useCallback(
-    (commandId: string): boolean => {
-      const override = getOverride(commandId);
-      return !!(
-        override &&
-        (override.disabled ||
-          (override.defaults && Object.keys(override.defaults).length > 0) ||
-          override.prompt)
-      );
-    },
-    [getOverride]
-  );
+  const hasOverride = (commandId: string): boolean => {
+    const override = getOverride(commandId);
+    return !!(
+      override &&
+      (override.disabled ||
+        (override.defaults && Object.keys(override.defaults).length > 0) ||
+        override.prompt)
+    );
+  };
 
   const getOverrideMode = (commandId: string, hasArgs: boolean): OverrideMode => {
     const mode = overrideModes[commandId];
@@ -185,12 +179,9 @@ export function CommandOverridesTab({ projectId, overrides, onChange }: CommandO
     return hasArgs ? "defaults" : "prompt";
   };
 
-  const isDisabledCommand = useCallback(
-    (commandId: string): boolean => {
-      return getOverride(commandId)?.disabled === true;
-    },
-    [getOverride]
-  );
+  const isDisabledCommand = (commandId: string): boolean => {
+    return getOverride(commandId)?.disabled === true;
+  };
 
   // Compute summary counts
   const overriddenCount = useMemo(() => {

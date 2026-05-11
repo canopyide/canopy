@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Search, X, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { keybindingService, KeybindingConfig } from "@/services/KeybindingService";
@@ -101,7 +101,7 @@ export function KeyboardShortcutsTab() {
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
 
-  const loadBindings = useCallback(() => {
+  const loadBindings = () => {
     const allBindings = keybindingService.getAllBindingsWithEffectiveCombos();
     setBindings(
       allBindings.map((b) => ({
@@ -109,7 +109,7 @@ export function KeyboardShortcutsTab() {
         isOverridden: keybindingService.hasOverride(b.actionId),
       }))
     );
-  }, []);
+  };
 
   useEffect(() => {
     keybindingService.loadOverrides().then(loadBindings);
@@ -204,24 +204,21 @@ export function KeyboardShortcutsTab() {
 
   const hasOverrides = bindings.some((b) => b.isOverridden);
 
-  const handleSearchKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === "Escape") {
-        if (searchQuery !== "") {
-          e.stopPropagation();
-          setSearchQuery("");
-        } else {
-          searchInputRef.current?.blur();
-        }
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Escape") {
+      if (searchQuery !== "") {
+        e.stopPropagation();
+        setSearchQuery("");
+      } else {
+        searchInputRef.current?.blur();
       }
-    },
-    [searchQuery]
-  );
+    }
+  };
 
-  const handleClearSearch = useCallback(() => {
+  const handleClearSearch = () => {
     setSearchQuery("");
     searchInputRef.current?.focus();
-  }, []);
+  };
 
   return (
     <div className="space-y-4">

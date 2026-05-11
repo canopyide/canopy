@@ -1,5 +1,4 @@
 import {
-  useCallback,
   useMemo,
   useRef,
   useState,
@@ -121,54 +120,45 @@ export function AppThemePicker({ onClose }: AppThemePickerProps = {}) {
     return /^#[0-9a-f]{6}$/i.test(candidate) ? candidate.toLowerCase() : "#000000";
   }, [accentColorOverride, selectedScheme]);
 
-  const handleAccentInput = useCallback(
-    (e: FormEvent<HTMLInputElement>) => {
-      setAccentColorOverride(e.currentTarget.value);
-    },
-    [setAccentColorOverride]
-  );
+  const handleAccentInput = (e: FormEvent<HTMLInputElement>) => {
+    setAccentColorOverride(e.currentTarget.value);
+  };
 
-  const handleAccentCommit = useCallback(
-    (e: ChangeEvent<HTMLInputElement>) => {
-      setAccentColorOverride(e.target.value);
-      appThemeClient.setAccentColorOverride(e.target.value).catch((error) => {
-        logError("Failed to persist accent color override", error);
-      });
-    },
-    [setAccentColorOverride]
-  );
+  const handleAccentCommit = (e: ChangeEvent<HTMLInputElement>) => {
+    setAccentColorOverride(e.target.value);
+    appThemeClient.setAccentColorOverride(e.target.value).catch((error) => {
+      logError("Failed to persist accent color override", error);
+    });
+  };
 
-  const handleAccentReset = useCallback(() => {
+  const handleAccentReset = () => {
     setAccentColorOverride(null);
     appThemeClient.setAccentColorOverride(null).catch((error) => {
       logError("Failed to clear accent color override", error);
     });
-  }, [setAccentColorOverride]);
+  };
 
-  const handleSelect = useCallback(
-    async (id: string, origin?: { x: number; y: number }) => {
-      if (followSystem) {
-        setFollowSystem(false);
-        appThemeClient
-          .setFollowSystem(false)
-          .catch((err) => logError("Failed to clear follow system", err));
-      }
+  const handleSelect = async (id: string, origin?: { x: number; y: number }) => {
+    if (followSystem) {
+      setFollowSystem(false);
+      appThemeClient
+        .setFollowSystem(false)
+        .catch((err) => logError("Failed to clear follow system", err));
+    }
 
-      commitSchemeSelection(id);
-      const scheme = resolveAppTheme(id, useAppThemeStore.getState().customSchemes);
-      runThemeReveal(origin ?? null, () => injectSchemeToDOM(scheme, { immediate: true }));
+    commitSchemeSelection(id);
+    const scheme = resolveAppTheme(id, useAppThemeStore.getState().customSchemes);
+    runThemeReveal(origin ?? null, () => injectSchemeToDOM(scheme, { immediate: true }));
 
-      try {
-        await appThemeClient.setColorScheme(id);
-        await appThemeClient.setRecentSchemeIds(useAppThemeStore.getState().recentSchemeIds);
-      } catch (error) {
-        logError("Failed to persist app theme", error);
-      }
-    },
-    [commitSchemeSelection, followSystem, setFollowSystem]
-  );
+    try {
+      await appThemeClient.setColorScheme(id);
+      await appThemeClient.setRecentSchemeIds(useAppThemeStore.getState().recentSchemeIds);
+    } catch (error) {
+      logError("Failed to persist app theme", error);
+    }
+  };
 
-  const handleToggleFollowSystem = useCallback(async () => {
+  const handleToggleFollowSystem = async () => {
     const newValue = !followSystem;
     setFollowSystem(newValue);
     try {
@@ -176,33 +166,27 @@ export function AppThemePicker({ onClose }: AppThemePickerProps = {}) {
     } catch (error) {
       logError("Failed to persist follow system", error);
     }
-  }, [followSystem, setFollowSystem]);
+  };
 
-  const handlePreferredDarkChange = useCallback(
-    async (id: string) => {
-      setPreferredDarkSchemeId(id);
-      try {
-        await appThemeClient.setPreferredDarkScheme(id);
-      } catch (error) {
-        logError("Failed to persist preferred dark scheme", error);
-      }
-    },
-    [setPreferredDarkSchemeId]
-  );
+  const handlePreferredDarkChange = async (id: string) => {
+    setPreferredDarkSchemeId(id);
+    try {
+      await appThemeClient.setPreferredDarkScheme(id);
+    } catch (error) {
+      logError("Failed to persist preferred dark scheme", error);
+    }
+  };
 
-  const handlePreferredLightChange = useCallback(
-    async (id: string) => {
-      setPreferredLightSchemeId(id);
-      try {
-        await appThemeClient.setPreferredLightScheme(id);
-      } catch (error) {
-        logError("Failed to persist preferred light scheme", error);
-      }
-    },
-    [setPreferredLightSchemeId]
-  );
+  const handlePreferredLightChange = async (id: string) => {
+    setPreferredLightSchemeId(id);
+    try {
+      await appThemeClient.setPreferredLightScheme(id);
+    } catch (error) {
+      logError("Failed to persist preferred light scheme", error);
+    }
+  };
 
-  const handleImport = useCallback(async () => {
+  const handleImport = async () => {
     setImportMessage(null);
     setImportWarnings([]);
 
@@ -231,9 +215,9 @@ export function AppThemePicker({ onClose }: AppThemePickerProps = {}) {
       logError("Failed to import app theme", error);
       setImportMessage("Failed to import app theme.");
     }
-  }, [addCustomScheme, handleSelect]);
+  };
 
-  const handleExport = useCallback(async () => {
+  const handleExport = async () => {
     if (!selectedScheme) return;
     try {
       const effectiveScheme = applyAccentOverrideToScheme(selectedScheme, accentColorOverride);
@@ -242,28 +226,25 @@ export function AppThemePicker({ onClose }: AppThemePickerProps = {}) {
       logError("Failed to export app theme", error);
       setImportMessage("Failed to export app theme.");
     }
-  }, [selectedScheme, accentColorOverride]);
+  };
 
-  const handleShuffle = useCallback(
-    (e: MouseEvent) => {
-      const otherIds = allSchemes.map((s) => s.id).filter((id) => id !== selectedSchemeId);
-      if (otherIds.length === 0) return;
+  const handleShuffle = (e: MouseEvent) => {
+    const otherIds = allSchemes.map((s) => s.id).filter((id) => id !== selectedSchemeId);
+    if (otherIds.length === 0) return;
 
-      shuffleQueueRef.current = shuffleQueueRef.current.filter((id) => id !== selectedSchemeId);
+    shuffleQueueRef.current = shuffleQueueRef.current.filter((id) => id !== selectedSchemeId);
 
-      if (shuffleQueueRef.current.length === 0) {
-        shuffleQueueRef.current = shuffleArray(otherIds);
-      }
+    if (shuffleQueueRef.current.length === 0) {
+      shuffleQueueRef.current = shuffleArray(otherIds);
+    }
 
-      const nextId = shuffleQueueRef.current.shift()!;
-      handleSelect(nextId, { x: e.clientX, y: e.clientY });
-    },
-    [allSchemes, selectedSchemeId, handleSelect]
-  );
+    const nextId = shuffleQueueRef.current.shift()!;
+    handleSelect(nextId, { x: e.clientX, y: e.clientY });
+  };
 
-  const handleChangeTheme = useCallback(() => {
+  const handleChangeTheme = () => {
     window.dispatchEvent(new CustomEvent("daintree:open-theme-browser"));
-  }, []);
+  };
 
   return (
     <div className="space-y-3">

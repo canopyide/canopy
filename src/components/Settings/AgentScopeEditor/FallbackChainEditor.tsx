@@ -1,4 +1,4 @@
-import { useMemo, useCallback } from "react";
+import { useMemo } from "react";
 import { X as XIcon } from "lucide-react";
 import { FALLBACK_CHAIN_MAX } from "../../../../shared/config/agentRegistry";
 import type { AgentPreset } from "@/config/agents";
@@ -21,24 +21,18 @@ export function FallbackChainEditor({
     [allPresets, selectedPreset.id, chain]
   );
 
-  const removeFallback = useCallback(
-    (id: string) => {
-      onUpdatePreset(selectedPreset.id, {
-        fallbacks: chain.filter((f) => f !== id),
-      });
-    },
-    [selectedPreset.id, chain, onUpdatePreset]
-  );
+  const removeFallback = (id: string) => {
+    onUpdatePreset(selectedPreset.id, {
+      fallbacks: chain.filter((f) => f !== id),
+    });
+  };
 
-  const addFallback = useCallback(
-    (id: string) => {
-      if (!id || chain.includes(id) || chain.length >= FALLBACK_CHAIN_MAX) return;
-      onUpdatePreset(selectedPreset.id, {
-        fallbacks: [...chain, id],
-      });
-    },
-    [selectedPreset.id, chain, onUpdatePreset]
-  );
+  const addFallback = (id: string) => {
+    if (!id || chain.includes(id) || chain.length >= FALLBACK_CHAIN_MAX) return;
+    onUpdatePreset(selectedPreset.id, {
+      fallbacks: [...chain, id],
+    });
+  };
 
   return (
     <div className="space-y-1.5">

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Eye, EyeOff, Plus, RotateCcw, Upload, X } from "lucide-react";
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -231,13 +231,10 @@ function EnvVarKeyCell({
     if (!open) setActiveIndex(-1);
   }, [open]);
 
-  const handleSelect = useCallback(
-    (key: string) => {
-      onSelect(rowId, key);
-      setOpen(false);
-    },
-    [onSelect, rowId]
-  );
+  const handleSelect = (key: string) => {
+    onSelect(rowId, key);
+    setOpen(false);
+  };
 
   const showChevron = availableSuggestions.length > 0 && !disabled;
 
@@ -448,25 +445,22 @@ export function EnvVarEditor({
     setPendingFocusKey(null);
   }, [pendingFocusKey]);
 
-  const commitIfValid = useCallback(
-    (nextRows: DraftRow[]) => {
-      if (isValid(nextRows)) {
-        const nextEnv = draftToEnv(nextRows);
-        // Intentionally do NOT update lastEnvRef here. The ref tracks the last
-        // env *prop* value — if we seed it with our synthesized commit, the
-        // subsequent effect pass will read env (still the stale prop) and
-        // mistake it for an external reset, triggering a reseed that stomps
-        // the in-progress edit. Let the prop echo back from the parent and
-        // update lastEnvRef there.
-        if (!shallowEnvEqual(lastEnvRef.current, nextEnv)) {
-          onChange(nextEnv);
-        }
+  const commitIfValid = (nextRows: DraftRow[]) => {
+    if (isValid(nextRows)) {
+      const nextEnv = draftToEnv(nextRows);
+      // Intentionally do NOT update lastEnvRef here. The ref tracks the last
+      // env *prop* value — if we seed it with our synthesized commit, the
+      // subsequent effect pass will read env (still the stale prop) and
+      // mistake it for an external reset, triggering a reseed that stomps
+      // the in-progress edit. Let the prop echo back from the parent and
+      // update lastEnvRef there.
+      if (!shallowEnvEqual(lastEnvRef.current, nextEnv)) {
+        onChange(nextEnv);
       }
-    },
-    [onChange]
-  );
+    }
+  };
 
-  const handleAdd = useCallback(() => {
+  const handleAdd = () => {
     const newRowId = nextRowId();
     setRows((prev) => {
       // Pick a KEY name that isn't already present (including inherited keys).
@@ -489,189 +483,165 @@ export function EnvVarEditor({
       return [...prev.slice(0, firstInheritedIdx), newRow, ...prev.slice(firstInheritedIdx)];
     });
     setPendingFocusKey(newRowId);
-  }, []);
+  };
 
-  const handleRemove = useCallback(
-    (rowId: string) => {
-      setRows((prev) => {
-        const row = prev.find((r) => r.rowId === rowId);
-        if (!row) return prev;
-        const key = row.key.trim();
-        // If this override shadows an inherited key, "removing" means reverting
-        // to the inherited value rather than dropping the row altogether —
-        // the inherited entry would otherwise reappear as a separate row.
-        if (!row.isInherited && inheritedEnv && key in inheritedEnv) {
-          const inheritedValue = inheritedEnv[key]!;
-          const next = prev.map((r) =>
-            r.rowId === rowId ? { ...r, value: inheritedValue, isInherited: true } : r
-          );
-          commitIfValid(next);
-          return next;
-        }
-        const next = prev.filter((r) => r.rowId !== rowId);
-        commitIfValid(next);
-        return next;
-      });
-      setRevealedRows((prev) => {
-        if (!prev.has(rowId)) return prev;
-        const next = new Set(prev);
-        next.delete(rowId);
-        return next;
-      });
-    },
-    [commitIfValid, inheritedEnv]
-  );
-
-  const handleKeyChange = useCallback((rowId: string, newKey: string) => {
-    setRows((prev) => prev.map((r) => (r.rowId === rowId ? { ...r, key: newKey } : r)));
-  }, []);
-
-  const handleKeySelect = useCallback(
-    (rowId: string, newKey: string) => {
-      // Picker selection commits synchronously. The input's blur fires before
-      // the option's click, so a typing-style onChange + later blur loses the
-      // pick (blur commits the OLD key before the click can update rows).
-      // Mark the row touched so a subsequent blank-out still surfaces the
-      // empty-key error.
-      setTouchedKeys((prev) => ({ ...prev, [rowId]: true }));
-      setRows((prev) => {
-        const next = prev.map((r) => (r.rowId === rowId ? { ...r, key: newKey } : r));
-        commitIfValid(next);
-        return next;
-      });
-    },
-    [commitIfValid]
-  );
-
-  const handleValueChange = useCallback((rowId: string, newValue: string) => {
-    setRows((prev) => prev.map((r) => (r.rowId === rowId ? { ...r, value: newValue } : r)));
-  }, []);
-
-  const handleValuePaste = useCallback(
-    (rowId: string, e: React.ClipboardEvent<HTMLInputElement>) => {
-      if (e.currentTarget.disabled) return;
-      const raw = e.clipboardData?.getData("text");
-      if (raw == null) return;
-      const cleaned = normalizePastedEnvValue(raw);
-      if (cleaned === raw) return;
-      e.preventDefault();
-      const inserted = document.execCommand("insertText", false, cleaned);
-      if (!inserted) {
-        const input = e.currentTarget;
-        const start = input.selectionStart ?? 0;
-        const end = input.selectionEnd ?? 0;
-        handleValueChange(rowId, input.value.slice(0, start) + cleaned + input.value.slice(end));
-      }
-      notify({
-        type: "info",
-        title: "Pasted text normalized",
-        message: "Quotation marks, dashes, and surrounding whitespace were cleaned up.",
-        transient: true,
-      });
-    },
-    [handleValueChange]
-  );
-
-  const handleOverride = useCallback(
-    (rowId: string) => {
-      setRows((prev) => {
-        const row = prev.find((r) => r.rowId === rowId);
-        if (!row || !row.isInherited) return prev;
-        // Promote the inherited row to an override carrying the current value.
-        // This makes the preset env explicitly include the key, so a later
-        // change to the inherited map does not silently alter this preset.
-        const next = prev.map((r) => (r.rowId === rowId ? { ...r, isInherited: false } : r));
-        commitIfValid(next);
-        return next;
-      });
-    },
-    [commitIfValid]
-  );
-
-  const handleRevert = useCallback(
-    (rowId: string) => {
-      setRows((prev) => {
-        const row = prev.find((r) => r.rowId === rowId);
-        if (!row || row.isInherited) return prev;
-        const key = row.key.trim();
-        if (!inheritedEnv || !(key in inheritedEnv)) return prev;
+  const handleRemove = (rowId: string) => {
+    setRows((prev) => {
+      const row = prev.find((r) => r.rowId === rowId);
+      if (!row) return prev;
+      const key = row.key.trim();
+      // If this override shadows an inherited key, "removing" means reverting
+      // to the inherited value rather than dropping the row altogether —
+      // the inherited entry would otherwise reappear as a separate row.
+      if (!row.isInherited && inheritedEnv && key in inheritedEnv) {
         const inheritedValue = inheritedEnv[key]!;
         const next = prev.map((r) =>
           r.rowId === rowId ? { ...r, value: inheritedValue, isInherited: true } : r
         );
         commitIfValid(next);
         return next;
-      });
-    },
-    [commitIfValid, inheritedEnv]
-  );
+      }
+      const next = prev.filter((r) => r.rowId !== rowId);
+      commitIfValid(next);
+      return next;
+    });
+    setRevealedRows((prev) => {
+      if (!prev.has(rowId)) return prev;
+      const next = new Set(prev);
+      next.delete(rowId);
+      return next;
+    });
+  };
 
-  const handleKeyBlur = useCallback(
-    (rowId: string) => {
-      setTouchedKeys((prev) => ({ ...prev, [rowId]: true }));
-      setRows((prev) => {
+  const handleKeyChange = (rowId: string, newKey: string) => {
+    setRows((prev) => prev.map((r) => (r.rowId === rowId ? { ...r, key: newKey } : r)));
+  };
+
+  const handleKeySelect = (rowId: string, newKey: string) => {
+    // Picker selection commits synchronously. The input's blur fires before
+    // the option's click, so a typing-style onChange + later blur loses the
+    // pick (blur commits the OLD key before the click can update rows).
+    // Mark the row touched so a subsequent blank-out still surfaces the
+    // empty-key error.
+    setTouchedKeys((prev) => ({ ...prev, [rowId]: true }));
+    setRows((prev) => {
+      const next = prev.map((r) => (r.rowId === rowId ? { ...r, key: newKey } : r));
+      commitIfValid(next);
+      return next;
+    });
+  };
+
+  const handleValueChange = (rowId: string, newValue: string) => {
+    setRows((prev) => prev.map((r) => (r.rowId === rowId ? { ...r, value: newValue } : r)));
+  };
+
+  const handleValuePaste = (rowId: string, e: React.ClipboardEvent<HTMLInputElement>) => {
+    if (e.currentTarget.disabled) return;
+    const raw = e.clipboardData?.getData("text");
+    if (raw == null) return;
+    const cleaned = normalizePastedEnvValue(raw);
+    if (cleaned === raw) return;
+    e.preventDefault();
+    const inserted = document.execCommand("insertText", false, cleaned);
+    if (!inserted) {
+      const input = e.currentTarget;
+      const start = input.selectionStart ?? 0;
+      const end = input.selectionEnd ?? 0;
+      handleValueChange(rowId, input.value.slice(0, start) + cleaned + input.value.slice(end));
+    }
+    notify({
+      type: "info",
+      title: "Pasted text normalized",
+      message: "Quotation marks, dashes, and surrounding whitespace were cleaned up.",
+      transient: true,
+    });
+  };
+
+  const handleOverride = (rowId: string) => {
+    setRows((prev) => {
+      const row = prev.find((r) => r.rowId === rowId);
+      if (!row || !row.isInherited) return prev;
+      // Promote the inherited row to an override carrying the current value.
+      // This makes the preset env explicitly include the key, so a later
+      // change to the inherited map does not silently alter this preset.
+      const next = prev.map((r) => (r.rowId === rowId ? { ...r, isInherited: false } : r));
+      commitIfValid(next);
+      return next;
+    });
+  };
+
+  const handleRevert = (rowId: string) => {
+    setRows((prev) => {
+      const row = prev.find((r) => r.rowId === rowId);
+      if (!row || row.isInherited) return prev;
+      const key = row.key.trim();
+      if (!inheritedEnv || !(key in inheritedEnv)) return prev;
+      const inheritedValue = inheritedEnv[key]!;
+      const next = prev.map((r) =>
+        r.rowId === rowId ? { ...r, value: inheritedValue, isInherited: true } : r
+      );
+      commitIfValid(next);
+      return next;
+    });
+  };
+
+  const handleKeyBlur = (rowId: string) => {
+    setTouchedKeys((prev) => ({ ...prev, [rowId]: true }));
+    setRows((prev) => {
+      commitIfValid(prev);
+      return prev;
+    });
+  };
+
+  const handleValueBlur = (rowId: string) => {
+    setRows((prev) => {
+      const row = prev.find((r) => r.rowId === rowId);
+      if (!row || row.isInherited) {
         commitIfValid(prev);
         return prev;
-      });
-    },
-    [commitIfValid]
-  );
+      }
+      const key = row.key.trim();
+      // If a user clears an override's value and that key is still inherited,
+      // silently reverting is safer than persisting an empty-string override —
+      // otherwise the preset would ship `KEY=""` which masks the inherited
+      // value instead of falling back to it.
+      if (row.value === "" && inheritedEnv && key in inheritedEnv) {
+        const inheritedValue = inheritedEnv[key]!;
+        const next = prev.map((r) =>
+          r.rowId === rowId ? { ...r, value: inheritedValue, isInherited: true } : r
+        );
+        commitIfValid(next);
+        return next;
+      }
+      commitIfValid(prev);
+      return prev;
+    });
+  };
 
-  const handleValueBlur = useCallback(
-    (rowId: string) => {
-      setRows((prev) => {
-        const row = prev.find((r) => r.rowId === rowId);
-        if (!row || row.isInherited) {
-          commitIfValid(prev);
-          return prev;
-        }
-        const key = row.key.trim();
-        // If a user clears an override's value and that key is still inherited,
-        // silently reverting is safer than persisting an empty-string override —
-        // otherwise the preset would ship `KEY=""` which masks the inherited
-        // value instead of falling back to it.
-        if (row.value === "" && inheritedEnv && key in inheritedEnv) {
-          const inheritedValue = inheritedEnv[key]!;
-          const next = prev.map((r) =>
-            r.rowId === rowId ? { ...r, value: inheritedValue, isInherited: true } : r
-          );
-          commitIfValid(next);
-          return next;
-        }
-        commitIfValid(prev);
-        return prev;
-      });
-    },
-    [commitIfValid, inheritedEnv]
-  );
-
-  const toggleReveal = useCallback((rowId: string) => {
+  const toggleReveal = (rowId: string) => {
     setRevealedRows((prev) => {
       const next = new Set(prev);
       if (next.has(rowId)) next.delete(rowId);
       else next.add(rowId);
       return next;
     });
-  }, []);
+  };
 
-  const registerKeyInput = useCallback((rowId: string, el: HTMLInputElement | null) => {
+  const registerKeyInput = (rowId: string, el: HTMLInputElement | null) => {
     if (el) keyInputRefs.current.set(rowId, el);
     else keyInputRefs.current.delete(rowId);
-  }, []);
+  };
 
-  const handleImportConfirm = useCallback(
-    (mergedEnv: Record<string, string>) => {
-      // Imports commit the merged map as the new source of truth. Bump the
-      // parent first, then sync local draft + lastEnvRef so the reseed effect
-      // sees the prop and ref already aligned (no stomp on the optimistic
-      // rows) and so a thrown onChange leaves local state untouched.
-      onChange(mergedEnv);
-      lastEnvRef.current = mergedEnv;
-      setRows(envToDraft(mergedEnv));
-      setTouchedKeys({});
-    },
-    [onChange]
-  );
+  const handleImportConfirm = (mergedEnv: Record<string, string>) => {
+    // Imports commit the merged map as the new source of truth. Bump the
+    // parent first, then sync local draft + lastEnvRef so the reseed effect
+    // sees the prop and ref already aligned (no stomp on the optimistic
+    // rows) and so a thrown onChange leaves local state untouched.
+    onChange(mergedEnv);
+    lastEnvRef.current = mergedEnv;
+    setRows(envToDraft(mergedEnv));
+    setTouchedKeys({});
+  };
 
   const duplicateKeys = findDuplicateKeys(rows);
   const isEmpty = rows.length === 0;
