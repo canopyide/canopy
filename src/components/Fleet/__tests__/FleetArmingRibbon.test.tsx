@@ -165,9 +165,9 @@ describe("FleetArmingRibbon", () => {
     useFleetArmingStore.getState().armIds(["a", "b"]);
     useFleetBroadcastConfirmStore.setState({
       pending: {
+        requestId: "test-1",
         text: "rm -rf /",
         warningReasons: ["destructive"],
-        onConfirm: async () => {},
       },
     });
     render(<FleetArmingRibbon />);
@@ -557,9 +557,9 @@ describe("FleetArmingRibbon", () => {
     useFleetArmingStore.getState().armIds(["t1", "t2"]);
     useFleetBroadcastConfirmStore.setState({
       pending: {
+        requestId: "test-1",
         text: "rm -rf /",
         warningReasons: ["destructive"],
-        onConfirm: async () => {},
       },
     });
     const actionServiceModule = await import("@/services/ActionService");

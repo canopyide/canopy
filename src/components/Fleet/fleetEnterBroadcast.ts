@@ -1,6 +1,6 @@
 import { useFleetArmingStore } from "@/store/fleetArmingStore";
 import { useFleetFailureStore } from "@/store/fleetFailureStore";
-import { useFleetBroadcastConfirmStore } from "@/store/fleetBroadcastConfirmStore";
+import { requestFleetBroadcastConfirmation } from "@/store/fleetBroadcastConfirmStore";
 import { useFleetBroadcastProgressStore } from "@/store/fleetBroadcastProgressStore";
 import { useAnnouncerStore } from "@/store/accessibilityAnnouncerStore";
 import { logWarn } from "@/utils/logger";
@@ -124,11 +124,10 @@ export function tryFleetBroadcastFromEditor(
   };
 
   if (reasons.length > 0) {
-    useFleetBroadcastConfirmStore.getState().request({
+    void requestFleetBroadcastConfirmation({
       text,
       warningReasons: reasons,
-      onConfirm: doSend,
-    });
+    }).then(doSend);
     return true;
   }
 
