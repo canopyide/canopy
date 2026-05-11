@@ -12,7 +12,7 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
     id: "agent.launch",
     title: "Launch Agent",
     description:
-      "Launch an AI agent in a new terminal. For multiple agents, call sequentially (one per turn) — never in parallel.",
+      "Launch an AI agent in a new terminal. Returns terminalId and location. Call sequentially — never in parallel.",
     category: "agent",
     kind: "command",
     danger: "safe",
@@ -33,6 +33,10 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
       spawnedBy: TerminalSpawnSourceSchema.optional(),
       requestedId: z.string().optional(),
       force: z.boolean().optional(),
+    }),
+    resultSchema: z.object({
+      terminalId: z.string(),
+      location: LaunchLocationSchema,
     }),
     run: async (args: unknown) => {
       const {
@@ -68,7 +72,7 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
         requestedId?: string;
         force?: boolean;
       };
-      const terminalId = await callbacks.onLaunchAgent(agentId, {
+      const result = await callbacks.onLaunchAgent(agentId, {
         location,
         cwd,
         worktreeId,
@@ -84,7 +88,8 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
         requestedId,
         force,
       });
-      return { terminalId };
+      if (!result) return null;
+      return { terminalId: result.terminalId, location: result.location };
     },
   }));
 
@@ -101,11 +106,17 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
     },
   }));
 
-  // Per-agent shortcut actions (`agent.claude`, `agent.codex`, …) accept an
-  // optional `spawnedBy` arg so MCP-initiated launches can be marked
-  // non-focus-stealing. See #6959.
+  // Per-agent shortcut actions (`agent.claude`, `agent.codex`, …) accept
+  // optional `location` and `spawnedBy` args so MCP-initiated launches can set
+  // placement and be marked non-focus-stealing. See #6959, #7669.
   const shortcutLaunchSchema = z.object({
+    location: LaunchLocationSchema.optional(),
     spawnedBy: TerminalSpawnSourceSchema.optional(),
+  });
+
+  const shortcutResultSchema = z.object({
+    terminalId: z.string(),
+    location: LaunchLocationSchema,
   });
 
   for (const [id, config] of Object.entries(AGENT_REGISTRY)) {
@@ -119,10 +130,18 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
       danger: "safe",
       scope: "renderer",
       argsSchema: shortcutLaunchSchema,
+      resultSchema: shortcutResultSchema,
       run: async (args: unknown) => {
-        const { spawnedBy } = (args ?? {}) as { spawnedBy?: TerminalSpawnSource };
-        const terminalId = await callbacks.onLaunchAgent(id, ...(spawnedBy ? [{ spawnedBy }] : []));
-        return { terminalId };
+        const { location, spawnedBy } = (args ?? {}) as {
+          location?: "grid" | "dock";
+          spawnedBy?: TerminalSpawnSource;
+        };
+        const result = await callbacks.onLaunchAgent(id, {
+          location,
+          spawnedBy,
+        });
+        if (!result) return null;
+        return { terminalId: result.terminalId, location: result.location };
       },
     }));
   }
@@ -136,13 +155,18 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
     danger: "safe",
     scope: "renderer",
     argsSchema: shortcutLaunchSchema,
+    resultSchema: shortcutResultSchema,
     run: async (args: unknown) => {
-      const { spawnedBy } = (args ?? {}) as { spawnedBy?: TerminalSpawnSource };
-      const terminalId = await callbacks.onLaunchAgent(
-        "terminal",
-        ...(spawnedBy ? [{ spawnedBy }] : [])
-      );
-      return { terminalId };
+      const { location, spawnedBy } = (args ?? {}) as {
+        location?: "grid" | "dock";
+        spawnedBy?: TerminalSpawnSource;
+      };
+      const result = await callbacks.onLaunchAgent("terminal", {
+        location,
+        spawnedBy,
+      });
+      if (!result) return null;
+      return { terminalId: result.terminalId, location: result.location };
     },
   }));
 

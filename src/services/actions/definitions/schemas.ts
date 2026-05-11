@@ -3,7 +3,11 @@ import { BUILT_IN_AGENT_IDS, BUILT_IN_TERMINAL_TYPES } from "@shared/config/agen
 
 export const AgentIdSchema = z.enum([...BUILT_IN_AGENT_IDS, "terminal", "browser", "dev-preview"]);
 
-export const LaunchLocationSchema = z.enum(["grid", "dock"]);
+export const LaunchLocationSchema = z
+  .enum(["grid", "dock"])
+  .describe(
+    'Where to place the panel. "grid" places it in the main panel grid (default). "dock" places it in the sidebar dock.'
+  );
 
 /**
  * Mirror of `TerminalSpawnSource` from `shared/types/panel.ts`. Kept in lockstep

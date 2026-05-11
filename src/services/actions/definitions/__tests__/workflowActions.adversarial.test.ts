@@ -60,7 +60,7 @@ interface MockCallbacks {
 
 function makeCallbacks(): MockCallbacks & Pick<ActionCallbacks, "onLaunchAgent"> {
   return {
-    onLaunchAgent: vi.fn().mockResolvedValue("term-1"),
+    onLaunchAgent: vi.fn().mockResolvedValue({ terminalId: "term-1", location: "grid" }),
   };
 }
 

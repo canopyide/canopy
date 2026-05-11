@@ -88,7 +88,10 @@ export interface LaunchAgentOptions {
 }
 
 export interface UseAgentLauncherReturn {
-  launchAgent: (agentId: string, options?: LaunchAgentOptions) => Promise<string | null>;
+  launchAgent: (
+    agentId: string,
+    options?: LaunchAgentOptions
+  ) => Promise<{ terminalId: string; location: "grid" | "dock" } | null>;
   availability: CliAvailability;
   isCheckingAvailability: boolean;
   agentSettings: AgentSettings | null;
@@ -206,7 +209,10 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
   }, [initializeCliAvailability, refreshCliAvailability]);
 
   const launchAgent = useCallback(
-    async (agentId: string, launchOptions?: LaunchAgentOptions): Promise<string | null> => {
+    async (
+      agentId: string,
+      launchOptions?: LaunchAgentOptions
+    ): Promise<{ terminalId: string; location: "grid" | "dock" } | null> => {
       if (!isElectronAvailable()) {
         console.warn("Electron API not available");
         return null;
@@ -246,7 +252,10 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
               activateDockOnCreate: launchOptions?.activateDockOnCreate,
               spawnedBy: launchOptions?.spawnedBy,
             });
-            return terminalId;
+            if (!terminalId) return null;
+            const rawLocation = usePanelStore.getState().panelsById[terminalId]?.location ?? "grid";
+            const location = rawLocation === "dock" ? "dock" : "grid";
+            return { terminalId, location };
           } catch (error) {
             logError("Failed to launch browser pane", error);
             return null;
@@ -265,7 +274,10 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
               activateDockOnCreate: launchOptions?.activateDockOnCreate,
               spawnedBy: launchOptions?.spawnedBy,
             });
-            return terminalId;
+            if (!terminalId) return null;
+            const rawLocation = usePanelStore.getState().panelsById[terminalId]?.location ?? "grid";
+            const location = rawLocation === "dock" ? "dock" : "grid";
+            return { terminalId, location };
           } catch (error) {
             logError("Failed to launch dev-preview pane", error);
             return null;
@@ -538,13 +550,19 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
               }
               return next;
             });
-            return gateId;
+            return {
+              terminalId: gateId,
+              location: gatePanel.location === "dock" ? "dock" : "grid",
+            };
           }
         }
 
         try {
           const terminalId = await addPanel(options);
-          return terminalId;
+          if (!terminalId) return null;
+          const rawLocation = usePanelStore.getState().panelsById[terminalId]?.location ?? "grid";
+          const location = rawLocation === "dock" ? "dock" : "grid";
+          return { terminalId, location };
         } catch (error) {
           logError(`Failed to launch ${agentId} agent`, error);
           return null;

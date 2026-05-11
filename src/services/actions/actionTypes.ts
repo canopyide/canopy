@@ -66,7 +66,7 @@ export interface ActionCallbacks {
       requestedId?: string;
       force?: boolean;
     }
-  ) => Promise<string | null>;
+  ) => Promise<{ terminalId: string; location: "grid" | "dock" } | null>;
   onInject: (worktreeId: string) => void;
   getDefaultCwd: () => string;
   getActiveWorktreeId: () => string | undefined;
