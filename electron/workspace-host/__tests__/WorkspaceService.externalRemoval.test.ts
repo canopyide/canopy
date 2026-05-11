@@ -9,7 +9,7 @@ const { parcelWatcherCallbacks, mockGetGitCommonDir, mockParcelSubscribe } = vi.
   const callbacks: Array<(err: Error | null, events: unknown[]) => void> = [];
   return {
     parcelWatcherCallbacks: callbacks,
-    mockGetGitCommonDir: vi.fn<[string], string | null>().mockReturnValue(null),
+    mockGetGitCommonDir: vi.fn<(arg: string) => string | null>().mockReturnValue(null),
     mockParcelSubscribe: vi.fn(
       (_dir: string, cb: (err: Error | null, events: unknown[]) => void) => {
         callbacks.push(cb);
