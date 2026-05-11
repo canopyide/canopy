@@ -43,7 +43,7 @@ export const TokenMissingTooltip = memo(function TokenMissingTooltip({
 }: TokenMissingTooltipProps) {
   return (
     <div className="flex items-center gap-2 text-daintree-text/60 py-1">
-      <KeyRound className="w-3.5 h-3.5 shrink-0 text-daintree-accent/60" aria-hidden="true" />
+      <KeyRound className="w-3.5 h-3.5 shrink-0 text-daintree-text/50" aria-hidden="true" />
       <span className="text-xs">Configure GitHub token to see {type} details</span>
     </div>
   );

@@ -62,8 +62,7 @@ export const IssueBadge = memo(function IssueBadge({
           className={cn(
             "flex items-center gap-1.5 text-left cursor-pointer transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent min-w-0",
             freshnessOpacityClass(freshnessLevel),
-            isHeadline ? "text-[13px]" : "text-xs",
-            missingToken && "opacity-60"
+            isHeadline ? "text-[13px]" : "text-xs"
           )}
           aria-disabled={!isActive || undefined}
           aria-label={
@@ -75,21 +74,33 @@ export const IssueBadge = memo(function IssueBadge({
           }
         >
           <CircleDot
-            className={cn("text-github-open shrink-0", isHeadline ? "w-3.5 h-3.5" : "w-3 h-3")}
+            className={cn(
+              "shrink-0",
+              isHeadline ? "w-3.5 h-3.5" : "w-3 h-3",
+              missingToken ? "grayscale opacity-50" : "text-github-open"
+            )}
             aria-hidden="true"
           />
           <span
             className={cn(
               "truncate flex-1 min-w-0",
               underlineOnHover && "hover:underline",
-              isHeadline
-                ? isActive
-                  ? "text-text-primary font-medium"
-                  : "text-text-secondary font-medium"
-                : "text-text-primary/90"
+              missingToken
+                ? "text-text-muted"
+                : isHeadline
+                  ? isActive
+                    ? "text-text-primary font-medium"
+                    : "text-text-secondary font-medium"
+                  : "text-text-primary/90"
             )}
           >
-            {issueTitle || <span className="text-github-open font-mono">#{issueNumber}</span>}
+            {issueTitle || (
+              <span
+                className={cn("font-mono", missingToken ? "text-text-muted" : "text-github-open")}
+              >
+                #{issueNumber}
+              </span>
+            )}
           </span>
         </button>
       </TooltipTrigger>
