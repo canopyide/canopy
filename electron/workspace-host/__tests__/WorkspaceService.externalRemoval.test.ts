@@ -5,6 +5,26 @@ import type { WorkspaceService } from "../WorkspaceService.js";
 import type { WorktreeMonitor } from "../WorktreeMonitor.js";
 import type { Worktree } from "../../../shared/types/worktree.js";
 
+const { parcelWatcherCallbacks, mockGetGitCommonDir, mockParcelSubscribe } = vi.hoisted(() => {
+  const callbacks: Array<(err: Error | null, events: unknown[]) => void> = [];
+  return {
+    parcelWatcherCallbacks: callbacks,
+    mockGetGitCommonDir: vi.fn<(arg: string) => string | null>().mockReturnValue(null),
+    mockParcelSubscribe: vi.fn(
+      (_dir: string, cb: (err: Error | null, events: unknown[]) => void) => {
+        callbacks.push(cb);
+        return Promise.resolve({ unsubscribe: vi.fn() });
+      }
+    ),
+  };
+});
+
+vi.mock("@parcel/watcher", () => ({
+  default: {
+    subscribe: mockParcelSubscribe,
+  },
+}));
+
 const mockSimpleGit = {
   raw: vi.fn().mockResolvedValue(undefined),
   branch: vi.fn().mockResolvedValue({ current: "main" }),
@@ -40,6 +60,7 @@ vi.mock("../../utils/git.js", () => ({
 
 vi.mock("../../utils/gitUtils.js", () => ({
   getGitDir: vi.fn().mockReturnValue("/test/worktree/.git"),
+  getGitCommonDir: mockGetGitCommonDir,
   clearGitDirCache: vi.fn(),
 }));
 
@@ -108,6 +129,17 @@ vi.mock("../../utils/gitFileWatcher.js", () => {
       }
       dispose() {}
     },
+  };
+});
+
+vi.mock("fs", async () => {
+  const actual = await vi.importActual<typeof import("fs")>("fs");
+  return {
+    ...actual,
+    existsSync: vi.fn((p: unknown) => {
+      if (typeof p === "string" && p.endsWith("/worktrees")) return true;
+      return (actual.existsSync as (p: unknown) => boolean)(p);
+    }),
   };
 });
 
@@ -282,6 +314,225 @@ describe("WorkspaceService external worktree removal", () => {
       expect(mockSendEvent).not.toHaveBeenCalledWith(
         expect.objectContaining({ type: "worktree-removed" })
       );
+    });
+  });
+
+  describe("topology watcher", () => {
+    beforeEach(async () => {
+      mockGetGitCommonDir.mockReturnValue("/test/root/.git");
+      parcelWatcherCallbacks.length = 0;
+      mockParcelSubscribe.mockClear();
+    });
+
+    it("starts watcher when metadata dir exists", async () => {
+      service["startTopologyWatcher"]();
+      // Wait for the async subscribe to resolve
+      await vi.waitFor(() => expect(mockParcelSubscribe).toHaveBeenCalled());
+      expect(mockParcelSubscribe).toHaveBeenCalledWith(
+        "/test/root/.git/worktrees",
+        expect.any(Function)
+      );
+    });
+
+    it("does not start watcher when already subscribed", async () => {
+      service["startTopologyWatcher"]();
+      await vi.waitFor(() => expect(mockParcelSubscribe).toHaveBeenCalledTimes(1));
+      service["startTopologyWatcher"]();
+      // Give time for a potential second async subscribe
+      await new Promise((r) => setTimeout(r, 10));
+      expect(mockParcelSubscribe).toHaveBeenCalledTimes(1);
+    });
+
+    it("skips watcher start when metadata dir is absent", () => {
+      mockGetGitCommonDir.mockReturnValue(null);
+      service["startTopologyWatcher"]();
+      expect(mockParcelSubscribe).not.toHaveBeenCalled();
+    });
+
+    it("stops watcher and clears pending state", async () => {
+      service["startTopologyWatcher"]();
+      await vi.waitFor(() => expect(mockParcelSubscribe).toHaveBeenCalledTimes(1));
+      service["topologyReconcilePending"] = true;
+
+      service["stopTopologyWatcher"]();
+
+      expect(service["topologyWatcherSubscription"].value).toBeUndefined();
+      expect(service["topologyReconcilePending"]).toBe(false);
+    });
+
+    it("fires reconciliation when watcher callback triggers after debounce", async () => {
+      vi.useFakeTimers();
+      const discoverSpy = vi
+        .spyOn(service as any, "discoverAndSyncWorktrees")
+        .mockResolvedValue(undefined);
+
+      service["startTopologyWatcher"]();
+      // Flush the async subscribe
+      await vi.runAllTimersAsync();
+      expect(parcelWatcherCallbacks.length).toBeGreaterThanOrEqual(1);
+
+      // Fire the watcher callback
+      parcelWatcherCallbacks[0]!(null, [
+        { type: "delete", path: "/test/root/.git/worktrees/phantom" },
+      ]);
+
+      // Should not have called discovery yet (debounce hasnt fired)
+      expect(discoverSpy).not.toHaveBeenCalled();
+
+      // Advance past the 300ms debounce
+      await vi.advanceTimersByTimeAsync(350);
+
+      expect(discoverSpy).toHaveBeenCalledTimes(1);
+      vi.useRealTimers();
+    });
+
+    it("coalesces burst events into a single reconciliation pass", async () => {
+      vi.useFakeTimers();
+      const discoverSpy = vi
+        .spyOn(service as any, "discoverAndSyncWorktrees")
+        .mockResolvedValue(undefined);
+
+      service["startTopologyWatcher"]();
+      await vi.runAllTimersAsync();
+
+      // Fire three events in quick succession
+      const cb = parcelWatcherCallbacks[0]!;
+      cb(null, [{ type: "delete", path: "/test/root/.git/worktrees/a" }]);
+      cb(null, [{ type: "delete", path: "/test/root/.git/worktrees/b" }]);
+      cb(null, [{ type: "delete", path: "/test/root/.git/worktrees/c" }]);
+
+      await vi.advanceTimersByTimeAsync(350);
+
+      // All three events coalesced into one reconciliation
+      expect(discoverSpy).toHaveBeenCalledTimes(1);
+      vi.useRealTimers();
+    });
+
+    it("respects suppression window during app-owned create", async () => {
+      vi.useFakeTimers();
+      const discoverSpy = vi
+        .spyOn(service as any, "discoverAndSyncWorktrees")
+        .mockResolvedValue(undefined);
+
+      // Simulate suppression set by createWorktree
+      service["topologyWatchSuppressUntil"] = Date.now() + 60000;
+
+      service["startTopologyWatcher"]();
+      await vi.runAllTimersAsync();
+
+      parcelWatcherCallbacks[0]!(null, [
+        { type: "create", path: "/test/root/.git/worktrees/new-wt" },
+      ]);
+      await vi.advanceTimersByTimeAsync(350);
+
+      // Suppression active — reconciliation should not fire
+      expect(discoverSpy).not.toHaveBeenCalled();
+
+      // Clear suppression
+      service["topologyWatchSuppressUntil"] = 0;
+      parcelWatcherCallbacks[0]!(null, [
+        { type: "create", path: "/test/root/.git/worktrees/another" },
+      ]);
+      await vi.advanceTimersByTimeAsync(350);
+
+      expect(discoverSpy).toHaveBeenCalledTimes(1);
+      vi.useRealTimers();
+    });
+
+    it("respects post-reconciliation cooldown", async () => {
+      vi.useFakeTimers();
+      const discoverSpy = vi
+        .spyOn(service as any, "discoverAndSyncWorktrees")
+        .mockResolvedValue(undefined);
+
+      service["startTopologyWatcher"]();
+      await vi.runAllTimersAsync();
+
+      // Fire first event — triggers reconciliation
+      parcelWatcherCallbacks[0]!(null, [
+        { type: "delete", path: "/test/root/.git/worktrees/wt-1" },
+      ]);
+      await vi.advanceTimersByTimeAsync(350);
+      expect(discoverSpy).toHaveBeenCalledTimes(1);
+
+      // Fire second event immediately — should be suppressed by cooldown
+      service["topologyReconcilePending"] = false; // simulate reconcile completion reset
+      parcelWatcherCallbacks[0]!(null, [
+        { type: "delete", path: "/test/root/.git/worktrees/wt-2" },
+      ]);
+      await vi.advanceTimersByTimeAsync(350);
+      // Still only 1 call because cooldown is active (set to Date.now() + 2000)
+      // The second event was swallowed by scheduleTopologyReconcile's cooldown check
+      expect(discoverSpy).toHaveBeenCalledTimes(1);
+
+      vi.useRealTimers();
+    });
+
+    it("does not process watcher events when polling is disabled", async () => {
+      vi.useFakeTimers();
+      const discoverSpy = vi
+        .spyOn(service as any, "discoverAndSyncWorktrees")
+        .mockResolvedValue(undefined);
+
+      service["setPollingEnabled"](false);
+
+      service["startTopologyWatcher"]();
+      await vi.runAllTimersAsync();
+
+      parcelWatcherCallbacks[0]!(null, [
+        { type: "delete", path: "/test/root/.git/worktrees/wt-1" },
+      ]);
+      await vi.advanceTimersByTimeAsync(350);
+
+      expect(discoverSpy).not.toHaveBeenCalled();
+      vi.useRealTimers();
+    });
+
+    it("auto-switches to main worktree when active worktree is externally removed", async () => {
+      // Register main + active worktrees
+      createAndRegisterMonitor({ id: "/test/main", path: "/test/main", isMainWorktree: true });
+      createAndRegisterMonitor({ id: "/test/active", path: "/test/active", isCurrent: true });
+      service["activeWorktreeId"] = "/test/active";
+
+      // Mock discoverAndSyncWorktrees to simulate removal of /test/active
+      const discoverSpy = vi
+        .spyOn(service as any, "discoverAndSyncWorktrees")
+        .mockImplementation(async () => {
+          // Remove the active monitor (simulating syncMonitors pruning it)
+          const monitor = service["monitors"].get("/test/active");
+          if (monitor) {
+            service["cleanupResourceActionState"]("/test/active");
+            monitor.stop();
+            service["monitors"].delete("/test/active");
+          }
+          service["activeWorktreeId"] = null;
+        });
+
+      await service["runTopologyReconcile"]();
+
+      // Active worktree should have been switched to main
+      expect(service["activeWorktreeId"]).toBe("/test/main");
+      discoverSpy.mockRestore();
+    });
+
+    it("does not switch when removal did not affect active worktree", async () => {
+      createAndRegisterMonitor({ id: "/test/main", path: "/test/main", isMainWorktree: true });
+      createAndRegisterMonitor({ id: "/test/other", path: "/test/other" });
+      service["activeWorktreeId"] = "/test/main";
+
+      // discoverAndSyncWorktrees removes /test/other but not /test/main
+      vi.spyOn(service as any, "discoverAndSyncWorktrees").mockImplementation(async () => {
+        const monitor = service["monitors"].get("/test/other");
+        if (monitor) {
+          monitor.stop();
+          service["monitors"].delete("/test/other");
+        }
+      });
+
+      await service["runTopologyReconcile"]();
+
+      // Active should still be main
+      expect(service["activeWorktreeId"]).toBe("/test/main");
     });
   });
 });

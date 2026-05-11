@@ -45,6 +45,8 @@ import {
 } from "./worktreeUtils.js";
 import { applyResourceConfigToMonitor } from "./resourceConfigHelpers.js";
 import { ResourceActionExecutor } from "./ResourceActionExecutor.js";
+import parcelWatcher from "@parcel/watcher";
+import { MutableDisposable } from "../utils/lifecycle.js";
 
 // Re-export so existing test imports (`probeGitLfsAvailable` from
 // `../WorkspaceService.js`) continue to work without modification.
@@ -103,6 +105,18 @@ export class WorkspaceService {
   private wslGitByWorktree: Record<string, { enabled: boolean; dismissed: boolean }> = {};
   /** Cached default WSL distro (populated lazily on first WSL-path detection). */
   private wslDefaultDistroPromise: Promise<string | null> | null = null;
+
+  // Topology watcher — watches `.git/worktrees/` for external worktree
+  // create/delete and triggers serialized reconciliation.
+  private topologyWatcherSubscription = new MutableDisposable();
+  private topologyReconcileQueue = new PQueue({ concurrency: 1 });
+  private topologyReconcilePending = false;
+  private topologyWatchSuppressUntil = 0;
+  private topologyWatchCooldownUntil = 0;
+  private topologyWatchCooldownDirty = false;
+  private topologyDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private topologyWatcherEnabled = true;
+  private topologyWatcherGeneration = 0;
 
   constructor(private readonly sendEvent: (event: WorkspaceHostEvent) => void) {
     this.fetchCoordinator = new RepoFetchCoordinator({
@@ -255,6 +269,8 @@ export class WorkspaceService {
         this.syncMonitors(worktrees, this.activeWorktreeId, this.mainBranch, undefined, true),
         probeGitLfsAvailable(),
       ]);
+
+      this.startTopologyWatcher();
 
       this.sendEvent({ type: "load-project-result", requestId, success: true, lfsAvailable });
 
@@ -727,6 +743,120 @@ export class WorkspaceService {
     this.sendEvent({ type: "emfile-limit-reached" });
   }
 
+  private worktreeMetadataDirPath(): string | null {
+    if (!this.projectRootPath) return null;
+    const commonDir = getGitCommonDir(this.projectRootPath);
+    if (!commonDir) return null;
+    return `${commonDir}/worktrees`;
+  }
+
+  private startTopologyWatcher(): void {
+    if (!this.topologyWatcherEnabled) return;
+    if (this.topologyWatcherSubscription.value) return;
+
+    const metadataDir = this.worktreeMetadataDirPath();
+    if (!metadataDir) return;
+    if (!existsSync(metadataDir)) return;
+
+    const generation = ++this.topologyWatcherGeneration;
+    const schedule = () => this.scheduleTopologyReconcile();
+
+    parcelWatcher
+      .subscribe(metadataDir, (_err, _events) => {
+        if (this.topologyDebounceTimer) {
+          clearTimeout(this.topologyDebounceTimer);
+        }
+        this.topologyDebounceTimer = setTimeout(schedule, 300);
+      })
+      .then((subscription) => {
+        if (generation !== this.topologyWatcherGeneration) {
+          // stopTopologyWatcher incremented the generation — discard.
+          subscription.unsubscribe();
+          return;
+        }
+        if (this.topologyWatcherSubscription.value) {
+          subscription.unsubscribe();
+          return;
+        }
+        this.topologyWatcherSubscription.value = {
+          dispose: () => subscription.unsubscribe(),
+        };
+      })
+      .catch((err) => {
+        console.warn(
+          `[WorkspaceHost] topology watcher subscribe failed for ${metadataDir}: ${(err as Error).message}`
+        );
+      });
+  }
+
+  private stopTopologyWatcher(): void {
+    this.topologyWatcherGeneration++;
+    this.topologyWatcherSubscription.value = undefined;
+    if (this.topologyDebounceTimer) {
+      clearTimeout(this.topologyDebounceTimer);
+      this.topologyDebounceTimer = null;
+    }
+    this.topologyReconcilePending = false;
+    this.topologyWatchCooldownDirty = false;
+  }
+
+  private scheduleTopologyReconcile(): void {
+    if (!this.topologyWatcherEnabled) return;
+    if (!this.pollingEnabled) return;
+    if (Date.now() < this.topologyWatchSuppressUntil) return;
+    if (Date.now() < this.topologyWatchCooldownUntil) {
+      this.topologyWatchCooldownDirty = true;
+      return;
+    }
+    if (this.topologyReconcilePending) {
+      this.topologyWatchCooldownDirty = true;
+      return;
+    }
+
+    this.topologyReconcilePending = true;
+    this.topologyReconcileQueue.add(async () => {
+      try {
+        await this.runTopologyReconcile();
+      } catch (err) {
+        console.warn(`[WorkspaceHost] topology reconciliation failed: ${(err as Error).message}`);
+      } finally {
+        this.topologyReconcilePending = false;
+        this.topologyWatchCooldownUntil = Date.now() + 2000;
+        if (this.topologyWatchCooldownDirty) {
+          this.topologyWatchCooldownDirty = false;
+          const remaining = this.topologyWatchCooldownUntil - Date.now();
+          setTimeout(() => this.scheduleTopologyReconcile(), Math.max(remaining, 0));
+        }
+      }
+    });
+  }
+
+  private async runTopologyReconcile(): Promise<void> {
+    const previousActiveId = this.activeWorktreeId;
+    await this.discoverAndSyncWorktrees();
+
+    // Auto-switch to main if the previously-active worktree was removed.
+    // syncMonitors nulls activeWorktreeId when pruning the active monitor,
+    // so we check: was there a previous active, is it gone from monitors,
+    // and has the user NOT already switched to a *different* worktree.
+    if (
+      previousActiveId &&
+      !this.monitors.has(previousActiveId) &&
+      (this.activeWorktreeId === null || this.activeWorktreeId === previousActiveId)
+    ) {
+      let mainId: string | null = null;
+      for (const [id, m] of this.monitors) {
+        if (m.isMainWorktree) {
+          mainId = id;
+          break;
+        }
+      }
+      if (mainId) {
+        this.setActiveWorktree("topology-reconcile-auto-switch", mainId);
+      }
+    }
+  }
+
   private handleExternalWorktreeRemoval(worktreeId: string): void {
     const monitor = this.monitors.get(worktreeId);
     if (!monitor) {
@@ -1035,6 +1165,12 @@ export class WorkspaceService {
 
       // `--end-of-options` after the subcommand flags so any leading-dash ref
       // or path that slipped past validation is treated as positional.
+
+      // Suppress the topology watcher during app-owned worktree creation so
+      // the `.git/worktrees/<name>/` directory creation doesn't trigger a
+      // redundant discoverAndSyncWorktrees pass.
+      this.topologyWatchSuppressUntil = Date.now() + 60000;
+
       if (useExistingBranch) {
         await git.raw(["worktree", "add", "--end-of-options", path, newBranch]);
       } else if (fromRemote) {
@@ -1108,6 +1244,11 @@ export class WorkspaceService {
       // authoritative and would remove every other non-main monitor.
       await this.addNewWorktreeMonitor(createdWorktree, isActive, true);
 
+      // Reset suppression: the monitor is registered, metadata writes will
+      // settle within 500ms. The short post-op window absorbs any remaining
+      // filesystem events from the git worktree add.
+      this.topologyWatchSuppressUntil = Date.now() + 500;
+
       if (options.worktreeMode && options.worktreeMode !== "local") {
         const m = this.monitors.get(canonicalWorktreeId);
         if (m) {
@@ -1146,6 +1287,7 @@ export class WorkspaceService {
         console.warn("[WorkspaceHost] createWorktree async tail failed:", err);
       });
     } catch (error) {
+      this.topologyWatchSuppressUntil = Date.now() + 500;
       this.sendEvent({
         type: "create-worktree-result",
         requestId,
@@ -1258,6 +1400,11 @@ export class WorkspaceService {
 
       await this.runLifecycleTeardown(worktreeId, monitor, force);
 
+      // Suppress the topology watcher during app-owned worktree deletion so
+      // the `.git/worktrees/<name>/` directory removal doesn't trigger a
+      // redundant discoverAndSyncWorktrees pass.
+      this.topologyWatchSuppressUntil = Date.now() + 60000;
+
       if (this.git) {
         // #6669: if the directory is already gone (deleted externally), skip
         // `git worktree remove` (which fails with `is not a working tree`)
@@ -1320,6 +1467,10 @@ export class WorkspaceService {
       monitor.stop();
       this.monitors.delete(worktreeId);
 
+      // Reset suppression: monitor is cleaned up, metadata writes will settle
+      // within 500ms.
+      this.topologyWatchSuppressUntil = Date.now() + 500;
+
       this.sendEvent({
         type: "worktree-removed",
         worktreeId,
@@ -1349,6 +1500,7 @@ export class WorkspaceService {
 
       this.sendEvent({ type: "delete-worktree-result", requestId, success: true });
     } catch (error) {
+      this.topologyWatchSuppressUntil = Date.now() + 500;
       this.sendEvent({
         type: "delete-worktree-result",
         requestId,
@@ -1594,6 +1746,7 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     this.pollingEnabled = enabled;
 
     if (!enabled) {
+      this.stopTopologyWatcher();
       for (const monitor of this.monitors.values()) {
         monitor.pausePolling();
       }
@@ -1601,6 +1754,8 @@ ${lines.map((l) => "+" + l).join("\n")}`;
       for (const monitor of this.monitors.values()) {
         monitor.resumePolling();
       }
+      this.startTopologyWatcher();
+      this.scheduleTopologyReconcile();
     }
   }
 
@@ -1696,6 +1851,8 @@ ${lines.map((l) => "+" + l).join("\n")}`;
   }
 
   async onProjectSwitch(requestId: string): Promise<void> {
+    this.stopTopologyWatcher();
+    this.topologyReconcileQueue.clear();
     this.prService.cleanup();
 
     for (const id of this.monitors.keys()) {
@@ -1815,6 +1972,8 @@ ${lines.map((l) => "+" + l).join("\n")}`;
 
   dispose(): void {
     this._shutdownController.abort();
+    this.stopTopologyWatcher();
+    this.topologyReconcileQueue.clear();
     this.prService.cleanup();
     this.resourceActionExecutor.dispose();
     for (const monitor of this.monitors.values()) {
