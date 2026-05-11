@@ -306,6 +306,10 @@ export default defineConfig(({ command, mode }) => {
             // the logger + budget script are the regression signal instead.
             panicThreshold: command === "build" ? "none" : "critical_errors",
             logger: compilerLogger,
+            // target: "19" emits imports from `react/compiler-runtime` (shipped
+            // with React 19) instead of the `react-compiler-runtime` polyfill,
+            // dropping the polyfill out of the bundle.
+            target: "19",
           }),
         ],
       }),

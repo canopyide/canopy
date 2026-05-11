@@ -349,6 +349,171 @@ export default tseslint.config(
     },
   },
 
+  // Heavy-package bans for the renderer eager graph. These packages each add
+  // measurable weight (kb-gzip) to the first-render bundle; static imports
+  // should be the exception, lazy boundaries the default. The per-file
+  // override blocks below allowlist the small set of files where the static
+  // import is genuinely required today. ESLint 9 flat config is last-write-
+  // wins per rule (no array merging), so each override block disables the rule
+  // entirely for its file scope.
+  //
+  // Pair with the renderer-import budget gate (scripts/check-renderer-import-budget.mjs)
+  // which catches new chunks slipping into the eager closure even when the
+  // lint rule is silenced by an allowlist entry. See issue #7659.
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "warn",
+        {
+          paths: [
+            {
+              name: "@uiw/react-codemirror",
+              message:
+                "Heavy package — lazy-load via React.lazy() or dynamic import to keep the renderer eager graph trim. If a static import is genuinely required, add this file to the per-file override allowlist in eslint.config.js. See #7659.",
+            },
+            {
+              name: "framer-motion",
+              message:
+                "Heavy package — lazy-load via React.lazy() or dynamic import. Animation features are already split via loadMotionFeatures(); prefer that pattern. See #7659.",
+            },
+            {
+              name: "react-diff-view",
+              message: "Heavy package — lazy-load via React.lazy() or dynamic import. See #7659.",
+            },
+          ],
+          patterns: [
+            {
+              group: ["@radix-ui/*"],
+              message:
+                "Heavy package — wrap radix primitives in lazy-loaded components or compose them inside an already lazy boundary. See #7659.",
+            },
+            {
+              group: ["@codemirror/*"],
+              message:
+                "Heavy package — codemirror modules should sit behind a lazy boundary (terminal input editor and file viewer are the canonical eager call sites; add new files to the allowlist if a static import is genuinely required). See #7659.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  // Allowlist — framer-motion animation infrastructure and root App bootstrap.
+  // App.tsx mounts LazyMotion + MotionConfig; motionFeatures.ts is the lazy
+  // feature loader; animationUtils.ts exports the shared timing constants.
+  {
+    files: ["src/App.tsx", "src/lib/motionFeatures.ts", "src/lib/animationUtils.ts"],
+    rules: { "no-restricted-imports": "off" },
+  },
+
+  // Allowlist — framer-motion drag-and-drop chrome (eager grid layout).
+  {
+    files: ["src/components/DragDrop/**/*.{ts,tsx}"],
+    rules: { "no-restricted-imports": "off" },
+  },
+
+  // Allowlist — framer-motion panel tab list animations.
+  {
+    files: [
+      "src/components/Panel/PanelTabList.tsx",
+      "src/components/Panel/SortableTabButton.tsx",
+      "src/components/Panel/TabButton.tsx",
+    ],
+    rules: { "no-restricted-imports": "off" },
+  },
+
+  // Allowlist — framer-motion content grid animations (terminal layout).
+  {
+    files: [
+      "src/components/Terminal/ContentGridDefault.tsx",
+      "src/components/Terminal/ContentGridFleetScope.tsx",
+      "src/components/Terminal/useContentGridContext.tsx",
+    ],
+    rules: { "no-restricted-imports": "off" },
+  },
+
+  // Allowlist — framer-motion GitHub, Fleet, Layout chrome.
+  {
+    files: [
+      "src/components/GitHub/BulkActionBar.tsx",
+      "src/components/GitHub/CommitList.tsx",
+      "src/components/GitHub/GitHubResourceList.tsx",
+      "src/components/Fleet/FleetArmingRibbon.tsx",
+      "src/components/Layout/DockedTabGroup.tsx",
+    ],
+    rules: { "no-restricted-imports": "off" },
+  },
+
+  // Allowlist — framer-motion onboarding/setup surfaces.
+  {
+    files: [
+      "src/components/Onboarding/**/*.{ts,tsx}",
+      "src/components/Setup/AgentSetupWizard.tsx",
+      "src/components/Setup/SystemRequirementsSection.tsx",
+      "src/components/Worktree/WorktreeCard/WorktreeDetailsSection.tsx",
+      "src/hooks/app/useGettingStartedChecklist.ts",
+    ],
+    rules: { "no-restricted-imports": "off" },
+  },
+
+  // Allowlist — codemirror terminal input editor and its hook tree.
+  {
+    files: [
+      "src/components/Terminal/HybridInputBar.tsx",
+      "src/components/Terminal/hooks/**/*.{ts,tsx}",
+      "src/components/Terminal/inputEditorExtensions/**/*.{ts,tsx}",
+      "src/store/terminalInputStore.ts",
+    ],
+    rules: { "no-restricted-imports": "off" },
+  },
+
+  // Allowlist — codemirror file viewer and demo cursor.
+  {
+    files: [
+      "src/components/FileViewer/CodeViewer.tsx",
+      "src/components/FileViewer/editorSearchTheme.ts",
+      "src/components/Demo/DemoCursor.tsx",
+    ],
+    rules: { "no-restricted-imports": "off" },
+  },
+
+  // Allowlist — react-diff-view file viewer and worktree diff.
+  {
+    files: [
+      "src/components/FileViewer/FileViewerModal.tsx",
+      "src/components/Worktree/DiffViewer.tsx",
+    ],
+    rules: { "no-restricted-imports": "off" },
+  },
+
+  // Allowlist — radix-ui UI primitives (button, popover, tooltip, etc.) and
+  // their direct consumers.
+  {
+    files: [
+      "src/components/ui/button.tsx",
+      "src/components/ui/context-menu.tsx",
+      "src/components/ui/dropdown-menu.tsx",
+      "src/components/ui/popover.tsx",
+      "src/components/ui/select.tsx",
+      "src/components/ui/tooltip.tsx",
+      "src/components/Fleet/FleetPickerContent.tsx",
+      "src/components/Settings/DiagnosticsReviewDialog.tsx",
+      "src/components/Settings/SettingsCheckbox.tsx",
+      "src/components/Settings/SettingsSwitch.tsx",
+    ],
+    rules: { "no-restricted-imports": "off" },
+  },
+
+  // Allowlist — test files exercising heavy-package components. Tests
+  // legitimately import the package directly to assert behavior; the
+  // production lazy-boundary discipline is enforced on the component, not the
+  // test.
+  {
+    files: ["src/**/__tests__/**/*.{ts,tsx}", "src/**/*.test.{ts,tsx}"],
+    rules: { "no-restricted-imports": "off" },
+  },
+
   // Prettier must be last to override conflicting rules
   prettier,
 

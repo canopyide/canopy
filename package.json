@@ -61,6 +61,8 @@
     "renderer-bundle-budget:update": "vite build && node scripts/check-renderer-bundle-budget.mjs --update",
     "first-render-chunk-budget:check": "node scripts/check-first-render-chunk-budget.mjs",
     "first-render-chunk-budget:update": "vite build && node scripts/check-first-render-chunk-budget.mjs --update",
+    "renderer-import-budget:check": "node scripts/check-renderer-import-budget.mjs",
+    "renderer-import-budget:update": "vite build && node scripts/check-renderer-import-budget.mjs --update",
     "test-ratio:check": "node scripts/check-test-ratio.mjs",
     "test-ratio:update": "node scripts/check-test-ratio.mjs --update",
     "check": "npm run typecheck && npm run check:channels && npm run check:help && npm run lint:ratchet && npm run format:check",
