@@ -22,6 +22,12 @@ import { buildSlashCommandsPreloadBindings } from "./ipc/handlers/slashCommands.
 import { buildGlobalEnvPreloadBindings } from "./ipc/handlers/globalEnv.preload.js";
 import { buildAccessibilityPreloadBindings } from "./ipc/handlers/accessibility.preload.js";
 import { buildHelpPreloadBindings } from "./ipc/handlers/help.preload.js";
+import { buildEventInspectorPreloadBindings } from "./ipc/handlers/eventInspector.preload.js";
+import { buildCommandsPreloadBindings } from "./ipc/handlers/commands.preload.js";
+import { buildPortalPreloadBindings } from "./ipc/handlers/portal.preload.js";
+import { buildDevPreviewPreloadBindings } from "./ipc/handlers/devPreview.preload.js";
+import { buildPluginPreloadBindings } from "./ipc/handlers/plugin.preload.js";
+import { buildScratchPreloadBindings } from "./ipc/handlers/scratch/preload.js";
 
 import type {
   WorktreeState,
@@ -34,7 +40,6 @@ import type {
   LogEntry,
   LogFilterOptions,
   EventRecord,
-  EventFilterOptions,
   RetryAction,
   RetryProgressPayload,
   ErrorRecord,
@@ -77,12 +82,7 @@ import type {
   ArtifactDetectedPayload,
   SaveArtifactOptions,
   ApplyPatchOptions,
-  DevPreviewEnsureRequest,
-  DevPreviewSessionRequest,
-  DevPreviewStopByPanelRequest,
-  DevPreviewSessionState,
   DevPreviewStateChangedPayload,
-  DevPreviewGetByWorktreeRequest,
 } from "../shared/types/ipc.js";
 import type { TerminalActivityPayload } from "../shared/types/terminal.js";
 import type {
@@ -94,10 +94,7 @@ import type {
 } from "../shared/types/pty-host.js";
 
 type SpawnResultPayload = SpawnResult;
-import type {
-  PortalNewTabMenuAction,
-  PortalShowNewTabMenuPayload,
-} from "../shared/types/portal.js";
+import type { PortalNewTabMenuAction } from "../shared/types/portal.js";
 import type { ShowContextMenuPayload } from "../shared/types/menu.js";
 import type { ResourceProfilePayload } from "../shared/types/resourceProfile.js";
 import type { PluginActionDescriptor } from "../shared/types/plugin.js";
@@ -1188,12 +1185,7 @@ const api: ElectronAPI = {
 
   // Event Inspector API
   eventInspector: {
-    getEvents: () => _unwrappingInvoke(CHANNELS.EVENT_INSPECTOR_GET_EVENTS),
-
-    getFiltered: (filters: EventFilterOptions) =>
-      _unwrappingInvoke(CHANNELS.EVENT_INSPECTOR_GET_FILTERED, filters),
-
-    clear: () => _unwrappingInvoke(CHANNELS.EVENT_INSPECTOR_CLEAR),
+    ...buildEventInspectorPreloadBindings(_unwrappingInvoke),
 
     subscribe: () => ipcRenderer.send(CHANNELS.EVENT_INSPECTOR_SUBSCRIBE),
 
@@ -1438,31 +1430,7 @@ const api: ElectronAPI = {
 
   // Scratch (one-off agent workspace) API
   scratch: {
-    getAll: (): Promise<import("../shared/types/scratch.js").Scratch[]> =>
-      _unwrappingInvoke(CHANNELS.SCRATCH_GET_ALL),
-
-    getCurrent: (): Promise<import("../shared/types/scratch.js").Scratch | null> =>
-      _unwrappingInvoke(CHANNELS.SCRATCH_GET_CURRENT),
-
-    create: (name?: string): Promise<import("../shared/types/scratch.js").Scratch> =>
-      _unwrappingInvoke(CHANNELS.SCRATCH_CREATE, name),
-
-    update: (
-      scratchId: string,
-      updates: { name?: string; lastOpened?: number }
-    ): Promise<import("../shared/types/scratch.js").Scratch> =>
-      _unwrappingInvoke(CHANNELS.SCRATCH_UPDATE, scratchId, updates),
-
-    remove: (scratchId: string): Promise<void> =>
-      _unwrappingInvoke(CHANNELS.SCRATCH_REMOVE, scratchId),
-
-    switch: (scratchId: string): Promise<import("../shared/types/scratch.js").Scratch> =>
-      _unwrappingInvoke(CHANNELS.SCRATCH_SWITCH, scratchId),
-
-    saveAsProject: (
-      scratchId: string
-    ): Promise<import("../shared/types/ipc/scratch.js").ScratchSaveAsProjectResult> =>
-      _unwrappingInvoke(CHANNELS.SCRATCH_SAVE_AS_PROJECT, scratchId),
+    ...buildScratchPreloadBindings(_unwrappingInvoke),
 
     onUpdated: (callback: (scratch: import("../shared/types/scratch.js").Scratch) => void) =>
       _typedOn(CHANNELS.SCRATCH_UPDATED, callback),
@@ -1631,28 +1599,7 @@ const api: ElectronAPI = {
 
   // Dev Preview API
   devPreview: {
-    ensure: (request: DevPreviewEnsureRequest): Promise<DevPreviewSessionState> =>
-      _unwrappingInvoke(CHANNELS.DEV_PREVIEW_ENSURE, request) as Promise<DevPreviewSessionState>,
-
-    restart: (request: DevPreviewSessionRequest): Promise<DevPreviewSessionState> =>
-      _unwrappingInvoke(CHANNELS.DEV_PREVIEW_RESTART, request) as Promise<DevPreviewSessionState>,
-
-    stop: (request: DevPreviewSessionRequest): Promise<DevPreviewSessionState> =>
-      _unwrappingInvoke(CHANNELS.DEV_PREVIEW_STOP, request) as Promise<DevPreviewSessionState>,
-
-    stopByPanel: (request: DevPreviewStopByPanelRequest): Promise<void> =>
-      _unwrappingInvoke(CHANNELS.DEV_PREVIEW_STOP_BY_PANEL, request) as Promise<void>,
-
-    getState: (request: DevPreviewSessionRequest): Promise<DevPreviewSessionState> =>
-      _unwrappingInvoke(CHANNELS.DEV_PREVIEW_GET_STATE, request) as Promise<DevPreviewSessionState>,
-
-    getByWorktree: (
-      request: DevPreviewGetByWorktreeRequest
-    ): Promise<DevPreviewSessionState | null> =>
-      _unwrappingInvoke(
-        CHANNELS.DEV_PREVIEW_GET_BY_WORKTREE,
-        request
-      ) as Promise<DevPreviewSessionState | null>,
+    ...buildDevPreviewPreloadBindings(_unwrappingInvoke),
 
     onStateChanged: (callback: (payload: DevPreviewStateChangedPayload) => void) =>
       _typedOn(CHANNELS.DEV_PREVIEW_STATE_CHANGED, callback),
@@ -1795,32 +1742,7 @@ const api: ElectronAPI = {
 
   // Portal API
   portal: {
-    create: (payload: { tabId: string; url: string }) =>
-      _unwrappingInvoke(CHANNELS.PORTAL_CREATE, payload),
-
-    show: (payload: {
-      tabId: string;
-      bounds: { x: number; y: number; width: number; height: number };
-    }) => _unwrappingInvoke(CHANNELS.PORTAL_SHOW, payload),
-
-    hide: () => _unwrappingInvoke(CHANNELS.PORTAL_HIDE),
-
-    resize: (bounds: { x: number; y: number; width: number; height: number }) =>
-      _unwrappingInvoke(CHANNELS.PORTAL_RESIZE, bounds),
-
-    closeTab: (payload: { tabId: string }) => _unwrappingInvoke(CHANNELS.PORTAL_CLOSE_TAB, payload),
-
-    navigate: (payload: { tabId: string; url: string }) =>
-      _unwrappingInvoke(CHANNELS.PORTAL_NAVIGATE, payload),
-
-    goBack: (tabId: string) => _unwrappingInvoke(CHANNELS.PORTAL_GO_BACK, tabId),
-
-    goForward: (tabId: string) => _unwrappingInvoke(CHANNELS.PORTAL_GO_FORWARD, tabId),
-
-    reload: (tabId: string) => _unwrappingInvoke(CHANNELS.PORTAL_RELOAD, tabId),
-
-    showNewTabMenu: (payload: PortalShowNewTabMenuPayload) =>
-      _unwrappingInvoke(CHANNELS.PORTAL_SHOW_NEW_TAB_MENU, payload),
+    ...buildPortalPreloadBindings(_unwrappingInvoke),
 
     onNavEvent: (callback: (data: { tabId: string; title: string; url: string }) => void) =>
       _typedOn(CHANNELS.PORTAL_NAV_EVENT, callback),
@@ -2139,40 +2061,7 @@ const api: ElectronAPI = {
   },
 
   // Commands API
-  commands: {
-    list: (context?: {
-      terminalId?: string;
-      worktreeId?: string;
-      projectId?: string;
-      cwd?: string;
-      agentId?: string;
-    }) => _unwrappingInvoke(CHANNELS.COMMANDS_LIST, context),
-
-    get: (payload: {
-      commandId: string;
-      context?: {
-        terminalId?: string;
-        worktreeId?: string;
-        projectId?: string;
-        cwd?: string;
-        agentId?: string;
-      };
-    }) => _unwrappingInvoke(CHANNELS.COMMANDS_GET, payload),
-
-    execute: (payload: {
-      commandId: string;
-      context: {
-        terminalId?: string;
-        worktreeId?: string;
-        projectId?: string;
-        cwd?: string;
-        agentId?: string;
-      };
-      args?: Record<string, unknown>;
-    }) => _unwrappingInvoke(CHANNELS.COMMANDS_EXECUTE, payload),
-
-    getBuilder: (commandId: string) => _unwrappingInvoke(CHANNELS.COMMANDS_GET_BUILDER, commandId),
-  },
+  commands: buildCommandsPreloadBindings(_unwrappingInvoke),
 
   // App Agent API - Configuration and API key management
   appAgent: {
@@ -2520,8 +2409,10 @@ const api: ElectronAPI = {
   },
 
   plugin: {
-    list: () => _unwrappingInvoke(CHANNELS.PLUGIN_LIST),
+    ...buildPluginPreloadBindings(_unwrappingInvoke),
 
+    // plugin:invoke uses raw ipcMain.handle with variadic args — its signature
+    // can't be expressed through IpcInvokeMap, so it stays inline.
     invoke: (pluginId: string, channel: string, ...args: unknown[]) =>
       _unwrappingInvoke(CHANNELS.PLUGIN_INVOKE, pluginId, channel, ...args),
 
@@ -2534,19 +2425,8 @@ const api: ElectronAPI = {
       };
     },
 
-    toolbarButtons: () => _unwrappingInvoke(CHANNELS.PLUGIN_TOOLBAR_BUTTONS),
-    menuItems: () => _unwrappingInvoke(CHANNELS.PLUGIN_MENU_ITEMS),
-    validateActionIds: (actionIds: string[]) =>
-      _unwrappingInvoke(CHANNELS.PLUGIN_VALIDATE_ACTION_IDS, actionIds),
-
-    getActions: () => _unwrappingInvoke(CHANNELS.PLUGIN_ACTIONS_GET),
-    registerAction: (pluginId: string, contribution: unknown) =>
-      _unwrappingInvoke(CHANNELS.PLUGIN_ACTIONS_REGISTER, pluginId, contribution),
-    unregisterAction: (pluginId: string, actionId: string) =>
-      _unwrappingInvoke(CHANNELS.PLUGIN_ACTIONS_UNREGISTER, pluginId, actionId),
     onActionsChanged: (callback: (payload: { actions: PluginActionDescriptor[] }) => void) =>
       _eventBusOn("plugin:actions-changed", callback),
-    getPanelKinds: () => _unwrappingInvoke(CHANNELS.PLUGIN_PANEL_KINDS_GET),
     onPanelKindsChanged: (callback: (payload: { kinds: PanelKindConfig[] }) => void) =>
       _eventBusOn("plugin:panel-kinds-changed", callback),
   },
@@ -2576,6 +2456,11 @@ const api: ElectronAPI = {
     }) => ipcRenderer.send(CHANNELS.PERF_FLUSH_RENDERER_MARKS, payload),
   },
 
+  // Demo API — channel constants live in `./ipc/handlers/demo.preload.ts` and
+  // back the main-side `defineIpcNamespace`, but the renderer-facing shape
+  // takes positional args (moveTo(x, y, durationMs)) while channels carry a
+  // single payload object. The translation stays inline so window.electron.demo
+  // matches its declared `ElectronAPI.demo` signature.
   ...(isDemoMode
     ? {
         demo: {

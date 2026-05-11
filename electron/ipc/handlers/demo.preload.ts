@@ -1,0 +1,47 @@
+import type { IpcInvokeMap } from "../../types/index.js";
+
+// `demo:exec-*`, `demo:command-done`, `demo:capture-chunk`, and
+// `demo:capture-stop` are renderer→main / main→renderer send channels
+// (used by the demo runner harness) and are intentionally NOT part of
+// this invoke map.
+export const DEMO_METHOD_CHANNELS = {
+  moveTo: "demo:move-to",
+  moveToSelector: "demo:move-to-selector",
+  click: "demo:click",
+  type: "demo:type",
+  screenshot: "demo:screenshot",
+  waitForSelector: "demo:wait-for-selector",
+  pause: "demo:pause",
+  resume: "demo:resume",
+  sleep: "demo:sleep",
+  scroll: "demo:scroll",
+  drag: "demo:drag",
+  pressKey: "demo:press-key",
+  spotlight: "demo:spotlight",
+  dismissSpotlight: "demo:dismiss-spotlight",
+  annotate: "demo:annotate",
+  dismissAnnotation: "demo:dismiss-annotation",
+  waitForIdle: "demo:wait-for-idle",
+  startCapture: "demo:start-capture",
+  stopCapture: "demo:stop-capture",
+  getCaptureStatus: "demo:get-capture-status",
+} as const satisfies Record<string, keyof IpcInvokeMap>;
+
+type Methods = typeof DEMO_METHOD_CHANNELS;
+
+export type DemoPreloadBindings = {
+  [M in keyof Methods]: (
+    ...args: IpcInvokeMap[Methods[M]]["args"]
+  ) => Promise<IpcInvokeMap[Methods[M]]["result"]>;
+};
+
+type Invoker = (channel: string, ...args: unknown[]) => Promise<unknown>;
+
+export function buildDemoPreloadBindings(invoke: Invoker): DemoPreloadBindings {
+  const out: Record<string, (...args: unknown[]) => Promise<unknown>> = {};
+  for (const method of Object.keys(DEMO_METHOD_CHANNELS) as Array<keyof Methods>) {
+    const channel = DEMO_METHOD_CHANNELS[method];
+    out[method as string] = (...args) => invoke(channel, ...args);
+  }
+  return out as unknown as DemoPreloadBindings;
+}
