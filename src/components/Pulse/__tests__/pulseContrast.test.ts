@@ -119,6 +119,30 @@ describe("PulseHeatmap — accent restraint (issue #7229)", () => {
   });
 });
 
+describe("ProjectPulseCard — slot stability (issue #7671)", () => {
+  it("skeleton, loaded, error, and new-repo variants share min-h-[240px] so swaps don't shift siblings", async () => {
+    const content = await readFile(CARD_PATH, "utf-8");
+    const occurrences = content.match(/min-h-\[240px\]/g);
+    expect(occurrences).not.toBeNull();
+    // PulseSkeleton + loaded card + new-repo variant + error variant = 4
+    expect(occurrences!.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("health section wraps all four sub-variants in a single stable border-t pt-3 min-h-9 container", async () => {
+    const content = await readFile(CARD_PATH, "utf-8");
+    // The wrapping div holds the slot at a constant height while the loaded
+    // health row, skeleton, no-remote hint, and offline hint swap inside it.
+    expect(content).toContain('"border-t border-daintree-border pt-3 min-h-9"');
+  });
+
+  it("non-loaded variants centre content vertically inside the reserved slot", async () => {
+    const content = await readFile(CARD_PATH, "utf-8");
+    // `flex items-center` keeps the short message centred when min-h reserves
+    // extra space (otherwise the message would pin to the top of the card).
+    expect(content).toMatch(/min-h-\[240px\] flex items-center/);
+  });
+});
+
 describe("ProjectPulseCard — accessibility (issue #7229)", () => {
   it("range selector uses radiogroup semantics with descriptive label", async () => {
     const content = await readFile(CARD_PATH, "utf-8");
